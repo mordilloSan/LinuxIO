@@ -16,7 +16,7 @@ export interface IndexerStat {
   valueVariant?: AppTypographyProps["variant"];
 }
 
-export interface IndexerStatSection {
+interface IndexerStatSection {
   stats: IndexerStat[];
   subtitle?: ReactNode;
   title: ReactNode;

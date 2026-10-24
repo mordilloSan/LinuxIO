@@ -4,7 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -64,19 +64,9 @@ func readOVADescriptor(ovaPath string) ([]byte, error) {
 }
 
 func validateImportDisk(rawPath string) (string, error) {
-	path := strings.TrimSpace(rawPath)
-	if path == "" {
-		return "", badRequestf("importPath is required")
-	}
-	if !filepath.IsAbs(path) {
-		return "", badRequestf("import path must be absolute")
-	}
-	info, err := os.Stat(path)
+	path, info, err := statHostFile(rawPath, "importPath", "import")
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return "", notFoundf("import path does not exist: %s", path)
-		}
-		return "", fmt.Errorf("import path is not accessible: %w", err)
+		return "", err
 	}
 	if !info.Mode().IsRegular() {
 		return "", badRequestf("import path must point to a regular file: %s", path)
@@ -89,6 +79,22 @@ func validateImportDisk(rawPath string) (string, error) {
 		return "", badRequestf("import path is not readable by the bridge process: %s", path)
 	}
 	return path, nil
+}
+
+// validateVMDKDisk accepts only sparse-extent VMDKs (magic "KDMV", which OVA
+// exports use). Text descriptors can name arbitrary host files as FLAT extents,
+// and qemu-img would copy them into the converted disk.
+func validateVMDKDisk(path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	var magic [4]byte
+	if _, readErr := io.ReadFull(file, magic[:]); readErr != nil || string(magic[:]) != "KDMV" {
+		return badRequestf("VMDK must be a sparse or streamOptimized image; flat and split VMDK descriptors are not supported")
+	}
+	return nil
 }
 
 func createManagedImportStorage(ctx context.Context, conn libvirtConn, pool libvirt.StoragePool, volumeName string, req apischema.VMCreateRequest, report vmCreateReporter) (createdVMStorage, error) {
@@ -128,8 +134,13 @@ func importDiskFile(ctx context.Context, source, volumePath string, minDiskGB in
 		legacyBoot = ovfLegacyBoot(ovf)
 	}
 	format := importDiskFormats[strings.ToLower(filepath.Ext(source))]
-	if format == "qcow2" {
+	switch format {
+	case "qcow2":
 		if err = validateTemplateDisk(ctx, source); err != nil {
+			return 0, false, fmt.Errorf("inspect imported image: %w", err)
+		}
+	case "vmdk":
+		if err = validateVMDKDisk(source); err != nil {
 			return 0, false, fmt.Errorf("inspect imported image: %w", err)
 		}
 	}
@@ -231,7 +242,7 @@ func qcow2VirtualSizeGB(ctx context.Context, path string) (int, error) {
 	var info struct {
 		VirtualSize int64 `json:"virtual-size"`
 	}
-	if err := json.Unmarshal(stdout.Bytes(), &info); err != nil {
+	if err := json.Unmarshal(stdout.Bytes(), &info, json.MatchCaseInsensitiveNames(true)); err != nil {
 		return 0, fmt.Errorf("parse qemu-img info: %w", err)
 	}
 	const gib = 1 << 30

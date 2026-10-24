@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
+	monitoringapi "github.com/mordilloSan/LinuxIO/backend/monitoring/api"
 )
 
 const monitoringServiceName = "linuxio-monitoring.service"
@@ -29,7 +30,7 @@ func WaitAgentReady(ctx context.Context) error {
 
 	var lastErr error
 	for {
-		_, err := runCommand(ctx, "status.get", nil)
+		_, err := runCommand(ctx, monitoringapi.CommandStatusGet, nil)
 		switch {
 		case err == nil:
 			return nil

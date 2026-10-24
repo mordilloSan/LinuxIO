@@ -4,7 +4,7 @@ import { linuxio } from "@/api";
 import { type LoaderQueryOptions, loadRouteQueries } from "@/routes/-loader";
 import { optionalString } from "@/routes/-search";
 
-import DockerContainersPage from "./-components/DockerContainersPage";
+import DockerContainersPage from "./-components/containers/DockerContainersPage";
 
 export const Route = createFileRoute("/_authenticated/docker/containers")({
   validateSearch: (search) => ({

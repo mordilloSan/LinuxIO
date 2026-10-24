@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -19,9 +19,9 @@ import (
 	godbus "github.com/godbus/dbus/v5"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
+	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
+	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
 )
 
 type unitState struct {
@@ -112,7 +112,7 @@ func validateCalendar(ctx context.Context, expression string) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
-	return utils.CommandOutputError("systemd-analyze", args, output, err)
+	return hostcmd.OutputError("systemd-analyze", args, output, err)
 }
 
 func normalizeOptions(ctx context.Context, options apischema.ScheduleOptions, host hostOps) (apischema.ScheduleOptions, *user.User, error) {
@@ -194,7 +194,7 @@ func validateArguments(arguments []string) error {
 }
 
 func definitionRevision(def apischema.ScheduleDefinition) string {
-	data, _ := json.Marshal(def.Options)
+	data, _ := json.Marshal(def.Options, json.Deterministic(true))
 	digest := sha256.Sum256(data)
 	return hex.EncodeToString(digest[:])
 }

@@ -3,7 +3,7 @@ import type { MouseEvent } from "react";
 import { clickTargetsRowBody } from "@/components/tables/rowInteraction";
 
 /** Gives the card body the pointer cursor its click target implies. */
-export const CARD_BODY_TOGGLE_CLASS = "card-body-toggle";
+const CARD_BODY_TOGGLE_CLASS = "card-body-toggle";
 
 /**
  * A settings card whose whole body is a hit target for the one control it

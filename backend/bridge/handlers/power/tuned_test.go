@@ -70,19 +70,6 @@ func TestProfilesFromRecords(t *testing.T) {
 	}
 }
 
-func TestParseOSRelease(t *testing.T) {
-	values := parseOSRelease([]byte(`ID=rocky
-ID_LIKE="rhel centos fedora"
-NAME="Rocky Linux"`))
-
-	if values["ID"] != "rocky" {
-		t.Fatalf("ID=%q", values["ID"])
-	}
-	if values["ID_LIKE"] != "rhel centos fedora" {
-		t.Fatalf("ID_LIKE=%q", values["ID_LIKE"])
-	}
-}
-
 func TestUnitFileStateAvailability(t *testing.T) {
 	for _, state := range []string{"enabled", "disabled", "static", "linked"} {
 		if !isKnownUnitFileState(state) {

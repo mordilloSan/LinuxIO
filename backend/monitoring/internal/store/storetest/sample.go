@@ -3,17 +3,17 @@
 package storetest
 
 import (
-	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/container"
-	modelnet "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/network"
-	procmodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/process"
-	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/system"
+	containermodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/container"
+	networkmodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/network"
+	processmodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/process"
+	systemmodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/system"
 )
 
 // SampleCombinedData returns a CombinedData snapshot whose field values are
 // derived from cpu so that tests can assert on specific JSON substrings.
-func SampleCombinedData(cpu float64) *system.CombinedData {
-	return &system.CombinedData{
-		Stats: system.Stats{
+func SampleCombinedData(cpu float64) *systemmodel.CombinedData {
+	return &systemmodel.CombinedData{
+		Stats: systemmodel.Stats{
 			Cpu:          cpu,
 			Mem:          16,
 			MemUsed:      8,
@@ -31,26 +31,26 @@ func SampleCombinedData(cpu float64) *system.CombinedData {
 			LoadAvg:      [3]float64{1, 2, 3},
 			Bandwidth:    [2]uint64{1000, 2000},
 		},
-		Info: system.Info{
+		Info: systemmodel.Info{
 			Uptime:       100,
 			Cpu:          cpu,
 			MemPct:       50,
 			DiskPct:      40,
 			AgentVersion: "test",
 		},
-		Containers: []*container.Stats{
+		Containers: []*containermodel.Stats{
 			{
 				Id:        "c1",
 				Name:      "web",
 				Image:     "nginx",
 				Status:    "running",
-				Health:    container.DockerHealthHealthy,
+				Health:    containermodel.DockerHealthHealthy,
 				Cpu:       cpu / 2,
 				Mem:       1,
 				Bandwidth: [2]uint64{200, 100},
 			},
 		},
-		ContainerTelemetry: []container.Telemetry{
+		ContainerTelemetry: []containermodel.Telemetry{
 			{
 				ID:                      "c1",
 				Name:                    "web",
@@ -60,14 +60,14 @@ func SampleCombinedData(cpu float64) *system.CombinedData {
 				DiskWriteBytesPerSecond: 200,
 			},
 		},
-		ProcessCount: &procmodel.Count{Total: 2, Running: 1, Sleeping: 1, Thread: 4, PIDMax: 4194304},
-		Processes: []procmodel.Process{
+		ProcessCount: &processmodel.Count{Total: 2, Running: 1, Sleeping: 1, Thread: 4, PIDMax: 4194304},
+		Processes: []processmodel.Process{
 			{PID: 10, Name: "nginx", Status: "running", CPUPercent: cpu, MemoryPercent: 1.25, NumThreads: 2},
 		},
-		Programs: []procmodel.Program{
+		Programs: []processmodel.Program{
 			{Name: "nginx", Count: 1, CPUPercent: cpu, MemoryPercent: 1.25, MemoryRSSBytes: 1024, PIDs: []int32{10}},
 		},
-		Connections: &modelnet.ConnectionStats{
+		Connections: &networkmodel.ConnectionStats{
 			NetConnectionsEnabled: true,
 			NFConntrackEnabled:    true,
 			Total:                 3,
@@ -78,10 +78,10 @@ func SampleCombinedData(cpu float64) *system.CombinedData {
 			NFConntrackMax:        100,
 			NFConntrackPercent:    7,
 		},
-		IRQs: []modelnet.IRQStat{
+		IRQs: []networkmodel.IRQStat{
 			{IRQ: "0", Total: 42, CPUCounts: []uint64{40, 2}, Description: "timer"},
 		},
-		Details: &system.Details{
+		Details: &systemmodel.Details{
 			Hostname:    "host-a",
 			Kernel:      "6.1.0",
 			Cores:       4,

@@ -2,11 +2,14 @@ package config
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/common/logging"
+	"github.com/mordilloSan/LinuxIO/backend/common/verbosemode"
 )
 
 var Routes = routeBindings(runtime.Runtime{}).Routes()
@@ -18,6 +21,8 @@ func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 		apischema.Call[apischema.NoRequest, apischema.UIConfig]("config.get_ui", apischema.RetrySafe()).Handle(handlers.handleGetUIConfig),
 		apischema.Call[apischema.ConfigSetPayload, apischema.ConfigSetResult]("config.set").Handle(handlers.handleSetConfig),
 		apischema.Call[apischema.ConfigUISetPayload, apischema.ConfigSetResult]("config.set_ui").Handle(handlers.handleSetUIConfig),
+		apischema.Call[apischema.NoRequest, apischema.LoggingDebugState]("logging.get_debug", apischema.RetrySafe(), apischema.Privileged()).Handle(handleGetDebug),
+		apischema.Call[apischema.LoggingDebugRequest, apischema.LoggingDebugState]("logging.set_debug", apischema.Privileged()).Handle(handleSetDebug),
 	)
 }
 
@@ -50,4 +55,26 @@ func (h configHandlers) handleGetUIConfig(ctx context.Context, _ apischema.NoReq
 
 func (h configHandlers) handleSetUIConfig(ctx context.Context, req apischema.ConfigUISetPayload) (apischema.ConfigSetResult, error) {
 	return SetUIConfigForUser(ctx, req, h.rt.Session.User.Username, h.rt.Store)
+}
+
+func handleGetDebug(context.Context, apischema.NoRequest) (apischema.LoggingDebugState, error) {
+	return apischema.LoggingDebugState{Enabled: verbosemode.Enabled()}, nil
+}
+
+// handleSetDebug persists the switch in the drop-ins, applies it to this
+// bridge and signals the daemons to re-read it.
+func handleSetDebug(ctx context.Context, req apischema.LoggingDebugRequest) (apischema.LoggingDebugState, error) {
+	apply := verbosemode.Disable
+	if req.Enabled {
+		apply = verbosemode.Enable
+	}
+	if err := apply(ctx); err != nil {
+		return apischema.LoggingDebugState{}, fmt.Errorf("persist debug logging: %w", err)
+	}
+	logging.SetDebug(req.Enabled)
+	if err := verbosemode.ReloadDaemons(ctx); err != nil {
+		return apischema.LoggingDebugState{}, fmt.Errorf("reload daemons: %w", err)
+	}
+	slog.Info("debug logging changed", "enabled", req.Enabled)
+	return apischema.LoggingDebugState(req), nil
 }

@@ -1,0 +1,120 @@
+package userconfig
+
+import (
+	"fmt"
+	"io/fs"
+	"os"
+	"syscall"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
+	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
+)
+
+// fileOwnership describes the ownership that applies to runtime artifacts.
+// Production stores enforce it regardless of whether the bridge is privileged.
+type fileOwnership struct {
+	uid     int
+	gid     int
+	enforce bool
+}
+
+func resolveFileOwnership(targetUID, targetGID uint32) (fileOwnership, error) {
+	uid := int(targetUID)
+	gid := int(targetGID)
+	if uint32(uid) != targetUID || uint32(gid) != targetGID {
+		return fileOwnership{}, fmt.Errorf("target ownership IDs are not representable: uid=%d gid=%d", targetUID, targetGID)
+	}
+	if euid := os.Geteuid(); euid != 0 {
+		if euid != uid {
+			return fileOwnership{}, fmt.Errorf("bridge effective uid %d does not match target uid %d", euid, uid)
+		}
+		if egid := os.Getegid(); egid != gid {
+			return fileOwnership{}, fmt.Errorf("bridge effective gid %d does not match target gid %d", egid, gid)
+		}
+	}
+	return fileOwnership{uid: uid, gid: gid, enforce: true}, nil
+}
+
+func (o fileOwnership) ensureDirectory(path string) error {
+	if o.enforce {
+		return o.verifyDirectoryOwner(path)
+	}
+	if err := os.MkdirAll(path, dirPerm); err != nil {
+		return fmt.Errorf("create config directory: %w", err)
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("stat config directory %q: %w", path, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("config directory must not be a symlink: %s", path)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("config path is not a directory: %s", path)
+	}
+	return nil
+}
+
+func (o fileOwnership) verifyDirectoryOwner(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("stat config directory %q: %w", path, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("config directory must not be a symlink: %s", path)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("config path is not a directory: %s", path)
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return fmt.Errorf("config directory %q has no ownership metadata", path)
+	}
+	if uint64(stat.Uid) != uint64(o.uid) {
+		return fmt.Errorf("config directory %q is owned by uid %d, want %d", path, stat.Uid, o.uid)
+	}
+	return nil
+}
+
+func (o fileOwnership) ensureFile(path string) error {
+	if !o.enforce {
+		return nil
+	}
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return fmt.Errorf("open config file %q: %w", path, err)
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return fmt.Errorf("stat config file %q: %w", path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("config path is not a regular file: %s", path)
+	}
+	if err := f.Chown(o.uid, o.gid); err != nil {
+		return fmt.Errorf("own config file %q: %w", path, err)
+	}
+	if err := f.Chmod(filePerm); err != nil {
+		return fmt.Errorf("set config file permissions %q: %w", path, err)
+	}
+	return nil
+}
+
+func (o fileOwnership) writeAtomic(path string, data []byte, mode fs.FileMode) error {
+	if o.enforce {
+		return atomicfile.Write(path, data, mode, o.uid, o.gid)
+	}
+	return atomicfile.Write(path, data, mode)
+}
+
+func (o fileOwnership) lockOptions() []filelock.Option {
+	opts := []filelock.Option{
+		filelock.WithPermissions(lockFilePerm),
+		filelock.WithDirPermissions(dirPerm),
+	}
+	if o.enforce {
+		opts = append(opts, filelock.WithOwnership(o.uid, o.gid))
+	}
+	return opts
+}

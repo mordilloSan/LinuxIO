@@ -8,12 +8,13 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/webserver/sessions"
 )
 
-func newIdleWatcherTestManager() *session.Manager {
-	cfg := session.DefaultConfig
+func newIdleWatcherTestManager() *sessions.Manager {
+	cfg := sessions.DefaultConfig
 	cfg.GCInterval = 0
-	return session.NewManager(cfg)
+	return sessions.NewManager(cfg)
 }
 
 func TestHTTPHandlerRefreshesIdleGraceAfterCompletion(t *testing.T) {
@@ -53,7 +54,7 @@ func TestSocketIdleWatcherWaitsForReleasedSessionGrace(t *testing.T) {
 	activity.touch()
 	done := startSocketIdleExitWatcher(ctx, srv, sm, activity, grace, 5*time.Millisecond)
 	time.Sleep(15 * time.Millisecond)
-	sm.DeleteSession(sessID, session.ReasonLogout)
+	sm.DeleteSession(sessID, sessions.ReasonLogout)
 	released := time.Now()
 	select {
 	case <-shutdown:
@@ -91,7 +92,7 @@ func TestSocketIdleWatcherStopsWithContext(t *testing.T) {
 }
 
 func TestNewHTTPServerConnectionTimeouts(t *testing.T) {
-	sm := session.NewManager(session.DefaultConfig)
+	sm := sessions.NewManager(sessions.DefaultConfig)
 	defer sm.Close()
 	srv, _, err := newHTTPServer(ServerConfig{Port: 8080}, sm)
 	if err != nil {

@@ -36,3 +36,12 @@
     stroke-dashoffset: -125px;
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  /* Loading motion communicates ongoing work rather than decoration. */
+  .app-circular-progress,
+  .app-circular-progress__circle {
+    animation-duration: 1.4s !important;
+    animation-iteration-count: infinite !important;
+  }
+}

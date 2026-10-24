@@ -6,7 +6,6 @@ import { useCallback, useState, type ReactNode } from "react";
 import SortableCard from "@/components/cards/SortableCard";
 import AppVirtualGrid from "@/components/grid/AppVirtualGrid";
 import AppGrid, { type GridSize } from "@/components/ui/AppGrid";
-import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
 import {
   CARD_LIFT_SHADOW_GUTTER,
   DASHBOARD_CARD_SPACING,
@@ -15,6 +14,8 @@ import {
   HOVER_LIFT_HEADROOM,
   TRANSITION_DURATION_STANDARD_MS,
 } from "@/theme/constants";
+
+import type { ReorderableSurface } from "./useReorderableSurface";
 
 const LAYOUT_TRANSITION = {
   duration: TRANSITION_DURATION_STANDARD_MS / 1000,

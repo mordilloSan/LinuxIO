@@ -1,20 +1,18 @@
-import { Icon } from "@iconify/react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import type { CSSProperties } from "react";
 
 import type { VirtualMachine } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
+import type { ReorderableSurface } from "@/components/reorder/useReorderableSurface";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
-import AppActionIconButton from "@/components/ui/AppActionIconButton";
+import { useReorderableTableDnd } from "@/components/tables/useReorderableTableDnd";
 import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
-import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
-import { useReorderableSurface } from "@/hooks/useReorderableSurface";
-import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 
 import { ACTION_PROGRESS_LABEL } from "./useVMLifecycle";
+import VMActions, { type VMActionHandlers } from "./VMActions";
 import {
   type VMAction,
   formatMemory,
@@ -44,13 +42,6 @@ const mutedCellStyle: CSSProperties = {
   color: "var(--app-palette-text-secondary)",
 };
 
-const rowActionsStyle: CSSProperties = {
-  alignItems: "center",
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 6,
-};
-
 const usageCellStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
@@ -61,7 +52,7 @@ const usageCellStyle: CSSProperties = {
 const getVirtualMachineId = (vm: VirtualMachine) => vm.name;
 
 /** A value with a usage bar under it; no bar until live metrics exist. */
-function UsageCell({
+export function UsageCell({
   label,
   percent,
   value,
@@ -86,45 +77,17 @@ function UsageCell({
   );
 }
 
-const POWER_ACTION: Record<
-  string,
-  { action: VMAction; icon: string; label: string }
-> = {
-  paused: { action: "resume", icon: "mdi:play-pause", label: "Resume" },
-  running: { action: "shutdown", icon: "mdi:stop", label: "Shutdown" },
-};
-const START_ACTION = { action: "start", icon: "mdi:play", label: "Start" };
-
 export default function VMListTable({
-  effectiveSelectedName,
-  onDelete,
-  onOpenConsole,
-  onRunAction,
+  handlers,
   onSelect,
   pendingActions,
-  vms,
+  surface,
 }: {
-  effectiveSelectedName: string | null;
-  onDelete: (vm: VirtualMachine) => void;
-  onOpenConsole: (vm: VirtualMachine) => void;
-  onRunAction: (action: VMAction, vm: VirtualMachine) => void;
+  handlers: VMActionHandlers;
   onSelect: (name: string) => void;
   pendingActions: ReadonlyMap<string, VMAction>;
-  vms: VirtualMachine[];
+  surface: ReorderableSurface<VirtualMachine>;
 }) {
-  const [menu, setMenu] = useState<{
-    anchor: HTMLElement;
-    name: string;
-  } | null>(null);
-  // Derived from the list so the menu closes with the row it belongs to when
-  // a poll drops that machine.
-  const menuVM = vms.find((vm) => vm.name === menu?.name);
-  const closeMenu = () => setMenu(null);
-  const runMenuAction = (action: VMAction, vm: VirtualMachine) => {
-    closeMenu();
-    onRunAction(action, vm);
-  };
-
   const columns = useMemo<AppVirtualTableColumnDef<VirtualMachine>[]>(
     () => [
       {
@@ -222,59 +185,21 @@ export default function VMListTable({
       {
         id: "actions",
         header: "Actions",
-        cell: ({ row }) => {
-          const vm = row.original;
-          const running = vm.state === "running";
-          const paused = vm.state === "paused";
-          const pendingAction = pendingActions.get(vm.name);
-          const rowBusy = Boolean(pendingAction);
-          const power = POWER_ACTION[vm.state] ?? START_ACTION;
-          return (
-            <div
-              aria-busy={rowBusy}
-              onClick={(event) => event.stopPropagation()}
-              style={rowActionsStyle}
-            >
-              <AppActionIconButton
-                disabled={rowBusy}
-                icon={power.icon}
-                label={power.label}
-                loading={pendingAction === power.action}
-                onClick={() => onRunAction(power.action, vm)}
-              />
-              <AppActionIconButton
-                disabled={!running || !vm.hasGraphics}
-                icon="mdi:monitor"
-                label="Console"
-                onClick={() => onOpenConsole(vm)}
-              />
-              <AppActionIconButton
-                disabled={rowBusy}
-                icon="mdi:trash-can-outline"
-                label="Delete"
-                onClick={() => onDelete(vm)}
-              />
-              <AppActionIconButton
-                disabled={rowBusy || (!running && !paused)}
-                icon="mdi:dots-horizontal"
-                label="More actions"
-                onClick={(event) =>
-                  setMenu({ anchor: event.currentTarget, name: vm.name })
-                }
-              />
-            </div>
-          );
-        },
-        meta: { align: "right", width: "minmax(180px, 0.9fr)" },
+        cell: ({ row }) => (
+          // Keeps button and menu clicks from also selecting the row.
+          <div onClick={(event) => event.stopPropagation()}>
+            <VMActions
+              handlers={handlers}
+              pendingAction={pendingActions.get(row.original.name)}
+              vm={row.original}
+            />
+          </div>
+        ),
+        meta: { align: "right", width: "minmax(210px, 0.9fr)" },
       },
     ],
-    [onDelete, onOpenConsole, onRunAction, onSelect, pendingActions],
+    [handlers, onSelect, pendingActions],
   );
-  const surface = useReorderableSurface({
-    getId: getVirtualMachineId,
-    items: vms,
-    surface: "vm.list",
-  });
   const tableDnd = useReorderableTableDnd<VirtualMachine, VirtualMachine>({
     handleAriaLabel: "Reorder virtual machine",
     surface,
@@ -286,56 +211,20 @@ export default function VMListTable({
   );
 
   return (
-    <>
-      <FrostedCard style={listPanelStyle}>
-        <AppVirtualTable
-          ariaLabel="Virtual machines"
-          columns={columns}
-          data={surface.items}
-          dnd={tableDnd}
-          emptyMessage="No virtual machines."
-          enableSorting={false}
-          fillAvailable={false}
-          getRowId={getVirtualMachineId}
-          maxHeight={400}
-          onRowClick={handleRowClick}
-          selectedRowId={effectiveSelectedName}
-          variant="embedded"
-        />
-      </FrostedCard>
-      <AppMenu
-        anchorEl={menu?.anchor ?? null}
-        ariaLabel="More actions"
-        minWidth={160}
-        onClose={closeMenu}
-        open={menu !== null && menuVM !== undefined}
-      >
-        {menuVM?.state === "running" && (
-          <AppMenuItem
-            onClick={() => runMenuAction("reboot", menuVM)}
-            startAdornment={<Icon icon="mdi:restart" width={18} />}
-          >
-            Reboot
-          </AppMenuItem>
-        )}
-        {menuVM?.state === "running" && (
-          <AppMenuItem
-            onClick={() => runMenuAction("suspend", menuVM)}
-            startAdornment={<Icon icon="mdi:pause" width={18} />}
-          >
-            Suspend
-          </AppMenuItem>
-        )}
-        {menuVM && (
-          <AppMenuItem
-            danger
-            onClick={() => runMenuAction("force_off", menuVM)}
-            startAdornment={<Icon icon="mdi:power" width={18} />}
-          >
-            Force off
-          </AppMenuItem>
-        )}
-      </AppMenu>
-    </>
+    <FrostedCard style={listPanelStyle}>
+      <AppVirtualTable
+        ariaLabel="Virtual machines"
+        columns={columns}
+        data={surface.items}
+        dnd={tableDnd}
+        emptyMessage="No virtual machines."
+        enableSorting={false}
+        fillAvailable={false}
+        getRowId={getVirtualMachineId}
+        maxHeight={400}
+        onRowClick={handleRowClick}
+        variant="embedded"
+      />
+    </FrostedCard>
   );
 }

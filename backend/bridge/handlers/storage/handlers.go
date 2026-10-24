@@ -2,13 +2,11 @@ package storage
 
 import (
 	"context"
-	"log/slog"
-	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 var api = apischema.Bindings(
@@ -77,143 +75,84 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 }
 
 func handleBtrfsList(ctx context.Context, _ apischema.NoRequest) ([]btrfs.BtrfsFilesystem, error) {
-	slog.Debug("Listing btrfs filesystems")
-	filesystems, err := btrfs.ListFilesystems(ctx)
-	if err != nil {
-		slog.Error("failed to list btrfs filesystems", "error", err)
-		return nil, err
-	}
-	for _, fs := range filesystems {
-		btrfs.RaiseAlerts(ctx, fs)
-	}
-	ensureBtrfsHealthTimerOnce(ctx)
-	slog.Debug("listed btrfs filesystems", "count", len(filesystems))
-	return filesystems, nil
+	return ListBtrfsFilesystems(ctx)
 }
 
 func handleBtrfsSubvolumes(ctx context.Context, req apischema.UUIDRequest) ([]btrfs.BtrfsSubvolume, error) {
-	slog.Debug("Listing btrfs subvolumes", "uuid", req.UUID)
 	return btrfs.ListSubvolumes(ctx, req.UUID)
 }
 
 func handleBtrfsSubvolumeCreate(ctx context.Context, req apischema.BtrfsSubvolumeRequest) (btrfs.BtrfsSubvolume, error) {
-	slog.Info("creating btrfs subvolume", "uuid", req.UUID, "path", req.Path)
-	sv, err := btrfs.CreateSubvolume(ctx, req.UUID, req.Path)
-	if err != nil {
-		slog.Error("failed to create btrfs subvolume", "uuid", req.UUID, "path", req.Path, "error", err)
-	}
-	return sv, err
+	return CreateBtrfsSubvolume(ctx, req)
 }
 
 func handleBtrfsSubvolumeDelete(ctx context.Context, req apischema.BtrfsSubvolumeRequest) (apischema.SuccessResponse, error) {
-	slog.Info("deleting btrfs subvolume", "uuid", req.UUID, "path", req.Path)
-	if err := btrfs.DeleteSubvolume(ctx, req.UUID, req.Path); err != nil {
-		slog.Error("failed to delete btrfs subvolume", "uuid", req.UUID, "path", req.Path, "error", err)
+	if err := DeleteBtrfsSubvolume(ctx, req); err != nil {
 		return apischema.SuccessResponse{}, err
 	}
 	return apischema.SuccessResponse{Success: true}, nil
 }
 
 func handleBtrfsSnapshots(ctx context.Context, req apischema.BtrfsSnapshotsRequest) ([]btrfs.BtrfsSnapshot, error) {
-	slog.Debug("Listing btrfs snapshots", "uuid", req.UUID)
 	return btrfs.ListSnapshots(ctx, req.UUID, req.Path)
 }
 
 func handleBtrfsSnapshotCreate(ctx context.Context, req apischema.BtrfsSubvolumeRequest) (btrfs.BtrfsSnapshot, error) {
-	slog.Info("creating btrfs snapshot", "uuid", req.UUID, "source", req.Path)
-	snap, err := btrfs.CreateSnapshot(ctx, req.UUID, req.Path, btrfs.KindManual, time.Now())
-	if err != nil {
-		slog.Error("failed to create btrfs snapshot", "uuid", req.UUID, "source", req.Path, "error", err)
-	}
-	return snap, err
+	return CreateBtrfsSnapshot(ctx, req)
 }
 
 func handleBtrfsSnapshotDelete(ctx context.Context, req apischema.BtrfsSnapshotRequest) (apischema.SuccessResponse, error) {
-	slog.Info("deleting btrfs snapshot", "uuid", req.UUID, "path", req.SnapshotPath)
-	if err := btrfs.DeleteSnapshot(ctx, req.UUID, req.SnapshotPath); err != nil {
-		slog.Error("failed to delete btrfs snapshot", "uuid", req.UUID, "path", req.SnapshotPath, "error", err)
+	if err := DeleteBtrfsSnapshot(ctx, req); err != nil {
 		return apischema.SuccessResponse{}, err
 	}
 	return apischema.SuccessResponse{Success: true}, nil
 }
 
 func handleBtrfsSubvolumeSetReadOnly(ctx context.Context, req apischema.BtrfsSubvolumeReadOnlyRequest) (btrfs.BtrfsSubvolume, error) {
-	slog.Info("setting btrfs subvolume read-only", "uuid", req.UUID, "path", req.Path, "readOnly", req.ReadOnly)
-	sv, err := btrfs.SetSubvolumeReadOnly(ctx, req.UUID, req.Path, req.ReadOnly)
-	if err != nil {
-		slog.Error("failed to set btrfs subvolume read-only", "uuid", req.UUID, "path", req.Path, "error", err)
-	}
-	return sv, err
+	return SetBtrfsSubvolumeReadOnly(ctx, req)
 }
 
 func handleBtrfsSubvolumeSetDefault(ctx context.Context, req apischema.BtrfsSubvolumeRequest) (apischema.SuccessResponse, error) {
-	slog.Info("setting default btrfs subvolume", "uuid", req.UUID, "path", req.Path)
-	if err := btrfs.SetDefaultSubvolume(ctx, req.UUID, req.Path); err != nil {
-		slog.Error("failed to set default btrfs subvolume", "uuid", req.UUID, "path", req.Path, "error", err)
+	if err := SetBtrfsDefaultSubvolume(ctx, req); err != nil {
 		return apischema.SuccessResponse{}, err
 	}
 	return apischema.SuccessResponse{Success: true}, nil
 }
 
-func handleBtrfsDeviceAdd(ctx context.Context, req apischema.BtrfsDeviceAddRequest) (btrfs.BtrfsFilesystem, error) {
-	if err := ensureBtrfsDeviceFree(ctx, req.Device, req.Force); err != nil {
-		return btrfs.BtrfsFilesystem{}, err
-	}
-	slog.Info("adding btrfs device", "uuid", req.UUID, "device", req.Device, "force", req.Force)
-	if err := btrfs.AddDevice(ctx, req.UUID, req.Device, req.Force); err != nil {
-		slog.Error("failed to add btrfs device", "uuid", req.UUID, "device", req.Device, "error", err)
-		return btrfs.BtrfsFilesystem{}, err
-	}
-	return btrfs.FindFilesystem(ctx, req.UUID)
+func handleBtrfsSettings(ctx context.Context, req apischema.UUIDRequest) (btrfs.BtrfsSettings, error) {
+	return GetBtrfsSettings(ctx, req.UUID)
 }
 
-func handleBtrfsBalanceCancel(ctx context.Context, req apischema.UUIDRequest) (apischema.SuccessResponse, error) {
-	slog.Info("canceling btrfs balance", "uuid", req.UUID)
-	if err := btrfs.BalanceCancel(ctx, req.UUID); err != nil {
-		slog.Error("failed to cancel btrfs balance", "uuid", req.UUID, "error", err)
-		return apischema.SuccessResponse{}, err
-	}
-	return apischema.SuccessResponse{Success: true}, nil
+func handleBtrfsSetQuotas(ctx context.Context, req apischema.BtrfsQuotaRequest) (btrfs.BtrfsSettings, error) {
+	return SetBtrfsQuotas(ctx, req)
 }
 
-func handleBtrfsScrubCancel(ctx context.Context, req apischema.UUIDRequest) (apischema.SuccessResponse, error) {
-	slog.Info("canceling btrfs scrub", "uuid", req.UUID)
-	if err := btrfs.ScrubCancel(ctx, req.UUID); err != nil {
-		slog.Error("failed to cancel btrfs scrub", "uuid", req.UUID, "error", err)
-		return apischema.SuccessResponse{}, err
-	}
-	return apischema.SuccessResponse{Success: true}, nil
+func handleBtrfsQgroupLimit(ctx context.Context, req apischema.BtrfsQgroupLimitRequest) (btrfs.BtrfsSubvolume, error) {
+	return LimitBtrfsQgroup(ctx, req)
+}
+
+func handleBtrfsSetCompression(ctx context.Context, req apischema.BtrfsCompressionRequest) (btrfs.BtrfsSettings, error) {
+	return ApplyBtrfsCompression(ctx, req)
+}
+
+func handleBtrfsSubvolumeSetCompression(ctx context.Context, req apischema.BtrfsSubvolumeCompressionRequest) (btrfs.BtrfsSubvolume, error) {
+	return SetBtrfsSubvolumeCompression(ctx, req)
 }
 
 func handleBtrfsSnapshotRules(ctx context.Context, _ apischema.NoRequest) (btrfs.BtrfsSnapshotRules, error) {
-	rules, err := btrfs.LoadRules()
-	if err != nil {
-		return btrfs.BtrfsSnapshotRules{}, err
-	}
-	return btrfsSnapshotRules(ctx, rules), nil
+	return LoadBtrfsSnapshotRules(ctx)
 }
 
 func handleBtrfsSnapshotRuleSet(ctx context.Context, req apischema.BtrfsSnapshotRuleRequest) (btrfs.BtrfsSnapshotRules, error) {
-	slog.Info("setting btrfs snapshot rule", "uuid", req.Rule.UUID, "path", req.Rule.Path, "enabled", req.Rule.Enabled)
-	rules, err := setBtrfsSnapshotRule(ctx, req.Rule)
-	if err != nil {
-		slog.Error("failed to set btrfs snapshot rule", "uuid", req.Rule.UUID, "path", req.Rule.Path, "error", err)
-		return btrfs.BtrfsSnapshotRules{}, err
-	}
-	return btrfsSnapshotRules(ctx, rules), nil
+	return SaveBtrfsSnapshotRule(ctx, req.Rule)
 }
 
 func handleBtrfsSnapshotRuleDelete(ctx context.Context, req apischema.BtrfsSubvolumeRequest) (btrfs.BtrfsSnapshotRules, error) {
-	slog.Info("deleting btrfs snapshot rule", "uuid", req.UUID, "path", req.Path)
-	rules, err := updateBtrfsSnapshotRules(ctx, func(rules *[]btrfs.BtrfsSnapshotRule) error {
-		*rules = btrfs.DeleteRule(*rules, req.UUID, req.Path)
-		return nil
-	})
-	if err != nil {
-		slog.Error("failed to delete btrfs snapshot rule", "uuid", req.UUID, "path", req.Path, "error", err)
-		return btrfs.BtrfsSnapshotRules{}, err
-	}
-	return btrfsSnapshotRules(ctx, rules), nil
+	return DeleteBtrfsSnapshotRule(ctx, req.UUID, req.Path)
+}
+
+func handleBtrfsSnapshotRunNow(ctx context.Context, _ apischema.NoRequest) (btrfs.RunReport, error) {
+	return RunBtrfsSnapshotRules(ctx)
 }
 
 func handleBtrfsReplicationJobs(_ context.Context, _ apischema.NoRequest) ([]btrfs.BtrfsReplicationJob, error) {
@@ -221,211 +160,120 @@ func handleBtrfsReplicationJobs(_ context.Context, _ apischema.NoRequest) ([]btr
 }
 
 func handleBtrfsReplicationJobSet(ctx context.Context, req apischema.BtrfsReplicationJobRequest) ([]btrfs.BtrfsReplicationJob, error) {
-	slog.Info("setting btrfs replication job", "id", req.Job.ID, "uuid", req.Job.UUID, "path", req.Job.Path, "target", req.Job.Target.Kind)
-	jobs, err := setBtrfsReplicationJob(ctx, req.Job)
-	if err != nil {
-		slog.Error("failed to set btrfs replication job", "id", req.Job.ID, "uuid", req.Job.UUID, "path", req.Job.Path, "error", err)
-		return nil, err
-	}
-	return jobs, nil
+	return SaveBtrfsReplicationJob(ctx, req.Job)
 }
 
 func handleBtrfsReplicationJobDelete(ctx context.Context, req apischema.BtrfsJobIDRequest) ([]btrfs.BtrfsReplicationJob, error) {
-	slog.Info("deleting btrfs replication job", "id", req.ID)
-	jobs, err := updateBtrfsReplicationJobs(ctx, func(jobs *[]btrfs.BtrfsReplicationJob) error {
-		*jobs = btrfs.DeleteJob(*jobs, req.ID)
-		return nil
-	})
-	if err != nil {
-		slog.Error("failed to delete btrfs replication job", "id", req.ID, "error", err)
-		return nil, err
-	}
-	return jobs, nil
+	return DeleteBtrfsReplicationJob(ctx, req.ID)
 }
 
 func handleBtrfsReplicationSSHKey(ctx context.Context, _ apischema.NoRequest) (btrfs.BtrfsSSHKey, error) {
-	pub, err := btrfs.EnsureSSHKey(ctx)
-	if err != nil {
-		slog.Error("failed to prepare btrfs replication ssh key", "error", err)
-		return btrfs.BtrfsSSHKey{}, err
-	}
-	return btrfs.BtrfsSSHKey{PublicKey: pub}, nil
+	return EnsureBtrfsReplicationSSHKey(ctx)
 }
 
 func handleBtrfsReplicationSSHTrust(ctx context.Context, req apischema.BtrfsSSHTrustRequest) (btrfs.BtrfsSSHTrust, error) {
-	slog.Info("checking btrfs replication host key", "host", req.Host, "port", req.Port, "confirm", req.Confirm)
-	trust, err := trustBtrfsReplicationHost(ctx, req)
-	if err != nil {
-		slog.Error("failed to check btrfs replication host key", "host", req.Host, "port", req.Port, "error", err)
-		return btrfs.BtrfsSSHTrust{}, err
-	}
-	return trust, nil
+	return CheckBtrfsReplicationHost(ctx, req)
 }
 
-func handleBtrfsSnapshotRunNow(ctx context.Context, _ apischema.NoRequest) (btrfs.RunReport, error) {
-	rules, err := btrfs.LoadRules()
-	if err != nil {
-		return btrfs.RunReport{}, err
+func handleBtrfsDeviceAdd(ctx context.Context, req apischema.BtrfsDeviceAddRequest) (btrfs.BtrfsFilesystem, error) {
+	return AddBtrfsDevice(ctx, req)
+}
+
+func handleBtrfsBalanceCancel(ctx context.Context, req apischema.UUIDRequest) (apischema.SuccessResponse, error) {
+	if err := CancelBtrfsBalance(ctx, req.UUID); err != nil {
+		return apischema.SuccessResponse{}, err
 	}
-	slog.Info("running btrfs snapshot rules", "rules", len(rules))
-	return btrfs.Run(ctx, rules, time.Now(), btrfs.KindTimeline)
+	return apischema.SuccessResponse{Success: true}, nil
+}
+
+func handleBtrfsScrubCancel(ctx context.Context, req apischema.UUIDRequest) (apischema.SuccessResponse, error) {
+	if err := CancelBtrfsScrub(ctx, req.UUID); err != nil {
+		return apischema.SuccessResponse{}, err
+	}
+	return apischema.SuccessResponse{Success: true}, nil
+}
+
+func handleBtrfsPoolCreate(ctx context.Context, req apischema.BtrfsPoolCreateRequest) (btrfs.BtrfsFilesystem, error) {
+	return CreateBtrfsPool(ctx, req)
+}
+
+func handleBtrfsPoolDestroy(ctx context.Context, req apischema.UUIDRequest) (apischema.SuccessResponse, error) {
+	if err := DestroyBtrfsPool(ctx, req.UUID); err != nil {
+		return apischema.SuccessResponse{}, err
+	}
+	return apischema.SuccessResponse{Success: true}, nil
+}
+
+func handleBtrfsPoolMount(ctx context.Context, req apischema.BtrfsPoolMountRequest) (btrfs.BtrfsFilesystem, error) {
+	return MountBtrfsPool(ctx, req)
+}
+
+func handleBtrfsPoolsOffline(ctx context.Context, _ apischema.NoRequest) ([]btrfs.BtrfsOfflinePool, error) {
+	return ListOfflinePools(ctx)
+}
+
+func handleBtrfsDeviceGrow(ctx context.Context, req apischema.BtrfsDeviceRequest) (btrfs.BtrfsFilesystem, error) {
+	return GrowBtrfsDevice(ctx, req)
+}
+
+func handleBtrfsSetLabel(ctx context.Context, req apischema.BtrfsLabelRequest) (btrfs.BtrfsFilesystem, error) {
+	return SetBtrfsLabel(ctx, req)
 }
 
 func handleListPVs(ctx context.Context, _ apischema.NoRequest) ([]apischema.PhysicalVolume, error) {
-	slog.Debug("Listing physical volumes")
-	pvs, err := ListPhysicalVolumes(ctx)
-	if err != nil {
-		slog.Error("failed to list physical volumes", "error", err)
-		return nil, err
-	}
-	slog.Debug("listed physical volumes", "count", len(pvs))
-	return pvs, nil
+	return ListPhysicalVolumes(ctx)
 }
 
 func handleListVGs(ctx context.Context, _ apischema.NoRequest) ([]apischema.VolumeGroup, error) {
-	slog.Debug("Listing volume groups")
-	vgs, err := ListVolumeGroups(ctx)
-	if err != nil {
-		slog.Error("failed to list volume groups", "error", err)
-		return nil, err
-	}
-	slog.Debug("listed volume groups", "count", len(vgs))
-	return vgs, nil
+	return ListVolumeGroups(ctx)
 }
 
 func handleListLVs(ctx context.Context, _ apischema.NoRequest) ([]apischema.LogicalVolume, error) {
-	slog.Debug("Listing logical volumes")
-	lvs, err := ListLogicalVolumes(ctx)
-	if err != nil {
-		slog.Error("failed to list logical volumes", "error", err)
-		return nil, err
-	}
-	slog.Debug("listed logical volumes", "count", len(lvs))
-	return lvs, nil
+	return ListLogicalVolumes(ctx)
 }
 
 func handleCreateLV(ctx context.Context, req apischema.CreateLogicalVolumeRequest) (apischema.SuccessPathResponse, error) {
-	slog.Info("creating logical volume", "volume_group", req.VGName, "name", req.LVName, "size", req.Size)
-	result, err := CreateLogicalVolume(ctx, req.VGName, req.LVName, req.Size)
-	if err != nil {
-		slog.Error("failed to create logical volume", "volume_group", req.VGName, "name", req.LVName, "error", err)
-		return apischema.SuccessPathResponse{}, err
-	}
-	slog.Info("logical volume created", "volume_group", req.VGName, "name", req.LVName)
-	return result, nil
+	return CreateLogicalVolume(ctx, req.VGName, req.LVName, req.Size)
 }
 
 func handleDeleteLV(ctx context.Context, req apischema.VolumeGroupLogicalVolumeRequest) (apischema.SuccessResponse, error) {
-	slog.Info("deleting logical volume", "volume_group", req.VGName, "name", req.LVName)
-	result, err := DeleteLogicalVolume(ctx, req.VGName, req.LVName)
-	if err != nil {
-		slog.Error("failed to delete logical volume", "volume_group", req.VGName, "name", req.LVName, "error", err)
-		return apischema.SuccessResponse{}, err
-	}
-	slog.Info("logical volume deleted", "volume_group", req.VGName, "name", req.LVName)
-	return result, nil
+	return DeleteLogicalVolume(ctx, req.VGName, req.LVName)
 }
 
 func handleResizeLV(ctx context.Context, req apischema.ResizeLogicalVolumeRequest) (apischema.SuccessResponse, error) {
-	slog.Info("resizing logical volume", "volume_group", req.VGName, "name", req.LVName, "size", req.NewSize)
-	result, err := ResizeLogicalVolume(ctx, req.VGName, req.LVName, req.NewSize)
-	if err != nil {
-		slog.Error("failed to resize logical volume", "volume_group", req.VGName, "name", req.LVName, "error", err)
-		return apischema.SuccessResponse{}, err
-	}
-	slog.Info("logical volume resized", "volume_group", req.VGName, "name", req.LVName, "size", req.NewSize)
-	return result, nil
+	return ResizeLogicalVolume(ctx, req.VGName, req.LVName, req.NewSize)
 }
 
 func handleListNFSMounts(ctx context.Context, _ apischema.NoRequest) ([]apischema.NFSMount, error) {
-	slog.Debug("Listing NFS mounts")
-	mounts, err := ListNFSMounts(ctx)
-	if err != nil {
-		slog.Error("failed to list NFS mounts", "error", err)
-		return nil, err
-	}
-	slog.Debug("listed NFS mounts", "count", len(mounts))
-	return mounts, nil
+	return ListNFSMounts(ctx)
 }
 
 func handleListNFSExports(ctx context.Context, req apischema.ServerRequest) ([]string, error) {
-	slog.Debug("listing NFS exports", "server", req.Server)
-	exports, err := ListNFSExports(ctx, req.Server)
-	if err != nil {
-		slog.Error("failed to list NFS exports", "server", req.Server, "error", err)
-		return nil, err
-	}
-	slog.Debug("listed NFS exports", "server", req.Server, "count", len(exports))
-	return exports, nil
+	return ListNFSExports(ctx, req.Server)
 }
 
 func handleMountNFS(ctx context.Context, req apischema.ServerExportMountOptionsPersistRequest) (apischema.StorageMountResult, error) {
-	persist := truthy(req.Persist)
-	slog.Debug("mount_nfs request",
-		"server", req.Server,
-		"path", req.ExportPath,
-		"mountpoint", req.Mountpoint,
-		"options", req.Options,
-		"persistent", persist)
-	result, err := MountNFS(ctx, req.Server, req.ExportPath, req.Mountpoint, req.Options, persist)
-	if err != nil {
-		slog.Error("failed to mount NFS share",
-			"server", req.Server,
-			"path", req.ExportPath,
-			"mountpoint", req.Mountpoint,
-			"error", err)
-		return apischema.StorageMountResult{}, err
-	}
-	return result, nil
+	return MountNFS(ctx, req.Server, req.ExportPath, req.Mountpoint, req.Options, truthy(req.Persist))
 }
 
 func handleUnmountNFS(ctx context.Context, req apischema.MountpointRemoveFstabRequest) (apischema.StorageWarningResult, error) {
-	removeFstab := truthy(req.RemoveFstab)
-	slog.Debug("unmount_nfs request", "mountpoint", req.Mountpoint, "remove_fstab", removeFstab)
-	result, err := UnmountNFS(ctx, req.Mountpoint, removeFstab)
-	if err != nil {
-		slog.Error("failed to unmount NFS share", "mountpoint", req.Mountpoint, "error", err)
-		return apischema.StorageWarningResult{}, err
-	}
-	return result, nil
+	return UnmountNFS(ctx, req.Mountpoint, truthy(req.RemoveFstab))
 }
 
 func handleRemountNFS(ctx context.Context, req apischema.MountpointOptionsUpdateFstabRequest) (apischema.StorageMountResult, error) {
-	updateFstab := truthy(req.UpdateFstab)
-	slog.Debug("remount_nfs request", "mountpoint", req.Mountpoint, "options", req.Options, "update_fstab", updateFstab)
-	result, err := RemountNFS(ctx, req.Mountpoint, req.Options, updateFstab)
-	if err != nil {
-		slog.Error("failed to remount NFS share", "mountpoint", req.Mountpoint, "error", err)
-		return apischema.StorageMountResult{}, err
-	}
-	return result, nil
+	return RemountNFS(ctx, req.Mountpoint, req.Options, truthy(req.UpdateFstab))
 }
 
 func handleListCIFSMounts(ctx context.Context, _ apischema.NoRequest) ([]apischema.CIFSMount, error) {
-	slog.Debug("Listing CIFS mounts")
-	mounts, err := ListCIFSMounts(ctx)
-	if err != nil {
-		slog.Error("failed to list CIFS mounts", "error", err)
-		return nil, err
-	}
-	slog.Debug("listed CIFS mounts", "count", len(mounts))
-	return mounts, nil
+	return ListCIFSMounts(ctx)
 }
 
 func handleListCIFSShares(ctx context.Context, req apischema.ServerRequest) ([]string, error) {
-	slog.Debug("listing CIFS shares", "server", req.Server)
-	shares, err := ListCIFSShares(ctx, req.Server)
-	if err != nil {
-		slog.Error("failed to list CIFS shares", "server", req.Server, "error", err)
-		return nil, err
-	}
-	return shares, nil
+	return ListCIFSShares(ctx, req.Server)
 }
 
 func handleMountCIFS(ctx context.Context, req apischema.CIFSMountRequest) (apischema.StorageMountResult, error) {
-	// Password safety: never log req.Password or req.Options.
-	slog.Debug("mount_cifs request", "server", req.Server, "share", req.Share, "mountpoint", req.Mountpoint)
-	result, err := MountCIFS(ctx, cifsMountParams{
+	return MountCIFS(ctx, cifsMountParams{
 		server:     req.Server,
 		share:      req.Share,
 		mountpoint: req.Mountpoint,
@@ -434,45 +282,18 @@ func handleMountCIFS(ctx context.Context, req apischema.CIFSMountRequest) (apisc
 		domain:     req.Domain,
 		options:    req.Options,
 	})
-	if err != nil {
-		slog.Error("failed to mount CIFS share", "server", req.Server, "share", req.Share, "mountpoint", req.Mountpoint, "error", err)
-		return apischema.StorageMountResult{}, err
-	}
-	return result, nil
 }
 
 func handleUnmountCIFS(ctx context.Context, req apischema.MountpointRemoveFstabRequest) (apischema.StorageWarningResult, error) {
-	removeFstab := truthy(req.RemoveFstab)
-	slog.Debug("unmount_cifs request", "mountpoint", req.Mountpoint, "remove_fstab", removeFstab)
-	result, err := UnmountCIFS(ctx, req.Mountpoint, removeFstab)
-	if err != nil {
-		slog.Error("failed to unmount CIFS share", "mountpoint", req.Mountpoint, "error", err)
-		return apischema.StorageWarningResult{}, err
-	}
-	return result, nil
+	return UnmountCIFS(ctx, req.Mountpoint, truthy(req.RemoveFstab))
 }
 
 func handleRemountCIFS(ctx context.Context, req apischema.MountpointOptionsUpdateFstabRequest) (apischema.StorageMountResult, error) {
-	updateFstab := truthy(req.UpdateFstab)
-	// Password safety: never log req.Options.
-	slog.Debug("remount_cifs request", "mountpoint", req.Mountpoint, "update_fstab", updateFstab)
-	result, err := RemountCIFS(ctx, req.Mountpoint, req.Options, updateFstab)
-	if err != nil {
-		slog.Error("failed to remount CIFS share", "mountpoint", req.Mountpoint, "error", err)
-		return apischema.StorageMountResult{}, err
-	}
-	return result, nil
+	return RemountCIFS(ctx, req.Mountpoint, req.Options, truthy(req.UpdateFstab))
 }
 
 func handleUnmountFilesystem(ctx context.Context, req apischema.MountpointRequest) (apischema.StorageMountResult, error) {
-	slog.Info("unmounting filesystem", "mountpoint", req.Mountpoint)
-	result, err := UnmountFilesystem(ctx, req.Mountpoint)
-	if err != nil {
-		slog.Error("failed to unmount filesystem", "mountpoint", req.Mountpoint, "error", err)
-		return apischema.StorageMountResult{}, err
-	}
-	slog.Info("filesystem unmounted", "mountpoint", req.Mountpoint)
-	return result, nil
+	return UnmountFilesystem(ctx, req.Mountpoint)
 }
 
 func handleGetBtrfsMaintenance(ctx context.Context, _ apischema.NoRequest) (apischema.BtrfsMaintenanceSchedule, error) {
@@ -480,13 +301,7 @@ func handleGetBtrfsMaintenance(ctx context.Context, _ apischema.NoRequest) (apis
 }
 
 func handleSetBtrfsMaintenance(ctx context.Context, req apischema.BtrfsMaintenanceRequest) (apischema.BtrfsMaintenanceSchedule, error) {
-	slog.Info("setting btrfs maintenance schedule", "mountpoint", req.Mountpoint, "task", req.Task, "period", req.Period)
-	schedule, err := SetBtrfsMaintenance(ctx, req)
-	if err != nil {
-		slog.Error("failed to set btrfs maintenance schedule", "mountpoint", req.Mountpoint, "task", req.Task, "error", err)
-		return apischema.BtrfsMaintenanceSchedule{}, err
-	}
-	return schedule, nil
+	return SetBtrfsMaintenance(ctx, req)
 }
 
 func handleGetDriveInfo(ctx context.Context, _ apischema.NoRequest) ([]apischema.ApiDisk, error) {

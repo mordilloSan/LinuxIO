@@ -1,7 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import type { RowData } from "@tanstack/react-table";
-import { motion } from "motion/react";
 import {
   useCallback,
   useMemo,
@@ -11,31 +10,33 @@ import {
 
 import type { UnitInfo } from "@/api";
 import { linuxio, useCallMutation } from "@/api";
-import type { UnitListItem } from "@/components/cards/UnitCard";
-import UnitCard from "@/components/cards/UnitCard";
-import { DetailRow } from "@/components/cards/UnitInfoPanelCard";
+import ResourceDetailsLayout from "@/components/cards/ResourceDetailsLayout";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
+import type { ReorderableSurface } from "@/components/reorder/useReorderableSurface";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableDndOptions } from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppTypography from "@/components/ui/AppTypography";
+import { DetailRow } from "@/components/ui/InfoRow";
 import { getServiceStatusColor } from "@/constants/statusColors";
-import type { ReorderableSurface } from "@/hooks/useReorderableSurface";
-import { useAppMediaQuery } from "@/theme";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
+import UnitCard from "@/routes/_authenticated/services/-components/UnitCard";
+import type { UnitListItem } from "@/routes/_authenticated/services/-components/UnitCard";
 import { down } from "@/theme/breakpoints";
-import {
-  DETAIL_PANEL_GAP,
-  TRANSITION_DURATION_STANDARD_MS,
-  EASING_STANDARD,
-} from "@/theme/constants";
+import { formatSystemdUsec } from "@/utils/formatters";
 
-import { formatTimestamp, formatUnitFileState } from "./unitFormatters";
+import { formatUnitFileState } from "./unitFormatters";
 
-export type { UnitListItem } from "@/components/cards/UnitCard";
-export { DetailRow } from "@/components/cards/UnitInfoPanelCard";
-export type { UnitInfoRow } from "@/components/cards/UnitInfoPanelCard";
-export { UnitInfoPanel } from "@/components/cards/UnitInfoPanelCard";
+export type { UnitListItem } from "@/routes/_authenticated/services/-components/UnitCard";
+
+const SHORT_DATE_TIME: Intl.DateTimeFormatOptions = {
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+};
 
 // In layout mode a card press belongs to the drag, not to opening the unit.
 const noopExpand = () => {};
@@ -60,7 +61,7 @@ interface UnitTableViewProps<T extends RowData> {
   renderMainRow: (row: T, isMobile: boolean, index: number) => ReactNode[];
 }
 
-interface UnitTableColumn {
+export interface UnitTableColumn {
   align?: "left" | "center" | "right";
   field: string;
   headerName: string;
@@ -119,7 +120,7 @@ function ExpandedUnitCard<T extends UnitListItem>({
   );
 }
 
-export function AutoStartRow({ unitFileState }: { unitFileState: string }) {
+function AutoStartRow({ unitFileState }: { unitFileState: string }) {
   const { label, auto } = formatUnitFileState(unitFileState);
 
   return (
@@ -167,8 +168,9 @@ export function UnitStatusRows({
 }: UnitStatusRowsProps) {
   const statusColor = getServiceStatusColor(activeState);
   const isActive = activeState === "active";
-  const timestamp = formatTimestamp(
+  const timestamp = formatSystemdUsec(
     isActive ? activeEnterTimestamp : inactiveEnterTimestamp,
+    SHORT_DATE_TIME,
   );
 
   return (
@@ -413,7 +415,7 @@ export function UnitTableView<T extends RowData>({
   onSelect,
   emptyMessage,
 }: UnitTableViewProps<T>) {
-  const isMobile = useAppMediaQuery(down("sm"));
+  const isMobile = useMediaQuery(down("sm"));
   const activeColumns = isMobile ? mobileColumns : desktopColumns;
   const columns = useMemo<AppVirtualTableColumnDef<T>[]>(() => {
     const renderedCellCache = new Map<
@@ -487,8 +489,6 @@ export function UnitCardsView<T extends UnitListItem>({
   renderBottomPanel,
   emptyMessage,
 }: UnitCardsViewProps<T>) {
-  const transitionDuration = TRANSITION_DURATION_STANDARD_MS / 1000;
-  const isCompactLayout = useAppMediaQuery(down("md"));
   const expandedItem = items.find((item) => item.name === expanded) ?? null;
   // Fed to ReorderableCardGrid's `virtualized` path, which hands it straight
   // to AppVirtualGrid's hand-memoized row — that memo only holds if this
@@ -524,79 +524,24 @@ export function UnitCardsView<T extends UnitListItem>({
   }
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "var(--app-space-12)",
-      }}
+    <ResourceDetailsLayout
+      below={renderBottomPanel?.(expandedItem)}
+      onClose={() => onExpand(null)}
+      resourceLabel="unit"
+      subtitle={expandedItem.name}
+      summary={
+        <ExpandedUnitCard
+          item={expandedItem}
+          onExpand={onExpand}
+          renderActions={renderActions}
+          renderSelectedRows={renderSelectedRows}
+          renderSummaryRows={renderSummaryRows}
+        />
+      }
+      summaryWidth="content"
+      title="Unit file & dependencies"
     >
-      <motion.div
-        animate={{ opacity: 1, y: 0 }}
-        initial={{ opacity: 0, y: 14 }}
-        style={{
-          display: "flex",
-          flexDirection: isCompactLayout ? "column" : "row",
-          alignItems: "stretch",
-          gap: DETAIL_PANEL_GAP,
-        }}
-        transition={{
-          duration: transitionDuration,
-          delay: 0,
-          ease: EASING_STANDARD,
-        }}
-      >
-        <div
-          style={{
-            flex: isCompactLayout ? "0 0 auto" : "0 0 max-content",
-            width: isCompactLayout ? "100%" : "max-content",
-            minWidth: 0,
-            display: "flex",
-          }}
-        >
-          <ExpandedUnitCard
-            item={expandedItem}
-            onExpand={onExpand}
-            renderActions={renderActions}
-            renderSelectedRows={renderSelectedRows}
-            renderSummaryRows={renderSummaryRows}
-          />
-        </div>
-        <motion.div
-          animate={{ opacity: 1, x: 0, y: 0 }}
-          initial={{
-            opacity: 0,
-            x: isCompactLayout ? 0 : 40,
-            y: isCompactLayout ? 20 : 0,
-          }}
-          style={{
-            flex: isCompactLayout ? "0 0 auto" : 3,
-            width: isCompactLayout ? "100%" : undefined,
-            minWidth: 0,
-            display: "flex",
-          }}
-          transition={{
-            duration: transitionDuration,
-            delay: 0.1,
-            ease: EASING_STANDARD,
-          }}
-        >
-          {renderDetailPanel(expandedItem)}
-        </motion.div>
-      </motion.div>
-      {renderBottomPanel && (
-        <motion.div
-          animate={{ opacity: 1, y: 0 }}
-          initial={{ opacity: 0, y: 20 }}
-          transition={{
-            duration: transitionDuration,
-            delay: 0.2,
-            ease: EASING_STANDARD,
-          }}
-        >
-          {renderBottomPanel(expandedItem)}
-        </motion.div>
-      )}
-    </div>
+      {renderDetailPanel(expandedItem)}
+    </ResourceDetailsLayout>
   );
 }

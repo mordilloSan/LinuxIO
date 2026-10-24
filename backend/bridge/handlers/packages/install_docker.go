@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 
-	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
@@ -25,7 +25,7 @@ const (
 
 var dockerInstallScriptURL = "https://get.docker.com"
 
-func installCapabilityComponent(ctx context.Context, task *bridgetask.Task, user session.User, component string) error {
+func installCapabilityComponent(ctx context.Context, task *bridgeipc.Task, user session.User, component string) error {
 	switch component {
 	case "":
 		return nil
@@ -42,7 +42,7 @@ func installCapabilityComponent(ctx context.Context, task *bridgetask.Task, user
 // streaming its output to the task. An existing docker binary skips the
 // script, which would otherwise warn and pause before reinstalling; the
 // caller's service steps then start the installed engine.
-func installDockerEngine(ctx context.Context, task *bridgetask.Task) error {
+func installDockerEngine(ctx context.Context, task *bridgeipc.Task) error {
 	if path, err := capabilityCommandLookPath("docker"); err == nil {
 		reportProgress(task, stageInstallPackage, fmt.Sprintf("Docker is already installed at %s; skipping the install script", path), pctInstallEnd)
 		return nil
@@ -70,7 +70,7 @@ func installDockerEngine(ctx context.Context, task *bridgetask.Task) error {
 
 	const message = "Running Docker install script"
 	reportProgress(task, stageInstallPackage, message, pctInstallStart)
-	slog.Info("Running Docker install script.", "url", dockerInstallScriptURL)
+	slog.Debug("running Docker install script", "url", dockerInstallScriptURL)
 	if err := runCapabilityCommand(ctx, "sh", []string{file.Name()}, func(output InstallCapabilityOutput) {
 		reportOutput(task, stageInstallPackage, message, pctInstallStart, output)
 	}); err != nil {

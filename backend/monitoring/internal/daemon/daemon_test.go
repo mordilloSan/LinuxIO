@@ -16,10 +16,10 @@ func TestListenersAlwaysIncludeFixedSockets(t *testing.T) {
 		t.Fatalf("listeners = %+v", listeners)
 	}
 	api, control, homepage := listeners[0], listeners[1], listeners[2]
-	if api.Address != "unix:"+monitoringapi.APISocketPath || api.Mode != 0o666 || api.RootOnly || api.Plugins != nil || len(api.APIs) != 1 || api.APIs[0] != "metrics" {
+	if api.Address != "unix:"+monitoringapi.APISocketPath || api.Mode != config.APISocketMode || api.RootOnly || api.Plugins != nil || len(api.APIs) != 1 || api.APIs[0] != "metrics" {
 		t.Fatalf("api = %+v", api)
 	}
-	if control.Address != "unix:"+monitoringapi.ControlSocketPath || control.Mode != 0o600 || !control.RootOnly || len(control.APIs) != 2 {
+	if control.Address != "unix:"+monitoringapi.ControlSocketPath || control.Mode != config.ControlSocketMode || !control.RootOnly || len(control.APIs) != 2 {
 		t.Fatalf("control = %+v", control)
 	}
 	if homepage.Address != "0.0.0.0:45876" || homepage.RootOnly || len(homepage.APIs) != 1 || homepage.APIs[0] != "metrics" || homepage.Plugins[0] != "cpu" {
@@ -52,9 +52,6 @@ func TestRunOptionsMapsEmptyHistoryToNone(t *testing.T) {
 	opts := runOptions(cfg, "loaded")
 	if opts.History != "none" {
 		t.Fatalf("History = %q, want \"none\"", opts.History)
-	}
-	if !opts.HistorySet {
-		t.Fatal("HistorySet = false, want true")
 	}
 }
 

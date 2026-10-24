@@ -7,7 +7,7 @@ import (
 	godbus "github.com/godbus/dbus/v5"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/transientunit"
-	"github.com/mordilloSan/LinuxIO/backend/common/version"
+	"github.com/mordilloSan/LinuxIO/backend/common/dockerupdate"
 )
 
 type systemdDockerUpdateExecutor struct{}
@@ -31,28 +31,32 @@ func (systemdDockerUpdateExecutor) Collect(ctx context.Context, unitName string)
 	transientunit.Collect(ctx, unitName, transientunit.Options{Subsystem: "docker-update"})
 }
 
+// buildDockerUpdateUnitProperties derives the transient unit from
+// dockerupdate.WorkerUnit, the same definition the scheduled service unit is
+// rendered from.
 func buildDockerUpdateUnitProperties(launch dockerUpdateLaunch) []transientunit.Property {
+	unit := dockerupdate.WorkerUnit
 	return []transientunit.Property{
 		{Name: "Description", Value: godbus.MakeVariant(launch.Description)},
 		{Name: "Type", Value: godbus.MakeVariant("exec")},
 		{Name: "ExecStart", Value: godbus.MakeVariant([]transientunit.ExecCommand{{
-			Path:      dockerUpdateRunnerPath,
-			Arguments: []string{dockerUpdateRunnerPath, "run-operation", "--id", launch.OperationID},
+			Path:      dockerupdate.RunnerPath,
+			Arguments: append([]string{dockerupdate.RunnerPath}, dockerupdate.DurableArgs(launch.OperationID)...),
 		}})},
 		{Name: "User", Value: godbus.MakeVariant("root")},
 		{Name: "Group", Value: godbus.MakeVariant("root")},
-		{Name: "Requires", Value: godbus.MakeVariant([]string{"docker.service"})},
-		{Name: "After", Value: godbus.MakeVariant([]string{"docker.service", "network-online.target"})},
-		{Name: "Wants", Value: godbus.MakeVariant([]string{"network-online.target"})},
-		{Name: "ProtectSystem", Value: godbus.MakeVariant("strict")},
-		{Name: "ProtectHome", Value: godbus.MakeVariant("read-only")},
-		{Name: "ReadWritePaths", Value: godbus.MakeVariant([]string{version.DataDir, "/run"})},
-		{Name: "PrivateTmp", Value: godbus.MakeVariant(true)},
-		{Name: "NoNewPrivileges", Value: godbus.MakeVariant(true)},
-		{Name: "RuntimeMaxUSec", Value: godbus.MakeVariant(uint64(dockerUpdateRuntimeLimit / time.Microsecond))},
-		{Name: "TimeoutStopUSec", Value: godbus.MakeVariant(uint64(dockerUpdateStopTimeout / time.Microsecond))},
+		{Name: "Requires", Value: godbus.MakeVariant(unit.Requires)},
+		{Name: "After", Value: godbus.MakeVariant(unit.After)},
+		{Name: "Wants", Value: godbus.MakeVariant(unit.Wants)},
+		{Name: "ProtectSystem", Value: godbus.MakeVariant(unit.ProtectSystem)},
+		{Name: "ProtectHome", Value: godbus.MakeVariant(unit.ProtectHome)},
+		{Name: "ReadWritePaths", Value: godbus.MakeVariant(unit.ReadWritePaths)},
+		{Name: "PrivateTmp", Value: godbus.MakeVariant(unit.PrivateTmp)},
+		{Name: "NoNewPrivileges", Value: godbus.MakeVariant(unit.NoNewPrivileges)},
+		{Name: "RuntimeMaxUSec", Value: godbus.MakeVariant(uint64(unit.RuntimeLimit / time.Microsecond))},
+		{Name: "TimeoutStopUSec", Value: godbus.MakeVariant(uint64(unit.StopTimeout / time.Microsecond))},
 		{Name: "StandardOutput", Value: godbus.MakeVariant("journal")},
 		{Name: "StandardError", Value: godbus.MakeVariant("journal")},
-		{Name: "SyslogIdentifier", Value: godbus.MakeVariant("linuxio-docker-update")},
+		{Name: "SyslogIdentifier", Value: godbus.MakeVariant(unit.SyslogIdentifier)},
 	}
 }

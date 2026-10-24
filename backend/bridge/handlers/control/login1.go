@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
+	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
 )
 
 var login1ManagerIface = dbusclient.Login1Manager.Interface(dbusclient.LoginMgrIface)

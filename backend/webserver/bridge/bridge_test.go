@@ -8,6 +8,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/webserver/sessions"
 )
 
 func TestGetYamuxSessionErrorsDoNotExposeSessionID(t *testing.T) {
@@ -58,16 +59,26 @@ func newYamuxPair(t *testing.T) (*relay.YamuxSession, *relay.YamuxSession) {
 	return client, server
 }
 
+func newTestManager(t *testing.T) *sessions.Manager {
+	t.Helper()
+	cfg := sessions.DefaultConfig
+	cfg.GCInterval = 0
+	manager := sessions.NewManager(cfg)
+	t.Cleanup(manager.Close)
+	return manager
+}
+
 func TestRegisterYamuxSessionAlreadyClosedDoesNotDeadlock(t *testing.T) {
 	yamuxSession, _ := newYamuxPair(t)
 	if err := yamuxSession.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
 
+	manager := newTestManager(t)
 	sess := &session.Session{SessionID: "already-closed"}
 	done := make(chan struct{})
 	go func() {
-		registerYamuxSession(sess, yamuxSession)
+		registerYamuxSession(manager, sess, yamuxSession)
 		close(done)
 	}()
 
@@ -84,33 +95,4 @@ func TestRegisterYamuxSessionAlreadyClosedDoesNotDeadlock(t *testing.T) {
 	if present {
 		t.Fatal("already-closed yamux session was retained")
 	}
-}
-
-func TestOldYamuxCloseDoesNotRemoveReplacement(t *testing.T) {
-	cfg := session.DefaultConfig
-	cfg.GCInterval = 0
-	manager := session.NewManager(cfg)
-	t.Cleanup(manager.Close)
-	oldSession, err := manager.CreateSession("replacement", session.User{Username: "test"}, false)
-	if err != nil {
-		t.Fatalf("CreateSession: %v", err)
-	}
-
-	oldYamux, _ := newYamuxPair(t)
-	newYamux, _ := newYamuxPair(t)
-	registerYamuxSession(oldSession, oldYamux)
-	newSession := &session.Session{SessionID: oldSession.SessionID}
-	registerYamuxSession(newSession, newYamux)
-
-	yamuxSessions.RLock()
-	current := yamuxSessions.sessions[newSession.SessionID]
-	yamuxSessions.RUnlock()
-	if current != newYamux {
-		t.Fatal("old session close removed replacement mapping")
-	}
-	if _, err := manager.ValidateSession(oldSession.SessionID); err != nil {
-		t.Fatalf("old session close terminated owning session: %v", err)
-	}
-
-	CloseYamuxSession(newSession.SessionID)
 }

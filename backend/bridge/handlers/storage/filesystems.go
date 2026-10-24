@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/shirou/gopsutil/v4/disk"
@@ -39,9 +40,21 @@ func isProtectedMount(mountpoint string) bool {
 	return false
 }
 
+// UnmountFilesystem unmounts a mounted filesystem, refusing protected system
+// mounts.
 func UnmountFilesystem(ctx context.Context, mountpoint string) (apischema.StorageMountResult, error) {
+	slog.Debug("unmounting filesystem", "mountpoint", mountpoint)
+	result, err := unmountFilesystem(ctx, mountpoint)
+	if err != nil {
+		return apischema.StorageMountResult{}, err
+	}
+	slog.Info("filesystem unmounted", "mountpoint", mountpoint)
+	return result, nil
+}
+
+func unmountFilesystem(ctx context.Context, mountpoint string) (apischema.StorageMountResult, error) {
 	if !validPath.MatchString(mountpoint) {
-		return apischema.StorageMountResult{}, fmt.Errorf("invalid mountpoint")
+		return apischema.StorageMountResult{}, fmt.Errorf("invalid mountpoint %q", mountpoint)
 	}
 
 	if isProtectedMount(mountpoint) {

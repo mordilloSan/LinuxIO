@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/accounts/loginhistory"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/packages"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/loginhistory"
 )
 
 var healthFetchPreviousUncleanBoot = loginhistory.FetchPreviousUncleanBoot
@@ -32,9 +32,9 @@ func FetchSystemHealthSummary(ctx context.Context, username string, privileged b
 		}
 	}
 
-	if updates, err := GetUpdatesFast(ctx); err == nil && updates != nil {
-		summary.UpdatesAvailable = len(updates.Updates)
-		summary.UpToDate = summary.UpdatesAvailable == 0
+	if updates, err := fetchPendingUpdates(ctx); err == nil {
+		summary.UpdatesAvailable = len(updates)
+		summary.UpToDate = len(updates) == 0
 	}
 
 	if login, err := FetchLastSuccessfulLogin(ctx, username); err == nil {
@@ -50,10 +50,16 @@ func FetchSystemHealthSummary(ctx context.Context, username string, privileged b
 
 	if unclean, bootID, err := DetectUncleanShutdown(ctx); err == nil {
 		summary.UncleanShutdown = unclean
-		summary.UncleanShutdownBootID = utils.OptionalString(bootID)
+		summary.UncleanShutdownBootID = apischema.Optional(bootID)
 	}
 
 	return summary, nil
+}
+
+func fetchPendingUpdates(parent context.Context) ([]packages.UpdateDetail, error) {
+	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
+	defer cancel()
+	return packages.GetUpdatesBasic(ctx)
 }
 
 func FetchLastSuccessfulLogin(parent context.Context, username string) (*apischema.SystemLastLogin, error) {
@@ -72,8 +78,8 @@ func FetchLastSuccessfulLogin(parent context.Context, username string) (*apische
 
 	return &apischema.SystemLastLogin{
 		Username: login.Username,
-		Terminal: utils.OptionalString(login.Terminal),
-		Source:   utils.OptionalString(login.Source),
+		Terminal: apischema.Optional(login.Terminal),
+		Source:   apischema.Optional(login.Source),
 		Time:     login.Time,
 	}, nil
 }
@@ -95,7 +101,7 @@ func FetchSystemFailedLoginAlert(parent context.Context, boundaryUsername string
 	latestEvent := systemLoginEventFromLogin(batch.Latest)
 	alert := &apischema.SystemFailedLoginAlert{
 		ID:            failedLoginAlertID("system", boundaryUsername, batch.Latest.ID),
-		Scope:         utils.OptionalString("system"),
+		Scope:         apischema.Optional("system"),
 		Username:      batch.Latest.Username,
 		Count:         batch.Count,
 		LatestEventID: batch.Latest.ID,

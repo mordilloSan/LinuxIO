@@ -28,10 +28,10 @@ import {
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
-import { TASK_TYPE_STORAGE_BTRFS_REPLICATION } from "@/constants/backgroundTaskTypes";
-import { useActiveTaskRecovery } from "@/hooks/backgroundTasks/useActiveTaskRecovery";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { formatDate, formatFileSize } from "@/utils/formaters";
+import { TASK_TYPE_STORAGE_BTRFS_REPLICATION } from "@/tasks/taskTypes";
+import { useActiveTaskRecovery } from "@/tasks/useActiveTaskRecovery";
+import { formatDate, formatFileSize } from "@/utils/formatters";
 
 import BtrfsReplicationJobDialog from "./BtrfsReplicationJobDialog";
 import { BTRFS_TOAST_META } from "./btrfsShared";

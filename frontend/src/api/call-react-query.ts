@@ -10,10 +10,8 @@ import {
 } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import type { ToastMeta } from "@/types/navigation";
-import { getMutationErrorMessage } from "@/utils/mutations";
-
 import { call, splitCallRoute } from "./calls";
+import { getMutationErrorMessage, type LinuxIOError } from "./errors";
 import type {
   CallRequest,
   CallResult,
@@ -21,8 +19,8 @@ import type {
   NoRequestCallRoute,
   RequestCallRoute,
 } from "./generated/linuxio-types";
-import type { LinuxIOError } from "./linuxio-core";
 import { OPERATION_QUERY_INVALIDATIONS } from "./operation-query-invalidations";
+import type { ToastMeta } from "./toast-meta";
 
 // Shared freshness presets for TanStack Query descriptors.
 export const CACHE_TTL_MS = {

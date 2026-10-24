@@ -2,6 +2,7 @@ package btrfs
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -9,9 +10,22 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
+	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
 )
 
-const alertSource = "btrfs"
+// runLockWait is how long a run waits for another process working on the same
+// job or filesystem before reporting it as already running.
+const runLockWait = 2 * time.Second
+
+// runLocked runs fn under an exclusive cross-process lock, so the timer and a
+// manual run never work on the same job or filesystem at once.
+func runLocked(ctx context.Context, lockPath, what string, fn func() error) error {
+	err := filelock.RunExclusive(ctx, lockPath, fn, filelock.WithDirPermissions(0o700), filelock.WithTimeout(runLockWait))
+	if errors.Is(err, filelock.ErrTimeout) {
+		return fmt.Errorf("%s is already running", what)
+	}
+	return err
+}
 
 // RunReport summarises one pass over the snapshot rules.
 type RunReport struct {
@@ -39,8 +53,8 @@ func Run(ctx context.Context, rules []BtrfsSnapshotRule, now time.Time, kind Sna
 		err := mountsErr
 		if err == nil && !hasFilesystem(mounts, rule.UUID) {
 			report.Skipped = append(report.Skipped, id)
-			raiseAlert(ctx, alerts.Observation{
-				Source: alertSource, Key: key, Severity: alerts.SeverityWarning,
+			raise(ctx, alerts.Observation{
+				Key: key, Severity: alerts.SeverityWarning,
 				Title:        "Snapshot skipped for " + rule.Path,
 				Message:      "Filesystem " + rule.UUID + " is not mounted",
 				Link:         "/storage/snapshots?fs=" + rule.UUID,
@@ -49,23 +63,25 @@ func Run(ctx context.Context, rules []BtrfsSnapshotRule, now time.Time, kind Sna
 			continue
 		}
 		if err == nil {
-			err = runRule(ctx, rule, now, kind, &report)
+			err = runLocked(ctx, RulesPath+"."+rule.UUID+".lock", "a snapshot run for this filesystem", func() error {
+				return runRule(ctx, rule, now, kind, &report)
+			})
 		}
 		if err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return report, ctxErr
 			}
 			report.Errors = append(report.Errors, id+": "+err.Error())
-			raiseAlert(ctx, alerts.Observation{
-				Source: alertSource, Key: key, Severity: alerts.SeverityError,
+			raise(ctx, alerts.Observation{
+				Key: key, Severity: alerts.SeverityError,
 				Title:        "Snapshot failed for " + rule.Path,
-				Message:      truncate(err.Error(), alerts.MaxMessageLen),
+				Message:      err.Error(),
 				Link:         "/storage/snapshots?fs=" + rule.UUID,
 				OccurrenceID: "failed",
 			})
 			continue
 		}
-		if err := alerts.Resolve(ctx, alertSource, key); err != nil {
+		if err := alerts.Resolve(ctx, AlertSource, key); err != nil {
 			slog.Warn("failed to resolve btrfs snapshot alert", "rule", id, "error", err)
 		}
 	}
@@ -100,13 +116,47 @@ func runRule(ctx context.Context, rule BtrfsSnapshotRule, now time.Time, kind Sn
 		// Only BeforeUpdates runs a disabled rule: leave its timeline alone.
 		snaps = slices.DeleteFunc(snaps, func(s BtrfsSnapshot) bool { return s.Kind != KindPreUpdate })
 	}
-	for _, s := range Prune(snaps, rule.Keep) {
+	// A snapshot that cannot be deleted (e.g. mounted) must not block the rest.
+	var pruneErrs []error
+	for _, s := range protectReplicationParent(snaps, rule, Prune(snaps, rule.Keep)) {
 		if err := DeleteSnapshot(ctx, rule.UUID, s.Path); err != nil {
-			return fmt.Errorf("prune %s: %w", s.Path, err)
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
+			pruneErrs = append(pruneErrs, fmt.Errorf("prune %s: %w", s.Path, err))
+			continue
 		}
 		report.Pruned = append(report.Pruned, s)
 	}
-	return nil
+	return errors.Join(pruneErrs...)
+}
+
+// protectReplicationParent drops the two newest timeline snapshots from del
+// when an enabled timeline replication job covers the rule: after a send the
+// target holds the previous newest, the incremental parent of the next send,
+// and pruning it locally would force a full send every cycle.
+func protectReplicationParent(snaps []BtrfsSnapshot, rule BtrfsSnapshotRule, del []BtrfsSnapshot) []BtrfsSnapshot {
+	jobs, err := LoadJobs()
+	if err != nil {
+		slog.Warn("failed to load btrfs replication jobs; not protecting the replication parent", "rule", rule.UUID+"/"+rule.Path, "error", err)
+		return del
+	}
+	if !slices.ContainsFunc(jobs, func(j BtrfsReplicationJob) bool {
+		return j.Enabled && j.After == AfterTimeline && j.UUID == rule.UUID && j.Path == rule.Path
+	}) {
+		return del
+	}
+	var timeline []BtrfsSnapshot
+	for _, s := range snaps {
+		if s.Kind == KindTimeline {
+			timeline = append(timeline, s)
+		}
+	}
+	slices.SortStableFunc(timeline, func(a, b BtrfsSnapshot) int { return b.CreatedAt.Compare(a.CreatedAt) })
+	keep := timeline[:min(len(timeline), 2)]
+	return slices.DeleteFunc(del, func(s BtrfsSnapshot) bool {
+		return slices.ContainsFunc(keep, func(k BtrfsSnapshot) bool { return k.Path == s.Path })
+	})
 }
 
 func hasFilesystem(mounts []Mount, uuid string) bool {
@@ -131,9 +181,3 @@ func snapshotAlertKey(uuid, path string) string {
 }
 
 func truncate(s string, n int) string { return s[:min(len(s), n)] }
-
-func raiseAlert(ctx context.Context, obs alerts.Observation) {
-	if err := alerts.Raise(ctx, obs); err != nil {
-		slog.Warn("failed to raise btrfs snapshot alert", "key", obs.Key, "error", err)
-	}
-}

@@ -28,7 +28,7 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
   };
 });
 
-vi.mock("@/components/cards/DashboardCard", () => ({
+vi.mock("@/routes/_authenticated/-dashboard/DashboardCard", () => ({
   default: ({ stats, stats2 }: { stats: ReactNode; stats2: ReactNode }) => (
     <section>
       {stats}

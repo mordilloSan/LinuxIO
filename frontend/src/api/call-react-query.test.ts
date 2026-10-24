@@ -16,11 +16,11 @@ import {
   type DockerComposeRequest,
   useCallMutation,
 } from "@/api";
+import { LinuxIOError } from "@/api/errors";
 import type { TaskSnapshot } from "@/api/generated/linuxio-types";
 import { getRouteMode } from "@/api/generated/route-metadata";
 import { openTaskWatchStream } from "@/api/linuxio";
 import * as core from "@/api/linuxio-core";
-import { LinuxIOError } from "@/api/linuxio-core";
 import { OPERATION_QUERY_INVALIDATIONS } from "@/api/operation-query-invalidations";
 import type { Stream } from "@/api/StreamMultiplexer";
 import { createTaskEndpoint } from "@/api/task-react-query";

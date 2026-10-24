@@ -3,28 +3,29 @@ import type { CSSProperties } from "react";
 
 import BootstrapLoaderReady from "@/components/loaders/BootstrapLoaderReady";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
-import "@/icons/icons";
 import { useConfigStorageMode, useConfigValue } from "@/hooks/useConfig";
-import { useAppMediaQuery } from "@/theme";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { up } from "@/theme/breakpoints";
 
+import AppUpdateBanner from "./app-update/AppUpdateBanner";
+import { useAppUpdateInfo } from "./app-update/useAppUpdateInfo";
 import Footer from "./footer/Footer";
 import Navbar from "./navbar/Navbar";
 import Sidebar from "./sidebar/Sidebar";
 import { useCloseMobileSidebarOnNavigate } from "./sidebar/useCloseMobileSidebarOnNavigate";
 import useSidebar from "./sidebar/useSidebar";
 import { useSidebarItems } from "./sidebar/useSidebarItems";
-import UpdateBanner from "./update/UpdateBanner";
-import { useUpdateInfo } from "./update/useUpdateInfo";
+
+import "@/icons/icons";
 
 const MainLayout = () => {
   const location = useLocation();
-  const isSmallUp = useAppMediaQuery(up("sm"));
+  const isSmallUp = useMediaQuery(up("sm"));
   const [navigationMode] = useConfigValue("navigationMode");
   const storageMode = useConfigStorageMode();
   const { toggleMobileOpen, sidebarWidth, isDesktop } = useSidebar();
   const dockMode = isDesktop && navigationMode === "dock";
-  const { updateInfo, dismissUpdate } = useUpdateInfo();
+  const { updateInfo, dismissUpdate } = useAppUpdateInfo();
   const sidebarItems = useSidebarItems();
 
   useCloseMobileSidebarOnNavigate();
@@ -139,7 +140,10 @@ const MainLayout = () => {
                 paddingBottom: "var(--app-space-4)",
               }}
             >
-              <UpdateBanner onDismiss={dismissUpdate} updateInfo={updateInfo} />
+              <AppUpdateBanner
+                onDismiss={dismissUpdate}
+                updateInfo={updateInfo}
+              />
             </div>
           )}
 

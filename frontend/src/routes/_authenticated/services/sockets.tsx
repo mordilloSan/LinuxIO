@@ -1,14 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback } from "react";
 
 import { linuxio } from "@/api";
-import { RoutedTabActions } from "@/components/tabbar";
-import ViewModeToggle from "@/components/ui/ViewModeToggle";
-import { useViewMode } from "@/hooks/useViewMode";
-import { type LoaderQueryOptions, loadRouteQueries } from "@/routes/-loader";
+import { loadRouteQueries } from "@/routes/-loader";
 import { optionalString } from "@/routes/-search";
 
-import SocketsTab from "./-components/SocketsTab";
+import UnitKindPage from "./-components/UnitKindPage";
+import { socketKind, unitListQueries } from "./-components/unitKinds";
 
 export const Route = createFileRoute("/_authenticated/services/sockets")({
   validateSearch: (search) => ({
@@ -21,16 +18,12 @@ export const Route = createFileRoute("/_authenticated/services/sockets")({
       ? linuxio.systemd.get_unit_info({ unitName: deps.socket })
       : undefined,
   }),
-  loader: (loaderArgs) => {
-    const { listQueryOptions, selectedQueryOptions } = loaderArgs.context;
-    const queries: LoaderQueryOptions[] = [listQueryOptions];
-    if (selectedQueryOptions) queries.push(selectedQueryOptions);
-    return loadRouteQueries(loaderArgs, queries);
-  },
-  component: SocketsRoute,
+  loader: (loaderArgs) =>
+    loadRouteQueries(loaderArgs, unitListQueries(loaderArgs.context)),
+  component: SocketRoute,
 });
 
-function SocketsRoute() {
+function SocketRoute() {
   const search = Route.useSearch();
   const listQueryOptions = Route.useRouteContext({
     select: (context) => context.listQueryOptions,
@@ -39,35 +32,22 @@ function SocketsRoute() {
     select: (context) => context.selectedQueryOptions,
   });
   const navigate = Route.useNavigate();
-  const [viewMode, setViewMode] = useViewMode("sockets.list");
-  const setSelected = useCallback(
-    (socket: string | null) =>
-      navigate({
-        search: (previous) => ({
-          ...previous,
-          socket: socket ?? undefined,
-        }),
-        to: "/services/sockets",
-      }),
-    [navigate],
-  );
 
   return (
-    <>
-      <RoutedTabActions>
-        <ViewModeToggle
-          alternateMode="table"
-          onViewModeChange={setViewMode}
-          viewMode={viewMode}
-        />
-      </RoutedTabActions>
-      <SocketsTab
-        onSelectedChange={setSelected}
-        listQueryOptions={listQueryOptions}
-        selectedQueryOptions={selectedQueryOptions}
-        selected={search.socket}
-        viewMode={viewMode}
-      />
-    </>
+    <UnitKindPage
+      kind={socketKind}
+      listQueryOptions={listQueryOptions}
+      onSelectedChange={(socket) =>
+        navigate({
+          search: (previous) => ({
+            ...previous,
+            socket: socket ?? undefined,
+          }),
+          to: "/services/sockets",
+        })
+      }
+      selected={search.socket}
+      selectedQueryOptions={selectedQueryOptions}
+    />
   );
 }

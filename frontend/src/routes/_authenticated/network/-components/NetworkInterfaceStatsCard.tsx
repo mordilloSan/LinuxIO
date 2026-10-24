@@ -7,7 +7,7 @@ import FrostedCard from "@/components/cards/FrostedCard";
 import AppTypography from "@/components/ui/AppTypography";
 import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
 import { CARD_PADDING_LG, GAP_SM } from "@/theme/constants";
-import { formatFileSize } from "@/utils/formaters";
+import { formatFileSize } from "@/utils/formatters";
 
 import { selectNetworkInterface } from "./networkSelectors";
 

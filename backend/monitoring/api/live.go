@@ -1,14 +1,8 @@
 package api
 
 import (
-	procmodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/process"
+	processmodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/process"
 	smartmodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/smart"
-)
-
-const (
-	APISocketPath     = "/run/linuxio/monitoring/api.sock"
-	ControlSocketPath = "/run/linuxio/monitoring/control.sock"
-	RouteLive         = "/api/v1/live"
 )
 
 type Live struct {
@@ -81,12 +75,12 @@ type FilesystemInfo struct {
 	Device            string   `json:"device"`
 	Free              uint64   `json:"free"`
 	FSType            string   `json:"fstype"`
-	InodesFree        *uint64  `json:"inodesFree,omitempty"`
-	InodesTotal       *uint64  `json:"inodesTotal,omitempty"`
-	InodesUsed        *uint64  `json:"inodesUsed,omitempty"`
-	InodesUsedPercent *float64 `json:"inodesUsedPercent,omitempty"`
+	InodesFree        *uint64  `json:"inodesFree,omitzero"`
+	InodesTotal       *uint64  `json:"inodesTotal,omitzero"`
+	InodesUsed        *uint64  `json:"inodesUsed,omitzero"`
+	InodesUsedPercent *float64 `json:"inodesUsedPercent,omitzero"`
 	Mountpoint        string   `json:"mountpoint"`
-	ReadOnly          *bool    `json:"readOnly,omitempty"`
+	ReadOnly          *bool    `json:"readOnly,omitzero"`
 	Total             uint64   `json:"total"`
 	Used              uint64   `json:"used"`
 	UsedPercent       float64  `json:"usedPercent"`
@@ -116,37 +110,37 @@ type SensorGroup struct {
 // key is the normalized PCI address (or collector device identifier when no
 // PCI address is available); static GPU identity remains in the system API.
 type LiveGPU struct {
-	ActualFreqMHz          *float64 `json:"actual_freq_mhz,omitempty"`
-	BoostFreqMHz           *float64 `json:"boost_freq_mhz,omitempty"`
-	ConnectedDisplays      *int     `json:"connected_displays,omitempty"`
-	CurrentFreqMHz         *float64 `json:"current_freq_mhz,omitempty"`
+	ActualFreqMHz          *float64 `json:"actual_freq_mhz,omitzero"`
+	BoostFreqMHz           *float64 `json:"boost_freq_mhz,omitzero"`
+	ConnectedDisplays      *int     `json:"connected_displays,omitzero"`
+	CurrentFreqMHz         *float64 `json:"current_freq_mhz,omitzero"`
 	DisplayNames           []string `json:"display_names,omitempty"`
-	FanPercent             *float64 `json:"fan_percent,omitempty"`
-	FanRPM                 *float64 `json:"fan_rpm,omitempty"`
-	GTTTotalBytes          *uint64  `json:"gtt_total_bytes,omitempty"`
-	GTTUsedBytes           *uint64  `json:"gtt_used_bytes,omitempty"`
-	LinkSpeed              *string  `json:"link_speed,omitempty"`
-	LinkWidth              *string  `json:"link_width,omitempty"`
-	MaxFreqMHz             *float64 `json:"max_freq_mhz,omitempty"`
-	MaxLinkSpeed           *string  `json:"max_link_speed,omitempty"`
-	MaxLinkWidth           *string  `json:"max_link_width,omitempty"`
-	MemoryFreeBytes        *uint64  `json:"memory_free_bytes,omitempty"`
-	MemoryTotalBytes       *uint64  `json:"memory_total_bytes,omitempty"`
-	MemoryUsedBytes        *uint64  `json:"memory_used_bytes,omitempty"`
-	MinFreqMHz             *float64 `json:"min_freq_mhz,omitempty"`
-	PowerDrawWatts         *float64 `json:"power_draw_watts,omitempty"`
-	PowerLimitWatts        *float64 `json:"power_limit_watts,omitempty"`
-	PowerState             *string  `json:"power_state,omitempty"`
-	RC6ResidencyMS         *float64 `json:"rc6_residency_ms,omitempty"`
-	RequestedFreqMHz       *float64 `json:"requested_freq_mhz,omitempty"`
-	RP0FreqMHz             *float64 `json:"rp0_freq_mhz,omitempty"`
-	RP1FreqMHz             *float64 `json:"rp1_freq_mhz,omitempty"`
-	RPNFreqMHz             *float64 `json:"rpn_freq_mhz,omitempty"`
-	RuntimeStatus          *string  `json:"runtime_status,omitempty"`
-	TemperatureC           *float64 `json:"temperature_c,omitempty"`
-	UtilizationPercent     *float64 `json:"utilization_percent,omitempty"`
-	VisibleMemoryTotalByte *uint64  `json:"visible_memory_total_bytes,omitempty"`
-	VisibleMemoryUsedBytes *uint64  `json:"visible_memory_used_bytes,omitempty"`
+	FanPercent             *float64 `json:"fan_percent,omitzero"`
+	FanRPM                 *float64 `json:"fan_rpm,omitzero"`
+	GTTTotalBytes          *uint64  `json:"gtt_total_bytes,omitzero"`
+	GTTUsedBytes           *uint64  `json:"gtt_used_bytes,omitzero"`
+	LinkSpeed              *string  `json:"link_speed,omitzero"`
+	LinkWidth              *string  `json:"link_width,omitzero"`
+	MaxFreqMHz             *float64 `json:"max_freq_mhz,omitzero"`
+	MaxLinkSpeed           *string  `json:"max_link_speed,omitzero"`
+	MaxLinkWidth           *string  `json:"max_link_width,omitzero"`
+	MemoryFreeBytes        *uint64  `json:"memory_free_bytes,omitzero"`
+	MemoryTotalBytes       *uint64  `json:"memory_total_bytes,omitzero"`
+	MemoryUsedBytes        *uint64  `json:"memory_used_bytes,omitzero"`
+	MinFreqMHz             *float64 `json:"min_freq_mhz,omitzero"`
+	PowerDrawWatts         *float64 `json:"power_draw_watts,omitzero"`
+	PowerLimitWatts        *float64 `json:"power_limit_watts,omitzero"`
+	PowerState             *string  `json:"power_state,omitzero"`
+	RC6ResidencyMS         *float64 `json:"rc6_residency_ms,omitzero"`
+	RequestedFreqMHz       *float64 `json:"requested_freq_mhz,omitzero"`
+	RP0FreqMHz             *float64 `json:"rp0_freq_mhz,omitzero"`
+	RP1FreqMHz             *float64 `json:"rp1_freq_mhz,omitzero"`
+	RPNFreqMHz             *float64 `json:"rpn_freq_mhz,omitzero"`
+	RuntimeStatus          *string  `json:"runtime_status,omitzero"`
+	TemperatureC           *float64 `json:"temperature_c,omitzero"`
+	UtilizationPercent     *float64 `json:"utilization_percent,omitzero"`
+	VisibleMemoryTotalByte *uint64  `json:"visible_memory_total_bytes,omitzero"`
+	VisibleMemoryUsedBytes *uint64  `json:"visible_memory_used_bytes,omitzero"`
 }
 
 type DiskPowerState struct {
@@ -166,14 +160,14 @@ type SmartAttribute = smartmodel.SmartAttribute
 
 type LiveSmart struct {
 	Data  SmartData      `json:"data"`
-	Power *DiskPowerData `json:"power,omitempty"`
+	Power *DiskPowerData `json:"power,omitzero"`
 }
 
 // Process, Program, and ProcessCount are aliases of the daemon domain records
 // exposed here so bridge clients never need to import monitoring/internal.
-type Process = procmodel.Process
-type Program = procmodel.Program
-type ProcessCount = procmodel.Count
+type Process = processmodel.Process
+type Program = processmodel.Program
+type ProcessCount = processmodel.Count
 
 type LiveContainers struct {
 	CapturedAtMs int64           `json:"captured_at_ms"`
@@ -189,6 +183,6 @@ type LiveContainer struct {
 	MemoryBytes           uint64   `json:"memory_bytes"`
 	RxBytesPerSec         float64  `json:"rx_bytes_per_sec"`
 	TxBytesPerSec         float64  `json:"tx_bytes_per_sec"`
-	BlockReadBytesPerSec  *float64 `json:"block_read_bytes_per_sec,omitempty"`
-	BlockWriteBytesPerSec *float64 `json:"block_write_bytes_per_sec,omitempty"`
+	BlockReadBytesPerSec  *float64 `json:"block_read_bytes_per_sec,omitzero"`
+	BlockWriteBytesPerSec *float64 `json:"block_write_bytes_per_sec,omitzero"`
 }

@@ -80,7 +80,8 @@ service-owned record.
 
 The route validates the container target and claims an exclusive operation with
 the same UID/UUID/fingerprint rules. A deterministic systemd transient unit
-owns a root worker. The worker entry point validates the persisted route,
+owns a root worker (`linuxio-docker-update run-operation`, implemented in
+`backend/common/dockerupdate`). The worker entry point validates the persisted route,
 target, and executor identity before running the Docker mutation, then writes a
 typed `ExecutorResult` containing `DockerContainerUpdateResult`. The bridge
 polls and adopts the unit after uncertain launch, applies the result exactly

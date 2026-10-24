@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useState, type RefObject } from "react";
 
-export interface GridColumnCountOptions {
+interface GridColumnCountOptions {
   /** Horizontal gap between columns, in px. */
   gap: number;
   /** Minimum width one column may shrink to, in px. */

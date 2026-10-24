@@ -30,19 +30,20 @@ Status, configuration, history and database maintenance are available through
 the LinuxIO interface.
 `
 
-func Main(args []string) int {
-	if len(args) == 0 {
+// Run executes the linuxio-monitoring CLI and returns the process exit code.
+func Run(args []string) int {
+	if len(args) < 2 {
 		return writeOutput(os.Stdout, usageText)
 	}
-	switch args[0] {
+	switch args[1] {
 	case "--version", "-v", "version":
 		return writeOutput(os.Stdout, "LinuxIO Monitoring "+version.Version+"\n")
 	case "--help", "-h", "help":
 		return writeOutput(os.Stdout, usageText)
 	case "run":
-		return runDaemon(args[1:])
+		return runDaemon(args[2:])
 	}
-	return writeError(os.Stderr, fmt.Sprintf("linuxio-monitoring: unknown command %q\n\n%s", args[0], usageText))
+	return writeUsageError(os.Stderr, fmt.Sprintf("linuxio-monitoring: unknown command %q\n\n%s", args[1], usageText))
 }
 
 func runDaemon(args []string) int {
@@ -56,7 +57,7 @@ func runDaemon(args []string) int {
 		return 2
 	}
 	if fs.NArg() != 0 {
-		return writeError(fs.Output(), fmt.Sprintf("linuxio-monitoring run does not accept arguments: %s\n", fs.Arg(0)))
+		return writeUsageError(fs.Output(), fmt.Sprintf("linuxio-monitoring run does not accept arguments: %s\n", fs.Arg(0)))
 	}
 	if err := logging.Configure("linuxio-monitoring", *verbose); err != nil {
 		return writeError(os.Stderr, fmt.Sprintf("linuxio-monitoring: initialize logging: %v\n", err))
@@ -67,7 +68,7 @@ func runDaemon(args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := daemon.Run(ctx, *configPath); err != nil {
-		slog.Error("daemon exited with error", "err", err)
+		slog.Error("daemon exited with error", "error", err)
 		return 1
 	}
 	slog.Info("shutdown complete")
@@ -84,4 +85,10 @@ func writeOutput(w io.Writer, value string) int {
 func writeError(w io.Writer, value string) int {
 	_ = writeOutput(w, value)
 	return 1
+}
+
+// writeUsageError reports a command-line usage error with flag's exit code 2.
+func writeUsageError(w io.Writer, value string) int {
+	_ = writeOutput(w, value)
+	return 2
 }

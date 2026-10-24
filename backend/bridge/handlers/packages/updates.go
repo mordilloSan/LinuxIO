@@ -18,7 +18,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/packages/internal/autoupdate"
 	pkgkit "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/packages/internal/packagekit"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
+	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
 )
 
 type UpdateDetail struct {
@@ -193,10 +193,6 @@ func mergeUpdateCVEs(changelogRaw string, cves []string) []string {
 	return combinedCVEs
 }
 
-func isTransactionFinished(sig *dbusclient.Signal) bool {
-	return sig == nil || sig.Name == pkgkit.TransactionIface+".Finished"
-}
-
 func readPackageSignal(sig *dbusclient.Signal) (string, packageUpdateMeta, bool) {
 	if sig.Name != pkgkit.TransactionIface+".Package" || len(sig.Body) <= 2 {
 		return "", packageUpdateMeta{}, false
@@ -212,15 +208,18 @@ func readPackageSignal(sig *dbusclient.Signal) (string, packageUpdateMeta, bool)
 	}, true
 }
 
-func collectUpdatePackages(ctx context.Context, sigCh <-chan *dbusclient.Signal) ([]string, map[string]packageUpdateMeta) {
+func collectUpdatePackages(ctx context.Context, sigCh <-chan *dbusclient.Signal) ([]string, map[string]packageUpdateMeta, error) {
 	var pkgIDs []string
 	metaByPkg := make(map[string]packageUpdateMeta)
 
 	for {
 		select {
-		case sig := <-sigCh:
-			if isTransactionFinished(sig) {
-				return pkgIDs, metaByPkg
+		case sig, ok := <-sigCh:
+			if !ok {
+				return nil, nil, pkgkit.ErrSignalsClosed
+			}
+			if sig.Name == pkgkit.TransactionIface+".Finished" {
+				return pkgIDs, metaByPkg, nil
 			}
 
 			pkgID, meta, ok := readPackageSignal(sig)
@@ -231,7 +230,7 @@ func collectUpdatePackages(ctx context.Context, sigCh <-chan *dbusclient.Signal)
 			pkgIDs = append(pkgIDs, pkgID)
 			metaByPkg[pkgID] = meta
 		case <-ctx.Done():
-			return pkgIDs, metaByPkg
+			return nil, nil, ctx.Err()
 		}
 	}
 }
@@ -307,8 +306,11 @@ func collectSingleUpdateDetail(ctx context.Context, sigCh <-chan *dbusclient.Sig
 
 	for {
 		select {
-		case sig := <-sigCh:
-			if isTransactionFinished(sig) {
+		case sig, ok := <-sigCh:
+			if !ok {
+				return nil, pkgkit.ErrSignalsClosed
+			}
+			if sig.Name == pkgkit.TransactionIface+".Finished" {
 				return finalizeSingleUpdateDetail(detail, packageID)
 			}
 			if sig.Name != pkgkit.TransactionIface+".UpdateDetail" {
@@ -457,14 +459,17 @@ func getUpdatesBasic(ctx context.Context) ([]UpdateDetail, error) {
 		}
 		defer pkgkit.LogClose(session.Context(), trans)
 
-		if err := trans.Call("GetUpdates", uint64(0)); err != nil {
-			return err
+		if callErr := trans.Call("GetUpdates", uint64(0)); callErr != nil {
+			return callErr
 		}
 
 		waitCtx, cancel := context.WithTimeout(session.Context(), 15*time.Second)
 		defer cancel()
 
-		pkgIDs, metaByPkg := collectUpdatePackages(waitCtx, trans.Signals())
+		pkgIDs, metaByPkg, err := collectUpdatePackages(waitCtx, trans.Signals())
+		if err != nil {
+			return fmt.Errorf("collect updates: %w", err)
+		}
 		updates = buildBasicUpdates(pkgIDs, metaByPkg)
 		return nil
 	})
@@ -507,18 +512,25 @@ func GetUpdateHistory(ctx context.Context) ([]apischema.UpdateHistoryRow, error)
 		return nil, err
 	}
 	if _, err := os.Stat("/var/log/dpkg.log"); err == nil {
-		slog.Debug("Parsing dpkg update history")
+		slog.Debug("parsing dpkg update history")
 		return parseDpkgLogs(ctx), nil
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	if _, err := os.Stat("/var/log/dnf.log"); err == nil {
-		slog.Debug("Parsing dnf update history")
+		slog.Debug("parsing dnf update history")
 		return parseDnfHistory(ctx, "/var/log/dnf.log"), nil
 	}
-	slog.Warn("No known package manager log found")
+	slog.Warn("no known package manager log found")
 	return []apischema.UpdateHistoryRow{}, nil
+}
+
+func newDpkgLogPatterns() dpkgLogPatterns {
+	return dpkgLogPatterns{
+		install:   regexp.MustCompile(`^(\d{4}-\d{2}-\d{2})\s+\d{2}:\d{2}:\d{2}\s+(install|upgrade)\s+([^ ]+)\s+([^ ]+)(?:\s+([^ ]+))?`),
+		configure: regexp.MustCompile(`^(\d{4}-\d{2}-\d{2})\s+\d{2}:\d{2}:\d{2}\s+configure\s+([^ ]+)\s+([^ ]+)`),
+	}
 }
 
 // parseDpkgLogs reads dpkg.log plus all rotated variants (.1, .2.gz, …).
@@ -528,10 +540,7 @@ func parseDpkgLogs(ctx context.Context) []apischema.UpdateHistoryRow {
 	matches, _ := filepath.Glob("/var/log/dpkg.log*")
 	sort.Sort(sort.Reverse(sort.StringSlice(matches)))
 
-	patterns := dpkgLogPatterns{
-		install:   regexp.MustCompile(`^(\d{4}-\d{2}-\d{2})\s+\d{2}:\d{2}:\d{2}\s+(install|upgrade)\s+([^ ]+)\s+([^ ]+)`),
-		configure: regexp.MustCompile(`^(\d{4}-\d{2}-\d{2})\s+\d{2}:\d{2}:\d{2}\s+configure\s+([^ ]+)\s+([^ ]+)`),
-	}
+	patterns := newDpkgLogPatterns()
 	for _, logPath := range matches {
 		if err := ctx.Err(); err != nil {
 			return mapToSortedHistory(historyMap)
@@ -569,8 +578,12 @@ func parseDpkgLogFile(
 }
 
 func applyDpkgLogLine(line string, patterns dpkgLogPatterns, historyMap map[string][]apischema.UpgradeItem, pendingPackages map[string]string) {
-	if m := patterns.install.FindStringSubmatch(line); len(m) == 5 {
-		recordDpkgInstall(m[1], m[3], m[4], historyMap, pendingPackages)
+	if m := patterns.install.FindStringSubmatch(line); len(m) == 6 {
+		version := m[4]
+		if m[2] == "upgrade" && m[5] != "" {
+			version = m[5] // upgrade lines read "<old> <new>"
+		}
+		recordDpkgInstall(m[1], m[3], version, historyMap, pendingPackages)
 		return
 	}
 	if m := patterns.configure.FindStringSubmatch(line); len(m) == 4 {
@@ -626,7 +639,7 @@ func parseDnfHistory(ctx context.Context, logPath string) []apischema.UpdateHist
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
-	upgradeRe := regexp.MustCompile(`Upgrade:\s+([^\s-]+)-([^-]+-[^\s]+)`)
+	upgradeRe := regexp.MustCompile(`Upgrade:\s+(\S+)`)
 
 	historyMap := make(map[string][]apischema.UpgradeItem)
 
@@ -640,12 +653,14 @@ func parseDnfHistory(ctx context.Context, logPath string) []apischema.UpdateHist
 			continue
 		}
 		date := parts[0]
+		if len(date) >= 10 {
+			date = date[:10] // dnf.log timestamps are ISO 8601; key by day like dpkg
+		}
 
-		if matches := upgradeRe.FindStringSubmatch(line); len(matches) > 2 {
-			historyMap[date] = append(historyMap[date], apischema.UpgradeItem{
-				Package: matches[1],
-				Version: matches[2],
-			})
+		if matches := upgradeRe.FindStringSubmatch(line); len(matches) > 1 {
+			if name, version, ok := splitNEVRA(matches[1]); ok {
+				historyMap[date] = append(historyMap[date], apischema.UpgradeItem{Package: name, Version: version})
+			}
 		}
 	}
 	if err := scanner.Err(); err != nil {
@@ -653,6 +668,24 @@ func parseDnfHistory(ctx context.Context, logPath string) []apischema.UpdateHist
 	}
 
 	return mapToSortedHistory(historyMap)
+}
+
+// splitNEVRA splits "name-version-release.arch" from the right, since names may contain hyphens.
+func splitNEVRA(nevra string) (name, version string, ok bool) {
+	before, _, ok := strings.CutLast(nevra, ".")
+	if !ok {
+		return "", "", false
+	}
+	rest := before
+	before0, _, ok0 := strings.CutLast(rest, "-")
+	if !ok0 {
+		return "", "", false
+	}
+	verDash := strings.LastIndex(before0, "-")
+	if verDash <= 0 {
+		return "", "", false
+	}
+	return rest[:verDash], rest[verDash+1:], true
 }
 
 func mapToSortedHistory(historyMap map[string][]apischema.UpgradeItem) []apischema.UpdateHistoryRow {
@@ -693,6 +726,6 @@ func installPackageWithProgress(ctx context.Context, packageID string, report pk
 
 		waitCtx, cancel := context.WithTimeout(session.Context(), 120*time.Second)
 		defer cancel()
-		return awaitPackageUpdateSignals(waitCtx, trans, report)
+		return awaitPackageUpdateSignals(waitCtx, trans.Signals(), report)
 	})
 }

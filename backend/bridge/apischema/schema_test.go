@@ -2,9 +2,8 @@ package apischema_test
 
 import (
 	"context"
-	"encoding/json"
 	"encoding/json/jsontext"
-	jsonv2 "encoding/json/v2"
+	"encoding/json/v2"
 	"errors"
 	"reflect"
 	"testing"
@@ -12,7 +11,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
 	dockerhandler "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
 func TestRoutesAreUniqueAndComplete(t *testing.T) {
@@ -93,10 +92,10 @@ func TestAllTaskRoutesUseTaskRunner(t *testing.T) {
 			t.Errorf("%s is task kind %q, want task_runner", route.Route, route.Kind)
 		}
 	}
-	if got, want := modes[bridgeipc.ModeCall], 279; got != want {
+	if got, want := modes[bridgeipc.ModeCall], 280; got != want {
 		t.Errorf("call route count = %d, want %d", got, want)
 	}
-	if got, want := modes[bridgeipc.ModeTask], 25; got != want {
+	if got, want := modes[bridgeipc.ModeTask], 28; got != want {
 		t.Errorf("task route count = %d, want %d", got, want)
 	}
 	if got, want := modes[bridgeipc.ModeDuplex], 12; got != want {
@@ -129,8 +128,8 @@ func TestTaskRoutesDeclareAuditedLifetime(t *testing.T) {
 			t.Errorf("%s task lifetime = %q", route.Route, route.TaskLifetime)
 		}
 	}
-	if sessionCount != 24 || durableCount != 1 {
-		t.Fatalf("task lifetime counts = session %d, durable %d; want 24 and 1", sessionCount, durableCount)
+	if sessionCount != 27 || durableCount != 1 {
+		t.Fatalf("task lifetime counts = session %d, durable %d; want 27 and 1", sessionCount, durableCount)
 	}
 }
 
@@ -204,8 +203,8 @@ func TestRetrySafeRoutesAreExplicitCalls(t *testing.T) {
 			t.Errorf("%s is retry-safe but is not a public Call", route.Route)
 		}
 	}
-	if count != 111 {
-		t.Fatalf("retry-safe Call count = %d, want 111", count)
+	if count != 113 {
+		t.Fatalf("retry-safe Call count = %d, want 113", count)
 	}
 	for _, route := range []string{"schedules.list", "schedules.get", "config.get", "config.get_ui", "docker.inspect_container", "system.get_cpu_info", "monitoring.get_live", "monitoring.get_processes", "monitoring.get_programs", "storage.get_topology", "tasks.get", "virt.preflight", "virt.templates", "network.get_bridge_options", "network.get_bridge_handoff", "network.confirm_bridge_handoff", "network.revert_bridge_handoff"} {
 		if !mustRoute(t, route).RetrySafe {
@@ -223,7 +222,6 @@ func TestRetrySafeRoutesAreExplicitCalls(t *testing.T) {
 		"network.create_bridge",
 		"network.start_bridge_handoff",
 		"system.get_health_summary",
-		"system.get_updates_fast",
 		"tasks.cancel",
 		"terminal.list_shells",
 	} {
@@ -324,7 +322,7 @@ func TestRequestDecoderDecodesRouteContracts(t *testing.T) {
 			if spec.Decode == nil {
 				t.Fatalf("%s has no request decoder", tc.route)
 			}
-			decoded, err := spec.Decode(json.RawMessage(tc.raw))
+			decoded, err := spec.Decode(jsontext.Value(tc.raw))
 			if err != nil {
 				t.Fatalf("requestDecoder() error = %v", err)
 			}
@@ -339,20 +337,20 @@ func TestRequestDecoderEnforcesStrictSingleValuePolicy(t *testing.T) {
 	spec := mustRoute(t, "docker.start_container")
 	tests := []struct {
 		name               string
-		raw                json.RawMessage
+		raw                jsontext.Value
 		wantContainerID    string
 		wantSemanticError  bool
 		wantSyntacticError bool
 	}{
-		{name: "valid object", raw: json.RawMessage(`{"containerId":"web"}`), wantContainerID: "web"},
-		{name: "unknown field", raw: json.RawMessage(`{"containerId":"web","unexpected":true}`), wantSemanticError: true},
-		{name: "case-mismatched field", raw: json.RawMessage(`{"ContainerId":"web"}`), wantSemanticError: true},
-		{name: "duplicate field", raw: json.RawMessage(`{"containerId":"web","containerId":"db"}`), wantSyntacticError: true},
-		{name: "invalid UTF-8", raw: json.RawMessage("{\"containerId\":\"\xff\"}"), wantSyntacticError: true},
-		{name: "trailing JSON value", raw: json.RawMessage(`{"containerId":"web"} {}`), wantSyntacticError: true},
-		{name: "scalar type mismatch", raw: json.RawMessage(`{"containerId":123}`), wantSemanticError: true},
+		{name: "valid object", raw: jsontext.Value(`{"containerId":"web"}`), wantContainerID: "web"},
+		{name: "unknown field", raw: jsontext.Value(`{"containerId":"web","unexpected":true}`), wantSemanticError: true},
+		{name: "case-mismatched field", raw: jsontext.Value(`{"ContainerId":"web"}`), wantSemanticError: true},
+		{name: "duplicate field", raw: jsontext.Value(`{"containerId":"web","containerId":"db"}`), wantSyntacticError: true},
+		{name: "invalid UTF-8", raw: jsontext.Value("{\"containerId\":\"\xff\"}"), wantSyntacticError: true},
+		{name: "trailing JSON value", raw: jsontext.Value(`{"containerId":"web"} {}`), wantSyntacticError: true},
+		{name: "scalar type mismatch", raw: jsontext.Value(`{"containerId":123}`), wantSemanticError: true},
 		{name: "empty input", raw: nil},
-		{name: "null input", raw: json.RawMessage(`null`)},
+		{name: "null input", raw: jsontext.Value(`null`)},
 	}
 
 	for _, tc := range tests {
@@ -365,7 +363,7 @@ func TestRequestDecoderEnforcesStrictSingleValuePolicy(t *testing.T) {
 func assertContainerRequestDecode(
 	t *testing.T,
 	spec apischema.RouteSpec,
-	raw json.RawMessage,
+	raw jsontext.Value,
 	wantContainerID string,
 	wantSemanticError bool,
 	wantSyntacticError bool,
@@ -373,8 +371,8 @@ func assertContainerRequestDecode(
 	t.Helper()
 	decoded, err := spec.Decode(raw)
 	if wantSemanticError {
-		if _, ok := errors.AsType[*jsonv2.SemanticError](err); !ok {
-			t.Fatalf("Decode() error = %v, want *jsonv2.SemanticError", err)
+		if _, ok := errors.AsType[*json.SemanticError](err); !ok {
+			t.Fatalf("Decode() error = %v, want *json.SemanticError", err)
 		}
 		return
 	}
@@ -455,7 +453,8 @@ func TestWithTaskProgressRejectsCallRoutes(t *testing.T) {
 func TestTaskMetadataBuildersAreAllowlistedTaskRoutes(t *testing.T) {
 	want := map[string]bool{
 		"filebrowser.compress": true, "filebrowser.extract": true, "filebrowser.copy_batch": true,
-		"filebrowser.move_batch": true, "filebrowser.delete_batch": true, "filebrowser.index": true,
+		"filebrowser.move_batch": true, "filebrowser.delete_batch": true, "filebrowser.trash_batch": true,
+		"filebrowser.trash_restore": true, "filebrowser.trash_purge": true, "filebrowser.index": true,
 		"filebrowser.upload": true, "filebrowser.upload_batch": true,
 		"filebrowser.archive": true, "filebrowser.chmod_batch": true, "docker.compose": true,
 		"docker.update_container": true,

@@ -37,7 +37,7 @@ webserver, bridge, and authentication boundaries.
 
 | Boundary | Owner |
 |----------|-------|
-| Scanner, generations, SQLite storage, HTTP/SSE daemon | `linuxio-indexer` |
+| Scanner, generations, SQLite storage, HTTP/SSE daemon | `linuxio-indexer` (`backend/indexer/internal/{indexing,storage,daemon,searchquery,configfile,cli}`); the `storage.Store` owns generations and the reindex transaction |
 | Daemon wire routes and types | `backend/indexer/api` |
 | Unix-socket client and LinuxIO API adapters | `backend/bridge/handlers/indexer` |
 | Public generated bridge contract | `backend/bridge/apischema` |
@@ -122,6 +122,10 @@ contents. Directory symlinks are recorded as entries but are not traversed.
 | Idle check interval | `15s` |
 | Completed generations retained | `1` |
 | Full scan publication | atomic generation |
+
+The daemon-side values live in `backend/indexer/internal/daemon/policy.go`; the
+database path (`storage.DefaultDBPath`) and SQLite options live in
+`backend/indexer/internal/storage/policy.go`.
 
 Both configuration fields apply to the next scan without a daemon restart. The
 recurring interval is a systemd timer setting, not a YAML field. LinuxIO writes
@@ -358,7 +362,9 @@ journalctl \
 
 `sudo linuxio verbose enable` enables debug logging through service drop-ins for
 the webserver, the indexer and the monitoring daemon. `sudo linuxio verbose
-disable` removes them.
+disable` removes them. Daemons switch live (SIGHUP reload, no restart); bridges of already-open
+sessions switch at the next login. Changes persist across restarts; the same
+switch is in Settings.
 
 Upgrades preserve compatible caches. If manual recovery is needed, stop
 LinuxIO, move `/var/lib/linuxio/indexer/indexer.db*` to a separate directory,

@@ -9,16 +9,17 @@ import (
 	"github.com/moby/moby/client"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dockerclient"
+	"github.com/mordilloSan/LinuxIO/backend/common/dockerupdate"
 )
 
 // List all images
 func ListImages(ctx context.Context) ([]apischema.DockerImage, error) {
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 
 	images, err := cli.ImageList(ctx, client.ImageListOptions{All: true})
 	if err != nil {
@@ -34,11 +35,11 @@ func ListImages(ctx context.Context) ([]apischema.DockerImage, error) {
 		return imageItems[i].Created > imageItems[j].Created
 	})
 
-	updateStatus := readUpdateStatusSnapshot()
+	updateStatus := dockerupdate.ReadStatusSnapshot()
 	result := make([]apischema.DockerImage, 0, len(imageItems))
 	for _, item := range imageItems {
 		img := dockerImageFromSummary(item)
-		if status, ok := updateStatus.forImage(item); ok {
+		if status, ok := updateStatus.ForImage(item); ok {
 			applyImageUpdateStatus(&img, status)
 		}
 		result = append(result, img)
@@ -46,10 +47,10 @@ func ListImages(ctx context.Context) ([]apischema.DockerImage, error) {
 	return result, nil
 }
 
-func applyImageUpdateStatus(img *apischema.DockerImage, status imageUpdateStatus) {
+func applyImageUpdateStatus(img *apischema.DockerImage, status dockerupdate.ImageUpdateStatus) {
 	checkState := status.CheckState
 	img.UpdateCheckState = new(checkState)
-	img.UpdateCheckReason = utils.OptionalString(status.CheckReason)
+	img.UpdateCheckReason = apischema.Optional(status.CheckReason)
 	img.UpdateAvailable = nil
 	if checkState != apischema.DockerUpdateCheckStateUncheckable {
 		img.UpdateAvailable = new(status.UpdateAvailable)
@@ -74,11 +75,11 @@ func dockerImageFromSummary(item image.Summary) apischema.DockerImage {
 
 // Delete an image
 func DeleteImage(ctx context.Context, imageID string) (any, error) {
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 
 	_, err = cli.ImageRemove(ctx, imageID, client.ImageRemoveOptions{Force: false, PruneChildren: true})
 	if err != nil {

@@ -8,8 +8,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 func TestSSHIdentification(t *testing.T) {
@@ -39,14 +37,14 @@ func TestSSHIdentification(t *testing.T) {
 func TestRsyncSSHCheckHonorsCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := handleGetRsyncSSH(ctx, apischema.RsyncSSHRequest{Port: 22}); !errors.Is(err, context.Canceled) {
+	if _, err := CheckRsyncSSH(ctx, 22); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled SSH check = %v", err)
 	}
 }
 
 func TestRsyncSSHRejectsInvalidPorts(t *testing.T) {
 	for _, port := range []int{-1, 0, 65536} {
-		if _, err := handleGetRsyncSSH(context.Background(), apischema.RsyncSSHRequest{Port: port}); err == nil {
+		if _, err := CheckRsyncSSH(context.Background(), port); err == nil {
 			t.Errorf("accepted invalid SSH port %d", port)
 		}
 	}
@@ -81,15 +79,15 @@ func TestRsyncSSHChecksSelectedPort(t *testing.T) {
 	if !ok {
 		t.Fatal("listener did not return a TCP address")
 	}
-	request := apischema.RsyncSSHRequest{Port: address.Port}
-	status, err := handleGetRsyncSSH(context.Background(), request)
-	if err != nil || !status.Available || status.Port != request.Port {
+	port := address.Port
+	status, err := CheckRsyncSSH(context.Background(), port)
+	if err != nil || !status.Available || status.Port != port {
 		t.Fatalf("SSH check on selected port: status = %+v, error = %v", status, err)
 	}
 	<-done
 	_ = listener.Close()
-	status, err = handleGetRsyncSSH(context.Background(), request)
-	if err != nil || status.Available || status.Error == nil || status.Port != request.Port {
+	status, err = CheckRsyncSSH(context.Background(), port)
+	if err != nil || status.Available || status.Error == nil || status.Port != port {
 		t.Fatalf("closed SSH port: status = %+v, error = %v", status, err)
 	}
 }

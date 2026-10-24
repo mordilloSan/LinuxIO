@@ -6,7 +6,7 @@ LinuxIO displays icons for Docker containers, compose services, and compose stac
 
 | Identifier | Example | Resolution |
 |------------|---------|------------|
-| Plain name | `nginx` | Dashboard Icons, then Simple Icons, then Docker icon |
+| Plain name | `nginx` | Dashboard Icons, then Simple Icons, then the bundled Docker icon |
 | Dashboard Icons | `di:plex` | [homarr-labs/dashboard-icons](https://github.com/homarr-labs/dashboard-icons) |
 | Dashboard Icons long form | `dashboard-icon:plex` | Same as `di:` |
 | Simple Icons | `si:react` | [simpleicons.org](https://simpleicons.org) |
@@ -27,7 +27,7 @@ When a container or compose service does not set an icon label, LinuxIO derives 
 The derived identifier is resolved as:
 
 ```text
-derived name -> Dashboard Icons -> Simple Icons -> Docker icon
+derived name -> Dashboard Icons -> Simple Icons -> bundled Docker icon
 ```
 
 LinuxIO does not derive icons from the Docker image name. If the service or container name is generic, set `io.linuxio.container.icon` explicitly.
@@ -68,7 +68,7 @@ labels:
   - "io.linuxio.container.icon=nextcloud"
 ```
 
-LinuxIO tries Dashboard Icons first, then Simple Icons, then the Docker icon.
+LinuxIO tries Dashboard Icons first, then Simple Icons, then the Docker icon bundled with the frontend.
 
 ### Explicit Sources
 
@@ -82,7 +82,7 @@ labels:
   - "io.linuxio.container.icon=simple-icon:react"
 ```
 
-If an explicit Dashboard Icons, Simple Icons, or URL icon cannot be fetched, LinuxIO falls back to the Docker icon.
+If an explicit Dashboard Icons, Simple Icons, or URL icon cannot be fetched, the frontend shows its bundled Docker icon. The fallback is never downloaded.
 
 ### URL Icons
 
@@ -91,7 +91,7 @@ labels:
   - "io.linuxio.container.icon=https://example.com/my-icon.svg"
 ```
 
-URL icons are fetched with a 10 second timeout and a 5 MB response-size limit.
+URL icons are fetched with a 10 second timeout and a 5 MB response-size limit. Because the label can come from any image, LinuxIO never connects to loopback or link-local addresses for an icon (also not after a redirect); LAN and public hosts are fine.
 
 ### Local Files
 
@@ -103,6 +103,8 @@ labels:
 ```
 
 Local file icons are not fetched from the network and do not fall back to the Docker icon if the file is missing.
+
+Names (plain, `di:`, `si:` and local files) must be a single path component made of letters, digits, `.`, `_` and `-`, not starting with a dot. Anything else, such as `../x.png` or `a/b`, is treated as unknown and shows the bundled Docker icon.
 
 ## Complete Example
 
@@ -146,7 +148,7 @@ labels:
 
 ## Cache Layout
 
-Remote icons are cached in `/var/lib/linuxio/icons/` and refreshed after 24 hours. The cache survives reboots; when a refresh fails (for example, offline), the expired copy is served instead:
+Remote icons are cached in `/var/lib/linuxio/icons/` and survive reboots:
 
 | Directory | Contents |
 |-----------|----------|
@@ -155,7 +157,9 @@ Remote icons are cached in `/var/lib/linuxio/icons/` and refreshed after 24 hour
 | `url-cache/` | URL icons, stored by URL hash |
 | `user/` | User-provided local icons |
 
-Clearing the icon cache removes the remote-icon caches and keeps the `user/` directory.
+Each cached icon is downloaded once and re-checked upstream after 7 days. When the re-check fails (for example, offline) the cached copy is served instead. A definite upstream 404 is remembered as a `.missing` marker in the same directory for 7 days, so an unresolvable name costs no network requests until then; a network error is never remembered as a miss. Entries not served for 30 days are deleted by a sweep that runs at most once a day.
+
+Clearing the icon cache removes the remote-icon caches, including miss markers, and keeps the `user/` directory.
 
 ## Backend Methods
 
@@ -175,4 +179,5 @@ The Docker bridge exposes these icon methods:
 | Wrong icon | Set `io.linuxio.container.icon` explicitly |
 | Generic service name | Use a plain name or explicit source prefix, for example `si:postgresql` |
 | Local icon missing | Confirm the file exists under `/var/lib/linuxio/icons/user/` |
-| Slow first load | Icons are fetched on first use and then cached for 24 hours |
+| Slow first load | Icons are fetched on first use and then cached; re-checked after 7 days |
+| Icon added upstream still missing | Wait for the 7-day re-check or call `clear_icon_cache` |

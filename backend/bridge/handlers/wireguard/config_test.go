@@ -6,8 +6,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-
-	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 func TestAddNATHooksAddsExpectedPostUpAndPostDown(t *testing.T) {
@@ -61,32 +59,6 @@ func TestWriteWireGuardConfigPersistsPostHooks(t *testing.T) {
 	}
 	if !slices.Equal(got.PostDown, cfg.PostDown) {
 		t.Fatalf("PostDown = %v, want %v", got.PostDown, cfg.PostDown)
-	}
-}
-
-func TestPeerFileServerSectionDerivesKeysAndAllowedIPs(t *testing.T) {
-	priv, err := wgtypes.GeneratePrivateKey()
-	if err != nil {
-		t.Fatal(err)
-	}
-	p := peerFile{
-		ID: "Peer2", Name: "Alice", Enabled: true,
-		ServerAllowedIPs:    []string{"192.168.50.0/24"},
-		PrivateKey:          priv.String(),
-		Address:             "10.10.20.2/32",
-		PresharedKey:        "psk",
-		PersistentKeepalive: 25,
-	}
-
-	section, err := p.serverSection()
-	if err != nil {
-		t.Fatalf("serverSection returned error: %v", err)
-	}
-	if section.PublicKey != priv.PublicKey().String() || section.PresharedKey != "psk" || section.PersistentKeepalive != 25 || section.Name != "Alice" {
-		t.Fatalf("section = %+v", section)
-	}
-	if !slices.Equal(section.AllowedIPs, []string{"10.10.20.2/32", "192.168.50.0/24"}) {
-		t.Fatalf("allowed ips = %v", section.AllowedIPs)
 	}
 }
 
@@ -218,5 +190,40 @@ func TestWireGuardConfigRoundTripsAllHookKinds(t *testing.T) {
 	raw, _ := os.ReadFile(path)
 	if strings.Index(string(raw), "PreUp") > strings.Index(string(raw), "PostUp") || strings.Index(string(raw), "PostUp") > strings.Index(string(raw), "PreDown") {
 		t.Fatalf("hook order should be PreUp, PostUp, PreDown, PostDown:\n%s", raw)
+	}
+}
+
+func TestWireGuardConfigKeepsSemicolonHooksInlineCommentsAndUnknownKeys(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "wg0.conf")
+	hook := "iptables -A FORWARD -i %i -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE"
+	src := "[Interface]\nPrivateKey = k\nAddress = 10.7.0.1/24\nListenPort = 51820 # main\nTable = off\nPostUp = " + hook + "\n"
+	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := ParseWireGuardConfig(path)
+	if err != nil {
+		t.Fatalf("ParseWireGuardConfig returned error: %v", err)
+	}
+	if cfg.ListenPort != 51820 || !slices.Equal(cfg.PostUp, []string{hook}) {
+		t.Fatalf("parsed port=%d hooks=%v", cfg.ListenPort, cfg.PostUp)
+	}
+	if !slices.Contains(cfg.Extra, [2]string{"Table", "off"}) {
+		t.Fatalf("extra keys = %v, want Table=off", cfg.Extra)
+	}
+
+	if writeErr := WriteWireGuardConfig(path, cfg); writeErr != nil {
+		t.Fatalf("WriteWireGuardConfig returned error: %v", writeErr)
+	}
+	raw, _ := os.ReadFile(path)
+	// ini aligns the '=' column, so match from the value side.
+	if !strings.Contains(string(raw), "= "+hook+"\n") || strings.Contains(string(raw), "`") {
+		t.Fatalf("hook must be written verbatim:\n%s", raw)
+	}
+	if !strings.Contains(string(raw), "Table") || !strings.Contains(string(raw), "= off\n") {
+		t.Fatalf("unknown key must survive a rewrite:\n%s", raw)
+	}
+	again, err := ParseWireGuardConfig(path)
+	if err != nil || again.ListenPort != 51820 || !slices.Equal(again.PostUp, cfg.PostUp) || !slices.Equal(again.Extra, cfg.Extra) {
+		t.Fatalf("second parse: err=%v cfg=%+v", err, again)
 	}
 }

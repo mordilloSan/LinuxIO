@@ -14,8 +14,8 @@ import AppAlert from "@/components/ui/AppAlert";
 import { AppDialogTitle } from "@/components/ui/AppDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
-import { useStreamMessageChannel } from "@/hooks/useStreamMessageChannel";
-import { useAppMediaQuery } from "@/theme";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { useStreamMessageChannel } from "@/routes/_authenticated/vm/-hooks/useStreamMessageChannel";
 import { down } from "@/theme/breakpoints";
 
 const consolePaperStyle = (isMobile: boolean): CSSProperties => ({
@@ -47,7 +47,7 @@ export default function ConsoleDialog({
   open: boolean;
   vm: VirtualMachine;
 }) {
-  const isMobile = useAppMediaQuery(down("sm"));
+  const isMobile = useMediaQuery(down("sm"));
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const { isOpen: muxOpen } = useStreamMux();
   const [status, setStatus] = useState("Connecting");

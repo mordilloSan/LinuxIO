@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -13,9 +12,9 @@ import (
 	godbus "github.com/godbus/dbus/v5"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
+	"github.com/mordilloSan/LinuxIO/backend/common/osrelease"
+	systemdapi "github.com/mordilloSan/LinuxIO/backend/common/systemd"
 )
 
 const (
@@ -141,7 +140,7 @@ func getStatus(session dbusclient.SystemSession) apischema.PowerStatus {
 
 	tunedState, err := dbusclient.Tuned.BusNameState(session.Context())
 	if err != nil {
-		status.Error = utils.OptionalString(err.Error())
+		status.Error = apischema.Optional(err.Error())
 		return status
 	}
 
@@ -180,7 +179,7 @@ func getStatus(session dbusclient.SystemSession) apischema.PowerStatus {
 
 	profiles, err := readProfiles(session)
 	if err != nil {
-		status.Error = utils.OptionalString(err.Error())
+		status.Error = apischema.Optional(err.Error())
 	} else {
 		status.Profiles = profiles
 	}
@@ -188,7 +187,7 @@ func getStatus(session dbusclient.SystemSession) apischema.PowerStatus {
 	if active, err := activeProfile(session); err == nil {
 		status.ActiveProfile = active
 	} else if status.Error == nil {
-		status.Error = utils.OptionalString(err.Error())
+		status.Error = apischema.Optional(err.Error())
 	}
 
 	if recommended, err := recommendedProfile(session); err == nil {
@@ -374,7 +373,7 @@ func profilesFromRecords(records []tunedProfileRecord) []apischema.TunedProfile 
 	for _, record := range records {
 		profiles = append(profiles, apischema.TunedProfile{
 			Name:        record.Name,
-			Description: utils.OptionalString(record.Description),
+			Description: apischema.Optional(record.Description),
 		})
 	}
 	return profiles
@@ -481,28 +480,9 @@ func distroMatches(id string, idLike []string, values ...string) bool {
 }
 
 func readOSReleaseIDs() (string, []string) {
-	data, err := os.ReadFile("/etc/os-release")
+	info, err := osrelease.Read()
 	if err != nil {
 		return "", nil
 	}
-	values := parseOSRelease(data)
-	id := strings.ToLower(values["ID"])
-	idLike := strings.Fields(strings.ToLower(values["ID_LIKE"]))
-	return id, idLike
-}
-
-func parseOSRelease(data []byte) map[string]string {
-	values := make(map[string]string)
-	for line := range strings.SplitSeq(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		key, value, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		values[key] = strings.Trim(strings.TrimSpace(value), `"'`)
-	}
-	return values
+	return info.ID(), info.IDLike()
 }

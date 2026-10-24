@@ -12,8 +12,9 @@ import (
 	godbus "github.com/godbus/dbus/v5"
 	"github.com/godbus/dbus/v5/prop"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient/testdbus"
+	pkgkit "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/packages/internal/packagekit"
+	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
+	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient/testdbus"
 )
 
 type fakePackage struct {
@@ -574,4 +575,35 @@ func hasProgressType(frames []PkgUpdateProgress, typ string) bool {
 		}
 	}
 	return false
+}
+
+func TestPackageKitSignalLoopsFailOnClosedChannel(t *testing.T) {
+	newClosed := func() <-chan *dbusclient.Signal {
+		ch := make(chan *dbusclient.Signal)
+		close(ch)
+		return ch
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, _, collectErr := collectUpdatePackages(ctx, newClosed())
+	_, detailErr := collectSingleUpdateDetail(ctx, newClosed(), "pkg;1;amd64;repo")
+	awaitErr := awaitPackageUpdateSignals(ctx, newClosed(), nil)
+	for name, err := range map[string]error{"collectUpdatePackages": collectErr, "collectSingleUpdateDetail": detailErr, "awaitPackageUpdateSignals": awaitErr} {
+		if !errors.Is(err, pkgkit.ErrSignalsClosed) {
+			t.Errorf("%s error = %v, want ErrSignalsClosed", name, err)
+		}
+	}
+	if ctx.Err() != nil {
+		t.Fatal("loops spun until the context expired instead of returning promptly")
+	}
+}
+
+func TestCollectUpdatePackagesReturnsContextErrorOnTimeout(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+
+	if _, _, err := collectUpdatePackages(ctx, make(chan *dbusclient.Signal)); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error = %v, want DeadlineExceeded", err)
+	}
 }

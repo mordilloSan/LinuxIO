@@ -2,10 +2,13 @@ import { Icon } from "@iconify/react";
 import { useQuery } from "@tanstack/react-query";
 import { useState, type CSSProperties, type SyntheticEvent } from "react";
 
-import { call, linuxio, useCallMutation } from "@/api";
+import { call, getMutationErrorMessage, linuxio, useCallMutation } from "@/api";
 import type { VMCreateProgress, VMCreateRequest, VMFirmware } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import BridgeHandoffDialog from "@/components/network/BridgeHandoffDialog";
+import CreateBridgeDialog from "@/components/network/CreateBridgeDialog";
+import PathPickerField from "@/components/pathpicker/PathPickerField";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppCheckbox from "@/components/ui/AppCheckbox";
@@ -19,13 +22,9 @@ import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
-import PathPickerField from "@/components/ui/PathPickerField";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import BridgeHandoffDialog from "@/routes/_authenticated/network/-components/BridgeHandoffDialog";
-import CreateBridgeDialog from "@/routes/_authenticated/network/-components/CreateBridgeDialog";
-import { useAppMediaQuery } from "@/theme";
 import { down } from "@/theme/breakpoints";
-import { getMutationErrorMessage } from "@/utils/mutations";
 import { ensureTrailingSlash, stripTrailingSlash } from "@/utils/path";
 
 import PreflightSummary from "./PreflightSummary";
@@ -162,7 +161,7 @@ export default function CreateVMDialog({
   ) => void | Promise<void>;
   open: boolean;
 }) {
-  const isMobile = useAppMediaQuery(down("sm"));
+  const isMobile = useMediaQuery(down("sm"));
   const toast = useScopedToast(VM_TOAST);
   const [name, setName] = useState("");
   const [vcpus, setVCPUs] = useState("2");

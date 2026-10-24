@@ -1,13 +1,11 @@
 package config
 
 import (
-	"fmt"
-
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 )
 
-func applyConfigPayload(cfg *bridgeconfig.Settings, payload *apischema.ConfigSetPayload) error {
+func applyConfigPayload(cfg *userconfig.Settings, payload *apischema.ConfigSetPayload) error {
 	if payload.AppSettings != nil {
 		if err := applyAppSettingsUpdate(&cfg.AppSettings, payload.AppSettings); err != nil {
 			return err
@@ -46,24 +44,8 @@ func applyOptionalStringSlice(dst *[]string, value []string) {
 	}
 }
 
-func applyOptionalNonNegativeInt(dst *int, value *int, name string) error {
-	if value == nil {
-		return nil
+func applyOptionalInt(dst *int, value *int) {
+	if value != nil {
+		*dst = *value
 	}
-	if *value < 0 {
-		return fmt.Errorf("%s must be >= 0", name)
-	}
-	*dst = *value
-	return nil
-}
-
-func applyOptionalPositiveInt(dst *int, value *int, name string) error {
-	if value == nil {
-		return nil
-	}
-	if *value <= 0 {
-		return fmt.Errorf("%s must be > 0", name)
-	}
-	*dst = *value
-	return nil
 }

@@ -1,23 +1,30 @@
 package auth
 
 import (
-	jsonv2 "encoding/json/v2"
+	"encoding/json/v2"
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	authipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/auth"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
-	"github.com/mordilloSan/LinuxIO/backend/webserver/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/webserver/authclient"
+	"github.com/mordilloSan/LinuxIO/backend/webserver/sessions"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/web"
 )
 
-const maxConcurrentLogins = 8
+const (
+	maxConcurrentLogins = 8
+	// maxLoginBodyBytes bounds the credentials JSON; the auth protocol itself
+	// caps usernames at 255 and passwords at 2047 bytes.
+	maxLoginBodyBytes = 8 << 10
+	loginBodyTimeout  = 10 * time.Second
+)
 
 // Handlers bundles dependencies (no global state).
 type Handlers struct {
-	SM      *session.Manager
-	Verbose bool
+	SM      *sessions.Manager
 	authSem chan struct{}
 }
 
@@ -44,17 +51,21 @@ func writeLoginError(w http.ResponseWriter, status int, code, message string) {
 }
 
 func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
+	// Read the body before taking a slot, bounded in size and time, so a slow
+	// or oversized client cannot hold one of the few login slots. The deadline
+	// is best effort: test recorders do not support it.
+	_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(loginBodyTimeout))
+	var req LoginRequest
+	if err := json.UnmarshalRead(http.MaxBytesReader(w, r.Body, maxLoginBodyBytes), &req, json.RejectUnknownMembers(true)); err != nil {
+		writeLoginError(w, http.StatusBadRequest, "invalid_request", "invalid request")
+		return
+	}
+
 	select {
 	case h.authSem <- struct{}{}:
 		defer func() { <-h.authSem }()
 	default:
 		writeLoginError(w, http.StatusServiceUnavailable, "too_many_requests", "too many login attempts, try again shortly")
-		return
-	}
-
-	var req LoginRequest
-	if err := jsonv2.UnmarshalRead(r.Body, &req, jsonv2.RejectUnknownMembers(true)); err != nil {
-		writeLoginError(w, http.StatusBadRequest, "invalid_request", "invalid request")
 		return
 	}
 
@@ -64,38 +75,15 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	remoteHost := clientRemoteHost(r)
-	sess, err := startBridge(h.SM, sessionID, req.Username, req.Password, remoteHost, h.Verbose)
+	remoteHost := web.ClientRemoteHost(r)
+	sess, err := startBridge(r.Context(), h.SM, sessionID, req.Username, req.Password, remoteHost)
 	if err != nil {
-		var authErr *bridge.AuthError
-		if errors.As(err, &authErr) && authErr.IsUnauthorized() {
-			slog.Warn("authentication failed",
-				"component", "auth",
-				"subsystem", "login",
-				"user", req.Username,
-				"remote_host", remoteHost,
-				"error", err)
-			switch authErr.Code {
-			case authipc.ResultPasswordExpired, authipc.ResultAccessDenied:
-				msg := authErr.Message
-				if msg == "" {
-					msg = authErr.Code.DefaultMessage()
-				}
-				writeLoginError(w, http.StatusForbidden, authErr.Code.APIName(), msg)
-				return
-			default:
-				writeLoginError(w, http.StatusUnauthorized, authErr.Code.APIName(), "authentication failed")
-				return
-			}
-		}
-		slog.Error("failed to start bridge",
-			"component", "auth",
-			"subsystem", "login",
-			"user", req.Username,
-			"remote_host", remoteHost,
-			"session_ref", session.DiagnosticRef(sessionID),
-			"error", err)
-		writeLoginError(w, http.StatusInternalServerError, "bridge_error", "failed to start bridge")
+		writeStartBridgeError(w, req.Username, remoteHost, sessionID, err)
+		return
+	}
+	if r.Context().Err() != nil {
+		// The client is gone, so the cookie can never be delivered.
+		h.SM.DeleteSession(sess.SessionID, sessions.ReasonManual)
 		return
 	}
 
@@ -104,6 +92,8 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		"component", "auth",
 		"subsystem", "login",
 		"user", sess.User.Username,
+		"session_ref", session.DiagnosticRef(sess.SessionID),
+		"privileged", sess.Privileged,
 		"remote_host", remoteHost)
 
 	response := loginSuccessResponse{
@@ -114,6 +104,46 @@ func (h *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	web.WriteJSON(w, http.StatusOK, response)
 }
 
+// writeStartBridgeError maps a startBridge failure to the login response.
+func writeStartBridgeError(w http.ResponseWriter, username, remoteHost, sessionID string, err error) {
+	var authErr *authclient.AuthError
+	switch {
+	case errors.Is(err, authipc.ErrInvalidField) || (errors.As(err, &authErr) && authErr.Code == authipc.ResultBadRequest):
+		slog.Warn("login rejected: invalid credentials format",
+			"component", "auth",
+			"subsystem", "login",
+			"remote_host", remoteHost,
+			"error", err)
+		writeLoginError(w, http.StatusBadRequest, "invalid_request", "invalid request")
+	case errors.As(err, &authErr) && authErr.IsUnauthorized():
+		slog.Warn("authentication failed",
+			"component", "auth",
+			"subsystem", "login",
+			"user", username,
+			"remote_host", remoteHost,
+			"error", err)
+		switch authErr.Code {
+		case authipc.ResultPasswordExpired, authipc.ResultAccessDenied:
+			msg := authErr.Message
+			if msg == "" {
+				msg = authErr.Code.DefaultMessage()
+			}
+			writeLoginError(w, http.StatusForbidden, authErr.Code.APIName(), msg)
+		default:
+			writeLoginError(w, http.StatusUnauthorized, authErr.Code.APIName(), "authentication failed")
+		}
+	default:
+		slog.Error("failed to start bridge",
+			"component", "auth",
+			"subsystem", "login",
+			"user", username,
+			"remote_host", remoteHost,
+			"session_ref", session.DiagnosticRef(sessionID),
+			"error", err)
+		writeLoginError(w, http.StatusInternalServerError, "bridge_error", "failed to start bridge")
+	}
+}
+
 func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 	ck, err := r.Cookie(h.SM.CookieName())
 	if err != nil {
@@ -122,30 +152,7 @@ func (h *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.SM.DeleteCookie(w)
-	h.SM.DeleteSession(ck.Value, session.ReasonLogout)
-	slog.Info("session logout", "cookie_cleared", true)
+	h.SM.DeleteSession(ck.Value, sessions.ReasonLogout)
+	slog.Debug("session logout", "cookie_cleared", true)
 	w.WriteHeader(http.StatusOK)
-}
-
-// Version returns installed component versions (public endpoint, no auth required).
-// Used by frontend to detect when server is back up after updates.
-func (h *Handlers) Version(w http.ResponseWriter, r *http.Request) {
-	web.WriteJSON(w, http.StatusOK, getComponentVersions(r.Context()))
-}
-
-// UpdateInfo reports whether a newer LinuxIO release is available. Update
-// checks are restricted to privileged sessions and are kept out of login so
-// authentication is not delayed by the external GitHub request.
-func (h *Handlers) UpdateInfo(w http.ResponseWriter, r *http.Request) {
-	sess := session.SessionFromContext(r.Context())
-	if sess == nil || !sess.Privileged {
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-
-	if updateInfo := checkForUpdate(r.Context()); updateInfo != nil {
-		web.WriteJSON(w, http.StatusOK, updateInfo)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
 }

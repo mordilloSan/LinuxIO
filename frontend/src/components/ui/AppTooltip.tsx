@@ -14,7 +14,7 @@ import {
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
-import type { ToastMeta } from "@/types/navigation";
+import type { ToastMeta } from "@/api";
 import { copyToClipboard } from "@/utils/clipboard";
 import { isTabNavigationActive } from "@/utils/tabNavigation";
 import "./app-tooltip.css";

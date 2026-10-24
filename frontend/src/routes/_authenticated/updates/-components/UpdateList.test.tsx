@@ -39,7 +39,7 @@ vi.mock("@/api", async (importOriginal) => {
   };
 });
 
-vi.mock("@/components/cards/UpdateCard", () => ({
+vi.mock("@/routes/_authenticated/updates/-components/UpdateCard", () => ({
   default: ({
     isExpanded,
     onPrefetchChangelog,

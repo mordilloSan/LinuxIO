@@ -12,13 +12,14 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 // ReplicationDir holds the replication SSH key pair and known_hosts. Tests
 // may override it.
-var ReplicationDir = "/etc/linuxio/btrfs-replication"
+var ReplicationDir = version.ConfigDir + "/btrfs-replication"
 
 // BtrfsSSHKey is the public half of the replication key.
 type BtrfsSSHKey struct {
@@ -170,7 +171,7 @@ func TrustHost(ctx context.Context, keys []string) error {
 		for _, line := range lines {
 			out.WriteString(line + "\n")
 		}
-		if err := utils.WriteFileAtomic(path, []byte(out.String()), 0o600); err != nil {
+		if err := atomicfile.Write(path, []byte(out.String()), 0o600); err != nil {
 			return fmt.Errorf("write %s: %w", path, err)
 		}
 		return nil

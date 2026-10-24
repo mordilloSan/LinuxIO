@@ -3,7 +3,7 @@ package appupdate
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"os"
@@ -14,9 +14,10 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
-	"github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/common/updatestatus"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
@@ -154,9 +155,9 @@ func TestExecuteAppUpdateRelaysOutputBeforeRestart(t *testing.T) {
 	restartSystemdUnit = recordSuccessfulRestart(t, statusPath, restarted)
 
 	task := newSessionUpdateTask(t)
-	events, unsubscribe := task.Subscribe(8)
+	events, _, unsubscribe := task.SubscribeWithReplay(8)
 	defer unsubscribe()
-	if !task.Start(func(ctx context.Context, runningTask *bridge.Task, _ any) (any, error) {
+	if !task.Start(func(ctx context.Context, runningTask *bridgeipc.Task, _ any) (any, error) {
 		return executeAppUpdate(ctx, testRuntime(), runningTask, testRunID, "v2.3.4")
 	}) {
 		t.Fatal("failed to start update Task")
@@ -192,7 +193,7 @@ func recordSuccessfulRestart(t *testing.T, statusPath string, restarted chan<- s
 		if err != nil {
 			t.Errorf("read status before restart: %v", err)
 		} else {
-			var status updateStatus
+			var status updatestatus.Record
 			if unmarshalErr := json.Unmarshal(data, &status); unmarshalErr != nil {
 				t.Errorf("decode status before restart: %v", unmarshalErr)
 			} else if status.Status != "ok" || status.OwnerUID != 1000 {
@@ -204,14 +205,14 @@ func recordSuccessfulRestart(t *testing.T, statusPath string, restarted chan<- s
 	}
 }
 
-func waitForCompletedUpdateTask(t *testing.T, task *bridge.Task) {
+func waitForCompletedUpdateTask(t *testing.T, task *bridgeipc.Task) {
 	t.Helper()
 	select {
 	case <-task.Done():
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for update Task")
 	}
-	if snapshot := task.Snapshot(); snapshot.State != bridge.TaskStateCompleted {
+	if snapshot := task.Snapshot(); snapshot.State != bridgeipc.TaskStateCompleted {
 		t.Fatalf("Task snapshot = %+v", snapshot)
 	}
 }
@@ -227,7 +228,7 @@ func waitForRestart(t *testing.T, restarted <-chan string) string {
 	}
 }
 
-func taskOutput(events <-chan bridge.TaskEvent) string {
+func taskOutput(events <-chan bridgeipc.TaskEvent) string {
 	var output strings.Builder
 	for len(events) > 0 {
 		event := <-events
@@ -262,7 +263,7 @@ func TestExecuteAppUpdateReloadFailureDoesNotRestart(t *testing.T) {
 	if readErr != nil {
 		t.Fatalf("read status: %v", readErr)
 	}
-	var status updateStatus
+	var status updatestatus.Record
 	if unmarshalErr := json.Unmarshal(data, &status); unmarshalErr != nil || status.Status != "error" {
 		t.Fatalf("reload failure status = %+v, %v", status, unmarshalErr)
 	}
@@ -308,7 +309,7 @@ func TestExecuteAppUpdateFailureDoesNotRestart(t *testing.T) {
 	if readErr != nil {
 		t.Fatalf("read status: %v", readErr)
 	}
-	var status updateStatus
+	var status updatestatus.Record
 	if unmarshalErr := json.Unmarshal(data, &status); unmarshalErr != nil {
 		t.Fatalf("decode status: %v", unmarshalErr)
 	}
@@ -319,16 +320,16 @@ func TestExecuteAppUpdateFailureDoesNotRestart(t *testing.T) {
 
 func configurePipedUpdateTest(t *testing.T, statusPath string) func() {
 	t.Helper()
-	oldStatusPath := updateStatusPath
+	oldStatusPath := updatestatus.Path
 	oldInstaller := runAppUpdateInstaller
 	oldReload := reloadSystemd
 	oldRestart := restartSystemdUnit
 	oldDelay := postUpdateRestartDelay
-	updateStatusPath = statusPath
+	updatestatus.Path = statusPath
 	reloadSystemd = func(context.Context) error { return nil }
 	postUpdateRestartDelay = 0
 	return func() {
-		updateStatusPath = oldStatusPath
+		updatestatus.Path = oldStatusPath
 		runAppUpdateInstaller = oldInstaller
 		reloadSystemd = oldReload
 		restartSystemdUnit = oldRestart
@@ -336,13 +337,13 @@ func configurePipedUpdateTest(t *testing.T, statusPath string) func() {
 	}
 }
 
-func newSessionUpdateTask(t *testing.T) *bridge.Task {
+func newSessionUpdateTask(t *testing.T) *bridgeipc.Task {
 	t.Helper()
-	task, err := bridge.NewTaskService().CreateForOwner(routeAppUpdate, nil, bridge.TaskOwner{
+	task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity(routeAppUpdate, nil, bridgeipc.TaskOwner{
 		SessionID: "session-a",
 		Username:  "alice",
 		UID:       1000,
-	})
+	}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create Task: %v", err)
 	}

@@ -2,25 +2,27 @@ package docker
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
-	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
+	"github.com/mordilloSan/LinuxIO/backend/common/dockerupdate"
 )
 
 // ComposeTaskMessage represents a message emitted by a Docker compose task.
 type ComposeTaskMessage struct {
 	Type     string           `json:"type"`    // "stdout", "stderr", or "progress".
 	Message  string           `json:"message"` // The actual message content (humanized for progress)
-	Code     int              `json:"code,omitempty"`
-	Progress *ComposeProgress `json:"progress,omitempty"` // structured progress for "progress" messages
+	Code     int              `json:"code,omitzero"`
+	Progress *ComposeProgress `json:"progress,omitzero"` // structured progress for "progress" messages
 }
 
-func (m ComposeTaskMessage) ProgressEnvelope() bridgetask.TaskProgress {
+func (m ComposeTaskMessage) ProgressEnvelope() bridgeipc.TaskProgress {
 	phase := m.Type
 	message := m.Message
 	var percentage *int
@@ -31,7 +33,7 @@ func (m ComposeTaskMessage) ProgressEnvelope() bridgetask.TaskProgress {
 			message = m.Progress.Text
 		}
 	}
-	return bridgetask.TaskProgress{
+	return bridgeipc.TaskProgress{
 		Percentage: percentage,
 		Phase:      phase,
 		Message:    message,
@@ -46,19 +48,9 @@ type ComposeTaskResult struct {
 }
 
 // ComposeProgress is a single structured progress event parsed from
-// `docker compose --progress=json`. The JSON tags mirror Docker's own event
-// schema so the same struct is used to both decode Docker's output and to
-// encode the payload sent to the frontend.
-type ComposeProgress struct {
-	ID       string `json:"id"` // layer id (e.g. "fbcfea79c1c4") or group (e.g. "Image alpine:3.17")
-	ParentID string `json:"parent_id,omitempty"`
-	Text     string `json:"text"`              // "Pulling", "Downloading", "Extracting", "Pull complete", "Creating", "Started"…
-	Status   string `json:"status"`            // "Working" | "Done" | "Error"
-	Details  string `json:"details,omitempty"` // Docker's humanized current (e.g. "2.097MB")
-	Current  int64  `json:"current,omitempty"`
-	Total    int64  `json:"total,omitempty"`
-	Percent  int    `json:"percent,omitempty"`
-}
+// `docker compose --progress=json`; the engine owns the type because it also
+// runs the Compose-managed container updates.
+type ComposeProgress = dockerupdate.ComposeProgress
 
 var dockerTaskRoutes = dockerTaskBindings(runtime.Runtime{}).Routes()
 
@@ -69,28 +61,28 @@ func dockerTaskBindings(rt runtime.Runtime) apischema.BindingSet {
 			apischema.DurableTask(),
 			apischema.WithTaskProgress[apischema.DockerContainerUpdateProgress](),
 			apischema.WithTaskIdentity(dockerUpdateTaskIdentity),
-			apischema.WithTaskMetadata(func(req apischema.DockerContainerUpdateRequest) bridgetask.TaskMetadata {
-				return bridgetask.TaskMetadata{Identity: []string{req.ContainerID}, Label: "Docker container update"}
+			apischema.WithTaskMetadata(func(req apischema.DockerContainerUpdateRequest) bridgeipc.TaskMetadata {
+				return bridgeipc.TaskMetadata{Identity: []string{req.ContainerID}, Label: "Docker container update"}
 			}),
-		).Run(runDockerUpdateTask, bridgetask.TaskSingletonSystem),
-		apischema.TaskRunner[apischema.DockerComposeRequest, ComposeTaskResult]("docker.compose", apischema.SessionTask(), apischema.WithTaskProgress[ComposeTaskMessage](), apischema.WithTaskMetadata(func(req apischema.DockerComposeRequest) bridgetask.TaskMetadata {
-			return bridgetask.TaskMetadata{Identity: []string{req.Action, req.ProjectName}, Label: "Docker compose " + req.Action, Action: req.Action, ProjectName: req.ProjectName}
+		).Run(runDockerUpdateTask, bridgeipc.TaskSingletonSystem),
+		apischema.TaskRunner[apischema.DockerComposeRequest, ComposeTaskResult]("docker.compose", apischema.SessionTask(), apischema.WithTaskProgress[ComposeTaskMessage](), apischema.WithTaskMetadata(func(req apischema.DockerComposeRequest) bridgeipc.TaskMetadata {
+			return bridgeipc.TaskMetadata{Identity: []string{req.Action, req.ProjectName}, Label: "Docker compose " + req.Action, Action: req.Action, ProjectName: req.ProjectName}
 		})).Run(
-			func(ctx context.Context, task *bridgetask.Task, req apischema.DockerComposeRequest) (ComposeTaskResult, error) {
+			func(ctx context.Context, task *bridgeipc.Task, req apischema.DockerComposeRequest) (ComposeTaskResult, error) {
 				return runDockerComposeTask(ctx, task, rt.Username(), rt.Store, req)
 			},
-			bridgetask.TaskDefault,
+			bridgeipc.TaskDefault,
 		),
 	)
 }
 
-func RegisterTaskRoutes(router *bridgetask.Router, rt runtime.Runtime) {
+func RegisterTaskRoutes(router *bridgeipc.Router, rt runtime.Runtime) {
 	dockerTaskBindings(rt).Register(router)
 }
 
-func runDockerComposeTask(ctx context.Context, task *bridgetask.Task, username string, store *config.UserStore, req apischema.DockerComposeRequest) (ComposeTaskResult, error) {
+func runDockerComposeTask(ctx context.Context, task *bridgeipc.Task, username string, store *userconfig.UserStore, req apischema.DockerComposeRequest) (ComposeTaskResult, error) {
 	if req.Action == "" || req.ProjectName == "" {
-		return ComposeTaskResult{}, bridgetask.NewError("missing required arguments: action, projectName", 400)
+		return ComposeTaskResult{}, fmt.Errorf("%w: missing required arguments: action, projectName", bridgeipc.ErrInvalidArgs)
 	}
 
 	var composePath string
@@ -100,7 +92,7 @@ func runDockerComposeTask(ctx context.Context, task *bridgetask.Task, username s
 
 	configFile, workingDir, err := resolveComposeTaskPaths(ctx, username, store, req.ProjectName, composePath)
 	if err != nil {
-		return ComposeTaskResult{}, bridgetask.NewError("compose file not found: "+err.Error(), 404)
+		return ComposeTaskResult{}, fmt.Errorf("%w: compose file: %w", bridgeipc.ErrNotFound, err)
 	}
 
 	var reportMu sync.Mutex
@@ -126,15 +118,14 @@ func runDockerComposeTask(ctx context.Context, task *bridgetask.Task, username s
 	case "restart":
 		err = composeUp(ctx, req.ProjectName, configFile, workingDir, true, report)
 	default:
-		return ComposeTaskResult{}, bridgetask.NewError("unsupported action: "+req.Action, 400)
+		return ComposeTaskResult{}, fmt.Errorf("%w: unsupported action %q", bridgeipc.ErrInvalidArgs, req.Action)
 	}
 
 	if err != nil {
 		if ctx.Err() != nil {
 			return ComposeTaskResult{}, context.Canceled
 		}
-		msg := "command failed: " + err.Error()
-		return ComposeTaskResult{}, bridgetask.NewError(msg, 500)
+		return ComposeTaskResult{}, fmt.Errorf("command failed: %w", err)
 	}
 	if req.Action == "up" || req.Action == "restart" {
 		notifyIndexerForComposeFile(ctx, configFile)
@@ -144,7 +135,7 @@ func runDockerComposeTask(ctx context.Context, task *bridgetask.Task, username s
 	return result, nil
 }
 
-func resolveComposeTaskPaths(ctx context.Context, username string, store *config.UserStore, projectName, composePath string) (string, string, error) {
+func resolveComposeTaskPaths(ctx context.Context, username string, store *userconfig.UserStore, projectName, composePath string) (string, string, error) {
 	if composePath != "" {
 		return composePath, filepath.Dir(composePath), nil
 	}

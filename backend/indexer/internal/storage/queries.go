@@ -1,0 +1,262 @@
+package storage
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"log/slog"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/mordilloSan/LinuxIO/backend/indexer/api"
+	"github.com/mordilloSan/LinuxIO/backend/indexer/internal/searchquery"
+)
+
+// SearchEntriesUnder performs a name search within one indexed subtree.
+func (s *Store) SearchEntriesUnder(ctx context.Context, pattern, basePath string, limit int) ([]api.EntryResult, error) {
+	if ctx == nil {
+		ctx = context.TODO()
+	}
+	if limit <= 0 {
+		limit = defaultSearchLimit
+	}
+
+	opts := searchquery.Parse(pattern)
+
+	// A query with no non-blank term (e.g. "|||") matches nothing instead of
+	// sorting the whole table.
+	if !slices.ContainsFunc(opts.Terms, func(term string) bool { return strings.TrimSpace(term) != "" }) {
+		return nil, nil
+	}
+
+	// Prefer the FTS5 trigram index when available and the query is eligible:
+	// it answers substring searches from the index instead of scanning every
+	// row. Any FTS failure falls through to the LIKE scan.
+	if match, ok := ftsMatchQuery(opts); ok {
+		results, ftsErr := s.searchEntriesFTS(ctx, match, basePath, limit)
+		if ftsErr == nil {
+			if results == nil && !s.hasCompletedGeneration(ctx) {
+				return nil, ErrNotInitialized
+			}
+			return results, nil
+		}
+		slog.Warn("fts search failed; falling back to like scan", "error", ftsErr)
+	}
+
+	where, args := buildSearchFilter(opts)
+	where, args = appendSearchBaseFilter(where, args, basePath)
+	args = append(args, limit)
+
+	query := fmt.Sprintf(`
+		SELECT e.relative_path, e.name, e.type, e.size, e.mod_time, e.inode
+		FROM entries e
+		JOIN `+latestGenerationSubquery+` latest
+		  ON latest.id = e.index_id
+		WHERE %s
+        ORDER BY mod_time DESC
+        LIMIT ?
+    `, where)
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("search failed: %w", err)
+	}
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			slog.Warn("rows close failed", "query", "search", "error", cerr)
+		}
+	}()
+
+	var results []api.EntryResult
+	for rows.Next() {
+		entry, scanErr := scanSearchEntry(rows)
+		if scanErr != nil {
+			return nil, scanErr
+		}
+		results = append(results, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if results == nil && !s.hasCompletedGeneration(ctx) {
+		return nil, ErrNotInitialized
+	}
+	return results, nil
+}
+
+func appendSearchBaseFilter(where string, args []any, basePath string) (string, []any) {
+	if basePath == "" || basePath == "/" {
+		return where, args
+	}
+	lo, childLo, hi := subtreeBounds(basePath)
+	return where + ` AND relative_path >= ? AND relative_path < ? AND (relative_path = ? OR relative_path >= ?)`,
+		append(args, lo, hi, lo, childLo)
+}
+
+func buildSearchFilter(opts searchquery.Options) (string, []any) {
+	args := []any{}
+	termClauses := make([]string, 0, len(opts.Terms))
+	for _, term := range opts.Terms {
+		term = strings.TrimSpace(term)
+		if term == "" {
+			continue
+		}
+		if opts.CaseSensitive {
+			termClauses = append(termClauses, "instr(name, ?) > 0")
+			args = append(args, term)
+		} else {
+			termClauses = append(termClauses, "LOWER(name) LIKE LOWER(?) ESCAPE '\\'")
+			args = append(args, "%"+escapeLikePattern(term)+"%")
+		}
+	}
+
+	where := "1 = 1"
+	if len(termClauses) > 0 {
+		where += " AND (" + strings.Join(termClauses, " OR ") + ")"
+	}
+	return where, args
+}
+
+func scanSearchEntry(rows *sql.Rows) (api.EntryResult, error) {
+	var entry api.EntryResult
+	var modUnix int64
+	var dbType string
+	// Inodes are stored as int64 bit patterns (see the entries writers), so
+	// values >= 2^63 come back negative; scanning straight into uint64 would
+	// fail the whole query.
+	var inode int64
+	if err := rows.Scan(&entry.Path, &entry.Name, &dbType, &entry.Size, &modUnix, &inode); err != nil {
+		return api.EntryResult{}, fmt.Errorf("scan failed: %w", err)
+	}
+	entry.Inode = uint64(inode)
+	if dbType == "directory" {
+		entry.Type = "folder"
+	} else {
+		entry.Type = "file"
+	}
+	entry.ModTime = time.Unix(modUnix, 0)
+	return entry, nil
+}
+
+// DirDetails returns the pre-calculated size for a directory.
+// The size is calculated during indexing and stored in the directory entry.
+func (s *Store) DirDetails(ctx context.Context, path string) (totalSize, files, dirs int64, err error) {
+	if ctx == nil {
+		ctx = context.TODO()
+	}
+
+	lo, childLo, hi := subtreeBounds(path)
+	var size sql.NullInt64
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT e.size,
+		       COALESCE((SELECT COUNT(*) FROM entries c
+		                 WHERE c.index_id = e.index_id
+		                   AND c.relative_path >= ? AND c.relative_path < ?
+		                   AND (c.relative_path = ? OR c.relative_path >= ?)
+		                   AND c.type = 'file'), 0),
+		       COALESCE((SELECT COUNT(*) FROM entries c
+		                 WHERE c.index_id = e.index_id
+		                   AND c.relative_path >= ? AND c.relative_path < ?
+		                   AND (c.relative_path = ? OR c.relative_path >= ?)
+		                   AND c.type = 'directory'), 0)
+		FROM entries e
+		JOIN `+latestGenerationSubquery+` latest
+		  ON latest.id = e.index_id
+		WHERE e.relative_path = ? AND e.type = 'directory'
+	`, lo, hi, lo, childLo, lo, hi, lo, childLo, path).Scan(&size, &files, &dirs); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			if initialized, checkErr := s.completedGeneration(ctx); checkErr == nil && !initialized {
+				return 0, 0, 0, ErrNotInitialized
+			}
+			return 0, 0, 0, fmt.Errorf("%w: %s", ErrDirectoryNotFound, path)
+		}
+		return 0, 0, 0, fmt.Errorf("dir size query failed: %w", err)
+	}
+	if !size.Valid {
+		size.Int64 = 0
+	}
+	return size.Int64, files, dirs, nil
+}
+
+// GetDirectSubfolders returns all direct child folders of a given path with their sizes.
+// This only returns immediate children (not recursive).
+func (s *Store) GetDirectSubfolders(ctx context.Context, parentPath string) ([]api.SubfolderResult, error) {
+	if ctx == nil {
+		ctx = context.TODO()
+	}
+
+	// Normalize parent path - ensure it starts with / and doesn't end with / (unless it's root)
+	if parentPath != "/" {
+		parentPath = "/" + strings.Trim(parentPath, "/")
+	}
+
+	parentDepth := 0
+	if parentPath != "/" {
+		parentDepth = strings.Count(parentPath, "/")
+	}
+	childDepth := parentDepth + 1
+
+	// Query for direct children that are directories using path_depth (precomputed at write time).
+	var (
+		query string
+		args  []any
+	)
+
+	if parentPath == "/" {
+		query = `
+            SELECT e.relative_path, e.name, e.size, e.mod_time
+            FROM entries e
+			JOIN ` + latestGenerationSubquery + ` latest
+			  ON latest.id = e.index_id
+			WHERE e.type = 'directory' AND e.path_depth = 1
+            ORDER BY name
+        `
+		args = nil
+	} else {
+		// The child-path range constrains the 4th column of
+		// idx_entries_subfolders after three equality columns, so this is a
+		// pure index range scan; no residual filter is needed because direct
+		// children always start with childLo.
+		_, childLo, hi := subtreeBounds(parentPath)
+		query = `
+            SELECT e.relative_path, e.name, e.size, e.mod_time
+            FROM entries e
+			JOIN ` + latestGenerationSubquery + ` latest
+			  ON latest.id = e.index_id
+			WHERE e.type = 'directory' AND e.path_depth = ?
+              AND e.relative_path >= ? AND e.relative_path < ?
+            ORDER BY name
+        `
+		args = []any{childDepth, childLo, hi}
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query subfolders failed: %w", err)
+	}
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			slog.Warn("rows close failed", "query", "subfolders", "error", cerr)
+		}
+	}()
+
+	var results []api.SubfolderResult
+	for rows.Next() {
+		var subfolder api.SubfolderResult
+		var modUnix int64
+		if err := rows.Scan(&subfolder.Path, &subfolder.Name, &subfolder.Size, &modUnix); err != nil {
+			return nil, fmt.Errorf("scan failed: %w", err)
+		}
+		subfolder.ModTime = time.Unix(modUnix, 0)
+		results = append(results, subfolder)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if results == nil && !s.hasCompletedGeneration(ctx) {
+		return nil, ErrNotInitialized
+	}
+	return results, nil
+}

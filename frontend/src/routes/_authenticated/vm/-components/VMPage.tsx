@@ -2,7 +2,7 @@ import { useQueryClient, useSuspenseQueries } from "@tanstack/react-query";
 import { getRouteApi, Outlet } from "@tanstack/react-router";
 import { useState, type ReactNode } from "react";
 
-import { linuxio, type VMCreateProgress } from "@/api";
+import { getMutationErrorMessage, linuxio, type VMCreateProgress } from "@/api";
 import { RoutedTabActions, RoutedTabLayout } from "@/components/tabbar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
@@ -10,7 +10,6 @@ import AppTypography from "@/components/ui/AppTypography";
 import HeaderActions from "@/components/ui/HeaderActions";
 import { useCapability } from "@/hooks/useCapabilities";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { getMutationErrorMessage } from "@/utils/mutations";
 
 import CreateVMDialog from "./CreateVMDialog";
 import { VM_TOAST, preflightReady } from "./vmShared";

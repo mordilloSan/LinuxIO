@@ -126,7 +126,7 @@ breaks any click that is mid-flight when the re-render lands.
 
 Keep the column array stable and pass volatile per-row state (selection, pending
 flags, expansion sets) through context, the way
-[`ContainerTable`](../frontend/src/routes/_authenticated/docker/-components/ContainerTable.tsx)
+[`ContainerTable`](../frontend/src/routes/_authenticated/docker/-components/containers/ContainerTable.tsx)
 does. `meta.getCellRenderKey` then narrows which cells re-render.
 
 `meta.deferTooltipWhileScrolling` defers automatic chip/text tooltips when a

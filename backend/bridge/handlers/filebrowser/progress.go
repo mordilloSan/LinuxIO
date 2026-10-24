@@ -1,13 +1,18 @@
 package filebrowser
 
 import (
+	"context"
+	"strings"
+	"sync"
 	"time"
 
-	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 )
 
 const (
-	// progressReportIntervalBytes is how often file operations report progress.
+	// progressReportIntervalBytes is the copy buffer size for streamed files.
 	progressReportIntervalBytes = 2 * 1024 * 1024
 	// uploadProgressAckIntervalBytes is more frequent because upload progress acts as a client-side flow-control ACK.
 	uploadProgressAckIntervalBytes = 512 * 1024
@@ -17,49 +22,163 @@ const (
 	transferProgressMaxBytes = 32 * 1024 * 1024
 )
 
-type transferProgressGate struct {
+// progressThrottle is the one report-rate policy for filebrowser progress. A
+// report goes out only when the work advanced, and then when it is the first
+// report, the last (processed reached total), or one of:
+//   - paced: at least minInterval elapsed and either minBytes advanced or the
+//     whole percentage did. Job progress bars use this.
+//   - keep-alive: maxInterval elapsed or maxBytes advanced. Stream transfers use
+//     this because their reports double as the client's flow-control ACK.
+//
+// A zero minInterval and minBytes disable pacing; a zero max disables that
+// keep-alive limit. It is safe for the concurrent callbacks of worker pools.
+type progressThrottle struct {
+	mu          sync.Mutex
+	minInterval time.Duration
+	minBytes    int64
 	maxInterval time.Duration
 	maxBytes    int64
-	lastBytes   int64
-	lastAt      time.Time
+
+	processed     int64
+	total         int64
+	lastProcessed int64
+	lastPct       int
+	lastAt        time.Time
 }
 
-func newTransferProgressGate(maxBytes int64) *transferProgressGate {
+// newTransferGate throttles stream transfers on cadence and a byte cap.
+func newTransferGate(maxBytes int64) *progressThrottle {
 	if maxBytes <= 0 {
 		maxBytes = transferProgressMaxBytes
 	}
-	return &transferProgressGate{
-		maxInterval: transferProgressMaxInterval,
-		maxBytes:    maxBytes,
+	return &progressThrottle{maxInterval: transferProgressMaxInterval, maxBytes: maxBytes, lastPct: -1}
+}
+
+// newJobThrottle paces byte progress with the user's job settings.
+func newJobThrottle(settings userconfig.PersistedJobSettings) *progressThrottle {
+	settings = userconfig.EffectiveJobSettings(settings)
+	return &progressThrottle{
+		minInterval: time.Duration(settings.ProgressMinIntervalMs) * time.Millisecond,
+		minBytes:    int64(settings.ProgressMinBytesMB) * 1024 * 1024,
+		lastPct:     -1,
 	}
 }
 
-func (g *transferProgressGate) ShouldReport(bytes, total int64) bool {
-	return g.ShouldReportAt(bytes, total, time.Now())
+// newCountThrottle paces item-count progress: any advance counts.
+func newCountThrottle(settings userconfig.PersistedJobSettings) *progressThrottle {
+	settings = userconfig.EffectiveJobSettings(settings)
+	return &progressThrottle{
+		minInterval: time.Duration(settings.ProgressMinIntervalMs) * time.Millisecond,
+		minBytes:    1,
+		lastPct:     -1,
+	}
 }
 
-func (g *transferProgressGate) ShouldReportAt(bytes, total int64, now time.Time) bool {
-	if bytes <= g.lastBytes {
-		return false
+// Add accumulates n and reports whether the new position should be sent.
+func (g *progressThrottle) Add(n int64) (int64, int, bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if n > 0 {
+		g.processed += n
 	}
-	if total > 0 && bytes >= total {
-		g.record(bytes, now)
-		return true
-	}
-	if g.lastAt.IsZero() {
-		g.record(bytes, now)
-		return true
-	}
-	if bytes-g.lastBytes >= g.maxBytes || now.Sub(g.lastAt) >= g.maxInterval {
-		g.record(bytes, now)
-		return true
-	}
-	return false
+	return g.check(time.Now())
 }
 
-func (g *transferProgressGate) record(bytes int64, at time.Time) {
-	g.lastBytes = bytes
-	g.lastAt = at
+// Set records an absolute position and reports whether it should be sent.
+func (g *progressThrottle) Set(processed, total int64) (int64, int, bool) {
+	return g.setAt(processed, total, time.Now())
+}
+
+func (g *progressThrottle) setAt(processed, total int64, now time.Time) (int64, int, bool) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.processed, g.total = processed, total
+	return g.check(now)
+}
+
+// SetTotal installs the denominator once a late-arriving size estimate lands.
+// Until then only byte pacing applies, since the percentage needs a total.
+func (g *progressThrottle) SetTotal(total int64) {
+	g.mu.Lock()
+	g.total = total
+	g.mu.Unlock()
+}
+
+func (g *progressThrottle) check(now time.Time) (int64, int, bool) {
+	pct := transferPct(g.processed, g.total)
+	delta := g.processed - g.lastProcessed
+	if delta <= 0 {
+		return g.processed, pct, false
+	}
+	silence := now.Sub(g.lastAt)
+	paced := g.minInterval > 0 || g.minBytes > 0
+	switch {
+	case g.total > 0 && g.processed >= g.total, g.lastAt.IsZero():
+	case paced && silence >= g.minInterval && (delta >= g.minBytes || pct > g.lastPct):
+	case g.maxBytes > 0 && delta >= g.maxBytes, g.maxInterval > 0 && silence >= g.maxInterval:
+	default:
+		return g.processed, pct, false
+	}
+	g.lastProcessed, g.lastPct, g.lastAt = g.processed, pct, now
+	return g.processed, pct, true
+}
+
+// newProgressCallbacks adapts the byte callbacks of the archive and file
+// services into throttled reports. The size is re-read on every call because
+// archive estimates land mid-operation. A total known to be zero means there
+// is nothing to report against; a merely unknown one still reports, flagged
+// indeterminate so the client shows a busy bar.
+func newProgressCallbacks(ctx context.Context, throttle *progressThrottle, size *sizeEstimate, emit func(processed, total int64, pct int, indeterminate bool)) *services.OperationCallbacks {
+	return &services.OperationCallbacks{
+		Cancel: func() bool { return ctx.Err() != nil },
+		Progress: func(n int64) {
+			total, known := size.get()
+			if known && total <= 0 {
+				return
+			}
+			throttle.SetTotal(total)
+			if processed, pct, ok := throttle.Add(n); ok {
+				emit(processed, total, pct, !known)
+			}
+		},
+	}
+}
+
+// newTaskPhaseCallbacks reports a Task's byte progress under one phase name.
+func newTaskPhaseCallbacks(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, size *sizeEstimate, phase string) *services.OperationCallbacks {
+	throttle := newJobThrottle(taskSettingsForTask(ctx, task, store))
+	return newProgressCallbacks(ctx, throttle, size, func(processed, total int64, pct int, indeterminate bool) {
+		task.ReportProgress(FileProgress{Bytes: processed, Total: total, Pct: pct, Phase: phase, Indeterminate: indeterminate})
+	})
+}
+
+// writeTaskPhaseProgress announces a phase before any bytes have moved. A
+// zero total means the denominator is still being computed, which the client
+// renders as a busy bar rather than a stalled 0%.
+func writeTaskPhaseProgress(task *bridgeipc.Task, total int64, phase string) {
+	task.ReportProgress(FileProgress{
+		Total:         total,
+		Phase:         phase,
+		Indeterminate: total <= 0,
+	})
+}
+
+func taskSettingsForTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore) userconfig.PersistedJobSettings {
+	if task == nil || strings.TrimSpace(task.Owner().Username) == "" {
+		return userconfig.DefaultJobSettings()
+	}
+	cfg, _, err := userconfig.SnapshotForUser(ctx, task.Owner().Username, store)
+	if err != nil || cfg == nil {
+		return userconfig.DefaultJobSettings()
+	}
+	return userconfig.EffectiveJobSettings(cfg.Jobs)
+}
+
+func transferPct(bytes, total int64) int {
+	if total <= 0 {
+		return 0
+	}
+	return min(int(bytes*100/total), 100)
 }
 
 // FileProgress represents progress for file transfer and file task operations.
@@ -72,11 +191,11 @@ type FileProgress struct {
 	// meaningless and the client should show a busy bar rather than 0%. Archive
 	// compression starts before its size estimate finishes and clears this once
 	// the estimate lands.
-	Indeterminate bool `json:"indeterminate,omitempty"`
+	Indeterminate bool `json:"indeterminate,omitzero"`
 }
 
-func (p FileProgress) ProgressEnvelope() bridgetask.TaskProgress {
-	return bridgetask.TaskProgress{Percentage: &p.Pct, Phase: p.Phase, Detail: p}
+func (p FileProgress) ProgressEnvelope() bridgeipc.TaskProgress {
+	return bridgeipc.TaskProgress{Percentage: &p.Pct, Phase: p.Phase, Detail: p}
 }
 
 // BatchUploadProgress reports aggregate byte progress for a batch upload plus
@@ -92,8 +211,8 @@ type BatchUploadProgress struct {
 	FilesTotal int    `json:"filesTotal"`
 }
 
-func (p BatchUploadProgress) ProgressEnvelope() bridgetask.TaskProgress {
-	return bridgetask.TaskProgress{Percentage: &p.Pct, Phase: p.Phase, Detail: p}
+func (p BatchUploadProgress) ProgressEnvelope() bridgeipc.TaskProgress {
+	return bridgeipc.TaskProgress{Percentage: &p.Pct, Phase: p.Phase, Detail: p}
 }
 
 // CountProgress represents item-count progress for batch tasks. When the
@@ -104,11 +223,11 @@ type CountProgress struct {
 	Total         int64  `json:"total"`
 	Pct           int    `json:"pct"`
 	Phase         string `json:"phase,omitempty"`
-	Indeterminate bool   `json:"indeterminate,omitempty"`
+	Indeterminate bool   `json:"indeterminate,omitzero"`
 }
 
-func (p CountProgress) ProgressEnvelope() bridgetask.TaskProgress {
-	envelope := bridgetask.TaskProgress{Phase: p.Phase, Detail: p}
+func (p CountProgress) ProgressEnvelope() bridgeipc.TaskProgress {
+	envelope := bridgeipc.TaskProgress{Phase: p.Phase, Detail: p}
 	if !p.Indeterminate {
 		envelope.Percentage = &p.Pct
 	}

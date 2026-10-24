@@ -12,24 +12,25 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/logging"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 	"github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
 func runIndexTrigger(args []string) int {
 	fs := flag.NewFlagSet("linuxio-indexer timer trigger", flag.ContinueOnError)
-	socketPath := fs.String("socket-path", "/run/linuxio/indexer.sock", "Unix socket path")
+	socketPath := fs.String("socket-path", version.RunDir+"/indexer.sock", "Unix socket path")
 	if err := fs.Parse(args); err != nil {
 		return flagParseExitCode(err)
 	}
 	if fs.NArg() != 0 {
-		return writeError(fs.Output(), fmt.Sprintf("index trigger does not accept arguments: %s\n", fs.Arg(0)))
+		return writeUsageError(fs.Output(), fmt.Sprintf("index trigger does not accept arguments: %s\n", fs.Arg(0)))
 	}
 
 	if err := logging.Configure("linuxio-indexer", false); err != nil {
 		return writeError(fs.Output(), "linuxio-indexer: initialize logging: "+err.Error()+"\n")
 	}
 	if err := triggerIndex(*socketPath); err != nil {
-		slog.Error("trigger index", "err", err)
+		slog.Error("trigger index", "error", err)
 		return 1
 	}
 	return 0

@@ -4,6 +4,7 @@ Each active plan has its own document:
 
 - [API reliability, recovery, and notifications](./api-reliability-roadmap.md)
 - [Frontend test coverage](./e2e-testing.md)
+- [Backend audit checklist](./backend-audit.md)
 
 ## Dependency maintenance
 
@@ -16,4 +17,4 @@ Each active plan has its own document:
   `make setup '.SHELLFLAGS=-ec'`, then run `make ci-frontend-deps` and
   `make check-frontend-quiet` before closing this item.
 
-Finished and rejected work is retained in [Completed or closed TODOs](./completed.md).
+Other plans: [package-managed installation](./packaging.md) and [scheduled scripts](./scheduled-execution.md).

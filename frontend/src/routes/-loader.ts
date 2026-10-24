@@ -2,7 +2,7 @@
  * TanStack Router and TanStack Query loader primitives.
  *
  * Route loaders call this after their access checks. It intentionally
- * receives a live update-state getter: UpdateContext owns that state and the
+ * receives a live update-state getter: appUpdateInProgress owns that state and the
  * stream multiplexer does not.
  */
 
@@ -23,7 +23,8 @@ import {
   type UIConfig,
 } from "@/api";
 import { scopedConfigQueryKey } from "@/api/config-query";
-import { subscribeLiveUpdateBlocked } from "@/contexts/UpdateContext";
+import { cacheUserId } from "@/api/user-scope";
+import { subscribeAppUpdateInProgress } from "@/contexts/appUpdateInProgress";
 import type { LinuxIORouterContext } from "@/routes/-auth";
 
 /** Heterogeneous queryOptions accepted by a route-level batch. */
@@ -38,10 +39,9 @@ export const LOADER_FRESHNESS = {
   BLOCKING: "blocking",
 } as const;
 
-export type LoaderFreshness =
-  (typeof LOADER_FRESHNESS)[keyof typeof LOADER_FRESHNESS];
+type LoaderFreshness = (typeof LOADER_FRESHNESS)[keyof typeof LOADER_FRESHNESS];
 
-export interface RouteLoaderArgs {
+interface RouteLoaderArgs {
   abortController: AbortController;
   context: LinuxIORouterContext;
   preload: boolean;
@@ -143,7 +143,7 @@ export async function loadRouteUIConfig(
   signal?: AbortSignal,
 ): Promise<UIConfig> {
   throwIfAborted(signal);
-  const userId = context.auth.user?.id ?? "anonymous";
+  const userId = cacheUserId(context.auth.user);
   const queryKey = scopedConfigQueryKey(linuxio.config.get_ui.queryKey, userId);
   const cached = context.queryClient.getQueryData<UIConfig>(queryKey);
   if (cached) return cached;
@@ -326,7 +326,7 @@ function abortSignalError(signal: AbortSignal): Error {
 }
 
 function routeLoadingBlocked(isUpdateBlocked: () => boolean): boolean {
-  // UpdateProvider mounts below the Router, so the live mux flag closes the
+  // AppUpdateProvider mounts below the Router, so the live mux flag closes the
   // first-navigation window before the context getter has observed the event.
   return isUpdateBlocked() || getStreamMux()?.isUpdating === true;
 }
@@ -361,7 +361,7 @@ function waitForRouteLoadingAllowed(
       if (!routeLoadingBlocked(isUpdateBlocked)) settle(resolve);
     };
 
-    unsubscribeLiveUpdate = subscribeLiveUpdateBlocked(resolveIfAllowed);
+    unsubscribeLiveUpdate = subscribeAppUpdateInProgress(resolveIfAllowed);
     unsubscribeRequestAvailability =
       subscribeRequestAvailability(resolveIfAllowed);
 

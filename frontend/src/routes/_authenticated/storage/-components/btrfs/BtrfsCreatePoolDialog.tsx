@@ -16,7 +16,7 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
-import { formatFileSize } from "@/utils/formaters";
+import { formatFileSize } from "@/utils/formatters";
 
 import { PROFILE_MIN_DEVICES, usableBytes } from "./btrfsShared";
 

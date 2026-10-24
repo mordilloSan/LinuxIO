@@ -11,18 +11,6 @@ export const SEMANTIC_STATUS_COLORS = {
   caution: "#FF9800",
 } as const;
 
-export const FILE_TYPE_COLORS = {
-  code: "#F9A825",
-  pdf: "#D32F2F",
-  image: "#7B1FA2",
-  video: "#C2185B",
-  audio: "#00897B",
-  archive: "#F57C00",
-  spreadsheet: "#388E3C",
-  document: "#1976D2",
-  executable: "#B71C1C",
-} as const;
-
 export const COLOR_TOKENS = {
   blue: "#1d99f3",
   red: "#da4453",
@@ -45,7 +33,7 @@ export const GREY_TOKENS = {
   900: "#212121",
 } as const;
 
-export type ColorName = keyof typeof COLOR_TOKENS;
+type ColorName = keyof typeof COLOR_TOKENS;
 
 /**
  * Resolve a token name to its hex value.

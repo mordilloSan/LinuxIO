@@ -1,9 +1,4 @@
-import {
-  LinuxIOError,
-  type VMDeleteResult,
-  type VMPreflight,
-  type VirtualMachine,
-} from "@/api";
+import type { VMDeleteResult, VMPreflight, VirtualMachine } from "@/api";
 import { getDistroIcon } from "@/icons/distro";
 
 export type VMAction =
@@ -145,7 +140,7 @@ export function isImportDiskPath(path: string): boolean {
   return /\.(ova|qcow2|vmdk|vdi|img|raw)$/i.test(path);
 }
 
-export function normalizeFolderPath(path: string): string {
+function normalizeFolderPath(path: string): string {
   const trimmed = path.trim();
   if (!trimmed) return "";
   if (/^\/+$/.test(trimmed)) return "/";
@@ -167,10 +162,6 @@ export function folderFromISOPathText(path: string): string {
   return normalizeFolderPath(trimmed);
 }
 
-export function isMissingPathError(error: unknown): boolean {
-  return error instanceof LinuxIOError && Number(error.code) === 404;
-}
-
 // libosinfo ids that the distro map does not spell the same way.
 const VM_OS_ICONS: Record<string, string> = {
   archlinux: "simple-icons:archlinux",
@@ -178,6 +169,33 @@ const VM_OS_ICONS: Record<string, string> = {
   freebsd: "simple-icons:freebsd",
   homeassistant: "simple-icons:homeassistant",
 };
+
+/** OS ids the edit dialog offers; their logos come from vmOSIcon. */
+export const VM_OS_OPTIONS = [
+  { id: "almalinux", label: "AlmaLinux" },
+  { id: "alpine", label: "Alpine Linux" },
+  { id: "archlinux", label: "Arch Linux" },
+  { id: "centos-stream", label: "CentOS Stream" },
+  { id: "debian", label: "Debian" },
+  { id: "fedora", label: "Fedora" },
+  { id: "freebsd", label: "FreeBSD" },
+  { id: "homeassistant", label: "Home Assistant OS" },
+  { id: "kali", label: "Kali Linux" },
+  { id: "linuxmint", label: "Linux Mint" },
+  { id: "manjaro", label: "Manjaro" },
+  { id: "nixos", label: "NixOS" },
+  { id: "opensuse", label: "openSUSE" },
+  { id: "rhel", label: "Red Hat Enterprise Linux" },
+  { id: "rocky", label: "Rocky Linux" },
+  { id: "ubuntu", label: "Ubuntu" },
+  { id: "win", label: "Windows" },
+] as const;
+
+/** A readable name for a VM's OS id, or "Unknown". */
+export function vmOSLabel(os?: string): string {
+  if (!os) return "Unknown";
+  return VM_OS_OPTIONS.find((option) => option.id === os)?.label ?? os;
+}
 
 /** The logo for a VM's OS id; a plain screen when the OS is unknown. */
 export function vmOSIcon(os?: string): string {

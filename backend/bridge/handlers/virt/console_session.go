@@ -8,14 +8,13 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	libvirt "github.com/digitalocean/go-libvirt"
 	"libvirt.org/go/libvirtxml"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/streamrelay"
 )
 
 const consoleSocketTimeout = 10 * time.Second
@@ -44,28 +43,16 @@ func HandleConsoleSession(ctx context.Context, stream net.Conn, req apischema.Na
 	}
 	defer vnc.Close()
 
-	var wg sync.WaitGroup
-	var closeOnce sync.Once
-	closeRelays := func() {
-		closeOnce.Do(func() {
-			_ = vnc.Close()
-			_ = stream.Close()
-		})
-	}
-	wg.Go(func() {
-		defer closeRelays()
-		relayConnToStream(vnc, stream)
+	streamrelay.Run(ctx, stream, streamrelay.Local{
+		Reader:   vnc,
+		Writer:   vnc,
+		Teardown: func() { _ = vnc.Close() },
 	})
-	wg.Go(func() {
-		defer closeRelays()
-		relayStreamToConn(stream, vnc)
-	})
-	wg.Wait()
 	return nil
 }
 
 func writeConsoleStreamError(stream net.Conn, err error) {
-	if writeErr := ipc.WriteResultErrorAndClose(stream, 1, err.Error(), errorCode(err, 500)); writeErr != nil {
+	if writeErr := streamrelay.WriteError(stream, streamrelay.StreamID, err); writeErr != nil {
 		slog.Debug("failed to write VNC stream error frame", "error", writeErr)
 	}
 }
@@ -261,45 +248,4 @@ func safeVNCTCPDialHost(host string) (string, bool) {
 		return "::1", true
 	}
 	return "", false
-}
-
-func relayConnToStream(src net.Conn, dst net.Conn) {
-	buf := make([]byte, 32*1024)
-	for {
-		n, err := src.Read(buf)
-		if n > 0 {
-			if writeErr := ipc.WriteRelayFrame(dst, &ipc.StreamFrame{
-				Opcode:   ipc.OpStreamData,
-				StreamID: 1,
-				Payload:  buf[:n],
-			}); writeErr != nil {
-				return
-			}
-		}
-		if err != nil {
-			if closeErr := ipc.WriteStreamClose(dst, 1); closeErr != nil {
-				slog.Debug("failed to write VNC stream close frame", "error", closeErr)
-			}
-			return
-		}
-	}
-}
-
-func relayStreamToConn(src net.Conn, dst net.Conn) {
-	for {
-		frame, err := ipc.ReadRelayFrame(src)
-		if err != nil {
-			return
-		}
-		switch frame.Opcode {
-		case ipc.OpStreamData:
-			if len(frame.Payload) > 0 {
-				if _, err := dst.Write(frame.Payload); err != nil {
-					return
-				}
-			}
-		case ipc.OpStreamClose, ipc.OpStreamAbort:
-			return
-		}
-	}
 }

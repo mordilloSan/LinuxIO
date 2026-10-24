@@ -2,6 +2,8 @@ package btrfs
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -10,13 +12,15 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
+	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
 )
 
 func useTempAlerts(t *testing.T) {
 	t.Helper()
-	old := alerts.Path
+	old, oldRules := alerts.Path, RulesPath
 	alerts.Path = filepath.Join(t.TempDir(), "alerts.json")
-	t.Cleanup(func() { alerts.Path = old })
+	RulesPath = filepath.Join(t.TempDir(), "btrfs-snapshots.json") // the per-filesystem run locks live beside it
+	t.Cleanup(func() { alerts.Path, RulesPath = old, oldRules })
 }
 
 func TestRunSkipsMissingFilesystem(t *testing.T) {
@@ -75,6 +79,27 @@ func stubRunnerBtrfs(t *testing.T, top string, rows []subvolumeRow) *[][]string 
 		return nil
 	})
 	return &calls
+}
+
+func TestRunReportsRuleAlreadyRunning(t *testing.T) {
+	useTempAlerts(t)
+	top := t.TempDir()
+	stubMounts(t, []Mount{{Mountpoint: top, UUID: rootUUID, SubvolID: 5}})
+	calls := stubRunnerBtrfs(t, top, nil)
+	release, err := filelock.AcquireExclusive(context.Background(), RulesPath+"."+rootUUID+".lock")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = release() }()
+
+	rules := []BtrfsSnapshotRule{{UUID: rootUUID, Path: "@", Enabled: true, Every: EveryHourly}}
+	report, err := Run(context.Background(), rules, snapshotTime, KindTimeline)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(report.Errors) != 1 || !strings.Contains(report.Errors[0], "already running") || len(report.Taken) != 0 || len(*calls) != 0 {
+		t.Fatalf("report = %+v, calls = %v", report, *calls)
+	}
 }
 
 func TestRunTakesDueOnly(t *testing.T) {
@@ -187,6 +212,88 @@ func TestRunCollectsPerRuleErrors(t *testing.T) {
 	doc, _ := alerts.Load()
 	if len(doc.Alerts) != 1 || doc.Alerts[0].Severity != alerts.SeverityError {
 		t.Fatalf("alerts = %+v", doc.Alerts)
+	}
+}
+
+// One snapshot that cannot be deleted must not stop the newer ones being
+// pruned; the failure still reaches the report and the alert.
+func TestRunPruneContinuesPastUndeletableSnapshot(t *testing.T) {
+	useTempAlerts(t)
+	top := t.TempDir()
+	stubMounts(t, []Mount{{Mountpoint: top, UUID: rootUUID, SubvolID: 5}})
+	now := snapshotTime
+	snap := func(ago time.Duration) string { return SnapshotPath("@", now.Add(-ago), KindTimeline) }
+	rows := []subvolumeRow{
+		snapshotSubvolume(1, snap(5*time.Hour)),
+		snapshotSubvolume(2, snap(4*time.Hour)),
+		snapshotSubvolume(3, snap(3*time.Hour)),
+	}
+	stubRunnerBtrfs(t, top, rows)
+	destroy := subvolOps.destroy
+	subvolOps.destroy = func(p string) error {
+		if p == filepath.Join(top, snap(5*time.Hour)) {
+			return errors.New("busy")
+		}
+		return destroy(p)
+	}
+
+	rules := []BtrfsSnapshotRule{{UUID: rootUUID, Path: "@", Enabled: true, Every: EveryHourly, Keep: BtrfsKeep{Hourly: 1}}}
+	report, err := Run(context.Background(), rules, now, KindTimeline)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(report.Pruned) != 2 || report.Pruned[0].Path != snap(4*time.Hour) || report.Pruned[1].Path != snap(3*time.Hour) {
+		t.Fatalf("Pruned = %+v", report.Pruned)
+	}
+	if len(report.Errors) != 1 || !strings.Contains(report.Errors[0], snap(5*time.Hour)) || !strings.Contains(report.Errors[0], "busy") {
+		t.Fatalf("Errors = %v", report.Errors)
+	}
+}
+
+// With an enabled timeline replication job on the rule, the previous newest
+// snapshot is the next send's incremental parent and survives keep.hourly=1.
+func TestRunKeepsReplicationParent(t *testing.T) {
+	for _, withJob := range []bool{true, false} {
+		t.Run(fmt.Sprintf("job=%v", withJob), func(t *testing.T) {
+			useTempAlerts(t)
+			old := ReplicationPath
+			ReplicationPath = filepath.Join(t.TempDir(), "btrfs-replication.json")
+			t.Cleanup(func() { ReplicationPath = old })
+			if withJob {
+				job := BtrfsReplicationJob{ID: "job", UUID: rootUUID, Path: "@", Enabled: true, After: AfterTimeline}
+				if _, err := UpdateJobs(context.Background(), func(jobs *[]BtrfsReplicationJob) error {
+					*jobs = append(*jobs, job)
+					return nil
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			top := t.TempDir()
+			stubMounts(t, []Mount{{Mountpoint: top, UUID: rootUUID, SubvolID: 5}})
+			now := snapshotTime
+			snap := func(ago time.Duration) string { return SnapshotPath("@", now.Add(-ago), KindTimeline) }
+			stubRunnerBtrfs(t, top, []subvolumeRow{
+				snapshotSubvolume(1, snap(3*time.Hour)),
+				snapshotSubvolume(2, snap(2*time.Hour)),
+			})
+
+			rules := []BtrfsSnapshotRule{{UUID: rootUUID, Path: "@", Enabled: true, Every: EveryHourly, Keep: BtrfsKeep{Hourly: 1}}}
+			report, err := Run(context.Background(), rules, now, KindTimeline)
+			if err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			var pruned []string
+			for _, s := range report.Pruned {
+				pruned = append(pruned, s.Path)
+			}
+			want := []string{snap(3 * time.Hour), snap(2 * time.Hour)}
+			if withJob {
+				want = want[:1]
+			}
+			if !reflect.DeepEqual(pruned, want) {
+				t.Fatalf("pruned = %v, want %v", pruned, want)
+			}
+		})
 	}
 }
 

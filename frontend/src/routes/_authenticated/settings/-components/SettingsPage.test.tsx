@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { linuxio } from "@/api";
+import type { EffectiveAppSettings } from "@/api";
 import { ConfigContext } from "@/contexts/ConfigContext";
 import {
   act,
@@ -11,7 +12,6 @@ import {
   seedCapabilityCache,
   waitFor,
 } from "@/test/render";
-import type { EffectiveAppSettings } from "@/types/config";
 
 import SettingsPage from "./SettingsPage";
 import type { SettingsTab } from "./settingsTabs";

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { VirtualMachine } from "@/api";
-import { render, screen } from "@/test/render";
+import { renderWithTanStackRouter, screen } from "@/test/render";
 
 import VMDetailsPanel from "./VMDetailsPanel";
 
@@ -29,31 +29,37 @@ const vm: VirtualMachine = {
 
 beforeEach(() => mocks.mutate.mockReset());
 
-describe("VMDetailsPanel firmware", () => {
-  it("switches a shut-off VM to UEFI", async () => {
-    const { user } = render(<VMDetailsPanel vm={vm} />);
-    await user.click(screen.getByRole("combobox", { name: "Firmware" }));
-    await user.click(screen.getByRole("option", { name: "UEFI" }));
-    expect(mocks.mutate).toHaveBeenCalledWith({
-      firmware: "uefi",
-      name: "HA",
-    });
-  });
-
+describe("VMDetailsPanel", () => {
   it("toggles autostart", async () => {
-    const { user } = render(<VMDetailsPanel vm={vm} />);
-    await user.click(screen.getByRole("checkbox", { name: "Autostart" }));
+    const { user } = renderWithTanStackRouter(<VMDetailsPanel vm={vm} />);
+    await user.click(
+      await screen.findByRole("checkbox", { name: "Autostart" }),
+    );
     expect(mocks.mutate).toHaveBeenCalledWith({ autostart: true, name: "HA" });
   });
 
-  it("locks the firmware while the VM runs", () => {
-    render(<VMDetailsPanel vm={{ ...vm, state: "running" }} />);
-    expect(screen.getByRole("combobox", { name: "Firmware" })).toHaveAttribute(
-      "aria-disabled",
-      "true",
+  it("lists monitoring, disks and networks", async () => {
+    renderWithTanStackRouter(
+      <VMDetailsPanel
+        vm={{
+          ...vm,
+          disks: [
+            {
+              device: "disk",
+              owned: true,
+              path: "/var/lib/libvirt/images/linuxio-HA.qcow2",
+              sizeGB: 32,
+              target: "vda",
+            },
+          ],
+          nics: [{ mac: "52:54:00:00:00:01", network: "br0" }],
+        }}
+      />,
     );
+    expect(await screen.findByText("Monitoring")).toBeInTheDocument();
+    expect(screen.getByText(/managed · 32 GB/)).toBeInTheDocument();
     expect(
-      screen.getByText("Shut off the VM to change its firmware"),
+      screen.getByText("No IP lease yet · 52:54:00:00:00:01"),
     ).toBeInTheDocument();
   });
 });

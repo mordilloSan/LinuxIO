@@ -5,29 +5,30 @@ import { createPortal } from "react-dom";
 
 import { useStreamMux } from "@/api";
 import { ASSISTANT_AGENTS, type AssistantAgentId } from "@/api/acp/agents";
-import ConfirmDialog from "@/components/filebrowser/ConfirmDialog";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
-import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
+import ConfirmDialog from "@/components/ui/AppConfirmDialog";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTypography from "@/components/ui/AppTypography";
 import HeaderActions from "@/components/ui/HeaderActions";
-import { useHeaderActionSlot } from "@/contexts/HeaderActionSlotContext";
+import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/overlay";
 import { useConfigValue } from "@/hooks/useConfig";
+import { useHeaderActionSlot } from "@/hooks/useHeaderActionSlot";
 import {
   readPersistedState,
   writePersistedState,
 } from "@/utils/persistedState";
 
-import "./assistant.css";
-
 import { assistantStore, useAssistantState } from "./assistant-store";
-import Composer from "./Composer";
-import PermissionCard from "./PermissionCard";
-import SidePanel, { SidePanelOpening } from "./SidePanel";
-import StatusLine from "./StatusLine";
-import Transcript from "./Transcript";
+import Composer from "./composer/Composer";
+import SidePanel, { SidePanelOpening } from "./session/SidePanel";
+import StatusLine from "./session/StatusLine";
+import PermissionCard from "./transcript/PermissionCard";
+import Transcript from "./transcript/Transcript";
+
+import "./assistant-tokens.css";
+import "./assistant.css";
 
 // Escape inside an overlay belongs to that overlay, not to the running turn.
 const OVERLAY_SELECTOR = `${OVERLAY_ROOT_SELECTOR}, .app-popover-root, [role="menu"], [role="listbox"]`;

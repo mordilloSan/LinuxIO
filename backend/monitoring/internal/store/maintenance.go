@@ -3,6 +3,8 @@ package store
 import (
 	"fmt"
 	"time"
+
+	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/plugins"
 )
 
 // RunMaintenance removes full-resolution history after its retention window.
@@ -17,7 +19,7 @@ func (s *Store) RunMaintenance(now time.Time) error {
 		}
 	}()
 
-	for _, plugin := range historyCapablePluginNames() {
+	for _, plugin := range plugins.HistoryCapable() {
 		table := pluginHistoryTable(plugin)
 		if _, err = tx.Exec(fmt.Sprintf(`
 			DELETE FROM %s

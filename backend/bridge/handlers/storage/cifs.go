@@ -5,7 +5,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -17,6 +19,7 @@ import (
 	"github.com/shirou/gopsutil/v4/disk"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
@@ -54,7 +57,7 @@ type cifsMountParams struct {
 // CheckCIFSClientAvailability reports whether the SMB client mount helper
 // (mount.cifs, from cifs-utils) is installed.
 func CheckCIFSClientAvailability() (bool, error) {
-	if _, err := findMountCommand("mount.cifs"); err != nil {
+	if _, err := hostcmd.LookPath("mount.cifs"); err != nil {
 		return false, fmt.Errorf("mount.cifs not found (install cifs-utils)")
 	}
 	return true, nil
@@ -90,7 +93,7 @@ func ListCIFSShares(ctx context.Context, server string) ([]string, error) {
 	if !validHostname.MatchString(server) {
 		return nil, fmt.Errorf("invalid SMB server hostname")
 	}
-	smbclient, err := findMountCommand("smbclient")
+	smbclient, err := hostcmd.LookPath("smbclient")
 	if err != nil {
 		return nil, fmt.Errorf("smbclient not found (install smbclient or samba-client)")
 	}
@@ -323,9 +326,9 @@ func MountCIFS(ctx context.Context, p cifsMountParams) (apischema.StorageMountRe
 		return mountResult(p.mountpoint, ""), nil
 	}
 
-	options := cleanMountOptions(p.options)
-	if err := rejectSensitiveCustomOptions(options); err != nil {
-		return apischema.StorageMountResult{}, err
+	options, optErr := cifsCustomOptions(p.options)
+	if optErr != nil {
+		return apischema.StorageMountResult{}, optErr
 	}
 
 	if err := os.MkdirAll(p.mountpoint, 0755); err != nil {
@@ -350,15 +353,14 @@ func MountCIFS(ctx context.Context, p cifsMountParams) (apischema.StorageMountRe
 	}
 
 	// Password safety: log a fixed summary only — never the options/credentials.
-	slog.Info("mounting CIFS share", "source", source, "mountpoint", p.mountpoint)
+	slog.Debug("mounting CIFS share", "source", source, "mountpoint", p.mountpoint)
 	out, err := cifsMountRunner(ctx, cifsMountCommandTimeout, "mount", p.mountpoint)
 	if err != nil {
 		// Roll back so we never leave a broken boot entry behind.
 		_ = removeFromFstab(p.mountpoint)
 		_ = deleteCredentialsFile(p.mountpoint)
 		message := commandFailureMessage(out, err)
-		slog.Error("CIFS mount failed", "source", source, "mountpoint", p.mountpoint, "message", message)
-		return apischema.StorageMountResult{}, fmt.Errorf("mount failed: %s", message)
+		return apischema.StorageMountResult{}, fmt.Errorf("mount CIFS share %s on %s failed: %s", source, p.mountpoint, message)
 	}
 	slog.Info("CIFS share mounted", "source", source, "mountpoint", p.mountpoint)
 	return mountResult(p.mountpoint, ""), nil
@@ -387,9 +389,9 @@ func RemountCIFS(ctx context.Context, mountpoint string, newOptions []string, up
 	if !validPath.MatchString(mountpoint) {
 		return apischema.StorageMountResult{}, fmt.Errorf("invalid mountpoint")
 	}
-	options := cleanMountOptions(newOptions)
-	if err := rejectSensitiveCustomOptions(options); err != nil {
-		return apischema.StorageMountResult{}, err
+	options, optErr := cifsCustomOptions(newOptions)
+	if optErr != nil {
+		return apischema.StorageMountResult{}, optErr
 	}
 	if err := requireCIFSClientAvailability(); err != nil {
 		return apischema.StorageMountResult{}, err
@@ -457,8 +459,7 @@ func rollbackFailedCIFSRemount(
 			slog.Warn("failed to restore previous CIFS mount after remount failure", "mountpoint", mountpoint, "error", rmErr)
 		}
 	}
-	slog.Error("CIFS remount failed", "mountpoint", mountpoint, "message", message)
-	return fmt.Errorf("remount failed: %s", message)
+	return fmt.Errorf("remount CIFS share on %s failed: %s", mountpoint, message)
 }
 
 // preserveCIFSAuthOption returns the auth-bearing option (guest or
@@ -533,7 +534,7 @@ func credentialsFilePath(mountpoint string) string {
 }
 
 func deleteCredentialsFile(mountpoint string) error {
-	if err := os.Remove(credentialsFilePath(mountpoint)); err != nil && !os.IsNotExist(err) {
+	if err := os.Remove(credentialsFilePath(mountpoint)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 	return nil
@@ -550,4 +551,14 @@ func isCIFSMounted(mountpoint string) bool {
 		}
 	}
 	return false
+}
+
+// cifsCustomOptions validates user-supplied CIFS options; authentication only
+// ever comes from the dedicated credential fields.
+func cifsCustomOptions(raw []string) ([]string, error) {
+	options, err := cleanMountOptions(raw)
+	if err != nil {
+		return nil, err
+	}
+	return options, rejectSensitiveCustomOptions(options)
 }

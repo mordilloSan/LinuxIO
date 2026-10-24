@@ -5,7 +5,7 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
 
 /** A pool a new shared folder can live on: mounted at its top level. */
-export interface SharePool {
+interface SharePool {
   uuid: string;
   name: string;
   mountpoint: string;

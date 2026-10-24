@@ -2,7 +2,7 @@ package indexer
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -11,9 +11,11 @@ import (
 	"strings"
 	"time"
 
-	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
+
+// ErrAborted reports an indexer operation stopped by the caller.
+var ErrAborted = errors.New("operation aborted")
 
 var errIndexerStreamEnded = errors.New("indexer stream ended unexpectedly")
 
@@ -104,7 +106,7 @@ func triggerIndexer(ctx context.Context, path string, cb IndexerCallbacks) (stri
 	resp, err := Client.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
-			return triggerIndexerError(cb, "operation aborted", 499, ipc.ErrAborted)
+			return triggerIndexerError(cb, "operation aborted", 499, ErrAborted)
 		}
 		return triggerIndexerError(cb, fmt.Sprintf("indexer connection failed: %v", err), 503, fmt.Errorf("indexer request: %w", err))
 	}
@@ -188,7 +190,7 @@ func attachStatusStreamOnce(ctx context.Context, cb IndexerCallbacks, expected *
 			if callbackErr := callOnError(cb, "operation aborted", 499); callbackErr != nil {
 				return fmt.Errorf("on error callback: %w", callbackErr)
 			}
-			return ipc.ErrAborted
+			return ErrAborted
 		}
 		if callbackErr := callOnError(cb, fmt.Sprintf("indexer connection failed: %v", err), 503); callbackErr != nil {
 			return fmt.Errorf("on error callback: %w", callbackErr)
@@ -556,7 +558,7 @@ func reportIndexerAbort(cb IndexerCallbacks) error {
 	if callbackErr := callOnError(cb, "operation aborted", 499); callbackErr != nil {
 		return fmt.Errorf("on error callback: %w", callbackErr)
 	}
-	return ipc.ErrAborted
+	return ErrAborted
 }
 
 func callOnProgress(cb IndexerCallbacks, p IndexerProgress) error {

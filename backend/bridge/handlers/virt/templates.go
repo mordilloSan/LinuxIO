@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -142,7 +142,7 @@ func (s vmTemplateStore) ensure(ctx context.Context, preset vmImagePreset, templ
 				return record.VMTemplate, nil
 			}
 		}
-		return apischema.VMTemplate{}, notFoundf("saved template %q is no longer available", templateID)
+		return apischema.VMTemplate{}, notFoundf("saved template %q", templateID)
 	}
 	if !refresh && len(records) > 0 {
 		return records[0].VMTemplate, nil
@@ -224,7 +224,7 @@ func (s vmTemplateStore) download(ctx context.Context, preset vmImagePreset, ass
 		Version: version, SourceURL: asset.URL, DownloadedAt: time.Now().UTC().Format("2006-01-02T15:04:05.000000000Z"),
 		SizeBytes: info.Size(), Path: filepath.Join(dir, record.ID, "image.qcow2"),
 	}
-	data, err := json.Marshal(record)
+	data, err := json.Marshal(record, json.Deterministic(true))
 	if err != nil {
 		return apischema.VMTemplate{}, err
 	}

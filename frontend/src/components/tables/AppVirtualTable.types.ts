@@ -17,7 +17,7 @@ export type AppVirtualTableBreakpoint = "sm" | "md" | "lg" | "xl";
 /** A single value compared with Object.is, or a readonly array compared element-wise. */
 export type AppVirtualTableCellRenderKey = unknown;
 
-export interface AppVirtualTableColumnMeta {
+interface AppVirtualTableColumnMeta {
   align?: "left" | "center" | "right";
   cellClassName?: string;
   cellStyle?: CSSProperties;

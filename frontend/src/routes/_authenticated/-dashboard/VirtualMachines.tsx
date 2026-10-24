@@ -3,13 +3,13 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { useState, type MouseEvent } from "react";
 
 import { linuxio, type VirtualMachine } from "@/api";
-import DashboardCard from "@/components/cards/DashboardCard";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
-import { useAppMediaQuery } from "@/theme";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
+import DashboardCard from "@/routes/_authenticated/-dashboard/DashboardCard";
 import { up } from "@/theme/breakpoints";
 
 import DashboardStatRows from "./DashboardStatRows";
@@ -95,7 +95,7 @@ const VMList = () => {
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const [menuName, setMenuName] = useState<string | null>(null);
   const { pendingActions, runAction } = useVMLifecycle(vms);
-  const isSmallUp = useAppMediaQuery(up("sm"));
+  const isSmallUp = useMediaQuery(up("sm"));
 
   // Derived from the list so the menu disappears with the row it belongs to
   // when a poll drops that machine.

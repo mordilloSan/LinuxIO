@@ -3,7 +3,7 @@ package relay
 import (
 	"bytes"
 	"encoding/binary"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"strings"
@@ -228,5 +228,12 @@ func TestParseStreamOpenPayloadRejectsInvalidEnvelope(t *testing.T) {
 		if _, err := ParseStreamOpenPayload(payload); err == nil {
 			t.Fatalf("ParseStreamOpenPayload(%q) error = nil, want error", payload)
 		}
+	}
+}
+
+func TestParseStreamOpenPayloadRejectsUnknownMembers(t *testing.T) {
+	_, err := ParseStreamOpenPayload([]byte(`{"route":"system.get_cpu_info","extra":true}`))
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("ParseStreamOpenPayload() error = %v, want ErrInvalidRequest", err)
 	}
 }

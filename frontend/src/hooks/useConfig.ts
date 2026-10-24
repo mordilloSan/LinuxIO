@@ -6,10 +6,11 @@ import {
   type AppConfig,
   type ConfigStorageMode,
   type DockerSettings,
+  linuxio,
   type TableCardViewMode,
   type UIConfig,
-  linuxio,
 } from "@/api";
+import type { ConfigValueKey, ConfigValueMap } from "@/api";
 import { type AssistantAgentId, isAssistantAgentId } from "@/api/acp/agents";
 import {
   bridgeConfigQueryKey,
@@ -17,9 +18,9 @@ import {
   pruneViewModes,
   uiConfigQueryKey,
 } from "@/api/config-query";
+import { cacheUserId } from "@/api/user-scope";
 import { AuthContext } from "@/contexts/AuthContext";
 import { ConfigContext } from "@/contexts/ConfigContext";
-import type { ConfigValueKey, ConfigValueMap } from "@/types/config";
 
 export const useConfig = () => {
   const ctx = useContext(ConfigContext);
@@ -29,8 +30,7 @@ export const useConfig = () => {
 
 /** Same per-user cache scope the provider writes under. */
 export function useConfigUserId(): string {
-  const auth = useContext(AuthContext);
-  return auth?.user?.id ?? "anonymous";
+  return cacheUserId(useContext(AuthContext)?.user);
 }
 
 // The read hooks subscribe to the query cache without ever fetching

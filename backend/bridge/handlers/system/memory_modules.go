@@ -8,20 +8,20 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/hwprobe"
 )
 
 var memoryModulesRunCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
 	return exec.CommandContext(ctx, name, args...).Output()
 }
 
-var memoryModulesLookPath = exec.LookPath
-var memoryModulesCache hwSnapshotCache[[]apischema.MemoryModule]
+var memoryModulesCache hwprobe.SnapshotCache[[]apischema.MemoryModule]
 
 func FetchMemoryModules(ctx context.Context) ([]apischema.MemoryModule, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return memoryModulesCache.get(func() ([]apischema.MemoryModule, error) {
+	return memoryModulesCache.Get(func() ([]apischema.MemoryModule, error) {
 		return fetchMemoryModules(ctx)
 	})
 }
@@ -44,30 +44,6 @@ func fetchMemoryModules(ctx context.Context) ([]apischema.MemoryModule, error) {
 	return parseDMIMemory(string(out)), nil
 }
 
-func CheckMemoryModuleInventoryAvailability(ctx context.Context) (bool, error) {
-	available, err := hasUdevMemoryInventory(ctx)
-	if err != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return false, ctxErr
-		}
-	} else if available {
-		return true, nil
-	}
-
-	if _, err := memoryModulesLookPath("dmidecode"); err == nil {
-		return true, nil
-	}
-	return false, fmt.Errorf("udev DMI memory data is unavailable and dmidecode is not installed")
-}
-
-func hasUdevMemoryInventory(ctx context.Context) (bool, error) {
-	out, err := memoryModulesRunCommand(ctx, "udevadm", "info", "--query=property", "--path=/sys/class/dmi/id")
-	if err != nil {
-		return false, err
-	}
-	return hasUdevMemoryDeviceDataFromProps(udevDMIPropertiesFromQuery(string(out))), nil
-}
-
 func fetchUdevMemoryModules(ctx context.Context) ([]apischema.MemoryModule, error) {
 	out, err := memoryModulesRunCommand(ctx, "udevadm", "info", "--export-db")
 	if err != nil {
@@ -78,7 +54,7 @@ func fetchUdevMemoryModules(ctx context.Context) ([]apischema.MemoryModule, erro
 
 func parseUdevMemoryModules(output string) []apischema.MemoryModule {
 	props := udevDMIProperties(output)
-	if !hasUdevMemoryDeviceDataFromProps(props) {
+	if !hwprobe.HasUdevMemoryDeviceData(props) {
 		return nil
 	}
 
@@ -112,30 +88,6 @@ func parseUdevMemoryModules(output string) []apischema.MemoryModule {
 	}
 
 	return modules
-}
-
-func udevDMIPropertiesFromQuery(output string) map[string]string {
-	props := make(map[string]string)
-	for line := range strings.SplitSeq(output, "\n") {
-		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
-		if ok && key != "" {
-			props[key] = value
-		}
-	}
-	return props
-}
-
-func hasUdevMemoryDeviceDataFromProps(props map[string]string) bool {
-	devices, err := strconv.Atoi(props["MEMORY_ARRAY_NUM_DEVICES"])
-	if err != nil || devices <= 0 {
-		return false
-	}
-	for key := range props {
-		if strings.HasPrefix(key, "MEMORY_DEVICE_") {
-			return true
-		}
-	}
-	return false
 }
 
 func udevDMIProperties(output string) map[string]string {

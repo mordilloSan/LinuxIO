@@ -1,0 +1,184 @@
+package main
+
+import (
+	"slices"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestJournalTermsForMode(t *testing.T) {
+	tests := []struct {
+		name     string
+		mode     string
+		wantIn   []string
+		wantMiss []string
+	}{
+		{
+			name:   "bridge",
+			mode:   "bridge",
+			wantIn: []string{"SYSLOG_IDENTIFIER=linuxio-bridge"},
+			wantMiss: []string{
+				"_SYSTEMD_UNIT=linuxio-bridge-socket-user.service",
+				"SYSLOG_IDENTIFIER=linuxio-auth",
+			},
+		},
+		{
+			name: "webserver",
+			mode: "webserver",
+			wantIn: []string{
+				"SYSLOG_IDENTIFIER=linuxio-webserver",
+				"_SYSTEMD_UNIT=linuxio-webserver.service",
+				"_SYSTEMD_UNIT=linuxio-webserver.socket",
+			},
+		},
+		{
+			name: "auth",
+			mode: "auth",
+			wantIn: []string{
+				"SYSLOG_IDENTIFIER=linuxio-auth",
+				"_SYSTEMD_UNIT=linuxio-auth.socket",
+				"_SYSTEMD_UNIT=linuxio-auth@.service",
+			},
+		},
+		{
+			name: "indexer",
+			mode: "indexer",
+			wantIn: []string{
+				"SYSLOG_IDENTIFIER=linuxio-indexer",
+				"_SYSTEMD_UNIT=linuxio-indexer.service",
+				"_SYSTEMD_UNIT=linuxio-indexer-index.service",
+				"_SYSTEMD_UNIT=linuxio-indexer-index.timer",
+			},
+		},
+		{
+			name: "monitoring",
+			mode: "monitoring",
+			wantIn: []string{
+				"SYSLOG_IDENTIFIER=linuxio-monitoring",
+				"_SYSTEMD_UNIT=linuxio-monitoring.service",
+			},
+			wantMiss: []string{"SYSLOG_IDENTIFIER=linuxio-indexer"},
+		},
+		{
+			name: "all",
+			mode: "all",
+			wantIn: []string{
+				"SYSLOG_IDENTIFIER=linuxio-webserver",
+				"SYSLOG_IDENTIFIER=linuxio-bridge",
+				"SYSLOG_IDENTIFIER=linuxio-auth",
+				"SYSLOG_IDENTIFIER=linuxio-indexer",
+				"SYSLOG_IDENTIFIER=linuxio-monitoring",
+				"_SYSTEMD_UNIT=linuxio-monitoring.service",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := journalTermsForMode(tt.mode)
+			for _, term := range tt.wantIn {
+				if !slices.Contains(got, term) {
+					t.Fatalf("journalTermsForMode(%q) missing %q in %v", tt.mode, term, got)
+				}
+			}
+			for _, term := range tt.wantMiss {
+				if slices.Contains(got, term) {
+					t.Fatalf("journalTermsForMode(%q) unexpectedly contains %q in %v", tt.mode, term, got)
+				}
+			}
+		})
+	}
+}
+
+func TestJournalctlCommandUsesSgForPendingGroup(t *testing.T) {
+	cmd := journalctlCommand([]string{"SYSLOG_IDENTIFIER=linuxio-auth", "+", "-n", "25", "--no-pager"}, "systemd-journal")
+
+	want := []string{"sg", "systemd-journal", "-c", `journalctl 'SYSLOG_IDENTIFIER=linuxio-auth' '+' '-n' '25' '--no-pager'`}
+	if !slices.Equal(cmd.Args, want) {
+		t.Fatalf("journalctlCommand() args = %v, want %v", cmd.Args, want)
+	}
+}
+
+func TestJournalctlShellCommandQuotesUnsafeArgs(t *testing.T) {
+	got := journalctlShellCommand([]string{"MESSAGE=can't stop", "-n", "10"})
+	want := `journalctl 'MESSAGE=can'\''t stop' '-n' '10'`
+	if got != want {
+		t.Fatalf("journalctlShellCommand() = %q, want %q", got, want)
+	}
+}
+
+func TestFormatJournalEntryUsesSyslogIdentifier(t *testing.T) {
+	got := formatJournalEntry(`{"__REALTIME_TIMESTAMP":"1700000000000000","SYSLOG_IDENTIFIER":"linuxio-bridge","SYSLOG_PID":"4321","PRIORITY":"6","MESSAGE":"bridge started"}`)
+	if got == "" {
+		t.Fatal("formatJournalEntry returned empty string")
+	}
+	timestamp := time.Unix(0, 1_700_000_000_000_000*1_000).Format("2006/01/02 15:04:05")
+	if want := timestamp + " \033[32m[INFO]\033[0m bridge bridge started"; !strings.Contains(got, want) {
+		t.Fatalf("formatJournalEntry() = %q, want substring %q", got, want)
+	}
+}
+
+func TestFormatJournalEntryPrefersSyslogIdentifierOverUnit(t *testing.T) {
+	got := formatJournalEntry(`{"__REALTIME_TIMESTAMP":"1700000000000000","_SYSTEMD_UNIT":"linuxio-auth@miguelmariz.service","SYSLOG_IDENTIFIER":"linuxio-bridge","SYSLOG_PID":"4321","PRIORITY":"6","MESSAGE":"bridge started"}`)
+	if got == "" {
+		t.Fatal("formatJournalEntry returned empty string")
+	}
+	if want := "\033[32m[INFO]\033[0m bridge bridge started"; !strings.Contains(got, want) {
+		t.Fatalf("formatJournalEntry() = %q, want substring %q", got, want)
+	}
+	if strings.Contains(got, "\033[32m[INFO]\033[0m auth bridge started") {
+		t.Fatalf("formatJournalEntry() = %q, unexpectedly used systemd unit", got)
+	}
+}
+
+func TestFormatJournalEntryIncludesLinuxIOFields(t *testing.T) {
+	got := formatJournalEntry(`{"__REALTIME_TIMESTAMP":"1700000000000000","SYSLOG_IDENTIFIER":"linuxio-webserver","SYSLOG_PID":"4321","PRIORITY":"6","MESSAGE":"auth daemon: bridge spawned","LINUXIO_USER":"miguelmariz","LINUXIO_PRIVILEGED":"true","LINUXIO_VERBOSE":"false"}`)
+	if got == "" {
+		t.Fatal("formatJournalEntry returned empty string")
+	}
+	if want := "auth daemon: bridge spawned [privileged=true user=miguelmariz verbose=false]"; !strings.Contains(got, want) {
+		t.Fatalf("formatJournalEntry() = %q, want substring %q", got, want)
+	}
+}
+
+func TestFormatJournalEntryDoesNotRepeatErrorField(t *testing.T) {
+	got := formatJournalEntry(`{"__REALTIME_TIMESTAMP":"1700000000000000","SYSLOG_IDENTIFIER":"linuxio-bridge","SYSLOG_PID":"4321","PRIORITY":"6","MESSAGE":"NFS server unavailable: exportfs not found","LINUXIO_ERROR":"exportfs not found"}`)
+	if got == "" {
+		t.Fatal("formatJournalEntry returned empty string")
+	}
+	if !strings.HasSuffix(got, "NFS server unavailable: exportfs not found") || strings.Contains(got, "error=") {
+		t.Fatalf("formatJournalEntry() = %q, want the message once without an error= field", got)
+	}
+}
+
+func TestFormatJournalEntryKeepsMultilineMessage(t *testing.T) {
+	got := formatJournalEntry(`{"__REALTIME_TIMESTAMP":"1700000000000000","SYSLOG_IDENTIFIER":"linuxio-bridge","SYSLOG_PID":"4321","PRIORITY":"3","MESSAGE":"route failed: first line\nsecond line","LINUXIO_ERROR":"first line\nsecond line"}`)
+	if want := "route failed: first line\nsecond line"; !strings.HasSuffix(got, want) {
+		t.Fatalf("formatJournalEntry() = %q, want suffix %q", got, want)
+	}
+}
+
+func TestFormatJournalEntryIncludesBridgeRouteFields(t *testing.T) {
+	got := formatJournalEntry(`{"__REALTIME_TIMESTAMP":"1700000000000000","SYSLOG_IDENTIFIER":"linuxio-bridge","SYSLOG_PID":"4321","PRIORITY":"7","MESSAGE":"route completed","LINUXIO_ROUTE":"system.get_timezones","LINUXIO_DURATION":"3.2ms","LINUXIO_ARG_COUNT":"0","LINUXIO_USER":"miguelmariz"}`)
+	if got == "" {
+		t.Fatal("formatJournalEntry returned empty string")
+	}
+	want := `route completed [arg_count=0 duration=3.2ms route=system.get_timezones user=miguelmariz]`
+	if !strings.Contains(got, want) {
+		t.Fatalf("formatJournalEntry() = %q, want substring %q", got, want)
+	}
+}
+
+func TestFormatJournalEntryOmitsHiddenLinuxIOFields(t *testing.T) {
+	got := formatJournalEntry(`{"__REALTIME_TIMESTAMP":"1700000000000000","SYSLOG_IDENTIFIER":"linuxio-auth","SYSLOG_PID":"4321","PRIORITY":"6","MESSAGE":"bridge exec failed","LINUXIO_SESSION_ID":"abc123","LINUXIO_COMPONENT":"auth"}`)
+	if got == "" {
+		t.Fatal("formatJournalEntry returned empty string")
+	}
+	if !strings.Contains(got, "bridge exec failed") {
+		t.Fatalf("formatJournalEntry() = %q, want message preserved", got)
+	}
+	if strings.Contains(got, "abc123") || strings.Contains(got, "component=") {
+		t.Fatalf("formatJournalEntry() = %q, unexpectedly included hidden fields", got)
+	}
+}

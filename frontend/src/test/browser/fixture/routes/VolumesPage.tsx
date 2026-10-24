@@ -3,11 +3,12 @@ import { useState } from "react";
 
 import { linuxio, type DockerVolume } from "@/api";
 import { uiConfigQueryKey } from "@/api/config-query";
+import { ANONYMOUS_USER_ID } from "@/api/user-scope";
 import { RoutedTabActions, RoutedTabLayout } from "@/components/tabbar";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { ConfigContext } from "@/contexts/ConfigContext";
-import { BackgroundTasksActionsContext } from "@/contexts/TasksActionsContext";
-import VolumeList from "@/routes/_authenticated/docker/-components/VolumeList";
+import VolumeList from "@/routes/_authenticated/docker/-components/volumes/VolumeList";
+import { BackgroundTasksActionsContext } from "@/tasks/BackgroundTasksActionsContext";
 
 import "@fontsource-variable/inter/wght.css";
 
@@ -40,7 +41,9 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false, staleTime: Infinity } },
 });
 queryClient.setQueryData(linuxio.docker.list_volumes.queryKey, volumes);
-queryClient.setQueryData(uiConfigQueryKey("anonymous"), { layoutOrders: {} });
+queryClient.setQueryData(uiConfigQueryKey(ANONYMOUS_USER_ID), {
+  layoutOrders: {},
+});
 
 const actions = {
   cancelCompression: () => {},

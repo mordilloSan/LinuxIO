@@ -2,15 +2,19 @@ package datetime
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
+	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
+	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
 )
 
 const (
@@ -49,6 +53,10 @@ type chronyBackend struct {
 	managedPath   string
 	inlineManaged bool
 }
+
+// validNTPServer limits entries to hostnames and IP literals: anything else
+// (whitespace, newlines) would inject directives or options into root-owned config.
+var validNTPServer = regexp.MustCompile(`^[A-Za-z0-9.:\[\]-]{1,253}$`)
 
 var timedateIface = dbusclient.Timedate.Interface(dbusclient.TimedateIface)
 
@@ -120,6 +128,11 @@ func GetNTPServers(ctx context.Context) ([]string, error) {
 }
 
 func SetNTPServers(ctx context.Context, servers []string) error {
+	for _, server := range servers {
+		if !validNTPServer.MatchString(server) {
+			return fmt.Errorf("%w: NTP server %q", bridgeipc.ErrInvalidArgs, server)
+		}
+	}
 	backend, err := selectNTPServerBackend(ctx)
 	if err != nil {
 		return err
@@ -146,10 +159,10 @@ func selectNTPServerBackend(ctx context.Context) (ntpServerBackend, error) {
 
 func detectTimesyncdBackend(ctx context.Context) backendCandidate {
 	score := serviceScore(ctx, []string{"systemd-timesyncd.service"})
-	if utils.FileExists(timesyncdManagedConf) {
+	if fileExists(timesyncdManagedConf) {
 		score = max(score, 150)
 	}
-	if utils.FileExists(timesyncdMainConf) {
+	if fileExists(timesyncdMainConf) {
 		score = max(score, 100)
 	}
 	if score == 0 {
@@ -174,7 +187,7 @@ func detectChronyBackend(ctx context.Context) backendCandidate {
 		mainPath = chronyMainConfCandidates[0]
 	}
 	managedPath, inlineManaged := chronyManagedTarget(mainPath)
-	if utils.FileExists(managedPath) {
+	if fileExists(managedPath) {
 		score = max(score, 160)
 	}
 	return backendCandidate{
@@ -202,14 +215,14 @@ func (timesyncdBackend) GetServers(context.Context) ([]string, error) {
 
 func (timesyncdBackend) SetServers(ctx context.Context, servers []string) error {
 	if len(servers) == 0 {
-		if err := os.Remove(timesyncdManagedConf); err != nil && !os.IsNotExist(err) {
+		if err := os.Remove(timesyncdManagedConf); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
 		return restartFirstService(ctx, []string{"systemd-timesyncd.service"})
 	}
 
 	content := "[Time]\nNTP=" + strings.Join(servers, " ") + "\n"
-	if err := utils.WriteFileAtomic(timesyncdManagedConf, []byte(content), 0o644); err != nil {
+	if err := atomicfile.Write(timesyncdManagedConf, []byte(content), 0o644); err != nil {
 		return err
 	}
 	return restartFirstService(ctx, []string{"systemd-timesyncd.service"})
@@ -245,13 +258,13 @@ func (b chronyBackend) SetServers(ctx context.Context, servers []string) error {
 		return restartFirstService(ctx, chronyServiceCandidates)
 	}
 	if len(servers) == 0 {
-		if err := os.Remove(b.managedPath); err != nil && !os.IsNotExist(err) {
+		if err := os.Remove(b.managedPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
 		return restartFirstService(ctx, chronyServiceCandidates)
 	}
 	content := renderChronyManagedServers(servers)
-	if err := utils.WriteFileAtomic(b.managedPath, []byte(content), 0o644); err != nil {
+	if err := atomicfile.Write(b.managedPath, []byte(content), 0o644); err != nil {
 		return err
 	}
 	return restartFirstService(ctx, chronyServiceCandidates)
@@ -259,19 +272,19 @@ func (b chronyBackend) SetServers(ctx context.Context, servers []string) error {
 
 func (b chronyBackend) writeInlineManagedServers(servers []string) error {
 	data, err := os.ReadFile(b.mainPath)
-	if err != nil && !os.IsNotExist(err) {
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 	lines := strings.Split(string(data), "\n")
 	block := buildChronyManagedBlock(servers)
 	updated := replaceManagedBlock(lines, chronyInlineStartMarker, chronyInlineEndMarker, block)
-	return utils.WriteFileAtomic(b.mainPath, []byte(strings.Join(updated, "\n")), 0o644)
+	return atomicfile.Write(b.mainPath, []byte(strings.Join(updated, "\n")), 0o644)
 }
 
 func parseTimesyncdServers(path string) ([]string, bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return nil, false, nil
 		}
 		return nil, false, err
@@ -301,7 +314,7 @@ func parseTimesyncdServers(path string) ([]string, bool, error) {
 func parseChronyServersFromFile(path string) ([]string, bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return nil, false, nil
 		}
 		return nil, false, err
@@ -313,7 +326,7 @@ func parseChronyServersFromFile(path string) ([]string, bool, error) {
 func parseChronyInlineManagedServers(path string) ([]string, bool, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return nil, false, nil
 		}
 		return nil, false, err
@@ -502,9 +515,14 @@ func restartFirstService(ctx context.Context, candidates []string) error {
 
 func firstExistingPath(candidates []string) (string, bool) {
 	for _, path := range candidates {
-		if utils.FileExists(path) {
+		if fileExists(path) {
 			return path, true
 		}
 	}
 	return "", false
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }

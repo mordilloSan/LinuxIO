@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"slices"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
@@ -41,6 +42,20 @@ func withStoredRunState(jobs []btrfs.BtrfsReplicationJob, job btrfs.BtrfsReplica
 	return job
 }
 
+// CheckBtrfsReplicationHost scans a remote host's keys and, when confirmed, trusts
+// the ones the user approved.
+func CheckBtrfsReplicationHost(ctx context.Context, req apischema.BtrfsSSHTrustRequest) (btrfs.BtrfsSSHTrust, error) {
+	slog.Debug("checking btrfs replication host key", "host", req.Host, "port", req.Port, "confirm", req.Confirm)
+	trust, err := trustBtrfsReplicationHost(ctx, req)
+	if err != nil {
+		return btrfs.BtrfsSSHTrust{}, fmt.Errorf("check btrfs replication host key of %s:%d: %w", req.Host, req.Port, err)
+	}
+	if req.Confirm {
+		slog.Info("btrfs replication host key trusted", "host", req.Host, "port", req.Port)
+	}
+	return trust, nil
+}
+
 // trustBtrfsReplicationHost scans the host keys and, when confirmed, trusts
 // the keys matching the fingerprints the user approved.
 func trustBtrfsReplicationHost(ctx context.Context, req apischema.BtrfsSSHTrustRequest) (btrfs.BtrfsSSHTrust, error) {
@@ -56,4 +71,37 @@ func trustBtrfsReplicationHost(ctx context.Context, req apischema.BtrfsSSHTrustR
 		return btrfs.BtrfsSSHTrust{}, err
 	}
 	return btrfs.BtrfsSSHTrust{Fingerprints: fingerprints}, nil
+}
+
+// SaveBtrfsReplicationJob stores a replication job and returns all jobs.
+func SaveBtrfsReplicationJob(ctx context.Context, job btrfs.BtrfsReplicationJob) ([]btrfs.BtrfsReplicationJob, error) {
+	jobs, err := setBtrfsReplicationJob(ctx, job)
+	if err != nil {
+		return nil, fmt.Errorf("set btrfs replication job %s (%s %s): %w", job.ID, job.UUID, job.Path, err)
+	}
+	slog.Info("btrfs replication job set", "id", job.ID, "uuid", job.UUID, "path", job.Path, "target", job.Target.Kind)
+	return jobs, nil
+}
+
+// DeleteBtrfsReplicationJob removes a replication job and returns the rest.
+func DeleteBtrfsReplicationJob(ctx context.Context, id string) ([]btrfs.BtrfsReplicationJob, error) {
+	jobs, err := updateBtrfsReplicationJobs(ctx, func(jobs *[]btrfs.BtrfsReplicationJob) error {
+		*jobs = btrfs.DeleteJob(*jobs, id)
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("delete btrfs replication job %s: %w", id, err)
+	}
+	slog.Info("btrfs replication job deleted", "id", id)
+	return jobs, nil
+}
+
+// EnsureBtrfsReplicationSSHKey returns the replication public key, creating
+// the key pair on first use.
+func EnsureBtrfsReplicationSSHKey(ctx context.Context) (btrfs.BtrfsSSHKey, error) {
+	pub, err := btrfs.EnsureSSHKey(ctx)
+	if err != nil {
+		return btrfs.BtrfsSSHKey{}, fmt.Errorf("prepare btrfs replication ssh key: %w", err)
+	}
+	return btrfs.BtrfsSSHKey{PublicKey: pub}, nil
 }

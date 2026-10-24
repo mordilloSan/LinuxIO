@@ -9,14 +9,14 @@ import {
 } from "react";
 
 import { linuxio, type WireGuardInterface, useCallMutation } from "@/api";
-import WireguardInterfaceCard from "@/components/cards/WireguardInterfaceCard";
-import type { WireguardInterfaceAction } from "@/components/cards/WireguardInterfaceCard";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
-import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
+import { useReorderableSurface } from "@/components/reorder/useReorderableSurface";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
-import { useReorderableSurface } from "@/hooks/useReorderableSurface";
+import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/overlay";
 import { useScopedToast } from "@/hooks/useScopedToast";
+import type { WireguardInterfaceAction } from "@/routes/_authenticated/network/-components/wireguard/WireguardInterfaceCard";
+import WireguardInterfaceCard from "@/routes/_authenticated/network/-components/wireguard/WireguardInterfaceCard";
 import {
   CARD_GRID_SIZE_STANDARD,
   EASING_DECELERATE,

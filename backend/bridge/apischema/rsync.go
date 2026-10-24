@@ -16,13 +16,13 @@ type RsyncSaveRequest struct {
 }
 
 type RsyncStatus struct {
-	Config  *RsyncConfig `json:"config,omitempty"`
+	Config  *RsyncConfig `json:"config,omitzero"`
 	Active  bool         `json:"active"`
 	Enabled bool         `json:"enabled"`
 	// SSHReady reports whether TOS's encryption mode can use the module: the
 	// daemon is running and /etc/rsyncd.conf links to the LinuxIO configuration.
 	SSHReady bool    `json:"ssh_ready"`
-	SSHError *string `json:"ssh_error,omitempty"`
+	SSHError *string `json:"ssh_error,omitzero"`
 }
 
 type RsyncSSHRequest struct {
@@ -34,5 +34,5 @@ type RsyncSSHRequest struct {
 type RsyncSSHStatus struct {
 	Available bool    `json:"available"`
 	Port      int     `json:"port"`
-	Error     *string `json:"error,omitempty"`
+	Error     *string `json:"error,omitzero"`
 }

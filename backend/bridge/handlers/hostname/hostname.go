@@ -3,7 +3,7 @@ package hostname
 import (
 	"context"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
+	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
 )
 
 var hostnameIface = dbusclient.Hostname.Interface(dbusclient.HostnameIface)

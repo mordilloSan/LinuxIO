@@ -1,0 +1,22 @@
+/* Text wrapping for table cells and detail panels. The phone-width font size
+   is a media query, which an inline style cannot express, so these are classes.
+   The doubled selector outranks the single-class font-size AppTypography's
+   variant sets. */
+.wrap-text-responsive {
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.wrap-text-long {
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  max-width: 100%;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 599.95px) {
+  .wrap-text-responsive.wrap-text-responsive,
+  .wrap-text-long.wrap-text-long {
+    font-size: 0.75rem;
+  }
+}

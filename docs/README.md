@@ -20,7 +20,7 @@ its plan lands.
 | [Handler Patterns](./bridge_handler_patterns.md) | Handler package style: `handlers.go` layout, context propagation, logging, naming, validation. |
 | [Privilege Pattern](./privilege_pattern.md) | How to decide and declare privileged routes. |
 | [Capabilities](./capabilities.md) | Detecting optional host tooling, gating features/routes on it, and the UI install flow. |
-| [Assistant](./assistant.md) | The ACP agent relay behind the Assistant page: launch table, login flow, and what LinuxIO deliberately does not store. |
+| [AI Assistant](./AI-assistant.md) | The ACP agent relay behind the Assistant page: launch table, login flow, and what LinuxIO deliberately does not store. |
 | [Process & Systemd Architecture](./process-systemd-architecture.md) | LinuxIO processes and helpers, systemd socket activation, `linuxio.target`, and privilege separation. |
 | [Filesystem Indexer](./indexer.md) | Architecture, operation, bridge and daemon APIs, configuration, recovery, and administration. |
 | [Monitoring Daemon](./monitoring.md) | Trust boundary and sockets, installed files, sampling semantics, HTTP API and plugin allowlists, configuration, capability, and troubleshooting. |
@@ -35,9 +35,11 @@ its plan lands.
 | [Alerts](./alerts.md) | The file-backed alert store, who raises alerts and how, the `linuxio alert` CLI, bridge routes, the navbar bell, and what is deliberately not built (no email or webhook delivery). |
 | [Automatic Updates](./automatic-updates.md) | Per-distribution automatic-update providers, the systemd timers LinuxIO manages, and how the backend selects a provider from `/etc/os-release`. |
 | [Btrfs](./btrfs.md) | The Storage → Snapshots tab and pool details: top-level access, snapshot layout, rollback steps and leftovers, the hourly snapshot timer and retention, pre-update snapshots, device operations, replication over SSH, quotas and compression, files written on the host, and what is refused. |
-| [Scheduled Scripts](./scheduled-execution.md) | Script scheduling through systemd, execution accounts, task controls, and retained journal logs. |
+| [Rsync Backups](./rsync-backups.md) | Read-only rsync module (plain or over SSH) that TerraMaster TOS pulls from, and what the backup does and does not cover. |
+| [Scheduled Scripts](./TODO/scheduled-execution.md) | Script scheduling through systemd, execution accounts, task controls, and retained journal logs. |
 | [Storage Topology](./storage-topology.md) | Block-device and mount inventory, application path relationships, live activity, and interpretation limits. |
 | [VM Bridge Networking](./vm-bridge-networking.md) | Attaching VMs to host bridges, spare-NIC and host-IP bridge setup through Netplan/NetworkManager, the Docker libvirt hook, and what is deliberately not automated. |
+| [VM Templates](./vm-templates.md) | The VMs → Templates manager: preset images, on-disk template layout, and version metadata. |
 
 ## Frontend
 
@@ -46,6 +48,5 @@ its plan lands.
 | [Frontend Task State](./frontend-task-state-unification.md) | Task cache ownership, subscriptions, recovery, lifecycle cleanup, and validation. |
 | [Dialog Styling](./dialog-styling.md) | Shared dialog typography, surfaces, form spacing, actions and visual checks. |
 | [TanStack Router](./tanstack-router.md) | Canonical routing guide: file conventions, where loaders and guards go, search validation, child-route tabs, error/pending defaults, and adding a route. |
-| [React Activity and Effects](./react-activity.md) | Retained UI, terminal and console ownership, Effect cleanup, and audit resolutions. |
 | [Table Row Gestures](./table-row-gestures.md) | The one row-interaction contract for every data table: click, long press, double click, Escape; which props opt a table in, and why column defs must be stable. |
 | [Docker Icons](./docker-icons.md) | Docker icon resolution and labels. |

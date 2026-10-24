@@ -27,8 +27,9 @@ func ListVMs(ctx context.Context) ([]apischema.VirtualMachine, error) {
 			}
 			out = append(out, vm)
 		}
-		enrichBridgeAddresses(ctx, conn, domains, out)
 		enrichMetrics(conn, domains, out)
+		// Last: a slow guest-agent lookup closes the shared transport on timeout.
+		enrichBridgeAddresses(ctx, conn, domains, out)
 		return nil
 	})
 	if out == nil {
@@ -50,8 +51,9 @@ func GetVM(ctx context.Context, name string) (apischema.VirtualMachine, error) {
 		vm, err = virtualMachineFromDomain(conn, domain)
 		if err == nil {
 			vms := []apischema.VirtualMachine{vm}
-			enrichBridgeAddresses(ctx, conn, []libvirt.Domain{domain}, vms)
 			enrichMetrics(conn, []libvirt.Domain{domain}, vms)
+			// Last: a slow guest-agent lookup closes the shared transport on timeout.
+			enrichBridgeAddresses(ctx, conn, []libvirt.Domain{domain}, vms)
 			vm = vms[0]
 		}
 		return err
@@ -65,7 +67,7 @@ func lookupDomain(conn libvirtConn, name string) (libvirt.Domain, error) {
 	case err == nil:
 		return domain, nil
 	case isDomainMissing(err):
-		return libvirt.Domain{}, notFoundf("VM %q not found", name)
+		return libvirt.Domain{}, notFoundf("VM %q", name)
 	default:
 		return libvirt.Domain{}, fmt.Errorf("look up VM %q: %w", name, err)
 	}

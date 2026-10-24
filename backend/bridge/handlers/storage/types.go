@@ -37,11 +37,12 @@ type vgsReport struct {
 type lvsReport struct {
 	Report []struct {
 		LV []struct {
-			LVName string `json:"lv_name"`
-			VGName string `json:"vg_name"`
-			LVSize string `json:"lv_size"`
-			LVPath string `json:"lv_path"`
-			LVAttr string `json:"lv_attr"`
+			LVName   string `json:"lv_name"`
+			VGName   string `json:"vg_name"`
+			LVSize   string `json:"lv_size"`
+			LVPath   string `json:"lv_path"`
+			LVDMPath string `json:"lv_dm_path"`
+			LVAttr   string `json:"lv_attr"`
 		} `json:"lv"`
 	} `json:"report"`
 }

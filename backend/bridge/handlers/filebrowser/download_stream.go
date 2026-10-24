@@ -8,10 +8,12 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"syscall"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/streamrelay"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
@@ -53,7 +55,7 @@ func streamFileDownload(parent context.Context, stream net.Conn, req apischema.P
 
 func openDownloadFile(requestPath string) (*os.File, int64, error) {
 	if requestPath == "" {
-		return nil, 0, bridgeipc.NewError("missing file path", 400)
+		return nil, 0, fmt.Errorf("%w: missing file path", bridgeipc.ErrInvalidArgs)
 	}
 
 	root, err := fsroot.Open()
@@ -63,12 +65,10 @@ func openDownloadFile(requestPath string) (*os.File, int64, error) {
 	defer root.Close()
 
 	cleanPath := filepath.Clean(requestPath)
-	file, err := root.Root.Open(fsroot.ToRel(cleanPath))
+	// O_NONBLOCK keeps a FIFO from blocking the open; it is rejected below.
+	file, err := root.Root.OpenFile(fsroot.ToRel(cleanPath), os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, 0, bridgeipc.NewError("file not found", 404)
-		}
-		return nil, 0, fmt.Errorf("open file: %w", err)
+		return nil, 0, fsError("open file", err)
 	}
 	stat, err := file.Stat()
 	if err != nil {
@@ -77,7 +77,11 @@ func openDownloadFile(requestPath string) (*os.File, int64, error) {
 	}
 	if stat.IsDir() {
 		file.Close()
-		return nil, 0, bridgeipc.NewError("path is a directory, use archive download instead", 400)
+		return nil, 0, fmt.Errorf("%w: path is a directory, use archive download instead", bridgeipc.ErrInvalidArgs)
+	}
+	if !stat.Mode().IsRegular() {
+		file.Close()
+		return nil, 0, fmt.Errorf("%w: path is not a regular file", bridgeipc.ErrInvalidArgs)
 	}
 	return file, stat.Size(), nil
 }
@@ -97,7 +101,7 @@ func copyDownloadFile(ctx context.Context, stream net.Conn, file io.Reader) erro
 				return err
 			}
 		}
-		if readErr == io.EOF {
+		if errors.Is(readErr, io.EOF) {
 			return nil
 		}
 		if readErr != nil {
@@ -107,10 +111,5 @@ func copyDownloadFile(ctx context.Context, stream net.Conn, file io.Reader) erro
 }
 
 func writeFileDownloadError(stream net.Conn, err error) error {
-	code := 500
-	var bridgeErr *bridgeipc.Error
-	if errors.As(err, &bridgeErr) && bridgeErr.Code != 0 {
-		code = bridgeErr.Code
-	}
-	return relay.WriteResultErrorAndClose(stream, 0, err.Error(), code)
+	return streamrelay.WriteError(stream, 0, err)
 }

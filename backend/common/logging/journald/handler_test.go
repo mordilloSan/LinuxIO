@@ -2,6 +2,7 @@ package journald
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"testing"
@@ -51,6 +52,43 @@ func TestHandlerMapsLevelIdentifierAndAppFields(t *testing.T) {
 	}
 	if got["LINUXIO_PRIVILEGED"] != "true" {
 		t.Fatalf("privileged field = %q", got["LINUXIO_PRIVILEGED"])
+	}
+}
+
+func TestHandlerAppendsErrorToMessage(t *testing.T) {
+	sender := &mockSender{}
+	handler, err := NewHandler(Options{Identifier: "linuxio-bridge", FieldPrefix: "LINUXIO", Sender: sender})
+	if err != nil {
+		t.Fatalf("NewHandler: %v", err)
+	}
+	logger := slog.New(handler)
+
+	tests := []struct {
+		name      string
+		log       func()
+		message   string
+		wantField string
+		hasField  bool
+	}{
+		{"error", func() { logger.Error("route failed", "error", errors.New("boom")) }, "route failed: boom", "boom", true},
+		{"multiline", func() { logger.Error("route failed", "error", errors.New("a\nb")) }, "route failed: a\nb", "a\nb", true},
+		{"nil", func() { logger.Error("route failed", "error", nil) }, "route failed", "", false},
+		{"empty", func() { logger.Error("route failed", "error", "") }, "route failed", "", true},
+		{"with", func() { logger.With("error", errors.New("boom")).Error("route failed") }, "route failed: boom", "boom", true},
+		{"other key", func() { logger.Error("route failed", "reason", errors.New("boom")) }, "route failed", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.log()
+			got := fieldMap(sender.fields)
+			if got["MESSAGE"] != tt.message {
+				t.Fatalf("MESSAGE = %q, want %q", got["MESSAGE"], tt.message)
+			}
+			value, ok := got["LINUXIO_ERROR"]
+			if ok != tt.hasField || value != tt.wantField {
+				t.Fatalf("LINUXIO_ERROR = %q (present %v), want %q (present %v)", value, ok, tt.wantField, tt.hasField)
+			}
+		})
 	}
 }
 

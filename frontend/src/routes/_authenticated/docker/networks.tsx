@@ -4,7 +4,7 @@ import { linuxio } from "@/api";
 import { loadRouteQueries } from "@/routes/-loader";
 import { optionalString } from "@/routes/-search";
 
-import DockerNetworksPage from "./-components/DockerNetworksPage";
+import DockerNetworksPage from "./-components/networks/DockerNetworksPage";
 
 export const Route = createFileRoute("/_authenticated/docker/networks")({
   validateSearch: (search) => ({

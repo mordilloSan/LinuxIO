@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { LinuxIOError } from "@/api/errors";
 import type { Stream } from "@/api/StreamMultiplexer";
 
 const muxMocks = vi.hoisted(() => ({
@@ -30,7 +31,7 @@ vi.mock("@/api/stream-helpers", () => ({
   waitForStreamResult: streamHelperMocks.waitForStreamResult,
 }));
 
-const { LinuxIOError, ensureLoaderRequestReady, request } =
+const { ensureLoaderRequestReady, request } =
   await import("@/api/linuxio-core");
 
 function createStream(overrides: Partial<Stream> = {}): Stream {

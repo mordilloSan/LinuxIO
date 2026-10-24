@@ -7,28 +7,20 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
 )
 
 // execCommand is swapped by tests so no real command runs.
 var execCommand = exec.CommandContext
 
-// searchDirs are consulted when a command is not on PATH; btrfs and mount
-// usually live in /usr/sbin or /sbin, which the service environment may omit.
-var searchDirs = []string{"/usr/sbin", "/sbin", "/usr/bin", "/bin"}
+// searchDirs is the fallback list findCommand uses after PATH; a var so tests
+// can add fake executables.
+var searchDirs = hostcmd.SearchDirs
 
 func findCommand(name string) (string, error) {
-	if path, err := exec.LookPath(name); err == nil {
-		return path, nil
-	}
-	for _, dir := range searchDirs {
-		path := filepath.Join(dir, name)
-		if info, err := os.Stat(path); err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
-			return path, nil
-		}
-	}
-	return "", exec.ErrNotFound
+	return hostcmd.LookPathIn(name, searchDirs)
 }
 
 // run executes btrfs with args and returns trimmed stdout.

@@ -2,9 +2,9 @@ import { useSuspenseQueries, useSuspenseQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { CACHE_TTL_MS, type HostInfo, linuxio } from "@/api";
-import DashboardCard from "@/components/cards/DashboardCard";
 import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
 import { getDistroIcon } from "@/icons/distro";
+import DashboardCard from "@/routes/_authenticated/-dashboard/DashboardCard";
 
 import DashboardStatRows from "./DashboardStatRows";
 import SetDateTimeDialog from "./SetDateTimeDialog";

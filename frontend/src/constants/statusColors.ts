@@ -52,6 +52,20 @@ export const getServiceStatusColor = (activeState: string): string => {
   }
 };
 
+export const getVMStatusColor = (state: string): string => {
+  switch (state) {
+    case "running":
+      return SEMANTIC_STATUS_COLORS.success;
+    case "paused":
+    case "pmsuspended":
+      return SEMANTIC_STATUS_COLORS.warning;
+    case "crashed":
+      return SEMANTIC_STATUS_COLORS.danger;
+    default:
+      return SEMANTIC_STATUS_COLORS.neutral;
+  }
+};
+
 export const getLogPriorityAccent = (priorityColor: string): string => {
   switch (priorityColor) {
     case "error":

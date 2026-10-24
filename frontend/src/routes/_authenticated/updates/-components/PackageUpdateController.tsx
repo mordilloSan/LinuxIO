@@ -1,6 +1,6 @@
 import { createContext, useContext, type ReactNode } from "react";
 
-import { usePackageUpdater } from "@/hooks/usePackageUpdater";
+import { usePackageUpdater } from "@/routes/_authenticated/updates/-hooks/usePackageUpdater";
 
 type PackageUpdateController = ReturnType<typeof usePackageUpdater>;
 

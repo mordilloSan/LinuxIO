@@ -2,7 +2,7 @@ package btrfs
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -13,10 +13,12 @@ import (
 	"strings"
 	"time"
 	"uuid"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 // ReplicationPath is the root-owned replication job file. Tests may override it.
-var ReplicationPath = "/etc/linuxio/btrfs-replication.json"
+var ReplicationPath = version.ConfigDir + "/btrfs-replication.json"
 
 // Replication target kinds.
 const (
@@ -46,7 +48,7 @@ type BtrfsReplicationTarget struct {
 	Path string `json:"path"`
 	Host string `json:"host,omitempty"`
 	User string `json:"user,omitempty"`
-	Port int    `json:"port,omitempty"`
+	Port int    `json:"port,omitzero"`
 }
 
 // BtrfsReplicationJob sends the snapshots of one subvolume, identified by
@@ -59,8 +61,8 @@ type BtrfsReplicationJob struct {
 	KeepOnTarget int                    `json:"keepOnTarget"`
 	Enabled      bool                   `json:"enabled"`
 	After        string                 `json:"after"`
-	LastRun      *time.Time             `json:"lastRun,omitempty"`
-	LastError    *string                `json:"lastError,omitempty"`
+	LastRun      *time.Time             `json:"lastRun,omitzero"`
+	LastError    *string                `json:"lastError,omitzero"`
 }
 
 type jobsDocument struct {

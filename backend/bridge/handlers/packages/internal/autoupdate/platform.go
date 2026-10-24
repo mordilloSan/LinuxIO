@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/osrelease"
 )
 
 type hostPlatform struct {
@@ -21,23 +23,8 @@ func readPlatform(readFile func(string) ([]byte, error), path string) (hostPlatf
 }
 
 func parsePlatform(data []byte) hostPlatform {
-	values := make(map[string]string)
-	for line := range strings.SplitSeq(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		key, value, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		values[key] = strings.ToLower(strings.Trim(strings.TrimSpace(value), `"'`))
-	}
-	majorText, _, _ := strings.Cut(values["VERSION_ID"], ".")
+	info := osrelease.Parse(data)
+	majorText, _, _ := strings.Cut(info["VERSION_ID"], ".")
 	major, _ := strconv.Atoi(majorText)
-	return hostPlatform{
-		ID:           values["ID"],
-		IDLike:       strings.Fields(values["ID_LIKE"]),
-		VersionMajor: major,
-	}
+	return hostPlatform{ID: info.ID(), IDLike: info.IDLike(), VersionMajor: major}
 }

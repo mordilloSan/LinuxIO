@@ -1,7 +1,7 @@
 package system
 
 import (
-	"encoding/json"
+	"encoding/json/v2"
 	"testing"
 )
 
@@ -26,6 +26,19 @@ func TestUint8SliceMarshalJSONEncodesNilAsNull(t *testing.T) {
 	const want = `null`
 	if string(got) != want {
 		t.Fatalf("json.Marshal(nil Uint8Slice) = %s, want %s", got, want)
+	}
+}
+
+func TestUint8SliceUnmarshalJSONReadsNumericArray(t *testing.T) {
+	var got Uint8Slice
+	if err := json.Unmarshal([]byte(`[0,87,100]`), &got); err != nil {
+		t.Fatal(err)
+	}
+	if want := (Uint8Slice{0, 87, 100}); string(got) != string(want) {
+		t.Fatalf("Unmarshal = %v, want %v", got, want)
+	}
+	if err := json.Unmarshal([]byte(`[256]`), &got); err == nil {
+		t.Fatal("Unmarshal([256]) succeeded, want overflow error")
 	}
 }
 

@@ -2,6 +2,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 
+import type { ConfigContextType, EffectiveAppSettings } from "@/api";
 import { ConfigContext } from "@/contexts/ConfigContext";
 import {
   useConfig,
@@ -16,7 +17,6 @@ import {
   renderHook,
   seedConfigCache,
 } from "@/test/render";
-import type { ConfigContextType, EffectiveAppSettings } from "@/types/config";
 
 function wrapper(
   overrides: Partial<ConfigContextType> = {},

@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent } from "react";
 
-import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
+import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/overlay";
 
 /** Clear page selection after overlays and closer keyboard handlers have priority. */
 export function useClearSelectionOnEscape(

@@ -2,9 +2,11 @@ import { useSuspenseQueries, useSuspenseQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
 import { CACHE_TTL_MS, linuxio, type MonitoringLive } from "@/api";
-import DashboardCard, { CardBadge } from "@/components/cards/DashboardCard";
 import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
 import { useCapability } from "@/hooks/useCapabilities";
+import DashboardCard, {
+  CardBadge,
+} from "@/routes/_authenticated/-dashboard/DashboardCard";
 
 import DashboardStatRows from "./DashboardStatRows";
 import ProcessorGraph from "./ProcessorGraph";

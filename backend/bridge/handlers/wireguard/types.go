@@ -1,10 +1,5 @@
 package wireguard
 
-import (
-	"net"
-)
-
-// --- Constants ---
 const (
 	configExt        = ".conf"
 	defaultKeepalive = 25
@@ -12,8 +7,6 @@ const (
 )
 
 var wgConfigDir = "/etc/wireguard"
-
-// --- Types ---
 
 type PeerConfig struct {
 	PublicKey           string   `json:"public_key"`
@@ -41,6 +34,9 @@ type WireGuardConfig struct {
 	PreDown    []string     `json:"pre_down"`
 	PostDown   []string     `json:"post_down"`
 	Peers      []PeerConfig `json:"peers"`
+	// Extra holds [Interface] keys LinuxIO does not model (Table, FwMark,
+	// SaveConfig, DNS, ...), in file order, so rewrites keep them.
+	Extra [][2]string `json:"-"`
 }
 
 type PeerInfo struct {
@@ -54,11 +50,4 @@ type PeerInfo struct {
 	RxBps             float64 `json:"rx_bps"` // bytes per second
 	TxBps             float64 `json:"tx_bps"` // bytes per second
 	runtimeStatsKnown bool
-}
-
-type ipManager struct {
-	netBase    net.IP
-	serverHost int
-	maskBits   int // subnet mask size (e.g., 24 for /24)
-	maxHost    int // maximum host number based on mask
 }

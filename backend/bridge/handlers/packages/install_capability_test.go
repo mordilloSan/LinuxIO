@@ -11,14 +11,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
-	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/capabilities"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 func TestCapabilityInstallReporterOmitsOutputRecords(t *testing.T) {
-	registry := bridgetask.NewTaskService()
-	task, err := registry.Create("system.install_capability", nil)
+	registry := bridgeipc.NewTaskService()
+	task, _, err := registry.ClaimForOwnerWithIdentity("system.install_capability", nil, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
@@ -44,7 +44,7 @@ func TestCapabilityInstallReporterOmitsOutputRecords(t *testing.T) {
 	}
 }
 
-func lastInstallProgress(t *testing.T, task *bridgetask.Task) InstallCapabilityProgress {
+func lastInstallProgress(t *testing.T, task *bridgeipc.Task) InstallCapabilityProgress {
 	t.Helper()
 	progress := task.Snapshot().Progress
 	if progress == nil {
@@ -166,6 +166,38 @@ func TestRunCapabilityCommandHonorsCancellation(t *testing.T) {
 	}
 }
 
+func TestRunCapabilityProcessCancelStopsPipeHoldingChild(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "sh", "-c", "echo started; sleep 30 & wait")
+	seen := make(chan struct{})
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- runCapabilityProcess(ctx, cmd, "sh", func(InstallCapabilityOutput) {
+			select {
+			case <-seen:
+			default:
+				close(seen)
+			}
+		})
+	}()
+
+	select {
+	case <-seen:
+		cancel()
+	case <-time.After(2 * time.Second):
+		t.Fatal("command did not produce output")
+	}
+	select {
+	case err := <-errCh:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("error = %v, want context.Canceled", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("canceled command did not exit while a child held the pipes")
+	}
+}
+
 func TestInstallCapabilityInstallsAvahiNSSBeforeServiceActions(t *testing.T) {
 	originalFamily := capabilityDistroFamily
 	originalPackage := capabilityInstallPackage
@@ -210,7 +242,7 @@ func TestInstallCapabilityInstallsAvahiNSSBeforeServiceActions(t *testing.T) {
 				order = append(order, "wait:"+service)
 				return nil
 			}
-			capabilityDetectWithRetry = func(_ context.Context, spec system.CapabilitySpec, _ session.User, _ time.Duration) (bool, string) {
+			capabilityDetectWithRetry = func(_ context.Context, spec capabilities.CapabilitySpec, _ session.User, _ time.Duration) (bool, string) {
 				order = append(order, "detect:"+spec.Name)
 				return true, ""
 			}
@@ -272,13 +304,13 @@ func TestInstallCapabilityContinuesAvahiWhenRHELNSSIsUnavailable(t *testing.T) {
 		order = append(order, "wait:"+service)
 		return nil
 	}
-	capabilityDetectWithRetry = func(_ context.Context, spec system.CapabilitySpec, _ session.User, _ time.Duration) (bool, string) {
+	capabilityDetectWithRetry = func(_ context.Context, spec capabilities.CapabilitySpec, _ session.User, _ time.Duration) (bool, string) {
 		order = append(order, "detect:"+spec.Name)
 		return true, ""
 	}
 
-	registry := bridgetask.NewTaskService()
-	task, err := registry.Create("system.install_capability", nil)
+	registry := bridgeipc.NewTaskService()
+	task, _, err := registry.ClaimForOwnerWithIdentity("system.install_capability", nil, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
@@ -327,7 +359,7 @@ func TestInstallOptionalCapabilityPackageUsesGenericFallbackWarning(t *testing.T
 		nil,
 		"rhel",
 		"Example capability",
-		&system.InstallSpec{OptionalPackageRHEL: "example-extra"},
+		&capabilities.InstallSpec{OptionalPackageRHEL: "example-extra"},
 	)
 	if err != nil {
 		t.Fatalf("installOptionalCapabilityPackage: %v", err)
@@ -337,12 +369,12 @@ func TestInstallOptionalCapabilityPackageUsesGenericFallbackWarning(t *testing.T
 	}
 }
 
-func assertOptionalPackageWarningProgress(t *testing.T, replay []bridgetask.TaskEvent) {
+func assertOptionalPackageWarningProgress(t *testing.T, replay []bridgeipc.TaskEvent) {
 	t.Helper()
 	var lastPercentage *int
 	warningOutput := false
 	for _, event := range replay {
-		progress, ok := event.Progress.(bridgetask.TaskProgress)
+		progress, ok := event.Progress.(bridgeipc.TaskProgress)
 		if !ok {
 			continue
 		}
@@ -365,7 +397,7 @@ func assertOptionalPackageWarningProgress(t *testing.T, replay []bridgetask.Task
 
 func specOptionalRHELWarning(t *testing.T, name string) string {
 	t.Helper()
-	spec, ok := system.CapabilitySpecByName(name)
+	spec, ok := capabilities.CapabilitySpecByName(name)
 	if !ok || spec.Install == nil {
 		t.Fatalf("capability %q has no install specification", name)
 	}
@@ -395,7 +427,7 @@ func TestInstallCapabilityRunsSensorsDetectBeforeRedetection(t *testing.T) {
 		order = append(order, "post-install:"+name)
 		return originalLookPath(name)
 	}
-	capabilityDetectWithRetry = func(_ context.Context, spec system.CapabilitySpec, _ session.User, _ time.Duration) (bool, string) {
+	capabilityDetectWithRetry = func(_ context.Context, spec capabilities.CapabilitySpec, _ session.User, _ time.Duration) (bool, string) {
 		order = append(order, "detect:"+spec.Name)
 		return true, ""
 	}

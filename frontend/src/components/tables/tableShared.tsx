@@ -30,6 +30,8 @@ import {
   type ReactNode,
 } from "react";
 
+import { REORDER_HOLD_MS } from "@/components/reorder/constants";
+import type { ReorderableSurfaceDndProps } from "@/components/reorder/useReorderableSurface";
 import { appTableFeatures } from "@/components/tables/AppVirtualTable.types";
 import type {
   AppVirtualTableBreakpoint,
@@ -42,16 +44,14 @@ import {
   clickTargetsRowBody,
   targetIsRowControl,
 } from "@/components/tables/rowInteraction";
-import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip, {
   AppTooltipSuppressionContext,
 } from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
-import { REORDER_HOLD_MS } from "@/constants/reorder";
-import type { ReorderableSurfaceDndProps } from "@/hooks/useReorderableSurface";
+import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/overlay";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { ChevronDownIcon } from "@/icons/svg";
-import { useAppMediaQuery } from "@/theme";
 import { down } from "@/theme/breakpoints";
 import {
   EASING_STANDARD_CSS,
@@ -212,7 +212,7 @@ export function TableExpandCell({
   );
 }
 
-export interface AppTableHeaderProps<TData extends RowData> {
+interface AppTableHeaderProps<TData extends RowData> {
   hasDragColumn: boolean;
   hasExpandColumn: boolean;
   headerGroups: HeaderGroup<AppTableFeatures, TData>[];
@@ -317,7 +317,7 @@ export type AppTableDensity = "comfortable" | "compact" | "dense";
 export const getTableRowMinHeight = (density: AppTableDensity) =>
   density === "dense" ? TABLE_DENSE_ROW_MIN_HEIGHT : TABLE_ROW_MIN_HEIGHT;
 
-export interface AppTableShellProps {
+interface AppTableShellProps {
   ariaLabel: string;
   children: ReactNode;
   className?: string;
@@ -436,7 +436,7 @@ function persistableExpanded(expanded: ExpandedState): Record<string, true> {
   return next;
 }
 
-export interface UseAppTableInstanceOptions<TData extends RowData, TDnd> {
+interface UseAppTableInstanceOptions<TData extends RowData, TDnd> {
   columns: AppVirtualTableColumnDef<TData>[];
   data: TData[] | null | undefined;
   dnd?: TDnd;
@@ -475,10 +475,10 @@ export function useAppTableInstance<TData extends RowData, TDnd>({
   renderExpandedContent,
   sorting,
 }: UseAppTableInstanceOptions<TData, TDnd>) {
-  const belowSm = useAppMediaQuery(down("sm"));
-  const belowMd = useAppMediaQuery(down("md"));
-  const belowLg = useAppMediaQuery(down("lg"));
-  const belowXl = useAppMediaQuery(down("xl"));
+  const belowSm = useMediaQuery(down("sm"));
+  const belowMd = useMediaQuery(down("md"));
+  const belowLg = useMediaQuery(down("lg"));
+  const belowXl = useMediaQuery(down("xl"));
   // The lazy initializer reads storage once, so the key is fixed for the
   // life of the table — a key that changes identity mid-flight is a bug at
   // the call site, not a supported way to swap stores.

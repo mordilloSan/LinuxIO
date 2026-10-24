@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -9,7 +10,6 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 const directoryReadBatchSize = 128
@@ -131,7 +131,7 @@ func openDirectoryForRead(ctx context.Context, path string) (*fsroot.FSRoot, *os
 		return nil, nil, "", fmt.Errorf("path is not a directory: %s: %w", path, os.ErrInvalid)
 	}
 
-	dir, err := root.Root.Open(fsroot.ToRel(utils.CleanAbsPath(cleanPath)))
+	dir, err := root.Root.Open(fsroot.ToRel(fsroot.CleanAbsPath(cleanPath)))
 	if err != nil {
 		root.Close()
 		return nil, nil, "", err
@@ -153,7 +153,7 @@ func readDirectoryEntries(ctx context.Context, root *fsroot.FSRoot, dir *os.File
 				return err
 			}
 		}
-		if readErr == io.EOF {
+		if errors.Is(readErr, io.EOF) {
 			return nil
 		}
 		if readErr != nil {

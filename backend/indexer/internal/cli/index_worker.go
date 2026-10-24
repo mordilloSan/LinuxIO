@@ -10,8 +10,9 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/common/logging"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
-	"github.com/mordilloSan/LinuxIO/backend/indexer/daemon"
 	"github.com/mordilloSan/LinuxIO/backend/indexer/internal/configfile"
+	"github.com/mordilloSan/LinuxIO/backend/indexer/internal/daemon"
+	"github.com/mordilloSan/LinuxIO/backend/indexer/internal/storage"
 )
 
 func runIndexMode(args []string) int {
@@ -21,17 +22,17 @@ func runIndexMode(args []string) int {
 		return flagParseExitCode(err)
 	}
 	if fs.NArg() != 0 {
-		return writeError(fs.Output(), "index worker does not accept arguments\n")
+		return writeUsageError(fs.Output(), "index worker does not accept arguments\n")
 	}
 
 	if err := logging.Configure("linuxio-indexer", false); err != nil {
 		return writeError(os.Stderr, "linuxio-indexer: initialize logging: "+err.Error()+"\n")
 	}
-	slog.Info("indexer starting", "version", version.Version, "mode", "index-worker")
+	slog.Debug("indexer starting", "version", version.Version, "mode", "index-worker")
 
 	fileCfg, err := configfile.Load(*configPath)
 	if err != nil {
-		slog.Error("failed to load config", "config_file", *configPath, "err", err)
+		slog.Error("failed to load config", "config_file", *configPath, "error", err)
 		return 1
 	}
 
@@ -41,11 +42,11 @@ func runIndexMode(args []string) int {
 	stats, err := daemon.RunIndexMode(
 		ctx,
 		fileCfg,
-		configfile.DefaultDBPath,
+		storage.DefaultDBPath,
 		wire,
 	)
 	if err != nil {
-		slog.Error("index failed", "err", err)
+		slog.Error("index failed", "error", err)
 		return 1
 	}
 	wire.Summary(stats)

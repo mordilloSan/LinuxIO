@@ -3,7 +3,6 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { linuxio, useCallMutation, type BtrfsCompression } from "@/api";
-import BtrfsMaintenanceControls from "@/components/cards/BtrfsMaintenanceControls";
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppAlert from "@/components/ui/AppAlert";
@@ -17,6 +16,7 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import InfoRow from "@/components/ui/InfoRow";
 import { useCapability } from "@/hooks/useCapabilities";
+import BtrfsMaintenanceControls from "@/routes/_authenticated/storage/-components/btrfs/BtrfsMaintenanceControls";
 
 import { BTRFS_POOL_TOAST_META } from "./btrfsShared";
 

@@ -2,7 +2,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { CSSProperties, KeyboardEvent } from "react";
 
-import { REORDER_HOLD_MS } from "@/constants/reorder";
+import { REORDER_HOLD_MS } from "@/components/reorder/constants";
 
 /**
  * Sortable wiring for one navigation entry, shared by the sidebar and the dock. The listeners sit on the `<li>` so

@@ -9,23 +9,23 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	pkgkit "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/packages/internal/packagekit"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
-	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
 )
 
 var packageUpdateRoutes = packageUpdateBindings().Routes()
 
 func packageUpdateBindings() apischema.BindingSet {
-	policy := bridgetask.TaskSingletonSystem
+	policy := bridgeipc.TaskSingletonSystem
 	policy.Timeout = 2 * time.Hour
 	return apischema.Bindings(
-		apischema.TaskRunner[apischema.PackageUpdateRequest, PackageUpdateResult]("packages.update", apischema.SessionTask(), apischema.WithTaskProgress[PkgUpdateProgress](), apischema.WithTaskMetadata(func(req apischema.PackageUpdateRequest) bridgetask.TaskMetadata {
-			return bridgetask.TaskMetadata{Identity: append([]string{}, req.PackageIDs...), Label: "Updating packages", PackageIDs: append([]string{}, req.PackageIDs...)}
+		apischema.TaskRunner[apischema.PackageUpdateRequest, PackageUpdateResult]("packages.update", apischema.SessionTask(), apischema.WithTaskProgress[PkgUpdateProgress](), apischema.WithTaskMetadata(func(req apischema.PackageUpdateRequest) bridgeipc.TaskMetadata {
+			return bridgeipc.TaskMetadata{Identity: append([]string{}, req.PackageIDs...), Label: "Updating packages", PackageIDs: append([]string{}, req.PackageIDs...)}
 		})).Run(runPackageUpdateTask, policy),
 	)
 }
 
-func RegisterTaskRoutes(router *bridgetask.Router) {
+func RegisterTaskRoutes(router *bridgeipc.Router) {
 	packageUpdateBindings().Register(router)
 }
 
@@ -36,13 +36,13 @@ type PkgUpdateProgress struct {
 	PackageSummary string  `json:"package_summary,omitempty"` // Package summary from Package(...) signal
 	Status         string  `json:"status,omitempty"`          // Status description (e.g., "Downloading", "Installing")
 	Message        string  `json:"message,omitempty"`         // Rich backend message text when available
-	StatusCode     *uint32 `json:"status_code,omitempty"`     // PackageKit status enum
-	InfoCode       *uint32 `json:"info_code,omitempty"`       // PackageKit info enum (Package signal)
-	Percentage     *uint32 `json:"percentage,omitempty"`      // Overall percentage (0-100, 101=unknown)
-	ItemPct        *uint32 `json:"item_pct,omitempty"`        // Per-item percentage for ItemProgress
+	StatusCode     *uint32 `json:"status_code,omitzero"`      // PackageKit status enum
+	InfoCode       *uint32 `json:"info_code,omitzero"`        // PackageKit info enum (Package signal)
+	Percentage     *uint32 `json:"percentage,omitzero"`       // Overall percentage (0-100, 101=unknown)
+	ItemPct        *uint32 `json:"item_pct,omitzero"`         // Per-item percentage for ItemProgress
 }
 
-func (p PkgUpdateProgress) ProgressEnvelope() bridgetask.TaskProgress {
+func (p PkgUpdateProgress) ProgressEnvelope() bridgeipc.TaskProgress {
 	var percentage *int
 	progressPercentage := p.Percentage
 	if progressPercentage == nil {
@@ -56,7 +56,7 @@ func (p PkgUpdateProgress) ProgressEnvelope() bridgetask.TaskProgress {
 	if message == "" {
 		message = p.Status
 	}
-	return bridgetask.TaskProgress{
+	return bridgeipc.TaskProgress{
 		Percentage: percentage,
 		Phase:      p.Type,
 		Message:    message,
@@ -70,7 +70,7 @@ type PackageUpdateResult struct {
 
 type pkgUpdateReporter func(*PkgUpdateProgress) error
 
-func taskPkgUpdateReporter(task *bridgetask.Task) pkgUpdateReporter {
+func taskPkgUpdateReporter(task *bridgeipc.Task) pkgUpdateReporter {
 	return func(p *PkgUpdateProgress) error {
 		task.ReportProgress(*p)
 		return nil
@@ -183,9 +183,9 @@ func isRealWorkStatus(status uint32) bool {
 	return realWorkStatuses[status]
 }
 
-func runPackageUpdateTask(ctx context.Context, task *bridgetask.Task, req apischema.PackageUpdateRequest) (PackageUpdateResult, error) {
+func runPackageUpdateTask(ctx context.Context, task *bridgeipc.Task, req apischema.PackageUpdateRequest) (PackageUpdateResult, error) {
 	if len(req.PackageIDs) == 0 {
-		return PackageUpdateResult{}, bridgetask.NewError("no packages specified", 400)
+		return PackageUpdateResult{}, fmt.Errorf("%w: packages", bridgeipc.ErrInvalidArgs)
 	}
 	report := taskPkgUpdateReporter(task)
 	reportPkgUpdateProgress(report, &PkgUpdateProgress{
@@ -200,6 +200,7 @@ func runPackageUpdateTask(ctx context.Context, task *bridgetask.Task, req apisch
 		reportPkgUpdateProgress(report, &PkgUpdateProgress{Type: "status", Status: "Took btrfs pre-update snapshot"})
 	}
 	if msg := preUpdateSnapshotProblems(snapshotReport, snapshotErr); msg != "" {
+		slog.Warn("btrfs pre-update snapshot problems; applying package updates anyway", "problems", msg)
 		reportPkgUpdateProgress(report, &PkgUpdateProgress{Type: "status", Status: "btrfs pre-update snapshot failed: " + msg})
 	}
 
@@ -207,7 +208,7 @@ func runPackageUpdateTask(ctx context.Context, task *bridgetask.Task, req apisch
 		if ctx.Err() != nil {
 			return PackageUpdateResult{}, context.Canceled
 		}
-		return PackageUpdateResult{}, bridgetask.NewError(err.Error(), 500)
+		return PackageUpdateResult{}, err
 	}
 
 	result := PackageUpdateResult{Updated: len(req.PackageIDs)}
@@ -251,6 +252,7 @@ func updatePackageBatch(session pkgkit.ClientSession, packageIDs []string, repor
 		pkgkit.LogClose(session.Context(), trans)
 		if err == nil {
 			updated++
+			slog.Debug("package updated", "package_id", packageID)
 			continue
 		}
 		if session.Context().Err() != nil {
@@ -270,6 +272,9 @@ func updatePackageBatch(session pkgkit.ClientSession, packageIDs []string, repor
 		})
 	}
 
+	if updated > 0 {
+		slog.Info("packages updated", "count", updated, "failed", len(failures))
+	}
 	if len(failures) == 0 {
 		return nil
 	}
@@ -294,14 +299,14 @@ func updateOnePackageWithProgress(
 	report pkgUpdateReporter,
 ) error {
 	// Flag 0 = no special flags (install normally).
-	slog.Info("calling PackageKit UpdatePackages", "component", "dbus", "subsystem", "packagekit", "package_id", packageID)
+	slog.Debug("calling PackageKit UpdatePackages", "component", "dbus", "subsystem", "packagekit", "package_id", packageID)
 	if err := trans.Call("UpdatePackages", uint64(0), []string{packageID}); err != nil {
 		return err
 	}
 
 	waitCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer cancel()
-	return awaitPackageUpdateSignals(waitCtx, trans, scalePackageProgress(report, index, total))
+	return awaitPackageUpdateSignals(waitCtx, trans.Signals(), scalePackageProgress(report, index, total))
 }
 
 func scalePackageProgress(report pkgUpdateReporter, index int, total int) pkgUpdateReporter {
@@ -321,14 +326,14 @@ func scalePackageProgress(report pkgUpdateReporter, index int, total int) pkgUpd
 	}
 }
 
-func awaitPackageUpdateSignals(ctx context.Context, trans *pkgkit.Transaction, report pkgUpdateReporter) error {
+func awaitPackageUpdateSignals(ctx context.Context, signals <-chan *dbusclient.Signal, report pkgUpdateReporter) error {
 	var lastWorkStatus uint32
 	var transactionErr error
 	for {
 		select {
-		case sig := <-trans.Signals():
-			if sig == nil {
-				continue
+		case sig, ok := <-signals:
+			if !ok {
+				return pkgkit.ErrSignalsClosed
 			}
 			done, err := consumePackageUpdateSignal(
 				report,
@@ -457,7 +462,7 @@ func packageUpdateSignalError(sig *dbusclient.Signal) error {
 }
 
 func handleFinishedSignal(report pkgUpdateReporter) {
-	slog.Info("Finished signal received")
+	slog.Debug("finished signal received")
 	reportPkgUpdateProgress(report, &PkgUpdateProgress{
 		Type:       "status",
 		Status:     "Finished",

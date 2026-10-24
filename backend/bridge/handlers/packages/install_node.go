@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/assistant"
-	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/usercmd"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
@@ -18,7 +18,7 @@ const nodeComponent = "node"
 
 var (
 	nvmInstallScriptURL   = "https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.8/install.sh"
-	capabilityUserCommand = assistant.UserCommand
+	capabilityUserCommand = usercmd.Command
 )
 
 // nvmInstallNodeScript loads the freshly installed nvm and installs the
@@ -29,7 +29,7 @@ const nvmInstallNodeScript = `. "$HOME/.nvm/nvm.sh" && nvm install --lts && nvm 
 // as the session user, never as root. nvm adds itself to the user's
 // ~/.bashrc, which is where the node capability's login-shell probe and the
 // Assistant's agent spawn both pick it up.
-func installNodeForUser(ctx context.Context, task *bridgetask.Task, user session.User) error {
+func installNodeForUser(ctx context.Context, task *bridgeipc.Task, user session.User) error {
 	if user.Username == "" {
 		return fmt.Errorf("no session user to install Node.js for")
 	}
@@ -62,7 +62,7 @@ func installNodeForUser(ctx context.Context, task *bridgetask.Task, user session
 			cmd.Stdin = bytes.NewReader(step.stdin)
 		}
 		reportProgress(task, stageInstallPackage, step.message, step.pct)
-		slog.Info("Installing Node.js for the session user.", "user", user.Username, "step", step.message)
+		slog.Debug("installing Node.js for the session user", "user", user.Username, "step", step.message)
 		if err := runCapabilityProcess(ctx, cmd, "bash", func(output InstallCapabilityOutput) {
 			reportOutput(task, stageInstallPackage, step.message, step.pct, output)
 		}); err != nil {

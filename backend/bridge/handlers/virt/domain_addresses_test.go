@@ -137,3 +137,42 @@ func TestListAndGetVMsReturnBaseDataWhenAddressDiscoveryBlocks(t *testing.T) {
 		})
 	}
 }
+
+type orderedCallConn struct {
+	*fakeConn
+	calls []string
+}
+
+func (c *orderedCallConn) ConnectGetAllDomainStats(domains []libvirt.Domain, stats, flags uint32) ([]libvirt.DomainStatsRecord, error) {
+	c.calls = append(c.calls, "metrics")
+	return c.fakeConn.ConnectGetAllDomainStats(domains, stats, flags)
+}
+
+func (c *orderedCallConn) DomainInterfaceAddresses(domain libvirt.Domain, source, flags uint32) ([]libvirt.DomainInterface, error) {
+	c.calls = append(c.calls, "addresses")
+	return c.fakeConn.DomainInterfaceAddresses(domain, source, flags)
+}
+
+func TestListAndGetVMsFetchMetricsBeforeBridgeAddresses(t *testing.T) {
+	for _, get := range []bool{false, true} {
+		fake := newFakeConn()
+		fake.domainState = int32(libvirt.DomainRunning)
+		fake.domains["vm"] = testDomain("vm")
+		fake.domainXML["vm"] = `<domain type="kvm"><name>vm</name><devices><interface type="bridge"><mac address="52:54:00:00:00:01"></mac><source bridge="br0"></source></interface></devices></domain>`
+		conn := &orderedCallConn{fakeConn: fake}
+		withFakeLibvirt(t, conn)
+
+		var err error
+		if get {
+			_, err = GetVM(context.Background(), "vm")
+		} else {
+			_, err = ListVMs(context.Background())
+		}
+		if err != nil {
+			t.Fatalf("get=%v: %v", get, err)
+		}
+		if len(conn.calls) < 2 || conn.calls[0] != "metrics" || conn.calls[1] != "addresses" {
+			t.Fatalf("get=%v calls = %v, want metrics before addresses", get, conn.calls)
+		}
+	}
+}

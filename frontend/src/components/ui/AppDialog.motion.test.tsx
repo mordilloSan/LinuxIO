@@ -47,6 +47,6 @@ describe("AppDialog motion", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(onExited).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(onExited).toHaveBeenCalledOnce();
+    await waitFor(() => expect(onExited).toHaveBeenCalledOnce());
   });
 });

@@ -8,12 +8,9 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
-	"os/signal"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/debugserver"
@@ -21,12 +18,17 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/common/socketactivation"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
+	"github.com/mordilloSan/LinuxIO/backend/webserver/appupdate"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/auth"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/webserver/sessions"
+	"github.com/mordilloSan/LinuxIO/backend/webserver/tlsserver"
 	"github.com/mordilloSan/LinuxIO/backend/webserver/web"
+	"github.com/mordilloSan/LinuxIO/backend/webserver/ws"
 )
 
-func RunServer(cfg ServerConfig) error {
+// RunServer serves until ctx is cancelled or the server stops on its own.
+func RunServer(ctx context.Context, cfg ServerConfig) error {
 	if err := logging.Configure("linuxio-webserver", cfg.Verbose); err != nil {
 		return fmt.Errorf("failed to initialize logger: %w", err)
 	}
@@ -38,28 +40,25 @@ func RunServer(cfg ServerConfig) error {
 	if err != nil {
 		return err
 	}
-	quit, done := startHTTPServer(cfg, srv, sm, activity)
+	done := startHTTPServer(cfg, srv, sm, activity)
 
-	serverErr := waitForServerShutdown(quit, done)
-	if serverErr == nil {
-		shutdownHTTPServer(srv)
-	}
+	serverErr := waitForServerShutdown(ctx, srv, done)
 	closeBridgeSessions(sm)
 	sm.Close()
 	slog.Info("server stopped")
 	return serverErr
 }
 
-func newSessionManager() *session.Manager {
-	sessionCfg := session.DefaultConfig
+func newSessionManager() *sessions.Manager {
+	sessionCfg := sessions.DefaultConfig
 	sessionCfg.SingleSessionPerUser = false
-	sm := session.NewManager(sessionCfg)
-	sm.RegisterOnDelete(func(sess *session.Session, reason session.DeleteReason) {
+	sm := sessions.NewManager(sessionCfg)
+	sm.RegisterOnDelete(func(sess *session.Session, reason sessions.DeleteReason) {
 		if sess.User.Username == "" {
 			return
 		}
 		bridge.CloseYamuxSession(sess.SessionID)
-		web.CloseWebSocketForSession(sess.SessionID)
+		ws.CloseForSession(sess.SessionID)
 	})
 	return sm
 }
@@ -90,18 +89,17 @@ func (a *serverActivity) touch() {
 	a.mu.Unlock()
 }
 
-func newHTTPServer(cfg ServerConfig, sm *session.Manager) (*http.Server, *serverActivity, error) {
+func newHTTPServer(cfg ServerConfig, sm *sessions.Manager) (*http.Server, *serverActivity, error) {
 	ui, err := web.UI()
 	if err != nil {
-		slog.Error("failed to mount embedded frontend", "error", err)
 		return nil, nil, fmt.Errorf("mount embedded frontend: %w", err)
 	}
 
 	router := web.BuildRouter(web.Config{
-		Verbose: cfg.Verbose,
-		UI:      ui,
+		UI: ui,
 		RegisterRoutes: func(mux *http.ServeMux) {
-			auth.RegisterAuthRoutes(mux, sm, cfg.Verbose)
+			auth.RegisterAuthRoutes(mux, sm)
+			appupdate.RegisterRoutes(mux, sm)
 		},
 	}, sm)
 
@@ -130,12 +128,10 @@ func newHTTPServer(cfg ServerConfig, sm *session.Manager) (*http.Server, *server
 func startHTTPServer(
 	cfg ServerConfig,
 	srv *http.Server,
-	sm *session.Manager,
+	sm *sessions.Manager,
 	activity *serverActivity,
-) (chan os.Signal, chan error) {
-	quit := make(chan os.Signal, 1)
+) <-chan error {
 	done := make(chan error, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
 		handled, err := serveWithSocketActivation(cfg, srv, sm, activity)
@@ -146,13 +142,13 @@ func startHTTPServer(
 		done <- serveWithSelfBind(cfg, srv)
 	}()
 
-	return quit, done
+	return done
 }
 
 func serveWithSocketActivation(
 	cfg ServerConfig,
 	srv *http.Server,
-	sm *session.Manager,
+	sm *sessions.Manager,
 	activity *serverActivity,
 ) (bool, error) {
 	listeners, err := socketactivation.Listeners()
@@ -180,7 +176,7 @@ func serveWithSocketActivation(
 	}
 
 	for _, listener := range listeners {
-		go serveTLSListener(srv, web.NewTLSRedirectListener(listener, srv.TLSConfig, cfg.Port), stop, "server error (TLS)")
+		go serveTLSListener(srv, tlsserver.NewTLSRedirectListener(listener, srv.TLSConfig, cfg.Port), stop, "server error (TLS)")
 	}
 	slog.Info("socket-activated HTTPS server listening")
 	watcherDone := startSocketIdleExitWatcher(
@@ -201,13 +197,11 @@ func serveWithSelfBind(cfg ServerConfig, srv *http.Server) error {
 
 	listener, err := net.Listen("tcp", srv.Addr)
 	if err != nil {
-		slog.Error("listen failed", "address", srv.Addr, "error", err)
 		return fmt.Errorf("listen %s: %w", srv.Addr, err)
 	}
-	tlsListener := web.NewTLSRedirectListener(listener, srv.TLSConfig, cfg.Port)
+	tlsListener := tlsserver.NewTLSRedirectListener(listener, srv.TLSConfig, cfg.Port)
 	slog.Info("HTTPS server listening", "address", fmt.Sprintf("https://localhost:%d", cfg.Port))
-	if err := srv.Serve(tlsListener); err != nil && err != http.ErrServerClosed {
-		slog.Error("server error", "error", err)
+	if err := srv.Serve(tlsListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("serve HTTPS: %w", err)
 	}
 	return nil
@@ -215,9 +209,8 @@ func serveWithSelfBind(cfg ServerConfig, srv *http.Server) error {
 
 func configureServerTLS(srv *http.Server) error {
 	certificateDir := filepath.Join(version.WebserverStateDir, "certificates")
-	cert, err := web.LoadOrCreateSelfSignedCert(certificateDir)
+	cert, err := tlsserver.LoadOrCreateSelfSignedCert(certificateDir)
 	if err != nil {
-		slog.Error("failed to load managed certificate", "directory", certificateDir, "error", err)
 		return fmt.Errorf("load managed TLS certificate: %w", err)
 	}
 	srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
@@ -225,21 +218,23 @@ func configureServerTLS(srv *http.Server) error {
 }
 
 func serveTLSListener(srv *http.Server, listener net.Listener, stop func(error), errorPrefix string) {
-	if err := srv.Serve(listener); err != nil && err != http.ErrServerClosed {
-		slog.Error(errorPrefix, "error", err)
+	if err := srv.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		stop(fmt.Errorf("%s: %w", errorPrefix, err))
 		return
 	}
 	stop(nil)
 }
 
-func waitForServerShutdown(quit <-chan os.Signal, done <-chan error) error {
+// waitForServerShutdown blocks until ctx is cancelled or the server stops on
+// its own (idle exit or failure) and returns the serve result.
+func waitForServerShutdown(ctx context.Context, srv *http.Server, done <-chan error) error {
 	select {
-	case <-quit:
-		slog.Info("shutdown signal received")
-		return nil
+	case <-ctx.Done():
+		slog.Debug("shutdown signal received")
+		shutdownHTTPServer(srv)
+		return <-done
 	case err := <-done:
-		slog.Info("HTTP server stopped, beginning shutdown")
+		slog.Debug("HTTP server stopped, beginning shutdown")
 		return err
 	}
 }
@@ -261,10 +256,10 @@ func shutdownHTTPServer(srv *http.Server) {
 		slog.Warn("HTTP server shutdown failed", "error", err)
 		return
 	}
-	slog.Info("HTTP server closed")
+	slog.Debug("HTTP server closed")
 }
 
-func closeBridgeSessions(sm *session.Manager) {
+func closeBridgeSessions(sm *sessions.Manager) {
 	for _, sess := range sm.ActiveSessions() {
 		bridge.CloseYamuxSession(sess.SessionID)
 	}
@@ -273,7 +268,7 @@ func closeBridgeSessions(sm *session.Manager) {
 func startSocketIdleExitWatcher(
 	ctx context.Context,
 	srv *http.Server,
-	sm *session.Manager,
+	sm *sessions.Manager,
 	activity *serverActivity,
 	idleGrace time.Duration,
 	checkEvery time.Duration,
@@ -305,7 +300,7 @@ func startSocketIdleExitWatcher(
 	return done
 }
 
-func socketIdleState(sm *session.Manager, activity *serverActivity, idleGrace time.Duration, hadSessions bool) (idle, nextHadSessions bool) {
+func socketIdleState(sm *sessions.Manager, activity *serverActivity, idleGrace time.Duration, hadSessions bool) (idle, nextHadSessions bool) {
 	if len(sm.ActiveSessions()) > 0 {
 		activity.touch()
 		return false, true

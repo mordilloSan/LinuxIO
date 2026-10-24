@@ -4,6 +4,7 @@ package network
 import (
 	"os"
 	"path/filepath"
+	"sync"
 )
 
 // A journal view of an interface tails the unit that owns its configuration,
@@ -35,7 +36,8 @@ var systemdUnitDirs = []string{
 var (
 	// Memoized per config backend: GetNetworkInfo polls every second, and the
 	// answer only changes when units are installed or removed.
-	networkLogUnitCache = map[string]string{}
+	networkLogUnitCache   = map[string]string{}
+	networkLogUnitCacheMu sync.Mutex
 	// Test seam.
 	systemdUnitInstalled = defaultSystemdUnitInstalled
 )
@@ -44,6 +46,9 @@ var (
 // interface's stack, or "" when none of the candidates exist — the signal for
 // callers to offer no log view rather than tail a unit that cannot log.
 func resolveNetworkLogUnit(configBackend string) string {
+	// GetNetworkInfo runs on concurrent request goroutines.
+	networkLogUnitCacheMu.Lock()
+	defer networkLogUnitCacheMu.Unlock()
 	if unit, cached := networkLogUnitCache[configBackend]; cached {
 		return unit
 	}

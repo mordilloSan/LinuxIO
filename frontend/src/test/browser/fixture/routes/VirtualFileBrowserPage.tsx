@@ -2,12 +2,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useMemo, useRef, useState } from "react";
 
 import { emptyCapabilityState } from "@/api/capabilities";
-import type { CapabilitiesResponse } from "@/api/capabilities";
-import VirtualDirectoryItems from "@/components/filebrowser/VirtualDirectoryItems";
 import AppButton from "@/components/ui/AppButton";
-import { AuthContext } from "@/contexts/AuthContext";
-import type { AuthContextType } from "@/types/auth";
-import type { FileItem, ViewMode } from "@/types/filebrowser";
+import { AuthContext, type AuthContextType } from "@/contexts/AuthContext";
+import VirtualDirectoryItems from "@/routes/_authenticated/filebrowser/-components/VirtualDirectoryItems";
+import type {
+  FileItem,
+  ViewMode,
+} from "@/routes/_authenticated/filebrowser/-types";
 
 const makeItems = (count: number, offset = 0): FileItem[] =>
   Array.from({ length: count }, (_, index) => ({
@@ -42,7 +43,7 @@ const authValue: AuthContextType = {
   isInitialized: true,
   method: "session",
   privileged: false,
-  refreshCapabilities: async () => ({}) as CapabilitiesResponse,
+  refreshCapabilities: async () => ({}),
   sessionExpired: () => {},
   signIn: async () => {},
   signOut: async () => {},

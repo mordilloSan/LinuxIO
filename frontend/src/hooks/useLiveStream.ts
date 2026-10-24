@@ -20,11 +20,11 @@ export interface OpenLiveStreamOptions<
   open: () => Stream | null;
 }
 
-export interface UseLiveStreamOptions {
+interface UseLiveStreamOptions {
   closeOnUnmount?: boolean;
 }
 
-export interface UseLiveStreamReturn {
+interface UseLiveStreamReturn {
   closeStream: () => void;
   /**
    * Unbind handlers and forget the stream without closing it — for streams

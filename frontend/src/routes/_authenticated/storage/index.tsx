@@ -4,7 +4,7 @@ import { linuxio } from "@/api";
 import { loadRouteQueries } from "@/routes/-loader";
 import { optionalString } from "@/routes/-search";
 
-import DiskOverview from "./-components/DiskOverview";
+import DiskOverview from "./-components/disk-overview/DiskOverview";
 
 export const Route = createFileRoute("/_authenticated/storage/")({
   validateSearch: (search) => ({

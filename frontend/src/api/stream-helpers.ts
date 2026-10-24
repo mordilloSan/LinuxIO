@@ -1,4 +1,4 @@
-import { LinuxIOError } from "./linuxio-core";
+import { LinuxIOError } from "./errors";
 import type { ProgressFrame, ResultFrame, Stream } from "./StreamMultiplexer";
 
 export interface StreamEventHandlers<TProgress = ProgressFrame> {
@@ -151,7 +151,7 @@ export function waitForStreamResult<
   });
 }
 
-export interface WriteStreamChunksOptions {
+interface WriteStreamChunksOptions {
   chunkSize?: number;
   closeAtEnd?: boolean;
   signal?: AbortSignal;

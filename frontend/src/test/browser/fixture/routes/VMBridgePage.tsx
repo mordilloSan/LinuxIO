@@ -7,16 +7,12 @@ import {
   useStreamMux,
   wireFromCapabilityState,
 } from "@/api";
-import {
-  capabilitiesQueryKey,
-  type CapabilitiesResponse,
-} from "@/api/capabilities";
+import type { ConfigContextType } from "@/api";
+import { capabilitiesQueryKey } from "@/api/capabilities";
 import { uiConfigQueryKey } from "@/api/config-query";
-import { AuthContext } from "@/contexts/AuthContext";
+import { AuthContext, type AuthContextType } from "@/contexts/AuthContext";
 import { ConfigContext } from "@/contexts/ConfigContext";
 import { Route } from "@/routes/_authenticated/vm/route";
-import type { AuthContextType } from "@/types/auth";
-import type { ConfigContextType } from "@/types/config";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false } },
@@ -29,7 +25,7 @@ const auth: AuthContextType = {
   isInitialized: true,
   method: "session",
   privileged: true,
-  refreshCapabilities: async () => capabilities as CapabilitiesResponse,
+  refreshCapabilities: async () => capabilities,
   sessionExpired: () => {},
   signIn: async () => {},
   signOut: async () => {},

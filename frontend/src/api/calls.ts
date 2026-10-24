@@ -23,7 +23,7 @@ export function splitCallRoute(route: string): [string, string] {
 }
 
 /** Per-invocation transport controls. Retry safety is owned by the route. */
-export type CallOptions = Omit<core.RequestOptions, "retryPolicy">;
+type CallOptions = Omit<core.RequestOptions, "retryPolicy">;
 
 export function call<R extends NoRequestCallRoute>(
   route: R,

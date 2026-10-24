@@ -11,7 +11,7 @@ import {
 import { type Stream, useStreamMux } from "@/api";
 import { useLiveStream } from "@/hooks/useLiveStream";
 
-export interface UseLogStreamOptions {
+interface UseLogStreamOptions {
   /** Returns the stream handle; called with tail line count as a string. */
   createStream: (tail: string) => Stream | null;
   /** Number of tail lines to fetch on initial open. Default: "200". */
@@ -23,7 +23,7 @@ export interface UseLogStreamOptions {
   open: boolean;
 }
 
-export interface UseLogStreamResult {
+interface UseLogStreamResult {
   error: string | null;
   isLoading: boolean;
   logs: string;

@@ -5,6 +5,7 @@
  * or the endpoint action/fetch/cache hooks; see docs/api-contract.md.
  */
 
+import { isConnectionLossError, LinuxIOError } from "./errors";
 import { waitForStreamResult } from "./stream-helpers";
 import {
   encodeString,
@@ -15,23 +16,9 @@ import {
 } from "./StreamMultiplexer";
 
 /**
- * LinuxIOError - structured error with code
- */
-export class LinuxIOError extends Error {
-  code?: string | number;
-
-  constructor(message: string, code?: string | number) {
-    super(message);
-    this.code = code;
-    this.name = "LinuxIOError";
-  }
-}
-
-/**
  * RequestOptions for simple request/response calls
  */
-export type ConnectionLossCode = "connection_unavailable" | "outcome_unknown";
-export type RequestRetryPolicy = "connection_loss" | "none";
+type RequestRetryPolicy = "connection_loss" | "none";
 
 export interface RequestOptions {
   retryPolicy?: RequestRetryPolicy;
@@ -57,14 +44,6 @@ function outcomeUnknownError(): LinuxIOError {
 
 function isConnectionClosedError(error: unknown): boolean {
   return error instanceof LinuxIOError && error.code === "connection_closed";
-}
-
-export function isConnectionLossError(error: unknown): boolean {
-  return (
-    error instanceof LinuxIOError &&
-    (error.code === "connection_unavailable" ||
-      error.code === "outcome_unknown")
-  );
 }
 
 /**

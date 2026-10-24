@@ -3,7 +3,6 @@ package packages
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -17,12 +16,11 @@ var (
 )
 
 // preUpdateSnapshot takes a btrfs pre-update snapshot for every rule that
-// opted in, enabled or not. Callers log the returned error and carry on: a snapshot
+// opted in, enabled or not. Callers log the returned error when they carry on: a snapshot
 // failure must never block the update.
 func preUpdateSnapshot(ctx context.Context) (btrfs.RunReport, error) {
 	rules, err := loadSnapshotRules()
 	if err != nil {
-		slog.Warn("btrfs pre-update snapshot: load rules failed", "error", err)
 		return btrfs.RunReport{}, fmt.Errorf("load btrfs snapshot rules: %w", err)
 	}
 	optedIn := false
@@ -37,7 +35,6 @@ func preUpdateSnapshot(ctx context.Context) (btrfs.RunReport, error) {
 	}
 	report, err := runSnapshots(ctx, rules, time.Now(), btrfs.KindPreUpdate)
 	if err != nil {
-		slog.Warn("btrfs pre-update snapshot: run failed", "error", err)
 		return report, fmt.Errorf("btrfs pre-update snapshot: %w", err)
 	}
 	return report, nil

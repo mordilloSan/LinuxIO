@@ -175,7 +175,7 @@ func isAllowedBackground(path, funcName string) bool {
 		"appupdate/app_update_operation.go": {
 			"detachedPostUpdateContext": true,
 		},
-		"filebrowser/filebrowser.go": {
+		"filebrowser/indexer_sync.go": {
 			"runDetachedIndexerUpdate": true,
 		},
 	}

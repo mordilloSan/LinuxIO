@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
+	systemdapi "github.com/mordilloSan/LinuxIO/backend/common/systemd"
 )
 
 const (
@@ -20,7 +20,7 @@ const (
 )
 
 var (
-	writeTimerDropIn  = utils.WriteFileAtomic
+	writeTimerDropIn  = atomicfile.Write
 	removeTimerDropIn = os.Remove
 	enableTimerUnit   = systemdapi.EnableUnit
 	disableTimerUnit  = systemdapi.DisableUnit

@@ -8,12 +8,18 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"sync/atomic"
+	"syscall"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
@@ -23,13 +29,54 @@ const (
 	// Simple Icons CDN - for brand icons via si: prefix
 	simpleIconsCDN = "https://cdn.simpleicons.org"
 
-	iconCacheDuration = 24 * time.Hour
+	// A cached icon (or a remembered miss) is re-checked upstream once it is
+	// older than this; a failed re-check keeps serving the cached answer.
+	iconRefreshInterval = 7 * 24 * time.Hour
+	// Cache entries not served for this long are deleted by the sweep.
+	iconUnusedTTL     = 30 * 24 * time.Hour
+	iconSweepInterval = 24 * time.Hour
+	// Marker file extension recording that no upstream source has the icon.
+	missingIconExt = ".missing"
+
 	httpClientTimeout = 10 * time.Second
 )
 
+// Icon identifiers come from container labels, so an image can name any
+// file or URL. Names are confined to one path component, and the client
+// refuses to dial loopback and link-local addresses (the host's own services
+// and cloud metadata), including after a redirect.
 var httpClient = &http.Client{
 	Timeout: httpClientTimeout,
+	Transport: &http.Transport{
+		Proxy:       http.ProxyFromEnvironment,
+		DialContext: (&net.Dialer{Timeout: httpClientTimeout, Control: refuseLocalDial}).DialContext,
+	},
 }
+
+var validIconName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
+
+func refuseLocalDial(_, address string, _ syscall.RawConn) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return err
+	}
+	ip, err := netip.ParseAddr(host)
+	if err != nil {
+		return err
+	}
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+		return fmt.Errorf("icon source address %s is not allowed", host)
+	}
+	return nil
+}
+
+// errIconNotFound marks a definite upstream 404, as opposed to a network
+// failure; only this outcome is remembered as a miss. It is a 404, not a
+// server fault: the frontend falls back to its bundled Docker icon.
+var errIconNotFound = fmt.Errorf("icon %w", bridgeipc.ErrNotFound)
+
+// Unix time of the last cache sweep in this process.
+var lastIconSweep atomic.Int64
 
 // The cache lives under the persistent data dir so icons survive reboots and
 // stay available offline; the packaged tmpfiles policy creates these dirs.
@@ -78,26 +125,12 @@ func initIconCache() error {
 	return nil
 }
 
-// parseIconIdentifier determines the type and value of an icon identifier
+// parseIconIdentifier determines the type and value of an icon identifier.
+// A name or file that is not a single safe path component is unknown, so it
+// can neither escape the cache and user directories nor reach the CDNs.
 func parseIconIdentifier(identifier string) (IconType, string) {
 	if identifier == "" {
 		return IconTypeUnknown, ""
-	}
-
-	// Check for simple-icon prefix (si:nginx)
-	if name, ok := strings.CutPrefix(identifier, "si:"); ok {
-		return IconTypeSimpleIcon, name
-	}
-	if name, ok := strings.CutPrefix(identifier, "simple-icon:"); ok {
-		return IconTypeSimpleIcon, name
-	}
-
-	// Check for dashboard-icon prefix (di:nginx)
-	if name, ok := strings.CutPrefix(identifier, "di:"); ok {
-		return IconTypeDashboardIcon, name
-	}
-	if name, ok := strings.CutPrefix(identifier, "dashboard-icon:"); ok {
-		return IconTypeDashboardIcon, name
 	}
 
 	// Check for HTTP(S) URL
@@ -105,67 +138,155 @@ func parseIconIdentifier(identifier string) (IconType, string) {
 		return IconTypeURL, identifier
 	}
 
-	// Check for file path (ends with image extension)
-	lowerIdent := strings.ToLower(identifier)
-	if strings.HasSuffix(lowerIdent, ".svg") || strings.HasSuffix(lowerIdent, ".png") ||
-		strings.HasSuffix(lowerIdent, ".jpg") || strings.HasSuffix(lowerIdent, ".jpeg") ||
-		strings.HasSuffix(lowerIdent, ".webp") {
-		return IconTypeFile, identifier
+	iconType, name := IconTypeDerived, identifier
+	switch {
+	case strings.HasPrefix(identifier, "si:"), strings.HasPrefix(identifier, "simple-icon:"):
+		iconType, name = IconTypeSimpleIcon, identifier[strings.IndexByte(identifier, ':')+1:]
+	case strings.HasPrefix(identifier, "di:"), strings.HasPrefix(identifier, "dashboard-icon:"):
+		iconType, name = IconTypeDashboardIcon, identifier[strings.IndexByte(identifier, ':')+1:]
+	case hasImageExtension(identifier):
+		iconType = IconTypeFile
 	}
-
-	// Otherwise, treat as a name to derive (will try dashboard-icons first)
-	return IconTypeDerived, identifier
+	if !validIconName.MatchString(name) {
+		return IconTypeUnknown, ""
+	}
+	return iconType, name
 }
 
-// getCachedIcon checks if an icon is cached and returns its path. With
-// allowStale, entries older than iconCacheDuration still count, so a failed
-// refresh can fall back to the last copy.
-func getCachedIcon(ctx context.Context, iconType IconType, identifier string, allowStale bool) (string, bool) {
+func hasImageExtension(name string) bool {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".svg", ".png", ".jpg", ".jpeg", ".webp":
+		return true
+	}
+	return false
+}
+
+// cacheEntry is a cached icon or a remembered miss. mtime is when the answer
+// was last confirmed upstream; atime is when it was last served.
+type cacheEntry struct {
+	path    string
+	modTime time.Time
+	missing bool
+	stale   bool
+}
+
+// urlCacheName hashes a URL into a cache filename stem.
+func urlCacheName(url string) string {
+	hash := sha256.Sum256([]byte(url))
+	return fmt.Sprintf("%x", hash[:8])
+}
+
+// missingMarkerPath is where a miss for the identifier is recorded.
+func missingMarkerPath(iconType IconType, identifier string) string {
+	switch iconType {
+	case IconTypeSimpleIcon:
+		return filepath.Join(simpleIconsCacheDir, identifier+missingIconExt)
+	case IconTypeURL:
+		return filepath.Join(urlCacheDir, urlCacheName(identifier)+missingIconExt)
+	default:
+		return filepath.Join(dashboardIconsCacheDir, identifier+missingIconExt)
+	}
+}
+
+// cacheCandidates lists the paths that may hold the identifier, icons first
+// and the miss marker last.
+func cacheCandidates(iconType IconType, identifier string) []string {
+	var dashboard []string
+	for _, ext := range []string{".svg", ".png", ".webp"} {
+		dashboard = append(dashboard, filepath.Join(dashboardIconsCacheDir, identifier+ext))
+	}
+	simple := filepath.Join(simpleIconsCacheDir, identifier+".svg")
+
 	switch iconType {
 	case IconTypeDashboardIcon:
-		return getDashboardCachedIcon(ctx, identifier, allowStale)
+		return append(dashboard, missingMarkerPath(iconType, identifier))
 	case IconTypeSimpleIcon:
-		return cachedIconPath(ctx, filepath.Join(simpleIconsCacheDir, identifier+".svg"), allowStale)
+		return []string{simple, missingMarkerPath(iconType, identifier)}
 	case IconTypeURL:
-		// Hash the URL to create a filename
-		hash := sha256.Sum256([]byte(identifier))
-		hashStr := fmt.Sprintf("%x", hash[:8])
-		return cachedIconPath(ctx, filepath.Join(urlCacheDir, hashStr+".svg"), allowStale)
-	case IconTypeFile:
-		return cachedIconPath(ctx, filepath.Join(userIconsDir, identifier), allowStale)
+		return []string{filepath.Join(urlCacheDir, urlCacheName(identifier)+".svg"), missingMarkerPath(iconType, identifier)}
 	case IconTypeDerived:
-		if cachePath, found := getDashboardCachedIcon(ctx, identifier, allowStale); found {
-			return cachePath, true
-		}
-		return cachedIconPath(ctx, filepath.Join(simpleIconsCacheDir, identifier+".svg"), allowStale)
+		return append(dashboard, simple, missingMarkerPath(iconType, identifier))
 	default:
-		return "", false
+		return nil
 	}
 }
 
-func getDashboardCachedIcon(ctx context.Context, identifier string, allowStale bool) (string, bool) {
-	for _, ext := range []string{".svg", ".png", ".webp"} {
-		if cachePath, found := cachedIconPath(ctx, filepath.Join(dashboardIconsCacheDir, identifier+ext), allowStale); found {
-			return cachePath, true
+// lookupCachedIcon finds the cached answer for the identifier, if any.
+func lookupCachedIcon(ctx context.Context, iconType IconType, identifier string) (cacheEntry, bool) {
+	if ctx.Err() != nil {
+		return cacheEntry{}, false
+	}
+	for _, path := range cacheCandidates(iconType, identifier) {
+		info, err := os.Stat(path)
+		if err != nil {
+			continue
+		}
+		return cacheEntry{
+			path:    path,
+			modTime: info.ModTime(),
+			missing: strings.HasSuffix(path, missingIconExt),
+			stale:   time.Since(info.ModTime()) > iconRefreshInterval,
+		}, true
+	}
+	return cacheEntry{}, false
+}
+
+// touchCacheEntry records that the entry was served now (atime) while keeping
+// its confirmation time (mtime); explicit utimes works on noatime mounts.
+func touchCacheEntry(entry cacheEntry) {
+	if err := os.Chtimes(entry.path, time.Now(), entry.modTime); err != nil {
+		slog.Debug("failed to touch cached icon", "path", entry.path, "error", err)
+	}
+}
+
+// lastUsed is when the file was last served or downloaded, whichever is later.
+func lastUsed(info os.FileInfo) time.Time {
+	if st, ok := info.Sys().(*syscall.Stat_t); ok {
+		if atime := time.Unix(st.Atim.Sec, st.Atim.Nsec); atime.After(info.ModTime()) {
+			return atime
 		}
 	}
-	return "", false
+	return info.ModTime()
 }
 
-// cachedIconPath reports whether cachePath exists and, unless allowStale, is
-// younger than iconCacheDuration.
-func cachedIconPath(ctx context.Context, cachePath string, allowStale bool) (string, bool) {
-	if ctx.Err() != nil {
-		return "", false
+func remoteIconCacheDirs() []string {
+	return []string{dashboardIconsCacheDir, simpleIconsCacheDir, urlCacheDir}
+}
+
+// sweepIconCache deletes remote cache entries not served since cutoff.
+func sweepIconCache(ctx context.Context, cutoff time.Time) {
+	for _, dir := range remoteIconCacheDirs() {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, entry := range entries {
+			if ctx.Err() != nil {
+				return
+			}
+			info, err := entry.Info()
+			if err != nil || !info.Mode().IsRegular() || !lastUsed(info).Before(cutoff) {
+				continue
+			}
+			path := filepath.Join(dir, entry.Name())
+			if err := os.Remove(path); err != nil {
+				slog.Warn("failed to remove unused icon", "component", "docker", "subsystem", "icons", "path", path, "error", err)
+				continue
+			}
+			slog.Debug("removed unused icon", "path", path)
+		}
 	}
-	info, err := os.Stat(cachePath)
-	if err != nil {
-		return "", false
+}
+
+// maybeSweepIconCache runs the sweep at most once per iconSweepInterval per
+// process, on the request path so no goroutine is needed.
+func maybeSweepIconCache(ctx context.Context) {
+	now := time.Now()
+	last := lastIconSweep.Load()
+	if now.Unix()-last < int64(iconSweepInterval/time.Second) || !lastIconSweep.CompareAndSwap(last, now.Unix()) {
+		return
 	}
-	if !allowStale && time.Since(info.ModTime()) > iconCacheDuration {
-		return "", false
-	}
-	return cachePath, true
+	sweepIconCache(ctx, now.Add(-iconUnusedTTL))
 }
 
 // fetchDashboardIcon downloads an icon from Dashboard Icons CDN (homarr-labs)
@@ -193,6 +314,9 @@ func fetchDashboardIcon(ctx context.Context, name string) ([]byte, error) {
 		data, readErr := func() ([]byte, error) {
 			defer resp.Body.Close()
 
+			if resp.StatusCode == http.StatusNotFound {
+				return nil, fmt.Errorf("%s: %w", url, errIconNotFound)
+			}
 			if resp.StatusCode != http.StatusOK {
 				return nil, fmt.Errorf("%s returned status %d", url, resp.StatusCode)
 			}
@@ -212,7 +336,23 @@ func fetchDashboardIcon(ctx context.Context, name string) ([]byte, error) {
 		return data, nil
 	}
 
-	return nil, errors.Join(errs...)
+	return nil, fmt.Errorf("dashboard icon %q: %w", name, joinFetchErrors(errs...))
+}
+
+// joinFetchErrors combines per-source fetch errors so the result matches
+// errIconNotFound only when every source reported a definite 404; otherwise
+// the misses are dropped and only the outages are kept.
+func joinFetchErrors(errs ...error) error {
+	var outages []error
+	for _, err := range errs {
+		if !errors.Is(err, errIconNotFound) {
+			outages = append(outages, err)
+		}
+	}
+	if len(outages) == 0 {
+		return errors.Join(errs...)
+	}
+	return errors.Join(outages...)
 }
 
 // fetchSimpleIcon downloads an icon from Simple Icons CDN
@@ -230,8 +370,11 @@ func fetchSimpleIcon(ctx context.Context, name string) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("simple icon %q: %w", name, errIconNotFound)
+	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("icon not found: status %d", resp.StatusCode)
+		return nil, fmt.Errorf("simple icon %q: status %d", name, resp.StatusCode)
 	}
 
 	data, err := io.ReadAll(resp.Body)
@@ -256,6 +399,9 @@ func fetchURLIcon(ctx context.Context, url string) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, fmt.Errorf("%s: %w", url, errIconNotFound)
+	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("failed to fetch icon: status %d", resp.StatusCode)
 	}
@@ -280,9 +426,7 @@ func cacheIcon(iconType IconType, identifier string, data []byte) error {
 	case IconTypeSimpleIcon:
 		cachePath = filepath.Join(simpleIconsCacheDir, identifier+".svg")
 	case IconTypeURL:
-		hash := sha256.Sum256([]byte(identifier))
-		hashStr := fmt.Sprintf("%x", hash[:8])
-		cachePath = filepath.Join(urlCacheDir, hashStr+".svg")
+		cachePath = filepath.Join(urlCacheDir, urlCacheName(identifier)+".svg")
 	case IconTypeDerived:
 		cachePath = filepath.Join(dashboardIconsCacheDir, identifier+detectIconExtension(data))
 	default:
@@ -298,7 +442,19 @@ func cacheIcon(iconType IconType, identifier string, data []byte) error {
 	if err := os.WriteFile(cachePath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write cache file: %w", err)
 	}
+	// The icon exists now, so forget any earlier miss.
+	_ = os.Remove(missingMarkerPath(iconType, identifier))
 	slog.Debug("cached icon", "type", iconType, "identifier", identifier, "path", cachePath)
+	return nil
+}
+
+// cacheMissingIcon remembers that no upstream source has the identifier.
+func cacheMissingIcon(iconType IconType, identifier string) error {
+	path := missingMarkerPath(iconType, identifier)
+	if err := os.WriteFile(path, nil, 0644); err != nil {
+		return fmt.Errorf("failed to write miss marker: %w", err)
+	}
+	slog.Debug("cached missing icon", "type", iconType, "identifier", identifier, "path", path)
 	return nil
 }
 
@@ -329,115 +485,101 @@ func GetIcon(ctx context.Context, identifier string) ([]byte, error) {
 		slog.Warn("failed to initialize icon cache", "component", "docker", "subsystem", "icons", "identifier", identifier, "error", err)
 	}
 
+	maybeSweepIconCache(ctx)
+
 	// Parse identifier
 	iconType, value := parseIconIdentifier(identifier)
-
-	// Check cache first
-	if data, found := readCachedIcon(ctx, iconType, value, identifier, false); found {
+	if iconType == IconTypeFile {
+		// User files are never fetched or cached.
+		data, err := os.ReadFile(filepath.Join(userIconsDir, value))
+		if err != nil {
+			return nil, fmt.Errorf("failed to read user icon: %w", err)
+		}
 		return data, nil
 	}
 
-	data, fetchedType, fetchedValue, err := fetchIconData(ctx, iconType, value)
-	if err != nil {
-		// Offline or upstream down: an expired copy beats no icon.
-		if stale, found := readCachedIcon(ctx, iconType, value, identifier, true); found {
-			slog.Debug("serving stale cached icon", "identifier", identifier, "error", err)
-			return stale, nil
+	// A fresh cached answer, icon or miss, is served without any network.
+	entry, found := lookupCachedIcon(ctx, iconType, value)
+	if found && !entry.stale {
+		if data, err := readCachedIcon(entry, identifier); err == nil {
+			return data, nil
+		} else if entry.missing {
+			return nil, err
 		}
-		return nil, fmt.Errorf("failed to fetch icon: %w", err)
 	}
 
-	// Cache the icon
-	if cacheErr := cacheIcon(fetchedType, fetchedValue, data); cacheErr != nil {
-		slog.Warn("failed to cache icon", "component", "docker", "subsystem", "icons", "identifier", identifier, "error", cacheErr)
+	// No network fallback: on error the frontend renders its bundled Docker icon.
+	data, fetchedType, err := fetchIconData(ctx, iconType, value)
+	if err == nil {
+		if cacheErr := cacheIcon(fetchedType, value, data); cacheErr != nil {
+			slog.Warn("failed to cache icon", "component", "docker", "subsystem", "icons", "identifier", identifier, "error", cacheErr)
+		}
+		return data, nil
 	}
 
+	notFound := errors.Is(err, errIconNotFound)
+	if found {
+		// Upstream gone or unreachable: the last answer beats none. A definite
+		// 404 re-confirms it for another interval; an outage leaves it stale.
+		if notFound {
+			entry.modTime = time.Now()
+		}
+		slog.Debug("serving stale cached icon", "identifier", identifier, "error", err)
+		return readCachedIcon(entry, identifier)
+	}
+	if notFound {
+		if cacheErr := cacheMissingIcon(iconType, value); cacheErr != nil {
+			slog.Warn("failed to cache missing icon", "component", "docker", "subsystem", "icons", "identifier", identifier, "error", cacheErr)
+		}
+	}
+	return nil, fmt.Errorf("failed to fetch icon: %w", err)
+}
+
+// readCachedIcon serves a cache entry and records the use; a miss marker
+// yields errIconNotFound.
+func readCachedIcon(entry cacheEntry, identifier string) ([]byte, error) {
+	touchCacheEntry(entry)
+	if entry.missing {
+		return nil, fmt.Errorf("icon %q: %w", identifier, errIconNotFound)
+	}
+	data, err := os.ReadFile(entry.path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read cached icon %s: %w", entry.path, err)
+	}
+	slog.Debug("serving cached icon", "identifier", identifier, "path", entry.path)
 	return data, nil
 }
 
-func readCachedIcon(ctx context.Context, iconType IconType, value, identifier string, allowStale bool) ([]byte, bool) {
-	cachePath, found := getCachedIcon(ctx, iconType, value, allowStale)
-	if !found {
-		return nil, false
-	}
-
-	if err := ctx.Err(); err != nil {
-		return nil, false
-	}
-	data, err := os.ReadFile(cachePath)
-	if err != nil {
-		slog.Warn("failed to read cached icon", "component", "docker", "subsystem", "icons", "identifier", identifier, "path", cachePath, "error", err)
-		return nil, false
-	}
-	slog.Debug("serving cached icon", "type", iconType, "identifier", identifier)
-	return data, true
-}
-
-func fetchIconData(ctx context.Context, iconType IconType, value string) ([]byte, IconType, string, error) {
+// fetchIconData downloads the icon; the returned type is where it is cached.
+func fetchIconData(ctx context.Context, iconType IconType, value string) ([]byte, IconType, error) {
 	switch iconType {
 	case IconTypeDashboardIcon:
-		return fetchDashboardIconWithFallback(ctx, value)
+		data, err := fetchDashboardIcon(ctx, value)
+		return data, iconType, err
 	case IconTypeSimpleIcon:
-		return fetchSimpleIconWithFallback(ctx, value)
+		data, err := fetchSimpleIcon(ctx, value)
+		return data, iconType, err
 	case IconTypeURL:
-		return fetchURLIconWithFallback(ctx, value)
-	case IconTypeFile:
-		data, err := os.ReadFile(filepath.Join(userIconsDir, value))
-		return data, iconType, value, err
+		data, err := fetchURLIcon(ctx, value)
+		return data, iconType, err
 	case IconTypeDerived:
 		return fetchDerivedIcon(ctx, value)
 	default:
-		return nil, iconType, value, fmt.Errorf("unknown icon type: %s", iconType)
+		return nil, iconType, fmt.Errorf("unknown icon type: %s", iconType)
 	}
 }
 
-func fetchDashboardIconWithFallback(ctx context.Context, value string) ([]byte, IconType, string, error) {
-	data, err := fetchDashboardIcon(ctx, value)
-	if err == nil {
-		return data, IconTypeDashboardIcon, value, nil
-	}
-	slog.Debug("dashboard icon not found, falling back to docker icon", "identifier", value)
-	return fetchDockerFallback(ctx, err)
-}
-
-func fetchSimpleIconWithFallback(ctx context.Context, value string) ([]byte, IconType, string, error) {
-	data, err := fetchSimpleIcon(ctx, value)
-	if err == nil {
-		return data, IconTypeSimpleIcon, value, nil
-	}
-	slog.Debug("simple icon not found, falling back to docker icon", "identifier", value)
-	return fetchDockerFallback(ctx, err)
-}
-
-func fetchURLIconWithFallback(ctx context.Context, value string) ([]byte, IconType, string, error) {
-	data, err := fetchURLIcon(ctx, value)
-	if err == nil {
-		return data, IconTypeURL, value, nil
-	}
-	slog.Debug("url icon fetch failed, falling back to docker icon", "url", value, "error", err)
-	return fetchDockerFallback(ctx, err)
-}
-
-func fetchDerivedIcon(ctx context.Context, value string) ([]byte, IconType, string, error) {
-	data, err := fetchDashboardIcon(ctx, value)
-	if err == nil {
-		return data, IconTypeDerived, value, nil
+func fetchDerivedIcon(ctx context.Context, value string) ([]byte, IconType, error) {
+	data, dashboardErr := fetchDashboardIcon(ctx, value)
+	if dashboardErr == nil {
+		return data, IconTypeDerived, nil
 	}
 	slog.Debug("dashboard icon not found, trying simple icons", "identifier", value)
-	data, err = fetchSimpleIcon(ctx, value)
-	if err == nil {
-		return data, IconTypeSimpleIcon, value, nil
+	data, simpleErr := fetchSimpleIcon(ctx, value)
+	if simpleErr == nil {
+		return data, IconTypeSimpleIcon, nil
 	}
-	slog.Debug("simple icon not found, falling back to docker icon", "identifier", value)
-	return fetchDockerFallback(ctx, err)
-}
-
-func fetchDockerFallback(ctx context.Context, sourceErr error) ([]byte, IconType, string, error) {
-	data, err := fetchDashboardIcon(ctx, "docker")
-	if err != nil {
-		return nil, IconTypeDashboardIcon, "docker", errors.Join(sourceErr, err)
-	}
-	return data, IconTypeDashboardIcon, "docker", nil
+	return nil, IconTypeDerived, fmt.Errorf("icon %q: %w", value, joinFetchErrors(dashboardErr, simpleErr))
 }
 
 // GetIconURI retrieves an icon and returns it as a base64 data URI
@@ -465,21 +607,18 @@ func GetIconURI(ctx context.Context, identifier string) (string, error) {
 // GetIconInfo returns metadata about an icon without fetching it
 func GetIconInfo(ctx context.Context, identifier string) IconInfo {
 	iconType, value := parseIconIdentifier(identifier)
-	_, cached := getCachedIcon(ctx, iconType, value, false)
+	entry, found := lookupCachedIcon(ctx, iconType, value)
 
 	return IconInfo{
 		Type:       iconType,
 		Identifier: value,
-		Cached:     cached,
+		Cached:     found && !entry.missing,
 	}
 }
 
 // ClearIconCache removes all cached icons
 func ClearIconCache(ctx context.Context) error {
-	slog.Info("clearing icon cache")
-
-	dirs := []string{dashboardIconsCacheDir, simpleIconsCacheDir, urlCacheDir}
-	for _, dir := range dirs {
+	for _, dir := range remoteIconCacheDirs() {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -492,7 +631,11 @@ func ClearIconCache(ctx context.Context) error {
 		return err
 	}
 	// Recreate directories
-	return initIconCache()
+	if err := initIconCache(); err != nil {
+		return err
+	}
+	slog.Info("icon cache cleared")
+	return nil
 }
 
 // ResolveIconIdentifier resolves an explicit icon identifier, then falls back to the service/container name.

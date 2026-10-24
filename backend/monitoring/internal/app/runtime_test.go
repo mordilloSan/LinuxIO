@@ -6,12 +6,16 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/collector/smart"
 )
 
 func TestStartContextCreatesDatabaseAndServesAPI(t *testing.T) {
@@ -174,23 +178,34 @@ func testListenAddr(a *App) string {
 }
 
 // The status and summary responses read the SMART interval from request
-// goroutines while config reloads rewrite it under the app lock; the read must
-// take the same lock or the race detector reports it.
-func TestSmartRefreshIntervalStringTakesTheAppLock(t *testing.T) {
-	a := &App{smartManager: &SmartManager{refreshInterval: time.Hour}}
+// goroutines while config reloads rewrite it; the manager guards the interval
+// with its own lock or the race detector reports it.
+func TestSmartRefreshIntervalStringIsSafeAgainstReloads(t *testing.T) {
+	a := &App{smartManager: &smart.Manager{}}
+	a.smartManager.SetRefreshInterval(time.Hour)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		for i := range 100 {
-			a.Lock()
-			a.smartManager.refreshInterval = time.Duration(i+1) * time.Minute
-			a.Unlock()
+			a.smartManager.SetRefreshInterval(time.Duration(i+1) * time.Minute)
 		}
 	}()
 	for range 100 {
 		assert.NotEmpty(t, a.smartRefreshIntervalString())
 	}
 	<-done
+}
+
+func TestFailedSmartRefreshWaitsOneInterval(t *testing.T) {
+	a := &App{smartManager: &smart.Manager{}}
+	a.smartManager.SetRefreshInterval(time.Hour)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	now := time.Now()
+	require.True(t, a.smartManager.RefreshDue(now))
+	require.Error(t, a.refreshSmart(ctx, now, false))
+	assert.False(t, a.smartManager.RefreshDue(now.Add(time.Minute)))
+	assert.True(t, a.smartManager.RefreshDue(now.Add(time.Hour)))
 }
 
 func TestHistoryIntervalsReachTheStoreAndConfigMeta(t *testing.T) {
@@ -206,7 +221,6 @@ func TestHistoryIntervalsReachTheStoreAndConfigMeta(t *testing.T) {
 		errCh <- a.StartContext(ctx, RunOptions{
 			CollectorInterval: 5 * time.Minute,
 			History:           "cpu,mem",
-			HistorySet:        true,
 			HistoryIntervals:  map[string]time.Duration{"mem": 10 * time.Minute},
 		})
 	}()
@@ -231,7 +245,6 @@ func TestHistoryIntervalsReachTheStoreAndConfigMeta(t *testing.T) {
 	err = a.ReloadRuntime(ReloadOptions{
 		CollectorInterval: 5 * time.Minute,
 		History:           "cpu,mem",
-		HistorySet:        true,
 		HistoryIntervals:  map[string]time.Duration{"mem": 7 * time.Minute},
 	})
 	require.Error(t, err, "reload must reject an interval that is not a multiple of the tick")
@@ -239,10 +252,54 @@ func TestHistoryIntervalsReachTheStoreAndConfigMeta(t *testing.T) {
 	require.NoError(t, a.ReloadRuntime(ReloadOptions{
 		CollectorInterval: 5 * time.Minute,
 		History:           "cpu,mem",
-		HistorySet:        true,
 	}))
 	assert.Empty(t, a.configInfo().HistoryIntervals)
 	assert.NotNil(t, a.configInfo().HistoryIntervals)
+
+	cancel()
+	require.NoError(t, <-errCh)
+}
+
+// A SIGHUP that lands during start-up, before the event loop runs, must be
+// held and handled once the loop starts rather than killing the daemon.
+func TestStartContextHoldsSIGHUPSentDuringStartup(t *testing.T) {
+	tmpDir := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Keeps the test binary alive if the daemon has not registered its handler.
+	guard := make(chan os.Signal, 1)
+	signal.Notify(guard, syscall.SIGHUP)
+	defer signal.Stop(guard)
+
+	a, err := New(ctx, tmpDir)
+	require.NoError(t, err)
+
+	reloaded := make(chan struct{}, 1)
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- a.StartContext(ctx, RunOptions{
+			CollectorInterval: 5 * time.Minute,
+			ReloadConfig: func() error {
+				reloaded <- struct{}{}
+				return nil
+			},
+		})
+	}()
+
+	// The database file appears while StartContext is still collecting its first
+	// sample, well before the event loop.
+	require.Eventually(t, func() bool {
+		_, err := os.Stat(filepath.Join(tmpDir, "metrics.db"))
+		return err == nil
+	}, 20*time.Second, time.Millisecond)
+	require.NoError(t, syscall.Kill(os.Getpid(), syscall.SIGHUP))
+
+	select {
+	case <-reloaded:
+	case <-time.After(20 * time.Second):
+		t.Fatal("SIGHUP sent during start-up was lost")
+	}
 
 	cancel()
 	require.NoError(t, <-errCh)

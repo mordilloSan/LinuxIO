@@ -1,11 +1,16 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/logging"
+	"github.com/mordilloSan/LinuxIO/backend/common/verbosemode"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
@@ -60,8 +65,11 @@ func Run(args []string) int {
 			return 2
 		}
 
-		if err := runServerFunc(cfg); err != nil {
-			fmt.Fprintf(os.Stderr, "%v\n", err)
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		verbosemode.ReloadOnSIGHUP(ctx)
+		if err := runServerFunc(ctx, cfg); err != nil {
+			logging.ReportFatal(err)
 			return 1
 		}
 		return 0

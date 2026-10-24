@@ -9,25 +9,25 @@ import { useCallback, useEffect, useEffectEvent, useMemo } from "react";
 
 import { CACHE_TTL_MS, linuxio, type NetworkInterface } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
-import NetworkInterfaceCard from "@/components/cards/NetworkInterfaceCard";
 import { appendLiveSample } from "@/components/charts/liveSeriesStore";
 import {
   type LiveSeriesPoint,
   useLiveSeries,
 } from "@/components/charts/useLiveSeries";
-import NetworkInterfaceEditor from "@/components/network/NetworkInterfaceEditor";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
-import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/AppDialog";
+import { useReorderableSurface } from "@/components/reorder/useReorderableSurface";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
-import { useReorderableSurface } from "@/hooks/useReorderableSurface";
+import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/overlay";
+import NetworkInterfaceCard from "@/routes/_authenticated/network/-components/NetworkInterfaceCard";
+import NetworkInterfaceEditor from "@/routes/_authenticated/network/-components/NetworkInterfaceEditor";
 import {
   CARD_PADDING_LG,
   DETAIL_PANEL_GAP,
   TRANSITION_DURATION_STANDARD_MS,
   EASING_STANDARD,
 } from "@/theme/constants";
-import { formatThroughput } from "@/utils/formaters";
+import { formatThroughput } from "@/utils/formatters";
 
 import NetworkInterfaceLogsCard from "./NetworkInterfaceLogsCard";
 import NetworkInterfaceStatsCard from "./NetworkInterfaceStatsCard";

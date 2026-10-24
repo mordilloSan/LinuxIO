@@ -1,0 +1,42 @@
+import type { ResourceStatData as ApiResourceStatData } from "@/api";
+
+export type ViewMode = "card" | "list";
+
+interface ItemMetadata {
+  canOpenAsText?: boolean;
+  hidden?: boolean;
+  isRegularFile?: boolean;
+  modified?: string;
+  modTime?: string;
+  name: string;
+  showFullPath?: boolean; // Show full directory path (for search results)
+  size?: number;
+  symlink?: boolean;
+  type: string;
+}
+
+export type FileItem = ItemMetadata & {
+  path: string;
+};
+
+// Client-normalized directory listing with computed child paths.
+export type FileResource = FileItem & {
+  canSave?: boolean;
+  content?: string;
+  items?: FileItem[];
+  version?: string;
+};
+
+export type MultiStatsItem = Pick<
+  FileItem,
+  "path" | "name" | "type" | "size"
+> & {
+  fileCount?: number;
+  folderCount?: number;
+  aggregateSize?: number;
+};
+
+export type SortField = "name" | "size" | "modTime";
+export type SortOrder = "asc" | "desc";
+
+export type ResourceStatData = ApiResourceStatData;

@@ -3,7 +3,10 @@ package wireguard
 import (
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"gopkg.in/ini.v1"
@@ -15,16 +18,46 @@ const (
 	metaKeyDNS       = "dns"
 )
 
-// --- Config Parsing ---
+// interfaceKeys are the [Interface] keys the model carries; any other key is
+// kept verbatim in Extra so a rewrite never changes what wg-quick applies.
+var interfaceKeys = map[string]bool{
+	"PrivateKey": true, "Address": true, "ListenPort": true, "MTU": true,
+	"PreUp": true, "PostUp": true, "PreDown": true, "PostDown": true,
+}
+
+// loadWGINI reads a WireGuard INI the way wg-quick does: a '#' ends a value
+// (`ListenPort = 51820 # main`) while ';' is ordinary text, so a hook such as
+// "cmd1; cmd2" survives. Whole-line comments stay for the metadata parser.
+func loadWGINI(path string, opts ini.LoadOptions) (*ini.File, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(string(data), "\n")
+	for i, line := range lines {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		if before, _, ok := strings.Cut(line, "#"); ok {
+			lines[i] = before
+		}
+	}
+	opts.IgnoreInlineComment = true
+	f, err := ini.LoadSources(opts, []byte(strings.Join(lines, "\n")))
+	if err != nil {
+		return nil, fmt.Errorf("parse %s: %w", path, err)
+	}
+	return f, nil
+}
+
 func ParseWireGuardConfig(path string) (WireGuardConfig, error) {
 	var cfg WireGuardConfig
 
-	iniFile, err := ini.LoadSources(ini.LoadOptions{
+	iniFile, err := loadWGINI(path, ini.LoadOptions{
 		AllowNonUniqueSections: true,
 		AllowShadows:           true,
-	}, path)
+	})
 	if err != nil {
-		slog.Error("failed to load WireGuard config", "component", "wireguard", "subsystem", "config", "path", path, "error", err)
 		return cfg, fmt.Errorf("load config: %w", err)
 	}
 
@@ -42,6 +75,14 @@ func ParseWireGuardConfig(path string) (WireGuardConfig, error) {
 	cfg.PostUp = sectionValues(ifSec, "PostUp")
 	cfg.PreDown = sectionValues(ifSec, "PreDown")
 	cfg.PostDown = sectionValues(ifSec, "PostDown")
+	for _, key := range ifSec.Keys() {
+		if interfaceKeys[key.Name()] {
+			continue
+		}
+		for _, value := range key.ValueWithShadows() {
+			cfg.Extra = append(cfg.Extra, [2]string{key.Name(), value})
+		}
+	}
 
 	meta := parseMetadata(ifSec.Comment)
 	cfg.Host = meta[metaKeyHost]
@@ -75,12 +116,14 @@ func WriteWireGuardConfig(path string, cfg WireGuardConfig) error {
 	iniFile := ini.Empty(ini.LoadOptions{
 		AllowNonUniqueSections: true,
 		AllowShadows:           true,
+		// Without this, ini wraps a value holding ';' in backticks, which
+		// wg-quick's eval runs as command substitution.
+		IgnoreInlineComment: true,
 	})
 
 	// Create Interface section
 	ifSec, err := iniFile.NewSection("Interface")
 	if err != nil {
-		slog.Error("failed to create WireGuard interface section", "component", "wireguard", "subsystem", "config", "path", path, "error", err)
 		return fmt.Errorf("create interface section: %w", err)
 	}
 
@@ -102,6 +145,9 @@ func WriteWireGuardConfig(path string, cfg WireGuardConfig) error {
 			setKeyIfNotEmpty(ifSec, kind.key, hook)
 		}
 	}
+	for _, kv := range cfg.Extra {
+		setKey(ifSec, kv[0], kv[1])
+	}
 
 	// Create Peer sections
 	for _, peer := range cfg.Peers {
@@ -113,10 +159,9 @@ func WriteWireGuardConfig(path string, cfg WireGuardConfig) error {
 
 	// Save file
 	if err := iniFile.SaveTo(path); err != nil {
-		slog.Error("failed to save WireGuard config", "component", "wireguard", "subsystem", "config", "path", path, "error", err)
 		return fmt.Errorf("save config: %w", err)
 	}
-	slog.Info("wrote WireGuard config", "component", "wireguard", "subsystem", "config", "path", path)
+	slog.Debug("wrote WireGuard config", "component", "wireguard", "subsystem", "config", "path", path)
 	return nil
 }
 
@@ -201,4 +246,63 @@ func replacePeerSection(cfg *WireGuardConfig, oldPublicKey string, section *Peer
 
 func shellArg(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
+}
+
+func configPath(name string) string {
+	return filepath.Join(wgConfigDir, name+configExt)
+}
+
+func parseCSV(s string) []string {
+	if s == "" {
+		return nil
+	}
+
+	parts := strings.Split(s, ",")
+	result := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
+func setKey(section *ini.Section, key, value string) {
+	if _, err := section.NewKey(key, value); err != nil {
+		slog.Warn("failed to set INI key", "component", "wireguard", "subsystem", "config", "path", key, "error", err)
+	}
+}
+
+func setKeyIfNotEmpty(section *ini.Section, key, value string) {
+	if value != "" {
+		setKey(section, key, value)
+	}
+}
+
+func setKeyIfPositive(section *ini.Section, key string, value int) {
+	if value > 0 {
+		setKey(section, key, strconv.Itoa(value))
+	}
+}
+
+func addPeerSection(iniFile *ini.File, peer PeerConfig) error {
+	psec, err := iniFile.NewSection("Peer")
+	if err != nil {
+		return err
+	}
+	if peer.Name != "" {
+		psec.Comment = "# " + peer.Name
+	}
+
+	setKey(psec, "PublicKey", peer.PublicKey)
+	setKeyIfNotEmpty(psec, "PresharedKey", peer.PresharedKey)
+	setKeyIfNotEmpty(psec, "AllowedIPs", strings.Join(peer.AllowedIPs, ","))
+	setKeyIfNotEmpty(psec, "Endpoint", peer.Endpoint)
+	setKeyIfPositive(psec, "PersistentKeepalive", peer.PersistentKeepalive)
+
+	return nil
+}
+
+func isPeerSection(name string) bool {
+	return name == "Peer" || strings.HasPrefix(name, "Peer ")
 }

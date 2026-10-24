@@ -54,14 +54,13 @@ route is not showing up in autocomplete, run any test and re-check.
 
 ## Router Setup
 
-Four files in `frontend/src/router/`:
+Two files in `frontend/src/router/`, plus the shared client in `api/`:
 
 | File | Role |
 |------|------|
-| `router.tsx` | Creates the singleton router, installs the Query provider through `Wrap`, sets every global default, declares the two type augmentations. |
-| `provider.tsx` | Injects live auth/capability context and keeps it fresh. |
-| `query-client-core.ts` | Creates QueryClient instances and owns the browser singleton. |
-| `query-client.tsx` | Exports the router-owned browser client and its `QueryClientProvider`. |
+| `router/router.tsx` | Creates the singleton router, sets every global default, declares the two type augmentations. |
+| `router/provider.tsx` | Injects live auth/capability context and keeps it fresh. |
+| `api/query-client.ts` | Creates QueryClient instances (`createQueryClient`) and owns the browser singleton `appQueryClient`. |
 
 ### Global defaults
 
@@ -88,7 +87,6 @@ export const router = createRouter({
   defaultPreloadStaleTime: 0,
   routeTree,
   search: { strict: true },
-  Wrap: AppQueryClientProvider,
 });
 ```
 
@@ -147,21 +145,20 @@ Inside, the context is memoized and any identity change triggers
 sign-out, or a capability change. Because the router never mounts with unknown
 auth, `RouterAuthSnapshot` can narrow `isInitialized: true`.
 
-`isUpdateBlocked` is the module-level getter `isLiveUpdateBlocked` from
-`contexts/UpdateContext.tsx`, not a hook — the router mounts *above*
-`UpdateProvider`, so it cannot consume that context directly. That is why
+`isUpdateBlocked` is the module-level getter `isAppUpdateInProgress` from
+`contexts/appUpdateInProgress.ts`, not a hook — the router mounts *above*
+`AppUpdateProvider`, so it cannot consume that context directly. That is why
 `-loader.ts` takes a getter rather than a boolean.
 
-Mount chain: `index.tsx` → `App.tsx` → `AuthProvider` >
-`ApplicationRouterProvider`. The router's `Wrap` option mounts
-`AppQueryClientProvider` around its context provider and route matches.
+Mount chain: `index.tsx` → `App.tsx` → `QueryClientProvider` >
+`AuthProvider` > `ApplicationRouterProvider`. `App.tsx` provides
+`appQueryClient` to the whole tree; the router is not given a `Wrap`.
 
 ### The shared QueryClient
 
-`router/query-client-core.ts` owns `getAppQueryClient()`, while
-`router/query-client.tsx` resolves that singleton once as `appQueryClient` and
-provides it through the router's `Wrap`. The same object is placed directly in
-router context. This is *the* reason a route loader and a mounted
+`api/query-client.ts` owns the browser singleton `appQueryClient`, which
+`App.tsx` provides through `QueryClientProvider`. The same object is placed
+directly in router context. This is *the* reason a route loader and a mounted
 `useSuspenseQuery` hit the same cache entry instead of firing two requests.
 `createQueryClient()` is the isolated variant for tests and server renders.
 
@@ -279,7 +276,7 @@ argument only when it needs a different named freshness policy:
 
 1. Waits while either the router-context getter or the live stream mux reports
    an update. The mux check covers the first-load window before
-   `UpdateProvider` mounts, and navigation cancellation aborts the wait.
+   `AppUpdateProvider` mounts, and navigation cancellation aborts the wait.
 2. Awaits abortable `ensureLoaderRequestReady()` — the RPC transport may need
    reconnecting. This happens before cache inspection even when every required
    Query entry already contains usable data: route transitions require a live
@@ -339,7 +336,7 @@ mounted widget owns Suspense, retry, and error UI.
   cancellation stay intact.
 - **Pass Router loader arguments directly.** `PRESENCE` is the default; pass a
   named third argument only for an intentional `BACKGROUND` or `BLOCKING`
-  exception. A source guard in `-query-ownership.test.ts` checks this contract.
+  exception. A source guard in `test/guards/query-ownership.test.ts` checks this contract.
 - **Never use `Route.useLoaderData()`.** It appears zero times in this codebase
   and should stay that way. A loader's job is to populate the shared cache and
   suspend the transition; the component then observes that cache with
@@ -656,7 +653,7 @@ no loader inherit `/vm`'s — that is the intended shape, not an omission.
 Interaction-driven reads stay lazy on purpose: WireGuard peer data and QR codes,
 expanded changelogs, remote NFS/CIFS browsing, dialog preflight, failed-login
 panels, file-browser search and editor content, directory sizes, Docker icons.
-`routes/_authenticated/-query-ownership.test.ts` actively preserves Dashboard
+`test/guards/query-ownership.test.ts` actively preserves Dashboard
 and Hardware's non-atomic shells, default freshness and direct loader-argument
 cancellation, progressive Hardware histories, lazy WireGuard network info, and
 the gated Logs service list.
@@ -1020,8 +1017,8 @@ traffic — the doc-level distinction matters when debugging:
 1. **Loaders wait.** `loadRouteQueries` / `loadRouteTransport` defer new
    route work while the update is active and resume when it finishes. Router
    cancellation aborts a superseded wait.
-2. **Mounted queries pause.** `UpdateContext` flips the stream multiplexer's
-   updating flag; `isRequestAvailable()` goes false; `query-client-core.ts` feeds that
+2. **Mounted queries pause.** `AppUpdateProvider` flips the stream multiplexer's
+   updating flag; `isRequestAvailable()` goes false; `api/query-client.ts` feeds that
    into `onlineManager`, so React Query treats the app as offline. The
    multiplexer itself does not reject calls.
 
@@ -1031,15 +1028,15 @@ network work, but a new route transition still waits for transport readiness
 before inspecting that cache and may enter its error boundary. LinuxIO does not
 offer offline route navigation.
 
-On top of that, `useUpdateNavigationGuard` installs a `useBlocker` that rejects
-transitions, and sidebar entries go inert via `useUpdateCanNavigate()`.
+On top of that, `useAppUpdateNavigationGuard` installs a `useBlocker` that rejects
+transitions, and sidebar entries go inert while `useAppUpdateInProgress()` is true.
 Intent-prefetched queries are tagged `silent`, so an unreliable hover preload
 during an update does not produce a toast.
 
 The loader gate checks both `context.isUpdateBlocked()` and the live
 `getStreamMux()?.isUpdating` flag before and after readiness, subscribing to
 both owners while it waits. The mux flag closes the initial-load gap before
-`UpdateProvider` has published context state.
+`AppUpdateProvider` has published context state.
 
 ## Adding A Route — Checklist
 
@@ -1195,8 +1192,8 @@ preference.
 | Pass query data to children through props or a React context | Direct observers share one cache entry and let each consumer track only the data it reads; a shared context value re-renders every consumer on every poll, even ones reading other fields |
 | Wrap a route builder around `createFileRoute` | The plugin matches the literal callee name, so a wrapper silently disables code splitting for that route |
 | Keep every page-level tab mounted and hidden | Keeps observers, polling, and effects alive for invisible pages |
-| Move progressive, polled, or dialog-only queries into a route loader | Guarded by `-query-ownership.test.ts` |
-| Suspend on an endpoint no loader in the route's branch declares | It is absent from both critical loading and deferred intent prefetch. Guarded by `-suspense-loader-coverage.test.ts` |
+| Move progressive, polled, or dialog-only queries into a route loader | Guarded by `test/guards/query-ownership.test.ts` |
+| Suspend on an endpoint no loader in the route's branch declares | It is absent from both critical loading and deferred intent prefetch. Guarded by `test/guards/suspense-loader-coverage.test.ts` |
 | Build a generic route builder, component registry, or route catalogue | All previously existed and were removed; file-based routing replaces them |
 | Convert every lazy query to Suspense | Lazy is deliberate for interaction-driven reads |
 | Introduce another global state store | Query cache + URL + closest common parent has covered every case so far |
@@ -1225,17 +1222,17 @@ For a component that calls `getRouteApi(...)`, mock the module's `getRouteApi`
 |------|--------|
 | `src/router/router.test.tsx` | Global defaults, full route topology, loader coverage, no per-route preload, sidebar order, access co-location |
 | `src/router/provider.test.tsx` | Bootstrap gating, one `invalidate()` per context change |
-| `src/router/query-client.test.tsx` | Browser singleton, isolated clients, and silent-vs-background error ownership |
+| `src/api/query-client.test.ts` | Browser singleton, isolated clients, and silent-vs-background error ownership |
 | `src/routes/-auth.test.ts` | Redirect preservation, external-redirect rejection, `requireAccess` policies |
 | `src/routes/-loader.test.tsx` | Freshness modes, `Promise<void>`, deferred work, rapid-navigation cancellation, shared consumers, retry/error policy, and update races |
-| `src/routes/_authenticated/-query-ownership.test.ts` | Keeps lazy/progressive queries out of critical loading and enforces default freshness, explicit exceptions, and direct loader arguments |
-| `src/routes/-suspense-loader-coverage.test.ts` | Walks the import graph and proves each suspense endpoint is declared as critical or deferred work in its loader branch |
+| `src/test/guards/query-ownership.test.ts` | Keeps lazy/progressive queries out of critical loading and enforces default freshness, explicit exceptions, and direct loader arguments |
+| `src/test/guards/suspense-loader-coverage.test.ts` | Walks the import graph and proves each suspense endpoint is declared as critical or deferred work in its loader branch |
 | `src/routes/-components/RouteError.test.tsx` | Route-boundary recovery |
 | `src/components/errors/ErrorBoundary.test.tsx` | Widget-boundary recovery |
 | `src/components/tabbar/RoutedTabContainer.test.tsx` | Tab links, active child URL, `matchChildren`, mobile action slot |
-| `sidebar/useSidebarItems.test.tsx` | Access filtering, `position` ordering, no preload overrides |
-| `sidebar/useCloseMobileSidebarOnNavigate.test.tsx` | Mobile drawer close-on-navigate |
-| `src/utils/navigation.test.ts`, `src/contexts/UpdateContext.navigationGuard.test.tsx` | The update navigation blocker |
+| `src/routes/_authenticated/-components/sidebar/useSidebarItems.test.tsx` | Access filtering, `position` ordering, no preload overrides |
+| `src/routes/_authenticated/-components/sidebar/useCloseMobileSidebarOnNavigate.test.tsx` | Mobile drawer close-on-navigate |
+| `src/utils/navigation.test.ts`, `src/hooks/useAppUpdateNavigationGuard.test.tsx` | The update navigation blocker |
 | `src/test/browser/router.spec.ts` | Chromium: direct links, refresh, back/forward, pending and error UI, first-navigation chunk load, and the derived production chunk-boundary assertion |
 
 ### Scope of the browser suite

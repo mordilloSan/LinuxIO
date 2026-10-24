@@ -2,7 +2,7 @@ package docker
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -19,18 +19,19 @@ import (
 	"github.com/moby/moby/client"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dockerclient"
 )
 
 const maxDockerResourceEntries = 256
 
 // List all volumes
 func ListVolumes(ctx context.Context) ([]apischema.DockerVolume, error) {
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 	return listVolumes(ctx, cli)
 }
 
@@ -197,7 +198,7 @@ func opaqueDockerValue(value any) map[string]any {
 		return nil
 	}
 	var result map[string]any
-	if err := json.Unmarshal(raw, &result); err != nil {
+	if err := json.Unmarshal(raw, &result, json.MatchCaseInsensitiveNames(true)); err != nil {
 		return nil
 	}
 	return result
@@ -209,22 +210,22 @@ type volumeRemover interface {
 
 // DeleteVolume removes an unused volume. Docker owns the in-use check.
 func DeleteVolume(ctx context.Context, name string) error {
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 	return deleteVolume(ctx, cli, name)
 }
 
 func deleteVolume(ctx context.Context, cli volumeRemover, name string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return bridgeipc.NewError("volume name is required", 400)
+		return fmt.Errorf("%w: volume name is required", bridgeipc.ErrInvalidArgs)
 	}
 	if _, err := cli.VolumeRemove(ctx, name, client.VolumeRemoveOptions{}); err != nil {
 		if errdefs.IsConflict(err) {
-			return bridgeipc.NewError(fmt.Sprintf("volume %q is in use: %v", name, err), 409)
+			return fmt.Errorf("%w: volume %q is in use: %w", bridgeipc.ErrConflict, name, err)
 		}
 		return fmt.Errorf("failed to remove volume %q: %w", name, err)
 	}
@@ -234,13 +235,13 @@ func deleteVolume(ctx context.Context, cli volumeRemover, name string) error {
 func CreateVolume(ctx context.Context, request apischema.DockerVolumeCreateRequest) error {
 	options, err := volumeCreateOptions(request)
 	if err != nil {
-		return bridgeipc.NewError(err.Error(), 400)
+		return fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
 	}
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 
 	if _, err := cli.VolumeCreate(ctx, options); err != nil {
 		return fmt.Errorf("failed to create volume %q: %w", options.Name, err)

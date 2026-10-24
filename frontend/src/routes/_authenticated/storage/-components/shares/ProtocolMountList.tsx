@@ -1,28 +1,28 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useMemo, useState, type MouseEvent } from "react";
 
-import MountCard, {
-  type MountBase,
-  type MountListQuery,
-} from "@/components/cards/MountCard";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
+import { useReorderableSurface } from "@/components/reorder/useReorderableSurface";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
+import { useReorderableTableDnd } from "@/components/tables/useReorderableTableDnd";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import { getUsageColor } from "@/constants/statusColors";
-import { useReorderableSurface } from "@/hooks/useReorderableSurface";
-import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
+import MountCard, {
+  type MountBase,
+  type MountListQuery,
+} from "@/routes/_authenticated/storage/-components/shares/MountCard";
 import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
-import { formatFileSize } from "@/utils/formaters";
+import { formatFileSize } from "@/utils/formatters";
 
 const MOUNTS_REFETCH_MS = 10_000;
 
 type PendingMountAction = "mount" | "unmount";
 
-export interface ProtocolMountListProps<T extends MountBase> {
+interface ProtocolMountListProps<T extends MountBase> {
   ariaLabel: string;
   /** Status chips shown in the table, the card and the expanded row. */
   chips: (mount: T) => string[];

@@ -4,17 +4,17 @@ import { Link } from "@tanstack/react-router";
 import { useState } from "react";
 
 import { linuxio, type RsyncStatus } from "@/api";
+import { SettingsGrid } from "@/components/settings/SettingsSectionForm";
+import {
+  SectionCard,
+  StatusGroupLabel,
+} from "@/components/settings/SettingsSectionPrimitives";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import InfoRow from "@/components/ui/InfoRow";
-import { SettingsGrid } from "@/routes/_authenticated/-components/navbar/SettingsSectionForm";
-import {
-  SectionCard,
-  StatusGroupLabel,
-} from "@/routes/_authenticated/-components/navbar/SettingsSectionPrimitives";
 
 export default function RsyncSSHSection({ status }: { status: RsyncStatus }) {
   const [portInput, setPortInput] = useState("22");

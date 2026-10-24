@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
 func TestRunDockerComposeTaskUsesResultAsOnlyTerminalSignal(t *testing.T) {
@@ -59,7 +59,7 @@ func TestRunDockerComposeTaskUsesResultAsOnlyTerminalSignal(t *testing.T) {
 		if len(replay) != 1 {
 			t.Fatalf("progress replay len = %d, want one stderr frame: %#v", len(replay), replay)
 		}
-		progress, ok := replay[0].Progress.(bridgetask.TaskProgress)
+		progress, ok := replay[0].Progress.(bridgeipc.TaskProgress)
 		message, detailOK := progress.Detail.(ComposeTaskMessage)
 		if !ok || !detailOK || message.Type != "stderr" {
 			t.Fatalf("progress replay = %#v, want one non-terminal stderr frame", replay)
@@ -94,16 +94,16 @@ func installFakeDocker(t *testing.T, body string) {
 	t.Setenv("PATH", dir)
 }
 
-func newComposeTestTask(t *testing.T) *bridgetask.Task {
+func newComposeTestTask(t *testing.T) *bridgeipc.Task {
 	t.Helper()
-	task, err := bridgetask.NewTaskService().Create("docker.compose", nil)
+	task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity("docker.compose", nil, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create compose task: %v", err)
 	}
 	return task
 }
 
-func composeProgressReplay(task *bridgetask.Task) []bridgetask.TaskEvent {
+func composeProgressReplay(task *bridgeipc.Task) []bridgeipc.TaskEvent {
 	_, replay, unsubscribe := task.SubscribeWithReplay(8)
 	unsubscribe()
 	return replay

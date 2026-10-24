@@ -1,8 +1,8 @@
 // Imported from the leaf modules rather than "@/api": test files that mock the
 // "@/api" barrel pull this helper in from inside that mock factory, and going
 // through the barrel would re-enter it.
+import { LinuxIOError } from "@/api/errors";
 import type { TaskError, TaskSnapshot } from "@/api/generated/linuxio-types";
-import { LinuxIOError } from "@/api/linuxio-core";
 import { isTerminalTaskState } from "@/api/task-state";
 
 /**

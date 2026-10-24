@@ -8,13 +8,9 @@ const mocks = vi.hoisted(() => ({
   isMobile: false,
 }));
 
-vi.mock("@/theme", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/theme")>();
-  return {
-    ...actual,
-    useAppMediaQuery: () => mocks.isMobile,
-  };
-});
+vi.mock("@/hooks/useMediaQuery", () => ({
+  useMediaQuery: () => mocks.isMobile,
+}));
 
 vi.mock("@/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api")>()),

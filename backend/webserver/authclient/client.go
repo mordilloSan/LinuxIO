@@ -1,0 +1,121 @@
+// Package authclient provides a client for the root linuxio-auth daemon socket.
+package authclient
+
+import (
+	"context"
+	"fmt"
+	"net"
+	"time"
+
+	authipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/auth"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
+)
+
+const (
+	// DefaultAuthSocketPath is the Unix socket where linuxio-auth daemon listens
+	DefaultAuthSocketPath = version.RunDir + "/auth.sock"
+
+	// Timeouts for auth daemon communication
+	authDialTimeout  = 5 * time.Second
+	authReadTimeout  = 30 * time.Second // sudo check can take time
+	authWriteTimeout = 5 * time.Second
+)
+
+// --- test seams (overridden in tests) ---
+var authSocketPath = DefaultAuthSocketPath
+
+// AuthResult contains the result of a successful authentication
+type AuthResult struct {
+	Conn       net.Conn // Connection to bridge (same socket, now connected to forked bridge)
+	User       session.User
+	Privileged bool
+}
+
+// AuthError carries a structured auth result from the auth daemon.
+type AuthError struct {
+	Code    authipc.AuthResultCode
+	Message string
+}
+
+func (e *AuthError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return e.Message
+}
+
+func (e *AuthError) IsUnauthorized() bool {
+	return e != nil && e.Code.IsUnauthorized()
+}
+
+// Authenticate sends an auth request to the auth daemon.
+// On success, returns the connection which is now connected to the forked bridge
+// process (the auth daemon passed our FD to the bridge via dup2).
+// The caller owns the connection and must close it.
+// Cancelling ctx aborts the exchange by closing the connection.
+func Authenticate(ctx context.Context, req *authipc.AuthRequest) (*AuthResult, error) {
+	// Connect to daemon
+	dialer := net.Dialer{Timeout: authDialTimeout}
+	conn, err := dialer.DialContext(ctx, "unix", authSocketPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to auth daemon: %w", err)
+	}
+	stop := context.AfterFunc(ctx, func() { conn.Close() })
+	defer stop()
+
+	// Set timeouts
+	if deadlineErr := conn.SetWriteDeadline(time.Now().Add(authWriteTimeout)); deadlineErr != nil {
+		conn.Close()
+		return nil, fmt.Errorf("failed to set write deadline: %w", deadlineErr)
+	}
+
+	// Write binary request
+	if err = authipc.WriteAuthRequest(conn, req); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("failed to send auth request: %w", err)
+	}
+
+	// Read response
+	if err = conn.SetReadDeadline(time.Now().Add(authReadTimeout)); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("failed to set read deadline: %w", err)
+	}
+
+	resp, err := authipc.ReadAuthResponse(conn)
+	if err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("failed to read auth response: %w", err)
+	}
+	// Disarm the cancel hook before the connection is handed to yamux; if it
+	// already fired, the connection is closed and unusable.
+	if !stop() {
+		conn.Close()
+		return nil, fmt.Errorf("auth request cancelled: %w", ctx.Err())
+	}
+
+	if !resp.IsOK() {
+		conn.Close()
+		errMsg := resp.Error
+		if errMsg == "" {
+			errMsg = resp.ResultCode.DefaultMessage()
+		}
+		return nil, &AuthError{
+			Code:    resp.ResultCode,
+			Message: errMsg,
+		}
+	}
+
+	// Clear deadlines for Yamux use
+	privileged := resp.IsPrivileged()
+	if err = conn.SetDeadline(time.Time{}); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("failed to clear deadlines: %w", err)
+	}
+
+	return &AuthResult{
+		Conn:       conn,
+		User:       resp.User,
+		Privileged: privileged,
+	}, nil
+}

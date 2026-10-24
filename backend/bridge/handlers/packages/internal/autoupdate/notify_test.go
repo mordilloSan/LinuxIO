@@ -13,7 +13,7 @@ func TestWriteNotifyDropInContent(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := string(fake.files[aptAlertDropIn])
-	want := "[Service]\nExecStartPre=-/usr/local/bin/linuxio btrfs-snapshot pre-update\nExecStopPost=/usr/local/bin/linuxio alert auto-update --provider apt --policy on_change\n"
+	want := "[Service]\nExecStartPre=-/usr/local/bin/linuxio-btrfs-timer snapshot pre-update\nExecStopPost=/usr/local/bin/linuxio alert auto-update --provider apt --policy on_change\n"
 	if got != want {
 		t.Fatalf("drop-in = %q, want %q", got, want)
 	}

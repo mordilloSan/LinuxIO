@@ -12,15 +12,16 @@ import (
 	"github.com/shirou/gopsutil/v4/host"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/hwprobe"
 )
 
-var hostInfoCache hwSnapshotCache[apischema.HostInfo]
+var hostInfoCache hwprobe.SnapshotCache[apischema.HostInfo]
 
 func FetchHostInfo(ctx context.Context) (apischema.HostInfo, error) {
 	if err := ctx.Err(); err != nil {
 		return apischema.HostInfo{}, err
 	}
-	return hostInfoCache.get(func() (apischema.HostInfo, error) {
+	return hostInfoCache.Get(func() (apischema.HostInfo, error) {
 		value, err := host.InfoWithContext(ctx)
 		if err != nil {
 			return apischema.HostInfo{}, err

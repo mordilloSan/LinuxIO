@@ -6,21 +6,22 @@ import (
 	"log/slog"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgeconfig "github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 )
 
-func GetConfigForUser(ctx context.Context, username string, store *bridgeconfig.UserStore) (*bridgeconfig.Settings, error) {
-	cfg, cfgPath, err := bridgeconfig.SnapshotForUser(ctx, username, store)
+func GetConfigForUser(ctx context.Context, username string, store *userconfig.UserStore) (*userconfig.Settings, error) {
+	cfg, cfgPath, err := userconfig.SnapshotForUser(ctx, username, store)
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
-	cfg.Jobs = bridgeconfig.EffectiveJobSettings(cfg.Jobs)
+	cfg.Jobs = userconfig.EffectiveJobSettings(cfg.Jobs)
 	slog.Debug("loaded user config", "component", "config", "user", username, "path", cfgPath)
 	return cfg, nil
 }
 
-func GetUIConfigForUser(ctx context.Context, username string, store *bridgeconfig.UserStore) (*bridgeconfig.UIPreferences, error) {
-	ui, uiPath, err := bridgeconfig.UISnapshotForUser(ctx, username, store)
+func GetUIConfigForUser(ctx context.Context, username string, store *userconfig.UserStore) (*userconfig.UIPreferences, error) {
+	ui, uiPath, err := userconfig.UISnapshotForUser(ctx, username, store)
 	if err != nil {
 		return nil, fmt.Errorf("load UI config: %w", err)
 	}
@@ -28,9 +29,9 @@ func GetUIConfigForUser(ctx context.Context, username string, store *bridgeconfi
 	return ui, nil
 }
 
-func SetConfigForUser(ctx context.Context, req apischema.ConfigSetPayload, username string, store *bridgeconfig.UserStore, privileged bool) (apischema.ConfigSetResult, error) {
+func SetConfigForUser(ctx context.Context, req apischema.ConfigSetPayload, username string, store *userconfig.UserStore, privileged bool) (apischema.ConfigSetResult, error) {
 	var syncDockerMountOrdering bool
-	updated, cfgPath, err := bridgeconfig.UpdateForUser(ctx, username, store, func(cfg *bridgeconfig.Settings) error {
+	updated, cfgPath, err := userconfig.UpdateForUser(ctx, username, store, func(cfg *userconfig.Settings) error {
 		if privilegeErr := requireDockerMountOrderingPrivilege(cfg, &req, privileged); privilegeErr != nil {
 			return privilegeErr
 		}
@@ -44,7 +45,7 @@ func SetConfigForUser(ctx context.Context, req apischema.ConfigSetPayload, usern
 		return apischema.ConfigSetResult{}, fmt.Errorf("update config: %w", err)
 	}
 	if syncDockerMountOrdering {
-		if err := syncDockerServiceMountOrdering(ctx, updated.Docker); err != nil {
+		if err := docker.SyncDaemonMountOrdering(ctx, updated.Docker); err != nil {
 			return apischema.ConfigSetResult{}, fmt.Errorf("sync docker service mount ordering: %w", err)
 		}
 	}
@@ -52,12 +53,12 @@ func SetConfigForUser(ctx context.Context, req apischema.ConfigSetPayload, usern
 	return apischema.ConfigSetResult{Message: "config updated", Path: cfgPath}, nil
 }
 
-func SetUIConfigForUser(ctx context.Context, req apischema.ConfigUISetPayload, username string, store *bridgeconfig.UserStore) (apischema.ConfigSetResult, error) {
-	ui := bridgeconfig.DefaultUIPreferences()
+func SetUIConfigForUser(ctx context.Context, req apischema.ConfigUISetPayload, username string, store *userconfig.UserStore) (apischema.ConfigSetResult, error) {
+	ui := userconfig.DefaultUIPreferences()
 	if err := applyUISettingsUpdate(&ui, &req); err != nil {
 		return apischema.ConfigSetResult{}, fmt.Errorf("update UI config: %w", err)
 	}
-	_, uiPath, err := bridgeconfig.ReplaceUIForUser(ctx, username, store, ui)
+	_, uiPath, err := userconfig.ReplaceUIForUser(ctx, username, store, ui)
 	if err != nil {
 		return apischema.ConfigSetResult{}, fmt.Errorf("update UI config: %w", err)
 	}
@@ -65,7 +66,7 @@ func SetUIConfigForUser(ctx context.Context, req apischema.ConfigUISetPayload, u
 	return apischema.ConfigSetResult{Message: "config updated", Path: uiPath}, nil
 }
 
-func requireDockerMountOrderingPrivilege(cfg *bridgeconfig.Settings, payload *apischema.ConfigSetPayload, privileged bool) error {
+func requireDockerMountOrderingPrivilege(cfg *userconfig.Settings, payload *apischema.ConfigSetPayload, privileged bool) error {
 	if privileged || payload == nil || payload.Docker == nil {
 		return nil
 	}
@@ -78,8 +79,8 @@ func requireDockerMountOrderingPrivilege(cfg *bridgeconfig.Settings, payload *ap
 	return nil
 }
 
-func shouldSyncDockerMountOrdering(cfg *bridgeconfig.Settings, payload *apischema.ConfigSetPayload, storageMode bridgeconfig.StorageMode) bool {
-	if storageMode == bridgeconfig.StorageModeMemory || payload == nil || payload.Docker == nil {
+func shouldSyncDockerMountOrdering(cfg *userconfig.Settings, payload *apischema.ConfigSetPayload, storageMode userconfig.StorageMode) bool {
+	if storageMode == userconfig.StorageModeMemory || payload == nil || payload.Docker == nil {
 		return false
 	}
 	if payload.Docker.RequireMountsForFolders != nil {

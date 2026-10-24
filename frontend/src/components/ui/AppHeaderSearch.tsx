@@ -12,9 +12,9 @@ import "./app-header-search.css";
 
 import { useAppTheme } from "@/theme";
 
-import { OVERLAY_ROOT_SELECTOR } from "./AppDialog";
 import AppIconButton from "./AppIconButton";
 import AppTextField from "./AppTextField";
+import { OVERLAY_ROOT_SELECTOR } from "./overlay";
 
 interface AppHeaderSearchProps {
   "aria-label"?: string;

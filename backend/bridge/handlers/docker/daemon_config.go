@@ -3,7 +3,8 @@ package docker
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net"
@@ -12,8 +13,8 @@ import (
 	"strconv"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
+	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
 )
 
 const dockerDaemonConfigPath = "/etc/docker/daemon.json"
@@ -51,11 +52,11 @@ func setDaemonConfig(ctx context.Context, path string, req apischema.DockerDaemo
 
 	reload, restart := daemonConfigChanges(before, after)
 	if reload || restart {
-		data, err := json.MarshalIndent(after, "", "  ")
+		data, err := json.Marshal(after, jsontext.WithIndent("  "), json.Deterministic(true))
 		if err != nil {
 			return apischema.DockerDaemonConfigSetResult{}, fmt.Errorf("encode docker daemon config: %w", err)
 		}
-		if err := utils.WriteFileAtomic(path, append(data, '\n'), 0o644); err != nil {
+		if err := atomicfile.Write(path, append(data, '\n'), 0o644); err != nil {
 			return apischema.DockerDaemonConfigSetResult{}, fmt.Errorf("write docker daemon config: %w", err)
 		}
 	}
@@ -81,7 +82,7 @@ func readDaemonConfigFile(path string) (map[string]any, error) {
 	if len(bytes.TrimSpace(data)) == 0 {
 		return raw, nil
 	}
-	if err := json.Unmarshal(data, &raw); err != nil {
+	if err := json.Unmarshal(data, &raw, json.MatchCaseInsensitiveNames(true)); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
 	return raw, nil
@@ -197,8 +198,8 @@ func stringValue(v any) string {
 }
 
 func jsonEqual(a, b any) bool {
-	left, _ := json.Marshal(a)
-	right, _ := json.Marshal(b)
+	left, _ := json.Marshal(a, json.Deterministic(true))
+	right, _ := json.Marshal(b, json.Deterministic(true))
 	return bytes.Equal(left, right)
 }
 

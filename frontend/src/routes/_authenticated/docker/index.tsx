@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { linuxio } from "@/api";
 import { loadRouteQueries } from "@/routes/-loader";
 
-import DockerDashboardPage from "./-components/DockerDashboardPage";
+import DockerDashboardPage from "./-components/dashboard/DockerDashboardPage";
 
 export const Route = createFileRoute("/_authenticated/docker/")({
   loader: (loaderArgs) =>

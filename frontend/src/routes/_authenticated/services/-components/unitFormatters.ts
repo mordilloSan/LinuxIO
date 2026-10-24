@@ -1,31 +1,3 @@
-export function formatBytes(val: unknown): string {
-  const b = Number(val ?? 0);
-  if (!b || b > 1e18) return "—";
-  if (b < 1024) return `${b} B`;
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} kB`;
-  if (b < 1024 * 1024 * 1024) return `${(b / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(b / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
-
-export function formatTimestamp(ts: unknown): string {
-  const ms = Number(ts ?? 0) / 1000;
-  if (!ms) return "—";
-  return new Date(ms).toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-export function formatUsec(usec: unknown): string {
-  const n = Number(usec ?? 0);
-  if (!n || !Number.isFinite(n) || n >= Number.MAX_SAFE_INTEGER) return "—";
-  const d = new Date(n / 1000);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString();
-}
-
 export function formatUnitFileState(state: string): {
   label: string;
   auto: boolean;

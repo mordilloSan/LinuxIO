@@ -9,8 +9,6 @@ import {
   type PhysicalVolume,
   type VolumeGroup,
 } from "@/api";
-import LVMMetricCard from "@/components/cards/LVMMetricCard";
-import LVMSectionCard from "@/components/cards/LVMSectionCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
@@ -30,9 +28,10 @@ import AppTypography from "@/components/ui/AppTypography";
 import { getUsageColor } from "@/constants/statusColors";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
+import LVMMetricCard from "@/routes/_authenticated/storage/-components/LVMMetricCard";
+import LVMSectionCard from "@/routes/_authenticated/storage/-components/LVMSectionCard";
 import { DASHBOARD_CARD_GAP } from "@/theme/constants";
-import { mixWithTransparency } from "@/theme/surfaces";
-import { formatFileSize } from "@/utils/formaters";
+import { formatFileSize } from "@/utils/formatters";
 
 const STORAGE_TOAST_META = {
   label: "Open storage",
@@ -145,7 +144,7 @@ const CreateLVDialog = ({
                 padding: 10,
                 borderRadius: 12,
                 background: "var(--app-palette-action-hover)",
-                border: `1px solid ${mixWithTransparency("currentColor", 0.12)}`,
+                border: `1px solid color-mix(in srgb, currentColor, transparent 88%)`,
               }}
             >
               <AppTypography color="text.secondary" variant="caption">
@@ -246,7 +245,7 @@ const ResizeLVDialog = ({
                 padding: 10,
                 borderRadius: 12,
                 background: "var(--app-palette-action-hover)",
-                border: `1px solid ${mixWithTransparency("currentColor", 0.12)}`,
+                border: `1px solid color-mix(in srgb, currentColor, transparent 88%)`,
                 display: "grid",
                 gap: 4,
               }}

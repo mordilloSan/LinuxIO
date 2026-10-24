@@ -5,8 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	libvirt "github.com/digitalocean/go-libvirt"
-
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
@@ -93,68 +91,6 @@ func TestCollectImportPreflightDetectsOVAFirmware(t *testing.T) {
 		if len(out.Errors) != 0 || out.Firmware.Detected != want {
 			t.Fatalf("ovf %s: errors=%v detected=%q, want %q", ovf, out.Errors, out.Firmware.Detected, want)
 		}
-	}
-}
-
-func TestSetVMFirmwareSwitchesToUEFI(t *testing.T) {
-	fake := newFakeConn()
-	fake.domains["fw"] = testDomain("fw")
-	fake.domainXML["fw"] = strings.ReplaceAll(deleteTestDomainXML(), "delete-me", "fw")
-	withFakeLibvirt(t, fake)
-	withOVMF(t, true)
-
-	vm, err := SetVMFirmware(context.Background(), apischema.VMFirmwareRequest{Name: "fw", Firmware: vmFirmwareUEFI})
-	if err != nil {
-		t.Fatalf("SetVMFirmware: %v", err)
-	}
-	if vm.Firmware != vmFirmwareUEFI || !strings.Contains(fake.domainXML["fw"], `<loader stateless="no">`) {
-		t.Fatalf("vm.Firmware=%q xml:\n%s", vm.Firmware, fake.domainXML["fw"])
-	}
-}
-
-func TestSetVMFirmwareSwitchesToBIOSAndRemovesNVRAM(t *testing.T) {
-	fake := newFakeConn()
-	fake.domains["fw"] = testDomain("fw")
-	fake.domainXML["fw"] = uefiTestDomainXML("fw")
-	withFakeLibvirt(t, fake)
-	var removed []string
-	old := removeFile
-	removeFile = func(path string) error { removed = append(removed, path); return nil }
-	t.Cleanup(func() { removeFile = old })
-
-	vm, err := SetVMFirmware(context.Background(), apischema.VMFirmwareRequest{Name: "fw", Firmware: vmFirmwareBIOS})
-	if err != nil {
-		t.Fatalf("SetVMFirmware: %v", err)
-	}
-	xmlDoc := fake.domainXML["fw"]
-	if vm.Firmware != vmFirmwareBIOS || strings.Contains(xmlDoc, "efi") || strings.Contains(xmlDoc, "nvram") || strings.Contains(xmlDoc, "loader") {
-		t.Fatalf("vm.Firmware=%q xml:\n%s", vm.Firmware, xmlDoc)
-	}
-	if len(removed) != 1 || removed[0] != libvirtNVRAMDir+"fw_VARS.fd" {
-		t.Fatalf("removed = %v, want NVRAM file", removed)
-	}
-}
-
-func TestSetVMFirmwareRejectsRunningVMAndMissingOVMF(t *testing.T) {
-	fake := newFakeConn()
-	fake.domains["fw"] = testDomain("fw")
-	fake.domainXML["fw"] = strings.ReplaceAll(deleteTestDomainXML(), "delete-me", "fw")
-	fake.domainState = int32(libvirt.DomainRunning)
-	withFakeLibvirt(t, fake)
-	withOVMF(t, true)
-
-	before := fake.domainXML["fw"]
-	_, err := SetVMFirmware(context.Background(), apischema.VMFirmwareRequest{Name: "fw", Firmware: vmFirmwareUEFI})
-	if err == nil || !strings.Contains(err.Error(), "shut off") || fake.domainXML["fw"] != before {
-		t.Fatalf("SetVMFirmware on running VM = %v", err)
-	}
-
-	withOVMF(t, false)
-	if _, err := SetVMFirmware(context.Background(), apischema.VMFirmwareRequest{Name: "fw", Firmware: vmFirmwareUEFI}); err == nil || !strings.Contains(err.Error(), "OVMF") {
-		t.Fatalf("SetVMFirmware without OVMF = %v, want conflict", err)
-	}
-	if _, err := SetVMFirmware(context.Background(), apischema.VMFirmwareRequest{Name: "fw", Firmware: "zbios"}); err == nil {
-		t.Fatal("SetVMFirmware accepted an unknown firmware")
 	}
 }
 

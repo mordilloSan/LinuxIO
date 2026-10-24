@@ -1,13 +1,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 
-import { createBackgroundTaskCache } from "@/api/background-task-cache";
+import { ANONYMOUS_USER_ID } from "@/api/user-scope";
 import AppButton from "@/components/ui/AppButton";
+import { createBackgroundTaskCache } from "@/tasks/taskCache";
 import {
   useBackgroundTask,
   useBackgroundTaskList,
-} from "@/hooks/backgroundTasks/useBackgroundTaskState";
-import { useIsIndexing } from "@/hooks/backgroundTasks/useIsIndexing";
+} from "@/tasks/useBackgroundTaskState";
+import { useIsIndexing } from "@/tasks/useIsIndexing";
 
 function TaskRow({ id }: { id: string }) {
   const task = useBackgroundTask(id);
@@ -60,7 +61,7 @@ function IndexingFlag() {
 export default function BackgroundTasksPage() {
   const [queryClient] = useState(() => new QueryClient());
   const [tasks] = useState(() =>
-    createBackgroundTaskCache(queryClient, "anonymous"),
+    createBackgroundTaskCache(queryClient, ANONYMOUS_USER_ID),
   );
   useEffect(() => {
     tasks.activate();

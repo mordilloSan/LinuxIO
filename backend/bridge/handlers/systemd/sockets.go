@@ -3,7 +3,7 @@ package systemd
 import (
 	"context"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
+	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
 )
 
 type SocketStatus struct {

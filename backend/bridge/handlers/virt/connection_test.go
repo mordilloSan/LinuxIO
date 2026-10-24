@@ -3,7 +3,6 @@ package virt
 import (
 	"context"
 	"errors"
-	"net"
 	"testing"
 	"time"
 
@@ -11,29 +10,6 @@ import (
 	"github.com/digitalocean/go-libvirt/libvirttest"
 	"github.com/digitalocean/go-libvirt/socket/dialers"
 )
-
-func TestCloseOnContextDoneClosesConnectionOnCancellation(t *testing.T) {
-	client, server := net.Pipe()
-	defer server.Close()
-	ctx, cancel := context.WithCancel(context.Background())
-	stopCancellation := closeOnContextDone(ctx, client)
-
-	readDone := make(chan error, 1)
-	go func() {
-		_, err := server.Read(make([]byte, 1))
-		readDone <- err
-	}()
-	cancel()
-	select {
-	case err := <-readDone:
-		if err == nil {
-			t.Fatal("Read error = nil, want closed connection")
-		}
-	case <-time.After(time.Second):
-		t.Fatal("connection remained blocked after context cancellation")
-	}
-	stopCancellation()
-}
 
 func TestLibvirtRPCUnblocksWhenTransportCloses(t *testing.T) {
 	mock := libvirttest.New()
@@ -48,7 +24,7 @@ func TestLibvirtRPCUnblocksWhenTransportCloses(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	stopCancellation := closeOnContextDone(ctx, raw)
+	stopCancellation := interruptOnContextDone(ctx, func() { _ = raw.Close() })
 	defer func() {
 		_ = raw.Close()
 		<-l.Disconnected()

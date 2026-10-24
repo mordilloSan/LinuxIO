@@ -4,7 +4,7 @@ import { linuxio } from "@/api";
 import { loadRouteQueries } from "@/routes/-loader";
 import { optionalString } from "@/routes/-search";
 
-import DockerLogsPage from "./-components/DockerLogsPage";
+import DockerLogsPage from "./-components/logs/DockerLogsPage";
 
 export const Route = createFileRoute("/_authenticated/docker/logs")({
   validateSearch: (search) => ({

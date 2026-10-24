@@ -1,11 +1,11 @@
 import { useSuspenseQueries } from "@tanstack/react-query";
 
 import { CACHE_TTL_MS, linuxio, type MonitoringLive } from "@/api";
-import DashboardCard from "@/components/cards/DashboardCard";
 import MetricBar from "@/components/gauge/MetricBar";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
+import DashboardCard from "@/routes/_authenticated/-dashboard/DashboardCard";
 import {
   formatGpuPercent,
   getGpuType,

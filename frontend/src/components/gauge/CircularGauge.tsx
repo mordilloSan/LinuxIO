@@ -1,0 +1,167 @@
+import { useMemo } from "react";
+
+import "./CircularGauge.css";
+
+import AppTypography from "@/components/ui/AppTypography";
+import { useAppTheme } from "@/theme";
+
+// Utility functions
+function clamp(n: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, n));
+}
+
+// Helper to interpolate between colors
+function interpolateColor(
+  color1: string,
+  color2: string,
+  factor: number,
+): string {
+  const c1 = parseInt(color1.slice(1), 16);
+  const c2 = parseInt(color2.slice(1), 16);
+
+  const r1 = (c1 >> 16) & 255;
+  const g1 = (c1 >> 8) & 255;
+  const b1 = c1 & 255;
+
+  const r2 = (c2 >> 16) & 255;
+  const g2 = (c2 >> 8) & 255;
+  const b2 = c2 & 255;
+
+  const r = Math.round(r1 + (r2 - r1) * factor);
+  const g = Math.round(g1 + (g2 - g1) * factor);
+  const b = Math.round(b1 + (b2 - b1) * factor);
+
+  return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
+}
+
+// Get color based on percentage value
+function getColorForPercentage(pct: number, colors: string[]): string {
+  if (colors.length === 0) return "currentColor";
+  if (colors.length === 1) return colors[0];
+
+  const segmentSize = 100 / (colors.length - 1);
+  const segmentIndex = Math.floor(pct / segmentSize);
+
+  if (segmentIndex >= colors.length - 1) return colors[colors.length - 1];
+
+  const localPercent = (pct % segmentSize) / segmentSize;
+  return interpolateColor(
+    colors[segmentIndex],
+    colors[segmentIndex + 1],
+    localPercent,
+  );
+}
+
+// ============================================
+// 1. Multi-Value Circular Gauge
+// ============================================
+interface GradientGaugeProps {
+  gradientColors?: string[];
+  showPercentage?: boolean;
+  size?: number;
+  thickness?: number;
+  value: number;
+}
+
+export const GradientCircularGauge = ({
+  value,
+  gradientColors,
+  size = 120,
+  thickness = 12,
+  showPercentage = true,
+}: GradientGaugeProps) => {
+  const pct = clamp(value, 0, 100);
+  const radius = (size - thickness) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const center = size / 2;
+
+  const theme = useAppTheme();
+  // Create multiple segments for smooth gradient effect
+  const segments = useMemo(() => {
+    // interpolateColor() parses real hex strings, so the gauge resolves its
+    // gradient from the theme in JS rather than through --app-* variables.
+    const resolvedGradientColors = gradientColors ?? [
+      theme.chart.tx,
+      theme.palette.warning.main,
+      theme.palette.error.main,
+    ];
+    const numSegments = 100;
+    const segmentAngle = 360 / numSegments;
+    const filledSegments = Math.ceil((pct / 100) * numSegments);
+
+    return Array.from({ length: filledSegments }, (_, i) => {
+      const segmentPct = ((i + 1) / numSegments) * 100;
+      const color = getColorForPercentage(segmentPct, resolvedGradientColors);
+      const rotation = i * segmentAngle - 90;
+      const strokeDasharray = `${(segmentAngle / 360) * circumference * 0.99} ${circumference}`;
+
+      return { color, rotation, strokeDasharray };
+    });
+  }, [
+    circumference,
+    pct,
+    gradientColors,
+    theme.chart.tx,
+    theme.palette.warning.main,
+    theme.palette.error.main,
+  ]);
+
+  return (
+    <div
+      style={{
+        position: "relative",
+        display: "inline-flex",
+        width: size,
+        height: size,
+      }}
+    >
+      <svg height={size} width={size}>
+        <circle
+          className="gauge-track"
+          cx={center}
+          cy={center}
+          fill="none"
+          r={radius}
+          strokeWidth={thickness}
+        />
+        {segments.map((segment, index) => (
+          <circle
+            cx={center}
+            cy={center}
+            fill="none"
+            key={index}
+            r={radius}
+            stroke={segment.color}
+            strokeDasharray={segment.strokeDasharray}
+            strokeLinecap="round"
+            strokeWidth={thickness}
+            transform={`rotate(${segment.rotation} ${center} ${center})`}
+          />
+        ))}
+      </svg>
+      {showPercentage && (
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <AppTypography
+            className="gauge-value-text"
+            component="div"
+            fontWeight="bold"
+            variant="body1"
+          >
+            {Math.round(pct)}%
+          </AppTypography>
+        </div>
+      )}
+    </div>
+  );
+};

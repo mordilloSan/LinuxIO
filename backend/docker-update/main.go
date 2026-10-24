@@ -10,31 +10,34 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
+	"github.com/mordilloSan/LinuxIO/backend/common/dockerupdate"
 	"github.com/mordilloSan/LinuxIO/backend/common/logging"
 )
 
 // runUpdates keeps argument and dispatch behavior testable without contacting Docker.
-var runUpdates = docker.RunScheduledContainerUpdates
-var runOperation = docker.RunDurableDockerUpdate
+var runUpdates = dockerupdate.RunScheduled
+var runOperation = dockerupdate.RunDurable
 var configureLogging = logging.Configure
 
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	code := runWorker(os.Args, ctx, os.Stdout, os.Stderr)
-	stop()
-	os.Exit(code)
+	os.Exit(run(os.Args))
 }
 
-func runWorker(args []string, ctx context.Context, stdout, stderr io.Writer) int {
+func run(args []string) int {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return runWorker(ctx, args, os.Stdout, os.Stderr)
+}
+
+func runWorker(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if err := configureLogging("linuxio-docker-update", false); err != nil {
 		fmt.Fprintf(stderr, "linuxio-docker-update: initialize logging: %v\n", err)
 		return 1
 	}
-	return runCLI(args, ctx, stdout, stderr)
+	return runCLI(ctx, args, stdout, stderr)
 }
 
-func runCLI(args []string, ctx context.Context, stdout, stderr io.Writer) int {
+func runCLI(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if len(args) < 2 {
 		writeHelp(stdout)
 		return 0
@@ -97,7 +100,7 @@ func parseOperationArgs(args []string, stderr io.Writer) (string, bool) {
 }
 
 func parseRunArgs(args []string, stderr io.Writer) (string, bool) {
-	configPath := docker.DockerUpdateConfigPath
+	configPath := dockerupdate.ConfigPath
 	for i := 0; i < len(args); i++ {
 		if args[i] != "--config" {
 			fmt.Fprintf(stderr, "linuxio-docker-update: run: unknown argument %q\n", args[i])

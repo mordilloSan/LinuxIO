@@ -14,16 +14,17 @@ import (
 	"github.com/moby/moby/client"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dockerclient"
 )
 
 // List all networks
 func ListDockerNetworks(ctx context.Context) ([]apischema.DockerNetwork, error) {
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 
 	networks, err := cli.NetworkList(ctx, client.NetworkListOptions{})
 	if err != nil {
@@ -171,29 +172,29 @@ func isDockerDefaultNetwork(name string) bool {
 }
 
 func DeleteDockerNetwork(ctx context.Context, id string) error {
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 	return deleteDockerNetwork(ctx, cli, id)
 }
 
 func deleteDockerNetwork(ctx context.Context, cli networkRemover, id string) error {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return bridgeipc.NewError("network ID is required", 400)
+		return fmt.Errorf("%w: network ID is required", bridgeipc.ErrInvalidArgs)
 	}
 	inspected, err := cli.NetworkInspect(ctx, id, client.NetworkInspectOptions{})
 	if err != nil {
 		return fmt.Errorf("inspect network before removal: %w", err)
 	}
 	if isDockerDefaultNetwork(inspected.Network.Name) {
-		return bridgeipc.NewError(fmt.Sprintf("Docker default network %q cannot be deleted", inspected.Network.Name), 409)
+		return fmt.Errorf("%w: Docker default network %q cannot be deleted", bridgeipc.ErrConflict, inspected.Network.Name)
 	}
 	if _, err := cli.NetworkRemove(ctx, id, client.NetworkRemoveOptions{}); err != nil {
 		if errdefs.IsConflict(err) {
-			return bridgeipc.NewError(fmt.Sprintf("network %q is in use: %v", inspected.Network.Name, err), 409)
+			return fmt.Errorf("%w: network %q is in use: %w", bridgeipc.ErrConflict, inspected.Network.Name, err)
 		}
 		return fmt.Errorf("failed to remove network %q: %w", inspected.Network.Name, err)
 	}
@@ -203,13 +204,13 @@ func deleteDockerNetwork(ctx context.Context, cli networkRemover, id string) err
 func CreateDockerNetwork(ctx context.Context, request apischema.DockerNetworkCreateRequest) error {
 	name, options, err := networkCreateOptions(request)
 	if err != nil {
-		return bridgeipc.NewError(err.Error(), 400)
+		return fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
 	}
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 
 	if _, err := cli.NetworkCreate(ctx, name, options); err != nil {
 		return fmt.Errorf("failed to create network %q: %w", name, err)
@@ -264,13 +265,13 @@ func networkCreateOptions(request apischema.DockerNetworkCreateRequest) (string,
 func ConnectDockerNetwork(ctx context.Context, request apischema.DockerNetworkConnectRequest) error {
 	networkID, containerID, aliases, err := networkConnectionInput(request.NetworkID, request.ContainerID, request.Aliases)
 	if err != nil {
-		return bridgeipc.NewError(err.Error(), 400)
+		return fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
 	}
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 	connectOptions := client.NetworkConnectOptions{Container: containerID}
 	if len(aliases) > 0 {
 		connectOptions.EndpointConfig = &network.EndpointSettings{Aliases: aliases}
@@ -284,13 +285,13 @@ func ConnectDockerNetwork(ctx context.Context, request apischema.DockerNetworkCo
 func DisconnectDockerNetwork(ctx context.Context, request apischema.DockerNetworkDisconnectRequest) error {
 	networkID, containerID, _, err := networkConnectionInput(request.NetworkID, request.ContainerID, nil)
 	if err != nil {
-		return bridgeipc.NewError(err.Error(), 400)
+		return fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
 	}
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 	if _, err := cli.NetworkDisconnect(ctx, networkID, client.NetworkDisconnectOptions{Container: containerID}); err != nil {
 		return fmt.Errorf("disconnect container from network: %w", err)
 	}
@@ -325,11 +326,11 @@ func networkConnectionInput(networkID, containerID string, aliases []string) (st
 // BridgeNames returns the Linux bridge interface names backing Docker's
 // bridge-driver networks, so other host views can hide them.
 func BridgeNames(ctx context.Context) (map[string]struct{}, error) {
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 
 	networks, err := cli.NetworkList(ctx, client.NetworkListOptions{})
 	if err != nil {

@@ -3,7 +3,7 @@ package btrfs
 import (
 	"context"
 	"encoding/binary"
-	"encoding/json"
+	"encoding/json/v2"
 	"hash/crc32"
 	"os"
 	"os/exec"

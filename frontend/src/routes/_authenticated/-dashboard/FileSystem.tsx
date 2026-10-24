@@ -1,10 +1,10 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 
 import { linuxio, type FilesystemInfo } from "@/api";
-import DashboardCard from "@/components/cards/DashboardCard";
 import MetricBar from "@/components/gauge/MetricBar";
 import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
-import { formatFileSize } from "@/utils/formaters";
+import DashboardCard from "@/routes/_authenticated/-dashboard/DashboardCard";
+import { formatFileSize } from "@/utils/formatters";
 
 const isRelevantMount = (fs: FilesystemInfo): boolean => {
   const mount = fs.mountpoint;

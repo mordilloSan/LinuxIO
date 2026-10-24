@@ -56,8 +56,7 @@ function wrapper({
     return (
       <AuthContext.Provider value={auth}>
         <RouterContextProvider router={router}>
-          {/* Innermost so the app router's own Wrap (the module query
-              client) cannot shadow the seeded test client. */}
+          {/* Innermost so the seeded test client is the one hooks read. */}
           <QueryClientProvider client={queryClient}>
             {children}
           </QueryClientProvider>

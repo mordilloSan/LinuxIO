@@ -2,13 +2,16 @@ package durabletask
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 const testRoute = "control.app_update"
@@ -117,7 +120,7 @@ func TestStoreAppliesTypedExecutorResult(t *testing.T) {
 		State:      StateFailed,
 		ExitCode:   17,
 		FinishedAt: time.Date(2026, 8, 10, 12, 1, 0, 0, time.UTC),
-		Result:     json.RawMessage(`{"containerId":"new-id","updated":true}`),
+		Result:     jsontext.Value(`{"containerId":"new-id","updated":true}`),
 		Error:      "installer failed",
 	}
 	data, err := json.Marshal(result)
@@ -357,5 +360,32 @@ func testClaim(sequence int, uid uint32, target string) Claim {
 		UID:                uid,
 		RequestFingerprint: Fingerprint(testRoute, target),
 		Target:             target,
+	}
+}
+
+func TestClampMessageKeepsRecordReadable(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	claim := testClaim(20, 1000, "clamp")
+	if _, _, err := store.Claim(ctx, claim); err != nil {
+		t.Fatalf("Claim: %v", err)
+	}
+	// "é" is two bytes, so byte 512 falls inside a rune; the trailing 0xff is invalid UTF-8.
+	multibyte := "a" + strings.Repeat("é", 600) + "\xff"
+	if _, err := store.Update(ctx, claim.ID, claim.UID, func(record *Record) error {
+		record.AppendProgress(time.Now(), "running", multibyte)
+		return nil
+	}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	record, err := store.Get(ctx, claim.ID, claim.UID)
+	if err != nil {
+		t.Fatalf("Get after clamped progress: %v", err)
+	}
+	if got := record.Progress[0].Message; len(got) > 512 || !utf8.ValidString(got) {
+		t.Fatalf("progress message len=%d valid=%t", len(got), utf8.ValidString(got))
+	}
+	if got := ClampMessage(strings.Repeat("é", 600)+"\xff", 1024); len(got) > 1024 || !utf8.ValidString(got) {
+		t.Fatalf("clamped message len=%d valid=%t", len(got), utf8.ValidString(got))
 	}
 }

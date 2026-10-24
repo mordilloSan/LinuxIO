@@ -8,16 +8,21 @@ import type {
   VMStoragePool,
   VirtualMachine,
 } from "@/api";
+import {
+  PillToggle,
+  STATUS_COLOR,
+  Throughput,
+  Tile,
+} from "@/components/cards/EntityCardKit";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import { filterInterfaces } from "@/routes/_authenticated/-dashboard/Network";
 import { DASHBOARD_CARD_GAP } from "@/theme/constants";
-import { formatFileSize } from "@/utils/formaters";
+import { formatFileSize } from "@/utils/formatters";
 
 import PreflightSummary from "./PreflightSummary";
-import { PillToggle, STATUS_COLOR, Throughput, Tile } from "./vmCards";
 import { normalizeState, vmOSIcon } from "./vmShared";
 
 const FILTERS = [

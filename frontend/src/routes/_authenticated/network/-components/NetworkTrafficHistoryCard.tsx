@@ -16,7 +16,7 @@ import {
 } from "@/components/charts/HistoryCard";
 import type { HistoryRangeId } from "@/components/charts/historyRanges";
 import { useCapability } from "@/hooks/useCapabilities";
-import { formatThroughput } from "@/utils/formaters";
+import { formatThroughput } from "@/utils/formatters";
 
 /**
  * Both directions read positive here: unlike the live chart this is an area

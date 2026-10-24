@@ -1,0 +1,72 @@
+/* InfoRow: label/value rows with a themed divider */
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding-block: 2.4px;
+  border-bottom: 1px solid var(--app-palette-divider, rgba(0, 0, 0, 0.12));
+  gap: 4px;
+}
+.info-row:last-child {
+  border-bottom: none;
+}
+
+/* list: roomier rows used by summary cards and dashboard stat lists */
+.info-row.info-row--list {
+  justify-content: flex-start;
+  padding-block: var(--app-space-2);
+  gap: var(--app-space-4);
+}
+.info-row.info-row--list:last-child,
+.info-row.info-row--no-border {
+  border-bottom: none;
+}
+.info-row__value {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+/* editable list row: the whole row is a button */
+.info-row.info-row--edit {
+  padding-inline: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* detail: tight rows with a top divider and a fixed-width label column */
+.info-row-detail {
+  display: flex;
+  align-items: baseline;
+  min-width: 0;
+  padding: 3px 0;
+  border-top: 1px solid var(--app-palette-divider);
+}
+.info-row-detail--no-border {
+  border-top: none;
+}
+.info-row-detail--split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  column-gap: var(--app-space-4);
+}
+.info-row-detail__label {
+  flex-shrink: 0;
+  width: 90px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--app-palette-text-secondary);
+}
+.info-row-detail--split .info-row-detail__label {
+  width: auto;
+  min-width: 0;
+}
+.info-row-detail__value {
+  flex: 1;
+  min-width: 0;
+}
+.info-row-detail--split .info-row-detail__value {
+  text-align: right;
+}

@@ -4,24 +4,14 @@ frontend/node_modules/
 frontend/.vite-dev.pid
 tsconfig.tsbuildinfo
 
-# Go Binaries
-/linuxio
-/linuxio-webserver
-/linuxio-auth
-/linuxio-bridge
-/linuxio-docker-update
-/linuxio-indexer
-/linuxio-monitoring
+# Build outputs (make build-binaries)
+/build/
 
 # Logs and misc
 *.log
 *.swp
 .cache
-.go-cache
-.gocache
 .DS_Store
 .vscode
-.claude/*
-!.claude/CLAUDE.md
-.codex/*
-!.codex/config.toml
+.claude/
+.codex/

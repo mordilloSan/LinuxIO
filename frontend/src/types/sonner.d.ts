@@ -1,6 +1,6 @@
 import "sonner";
 
-import type { ToastMeta } from "@/types/navigation";
+import type { ToastMeta } from "@/api";
 
 declare module "sonner" {
   interface ToastT {

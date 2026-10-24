@@ -7,7 +7,10 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"syscall"
 	"testing"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
 func TestReloadSambaUsesSmbcontrolWhenAvailable(t *testing.T) {
@@ -176,6 +179,106 @@ func TestCreateSambaShareCreatesMissingConfAndAppends(t *testing.T) {
 	for _, want := range []string{"[Docs]", "path = " + sharePath, "comment = shared docs"} {
 		if !strings.Contains(content, want) {
 			t.Fatalf("smb.conf missing %q:\n%s", want, content)
+		}
+	}
+}
+
+func stubSmbcontrolReload(t *testing.T) {
+	t.Helper()
+	orig := smbcontrolReload
+	t.Cleanup(func() { smbcontrolReload = orig })
+	smbcontrolReload = func(context.Context) ([]byte, error) { return nil, nil }
+}
+
+func TestCreateSambaShareDirectoryIsWorldTraversableDespiteUmask(t *testing.T) {
+	useTempSmbConf(t)
+	stubSambaAvailable(t, true, nil)
+	stubSmbcontrolReload(t)
+	oldUmask := syscall.Umask(0o077)
+	t.Cleanup(func() { syscall.Umask(oldUmask) })
+
+	root := t.TempDir()
+	existing := filepath.Join(root, "existing")
+	if err := os.Mkdir(existing, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	created := filepath.Join(root, "created")
+
+	for name, path := range map[string]string{"Existing": existing, "Created": created} {
+		if err := CreateSambaShare(context.Background(), name, map[string]string{"path": path}); err != nil {
+			t.Fatalf("CreateSambaShare(%s) error = %v", name, err)
+		}
+	}
+
+	if info, err := os.Stat(created); err != nil || info.Mode().Perm() != 0o755 {
+		t.Fatalf("created dir mode = %v (err %v), want 0755", info.Mode().Perm(), err)
+	}
+	if info, err := os.Stat(existing); err != nil || info.Mode().Perm() != 0o700 {
+		t.Fatalf("existing dir mode = %v (err %v), want untouched 0700", info.Mode().Perm(), err)
+	}
+}
+
+func TestCreateSambaShareAppendsOnFreshLine(t *testing.T) {
+	confFile := useTempSmbConf(t)
+	stubSambaAvailable(t, true, nil)
+	stubSmbcontrolReload(t)
+
+	if err := os.MkdirAll(filepath.Dir(confFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(confFile, []byte("[global]\n   workgroup = X"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := CreateSambaShare(context.Background(), "Docs", map[string]string{"path": filepath.Join(t.TempDir(), "d")}); err != nil {
+		t.Fatalf("CreateSambaShare() error = %v", err)
+	}
+
+	data, err := os.ReadFile(confFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "workgroup = X\n\n[Docs]\n") {
+		t.Fatalf("share glued to the previous line:\n%s", data)
+	}
+}
+
+func TestSambaUpdateAndDeleteRejectReservedSections(t *testing.T) {
+	confFile := useTempSmbConf(t)
+	stubSambaAvailable(t, true, nil)
+	stubSmbcontrolReload(t)
+
+	if err := os.MkdirAll(filepath.Dir(confFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	orig := "[global]\n   workgroup = X\n"
+	if err := os.WriteFile(confFile, []byte(orig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := DeleteSambaShare(context.Background(), "Global"); bridgeipc.StatusCode(err) != 403 {
+		t.Fatalf("DeleteSambaShare(global) error = %v, want 403", err)
+	}
+	if err := UpdateSambaShare(context.Background(), "global", "Docs", map[string]string{"path": "/srv/docs"}); bridgeipc.StatusCode(err) != 403 {
+		t.Fatalf("UpdateSambaShare(global) error = %v, want 403", err)
+	}
+	if data, err := os.ReadFile(confFile); err != nil || string(data) != orig {
+		t.Fatalf("smb.conf changed: %q (err %v)", data, err)
+	}
+}
+
+func TestSambaShareValidationErrorsAreBadRequests(t *testing.T) {
+	ctx := context.Background()
+	good := map[string]string{"path": "/srv/docs"}
+	for name, err := range map[string]error{
+		"bad name":      CreateSambaShare(ctx, "bad name!", good),
+		"reserved name": CreateSambaShare(ctx, "global", good),
+		"missing path":  CreateSambaShare(ctx, "Docs", map[string]string{}),
+		"bad path":      CreateSambaShare(ctx, "Docs", map[string]string{"path": "relative\npath"}),
+		"update path":   UpdateSambaShare(ctx, "Docs", "Docs", map[string]string{"path": "relative\npath"}),
+	} {
+		if bridgeipc.StatusCode(err) != 400 {
+			t.Errorf("%s: error = %v, want 400", name, err)
 		}
 	}
 }

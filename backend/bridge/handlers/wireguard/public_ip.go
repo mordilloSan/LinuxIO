@@ -31,3 +31,18 @@ func getPublicIP() (string, error) {
 	}
 	return strings.TrimSpace(string(body)), nil
 }
+
+var getPublicIPFunc = getPublicIP
+
+// resolveEndpointHost is what exported clients dial: the configured host
+// override, else the detected public IP, else "" (the endpoint is omitted).
+func resolveEndpointHost(cfg WireGuardConfig, logPrefix string) string {
+	if cfg.Host != "" {
+		return cfg.Host
+	}
+	publicIP, _ := getPublicIPFunc()
+	if publicIP == "" {
+		slog.Warn("public IP lookup returned empty string", "operation", logPrefix)
+	}
+	return publicIP
+}

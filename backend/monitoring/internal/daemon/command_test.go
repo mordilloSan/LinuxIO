@@ -1,8 +1,10 @@
 package daemon
 
 import (
+	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -12,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	apimodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/api/model"
+	monitoringapi "github.com/mordilloSan/LinuxIO/backend/monitoring/api"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/config"
 )
 
@@ -20,7 +22,7 @@ func TestApplyConfigSetParamsUpdatesSmartRefreshInterval(t *testing.T) {
 	cfg := config.Default()
 	raw := "2h"
 
-	restartRequired, err := applyConfigSetParams(&cfg, configSetParams{
+	restartRequired, err := applyConfigSetParams(&cfg, monitoringapi.MonitoringConfigPatch{
 		SmartRefreshInterval: &raw,
 	})
 
@@ -33,7 +35,7 @@ func TestApplyConfigSetParamsUpdatesHistoryRetention(t *testing.T) {
 	cfg := config.Default()
 	raw := "336h"
 
-	restartRequired, err := applyConfigSetParams(&cfg, configSetParams{
+	restartRequired, err := applyConfigSetParams(&cfg, monitoringapi.MonitoringConfigPatch{
 		HistoryRetention: &raw,
 	})
 
@@ -46,7 +48,7 @@ func TestApplyConfigSetParamsUpdatesDiskUsageCache(t *testing.T) {
 	cfg := config.Default()
 	raw := "30m"
 
-	restartRequired, err := applyConfigSetParams(&cfg, configSetParams{
+	restartRequired, err := applyConfigSetParams(&cfg, monitoringapi.MonitoringConfigPatch{
 		DiskUsageCache: &raw,
 	})
 
@@ -59,7 +61,7 @@ func TestApplyConfigSetParamsRejectsNegativeDiskUsageCache(t *testing.T) {
 	cfg := config.Default()
 	raw := "-1s"
 
-	_, err := applyConfigSetParams(&cfg, configSetParams{DiskUsageCache: &raw})
+	_, err := applyConfigSetParams(&cfg, monitoringapi.MonitoringConfigPatch{DiskUsageCache: &raw})
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "disk_usage_cache")
@@ -69,7 +71,7 @@ func TestApplyConfigSetParamsSplitsHistoryList(t *testing.T) {
 	cfg := config.Default()
 	raw := " cpu , mem ,, "
 
-	restartRequired, err := applyConfigSetParams(&cfg, configSetParams{History: &raw})
+	restartRequired, err := applyConfigSetParams(&cfg, monitoringapi.MonitoringConfigPatch{History: &raw})
 
 	require.NoError(t, err)
 	assert.False(t, restartRequired)
@@ -78,20 +80,20 @@ func TestApplyConfigSetParamsSplitsHistoryList(t *testing.T) {
 
 func TestApplyConfigSetParamsListenersRequireRestart(t *testing.T) {
 	cfg := config.Default()
-	listeners := []config.Listener{{Name: "homepage", Address: "0.0.0.0:45876", Plugins: []string{"cpu"}}}
+	listeners := []monitoringapi.MonitoringListener{{Name: "homepage", Address: "0.0.0.0:45876", Plugins: []string{"cpu"}}}
 
-	restartRequired, err := applyConfigSetParams(&cfg, configSetParams{Listeners: &listeners})
+	restartRequired, err := applyConfigSetParams(&cfg, monitoringapi.MonitoringConfigPatch{Listeners: &listeners})
 
 	require.NoError(t, err)
 	assert.True(t, restartRequired)
-	assert.Equal(t, listeners, cfg.Listeners)
+	assert.Equal(t, []config.Listener{{Name: "homepage", Address: "0.0.0.0:45876", Plugins: []string{"cpu"}}}, cfg.Listeners)
 }
 
 func TestApplyConfigSetParamsRejectsInvalidSmartRefreshInterval(t *testing.T) {
 	cfg := config.Default()
 	raw := "0"
 
-	_, err := applyConfigSetParams(&cfg, configSetParams{
+	_, err := applyConfigSetParams(&cfg, monitoringapi.MonitoringConfigPatch{
 		SmartRefreshInterval: &raw,
 	})
 
@@ -103,7 +105,7 @@ func TestApplyConfigSetParamsRejectsUnknownHistoryPlugin(t *testing.T) {
 	cfg := config.Default()
 	raw := "cpu,does-not-exist"
 
-	_, err := applyConfigSetParams(&cfg, configSetParams{History: &raw})
+	_, err := applyConfigSetParams(&cfg, monitoringapi.MonitoringConfigPatch{History: &raw})
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "does-not-exist")
@@ -124,7 +126,7 @@ func TestExecuteCommandConfigGetReturnsFlatView(t *testing.T) {
 	cfg.Listeners = []config.Listener{{Name: "homepage", Address: "0.0.0.0:45876"}}
 	executor := newConfigOnlyExecutor(t, cfg)
 
-	result := executor.ExecuteCommand(context.Background(), apimodel.CommandRequest{Command: " Config.Get "})
+	result := executor.ExecuteCommand(context.Background(), monitoringapi.CommandRequest{Command: " Config.Get "})
 
 	require.Equal(t, http.StatusOK, result.Status)
 	require.True(t, result.Response.OK)
@@ -144,25 +146,40 @@ func TestExecuteCommandConfigGetReturnsFlatView(t *testing.T) {
 	assert.Equal(t, cfg.Listeners, view.Listeners)
 }
 
+// The bridge decodes config.get into the shared wire type; any drift in
+// config.View's JSON shows up as an unknown or missing field here.
+func TestConfigViewMatchesTheSharedWireType(t *testing.T) {
+	cfg := config.Default()
+	cfg.Listeners = []config.Listener{{Name: "homepage", Address: "0.0.0.0:45876", Plugins: []string{"cpu"}}}
+	encoded, err := json.Marshal(cfg.View())
+	require.NoError(t, err)
+
+	var wire monitoringapi.MonitoringConfig
+	require.NoError(t, json.UnmarshalRead(bytes.NewReader(encoded), &wire, json.RejectUnknownMembers(true)))
+	reencoded, err := json.Marshal(wire)
+	require.NoError(t, err)
+	assert.JSONEq(t, string(encoded), string(reencoded))
+}
+
 func TestExecuteCommandListsCommands(t *testing.T) {
 	executor := newConfigOnlyExecutor(t, config.Default())
 
-	result := executor.ExecuteCommand(context.Background(), apimodel.CommandRequest{Command: "commands.list", RequestID: "abc"})
+	result := executor.ExecuteCommand(context.Background(), monitoringapi.CommandRequest{Command: "commands.list", RequestID: "abc"})
 
 	require.Equal(t, http.StatusOK, result.Status)
 	assert.Equal(t, "abc", result.Response.RequestID)
-	assert.Equal(t, commandList(), result.Response.Data)
+	assert.Equal(t, monitoringapi.Commands(), result.Response.Data)
 }
 
 func TestExecuteCommandRejectsEmptyAndUnknownCommands(t *testing.T) {
 	executor := newConfigOnlyExecutor(t, config.Default())
 
-	empty := executor.ExecuteCommand(context.Background(), apimodel.CommandRequest{})
+	empty := executor.ExecuteCommand(context.Background(), monitoringapi.CommandRequest{})
 	assert.Equal(t, http.StatusBadRequest, empty.Status)
 	require.NotNil(t, empty.Response.Error)
 	assert.Equal(t, "invalid_command", empty.Response.Error.Code)
 
-	unknown := executor.ExecuteCommand(context.Background(), apimodel.CommandRequest{Command: "reboot"})
+	unknown := executor.ExecuteCommand(context.Background(), monitoringapi.CommandRequest{Command: "reboot"})
 	assert.Equal(t, http.StatusNotFound, unknown.Status)
 	require.NotNil(t, unknown.Response.Error)
 	assert.Equal(t, "unknown_command", unknown.Response.Error.Code)
@@ -171,7 +188,7 @@ func TestExecuteCommandRejectsEmptyAndUnknownCommands(t *testing.T) {
 func TestListenersRestartRequiredSkipsFixedSockets(t *testing.T) {
 	cfg := config.Default()
 	cfg.Listeners = []config.Listener{{Name: "homepage", Address: "0.0.0.0:45876", Plugins: []string{"cpu"}}}
-	active := []apimodel.ListenerMeta{
+	active := []monitoringapi.ListenerMeta{
 		{Name: "api", Address: "unix:/run/linuxio/monitoring/api.sock"},
 		{Name: "control", Address: "unix:/run/linuxio/monitoring/control.sock"},
 		{Name: "homepage", Address: "0.0.0.0:45876", Plugins: []string{"cpu"}},
@@ -212,9 +229,9 @@ func TestHandleConfigSetWaitsForTheConfigLock(t *testing.T) {
 	executor := newConfigOnlyExecutor(t, config.Default())
 	// An interval of zero fails validation after the file is loaded, so the
 	// handler exercises its locked section without reaching the runtime reload.
-	req := apimodel.CommandRequest{Command: "config.set", Params: json.RawMessage(`{"collector_interval":"0s"}`)}
+	req := monitoringapi.CommandRequest{Command: "config.set", Params: jsontext.Value(`{"collector_interval":"0s"}`)}
 
-	finishedWhileLocked, response := runWhileConfigLocked(t, executor, func() apimodel.CommandResponse {
+	finishedWhileLocked, response := runWhileConfigLocked(t, executor, func() monitoringapi.CommandResponse[any] {
 		return executor.handleConfigSet(context.Background(), req).Response
 	})
 
@@ -229,9 +246,9 @@ func TestHandleConfigReloadWaitsForTheConfigLock(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	require.NoError(t, os.WriteFile(path, []byte("not_a_key: true\n"), 0o600))
 	executor := NewCommandExecutor(nil, path)
-	req := apimodel.CommandRequest{Command: "config.reload"}
+	req := monitoringapi.CommandRequest{Command: "config.reload"}
 
-	finishedWhileLocked, response := runWhileConfigLocked(t, executor, func() apimodel.CommandResponse {
+	finishedWhileLocked, response := runWhileConfigLocked(t, executor, func() monitoringapi.CommandResponse[any] {
 		return executor.handleConfigReload(req).Response
 	})
 
@@ -256,14 +273,14 @@ func TestApplyConfigSetParamsReplacesHistoryIntervals(t *testing.T) {
 	cfg.History.Intervals = map[string]config.Duration{"cpu": config.Duration(2 * time.Minute)}
 	intervals := map[string]string{"containers": "5m"}
 
-	restartRequired, err := applyConfigSetParams(&cfg, configSetParams{HistoryIntervals: &intervals})
+	restartRequired, err := applyConfigSetParams(&cfg, monitoringapi.MonitoringConfigPatch{HistoryIntervals: &intervals})
 
 	require.NoError(t, err)
 	assert.False(t, restartRequired)
 	assert.Equal(t, map[string]config.Duration{"containers": config.Duration(5 * time.Minute)}, cfg.History.Intervals)
 
 	empty := map[string]string{}
-	_, err = applyConfigSetParams(&cfg, configSetParams{HistoryIntervals: &empty})
+	_, err = applyConfigSetParams(&cfg, monitoringapi.MonitoringConfigPatch{HistoryIntervals: &empty})
 	require.NoError(t, err)
 	assert.Empty(t, cfg.History.Intervals)
 }
@@ -272,8 +289,17 @@ func TestApplyConfigSetParamsRejectsHistoryIntervalBelowTick(t *testing.T) {
 	cfg := config.Default()
 	intervals := map[string]string{"cpu": "30s"}
 
-	_, err := applyConfigSetParams(&cfg, configSetParams{HistoryIntervals: &intervals})
+	_, err := applyConfigSetParams(&cfg, monitoringapi.MonitoringConfigPatch{HistoryIntervals: &intervals})
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "history.intervals")
+}
+
+func TestHandleConfigSetRejectsUnknownParams(t *testing.T) {
+	executor := newConfigOnlyExecutor(t, config.Default())
+	req := monitoringapi.CommandRequest{Command: "config.set", Params: jsontext.Value(`{"not_a_key":true}`)}
+
+	response := executor.handleConfigSet(context.Background(), req).Response
+	require.NotNil(t, response.Error)
+	assert.Equal(t, "invalid_params", response.Error.Code)
 }

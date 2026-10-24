@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
-	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/capabilities"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
@@ -65,7 +65,7 @@ func withDockerInstall(t *testing.T, dockerInstalled bool, handler http.HandlerF
 		order = append(order, "wait:"+service)
 		return nil
 	}
-	capabilityDetectWithRetry = func(_ context.Context, spec system.CapabilitySpec, _ session.User, _ time.Duration) (bool, string) {
+	capabilityDetectWithRetry = func(_ context.Context, spec capabilities.CapabilitySpec, _ session.User, _ time.Duration) (bool, string) {
 		order = append(order, "detect:"+spec.Name)
 		return true, ""
 	}
@@ -81,8 +81,8 @@ func serveScript(script string) http.HandlerFunc {
 func TestInstallCapabilityRunsDockerScriptBeforeServiceActions(t *testing.T) {
 	order := withDockerInstall(t, false, serveScript("echo \"script=$0\"\necho installing docker\n"))
 
-	registry := bridgetask.NewTaskService()
-	task, err := registry.Create("system.install_capability", nil)
+	registry := bridgeipc.NewTaskService()
+	task, _, err := registry.ClaimForOwnerWithIdentity("system.install_capability", nil, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestInstallCapabilityRunsDockerScriptBeforeServiceActions(t *testing.T) {
 	defer unsubscribe()
 	var stdout, status strings.Builder
 	for _, event := range replay {
-		progress, ok := event.Progress.(bridgetask.TaskProgress)
+		progress, ok := event.Progress.(bridgeipc.TaskProgress)
 		if !ok {
 			continue
 		}

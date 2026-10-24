@@ -1,13 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-import { DockerUpdateOperationProvider } from "@/components/docker/DockerUpdateOperationProvider";
 import { makeTabLayout } from "@/components/tabbar";
 import type { AccessPolicy } from "@/hooks/useCapabilities";
 import { DockerIcon } from "@/icons/svg";
 import { requireAccess } from "@/routes/-auth";
 
-import { DOCKER_TABS } from "./-components/dockerTabs";
-import { useDockerUpdateStatusRefresh } from "./-components/useDockerUpdateCheck";
+import { DOCKER_TABS } from "./-components/shared/dockerTabs";
+import { DockerUpdateOperationProvider } from "./-components/shared/DockerUpdateOperationProvider";
+import { useDockerUpdateStatusRefresh } from "./-hooks/useDockerUpdateCheck";
 
 const access = {
   requiredCapabilities: ["dockerAvailable"],

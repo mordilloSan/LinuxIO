@@ -8,10 +8,10 @@ import {
   type ReactNode,
 } from "react";
 
+import type { ToastMeta } from "@/api";
 import AppTooltip, {
   useAutomaticTooltipSuppressed,
 } from "@/components/ui/AppTooltip";
-import type { ToastMeta } from "@/types/navigation";
 
 import "./app-typography.css";
 

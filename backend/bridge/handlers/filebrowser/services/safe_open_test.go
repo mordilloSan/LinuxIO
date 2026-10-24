@@ -25,16 +25,14 @@ func TestReadEditorFileEligibility(t *testing.T) {
 	require.NoError(t, os.Symlink(tmpDir, dirLinkPath))
 
 	tests := []struct {
-		name        string
-		path        string
-		wantErr     error
-		wantSize    int64
-		wantRegular bool
+		name    string
+		path    string
+		wantErr error
 	}{
-		{name: "plain", path: plainPath, wantSize: 10, wantRegular: true},
-		{name: "NUL", path: nulPath, wantSize: 9, wantRegular: true, wantErr: ErrEditorFileContainsNUL},
-		{name: "oversized", path: largePath, wantSize: MaxTextFileBytes, wantRegular: false, wantErr: ErrEditorFileNotEligible},
-		{name: "symlink", path: symlinkPath, wantSize: 10, wantRegular: true},
+		{name: "plain", path: plainPath},
+		{name: "NUL", path: nulPath, wantErr: ErrEditorFileContainsNUL},
+		{name: "oversized", path: largePath, wantErr: ErrEditorFileNotEligible},
+		{name: "symlink", path: symlinkPath},
 		{name: "directory symlink", path: dirLinkPath, wantErr: ErrEditorFileNotEligible},
 		{name: "directory", path: tmpDir, wantErr: ErrEditorFileNotEligible},
 		{name: "device", path: "/dev/null", wantErr: ErrEditorFileNotEligible},
@@ -42,19 +40,12 @@ func TestReadEditorFileEligibility(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			info, err := ReadEditorFile(context.Background(), test.path)
+			_, err := ReadEditorFile(context.Background(), test.path)
 			if test.wantErr == nil {
 				require.NoError(t, err)
-				assert.Equal(t, test.wantSize, info.Size)
-				assert.True(t, info.IsRegularFile)
-				assert.True(t, info.CanOpenAsText)
 				return
 			}
 			require.ErrorIs(t, err, test.wantErr)
-			if test.wantSize != 0 {
-				assert.Equal(t, test.wantSize, info.Size)
-			}
-			assert.Equal(t, test.wantRegular, info.IsRegularFile)
 		})
 	}
 }

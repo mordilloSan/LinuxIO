@@ -6,7 +6,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -16,10 +17,12 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 	"uuid"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/common/iolimit"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
@@ -65,7 +68,7 @@ type Progress struct {
 }
 
 type StructuredError struct {
-	Code    int    `json:"code,omitempty"`
+	Code    int    `json:"code,omitzero"`
 	Message string `json:"message"`
 }
 
@@ -79,12 +82,12 @@ type Record struct {
 	State              State            `json:"state"`
 	CreatedAt          time.Time        `json:"created_at"`
 	UpdatedAt          time.Time        `json:"updated_at"`
-	StartedAt          *time.Time       `json:"started_at,omitempty"`
-	FinishedAt         *time.Time       `json:"finished_at,omitempty"`
-	CancelRequestedAt  *time.Time       `json:"cancel_requested_at,omitempty"`
+	StartedAt          *time.Time       `json:"started_at,omitzero"`
+	FinishedAt         *time.Time       `json:"finished_at,omitzero"`
+	CancelRequestedAt  *time.Time       `json:"cancel_requested_at,omitzero"`
 	Progress           []Progress       `json:"progress,omitempty"`
-	Result             json.RawMessage  `json:"result,omitempty"`
-	Error              *StructuredError `json:"error,omitempty"`
+	Result             jsontext.Value   `json:"result,omitzero"`
+	Error              *StructuredError `json:"error,omitzero"`
 	LogCursor          string           `json:"log_cursor,omitempty"`
 }
 
@@ -108,8 +111,8 @@ type ExecutorResult struct {
 	// Result is the route-owned typed terminal payload. It is deliberately
 	// opaque to the durable store; route code validates and decodes it after
 	// ApplyExecutorResult persists it.
-	Result json.RawMessage `json:"result,omitempty"`
-	Error  string          `json:"error,omitempty"`
+	Result jsontext.Value `json:"result,omitzero"`
+	Error  string         `json:"error,omitempty"`
 }
 
 type Store struct {
@@ -155,11 +158,21 @@ func (r Record) Terminal() bool {
 	}
 }
 
-func (r *Record) AppendProgress(now time.Time, phase, message string) {
-	if len(message) > 512 {
-		message = message[:512]
+// ClampMessage replaces invalid UTF-8 and cuts message to at most limit bytes
+// on a rune boundary, so the JSON-encoded record stays within readRecord's limits.
+func ClampMessage(message string, limit int) string {
+	message = strings.ToValidUTF8(message, "\uFFFD")
+	if len(message) <= limit {
+		return message
 	}
-	r.Progress = append(r.Progress, Progress{At: now.UTC(), Phase: phase, Message: message})
+	for limit > 0 && !utf8.RuneStart(message[limit]) {
+		limit--
+	}
+	return message[:limit]
+}
+
+func (r *Record) AppendProgress(now time.Time, phase, message string) {
+	r.Progress = append(r.Progress, Progress{At: now.UTC(), Phase: phase, Message: ClampMessage(message, 512)})
 	if len(r.Progress) > MaxProgressEntries {
 		r.Progress = slices.Clone(r.Progress[len(r.Progress)-MaxProgressEntries:])
 	}
@@ -312,7 +325,7 @@ func (s *Store) WriteArtifact(id, name string, data []byte, mode fs.FileMode) (s
 	if err != nil {
 		return "", err
 	}
-	if err := utils.WriteFileAtomic(path, data, mode); err != nil {
+	if err := atomicfile.Write(path, data, mode); err != nil {
 		return "", fmt.Errorf("write durable operation artifact: %w", err)
 	}
 	return path, nil
@@ -390,13 +403,13 @@ func (s *Store) ApplyExecutorResult(ctx context.Context, uid uint32, result Exec
 		record.FinishedAt = new(result.FinishedAt.UTC())
 		switch result.State {
 		case StateFailed:
-			message := strings.TrimSpace(result.Error)
+			message := ClampMessage(strings.TrimSpace(result.Error), 1024)
 			if message == "" {
 				message = fmt.Sprintf("updater exited with status %d", result.ExitCode)
 			}
 			record.Error = &StructuredError{Code: result.ExitCode, Message: message}
 		case StateCanceled:
-			message := strings.TrimSpace(result.Error)
+			message := ClampMessage(strings.TrimSpace(result.Error), 1024)
 			if message == "" {
 				message = "operation canceled"
 			}
@@ -444,7 +457,7 @@ func (s *Store) writeRecord(record Record) error {
 	if err := validateRecord(record); err != nil {
 		return err
 	}
-	data, err := json.MarshalIndent(record, "", "  ")
+	data, err := json.Marshal(record, jsontext.WithIndent("  "), json.Deterministic(true))
 	if err != nil {
 		return fmt.Errorf("encode durable operation %s: %w", record.ID, err)
 	}
@@ -452,7 +465,7 @@ func (s *Store) writeRecord(record Record) error {
 		return fmt.Errorf("durable operation %s exceeds %d bytes", record.ID, maxRecordBytes)
 	}
 	data = append(data, '\n')
-	if err := utils.WriteFileAtomic(s.recordPath(record.ID), data, 0o600); err != nil {
+	if err := atomicfile.Write(s.recordPath(record.ID), data, 0o600); err != nil {
 		return fmt.Errorf("persist durable operation %s: %w", record.ID, err)
 	}
 	return nil
@@ -670,7 +683,7 @@ func readRegularFile(root, name string, limit int64) ([]byte, error) {
 		return nil, err
 	}
 	defer file.Close()
-	return utils.ReadAllLimited(file, limit)
+	return iolimit.ReadAll(file, limit)
 }
 
 func recordIDFromName(name string) (string, bool) {

@@ -2,24 +2,24 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { useCallback, useMemo, useState } from "react";
 
 import { type AccountGroup, linuxio } from "@/api";
-import GroupCard from "@/components/cards/GroupCard";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
+import { useReorderableSurface } from "@/components/reorder/useReorderableSurface";
 import { RoutedTabSearch } from "@/components/tabbar";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
+import { useReorderableTableDnd } from "@/components/tables/useReorderableTableDnd";
+import { RESPONSIVE_TEXT_CLASS } from "@/components/tables/wrappingText";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
-import { useReorderableSurface } from "@/hooks/useReorderableSurface";
-import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
+import GroupCard from "@/routes/_authenticated/accounts/-components/GroupCard";
 import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
-import { responsiveTextStyles } from "@/theme/tableStyles";
 
-import CreateGroupDialog from "./components/CreateGroupDialog";
-import DeleteGroupDialog from "./components/DeleteGroupDialog";
-import EditGroupMembersDialog from "./components/EditGroupMembersDialog";
+import CreateGroupDialog from "./CreateGroupDialog";
+import DeleteGroupDialog from "./DeleteGroupDialog";
+import EditGroupMembersDialog from "./EditGroupMembersDialog";
 
 interface GroupsTabProps {
   onMountCreateHandler?: (handler: () => void) => void;
@@ -123,7 +123,7 @@ const GroupsTab = ({
             <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
               <AppTypography
                 fontWeight={500}
-                style={responsiveTextStyles}
+                className={RESPONSIVE_TEXT_CLASS}
                 variant="body2"
               >
                 {group.name}
@@ -140,7 +140,7 @@ const GroupsTab = ({
         accessorKey: "gid",
         header: "GID",
         cell: ({ row }) => (
-          <AppTypography style={responsiveTextStyles} variant="body2">
+          <AppTypography className={RESPONSIVE_TEXT_CLASS} variant="body2">
             {row.original.gid}
           </AppTypography>
         ),

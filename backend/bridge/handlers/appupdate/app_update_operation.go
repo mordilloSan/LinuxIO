@@ -2,7 +2,6 @@ package appupdate
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -12,19 +11,15 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	systemdapi "github.com/mordilloSan/LinuxIO/backend/common/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/common/updatestatus"
 )
 
-const (
-	routeAppUpdate      = "control.app_update"
-	updateStatusVersion = 1
-)
+const routeAppUpdate = "control.app_update"
 
 var (
-	updateStatusPath       = "/run/linuxio/update-status.json"
 	validRunIDRE           = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
 	validReleaseVersionRE  = regexp.MustCompile(`^v?[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z][0-9A-Za-z.-]*)?$`)
 	runAppUpdateInstaller  = runInstallScript
@@ -32,17 +27,6 @@ var (
 	restartSystemdUnit     = systemdapi.RestartUnit
 	postUpdateRestartDelay = 500 * time.Millisecond
 )
-
-type updateStatus struct {
-	Version    int    `json:"version"`
-	ID         string `json:"id"`
-	OwnerUID   uint32 `json:"owner_uid"`
-	Status     string `json:"status"`
-	ExitCode   *int   `json:"exit_code,omitempty"`
-	Error      string `json:"error,omitempty"`
-	StartedAt  int64  `json:"started_at"`
-	FinishedAt int64  `json:"finished_at,omitempty"`
-}
 
 type AppUpdateResult struct {
 	ExitCode int `json:"exit_code"`
@@ -78,14 +62,14 @@ func runAppUpdateTask(ctx context.Context, rt runtime.Runtime, task *bridgeipc.T
 
 func parseAppUpdateRequest(payload apischema.AppUpdateRequest) (appUpdateRequest, error) {
 	if !validRunIDRE.MatchString(payload.RunID) {
-		return appUpdateRequest{}, bridgeipc.NewError("invalid run_id format", 400)
+		return appUpdateRequest{}, fmt.Errorf("%w: run_id format", bridgeipc.ErrInvalidArgs)
 	}
 
 	req := appUpdateRequest{runID: payload.RunID}
 	if payload.Version != nil {
 		req.version = strings.TrimSpace(*payload.Version)
 		if !validReleaseVersionRE.MatchString(req.version) {
-			return appUpdateRequest{}, bridgeipc.NewError("invalid update version", 400)
+			return appUpdateRequest{}, fmt.Errorf("%w: update version", bridgeipc.ErrInvalidArgs)
 		}
 	}
 	return req, nil
@@ -98,23 +82,23 @@ func resolveAppUpdateVersion(ctx context.Context, req appUpdateRequest) (string,
 
 	latest, err := fetchLatestVersion(ctx)
 	if err != nil {
-		return "", bridgeipc.NewError(fmt.Sprintf("failed to fetch latest version: %v", err), 500)
+		return "", fmt.Errorf("fetch latest version: %w", err)
 	}
 	if !validReleaseVersionRE.MatchString(latest) {
-		return "", bridgeipc.NewError("latest release has an invalid version tag", 500)
+		return "", errors.New("latest release has an invalid version tag")
 	}
-	slog.Info("resolved latest app version", "component", "control", "subsystem", "app_update", "run_id", req.runID, "version", latest)
+	slog.Debug("resolved latest app version", "component", "control", "subsystem", "app_update", "run_id", req.runID, "version", latest)
 	return latest, nil
 }
 
 func executeAppUpdate(ctx context.Context, rt runtime.Runtime, task *bridgeipc.Task, runID, version string) (AppUpdateResult, error) {
-	slog.Info("app update task starting", "component", "control", "subsystem", "app_update", "route", routeAppUpdate, "run_id", runID, "version", version, "user", rt.Username())
+	slog.Debug("app update task starting", "component", "control", "subsystem", "app_update", "route", routeAppUpdate, "run_id", runID, "version", version, "user", rt.Username())
 
 	ownerUID := task.Owner().UID
 	startedAt := time.Now().Unix()
 	relay := &taskOutputWriter{task: task}
-	if err := writeStatusFile(runID, ownerUID, "running", nil, "", startedAt, 0); err != nil {
-		return AppUpdateResult{}, bridgeipc.NewError(fmt.Sprintf("persist initial update status: %v", err), 500)
+	if err := writeStatusFile(runID, ownerUID, updatestatus.StatusRunning, nil, "", startedAt, 0); err != nil {
+		return AppUpdateResult{}, fmt.Errorf("persist initial update status: %w", err)
 	}
 
 	reportAppUpdateProgress(task, relay, "preparing", fmt.Sprintf("Downloading and verifying install script for %s...", version))
@@ -134,6 +118,7 @@ func executeAppUpdate(ctx context.Context, rt runtime.Runtime, task *bridgeipc.T
 	if err := finishSuccessfulUpdate(runID, ownerUID, task, relay, startedAt, finishedAt); err != nil {
 		return AppUpdateResult{}, err
 	}
+	slog.Info("app updated", "component", "control", "subsystem", "app_update", "run_id", runID, "version", version)
 	reloadAndRestartAfterUpdate(runID, task.Done())
 	return AppUpdateResult{ExitCode: 0}, nil
 }
@@ -145,28 +130,24 @@ func isAppUpdateCanceled(ctx context.Context, err error) bool {
 func finishCanceledUpdate(runID string, ownerUID uint32, startedAt, finishedAt int64) error {
 	exitCode := 499
 	errMsg := "operation aborted"
-	writeUpdateStatusWithLog(runID, ownerUID, "error", &exitCode, errMsg, startedAt, finishedAt, "canceled")
+	writeUpdateStatusWithLog(runID, ownerUID, updatestatus.StatusError, &exitCode, errMsg, startedAt, finishedAt, "canceled")
 	return context.Canceled
 }
 
 func finishFailedUpdate(runID string, ownerUID uint32, version string, relay *taskOutputWriter, startedAt, finishedAt int64, err error) error {
 	exitCode := 1
 	errMsg := err.Error()
-	// Embed the error in the MESSAGE field so it shows up under `journalctl -o cat`,
-	// and keep the structured `error=` field for verbose/JSON consumers.
-	slog.Error(fmt.Sprintf("app update install script failed: %v", err), "component", "control", "subsystem", "app_update", "run_id", runID, "version", version, "error", err)
 	_, _ = fmt.Fprintf(relay, "ERROR: %s\n", errMsg)
-	writeUpdateStatusWithLog(runID, ownerUID, "error", &exitCode, errMsg, startedAt, finishedAt, "final")
-	return bridgeipc.NewError(fmt.Sprintf("update failed: %s", errMsg), exitCode)
+	writeUpdateStatusWithLog(runID, ownerUID, updatestatus.StatusError, &exitCode, errMsg, startedAt, finishedAt, "final")
+	return bridgeipc.NewError(fmt.Sprintf("update to %s failed (run %s): %s", version, runID, errMsg), exitCode)
 }
 
 func finishSuccessfulUpdate(runID string, ownerUID uint32, task *bridgeipc.Task, relay *taskOutputWriter, startedAt, finishedAt int64) error {
 	exitCode := 0
-	if err := writeStatusFile(runID, ownerUID, "ok", &exitCode, "", startedAt, finishedAt); err != nil {
-		message := fmt.Sprintf("persist completed update status: %v", err)
-		slog.Error(message, "component", "control", "subsystem", "app_update", "run_id", runID, "error", err)
-		_, _ = fmt.Fprintf(relay, "ERROR: %s\n", message)
-		return bridgeipc.NewError(message, 500)
+	if err := writeStatusFile(runID, ownerUID, updatestatus.StatusOK, &exitCode, "", startedAt, finishedAt); err != nil {
+		err = fmt.Errorf("persist completed update status: %w", err)
+		_, _ = fmt.Fprintf(relay, "ERROR: %s\n", err)
+		return err
 	}
 	reportAppUpdateProgress(task, relay, "installed", "Installation complete")
 	return nil
@@ -174,7 +155,7 @@ func finishSuccessfulUpdate(runID string, ownerUID uint32, task *bridgeipc.Task,
 
 func reloadAndRestartAfterUpdate(runID string, taskDone <-chan struct{}) {
 	ctx, cancel := detachedPostUpdateContext()
-	slog.Info("scheduling service restart", "component", "control", "subsystem", "app_update", "run_id", runID)
+	slog.Debug("scheduling service restart", "component", "control", "subsystem", "app_update", "run_id", runID)
 	go func() {
 		defer cancel()
 		select {
@@ -210,7 +191,7 @@ func detachedPostUpdateContext() (context.Context, context.CancelFunc) {
 
 func writeUpdateStatusWithLog(runID string, ownerUID uint32, status string, exitCode *int, errMsg string, startedAt, finishedAt int64, phase string) {
 	if err := writeStatusFile(runID, ownerUID, status, exitCode, errMsg, startedAt, finishedAt); err != nil {
-		slog.Warn("failed to write update status file", "component", "control", "subsystem", "app_update", "run_id", runID, "path", updateStatusPath, "phase", phase, "error", err)
+		slog.Warn("failed to write update status file", "component", "control", "subsystem", "app_update", "run_id", runID, "path", updatestatus.Path, "phase", phase, "error", err)
 	}
 }
 
@@ -229,25 +210,17 @@ func (r *taskOutputWriter) Write(p []byte) (int, error) {
 }
 
 func writeStatusFile(runID string, ownerUID uint32, status string, exitCode *int, errMsg string, startedAt, finishedAt int64) error {
-	s := updateStatus{
-		Version:   updateStatusVersion,
+	rec := updatestatus.Record{
+		Version:   updatestatus.Version,
 		ID:        runID,
 		OwnerUID:  ownerUID,
 		Status:    status,
+		ExitCode:  exitCode,
 		Error:     errMsg,
-		StartedAt: startedAt,
-	}
-	if exitCode != nil {
-		s.ExitCode = exitCode
+		StartedAt: &startedAt,
 	}
 	if finishedAt > 0 {
-		s.FinishedAt = finishedAt
+		rec.FinishedAt = &finishedAt
 	}
-
-	data, err := json.Marshal(s)
-	if err != nil {
-		return err
-	}
-
-	return utils.WriteFileAtomic(updateStatusPath, append(data, '\n'), 0o644)
+	return updatestatus.Write(rec)
 }

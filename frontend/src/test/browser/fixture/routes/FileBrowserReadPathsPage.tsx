@@ -2,9 +2,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import { linuxio } from "@/api";
+import DirectoryTree from "@/components/pathpicker/DirectoryTree";
 import AppButton from "@/components/ui/AppButton";
-import DirectoryTree from "@/components/ui/DirectoryTree";
-import { useListingInvalidation } from "@/hooks/filebrowser/useListingInvalidation";
+import { useListingInvalidation } from "@/routes/_authenticated/filebrowser/-hooks/useListingInvalidation";
 
 const directoryChildren = linuxio.filebrowser.directory_children({
   includeFiles: true,

@@ -6,7 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"log/slog"
@@ -19,8 +19,8 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	systemdapi "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/common/iolimit"
+	systemdapi "github.com/mordilloSan/LinuxIO/backend/common/systemd"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
@@ -83,9 +83,9 @@ func logStream(r io.Reader, prefix string, isInfo bool, relay io.Writer, tail *o
 	for sc.Scan() {
 		line := ansiRE.ReplaceAllString(sc.Text(), "")
 		if isInfo {
-			slog.Info(line, "component", "control", "subsystem", "app_update", "mode", strings.TrimSpace(prefix))
+			slog.Debug("app update output", "line", line, "component", "control", "subsystem", "app_update", "mode", strings.TrimSpace(prefix))
 		} else {
-			slog.Error(line, "component", "control", "subsystem", "app_update", "mode", strings.TrimSpace(prefix))
+			slog.Error("app update output", "line", line, "component", "control", "subsystem", "app_update", "mode", strings.TrimSpace(prefix))
 		}
 		tail.Add(line)
 		if relay != nil {
@@ -136,7 +136,7 @@ func updaterWritablePaths() []updaterWritablePath {
 	// installer destinations must remain within these paths.
 	return []updaterWritablePath{
 		{path: version.BinDir},
-		{path: "/etc/linuxio"},
+		{path: version.ConfigDir},
 		{path: "/etc/pam.d"},
 		{path: "/etc/systemd/system"},
 		{path: "/etc/motd.d", optional: true},
@@ -217,7 +217,7 @@ func runInstallScript(ctx context.Context, ver string, relay io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("download checksum failed: %w", err)
 	}
-	slog.Info("downloaded expected checksum", "component", "control", "subsystem", "app_update", "checksum", expectedChecksum)
+	slog.Debug("downloaded expected checksum", "component", "control", "subsystem", "app_update", "checksum", expectedChecksum)
 
 	// 2) Download install script
 	slog.Debug("downloading install script", "component", "control", "subsystem", "app_update", "path", scriptURL)
@@ -232,10 +232,9 @@ func runInstallScript(ctx context.Context, ver string, relay io.Writer) error {
 	slog.Debug("computed install script checksum", "component", "control", "subsystem", "app_update", "checksum", actualChecksum)
 
 	if actualChecksum != expectedChecksum {
-		slog.Error("install script checksum mismatch", "component", "control", "subsystem", "app_update", "expected_checksum", expectedChecksum, "actual_checksum", actualChecksum)
-		return fmt.Errorf("checksum verification failed: script integrity compromised")
+		return fmt.Errorf("checksum verification failed: script integrity compromised (expected %s, got %s)", expectedChecksum, actualChecksum)
 	}
-	slog.Info("checksum verified successfully")
+	slog.Debug("checksum verified successfully")
 
 	// 4) Run a transient unit with unique name and feed script on STDIN
 	if tempUnitTestErr := ensureUpdaterWritablePathDirs(); tempUnitTestErr != nil {
@@ -244,7 +243,7 @@ func runInstallScript(ctx context.Context, ver string, relay io.Writer) error {
 
 	unit := fmt.Sprintf("linuxio-updater-%d.service", time.Now().UnixNano())
 	systemdRunArgs := buildInstallCommandArgs(unit, scriptArgs(ver)...)
-	slog.Info("starting updater transient unit", "component", "control", "subsystem", "app_update", "unit", unit, "argv", systemdRunArgs)
+	slog.Debug("starting updater transient unit", "component", "control", "subsystem", "app_update", "unit", unit, "argv", systemdRunArgs)
 
 	cmd := exec.CommandContext(ctx, "systemd-run", systemdRunArgs...)
 
@@ -391,7 +390,7 @@ func fetchLatestVersion(ctx context.Context) (string, error) {
 		return "", fmt.Errorf("github API returned status %d", resp.StatusCode)
 	}
 
-	body, err := utils.ReadAllLimited(resp.Body, maxGitHubReleaseBodyBytes)
+	body, err := iolimit.ReadAll(resp.Body, maxGitHubReleaseBodyBytes)
 	if err != nil {
 		return "", err
 	}
@@ -400,7 +399,7 @@ func fetchLatestVersion(ctx context.Context) (string, error) {
 		TagName string `json:"tag_name"`
 	}
 
-	if err := json.Unmarshal(body, &release); err != nil {
+	if err := json.Unmarshal(body, &release, json.MatchCaseInsensitiveNames(true)); err != nil {
 		return "", fmt.Errorf("parse response: %w", err)
 	}
 	if release.TagName == "" {
@@ -427,7 +426,7 @@ func downloadChecksum(ctx context.Context, client *http.Client, url string) (str
 		return "", fmt.Errorf("http %d: %s", resp.StatusCode, readErrorBody(resp.Body))
 	}
 
-	checksumBytes, err := utils.ReadAllLimited(resp.Body, maxChecksumBodyBytes)
+	checksumBytes, err := iolimit.ReadAll(resp.Body, maxChecksumBodyBytes)
 	if err != nil {
 		return "", fmt.Errorf("read body: %w", err)
 	}
@@ -459,7 +458,7 @@ func downloadScript(ctx context.Context, client *http.Client, url string) ([]byt
 		return nil, fmt.Errorf("http %d: %s", resp.StatusCode, readErrorBody(resp.Body))
 	}
 
-	scriptBytes, err := utils.ReadAllLimited(resp.Body, maxInstallScriptBodyBytes)
+	scriptBytes, err := iolimit.ReadAll(resp.Body, maxInstallScriptBodyBytes)
 	if err != nil {
 		return nil, fmt.Errorf("read body: %w", err)
 	}
@@ -474,7 +473,7 @@ func computeSHA256(data []byte) string {
 }
 
 func readErrorBody(r io.Reader) string {
-	body, err := utils.ReadAllLimited(r, maxHTTPErrorBodyBytes)
+	body, err := iolimit.ReadAll(r, maxHTTPErrorBodyBytes)
 	if err != nil {
 		return err.Error()
 	}

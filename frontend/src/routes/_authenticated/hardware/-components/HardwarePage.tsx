@@ -2,15 +2,13 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { Suspense, useCallback, useState } from "react";
 
 import { linuxio, type MonitoringLive, type SensorGroup } from "@/api";
-import HardwareTableCard from "@/components/cards/HardwareTableCard";
-import { SensorEmptyCard } from "@/components/cards/SensorEmptyCard";
-import SensorGroupCard from "@/components/cards/SensorGroupCard";
 import { isPrimarySensorReading } from "@/components/cards/sensorGroupHelpers";
 import { HistoryHoverProvider } from "@/components/charts/HistoryCard";
 import type { HistoryRangeId } from "@/components/charts/historyRanges";
 import ErrorBoundary from "@/components/errors/ErrorBoundary";
 import WidgetLoader from "@/components/loaders/WidgetLoader";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
+import { useReorderableSurface } from "@/components/reorder/useReorderableSurface";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import Chip from "@/components/ui/AppChip";
@@ -20,7 +18,9 @@ import AppTypography from "@/components/ui/AppTypography";
 import SectionHeader from "@/components/ui/SectionHeader";
 import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
 import { useConfigValue } from "@/hooks/useConfig";
-import { useReorderableSurface } from "@/hooks/useReorderableSurface";
+import HardwareTableCard from "@/routes/_authenticated/hardware/-components/HardwareTableCard";
+import { SensorEmptyCard } from "@/routes/_authenticated/hardware/-components/SensorEmptyCard";
+import SensorGroupCard from "@/routes/_authenticated/hardware/-components/SensorGroupCard";
 import { cardHeight, DASHBOARD_CARD_SPACING } from "@/theme/constants";
 
 import {

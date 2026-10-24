@@ -2,7 +2,7 @@ package journald
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -130,6 +130,11 @@ func (h *Handler) Handle(_ context.Context, record slog.Record) error {
 		h.addAttr(state, state.groups, attr)
 		return true
 	})
+
+	// The error reason goes in MESSAGE too, so plain journalctl shows it.
+	if idx, ok := state.index[h.fieldNameForAttr(nil, "error")]; ok && state.fields[idx].Value != "" {
+		state.set("MESSAGE", record.Message+": "+state.fields[idx].Value)
+	}
 
 	return h.sender.Send(state.fields)
 }

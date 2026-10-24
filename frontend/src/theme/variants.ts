@@ -1,5 +1,5 @@
 import { GREY_TOKENS as grey } from "@/theme/colors";
-import { alpha } from "@/utils/color";
+import { alpha } from "@/theme/colorUtils";
 
 const customBlue = {
   50: "#e9f0fb",
@@ -156,7 +156,7 @@ const variants: VariantType[] = [defaultVariant, darkVariant];
 
 export default variants;
 
-export interface VariantType {
+interface VariantType {
   card: {
     background: string;
   };

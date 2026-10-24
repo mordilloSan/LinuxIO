@@ -1,6 +1,6 @@
 /* ── AppGrid ─────────────────────────────────────────── */
 /* Column steps mirror theme/breakpoints.ts (sm 770, md 960, lg 1380,
-   xl 1740) so grids reflow at the same widths where useAppMediaQuery and
+   xl 1740) so grids reflow at the same widths where useMediaQuery and
    hideBelow logic switch. */
 .app-grid {
   display: grid;

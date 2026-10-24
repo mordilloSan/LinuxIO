@@ -2,18 +2,21 @@ package docker
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/transientunit"
+	"github.com/mordilloSan/LinuxIO/backend/common/dockerupdate"
 	"github.com/mordilloSan/LinuxIO/backend/common/durabletask"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 const testDockerOperationID = "00000000-0000-4000-8000-000000000011"
@@ -59,63 +62,9 @@ func TestBuildDockerUpdateUnitPropertiesRunsWorkerWithArgvZero(t *testing.T) {
 	if len(commands) != 1 {
 		t.Fatalf("ExecStart commands = %#v, want one command", commands)
 	}
-	want := []string{dockerUpdateRunnerPath, "run-operation", "--id", testDockerOperationID}
-	if commands[0].Path != dockerUpdateRunnerPath || !slices.Equal(commands[0].Arguments, want) {
-		t.Fatalf("ExecStart command = %+v, want path %q args %q", commands[0], dockerUpdateRunnerPath, want)
-	}
-}
-
-func TestRunDurableDockerUpdateWritesTypedResult(t *testing.T) {
-	oldRoot, oldMutation := dockerUpdateStoreRoot, runDockerContainerMutation
-	t.Cleanup(func() {
-		dockerUpdateStoreRoot = oldRoot
-		runDockerContainerMutation = oldMutation
-	})
-	dockerUpdateStoreRoot = filepath.Join(t.TempDir(), "tasks")
-	runDockerContainerMutation = func(_ context.Context, _ string, report dockerUpdateProgressReporter) (apischema.DockerContainerUpdateResult, error) {
-		report("pulling", "Pulling the updated image")
-		return apischema.DockerContainerUpdateResult{ContainerID: "web", Updated: true}, nil
-	}
-
-	store := durabletask.NewStore(dockerUpdateStoreRoot)
-	executor := durabletask.Executor{Kind: dockerUpdateExecutorKind, Handle: dockerDurableUpdateUnitName(testDockerOperationID), Identity: dockerUpdateExecutorIdentity}
-	if _, _, err := store.Claim(context.Background(), durabletask.Claim{
-		ID: testDockerOperationID, Route: dockerUpdateRoute, UID: 0,
-		RequestFingerprint: durabletask.Fingerprint(dockerUpdateRoute, "container=web"), Target: "web", ExclusiveRoute: true,
-	}); err != nil {
-		t.Fatalf("Claim: %v", err)
-	}
-	if _, err := store.Update(context.Background(), testDockerOperationID, 0, func(record *durabletask.Record) error {
-		record.State = durabletask.StateRunning
-		record.Executor = executor
-		return nil
-	}); err != nil {
-		t.Fatalf("mark running: %v", err)
-	}
-
-	if err := RunDurableDockerUpdate(context.Background(), testDockerOperationID); err != nil {
-		t.Fatalf("RunDurableDockerUpdate: %v", err)
-	}
-	artifact, err := store.ReadExecutorResult(testDockerOperationID)
-	if err != nil {
-		t.Fatalf("ReadExecutorResult: %v", err)
-	}
-	if artifact.State != durabletask.StateCompleted || artifact.ExitCode != 0 {
-		t.Fatalf("executor artifact = %+v", artifact)
-	}
-	var result apischema.DockerContainerUpdateResult
-	if unmarshalErr := json.Unmarshal(artifact.Result, &result); unmarshalErr != nil {
-		t.Fatalf("decode typed result: %v", unmarshalErr)
-	}
-	if result.ContainerID != "web" || !result.Updated {
-		t.Fatalf("typed result = %+v", result)
-	}
-	record, err := store.Get(context.Background(), testDockerOperationID, 0)
-	if err != nil {
-		t.Fatalf("Get durable record: %v", err)
-	}
-	if got := record.Progress[len(record.Progress)-1]; got.Phase != "pulling" || got.Message != "Pulling the updated image" {
-		t.Fatalf("persisted progress = %+v", got)
+	want := []string{dockerupdate.RunnerPath, "run-operation", "--id", testDockerOperationID}
+	if commands[0].Path != dockerupdate.RunnerPath || !slices.Equal(commands[0].Arguments, want) {
+		t.Fatalf("ExecStart command = %+v, want path %q args %q", commands[0], dockerupdate.RunnerPath, want)
 	}
 }
 
@@ -130,7 +79,7 @@ func TestDurableDockerRecoveryReusesPersistedResultWithoutRelaunch(t *testing.T)
 	newDockerUpdateExecutor = func() dockerUpdateExecutor { return fake }
 
 	store := durabletask.NewStore(dockerUpdateStoreRoot)
-	executor := durabletask.Executor{Kind: dockerUpdateExecutorKind, Handle: dockerDurableUpdateUnitName(testDockerOperationID), Identity: dockerUpdateExecutorIdentity}
+	executor := durabletask.Executor{Kind: dockerupdate.ExecutorKind, Handle: dockerupdate.UnitName(testDockerOperationID), Identity: dockerupdate.ExecutorIdentity}
 	claim := durabletask.Claim{
 		ID: testDockerOperationID, Route: dockerUpdateRoute, UID: 1000,
 		RequestFingerprint: durabletask.Fingerprint(dockerUpdateRoute, "container=web"), Target: "web", ExclusiveRoute: true,
@@ -159,7 +108,7 @@ func TestDurableDockerRecoveryReusesPersistedResultWithoutRelaunch(t *testing.T)
 	}
 
 	service := bridgeipc.NewTaskService()
-	task, err := service.CreateForOwnerWithLifetime(dockerUpdateRoute, apischema.DockerContainerUpdateRequest{RunID: claim.ID, ContainerID: claim.Target}, bridgeipc.TaskOwner{SessionID: "session", Username: "alice", UID: claim.UID}, bridgeipc.TaskLifetimeDurable)
+	task, _, err := service.ClaimForOwnerWithIdentity(dockerUpdateRoute, apischema.DockerContainerUpdateRequest{RunID: claim.ID, ContainerID: claim.Target}, bridgeipc.TaskOwner{SessionID: "session", Username: "alice", UID: claim.UID}, bridgeipc.TaskLifetimeDurable, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("Create task: %v", err)
 	}
@@ -172,87 +121,6 @@ func TestDurableDockerRecoveryReusesPersistedResultWithoutRelaunch(t *testing.T)
 	}
 }
 
-func TestRunDurableDockerUpdatePersistsCanceledResult(t *testing.T) {
-	oldRoot, oldMutation := dockerUpdateStoreRoot, runDockerContainerMutation
-	t.Cleanup(func() {
-		dockerUpdateStoreRoot = oldRoot
-		runDockerContainerMutation = oldMutation
-	})
-	dockerUpdateStoreRoot = filepath.Join(t.TempDir(), "tasks")
-	ctx, cancel := context.WithCancel(context.Background())
-	runDockerContainerMutation = func(context.Context, string, dockerUpdateProgressReporter) (apischema.DockerContainerUpdateResult, error) {
-		cancel()
-		return apischema.DockerContainerUpdateResult{}, context.Canceled
-	}
-	store := durabletask.NewStore(dockerUpdateStoreRoot)
-	executor := durabletask.Executor{Kind: dockerUpdateExecutorKind, Handle: dockerDurableUpdateUnitName(testDockerOperationID), Identity: dockerUpdateExecutorIdentity}
-	claim := durabletask.Claim{ID: testDockerOperationID, Route: dockerUpdateRoute, UID: 0, RequestFingerprint: durabletask.Fingerprint(dockerUpdateRoute, "container=web"), Target: "web", ExclusiveRoute: true}
-	if _, _, err := store.Claim(context.Background(), claim); err != nil {
-		t.Fatalf("Claim: %v", err)
-	}
-	if _, err := store.Update(context.Background(), claim.ID, claim.UID, func(record *durabletask.Record) error {
-		record.State = durabletask.StateRunning
-		record.Executor = executor
-		return nil
-	}); err != nil {
-		t.Fatalf("mark running: %v", err)
-	}
-	if err := RunDurableDockerUpdate(ctx, claim.ID); !errors.Is(err, context.Canceled) {
-		t.Fatalf("RunDurableDockerUpdate error = %v, want context.Canceled", err)
-	}
-	artifact, err := store.ReadExecutorResult(claim.ID)
-	if err != nil {
-		t.Fatalf("ReadExecutorResult: %v", err)
-	}
-	if artifact.State != durabletask.StateCanceled || artifact.ExitCode != 143 {
-		t.Fatalf("canceled artifact = %+v", artifact)
-	}
-}
-
-func TestRunDurableDockerUpdateHonorsPersistedCancellationBeforeMutation(t *testing.T) {
-	oldRoot, oldMutation := dockerUpdateStoreRoot, runDockerContainerMutation
-	t.Cleanup(func() {
-		dockerUpdateStoreRoot = oldRoot
-		runDockerContainerMutation = oldMutation
-	})
-	dockerUpdateStoreRoot = filepath.Join(t.TempDir(), "tasks")
-	mutationCalls := 0
-	runDockerContainerMutation = func(context.Context, string, dockerUpdateProgressReporter) (apischema.DockerContainerUpdateResult, error) {
-		mutationCalls++
-		return apischema.DockerContainerUpdateResult{ContainerID: "web"}, nil
-	}
-
-	store := durabletask.NewStore(dockerUpdateStoreRoot)
-	executor := durabletask.Executor{Kind: dockerUpdateExecutorKind, Handle: dockerDurableUpdateUnitName(testDockerOperationID), Identity: dockerUpdateExecutorIdentity}
-	claim := durabletask.Claim{ID: testDockerOperationID, Route: dockerUpdateRoute, UID: 0, RequestFingerprint: durabletask.Fingerprint(dockerUpdateRoute, "container=web"), Target: "web", ExclusiveRoute: true}
-	if _, _, err := store.Claim(context.Background(), claim); err != nil {
-		t.Fatalf("Claim: %v", err)
-	}
-	requested := time.Now().UTC()
-	if _, err := store.Update(context.Background(), claim.ID, claim.UID, func(record *durabletask.Record) error {
-		record.State = durabletask.StateLaunching
-		record.Executor = executor
-		record.CancelRequestedAt = &requested
-		return nil
-	}); err != nil {
-		t.Fatalf("mark cancel requested: %v", err)
-	}
-
-	if err := RunDurableDockerUpdate(context.Background(), claim.ID); !errors.Is(err, context.Canceled) {
-		t.Fatalf("RunDurableDockerUpdate error = %v, want context.Canceled", err)
-	}
-	if mutationCalls != 0 {
-		t.Fatalf("mutation calls = %d, want 0", mutationCalls)
-	}
-	artifact, err := store.ReadExecutorResult(claim.ID)
-	if err != nil {
-		t.Fatalf("ReadExecutorResult: %v", err)
-	}
-	if artifact.State != durabletask.StateCanceled {
-		t.Fatalf("executor artifact = %+v, want canceled", artifact)
-	}
-}
-
 func TestReconcileDockerUpdateRejectsMalformedCompletedPayload(t *testing.T) {
 	store := durabletask.NewStore(filepath.Join(t.TempDir(), "tasks"))
 	claim := durabletask.Claim{ID: testDockerOperationID, Route: dockerUpdateRoute, UID: 1000, RequestFingerprint: durabletask.Fingerprint(dockerUpdateRoute, "container=web"), Target: "web", ExclusiveRoute: true}
@@ -262,14 +130,14 @@ func TestReconcileDockerUpdateRejectsMalformedCompletedPayload(t *testing.T) {
 	}
 	record, err := store.Update(context.Background(), claim.ID, claim.UID, func(current *durabletask.Record) error {
 		current.State = durabletask.StateRunning
-		current.Executor = durabletask.Executor{Kind: dockerUpdateExecutorKind, Handle: dockerDurableUpdateUnitName(claim.ID), Identity: dockerUpdateExecutorIdentity}
+		current.Executor = durabletask.Executor{Kind: dockerupdate.ExecutorKind, Handle: dockerupdate.UnitName(claim.ID), Identity: dockerupdate.ExecutorIdentity}
 		return nil
 	})
 	if err != nil {
 		t.Fatalf("mark running: %v", err)
 	}
 	artifact, err := json.Marshal(durabletask.ExecutorResult{
-		ID: claim.ID, State: durabletask.StateCompleted, FinishedAt: time.Now().UTC(), Result: json.RawMessage(`{}`),
+		ID: claim.ID, State: durabletask.StateCompleted, FinishedAt: time.Now().UTC(), Result: jsontext.Value(`{}`),
 	})
 	if err != nil {
 		t.Fatalf("Marshal artifact: %v", err)
@@ -301,7 +169,7 @@ func TestCancelDockerUpdateReconcilesCompletedArtifactBeforeStop(t *testing.T) {
 	}
 	record, err := store.Update(context.Background(), claim.ID, claim.UID, func(current *durabletask.Record) error {
 		current.State = durabletask.StateRunning
-		current.Executor = durabletask.Executor{Kind: dockerUpdateExecutorKind, Handle: dockerDurableUpdateUnitName(claim.ID), Identity: dockerUpdateExecutorIdentity}
+		current.Executor = durabletask.Executor{Kind: dockerupdate.ExecutorKind, Handle: dockerupdate.UnitName(claim.ID), Identity: dockerupdate.ExecutorIdentity}
 		return nil
 	})
 	if err != nil {
@@ -326,5 +194,30 @@ func TestCancelDockerUpdateReconcilesCompletedArtifactBeforeStop(t *testing.T) {
 	}
 	if !result.Updated || result.ContainerID != "web" || fake.stopCalls != 0 {
 		t.Fatalf("cancel result = %+v, stop calls = %d", result, fake.stopCalls)
+	}
+}
+
+func TestBuildDockerUpdateUnitPropertiesDeriveFromWorkerUnit(t *testing.T) {
+	properties := map[string]any{}
+	for _, property := range buildDockerUpdateUnitProperties(dockerUpdateLaunch{OperationID: testDockerOperationID}) {
+		properties[property.Name] = property.Value.Value()
+	}
+	unit := dockerupdate.WorkerUnit
+	want := map[string]any{
+		"Requires":        unit.Requires,
+		"After":           unit.After,
+		"Wants":           unit.Wants,
+		"ProtectSystem":   unit.ProtectSystem,
+		"ProtectHome":     unit.ProtectHome,
+		"ReadWritePaths":  unit.ReadWritePaths,
+		"PrivateTmp":      unit.PrivateTmp,
+		"NoNewPrivileges": unit.NoNewPrivileges,
+		"RuntimeMaxUSec":  uint64(unit.RuntimeLimit / time.Microsecond),
+		"TimeoutStopUSec": uint64(unit.StopTimeout / time.Microsecond),
+	}
+	for name, value := range want {
+		if !reflect.DeepEqual(properties[name], value) {
+			t.Errorf("%s = %#v, want %#v", name, properties[name], value)
+		}
 	}
 }

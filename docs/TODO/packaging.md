@@ -31,7 +31,7 @@ packages must not delete administrator-owned files under `/usr/local` or
 
 ### 1. Keep the CLI name
 
-- [ ] Keep the current build output in `Makefile:21`:
+- [ ] Keep the current build output in `mk/go.mk:5`:
 
   ```make
   cli_binary := $(bin_dir)/linuxio
@@ -42,7 +42,7 @@ packages must not delete administrator-owned files under `/usr/local` or
 
 ### 2. Separate public and private paths
 
-- [ ] Replace `BinDir` in `backend/common/version/version.go:5` with the
+- [ ] Replace `BinDir` in `backend/common/version/paths.go` with the
       private executable location:
 
   ```go
@@ -52,26 +52,26 @@ packages must not delete administrator-owned files under `/usr/local` or
 - [ ] Do not add a `CLIPath` constant unless code genuinely needs to invoke
       the CLI.
 - [ ] Use `LibexecDir` when the webserver spawns the bridge in
-      `backend/webserver/bridge/bridge.go:57`.
+      `backend/webserver/bridge/bridge.go:59`.
 - [ ] Update the Docker update worker path in
-      `backend/bridge/handlers/docker/auto_update_native.go:27`.
+      `backend/common/dockerupdate/sandbox.go:11` (`RunnerPath`).
 - [ ] Update the authentication bridge path in
       `backend/auth/linuxio-auth.c:64`.
 - [ ] Update every package-owned systemd `ExecStart` entry.
 - [ ] Update the verbose systemd drop-ins written by
-      `backend/cli/main.go:653`.
+      `backend/cli/verbose.go:70`.
 
 ### 3. Simplify `linuxio version`
 
 Native packaging guarantees that every file in the package has one version.
 
 - [ ] Remove `versionExecCommand` and the four private-binary subprocess
-      probes from `backend/cli/main.go:98`.
+      probes from `backend/cli/version.go:11`.
 - [ ] Remove `version --self`.
 - [ ] Make `linuxio version` print the package/build version.
 - [ ] Support the conventional `linuxio --version` with the same result.
 - [ ] Remove component-version probing from
-      `backend/webserver/auth/version.go:138`; it must not depend on all
+      `backend/webserver/appupdate/version.go:129`; it must not depend on all
       LinuxIO binaries sharing one executable search path.
 
 ### 4. Clarify help text
@@ -92,9 +92,9 @@ Native packaging guarantees that every file in the package has one version.
 
 ### 5. Add one handwritten man page
 
-- [x] Add `packaging/man/linuxio.8` in plain roff. Do not add a documentation
+- [ ] Add `packaging/man/linuxio.8` in plain roff (the earlier draft was deleted). Do not add a documentation
       generator.
-- [x] Document the synopsis, commands, required privileges, files, systemd
+- [ ] Document the synopsis, commands, required privileges, files, systemd
       units, and examples.
 - [ ] Install it in the DEB through `debian/linuxio.manpages`.
 - [ ] Include `%{_mandir}/man8/linuxio.8*` in the RPM. Let debhelper and RPM
@@ -105,7 +105,7 @@ Native packaging guarantees that every file in the package has one version.
 - [ ] Remove component-probing and `--self` tests.
 - [ ] Test both `linuxio version` and `linuxio --version`.
 - [ ] Update systemd path assertions.
-- [ ] Update `docs/process-systemd-architecture.md:31`.
+- [ ] Update the binary-location paragraph in `docs/process-systemd-architecture.md`.
 - [ ] Add the man page to package-content tests.
 
 ## Development workflow
@@ -132,7 +132,8 @@ make localinstall
 - [ ] Use `make localinstall` for the first development install and after
       backend changes. Individual build targets only build; they do not
       install.
-- [ ] Delete `packaging/scripts/localinstall.sh` after the package-based target
+- [ ] Delete `packaging/scripts/localinstall.sh` (today a thin wrapper over
+      `install-linuxio-binaries.sh --local`) after the package-based target
       replaces it.
 - [ ] Remove `make reinstall` and the custom uninstall target. Native package
       managers own reinstall and removal.
@@ -153,6 +154,8 @@ Use this common layout:
     linuxio-auth
     linuxio-docker-update
     linuxio-indexer
+    linuxio-monitoring
+    linuxio-btrfs-timer
 /usr/lib/systemd/system/linuxio*
 /usr/lib/tmpfiles.d/linuxio.conf
 /usr/share/linuxio/
@@ -291,7 +294,7 @@ Browser
       bridge for update availability.
 - [ ] Keep `/api/version` only for detecting that the restarted webserver is
       running.
-- [ ] Preserve the durable `/run/linuxio/update-status.json` projection.
+- [ ] Preserve the durable `/run/linuxio/update-status.json` projection (`backend/common/updatestatus`).
 - [ ] After PackageKit reports success, complete the task before restarting
       `linuxio.target`.
 - [ ] If the generic package-update operation includes package `linuxio`, use

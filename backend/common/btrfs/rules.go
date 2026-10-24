@@ -2,7 +2,8 @@ package btrfs
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -10,12 +11,13 @@ import (
 	"slices"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 // RulesPath is the root-owned automatic-snapshot rule file. Tests may override it.
-var RulesPath = "/etc/linuxio/btrfs-snapshots.json"
+var RulesPath = version.ConfigDir + "/btrfs-snapshots.json"
 
 const rulesLockWait = 10 * time.Second
 
@@ -103,11 +105,11 @@ func updateListFile[T any](ctx context.Context, path string, load func() ([]T, e
 		if items == nil {
 			items = []T{}
 		}
-		data, err := json.MarshalIndent(doc(items), "", "  ")
+		data, err := json.Marshal(doc(items), jsontext.WithIndent("  "), json.Deterministic(true))
 		if err != nil {
 			return fmt.Errorf("marshal %s: %w", path, err)
 		}
-		if err := utils.WriteFileAtomic(path, append(data, '\n'), 0o600); err != nil {
+		if err := atomicfile.Write(path, append(data, '\n'), 0o600); err != nil {
 			return fmt.Errorf("write %s: %w", path, err)
 		}
 		return nil

@@ -16,20 +16,17 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/logging"
 	"github.com/mordilloSan/LinuxIO/backend/common/peercred"
+	"github.com/mordilloSan/LinuxIO/backend/common/verbosemode"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
-	httpapi "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/api/http"
-	apimodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/api/model"
-	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/defaults"
-	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/smart"
+	monitoringapi "github.com/mordilloSan/LinuxIO/backend/monitoring/api"
+	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/collector"
+	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/config"
+	smartmodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/smart"
+	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/httpapi"
+	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/plugins"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/store"
-)
-
-const (
-	// maxHeaderValueCount caps how many header values the API parses per
-	// request. The API only ever sees small GETs and command POSTs, so this
-	// sits far below net/http's default of 500.
-	maxHeaderValueCount = 64
 )
 
 // httpRuntime groups the HTTP server with its effective listen address. The
@@ -43,6 +40,10 @@ type httpRuntime struct {
 	apis             []string
 	plugins          []string
 }
+
+// smartDueCheckInterval is how often the SMART goroutine checks whether the
+// configured refresh interval has elapsed.
+const smartDueCheckInterval = time.Minute
 
 type ListenerOptions struct {
 	Name       string
@@ -61,7 +62,6 @@ type RunOptions struct {
 	DiskUsageCache       time.Duration
 	HistoryRetention     time.Duration
 	History              string
-	HistorySet           bool
 	HistoryIntervals     map[string]time.Duration // per-plugin history interval, a whole multiple of CollectorInterval
 	ConfigPath           string
 	ConfigSource         string
@@ -79,7 +79,6 @@ type ReloadOptions struct {
 	DiskUsageCache       time.Duration
 	HistoryRetention     time.Duration
 	History              string
-	HistorySet           bool
 	HistoryIntervals     map[string]time.Duration
 	ConfigSource         string
 	ConfigVersion        int
@@ -90,11 +89,18 @@ func (a *App) StartContext(ctx context.Context, opts RunOptions) error {
 		return err
 	}
 
-	historyPlugins, err := store.ParseHistoryPlugins(opts.History, opts.HistorySet)
+	// Registered before the slow start-up (store, first collection) so a SIGHUP
+	// from a verbose-mode toggle waits in the buffer for the event loop instead
+	// of taking the default action and killing the daemon.
+	hupCh := make(chan os.Signal, 1)
+	signal.Notify(hupCh, syscall.SIGHUP)
+	defer signal.Stop(hupCh)
+
+	historyPlugins, err := plugins.ParseHistory(opts.History)
 	if err != nil {
 		return err
 	}
-	historyEvery, err := store.HistoryEvery(opts.HistoryIntervals, opts.CollectorInterval)
+	historyEvery, err := plugins.HistoryEvery(opts.HistoryIntervals, opts.CollectorInterval)
 	if err != nil {
 		return err
 	}
@@ -106,8 +112,8 @@ func (a *App) StartContext(ctx context.Context, opts RunOptions) error {
 		return err
 	}
 	a.store = persistentStore
-	slog.Info("Database ready", "path", persistentStore.Path())
-	slog.Info("Collector configured",
+	slog.Debug("database ready", "path", persistentStore.Path())
+	slog.Debug("collector configured",
 		"interval", opts.CollectorInterval,
 		"history", historyPlugins,
 		"history_intervals", opts.HistoryIntervals,
@@ -161,9 +167,11 @@ func (a *App) StartContext(ctx context.Context, opts RunOptions) error {
 		})
 	})
 
-	hupCh := make(chan os.Signal, 1)
-	signal.Notify(hupCh, syscall.SIGHUP)
-	defer signal.Stop(hupCh)
+	if a.smartManager != nil {
+		collectorWG.Go(func() {
+			pprof.Do(runCtx, pprof.Labels("component", "smart"), a.runSmartRefresher)
+		})
+	}
 
 	runErr := a.runEventLoop(runCtx, hupCh, serverErr, opts.ReloadConfig)
 
@@ -181,36 +189,36 @@ func (a *App) validateAndNormalizeOpts(opts *RunOptions) error {
 		return errors.New("agent already started")
 	}
 	if opts.CollectorInterval <= 0 {
-		opts.CollectorInterval = defaults.CollectorInterval
+		opts.CollectorInterval = config.DefaultCollectorInterval
 	}
 	if opts.SmartRefreshInterval <= 0 {
-		opts.SmartRefreshInterval = defaults.SmartRefreshInterval
+		opts.SmartRefreshInterval = config.DefaultSmartRefreshInterval
 	}
 	return nil
 }
 
 func (a *App) startHTTPServers(opts RunOptions, serverErr chan<- error) error {
 	if len(opts.Listeners) == 0 {
-		slog.Info("HTTP servers disabled")
+		slog.Debug("HTTP servers disabled")
 		return nil
 	}
 	for _, listenerOpts := range opts.Listeners {
-		if IsListenDisabled(listenerOpts.Address) {
-			slog.Info("HTTP listener disabled", "name", listenerOpts.Name, "address", listenerOpts.Address)
+		if config.IsListenDisabled(listenerOpts.Address) {
+			slog.Debug("HTTP listener disabled", "name", listenerOpts.Name, "address", listenerOpts.Address)
 			continue
 		}
-		listener, err := openListener(listenerOpts.Address, listenerOpts.Mode)
+		listener, err := httpapi.OpenListener(listenerOpts.Address, listenerOpts.Mode)
 		if err != nil {
-			if listenerOpts.BestEffort {
-				slog.Warn("HTTP listener unavailable; continuing", "name", listenerOpts.Name, "address", listenerOpts.Address, "err", err)
-				continue
+			if !listenerOpts.BestEffort {
+				return err
 			}
-			return err
+			slog.Warn("HTTP listener unavailable, continuing", "name", listenerOpts.Name, "address", listenerOpts.Address, "error", err)
+			continue
 		}
 		handler := a.apiServer(opts.CommandExecutor).HandlerFor(a.CollectorInterval, listenerOpts.APIs, listenerOpts.Plugins)
 		var connContext func(context.Context, net.Conn) context.Context
 		if listenerOpts.RootOnly {
-			handler = requireRootPeer(handler)
+			handler = httpapi.RequireRootPeer(handler)
 			connContext = peercred.ConnContext
 		}
 		runtime := &httpRuntime{
@@ -223,8 +231,8 @@ func (a *App) startHTTPServers(opts RunOptions, serverErr chan<- error) error {
 				Addr:                listenerOpts.Address,
 				Handler:             handler,
 				ConnContext:         connContext,
-				ReadHeaderTimeout:   5 * time.Second,
-				MaxHeaderValueCount: maxHeaderValueCount,
+				ReadHeaderTimeout:   config.ReadHeaderTimeout,
+				MaxHeaderValueCount: config.MaxHeaderValueCount,
 			},
 		}
 		a.runtimeMu.Lock()
@@ -260,7 +268,7 @@ func (a *App) shutdownHTTPServers(ctx context.Context) error {
 
 	var shutdownErr error
 	for _, runtime := range runtimes {
-		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), config.ShutdownTimeout)
 		if err := runtime.server.Shutdown(shutdownCtx); err != nil {
 			shutdownErr = errors.Join(shutdownErr, err)
 		}
@@ -275,7 +283,7 @@ func (a *App) runEventLoop(ctx context.Context, hupCh <-chan os.Signal, serverEr
 	for running {
 		select {
 		case <-ctx.Done():
-			slog.Info("Shutting down standalone agent")
+			slog.Debug("shutting down standalone agent")
 			running = false
 		case <-hupCh:
 			a.handleSIGHUP(reloadFn)
@@ -290,12 +298,13 @@ func (a *App) runEventLoop(ctx context.Context, hupCh <-chan os.Signal, serverEr
 }
 
 func (a *App) handleSIGHUP(reloadFn func() error) {
+	logging.SetDebug(verbosemode.Enabled())
 	if reloadFn == nil {
-		slog.Info("SIGHUP received; no config reload hook configured")
+		slog.Debug("SIGHUP received; no config reload hook configured")
 		return
 	}
 	if err := reloadFn(); err != nil {
-		slog.Error("Config reload failed", "err", err)
+		slog.Error("config reload failed", "error", err)
 	}
 }
 
@@ -307,7 +316,7 @@ func (a *App) ReloadRuntime(opts ReloadOptions) error {
 	if err != nil {
 		return err
 	}
-	slog.Info("Config reloaded",
+	slog.Info("config reloaded",
 		"interval", interval,
 		"history", historyPlugins,
 		"source", opts.ConfigSource,
@@ -345,7 +354,7 @@ func replaceIntervalUpdate(updates chan time.Duration, interval time.Duration) {
 func (a *App) startManagers(ctx context.Context) {
 	if a.gpuManager != nil {
 		if err := a.gpuManager.Start(ctx); err != nil {
-			slog.Debug("GPU", "err", err)
+			slog.Debug("GPU manager start failed", "error", err)
 			a.gpuManager.Stop()
 		}
 	}
@@ -367,12 +376,12 @@ func (a *App) runCollector(ctx context.Context, interval time.Duration, interval
 			return
 		case nextInterval := <-intervalUpdates:
 			if nextInterval <= 0 {
-				nextInterval = defaults.CollectorInterval
+				nextInterval = config.DefaultCollectorInterval
 			}
 			ticker.Reset(nextInterval)
 		case tickTime := <-ticker.C:
 			if err := a.collectAndPersist(ctx, tickTime.UTC()); err != nil {
-				slog.Error("collector tick failed", "err", err)
+				slog.Error("collector tick failed", "error", err)
 			}
 		}
 	}
@@ -381,7 +390,7 @@ func (a *App) runCollector(ctx context.Context, interval time.Duration, interval
 func (a *App) collectAndPersist(ctx context.Context, now time.Time) error {
 	run := a.beginCollectorRun()
 	data, err := a.gatherStats(ctx, DataRequestOptions{
-		CacheTimeMs:    collectorDataKeyMs,
+		CacheTimeMs:    collector.TickKey,
 		IncludeDetails: true,
 	})
 	if err != nil {
@@ -405,9 +414,6 @@ func (a *App) collectAndPersist(ctx context.Context, now time.Time) error {
 	a.lastCollectedMs.Store(capturedAt)
 	a.rememberTelemetry(data.ContainerTelemetry, time.UnixMilli(capturedAt))
 
-	// SMART refresh failures are logged when the refresh state changes so
-	// persistent probe failures do not emit the same warning every cycle.
-	_ = a.refreshSmartIfDue(ctx, now)
 	if err := a.store.RunMaintenance(now); err != nil {
 		return fmt.Errorf("maintenance failed: %w", err)
 	}
@@ -417,21 +423,24 @@ func (a *App) collectAndPersist(ctx context.Context, now time.Time) error {
 	return nil
 }
 
-func (a *App) refreshSmartIfDue(ctx context.Context, now time.Time) error {
-	if a.smartManager == nil {
-		return nil
-	}
+// runSmartRefresher refreshes SMART data off the collector goroutine: smartctl
+// can take 15 s per device. Failures are logged when the refresh state changes
+// so persistent probe failures do not emit the same warning every cycle.
+func (a *App) runSmartRefresher(ctx context.Context) {
+	ticker := time.NewTicker(smartDueCheckInterval)
+	defer ticker.Stop()
 
-	a.Lock()
-	shouldRefresh := a.smartManager.lastRefresh.IsZero() || now.Sub(a.smartManager.lastRefresh) >= a.smartManager.refreshInterval
-	a.Unlock()
-	if !shouldRefresh {
-		return nil
+	for {
+		now := time.Now().UTC()
+		if a.smartManager.RefreshDue(now) {
+			a.logSmartRefreshResult(a.refreshSmart(ctx, now, false))
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
 	}
-
-	err := a.refreshSmart(ctx, now, false)
-	a.logSmartRefreshResult(err)
-	return err
 }
 
 func (a *App) RefreshSmartNow(ctx context.Context) error {
@@ -445,37 +454,33 @@ func (a *App) refreshSmart(ctx context.Context, now time.Time, forceScan bool) e
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		return a.store.WriteSmartDevices(now.UnixMilli(), map[string]smart.SmartData{})
+		return a.store.WriteSmartDevices(now.UnixMilli(), map[string]smartmodel.SmartData{})
 	}
 
-	if err := a.smartManager.Refresh(ctx, forceScan); err != nil {
-		return err
+	refreshErr := a.smartManager.Refresh(ctx, forceScan)
+	// A failed refresh also waits one interval instead of rescanning every check.
+	a.smartManager.MarkRefreshed(now)
+	if refreshErr != nil {
+		return refreshErr
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := a.store.WriteSmartDevices(now.UnixMilli(), a.smartManager.GetCurrentData()); err != nil {
-		return err
-	}
-
-	a.Lock()
-	a.smartManager.lastRefresh = now
-	a.Unlock()
-	return nil
+	return a.store.WriteSmartDevices(now.UnixMilli(), a.smartManager.GetCurrentData())
 }
 
-func (a *App) Listeners() []apimodel.ListenerMeta {
+func (a *App) Listeners() []monitoringapi.ListenerMeta {
 	a.runtimeMu.RLock()
 	defer a.runtimeMu.RUnlock()
-	out := make([]apimodel.ListenerMeta, 0, len(a.httpRuntimes))
+	out := make([]monitoringapi.ListenerMeta, 0, len(a.httpRuntimes))
 	for _, runtime := range a.httpRuntimes {
 		out = append(out, runtime.meta(true))
 	}
 	return out
 }
 
-func (r *httpRuntime) meta(active bool) apimodel.ListenerMeta {
-	return apimodel.ListenerMeta{
+func (r *httpRuntime) meta(active bool) monitoringapi.ListenerMeta {
+	return monitoringapi.ListenerMeta{
 		Name:             r.name,
 		Address:          r.requestedAddress,
 		EffectiveAddress: r.effectiveAddress,
@@ -485,20 +490,20 @@ func (r *httpRuntime) meta(active bool) apimodel.ListenerMeta {
 	}
 }
 
-func (a *App) StatusMeta() apimodel.MetaResponse {
+func (a *App) StatusMeta() monitoringapi.Status {
 	dbPath := ""
 	if a.store != nil {
 		dbPath = a.store.Path()
 	}
 	var dbSize int64
 	if files, err := store.DatabaseFiles(a.dataDir); err != nil {
-		slog.Debug("database size unavailable", "err", err)
+		slog.Debug("database size unavailable", "error", err)
 	} else {
 		for _, file := range files {
 			dbSize += file.Size
 		}
 	}
-	return apimodel.MetaResponse{
+	return monitoringapi.Status{
 		Version:              version.Version,
 		DataDir:              a.dataDir,
 		DBPath:               dbPath,
@@ -540,20 +545,20 @@ func (a *App) CollectorInterval() time.Duration {
 	a.runtimeMu.RLock()
 	defer a.runtimeMu.RUnlock()
 	if a.collectorInterval <= 0 {
-		return defaults.CollectorInterval
+		return config.DefaultCollectorInterval
 	}
 	return a.collectorInterval
 }
 
 func (a *App) setRuntimeConfig(interval, smartRefreshInterval, retention time.Duration, historyPlugins []string, historyIntervals map[string]time.Duration, configPath, configSource string, configVersion int) {
 	if interval <= 0 {
-		interval = defaults.CollectorInterval
+		interval = config.DefaultCollectorInterval
 	}
 	if smartRefreshInterval <= 0 {
-		smartRefreshInterval = defaults.SmartRefreshInterval
+		smartRefreshInterval = config.DefaultSmartRefreshInterval
 	}
 	if retention <= 0 {
-		retention = store.DefaultHistoryRetention()
+		retention = config.DefaultHistoryRetention
 	}
 	a.runtimeMu.Lock()
 	a.collectorInterval = interval
@@ -573,19 +578,19 @@ func (a *App) setRuntimeConfig(interval, smartRefreshInterval, retention time.Du
 
 func (a *App) applyReload(opts ReloadOptions) (time.Duration, []string, error) {
 	if opts.CollectorInterval <= 0 {
-		opts.CollectorInterval = defaults.CollectorInterval
+		opts.CollectorInterval = config.DefaultCollectorInterval
 	}
 	if opts.SmartRefreshInterval <= 0 {
-		opts.SmartRefreshInterval = defaults.SmartRefreshInterval
+		opts.SmartRefreshInterval = config.DefaultSmartRefreshInterval
 	}
 	if opts.HistoryRetention <= 0 {
-		opts.HistoryRetention = store.DefaultHistoryRetention()
+		opts.HistoryRetention = config.DefaultHistoryRetention
 	}
-	historyPlugins, err := store.ParseHistoryPlugins(opts.History, opts.HistorySet)
+	historyPlugins, err := plugins.ParseHistory(opts.History)
 	if err != nil {
 		return 0, nil, err
 	}
-	historyEvery, err := store.HistoryEvery(opts.HistoryIntervals, opts.CollectorInterval)
+	historyEvery, err := plugins.HistoryEvery(opts.HistoryIntervals, opts.CollectorInterval)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -606,29 +611,29 @@ func (a *App) applyReload(opts ReloadOptions) (time.Duration, []string, error) {
 func (a *App) applyDiskUsageCache(d time.Duration) {
 	a.Lock()
 	defer a.Unlock()
-	a.fsManager.setDiskUsageCache(d)
+	a.fsManager.SetUsageCache(d)
 }
 
 func (a *App) setSmartRefreshInterval(interval time.Duration) {
 	if interval <= 0 {
-		interval = defaults.SmartRefreshInterval
+		interval = config.DefaultSmartRefreshInterval
 	}
 	a.Lock()
 	defer a.Unlock()
-	a.systemInfoManager.systemDetails.SmartInterval = interval
+	a.host.Details.SmartInterval = int64(interval)
 	if a.smartManager != nil {
-		a.smartManager.refreshInterval = interval
+		a.smartManager.SetRefreshInterval(interval)
 	}
 }
 
-func (a *App) configInfo() apimodel.ConfigMeta {
+func (a *App) configInfo() monitoringapi.MonitoringConfigMeta {
 	a.runtimeMu.RLock()
 	defer a.runtimeMu.RUnlock()
 	intervals := make(map[string]string, len(a.historyIntervals))
 	for plugin, interval := range a.historyIntervals {
 		intervals[plugin] = interval.String()
 	}
-	return apimodel.ConfigMeta{
+	return monitoringapi.MonitoringConfigMeta{
 		Path:              a.configPath,
 		Source:            a.configSource,
 		Version:           a.configVersion,
@@ -668,9 +673,7 @@ func (a *App) smartRefreshIntervalString() string {
 	if a.smartManager == nil {
 		return ""
 	}
-	a.Lock()
-	defer a.Unlock()
-	return a.smartManager.refreshInterval.String()
+	return a.smartManager.RefreshInterval().String()
 }
 
 func (a *App) logSmartRefreshResult(err error) {
@@ -682,10 +685,7 @@ func (a *App) logSmartRefreshResult(err error) {
 		currentError = err.Error()
 	}
 
-	a.Lock()
-	previousError := a.smartManager.lastRefreshError
-	a.smartManager.lastRefreshError = currentError
-	a.Unlock()
+	previousError := a.smartManager.SwapRefreshError(currentError)
 
 	switch {
 	case currentError == "":
@@ -693,8 +693,8 @@ func (a *App) logSmartRefreshResult(err error) {
 			slog.Info("smart refresh recovered")
 		}
 	case previousError != currentError:
-		slog.Warn("smart refresh failed", "err", err)
+		slog.Warn("smart refresh failed", "error", err)
 	default:
-		slog.Debug("smart refresh still failing", "err", err)
+		slog.Debug("smart refresh still failing", "error", err)
 	}
 }

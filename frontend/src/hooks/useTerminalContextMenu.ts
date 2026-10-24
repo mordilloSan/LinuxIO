@@ -16,12 +16,12 @@ export interface TerminalContextMenuPosition {
   mouseY: number;
 }
 
-export interface UseTerminalContextMenuOptions {
+interface UseTerminalContextMenuOptions {
   streamRef: RefObject<Stream | null>;
   terminalRef: RefObject<Terminal | null>;
 }
 
-export interface UseTerminalContextMenuResult {
+interface UseTerminalContextMenuResult {
   contextMenu: TerminalContextMenuPosition | null;
   handleCloseContextMenu: () => void;
   handleContextMenu: (event: MouseEvent) => void;

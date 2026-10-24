@@ -150,8 +150,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install frontend deps
-        working-directory: frontend
-        run: npm ci
+        run: make ci-frontend-deps
 
       - name: Build frontend (Vite)
         run: make build-vite
@@ -166,89 +165,86 @@ jobs:
         working-directory: backend
         run: go mod download
 
-      - name: Build Go bridge
+      # The Makefile owns the binary manifest and the output directory.
+      - name: Build all binaries
         env: { GOOS: linux, GOARCH: amd64 }
-        run: make build-bridge SKIP_ENSURE_GO=1
+        run: make build-binaries SKIP_ENSURE_GO=1
 
-      - name: Build Go backend (with bridge hash)
-        env: { GOOS: linux, GOARCH: amd64 }
+      - name: Resolve binary manifest
         run: |
-          BRIDGE_HASH=$(sha256sum linuxio-bridge | awk '{ print $1 }')
-          echo "Bridge SHA256: $BRIDGE_HASH"
-          make build-backend "BRIDGE_SHA256=$BRIDGE_HASH" SKIP_ENSURE_GO=1
-
-      - name: Build Go auth helper
-        env: { GOOS: linux, GOARCH: amd64 }
-        run: make build-auth
-
-      - name: Build CLI
-        env: { GOOS: linux, GOARCH: amd64 }
-        run: make build-cli SKIP_ENSURE_GO=1
-
-      - name: Build Docker update worker
-        env: { GOOS: linux, GOARCH: amd64 }
-        run: make build-docker-update SKIP_ENSURE_GO=1
-
-      - name: Build filesystem indexer
-        env: { GOOS: linux, GOARCH: amd64 }
-        run: make build-indexer SKIP_ENSURE_GO=1
-
-      - name: Build monitoring daemon
-        env: { GOOS: linux, GOARCH: amd64 }
-        run: make build-monitoring SKIP_ENSURE_GO=1
+          {
+            echo "BIN_DIR=$(make -s print-bin-dir)"
+            echo "BINARIES=$(make -s print-binaries | tr '\n' ' ')"
+          } >> "$GITHUB_ENV"
 
       - name: Make artifacts executable
-        run: chmod +x linuxio linuxio-webserver linuxio-bridge linuxio-auth linuxio-docker-update linuxio-indexer linuxio-monitoring
+        run: |
+          read -ra bins <<<"$BINARIES"
+          cd "$BIN_DIR"
+          chmod +x "${bins[@]}"
 
       - name: Create tarball
         id: create_tarball
         run: |
-          cp docs/THIRD_PARTY_NOTICES.md THIRD_PARTY_NOTICES.md
+          read -ra bins <<<"$BINARIES"
+          cp LICENSE docs/THIRD_PARTY_NOTICES.md "$BIN_DIR/"
           TAR="linuxio-${{ steps.tag.outputs.tag }}-linux-amd64.tar.gz"
-          tar czvf "$TAR" linuxio linuxio-webserver linuxio-bridge linuxio-auth linuxio-docker-update linuxio-indexer linuxio-monitoring LICENSE THIRD_PARTY_NOTICES.md
+          (cd "$BIN_DIR" && tar czvf "$TAR" "${bins[@]}" LICENSE THIRD_PARTY_NOTICES.md)
           echo "tarball=$TAR" >> "$GITHUB_OUTPUT"
 
       - name: Generate checksums
         run: |
+          read -ra bins <<<"$BINARIES"
+          cd "$BIN_DIR"
           # Generate checksums for binaries and tarball
-          sha256sum linuxio linuxio-webserver linuxio-bridge linuxio-auth linuxio-docker-update linuxio-indexer linuxio-monitoring LICENSE THIRD_PARTY_NOTICES.md ./*.tar.gz > SHA256SUMS
+          sha256sum "${bins[@]}" LICENSE THIRD_PARTY_NOTICES.md ./*.tar.gz > SHA256SUMS
           echo "=== Binary Checksums ==="
           cat SHA256SUMS
 
       - name: Verify binaries before release
         run: |
-          # Verify linuxio CLI runs correctly
-          chmod +x linuxio
-          ./linuxio help || { echo "linuxio CLI verification failed"; exit 1; }
-          echo "✓ linuxio CLI runs correctly"
-
-          chmod +x linuxio-docker-update
-          ./linuxio-docker-update help || { echo "Docker update worker verification failed"; exit 1; }
-          echo "✓ linuxio-docker-update runs correctly"
-
-          chmod +x linuxio-indexer
-          ./linuxio-indexer --version || { echo "Filesystem indexer verification failed"; exit 1; }
-          echo "✓ linuxio-indexer runs correctly"
-
-          chmod +x linuxio-monitoring
-          ./linuxio-monitoring --version || { echo "Monitoring daemon verification failed"; exit 1; }
-          echo "✓ linuxio-monitoring runs correctly"
-
-          # Verify linuxio-webserver runs correctly
-          chmod +x linuxio-webserver
-          ./linuxio-webserver help || { echo "linuxio-webserver verification failed"; exit 1; }
-          echo "✓ linuxio-webserver runs correctly"
-
-          # Verify linuxio-bridge, linuxio-auth, are valid ELF executables
-          # (they require special input/privileges to actually run)
-          for bin in linuxio-bridge linuxio-auth; do
-            chmod +x "$bin"
-            file "$bin" | grep -q "ELF.*executable" || {
-              echo "$bin is not a valid executable"
-              exit 1
-            }
-            echo "✓ $bin is a valid ELF executable"
+          read -ra bins <<<"$BINARIES"
+          cd "$BIN_DIR"
+          for bin in "${bins[@]}"; do
+            case "$bin" in
+              linuxio|linuxio-webserver|linuxio-docker-update|linuxio-btrfs-timer)
+                "./$bin" help >/dev/null || { echo "$bin verification failed"; exit 1; }
+                echo "✓ $bin runs correctly"
+                ;;
+              linuxio-indexer|linuxio-monitoring)
+                "./$bin" --version >/dev/null || { echo "$bin verification failed"; exit 1; }
+                echo "✓ $bin runs correctly"
+                ;;
+              linuxio-bridge|linuxio-auth)
+                # These require special input/privileges to actually run.
+                file "$bin" | grep -q "ELF.*executable" || {
+                  echo "$bin is not a valid executable"
+                  exit 1
+                }
+                echo "✓ $bin is a valid ELF executable"
+                ;;
+              *)
+                echo "No verification rule for $bin; add one to this step"
+                exit 1
+                ;;
+            esac
           done
+
+      - name: List release artifacts
+        id: artifacts
+        run: |
+          read -ra bins <<<"$BINARIES"
+          {
+            echo "list<<EOF"
+            echo "$BIN_DIR/${{ steps.create_tarball.outputs.tarball }}"
+            for bin in "${bins[@]}"; do echo "$BIN_DIR/$bin"; done
+            echo "$BIN_DIR/LICENSE"
+            echo "$BIN_DIR/THIRD_PARTY_NOTICES.md"
+            echo "$BIN_DIR/SHA256SUMS"
+            echo "install-linuxio-binaries.sh"
+            echo "install-linuxio-binaries.sh.sha256"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Generate changelog from commits
         id: changelog
@@ -272,7 +268,7 @@ jobs:
           {
             echo "## $TAG — $(date -u +%Y-%m-%d)"
             echo ""
-            ./packaging/scripts/changelog-entry.sh "$TAG" "$PREV_TAG" "$COMMIT_RANGE" "${{ github.repository }}"
+            ./.github/scripts/changelog-entry.sh "$TAG" "$PREV_TAG" "$COMMIT_RANGE" "${{ github.repository }}"
           } > RELEASE_NOTES.md
 
           echo "--- Generated Changelog ---"
@@ -285,20 +281,7 @@ jobs:
           tag: ${{ steps.tag.outputs.tag }}
           draft: true
           bodyFile: RELEASE_NOTES.md
-          artifacts: |
-            ${{ steps.create_tarball.outputs.tarball }}
-            linuxio
-            linuxio-webserver
-            linuxio-bridge
-            linuxio-auth
-            linuxio-docker-update
-            linuxio-indexer
-            linuxio-monitoring
-            LICENSE
-            THIRD_PARTY_NOTICES.md
-            SHA256SUMS
-            install-linuxio-binaries.sh
-            install-linuxio-binaries.sh.sha256
+          artifacts: ${{ steps.artifacts.outputs.list }}
 
       - name: Publish release atomically
         if: success()

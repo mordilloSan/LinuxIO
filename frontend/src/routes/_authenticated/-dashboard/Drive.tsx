@@ -2,12 +2,12 @@ import { useSuspenseQueries, useSuspenseQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
 import { type ApiDisk, linuxio, type MonitoringLive } from "@/api";
-import DashboardCard, {
-  CardHeaderSelect,
-} from "@/components/cards/DashboardCard";
 import AppTypography from "@/components/ui/AppTypography";
 import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
-import { formatFileSize } from "@/utils/formaters";
+import DashboardCard, {
+  CardHeaderSelect,
+} from "@/routes/_authenticated/-dashboard/DashboardCard";
+import { formatFileSize } from "@/utils/formatters";
 
 import DashboardStatRows from "./DashboardStatRows";
 import DriveGraph from "./DriveGraph";

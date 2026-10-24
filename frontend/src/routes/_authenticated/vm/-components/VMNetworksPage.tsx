@@ -9,19 +9,26 @@ import {
   type VMNetwork,
   type VirtualMachine,
 } from "@/api";
+import {
+  EntityCard,
+  KeyValues,
+  PillToggle,
+  Throughput,
+} from "@/components/cards/EntityCardKit";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppChip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
 
-import { EntityCard, KeyValues, PillToggle, Throughput } from "./vmCards";
 import { normalizeState, stateChipColor } from "./vmShared";
 
+// Cards share rows on wide screens; a lone card still spans one column only.
 const pageStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
+  alignItems: "start",
+  display: "grid",
   gap: "var(--app-space-16)",
+  gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 560px), 1fr))",
   minHeight: 0,
 };
 
@@ -132,7 +139,7 @@ function networkStatus(network: VMNetwork): {
   return { text: "Normal", tone: "ok" };
 }
 
-export function NetworkCard({
+function NetworkCard({
   hostname,
   interfaces,
   live,

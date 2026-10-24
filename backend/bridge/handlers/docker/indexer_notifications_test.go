@@ -2,8 +2,10 @@ package docker
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
+	"errors"
 	"io"
+	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
@@ -30,7 +32,7 @@ func TestDockerComposeIndexerNotificationsUseSharedEntryContract(t *testing.T) {
 		requests = append(requests, req.Clone(req.Context()))
 		if req.Body != nil {
 			var entry indexerapi.EntryRequest
-			if err := json.NewDecoder(req.Body).Decode(&entry); err != nil {
+			if err := json.UnmarshalRead(req.Body, &entry); err != nil {
 				t.Fatalf("decode indexer entry: %v", err)
 			}
 			entries = append(entries, entry)
@@ -98,5 +100,56 @@ func TestDockerStackDirectoryDeleteNotifiesIndexer(t *testing.T) {
 	}
 	if !result.DirDeleted || deletedPath != dir {
 		t.Fatalf("result = %#v, deleted path = %q", result, deletedPath)
+	}
+}
+
+func TestDeleteStackFilesKeepsSharedDirectory(t *testing.T) {
+	root := t.TempDir()
+	composePath := filepath.Join(root, "compose.yml")
+	otherStack := filepath.Join(root, "other", "compose.yml")
+	for _, path := range []string{composePath, otherStack} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatalf("mkdir: %v", err)
+		}
+		if err := os.WriteFile(path, []byte("services: {}\n"), 0o600); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+	}
+
+	result, err := deleteStackFiles(context.Background(), "root", composePath, root, []string{root}, DeleteStackOptions{DeleteDirectory: true})
+	if err != nil {
+		t.Fatalf("deleteStackFiles: %v", err)
+	}
+	if result.DirDeleted || !result.FilesDeleted {
+		t.Fatalf("result = %#v", result)
+	}
+	if _, err := os.Stat(composePath); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("compose file still present: %v", err)
+	}
+	if _, err := os.Stat(otherStack); err != nil {
+		t.Fatalf("other stack removed: %v", err)
+	}
+}
+
+func TestDeleteStackFilesDeletesChildDirectory(t *testing.T) {
+	root := t.TempDir()
+	stackDir := filepath.Join(root, "stack")
+	composePath := filepath.Join(stackDir, "compose.yml")
+	if err := os.Mkdir(stackDir, 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(composePath, []byte("services: {}\n"), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	result, err := deleteStackFiles(context.Background(), "stack", composePath, stackDir, []string{root}, DeleteStackOptions{DeleteDirectory: true})
+	if err != nil {
+		t.Fatalf("deleteStackFiles: %v", err)
+	}
+	if !result.DirDeleted {
+		t.Fatalf("result = %#v", result)
+	}
+	if _, err := os.Stat(stackDir); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("stack dir still present: %v", err)
 	}
 }

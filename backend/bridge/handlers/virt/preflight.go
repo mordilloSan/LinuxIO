@@ -2,7 +2,7 @@ package virt
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"os"
 	"os/exec"
@@ -276,7 +276,7 @@ func detectOVMFCodePath() string {
 			continue
 		}
 		var descriptor qemuFirmwareDescriptor
-		if err := json.Unmarshal(data, &descriptor); err != nil {
+		if err := json.Unmarshal(data, &descriptor, json.MatchCaseInsensitiveNames(true)); err != nil {
 			continue
 		}
 		if plainUEFIFirmwareExecutable(descriptor) {

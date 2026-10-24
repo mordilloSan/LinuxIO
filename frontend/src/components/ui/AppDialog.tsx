@@ -3,7 +3,6 @@ import {
   createContext,
   useContext,
   useEffect,
-  useEffectEvent,
   useId,
   useRef,
   type CSSProperties,
@@ -23,6 +22,7 @@ import {
 
 import { acquireBodyScrollLock } from "./bodyScrollLock";
 import { useDialogFocusRestore } from "./useDialogFocusRestore";
+import { useOverlayEscape } from "./useOverlayEscape";
 
 import "./app-dialog.css";
 
@@ -65,12 +65,6 @@ const dialogVariants = {
     },
   },
 } satisfies Variants;
-
-// Overlay portals that participate in the Escape stack: only the last one in
-// DOM order may close on Escape. Shared with AppFullscreenDialog and with
-// document-level shortcut hooks that must stay quiet while an overlay is open.
-export const OVERLAY_ROOT_SELECTOR =
-  ".app-dialog-root, .app-fullscreen-dialog-root";
 
 export const AppDialogTitleContext = createContext<string | undefined>(
   undefined,
@@ -153,45 +147,12 @@ export const AppDialog = ({
     };
   }, [open]);
 
-  // ESC key
-  const handleDocumentKeyDown = useEffectEvent(
-    (event: globalThis.KeyboardEvent) => {
-      if (
-        event.key !== "Escape" ||
-        disableEscapeKeyDown ||
-        event.defaultPrevented
-      ) {
-        return;
-      }
-
-      const root = rootRef.current;
-      if (!root) {
-        return;
-      }
-
-      const openOverlays = Array.from(
-        document.querySelectorAll<HTMLDivElement>(OVERLAY_ROOT_SELECTOR),
-      );
-      if (openOverlays[openOverlays.length - 1] !== root) {
-        return;
-      }
-
-      event.preventDefault();
-      event.stopPropagation();
-      onClose?.(event, "escapeKeyDown");
-    },
-  );
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    document.addEventListener("keydown", handleDocumentKeyDown);
-    return () => {
-      document.removeEventListener("keydown", handleDocumentKeyDown);
-    };
-  }, [open]);
+  useOverlayEscape({
+    disabled: disableEscapeKeyDown,
+    onEscape: (event) => onClose?.(event, "escapeKeyDown"),
+    open,
+    rootRef,
+  });
 
   // auto-focus
   useEffect(() => {

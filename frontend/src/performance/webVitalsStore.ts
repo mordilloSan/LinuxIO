@@ -5,14 +5,14 @@ export const WEB_VITALS_STORAGE_KEY = "linuxio.webVitals";
 
 export type WebVitalName = (typeof WEB_VITAL_NAMES)[number];
 
-export interface WebVitalReading {
+interface WebVitalReading {
   name: WebVitalName;
   navigationType: Metric["navigationType"];
   rating: Metric["rating"];
   value: number;
 }
 
-export interface WebVitalsSnapshot {
+interface WebVitalsSnapshot {
   metrics: Partial<Record<WebVitalName, WebVitalReading>>;
   navigationStart: number;
 }

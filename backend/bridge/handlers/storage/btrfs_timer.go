@@ -9,12 +9,13 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+	"time"
 
 	godbus "github.com/godbus/dbus/v5"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
 )
 
 type btrfsTimerOps struct {
@@ -74,10 +75,10 @@ func ensureBtrfsHealthTimer(ctx context.Context, ops btrfsTimerOps) error {
 // syncBtrfsTimer writes the snapshot units and runs the timer only while
 // some rule or replication job is enabled: the timer's run does both.
 func syncBtrfsTimer(ctx context.Context, ops btrfsTimerOps, paths btrfsTimerPaths, rules []btrfs.BtrfsSnapshotRule, jobs []btrfs.BtrfsReplicationJob) error {
-	if err := utils.WriteFileAtomic(paths.unitPath, btrfs.RenderUnit(), 0o644); err != nil {
+	if err := atomicfile.Write(paths.unitPath, btrfs.RenderUnit(), 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", paths.unitPath, err)
 	}
-	if err := utils.WriteFileAtomic(paths.timerPath, btrfs.RenderTimer(), 0o644); err != nil {
+	if err := atomicfile.Write(paths.timerPath, btrfs.RenderTimer(), 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", paths.timerPath, err)
 	}
 	if err := ops.daemonReload(ctx); err != nil {
@@ -179,4 +180,50 @@ func updateBtrfsReplicationJobs(ctx context.Context, fn func(*[]btrfs.BtrfsRepli
 		return nil, err
 	}
 	return jobs, nil
+}
+
+// LoadBtrfsSnapshotRules returns the stored snapshot rules with their timer state.
+func LoadBtrfsSnapshotRules(ctx context.Context) (btrfs.BtrfsSnapshotRules, error) {
+	rules, err := btrfs.LoadRules()
+	if err != nil {
+		return btrfs.BtrfsSnapshotRules{}, err
+	}
+	return btrfsSnapshotRules(ctx, rules), nil
+}
+
+// SaveBtrfsSnapshotRule stores a snapshot rule and returns the updated rules.
+func SaveBtrfsSnapshotRule(ctx context.Context, rule btrfs.BtrfsSnapshotRule) (btrfs.BtrfsSnapshotRules, error) {
+	rules, err := setBtrfsSnapshotRule(ctx, rule)
+	if err != nil {
+		return btrfs.BtrfsSnapshotRules{}, fmt.Errorf("set btrfs snapshot rule for %s in %s: %w", rule.Path, rule.UUID, err)
+	}
+	slog.Info("btrfs snapshot rule set", "uuid", rule.UUID, "path", rule.Path, "enabled", rule.Enabled)
+	return btrfsSnapshotRules(ctx, rules), nil
+}
+
+// DeleteBtrfsSnapshotRule removes a snapshot rule and returns the updated rules.
+func DeleteBtrfsSnapshotRule(ctx context.Context, uuid, path string) (btrfs.BtrfsSnapshotRules, error) {
+	rules, err := updateBtrfsSnapshotRules(ctx, func(rules *[]btrfs.BtrfsSnapshotRule) error {
+		*rules = btrfs.DeleteRule(*rules, uuid, path)
+		return nil
+	})
+	if err != nil {
+		return btrfs.BtrfsSnapshotRules{}, fmt.Errorf("delete btrfs snapshot rule for %s in %s: %w", path, uuid, err)
+	}
+	slog.Info("btrfs snapshot rule deleted", "uuid", uuid, "path", path)
+	return btrfsSnapshotRules(ctx, rules), nil
+}
+
+// RunBtrfsSnapshotRules runs every stored snapshot rule now.
+func RunBtrfsSnapshotRules(ctx context.Context) (btrfs.RunReport, error) {
+	rules, err := btrfs.LoadRules()
+	if err != nil {
+		return btrfs.RunReport{}, err
+	}
+	report, err := btrfs.Run(ctx, rules, time.Now(), btrfs.KindTimeline)
+	if err != nil {
+		return report, err
+	}
+	slog.Info("btrfs snapshot rules ran", "rules", len(rules), "taken", len(report.Taken), "pruned", len(report.Pruned))
+	return report, nil
 }

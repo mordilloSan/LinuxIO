@@ -2,10 +2,9 @@ package monitoring
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
+	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -14,7 +13,8 @@ import (
 	"github.com/shirou/gopsutil/v4/cpu"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	monitoringapi "github.com/mordilloSan/LinuxIO/backend/monitoring/api"
 )
 
 const (
@@ -22,10 +22,6 @@ const (
 	maxHistoryLimit        = 1000
 	defaultHistoryLimit    = 100
 )
-
-var historyResolutions = map[apischema.MonitoringHistoryResolution]struct{}{
-	"1m": {}, "10m": {}, "20m": {}, "120m": {}, "480m": {},
-}
 
 // historyReadTimeout bounds one history read. controlClient stays unbounded so
 // long-running db.maintain commands survive, so the deadline lives here.
@@ -36,71 +32,8 @@ var historyReadTimeout = 15 * time.Second
 // context-aware host query.
 var logicalCPUCount = cpu.CountsWithContext
 
-type historyEnvelope struct {
-	Resolution string        `json:"resolution"`
-	Items      []historyItem `json:"items"`
-}
-
-type historyItem struct {
-	CapturedAt int64           `json:"captured_at"`
-	Stats      json.RawMessage `json:"stats"`
-}
-
-// Agent-side stats payloads for the plugins surfaced as hardware charts.
-type cpuHistoryStats struct {
-	CPUPercent       float64   `json:"cpu_percent"`
-	BreakdownPercent []float64 `json:"cpu_breakdown_percent"`
-	CoresPercent     []float64 `json:"cpu_cores_percent"`
-	FrequenciesMHz   []float64 `json:"cpu_frequencies_mhz"`
-}
-
-type memHistoryStats struct {
-	TotalGB       float64 `json:"memory_gb"`
-	UsedGB        float64 `json:"memory_used_gb"`
-	UsedPercent   float64 `json:"memory_percent"`
-	BufferCacheGB float64 `json:"memory_buffer_cache_gb"`
-	ZFSArcGB      float64 `json:"memory_zfs_arc_gb"`
-	// Split cache fields; absent (zero) on agents older than v1.5.
-	CachedGB  float64 `json:"memory_cached_gb"`
-	BuffersGB float64 `json:"memory_buffers_gb"`
-}
-
-// containerHistoryRecord is one container's entry inside a containers-plugin
-// history point, whose stats payload is an array of these records.
-type containerHistoryRecord struct {
-	ID     string  `json:"id"`
-	Name   string  `json:"name"`
-	CPUPct float64 `json:"cpu_percent"`
-	MemMB  float64 `json:"memory_mb"`
-	// Bandwidth is [sent, received] bytes per second.
-	Bandwidth [2]uint64 `json:"bandwidth_bytes"`
-}
-
-// containerTelemetryRecord is one container's entry inside a
-// container_telemetry-plugin history point. That plugin attributes host
-// processes to containers, so it carries the block I/O the containers plugin
-// does not collect.
-type containerTelemetryRecord struct {
-	ID               string `json:"id"`
-	Name             string `json:"name"`
-	ReadBytesPerSec  uint64 `json:"disk_read_bytes_per_second"`
-	WriteBytesPerSec uint64 `json:"disk_write_bytes_per_second"`
-}
-
-type diskIOHistoryStats struct {
-	// IOBytesPerSec is [read, write].
-	IOBytesPerSec [2]float64 `json:"disk_io_bytes_per_second"`
-}
-
-type networkHistoryStats struct {
-	// BandwidthBytesPerSec is [sent, received].
-	BandwidthBytesPerSec [2]float64 `json:"bandwidth_bytes_per_second"`
-	// NetworkInterfaces values are [sent/s, received/s, total sent, total received].
-	NetworkInterfaces map[string][4]float64 `json:"network_interfaces"`
-}
-
 func FetchCPUHistory(ctx context.Context, req apischema.MonitoringHistoryRequest) ([]apischema.MonitoringCPUHistoryPoint, error) {
-	return fetchHistory(ctx, "cpu", req, func(item historyItem, stats cpuHistoryStats) apischema.MonitoringCPUHistoryPoint {
+	return fetchHistory(ctx, monitoringapi.PluginCPU, req, func(item monitoringapi.HistoryItem, stats monitoringapi.CPUHistoryStats) apischema.MonitoringCPUHistoryPoint {
 		return apischema.MonitoringCPUHistoryPoint{
 			CapturedAtMs:     item.CapturedAt,
 			UsagePercent:     stats.CPUPercent,
@@ -112,7 +45,7 @@ func FetchCPUHistory(ctx context.Context, req apischema.MonitoringHistoryRequest
 }
 
 func FetchMemoryHistory(ctx context.Context, req apischema.MonitoringHistoryRequest) ([]apischema.MonitoringMemoryHistoryPoint, error) {
-	points, err := fetchHistory(ctx, "mem", req, func(item historyItem, stats memHistoryStats) apischema.MonitoringMemoryHistoryPoint {
+	points, err := fetchHistory(ctx, monitoringapi.PluginMem, req, func(item monitoringapi.HistoryItem, stats monitoringapi.MemHistoryStats) apischema.MonitoringMemoryHistoryPoint {
 		return apischema.MonitoringMemoryHistoryPoint{
 			CapturedAtMs:  item.CapturedAt,
 			TotalGB:       stats.TotalGB,
@@ -144,7 +77,7 @@ func mergeDockerMemHistory(ctx context.Context, req apischema.MonitoringHistoryR
 	if len(points) == 0 {
 		return
 	}
-	docker, err := fetchHistory(ctx, "containers", req, func(item historyItem, records []containerHistoryRecord) dockerMemHistoryPoint {
+	docker, err := fetchHistory(ctx, monitoringapi.PluginContainers, req, func(item monitoringapi.HistoryItem, records []monitoringapi.ContainerHistoryRecord) dockerMemHistoryPoint {
 		var memMB float64
 		for _, record := range records {
 			memMB += record.MemMB
@@ -201,7 +134,7 @@ func FetchContainerHistory(ctx context.Context, req apischema.MonitoringHistoryR
 	}
 	cpuMultiplier := float64(logicalCPUs)
 
-	points, err := fetchHistory(ctx, "containers", req, func(item historyItem, records []containerHistoryRecord) apischema.MonitoringContainerHistoryPoint {
+	points, err := fetchHistory(ctx, monitoringapi.PluginContainers, req, func(item monitoringapi.HistoryItem, records []monitoringapi.ContainerHistoryRecord) apischema.MonitoringContainerHistoryPoint {
 		samples := make([]apischema.MonitoringContainerSample, 0, len(records))
 		for _, record := range records {
 			samples = append(samples, apischema.MonitoringContainerSample{
@@ -224,19 +157,19 @@ func FetchContainerHistory(ctx context.Context, req apischema.MonitoringHistoryR
 
 type containerDiskHistoryPoint struct {
 	capturedAtMs int64
-	byContainer  map[string]containerTelemetryRecord
+	byContainer  map[string]monitoringapi.ContainerTelemetryRecord
 }
 
 // mergeContainerDiskHistory annotates each container sample with the block I/O
 // captured nearest to it. Best-effort: container_telemetry is a separate
-// history plugin an operator can disable, and an agent older than v1.7 does
-// not have it at all, so failures leave the disk fields nil rather than zero.
+// history plugin an operator can disable, so failures leave the disk fields
+// nil rather than zero.
 func mergeContainerDiskHistory(ctx context.Context, req apischema.MonitoringHistoryRequest, points []apischema.MonitoringContainerHistoryPoint) {
 	if len(points) == 0 {
 		return
 	}
-	telemetry, err := fetchHistory(ctx, "container_telemetry", req, func(item historyItem, records []containerTelemetryRecord) containerDiskHistoryPoint {
-		byContainer := make(map[string]containerTelemetryRecord, len(records))
+	telemetry, err := fetchHistory(ctx, monitoringapi.PluginContainerTelemetry, req, func(item monitoringapi.HistoryItem, records []monitoringapi.ContainerTelemetryRecord) containerDiskHistoryPoint {
+		byContainer := make(map[string]monitoringapi.ContainerTelemetryRecord, len(records))
 		for _, record := range records {
 			byContainer[containerKey(record.ID, record.Name)] = record
 		}
@@ -262,8 +195,8 @@ func mergeContainerDiskHistory(ctx context.Context, req apischema.MonitoringHist
 			if !ok {
 				continue
 			}
-			read := float64(record.ReadBytesPerSec)
-			write := float64(record.WriteBytesPerSec)
+			read := float64(record.DiskReadBytesPerSecond)
+			write := float64(record.DiskWriteBytesPerSecond)
 			sample.ReadBytesPerSec = &read
 			sample.WriteBytesPerSec = &write
 		}
@@ -281,11 +214,11 @@ func containerKey(id, name string) string {
 }
 
 func resolutionStepMs(resolution apischema.MonitoringHistoryResolution) int64 {
-	minutes, err := strconv.Atoi(strings.TrimSuffix(string(resolution), "m"))
-	if err != nil || minutes <= 0 {
-		return 60_000
+	step, ok := monitoringapi.HistoryResolutionStep(string(resolution))
+	if !ok {
+		return time.Minute.Milliseconds()
 	}
-	return int64(minutes) * 60_000
+	return step.Milliseconds()
 }
 
 func absInt64(v int64) int64 {
@@ -296,7 +229,7 @@ func absInt64(v int64) int64 {
 }
 
 func FetchDiskIOHistory(ctx context.Context, req apischema.MonitoringHistoryRequest) ([]apischema.MonitoringDiskIOHistoryPoint, error) {
-	return fetchHistory(ctx, "diskio", req, func(item historyItem, stats diskIOHistoryStats) apischema.MonitoringDiskIOHistoryPoint {
+	return fetchHistory(ctx, monitoringapi.PluginDiskIO, req, func(item monitoringapi.HistoryItem, stats monitoringapi.DiskIOHistoryStats) apischema.MonitoringDiskIOHistoryPoint {
 		return apischema.MonitoringDiskIOHistoryPoint{
 			CapturedAtMs:     item.CapturedAt,
 			ReadBytesPerSec:  stats.IOBytesPerSec[0],
@@ -306,7 +239,7 @@ func FetchDiskIOHistory(ctx context.Context, req apischema.MonitoringHistoryRequ
 }
 
 func FetchNetworkHistory(ctx context.Context, req apischema.MonitoringHistoryRequest) ([]apischema.MonitoringNetworkHistoryPoint, error) {
-	return fetchHistory(ctx, "network", req, func(item historyItem, stats networkHistoryStats) apischema.MonitoringNetworkHistoryPoint {
+	return fetchHistory(ctx, monitoringapi.PluginNetwork, req, func(item monitoringapi.HistoryItem, stats monitoringapi.NetworkHistoryStats) apischema.MonitoringNetworkHistoryPoint {
 		point := apischema.MonitoringNetworkHistoryPoint{
 			CapturedAtMs:    item.CapturedAt,
 			SentBytesPerSec: stats.BandwidthBytesPerSec[0],
@@ -325,7 +258,7 @@ func FetchNetworkHistory(ctx context.Context, req apischema.MonitoringHistoryReq
 	})
 }
 
-func fetchHistory[S, P any](ctx context.Context, plugin string, req apischema.MonitoringHistoryRequest, flatten func(historyItem, S) P) ([]P, error) {
+func fetchHistory[S, P any](ctx context.Context, plugin string, req apischema.MonitoringHistoryRequest, flatten func(monitoringapi.HistoryItem, S) P) ([]P, error) {
 	envelope, err := fetchHistoryEnvelope(ctx, plugin, req)
 	if err != nil {
 		return nil, fmt.Errorf("fetch %s history: %w", plugin, err)
@@ -341,18 +274,18 @@ func fetchHistory[S, P any](ctx context.Context, plugin string, req apischema.Mo
 	return points, nil
 }
 
-func fetchHistoryEnvelope(ctx context.Context, plugin string, req apischema.MonitoringHistoryRequest) (historyEnvelope, error) {
-	if _, ok := historyResolutions[req.Resolution]; !ok {
-		return historyEnvelope{}, fmt.Errorf("%w: invalid resolution %q", bridgeipc.ErrInvalidArgs, req.Resolution)
+func fetchHistoryEnvelope(ctx context.Context, plugin string, req apischema.MonitoringHistoryRequest) (monitoringapi.HistoryResponse, error) {
+	if _, ok := monitoringapi.HistoryResolutionStep(string(req.Resolution)); !ok {
+		return monitoringapi.HistoryResponse{}, fmt.Errorf("%w: invalid resolution %q", bridgeipc.ErrInvalidArgs, req.Resolution)
 	}
 	if req.Limit < 0 || req.Limit > maxHistoryLimit {
-		return historyEnvelope{}, fmt.Errorf("%w: limit must be between 1 and %d", bridgeipc.ErrInvalidArgs, maxHistoryLimit)
+		return monitoringapi.HistoryResponse{}, fmt.Errorf("%w: limit must be between 1 and %d", bridgeipc.ErrInvalidArgs, maxHistoryLimit)
 	}
 	if req.WindowMs < 0 {
-		return historyEnvelope{}, fmt.Errorf("%w: window_ms must be greater than zero", bridgeipc.ErrInvalidArgs)
+		return monitoringapi.HistoryResponse{}, fmt.Errorf("%w: window_ms must be greater than zero", bridgeipc.ErrInvalidArgs)
 	}
 	if req.WindowMs > 0 && req.FromMs > 0 {
-		return historyEnvelope{}, fmt.Errorf("%w: from_ms and window_ms are mutually exclusive", bridgeipc.ErrInvalidArgs)
+		return monitoringapi.HistoryResponse{}, fmt.Errorf("%w: from_ms and window_ms are mutually exclusive", bridgeipc.ErrInvalidArgs)
 	}
 	limit := req.Limit
 	if limit == 0 {
@@ -363,49 +296,32 @@ func fetchHistoryEnvelope(ctx context.Context, plugin string, req apischema.Moni
 	defer cancel()
 
 	query := url.Values{}
-	query.Set("resolution", string(req.Resolution))
-	query.Set("limit", strconv.Itoa(limit))
+	query.Set(monitoringapi.QueryResolution, string(req.Resolution))
+	query.Set(monitoringapi.QueryLimit, strconv.Itoa(limit))
 	fromMs := req.FromMs
 	if req.WindowMs > 0 {
 		fromMs = time.Now().UnixMilli() - req.WindowMs
 	}
 	if fromMs > 0 {
-		query.Set("from", strconv.FormatInt(fromMs, 10))
+		query.Set(monitoringapi.QueryFrom, strconv.FormatInt(fromMs, 10))
 	}
 	if req.ToMs > 0 {
-		query.Set("to", strconv.FormatInt(req.ToMs, 10))
+		query.Set(monitoringapi.QueryTo, strconv.FormatInt(req.ToMs, 10))
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://unix/api/v1/"+plugin+"/history?"+query.Encode(), nil)
+	var envelope monitoringapi.HistoryResponse
+	err := getJSON(ctx, controlClient, monitoringapi.RouteHistory(plugin)+"?"+query.Encode(), maxHistoryPayloadBytes, &envelope)
+	if status, ok := errors.AsType[*statusError](err); ok {
+		return monitoringapi.HistoryResponse{}, fmt.Errorf("history request failed (%s): %s", status.Status, agentErrorMessage(status.Body))
+	}
 	if err != nil {
-		return historyEnvelope{}, fmt.Errorf("create history request: %w", err)
-	}
-
-	resp, err := controlClient.Do(httpReq)
-	if err != nil {
-		return historyEnvelope{}, fmt.Errorf("monitoring history request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxHistoryPayloadBytes))
-	if err != nil {
-		return historyEnvelope{}, fmt.Errorf("read history response: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return historyEnvelope{}, fmt.Errorf("history request failed (%s): %s", resp.Status, agentErrorMessage(body))
-	}
-
-	var envelope historyEnvelope
-	if err := json.Unmarshal(body, &envelope); err != nil {
-		return historyEnvelope{}, fmt.Errorf("decode history response: %w", err)
+		return monitoringapi.HistoryResponse{}, fmt.Errorf("monitoring history request: %w", err)
 	}
 	return envelope, nil
 }
 
 func agentErrorMessage(body []byte) string {
-	var payload struct {
-		Error string `json:"error"`
-	}
+	var payload monitoringapi.ErrorResponse
 	if err := json.Unmarshal(body, &payload); err == nil && payload.Error != "" {
 		return payload.Error
 	}

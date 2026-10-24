@@ -2,10 +2,13 @@ package alerts
 
 import (
 	"context"
+	"encoding/json/v2"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	store "github.com/mordilloSan/LinuxIO/backend/common/alerts"
 )
 
@@ -78,5 +81,19 @@ func TestListSurfacesCorruptStore(t *testing.T) {
 	}
 	if _, err := listForUID(1000); err == nil {
 		t.Fatal("corrupt store listed as empty")
+	}
+}
+
+func TestNotificationsViewOmitsPassword(t *testing.T) {
+	n := store.NotificationSettings{SMTPUsername: "nas", SMTPPassword: "secret", EmailTo: []string{"me@example.com"}}
+	view := notificationsView(n)
+	if !view.SMTPPasswordSet || view.SMTPUsername != "nas" {
+		t.Fatalf("view = %+v", view)
+	}
+	if data, err := json.Marshal(view); err != nil || strings.Contains(string(data), "secret") {
+		t.Fatalf("view leaks the password: %s, %v", data, err)
+	}
+	if got := notificationsFromRequest(apischema.NotificationSettings{SMTPPassword: "p"}); got.SMTPPassword != "p" {
+		t.Fatalf("request password dropped: %+v", got)
 	}
 }

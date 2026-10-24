@@ -2,7 +2,8 @@ package schedules
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -14,8 +15,9 @@ import (
 	"uuid"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 const maxSchedules = 100
@@ -23,7 +25,7 @@ const maxDefinitionBytes = 512 << 10
 
 type store struct{ configDir, unitDir string }
 
-var defaultStore = store{configDir: "/etc/linuxio/schedules", unitDir: "/etc/systemd/system"}
+var defaultStore = store{configDir: version.ConfigDir + "/schedules", unitDir: "/etc/systemd/system"}
 
 type definitionDocument struct {
 	Version    int                          `json:"version"`
@@ -87,14 +89,8 @@ func (s store) definition(id string) (apischema.ScheduleDefinition, error) {
 		return doc.Definition, err
 	}
 	defer f.Close()
-	decoder := json.NewDecoder(io.LimitReader(f, maxDefinitionBytes+1))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&doc); err != nil {
+	if err := json.UnmarshalRead(io.LimitReader(f, maxDefinitionBytes+1), &doc, json.RejectUnknownMembers(true)); err != nil {
 		return doc.Definition, err
-	}
-	var extra any
-	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		return doc.Definition, errors.New("trailing definition data")
 	}
 	if doc.Version != 1 || doc.Definition.ID != id {
 		return doc.Definition, errors.New("scheduled script identity or version mismatch")
@@ -107,7 +103,7 @@ func (s store) save(def apischema.ScheduleDefinition) error {
 	if err != nil {
 		return err
 	}
-	data, err := json.MarshalIndent(definitionDocument{Version: 1, Definition: def}, "", "  ")
+	data, err := json.Marshal(definitionDocument{Version: 1, Definition: def}, jsontext.WithIndent("  "), json.Deterministic(true))
 	if err != nil {
 		return err
 	}
@@ -117,7 +113,7 @@ func (s store) save(def apischema.ScheduleDefinition) error {
 	if err := secureDirectory(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	return utils.WriteFileAtomic(path, data, 0o600)
+	return atomicfile.Write(path, data, 0o600)
 }
 
 func (s store) definitions(ctx context.Context) ([]apischema.ScheduleDefinition, error) {

@@ -2,10 +2,8 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  HeaderActionSlotProvider,
-  useHeaderActionSlot,
-} from "@/contexts/HeaderActionSlotContext";
+import { HeaderActionSlotProvider } from "@/contexts/HeaderActionSlotProvider";
+import { useHeaderActionSlot } from "@/hooks/useHeaderActionSlot";
 import { render } from "@/test/render";
 
 import { assistantStore } from "./assistant-store";

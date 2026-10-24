@@ -2,7 +2,7 @@ package shares
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"net"
 	"os"
@@ -56,7 +56,7 @@ func testRsyncRequest(t *testing.T) apischema.RsyncSaveRequest {
 func TestRsyncSaveReadAndStop(t *testing.T) {
 	setupRsyncTest(t)
 	req := testRsyncRequest(t)
-	status, err := handleSaveRsync(context.Background(), req)
+	status, err := ConfigureRsync(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,10 +68,10 @@ func TestRsyncSaveReadAndStop(t *testing.T) {
 	// Saving again keeps the secret, and the chosen listener port round trips.
 	req.Password = ""
 	req.Port = 8873
-	if _, saveErr := handleSaveRsync(context.Background(), req); saveErr != nil {
+	if _, saveErr := ConfigureRsync(context.Background(), req); saveErr != nil {
 		t.Fatal(saveErr)
 	}
-	status, err = handleGetRsync(context.Background(), apischema.NoRequest{})
+	status, err = GetRsync(context.Background())
 	if err != nil || status.Config.Port != 8873 {
 		t.Fatalf("read = %+v, %v", status, err)
 	}
@@ -80,7 +80,7 @@ func TestRsyncSaveReadAndStop(t *testing.T) {
 		t.Fatal("saved password was not retained")
 	}
 
-	status, err = handleStopRsync(context.Background(), apischema.NoRequest{})
+	status, err = StopRsync(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestRsyncLeavesForeignSystemConfigAlone(t *testing.T) {
 	if err := os.WriteFile(rsyncSystemConfigFile, []byte("[distro]\npath = /srv\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	status, err := handleSaveRsync(context.Background(), testRsyncRequest(t))
+	status, err := ConfigureRsync(context.Background(), testRsyncRequest(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +170,7 @@ func TestRsyncRejectsUnsafeInputBeforeWriting(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			req := testRsyncRequest(t)
 			test.change(&req)
-			if _, err := handleSaveRsync(context.Background(), req); err == nil {
+			if _, err := ConfigureRsync(context.Background(), req); err == nil {
 				t.Fatal("unsafe request accepted")
 			}
 			if _, err := os.Stat(rsyncConfigFile); !errors.Is(err, os.ErrNotExist) {
@@ -185,19 +185,19 @@ func TestRsyncFailureAndCancellation(t *testing.T) {
 	req := testRsyncRequest(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := handleSaveRsync(ctx, req); !errors.Is(err, context.Canceled) {
+	if _, err := ConfigureRsync(ctx, req); !errors.Is(err, context.Canceled) {
 		t.Fatalf("canceled save: %v", err)
 	}
 	if _, err := os.Stat(rsyncConfigFile); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("canceled save wrote configuration")
 	}
 	rsyncStartUnit = func(context.Context, string) error { return errors.New("unit start failed") }
-	if _, err := handleSaveRsync(context.Background(), req); err == nil || !strings.Contains(err.Error(), "unit start failed") {
+	if _, err := ConfigureRsync(context.Background(), req); err == nil || !strings.Contains(err.Error(), "unit start failed") {
 		t.Fatalf("start error: %v", err)
 	}
 	req.Username = "other"
 	req.Password = ""
-	if _, err := handleSaveRsync(context.Background(), req); err == nil {
+	if _, err := ConfigureRsync(context.Background(), req); err == nil {
 		t.Fatal("reused a password for a different username")
 	}
 }
@@ -226,7 +226,7 @@ func TestRsyncRejectsOccupiedPort(t *testing.T) {
 	}
 	setupRsyncTest(t)
 	rsyncCheckPort = func(context.Context, int) error { return errors.New("port occupied") }
-	if _, err = handleSaveRsync(context.Background(), testRsyncRequest(t)); err == nil {
+	if _, err = ConfigureRsync(context.Background(), testRsyncRequest(t)); err == nil {
 		t.Fatal("save ignored the port conflict")
 	}
 	if _, err = os.Stat(rsyncConfigFile); !errors.Is(err, os.ErrNotExist) {

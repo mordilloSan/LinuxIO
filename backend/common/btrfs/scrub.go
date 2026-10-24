@@ -2,7 +2,8 @@ package btrfs
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -15,12 +16,13 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 // ScrubRecordPath stores the last scrub LinuxIO ran on each filesystem,
 // keyed by UUID; the kernel keeps no history of its own.
-var ScrubRecordPath = "/var/lib/linuxio/btrfs-scrub.json"
+var ScrubRecordPath = version.DataDir + "/btrfs-scrub.json"
 
 // progsScrubDir is where btrfs-progs records the scrubs it ran, such as the
 // btrfsmaintenance timer's, as scrub.status.<uuid> files.
@@ -147,12 +149,12 @@ func loadScrubRecord(uuid string) (BtrfsScrubStatus, bool) {
 func saveScrubRecord(uuid string, s BtrfsScrubStatus) {
 	records := loadScrubRecords()
 	records[uuid] = s
-	data, err := json.MarshalIndent(records, "", "  ")
+	data, err := json.Marshal(records, jsontext.WithIndent("  "), json.Deterministic(true))
 	if err == nil {
 		err = os.MkdirAll(filepath.Dir(ScrubRecordPath), 0o755)
 	}
 	if err == nil {
-		err = utils.WriteFileAtomic(ScrubRecordPath, data, 0o644)
+		err = atomicfile.Write(ScrubRecordPath, data, 0o644)
 	}
 	if err != nil {
 		slog.Warn("btrfs scrub records", "path", ScrubRecordPath, "error", err)

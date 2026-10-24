@@ -57,12 +57,15 @@ for path in \
 	/etc/systemd/system/linuxio-indexer.service; do
 	[[ ! -e "$path" ]] || fail "refusing to run with existing LinuxIO state: ${path}"
 done
-for binary in linuxio linuxio-webserver linuxio-bridge linuxio-auth linuxio-docker-update linuxio-indexer; do
-	[[ -x "${REPO_ROOT}/${binary}" ]] || fail "build ${binary} before running the smoke test"
+command -v make >/dev/null || fail "make is required"
+BIN_SRC_DIR="$(make -s -C "$REPO_ROOT" print-bin-dir)"
+mapfile -t BINARIES < <(make -s -C "$REPO_ROOT" print-binaries)
+for binary in "${BINARIES[@]}"; do
+	[[ -x "${BIN_SRC_DIR}/${binary}" ]] || fail "run make build-binaries before the smoke test (missing ${binary})"
 done
 
 installed=1
-if ! bash "${REPO_ROOT}/packaging/scripts/localinstall.sh" >"${SMOKE_DIR}/install.log" 2>&1; then
+if ! bash "${REPO_ROOT}/packaging/scripts/localinstall.sh" --build-dir "$BIN_SRC_DIR" >"${SMOKE_DIR}/install.log" 2>&1; then
 	tail -n 40 "${SMOKE_DIR}/install.log" >&2 || true
 	fail "local installer failed; full log is ${SMOKE_DIR}/install.log"
 fi

@@ -62,7 +62,7 @@ export interface Stream {
 
 export type MuxStatus = "connecting" | "open" | "closed" | "error";
 
-export interface StreamMultiplexerConfig {
+interface StreamMultiplexerConfig {
   defaultRequestTimeoutMs: number;
   detachedBufferBytes: number;
   scrollbackBytes: number;

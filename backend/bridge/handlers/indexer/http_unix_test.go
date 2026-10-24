@@ -2,7 +2,7 @@ package indexer
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"io"
 	"net"
 	"net/http"
@@ -45,7 +45,7 @@ func TestIndexerRequestsOverUnixSocket(t *testing.T) {
 				t.Errorf("add request = %s %s", r.Method, r.Header.Get("Content-Type"))
 			}
 			var entry indexerapi.EntryRequest
-			if err := json.NewDecoder(r.Body).Decode(&entry); err != nil {
+			if err := json.UnmarshalRead(r.Body, &entry); err != nil {
 				t.Errorf("decode add: %v", err)
 			}
 			if entry.Path != "/docs/readme.txt" {

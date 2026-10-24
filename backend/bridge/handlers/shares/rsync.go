@@ -19,18 +19,19 @@ import (
 	"gopkg.in/ini.v1"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 const rsyncUnit = "linuxio-rsync.service"
 
 var (
-	rsyncConfigFile = "/etc/linuxio/rsyncd.conf"
+	rsyncConfigFile = version.ConfigDir + "/rsyncd.conf"
 	// TOS's encryption mode reads this path over SSH to find the module folder.
 	rsyncSystemConfigFile = "/etc/rsyncd.conf"
-	rsyncSecretsFile      = "/etc/linuxio/rsyncd.secrets"
+	rsyncSecretsFile      = version.ConfigDir + "/rsyncd.secrets"
 	rsyncUnitFile         = "/etc/systemd/system/" + rsyncUnit
 	rsyncLockFile         = "/run/lock/linuxio-rsync.lock"
 	rsyncLookPath         = exec.LookPath
@@ -45,7 +46,8 @@ var (
 	rsyncName             = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$`)
 )
 
-func handleGetRsync(ctx context.Context, _ apischema.NoRequest) (apischema.RsyncStatus, error) {
+// GetRsync returns the rsync module status.
+func GetRsync(ctx context.Context) (apischema.RsyncStatus, error) {
 	var status apischema.RsyncStatus
 	err := filelock.RunExclusive(ctx, rsyncLockFile, func() error {
 		var err error
@@ -114,9 +116,9 @@ func rsyncSSHState(active bool) (bool, *string) {
 	target, err := os.Readlink(rsyncSystemConfigFile)
 	switch {
 	case errors.Is(err, os.ErrNotExist):
-		return false, utils.OptionalString(rsyncSystemConfigFile + " is missing; save the module again to create it")
+		return false, apischema.Optional(rsyncSystemConfigFile + " is missing; save the module again to create it")
 	case err != nil || target != rsyncConfigFile:
-		return false, utils.OptionalString(rsyncSystemConfigFile + " is not managed by LinuxIO, so TOS's encryption mode reads that file instead of this module")
+		return false, apischema.Optional(rsyncSystemConfigFile + " is not managed by LinuxIO, so TOS's encryption mode reads that file instead of this module")
 	case !active:
 		return false, nil
 	}
@@ -191,7 +193,8 @@ strict modes = yes
 `, config.Port, config.Module, config.Path, config.NASAddress, config.Username, rsyncSecretsFile)
 }
 
-func handleSaveRsync(ctx context.Context, req apischema.RsyncSaveRequest) (apischema.RsyncStatus, error) {
+// ConfigureRsync validates and applies the rsync module configuration.
+func ConfigureRsync(ctx context.Context, req apischema.RsyncSaveRequest) (apischema.RsyncStatus, error) {
 	if err := validateRsyncConfig(&req.RsyncConfig); err != nil {
 		return apischema.RsyncStatus{}, err
 	}
@@ -277,11 +280,11 @@ func checkRsyncPort(ctx context.Context, port int) error {
 }
 
 func writeRsyncFiles(config apischema.RsyncConfig, secret, binary string) error {
-	if err := utils.WriteFileAtomic(rsyncSecretsFile, []byte(config.Username+":"+secret+"\n"), 0o600); err != nil {
+	if err := atomicfile.Write(rsyncSecretsFile, []byte(config.Username+":"+secret+"\n"), 0o600); err != nil {
 		return fmt.Errorf("save rsync credentials: %w", err)
 	}
 	// The configuration holds no secrets; the SSH account TOS logs in with must read it.
-	if err := utils.WriteFileAtomic(rsyncConfigFile, []byte(rsyncConfigText(config)), 0o644); err != nil {
+	if err := atomicfile.Write(rsyncConfigFile, []byte(rsyncConfigText(config)), 0o644); err != nil {
 		return fmt.Errorf("save rsync configuration: %w", err)
 	}
 	if err := linkRsyncSystemConfig(); err != nil {
@@ -300,7 +303,7 @@ UMask=0077
 [Install]
 WantedBy=multi-user.target
 `, binary, rsyncConfigFile)
-	if err := utils.WriteFileAtomic(rsyncUnitFile, []byte(unit), 0o644); err != nil {
+	if err := atomicfile.Write(rsyncUnitFile, []byte(unit), 0o644); err != nil {
 		return fmt.Errorf("save rsync service: %w", err)
 	}
 	return nil
@@ -329,7 +332,8 @@ func linkRsyncSystemConfig() error {
 	return nil
 }
 
-func handleStopRsync(ctx context.Context, _ apischema.NoRequest) (apischema.RsyncStatus, error) {
+// StopRsync stops and disables the rsync service.
+func StopRsync(ctx context.Context) (apischema.RsyncStatus, error) {
 	var status apischema.RsyncStatus
 	err := filelock.RunExclusive(ctx, rsyncLockFile, func() error {
 		if err := rsyncStopUnit(ctx, rsyncUnit); err != nil {

@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -13,14 +14,14 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"syscall"
 
 	zip "github.com/klauspost/compress/zip"
 	gzip "github.com/klauspost/pgzip"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
-	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
 )
 
 func closeWithLog(name string, closer io.Closer) {
@@ -30,7 +31,7 @@ func closeWithLog(name string, closer io.Closer) {
 }
 
 func removeWithLog(root *fsroot.FSRoot, path string) {
-	if err := root.Root.Remove(path); err != nil && !os.IsNotExist(err) {
+	if err := root.Root.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		slog.Debug("failed to remove archive path", "component", "filebrowser", "subsystem", "archive", "path", path, "error", err)
 	}
 }
@@ -53,7 +54,7 @@ func ComputeArchiveSize(ctx context.Context, fileList []string) (int64, error) {
 		if err := ctx.Err(); err != nil {
 			return 0, err
 		}
-		realPath := utils.CleanAbsPath(fname)
+		realPath := fsroot.CleanAbsPath(fname)
 		stat, resolvedPath, err := statWithSymlinkResolution(root, realPath)
 		if err != nil {
 			return 0, err
@@ -103,7 +104,7 @@ func estimateDirSize(ctx context.Context, root *fsroot.FSRoot, path string) (int
 }
 
 func statWithSymlinkResolution(root *fsroot.FSRoot, path string) (os.FileInfo, string, error) {
-	cleanPath := utils.CleanAbsPath(path)
+	cleanPath := fsroot.CleanAbsPath(path)
 
 	info, err := root.Root.Stat(relPath(cleanPath))
 	if err == nil {
@@ -117,7 +118,7 @@ func statWithSymlinkResolution(root *fsroot.FSRoot, path string) (os.FileInfo, s
 	if resolveErr != nil {
 		return nil, cleanPath, resolveErr
 	}
-	resolved = utils.CleanAbsPath(resolved)
+	resolved = fsroot.CleanAbsPath(resolved)
 	info, statErr := root.Root.Stat(relPath(resolved))
 	if statErr != nil {
 		return nil, cleanPath, statErr
@@ -134,7 +135,7 @@ func ComputeExtractSize(archivePath string) (int64, error) {
 	}
 	defer root.Close()
 
-	archivePath = utils.CleanAbsPath(archivePath)
+	archivePath = fsroot.CleanAbsPath(archivePath)
 	lowerName := strings.ToLower(archivePath)
 
 	switch {
@@ -143,7 +144,7 @@ func ComputeExtractSize(archivePath string) (int64, error) {
 	case strings.HasSuffix(lowerName, ".tar.gz"), strings.HasSuffix(lowerName, ".tgz"):
 		return computeTarGzExtractSize(root, archivePath)
 	default:
-		return 0, ipc.ErrUnsupportedFormat
+		return 0, ErrUnsupportedFormat
 	}
 }
 
@@ -200,7 +201,7 @@ func computeTarGzExtractSize(root *fsroot.FSRoot, archivePath string) (int64, er
 	var total int64
 	for {
 		header, err := tarReader.Next()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
@@ -216,19 +217,19 @@ func computeTarGzExtractSize(root *fsroot.FSRoot, archivePath string) (int64, er
 // CreateZip creates a zip archive from the provided file list.
 // skipPath allows excluding the archive itself if it lives inside the source tree.
 // opts is optional - pass nil if callbacks are not needed.
-func CreateZip(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath string, filenames ...string) error {
+func CreateZip(tmpDirPath string, opts *OperationCallbacks, skipPath string, filenames ...string) error {
 	root, err := fsroot.Open()
 	if err != nil {
 		return err
 	}
 	defer root.Close()
 
-	tmpDirPath = utils.CleanAbsPath(tmpDirPath)
-	skipPath = utils.CleanAbsPath(skipPath)
+	tmpDirPath = fsroot.CleanAbsPath(tmpDirPath)
+	skipPath = fsroot.CleanAbsPath(skipPath)
 
 	// Check for cancellation before creating file
 	if opts.IsCancelled() {
-		return ipc.ErrAborted
+		return ErrAborted
 	}
 
 	file, err := root.Root.OpenFile(relPath(tmpDirPath), os.O_RDWR|os.O_CREATE|os.O_TRUNC, PermFile)
@@ -250,18 +251,17 @@ func CreateZip(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath string,
 			closeWithLog("zip output file", file)
 			fileOpen = false
 			removeWithLog(root, relPath(tmpDirPath))
-			return ipc.ErrAborted
+			return ErrAborted
 		}
 		if addErr := addFile(root, fname, nil, zipWriter, false, opts, skipPath); addErr != nil {
 			closeWithLog("zip writer", zipWriter)
 			closeWithLog("zip output file", file)
 			fileOpen = false
-			if errors.Is(addErr, ipc.ErrAborted) {
+			if errors.Is(addErr, ErrAborted) {
 				removeWithLog(root, relPath(tmpDirPath))
-			} else {
-				slog.Error("failed to add file to zip", "component", "filebrowser", "subsystem", "archive", "path", fname, "error", addErr)
+				return addErr
 			}
-			return addErr
+			return fmt.Errorf("add %s to zip: %w", fname, addErr)
 		}
 	}
 
@@ -283,19 +283,19 @@ func CreateZip(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath string,
 // CreateTarGz creates a tar.gz archive from the provided file list.
 // skipPath allows excluding the archive itself if it lives inside the source tree.
 // opts is optional - pass nil if callbacks are not needed.
-func CreateTarGz(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath string, compressionWorkers int, filenames ...string) error {
+func CreateTarGz(tmpDirPath string, opts *OperationCallbacks, skipPath string, compressionWorkers int, filenames ...string) error {
 	root, err := fsroot.Open()
 	if err != nil {
 		return err
 	}
 	defer root.Close()
 
-	tmpDirPath = utils.CleanAbsPath(tmpDirPath)
-	skipPath = utils.CleanAbsPath(skipPath)
+	tmpDirPath = fsroot.CleanAbsPath(tmpDirPath)
+	skipPath = fsroot.CleanAbsPath(skipPath)
 
 	// Check for cancellation before creating file
 	if opts.IsCancelled() {
-		return ipc.ErrAborted
+		return ErrAborted
 	}
 
 	file, err := root.Root.OpenFile(relPath(tmpDirPath), os.O_RDWR|os.O_CREATE|os.O_TRUNC, PermFile)
@@ -326,19 +326,18 @@ func CreateTarGz(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath strin
 			closeWithLog("tar.gz output file", file)
 			fileOpen = false
 			removeWithLog(root, relPath(tmpDirPath))
-			return ipc.ErrAborted
+			return ErrAborted
 		}
 		if addErr := addFile(root, fname, tarWriter, nil, false, opts, skipPath); addErr != nil {
 			closeWithLog("tar writer", tarWriter)
 			closeWithLog("gzip writer", gzWriter)
 			closeWithLog("tar.gz output file", file)
 			fileOpen = false
-			if errors.Is(addErr, ipc.ErrAborted) {
+			if errors.Is(addErr, ErrAborted) {
 				removeWithLog(root, relPath(tmpDirPath))
-			} else {
-				slog.Error("failed to add file to tar.gz", "component", "filebrowser", "subsystem", "archive", "path", fname, "error", addErr)
+				return addErr
 			}
-			return addErr
+			return fmt.Errorf("add %s to tar.gz: %w", fname, addErr)
 		}
 	}
 
@@ -361,17 +360,25 @@ func CreateTarGz(tmpDirPath string, opts *ipc.OperationCallbacks, skipPath strin
 
 // ExtractArchive extracts supported archive types (zip, tar.gz, tgz) into the destination directory.
 // opts is optional - pass nil if callbacks are not needed.
-func ExtractArchive(archivePath, destination string, opts *ipc.OperationCallbacks, extractWorkers int) error {
+func ExtractArchive(archivePath, destination string, opts *OperationCallbacks, extractWorkers int) error {
 	root, err := fsroot.Open()
 	if err != nil {
 		return err
 	}
 	defer root.Close()
 
-	archivePath = utils.CleanAbsPath(archivePath)
-	destination = utils.CleanAbsPath(destination)
+	archivePath = fsroot.CleanAbsPath(archivePath)
+	destination = fsroot.CleanAbsPath(destination)
 
-	if err := root.Root.MkdirAll(relPath(destination), PermDir); err != nil {
+	// The destination is created fresh: extracting into an existing folder
+	// would merge into it and truncate same-named files unasked.
+	if err := root.Root.MkdirAll(relPath(filepath.Dir(destination)), PermDir); err != nil {
+		return err
+	}
+	if err := root.Root.Mkdir(relPath(destination), PermDir); err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return fmt.Errorf("destination %s already exists", destination)
+		}
 		return err
 	}
 	if err := root.Root.Chmod(relPath(destination), PermDir); err != nil {
@@ -393,11 +400,11 @@ func ExtractArchive(archivePath, destination string, opts *ipc.OperationCallback
 	case strings.HasSuffix(lowerName, ".tar.gz"), strings.HasSuffix(lowerName, ".tgz"):
 		return extractTarGz(root, dest, archivePath, destination, opts)
 	default:
-		return ipc.ErrUnsupportedFormat
+		return ErrUnsupportedFormat
 	}
 }
 
-func extractZip(root *fsroot.FSRoot, dest *os.Root, archivePath, destination string, opts *ipc.OperationCallbacks, extractWorkers int) error {
+func extractZip(root *fsroot.FSRoot, dest *os.Root, archivePath, destination string, opts *OperationCallbacks, extractWorkers int) error {
 	archiveFile, err := root.Root.Open(relPath(archivePath))
 	if err != nil {
 		return err
@@ -421,10 +428,10 @@ func extractZip(root *fsroot.FSRoot, dest *os.Root, archivePath, destination str
 	return extractZipFiles(dest, reader, destination, opts, safeOpts, extractWorkers)
 }
 
-func synchronizedOperationCallbacks(opts *ipc.OperationCallbacks) *ipc.OperationCallbacks {
+func synchronizedOperationCallbacks(opts *OperationCallbacks) *OperationCallbacks {
 	if opts != nil {
 		var mu sync.Mutex
-		return &ipc.OperationCallbacks{
+		return &OperationCallbacks{
 			Cancel: opts.Cancel,
 			Progress: func(n int64) {
 				mu.Lock()
@@ -441,10 +448,10 @@ func synchronizedOperationCallbacks(opts *ipc.OperationCallbacks) *ipc.Operation
 	return nil
 }
 
-func extractZipDirectories(dest *os.Root, reader *zip.Reader, destination string, opts, safeOpts *ipc.OperationCallbacks) error {
+func extractZipDirectories(dest *os.Root, reader *zip.Reader, destination string, opts, safeOpts *OperationCallbacks) error {
 	for _, file := range reader.File {
 		if opts.IsCancelled() {
-			return ipc.ErrAborted
+			return ErrAborted
 		}
 		if file.FileInfo().IsDir() {
 			if err := extractZipEntry(dest, file, destination, safeOpts); err != nil {
@@ -455,34 +462,53 @@ func extractZipDirectories(dest *os.Root, reader *zip.Reader, destination string
 	return nil
 }
 
-func extractZipFiles(dest *os.Root, reader *zip.Reader, destination string, opts, safeOpts *ipc.OperationCallbacks, extractWorkers int) error {
+func extractZipFiles(dest *os.Root, reader *zip.Reader, destination string, opts, safeOpts *OperationCallbacks, extractWorkers int) error {
 	if extractWorkers <= 0 {
 		extractWorkers = runtime.GOMAXPROCS(0)
 	}
 
+	// ExtractArchive carries no ctx (it cancels through opts), so a failed
+	// worker raises a flag instead of a group context to stop the others.
 	var g errgroup.Group
-	sem := make(chan struct{}, extractWorkers)
+	g.SetLimit(extractWorkers)
+	var failed atomic.Bool
+	var loopErr error
 	for _, file := range reader.File {
 		if file.FileInfo().IsDir() {
 			continue
 		}
-		if opts.IsCancelled() {
-			return ipc.ErrAborted
+		if failed.Load() {
+			break // a worker failed; Wait returns its error
 		}
-		f := file
-		sem <- struct{}{}
+		if opts.IsCancelled() {
+			loopErr = ErrAborted
+			break
+		}
 		g.Go(func() error {
-			defer func() { <-sem }()
-			if opts.IsCancelled() {
-				return ipc.ErrAborted
+			if failed.Load() || opts.IsCancelled() {
+				return ErrAborted
 			}
-			return extractZipEntry(dest, f, destination, safeOpts)
+			if err := extractZipEntry(dest, file, destination, safeOpts); err != nil {
+				failed.Store(true)
+				return err
+			}
+			return nil
 		})
 	}
-	return g.Wait()
+	// Wait on every path so no worker outlives the archive and destination handles.
+	if err := g.Wait(); err != nil {
+		return err
+	}
+	return loopErr
 }
 
-func extractZipEntry(dest *os.Root, file *zip.File, destination string, opts *ipc.OperationCallbacks) error {
+// extractPerm keeps an archive entry's permission bits but drops
+// setuid/setgid/sticky and other-write, which Windows-made zips set on every file.
+func extractPerm(mode fs.FileMode) fs.FileMode {
+	return mode.Perm() &^ 0o002
+}
+
+func extractZipEntry(dest *os.Root, file *zip.File, destination string, opts *OperationCallbacks) error {
 	targetPath, rel, relErr := archiveEntryTarget(destination, file.Name)
 	if relErr != nil {
 		return relErr
@@ -492,7 +518,8 @@ func extractZipEntry(dest *os.Root, file *zip.File, destination string, opts *ip
 		if err := dest.MkdirAll(rel, PermDir); err != nil {
 			return err
 		}
-		if err := dest.Chmod(rel, PermDir); err != nil {
+		// Owner rwx stays set so the entries inside can still be written.
+		if err := dest.Chmod(rel, extractPerm(file.Mode())|0o700); err != nil {
 			return err
 		}
 		opts.ReportComplete(targetPath)
@@ -519,14 +546,14 @@ func extractZipEntry(dest *os.Root, file *zip.File, destination string, opts *ip
 		return err
 	}
 
-	if err := dest.Chmod(rel, PermFile); err != nil {
+	if err := dest.Chmod(rel, extractPerm(file.Mode())); err != nil {
 		return err
 	}
 	opts.ReportComplete(targetPath)
 	return nil
 }
 
-func extractTarGz(root *fsroot.FSRoot, dest *os.Root, archivePath, destination string, opts *ipc.OperationCallbacks) error {
+func extractTarGz(root *fsroot.FSRoot, dest *os.Root, archivePath, destination string, opts *OperationCallbacks) error {
 	file, err := root.Root.Open(relPath(archivePath))
 	if err != nil {
 		return err
@@ -547,11 +574,11 @@ func extractTarGz(root *fsroot.FSRoot, dest *os.Root, archivePath, destination s
 
 	for {
 		if opts.IsCancelled() {
-			return ipc.ErrAborted
+			return ErrAborted
 		}
 
 		header, err := tarReader.Next()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
@@ -568,7 +595,7 @@ func extractTarGz(root *fsroot.FSRoot, dest *os.Root, archivePath, destination s
 
 type progressReader struct {
 	reader io.Reader
-	opts   *ipc.OperationCallbacks
+	opts   *OperationCallbacks
 }
 
 func (r *progressReader) Read(p []byte) (int, error) {
@@ -579,17 +606,17 @@ func (r *progressReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-func cancelOnlyCallbacks(opts *ipc.OperationCallbacks) *ipc.OperationCallbacks {
+func cancelOnlyCallbacks(opts *OperationCallbacks) *OperationCallbacks {
 	if opts == nil {
 		return nil
 	}
-	return &ipc.OperationCallbacks{
+	return &OperationCallbacks{
 		Cancel:     opts.Cancel,
 		OnComplete: opts.OnComplete,
 	}
 }
 
-func extractTarEntry(dest *os.Root, header *tar.Header, tarReader *tar.Reader, destination string, opts *ipc.OperationCallbacks) error {
+func extractTarEntry(dest *os.Root, header *tar.Header, tarReader *tar.Reader, destination string, opts *OperationCallbacks) error {
 	targetPath, rel, relErr := archiveEntryTarget(destination, header.Name)
 	if relErr != nil {
 		return relErr
@@ -600,7 +627,8 @@ func extractTarEntry(dest *os.Root, header *tar.Header, tarReader *tar.Reader, d
 		if err := dest.MkdirAll(rel, PermDir); err != nil {
 			return err
 		}
-		if err := dest.Chmod(rel, PermDir); err != nil {
+		// Owner rwx stays set so the entries inside can still be written.
+		if err := dest.Chmod(rel, extractPerm(header.FileInfo().Mode())|0o700); err != nil {
 			return err
 		}
 		opts.ReportComplete(targetPath)
@@ -620,7 +648,7 @@ func extractTarEntry(dest *os.Root, header *tar.Header, tarReader *tar.Reader, d
 		if err := outFile.Close(); err != nil {
 			return err
 		}
-		if err := dest.Chmod(rel, PermFile); err != nil {
+		if err := dest.Chmod(rel, extractPerm(header.FileInfo().Mode())); err != nil {
 			return err
 		}
 		opts.ReportComplete(targetPath)
@@ -643,8 +671,8 @@ func archiveEntryTarget(destination, name string) (targetPath, rel string, err e
 }
 
 // addFile adds a file or directory to an archive (zip or tar.gz)
-func addFile(root *fsroot.FSRoot, path string, tarWriter *tar.Writer, zipWriter *zip.Writer, flatten bool, opts *ipc.OperationCallbacks, skipPath string) error {
-	realPath := utils.CleanAbsPath(path)
+func addFile(root *fsroot.FSRoot, path string, tarWriter *tar.Writer, zipWriter *zip.Writer, flatten bool, opts *OperationCallbacks, skipPath string) error {
+	realPath := fsroot.CleanAbsPath(path)
 
 	if skipPath != "" && filepath.Clean(realPath) == filepath.Clean(skipPath) {
 		return nil
@@ -666,17 +694,17 @@ func addFile(root *fsroot.FSRoot, path string, tarWriter *tar.Writer, zipWriter 
 	return addSingleFile(root, realPath, baseName, zipWriter, tarWriter, opts)
 }
 
-func addDirectory(root *fsroot.FSRoot, resolvedPath, baseName string, tarWriter *tar.Writer, zipWriter *zip.Writer, flatten bool, opts *ipc.OperationCallbacks, skipPath string) error {
+func addDirectory(root *fsroot.FSRoot, resolvedPath, baseName string, tarWriter *tar.Writer, zipWriter *zip.Writer, flatten bool, opts *OperationCallbacks, skipPath string) error {
 	rootWalkRel := relPath(resolvedPath)
 	return root.WalkDir(resolvedPath, func(walkRel string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
-			return walkErr
+			return walkEntryError(rootWalkRel, walkRel, walkErr)
 		}
 		if opts.IsCancelled() {
-			return ipc.ErrAborted
+			return ErrAborted
 		}
 
-		filePath := utils.CleanAbsPath("/" + strings.TrimPrefix(walkRel, "/"))
+		filePath := fsroot.CleanAbsPath("/" + strings.TrimPrefix(walkRel, "/"))
 		if shouldSkipArchivePath(rootWalkRel, walkRel, filePath, skipPath) {
 			if entry.IsDir() && skipPath != "" && filepath.Clean(filePath) == filepath.Clean(skipPath) {
 				return fs.SkipDir
@@ -695,8 +723,37 @@ func addDirectory(root *fsroot.FSRoot, resolvedPath, baseName string, tarWriter 
 		if entry.IsDir() {
 			return addArchiveDirectoryEntry(entry, relArchivePath, tarWriter, zipWriter)
 		}
-		return addSingleFile(root, filePath, relArchivePath, zipWriter, tarWriter, opts)
+		return addSingleFileOrSkip(root, filePath, relArchivePath, zipWriter, tarWriter, opts)
 	})
+}
+
+// walkEntryError skips a failed entry below the walk root; the root itself
+// still fails the archive.
+func walkEntryError(rootWalkRel, walkRel string, walkErr error) error {
+	if walkRel != rootWalkRel && skipArchiveEntry(walkRel, walkErr) {
+		return nil
+	}
+	return walkErr
+}
+
+// addSingleFileOrSkip adds one walked file, leaving out entries that cannot be read.
+func addSingleFileOrSkip(root *fsroot.FSRoot, filePath, relArchivePath string, zipWriter *zip.Writer, tarWriter *tar.Writer, opts *OperationCallbacks) error {
+	err := addSingleFile(root, filePath, relArchivePath, zipWriter, tarWriter, opts)
+	if skipArchiveEntry(filePath, err) {
+		return nil
+	}
+	return err
+}
+
+// skipArchiveEntry reports whether err only affects one entry of a walked
+// directory (dangling or looping symlink, unreadable file or subdirectory), so
+// the entry is logged and left out instead of failing the whole archive.
+func skipArchiveEntry(path string, err error) bool {
+	if !errors.Is(err, os.ErrNotExist) && !errors.Is(err, os.ErrPermission) && !errors.Is(err, syscall.ELOOP) {
+		return false
+	}
+	slog.Warn("skipping unreadable archive entry", "component", "filebrowser", "subsystem", "archive", "path", path, "error", err)
+	return true
 }
 
 func shouldSkipArchivePath(rootWalkRel, walkRel, filePath, skipPath string) bool {
@@ -741,24 +798,27 @@ func addArchiveDirectoryEntry(entry fs.DirEntry, relArchivePath string, tarWrite
 		return tarWriter.WriteHeader(header)
 	}
 	if zipWriter != nil {
-		_, err := zipWriter.Create(relArchivePath + "/")
+		header := &zip.FileHeader{Name: relArchivePath + "/", Modified: entryInfo.ModTime()}
+		header.SetMode(fs.ModeDir | PermDir)
+		_, err := zipWriter.CreateHeader(header)
 		return err
 	}
 	return nil
 }
 
 // addSingleFile adds a single file to an archive
-func addSingleFile(root *fsroot.FSRoot, realPath, archivePath string, zipWriter *zip.Writer, tarWriter *tar.Writer, opts *ipc.OperationCallbacks) error {
-	openPath := utils.CleanAbsPath(realPath)
-	if _, resolvedPath, err := statWithSymlinkResolution(root, openPath); err == nil {
-		openPath = resolvedPath
+func addSingleFile(root *fsroot.FSRoot, realPath, archivePath string, zipWriter *zip.Writer, tarWriter *tar.Writer, opts *OperationCallbacks) error {
+	// A dangling absolute symlink only fails here: os.Root would reject it as an escape.
+	_, openPath, err := statWithSymlinkResolution(root, realPath)
+	if err != nil {
+		return err
 	}
 
 	file, err := root.Root.Open(relPath(openPath))
 	if err != nil {
 		// If we get "is a directory" error, this is likely a symlink to a directory
 		// that wasn't properly detected. Skip it gracefully.
-		if strings.Contains(err.Error(), "is a directory") {
+		if errors.Is(err, syscall.EISDIR) {
 			return nil
 		}
 		return err
@@ -784,7 +844,8 @@ func addSingleFile(root *fsroot.FSRoot, realPath, archivePath string, zipWriter 
 		if err = tarWriter.WriteHeader(header); err != nil {
 			return err
 		}
-		return copyWithCallbacks(tarWriter, file, opts)
+		// The header size is fixed; a file that grows while copying must not overrun it.
+		return copyWithCallbacks(tarWriter, io.LimitReader(file, header.Size), opts)
 	}
 
 	if zipWriter != nil {
@@ -806,11 +867,11 @@ func addSingleFile(root *fsroot.FSRoot, realPath, archivePath string, zipWriter 
 }
 
 // copyWithCallbacks writes from src to dst using the provided callbacks.
-func copyWithCallbacks(dst io.Writer, src io.Reader, opts *ipc.OperationCallbacks) error {
+func copyWithCallbacks(dst io.Writer, src io.Reader, opts *OperationCallbacks) error {
 	buf := make([]byte, 256*1024)
 	for {
 		if opts.IsCancelled() {
-			return ipc.ErrAborted
+			return ErrAborted
 		}
 		n, rerr := src.Read(buf)
 		if n > 0 {
@@ -819,7 +880,7 @@ func copyWithCallbacks(dst io.Writer, src io.Reader, opts *ipc.OperationCallback
 			}
 			opts.ReportProgress(int64(n))
 		}
-		if rerr == io.EOF {
+		if errors.Is(rerr, io.EOF) {
 			return nil
 		}
 		if rerr != nil {

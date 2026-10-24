@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
+	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
 )
 
 const (
@@ -31,8 +32,8 @@ const (
 
 // BtrfsReplicationResult is the outcome of one replication of a job.
 type BtrfsReplicationResult struct {
-	Sent     *BtrfsSnapshot `json:"sent,omitempty"`
-	Parent   *BtrfsSnapshot `json:"parent,omitempty"`
+	Sent     *BtrfsSnapshot `json:"sent,omitzero"`
+	Parent   *BtrfsSnapshot `json:"parent,omitzero"`
 	Bytes    int64          `json:"bytes"`
 	Pruned   int            `json:"pruned"`
 	UpToDate bool           `json:"upToDate"`
@@ -41,11 +42,6 @@ type BtrfsReplicationResult struct {
 // replicate is swapped by tests.
 var replicate = Replicate
 
-// shellQuote single-quotes s for the remote shell ssh hands its command to.
-func shellQuote(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
-}
-
 // targetCommand runs btrfs args on the job's target, locally or over ssh. The
 // last arg is a path; over ssh it is the only quoted, user-supplied word.
 func targetCommand(ctx context.Context, job BtrfsReplicationJob, args ...string) (string, error) {
@@ -53,7 +49,7 @@ func targetCommand(ctx context.Context, job BtrfsReplicationJob, args ...string)
 		return runBtrfs(ctx, args...)
 	}
 	remote := append([]string{"btrfs"}, args[:len(args)-1]...)
-	remote = append(remote, shellQuote(args[len(args)-1]))
+	remote = append(remote, hostcmd.ShellQuote(args[len(args)-1]))
 	return runCommand(ctx, "ssh", append(SSHArgs(job), remote...)...)
 }
 
@@ -139,7 +135,7 @@ func targetExists(ctx context.Context, job BtrfsReplicationJob) (bool, error) {
 		}
 		return true, nil
 	}
-	_, err := runCommand(ctx, "ssh", append(SSHArgs(job), "test", "-e", shellQuote(p))...)
+	_, err := runCommand(ctx, "ssh", append(SSHArgs(job), "test", "-e", hostcmd.ShellQuote(p))...)
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
 		return false, nil
@@ -160,6 +156,11 @@ func removePartial(ctx context.Context, job BtrfsReplicationJob, targetID int, l
 	if err != nil {
 		return false
 	}
+	return deletePartial(ctx, job, remote, leaf)
+}
+
+// deletePartial deletes the copy of leaf in remote that has no ReceivedUUID.
+func deletePartial(ctx context.Context, job BtrfsReplicationJob, remote []BtrfsSnapshot, leaf string) bool {
 	for _, r := range remote {
 		if path.Base(r.Path) == leaf && r.ReceivedUUID == "" {
 			if _, err := targetCommand(ctx, job, "subvolume", "delete", r.Path); err != nil {
@@ -179,6 +180,16 @@ func removePartial(ctx context.Context, job BtrfsReplicationJob, targetID int, l
 // count as on the target. It does not touch the job file; see
 // RecordReplicationOutcome.
 func Replicate(ctx context.Context, job BtrfsReplicationJob, progress func(bytes int64)) (BtrfsReplicationResult, error) {
+	var result BtrfsReplicationResult
+	err := runLocked(ctx, filepath.Join(ReplicationDir, job.ID+".lock"), "replication for this job", func() error {
+		var replErr error
+		result, replErr = replicateJob(ctx, job, progress)
+		return replErr
+	})
+	return result, err
+}
+
+func replicateJob(ctx context.Context, job BtrfsReplicationJob, progress func(bytes int64)) (BtrfsReplicationResult, error) {
 	targetID, err := ensureTarget(ctx, job)
 	if err != nil {
 		return BtrfsReplicationResult{}, err
@@ -191,6 +202,7 @@ func Replicate(ctx context.Context, job BtrfsReplicationJob, progress func(bytes
 	if err != nil {
 		return BtrfsReplicationResult{}, err
 	}
+	listed := slices.Clone(remote) // receivedOnly filters in place
 	remote = receivedOnly(remote)
 	var snap *BtrfsSnapshot
 	for i := range local { // newest first
@@ -211,6 +223,9 @@ func Replicate(ctx context.Context, job BtrfsReplicationJob, progress func(bytes
 	if result.Parent != nil {
 		parent = filepath.Join(top, result.Parent.Path)
 	}
+	// A crash mid-receive leaves a hidden partial copy of this name that would
+	// fail the receive.
+	deletePartial(ctx, job, listed, path.Base(snap.Path))
 	if result.Bytes, err = sendReceive(ctx, job, filepath.Join(top, snap.Path), parent, progress); err != nil {
 		if removePartial(ctx, job, targetID, path.Base(snap.Path)) {
 			err = fmt.Errorf("%w (removed partial copy)", err)
@@ -246,7 +261,7 @@ func onTarget(remote []BtrfsSnapshot, snap BtrfsSnapshot) bool {
 func sendReceive(ctx context.Context, job BtrfsReplicationJob, snap, parent string, progress func(int64)) (int64, error) {
 	recvName, recvArgs := "btrfs", []string{"receive", job.Target.Path}
 	if job.Target.Kind == TargetSSH {
-		recvName, recvArgs = "ssh", append(SSHArgs(job), "btrfs", "receive", shellQuote(job.Target.Path))
+		recvName, recvArgs = "ssh", append(SSHArgs(job), "btrfs", "receive", hostcmd.ShellQuote(job.Target.Path))
 	}
 	recvPath, err := findCommand(recvName)
 	if err != nil {
@@ -350,17 +365,17 @@ func RecordReplicationOutcome(ctx context.Context, job BtrfsReplicationJob, runE
 	var lastErr *string
 	key := "replication-" + job.ID
 	if runErr != nil {
-		msg := truncate(runErr.Error(), alerts.MaxMessageLen)
+		msg := runErr.Error()
 		lastErr = &msg
 		sum := sha256.Sum256([]byte(msg))
-		raiseAlert(ctx, alerts.Observation{
-			Source: alertSource, Key: key, Severity: alerts.SeverityError,
-			Title:        truncate("Replication failed for "+job.Path, 200),
+		raise(ctx, alerts.Observation{
+			Key: key, Severity: alerts.SeverityError,
+			Title:        "Replication failed for " + job.Path,
 			Message:      msg,
 			Link:         "/storage/snapshots?fs=" + job.UUID,
 			OccurrenceID: hex.EncodeToString(sum[:8]),
 		})
-	} else if err := alerts.Resolve(ctx, alertSource, key); err != nil {
+	} else if err := alerts.Resolve(ctx, AlertSource, key); err != nil {
 		slog.Warn("failed to resolve btrfs replication alert", "job", job.ID, "error", err)
 	}
 	_, err := UpdateJobs(ctx, func(jobs *[]BtrfsReplicationJob) error {

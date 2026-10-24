@@ -3,7 +3,7 @@ package indexer
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
@@ -28,7 +28,7 @@ var ErrUnavailable = errors.New("indexer unavailable")
 var Client = &http.Client{Transport: &http.Transport{
 	ResponseHeaderTimeout: indexerResponseHeaderTimeout,
 	DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-		return (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext(ctx, "unix", "/run/linuxio/indexer.sock")
+		return (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext(ctx, "unix", version.RunDir+"/indexer.sock")
 	},
 }}
 
@@ -112,18 +112,18 @@ func Add(ctx context.Context, entry indexerapi.EntryRequest) error {
 }
 
 func Delete(ctx context.Context, path string) error {
-	q := url.Values{"path": {utils.NormalizeIndexerPath(path)}}
+	q := url.Values{"path": {indexerapi.NormalizePath(path)}}
 	return daemonJSON(ctx, http.MethodDelete, indexerapi.RouteDelete, q, nil, nil)
 }
 
 func Reindex(ctx context.Context, path string) error {
-	q := url.Values{"path": {utils.NormalizeIndexerPath(path)}}
+	q := url.Values{"path": {indexerapi.NormalizePath(path)}}
 	return daemonJSON(ctx, http.MethodPost, indexerapi.RouteReindex, q, nil, nil)
 }
 
 func DirSize(ctx context.Context, path string) (indexerapi.DirSizeResponse, error) {
 	var out indexerapi.DirSizeResponse
-	err := daemonJSON(ctx, http.MethodGet, indexerapi.RouteDirSize, url.Values{"path": {utils.NormalizeIndexerPath(path)}}, nil, &out)
+	err := daemonJSON(ctx, http.MethodGet, indexerapi.RouteDirSize, url.Values{"path": {indexerapi.NormalizePath(path)}}, nil, &out)
 	return out, err
 }
 
@@ -135,14 +135,14 @@ func fetchDaemonStatus(ctx context.Context) (indexerapi.StatusResponse, error) {
 
 func Subfolders(ctx context.Context, path string) ([]indexerapi.SubfolderResult, error) {
 	var out []indexerapi.SubfolderResult
-	err := daemonJSON(ctx, http.MethodGet, indexerapi.RouteSubfolders, url.Values{"path": {utils.NormalizeIndexerPath(path)}}, nil, &out)
+	err := daemonJSON(ctx, http.MethodGet, indexerapi.RouteSubfolders, url.Values{"path": {indexerapi.NormalizePath(path)}}, nil, &out)
 	return out, err
 }
 
 func Search(ctx context.Context, query, limit, basePath string) ([]indexerapi.EntryResult, error) {
 	q := url.Values{"q": {query}, "limit": {limit}}
 	if basePath != "" && basePath != "/" {
-		q.Set("base", utils.NormalizeIndexerPath(basePath))
+		q.Set("base", indexerapi.NormalizePath(basePath))
 	}
 	var out []indexerapi.EntryResult
 	err := daemonJSON(ctx, http.MethodGet, indexerapi.RouteSearch, q, nil, &out)

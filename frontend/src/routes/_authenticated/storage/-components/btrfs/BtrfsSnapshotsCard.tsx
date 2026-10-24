@@ -29,13 +29,13 @@ import {
 import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
-import { TASK_TYPE_STORAGE_BTRFS_ROLLBACK } from "@/constants/backgroundTaskTypes";
-import { useActiveTaskRecovery } from "@/hooks/backgroundTasks/useActiveTaskRecovery";
+import { TASK_TYPE_STORAGE_BTRFS_ROLLBACK } from "@/tasks/taskTypes";
+import { useActiveTaskRecovery } from "@/tasks/useActiveTaskRecovery";
 import {
   formatDate,
   formatFileSize,
   formatRelativeAge,
-} from "@/utils/formaters";
+} from "@/utils/formatters";
 
 import BtrfsRollbackDialog from "./BtrfsRollbackDialog";
 import { BTRFS_TOAST_META, isSystemSubvolume } from "./btrfsShared";

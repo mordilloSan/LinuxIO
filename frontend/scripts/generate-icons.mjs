@@ -21,16 +21,21 @@ const ICON_PATTERN = /\b([a-z0-9-]+):([a-z0-9-]+)\b/g;
 const INDENT = "  ";
 const IDENTIFIER_PATTERN = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 const GENERATED_OUTPUTS = new Set([outputPath, shellOutputPath]);
+
+// Code that renders before the authenticated route chunks load: sign-in, error
+// pages, and the shared chrome. collectIcons throws if a prefix matches nothing.
 const SHELL_SOURCE_PREFIXES = [
-  "src/components/auth/",
   "src/components/errors/",
-  "src/components/navbar/",
-  "src/components/sidebar/",
   "src/components/tabbar/",
   "src/components/ui/",
-  "src/components/update/",
-  "src/layouts/",
-  "src/pages/auth/",
+  "src/routes/-components/",
+  "src/routes/_authenticated/-components/MainLayout",
+  "src/routes/_authenticated/-components/app-update/",
+  "src/routes/_authenticated/-components/dock/",
+  "src/routes/_authenticated/-components/footer/",
+  "src/routes/_authenticated/-components/navbar/",
+  "src/routes/_authenticated/-components/sidebar/",
+  "src/routes/sign-in/",
 ];
 
 // Add icon ids here when they are composed dynamically and cannot be discovered
@@ -195,11 +200,21 @@ function createRequestedIconMap(availablePrefixes) {
 function collectIcons(availablePrefixes) {
   const all = createRequestedIconMap(availablePrefixes);
   const shell = createRequestedIconMap(availablePrefixes);
+  const sourceFiles = walkFiles(sourceDir).filter(
+    (filePath) => !GENERATED_OUTPUTS.has(filePath),
+  );
 
-  for (const filePath of walkFiles(sourceDir)) {
-    if (GENERATED_OUTPUTS.has(filePath)) {
-      continue;
-    }
+  const unmatchedPrefixes = SHELL_SOURCE_PREFIXES.filter(
+    (prefix) =>
+      !sourceFiles.some((filePath) => sourcePath(filePath).startsWith(prefix)),
+  );
+  if (unmatchedPrefixes.length > 0) {
+    throw new Error(
+      `[icons] SHELL_SOURCE_PREFIXES match no files: ${unmatchedPrefixes.join(", ")}. Update scripts/generate-icons.mjs after moving shell code.`,
+    );
+  }
+
+  for (const filePath of sourceFiles) {
 
     const source = readFileSync(filePath, "utf-8");
     const targets = isShellSource(filePath) ? [all, shell] : [all];

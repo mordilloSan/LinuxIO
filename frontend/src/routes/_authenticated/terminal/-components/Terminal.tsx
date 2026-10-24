@@ -1,8 +1,5 @@
 import { useLocation } from "@tanstack/react-router";
 import { useMemo, useSyncExternalStore } from "react";
-import "@xterm/xterm/css/xterm.css";
-import "@fontsource/jetbrains-mono/400.css";
-import "@fontsource/jetbrains-mono/700.css";
 
 import {
   openTerminalLoginStream,
@@ -18,12 +15,25 @@ import { useLiveStream } from "@/hooks/useLiveStream";
 import { useTerminalContextMenu } from "@/hooks/useTerminalContextMenu";
 import { useXtermStreamTerminal } from "@/hooks/useXtermStreamTerminal";
 import { useAppTheme } from "@/theme";
+import { alpha } from "@/theme/colorUtils";
 import { cardBorderRadius, shadowSm } from "@/theme/constants";
-import { alpha } from "@/utils/color";
+
+import "@xterm/xterm/css/xterm.css";
+import "@/components/terminal/terminal-tokens.css";
+import "@fontsource/jetbrains-mono/400.css";
+import "@fontsource/jetbrains-mono/700.css";
 
 interface TerminalLogin {
   agent: AssistantAgentId;
   args: string[];
+}
+
+declare module "@tanstack/react-router" {
+  // Set by the Assistant when it sends the user to log an agent in. History
+  // state, not the URL: a crafted link must not choose the agent's arguments.
+  interface HistoryState {
+    terminalLogin?: TerminalLogin;
+  }
 }
 
 // History state is only ever set by in-app navigation, but it is still

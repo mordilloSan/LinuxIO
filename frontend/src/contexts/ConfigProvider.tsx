@@ -6,23 +6,15 @@ import {
   type AppConfig,
   type AppSettings,
   CACHE_TTL_MS,
-  type ConfigUISetPayload,
   type ConfigThemeColorsByModePayload as ThemeColorsByMode,
   type ConfigThemeColorsPayload as ThemeColors,
-  type UIConfig,
+  type ConfigUISetPayload,
   linuxio,
   LinuxIOError,
+  type UIConfig,
   useCallMutation,
   useStreamMux,
 } from "@/api";
-import {
-  bridgeConfigQueryKey,
-  isBridgeAppSettingKey,
-  pruneViewModes,
-  uiConfigQueryKey,
-} from "@/api/config-query";
-import { ConfigContext } from "@/contexts/ConfigContext";
-import useAuth from "@/hooks/useAuth";
 import type {
   ConfigContextType,
   ConfigPatch,
@@ -31,7 +23,16 @@ import type {
   ConfigValueMap,
   EffectiveAppConfig,
   EffectiveUISettings,
-} from "@/types/config";
+} from "@/api";
+import {
+  bridgeConfigQueryKey,
+  isBridgeAppSettingKey,
+  pruneViewModes,
+  uiConfigQueryKey,
+} from "@/api/config-query";
+import { cacheUserId } from "@/api/user-scope";
+import { ConfigContext } from "@/contexts/ConfigContext";
+import useAuth from "@/hooks/useAuth";
 
 const cloneThemeColors = (colors?: ThemeColors): ThemeColors | undefined =>
   colors ? { ...colors } : undefined;
@@ -195,7 +196,7 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
   });
   const saveTailRef = useRef<Promise<void>>(Promise.resolve());
   const activeQueueRef = useRef(true);
-  const configUserId = user?.id ?? "anonymous";
+  const configUserId = cacheUserId(user);
   const bridgeKey = useMemo(
     () => bridgeConfigQueryKey(configUserId),
     [configUserId],

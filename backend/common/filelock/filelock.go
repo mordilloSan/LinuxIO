@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 )
 
 const defaultRetryDelay = 250 * time.Millisecond
@@ -109,7 +111,7 @@ func AcquireExclusive(ctx context.Context, path string, opts ...Option) (func() 
 		cfg.retryDelay = defaultRetryDelay
 	}
 	if cfg.ownership != nil {
-		if err := validateOwnership(cfg.ownership.uid, cfg.ownership.gid); err != nil {
+		if err := atomicfile.ValidateOwnership(cfg.ownership.uid, cfg.ownership.gid); err != nil {
 			return nil, fmt.Errorf("validate lock ownership: %w", err)
 		}
 	}
@@ -130,16 +132,6 @@ func AcquireExclusive(ctx context.Context, path string, opts ...Option) (func() 
 		return nil, err
 	}
 	return release, nil
-}
-
-func validateOwnership(uid, gid int) error {
-	if uid < 0 {
-		return fmt.Errorf("uid %d is invalid: must be non-negative", uid)
-	}
-	if gid < 0 {
-		return fmt.Errorf("gid %d is invalid: must be non-negative", gid)
-	}
-	return nil
 }
 
 func openLockFile(path string, mode, dirMode os.FileMode) (*os.File, error) {

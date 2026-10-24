@@ -1,9 +1,6 @@
 package virt
 
 import (
-	"errors"
-	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 )
@@ -11,20 +8,9 @@ import (
 var validateInstallMedia = validateInstallMediaPath
 
 func validateInstallMediaPath(rawPath string) (string, error) {
-	isoPath := strings.TrimSpace(rawPath)
-	if isoPath == "" {
-		return "", badRequestf("isoPath is required")
-	}
-	if !filepath.IsAbs(isoPath) {
-		return "", badRequestf("ISO path must be absolute")
-	}
-
-	info, err := os.Stat(isoPath)
+	isoPath, info, err := statHostFile(rawPath, "isoPath", "ISO")
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return "", notFoundf("ISO path does not exist: %s", isoPath)
-		}
-		return "", fmt.Errorf("ISO path is not accessible: %w", err)
+		return "", err
 	}
 	if info.IsDir() {
 		return "", badRequestf("ISO path must point to a regular .iso file, not a directory: %s", isoPath)

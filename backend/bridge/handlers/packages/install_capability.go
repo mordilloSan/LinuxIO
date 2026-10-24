@@ -8,21 +8,21 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"os"
 	"os/exec"
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/capabilities"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/system"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
-	bridgetask "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/common/osrelease"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
 )
 
 // InstallCapabilityProgress is reported on the task event stream so the UI
@@ -32,8 +32,8 @@ import (
 type InstallCapabilityProgress struct {
 	Stage      string                   `json:"stage"`
 	Message    string                   `json:"message"`
-	Percentage *uint32                  `json:"percentage,omitempty"`
-	Output     *InstallCapabilityOutput `json:"output,omitempty"`
+	Percentage *uint32                  `json:"percentage,omitzero"`
+	Output     *InstallCapabilityOutput `json:"output,omitzero"`
 }
 
 // InstallCapabilityOutput is one ordered record from a capability installer.
@@ -45,13 +45,13 @@ type InstallCapabilityOutput struct {
 	Text   string `json:"text"`
 }
 
-func (p InstallCapabilityProgress) ProgressEnvelope() bridgetask.TaskProgress {
+func (p InstallCapabilityProgress) ProgressEnvelope() bridgeipc.TaskProgress {
 	var percentage *int
 	if p.Percentage != nil {
 		value := int(*p.Percentage)
 		percentage = &value
 	}
-	return bridgetask.TaskProgress{
+	return bridgeipc.TaskProgress{
 		Percentage: percentage,
 		Phase:      p.Stage,
 		Message:    p.Message,
@@ -102,9 +102,9 @@ var (
 )
 
 func capabilityInstallBindings(rt runtime.Runtime) apischema.BindingSet {
-	policy := bridgetask.TaskSingletonSystem
+	policy := bridgeipc.TaskSingletonSystem
 	policy.Timeout = 10 * time.Minute
-	run := func(ctx context.Context, task *bridgetask.Task, req apischema.CapabilityRequest) (apischema.InstallCapabilityResult, error) {
+	run := func(ctx context.Context, task *bridgeipc.Task, req apischema.CapabilityRequest) (apischema.InstallCapabilityResult, error) {
 		var user session.User
 		if rt.Session != nil {
 			user = rt.Session.User
@@ -112,8 +112,8 @@ func capabilityInstallBindings(rt runtime.Runtime) apischema.BindingSet {
 		return runInstallCapabilityTask(ctx, task, user, req)
 	}
 	return apischema.Bindings(
-		apischema.TaskRunner[apischema.CapabilityRequest, apischema.InstallCapabilityResult]("system.install_capability", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[InstallCapabilityProgress](), apischema.WithTaskMetadata(func(req apischema.CapabilityRequest) bridgetask.TaskMetadata {
-			return bridgetask.TaskMetadata{Identity: []string{req.Capability}, Label: "Installing " + req.Capability, Capability: req.Capability}
+		apischema.TaskRunner[apischema.CapabilityRequest, apischema.InstallCapabilityResult]("system.install_capability", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[InstallCapabilityProgress](), apischema.WithTaskMetadata(func(req apischema.CapabilityRequest) bridgeipc.TaskMetadata {
+			return bridgeipc.TaskMetadata{Identity: []string{req.Capability}, Label: "Installing " + req.Capability, Capability: req.Capability}
 		})).Run(run, policy),
 	)
 }
@@ -121,14 +121,14 @@ func capabilityInstallBindings(rt runtime.Runtime) apischema.BindingSet {
 // RegisterCapabilityTaskRoutes attaches the install_capability runner. It
 // streams per-stage progress events to the UI and is registered alongside
 // the other packages-package task runners from handlers.go.
-func RegisterCapabilityTaskRoutes(rt runtime.Runtime, router *bridgetask.Router) {
+func RegisterCapabilityTaskRoutes(rt runtime.Runtime, router *bridgeipc.Router) {
 	capabilityInstallBindings(rt).Register(router)
 }
 
-func runInstallCapabilityTask(ctx context.Context, task *bridgetask.Task, user session.User, req apischema.CapabilityRequest) (apischema.InstallCapabilityResult, error) {
+func runInstallCapabilityTask(ctx context.Context, task *bridgeipc.Task, user session.User, req apischema.CapabilityRequest) (apischema.InstallCapabilityResult, error) {
 	name := strings.TrimSpace(req.Capability)
 	if name == "" {
-		return apischema.InstallCapabilityResult{}, bridgetask.NewError("capability name required", 400)
+		return apischema.InstallCapabilityResult{}, fmt.Errorf("%w: capability name", bridgeipc.ErrInvalidArgs)
 	}
 
 	result, err := installCapability(ctx, task, user, name)
@@ -136,13 +136,13 @@ func runInstallCapabilityTask(ctx context.Context, task *bridgetask.Task, user s
 		if ctx.Err() != nil {
 			return apischema.InstallCapabilityResult{}, context.Canceled
 		}
-		return apischema.InstallCapabilityResult{}, bridgetask.NewError(err.Error(), 500)
+		return apischema.InstallCapabilityResult{}, err
 	}
 	return result, nil
 }
 
-func installCapability(ctx context.Context, task *bridgetask.Task, user session.User, name string) (apischema.InstallCapabilityResult, error) {
-	spec, ok := system.CapabilitySpecByName(name)
+func installCapability(ctx context.Context, task *bridgeipc.Task, user session.User, name string) (apischema.InstallCapabilityResult, error) {
+	spec, ok := capabilities.CapabilitySpecByName(name)
 	if !ok {
 		return apischema.InstallCapabilityResult{}, fmt.Errorf("unknown capability %q", name)
 	}
@@ -176,13 +176,13 @@ func installCapability(ctx context.Context, task *bridgetask.Task, user session.
 	if service != "" {
 		if spec.Install.EnableService {
 			reportProgress(task, stageEnableService, fmt.Sprintf("Enabling %s", service), pctEnable)
-			slog.Info("Enabling capability service.", "capability", name, "unit", service)
+			slog.Debug("enabling capability service", "capability", name, "unit", service)
 			if err := capabilityEnableService(ctx, service); err != nil {
 				return apischema.InstallCapabilityResult{}, fmt.Errorf("enable %s: %w", service, err)
 			}
 		}
 		reportProgress(task, stageStartService, fmt.Sprintf("Starting %s", service), pctStart)
-		slog.Info("Starting capability service.", "capability", name, "unit", service)
+		slog.Debug("starting capability service", "capability", name, "unit", service)
 		if err := capabilityStartService(ctx, service); err != nil {
 			return apischema.InstallCapabilityResult{}, fmt.Errorf("start %s: %w", service, err)
 		}
@@ -194,21 +194,22 @@ func installCapability(ctx context.Context, task *bridgetask.Task, user session.
 
 	reportProgress(task, stageDetect, fmt.Sprintf("Verifying %s", spec.LogName), pctDetect)
 	available, errMsg := capabilityDetectWithRetry(ctx, spec, user, detectRetryTimeout)
+	slog.Info("capability installed", "capability", name, "available", available)
 	return apischema.InstallCapabilityResult{
 		Available: available,
-		Error:     utils.OptionalString(errMsg),
-		Warning:   utils.OptionalString(optionalPackageWarning),
+		Error:     apischema.Optional(errMsg),
+		Warning:   apischema.Optional(optionalPackageWarning),
 	}, nil
 }
 
-func installCapabilityDependencies(ctx context.Context, task *bridgetask.Task, family, name, logName, packageList string, spec *system.InstallSpec) (string, error) {
+func installCapabilityDependencies(ctx context.Context, task *bridgeipc.Task, family, name, logName, packageList string, spec *capabilities.InstallSpec) (string, error) {
 	if err := installCapabilityPackages(ctx, task, name, packageList); err != nil {
 		return "", err
 	}
 	return installOptionalCapabilityPackage(ctx, task, family, logName, spec)
 }
 
-func installCapabilityPackages(ctx context.Context, task *bridgetask.Task, capabilityName string, packageList string) error {
+func installCapabilityPackages(ctx context.Context, task *bridgeipc.Task, capabilityName string, packageList string) error {
 	packages := strings.Fields(packageList)
 	if len(packages) == 0 {
 		return nil
@@ -217,7 +218,7 @@ func installCapabilityPackages(ctx context.Context, task *bridgetask.Task, capab
 	for idx, packageName := range packages {
 		installStart, installEnd := packageInstallProgressRange(idx, len(packages))
 		reportProgress(task, stageInstallPackage, fmt.Sprintf("Installing %s", packageName), installStart)
-		slog.Info("Installing capability package.", "capability", capabilityName, "package", packageName)
+		slog.Debug("installing capability package", "capability", capabilityName, "package", packageName)
 		if err := capabilityInstallPackage(ctx, packageName, capabilityInstallReporter(task, packageName, installStart, installEnd)); err != nil {
 			return fmt.Errorf("install %s: %w", packageName, err)
 		}
@@ -226,14 +227,14 @@ func installCapabilityPackages(ctx context.Context, task *bridgetask.Task, capab
 	return nil
 }
 
-func installOptionalCapabilityPackage(ctx context.Context, task *bridgetask.Task, family, capabilityName string, spec *system.InstallSpec) (string, error) {
+func installOptionalCapabilityPackage(ctx context.Context, task *bridgeipc.Task, family, capabilityName string, spec *capabilities.InstallSpec) (string, error) {
 	if !isRHELFamily(family) || spec == nil || strings.TrimSpace(spec.OptionalPackageRHEL) == "" {
 		return "", nil
 	}
 
 	packageName := strings.TrimSpace(spec.OptionalPackageRHEL)
 	reportProgress(task, stageInstallPackage, fmt.Sprintf("Installing optional package %s", packageName), pctInstallEnd)
-	slog.Info("Installing optional capability package.", "capability", capabilityName, "package", packageName)
+	slog.Debug("installing optional capability package", "capability", capabilityName, "package", packageName)
 	err := capabilityInstallPackage(ctx, packageName, capabilityInstallReporter(task, packageName, pctInstallEnd, pctInstallEnd))
 	if err == nil {
 		reportProgress(task, stageInstallPackage, fmt.Sprintf("Installed optional package %s", packageName), pctInstallEnd)
@@ -251,13 +252,13 @@ func installOptionalCapabilityPackage(ctx context.Context, task *bridgetask.Task
 	return warning, nil
 }
 
-func runCapabilityPostInstall(ctx context.Context, task *bridgetask.Task, command *system.InstallCommand) error {
+func runCapabilityPostInstall(ctx context.Context, task *bridgeipc.Task, command *capabilities.InstallCommand) error {
 	if command == nil || strings.TrimSpace(command.Name) == "" {
 		return nil
 	}
 	args := append([]string(nil), command.Args...)
 	reportProgress(task, stagePostInstall, fmt.Sprintf("Running %s %s", command.Name, strings.Join(args, " ")), pctPostInstall)
-	slog.Info("Running capability post-install command.", "command", command.Name, "args", args)
+	slog.Debug("running capability post-install command", "command", command.Name, "args", args)
 	if err := runCapabilityCommand(ctx, command.Name, args, func(output InstallCapabilityOutput) {
 		reportOutput(task, stagePostInstall, fmt.Sprintf("Running %s", command.Name), pctPostInstall, output)
 	}); err != nil {
@@ -279,6 +280,10 @@ type capabilityProcessOutput struct {
 }
 
 const (
+	// capabilityWaitDelay bounds how long Wait lingers on output pipes after
+	// the direct child exits or is cancelled.
+	capabilityWaitDelay = 5 * time.Second
+
 	capabilityOutputChunkBytes = 8 << 10
 	capabilityErrorTailBytes   = 16 << 10
 )
@@ -314,7 +319,7 @@ func (o *capabilityProcessOutput) read(stream string, reader io.Reader) {
 		if err == nil || errors.Is(err, bufio.ErrBufferFull) {
 			continue
 		}
-		if err != io.EOF {
+		if !errors.Is(err, io.EOF) {
 			o.mu.Lock()
 			if o.readErr == nil {
 				o.readErr = err
@@ -357,35 +362,54 @@ func runCapabilityCommand(ctx context.Context, name string, args []string, repor
 }
 
 // runCapabilityProcess starts a prepared, context-bound cmd and streams its
-// output the way runCapabilityCommand describes.
+// output the way runCapabilityCommand describes. The streams are plain
+// writers so cmd.Wait (bounded by WaitDelay) closes the pipes even when a
+// grandchild inherited them, and cancellation signals the whole process group
+// so apt-get/dnf children stop with their shell.
 func runCapabilityProcess(ctx context.Context, cmd *exec.Cmd, name string, report func(InstallCapabilityOutput)) error {
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("capture %s stdout: %w", name, err)
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
 	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return fmt.Errorf("capture %s stderr: %w", name, err)
+	// Setsid (set for session-user commands) already makes the child a group leader.
+	cmd.SysProcAttr.Setpgid = !cmd.SysProcAttr.Setsid
+	cmd.Cancel = func() error {
+		if cmd.Process == nil {
+			return nil
+		}
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
 	}
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("start %s: %w", name, err)
-	}
+	cmd.WaitDelay = capabilityWaitDelay
+
+	stdoutR, stdoutW := io.Pipe()
+	stderrR, stderrW := io.Pipe()
+	cmd.Stdout, cmd.Stderr = stdoutW, stderrW
 
 	output := &capabilityProcessOutput{report: report}
 	var readers sync.WaitGroup
-	read := func(stream string, reader io.Reader) {
+	read := func(stream string, reader *io.PipeReader) {
 		defer readers.Done()
 		output.read(stream, reader)
+		_ = reader.Close()
 	}
 	readers.Add(2)
-	go read("stdout", stdout)
-	go read("stderr", stderr)
+	go read("stdout", stdoutR)
+	go read("stderr", stderrR)
+
+	startErr := cmd.Start()
+	var waitErr error
+	if startErr == nil {
+		waitErr = cmd.Wait()
+	}
+	_ = stdoutW.Close()
+	_ = stderrW.Close()
 	readers.Wait()
-	waitErr := cmd.Wait()
+	if startErr != nil {
+		return fmt.Errorf("start %s: %w", name, startErr)
+	}
 	return output.commandError(ctx, name, waitErr)
 }
 
-func checkCapabilityInstallPrerequisites(ctx context.Context, task *bridgetask.Task, spec system.CapabilitySpec) error {
+func checkCapabilityInstallPrerequisites(ctx context.Context, task *bridgeipc.Task, spec capabilities.CapabilitySpec) error {
 	if !spec.Install.RequiresDocker {
 		return nil
 	}
@@ -400,11 +424,11 @@ func checkCapabilityInstallPrerequisites(ctx context.Context, task *bridgetask.T
 	return nil
 }
 
-func reportProgress(task *bridgetask.Task, stage, message string, pct uint32) {
+func reportProgress(task *bridgeipc.Task, stage, message string, pct uint32) {
 	reportProgressDetail(task, stage, message, pct, &InstallCapabilityOutput{Stream: "status", Text: message})
 }
 
-func reportOutput(task *bridgetask.Task, stage, message string, pct uint32, output InstallCapabilityOutput) {
+func reportOutput(task *bridgeipc.Task, stage, message string, pct uint32, output InstallCapabilityOutput) {
 	if task == nil {
 		return
 	}
@@ -419,7 +443,7 @@ func reportOutput(task *bridgetask.Task, stage, message string, pct uint32, outp
 	}.ProgressEnvelope())
 }
 
-func reportProgressDetail(task *bridgetask.Task, stage, message string, pct uint32, output *InstallCapabilityOutput) {
+func reportProgressDetail(task *bridgeipc.Task, stage, message string, pct uint32, output *InstallCapabilityOutput) {
 	if task == nil {
 		return
 	}
@@ -448,7 +472,7 @@ func scaleInstallPct(pkgPct, start, end uint32) uint32 {
 // capabilityInstallReporter adapts PackageKit update-signal frames (emitted by
 // the shared awaitPackageUpdateSignals handlers) into the capability task's
 // progress stream, carrying a single global percentage plus the current status.
-func capabilityInstallReporter(task *bridgetask.Task, pkg string, installStart uint32, installEnd uint32) pkgUpdateReporter {
+func capabilityInstallReporter(task *bridgeipc.Task, pkg string, installStart uint32, installEnd uint32) pkgUpdateReporter {
 	lastGlobal := installStart
 	lastStatus := ""
 	return func(p *PkgUpdateProgress) error {
@@ -510,7 +534,7 @@ func waitUnitActive(ctx context.Context, unit string, timeout time.Duration) err
 // while it still reports unavailable. This covers the small window between a
 // service becoming "active" and its public surface (D-Bus name, listening
 // socket, etc.) being reachable from the detector.
-func detectWithRetry(ctx context.Context, spec system.CapabilitySpec, user session.User, timeout time.Duration) (bool, string) {
+func detectWithRetry(ctx context.Context, spec capabilities.CapabilitySpec, user session.User, timeout time.Duration) (bool, string) {
 	deadline := time.Now().Add(timeout)
 	var available bool
 	var errMsg string
@@ -560,26 +584,12 @@ func isRHELFamily(family string) bool {
 // resolve-failed error from PackageKit, which is better than silently doing
 // nothing.
 func detectDistroFamily() string {
-	data, err := os.ReadFile("/etc/os-release")
+	info, err := osrelease.Read()
 	if err != nil {
 		return "debian"
 	}
 
-	values := make(map[string]string)
-	for line := range strings.SplitSeq(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		key, value, ok := strings.Cut(line, "=")
-		if !ok {
-			continue
-		}
-		values[key] = strings.ToLower(strings.Trim(strings.TrimSpace(value), `"'`))
-	}
-
-	ids := []string{values["ID"]}
-	ids = append(ids, strings.Fields(values["ID_LIKE"])...)
+	ids := append([]string{info.ID()}, info.IDLike()...)
 
 	if slices.ContainsFunc(ids, isRHELFamily) {
 		return "rhel"

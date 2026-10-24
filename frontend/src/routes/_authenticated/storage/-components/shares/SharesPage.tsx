@@ -10,19 +10,22 @@ import {
 } from "react";
 
 import {
+  getMutationErrorMessage,
   linuxio,
   type NFSClient,
   type NFSExport,
   type SambaShare,
   useCallMutation,
 } from "@/api";
-import FolderShareCard from "@/components/cards/FolderShareCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import PathPickerField from "@/components/pathpicker/PathPickerField";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
+import { useReorderableSurface } from "@/components/reorder/useReorderableSurface";
 import { RoutedTabActions } from "@/components/tabbar";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableProps } from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
+import { useReorderableTableDnd } from "@/components/tables/useReorderableTableDnd";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
@@ -40,16 +43,13 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import HeaderActions from "@/components/ui/HeaderActions";
-import PathPickerField from "@/components/ui/PathPickerField";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import useAuth from "@/hooks/useAuth";
 import { useCapability } from "@/hooks/useCapabilities";
-import { useReorderableSurface } from "@/hooks/useReorderableSurface";
-import { useReorderableTableDnd } from "@/hooks/useReorderableTableDnd";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useViewMode } from "@/hooks/useViewMode";
+import FolderShareCard from "@/routes/_authenticated/storage/-components/shares/FolderShareCard";
 import { CARD_GRID_SIZE_DENSE, GAP_LG, GAP_XL } from "@/theme/constants";
-import { getMutationErrorMessage } from "@/utils/mutations";
 
 import {
   DeleteNFSShareDialog,

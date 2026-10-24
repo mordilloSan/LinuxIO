@@ -41,6 +41,8 @@ import {
 import { copyToClipboard } from "@/utils/clipboard";
 import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
+import "./logs-tokens.css";
+
 // A fixed first page replaces the old "Lines" selector. Older entries are
 // fetched by cursor as the user scrolls, so choosing an up-front count no
 // longer changes which history is reachable.

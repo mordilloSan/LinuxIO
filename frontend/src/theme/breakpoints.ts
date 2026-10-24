@@ -18,9 +18,9 @@ const breakpoints = {
   },
 };
 
-export type BreakpointKey = keyof typeof breakpoints.values;
+type BreakpointKey = keyof typeof breakpoints.values;
 
-/* Media-query strings for useAppMediaQuery. Pure functions of the scale, so a
+/* Media-query strings for useMediaQuery (hooks/useMediaQuery.ts). Pure functions of the scale, so a
    component can size itself without subscribing to the theme. */
 export const up = (key: BreakpointKey) =>
   `@media (min-width:${breakpoints.values[key]}px)`;

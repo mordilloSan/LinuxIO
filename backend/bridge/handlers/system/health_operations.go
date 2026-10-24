@@ -8,10 +8,9 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/config"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 )
 
 func GetHealthSummaryForRuntime(ctx context.Context, rt runtime.Runtime) (*apischema.SystemHealthSummary, error) {
@@ -38,9 +37,9 @@ func DismissUncleanShutdownForRuntime(ctx context.Context, rt runtime.Runtime, r
 		return apischema.MessageResponse{}, bridgeipc.ErrInvalidArgs
 	}
 
-	if _, _, err := config.UpdateForUser(ctx, username, rt.Store, func(cfg *config.Settings) error {
+	if _, _, err := userconfig.UpdateForUser(ctx, username, rt.Store, func(cfg *userconfig.Settings) error {
 		if cfg.Dismissals == nil {
-			cfg.Dismissals = &config.PersistedDismissals{}
+			cfg.Dismissals = &userconfig.PersistedDismissals{}
 		}
 		cfg.Dismissals.UncleanShutdownBootID = bootID
 		return nil
@@ -58,9 +57,9 @@ func DismissFailedLoginAlertForRuntime(ctx context.Context, rt runtime.Runtime, 
 		return apischema.MessageResponse{}, bridgeipc.ErrInvalidArgs
 	}
 
-	if _, _, err := config.UpdateForUser(ctx, username, rt.Store, func(cfg *config.Settings) error {
+	if _, _, err := userconfig.UpdateForUser(ctx, username, rt.Store, func(cfg *userconfig.Settings) error {
 		if cfg.Dismissals == nil {
-			cfg.Dismissals = &config.PersistedDismissals{}
+			cfg.Dismissals = &userconfig.PersistedDismissals{}
 		}
 		cfg.Dismissals.FailedLoginAlertID = alertID
 		return nil
@@ -74,11 +73,11 @@ func DismissFailedLoginAlertForRuntime(ctx context.Context, rt runtime.Runtime, 
 // applyHealthDismissals suppresses acknowledged one-shot health signals. Any
 // error reading the user's settings is treated as "not dismissed" so warnings
 // still surface.
-func applyHealthDismissals(ctx context.Context, username string, store *config.UserStore, summary *apischema.SystemHealthSummary) {
+func applyHealthDismissals(ctx context.Context, username string, store *userconfig.UserStore, summary *apischema.SystemHealthSummary) {
 	if !hasDismissibleHealthSignal(summary) {
 		return
 	}
-	cfg, _, err := config.SnapshotForUser(ctx, username, store)
+	cfg, _, err := userconfig.SnapshotForUser(ctx, username, store)
 	if err != nil {
 		slog.Debug("health dismissal: settings unavailable, keeping warnings", "user", username, "error", err)
 		return
@@ -91,12 +90,12 @@ func applyHealthDismissals(ctx context.Context, username string, store *config.U
 }
 
 func hasDismissibleHealthSignal(summary *apischema.SystemHealthSummary) bool {
-	return (summary.UncleanShutdown && utils.StringValue(summary.UncleanShutdownBootID) != "") ||
+	return (summary.UncleanShutdown && apischema.StringValue(summary.UncleanShutdownBootID) != "") ||
 		(summary.FailedLoginAlert != nil && summary.FailedLoginAlert.ID != "")
 }
 
-func applyUncleanShutdownDismissal(summary *apischema.SystemHealthSummary, dismissals *config.PersistedDismissals) {
-	bootID := utils.StringValue(summary.UncleanShutdownBootID)
+func applyUncleanShutdownDismissal(summary *apischema.SystemHealthSummary, dismissals *userconfig.PersistedDismissals) {
+	bootID := apischema.StringValue(summary.UncleanShutdownBootID)
 	if !summary.UncleanShutdown || bootID == "" {
 		return
 	}
@@ -106,7 +105,7 @@ func applyUncleanShutdownDismissal(summary *apischema.SystemHealthSummary, dismi
 	}
 }
 
-func applyFailedLoginAlertDismissal(summary *apischema.SystemHealthSummary, dismissals *config.PersistedDismissals) {
+func applyFailedLoginAlertDismissal(summary *apischema.SystemHealthSummary, dismissals *userconfig.PersistedDismissals) {
 	if summary.FailedLoginAlert == nil || summary.FailedLoginAlert.ID == "" {
 		return
 	}

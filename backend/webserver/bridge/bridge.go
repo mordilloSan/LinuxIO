@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -10,9 +11,13 @@ import (
 	"os"
 	"sync"
 
+	authipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/auth"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
+	"github.com/mordilloSan/LinuxIO/backend/common/logging"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
+	"github.com/mordilloSan/LinuxIO/backend/webserver/authclient"
+	"github.com/mordilloSan/LinuxIO/backend/webserver/sessions"
 )
 
 // yamuxSessions manages persistent yamux sessions per session ID
@@ -44,11 +49,7 @@ func validateBridgeHash(bridgePath string) error {
 	actualHash := hex.EncodeToString(h.Sum(nil))
 
 	if actualHash != expectedHash {
-		slog.Error("bridge binary hash mismatch - possible tampering",
-			"expected", expectedHash,
-			"actual", actualHash,
-			"path", bridgePath)
-		return fmt.Errorf("bridge integrity check failed: hash mismatch")
+		return fmt.Errorf("bridge integrity check failed: %s hash %s does not match the expected %s (possible tampering)", bridgePath, actualHash, expectedHash)
 	}
 	slog.Debug("bridge hash validated", "hash", actualHash[:16]+"...")
 	return nil
@@ -58,14 +59,19 @@ const bridgeBinaryPath = version.BinDir + "/linuxio-bridge"
 
 // StartBridge launches linuxio-bridge via the auth daemon, persists the
 // authenticated session, and stores the resulting yamux transport.
-func StartBridge(sm *session.Manager, sessionID, username, password, remoteHost string, verbose bool) (*session.Session, error) {
+func StartBridge(ctx context.Context, sm *sessions.Manager, sessionID, username, password, remoteHost string) (*session.Session, error) {
 	// Validate bridge binary hash before proceeding
 	if err := validateBridgeHash(bridgeBinaryPath); err != nil {
 		return nil, fmt.Errorf("bridge security validation failed: %w", err)
 	}
-	slog.Debug("Auth daemon available, using socket-based auth")
-	req := BuildRequest(username, sessionID, password, remoteHost, verbose)
-	result, err := Authenticate(req)
+	slog.Debug("auth daemon available, using socket-based auth")
+	result, err := authclient.Authenticate(ctx, &authipc.AuthRequest{
+		User:       username,
+		Password:   password,
+		SessionID:  sessionID,
+		RemoteHost: remoteHost,
+		Verbose:    logging.DebugEnabled(),
+	})
 	if err != nil {
 		return nil, fmt.Errorf("auth daemon failed: %w", err)
 	}
@@ -76,8 +82,8 @@ func StartBridge(sm *session.Manager, sessionID, username, password, remoteHost 
 		return nil, fmt.Errorf("failed to create session: %w", err)
 	}
 
-	if attachErr := attachBridgeSession(sess, result.Conn); attachErr != nil {
-		sm.DeleteSession(sess.SessionID, session.ReasonManual)
+	if attachErr := attachBridgeSession(sm, sess, result.Conn); attachErr != nil {
+		sm.DeleteSession(sess.SessionID, sessions.ReasonManual)
 		return nil, attachErr
 	}
 
@@ -88,7 +94,7 @@ func StartBridge(sm *session.Manager, sessionID, username, password, remoteHost 
 	return sess, nil
 }
 
-func attachBridgeSession(sess *session.Session, conn net.Conn) error {
+func attachBridgeSession(sm *sessions.Manager, sess *session.Session, conn net.Conn) error {
 	// Create yamux client session from the connection
 	// (auth daemon forked bridge and passed our FD to it via dup2)
 	yamuxSession, err := relay.NewYamuxClient(conn)
@@ -96,18 +102,12 @@ func attachBridgeSession(sess *session.Session, conn net.Conn) error {
 		conn.Close()
 		return fmt.Errorf("failed to create yamux session: %w", err)
 	}
-	registerYamuxSession(sess, yamuxSession)
+	registerYamuxSession(sm, sess, yamuxSession)
 	return nil
 }
 
-func registerYamuxSession(sess *session.Session, yamuxSession *relay.YamuxSession) {
-	var old *relay.YamuxSession
+func registerYamuxSession(sm *sessions.Manager, sess *session.Session, yamuxSession *relay.YamuxSession) {
 	yamuxSessions.Lock()
-	if existing, exists := yamuxSessions.sessions[sess.SessionID]; exists {
-		old = existing
-	}
-	// Publish the replacement before closing the old session so its callback
-	// cannot remove or terminate the new mapping.
 	yamuxSessions.sessions[sess.SessionID] = yamuxSession
 	yamuxSessions.Unlock()
 
@@ -115,8 +115,6 @@ func registerYamuxSession(sess *session.Session, yamuxSession *relay.YamuxSessio
 	// already closed, so register it without holding yamuxSessions.Lock.
 	yamuxSession.SetOnClose(func() {
 		yamuxSessions.Lock()
-		// Only this session may remove the mapping. In particular, an old
-		// session closing after replacement must not remove the new session.
 		current, present := yamuxSessions.sessions[sess.SessionID]
 		if present && current == yamuxSession {
 			delete(yamuxSessions.sessions, sess.SessionID)
@@ -130,12 +128,8 @@ func registerYamuxSession(sess *session.Session, yamuxSession *relay.YamuxSessio
 
 		// Terminate the session when bridge dies. This triggers session
 		// deletion which closes the WebSocket.
-		sess.Terminate(session.ReasonBridgeFailure)
+		sm.DeleteSession(sess.SessionID, sessions.ReasonBridgeFailure)
 	})
-
-	if old != nil {
-		_ = old.Close()
-	}
 }
 
 // ============================================================================

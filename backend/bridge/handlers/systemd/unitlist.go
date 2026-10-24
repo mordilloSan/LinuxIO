@@ -8,7 +8,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dbusclient"
+	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
 )
 
 const maxConcurrentUnitPropertyFetches = 16

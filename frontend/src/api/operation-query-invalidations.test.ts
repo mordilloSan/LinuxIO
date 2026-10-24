@@ -5,7 +5,11 @@ import { describe, expect, it } from "vitest";
 
 import { ROUTE_MODES } from "@/api/generated/route-metadata";
 import { OPERATION_QUERY_INVALIDATIONS } from "@/api/operation-query-invalidations";
-import { SRC_ROOT, relativeToSrc, sourceFiles } from "@/test/sourceFiles";
+import {
+  relativeToSrc,
+  SRC_ROOT,
+  sourceFiles,
+} from "@/test/guards/sourceFiles";
 
 const MODES = ROUTE_MODES as Record<string, string>;
 
@@ -93,6 +97,18 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
       ["linuxio", "filebrowser", "dir_size"],
       ["linuxio", "filebrowser", "subfolders"],
     ]);
+  });
+
+  it("refreshes the Trash listing after trash, restore and purge", () => {
+    const trashList = ["linuxio", "filebrowser", "trash_list"];
+    for (const route of ["trash_batch", "trash_restore", "trash_purge"]) {
+      expect(
+        OPERATION_QUERY_INVALIDATIONS[`filebrowser.${route}`],
+      ).toContainEqual(trashList);
+    }
+    expect(
+      OPERATION_QUERY_INVALIDATIONS["filebrowser.trash_restore"],
+    ).toContainEqual(["linuxio", "filebrowser", "list_directory"]);
   });
 
   it("does not invalidate an open text document from file mutations", () => {
@@ -287,11 +303,11 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
 const ALLOWED_INVALIDATE_FILES = new Set([
   // Shared mutation lifecycle and recovered Task terminal handling.
   "api/call-react-query.ts",
-  "hooks/backgroundTasks/useRecoveredTasks.ts",
+  "tasks/engine/useRecoveredTasks.ts",
   // File Browser owns path-precise cache invalidation that cannot be expressed
   // as a static operation manifest entry.
-  "hooks/filebrowser/useFileBrowserEditorActions.ts",
-  "hooks/filebrowser/useListingInvalidation.ts",
+  "routes/_authenticated/filebrowser/-hooks/useFileBrowserEditorActions.ts",
+  "routes/_authenticated/filebrowser/-hooks/useListingInvalidation.ts",
 ]);
 
 describe("schedule invalidations", () => {

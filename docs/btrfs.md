@@ -40,8 +40,8 @@ metadata is nearly full. Health, scrub and space alerts link to those details;
 snapshot and replication alerts link to the Snapshots tab.
 
 Alerts are updated whenever the list is loaded and, independently of the
-browser, by `linuxio-btrfs-health.timer`, which runs `linuxio btrfs-health
-run` two minutes after boot and every ten minutes. The units ship with the
+browser, by `linuxio-btrfs-health.timer`, which runs `linuxio-btrfs-timer
+health run` two minutes after boot and every ten minutes. The units ship with the
 package; the installer enables the timer when the host has a btrfs
 filesystem, and the bridge enables it the first time an administrator lists
 filesystems, covering pools created after install.
@@ -134,7 +134,7 @@ enabled rule must keep at least one snapshot; 0 keeps none of that bucket.
 One hourly timer drives all rules:
 `linuxio-btrfs-snapshot.timer` (`OnCalendar=hourly`, `Persistent=true`)
 starts `linuxio-btrfs-snapshot.service`, which runs
-`linuxio btrfs-snapshot run`. The timer is enabled while at least one rule or
+`linuxio-btrfs-timer snapshot run`. The timer is enabled while at least one rule or
 replication job is enabled and disabled otherwise. **Run now** runs the
 snapshot and prune pass from the bridge; it does not replicate (each
 replication job has its own **Run now**).
@@ -155,7 +155,7 @@ rule is enabled; a disabled rule prunes only its `pre-update` snapshots and
 never its timeline:
 
 - by LinuxIO's own package update task and offline apply, before they start;
-- by `ExecStartPre=-/usr/local/bin/linuxio btrfs-snapshot pre-update` in the
+- by `ExecStartPre=-/usr/local/bin/linuxio-btrfs-timer snapshot pre-update` in the
   `linuxio-alert.conf` drop-in LinuxIO writes for the distribution's
   auto-update unit when its notification policy is not `never` (see
   [Alerts](./alerts.md#automatic-updates-notification-policy)). The `-` means
@@ -163,6 +163,10 @@ never its timeline:
   the next time the auto-update policy is saved.
 
 Manual `apt` or `dnf` runs are not hooked.
+
+Units and drop-ins written by earlier releases still call the hidden
+`linuxio btrfs-snapshot` and `linuxio btrfs-health` verbs; the CLI execs
+`linuxio-btrfs-timer` with the equivalent arguments.
 
 ## Pools
 
@@ -289,9 +293,9 @@ btrfsmaintenance timers.
 | `/etc/linuxio/btrfs-replication.json` | `root:root` `0600` | Replication jobs |
 | `/etc/linuxio/btrfs-replication/id_ed25519` (`.pub`) | root, key `0600` | SSH key for replication |
 | `/etc/linuxio/btrfs-replication/known_hosts` | root | Trusted target host keys |
-| `/etc/systemd/system/linuxio-btrfs-snapshot.service` | root | Runs `linuxio btrfs-snapshot run` |
+| `/etc/systemd/system/linuxio-btrfs-snapshot.service` | root | Runs `linuxio-btrfs-timer snapshot run` |
 | `/etc/systemd/system/linuxio-btrfs-snapshot.timer` | root | Hourly trigger |
-| `/etc/systemd/system/linuxio-btrfs-health.service` | root | Runs `linuxio btrfs-health run` |
+| `/etc/systemd/system/linuxio-btrfs-health.service` | root | Runs `linuxio-btrfs-timer health run` |
 | `/etc/systemd/system/linuxio-btrfs-health.timer` | root | Every ten minutes |
 | `/var/lib/linuxio/btrfs-scrub.json` | root | Last scrub LinuxIO ran per filesystem |
 | `/etc/systemd/system/<upgrade-service>.d/linuxio-alert.conf` | root | Auto-update drop-in, including the pre-update snapshot line |

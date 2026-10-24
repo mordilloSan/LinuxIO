@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # =============================================================================
 # LinuxIO Complete Uninstall Script
 # Removes all LinuxIO files, services, and configurations
@@ -117,8 +117,7 @@ Show 0 "Development files removed"
 Show 2 "Cleaning build artifacts from repo..."
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 if [[ -f "$REPO_ROOT/makefile" || -f "$REPO_ROOT/Makefile" ]]; then
-	cd "$REPO_ROOT"
-	rm -f linuxio linuxio-webserver linuxio-bridge linuxio-auth linuxio-docker-update linuxio-indexer linuxio-monitoring 2>/dev/null || true
+	rm -rf "${REPO_ROOT}/build"
 	Show 0 "Build artifacts cleaned"
 else
 	Show 3 "Cannot find repo directory, skipping build artifact cleanup"

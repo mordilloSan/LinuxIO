@@ -10,15 +10,16 @@ import (
 	"github.com/moby/moby/client"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dockerclient"
 )
 
 // GetDockerInfo returns combined system and version information from the Docker daemon.
 func GetDockerInfo(ctx context.Context) (*apischema.DockerSystemInfo, error) {
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 
 	infoResult, err := cli.Info(ctx, client.InfoOptions{})
 	if err != nil {

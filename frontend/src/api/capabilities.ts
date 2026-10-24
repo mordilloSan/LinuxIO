@@ -8,10 +8,9 @@
 
 import type { QueryKey } from "@tanstack/react-query";
 
-import type { ToastMeta } from "@/types/navigation";
-
 import linuxio from "./generated/client";
 import type { CapabilitiesResponse as GeneratedCapabilitiesResponse } from "./generated/linuxio-types";
+import type { ToastMeta } from "./toast-meta";
 
 export interface CapabilityDef {
   /** Underlying dependency name (binary, package, or service). */

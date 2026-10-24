@@ -22,12 +22,13 @@ LinuxIO uses **privilege separation** (the same shape Cockpit uses): split the s
 
 | Binary | Lang | Source | Runs as | Lifetime | Role |
 |--------|------|--------|---------|----------|------|
-| `linuxio` | Go | `backend/` (`main.go`) | invoking user (often via `sudo`) | on-demand | CLI: status, logs, start/stop/restart, verbose, version |
+| `linuxio` | Go | `backend/cli/` | invoking user (often via `sudo`) | on-demand | CLI: status, logs, start/stop/restart, verbose, version |
 | `linuxio-webserver` | Go | `backend/webserver/` | `DynamicUser` + group `linuxio-bridge-socket` | long-running (socket-activated) | HTTP + WebSocket relay; **yamux client** |
 | `linuxio-auth` | C | `backend/auth/linuxio-auth.c` | `root` | per auth connection (supervises its bridge) | PAM authentication, sudoers policy query, fork + supervise bridge |
 | `linuxio-bridge` | Go | `backend/bridge/` | logged-in user (root only if privileged) | per login session | **yamux server**; executes operations |
 | `linuxio-docker-update` | Go | `backend/docker-update/` | root, sandboxed | per scheduled or durable update operation | Docker update worker |
 | `linuxio-indexer` | Go | `backend/indexer/` | root, sandboxed | socket activated; exits when idle | Filesystem scanner, SQLite index, local HTTP/SSE API |
+| `linuxio-btrfs-timer` | Go | `backend/btrfs-timer/` | root | oneshot, started by systemd timers and the auto-update drop-in | Btrfs timeline/pre-update snapshots and the periodic health check |
 | `linuxio-monitoring` | Go | `backend/monitoring/` | root, sandboxed | long-running (no idle exit) | Metrics collector, SQLite history, local HTTP API on two Unix sockets |
 
 These binaries install to `/usr/local/bin/`. The CLI is a thin management
@@ -42,13 +43,14 @@ the auth/bridge launch protocol.
 
 | Binary | Supported interactive surface | Managed or private surface |
 |---|---|---|
-| `linuxio` | `status`, `logs`, `start`, `stop`, `restart [--full]`, `verbose enable\|disable\|status`, `version [--self]`, `help`/`-h`/`--help` | None |
+| `linuxio` | `status`, `logs`, `start`, `stop`, `restart [--full]`, `verbose enable\|disable\|status` (daemons switch live via SIGHUP reload, open sessions at next login; persists across restarts; also in Settings), `version [--self]`, `help`/`-h`/`--help` | `alert raise\|resolve\|auto-update` for systemd hooks (needs sudo); hidden `btrfs-snapshot`/`btrfs-health` shims that exec `linuxio-btrfs-timer` for units installed by earlier releases |
 | `linuxio-webserver` | `help`/`-h`/`--help`, `version`/`-v`/`--version` | `run [-port N] [-verbose]`; used by `linuxio-webserver.service` |
 | `linuxio-auth` | `version`, `--version` | No-argument accepted-socket process; root and systemd only |
 | `linuxio-bridge` | `version`, `--version`, `-v` | No-argument session process with inherited fd 3 and auth bootstrap; `linuxio-auth` only |
 | `linuxio-docker-update` | `help`/`-h`/`--help` | `run [--config PATH]` for the managed timer and `run-operation --id ID` for transient durable work |
 | `linuxio-indexer` | `--help`, `-h`, `--version` | Managed daemon; private `--trigger-index` timer client and `--index-mode` scanner worker |
 | `linuxio-monitoring` | `help`/`-h`/`--help`, `version`/`-v`/`--version` | `run [--config PATH] [--verbose]`; used by `linuxio-monitoring.service` |
+| `linuxio-btrfs-timer` | `help`/`-h`/`--help` | `snapshot run [--now RFC3339]`, `snapshot pre-update`, `health run`; used by the btrfs snapshot and health units and the pre-update hook |
 
 The private indexer modes are an implementation protocol between the daemon and
 its systemd units, not alternate administration paths. Indexer status,
@@ -69,7 +71,7 @@ linuxio.target                       umbrella; WantedBy=multi-user.target
 ├─ linuxio-indexer-index.timer      periodic request to linuxio-indexer-index.service
 │  └─ linuxio-indexer-index.service asks the daemon for a full index
 ├─ linuxio-btrfs-health.timer       every 10 min; enabled only on hosts with btrfs
-│  └─ linuxio-btrfs-health.service  runs `linuxio btrfs-health run`; root
+│  └─ linuxio-btrfs-health.service  runs `linuxio-btrfs-timer health run`; root
 ├─ linuxio-monitoring.service        runs `linuxio-monitoring run`; root; owns
 │                                    /run/linuxio/monitoring/{api,control}.sock
 ├─ linuxio-bridge-socket-user.service  oneshot: materializes the linuxio-bridge-socket user/group
@@ -90,7 +92,8 @@ Key unit facts (see `packaging/systemd/`):
   service writes only its canonical config and `/var/lib/linuxio/indexer`
   state. See the [filesystem indexer guide](./indexer.md).
 - **`linuxio-monitoring.service`** — `Type=simple`, `User=root`,
-  `Restart=on-failure`, `ExecReload` sends `SIGHUP`. It is not socket-activated
+  `Restart=on-failure`, `ExecReload` sends `SIGHUP` (as do the webserver and
+  indexer units; `linuxio verbose` and `logging.set_debug` rely on it). It is not socket-activated
   and has no idle exit, because history must be sampled whether or not a browser
   is connected. systemd owns `RuntimeDirectory`, `StateDirectory` and
   `ConfigurationDirectory` under `linuxio/monitoring`; `ProtectSystem=strict`
@@ -182,7 +185,7 @@ The webserver keeps its end of the socket it dialed; it is now wired straight to
 
 ## Build & Install
 
-The `Makefile` produces seven release artifacts:
+The `Makefile` (recipes in `mk/go.mk` and `mk/auth.mk`) produces eight release artifacts into `build/` (`BIN_DIR` overrides it):
 
 | Target | Output | Notes |
 |--------|--------|-------|
@@ -193,8 +196,9 @@ The `Makefile` produces seven release artifacts:
 | `make build-docker-update` | `linuxio-docker-update` | Go; transient Docker update worker |
 | `make build-indexer` | `linuxio-indexer` | Go + SQLite; FTS5 enabled |
 | `make build-monitoring` | `linuxio-monitoring` | Go + SQLite; `CGO_ENABLED=1`, plus the `glibc` tag on amd64 for NVML |
+| `make build-btrfs-timer` | `linuxio-btrfs-timer` | Go; btrfs snapshot and health timer worker |
 
-`make build` / `make fastbuild` build all seven; the internal `_build-binaries` step hashes the freshly built `linuxio-bridge` and passes it as `BRIDGE_SHA256` into the webserver build so the pin always matches. Install via `make localinstall` (`packaging/scripts/localinstall.sh`):
+`make build-binaries` (used by `make build` and `make fastbuild`) builds all eight: `build-go-binaries` builds every Go binary, hashing the freshly built `linuxio-bridge` and passing it as `BRIDGE_SHA256` into the webserver build so the pin always matches, then `build-auth` builds the C helper. `make print-binaries` prints the shipped-binary manifest that the release workflow and installer tests read. Only `common/version.Version` is stamped into the binaries that report a version. Install via `make localinstall`, which runs `packaging/scripts/localinstall.sh` (a wrapper for `install-linuxio-binaries.sh --local --build-dir build/`):
 
 - binaries → `/usr/local/bin/`
 - units → `/etc/systemd/system/linuxio*`
@@ -210,11 +214,19 @@ linuxio logs [web|bridge|auth|indexer|monitoring] [N]   # tail journald, filtere
 linuxio start | stop        # start/stop linuxio.target
 linuxio restart [--full]    # restart control plane (bridge-socket-user + auth.socket + webserver);
                             #   --full restarts the whole linuxio.target
-linuxio verbose enable|disable|status   # toggle debug logging for webserver, indexer and monitoring
+linuxio verbose enable|disable|status   # toggle debug logging for webserver, indexer and monitoring (SIGHUP reload; open sessions switch at next login); persists across restarts
 linuxio version [--self]    # versions of CLI + each installed component
 ```
 
-`restart` (no args) cycles only the control-plane units — `linuxio-bridge-socket-user.service`, `linuxio-auth.socket`, `linuxio-webserver.service` — and deliberately leaves `linuxio-webserver.socket` alone, so the listening TCP fd on :8090 stays bound and browser connections aren't dropped (`restartTargets` in `backend/cli/main.go`). `--full` restarts the whole `linuxio.target`.
+Settings drives the same switch through two privileged bridge routes:
+`logging.get_debug` (none → `{ enabled }`) and `logging.set_debug`
+(`{ enabled }` → `{ enabled }`). Both live in `backend/bridge/handlers/config`;
+`set_debug` writes or removes the drop-ins (`backend/common/verbosemode`),
+applies the level to that bridge and signals the monitoring and indexer daemons
+and then the webserver (last, so a unit that restarts instead of reloading does
+not tear the calling bridge down before the others are signalled).
+
+`restart` (no args) cycles only the control-plane units — `linuxio-bridge-socket-user.service`, `linuxio-auth.socket`, `linuxio-webserver.service` — and deliberately leaves `linuxio-webserver.socket` alone, so the listening TCP fd on :8090 stays bound and browser connections aren't dropped (`restartTargets` in `backend/cli/services.go`). `--full` restarts the whole `linuxio.target`.
 
 Journald, panic and `SIGQUIT` tracebacks, profiling builds, and core-dump limits
 follow the [Production Diagnostic Data Policy](./production-diagnostics.md).
@@ -226,14 +238,14 @@ follow the [Production Diagnostic Data Policy](./production-diagnostics.md).
 | Systemd units | `packaging/systemd/*.{target,socket,service}` |
 | libvirt QEMU hook (bridged VM forwarding past Docker's FORWARD DROP) | `packaging/libvirt/hooks/qemu.d/linuxio-bridge-netfilter` → `/etc/libvirt/hooks/qemu.d/` |
 | Managed TLS certificate | `/var/lib/linuxio/webserver/certificates/0-self-signed.{cert,key}` |
-| Install script | `packaging/scripts/localinstall.sh` |
-| CLI (commands) | `backend/cli/main.go` |
+| Install script | `packaging/scripts/install-linuxio-binaries.sh` (`--local` for a checkout); `packaging/scripts/localinstall.sh` is a wrapper for it |
+| CLI (commands) | `backend/cli/` (`main.go` dispatch, `services.go`, `logs.go`, `verbose.go`, `version.go`) |
 | Shared socket-activation adopt | `backend/common/socketactivation`, `backend/webserver/cmd/root.go` |
 | Auth daemon (PAM, fork, supervise) | `backend/auth/linuxio-auth.c` |
 | Bridge entry point | `backend/bridge/cmd/lifecycle.go`, `cmd/yamux.go` |
 | Indexer daemon and API | `backend/indexer/`, `backend/indexer/api/` |
 | Monitoring daemon and shared wire types | `backend/monitoring/`, `backend/monitoring/api/` |
-| Build | `Makefile` (`build-*`, `_build-binaries`) |
+| Build | `Makefile` + `mk/go.mk` (`build-*`, `build-go-binaries`, `build-binaries`); output in `build/` |
 
 ## See Also
 

@@ -2,7 +2,7 @@ package assistant
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"net"
 	"os"
 	"os/user"
@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/acpagents"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -45,7 +46,7 @@ func fakeAgent(t *testing.T, script string) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "agent.sh")
 	require.NoError(t, os.WriteFile(path, []byte(script), 0o700))
-	t.Cleanup(OverrideAgent("fake", Agent{Command: path}))
+	t.Cleanup(acpagents.Override("fake", acpagents.Agent{Command: path}))
 }
 
 func readData(t *testing.T, conn net.Conn) *ipc.StreamFrame {

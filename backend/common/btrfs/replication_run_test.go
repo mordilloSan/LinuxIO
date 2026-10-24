@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
+	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
 )
 
 const replPayload = "btrfs-send-stream-0123456789"
@@ -236,6 +237,47 @@ func TestReplicateUpToDate(t *testing.T) {
 	}
 }
 
+// A partial copy a crash left on the target is deleted before the send, so
+// the receive does not fail on the existing name.
+func TestReplicateRemovesPartialCopyBeforeSend(t *testing.T) {
+	t1 := SnapshotPath("@home", replAt(1), KindTimeline)
+	s := stubReplication(t, []subvolumeRow{snapshotSubvolume(1, t1)}, []string{targetRow(1, filepath.Base(t1), "-")})
+	job := BtrfsReplicationJob{
+		ID: "11111111-2222-4333-8444-555555555555", UUID: rootUUID, Path: "@home", After: AfterTimeline, Enabled: true,
+		Target: BtrfsReplicationTarget{Kind: TargetLocal, Path: "/mnt/backup"},
+	}
+	res, err := Replicate(context.Background(), job, nil)
+	if err != nil || res.Sent == nil {
+		t.Fatalf("Replicate = %+v, %v", res, err)
+	}
+	if want := []string{"subvolume delete /mnt/backup/" + filepath.Base(t1), "receive"}; !reflect.DeepEqual(s.order, want) {
+		t.Fatalf("order = %q, want %q", s.order, want)
+	}
+}
+
+// A second run of the same job while another process holds its lock reports
+// "already running" and touches nothing.
+func TestReplicateAlreadyRunning(t *testing.T) {
+	t1 := SnapshotPath("@home", replAt(1), KindTimeline)
+	s := stubReplication(t, []subvolumeRow{snapshotSubvolume(1, t1)}, nil)
+	job := BtrfsReplicationJob{
+		ID: "11111111-2222-4333-8444-555555555555", UUID: rootUUID, Path: "@home", After: AfterTimeline, Enabled: true,
+		Target: BtrfsReplicationTarget{Kind: TargetLocal, Path: "/mnt/backup"},
+	}
+	release, err := filelock.AcquireExclusive(context.Background(), filepath.Join(ReplicationDir, job.ID+".lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = release() }()
+	_, err = Replicate(context.Background(), job, nil)
+	if err == nil || !strings.Contains(err.Error(), "already running") {
+		t.Fatalf("err = %v, want already running", err)
+	}
+	if len(s.calls) != 0 || len(s.mutations) != 0 {
+		t.Fatalf("calls %q, mutations %q; want none", s.calls, s.mutations)
+	}
+}
+
 // Only children of the target subvolume count, matched by parent ID so it
 // works whatever path form btrfs-progs prints: a copy inside a nested
 // subvolume or beside the target belongs to someone else.
@@ -346,24 +388,6 @@ func TestReplicateFailureRemovesPartialCopy(t *testing.T) {
 	}
 }
 
-func TestShellQuote(t *testing.T) {
-	for in, want := range map[string]string{
-		"":            "''",
-		"/srv/backup": "'/srv/backup'",
-		"it's":        `'it'\''s'`,
-		"$(rm -rf /)": "'$(rm -rf /)'",
-		"a b\nc":      "'a b\nc'",
-		"''":          `''\'''\'''`,
-	} {
-		if got := shellQuote(in); got != want {
-			t.Errorf("shellQuote(%q) = %q, want %q", in, got, want)
-		}
-		if out, err := exec.Command("sh", "-c", "printf '%s' "+shellQuote(in)).Output(); err != nil || string(out) != in {
-			t.Errorf("sh round trip of %q = %q, %v", in, out, err)
-		}
-	}
-}
-
 func TestRunReplicationRecordsOutcome(t *testing.T) {
 	useTempAlerts(t)
 	oldPath, oldReplicate := ReplicationPath, replicate
@@ -447,10 +471,11 @@ func TestRecordReplicationOutcomeCancelledAndTruncated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if stored[0].LastRun == nil || stored[0].LastError == nil || len(*stored[0].LastError) != alerts.MaxMessageLen {
+	if stored[0].LastRun == nil || stored[0].LastError == nil || len(*stored[0].LastError) != 3*alerts.MaxMessageLen {
 		t.Fatalf("stored = %+v", stored[0])
 	}
-	if doc, _ := alerts.Load(); len(doc.Alerts) != 1 {
+	// LastError keeps the full error; alerts truncates its own copy.
+	if doc, _ := alerts.Load(); len(doc.Alerts) != 1 || len(doc.Alerts[0].Message) > alerts.MaxMessageLen {
 		t.Fatalf("alerts = %+v, want one despite the cancelled ctx", doc.Alerts)
 	}
 }

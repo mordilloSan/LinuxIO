@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { LinuxIOError } from "@/api/linuxio-core";
+import { LinuxIOError } from "@/api/errors";
 import {
   bindStreamHandlers,
   streamWriteChunks,

@@ -238,6 +238,7 @@ export interface BatchTransferRequest {
   sources: string[];
   destination: string;
   overwrite?: boolean;
+  keepBoth?: string[];
 }
 
 export interface BatchUploadProgress {
@@ -1430,6 +1431,8 @@ export interface EnabledRequest {
 export interface ExistsBatchItem {
   path: string;
   isDir: boolean;
+  size: number;
+  modified: string;
 }
 
 export interface ExistsBatchResponse {
@@ -1501,7 +1504,6 @@ export interface FileProgress {
 
 export interface FileResourcePostRequest {
   path: string;
-  override?: boolean;
 }
 
 export interface FileSearchRequest {
@@ -1521,6 +1523,7 @@ export interface FileUploadBatchRequest {
   files: FileUploadBatchEntry[];
   directories?: string[];
   overwrite?: boolean;
+  keepBoth?: string[];
 }
 
 export interface FileUploadBatchResult {
@@ -1898,6 +1901,14 @@ export interface LiveMemory {
 export interface LiveSmart {
   data: SmartData;
   power?: DiskPowerData;
+}
+
+export interface LoggingDebugRequest {
+  enabled: boolean;
+}
+
+export interface LoggingDebugState {
+  enabled: boolean;
 }
 
 export interface LogicalVolume {
@@ -2312,15 +2323,25 @@ export interface NetworkInterface {
 }
 
 export interface NotificationSettings {
-  minSeverity: string;
-  webhookUrl: string;
-  smtpHost: string;
-  smtpPort: number;
-  smtpUsername: string;
-  smtpPassword?: string;
   emailFrom: string;
   emailTo: string[];
+  minSeverity: string;
+  smtpHost: string;
+  smtpPassword?: string;
+  smtpPort: number;
+  smtpUsername: string;
+  webhookUrl: string;
+}
+
+export interface NotificationSettingsView {
+  emailFrom: string;
+  emailTo: string[];
+  minSeverity: string;
+  smtpHost: string;
   smtpPasswordSet: boolean;
+  smtpPort: number;
+  smtpUsername: string;
+  webhookUrl: string;
 }
 
 export interface OfflineUpdatesResponse {
@@ -2967,6 +2988,19 @@ export interface TimezoneRequest {
   timezone: string;
 }
 
+export interface TrashEntry {
+  path: string;
+  name: string;
+  originalPath: string;
+  deletedAt: string;
+  isDir: boolean;
+  size: number;
+}
+
+export interface TrashListResponse {
+  entries: TrashEntry[];
+}
+
 export interface TunedProfile {
   active: boolean;
   description?: string;
@@ -3045,18 +3079,6 @@ export interface UpdateHistoryRow {
   upgrades: UpgradeItem[];
 }
 
-export interface UpdateItem {
-  arch?: string;
-  currentVersion?: string;
-  name: string;
-  newVersion?: string;
-  repo?: string;
-}
-
-export interface UpdatesFastResponse {
-  updates?: UpdateItem[];
-}
-
 export interface UpgradeItem {
   package: string;
   version?: string;
@@ -3123,11 +3145,6 @@ export interface VMDisk {
 }
 
 export type VMFirmware = "bios" | "uefi";
-
-export interface VMFirmwareRequest {
-  name: string;
-  firmware: VMFirmware;
-}
 
 export type VMImagePresetID =
   | "home-assistant-os"
@@ -3245,6 +3262,17 @@ export interface VMUnusedDisk {
   modifiedAt: string;
 }
 
+export interface VMUpdateRequest {
+  name: string;
+  newName?: string;
+  vcpus: number;
+  memoryMB: number;
+  diskGB?: number;
+  firmware: VMFirmware;
+  network?: string;
+  os?: string;
+}
+
 export interface ValidateComposeError {
   line?: number;
   column?: number;
@@ -3315,7 +3343,6 @@ export interface WireGuardAddInterfaceRequest {
   host?: string;
   dns?: string;
   mtu?: string;
-  peersJson?: string;
   numPeers?: string;
 }
 
@@ -3447,7 +3474,7 @@ export interface LinuxIOSchema {
     get_notifications: {
       input: [];
       request: void;
-      result: NotificationSettings;
+      result: NotificationSettingsView;
     };
     list: { input: []; request: void; result: AlertList };
     mark_all_seen: { input: []; request: void; result: AlertList };
@@ -3459,7 +3486,7 @@ export interface LinuxIOSchema {
     set_notifications: {
       input: [request: NotificationSettings];
       request: NotificationSettings;
-      result: NotificationSettings;
+      result: NotificationSettingsView;
     };
     test_notifications: { input: []; request: void; result: SuccessResponse };
   };
@@ -3810,7 +3837,7 @@ export interface LinuxIOSchema {
       progress: TaskProgress<FileProgress>;
     };
     resource_post: {
-      input: [request: FileResourcePostRequest];
+      input: [path: string];
       request: FileResourcePostRequest;
       result: void;
     };
@@ -3828,6 +3855,25 @@ export interface LinuxIOSchema {
       input: [path: string];
       request: PathRequest;
       result: SubfoldersResponse;
+    };
+    trash_batch: {
+      input: [paths: string[]];
+      request: BatchPathRequest;
+      result: FileBatchResult;
+      progress: TaskProgress<CountProgress>;
+    };
+    trash_list: { input: []; request: void; result: TrashListResponse };
+    trash_purge: {
+      input: [paths: string[]];
+      request: BatchPathRequest;
+      result: FileBatchResult;
+      progress: TaskProgress<CountProgress>;
+    };
+    trash_restore: {
+      input: [paths: string[]];
+      request: BatchPathRequest;
+      result: FileBatchResult;
+      progress: TaskProgress<CountProgress>;
     };
     upload: {
       input: [request: FileUploadRequest];
@@ -3864,6 +3910,15 @@ export interface LinuxIOSchema {
       input: [interval: string];
       request: IntervalRequest;
       result: IndexerTimerSetResult;
+    };
+  };
+
+  logging: {
+    get_debug: { input: []; request: void; result: LoggingDebugState };
+    set_debug: {
+      input: [enabled: boolean];
+      request: LoggingDebugRequest;
+      result: LoggingDebugState;
     };
   };
 
@@ -4414,7 +4469,6 @@ export interface LinuxIOSchema {
     get_server_time: { input: []; request: void; result: string };
     get_system_info: { input: []; request: void; result: SystemInfo };
     get_timezones: { input: []; request: void; result: string[] };
-    get_updates_fast: { input: []; request: void; result: UpdatesFastResponse };
     install_capability: {
       input: [capability: string];
       request: CapabilityRequest;
@@ -4569,11 +4623,6 @@ export interface LinuxIOSchema {
       request: VMAutostartRequest;
       result: VirtualMachine;
     };
-    set_firmware: {
-      input: [request: VMFirmwareRequest];
-      request: VMFirmwareRequest;
-      result: VirtualMachine;
-    };
     shutdown: { input: [name: string]; request: NameRequest; result: void };
     start: { input: [name: string]; request: NameRequest; result: void };
     suspend: { input: [name: string]; request: NameRequest; result: void };
@@ -4595,6 +4644,11 @@ export interface LinuxIOSchema {
       result: void;
     };
     unused_disks: { input: []; request: void; result: VMUnusedDisk[] };
+    update: {
+      input: [request: VMUpdateRequest];
+      request: VMUpdateRequest;
+      result: VirtualMachine;
+    };
   };
 
   wireguard: {
@@ -4693,13 +4747,16 @@ export interface LinuxIOCallSchema {
   };
   "accounts.unlock_user": { request: UsernameRequest; result: void };
   "alerts.dismiss": { request: AlertDismissRequest; result: AlertList };
-  "alerts.get_notifications": { request: void; result: NotificationSettings };
+  "alerts.get_notifications": {
+    request: void;
+    result: NotificationSettingsView;
+  };
   "alerts.list": { request: void; result: AlertList };
   "alerts.mark_all_seen": { request: void; result: AlertList };
   "alerts.mark_seen": { request: AlertIDsRequest; result: AlertList };
   "alerts.set_notifications": {
     request: NotificationSettings;
-    result: NotificationSettings;
+    result: NotificationSettingsView;
   };
   "alerts.test_notifications": { request: void; result: SuccessResponse };
   "config.get": { request: void; result: AppConfig };
@@ -4865,6 +4922,7 @@ export interface LinuxIOCallSchema {
     request: PathRequest;
     result: SubfoldersResponse;
   };
+  "filebrowser.trash_list": { request: void; result: TrashListResponse };
   "filebrowser.users_groups": { request: void; result: UsersGroupsResponse };
   "hostname.set_hostname": { request: HostnameRequest; result: void };
   "indexer.get_config": { request: void; result: IndexerConfig };
@@ -4876,6 +4934,11 @@ export interface LinuxIOCallSchema {
   "indexer.set_timer_interval": {
     request: IntervalRequest;
     result: IndexerTimerSetResult;
+  };
+  "logging.get_debug": { request: void; result: LoggingDebugState };
+  "logging.set_debug": {
+    request: LoggingDebugRequest;
+    result: LoggingDebugState;
   };
   "logs.general_entry": {
     request: GeneralLogEntryRequest;
@@ -5194,7 +5257,6 @@ export interface LinuxIOCallSchema {
   "system.get_server_time": { request: void; result: string };
   "system.get_system_info": { request: void; result: SystemInfo };
   "system.get_timezones": { request: void; result: string[] };
-  "system.get_updates_fast": { request: void; result: UpdatesFastResponse };
   "system.list_failed_login_events": {
     request: FailedLoginEventsRequest;
     result: AccountUserLogin[];
@@ -5239,7 +5301,6 @@ export interface LinuxIOCallSchema {
   "virt.reboot": { request: NameRequest; result: void };
   "virt.resume": { request: NameRequest; result: void };
   "virt.set_autostart": { request: VMAutostartRequest; result: VirtualMachine };
-  "virt.set_firmware": { request: VMFirmwareRequest; result: VirtualMachine };
   "virt.shutdown": { request: NameRequest; result: void };
   "virt.start": { request: NameRequest; result: void };
   "virt.suspend": { request: NameRequest; result: void };
@@ -5247,6 +5308,7 @@ export interface LinuxIOCallSchema {
   "virt.templates": { request: void; result: VMTemplateLibrary };
   "virt.unused_disk_delete": { request: PathRequest; result: void };
   "virt.unused_disks": { request: void; result: VMUnusedDisk[] };
+  "virt.update": { request: VMUpdateRequest; result: VirtualMachine };
   "wireguard.add_interface": {
     request: WireGuardAddInterfaceRequest;
     result: void;
@@ -5333,7 +5395,6 @@ export interface LinuxIOStreamSchema {
   "assistant.open": AssistantOpenRequest;
   "container.open": ContainerOpenRequest;
   "control.app_update": AppUpdateRequest;
-  "docker.delete_compose_stack": ProjectNameRequest;
   "docker.logs.follow": DockerLogsFollowRequest;
   "docker.logs.follow_all": DockerLogsFollowAllRequest;
   "filebrowser.download_stream": PathRequest;

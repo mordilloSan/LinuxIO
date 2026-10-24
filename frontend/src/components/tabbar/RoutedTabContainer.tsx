@@ -13,9 +13,9 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
-import { useHeaderActionSlot } from "@/contexts/HeaderActionSlotContext";
+import { useHeaderActionSlot } from "@/hooks/useHeaderActionSlot";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import type { FileRouteTypes } from "@/routeTree.gen";
-import { useAppMediaQuery } from "@/theme";
 import { down } from "@/theme/breakpoints";
 import { iconSize } from "@/theme/constants";
 
@@ -239,7 +239,7 @@ const TabSelector = memo(function TabSelector({
   hasSlotSearch = false,
   searchHostMountRef,
 }: TabSelectorProps) {
-  const isMobile = useAppMediaQuery(down("sm"));
+  const isMobile = useMediaQuery(down("sm"));
   const headerActionSlot = useHeaderActionSlot();
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const [mobileSearchAnchorEl, setMobileSearchAnchorEl] =

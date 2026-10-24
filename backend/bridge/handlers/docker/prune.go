@@ -8,6 +8,7 @@ import (
 	"github.com/moby/moby/client/pkg/versions"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dockerclient"
 )
 
 func volumePruneOptions(apiVersion string) client.VolumePruneOptions {
@@ -20,11 +21,11 @@ func volumePruneOptions(apiVersion string) client.VolumePruneOptions {
 
 // SystemPrune removes unused Docker resources according to opts.
 func SystemPrune(ctx context.Context, opts apischema.DockerSystemPruneRequest) (*apischema.DockerSystemPruneResponse, error) {
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
 		return nil, fmt.Errorf("docker client error: %w", err)
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 
 	result := &apischema.DockerSystemPruneResponse{}
 

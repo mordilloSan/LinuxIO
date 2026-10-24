@@ -2,7 +2,7 @@ package configfile
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -13,18 +13,21 @@ import (
 
 	"github.com/goccy/go-yaml"
 
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 	"github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
-const (
-	DefaultConfigPath = "/etc/linuxio/indexer/config.yaml"
-	DefaultDBPath     = "/var/lib/linuxio/indexer/indexer.db"
-	SearchLimit       = 100
-)
+const DefaultConfigPath = version.ConfigDir + "/indexer/config.yaml"
 
-var mandatoryExcludePaths = []string{"/proc", "/dev", "/sys", "/var/lib/linuxio/indexer", "/mnt/c"}
+// mandatoryExcludePaths are never indexed and cannot be removed through the
+// file or the API, so virtual filesystems and the database cannot index
+// themselves.
+var mandatoryExcludePaths = []string{"/proc", "/dev", "/sys", version.DataDir + "/indexer", "/mnt/c"}
 
+// Config and Patch are the operator settings. The on-disk YAML and the /config
+// wire body deliberately share one shape, so they are the api types rather
+// than a second struct with a converter.
 type Config = api.IndexerConfig
 type Patch = api.IndexerConfigPatch
 
@@ -58,14 +61,8 @@ func Load(path string) (Config, error) {
 
 func DecodePatchJSON(data []byte) (Patch, error) {
 	var patch Patch
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&patch); err != nil {
+	if err := json.Unmarshal(data, &patch, json.RejectUnknownMembers(true)); err != nil {
 		return Patch{}, err
-	}
-	var extra struct{}
-	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
-		return Patch{}, fmt.Errorf("unexpected trailing JSON")
 	}
 	return patch, nil
 }
@@ -142,7 +139,7 @@ func Save(path string, cfg Config) error {
 	if path == "" || path == "-" {
 		return fmt.Errorf("config file path is disabled")
 	}
-	if err := utils.WriteFileAtomic(path, data, 0o644); err != nil {
+	if err := atomicfile.Write(path, data, 0o644); err != nil {
 		return fmt.Errorf("write config: %w", err)
 	}
 	return nil

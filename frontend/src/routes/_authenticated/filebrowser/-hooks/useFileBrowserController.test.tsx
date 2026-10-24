@@ -1,0 +1,559 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, renderHook } from "@testing-library/react";
+import type { MouseEvent, ReactNode } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { createFileBrowserListingQueryOptions } from "./fileBrowserListingQueryOptions";
+import { useFileBrowserController } from "./useFileBrowserController";
+import type { FileItem, FileResource } from "../-types";
+
+const mocks = vi.hoisted(() => ({
+  archiveActions: {
+    canCompressSelection: true,
+    canExtractSelection: false,
+    compressFormatDialog: null,
+    handleCloseCompressFormatDialog: vi.fn(),
+    handleCompressConfirm: vi.fn(),
+    handleCompressSelection: vi.fn(),
+    handleExtractSelection: vi.fn(),
+  },
+  backgroundTasks: {
+    startDownload: vi.fn(),
+    startUpload: vi.fn(),
+  },
+  dialogs: {
+    actions: {
+      clearPendingDelete: vi.fn(),
+      clearPermissions: vi.fn(),
+      closeCreateFile: vi.fn(),
+      closeDelete: vi.fn(),
+      closeDetails: vi.fn(),
+      closePermissions: vi.fn(),
+      openCreateFile: vi.fn(),
+      openPermissions: vi.fn(),
+      requestDelete: vi.fn(),
+      showDetails: vi.fn(),
+    },
+    createFileDialog: false,
+    deleteDialog: false,
+    detailTarget: ["/srv/projects/readme.md"],
+    pendingDeletePaths: ["/srv/projects/readme.md"],
+    permissionsDialog: null,
+    permissionsDialogOpen: false,
+  },
+  dragAndDrop: {
+    handleDragEnter: vi.fn(),
+    handleDragLeave: vi.fn(),
+    handleDragOver: vi.fn(),
+    handleDrop: vi.fn(),
+    isDragOver: false,
+  },
+  editor: {
+    actions: {
+      close: vi.fn(),
+      confirmClose: vi.fn(),
+      dismissClosePrompt: vi.fn(),
+      openFile: vi.fn(),
+      setDirty: vi.fn(),
+      setSaving: vi.fn(),
+    },
+    closeEditorDialog: false,
+    editingPath: null,
+    editorRef: { current: null },
+    isEditorDirty: false,
+    isSavingFile: false,
+    showQuickSave: false,
+  },
+  editorActions: {
+    handleCancelConflict: vi.fn(),
+    handleCloseEditor: vi.fn(),
+    handleDiscardAndExit: vi.fn(),
+    handleKeepEditing: vi.fn(),
+    handleOverwriteConflict: vi.fn(),
+    handleReloadConflict: vi.fn(),
+    handleSaveAndExit: vi.fn(),
+    handleSaveContent: vi.fn(),
+    handleSaveFile: vi.fn(),
+    saveConflict: null,
+  },
+  filteredResource: undefined as FileResource | undefined,
+  itemActions: {
+    canShowDetails: true,
+    handleCancelInlineRename: vi.fn(),
+    handleChangePermissions: vi.fn(),
+    handleCloseCreateFileDialog: vi.fn(),
+    handleCloseDeleteDialog: vi.fn(),
+    handleCloseDetailDialog: vi.fn(),
+    handleClosePermissionsDialog: vi.fn(),
+    handleConfirmCreateFile: vi.fn(),
+    handleConfirmDelete: vi.fn(),
+    handleConfirmInlineRename: vi.fn(),
+    handleConfirmPermissions: vi.fn(),
+    handleContextMenuRename: vi.fn(),
+    handleCreateFile: vi.fn(),
+    handleCreateFolder: vi.fn(),
+    handleDelete: vi.fn(),
+    handleDoubleClickFile: vi.fn(),
+    handleDownloadCurrent: vi.fn(),
+    handleDownloadDetail: vi.fn(),
+    handleDownloadSelected: vi.fn(),
+    handleEditFile: vi.fn(),
+    handleOpenContainingFolder: vi.fn(),
+    handleShowDetails: vi.fn(),
+    handleStartInlineRename: vi.fn(),
+    renamingPath: null,
+  },
+  invalidateListing: vi.fn(),
+  mutations: {
+    changePermissions: vi.fn(),
+    compressItems: vi.fn(),
+    copyItems: vi.fn(),
+    createFile: vi.fn(),
+    createFolder: vi.fn(),
+    deleteItems: vi.fn(),
+    extractArchive: vi.fn(),
+    moveItems: vi.fn(),
+    renameItem: vi.fn(),
+  },
+  navigation: {
+    handleOpenDirectory: vi.fn(),
+    normalizedPath: "/srv/projects",
+  },
+  queries: {
+    detailError: null,
+    detailResource: undefined as FileResource | undefined,
+    editingFileError: null,
+    editingFileResource: undefined as FileResource | undefined,
+    errorMessage: null,
+    isEditingFileLoading: false,
+    isPending: false,
+    isStatLoading: false,
+    multiItemsStats: null,
+    resource: undefined as FileResource | undefined,
+    shouldShowDetailLoader: false,
+    statData: null,
+  },
+  selection: {
+    handleCopy: vi.fn(),
+    handleCut: vi.fn(),
+    handlePaste: vi.fn(),
+    selectedItems: [] as FileItem[],
+  },
+  selectionState: {
+    actions: {
+      clear: vi.fn(),
+      clearClipboard: vi.fn(),
+      copyToClipboard: vi.fn(),
+      cutToClipboard: vi.fn(),
+      select: vi.fn(),
+    },
+    clipboard: {
+      operation: "cut",
+      paths: ["/srv/projects/readme.md"],
+    },
+    cutPaths: new Set(["/srv/projects/readme.md"]),
+    selectedPaths: new Set(["/srv/projects/readme.md"]),
+  },
+  upload: {
+    actions: {
+      clearEntries: vi.fn(),
+      closeDialog: vi.fn(),
+      mergeEntries: vi.fn(),
+      openDialog: vi.fn(),
+      setProcessing: vi.fn(),
+    },
+    fileInputRef: { current: null },
+    folderInputRef: { current: null },
+    isUploadProcessing: false,
+    uploadDialogOpen: false,
+    uploadEntries: [],
+    uploadSummary: {
+      files: 0,
+      folders: 0,
+    },
+  },
+  uploadActions: {
+    handleClearUploadSelection: vi.fn(),
+    handleCloseUploadDialog: vi.fn(),
+    handlePickFiles: vi.fn(),
+    handlePickFolder: vi.fn(),
+    handleStartUpload: vi.fn(),
+    handleUpload: vi.fn(),
+    handleUploadInputChange: vi.fn(),
+  },
+  useFileBrowserArchiveActions: vi.fn(),
+  useFileBrowserClipboardShortcuts: vi.fn(),
+  useFileBrowserEditorActions: vi.fn(),
+  useFileBrowserFilteredResource: vi.fn(),
+  useFileBrowserItemActions: vi.fn(),
+  useFileBrowserNavigation: vi.fn(),
+  useFileBrowserUploadActions: vi.fn(),
+  useFileDialogs: vi.fn(),
+  useFileDragAndDrop: vi.fn(),
+  useFileEditor: vi.fn(),
+  useFileMutations: vi.fn(),
+  useFileQueries: vi.fn(),
+  useFileSelection: vi.fn(),
+  useFileSelectionState: vi.fn(),
+  useFileUpload: vi.fn(),
+  useFileViewState: vi.fn(),
+  viewState: {
+    actions: {
+      changeSort: vi.fn(),
+      clearSearch: vi.fn(),
+      closeContextMenu: vi.fn(),
+      openContextMenu: vi.fn(),
+      setSearchCaseSensitive: vi.fn(),
+      setSearch: vi.fn(),
+      switchView: vi.fn(),
+      toggleHiddenFiles: vi.fn(),
+    },
+    contextMenuPosition: { left: 12, top: 24 },
+    searchCaseSensitive: true,
+    searchQuery: "readme",
+    showHiddenFiles: false,
+    sortField: "name",
+    sortOrder: "asc",
+    viewMode: "card",
+  },
+}));
+
+vi.mock("@/api", () => ({
+  CACHE_TTL_MS: { TWO_SECONDS: 2000 },
+  linuxio: {
+    filebrowser: {
+      exists_batch: {
+        useFetcher: () => () => Promise.resolve({ existing: [] }),
+      },
+      list_directory: ({ path }: { path: string }) => ({
+        queryFn: vi.fn(),
+        queryKey: ["filebrowser", "list_directory", path],
+      }),
+    },
+  },
+}));
+
+vi.mock("@/tasks/useBackgroundTaskActions", () => ({
+  useBackgroundTaskActions: () => mocks.backgroundTasks,
+}));
+
+vi.mock("./useFileBrowserArchiveActions", () => ({
+  useFileBrowserArchiveActions: mocks.useFileBrowserArchiveActions,
+}));
+
+vi.mock("./useFileBrowserClipboardShortcuts", () => ({
+  useFileBrowserClipboardShortcuts: mocks.useFileBrowserClipboardShortcuts,
+}));
+
+vi.mock("./useFileBrowserEditorActions", () => ({
+  useFileBrowserEditorActions: mocks.useFileBrowserEditorActions,
+}));
+
+vi.mock("./useFileBrowserFilteredResource", () => ({
+  useFileBrowserFilteredResource: mocks.useFileBrowserFilteredResource,
+}));
+
+vi.mock("./useFileBrowserItemActions", () => ({
+  useFileBrowserItemActions: mocks.useFileBrowserItemActions,
+}));
+
+vi.mock("./useFileBrowserNavigation", () => ({
+  useFileBrowserNavigation: mocks.useFileBrowserNavigation,
+}));
+
+vi.mock("./useFileBrowserUploadActions", () => ({
+  useFileBrowserUploadActions: mocks.useFileBrowserUploadActions,
+}));
+
+vi.mock("./useFileDialogs", () => ({
+  useFileDialogs: mocks.useFileDialogs,
+}));
+
+vi.mock("./useFileDragAndDrop", () => ({
+  useFileDragAndDrop: mocks.useFileDragAndDrop,
+}));
+
+vi.mock("./useFileEditor", () => ({
+  useFileEditor: mocks.useFileEditor,
+}));
+
+vi.mock("./useFileMutations", () => ({
+  useFileMutations: mocks.useFileMutations,
+}));
+
+vi.mock("./useFileQueries", () => ({
+  useFileQueries: mocks.useFileQueries,
+}));
+
+vi.mock("./useFileSelection", () => ({
+  useFileSelection: mocks.useFileSelection,
+  useFileSelectionState: mocks.useFileSelectionState,
+}));
+
+vi.mock("./useFileUpload", () => ({
+  useFileUpload: mocks.useFileUpload,
+}));
+
+vi.mock("./useFileViewState", () => ({
+  useFileViewState: mocks.useFileViewState,
+}));
+
+vi.mock("./useListingInvalidation", () => ({
+  useListingInvalidation: () => mocks.invalidateListing,
+}));
+
+const resource = {
+  path: "/srv/projects",
+  type: "directory",
+  items: [{ name: "readme.md", path: "/srv/projects/readme.md", type: "file" }],
+} as FileResource;
+
+function applyDefaultHookReturns() {
+  mocks.filteredResource = resource;
+  mocks.queries.resource = resource;
+  mocks.selection.selectedItems = [
+    { name: "readme.md", path: "/srv/projects/readme.md", type: "file" },
+  ];
+  mocks.selectionState.selectedPaths = new Set(["/srv/projects/readme.md"]);
+  mocks.viewState.contextMenuPosition = { left: 12, top: 24 };
+
+  mocks.useFileBrowserArchiveActions.mockReturnValue(mocks.archiveActions);
+  mocks.useFileBrowserEditorActions.mockReturnValue(mocks.editorActions);
+  mocks.useFileBrowserFilteredResource.mockReturnValue({
+    filteredResource: mocks.filteredResource,
+    isSearchLoading: false,
+  });
+  mocks.useFileBrowserItemActions.mockReturnValue(mocks.itemActions);
+  mocks.useFileBrowserNavigation.mockReturnValue(mocks.navigation);
+  mocks.useFileBrowserUploadActions.mockReturnValue(mocks.uploadActions);
+  mocks.useFileDialogs.mockReturnValue(mocks.dialogs);
+  mocks.useFileDragAndDrop.mockReturnValue(mocks.dragAndDrop);
+  mocks.useFileEditor.mockReturnValue(mocks.editor);
+  mocks.useFileMutations.mockReturnValue(mocks.mutations);
+  mocks.useFileQueries.mockReturnValue(mocks.queries);
+  mocks.useFileSelection.mockReturnValue(mocks.selection);
+  mocks.useFileSelectionState.mockReturnValue(mocks.selectionState);
+  mocks.useFileUpload.mockReturnValue(mocks.upload);
+  mocks.useFileViewState.mockReturnValue(mocks.viewState);
+}
+
+function setup() {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      mutations: { retry: false },
+      queries: { retry: false },
+    },
+  });
+
+  function wrapper({ children }: { children: ReactNode }) {
+    return (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+  }
+
+  const hook = renderHook(
+    () =>
+      useFileBrowserController(
+        createFileBrowserListingQueryOptions("/srv/projects"),
+      ),
+    { wrapper },
+  );
+  return { ...hook, queryClient };
+}
+
+describe("useFileBrowserController", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    applyDefaultHookReturns();
+  });
+
+  it("returns the content and dialog prop groups used by the route", () => {
+    const { result } = setup();
+
+    expect(result.current.contentProps).toMatchObject({
+      chrome: {
+        normalizedPath: "/srv/projects",
+        searchCaseSensitive: true,
+        searchQuery: "readme",
+        showHiddenFiles: false,
+        sortOrder: "asc",
+        viewMode: "card",
+      },
+      data: {
+        filteredResource: resource,
+        isSearchLoading: false,
+        resource,
+      },
+      listing: {
+        contextMenuOpen: true,
+        onDelete: mocks.itemActions.handleDelete,
+        onDownloadFile: mocks.itemActions.handleDoubleClickFile,
+        onOpenDirectory: mocks.navigation.handleOpenDirectory,
+        selectedPaths: mocks.selectionState.selectedPaths,
+        sortField: "name",
+        sortOrder: "asc",
+        viewMode: "card",
+      },
+    });
+
+    expect([...result.current.contentProps.listing.cutPaths]).toEqual([
+      "/srv/projects/readme.md",
+    ]);
+    expect(result.current.dialogsProps).toMatchObject({
+      contextMenu: {
+        anchorPosition: { left: 12, top: 24 },
+        canCompress: true,
+        canExtract: false,
+        canOpenContainingFolder: true,
+        canRename: true,
+        canShowDetails: true,
+        hasClipboard: true,
+        hasSelection: true,
+      },
+      create: {
+        fileOpen: false,
+      },
+      deleteDialog: {
+        open: false,
+        pendingDeletePaths: ["/srv/projects/readme.md"],
+      },
+      details: {
+        detailTarget: ["/srv/projects/readme.md"],
+        hasMultipleTargets: false,
+        hasSingleTarget: true,
+      },
+      editor: {
+        closeEditorDialog: false,
+        isDirty: false,
+        isSaving: false,
+        onRequestSave: mocks.editorActions.handleSaveFile,
+        onSaveContent: mocks.editorActions.handleSaveContent,
+      },
+      upload: {
+        normalizedPath: "/srv/projects",
+        open: false,
+      },
+      conflict: {
+        prompt: null,
+      },
+    });
+  });
+
+  it("owns the surface context-menu behavior", () => {
+    const { result } = setup();
+    const preventDefault = vi.fn();
+
+    act(() => {
+      result.current.contentProps.surface.onContextMenu({
+        clientX: 42,
+        clientY: 84,
+        preventDefault,
+      } as unknown as MouseEvent<HTMLDivElement>);
+    });
+
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+    expect(mocks.viewState.actions.openContextMenu).toHaveBeenCalledWith({
+      left: 42,
+      top: 84,
+    });
+
+    act(() => result.current.dialogsProps.contextMenu.onClose());
+
+    expect(mocks.viewState.actions.closeContextMenu).toHaveBeenCalledTimes(1);
+  });
+
+  it("wires cross-domain callbacks for selection clearing and listing invalidation", () => {
+    setup();
+    const mutationArgs = mocks.useFileMutations.mock.calls[0]?.[0];
+    const dragArgs = mocks.useFileDragAndDrop.mock.calls[0]?.[0];
+    const uploadArgs = mocks.useFileBrowserUploadActions.mock.calls[0]?.[0];
+
+    expect(mutationArgs).toMatchObject({
+      normalizedPath: "/srv/projects",
+    });
+    expect(dragArgs).toMatchObject({
+      normalizedPath: "/srv/projects",
+      resource,
+    });
+    expect(uploadArgs).toMatchObject({
+      normalizedPath: "/srv/projects",
+      upload: mocks.upload,
+    });
+
+    // Paste, upload, and drag-and-drop all share one collision resolver so a
+    // single dialog instance serves every flow.
+    expect(typeof uploadArgs.resolveCollisions).toBe("function");
+    expect(dragArgs.resolveCollisions).toBe(uploadArgs.resolveCollisions);
+    expect(mutationArgs.resolveCollisions).toBe(uploadArgs.resolveCollisions);
+
+    act(() => {
+      void mutationArgs.onDeleteSuccess();
+    });
+
+    expect(mocks.selectionState.actions.clear).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      void dragArgs.onUploadComplete();
+    });
+    act(() => {
+      void uploadArgs.invalidateListing();
+    });
+
+    // Both flows share the one useListingInvalidation callback.
+    expect(mocks.invalidateListing).toHaveBeenCalledTimes(2);
+  });
+
+  it("goes up to the parent folder and does nothing at the root", () => {
+    const { result } = setup();
+
+    act(() => result.current.contentProps.listing.onNavigateUp());
+    expect(mocks.navigation.handleOpenDirectory).toHaveBeenCalledWith("/srv");
+
+    mocks.navigation.handleOpenDirectory.mockClear();
+    mocks.navigation.normalizedPath = "/";
+    try {
+      const atRoot = setup();
+      act(() => atRoot.result.current.contentProps.listing.onNavigateUp());
+      expect(mocks.navigation.handleOpenDirectory).not.toHaveBeenCalled();
+    } finally {
+      mocks.navigation.normalizedPath = "/srv/projects";
+    }
+  });
+
+  it("moves dropped items and clears the selection, or copies them", async () => {
+    const { result } = setup();
+    const { onDropItems } = result.current.contentProps.listing;
+    expect(result.current.contentProps.chrome.onDropItems).toBe(onDropItems);
+
+    await act(() =>
+      onDropItems(["/srv/projects/a.txt"], "/srv/projects/photos/", false),
+    );
+    expect(mocks.mutations.moveItems).toHaveBeenCalledWith({
+      destinationDir: "/srv/projects/photos",
+      sourcePaths: ["/srv/projects/a.txt"],
+    });
+    expect(mocks.selectionState.actions.clear).toHaveBeenCalledTimes(1);
+
+    await act(() => onDropItems(["/srv/projects/a.txt"], "/srv", true));
+    expect(mocks.mutations.copyItems).toHaveBeenCalledWith({
+      destinationDir: "/srv",
+      sourcePaths: ["/srv/projects/a.txt"],
+    });
+    expect(mocks.selectionState.actions.clear).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the selection when a dropped move fails or is cancelled", async () => {
+    mocks.mutations.moveItems.mockRejectedValueOnce(new Error("cancelled"));
+    const { result } = setup();
+
+    await act(() =>
+      result.current.contentProps.listing.onDropItems(
+        ["/srv/projects/a.txt"],
+        "/srv/projects/photos/",
+        false,
+      ),
+    );
+
+    expect(mocks.selectionState.actions.clear).not.toHaveBeenCalled();
+  });
+});

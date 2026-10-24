@@ -10,19 +10,19 @@ import {
   type RsyncStatus,
   useCallMutation,
 } from "@/api";
+import PathPickerField from "@/components/pathpicker/PathPickerField";
+import { SettingsGrid } from "@/components/settings/SettingsSectionForm";
+import {
+  SectionCard,
+  StatusGroupLabel,
+} from "@/components/settings/SettingsSectionPrimitives";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppChip from "@/components/ui/AppChip";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import InfoRow from "@/components/ui/InfoRow";
-import PathPickerField from "@/components/ui/PathPickerField";
 import { useCapability } from "@/hooks/useCapabilities";
-import { SettingsGrid } from "@/routes/_authenticated/-components/navbar/SettingsSectionForm";
-import {
-  SectionCard,
-  StatusGroupLabel,
-} from "@/routes/_authenticated/-components/navbar/SettingsSectionPrimitives";
 
 import RsyncSSHSection from "./RsyncSSHSection";
 

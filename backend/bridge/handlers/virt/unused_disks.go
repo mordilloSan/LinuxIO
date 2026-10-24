@@ -18,8 +18,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
 )
 
-const managedSeedSuffix = "-seed.img"
-
 var (
 	// Directories where LinuxIO writes VM disks: the default pool (ISO
 	// installs) and the cloud image folder (ready images).
@@ -174,7 +172,7 @@ func deleteUnusedDiskWithConn(conn libvirtConn, path, vmName string) error {
 	}
 	info, err := os.Lstat(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return notFoundf("disk %s no longer exists", name)
+		return notFoundf("disk %s", name)
 	}
 	if err != nil {
 		return fmt.Errorf("inspect disk %s: %w", path, err)

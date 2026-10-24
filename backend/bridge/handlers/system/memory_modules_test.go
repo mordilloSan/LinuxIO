@@ -2,13 +2,13 @@ package system
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/hwprobe"
 )
 
 func TestParseUdevMemoryModules(t *testing.T) {
@@ -76,7 +76,6 @@ func TestFetchMemoryModulesFallsBackToDMIDecode(t *testing.T) {
 				return nil, nil
 			}
 		},
-		nil,
 	)
 	defer restore()
 
@@ -105,7 +104,6 @@ func TestFetchMemoryModulesReturnsEmptyWhenInventoryUnavailable(t *testing.T) {
 				return nil, nil
 			}
 		},
-		nil,
 	)
 	defer restore()
 
@@ -134,7 +132,6 @@ func TestFetchMemoryModulesReturnsEmptySliceWithoutSMBIOSMemoryRecords(t *testin
 				return nil, nil
 			}
 		},
-		nil,
 	)
 	defer restore()
 
@@ -154,40 +151,6 @@ func TestFetchMemoryModulesReturnsEmptySliceWithoutSMBIOSMemoryRecords(t *testin
 	}
 }
 
-func TestCheckMemoryModuleInventoryAvailabilityUsesUdev(t *testing.T) {
-	lookPathCalled := false
-	restore := stubMemoryModuleCommands(t,
-		func(_ context.Context, name string, args ...string) ([]byte, error) {
-			if name != "udevadm" {
-				t.Fatalf("unexpected command %q", name)
-			}
-			wantArgs := []string{"info", "--query=property", "--path=/sys/class/dmi/id"}
-			if !reflect.DeepEqual(args, wantArgs) {
-				t.Fatalf("udevadm args = %v, want %v", args, wantArgs)
-			}
-			return []byte(`MEMORY_ARRAY_NUM_DEVICES=1
-MEMORY_DEVICE_0_SIZE=8589934592
-`), nil
-		},
-		func(string) (string, error) {
-			lookPathCalled = true
-			return "", errors.New("should not be called")
-		},
-	)
-	defer restore()
-
-	available, err := CheckMemoryModuleInventoryAvailability(context.Background())
-	if err != nil {
-		t.Fatalf("CheckMemoryModuleInventoryAvailability() error = %v", err)
-	}
-	if !available {
-		t.Fatal("CheckMemoryModuleInventoryAvailability() available = false, want true")
-	}
-	if lookPathCalled {
-		t.Fatal("dmidecode lookup was called despite udev inventory")
-	}
-}
-
 func TestFetchMemoryModulesUsesUdevExportDatabase(t *testing.T) {
 	commands := make([][]string, 0, 2)
 	restore := stubMemoryModuleCommands(t,
@@ -201,7 +164,6 @@ E: MEMORY_ARRAY_NUM_DEVICES=1
 E: MEMORY_DEVICE_0_SIZE=8589934592
 `), nil
 		},
-		nil,
 	)
 	defer restore()
 
@@ -231,7 +193,6 @@ E: MEMORY_ARRAY_NUM_DEVICES=1
 E: MEMORY_DEVICE_0_SIZE=8589934592
 `), nil
 		},
-		nil,
 	)
 	defer restore()
 
@@ -245,74 +206,16 @@ E: MEMORY_DEVICE_0_SIZE=8589934592
 	}
 }
 
-func TestCheckMemoryModuleInventoryAvailabilityUsesDMIDecodeFallback(t *testing.T) {
-	restore := stubMemoryModuleCommands(t,
-		func(_ context.Context, name string, _ ...string) ([]byte, error) {
-			if name != "udevadm" {
-				t.Fatalf("unexpected command %q", name)
-			}
-			return []byte("P: /devices/virtual/dmi/id\n"), nil
-		},
-		func(name string) (string, error) {
-			if name != "dmidecode" {
-				t.Fatalf("unexpected lookup %q", name)
-			}
-			return "/usr/sbin/dmidecode", nil
-		},
-	)
-	defer restore()
-
-	available, err := CheckMemoryModuleInventoryAvailability(context.Background())
-	if err != nil {
-		t.Fatalf("CheckMemoryModuleInventoryAvailability() error = %v", err)
-	}
-	if !available {
-		t.Fatal("CheckMemoryModuleInventoryAvailability() available = false, want true")
-	}
-}
-
-func TestCheckMemoryModuleInventoryAvailabilityReportsMissingSources(t *testing.T) {
-	restore := stubMemoryModuleCommands(t,
-		func(_ context.Context, name string, _ ...string) ([]byte, error) {
-			if name != "udevadm" {
-				t.Fatalf("unexpected command %q", name)
-			}
-			return nil, errors.New("udevadm not found")
-		},
-		func(name string) (string, error) {
-			if name != "dmidecode" {
-				t.Fatalf("unexpected lookup %q", name)
-			}
-			return "", errors.New("dmidecode not found")
-		},
-	)
-	defer restore()
-
-	available, err := CheckMemoryModuleInventoryAvailability(context.Background())
-	if available {
-		t.Fatal("CheckMemoryModuleInventoryAvailability() available = true, want false")
-	}
-	if err == nil || !strings.Contains(err.Error(), "dmidecode is not installed") {
-		t.Fatalf("CheckMemoryModuleInventoryAvailability() error = %v", err)
-	}
-}
-
 func stubMemoryModuleCommands(
 	t *testing.T,
 	run func(context.Context, string, ...string) ([]byte, error),
-	lookPath func(string) (string, error),
 ) func() {
 	t.Helper()
-	memoryModulesCache = hwSnapshotCache[[]apischema.MemoryModule]{}
+	memoryModulesCache = hwprobe.SnapshotCache[[]apischema.MemoryModule]{}
 	originalRunCommand := memoryModulesRunCommand
-	originalLookPath := memoryModulesLookPath
 	memoryModulesRunCommand = run
-	if lookPath != nil {
-		memoryModulesLookPath = lookPath
-	}
 	return func() {
 		memoryModulesRunCommand = originalRunCommand
-		memoryModulesLookPath = originalLookPath
-		memoryModulesCache = hwSnapshotCache[[]apischema.MemoryModule]{}
+		memoryModulesCache = hwprobe.SnapshotCache[[]apischema.MemoryModule]{}
 	}
 }

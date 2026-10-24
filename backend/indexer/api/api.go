@@ -3,6 +3,7 @@
 package api
 
 import (
+	"path/filepath"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -24,13 +25,6 @@ const (
 	EventComplete = "complete"
 	EventError    = "error"
 
-	StatusOK                  = 200
-	StatusAccepted            = 202
-	StatusBadRequest          = 400
-	StatusForbidden           = 403
-	StatusConflict            = 409
-	StatusInternalServerError = 500
-
 	MinSearchQueryRunes = 3
 )
 
@@ -50,8 +44,8 @@ type IndexerConfig struct {
 // IndexerConfigPatch is a partial /config update. Pointers preserve explicit false,
 // zero, and empty-string values.
 type IndexerConfigPatch struct {
-	ExcludePaths         *[]string `json:"exclude_paths,omitempty" yaml:"exclude_paths,omitempty"`
-	IncludeNetworkMounts *bool     `json:"include_network_mounts,omitempty" yaml:"include_network_mounts,omitempty"`
+	ExcludePaths         *[]string `json:"exclude_paths,omitzero" yaml:"exclude_paths,omitempty"`
+	IncludeNetworkMounts *bool     `json:"include_network_mounts,omitzero" yaml:"include_network_mounts,omitempty"`
 }
 
 type StatusResponse struct {
@@ -100,9 +94,9 @@ type EntryResult struct {
 	Size       int64     `json:"size"`
 	ModTime    time.Time `json:"mod_time"`
 	Inode      uint64    `json:"inode"`
-	TotalSize  int64     `json:"total_size,omitempty"`
-	TotalFiles int64     `json:"total_files,omitempty"`
-	TotalDirs  int64     `json:"total_dirs,omitempty"`
+	TotalSize  int64     `json:"total_size,omitzero"`
+	TotalFiles int64     `json:"total_files,omitzero"`
+	TotalDirs  int64     `json:"total_dirs,omitzero"`
 }
 
 type SubfolderResult struct {
@@ -110,10 +104,6 @@ type SubfolderResult struct {
 	Name    string    `json:"name"`
 	Size    int64     `json:"size"`
 	ModTime time.Time `json:"mod_time"`
-}
-
-type Stats struct {
-	DatabaseSize int64 `json:"database_size"`
 }
 
 type WorkStartedEvent struct {
@@ -129,10 +119,10 @@ type WorkProgressEvent struct {
 	Path         string `json:"path"`
 	Phase        string `json:"phase,omitempty"`
 	Message      string `json:"message,omitempty"`
-	FilesIndexed int64  `json:"files_indexed,omitempty"`
-	DirsIndexed  int64  `json:"dirs_indexed,omitempty"`
+	FilesIndexed int64  `json:"files_indexed,omitzero"`
+	DirsIndexed  int64  `json:"dirs_indexed,omitzero"`
 	CurrentPath  string `json:"current_path,omitempty"`
-	BytesIndexed int64  `json:"bytes_indexed,omitempty"`
+	BytesIndexed int64  `json:"bytes_indexed,omitzero"`
 }
 
 type WorkCompleteEvent struct {
@@ -141,10 +131,10 @@ type WorkCompleteEvent struct {
 	OperationID    string `json:"operation_id"`
 	Path           string `json:"path"`
 	DurationMs     int64  `json:"duration_ms"`
-	FilesIndexed   int64  `json:"files_indexed,omitempty"`
-	DirsIndexed    int64  `json:"dirs_indexed,omitempty"`
-	TotalSize      int64  `json:"total_size,omitempty"`
-	DeletedEntries int64  `json:"deleted_entries,omitempty"`
+	FilesIndexed   int64  `json:"files_indexed,omitzero"`
+	DirsIndexed    int64  `json:"dirs_indexed,omitzero"`
+	TotalSize      int64  `json:"total_size,omitzero"`
+	DeletedEntries int64  `json:"deleted_entries,omitzero"`
 }
 
 type WorkErrorEvent struct {
@@ -153,4 +143,18 @@ type WorkErrorEvent struct {
 	OperationID string `json:"operation_id"`
 	Path        string `json:"path"`
 	Message     string `json:"message"`
+}
+
+// NormalizePath is the canonical index path both the daemon and the bridge
+// use: cleaned (so ".." cannot escape the root), absolute, no trailing slash,
+// and "/" for the root.
+func NormalizePath(p string) string {
+	if p == "" || p == "/" {
+		return "/"
+	}
+	cleaned := filepath.Clean("/" + strings.Trim(p, "/"))
+	if cleaned == "" || cleaned == "." {
+		return "/"
+	}
+	return cleaned
 }

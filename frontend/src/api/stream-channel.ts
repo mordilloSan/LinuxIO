@@ -9,7 +9,7 @@ export type StreamMessageChannelOptions = {
   onResult?: (result: ResultFrame) => void;
 };
 
-export type StreamMessageChannelMessageEvent = Event & {
+type StreamMessageChannelMessageEvent = Event & {
   data: ArrayBuffer;
 };
 

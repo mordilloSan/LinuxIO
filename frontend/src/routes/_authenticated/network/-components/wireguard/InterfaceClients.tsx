@@ -2,18 +2,18 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { CACHE_TTL_MS, linuxio, type Peer, useCallMutation } from "@/api";
-import WireguardPeerCard, {
-  usePeer,
-} from "@/components/cards/WireguardPeerCard";
-import type { WireguardPeerAction } from "@/components/cards/WireguardPeerCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import PageLoader from "@/components/loaders/PageLoader";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
+import { useReorderableSurface } from "@/components/reorder/useReorderableSurface";
 import { AppDialogContent } from "@/components/ui/AppDialog";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
-import { useReorderableSurface } from "@/hooks/useReorderableSurface";
 import { useScopedToast } from "@/hooks/useScopedToast";
+import type { WireguardPeerAction } from "@/routes/_authenticated/network/-components/wireguard/WireguardPeerCard";
+import WireguardPeerCard, {
+  usePeer,
+} from "@/routes/_authenticated/network/-components/wireguard/WireguardPeerCard";
 
 import EditPeerDialog from "./EditPeerDialog";
 

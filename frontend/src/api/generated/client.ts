@@ -144,6 +144,19 @@ const linuxio = {
     resource_stat: defineCallWithRequest("filebrowser.resource_stat"),
     search: defineCallWithRequest("filebrowser.search"),
     subfolders: defineCallWithRequest("filebrowser.subfolders"),
+    trash_batch: createTaskEndpoint("filebrowser", "trash_batch", {
+      kind: "field",
+      field: "paths",
+    }),
+    trash_list: defineCall("filebrowser.trash_list"),
+    trash_purge: createTaskEndpoint("filebrowser", "trash_purge", {
+      kind: "field",
+      field: "paths",
+    }),
+    trash_restore: createTaskEndpoint("filebrowser", "trash_restore", {
+      kind: "field",
+      field: "paths",
+    }),
     upload: createTaskEndpoint("filebrowser", "upload", { kind: "object" }),
     upload_batch: createTaskEndpoint("filebrowser", "upload_batch", {
       kind: "object",
@@ -158,6 +171,10 @@ const linuxio = {
     get_status: defineCall("indexer.get_status"),
     set_config: defineCallWithRequest("indexer.set_config"),
     set_timer_interval: defineCallWithRequest("indexer.set_timer_interval"),
+  },
+  logging: {
+    get_debug: defineCall("logging.get_debug"),
+    set_debug: defineCallWithRequest("logging.set_debug"),
   },
   logs: {
     general_entry: defineCallWithRequest("logs.general_entry"),
@@ -370,7 +387,6 @@ const linuxio = {
     get_server_time: defineCall("system.get_server_time"),
     get_system_info: defineCall("system.get_system_info"),
     get_timezones: defineCall("system.get_timezones"),
-    get_updates_fast: defineCall("system.get_updates_fast"),
     install_capability: createTaskEndpoint("system", "install_capability", {
       kind: "field",
       field: "capability",
@@ -423,7 +439,6 @@ const linuxio = {
     reboot: defineCallWithRequest("virt.reboot"),
     resume: defineCallWithRequest("virt.resume"),
     set_autostart: defineCallWithRequest("virt.set_autostart"),
-    set_firmware: defineCallWithRequest("virt.set_firmware"),
     shutdown: defineCallWithRequest("virt.shutdown"),
     start: defineCallWithRequest("virt.start"),
     suspend: defineCallWithRequest("virt.suspend"),
@@ -435,6 +450,7 @@ const linuxio = {
     templates: defineCall("virt.templates"),
     unused_disk_delete: defineCallWithRequest("virt.unused_disk_delete"),
     unused_disks: defineCall("virt.unused_disks"),
+    update: defineCallWithRequest("virt.update"),
   },
   wireguard: {
     add_interface: defineCallWithRequest("wireguard.add_interface"),

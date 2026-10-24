@@ -34,7 +34,7 @@ func writeOVA(t *testing.T, ovf string) string {
 		t.Fatal(err)
 	}
 	writer := tar.NewWriter(file)
-	for name, data := range map[string]string{"appliance.ovf": ovf, "../appliance-disk1.vmdk": "vmdk-bytes"} {
+	for name, data := range map[string]string{"appliance.ovf": ovf, "../appliance-disk1.vmdk": "KDMV-bytes"} {
 		if err := writer.WriteHeader(&tar.Header{Name: name, Mode: 0o644, Size: int64(len(data)), Typeflag: tar.TypeReg}); err != nil {
 			t.Fatal(err)
 		}
@@ -52,6 +52,7 @@ func writeOVA(t *testing.T, ovf string) string {
 }
 
 func TestImportDiskFileConvertsOVAAndDetectsBIOSFirmware(t *testing.T) {
+	withFakeManagedStoragePermissions(t)
 	fakeImportCommands(t, "10737418240")
 	volumePath := filepath.Join(t.TempDir(), "linuxio-imported.qcow2")
 
@@ -62,7 +63,7 @@ func TestImportDiskFileConvertsOVAAndDetectsBIOSFirmware(t *testing.T) {
 	if sizeGB != 20 || !legacyBoot {
 		t.Fatalf("sizeGB=%d legacyBoot=%t, want 20 and BIOS boot", sizeGB, legacyBoot)
 	}
-	if data, readErr := os.ReadFile(volumePath); readErr != nil || string(data) != "vmdk-bytes" {
+	if data, readErr := os.ReadFile(volumePath); readErr != nil || string(data) != "KDMV-bytes" {
 		t.Fatalf("volume = %q, %v", data, readErr)
 	}
 	if stage, _ := filepath.Glob(filepath.Join(filepath.Dir(volumePath), ".linuxio-create-*")); len(stage) != 0 {
@@ -71,6 +72,7 @@ func TestImportDiskFileConvertsOVAAndDetectsBIOSFirmware(t *testing.T) {
 }
 
 func TestImportDiskFileKeepsLargerImageAndEFIFirmware(t *testing.T) {
+	withFakeManagedStoragePermissions(t)
 	fakeImportCommands(t, "34359738368")
 	volumePath := filepath.Join(t.TempDir(), "linuxio-imported.qcow2")
 
@@ -84,6 +86,7 @@ func TestImportDiskFileKeepsLargerImageAndEFIFirmware(t *testing.T) {
 }
 
 func TestImportDiskFileDetectsTerraMasterOVMF(t *testing.T) {
+	withFakeManagedStoragePermissions(t)
 	fakeImportCommands(t, "34359738368")
 	volumePath := filepath.Join(t.TempDir(), "linuxio-imported.qcow2")
 
@@ -106,5 +109,22 @@ func TestValidateImportDiskRejectsUnsupportedFile(t *testing.T) {
 	path := tempFile(t, "disk.vmdk")
 	if got, err := validateImportDisk(" " + path + " "); err != nil || got != path {
 		t.Fatalf("validateImportDisk = %q, %v", got, err)
+	}
+}
+
+func TestImportDiskFileRejectsVMDKDescriptor(t *testing.T) {
+	fakeImportCommands(t, "10737418240")
+	source := filepath.Join(t.TempDir(), "disk.vmdk")
+	descriptor := "# Disk DescriptorFile\nversion=1\nRW 8 FLAT \"/etc/shadow\" 0\n"
+	if err := os.WriteFile(source, []byte(descriptor), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	volumePath := filepath.Join(t.TempDir(), "linuxio-imported.qcow2")
+
+	if _, _, err := importDiskFile(t.Context(), source, volumePath, 20, nil); err == nil || !strings.Contains(err.Error(), "sparse") {
+		t.Fatalf("importDiskFile error = %v, want VMDK descriptor rejection", err)
+	}
+	if _, err := os.Stat(volumePath); err == nil {
+		t.Fatal("volume was created from a VMDK descriptor")
 	}
 }

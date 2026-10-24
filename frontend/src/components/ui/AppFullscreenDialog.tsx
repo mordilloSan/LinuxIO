@@ -1,7 +1,6 @@
 import { AnimatePresence, motion, type Variants } from "motion/react";
 import {
   useEffect,
-  useEffectEvent,
   useId,
   useRef,
   type CSSProperties,
@@ -15,9 +14,10 @@ import {
   TRANSITION_DURATION_STANDARD_MS,
 } from "@/theme/constants";
 
-import { AppDialogTitleContext, OVERLAY_ROOT_SELECTOR } from "./AppDialog";
+import { AppDialogTitleContext } from "./AppDialog";
 import { acquireBodyScrollLock } from "./bodyScrollLock";
 import { useDialogFocusRestore } from "./useDialogFocusRestore";
+import { useOverlayEscape } from "./useOverlayEscape";
 
 import "./app-fullscreen-dialog.css";
 
@@ -88,42 +88,12 @@ const AppFullscreenDialog = ({
     return releaseBodyScrollLock;
   }, [open]);
 
-  const handleDocumentKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (
-      event.key !== "Escape" ||
-      disableEscapeKeyDown ||
-      event.defaultPrevented
-    ) {
-      return;
-    }
-
-    const root = rootRef.current;
-    if (!root) {
-      return;
-    }
-
-    const openOverlays = Array.from(
-      document.querySelectorAll<HTMLDivElement>(OVERLAY_ROOT_SELECTOR),
-    );
-    if (openOverlays[openOverlays.length - 1] !== root) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    onClose?.();
+  useOverlayEscape({
+    disabled: disableEscapeKeyDown,
+    onEscape: () => onClose?.(),
+    open,
+    rootRef,
   });
-
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-
-    document.addEventListener("keydown", handleDocumentKeyDown);
-    return () => {
-      document.removeEventListener("keydown", handleDocumentKeyDown);
-    };
-  }, [open]);
 
   useEffect(() => {
     if (!open || !rootRef.current) {

@@ -25,15 +25,11 @@ var (
 	ErrEditorFileContainsNUL = errors.New("file contains a NUL byte")
 )
 
-// EditorFileInfo keeps the validation details used by existing transfer code;
-// callers of the text-read API need only Content, Version, and CanSave.
+// EditorFileInfo is the result of the text-read API.
 type EditorFileInfo struct {
-	IsRegularFile bool
-	Size          int64
-	CanOpenAsText bool
-	CanSave       bool
-	Version       string
-	Content       []byte
+	CanSave bool
+	Version string
+	Content []byte
 }
 
 // ReadEditorFile resolves and opens only the requested target. It does not
@@ -56,7 +52,6 @@ func readEditorFile(ctx context.Context, root *fsroot.FSRoot, path string) (Edit
 	if err != nil {
 		return result, err
 	}
-	result.Size = requestedInfo.Size()
 	if !requestedInfo.Mode().IsRegular() || requestedInfo.Size() >= MaxTextFileBytes {
 		return result, ErrEditorFileNotEligible
 	}
@@ -66,8 +61,6 @@ func readEditorFile(ctx context.Context, root *fsroot.FSRoot, path string) (Edit
 		return result, err
 	}
 	defer file.Close()
-	result.IsRegularFile = true
-	result.Size = openedInfo.Size()
 
 	content, err := readEditorContent(ctx, file)
 	if err != nil {
@@ -86,7 +79,6 @@ func readEditorFile(ctx context.Context, root *fsroot.FSRoot, path string) (Edit
 		return result, ctxErr
 	}
 	digest := sha256.Sum256(content)
-	result.CanOpenAsText = true
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return result, ctxErr
 	}

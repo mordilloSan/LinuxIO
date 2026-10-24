@@ -2,13 +2,14 @@ package alerts
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	store "github.com/mordilloSan/LinuxIO/backend/common/alerts"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
 )
 
 func uidKey(uid uint32) string { return strconv.FormatUint(uint64(uid), 10) }
@@ -54,4 +55,38 @@ func dismissForUID(ctx context.Context, uid uint32, id string) (apischema.AlertL
 		return apischema.AlertList{}, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
 	}
 	return listForUID(uid)
+}
+
+func notificationsFromRequest(r apischema.NotificationSettings) store.NotificationSettings {
+	return store.NotificationSettings{
+		MinSeverity: r.MinSeverity, WebhookURL: r.WebhookURL,
+		SMTPHost: r.SMTPHost, SMTPPort: r.SMTPPort, SMTPUsername: r.SMTPUsername, SMTPPassword: r.SMTPPassword,
+		EmailFrom: r.EmailFrom, EmailTo: r.EmailTo,
+	}
+}
+
+// notificationsView is the response form: the SMTP password is never sent
+// back, only whether one is stored.
+func notificationsView(n store.NotificationSettings) apischema.NotificationSettingsView {
+	return apischema.NotificationSettingsView{
+		MinSeverity: n.MinSeverity, WebhookURL: n.WebhookURL,
+		SMTPHost: n.SMTPHost, SMTPPort: n.SMTPPort, SMTPUsername: n.SMTPUsername, SMTPPasswordSet: n.SMTPPassword != "",
+		EmailFrom: n.EmailFrom, EmailTo: n.EmailTo,
+	}
+}
+
+// handleTestNotifications sends a test alert through the saved channels,
+// whatever their minimum severity, and reports the first failure.
+func handleTestNotifications(ctx context.Context, _ apischema.NoRequest) (apischema.SuccessResponse, error) {
+	n, err := store.LoadNotifications()
+	if err != nil {
+		return apischema.SuccessResponse{}, err
+	}
+	if n.WebhookURL == "" && n.SMTPHost == "" {
+		return apischema.SuccessResponse{}, errors.New("no notification channel is configured")
+	}
+	if err := store.Send(ctx, n, store.TestAlert()); err != nil {
+		return apischema.SuccessResponse{}, fmt.Errorf("send test notification: %w", err)
+	}
+	return apischema.SuccessResponse{Success: true}, nil
 }

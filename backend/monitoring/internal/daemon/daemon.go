@@ -11,19 +11,17 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/config"
 )
 
-const DataDir = "/var/lib/linuxio/monitoring"
-
 // Listeners returns the two fixed LinuxIO sockets followed by the configured
 // read-only listeners. Commands are never served off the control socket.
 func Listeners(cfg config.Config) []app.ListenerOptions {
 	out := []app.ListenerOptions{
-		{Name: "api", Address: "unix:" + monitoringapi.APISocketPath, APIs: []string{"metrics"}, Mode: 0o666},
-		{Name: "control", Address: "unix:" + monitoringapi.ControlSocketPath, APIs: []string{"metrics", "commands"}, Mode: 0o600, RootOnly: true},
+		{Name: "api", Address: "unix:" + monitoringapi.APISocketPath, APIs: []string{"metrics"}, Mode: config.APISocketMode},
+		{Name: "control", Address: "unix:" + monitoringapi.ControlSocketPath, APIs: []string{"metrics", "commands"}, Mode: config.ControlSocketMode, RootOnly: true},
 	}
 	for _, listener := range cfg.Listeners {
 		out = append(out, app.ListenerOptions{
 			Name:    listener.Name,
-			Address: app.GetAddress(listener.Address),
+			Address: config.GetAddress(listener.Address),
 			APIs:    []string{"metrics"},
 			// An empty plugin list stays nil, which the server reads as
 			// "all metrics plugins".
@@ -53,7 +51,6 @@ func runOptions(cfg config.Config, source string) app.ReloadOptions {
 		DiskUsageCache:       cfg.Collector.DiskUsageCache.Duration(),
 		HistoryRetention:     cfg.History.Retention.Duration(),
 		History:              historyString(cfg),
-		HistorySet:           true,
 		HistoryIntervals:     cfg.HistoryIntervalDurations(),
 		ConfigSource:         source,
 		ConfigVersion:        cfg.Version,
@@ -70,13 +67,13 @@ func Run(ctx context.Context, configPath string) error {
 	if !loaded {
 		source = "defaults"
 		if created, saveErr := config.SaveIfMissing(configPath, cfg); saveErr != nil {
-			slog.Warn("could not write default config", "path", configPath, "err", saveErr)
+			slog.Warn("could not write default config", "path", configPath, "error", saveErr)
 		} else if created {
 			source = "created"
 		}
 	}
 
-	a, err := app.New(ctx, DataDir)
+	a, err := app.New(ctx, config.DataDir)
 	if err != nil {
 		return fmt.Errorf("create agent: %w", err)
 	}
@@ -89,7 +86,6 @@ func Run(ctx context.Context, configPath string) error {
 		DiskUsageCache:       reload.DiskUsageCache,
 		HistoryRetention:     reload.HistoryRetention,
 		History:              reload.History,
-		HistorySet:           true,
 		HistoryIntervals:     reload.HistoryIntervals,
 		ConfigPath:           configPath,
 		ConfigSource:         source,

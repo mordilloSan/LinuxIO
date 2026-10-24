@@ -2,7 +2,9 @@ package virt
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
 	"os"
@@ -178,7 +180,7 @@ func bridgePhysicalUplink(name string) (uplink string, carrier bool) {
 	for _, member := range members {
 		memberRoot := filepath.Join(networkSysfsRoot, member.Name())
 		_, err := os.Stat(filepath.Join(memberRoot, "wireless"))
-		if err == nil || !os.IsNotExist(err) {
+		if err == nil || !errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
 		deviceInfo, err := os.Stat(filepath.Join(memberRoot, "device"))

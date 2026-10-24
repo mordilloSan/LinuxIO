@@ -3,7 +3,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Icon } from "@iconify/react";
 import type { CSSProperties, ReactNode } from "react";
 
-import { REORDER_HOLD_MS } from "@/constants/reorder";
+import { REORDER_HOLD_MS } from "@/components/reorder/constants";
 import { cardBorderRadius } from "@/theme/constants";
 
 import "./FrostedCard.css";

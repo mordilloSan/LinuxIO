@@ -2,7 +2,8 @@ package storage
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -14,7 +15,7 @@ import (
 	"github.com/shirou/gopsutil/v4/disk"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/common/utils"
+	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
 )
 
 func GetTopology(ctx context.Context) (apischema.StorageTopologyInventory, error) {
@@ -41,7 +42,7 @@ type topologyBlockDevice struct {
 	KernelName  string                `json:"kname"`
 	Path        string                `json:"path"`
 	Type        string                `json:"type"`
-	Size        json.Number           `json:"size"`
+	Size        jsontext.Value        `json:"size"`
 	FSType      string                `json:"fstype"`
 	Mountpoints []string              `json:"mountpoints"`
 	Model       string                `json:"model"`
@@ -51,23 +52,31 @@ type topologyBlockDevice struct {
 	Children    []topologyBlockDevice `json:"children"`
 }
 
-func ListBlockDevices(ctx context.Context) ([]apischema.StorageBlockDevice, error) {
+// runLsblk runs lsblk with args and returns stdout. Both the topology tree and
+// the drive inventory go through it.
+func runLsblk(ctx context.Context, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	args := []string{"--json", "--bytes", "--tree", "--output", "NAME,KNAME,PATH,TYPE,SIZE,FSTYPE,MOUNTPOINTS,MODEL,SERIAL,TRAN,RO"}
-	cmd := exec.CommandContext(ctx, "lsblk", args...)
-	out, err := cmd.Output()
+	out, err := exec.CommandContext(ctx, "lsblk", args...).Output()
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, fmt.Errorf("list block devices: %w", ctx.Err())
+			return nil, fmt.Errorf("run lsblk: %w", ctx.Err())
 		}
 		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 			out = exitErr.Stderr
 		}
-		return nil, utils.CommandOutputError("lsblk", args, out, err)
+		return nil, hostcmd.OutputError("lsblk", args, out, err)
+	}
+	return out, nil
+}
+
+func ListBlockDevices(ctx context.Context) ([]apischema.StorageBlockDevice, error) {
+	out, err := runLsblk(ctx, "--json", "--bytes", "--tree", "--output", "NAME,KNAME,PATH,TYPE,SIZE,FSTYPE,MOUNTPOINTS,MODEL,SERIAL,TRAN,RO")
+	if err != nil {
+		return nil, err
 	}
 	return parseBlockDevices(out)
 }
@@ -76,7 +85,7 @@ func parseBlockDevices(data []byte) ([]apischema.StorageBlockDevice, error) {
 	var report struct {
 		Devices []topologyBlockDevice `json:"blockdevices"`
 	}
-	if err := json.Unmarshal(data, &report); err != nil {
+	if err := json.Unmarshal(data, &report, json.MatchCaseInsensitiveNames(true)); err != nil {
 		return nil, fmt.Errorf("parse block devices: %w", err)
 	}
 	devices := map[string]*apischema.StorageBlockDevice{}
@@ -108,7 +117,7 @@ func collectBlockDevice(raw topologyBlockDevice, parent string, devices map[stri
 	}
 	device := devices[raw.Path]
 	if device == nil {
-		size, err := strconv.ParseUint(raw.Size.String(), 10, 64)
+		size, err := strconv.ParseUint(strings.Trim(string(raw.Size), `"`), 10, 64)
 		if err != nil {
 			return fmt.Errorf("parse size of %s: %w", raw.Path, err)
 		}

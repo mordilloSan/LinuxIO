@@ -6,8 +6,7 @@ CLI or Codex) running on the host as the logged-in user. The agent speaks the
 over stdin/stdout). The browser is the ACP client and renders the session; the
 model runs at the vendor. LinuxIO runs no model, holds no API key and stores
 nothing about conversations. The only thing it persists is the chosen agent id
-(`assistant.agent` in the per-user config). Design background lives in the
-[spec](./superpowers/specs/2026-10-07-assistant-acp-design.md).
+(`assistant.agent` in the per-user config).
 
 ## Relay
 
@@ -47,7 +46,7 @@ websocket ends the agent process.
 | `gemini` | `npx @google/gemini-cli --acp` |
 | `codex` | `npx @agentclientprotocol/codex-acp` |
 
-The table is `agents` in `backend/bridge/handlers/assistant/agents.go`. The
+The table is `agents` in `backend/bridge/internal/acpagents`, which the config handler and the Terminal agent login also use. The
 commands come from the ACP registry. The browser only ever sends an agent id;
 it never supplies a command, and unknown ids are rejected before anything
 spawns. Settings: `config.get` returns `assistant.agent`; `config.set`

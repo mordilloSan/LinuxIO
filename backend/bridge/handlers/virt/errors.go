@@ -1,28 +1,19 @@
 package virt
 
 import (
-	"errors"
 	"fmt"
 
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
 func badRequestf(format string, args ...any) error {
-	return bridgeipc.NewError(fmt.Sprintf(format, args...), 400)
+	return fmt.Errorf("%w: %s", bridgeipc.ErrInvalidArgs, fmt.Sprintf(format, args...))
 }
 
 func conflictf(format string, args ...any) error {
-	return bridgeipc.NewError(fmt.Sprintf(format, args...), 409)
+	return fmt.Errorf("%w: %s", bridgeipc.ErrConflict, fmt.Sprintf(format, args...))
 }
 
 func notFoundf(format string, args ...any) error {
-	return bridgeipc.NewError(fmt.Sprintf(format, args...), 404)
-}
-
-func errorCode(err error, fallback int) int {
-	var bridgeErr *bridgeipc.Error
-	if errors.As(err, &bridgeErr) && bridgeErr.Code != 0 {
-		return bridgeErr.Code
-	}
-	return fallback
+	return fmt.Errorf("%w: %s", bridgeipc.ErrNotFound, fmt.Sprintf(format, args...))
 }

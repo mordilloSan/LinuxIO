@@ -27,9 +27,9 @@ import {
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
-import { TASK_TYPE_STORAGE_BTRFS_BALANCE } from "@/constants/backgroundTaskTypes";
-import { useActiveTaskRecovery } from "@/hooks/backgroundTasks/useActiveTaskRecovery";
-import { formatFileSize } from "@/utils/formaters";
+import { TASK_TYPE_STORAGE_BTRFS_BALANCE } from "@/tasks/taskTypes";
+import { useActiveTaskRecovery } from "@/tasks/useActiveTaskRecovery";
+import { formatFileSize } from "@/utils/formatters";
 
 import BtrfsAddDeviceDialog from "./BtrfsAddDeviceDialog";
 import BtrfsBalanceDialog from "./BtrfsBalanceDialog";

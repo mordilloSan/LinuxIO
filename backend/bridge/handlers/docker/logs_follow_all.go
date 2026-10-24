@@ -3,8 +3,9 @@ package docker
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -12,12 +13,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/moby/moby/api/pkg/stdcopy"
 	"github.com/moby/moby/client"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/dockerclient"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/streamrelay"
+	"github.com/mordilloSan/LinuxIO/backend/common/dockerupdate"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
@@ -29,7 +32,7 @@ type dockerLogRecord struct {
 	Name   string `json:"name"`
 	TS     string `json:"ts"`
 	Line   string `json:"line"`
-	Stderr bool   `json:"stderr,omitempty"`
+	Stderr bool   `json:"stderr,omitzero"`
 }
 
 // dockerLogStream is the shared sink for every follower goroutine of one
@@ -110,15 +113,10 @@ func (w *dockerLogLineWriter) appendRecord(frame *bytes.Buffer, raw []byte) {
 	frame.WriteByte('\n')
 }
 
-// copyContainerLogs drains one container's log stream into the line writers.
-// TTY containers return raw bytes; the others are stdout/stderr multiplexed.
+// copyContainerLogs drains one container's log stream into the line writers
+// and flushes their trailing partial lines.
 func copyContainerLogs(reader io.Reader, tty bool, stdout, stderr *dockerLogLineWriter) error {
-	var err error
-	if tty {
-		_, err = io.Copy(stdout, reader)
-	} else {
-		_, err = stdcopy.StdCopy(stdout, stderr, reader)
-	}
+	err := demuxContainerLogs(reader, tty, stdout, stderr)
 	if closeErr := stdout.Close(); err == nil {
 		err = closeErr
 	}
@@ -141,11 +139,11 @@ func streamDockerLogsFollowAllChannel(parent context.Context, stream net.Conn, _
 	}
 	slog.Debug("starting merged docker log channel", "component", "docker", "route", routeDockerLogsFollowAll, "mode", tail)
 
-	cli, err := getClient()
+	cli, err := dockerclient.Get()
 	if err != nil {
-		return writeDockerLogErrorUnlessCanceled(ctx, stream, err, "failed to get docker client", "route", routeDockerLogsFollowAll)
+		return streamrelay.WriteErrorUnlessCanceled(ctx, stream, 0, fmt.Errorf("get docker client for merged logs: %w", err))
 	}
-	defer releaseClient(cli)
+	defer dockerclient.Release(cli)
 
 	// Subscribe before listing so a container that starts in between is not missed.
 	events := cli.Events(ctx, client.EventsListOptions{
@@ -153,7 +151,7 @@ func streamDockerLogsFollowAllChannel(parent context.Context, stream net.Conn, _
 	})
 	containers, err := cli.ContainerList(ctx, client.ContainerListOptions{})
 	if err != nil {
-		return writeDockerLogErrorUnlessCanceled(ctx, stream, err, "failed to list containers for logs", "route", routeDockerLogsFollowAll)
+		return streamrelay.WriteErrorUnlessCanceled(ctx, stream, 0, fmt.Errorf("list containers for merged logs: %w", err))
 	}
 
 	listedAt := time.Now().UnixNano()
@@ -167,13 +165,13 @@ func streamDockerLogsFollowAllChannel(parent context.Context, stream net.Conn, _
 	}
 	for _, c := range containers.Items {
 		listed[c.ID] = struct{}{}
-		follow(c.ID, primaryContainerName(c), false)
+		follow(c.ID, dockerupdate.PrimaryContainerName(c), false)
 	}
 
 	eventsErr := attachStartedContainers(ctx, events, listed, listedAt, follow)
 	followers.Wait()
 	if eventsErr != nil {
-		return writeDockerLogErrorUnlessCanceled(ctx, stream, eventsErr, "docker event stream failed", "route", routeDockerLogsFollowAll)
+		return streamrelay.WriteErrorUnlessCanceled(ctx, stream, 0, fmt.Errorf("docker event stream: %w", eventsErr))
 	}
 	if ctx.Err() != nil {
 		return relay.WriteStreamClose(stream, 0)

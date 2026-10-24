@@ -7,7 +7,7 @@ import {
   sampleDockAccentColor,
 } from "@/routes/_authenticated/-components/dock/dockPalette";
 import { useAppTheme } from "@/theme";
-import { lighten, toHexColor } from "@/utils/color";
+import { lighten, toHexColor } from "@/theme/colorUtils";
 
 import "./dock-accent-gradient-editor.css";
 

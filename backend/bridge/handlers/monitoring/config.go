@@ -2,15 +2,17 @@ package monitoring
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	monitoringapi "github.com/mordilloSan/LinuxIO/backend/monitoring/api"
 )
 
 func FetchConfig(ctx context.Context) (apischema.MonitoringConfig, error) {
-	resp, err := runCommand(ctx, "config.get", nil)
+	resp, err := runCommand(ctx, monitoringapi.CommandConfigGet, nil)
 	if err != nil {
 		return apischema.MonitoringConfig{}, fmt.Errorf("fetch monitoring config: %w", err)
 	}
@@ -21,7 +23,7 @@ func UpdateConfig(ctx context.Context, patch apischema.MonitoringConfigPatch) (a
 	if patchIsEmpty(patch) {
 		return apischema.MonitoringConfig{}, false, bridgeipc.ErrInvalidArgs
 	}
-	resp, err := runCommand(ctx, "config.set", patch)
+	resp, err := runCommand(ctx, monitoringapi.CommandConfigSet, patch)
 	if err != nil {
 		return apischema.MonitoringConfig{}, false, fmt.Errorf("update monitoring config: %w", err)
 	}
@@ -32,7 +34,7 @@ func UpdateConfig(ctx context.Context, patch apischema.MonitoringConfigPatch) (a
 	return cfg, resp.RestartRequired, nil
 }
 
-func decodeConfig(data json.RawMessage) (apischema.MonitoringConfig, error) {
+func decodeConfig(data jsontext.Value) (apischema.MonitoringConfig, error) {
 	var cfg apischema.MonitoringConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return apischema.MonitoringConfig{}, fmt.Errorf("decode monitoring config: %w", err)

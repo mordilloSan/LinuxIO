@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import FileEditor from "@/components/filebrowser/FileEditor";
+import FileEditor from "@/components/editor/FileEditor";
 import AppButton from "@/components/ui/AppButton";
 
 const INITIAL_CONTENT = '{\n  "enabled": true\n}';

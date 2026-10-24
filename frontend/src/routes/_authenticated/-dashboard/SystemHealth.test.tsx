@@ -109,7 +109,7 @@ vi.mock("@/api", async () => {
 vi.mock("@/hooks/useAuth", () => ({
   default: () => ({ user: { name: "miguel" } }),
 }));
-vi.mock("@/components/cards/DashboardCard", () => ({
+vi.mock("@/routes/_authenticated/-dashboard/DashboardCard", () => ({
   default: ({ stats, stats2 }: { stats: ReactNode; stats2: ReactNode }) => (
     <div>
       {stats}

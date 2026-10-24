@@ -4,8 +4,9 @@ import (
 	"context"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
-	bridgeipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/bridge"
+	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
 )
 
 var api = apischema.Bindings(
@@ -50,37 +51,37 @@ func handleGetUnitInfo(ctx context.Context, req apischema.UnitNameRequest) (apis
 }
 
 func handleStartService(ctx context.Context, req apischema.ServiceNameRequest) error {
-	return StartUnit(ctx, req.ServiceName)
+	return systemd.StartUnit(ctx, req.ServiceName)
 }
 
 func handleStopService(ctx context.Context, req apischema.ServiceNameRequest) error {
-	return StopUnit(ctx, req.ServiceName)
+	return systemd.StopUnit(ctx, req.ServiceName)
 }
 
 func handleRestartService(ctx context.Context, req apischema.ServiceNameRequest) error {
-	return RestartUnit(ctx, req.ServiceName)
+	return systemd.RestartUnit(ctx, req.ServiceName)
 }
 
 func handleReloadService(ctx context.Context, req apischema.ServiceNameRequest) error {
-	return ReloadUnit(ctx, req.ServiceName)
+	return systemd.ReloadUnit(ctx, req.ServiceName)
 }
 
 func handleEnableService(ctx context.Context, req apischema.ServiceNameRequest) error {
-	return EnableUnit(ctx, req.ServiceName)
+	return systemd.EnableUnit(ctx, req.ServiceName)
 }
 
 func handleDisableService(ctx context.Context, req apischema.ServiceNameRequest) error {
-	return DisableUnit(ctx, req.ServiceName)
+	return systemd.DisableUnit(ctx, req.ServiceName)
 }
 
 func handleMaskService(ctx context.Context, req apischema.ServiceNameRequest) error {
-	return MaskUnit(ctx, req.ServiceName)
+	return systemd.MaskUnit(ctx, req.ServiceName)
 }
 
 func handleUnmaskService(ctx context.Context, req apischema.ServiceNameRequest) error {
-	return UnmaskUnit(ctx, req.ServiceName)
+	return systemd.UnmaskUnit(ctx, req.ServiceName)
 }
 
 func handleResetFailedService(ctx context.Context, req apischema.ServiceNameRequest) error {
-	return ResetFailedUnit(ctx, req.ServiceName)
+	return systemd.ResetFailedUnit(ctx, req.ServiceName)
 }
