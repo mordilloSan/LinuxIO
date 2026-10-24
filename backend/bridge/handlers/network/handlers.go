@@ -81,7 +81,7 @@ func (h networkHandlers) handleSetIPv4Manual(ctx context.Context, req apischema.
 func (h networkHandlers) handleSetIPv4(ctx context.Context, req apischema.IPv4DHCPRequest) error {
 	method := strings.ToLower(req.Method)
 	if method != "dhcp" && method != "auto" {
-		return fmt.Errorf("SetIPv4 method must be 'dhcp' or 'static'")
+		return fmt.Errorf("%w: SetIPv4 method must be 'dhcp' or 'auto'", bridgeipc.ErrInvalidArgs)
 	}
 	return SetIPv4DHCP(ctx, req.Iface, splitList(req.DNS), splitList(req.Search))
 }
@@ -92,7 +92,7 @@ func (h networkHandlers) handleSetIPv6(ctx context.Context, req apischema.Interf
 	case "dhcp", "auto":
 		return SetIPv6DHCP(ctx, req.Iface)
 	default:
-		return fmt.Errorf("SetIPv6 method must be 'dhcp' or 'auto'")
+		return fmt.Errorf("%w: SetIPv6 method must be 'dhcp' or 'auto'", bridgeipc.ErrInvalidArgs)
 	}
 }
 

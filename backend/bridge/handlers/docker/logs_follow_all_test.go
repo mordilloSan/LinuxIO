@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 
@@ -81,6 +82,37 @@ func TestCopyContainerLogsDemuxesAndJoinsPartialLines(t *testing.T) {
 		{ID: "abc123def456", Name: "web", TS: "2026-10-05T10:00:00.000000003Z", Line: "oops", Stderr: true},
 		{ID: "abc123def456", Name: "web", TS: "2026-10-05T10:00:00.000000004Z", Line: "no newline at end"},
 	})
+}
+
+func TestDockerLogLineWriterSplitsOverlongLine(t *testing.T) {
+	var out bytes.Buffer
+	w := &dockerLogLineWriter{stream: &out, id: "abc123def456", name: "web"}
+	// Three-byte runes so the byte cap falls inside one.
+	long := strings.Repeat("\u20ac", maxDockerLogLineBytes/3+10)
+	if _, err := w.Write([]byte("short\n" + long)); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if len(w.partial) > maxDockerLogLineBytes {
+		t.Fatalf("partial = %d bytes, want <= %d", len(w.partial), maxDockerLogLineBytes)
+	}
+	if _, err := w.Write([]byte(long + "\nnext\n")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	records := readDockerLogRecords(t, &out)
+	if len(records) < 4 || records[0].Line != "short" || records[len(records)-1].Line != "next" {
+		t.Fatalf("unexpected records: %d", len(records))
+	}
+	var got strings.Builder
+	for _, rec := range records[1 : len(records)-1] {
+		got.WriteString(rec.Line)
+	}
+	if got.String() != long+long {
+		t.Fatalf("joined text differs: got %d bytes, want %d", got.Len(), len(long)*2)
+	}
 }
 
 func TestCopyContainerLogsRawTTY(t *testing.T) {

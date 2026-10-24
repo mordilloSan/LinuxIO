@@ -30,6 +30,10 @@ var (
 // ErrUnavailable marks a daemon that cannot be reached.
 var ErrUnavailable = errors.New("linuxio-monitoring unavailable")
 
+// errOversize marks a reply longer than its limit: a bad reply, not an
+// unreachable daemon.
+var errOversize = errors.New("oversized reply")
+
 func unixClient(socketPath string, timeout time.Duration) *http.Client {
 	return &http.Client{
 		Timeout: timeout,
@@ -62,8 +66,9 @@ type statusError struct{ reply }
 func (e *statusError) Error() string { return "unexpected status " + e.Status }
 
 // exchange sends one request to a daemon socket and reads at most limit bytes
-// of the reply. A nil payload sends no body. Transport failures come back
-// unwrapped so callers can tell a dial retry from a bad reply.
+// of the reply, failing with errOversize if there is more. A nil payload sends
+// no body. Transport failures come back unwrapped so callers can tell a dial
+// retry from a bad reply.
 func exchange(ctx context.Context, client *http.Client, method, path string, payload []byte, limit int64) (reply, error) {
 	var body io.Reader
 	if payload != nil {
@@ -81,21 +86,27 @@ func exchange(ctx context.Context, client *http.Client, method, path string, pay
 		return reply{}, err
 	}
 	defer resp.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, limit))
+	data, err := io.ReadAll(io.LimitReader(resp.Body, limit+1))
 	if err != nil {
 		return reply{}, fmt.Errorf("read %s response: %w", path, err)
+	}
+	if int64(len(data)) > limit {
+		return reply{}, fmt.Errorf("%s response exceeds %d bytes: %w", path, limit, errOversize)
 	}
 	return reply{Status: resp.Status, StatusCode: resp.StatusCode, Body: data}, nil
 }
 
 // getJSON reads one JSON document from a daemon socket. Transport failures
-// wrap ErrUnavailable, an expired ctx returns its own error, and any status
-// but 200 returns a *statusError carrying the reply.
+// wrap ErrUnavailable (an oversized reply does not), an expired ctx returns its
+// own error, and any status but 200 returns a *statusError carrying the reply.
 func getJSON(ctx context.Context, client *http.Client, path string, limit int64, out any) error {
 	rep, err := exchange(ctx, client, http.MethodGet, path, nil, limit)
 	if err != nil {
 		if ctx.Err() != nil {
 			return ctx.Err()
+		}
+		if errors.Is(err, errOversize) {
+			return err
 		}
 		return fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}

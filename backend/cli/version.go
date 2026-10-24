@@ -1,20 +1,32 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
-var versionExecCommand = exec.Command
+var versionExecCommand = exec.CommandContext
+
+const versionProbeTimeout = 5 * time.Second
+
+var versionProbes = []struct{ binary, flag string }{
+	{"linuxio-webserver", "version"},
+	{"linuxio-bridge", "version"},
+	{"linuxio-auth", "version"},
+	{"linuxio-indexer", "--version"},
+	{"linuxio-monitoring", "--version"},
+}
 
 func cliVersionLine() string {
 	return fmt.Sprintf("LinuxIO CLI %s", version.Version)
 }
 
-func showVersion(args []string) {
+func showVersion(ctx context.Context, args []string) {
 	if len(args) == 1 && args[0] == "--self" {
 		fmt.Println(cliVersionLine())
 		return
@@ -24,48 +36,21 @@ func showVersion(args []string) {
 	fmt.Println("\nInstalled components:")
 	fmt.Printf("  %s\n", cliVersionLine())
 
-	// Check linuxio-webserver
-	out, err := versionExecCommand("linuxio-webserver", "version").CombinedOutput()
-	if err == nil {
-		line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
-		fmt.Printf("  %s\n", line)
-	} else {
-		fmt.Println("  linuxio-webserver: not found or error")
+	for _, c := range versionProbes {
+		fmt.Printf("  %s\n", probeVersion(ctx, c.binary, c.flag))
 	}
+}
 
-	// Check linuxio-bridge
-	out, err = versionExecCommand("linuxio-bridge", "version").CombinedOutput()
-	if err == nil {
-		line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
-		fmt.Printf("  %s\n", line)
-	} else {
-		fmt.Println("  linuxio-bridge: not found or error")
+// probeVersion returns the first version line of binary, or a failure line if it is missing, fails or hangs.
+func probeVersion(parent context.Context, binary, flag string) string {
+	ctx, cancel := context.WithTimeout(parent, versionProbeTimeout)
+	defer cancel()
+	cmd := versionExecCommand(ctx, binary, flag)
+	cmd.WaitDelay = time.Second // do not hang on a pipe inherited by a child
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return binary + ": not found or error"
 	}
-
-	// Check linuxio-auth
-	out, err = versionExecCommand("linuxio-auth", "version").CombinedOutput()
-	if err == nil {
-		line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
-		fmt.Printf("  %s\n", line)
-	} else {
-		fmt.Println("linuxio-auth: not found or error")
-	}
-
-	// Check linuxio-indexer
-	out, err = versionExecCommand("linuxio-indexer", "--version").CombinedOutput()
-	if err == nil {
-		line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
-		fmt.Printf("  %s\n", line)
-	} else {
-		fmt.Println("  linuxio-indexer: not found or error")
-	}
-
-	// Check linuxio-monitoring
-	out, err = versionExecCommand("linuxio-monitoring", "--version").CombinedOutput()
-	if err == nil {
-		line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
-		fmt.Printf("  %s\n", line)
-	} else {
-		fmt.Println("  linuxio-monitoring: not found or error")
-	}
+	line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
+	return line
 }

@@ -202,7 +202,7 @@ func runPackageUpdateTask(ctx context.Context, task *bridgeipc.Task, req apische
 
 	// A snapshot failure is reported but never blocks the update.
 	snapshotReport, snapshotErr := preUpdateSnapshot(ctx)
-	if len(snapshotReport.Taken) > 0 || len(snapshotReport.Errors) > 0 || snapshotErr != nil {
+	if len(snapshotReport.Taken) > 0 {
 		reportPkgUpdateProgress(report, &PkgUpdateProgress{Type: "message", Status: "Took btrfs pre-update snapshot"})
 	}
 	if msg := preUpdateSnapshotProblems(snapshotReport, snapshotErr); msg != "" {

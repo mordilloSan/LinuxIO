@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/moby/moby/client"
 
@@ -25,6 +26,10 @@ import (
 )
 
 const routeDockerLogsFollowAll = "docker.logs.follow_all"
+
+// maxDockerLogLineBytes caps the carried partial line; a longer line without a
+// newline is emitted as several records.
+const maxDockerLogLineBytes = 1 << 20
 
 // dockerLogRecord is one NDJSON line on the merged log Channel.
 type dockerLogRecord struct {
@@ -72,6 +77,15 @@ func (w *dockerLogLineWriter) Write(p []byte) (int, error) {
 		}
 		w.appendRecord(&frame, data[:idx])
 		data = data[idx+1:]
+	}
+	for len(data) > maxDockerLogLineBytes {
+		// Cut on a rune boundary: json.Marshal rejects invalid UTF-8 and the record would be lost.
+		cut := maxDockerLogLineBytes
+		for cut > maxDockerLogLineBytes-utf8.UTFMax && !utf8.RuneStart(data[cut]) {
+			cut--
+		}
+		w.appendRecord(&frame, data[:cut])
+		data = data[cut:]
 	}
 	if len(data) > 0 {
 		w.partial = append([]byte(nil), data...)
