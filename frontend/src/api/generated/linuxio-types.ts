@@ -395,6 +395,7 @@ export interface BtrfsPoolCreateRequest {
   devices: string[];
   force: boolean;
   partition: boolean;
+  freeSpace?: string[];
 }
 
 export interface BtrfsPoolMountRequest {
@@ -1207,15 +1208,23 @@ export interface DockerContainerUpdateResult {
 export interface DockerDaemonConfig {
   address_pool_base: string;
   address_pool_size: number;
+  data_root: string;
+  image_store: string;
   live_restore: boolean;
   log_max_file: string;
   log_max_size: string;
+  storage_driver: string;
   userland_proxy: boolean;
 }
 
 export interface DockerDaemonConfigSetResult {
   config: DockerDaemonConfig;
   restart_required: boolean;
+}
+
+export interface DockerDaemonStorageProgress {
+  phase: string;
+  message: string;
 }
 
 export interface DockerFoldersResponse {
@@ -1341,6 +1350,7 @@ export interface DockerSystemInfo {
   build_time: string;
   cgroup_driver: string;
   cgroup_version: string;
+  containerd_image_store: boolean;
   default_runtime: string;
   disk_total: number;
   disk_used: number;
@@ -1928,6 +1938,51 @@ export interface LogicalVolume {
   size: number;
   usedPct: number;
   vgName: string;
+}
+
+export interface MDArray {
+  name: string;
+  path: string;
+  level: string;
+  state: string;
+  metadataVersion: string;
+  sizeBytes: number;
+  raidDisks: number;
+  degraded: number;
+  syncAction: string;
+  syncProgress: number;
+  syncSpeedBytes: number;
+  mismatchCount: number;
+  members: MDMember[];
+}
+
+export interface MDMember {
+  name: string;
+  path: string;
+  slot: number;
+  state: string[];
+  errors: number;
+}
+
+export interface MDMemberAddRequest {
+  name: string;
+  device: string;
+}
+
+export interface MDMemberReplaceRequest {
+  name: string;
+  member: string;
+  device: string;
+}
+
+export interface MDMemberRequest {
+  name: string;
+  member: string;
+}
+
+export interface MDSyncActionRequest {
+  name: string;
+  action: string;
 }
 
 export interface MemoryInfo {
@@ -2797,6 +2852,7 @@ export interface StorageBlockDevice {
   serial: string;
   transport: string;
   readOnly: boolean;
+  freeBytes: number;
 }
 
 export interface StorageMount {
@@ -3552,6 +3608,12 @@ export interface LinuxIOSchema {
   };
 
   docker: {
+    apply_daemon_storage: {
+      input: [request: DockerDaemonConfig];
+      request: DockerDaemonConfig;
+      result: DockerDaemonConfigSetResult;
+      progress: TaskProgress<DockerDaemonStorageProgress>;
+    };
     check_container_update: {
       input: [containerId: string];
       request: ContainerIDRequest;
@@ -4394,6 +4456,32 @@ export interface LinuxIOSchema {
     list_nfs_mounts: { input: []; request: void; result: NFSMount[] };
     list_pvs: { input: []; request: void; result: PhysicalVolume[] };
     list_vgs: { input: []; request: void; result: VolumeGroup[] };
+    md_list: { input: []; request: void; result: MDArray[] };
+    md_member_add: {
+      input: [request: MDMemberAddRequest];
+      request: MDMemberAddRequest;
+      result: MDArray;
+    };
+    md_member_fail: {
+      input: [request: MDMemberRequest];
+      request: MDMemberRequest;
+      result: MDArray;
+    };
+    md_member_remove: {
+      input: [request: MDMemberRequest];
+      request: MDMemberRequest;
+      result: MDArray;
+    };
+    md_member_replace: {
+      input: [request: MDMemberReplaceRequest];
+      request: MDMemberReplaceRequest;
+      result: MDArray;
+    };
+    md_sync_action: {
+      input: [request: MDSyncActionRequest];
+      request: MDSyncActionRequest;
+      result: MDArray;
+    };
     mount_cifs: {
       input: [request: CIFSMountRequest];
       request: CIFSMountRequest;
@@ -5210,6 +5298,15 @@ export interface LinuxIOCallSchema {
   "storage.list_nfs_mounts": { request: void; result: NFSMount[] };
   "storage.list_pvs": { request: void; result: PhysicalVolume[] };
   "storage.list_vgs": { request: void; result: VolumeGroup[] };
+  "storage.md_list": { request: void; result: MDArray[] };
+  "storage.md_member_add": { request: MDMemberAddRequest; result: MDArray };
+  "storage.md_member_fail": { request: MDMemberRequest; result: MDArray };
+  "storage.md_member_remove": { request: MDMemberRequest; result: MDArray };
+  "storage.md_member_replace": {
+    request: MDMemberReplaceRequest;
+    result: MDArray;
+  };
+  "storage.md_sync_action": { request: MDSyncActionRequest; result: MDArray };
   "storage.mount_cifs": {
     request: CIFSMountRequest;
     result: StorageMountResult;

@@ -59,6 +59,19 @@
   border-radius: var(--app-radius-lg);
   background: var(--app-palette-background-paper);
 }
+/* The whole disk card opens the drive, not only the row inside it. */
+.storage-pools__card:has(> .storage-pools__disk--link) {
+  position: relative;
+}
+.storage-pools .storage-pools__disk--link,
+.storage-pools__others .storage-pools__disk--link {
+  position: static;
+}
+.storage-pools__disk--link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
 /* The row itself stays flat; the shared button would paint its own hover box. */
 .storage-pools .storage-pools__disk--link:hover,
 .storage-pools__others .storage-pools__disk--link:hover {
@@ -114,7 +127,8 @@
 .storage-pools__pool .storage-pools__icon {
   color: var(--app-palette-primary-main);
 }
-.storage-pools__volumes {
+/* Disks or volumes in equal slots, so connector lines meet their centres. */
+.storage-pools__column {
   display: flex;
   flex-direction: column;
 }

@@ -12,7 +12,6 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
-	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
 )
 
 const dockerMountOrderingDropInPath = "/etc/systemd/system/docker.service.d/linuxio-require-mounts.conf"
@@ -35,7 +34,7 @@ func SyncDaemonMountOrdering(ctx context.Context, docker userconfig.Docker) erro
 	if err := atomicfile.Write(dockerMountOrderingDropInPath, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("write docker service drop-in: %w", err)
 	}
-	return systemd.DaemonReload(ctx)
+	return systemdDaemonReload(ctx)
 }
 
 func ensureSystemdDropInDir(path string) error {
@@ -55,7 +54,7 @@ func removeDockerMountOrderingDropIn(ctx context.Context, path string) error {
 		}
 		return fmt.Errorf("remove docker service drop-in: %w", err)
 	}
-	return systemd.DaemonReload(ctx)
+	return systemdDaemonReload(ctx)
 }
 
 func renderDockerMountOrderingDropIn(folders []userconfig.AbsolutePath) (string, error) {

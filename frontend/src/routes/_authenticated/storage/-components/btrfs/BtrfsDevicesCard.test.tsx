@@ -117,6 +117,7 @@ const blockDevice = (
   serial: "",
   transport: "sata",
   readOnly: false,
+  freeBytes: 0,
   ...overrides,
 });
 

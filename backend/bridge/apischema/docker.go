@@ -245,39 +245,42 @@ type DockerVolume struct {
 }
 
 type DockerSystemInfo struct {
-	APIVersion      string   `json:"api_version"`
-	Architecture    string   `json:"architecture"`
-	BuildTime       string   `json:"build_time"`
-	CgroupDriver    string   `json:"cgroup_driver"`
-	CgroupVersion   string   `json:"cgroup_version"`
-	DefaultRuntime  string   `json:"default_runtime"`
-	DiskTotal       uint64   `json:"disk_total"`
-	DiskUsed        uint64   `json:"disk_used"`
-	DockerRootDir   string   `json:"docker_root_dir"`
-	Experimental    bool     `json:"experimental"`
-	GitCommit       string   `json:"git_commit"`
-	GoVersion       string   `json:"go_version"`
-	HTTPProxy       string   `json:"http_proxy"`
-	HTTPSProxy      string   `json:"https_proxy"`
-	ID              string   `json:"id"`
-	InitBinary      string   `json:"init_binary"`
-	IPv4Forwarding  bool     `json:"ipv4_forwarding"`
-	KernelVersion   string   `json:"kernel_version"`
-	LogPlugins      []string `json:"log_plugins"`
-	LoggingDriver   string   `json:"logging_driver"`
-	MemTotal        uint64   `json:"mem_total"`
-	Name            string   `json:"name"`
-	NCPU            int      `json:"ncpu"`
-	NetworkPlugins  []string `json:"network_plugins"`
-	NoProxy         string   `json:"no_proxy"`
-	OperatingSystem string   `json:"operating_system"`
-	OSType          string   `json:"os_type"`
-	Runtimes        []string `json:"runtimes"`
-	SecurityOptions []string `json:"security_options"`
-	ServerVersion   string   `json:"server_version"`
-	StorageDriver   string   `json:"storage_driver"`
-	SystemTime      string   `json:"system_time"`
-	VolumePlugins   []string `json:"volume_plugins"`
+	APIVersion    string `json:"api_version"`
+	Architecture  string `json:"architecture"`
+	BuildTime     string `json:"build_time"`
+	CgroupDriver  string `json:"cgroup_driver"`
+	CgroupVersion string `json:"cgroup_version"`
+	// ContainerdImageStore is true when images live in containerd snapshotters
+	// rather than a classic graph driver.
+	ContainerdImageStore bool     `json:"containerd_image_store"`
+	DefaultRuntime       string   `json:"default_runtime"`
+	DiskTotal            uint64   `json:"disk_total"`
+	DiskUsed             uint64   `json:"disk_used"`
+	DockerRootDir        string   `json:"docker_root_dir"`
+	Experimental         bool     `json:"experimental"`
+	GitCommit            string   `json:"git_commit"`
+	GoVersion            string   `json:"go_version"`
+	HTTPProxy            string   `json:"http_proxy"`
+	HTTPSProxy           string   `json:"https_proxy"`
+	ID                   string   `json:"id"`
+	InitBinary           string   `json:"init_binary"`
+	IPv4Forwarding       bool     `json:"ipv4_forwarding"`
+	KernelVersion        string   `json:"kernel_version"`
+	LogPlugins           []string `json:"log_plugins"`
+	LoggingDriver        string   `json:"logging_driver"`
+	MemTotal             uint64   `json:"mem_total"`
+	Name                 string   `json:"name"`
+	NCPU                 int      `json:"ncpu"`
+	NetworkPlugins       []string `json:"network_plugins"`
+	NoProxy              string   `json:"no_proxy"`
+	OperatingSystem      string   `json:"operating_system"`
+	OSType               string   `json:"os_type"`
+	Runtimes             []string `json:"runtimes"`
+	SecurityOptions      []string `json:"security_options"`
+	ServerVersion        string   `json:"server_version"`
+	StorageDriver        string   `json:"storage_driver"`
+	SystemTime           string   `json:"system_time"`
+	VolumePlugins        []string `json:"volume_plugins"`
 }
 
 // DockerDaemonConfig is the subset of /etc/docker/daemon.json LinuxIO edits.
@@ -285,10 +288,15 @@ type DockerSystemInfo struct {
 type DockerDaemonConfig struct {
 	AddressPoolBase string `json:"address_pool_base"`
 	AddressPoolSize int    `json:"address_pool_size"`
-	LiveRestore     bool   `json:"live_restore"`
-	LogMaxFile      string `json:"log_max_file"`
-	LogMaxSize      string `json:"log_max_size"`
-	UserlandProxy   bool   `json:"userland_proxy"`
+	DataRoot        string `json:"data_root"`
+	// ImageStore is "classic" (graph drivers, everything under DataRoot),
+	// "containerd" (snapshotters in containerd's root) or "" for Docker's choice.
+	ImageStore    string `json:"image_store"`
+	LiveRestore   bool   `json:"live_restore"`
+	LogMaxFile    string `json:"log_max_file"`
+	LogMaxSize    string `json:"log_max_size"`
+	StorageDriver string `json:"storage_driver"`
+	UserlandProxy bool   `json:"userland_proxy"`
 }
 
 type DockerDaemonConfigSetResult struct {
@@ -499,6 +507,15 @@ type DockerContainerUpdateProgress struct {
 }
 
 func (p DockerContainerUpdateProgress) ProgressEnvelope() bridgeipc.TaskProgress {
+	return bridgeipc.TaskProgress{Phase: p.Phase, Message: p.Message, Detail: p}
+}
+
+type DockerDaemonStorageProgress struct {
+	Phase   string `json:"phase"`
+	Message string `json:"message"`
+}
+
+func (p DockerDaemonStorageProgress) ProgressEnvelope() bridgeipc.TaskProgress {
 	return bridgeipc.TaskProgress{Phase: p.Phase, Message: p.Message, Detail: p}
 }
 

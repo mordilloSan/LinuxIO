@@ -7,26 +7,52 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"os"
+	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
+	"strings"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
 )
 
-const dockerDaemonConfigPath = "/etc/docker/daemon.json"
+const (
+	dockerDaemonConfigPath = "/etc/docker/daemon.json"
+	defaultDockerDataRoot  = "/var/lib/docker"
+	// shortcut: assumes containerd's default root, read /etc/containerd/config.toml if hosts move it.
+	containerdRoot = "/var/lib/containerd"
+	zfsSuperMagic  = 0x2fc12fc1
+)
 
 var (
-	systemdReloadUnit = systemd.ReloadUnit
-	logMaxSizePattern = regexp.MustCompile(`^[1-9][0-9]*[kmgKMG]?$`)
+	systemdReloadUnit    = systemd.ReloadUnit
+	systemdDaemonReload  = systemd.DaemonReload
+	logMaxSizePattern    = regexp.MustCompile(`^[1-9][0-9]*[kmgKMG]?$`)
+	storageDriverPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 )
 
 // dockerd only re-reads these keys on SIGHUP; every other key edited here
 // (log-opts, default-address-pools, userland-proxy) needs a daemon restart.
 var daemonReloadableKeys = map[string]bool{"live-restore": true}
+
+// daemonStorageKeys only change through applyDaemonStorage, which stops Docker
+// around the switch. features carries containerd-snapshotter, the image store.
+var daemonStorageKeys = []string{"data-root", "features", "storage-driver"}
+
+// dockerd names overlay and the plain-copy driver differently per image store
+// and fails to start on the other store's name.
+var wrongImageStoreDrivers = map[string][]string{
+	"classic":    {"overlayfs", "native"},
+	"containerd": {"overlay2", "vfs"},
+}
 
 func (h dockerHandlers) handleGetDaemonConfig(_ context.Context, _ apischema.NoRequest) (apischema.DockerDaemonConfig, error) {
 	raw, err := readDaemonConfigFile(dockerDaemonConfigPath)
@@ -42,22 +68,23 @@ func (h dockerHandlers) handleSetDaemonConfig(ctx context.Context, req apischema
 
 func setDaemonConfig(ctx context.Context, path string, req apischema.DockerDaemonConfig) (apischema.DockerDaemonConfigSetResult, error) {
 	if err := validateDaemonConfig(req); err != nil {
-		return apischema.DockerDaemonConfigSetResult{}, err
+		return apischema.DockerDaemonConfigSetResult{}, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
 	}
 	before, err := readDaemonConfigFile(path)
 	if err != nil {
 		return apischema.DockerDaemonConfigSetResult{}, err
 	}
 	after := applyDaemonConfig(cloneMap(before), req)
+	for _, key := range daemonStorageKeys {
+		if !jsonEqual(before[key], after[key]) {
+			return apischema.DockerDaemonConfigSetResult{}, fmt.Errorf("%w: data root and storage driver changes must go through docker.apply_daemon_storage", bridgeipc.ErrInvalidArgs)
+		}
+	}
 
 	reload, restart := daemonConfigChanges(before, after)
 	if reload || restart {
-		data, err := json.Marshal(after, jsontext.WithIndent("  "), json.Deterministic(true))
-		if err != nil {
-			return apischema.DockerDaemonConfigSetResult{}, fmt.Errorf("encode docker daemon config: %w", err)
-		}
-		if err := atomicfile.Write(path, append(data, '\n'), 0o644); err != nil {
-			return apischema.DockerDaemonConfigSetResult{}, fmt.Errorf("write docker daemon config: %w", err)
+		if err := writeDaemonConfigFile(path, after); err != nil {
+			return apischema.DockerDaemonConfigSetResult{}, err
 		}
 	}
 	// A reload alongside a restart-only change is pointless: the restart the
@@ -68,6 +95,17 @@ func setDaemonConfig(ctx context.Context, path string, req apischema.DockerDaemo
 		}
 	}
 	return apischema.DockerDaemonConfigSetResult{Config: daemonConfigFromMap(after), RestartRequired: restart}, nil
+}
+
+func writeDaemonConfigFile(path string, raw map[string]any) error {
+	data, err := json.Marshal(raw, jsontext.WithIndent("  "), json.Deterministic(true))
+	if err != nil {
+		return fmt.Errorf("encode docker daemon config: %w", err)
+	}
+	if err := atomicfile.Write(path, append(data, '\n'), 0o644); err != nil {
+		return fmt.Errorf("write docker daemon config: %w", err)
+	}
+	return nil
 }
 
 func readDaemonConfigFile(path string) (map[string]any, error) {
@@ -89,12 +127,24 @@ func readDaemonConfigFile(path string) (map[string]any, error) {
 }
 
 func daemonConfigFromMap(raw map[string]any) apischema.DockerDaemonConfig {
-	cfg := apischema.DockerDaemonConfig{UserlandProxy: true}
+	cfg := apischema.DockerDaemonConfig{
+		DataRoot:      stringValue(raw["data-root"]),
+		StorageDriver: stringValue(raw["storage-driver"]),
+		UserlandProxy: true,
+	}
 	if v, ok := raw["live-restore"].(bool); ok {
 		cfg.LiveRestore = v
 	}
 	if v, ok := raw["userland-proxy"].(bool); ok {
 		cfg.UserlandProxy = v
+	}
+	if features, ok := raw["features"].(map[string]any); ok {
+		if v, ok := features["containerd-snapshotter"].(bool); ok {
+			cfg.ImageStore = "classic"
+			if v {
+				cfg.ImageStore = "containerd"
+			}
+		}
 	}
 	if opts, ok := raw["log-opts"].(map[string]any); ok {
 		cfg.LogMaxSize = stringValue(opts["max-size"])
@@ -114,8 +164,17 @@ func daemonConfigFromMap(raw map[string]any) apischema.DockerDaemonConfig {
 // applyDaemonConfig writes the form fields into raw, dropping keys that are
 // back at dockerd's default so the file stays as short as it was.
 func applyDaemonConfig(raw map[string]any, cfg apischema.DockerDaemonConfig) map[string]any {
+	setOrDelete(raw, "data-root", filepath.Clean(cfg.DataRoot), cfg.DataRoot == "")
+	setOrDelete(raw, "storage-driver", cfg.StorageDriver, cfg.StorageDriver == "")
 	setOrDelete(raw, "live-restore", cfg.LiveRestore, !cfg.LiveRestore)
 	setOrDelete(raw, "userland-proxy", cfg.UserlandProxy, cfg.UserlandProxy)
+
+	features, _ := raw["features"].(map[string]any)
+	if features == nil {
+		features = map[string]any{}
+	}
+	setOrDelete(features, "containerd-snapshotter", cfg.ImageStore == "containerd", cfg.ImageStore == "")
+	setOrDelete(raw, "features", features, len(features) == 0)
 
 	opts, _ := raw["log-opts"].(map[string]any)
 	if opts == nil {
@@ -157,6 +216,9 @@ func daemonConfigChanges(before, after map[string]any) (reload, restart bool) {
 }
 
 func validateDaemonConfig(cfg apischema.DockerDaemonConfig) error {
+	if err := validateDaemonStorage(cfg); err != nil {
+		return err
+	}
 	if cfg.LogMaxSize != "" && !logMaxSizePattern.MatchString(cfg.LogMaxSize) {
 		return fmt.Errorf("log max size must be a number with an optional k, m or g suffix, like 10m")
 	}
@@ -176,6 +238,77 @@ func validateDaemonConfig(cfg apischema.DockerDaemonConfig) error {
 		}
 	}
 	return nil
+}
+
+func validateDaemonStorage(cfg apischema.DockerDaemonConfig) error {
+	if cfg.DataRoot != "" {
+		root := filepath.Clean(cfg.DataRoot)
+		if !filepath.IsAbs(root) || root == "/" || strings.ContainsAny(root, "\r\n") {
+			return fmt.Errorf("data root must be an absolute path other than /")
+		}
+	}
+	if cfg.ImageStore != "" && wrongImageStoreDrivers[cfg.ImageStore] == nil {
+		return fmt.Errorf("image store must be classic or containerd")
+	}
+	if cfg.StorageDriver == "" {
+		return nil
+	}
+	if !storageDriverPattern.MatchString(cfg.StorageDriver) {
+		return fmt.Errorf("storage driver %q is not a valid driver name", cfg.StorageDriver)
+	}
+	if slices.Contains(wrongImageStoreDrivers[cfg.ImageStore], cfg.StorageDriver) {
+		return fmt.Errorf("the %s storage driver does not work with the %s image store", cfg.StorageDriver, cfg.ImageStore)
+	}
+	// An explicit containerd store keeps btrfs and zfs snapshots in containerd's
+	// root; otherwise dockerd treats these names as classic graph drivers.
+	root := cfg.DataRoot
+	if cfg.ImageStore == "containerd" {
+		root = containerdRoot
+	}
+	return checkStorageDriverFilesystem(cfg.StorageDriver, root)
+}
+
+// checkStorageDriverFilesystem rejects the btrfs and zfs drivers when root is
+// on any other filesystem, where dockerd would refuse to start.
+func checkStorageDriverFilesystem(driver, root string) error {
+	var want uint32
+	switch driver {
+	case "btrfs":
+		want = unix.BTRFS_SUPER_MAGIC
+	case "zfs":
+		want = zfsSuperMagic
+	default:
+		return nil
+	}
+	if root == "" {
+		root = defaultDockerDataRoot
+	}
+	root = filepath.Clean(root)
+	got, err := filesystemMagic(root)
+	if err != nil {
+		return err
+	}
+	if got != want {
+		return fmt.Errorf("the %s storage driver needs %s on a %s filesystem", driver, root, driver)
+	}
+	return nil
+}
+
+// filesystemMagic reads the filesystem type of path, or of its nearest
+// existing parent since dockerd creates a missing data root itself.
+func filesystemMagic(path string) (uint32, error) {
+	for {
+		var st unix.Statfs_t
+		err := unix.Statfs(path, &st)
+		if err == nil {
+			return uint32(st.Type), nil
+		}
+		parent := filepath.Dir(path)
+		if !errors.Is(err, fs.ErrNotExist) || parent == path {
+			return 0, fmt.Errorf("check filesystem of %s: %w", path, err)
+		}
+		path = parent
+	}
 }
 
 func setOrDelete(m map[string]any, key string, value any, remove bool) {

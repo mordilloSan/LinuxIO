@@ -11,6 +11,7 @@ export const Route = createFileRoute("/_authenticated/storage/")({
     ...optionalString(search, "drive"),
     ...optionalString(search, "fs"),
     ...optionalString(search, "pool"),
+    ...optionalString(search, "raid"),
   }),
   loader: (loaderArgs) =>
     loadRouteQueries(loaderArgs, [

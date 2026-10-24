@@ -276,7 +276,8 @@ func (p *itPool) offline() {
 	}
 }
 
-// partitioned builds a single-disk pool on a GPT partition of a blank disk.
+// partitioned builds a single-disk pool on a GPT partition of a blank disk,
+// then a second pool on the free space behind it while the first is mounted.
 func (p *itPool) partitioned() {
 	part, err := PartitionDisk(p.ctx, p.disks[1])
 	p.must("partition", err)
@@ -287,5 +288,24 @@ func (p *itPool) partitioned() {
 	if len(pools) != 1 || pools[0].Label != "parted" {
 		p.t.Fatalf("partitioned pool: %+v", pools)
 	}
+
+	// With p1 mounted the kernel cannot reread the table, so the new
+	// partition must be added on its own.
+	p.must("mount partition", MountPool(part, p.mnt, false))
+	p.t.Cleanup(func() { _ = unix.Unmount(p.mnt, 0) })
+	free, err := AddPartition(p.ctx, p.disks[1])
+	p.must("add partition", err)
+	if want := partitionPath(p.disks[1], 2); free != want {
+		p.t.Fatalf("added partition %s, want %s", free, want)
+	}
+	_, err = CreatePool(p.ctx, "freespace", "single", "dup", []string{free}, false)
+	p.must("create on free space", err)
+	pools, err = FindOfflinePools(p.ctx, []string{free})
+	p.must("free space pool", err)
+	if len(pools) != 1 || pools[0].Label != "freespace" {
+		p.t.Fatalf("free space pool: %+v", pools)
+	}
+	p.must("unmount partition", unix.Unmount(p.mnt, 0))
+	p.must("wipe free space", WipeDevice(free))
 	p.must("wipe partition", WipeDevice(part))
 }

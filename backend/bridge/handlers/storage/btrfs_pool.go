@@ -39,8 +39,8 @@ func CreateBtrfsPool(ctx context.Context, req apischema.BtrfsPoolCreateRequest) 
 	if entries, readErr := os.ReadDir(req.Mountpoint); readErr == nil && len(entries) > 0 {
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("mountpoint %s is not empty", req.Mountpoint)
 	}
-	slog.Debug("creating btrfs pool", "label", req.Label, "devices", req.Devices, "data", req.DataProfile, "metadata", req.MetadataProfile, "mountpoint", req.Mountpoint, "force", req.Force, "partition", req.Partition)
-	members := req.Devices
+	slog.Debug("creating btrfs pool", "label", req.Label, "devices", req.Devices, "freeSpace", req.FreeSpace, "data", req.DataProfile, "metadata", req.MetadataProfile, "mountpoint", req.Mountpoint, "force", req.Force, "partition", req.Partition)
+	members := slices.Clone(req.Devices)
 	if req.Partition {
 		members = make([]string, 0, len(req.Devices))
 		for _, d := range req.Devices {
@@ -50,6 +50,13 @@ func CreateBtrfsPool(ctx context.Context, req apischema.BtrfsPoolCreateRequest) 
 			}
 			members = append(members, part)
 		}
+	}
+	for _, d := range req.FreeSpace {
+		part, partErr := btrfs.AddPartition(ctx, d)
+		if partErr != nil {
+			return btrfs.BtrfsFilesystem{}, fmt.Errorf("add partition on %s for btrfs pool: %w", d, partErr)
+		}
+		members = append(members, part)
 	}
 	uuid, err := btrfs.CreatePool(ctx, req.Label, req.DataProfile, req.MetadataProfile, members, req.Force)
 	if err != nil {
@@ -66,13 +73,13 @@ func CreateBtrfsPool(ctx context.Context, req apischema.BtrfsPoolCreateRequest) 
 }
 
 // checkPoolCreate validates a create request against the host: label,
-// profiles for the device count, every device free, and an unused
-// mountpoint outside the system directories.
+// profiles for the device count, every device free (or, for FreeSpace, a
+// disk with room for a partition), and an unused mountpoint outside the system directories.
 func checkPoolCreate(req apischema.BtrfsPoolCreateRequest, devices []apischema.StorageBlockDevice, filesystems []btrfs.BtrfsFilesystem, fstab map[string]fstabEntry) error {
 	if err := btrfs.ValidateLabel(req.Label); err != nil {
 		return err
 	}
-	if len(req.Devices) == 0 {
+	if len(req.Devices)+len(req.FreeSpace) == 0 {
 		return errors.New("select at least one device")
 	}
 	for i, d := range req.Devices {
@@ -83,8 +90,20 @@ func checkPoolCreate(req apischema.BtrfsPoolCreateRequest, devices []apischema.S
 			return err
 		}
 	}
+	for i, d := range req.FreeSpace {
+		if slices.Contains(req.FreeSpace[:i], d) || slices.Contains(req.Devices, d) {
+			return fmt.Errorf("device %s listed twice", d)
+		}
+		j := slices.IndexFunc(devices, func(b apischema.StorageBlockDevice) bool { return b.Path == d })
+		if j < 0 {
+			return fmt.Errorf("block device %s not found", d)
+		}
+		if devices[j].Type != "disk" || devices[j].FreeBytes == 0 {
+			return fmt.Errorf("device %s has no free space for a partition", d)
+		}
+	}
 	data, meta := req.DataProfile, req.MetadataProfile
-	if err := btrfs.ValidateProfiles(&data, &meta, len(req.Devices)); err != nil {
+	if err := btrfs.ValidateProfiles(&data, &meta, len(req.Devices)+len(req.FreeSpace)); err != nil {
 		return err
 	}
 	return checkPoolMountpoint(req.Mountpoint, devices, fstab)

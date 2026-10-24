@@ -507,11 +507,19 @@ const DiskOverview = () => {
           onSelectPool={(pool) =>
             void navigate({
               to: "/storage",
-              search: (previous) => ({ ...previous, pool }),
+              search: (previous) => ({ ...previous, pool, raid: undefined }),
+              resetScroll: false,
+            })
+          }
+          onSelectRaid={(raid) =>
+            void navigate({
+              to: "/storage",
+              search: (previous) => ({ ...previous, raid, pool: undefined }),
               resetScroll: false,
             })
           }
           selectedPool={search.pool}
+          selectedRaid={search.raid}
         />
       )}
 

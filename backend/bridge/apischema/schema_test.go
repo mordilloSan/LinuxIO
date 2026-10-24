@@ -92,10 +92,10 @@ func TestAllTaskRoutesUseTaskRunner(t *testing.T) {
 			t.Errorf("%s is task kind %q, want task_runner", route.Route, route.Kind)
 		}
 	}
-	if got, want := modes[bridgeipc.ModeCall], 280; got != want {
+	if got, want := modes[bridgeipc.ModeCall], 286; got != want {
 		t.Errorf("call route count = %d, want %d", got, want)
 	}
-	if got, want := modes[bridgeipc.ModeTask], 28; got != want {
+	if got, want := modes[bridgeipc.ModeTask], 29; got != want {
 		t.Errorf("task route count = %d, want %d", got, want)
 	}
 	if got, want := modes[bridgeipc.ModeDuplex], 12; got != want {
@@ -128,8 +128,8 @@ func TestTaskRoutesDeclareAuditedLifetime(t *testing.T) {
 			t.Errorf("%s task lifetime = %q", route.Route, route.TaskLifetime)
 		}
 	}
-	if sessionCount != 27 || durableCount != 1 {
-		t.Fatalf("task lifetime counts = session %d, durable %d; want 27 and 1", sessionCount, durableCount)
+	if sessionCount != 28 || durableCount != 1 {
+		t.Fatalf("task lifetime counts = session %d, durable %d; want 28 and 1", sessionCount, durableCount)
 	}
 }
 
@@ -203,8 +203,8 @@ func TestRetrySafeRoutesAreExplicitCalls(t *testing.T) {
 			t.Errorf("%s is retry-safe but is not a public Call", route.Route)
 		}
 	}
-	if count != 113 {
-		t.Fatalf("retry-safe Call count = %d, want 113", count)
+	if count != 114 {
+		t.Fatalf("retry-safe Call count = %d, want 114", count)
 	}
 	for _, route := range []string{"schedules.list", "schedules.get", "config.get", "config.get_ui", "docker.inspect_container", "system.get_cpu_info", "monitoring.get_live", "monitoring.get_processes", "monitoring.get_programs", "storage.get_topology", "tasks.get", "virt.preflight", "virt.templates", "network.get_bridge_options", "network.get_bridge_handoff", "network.confirm_bridge_handoff", "network.revert_bridge_handoff"} {
 		if !mustRoute(t, route).RetrySafe {
@@ -457,8 +457,8 @@ func TestTaskMetadataBuildersAreAllowlistedTaskRoutes(t *testing.T) {
 		"filebrowser.trash_restore": true, "filebrowser.trash_purge": true, "filebrowser.index": true,
 		"filebrowser.upload": true, "filebrowser.upload_batch": true,
 		"filebrowser.archive": true, "filebrowser.chmod_batch": true, "docker.compose": true,
-		"docker.update_container": true,
-		"packages.update":         true, "storage.run_smart_test": true, "system.install_capability": true,
+		"docker.update_container": true, "docker.apply_daemon_storage": true,
+		"packages.update": true, "storage.run_smart_test": true, "system.install_capability": true,
 		"storage.btrfs_snapshot_rollback": true, "storage.btrfs_device_remove": true, "storage.btrfs_device_replace": true,
 		"storage.btrfs_balance": true, "storage.btrfs_scrub_start": true, "storage.btrfs_replication_run": true,
 	}

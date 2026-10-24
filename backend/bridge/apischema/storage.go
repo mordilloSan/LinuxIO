@@ -31,6 +31,10 @@ type StorageBlockDevice struct {
 	Serial      string   `json:"serial"`
 	Transport   string   `json:"transport"`
 	ReadOnly    bool     `json:"readOnly"`
+	// FreeBytes, for a disk with a GPT, is the size of the partition
+	// btrfs.AddPartition would create in its largest free region: 0 when
+	// there is none, and for anything that is not a GPT disk.
+	FreeBytes uint64 `json:"freeBytes"`
 }
 
 type StorageMount struct {
@@ -289,6 +293,9 @@ type BtrfsPoolCreateRequest struct {
 	Devices         []string `json:"devices"`
 	Force           bool     `json:"force"`
 	Partition       bool     `json:"partition"`
+	// FreeSpace lists disks whose largest free region gets a new partition
+	// that joins the pool; Force and Partition do not apply to them.
+	FreeSpace []string `json:"freeSpace,omitzero"`
 }
 
 // BtrfsPoolMountRequest mounts an unmounted pool at its fstab mountpoint, or

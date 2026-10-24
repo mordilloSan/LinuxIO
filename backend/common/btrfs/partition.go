@@ -1,17 +1,24 @@
 package btrfs
 
 import (
+	"bytes"
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
+	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
@@ -160,28 +167,74 @@ var rereadPartitions = func(device string) error {
 	return nil
 }
 
-// partitionPath names the first partition of device: sdb1, nvme0n1p1.
-func partitionPath(device string) string {
-	if r := device[len(device)-1]; unicode.IsDigit(rune(r)) {
-		return device + "p1"
+// addKernelPartition tells the kernel about one new partition of device
+// (start and length in bytes) without rereading the table, which fails while
+// other partitions are busy; a var so tests can stub it.
+var addKernelPartition = func(device string, number int, start, length uint64) error {
+	f, err := os.Open(device)
+	if err != nil {
+		return err
 	}
-	return device + "1"
+	defer f.Close()
+	part := unix.BlkpgPartition{Start: int64(start), Length: int64(length), Pno: int32(number)}
+	arg := unix.BlkpgIoctlArg{Op: unix.BLKPG_ADD_PARTITION, Datalen: int32(unsafe.Sizeof(part)), Data: (*byte)(unsafe.Pointer(&part))}
+	// x/sys has no BLKPG request number: _IO(0x12, 105), ten past BLKRRPART's
+	// _IO(0x12, 95), which keeps the per-architecture _IO encoding.
+	_, _, errno := unix.Syscall(unix.SYS_IOCTL, f.Fd(), unix.BLKRRPART+10, uintptr(unsafe.Pointer(&arg)))
+	runtime.KeepAlive(&part)
+	if errno != 0 {
+		return fmt.Errorf("add partition %d to %s: %w", number, device, errno)
+	}
+	return nil
+}
+
+// partitionPath names partition number of device: sdb3, nvme0n1p3.
+func partitionPath(device string, number int) string {
+	if r := device[len(device)-1]; unicode.IsDigit(rune(r)) {
+		return device + "p" + strconv.Itoa(number)
+	}
+	return device + strconv.Itoa(number)
+}
+
+// diskGeometry reads device's size and logical sector size.
+func diskGeometry(device string) (size, ss uint64, err error) {
+	if size, err = blockDeviceSize(device); err != nil {
+		return 0, 0, err
+	}
+	if ss, err = sectorSize(device); err != nil {
+		return 0, 0, err
+	}
+	if ss == 0 || partitionAlign%ss != 0 {
+		return 0, 0, fmt.Errorf("unsupported sector size %d on %s", ss, device)
+	}
+	return size, ss, nil
+}
+
+// waitForNode waits for udev to create the device node of part.
+func waitForNode(ctx context.Context, part string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	ticker := time.NewTicker(100 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if _, statErr := os.Stat(part); statErr == nil {
+			return part, nil
+		}
+		select {
+		case <-ctx.Done():
+			return "", fmt.Errorf("partition %s did not appear: %w", filepath.Base(part), ctx.Err())
+		case <-ticker.C:
+		}
+	}
 }
 
 // PartitionDisk replaces everything on device with a GPT holding one Linux
 // partition that leaves PartitionSlack free at the end, and returns the
 // partition once udev created its device node. Callers check device is free.
 func PartitionDisk(ctx context.Context, device string) (string, error) {
-	size, err := blockDeviceSize(device)
+	size, ss, err := diskGeometry(device)
 	if err != nil {
 		return "", err
-	}
-	ss, err := sectorSize(device)
-	if err != nil {
-		return "", err
-	}
-	if ss == 0 || partitionAlign%ss != 0 {
-		return "", fmt.Errorf("unsupported sector size %d on %s", ss, device)
 	}
 	layout, err := newGPTLayout(size, ss)
 	if err != nil {
@@ -211,19 +264,165 @@ func PartitionDisk(ctx context.Context, device string) (string, error) {
 	if err := rereadPartitions(device); err != nil {
 		return "", err
 	}
-	part := partitionPath(device)
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		if _, statErr := os.Stat(part); statErr == nil {
-			return part, nil
+	return waitForNode(ctx, partitionPath(device, 1))
+}
+
+// LargestFreeRegion is the biggest run of sectors in [firstUsable, lastUsable]
+// that no used range [first, last] (all inclusive LBAs) touches, trimmed to
+// partitionAlign boundaries and at least minPartition long.
+func LargestFreeRegion(firstUsable, lastUsable uint64, used [][2]uint64, sectorSize uint64) (first, last uint64, ok bool) {
+	if sectorSize == 0 || partitionAlign%sectorSize != 0 {
+		return 0, 0, false
+	}
+	align := partitionAlign / sectorSize
+	consider := func(from, to uint64) { // the gap [from, to], inclusive
+		from = (from + align - 1) / align * align
+		end := (to + 1) / align * align // first LBA past the partition
+		if end <= from || (end-from)*sectorSize < minPartition || (ok && end-from <= last-first+1) {
+			return
 		}
-		select {
-		case <-ctx.Done():
-			return "", fmt.Errorf("partition %s did not appear: %w", filepath.Base(part), ctx.Err())
-		case <-ticker.C:
+		first, last, ok = from, end-1, true
+	}
+	cursor := firstUsable
+	for _, u := range slices.SortedFunc(slices.Values(used), func(a, b [2]uint64) int { return cmp.Compare(a[0], b[0]) }) {
+		if u[0] > cursor {
+			consider(cursor, min(u[0]-1, lastUsable))
+		}
+		cursor = max(cursor, min(u[1], lastUsable)+1)
+	}
+	if cursor <= lastUsable {
+		consider(cursor, lastUsable)
+	}
+	return first, last, ok
+}
+
+// gptCopy is one validated GPT header (a full sector) and its entry array.
+type gptCopy struct {
+	header, entries         []byte
+	firstUsable, lastUsable uint64
+	entriesLBA              uint64
+}
+
+// readGPTCopy reads the header at lba, which must name alternate as its
+// other copy, and refuses anything that does not check out.
+func readGPTCopy(r io.ReaderAt, ss, lba, alternate uint64) (gptCopy, error) {
+	c := gptCopy{header: make([]byte, ss)}
+	if _, err := r.ReadAt(c.header, int64(lba*ss)); err != nil {
+		return c, err
+	}
+	h := c.header
+	size := binary.LittleEndian.Uint32(h[12:])
+	if string(h[:8]) != "EFI PART" || binary.LittleEndian.Uint32(h[8:]) != 0x00010000 || size < gptHeaderLen || uint64(size) > ss {
+		return c, fmt.Errorf("no valid GPT header at LBA %d", lba)
+	}
+	sum := slices.Clone(h[:size])
+	clear(sum[16:20])
+	if crc32.ChecksumIEEE(sum) != binary.LittleEndian.Uint32(h[16:]) {
+		return c, fmt.Errorf("GPT header at LBA %d has a bad checksum", lba)
+	}
+	count, entrySize := binary.LittleEndian.Uint32(h[80:]), binary.LittleEndian.Uint32(h[84:])
+	if binary.LittleEndian.Uint64(h[24:]) != lba || binary.LittleEndian.Uint64(h[32:]) != alternate ||
+		entrySize != gptEntrySize || count == 0 || count > 1024 {
+		return c, fmt.Errorf("GPT header at LBA %d is not the one expected there", lba)
+	}
+	c.firstUsable, c.lastUsable = binary.LittleEndian.Uint64(h[40:]), binary.LittleEndian.Uint64(h[48:])
+	c.entriesLBA = binary.LittleEndian.Uint64(h[72:])
+	sectors := (uint64(count)*gptEntrySize + ss - 1) / ss
+	// The entry array must sit outside the usable area and the headers.
+	if c.entriesLBA < 2 || c.firstUsable > c.lastUsable || (c.entriesLBA <= c.lastUsable && c.entriesLBA+sectors > c.firstUsable) ||
+		(c.entriesLBA <= lba && lba < c.entriesLBA+sectors) {
+		return c, fmt.Errorf("GPT header at LBA %d has an implausible layout", lba)
+	}
+	c.entries = make([]byte, count*gptEntrySize)
+	if _, err := r.ReadAt(c.entries, int64(c.entriesLBA*ss)); err != nil {
+		return c, err
+	}
+	if crc32.ChecksumIEEE(c.entries) != binary.LittleEndian.Uint32(h[88:]) {
+		return c, fmt.Errorf("GPT entries of the header at LBA %d have a bad checksum", lba)
+	}
+	return c, nil
+}
+
+// withEntries returns the header after its entry array became entries.
+func (c gptCopy) withEntries(entries []byte) []byte {
+	h := slices.Clone(c.header)
+	binary.LittleEndian.PutUint32(h[88:], crc32.ChecksumIEEE(entries))
+	size := binary.LittleEndian.Uint32(h[12:])
+	binary.LittleEndian.PutUint32(h[16:], 0)
+	binary.LittleEndian.PutUint32(h[16:], crc32.ChecksumIEEE(h[:size]))
+	return h
+}
+
+// AddPartition adds one Linux partition spanning the largest free region of
+// device's GPT and returns it once udev created its node. Existing
+// partitions may be in use: only one entry slot changes and the kernel is
+// told about the new partition alone. Anything unexpected is refused.
+func AddPartition(ctx context.Context, device string) (string, error) {
+	size, ss, err := diskGeometry(device)
+	if err != nil {
+		return "", err
+	}
+	last := size/ss - 1
+	f, err := os.OpenFile(device, os.O_RDWR, 0)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	primary, err := readGPTCopy(f, ss, 1, last)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", device, err)
+	}
+	backup, err := readGPTCopy(f, ss, last, 1)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", device, err)
+	}
+	if !bytes.Equal(primary.entries, backup.entries) || !bytes.Equal(primary.header[56:72], backup.header[56:72]) ||
+		primary.firstUsable != backup.firstUsable || primary.lastUsable != backup.lastUsable {
+		return "", fmt.Errorf("%s: partition table copies differ; repair it first", device)
+	}
+	slot := -1
+	var used [][2]uint64
+	for i := range len(primary.entries) / gptEntrySize {
+		e := primary.entries[i*gptEntrySize:][:gptEntrySize]
+		if [16]byte(e[:16]) == [16]byte{} {
+			if slot < 0 {
+				slot = i
+			}
+			continue
+		}
+		used = append(used, [2]uint64{binary.LittleEndian.Uint64(e[32:]), binary.LittleEndian.Uint64(e[40:])})
+	}
+	first, end, ok := LargestFreeRegion(primary.firstUsable, primary.lastUsable, used, ss)
+	if !ok {
+		return "", fmt.Errorf("no free space of at least %d MiB on %s", minPartition>>20, device)
+	}
+	if slot < 0 {
+		return "", fmt.Errorf("%s: partition table has no free entry", device)
+	}
+	entries := slices.Clone(primary.entries)
+	entry := gptLayout{first: first, last: end, part: randomGUID()}.entries()[:gptEntrySize]
+	copy(entries[slot*gptEntrySize:], entry)
+	// Backup first: a crash in between leaves the primary, which still
+	// describes only the old partitions, differing from the backup.
+	writes := []struct {
+		data []byte
+		off  uint64
+	}{
+		{entry, backup.entriesLBA*ss + uint64(slot*gptEntrySize)},
+		{backup.withEntries(entries), last * ss},
+		{entry, primary.entriesLBA*ss + uint64(slot*gptEntrySize)},
+		{primary.withEntries(entries), ss},
+	}
+	for _, w := range writes {
+		if _, err = f.WriteAt(w.data, int64(w.off)); err != nil {
+			return "", fmt.Errorf("write partition table to %s: %w", device, err)
 		}
 	}
+	if err = f.Sync(); err != nil {
+		return "", fmt.Errorf("write partition table to %s: %w", device, err)
+	}
+	if err = addKernelPartition(device, slot+1, first*ss, (end-first+1)*ss); err != nil {
+		return "", err
+	}
+	return waitForNode(ctx, partitionPath(device, slot+1))
 }

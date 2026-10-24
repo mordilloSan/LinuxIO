@@ -6,6 +6,7 @@ import {
   linuxio,
   useCallMutation,
   type FilesystemInfo,
+  type MDArray,
   type NFSMount,
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -28,6 +29,7 @@ import { DASHBOARD_CARD_SPACING } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formatters";
 
 import { driveIcon } from "./DriveCard";
+import MdRaidDetails from "./MdRaidDetails";
 import {
   buildStorageLayout,
   deviceTypeLabel,
@@ -47,17 +49,26 @@ import BtrfsSettingsCard from "../btrfs/BtrfsSettingsCard";
 import BtrfsSpaceCard from "../btrfs/BtrfsSpaceCard";
 import "./storage-pools.css";
 
-/** A line from `count` evenly spaced exits on the right to one entry on the left. */
+/** Percent heights of the centres of `count` equal slots. */
+const slotCentres = (count: number) =>
+  Array.from({ length: count }, (_, i) => ((i + 0.5) / count) * 100);
+
+/** Lines from `from` evenly spaced entries on the left to `to` exits on the right. */
 const Connector = ({
-  count = 1,
+  from = 1,
+  to = 1,
   span = false,
 }: {
-  count?: number;
+  from?: number;
+  to?: number;
   span?: boolean;
 }) => {
-  const ys = Array.from({ length: count }, (_, i) => ((i + 0.5) / count) * 100);
+  const entries = slotCentres(from);
+  const ys = slotCentres(to);
+  const all = [...entries, ...ys];
   const d =
-    `M0 50H50M50 ${ys[0]}V${ys[ys.length - 1]}` +
+    entries.map((y) => `M0 ${y}H50`).join("") +
+    `M50 ${Math.min(...all)}V${Math.max(...all)}` +
     ys.map((y) => `M50 ${y}H100`).join("");
   return (
     <div
@@ -67,7 +78,9 @@ const Connector = ({
       <svg preserveAspectRatio="none" viewBox="0 0 100 100">
         <path d={d} />
       </svg>
-      <span className="storage-pools__dot" />
+      {entries.map((y) => (
+        <span className="storage-pools__dot" key={y} style={{ top: `${y}%` }} />
+      ))}
       {ys.map((y) => (
         <span
           className="storage-pools__arrow"
@@ -168,6 +181,15 @@ const DiskRow = ({
   );
 };
 
+/** A disk in a column of its own card, so each gets its own connector line. */
+const DiskCard = (props: DiskRowProps) => (
+  <div className="storage-pools__slot">
+    <div className="storage-pools__card">
+      <DiskRow {...props} />
+    </div>
+  </div>
+);
+
 /** A mounted filesystem; opens its filesystem card. */
 const VolumeCard = ({
   volume,
@@ -214,7 +236,7 @@ const Volumes = ({
   volumes: FilesystemInfo[];
   onOpenVolume: (mountpoint: string) => void;
 }) => (
-  <div className="storage-pools__volumes">
+  <div className="storage-pools__column">
     {volumes.map((volume) => (
       <VolumeCard
         key={volume.mountpoint}
@@ -224,6 +246,70 @@ const Volumes = ({
     ))}
   </div>
 );
+
+/**
+ * A RAID, LVM or mapper device over its drives; an md array opens its
+ * details, the others are not managed here.
+ */
+const SourceCard = ({
+  array,
+  label,
+  onSelectRaid,
+  selectedRaid,
+  sizeBytes,
+  type,
+}: {
+  array?: MDArray;
+  label: string;
+  onSelectRaid: (name?: string) => void;
+  selectedRaid?: string;
+  sizeBytes: number;
+  type: string;
+}) => {
+  const content = (
+    <>
+      <Icon
+        className="storage-pools__icon"
+        height={36}
+        icon="mdi:layers-outline"
+        width={36}
+      />
+      <AppTypography fontWeight={600} noWrap variant="body2">
+        {label}
+      </AppTypography>
+      <AppChip
+        color="primary"
+        label={deviceTypeLabel(type)}
+        size="small"
+        variant="soft"
+      />
+      {array && array.degraded > 0 && (
+        <AppChip color="error" label="Degraded" size="small" variant="soft" />
+      )}
+      <AppTypography color="text.secondary" variant="caption">
+        {formatFileSize(sizeBytes)}
+      </AppTypography>
+    </>
+  );
+  if (!array) {
+    return (
+      <div className="storage-pools__card storage-pools__pool">{content}</div>
+    );
+  }
+  return (
+    <AppButton
+      aria-label={label}
+      aria-pressed={array.name === selectedRaid}
+      className="storage-pools__card storage-pools__pool"
+      color="inherit"
+      onClick={() =>
+        onSelectRaid(array.name === selectedRaid ? undefined : array.name)
+      }
+    >
+      {content}
+    </AppButton>
+  );
+};
 
 type PoolDialog =
   | { kind: "create" }
@@ -239,6 +325,9 @@ interface StoragePoolsProps {
   /** UUID of the pool whose details are open; kept in the URL for alert links. */
   selectedPool?: string;
   onSelectPool: (uuid?: string) => void;
+  /** Kernel name of the md RAID array whose details are open, e.g. md127. */
+  selectedRaid?: string;
+  onSelectRaid: (name?: string) => void;
 }
 
 /**
@@ -246,8 +335,8 @@ interface StoragePoolsProps {
  * for btrfs pools and RAID, LVM or mapper devices, disk -> volumes for plain
  * partitions and source -> volumes for network shares and devices with no
  * drive found under them. The selected pool's health, disk and RAID
- * management and settings sit below. Pools need btrfs and privilege; the rest
- * does not.
+ * management and settings, or the selected md array's members and scrub, sit
+ * below. Pools need btrfs and privilege; the rest does not.
  */
 const StoragePools = ({
   drives,
@@ -257,6 +346,8 @@ const StoragePools = ({
   onOpenVolume,
   selectedPool,
   onSelectPool,
+  selectedRaid,
+  onSelectRaid,
 }: StoragePoolsProps) => {
   const { privileged } = useAuth();
   const { isEnabled } = useCapability("btrfsAvailable");
@@ -315,6 +406,12 @@ const StoragePools = ({
   );
   const idleDrives = unpooled.filter((drive) => !offlineDrives.has(drive.name));
   const selected = poolStacks.find(({ fs }) => fs.uuid === selectedPool);
+  const { data: arrays = [] } = useQuery({
+    ...linuxio.storage.md_list,
+    enabled: sourceStacks.some(({ type }) => type.startsWith("raid")),
+    refetchInterval: 5000,
+  });
+  const selectedArray = arrays.find(({ name }) => name === selectedRaid);
 
   // Until the pools and block-device tree load, volumes would sit under the
   // wrong drive or source and then jump; draw nothing rather than that flicker.
@@ -363,15 +460,15 @@ const StoragePools = ({
                 sizeBytes={drive.sizeBytes}
               />
             </div>
-            <Connector count={volumes.length} span />
+            <Connector span to={volumes.length} />
             <Volumes onOpenVolume={onOpenVolume} volumes={volumes} />
           </div>
         ))}
         {poolStacks.map(({ pool, volumes }) => (
           <div className="storage-pools__stack" key={pool.uuid}>
-            <div className="storage-pools__card storage-pools__disks">
+            <div className="storage-pools__column">
               {pool.disks.map((disk) => (
-                <DiskRow
+                <DiskCard
                   drive={findBackingDrive(disk.name, drives)}
                   key={disk.key}
                   missing={disk.missing}
@@ -381,7 +478,7 @@ const StoragePools = ({
                 />
               ))}
             </div>
-            <Connector />
+            <Connector from={pool.disks.length} />
             <AppButton
               aria-label={pool.name}
               aria-pressed={pool.uuid === selected?.pool.uuid}
@@ -417,7 +514,7 @@ const StoragePools = ({
             </AppButton>
             {volumes.length > 0 && (
               <>
-                <Connector count={volumes.length} />
+                <Connector to={volumes.length} />
                 <Volumes onOpenVolume={onOpenVolume} volumes={volumes} />
               </>
             )}
@@ -428,12 +525,12 @@ const StoragePools = ({
           const name = pool.label || pool.uuid;
           return (
             <div className="storage-pools__stack" key={pool.uuid}>
-              <div className="storage-pools__card storage-pools__disks">
+              <div className="storage-pools__column">
                 {pool.devices.map((path) => {
                   const diskName = path.replace(/^\/dev\//, "");
                   const drive = findBackingDrive(diskName, drives);
                   return (
-                    <DiskRow
+                    <DiskCard
                       drive={drive}
                       key={path}
                       name={diskName}
@@ -443,7 +540,7 @@ const StoragePools = ({
                   );
                 })}
                 {missing > 0 && (
-                  <DiskRow
+                  <DiskCard
                     drive={null}
                     missing
                     name={`${missing} missing disk${missing > 1 ? "s" : ""}`}
@@ -452,7 +549,7 @@ const StoragePools = ({
                   />
                 )}
               </div>
-              <Connector />
+              <Connector from={pool.devices.length + (missing > 0 ? 1 : 0)} />
               <div className="storage-pools__card storage-pools__pool">
                 <Icon
                   className="storage-pools__icon"
@@ -516,9 +613,9 @@ const StoragePools = ({
           }) =>
             members.length > 0 ? (
               <div className="storage-pools__stack" key={key}>
-                <div className="storage-pools__card storage-pools__disks">
+                <div className="storage-pools__column">
                   {members.map((drive) => (
-                    <DiskRow
+                    <DiskCard
                       caption={drive.model}
                       drive={drive}
                       key={drive.name}
@@ -528,28 +625,16 @@ const StoragePools = ({
                     />
                   ))}
                 </div>
-                <Connector />
-                <div className="storage-pools__card storage-pools__pool">
-                  <Icon
-                    className="storage-pools__icon"
-                    height={36}
-                    icon="mdi:layers-outline"
-                    width={36}
-                  />
-                  <AppTypography fontWeight={600} noWrap variant="body2">
-                    {label}
-                  </AppTypography>
-                  <AppChip
-                    color="primary"
-                    label={deviceTypeLabel(type)}
-                    size="small"
-                    variant="soft"
-                  />
-                  <AppTypography color="text.secondary" variant="caption">
-                    {formatFileSize(sizeBytes)}
-                  </AppTypography>
-                </div>
-                <Connector count={volumes.length} />
+                <Connector from={members.length} />
+                <SourceCard
+                  array={arrays.find(({ path }) => path === label)}
+                  label={label}
+                  onSelectRaid={onSelectRaid}
+                  selectedRaid={selectedRaid}
+                  sizeBytes={sizeBytes}
+                  type={type}
+                />
+                <Connector to={volumes.length} />
                 <Volumes onOpenVolume={onOpenVolume} volumes={volumes} />
               </div>
             ) : (
@@ -574,7 +659,7 @@ const StoragePools = ({
                     </span>
                   </div>
                 </div>
-                <Connector count={volumes.length} span />
+                <Connector span to={volumes.length} />
                 <Volumes onOpenVolume={onOpenVolume} volumes={volumes} />
               </div>
             ),
@@ -677,6 +762,9 @@ const StoragePools = ({
             </AppGrid>
           </AppGrid>
         </>
+      )}
+      {selectedArray && (
+        <MdRaidDetails array={selectedArray} key={selectedArray.name} />
       )}
       {dialog?.kind === "create" && (
         <BtrfsCreatePoolDialog

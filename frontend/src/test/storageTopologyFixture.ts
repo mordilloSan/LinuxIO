@@ -29,6 +29,7 @@ export const storageBlock = (
   serial: "",
   transport: "",
   readOnly: false,
+  freeBytes: 0,
 });
 export const storageInventory: StorageTopologyInventory = {
   devices: [

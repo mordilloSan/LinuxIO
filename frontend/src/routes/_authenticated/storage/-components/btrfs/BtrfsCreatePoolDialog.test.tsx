@@ -44,6 +44,7 @@ const device = (
   serial: "",
   transport: "sata",
   readOnly: false,
+  freeBytes: 0,
   ...extra,
 });
 
@@ -113,9 +114,64 @@ describe("BtrfsCreatePoolDialog", () => {
       dataProfile: "raid0",
       metadataProfile: "raid1",
       devices: ["/dev/sdb", "/dev/sdc"],
+      freeSpace: [],
       force: false,
       partition: false,
     });
+  });
+
+  it("builds a pool from the unpartitioned space of disks in use", async () => {
+    const user = userEvent.setup();
+    const onConfirm = vi.fn();
+    // Like a host whose disks hold the root RAID in their first 65 GiB.
+    mocks.topology.mockResolvedValue({
+      devices: [0, 1].flatMap((n) => [
+        device(`/dev/nvme${n}n1`, {
+          model: "Patriot M.2 P300",
+          freeBytes: 888 * GiB,
+        }),
+        device(`/dev/nvme${n}n1p2`, {
+          type: "part",
+          sizeBytes: 64 * GiB,
+          fsType: "linux_raid_member",
+          parents: [`/dev/nvme${n}n1`],
+        }),
+      ]),
+      mounts: [],
+    });
+    render(
+      <BtrfsCreatePoolDialog
+        onClose={vi.fn()}
+        onConfirm={onConfirm}
+        pooledDevices={[]}
+      />,
+    );
+
+    await user.click(
+      await screen.findByRole("checkbox", {
+        name: "Free space on /dev/nvme0n1 · 888 GB · Patriot M.2 P300",
+      }),
+    );
+    await user.click(
+      screen.getByRole("checkbox", { name: /Free space on \/dev\/nvme1n1/ }),
+    );
+    // The disks themselves and their RAID partitions are never offered.
+    expect(
+      screen.queryByRole("checkbox", { name: /^\/dev\/nvme/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("combobox", { name: "Data profile" }),
+    ).toHaveTextContent("raid1");
+    await user.type(screen.getByLabelText("Name"), "tank");
+    await user.click(screen.getByRole("button", { name: "Create pool" }));
+
+    expect(onConfirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        devices: [],
+        freeSpace: ["/dev/nvme0n1", "/dev/nvme1n1"],
+        dataProfile: "raid1",
+      }),
+    );
   });
 
   it("offers disks with a foreign signature only under force", async () => {

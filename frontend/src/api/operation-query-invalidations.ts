@@ -79,6 +79,11 @@ const BTRFS_POOL_KEYS = [
   endpointQueryPrefix("storage.btrfs_pools_offline"),
   endpointQueryPrefix("monitoring.get_live"),
 ];
+// Members joining or leaving an md array change the block-device tree too.
+const MD_MEMBER_KEYS = [
+  endpointQueryPrefix("storage.md_list"),
+  endpointQueryPrefix("storage.get_topology"),
+];
 
 const VM_KEYS = [
   endpointQueryPrefix("virt.list"),
@@ -157,6 +162,10 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "docker.compose_stop": COMPOSE_KEYS,
   "docker.compose_restart": COMPOSE_KEYS,
   "docker.compose": COMPOSE_KEYS,
+  "docker.apply_daemon_storage": [
+    ...COMPOSE_KEYS,
+    endpointQueryPrefix("docker.get_daemon_config"),
+  ],
   "docker.delete_stack": COMPOSE_KEYS,
   "docker.system_prune": [
     endpointQueryPrefix("docker.list_containers"),
@@ -395,6 +404,11 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "storage.btrfs_pool_create": BTRFS_POOL_KEYS,
   "storage.btrfs_pool_destroy": BTRFS_POOL_KEYS,
   "storage.btrfs_pool_mount": BTRFS_POOL_KEYS,
+  "storage.md_sync_action": [endpointQueryPrefix("storage.md_list")],
+  "storage.md_member_fail": MD_MEMBER_KEYS,
+  "storage.md_member_remove": MD_MEMBER_KEYS,
+  "storage.md_member_add": MD_MEMBER_KEYS,
+  "storage.md_member_replace": MD_MEMBER_KEYS,
   "storage.set_btrfs_maintenance": [
     endpointQueryPrefix("storage.get_btrfs_maintenance"),
   ],

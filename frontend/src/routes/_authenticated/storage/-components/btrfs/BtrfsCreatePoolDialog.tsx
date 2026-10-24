@@ -32,7 +32,10 @@ interface BtrfsCreatePoolDialogProps {
 const defaultProfile = (kind: "data" | "metadata", disks: number) =>
   disks >= 2 ? "raid1" : kind === "data" ? "single" : "dup";
 
-/** Formats free disks as one btrfs filesystem with the chosen profiles. */
+/**
+ * Formats free disks, and new partitions in disks' unpartitioned space, as
+ * one btrfs filesystem with the chosen profiles.
+ */
 const BtrfsCreatePoolDialog = ({
   isPending = false,
   onClose,
@@ -58,24 +61,38 @@ const BtrfsCreatePoolDialog = ({
       !partitioned.has(entry.path) &&
       (entry.fsType === "" || force),
   );
+  // Unpartitioned space on a disk whose partitions are in use becomes a new
+  // partition; a disk with no partitions is offered whole above instead.
+  const spaces = all.filter(
+    (entry) => entry.freeBytes > 0 && partitioned.has(entry.path),
+  );
   const devices = picked.filter((path) =>
     free.some((entry) => entry.path === path),
   );
+  const freeSpace = picked.filter((path) =>
+    spaces.some((entry) => entry.path === path),
+  );
+  const count = devices.length + freeSpace.length;
   const profiles = Object.keys(PROFILE_MIN_DEVICES).filter(
-    (profile) => PROFILE_MIN_DEVICES[profile] <= Math.max(devices.length, 1),
+    (profile) => PROFILE_MIN_DEVICES[profile] <= Math.max(count, 1),
   );
   // A profile the disk count no longer allows falls back to the default.
   const chosen = (profile: string, kind: "data" | "metadata") =>
-    profiles.includes(profile) ? profile : defaultProfile(kind, devices.length);
+    profiles.includes(profile) ? profile : defaultProfile(kind, count);
   const dataValue = chosen(dataProfile, "data");
   const metadataValue = chosen(metadataProfile, "metadata");
-  const sizes = devices.map(
-    (path) => free.find((entry) => entry.path === path)?.sizeBytes ?? 0,
-  );
+  const sizes = [
+    ...devices.map(
+      (path) => free.find((entry) => entry.path === path)?.sizeBytes ?? 0,
+    ),
+    ...freeSpace.map(
+      (path) => spaces.find((entry) => entry.path === path)?.freeBytes ?? 0,
+    ),
+  ];
   const usable = usableBytes(dataValue, sizes);
   const name = label.trim();
   const target = mountpoint ?? `/mnt/${name}`;
-  const valid = name !== "" && devices.length > 0 && target.startsWith("/");
+  const valid = name !== "" && count > 0 && target.startsWith("/");
 
   const toggle = (path: string, checked: boolean) =>
     setPicked((current) =>
@@ -113,7 +130,8 @@ const BtrfsCreatePoolDialog = ({
           }}
         >
           <AppAlert severity="warning">
-            Everything on the selected disks is erased.
+            Everything on the selected disks is erased. Selected free space gets
+            a new partition and the rest of its disk is left alone.
           </AppAlert>
           <AppTextField
             fullWidth
@@ -129,7 +147,7 @@ const BtrfsCreatePoolDialog = ({
             value={target}
           />
           {profileSelect("Data profile", dataValue, setDataProfile)}
-          {devices.length > 0 && (
+          {count > 0 && (
             <AppTypography color="text.secondary" variant="caption">
               {`About ${formatFileSize(usable)} usable for data from ${formatFileSize(
                 sizes.reduce((sum, size) => sum + size, 0),
@@ -139,9 +157,9 @@ const BtrfsCreatePoolDialog = ({
           {profileSelect("Metadata profile", metadataValue, setMetadataProfile)}
           <div>
             <AppTypography variant="subtitle2">Disks</AppTypography>
-            {free.length === 0 && (
+            {free.length === 0 && spaces.length === 0 && (
               <AppTypography color="text.secondary" variant="body2">
-                No free disks
+                No free disks or free space
               </AppTypography>
             )}
             {free.map((entry) => (
@@ -157,6 +175,24 @@ const BtrfsCreatePoolDialog = ({
                   entry.path,
                   formatFileSize(entry.sizeBytes),
                   entry.model || entry.fsType,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              />
+            ))}
+            {spaces.map((entry) => (
+              <AppFormControlLabel
+                control={
+                  <AppCheckbox
+                    checked={freeSpace.includes(entry.path)}
+                    onChange={(_, checked) => toggle(entry.path, checked)}
+                  />
+                }
+                key={`space-${entry.path}`}
+                label={[
+                  `Free space on ${entry.path}`,
+                  formatFileSize(entry.freeBytes),
+                  entry.model,
                 ]
                   .filter(Boolean)
                   .join(" · ")}
@@ -179,7 +215,7 @@ const BtrfsCreatePoolDialog = ({
                 onChange={(_, checked) => setPartition(checked)}
               />
             }
-            label="Partition the disks, leaving 1 GiB free so a slightly smaller replacement disk fits"
+            label="Partition the whole disks, leaving 1 GiB free so a slightly smaller replacement disk fits"
           />
         </div>
       </AppDialogContent>
@@ -194,6 +230,7 @@ const BtrfsCreatePoolDialog = ({
               dataProfile: dataValue,
               metadataProfile: metadataValue,
               devices,
+              freeSpace,
               force,
               partition,
             })
