@@ -45,7 +45,7 @@ addCollection({
   },
 });
 
-// mdi - 183 icons
+// mdi - 184 icons
 addCollection({
   prefix: "mdi",
   width: 24,
@@ -167,6 +167,9 @@ addCollection({
     },
     "close-octagon": {
       body: '<path fill="currentColor" d="M8.27 3L3 8.27v7.46L8.27 21h7.46L21 15.73V8.27L15.73 3M8.41 7L12 10.59L15.59 7L17 8.41L13.41 12L17 15.59L15.59 17L12 13.41L8.41 17L7 15.59L10.59 12L7 8.41"/>',
+    },
+    "close-octagon-outline": {
+      body: '<path fill="currentColor" d="M8.27 3L3 8.27v7.46L8.27 21h7.46C17.5 19.24 21 15.73 21 15.73V8.27L15.73 3M9.1 5h5.8L19 9.1v5.8L14.9 19H9.1L5 14.9V9.1m4.12-1.39L7.71 9.12L10.59 12l-2.88 2.88l1.41 1.41L12 13.41l2.88 2.88l1.41-1.41L13.41 12l2.88-2.88l-1.41-1.41L12 10.59"/>',
     },
     "code-tags": {
       body: '<path fill="currentColor" d="m14.6 16.6l4.6-4.6l-4.6-4.6L16 6l6 6l-6 6zm-5.2 0L4.8 12l4.6-4.6L8 6l-6 6l6 6z"/>',

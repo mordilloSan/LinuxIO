@@ -15,6 +15,9 @@ func TestCheckPoolCreate(t *testing.T) {
 		{Path: "/dev/sdc", Type: "disk", Mountpoints: []string{}},
 		{Path: "/dev/sdd", Type: "disk", FSType: "ext4", Mountpoints: []string{}},
 		{Path: "/dev/sde", Type: "disk", FSType: "btrfs", Mountpoints: []string{"/data"}},
+		{Path: "/dev/nvme0n1", Type: "disk", FreeBytes: 888 << 30, Mountpoints: []string{}},
+		{Path: "/dev/nvme0n1p1", Type: "part", FreeBytes: 1 << 30, Parents: []string{"/dev/nvme0n1"}, Mountpoints: []string{"/boot/efi"}},
+		{Path: "/dev/nvme1n1", Type: "disk", Mountpoints: []string{}},
 	}
 	filesystems := []btrfs.BtrfsFilesystem{{UUID: testBtrfsUUID, Devices: []btrfs.BtrfsDevice{{ID: 1, Path: "/dev/sde"}}}}
 	fstab := map[string]fstabEntry{"/srv": {source: "UUID=x", fstype: "ext4"}}
@@ -35,6 +38,18 @@ func TestCheckPoolCreate(t *testing.T) {
 			r.Devices, r.DataProfile, r.MetadataProfile = []string{"/dev/sdb"}, "single", "dup"
 		}), ""},
 		{"force wipes signature", with(func(r *apischema.BtrfsPoolCreateRequest) { r.Devices[1], r.Force = "/dev/sdd", true }), ""},
+		{"free space only", with(func(r *apischema.BtrfsPoolCreateRequest) {
+			r.Devices, r.FreeSpace, r.DataProfile, r.MetadataProfile = nil, []string{"/dev/nvme0n1"}, "single", "dup"
+		}), ""},
+		{"devices and free space", with(func(r *apischema.BtrfsPoolCreateRequest) {
+			r.Devices, r.FreeSpace = []string{"/dev/sdb"}, []string{"/dev/nvme0n1"}
+		}), ""},
+		{"free space counts for raid1", with(func(r *apischema.BtrfsPoolCreateRequest) { r.Devices, r.FreeSpace = nil, []string{"/dev/nvme0n1"} }), "needs at least 2 devices"},
+		{"free space in devices", with(func(r *apischema.BtrfsPoolCreateRequest) { r.FreeSpace = []string{"/dev/sdb"} }), "listed twice"},
+		{"duplicate free space", with(func(r *apischema.BtrfsPoolCreateRequest) { r.FreeSpace = []string{"/dev/nvme0n1", "/dev/nvme0n1"} }), "listed twice"},
+		{"free space unknown disk", with(func(r *apischema.BtrfsPoolCreateRequest) { r.FreeSpace = []string{"/dev/nvme9n1"} }), "not found"},
+		{"free space disk without room", with(func(r *apischema.BtrfsPoolCreateRequest) { r.FreeSpace = []string{"/dev/nvme1n1"} }), "no free space"},
+		{"free space on a partition", with(func(r *apischema.BtrfsPoolCreateRequest) { r.FreeSpace = []string{"/dev/nvme0n1p1"} }), "no free space"},
 		{"bad label", with(func(r *apischema.BtrfsPoolCreateRequest) { r.Label = "a/b" }), "label"},
 		{"no devices", with(func(r *apischema.BtrfsPoolCreateRequest) { r.Devices = nil }), "at least one device"},
 		{"duplicate device", with(func(r *apischema.BtrfsPoolCreateRequest) { r.Devices[1] = "/dev/sdb" }), "listed twice"},

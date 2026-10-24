@@ -27,6 +27,12 @@ var api = apischema.Bindings(
 	apischema.Call[apischema.MountpointRemoveFstabRequest, apischema.StorageWarningResult]("storage.unmount_cifs").Handle(handleUnmountCIFS),
 	apischema.Call[apischema.MountpointOptionsUpdateFstabRequest, apischema.StorageMountResult]("storage.remount_cifs").Handle(handleRemountCIFS),
 	apischema.Call[apischema.MountpointRequest, apischema.StorageMountResult]("storage.unmount_filesystem").Handle(handleUnmountFilesystem),
+	apischema.Call[apischema.NoRequest, []apischema.MDArray]("storage.md_list", apischema.RetrySafe()).Handle(handleMDList),
+	apischema.Call[apischema.MDSyncActionRequest, apischema.MDArray]("storage.md_sync_action", apischema.Privileged()).Handle(handleMDSyncAction),
+	apischema.Call[apischema.MDMemberRequest, apischema.MDArray]("storage.md_member_fail", apischema.Privileged()).Handle(handleMDMemberFail),
+	apischema.Call[apischema.MDMemberRequest, apischema.MDArray]("storage.md_member_remove", apischema.Privileged()).Handle(handleMDMemberRemove),
+	apischema.Call[apischema.MDMemberAddRequest, apischema.MDArray]("storage.md_member_add", apischema.Privileged()).Handle(MDMemberAdd),
+	apischema.Call[apischema.MDMemberReplaceRequest, apischema.MDArray]("storage.md_member_replace", apischema.Privileged()).Handle(MDMemberReplace),
 	apischema.Call[apischema.NoRequest, []btrfs.BtrfsFilesystem]("storage.btrfs_list", apischema.RetrySafe()).Handle(handleBtrfsList),
 	apischema.Call[apischema.UUIDRequest, []btrfs.BtrfsSubvolume]("storage.btrfs_subvolumes", apischema.RetrySafe()).Handle(handleBtrfsSubvolumes),
 	apischema.Call[apischema.BtrfsSubvolumeRequest, btrfs.BtrfsSubvolume]("storage.btrfs_subvolume_create", apischema.Privileged()).Handle(handleBtrfsSubvolumeCreate),
@@ -72,6 +78,22 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	RegisterTaskRoutes(router)
 
 	api.Register(router)
+}
+
+func handleMDList(_ context.Context, _ apischema.NoRequest) ([]apischema.MDArray, error) {
+	return ListMDArrays()
+}
+
+func handleMDSyncAction(_ context.Context, req apischema.MDSyncActionRequest) (apischema.MDArray, error) {
+	return MDSyncAction(req)
+}
+
+func handleMDMemberFail(_ context.Context, req apischema.MDMemberRequest) (apischema.MDArray, error) {
+	return MDMemberFail(req)
+}
+
+func handleMDMemberRemove(_ context.Context, req apischema.MDMemberRequest) (apischema.MDArray, error) {
+	return MDMemberRemove(req)
 }
 
 func handleBtrfsList(ctx context.Context, _ apischema.NoRequest) ([]btrfs.BtrfsFilesystem, error) {

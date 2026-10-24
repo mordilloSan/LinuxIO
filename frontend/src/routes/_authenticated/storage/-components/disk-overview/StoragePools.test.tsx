@@ -7,6 +7,7 @@ import type {
   BtrfsFilesystem,
   BtrfsOfflinePool,
   FilesystemInfo,
+  MDArray,
   NFSMount,
 } from "@/api";
 import { renderWithTanStackRouter } from "@/test/render";
@@ -21,6 +22,7 @@ vi.mock("@tanstack/react-virtual", async () =>
 
 const mocks = vi.hoisted(() => ({
   list: vi.fn(),
+  mdList: vi.fn(),
   mutations: {} as Record<string, ReturnType<typeof vi.fn> | undefined>,
   offline: vi.fn(),
   topology: vi.fn(),
@@ -51,6 +53,10 @@ vi.mock("@/api", async (importOriginal) => {
         get_topology: {
           queryKey: ["test-get-topology"],
           queryFn: () => mocks.topology(),
+        },
+        md_list: {
+          queryKey: ["test-md-list"],
+          queryFn: () => mocks.mdList(),
         },
       },
     },
@@ -163,9 +169,10 @@ const capabilities = { btrfsAvailable: true };
 
 type PoolsProps = Partial<React.ComponentProps<typeof StoragePools>>;
 
-// Holds the selected pool the way the route's search params do.
+// Holds the selected pool and array the way the route's search params do.
 const Pools = (props: PoolsProps) => {
   const [pool, setPool] = useState<string>();
+  const [raid, setRaid] = useState<string>();
   return (
     <StoragePools
       drives={drives}
@@ -174,7 +181,9 @@ const Pools = (props: PoolsProps) => {
       onInspectDrive={vi.fn()}
       onOpenVolume={vi.fn()}
       onSelectPool={setPool}
+      onSelectRaid={setRaid}
       selectedPool={pool}
+      selectedRaid={raid}
       {...props}
     />
   );
@@ -197,9 +206,40 @@ const cold: BtrfsOfflinePool = {
   mountpoint: "/mnt/cold",
 };
 
+const mdTopology = {
+  devices: [
+    storageBlock("/dev/sda", "disk", 50),
+    storageBlock("/dev/sda2", "part", 64, ["/dev/sda"]),
+    storageBlock("/dev/sdb", "disk", 50),
+    storageBlock("/dev/sdb2", "part", 64, ["/dev/sdb"]),
+    storageBlock("/dev/md127", "raid1", 64, ["/dev/sda2", "/dev/sdb2"]),
+  ],
+  mounts: [],
+};
+
+const md127: MDArray = {
+  name: "md127",
+  path: "/dev/md127",
+  level: "raid1",
+  state: "clean",
+  metadataVersion: "1.2",
+  sizeBytes: 64 * GiB,
+  raidDisks: 2,
+  degraded: 0,
+  syncAction: "idle",
+  syncProgress: 0,
+  syncSpeedBytes: 0,
+  mismatchCount: 0,
+  members: [
+    { name: "sda2", path: "/dev/sda2", slot: 0, state: ["in_sync"], errors: 0 },
+    { name: "sdb2", path: "/dev/sdb2", slot: 1, state: ["in_sync"], errors: 0 },
+  ],
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.list.mockResolvedValue([raid, root]);
+  mocks.mdList.mockResolvedValue([]);
   mocks.offline.mockResolvedValue([]);
   mocks.topology.mockResolvedValue({ devices: [], mounts: [] });
 });
@@ -291,16 +331,7 @@ describe("StoragePools", () => {
 
   it("draws an md RAID array between its drives and its volume", async () => {
     mocks.list.mockResolvedValue([]);
-    mocks.topology.mockResolvedValue({
-      devices: [
-        storageBlock("/dev/sda", "disk", 50),
-        storageBlock("/dev/sda2", "part", 64, ["/dev/sda"]),
-        storageBlock("/dev/sdb", "disk", 50),
-        storageBlock("/dev/sdb2", "part", 64, ["/dev/sdb"]),
-        storageBlock("/dev/md127", "raid1", 64, ["/dev/sda2", "/dev/sdb2"]),
-      ],
-      mounts: [],
-    });
+    mocks.topology.mockResolvedValue(mdTopology);
     renderPools({ filesystems: [volume("/", "/dev/md127", "ext4")] });
 
     const array = (await screen.findByText("/dev/md127")).closest(
@@ -311,6 +342,13 @@ describe("StoragePools", () => {
     expect(screen.queryByText("No physical disk found")).toBeNull();
     expect(screen.getByText("Crucial MX500")).toBeInTheDocument();
     expect(screen.getByText("Blank disk")).toBeInTheDocument();
+    // Each member drive is a card of its own, not a row in a shared one.
+    const memberCards = ["sda", "sdb"].map((name) =>
+      screen
+        .getByRole("button", { name: `Drive details ${name}` })
+        .closest(".storage-pools__card"),
+    );
+    expect(memberCards[0]).not.toBe(memberCards[1]);
     // Only the NVMe drives, which hold nothing here, are left over.
     expect(
       within(
@@ -320,6 +358,83 @@ describe("StoragePools", () => {
         .getAllByRole("button")
         .map((button) => button.getAttribute("aria-label")),
     ).toEqual(["Drive details nvme0n1", "Drive details nvme1n1"]);
+  });
+
+  it("opens an md array's details, scrubs it and fails a member", async () => {
+    const user = userEvent.setup();
+    mocks.list.mockResolvedValue([]);
+    mocks.topology.mockResolvedValue(mdTopology);
+    mocks.mdList.mockResolvedValue([md127]);
+    renderPools({ filesystems: [volume("/", "/dev/md127", "ext4")] });
+
+    const card = await screen.findByRole("button", { name: "/dev/md127" });
+    expect(screen.queryByText("Details · /dev/md127")).toBeNull();
+    await user.click(card);
+    expect(card).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Details · /dev/md127")).toBeInTheDocument();
+    expect(screen.getByText("2 of 2 disks in sync")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Check" }));
+    expect(mocks.mutations["storage.md_sync_action"]).toHaveBeenCalledWith({
+      name: "md127",
+      action: "check",
+    });
+    // Active members can be failed or replaced, not removed outright.
+    expect(
+      screen.queryByRole("button", { name: "Remove /dev/sda2" }),
+    ).toBeNull();
+    await user.click(
+      screen.getByRole("button", { name: "Mark /dev/sda2 failed" }),
+    );
+    const dialog = screen.getByRole("dialog", { name: "Mark disk failed" });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Mark failed" }),
+    );
+    expect(mocks.mutations["storage.md_member_fail"]).toHaveBeenCalledWith({
+      name: "md127",
+      member: "sda2",
+    });
+  });
+
+  it("offers removal of a failed md member and stops a running check", async () => {
+    const user = userEvent.setup();
+    mocks.list.mockResolvedValue([]);
+    mocks.topology.mockResolvedValue(mdTopology);
+    mocks.mdList.mockResolvedValue([
+      {
+        ...md127,
+        degraded: 1,
+        syncAction: "check",
+        syncProgress: 42,
+        members: [
+          md127.members[0],
+          { ...md127.members[1], slot: -1, state: ["faulty"] },
+        ],
+      },
+    ]);
+    renderPools({
+      filesystems: [volume("/", "/dev/md127", "ext4")],
+      selectedRaid: "md127",
+    });
+
+    expect(await screen.findByText("Checking · 42.0%")).toBeInTheDocument();
+    expect(screen.getByText("Degraded (1 missing)")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Stop" }));
+    expect(mocks.mutations["storage.md_sync_action"]).toHaveBeenCalledWith({
+      name: "md127",
+      action: "idle",
+    });
+    await user.click(screen.getByRole("button", { name: "Remove /dev/sdb2" }));
+    await user.click(
+      within(screen.getByRole("dialog", { name: "Remove disk" })).getByRole(
+        "button",
+        { name: "Remove" },
+      ),
+    );
+    expect(mocks.mutations["storage.md_member_remove"]).toHaveBeenCalledWith({
+      name: "md127",
+      member: "sdb2",
+    });
   });
 
   it("opens a volume", async () => {
