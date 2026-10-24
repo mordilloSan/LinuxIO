@@ -3,7 +3,7 @@ package daemon
 import (
 	"context"
 	"crypto/rand"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"net/http"
@@ -107,7 +107,7 @@ func (e *commandExecutor) handleConfigSet(_ context.Context, req monitoringapi.C
 		return commandError(req, http.StatusBadRequest, "invalid_params", "params are required")
 	}
 	var params monitoringapi.MonitoringConfigPatch
-	if err := json.Unmarshal(req.Params, &params); err != nil {
+	if err := json.Unmarshal(req.Params, &params, json.RejectUnknownMembers(true)); err != nil {
 		return commandError(req, http.StatusBadRequest, "invalid_params", err.Error())
 	}
 	e.configMu.Lock()

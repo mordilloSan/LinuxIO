@@ -32,7 +32,7 @@ type dockerLogRecord struct {
 	Name   string `json:"name"`
 	TS     string `json:"ts"`
 	Line   string `json:"line"`
-	Stderr bool   `json:"stderr,omitempty"`
+	Stderr bool   `json:"stderr,omitzero"`
 }
 
 // dockerLogStream is the shared sink for every follower goroutine of one

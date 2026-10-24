@@ -5,9 +5,9 @@ type VMDisk struct {
 	Target     string `json:"target"`
 	Path       string `json:"path"`
 	VolumeName string `json:"volumeName,omitempty"`
-	SizeGB     int    `json:"sizeGB,omitempty"`
+	SizeGB     int    `json:"sizeGB,omitzero"`
 	// AllocatedBytes is the space the image really uses on disk.
-	AllocatedBytes int64 `json:"allocatedBytes,omitempty"`
+	AllocatedBytes int64 `json:"allocatedBytes,omitzero"`
 	Owned          bool  `json:"owned"`
 }
 
@@ -27,7 +27,7 @@ type VMNetwork struct {
 	Name              string `json:"name"`
 	Type              string `json:"type"`
 	Active            bool   `json:"active"`
-	HasPhysicalUplink bool   `json:"hasPhysicalUplink,omitempty"`
+	HasPhysicalUplink bool   `json:"hasPhysicalUplink,omitzero"`
 	// Bridge is the host interface backing the network.
 	Bridge string `json:"bridge,omitempty"`
 	// Uplink is the first physical NIC enslaved to the bridge, if any.
@@ -185,7 +185,7 @@ type VMUpdateRequest struct {
 	NewName  string     `json:"newName,omitempty"`
 	VCPUs    int        `json:"vcpus"`
 	MemoryMB int        `json:"memoryMB"`
-	DiskGB   int        `json:"diskGB,omitempty"`
+	DiskGB   int        `json:"diskGB,omitzero"`
 	Firmware VMFirmware `json:"firmware"`
 	Network  string     `json:"network,omitempty"`
 	// OS is a distro id such as "ubuntu", stored in LinuxIO's metadata.

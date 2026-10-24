@@ -295,3 +295,12 @@ func TestApplyConfigSetParamsRejectsHistoryIntervalBelowTick(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "history.intervals")
 }
+
+func TestHandleConfigSetRejectsUnknownParams(t *testing.T) {
+	executor := newConfigOnlyExecutor(t, config.Default())
+	req := monitoringapi.CommandRequest{Command: "config.set", Params: json.RawMessage(`{"not_a_key":true}`)}
+
+	response := executor.handleConfigSet(context.Background(), req).Response
+	require.NotNil(t, response.Error)
+	assert.Equal(t, "invalid_params", response.Error.Code)
+}

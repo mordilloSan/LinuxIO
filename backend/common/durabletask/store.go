@@ -67,7 +67,7 @@ type Progress struct {
 }
 
 type StructuredError struct {
-	Code    int    `json:"code,omitempty"`
+	Code    int    `json:"code,omitzero"`
 	Message string `json:"message"`
 }
 

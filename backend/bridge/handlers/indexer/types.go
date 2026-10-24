@@ -12,9 +12,9 @@ type IndexerProgress struct {
 	State        string `json:"state,omitempty"`
 	Message      string `json:"message,omitempty"`
 	Path         string `json:"path,omitempty"`
-	FilesIndexed int64  `json:"files_indexed,omitempty"`
-	DirsIndexed  int64  `json:"dirs_indexed,omitempty"`
-	BytesIndexed int64  `json:"bytes_indexed,omitempty"`
+	FilesIndexed int64  `json:"files_indexed,omitzero"`
+	DirsIndexed  int64  `json:"dirs_indexed,omitzero"`
+	BytesIndexed int64  `json:"bytes_indexed,omitzero"`
 	CurrentPath  string `json:"current_path,omitempty"`
 	Phase        string `json:"phase,omitempty"`
 }
@@ -41,5 +41,5 @@ type IndexerResult struct {
 	DirsIndexed    int64  `json:"dirs_indexed"`
 	TotalSize      int64  `json:"total_size"`
 	DurationMs     int64  `json:"duration_ms"`
-	DeletedEntries int64  `json:"deleted_entries,omitempty"`
+	DeletedEntries int64  `json:"deleted_entries,omitzero"`
 }

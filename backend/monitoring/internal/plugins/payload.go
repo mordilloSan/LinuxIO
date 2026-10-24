@@ -8,7 +8,7 @@ import (
 // The *Data types are the JSON payload of one plugin each; Snapshot fills them.
 type CPUData struct {
 	Cpu            float64                `json:"cpu_percent"`
-	MaxCpu         float64                `json:"max_cpu_percent,omitempty"`
+	MaxCpu         float64                `json:"max_cpu_percent,omitzero"`
 	CpuBreakdown   []float64              `json:"cpu_breakdown_percent,omitempty"`
 	CpuCoresUsage  systemmodel.Uint8Slice `json:"cpu_cores_percent,omitempty"`
 	CpuFrequencies []float64              `json:"cpu_frequencies_mhz,omitempty"`
@@ -16,11 +16,11 @@ type CPUData struct {
 
 type MemData struct {
 	Mem          float64 `json:"memory_gb"`
-	MaxMem       float64 `json:"max_memory_gb,omitempty"`
+	MaxMem       float64 `json:"max_memory_gb,omitzero"`
 	MemUsed      float64 `json:"memory_used_gb"`
 	MemPct       float64 `json:"memory_percent"`
 	MemBuffCache float64 `json:"memory_buffer_cache_gb"`
-	MemZfsArc    float64 `json:"memory_zfs_arc_gb,omitempty"`
+	MemZfsArc    float64 `json:"memory_zfs_arc_gb,omitzero"`
 	MemSwapTotal float64 `json:"memory_swap_total_gb"`
 	MemSwapUsed  float64 `json:"memory_swap_used_gb"`
 	MemSwapPct   float64 `json:"memory_swap_percent"`
@@ -30,8 +30,8 @@ type MemData struct {
 }
 
 type SwapData struct {
-	Swap     float64 `json:"swap_gb,omitempty"`
-	SwapUsed float64 `json:"swap_used_gb,omitempty"`
+	Swap     float64 `json:"swap_gb,omitzero"`
+	SwapUsed float64 `json:"swap_used_gb,omitzero"`
 }
 
 type LoadData struct {
@@ -45,8 +45,8 @@ type DiskIOData struct {
 	DiskPct        float64    `json:"disk_percent"`
 	DiskReadPs     float64    `json:"disk_read_mb_per_second,omitzero"`
 	DiskWritePs    float64    `json:"disk_write_mb_per_second,omitzero"`
-	MaxDiskReadPs  float64    `json:"max_disk_read_mb_per_second,omitempty"`
-	MaxDiskWritePs float64    `json:"max_disk_write_mb_per_second,omitempty"`
+	MaxDiskReadPs  float64    `json:"max_disk_read_mb_per_second,omitzero"`
+	MaxDiskWritePs float64    `json:"max_disk_write_mb_per_second,omitzero"`
 	DiskIO         [2]uint64  `json:"disk_io_bytes_per_second,omitzero"`
 	MaxDiskIO      [2]uint64  `json:"max_disk_io_bytes_per_second,omitzero"`
 	DiskIoStats    [6]float64 `json:"disk_io_stats,omitzero"`
@@ -73,7 +73,7 @@ type containerSnapshotRecord struct {
 	Image     string                      `json:"image,omitempty"`
 	Ports     string                      `json:"ports,omitempty"`
 	Status    string                      `json:"status,omitempty"`
-	Health    containermodel.DockerHealth `json:"health,omitempty"`
+	Health    containermodel.DockerHealth `json:"health,omitzero"`
 	Cpu       float64                     `json:"cpu_percent"`
 	Mem       float64                     `json:"memory_mb"`
 	Bandwidth [2]uint64                   `json:"bandwidth_bytes,omitempty,omitzero"`

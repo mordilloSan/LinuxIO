@@ -2,7 +2,7 @@ package configfile
 
 import (
 	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -61,14 +61,8 @@ func Load(path string) (Config, error) {
 
 func DecodePatchJSON(data []byte) (Patch, error) {
 	var patch Patch
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&patch); err != nil {
+	if err := json.Unmarshal(data, &patch, json.RejectUnknownMembers(true)); err != nil {
 		return Patch{}, err
-	}
-	var extra struct{}
-	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
-		return Patch{}, fmt.Errorf("unexpected trailing JSON")
 	}
 	return patch, nil
 }

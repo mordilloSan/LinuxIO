@@ -21,9 +21,9 @@ type ComposeProgress struct {
 	Text     string `json:"text"`              // "Pulling", "Downloading", "Extracting", "Pull complete", "Creating", "Started"…
 	Status   string `json:"status"`            // "Working" | "Done" | "Error"
 	Details  string `json:"details,omitempty"` // Docker's humanized current (e.g. "2.097MB")
-	Current  int64  `json:"current,omitempty"`
-	Total    int64  `json:"total,omitempty"`
-	Percent  int    `json:"percent,omitempty"`
+	Current  int64  `json:"current,omitzero"`
+	Total    int64  `json:"total,omitzero"`
+	Percent  int    `json:"percent,omitzero"`
 }
 
 // ComposeLineEmitter receives each line of compose output. For structured

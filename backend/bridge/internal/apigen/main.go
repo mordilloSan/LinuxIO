@@ -559,7 +559,7 @@ func jsonFieldOptional(field reflect.StructField) bool {
 		return true
 	}
 	_, opts := jsonFieldName(field)
-	return slices.Contains(opts, "omitempty")
+	return slices.Contains(opts, "omitempty") || slices.Contains(opts, "omitzero")
 }
 
 func scalarInputField(t reflect.Type) (reflect.StructField, bool) {

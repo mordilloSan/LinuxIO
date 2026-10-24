@@ -13,7 +13,7 @@ func TestHandleAddRejectsLegacyEntryFields(t *testing.T) {
 	rr := httptest.NewRecorder()
 	(&daemon{}).handleAdd(rr, req)
 
-	if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "unknown field") {
+	if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "unknown object member") {
 		t.Fatalf("response = %d %q, want unknown-field rejection", rr.Code, rr.Body.String())
 	}
 }

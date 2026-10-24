@@ -94,9 +94,9 @@ type EntryResult struct {
 	Size       int64     `json:"size"`
 	ModTime    time.Time `json:"mod_time"`
 	Inode      uint64    `json:"inode"`
-	TotalSize  int64     `json:"total_size,omitempty"`
-	TotalFiles int64     `json:"total_files,omitempty"`
-	TotalDirs  int64     `json:"total_dirs,omitempty"`
+	TotalSize  int64     `json:"total_size,omitzero"`
+	TotalFiles int64     `json:"total_files,omitzero"`
+	TotalDirs  int64     `json:"total_dirs,omitzero"`
 }
 
 type SubfolderResult struct {
@@ -119,10 +119,10 @@ type WorkProgressEvent struct {
 	Path         string `json:"path"`
 	Phase        string `json:"phase,omitempty"`
 	Message      string `json:"message,omitempty"`
-	FilesIndexed int64  `json:"files_indexed,omitempty"`
-	DirsIndexed  int64  `json:"dirs_indexed,omitempty"`
+	FilesIndexed int64  `json:"files_indexed,omitzero"`
+	DirsIndexed  int64  `json:"dirs_indexed,omitzero"`
 	CurrentPath  string `json:"current_path,omitempty"`
-	BytesIndexed int64  `json:"bytes_indexed,omitempty"`
+	BytesIndexed int64  `json:"bytes_indexed,omitzero"`
 }
 
 type WorkCompleteEvent struct {
@@ -131,10 +131,10 @@ type WorkCompleteEvent struct {
 	OperationID    string `json:"operation_id"`
 	Path           string `json:"path"`
 	DurationMs     int64  `json:"duration_ms"`
-	FilesIndexed   int64  `json:"files_indexed,omitempty"`
-	DirsIndexed    int64  `json:"dirs_indexed,omitempty"`
-	TotalSize      int64  `json:"total_size,omitempty"`
-	DeletedEntries int64  `json:"deleted_entries,omitempty"`
+	FilesIndexed   int64  `json:"files_indexed,omitzero"`
+	DirsIndexed    int64  `json:"dirs_indexed,omitzero"`
+	TotalSize      int64  `json:"total_size,omitzero"`
+	DeletedEntries int64  `json:"deleted_entries,omitzero"`
 }
 
 type WorkErrorEvent struct {

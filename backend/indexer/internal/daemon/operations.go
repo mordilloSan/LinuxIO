@@ -2,10 +2,8 @@ package daemon
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
+	"encoding/json/v2"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -157,14 +155,8 @@ func (d *daemon) handleAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var payload api.EntryRequest
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxRequestBodyBytes))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&payload); err != nil {
+	if err := json.UnmarshalRead(http.MaxBytesReader(w, r.Body, maxRequestBodyBytes), &payload, json.RejectUnknownMembers(true)); err != nil {
 		http.Error(w, fmt.Sprintf("invalid body: %v", err), http.StatusBadRequest)
-		return
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		http.Error(w, "invalid body: unexpected trailing JSON", http.StatusBadRequest)
 		return
 	}
 	if payload.Path == "" {

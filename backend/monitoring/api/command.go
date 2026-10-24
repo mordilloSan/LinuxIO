@@ -43,7 +43,7 @@ type CommandResponse[T any] struct {
 	OK              bool          `json:"ok"`
 	Command         string        `json:"command"`
 	RequestID       string        `json:"request_id,omitempty"`
-	RestartRequired bool          `json:"restart_required,omitempty"`
+	RestartRequired bool          `json:"restart_required,omitzero"`
 	Data            T             `json:"data,omitempty"`
 	Error           *CommandError `json:"error,omitempty"`
 }

@@ -37,7 +37,7 @@ const (
 
 type Error struct {
 	Message string `json:"message"`
-	Code    int    `json:"code,omitempty"`
+	Code    int    `json:"code,omitzero"`
 }
 
 // Error returns the error message.
@@ -58,7 +58,7 @@ type TaskOwner struct {
 	// public Task snapshots because it is also the session-cookie credential.
 	SessionID string `json:"-"`
 	Username  string `json:"username,omitempty"`
-	UID       uint32 `json:"uid,omitempty"`
+	UID       uint32 `json:"uid,omitzero"`
 }
 
 // MatchesSession reports whether o and other refer to the same exact session.

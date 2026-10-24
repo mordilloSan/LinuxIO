@@ -3,6 +3,7 @@ package relay
 import (
 	"encoding/binary"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -167,7 +168,7 @@ func ParseStreamOpenPayload(payload []byte) (StreamOpenEnvelope, error) {
 	}
 
 	var envelope StreamOpenEnvelope
-	if err := json.Unmarshal(payload, &envelope); err != nil {
+	if err := jsonv2.Unmarshal(payload, &envelope, jsonv2.RejectUnknownMembers(true)); err != nil {
 		return StreamOpenEnvelope{}, fmt.Errorf("%w: decode stream open payload: %v", ErrInvalidRequest, err)
 	}
 	if envelope.Route == "" {
@@ -184,7 +185,7 @@ func ParseStreamOpenPayload(payload []byte) (StreamOpenEnvelope, error) {
 type ResultFrame struct {
 	Status string          `json:"status"`          // "ok" or "error"
 	Error  string          `json:"error,omitempty"` // Error message if status is "error"
-	Code   int             `json:"code,omitempty"`  // Optional error code
+	Code   int             `json:"code,omitzero"`   // Optional error code
 	Data   json.RawMessage `json:"data,omitempty"`  // Optional result data
 }
 

@@ -191,7 +191,7 @@ type FileProgress struct {
 	// meaningless and the client should show a busy bar rather than 0%. Archive
 	// compression starts before its size estimate finishes and clears this once
 	// the estimate lands.
-	Indeterminate bool `json:"indeterminate,omitempty"`
+	Indeterminate bool `json:"indeterminate,omitzero"`
 }
 
 func (p FileProgress) ProgressEnvelope() bridgeipc.TaskProgress {
@@ -223,7 +223,7 @@ type CountProgress struct {
 	Total         int64  `json:"total"`
 	Pct           int    `json:"pct"`
 	Phase         string `json:"phase,omitempty"`
-	Indeterminate bool   `json:"indeterminate,omitempty"`
+	Indeterminate bool   `json:"indeterminate,omitzero"`
 }
 
 func (p CountProgress) ProgressEnvelope() bridgeipc.TaskProgress {

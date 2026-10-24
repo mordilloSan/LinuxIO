@@ -230,3 +230,10 @@ func TestParseStreamOpenPayloadRejectsInvalidEnvelope(t *testing.T) {
 		}
 	}
 }
+
+func TestParseStreamOpenPayloadRejectsUnknownMembers(t *testing.T) {
+	_, err := ParseStreamOpenPayload([]byte(`{"route":"system.get_cpu_info","extra":true}`))
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("ParseStreamOpenPayload() error = %v, want ErrInvalidRequest", err)
+	}
+}

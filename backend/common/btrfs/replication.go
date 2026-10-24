@@ -48,7 +48,7 @@ type BtrfsReplicationTarget struct {
 	Path string `json:"path"`
 	Host string `json:"host,omitempty"`
 	User string `json:"user,omitempty"`
-	Port int    `json:"port,omitempty"`
+	Port int    `json:"port,omitzero"`
 }
 
 // BtrfsReplicationJob sends the snapshots of one subvolume, identified by

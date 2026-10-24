@@ -18,14 +18,14 @@ type indexWireEvent struct {
 	Message string `json:"message,omitempty"`
 
 	// scan and summary counters
-	Dirs  uint64 `json:"dirs,omitempty"`
-	Files uint64 `json:"files,omitempty"`
-	Size  uint64 `json:"size,omitempty"`
+	Dirs  uint64 `json:"dirs,omitzero"`
+	Files uint64 `json:"files,omitzero"`
+	Size  uint64 `json:"size,omitzero"`
 
 	// summary only
-	DeletedEntries int64  `json:"deleted_entries,omitempty"`
-	SkippedDirs    uint64 `json:"skipped_dirs,omitempty"`
-	DurationMs     int64  `json:"duration_ms,omitempty"`
+	DeletedEntries int64  `json:"deleted_entries,omitzero"`
+	SkippedDirs    uint64 `json:"skipped_dirs,omitzero"`
+	DurationMs     int64  `json:"duration_ms,omitzero"`
 }
 
 // WireProgress is the IndexProgress the index-mode subprocess uses: it

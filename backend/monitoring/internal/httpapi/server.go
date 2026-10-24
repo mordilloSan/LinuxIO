@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -245,7 +246,7 @@ func (s *Server) handleCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req monitoringapi.CommandRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := jsonv2.UnmarshalRead(r.Body, &req, jsonv2.RejectUnknownMembers(true)); err != nil {
 		writeJSON(w, http.StatusBadRequest, monitoringapi.CommandResponse[any]{
 			OK: false,
 			Error: &monitoringapi.CommandError{

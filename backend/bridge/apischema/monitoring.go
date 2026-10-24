@@ -40,10 +40,10 @@ type MonitoringConfigSetResult struct {
 
 type MonitoringHistoryRequest struct {
 	Resolution MonitoringHistoryResolution `json:"resolution"`
-	FromMs     int64                       `json:"from_ms,omitempty"`
-	ToMs       int64                       `json:"to_ms,omitempty"`
-	WindowMs   int64                       `json:"window_ms,omitempty"`
-	Limit      int                         `json:"limit,omitempty"`
+	FromMs     int64                       `json:"from_ms,omitzero"`
+	ToMs       int64                       `json:"to_ms,omitzero"`
+	WindowMs   int64                       `json:"window_ms,omitzero"`
+	Limit      int                         `json:"limit,omitzero"`
 }
 
 type MonitoringCPUHistoryPoint struct {
@@ -62,13 +62,13 @@ type MonitoringMemoryHistoryPoint struct {
 	UsedGB        float64 `json:"used_gb"`
 	UsedPercent   float64 `json:"used_percent"`
 	BufferCacheGB float64 `json:"buffer_cache_gb"`
-	ZFSArcGB      float64 `json:"zfs_arc_gb,omitempty"`
+	ZFSArcGB      float64 `json:"zfs_arc_gb,omitzero"`
 	// CachedGB and BuffersGB split BufferCacheGB.
-	CachedGB  float64 `json:"cached_gb,omitempty"`
-	BuffersGB float64 `json:"buffers_gb,omitempty"`
+	CachedGB  float64 `json:"cached_gb,omitzero"`
+	BuffersGB float64 `json:"buffers_gb,omitzero"`
 	// DockerUsedGB sums container memory from the containers history plugin;
 	// zero when that plugin has no sample near the point's timestamp.
-	DockerUsedGB float64 `json:"docker_used_gb,omitempty"`
+	DockerUsedGB float64 `json:"docker_used_gb,omitzero"`
 }
 
 type MonitoringDiskIOHistoryPoint struct {

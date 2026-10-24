@@ -14,26 +14,26 @@ import (
 
 type Stats struct {
 	Cpu            float64             `json:"cpu_percent"`
-	MaxCpu         float64             `json:"max_cpu_percent,omitempty"`
+	MaxCpu         float64             `json:"max_cpu_percent,omitzero"`
 	Mem            float64             `json:"memory_gb"`
-	MaxMem         float64             `json:"max_memory_gb,omitempty"`
+	MaxMem         float64             `json:"max_memory_gb,omitzero"`
 	MemUsed        float64             `json:"memory_used_gb"`
 	MemPct         float64             `json:"memory_percent"`
 	MemBuffCache   float64             `json:"memory_buffer_cache_gb"`
-	MemZfsArc      float64             `json:"memory_zfs_arc_gb,omitempty"` // ZFS ARC memory
-	Swap           float64             `json:"swap_gb,omitempty"`
-	SwapUsed       float64             `json:"swap_used_gb,omitempty"`
-	SwapPct        float64             `json:"memory_swap_percent,omitempty"`
-	MemAvailable   float64             `json:"memory_available_gb,omitempty"`
-	MemCached      float64             `json:"memory_cached_gb,omitempty"`
-	MemBuffers     float64             `json:"memory_buffers_gb,omitempty"`
+	MemZfsArc      float64             `json:"memory_zfs_arc_gb,omitzero"` // ZFS ARC memory
+	Swap           float64             `json:"swap_gb,omitzero"`
+	SwapUsed       float64             `json:"swap_used_gb,omitzero"`
+	SwapPct        float64             `json:"memory_swap_percent,omitzero"`
+	MemAvailable   float64             `json:"memory_available_gb,omitzero"`
+	MemCached      float64             `json:"memory_cached_gb,omitzero"`
+	MemBuffers     float64             `json:"memory_buffers_gb,omitzero"`
 	DiskTotal      float64             `json:"disk_total_gb"`
 	DiskUsed       float64             `json:"disk_used_gb"`
 	DiskPct        float64             `json:"disk_percent"`
 	DiskReadPs     float64             `json:"disk_read_mb_per_second,omitzero"`
 	DiskWritePs    float64             `json:"disk_write_mb_per_second,omitzero"`
-	MaxDiskReadPs  float64             `json:"max_disk_read_mb_per_second,omitempty"`
-	MaxDiskWritePs float64             `json:"max_disk_write_mb_per_second,omitempty"`
+	MaxDiskReadPs  float64             `json:"max_disk_read_mb_per_second,omitzero"`
+	MaxDiskWritePs float64             `json:"max_disk_write_mb_per_second,omitzero"`
 	Temperatures   map[string]float64  `json:"temperatures,omitempty"`
 	ExtraFs        map[string]*FsStats `json:"extra_filesystems,omitempty"`
 	GPUData        map[string]GPUData  `json:"gpus,omitempty"`
@@ -78,13 +78,13 @@ type GPUData struct {
 	Name        string             `json:"name"`
 	Address     string             `json:"-"`
 	Temperature float64            `json:"-"`
-	MemoryUsed  float64            `json:"memory_used_mb,omitempty,omitzero"`
-	MemoryTotal float64            `json:"memory_total_mb,omitempty,omitzero"`
+	MemoryUsed  float64            `json:"memory_used_mb,omitzero"`
+	MemoryTotal float64            `json:"memory_total_mb,omitzero"`
 	Usage       float64            `json:"usage_percent"`
-	Power       float64            `json:"power_watts,omitempty"`
+	Power       float64            `json:"power_watts,omitzero"`
 	Count       float64            `json:"-"`
 	Engines     map[string]float64 `json:"engines,omitempty"`
-	PowerPkg    float64            `json:"package_power_watts,omitempty"`
+	PowerPkg    float64            `json:"package_power_watts,omitzero"`
 }
 
 type FsStats struct {
@@ -92,13 +92,13 @@ type FsStats struct {
 	DiskUsed       float64 `json:"disk_used_gb"`
 	DiskReadPs     float64 `json:"disk_read_mb_per_second"`
 	DiskWritePs    float64 `json:"disk_write_mb_per_second"`
-	MaxDiskReadPS  float64 `json:"max_disk_read_mb_per_second,omitempty"`
-	MaxDiskWritePS float64 `json:"max_disk_write_mb_per_second,omitempty"`
+	MaxDiskReadPS  float64 `json:"max_disk_read_mb_per_second,omitzero"`
+	MaxDiskWritePS float64 `json:"max_disk_write_mb_per_second,omitzero"`
 	// TODO: remove DiskReadPs and DiskWritePs in future release in favor of DiskReadBytes and DiskWriteBytes
 	DiskReadBytes     uint64     `json:"disk_read_bytes_per_second"`
 	DiskWriteBytes    uint64     `json:"disk_write_bytes_per_second"`
-	MaxDiskReadBytes  uint64     `json:"max_disk_read_bytes_per_second,omitempty"`
-	MaxDiskWriteBytes uint64     `json:"max_disk_write_bytes_per_second,omitempty"`
+	MaxDiskReadBytes  uint64     `json:"max_disk_read_bytes_per_second,omitzero"`
+	MaxDiskWriteBytes uint64     `json:"max_disk_write_bytes_per_second,omitzero"`
 	DiskIoStats       [6]float64 `json:"disk_io_stats,omitzero"`     // [read time %, write time %, io utilization %, r_await ms, w_await ms, weighted io %]
 	MaxDiskIoStats    [6]float64 `json:"max_disk_io_stats,omitzero"` // max values for DiskIoStats
 	FsTracking        `json:"-"`
@@ -130,14 +130,14 @@ type FsTracking struct {
 
 // Core system data that is needed in All Systems table
 type Info struct {
-	Threads        int                `json:"threads,omitempty"`
+	Threads        int                `json:"threads,omitzero"`
 	Uptime         uint64             `json:"uptime_seconds"`
 	Cpu            float64            `json:"cpu_percent"`
 	MemPct         float64            `json:"memory_percent"`
 	DiskPct        float64            `json:"disk_percent"`
 	AgentVersion   string             `json:"agent_version"`
-	GpuPct         float64            `json:"gpu_percent,omitempty"`
-	DashboardTemp  float64            `json:"dashboard_temperature_celsius,omitempty"`
+	GpuPct         float64            `json:"gpu_percent,omitzero"`
+	DashboardTemp  float64            `json:"dashboard_temperature_celsius,omitzero"`
 	BandwidthBytes uint64             `json:"bandwidth_bytes_per_second"`
 	LoadAvg        [3]float64         `json:"load_average,omitempty"`
 	ExtraFsPct     map[string]float64 `json:"extra_filesystem_percent,omitempty"`
@@ -153,9 +153,9 @@ type Details struct {
 	CpuModel      string        `json:"cpu_model"`
 	OsName        string        `json:"os_name"`
 	Arch          string        `json:"architecture"`
-	Podman        bool          `json:"podman,omitempty"`
+	Podman        bool          `json:"podman,omitzero"`
 	MemoryTotal   uint64        `json:"memory_total_bytes"`
-	SmartInterval time.Duration `json:"smart_refresh_interval_nanoseconds,omitempty"`
+	SmartInterval time.Duration `json:"smart_refresh_interval_nanoseconds,omitzero"`
 }
 
 // Final data structure returned by the collector.

@@ -110,8 +110,8 @@ func (v *SmartValue) UnmarshalJSON(data []byte) error {
 }
 
 type SmartPowerOnTime struct {
-	Hours   uint64 `json:"hours,omitempty"`
-	Minutes uint64 `json:"minutes,omitempty"`
+	Hours   uint64 `json:"hours,omitzero"`
+	Minutes uint64 `json:"minutes,omitzero"`
 }
 
 type SmartSelfTestLog struct {
@@ -119,18 +119,18 @@ type SmartSelfTestLog struct {
 }
 
 type SmartSelfTestStandardLog struct {
-	Revision           int                  `json:"revision,omitempty"`
+	Revision           int                  `json:"revision,omitzero"`
 	Table              []SmartSelfTestEntry `json:"table,omitempty"`
-	Count              int                  `json:"count,omitempty"`
-	ErrorCountTotal    int                  `json:"error_count_total,omitempty"`
-	ErrorCountOutdated int                  `json:"error_count_outdated,omitempty"`
+	Count              int                  `json:"count,omitzero"`
+	ErrorCountTotal    int                  `json:"error_count_total,omitzero"`
+	ErrorCountOutdated int                  `json:"error_count_outdated,omitzero"`
 }
 
 type SmartSelfTestEntry struct {
-	Num           int         `json:"num,omitempty"`
+	Num           int         `json:"num,omitzero"`
 	Type          *SmartValue `json:"type,omitempty"`
 	Status        *SmartValue `json:"status,omitempty"`
-	LifetimeHours uint64      `json:"lifetime_hours,omitempty"`
+	LifetimeHours uint64      `json:"lifetime_hours,omitzero"`
 }
 
 type NVMeSelfTestLog struct {
@@ -149,7 +149,7 @@ type NVMeSelfTestLogEntry struct {
 
 type NVMeVersionInfo struct {
 	String string `json:"string,omitempty"`
-	Value  int    `json:"value,omitempty"`
+	Value  int    `json:"value,omitzero"`
 }
 
 type AtaDeviceStatistics struct {
@@ -381,7 +381,7 @@ type SmartStatusNVMe struct {
 }
 
 type NVMeSmartHealthInformationLog struct {
-	NSID                    int64   `json:"nsid,omitempty"`
+	NSID                    int64   `json:"nsid,omitzero"`
 	CriticalWarning         uint    `json:"critical_warning"`
 	Temperature             uint8   `json:"temperature"`
 	AvailableSpare          uint    `json:"available_spare"`
@@ -432,11 +432,11 @@ type SmartData struct {
 	ModelName       string            `json:"model_name,omitempty"`
 	SerialNumber    string            `json:"serial_number,omitempty"`
 	FirmwareVersion string            `json:"firmware_version,omitempty"`
-	Capacity        uint64            `json:"capacity_bytes,omitempty"`
+	Capacity        uint64            `json:"capacity_bytes,omitzero"`
 	SmartStatus     string            `json:"smart_status,omitempty"`
 	DiskName        string            `json:"disk_name,omitempty"`
 	DiskType        string            `json:"disk_type,omitempty"`
-	Temperature     uint8             `json:"temperature_celsius,omitempty"`
+	Temperature     uint8             `json:"temperature_celsius,omitzero"`
 	Attributes      []*SmartAttribute `json:"attributes,omitempty"`
 	// The following fields are live-only compatibility data for the storage UI.
 	// WriteSmartDevices projects them out of persisted history JSON so existing
@@ -452,11 +452,11 @@ type SmartData struct {
 }
 
 type SmartAttribute struct {
-	ID         uint16 `json:"id,omitempty"`
+	ID         uint16 `json:"id,omitzero"`
 	Name       string `json:"name"`
-	Value      uint16 `json:"value,omitempty"`
-	Worst      uint16 `json:"worst,omitempty"`
-	Threshold  uint16 `json:"threshold,omitempty"`
+	Value      uint16 `json:"value,omitzero"`
+	Worst      uint16 `json:"worst,omitzero"`
+	Threshold  uint16 `json:"threshold,omitzero"`
 	RawValue   uint64 `json:"raw_value"`
 	RawString  string `json:"raw_string,omitempty"`
 	WhenFailed string `json:"when_failed,omitempty"`

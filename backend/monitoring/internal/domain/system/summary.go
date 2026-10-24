@@ -15,10 +15,10 @@ type Summary struct {
 	MemoryTotalGB float64            `json:"memory_gb"`
 	MemoryUsedGB  float64            `json:"memory_used_gb"`
 	MemoryPercent float64            `json:"memory_percent"`
-	MemoryBytes   uint64             `json:"memory_total_bytes,omitempty"`
+	MemoryBytes   uint64             `json:"memory_total_bytes,omitzero"`
 	Temperatures  map[string]float64 `json:"temperatures,omitempty"`
-	DiskPercent   float64            `json:"disk_percent,omitempty"`
-	GPUPercent    float64            `json:"gpu_percent,omitempty"`
+	DiskPercent   float64            `json:"disk_percent,omitzero"`
+	GPUPercent    float64            `json:"gpu_percent,omitzero"`
 	Battery       [2]uint8           `json:"battery,omitzero"`
 	AgentVersion  string             `json:"agent_version,omitempty"`
 }

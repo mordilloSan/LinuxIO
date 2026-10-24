@@ -214,7 +214,7 @@ type DockerNetwork struct {
 	Labels     map[string]string                 `json:"Labels,omitempty"`
 	Name       string                            `json:"Name"`
 	Options    map[string]string                 `json:"Options,omitempty"`
-	Protected  bool                              `json:"Protected,omitempty"`
+	Protected  bool                              `json:"Protected,omitzero"`
 	Scope      string                            `json:"Scope"`
 }
 
@@ -236,7 +236,7 @@ type DockerVolume struct {
 	Driver               string                  `json:"Driver"`
 	Labels               map[string]string       `json:"Labels,omitempty"`
 	Mountpoint           string                  `json:"Mountpoint"`
-	MountpointAccessible bool                    `json:"MountpointAccessible,omitempty"`
+	MountpointAccessible bool                    `json:"MountpointAccessible,omitzero"`
 	Name                 string                  `json:"Name"`
 	Options              map[string]string       `json:"Options,omitempty"`
 	Scope                *string                 `json:"Scope,omitempty"`
@@ -366,8 +366,8 @@ type DockerIconURIResponse struct {
 }
 
 type ValidateComposeError struct {
-	Line    int                 `json:"line,omitempty"`
-	Column  int                 `json:"column,omitempty"`
+	Line    int                 `json:"line,omitzero"`
+	Column  int                 `json:"column,omitzero"`
 	Field   string              `json:"field,omitempty"`
 	Message string              `json:"message"`
 	Type    ValidationIssueType `json:"type"`

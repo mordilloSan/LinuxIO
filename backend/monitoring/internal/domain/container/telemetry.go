@@ -28,7 +28,7 @@ type Telemetry struct {
 	Name                    string              `json:"name"`
 	ProcessCount            int                 `json:"process_count"`
 	CPUPercent              float64             `json:"cpu_percent"`
-	DiskReadBytesPerSecond  uint64              `json:"disk_read_bytes_per_second,omitempty"`
-	DiskWriteBytesPerSecond uint64              `json:"disk_write_bytes_per_second,omitempty"`
+	DiskReadBytesPerSecond  uint64              `json:"disk_read_bytes_per_second,omitzero"`
+	DiskWriteBytesPerSecond uint64              `json:"disk_write_bytes_per_second,omitzero"`
 	GPUs                    map[string]GPUUsage `json:"gpus,omitempty"`
 }

@@ -75,7 +75,7 @@ type WireGuardUpdatePeerRequest struct {
 	MTU                 *int     `json:"mtu,omitempty"`
 	PersistentKeepalive *int     `json:"persistentKeepalive,omitempty"`
 	PresharedKey        string   `json:"presharedKey,omitempty"`
-	RegenerateKeys      bool     `json:"regenerateKeys,omitempty"`
+	RegenerateKeys      bool     `json:"regenerateKeys,omitzero"`
 }
 
 // WireGuardUpdateInterfaceRequest is a partial update: absent fields are

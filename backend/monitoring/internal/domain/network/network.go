@@ -6,21 +6,21 @@ type ConnectionStats struct {
 	Total                 int            `json:"total"`
 	TCP                   int            `json:"tcp"`
 	UDP                   int            `json:"udp"`
-	Listen                int            `json:"listen,omitempty"`
-	Established           int            `json:"established,omitempty"`
-	SynSent               int            `json:"syn_sent,omitempty"`
-	SynRecv               int            `json:"syn_recv,omitempty"`
-	FinWait1              int            `json:"fin_wait1,omitempty"`
-	FinWait2              int            `json:"fin_wait2,omitempty"`
-	TimeWait              int            `json:"time_wait,omitempty"`
-	Close                 int            `json:"close,omitempty"`
-	CloseWait             int            `json:"close_wait,omitempty"`
-	LastAck               int            `json:"last_ack,omitempty"`
-	Closing               int            `json:"closing,omitempty"`
+	Listen                int            `json:"listen,omitzero"`
+	Established           int            `json:"established,omitzero"`
+	SynSent               int            `json:"syn_sent,omitzero"`
+	SynRecv               int            `json:"syn_recv,omitzero"`
+	FinWait1              int            `json:"fin_wait1,omitzero"`
+	FinWait2              int            `json:"fin_wait2,omitzero"`
+	TimeWait              int            `json:"time_wait,omitzero"`
+	Close                 int            `json:"close,omitzero"`
+	CloseWait             int            `json:"close_wait,omitzero"`
+	LastAck               int            `json:"last_ack,omitzero"`
+	Closing               int            `json:"closing,omitzero"`
 	Statuses              map[string]int `json:"statuses,omitempty"`
-	NFConntrackCount      uint64         `json:"nf_conntrack_count,omitempty"`
-	NFConntrackMax        uint64         `json:"nf_conntrack_max,omitempty"`
-	NFConntrackPercent    float64        `json:"nf_conntrack_percent,omitempty"`
+	NFConntrackCount      uint64         `json:"nf_conntrack_count,omitzero"`
+	NFConntrackMax        uint64         `json:"nf_conntrack_max,omitzero"`
+	NFConntrackPercent    float64        `json:"nf_conntrack_percent,omitzero"`
 }
 
 type IRQStat struct {

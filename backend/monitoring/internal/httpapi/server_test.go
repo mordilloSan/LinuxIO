@@ -819,3 +819,14 @@ func TestSmartRefreshRouteOnlyOnCommandListener(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	assert.NotContains(t, rec.Body.String(), "/api/v1/smart/refresh")
 }
+
+func TestHandleCommandRejectsUnknownMembers(t *testing.T) {
+	server := NewServer(Options{CommandExecutor: fakeCommandExecutor{}})
+	handler := server.HandlerFor(func() time.Duration { return time.Minute }, []string{"commands"}, nil)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/command", strings.NewReader(`{"command":"status.get","extra":true}`))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), `"invalid_json"`)
+}

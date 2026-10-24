@@ -3,6 +3,7 @@ package schedules
 import (
 	"context"
 	"encoding/json"
+	jsonv2 "encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -88,14 +89,8 @@ func (s store) definition(id string) (apischema.ScheduleDefinition, error) {
 		return doc.Definition, err
 	}
 	defer f.Close()
-	decoder := json.NewDecoder(io.LimitReader(f, maxDefinitionBytes+1))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&doc); err != nil {
+	if err := jsonv2.UnmarshalRead(io.LimitReader(f, maxDefinitionBytes+1), &doc, jsonv2.RejectUnknownMembers(true)); err != nil {
 		return doc.Definition, err
-	}
-	var extra any
-	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		return doc.Definition, errors.New("trailing definition data")
 	}
 	if doc.Version != 1 || doc.Definition.ID != id {
 		return doc.Definition, errors.New("scheduled script identity or version mismatch")

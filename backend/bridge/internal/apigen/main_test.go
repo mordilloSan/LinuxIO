@@ -198,8 +198,9 @@ func TestRenderTypesCoversCoreRouteShapes(t *testing.T) {
 }
 
 type GoldenScalarRequest struct {
-	ID    string `json:"id"`
-	Limit int    `json:"limit,omitempty"`
+	ID     string `json:"id"`
+	Limit  int    `json:"limit,omitempty"`
+	Offset int    `json:"offset,omitzero"`
 }
 
 type GoldenNestedRequest struct {
@@ -271,6 +272,8 @@ func TestRenderTypesFromGoContracts(t *testing.T) {
 		"metadata: Record<string, string>;",
 		"child: GoldenChildContract;",
 		"note?: string;",
+		"limit?: number;",
+		"offset?: number;",
 		"noop: { input: []; request: void; result: void };",
 		"scalar: { input: [request: GoldenScalarRequest]; request: GoldenScalarRequest; result: GoldenResponse };",
 		"nested: { input: [request: GoldenNestedRequest]; request: GoldenNestedRequest; result: GoldenResponse };",
