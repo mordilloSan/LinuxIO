@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -194,7 +195,11 @@ func validateArguments(arguments []string) error {
 }
 
 func definitionRevision(def apischema.ScheduleDefinition) string {
-	data, _ := json.Marshal(def.Options, json.Deterministic(true))
+	data, err := json.Marshal(def.Options, json.Deterministic(true), jsontext.AllowInvalidUTF8(true))
+	if err != nil {
+		// Unreachable for plain string/number options; never hash an empty buffer.
+		data = fmt.Appendf(nil, "%#v", def.Options)
+	}
 	digest := sha256.Sum256(data)
 	return hex.EncodeToString(digest[:])
 }

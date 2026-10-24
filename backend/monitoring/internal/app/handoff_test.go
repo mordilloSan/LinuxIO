@@ -105,3 +105,15 @@ func TestCollectorAPISampleCoversEveryNonSmartPluginAndIsDetached(t *testing.T) 
 	assert.Equal(t, "collector-host", summary.Hostname)
 	assert.InDelta(t, 40, summary.Temperatures["cpu"], 0.001)
 }
+
+func TestCollectorAPISampleEncodesInvalidUTF8(t *testing.T) {
+	data := &systemmodel.CombinedData{
+		Processes: []processmodel.Process{{PID: 7, Name: "sleep", Cmdline: []string{"sleep", "\xff"}}},
+	}
+
+	sample, err := newCollectorAPISample(1, data)
+	require.NoError(t, err)
+	raw, exists := sample.pluginPayload(plugins.Processes)
+	require.True(t, exists)
+	assert.Contains(t, string(raw), "\uFFFD")
+}

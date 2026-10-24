@@ -192,7 +192,7 @@ type ResultFrame struct {
 // WriteProgress writes a progress update to the stream.
 // The data parameter can be any JSON-serializable struct defined by the handler.
 func WriteProgress(w io.Writer, streamID uint32, data any) error {
-	payload, err := json.Marshal(data)
+	payload, err := json.Marshal(data, jsontext.AllowInvalidUTF8(true))
 	if err != nil {
 		return fmt.Errorf("marshal progress: %w", err)
 	}
@@ -214,7 +214,7 @@ func WriteResultFrame(w io.Writer, streamID uint32, r *ResultFrame) error {
 // writeResult marshals the whole frame in one pass. Wrapping pre-encoded bytes
 // in a jsontext.Value would make json/v2 parse and re-encode the payload again.
 func writeResult(w io.Writer, streamID uint32, frame any) error {
-	payload, err := json.Marshal(frame)
+	payload, err := json.Marshal(frame, jsontext.AllowInvalidUTF8(true))
 	if err != nil {
 		return fmt.Errorf("marshal result: %w", err)
 	}

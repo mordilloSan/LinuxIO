@@ -267,3 +267,25 @@ func TestWriteResultOKEncodesOnce(t *testing.T) {
 		})
 	}
 }
+
+func TestWriteFramesReplaceInvalidUTF8(t *testing.T) {
+	writers := map[string]func(io.Writer) error{
+		"progress": func(w io.Writer) error { return WriteProgress(w, 7, map[string]string{"line": "caf\xe9"}) },
+		"result":   func(w io.Writer) error { return WriteResultError(w, 7, "caf\xe9.txt", 500) },
+	}
+	for name, write := range writers {
+		t.Run(name, func(t *testing.T) {
+			var buf bytes.Buffer
+			if err := write(&buf); err != nil {
+				t.Fatalf("write error = %v", err)
+			}
+			frame, err := ReadRelayFrame(&buf)
+			if err != nil {
+				t.Fatalf("ReadRelayFrame() error = %v", err)
+			}
+			if !strings.Contains(string(frame.Payload), "caf�") {
+				t.Fatalf("payload = %q, want U+FFFD replacement", frame.Payload)
+			}
+		})
+	}
+}

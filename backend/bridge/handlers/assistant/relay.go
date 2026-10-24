@@ -4,6 +4,7 @@ package assistant
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -144,8 +145,13 @@ func HandleAssistantSession(ctx context.Context, rt runtime.Runtime, stream net.
 	code := exitCode(cmd.Wait())
 	close(r.done)
 
-	exit, _ := json.Marshal(map[string]any{"linuxio": "exit", "code": code, "stderr": stderr.String()})
-	_ = streamrelay.WriteData(stream, append(exit, '\n'))
+	// The stderr tail can end mid-rune, so invalid UTF-8 must not drop the exit line.
+	exit, marshalErr := json.Marshal(map[string]any{"linuxio": "exit", "code": code, "stderr": stderr.String()}, jsontext.AllowInvalidUTF8(true))
+	if marshalErr != nil {
+		slog.Warn("assistant exit line not sent", "agent", req.Agent, "error", marshalErr)
+	} else {
+		_ = streamrelay.WriteData(stream, append(exit, '\n'))
+	}
 	streamrelay.WriteClose(stream)
 	_ = stream.Close()
 	wg.Wait()

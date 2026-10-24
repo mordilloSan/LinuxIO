@@ -16,6 +16,10 @@ import (
 // retained for later requests.
 type collectorRun = collector.Run[*collectorAPISample]
 
+// encodeOpts keeps raw /proc bytes (process names, arguments) from failing the
+// whole collector pass: invalid UTF-8 becomes U+FFFD, as encoding/json v1 did.
+var encodeOpts = jsontext.AllowInvalidUTF8(true)
+
 type collectorAPISample struct {
 	capturedAt int64
 	payloads   map[string]jsontext.Value
@@ -62,26 +66,26 @@ func newCollectorAPISample(capturedAt int64, data *systemmodel.CombinedData) (*c
 	payloadValues := plugins.Snapshot(data)
 	payloads := make(map[string]jsontext.Value, len(payloadValues)+2)
 	for plugin, payload := range payloadValues {
-		raw, err := json.Marshal(payload)
+		raw, err := json.Marshal(payload, encodeOpts)
 		if err != nil {
 			return nil, fmt.Errorf("marshal collector %s payload: %w", plugin, err)
 		}
 		payloads[plugin] = raw
 	}
 
-	processes, err := json.Marshal(liveProcessesData{Count: data.ProcessCount, Items: data.Processes})
+	processes, err := json.Marshal(liveProcessesData{Count: data.ProcessCount, Items: data.Processes}, encodeOpts)
 	if err != nil {
 		return nil, fmt.Errorf("marshal collector processes payload: %w", err)
 	}
 	payloads[plugins.Processes] = processes
 
-	programs, err := json.Marshal(data.Programs)
+	programs, err := json.Marshal(data.Programs, encodeOpts)
 	if err != nil {
 		return nil, fmt.Errorf("marshal collector programs payload: %w", err)
 	}
 	payloads[plugins.Programs] = programs
 
-	summary, err := json.Marshal(systemmodel.NewSummary(data))
+	summary, err := json.Marshal(systemmodel.NewSummary(data), encodeOpts)
 	if err != nil {
 		return nil, fmt.Errorf("marshal collector summary payload: %w", err)
 	}

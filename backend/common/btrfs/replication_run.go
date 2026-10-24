@@ -181,7 +181,7 @@ func deletePartial(ctx context.Context, job BtrfsReplicationJob, remote []BtrfsS
 // RecordReplicationOutcome.
 func Replicate(ctx context.Context, job BtrfsReplicationJob, progress func(bytes int64)) (BtrfsReplicationResult, error) {
 	var result BtrfsReplicationResult
-	err := runLocked(ctx, filepath.Join(ReplicationDir, job.ID+".lock"), "replication for this job", func() error {
+	err := runLocked(ctx, filepath.Join(ReplicationDir, job.ID+".lock"), "replication for this job", replicationLockWait, func() error {
 		var replErr error
 		result, replErr = replicateJob(ctx, job, progress)
 		return replErr
@@ -346,6 +346,10 @@ func RunReplication(ctx context.Context, jobs []BtrfsReplicationJob) []error {
 			continue
 		}
 		_, err := replicate(ctx, job, nil)
+		if errors.Is(err, ErrAlreadyRunning) {
+			slog.Debug("skipped btrfs replication already running", "job", job.ID)
+			continue
+		}
 		if recErr := RecordReplicationOutcome(ctx, job, err); recErr != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", job.ID, recErr))
 		}
@@ -357,9 +361,13 @@ func RunReplication(ctx context.Context, jobs []BtrfsReplicationJob) []error {
 }
 
 // RecordReplicationOutcome stores LastRun and LastError on the job with the
-// same ID and raises or resolves its alert.
+// same ID and raises or resolves its alert. A run skipped as ErrAlreadyRunning
+// records nothing: the run holding the lock records its own outcome.
 // It records even when ctx is cancelled, so a cancelled run keeps its failure.
 func RecordReplicationOutcome(ctx context.Context, job BtrfsReplicationJob, runErr error) error {
+	if errors.Is(runErr, ErrAlreadyRunning) {
+		return nil
+	}
 	ctx = context.WithoutCancel(ctx)
 	now := time.Now().UTC()
 	var lastErr *string

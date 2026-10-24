@@ -298,7 +298,7 @@ func TestSmartTestFailsWhenNeverStarted(t *testing.T) {
 	}
 }
 
-func TestSmartTestDeadlineFailsTask(t *testing.T) {
+func TestSmartTestStallFailsTask(t *testing.T) {
 	state := newSmartTestState(t, func(context.Context, string) (SmartTestStatus, error) {
 		return SmartTestStatus{State: "in_progress"}, nil
 	}, 20*time.Millisecond)
@@ -306,5 +306,21 @@ func TestSmartTestDeadlineFailsTask(t *testing.T) {
 	_, err := state.pollUntilDone(t.Context())
 	if !errors.Is(err, errSmartTestTimeout) {
 		t.Fatalf("err = %v, want timeout task error", err)
+	}
+}
+
+func TestSmartTestMovingProgressOutlivesStallTimeout(t *testing.T) {
+	polls := 0
+	state := newSmartTestState(t, func(context.Context, string) (SmartTestStatus, error) {
+		polls++
+		if polls > 60 {
+			return SmartTestStatus{State: "completed", PercentComplete: 100}, nil
+		}
+		return SmartTestStatus{State: "in_progress", PercentComplete: polls}, nil
+	}, 20*time.Millisecond)
+
+	result, err := state.pollUntilDone(t.Context())
+	if err != nil || !result.Success {
+		t.Fatalf("result=%+v err=%v, want success while progress keeps moving past the stall timeout", result, err)
 	}
 }

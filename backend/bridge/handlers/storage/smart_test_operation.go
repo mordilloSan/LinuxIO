@@ -64,13 +64,15 @@ func pollInterval(testType string) time.Duration {
 	return 15 * time.Second
 }
 
-// smartTestMaxDuration bounds a self-test task; extended tests can take hours.
+// smartTestStallTimeout fails a self-test whose reported progress has not moved
+// for this long. It is not a total cap: extended tests on large disks run for
+// 8-30 h, and ATA reports progress in 10% steps (up to ~3 h each).
 // smartTerminalPolls is how many successful polls must pass before a terminal
 // state counts without in_progress ever having been seen (it may have finished
 // between polls, or never started).
 const (
-	smartTestMaxDuration = 6 * time.Hour
-	smartTerminalPolls   = 3
+	smartTestStallTimeout = 6 * time.Hour
+	smartTerminalPolls    = 3
 )
 
 var errSmartTestTimeout = errors.New("SMART self-test did not finish within the time limit")
@@ -84,7 +86,7 @@ func runSmartTestTask(ctx context.Context, task *bridgeipc.Task, req apischema.D
 		device:   req.Device,
 		testType: req.TestType,
 		interval: pollInterval(req.TestType),
-		timeout:  smartTestMaxDuration,
+		timeout:  smartTestStallTimeout,
 	}
 	state.reportStart()
 
@@ -104,6 +106,8 @@ type smartTestTaskState struct {
 	timeout         time.Duration
 	polls           int
 	seenInProgress  bool
+	lastPercent     int
+	progressedAt    time.Time
 	consecutiveErrs int
 }
 
@@ -132,8 +136,8 @@ func (s *smartTestTaskState) pollInitial(ctx context.Context) {
 }
 
 func (s *smartTestTaskState) pollUntilDone(ctx context.Context) (SmartTestResult, error) {
-	ctx, cancel := context.WithTimeoutCause(ctx, s.timeout, errSmartTestTimeout)
-	defer cancel()
+	s.lastPercent = -1
+	s.progressedAt = time.Now()
 	ticker := time.NewTicker(s.interval)
 	defer ticker.Stop()
 
@@ -142,9 +146,6 @@ func (s *smartTestTaskState) pollUntilDone(ctx context.Context) (SmartTestResult
 		case <-ctx.Done():
 			// Returning context.Canceled routes to the Task's canceled state,
 			// not markFailed.
-			if errors.Is(context.Cause(ctx), errSmartTestTimeout) {
-				return SmartTestResult{}, errSmartTestTimeout
-			}
 			return SmartTestResult{}, ctx.Err()
 		case <-ticker.C:
 			result, done, err := s.poll(ctx)
@@ -153,6 +154,9 @@ func (s *smartTestTaskState) pollUntilDone(ctx context.Context) (SmartTestResult
 			}
 			if done {
 				return result, nil
+			}
+			if time.Since(s.progressedAt) > s.timeout {
+				return SmartTestResult{}, errSmartTestTimeout
 			}
 		}
 	}
@@ -168,6 +172,10 @@ func (s *smartTestTaskState) poll(ctx context.Context) (SmartTestResult, bool, e
 
 	if st.State == "in_progress" {
 		s.seenInProgress = true
+		if st.PercentComplete != s.lastPercent {
+			s.lastPercent = st.PercentComplete
+			s.progressedAt = time.Now()
+		}
 		s.emit(st)
 		return SmartTestResult{}, false, nil
 	}

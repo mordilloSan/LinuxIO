@@ -91,8 +91,8 @@ func validSeverity(s string) bool {
 // the identifier alphabet and title and message are cut to their limits.
 func (o Observation) normalize() Observation {
 	o.Key = normalizeKey(o.Key)
-	o.Title = truncate(o.Title, maxTitleLen)
-	o.Message = truncate(o.Message, MaxMessageLen)
+	o.Title = truncate(strings.ToValidUTF8(o.Title, "\uFFFD"), maxTitleLen)
+	o.Message = truncate(strings.ToValidUTF8(o.Message, "\uFFFD"), MaxMessageLen)
 	return o
 }
 

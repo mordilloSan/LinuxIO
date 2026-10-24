@@ -2,6 +2,7 @@ package dockerupdate
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -568,13 +569,29 @@ func cloneStringMap(values map[string]string) map[string]string {
 	return clone
 }
 
+// durationAsNanos keeps time.Duration (container Healthcheck intervals)
+// round-trippable: JSON v2 has no default representation for it.
+var durationAsNanos = json.JoinOptions(
+	json.WithMarshalers(json.MarshalToFunc(func(enc *jsontext.Encoder, d time.Duration) error {
+		return json.MarshalEncode(enc, int64(d))
+	})),
+	json.WithUnmarshalers(json.UnmarshalFromFunc(func(dec *jsontext.Decoder, d *time.Duration) error {
+		var nanos int64
+		if err := json.UnmarshalDecode(dec, &nanos); err != nil {
+			return err
+		}
+		*d = time.Duration(nanos)
+		return nil
+	})),
+)
+
 func cloneJSON[T any](value *T) (*T, error) {
-	data, err := json.Marshal(value)
+	data, err := json.Marshal(value, durationAsNanos)
 	if err != nil {
 		return nil, err
 	}
 	var clone T
-	if err := json.Unmarshal(data, &clone); err != nil {
+	if err := json.Unmarshal(data, &clone, durationAsNanos); err != nil {
 		return nil, err
 	}
 	return &clone, nil

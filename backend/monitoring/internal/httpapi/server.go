@@ -534,5 +534,5 @@ func writeJSON(w http.ResponseWriter, code int, payload any) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	_ = json.MarshalWrite(w, payload)
+	_ = json.MarshalWrite(w, payload, jsontext.AllowInvalidUTF8(true))
 }

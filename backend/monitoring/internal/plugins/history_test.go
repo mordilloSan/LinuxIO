@@ -1,6 +1,7 @@
 package plugins
 
 import (
+	"encoding/json/v2"
 	"testing"
 	"time"
 
@@ -83,4 +84,14 @@ func TestHistoryEvery(t *testing.T) {
 			assert.Contains(t, err.Error(), plugin)
 		}
 	})
+}
+
+func TestLoadDataBatteryUsesNumericArray(t *testing.T) {
+	var item LoadData
+	require.NoError(t, json.Unmarshal([]byte(`{"battery":[85,1]}`), &item))
+	assert.Equal(t, [2]uint16{85, 1}, item.Battery)
+
+	got, err := json.Marshal(item)
+	require.NoError(t, err)
+	assert.Contains(t, string(got), `"battery":[85,1]`)
 }

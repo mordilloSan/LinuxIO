@@ -613,7 +613,7 @@ func (s *Store) beginSnapshotTick() ([]string, func(plugin string) bool) {
 }
 
 func marshalJSON(v any) (string, error) {
-	raw, err := json.Marshal(v, json.Deterministic(true))
+	raw, err := json.Marshal(v, json.Deterministic(true), jsontext.AllowInvalidUTF8(true))
 	if err != nil {
 		return "", err
 	}

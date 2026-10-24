@@ -84,6 +84,18 @@ func TestCopyContainerLogsDemuxesAndJoinsPartialLines(t *testing.T) {
 	})
 }
 
+func TestDockerLogLineWriterKeepsInvalidUTF8Line(t *testing.T) {
+	var out bytes.Buffer
+	w := &dockerLogLineWriter{stream: &out, id: "abc123def456", name: "web"}
+	if _, err := w.Write([]byte("caf\xe9\n")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	got := readDockerLogRecords(t, &out)
+	if len(got) != 1 || got[0].Line != "caf\ufffd" {
+		t.Fatalf("records = %+v, want one record with U+FFFD", got)
+	}
+}
+
 func TestDockerLogLineWriterSplitsOverlongLine(t *testing.T) {
 	var out bytes.Buffer
 	w := &dockerLogLineWriter{stream: &out, id: "abc123def456", name: "web"}

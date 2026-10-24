@@ -316,17 +316,26 @@ func validateNFSExport(path string, clients []apischema.NFSClient) (string, erro
 	return path, nil
 }
 
-// mkdirShareDir creates dir with mode 0755 despite the bridge's 0o077 umask so
-// non-root clients can enter it. Existing directories keep their mode.
+// mkdirShareDir creates dir and any missing parents with mode 0755 despite the
+// bridge's 0o077 umask so non-root clients can enter them. Existing
+// directories keep their mode.
 func mkdirShareDir(dir string) error {
-	_, statErr := os.Stat(dir)
+	var created []string
+	for d := filepath.Clean(dir); ; d = filepath.Dir(d) {
+		if _, statErr := os.Stat(d); !errors.Is(statErr, fs.ErrNotExist) {
+			break
+		}
+		created = append(created, d)
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	if statErr == nil {
-		return nil
+	for _, d := range created {
+		if err := os.Chmod(d, 0o755); err != nil {
+			return err
+		}
 	}
-	return os.Chmod(dir, 0o755)
+	return nil
 }
 
 // appendToConfFile appends text to path atomically, starting on a fresh line

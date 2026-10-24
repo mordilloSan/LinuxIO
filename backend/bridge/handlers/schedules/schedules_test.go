@@ -167,6 +167,29 @@ func TestNativeScriptLifecycle(t *testing.T) {
 	}
 }
 
+func TestRunNowRecreatesMissingRevisionScript(t *testing.T) {
+	m, native := testManager(t)
+	ctx := t.Context()
+	created, err := m.create(ctx, apischema.ScheduleCreateRequest{Options: testOptions()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := created.Definition.ID
+	script := m.store.scriptPath(created.Definition)
+	if err := os.Remove(script); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.runNow(ctx, id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(script); err != nil {
+		t.Fatalf("script was not recreated: %v", err)
+	}
+	if got := native.calls[len(native.calls)-1]; got != "start:"+serviceName(id) {
+		t.Fatal(got)
+	}
+}
+
 func TestFailedReloadLeavesDisabledRepairableDefinition(t *testing.T) {
 	m, n := testManager(t)
 	ctx := t.Context()

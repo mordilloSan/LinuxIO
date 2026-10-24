@@ -36,7 +36,7 @@ type WireProgress struct {
 }
 
 func NewWireProgress(w io.Writer) *WireProgress {
-	return &WireProgress{enc: jsontext.NewEncoder(w)}
+	return &WireProgress{enc: jsontext.NewEncoder(w, jsontext.AllowInvalidUTF8(true))}
 }
 
 func (p *WireProgress) Step(message string) {

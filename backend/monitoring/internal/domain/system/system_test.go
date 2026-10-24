@@ -2,6 +2,7 @@ package system
 
 import (
 	"encoding/json/v2"
+	"strings"
 	"testing"
 )
 
@@ -62,5 +63,23 @@ func TestStatsJSONUsesNumericCPUCoreUsage(t *testing.T) {
 	}
 	if len(cores) != 3 || cores[0] != float64(1) || cores[1] != float64(2) || cores[2] != float64(3) {
 		t.Fatalf("cpu_cores_percent = %#v, want [1 2 3]", cores)
+	}
+}
+
+func TestStatsBatteryUsesNumericArray(t *testing.T) {
+	var stats Stats
+	if err := json.Unmarshal([]byte(`{"battery":[85,1]}`), &stats); err != nil {
+		t.Fatal(err)
+	}
+	if stats.Battery != [2]uint16{85, 1} {
+		t.Fatalf("Battery = %v, want [85 1]", stats.Battery)
+	}
+
+	got, err := json.Marshal(stats)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `"battery":[85,1]`; !strings.Contains(string(got), want) {
+		t.Fatalf("json.Marshal(Stats) = %s, want it to contain %s", got, want)
 	}
 }
