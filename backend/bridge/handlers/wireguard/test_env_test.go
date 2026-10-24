@@ -58,7 +58,7 @@ func newWireGuardTestEnv(t *testing.T) *wireGuardTestEnv {
 	isInterfaceUpFunc = func(string) bool {
 		return env.interfaceUp
 	}
-	getPublicIPFunc = func() (string, error) {
+	getPublicIPFunc = func(context.Context) (string, error) {
 		return env.publicIP, nil
 	}
 	getDefaultGatewayIPv4Func = func() (string, error) {

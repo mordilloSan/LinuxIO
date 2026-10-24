@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -209,8 +211,10 @@ func RunComposeProject(ctx context.Context, target ComposeTarget, emitter Compos
 		emitter(msgType, line, nil)
 	}
 
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("scanner error: %w", err)
+	if scanErr := scanner.Err(); scanErr != nil {
+		// Drain so the child cannot block on a full pipe, then reap it.
+		_, _ = io.Copy(io.Discard, pipe)
+		return errors.Join(fmt.Errorf("scanner error: %w", scanErr), cmd.Wait())
 	}
 
 	return cmd.Wait()

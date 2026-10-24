@@ -13,6 +13,7 @@ import (
 	"time"
 
 	psutilCPU "github.com/shirou/gopsutil/v4/cpu"
+	psutilMem "github.com/shirou/gopsutil/v4/mem"
 	psutilProcess "github.com/shirou/gopsutil/v4/process"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/hwprobe"
@@ -68,6 +69,12 @@ func (m *Manager) CollectStats(ctx context.Context, identities []containermodel.
 		return &processmodel.Count{}, nil, nil, nil
 	}
 
+	// Read once per tick; a failure leaves totalMem 0, so MemoryPercent stays 0 as before.
+	var totalMem uint64
+	if vm, memErr := psutilMem.VirtualMemoryWithContext(ctx); memErr == nil {
+		totalMem = vm.Total
+	}
+
 	now := time.Now()
 	count := &processmodel.Count{PIDMax: readPIDMax()}
 	items := make([]processmodel.Process, 0, len(procs))
@@ -80,7 +87,7 @@ func (m *Manager) CollectStats(ctx context.Context, identities []containermodel.
 		if proc == nil {
 			continue
 		}
-		item, ok, err := m.collectOneProcess(ctx, proc, now, count)
+		item, ok, err := m.collectOneProcess(ctx, proc, now, totalMem, count)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -108,7 +115,7 @@ func (m *Manager) CollectStats(ctx context.Context, identities []containermodel.
 }
 
 //nolint:gocognit // Process collection is a sequence of independent best-effort procfs fields.
-func (m *Manager) collectOneProcess(ctx context.Context, proc *psutilProcess.Process, now time.Time, count *processmodel.Count) (processmodel.Process, bool, error) {
+func (m *Manager) collectOneProcess(ctx context.Context, proc *psutilProcess.Process, now time.Time, totalMem uint64, count *processmodel.Count) (processmodel.Process, bool, error) {
 	item := processmodel.Process{PID: proc.Pid}
 	createTime, err := proc.CreateTimeWithContext(ctx)
 	if ctxErr := ctx.Err(); ctxErr != nil {
@@ -154,9 +161,9 @@ func (m *Manager) collectOneProcess(ctx context.Context, proc *psutilProcess.Pro
 			Locked: memInfo.Locked,
 			Swap:   memInfo.Swap,
 		}
-	}
-	if memPercent, err := proc.MemoryPercentWithContext(ctx); err == nil {
-		item.MemoryPercent = units.TwoDecimals(float64(memPercent))
+		if totalMem > 0 {
+			item.MemoryPercent = units.TwoDecimals(float64(memoryPercent(memInfo.RSS, totalMem)))
+		}
 	}
 	if ioCounters, err := proc.IOCountersWithContext(ctx); err == nil && ioCounters != nil {
 		item.IOCounters = processmodel.IOCounters{
@@ -186,6 +193,11 @@ func (m *Manager) collectOneProcess(ctx context.Context, proc *psutilProcess.Pro
 
 	count.Total++
 	return item, true, nil
+}
+
+// memoryPercent mirrors gopsutil's Process.MemoryPercent without re-reading /proc/meminfo per process.
+func memoryPercent(rss, total uint64) float32 {
+	return 100 * float32(rss) / float32(total)
 }
 
 func (m *Manager) processIOPerSecond(pid int32, createTime int64, readBytes, writeBytes uint64, now time.Time) (uint64, uint64) {

@@ -177,7 +177,7 @@ func rewriteExportedPeers(ctx context.Context, interfaceName string, old, cfg Wi
 	change := peerRewrite{dnsChanged: !slices.Equal(cfg.DNS, old.DNS)}
 	if cfg.Host != old.Host || cfg.ListenPort != old.ListenPort {
 		change.port = cfg.ListenPort
-		change.host = resolveEndpointHost(cfg, "UpdateInterface")
+		change.host = resolveEndpointHost(ctx, cfg, "UpdateInterface")
 	}
 	if change.dnsChanged {
 		change.oldDefault = defaultClientDNS(old)

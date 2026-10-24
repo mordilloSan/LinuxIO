@@ -164,7 +164,7 @@ func ExecuteRollback(ctx context.Context, uuid string, plan RollbackPlan, report
 		case step.Op == opRename && step.To == plan.Source:
 			// The new subvolume could not take source's name: put the old one back.
 			if backErr := renamePath(filepath.Join(top, plan.OldPath), filepath.Join(top, plan.Source)); backErr != nil {
-				return res, fmt.Errorf("rollback failed after renaming %s to %s: %w; renaming it back also failed: %v", plan.Source, plan.OldPath, err, backErr)
+				return res, fmt.Errorf("rollback failed after renaming %s to %s: %w; renaming it back also failed: %w", plan.Source, plan.OldPath, err, backErr)
 			}
 			return res, fmt.Errorf("rollback failed after renaming %s to %s: %w; renamed it back, %s is unchanged and %s is left over", plan.Source, plan.OldPath, err, plan.Source, step.From)
 		case step.Op == opSetDefault:

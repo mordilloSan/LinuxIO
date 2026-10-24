@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -102,7 +103,12 @@ func OpenStore(dataDir string, options ...Options) (*Store, error) {
 }
 
 func openStoreDB(dbPath string, historyPlugins []string, retention time.Duration) (*Store, error) {
-	db, err := sql.Open("sqlite3", dbPath)
+	// The pragmas live in the DSN so every connection the pool opens gets them.
+	// The path is URI-escaped (keeping '/' literal) so '?', '#' or '%' in the
+	// directory name are not misparsed as DSN syntax.
+	escapedPath := strings.ReplaceAll(url.PathEscape(dbPath), "%2F", "/")
+	dsn := "file:" + escapedPath + "?_journal_mode=WAL&_synchronous=NORMAL&_foreign_keys=on&_busy_timeout=5000"
+	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		return nil, err
 	}
@@ -178,18 +184,6 @@ func moveAsideStoreFiles(dbPath, reason string) ([]string, error) {
 }
 
 func (s *Store) init() error {
-	pragmas := []string{
-		"PRAGMA journal_mode = WAL",
-		"PRAGMA synchronous = NORMAL",
-		"PRAGMA foreign_keys = ON",
-		"PRAGMA busy_timeout = 5000",
-	}
-	for _, pragma := range pragmas {
-		if _, err := s.db.Exec(pragma); err != nil {
-			return err
-		}
-	}
-
 	var version int
 	if err := s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
 		return err

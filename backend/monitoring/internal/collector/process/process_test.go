@@ -194,3 +194,11 @@ func TestPruneProcessCPUCache(t *testing.T) {
 	assert.NotContains(t, manager.processCPUPrev, int32(1))
 	assert.Contains(t, manager.processCPUPrev, int32(2))
 }
+
+func TestMemoryPercentMatchesGopsutilExpression(t *testing.T) {
+	const total = uint64(16 << 30)
+	for _, rss := range []uint64{0, 123456789, 1 << 30, total} {
+		assert.InDelta(t, 100*float32(rss)/float32(total), memoryPercent(rss, total), 0)
+	}
+	assert.InDelta(t, 6.25, memoryPercent(1<<30, total), 0.0001)
+}

@@ -48,6 +48,7 @@ func RemoveInterface(ctx context.Context, req apischema.NameRequest) (any, error
 	} else {
 		slog.Debug("removed peer directory", "interface", name, "path", peerDir)
 	}
+	pruneRates(name, nil)
 	slog.Info("WireGuard interface removed", "interface", name)
 	return "removed", nil
 }

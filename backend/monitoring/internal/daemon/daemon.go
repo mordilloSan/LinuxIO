@@ -12,7 +12,7 @@ import (
 )
 
 // Listeners returns the two fixed LinuxIO sockets followed by the configured
-// read-only listeners. Commands are never served off the control socket.
+// read-only listeners. Only the root-only control socket serves commands.
 func Listeners(cfg config.Config) []app.ListenerOptions {
 	out := []app.ListenerOptions{
 		{Name: "api", Address: "unix:" + monitoringapi.APISocketPath, APIs: []string{"metrics"}, Mode: config.APISocketMode},

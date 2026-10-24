@@ -4,6 +4,7 @@ import (
 	"context"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
@@ -39,5 +40,32 @@ func TestListPeersReportsMetadataAndDerivedKeys(t *testing.T) {
 	}
 	if bob.PublicKey == "" || bob.PublicKey == alice.PublicKey {
 		t.Fatalf("bob public key must be derived even while disabled: %q", bob.PublicKey)
+	}
+}
+
+func TestPruneRatesDropsMissingPeersOnly(t *testing.T) {
+	t0 := time.Now()
+	computeRates("wgprune", "gone", 0, 0, t0)
+	computeRates("wgprune", "kept", 0, 0, t0)
+	computeRates("wgprune-other", "gone", 0, 0, t0)
+	t.Cleanup(func() { pruneRates("wgprune", nil); pruneRates("wgprune-other", nil) })
+
+	pruneRates("wgprune", map[string]peerRuntimeStats{"kept": {}})
+
+	rateMu.Lock()
+	_, goneOK := rateCache["wgprune|gone"]
+	_, keptOK := rateCache["wgprune|kept"]
+	_, otherOK := rateCache["wgprune-other|gone"]
+	rateMu.Unlock()
+	if goneOK || !keptOK || !otherOK {
+		t.Fatalf("cache after prune: gone=%v kept=%v other-iface=%v", goneOK, keptOK, otherOK)
+	}
+
+	rx, _ := computeRates("wgprune", "kept", 1000, 0, t0.Add(2*time.Second))
+	if rx != 500 {
+		t.Fatalf("kept peer rx rate = %v, want 500", rx)
+	}
+	if rx, _ := computeRates("wgprune", "gone", 1000, 0, t0.Add(2*time.Second)); rx != 0 {
+		t.Fatalf("pruned peer rx rate = %v, want 0 (first observation)", rx)
 	}
 }

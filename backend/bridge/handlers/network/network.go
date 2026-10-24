@@ -29,7 +29,7 @@ var (
 func GetNetworkInfo(ctx context.Context) ([]apischema.NetworkInterface, error) {
 	ifaces, err := stdnet.Interfaces()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list network interfaces: %w", err)
 	}
 	sort.Slice(ifaces, func(i, j int) bool { return ifaces[i].Name < ifaces[j].Name })
 

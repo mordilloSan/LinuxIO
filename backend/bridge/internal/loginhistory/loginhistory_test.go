@@ -439,6 +439,25 @@ func TestFetchRecentEventsMergesSuccessesAndFailures(t *testing.T) {
 	require.Equal(t, LoginStatusSuccess, logins[1].Status)
 }
 
+func TestFetchWtmpdbEndsOptionsBeforeUsername(t *testing.T) {
+	originalRunCommand := runCommand
+	t.Cleanup(func() { runCommand = originalRunCommand })
+
+	var gotArgs []string
+	runCommand = func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		gotArgs = args
+		return []byte(`{"entries": []}`), nil
+	}
+
+	_, err := fetchWtmpdb(context.Background(), "-n", 5)
+	require.NoError(t, err)
+	require.Equal(t, []string{"last", "-j", "--time-format", "full", "-w", "-n", "5", "--", "-n"}, gotArgs)
+
+	_, err = fetchWtmpdb(context.Background(), "", 0)
+	require.NoError(t, err)
+	require.Equal(t, []string{"last", "-j", "--time-format", "full", "-w"}, gotArgs)
+}
+
 func TestParseBtmpFailuresBetweenFiltersByStartTime(t *testing.T) {
 	data := appendBtmpRecord(nil, "miguel", 100)
 	data = appendBtmpRecord(data, "other", 110)

@@ -267,7 +267,7 @@ func fetchWtmpdb(ctx context.Context, username string, limit int) ([]Login, erro
 		args = append(args, "-n", strconv.Itoa(limit))
 	}
 	if username != "" {
-		args = append(args, username)
+		args = append(args, "--", username)
 	}
 
 	output, err := runCommand(ctx, "wtmpdb", args...)

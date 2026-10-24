@@ -54,7 +54,7 @@ func AddInterface(ctx context.Context, request apischema.WireGuardAddInterfaceRe
 	}
 
 	cfg := buildInterfaceConfig(req, privKey.String(), peers)
-	publicIP, gatewayDNS := readInterfaceEndpointInfo(cfg, "AddInterface", req.egressNic)
+	publicIP, gatewayDNS := readInterfaceEndpointInfo(ctx, cfg, "AddInterface", req.egressNic)
 	if err := exportInterfacePeerConfigs(req.name, peers, cfg, req.addresses[0], publicIP, gatewayDNS); err != nil {
 		// No interface config exists yet, so these files would only block a retry.
 		_ = os.RemoveAll(peerDirPath(req.name))
@@ -152,12 +152,12 @@ func buildInterfaceConfig(req addInterfaceRequest, privateKey string, peers []Pe
 	return cfg
 }
 
-func readInterfaceEndpointInfo(cfg WireGuardConfig, logPrefix, egressNic string) (string, string) {
+func readInterfaceEndpointInfo(ctx context.Context, cfg WireGuardConfig, logPrefix, egressNic string) (string, string) {
 	gatewayDNS, err := getGatewayForInterfaceIPv4Func(egressNic)
 	if gatewayDNS == "" {
 		slog.Debug("no gateway DNS found for interface", "operation", logPrefix, "interface", egressNic, "error", err)
 	}
-	return resolveEndpointHost(cfg, logPrefix), gatewayDNS
+	return resolveEndpointHost(ctx, cfg, logPrefix), gatewayDNS
 }
 
 func exportInterfacePeerConfigs(name string, peers []PeerConfig, cfg WireGuardConfig, serverAddr, publicIP, gatewayDNS string) error {
