@@ -1208,15 +1208,22 @@ export interface DockerContainerUpdateResult {
 export interface DockerDaemonConfig {
   address_pool_base: string;
   address_pool_size: number;
+  data_root: string;
   live_restore: boolean;
   log_max_file: string;
   log_max_size: string;
+  storage_driver: string;
   userland_proxy: boolean;
 }
 
 export interface DockerDaemonConfigSetResult {
   config: DockerDaemonConfig;
   restart_required: boolean;
+}
+
+export interface DockerDaemonStorageProgress {
+  phase: string;
+  message: string;
 }
 
 export interface DockerFoldersResponse {
@@ -1342,6 +1349,7 @@ export interface DockerSystemInfo {
   build_time: string;
   cgroup_driver: string;
   cgroup_version: string;
+  containerd_image_store: boolean;
   default_runtime: string;
   disk_total: number;
   disk_used: number;
@@ -3599,6 +3607,12 @@ export interface LinuxIOSchema {
   };
 
   docker: {
+    apply_daemon_storage: {
+      input: [request: DockerDaemonConfig];
+      request: DockerDaemonConfig;
+      result: DockerDaemonConfigSetResult;
+      progress: TaskProgress<DockerDaemonStorageProgress>;
+    };
     check_container_update: {
       input: [containerId: string];
       request: ContainerIDRequest;

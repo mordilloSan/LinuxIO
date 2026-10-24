@@ -55,6 +55,9 @@ const linuxio = {
     set_timezone: defineCallWithRequest("datetime.set_timezone"),
   },
   docker: {
+    apply_daemon_storage: createTaskEndpoint("docker", "apply_daemon_storage", {
+      kind: "object",
+    }),
     check_container_update: defineCallWithRequest(
       "docker.check_container_update",
     ),

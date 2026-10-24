@@ -43,6 +43,7 @@ export const ROUTE_MODES = {
   "datetime.set_ntp_servers": "call",
   "datetime.set_server_time": "call",
   "datetime.set_timezone": "call",
+  "docker.apply_daemon_storage": "task",
   "docker.check_container_update": "call",
   "docker.check_updates": "call",
   "docker.clear_icon_cache": "call",

@@ -1,9 +1,18 @@
 import { Icon } from "@iconify/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { toast } from "sonner";
 
-import { linuxio, type DockerDaemonConfig, useCallMutation } from "@/api";
+import {
+  linuxio,
+  type DockerDaemonConfig,
+  type DockerDaemonConfigSetResult,
+  type DockerDaemonStorageProgress,
+  type TaskProgress,
+  useCallMutation,
+} from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
+import PathPickerField from "@/components/pathpicker/PathPickerField";
 import {
   SettingsGrid,
   SettingsSaveFooter,
@@ -16,11 +25,30 @@ import {
 } from "@/components/settings/SettingsSectionPrimitives";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
+import ConfirmDialog from "@/components/ui/AppConfirmDialog";
+import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
 
+// The classic graph drivers and the containerd snapshotters name overlay and
+// the plain-copy driver differently; dockerd refuses to start on a mismatch.
+const CLASSIC_DRIVERS = ["overlay2", "btrfs", "zfs", "vfs"];
+const CONTAINERD_SNAPSHOTTERS = ["overlayfs", "btrfs", "zfs", "native"];
+
+const trimDataRoot = (value: string): string =>
+  value.trim().replace(/(.)\/+$/, "$1");
+
+const toRequest = (draft: DockerDaemonConfig): DockerDaemonConfig => ({
+  ...draft,
+  data_root: trimDataRoot(draft.data_root),
+  log_max_size: draft.log_max_size.trim(),
+  log_max_file: draft.log_max_file.trim(),
+  address_pool_base: draft.address_pool_base.trim(),
+});
+
 interface DraftErrors {
+  data_root?: string;
   log_max_size?: string;
   log_max_file?: string;
   address_pool_base?: string;
@@ -29,6 +57,10 @@ interface DraftErrors {
 
 const validateDraft = (draft: DockerDaemonConfig): DraftErrors => {
   const errors: DraftErrors = {};
+  const dataRoot = trimDataRoot(draft.data_root);
+  if (dataRoot && (!dataRoot.startsWith("/") || /^\/+$/.test(dataRoot))) {
+    errors.data_root = "Use an absolute path other than /.";
+  }
   const maxSize = draft.log_max_size.trim();
   if (maxSize && !/^[1-9][0-9]*[kmgKMG]?$/.test(maxSize)) {
     errors.log_max_size = "Use a size like 10m or 500k.";
@@ -58,6 +90,7 @@ const DockerDaemonSettingsSection = () => {
   const { data: config, error: loadError } = useQuery(
     linuxio.docker.get_daemon_config,
   );
+  const { data: dockerInfo } = useQuery(linuxio.docker.get_docker_info);
   const {
     draft,
     errors,
@@ -92,20 +125,54 @@ const DockerDaemonSettingsSection = () => {
     },
     error: "Failed to restart Docker",
   });
-  const busy = saveMutation.isPending || restartMutation.isPending;
+  const [confirmStorage, setConfirmStorage] = useState(false);
+  const [storageStep, setStorageStep] = useState<string | null>(null);
+  const storageMutation =
+    linuxio.docker.apply_daemon_storage.useTaskStreamAction<
+      DockerDaemonConfigSetResult,
+      TaskProgress<DockerDaemonStorageProgress>
+    >({
+      closeMessage: "Docker storage change stream closed unexpectedly",
+      onProgress: (progress) => setStorageStep(progress.message ?? null),
+      success: (result) => {
+        queryClient.setQueryData(
+          linuxio.docker.get_daemon_config.queryKey,
+          result.config,
+        );
+        reset();
+        setRestartRequired(false);
+        toast.success(
+          "Docker restarted on the new storage. Deploy your stacks again.",
+        );
+      },
+      error: "Failed to change Docker storage",
+      options: {
+        onSettled: () => {
+          setStorageStep(null);
+          setConfirmStorage(false);
+        },
+      },
+    });
+  const busy =
+    saveMutation.isPending ||
+    restartMutation.isPending ||
+    storageMutation.isPending;
   const disabled = !privileged || busy;
 
   const handleSave = () => {
-    if (!draft) return;
+    if (!draft || !config) return;
     const nextErrors = validateDraft(draft);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
-    saveMutation.mutate({
-      ...draft,
-      log_max_size: draft.log_max_size.trim(),
-      log_max_file: draft.log_max_file.trim(),
-      address_pool_base: draft.address_pool_base.trim(),
-    });
+    // Storage only changes with Docker stopped, which needs the user's go-ahead.
+    if (
+      trimDataRoot(draft.data_root) !== config.data_root ||
+      draft.storage_driver !== config.storage_driver
+    ) {
+      setConfirmStorage(true);
+      return;
+    }
+    saveMutation.mutate(toRequest(draft));
   };
 
   if (loadError && !config) {
@@ -117,6 +184,13 @@ const DockerDaemonSettingsSection = () => {
     );
   }
   if (!draft) return <ComponentLoader />;
+
+  const drivers =
+    dockerInfo == null
+      ? [...new Set([...CLASSIC_DRIVERS, ...CONTAINERD_SNAPSHOTTERS])]
+      : dockerInfo.containerd_image_store
+        ? CONTAINERD_SNAPSHOTTERS
+        : CLASSIC_DRIVERS;
 
   return (
     <div
@@ -173,6 +247,63 @@ const DockerDaemonSettingsSection = () => {
         label="Userland proxy"
         onChange={(checked) => patchKey("userland_proxy", checked)}
       />
+
+      <SectionCard
+        icon="mdi:harddisk"
+        subtitle="Where Docker keeps images, containers and volumes."
+        title="Storage"
+      >
+        <SettingsGrid>
+          <PathPickerField
+            disabled={disabled}
+            editable
+            error={Boolean(errors.data_root)}
+            helperText={errors.data_root ?? "Empty keeps the Docker default."}
+            label="Data root"
+            onChange={(value) => patchKey("data_root", value)}
+            placeholder="/var/lib/docker"
+            value={draft.data_root}
+          />
+          <AppSelect
+            disabled={disabled}
+            fullWidth
+            label="Storage driver"
+            onChange={(event) => patchKey("storage_driver", event.target.value)}
+            size="small"
+            value={draft.storage_driver}
+          >
+            <option value="">
+              {dockerInfo?.storage_driver
+                ? `Automatic (now ${dockerInfo.storage_driver})`
+                : "Automatic"}
+            </option>
+            {/* A driver set by hand in daemon.json stays visible. */}
+            {draft.storage_driver && !drivers.includes(draft.storage_driver) ? (
+              <option value={draft.storage_driver}>
+                {draft.storage_driver}
+              </option>
+            ) : null}
+            {drivers.map((driver) => (
+              <option key={driver} value={driver}>
+                {driver}
+              </option>
+            ))}
+          </AppSelect>
+        </SettingsGrid>
+        <SettingsNote title="Saving stops Docker">
+          Changing either setting stops every container and Docker itself.
+          Images, containers and volumes in the old location are hidden, not
+          moved or deleted. The btrfs and zfs drivers need the data root on that
+          filesystem.
+        </SettingsNote>
+        {dockerInfo?.containerd_image_store ? (
+          <SettingsNote title="Images stay in containerd storage">
+            With the containerd image store, the data root holds volumes and
+            container settings only. Images and container layers stay in
+            containerd&apos;s root, /var/lib/containerd by default.
+          </SettingsNote>
+        ) : null}
+      </SectionCard>
 
       <SectionCard
         icon="mdi:text-box-outline"
@@ -259,6 +390,24 @@ const DockerDaemonSettingsSection = () => {
           network of a stack moves it to the new range.
         </SettingsNote>
       </SectionCard>
+
+      <ConfirmDialog
+        cancelText="Cancel"
+        confirmText="Stop Docker and apply"
+        destructive
+        isPending={storageMutation.isPending}
+        message="Every running container stops, then Docker stops, switches to the new storage and starts again. Anything in the old location is kept but hidden. Deploy your stacks again afterwards."
+        onClose={() => {
+          if (!storageMutation.isPending) setConfirmStorage(false);
+        }}
+        onConfirm={() => {
+          if (draft) storageMutation.mutate(toRequest(draft));
+        }}
+        open={confirmStorage}
+        pendingText="Applying…"
+        progress={storageStep ? { message: storageStep } : null}
+        title="Stop Docker to change storage?"
+      />
 
       <SettingsSaveFooter
         busy={busy}

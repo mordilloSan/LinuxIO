@@ -162,6 +162,10 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "docker.compose_stop": COMPOSE_KEYS,
   "docker.compose_restart": COMPOSE_KEYS,
   "docker.compose": COMPOSE_KEYS,
+  "docker.apply_daemon_storage": [
+    ...COMPOSE_KEYS,
+    endpointQueryPrefix("docker.get_daemon_config"),
+  ],
   "docker.delete_stack": COMPOSE_KEYS,
   "docker.system_prune": [
     endpointQueryPrefix("docker.list_containers"),

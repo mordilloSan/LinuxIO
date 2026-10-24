@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"syscall"
 
@@ -66,12 +67,14 @@ func GetDockerInfo(ctx context.Context) (*apischema.DockerSystemInfo, error) {
 		Experimental:  experimental,
 
 		// Configuration
-		StorageDriver:  info.Driver,
-		LoggingDriver:  info.LoggingDriver,
-		CgroupDriver:   info.CgroupDriver,
-		CgroupVersion:  info.CgroupVersion,
-		InitBinary:     info.InitBinary,
-		DefaultRuntime: info.DefaultRuntime,
+		StorageDriver: info.Driver,
+		// docker info reports this driver-type only for the containerd image store.
+		ContainerdImageStore: slices.Contains(info.DriverStatus, [2]string{"driver-type", "io.containerd.snapshotter.v1"}),
+		LoggingDriver:        info.LoggingDriver,
+		CgroupDriver:         info.CgroupDriver,
+		CgroupVersion:        info.CgroupVersion,
+		InitBinary:           info.InitBinary,
+		DefaultRuntime:       info.DefaultRuntime,
 
 		// Network & Proxy
 		IPv4Forwarding: info.IPv4Forwarding,

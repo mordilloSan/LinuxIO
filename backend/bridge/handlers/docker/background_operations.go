@@ -65,6 +65,9 @@ func dockerTaskBindings(rt runtime.Runtime) apischema.BindingSet {
 				return bridgeipc.TaskMetadata{Identity: []string{req.ContainerID}, Label: "Docker container update"}
 			}),
 		).Run(runDockerUpdateTask, bridgeipc.TaskSingletonSystem),
+		apischema.TaskRunner[apischema.DockerDaemonConfig, apischema.DockerDaemonConfigSetResult]("docker.apply_daemon_storage", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[apischema.DockerDaemonStorageProgress](), apischema.WithTaskMetadata(func(apischema.DockerDaemonConfig) bridgeipc.TaskMetadata {
+			return bridgeipc.TaskMetadata{Label: "Docker storage change"}
+		})).Run(runApplyDaemonStorageTask, bridgeipc.TaskSingletonSystem),
 		apischema.TaskRunner[apischema.DockerComposeRequest, ComposeTaskResult]("docker.compose", apischema.SessionTask(), apischema.WithTaskProgress[ComposeTaskMessage](), apischema.WithTaskMetadata(func(req apischema.DockerComposeRequest) bridgeipc.TaskMetadata {
 			return bridgeipc.TaskMetadata{Identity: []string{req.Action, req.ProjectName}, Label: "Docker compose " + req.Action, Action: req.Action, ProjectName: req.ProjectName}
 		})).Run(
