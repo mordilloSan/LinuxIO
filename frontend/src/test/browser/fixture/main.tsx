@@ -69,7 +69,6 @@ const StylingGalleryPage = lazy(() => import("./routes/StylingGalleryPage"));
 const DialogGalleryPage = lazy(() => import("./routes/DialogGalleryPage"));
 const DockerTopologyPage = lazy(() => import("./routes/DockerTopologyPage"));
 const StorageDisksPage = lazy(() => import("./routes/StorageDisksPage"));
-const StorageTopologyPage = lazy(() => import("./routes/StorageTopologyPage"));
 const NetworkHandoffPage = lazy(() => import("./routes/NetworkHandoffPage"));
 const VMBridgePage = lazy(() => import("./routes/VMBridgePage"));
 const RsyncPage = lazy(() => import("./routes/RsyncPage"));
@@ -294,22 +293,6 @@ const storageDisksRoute = createRoute({
   path: "storage/",
   validateSearch: StorageRoute.options.validateSearch,
 });
-const storageTopologyRoute = createRoute({
-  component: StorageTopologyPage,
-  getParentRoute: () => rootRoute,
-  path: "storage/topology",
-  validateSearch: (search) => ({
-    node: typeof search.node === "string" ? search.node : undefined,
-  }),
-});
-const lightStorageTopologyRoute = createRoute({
-  component: StorageTopologyPage,
-  getParentRoute: () => rootRoute,
-  path: "styling/light/storage-topology",
-  validateSearch: (search) => ({
-    node: typeof search.node === "string" ? search.node : undefined,
-  }),
-});
 const validateProcessFixtureSearch = (search: Record<string, unknown>) => ({
   filter:
     typeof search.filter === "string" && search.filter
@@ -400,8 +383,6 @@ const routeTree = rootRoute.addChildren([
   dockerTopologyRoute,
   lightTopologyRoute,
   storageDisksRoute,
-  storageTopologyRoute,
-  lightStorageTopologyRoute,
   programsLayoutRoute.addChildren([programsRoute]),
 ]);
 const router = createRouter({

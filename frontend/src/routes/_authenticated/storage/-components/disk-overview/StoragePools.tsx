@@ -8,8 +8,10 @@ import {
   type BtrfsFilesystem,
   type BtrfsOpProgress,
   type FilesystemInfo,
+  type LiveDiskRates,
   type MDArray,
   type NFSMount,
+  type StorageBlockDevice,
   type TaskProgress,
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -24,12 +26,13 @@ import {
 } from "@/components/ui/AppDialog";
 import AppGrid from "@/components/ui/AppGrid";
 import AppTextField from "@/components/ui/AppTextField";
+import AppTopologyEdge from "@/components/ui/AppTopologyEdge";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import useAuth from "@/hooks/useAuth";
 import { useCapability } from "@/hooks/useCapabilities";
 import { DASHBOARD_CARD_SPACING } from "@/theme/constants";
-import { formatFileSize } from "@/utils/formatters";
+import { formatFileSize, formatThroughput } from "@/utils/formatters";
 
 import { driveIcon } from "./DriveCard";
 import MdRaidDetails from "./MdRaidDetails";
@@ -56,30 +59,50 @@ import "./storage-pools.css";
 const slotCentres = (count: number) =>
   Array.from({ length: count }, (_, i) => ((i + 0.5) / count) * 100);
 
-/** Lines from `from` evenly spaced entries on the left to `to` exits on the right. */
+/**
+ * Lines from `from` evenly spaced entries on the left to `to` exits on the
+ * right; an entry with `rates` carries its disk's reads forward and writes
+ * back, except into the last `idle` exits (partitions nothing uses).
+ */
 const Connector = ({
   from = 1,
   to = 1,
+  idle = 0,
   span = false,
+  rates = [],
+  paused = false,
 }: {
   from?: number;
   to?: number;
+  idle?: number;
   span?: boolean;
+  rates?: (LiveDiskRates | undefined)[];
+  paused?: boolean;
 }) => {
   const entries = slotCentres(from);
   const ys = slotCentres(to);
-  const all = [...entries, ...ys];
-  const d =
-    entries.map((y) => `M0 ${y}H50`).join("") +
-    `M50 ${Math.min(...all)}V${Math.max(...all)}` +
-    ys.map((y) => `M50 ${y}H100`).join("");
   return (
     <div
       aria-hidden="true"
       className={`storage-pools__link${span ? " storage-pools__link--span" : ""}`}
     >
       <svg preserveAspectRatio="none" viewBox="0 0 100 100">
-        <path d={d} />
+        {entries.flatMap((entry, index) =>
+          ys.map((y, exit) => {
+            const flow = exit < to - idle ? rates[index] : undefined;
+            return (
+              <AppTopologyEdge
+                className="storage-pools__line"
+                d={`M0 ${entry}H50V${y}H100`}
+                forward={flow?.read_bytes_per_sec}
+                highlighted={false}
+                key={`${entry}:${y}`}
+                paused={paused}
+                reverse={flow?.write_bytes_per_sec}
+              />
+            );
+          }),
+        )}
       </svg>
       {entries.map((y) => (
         <span className="storage-pools__dot" key={y} style={{ top: `${y}%` }} />
@@ -151,6 +174,12 @@ const DiskRow = ({
             {caption}
           </AppTypography>
         )}
+        {drive?.rates && (
+          <AppTypography color="text.secondary" noWrap variant="caption">
+            Read {formatThroughput(drive.rates.read_bytes_per_sec)} · Write{" "}
+            {formatThroughput(drive.rates.write_bytes_per_sec)}
+          </AppTypography>
+        )}
       </span>
       {missing ? (
         <AppChip color="error" label="Missing" size="small" variant="soft" />
@@ -193,13 +222,18 @@ const DiskCard = (props: DiskRowProps) => (
   </div>
 );
 
-/** A mounted filesystem; opens its filesystem card. */
+/**
+ * A mounted filesystem; opens its filesystem card. On a plain disk it names
+ * its partition, which a pool or source card already stands for elsewhere.
+ */
 const VolumeCard = ({
   volume,
   onOpenVolume,
+  showDevice,
 }: {
   volume: FilesystemInfo;
   onOpenVolume: (mountpoint: string) => void;
+  showDevice: boolean;
 }) => (
   <div className="storage-pools__slot">
     <AppButton
@@ -218,6 +252,11 @@ const VolumeCard = ({
         <AppTypography fontWeight={600} noWrap variant="body2">
           {volume.mountpoint}
         </AppTypography>
+        {showDevice && (
+          <AppTypography color="text.secondary" noWrap variant="caption">
+            {volume.device.replace(/^\/dev\//, "")}
+          </AppTypography>
+        )}
       </span>
       <AppChip
         color="primary"
@@ -232,20 +271,61 @@ const VolumeCard = ({
   </div>
 );
 
+/** A partition nothing mounts or builds on. */
+const PartitionCard = ({ partition }: { partition: StorageBlockDevice }) => (
+  <div className="storage-pools__slot">
+    <div className="storage-pools__card storage-pools__volume">
+      <Icon
+        className="storage-pools__icon"
+        height={26}
+        icon="mdi:chart-pie-outline"
+        width={26}
+      />
+      <span>
+        <AppTypography fontWeight={600} noWrap variant="body2">
+          {partition.name}
+        </AppTypography>
+        <AppTypography color="text.secondary" noWrap variant="caption">
+          Not mounted · {formatFileSize(partition.sizeBytes)}
+        </AppTypography>
+      </span>
+      {partition.fsType ? (
+        <AppChip
+          label={fsTypeLabel(partition.fsType)}
+          size="small"
+          variant="soft"
+        />
+      ) : (
+        <AppTypography color="text.secondary" variant="caption">
+          No filesystem
+        </AppTypography>
+      )}
+    </div>
+  </div>
+);
+
 const Volumes = ({
   volumes,
+  partitions = [],
   onOpenVolume,
+  showDevice = false,
 }: {
   volumes: FilesystemInfo[];
+  partitions?: StorageBlockDevice[];
   onOpenVolume: (mountpoint: string) => void;
+  showDevice?: boolean;
 }) => (
   <div className="storage-pools__column">
     {volumes.map((volume) => (
       <VolumeCard
         key={volume.mountpoint}
         onOpenVolume={onOpenVolume}
+        showDevice={showDevice}
         volume={volume}
       />
+    ))}
+    {partitions.map((partition) => (
+      <PartitionCard key={partition.path} partition={partition} />
     ))}
   </div>
 );
@@ -335,9 +415,10 @@ interface StoragePoolsProps {
 
 /**
  * Every drive and every mounted filesystem, drawn as disks -> pool -> volumes
- * for btrfs pools and RAID, LVM or mapper devices, disk -> volumes for plain
- * partitions and source -> volumes for network shares and devices with no
- * drive found under them. The selected pool's health, disk and RAID
+ * for btrfs pools and RAID, LVM or mapper devices, disk -> volumes and unused
+ * partitions for plain partitions, and source -> volumes for network shares
+ * and devices with no drive found under them. Lines out of a disk carry its
+ * live reads and writes. The selected pool's health, disk and RAID
  * management and settings, or the selected md array's members and scrub, sit
  * below. Pools need btrfs and privilege; the rest does not.
  */
@@ -369,6 +450,7 @@ const StoragePools = ({
     linuxio.storage.get_topology,
   );
   const [dialog, setDialog] = useState<PoolDialog | null>(null);
+  const [paused, setPaused] = useState(false);
   const closeDialog = () => setDialog(null);
   // A task, not a call: mkfs trims every disk first, which can outlast any
   // request timeout on large SSDs.
@@ -406,6 +488,7 @@ const StoragePools = ({
     drives,
     nfsMounts,
     topology?.devices ?? [],
+    offline.flatMap((pool) => pool.devices),
   );
   // Disks of an unmounted pool are drawn under it, not as idle.
   const offlineDrives = new Set(
@@ -449,18 +532,31 @@ const StoragePools = ({
         <AppTypography style={{ fontWeight: 600 }} variant="h6">
           Storage space
         </AppTypography>
-        {poolsEnabled && (
-          <AppButton
-            onClick={() => setDialog({ kind: "create" })}
-            size="small"
-            variant="outlined"
-          >
-            Create pool
-          </AppButton>
-        )}
+        <div style={{ display: "flex", gap: 8 }}>
+          {drives.some((drive) => drive.rates) && (
+            <AppButton
+              aria-pressed={paused}
+              color="inherit"
+              onClick={() => setPaused(!paused)}
+              size="small"
+              variant="outlined"
+            >
+              {paused ? "Resume animation" : "Pause animation"}
+            </AppButton>
+          )}
+          {poolsEnabled && (
+            <AppButton
+              onClick={() => setDialog({ kind: "create" })}
+              size="small"
+              variant="outlined"
+            >
+              Create pool
+            </AppButton>
+          )}
+        </div>
       </div>
       <div className="storage-pools">
-        {driveStacks.map(({ drive, volumes }) => (
+        {driveStacks.map(({ drive, partitions, volumes }) => (
           <div className="storage-pools__stack" key={drive.name}>
             <div className="storage-pools__card storage-pools__disks">
               <DiskRow
@@ -471,8 +567,19 @@ const StoragePools = ({
                 sizeBytes={drive.sizeBytes}
               />
             </div>
-            <Connector span to={volumes.length} />
-            <Volumes onOpenVolume={onOpenVolume} volumes={volumes} />
+            <Connector
+              idle={partitions.length}
+              paused={paused}
+              rates={[drive.rates]}
+              span
+              to={volumes.length + partitions.length}
+            />
+            <Volumes
+              onOpenVolume={onOpenVolume}
+              partitions={partitions}
+              showDevice
+              volumes={volumes}
+            />
           </div>
         ))}
         {poolStacks.map(({ pool, volumes }) => (
@@ -489,7 +596,13 @@ const StoragePools = ({
                 />
               ))}
             </div>
-            <Connector from={pool.disks.length} />
+            <Connector
+              from={pool.disks.length}
+              paused={paused}
+              rates={pool.disks.map(
+                (disk) => findBackingDrive(disk.name, drives)?.rates,
+              )}
+            />
             <AppButton
               aria-label={pool.name}
               aria-pressed={pool.uuid === selected?.pool.uuid}
@@ -636,7 +749,11 @@ const StoragePools = ({
                     />
                   ))}
                 </div>
-                <Connector from={members.length} />
+                <Connector
+                  from={members.length}
+                  paused={paused}
+                  rates={members.map((drive) => drive.rates)}
+                />
                 <SourceCard
                   array={arrays.find(({ path }) => path === label)}
                   label={label}

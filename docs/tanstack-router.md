@@ -621,7 +621,6 @@ inherits its ancestor's.
 | `/storage/rsync` | `storage/rsync.tsx` | `loadRouteQueries` ×2 | — | — | `requireAccess` privileged |
 | `/storage/shares` | `storage/shares.tsx` | `loadRouteQueries` ×2 | — | — | — |
 | `/storage/subvolumes` | `storage/subvolumes.tsx` | `loadRouteQueries` ×1 | — | `fs`, `view` | `requireAccess` btrfs |
-| `/storage/topology` | `storage/topology.tsx` | `loadRouteQueries` ×1 | — | `node` | — |
 | `/terminal` | `terminal/route.tsx` | `loadRouteTransport` | — | — | — |
 | `/updates` | `updates/route.tsx` | — | — | — | — |
 | `/updates/` | `updates/index.tsx` | `loadRouteQueries` ×1 +cond | — | — | — |

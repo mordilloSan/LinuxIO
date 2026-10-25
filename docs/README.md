@@ -37,7 +37,7 @@ its plan lands.
 | [Btrfs](./btrfs.md) | The Storage → Subvolumes tab and pool details: top-level access, snapshot layout, rollback steps and leftovers, the hourly snapshot timer and retention, pre-update snapshots, device operations, replication over SSH, quotas and compression, files written on the host, and what is refused. |
 | [Rsync Backups](./rsync-backups.md) | Read-only rsync module (plain or over SSH) that TerraMaster TOS pulls from, and what the backup does and does not cover. |
 | [Scheduled Scripts](./TODO/scheduled-execution.md) | Script scheduling through systemd, execution accounts, task controls, and retained journal logs. |
-| [Storage Topology](./storage-topology.md) | Block-device and mount inventory, application path relationships, live activity, and interpretation limits. |
+| [Storage Disks](./storage-disks.md) | The Storage → Disks overview: how drives, pools, arrays, partitions and mounts are drawn, which partitions count as unused, the block-device inventory, and live disk activity. |
 | [VM Bridge Networking](./vm-bridge-networking.md) | Attaching VMs to host bridges, spare-NIC and host-IP bridge setup through Netplan/NetworkManager, the Docker libvirt hook, and what is deliberately not automated. |
 | [VM Templates](./vm-templates.md) | The VMs → Templates manager: preset images, on-disk template layout, and version metadata. |
 

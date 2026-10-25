@@ -157,11 +157,10 @@
   height: 100%;
   overflow: visible;
 }
-.storage-pools__link path {
-  fill: none;
+.storage-pools__link .storage-pools__line {
   stroke: var(--app-palette-text-disabled);
-  stroke-width: 1.5;
-  vector-effect: non-scaling-stroke;
+  stroke-width: 1.5px;
+  stroke-opacity: 1;
 }
 .storage-pools__dot {
   position: absolute;

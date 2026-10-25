@@ -230,6 +230,85 @@ describe("buildStorageLayout", () => {
     ).toEqual([["/dev/md127", "raid1", members]]);
     expect(layout.idleDrives).toEqual([]);
   });
+
+  it("lists partitions nothing uses under their drive", () => {
+    // Mirrors a RAID 1 boot: each disk has an EFI partition, a RAID member
+    // and a leftover partition; only nvme0n1p1 is mounted.
+    const members = ["nvme0n1", "sda", "sdb"];
+    const layout = buildStorageLayout(
+      [],
+      [
+        volume("/", "/dev/md127", "ext4"),
+        volume("/boot/efi", "/dev/nvme0n1p1", "vfat"),
+      ],
+      drives,
+      [],
+      [
+        ...members.flatMap((name) => [
+          storageBlock(`/dev/${name}`, "disk", 500),
+          {
+            ...storageBlock(
+              `/dev/${name}p1`,
+              "part",
+              1,
+              [`/dev/${name}`],
+              name === "nvme0n1" ? ["/boot/efi"] : [],
+            ),
+            fsType: "vfat",
+          },
+          storageBlock(`/dev/${name}p2`, "part", 64, [`/dev/${name}`]),
+          storageBlock(`/dev/${name}p3`, "part", 435, [`/dev/${name}`]),
+        ]),
+        storageBlock(
+          "/dev/md127",
+          "raid1",
+          64,
+          members.map((name) => `/dev/${name}p2`),
+          ["/"],
+        ),
+        { ...storageBlock("/dev/sdb4", "part", 8, ["/dev/sdb"], ["[SWAP]"]) },
+      ],
+    );
+    expect(
+      layout.driveStacks.map((s) => [
+        s.drive.name,
+        s.volumes.map((v) => v.mountpoint),
+        s.partitions.map((p) => p.name),
+      ]),
+    ).toEqual([
+      ["nvme0n1", ["/boot/efi"], ["nvme0n1p3"]],
+      ["sda", [], ["sdap1", "sdap3"]],
+      ["sdb", [], ["sdbp1", "sdbp3"]],
+    ]);
+  });
+
+  it("keeps btrfs pool members off the unused partitions", () => {
+    // Only one member of a multi-device btrfs pool reports its mountpoint.
+    const pool = filesystem({});
+    pool.devices[1] = { ...pool.devices[0], id: 2, path: "/dev/sda1" };
+    const layout = buildStorageLayout(
+      [pool],
+      [volume("/", "/dev/nvme0n1p2", "btrfs")],
+      drives,
+      [],
+      [
+        storageBlock("/dev/nvme0n1", "disk", 500),
+        storageBlock("/dev/nvme0n1p2", "part", 50, ["/dev/nvme0n1"], ["/"]),
+        storageBlock("/dev/sda", "disk", 500),
+        {
+          ...storageBlock("/dev/sda1", "part", 50, ["/dev/sda"]),
+          fsType: "btrfs",
+        },
+        storageBlock("/dev/sdb", "disk", 500),
+        {
+          ...storageBlock("/dev/sdb1", "part", 50, ["/dev/sdb"]),
+          fsType: "btrfs",
+        },
+      ],
+      ["/dev/sdb1"],
+    );
+    expect(layout.driveStacks).toEqual([]);
+  });
 });
 
 describe("deviceTypeLabel", () => {

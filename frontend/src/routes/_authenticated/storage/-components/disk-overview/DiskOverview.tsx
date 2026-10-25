@@ -291,21 +291,25 @@ const DiskOverview = () => {
     typeof search.fs === "string" ? search.fs : undefined;
   const { isEnabled: smartmontoolsAvailable, reason: smartmontoolsReason } =
     useCapability("smartmontoolsAvailable");
-  const [{ data: rawDrivesData }, { data: liveData }, { data: nfsMountsData }] =
-    useSuspenseQueries({
-      queries: [
-        { ...linuxio.storage.get_drive_info, refetchInterval: 30000 },
-        {
-          ...linuxio.monitoring.get_live,
-          refetchInterval: DASHBOARD_REFETCH_FAST_MS,
-          select: (live: MonitoringLive) => ({
-            filesystems: live.filesystems ?? [],
-            smart: live.smart ?? {},
-          }),
-        },
-        { ...linuxio.storage.list_nfs_mounts, refetchInterval: 10000 },
-      ],
-    });
+  const [
+    { data: rawDrivesData },
+    { data: liveData, isError: liveError },
+    { data: nfsMountsData },
+  ] = useSuspenseQueries({
+    queries: [
+      { ...linuxio.storage.get_drive_info, refetchInterval: 30000 },
+      {
+        ...linuxio.monitoring.get_live,
+        refetchInterval: DASHBOARD_REFETCH_FAST_MS,
+        select: (live: MonitoringLive) => ({
+          disks: live.disks ?? {},
+          filesystems: live.filesystems ?? [],
+          smart: live.smart ?? {},
+        }),
+      },
+      { ...linuxio.storage.list_nfs_mounts, refetchInterval: 10000 },
+    ],
+  });
   const rawDrives = Array.isArray(rawDrivesData) ? rawDrivesData : [];
   const liveSmart = liveData?.smart ?? {};
   const filesystems = liveData?.filesystems ?? [];
@@ -360,6 +364,8 @@ const DiskOverview = () => {
     rotational: d.rotational,
     smart: liveSmart[d.name]?.data,
     power: liveSmart[d.name]?.power,
+    // shortcut: drops rates on a failed poll but not on a stalled sampler; add a sample-age check if that shows up.
+    rates: liveError ? undefined : liveData?.disks[d.name],
   }));
   const nfsMountByMountpoint = new Map(
     nfsMounts.map((mount) => [mount.mountpoint, mount]),
