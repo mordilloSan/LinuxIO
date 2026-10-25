@@ -4270,6 +4270,7 @@ export interface LinuxIOSchema {
       input: [request: BtrfsPoolCreateRequest];
       request: BtrfsPoolCreateRequest;
       result: BtrfsFilesystem;
+      progress: TaskProgress<BtrfsOpProgress>;
     };
     btrfs_pool_destroy: {
       input: [uuid: string];
@@ -5180,10 +5181,6 @@ export interface LinuxIOCallSchema {
     result: BtrfsFilesystem;
   };
   "storage.btrfs_list": { request: void; result: BtrfsFilesystem[] };
-  "storage.btrfs_pool_create": {
-    request: BtrfsPoolCreateRequest;
-    result: BtrfsFilesystem;
-  };
   "storage.btrfs_pool_destroy": {
     request: UUIDRequest;
     result: SuccessResponse;

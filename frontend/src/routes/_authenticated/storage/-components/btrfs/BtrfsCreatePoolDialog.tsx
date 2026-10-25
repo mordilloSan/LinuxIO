@@ -12,6 +12,7 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
@@ -28,6 +29,8 @@ import {
 
 interface BtrfsCreatePoolDialogProps {
   isPending?: boolean;
+  /** The step a running create is on, shown while isPending. */
+  progress?: string | null;
   onClose: () => void;
   onConfirm: (request: BtrfsPoolCreateRequest) => void;
   /** Paths of disks in a mounted btrfs filesystem, which are never offered. */
@@ -43,6 +46,7 @@ const defaultData = (disks: number) => (disks >= 2 ? "raid1" : "single");
  */
 const BtrfsCreatePoolDialog = ({
   isPending = false,
+  progress,
   onClose,
   onConfirm,
   pooledDevices,
@@ -233,6 +237,14 @@ const BtrfsCreatePoolDialog = ({
               label="Partition the whole disks, leaving 1 GiB free so a slightly smaller replacement disk fits"
             />
           )}
+          {isPending && (
+            <div role="status">
+              <AppLinearProgress aria-label="Creating pool" />
+              <AppTypography color="text.secondary" variant="caption">
+                {progress ?? "Starting..."}
+              </AppTypography>
+            </div>
+          )}
           {/* Below the disk list so it appearing does not move the checkboxes. */}
           {devices.length > 0 && (
             <AppAlert severity="warning">
@@ -242,7 +254,9 @@ const BtrfsCreatePoolDialog = ({
         </div>
       </AppDialogContent>
       <AppDialogActions>
-        <AppButton onClick={onClose}>Cancel</AppButton>
+        <AppButton disabled={isPending} onClick={onClose}>
+          Cancel
+        </AppButton>
         <AppButton
           disabled={isPending || !valid}
           onClick={() =>
@@ -259,7 +273,7 @@ const BtrfsCreatePoolDialog = ({
           }
           variant="contained"
         >
-          Create pool
+          {isPending ? "Creating..." : "Create pool"}
         </AppButton>
       </AppDialogActions>
     </GeneralDialog>

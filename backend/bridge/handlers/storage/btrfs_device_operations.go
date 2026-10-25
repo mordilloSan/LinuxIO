@@ -12,7 +12,8 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
 )
 
-// BtrfsOpProgress reports a running device, balance or scrub operation.
+// BtrfsOpProgress reports a running pool create, device, balance or scrub
+// operation.
 type BtrfsOpProgress struct {
 	Op      string  `json:"op"`
 	Percent float64 `json:"percent"`
@@ -28,6 +29,9 @@ var btrfsDeviceRoutes = btrfsDeviceBindings().Routes()
 
 func btrfsDeviceBindings() apischema.BindingSet {
 	return apischema.Bindings(
+		apischema.TaskRunner[apischema.BtrfsPoolCreateRequest, btrfs.BtrfsFilesystem]("storage.btrfs_pool_create", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[BtrfsOpProgress](), apischema.WithTaskMetadata(func(req apischema.BtrfsPoolCreateRequest) bridgeipc.TaskMetadata {
+			return bridgeipc.TaskMetadata{Identity: []string{req.Label, "create"}, Label: "Creating btrfs pool"}
+		})).Run(runBtrfsPoolCreateTask, bridgeipc.TaskSingletonSystem),
 		apischema.TaskRunner[apischema.BtrfsDeviceRequest, btrfs.BtrfsFilesystem]("storage.btrfs_device_remove", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[BtrfsOpProgress](), apischema.WithTaskMetadata(func(req apischema.BtrfsDeviceRequest) bridgeipc.TaskMetadata {
 			return bridgeipc.TaskMetadata{Identity: []string{req.UUID, strconv.Itoa(req.DeviceID)}, Label: "Removing btrfs device"}
 		})).Run(runBtrfsDeviceRemoveTask, bridgeipc.TaskSingletonSystem),
@@ -87,6 +91,12 @@ func progressReporter(task *bridgeipc.Task, op, label string) func(float64) {
 	return func(pct float64) {
 		task.ReportProgress(BtrfsOpProgress{Op: op, Percent: pct, Message: fmt.Sprintf("%s: %.1f%% complete", label, pct)})
 	}
+}
+
+func runBtrfsPoolCreateTask(ctx context.Context, task *bridgeipc.Task, req apischema.BtrfsPoolCreateRequest) (btrfs.BtrfsFilesystem, error) {
+	return CreateBtrfsPool(ctx, req, func(step string) {
+		task.ReportProgress(BtrfsOpProgress{Op: "create", Message: step})
+	})
 }
 
 func runBtrfsDeviceRemoveTask(ctx context.Context, task *bridgeipc.Task, req apischema.BtrfsDeviceRequest) (btrfs.BtrfsFilesystem, error) {

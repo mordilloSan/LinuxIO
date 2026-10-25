@@ -193,7 +193,7 @@ export const ROUTE_MODES = {
   "storage.btrfs_device_remove": "task",
   "storage.btrfs_device_replace": "task",
   "storage.btrfs_list": "call",
-  "storage.btrfs_pool_create": "call",
+  "storage.btrfs_pool_create": "task",
   "storage.btrfs_pool_destroy": "call",
   "storage.btrfs_pool_mount": "call",
   "storage.btrfs_pools_offline": "call",

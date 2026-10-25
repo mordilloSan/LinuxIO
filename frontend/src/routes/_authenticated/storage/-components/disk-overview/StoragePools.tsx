@@ -5,9 +5,12 @@ import { useState, type ReactNode } from "react";
 import {
   linuxio,
   useCallMutation,
+  type BtrfsFilesystem,
+  type BtrfsOpProgress,
   type FilesystemInfo,
   type MDArray,
   type NFSMount,
+  type TaskProgress,
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
@@ -367,10 +370,18 @@ const StoragePools = ({
   );
   const [dialog, setDialog] = useState<PoolDialog | null>(null);
   const closeDialog = () => setDialog(null);
-  const { mutate: createPool, isPending: isCreating } = useCallMutation(
-    linuxio.storage.btrfs_pool_create,
-    { success: "Pool created", error: "Failed to create pool" },
-  );
+  // A task, not a call: mkfs trims every disk first, which can outlast any
+  // request timeout on large SSDs.
+  const [createStep, setCreateStep] = useState<string | null>(null);
+  const createPool = linuxio.storage.btrfs_pool_create.useTaskStreamAction<
+    BtrfsFilesystem,
+    TaskProgress<BtrfsOpProgress>
+  >({
+    onProgress: (progress) => setCreateStep(progress.detail?.message ?? null),
+    success: "Pool created",
+    error: "Failed to create pool",
+    options: { onSettled: () => setCreateStep(null) },
+  });
   const { mutate: mountPool, isPending: isMounting } = useCallMutation(
     linuxio.storage.btrfs_pool_mount,
     { success: "Pool mounted", error: "Failed to mount pool" },
@@ -768,11 +779,12 @@ const StoragePools = ({
       )}
       {dialog?.kind === "create" && (
         <BtrfsCreatePoolDialog
-          isPending={isCreating}
+          isPending={createPool.isPending}
           onClose={closeDialog}
           onConfirm={(request) =>
-            createPool(request, { onSuccess: closeDialog })
+            createPool.mutate(request, { onSuccess: closeDialog })
           }
+          progress={createStep}
           pooledDevices={btrfs.flatMap((fs) =>
             fs.devices.map(({ path }) => path),
           )}

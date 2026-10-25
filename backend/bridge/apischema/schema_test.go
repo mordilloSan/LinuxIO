@@ -92,10 +92,10 @@ func TestAllTaskRoutesUseTaskRunner(t *testing.T) {
 			t.Errorf("%s is task kind %q, want task_runner", route.Route, route.Kind)
 		}
 	}
-	if got, want := modes[bridgeipc.ModeCall], 286; got != want {
+	if got, want := modes[bridgeipc.ModeCall], 285; got != want {
 		t.Errorf("call route count = %d, want %d", got, want)
 	}
-	if got, want := modes[bridgeipc.ModeTask], 29; got != want {
+	if got, want := modes[bridgeipc.ModeTask], 30; got != want {
 		t.Errorf("task route count = %d, want %d", got, want)
 	}
 	if got, want := modes[bridgeipc.ModeDuplex], 12; got != want {
@@ -128,8 +128,8 @@ func TestTaskRoutesDeclareAuditedLifetime(t *testing.T) {
 			t.Errorf("%s task lifetime = %q", route.Route, route.TaskLifetime)
 		}
 	}
-	if sessionCount != 28 || durableCount != 1 {
-		t.Fatalf("task lifetime counts = session %d, durable %d; want 28 and 1", sessionCount, durableCount)
+	if sessionCount != 29 || durableCount != 1 {
+		t.Fatalf("task lifetime counts = session %d, durable %d; want 29 and 1", sessionCount, durableCount)
 	}
 }
 
@@ -461,6 +461,7 @@ func TestTaskMetadataBuildersAreAllowlistedTaskRoutes(t *testing.T) {
 		"packages.update": true, "storage.run_smart_test": true, "system.install_capability": true,
 		"storage.btrfs_snapshot_rollback": true, "storage.btrfs_device_remove": true, "storage.btrfs_device_replace": true,
 		"storage.btrfs_balance": true, "storage.btrfs_scrub_start": true, "storage.btrfs_replication_run": true,
+		"storage.btrfs_pool_create": true,
 	}
 	for _, route := range handlers.Routes {
 		if route.Metadata == nil {

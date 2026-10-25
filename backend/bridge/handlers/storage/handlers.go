@@ -58,7 +58,6 @@ var api = apischema.Bindings(
 	apischema.Call[apischema.BtrfsSSHTrustRequest, btrfs.BtrfsSSHTrust]("storage.btrfs_replication_ssh_trust", apischema.Privileged()).Handle(handleBtrfsReplicationSSHTrust),
 	apischema.Call[apischema.BtrfsDeviceAddRequest, btrfs.BtrfsFilesystem]("storage.btrfs_device_add", apischema.Privileged()).Handle(handleBtrfsDeviceAdd),
 	apischema.Call[apischema.UUIDRequest, apischema.SuccessResponse]("storage.btrfs_balance_cancel", apischema.Privileged()).Handle(handleBtrfsBalanceCancel),
-	apischema.Call[apischema.BtrfsPoolCreateRequest, btrfs.BtrfsFilesystem]("storage.btrfs_pool_create", apischema.Privileged()).Handle(handleBtrfsPoolCreate),
 	apischema.Call[apischema.UUIDRequest, apischema.SuccessResponse]("storage.btrfs_pool_destroy", apischema.Privileged()).Handle(handleBtrfsPoolDestroy),
 	apischema.Call[apischema.BtrfsPoolMountRequest, btrfs.BtrfsFilesystem]("storage.btrfs_pool_mount", apischema.Privileged()).Handle(handleBtrfsPoolMount),
 	apischema.Call[apischema.NoRequest, []btrfs.BtrfsOfflinePool]("storage.btrfs_pools_offline", apischema.RetrySafe()).Handle(handleBtrfsPoolsOffline),
@@ -213,10 +212,6 @@ func handleBtrfsScrubCancel(ctx context.Context, req apischema.UUIDRequest) (api
 		return apischema.SuccessResponse{}, err
 	}
 	return apischema.SuccessResponse{Success: true}, nil
-}
-
-func handleBtrfsPoolCreate(ctx context.Context, req apischema.BtrfsPoolCreateRequest) (btrfs.BtrfsFilesystem, error) {
-	return CreateBtrfsPool(ctx, req)
 }
 
 func handleBtrfsPoolDestroy(ctx context.Context, req apischema.UUIDRequest) (apischema.SuccessResponse, error) {
