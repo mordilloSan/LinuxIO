@@ -1,8 +1,8 @@
 import type { BtrfsSnapshotRule } from "@/api";
 
 export const BTRFS_TOAST_META = {
-  label: "Open snapshots",
-  to: "/storage/snapshots",
+  label: "Open subvolumes",
+  to: "/storage/subvolumes",
 } as const;
 
 // Devices, health and settings live with the pool on the Disks tab.
@@ -10,6 +10,10 @@ export const BTRFS_POOL_TOAST_META = {
   label: "Open storage",
   to: "/storage",
 } as const;
+
+// LinuxIO's own top-level mounts vanish at reboot, so nothing outside LinuxIO
+// should point into them.
+export const TRANSIENT_TOP = "/run/linuxio/btrfs/";
 
 // Subvolumes that distros and container runtimes create for themselves. They
 // are hidden by default because snapshotting or deleting them helps nobody.

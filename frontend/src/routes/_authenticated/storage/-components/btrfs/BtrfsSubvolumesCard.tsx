@@ -5,6 +5,7 @@ import { useState } from "react";
 import {
   linuxio,
   useCallMutation,
+  type BtrfsFilesystem,
   type BtrfsSubvolume,
   type CallRequest,
 } from "@/api";
@@ -25,25 +26,47 @@ import {
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
+import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import { useDockerSettings } from "@/hooks/useConfig";
 import { formatFileSize } from "@/utils/formatters";
 
 import { BTRFS_TOAST_META, isSystemSubvolume } from "./btrfsShared";
+import {
+  consumers,
+  snapshotRuleFor,
+  subvolumeHostPath,
+  subvolumeUses,
+} from "./subvolumeUsage";
 
 const GIB = 1024 ** 3;
 
 type SubvolumeRequest = CallRequest<"storage.btrfs_subvolume_delete">;
 
-const BtrfsSubvolumesCard = ({ uuid }: { uuid: string }) => {
+/** The subvolumes of a filesystem: where they are, how big, what uses them and how they are snapshotted. */
+const BtrfsSubvolumesCard = ({
+  filesystem,
+}: {
+  filesystem: BtrfsFilesystem;
+}) => {
+  const { uuid } = filesystem;
   // Lazy: the route loader cannot know the selected filesystem's uuid.
   const {
     data = [],
     error,
     isPending,
   } = useQuery(linuxio.storage.btrfs_subvolumes({ uuid }));
+  // The same queries the Snapshots view and the Shares tab use.
+  const { data: snapshots = [] } = useQuery(
+    linuxio.storage.btrfs_snapshots({ uuid }),
+  );
+  const { data: rulesData } = useQuery(linuxio.storage.btrfs_snapshot_rules);
+  const { data: samba = [] } = useQuery(linuxio.shares.list_samba_shares);
+  const { data: nfs = [] } = useQuery(linuxio.shares.list_nfs_shares);
+  const { folders: dockerFolders } = useDockerSettings();
   const [creating, setCreating] = useState(false);
   const [showSystem, setShowSystem] = useState(false);
   const [newPath, setNewPath] = useState("");
@@ -82,6 +105,14 @@ const BtrfsSubvolumesCard = ({ uuid }: { uuid: string }) => {
     },
   );
 
+  const { mutate: takeSnapshot } = useCallMutation(
+    linuxio.storage.btrfs_snapshot_create,
+    {
+      success: "Snapshot created",
+      error: "Failed to create snapshot",
+      toast: BTRFS_TOAST_META,
+    },
+  );
   const { mutate: setLimit, isPending: isLimiting } = useCallMutation(
     linuxio.storage.btrfs_qgroup_limit,
     {
@@ -114,6 +145,23 @@ const BtrfsSubvolumesCard = ({ uuid }: { uuid: string }) => {
     uuid,
     path: subvolume.path,
   });
+  const hostPaths = new Map(
+    data.flatMap((subvolume) => {
+      const hostPath = subvolume.isSnapshot
+        ? undefined
+        : subvolumeHostPath(filesystem, subvolume.path);
+      return hostPath ? [[subvolume.path, hostPath] as const] : [];
+    }),
+  );
+  const uses = subvolumeUses(
+    hostPaths,
+    consumers(
+      Array.isArray(samba) ? samba : [],
+      Array.isArray(nfs) ? nfs : [],
+      dockerFolders,
+    ),
+  );
+  const rules = rulesData?.rules ?? [];
 
   const closeCreate = () => {
     setCreating(false);
@@ -157,69 +205,113 @@ const BtrfsSubvolumesCard = ({ uuid }: { uuid: string }) => {
   };
 
   const columns: AppVirtualTableColumnDef<BtrfsSubvolume>[] = [
-    { accessorKey: "path", header: "Path" },
     {
-      accessorKey: "mountpoint",
-      header: "Mounted at",
-      cell: ({ row }) => (
-        <AppTypography color="text.secondary" variant="caption">
-          {row.original.mountpoint ?? "-"}
-        </AppTypography>
-      ),
+      accessorKey: "path",
+      header: "Name",
+      cell: ({ row }) => {
+        const { path, isDefault, readOnly } = row.original;
+        return (
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <AppTypography style={{ fontWeight: 600 }} variant="body2">
+                {path.split("/").pop()}
+              </AppTypography>
+              {isDefault && (
+                <AppChip label="Default" size="small" variant="soft" />
+              )}
+              {readOnly && (
+                <AppChip label="Read-only" size="small" variant="soft" />
+              )}
+            </div>
+            <AppTypography color="text.secondary" noWrap variant="caption">
+              {hostPaths.get(path) ?? path}
+            </AppTypography>
+          </div>
+        );
+      },
     },
     {
-      id: "readOnly",
-      header: "Read-only",
-      cell: ({ row }) => (
-        <AppSwitch
-          aria-label={`Read-only ${row.original.path}`}
-          checked={row.original.readOnly}
-          onChange={(_, readOnly) =>
-            setReadOnly({ ...request(row.original), readOnly })
-          }
-          size="small"
-        />
-      ),
+      id: "size",
+      header: "Size",
+      cell: ({ row }) => {
+        const used = row.original.referencedBytes;
+        const limit = row.original.maxReferencedBytes;
+        if (used === undefined) {
+          return (
+            <AppTypography color="text.secondary" variant="caption">
+              —
+            </AppTypography>
+          );
+        }
+        return (
+          <div style={{ minWidth: 120 }}>
+            <AppTypography variant="caption">
+              {limit === undefined
+                ? formatFileSize(used)
+                : `${formatFileSize(used)} of ${formatFileSize(limit)}`}
+            </AppTypography>
+            {limit !== undefined && (
+              <AppLinearProgress
+                aria-label={`${row.original.path} space used`}
+                value={Math.min(100, (used / limit) * 100)}
+                variant="determinate"
+              />
+            )}
+          </div>
+        );
+      },
     },
     {
-      id: "default",
-      header: "Default",
-      cell: ({ row }) =>
-        row.original.isDefault && (
-          <AppChip label="Default" size="small" variant="soft" />
-        ),
+      id: "usedBy",
+      header: "Used by",
+      cell: ({ row }) => {
+        const list = uses.get(row.original.path) ?? [];
+        return list.length === 0 ? (
+          <AppTypography color="text.secondary" variant="caption">
+            —
+          </AppTypography>
+        ) : (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {list.map((use) => (
+              <AppChip
+                color={use === "Docker" ? "primary" : "success"}
+                key={use}
+                label={use}
+                size="small"
+                variant="soft"
+              />
+            ))}
+          </div>
+        );
+      },
     },
-    ...(hasSizes
-      ? [
-          {
-            id: "size",
-            header: "Size",
-            cell: ({ row }) =>
-              row.original.referencedBytes === undefined ? (
-                "-"
-              ) : (
-                <AppTypography color="text.secondary" variant="caption">
-                  {formatFileSize(row.original.referencedBytes)}
-                  {row.original.maxReferencedBytes !== undefined && (
-                    <AppTypography
-                      color="text.secondary"
-                      style={{ display: "block" }}
-                      variant="caption"
-                    >
-                      Limit {formatFileSize(row.original.maxReferencedBytes)}
-                    </AppTypography>
-                  )}
-                </AppTypography>
-              ),
-            meta: { align: "right" },
-          } satisfies AppVirtualTableColumnDef<BtrfsSubvolume>,
-        ]
-      : []),
+    {
+      id: "snapshots",
+      header: "Snapshots",
+      cell: ({ row }) => {
+        const count = snapshots.filter(
+          (snapshot) => snapshot.source === row.original.path,
+        ).length;
+        const rule = snapshotRuleFor(rules, uuid, row.original.path);
+        return (
+          <AppTypography color="text.secondary" variant="caption">
+            {[count > 0 ? String(count) : "None", rule?.every]
+              .filter(Boolean)
+              .join(" · ")}
+          </AppTypography>
+        );
+      },
+    },
     {
       id: "actions",
       header: "Actions",
       cell: ({ row }) => (
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <AppActionIconButton
+            icon="mdi:camera-plus-outline"
+            label="Take snapshot"
+            onClick={() => takeSnapshot(request(row.original))}
+          />
           {hasSizes && (
             <AppActionIconButton
               icon="mdi:gauge"
@@ -234,6 +326,20 @@ const BtrfsSubvolumesCard = ({ uuid }: { uuid: string }) => {
               setCompressing(row.original);
               setAlgorithm("none");
             }}
+          />
+          <AppActionIconButton
+            icon={
+              row.original.readOnly
+                ? "mdi:lock-open-variant-outline"
+                : "mdi:lock-outline"
+            }
+            label={row.original.readOnly ? "Make writable" : "Make read-only"}
+            onClick={() =>
+              setReadOnly({
+                ...request(row.original),
+                readOnly: !row.original.readOnly,
+              })
+            }
           />
           <AppActionIconButton
             disabled={row.original.isDefault}
@@ -282,7 +388,11 @@ const BtrfsSubvolumesCard = ({ uuid }: { uuid: string }) => {
               </AppButton>
             </div>
           }
-          subtitle="Parts of the filesystem that are snapshotted and restored separately"
+          subtitle={
+            hasSizes
+              ? "Folders of the pool that are sized, shared and snapshotted on their own"
+              : "Folders of the pool that are shared and snapshotted on their own. Turn on quotas in the pool settings to see their sizes."
+          }
           title="Subvolumes"
         />
         {error && <AppAlert severity="error">{error.message}</AppAlert>}
@@ -292,9 +402,10 @@ const BtrfsSubvolumesCard = ({ uuid }: { uuid: string }) => {
           data={subvolumes}
           density="compact"
           emptyMessage={isPending ? "Loading..." : "No subvolumes found"}
+          estimateRowHeight={56}
           fillAvailable={false}
           getRowId={(subvolume) => String(subvolume.id)}
-          maxHeight={320}
+          maxHeight={640}
           variant="embedded"
         />
       </AppCardContent>

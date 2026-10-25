@@ -5,6 +5,7 @@ import type { BtrfsFilesystem } from "@/api";
 import { render, renderWithTanStackRouter, screen } from "@/test/render";
 
 import BtrfsPage from "./BtrfsPage";
+import type { BtrfsView } from "./btrfsViews";
 
 const mocks = vi.hoisted(() => ({
   list: vi.fn(),
@@ -37,6 +38,17 @@ vi.mock("@/api", async (importOriginal) => {
           queryKey: ["test-btrfs-snapshots", request.uuid],
           queryFn: () => mocks.snapshots(),
         }),
+      },
+      shares: {
+        ...actual.linuxio.shares,
+        list_samba_shares: {
+          queryKey: ["test-samba-shares"],
+          queryFn: () => [],
+        },
+        list_nfs_shares: {
+          queryKey: ["test-nfs-shares"],
+          queryFn: () => [],
+        },
       },
     },
   };
@@ -82,12 +94,17 @@ beforeEach(() => {
 
 const capabilities = { btrfsAvailable: true };
 
+const views = (view: BtrfsView = "subvolumes", onView = vi.fn()) => ({
+  view,
+  onView,
+});
+
 describe("BtrfsPage", () => {
   it("shows the selected filesystem and reports a new choice", async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();
     renderWithTanStackRouter(
-      <BtrfsPage selectedUuid="uuid-data" onSelect={onSelect} />,
+      <BtrfsPage selectedUuid="uuid-data" onSelect={onSelect} {...views()} />,
       {
         capabilities,
       },
@@ -106,7 +123,7 @@ describe("BtrfsPage", () => {
 
   it("falls back to the first filesystem for an unknown uuid", async () => {
     renderWithTanStackRouter(
-      <BtrfsPage selectedUuid="gone" onSelect={vi.fn()} />,
+      <BtrfsPage selectedUuid="gone" onSelect={vi.fn()} {...views()} />,
       {
         capabilities,
       },
@@ -118,42 +135,63 @@ describe("BtrfsPage", () => {
 
   it("hides the picker when only one filesystem is mounted", async () => {
     mocks.list.mockResolvedValue([data]);
-    renderWithTanStackRouter(<BtrfsPage onSelect={vi.fn()} />, {
+    renderWithTanStackRouter(<BtrfsPage onSelect={vi.fn()} {...views()} />, {
       capabilities,
     });
     expect(
-      await screen.findByRole("heading", { name: "Snapshots" }),
+      await screen.findByRole("heading", { name: "Subvolumes" }),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("combobox", { name: "Filesystem" }),
     ).not.toBeInTheDocument();
   });
 
-  it("keeps the advanced cards collapsed until asked", async () => {
+  it("opens on the subvolumes and switches views through the URL", async () => {
     const user = userEvent.setup();
-    renderWithTanStackRouter(
-      <BtrfsPage selectedUuid="uuid-data" onSelect={vi.fn()} />,
+    const onView = vi.fn();
+    const { rerender } = renderWithTanStackRouter(
+      <BtrfsPage
+        selectedUuid="uuid-data"
+        onSelect={vi.fn()}
+        {...views("subvolumes", onView)}
+      />,
       { capabilities },
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Subvolumes" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Automatic snapshots")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Snapshots" }));
+    expect(onView).toHaveBeenCalledWith("snapshots");
+
+    rerender(
+      <BtrfsPage
+        selectedUuid="uuid-data"
+        onSelect={vi.fn()}
+        {...views("snapshots", onView)}
+      />,
     );
     expect(await screen.findByText("Automatic snapshots")).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Snapshots" }),
-    ).toBeInTheDocument();
-    expect(screen.queryByText("Subvolumes")).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Advanced" }));
-    expect(await screen.findByText("Subvolumes")).toBeInTheDocument();
-    expect(screen.getByText("Replication")).toBeInTheDocument();
+      screen.queryByRole("heading", { name: "Subvolumes" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Snapshots" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
   });
 
   it("leaves disks, health and settings to the pool on the Disks tab", async () => {
-    const user = userEvent.setup();
     renderWithTanStackRouter(
-      <BtrfsPage selectedUuid="uuid-data" onSelect={vi.fn()} />,
+      <BtrfsPage
+        selectedUuid="uuid-data"
+        onSelect={vi.fn()}
+        {...views("snapshots")}
+      />,
       { capabilities },
     );
     await screen.findByText("Automatic snapshots");
-    await user.click(screen.getByRole("button", { name: "Advanced" }));
     expect(screen.queryByText("Disks")).not.toBeInTheDocument();
     expect(screen.queryByText("Add device")).not.toBeInTheDocument();
     expect(screen.queryByText("Settings")).not.toBeInTheDocument();
@@ -176,23 +214,28 @@ describe("BtrfsPage", () => {
       rules: [{ uuid: "uuid-data", path: "home", enabled: true }],
       timerEnabled: true,
     });
-    renderWithTanStackRouter(<BtrfsPage onSelect={vi.fn()} />, {
-      capabilities,
-    });
+    renderWithTanStackRouter(
+      <BtrfsPage onSelect={vi.fn()} {...views("snapshots")} />,
+      {
+        capabilities,
+      },
+    );
     expect(await screen.findByText("of 2 folders")).toBeInTheDocument();
     expect(screen.getByText(/^Last .*ago$/)).toBeInTheDocument();
   });
 
   it("says when no btrfs filesystem is mounted", async () => {
     mocks.list.mockResolvedValue([]);
-    render(<BtrfsPage onSelect={vi.fn()} />, { capabilities });
+    render(<BtrfsPage onSelect={vi.fn()} {...views("snapshots")} />, {
+      capabilities,
+    });
     expect(
       await screen.findByText("No btrfs filesystems are mounted."),
     ).toBeInTheDocument();
   });
 
   it("explains when btrfs-progs is missing", () => {
-    render(<BtrfsPage onSelect={vi.fn()} />, {
+    render(<BtrfsPage onSelect={vi.fn()} {...views("snapshots")} />, {
       capabilities: { btrfsAvailable: false },
     });
     expect(screen.getByText("btrfs-progs is not installed.")).toBeVisible();

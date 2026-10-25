@@ -442,7 +442,7 @@ func TestRunReplicationRecordsOutcome(t *testing.T) {
 	}
 	a := doc.Alerts[0]
 	if a.ID != "btrfs/replication-"+jobs[0].ID || a.Severity != alerts.SeverityError ||
-		a.Title != "Replication failed for @home" || a.Message != "boom" || a.Link != "/storage/snapshots?fs="+rootUUID {
+		a.Title != "Replication failed for @home" || a.Message != "boom" || a.Link != "/storage/subvolumes?view=replication&fs="+rootUUID {
 		t.Fatalf("alert = %+v", a)
 	}
 

@@ -1,8 +1,9 @@
 # Btrfs management
 
-The **Storage → Snapshots** tab (`/storage/snapshots`) manages subvolumes,
-snapshots with rollback, automatic snapshots and replication to another
-filesystem or host. Each pool's details on the **Storage → Disks** overview
+The **Storage → Subvolumes** tab (`/storage/subvolumes`) manages subvolumes,
+and, under its Snapshots and Replication views (`?view=snapshots`,
+`?view=replication`), snapshots with rollback, automatic snapshots and
+replication to another filesystem or host. Each pool's details on the **Storage → Disks** overview
 (`/storage?pool=<uuid>`) hold the rest: health, devices and profiles, space,
 quotas, compression and maintenance timers.
 Everything on the host is read and driven through the kernel's btrfs ioctls,
@@ -23,10 +24,12 @@ the missing-disk handling; it needs sudo.
 ## Capability and privileges
 
 The `btrfs` capability checks for the `btrfs` executable (`btrfs-progs`) and
-gates the Snapshots tab and the pools on the Disks overview; see
+gates the Subvolumes tab and the pools on the Disks overview; see
 [Capabilities](./capabilities.md#btrfs-tools). Both are
 **administrator-only**: they require a privileged session, reads run
-`btrfs` as root and the configuration files are root `0600`.
+`btrfs` as root and the configuration files are root `0600`. The Subvolumes
+tab is listed only while a btrfs filesystem is mounted; pools are created
+from the Disks overview.
 
 Docker's btrfs storage-driver subvolumes are hidden from every list.
 
@@ -38,7 +41,8 @@ with an empty path, so it can be removed or replaced. The health banner at the
 top of the details leads with the worst condition and the one action that
 fixes it: **Replace missing disk** on a degraded pool, **Reclaim space** when
 metadata is nearly full. Health, scrub and space alerts link to those details;
-snapshot and replication alerts link to the Snapshots tab.
+snapshot and replication alerts link to the Subvolumes tab's Snapshots and
+Replication views.
 
 Alerts are updated whenever the list is loaded and, independently of the
 browser, by `linuxio-btrfs-health.timer`, which runs `linuxio-btrfs-timer
@@ -130,9 +134,21 @@ leaves it mounted until reboot.
 
 ## Subvolumes
 
-The Subvolumes card lists subvolumes with ID, path, read-only state and
-default marker, and can create, delete, set read-only and set the default
-subvolume. Nested subvolumes appear as their own rows. Subvolume paths may not
+The Subvolumes view lists each subvolume with:
+
+- its name, default and read-only markers, and where its files are on the
+  host: under the mount of the subvolume or of the nearest one above it
+  (LinuxIO's own `/run/linuxio/btrfs` mounts and bind mounts do not count);
+- its size, with a bar against its size limit when one is set (sizes need
+  quotas, turned on in the pool settings);
+- what uses it: SMB and NFS shares and Docker folders, each credited to the
+  deepest subvolume holding its path, since a nested subvolume is snapshotted
+  on its own;
+- its snapshot count and automatic schedule.
+
+Each row can take a snapshot, set a size limit and compression, toggle
+read-only, become the default subvolume or be deleted; the card creates new
+ones. Nested subvolumes appear as their own rows. Subvolume paths may not
 contain `,` or whitespace, which would break `subvol=` mount options and
 `/etc/fstab`. Deleting a leftover
 `.linuxio-rollback-*` subvolume (see [Rollback](#rollback)) is done here.

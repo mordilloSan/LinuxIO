@@ -103,7 +103,7 @@ describe("generated application router", () => {
         "/storage/mounts",
         "/storage/rsync",
         "/storage/shares",
-        "/storage/snapshots",
+        "/storage/subvolumes",
         "/storage/topology",
         "/terminal",
         "/updates",
