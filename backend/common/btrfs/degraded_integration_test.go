@@ -161,6 +161,17 @@ func (m *itMirror) filesystem() BtrfsFilesystem {
 	return fs
 }
 
+// hasAlert reports whether the alert with key is up and its title or
+// message contains text.
+func (m *itMirror) hasAlert(key, text string) bool {
+	m.t.Helper()
+	doc, err := alerts.Load()
+	m.must("alerts", err)
+	return slices.ContainsFunc(doc.Alerts, func(x alerts.Alert) bool {
+		return x.Key == key && strings.Contains(x.Title+" "+x.Message, text)
+	})
+}
+
 func (m *itMirror) state() poolState {
 	m.t.Helper()
 	states, err := loadPoolStates()
@@ -220,6 +231,9 @@ func (m *itMirror) bootMountsTheSurvivor() {
 	if !m.state().Degraded {
 		t.Fatalf("state = %+v, want degraded", m.state())
 	}
+	if !m.hasAlert("health-"+m.uuid, "running without 1 of 2 disks") {
+		t.Fatal("the degraded mount raised no alert")
+	}
 	// More than the raid1 data chunk has left, so new chunks are allocated
 	// while only one disk can take them.
 	m.during = writeRandom(t, filepath.Join(m.target, "during.bin"), 400<<20)
@@ -250,12 +264,8 @@ func (m *itMirror) staleDiskAloneIsRefused() {
 	if m.mounted() {
 		m.t.Fatal("mounted the stale disk alone")
 	}
-	doc, err := alerts.Load()
-	m.must("alerts", err)
-	if !slices.ContainsFunc(doc.Alerts, func(x alerts.Alert) bool {
-		return x.Key == "offline-"+m.uuid && strings.Contains(x.Message, "newest data is on a missing disk")
-	}) {
-		m.t.Fatalf("alerts = %+v, want the refusal explained", doc.Alerts)
+	if !m.hasAlert("offline-"+m.uuid, "newest data is on a missing disk") {
+		m.t.Fatal("the refusal raised no alert explaining it")
 	}
 }
 
@@ -291,6 +301,9 @@ func (m *itMirror) resyncRepairsTheReturnedDisk() {
 	}
 	if m.state().Degraded {
 		t.Fatalf("state after resync = %+v", m.state())
+	}
+	if !m.hasAlert("resynced-"+m.uuid, "whole again") || m.hasAlert("resync-"+m.uuid, "") {
+		t.Fatal("the alerts do not say the pool is whole again")
 	}
 	m.unmount()
 }

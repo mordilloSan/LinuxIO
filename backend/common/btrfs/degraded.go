@@ -15,6 +15,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
 	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
@@ -308,6 +309,11 @@ func mountDegraded(ctx context.Context, pools []fstabPool) error {
 			}
 			slog.Info("btrfs pool mounted degraded", "uuid", p.pool.UUID, "mountpoint", m.mountpoint, "missing", p.pool.NumDevices-len(p.pool.Devices))
 		}
+		// Say so now, not at the first health run: delivery and the bell
+		// pick it up at once.
+		if fs, err := FindFilesystem(ctx, p.pool.UUID); err == nil {
+			RaiseAlerts(ctx, fs)
+		}
 	}
 	return errors.Join(errs...)
 }
@@ -394,7 +400,33 @@ func Resync(ctx context.Context, uuid string) error {
 			return errors.Join(err, recErr)
 		}
 	}
+	refreshResyncAlerts(ctx, uuid, err == nil)
 	return err
+}
+
+// refreshResyncAlerts updates the pool's alerts when a resync ends rather
+// than at the next health run, and on success says the pool is whole again.
+func refreshResyncAlerts(ctx context.Context, uuid string, resynced bool) {
+	fs, err := FindFilesystem(ctx, uuid)
+	if err != nil {
+		slog.Warn("failed to refresh btrfs alerts after resync", "uuid", uuid, "error", err)
+		return
+	}
+	states, err := loadPoolStates()
+	if err != nil {
+		slog.Warn("failed to refresh btrfs alerts after resync", "uuid", uuid, "error", err)
+		return
+	}
+	RaiseAlerts(ctx, fs)
+	raiseResyncAlert(ctx, fs, states[uuid])
+	if resynced {
+		raise(ctx, alerts.Observation{
+			Key: "resynced-" + uuid, Severity: alerts.SeverityInfo,
+			Title:   "Pool " + poolName(fs.Label, uuid) + " is whole again",
+			Message: fmt.Sprintf("The returned disk was resynced: the scrub corrected %d stale or damaged copies, and data written while it was missing has its redundancy back.", fs.Scrub.CorrectedErrors),
+			Link:    "/storage?pool=" + uuid, OccurrenceID: strconv.FormatInt(time.Now().Unix(), 10),
+		})
+	}
 }
 
 // errDiskMissing stops a resync while the pool lacks a disk.

@@ -190,3 +190,20 @@ func TestOfflineAlertSaysWhyThePoolWasNotMountedDegraded(t *testing.T) {
 		t.Fatalf("alerts = %+v, %v", doc.Alerts, err)
 	}
 }
+
+func TestHealthAlertSaysAPoolRunsWithoutADisk(t *testing.T) {
+	fs := BtrfsFilesystem{UUID: dataUUID, Degraded: true, Devices: []BtrfsDevice{{ID: 1, Path: "/dev/sda"}, {ID: 2, Missing: true}}}
+	obs := healthObservation(fs, "data", "missing")
+	if obs.Title != "Pool data is running without 1 of 2 disks" || !strings.Contains(obs.Message, "Replace the missing disk") {
+		t.Fatalf("degraded alert = %q: %q", obs.Title, obs.Message)
+	}
+	// The same disk plugged back in while mounted is listed with its path.
+	fs.Devices[1].Path = "/dev/sdb"
+	if obs = healthObservation(fs, "data", "missing"); !strings.Contains(obs.Message, "connected again") {
+		t.Fatalf("returned-disk alert = %q", obs.Message)
+	}
+	errors := BtrfsFilesystem{UUID: dataUUID, Devices: []BtrfsDevice{{ID: 1, Path: "/dev/sda", Errors: BtrfsDeviceErrors{Write: 3}}}}
+	if obs = healthObservation(errors, "data", "1:w3"); obs.Title != "Btrfs filesystem data needs attention" {
+		t.Fatalf("error alert = %q", obs.Title)
+	}
+}

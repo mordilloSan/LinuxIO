@@ -49,11 +49,12 @@ filesystems, covering pools created after install.
 
 | Alert | Severity | Raised when | Resolved when |
 |---|---|---|---|
-| `btrfs/health-<uuid>` | error | a device reports errors or is missing | the counters are zero and no device is missing |
+| `btrfs/health-<uuid>` | error | a device reports errors or is missing; "running without n of m disks" when degraded | the counters are zero and no device is missing |
 | `btrfs/scrub-<uuid>` | error | the last scrub found uncorrectable errors | a later scrub finishes clean |
 | `btrfs/space-<uuid>` | warning | metadata is over 90% full with less than 1 GiB unallocated | space is reclaimed |
 | `btrfs/offline-<uuid>` | error or warning | a pool is found on disk but not mounted (error when disks are missing; says why the boot check left it unmounted) | the pool is mounted |
-| `btrfs/resync-<uuid>` | warning | a pool that ran with a disk missing has all its disks again and is being resynced | the resync finished |
+| `btrfs/resync-<uuid>` | warning, error after three failed resyncs | a pool that ran with a disk missing has all its disks again and is being resynced | the resync finished |
+| `btrfs/resynced-<uuid>` | info | a resync finished and the pool is whole again | dismissed, or the next resync starts |
 
 Incomplete health data neither raises nor resolves; alerts of pools that no
 longer exist are dropped by the timer. Scrub start/cancel is on the banner;
@@ -83,8 +84,10 @@ entry's options, unless the disks present may not hold its newest data:
 - they are older than the newest generation LinuxIO recorded for the pool;
 - or a disk that took the writes of the pool's last degraded run is missing.
 
-Mounting such a set would write a second history over the first. That pool
-stays unmounted and its offline alert says why; **Mount degraded** remains for
+A pool mounted this way raises its "running without n of m disks" alert at
+once, so it reaches the bell and any configured email or webhook right after
+boot. Mounting such a set would write a second history over the first. That
+pool stays unmounted and its offline alert says why; **Mount degraded** remains for
 a person who knows the other disks are gone for good, and does not apply this
 check. The kernel itself refuses a pool missing more disks than its profiles
 survive. A mount that fails leaves the entries inside its mountpoint
@@ -371,7 +374,7 @@ btrfsmaintenance timers.
 | `/var/lib/linuxio/btrfs-pools.json` | root | Per pool: newest generation seen, and whether and on which disks it ran degraded |
 | `/etc/systemd/system/<upgrade-service>.d/linuxio-alert.conf` | root | Auto-update drop-in, including the pre-update snapshot line |
 | `/etc/fstab` | root | Pool entries LinuxIO creates; compression options of existing entries |
-| `/var/lib/linuxio/alerts.json` | `root:root` `0600` | Alerts `btrfs/health-*`, `btrfs/scrub-*`, `btrfs/space-*`, `btrfs/offline-*`, `btrfs/resync-*`, `btrfs/snapshot-*`, `btrfs/replication-*` |
+| `/var/lib/linuxio/alerts.json` | `root:root` `0600` | Alerts `btrfs/health-*`, `btrfs/scrub-*`, `btrfs/space-*`, `btrfs/offline-*`, `btrfs/resync-*`, `btrfs/resynced-*`, `btrfs/snapshot-*`, `btrfs/replication-*` |
 
 ## Not implemented
 

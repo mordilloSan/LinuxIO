@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -17,7 +16,7 @@ import (
 const AlertSource = "btrfs"
 
 // alertKinds are the per-filesystem alert key prefixes CheckHealth owns.
-var alertKinds = []string{"health", "scrub", "space", "offline", "resync"}
+var alertKinds = []string{"health", "scrub", "space", "offline", "resync", "resynced"}
 
 func poolName(label, uuid string) string {
 	if label != "" {
@@ -49,16 +48,7 @@ func RaiseAlerts(ctx context.Context, fs BtrfsFilesystem) {
 		if occurrence := errorOccurrence(fs); occurrence == "" {
 			resolve(ctx, "health-"+fs.UUID)
 		} else {
-			message := "Device errors or a missing device were reported: " + occurrence
-			if slices.ContainsFunc(fs.Devices, func(d BtrfsDevice) bool { return d.Missing && d.Path != "" }) {
-				message += ". A missing disk is connected again but gets no writes until the pool is mounted again; after a reboot, LinuxIO resyncs it."
-			}
-			raise(ctx, alerts.Observation{
-				Key: "health-" + fs.UUID, Severity: alerts.SeverityError,
-				Title:   "Btrfs filesystem " + name + " needs attention",
-				Message: message,
-				Link:    link, OccurrenceID: occurrence,
-			})
+			raise(ctx, healthObservation(fs, name, occurrence))
 		}
 	}
 	switch {
@@ -88,6 +78,34 @@ func RaiseAlerts(ctx context.Context, fs BtrfsFilesystem) {
 		resolve(ctx, "space-"+fs.UUID)
 	}
 	resolve(ctx, "offline-"+fs.UUID)
+}
+
+// healthObservation describes device errors, or a pool running without
+// some of its disks.
+func healthObservation(fs BtrfsFilesystem, name, occurrence string) alerts.Observation {
+	obs := alerts.Observation{
+		Key: "health-" + fs.UUID, Severity: alerts.SeverityError,
+		Title:   "Btrfs filesystem " + name + " needs attention",
+		Message: "Device errors were reported: " + occurrence,
+		Link:    "/storage?pool=" + fs.UUID, OccurrenceID: occurrence,
+	}
+	missing := 0
+	returned := false
+	for _, d := range fs.Devices {
+		if d.Missing {
+			missing++
+			returned = returned || d.Path != ""
+		}
+	}
+	if missing > 0 {
+		obs.Title = fmt.Sprintf("Pool %s is running without %d of %d disks", name, missing, len(fs.Devices))
+		obs.Message = "Its data is available, but with less redundancy until every disk is back. Replace the missing disk from the pool details, or reconnect it and reboot; LinuxIO then resyncs the pool."
+		if returned {
+			obs.Message = "A missing disk is connected again, but it gets no writes until the pool is mounted again. Reboot, and LinuxIO resyncs the pool."
+		}
+		obs.Message += " Reported: " + occurrence + "."
+	}
+	return obs
 }
 
 // RaiseOfflineAlert flags an unmounted pool: an error when disks are
@@ -135,6 +153,7 @@ func raiseResyncAlert(ctx context.Context, fs BtrfsFilesystem, state poolState) 
 		})
 		return false
 	}
+	resolve(ctx, "resynced-"+fs.UUID)
 	raise(ctx, alerts.Observation{
 		Key: key, Severity: alerts.SeverityWarning,
 		Title:   "Pool " + name + " is resyncing a returned disk",

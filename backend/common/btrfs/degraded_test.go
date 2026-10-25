@@ -385,6 +385,10 @@ func TestResyncScrubsThenConvertsSoftly(t *testing.T) {
 	if !slices.Contains(k.Calls(), "SCRUB 1") {
 		t.Fatalf("no scrub ran: %v", k.Calls())
 	}
+	// The bell says the pool is whole again at once, not at the next health run.
+	if got := alertKeys(t); got["resynced-"+dataUUID] != alerts.SeverityInfo || got["resync-"+dataUUID] != "" {
+		t.Fatalf("alerts = %v, want only the resynced notice", got)
+	}
 }
 
 func TestResyncRefusesWhileADiskIsMissing(t *testing.T) {
