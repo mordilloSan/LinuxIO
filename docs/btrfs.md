@@ -180,7 +180,12 @@ A disk with partitions, holders or a mount is refused; a foreign filesystem
 signature needs **Force**. The mount point must be an unused, empty path
 outside the system directories. The dialog estimates the usable data space
 for the chosen profile and disks, allocated the way btrfs does, so mixed disk
-sizes are counted right; metadata overhead is not included.
+sizes are counted right; metadata overhead is not included. Metadata (the
+filesystem tree and checksums) defaults to `dup` on one disk, `raid1` on two
+and `raid1c3` from three, where `mkfs.btrfs` would pick `raid1`. A metadata
+profile less redundant than the data profile is never offered, ranked
+`single` = `raid0` < `dup` < `raid1` = `raid10` < `raid1c3` < `raid1c4`:
+weaker metadata lets a disk failure the data survives take the whole pool.
 
 Disks are used whole unless **Partition the disks** is on. Then each disk
 gets a GPT, written natively, with one Linux partition from 1 MiB that stops
@@ -219,7 +224,7 @@ primary superblock at 64 KiB.
 | Replace device | Replaces one member with a free device. A bigger replacement disk is grown into automatically. |
 | Grow | Resizes a device to its whole disk when the filesystem uses less of it, for example after a replace done by hand. |
 | Rename | Sets the filesystem label from the pool details. |
-| Balance / convert | Profiles `single`, `dup`, `raid0`, `raid1`, `raid1c3`, `raid1c4`, `raid10`. `raid5` and `raid6` are refused. Converting metadata converts system chunks with it. The outcome is verified against the resulting allocation. |
+| Balance / convert | Profiles `single`, `dup`, `raid0`, `raid1`, `raid1c3`, `raid1c4`, `raid10`. `raid5` and `raid6` are refused. Converting metadata converts system chunks with it. Metadata weaker than the resulting data profile is converted too, to the same default as Create pool, unless nothing stronger fits on the present devices. The outcome is verified against the resulting allocation. |
 | Reclaim space | A balance of data chunks at most 50% full, which turns slack into unallocated space. |
 | Scrub | Start and cancel. The last result is recorded in `/var/lib/linuxio/btrfs-scrub.json`; scrubs run by btrfsmaintenance are read from `/var/lib/btrfs/scrub.status.<uuid>`. |
 

@@ -182,6 +182,44 @@ describe("BtrfsCreatePoolDialog", () => {
     );
   });
 
+  it("keeps metadata at least as redundant as data, raid1c3 from three disks", async () => {
+    const user = userEvent.setup();
+    mocks.topology.mockResolvedValue({
+      devices: ["/dev/sdb", "/dev/sdc", "/dev/sdd", "/dev/sde"].map((path) =>
+        device(path),
+      ),
+      mounts: [],
+    });
+    render(
+      <BtrfsCreatePoolDialog
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+        pooledDevices={[]}
+      />,
+    );
+    for (const path of ["/dev/sdb", "/dev/sdc", "/dev/sdd", "/dev/sde"]) {
+      await user.click(
+        await screen.findByRole("checkbox", { name: new RegExp(path) }),
+      );
+    }
+
+    const metadata = screen.getByRole("combobox", { name: "Metadata profile" });
+    expect(metadata).toHaveTextContent("raid1c3");
+    await user.click(metadata);
+    for (const weaker of ["single", "dup", "raid0"]) {
+      expect(
+        screen.queryByRole("option", { name: weaker }),
+      ).not.toBeInTheDocument();
+    }
+    await user.click(screen.getByRole("option", { name: "raid1" }));
+    expect(metadata).toHaveTextContent(/raid1(?!c)/);
+
+    // raid1 metadata cannot follow raid1c4 data, so it moves up with it.
+    await user.click(screen.getByRole("combobox", { name: "Data profile" }));
+    await user.click(await screen.findByRole("option", { name: "raid1c4" }));
+    expect(metadata).toHaveTextContent("raid1c4");
+  });
+
   it("offers disks with a foreign signature only under force", async () => {
     const user = userEvent.setup();
     render(

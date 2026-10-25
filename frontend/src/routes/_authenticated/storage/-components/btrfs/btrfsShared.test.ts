@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { usableBytes } from "./btrfsShared";
+import {
+  metadataProfiles,
+  recommendedMetadata,
+  usableBytes,
+} from "./btrfsShared";
 
 const T = 1000 ** 4;
 // The greedy fill is stepped, so results are exact to within a step.
@@ -31,5 +35,39 @@ describe("usableBytes", () => {
     expect(usableBytes("raid1", [T])).toBe(0);
     expect(usableBytes("raid10", [T, T, T])).toBe(0);
     expect(usableBytes("raid5", [T, T, T])).toBe(0);
+  });
+});
+
+describe("metadata profiles", () => {
+  const all = [
+    "single",
+    "dup",
+    "raid0",
+    "raid1",
+    "raid1c3",
+    "raid1c4",
+    "raid10",
+  ];
+
+  it("never offers metadata weaker than data", () => {
+    expect(metadataProfiles(all, "single")).toEqual(all);
+    expect(metadataProfiles(all, "dup")).toEqual(
+      all.filter((p) => p !== "single" && p !== "raid0"),
+    );
+    // dup keeps both copies on one disk, so it cannot follow raid1 data.
+    expect(metadataProfiles(all, "raid10")).toEqual([
+      "raid1",
+      "raid1c3",
+      "raid1c4",
+      "raid10",
+    ]);
+    expect(metadataProfiles(all, "raid1c3")).toEqual(["raid1c3", "raid1c4"]);
+  });
+
+  it("recommends dup, raid1 or raid1c3 by disk count", () => {
+    expect(recommendedMetadata(all, 1)).toBe("dup");
+    expect(recommendedMetadata(all, 2)).toBe("raid1");
+    expect(recommendedMetadata(all, 4)).toBe("raid1c3");
+    expect(recommendedMetadata(["raid1c4"], 4)).toBe("raid1c4");
   });
 });
