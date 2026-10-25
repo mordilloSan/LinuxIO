@@ -103,6 +103,9 @@ describe("BtrfsCreatePoolDialog", () => {
     await user.click(dataProfile);
 
     await user.click(screen.getByRole("checkbox", { name: /\/dev\/sdc/ }));
+    expect(
+      screen.getByText("Everything on /dev/sdb, /dev/sdc is erased."),
+    ).toBeInTheDocument();
     expect(dataProfile).toHaveTextContent("raid1");
     await user.click(dataProfile);
     await user.click(await screen.findByRole("option", { name: "raid0" }));
@@ -158,6 +161,11 @@ describe("BtrfsCreatePoolDialog", () => {
     // The disks themselves and their RAID partitions are never offered.
     expect(
       screen.queryByRole("checkbox", { name: /^\/dev\/nvme/ }),
+    ).not.toBeInTheDocument();
+    // Nothing is erased, and there is no whole disk to partition.
+    expect(screen.queryByText(/is erased/)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Partition the whole disks/),
     ).not.toBeInTheDocument();
     expect(
       screen.getByRole("combobox", { name: "Data profile" }),

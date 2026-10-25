@@ -129,10 +129,6 @@ const BtrfsCreatePoolDialog = ({
             gap: "var(--app-space-12)",
           }}
         >
-          <AppAlert severity="warning">
-            Everything on the selected disks is erased. Selected free space gets
-            a new partition and the rest of its disk is left alone.
-          </AppAlert>
           <AppTextField
             fullWidth
             label="Name"
@@ -208,15 +204,23 @@ const BtrfsCreatePoolDialog = ({
             }
             label="Force (wipe existing filesystem signatures)"
           />
-          <AppFormControlLabel
-            control={
-              <AppSwitch
-                checked={partition}
-                onChange={(_, checked) => setPartition(checked)}
-              />
-            }
-            label="Partition the whole disks, leaving 1 GiB free so a slightly smaller replacement disk fits"
-          />
+          {free.length > 0 && (
+            <AppFormControlLabel
+              control={
+                <AppSwitch
+                  checked={partition}
+                  onChange={(_, checked) => setPartition(checked)}
+                />
+              }
+              label="Partition the whole disks, leaving 1 GiB free so a slightly smaller replacement disk fits"
+            />
+          )}
+          {/* Below the disk list so it appearing does not move the checkboxes. */}
+          {devices.length > 0 && (
+            <AppAlert severity="warning">
+              {`Everything on ${devices.join(", ")} is erased.`}
+            </AppAlert>
+          )}
         </div>
       </AppDialogContent>
       <AppDialogActions>

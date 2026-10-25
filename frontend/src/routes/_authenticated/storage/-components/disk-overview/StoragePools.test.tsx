@@ -419,7 +419,7 @@ describe("StoragePools", () => {
 
     expect(await screen.findByText("Checking · 42.0%")).toBeInTheDocument();
     expect(screen.getByText("Degraded (1 missing)")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Stop" }));
+    await user.click(screen.getByRole("button", { name: "Stop check" }));
     expect(mocks.mutations["storage.md_sync_action"]).toHaveBeenCalledWith({
       name: "md127",
       action: "idle",
