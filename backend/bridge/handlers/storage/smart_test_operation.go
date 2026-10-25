@@ -41,7 +41,7 @@ var smartTestRoutes = smartTestBindings().Routes()
 
 func smartTestBindings() apischema.BindingSet {
 	return apischema.Bindings(
-		apischema.TaskRunner[apischema.DeviceTestTypeRequest, SmartTestResult]("storage.run_smart_test", apischema.SessionTask(), apischema.WithTaskProgress[SmartTestProgress](), apischema.WithTaskMetadata(func(req apischema.DeviceTestTypeRequest) bridgeipc.TaskMetadata {
+		apischema.TaskRunner[apischema.DeviceTestTypeRequest, SmartTestResult]("storage.run_smart_test", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[SmartTestProgress](), apischema.WithTaskMetadata(func(req apischema.DeviceTestTypeRequest) bridgeipc.TaskMetadata {
 			return bridgeipc.TaskMetadata{Identity: []string{req.Device, req.TestType}, Label: "Running SMART self-test", Device: req.Device, TestType: req.TestType}
 		})).Run(runSmartTestTask, bridgeipc.TaskDefault),
 	)
@@ -52,6 +52,7 @@ func RegisterTaskRoutes(router *bridgeipc.Router) {
 	btrfsRollbackBindings().Register(router)
 	btrfsDeviceBindings().Register(router)
 	btrfsReplicationBindings().Register(router)
+	partitionBindings().Register(router)
 }
 
 // pollInterval picks how often to poll smartctl based on test type. Short tests

@@ -40,8 +40,6 @@ To list the candidates (mutations with neither guard; routes that mutate only th
 rg -n 'apischema\.(Call|Task|Job)\[' backend/bridge/handlers -g '!*_test.go' | rg -v 'Privileged\(\)|RetrySafe\(\)'
 ```
 
-Known gaps from the 2026-10-25 mutation survey, not yet fixed: `storage.create_lv`, `storage.delete_lv`, `storage.resize_lv`, the NFS and CIFS mount, unmount and remount routes, `storage.unmount_filesystem`, `storage.set_btrfs_maintenance`, `storage.run_smart_test` and `docker.set_container_auto_update`. Remove each from this list when its binding gains `Privileged()`.
-
 ## Testing
 
 Dispatcher tests should cover:

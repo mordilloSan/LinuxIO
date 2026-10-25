@@ -13,20 +13,23 @@ var api = apischema.Bindings(
 	apischema.Call[apischema.NoRequest, []apischema.PhysicalVolume]("storage.list_pvs", apischema.RetrySafe()).Handle(handleListPVs),
 	apischema.Call[apischema.NoRequest, []apischema.VolumeGroup]("storage.list_vgs", apischema.RetrySafe()).Handle(handleListVGs),
 	apischema.Call[apischema.NoRequest, []apischema.LogicalVolume]("storage.list_lvs", apischema.RetrySafe()).Handle(handleListLVs),
-	apischema.Call[apischema.CreateLogicalVolumeRequest, apischema.SuccessPathResponse]("storage.create_lv").Handle(handleCreateLV),
-	apischema.Call[apischema.VolumeGroupLogicalVolumeRequest, apischema.SuccessResponse]("storage.delete_lv").Handle(handleDeleteLV),
-	apischema.Call[apischema.ResizeLogicalVolumeRequest, apischema.SuccessResponse]("storage.resize_lv").Handle(handleResizeLV),
+	apischema.Call[apischema.CreateLogicalVolumeRequest, apischema.SuccessPathResponse]("storage.create_lv", apischema.Privileged()).Handle(handleCreateLV),
+	apischema.Call[apischema.VolumeGroupLogicalVolumeRequest, apischema.SuccessResponse]("storage.delete_lv", apischema.Privileged()).Handle(handleDeleteLV),
+	apischema.Call[apischema.ResizeLogicalVolumeRequest, apischema.SuccessResponse]("storage.resize_lv", apischema.Privileged()).Handle(handleResizeLV),
 	apischema.Call[apischema.NoRequest, []apischema.NFSMount]("storage.list_nfs_mounts", apischema.RetrySafe()).Handle(handleListNFSMounts),
 	apischema.Call[apischema.ServerRequest, []string]("storage.list_nfs_exports", apischema.RetrySafe()).Handle(handleListNFSExports),
-	apischema.Call[apischema.ServerExportMountOptionsPersistRequest, apischema.StorageMountResult]("storage.mount_nfs").Handle(handleMountNFS),
-	apischema.Call[apischema.MountpointRemoveFstabRequest, apischema.StorageWarningResult]("storage.unmount_nfs").Handle(handleUnmountNFS),
-	apischema.Call[apischema.MountpointOptionsUpdateFstabRequest, apischema.StorageMountResult]("storage.remount_nfs").Handle(handleRemountNFS),
+	apischema.Call[apischema.ServerExportMountOptionsPersistRequest, apischema.StorageMountResult]("storage.mount_nfs", apischema.Privileged()).Handle(handleMountNFS),
+	apischema.Call[apischema.MountpointRemoveFstabRequest, apischema.StorageWarningResult]("storage.unmount_nfs", apischema.Privileged()).Handle(handleUnmountNFS),
+	apischema.Call[apischema.MountpointOptionsUpdateFstabRequest, apischema.StorageMountResult]("storage.remount_nfs", apischema.Privileged()).Handle(handleRemountNFS),
 	apischema.Call[apischema.NoRequest, []apischema.CIFSMount]("storage.list_cifs_mounts", apischema.RetrySafe()).Handle(handleListCIFSMounts),
 	apischema.Call[apischema.ServerRequest, []string]("storage.list_cifs_shares", apischema.RetrySafe()).Handle(handleListCIFSShares),
-	apischema.Call[apischema.CIFSMountRequest, apischema.StorageMountResult]("storage.mount_cifs").Handle(handleMountCIFS),
-	apischema.Call[apischema.MountpointRemoveFstabRequest, apischema.StorageWarningResult]("storage.unmount_cifs").Handle(handleUnmountCIFS),
-	apischema.Call[apischema.MountpointOptionsUpdateFstabRequest, apischema.StorageMountResult]("storage.remount_cifs").Handle(handleRemountCIFS),
-	apischema.Call[apischema.MountpointRequest, apischema.StorageMountResult]("storage.unmount_filesystem").Handle(handleUnmountFilesystem),
+	apischema.Call[apischema.CIFSMountRequest, apischema.StorageMountResult]("storage.mount_cifs", apischema.Privileged()).Handle(handleMountCIFS),
+	apischema.Call[apischema.MountpointRemoveFstabRequest, apischema.StorageWarningResult]("storage.unmount_cifs", apischema.Privileged()).Handle(handleUnmountCIFS),
+	apischema.Call[apischema.MountpointOptionsUpdateFstabRequest, apischema.StorageMountResult]("storage.remount_cifs", apischema.Privileged()).Handle(handleRemountCIFS),
+	apischema.Call[apischema.MountpointRemoveFstabRequest, apischema.StorageMountResult]("storage.unmount_filesystem", apischema.Privileged()).Handle(handleUnmountFilesystem),
+	apischema.Call[apischema.BlockDeviceRequest, apischema.SuccessResponse]("storage.partition_delete", apischema.Privileged()).Handle(DeletePartition),
+	apischema.Call[apischema.PartitionMountRequest, apischema.StorageMountResult]("storage.partition_mount", apischema.Privileged()).Handle(MountPartition),
+	apischema.Call[apischema.BlockDeviceRequest, apischema.SuccessResponse]("storage.disk_initialize", apischema.Privileged()).Handle(InitializeDisk),
 	apischema.Call[apischema.NoRequest, []apischema.MDArray]("storage.md_list", apischema.RetrySafe()).Handle(handleMDList),
 	apischema.Call[apischema.MDSyncActionRequest, apischema.MDArray]("storage.md_sync_action", apischema.Privileged()).Handle(handleMDSyncAction),
 	apischema.Call[apischema.MDMemberRequest, apischema.MDArray]("storage.md_member_fail", apischema.Privileged()).Handle(handleMDMemberFail),
@@ -65,12 +68,12 @@ var api = apischema.Bindings(
 	apischema.Call[apischema.BtrfsLabelRequest, btrfs.BtrfsFilesystem]("storage.btrfs_set_label", apischema.Privileged()).Handle(handleBtrfsSetLabel),
 	apischema.Call[apischema.UUIDRequest, apischema.SuccessResponse]("storage.btrfs_scrub_cancel", apischema.Privileged()).Handle(handleBtrfsScrubCancel),
 	apischema.Call[apischema.NoRequest, apischema.BtrfsMaintenanceSchedule]("storage.get_btrfs_maintenance", apischema.RetrySafe()).Handle(handleGetBtrfsMaintenance),
-	apischema.Call[apischema.BtrfsMaintenanceRequest, apischema.BtrfsMaintenanceSchedule]("storage.set_btrfs_maintenance").Handle(handleSetBtrfsMaintenance),
+	apischema.Call[apischema.BtrfsMaintenanceRequest, apischema.BtrfsMaintenanceSchedule]("storage.set_btrfs_maintenance", apischema.Privileged()).Handle(handleSetBtrfsMaintenance),
 	apischema.Call[apischema.NoRequest, []apischema.ApiDisk]("storage.get_drive_info", apischema.RetrySafe()).Handle(handleGetDriveInfo),
 	apischema.Call[apischema.NoRequest, apischema.StorageTopologyInventory]("storage.get_topology", apischema.RetrySafe()).Handle(handleGetTopology),
 )
 
-var Routes = apischema.CombineRoutes(api.Routes(), smartTestRoutes, btrfsRollbackRoutes, btrfsDeviceRoutes, btrfsReplicationRoutes)
+var Routes = apischema.CombineRoutes(api.Routes(), smartTestRoutes, btrfsRollbackRoutes, btrfsDeviceRoutes, btrfsReplicationRoutes, partitionRoutes)
 
 // RegisterHandlers registers all storage handlers with the global registry
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
@@ -309,8 +312,8 @@ func handleRemountCIFS(ctx context.Context, req apischema.MountpointOptionsUpdat
 	return RemountCIFS(ctx, req.Mountpoint, req.Options, truthy(req.UpdateFstab))
 }
 
-func handleUnmountFilesystem(ctx context.Context, req apischema.MountpointRequest) (apischema.StorageMountResult, error) {
-	return UnmountFilesystem(ctx, req.Mountpoint)
+func handleUnmountFilesystem(ctx context.Context, req apischema.MountpointRemoveFstabRequest) (apischema.StorageMountResult, error) {
+	return UnmountFilesystem(ctx, req.Mountpoint, truthy(req.RemoveFstab))
 }
 
 func handleGetBtrfsMaintenance(ctx context.Context, _ apischema.NoRequest) (apischema.BtrfsMaintenanceSchedule, error) {

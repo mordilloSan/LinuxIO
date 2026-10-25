@@ -60,7 +60,7 @@ func routeBindings(rt runtime.Runtime, handlers dockerHandlers) apischema.Bindin
 		apischema.Call[apischema.NoRequest, apischema.DockerUpdateCheckResult]("docker.check_updates").Handle(handlers.handleCheckUpdates),
 		apischema.Call[apischema.ContainerIDRequest, apischema.DockerUpdateCheckResult]("docker.check_container_update").Handle(handlers.handleCheckContainerUpdate),
 		apischema.Call[apischema.NoRequest, apischema.DockerContainerAutoUpdateState]("docker.get_container_auto_update", apischema.RetrySafe()).Handle(handlers.handleGetContainerAutoUpdate),
-		apischema.Call[apischema.DockerContainerAutoUpdateOptions, apischema.DockerContainerAutoUpdateState]("docker.set_container_auto_update").Handle(handlers.handleSetContainerAutoUpdate),
+		apischema.Call[apischema.DockerContainerAutoUpdateOptions, apischema.DockerContainerAutoUpdateState]("docker.set_container_auto_update", apischema.Privileged()).Handle(handlers.handleSetContainerAutoUpdate),
 		apischema.Call[apischema.DockerSystemPruneRequest, *apischema.DockerSystemPruneResponse]("docker.system_prune").Handle(handlers.handleSystemPrune),
 		apischema.DuplexRoute[apischema.DockerLogsFollowRequest, apischema.NoResponse](routeDockerLogsFollow, apischema.NoEndpoint()).Duplex(
 			func(ctx context.Context, stream net.Conn, req apischema.DockerLogsFollowRequest) error {
