@@ -52,11 +52,11 @@ func runArchiveTask(ctx context.Context, task *bridgeipc.Task, store *userconfig
 	}
 	// Register before any slow work. The client opens its data stream as soon
 	// as the start reply carries the task id, and attachFileTransferData only
-	// waits transferAttachWaitTimeout for this entry to appear. Both the
-	// heavy-archive slot and the size estimate (a full recursive walk) can
-	// outlast that on a large folder, so registering after them raced the
-	// client into a spurious "transfer task not ready" 404 while the task kept
-	// archiving for a client that had already given up.
+	// waits transferAttachWaitTimeout for this entry to appear. The size
+	// estimate (a full recursive walk) can outlast that on a large folder, so
+	// registering after it raced the client into a spurious "transfer task not
+	// ready" 404 while the task kept archiving for a client that had already
+	// given up.
 	transfer := &archiveTransferTask{
 		format:      req.Format,
 		paths:       paths,
@@ -76,12 +76,6 @@ func runArchiveTask(ctx context.Context, task *bridgeipc.Task, store *userconfig
 
 	settings := taskSettingsForTask(ctx, task, store)
 	defer estimateArchiveSizeAsync(ctx, paths, transfer.size)()
-
-	release, err := heavyArchiveLimiter.acquire(ctx, settings.HeavyArchiveConcurrency)
-	if err != nil {
-		return nil, context.Canceled
-	}
-	defer release()
 
 	tempFile, err := os.CreateTemp("", "linuxio-task-archive-*"+extension)
 	if err != nil {

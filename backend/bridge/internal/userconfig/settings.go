@@ -99,7 +99,6 @@ func DefaultJobSettings() PersistedJobSettings {
 		ProgressMinIntervalMs:     250,
 		NotificationMinIntervalMs: 1000,
 		ProgressMinBytesMB:        16,
-		HeavyArchiveConcurrency:   1,
 		ArchiveCompressionWorkers: 0,
 		ArchiveExtractWorkers:     0,
 	}
@@ -115,9 +114,6 @@ func EffectiveJobSettings(jobSettings PersistedJobSettings) PersistedJobSettings
 	}
 	if jobSettings.ProgressMinBytesMB <= 0 {
 		jobSettings.ProgressMinBytesMB = defaults.ProgressMinBytesMB
-	}
-	if jobSettings.HeavyArchiveConcurrency <= 0 {
-		jobSettings.HeavyArchiveConcurrency = defaults.HeavyArchiveConcurrency
 	}
 	if jobSettings.ArchiveCompressionWorkers < 0 {
 		jobSettings.ArchiveCompressionWorkers = defaults.ArchiveCompressionWorkers

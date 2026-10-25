@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -33,8 +32,6 @@ var (
 	ErrNotFound        = errors.New("not found")
 	ErrConflict        = errors.New("conflict")
 	ErrRouteNotFound   = errors.New("route not found")
-	ErrRateLimited     = errors.New("rate limit exceeded")
-	ErrQueueFull       = errors.New("task queue full")
 	ErrDuplicateActive = errors.New("task already active")
 )
 
@@ -107,63 +104,30 @@ func WithTaskIdentity(build TaskIdentityBuilder) RouteOption {
 	}
 }
 
+// TaskPolicy says which tasks of a route may run side by side. Any number
+// may, except that a second task on the same target, named by its metadata
+// identity (a pool, a disk, a set of paths), is refused while the first runs,
+// as the kernel or device would refuse it. Exclusive allows one task of the
+// route at a time, for work that owns a whole system resource such as the
+// package manager. There is no queue, no rate limit and no runtime cap: a
+// task ends when it finishes or is canceled.
 type TaskPolicy struct {
-	Name                    string
-	MaxActivePerRoute       int
-	MaxActivePerOwnerRoute  int
-	QueueLimit              int
-	StartRatePerMinuteOwner int
-	DuplicateActiveReject   bool
+	Name      string
+	Exclusive bool
 }
 
 var (
-	TaskDefault = TaskPolicy{
-		Name:                    "action_default",
-		MaxActivePerRoute:       4,
-		MaxActivePerOwnerRoute:  1,
-		QueueLimit:              16,
-		StartRatePerMinuteOwner: 0,
-	}
-	TaskSingletonSystem = TaskPolicy{
-		Name:                    "singleton_system",
-		MaxActivePerRoute:       1,
-		MaxActivePerOwnerRoute:  1,
-		QueueLimit:              1,
-		StartRatePerMinuteOwner: 10,
-		DuplicateActiveReject:   true,
-	}
-	TaskStreamDefault = TaskPolicy{
-		Name:                   "stream_default",
-		MaxActivePerRoute:      64,
-		MaxActivePerOwnerRoute: 8,
-		QueueLimit:             0,
-		// StartRatePerMinuteOwner is 0 (disabled): file transfers are
-		// user-initiated with one task per file, so a per-minute start cap
-		// rejected large folder uploads mid-batch. Concurrency is still
-		// bounded by MaxActivePerRoute / MaxActivePerOwnerRoute.
-		StartRatePerMinuteOwner: 0,
-	}
+	TaskDefault   = TaskPolicy{Name: "default"}
+	TaskExclusive = TaskPolicy{Name: "exclusive", Exclusive: true}
 )
 
 type Router struct {
-	mu                   sync.RWMutex
-	routes               map[string]Route
-	registry             *TaskService
-	activeByRoute        map[string]int
-	activeByOwnerRoute   map[string]int
-	queuedByRoute        map[string][]queuedTask
-	pendingQueuedByRoute map[string]int
-	startsByOwnerRoute   map[string][]time.Time
-	pendingIdentities    map[string]chan struct{}
-	// beforeStartHook is a narrow test seam for the promotion/cancel race.
-	// Production never sets it.
-	beforeStartHook func(*Task)
-}
-
-type queuedTask struct {
-	route Route
-	task  *Task
-	owner TaskOwner
+	mu                sync.RWMutex
+	routes            map[string]Route
+	registry          *TaskService
+	activeByRoute     map[string]int
+	activeTargets     map[string]int
+	pendingIdentities map[string]chan struct{}
 }
 
 type runnerResult struct {
@@ -176,14 +140,11 @@ func NewRouter(registry *TaskService) *Router {
 		registry = DefaultTaskService
 	}
 	return &Router{
-		routes:               make(map[string]Route),
-		registry:             registry,
-		activeByRoute:        make(map[string]int),
-		activeByOwnerRoute:   make(map[string]int),
-		queuedByRoute:        make(map[string][]queuedTask),
-		pendingQueuedByRoute: make(map[string]int),
-		startsByOwnerRoute:   make(map[string][]time.Time),
-		pendingIdentities:    make(map[string]chan struct{}),
+		routes:            make(map[string]Route),
+		registry:          registry,
+		activeByRoute:     make(map[string]int),
+		activeTargets:     make(map[string]int),
+		pendingIdentities: make(map[string]chan struct{}),
 	}
 }
 
@@ -194,7 +155,7 @@ func (r *Router) TaskService() *TaskService {
 
 // RecoverDurableTask reattaches a persisted operation to its registered route
 // without treating recovery as a new admission. The recovered Task counts as
-// active so normal singleton and capacity policy still protects new starts.
+// active so the exclusive and same-target checks still protect new starts.
 func (r *Router) RecoverDurableTask(routeName string, request any, owner TaskOwner, identity TaskIdentity) (*Task, bool, error) {
 	route, ok := r.lookup(routeName)
 	if !ok || route.Mode != ModeTask || route.Lifetime != TaskLifetimeDurable || route.Identity == nil {
@@ -215,11 +176,11 @@ func (r *Router) RecoverDurableTask(routeName string, request any, owner TaskOwn
 	if err != nil || !created {
 		return task, created, err
 	}
-	ownerRouteKey := routeName + "\x00" + owner.key(TaskLifetimeDurable)
+	target := admissionTarget(routeName, metadata)
 	r.mu.Lock()
-	r.markActiveLocked(routeName, ownerRouteKey)
+	r.markActiveLocked(routeName, target)
 	r.mu.Unlock()
-	r.startTrackedTask(route, task, owner)
+	r.startTrackedTask(route, task, owner, target)
 	return task, true, nil
 }
 
@@ -406,7 +367,7 @@ func (r *Router) dispatchCall(ctx context.Context, stream net.Conn, route Route,
 }
 
 func (r *Router) dispatchTask(ctx context.Context, stream net.Conn, route Route, req Request) error {
-	task, started, err := r.startOrQueueTask(route, req)
+	task, started, err := r.startTask(route, req)
 	if err != nil {
 		_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), StatusCode(err))
 		return err
@@ -443,9 +404,9 @@ func (r *Router) routeRunner(route Route, executionDone chan<- struct{}) TaskRun
 	}
 }
 
-func (r *Router) startOrQueueTask(route Route, req Request) (*Task, bool, error) {
+func (r *Router) startTask(route Route, req Request) (*Task, bool, error) {
 	if route.Identity == nil {
-		return r.startOrQueueTaskWithIdentity(route, req, TaskIdentity{})
+		return r.startTaskWithIdentity(route, req, TaskIdentity{})
 	}
 	identity, err := route.Identity(req.DecodedValue)
 	if err != nil {
@@ -478,7 +439,7 @@ func (r *Router) startOrQueueTask(route Route, req Request) (*Task, bool, error)
 		r.pendingIdentities[claimKey] = pending
 		r.mu.Unlock()
 
-		task, started, startErr := r.startOrQueueTaskWithIdentity(route, req, identity)
+		task, started, startErr := r.startTaskWithIdentity(route, req, identity)
 		r.mu.Lock()
 		delete(r.pendingIdentities, claimKey)
 		close(pending)
@@ -487,57 +448,43 @@ func (r *Router) startOrQueueTask(route Route, req Request) (*Task, bool, error)
 	}
 }
 
-func (r *Router) startOrQueueTaskWithIdentity(route Route, req Request, identity TaskIdentity) (*Task, bool, error) {
-	now := time.Now().UTC()
-	lifetime := normalizedTaskLifetime(route.Lifetime)
-	ownerRouteKey := req.Route + "\x00" + req.Owner.key(lifetime)
-	policy := normalizedPolicy(route.Policy)
-	canStart, err := r.reserveTaskAdmission(req.Route, ownerRouteKey, policy, now)
-	if err != nil {
-		return nil, false, err
-	}
+func (r *Router) startTaskWithIdentity(route Route, req Request, identity TaskIdentity) (*Task, bool, error) {
 	metadata := buildTaskMetadata(route, req.DecodedValue)
-	task, created, err := r.registry.ClaimForOwnerWithIdentity(req.Route, req.DecodedValue, req.Owner, lifetime, identity, metadata)
-	if err != nil {
-		r.releaseTaskReservation(req.Route, ownerRouteKey, canStart)
+	target := admissionTarget(route.Name, metadata)
+	if err := r.admit(route, target); err != nil {
 		return nil, false, err
 	}
-	if !created {
-		r.releaseTaskReservation(req.Route, ownerRouteKey, canStart)
-		return task, false, nil
+	task, created, err := r.registry.ClaimForOwnerWithIdentity(req.Route, req.DecodedValue, req.Owner, normalizedTaskLifetime(route.Lifetime), identity, metadata)
+	if err != nil || !created {
+		r.release(route.Name, target)
+		return task, false, err
 	}
-	return r.startOrEnqueueClaimedTask(route, req.Owner, task, canStart)
+	r.startTrackedTask(route, task, req.Owner, target)
+	return task, true, nil
 }
 
-func (r *Router) reserveTaskAdmission(routeName, ownerRouteKey string, policy TaskPolicy, now time.Time) (bool, error) {
+// admit counts a task in before it is claimed, refusing a second task of an
+// exclusive route or a second task on the same target.
+func (r *Router) admit(route Route, target string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if err := r.checkRateLocked(routeName, ownerRouteKey, policy, now); err != nil {
-		return false, err
+	if normalizedPolicy(route.Policy).Exclusive && r.activeByRoute[route.Name] > 0 {
+		return fmt.Errorf("%w: %s", ErrDuplicateActive, route.Name)
 	}
-	if policy.DuplicateActiveReject && r.activeByRoute[routeName] > 0 {
-		return false, fmt.Errorf("%w: %s", ErrDuplicateActive, routeName)
+	if target != "" && r.activeTargets[target] > 0 {
+		return fmt.Errorf("%w: %s is already running on this target", ErrDuplicateActive, route.Name)
 	}
-	canStart := r.canStartLocked(routeName, ownerRouteKey, policy)
-	if !canStart {
-		// Canceled queued tasks keep their entry until promotion; drop them so
-		// they do not count against the limit.
-		r.queuedByRoute[routeName] = slices.DeleteFunc(r.queuedByRoute[routeName], func(q queuedTask) bool {
-			return q.task.IsTerminal()
-		})
+	r.markActiveLocked(route.Name, target)
+	return nil
+}
+
+// admissionTarget names what a task works on, from its metadata identity, or
+// returns "" when the route names nothing.
+func admissionTarget(routeName string, metadata *TaskMetadata) string {
+	if metadata == nil || len(metadata.Identity) == 0 {
+		return ""
 	}
-	if !canStart && (policy.QueueLimit <= 0 || len(r.queuedByRoute[routeName])+r.pendingQueuedByRoute[routeName] >= policy.QueueLimit) {
-		return false, fmt.Errorf("%w: %s", ErrQueueFull, routeName)
-	}
-	if policy.StartRatePerMinuteOwner > 0 {
-		r.startsByOwnerRoute[ownerRouteKey] = append(r.startsByOwnerRoute[ownerRouteKey], now)
-	}
-	if canStart {
-		r.markActiveLocked(routeName, ownerRouteKey)
-	} else {
-		r.pendingQueuedByRoute[routeName]++
-	}
-	return canStart, nil
+	return routeName + "\x00" + strings.Join(metadata.Identity, "\x00")
 }
 
 func buildTaskMetadata(route Route, request any) *TaskMetadata {
@@ -546,40 +493,6 @@ func buildTaskMetadata(route Route, request any) *TaskMetadata {
 	}
 	value := route.Metadata(request)
 	return &value
-}
-
-func (r *Router) releaseTaskReservation(routeName, ownerRouteKey string, canStart bool) {
-	if canStart {
-		r.finishTask(routeName, ownerRouteKey)
-		return
-	}
-	r.mu.Lock()
-	if r.pendingQueuedByRoute[routeName] > 0 {
-		r.pendingQueuedByRoute[routeName]--
-	}
-	r.mu.Unlock()
-}
-
-func (r *Router) startOrEnqueueClaimedTask(route Route, owner TaskOwner, task *Task, canStart bool) (*Task, bool, error) {
-	r.mu.Lock()
-	if canStart {
-		r.mu.Unlock()
-		r.startTrackedTask(route, task, owner)
-		return task, true, nil
-	}
-	r.queuedByRoute[route.Name] = append(r.queuedByRoute[route.Name], queuedTask{route: route, task: task, owner: owner})
-	if r.pendingQueuedByRoute[route.Name] > 0 {
-		r.pendingQueuedByRoute[route.Name]--
-	}
-	// An active task may have finished while ClaimForOwnerWithIdentity was running. Promote
-	// from the real FIFO queue now so this reservation cannot strand the task.
-	next := r.dequeueStartLocked(route.Name)
-	r.mu.Unlock()
-	if next != nil {
-		r.startTrackedTask(next.route, next.task, next.owner)
-		return task, next.task == task, nil
-	}
-	return task, false, nil
 }
 
 func normalizedPolicy(policy TaskPolicy) TaskPolicy {
@@ -596,63 +509,38 @@ func normalizedTaskLifetime(lifetime TaskLifetime) TaskLifetime {
 	return lifetime
 }
 
-func (r *Router) checkRateLocked(routeName, ownerRouteKey string, policy TaskPolicy, now time.Time) error {
-	if policy.StartRatePerMinuteOwner <= 0 {
-		return nil
-	}
-	cutoff := now.Add(-time.Minute)
-	starts := r.startsByOwnerRoute[ownerRouteKey]
-	kept := starts[:0]
-	for _, started := range starts {
-		if started.After(cutoff) {
-			kept = append(kept, started)
-		}
-	}
-	r.startsByOwnerRoute[ownerRouteKey] = kept
-	if len(kept) >= policy.StartRatePerMinuteOwner {
-		return fmt.Errorf("%w for route %q", ErrRateLimited, routeName)
-	}
-	return nil
-}
-
-func (r *Router) canStartLocked(routeName, ownerRouteKey string, policy TaskPolicy) bool {
-	if policy.MaxActivePerRoute > 0 && r.activeByRoute[routeName] >= policy.MaxActivePerRoute {
-		return false
-	}
-	if policy.MaxActivePerOwnerRoute > 0 && r.activeByOwnerRoute[ownerRouteKey] >= policy.MaxActivePerOwnerRoute {
-		return false
-	}
-	return true
-}
-
-func (r *Router) markActiveLocked(routeName, ownerRouteKey string) {
+func (r *Router) markActiveLocked(routeName, target string) {
 	r.activeByRoute[routeName]++
-	r.activeByOwnerRoute[ownerRouteKey]++
+	if target != "" {
+		r.activeTargets[target]++
+	}
 }
 
-func (r *Router) unmarkActiveLocked(routeName, ownerRouteKey string) {
-	if r.activeByRoute[routeName] > 0 {
+func (r *Router) release(routeName, target string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.activeByRoute[routeName] > 1 {
 		r.activeByRoute[routeName]--
+	} else {
+		delete(r.activeByRoute, routeName)
 	}
-	if r.activeByOwnerRoute[ownerRouteKey] > 0 {
-		r.activeByOwnerRoute[ownerRouteKey]--
+	if r.activeTargets[target] > 1 {
+		r.activeTargets[target]--
+	} else {
+		delete(r.activeTargets, target)
 	}
 }
 
-func (r *Router) startTrackedTask(route Route, task *Task, owner TaskOwner) {
-	ownerRouteKey := route.Name + "\x00" + owner.key(normalizedTaskLifetime(route.Lifetime))
-	if r.beforeStartHook != nil {
-		r.beforeStartHook(task)
-	}
+// startTrackedTask runs task and releases its admission only once its handler
+// has exited, not when the task turns terminal: a canceled handler that
+// ignores its context must not overlap a successor on the same target.
+func (r *Router) startTrackedTask(route Route, task *Task, owner TaskOwner, target string) {
 	executionDone := make(chan struct{})
 	if !task.Start(r.routeRunner(route, executionDone)) {
-		r.finishTask(route.Name, ownerRouteKey)
+		r.release(route.Name, target)
 		return
 	}
 	go func() {
-		// Set explicitly, not inherited: a queued task is promoted from
-		// finishTask, so this goroutine may be spawned by the waiter of an
-		// unrelated task and would otherwise carry that task's labels.
 		goroutinelabel.WithSession(context.Background(), owner.SessionID, owner.UID,
 			"component", "task-tracker",
 			"route", route.Name,
@@ -661,43 +549,8 @@ func (r *Router) startTrackedTask(route Route, task *Task, owner TaskOwner) {
 
 		<-task.Done()
 		<-executionDone
-		r.finishTask(route.Name, ownerRouteKey)
+		r.release(route.Name, target)
 	}()
-}
-
-func (r *Router) finishTask(routeName, ownerRouteKey string) {
-	r.mu.Lock()
-	r.unmarkActiveLocked(routeName, ownerRouteKey)
-	next := r.dequeueStartLocked(routeName)
-	r.mu.Unlock()
-
-	if next != nil {
-		r.startTrackedTask(next.route, next.task, next.owner)
-	}
-}
-
-// dequeueStartLocked promotes the oldest runnable queued task for a route.
-// The caller starts it after releasing r.mu to avoid lock-order surprises.
-func (r *Router) dequeueStartLocked(routeName string) *queuedTask {
-	var next *queuedTask
-	queue := r.queuedByRoute[routeName]
-	for len(queue) > 0 {
-		candidate := queue[0]
-		queue = queue[1:]
-		if candidate.task.IsTerminal() {
-			continue
-		}
-		nextOwnerRouteKey := routeName + "\x00" + candidate.owner.key(normalizedTaskLifetime(candidate.route.Lifetime))
-		if !r.canStartLocked(routeName, nextOwnerRouteKey, normalizedPolicy(candidate.route.Policy)) {
-			queue = append([]queuedTask{candidate}, queue...)
-			break
-		}
-		r.markActiveLocked(routeName, nextOwnerRouteKey)
-		next = &candidate
-		break
-	}
-	r.queuedByRoute[routeName] = queue
-	return next
 }
 
 func ownerFromSession(sess *session.Session) TaskOwner {
@@ -708,23 +561,6 @@ func ownerFromSession(sess *session.Session) TaskOwner {
 		SessionID: sess.SessionID,
 		Username:  sess.User.Username,
 		UID:       sess.User.UID,
-	}
-}
-
-func (o TaskOwner) key(lifetime TaskLifetime) string {
-	switch normalizedTaskLifetime(lifetime) {
-	case TaskLifetimeDurable:
-		if o.Username != "" {
-			return fmt.Sprintf("uid:%d", o.UID)
-		}
-		return "durable:anonymous"
-	case TaskLifetimeSession:
-		if o.SessionID != "" {
-			return "session:" + o.SessionID
-		}
-		return "session:anonymous"
-	default:
-		return "anonymous"
 	}
 }
 
@@ -755,10 +591,6 @@ func StatusCode(err error) int {
 		return 404
 	case errors.Is(err, ErrConflict):
 		return 409
-	case errors.Is(err, ErrRateLimited):
-		return 429
-	case errors.Is(err, ErrQueueFull):
-		return 429
 	case errors.Is(err, ErrDuplicateActive):
 		return 409
 	case errors.Is(err, ErrTaskIdentityConflict):

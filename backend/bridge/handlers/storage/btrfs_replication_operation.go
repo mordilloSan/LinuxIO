@@ -20,7 +20,7 @@ func btrfsReplicationBindings() apischema.BindingSet {
 			// The uuid is best effort: a missing job fails when the task runs.
 			job, _ := findBtrfsReplicationJob(req.ID)
 			return bridgeipc.TaskMetadata{Identity: []string{job.UUID, "replication", req.ID}, Label: "Replicating btrfs snapshots"}
-		})).Run(runBtrfsReplicationTask, bridgeipc.TaskSingletonSystem),
+		})).Run(runBtrfsReplicationTask, bridgeipc.TaskDefault),
 	)
 }
 

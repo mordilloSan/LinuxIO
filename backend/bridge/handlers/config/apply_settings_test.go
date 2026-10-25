@@ -40,9 +40,6 @@ func TestApplyJobSettingsUpdateRejectsInvalidValuesWithoutPartialApply(t *testin
 	require.EqualError(t, err, "jobs.archiveExtractWorkers must be >= 0")
 	require.Equal(t, userconfig.DefaultJobSettings(), jobs)
 
-	err = applyJobSettingsUpdate(&jobs, &apischema.ConfigJobSettingsPayload{HeavyArchiveConcurrency: new(0)})
-	require.EqualError(t, err, "jobs.heavyArchiveConcurrency must be > 0")
-
 	require.NoError(t, applyJobSettingsUpdate(&jobs, &apischema.ConfigJobSettingsPayload{ProgressMinIntervalMs: new(10)}))
 	require.Equal(t, 10, jobs.ProgressMinIntervalMs)
 }

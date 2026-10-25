@@ -761,7 +761,6 @@ export interface ConfigJobSettingsPayload {
   progressMinIntervalMs?: number;
   notificationMinIntervalMs?: number;
   progressMinBytesMB?: number;
-  heavyArchiveConcurrency?: number;
   archiveCompressionWorkers?: number;
   archiveExtractWorkers?: number;
 }
@@ -1809,7 +1808,6 @@ export interface IntervalRequest {
 export interface JobSettings {
   archiveCompressionWorkers: number;
   archiveExtractWorkers: number;
-  heavyArchiveConcurrency: number;
   notificationMinIntervalMs: number;
   progressMinBytesMB: number;
   progressMinIntervalMs: number;

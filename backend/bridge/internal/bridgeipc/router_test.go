@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
-	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 func dispatchResult(t *testing.T, router *Router, req Request) (relay.ResultFrame, error) {
@@ -68,11 +67,10 @@ func TestStatusCodeMapsNotFoundAndConflict(t *testing.T) {
 	}
 }
 
-func TestRouterSingletonAdmissionIsAtomic(t *testing.T) {
+func TestRouterExclusiveAdmissionIsAtomic(t *testing.T) {
 	registry := NewTaskService()
 	router := NewRouter(registry)
-	policy := TaskSingletonSystem
-	policy.Name = "atomic-singleton"
+	policy := TaskExclusive
 	release := make(chan struct{})
 	route := Route{
 		Name:   "test.atomic.singleton",
@@ -91,7 +89,7 @@ func TestRouterSingletonAdmissionIsAtomic(t *testing.T) {
 	for range callers {
 		wg.Go(func() {
 			<-start
-			_, _, err := router.startOrQueueTask(route, Request{Route: route.Name})
+			_, _, err := router.startTask(route, Request{Route: route.Name})
 			results <- err
 		})
 	}
@@ -106,11 +104,11 @@ func TestRouterSingletonAdmissionIsAtomic(t *testing.T) {
 			continue
 		}
 		if !errors.Is(err, ErrDuplicateActive) {
-			t.Fatalf("startOrQueueTask error = %v, want ErrDuplicateActive", err)
+			t.Fatalf("startTask error = %v, want ErrDuplicateActive", err)
 		}
 	}
 	if successes != 1 {
-		t.Fatalf("accepted %d singleton tasks, want 1", successes)
+		t.Fatalf("accepted %d exclusive tasks, want 1", successes)
 	}
 	close(release)
 }
@@ -124,7 +122,7 @@ func TestRouterConcurrentStableIdentityStartsOnlyOnce(t *testing.T) {
 	route := Route{
 		Name:     "control.app_update",
 		Mode:     ModeTask,
-		Policy:   TaskSingletonSystem,
+		Policy:   TaskExclusive,
 		Lifetime: TaskLifetimeDurable,
 		Identity: func(request any) (TaskIdentity, error) {
 			fingerprint, ok := request.(string)
@@ -156,7 +154,7 @@ func TestRouterConcurrentStableIdentityStartsOnlyOnce(t *testing.T) {
 	for range 2 {
 		go func() {
 			defer starts.Done()
-			task, _, err := router.startOrQueueTask(route, request)
+			task, _, err := router.startTask(route, request)
 			results <- startResult{task: task, err: err}
 		}()
 	}
@@ -180,7 +178,7 @@ func TestRouterConcurrentStableIdentityStartsOnlyOnce(t *testing.T) {
 	<-claimed[0].Done()
 }
 
-func TestRouterRecoveredDurableTaskIsCancelableAndBlocksSingletonStart(t *testing.T) {
+func TestRouterRecoveredDurableTaskIsCancelableAndBlocksExclusiveStart(t *testing.T) {
 	type identityRequest struct {
 		id          string
 		fingerprint string
@@ -191,7 +189,7 @@ func TestRouterRecoveredDurableTaskIsCancelableAndBlocksSingletonStart(t *testin
 	route := Route{
 		Name:     "control.app_update",
 		Mode:     ModeTask,
-		Policy:   TaskSingletonSystem,
+		Policy:   TaskExclusive,
 		Lifetime: TaskLifetimeDurable,
 		Identity: func(request any) (TaskIdentity, error) {
 			value, ok := request.(identityRequest)
@@ -214,7 +212,7 @@ func TestRouterRecoveredDurableTaskIsCancelableAndBlocksSingletonStart(t *testin
 		t.Fatalf("RecoverDurableTask = %v, %t, %v", task, created, err)
 	}
 	<-runnerStarted
-	if _, _, err := router.startOrQueueTask(route, Request{
+	if _, _, err := router.startTask(route, Request{
 		Route: route.Name,
 		DecodedValue: identityRequest{
 			id:          "00000000-0000-4000-8000-000000000043",
@@ -222,82 +220,12 @@ func TestRouterRecoveredDurableTaskIsCancelableAndBlocksSingletonStart(t *testin
 		},
 		Owner: owner,
 	}); !errors.Is(err, ErrDuplicateActive) {
-		t.Fatalf("new singleton start error = %v, want ErrDuplicateActive", err)
+		t.Fatalf("new exclusive start error = %v, want ErrDuplicateActive", err)
 	}
 	task.Cancel()
 	<-task.Done()
 	if state := task.Snapshot().State; state != TaskStateCanceled {
 		t.Fatalf("recovered task state = %q, want canceled", state)
-	}
-}
-
-func TestRouterOwnerStartRateLimitStillEnforced(t *testing.T) {
-	registry := NewTaskService()
-	router := NewRouter(registry)
-	policy := TaskPolicy{
-		Name:                    "rate-limited",
-		MaxActivePerRoute:       8,
-		MaxActivePerOwnerRoute:  8,
-		StartRatePerMinuteOwner: 2,
-	}
-	route := Route{
-		Name:   "test.rate.limited",
-		Mode:   ModeTask,
-		Policy: policy,
-		Runner: func(context.Context, *Task, any) (any, error) { return nil, nil },
-	}
-	owner := TaskOwner{SessionID: "0123456789abcdef0123456789abcdef"}
-
-	for i := range 2 {
-		task, _, err := router.startOrQueueTask(route, Request{Route: route.Name, Owner: owner})
-		if err != nil {
-			t.Fatalf("start %d: %v", i, err)
-		}
-		<-task.Done()
-	}
-	_, _, err := router.startOrQueueTask(route, Request{Route: route.Name, Owner: owner})
-	if !errors.Is(err, ErrRateLimited) {
-		t.Fatalf("third start error = %v, want ErrRateLimited", err)
-	}
-	if strings.Contains(err.Error(), owner.SessionID) {
-		t.Fatalf("rate limit error contains session credential: %q", err)
-	}
-	if !strings.Contains(err.Error(), route.Name) {
-		t.Fatalf("rate limit error = %q, want safe route context", err)
-	}
-}
-
-func TestRouterRateLimitResultDoesNotExposeSessionCredential(t *testing.T) {
-	const credential = "0123456789abcdef0123456789abcdef"
-	router := NewRouter(NewTaskService())
-	policy := TaskDefault
-	policy.StartRatePerMinuteOwner = 1
-	router.TaskRunner("test.rate.response", func(context.Context, *Task, any) (any, error) {
-		return nil, nil
-	}, policy)
-	req := Request{
-		Route: "test.rate.response",
-		Session: &session.Session{
-			SessionID: credential,
-			User:      session.User{Username: "alice", UID: 1000},
-		},
-	}
-
-	if result, err := dispatchResult(t, router, req); err != nil || result.Status != "ok" {
-		t.Fatalf("first dispatch = %#v, %v; want successful task start", result, err)
-	}
-	result, err := dispatchResult(t, router, req)
-	if !errors.Is(err, ErrRateLimited) {
-		t.Fatalf("second dispatch error = %v, want ErrRateLimited", err)
-	}
-	if result.Status != "error" {
-		t.Fatalf("result status = %q, want error", result.Status)
-	}
-	if strings.Contains(result.Error, credential) {
-		t.Fatalf("client error contains session credential: %q", result.Error)
-	}
-	if !strings.Contains(result.Error, req.Route) {
-		t.Fatalf("client error = %q, want safe route context", result.Error)
 	}
 }
 
@@ -368,429 +296,110 @@ func TestRouterLabelsRegisteredRoute(t *testing.T) {
 	}
 }
 
-func TestRouterSkipsStartHistoryWhenOwnerRateLimitDisabled(t *testing.T) {
-	registry := NewTaskService()
-	router := NewRouter(registry)
-	policy := TaskDefault // StartRatePerMinuteOwner: 0
-	policy.Name = "rate-disabled"
-	route := Route{
-		Name:   "test.rate.disabled",
-		Mode:   ModeTask,
-		Policy: policy,
-		Runner: func(context.Context, *Task, any) (any, error) { return nil, nil },
-	}
-
-	for i := range 3 {
-		task, _, err := router.startOrQueueTask(route, Request{Route: route.Name})
-		if err != nil {
-			t.Fatalf("start %d: %v", i, err)
-		}
-		<-task.Done()
-	}
-
-	// checkRateLocked never prunes for a disabled limit, so admission must not
-	// record start history at all — it would grow for the bridge lifetime.
-	ownerRouteKey := route.Name + "\x00" + TaskOwner{}.key(TaskLifetimeSession)
-	router.mu.RLock()
-	tracked := len(router.startsByOwnerRoute[ownerRouteKey])
-	router.mu.RUnlock()
-	if tracked != 0 {
-		t.Fatalf("recorded %d start timestamps with the owner rate limit disabled, want 0", tracked)
-	}
-}
-
-func TestRouterCanceledQueuedTaskIsSkippedDuringPromotion(t *testing.T) {
-	registry := NewTaskService()
-	router := NewRouter(registry)
-	policy := TaskDefault
-	policy.Name = "cancel-promotion"
-	policy.MaxActivePerRoute = 1
-	policy.MaxActivePerOwnerRoute = 1
-	policy.QueueLimit = 3
-
-	activeRelease := make(chan struct{})
-	nextRan := make(chan struct{})
-	var canceledRuns atomic.Int32
-	var nextRuns atomic.Int32
-	route := Route{
-		Name:   "test.cancel.promotion",
-		Mode:   ModeTask,
-		Policy: policy,
-		Runner: func(_ context.Context, _ *Task, request any) (any, error) {
-			requestName, _ := request.(string)
-			switch requestName {
-			case "active":
-				<-activeRelease
-			case "canceled":
-				canceledRuns.Add(1)
-			case "next":
-				nextRuns.Add(1)
-				close(nextRan)
-			}
-			return nil, nil
-		},
-	}
-
-	active, started, err := router.startOrQueueTask(route, Request{
-		Route:        route.Name,
-		DecodedValue: "active",
-	})
-	if err != nil || !started {
-		t.Fatalf("start active = (%v, %t, %v), want started task", active, started, err)
-	}
-	canceled, started, err := router.startOrQueueTask(route, Request{
-		Route:        route.Name,
-		DecodedValue: "canceled",
-	})
-	if err != nil || started {
-		t.Fatalf("queue canceled = (%v, %t, %v), want queued task", canceled, started, err)
-	}
-	next, started, err := router.startOrQueueTask(route, Request{
-		Route:        route.Name,
-		DecodedValue: "next",
-	})
-	if err != nil || started {
-		t.Fatalf("queue next = (%v, %t, %v), want queued task", next, started, err)
-	}
-
-	// Cancellation is deliberately issued while the first task still owns the
-	// only active slot. Its completion immediately promotes the queue, which
-	// must skip this terminal entry and run the next eligible task exactly once.
-	canceled.Cancel()
-	close(activeRelease)
-
-	select {
-	case <-nextRan:
-	case <-time.After(time.Second):
-		t.Fatal("next queued task was not promoted")
-	}
-	<-active.Done()
-	<-canceled.Done()
-	<-next.Done()
-
-	if got := canceledRuns.Load(); got != 0 {
-		t.Fatalf("canceled queued handler ran %d times, want 0", got)
-	}
-	if got := nextRuns.Load(); got != 1 {
-		t.Fatalf("next queued handler ran %d times, want 1", got)
-	}
-	if state := canceled.Snapshot().State; state != TaskStateCanceled {
-		t.Fatalf("canceled task state = %q, want canceled", state)
-	}
-
-	waitForRouterSettle(t, router, route.Name)
-}
-
-func TestRouterCanceledQueuedTasksFreeQueueSlots(t *testing.T) {
-	router := NewRouter(NewTaskService())
-	policy := TaskDefault
-	policy.Name = "cancel-frees-queue"
-	policy.MaxActivePerRoute = 1
-	policy.MaxActivePerOwnerRoute = 1
-	policy.QueueLimit = 2
-
-	release := make(chan struct{})
-	route := Route{
-		Name:   "test.cancel.frees.queue",
-		Mode:   ModeTask,
-		Policy: policy,
-		Runner: func(_ context.Context, _ *Task, _ any) (any, error) {
-			<-release
-			return nil, nil
-		},
-	}
-	start := func() (*Task, bool, error) {
-		return router.startOrQueueTask(route, Request{Route: route.Name})
-	}
-
-	active, started, err := start()
-	if err != nil || !started {
-		t.Fatalf("start active = (%v, %t, %v), want started task", active, started, err)
-	}
-	var queued []*Task
-	for range policy.QueueLimit {
-		task, queuedNow, startErr := start()
-		if startErr != nil || queuedNow {
-			t.Fatalf("queue = (%v, %t, %v), want queued task", task, queuedNow, startErr)
-		}
-		queued = append(queued, task)
-	}
-	if _, _, err = start(); !errors.Is(err, ErrQueueFull) {
-		t.Fatalf("start with a full queue error = %v, want ErrQueueFull", err)
-	}
-
-	for _, task := range queued {
-		task.Cancel()
-	}
-	extra, started, err := start()
-	if err != nil || started {
-		t.Fatalf("start after cancel = (%v, %t, %v), want queued task", extra, started, err)
-	}
-
-	close(release)
-	<-active.Done()
-	<-extra.Done()
-	waitForRouterSettle(t, router, route.Name)
-}
-
-func TestRouterPromotionCancellationRefusesReservedTaskStart(t *testing.T) {
-	registry := NewTaskService()
-	router := NewRouter(registry)
-	policy := TaskDefault
-	policy.Name = "cancel-after-promotion"
-	policy.MaxActivePerRoute = 1
-	policy.MaxActivePerOwnerRoute = 1
-	policy.QueueLimit = 3
-
-	activeRelease := make(chan struct{})
-	promotionPaused := make(chan struct{})
-	resumePromotion := make(chan struct{})
-	nextRan := make(chan struct{})
-	var candidateRuns atomic.Int32
-	var nextRuns atomic.Int32
-	route := Route{
-		Name:   "test.cancel.after.promotion",
-		Mode:   ModeTask,
-		Policy: policy,
-		Runner: func(_ context.Context, _ *Task, request any) (any, error) {
-			requestName, _ := request.(string)
-			switch requestName {
-			case "active":
-				<-activeRelease
-			case "candidate":
-				candidateRuns.Add(1)
-			case "next":
-				nextRuns.Add(1)
-				close(nextRan)
-			}
-			return nil, nil
-		},
-	}
-
-	active, started, err := router.startOrQueueTask(route, Request{
-		Route:        route.Name,
-		DecodedValue: "active",
-	})
-	if err != nil || !started {
-		t.Fatalf("start active = (%v, %t, %v), want started task", active, started, err)
-	}
-	candidate, started, err := router.startOrQueueTask(route, Request{
-		Route:        route.Name,
-		DecodedValue: "candidate",
-	})
-	if err != nil || started {
-		t.Fatalf("queue candidate = (%v, %t, %v), want queued task", candidate, started, err)
-	}
-	next, started, err := router.startOrQueueTask(route, Request{
-		Route:        route.Name,
-		DecodedValue: "next",
-	})
-	if err != nil || started {
-		t.Fatalf("queue next = (%v, %t, %v), want queued task", next, started, err)
-	}
-
-	router.beforeStartHook = func(task *Task) {
-		if task != candidate {
-			return
-		}
-		close(promotionPaused)
-		<-resumePromotion
-	}
-	close(activeRelease)
-	select {
-	case <-promotionPaused:
-	case <-time.After(time.Second):
-		t.Fatal("candidate was not reserved for promotion")
-	}
-
-	// The router has reserved candidate's active slot but has not called Start.
-	// Cancel wins Task.mu, so Start must refuse and release this reservation once.
-	candidate.Cancel()
-	close(resumePromotion)
-	select {
-	case <-nextRan:
-	case <-time.After(time.Second):
-		t.Fatal("next queued task was not promoted after canceled reservation")
-	}
-	<-active.Done()
-	<-candidate.Done()
-	<-next.Done()
-
-	if got := candidateRuns.Load(); got != 0 {
-		t.Fatalf("canceled reserved handler ran %d times, want 0", got)
-	}
-	if got := nextRuns.Load(); got != 1 {
-		t.Fatalf("next queued handler ran %d times, want 1", got)
-	}
-	if state := candidate.Snapshot().State; state != TaskStateCanceled {
-		t.Fatalf("candidate state = %q, want canceled", state)
-	}
-
-	waitForRouterSettle(t, router, route.Name)
-}
-
-func TestRouterCanceledDetachedRunnerKeepsAdmissionSlotUntilExit(t *testing.T) {
-	registry := NewTaskService()
-	router := NewRouter(registry)
-	policy := TaskDefault
-	policy.Name = "cancel-detached-runner"
-	policy.MaxActivePerRoute = 1
-	policy.MaxActivePerOwnerRoute = 1
-	policy.QueueLimit = 1
-
-	started := make(chan struct{})
-	release := make(chan struct{})
-	successorStarted := make(chan struct{})
-	var running atomic.Int32
-	var maxRunning atomic.Int32
-	updateMax := func(current int32) {
-		for {
-			observed := maxRunning.Load()
-			if current <= observed || maxRunning.CompareAndSwap(observed, current) {
-				return
-			}
-		}
-	}
-	route := Route{
-		Name:   "test.cancel.detached-runner",
-		Mode:   ModeTask,
-		Policy: policy,
-		Runner: func(_ context.Context, _ *Task, request any) (any, error) {
-			current := running.Add(1)
-			updateMax(current)
-			defer running.Add(-1)
-			if request == "active" {
-				close(started)
-				<-release // Deliberately ignore the canceled context.
-				return nil, nil
-			}
-			close(successorStarted)
-			return nil, nil
-		},
-	}
-
-	active, startedNow, err := router.startOrQueueTask(route, Request{Route: route.Name, DecodedValue: "active"})
-	if err != nil || !startedNow {
-		t.Fatalf("start active = (%v, %t, %v), want started task", active, startedNow, err)
-	}
-	select {
-	case <-started:
-	case <-time.After(time.Second):
-		t.Fatal("active handler did not start")
-	}
-	successor, startedNow, err := router.startOrQueueTask(route, Request{Route: route.Name, DecodedValue: "successor"})
-	if err != nil || startedNow {
-		t.Fatalf("queue successor = (%v, %t, %v), want queued task", successor, startedNow, err)
-	}
-
-	active.Cancel()
-	select {
-	case <-active.Done():
-	case <-time.After(time.Second):
-		t.Fatal("canceled task did not publish terminal state")
-	}
-	if state := active.Snapshot().State; state != TaskStateCanceled {
-		t.Fatalf("active state = %q, want canceled", state)
-	}
-	assertChannelOpen(t, successorStarted, "successor started while canceled handler still ran")
-	if got := running.Load(); got != 1 {
-		t.Fatalf("running handlers = %d, want 1 before release", got)
-	}
-
-	close(release)
-	select {
-	case <-successorStarted:
-	case <-time.After(time.Second):
-		t.Fatal("successor was not promoted after handler exit")
-	}
-	<-successor.Done()
-	if got := maxRunning.Load(); got != 1 {
-		t.Fatalf("maximum concurrent handlers = %d, want 1", got)
-	}
-	waitForRouterSettle(t, router, route.Name)
-}
-
-func TestRouterRunnerReleasesAdmissionSlotOnExit(t *testing.T) {
-	registry := NewTaskService()
-	router := NewRouter(registry)
-	policy := TaskDefault
-	policy.Name = "direct-runner"
-	policy.MaxActivePerRoute = 1
-	policy.MaxActivePerOwnerRoute = 1
-	policy.QueueLimit = 1
-
-	started := make(chan struct{})
-	release := make(chan struct{})
-	successorStarted := make(chan struct{})
-	route := Route{
-		Name:   "test.direct-runner",
-		Mode:   ModeTask,
-		Policy: policy,
-		Runner: func(_ context.Context, _ *Task, request any) (any, error) {
-			if request == "active" {
-				close(started)
-				<-release
-				return nil, nil
-			}
-			close(successorStarted)
-			return nil, nil
-		},
-	}
-
-	active, startedNow, err := router.startOrQueueTask(route, Request{Route: route.Name, DecodedValue: "active"})
-	if err != nil || !startedNow {
-		t.Fatalf("start active = (%v, %t, %v), want started task", active, startedNow, err)
-	}
-	select {
-	case <-started:
-	case <-time.After(time.Second):
-		t.Fatal("active handler did not start")
-	}
-	successor, startedNow, err := router.startOrQueueTask(route, Request{Route: route.Name, DecodedValue: "successor"})
-	if err != nil || startedNow {
-		t.Fatalf("queue successor = (%v, %t, %v), want queued task", successor, startedNow, err)
-	}
-
-	assertChannelOpen(t, successorStarted, "successor started before direct handler returned")
-	close(release)
-	<-active.Done()
-	select {
-	case <-successorStarted:
-	case <-time.After(time.Second):
-		t.Fatal("successor was not promoted after direct handler exit")
-	}
-	<-successor.Done()
-	waitForRouterSettle(t, router, route.Name)
-}
-
-func assertChannelOpen(t *testing.T, ch <-chan struct{}, message string) {
-	t.Helper()
-	select {
-	case <-ch:
-		t.Fatal(message)
-	case <-time.After(25 * time.Millisecond):
-	}
-}
-
-// waitForRouterSettle polls until the router's accounting for a route drains
-// to zero (no active, queued, or pending-queued entries) or fails the test.
+// waitForRouterSettle polls until the router no longer counts any task of a
+// route as running, or fails the test.
 func waitForRouterSettle(t *testing.T, router *Router, routeName string) {
 	t.Helper()
 	deadline := time.Now().Add(time.Second)
 	for {
 		router.mu.RLock()
 		activeCount := router.activeByRoute[routeName]
-		queuedCount := len(router.queuedByRoute[routeName])
-		pendingCount := router.pendingQueuedByRoute[routeName]
+		targets := len(router.activeTargets)
 		router.mu.RUnlock()
-		if activeCount == 0 && queuedCount == 0 && pendingCount == 0 {
+		if activeCount == 0 && targets == 0 {
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("router accounting did not settle: active=%d queued=%d pending=%d", activeCount, queuedCount, pendingCount)
+			t.Fatalf("router accounting did not settle: active=%d targets=%d", activeCount, targets)
 		}
 		time.Sleep(time.Millisecond)
 	}
+}
+
+// targetRoute runs a task per request string until release closes, naming
+// the request as its target.
+func targetRoute(name string, policy TaskPolicy, release <-chan struct{}, running *atomic.Int32) Route {
+	return Route{
+		Name:   name,
+		Mode:   ModeTask,
+		Policy: policy,
+		Metadata: func(request any) TaskMetadata {
+			target, _ := request.(string)
+			return TaskMetadata{Identity: []string{target}}
+		},
+		Runner: func(context.Context, *Task, any) (any, error) {
+			running.Add(1)
+			defer running.Add(-1)
+			<-release // Deliberately ignore cancellation.
+			return nil, nil
+		},
+	}
+}
+
+func TestRouterRunsTasksOnDifferentTargetsSideBySide(t *testing.T) {
+	router := NewRouter(NewTaskService())
+	release := make(chan struct{})
+	var running atomic.Int32
+	route := targetRoute("test.side-by-side", TaskDefault, release, &running)
+	owner := TaskOwner{SessionID: "session-a", Username: "alice", UID: 1000}
+
+	// One user copies six folders at once.
+	var tasks []*Task
+	for i := range 6 {
+		task, started, err := router.startTask(route, Request{Route: route.Name, DecodedValue: fmt.Sprintf("folder-%d", i), Owner: owner})
+		if err != nil || !started {
+			t.Fatalf("start %d = %t, %v; want started", i, started, err)
+		}
+		tasks = append(tasks, task)
+	}
+	deadline := time.Now().Add(time.Second)
+	for running.Load() != 6 {
+		if time.Now().After(deadline) {
+			t.Fatalf("running = %d, want 6 side by side", running.Load())
+		}
+		time.Sleep(time.Millisecond)
+	}
+	close(release)
+	for _, task := range tasks {
+		<-task.Done()
+	}
+	waitForRouterSettle(t, router, route.Name)
+}
+
+func TestRouterRefusesASecondTaskOnTheSameTargetUntilItsHandlerExits(t *testing.T) {
+	router := NewRouter(NewTaskService())
+	release := make(chan struct{})
+	var running atomic.Int32
+	route := targetRoute("test.same-target", TaskDefault, release, &running)
+
+	first, _, err := router.startTask(route, Request{Route: route.Name, DecodedValue: "pool-a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = router.startTask(route, Request{Route: route.Name, DecodedValue: "pool-a"}); !errors.Is(err, ErrDuplicateActive) {
+		t.Fatalf("second start on pool-a = %v, want ErrDuplicateActive", err)
+	}
+	if StatusCode(fmt.Errorf("%w: x", ErrDuplicateActive)) != 409 {
+		t.Fatal("a refused duplicate must map to 409")
+	}
+
+	// A canceled task turns terminal at once, but its handler still runs, so
+	// the target stays taken until the handler exits.
+	first.Cancel()
+	<-first.Done()
+	if state := first.Snapshot().State; state != TaskStateCanceled {
+		t.Fatalf("first state = %q, want canceled", state)
+	}
+	if _, _, err = router.startTask(route, Request{Route: route.Name, DecodedValue: "pool-a"}); !errors.Is(err, ErrDuplicateActive) {
+		t.Fatalf("start while the canceled handler runs = %v, want ErrDuplicateActive", err)
+	}
+	close(release)
+	waitForRouterSettle(t, router, route.Name)
+	again, started, err := router.startTask(route, Request{Route: route.Name, DecodedValue: "pool-a"})
+	if err != nil || !started {
+		t.Fatalf("start after the handler exited = %t, %v", started, err)
+	}
+	<-again.Done()
 }
 
 func TestRouterTaskFastCompleteReturnsTerminalSnapshot(t *testing.T) {

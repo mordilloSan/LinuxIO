@@ -19,7 +19,7 @@ func packageUpdateBindings() apischema.BindingSet {
 	return apischema.Bindings(
 		apischema.TaskRunner[apischema.PackageUpdateRequest, PackageUpdateResult]("packages.update", apischema.SessionTask(), apischema.WithTaskProgress[PkgUpdateProgress](), apischema.WithTaskMetadata(func(req apischema.PackageUpdateRequest) bridgeipc.TaskMetadata {
 			return bridgeipc.TaskMetadata{Identity: append([]string{}, req.PackageIDs...), Label: "Updating packages", PackageIDs: append([]string{}, req.PackageIDs...)}
-		})).Run(runPackageUpdateTask, bridgeipc.TaskSingletonSystem),
+		})).Run(runPackageUpdateTask, bridgeipc.TaskExclusive),
 	)
 }
 

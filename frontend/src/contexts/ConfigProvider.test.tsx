@@ -108,7 +108,6 @@ function remoteConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     jobs: {
       archiveCompressionWorkers: 2,
       archiveExtractWorkers: 2,
-      heavyArchiveConcurrency: 1,
       notificationMinIntervalMs: 800,
       progressMinBytesMB: 8,
       progressMinIntervalMs: 200,

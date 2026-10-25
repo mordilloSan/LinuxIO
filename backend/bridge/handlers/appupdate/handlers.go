@@ -17,7 +17,7 @@ func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 			func(ctx context.Context, task *bridgeipc.Task, req apischema.AppUpdateRequest) (AppUpdateResult, error) {
 				return runAppUpdateTask(ctx, rt, task, req)
 			},
-			bridgeipc.TaskSingletonSystem,
+			bridgeipc.TaskExclusive,
 		),
 	)
 }
