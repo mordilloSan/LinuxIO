@@ -16,14 +16,9 @@ export default defineConfig(async ({ command }): Promise<UserConfig> => {
 
   const plugins: PluginOption[] = [
     tanstackRouter({ autoCodeSplitting: true, target: "react" }),
-    react(
-      isBuild
-        ? {
-            compiler: { target: "19" },
-            exclude: /\/[^/]*Virtual[^/]*\.tsx$/,
-          }
-        : undefined,
-    ),
+    // Virtualizer components opt out per function with "use no memo"; the
+    // rest of their files still compiles.
+    react(isBuild ? { compiler: { target: "19" } } : undefined),
   ];
   if (isBuild) {
     plugins.push(

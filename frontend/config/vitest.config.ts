@@ -11,10 +11,6 @@ const compilerExcludeRE = [
   /\/node_modules\//,
   /\/src\/test\//,
   /\.(?:test|spec)\.[jt]sx?$/,
-  // Virtualized components use manual memoization because TanStack Virtual
-  // exposes functions the compiler cannot memoize safely. Their filenames
-  // include "Virtual" so Vitest can skip the redundant compiler transform.
-  /\/[^/]*Virtual[^/]*\.tsx$/,
 ];
 
 export default defineConfig({

@@ -254,9 +254,9 @@ const BridgeHandoffDialog = ({
           ? error.message
           : "Unable to open the network handoff",
       );
-    } finally {
-      setStartPending(false);
     }
+    // Not a finally clause: React Compiler skips components that use one.
+    setStartPending(false);
   };
 
   const handleConfirm = () => {

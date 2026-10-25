@@ -165,7 +165,7 @@ function CurrentFormat() {
               },
             ],
             message: "(BuildHIR::lowerStatement) Handle logical assignment",
-            severity: "Warning",
+            severity: "Advice",
           },
         ],
       }),
