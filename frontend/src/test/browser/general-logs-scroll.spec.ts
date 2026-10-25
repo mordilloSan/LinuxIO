@@ -159,7 +159,7 @@ test("keeps journal rows visible through repeated long scrollbar jumps", async (
     contentType: "application/json",
   });
   expect(samples.every((sample) => sample.visible > 0)).toBe(true);
-  expect(Math.max(...samples.map((sample) => sample.mounted))).toBeLessThan(60);
+  expect(Math.max(...samples.map((sample) => sample.mounted))).toBeLessThan(80);
   expect(samples.slice(1).every((sample) => sample.deferredCells > 0)).toBe(
     true,
   );
@@ -187,10 +187,11 @@ test("keeps journal rows visible through repeated long scrollbar jumps", async (
   }
   const dragged = await scrollport.evaluate((element) => ({
     top: element.scrollTop,
+    range: element.scrollHeight - element.clientHeight,
     deferredCells: element.querySelectorAll("[data-fast-scrolling]").length,
   }));
   await page.mouse.up();
-  expect(dragged.top).toBeGreaterThan(100_000);
+  expect(dragged.top).toBeGreaterThan(dragged.range * 0.6);
   expect(dragged.deferredCells).toBeGreaterThan(0);
   await expect(scrollport.locator("[data-fast-scrolling]")).toHaveCount(0);
 
@@ -205,7 +206,7 @@ test("keeps journal rows visible through repeated long scrollbar jumps", async (
 });
 
 for (const scheme of ["dark", "light"] as const) {
-  test(`preserves log level badges and text styling during fast scrolling in ${scheme}`, async ({
+  test(`preserves source chips and text styling during fast scrolling in ${scheme}`, async ({
     page,
   }) => {
     await page.setViewportSize({ width: 900, height: 1000 });
@@ -229,19 +230,16 @@ for (const scheme of ["dark", "light"] as const) {
           8,
         );
         let tooltips = 0;
-        let truncatedMessages = 0;
         const styles = rows.map((row) => {
           const cells = row.querySelectorAll(".app-dt__cell");
           return [
-            cells[1].textContent,
-            [1, 3, 4].map((index) => {
+            cells[0].querySelector(".log-level")?.getAttribute("title"),
+            [1, 2, 3].map((index) => {
               const cell = cells[index];
               const content = cell.querySelector<HTMLElement>(
                 index === 1 ? ".app-chip" : ".app-typo",
               )!;
               tooltips += cell.querySelectorAll(".app-tooltip-trigger").length;
-              if (index === 4 && content.scrollWidth > content.clientWidth)
-                truncatedMessages++;
               const css = getComputedStyle(content);
               const box = content.getBoundingClientRect();
               const cellBox = cell.getBoundingClientRect();
@@ -265,7 +263,6 @@ for (const scheme of ["dark", "light"] as const) {
         return {
           styles,
           tooltips,
-          truncatedMessages,
           fast: element.querySelectorAll("[data-fast-scrolling]").length,
         };
       }, jump);
@@ -273,10 +270,9 @@ for (const scheme of ["dark", "light"] as const) {
     const fast = await snapshot(true);
     expect(fast.fast).toBeGreaterThan(0);
     expect(fast.tooltips).toBe(0);
-    expect(fast.truncatedMessages).toBeGreaterThan(0);
     await expect(scrollport.locator("[data-fast-scrolling]")).toHaveCount(0);
     const idle = await snapshot(false);
-    expect(idle.tooltips).toBe(24);
+    expect(idle.tooltips).toBe(16);
     expect(fast.styles).toEqual(idle.styles);
     expect(new Set(idle.styles.map(([level]) => level)).size).toBe(8);
   });

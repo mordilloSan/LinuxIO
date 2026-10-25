@@ -1,4 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
+import userEvent from "@testing-library/user-event";
 import type { UIEventHandler } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -197,6 +198,39 @@ describe("GeneralLogsPage cursor pagination", () => {
       vi.advanceTimersByTime(100);
     });
     expect(scrollElement).toHaveAttribute("data-row-ids", "c,b,a");
+  });
+
+  it("appends the LINUXIO_* fields to a line for search and copy", async () => {
+    const user = userEvent.setup();
+    const writeText = vi.spyOn(navigator.clipboard, "writeText");
+    render(<GeneralLogsPage />, { queryClient });
+    act(() => {
+      mocks.streamOptions?.onText(
+        `${JSON.stringify({
+          __CURSOR: "route",
+          __REALTIME_TIMESTAMP: "1000000",
+          LINUXIO_ROUTE: "alerts.list",
+          LINUXIO_USER: "a user",
+          MESSAGE: "route completed",
+          PRIORITY: "7",
+          SYSLOG_IDENTIFIER: "linuxio-bridge",
+        })}\n${journalEntry("other", 2_000_000)}\n`,
+      );
+    });
+    const scrollElement = screen.getByTestId("logs-scroll");
+    expect(scrollElement).toHaveAttribute("data-row-ids", "other,route");
+
+    fireEvent.change(screen.getByLabelText("Search logs"), {
+      target: { value: "alerts.list" },
+    });
+    expect(scrollElement).toHaveAttribute("data-row-ids", "route");
+
+    await user.click(screen.getByRole("button", { name: "Copy logs" }));
+    expect(writeText).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'linuxio-bridge: route completed route=alerts.list user="a user"',
+      ),
+    );
   });
 
   it("prefetches a strictly older page near the bottom and appends it", async () => {

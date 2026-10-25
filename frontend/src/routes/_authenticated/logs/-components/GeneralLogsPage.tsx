@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type CSSProperties,
   type MouseEvent,
   type RefObject,
   type UIEvent,
@@ -30,18 +31,12 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
-import { getLogPriorityAccent } from "@/constants/statusColors";
 import { useLiveStream } from "@/hooks/useLiveStream";
-import {
-  AlertCircleIcon,
-  AlertIcon,
-  BugIcon,
-  InformationIcon,
-} from "@/icons/svg";
 import { copyToClipboard } from "@/utils/clipboard";
+import { logSourceHue } from "@/utils/logHue";
 import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
-import "./logs-tokens.css";
+import "@/components/tables/log-row.css";
 
 // A fixed first page replaces the old "Lines" selector. Older entries are
 // fetched by cursor as the user scrolls, so choosing an up-front count no
@@ -96,6 +91,8 @@ interface LogEntry {
   /** Stable row identity: the journal cursor, or a synthetic fallback. */
   id: string;
   cursor: string | null;
+  /** The LINUXIO_* fields as "key=value" pairs, "" when the entry has none. */
+  fields: string;
   identifier: string;
   message: string;
   priority: LogPriority;
@@ -148,24 +145,18 @@ const getPriorityLabel = (priority: LogPriority): string => {
   }
 };
 
-const getPriorityColor = (priority: LogPriority): string => {
+// The level marker's colour, in the Docker log page's level names.
+const getPriorityLevel = (priority: LogPriority): string => {
   switch (priority) {
-    case LogPriority.EMERGENCY:
-    case LogPriority.ALERT:
-    case LogPriority.CRITICAL:
-      return "error";
-    case LogPriority.ERROR:
-      return "error";
     case LogPriority.WARNING:
-      return "warning";
+      return "warn";
     case LogPriority.NOTICE:
-      return "info";
     case LogPriority.INFO:
-      return "success";
+      return "info";
     case LogPriority.DEBUG:
-      return "default";
+      return "debug";
     default:
-      return "default";
+      return "error";
   }
 };
 
@@ -200,21 +191,25 @@ const collectFilterableFields = (
   return result;
 };
 
-const getPriorityIcon = (priority: LogPriority) => {
-  switch (priority) {
-    case LogPriority.EMERGENCY:
-    case LogPriority.ALERT:
-    case LogPriority.CRITICAL:
-    case LogPriority.ERROR:
-      return <AlertCircleIcon height={20} width={20} />;
-    case LogPriority.WARNING:
-      return <AlertIcon height={20} width={20} />;
-    case LogPriority.DEBUG:
-      return <BugIcon height={20} width={20} />;
-    default:
-      return <InformationIcon height={20} width={20} />;
-  }
-};
+// The slog attributes journald stored as LINUXIO_* user fields, written the
+// way slog's text handler would ("route=alerts.list user=root"): the message
+// itself is constant text, so this is where a row's context lives.
+const formatLogFields = (data: Record<string, unknown>): string =>
+  Object.keys(data)
+    .filter(
+      (key) => key.startsWith("LINUXIO_") && typeof data[key] === "string",
+    )
+    .sort()
+    .map((key) => {
+      const value = data[key] as string;
+      return `${key.slice("LINUXIO_".length).toLowerCase()}=${
+        /\s/.test(value) ? JSON.stringify(value) : value
+      }`;
+    })
+    .join(" ");
+
+const logLineText = (log: LogEntry): string =>
+  log.fields ? `${log.message} ${log.fields}` : log.message;
 
 const resolveUnitTarget = (
   log: LogEntry,
@@ -317,6 +312,7 @@ const parseLogEntry = (jsonStr: string): LogEntry | null => {
     return {
       id: cursor ?? `synthetic-${syntheticLogId++}`,
       cursor,
+      fields: formatLogFields(data),
       timestamp,
       priority,
       identifier,
@@ -1091,7 +1087,7 @@ const GeneralLogsPage = ({
 
       if (
         searchNeedle &&
-        !log.message.toLowerCase().includes(searchNeedle) &&
+        !logLineText(log).toLowerCase().includes(searchNeedle) &&
         !log.identifier.toLowerCase().includes(searchNeedle)
       ) {
         return false;
@@ -1147,7 +1143,7 @@ const GeneralLogsPage = ({
     const text = filteredLogs
       .map(
         (log) =>
-          `${log.timestamp} [${getPriorityLabel(log.priority)}] ${log.identifier}: ${log.message}`,
+          `${log.timestamp} [${getPriorityLabel(log.priority)}] ${log.identifier}: ${logLineText(log)}`,
       )
       .join("\n");
     void copyToClipboard(text);
@@ -1158,7 +1154,7 @@ const GeneralLogsPage = ({
     const text = filteredLogs
       .map(
         (log) =>
-          `${log.timestamp} [${getPriorityLabel(log.priority)}] ${log.identifier}: ${log.message}`,
+          `${log.timestamp} [${getPriorityLabel(log.priority)}] ${log.identifier}: ${logLineText(log)}`,
       )
       .join("\n");
     const blob = new Blob([text], { type: "text/plain" });
@@ -1169,21 +1165,6 @@ const GeneralLogsPage = ({
     link.click();
     URL.revokeObjectURL(url);
   };
-
-  // Render icon for first cell
-  const renderIcon = useCallback((log: LogEntry) => {
-    return (
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          color: getLogPriorityAccent(getPriorityColor(log.priority)),
-        }}
-      >
-        {getPriorityIcon(log.priority)}
-      </div>
-    );
-  }, []);
 
   const handleIdentifierClick = useCallback(
     (log: LogEntry, event: MouseEvent) => {
@@ -1216,37 +1197,23 @@ const GeneralLogsPage = ({
   const columns = useMemo<AppVirtualTableColumnDef<LogEntry>[]>(
     () => [
       {
-        id: "severityIcon",
+        id: "level",
         header: "",
         enableSorting: false,
-        cell: ({ row }) => renderIcon(row.original),
-        meta: {
-          getCellRenderKey: (row) => {
-            const log = row as LogEntry;
-            return [log.id, log.priority];
-          },
-          width: "40px",
-        },
-      },
-      {
-        accessorKey: "priority",
-        header: "Priority",
         cell: ({ row }) => (
-          <Chip
-            color={getPriorityColor(row.original.priority)}
-            label={getPriorityLabel(row.original.priority)}
-            size="xsmall"
-            variant="soft"
+          <span
+            className="log-level"
+            data-level={getPriorityLevel(row.original.priority)}
+            title={getPriorityLabel(row.original.priority)}
           />
         ),
         meta: {
-          deferTooltipWhileScrolling: true,
+          cellClassName: "log-level-cell",
           getCellRenderKey: (row) => {
             const log = row as LogEntry;
             return [log.id, log.priority];
           },
-          hideBelow: "sm",
-          width: "120px",
+          width: "12px",
         },
       },
       {
@@ -1255,41 +1222,46 @@ const GeneralLogsPage = ({
         cell: ({ row }) => {
           const log = row.original;
           const target = resolveUnitTarget(log);
-          const isLinkable = target !== null;
-          return isLinkable ? (
-            <AppTooltip title={`Open ${target.unit} in services`}>
-              <AppTypography
-                className="log-identifier-link"
-                noWrap
-                onClick={(event) => handleIdentifierClick(log, event)}
-                role="link"
-                style={{ display: "inline-block" }}
-                tabIndex={0}
-                title={log.identifier}
-                variant="body2"
-              >
-                {log.identifier}
-              </AppTypography>
-            </AppTooltip>
-          ) : (
-            <AppTypography noWrap title={log.identifier} variant="body2">
-              {log.identifier}
-            </AppTypography>
+          return (
+            <Chip
+              className="log-source"
+              label={log.identifier}
+              onClick={
+                target
+                  ? (event) => handleIdentifierClick(log, event)
+                  : undefined
+              }
+              size="xsmall"
+              style={
+                { "--log-hue": logSourceHue(log.identifier) } as CSSProperties
+              }
+              title={
+                target ? `Open ${target.unit} in services` : log.identifier
+              }
+              variant="soft"
+            />
           );
         },
         meta: {
+          deferTooltipWhileScrolling: true,
           getCellRenderKey: (row) => {
             const log = row as LogEntry;
             return [log.id, log.identifier, log.rawJson];
           },
-          width: "minmax(120px, 180px)",
+          width: "minmax(120px, 200px)",
         },
       },
       {
         accessorKey: "timestamp",
         header: "Timestamp",
         cell: ({ row }) => (
-          <AppTypography noWrap title={row.original.timestamp} variant="body2">
+          <AppTypography
+            className="log-time"
+            color="text.secondary"
+            noWrap
+            title={row.original.timestamp}
+            variant="body2"
+          >
             {row.original.timestamp}
           </AppTypography>
         ),
@@ -1299,19 +1271,21 @@ const GeneralLogsPage = ({
             const log = row as LogEntry;
             return [log.id, log.timestamp];
           },
-          width: "120px",
+          width: "96px",
         },
       },
       {
         accessorKey: "message",
         header: "Message",
         cell: ({ row }) => (
-          <AppTypography color="text.secondary" noWrap variant="caption">
+          <AppTypography className="log-line" variant="body2">
             {row.original.message}
+            {row.original.fields && (
+              <span className="log-fields"> {row.original.fields}</span>
+            )}
           </AppTypography>
         ),
         meta: {
-          deferTooltipWhileScrolling: true,
           align: "left",
           getCellRenderKey: (row) => {
             const log = row as LogEntry;
@@ -1320,7 +1294,7 @@ const GeneralLogsPage = ({
         },
       },
     ],
-    [renderIcon, handleIdentifierClick],
+    [handleIdentifierClick],
   );
 
   const renderExpandedRow = useCallback(
@@ -1545,6 +1519,7 @@ const GeneralLogsPage = ({
           ariaLabel="General logs"
           columns={columns}
           data={displayedLogs}
+          density="dense"
           emptyMessage={
             logs.length === 0
               ? "No logs match the current filters."

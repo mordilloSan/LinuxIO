@@ -65,18 +65,3 @@ export const getVMStatusColor = (state: string): string => {
       return SEMANTIC_STATUS_COLORS.neutral;
   }
 };
-
-export const getLogPriorityAccent = (priorityColor: string): string => {
-  switch (priorityColor) {
-    case "error":
-      return SEMANTIC_STATUS_COLORS.danger;
-    case "warning":
-      return SEMANTIC_STATUS_COLORS.caution;
-    case "info":
-      return SEMANTIC_STATUS_COLORS.info;
-    case "success":
-      return SEMANTIC_STATUS_COLORS.success;
-    default:
-      return SEMANTIC_STATUS_COLORS.muted;
-  }
-};

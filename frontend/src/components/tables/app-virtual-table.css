@@ -134,6 +134,17 @@
   padding: 2px 12px;
 }
 
+/* The 22px chevron plus its padding must not push a dense row past its
+   24px estimate: a mis-estimated row height makes long scrollbar jumps land
+   short. The button keeps a 24px target. */
+.app-dt--dense .app-dt__cell--expand {
+  padding-block: 0;
+}
+
+.app-dt--dense .app-dt__cell--expand .app-icon-btn {
+  padding: 1px;
+}
+
 .app-dt__cell.app-dt__cell--select {
   overflow: visible;
   padding-inline: 3px;
