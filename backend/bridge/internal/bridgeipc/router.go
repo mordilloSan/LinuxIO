@@ -113,25 +113,16 @@ type TaskPolicy struct {
 	MaxActivePerOwnerRoute  int
 	QueueLimit              int
 	StartRatePerMinuteOwner int
-	// Timeout is the maximum runtime after a task starts. Queue time is not counted.
-	// When it expires, bridgeipc cancels the runner context and fails the task with 504.
-	Timeout               time.Duration
-	DuplicateActiveReject bool
+	DuplicateActiveReject   bool
 }
 
 var (
 	TaskDefault = TaskPolicy{
-		Name:                   "action_default",
-		MaxActivePerRoute:      4,
-		MaxActivePerOwnerRoute: 1,
-		QueueLimit:             16,
-		// StartRatePerMinuteOwner is 0 (disabled): copy/move/delete and other
-		// action tasks are user-initiated with one task per item, so a per-minute
-		// start cap rejected large multi-selections mid-batch. The frontend
-		// runs these sequentially and MaxActivePerOwnerRoute=1 still serializes
-		// execution, so there is no runaway-task risk.
+		Name:                    "action_default",
+		MaxActivePerRoute:       4,
+		MaxActivePerOwnerRoute:  1,
+		QueueLimit:              16,
 		StartRatePerMinuteOwner: 0,
-		Timeout:                 120 * time.Minute,
 	}
 	TaskSingletonSystem = TaskPolicy{
 		Name:                    "singleton_system",
@@ -430,36 +421,24 @@ func (r *Router) dispatchTask(ctx context.Context, stream net.Conn, route Route,
 	return relay.WriteResultOKAndClose(stream, 0, task.Snapshot())
 }
 
-// routeRunner reports physical completion through executionDone. A task can
-// become terminal before its handler returns when a timed or canceled handler
-// ignores its context, so admission accounting must wait for this signal rather
-// than relying on Task.Done alone.
+// routeRunner reports physical completion through executionDone. A canceled
+// task becomes terminal as soon as its context ends, even when its handler
+// ignores cancellation, so admission accounting must wait for this signal
+// rather than relying on Task.Done alone.
 func (r *Router) routeRunner(route Route, executionDone chan<- struct{}) TaskRunner {
 	return func(ctx context.Context, task *Task, request any) (any, error) {
-		policy := normalizedPolicy(route.Policy)
-		if policy.Timeout <= 0 {
-			defer close(executionDone)
-			return route.Runner(ctx, task, request)
-		}
-
-		runCtx, cancel := context.WithTimeout(ctx, policy.Timeout)
-		defer cancel()
-
 		done := make(chan runnerResult, 1)
 		go func() {
 			defer close(executionDone)
-			result, err := route.Runner(runCtx, task, request)
+			result, err := route.Runner(ctx, task, request)
 			done <- runnerResult{result: result, err: err}
 		}()
 
 		select {
 		case result := <-done:
 			return result.result, result.err
-		case <-runCtx.Done():
-			if errors.Is(runCtx.Err(), context.DeadlineExceeded) {
-				return nil, NewError("operation timed out", 504)
-			}
-			return nil, runCtx.Err()
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		}
 	}
 }

@@ -637,7 +637,6 @@ func TestRouterCanceledDetachedRunnerKeepsAdmissionSlotUntilExit(t *testing.T) {
 	policy.MaxActivePerRoute = 1
 	policy.MaxActivePerOwnerRoute = 1
 	policy.QueueLimit = 1
-	policy.Timeout = time.Second
 
 	started := make(chan struct{})
 	release := make(chan struct{})
@@ -711,88 +710,7 @@ func TestRouterCanceledDetachedRunnerKeepsAdmissionSlotUntilExit(t *testing.T) {
 	waitForRouterSettle(t, router, route.Name)
 }
 
-func TestRouterTimedOutDetachedRunnerKeepsAdmissionSlotUntilExit(t *testing.T) {
-	registry := NewTaskService()
-	router := NewRouter(registry)
-	policy := TaskDefault
-	policy.Name = "timeout-detached-runner"
-	policy.MaxActivePerRoute = 1
-	policy.MaxActivePerOwnerRoute = 1
-	policy.QueueLimit = 1
-	policy.Timeout = 10 * time.Millisecond
-
-	started := make(chan struct{})
-	release := make(chan struct{})
-	successorStarted := make(chan struct{})
-	var running atomic.Int32
-	var maxRunning atomic.Int32
-	updateMax := func(current int32) {
-		for {
-			observed := maxRunning.Load()
-			if current <= observed || maxRunning.CompareAndSwap(observed, current) {
-				return
-			}
-		}
-	}
-	route := Route{
-		Name:   "test.timeout.detached-runner",
-		Mode:   ModeTask,
-		Policy: policy,
-		Runner: func(_ context.Context, _ *Task, request any) (any, error) {
-			current := running.Add(1)
-			updateMax(current)
-			defer running.Add(-1)
-			if request == "active" {
-				close(started)
-				<-release // Deliberately ignore the timeout context.
-				return nil, nil
-			}
-			close(successorStarted)
-			return nil, nil
-		},
-	}
-
-	active, startedNow, err := router.startOrQueueTask(route, Request{Route: route.Name, DecodedValue: "active"})
-	if err != nil || !startedNow {
-		t.Fatalf("start active = (%v, %t, %v), want started task", active, startedNow, err)
-	}
-	select {
-	case <-started:
-	case <-time.After(time.Second):
-		t.Fatal("active handler did not start")
-	}
-	successor, startedNow, err := router.startOrQueueTask(route, Request{Route: route.Name, DecodedValue: "successor"})
-	if err != nil || startedNow {
-		t.Fatalf("queue successor = (%v, %t, %v), want queued task", successor, startedNow, err)
-	}
-
-	select {
-	case <-active.Done():
-	case <-time.After(time.Second):
-		t.Fatal("timed-out task did not publish terminal state")
-	}
-	if snapshot := active.Snapshot(); snapshot.State != TaskStateFailed || snapshot.Error == nil || snapshot.Error.Code != 504 {
-		t.Fatalf("timeout snapshot = %+v, want failed 504", snapshot)
-	}
-	assertChannelOpen(t, successorStarted, "successor started while timed-out handler still ran")
-	if got := running.Load(); got != 1 {
-		t.Fatalf("running handlers = %d, want 1 before release", got)
-	}
-
-	close(release)
-	select {
-	case <-successorStarted:
-	case <-time.After(time.Second):
-		t.Fatal("successor was not promoted after handler exit")
-	}
-	<-successor.Done()
-	if got := maxRunning.Load(); got != 1 {
-		t.Fatalf("maximum concurrent handlers = %d, want 1", got)
-	}
-	waitForRouterSettle(t, router, route.Name)
-}
-
-func TestRouterDirectRunnerReleasesAdmissionSlotOnExit(t *testing.T) {
+func TestRouterRunnerReleasesAdmissionSlotOnExit(t *testing.T) {
 	registry := NewTaskService()
 	router := NewRouter(registry)
 	policy := TaskDefault
@@ -800,7 +718,6 @@ func TestRouterDirectRunnerReleasesAdmissionSlotOnExit(t *testing.T) {
 	policy.MaxActivePerRoute = 1
 	policy.MaxActivePerOwnerRoute = 1
 	policy.QueueLimit = 1
-	policy.Timeout = 0
 
 	started := make(chan struct{})
 	release := make(chan struct{})
@@ -971,71 +888,6 @@ func TestRouterCallWritesOneResultAndClose(t *testing.T) {
 	if closeFrame.Opcode != relay.OpStreamClose {
 		t.Fatalf("close opcode = 0x%02x, want OpStreamClose", closeFrame.Opcode)
 	}
-	if err := <-errCh; err != nil {
-		t.Fatalf("Dispatch returned error: %v", err)
-	}
-}
-
-func TestRouterTaskTimeoutReturnsFailedSnapshot(t *testing.T) {
-	registry := NewTaskService()
-	router := NewRouter(registry)
-	policy := TaskDefault
-	policy.Name = "timeout_test"
-	policy.Timeout = 10 * time.Millisecond
-	router.TaskRunner("test.timeout", func(ctx context.Context, task *Task, _ any) (any, error) {
-		<-ctx.Done()
-		return nil, ctx.Err()
-	}, policy)
-
-	server, client := net.Pipe()
-	defer client.Close()
-
-	errCh := make(chan error, 1)
-	go func() {
-		defer server.Close()
-		errCh <- router.Dispatch(context.Background(), server, Request{Route: "test.timeout"})
-	}()
-
-	frame, err := relay.ReadRelayFrame(client)
-	if err != nil {
-		t.Fatalf("ReadRelayFrame(result): %v", err)
-	}
-	if frame.Opcode != relay.OpStreamResult {
-		t.Fatalf("opcode = 0x%02x, want OpStreamResult", frame.Opcode)
-	}
-
-	var result relay.ResultFrame
-	if unmarshalErr := json.Unmarshal(frame.Payload, &result); unmarshalErr != nil {
-		t.Fatalf("json.Unmarshal(result): %v", unmarshalErr)
-	}
-	if result.Status != "ok" {
-		t.Fatalf("status = %q, want ok", result.Status)
-	}
-	var snapshot TaskSnapshot
-	if unmarshalErr := json.Unmarshal(result.Data, &snapshot); unmarshalErr != nil {
-		t.Fatalf("json.Unmarshal(snapshot): %v", unmarshalErr)
-	}
-	if snapshot.State != TaskStateFailed {
-		t.Fatalf("state = %q, want failed", snapshot.State)
-	}
-	if snapshot.Error == nil {
-		t.Fatal("timeout snapshot missing error")
-	}
-	if snapshot.Error.Code != 504 {
-		t.Fatalf("error code = %d, want 504", snapshot.Error.Code)
-	}
-	if !strings.Contains(snapshot.Error.Message, "timed out") {
-		t.Fatalf("error message = %q, want timeout message", snapshot.Error.Message)
-	}
-
-	closeFrame, err := relay.ReadRelayFrame(client)
-	if err != nil {
-		t.Fatalf("ReadRelayFrame(close): %v", err)
-	}
-	if closeFrame.Opcode != relay.OpStreamClose {
-		t.Fatalf("close opcode = 0x%02x, want OpStreamClose", closeFrame.Opcode)
-	}
-
 	if err := <-errCh; err != nil {
 		t.Fatalf("Dispatch returned error: %v", err)
 	}

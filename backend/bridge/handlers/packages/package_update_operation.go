@@ -16,12 +16,10 @@ import (
 var packageUpdateRoutes = packageUpdateBindings().Routes()
 
 func packageUpdateBindings() apischema.BindingSet {
-	policy := bridgeipc.TaskSingletonSystem
-	policy.Timeout = 2 * time.Hour
 	return apischema.Bindings(
 		apischema.TaskRunner[apischema.PackageUpdateRequest, PackageUpdateResult]("packages.update", apischema.SessionTask(), apischema.WithTaskProgress[PkgUpdateProgress](), apischema.WithTaskMetadata(func(req apischema.PackageUpdateRequest) bridgeipc.TaskMetadata {
 			return bridgeipc.TaskMetadata{Identity: append([]string{}, req.PackageIDs...), Label: "Updating packages", PackageIDs: append([]string{}, req.PackageIDs...)}
-		})).Run(runPackageUpdateTask, policy),
+		})).Run(runPackageUpdateTask, bridgeipc.TaskSingletonSystem),
 	)
 }
 
