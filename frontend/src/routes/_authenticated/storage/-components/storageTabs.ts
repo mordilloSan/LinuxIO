@@ -3,7 +3,7 @@ import type { RoutedTab } from "@/components/tabbar";
 export const STORAGE_TABS = [
   { label: "Disks", to: "/storage" },
   { label: "LVM", to: "/storage/lvm" },
-  { label: "Snapshots", to: "/storage/snapshots" },
+  { label: "Subvolumes", to: "/storage/subvolumes" },
   { label: "Topology", to: "/storage/topology" },
   { label: "Shares", to: "/storage/shares" },
   { label: "Mounts", to: "/storage/mounts" },

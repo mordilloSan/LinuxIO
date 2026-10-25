@@ -1,8 +1,9 @@
 # Btrfs management
 
-The **Storage → Snapshots** tab (`/storage/snapshots`) manages subvolumes,
-snapshots with rollback, automatic snapshots and replication to another
-filesystem or host. Each pool's details on the **Storage → Disks** overview
+The **Storage → Subvolumes** tab (`/storage/subvolumes`) manages subvolumes,
+and, under its Snapshots and Replication views (`?view=snapshots`,
+`?view=replication`), snapshots with rollback, automatic snapshots and
+replication to another filesystem or host. Each pool's details on the **Storage → Disks** overview
 (`/storage?pool=<uuid>`) hold the rest: health, devices and profiles, space,
 quotas, compression and maintenance timers.
 Everything on the host is read and driven through the kernel's btrfs ioctls,
@@ -12,20 +13,23 @@ subvolume and quota listing, subvolume create, delete, snapshot and default,
 read-only flags, compression properties, quotas and limits, and the send side
 of replication. `btrfs-progs` is used only where the kernel has no interface:
 `mkfs.btrfs`, `btrfs receive`, and the commands a replication job runs on its
-target, which may be another host. There is no daemon and no new binary
-beyond the existing `linuxio` CLI. Everything is on demand or runs from two
-systemd timers.
+target, which may be another host. There is no daemon. Everything is on
+demand or runs from `linuxio-btrfs-timer`, started by two systemd timers, a
+boot-time service and a resync service (see [Missing disks](#missing-disks)).
 
 `make test-btrfs-integration` runs every one of these operations against the
-real kernel on loop devices; it needs sudo.
+real kernel on loop devices, and loses and returns disks of a mirror to check
+the missing-disk handling; it needs sudo.
 
 ## Capability and privileges
 
 The `btrfs` capability checks for the `btrfs` executable (`btrfs-progs`) and
-gates the Snapshots tab and the pools on the Disks overview; see
+gates the Subvolumes tab and the pools on the Disks overview; see
 [Capabilities](./capabilities.md#btrfs-tools). Both are
 **administrator-only**: they require a privileged session, reads run
-`btrfs` as root and the configuration files are root `0600`.
+`btrfs` as root and the configuration files are root `0600`. The Subvolumes
+tab is listed only while a btrfs filesystem is mounted; pools are created
+from the Disks overview.
 
 Docker's btrfs storage-driver subvolumes are hidden from every list.
 
@@ -37,7 +41,8 @@ with an empty path, so it can be removed or replaced. The health banner at the
 top of the details leads with the worst condition and the one action that
 fixes it: **Replace missing disk** on a degraded pool, **Reclaim space** when
 metadata is nearly full. Health, scrub and space alerts link to those details;
-snapshot and replication alerts link to the Snapshots tab.
+snapshot and replication alerts link to the Subvolumes tab's Snapshots and
+Replication views.
 
 Alerts are updated whenever the list is loaded and, independently of the
 browser, by `linuxio-btrfs-health.timer`, which runs `linuxio-btrfs-timer
@@ -48,14 +53,77 @@ filesystems, covering pools created after install.
 
 | Alert | Severity | Raised when | Resolved when |
 |---|---|---|---|
-| `btrfs/health-<uuid>` | error | a device reports errors or is missing | the counters are zero and no device is missing |
+| `btrfs/health-<uuid>` | error | a device reports errors or is missing; "running without n of m disks" when degraded | the counters are zero and no device is missing |
 | `btrfs/scrub-<uuid>` | error | the last scrub found uncorrectable errors | a later scrub finishes clean |
 | `btrfs/space-<uuid>` | warning | metadata is over 90% full with less than 1 GiB unallocated | space is reclaimed |
-| `btrfs/offline-<uuid>` | error or warning | a pool is found on disk but not mounted (error when disks are missing) | the pool is mounted |
+| `btrfs/offline-<uuid>` | error or warning | a pool is found on disk but not mounted (error when disks are missing; says why the boot check left it unmounted) | the pool is mounted |
+| `btrfs/resync-<uuid>` | warning, error after three failed resyncs | a pool that ran with a disk missing has all its disks again and is being resynced | the resync finished |
+| `btrfs/resynced-<uuid>` | info | a resync finished and the pool is whole again | dismissed, or the next resync starts |
 
 Incomplete health data neither raises nor resolves; alerts of pools that no
 longer exist are dropped by the timer. Scrub start/cancel is on the banner;
 see [Devices](#devices-and-profiles).
+
+## Missing disks
+
+A pool that loses a disk keeps running, and so does its data as long as its
+profiles keep a copy. After a reboot systemd never mounts it: udev holds a
+btrfs device back until every member is present (`64-btrfs.rules`), and
+upstream leaves the "mount with n of m disks" decision to storage software.
+LinuxIO makes that decision the way mdadm's last-resort timer does for md
+arrays, and repairs the pool once the disk is back, which btrfs leaves to a
+scrub.
+
+**At boot**, `linuxio-btrfs-degraded.service` (once per boot, after
+`local-fs.target`, before Docker, containerd, Samba, NFS and libvirt, given
+at most three minutes) runs `linuxio-btrfs-timer degraded run`. Pools that
+`/etc/fstab` names by `UUID=` without `noauto` or `_netdev` and that are
+missing disks get 30 seconds for the disks to appear (an
+`x-systemd.device-timeout` is not consulted); a pool that is then still incomplete is mounted with
+`degraded` at each of its fstab mountpoints, parents first, with each
+entry's options, unless the disks present may not hold its newest data:
+
+- the present disks disagree on their superblock generation, which every
+  commit stamps on each disk it writes, so one of them missed writes;
+- they are older than the newest generation LinuxIO recorded for the pool;
+- or a disk that took the writes of the pool's last degraded run is missing.
+
+A pool mounted this way raises its "running without n of m disks" alert at
+once, so it reaches the bell and any configured email or webhook right after
+boot. Mounting such a set would write a second history over the first. That
+pool stays unmounted and its offline alert says why; **Mount degraded** remains for
+a person who knows the other disks are gone for good, and does not apply this
+check. The kernel itself refuses a pool missing more disks than its profiles
+survive. A mount that fails leaves the entries inside its mountpoint
+unmounted.
+
+The record lives in `/var/lib/linuxio/btrfs-pools.json`: every mount LinuxIO
+makes and every health run notes each pool's generation, and while a pool runs
+degraded, which disks take its writes. A disk that dies while the pool is
+mounted is only recorded by the next health run, so a crash within those ten
+minutes, followed by only the dead disk coming back, is not caught. The
+recorded generation can belong to a transaction a crash then loses, which
+makes the check refuse a set that was in fact current: the safe side.
+
+**When the disk is back.** A disk that reappears while the pool is mounted is
+listed by the kernel but never opened, so it is shown as missing until the
+pool is mounted again (a reboot). Once every disk is in use, the health run
+starts `linuxio-btrfs-resync@<uuid>.service` (`linuxio-btrfs-timer resync`):
+a scrub checks every copy and rewrites those the returned disk missed from
+the good ones, then a soft convert (`convert=<profile>,soft`) gives chunks
+written while too few disks were present, which btrfs allocates as `single`,
+the pool's most redundant profile again. Until then the `resync` alert is up.
+Only a scrub that finished counts: one canceled from the overview, or cut
+short by a crash (its record then reads as aborted), is run again. A failed
+resync is retried by the next health run, without scrubbing again once the
+scrub finished; after three failures the alert turns into an error with the
+last cause, and mounting the pool again (or a reboot) re-arms it.
+Uncorrectable scrub errors go to the scrub alert. Files with copy-on-write
+disabled (`nodatacow`, common for VM images) have no checksums, so a scrub
+cannot tell their stale copies; replace a disk that returns to a pool holding
+such files instead. A disk that keeps failing writes while still attached is
+not counted as missing: the health alert reports its error counters, and a
+scrub once it is fixed repairs what it missed.
 
 ## Top-level access
 
@@ -66,9 +134,21 @@ leaves it mounted until reboot.
 
 ## Subvolumes
 
-The Subvolumes card lists subvolumes with ID, path, read-only state and
-default marker, and can create, delete, set read-only and set the default
-subvolume. Nested subvolumes appear as their own rows. Subvolume paths may not
+The Subvolumes view lists each subvolume with:
+
+- its name, default and read-only markers, and where its files are on the
+  host: under the mount of the subvolume or of the nearest one above it
+  (LinuxIO's own `/run/linuxio/btrfs` mounts and bind mounts do not count);
+- its size, with a bar against its size limit when one is set (sizes need
+  quotas, turned on in the pool settings);
+- what uses it: SMB and NFS shares and Docker folders, each credited to the
+  deepest subvolume holding its path, since a nested subvolume is snapshotted
+  on its own;
+- its snapshot count and automatic schedule.
+
+Each row can take a snapshot, set a size limit and compression, toggle
+read-only, become the default subvolume or be deleted; the card creates new
+ones. Nested subvolumes appear as their own rows. Subvolume paths may not
 contain `,` or whitespace, which would break `subvol=` mount options and
 `/etc/fstab`. Deleting a leftover
 `.linuxio-rollback-*` subvolume (see [Rollback](#rollback)) is done here.
@@ -180,7 +260,12 @@ A disk with partitions, holders or a mount is refused; a foreign filesystem
 signature needs **Force**. The mount point must be an unused, empty path
 outside the system directories. The dialog estimates the usable data space
 for the chosen profile and disks, allocated the way btrfs does, so mixed disk
-sizes are counted right; metadata overhead is not included.
+sizes are counted right; metadata overhead is not included. Metadata (the
+filesystem tree and checksums) defaults to `dup` on one disk, `raid1` on two
+and `raid1c3` from three, where `mkfs.btrfs` would pick `raid1`. A metadata
+profile less redundant than the data profile is never offered, ranked
+`single` = `raid0` < `dup` < `raid1` = `raid10` < `raid1c3` < `raid1c4`:
+weaker metadata lets a disk failure the data survives take the whole pool.
 
 Disks are used whole unless **Partition the disks** is on. Then each disk
 gets a GPT, written natively, with one Linux partition from 1 MiB that stops
@@ -198,8 +283,10 @@ a permanent top-level mount are offered.
 not mounted, since btrfs refuses that without `degraded`, so the overview
 lists it from the disks' superblocks as an unmounted pool with its missing
 disk count. **Mount** mounts a complete pool and **Mount degraded** one with
-missing disks, so its data stays reachable until the disk is replaced. A pool
-without an fstab entry is mounted at `/mnt/<label>` and recorded.
+missing disks, so its data stays reachable until the disk is replaced; both
+use the pool's fstab options, so `subvol=` and `compress=` apply. A pool
+without an fstab entry is mounted at `/mnt/<label>` and recorded. Pools in
+fstab are also mounted degraded at boot; see [Missing disks](#missing-disks).
 
 **Destroy pool** unmounts every mount of the pool, removes its fstab entries
 and zeroes the btrfs superblock magic on each disk; everything on the pool is
@@ -219,7 +306,7 @@ primary superblock at 64 KiB.
 | Replace device | Replaces one member with a free device. A bigger replacement disk is grown into automatically. |
 | Grow | Resizes a device to its whole disk when the filesystem uses less of it, for example after a replace done by hand. |
 | Rename | Sets the filesystem label from the pool details. |
-| Balance / convert | Profiles `single`, `dup`, `raid0`, `raid1`, `raid1c3`, `raid1c4`, `raid10`. `raid5` and `raid6` are refused. Converting metadata converts system chunks with it. The outcome is verified against the resulting allocation. |
+| Balance / convert | Profiles `single`, `dup`, `raid0`, `raid1`, `raid1c3`, `raid1c4`, `raid10`. `raid5` and `raid6` are refused. Converting metadata converts system chunks with it. Metadata weaker than the resulting data profile is converted too, to the same default as Create pool, unless nothing stronger fits on the present devices. The outcome is verified against the resulting allocation. |
 | Reclaim space | A balance of data chunks at most 50% full, which turns slack into unallocated space. |
 | Scrub | Start and cancel. The last result is recorded in `/var/lib/linuxio/btrfs-scrub.json`; scrubs run by btrfsmaintenance are read from `/var/lib/btrfs/scrub.status.<uuid>`. |
 
@@ -297,10 +384,13 @@ btrfsmaintenance timers.
 | `/etc/systemd/system/linuxio-btrfs-snapshot.timer` | root | Hourly trigger |
 | `/etc/systemd/system/linuxio-btrfs-health.service` | root | Runs `linuxio-btrfs-timer health run` |
 | `/etc/systemd/system/linuxio-btrfs-health.timer` | root | Every ten minutes |
+| `/etc/systemd/system/linuxio-btrfs-degraded.service` | root | Runs `linuxio-btrfs-timer degraded run` at boot |
+| `/etc/systemd/system/linuxio-btrfs-resync@.service` | root | Runs `linuxio-btrfs-timer resync <uuid>` |
 | `/var/lib/linuxio/btrfs-scrub.json` | root | Last scrub LinuxIO ran per filesystem |
+| `/var/lib/linuxio/btrfs-pools.json` | root | Per pool: newest generation seen, and whether and on which disks it ran degraded |
 | `/etc/systemd/system/<upgrade-service>.d/linuxio-alert.conf` | root | Auto-update drop-in, including the pre-update snapshot line |
 | `/etc/fstab` | root | Pool entries LinuxIO creates; compression options of existing entries |
-| `/var/lib/linuxio/alerts.json` | `root:root` `0600` | Alerts `btrfs/health-*`, `btrfs/scrub-*`, `btrfs/space-*`, `btrfs/offline-*`, `btrfs/snapshot-*`, `btrfs/replication-*` |
+| `/var/lib/linuxio/alerts.json` | `root:root` `0600` | Alerts `btrfs/health-*`, `btrfs/scrub-*`, `btrfs/space-*`, `btrfs/offline-*`, `btrfs/resync-*`, `btrfs/resynced-*`, `btrfs/snapshot-*`, `btrfs/replication-*` |
 
 ## Not implemented
 

@@ -75,6 +75,9 @@ type volArgsV2 struct {
 
 const devSpecByID = 1 << 3 // BTRFS_DEVICE_SPEC_BY_ID
 
+// fsInfoFlagGeneration asks BTRFS_IOC_FS_INFO for the current generation.
+const fsInfoFlagGeneration = 1 << 1
+
 // fsInfoArgs mirrors struct btrfs_ioctl_fs_info_args.
 type fsInfoArgs struct {
 	MaxID          uint64
@@ -214,6 +217,7 @@ const (
 
 	balanceArgsUsage   = 1 << 1
 	balanceArgsConvert = 1 << 8
+	balanceArgsSoft    = 1 << 9 // convert only chunks not already in the target profile
 
 	balanceStateRunning  = 1 << 0
 	balanceStatePauseReq = 1 << 1

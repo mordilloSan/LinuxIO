@@ -2,7 +2,7 @@ import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { BtrfsSubvolume } from "@/api";
+import type { BtrfsFilesystem, BtrfsSubvolume } from "@/api";
 import { render } from "@/test/render";
 
 import BtrfsSubvolumesCard from "./BtrfsSubvolumesCard";
@@ -14,6 +14,10 @@ vi.mock("@tanstack/react-virtual", async () =>
 const mocks = vi.hoisted(() => ({
   mutations: {} as Record<string, ReturnType<typeof vi.fn>>,
   subvolumes: vi.fn(),
+  snapshots: vi.fn(),
+  rules: vi.fn(),
+  samba: vi.fn(),
+  nfs: vi.fn(),
 }));
 
 vi.mock("@/api", async (importOriginal) => {
@@ -32,10 +36,44 @@ vi.mock("@/api", async (importOriginal) => {
           queryKey: ["test-btrfs-subvolumes", request.uuid],
           queryFn: () => mocks.subvolumes(request),
         }),
+        btrfs_snapshots: (request: { uuid: string }) => ({
+          queryKey: ["test-btrfs-snapshots", request.uuid],
+          queryFn: () => mocks.snapshots(),
+        }),
+        btrfs_snapshot_rules: {
+          queryKey: ["test-btrfs-snapshot-rules"],
+          queryFn: () => mocks.rules(),
+        },
+      },
+      shares: {
+        ...actual.linuxio.shares,
+        list_samba_shares: {
+          queryKey: ["test-samba-shares"],
+          queryFn: () => mocks.samba(),
+        },
+        list_nfs_shares: {
+          queryKey: ["test-nfs-shares"],
+          queryFn: () => mocks.nfs(),
+        },
       },
     },
   };
 });
+
+// The pool's top level is mounted at /mnt/pool.
+const pool = {
+  uuid: "uuid-1",
+  mountpoints: [
+    {
+      mountpoint: "/mnt/pool",
+      device: "/dev/sdb",
+      uuid: "uuid-1",
+      subvol: "",
+      subvolId: 5,
+      options: [],
+    },
+  ],
+} as unknown as BtrfsFilesystem;
 
 const subvolume = (overrides: Partial<BtrfsSubvolume>): BtrfsSubvolume => ({
   id: 256,
@@ -68,6 +106,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.mutations = {};
   mocks.subvolumes.mockResolvedValue([root, data, snapshot]);
+  mocks.snapshots.mockResolvedValue([]);
+  mocks.rules.mockResolvedValue({ rules: [], timerEnabled: true });
+  mocks.samba.mockResolvedValue([]);
+  mocks.nfs.mockResolvedValue([]);
 });
 
 const rowFor = async (path: string) =>
@@ -75,7 +117,7 @@ const rowFor = async (path: string) =>
 
 describe("BtrfsSubvolumesCard", () => {
   it("lists subvolumes without snapshots and guards the default row", async () => {
-    render(<BtrfsSubvolumesCard uuid="uuid-1" />);
+    render(<BtrfsSubvolumesCard filesystem={pool} />);
 
     const rootRow = await rowFor("@");
     expect(screen.queryByText("linuxio-snapshots/@-1")).not.toBeInTheDocument();
@@ -96,7 +138,7 @@ describe("BtrfsSubvolumesCard", () => {
 
   it("creates a subvolume from the dialog", async () => {
     const user = userEvent.setup();
-    render(<BtrfsSubvolumesCard uuid="uuid-1" />);
+    render(<BtrfsSubvolumesCard filesystem={pool} />);
     await screen.findByText("data");
 
     await user.click(screen.getByRole("button", { name: "Create subvolume" }));
@@ -114,7 +156,7 @@ describe("BtrfsSubvolumesCard", () => {
 
   it("confirms before deleting", async () => {
     const user = userEvent.setup();
-    render(<BtrfsSubvolumesCard uuid="uuid-1" />);
+    render(<BtrfsSubvolumesCard filesystem={pool} />);
 
     await user.click(
       within(await rowFor("data")).getByRole("button", { name: "Delete" }),
@@ -134,10 +176,12 @@ describe("BtrfsSubvolumesCard", () => {
 
   it("toggles read-only and sets the default", async () => {
     const user = userEvent.setup();
-    render(<BtrfsSubvolumesCard uuid="uuid-1" />);
+    render(<BtrfsSubvolumesCard filesystem={pool} />);
     const dataRow = await rowFor("data");
 
-    await user.click(within(dataRow).getByRole("checkbox"));
+    await user.click(
+      within(dataRow).getByRole("button", { name: "Make read-only" }),
+    );
     expect(route("btrfs_subvolume_set_readonly")).toHaveBeenCalledWith({
       uuid: "uuid-1",
       path: "data",
@@ -161,14 +205,14 @@ describe("BtrfsSubvolumesCard", () => {
       uuid: "u-258",
     });
     mocks.subvolumes.mockResolvedValue([root, data, portables]);
-    render(<BtrfsSubvolumesCard uuid="uuid-1" />);
+    render(<BtrfsSubvolumesCard filesystem={pool} />);
 
     await rowFor("data");
-    expect(screen.queryByText("var/lib/portables")).not.toBeInTheDocument();
+    expect(screen.queryByText("portables")).not.toBeInTheDocument();
     await user.click(
       screen.getByRole("checkbox", { name: "Show system subvolumes" }),
     );
-    expect(await screen.findByText("var/lib/portables")).toBeInTheDocument();
+    expect(await screen.findByText("portables")).toBeInTheDocument();
   });
 
   it("sets a size limit when quotas report sizes", async () => {
@@ -176,9 +220,12 @@ describe("BtrfsSubvolumesCard", () => {
     mocks.subvolumes.mockResolvedValue([
       { ...data, referencedBytes: 1024 ** 3, maxReferencedBytes: 1024 ** 3 },
     ]);
-    render(<BtrfsSubvolumesCard uuid="uuid-1" />);
+    render(<BtrfsSubvolumesCard filesystem={pool} />);
     const dataRow = await rowFor("data");
-    expect(within(dataRow).getByText("Limit 1 GB")).toBeInTheDocument();
+    expect(within(dataRow).getByText("1 GB of 1 GB")).toBeInTheDocument();
+    expect(
+      within(dataRow).getByRole("progressbar", { name: "data space used" }),
+    ).toHaveAttribute("aria-valuenow", "100");
 
     await user.click(within(dataRow).getByRole("button", { name: "Limit" }));
     const dialog = await screen.findByRole("dialog");
@@ -213,7 +260,7 @@ describe("BtrfsSubvolumesCard", () => {
     mocks.subvolumes.mockResolvedValue([
       { ...data, referencedBytes: 1, maxReferencedBytes: 1500000000 },
     ]);
-    render(<BtrfsSubvolumesCard uuid="uuid-1" />);
+    render(<BtrfsSubvolumesCard filesystem={pool} />);
     await user.click(
       within(await rowFor("data")).getByRole("button", { name: "Limit" }),
     );
@@ -227,7 +274,7 @@ describe("BtrfsSubvolumesCard", () => {
   });
 
   it("hides Limit without quota sizes", async () => {
-    render(<BtrfsSubvolumesCard uuid="uuid-1" />);
+    render(<BtrfsSubvolumesCard filesystem={pool} />);
     expect(
       within(await rowFor("data")).queryByRole("button", { name: "Limit" }),
     ).not.toBeInTheDocument();
@@ -235,7 +282,7 @@ describe("BtrfsSubvolumesCard", () => {
 
   it("sets per-subvolume compression", async () => {
     const user = userEvent.setup();
-    render(<BtrfsSubvolumesCard uuid="uuid-1" />);
+    render(<BtrfsSubvolumesCard filesystem={pool} />);
 
     await user.click(
       within(await rowFor("data")).getByRole("button", { name: "Compression" }),
@@ -251,5 +298,46 @@ describe("BtrfsSubvolumesCard", () => {
       { uuid: "uuid-1", path: "data", algorithm: "zstd" },
       expect.anything(),
     );
+  });
+
+  it("shows where each subvolume is, what uses it and how it is snapshotted", async () => {
+    const user = userEvent.setup();
+    const docker = subvolume({ id: 258, path: "docker", uuid: "u-258" });
+    const immich = subvolume({ id: 259, path: "docker/immich", uuid: "u-259" });
+    mocks.subvolumes.mockResolvedValue([root, data, docker, immich]);
+    mocks.snapshots.mockResolvedValue([
+      { path: "s1", source: "data" },
+      { path: "s2", source: "data" },
+    ]);
+    mocks.rules.mockResolvedValue({
+      rules: [{ uuid: "uuid-1", path: "data", enabled: true, every: "hourly" }],
+      timerEnabled: true,
+    });
+    mocks.samba.mockResolvedValue([
+      { name: "media", properties: { path: "/mnt/pool/data/media" } },
+    ]);
+    mocks.nfs.mockResolvedValue([{ path: "/mnt/pool/data", clients: [] }]);
+    render(<BtrfsSubvolumesCard filesystem={pool} />);
+
+    const dataRow = await rowFor("data");
+    expect(within(dataRow).getByText("/mnt/pool/data")).toBeInTheDocument();
+    expect(within(dataRow).getByText("NFS")).toBeInTheDocument();
+    expect(within(dataRow).getByText("SMB")).toBeInTheDocument();
+    expect(within(dataRow).getByText("2 · hourly")).toBeInTheDocument();
+    // A share inside a nested subvolume counts for that subvolume alone.
+    expect(
+      within(await rowFor("docker")).getByText("None"),
+    ).toBeInTheDocument();
+    expect(
+      within(await rowFor("immich")).getByText("/mnt/pool/docker/immich"),
+    ).toBeInTheDocument();
+
+    await user.click(
+      within(dataRow).getByRole("button", { name: "Take snapshot" }),
+    );
+    expect(route("btrfs_snapshot_create")).toHaveBeenCalledWith({
+      uuid: "uuid-1",
+      path: "data",
+    });
   });
 });

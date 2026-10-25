@@ -123,7 +123,8 @@ func TestEnsureBtrfsHealthTimerEnablesAndStarts(t *testing.T) {
 	if err := ensureBtrfsHealthTimer(context.Background(), rec.ops()); err != nil {
 		t.Fatalf("ensureBtrfsHealthTimer: %v", err)
 	}
-	if want := []string{"enable:" + btrfs.HealthTimerName, "start:" + btrfs.HealthTimerName}; !reflect.DeepEqual(rec.calls, want) {
+	// The degraded mount runs at boot only, so it is enabled but not started.
+	if want := []string{"enable:" + btrfs.HealthTimerName, "start:" + btrfs.HealthTimerName, "enable:" + btrfs.DegradedServiceName}; !reflect.DeepEqual(rec.calls, want) {
 		t.Fatalf("calls = %v, want %v", rec.calls, want)
 	}
 }

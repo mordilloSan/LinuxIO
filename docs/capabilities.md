@@ -212,8 +212,9 @@ the package's default of `/` does not leak into a schedule the user enables.
 
 The `btrfs` capability checks for the `btrfs` executable (`btrfs-progs`) and
 installs the distro's `btrfs-progs` package through the existing privileged
-install path. It gates the **Storage → Snapshots** tab (`/storage/snapshots`),
-which manages subvolumes, snapshots and replication, and the pools on the
+install path. It gates the **Storage → Subvolumes** tab (`/storage/subvolumes`),
+listed once a btrfs filesystem is mounted, which manages subvolumes,
+snapshots and replication, and the pools on the
 Disks overview, which manage devices, health and settings; see
 [Btrfs management](./btrfs.md).
 

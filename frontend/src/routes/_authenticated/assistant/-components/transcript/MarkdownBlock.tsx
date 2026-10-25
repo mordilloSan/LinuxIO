@@ -19,6 +19,10 @@ import type { HighlightSpan } from "./highlight";
 // ponytail: 20k-char ceiling; highlight completed lines only if this bites
 const MAX_HIGHLIGHT_CHARS = 20_000;
 
+// Loaded on demand so the CodeMirror stack stays out of the route's initial
+// chunk. Module scope because React Compiler skips components with import().
+const loadHighlight = () => import("./highlight");
+
 function CodeBlock({ children }: { children?: ReactNode }) {
   const preRef = useRef<HTMLPreElement>(null);
   const [highlighted, setHighlighted] = useState<{
@@ -41,8 +45,7 @@ function CodeBlock({ children }: { children?: ReactNode }) {
   useEffect(() => {
     if (body === null || !lang || body.length > MAX_HIGHLIGHT_CHARS) return;
     let stale = false;
-    // Loaded here so the CodeMirror stack stays out of the route's initial chunk.
-    import("./highlight")
+    loadHighlight()
       .then(({ highlightCode }) => (stale ? null : highlightCode(body, lang)))
       .then((spans) => {
         if (spans && !stale) setHighlighted({ spans, text: body });

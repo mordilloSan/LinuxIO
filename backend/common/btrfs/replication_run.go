@@ -380,7 +380,7 @@ func RecordReplicationOutcome(ctx context.Context, job BtrfsReplicationJob, runE
 			Key: key, Severity: alerts.SeverityError,
 			Title:        "Replication failed for " + job.Path,
 			Message:      msg,
-			Link:         "/storage/snapshots?fs=" + job.UUID,
+			Link:         "/storage/subvolumes?view=replication&fs=" + job.UUID,
 			OccurrenceID: hex.EncodeToString(sum[:8]),
 		})
 	} else if err := alerts.Resolve(ctx, AlertSource, key); err != nil {

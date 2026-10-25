@@ -2,7 +2,6 @@ package btrfs
 
 import (
 	"fmt"
-	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -25,13 +24,14 @@ type fakeDevice struct {
 // mutating ones. Blocking operations call the hooks, which may wait on
 // cancelled to order events deterministically.
 type fakeKernel struct {
-	mu      sync.Mutex
-	label   string
-	maxID   uint64
-	devices map[uint64]*fakeDevice
-	spaces  []spaceInfo
-	fail    map[uintptr]error
-	calls   []string
+	mu         sync.Mutex
+	label      string
+	generation uint64
+	maxID      uint64
+	devices    map[uint64]*fakeDevice
+	spaces     []spaceInfo
+	fail       map[uintptr]error
+	calls      []string
 
 	balance         func(*balanceArgs) error
 	balanceProgress func() (balanceArgs, error)
@@ -63,7 +63,12 @@ func (k *fakeKernel) ioctl(_ string, req uintptr, arg unsafe.Pointer) error {
 	}
 	switch req {
 	case iocFSInfo:
-		*(*fsInfoArgs)(arg) = fsInfoArgs{MaxID: k.maxID, NumDevices: uint64(len(k.devices))}
+		a := (*fsInfoArgs)(arg)
+		requested := a.Flags
+		*a = fsInfoArgs{MaxID: k.maxID, NumDevices: uint64(len(k.devices)), FSID: uuidBytes(dataUUID)}
+		if requested&fsInfoFlagGeneration != 0 {
+			a.Flags, a.Generation = fsInfoFlagGeneration, k.generation
+		}
 	case iocGetFSLabel:
 		buf := (*[labelSize]byte)(arg)
 		*buf = [labelSize]byte{}
@@ -202,8 +207,8 @@ func raid1Kernel() *fakeKernel {
 func stubKernel(t *testing.T, k *fakeKernel) {
 	t.Helper()
 	stubMounts(t, []Mount{{Mountpoint: "/data", UUID: dataUUID, SubvolID: 5}})
-	oldIoctl, oldSize, oldInterval := fsIoctl, blockDeviceSize, progressInterval
-	oldRecords, oldProgs := ScrubRecordPath, progsScrubDir
+	stubStatePaths(t, t.TempDir())
+	oldIoctl, oldSize, oldInterval, oldProgs := fsIoctl, blockDeviceSize, progressInterval, progsScrubDir
 	fsIoctl = k.ioctl
 	blockDeviceSize = func(device string) (uint64, error) {
 		for _, d := range k.devices {
@@ -214,10 +219,8 @@ func stubKernel(t *testing.T, k *fakeKernel) {
 		return 0, fmt.Errorf("no such device %s", device)
 	}
 	progressInterval = time.Millisecond
-	ScrubRecordPath = filepath.Join(t.TempDir(), "scrub.json")
 	progsScrubDir = t.TempDir()
 	t.Cleanup(func() {
-		fsIoctl, blockDeviceSize, progressInterval = oldIoctl, oldSize, oldInterval
-		ScrubRecordPath, progsScrubDir = oldRecords, oldProgs
+		fsIoctl, blockDeviceSize, progressInterval, progsScrubDir = oldIoctl, oldSize, oldInterval, oldProgs
 	})
 }

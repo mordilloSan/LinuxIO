@@ -27,6 +27,7 @@ readonly DOC_DIR="/usr/share/linuxio/doc"
 readonly STAGING="/tmp/linuxio-install-$$"
 readonly INDEXER_TIMER_UNIT_NAME="linuxio-indexer-index.timer"
 readonly BTRFS_HEALTH_TIMER_UNIT_NAME="linuxio-btrfs-health.timer"
+readonly BTRFS_DEGRADED_UNIT_NAME="linuxio-btrfs-degraded.service"
 readonly MINIMUM_MONITORING_RELEASE="v0.28.0"
 ENABLE_INDEXER_TIMER=0
 # Install source. Release mode downloads into STAGING; --local reads the build
@@ -108,6 +109,8 @@ systemd_units() {
 		linuxio-indexer-index.timer \
 		linuxio-btrfs-health.service \
 		linuxio-btrfs-health.timer \
+		linuxio-btrfs-degraded.service \
+		linuxio-btrfs-resync@.service \
 		linuxio-monitoring.service
 }
 
@@ -698,11 +701,13 @@ enable_services() {
 	fi
 	# Pools created later get the timer when an admin lists btrfs filesystems.
 	if lsblk -nro FSTYPE 2>/dev/null | grep -qx btrfs; then
-		if systemctl enable "$BTRFS_HEALTH_TIMER_UNIT_NAME" >/dev/null 2>&1; then
-			Show 0 "Enabled ${BTRFS_HEALTH_TIMER_UNIT_NAME}"
-		else
-			Show 3 "Failed to enable ${BTRFS_HEALTH_TIMER_UNIT_NAME}"
-		fi
+		for unit in "$BTRFS_HEALTH_TIMER_UNIT_NAME" "$BTRFS_DEGRADED_UNIT_NAME"; do
+			if systemctl enable "$unit" >/dev/null 2>&1; then
+				Show 0 "Enabled ${unit}"
+			else
+				Show 3 "Failed to enable ${unit}"
+			fi
+		done
 	fi
 	# The control-plane restart (here or deferred to the caller) does not cover
 	# the monitoring daemon or the login banner, so move them onto the

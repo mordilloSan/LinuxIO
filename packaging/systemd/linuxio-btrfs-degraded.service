@@ -1,0 +1,20 @@
+[Unit]
+Description=Mount LinuxIO btrfs pools that are missing disks
+Documentation=https://github.com/mordilloSan/LinuxIO
+# systemd never mounts a btrfs pool with a disk missing. After a grace
+# period for slow disks, this mounts such fstab pools degraded when the disks
+# present hold the newest data, before the services that use them start.
+After=local-fs.target
+Before=docker.service containerd.service smbd.service smb.service nfs-server.service libvirtd.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/linuxio-btrfs-timer degraded run
+# Once per boot: a later start of multi-user.target must not mount a pool an
+# administrator unmounted on purpose.
+RemainAfterExit=yes
+# A dying disk whose reads hang must not hold back the services it orders.
+TimeoutStartSec=3min
+
+[Install]
+WantedBy=multi-user.target

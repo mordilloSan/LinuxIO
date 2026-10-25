@@ -1,0 +1,7 @@
+[Unit]
+Description=Resync LinuxIO btrfs pool %i after its missing disk returned
+Documentation=https://github.com/mordilloSan/LinuxIO
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/linuxio-btrfs-timer resync %i

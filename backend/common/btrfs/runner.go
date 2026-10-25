@@ -65,7 +65,7 @@ func Run(ctx context.Context, rules []BtrfsSnapshotRule, now time.Time, kind Sna
 				Key: key, Severity: alerts.SeverityWarning,
 				Title:        "Snapshot skipped for " + rule.Path,
 				Message:      "Filesystem " + rule.UUID + " is not mounted",
-				Link:         "/storage/snapshots?fs=" + rule.UUID,
+				Link:         "/storage/subvolumes?view=snapshots&fs=" + rule.UUID,
 				OccurrenceID: "unmounted",
 			})
 			continue
@@ -84,7 +84,7 @@ func Run(ctx context.Context, rules []BtrfsSnapshotRule, now time.Time, kind Sna
 				Key: key, Severity: alerts.SeverityError,
 				Title:        "Snapshot failed for " + rule.Path,
 				Message:      err.Error(),
-				Link:         "/storage/snapshots?fs=" + rule.UUID,
+				Link:         "/storage/subvolumes?view=snapshots&fs=" + rule.UUID,
 				OccurrenceID: "failed",
 			})
 			continue

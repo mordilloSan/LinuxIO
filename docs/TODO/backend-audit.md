@@ -49,12 +49,6 @@ fix, so each item can be accepted or rejected on that basis.
   - Fix: before unmounting, remove the entries `btrfsFstabEntries(uuid, mounts)` returns (matches by mountpoint or `UUID=`); for offline pools also match `/dev/disk/by-uuid/<uuid>`.
   - Behaviour change: destroy removes every fstab line that mounted the pool.
 
-- [ ] **114. "Mount" / "Mount degraded" on an offline pool ignores its fstab options**
-  `backend/bridge/handlers/storage/btrfs_pool.go:200-212`, `backend/common/btrfs/pool.go:193`
-  - Verified `[source]`: the mountpoint comes from fstab, but `btrfs.MountPool` passes only `MS_NOATIME` and `degraded`. With `UUID=x /srv/data btrfs subvol=@data,compress=zstd` the default subvolume (usually the top level) is mounted at /srv/data uncompressed; services then write into the top level and the data looks lost once `@data` is mounted again.
-  - Fix: when an fstab entry exists, mount through it (`mount [-o degraded] <mountpoint>` via the existing runner) or pass its filesystem options to `MountPool`.
-  - Behaviour change: the pool mounts exactly as fstab describes.
-
 - [ ] **115. The "real dpkg output" panel is empty on real hosts**
   `backend/bridge/handlers/packages/apt_term_log.go:62-63`
   - Verified `[host]`: term.log lines come from a pty and end in `\r\n` (2709 of 3036 lines on this machine); after splitting on `\n`, `line[LastIndexByte(line, '\r')+1:]` is empty and every line is dropped. The test fixture is LF-only.

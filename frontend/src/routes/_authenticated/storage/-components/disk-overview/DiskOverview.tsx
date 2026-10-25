@@ -325,16 +325,21 @@ const DiskOverview = () => {
       error: "Failed to unmount filesystem",
       toast: STORAGE_TOAST_META,
     });
-  useClearSelectionOnEscape(Boolean(expanded || selectedMountpoint), () => {
-    void navigate({
-      to: "/storage",
-      search: (previous) => ({
-        ...previous,
-        drive: undefined,
-        fs: undefined,
-      }),
-    });
-  });
+  useClearSelectionOnEscape(
+    Boolean(expanded || selectedMountpoint || search.pool || search.raid),
+    () => {
+      void navigate({
+        to: "/storage",
+        search: (previous) => ({
+          ...previous,
+          drive: undefined,
+          fs: undefined,
+          pool: undefined,
+          raid: undefined,
+        }),
+      });
+    },
+  );
   const handleToggle = (driveName: string) => {
     void navigate({
       to: "/storage",

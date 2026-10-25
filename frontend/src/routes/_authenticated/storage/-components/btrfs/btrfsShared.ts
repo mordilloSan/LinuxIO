@@ -1,8 +1,8 @@
 import type { BtrfsSnapshotRule } from "@/api";
 
 export const BTRFS_TOAST_META = {
-  label: "Open snapshots",
-  to: "/storage/snapshots",
+  label: "Open subvolumes",
+  to: "/storage/subvolumes",
 } as const;
 
 // Devices, health and settings live with the pool on the Disks tab.
@@ -10,6 +10,10 @@ export const BTRFS_POOL_TOAST_META = {
   label: "Open storage",
   to: "/storage",
 } as const;
+
+// LinuxIO's own top-level mounts vanish at reboot, so nothing outside LinuxIO
+// should point into them.
+export const TRANSIENT_TOP = "/run/linuxio/btrfs/";
 
 // Subvolumes that distros and container runtimes create for themselves. They
 // are hidden by default because snapshotting or deleting them helps nobody.
@@ -41,6 +45,36 @@ export const PROFILE_MIN_DEVICES: Record<string, number> = {
   raid1c3: 3,
   raid1c4: 4,
   raid10: 4,
+};
+
+// Ranked by disks lost without losing a copy, then by copies: dup survives
+// bad sectors but not a dead disk, so it sits between single and raid1.
+const PROFILE_PROTECTION: Record<string, number> = {
+  single: 0,
+  raid0: 0,
+  dup: 1,
+  raid1: 2,
+  raid10: 2,
+  raid1c3: 3,
+  raid1c4: 4,
+};
+
+/**
+ * The profiles that protect metadata at least as well as data is protected:
+ * weaker metadata lets a failure the data survives take the whole filesystem.
+ */
+export const metadataProfiles = (profiles: string[], data = "") =>
+  profiles.filter(
+    (profile) => PROFILE_PROTECTION[profile] >= (PROFILE_PROTECTION[data] ?? 0),
+  );
+
+export const METADATA_HINT =
+  "Filesystem structure and checksums. Kept at least as redundant as data.";
+
+/** dup on one disk, raid1 on two, raid1c3 from three; else the first allowed. */
+export const recommendedMetadata = (options: string[], disks: number) => {
+  const wanted = disks >= 3 ? "raid1c3" : disks === 2 ? "raid1" : "dup";
+  return options.includes(wanted) ? wanted : options.at(0);
 };
 
 // Hourly snapshots kept for a day, then daily, weekly and monthly ones: the

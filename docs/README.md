@@ -34,7 +34,7 @@ its plan lands.
 |-----|-----|
 | [Alerts](./alerts.md) | The file-backed alert store, who raises alerts and how, the `linuxio alert` CLI, bridge routes, the navbar bell, and what is deliberately not built (no email or webhook delivery). |
 | [Automatic Updates](./automatic-updates.md) | Per-distribution automatic-update providers, the systemd timers LinuxIO manages, and how the backend selects a provider from `/etc/os-release`. |
-| [Btrfs](./btrfs.md) | The Storage → Snapshots tab and pool details: top-level access, snapshot layout, rollback steps and leftovers, the hourly snapshot timer and retention, pre-update snapshots, device operations, replication over SSH, quotas and compression, files written on the host, and what is refused. |
+| [Btrfs](./btrfs.md) | The Storage → Subvolumes tab and pool details: top-level access, snapshot layout, rollback steps and leftovers, the hourly snapshot timer and retention, pre-update snapshots, device operations, replication over SSH, quotas and compression, files written on the host, and what is refused. |
 | [Rsync Backups](./rsync-backups.md) | Read-only rsync module (plain or over SSH) that TerraMaster TOS pulls from, and what the backup does and does not cover. |
 | [Scheduled Scripts](./TODO/scheduled-execution.md) | Script scheduling through systemd, execution accounts, task controls, and retained journal logs. |
 | [Storage Topology](./storage-topology.md) | Block-device and mount inventory, application path relationships, live activity, and interpretation limits. |

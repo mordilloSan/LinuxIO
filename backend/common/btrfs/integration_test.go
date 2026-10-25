@@ -26,6 +26,15 @@ func loopDevice(t *testing.T, file string, size int64) string {
 	if err = f.Truncate(size); err != nil {
 		t.Fatal(err)
 	}
+	dev, fd := attachLoop(t, f)
+	t.Cleanup(func() { detachLoop(fd) })
+	return dev
+}
+
+// attachLoop backs a free loop device with f and returns it with the
+// descriptor that detaches it.
+func attachLoop(t *testing.T, f *os.File) (string, int) {
+	t.Helper()
 	ctl, err := unix.Open("/dev/loop-control", unix.O_RDWR|unix.O_CLOEXEC, 0)
 	if err != nil {
 		t.Fatalf("open loop-control: %v", err)
@@ -48,18 +57,20 @@ func loopDevice(t *testing.T, file string, size int64) string {
 			unix.Close(fd)
 			t.Fatalf("attach %s: %v", dev, err)
 		}
-		t.Cleanup(func() {
-			_ = unix.IoctlSetInt(fd, unix.LOOP_CLR_FD, 0)
-			unix.Close(fd)
-		})
 		// Partition scanning lets PartitionDisk's table show up as loopNp1.
 		if err := unix.IoctlLoopSetStatus64(fd, &unix.LoopInfo64{Flags: unix.LO_FLAGS_PARTSCAN}); err != nil {
+			detachLoop(fd)
 			t.Fatalf("enable partition scanning on %s: %v", dev, err)
 		}
-		return dev
+		return dev, fd
 	}
 	t.Fatal("no free loop device")
-	return ""
+	return "", -1
+}
+
+func detachLoop(fd int) {
+	_ = unix.IoctlSetInt(fd, unix.LOOP_CLR_FD, 0)
+	unix.Close(fd)
 }
 
 func devicePaths(fs BtrfsFilesystem) []string {
@@ -108,9 +119,7 @@ func TestBtrfsIntegration(t *testing.T) {
 		t.Fatal("the btrfs integration test needs root")
 	}
 	dir := t.TempDir()
-	oldRecords := ScrubRecordPath
-	ScrubRecordPath = filepath.Join(dir, "scrub.json")
-	t.Cleanup(func() { ScrubRecordPath = oldRecords })
+	stubStatePaths(t, dir)
 	p := &itPool{t: t, ctx: context.Background(), mnt: filepath.Join(dir, "mnt")}
 	for i := range 3 {
 		// Sparse, and big enough to partition with PartitionSlack to spare.
@@ -120,7 +129,7 @@ func TestBtrfsIntegration(t *testing.T) {
 	uuid, err := CreatePool(p.ctx, "linuxio-it", "raid1", "raid1", p.disks[:2], true)
 	p.must("create pool", err)
 	p.uuid = uuid
-	p.must("mount pool", MountPool(p.disks[0], p.mnt, false))
+	p.must("mount pool", MountPool(p.ctx, p.disks[0], p.mnt, []string{"noatime"}, false))
 	t.Cleanup(func() { _ = unix.Unmount(p.mnt, 0) })
 	fs := p.filesystem()
 	if fs.Label != "linuxio-it" || len(fs.Devices) != 2 || fs.Degraded || !fs.HealthKnown || fs.TotalBytes == 0 {
@@ -291,7 +300,7 @@ func (p *itPool) partitioned() {
 
 	// With p1 mounted the kernel cannot reread the table, so the new
 	// partition must be added on its own.
-	p.must("mount partition", MountPool(part, p.mnt, false))
+	p.must("mount partition", MountPool(p.ctx, part, p.mnt, []string{"noatime"}, false))
 	p.t.Cleanup(func() { _ = unix.Unmount(p.mnt, 0) })
 	free, err := AddPartition(p.ctx, p.disks[1])
 	p.must("add partition", err)

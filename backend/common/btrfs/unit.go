@@ -3,11 +3,13 @@ package btrfs
 import "github.com/mordilloSan/LinuxIO/backend/common/version"
 
 // Systemd units that run timeline snapshots hourly via linuxio-btrfs-timer. The
-// health timer is packaged in packaging/systemd and only enabled here.
+// health timer and the boot-time degraded mount are packaged in
+// packaging/systemd and only enabled here.
 const (
 	SnapshotServiceName = "linuxio-btrfs-snapshot.service"
 	SnapshotTimerName   = "linuxio-btrfs-snapshot.timer"
 	HealthTimerName     = "linuxio-btrfs-health.timer"
+	DegradedServiceName = "linuxio-btrfs-degraded.service"
 	SnapshotUnitDir     = "/etc/systemd/system"
 )
 

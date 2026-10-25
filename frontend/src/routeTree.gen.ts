@@ -48,7 +48,7 @@ import { Route as AuthenticatedStorageLvmRouteImport } from './routes/_authentic
 import { Route as AuthenticatedStorageMountsRouteImport } from './routes/_authenticated/storage/mounts'
 import { Route as AuthenticatedStorageRsyncRouteImport } from './routes/_authenticated/storage/rsync'
 import { Route as AuthenticatedStorageSharesRouteImport } from './routes/_authenticated/storage/shares'
-import { Route as AuthenticatedStorageSnapshotsRouteImport } from './routes/_authenticated/storage/snapshots'
+import { Route as AuthenticatedStorageSubvolumesRouteImport } from './routes/_authenticated/storage/subvolumes'
 import { Route as AuthenticatedStorageTopologyRouteImport } from './routes/_authenticated/storage/topology'
 import { Route as AuthenticatedUpdatesIndexRouteImport } from './routes/_authenticated/updates/index'
 import { Route as AuthenticatedUpdatesHistoryRouteImport } from './routes/_authenticated/updates/history'
@@ -286,10 +286,10 @@ const AuthenticatedStorageSharesRoute =
     path: '/shares',
     getParentRoute: () => AuthenticatedStorageRouteRoute,
   } as any)
-const AuthenticatedStorageSnapshotsRoute =
-  AuthenticatedStorageSnapshotsRouteImport.update({
-    id: '/snapshots',
-    path: '/snapshots',
+const AuthenticatedStorageSubvolumesRoute =
+  AuthenticatedStorageSubvolumesRouteImport.update({
+    id: '/subvolumes',
+    path: '/subvolumes',
     getParentRoute: () => AuthenticatedStorageRouteRoute,
   } as any)
 const AuthenticatedStorageTopologyRoute =
@@ -384,7 +384,7 @@ export interface FileRoutesByFullPath {
   '/storage/mounts': typeof AuthenticatedStorageMountsRoute
   '/storage/rsync': typeof AuthenticatedStorageRsyncRoute
   '/storage/shares': typeof AuthenticatedStorageSharesRoute
-  '/storage/snapshots': typeof AuthenticatedStorageSnapshotsRoute
+  '/storage/subvolumes': typeof AuthenticatedStorageSubvolumesRoute
   '/storage/topology': typeof AuthenticatedStorageTopologyRoute
   '/updates/history': typeof AuthenticatedUpdatesHistoryRoute
   '/vm/disks': typeof AuthenticatedVmDisksRoute
@@ -427,7 +427,7 @@ export interface FileRoutesByTo {
   '/storage/mounts': typeof AuthenticatedStorageMountsRoute
   '/storage/rsync': typeof AuthenticatedStorageRsyncRoute
   '/storage/shares': typeof AuthenticatedStorageSharesRoute
-  '/storage/snapshots': typeof AuthenticatedStorageSnapshotsRoute
+  '/storage/subvolumes': typeof AuthenticatedStorageSubvolumesRoute
   '/storage/topology': typeof AuthenticatedStorageTopologyRoute
   '/updates/history': typeof AuthenticatedUpdatesHistoryRoute
   '/vm/disks': typeof AuthenticatedVmDisksRoute
@@ -480,7 +480,7 @@ export interface FileRoutesById {
   '/_authenticated/storage/mounts': typeof AuthenticatedStorageMountsRoute
   '/_authenticated/storage/rsync': typeof AuthenticatedStorageRsyncRoute
   '/_authenticated/storage/shares': typeof AuthenticatedStorageSharesRoute
-  '/_authenticated/storage/snapshots': typeof AuthenticatedStorageSnapshotsRoute
+  '/_authenticated/storage/subvolumes': typeof AuthenticatedStorageSubvolumesRoute
   '/_authenticated/storage/topology': typeof AuthenticatedStorageTopologyRoute
   '/_authenticated/updates/history': typeof AuthenticatedUpdatesHistoryRoute
   '/_authenticated/vm/disks': typeof AuthenticatedVmDisksRoute
@@ -533,7 +533,7 @@ export interface FileRouteTypes {
     | '/storage/mounts'
     | '/storage/rsync'
     | '/storage/shares'
-    | '/storage/snapshots'
+    | '/storage/subvolumes'
     | '/storage/topology'
     | '/updates/history'
     | '/vm/disks'
@@ -576,7 +576,7 @@ export interface FileRouteTypes {
     | '/storage/mounts'
     | '/storage/rsync'
     | '/storage/shares'
-    | '/storage/snapshots'
+    | '/storage/subvolumes'
     | '/storage/topology'
     | '/updates/history'
     | '/vm/disks'
@@ -628,7 +628,7 @@ export interface FileRouteTypes {
     | '/_authenticated/storage/mounts'
     | '/_authenticated/storage/rsync'
     | '/_authenticated/storage/shares'
-    | '/_authenticated/storage/snapshots'
+    | '/_authenticated/storage/subvolumes'
     | '/_authenticated/storage/topology'
     | '/_authenticated/updates/history'
     | '/_authenticated/vm/disks'
@@ -925,11 +925,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedStorageSharesRouteImport
       parentRoute: typeof AuthenticatedStorageRouteRoute
     }
-    '/_authenticated/storage/snapshots': {
-      id: '/_authenticated/storage/snapshots'
-      path: '/snapshots'
-      fullPath: '/storage/snapshots'
-      preLoaderRoute: typeof AuthenticatedStorageSnapshotsRouteImport
+    '/_authenticated/storage/subvolumes': {
+      id: '/_authenticated/storage/subvolumes'
+      path: '/subvolumes'
+      fullPath: '/storage/subvolumes'
+      preLoaderRoute: typeof AuthenticatedStorageSubvolumesRouteImport
       parentRoute: typeof AuthenticatedStorageRouteRoute
     }
     '/_authenticated/storage/topology': {
@@ -1094,7 +1094,7 @@ interface AuthenticatedStorageRouteRouteChildren {
   AuthenticatedStorageMountsRoute: typeof AuthenticatedStorageMountsRoute
   AuthenticatedStorageRsyncRoute: typeof AuthenticatedStorageRsyncRoute
   AuthenticatedStorageSharesRoute: typeof AuthenticatedStorageSharesRoute
-  AuthenticatedStorageSnapshotsRoute: typeof AuthenticatedStorageSnapshotsRoute
+  AuthenticatedStorageSubvolumesRoute: typeof AuthenticatedStorageSubvolumesRoute
   AuthenticatedStorageTopologyRoute: typeof AuthenticatedStorageTopologyRoute
   AuthenticatedStorageIndexRoute: typeof AuthenticatedStorageIndexRoute
 }
@@ -1105,7 +1105,7 @@ const AuthenticatedStorageRouteRouteChildren: AuthenticatedStorageRouteRouteChil
     AuthenticatedStorageMountsRoute: AuthenticatedStorageMountsRoute,
     AuthenticatedStorageRsyncRoute: AuthenticatedStorageRsyncRoute,
     AuthenticatedStorageSharesRoute: AuthenticatedStorageSharesRoute,
-    AuthenticatedStorageSnapshotsRoute: AuthenticatedStorageSnapshotsRoute,
+    AuthenticatedStorageSubvolumesRoute: AuthenticatedStorageSubvolumesRoute,
     AuthenticatedStorageTopologyRoute: AuthenticatedStorageTopologyRoute,
     AuthenticatedStorageIndexRoute: AuthenticatedStorageIndexRoute,
   }

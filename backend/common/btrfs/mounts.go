@@ -148,6 +148,20 @@ var vfsMountFlags = map[string]uintptr{
 	"relatime": unix.MS_RELATIME, "strictatime": unix.MS_STRICTATIME, "lazytime": unix.MS_LAZYTIME, "mand": unix.MS_MANDLOCK,
 }
 
+// kernelMountOptions drops the fstab options that mount(8) and systemd act
+// on themselves, and the ones naming a default mount(2) already applies,
+// which btrfs would reject.
+func kernelMountOptions(options []string) []string {
+	return slices.DeleteFunc(slices.Clone(options), func(o string) bool {
+		switch o {
+		case "auto", "noauto", "nofail", "user", "users", "nouser", "owner", "group", "_netdev",
+			"async", "exec", "suid", "dev", "atime", "diratime", "norelatime", "nostrictatime", "nolazytime", "iversion", "noiversion", "loud":
+			return true
+		}
+		return strings.HasPrefix(strings.ToLower(o), "x-") || strings.HasPrefix(o, "comment=")
+	})
+}
+
 // splitMountOptions separates mount flags from filesystem options; "rw" and
 // "defaults" add nothing.
 func splitMountOptions(options []string) (flags uintptr, data string) {

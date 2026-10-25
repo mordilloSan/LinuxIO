@@ -1,13 +1,12 @@
 import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
-import { useState, type CSSProperties } from "react";
+import type { CSSProperties } from "react";
 
 import { linuxio, type BtrfsFilesystem } from "@/api";
 import { STATUS_COLOR, Tile } from "@/components/cards/EntityCardKit";
+import TabSelector from "@/components/tabbar/TabSelector";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
-import AppCollapse from "@/components/ui/AppCollapse";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
-import SectionHeader from "@/components/ui/SectionHeader";
 import { useCapability } from "@/hooks/useCapabilities";
 import { DASHBOARD_CARD_GAP } from "@/theme/constants";
 import { formatRelativeAge } from "@/utils/formatters";
@@ -17,10 +16,13 @@ import { isSystemSubvolume } from "./btrfsShared";
 import BtrfsSnapshotRulesCard from "./BtrfsSnapshotRulesCard";
 import BtrfsSnapshotsCard from "./BtrfsSnapshotsCard";
 import BtrfsSubvolumesCard from "./BtrfsSubvolumesCard";
+import { BTRFS_VIEWS, type BtrfsView } from "./btrfsViews";
 
 interface BtrfsPageProps {
   selectedUuid?: string;
   onSelect: (uuid: string) => void;
+  view: BtrfsView;
+  onView: (view: BtrfsView) => void;
 }
 
 const pageStyle: CSSProperties = {
@@ -88,12 +90,16 @@ const BtrfsTiles = ({ uuid }: { uuid: string }) => {
   );
 };
 
-const BtrfsFilesystems = ({ selectedUuid, onSelect }: BtrfsPageProps) => {
+const BtrfsFilesystems = ({
+  selectedUuid,
+  onSelect,
+  view,
+  onView,
+}: BtrfsPageProps) => {
   const { data: filesystems } = useSuspenseQuery({
     ...linuxio.storage.btrfs_list,
     refetchInterval: 10000,
   });
-  const [advanced, setAdvanced] = useState(false);
 
   if (filesystems.length === 0) {
     return (
@@ -106,43 +112,49 @@ const BtrfsFilesystems = ({ selectedUuid, onSelect }: BtrfsPageProps) => {
 
   return (
     <div style={pageStyle}>
-      {filesystems.length > 1 && (
-        <AppSelect
-          label="Filesystem"
-          onChange={(event) => onSelect(event.target.value)}
-          style={{ alignSelf: "flex-start", minWidth: 320 }}
-          value={selected.uuid}
-        >
-          {filesystems.map((fs) => (
-            <option key={fs.uuid} value={fs.uuid}>
-              {filesystemLabel(fs)}
-            </option>
-          ))}
-        </AppSelect>
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          gap: "var(--app-space-16)",
+        }}
+      >
+        <TabSelector onChange={onView} options={BTRFS_VIEWS} value={view} />
+        {filesystems.length > 1 && (
+          <AppSelect
+            label="Filesystem"
+            onChange={(event) => onSelect(event.target.value)}
+            style={{ minWidth: 320 }}
+            value={selected.uuid}
+          >
+            {filesystems.map((fs) => (
+              <option key={fs.uuid} value={fs.uuid}>
+                {filesystemLabel(fs)}
+              </option>
+            ))}
+          </AppSelect>
+        )}
+      </div>
+      {view === "subvolumes" && (
+        <BtrfsSubvolumesCard filesystem={selected} key={selected.uuid} />
       )}
-      <BtrfsTiles uuid={selected.uuid} />
-      <BtrfsSnapshotsCard
-        key={`snapshots-${selected.uuid}`}
-        uuid={selected.uuid}
-      />
-      <BtrfsSnapshotRulesCard
-        key={`rules-${selected.uuid}`}
-        uuid={selected.uuid}
-      />
-      <section>
-        <SectionHeader
-          controlsId="btrfs-advanced"
-          expanded={advanced}
-          onToggle={() => setAdvanced((current) => !current)}
-          title="Advanced"
-        />
-        <AppCollapse in={advanced} unmountOnExit>
-          <div id="btrfs-advanced" style={pageStyle}>
-            <BtrfsSubvolumesCard uuid={selected.uuid} />
-            <BtrfsReplicationCard key={selected.uuid} uuid={selected.uuid} />
-          </div>
-        </AppCollapse>
-      </section>
+      {view === "snapshots" && (
+        <>
+          <BtrfsTiles uuid={selected.uuid} />
+          <BtrfsSnapshotsCard
+            key={`snapshots-${selected.uuid}`}
+            uuid={selected.uuid}
+          />
+          <BtrfsSnapshotRulesCard
+            key={`rules-${selected.uuid}`}
+            uuid={selected.uuid}
+          />
+        </>
+      )}
+      {view === "replication" && (
+        <BtrfsReplicationCard key={selected.uuid} uuid={selected.uuid} />
+      )}
     </div>
   );
 };

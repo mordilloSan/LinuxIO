@@ -213,14 +213,42 @@ describe("BtrfsDevicesCard actions", () => {
     render(<BtrfsDevicesCard filesystem={filesystem(2)} />);
 
     const dialog = await openBalance(user);
-    await pick(user, dialog, "Data profile", "raid1");
+    await pick(user, dialog, "Metadata profile", "raid1");
     await user.click(within(dialog).getByRole("button", { name: "Balance" }));
 
     expect(mocks.submit.mock.calls[0][1]).toEqual({
       uuid: "uuid-1",
-      dataProfile: "raid1",
+      metadataProfile: "raid1",
     });
-    expect(mocks.submit.mock.calls[0][1]).not.toHaveProperty("metadataProfile");
+    expect(mocks.submit.mock.calls[0][1]).not.toHaveProperty("dataProfile");
+  });
+
+  it("converts metadata weaker than the new data profile with it", async () => {
+    const user = userEvent.setup();
+    render(<BtrfsDevicesCard filesystem={filesystem(2)} />);
+
+    const dialog = await openBalance(user);
+    await pick(user, dialog, "Data profile", "raid1");
+    const metadata = within(dialog).getByRole("combobox", {
+      name: "Metadata profile",
+    });
+    // The current dup metadata would lose the pool with one disk.
+    expect(metadata).toHaveTextContent("raid1");
+    await user.click(metadata);
+    expect(
+      screen.queryByRole("option", { name: "Keep current (dup)" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "dup" }),
+    ).not.toBeInTheDocument();
+    await user.click(metadata);
+    await user.click(within(dialog).getByRole("button", { name: "Balance" }));
+
+    expect(mocks.submit).toHaveBeenCalledWith("btrfs_balance", {
+      uuid: "uuid-1",
+      dataProfile: "raid1",
+      metadataProfile: "raid1",
+    });
   });
 
   it("does not count missing devices toward profile availability", async () => {

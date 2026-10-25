@@ -23,7 +23,8 @@ export default defineConfig({
     target: "es2022",
   },
   cacheDir: path.join(frontendRoot, "node_modules/.vite/browser"),
-  plugins: [react()],
+  // Same compiler as the production build, so fixtures exercise shipped code.
+  plugins: [react({ compiler: { target: "19" } })],
   preview: {
     host: "127.0.0.1",
     port: 4174,

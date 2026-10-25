@@ -188,15 +188,13 @@ function isUseCallbackBoundary(boundary) {
   );
 }
 
+// Severity is not a bailout signal: current Todo bailouts arrive as "Advice".
 function isRecoverableCompilerDiagnostic(diagnostic) {
-  return (
-    diagnostic.severity === "Warning" &&
-    [diagnostic.message, diagnostic.codeframe].some(
-      (text) =>
-        typeof text === "string" &&
-        (text.includes(legacyReactCompilerMarker) ||
-          currentReactCompilerMarker.test(text)),
-    )
+  return [diagnostic.message, diagnostic.codeframe].some(
+    (text) =>
+      typeof text === "string" &&
+      (text.includes(legacyReactCompilerMarker) ||
+        currentReactCompilerMarker.test(text)),
   );
 }
 
@@ -421,6 +419,8 @@ async function main() {
       const sourceText = readFileSync(file, "utf8");
       const transformResult = await transform(file, sourceText, {
         reactCompiler: {
+          // Recoverable bailouts are only returned when asked for.
+          reportDiagnostics: true,
           target: "19",
         },
         jsx: { runtime: "automatic" },

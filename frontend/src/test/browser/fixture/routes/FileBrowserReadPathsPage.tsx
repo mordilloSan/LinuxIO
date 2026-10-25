@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 import { linuxio } from "@/api";
 import DirectoryTree from "@/components/pathpicker/DirectoryTree";
@@ -65,19 +65,14 @@ function CacheState({
   queryKey: readonly unknown[];
   testId: string;
 }) {
-  const [, setVersion] = useState(0);
-
-  useEffect(
-    () =>
-      queryClient
-        .getQueryCache()
-        .subscribe(() => setVersion((version) => version + 1)),
-    [],
+  const state = useSyncExternalStore(
+    (onChange) => queryClient.getQueryCache().subscribe(onChange),
+    () => cacheState(queryKey),
   );
 
   return (
     <output data-testid={testId}>
-      {label}: {cacheState(queryKey)}
+      {label}: {state}
     </output>
   );
 }

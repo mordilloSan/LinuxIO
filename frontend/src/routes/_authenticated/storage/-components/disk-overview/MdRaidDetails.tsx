@@ -264,7 +264,7 @@ const MdRaidDetails = ({ array }: { array: MDArray }) => {
                 size="small"
                 variant="outlined"
               >
-                Stop
+                Stop check
               </AppButton>
             ) : (
               <>

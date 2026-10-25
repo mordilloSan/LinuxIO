@@ -18,7 +18,13 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { formatFileSize } from "@/utils/formatters";
 
-import { PROFILE_MIN_DEVICES, usableBytes } from "./btrfsShared";
+import {
+  METADATA_HINT,
+  metadataProfiles,
+  PROFILE_MIN_DEVICES,
+  recommendedMetadata,
+  usableBytes,
+} from "./btrfsShared";
 
 interface BtrfsCreatePoolDialogProps {
   isPending?: boolean;
@@ -28,9 +34,8 @@ interface BtrfsCreatePoolDialogProps {
   pooledDevices: string[];
 }
 
-// Mirrors the mkfs.btrfs defaults: redundancy as soon as there is a second disk.
-const defaultProfile = (kind: "data" | "metadata", disks: number) =>
-  disks >= 2 ? "raid1" : kind === "data" ? "single" : "dup";
+// The mkfs.btrfs data default: redundancy as soon as there is a second disk.
+const defaultData = (disks: number) => (disks >= 2 ? "raid1" : "single");
 
 /**
  * Formats free disks, and new partitions in disks' unpartitioned space, as
@@ -76,11 +81,15 @@ const BtrfsCreatePoolDialog = ({
   const profiles = Object.keys(PROFILE_MIN_DEVICES).filter(
     (profile) => PROFILE_MIN_DEVICES[profile] <= Math.max(count, 1),
   );
-  // A profile the disk count no longer allows falls back to the default.
-  const chosen = (profile: string, kind: "data" | "metadata") =>
-    profiles.includes(profile) ? profile : defaultProfile(kind, count);
-  const dataValue = chosen(dataProfile, "data");
-  const metadataValue = chosen(metadataProfile, "metadata");
+  // A profile the disks or the data profile no longer allow falls back to the
+  // default.
+  const dataValue = profiles.includes(dataProfile)
+    ? dataProfile
+    : defaultData(count);
+  const metadataOptions = metadataProfiles(profiles, dataValue);
+  const metadataValue = metadataOptions.includes(metadataProfile)
+    ? metadataProfile
+    : (recommendedMetadata(metadataOptions, count) ?? dataValue);
   const sizes = [
     ...devices.map(
       (path) => free.find((entry) => entry.path === path)?.sizeBytes ?? 0,
@@ -101,6 +110,7 @@ const BtrfsCreatePoolDialog = ({
 
   const profileSelect = (
     title: string,
+    options: string[],
     value: string,
     onChange: (profile: string) => void,
   ) => (
@@ -110,7 +120,7 @@ const BtrfsCreatePoolDialog = ({
       onChange={(event) => onChange(event.target.value)}
       value={value}
     >
-      {profiles.map((profile) => (
+      {options.map((profile) => (
         <option key={profile} value={profile}>
           {profile}
         </option>
@@ -129,10 +139,6 @@ const BtrfsCreatePoolDialog = ({
             gap: "var(--app-space-12)",
           }}
         >
-          <AppAlert severity="warning">
-            Everything on the selected disks is erased. Selected free space gets
-            a new partition and the rest of its disk is left alone.
-          </AppAlert>
           <AppTextField
             fullWidth
             label="Name"
@@ -146,7 +152,7 @@ const BtrfsCreatePoolDialog = ({
             onChange={(event) => setMountpoint(event.target.value)}
             value={target}
           />
-          {profileSelect("Data profile", dataValue, setDataProfile)}
+          {profileSelect("Data profile", profiles, dataValue, setDataProfile)}
           {count > 0 && (
             <AppTypography color="text.secondary" variant="caption">
               {`About ${formatFileSize(usable)} usable for data from ${formatFileSize(
@@ -154,7 +160,15 @@ const BtrfsCreatePoolDialog = ({
               )} of disks.`}
             </AppTypography>
           )}
-          {profileSelect("Metadata profile", metadataValue, setMetadataProfile)}
+          {profileSelect(
+            "Metadata profile",
+            metadataOptions,
+            metadataValue,
+            setMetadataProfile,
+          )}
+          <AppTypography color="text.secondary" variant="caption">
+            {METADATA_HINT}
+          </AppTypography>
           <div>
             <AppTypography variant="subtitle2">Disks</AppTypography>
             {free.length === 0 && spaces.length === 0 && (
@@ -208,15 +222,23 @@ const BtrfsCreatePoolDialog = ({
             }
             label="Force (wipe existing filesystem signatures)"
           />
-          <AppFormControlLabel
-            control={
-              <AppSwitch
-                checked={partition}
-                onChange={(_, checked) => setPartition(checked)}
-              />
-            }
-            label="Partition the whole disks, leaving 1 GiB free so a slightly smaller replacement disk fits"
-          />
+          {free.length > 0 && (
+            <AppFormControlLabel
+              control={
+                <AppSwitch
+                  checked={partition}
+                  onChange={(_, checked) => setPartition(checked)}
+                />
+              }
+              label="Partition the whole disks, leaving 1 GiB free so a slightly smaller replacement disk fits"
+            />
+          )}
+          {/* Below the disk list so it appearing does not move the checkboxes. */}
+          {devices.length > 0 && (
+            <AppAlert severity="warning">
+              {`Everything on ${devices.join(", ")} is erased.`}
+            </AppAlert>
+          )}
         </div>
       </AppDialogContent>
       <AppDialogActions>

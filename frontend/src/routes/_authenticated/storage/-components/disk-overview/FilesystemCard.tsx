@@ -202,8 +202,8 @@ const FilesystemCardDetails = ({
             </AppButton>
           )}
           {isBtrfs && (
-            <AppRouterLinkButton to="/storage/snapshots" variant="outlined">
-              Manage snapshots
+            <AppRouterLinkButton to="/storage/subvolumes" variant="outlined">
+              Manage subvolumes
             </AppRouterLinkButton>
           )}
           {canUnmountFilesystem(filesystem) && (

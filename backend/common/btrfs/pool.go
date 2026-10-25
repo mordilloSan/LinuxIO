@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -27,6 +28,7 @@ const (
 	// Field offsets in struct btrfs_super_block.
 	superFSID       = 32
 	superMagicAt    = 64
+	superGeneration = 72
 	superTotalBytes = 112
 	superNumDevices = 136
 	superDevID      = 201 // dev_item.devid
@@ -78,6 +80,9 @@ type Superblock struct {
 	DevID      uint64
 	NumDevices uint64
 	TotalBytes uint64
+	// Generation is the last transaction written to this device; every
+	// commit stamps it on each device it writes.
+	Generation uint64
 }
 
 var errNotBtrfs = errors.New("not a btrfs device")
@@ -119,6 +124,7 @@ func parseSuperblock(b []byte) (Superblock, error) {
 		DevID:      binary.LittleEndian.Uint64(b[superDevID:]),
 		NumDevices: binary.LittleEndian.Uint64(b[superNumDevices:]),
 		TotalBytes: binary.LittleEndian.Uint64(b[superTotalBytes:]),
+		Generation: binary.LittleEndian.Uint64(b[superGeneration:]),
 	}, nil
 }
 
@@ -179,21 +185,34 @@ func CreatePool(ctx context.Context, label, data, meta string, devices []string,
 // mountFS is unix.Mount, a var so tests can stub it.
 var mountFS = unix.Mount
 
-// MountPool mounts the filesystem device belongs to at mountpoint, creating
-// the directory. Degraded lets a filesystem with a missing device mount.
-// Devices must be registered first.
-func MountPool(device, mountpoint string, degraded bool) error {
+// MountPool mounts the filesystem device belongs to at mountpoint with its
+// fstab options, creating the directory, and records the pool for the boot
+// check (see MountDegradedPools). Degraded lets a filesystem with a missing
+// device mount. Devices must be registered first.
+func MountPool(ctx context.Context, device, mountpoint string, options []string, degraded bool) error {
 	if err := os.MkdirAll(mountpoint, 0o755); err != nil {
 		return fmt.Errorf("create mountpoint: %w", err)
 	}
-	data := ""
 	if degraded {
-		data = "degraded"
+		options = append(slices.Clone(options), "degraded")
 	}
-	if err := mountFS(device, mountpoint, "btrfs", unix.MS_NOATIME, data); err != nil {
+	flags, data := splitMountOptions(kernelMountOptions(options))
+	if err := mountFS(device, mountpoint, "btrfs", flags, data); err != nil {
 		return fmt.Errorf("mount %s at %s: %w", device, mountpoint, err)
 	}
+	recordMount(ctx, mountpoint, degraded)
 	return nil
+}
+
+// MountOfflinePool registers the present devices of pool with the kernel and
+// mounts it at mountpoint with options.
+func MountOfflinePool(ctx context.Context, pool BtrfsOfflinePool, mountpoint string, options []string, degraded bool) error {
+	for _, d := range pool.Devices {
+		if err := RegisterDevice(d); err != nil {
+			return err
+		}
+	}
+	return MountPool(ctx, pool.Devices[0], mountpoint, options, degraded)
 }
 
 // WipeDevice zeroes the primary superblock magic of an unmounted btrfs
@@ -236,6 +255,9 @@ type BtrfsOfflinePool struct {
 	// Mountpoint is where /etc/fstab mounts the filesystem; the caller that
 	// knows fstab fills it.
 	Mountpoint string `json:"mountpoint"`
+	// devids and generations hold each of Devices' superblock devid and
+	// generation.
+	devids, generations []uint64
 }
 
 // FindOfflinePools reads the superblocks of candidates and groups the
@@ -271,6 +293,8 @@ func FindOfflinePools(ctx context.Context, candidates []string) ([]BtrfsOfflineP
 			pools = append(pools, BtrfsOfflinePool{UUID: sb.UUID, Label: sb.Label, NumDevices: int(sb.NumDevices), TotalBytes: sb.TotalBytes})
 		}
 		pools[i].Devices = append(pools[i].Devices, device)
+		pools[i].devids = append(pools[i].devids, sb.DevID)
+		pools[i].generations = append(pools[i].generations, sb.Generation)
 	}
 	return pools, nil
 }

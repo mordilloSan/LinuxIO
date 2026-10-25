@@ -620,7 +620,7 @@ inherits its ancestor's.
 | `/storage/mounts` | `storage/mounts.tsx` | `loadRouteQueries` ×2 | — | — | — |
 | `/storage/rsync` | `storage/rsync.tsx` | `loadRouteQueries` ×2 | — | — | `requireAccess` privileged |
 | `/storage/shares` | `storage/shares.tsx` | `loadRouteQueries` ×2 | — | — | — |
-| `/storage/snapshots` | `storage/snapshots.tsx` | `loadRouteQueries` ×1 | — | `fs` | `requireAccess` btrfs |
+| `/storage/subvolumes` | `storage/subvolumes.tsx` | `loadRouteQueries` ×1 | — | `fs`, `view` | `requireAccess` btrfs |
 | `/storage/topology` | `storage/topology.tsx` | `loadRouteQueries` ×1 | — | `node` | — |
 | `/terminal` | `terminal/route.tsx` | `loadRouteTransport` | — | — | — |
 | `/updates` | `updates/route.tsx` | — | — | — | — |
@@ -679,7 +679,7 @@ the whole tree:
 | `_authenticated.tsx` | `requireAuthentication` | signed in |
 | `sign-in/route.tsx` | `requireGuest` | signed **out** |
 | `docker/route.tsx` | `requireAccess` | `dockerAvailable` |
-| `storage/snapshots.tsx` | `requireAccess` | `btrfsAvailable` + privileged |
+| `storage/subvolumes.tsx` | `requireAccess` | `btrfsAvailable` + privileged |
 | `hardware/route.tsx` | `requireAccess` | `lmSensorsAvailable` |
 | `vm/route.tsx` | `requireAccess` | `libvirtAvailable` + privileged |
 | `network/wireguard.tsx` | `requireAccess` | `wireguardAvailable` + privileged |

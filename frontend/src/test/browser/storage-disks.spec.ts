@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("storage disks clear the drive and volume selection with Escape", async ({
+test("storage disks clear the drive, volume and RAID selection with Escape", async ({
   page,
 }) => {
   await page.goto("/storage");
@@ -23,4 +23,11 @@ test("storage disks clear the drive and volume selection with Escape", async ({
   await expect(
     page.getByRole("button", { name: "Drive details nvme0n1" }).first(),
   ).toBeVisible();
+
+  await page.goto("/storage?raid=md127");
+  await expect(
+    page.getByRole("button", { name: "Drive details nvme0n1" }).first(),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page).toHaveURL(/\/storage$/);
 });

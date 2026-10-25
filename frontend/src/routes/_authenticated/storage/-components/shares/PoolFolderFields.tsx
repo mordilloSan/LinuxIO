@@ -4,6 +4,8 @@ import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
 
+import { TRANSIENT_TOP } from "../btrfs/btrfsShared";
+
 /** A pool a new shared folder can live on: mounted at its top level. */
 interface SharePool {
   uuid: string;
@@ -18,10 +20,6 @@ export interface PoolFolder {
   limitGiB: string;
   snapshots: boolean;
 }
-
-// LinuxIO's own top-level mounts vanish at reboot, so a folder there would
-// lose its share path.
-const TRANSIENT_TOP = "/run/linuxio/btrfs/";
 
 /** Pools with a permanent mount of their top level, where a new subvolume appears as a folder. */
 export const sharePools = (filesystems: BtrfsFilesystem[]): SharePool[] =>

@@ -276,11 +276,13 @@ func ReplaceResult(ctx context.Context, uuid string, id int, newDevice string) (
 
 // BalanceOptions selects what a balance rewrites: a nil profile keeps the
 // current one, DataUsageMax limits data to chunks used at most that percent
-// (which frees unallocated space), and no option at all balances everything.
+// (which frees unallocated space), Soft converts only the chunks not already
+// in the target profile, and no option at all balances everything.
 type BalanceOptions struct {
 	DataProfile     *string
 	MetadataProfile *string
 	DataUsageMax    *int
+	Soft            bool
 }
 
 // Balance runs a balance to completion, reporting progress; canceling ctx
@@ -298,14 +300,18 @@ func Balance(ctx context.Context, uuid string, opts BalanceOptions, report func(
 		return fmt.Errorf("usage filter %d is not a percentage", *opts.DataUsageMax)
 	}
 	var args balanceArgs
+	convert := uint64(balanceArgsConvert)
+	if opts.Soft {
+		convert |= balanceArgsSoft
+	}
 	if opts.DataProfile != nil {
 		args.Flags |= balanceData
-		args.Data.Flags |= balanceArgsConvert
+		args.Data.Flags |= convert
 		args.Data.Target = profileFlags[*opts.DataProfile]
 	}
 	if opts.MetadataProfile != nil {
 		args.Flags |= balanceMetadata | balanceSystem
-		args.Meta.Flags |= balanceArgsConvert
+		args.Meta.Flags |= convert
 		args.Meta.Target = profileFlags[*opts.MetadataProfile]
 		args.Sys = args.Meta
 	}
