@@ -3,6 +3,8 @@ package docker
 import (
 	"context"
 	"encoding/base64"
+	"errors"
+	"log/slog"
 	"net"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
@@ -275,6 +277,12 @@ func (h dockerHandlers) handleValidateStackDirectory(ctx context.Context, req ap
 
 func (h dockerHandlers) handleGetIconURI(ctx context.Context, req apischema.IdentifierRequest) (apischema.DockerIconURIResponse, error) {
 	uri, err := GetIconURI(ctx, req.Identifier)
+	if errors.Is(err, errIconNotFound) {
+		// No icon is a normal answer, not a failed route: the frontend shows
+		// its bundled fallback and must not warn or retry.
+		slog.Debug("icon not found", "identifier", req.Identifier, "error", err)
+		return apischema.DockerIconURIResponse{}, nil
+	}
 	return apischema.DockerIconURIResponse{URI: uri}, err
 }
 

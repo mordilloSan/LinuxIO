@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
@@ -111,6 +112,18 @@ func TestGetIconRemembersMissingIcon(t *testing.T) {
 	}
 	if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("miss marker after download: Stat error = %v, want not exist", err)
+	}
+}
+
+func TestGetIconURIHandlerAnswersMissingIconWithEmptyURI(t *testing.T) {
+	withTempIconCacheDirs(t)
+	stubIconTransport(t, func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusNotFound, Body: io.NopCloser(strings.NewReader(""))}, nil
+	})
+
+	got, err := dockerHandlers{}.handleGetIconURI(context.Background(), apischema.IdentifierRequest{Identifier: "ghost"})
+	if err != nil || got.URI != "" {
+		t.Fatalf("handleGetIconURI(ghost) = %+v, %v; want empty URI and no error", got, err)
 	}
 }
 
