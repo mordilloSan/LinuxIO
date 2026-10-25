@@ -30,9 +30,17 @@ Handlers should not duplicate the route-level admin check.
 
 ## Choosing Privileged Routes
 
-Mark a route privileged when it can alter host state, secrets, users, services, storage, networking, packages, containers, or daemon configuration.
+The rule: a route whose handler needs root must be declared `Privileged()`. The bridge runs as the logged-in user and stays root only when sudoers permits it, so a route that writes under `/etc` or `/var/lib`, mounts or unmounts, issues block-device or filesystem ioctls, or talks to systemd, NetworkManager, Docker, libvirt, PackageKit or the account database only works in a privileged bridge. Without the guard a non-sudo session sees the route, starts it, and gets a permission error from the host part-way through instead of a 403 before anything ran. It is not a privilege escalation, but it is a bug: declare the guard with the route, not inside the handler.
 
 Read-only system inventory can usually remain unprivileged unless it exposes sensitive information.
+
+To list the candidates (mutations with neither guard; routes that mutate only through polkit-gated D-Bus calls such as hostname, datetime, login1, systemd and NetworkManager also appear here and are a separate decision):
+
+```sh
+rg -n 'apischema\.(Call|Task|Job)\[' backend/bridge/handlers -g '!*_test.go' | rg -v 'Privileged\(\)|RetrySafe\(\)'
+```
+
+Known gaps from the 2026-10-25 mutation survey, not yet fixed: `storage.create_lv`, `storage.delete_lv`, `storage.resize_lv`, the NFS and CIFS mount, unmount and remount routes, `storage.unmount_filesystem`, `storage.set_btrfs_maintenance`, `storage.run_smart_test` and `docker.set_container_auto_update`. Remove each from this list when its binding gains `Privileged()`.
 
 ## Testing
 
