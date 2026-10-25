@@ -62,7 +62,7 @@ func CreateBtrfsPool(ctx context.Context, req apischema.BtrfsPoolCreateRequest) 
 	if err != nil {
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("create btrfs pool %q: %w", req.Label, err)
 	}
-	if err := btrfs.MountPool(members[0], req.Mountpoint, false); err != nil {
+	if err := btrfs.MountPool(ctx, members[0], req.Mountpoint, btrfsPoolFstabOptions, false); err != nil {
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("pool %s was created but not mounted: %w", uuid, err)
 	}
 	if err := addToFstab("UUID="+uuid, req.Mountpoint, "btrfs", btrfsPoolFstabOptions); err != nil {
@@ -201,8 +201,8 @@ func poolMountpoints(fs btrfs.BtrfsFilesystem) ([]string, error) {
 	return mountpoints, nil
 }
 
-// MountBtrfsPool mounts an unmounted pool, adding an fstab entry when it has
-// none.
+// MountBtrfsPool mounts an unmounted pool with its fstab options, adding an
+// fstab entry when it has none.
 func MountBtrfsPool(ctx context.Context, req apischema.BtrfsPoolMountRequest) (btrfs.BtrfsFilesystem, error) {
 	pool, err := findOfflinePool(ctx, req.UUID)
 	if err != nil {
@@ -211,13 +211,9 @@ func MountBtrfsPool(ctx context.Context, req apischema.BtrfsPoolMountRequest) (b
 	if len(pool.Devices) < pool.NumDevices && !req.Degraded {
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("pool %s is missing %d of %d devices; mount it degraded to use it anyway", pool.UUID, pool.NumDevices-len(pool.Devices), pool.NumDevices)
 	}
-	for _, d := range pool.Devices {
-		if err := btrfs.RegisterDevice(d); err != nil {
-			return btrfs.BtrfsFilesystem{}, err
-		}
-	}
 	mountpoint := pool.Mountpoint
 	persist := mountpoint == ""
+	options := btrfsPoolFstabOptions
 	if persist {
 		devices, err := ListBlockDevices(ctx)
 		if err != nil {
@@ -227,8 +223,11 @@ func MountBtrfsPool(ctx context.Context, req apischema.BtrfsPoolMountRequest) (b
 		if err := checkPoolMountpoint(mountpoint, devices, getFstabEntries()); err != nil {
 			return btrfs.BtrfsFilesystem{}, err
 		}
+	} else {
+		// subvol=, compress= and the like decide what the mount shows.
+		options = strings.Split(getFstabEntries()[mountpoint].options, ",")
 	}
-	if err := btrfs.MountPool(pool.Devices[0], mountpoint, req.Degraded); err != nil {
+	if err := btrfs.MountOfflinePool(ctx, pool, mountpoint, options, req.Degraded); err != nil {
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("mount btrfs pool %s at %s: %w", pool.UUID, mountpoint, err)
 	}
 	if persist {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"reflect"
 	"testing"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -102,6 +103,19 @@ func TestScrubStatusRunning(t *testing.T) {
 	s := got[0].Scrub
 	if s.Status != "running" || s.BytesScrubbed != 10<<30 || s.ErrorCount != 2 || s.UncorrectableErrors != 1 || s.CorrectedErrors != 1 || s.Percent <= 12 || s.Percent >= 13 {
 		t.Fatalf("scrub = %+v", s)
+	}
+}
+
+// A crash mid-scrub leaves its record at "running"; with no device
+// scrubbing it reads as aborted, so Scrub is offered again and a resync is
+// not held back forever.
+func TestScrubStatusInterruptedRecord(t *testing.T) {
+	stubKernel(t, raid1Kernel())
+	started := time.Now().Add(-time.Hour)
+	saveScrubRecord(dataUUID, BtrfsScrubStatus{Status: "running", StartedAt: &started})
+	got, err := ListFilesystems(context.Background())
+	if err != nil || len(got) != 1 || got[0].Scrub.Status != "aborted" {
+		t.Fatalf("got=%+v err=%v; want an aborted scrub", got, err)
 	}
 }
 

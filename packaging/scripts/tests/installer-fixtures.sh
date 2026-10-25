@@ -228,12 +228,19 @@ for unit in linuxio-indexer.socket linuxio-indexer.service linuxio-indexer-index
 	assert_line "$unit" "$unit_list" "installer unit list"
 	grep -Fqx 'PartOf=linuxio.target' "${REPO_ROOT}/packaging/systemd/${unit}" || fail "${unit} is not part of linuxio.target"
 done
+# Boot-time and resync jobs must outlive a linuxio.target restart.
+for unit in linuxio-btrfs-degraded.service linuxio-btrfs-resync@.service; do
+	assert_line "$unit" "$unit_list" "installer unit list"
+	if grep -Fq 'PartOf=linuxio.target' "${REPO_ROOT}/packaging/systemd/${unit}"; then
+		fail "${unit} must not stop with linuxio.target"
+	fi
+done
 if grep -Eq 'sync_indexer_tcp_listener|--tcp-listener-only|linuxio-indexer config' "$installer"; then
 	fail "installer still mutates indexer runtime configuration"
 fi
 grep -Fq 'THIRD_PARTY_NOTICES.md' "$installer" || fail "installer does not install third-party notices"
 grep -Fq 'systemctl enable "$INDEXER_TIMER_UNIT_NAME"' "$installer" || fail "installer does not enable the timer on first install"
-grep -Fq 'systemctl enable "$BTRFS_HEALTH_TIMER_UNIT_NAME"' "$installer" || fail "installer does not enable the btrfs health timer"
+grep -Fq 'for unit in "$BTRFS_HEALTH_TIMER_UNIT_NAME" "$BTRFS_DEGRADED_UNIT_NAME"; do' "$installer" || fail "installer does not enable the btrfs health timer and degraded mount"
 if grep -Fq 'indexer.json' "$installer"; then
 	fail "installer still references removed indexer.json"
 fi

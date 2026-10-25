@@ -149,14 +149,21 @@ func TestMountPool(t *testing.T) {
 		return nil
 	}
 	t.Cleanup(func() { mountFS = old })
+	stubPoolGeneration(t, dataUUID, 7, "/dev/sdb", "")
 	target := filepath.Join(t.TempDir(), "mnt", "tank")
 
-	if err := MountPool("/dev/sdb", target, true); err != nil {
+	// fstab-only options are dropped, VFS ones become flags and the rest,
+	// such as subvol=, reaches btrfs.
+	options := []string{"defaults", "noatime", "nofail", "x-systemd.device-timeout=10s", "subvol=@data", "compress=zstd"}
+	if err := MountPool(context.Background(), "/dev/sdb", target, options, true); err != nil {
 		t.Fatal(err)
 	}
-	want := []any{"/dev/sdb", target, "btrfs", uintptr(unix.MS_NOATIME), "degraded"}
+	want := []any{"/dev/sdb", target, "btrfs", uintptr(unix.MS_NOATIME), "subvol=@data,compress=zstd,degraded"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("mount = %v, want %v", got, want)
+	}
+	if states, err := loadPoolStates(); err != nil || !reflect.DeepEqual(states[dataUUID], poolState{Generation: 7, Degraded: true, Present: []uint64{1}}) {
+		t.Fatalf("state = %+v, %v; want generation 7, degraded on devid 1", states, err)
 	}
 	if info, err := os.Stat(target); err != nil || !info.IsDir() {
 		t.Fatalf("mountpoint not created: %v", err)
@@ -200,8 +207,10 @@ func TestFindOfflinePools(t *testing.T) {
 	old := readSuperblock
 	readSuperblock = func(device string) (Superblock, error) {
 		switch device {
-		case "/dev/sdb", "/dev/sdc":
-			return Superblock{UUID: "pool-uuid", Label: "tank", NumDevices: 3, TotalBytes: 300}, nil
+		case "/dev/sdb":
+			return Superblock{UUID: "pool-uuid", Label: "tank", NumDevices: 3, TotalBytes: 300, Generation: 8}, nil
+		case "/dev/sdc":
+			return Superblock{UUID: "pool-uuid", Label: "tank", NumDevices: 3, TotalBytes: 300, Generation: 9}, nil
 		case "/dev/sdd":
 			return Superblock{UUID: "mounted-uuid", Label: "data", NumDevices: 1}, nil
 		}
@@ -213,7 +222,7 @@ func TestFindOfflinePools(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []BtrfsOfflinePool{{UUID: "pool-uuid", Label: "tank", NumDevices: 3, Devices: []string{"/dev/sdb", "/dev/sdc"}, TotalBytes: 300}}
+	want := []BtrfsOfflinePool{{UUID: "pool-uuid", Label: "tank", NumDevices: 3, Devices: []string{"/dev/sdb", "/dev/sdc"}, TotalBytes: 300, devids: []uint64{0, 0}, generations: []uint64{8, 9}}}
 	if !reflect.DeepEqual(pools, want) {
 		t.Fatalf("got %+v, want %+v", pools, want)
 	}

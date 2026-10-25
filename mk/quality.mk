@@ -102,14 +102,14 @@ test-docker-update-integration: ensure-go ## Run the opt-in real Docker/Compose 
 	  $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" \
 	  "$(GO_BIN)" test ./common/dockerupdate -run '^TestDockerUpdateCompose' -count=1 -v
 
-test-btrfs-integration: ensure-go ## Run the root-only btrfs kernel test on loop devices
-	@echo "🧪 Running btrfs kernel integration test on loop devices (needs sudo)..."
+test-btrfs-integration: ensure-go ## Run the root-only btrfs kernel tests on loop devices
+	@echo "🧪 Running btrfs kernel integration tests on loop devices (needs sudo)..."
 	@cd "$(backend_dir)" && \
 	  sudo env \
 	    PATH="$$(dirname "$(GO_BIN)"):$${PATH}" \
 	    GOTOOLCHAIN="$(GO_TOOLCHAIN)" \
 	    LINUXIO_RUN_BTRFS_INTEGRATION=1 \
-	    "$(GO_BIN)" test ./common/btrfs -run '^TestBtrfsIntegration$$' -count=1 -v
+	    "$(GO_BIN)" test ./common/btrfs -run '^TestBtrfs(Degraded)?Integration$$' -count=1 -v -timeout 20m
 
 deadcode: ensure-deadcode ## Report unreachable Go functions (informational)
 	@$(MAKE) --no-print-directory deadcode-only

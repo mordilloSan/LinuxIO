@@ -133,6 +133,7 @@ func fillFilesystem(fs *BtrfsFilesystem) {
 	}
 
 	fs.Devices, fs.HealthKnown = listDevices(mnt, info.MaxID, warn)
+	markUnopened(fs.UUID, fs.Devices)
 	var allocated uint64
 	for _, d := range fs.Devices {
 		fs.Degraded = fs.Degraded || d.Missing
@@ -284,6 +285,11 @@ func scrubStatus(mnt, uuid string, devices []BtrfsDevice, usedBytes uint64, warn
 		return live
 	}
 	if rec, ok := lastScrub(uuid); ok {
+		// No device is scrubbing, so a record still saying "running" was cut
+		// short by a crash or power loss.
+		if rec.Status == "running" {
+			rec.Status = "aborted"
+		}
 		return rec
 	}
 	return BtrfsScrubStatus{Status: "none"}

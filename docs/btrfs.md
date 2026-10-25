@@ -12,12 +12,13 @@ subvolume and quota listing, subvolume create, delete, snapshot and default,
 read-only flags, compression properties, quotas and limits, and the send side
 of replication. `btrfs-progs` is used only where the kernel has no interface:
 `mkfs.btrfs`, `btrfs receive`, and the commands a replication job runs on its
-target, which may be another host. There is no daemon and no new binary
-beyond the existing `linuxio` CLI. Everything is on demand or runs from two
-systemd timers.
+target, which may be another host. There is no daemon. Everything is on
+demand or runs from `linuxio-btrfs-timer`, started by two systemd timers, a
+boot-time service and a resync service (see [Missing disks](#missing-disks)).
 
 `make test-btrfs-integration` runs every one of these operations against the
-real kernel on loop devices; it needs sudo.
+real kernel on loop devices, and loses and returns disks of a mirror to check
+the missing-disk handling; it needs sudo.
 
 ## Capability and privileges
 
@@ -51,11 +52,71 @@ filesystems, covering pools created after install.
 | `btrfs/health-<uuid>` | error | a device reports errors or is missing | the counters are zero and no device is missing |
 | `btrfs/scrub-<uuid>` | error | the last scrub found uncorrectable errors | a later scrub finishes clean |
 | `btrfs/space-<uuid>` | warning | metadata is over 90% full with less than 1 GiB unallocated | space is reclaimed |
-| `btrfs/offline-<uuid>` | error or warning | a pool is found on disk but not mounted (error when disks are missing) | the pool is mounted |
+| `btrfs/offline-<uuid>` | error or warning | a pool is found on disk but not mounted (error when disks are missing; says why the boot check left it unmounted) | the pool is mounted |
+| `btrfs/resync-<uuid>` | warning | a pool that ran with a disk missing has all its disks again and is being resynced | the resync finished |
 
 Incomplete health data neither raises nor resolves; alerts of pools that no
 longer exist are dropped by the timer. Scrub start/cancel is on the banner;
 see [Devices](#devices-and-profiles).
+
+## Missing disks
+
+A pool that loses a disk keeps running, and so does its data as long as its
+profiles keep a copy. After a reboot systemd never mounts it: udev holds a
+btrfs device back until every member is present (`64-btrfs.rules`), and
+upstream leaves the "mount with n of m disks" decision to storage software.
+LinuxIO makes that decision the way mdadm's last-resort timer does for md
+arrays, and repairs the pool once the disk is back, which btrfs leaves to a
+scrub.
+
+**At boot**, `linuxio-btrfs-degraded.service` (once per boot, after
+`local-fs.target`, before Docker, containerd, Samba, NFS and libvirt, given
+at most three minutes) runs `linuxio-btrfs-timer degraded run`. Pools that
+`/etc/fstab` names by `UUID=` without `noauto` or `_netdev` and that are
+missing disks get 30 seconds for the disks to appear (an
+`x-systemd.device-timeout` is not consulted); a pool that is then still incomplete is mounted with
+`degraded` at each of its fstab mountpoints, parents first, with each
+entry's options, unless the disks present may not hold its newest data:
+
+- the present disks disagree on their superblock generation, which every
+  commit stamps on each disk it writes, so one of them missed writes;
+- they are older than the newest generation LinuxIO recorded for the pool;
+- or a disk that took the writes of the pool's last degraded run is missing.
+
+Mounting such a set would write a second history over the first. That pool
+stays unmounted and its offline alert says why; **Mount degraded** remains for
+a person who knows the other disks are gone for good, and does not apply this
+check. The kernel itself refuses a pool missing more disks than its profiles
+survive. A mount that fails leaves the entries inside its mountpoint
+unmounted.
+
+The record lives in `/var/lib/linuxio/btrfs-pools.json`: every mount LinuxIO
+makes and every health run notes each pool's generation, and while a pool runs
+degraded, which disks take its writes. A disk that dies while the pool is
+mounted is only recorded by the next health run, so a crash within those ten
+minutes, followed by only the dead disk coming back, is not caught. The
+recorded generation can belong to a transaction a crash then loses, which
+makes the check refuse a set that was in fact current: the safe side.
+
+**When the disk is back.** A disk that reappears while the pool is mounted is
+listed by the kernel but never opened, so it is shown as missing until the
+pool is mounted again (a reboot). Once every disk is in use, the health run
+starts `linuxio-btrfs-resync@<uuid>.service` (`linuxio-btrfs-timer resync`):
+a scrub checks every copy and rewrites those the returned disk missed from
+the good ones, then a soft convert (`convert=<profile>,soft`) gives chunks
+written while too few disks were present, which btrfs allocates as `single`,
+the pool's most redundant profile again. Until then the `resync` alert is up.
+Only a scrub that finished counts: one canceled from the overview, or cut
+short by a crash (its record then reads as aborted), is run again. A failed
+resync is retried by the next health run, without scrubbing again once the
+scrub finished; after three failures the alert turns into an error with the
+last cause, and mounting the pool again (or a reboot) re-arms it.
+Uncorrectable scrub errors go to the scrub alert. Files with copy-on-write
+disabled (`nodatacow`, common for VM images) have no checksums, so a scrub
+cannot tell their stale copies; replace a disk that returns to a pool holding
+such files instead. A disk that keeps failing writes while still attached is
+not counted as missing: the health alert reports its error counters, and a
+scrub once it is fixed repairs what it missed.
 
 ## Top-level access
 
@@ -203,8 +264,10 @@ a permanent top-level mount are offered.
 not mounted, since btrfs refuses that without `degraded`, so the overview
 lists it from the disks' superblocks as an unmounted pool with its missing
 disk count. **Mount** mounts a complete pool and **Mount degraded** one with
-missing disks, so its data stays reachable until the disk is replaced. A pool
-without an fstab entry is mounted at `/mnt/<label>` and recorded.
+missing disks, so its data stays reachable until the disk is replaced; both
+use the pool's fstab options, so `subvol=` and `compress=` apply. A pool
+without an fstab entry is mounted at `/mnt/<label>` and recorded. Pools in
+fstab are also mounted degraded at boot; see [Missing disks](#missing-disks).
 
 **Destroy pool** unmounts every mount of the pool, removes its fstab entries
 and zeroes the btrfs superblock magic on each disk; everything on the pool is
@@ -302,10 +365,13 @@ btrfsmaintenance timers.
 | `/etc/systemd/system/linuxio-btrfs-snapshot.timer` | root | Hourly trigger |
 | `/etc/systemd/system/linuxio-btrfs-health.service` | root | Runs `linuxio-btrfs-timer health run` |
 | `/etc/systemd/system/linuxio-btrfs-health.timer` | root | Every ten minutes |
+| `/etc/systemd/system/linuxio-btrfs-degraded.service` | root | Runs `linuxio-btrfs-timer degraded run` at boot |
+| `/etc/systemd/system/linuxio-btrfs-resync@.service` | root | Runs `linuxio-btrfs-timer resync <uuid>` |
 | `/var/lib/linuxio/btrfs-scrub.json` | root | Last scrub LinuxIO ran per filesystem |
+| `/var/lib/linuxio/btrfs-pools.json` | root | Per pool: newest generation seen, and whether and on which disks it ran degraded |
 | `/etc/systemd/system/<upgrade-service>.d/linuxio-alert.conf` | root | Auto-update drop-in, including the pre-update snapshot line |
 | `/etc/fstab` | root | Pool entries LinuxIO creates; compression options of existing entries |
-| `/var/lib/linuxio/alerts.json` | `root:root` `0600` | Alerts `btrfs/health-*`, `btrfs/scrub-*`, `btrfs/space-*`, `btrfs/offline-*`, `btrfs/snapshot-*`, `btrfs/replication-*` |
+| `/var/lib/linuxio/alerts.json` | `root:root` `0600` | Alerts `btrfs/health-*`, `btrfs/scrub-*`, `btrfs/space-*`, `btrfs/offline-*`, `btrfs/resync-*`, `btrfs/snapshot-*`, `btrfs/replication-*` |
 
 ## Not implemented
 

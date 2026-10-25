@@ -61,13 +61,17 @@ func ensureBtrfsHealthTimerOnce(ctx context.Context) {
 	})
 }
 
-// ensureBtrfsHealthTimer keeps the health timer enabled and running.
+// ensureBtrfsHealthTimer keeps the health timer enabled and running, and the
+// boot-time degraded mount enabled for the next boot.
 func ensureBtrfsHealthTimer(ctx context.Context, ops btrfsTimerOps) error {
 	if err := ops.enableUnit(ctx, btrfs.HealthTimerName); err != nil {
 		return fmt.Errorf("enable %s: %w", btrfs.HealthTimerName, err)
 	}
 	if err := ops.startUnit(ctx, btrfs.HealthTimerName); err != nil {
 		return fmt.Errorf("start %s: %w", btrfs.HealthTimerName, err)
+	}
+	if err := ops.enableUnit(ctx, btrfs.DegradedServiceName); err != nil {
+		return fmt.Errorf("enable %s: %w", btrfs.DegradedServiceName, err)
 	}
 	return nil
 }

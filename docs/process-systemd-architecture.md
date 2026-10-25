@@ -78,6 +78,16 @@ linuxio.target                       umbrella; WantedBy=multi-user.target
 └─ linuxio-issue.service             oneshot: updates the login issue/MOTD
 ```
 
+Outside `linuxio.target`, so restarting LinuxIO never cancels them:
+
+```
+linuxio-btrfs-degraded.service       boot oneshot, WantedBy=multi-user.target, enabled only on hosts
+                                     with btrfs; mounts fstab pools with a missing disk degraded
+                                     (`linuxio-btrfs-timer degraded run`)
+linuxio-btrfs-resync@<uuid>.service  started by the health check once a returned disk is back;
+                                     runs `linuxio-btrfs-timer resync <uuid>` (scrub, then soft convert)
+```
+
 Key unit facts (see `packaging/systemd/`):
 
 - **`linuxio-webserver.socket`** — `ListenStream=8090`, `BindIPv6Only=both` (one socket answers both the A and AAAA records Avahi publishes). systemd owns the listening fd; the service inherits it.
