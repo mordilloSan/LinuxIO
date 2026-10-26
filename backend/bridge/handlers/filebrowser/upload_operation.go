@@ -27,17 +27,7 @@ type uploadAttributes struct {
 	uid         int
 	gid         int
 	hasExisting bool
-	owner       uploadOwner // applied to new files when the bridge runs as root
-	modTime     time.Time   // zero keeps the write time
-}
-
-// uploadOwner is the session user new uploads belong to. A root bridge would
-// otherwise leave root-owned files the user cannot touch from an unprivileged
-// session; an unprivileged bridge already writes as that user.
-type uploadOwner struct {
-	uid uint32
-	gid uint32
-	set bool
+	modTime     time.Time // zero keeps the write time
 }
 
 type uploadTransferTask struct {
@@ -46,7 +36,6 @@ type uploadTransferTask struct {
 	path            string
 	expectedSize    int64
 	expectedVersion string
-	owner           uploadOwner
 	overwrite       bool
 
 	// finalRel, tempRel and attrs are guarded by mu.
@@ -107,15 +96,8 @@ func restoreUploadedFile(root *fsroot.FSRoot, rel string, attrs uploadAttributes
 		if err := root.Root.Chmod(rel, attrs.mode); err != nil {
 			return fmt.Errorf("restore upload permissions: %w", err)
 		}
-	} else {
-		if attrs.owner.set && os.Geteuid() == 0 {
-			if err := root.Root.Chown(rel, int(attrs.owner.uid), int(attrs.owner.gid)); err != nil {
-				return fmt.Errorf("hand upload to session user: %w", err)
-			}
-		}
-		if err := root.Root.Chmod(rel, services.PermFile); err != nil {
-			return fmt.Errorf("set upload permissions: %w", err)
-		}
+	} else if err := root.Root.Chmod(rel, services.PermFile); err != nil {
+		return fmt.Errorf("set upload permissions: %w", err)
 	}
 	if !attrs.modTime.IsZero() {
 		if err := root.Root.Chtimes(rel, attrs.modTime, attrs.modTime); err != nil {
@@ -149,7 +131,7 @@ func commitUploadBuffer(root *fsroot.FSRoot, tempRel, finalRel string, overwrite
 	return nil
 }
 
-func runUploadTask(ctx context.Context, task *bridgeipc.Task, req apischema.FileUploadRequest, owner uploadOwner) (any, error) {
+func runUploadTask(ctx context.Context, task *bridgeipc.Task, req apischema.FileUploadRequest) (any, error) {
 	path, expectedSize, overwrite, expectedVersion, err := parseUploadRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
@@ -179,7 +161,6 @@ func runUploadTask(ctx context.Context, task *bridgeipc.Task, req apischema.File
 		path:            filepath.Clean(path),
 		expectedSize:    expectedSize,
 		expectedVersion: expectedVersion,
-		owner:           owner,
 		overwrite:       overwrite,
 	}
 	transfer.transferLifecycle = newTransferLifecycle(task, transfer.cleanupPartial, transfer.reportProgress)
@@ -255,7 +236,6 @@ func (t *uploadTransferTask) prepare(root *fsroot.FSRoot) error {
 	if err != nil {
 		return err
 	}
-	attrs.owner = t.owner
 	versionErr := t.verifyExpectedVersion(root, realPath)
 	if versionErr != nil {
 		return versionErr

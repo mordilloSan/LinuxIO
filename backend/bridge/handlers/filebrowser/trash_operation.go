@@ -17,6 +17,14 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 )
 
+// sessionOwner holds the session user's ids, which the trash needs to find
+// that user's home. Unset, the bridge's own home and ids are used.
+type sessionOwner struct {
+	uid uint32
+	gid uint32
+	set bool
+}
+
 // trashUser is whose trash a request works on: the session user's home and
 // ids, and whether a root bridge must hand new entries to that user.
 type trashUser struct {
@@ -25,7 +33,7 @@ type trashUser struct {
 	chownNew bool
 }
 
-func resolveTrashUser(owner uploadOwner) (trashUser, error) {
+func resolveTrashUser(owner sessionOwner) (trashUser, error) {
 	u := trashUser{uid: os.Geteuid(), gid: os.Getegid()}
 	if !owner.set {
 		home, err := os.UserHomeDir()
@@ -42,7 +50,7 @@ func resolveTrashUser(owner uploadOwner) (trashUser, error) {
 	return u, nil
 }
 
-func trashUserOrError(owner uploadOwner) (trashUser, error) {
+func trashUserOrError(owner sessionOwner) (trashUser, error) {
 	u, err := resolveTrashUser(owner)
 	if err != nil {
 		return u, fmt.Errorf("resolve home directory for trash: %w", err)
@@ -53,7 +61,7 @@ func trashUserOrError(owner uploadOwner) (trashUser, error) {
 	return u, nil
 }
 
-func listTrash(ctx context.Context, owner uploadOwner) (apischema.TrashListResponse, error) {
+func listTrash(ctx context.Context, owner sessionOwner) (apischema.TrashListResponse, error) {
 	u, err := trashUserOrError(owner)
 	if err != nil {
 		return apischema.TrashListResponse{}, err
@@ -113,7 +121,7 @@ func reconcileMoves(label string, updates []batchIndexerUpdate) {
 
 // runTrashMoveTask runs a move into or out of the trash over every path and
 // tells the indexer about each item that moved.
-func runTrashMoveTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, paths []string, label, phase string, owner uploadOwner, move func(ctx context.Context, path string, u trashUser) (string, error)) (FileBatchResult, error) {
+func runTrashMoveTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, paths []string, label, phase string, owner sessionOwner, move func(ctx context.Context, path string, u trashUser) (string, error)) (FileBatchResult, error) {
 	u, err := trashUserOrError(owner)
 	if err != nil {
 		return FileBatchResult{}, err
@@ -145,21 +153,21 @@ func runTrashMoveTask(ctx context.Context, task *bridgeipc.Task, store *userconf
 }
 
 // runTrashBatchTask moves many paths into the session user's trash as a single task.
-func runTrashBatchTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.BatchPathRequest, owner uploadOwner) (FileBatchResult, error) {
+func runTrashBatchTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.BatchPathRequest, owner sessionOwner) (FileBatchResult, error) {
 	return runTrashMoveTask(ctx, task, store, req.Paths, "trash_batch", "trashing", owner, func(ctx context.Context, path string, u trashUser) (string, error) {
 		return services.MoveToTrash(ctx, path, u.home, u.uid, u.gid, u.chownNew)
 	})
 }
 
 // runTrashRestoreTask puts trashed items back where they came from.
-func runTrashRestoreTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.BatchPathRequest, owner uploadOwner) (FileBatchResult, error) {
+func runTrashRestoreTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.BatchPathRequest, owner sessionOwner) (FileBatchResult, error) {
 	return runTrashMoveTask(ctx, task, store, req.Paths, "trash_restore", "restoring", owner, func(ctx context.Context, path string, u trashUser) (string, error) {
 		return services.RestoreFromTrash(ctx, path, u.home, u.uid, u.gid, u.chownNew)
 	})
 }
 
 // runTrashPurgeTask deletes trashed items for good.
-func runTrashPurgeTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.BatchPathRequest, owner uploadOwner) (FileBatchResult, error) {
+func runTrashPurgeTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.BatchPathRequest, owner sessionOwner) (FileBatchResult, error) {
 	u, err := trashUserOrError(owner)
 	if err != nil {
 		return FileBatchResult{}, err

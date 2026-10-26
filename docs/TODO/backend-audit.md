@@ -44,8 +44,6 @@ fix, so each item can be accepted or rejected on that basis.
   - Fix: keep only `exec.ErrNotFound` as "no volumes".
   - Behaviour change: a non-root bridge's LVM listing errors instead of showing an empty list — decide together with 99 (the LVM mutations are already privileged; the listing is not).
 
-- [ ] **110. Ownership of created files under a root bridge**: only uploads chown to the session user (`upload_operation.go`, root only); `resourcePost` (`resource_create.go`, not a task route, no owner today), upload-batch `MkdirAll` (`upload_batch_operation.go:242,355`), compress output and `ExtractArchive` do not. Product decision: should admin sessions' files be handed to the session user too? Use `Lchown` so extracted symlinks are never followed.
-
 - [ ] **68. Health summary hides a failed unit listing as "0 failed"**
   `backend/bridge/handlers/system/health.go:23` ignores the `FetchServices` error. The per-unit property reads are gone (2026-10-26: `systemd.ListServiceStates`); the honest card needs an error flag on `SystemHealthSummary` (`make generate`, `SystemHealth.tsx`), i.e. a contract and frontend change. Behaviour: the card says the count is unknown instead of 0.
 

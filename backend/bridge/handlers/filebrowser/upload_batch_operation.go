@@ -45,7 +45,6 @@ type uploadBatchTransferTask struct {
 	directories []string
 	total       int64
 	overwrite   bool
-	owner       uploadOwner
 
 	// The fields below are guarded by mu. bytes (stream bytes consumed across
 	// the whole batch) lives in the lifecycle.
@@ -158,7 +157,7 @@ func parseUploadBatchRequest(req apischema.FileUploadBatchRequest) (string, []up
 	return destination, files, directories, total, nil
 }
 
-func runUploadBatchTask(ctx context.Context, task *bridgeipc.Task, req apischema.FileUploadBatchRequest, owner uploadOwner) (any, error) {
+func runUploadBatchTask(ctx context.Context, task *bridgeipc.Task, req apischema.FileUploadBatchRequest) (any, error) {
 	destination, files, directories, total, err := parseUploadBatchRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
@@ -186,7 +185,6 @@ func runUploadBatchTask(ctx context.Context, task *bridgeipc.Task, req apischema
 		directories: directories,
 		total:       total,
 		overwrite:   req.Overwrite != nil && *req.Overwrite,
-		owner:       owner,
 	}
 	transfer.transferLifecycle = newTransferLifecycle(task, transfer.cleanupPartial, transfer.reportProgress)
 	defer registerTransfer(task.ID(), transfer)()
@@ -350,7 +348,6 @@ func (t *uploadBatchTransferTask) ensurePrepared(session *uploadBatchSession) er
 	if err != nil {
 		return err
 	}
-	attrs.owner = t.owner
 	attrs.modTime = current.modTime
 	err = session.root.Root.MkdirAll(fsroot.ToRel(filepath.Dir(current.absPath)), services.PermDir)
 	if err != nil {

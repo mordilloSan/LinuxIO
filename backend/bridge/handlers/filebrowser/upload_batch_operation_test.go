@@ -69,18 +69,13 @@ func TestParseUploadBatchRequestValidation(t *testing.T) {
 // returns the task. The runner parks until a data stream drives it.
 func startUploadBatchTask(t *testing.T, req apischema.FileUploadBatchRequest) *bridgeipc.Task {
 	t.Helper()
-	return startUploadBatchTaskAs(t, req, uploadOwner{})
-}
-
-func startUploadBatchTaskAs(t *testing.T, req apischema.FileUploadBatchRequest, owner uploadOwner) *bridgeipc.Task {
-	t.Helper()
 	registry := bridgeipc.NewTaskService()
 	task, _, err := registry.ClaimForOwnerWithIdentity(routeUploadBatch, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
 	task.Start(func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
-		return runUploadBatchTask(ctx, j, req, owner)
+		return runUploadBatchTask(ctx, j, req)
 	})
 	return task
 }
@@ -564,9 +559,11 @@ func TestUploadBatchAppliesManifestModifiedTime(t *testing.T) {
 	}
 }
 
-func TestUploadBatchNewFilesBelongToSessionUserAsRoot(t *testing.T) {
+// A root bridge keeps new uploads root-owned, like every other entry it
+// creates, and an overwrite keeps the replaced file's owner.
+func TestUploadBatchOwnershipAsRoot(t *testing.T) {
 	if os.Geteuid() != 0 {
-		t.Skip("ownership of new uploads can only be changed as root")
+		t.Skip("restoring another user's ownership needs root")
 	}
 	dest := t.TempDir()
 	existing := filepath.Join(dest, "existing.txt")
@@ -586,7 +583,7 @@ func TestUploadBatchNewFilesBelongToSessionUserAsRoot(t *testing.T) {
 		Overwrite: &overwrite,
 	}
 
-	task := startUploadBatchTaskAs(t, req, uploadOwner{uid: 12345, gid: 12346, set: true})
+	task := startUploadBatchTask(t, req)
 	conn, results, _ := attachUploadBatchStream(t, task, "")
 	writeData(t, conn, []byte("newnew"))
 	writeClose(t, conn)
@@ -595,7 +592,7 @@ func TestUploadBatchNewFilesBelongToSessionUserAsRoot(t *testing.T) {
 	}
 	waitTaskDone(t, task)
 
-	for path, want := range map[string][2]uint32{"new.txt": {12345, 12346}, "existing.txt": {23456, 23457}} {
+	for path, want := range map[string][2]uint32{"new.txt": {0, uint32(os.Getegid())}, "existing.txt": {23456, 23457}} {
 		info, err := os.Stat(filepath.Join(dest, path))
 		if err != nil {
 			t.Fatalf("stat %s: %v", path, err)
