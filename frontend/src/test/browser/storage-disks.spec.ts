@@ -68,3 +68,19 @@ test("storage disks carry live reads and writes on their lines", async ({
   await page.emulateMedia({ reducedMotion: "reduce" });
   await expect(grain).toHaveCSS("animation-name", "none");
 });
+
+test("storage disks list partitions and offer unmount from fstab", async ({
+  page,
+}) => {
+  await page.goto("/storage?drive=sda");
+  await page.getByRole("tab", { name: "Partitions" }).click();
+  await expect(page.getByText("No partition table")).toBeVisible();
+  await expect(page.getByText("sda2", { exact: true })).toBeVisible();
+
+  await page.goto("/storage?fs=%2Fsrv%2Fmedia");
+  await page.getByRole("button", { name: "Unmount", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Unmount filesystem" });
+  await expect(
+    dialog.getByLabel("Also remove from /etc/fstab"),
+  ).not.toBeChecked();
+});

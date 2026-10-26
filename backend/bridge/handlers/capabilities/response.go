@@ -76,6 +76,10 @@ func setCapabilityField(out *apischema.CapabilitiesResponse, name string, ok boo
 		out.BtrfsMaintenanceAvailable, out.BtrfsMaintenanceError = ok, errPtr
 	case "btrfs":
 		out.BtrfsAvailable, out.BtrfsError = ok, errPtr
+	case "e2fsprogs":
+		out.E2fsprogsAvailable, out.E2fsprogsError = ok, errPtr
+	case "xfsprogs":
+		out.XfsprogsAvailable, out.XfsprogsError = ok, errPtr
 	default:
 		panic("capabilities: unknown capability wire name " + name)
 	}

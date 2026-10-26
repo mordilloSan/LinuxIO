@@ -218,6 +218,13 @@ snapshots and replication, and the pools on the
 Disks overview, which manage devices, health and settings; see
 [Btrfs management](./btrfs.md).
 
+## Filesystem tools
+
+The `e2fsprogs` and `xfsprogs` capabilities check for `mkfs.ext4` and
+`mkfs.xfs` and install the distro package of the same name on Debian and RHEL
+families. Formatting a partition in **Storage → Disks** needs the tool of the
+chosen type; the `btrfs` capability above covers `mkfs.btrfs`.
+
 ## Node.js (Assistant)
 
 The `node` capability resolves `npx` on the PATH the session user's

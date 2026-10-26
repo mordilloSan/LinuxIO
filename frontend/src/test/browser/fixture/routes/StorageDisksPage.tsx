@@ -19,7 +19,7 @@ const drives: ApiDisk[] = [
     ro: false,
     rotational: false,
     serial: "SAMPLE-NVME",
-    size: "1T",
+    sizeBytes: 1099511627776,
     type: "nvme",
   },
   {
@@ -28,7 +28,7 @@ const drives: ApiDisk[] = [
     ro: false,
     rotational: true,
     serial: "SAMPLE-SDA",
-    size: "4T",
+    sizeBytes: 4398046511104,
     type: "sata",
   },
 ];

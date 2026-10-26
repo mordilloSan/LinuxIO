@@ -37,6 +37,12 @@ export const TASK_TYPE_STORAGE_BTRFS_REPLICATION = taskType(
 export const TASK_TYPE_STORAGE_BTRFS_BALANCE = taskType(
   "storage.btrfs_balance",
 );
+export const TASK_TYPE_STORAGE_PARTITION_CREATE = taskType(
+  "storage.partition_create",
+);
+export const TASK_TYPE_STORAGE_PARTITION_FORMAT = taskType(
+  "storage.partition_format",
+);
 export const TASK_TYPE_SYSTEM_INSTALL_CAPABILITY = taskType(
   "system.install_capability",
 );

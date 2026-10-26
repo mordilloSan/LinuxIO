@@ -451,7 +451,7 @@ operation store).
 
 ### Task lifetime, ownership, and activity
 
-Twenty-four Task routes, including `control.app_update`, declare `SessionTask()`.
+Thirty-one Task routes, including `control.app_update`, declare `SessionTask()`.
 Their owner is the exact authenticated `SessionID`; logout, expiry, session
 deletion, bridge failure, or bridge shutdown cancels the in-memory Task. Only
 `docker.update_container` declares `DurableTask()` and is owned by the

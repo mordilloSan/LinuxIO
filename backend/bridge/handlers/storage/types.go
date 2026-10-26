@@ -2,7 +2,7 @@ package storage
 
 import "github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 
-// DriveInfo represents inventory returned from lsblk. Live SMART and power
+// DriveInfo represents the disk inventory read from sysfs and udev. Live SMART and power
 // data belongs to the monitoring daemon; self-test mutations remain here.
 type DriveInfo = apischema.ApiDisk
 

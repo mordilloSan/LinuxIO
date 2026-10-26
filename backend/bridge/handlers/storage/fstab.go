@@ -52,6 +52,35 @@ func getFstabEntries() map[string]fstabEntry {
 	return fstabEntries
 }
 
+// fstabSources returns the first field of every fstab line with at least two
+// fields, octal escapes such as \040 decoded, in file order. Unlike
+// getFstabEntries it keeps lines that share a mount point (every swap line
+// has "none").
+func fstabSources() []string {
+	file, err := os.Open(fstabPath)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+
+	var sources []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if fields := strings.Fields(line); len(fields) >= 2 {
+			sources = append(sources, unescapeOctal(fields[0]))
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		// The in-use rule for fstab then misses the lines after the failure.
+		slog.Warn("read fstab sources failed", "error", err)
+	}
+	return sources
+}
+
 // replaceFstabOption returns options without any option starting with prefix,
 // plus replacement appended when it is not empty. Other options keep order.
 func replaceFstabOption(options []string, prefix, replacement string) []string {
@@ -104,7 +133,13 @@ func addToFstab(source, mountpoint, fstype string, options []string) error {
 	if len(options) > 0 {
 		optStr = strings.Join(options, ",")
 	}
-	entry := fmt.Sprintf("%s %s %s %s 0 0\n", source, mountpoint, fstype, optStr)
+	// fstab(5) gives non-root filesystems fsck pass 2; fsck.xfs is a no-op
+	// and btrfs documents 0.
+	pass := 0
+	if fstype == "ext4" {
+		pass = 2
+	}
+	entry := fmt.Sprintf("%s %s %s %s 0 %d\n", source, mountpoint, fstype, optStr, pass)
 
 	existing := string(content)
 	if existing != "" && !strings.HasSuffix(existing, "\n") {

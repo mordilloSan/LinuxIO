@@ -145,7 +145,7 @@ export interface ApiDisk {
   ro: boolean;
   rotational: boolean;
   serial?: string;
-  size: string;
+  sizeBytes: number;
   type?: string;
   vendor?: string;
 }
@@ -255,6 +255,10 @@ export interface BatchUploadProgress {
   phase?: string;
   filesDone: number;
   filesTotal: number;
+}
+
+export interface BlockDeviceRequest {
+  device: string;
 }
 
 export interface BootIDRequest {
@@ -626,6 +630,8 @@ export interface CapabilitiesResponse {
   node_available: boolean;
   btrfs_maintenance_available: boolean;
   btrfs_available: boolean;
+  e2fsprogs_available: boolean;
+  xfsprogs_available: boolean;
   docker_error?: string;
   docker_updates_error?: string;
   monitoring_error?: string;
@@ -645,6 +651,8 @@ export interface CapabilitiesResponse {
   node_error?: string;
   btrfs_maintenance_error?: string;
   btrfs_error?: string;
+  e2fsprogs_error?: string;
+  xfsprogs_error?: string;
 }
 
 export interface CapabilityRequest {
@@ -2221,10 +2229,6 @@ export interface MountpointRemoveFstabRequest {
   removeFstab: string;
 }
 
-export interface MountpointRequest {
-  mountpoint: string;
-}
-
 export interface NFSClient {
   host: string;
   options: string[];
@@ -2431,6 +2435,37 @@ export interface PackageUpdateRequest {
 
 export interface PackageUpdateResult {
   updated: number;
+}
+
+export interface PartitionCreateRequest {
+  device: string;
+  startBytes: number;
+  sizeBytes: number;
+  format?: PartitionFormatOptions;
+  mount?: PartitionMountOptions;
+}
+
+export interface PartitionFormatOptions {
+  fsType: string;
+  label: string;
+}
+
+export interface PartitionFormatRequest {
+  device: string;
+  fsType: string;
+  label: string;
+  overwrite: boolean;
+}
+
+export interface PartitionMountOptions {
+  mountpoint: string;
+  persist: boolean;
+}
+
+export interface PartitionMountRequest {
+  device: string;
+  mountpoint: string;
+  persist: boolean;
 }
 
 export interface PathRequest {
@@ -2851,6 +2886,16 @@ export interface StorageBlockDevice {
   transport: string;
   readOnly: boolean;
   freeBytes: number;
+  ptType?: string;
+  partNumber?: number;
+  startBytes?: number;
+  uuid?: string;
+  label?: string;
+  partUUID?: string;
+  partLabel?: string;
+  busy?: string;
+  inFstab?: boolean;
+  freeRegions?: StorageRegion[];
 }
 
 export interface StorageMount {
@@ -2864,6 +2909,11 @@ export interface StorageMountResult {
   success: boolean;
   mountpoint?: string;
   warning?: string;
+}
+
+export interface StorageRegion {
+  startBytes: number;
+  sizeBytes: number;
 }
 
 export interface StorageTopologyInventory {
@@ -4429,6 +4479,11 @@ export interface LinuxIOSchema {
       request: VolumeGroupLogicalVolumeRequest;
       result: SuccessResponse;
     };
+    disk_initialize: {
+      input: [device: string];
+      request: BlockDeviceRequest;
+      result: SuccessResponse;
+    };
     get_btrfs_maintenance: {
       input: [];
       request: void;
@@ -4491,6 +4546,28 @@ export interface LinuxIOSchema {
       request: ServerExportMountOptionsPersistRequest;
       result: StorageMountResult;
     };
+    partition_create: {
+      input: [request: PartitionCreateRequest];
+      request: PartitionCreateRequest;
+      result: SuccessPathResponse;
+      progress: TaskProgress<BtrfsOpProgress>;
+    };
+    partition_delete: {
+      input: [device: string];
+      request: BlockDeviceRequest;
+      result: SuccessResponse;
+    };
+    partition_format: {
+      input: [request: PartitionFormatRequest];
+      request: PartitionFormatRequest;
+      result: SuccessResponse;
+      progress: TaskProgress<BtrfsOpProgress>;
+    };
+    partition_mount: {
+      input: [request: PartitionMountRequest];
+      request: PartitionMountRequest;
+      result: StorageMountResult;
+    };
     remount_cifs: {
       input: [request: MountpointOptionsUpdateFstabRequest];
       request: MountpointOptionsUpdateFstabRequest;
@@ -4523,8 +4600,8 @@ export interface LinuxIOSchema {
       result: StorageWarningResult;
     };
     unmount_filesystem: {
-      input: [mountpoint: string];
-      request: MountpointRequest;
+      input: [request: MountpointRemoveFstabRequest];
+      request: MountpointRemoveFstabRequest;
       result: StorageMountResult;
     };
     unmount_nfs: {
@@ -5280,6 +5357,10 @@ export interface LinuxIOCallSchema {
     request: VolumeGroupLogicalVolumeRequest;
     result: SuccessResponse;
   };
+  "storage.disk_initialize": {
+    request: BlockDeviceRequest;
+    result: SuccessResponse;
+  };
   "storage.get_btrfs_maintenance": {
     request: void;
     result: BtrfsMaintenanceSchedule;
@@ -5310,6 +5391,14 @@ export interface LinuxIOCallSchema {
     request: ServerExportMountOptionsPersistRequest;
     result: StorageMountResult;
   };
+  "storage.partition_delete": {
+    request: BlockDeviceRequest;
+    result: SuccessResponse;
+  };
+  "storage.partition_mount": {
+    request: PartitionMountRequest;
+    result: StorageMountResult;
+  };
   "storage.remount_cifs": {
     request: MountpointOptionsUpdateFstabRequest;
     result: StorageMountResult;
@@ -5331,7 +5420,7 @@ export interface LinuxIOCallSchema {
     result: StorageWarningResult;
   };
   "storage.unmount_filesystem": {
-    request: MountpointRequest;
+    request: MountpointRemoveFstabRequest;
     result: StorageMountResult;
   };
   "storage.unmount_nfs": {

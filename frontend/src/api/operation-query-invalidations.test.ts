@@ -71,6 +71,19 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
       ]);
     }
   });
+  it("refreshes the pool inventory after partition and disk actions", () => {
+    for (const route of [
+      "partition_create",
+      "partition_format",
+      "partition_delete",
+      "partition_mount",
+      "disk_initialize",
+    ]) {
+      expect(OPERATION_QUERY_INVALIDATIONS[`storage.${route}`]).toEqual(
+        OPERATION_QUERY_INVALIDATIONS["storage.btrfs_pool_create"],
+      );
+    }
+  });
   it("refreshes btrfs settings and subvolume sizes after quota and compression changes", () => {
     expect(OPERATION_QUERY_INVALIDATIONS["storage.btrfs_set_quotas"]).toEqual([
       ["linuxio", "storage", "btrfs_settings"],

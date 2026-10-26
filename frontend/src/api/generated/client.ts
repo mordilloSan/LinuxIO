@@ -349,6 +349,7 @@ const linuxio = {
     btrfs_subvolumes: defineCallWithRequest("storage.btrfs_subvolumes"),
     create_lv: defineCallWithRequest("storage.create_lv"),
     delete_lv: defineCallWithRequest("storage.delete_lv"),
+    disk_initialize: defineCallWithRequest("storage.disk_initialize"),
     get_btrfs_maintenance: defineCall("storage.get_btrfs_maintenance"),
     get_drive_info: defineCall("storage.get_drive_info"),
     get_topology: defineCall("storage.get_topology"),
@@ -367,6 +368,14 @@ const linuxio = {
     md_sync_action: defineCallWithRequest("storage.md_sync_action"),
     mount_cifs: defineCallWithRequest("storage.mount_cifs"),
     mount_nfs: defineCallWithRequest("storage.mount_nfs"),
+    partition_create: createTaskEndpoint("storage", "partition_create", {
+      kind: "object",
+    }),
+    partition_delete: defineCallWithRequest("storage.partition_delete"),
+    partition_format: createTaskEndpoint("storage", "partition_format", {
+      kind: "object",
+    }),
+    partition_mount: defineCallWithRequest("storage.partition_mount"),
     remount_cifs: defineCallWithRequest("storage.remount_cifs"),
     remount_nfs: defineCallWithRequest("storage.remount_nfs"),
     resize_lv: defineCallWithRequest("storage.resize_lv"),

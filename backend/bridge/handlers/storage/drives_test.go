@@ -1,25 +1,33 @@
 package storage
 
 import (
-	"encoding/json/v2"
+	"context"
 	"testing"
 )
 
-func TestBuildDriveInfoReportsRotational(t *testing.T) {
-	// Trimmed `lsblk -d -O -J` output: one NVMe SSD and one spinning SATA disk.
-	const out = `{"blockdevices":[
-		{"name":"nvme0n1","model":"Samsung SSD 980 ","size":"476.9G","ro":false,"rota":false,"type":"disk","tran":"nvme"},
-		{"name":"sda","model":"WDC WD40EFRX","size":"3.6T","ro":false,"rota":true,"type":"disk","tran":"sata"}
-	]}`
-	var parsed LSBLKOutput
-	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
-		t.Fatalf("unmarshal: %v", err)
+func TestFetchDriveInfoFromTree(t *testing.T) {
+	h := fakeHost(t)
+	h.add("", "nvme0n1", "259:0", 1000, map[string]string{"queue/rotational": "0"})
+	h.udev("259:0", `ID_MODEL_ENC=Samsung\x20SSD\x20980\x20`)
+	h.part("nvme0n1", "nvme0n1p1", "259:1", 1, 2048, 500)
+	h.add("", "sda", "8:0", 2000, map[string]string{"queue/rotational": "1", "ro": "1", "device/vendor": "ATA     "})
+	h.udev("8:0", "ID_MODEL=WDC WD40EFRX", "ID_SERIAL_SHORT=WD-1")
+	h.add("", "md0", "9:0", 1000, map[string]string{"md/level": "raid1"})
+
+	drives, err := FetchDriveInfo(context.Background())
+	if err != nil {
+		t.Fatal(err)
 	}
-	nvme, hdd := buildDriveInfo(parsed.BlockDevices[0]), buildDriveInfo(parsed.BlockDevices[1])
-	if nvme.Rotational || nvme.Model != "Samsung SSD 980" {
-		t.Errorf("nvme = %+v, want non-rotational with trimmed model", nvme)
+	if len(drives) != 2 {
+		t.Fatalf("want the two disks only, got %+v", drives)
 	}
-	if !hdd.Rotational {
-		t.Errorf("sda = %+v, want rotational", hdd)
+	nvme, hdd := drives[0], drives[1] // sorted by path: nvme0n1 before sda
+	if nvme.Name != "nvme0n1" || nvme.Rotational || nvme.Model != "Samsung SSD 980" || nvme.SizeBytes != 1000*512 ||
+		nvme.Type == nil || *nvme.Type != "nvme" || nvme.Serial != nil || nvme.Vendor != nil {
+		t.Errorf("nvme = %+v", nvme)
+	}
+	if hdd.Name != "sda" || !hdd.Rotational || !hdd.RO || hdd.SizeBytes != 2000*512 || hdd.Type != nil ||
+		hdd.Serial == nil || *hdd.Serial != "WD-1" || hdd.Vendor == nil || *hdd.Vendor != "ATA" {
+		t.Errorf("sda = %+v", hdd)
 	}
 }

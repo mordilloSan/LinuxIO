@@ -3,31 +3,6 @@ import { formatFileSize } from "@/utils/formatters";
 
 import type { DriveInfo, SmartData } from "./types";
 
-export function parseSizeToBytes(input: string | undefined | null): number {
-  if (!input) return 0;
-  const s = input.trim().toUpperCase();
-  const m = s.match(/^([\d.]+)\s*([KMGTPE]?)(B)?$/);
-  if (!m) return 0;
-  const value = parseFloat(m[1]);
-  if (!isFinite(value) || value < 0) return 0;
-  const unit = m[2] || "B";
-  const pow =
-    unit === "B"
-      ? 0
-      : unit === "K"
-        ? 1
-        : unit === "M"
-          ? 2
-          : unit === "G"
-            ? 3
-            : unit === "T"
-              ? 4
-              : unit === "P"
-                ? 5
-                : 0;
-  return Math.floor(value * Math.pow(1024, pow));
-}
-
 export const getHealthColor = (
   smart: DriveInfo["smart"] | undefined,
 ): "success" | "error" | "warning" | "default" => {

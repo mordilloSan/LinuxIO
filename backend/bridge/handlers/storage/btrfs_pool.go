@@ -14,6 +14,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
 )
 
@@ -47,18 +48,20 @@ func CreateBtrfsPool(ctx context.Context, req apischema.BtrfsPoolCreateRequest, 
 	if req.Partition {
 		members = make([]string, 0, len(req.Devices))
 		for _, d := range req.Devices {
-			part, partErr := btrfs.PartitionDisk(ctx, d)
+			part, unlock, partErr := partitionLocked(ctx, d, btrfs.PartitionDisk)
 			if partErr != nil {
 				return btrfs.BtrfsFilesystem{}, fmt.Errorf("partition %s for btrfs pool: %w", d, partErr)
 			}
+			defer unlock()
 			members = append(members, part)
 		}
 	}
 	for _, d := range req.FreeSpace {
-		part, partErr := btrfs.AddPartition(ctx, d)
+		part, unlock, partErr := partitionLocked(ctx, d, btrfs.AddPartition)
 		if partErr != nil {
 			return btrfs.BtrfsFilesystem{}, fmt.Errorf("add partition on %s for btrfs pool: %w", d, partErr)
 		}
+		defer unlock()
 		members = append(members, part)
 	}
 	// mkfs.btrfs first discards every member, which on large SSDs takes
@@ -77,6 +80,22 @@ func CreateBtrfsPool(ctx context.Context, req apischema.BtrfsPoolCreateRequest, 
 	}
 	slog.Info("created btrfs pool", "uuid", uuid, "mountpoint", req.Mountpoint)
 	return btrfs.FindFilesystem(ctx, uuid)
+}
+
+// partitionLocked locks disk against udev, then partitions it. The caller
+// holds the lock until the pool is made, so the disk's partition nodes do
+// not flap under mkfs.btrfs.
+func partitionLocked(ctx context.Context, disk string, partition func(context.Context, string) (string, error)) (string, func(), error) {
+	unlock, err := lockDisk(ctx, disk)
+	if err != nil {
+		return "", nil, err
+	}
+	part, err := partition(ctx, disk)
+	if err != nil {
+		unlock()
+		return "", nil, err
+	}
+	return part, unlock, nil
 }
 
 // checkPoolCreate validates a create request against the host: label,
@@ -118,17 +137,17 @@ func checkPoolCreate(req apischema.BtrfsPoolCreateRequest, devices []apischema.S
 
 func checkPoolMountpoint(mountpoint string, devices []apischema.StorageBlockDevice, fstab map[string]fstabEntry) error {
 	if !validPath.MatchString(mountpoint) || filepath.Clean(mountpoint) != mountpoint {
-		return fmt.Errorf("invalid mountpoint %q", mountpoint)
+		return fmt.Errorf("%w: invalid mountpoint %q", bridgeipc.ErrInvalidArgs, mountpoint)
 	}
 	if isSystemPath(mountpoint) || isProtectedMount(mountpoint) {
-		return fmt.Errorf("mountpoint %s is a system directory", mountpoint)
+		return fmt.Errorf("%w: mountpoint %s is a system directory", bridgeipc.ErrInvalidArgs, mountpoint)
 	}
 	if _, ok := fstab[mountpoint]; ok {
-		return fmt.Errorf("mountpoint %s is already in /etc/fstab", mountpoint)
+		return fmt.Errorf("%w: mountpoint %s is already in /etc/fstab", bridgeipc.ErrConflict, mountpoint)
 	}
 	for _, d := range devices {
 		if slices.Contains(d.Mountpoints, mountpoint) {
-			return fmt.Errorf("mountpoint %s is in use by %s", mountpoint, d.Path)
+			return fmt.Errorf("%w: mountpoint %s is in use by %s", bridgeipc.ErrConflict, mountpoint, d.Path)
 		}
 	}
 	return nil

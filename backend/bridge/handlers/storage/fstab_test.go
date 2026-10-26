@@ -1,11 +1,13 @@
 package storage
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"syscall"
 	"testing"
 
+	"github.com/shirou/gopsutil/v4/disk"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -24,6 +26,36 @@ func TestAddToFstabIgnoresCommentsAndTerminatesLastLine(t *testing.T) {
 	require.NoError(t, addToFstab("srv:/x", "/mnt/data", "nfs", []string{"ro"}))
 
 	assert.Equal(t, "# /mnt/data was here\nUUID=a / ext4 defaults 0 1\nsrv:/x /mnt/data nfs ro 0 0\n", readFstab(t))
+}
+
+func TestAddToFstabPass(t *testing.T) {
+	useTempFstab(t, "")
+
+	require.NoError(t, addToFstab("UUID=a", "/srv/a", "ext4", []string{"defaults", "nofail"}))
+	require.NoError(t, addToFstab("UUID=b", "/srv/b", "btrfs", []string{"defaults", "nofail"}))
+
+	assert.Equal(t, "UUID=a /srv/a ext4 defaults,nofail 0 2\nUUID=b /srv/b btrfs defaults,nofail 0 0\n", readFstab(t))
+}
+
+func TestUnmountRemovesFstab(t *testing.T) {
+	origFind, origUnmount := mountedPartition, unmountPath
+	t.Cleanup(func() { mountedPartition, unmountPath = origFind, origUnmount })
+	mountedPartition = func(mountpoint string) (*disk.PartitionStat, error) {
+		return &disk.PartitionStat{Device: "/dev/sdb1", Mountpoint: mountpoint, Fstype: "ext4"}, nil
+	}
+	unmountPath = func(string, int) error { return nil }
+
+	const root, data = "UUID=a / ext4 defaults 0 1\n", "UUID=u1 /srv/data ext4 defaults,nofail 0 2\n"
+	for _, removeFstab := range []bool{false, true} {
+		useTempFstab(t, root+data)
+		_, err := UnmountFilesystem(context.Background(), "/srv/data", removeFstab)
+		require.NoError(t, err)
+		want := root + data
+		if removeFstab {
+			want = root
+		}
+		assert.Equal(t, want, readFstab(t), "removeFstab=%t", removeFstab)
+	}
 }
 
 func TestRemoveFromFstabKeepsComments(t *testing.T) {

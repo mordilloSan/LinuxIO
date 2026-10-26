@@ -35,13 +35,15 @@ import DriveCard from "./DriveCard";
 import { DriveInfoTab } from "./DriveInfoTab";
 import FilesystemCard from "./FilesystemCard";
 import { OverviewTab } from "./OverviewTab";
+import PartitionsTab from "./PartitionsTab";
 import { PowerStatesTab } from "./PowerStatesTab";
 import { SelfTestsTab } from "./SelfTestsTab";
 import { SmartAttributesTab } from "./SmartAttributesTab";
 import StoragePools from "./StoragePools";
 import { TabPanel } from "./TabPanel";
 import type { DriveInfo, SmartTestProgressEvent } from "./types";
-import { findBackingDrive, parseSizeToBytes } from "./utils";
+import UnmountFilesystemDialog from "./UnmountFilesystemDialog";
+import { findBackingDrive } from "./utils";
 
 const storageRouteApi = getRouteApi("/_authenticated/storage/");
 const STORAGE_TOAST_META = {
@@ -229,13 +231,14 @@ const DriveDetails = ({
             onChange={(nextValue) => handleTabChange(Number(nextValue))}
             options={[
               { value: "0", label: "Overview" },
-              { value: "1", label: "SMART Attributes" },
-              { value: "2", label: "Drive Information" },
+              { value: "1", label: "Partitions" },
+              { value: "2", label: "SMART Attributes" },
+              { value: "3", label: "Drive Information" },
               ...(isNvme && power
-                ? [{ value: "3", label: "Power States" }]
+                ? [{ value: "4", label: "Power States" }]
                 : []),
               {
-                value: isNvme && power ? "4" : "3",
+                value: isNvme && power ? "5" : "4",
                 label: "Self-Tests",
               },
             ]}
@@ -249,24 +252,24 @@ const DriveDetails = ({
         </TabPanel>
 
         <TabPanel index={1} value={tabIndex}>
-          <SmartAttributesTab isNvme={isNvme} smartData={smartData} />
+          <PartitionsTab driveName={drive.name} />
         </TabPanel>
 
         <TabPanel index={2} value={tabIndex}>
-          <DriveInfoTab
-            drive={drive}
-            rawDriveSize={rawDrive?.size}
-            smartData={smartData}
-          />
+          <SmartAttributesTab isNvme={isNvme} smartData={smartData} />
+        </TabPanel>
+
+        <TabPanel index={3} value={tabIndex}>
+          <DriveInfoTab drive={drive} smartData={smartData} />
         </TabPanel>
 
         {isNvme && power && (
-          <TabPanel index={3} value={tabIndex}>
+          <TabPanel index={4} value={tabIndex}>
             <PowerStatesTab power={power} />
           </TabPanel>
         )}
 
-        <TabPanel index={isNvme && power ? 4 : 3} value={tabIndex}>
+        <TabPanel index={isNvme && power ? 5 : 4} value={tabIndex}>
           <SelfTestsTab
             nvmeSelfTestLog={smartData?.nvme_self_test_log}
             onRunTest={handleRunTest}
@@ -314,9 +317,11 @@ const DiskOverview = () => {
   const liveSmart = liveData?.smart ?? {};
   const filesystems = liveData?.filesystems ?? [];
   const nfsMounts = Array.isArray(nfsMountsData) ? nfsMountsData : [];
+  const [unmounting, setUnmounting] = useState<string | null>(null);
   const { mutate: unmountFilesystem, isPending: isUnmounting } =
     useCallMutation(linuxio.storage.unmount_filesystem, {
       success: () => {
+        setUnmounting(null);
         toast.success("Filesystem unmounted");
         void navigate({
           to: "/storage",
@@ -356,7 +361,7 @@ const DiskOverview = () => {
   const drives: DriveInfo[] = rawDrives.map((d) => ({
     name: d.name,
     model: d.model,
-    sizeBytes: parseSizeToBytes(d.size),
+    sizeBytes: d.sizeBytes,
     transport: d.type ?? (d.name.startsWith("nvme") ? "nvme" : "unknown"),
     vendor: d.vendor,
     serial: d.serial,
@@ -418,7 +423,7 @@ const DiskOverview = () => {
     });
   };
   const handleUnmountFilesystem = (mountpoint: string) => {
-    unmountFilesystem({ mountpoint });
+    setUnmounting(mountpoint);
   };
   return (
     <div>
@@ -609,6 +614,14 @@ const DiskOverview = () => {
             </AnimatePresence>
           </AppGrid>
         </>
+      )}
+      {unmounting !== null && (
+        <UnmountFilesystemDialog
+          isPending={isUnmounting}
+          mountpoint={unmounting}
+          onClose={() => setUnmounting(null)}
+          onConfirm={unmountFilesystem}
+        />
       )}
     </div>
   );

@@ -1,7 +1,10 @@
 package storage
 
 import (
+	"context"
+	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -72,6 +75,40 @@ func TestCheckPoolCreate(t *testing.T) {
 		if c.wantErr != "" && (err == nil || !strings.Contains(err.Error(), c.wantErr)) {
 			t.Errorf("%s: err = %v, want %q", c.name, err, c.wantErr)
 		}
+	}
+}
+
+func TestPartitionLockedHoldsTheDiskLock(t *testing.T) {
+	orig := lockDisk
+	t.Cleanup(func() { lockDisk = orig })
+	var calls []string
+	lockDisk = func(_ context.Context, device string) (func(), error) {
+		calls = append(calls, "lock "+device)
+		return func() { calls = append(calls, "unlock "+device) }, nil
+	}
+	partition := func(_ context.Context, disk string) (string, error) {
+		calls = append(calls, "partition "+disk)
+		if disk == "/dev/sdc" {
+			return "", errors.New("no free space")
+		}
+		return disk + "1", nil
+	}
+
+	part, unlock, err := partitionLocked(context.Background(), "/dev/sdb", partition)
+	if err != nil || part != "/dev/sdb1" {
+		t.Fatalf("part = %q, err = %v", part, err)
+	}
+	if want := []string{"lock /dev/sdb", "partition /dev/sdb"}; !slices.Equal(calls, want) {
+		t.Fatalf("calls = %q, want the lock still held: %q", calls, want)
+	}
+	unlock()
+
+	calls = nil
+	if _, _, err := partitionLocked(context.Background(), "/dev/sdc", partition); err == nil {
+		t.Fatal("want the partition error")
+	}
+	if want := []string{"lock /dev/sdc", "partition /dev/sdc", "unlock /dev/sdc"}; !slices.Equal(calls, want) {
+		t.Fatalf("calls = %q, want %q", calls, want)
 	}
 }
 

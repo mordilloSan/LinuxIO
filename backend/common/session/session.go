@@ -40,6 +40,8 @@ type CapabilitiesAvailable struct {
 	NodeAvailable             bool `json:"node_available"`
 	BtrfsMaintenanceAvailable bool `json:"btrfs_maintenance_available"`
 	BtrfsAvailable            bool `json:"btrfs_available"`
+	E2fsprogsAvailable        bool `json:"e2fsprogs_available"`
+	XfsprogsAvailable         bool `json:"xfsprogs_available"`
 }
 
 type CapabilitiesError struct {
@@ -62,6 +64,8 @@ type CapabilitiesError struct {
 	NodeError             *string `json:"node_error,omitzero"`
 	BtrfsMaintenanceError *string `json:"btrfs_maintenance_error,omitzero"`
 	BtrfsError            *string `json:"btrfs_error,omitzero"`
+	E2fsprogsError        *string `json:"e2fsprogs_error,omitzero"`
+	XfsprogsError         *string `json:"xfsprogs_error,omitzero"`
 }
 
 // Session is the cross-process session record shared by the webserver, the

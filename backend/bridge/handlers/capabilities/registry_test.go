@@ -92,6 +92,8 @@ func TestCapabilityInstallPackageSelection(t *testing.T) {
 	}{
 		{name: "lm_sensors", wantDebian: "lm-sensors", wantRHEL: "lm_sensors"},
 		{name: "rsync", wantDebian: "rsync", wantRHEL: "rsync"},
+		{name: "e2fsprogs", wantDebian: "e2fsprogs", wantRHEL: "e2fsprogs"},
+		{name: "xfsprogs", wantDebian: "xfsprogs", wantRHEL: "xfsprogs"},
 		{
 			name:             "avahi",
 			wantDebian:       "avahi-daemon libnss-mdns",
