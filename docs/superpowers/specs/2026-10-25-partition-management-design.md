@@ -56,10 +56,12 @@ bytes, xfs 12 characters, btrfs 255 bytes.
 partition mounted at boot can be released and deleted. Today unmount leaves
 the fstab entry and the filesystem returns at the next boot.
 
-Create and Format run as tasks with steps (Partitioning → Formatting:
-"SSDs are trimmed first, which can take a few minutes" → Mounting),
-because `mkfs` discards the whole device by default — the reason pool
-creation became a task. Delete, Mount and Initialize are calls.
+Create and Format run as tasks with steps (Partitioning → Trimming, with
+its percent done → Formatting → Mounting), because discarding the whole
+device takes minutes on a large SSD — the reason pool creation became a
+task. The bridge issues that discard itself in 1 GiB `BLKDISCARD` chunks,
+as btrfs-progs' `discard_blocks` does, and runs `mkfs` with its no-discard
+flag, since `mkfs` reports no progress while it discards. Delete, Mount and Initialize are calls.
 
 ## Safety rules
 

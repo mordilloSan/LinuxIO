@@ -75,7 +75,7 @@ const PartitionsTab = ({ driveName }: { driveName: string }) => {
     enabled: poolsEnabled,
   });
   const [dialog, setDialog] = useState<PartitionDialog | null>(null);
-  const [step, setStep] = useState<string | null>(null);
+  const [step, setStep] = useState<BtrfsOpProgress | null>(null);
   // The last create or format failure, shown in its dialog; the bridge's
   // message says what to change, e.g. to tick Overwrite.
   const [error, setError] = useState<string | null>(null);
@@ -95,11 +95,11 @@ const PartitionsTab = ({ driveName }: { driveName: string }) => {
   );
   const rows = disk ? diskLayout(disk, devices, btrfs, offline) : [];
 
-  // Tasks, not calls: mkfs trims the whole partition first, which can take
-  // minutes on a large SSD.
+  // Tasks, not calls: the bridge trims the whole partition before mkfs,
+  // which can take minutes on a large SSD.
   const taskConfig = (success: string, failure: string) => ({
     onProgress: (progress: TaskProgress<BtrfsOpProgress>) =>
-      setStep(progress.detail?.message ?? null),
+      setStep(progress.detail ?? null),
     success,
     error: failure,
     options: {
@@ -322,9 +322,13 @@ const PartitionsTab = ({ driveName }: { driveName: string }) => {
       </div>
       {running && !dialog && (
         <div role="status">
-          <AppLinearProgress aria-label="Working" />
+          <AppLinearProgress
+            aria-label="Working"
+            value={step?.percent}
+            variant={step?.percent ? "determinate" : "indeterminate"}
+          />
           <AppTypography color="text.secondary" variant="caption">
-            {step ?? "Working..."}
+            {step?.message ?? "Working..."}
           </AppTypography>
         </div>
       )}

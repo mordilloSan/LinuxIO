@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import type {
+  BtrfsOpProgress,
   PartitionCreateRequest,
   PartitionFormatRequest,
   PartitionMountRequest,
@@ -67,11 +68,15 @@ const stack = {
   gap: "var(--app-space-12)",
 } as const;
 
-const Progress = ({ step }: { step?: string | null }) => (
+const Progress = ({ step }: { step?: BtrfsOpProgress | null }) => (
   <div role="status">
-    <AppLinearProgress aria-label="Working" />
+    <AppLinearProgress
+      aria-label="Working"
+      value={step?.percent}
+      variant={step?.percent ? "determinate" : "indeterminate"}
+    />
     <AppTypography color="text.secondary" variant="caption">
-      {step ?? "Starting..."}
+      {step?.message ?? "Starting..."}
     </AppTypography>
   </div>
 );
@@ -195,8 +200,8 @@ interface DialogProps {
   isPending: boolean;
   /** Why the last attempt failed, so the form can be corrected and resent. */
   error?: string | null;
-  /** The step a running task is on. */
-  step?: string | null;
+  /** The step a running task is on, with its percent done while it trims. */
+  step?: BtrfsOpProgress | null;
   onClose: () => void;
 }
 

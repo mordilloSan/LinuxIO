@@ -51,9 +51,13 @@ replaces the MBR with a GPT.
 
 **Unmount** of a local filesystem offers **Also remove from /etc/fstab**, so a
 partition mounted at boot can be released and deleted. Create and Format run
-as tasks with steps (Partitioning, Formatting, Mounting), because `mkfs`
-discards the whole partition first, which can take minutes on a large SSD.
-Delete, Mount and Initialize are calls.
+as tasks with steps (Partitioning, Trimming, Formatting, Mounting), because
+discarding the whole partition can take minutes on a large SSD. The bridge
+runs that trim itself, as 1 GiB `BLKDISCARD` calls on an exclusive open, so
+the Trimming step shows its percent done, then runs `mkfs` with its
+no-discard flag (`-E nodiscard`, `-K`). Pool creation trims its members the
+same way. A device without discard support skips the step. Delete, Mount and
+Initialize are calls.
 
 ### Safety
 

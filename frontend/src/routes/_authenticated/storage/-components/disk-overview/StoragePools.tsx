@@ -452,14 +452,14 @@ const StoragePools = ({
   const [dialog, setDialog] = useState<PoolDialog | null>(null);
   const [paused, setPaused] = useState(false);
   const closeDialog = () => setDialog(null);
-  // A task, not a call: mkfs trims every disk first, which can outlast any
-  // request timeout on large SSDs.
-  const [createStep, setCreateStep] = useState<string | null>(null);
+  // A task, not a call: the bridge trims every disk before mkfs, which can
+  // outlast any request timeout on large SSDs.
+  const [createStep, setCreateStep] = useState<BtrfsOpProgress | null>(null);
   const createPool = linuxio.storage.btrfs_pool_create.useTaskStreamAction<
     BtrfsFilesystem,
     TaskProgress<BtrfsOpProgress>
   >({
-    onProgress: (progress) => setCreateStep(progress.detail?.message ?? null),
+    onProgress: (progress) => setCreateStep(progress.detail ?? null),
     success: "Pool created",
     error: "Failed to create pool",
     options: { onSettled: () => setCreateStep(null) },

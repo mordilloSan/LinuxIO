@@ -1,7 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { linuxio, type BtrfsPoolCreateRequest } from "@/api";
+import {
+  linuxio,
+  type BtrfsOpProgress,
+  type BtrfsPoolCreateRequest,
+} from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
@@ -30,7 +34,7 @@ import {
 interface BtrfsCreatePoolDialogProps {
   isPending?: boolean;
   /** The step a running create is on, shown while isPending. */
-  progress?: string | null;
+  progress?: BtrfsOpProgress | null;
   onClose: () => void;
   onConfirm: (request: BtrfsPoolCreateRequest) => void;
   /** Paths of disks in a mounted btrfs filesystem, which are never offered. */
@@ -239,9 +243,13 @@ const BtrfsCreatePoolDialog = ({
           )}
           {isPending && (
             <div role="status">
-              <AppLinearProgress aria-label="Creating pool" />
+              <AppLinearProgress
+                aria-label="Creating pool"
+                value={progress?.percent}
+                variant={progress?.percent ? "determinate" : "indeterminate"}
+              />
               <AppTypography color="text.secondary" variant="caption">
-                {progress ?? "Starting..."}
+                {progress?.message ?? "Starting..."}
               </AppTypography>
             </div>
           )}

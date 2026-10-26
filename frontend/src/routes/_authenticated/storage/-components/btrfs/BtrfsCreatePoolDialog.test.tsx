@@ -247,12 +247,19 @@ describe("BtrfsCreatePoolDialog", () => {
         onClose={vi.fn()}
         onConfirm={vi.fn()}
         pooledDevices={[]}
-        progress="Formatting: SSDs are trimmed first, which can take a few minutes"
+        progress={{
+          op: "create",
+          percent: 42,
+          message: "Trimming before formatting: 42% complete",
+        }}
       />,
     );
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "Formatting: SSDs are trimmed first",
+      "Trimming before formatting: 42% complete",
     );
+    expect(
+      screen.getByRole("progressbar", { name: "Creating pool" }),
+    ).toHaveAttribute("aria-valuenow", "42");
     expect(screen.getByRole("button", { name: "Creating..." })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
   });

@@ -23,8 +23,9 @@ import (
 var btrfsPoolFstabOptions = []string{"defaults", "noatime", "nofail"}
 
 // CreateBtrfsPool validates the request, formats the member devices, mounts the
-// new pool and records it in /etc/fstab, reporting each step.
-func CreateBtrfsPool(ctx context.Context, req apischema.BtrfsPoolCreateRequest, report func(step string)) (btrfs.BtrfsFilesystem, error) {
+// new pool and records it in /etc/fstab, reporting each step and, while it
+// trims, the percent done.
+func CreateBtrfsPool(ctx context.Context, req apischema.BtrfsPoolCreateRequest, report func(step string, pct float64)) (btrfs.BtrfsFilesystem, error) {
 	devices, err := ListBlockDevices(ctx)
 	if err != nil {
 		return btrfs.BtrfsFilesystem{}, err
@@ -43,7 +44,7 @@ func CreateBtrfsPool(ctx context.Context, req apischema.BtrfsPoolCreateRequest, 
 	slog.Debug("creating btrfs pool", "label", req.Label, "devices", req.Devices, "freeSpace", req.FreeSpace, "data", req.DataProfile, "metadata", req.MetadataProfile, "mountpoint", req.Mountpoint, "force", req.Force, "partition", req.Partition)
 	members := slices.Clone(req.Devices)
 	if req.Partition || len(req.FreeSpace) > 0 {
-		report("Partitioning disks")
+		report("Partitioning disks", 0)
 	}
 	if req.Partition {
 		members = make([]string, 0, len(req.Devices))
@@ -64,14 +65,11 @@ func CreateBtrfsPool(ctx context.Context, req apischema.BtrfsPoolCreateRequest, 
 		defer unlock()
 		members = append(members, part)
 	}
-	// mkfs.btrfs first discards every member, which on large SSDs takes
-	// minutes; that is why this runs as a task rather than a bounded call.
-	report("Formatting: SSDs are trimmed first, which can take a few minutes")
-	uuid, err := btrfs.CreatePool(ctx, req.Label, req.DataProfile, req.MetadataProfile, members, req.Force)
+	uuid, err := btrfs.CreatePool(ctx, req.Label, req.DataProfile, req.MetadataProfile, members, req.Force, formatProgress(report))
 	if err != nil {
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("create btrfs pool %q: %w", req.Label, err)
 	}
-	report("Mounting at " + req.Mountpoint)
+	report("Mounting at "+req.Mountpoint, 0)
 	if err := btrfs.MountPool(ctx, members[0], req.Mountpoint, btrfsPoolFstabOptions, false); err != nil {
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("pool %s was created but not mounted: %w", uuid, err)
 	}

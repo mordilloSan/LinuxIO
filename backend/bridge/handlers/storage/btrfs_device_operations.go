@@ -94,8 +94,8 @@ func progressReporter(task *bridgeipc.Task, op, label string) func(float64) {
 }
 
 func runBtrfsPoolCreateTask(ctx context.Context, task *bridgeipc.Task, req apischema.BtrfsPoolCreateRequest) (btrfs.BtrfsFilesystem, error) {
-	return CreateBtrfsPool(ctx, req, func(step string) {
-		task.ReportProgress(BtrfsOpProgress{Op: "create", Message: step})
+	return CreateBtrfsPool(ctx, req, func(step string, pct float64) {
+		task.ReportProgress(BtrfsOpProgress{Op: "create", Percent: pct, Message: step})
 	})
 }
 

@@ -155,8 +155,9 @@ func ValidateLabel(label string) error {
 // CreatePool formats devices as one btrfs filesystem with the given data
 // and metadata profiles, registers them with the kernel and returns the new
 // filesystem's UUID. Callers check that the devices are free; force
-// overwrites foreign signatures.
-func CreatePool(ctx context.Context, label, data, meta string, devices []string, force bool) (string, error) {
+// overwrites foreign signatures. progress, if not nil, follows the trim
+// before mkfs (see trim).
+func CreatePool(ctx context.Context, label, data, meta string, devices []string, force bool, progress func(pct float64)) (string, error) {
 	if err := ValidateLabel(label); err != nil {
 		return "", err
 	}
@@ -166,8 +167,11 @@ func CreatePool(ctx context.Context, label, data, meta string, devices []string,
 	if err := ValidateProfiles(&data, &meta, len(devices)); err != nil {
 		return "", err
 	}
+	if err := trim(ctx, devices, progress); err != nil {
+		return "", err
+	}
 	uuid := newUUID()
-	args := []string{"-L", label, "-U", uuid, "-d", data, "-m", meta}
+	args := []string{"-L", label, "-U", uuid, "-d", data, "-m", meta, "-K"}
 	if force {
 		args = append(args, "-f")
 	}

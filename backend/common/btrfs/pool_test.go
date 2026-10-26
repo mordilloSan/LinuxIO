@@ -94,19 +94,27 @@ func TestCreatePoolFormatsAndRegisters(t *testing.T) {
 	}
 	calls := stubExec(t)
 	ioctls := stubControlIoctl(t, nil)
+	oldSize, oldDiscard := blockDeviceSize, discardDevice
+	t.Cleanup(func() { blockDeviceSize, discardDevice = oldSize, oldDiscard })
+	blockDeviceSize = func(string) (uint64, error) { return 1 << 30, nil }
+	discardDevice = func(_ context.Context, device string, size uint64, advance func(uint64)) error {
+		*ioctls = append(*ioctls, "discard "+device)
+		advance(size)
+		return nil
+	}
 
-	uuid, err := CreatePool(context.Background(), "tank", "raid1", "raid1", []string{"/dev/sdb", "/dev/sdc"}, true)
+	uuid, err := CreatePool(context.Background(), "tank", "raid1", "raid1", []string{"/dev/sdb", "/dev/sdc"}, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(*calls) != 1 {
 		t.Fatalf("calls = %v", *calls)
 	}
-	want := []string{"-L", "tank", "-U", uuid, "-d", "raid1", "-m", "raid1", "-f", "/dev/sdb", "/dev/sdc"}
+	want := []string{"-L", "tank", "-U", uuid, "-d", "raid1", "-m", "raid1", "-K", "-f", "/dev/sdb", "/dev/sdc"}
 	if got := (*calls)[0][1:]; !reflect.DeepEqual(got, want) {
 		t.Fatalf("mkfs args = %v, want %v", got, want)
 	}
-	if !reflect.DeepEqual(*ioctls, []string{"scan /dev/sdb", "scan /dev/sdc"}) {
+	if !reflect.DeepEqual(*ioctls, []string{"discard /dev/sdb", "discard /dev/sdc", "scan /dev/sdb", "scan /dev/sdc"}) {
 		t.Fatalf("ioctls = %v", *ioctls)
 	}
 }
@@ -115,19 +123,19 @@ func TestCreatePoolRefusesBeforeFormatting(t *testing.T) {
 	calls := stubExec(t)
 	cases := map[string]func() error{
 		"too few devices": func() error {
-			_, err := CreatePool(context.Background(), "tank", "raid1", "raid1", []string{"/dev/sdb"}, false)
+			_, err := CreatePool(context.Background(), "tank", "raid1", "raid1", []string{"/dev/sdb"}, false, nil)
 			return err
 		},
 		"raid5": func() error {
-			_, err := CreatePool(context.Background(), "tank", "raid5", "raid1", []string{"/dev/sdb", "/dev/sdc", "/dev/sdd"}, false)
+			_, err := CreatePool(context.Background(), "tank", "raid5", "raid1", []string{"/dev/sdb", "/dev/sdc", "/dev/sdd"}, false, nil)
 			return err
 		},
 		"bad label": func() error {
-			_, err := CreatePool(context.Background(), "a/b", "single", "dup", []string{"/dev/sdb"}, false)
+			_, err := CreatePool(context.Background(), "a/b", "single", "dup", []string{"/dev/sdb"}, false, nil)
 			return err
 		},
 		"no devices": func() error {
-			_, err := CreatePool(context.Background(), "tank", "single", "dup", nil, false)
+			_, err := CreatePool(context.Background(), "tank", "single", "dup", nil, false, nil)
 			return err
 		},
 	}

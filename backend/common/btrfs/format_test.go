@@ -37,16 +37,16 @@ func TestFormatArgs(t *testing.T) {
 		overwrite     bool
 		want          string // <u> is the returned UUID, <d> the device
 	}{
-		{"ext4", "data", false, "mkfs.ext4 -U <u> -L data <d>"},
-		{"ext4", "", true, "mkfs.ext4 -U <u> -F <d>"},
-		{"xfs", "data", false, "mkfs.xfs -m uuid=<u> -L data <d>"},
-		{"xfs", "", true, "mkfs.xfs -m uuid=<u> -f <d>"},
-		{"btrfs", "", false, "mkfs.btrfs -U <u> <d>"},
-		{"btrfs", "data", true, "mkfs.btrfs -U <u> -L data -f <d>"},
+		{"ext4", "data", false, "mkfs.ext4 -U <u> -E nodiscard -L data <d>"},
+		{"ext4", "", true, "mkfs.ext4 -U <u> -E nodiscard -F <d>"},
+		{"xfs", "data", false, "mkfs.xfs -m uuid=<u> -K -L data <d>"},
+		{"xfs", "", true, "mkfs.xfs -m uuid=<u> -K -f <d>"},
+		{"btrfs", "", false, "mkfs.btrfs -U <u> -K <d>"},
+		{"btrfs", "data", true, "mkfs.btrfs -U <u> -K -L data -f <d>"},
 	}
 	for _, tt := range tests {
 		calls := stubExec(t)
-		uuid, err := Format(context.Background(), device, tt.fsType, tt.label, tt.overwrite)
+		uuid, err := Format(context.Background(), device, tt.fsType, tt.label, tt.overwrite, nil)
 		if err != nil || len(*calls) != 1 {
 			t.Fatalf("%s: uuid=%q err=%v calls=%v", tt.want, uuid, err, *calls)
 		}
@@ -57,7 +57,7 @@ func TestFormatArgs(t *testing.T) {
 	}
 
 	calls := stubExec(t)
-	if _, err := Format(context.Background(), device, "vfat", "", true); err == nil || len(*calls) != 0 {
+	if _, err := Format(context.Background(), device, "vfat", "", true, nil); err == nil || len(*calls) != 0 {
 		t.Fatalf("vfat: err=%v calls=%v", err, *calls)
 	}
 }
@@ -78,13 +78,13 @@ func TestFormatRefusesDataWithoutOverwrite(t *testing.T) {
 	forced := func(argv []string) bool { return slices.Contains(argv, "-F") || slices.Contains(argv, "-f") }
 	calls := stubExec(t)
 
-	if _, err := Format(context.Background(), data, "ext4", "", false); !errors.Is(err, ErrDeviceHasData) || len(*calls) != 0 {
+	if _, err := Format(context.Background(), data, "ext4", "", false, nil); !errors.Is(err, ErrDeviceHasData) || len(*calls) != 0 {
 		t.Fatalf("data without overwrite: err=%v calls=%v", err, *calls)
 	}
-	if _, err := Format(context.Background(), data, "ext4", "", true); err != nil || len(*calls) != 1 || !forced((*calls)[0]) {
+	if _, err := Format(context.Background(), data, "ext4", "", true, nil); err != nil || len(*calls) != 1 || !forced((*calls)[0]) {
 		t.Fatalf("data with overwrite: err=%v calls=%v", err, *calls)
 	}
-	if _, err := Format(context.Background(), blank, "ext4", "", false); err != nil || len(*calls) != 2 || forced((*calls)[1]) {
+	if _, err := Format(context.Background(), blank, "ext4", "", false, nil); err != nil || len(*calls) != 2 || forced((*calls)[1]) {
 		t.Fatalf("blank without overwrite: err=%v calls=%v", err, *calls)
 	}
 }
@@ -122,5 +122,38 @@ func TestMinFormatSize(t *testing.T) {
 		if got := MinFormatSize(fsType); got != want {
 			t.Errorf("%s: got %d, want %d", fsType, got, want)
 		}
+	}
+}
+
+func TestTrimReportsPercentAcrossDevices(t *testing.T) {
+	oldSize, oldDiscard := blockDeviceSize, discardDevice
+	t.Cleanup(func() { blockDeviceSize, discardDevice = oldSize, oldDiscard })
+	sizes := map[string]uint64{"/dev/sdb": 3 * trimChunk, "/dev/sdc": trimChunk + trimChunk/2}
+	blockDeviceSize = func(device string) (uint64, error) { return sizes[device], nil }
+	var discarded []string
+	discardDevice = func(_ context.Context, device string, size uint64, advance func(uint64)) error {
+		discarded = append(discarded, device)
+		for off := uint64(0); off < size; off += trimChunk {
+			advance(min(trimChunk, size-off))
+		}
+		return nil
+	}
+	var pcts []float64
+	// /dev/sdd has no size, like a regular file, and is skipped.
+	if err := trim(context.Background(), []string{"/dev/sdb", "/dev/sdd", "/dev/sdc"}, func(pct float64) { pcts = append(pcts, pct) }); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"/dev/sdb", "/dev/sdc"}; !slices.Equal(discarded, want) {
+		t.Errorf("discarded %q, want %q", discarded, want)
+	}
+	// 4.5 GiB in chunks of 1, 1, 1, 1 and 0.5 GiB.
+	if want := []float64{0, 22, 44, 66, 88, 100}; !slices.Equal(pcts, want) {
+		t.Errorf("progress = %v, want %v", pcts, want)
+	}
+
+	discardDevice = func(context.Context, string, uint64, func(uint64)) error { return errors.New("busy") }
+	pcts = nil
+	if err := trim(context.Background(), []string{"/dev/sdb"}, func(pct float64) { pcts = append(pcts, pct) }); err == nil || !slices.Equal(pcts, []float64{0}) {
+		t.Errorf("failed discard: err = %v, progress = %v", err, pcts)
 	}
 }

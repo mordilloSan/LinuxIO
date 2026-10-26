@@ -32,9 +32,18 @@ var (
 	lockDisk            = btrfs.LockDisk
 )
 
-// formatStep is the progress step of every format: mkfs discards the whole
-// partition first, which is why create and format run as tasks.
-const formatStep = "Formatting: SSDs are trimmed first, which can take a few minutes"
+// formatProgress turns Format's trim progress into steps: the trim, with
+// its percent done, then the format. The trim takes minutes on a large SSD,
+// which is why create and format run as tasks.
+func formatProgress(report func(step string, pct float64)) func(float64) {
+	return func(pct float64) {
+		if pct < 100 {
+			report(fmt.Sprintf("Trimming before formatting: %.0f%% complete", pct), pct)
+			return
+		}
+		report("Formatting", 0)
+	}
+}
 
 // callLockWait bounds how long a call waits for the disk lock: 5 s covers
 // udevd's brief shared lock while it probes, without hanging the request
@@ -55,8 +64,8 @@ func partitionBindings() apischema.BindingSet {
 }
 
 func runPartitionCreateTask(ctx context.Context, task *bridgeipc.Task, req apischema.PartitionCreateRequest) (apischema.SuccessPathResponse, error) {
-	part, err := CreatePartition(ctx, req, func(step string) {
-		task.ReportProgress(BtrfsOpProgress{Op: "partition", Message: step})
+	part, err := CreatePartition(ctx, req, func(step string, pct float64) {
+		task.ReportProgress(BtrfsOpProgress{Op: "partition", Percent: pct, Message: step})
 	})
 	if err != nil {
 		return apischema.SuccessPathResponse{}, err
@@ -65,8 +74,8 @@ func runPartitionCreateTask(ctx context.Context, task *bridgeipc.Task, req apisc
 }
 
 func runPartitionFormatTask(ctx context.Context, task *bridgeipc.Task, req apischema.PartitionFormatRequest) (apischema.SuccessResponse, error) {
-	err := FormatPartition(ctx, req, func(step string) {
-		task.ReportProgress(BtrfsOpProgress{Op: "format", Message: step})
+	err := FormatPartition(ctx, req, func(step string, pct float64) {
+		task.ReportProgress(BtrfsOpProgress{Op: "format", Percent: pct, Message: step})
 	})
 	if err != nil {
 		return apischema.SuccessResponse{}, err
@@ -282,10 +291,10 @@ func checkPartitionCreate(req apischema.PartitionCreateRequest, inv partitionInv
 }
 
 // CreatePartition adds a partition in a free region of a GPT disk and, when
-// asked, formats and mounts it, reporting each step. It returns the new
-// partition's path. The disk stays locked against udev throughout, so its
-// partition nodes do not flap under mkfs.
-func CreatePartition(ctx context.Context, req apischema.PartitionCreateRequest, report func(step string)) (string, error) {
+// asked, formats and mounts it, reporting each step and, while it trims, the
+// percent done. It returns the new partition's path. The disk stays locked
+// against udev throughout, so its partition nodes do not flap under mkfs.
+func CreatePartition(ctx context.Context, req apischema.PartitionCreateRequest, report func(step string, pct float64)) (string, error) {
 	inv, err := loadPartitionInventory(ctx)
 	if err != nil {
 		return "", err
@@ -299,7 +308,7 @@ func CreatePartition(ctx context.Context, req apischema.PartitionCreateRequest, 
 		return "", err
 	}
 	defer unlock()
-	report("Partitioning")
+	report("Partitioning", 0)
 	part, err := createPartition(ctx, disk.Path, req.StartBytes, req.SizeBytes)
 	if err != nil {
 		return "", conflictIfBusy(fmt.Errorf("create partition on %s: %w", disk.Path, err))
@@ -307,14 +316,13 @@ func CreatePartition(ctx context.Context, req apischema.PartitionCreateRequest, 
 	var fsType, mountpoint string
 	if f := req.Format; f != nil {
 		fsType = f.FSType
-		report(formatStep)
-		uuid, formatErr := formatDevice(ctx, part, f.FSType, f.Label, false)
+		uuid, formatErr := formatDevice(ctx, part, f.FSType, f.Label, false, formatProgress(report))
 		if formatErr != nil {
 			return "", fmt.Errorf("partition %s was created but not formatted: %w", part, formatErr)
 		}
 		if m := req.Mount; m != nil {
 			mountpoint = m.Mountpoint
-			report("Mounting at " + m.Mountpoint)
+			report("Mounting at "+m.Mountpoint, 0)
 			if mountErr := mountFilesystem(part, f.FSType, m.Mountpoint); mountErr != nil {
 				return "", fmt.Errorf("partition %s was formatted but not mounted: %w", part, mountErr)
 			}
@@ -328,8 +336,8 @@ func CreatePartition(ctx context.Context, req apischema.PartitionCreateRequest, 
 }
 
 // FormatPartition makes a filesystem on an unused partition, reporting the
-// step; a partition with a filesystem signature needs Overwrite.
-func FormatPartition(ctx context.Context, req apischema.PartitionFormatRequest, report func(step string)) error {
+// steps; a partition with a filesystem signature needs Overwrite.
+func FormatPartition(ctx context.Context, req apischema.PartitionFormatRequest, report func(step string, pct float64)) error {
 	inv, err := loadPartitionInventory(ctx)
 	if err != nil {
 		return err
@@ -360,8 +368,7 @@ func FormatPartition(ctx context.Context, req apischema.PartitionFormatRequest, 
 	if err = checkNotBusy(part.Path); err != nil {
 		return conflictIfBusy(err)
 	}
-	report(formatStep)
-	uuid, err := formatDevice(ctx, part.Path, req.FSType, req.Label, req.Overwrite)
+	uuid, err := formatDevice(ctx, part.Path, req.FSType, req.Label, req.Overwrite, formatProgress(report))
 	if err != nil {
 		return conflictIfBusy(fmt.Errorf("format %s: %w", part.Path, err))
 	}

@@ -76,8 +76,10 @@ func stubPartitions(t *testing.T, fstab string) *partitionEnv {
 		record("create %s %d %d", device, start, size)
 		return "/dev/sdb3", nil
 	}
-	formatDevice = func(_ context.Context, device, fsType, label string, overwrite bool) (string, error) {
+	formatDevice = func(_ context.Context, device, fsType, label string, overwrite bool, progress func(float64)) (string, error) {
 		record("format %s %s %q overwrite=%t", device, fsType, label, overwrite)
+		progress(50) // halfway through the trim
+		progress(100)
 		return "new-uuid", env.formatErr
 	}
 	mountDevice = func(source, target, fsType string, flags uintptr, data string) error {
@@ -181,7 +183,7 @@ func TestCreatePartitionValidatesBeforeWriting(t *testing.T) {
 			if c.edit != nil {
 				c.edit(env.devices)
 			}
-			_, err := CreatePartition(context.Background(), c.req, func(string) {})
+			_, err := CreatePartition(context.Background(), c.req, func(string, float64) {})
 			if !errors.Is(err, c.want) {
 				t.Fatalf("err = %v, want %v", err, c.want)
 			}
@@ -200,11 +202,11 @@ func TestCreatePartitionFormatsAndMounts(t *testing.T) {
 		Device: "/dev/sdb", StartBytes: 1 << 30, SizeBytes: 512 << 20,
 		Format: &apischema.PartitionFormatOptions{FSType: "ext4", Label: "data"},
 		Mount:  &apischema.PartitionMountOptions{Mountpoint: mp, Persist: true},
-	}, func(step string) { steps = append(steps, step) })
+	}, func(step string, _ float64) { steps = append(steps, step) })
 	if err != nil || part != "/dev/sdb3" {
 		t.Fatalf("part = %q, err = %v", part, err)
 	}
-	wantSteps := []string{"Partitioning", "Formatting: SSDs are trimmed first, which can take a few minutes", "Mounting at " + mp}
+	wantSteps := []string{"Partitioning", "Trimming before formatting: 50% complete", "Formatting", "Mounting at " + mp}
 	if !slices.Equal(steps, wantSteps) {
 		t.Errorf("steps = %q, want %q", steps, wantSteps)
 	}
@@ -231,7 +233,7 @@ func TestCreatePartitionRawAndFailedSteps(t *testing.T) {
 	env := stubPartitions(t, "")
 	var steps []string
 	req := apischema.PartitionCreateRequest{Device: "/dev/sdb", StartBytes: 1 << 30, SizeBytes: 1 << 30}
-	if _, err := CreatePartition(context.Background(), req, func(step string) { steps = append(steps, step) }); err != nil {
+	if _, err := CreatePartition(context.Background(), req, func(step string, _ float64) { steps = append(steps, step) }); err != nil {
 		t.Fatal(err)
 	}
 	if want := []string{"lock /dev/sdb", "create /dev/sdb 1073741824 1073741824", "unlock /dev/sdb"}; !slices.Equal(env.calls, want) {
@@ -244,7 +246,7 @@ func TestCreatePartitionRawAndFailedSteps(t *testing.T) {
 	env = stubPartitions(t, "")
 	env.formatErr = errors.New("mkfs.xfs -m uuid=new-uuid: boom")
 	req.Format = &apischema.PartitionFormatOptions{FSType: "xfs"}
-	_, err := CreatePartition(context.Background(), req, func(string) {})
+	_, err := CreatePartition(context.Background(), req, func(string, float64) {})
 	if err == nil || !strings.Contains(err.Error(), "partition /dev/sdb3 was created but not formatted") {
 		t.Fatalf("err = %v", err)
 	}
@@ -257,7 +259,7 @@ func TestCreatePartitionRawAndFailedSteps(t *testing.T) {
 	fstabPath = filepath.Join(t.TempDir(), "missing")
 	mp := t.TempDir()
 	req.Mount = &apischema.PartitionMountOptions{Mountpoint: mp, Persist: true}
-	_, err = CreatePartition(context.Background(), req, func(string) {})
+	_, err = CreatePartition(context.Background(), req, func(string, float64) {})
 	if want := "/dev/sdb3 is mounted at " + mp + " but could not be added to /etc/fstab"; err == nil || !strings.HasPrefix(err.Error(), want) {
 		t.Fatalf("err = %v, want it to start with %q", err, want)
 	}
@@ -289,7 +291,7 @@ func TestFormatPartition(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			env := stubPartitions(t, "")
 			c.edit(env)
-			if err := FormatPartition(ctx, c.req, func(string) {}); !errors.Is(err, c.want) {
+			if err := FormatPartition(ctx, c.req, func(string, float64) {}); !errors.Is(err, c.want) {
 				t.Fatalf("err = %v, want %v", err, c.want)
 			}
 			if !slices.Equal(env.calls, c.calls) {
@@ -302,7 +304,7 @@ func TestFormatPartition(t *testing.T) {
 		env := stubPartitions(t, "")
 		env.devices[1].SizeBytes = 300 << 20 // exactly the xfs minimum
 		var steps []string
-		if err := FormatPartition(ctx, format("/dev/sdb1", true), func(step string) { steps = append(steps, step) }); err != nil {
+		if err := FormatPartition(ctx, format("/dev/sdb1", true), func(step string, _ float64) { steps = append(steps, step) }); err != nil {
 			t.Fatal(err)
 		}
 		// The O_EXCL check runs under the lock, right before mkfs, never before
@@ -311,7 +313,7 @@ func TestFormatPartition(t *testing.T) {
 		if !slices.Equal(env.calls, want) {
 			t.Errorf("calls = %q, want %q", env.calls, want)
 		}
-		if !slices.Equal(steps, []string{"Formatting: SSDs are trimmed first, which can take a few minutes"}) {
+		if !slices.Equal(steps, []string{"Trimming before formatting: 50% complete", "Formatting"}) {
 			t.Errorf("steps = %q", steps)
 		}
 	})
