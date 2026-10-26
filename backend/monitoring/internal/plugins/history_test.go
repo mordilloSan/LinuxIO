@@ -95,3 +95,19 @@ func TestLoadDataBatteryUsesNumericArray(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(got), `"battery":[85,1]`)
 }
+
+func TestAverageSystemStatsAveragesKeysOverTheirOwnSamples(t *testing.T) {
+	got, err := averageSystemStatsJSON([]string{
+		`{"temperatures":{"cpu":40,"nvme":50},"network_interfaces":{"eth0":[100,200,5,6]},"extra_filesystems":{"/data":{"disk_total_gb":10,"disk_used_gb":4}},"gpus":{"g0":{"name":"gpu","usage_percent":60,"engines":{"render":30}}}}`,
+		`{"temperatures":{"cpu":60},"network_interfaces":{"eth0":[300,400,7,8],"wlan0":[10,20,1,2]},"extra_filesystems":{"/data":{"disk_total_gb":20,"disk_used_gb":8}}}`,
+	})
+	require.NoError(t, err)
+
+	assert.InDelta(t, 50.0, got.Temperatures["cpu"], 0.001)
+	assert.InDelta(t, 50.0, got.Temperatures["nvme"], 0.001)
+	assert.Equal(t, [4]uint64{200, 300, 7, 8}, got.NetworkInterfaces["eth0"])
+	assert.Equal(t, [4]uint64{10, 20, 1, 2}, got.NetworkInterfaces["wlan0"])
+	assert.InDelta(t, 15.0, got.ExtraFs["/data"].DiskTotal, 0.001)
+	assert.InDelta(t, 60.0, got.GPUData["g0"].Usage, 0.001)
+	assert.InDelta(t, 30.0, got.GPUData["g0"].Engines["render"], 0.001)
+}

@@ -297,3 +297,28 @@ func TestValidateSessionActivityDoesNotRefresh(t *testing.T) {
 func wsURL(httpURL string, path string) string {
 	return "ws" + strings.TrimPrefix(httpURL, "http") + path
 }
+
+func TestRelayClosesSocketOnOversizedFrame(t *testing.T) {
+	sm := newTestSessionManager(sessions.DefaultConfig)
+	defer sm.Close()
+	sess, err := sm.CreateSession("limit-session", session.User{Username: "miguel", UID: 1000, GID: 1000}, false)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+	server := httptest.NewServer(AuthMiddleware(sm, RelayHandler(sm)))
+	defer server.Close()
+	header := http.Header{}
+	header.Add("Cookie", (&http.Cookie{Name: sm.CookieName(), Value: sess.SessionID}).String())
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL(server.URL, "/ws"), header)
+	if err != nil {
+		t.Fatalf("dial websocket: %v", err)
+	}
+	defer conn.Close()
+
+	// The server closes mid-write, so the write error is expected and ignored.
+	_ = conn.WriteMessage(websocket.BinaryMessage, make([]byte, maxReadMessageSize+1))
+	_, _, readErr := conn.ReadMessage()
+	if !websocket.IsCloseError(readErr, websocket.CloseMessageTooBig) {
+		t.Fatalf("read error = %v, want close code %d", readErr, websocket.CloseMessageTooBig)
+	}
+}

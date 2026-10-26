@@ -93,7 +93,7 @@ func (v *SmartValue) UnmarshalJSON(data []byte) error {
 		RemainingPercent *int   `json:"remaining_percent"`
 	}
 	if len(trimmed) > 0 && trimmed[0] == '{' {
-		if err := json.Unmarshal(trimmed, &object); err != nil {
+		if err := json.Unmarshal(trimmed, &object, jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true)); err != nil {
 			return err
 		}
 		v.Value = object.Value
@@ -103,7 +103,7 @@ func (v *SmartValue) UnmarshalJSON(data []byte) error {
 		return nil
 	}
 	var scalar int
-	if err := json.Unmarshal(trimmed, &scalar); err != nil {
+	if err := json.Unmarshal(trimmed, &scalar, jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true)); err != nil {
 		return err
 	}
 	v.Value = &scalar
@@ -188,7 +188,7 @@ func (r *RawValue) UnmarshalJSON(data []byte) error {
 		String string         `json:"string"`
 	}
 
-	if err := json.Unmarshal(data, &tmp); err != nil {
+	if err := json.Unmarshal(data, &tmp, jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true)); err != nil {
 		return err
 	}
 

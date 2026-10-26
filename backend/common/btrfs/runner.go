@@ -176,6 +176,12 @@ func hasFilesystem(mounts []Mount, uuid string) bool {
 	return false
 }
 
+// ResolveRuleAlert clears the alert of a snapshot rule that was deleted or
+// will no longer run.
+func ResolveRuleAlert(ctx context.Context, uuid, path string) {
+	resolve(ctx, snapshotAlertKey(uuid, path))
+}
+
 // snapshotAlertKey is a stable alert key for a rule within the alert key
 // alphabet: the uuid prefix plus the sanitised, lower-cased path.
 func snapshotAlertKey(uuid, path string) string {

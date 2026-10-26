@@ -3,6 +3,7 @@ package docker
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -522,7 +523,7 @@ func (dm *Manager) updateContainerStats(ctx context.Context, ctr *mobycontainer.
 	defer result.Body.Close()
 
 	var apiStats mobycontainer.StatsResponse
-	if decodeErr := json.UnmarshalRead(result.Body, &apiStats, json.MatchCaseInsensitiveNames(true)); decodeErr != nil {
+	if decodeErr := json.UnmarshalRead(result.Body, &apiStats, json.MatchCaseInsensitiveNames(true), jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true)); decodeErr != nil {
 		return decodeErr
 	}
 

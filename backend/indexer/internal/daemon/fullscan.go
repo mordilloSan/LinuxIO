@@ -64,9 +64,6 @@ func startScanProgress(progress IndexProgress, index *indexing.Index) (stop func
 
 // RunIndexMode performs one full atomic-generation scan.
 func RunIndexMode(ctx context.Context, cfg configfile.Config, dbPath string, progress IndexProgress) (IndexRunStats, error) {
-	if ctx == nil {
-		ctx = context.TODO()
-	}
 	start := time.Now()
 	cfg, err := configfile.Normalize(cfg)
 	if err != nil {

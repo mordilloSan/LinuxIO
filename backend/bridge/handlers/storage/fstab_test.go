@@ -2,8 +2,11 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"syscall"
 	"testing"
 
@@ -14,9 +17,10 @@ import (
 
 func useTempFstab(t *testing.T, content string) {
 	t.Helper()
-	old := fstabPath
-	t.Cleanup(func() { fstabPath = old })
-	fstabPath = filepath.Join(t.TempDir(), "fstab")
+	oldPath, oldLock := fstabPath, fstabLockFile
+	t.Cleanup(func() { fstabPath, fstabLockFile = oldPath, oldLock })
+	dir := t.TempDir()
+	fstabPath, fstabLockFile = filepath.Join(dir, "fstab"), filepath.Join(dir, "lock")
 	require.NoError(t, os.WriteFile(fstabPath, []byte(content), 0o644))
 }
 
@@ -26,6 +30,21 @@ func TestAddToFstabIgnoresCommentsAndTerminatesLastLine(t *testing.T) {
 	require.NoError(t, addToFstab("srv:/x", "/mnt/data", "nfs", []string{"ro"}))
 
 	assert.Equal(t, "# /mnt/data was here\nUUID=a / ext4 defaults 0 1\nsrv:/x /mnt/data nfs ro 0 0\n", readFstab(t))
+}
+
+func TestAddToFstabConcurrentKeepsEveryEntry(t *testing.T) {
+	useTempFstab(t, "")
+
+	const n = 20
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Go(func() {
+			assert.NoError(t, addToFstab("UUID=a", fmt.Sprintf("/srv/%d", i), "xfs", nil))
+		})
+	}
+	wg.Wait()
+
+	assert.Equal(t, n, strings.Count(readFstab(t), "\n"))
 }
 
 func TestAddToFstabPass(t *testing.T) {

@@ -28,7 +28,6 @@ func TestSplitSignalName(t *testing.T) {
 }
 
 func closeSignalsForTest(ctx context.Context) error {
-	ctx = requireContext(ctx)
 	if err := ctx.Err(); err != nil {
 		return err
 	}

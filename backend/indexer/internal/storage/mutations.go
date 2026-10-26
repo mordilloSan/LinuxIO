@@ -15,7 +15,6 @@ import (
 // UpdateEntry updates or inserts a single entry in the database.
 // Returns the old size if the entry existed, or 0 if it's new.
 func UpdateEntry(ctx context.Context, db dbExecutor, indexID int64, entry indexing.IndexEntry) (oldSize int64, err error) {
-	ctx = ensureContext(ctx)
 
 	// Check if entry already exists and get old size
 	var existingSize sql.NullInt64
@@ -78,7 +77,6 @@ func updateParentDirectorySizes(ctx context.Context, db dbExecutor, indexID int6
 }
 
 func updateParentDirectorySizesThrough(ctx context.Context, db dbExecutor, indexID int64, childPath string, sizeDelta int64, stopPath string) error {
-	ctx = ensureContext(ctx)
 	if sizeDelta == 0 {
 		return nil
 	}
@@ -113,7 +111,6 @@ func updateParentDirectorySizesThrough(ctx context.Context, db dbExecutor, index
 // countEntriesUnderPath counts queryable directory and non-directory entries
 // in one subtree.
 func countEntriesUnderPath(ctx context.Context, db dbExecutor, indexID int64, relativePath string) (dirs, files int64, err error) {
-	ctx = ensureContext(ctx)
 	lo, childLo, hi := subtreeBounds(relativePath)
 	err = db.QueryRowContext(ctx, `
 		SELECT
@@ -149,7 +146,6 @@ func entryTypeDelta(oldType string, existed bool, newType string) (dirs, files i
 // UpsertEntry adds or replaces one non-directory entry in generation indexID
 // and propagates its size and hardlink accounting to the parent directories.
 func (s *Store) UpsertEntry(ctx context.Context, indexID int64, entry indexing.IndexEntry) error {
-	ctx = ensureContext(ctx)
 	if entry.Type == "directory" {
 		return fmt.Errorf("cannot add a directory entry; reindex its subtree")
 	}
@@ -184,7 +180,6 @@ func (s *Store) UpsertEntry(ctx context.Context, indexID int64, entry indexing.I
 
 // DeletePath deletes all entries under a path (including the path itself) and propagates size changes.
 func (s *Store) DeletePath(ctx context.Context, indexID int64, relativePath string) error {
-	ctx = ensureContext(ctx)
 
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -240,7 +235,6 @@ func (s *Store) DeletePath(ctx context.Context, indexID int64, relativePath stri
 // This is used for partial reindexing to avoid deleting entries outside the reindexed path.
 // Returns the number of entries deleted.
 func cleanupDeletedEntriesUnderPath(ctx context.Context, db dbExecutor, indexID int64, relativePath string, scanTime int64) (int64, error) {
-	ctx = ensureContext(ctx)
 
 	lo, childLo, hi := subtreeBounds(relativePath)
 	result, err := db.ExecContext(ctx, `

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/fs"
 	"log/slog"
-	"net/url"
 	"path/filepath"
 	"strings"
 	"time"
@@ -32,14 +31,7 @@ func parseResourcePatchRequest(req apischema.ActionSourceDestinationRequest) (re
 		return resourcePatchRequest{}, fmt.Errorf("%w: missing action, from, or destination", bridgeipc.ErrInvalidArgs)
 	}
 
-	src, err := url.QueryUnescape(req.Source)
-	if err != nil {
-		return resourcePatchRequest{}, fmt.Errorf("%w: malformed source path encoding", bridgeipc.ErrInvalidArgs)
-	}
-	dst, err := url.QueryUnescape(req.Dest)
-	if err != nil {
-		return resourcePatchRequest{}, fmt.Errorf("%w: malformed destination path encoding", bridgeipc.ErrInvalidArgs)
-	}
+	src, dst := req.Source, req.Dest
 	if dst == "/" || src == "/" {
 		return resourcePatchRequest{}, fmt.Errorf("%w: cannot modify root directory", bridgeipc.ErrInvalidArgs)
 	}

@@ -79,6 +79,9 @@ func SaveBtrfsReplicationJob(ctx context.Context, job btrfs.BtrfsReplicationJob)
 	if err != nil {
 		return nil, fmt.Errorf("set btrfs replication job %s (%s %s): %w", job.ID, job.UUID, job.Path, err)
 	}
+	if !job.Enabled {
+		btrfs.ResolveJobAlert(ctx, job.ID)
+	}
 	slog.Info("btrfs replication job set", "id", job.ID, "uuid", job.UUID, "path", job.Path, "target", job.Target.Kind)
 	return jobs, nil
 }
@@ -92,6 +95,7 @@ func DeleteBtrfsReplicationJob(ctx context.Context, id string) ([]btrfs.BtrfsRep
 	if err != nil {
 		return nil, fmt.Errorf("delete btrfs replication job %s: %w", id, err)
 	}
+	btrfs.ResolveJobAlert(ctx, id)
 	slog.Info("btrfs replication job deleted", "id", id)
 	return jobs, nil
 }

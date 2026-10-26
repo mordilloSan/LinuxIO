@@ -13,11 +13,7 @@ func (s *Store) RunMaintenance(now time.Time) error {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
+	defer rollbackTx(tx, "run maintenance")
 
 	for _, plugin := range plugins.HistoryCapable() {
 		table := pluginHistoryTable(plugin)

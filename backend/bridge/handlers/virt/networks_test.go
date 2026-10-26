@@ -146,6 +146,9 @@ func TestValidateNetworkSelection(t *testing.T) {
 	if err := validateNetworkSelection(context.Background(), fake, "bad/name"); errorCode(err, 0) != 400 {
 		t.Fatalf("malformed bridge error = %v, want 400", err)
 	}
+	if err := validateNetworkSelection(context.Background(), fake, "-br0"); errorCode(err, 0) != 400 {
+		t.Fatalf("leading dash bridge error = %v, want 400", err)
+	}
 }
 
 func TestValidateNetworkSelectionRejectsHiddenLibvirtBackingBridge(t *testing.T) {

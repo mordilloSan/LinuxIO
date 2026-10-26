@@ -26,7 +26,11 @@ func detectIfupdownBackend(env Environment, iface string) (ConfigBackend, error)
 	if err != nil {
 		return nil, err
 	}
-	paths = append(paths, extra...)
+	for _, path := range extra {
+		if !isIfupdownBackupFile(filepath.Base(path)) {
+			paths = append(paths, path)
+		}
+	}
 	var matches []string
 	for _, path := range paths {
 		if path == "" {
@@ -51,6 +55,19 @@ func detectIfupdownBackend(env Environment, iface string) (ConfigBackend, error)
 		return nil, ambiguousf(iface, "ifupdown", matches)
 	}
 	return &IfupdownBackend{env: env, iface: iface, path: matches[0]}, nil
+}
+
+// isIfupdownBackupFile reports editor and package-manager leftovers such as eth0.bak
+// that would otherwise duplicate the live stanza in interfaces.d.
+func isIfupdownBackupFile(name string) bool {
+	if strings.HasPrefix(name, ".") || strings.HasSuffix(name, "~") || strings.Contains(name, ".dpkg-") {
+		return true
+	}
+	switch filepath.Ext(name) {
+	case ".bak", ".orig", ".swp", ".save":
+		return true
+	}
+	return false
 }
 
 func (b *IfupdownBackend) Read() (InterfaceConfig, error) {

@@ -115,6 +115,17 @@ func TestGetIconRemembersMissingIcon(t *testing.T) {
 	}
 }
 
+func TestGetIconUnservableIdentifiersAreNotFound(t *testing.T) {
+	withTempIconCacheDirs(t)
+	for _, identifier := range []string{"My App", "a/b", "missing.svg"} {
+		if _, err := GetIcon(context.Background(), identifier); !errors.Is(err, bridgeipc.ErrNotFound) {
+			t.Errorf("GetIcon(%q) error = %v, want ErrNotFound", identifier, err)
+		} else if code := bridgeipc.StatusCode(err); code != http.StatusNotFound {
+			t.Errorf("GetIcon(%q) status = %d, want 404", identifier, code)
+		}
+	}
+}
+
 func TestGetIconURIHandlerAnswersMissingIconWithEmptyURI(t *testing.T) {
 	withTempIconCacheDirs(t)
 	stubIconTransport(t, func(*http.Request) (*http.Response, error) {

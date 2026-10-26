@@ -44,6 +44,10 @@ type packageUpdateMeta struct {
 	InfoEnum uint32
 }
 
+// packageKitTransactionTimeout bounds one PackageKit install, update or download transaction.
+// autoupdate cannot import this package; keep its offlineDownloadTimeout equal.
+const packageKitTransactionTimeout = 30 * time.Minute
+
 const (
 	pkInfoEnumUnknown = uint32(0)
 	// PK_INFO_ENUM_LAST is a sentinel, not a real package info value.
@@ -52,9 +56,6 @@ const (
 )
 
 func getAutoUpdates(ctx context.Context) (AutoUpdateState, error) {
-	if ctx == nil {
-		return AutoUpdateState{}, fmt.Errorf("nil context")
-	}
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	b := autoupdate.SelectBackend(ctx)
@@ -68,9 +69,6 @@ func getAutoUpdates(ctx context.Context) (AutoUpdateState, error) {
 }
 
 func setAutoUpdates(ctx context.Context, opts AutoUpdateOptions) (AutoUpdateState, error) {
-	if ctx == nil {
-		return AutoUpdateState{}, fmt.Errorf("nil context")
-	}
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
 	b := autoupdate.SelectBackend(ctx)
@@ -84,9 +82,6 @@ func setAutoUpdates(ctx context.Context, opts AutoUpdateOptions) (AutoUpdateStat
 }
 
 func applyOfflineUpdates(ctx context.Context) (apischema.OfflineUpdatesResponse, error) {
-	if ctx == nil {
-		return apischema.OfflineUpdatesResponse{}, fmt.Errorf("nil context")
-	}
 	b := autoupdate.NewPkgKitBackendIfAvailable(ctx)
 	if b == nil {
 		return apischema.OfflineUpdatesResponse{}, fmt.Errorf("PackageKit not available")
@@ -355,9 +350,6 @@ func GetUpdatesBasic(ctx context.Context) ([]UpdateDetail, error) {
 // RefreshUpdateCache refreshes configured package repositories, matching the
 // PackageKit operation behind apt update / dnf makecache.
 func RefreshUpdateCache(ctx context.Context) error {
-	if ctx == nil {
-		return fmt.Errorf("nil context")
-	}
 	return pkgkit.Run(ctx, pkgkit.OperationOptions{NoRetry: true}, func(session pkgkit.ClientSession) error {
 		trans, err := session.CreateTransaction(20)
 		if err != nil {
@@ -580,8 +572,8 @@ func parseDpkgLogFile(
 func applyDpkgLogLine(line string, patterns dpkgLogPatterns, historyMap map[string][]apischema.UpgradeItem, pendingPackages map[string]string) {
 	if m := patterns.install.FindStringSubmatch(line); len(m) == 6 {
 		version := m[4]
-		if m[2] == "upgrade" && m[5] != "" {
-			version = m[5] // upgrade lines read "<old> <new>"
+		if m[5] != "" && m[4] != "<none>" {
+			version = m[5] // lines carrying an old version read "<old> <new>"; a fresh install waits for configure
 		}
 		recordDpkgInstall(m[1], m[3], version, historyMap, pendingPackages)
 		return
@@ -726,7 +718,7 @@ func installPackageWithProgress(ctx context.Context, packageID string, report pk
 			return err
 		}
 
-		waitCtx, cancel := context.WithTimeout(session.Context(), 120*time.Second)
+		waitCtx, cancel := context.WithTimeout(session.Context(), packageKitTransactionTimeout)
 		defer cancel()
 		return awaitPackageUpdateSignals(waitCtx, trans.Signals(), termLog, report)
 	})

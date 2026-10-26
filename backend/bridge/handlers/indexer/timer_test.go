@@ -2,9 +2,12 @@ package indexer
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 	"strings"
 	"testing"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
 func TestNormalizeTimerInterval(t *testing.T) {
@@ -17,6 +20,9 @@ func TestNormalizeTimerInterval(t *testing.T) {
 		{raw: "0s", want: "0"},
 		{raw: " 30m ", want: "30m0s"},
 		{raw: "-1s", wantErr: true},
+		{raw: "1ns", wantErr: true},
+		{raw: "500ms", wantErr: true},
+		{raw: "1m", want: "1m0s"},
 		{raw: "soon", wantErr: true},
 	}
 	for _, test := range tests {
@@ -24,6 +30,9 @@ func TestNormalizeTimerInterval(t *testing.T) {
 		if test.wantErr {
 			if err == nil {
 				t.Fatalf("normalizeTimerInterval(%q) returned nil", test.raw)
+			}
+			if !errors.Is(err, bridgeipc.ErrInvalidArgs) {
+				t.Fatalf("normalizeTimerInterval(%q) error = %v; want ErrInvalidArgs", test.raw, err)
 			}
 			continue
 		}

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 var snapshotTime = time.Date(2026, 10, 19, 10, 15, 0, 0, time.UTC)
@@ -158,10 +160,11 @@ func TestDeleteSnapshotDeletesAndIsIdempotent(t *testing.T) {
 		t.Fatalf("btrfs calls = %v, want %v", *calls, want)
 	}
 
-	// Not in the listing: already gone, nothing to run.
-	_, calls = stubSnapshotTop(t)
-	if err := DeleteSnapshot(context.Background(), rootUUID, path); err != nil || len(*calls) != 0 {
-		t.Fatalf("missing snapshot: err = %v, calls = %v", err, *calls)
+	// The kernel reports ENOENT: already gone.
+	stubSnapshotTop(t)
+	subvolOps.destroy = func(string) error { return unix.ENOENT }
+	if err := DeleteSnapshot(context.Background(), rootUUID, path); err != nil {
+		t.Fatalf("missing snapshot: err = %v", err)
 	}
 }
 

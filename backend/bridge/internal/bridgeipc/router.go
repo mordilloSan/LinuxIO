@@ -566,12 +566,13 @@ func ownerFromSession(sess *session.Session) TaskOwner {
 
 // StatusCode is the wire status code of err: the bridgeipc.Error code when set, else a code for the known sentinels, else 500.
 // failureLevel maps a failed route or task to its log level: server faults
-// are errors, client mistakes are warnings.
+// are errors, client mistakes (4xx) are warnings. Anything else, including
+// exit codes below 400, is a failed operation someone must look at.
 func failureLevel(err error) slog.Level {
-	if StatusCode(err) >= 500 {
-		return slog.LevelError
+	if code := StatusCode(err); code >= 400 && code < 500 {
+		return slog.LevelWarn
 	}
-	return slog.LevelWarn
+	return slog.LevelError
 }
 
 func StatusCode(err error) int {

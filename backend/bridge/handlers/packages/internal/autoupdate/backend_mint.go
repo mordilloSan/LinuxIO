@@ -37,9 +37,6 @@ func mintSupport() AutoUpdateOptionSupport {
 }
 
 func (b *mintBackend) Read(ctx context.Context) (AutoUpdateState, error) {
-	if ctx == nil {
-		return AutoUpdateState{}, fmt.Errorf("nil context")
-	}
 	if err := ctx.Err(); err != nil {
 		return AutoUpdateState{}, err
 	}
@@ -79,9 +76,6 @@ func (b *mintBackend) Read(ctx context.Context) (AutoUpdateState, error) {
 }
 
 func (b *mintBackend) Apply(ctx context.Context, options AutoUpdateOptions) error {
-	if ctx == nil {
-		return fmt.Errorf("nil context")
-	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}

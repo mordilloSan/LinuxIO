@@ -1,17 +1,9 @@
 package storage
 
 import (
-	"context"
 	"path/filepath"
 	"strings"
 )
-
-func ensureContext(ctx context.Context) context.Context {
-	if ctx == nil {
-		return context.TODO()
-	}
-	return ctx
-}
 
 func escapeLikePattern(value string) string {
 	value = strings.ReplaceAll(value, `\`, `\\`)

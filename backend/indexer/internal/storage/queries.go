@@ -16,9 +16,6 @@ import (
 
 // SearchEntriesUnder performs a name search within one indexed subtree.
 func (s *Store) SearchEntriesUnder(ctx context.Context, pattern, basePath string, limit int) ([]api.EntryResult, error) {
-	if ctx == nil {
-		ctx = context.TODO()
-	}
 	if limit <= 0 {
 		limit = defaultSearchLimit
 	}
@@ -142,10 +139,6 @@ func scanSearchEntry(rows *sql.Rows) (api.EntryResult, error) {
 // DirDetails returns the pre-calculated size for a directory.
 // The size is calculated during indexing and stored in the directory entry.
 func (s *Store) DirDetails(ctx context.Context, path string) (totalSize, files, dirs int64, err error) {
-	if ctx == nil {
-		ctx = context.TODO()
-	}
-
 	lo, childLo, hi := subtreeBounds(path)
 	var size sql.NullInt64
 	if err := s.db.QueryRowContext(ctx, `
@@ -182,10 +175,6 @@ func (s *Store) DirDetails(ctx context.Context, path string) (totalSize, files, 
 // GetDirectSubfolders returns all direct child folders of a given path with their sizes.
 // This only returns immediate children (not recursive).
 func (s *Store) GetDirectSubfolders(ctx context.Context, parentPath string) ([]api.SubfolderResult, error) {
-	if ctx == nil {
-		ctx = context.TODO()
-	}
-
 	// Normalize parent path - ensure it starts with / and doesn't end with / (unless it's root)
 	if parentPath != "/" {
 		parentPath = "/" + strings.Trim(parentPath, "/")

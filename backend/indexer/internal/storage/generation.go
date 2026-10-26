@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -34,15 +33,29 @@ type Generation struct {
 // inserts the unpublished generation the next full scan writes into. Rows
 // with last_indexed=0 are invisible to readers until PublishGeneration.
 func (s *Store) BeginGeneration(ctx context.Context) (int64, error) {
-	ctx = ensureContext(ctx)
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, fmt.Errorf("begin transaction: %w", err)
 	}
 	defer rollbackTx(tx, "BeginGeneration")
 
-	if _, execErr := tx.ExecContext(ctx, `DELETE FROM indexes WHERE last_indexed = 0;`); execErr != nil {
-		return 0, fmt.Errorf("clean up incomplete generations: %w", execErr)
+	const deleteLeftovers = `DELETE FROM indexes WHERE last_indexed = 0;`
+	var leftovers int64
+	if countErr := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM entries
+		WHERE index_id IN (SELECT id FROM indexes WHERE last_indexed = 0);
+	`).Scan(&leftovers); countErr != nil {
+		return 0, fmt.Errorf("count incomplete generation entries: %w", countErr)
+	}
+	// A large leftover would fire the per-row FTS delete trigger for every
+	// entry inside this transaction, so it takes the same bypass as pruning.
+	if shouldBypassFTS(ctx, s.db, leftovers) {
+		_, err = deleteWithFTSRebuild(ctx, tx, deleteLeftovers, nil)
+	} else {
+		_, err = tx.ExecContext(ctx, deleteLeftovers)
+	}
+	if err != nil {
+		return 0, fmt.Errorf("clean up incomplete generations: %w", err)
 	}
 	res, err := tx.ExecContext(ctx, `INSERT INTO indexes (last_indexed) VALUES (0);`)
 	if err != nil {
@@ -61,7 +74,7 @@ func (s *Store) BeginGeneration(ctx context.Context) (int64, error) {
 // PublishGeneration records the final counts of generation id and makes it the
 // one readers see.
 func (s *Store) PublishGeneration(ctx context.Context, id, dirs, files, totalSize int64) error {
-	_, err := s.db.ExecContext(ensureContext(ctx), `
+	_, err := s.db.ExecContext(ctx, `
 		UPDATE indexes SET
 			num_dirs = ?,
 			num_files = ?,
@@ -77,7 +90,7 @@ func (s *Store) PublishGeneration(ctx context.Context, id, dirs, files, totalSiz
 // is a real DB problem and should be surfaced.
 func (s *Store) LatestIndexID(ctx context.Context) (int64, error) {
 	var id int64
-	err := s.db.QueryRowContext(ensureContext(ctx), `SELECT id FROM indexes WHERE id = `+latestGenerationSubquery).Scan(&id)
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM indexes WHERE id = `+latestGenerationSubquery).Scan(&id)
 	if err != nil {
 		return 0, err
 	}
@@ -89,7 +102,7 @@ func (s *Store) LatestIndexID(ctx context.Context) (int64, error) {
 func (s *Store) LatestGeneration(ctx context.Context) (Generation, error) {
 	var g Generation
 	var lastIndexed int64
-	err := s.db.QueryRowContext(ensureContext(ctx), `
+	err := s.db.QueryRowContext(ctx, `
 		SELECT num_dirs, num_files, total_size, last_indexed
 		FROM indexes
 		WHERE id = `+latestGenerationSubquery).Scan(&g.NumDirs, &g.NumFiles, &g.TotalSize, &lastIndexed)
@@ -115,7 +128,6 @@ func (s *Store) hasCompletedGeneration(ctx context.Context) bool {
 // updateIndexMetadata applies entry-count deltas to generation indexID and
 // synchronizes its stored total and timestamp with the queryable entries.
 func updateIndexMetadata(ctx context.Context, db dbExecutor, indexID, dirDelta, fileDelta int64) error {
-	ctx = ensureContext(ctx)
 	_, err := db.ExecContext(ctx, `
 		UPDATE indexes
 		SET num_dirs = num_dirs + ?,
@@ -141,7 +153,6 @@ type PruneStats struct {
 // This also cascades to delete all associated entries due to the FOREIGN KEY constraint.
 // keepLatest specifies how many most recent indexes to always keep (minimum 1).
 func (s *Store) PruneOldIndexes(ctx context.Context, keepLatest int) (PruneStats, error) {
-	ctx = ensureContext(ctx)
 	db := s.db
 	if keepLatest < 1 {
 		keepLatest = 1
@@ -177,13 +188,7 @@ func (s *Store) PruneOldIndexes(ctx context.Context, keepLatest int) (PruneStats
 	// prunes bypass the triggers inside one transaction.
 	deleteQuery := `DELETE FROM indexes ` + where + `;`
 	var deleted int64
-	bypassFTS := entriesToDelete > ftsPruneBypassEntries
-	if bypassFTS {
-		if exists, ftsErr := ftsTableExists(ctx, db); ftsErr != nil || !exists {
-			bypassFTS = false
-		}
-	}
-	if bypassFTS {
+	if shouldBypassFTS(ctx, db, entriesToDelete) {
 		deleted, err = deleteIndexesWithFTSRebuild(ctx, db, deleteQuery, args)
 		if err != nil {
 			return PruneStats{}, err
@@ -210,21 +215,36 @@ func (s *Store) PruneOldIndexes(ctx context.Context, keepLatest int) (PruneStats
 	return stats, nil
 }
 
-// deleteIndexesWithFTSRebuild runs a cascading index delete with the FTS sync
-// triggers dropped, then rebuilds entries_fts from the surviving entries.
-// Everything happens in one transaction, so concurrent writers are blocked
-// while the triggers are absent and a failure rolls the trigger DDL back too.
+// shouldBypassFTS reports whether deleting entries rows is big enough, and
+// FTS present, for a trigger-less delete plus rebuild to beat per-row triggers.
+func shouldBypassFTS(ctx context.Context, db *sql.DB, entries int64) bool {
+	if entries <= ftsPruneBypassEntries {
+		return false
+	}
+	exists, err := ftsTableExists(ctx, db)
+	return err == nil && exists
+}
+
+// deleteIndexesWithFTSRebuild runs deleteWithFTSRebuild in its own transaction.
 func deleteIndexesWithFTSRebuild(ctx context.Context, db *sql.DB, deleteQuery string, args []any) (int64, error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}
-	defer func() {
-		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
-			slog.Warn("deleteIndexesWithFTSRebuild rollback failed", "error", rollbackErr)
-		}
-	}()
+	defer rollbackTx(tx, "deleteIndexesWithFTSRebuild")
 
+	deleted, err := deleteWithFTSRebuild(ctx, tx, deleteQuery, args)
+	if err != nil {
+		return 0, err
+	}
+	return deleted, tx.Commit()
+}
+
+// deleteWithFTSRebuild runs a cascading index delete with the FTS sync
+// triggers dropped, then rebuilds entries_fts from the surviving entries.
+// It runs in the caller's transaction, so concurrent writers are blocked
+// while the triggers are absent and a rollback undoes the trigger DDL too.
+func deleteWithFTSRebuild(ctx context.Context, tx *sql.Tx, deleteQuery string, args []any) (int64, error) {
 	if dropErr := dropFTSTriggers(ctx, tx); dropErr != nil {
 		return 0, dropErr
 	}
@@ -245,5 +265,5 @@ func deleteIndexesWithFTSRebuild(ctx context.Context, db *sql.DB, deleteQuery st
 	if err := createFTSTriggers(ctx, tx); err != nil {
 		return 0, err
 	}
-	return deleted, tx.Commit()
+	return deleted, nil
 }

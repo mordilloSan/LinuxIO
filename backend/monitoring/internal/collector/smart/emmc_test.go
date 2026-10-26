@@ -36,7 +36,7 @@ func TestEmmcMockSysfsScanAndCollect(t *testing.T) {
 	write(filepath.Join(mmcDeviceDir, "name"), "H26M52103FMR\n")
 	write(filepath.Join(mmcDeviceDir, "serial"), "01234567\n")
 	write(filepath.Join(mmcDeviceDir, "prv"), "0x08\n")
-	write(filepath.Join(mmcQueueDir, "logical_block_size"), "512\n")
+	write(filepath.Join(mmcQueueDir, "logical_block_size"), "4096\n")        // size is always 512-byte units
 	write(filepath.Join(tmp, "class", "block", "mmcblk0", "size"), "1024\n") // sectors
 
 	devs := scanEmmcDevices()
@@ -70,8 +70,8 @@ func TestEmmcMockSysfsScanAndCollect(t *testing.T) {
 	if got.SmartStatus != "WARNING" {
 		t.Fatalf("SmartStatus=%q, want WARNING", got.SmartStatus)
 	}
-	if got.SerialNumber != "01234567" || got.ModelName == "" || got.Capacity == 0 {
-		t.Fatalf("identity fields = (model=%q serial=%q cap=%d), want non-empty model, serial 01234567, cap>0", got.ModelName, got.SerialNumber, got.Capacity)
+	if got.SerialNumber != "01234567" || got.ModelName == "" || got.Capacity != 1024*512 {
+		t.Fatalf("identity fields = (model=%q serial=%q cap=%d), want non-empty model, serial 01234567, cap=1024*512", got.ModelName, got.SerialNumber, got.Capacity)
 	}
 	if len(got.Attributes) < 3 {
 		t.Fatalf("attributes len=%d, want >= 3", len(got.Attributes))

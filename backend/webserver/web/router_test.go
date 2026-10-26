@@ -305,3 +305,21 @@ func checkWebSocketOrigin(t *testing.T, authenticated bool, origin string) {
 func wsURL(httpURL string, path string) string {
 	return "ws" + strings.TrimPrefix(httpURL, "http") + path
 }
+
+func TestBuildRouterSetsSecurityHeaders(t *testing.T) {
+	sm := sessions.NewManager(sessions.DefaultConfig)
+	t.Cleanup(sm.Close)
+	for _, path := range []string{"/", "/api/missing", "/ws"} {
+		w := doGET(t, BuildRouter(Config{UI: fstest.MapFS{"index.html": {Data: []byte("x")}}}, sm), path)
+		for key, want := range map[string]string{
+			"X-Frame-Options":         "DENY",
+			"Content-Security-Policy": "frame-ancestors 'none'",
+			"X-Content-Type-Options":  "nosniff",
+			"Referrer-Policy":         "strict-origin-when-cross-origin",
+		} {
+			if got := w.Header().Get(key); got != want {
+				t.Errorf("%s %s = %q, want %q", path, key, got, want)
+			}
+		}
+	}
+}

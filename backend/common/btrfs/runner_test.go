@@ -337,3 +337,16 @@ func TestSnapshotAlertKey(t *testing.T) {
 		}
 	}
 }
+
+func TestResolveRuleAndJobAlerts(t *testing.T) {
+	useTempAlerts(t)
+	ctx := context.Background()
+	raise(ctx, alerts.Observation{Key: snapshotAlertKey(rootUUID, "@"), Severity: alerts.SeverityError, Title: "rule"})
+	raise(ctx, alerts.Observation{Key: "replication-j1", Severity: alerts.SeverityError, Title: "job"})
+
+	ResolveRuleAlert(ctx, rootUUID, "@")
+	ResolveJobAlert(ctx, "j1")
+	if doc, err := alerts.Load(); err != nil || len(doc.Alerts) != 0 {
+		t.Fatalf("alerts = %+v, err = %v, want none", doc.Alerts, err)
+	}
+}

@@ -23,7 +23,7 @@ import (
 // Shared validation patterns for network-mount sources and local paths, used by
 // both the NFS and CIFS client handlers.
 var (
-	validHostname = regexp.MustCompile(`^[a-zA-Z0-9.-]+$`)
+	validHostname = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9.-]*$`)
 	validPath     = regexp.MustCompile(`^/[a-zA-Z0-9/_.-]*$`)
 )
 

@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 // SnapshotRoot is the top-level directory reserved for LinuxIO snapshots.
@@ -147,9 +149,8 @@ func DeleteSnapshot(ctx context.Context, uuid, snapshotPath string) error {
 	if _, _, _, ok := ParseSnapshotPath(snapshotPath); !ok {
 		return errors.New("not a linuxio snapshot path")
 	}
-	_, found, err := findSubvolume(ctx, uuid, snapshotPath)
-	if err != nil || !found {
+	if err := deleteUnmounted(ctx, uuid, snapshotPath); err != nil && !errors.Is(err, unix.ENOENT) {
 		return err
 	}
-	return deleteUnmounted(ctx, uuid, snapshotPath)
+	return nil
 }

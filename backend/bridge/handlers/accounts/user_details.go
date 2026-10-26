@@ -178,31 +178,18 @@ func sessionFromLogind(props map[string]godbus.Variant, now time.Time) (apischem
 	return session, true
 }
 
-// TerminateSession ends an active login session. Prefers systemd-logind when a
-// systemd session ID is provided (cleans up scopes/cgroups), falls back to
-// kill -HUP on the session leader PID.
-func TerminateSession(ctx context.Context, sessionID string, pid int) error {
-	if sessionID == "" && pid <= 0 {
-		return errors.New("session identifier required")
+// TerminateSession ends an active login session through systemd-logind, which
+// cleans up its scopes and cgroups.
+func TerminateSession(ctx context.Context, sessionID string) error {
+	if sessionID == "" {
+		return fmt.Errorf("%w: sessionId", bridgeipc.ErrInvalidArgs)
 	}
 
 	cmdCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	if sessionID != "" {
-		if err := control.Logoff(cmdCtx, sessionID); err != nil {
-			slog.Warn("login1 TerminateSession failed, falling back to kill",
-				"sessionID", sessionID, "pid", pid, "error", err)
-		} else {
-			return nil
-		}
-	}
-
-	if pid <= 0 {
-		return fmt.Errorf("failed to terminate session %q and no PID available", sessionID)
-	}
-	if err := syscall.Kill(pid, syscall.SIGHUP); err != nil {
-		return fmt.Errorf("failed to send SIGHUP to pid %d: %w", pid, err)
+	if err := control.Logoff(cmdCtx, sessionID); err != nil {
+		return fmt.Errorf("terminate session %q: %w", sessionID, err)
 	}
 	return nil
 }

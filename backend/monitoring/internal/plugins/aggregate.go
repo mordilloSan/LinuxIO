@@ -195,6 +195,7 @@ func averageSystemStatsJSON(items []string) (*systemmodel.Stats, error) {
 	sum := &systemmodel.Stats{}
 	temp := &systemmodel.Stats{}
 	count := float64(len(items))
+	seen := keySamples{}
 	batterySum := 0
 	var cpuCoresSums []uint64
 	var cpuBreakdownSums []float64
@@ -262,10 +263,10 @@ func averageSystemStatsJSON(items []string) (*systemmodel.Stats, error) {
 		sum.MaxMem = max(sum.MaxMem, temp.MaxMem, temp.MemUsed)
 		sum.MaxDiskReadPs = max(sum.MaxDiskReadPs, temp.MaxDiskReadPs, temp.DiskReadPs)
 		sum.MaxDiskWritePs = max(sum.MaxDiskWritePs, temp.MaxDiskWritePs, temp.DiskWritePs)
-		accumulateNetworkInterfaces(sum, temp)
-		accumulateTemperatures(sum, temp)
-		accumulateFilesystems(sum, temp)
-		accumulateGPUs(sum, temp)
+		accumulateNetworkInterfaces(sum, temp, &seen)
+		accumulateTemperatures(sum, temp, &seen)
+		accumulateFilesystems(sum, temp, &seen)
+		accumulateGPUs(sum, temp, &seen)
 	}
 
 	if count == 0 {
@@ -273,10 +274,10 @@ func averageSystemStatsJSON(items []string) (*systemmodel.Stats, error) {
 	}
 	averageScalarStats(sum, count)
 	sum.Battery[0] = uint16(batterySum / int(count))
-	averageNetworkInterfaces(sum, uint64(count))
-	averageTemperatures(sum, count)
-	averageFilesystems(sum, count)
-	averageGPUs(sum, count)
+	averageNetworkInterfaces(sum, &seen)
+	averageTemperatures(sum, &seen)
+	averageFilesystems(sum, &seen)
+	averageGPUs(sum, &seen)
 	if len(cpuCoresSums) > 0 {
 		sum.CpuCoresUsage = make(systemmodel.Uint8Slice, len(cpuCoresSums))
 		for i, value := range cpuCoresSums {
@@ -328,7 +329,22 @@ func averageScalarStats(sum *systemmodel.Stats, count float64) {
 	}
 }
 
-func accumulateNetworkInterfaces(sum, sample *systemmodel.Stats) {
+// keySamples counts, per map key, the samples that contained it, so a key
+// present in only some samples is averaged over those samples alone.
+type keySamples struct {
+	net, temp, fs, gpu map[string]float64
+	engines            map[[2]string]float64
+}
+
+// bump increments the counter for key, allocating the map on first use.
+func bump[K comparable](counts *map[K]float64, key K) {
+	if *counts == nil {
+		*counts = map[K]float64{}
+	}
+	(*counts)[key]++
+}
+
+func accumulateNetworkInterfaces(sum, sample *systemmodel.Stats, seen *keySamples) {
 	if sample.NetworkInterfaces == nil {
 		return
 	}
@@ -336,6 +352,7 @@ func accumulateNetworkInterfaces(sum, sample *systemmodel.Stats) {
 		sum.NetworkInterfaces = make(map[string][4]uint64, len(sample.NetworkInterfaces))
 	}
 	for key, value := range sample.NetworkInterfaces {
+		bump(&seen.net, key)
 		current := sum.NetworkInterfaces[key]
 		sum.NetworkInterfaces[key] = [4]uint64{
 			current[0] + value[0],
@@ -346,13 +363,14 @@ func accumulateNetworkInterfaces(sum, sample *systemmodel.Stats) {
 	}
 }
 
-func averageNetworkInterfaces(sum *systemmodel.Stats, count uint64) {
+func averageNetworkInterfaces(sum *systemmodel.Stats, seen *keySamples) {
 	for key, value := range sum.NetworkInterfaces {
+		count := uint64(seen.net[key])
 		sum.NetworkInterfaces[key] = [4]uint64{value[0] / count, value[1] / count, value[2], value[3]}
 	}
 }
 
-func accumulateTemperatures(sum, sample *systemmodel.Stats) {
+func accumulateTemperatures(sum, sample *systemmodel.Stats, seen *keySamples) {
 	if sample.Temperatures == nil {
 		return
 	}
@@ -360,17 +378,18 @@ func accumulateTemperatures(sum, sample *systemmodel.Stats) {
 		sum.Temperatures = make(map[string]float64, len(sample.Temperatures))
 	}
 	for key, value := range sample.Temperatures {
+		bump(&seen.temp, key)
 		sum.Temperatures[key] += value
 	}
 }
 
-func averageTemperatures(sum *systemmodel.Stats, count float64) {
+func averageTemperatures(sum *systemmodel.Stats, seen *keySamples) {
 	for key, value := range sum.Temperatures {
-		sum.Temperatures[key] = units.TwoDecimals(value / count)
+		sum.Temperatures[key] = units.TwoDecimals(value / seen.temp[key])
 	}
 }
 
-func accumulateFilesystems(sum, sample *systemmodel.Stats) {
+func accumulateFilesystems(sum, sample *systemmodel.Stats, seen *keySamples) {
 	if sample.ExtraFs == nil {
 		return
 	}
@@ -384,6 +403,7 @@ func accumulateFilesystems(sum, sample *systemmodel.Stats) {
 		if sum.ExtraFs[key] == nil {
 			sum.ExtraFs[key] = &systemmodel.FsStats{}
 		}
+		bump(&seen.fs, key)
 		fs := sum.ExtraFs[key]
 		fs.DiskTotal += value.DiskTotal
 		fs.DiskUsed += value.DiskUsed
@@ -402,8 +422,9 @@ func accumulateFilesystems(sum, sample *systemmodel.Stats) {
 	}
 }
 
-func averageFilesystems(sum *systemmodel.Stats, count float64) {
-	for _, fs := range sum.ExtraFs {
+func averageFilesystems(sum *systemmodel.Stats, seen *keySamples) {
+	for key, fs := range sum.ExtraFs {
+		count := seen.fs[key]
 		fs.DiskTotal = units.TwoDecimals(fs.DiskTotal / count)
 		fs.DiskUsed = units.TwoDecimals(fs.DiskUsed / count)
 		fs.DiskWritePs = units.TwoDecimals(fs.DiskWritePs / count)
@@ -416,7 +437,7 @@ func averageFilesystems(sum *systemmodel.Stats, count float64) {
 	}
 }
 
-func accumulateGPUs(sum, sample *systemmodel.Stats) {
+func accumulateGPUs(sum, sample *systemmodel.Stats, seen *keySamples) {
 	if sample.GPUData == nil {
 		return
 	}
@@ -424,6 +445,7 @@ func accumulateGPUs(sum, sample *systemmodel.Stats) {
 		sum.GPUData = make(map[string]systemmodel.GPUData, len(sample.GPUData))
 	}
 	for id, value := range sample.GPUData {
+		bump(&seen.gpu, id)
 		gpu := sum.GPUData[id]
 		if gpu.Name == "" {
 			gpu.Name = value.Name
@@ -440,6 +462,7 @@ func accumulateGPUs(sum, sample *systemmodel.Stats) {
 				gpu.Engines = make(map[string]float64, len(value.Engines))
 			}
 			for key, engine := range value.Engines {
+				bump(&seen.engines, [2]string{id, key})
 				gpu.Engines[key] += engine
 			}
 		}
@@ -447,8 +470,9 @@ func accumulateGPUs(sum, sample *systemmodel.Stats) {
 	}
 }
 
-func averageGPUs(sum *systemmodel.Stats, count float64) {
+func averageGPUs(sum *systemmodel.Stats, seen *keySamples) {
 	for id, gpu := range sum.GPUData {
+		count := seen.gpu[id]
 		gpu.Temperature = units.TwoDecimals(gpu.Temperature / count)
 		gpu.MemoryUsed = units.TwoDecimals(gpu.MemoryUsed / count)
 		gpu.MemoryTotal = units.TwoDecimals(gpu.MemoryTotal / count)
@@ -457,7 +481,7 @@ func averageGPUs(sum *systemmodel.Stats, count float64) {
 		gpu.PowerPkg = units.TwoDecimals(gpu.PowerPkg / count)
 		gpu.Count = units.TwoDecimals(gpu.Count / count)
 		for key := range gpu.Engines {
-			gpu.Engines[key] = units.TwoDecimals(gpu.Engines[key] / count)
+			gpu.Engines[key] = units.TwoDecimals(gpu.Engines[key] / seen.engines[[2]string{id, key}])
 		}
 		sum.GPUData[id] = gpu
 	}

@@ -401,6 +401,10 @@ func netplanHandoffDeltas(env Environment, state *BridgeHandoffState) (netplanHa
 	bridgeMap["interfaces"] = []string{state.Plan.Member}
 	bridgeMap["macaddress"] = state.MemberMAC
 	bridgeMap["renderer"] = renderer
+	if strings.EqualFold(renderer, "NetworkManager") {
+		// NetworkManager would otherwise keep STP on and delay forwarding past the verify timeout.
+		bridgeMap["parameters"] = map[string]any{"stp": false}
+	}
 
 	memberDelta, err := json.Marshal(memberMap)
 	if err != nil {

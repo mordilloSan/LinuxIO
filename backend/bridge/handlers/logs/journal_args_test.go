@@ -1,11 +1,13 @@
 package logs
 
 import (
+	"errors"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
 func TestParseGeneralLogsRequestDefaults(t *testing.T) {
@@ -193,6 +195,20 @@ func TestIsValidJournalCursor(t *testing.T) {
 	for _, tc := range cases {
 		if got := isValidJournalCursor(tc.cursor); got != tc.want {
 			t.Errorf("isValidJournalCursor(%.20q...) = %v, want %v", tc.cursor, got, tc.want)
+		}
+	}
+}
+
+func TestParseGeneralLogsRequestRejectsInvalidLines(t *testing.T) {
+	for _, lines := range []string{"all", "0", "200", "999999"} {
+		if req := parseGeneralLogsRequest(apischema.GeneralLogsFollowRequest{Lines: &lines}); req.scopeError != nil {
+			t.Errorf("lines %q: unexpected error %v", lines, req.scopeError)
+		}
+	}
+	for _, lines := range []string{"--version", "--vacuum-time=1s", "-5", "1000000", "1 2", "ALL"} {
+		req := parseGeneralLogsRequest(apischema.GeneralLogsFollowRequest{Lines: &lines})
+		if !errors.Is(req.scopeError, bridgeipc.ErrInvalidArgs) {
+			t.Errorf("lines %q: scopeError = %v, want ErrInvalidArgs", lines, req.scopeError)
 		}
 	}
 }

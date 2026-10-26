@@ -58,7 +58,8 @@ func (l *aptTermLog) lines() []string {
 
 	var lines []string
 	for line := range strings.SplitSeq(complete, "\n") {
-		// dpkg redraws progress with carriage returns; keep the final redraw.
+		// The pty ends lines in \r\n; dpkg redraws progress with carriage returns, keep the final redraw.
+		line = strings.TrimSuffix(line, "\r")
 		line = line[strings.LastIndexByte(line, '\r')+1:]
 		if line == "" || strings.HasPrefix(line, "Log started: ") || strings.HasPrefix(line, "Log ended: ") {
 			continue

@@ -10,7 +10,7 @@ import (
 func GetVariantProperty(ctx context.Context, obj godbus.BusObject, iface, property string) (godbus.Variant, error) {
 	var variant godbus.Variant
 	err := obj.CallWithContext(
-		requireContext(ctx),
+		ctx,
 		PropertiesGet,
 		0,
 		iface,

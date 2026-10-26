@@ -30,7 +30,11 @@ func streamServiceLogsChannel(parent context.Context, stream net.Conn, _ runtime
 		"service", serviceName,
 		"lines", lines)
 
-	args := []string{"-u", serviceName, "-n", lines, "-f", "--no-pager", "-o", "short-iso"}
+	args := []string{"-u", serviceName}
+	if lines != "all" {
+		args = append(args, "-n", lines)
+	}
+	args = append(args, "-f", "--no-pager", "-o", "short-iso")
 	err = followJournal(ctx, stream, args, func(line string) string { return line })
 	if err != nil && !errors.Is(err, errJournalFollowEnded) {
 		return writeLogErrorUnlessCanceled(ctx, stream, err)
@@ -55,6 +59,9 @@ func parseServiceLogsRequest(req apischema.ServiceLogsFollowRequest) (string, st
 	lines := "100"
 	if req.Lines != nil && *req.Lines != "" {
 		lines = *req.Lines
+	}
+	if err := validateLines(lines); err != nil {
+		return "", "", err
 	}
 	return serviceName, lines, nil
 }

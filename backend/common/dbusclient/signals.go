@@ -174,7 +174,6 @@ func (m *signalManager) watch(ctx context.Context, buffer int, match SignalMatch
 	if buffer <= 0 {
 		buffer = 20
 	}
-	ctx = requireContext(ctx)
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -249,7 +248,6 @@ func (m *signalManager) dispatchSignal(sig *godbus.Signal) {
 }
 
 func (m *signalManager) closeSubscription(ctx context.Context, sub *SignalSubscription) error {
-	ctx = requireContext(ctx)
 
 	m.mu.Lock()
 	if _, ok := m.subs[sub]; !ok {

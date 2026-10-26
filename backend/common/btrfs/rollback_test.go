@@ -288,6 +288,29 @@ func TestRollbackPlanBusyMountKeepsOld(t *testing.T) {
 	}
 }
 
+func TestRollbackPlanExecuteRemountRetriesWithSubvolOnly(t *testing.T) {
+	s := stubRollback(t, dataMounts, nil)
+	mountFS = func(source, target, _ string, _ uintptr, data string) error {
+		s.cmds = append(s.cmds, []string{"mount", source, target, data})
+		if strings.Contains(data, "space_cache") {
+			return errors.New("bad option")
+		}
+		return nil
+	}
+	plan, _ := PlanRollback("data", dataSnap, dataMounts, 5, 302, snapshotTime)
+	if _, err := ExecuteRollback(context.Background(), rootUUID, plan, func(int, string) {}); err != nil {
+		t.Fatalf("ExecuteRollback: %v", err)
+	}
+	want := [][]string{
+		{"umount", "/srv/data"},
+		{"mount", "/dev/root", "/srv/data", "space_cache=v2,subvol=/data"},
+		{"mount", "/dev/root", "/srv/data", "subvol=/data"},
+	}
+	if !reflect.DeepEqual(s.cmds, want) {
+		t.Fatalf("commands = %v, want %v", s.cmds, want)
+	}
+}
+
 func TestRollbackPlanExecuteMountFailureNamesMountpointAndOldPath(t *testing.T) {
 	stubRollback(t, dataMounts, map[string]error{"mount": errors.New("wrong fs type")})
 	plan, _ := PlanRollback("data", dataSnap, dataMounts, 5, 302, snapshotTime)

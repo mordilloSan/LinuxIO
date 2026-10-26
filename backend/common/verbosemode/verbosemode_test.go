@@ -6,12 +6,42 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/logging"
 )
+
+func TestDropinsExecStartMatchesPackagedUnits(t *testing.T) {
+	unitDir := filepath.Join("..", "..", "..", "packaging", "systemd")
+	if _, err := os.Stat(unitDir); err != nil {
+		t.Skipf("packaging directory not found: %v", err)
+	}
+	for _, d := range dropins {
+		unit, err := os.ReadFile(filepath.Join(unitDir, d.unit))
+		if err != nil {
+			t.Fatal(err)
+		}
+		packaged := ""
+		for line := range strings.SplitSeq(string(unit), "\n") {
+			if v, ok := strings.CutPrefix(line, "ExecStart="); ok {
+				packaged = v
+			}
+		}
+		var override string
+		for line := range strings.SplitSeq(d.content, "\n") {
+			if v, ok := strings.CutPrefix(line, "ExecStart="); ok && v != "" {
+				override = v
+			}
+		}
+		flag, ok := strings.CutPrefix(override, packaged+" ")
+		if packaged == "" || !ok || (flag != "-verbose" && flag != "--verbose") {
+			t.Errorf("%s: drop-in ExecStart %q is not the packaged %q plus a verbose flag", d.unit, override, packaged)
+		}
+	}
+}
 
 func TestVerbosemodeEnabledRequiresEveryDropin(t *testing.T) {
 	prev := dropinRoot

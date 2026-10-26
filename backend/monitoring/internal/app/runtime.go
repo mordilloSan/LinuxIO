@@ -458,8 +458,11 @@ func (a *App) refreshSmart(ctx context.Context, now time.Time, forceScan bool) e
 	}
 
 	refreshErr := a.smartManager.Refresh(ctx, forceScan)
-	// A failed refresh also waits one interval instead of rescanning every check.
-	a.smartManager.MarkRefreshed(now)
+	// A failed refresh also waits one interval instead of rescanning every check;
+	// a cancelled one never ran, so the scheduled refresh stays due.
+	if ctx.Err() == nil {
+		a.smartManager.MarkRefreshed(now)
+	}
 	if refreshErr != nil {
 		return refreshErr
 	}

@@ -2,6 +2,8 @@ package datetime
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
@@ -29,7 +31,11 @@ func handleGetNTPStatus(ctx context.Context, _ apischema.NoRequest) (bool, error
 }
 
 func handleSetNTP(ctx context.Context, req apischema.EnabledRequest) error {
-	return SetNTP(ctx, req.Enabled == "true")
+	enabled, err := strconv.ParseBool(req.Enabled)
+	if err != nil {
+		return fmt.Errorf("%w: enabled: %w", bridgeipc.ErrInvalidArgs, err)
+	}
+	return SetNTP(ctx, enabled)
 }
 
 func handleSetServerTime(ctx context.Context, req apischema.ISOTimeRequest) error {

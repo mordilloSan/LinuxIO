@@ -270,7 +270,7 @@ func (gm *Manager) collectNvtopStats(ctx context.Context, interval string, updat
 	}
 	defer cleanupStartedCommand(cmd, stdout, &err)
 
-	decoder := jsontext.NewDecoder(stdout)
+	decoder := jsontext.NewDecoder(stdout, jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true))
 	foundValid := false
 	for {
 		var snapshots []nvtopSnapshot

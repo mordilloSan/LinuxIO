@@ -6,6 +6,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"runtime/pprof"
 	"strings"
@@ -63,6 +64,24 @@ func TestStatusCodeMapsNotFoundAndConflict(t *testing.T) {
 	for _, tt := range tests {
 		if got := StatusCode(tt.err); got != tt.want {
 			t.Errorf("StatusCode(%v) = %d, want %d", tt.err, got, tt.want)
+		}
+	}
+}
+
+func TestFailureLevel(t *testing.T) {
+	tests := []struct {
+		err  error
+		want slog.Level
+	}{
+		{ErrInvalidArgs, slog.LevelWarn},
+		{ErrNotFound, slog.LevelWarn},
+		{NewError("update failed", 1), slog.LevelError},
+		{NewError("boom", 500), slog.LevelError},
+		{errors.New("plain"), slog.LevelError},
+	}
+	for _, tt := range tests {
+		if got := failureLevel(tt.err); got != tt.want {
+			t.Errorf("failureLevel(%v) = %v, want %v", tt.err, got, tt.want)
 		}
 	}
 }

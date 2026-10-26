@@ -49,7 +49,7 @@ func (s *Store) Close() error {
 // JournalMode returns the SQLite journal mode of the database.
 func (s *Store) JournalMode(ctx context.Context) (string, error) {
 	var mode string
-	if err := s.db.QueryRowContext(ensureContext(ctx), `PRAGMA journal_mode;`).Scan(&mode); err != nil {
+	if err := s.db.QueryRowContext(ctx, `PRAGMA journal_mode;`).Scan(&mode); err != nil {
 		return "", fmt.Errorf("read journal mode: %w", err)
 	}
 	return mode, nil

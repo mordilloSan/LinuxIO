@@ -2,6 +2,7 @@ package wireguard
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -201,7 +202,7 @@ func TestAddInterfaceRefusesExistingInterface(t *testing.T) {
 	}
 }
 
-func TestAddInterfaceReturnsPeerExportError(t *testing.T) {
+func TestAddInterfaceRefusesLeftoverPeerDirectory(t *testing.T) {
 	newWireGuardTestEnv(t)
 	numPeers := "1"
 	if err := os.MkdirAll(peerDirPath("wgtest"), 0o700); err != nil {
@@ -218,9 +219,11 @@ func TestAddInterfaceReturnsPeerExportError(t *testing.T) {
 		EgressNic:  "eth0",
 		NumPeers:   &numPeers,
 	})
-	if err == nil || !strings.Contains(err.Error(), "already exists") {
-		t.Fatalf("error = %v, want the peer export failure", err)
+	if !errors.Is(err, bridgeipc.ErrConflict) {
+		t.Fatalf("error = %v, want a conflict for the leftover peer directory", err)
 	}
 	assertPathMissing(t, configPath("wgtest"))
-	assertPathMissing(t, peerDirPath("wgtest"))
+	if raw, readErr := os.ReadFile(peerConfigPath("wgtest", "Peer2")); readErr != nil || string(raw) != "stale" {
+		t.Fatalf("leftover peer file = %q, %v; want it untouched", raw, readErr)
+	}
 }

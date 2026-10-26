@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -190,11 +189,7 @@ func ftsRebuild(ctx context.Context, db *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
-			slog.Warn("fts rebuild rollback failed", "error", rollbackErr)
-		}
-	}()
+	defer rollbackTx(tx, "ftsRebuild")
 	if _, err := tx.ExecContext(ctx, `INSERT INTO entries_fts(entries_fts) VALUES ('rebuild');`); err != nil {
 		return fmt.Errorf("rebuild entries_fts: %w", err)
 	}

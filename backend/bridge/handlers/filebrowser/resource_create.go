@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,11 +31,7 @@ func parseResourcePostRequest(req apischema.FileResourcePostRequest) (resourcePo
 		return resourcePostRequest{}, fmt.Errorf("%w: missing path", bridgeipc.ErrInvalidArgs)
 	}
 
-	path, err := url.QueryUnescape(req.Path)
-	if err != nil {
-		return resourcePostRequest{}, fmt.Errorf("%w: malformed path encoding", bridgeipc.ErrInvalidArgs)
-	}
-
+	path := req.Path
 	cleanPath := fsroot.CleanAbsPath(path)
 	if cleanPath == "/" {
 		return resourcePostRequest{}, fmt.Errorf("%w: cannot create root", bridgeipc.ErrInvalidArgs)

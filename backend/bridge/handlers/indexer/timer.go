@@ -84,13 +84,13 @@ func normalizeTimerInterval(raw string) (string, error) {
 	}
 	duration, err := time.ParseDuration(trimmed)
 	if err != nil {
-		return "", fmt.Errorf("invalid timer interval %q: %w", trimmed, err)
-	}
-	if duration < 0 {
-		return "", fmt.Errorf("timer interval must be non-negative")
+		return "", fmt.Errorf("%w: invalid timer interval %q: %w", bridgeipc.ErrInvalidArgs, trimmed, err)
 	}
 	if duration == 0 {
 		return "0", nil
+	}
+	if duration < time.Minute {
+		return "", fmt.Errorf("%w: timer interval %q must be at least 1m", bridgeipc.ErrInvalidArgs, trimmed)
 	}
 	return duration.String(), nil
 }

@@ -2,15 +2,20 @@ package filebrowser
 
 import (
 	"context"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
 func seedFile(t *testing.T, path, content string) string {
@@ -153,6 +158,89 @@ func TestRunMoveBatchTaskKeepsBoth(t *testing.T) {
 	}
 	if _, err := os.Lstat(file); !os.IsNotExist(err) {
 		t.Fatalf("source should be gone after a move, got %v", err)
+	}
+}
+
+func TestExecuteBatchTransferReturnsFinishedItemsOnAbort(t *testing.T) {
+	src, dest := t.TempDir(), t.TempDir()
+	first := seedFile(t, filepath.Join(src, "a.txt"), "a")
+	second := seedFile(t, filepath.Join(src, "b.txt"), "b")
+	root, err := fsroot.Open()
+	if err != nil {
+		t.Fatalf("open root: %v", err)
+	}
+	defer root.Close()
+	items := []batchTransferItem{
+		{source: first, dest: filepath.Join(dest, "a.txt")},
+		{source: second, dest: filepath.Join(dest, "b.txt")},
+	}
+	seedFile(t, items[0].dest, "a")
+
+	calls := 0
+	transfer := func(batchTransferItem, *services.OperationCallbacks, bool) error {
+		calls++
+		if calls == 2 {
+			return services.ErrAborted
+		}
+		return nil
+	}
+	succeeded, _, updates, err := executeBatchTransfer(context.Background(), root, items, false, nil, "copy", transfer, nil)
+	if err == nil || succeeded != 1 || len(updates) != 1 || updates[0].dest != items[0].dest {
+		t.Fatalf("succeeded=%d updates=%+v err=%v, want the first item's update with the abort error", succeeded, updates, err)
+	}
+}
+
+func TestRunMoveBatchTaskReindexesMergeStoppedBySpecialFile(t *testing.T) {
+	requests := recordIndexerRequests(t)
+	src, dest := t.TempDir(), t.TempDir()
+	srcTree, destTree := filepath.Join(src, "tree"), filepath.Join(dest, "tree")
+	if err := os.Mkdir(srcTree, 0o755); err != nil {
+		t.Fatalf("seed source tree: %v", err)
+	}
+	if err := os.Mkdir(destTree, 0o755); err != nil {
+		t.Fatalf("seed destination tree: %v", err)
+	}
+	seedFile(t, filepath.Join(srcTree, "a.txt"), "a")
+	if err := syscall.Mkfifo(filepath.Join(srcTree, "pipe"), 0o644); err != nil {
+		t.Skipf("mkfifo not supported: %v", err)
+	}
+	overwrite := true
+	req := apischema.BatchTransferRequest{Sources: []string{srcTree}, Destination: dest, Overwrite: &overwrite}
+
+	result, err := runMoveBatchTask(context.Background(), newBatchTask(t, "filebrowser.move_batch", req), nil, req)
+	detachedIndexerUpdates.Wait()
+	if err != nil || result.Succeeded != 0 || len(result.Failed) != 1 {
+		t.Fatalf("result = %+v, err %v", result, err)
+	}
+	if got := readString(t, filepath.Join(destTree, "a.txt")); got != "a" {
+		t.Fatalf("regular child should have moved, got %q", got)
+	}
+	var reindexed []string
+	for _, request := range *requests {
+		if request.path == indexerapi.RouteReindex {
+			reindexed = append(reindexed, request.query)
+		}
+	}
+	pathQuery := func(path string) string { return url.Values{"path": {path}}.Encode() }
+	if want := []string{pathQuery(srcTree), pathQuery(destTree)}; !slices.Equal(reindexed, want) {
+		t.Fatalf("reindexed %v, want %v", reindexed, want)
+	}
+}
+
+func TestReconcileDetachedGivesEachItemItsOwnTimeout(t *testing.T) {
+	var deadlines []time.Time
+	reconcileDetached("test", []int{1, 2}, func(ctx context.Context, _ int) error {
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			t.Error("item context has no deadline")
+		}
+		deadlines = append(deadlines, deadline)
+		time.Sleep(20 * time.Millisecond)
+		return nil
+	})
+	detachedIndexerUpdates.Wait()
+	if len(deadlines) != 2 || !deadlines[1].After(deadlines[0].Add(10*time.Millisecond)) {
+		t.Fatalf("deadlines = %v, want the second item to get a fresh timeout", deadlines)
 	}
 }
 

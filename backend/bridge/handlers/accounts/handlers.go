@@ -2,7 +2,6 @@ package accounts
 
 import (
 	"context"
-	"strconv"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
@@ -47,8 +46,7 @@ func handleListUserLogins(ctx context.Context, req apischema.UsernameRequest) ([
 }
 
 func handleTerminateSession(ctx context.Context, req apischema.TerminateSessionRequest) error {
-	pid, _ := strconv.Atoi(req.PID)
-	return TerminateSession(ctx, req.SessionID, pid)
+	return TerminateSession(ctx, req.SessionID)
 }
 
 func handleDeleteUser(ctx context.Context, req apischema.UsernameRequest) error {

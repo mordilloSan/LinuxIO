@@ -13,6 +13,8 @@ import (
 )
 
 func AddPeer(ctx context.Context, req apischema.WireGuardAddPeerRequest) (string, error) {
+	configMu.Lock()
+	defer configMu.Unlock()
 	if req.InterfaceName == "" {
 		return "", fmt.Errorf("usage: add_peer <interface> [name]")
 	}

@@ -310,7 +310,7 @@ func updateOnePackageWithProgress(
 		return err
 	}
 
-	waitCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+	waitCtx, cancel := context.WithTimeout(ctx, packageKitTransactionTimeout)
 	defer cancel()
 	return awaitPackageUpdateSignals(waitCtx, trans.Signals(), termLog, scalePackageProgress(report, index, total))
 }

@@ -283,11 +283,20 @@ func remountStep(ctx context.Context, uuid string, step RollbackStep) error {
 		}
 		return fmt.Errorf("unmount %s: %w", step.From, err)
 	}
-	flags, data := splitMountOptions(strings.Split(step.To, ","))
-	if err := mountFS(device, step.From, "btrfs", flags, data); err != nil {
-		return fmt.Errorf("mount %s: %w", step.From, err)
+	opts := strings.Split(step.To, ",")
+	flags, data := splitMountOptions(opts)
+	mountErr := mountFS(device, step.From, "btrfs", flags, data)
+	if mountErr == nil {
+		return nil
 	}
-	return nil
+	// A rejected filesystem option must not leave the mountpoint empty: retry
+	// with only the VFS flags and the subvolume.
+	if i := slices.IndexFunc(opts, func(o string) bool { return strings.HasPrefix(o, "subvol=") }); i >= 0 {
+		if mountFS(device, step.From, "btrfs", flags, opts[i]) == nil {
+			return nil
+		}
+	}
+	return fmt.Errorf("mount %s: %w", step.From, mountErr)
 }
 
 func stepMessage(step RollbackStep) string {

@@ -148,7 +148,7 @@ func CreateSambaShare(ctx context.Context, name string, properties map[string]st
 
 	block := formatSambaSection(name, properties)
 
-	if err := appendToConfFile(smbConfFile, "\n"+block); err != nil {
+	if err := appendToConfFile(ctx, smbConfFile, "\n"+block); err != nil {
 		return err
 	}
 	slog.Info("Samba share created", "name", name, "path", path)
@@ -191,23 +191,10 @@ func UpdateSambaShare(ctx context.Context, oldName, newName string, properties m
 		}
 	}
 
-	content, err := os.ReadFile(smbConfFile)
-	if err != nil {
-		return fmt.Errorf("failed to read %s: %w", smbConfFile, err)
-	}
-
-	newContent, found := replaceSmbSection(
-		string(content),
-		oldName,
-		newName,
-		properties,
-	)
-	if !found {
-		return fmt.Errorf("share not found: %s", oldName)
-	}
-
-	if err := atomicfile.Write(smbConfFile, []byte(newContent), 0o644); err != nil {
-		return fmt.Errorf("failed to write %s: %w", smbConfFile, err)
+	if err := rewriteSmbConf(ctx, oldName, func(content string) (string, bool) {
+		return replaceSmbSection(content, oldName, newName, properties)
+	}); err != nil {
+		return err
 	}
 	slog.Info("Samba share updated", "name", oldName, "new_name", newName, "path", path)
 	return reloadSamba(ctx)
@@ -222,21 +209,32 @@ func DeleteSambaShare(ctx context.Context, name string) error {
 		return err
 	}
 
-	content, err := os.ReadFile(smbConfFile)
-	if err != nil {
-		return fmt.Errorf("failed to read %s: %w", smbConfFile, err)
-	}
-
-	newContent, found := removeSmbSection(string(content), name)
-	if !found {
-		return fmt.Errorf("share not found: %s", name)
-	}
-
-	if err := atomicfile.Write(smbConfFile, []byte(newContent), 0o644); err != nil {
-		return fmt.Errorf("failed to write %s: %w", smbConfFile, err)
+	if err := rewriteSmbConf(ctx, name, func(content string) (string, bool) {
+		return removeSmbSection(content, name)
+	}); err != nil {
+		return err
 	}
 	slog.Info("Samba share deleted", "name", name)
 	return reloadSamba(ctx)
+}
+
+// rewriteSmbConf applies edit to smb.conf under the shares lock so concurrent
+// read-modify-write cycles cannot overwrite each other.
+func rewriteSmbConf(ctx context.Context, name string, edit func(content string) (string, bool)) error {
+	return withConfLock(ctx, func() error {
+		content, err := os.ReadFile(smbConfFile)
+		if err != nil {
+			return fmt.Errorf("failed to read %s: %w", smbConfFile, err)
+		}
+		newContent, found := edit(string(content))
+		if !found {
+			return fmt.Errorf("share not found: %s", name)
+		}
+		if writeErr := atomicfile.Write(smbConfFile, []byte(newContent), 0o644); writeErr != nil {
+			return fmt.Errorf("failed to write %s: %w", smbConfFile, writeErr)
+		}
+		return nil
+	})
 }
 
 // parseSmbConf parses smb.conf into a map of section name -> key/value properties

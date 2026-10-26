@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
@@ -62,7 +63,7 @@ func snapshotHardlinksUnderPath(ctx context.Context, db dbExecutor, indexID int6
 
 func hardlinkGroupsUnderPath(ctx context.Context, db dbExecutor, indexID int64, relativePath string, sameFile SameFileFunc) (map[hardlinkIdentity]string, error) {
 	lo, childLo, hi := subtreeBounds(relativePath)
-	rows, err := db.QueryContext(ensureContext(ctx), `
+	rows, err := db.QueryContext(ctx, `
 		WITH touched AS (
 			SELECT DISTINCT device, inode
 			FROM entries
@@ -88,7 +89,11 @@ func hardlinkGroupsUnderPath(ctx context.Context, db dbExecutor, indexID int64, 
 	if err != nil {
 		return nil, fmt.Errorf("query hardlink groups under %q: %w", relativePath, err)
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			slog.Warn("rows close failed", "query", "hardlink groups", "error", closeErr)
+		}
+	}()
 
 	groups := make(map[hardlinkIdentity]string)
 	for rows.Next() {
@@ -114,7 +119,7 @@ func currentHardlinkContributor(ctx context.Context, db dbExecutor, indexID int6
 	if identity.inode == 0 {
 		return "", nil
 	}
-	rows, err := db.QueryContext(ensureContext(ctx), `
+	rows, err := db.QueryContext(ctx, `
 		SELECT relative_path
 		FROM entries
 		WHERE index_id = ? AND type != 'directory'
@@ -124,7 +129,11 @@ func currentHardlinkContributor(ctx context.Context, db dbExecutor, indexID int6
 	if err != nil {
 		return "", fmt.Errorf("query current hardlink contributor: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			slog.Warn("rows close failed", "query", "current hardlink contributor", "error", closeErr)
+		}
+	}()
 
 	for rows.Next() {
 		var path string
@@ -143,7 +152,7 @@ func currentHardlinkContributor(ctx context.Context, db dbExecutor, indexID int6
 
 func loadStoredEntryAccounting(ctx context.Context, db dbExecutor, indexID int64, path string) (storedEntryAccounting, error) {
 	var stored storedEntryAccounting
-	err := db.QueryRowContext(ensureContext(ctx), `
+	err := db.QueryRowContext(ctx, `
 		SELECT type, device, inode, size_contribution FROM entries
 		WHERE index_id = ? AND relative_path = ?;
 	`, indexID, path).Scan(&stored.typ, &stored.identity.device, &stored.identity.inode, &stored.contribution)
@@ -209,14 +218,14 @@ func replaceEntryAccounting(ctx context.Context, db dbExecutor, indexID int64, e
 func removedContributionForPath(ctx context.Context, db dbExecutor, indexID int64, path string) (int64, error) {
 	var typ string
 	var size, contribution int64
-	err := db.QueryRowContext(ensureContext(ctx), `
+	err := db.QueryRowContext(ctx, `
 		SELECT type, size, size_contribution FROM entries
 		WHERE index_id = ? AND relative_path = ?;
 	`, indexID, path).Scan(&typ, &size, &contribution)
 	if errors.Is(err, sql.ErrNoRows) {
 		target := indexerapi.NormalizePath(path)
 		lo, childLo, hi := subtreeBounds(target)
-		err = db.QueryRowContext(ensureContext(ctx), `
+		err = db.QueryRowContext(ctx, `
 			SELECT COALESCE(SUM(CASE WHEN entry.type = 'directory' THEN entry.size ELSE entry.size_contribution END), 0)
 			FROM entries entry
 			WHERE entry.index_id = ?
@@ -272,7 +281,7 @@ func reconcileHardlinkGroup(ctx context.Context, db dbExecutor, indexID int64, i
 }
 
 func loadHardlinkGroup(ctx context.Context, db dbExecutor, indexID int64, identity hardlinkIdentity, sameFile SameFileFunc) ([]hardlinkEntry, error) {
-	rows, err := db.QueryContext(ensureContext(ctx), `
+	rows, err := db.QueryContext(ctx, `
 		SELECT relative_path, size, size_contribution, last_seen
 		FROM entries
 		WHERE index_id = ? AND type != 'directory' AND device = ? AND inode = ?
@@ -281,7 +290,11 @@ func loadHardlinkGroup(ctx context.Context, db dbExecutor, indexID int64, identi
 	if err != nil {
 		return nil, fmt.Errorf("query hardlink group: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			slog.Warn("rows close failed", "query", "hardlink group", "error", closeErr)
+		}
+	}()
 
 	var entries []hardlinkEntry
 	for rows.Next() {
@@ -382,7 +395,7 @@ func writeHardlinkGroup(ctx context.Context, db dbExecutor, indexID int64, ident
 			size_contribution = CASE WHEN relative_path = ? THEN ? ELSE 0 END
 		WHERE index_id = ? AND type != 'directory' AND device = ? AND inode = ?;
 	`, sizeExpression)
-	if _, err := db.ExecContext(ensureContext(ctx), query, args...); err != nil {
+	if _, err := db.ExecContext(ctx, query, args...); err != nil {
 		return nil, fmt.Errorf("update hardlink group: %w", err)
 	}
 	return deltas, nil
@@ -449,7 +462,7 @@ func reconcileHardlinksAfterReindex(ctx context.Context, db dbExecutor, indexID 
 
 func promotedHardlinksForDelete(ctx context.Context, db dbExecutor, indexID int64, relativePath string) ([]hardlinkIdentity, error) {
 	lo, childLo, hi := subtreeBounds(relativePath)
-	rows, err := db.QueryContext(ensureContext(ctx), `
+	rows, err := db.QueryContext(ctx, `
 		SELECT DISTINCT inside.device, inside.inode
 		FROM entries inside
 		WHERE inside.index_id = ? AND inside.type != 'directory'
@@ -468,7 +481,11 @@ func promotedHardlinksForDelete(ctx context.Context, db dbExecutor, indexID int6
 	if err != nil {
 		return nil, fmt.Errorf("query hardlinks promoted by deleting %q: %w", relativePath, err)
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil {
+			slog.Warn("rows close failed", "query", "promoted hardlinks", "error", closeErr)
+		}
+	}()
 
 	var identities []hardlinkIdentity
 	for rows.Next() {

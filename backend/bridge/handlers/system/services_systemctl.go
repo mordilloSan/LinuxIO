@@ -13,7 +13,6 @@ type ServiceInfo struct {
 	Description string `json:"description"`
 	ActiveState string `json:"active_state"`
 	SubState    string `json:"sub_state"`
-	MainPID     int32  `json:"main_pid"`
 	Failed      bool   `json:"failed"`
 }
 
@@ -21,7 +20,7 @@ func FetchServices(parent context.Context) ([]ServiceInfo, error) {
 	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
 	defer cancel()
 
-	services, err := systemdapi.ListServices(ctx)
+	services, err := systemdapi.ListServiceStates(ctx)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return nil, errors.New("systemd query timed out")
@@ -36,7 +35,6 @@ func FetchServices(parent context.Context) ([]ServiceInfo, error) {
 			Description: service.Description,
 			ActiveState: service.ActiveState,
 			SubState:    service.SubState,
-			MainPID:     service.MainPID,
 			Failed:      service.ActiveState == "failed" || service.SubState == "failed",
 		})
 	}

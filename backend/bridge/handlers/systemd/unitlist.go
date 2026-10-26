@@ -102,9 +102,6 @@ func listUnitsBySuffix(
 }
 
 func forEachListedUnitLimited(ctx context.Context, entries []listedUnit, fn func(int, listedUnit)) error {
-	if ctx == nil {
-		return fmt.Errorf("nil context")
-	}
 	if len(entries) == 0 {
 		return ctx.Err()
 	}

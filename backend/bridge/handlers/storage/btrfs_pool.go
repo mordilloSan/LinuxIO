@@ -156,17 +156,19 @@ func checkPoolMountpoint(mountpoint string, devices []apischema.StorageBlockDevi
 // DestroyBtrfsPool unmounts the pool, drops its fstab entries and wipes its
 // devices.
 func DestroyBtrfsPool(ctx context.Context, uuid string) error {
+	// Listed before the unmount: a mount is how fstab lines that do not say
+	// UUID= are tied to the pool.
+	mounts, err := btrfsListMounts(ctx)
+	if err != nil {
+		return fmt.Errorf("destroy btrfs pool %s: list btrfs mounts: %w", uuid, err)
+	}
 	devices, err := poolDevicesForDestroy(ctx, uuid)
 	if err != nil {
 		return fmt.Errorf("destroy btrfs pool %s: %w", uuid, err)
 	}
 	slog.Debug("destroying btrfs pool", "uuid", uuid, "devices", devices)
-	for mountpoint, entry := range getFstabEntries() {
-		if strings.EqualFold(entry.source, "UUID="+uuid) {
-			if err := removeFromFstab(mountpoint); err != nil {
-				return fmt.Errorf("remove %s from /etc/fstab: %w", mountpoint, err)
-			}
-		}
+	if fstabErr := removePoolFstabEntries(uuid, mounts); fstabErr != nil {
+		return fstabErr
 	}
 	for _, d := range devices {
 		if err := btrfs.WipeDevice(d); err != nil {
@@ -174,6 +176,24 @@ func DestroyBtrfsPool(ctx context.Context, uuid string) error {
 		}
 	}
 	slog.Info("destroyed btrfs pool", "uuid", uuid)
+	return nil
+}
+
+// removePoolFstabEntries drops every fstab line that mounted pool uuid: by
+// mountpoint, by UUID=, or by /dev/disk/by-uuid/ (which also covers an offline
+// pool).
+func removePoolFstabEntries(uuid string, mounts []btrfs.Mount) error {
+	entries := btrfsFstabEntries(uuid, mounts)
+	for mountpoint, entry := range getFstabEntries() {
+		if entry.fstype == "btrfs" && strings.EqualFold(entry.source, "/dev/disk/by-uuid/"+uuid) {
+			entries[mountpoint] = entry
+		}
+	}
+	for mountpoint := range entries {
+		if err := removeFromFstab(mountpoint); err != nil {
+			return fmt.Errorf("remove %s from /etc/fstab: %w", mountpoint, err)
+		}
+	}
 	return nil
 }
 

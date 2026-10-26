@@ -77,7 +77,7 @@ func runArchiveTask(ctx context.Context, task *bridgeipc.Task, store *userconfig
 	settings := taskSettingsForTask(ctx, task, store)
 	defer estimateArchiveSizeAsync(ctx, paths, transfer.size)()
 
-	tempFile, err := os.CreateTemp("", "linuxio-task-archive-*"+extension)
+	tempFile, err := os.CreateTemp("/var/tmp", "linuxio-task-archive-*"+extension)
 	if err != nil {
 		return nil, fmt.Errorf("create temp archive: %w", err)
 	}

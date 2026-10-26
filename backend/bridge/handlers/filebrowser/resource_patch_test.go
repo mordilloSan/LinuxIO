@@ -54,3 +54,10 @@ func TestPrepareResourcePatchRefusesSystemFolders(t *testing.T) {
 		t.Fatalf("renaming /etc: err = %v, want system folder", err)
 	}
 }
+
+func TestParseResourcePatchRequestKeepsPlusAndPercent(t *testing.T) {
+	req, err := parseResourcePatchRequest(apischema.ActionSourceDestinationRequest{Action: "rename", Source: "/x/a+b", Dest: "/x/100%.txt"})
+	if err != nil || req.src != "/x/a+b" || req.dst != "/x/100%.txt" {
+		t.Fatalf("req=%+v err=%v, want paths kept verbatim", req, err)
+	}
+}

@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
 type cifsTestEnv struct {
@@ -286,11 +288,34 @@ func TestValidateCIFSMountRequest(t *testing.T) {
 		{"nas", "", "/mnt/m", false},
 		{"nas", "media", "relative/path", false},
 		{"nas", "media", "/etc", false},
+		{"-oProxyCommand=x", "media", "/mnt/m", false}, // option-like host
+		{"nas", "media", "/mnt/../etc", false},
+		{"nas", "media", "//etc", false},
+		{"nas", "media", "/etc/.", false},
 	}
 	for _, c := range cases {
 		err := validateCIFSMountRequest(c.server, c.share, c.mountpoint)
 		if (err == nil) != c.ok {
 			t.Fatalf("validate(%q,%q,%q) err=%v, want ok=%v", c.server, c.share, c.mountpoint, err, c.ok)
+		}
+	}
+}
+
+func TestValidateMountRequestsReturnInvalidArgs(t *testing.T) {
+	for _, host := range []string{"-oProxyCommand=x", "bad host"} {
+		if err := validateCIFSMountRequest(host, "media", "/mnt/m"); !errors.Is(err, bridgeipc.ErrInvalidArgs) {
+			t.Fatalf("CIFS host %q err = %v, want ErrInvalidArgs", host, err)
+		}
+		if err := validateNFSMountRequest(host, "/srv", "/mnt/m"); !errors.Is(err, bridgeipc.ErrInvalidArgs) {
+			t.Fatalf("NFS host %q err = %v, want ErrInvalidArgs", host, err)
+		}
+	}
+	for _, mp := range []string{"/mnt/../etc", "//etc", "/etc/."} {
+		if err := validateCIFSMountRequest("nas", "media", mp); !errors.Is(err, bridgeipc.ErrInvalidArgs) {
+			t.Fatalf("CIFS mountpoint %q err = %v, want ErrInvalidArgs", mp, err)
+		}
+		if err := validateNFSMountRequest("nas", "/srv", mp); !errors.Is(err, bridgeipc.ErrInvalidArgs) {
+			t.Fatalf("NFS mountpoint %q err = %v, want ErrInvalidArgs", mp, err)
 		}
 	}
 }

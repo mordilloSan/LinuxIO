@@ -46,7 +46,6 @@ func BusNameActive(ctx context.Context, busName string) (bool, error) {
 }
 
 func ReadBusNameState(ctx context.Context, conn *godbus.Conn, busName string) (BusNameState, error) {
-	ctx = requireContext(ctx)
 	if err := ctx.Err(); err != nil {
 		return BusNameState{}, err
 	}
