@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   clearSigninNotice,
   readSigninNotice,
+  SIGNIN_NOTICE_MESSAGES,
   setSigninNotice,
 } from "@/utils/signinNotice";
 
@@ -37,5 +38,14 @@ describe("signinNotice", () => {
 
     clearSigninNotice();
     expect(readSigninNotice()).toBeNull();
+  });
+
+  it("round-trips the post-update notice with its own message", () => {
+    setSigninNotice("updated");
+
+    expect(readSigninNotice()).toBe("updated");
+    expect(SIGNIN_NOTICE_MESSAGES.updated).toBe(
+      "LinuxIO was updated. Please sign in again.",
+    );
   });
 });

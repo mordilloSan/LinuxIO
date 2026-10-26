@@ -1,5 +1,6 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { publishAppUpdateInProgress } from "@/contexts/appUpdateInProgress";
 import { act, render, screen, waitFor } from "@/test/render";
 import { readSigninNotice } from "@/utils/signinNotice";
 
@@ -442,5 +443,49 @@ describe("AuthProvider", () => {
     expect(localStorage.getItem("session_expired")).toBeNull();
     expect(apiMocks.redirectToSignIn).toHaveBeenCalledTimes(1);
     expect(apiMocks.redirectToSignIn).toHaveBeenCalledWith(true);
+  });
+
+  describe("during a self-update", () => {
+    let releaseUpdate: (() => void) | null = null;
+
+    afterEach(() => {
+      releaseUpdate?.();
+      releaseUpdate = null;
+    });
+
+    it("leaves the session alone when the stream reports expiry", async () => {
+      localStorage.setItem("auth_username", "miguel");
+      localStorage.setItem("auth_privileged", "true");
+      const statusListeners: Array<
+        (status: "open" | "closed" | "error") => void
+      > = [];
+      apiMocks.initStreamMux.mockReturnValue({
+        status: "connecting",
+        addStatusListener: vi.fn(
+          (listener: (status: "open" | "closed" | "error") => void) => {
+            statusListeners.push(listener);
+            return vi.fn();
+          },
+        ),
+      });
+      releaseUpdate = publishAppUpdateInProgress({}, true);
+
+      renderAuthProvider();
+      expect(
+        await screen.findByText("miguel:true:true:null"),
+      ).toBeInTheDocument();
+
+      // The restart after a successful update invalidates every session.
+      // The update dialog owns that exit so the installer output stays
+      // readable; nothing may sign out or redirect behind it.
+      await act(async () => {
+        statusListeners[0]("error");
+      });
+
+      expect(screen.getByText("miguel:true:true:null")).toBeInTheDocument();
+      expect(localStorage.getItem("auth_username")).toBe("miguel");
+      expect(readSigninNotice()).toBeNull();
+      expect(apiMocks.redirectToSignIn).not.toHaveBeenCalled();
+    });
   });
 });
