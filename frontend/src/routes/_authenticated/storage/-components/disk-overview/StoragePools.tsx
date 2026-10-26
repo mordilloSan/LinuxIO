@@ -375,14 +375,14 @@ const DeviceCard = ({
 
 /** The EFI System Partitions as one boot set, as the firmware sees them. */
 const BootCard = ({ node }: { node: Extract<GraphNode, { kind: "boot" }> }) => {
-  const { copies, entries, firmware, mounted } = node;
+  const { bootable, copies, entries, firmware, mounted } = node;
   const status = !firmware
     ? { color: "default" as const, label: "No firmware entries" }
-    : entries >= copies.length
+    : bootable === copies.length
       ? { color: "success" as const, label: "All bootable" }
       : {
           color: "warning" as const,
-          label: `${copies.length - entries} without entry`,
+          label: `${copies.length - bootable} without entry`,
         };
   return (
     <div className="storage-pools__card storage-pools__pool">

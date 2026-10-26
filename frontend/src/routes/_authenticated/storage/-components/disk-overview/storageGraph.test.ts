@@ -329,6 +329,7 @@ describe("buildStorageGraph", () => {
     const graph = host();
     const boot = graph.nodes.find((node) => node.kind === "boot");
     expect(boot?.kind === "boot" && boot.entries).toBe(4);
+    expect(boot?.kind === "boot" && boot.bootable).toBe(4);
     expect(boot?.kind === "boot" && boot.firmware).toBe(true);
     expect(boot?.kind === "boot" && boot.mounted?.name).toBe("nvme2n1p1");
     const [toVolume] = graph.edges.filter((edge) => edge.from === "boot");
@@ -442,7 +443,41 @@ describe("buildStorageGraph", () => {
     });
     const boot = two.nodes.find((node) => node.kind === "boot");
     expect(boot?.kind === "boot" && boot.entries).toBe(1);
+    expect(boot?.kind === "boot" && boot.bootable).toBe(1);
     expect(boot?.kind === "boot" && boot.copies.length).toBe(2);
+    // Two entries on one copy still leave the other without an entry.
+    const twice = buildStorageGraph({
+      ...empty,
+      bootEntries: [
+        {
+          id: "0000",
+          label: "Ubuntu",
+          partUUID: "uuid-sda1",
+          active: true,
+          current: true,
+          order: 0,
+        },
+        {
+          id: "0001",
+          label: "Linux Boot Manager",
+          partUUID: "uuid-sda1",
+          active: true,
+          current: false,
+          order: 1,
+        },
+      ],
+      devices: [
+        storageBlock("/dev/sda", "disk", 100),
+        esp("/dev/sda1", "/dev/sda", ["/boot/efi"]),
+        storageBlock("/dev/sdb", "disk", 100),
+        esp("/dev/sdb1", "/dev/sdb"),
+      ],
+      drives: [drive("sda"), drive("sdb")],
+      filesystems: [volume("/boot/efi", "/dev/sda1", "vfat")],
+    });
+    const shared = twice.nodes.find((node) => node.kind === "boot");
+    expect(shared?.kind === "boot" && shared.entries).toBe(2);
+    expect(shared?.kind === "boot" && shared.bootable).toBe(1);
   });
 
   it("collapses mapper chains to the mounted device and names the layers", () => {

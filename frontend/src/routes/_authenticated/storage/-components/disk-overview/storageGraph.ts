@@ -142,6 +142,8 @@ export type GraphNode = Placed &
         copies: StorageBlockDevice[];
         /** Firmware boot entries that point at one of the copies. */
         entries: number;
+        /** Copies that at least one firmware boot entry points at. */
+        bootable: number;
         firmware: boolean;
         mounted?: StorageBlockDevice;
       }
@@ -320,6 +322,8 @@ export const buildStorageGraph = ({
   );
   if (esps.length >= 2) {
     const mounted = esps.find((esp) => esp.mountpoints.length > 0);
+    const pointsAt = (entry: EFIBootEntry, esp: StorageBlockDevice) =>
+      esp.partUUID?.toLowerCase() === entry.partUUID.toLowerCase();
     const boot = add({
       ...place,
       id: "boot",
@@ -328,9 +332,10 @@ export const buildStorageGraph = ({
       kind: "boot",
       copies: esps,
       entries: bootEntries.filter((entry) =>
-        esps.some(
-          (esp) => esp.partUUID?.toLowerCase() === entry.partUUID.toLowerCase(),
-        ),
+        esps.some((esp) => pointsAt(entry, esp)),
+      ).length,
+      bootable: esps.filter((esp) =>
+        bootEntries.some((entry) => pointsAt(entry, esp)),
       ).length,
       firmware: bootEntries.length > 0,
       mounted,
