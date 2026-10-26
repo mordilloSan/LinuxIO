@@ -57,7 +57,8 @@ check-frontend: ensure-node setup ## Run frontend lint + typecheck + unit tests
 check-backend: ensure-go ensure-golint ensure-modernize ensure-govulncheck ensure-deadcode ## Run backend lint + unit tests + deadcode scan
 	@MAKE="$(MAKE)" "$(scripts_dir)/lanes.sh" backend
 
-# Backend test entry point; this is what `make test` and CI run. Race results
+# Backend test entry point for CI (`make test` runs the same pieces through
+# scripts/lanes.sh, with the C tests alongside golint). Race results
 # are cached like normal test results, so incremental runs stay fast. Pass
 # GO_TEST_FLAGS="-count=5" for a fresh sweep with more scheduling
 # interleavings (races only surface on interleavings that actually happen).
