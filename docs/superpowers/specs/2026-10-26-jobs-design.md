@@ -34,7 +34,7 @@ connection; changing how reads work; changing authentication.
 | History | On disk, 30 days or 200 jobs per user. Jobs that succeed in under a second are not kept. |
 | Alerts | A failed or interrupted job raises an alert (admin hosts). Success goes to history only. |
 | Scheduled scripts | Stay systemd timers and services. They appear in the same list and history and use the same alert hook. |
-| Jobs with no user | Timers and the boot service run a job as its own unit through the same handler code (`jobs run`). Same record, same list. |
+| Jobs with no user | Timers, the boot service and an admin shell submit jobs to the root host with `linuxio-bridge jobs submit`. One executor, same record, same list. |
 | Logs | journald. Host jobs carry a `JOB_ID` field; unit jobs are their own unit. |
 | Rejected | A system-wide root daemon running jobs (TrueNAS shape): it would run non-admins' work as root. A process per job started from the bridge: 15 ms each, which forces a fast/slow decision per route. ZFS: out-of-tree module on the user's distro. |
 
@@ -43,9 +43,9 @@ connection; changing how reads work; changing authentication.
 - **Bridge**: today's per-login process, as the user. Keeps reads, terminals, uploads and downloads. Relays mutations to the host.
 - **Host**: `linuxio-jobs@<uid>.service`. Runs every mutation for that uid as a goroutine. Owns the in-memory job registry for that uid and writes the store.
 - **Launcher**: `linuxio-jobs-launcher.socket` plus `linuxio-jobs-launcher@.service`. Starts a host for the caller's uid.
-- **Worker**: `linuxio-bridge jobs run --id <id>`, the same handler code run as its own unit `linuxio-job@<id>.service` when there is no user: timers, the boot service.
+- **Submit CLI**: `linuxio-bridge jobs submit`, the local client that starts a job in a host without a browser: timers, the boot service, an admin shell, tests. As root it starts the root host itself; as a user it goes through the launcher like a bridge.
 - **Store**: `/var/lib/linuxio/jobs/<uid>/`, one JSON record per job, owned by the uid.
-- **Job**: a record plus a handler run. Started by a user through the host, or by the system through a worker.
+- **Job**: a record plus a handler run in a host. Started by a user through the bridge, or by the system through the submit CLI. The host is the only executor.
 - **Target**: what a job works on (pool UUID, disk, container, compose project, set of paths), declared by the route.
 
 ## 4. Architecture
@@ -64,8 +64,8 @@ browser ──WebSocket── linuxio-webserver (unprivileged) ──yamux──
                                                                   └─ store /var/lib/linuxio/jobs/<uid>/
                                                                        live progress /run/linuxio/jobs/<uid>/
 
-   systemd timers, boot service ──▶ linuxio-job@<id>.service  (worker: jobs run --id)
-                                       same handlers, same store, root
+   systemd timers, boot service, admin shell ──jobs submit──▶ linuxio-jobs@0.service
+                                   (StartUnit as root, then the same socket, same host, same record)
 ```
 
 The webserver, `linuxio-auth` and the bridge keep their roles and boundaries.
@@ -77,29 +77,39 @@ as the root bridge does today.
 
 ### Backend
 
+The handler comes first and Go infers the request and result types from it, so
+no declaration spells out type parameters:
+
 ```go
-// A read: retry-safe, 30 s client timeout, cached by TanStack Query.
-apischema.Call[Req, Res]("docker.list_containers", apischema.RetrySafe()).Handle(list)
+// A read: retry-safe by definition, 30 s client timeout, cached by TanStack Query.
+apischema.Call("docker.list_containers", listContainers)
 
 // A mutation. No fast/slow decision.
-apischema.Mutation[Req, Res]("docker.start_container").Handle(start)
+apischema.Mutation("docker.start_container", startContainer)
 
-// A mutation with progress, a target, and resume after reboot.
-apischema.Mutation[Req, Res]("storage.btrfs_scrub_start",
-    apischema.Privileged(), apischema.Resumable(scrubResume),
-    apischema.Target(func(r Req) []string { return []string{r.UUID} }),
-).Run(scrub)
+// A mutation that resumes after reboot. Progress is reported through ctx,
+// so the handler signature is the same as above. Its target (the pool) comes
+// from the request type, not from the declaration.
+apischema.Mutation("storage.btrfs_scrub_start", runScrub, apischema.Privileged()).
+    Resumable(scrubResume)
+
+// In apischema, next to the type: every route that takes a UUIDRequest
+// works on that pool, so the host refuses a second run on the same pool.
+func (r UUIDRequest) Target() []string { return []string{r.UUID} }
 ```
 
-- `Handle` binds `func(ctx, req) (res, error)`; `HandleVoid` binds `func(ctx, req) error` for `NoResponse`; `Run` binds `func(ctx, req, report func(TaskProgress)) (res, error)`. Existing handlers keep their signatures.
-- `Target` replaces today's `WithTaskMetadata`: the identity used for the same-target refusal and shown in the job list.
-- `Resumable(hooks)` gives the route a `Suspend(ctx, record) (checkpoint, error)` and a `Resume(ctx, record, report) (res, error)` (section 11). It is valid only on `Privileged` routes.
-- `TaskRunner`, `SessionTask`, `DurableTask`, `WithTaskLifetime`, `WithTaskIdentity` and the `TaskPolicy` admission are removed.
+- `Call(name, fn, opts...)` and `Mutation(name, fn, opts...)` take `func(ctx, Req) (Res, error)`; `MutationVoid` takes `func(ctx, Req) error` for the 61 handlers with no result. Today's two-argument handlers keep their signatures.
+- Progress: `bridgeipc.ReportProgress(ctx, TaskProgress{...})`. The host puts a reporter in the context; outside a job the call is a no-op. The ~30 handlers that take a `report` argument today drop it and call this instead. One handler signature, no `Run` form.
+- **Target** is a method on the request type, `Target() []string`, naming what the job works on: a pool UUID, a device, a container, a compose project, the paths of a copy. The binding detects it once at startup; the host uses it for the same-target refusal (section 11) and the job list shows it. A request type without the method has no target and is never refused as a duplicate. This replaces today's `WithTaskMetadata` closures on every route with one method per request type.
+- `Resumable(hooks)` is a method on the binding because the hooks are typed by the request: `Suspend(ctx, record) (checkpoint, error)` and `Resume(ctx, record) (Res, error)` (section 11). It is valid only with `Privileged()`.
+- Options that need no type (`Privileged()`, `BrowserBound()`, `NoEndpoint()`) stay plain options.
+- `RetrySafe` is no longer declared: a `Call` is a read and is retry-safe by definition.
+- `TaskRunner`, `SessionTask`, `DurableTask`, `WithTaskLifetime`, `WithTaskIdentity`, `WithTaskProgress` and the `TaskPolicy` admission are removed. The progress detail type of a route is declared once as `apischema.Progress[Detail]()` so the generator still types `onProgress` per route.
 - Three routes keep the bridge: `filebrowser.upload`, `filebrowser.upload_batch`, `filebrowser.archive`. They are declared `Mutation` with `apischema.BrowserBound()`, which the generator and the relay use to keep them local. This is the only exception and it is mechanical: the bytes come from or go to the browser.
 
 ### Guard tests
 
-- `Call` routes must be `RetrySafe`. The eight reads that are not marked today (`docker.get_icon`, `docker.get_icon_uri`, `docker.check_updates`, `docker.check_container_update`, `monitoring.check_database`, `system.get_health_summary`, `network.get_network_info`, `terminal.list_shells`) are marked, after confirming each has no side effect worth refusing a retry for.
+- A `Call` is retried after connection loss by construction, so the eight reads not marked `RetrySafe` today (`docker.get_icon`, `docker.get_icon_uri`, `docker.check_updates`, `docker.check_container_update`, `monitoring.check_database`, `system.get_health_summary`, `network.get_network_info`, `terminal.list_shells`) are reviewed once for a side effect a repeat could double; none is expected, since they only refresh caches.
 - Every `Mutation` appears in a checked inventory table with its `Resumable` and `BrowserBound` flags, the way `handleEventsInventory` worked. Adding a mutation without a row fails the test.
 - A handler package may not import the launcher package and the launcher package may not import handlers (`import_boundary_test.go`).
 
@@ -153,7 +163,7 @@ KillMode=mixed
 NoNewPrivileges=yes
 ```
 
-- **Start**: by the launcher when a bridge logs in; nothing else starts a host. `StateDirectory` and `RuntimeDirectory` create the store and socket directories owned by the uid; no custom code creates them.
+- **Start**: by the launcher when a bridge logs in, or by any root process that wants to submit a job (a timer's service, the boot reconcile service, an admin shell) with `StartUnit` on `linuxio-jobs@0.service`, which the submit CLI does itself. Starting a running host is a no-op. `StateDirectory` and `RuntimeDirectory` create the store and socket directories owned by the uid; no custom code creates them.
 - **Stay up while** connected bridges > 0 or running jobs > 0.
 - **Exit** when both are zero for one minute (so a logout and login within seconds does not restart it). Exit is `sd_notify(STOPPING=1)` then process exit; systemd collects the unit.
 - **Stop by systemd** (shutdown, or `systemctl stop`): SIGTERM. The host marks every running job: resumable ones get up to `TimeoutStopSec` to suspend (section 11), the rest are marked `interrupted` with reason `shutdown`. Then it exits.
@@ -206,7 +216,7 @@ Retention: terminal records are kept 30 days and at most 200 per uid; pruning ru
 
 **Cancel.** `tasks.cancel` or an abort sets `cancel_requested` in the record *first*, then cancels the context. The handler's own cleanup runs (removing a partial copy, `BALANCE_CTL cancel`, `SCRUB_CANCEL`, `DEV_REPLACE cancel`). The record becomes `canceled` only when the handler has returned.
 
-**Interrupt.** A SIGTERM to the host with no `cancel_requested` on a job is a shutdown. For a non-resumable job the context is cancelled and the record is written `interrupted/shutdown`. For a resumable job the host calls the route's `Suspend(ctx, record)` hook with a deadline inside `TimeoutStopSec`; the hook writes `checkpoint` and the record is written `interrupted/shutdown`. Resumable hooks:
+**Interrupt.** A SIGTERM to the host with no `cancel_requested` on a job is a shutdown. For a non-resumable job the context is cancelled and the record is written `interrupted/shutdown`. For a resumable job the host calls the route's `Suspend(ctx, record)` hook with a deadline inside `TimeoutStopSec`; the hook returns the `checkpoint` and the record is written `interrupted/shutdown`. The contract is generic: any route may declare the two hooks, and the host, the store and the reconcile service know nothing about what they do. The first four resumable routes are the btrfs operations, because the kernel ties them to a process:
 
 | Route | Suspend | Resume |
 |---|---|---|
@@ -215,28 +225,28 @@ Retention: terminal records are kept 30 days and at most 200 per uid; pruning ru
 | `storage.btrfs_device_replace` | nothing to do: the kernel cancels on any signal; after a crash the kernel resumes from its item | if the kernel shows the replace running, observe; else start it again with the same source and target |
 | `storage.btrfs_device_remove` | nothing: cancelled by the kernel on signal; moved chunks stay moved | issue the remove again |
 
-**Boot.** `linuxio-jobs-reconcile.service` runs after `local-fs.target` and after the pools are mounted (ordered after `linuxio-btrfs-degraded.service`). For every uid directory: records in `running` → `interrupted/reboot` (a power loss leaves them `running`; an orderly shutdown already marked them). Resumable records (always uid 0) are started as workers `linuxio-job@<id>.service`; their outcome is written to the same record. Interrupted non-resumable jobs raise one alert each.
+**Boot.** `linuxio-jobs-reconcile.service` runs after `local-fs.target` and after the pools are mounted (ordered after `linuxio-btrfs-degraded.service`). For every uid directory: records in `running` → `interrupted/reboot` (a power loss leaves them `running`; an orderly shutdown already marked them). For each `interrupted` resumable record (always uid 0) it runs `jobs submit --resume <id>`, which starts the root host if needed and asks it to run the route's `Resume` hook on that record; the outcome is written to the same record. Interrupted non-resumable jobs raise one alert each. The host then exits under its normal rule once the resumed jobs end.
 
-**Worker.** `linuxio-bridge jobs run --id <id>` loads an `interrupted` resumable record and calls its `Resume` hook; `jobs run --from <scheduled-job-id>` creates a new record from a scheduled job's stored request and runs the handler. Either way it writes `running` with `executor.kind=unit`, progress to `/run`, then the terminal record and the alert. `linuxio-job@.service`: root, `Type=exec`, `CollectMode=inactive-or-failed`, `TimeoutStopSec=2min`, the same SIGTERM semantics as the host.
+**Submit CLI.** `linuxio-bridge jobs submit --route <route> --request <json> [--wait]` creates a job in the caller's host exactly as a bridge would: as root it calls `StartUnit` on `linuxio-jobs@0.service` and connects to its socket; as a user it asks the launcher. `--resume <id>` resumes an interrupted resumable record; `--from <scheduled-job-id>` creates a run record from a scheduled job's stored request. `--wait` follows the job and exits with its outcome, so a timer's oneshot service reflects the job's success or failure. There is no second executor: a job submitted by a timer runs in the same host, with the same progress, record, log and alert as one started from the browser.
 
 ## 12. Updates
 
-- `linuxio.target` does not pull in hosts, workers, the launcher socket or the reconcile service except through ordering. The installer never stops or restarts them; it may `daemon-reload`.
+- `linuxio.target` does not pull in hosts, the launcher socket or the reconcile service except through ordering. The installer never stops or restarts them; it may `daemon-reload`.
 - The hello frame carries a protocol number. Same number: carry on. Older host: the bridge refuses new mutations with error code `update_pending` and message "LinuxIO update waits for N running jobs"; reads work; the UI shows the count on the update banner. The old host exits when idle under its normal rule and the next login starts the new binary.
 - Within one release the protocol number only changes when a frame changes shape; adding routes does not change it.
 
 ## 13. Alerts
 
 - `failed` and `interrupted` jobs raise an alert through `alerts.Raise` with source `jobs`, key `<id>`, the route, target and error message, and a link to the job in the UI. `canceled` and `completed` do not.
-- The alert store is root-owned, so only the root host, the worker and the reconcile service raise alerts; a user host writes the record only. The frontend shows every user "N jobs ended while you were away" from `tasks.list` at login, so non-admins still learn about failures.
+- The alert store is root-owned, so only the root host and the reconcile service raise alerts; a user host writes the record only. The frontend shows every user "N jobs ended while you were away" from `tasks.list` at login, so non-admins still learn about failures.
 - Scheduled scripts use the existing `OnFailure=` hook (`linuxio alert raise`), unchanged.
 
 ## 14. Scheduled scripts and system jobs
 
 - Schedules stay as built: a timer and a oneshot service per schedule, `run_now` and `stop` as quick mutations, status from systemd.
 - The generated schedule service gains `ExecStopPost=/usr/local/bin/linuxio-bridge jobs record --schedule <id> --result $SERVICE_RESULT --status $EXIT_STATUS`, which writes a job record owned by uid 0 with `executor.kind=unit` and the invocation ID, so runs appear in history.
-- The job list includes running unit jobs by reading systemd: `linuxio-schedule-*.service`, `linuxio-job@*.service` and the btrfs units, with the invocation ID as job ID, `ActiveState` as state and the journal as log. This is a read-only adapter in the host's `tasks.list`/`tasks.events`.
-- "Scrub monthly" and similar scheduled jobs are timers whose service runs `jobs run --from <id>`, where `<id>` is a scheduled-job record created when the schedule is saved; each firing creates one run record from the stored request. The btrfs snapshot, health and resync units write records the same way so they appear in history. Their behaviour otherwise does not change.
+- The job list includes running scripts by reading systemd: `linuxio-schedule-*.service` and the btrfs timer units, with the invocation ID as job ID, `ActiveState` as state and the journal as log. This is a read-only adapter in the host's `tasks.list`/`tasks.events`; scripts are the one kind of work that does not run in a host, because they are arbitrary commands under a configured user.
+- "Scrub monthly" and similar scheduled jobs are timers whose oneshot service runs `linuxio-bridge jobs submit --from <id> --wait`, where `<id>` is a scheduled-job record created when the schedule is saved; each firing creates one run record in the root host from the stored request. The btrfs snapshot, health and resync units keep running their own code and gain the `ExecStopPost` record so they appear in history; moving them onto `jobs submit` is a later, optional step.
 
 ## 15. Security
 
@@ -258,11 +268,11 @@ Retention: terminal records are kept 30 days and at most 200 per uid; pruning ru
 
 ## 17. Route classification
 
-- `Call`: the 120 reads plus the five cache refreshes the map marks as not real changes (`docker.check_updates`, `docker.check_container_update`, `docker.get_icon`, `docker.get_icon_uri`, `monitoring.check_database`): 125, all `RetrySafe`.
-- `Mutation`: the other 194 routes of the map. `tasks.cancel` stays a built-in. The 12 duplex channels are unchanged.
+- `Call`: the 115 reads plus the five cache refreshes the map marks as not real changes (`docker.check_updates`, `docker.check_container_update`, `docker.get_icon`, `docker.get_icon_uri`, `monitoring.check_database`): 120, all `RetrySafe`.
+- `Mutation`: the other 199 routes of the map. `tasks.cancel` stays a built-in. The 12 duplex channels are unchanged. Total 332.
 - `BrowserBound`: `filebrowser.upload`, `filebrowser.upload_batch`, `filebrowser.archive`.
 - `Resumable`: `storage.btrfs_scrub_start`, `storage.btrfs_balance`, `storage.btrfs_device_replace`, `storage.btrfs_device_remove`. Replication is not resumable: an interrupted run is reported and the hourly timer catches up.
-- `Target`: every route that declares `WithTaskMetadata` today keeps its identity as its target. Quick mutations get no target in this design; adding one is a per-route decision later, because a refused double click needs UI handling of its own.
+- `Target()`: the request types behind the routes that declare `WithTaskMetadata` today implement it with the same identity. Request types of quick mutations do not implement it in this design; adding one is a per-type decision later, because a refused double click needs UI handling of its own.
 
 ## 18. Bugs fixed during migration
 
@@ -280,8 +290,8 @@ Each is fixed when its route moves, with a test:
 - **Relay and protocol**: a bridge and a host in one test process over a socketpair: start, progress, result, detach, abort, resend attaches, protocol mismatch returns `update_pending`. Unit tests.
 - **Host lifecycle**: exit rule with fake clock; SIGTERM marks running jobs and calls `Suspend` within the deadline. Unit tests.
 - **Launcher**: fake systemd (`testdbus` exists), peer uid checks, disallowed user, timeout waiting for the socket. Unit tests.
-- **Worker and reconcile**: interrupted records are restarted or alerted; a `running` record with a dead pid becomes `interrupted/crash`. Unit tests with the fake kernel for btrfs.
-- **btrfs suspend and resume**: added to `make test-btrfs-integration` (root, run by the user): kill a scrub worker and check the pool is consistent; SIGTERM a balance and check it resumes after unmount and mount; scrub resumes from its stored offset; a killed replace is reported and restarted.
+- **Submit CLI and reconcile**: `jobs submit` against a host in the test process; interrupted records are resumed or alerted; a `running` record with a dead pid becomes `interrupted/crash`. Unit tests with the fake kernel for btrfs.
+- **btrfs suspend and resume**: added to `make test-btrfs-integration` (root, run by the user): kill the host mid-scrub and check the pool is consistent; SIGTERM a balance and check it resumes after unmount and mount; scrub resumes from its stored offset; a killed replace is reported and restarted.
 - **Browser**: start a copy, log out, log in, find it running in the tray and completed in history (`make test-frontend-browser-quiet`).
 - **Performance**: a test that starts a no-op mutation through the relay 1 000 times and asserts a median under 1 ms, so a regression in the relay is caught.
 - **Guards**: the inventory test, the `Call` ⇒ `RetrySafe` test, the import boundary test, `logging/style_test.go` for the new log lines.
@@ -291,7 +301,7 @@ Each is fixed when its route moves, with a test:
 1. **Skeleton**: store generalisation, host, launcher, relay, units, reconcile service; `docker.update_container` is the first route, since it already has the record shape. The old durable code path is deleted with it. `make test-quiet` green; the launcher and host installed by the installer.
 2. **Long work**: the 28 remaining task routes and the 14 long calls move, with the bug fixes of section 18 and the btrfs suspend hooks. The root integration test gains its kill-and-resume steps.
 3. **Everything else**: the ~140 quick mutations re-declared as `Mutation`; `Call` reads marked `RetrySafe`; the frontend codemod; the old hooks, `TaskRunner`, lifetimes and policies deleted.
-4. **Schedules and system jobs**: `ExecStopPost` record, the unit adapter in the list, scheduled jobs on `linuxio-job@`, btrfs timer units writing records.
+4. **Schedules and system jobs**: `ExecStopPost` record, the unit adapter in the list, scheduled jobs through `jobs submit --from`, btrfs timer units writing records.
 5. **History and notices**: the history view, the login notice, the update banner.
 
 Each phase ends with `make test-quiet`, the docs below updated, and a suggested commit message.

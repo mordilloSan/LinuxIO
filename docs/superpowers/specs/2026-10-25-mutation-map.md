@@ -3,7 +3,7 @@
 Date: 2026-10-25. Input to the jobs design: work that must outlive the login
 session and the per-login bridge.
 
-These are the API routes that change something on the host: 200 of the 327. Each route was
+These are the API routes that change something on the host: 205 of the 332. Each route was
 traced from its registration to the code that does the work. The map comes from reading
 the code: nothing was run, and durations come from the code's own caps and
 waits, not measurements. To find a route's code, run
@@ -13,8 +13,8 @@ waits, not measurements. To find a route's code, run
 
 | Kind | Runs in | What stops it |
 |---|---|---|
-| Call (170) | the bridge, on the request's context | The browser's 30 s timeout aborts the stream and cancels the context. Child processes get SIGKILL; a request already handed to systemd, Docker, libvirt or PackageKit still finishes there, and only the reply is lost. Also stopped by everything that stops a session task. |
-| Session task (29) | the bridge | Logout. A LinuxIO update: it restarts `linuxio.target`, which stops every login's bridge. The 12 h session limit. A bridge crash. 15 min without activity: progress frames reaching an open tab count as activity, so the clock starts when the tab closes. `device_remove` reports no progress after it starts, so it times out even with the tab open. On shutdown the bridge waits at most 5 s, so cleanup after the cancel (removing a partial copy, cancelling a balance) often does not run. |
+| Call (173) | the bridge, on the request's context | The browser's 30 s timeout aborts the stream and cancels the context. Child processes get SIGKILL; a request already handed to systemd, Docker, libvirt or PackageKit still finishes there, and only the reply is lost. Also stopped by everything that stops a session task. |
+| Session task (31) | the bridge | Logout. A LinuxIO update: it restarts `linuxio.target`, which stops every login's bridge. The 12 h session limit. A bridge crash. 15 min without activity: progress frames reaching an open tab count as activity, so the clock starts when the tab closes. `device_remove` reports no progress after it starts, so it times out even with the tab open. On shutdown the bridge waits at most 5 s, so cleanup after the cancel (removing a partial copy, cancelling a balance) often does not run. |
 | Durable task (1) | a systemd transient unit running a root worker | Only its own cancel. A later login by the same user reattaches. This is `docker.update_container`. |
 
 The kernel side was checked against the btrfs source in kernel master:
@@ -32,12 +32,12 @@ Each route gets one class: the first in this list that fits.
 |---|---:|---|---|
 | B browser-bound | 3 | Bytes flow to or from the browser | Stays tied to the connection and resumes by offset |
 | D durable | 4 | Already survives the bridge | Nothing |
-| J long job | 32 | Minutes to days of work that LinuxIO drives itself; it stops when the bridge dies | An owner outside the bridge |
+| J long job | 34 | Minutes to days of work that LinuxIO drives itself; it stops when the bridge dies | An owner outside the bridge |
 | X external long | 5 | The long part already runs in the kernel, a drive, a daemon or systemd; the bridge only waits | A way to find and follow it again after login |
 | S self-severing | 9 | Cuts the caller's own connection: reboot, power off, a network change on the NIC in use | Hand-off before the connection drops; never retried |
 | C long call | 14 | A Call that can outlast the 30 s browser timeout | Must not be cancelled by that timeout, or becomes a job |
-| M multi-step | 40 | Quick but several steps; a bridge death between steps leaves it half-done | Ordered or atomic steps that a retry repairs |
-| Q quick | 87 | One request to systemd, Docker, libvirt or the kernel, or one atomic write; a dead bridge loses only the reply | Nothing |
+| M multi-step | 41 | Quick but several steps; a bridge death between steps leaves it half-done | Ordered or atomic steps that a retry repairs |
+| Q quick | 89 | One request to systemd, Docker, libvirt or the kernel, or one atomic write; a dead bridge loses only the reply | Nothing |
 | R not a change | 6 | Cache refreshes, a read-only check, task control | Nothing |
 
 Column values used below:
@@ -111,6 +111,18 @@ cross-process locks.
 | storage.remount_cifs | call | unmounts and remounts with new options | umount, fstab, mount, rollback mount | >30s (15 + 30 + 30 s caps) | half-done: share left unmounted | C |
 | storage.unmount_cifs | call | unmounts SMB, optionally drops fstab line and credentials | umount, fstab | seconds | harmless | Q |
 | storage.unmount_filesystem | call | unmounts any non-system filesystem | umount2 | >30s (flushes dirty data) | harmless | C |
+
+## Storage: partitions
+
+Added by the partition feature on 2026-10-25, after the rest of the map was traced.
+
+| Route | Kind | Changes | Done by | Time | Bridge dies | Class |
+|---|---|---|---|---|---|---|
+| storage.disk_initialize | call | replaces the partition table with an empty GPT | GPT write, partition-table reread | <1s | harmless | Q |
+| storage.partition_create | task | creates a partition; optionally formats and mounts it | GPT write, udev wait, mkfs, mount(2), fstab | long when it formats (mkfs trims) | half-done: created but not formatted, or formatted but not mounted; the error says which | J |
+| storage.partition_format | task | makes a filesystem on a partition | mkfs.ext4, xfs or btrfs, with trim | long | stops: partition half-formatted; rerun with overwrite | J |
+| storage.partition_mount | call | mounts a partition, optionally adds an fstab line | mount(2), fstab | seconds | half-done: mounted, fstab not written | M |
+| storage.partition_delete | call | removes an unused partition from the GPT | GPT write | <1s | harmless | Q |
 
 ## Docker
 
