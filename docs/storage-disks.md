@@ -1,12 +1,32 @@
 # Storage disks
 
 Storage → Disks (`/storage`) lists the physical drives with their SMART
-details and, under **Storage space**, how they are used: disks → pool →
-volumes for btrfs pools, disks → array or device → volumes for RAID, LVM
-and dm-crypt, disk → volumes for plain partitions, and server → volumes for
-network shares. Drives with nothing on them are listed under **Disks without
-volumes**. A drive used in more than one way, such as an EFI partition beside
-a RAID member, appears once in each place.
+details and, under **Storage space**, how they are used, as one graph in
+three columns: every drive once on the left; what the drives build in the
+middle (btrfs pools, md arrays, LVM and dm-crypt devices, the EFI boot set,
+network servers); and every mounted volume on the right. An edge runs from a
+drive to each thing one of its partitions feeds, labelled with the partition
+suffix ("p2", or "1" on `sda1`); a whole disk used as a member has no label.
+A mapped device on another mapped device (LVM on LUKS) is drawn once, as the
+mounted device, with the layers in its caption. A drive with nothing on it
+says **Nothing on it**; partitions nothing mounts or builds on are listed on
+the drive's card.
+
+Edges into the same node share a lane in the gap before it, so a four-drive
+array reads as one trunk with four branches. Node positions come from fixed
+card heights, never from measuring the page; only the container width is
+observed. Below 780px the columns stack as a list and the edges go.
+
+### EFI boot
+
+Two or more partitions with the EFI System Partition type GUID are drawn as
+one **EFI boot** node fed by their drives, with the mounted copy's edge live
+and the spare copies' edges plain. Its chips say how many of the firmware's
+Boot#### entries point at one of the copies ("4 boot entries") and whether
+every copy has one ("All bootable", "1 without entry", or "No firmware
+entries" on a BIOS host or in a container); the caption names the mounted
+copy. The node claims nothing about the copies' contents: checking that
+would mean mounting them. A single ESP draws as a plain partition → volume.
 
 ## Partitions
 
@@ -136,13 +156,24 @@ with no subprocess:
 - `/sys/class/block` for devices, sizes, partition numbers and start offsets,
   parents (`slaves/`), holders and the transport.
 - `/run/udev/data/b<major>:<minor>` for filesystem type, UUID and label,
-  partition table type, PARTUUID, PARTLABEL, model and serial.
+  partition table type, PARTUUID, PARTLABEL, partition type (`partType`:
+  the GPT type GUID, lowercase), model and serial.
 - `/proc/self/mountinfo` for mount points, matched by `major:minor` or, for
   filesystems with an anonymous device such as btrfs, by source.
 - `/proc/swaps` and `/etc/fstab` for the in-use rule and the `inFstab` flag.
 
 Each device also reports `busy` (mounted, active swap, or used by a holder)
 and, for GPT disks, `freeRegions`.
+
+The inventory also carries `bootEntries`: the firmware's Boot#### load
+options whose device path names a GPT partition, read from
+`/sys/firmware/efi/efivars` (world-readable; each file starts with a 4-byte
+attribute word, then the `EFI_LOAD_OPTION`: attributes, path length, a
+UTF-16 description and the device path, whose Hard Drive node carries the
+partition GUID in mixed-endian order). Each entry has its id, label,
+`partUUID`, whether it is active, whether it is the current boot, and its
+position in `BootOrder` (-1 when unlisted). A BIOS host, a container or a
+malformed entry yields none; nothing fails the inventory.
 
 systemd does not promise the udev database format: udev(7) says only that
 libudev provides access to it. A device udev has not probed yet (a brief window
@@ -158,12 +189,18 @@ invalidate the inventory through the central operation invalidation map.
 ## Live activity
 
 `monitoring.get_live` supplies each drive's read and write rate, shown on the
-drive's row in Storage space. Lines leaving a drive carry layered grain
-streams, reads flowing towards the volumes and writes back, through the
-shared `AppTopologyEdge`. Grain speed is decorative, not a throughput scale.
-Lines into partitions nothing uses stay still, and a pool or array's lines to
-its volumes carry no flow, since the rates belong to whole drives. Rates and
-grains disappear when a monitoring poll fails; a sampler that keeps
-answering with an old sample is not detected. **Pause animation** freezes
-the grains in place, and reduced motion removes the animation while keeping
-the numbers.
+drive's row in Storage space. Every edge into something mounted or running
+streams through the shared `AppTopologyEdge`: a dashed read stream towards
+the volume in the chart rx colour and, while anything writes, a thinner
+write stream back in the tx colour. Four tiers set the pace and brightness
+from the larger of the two rates: idle (0 B/s: slow and faint, no write
+stream), light (under 10 MB/s), medium (under 100 MB/s) and busy. A drive's
+edges carry its own rates; a pool or array's edge to its volume carries the
+sum of its members'. Edges into spare EFI copies, unmounted pools and
+partitions nothing uses are plain lines. When a monitoring poll fails the
+rates disappear and every live edge drops to idle, not to still; a sampler
+that keeps answering with an old sample is not detected. **Pause animation**
+freezes the streams in place, and reduced motion removes the animation while
+keeping the lines and the numbers. The Docker topology draws its edges with
+the same component: live for running containers, with the container's rx
+and tx rates.

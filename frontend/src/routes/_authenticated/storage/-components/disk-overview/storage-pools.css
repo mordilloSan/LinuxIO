@@ -1,19 +1,48 @@
+/* One graph: nodes placed by the layout model, edges in one SVG over it. */
 .storage-pools {
   container-type: inline-size;
-  display: flex;
-  flex-direction: column;
-  gap: var(--app-space-16);
+  position: relative;
+  height: var(--graph-height);
   margin-bottom: var(--app-space-24);
 }
-/* Disks, pool and volumes take equal thirds, so the pool sits centred. */
-.storage-pools__stack {
-  display: grid;
-  grid-template-columns:
-    minmax(0, 1fr) 60px minmax(0, 1fr) 60px minmax(0, 1fr);
-  align-items: stretch;
+.storage-pools__header {
+  position: absolute;
+  top: 0;
+  left: var(--node-left);
+  line-height: 20px;
+}
+.storage-pools__edges {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.storage-pools__label {
+  font-size: 11px;
+  fill: var(--app-palette-text-secondary);
+  paint-order: stroke;
+  stroke: var(--app-palette-background-default);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
+.storage-pools__node {
+  position: absolute;
+  top: var(--node-top);
+  left: var(--node-left);
+  width: var(--node-width);
+  height: var(--node-height);
+  box-sizing: border-box;
+  display: flex;
+}
+.storage-pools__node > * {
+  flex: 1;
+  min-width: 0;
 }
 .storage-pools .storage-pools__card {
   min-width: 0;
+  box-sizing: border-box;
   padding: var(--app-space-12) var(--app-space-16);
   border: 1px solid var(--app-palette-divider);
   border-radius: var(--app-radius-lg);
@@ -21,7 +50,6 @@
   color: inherit;
   font: inherit;
   text-align: left;
-  min-width: 0;
   line-height: inherit;
 }
 .storage-pools button.storage-pools__card {
@@ -37,34 +65,11 @@
 .storage-pools .storage-pools__card[aria-pressed="true"] {
   border-color: var(--app-palette-primary-main);
 }
-.storage-pools .storage-pools__disks,
-.storage-pools .storage-pools__pool {
-  align-self: center;
-}
-.storage-pools .storage-pools__disks {
-  display: flex;
-  flex-direction: column;
-  gap: var(--app-space-12);
-}
-.storage-pools__others {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: var(--app-space-12);
-  margin-bottom: var(--app-space-24);
-}
-.storage-pools__others .storage-pools__card {
-  min-width: 0;
-  padding: var(--app-space-12) var(--app-space-16);
-  border: 1px solid var(--app-palette-divider);
-  border-radius: var(--app-radius-lg);
-  background: var(--app-palette-background-paper);
-}
 /* The whole disk card opens the drive, not only the row inside it. */
-.storage-pools__card:has(> .storage-pools__disk--link) {
-  position: relative;
+.storage-pools .storage-pools__disks {
+  position: absolute;
 }
-.storage-pools .storage-pools__disk--link,
-.storage-pools__others .storage-pools__disk--link {
+.storage-pools .storage-pools__disk--link {
   position: static;
 }
 .storage-pools__disk--link::after {
@@ -73,28 +78,24 @@
   inset: 0;
 }
 /* The row itself stays flat; the shared button would paint its own hover box. */
-.storage-pools .storage-pools__disk--link:hover,
-.storage-pools__others .storage-pools__disk--link:hover {
+.storage-pools .storage-pools__disk--link:hover {
   background: none;
 }
 /* A disk card tints its background on hover, like the pool and volume cards. */
-.storage-pools .storage-pools__card:has(.storage-pools__disk--link:hover),
-.storage-pools__others .storage-pools__card:has(.storage-pools__disk--link:hover) {
+.storage-pools .storage-pools__card:has(.storage-pools__disk--link:hover) {
   background-image: linear-gradient(
     var(--app-palette-action-hover),
     var(--app-palette-action-hover)
   );
 }
 .storage-pools .storage-pools__volume,
-.storage-pools .storage-pools__disk,
-.storage-pools__others .storage-pools__disk {
+.storage-pools .storage-pools__disk {
   display: flex;
   align-items: center;
   gap: var(--app-space-12);
   min-width: 0;
 }
-.storage-pools .storage-pools__disk,
-.storage-pools__others .storage-pools__disk {
+.storage-pools .storage-pools__disk {
   justify-content: flex-start;
   box-sizing: border-box;
   width: 100%;
@@ -127,70 +128,27 @@
 .storage-pools__pool .storage-pools__icon {
   color: var(--app-palette-primary-main);
 }
-/* Disks or volumes in equal slots, so connector lines meet their centres. */
-.storage-pools__column {
-  display: flex;
-  flex-direction: column;
-}
-.storage-pools__slot {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  padding-block: var(--app-space-4);
-}
-.storage-pools .storage-pools__slot > .storage-pools__card {
-  width: 100%;
-  box-sizing: border-box;
-}
-.storage-pools__link {
-  position: relative;
-  min-height: 24px;
-}
-/* No pool between a plain disk and its volumes: one line across the gap. */
-.storage-pools__link--span {
-  grid-column: 2 / 5;
-}
-.storage-pools__link svg {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-}
-.storage-pools__link .storage-pools__line {
+.storage-pools .storage-pools__line {
   stroke: var(--app-palette-text-disabled);
   stroke-width: 1.5px;
   stroke-opacity: 1;
 }
-.storage-pools__dot {
-  position: absolute;
-  left: 0;
-  top: 50%;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--app-palette-text-disabled);
-  transform: translate(-50%, -50%);
-}
-.storage-pools__arrow {
-  position: absolute;
-  right: 0;
-  width: 0;
-  height: 0;
-  border-block: 4px solid transparent;
-  border-left: 7px solid var(--app-palette-text-disabled);
-  transform: translateY(-50%);
-}
+/* Narrow: the columns stack as a list and the edges go. */
 @container (max-width: 780px) {
-  .storage-pools__stack {
-    grid-template-columns: minmax(0, 1fr);
-    row-gap: var(--app-space-12);
+  .storage-pools {
+    height: auto;
   }
-  .storage-pools__link {
+  .storage-pools__header,
+  .storage-pools__edges {
     display: none;
   }
-  .storage-pools .storage-pools__disks,
-  .storage-pools .storage-pools__pool {
-    align-self: stretch;
+  .storage-pools__node,
+  .storage-pools .storage-pools__disks {
+    position: relative;
+    top: auto;
+    left: auto;
+    width: auto;
+    height: auto;
+    margin-bottom: var(--app-space-12);
   }
 }

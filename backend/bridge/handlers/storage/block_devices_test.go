@@ -199,7 +199,7 @@ func TestUdevEncodedLabel(t *testing.T) {
 	h := fakeHost(t)
 	h.add("", "sda", "8:0", 2000, nil)
 	h.part("sda", "sda1", "8:1", 1, 2048, 1000)
-	h.udev("8:1", `ID_FS_LABEL_ENC=my\x20data`, "ID_FS_UUID_ENC=u-1", "ID_PART_ENTRY_UUID=p-1", "ID_PART_ENTRY_NAME=boot", "ID_PART_ENTRY_SCHEME=gpt")
+	h.udev("8:1", `ID_FS_LABEL_ENC=my\x20data`, "ID_FS_UUID_ENC=u-1", "ID_PART_ENTRY_UUID=p-1", "ID_PART_ENTRY_NAME=boot", "ID_PART_ENTRY_SCHEME=gpt", "ID_PART_ENTRY_TYPE=C12A7328-F81F-11D2-BA4B-00A0C93EC93B")
 	// Model: ID_MODEL_ENC, then ID_MODEL, then sysfs.
 	h.add("", "sdb", "8:16", 2000, map[string]string{"device/model": "sysfs model "})
 	h.udev("8:16", `ID_MODEL_ENC=Enc\x20Model\x20\x20`, "ID_MODEL=plain", "SCSI_IDENT_SERIAL=s1", "ID_SERIAL=s5", "ID_PART_TABLE_TYPE=gpt")
@@ -219,7 +219,7 @@ func TestUdevEncodedLabel(t *testing.T) {
 	}
 	got := byPath(devices)
 	p := got["/dev/sda1"]
-	if p.Label != "my data" || p.UUID != "u-1" || p.PartUUID != "p-1" || p.PartLabel != "boot" || p.PTType != "gpt" {
+	if p.Label != "my data" || p.UUID != "u-1" || p.PartUUID != "p-1" || p.PartLabel != "boot" || p.PTType != "gpt" || p.PartType != "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" {
 		t.Errorf("sda1 = %#v", p)
 	}
 	for path, want := range map[string][2]string{
@@ -444,6 +444,7 @@ type lsblkDevice struct {
 	Transport   string         `json:"tran"`
 	ReadOnly    bool           `json:"ro"`
 	PTType      string         `json:"pttype"`
+	PartType    string         `json:"parttype"`
 	Children    []lsblkDevice  `json:"children"`
 }
 
@@ -486,6 +487,8 @@ func collectLsblk(raw lsblkDevice, parent string, devices map[string]*apischema.
 			Type: raw.Type, SizeBytes: size, FSType: raw.FSType,
 			Model: strings.TrimSpace(raw.Model), Serial: strings.TrimSpace(raw.Serial),
 			Transport: raw.Transport, ReadOnly: raw.ReadOnly, PTType: raw.PTType,
+			// lsblk prints GUIDs lowercase already; ToLower only guards MBR "0x83" casing.
+			PartType:    strings.ToLower(raw.PartType),
 			Mountpoints: []string{}, Parents: []string{},
 		}
 		devices[raw.Path] = device
@@ -516,7 +519,7 @@ func TestNativeInventoryMatchesLsblk(t *testing.T) {
 	if _, err := os.Stat(udevDataRoot); err != nil {
 		t.Skip("no udev database")
 	}
-	out, err := exec.Command("lsblk", "--json", "--bytes", "--tree", "--output", "NAME,KNAME,PATH,TYPE,SIZE,FSTYPE,MOUNTPOINTS,MODEL,SERIAL,TRAN,RO,PTTYPE").Output()
+	out, err := exec.Command("lsblk", "--json", "--bytes", "--tree", "--output", "NAME,KNAME,PATH,TYPE,SIZE,FSTYPE,MOUNTPOINTS,MODEL,SERIAL,TRAN,RO,PTTYPE,PARTTYPE").Output()
 	if err != nil {
 		t.Skipf("lsblk failed: %v", err)
 	}
@@ -543,6 +546,11 @@ func TestNativeInventoryMatchesLsblk(t *testing.T) {
 			t.Errorf("%s: missing from the native inventory", path)
 		} else if !reflect.DeepEqual(pick(g), pick(w)) {
 			t.Errorf("%s differs:\n native %+v\n lsblk  %+v", path, pick(g), pick(w))
+		}
+	}
+	for path, w := range want {
+		if g, ok := got[path]; ok && w.PartType != "" && g.PartType != w.PartType {
+			t.Errorf("%s: PartType native %q, lsblk %q", path, g.PartType, w.PartType)
 		}
 	}
 	for path := range got {

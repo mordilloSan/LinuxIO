@@ -180,7 +180,7 @@ describe("Docker topology", () => {
   it("expires repeated samples and recovers when a new sample arrives", async () => {
     const { client } = await setup();
     expect(
-      document.querySelectorAll(".app-topology-edge__grain").length,
+      document.querySelectorAll('.app-topology-edge[data-tier="light"]').length,
     ).toBeGreaterThan(0);
     vi.useFakeTimers();
     const repeatedSample = topologyLive(100001);
@@ -197,9 +197,13 @@ describe("Docker topology", () => {
     expect(
       document.querySelectorAll('.docker-topology__rate[data-active="true"]'),
     ).toHaveLength(0);
-    expect(document.querySelectorAll(".app-topology-edge__grain")).toHaveLength(
-      0,
-    );
+    // Running containers keep their idle pulse; the measured tiers go.
+    expect(
+      document.querySelectorAll('.app-topology-edge[data-tier="light"]'),
+    ).toHaveLength(0);
+    expect(
+      document.querySelectorAll('.app-topology-edge[data-tier="idle"]').length,
+    ).toBeGreaterThan(0);
     await act(async () => {
       client.setQueryData(linuxio.monitoring.get_live.queryKey, {
         captured_at_ms: 120000,
@@ -221,9 +225,14 @@ describe("Docker topology", () => {
   it("works without monitoring and allows pausing animation", async () => {
     const { user } = await setup({}, false);
     expect(screen.getByText("Metrics unavailable")).toBeInTheDocument();
-    expect(document.querySelectorAll(".app-topology-edge__grain")).toHaveLength(
-      0,
-    );
+    expect(
+      document.querySelectorAll(
+        '.app-topology-edge__flow[data-direction="reverse"]',
+      ),
+    ).toHaveLength(0);
+    expect(
+      document.querySelectorAll('.app-topology-edge[data-tier="idle"]').length,
+    ).toBeGreaterThan(0);
     await user.click(screen.getByRole("button", { name: "Pause animation" }));
     expect(
       screen.getByRole("button", { name: "Resume animation" }),
@@ -234,21 +243,21 @@ describe("Docker topology", () => {
     );
   });
 
-  it("flows only in active directions and stops for stopped containers", async () => {
+  it("flows back only when the container sends and stops for stopped containers", async () => {
     const { client } = await setup({ container: topologyNextcloudId });
     const sample = topologyLive(100001);
-    sample.containers.items[0].rx_bytes_per_sec = 0;
+    sample.containers.items[0].tx_bytes_per_sec = 0;
     await act(async () => {
       client.setQueryData(linuxio.monitoring.get_live.queryKey, sample);
     });
     const selected = '.app-topology-edge[data-highlighted="true"]';
     await waitFor(() =>
       expect(
-        document.querySelectorAll(`${selected} [data-direction="forward"]`),
+        document.querySelectorAll(`${selected} [data-direction="reverse"]`),
       ).toHaveLength(0),
     );
     expect(
-      document.querySelectorAll(`${selected} [data-direction="reverse"]`),
+      document.querySelectorAll(`${selected} [data-direction="forward"]`),
     ).toHaveLength(2);
     await act(async () => {
       client.setQueryData(
@@ -258,7 +267,7 @@ describe("Docker topology", () => {
     });
     await waitFor(() =>
       expect(
-        document.querySelectorAll(".app-topology-edge__grain"),
+        document.querySelectorAll(".app-topology-edge__flow"),
       ).toHaveLength(0),
     );
   });

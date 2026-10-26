@@ -43,6 +43,9 @@ type StorageBlockDevice struct {
 	Label      string `json:"label,omitzero"`
 	PartUUID   string `json:"partUUID,omitzero"`
 	PartLabel  string `json:"partLabel,omitzero"`
+	// PartType is the partition type from udev's ID_PART_ENTRY_TYPE: the GPT
+	// type GUID in lowercase, or the MBR type byte in hex.
+	PartType string `json:"partType,omitzero"`
 	// Busy says why the device must not be repartitioned or formatted: "Mounted
 	// at <path>", "Active swap" or "Used by <holder path>", in that priority.
 	Busy    string `json:"busy,omitzero"`
@@ -68,6 +71,23 @@ type StorageMount struct {
 type StorageTopologyInventory struct {
 	Devices []StorageBlockDevice `json:"devices"`
 	Mounts  []StorageMount       `json:"mounts"`
+	// BootEntries lists the firmware's Boot#### load options that name a GPT
+	// partition, read from efivarfs; empty on BIOS hosts and in containers.
+	BootEntries []EFIBootEntry `json:"bootEntries,omitzero"`
+}
+
+// EFIBootEntry is one firmware boot entry whose device path names a GPT
+// partition by GUID.
+type EFIBootEntry struct {
+	// ID is the entry's four hex digits, e.g. "0005".
+	ID       string `json:"id"`
+	Label    string `json:"label"`
+	PartUUID string `json:"partUUID"`
+	Active   bool   `json:"active"`
+	// Current is set on the entry the firmware booted (BootCurrent).
+	Current bool `json:"current"`
+	// Order is the entry's position in BootOrder, or -1 when it is not listed.
+	Order int `json:"order"`
 }
 
 type PhysicalVolume struct {

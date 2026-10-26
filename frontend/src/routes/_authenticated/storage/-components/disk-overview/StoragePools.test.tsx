@@ -254,9 +254,13 @@ describe("StoragePools", () => {
     expect(
       screen.getByRole("button", { name: "Storage pool 2" }),
     ).toHaveTextContent("Single");
-    expect(screen.getByText("nvme0n1")).toBeInTheDocument();
-    expect(screen.getByText("nvme1n1")).toBeInTheDocument();
-    expect(screen.getAllByText("Allocated 60 GB")).toHaveLength(2);
+    expect(
+      screen.getByRole("button", { name: "Drive details nvme0n1" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Drive details nvme1n1" }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText(/Allocated 60 GB · Free 70 GB/)).toHaveLength(2);
     expect(
       screen.getByRole("button", { name: "Volume /mnt/tank/media" }),
     ).toHaveTextContent("Btrfs");
@@ -280,12 +284,12 @@ describe("StoragePools", () => {
     const onInspectDrive = vi.fn();
     renderPools({ onInspectDrive });
 
+    // sda backs the "/" pool, so only sdb has nothing on it.
+    expect(await screen.findByText("Nothing on it")).toBeInTheDocument();
     expect(
-      await screen.findByText("Disks without volumes"),
-    ).toBeInTheDocument();
-    // sda backs the "/" pool, so only sdb is outside every pool.
-    expect(screen.getByText("Blank disk")).toBeInTheDocument();
-    expect(screen.queryByText("Crucial MX500")).not.toBeInTheDocument();
+      screen.getByText("Nothing on it").closest(".storage-pools__card"),
+    ).toHaveTextContent("Blank disk");
+    expect(screen.getAllByText("Nothing on it")).toHaveLength(1);
     await user.click(screen.getByRole("button", { name: "Drive details sdb" }));
     expect(onInspectDrive).toHaveBeenCalledWith("sdb");
   });
@@ -312,18 +316,11 @@ describe("StoragePools", () => {
     expect(
       screen.getByRole("button", { name: "Volume /boot/efi" }),
     ).toHaveTextContent("Free 1 GB");
-    // Plain disks sit above the pools so the boot partition reads first.
-    expect(
-      screen
-        .getByRole("button", { name: "Volume /boot/efi" })
-        .compareDocumentPosition(
-          screen.getByRole("button", { name: "Storage pool 2" }),
-        ) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
     // sdb now carries a volume, so nothing is left without one.
-    expect(screen.queryByText("Disks without volumes")).toBeNull();
-    expect(screen.getByText("nas.lan:/export/media")).toBeInTheDocument();
-    expect(screen.getByText("Network share")).toBeInTheDocument();
+    expect(screen.queryByText("Nothing on it")).toBeNull();
+    expect(
+      screen.getByText("Network share").closest(".storage-pools__card"),
+    ).toHaveTextContent("nas.lan:/export/media");
     expect(
       screen.getByRole("button", { name: "Volume /mnt/share" }),
     ).toHaveTextContent("NFS");
@@ -362,16 +359,19 @@ describe("StoragePools", () => {
     expect(
       await screen.findByRole("button", { name: "Volume /boot/efi" }),
     ).toHaveTextContent("sdb1");
-    const card = (name: string) =>
-      screen.getByText(name).closest(".storage-pools__card");
-    expect(card("sdb2")).toHaveTextContent("FAT");
-    expect(card("sdb2")).toHaveTextContent("Not mounted · 1 GB");
-    expect(card("sdb3")).toHaveTextContent("No filesystem");
-    expect(card("sdb3")).toHaveTextContent("Not mounted · 48 GB");
-    // Reads flow into /boot/efi only; nothing uses the other partitions.
-    expect(document.querySelectorAll(".app-topology-edge__flow")).toHaveLength(
-      1,
-    );
+    // The unused partitions are lines on the drive's own card.
+    const sdb = screen
+      .getByRole("button", { name: "Drive details sdb" })
+      .closest(".storage-pools__card");
+    expect(sdb).toHaveTextContent("sdb2 · FAT · 1 GB · not mounted");
+    expect(sdb).toHaveTextContent("sdb3 · No filesystem · 48 GB · not mounted");
+    // Every mounted link flows; only sdb's line into /boot/efi carries a rate.
+    expect(
+      document.querySelectorAll('.app-topology-edge[data-tier="light"]'),
+    ).toHaveLength(1);
+    expect(
+      document.querySelectorAll('.app-topology-edge[data-tier="idle"]').length,
+    ).toBeGreaterThan(1);
   });
 
   it("shows each disk's read and write rate on its card and line", async () => {
@@ -395,13 +395,16 @@ describe("StoragePools", () => {
     expect(
       await screen.findByRole("button", { name: "Drive details nvme0n1" }),
     ).toHaveTextContent("Read 4.8 MB/s · Write 1.2 MB/s");
-    // Only nvme0n1's line into the tank pool carries its flow.
-    for (const direction of ["forward", "reverse"])
-      expect(
-        document.querySelectorAll(
-          `.app-topology-edge__flow[data-direction="${direction}"]`,
-        ),
-      ).toHaveLength(1);
+    // Writes come back only where something writes: nvme0n1's line into
+    // tank, and tank's lines to its two volumes, which carry the members' sum.
+    expect(
+      document.querySelectorAll(
+        '.app-topology-edge__flow[data-direction="reverse"]',
+      ),
+    ).toHaveLength(3);
+    expect(
+      document.querySelectorAll('.app-topology-edge[data-tier="light"]'),
+    ).toHaveLength(3);
     await user.click(screen.getByRole("button", { name: "Pause animation" }));
     for (const flow of document.querySelectorAll(".app-topology-edge__flow"))
       expect(flow.closest(".app-topology-edge")).toHaveAttribute(
@@ -430,15 +433,15 @@ describe("StoragePools", () => {
         .closest(".storage-pools__card"),
     );
     expect(memberCards[0]).not.toBe(memberCards[1]);
-    // Only the NVMe drives, which hold nothing here, are left over.
+    // Only the NVMe drives hold nothing here.
     expect(
-      within(
-        screen.getByText("Disks without volumes")
-          .nextElementSibling as HTMLElement,
-      )
-        .getAllByRole("button")
-        .map((button) => button.getAttribute("aria-label")),
-    ).toEqual(["Drive details nvme0n1", "Drive details nvme1n1"]);
+      screen
+        .getAllByText("Nothing on it")
+        .map((text) => text.closest(".storage-pools__card")?.textContent),
+    ).toEqual([
+      expect.stringContaining("nvme0n1"),
+      expect.stringContaining("nvme1n1"),
+    ]);
   });
 
   it("opens an md array's details, scrubs it and fails a member", async () => {
@@ -594,7 +597,7 @@ describe("StoragePools", () => {
       }),
     );
     renderPools();
-    expect(screen.queryByText("Disks without volumes")).not.toBeInTheDocument();
+    expect(screen.queryByText("Nothing on it")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Drive details nvme0n1" }),
     ).not.toBeInTheDocument();
@@ -603,7 +606,7 @@ describe("StoragePools", () => {
     expect(
       await screen.findByRole("button", { name: "tank" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Disks without volumes")).toBeInTheDocument();
+    expect(screen.getByText("Nothing on it")).toBeInTheDocument();
   });
 
   it("lists an unmounted pool with its missing disks and mounts it degraded", async () => {
@@ -616,7 +619,7 @@ describe("StoragePools", () => {
     expect(screen.getByText("1 missing disk")).toBeInTheDocument();
     expect(screen.getByText("fstab: /mnt/cold")).toBeInTheDocument();
     // sdb belongs to the cold pool now, so it is no longer idle.
-    expect(screen.queryByText("Disks without volumes")).toBeNull();
+    expect(screen.queryByText("Nothing on it")).toBeNull();
     await user.click(screen.getByRole("button", { name: "Mount degraded" }));
     expect(mocks.mutations["storage.btrfs_pool_mount"]).toHaveBeenCalledWith({
       uuid: "uuid-cold",

@@ -33,7 +33,7 @@ func GetTopology(ctx context.Context) (apischema.StorageTopologyInventory, error
 			ReadOnly: slices.Contains(partition.Opts, "ro"),
 		})
 	}
-	return apischema.StorageTopologyInventory{Devices: devices, Mounts: mounts}, nil
+	return apischema.StorageTopologyInventory{Devices: devices, Mounts: mounts, BootEntries: readBootEntries(efiVarsRoot)}, nil
 }
 
 // blockDevice is a native inventory entry plus the drive-only fields that are
@@ -193,6 +193,7 @@ func (d *blockDevice) applyUdev(props map[string]string) {
 	d.Label = decodeUdevEnc(props["ID_FS_LABEL_ENC"])
 	d.PTType = firstProp(props, "ID_PART_TABLE_TYPE", "ID_PART_ENTRY_SCHEME")
 	d.PartUUID = props["ID_PART_ENTRY_UUID"]
+	d.PartType = strings.ToLower(props["ID_PART_ENTRY_TYPE"])
 	d.PartLabel = decodeUdevEnc(props["ID_PART_ENTRY_NAME"])
 	d.Transport = blockTransport(kname)
 	if d.Type == "part" {

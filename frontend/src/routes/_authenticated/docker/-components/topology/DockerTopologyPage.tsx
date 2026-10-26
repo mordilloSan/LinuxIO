@@ -287,9 +287,8 @@ const DockerTopologyPage = ({
               viewBox={`0 0 100 ${topology.height}`}
             >
               {topology.edges.map((edge) => {
-                const activity = metricsFor(
-                  topology.inventory.get(edge.container)!,
-                );
+                const container = topology.inventory.get(edge.container)!;
+                const activity = metricsFor(container);
                 return (
                   <AppTopologyEdge
                     className="docker-topology__edge"
@@ -300,6 +299,7 @@ const DockerTopologyPage = ({
                     }
                     key={`${edge.network}:${edge.container}`}
                     forward={activity?.rx_bytes_per_sec}
+                    live={container.State === "running"}
                     reverse={activity?.tx_bytes_per_sec}
                     paused={paused}
                   />

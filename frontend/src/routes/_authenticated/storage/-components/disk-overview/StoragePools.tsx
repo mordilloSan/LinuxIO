@@ -1,15 +1,14 @@
 import { Icon } from "@iconify/react";
 import { useQuery } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 
 import {
   linuxio,
   useCallMutation,
   type BtrfsFilesystem,
+  type BtrfsOfflinePool,
   type BtrfsOpProgress,
   type FilesystemInfo,
-  type LiveDiskRates,
-  type MDArray,
   type NFSMount,
   type StorageBlockDevice,
   type TaskProgress,
@@ -31,23 +30,22 @@ import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
 import useAuth from "@/hooks/useAuth";
 import { useCapability } from "@/hooks/useCapabilities";
+import useContainerWidth from "@/hooks/useContainerWidth";
 import { DASHBOARD_CARD_SPACING } from "@/theme/constants";
 import { formatFileSize, formatThroughput } from "@/utils/formatters";
 
 import { driveIcon } from "./DriveCard";
 import MdRaidDetails from "./MdRaidDetails";
 import {
-  buildStorageLayout,
+  buildStorageGraph,
   deviceTypeLabel,
   fsTypeLabel,
-} from "./storagePools";
+  type GraphEdge,
+  type GraphNode,
+  type PoolSummary,
+} from "./storageGraph";
 import type { DriveInfo } from "./types";
-import {
-  findBackingDrive,
-  getHealthColor,
-  getTemperature,
-  getTemperatureColor,
-} from "./utils";
+import { getHealthColor, getTemperature, getTemperatureColor } from "./utils";
 import BtrfsCreatePoolDialog from "../btrfs/BtrfsCreatePoolDialog";
 import BtrfsDevicesCard from "../btrfs/BtrfsDevicesCard";
 import BtrfsHealthBanner from "../btrfs/BtrfsHealthBanner";
@@ -55,66 +53,37 @@ import BtrfsSettingsCard from "../btrfs/BtrfsSettingsCard";
 import BtrfsSpaceCard from "../btrfs/BtrfsSpaceCard";
 import "./storage-pools.css";
 
-/** Percent heights of the centres of `count` equal slots. */
-const slotCentres = (count: number) =>
-  Array.from({ length: count }, (_, i) => ((i + 0.5) / count) * 100);
+/** Horizontal room between columns, where the edges run. */
+const GAP = 96;
+/** Room above the nodes for the column titles. */
+const HEADER = 28;
+/** Largest corner on an edge; smaller when the vertical run is short. */
+const CORNER = 40;
+const FALLBACK_WIDTH = 1200;
 
 /**
- * Lines from `from` evenly spaced entries on the left to `to` exits on the
- * right; an entry with `rates` carries its disk's reads forward and writes
- * back, except into the last `idle` exits (partitions nothing uses).
+ * From a source exit to a target entry through the lane at `laneX`: a
+ * horizontal run, a quarter-curve into the lane, along it, and out again.
+ * A short vertical run makes the two curves one S-bend.
  */
-const Connector = ({
-  from = 1,
-  to = 1,
-  idle = 0,
-  span = false,
-  rates = [],
-  paused = false,
-}: {
-  from?: number;
-  to?: number;
-  idle?: number;
-  span?: boolean;
-  rates?: (LiveDiskRates | undefined)[];
-  paused?: boolean;
-}) => {
-  const entries = slotCentres(from);
-  const ys = slotCentres(to);
+const edgePath = (
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  laneX: number,
+) => {
+  if (Math.abs(y1 - y0) < 1) return `M${x0} ${y0}H${x1}`;
+  const r = Math.min(
+    CORNER,
+    Math.abs(y1 - y0) / 2,
+    (laneX - x0) / 2,
+    (x1 - laneX) / 2,
+  );
+  const s = y1 > y0 ? 1 : -1;
   return (
-    <div
-      aria-hidden="true"
-      className={`storage-pools__link${span ? " storage-pools__link--span" : ""}`}
-    >
-      <svg preserveAspectRatio="none" viewBox="0 0 100 100">
-        {entries.flatMap((entry, index) =>
-          ys.map((y, exit) => {
-            const flow = exit < to - idle ? rates[index] : undefined;
-            return (
-              <AppTopologyEdge
-                className="storage-pools__line"
-                d={`M0 ${entry}H50V${y}H100`}
-                forward={flow?.read_bytes_per_sec}
-                highlighted={false}
-                key={`${entry}:${y}`}
-                paused={paused}
-                reverse={flow?.write_bytes_per_sec}
-              />
-            );
-          }),
-        )}
-      </svg>
-      {entries.map((y) => (
-        <span className="storage-pools__dot" key={y} style={{ top: `${y}%` }} />
-      ))}
-      {ys.map((y) => (
-        <span
-          className="storage-pools__arrow"
-          key={y}
-          style={{ top: `${y}%` }}
-        />
-      ))}
-    </div>
+    `M${x0} ${y0}H${laneX - r}Q${laneX} ${y0} ${laneX} ${y0 + s * r}` +
+    `V${y1 - s * r}Q${laneX} ${y1} ${laneX + r} ${y1}H${x1}`
   );
 };
 
@@ -128,66 +97,76 @@ const HEALTH = {
   },
 } as const;
 
-interface DiskRowProps {
-  caption?: string;
-  /** The physical drive behind this disk; without one the row is not a link. */
-  drive: DriveInfo | null;
-  missing?: boolean;
-  name: string;
-  onInspectDrive: (name: string) => void;
-  sizeBytes: number;
-}
-
-/** One disk: name, size and temperature, linking to the drive's details. */
-const DiskRow = ({
-  name,
-  caption,
-  sizeBytes,
-  missing,
+/** One drive: name, model, live rates, unused partitions, size and temperature. */
+const DriveCard = ({
   drive,
+  unused,
+  idle,
   onInspectDrive,
-}: DiskRowProps) => {
-  const temperature = getTemperature(drive?.smart);
-  const health = HEALTH[getHealthColor(drive?.smart)];
-  const content: ReactNode = (
-    <>
+}: {
+  drive: DriveInfo;
+  unused: StorageBlockDevice[];
+  /** Nothing mounts, builds on or sits on the drive. */
+  idle: boolean;
+  onInspectDrive: (name: string) => void;
+}) => {
+  const temperature = getTemperature(drive.smart);
+  const health = HEALTH[getHealthColor(drive.smart)];
+  return (
+    <AppButton
+      aria-label={`Drive details ${drive.name}`}
+      className="storage-pools__disk storage-pools__disk--link"
+      color="inherit"
+      onClick={() => onInspectDrive(drive.name)}
+    >
       <Icon
         className="storage-pools__icon"
         height={24}
-        icon={driveIcon(drive?.transport, drive?.rotational)}
+        icon={driveIcon(drive.transport, drive.rotational)}
         width={24}
       />
-      {drive && (
-        <StatusDot
-          color={health.color}
-          size={8}
-          style={{ marginLeft: -6 }}
-          tooltip={health.label}
-        />
-      )}
+      <StatusDot
+        color={health.color}
+        size={8}
+        style={{ marginLeft: -6 }}
+        tooltip={health.label}
+      />
       <span className="storage-pools__name">
         <AppTypography noWrap variant="body2">
-          {name}
+          {drive.name}
         </AppTypography>
-        {caption && (
-          <AppTypography color="text.secondary" noWrap variant="caption">
-            {caption}
-          </AppTypography>
-        )}
-        {drive?.rates && (
+        <AppTypography color="text.secondary" noWrap variant="caption">
+          {drive.model}
+        </AppTypography>
+        {drive.rates && (
           <AppTypography color="text.secondary" noWrap variant="caption">
             Read {formatThroughput(drive.rates.read_bytes_per_sec)} · Write{" "}
             {formatThroughput(drive.rates.write_bytes_per_sec)}
           </AppTypography>
         )}
+        {idle && (
+          <AppTypography color="text.secondary" noWrap variant="caption">
+            Nothing on it
+          </AppTypography>
+        )}
+        {unused.map((partition) => (
+          <AppTypography
+            className="storage-pools__unused"
+            color="text.disabled"
+            key={partition.path}
+            noWrap
+            title={`${partition.name} is not mounted`}
+            variant="caption"
+          >
+            {partition.name} ·{" "}
+            {partition.fsType ? fsTypeLabel(partition.fsType) : "No filesystem"}{" "}
+            · {formatFileSize(partition.sizeBytes)} · not mounted
+          </AppTypography>
+        ))}
       </span>
-      {missing ? (
-        <AppChip color="error" label="Missing" size="small" variant="soft" />
-      ) : (
-        <AppTypography color="text.secondary" variant="caption">
-          {formatFileSize(sizeBytes)}
-        </AppTypography>
-      )}
+      <AppTypography color="text.secondary" variant="caption">
+        {formatFileSize(drive.sizeBytes)}
+      </AppTypography>
       {/* No tooltip here: a tooltip trigger inside the button eats its click. */}
       {temperature !== null && (
         <AppTypography
@@ -198,135 +177,137 @@ const DiskRow = ({
           {temperature}°C
         </AppTypography>
       )}
-    </>
-  );
-  if (!drive) return <div className="storage-pools__disk">{content}</div>;
-  return (
-    <AppButton
-      aria-label={`Drive details ${drive.name}`}
-      className="storage-pools__disk storage-pools__disk--link"
-      color="inherit"
-      onClick={() => onInspectDrive(drive.name)}
-    >
-      {content}
     </AppButton>
   );
 };
 
-/** A disk in a column of its own card, so each gets its own connector line. */
-const DiskCard = (props: DiskRowProps) => (
-  <div className="storage-pools__slot">
-    <div className="storage-pools__card">
-      <DiskRow {...props} />
-    </div>
-  </div>
-);
-
-/**
- * A mounted filesystem; opens its filesystem card. On a plain disk it names
- * its partition, which a pool or source card already stands for elsewhere.
- */
+/** A mounted filesystem; opens its filesystem card. */
 const VolumeCard = ({
   volume,
   onOpenVolume,
-  showDevice,
 }: {
   volume: FilesystemInfo;
   onOpenVolume: (mountpoint: string) => void;
-  showDevice: boolean;
 }) => (
-  <div className="storage-pools__slot">
-    <AppButton
-      aria-label={`Volume ${volume.mountpoint}`}
-      className="storage-pools__card storage-pools__volume"
-      color="inherit"
-      onClick={() => onOpenVolume(volume.mountpoint)}
-    >
-      <Icon
-        className="storage-pools__icon"
-        height={26}
-        icon="mdi:chart-pie"
-        width={26}
-      />
-      <span>
-        <AppTypography fontWeight={600} noWrap variant="body2">
-          {volume.mountpoint}
-        </AppTypography>
-        {showDevice && (
-          <AppTypography color="text.secondary" noWrap variant="caption">
-            {volume.device.replace(/^\/dev\//, "")}
-          </AppTypography>
-        )}
-      </span>
+  <AppButton
+    aria-label={`Volume ${volume.mountpoint}`}
+    className="storage-pools__card storage-pools__volume"
+    color="inherit"
+    onClick={() => onOpenVolume(volume.mountpoint)}
+  >
+    <Icon
+      className="storage-pools__icon"
+      height={26}
+      icon="mdi:chart-pie"
+      width={26}
+    />
+    <span>
+      <AppTypography fontWeight={600} noWrap variant="body2">
+        {volume.mountpoint}
+      </AppTypography>
+      <AppTypography color="text.secondary" noWrap variant="caption">
+        {volume.device.replace(/^\/dev\//, "")}
+      </AppTypography>
+    </span>
+    <AppChip
+      color="primary"
+      label={fsTypeLabel(volume.fstype)}
+      size="small"
+      variant="soft"
+    />
+    <AppTypography color="text.secondary" variant="caption">
+      Free {formatFileSize(volume.free)}
+    </AppTypography>
+  </AppButton>
+);
+
+/** A btrfs pool; opens its details below the graph. */
+const PoolCard = ({
+  pool,
+  selected,
+  onSelectPool,
+}: {
+  pool: PoolSummary;
+  selected: boolean;
+  onSelectPool: (uuid?: string) => void;
+}) => (
+  <AppButton
+    aria-label={pool.name}
+    aria-pressed={selected}
+    className="storage-pools__card storage-pools__pool"
+    color="inherit"
+    onClick={() => onSelectPool(selected ? undefined : pool.uuid)}
+  >
+    <Icon
+      className="storage-pools__icon"
+      height={36}
+      icon="mdi:database-outline"
+      width={36}
+    />
+    <AppTypography fontWeight={600} noWrap variant="body2">
+      {pool.name}
+    </AppTypography>
+    {pool.profile && (
       <AppChip
         color="primary"
-        label={fsTypeLabel(volume.fstype)}
+        label={pool.profile}
         size="small"
         variant="soft"
       />
-      <AppTypography color="text.secondary" variant="caption">
-        Free {formatFileSize(volume.free)}
-      </AppTypography>
-    </AppButton>
-  </div>
+    )}
+    <AppTypography color="text.secondary" variant="caption">
+      Allocated {formatFileSize(pool.allocatedBytes)} · Free{" "}
+      {formatFileSize(pool.freeBytes)}
+    </AppTypography>
+  </AppButton>
 );
 
-/** A partition nothing mounts or builds on. */
-const PartitionCard = ({ partition }: { partition: StorageBlockDevice }) => (
-  <div className="storage-pools__slot">
-    <div className="storage-pools__card storage-pools__volume">
-      <Icon
-        className="storage-pools__icon"
-        height={26}
-        icon="mdi:chart-pie-outline"
-        width={26}
-      />
-      <span>
-        <AppTypography fontWeight={600} noWrap variant="body2">
-          {partition.name}
-        </AppTypography>
-        <AppTypography color="text.secondary" noWrap variant="caption">
-          Not mounted · {formatFileSize(partition.sizeBytes)}
-        </AppTypography>
-      </span>
-      {partition.fsType ? (
-        <AppChip
-          label={fsTypeLabel(partition.fsType)}
-          size="small"
-          variant="soft"
-        />
-      ) : (
-        <AppTypography color="text.secondary" variant="caption">
-          No filesystem
-        </AppTypography>
-      )}
-    </div>
-  </div>
-);
-
-const Volumes = ({
-  volumes,
-  partitions = [],
-  onOpenVolume,
-  showDevice = false,
+/** A btrfs pool that is not mounted, with Mount and Destroy. */
+const OfflinePoolCard = ({
+  pool,
+  missing,
+  isMounting,
+  onMount,
+  onDestroy,
 }: {
-  volumes: FilesystemInfo[];
-  partitions?: StorageBlockDevice[];
-  onOpenVolume: (mountpoint: string) => void;
-  showDevice?: boolean;
+  pool: BtrfsOfflinePool;
+  missing: number;
+  isMounting: boolean;
+  onMount: () => void;
+  onDestroy: () => void;
 }) => (
-  <div className="storage-pools__column">
-    {volumes.map((volume) => (
-      <VolumeCard
-        key={volume.mountpoint}
-        onOpenVolume={onOpenVolume}
-        showDevice={showDevice}
-        volume={volume}
-      />
-    ))}
-    {partitions.map((partition) => (
-      <PartitionCard key={partition.path} partition={partition} />
-    ))}
+  <div className="storage-pools__card storage-pools__pool">
+    <Icon
+      className="storage-pools__icon"
+      height={36}
+      icon="mdi:database-off-outline"
+      width={36}
+    />
+    <AppTypography fontWeight={600} noWrap variant="body2">
+      {pool.label || pool.uuid}
+    </AppTypography>
+    <AppChip
+      color={missing > 0 ? "error" : "warning"}
+      label={missing > 0 ? "Degraded" : "Not mounted"}
+      size="small"
+      variant="soft"
+    />
+    <AppTypography color="text.secondary" variant="caption">
+      {pool.mountpoint ? `fstab: ${pool.mountpoint}` : "Not in /etc/fstab"}
+    </AppTypography>
+    <div style={{ display: "flex", gap: 4 }}>
+      <AppButton
+        disabled={isMounting}
+        onClick={onMount}
+        size="small"
+        variant="outlined"
+      >
+        {missing > 0 ? "Mount degraded" : "Mount"}
+      </AppButton>
+      <AppButton color="error" onClick={onDestroy} size="small">
+        Destroy
+      </AppButton>
+    </div>
   </div>
 );
 
@@ -334,21 +315,16 @@ const Volumes = ({
  * A RAID, LVM or mapper device over its drives; an md array opens its
  * details, the others are not managed here.
  */
-const SourceCard = ({
-  array,
-  label,
+const DeviceCard = ({
+  node,
   onSelectRaid,
   selectedRaid,
-  sizeBytes,
-  type,
 }: {
-  array?: MDArray;
-  label: string;
+  node: Extract<GraphNode, { kind: "device" }>;
   onSelectRaid: (name?: string) => void;
   selectedRaid?: string;
-  sizeBytes: number;
-  type: string;
 }) => {
+  const { array, caption, label, sizeBytes, type } = node;
   const content = (
     <>
       <Icon
@@ -360,16 +336,19 @@ const SourceCard = ({
       <AppTypography fontWeight={600} noWrap variant="body2">
         {label}
       </AppTypography>
-      <AppChip
-        color="primary"
-        label={deviceTypeLabel(type)}
-        size="small"
-        variant="soft"
-      />
-      {array && array.degraded > 0 && (
-        <AppChip color="error" label="Degraded" size="small" variant="soft" />
-      )}
+      <span style={{ display: "flex", gap: 4 }}>
+        <AppChip
+          color="primary"
+          label={deviceTypeLabel(type)}
+          size="small"
+          variant="soft"
+        />
+        {array && array.degraded > 0 && (
+          <AppChip color="error" label="Degraded" size="small" variant="soft" />
+        )}
+      </span>
       <AppTypography color="text.secondary" variant="caption">
+        {caption ? `${caption} · ` : ""}
         {formatFileSize(sizeBytes)}
       </AppTypography>
     </>
@@ -394,6 +373,199 @@ const SourceCard = ({
   );
 };
 
+/** The EFI System Partitions as one boot set, as the firmware sees them. */
+const BootCard = ({ node }: { node: Extract<GraphNode, { kind: "boot" }> }) => {
+  const { copies, entries, firmware, mounted } = node;
+  const status = !firmware
+    ? { color: "default" as const, label: "No firmware entries" }
+    : entries >= copies.length
+      ? { color: "success" as const, label: "All bootable" }
+      : {
+          color: "warning" as const,
+          label: `${copies.length - entries} without entry`,
+        };
+  return (
+    <div className="storage-pools__card storage-pools__pool">
+      <Icon
+        className="storage-pools__icon"
+        height={36}
+        icon="mdi:power"
+        width={36}
+      />
+      <AppTypography fontWeight={600} noWrap variant="body2">
+        EFI boot
+      </AppTypography>
+      <span style={{ display: "flex", gap: 4 }}>
+        {firmware && (
+          <AppChip
+            color="primary"
+            label={`${entries} boot ${entries === 1 ? "entry" : "entries"}`}
+            size="small"
+            variant="soft"
+          />
+        )}
+        <AppChip
+          color={status.color}
+          label={status.label}
+          size="small"
+          variant="soft"
+        />
+      </span>
+      <AppTypography color="text.secondary" variant="caption">
+        {copies.length} copies ·{" "}
+        {mounted ? `${mounted.name} mounted` : "none mounted"}
+      </AppTypography>
+    </div>
+  );
+};
+
+/** A network share or a device with no drive found under it. */
+const ServerCard = ({
+  label,
+  network,
+}: {
+  label: string;
+  network: boolean;
+}) => (
+  <div className="storage-pools__card storage-pools__pool">
+    <Icon
+      className="storage-pools__icon"
+      height={36}
+      icon={network ? "mdi:server-network" : "mdi:layers-outline"}
+      width={36}
+    />
+    <AppTypography fontWeight={600} noWrap variant="body2">
+      {label}
+    </AppTypography>
+    <AppTypography color="text.secondary" variant="caption">
+      {network ? "Network share" : "No physical disk found"}
+    </AppTypography>
+  </div>
+);
+
+const MissingCard = ({ count }: { count: number }) => (
+  <div className="storage-pools__card storage-pools__disk">
+    <Icon
+      className="storage-pools__icon"
+      height={24}
+      icon="mdi:harddisk-remove"
+      width={24}
+    />
+    <span className="storage-pools__name">
+      <AppTypography noWrap variant="body2">
+        {count} missing disk{count > 1 ? "s" : ""}
+      </AppTypography>
+    </span>
+    <AppChip color="error" label="Missing" size="small" variant="soft" />
+  </div>
+);
+
+/**
+ * The connections, in one SVG over the graph: each edge runs from its
+ * source's right edge into its target's lane and out into the target. Edges
+ * into the same node share the lane. Labels name the partition once per
+ * node when every edge into it agrees, else at each edge's source.
+ */
+const Edges = ({
+  edges,
+  nodes,
+  columnX,
+  columnWidth,
+  paused,
+  highlight,
+}: {
+  edges: GraphEdge[];
+  nodes: GraphNode[];
+  columnX: (column: 0 | 1 | 2) => number;
+  columnWidth: number;
+  paused: boolean;
+  highlight: (node: GraphNode) => boolean;
+}) => {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const lanes = nodes.filter((node) => node.column === 1).length;
+  // A drive → volume line drops in the first gap, in a lane of its own
+  // after the nodes', and crosses the middle column level with its volume,
+  // where the layout kept a band free.
+  const passes = edges.some(
+    (edge) =>
+      byId.get(edge.from)!.column === 0 && byId.get(edge.to)!.column === 2,
+  )
+    ? 1
+    : 0;
+  const laneSpacing = Math.min(30, (GAP * 2) / 3 / Math.max(lanes + passes, 1));
+  const firstLane = columnX(1) - GAP + GAP / 3;
+  const laneX = (from: GraphNode, to: GraphNode) => {
+    if (to.column === 1) return firstLane + to.lane * laneSpacing;
+    if (from.column === 0) return firstLane + lanes * laneSpacing;
+    return columnX(2) - GAP / 2;
+  };
+  const centre = (node: GraphNode) => HEADER + node.top + node.height / 2;
+  const entryLabel = new Map<string, string>();
+  for (const node of nodes) {
+    const labels = edges.filter((e) => e.to === node.id).map((e) => e.label);
+    if (
+      labels.length > 0 &&
+      labels[0] !== "" &&
+      labels.every((l) => l === labels[0])
+    )
+      entryLabel.set(node.id, labels[0]);
+  }
+  return (
+    <>
+      {edges.map((edge) => {
+        const from = byId.get(edge.from)!;
+        const to = byId.get(edge.to)!;
+        const x0 = columnX(from.column) + columnWidth;
+        const y0 = centre(from) + edge.exit;
+        const x1 = columnX(to.column);
+        const y1 = centre(to);
+        return (
+          <AppTopologyEdge
+            className="storage-pools__line"
+            d={edgePath(x0, y0, x1, y1, laneX(from, to))}
+            forward={edge.rates?.read_bytes_per_sec}
+            highlighted={highlight(from) || highlight(to)}
+            key={edge.id}
+            live={edge.live}
+            paused={paused}
+            reverse={edge.rates?.write_bytes_per_sec}
+          />
+        );
+      })}
+      {nodes.flatMap((node) => {
+        const label = entryLabel.get(node.id);
+        if (label !== undefined)
+          return (
+            <text
+              className="storage-pools__label"
+              key={node.id}
+              textAnchor="end"
+              x={columnX(node.column) - 8}
+              y={centre(node) - 5}
+            >
+              {label}
+            </text>
+          );
+        return edges
+          .filter((edge) => edge.to === node.id && edge.label !== "")
+          .map((edge) => {
+            const from = byId.get(edge.from)!;
+            return (
+              <text
+                className="storage-pools__label"
+                key={edge.id}
+                x={columnX(from.column) + columnWidth + 6}
+                y={centre(from) + edge.exit - 4}
+              >
+                {edge.label}
+              </text>
+            );
+          });
+      })}
+    </>
+  );
+};
+
 type PoolDialog =
   | { kind: "create" }
   | { kind: "destroy"; uuid: string; name: string; disks: string[] }
@@ -414,11 +586,10 @@ interface StoragePoolsProps {
 }
 
 /**
- * Every drive and every mounted filesystem, drawn as disks -> pool -> volumes
- * for btrfs pools and RAID, LVM or mapper devices, disk -> volumes and unused
- * partitions for plain partitions, and source -> volumes for network shares
- * and devices with no drive found under them. Lines out of a disk carry its
- * live reads and writes. The selected pool's health, disk and RAID
+ * Every drive once on the left, what the drives build in the middle (btrfs
+ * pools, md arrays, LVM and dm-crypt devices, the EFI boot set, network
+ * servers) and every mounted filesystem on the right, joined by edges that
+ * carry live reads and writes. The selected pool's health, disk and RAID
  * management and settings, or the selected md array's members and scrub, sit
  * below. Pools need btrfs and privilege; the rest does not.
  */
@@ -451,6 +622,7 @@ const StoragePools = ({
   );
   const [dialog, setDialog] = useState<PoolDialog | null>(null);
   const [paused, setPaused] = useState(false);
+  const { ref: graphRef, width } = useContainerWidth(FALLBACK_WIDTH);
   const closeDialog = () => setDialog(null);
   // A task, not a call: the bridge trims every disk before mkfs, which can
   // outlast any request timeout on large SSDs.
@@ -476,36 +648,36 @@ const StoragePools = ({
     linuxio.storage.btrfs_set_label,
     { success: "Pool renamed", error: "Failed to rename pool" },
   );
-
-  const {
-    poolStacks,
-    driveStacks,
-    sourceStacks,
-    idleDrives: unpooled,
-  } = buildStorageLayout(
-    btrfs,
-    filesystems,
-    drives,
-    nfsMounts,
-    topology?.devices ?? [],
-    offline.flatMap((pool) => pool.devices),
+  const hasArrays = (topology?.devices ?? []).some((device) =>
+    device.type.startsWith("raid"),
   );
-  // Disks of an unmounted pool are drawn under it, not as idle.
-  const offlineDrives = new Set(
-    offline.flatMap((pool) =>
-      pool.devices.map(
-        (path) => findBackingDrive(path.replace(/^\/dev\//, ""), drives)?.name,
-      ),
-    ),
-  );
-  const idleDrives = unpooled.filter((drive) => !offlineDrives.has(drive.name));
-  const selected = poolStacks.find(({ fs }) => fs.uuid === selectedPool);
   const { data: arrays = [] } = useQuery({
     ...linuxio.storage.md_list,
-    enabled: sourceStacks.some(({ type }) => type.startsWith("raid")),
+    enabled: hasArrays,
     refetchInterval: 5000,
   });
+
+  const graph = buildStorageGraph({
+    arrays,
+    bootEntries: topology?.bootEntries ?? [],
+    btrfs,
+    devices: topology?.devices ?? [],
+    drives,
+    filesystems,
+    nfsMounts,
+    offline,
+  });
+  const selected = graph.nodes.find(
+    (node): node is Extract<GraphNode, { kind: "pool" }> =>
+      node.kind === "pool" && node.fs.uuid === selectedPool,
+  );
   const selectedArray = arrays.find(({ name }) => name === selectedRaid);
+  const columnWidth = (width - 2 * GAP) / 3;
+  const columnX = (column: 0 | 1 | 2) => column * (columnWidth + GAP);
+  const hasBoot = graph.nodes.some((node) => node.kind === "boot");
+  const highlight = (node: GraphNode) =>
+    (node.kind === "pool" && node.fs.uuid === selectedPool) ||
+    (node.kind === "device" && node.array?.name === selectedRaid);
 
   // Until the pools and block-device tree load, volumes would sit under the
   // wrong drive or source and then jump; draw nothing rather than that flicker.
@@ -518,6 +690,66 @@ const StoragePools = ({
       </AppTypography>
     );
   }
+
+  const card = (node: GraphNode): ReactNode => {
+    switch (node.kind) {
+      case "drive":
+        return (
+          <DriveCard
+            drive={node.drive}
+            idle={
+              node.unused.length === 0 &&
+              !graph.edges.some((edge) => edge.from === node.id)
+            }
+            onInspectDrive={onInspectDrive}
+            unused={node.unused}
+          />
+        );
+      case "missing":
+        return <MissingCard count={node.count} />;
+      case "pool":
+        return (
+          <PoolCard
+            onSelectPool={onSelectPool}
+            pool={node.pool}
+            selected={node.fs.uuid === selectedPool}
+          />
+        );
+      case "offlinePool":
+        return (
+          <OfflinePoolCard
+            isMounting={isMounting}
+            missing={node.missing}
+            onDestroy={() =>
+              setDialog({
+                kind: "destroy",
+                uuid: node.pool.uuid,
+                name: node.pool.label || node.pool.uuid,
+                disks: node.pool.devices,
+              })
+            }
+            onMount={() =>
+              mountPool({ uuid: node.pool.uuid, degraded: node.missing > 0 })
+            }
+            pool={node.pool}
+          />
+        );
+      case "device":
+        return (
+          <DeviceCard
+            node={node}
+            onSelectRaid={onSelectRaid}
+            selectedRaid={selectedRaid}
+          />
+        );
+      case "server":
+        return <ServerCard label={node.label} network={node.network} />;
+      case "boot":
+        return <BootCard node={node} />;
+      case "volume":
+        return <VolumeCard onOpenVolume={onOpenVolume} volume={node.volume} />;
+    }
+  };
 
   return (
     <>
@@ -533,17 +765,15 @@ const StoragePools = ({
           Storage space
         </AppTypography>
         <div style={{ display: "flex", gap: 8 }}>
-          {drives.some((drive) => drive.rates) && (
-            <AppButton
-              aria-pressed={paused}
-              color="inherit"
-              onClick={() => setPaused(!paused)}
-              size="small"
-              variant="outlined"
-            >
-              {paused ? "Resume animation" : "Pause animation"}
-            </AppButton>
-          )}
+          <AppButton
+            aria-pressed={paused}
+            color="inherit"
+            onClick={() => setPaused(!paused)}
+            size="small"
+            variant="outlined"
+          >
+            {paused ? "Resume animation" : "Pause animation"}
+          </AppButton>
           {poolsEnabled && (
             <AppButton
               onClick={() => setDialog({ kind: "create" })}
@@ -555,268 +785,62 @@ const StoragePools = ({
           )}
         </div>
       </div>
-      <div className="storage-pools">
-        {driveStacks.map(({ drive, partitions, volumes }) => (
-          <div className="storage-pools__stack" key={drive.name}>
-            <div className="storage-pools__card storage-pools__disks">
-              <DiskRow
-                caption={drive.model}
-                drive={drive}
-                name={drive.name}
-                onInspectDrive={onInspectDrive}
-                sizeBytes={drive.sizeBytes}
-              />
-            </div>
-            <Connector
-              idle={partitions.length}
-              paused={paused}
-              rates={[drive.rates]}
-              span
-              to={volumes.length + partitions.length}
-            />
-            <Volumes
-              onOpenVolume={onOpenVolume}
-              partitions={partitions}
-              showDevice
-              volumes={volumes}
-            />
-          </div>
-        ))}
-        {poolStacks.map(({ pool, volumes }) => (
-          <div className="storage-pools__stack" key={pool.uuid}>
-            <div className="storage-pools__column">
-              {pool.disks.map((disk) => (
-                <DiskCard
-                  drive={findBackingDrive(disk.name, drives)}
-                  key={disk.key}
-                  missing={disk.missing}
-                  name={disk.name}
-                  onInspectDrive={onInspectDrive}
-                  sizeBytes={disk.sizeBytes}
-                />
-              ))}
-            </div>
-            <Connector
-              from={pool.disks.length}
-              paused={paused}
-              rates={pool.disks.map(
-                (disk) => findBackingDrive(disk.name, drives)?.rates,
-              )}
-            />
-            <AppButton
-              aria-label={pool.name}
-              aria-pressed={pool.uuid === selected?.pool.uuid}
-              className="storage-pools__card storage-pools__pool"
-              color="inherit"
-              onClick={() =>
-                onSelectPool(pool.uuid === selectedPool ? undefined : pool.uuid)
-              }
-            >
-              <Icon
-                className="storage-pools__icon"
-                height={36}
-                icon="mdi:database-outline"
-                width={36}
-              />
-              <AppTypography fontWeight={600} noWrap variant="body2">
-                {pool.name}
-              </AppTypography>
-              {pool.profile && (
-                <AppChip
-                  color="primary"
-                  label={pool.profile}
-                  size="small"
-                  variant="soft"
-                />
-              )}
-              <AppTypography color="text.secondary" variant="caption">
-                Allocated {formatFileSize(pool.allocatedBytes)}
-              </AppTypography>
-              <AppTypography color="text.secondary" variant="caption">
-                Free {formatFileSize(pool.freeBytes)}
-              </AppTypography>
-            </AppButton>
-            {volumes.length > 0 && (
-              <>
-                <Connector to={volumes.length} />
-                <Volumes onOpenVolume={onOpenVolume} volumes={volumes} />
-              </>
-            )}
-          </div>
-        ))}
-        {offline.map((pool) => {
-          const missing = pool.numDevices - pool.devices.length;
-          const name = pool.label || pool.uuid;
-          return (
-            <div className="storage-pools__stack" key={pool.uuid}>
-              <div className="storage-pools__column">
-                {pool.devices.map((path) => {
-                  const diskName = path.replace(/^\/dev\//, "");
-                  const drive = findBackingDrive(diskName, drives);
-                  return (
-                    <DiskCard
-                      drive={drive}
-                      key={path}
-                      name={diskName}
-                      onInspectDrive={onInspectDrive}
-                      sizeBytes={drive?.sizeBytes ?? 0}
-                    />
-                  );
-                })}
-                {missing > 0 && (
-                  <DiskCard
-                    drive={null}
-                    missing
-                    name={`${missing} missing disk${missing > 1 ? "s" : ""}`}
-                    onInspectDrive={onInspectDrive}
-                    sizeBytes={0}
-                  />
-                )}
-              </div>
-              <Connector from={pool.devices.length + (missing > 0 ? 1 : 0)} />
-              <div className="storage-pools__card storage-pools__pool">
-                <Icon
-                  className="storage-pools__icon"
-                  height={36}
-                  icon="mdi:database-off-outline"
-                  width={36}
-                />
-                <AppTypography fontWeight={600} noWrap variant="body2">
-                  {name}
-                </AppTypography>
-                <AppChip
-                  color={missing > 0 ? "error" : "warning"}
-                  label={missing > 0 ? "Degraded" : "Not mounted"}
-                  size="small"
-                  variant="soft"
-                />
-                <AppTypography color="text.secondary" variant="caption">
-                  {pool.mountpoint
-                    ? `fstab: ${pool.mountpoint}`
-                    : "Not in /etc/fstab"}
-                </AppTypography>
-                <div style={{ display: "flex", gap: 4 }}>
-                  <AppButton
-                    disabled={isMounting}
-                    onClick={() =>
-                      mountPool({ uuid: pool.uuid, degraded: missing > 0 })
-                    }
-                    size="small"
-                    variant="outlined"
-                  >
-                    {missing > 0 ? "Mount degraded" : "Mount"}
-                  </AppButton>
-                  <AppButton
-                    color="error"
-                    onClick={() =>
-                      setDialog({
-                        kind: "destroy",
-                        uuid: pool.uuid,
-                        name,
-                        disks: pool.devices,
-                      })
-                    }
-                    size="small"
-                  >
-                    Destroy
-                  </AppButton>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-        {sourceStacks.map(
-          ({
-            drives: members,
-            key,
-            label,
-            network,
-            sizeBytes,
-            type,
-            volumes,
-          }) =>
-            members.length > 0 ? (
-              <div className="storage-pools__stack" key={key}>
-                <div className="storage-pools__column">
-                  {members.map((drive) => (
-                    <DiskCard
-                      caption={drive.model}
-                      drive={drive}
-                      key={drive.name}
-                      name={drive.name}
-                      onInspectDrive={onInspectDrive}
-                      sizeBytes={drive.sizeBytes}
-                    />
-                  ))}
-                </div>
-                <Connector
-                  from={members.length}
-                  paused={paused}
-                  rates={members.map((drive) => drive.rates)}
-                />
-                <SourceCard
-                  array={arrays.find(({ path }) => path === label)}
-                  label={label}
-                  onSelectRaid={onSelectRaid}
-                  selectedRaid={selectedRaid}
-                  sizeBytes={sizeBytes}
-                  type={type}
-                />
-                <Connector to={volumes.length} />
-                <Volumes onOpenVolume={onOpenVolume} volumes={volumes} />
-              </div>
-            ) : (
-              <div className="storage-pools__stack" key={key}>
-                <div className="storage-pools__card storage-pools__disks">
-                  <div className="storage-pools__disk">
-                    <Icon
-                      className="storage-pools__icon"
-                      height={24}
-                      icon={
-                        network ? "mdi:server-network" : "mdi:layers-outline"
-                      }
-                      width={24}
-                    />
-                    <span className="storage-pools__name">
-                      <AppTypography noWrap variant="body2">
-                        {label}
-                      </AppTypography>
-                      <AppTypography color="text.secondary" variant="caption">
-                        {network ? "Network share" : "No physical disk found"}
-                      </AppTypography>
-                    </span>
-                  </div>
-                </div>
-                <Connector span to={volumes.length} />
-                <Volumes onOpenVolume={onOpenVolume} volumes={volumes} />
-              </div>
-            ),
-        )}
-      </div>
-      {idleDrives.length > 0 && (
-        <>
+      <div
+        className="storage-pools"
+        ref={graphRef}
+        style={
+          { "--graph-height": `${HEADER + graph.height}px` } as CSSProperties
+        }
+      >
+        {(
+          [
+            [0, "Drives"],
+            [1, hasBoot ? "Boot, pools and arrays" : "Pools and arrays"],
+            [2, "Volumes"],
+          ] as const
+        ).map(([column, title]) => (
           <AppTypography
+            className="storage-pools__header"
             color="text.secondary"
-            style={{ marginBottom: 8 }}
-            variant="subtitle2"
+            key={column}
+            style={{ "--node-left": `${columnX(column)}px` } as CSSProperties}
+            variant="overline"
           >
-            Disks without volumes
+            {title}
           </AppTypography>
-          <div className="storage-pools__others">
-            {idleDrives.map((drive) => (
-              <div className="storage-pools__card" key={drive.name}>
-                <DiskRow
-                  caption={drive.model}
-                  drive={drive}
-                  name={drive.name}
-                  onInspectDrive={onInspectDrive}
-                  sizeBytes={drive.sizeBytes}
-                />
-              </div>
-            ))}
+        ))}
+        <svg
+          aria-hidden="true"
+          className="storage-pools__edges"
+          viewBox={`0 0 ${width} ${HEADER + graph.height}`}
+        >
+          <Edges
+            columnWidth={columnWidth}
+            columnX={columnX}
+            edges={graph.edges}
+            highlight={highlight}
+            nodes={graph.nodes}
+            paused={paused}
+          />
+        </svg>
+        {graph.nodes.map((node) => (
+          <div
+            className={`storage-pools__node${node.kind === "drive" ? " storage-pools__card storage-pools__disks" : ""}`}
+            data-kind={node.kind}
+            key={node.id}
+            style={
+              {
+                "--node-left": `${columnX(node.column)}px`,
+                "--node-top": `${HEADER + node.top}px`,
+                "--node-width": `${columnWidth}px`,
+                "--node-height": `${node.height}px`,
+              } as CSSProperties
+            }
+          >
+            {card(node)}
           </div>
-        </>
-      )}
+        ))}
+      </div>
       {selected && (
         <>
           <div

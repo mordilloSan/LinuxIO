@@ -45,6 +45,8 @@ export const storageInventory: StorageTopologyInventory = {
         ["/boot/efi"],
       ),
       fsType: "vfat",
+      partType: "c12a7328-f81f-11d2-ba4b-00a0c93ec93b",
+      partUUID: "3c05c329-5ccd-4635-9300-b1aedb19afaa",
     },
     {
       ...storageBlock("/dev/nvme0n1p2", "part", 1023.5, ["/dev/nvme0n1"]),
@@ -84,6 +86,31 @@ export const storageInventory: StorageTopologyInventory = {
       serial: "SAMPLE-USB",
     },
     storageBlock("/dev/sda2", "part", 16, ["/dev/sda"]),
+    // A spare EFI copy on the portable SSD, with a firmware entry of its own.
+    {
+      ...storageBlock("/dev/sdb1", "part", 0.5, ["/dev/sdb"]),
+      fsType: "vfat",
+      partType: "c12a7328-f81f-11d2-ba4b-00a0c93ec93b",
+      partUUID: "57f81f26-82ac-448c-8950-5655d0db9d91",
+    },
+  ],
+  bootEntries: [
+    {
+      id: "0000",
+      label: "Ubuntu",
+      partUUID: "3c05c329-5ccd-4635-9300-b1aedb19afaa",
+      active: true,
+      current: true,
+      order: 0,
+    },
+    {
+      id: "0005",
+      label: "Ubuntu",
+      partUUID: "57f81f26-82ac-448c-8950-5655d0db9d91",
+      active: true,
+      current: false,
+      order: 1,
+    },
   ],
   mounts: [
     {

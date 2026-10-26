@@ -23,7 +23,7 @@ import StatusDot from "@/components/ui/StatusDot";
 import useAuth from "@/hooks/useAuth";
 import { formatFileSize } from "@/utils/formatters";
 
-import { deviceTypeLabel } from "./storagePools";
+import { deviceTypeLabel } from "./storageGraph";
 import BtrfsAddDeviceDialog from "../btrfs/BtrfsAddDeviceDialog";
 import { BTRFS_POOL_TOAST_META } from "../btrfs/btrfsShared";
 

@@ -1449,6 +1449,15 @@ export interface DockerVolumeUsageData {
   Size: number;
 }
 
+export interface EFIBootEntry {
+  id: string;
+  label: string;
+  partUUID: string;
+  active: boolean;
+  current: boolean;
+  order: number;
+}
+
 export interface EnabledRequest {
   enabled: string;
 }
@@ -2893,6 +2902,7 @@ export interface StorageBlockDevice {
   label?: string;
   partUUID?: string;
   partLabel?: string;
+  partType?: string;
   busy?: string;
   inFstab?: boolean;
   freeRegions?: StorageRegion[];
@@ -2919,6 +2929,7 @@ export interface StorageRegion {
 export interface StorageTopologyInventory {
   devices: StorageBlockDevice[];
   mounts: StorageMount[];
+  bootEntries?: EFIBootEntry[];
 }
 
 export interface StorageWarningResult {
