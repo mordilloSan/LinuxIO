@@ -46,3 +46,12 @@ func TestParseResourcePostRequestRefusesInvalidNames(t *testing.T) {
 		t.Fatalf("valid folder: req=%+v err=%v", req, err)
 	}
 }
+
+func TestParseResourcePostRequestKeepsPlusAndPercent(t *testing.T) {
+	for _, name := range []string{"c++.txt", "100%.txt", "a%2Fb.txt"} {
+		req, err := parseResourcePostRequest(apischema.FileResourcePostRequest{Path: "/x/" + name})
+		if err != nil || req.relPath != "x/"+name {
+			t.Fatalf("%q: req=%+v err=%v, want the name kept verbatim", name, req, err)
+		}
+	}
+}

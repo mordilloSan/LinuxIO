@@ -53,9 +53,6 @@ func (b *dnfBackend) providerInstalled() bool {
 }
 
 func (b *dnfBackend) Read(ctx context.Context) (AutoUpdateState, error) {
-	if ctx == nil {
-		return AutoUpdateState{}, fmt.Errorf("nil context")
-	}
 	if err := ctx.Err(); err != nil {
 		return AutoUpdateState{}, err
 	}
@@ -144,9 +141,6 @@ func dnf4RebootSupported(config *ini.File) bool {
 }
 
 func (b *dnfBackend) Apply(ctx context.Context, options AutoUpdateOptions) error {
-	if ctx == nil {
-		return fmt.Errorf("nil context")
-	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}

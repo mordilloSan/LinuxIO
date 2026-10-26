@@ -38,7 +38,7 @@ func TestMdraidMockSysfsScanAndCollect(t *testing.T) {
 	write(filepath.Join(mdDir, "sync_completed"), "10%\n")
 	write(filepath.Join(mdDir, "sync_speed"), "100M\n")
 	write(filepath.Join(mdDir, "mismatch_cnt"), "0\n")
-	write(filepath.Join(queueDir, "logical_block_size"), "512\n")
+	write(filepath.Join(queueDir, "logical_block_size"), "4096\n") // size is always 512-byte units
 	write(filepath.Join(tmp, "block", "md0", "size"), "2048\n")
 
 	devs := scanMdraidDevices()
@@ -72,8 +72,8 @@ func TestMdraidMockSysfsScanAndCollect(t *testing.T) {
 	if got.SmartStatus != "WARNING" {
 		t.Fatalf("SmartStatus=%q, want WARNING", got.SmartStatus)
 	}
-	if got.ModelName == "" || got.Capacity == 0 {
-		t.Fatalf("identity fields = (model=%q cap=%d), want non-empty model and cap>0", got.ModelName, got.Capacity)
+	if got.ModelName == "" || got.Capacity != 2048*512 {
+		t.Fatalf("identity fields = (model=%q cap=%d), want non-empty model and cap=2048*512", got.ModelName, got.Capacity)
 	}
 	if len(got.Attributes) < 5 {
 		t.Fatalf("attributes len=%d, want >= 5", len(got.Attributes))

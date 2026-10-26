@@ -26,6 +26,8 @@ const (
 // replaced (or dropped while the peer is disabled), and a running interface
 // is synced. Nothing is written until every field has been validated.
 func UpdatePeer(ctx context.Context, req apischema.WireGuardUpdatePeerRequest) error {
+	configMu.Lock()
+	defer configMu.Unlock()
 	if req.InterfaceName == "" || req.PeerID == "" {
 		return fmt.Errorf("usage: update_peer <interface> <peerId> [fields]")
 	}

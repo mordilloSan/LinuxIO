@@ -14,6 +14,7 @@ import (
 	"github.com/shirou/gopsutil/v4/disk"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
@@ -116,7 +117,7 @@ func ListNFSExports(ctx context.Context, server string) ([]string, error) {
 
 	// Validate server input
 	if !validHostname.MatchString(server) {
-		return nil, fmt.Errorf("invalid NFS server hostname")
+		return nil, fmt.Errorf("%w: invalid NFS server hostname", bridgeipc.ErrInvalidArgs)
 	}
 	// Run showmount -e to list exports.
 	slog.Debug("querying NFS exports", "server", server)
@@ -314,13 +315,16 @@ func MountNFS(ctx context.Context, server, exportPath, mountpoint string, option
 
 func validateNFSMountRequest(server, exportPath, mountpoint string) error {
 	if !validHostname.MatchString(server) {
-		return fmt.Errorf("invalid NFS server hostname")
+		return fmt.Errorf("%w: invalid NFS server hostname", bridgeipc.ErrInvalidArgs)
 	}
 	if !validPath.MatchString(exportPath) {
 		return fmt.Errorf("invalid export path")
 	}
 	if !validPath.MatchString(mountpoint) {
 		return fmt.Errorf("invalid mountpoint")
+	}
+	if filepath.Clean(mountpoint) != mountpoint {
+		return fmt.Errorf("%w: invalid mountpoint %q", bridgeipc.ErrInvalidArgs, mountpoint)
 	}
 	if isSystemPath(mountpoint) {
 		return fmt.Errorf("cannot mount to system path: %s", mountpoint)

@@ -153,6 +153,9 @@ network:
 			if bridge["renderer"] != "NetworkManager" {
 				t.Fatalf("bridge renderer = %#v, want NetworkManager", bridge["renderer"])
 			}
+			if params, ok := bridge["parameters"].(map[string]any); !ok || params["stp"] != false {
+				t.Fatalf("bridge parameters = %#v, want stp false", bridge["parameters"])
+			}
 		})
 	}
 }
@@ -183,6 +186,9 @@ network:
 	}
 	if bridge["renderer"] != "networkd" {
 		t.Fatalf("bridge renderer = %#v, want networkd", bridge["renderer"])
+	}
+	if _, ok := bridge["parameters"]; ok {
+		t.Fatalf("networkd bridge parameters = %#v, want none", bridge["parameters"])
 	}
 }
 
@@ -296,8 +302,11 @@ func TestNetworkManagerHandoffSettingsCopyL3AndRefuse8021X(t *testing.T) {
 		t.Fatalf("validate settings: %v", err)
 	}
 	bridge, port := networkManagerHandoffSettings(BridgeHandoffPlan{Name: "br0", Member: "eth0"}, "00:11:22:33:44:55", source)
-	if variantString(bridge["ipv4"]["method"]) != "auto" || variantString(bridge["802-3-ethernet"]["cloned-mac-address"]) != "00:11:22:33:44:55" {
+	if variantString(bridge["ipv4"]["method"]) != "auto" || variantString(bridge["802-3-ethernet"]["assigned-mac-address"]) != "00:11:22:33:44:55" {
 		t.Fatalf("bridge settings = %#v", bridge)
+	}
+	if bridge["bridge"]["stp"].Value() != false || bridge["connection"]["autoconnect-priority"].Value() != int32(999) || port["connection"]["autoconnect-priority"].Value() != int32(999) {
+		t.Fatalf("bridge stp/priority settings = %#v / %#v", bridge, port)
 	}
 	if port["802-3-ethernet"]["mtu"].Value() != uint32(1400) || variantString(port["ipv4"]["method"]) != "disabled" {
 		t.Fatalf("port settings = %#v", port)

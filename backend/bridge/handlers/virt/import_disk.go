@@ -82,9 +82,10 @@ func validateImportDisk(rawPath string) (string, error) {
 }
 
 // validateVMDKDisk accepts only sparse-extent VMDKs (magic "KDMV", which OVA
-// exports use). Text descriptors can name arbitrary host files as FLAT extents,
-// and qemu-img would copy them into the converted disk.
-func validateVMDKDisk(path string) error {
+// exports use) whose only extent is the file itself. Text descriptors, and
+// descriptors embedded in a sparse header, can name arbitrary host files as
+// FLAT extents or parents, and qemu-img would copy them into the converted disk.
+func validateVMDKDisk(ctx context.Context, path string) error {
 	file, err := os.Open(path)
 	if err != nil {
 		return err
@@ -93,6 +94,44 @@ func validateVMDKDisk(path string) error {
 	var magic [4]byte
 	if _, readErr := io.ReadFull(file, magic[:]); readErr != nil || string(magic[:]) != "KDMV" {
 		return badRequestf("VMDK must be a sparse or streamOptimized image; flat and split VMDK descriptors are not supported")
+	}
+	qemuImgPath, err := execLookPath("qemu-img")
+	if err != nil {
+		return fmt.Errorf("qemu-img is required to inspect imported VM disks: %w", err)
+	}
+	var stdout, stderr bytes.Buffer
+	cmd := execCommand(ctx, qemuImgPath, "info", "--output=json", "-f", "vmdk", path)
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return commandError(err, stderr.String())
+	}
+	return checkVMDKInfo(stdout.Bytes(), path)
+}
+
+// checkVMDKInfo rejects `qemu-img info` output that names a parent or an extent
+// file other than path.
+func checkVMDKInfo(infoJSON []byte, path string) error {
+	var info struct {
+		BackingFilename string `json:"backing-filename"`
+		FormatSpecific  struct {
+			Data struct {
+				Extents []struct {
+					Filename string `json:"filename"`
+				} `json:"extents"`
+			} `json:"data"`
+		} `json:"format-specific"`
+	}
+	if err := json.Unmarshal(infoJSON, &info, json.MatchCaseInsensitiveNames(true)); err != nil {
+		return fmt.Errorf("parse qemu-img info: %w", err)
+	}
+	if info.BackingFilename != "" {
+		return badRequestf("VMDK must not reference a parent image")
+	}
+	for _, extent := range info.FormatSpecific.Data.Extents {
+		if extent.Filename != path {
+			return badRequestf("VMDK must not reference other files")
+		}
 	}
 	return nil
 }
@@ -140,7 +179,7 @@ func importDiskFile(ctx context.Context, source, volumePath string, minDiskGB in
 			return 0, false, fmt.Errorf("inspect imported image: %w", err)
 		}
 	case "vmdk":
-		if err = validateVMDKDisk(source); err != nil {
+		if err = validateVMDKDisk(ctx, source); err != nil {
 			return 0, false, fmt.Errorf("inspect imported image: %w", err)
 		}
 	}

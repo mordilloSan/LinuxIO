@@ -108,11 +108,12 @@ func TestReloadSambaReturnsErrorWhenAllMethodsFail(t *testing.T) {
 // duration of the test and returns the file path.
 func useTempSmbConf(t *testing.T) string {
 	t.Helper()
-	origFile := smbConfFile
-	t.Cleanup(func() { smbConfFile = origFile })
+	origFile, origLock := smbConfFile, confLockFile
+	t.Cleanup(func() { smbConfFile, confLockFile = origFile, origLock })
 
-	dir := filepath.Join(t.TempDir(), "samba")
-	smbConfFile = filepath.Join(dir, "smb.conf")
+	root := t.TempDir()
+	dir := filepath.Join(root, "samba")
+	smbConfFile, confLockFile = filepath.Join(dir, "smb.conf"), filepath.Join(root, "lock")
 	return smbConfFile
 }
 

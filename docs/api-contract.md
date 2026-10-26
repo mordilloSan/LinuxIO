@@ -430,9 +430,28 @@ Tasks are reserved for work that emits progress, continues independently of a
 watching component, or needs recovery by identity. Bounded mutations complete
 through a single direct `useCallMutation` request/response.
 
+### Task admission
+
+Tasks run side by side: there is no queue, no per-user or per-route limit, no
+start-rate limit and no runtime cap. A task ends when it finishes or is
+canceled. Two checks remain, both refusing with `409` instead of waiting:
+
+- **Same target.** A second task of a route whose metadata identity matches a
+  running one (the same pool, disk, container, compose project or set of
+  paths) is refused, as the kernel or device would refuse it. The target stays
+  taken until the first handler has exited, even after a cancel.
+- **Exclusive routes** (`bridgeipc.TaskExclusive`) run one at a time because
+  they own a whole system resource: `packages.update`,
+  `system.install_capability`, `control.app_update`,
+  `docker.apply_daemon_storage` and `filebrowser.index`.
+
+Admission is counted per bridge, that is per login; work shared across logins
+is serialized by its owner (PackageKit, Docker, the kernel, or the durable
+operation store).
+
 ### Task lifetime, ownership, and activity
 
-Twenty-four Task routes, including `control.app_update`, declare `SessionTask()`.
+Thirty-one Task routes, including `control.app_update`, declare `SessionTask()`.
 Their owner is the exact authenticated `SessionID`; logout, expiry, session
 deletion, bridge failure, or bridge shutdown cancels the in-memory Task. Only
 `docker.update_container` declares `DurableTask()` and is owned by the

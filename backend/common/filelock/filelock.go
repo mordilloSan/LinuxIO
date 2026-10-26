@@ -90,9 +90,6 @@ func RunExclusive(ctx context.Context, path string, fn func() error, opts ...Opt
 // release function unlocks and closes the lock file. It is safe to call release
 // more than once.
 func AcquireExclusive(ctx context.Context, path string, opts ...Option) (func() error, error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

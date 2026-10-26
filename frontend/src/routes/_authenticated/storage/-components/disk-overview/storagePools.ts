@@ -91,6 +91,8 @@ interface PoolStack {
 
 interface DriveStack {
   drive: DriveInfo;
+  /** Partitions on the drive that nothing mounts or builds on. */
+  partitions: StorageBlockDevice[];
   volumes: FilesystemInfo[];
 }
 
@@ -132,7 +134,9 @@ const drivesUnder = (
  * Places every mounted filesystem exactly once: under its btrfs pool, else
  * under the drive its partition lives on, else under its source (an NFS
  * server, or a RAID, LVM or mapper device with the drives `devices` puts
- * under it). Drives with none of these are listed as idle.
+ * under it). Partitions nothing mounts or builds on sit under their drive
+ * too; `offlineDevices` are members of unmounted btrfs pools, drawn there.
+ * Drives with none of these are listed as idle.
  */
 export const buildStorageLayout = (
   btrfs: BtrfsFilesystem[],
@@ -140,6 +144,7 @@ export const buildStorageLayout = (
   drives: DriveInfo[],
   nfsMounts: NFSMount[],
   devices: StorageBlockDevice[],
+  offlineDevices: string[] = [],
 ): StorageLayout => {
   const claimed = new Set<string>();
   const poolStacks = btrfs.map((fs, index) => {
@@ -157,7 +162,11 @@ export const buildStorageLayout = (
     if (claimed.has(volume.mountpoint)) continue;
     const drive = findBackingDrive(volume.device, drives);
     if (drive) {
-      const stack = byDrive.get(drive.name) ?? { drive, volumes: [] };
+      const stack = byDrive.get(drive.name) ?? {
+        drive,
+        partitions: [],
+        volumes: [],
+      };
       stack.volumes.push(volume);
       byDrive.set(drive.name, stack);
       continue;
@@ -177,6 +186,31 @@ export const buildStorageLayout = (
     };
     stack.volumes.push(volume);
     bySource.set(label, stack);
+  }
+
+  // A RAID, LVM or crypt member is a parent of its array or volume. Only one
+  // member of a multi-device btrfs pool reports the mountpoint.
+  const inUse = new Set([
+    ...devices.flatMap((d) => d.parents),
+    ...btrfs.flatMap((fs) => fs.devices.map((d) => d.path)),
+    ...offlineDevices,
+  ]);
+  for (const block of devices) {
+    if (
+      block.type !== "part" ||
+      block.mountpoints.length > 0 ||
+      inUse.has(block.path)
+    )
+      continue;
+    const drive = findBackingDrive(block.path, drives);
+    if (!drive) continue;
+    const stack = byDrive.get(drive.name) ?? {
+      drive,
+      partitions: [],
+      volumes: [],
+    };
+    stack.partitions.push(block);
+    byDrive.set(drive.name, stack);
   }
 
   const sourceStacks = [...bySource.values()];

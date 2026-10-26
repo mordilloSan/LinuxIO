@@ -271,6 +271,22 @@ var capabilityRegistry = []CapabilitySpec{
 		},
 		Install: &InstallSpec{PackageDebian: "btrfs-progs", PackageRHEL: "btrfs-progs"},
 	},
+	{
+		Name:    "e2fsprogs",
+		LogName: "e2fsprogs",
+		Detect: func(_ context.Context) (bool, string) {
+			return checkedCapability(checkDependencyCommand("mkfs.ext4", "e2fsprogs"))
+		},
+		Install: &InstallSpec{PackageDebian: "e2fsprogs", PackageRHEL: "e2fsprogs"},
+	},
+	{
+		Name:    "xfsprogs",
+		LogName: "xfsprogs",
+		Detect: func(_ context.Context) (bool, string) {
+			return checkedCapability(checkDependencyCommand("mkfs.xfs", "xfsprogs"))
+		},
+		Install: &InstallSpec{PackageDebian: "xfsprogs", PackageRHEL: "xfsprogs"},
+	},
 }
 
 func CapabilitySpecByName(name string) (CapabilitySpec, bool) {

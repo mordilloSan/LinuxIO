@@ -115,8 +115,8 @@ func TestWriteWireGuardConfigWritesPeerNameAsComment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseWireGuardConfig returned error: %v", err)
 	}
-	if len(got.Peers) != 1 || got.Peers[0].Name != "" {
-		t.Fatalf("parsed peers = %+v, want name left empty (metadata lives in the peer file)", got.Peers)
+	if len(got.Peers) != 1 || got.Peers[0].Name != "Alice's phone" {
+		t.Fatalf("parsed peers = %+v, want the name read back from the comment", got.Peers)
 	}
 }
 

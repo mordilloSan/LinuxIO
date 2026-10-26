@@ -26,6 +26,8 @@ const (
 // PostUp), the new config is written, and it is brought back up. Host and DNS
 // only affect exported client configs, which are rewritten without a restart.
 func UpdateInterface(ctx context.Context, req apischema.WireGuardUpdateInterfaceRequest) error {
+	configMu.Lock()
+	defer configMu.Unlock()
 	if req.Name == "" {
 		return fmt.Errorf("usage: update_interface <name> [fields]")
 	}

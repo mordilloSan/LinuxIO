@@ -307,6 +307,7 @@ func TestCheckContainerImageUpdatesHandlesImmutableAndFailedChecks(t *testing.T)
 func TestInspectImageUpdateRegistryRetries(t *testing.T) {
 	rateLimit := errors.New("Error response from daemon: toomanyrequests: retry-after: 787.973µs, allowed: 44000/minute")
 	daemonTimeout := errors.New("Error response from daemon: Get \"https://lscr.io/v2/\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)")
+	tlsTimeout := errors.New("Error response from daemon: Get \"https://lscr.io/v2/\": net/http: TLS handshake timeout")
 	denied := errors.New("unauthorized: authentication required")
 	tests := []struct {
 		name     string
@@ -322,6 +323,7 @@ func TestInspectImageUpdateRegistryRetries(t *testing.T) {
 		{name: "daemon timeout recovers", errors: []error{daemonTimeout, nil}, wantWait: 5 * time.Second},
 		{name: "typed timeout recovers", errors: []error{fmt.Errorf("daemon: %w", context.DeadlineExceeded), nil}, wantWait: 5 * time.Second},
 		{name: "transport timeout recovers", errors: []error{&url.Error{Op: "Get", URL: "http://docker/distribution", Err: os.ErrDeadlineExceeded}, nil}, wantWait: 5 * time.Second},
+		{name: "TLS handshake timeout recovers", errors: []error{tlsTimeout, nil}, wantWait: 5 * time.Second},
 		{name: "persistent daemon timeout", errors: []error{daemonTimeout, daemonTimeout, daemonTimeout, daemonTimeout}, wantErr: daemonTimeout, wantWait: 35 * time.Second},
 		{name: "authentication failure", errors: []error{denied}, wantErr: denied},
 		{name: "authentication failure after rate limit", errors: []error{rateLimit, denied}, wantErr: denied, wantWait: 5 * time.Second},

@@ -3,6 +3,7 @@ package virt
 import (
 	"archive/tar"
 	"context"
+	"encoding/binary"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -126,5 +127,66 @@ func TestImportDiskFileRejectsVMDKDescriptor(t *testing.T) {
 	}
 	if _, err := os.Stat(volumePath); err == nil {
 		t.Fatal("volume was created from a VMDK descriptor")
+	}
+}
+
+func TestCheckVMDKInfo(t *testing.T) {
+	const path = "/stage/disk.vmdk"
+	tests := []struct {
+		name string
+		info string
+		want string
+	}{
+		{"own extent", `{"format-specific":{"data":{"extents":[{"filename":"` + path + `"}]}}}`, ""},
+		{"no extents", `{"virtual-size":1}`, ""},
+		{"other extent", `{"format-specific":{"data":{"extents":[{"filename":"` + path + `"},{"filename":"/etc/shadow"}]}}}`, "other files"},
+		{"parent", `{"backing-filename":"/etc/shadow"}`, "parent"},
+	}
+	for _, tt := range tests {
+		err := checkVMDKInfo([]byte(tt.info), path)
+		if tt.want == "" && err != nil || tt.want != "" && (err == nil || !strings.Contains(err.Error(), tt.want)) {
+			t.Errorf("%s: checkVMDKInfo error = %v, want %q", tt.name, err, tt.want)
+		}
+	}
+}
+
+func TestValidateVMDKDiskWithQEMUImg(t *testing.T) {
+	qemuImg, err := exec.LookPath("qemu-img")
+	if err != nil {
+		t.Skip("qemu-img is not installed")
+	}
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target.txt")
+	if err := os.WriteFile(target, make([]byte, 4096), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Sparse header (capacity 0) whose embedded descriptor names a FLAT extent.
+	header := make([]byte, 512)
+	copy(header, "KDMV")
+	binary.LittleEndian.PutUint32(header[4:], 1)
+	binary.LittleEndian.PutUint64(header[20:], 8)   // grainSize
+	binary.LittleEndian.PutUint64(header[28:], 1)   // descriptorOffset
+	binary.LittleEndian.PutUint64(header[36:], 20)  // descriptorSize
+	binary.LittleEndian.PutUint32(header[44:], 512) // numGTEsPerGT
+	descriptor := "# Disk DescriptorFile\nversion=1\nCID=fffffffe\nparentCID=ffffffff\ncreateType=\"monolithicFlat\"\n\nRW 8 FLAT \"target.txt\" 0\n"
+	evil := filepath.Join(dir, "evil.vmdk")
+	image := make([]byte, 21*512) // header sector plus the 20 descriptor sectors
+	copy(image, header)
+	copy(image[512:], descriptor)
+	if err := os.WriteFile(evil, image, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateVMDKDisk(t.Context(), evil); err == nil || !strings.Contains(err.Error(), "other files") {
+		t.Fatalf("validateVMDKDisk(embedded descriptor) error = %v, want other files rejection", err)
+	}
+	for _, subformat := range []string{"monolithicSparse", "streamOptimized"} {
+		good := filepath.Join(dir, subformat+".vmdk")
+		out, err := exec.CommandContext(t.Context(), qemuImg, "create", "-f", "vmdk", "-o", "subformat="+subformat, good, "1M").CombinedOutput()
+		if err != nil {
+			t.Fatalf("qemu-img create %s: %v: %s", subformat, err, out)
+		}
+		if err := validateVMDKDisk(t.Context(), good); err != nil {
+			t.Fatalf("validateVMDKDisk(%s) error = %v", subformat, err)
+		}
 	}
 }

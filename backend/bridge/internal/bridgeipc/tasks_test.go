@@ -238,7 +238,7 @@ func TestTaskStartAndEventsSnapshotsNeverExposeDecodedRequest(t *testing.T) {
 		close(started)
 		<-release
 		return nil, nil
-	}, TaskStreamDefault, WithTaskMetadata(func(any) TaskMetadata { return TaskMetadata{Label: "safe"} }))
+	}, TaskDefault, WithTaskMetadata(func(any) TaskMetadata { return TaskMetadata{Label: "safe"} }))
 
 	server, client := net.Pipe()
 	errCh := make(chan error, 1)
@@ -1053,20 +1053,6 @@ func TestCancelTasksForSessionIgnoresDurableTask(t *testing.T) {
 		t.Fatalf("durable state after session cancellation = %q, want queued", got)
 	}
 	task.Cancel()
-}
-
-func TestTaskLifetimeAdmissionKeys(t *testing.T) {
-	a := TaskOwner{SessionID: "session-a", Username: "alice", UID: 0}
-	b := TaskOwner{SessionID: "session-b", Username: "alice", UID: 0}
-	if a.key(TaskLifetimeSession) == b.key(TaskLifetimeSession) {
-		t.Fatal("session admission keys merged distinct sessions")
-	}
-	if a.key(TaskLifetimeDurable) != b.key(TaskLifetimeDurable) {
-		t.Fatal("durable admission keys split same UID")
-	}
-	if a.key(TaskLifetimeDurable) != "uid:0" {
-		t.Fatalf("root durable key = %q, want uid:0", a.key(TaskLifetimeDurable))
-	}
 }
 
 func TestTaskEventFilteringUsesLifetime(t *testing.T) {

@@ -69,7 +69,6 @@ type UIConfig struct {
 type JobSettings struct {
 	ArchiveCompressionWorkers int `json:"archiveCompressionWorkers"`
 	ArchiveExtractWorkers     int `json:"archiveExtractWorkers"`
-	HeavyArchiveConcurrency   int `json:"heavyArchiveConcurrency"`
 	NotificationMinIntervalMs int `json:"notificationMinIntervalMs"`
 	ProgressMinBytesMB        int `json:"progressMinBytesMB"`
 	ProgressMinIntervalMs     int `json:"progressMinIntervalMs"`
@@ -176,7 +175,6 @@ type ConfigJobSettingsPayload struct {
 	ProgressMinIntervalMs     *int `json:"progressMinIntervalMs,omitzero"`
 	NotificationMinIntervalMs *int `json:"notificationMinIntervalMs,omitzero"`
 	ProgressMinBytesMB        *int `json:"progressMinBytesMB,omitzero"`
-	HeavyArchiveConcurrency   *int `json:"heavyArchiveConcurrency,omitzero"`
 	ArchiveCompressionWorkers *int `json:"archiveCompressionWorkers,omitzero"`
 	ArchiveExtractWorkers     *int `json:"archiveExtractWorkers,omitzero"`
 }

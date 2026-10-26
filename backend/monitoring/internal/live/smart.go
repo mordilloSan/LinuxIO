@@ -90,8 +90,9 @@ func (p *SmartPower) refresh(ctx context.Context, data map[string]smartmodel.Sma
 	}
 }
 
-// liveNVMeDevice returns the block-device name lsblk reports. smartctl scans
-// NVMe controllers (/dev/nvme0), so those map to their first namespace.
+// liveNVMeDevice returns the namespace block-device name, such as nvme0n1,
+// that the storage inventory lists. smartctl scans NVMe controllers
+// (/dev/nvme0), so those map to their first namespace.
 func liveNVMeDevice(value string) string {
 	name := filepath.Base(strings.TrimSpace(value))
 	if smart.IsNvmeControllerPath(name) {

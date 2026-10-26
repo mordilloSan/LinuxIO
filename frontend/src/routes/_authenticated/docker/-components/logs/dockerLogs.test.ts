@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  dockerLogHue,
   dockerLogLevel,
   formatDockerLogTime,
   groupDockerLogRows,
@@ -152,18 +151,6 @@ describe("mergeDockerLogEntries", () => {
     expect(mergeDockerLogEntries(current, batch).map((e) => e.seq)).toEqual([
       0, 1, 2,
     ]);
-  });
-});
-
-describe("dockerLogHue", () => {
-  it("is stable per name and within the hue circle", () => {
-    expect(dockerLogHue("web")).toBe(dockerLogHue("web"));
-    expect(dockerLogHue("web")).not.toBe(dockerLogHue("db"));
-    for (const name of ["web", "db", "cache", "a", ""]) {
-      const hue = dockerLogHue(name);
-      expect(hue).toBeGreaterThanOrEqual(0);
-      expect(hue).toBeLessThan(360);
-    }
   });
 });
 

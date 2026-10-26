@@ -34,7 +34,7 @@ func btrfsRollbackBindings() apischema.BindingSet {
 	return apischema.Bindings(
 		apischema.TaskRunner[apischema.BtrfsSnapshotRequest, btrfs.BtrfsRollbackResult]("storage.btrfs_snapshot_rollback", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[BtrfsRollbackProgress](), apischema.WithTaskMetadata(func(req apischema.BtrfsSnapshotRequest) bridgeipc.TaskMetadata {
 			return bridgeipc.TaskMetadata{Identity: []string{req.UUID, req.SnapshotPath}, Label: "Rolling back btrfs subvolume"}
-		})).Run(runBtrfsRollbackTask, bridgeipc.TaskSingletonSystem),
+		})).Run(runBtrfsRollbackTask, bridgeipc.TaskDefault),
 	)
 }
 

@@ -302,6 +302,24 @@ iface eth0 inet dhcp
 	requireCalls(t, runner, "ifdown eth0", "ifup eth0")
 }
 
+func TestIfupdownDetectSkipsBackupFiles(t *testing.T) {
+	env, _, _ := testEnv(t)
+	stanza := "auto eth0\niface eth0 inet dhcp\n"
+	mustWriteFile(t, filepath.Join(env.IfupdownDir, "eth0"), stanza)
+	for _, name := range []string{"eth0.bak", "eth0~", "eth0.orig", "eth0.dpkg-old", ".eth0.swp", "eth0.save"} {
+		mustWriteFile(t, filepath.Join(env.IfupdownDir, name), stanza)
+	}
+	mustWriteFile(t, filepath.Join(env.IfupdownDir, "extra.conf"), "auto eth1\niface eth1 inet dhcp\n")
+	backend, err := detectIfupdownBackend(env, "eth0")
+	if err != nil || backend == nil {
+		t.Fatalf("detectIfupdownBackend eth0 = %v, %v", backend, err)
+	}
+	backend, err = detectIfupdownBackend(env, "eth1")
+	if err != nil || backend == nil {
+		t.Fatalf("detectIfupdownBackend eth1 (.conf) = %v, %v", backend, err)
+	}
+}
+
 func TestIfupdownSetIPv4ManualDropsLegacyNetmask(t *testing.T) {
 	env, _, _ := testEnv(t)
 	path := filepath.Join(env.IfupdownDir, "eth0")

@@ -200,16 +200,12 @@ func (s *Store) init() error {
 	}
 }
 
-func (s *Store) migrateToV7(version int) (err error) {
+func (s *Store) migrateToV7(version int) error {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
+	defer rollbackTx(tx, "migrate schema")
 
 	if version < 6 {
 		if err = dropLegacySnapshotTables(tx); err != nil {
@@ -231,6 +227,13 @@ func (s *Store) migrateToV7(version int) (err error) {
 		}
 	}
 	return createSchema(s.db)
+}
+
+// rollbackTx is deferred right after Begin; it is a no-op once Commit succeeded.
+func rollbackTx(tx *sql.Tx, operation string) {
+	if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+		slog.Warn("rollback failed", "operation", operation, "error", err)
+	}
 }
 
 func dropLegacySnapshotTables(tx *sql.Tx) error {
@@ -339,7 +342,7 @@ func checkDBIntegrity(db *sql.DB) error {
 	return nil
 }
 
-func (s *Store) WriteSnapshot(capturedAt int64, data *systemmodel.CombinedData) (err error) {
+func (s *Store) WriteSnapshot(capturedAt int64, data *systemmodel.CombinedData) error {
 	if data == nil {
 		return errors.New("snapshot data is nil")
 	}
@@ -352,11 +355,7 @@ func (s *Store) WriteSnapshot(capturedAt int64, data *systemmodel.CombinedData) 
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
+	defer rollbackTx(tx, "write snapshot")
 
 	payloads := plugins.Snapshot(data)
 	for _, plugin := range historyPlugins {
@@ -397,11 +396,7 @@ func (s *Store) WriteSmartDevices(capturedAt int64, items map[string]smartmodel.
 	if err != nil {
 		return err
 	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
+	defer rollbackTx(tx, "write smart devices")
 
 	currentItems := make([]SmartDeviceRecord, 0, len(items))
 	for key, item := range items {

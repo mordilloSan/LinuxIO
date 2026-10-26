@@ -167,7 +167,7 @@ The Docker bridge exposes these icon methods:
 
 | Method | Result |
 |--------|--------|
-| `get_icon_uri` | Returns `{ "uri": "data:..." }` for an identifier, using the cache when available |
+| `get_icon_uri` | Returns `{ "uri": "data:..." }` for an identifier, using the cache when available; `{ "uri": "" }` when no icon exists upstream |
 | `get_icon` | Returns base64 icon bytes, using the cache when available |
 | `get_icon_info` | Returns parsed type, identifier, and cache status |
 | `clear_icon_cache` | Clears cached remote icons |

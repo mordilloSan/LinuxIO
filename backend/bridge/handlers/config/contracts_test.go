@@ -21,7 +21,6 @@ func TestConfigConversionsPreservePersistedJSONShapes(t *testing.T) {
 			ProgressMinIntervalMs:     100,
 			NotificationMinIntervalMs: 200,
 			ProgressMinBytesMB:        3,
-			HeavyArchiveConcurrency:   4,
 			ArchiveCompressionWorkers: 5,
 			ArchiveExtractWorkers:     6,
 		},

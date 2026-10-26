@@ -29,23 +29,25 @@ func SystemPrune(ctx context.Context, opts apischema.DockerSystemPruneRequest) (
 
 	result := &apischema.DockerSystemPruneResponse{}
 
-	if err := pruneContainers(ctx, cli, opts, result); err != nil {
-		return nil, err
-	}
-	if err := pruneImages(ctx, cli, opts, result); err != nil {
-		return nil, err
-	}
-	if err := pruneBuildCache(ctx, cli, opts, result); err != nil {
-		return nil, err
-	}
-	if err := pruneNetworks(ctx, cli, opts, result); err != nil {
-		return nil, err
-	}
-	if err := pruneVolumes(ctx, cli, opts, result); err != nil {
-		return nil, err
+	for _, step := range []func(context.Context, *client.Client, apischema.DockerSystemPruneRequest, *apischema.DockerSystemPruneResponse) error{
+		pruneContainers, pruneImages, pruneBuildCache, pruneNetworks, pruneVolumes,
+	} {
+		if err := step(ctx, cli, opts, result); err != nil {
+			return nil, withPruned(err, result)
+		}
 	}
 
 	return result, nil
+}
+
+// withPruned names what earlier steps already removed, since a failed prune
+// returns no response to carry it.
+func withPruned(err error, result *apischema.DockerSystemPruneResponse) error {
+	if result.SpaceReclaimed == 0 && len(result.ContainersDeleted)+len(result.ImagesDeleted)+len(result.NetworksDeleted)+len(result.VolumesDeleted) == 0 {
+		return err
+	}
+	return fmt.Errorf("%w (already pruned: %d containers, %d images, %d networks, %d volumes, %d bytes reclaimed)",
+		err, len(result.ContainersDeleted), len(result.ImagesDeleted), len(result.NetworksDeleted), len(result.VolumesDeleted), result.SpaceReclaimed)
 }
 
 func pruneContainers(ctx context.Context, cli *client.Client, opts apischema.DockerSystemPruneRequest, result *apischema.DockerSystemPruneResponse) error {

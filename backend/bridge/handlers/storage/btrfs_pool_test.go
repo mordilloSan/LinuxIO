@@ -1,7 +1,10 @@
 package storage
 
 import (
+	"context"
+	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -75,6 +78,40 @@ func TestCheckPoolCreate(t *testing.T) {
 	}
 }
 
+func TestPartitionLockedHoldsTheDiskLock(t *testing.T) {
+	orig := lockDisk
+	t.Cleanup(func() { lockDisk = orig })
+	var calls []string
+	lockDisk = func(_ context.Context, device string) (func(), error) {
+		calls = append(calls, "lock "+device)
+		return func() { calls = append(calls, "unlock "+device) }, nil
+	}
+	partition := func(_ context.Context, disk string) (string, error) {
+		calls = append(calls, "partition "+disk)
+		if disk == "/dev/sdc" {
+			return "", errors.New("no free space")
+		}
+		return disk + "1", nil
+	}
+
+	part, unlock, err := partitionLocked(context.Background(), "/dev/sdb", partition)
+	if err != nil || part != "/dev/sdb1" {
+		t.Fatalf("part = %q, err = %v", part, err)
+	}
+	if want := []string{"lock /dev/sdb", "partition /dev/sdb"}; !slices.Equal(calls, want) {
+		t.Fatalf("calls = %q, want the lock still held: %q", calls, want)
+	}
+	unlock()
+
+	calls = nil
+	if _, _, err := partitionLocked(context.Background(), "/dev/sdc", partition); err == nil {
+		t.Fatal("want the partition error")
+	}
+	if want := []string{"lock /dev/sdc", "partition /dev/sdc", "unlock /dev/sdc"}; !slices.Equal(calls, want) {
+		t.Fatalf("calls = %q, want %q", calls, want)
+	}
+}
+
 func TestPoolMountpointsDeepestFirst(t *testing.T) {
 	fs := btrfs.BtrfsFilesystem{Mountpoints: []btrfs.Mount{
 		{Mountpoint: "/mnt/tank"}, {Mountpoint: "/mnt/tank/media"}, {Mountpoint: "/mnt/tank"}, {Mountpoint: "/run/linuxio/btrfs/x"},
@@ -112,5 +149,24 @@ func TestDefaultPoolMountpoint(t *testing.T) {
 	}
 	if got := defaultPoolMountpoint(btrfs.BtrfsOfflinePool{UUID: "u", Label: "my pool"}); got != "/mnt/u" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestRemovePoolFstabEntries(t *testing.T) {
+	useTempFstab(t, strings.Join([]string{
+		"UUID=" + testBtrfsUUID + " /mnt/a btrfs defaults 0 0",
+		"/dev/disk/by-uuid/" + testBtrfsUUID + " /mnt/b btrfs defaults 0 0",
+		"LABEL=tank /mnt/c btrfs defaults 0 0",
+		"UUID=other /mnt/d btrfs defaults 0 0",
+		"/dev/disk/by-uuid/" + testBtrfsUUID + " /mnt/e ext4 defaults 0 0",
+		"",
+	}, "\n"))
+	mounts := []btrfs.Mount{{UUID: testBtrfsUUID, Mountpoint: "/mnt/c"}}
+	if err := removePoolFstabEntries(testBtrfsUUID, mounts); err != nil {
+		t.Fatal(err)
+	}
+	got := getFstabEntries()
+	if len(got) != 2 || got["/mnt/d"].source != "UUID=other" || got["/mnt/e"].fstype != "ext4" {
+		t.Fatalf("remaining entries = %v", got)
 	}
 }

@@ -297,6 +297,32 @@ export const CAPABILITIES = [
     installable: { requiresPackageKit: true },
     route: { label: "Open subvolumes", to: "/storage/subvolumes" },
   },
+  {
+    wire: "e2fsprogs",
+    state: "e2fsprogsAvailable",
+    label: "e2fsprogs",
+    description: "Format partitions as ext4",
+    readyText: "mkfs.ext4 command is available.",
+    dependency: "mkfs.ext4",
+    icon: "eos-icons:file-system",
+    reasonUnknown: "e2fsprogs dependency check is still running.",
+    reasonUnavailable: "e2fsprogs dependency is unavailable.",
+    installable: { requiresPackageKit: true },
+    route: { label: "Open storage", to: "/storage" },
+  },
+  {
+    wire: "xfsprogs",
+    state: "xfsprogsAvailable",
+    label: "xfsprogs",
+    description: "Format partitions as XFS",
+    readyText: "mkfs.xfs command is available.",
+    dependency: "mkfs.xfs",
+    icon: "eos-icons:file-system",
+    reasonUnknown: "xfsprogs dependency check is still running.",
+    reasonUnavailable: "xfsprogs dependency is unavailable.",
+    installable: { requiresPackageKit: true },
+    route: { label: "Open storage", to: "/storage" },
+  },
 ] as const satisfies readonly CapabilityDef[];
 
 // --- Derived types ------------------------------------------------------------

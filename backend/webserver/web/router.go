@@ -30,6 +30,7 @@ func BuildRouter(cfg Config, sm *sessions.Manager) http.Handler {
 	handler = http.NewCrossOriginProtection().Handler(handler)
 	handler = LoggerMiddleware(handler)
 	handler = RecoveryMiddleware(handler)
+	handler = securityHeadersMiddleware(handler)
 
 	// Register API routes (auth, etc.)
 	if cfg.RegisterRoutes != nil {
@@ -50,6 +51,18 @@ func BuildRouter(cfg Config, sm *sessions.Manager) http.Handler {
 	mountProductionSPA(mux, cfg.UI)
 
 	return handler
+}
+
+// securityHeadersMiddleware forbids framing the UI and sniffing content types.
+func securityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Content-Security-Policy", "frame-ancestors 'none'")
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		next.ServeHTTP(w, r)
+	})
 }
 
 // mountProductionSPA serves the embedded frontend with SPA fallback.

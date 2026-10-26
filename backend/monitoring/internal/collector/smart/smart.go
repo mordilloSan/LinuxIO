@@ -387,7 +387,7 @@ func detectSmartOutputType(output []byte) string {
 		ScsiErrorCounterLog           jsontext.Value `json:"scsi_error_counter_log"`
 	}
 
-	if err := json.Unmarshal(output, &hints, json.MatchCaseInsensitiveNames(true)); err != nil {
+	if err := json.Unmarshal(output, &hints, json.MatchCaseInsensitiveNames(true), jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true)); err != nil {
 		return ""
 	}
 
@@ -687,7 +687,7 @@ func (sm *Manager) hasDataForDevice(deviceName string) bool {
 func (sm *Manager) parseScan(output []byte) ([]*DeviceInfo, bool) {
 	scan := &scanOutput{}
 
-	if err := json.Unmarshal(output, scan, json.MatchCaseInsensitiveNames(true)); err != nil {
+	if err := json.Unmarshal(output, scan, json.MatchCaseInsensitiveNames(true), jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true)); err != nil {
 		return nil, false
 	}
 
@@ -928,7 +928,7 @@ func (sm *Manager) isVirtualDeviceFromStrings(fields ...string) bool {
 func (sm *Manager) parseSmartForSata(output []byte) (bool, int) {
 	var data smartmodel.SmartInfoForSata
 
-	if err := json.Unmarshal(output, &data, json.MatchCaseInsensitiveNames(true)); err != nil {
+	if err := json.Unmarshal(output, &data, json.MatchCaseInsensitiveNames(true), jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true)); err != nil {
 		return false, 0
 	}
 
@@ -1025,7 +1025,7 @@ func findAtaDeviceStatisticsValue(data *smartmodel.SmartInfoForSata, ataDeviceSt
 		if len(data.AtaDeviceStatistics) == 0 {
 			return nil
 		}
-		if err := json.Unmarshal(data.AtaDeviceStatistics, ataDeviceStats, json.MatchCaseInsensitiveNames(true)); err != nil {
+		if err := json.Unmarshal(data.AtaDeviceStatistics, ataDeviceStats, json.MatchCaseInsensitiveNames(true), jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true)); err != nil {
 			return nil
 		}
 	}
@@ -1051,7 +1051,7 @@ func findAtaDeviceStatisticsValue(data *smartmodel.SmartInfoForSata, ataDeviceSt
 func (sm *Manager) parseSmartForScsi(output []byte) (bool, int) {
 	var data smartmodel.SmartInfoForScsi
 
-	if err := json.Unmarshal(output, &data, json.MatchCaseInsensitiveNames(true)); err != nil {
+	if err := json.Unmarshal(output, &data, json.MatchCaseInsensitiveNames(true), jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true)); err != nil {
 		return false, 0
 	}
 
@@ -1144,7 +1144,7 @@ func parseScsiGigabytesProcessed(value string) int64 {
 func (sm *Manager) parseSmartForNvme(output []byte) (bool, int) {
 	data := &smartmodel.SmartInfoForNvme{}
 
-	if err := json.Unmarshal(output, &data, json.MatchCaseInsensitiveNames(true)); err != nil {
+	if err := json.Unmarshal(output, &data, json.MatchCaseInsensitiveNames(true), jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true)); err != nil {
 		return false, 0
 	}
 

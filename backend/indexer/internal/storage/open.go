@@ -46,11 +46,13 @@ func OpenContext(parent context.Context, path string) (*sql.DB, error) {
 		return nil, err
 	}
 
-	ctx, cancel := context.WithTimeout(parent, schemaTimeout)
+	// The timeout bounds only the WAL pragma. initSchema may rebuild the FTS
+	// index of a large database, so it runs on the caller's context.
+	pragmaCtx, cancel := context.WithTimeout(parent, schemaTimeout)
 	defer cancel()
 
 	var journalMode string
-	if err := db.QueryRowContext(ctx, `PRAGMA journal_mode = WAL;`).Scan(&journalMode); err != nil {
+	if err := db.QueryRowContext(pragmaCtx, `PRAGMA journal_mode = WAL;`).Scan(&journalMode); err != nil {
 		if closeErr := db.Close(); closeErr != nil {
 			slog.Warn("failed to close DB after journal mode setup error", "error", closeErr)
 		}
@@ -64,7 +66,7 @@ func OpenContext(parent context.Context, path string) (*sql.DB, error) {
 	db.SetConnMaxLifetime(0)
 	db.SetConnMaxIdleTime(connMaxIdleTime)
 
-	if err := initSchema(ctx, db); err != nil {
+	if err := initSchema(parent, db); err != nil {
 		if closeErr := db.Close(); closeErr != nil {
 			slog.Warn("failed to close DB after schema init error", "error", closeErr)
 		}

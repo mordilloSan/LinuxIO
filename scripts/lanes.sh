@@ -5,8 +5,9 @@
 #
 # `test` runs two independent lanes, serial inside each lane:
 #
-#   frontend: lint-only -> tsc-only -> test-frontend-only
-#   backend:  golint-only -> test-backend -> deadcode-only
+#   frontend: lint-only -> tsc-only + test-frontend-only
+#   backend:  golint-only -> test-auth-protocol + test-go -> deadcode-only
+#             test-auth + test-auth-pam (C only, no Go sources) alongside golint
 #
 # The lane heads must come first because they rewrite sources in place
 # (oxlint --fix / oxfmt; golangci-lint fmt / modernize -fix / go mod tidy), so
@@ -16,8 +17,10 @@
 # overlap. Two lanes keeps demand near the core count and puts the long pole
 # (frontend unit tests, ~58% of the suite's total CPU) in flight early, with the
 # cheaper backend lane filling the other half of the machine underneath it.
+# tsc-only and the C auth tests are single-threaded and build in temp dirs, so
+# they ride alongside their lane instead of extending it (~5s off a warm run).
 #
-# Serializing test-backend before deadcode-only also stops them from compiling
+# Serializing test-go before deadcode-only also stops them from compiling
 # the same 58 packages simultaneously and fighting over the Go build cache.
 #
 # The frontend lane is normally the critical path. Deprioritising the backend
@@ -97,35 +100,40 @@ stage() {
 
 lane_test() {
 	local timer_start="$1" elapsed
-	touch "$jobs_dir"/{lint,golint,tsc,fe,be,dead}
+	touch "$jobs_dir"/{lint,golint,cauth,tsc,fe,be,dead}
 	stage lint mk lint-only &
 	PID_LINT=$!
 	stage golint mk golint-only &
 	PID_GOLINT=$!
+	stage cauth mk test-auth test-auth-pam &
+	PID_CAUTH=$!
 	(
 		await "$jobs_dir/lint.rc" "$PID_LINT" || exit $?
 		stage tsc mk tsc-only
 	) &
 	PID_TSC=$!
 	(
-		await "$jobs_dir/tsc.rc" "$PID_TSC" || exit $?
+		await "$jobs_dir/lint.rc" "$PID_LINT" || exit $?
 		stage fe mk test-frontend-only
 	) &
 	PID_FE=$!
 	(
 		await "$jobs_dir/golint.rc" "$PID_GOLINT" || exit $?
-		stage be mk test-backend SKIP_ENSURE_GO=1
+		stage be mk test-auth-protocol test-go SKIP_ENSURE_GO=1
 	) &
 	PID_BE=$!
 	(
 		await "$jobs_dir/be.rc" "$PID_BE" || exit $?
+		await "$jobs_dir/cauth.rc" "$PID_CAUTH" || exit $?
 		stage dead mk deadcode-only
 	) &
 	PID_DEAD=$!
-	pids="$PID_LINT $PID_GOLINT $PID_TSC $PID_FE $PID_BE $PID_DEAD"
+	pids="$PID_LINT $PID_GOLINT $PID_CAUTH $PID_TSC $PID_FE $PID_BE $PID_DEAD"
 
 	follow "$jobs_dir/lint" "$PID_LINT" || st=1
 	follow "$jobs_dir/golint" "$PID_GOLINT" || st=1
+	printc ""
+	follow "$jobs_dir/cauth" "$PID_CAUTH" || st=1
 	printc ""
 	follow "$jobs_dir/tsc" "$PID_TSC" || st=1
 	printc ""

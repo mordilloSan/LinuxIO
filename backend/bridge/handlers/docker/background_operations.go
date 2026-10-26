@@ -64,12 +64,12 @@ func dockerTaskBindings(rt runtime.Runtime) apischema.BindingSet {
 			apischema.WithTaskMetadata(func(req apischema.DockerContainerUpdateRequest) bridgeipc.TaskMetadata {
 				return bridgeipc.TaskMetadata{Identity: []string{req.ContainerID}, Label: "Docker container update"}
 			}),
-		).Run(runDockerUpdateTask, bridgeipc.TaskSingletonSystem),
+		).Run(runDockerUpdateTask, bridgeipc.TaskDefault),
 		apischema.TaskRunner[apischema.DockerDaemonConfig, apischema.DockerDaemonConfigSetResult]("docker.apply_daemon_storage", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[apischema.DockerDaemonStorageProgress](), apischema.WithTaskMetadata(func(apischema.DockerDaemonConfig) bridgeipc.TaskMetadata {
 			return bridgeipc.TaskMetadata{Label: "Docker storage change"}
-		})).Run(runApplyDaemonStorageTask, bridgeipc.TaskSingletonSystem),
+		})).Run(runApplyDaemonStorageTask, bridgeipc.TaskExclusive),
 		apischema.TaskRunner[apischema.DockerComposeRequest, ComposeTaskResult]("docker.compose", apischema.SessionTask(), apischema.WithTaskProgress[ComposeTaskMessage](), apischema.WithTaskMetadata(func(req apischema.DockerComposeRequest) bridgeipc.TaskMetadata {
-			return bridgeipc.TaskMetadata{Identity: []string{req.Action, req.ProjectName}, Label: "Docker compose " + req.Action, Action: req.Action, ProjectName: req.ProjectName}
+			return bridgeipc.TaskMetadata{Identity: []string{req.ProjectName}, Label: "Docker compose " + req.Action, Action: req.Action, ProjectName: req.ProjectName}
 		})).Run(
 			func(ctx context.Context, task *bridgeipc.Task, req apischema.DockerComposeRequest) (ComposeTaskResult, error) {
 				return runDockerComposeTask(ctx, task, rt.Username(), rt.Store, req)

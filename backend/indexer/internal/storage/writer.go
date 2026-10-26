@@ -3,8 +3,6 @@ package storage
 import (
 	"context"
 	"database/sql"
-	"errors"
-	"log/slog"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -40,9 +38,6 @@ func (s *Store) NewStreamingWriter(ctx context.Context, indexID int64, bufferSiz
 }
 
 func newStreamingWriter(ctx context.Context, db *sql.DB, tx *sql.Tx, indexID int64, bufferSize int, progressCb ProgressCallback) *StreamingWriter {
-	if ctx == nil {
-		ctx = context.TODO()
-	}
 	if bufferSize <= 0 {
 		bufferSize = defaultWriterBuffer
 	}
@@ -176,11 +171,7 @@ func (sw *StreamingWriter) writeBatch(batch []indexing.IndexEntry) error {
 	// ErrTxDone, which is ignored. Guarding on an error variable instead is
 	// fragile — a shadowed err on any failure path leaks the transaction and
 	// pins both a pool connection and SQLite's write lock.
-	defer func() {
-		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
-			slog.Warn("writeBatch rollback failed", "error", rollbackErr)
-		}
-	}()
+	defer rollbackTx(tx, "writeBatch")
 
 	err = insertEntriesBatch(sw.ctx, tx, sw.indexID, sw.scanTime, batch)
 	if err != nil {

@@ -19,6 +19,7 @@ import (
 	"github.com/shirou/gopsutil/v4/disk"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
@@ -91,7 +92,7 @@ func parseCIFSSource(source string) (server, share string) {
 // ListCIFSShares browses a server for share names as guest (best-effort).
 func ListCIFSShares(ctx context.Context, server string) ([]string, error) {
 	if !validHostname.MatchString(server) {
-		return nil, fmt.Errorf("invalid SMB server hostname")
+		return nil, fmt.Errorf("%w: invalid SMB server hostname", bridgeipc.ErrInvalidArgs)
 	}
 	smbclient, err := hostcmd.LookPath("smbclient")
 	if err != nil {
@@ -368,13 +369,16 @@ func MountCIFS(ctx context.Context, p cifsMountParams) (apischema.StorageMountRe
 
 func validateCIFSMountRequest(server, share, mountpoint string) error {
 	if !validHostname.MatchString(server) {
-		return fmt.Errorf("invalid SMB server hostname")
+		return fmt.Errorf("%w: invalid SMB server hostname", bridgeipc.ErrInvalidArgs)
 	}
 	if share == "" || !validShareName.MatchString(share) {
 		return fmt.Errorf("invalid share name")
 	}
 	if !validPath.MatchString(mountpoint) {
 		return fmt.Errorf("invalid mountpoint")
+	}
+	if filepath.Clean(mountpoint) != mountpoint {
+		return fmt.Errorf("%w: invalid mountpoint %q", bridgeipc.ErrInvalidArgs, mountpoint)
 	}
 	if isSystemPath(mountpoint) {
 		return fmt.Errorf("cannot mount to system path: %s", mountpoint)

@@ -11,7 +11,7 @@ type ApiDisk struct {
 	// Rotational is true for spinning disks, false for SSD and NVMe.
 	Rotational bool    `json:"rotational"`
 	Serial     *string `json:"serial,omitzero"`
-	Size       string  `json:"size"`
+	SizeBytes  uint64  `json:"sizeBytes"`
 	Type       *string `json:"type,omitzero"`
 	Vendor     *string `json:"vendor,omitzero"`
 }
@@ -35,6 +35,27 @@ type StorageBlockDevice struct {
 	// btrfs.AddPartition would create in its largest free region: 0 when
 	// there is none, and for anything that is not a GPT disk.
 	FreeBytes uint64 `json:"freeBytes"`
+	// PTType is the partition table type (gpt, dos) of a disk or its partitions.
+	PTType     string `json:"ptType,omitzero"`
+	PartNumber int    `json:"partNumber,omitzero"`
+	StartBytes uint64 `json:"startBytes,omitzero"`
+	UUID       string `json:"uuid,omitzero"`
+	Label      string `json:"label,omitzero"`
+	PartUUID   string `json:"partUUID,omitzero"`
+	PartLabel  string `json:"partLabel,omitzero"`
+	// Busy says why the device must not be repartitioned or formatted: "Mounted
+	// at <path>", "Active swap" or "Used by <holder path>", in that priority.
+	Busy    string `json:"busy,omitzero"`
+	InFstab bool   `json:"inFstab,omitzero"`
+	// FreeRegions, for a GPT disk, lists every free gap of at least 1 MiB in
+	// disk order.
+	FreeRegions []StorageRegion `json:"freeRegions,omitzero"`
+}
+
+// StorageRegion is a free byte range of a disk.
+type StorageRegion struct {
+	StartBytes uint64 `json:"startBytes"`
+	SizeBytes  uint64 `json:"sizeBytes"`
 }
 
 type StorageMount struct {
@@ -167,10 +188,6 @@ type MountpointOptionsUpdateFstabRequest struct {
 	Mountpoint  string   `json:"mountpoint"`
 	Options     []string `json:"options"`
 	UpdateFstab string   `json:"updateFstab"`
-}
-
-type MountpointRequest struct {
-	Mountpoint string `json:"mountpoint"`
 }
 
 type UUIDRequest struct {
@@ -309,6 +326,50 @@ type BtrfsPoolMountRequest struct {
 type MountpointRemoveFstabRequest struct {
 	Mountpoint  string `json:"mountpoint"`
 	RemoveFstab string `json:"removeFstab"`
+}
+
+// PartitionFormatOptions makes an ext4, xfs or btrfs filesystem; Label may
+// be empty.
+type PartitionFormatOptions struct {
+	FSType string `json:"fsType"`
+	Label  string `json:"label"`
+}
+
+// PartitionMountOptions mounts a filesystem at Mountpoint; Persist also
+// records it in /etc/fstab.
+type PartitionMountOptions struct {
+	Mountpoint string `json:"mountpoint"`
+	Persist    bool   `json:"persist"`
+}
+
+// PartitionCreateRequest adds a partition spanning StartBytes to
+// StartBytes+SizeBytes, inside one free region of Device, a GPT disk, then
+// formats it and mounts it when asked; Mount needs Format.
+type PartitionCreateRequest struct {
+	Device     string                  `json:"device"`
+	StartBytes uint64                  `json:"startBytes"`
+	SizeBytes  uint64                  `json:"sizeBytes"`
+	Format     *PartitionFormatOptions `json:"format,omitzero"`
+	Mount      *PartitionMountOptions  `json:"mount,omitzero"`
+}
+
+// PartitionFormatRequest formats an unused partition; Overwrite is required
+// when it already holds a filesystem or other data.
+type PartitionFormatRequest struct {
+	Device    string `json:"device"`
+	FSType    string `json:"fsType"`
+	Label     string `json:"label"`
+	Overwrite bool   `json:"overwrite"`
+}
+
+type PartitionMountRequest struct {
+	Device     string `json:"device"`
+	Mountpoint string `json:"mountpoint"`
+	Persist    bool   `json:"persist"`
+}
+
+type BlockDeviceRequest struct {
+	Device string `json:"device"`
 }
 
 type VolumeGroupLogicalVolumeRequest struct {

@@ -6,7 +6,8 @@ import (
 )
 
 // IsNewer returns true when latest should be considered newer than current.
-// Versions may include optional "dev-" and "v" prefixes.
+// Versions may include optional "dev-" and "v" prefixes and a "-pre-release"
+// suffix, which sorts below the same version without one.
 func IsNewer(latest, current string) bool {
 	if latest == "" || current == "" {
 		return false
@@ -18,12 +19,22 @@ func IsNewer(latest, current string) bool {
 	latest = strings.TrimPrefix(latest, "v")
 	current = strings.TrimPrefix(current, "v")
 
+	latest, latestPre, latestHasPre := strings.Cut(latest, "-")
+	current, currentPre, currentHasPre := strings.Cut(current, "-")
+
 	latestParts := strings.Split(latest, ".")
 	currentParts := strings.Split(current, ".")
 
 	cmp := compareVersionParts(latestParts, currentParts)
 	if cmp != 0 {
 		return cmp > 0
+	}
+
+	if latestHasPre != currentHasPre {
+		return currentHasPre
+	}
+	if latestPre != currentPre {
+		return latestPre > currentPre
 	}
 
 	if currentIsDev && !latestIsDev {

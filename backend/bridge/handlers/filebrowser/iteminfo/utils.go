@@ -1,11 +1,12 @@
 package iteminfo
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -13,22 +14,36 @@ import (
 )
 
 func SortItems(items []ItemInfo) {
-	sort.Slice(items, func(i, j int) bool { return lessName(items[i].Name, items[j].Name) })
+	slices.SortStableFunc(items, func(a, b ItemInfo) int { return compareNames(a.Name, b.Name) })
 }
 
 func SortNames(names []string) {
-	sort.Slice(names, func(i, j int) bool { return lessName(names[i], names[j]) })
+	slices.SortStableFunc(names, compareNames)
 }
 
-func lessName(left, right string) bool {
+// compareNames orders names with a numeric stem ("9", "10.txt") first, by
+// number, then everything else case-insensitively; the raw string breaks ties
+// so the order is total and stable.
+func compareNames(left, right string) int {
 	leftStem, _, _ := strings.Cut(left, ".")
 	rightStem, _, _ := strings.Cut(right, ".")
 	leftNumber, leftErr := strconv.Atoi(leftStem)
 	rightNumber, rightErr := strconv.Atoi(rightStem)
-	if leftErr == nil && rightErr == nil {
-		return leftNumber < rightNumber
+	switch {
+	case leftErr == nil && rightErr == nil:
+		if c := cmp.Compare(leftNumber, rightNumber); c != 0 {
+			return c
+		}
+	case leftErr == nil:
+		return -1
+	case rightErr == nil:
+		return 1
+	default:
+		if c := strings.Compare(strings.ToLower(left), strings.ToLower(right)); c != 0 {
+			return c
+		}
 	}
-	return strings.ToLower(left) < strings.ToLower(right)
+	return strings.Compare(left, right)
 }
 
 // ResolveSymlinksAt follows the final component of path through any chain of

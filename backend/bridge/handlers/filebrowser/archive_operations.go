@@ -162,11 +162,6 @@ func runCompressTask(ctx context.Context, task *bridgeipc.Task, store *userconfi
 		return FileCompressResult{}, fmt.Errorf("%w: unsupported format: %s", bridgeipc.ErrInvalidArgs, req.Format)
 	}
 	settings := taskSettingsForTask(ctx, task, store)
-	release, err := heavyArchiveLimiter.acquire(ctx, settings.HeavyArchiveConcurrency)
-	if err != nil {
-		return FileCompressResult{}, context.Canceled
-	}
-	defer release()
 
 	targetPath := normalizeArchiveTargetPath(req.TargetPath, extension)
 	root, err := fsroot.Open()
@@ -236,11 +231,6 @@ func runExtractTask(ctx context.Context, task *bridgeipc.Task, store *userconfig
 	}
 
 	settings := taskSettingsForTask(ctx, task, store)
-	release, err := heavyArchiveLimiter.acquire(ctx, settings.HeavyArchiveConcurrency)
-	if err != nil {
-		return FileExtractResult{}, context.Canceled
-	}
-	defer release()
 
 	totalSize := computeExtractSize(archivePath, archiveStat.Size())
 	if spaceErr := services.EnsureFreeSpace(filepath.Dir(destination), totalSize); spaceErr != nil {

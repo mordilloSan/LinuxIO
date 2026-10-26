@@ -88,6 +88,14 @@ func TestFetchSensorsInfoReturnsNilOnMalformedJSON(t *testing.T) {
 	require.Nil(t, fetchSensorsInfo(context.Background()))
 }
 
+func TestFetchSensorsInfoToleratesDuplicateKeysAndInvalidUTF8(t *testing.T) {
+	stubSensorsCommand(t, "duplicate")
+
+	groups := fetchSensorsInfo(context.Background())
+	require.Len(t, groups, 1)
+	require.Equal(t, "dell_smm-virtual-0", groups[0].Adapter)
+}
+
 func TestFetchSensorsInfoReturnsNilOnCommandFailure(t *testing.T) {
 	stubSensorsCommand(t, "fail")
 
@@ -125,6 +133,9 @@ func TestHelperSensorsCommand(t *testing.T) {
 	switch mode {
 	case "success":
 		fmt.Fprint(os.Stdout, sensorsJSONFixture)
+		os.Exit(0)
+	case "duplicate":
+		fmt.Fprint(os.Stdout, "{\"dell_smm-virtual-0\": {\"Adapter\": \"Virtual device\", \"Other\": {\"temp1_input\": 40}, \"Other\": {\"temp1_input\": 41}, \"bad\xff\": {\"fan1_input\": 1000}}}")
 		os.Exit(0)
 	case "malformed":
 		fmt.Fprint(os.Stdout, `{"broken":`)

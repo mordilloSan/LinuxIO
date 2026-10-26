@@ -12,6 +12,8 @@ import (
 )
 
 func RemoveInterface(ctx context.Context, req apischema.NameRequest) (any, error) {
+	configMu.Lock()
+	defer configMu.Unlock()
 	if req.Name == "" {
 		return nil, fmt.Errorf("usage: remove_interface <name>")
 	}

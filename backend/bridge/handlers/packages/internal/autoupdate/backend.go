@@ -80,7 +80,7 @@ func systemHost() backendHost {
 }
 
 func SelectBackend(ctx context.Context) UpdateBackend {
-	if ctx == nil || ctx.Err() != nil {
+	if ctx.Err() != nil {
 		return nil
 	}
 	host := systemHost()

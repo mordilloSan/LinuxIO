@@ -329,6 +329,87 @@ describe("StoragePools", () => {
     ).toHaveTextContent("NFS");
   });
 
+  it("lists partitions nothing uses under their disk, next to its volumes", async () => {
+    mocks.topology.mockResolvedValue({
+      devices: [
+        storageBlock("/dev/sdb", "disk", 50),
+        storageBlock("/dev/sdb1", "part", 1, ["/dev/sdb"], ["/boot/efi"]),
+        {
+          ...storageBlock("/dev/sdb2", "part", 1, ["/dev/sdb"]),
+          fsType: "vfat",
+        },
+        storageBlock("/dev/sdb3", "part", 48, ["/dev/sdb"]),
+      ],
+      mounts: [],
+    });
+    renderPools({
+      drives: drives.map((d) =>
+        d.name === "sdb"
+          ? {
+              ...d,
+              rates: {
+                read_bytes_per_sec: 1024,
+                write_bytes_per_sec: 0,
+                read_ops_per_sec: 1,
+                write_ops_per_sec: 0,
+              },
+            }
+          : d,
+      ),
+      filesystems: [...filesystems, volume("/boot/efi", "/dev/sdb1", "vfat")],
+    });
+
+    expect(
+      await screen.findByRole("button", { name: "Volume /boot/efi" }),
+    ).toHaveTextContent("sdb1");
+    const card = (name: string) =>
+      screen.getByText(name).closest(".storage-pools__card");
+    expect(card("sdb2")).toHaveTextContent("FAT");
+    expect(card("sdb2")).toHaveTextContent("Not mounted · 1 GB");
+    expect(card("sdb3")).toHaveTextContent("No filesystem");
+    expect(card("sdb3")).toHaveTextContent("Not mounted · 48 GB");
+    // Reads flow into /boot/efi only; nothing uses the other partitions.
+    expect(document.querySelectorAll(".app-topology-edge__flow")).toHaveLength(
+      1,
+    );
+  });
+
+  it("shows each disk's read and write rate on its card and line", async () => {
+    const user = userEvent.setup();
+    renderPools({
+      drives: drives.map((d) =>
+        d.name === "nvme0n1"
+          ? {
+              ...d,
+              rates: {
+                read_bytes_per_sec: 4.8 * 1024 ** 2,
+                write_bytes_per_sec: 1.2 * 1024 ** 2,
+                read_ops_per_sec: 80,
+                write_ops_per_sec: 32,
+              },
+            }
+          : d,
+      ),
+    });
+
+    expect(
+      await screen.findByRole("button", { name: "Drive details nvme0n1" }),
+    ).toHaveTextContent("Read 4.8 MB/s · Write 1.2 MB/s");
+    // Only nvme0n1's line into the tank pool carries its flow.
+    for (const direction of ["forward", "reverse"])
+      expect(
+        document.querySelectorAll(
+          `.app-topology-edge__flow[data-direction="${direction}"]`,
+        ),
+      ).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: "Pause animation" }));
+    for (const flow of document.querySelectorAll(".app-topology-edge__flow"))
+      expect(flow.closest(".app-topology-edge")).toHaveAttribute(
+        "data-paused",
+        "true",
+      );
+  });
+
   it("draws an md RAID array between its drives and its volume", async () => {
     mocks.list.mockResolvedValue([]);
     mocks.topology.mockResolvedValue(mdTopology);

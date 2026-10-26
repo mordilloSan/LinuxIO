@@ -201,9 +201,6 @@ func buildInstallCommandArgs(unit string, scriptArgs ...string) []string {
 // with stdout/stderr piped back to this process (so logs appear in-order).
 // If relay is non-nil, output lines are also written to it.
 func runInstallScript(ctx context.Context, ver string, relay io.Writer) error {
-	if ctx == nil {
-		return fmt.Errorf("nil context")
-	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 

@@ -94,9 +94,10 @@ func ParseWireGuardConfig(path string) (WireGuardConfig, error) {
 			continue
 		}
 
-		// Peer names live in the exported peer file; the server config only
-		// carries them as a comment, since wg setconf rejects unknown keys.
+		// The server config carries the name only as a comment above [Peer],
+		// since wg setconf rejects unknown keys.
 		pc := PeerConfig{
+			Name:         strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(sec.Comment), "#")),
 			PublicKey:    sec.Key("PublicKey").String(),
 			PresharedKey: sec.Key("PresharedKey").String(),
 			Endpoint:     sec.Key("Endpoint").String(),

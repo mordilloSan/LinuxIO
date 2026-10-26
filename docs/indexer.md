@@ -226,7 +226,7 @@ bridge before an indexer request is made.
 | `indexer.get_status` | Call | none | daemon state, counts, sizes, active operation, warning |
 | `indexer.set_config` | Call | partial `exclude_paths` and/or `include_network_mounts` | saved combined config |
 | `indexer.set_timer_interval` | Call | `interval` | saved `interval` |
-| `filebrowser.index` | session Task, system singleton | optional `path`; absent or empty means `/` | progress plus final index/reindex totals |
+| `filebrowser.index` | session Task, exclusive (one at a time) | optional `path`; absent or empty means `/` | progress plus final index/reindex totals |
 | `filebrowser.search` | Call | `query`, optional `basePath`, optional compatibility `limit` | matching filesystem entries |
 | `filebrowser.dir_size` | Call | `path` | `size`, `fileCount`, `folderCount` |
 | `filebrowser.subfolders` | Call | `path`; empty means `/` | direct subfolder paths and sizes |

@@ -26,7 +26,6 @@ type Reindex struct {
 // BeginReindex opens the reindex transaction and records the subtree's prior
 // size, entry counts and hardlink contributors, which the rescan overwrites.
 func (s *Store) BeginReindex(ctx context.Context, indexID int64, relativePath string) (*Reindex, error) {
-	ctx = ensureContext(ctx)
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin reindex transaction: %w", err)
@@ -62,7 +61,6 @@ func (r *Reindex) Rollback() {
 // directory aggregates, updates the generation metadata and commits. scanTime
 // is the writer's ScanTime. It returns the subtree's new size.
 func (r *Reindex) Commit(ctx context.Context, scanTime int64) (int64, error) {
-	ctx = ensureContext(ctx)
 	tx, indexID, path := r.tx, r.indexID, r.path
 	deleted, err := cleanupDeletedEntriesUnderPath(ctx, tx, indexID, path, scanTime)
 	if err != nil {

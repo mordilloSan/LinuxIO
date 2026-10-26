@@ -1,6 +1,7 @@
 package datetime
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
@@ -109,4 +111,9 @@ func TestParseTimesyncdServers(t *testing.T) {
 		assert.False(t, found)
 		assert.Nil(t, got)
 	})
+}
+
+func TestHandleSetNTPRejectsUnparsableFlag(t *testing.T) {
+	err := handleSetNTP(context.Background(), apischema.EnabledRequest{Enabled: "maybe"})
+	require.ErrorIs(t, err, bridgeipc.ErrInvalidArgs)
 }

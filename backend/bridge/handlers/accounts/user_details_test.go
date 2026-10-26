@@ -3,6 +3,7 @@ package accounts
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"os"
 	"strings"
 	"syscall"
@@ -12,6 +13,7 @@ import (
 	godbus "github.com/godbus/dbus/v5"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
 func TestGetProcessSummaryErrorKeepsTopAsArray(t *testing.T) {
@@ -137,5 +139,12 @@ func TestSessionFromLogindSkipsManagerClass(t *testing.T) {
 	props := map[string]godbus.Variant{"Class": godbus.MakeVariant("manager")}
 	if _, ok := sessionFromLogind(props, time.Now()); ok {
 		t.Fatal("sessionFromLogind() ok = true, want false")
+	}
+}
+
+func TestTerminateSessionRequiresSessionID(t *testing.T) {
+	err := TerminateSession(context.Background(), "")
+	if !errors.Is(err, bridgeipc.ErrInvalidArgs) {
+		t.Fatalf("TerminateSession(\"\") error = %v; want ErrInvalidArgs", err)
 	}
 }

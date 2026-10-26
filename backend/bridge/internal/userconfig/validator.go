@@ -24,6 +24,7 @@ func parseCoreConfig(raw []byte, base string) (*Settings, error) {
 	if err := yaml.UnmarshalWithOptions(raw, cfg, yaml.Strict()); err != nil {
 		return nil, err
 	}
+	cfg.Jobs.LegacyHeavyArchiveConcurrency = nil
 	if errs := validateSettings(cfg); len(errs) > 0 {
 		err := errors.New(strings.Join(errs, "; "))
 		return nil, err

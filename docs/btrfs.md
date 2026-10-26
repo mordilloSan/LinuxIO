@@ -18,8 +18,10 @@ demand or runs from `linuxio-btrfs-timer`, started by two systemd timers, a
 boot-time service and a resync service (see [Missing disks](#missing-disks)).
 
 `make test-btrfs-integration` runs every one of these operations against the
-real kernel on loop devices, and loses and returns disks of a mirror to check
-the missing-disk handling; it needs sudo.
+real kernel on loop devices, loses and returns disks of a mirror to check
+the missing-disk handling, and exercises
+[partition management](./storage-disks.md#partition-management); it needs
+sudo.
 
 ## Capability and privileges
 
@@ -271,7 +273,10 @@ Disks are used whole unless **Partition the disks** is on. Then each disk
 gets a GPT, written natively, with one Linux partition from 1 MiB that stops
 1 GiB before the end, and the pool is built from the partitions. That slack
 lets a replacement disk of the same nominal size that is a few sectors
-smaller still take a member's place.
+smaller still take a member's place. The table is written by the same code as
+[partition management](./storage-disks.md#partition-management) on the Disks
+page, where these partitions can be deleted once the pool is gone, or the
+disk initialized to be used whole again.
 
 A shared folder can be created on a pool from **Shares → Add Folder Share →
 New folder on a pool**: it creates a subvolume under the pool's top-level

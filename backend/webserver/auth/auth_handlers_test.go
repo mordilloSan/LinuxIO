@@ -72,6 +72,7 @@ var capabilityJSONKeys = []string{
 	"lm_sensors_available", "memory_inventory_available", "smartmontools_available",
 	"packagekit_available", "nfs_client_available", "nfs_server_available", "samba_server_available",
 	"samba_client_available", "tuned_available", "avahi_available", "wireguard_available", "libvirt_available",
+	"e2fsprogs_available", "xfsprogs_available",
 }
 
 func assertLoginOmitsCapabilities(t *testing.T, resp map[string]any) {

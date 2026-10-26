@@ -3,6 +3,8 @@ package docker
 import (
 	"context"
 	"encoding/base64"
+	"errors"
+	"log/slog"
 	"net"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
@@ -58,7 +60,7 @@ func routeBindings(rt runtime.Runtime, handlers dockerHandlers) apischema.Bindin
 		apischema.Call[apischema.NoRequest, apischema.DockerUpdateCheckResult]("docker.check_updates").Handle(handlers.handleCheckUpdates),
 		apischema.Call[apischema.ContainerIDRequest, apischema.DockerUpdateCheckResult]("docker.check_container_update").Handle(handlers.handleCheckContainerUpdate),
 		apischema.Call[apischema.NoRequest, apischema.DockerContainerAutoUpdateState]("docker.get_container_auto_update", apischema.RetrySafe()).Handle(handlers.handleGetContainerAutoUpdate),
-		apischema.Call[apischema.DockerContainerAutoUpdateOptions, apischema.DockerContainerAutoUpdateState]("docker.set_container_auto_update").Handle(handlers.handleSetContainerAutoUpdate),
+		apischema.Call[apischema.DockerContainerAutoUpdateOptions, apischema.DockerContainerAutoUpdateState]("docker.set_container_auto_update", apischema.Privileged()).Handle(handlers.handleSetContainerAutoUpdate),
 		apischema.Call[apischema.DockerSystemPruneRequest, *apischema.DockerSystemPruneResponse]("docker.system_prune").Handle(handlers.handleSystemPrune),
 		apischema.DuplexRoute[apischema.DockerLogsFollowRequest, apischema.NoResponse](routeDockerLogsFollow, apischema.NoEndpoint()).Duplex(
 			func(ctx context.Context, stream net.Conn, req apischema.DockerLogsFollowRequest) error {
@@ -275,6 +277,12 @@ func (h dockerHandlers) handleValidateStackDirectory(ctx context.Context, req ap
 
 func (h dockerHandlers) handleGetIconURI(ctx context.Context, req apischema.IdentifierRequest) (apischema.DockerIconURIResponse, error) {
 	uri, err := GetIconURI(ctx, req.Identifier)
+	if errors.Is(err, errIconNotFound) {
+		// No icon is a normal answer, not a failed route: the frontend shows
+		// its bundled fallback and must not warn or retry.
+		slog.Debug("icon not found", "identifier", req.Identifier, "error", err)
+		return apischema.DockerIconURIResponse{}, nil
+	}
 	return apischema.DockerIconURIResponse{URI: uri}, err
 }
 

@@ -305,7 +305,8 @@ func retryableRegistryInspectError(err error) bool {
 	return strings.Contains(message, "toomanyrequests") ||
 		strings.Contains(message, "too many requests") ||
 		strings.Contains(message, "context deadline exceeded") ||
-		strings.Contains(message, "client.timeout exceeded while awaiting headers")
+		strings.Contains(message, "client.timeout exceeded while awaiting headers") ||
+		strings.Contains(message, "tls handshake timeout")
 }
 
 // NormalizeImageReference returns the canonical tagged reference for imageRef,

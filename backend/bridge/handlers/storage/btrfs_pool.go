@@ -14,6 +14,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
 )
 
@@ -22,8 +23,8 @@ import (
 var btrfsPoolFstabOptions = []string{"defaults", "noatime", "nofail"}
 
 // CreateBtrfsPool validates the request, formats the member devices, mounts the
-// new pool and records it in /etc/fstab.
-func CreateBtrfsPool(ctx context.Context, req apischema.BtrfsPoolCreateRequest) (btrfs.BtrfsFilesystem, error) {
+// new pool and records it in /etc/fstab, reporting each step.
+func CreateBtrfsPool(ctx context.Context, req apischema.BtrfsPoolCreateRequest, report func(step string)) (btrfs.BtrfsFilesystem, error) {
 	devices, err := ListBlockDevices(ctx)
 	if err != nil {
 		return btrfs.BtrfsFilesystem{}, err
@@ -41,27 +42,36 @@ func CreateBtrfsPool(ctx context.Context, req apischema.BtrfsPoolCreateRequest) 
 	}
 	slog.Debug("creating btrfs pool", "label", req.Label, "devices", req.Devices, "freeSpace", req.FreeSpace, "data", req.DataProfile, "metadata", req.MetadataProfile, "mountpoint", req.Mountpoint, "force", req.Force, "partition", req.Partition)
 	members := slices.Clone(req.Devices)
+	if req.Partition || len(req.FreeSpace) > 0 {
+		report("Partitioning disks")
+	}
 	if req.Partition {
 		members = make([]string, 0, len(req.Devices))
 		for _, d := range req.Devices {
-			part, partErr := btrfs.PartitionDisk(ctx, d)
+			part, unlock, partErr := partitionLocked(ctx, d, btrfs.PartitionDisk)
 			if partErr != nil {
 				return btrfs.BtrfsFilesystem{}, fmt.Errorf("partition %s for btrfs pool: %w", d, partErr)
 			}
+			defer unlock()
 			members = append(members, part)
 		}
 	}
 	for _, d := range req.FreeSpace {
-		part, partErr := btrfs.AddPartition(ctx, d)
+		part, unlock, partErr := partitionLocked(ctx, d, btrfs.AddPartition)
 		if partErr != nil {
 			return btrfs.BtrfsFilesystem{}, fmt.Errorf("add partition on %s for btrfs pool: %w", d, partErr)
 		}
+		defer unlock()
 		members = append(members, part)
 	}
+	// mkfs.btrfs first discards every member, which on large SSDs takes
+	// minutes; that is why this runs as a task rather than a bounded call.
+	report("Formatting: SSDs are trimmed first, which can take a few minutes")
 	uuid, err := btrfs.CreatePool(ctx, req.Label, req.DataProfile, req.MetadataProfile, members, req.Force)
 	if err != nil {
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("create btrfs pool %q: %w", req.Label, err)
 	}
+	report("Mounting at " + req.Mountpoint)
 	if err := btrfs.MountPool(ctx, members[0], req.Mountpoint, btrfsPoolFstabOptions, false); err != nil {
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("pool %s was created but not mounted: %w", uuid, err)
 	}
@@ -70,6 +80,22 @@ func CreateBtrfsPool(ctx context.Context, req apischema.BtrfsPoolCreateRequest) 
 	}
 	slog.Info("created btrfs pool", "uuid", uuid, "mountpoint", req.Mountpoint)
 	return btrfs.FindFilesystem(ctx, uuid)
+}
+
+// partitionLocked locks disk against udev, then partitions it. The caller
+// holds the lock until the pool is made, so the disk's partition nodes do
+// not flap under mkfs.btrfs.
+func partitionLocked(ctx context.Context, disk string, partition func(context.Context, string) (string, error)) (string, func(), error) {
+	unlock, err := lockDisk(ctx, disk)
+	if err != nil {
+		return "", nil, err
+	}
+	part, err := partition(ctx, disk)
+	if err != nil {
+		unlock()
+		return "", nil, err
+	}
+	return part, unlock, nil
 }
 
 // checkPoolCreate validates a create request against the host: label,
@@ -111,17 +137,17 @@ func checkPoolCreate(req apischema.BtrfsPoolCreateRequest, devices []apischema.S
 
 func checkPoolMountpoint(mountpoint string, devices []apischema.StorageBlockDevice, fstab map[string]fstabEntry) error {
 	if !validPath.MatchString(mountpoint) || filepath.Clean(mountpoint) != mountpoint {
-		return fmt.Errorf("invalid mountpoint %q", mountpoint)
+		return fmt.Errorf("%w: invalid mountpoint %q", bridgeipc.ErrInvalidArgs, mountpoint)
 	}
 	if isSystemPath(mountpoint) || isProtectedMount(mountpoint) {
-		return fmt.Errorf("mountpoint %s is a system directory", mountpoint)
+		return fmt.Errorf("%w: mountpoint %s is a system directory", bridgeipc.ErrInvalidArgs, mountpoint)
 	}
 	if _, ok := fstab[mountpoint]; ok {
-		return fmt.Errorf("mountpoint %s is already in /etc/fstab", mountpoint)
+		return fmt.Errorf("%w: mountpoint %s is already in /etc/fstab", bridgeipc.ErrConflict, mountpoint)
 	}
 	for _, d := range devices {
 		if slices.Contains(d.Mountpoints, mountpoint) {
-			return fmt.Errorf("mountpoint %s is in use by %s", mountpoint, d.Path)
+			return fmt.Errorf("%w: mountpoint %s is in use by %s", bridgeipc.ErrConflict, mountpoint, d.Path)
 		}
 	}
 	return nil
@@ -130,17 +156,19 @@ func checkPoolMountpoint(mountpoint string, devices []apischema.StorageBlockDevi
 // DestroyBtrfsPool unmounts the pool, drops its fstab entries and wipes its
 // devices.
 func DestroyBtrfsPool(ctx context.Context, uuid string) error {
+	// Listed before the unmount: a mount is how fstab lines that do not say
+	// UUID= are tied to the pool.
+	mounts, err := btrfsListMounts(ctx)
+	if err != nil {
+		return fmt.Errorf("destroy btrfs pool %s: list btrfs mounts: %w", uuid, err)
+	}
 	devices, err := poolDevicesForDestroy(ctx, uuid)
 	if err != nil {
 		return fmt.Errorf("destroy btrfs pool %s: %w", uuid, err)
 	}
 	slog.Debug("destroying btrfs pool", "uuid", uuid, "devices", devices)
-	for mountpoint, entry := range getFstabEntries() {
-		if strings.EqualFold(entry.source, "UUID="+uuid) {
-			if err := removeFromFstab(mountpoint); err != nil {
-				return fmt.Errorf("remove %s from /etc/fstab: %w", mountpoint, err)
-			}
-		}
+	if fstabErr := removePoolFstabEntries(uuid, mounts); fstabErr != nil {
+		return fstabErr
 	}
 	for _, d := range devices {
 		if err := btrfs.WipeDevice(d); err != nil {
@@ -148,6 +176,24 @@ func DestroyBtrfsPool(ctx context.Context, uuid string) error {
 		}
 	}
 	slog.Info("destroyed btrfs pool", "uuid", uuid)
+	return nil
+}
+
+// removePoolFstabEntries drops every fstab line that mounted pool uuid: by
+// mountpoint, by UUID=, or by /dev/disk/by-uuid/ (which also covers an offline
+// pool).
+func removePoolFstabEntries(uuid string, mounts []btrfs.Mount) error {
+	entries := btrfsFstabEntries(uuid, mounts)
+	for mountpoint, entry := range getFstabEntries() {
+		if entry.fstype == "btrfs" && strings.EqualFold(entry.source, "/dev/disk/by-uuid/"+uuid) {
+			entries[mountpoint] = entry
+		}
+	}
+	for mountpoint := range entries {
+		if err := removeFromFstab(mountpoint); err != nil {
+			return fmt.Errorf("remove %s from /etc/fstab: %w", mountpoint, err)
+		}
+	}
 	return nil
 }
 

@@ -1,13 +1,10 @@
 import type {
-  ContainerInfo,
   FilesystemInfo,
   StorageBlockDevice,
   StorageTopologyInventory,
-  VirtualMachine,
-  VolumeGroup,
 } from "@/api";
 
-import { topologyContainers, topologyLive } from "./dockerTopologyFixture";
+import { topologyLive } from "./dockerTopologyFixture";
 
 const GiB = 1024 ** 3;
 export const storageBlock = (
@@ -86,6 +83,7 @@ export const storageInventory: StorageTopologyInventory = {
       transport: "usb",
       serial: "SAMPLE-USB",
     },
+    storageBlock("/dev/sda2", "part", 16, ["/dev/sda"]),
   ],
   mounts: [
     {
@@ -121,60 +119,7 @@ export const storageInventory: StorageTopologyInventory = {
     { path: "/run", device: "tmpfs", fsType: "tmpfs", readOnly: false },
   ],
 };
-export const storageGroups: VolumeGroup[] = [
-  {
-    name: "system",
-    size: 1023.5 * GiB,
-    free: 159.5 * GiB,
-    pvCount: 1,
-    lvCount: 2,
-    pvNames: ["/dev/nvme0n1p2"],
-    attributes: "wz--n-",
-  },
-];
-const mount = (source: string, destination: string, readOnly = false) => ({
-  Type: "bind",
-  Source: source,
-  Destination: destination,
-  Mode: readOnly ? "ro" : "rw",
-  Propagation: "rprivate",
-  RW: !readOnly,
-});
-export const storageContainers: ContainerInfo[] = topologyContainers
-  .filter((container) => container.Id !== "redis-id")
-  .map((container) => ({
-    ...container,
-    Mounts:
-      container.Id === "jellyfin-id"
-        ? [
-            mount("/srv/media", "/media", true),
-            mount("/srv/appdata/jellyfin", "/config"),
-          ]
-        : container.Id === "backup-id"
-          ? [mount("/mnt/backup", "/backup", true)]
-          : [mount(`/srv/appdata/${container.Names[0].slice(1)}`, "/data")],
-  }));
-export const storageVMs: VirtualMachine[] = [
-  {
-    name: "home-assistant",
-    state: "running",
-    vcpus: 2,
-    memoryMB: 4096,
-    diskGB: 32,
-    autostart: true,
-    hasGraphics: true,
-    ownedDisks: ["/srv/appdata/vms/home-assistant.qcow2"],
-    disks: [
-      {
-        device: "disk",
-        target: "vda",
-        path: "/srv/appdata/vms/home-assistant.qcow2",
-        owned: true,
-      },
-    ],
-  },
-];
-export const storageFilesystems: FilesystemInfo[] = storageInventory.mounts
+const storageFilesystems: FilesystemInfo[] = storageInventory.mounts
   .filter((item) => item.fsType !== "tmpfs")
   .map((item) => {
     const block = storageInventory.devices.find((device) =>
@@ -195,14 +140,6 @@ export const storageFilesystems: FilesystemInfo[] = storageInventory.mounts
   });
 export const storageLive = (timestamp = Date.now()) => ({
   ...topologyLive(timestamp),
-  containers: {
-    captured_at_ms: timestamp,
-    items: topologyLive(timestamp).containers.items.map((item, index) => ({
-      ...item,
-      block_read_bytes_per_sec: (index + 1) * 16384,
-      block_write_bytes_per_sec: (index + 1) * 4096,
-    })),
-  },
   filesystems: storageFilesystems,
   disks: {
     nvme0n1: {

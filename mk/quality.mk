@@ -57,7 +57,8 @@ check-frontend: ensure-node setup ## Run frontend lint + typecheck + unit tests
 check-backend: ensure-go ensure-golint ensure-modernize ensure-govulncheck ensure-deadcode ## Run backend lint + unit tests + deadcode scan
 	@MAKE="$(MAKE)" "$(scripts_dir)/lanes.sh" backend
 
-# Backend test entry point; this is what `make test` and CI run. Race results
+# Backend test entry point for CI (`make test` runs the same pieces through
+# scripts/lanes.sh, with the C tests alongside golint). Race results
 # are cached like normal test results, so incremental runs stay fast. Pass
 # GO_TEST_FLAGS="-count=5" for a fresh sweep with more scheduling
 # interleavings (races only surface on interleavings that actually happen).
@@ -102,14 +103,14 @@ test-docker-update-integration: ensure-go ## Run the opt-in real Docker/Compose 
 	  $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" \
 	  "$(GO_BIN)" test ./common/dockerupdate -run '^TestDockerUpdateCompose' -count=1 -v
 
-test-btrfs-integration: ensure-go ## Run the root-only btrfs kernel tests on loop devices
-	@echo "🧪 Running btrfs kernel integration tests on loop devices (needs sudo)..."
+test-btrfs-integration: ensure-go ## Run the root-only btrfs and partition kernel tests on loop devices
+	@echo "🧪 Running btrfs and partition kernel integration tests on loop devices (needs sudo)..."
 	@cd "$(backend_dir)" && \
 	  sudo env \
 	    PATH="$$(dirname "$(GO_BIN)"):$${PATH}" \
 	    GOTOOLCHAIN="$(GO_TOOLCHAIN)" \
 	    LINUXIO_RUN_BTRFS_INTEGRATION=1 \
-	    "$(GO_BIN)" test ./common/btrfs -run '^TestBtrfs(Degraded)?Integration$$' -count=1 -v -timeout 20m
+	    "$(GO_BIN)" test ./common/btrfs -run '^Test(Btrfs(Degraded)?|Partition)Integration$$' -count=1 -v -timeout 20m
 
 deadcode: ensure-deadcode ## Report unreachable Go functions (informational)
 	@$(MAKE) --no-print-directory deadcode-only

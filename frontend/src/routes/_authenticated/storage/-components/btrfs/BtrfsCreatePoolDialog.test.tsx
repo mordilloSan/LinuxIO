@@ -239,4 +239,21 @@ describe("BtrfsCreatePoolDialog", () => {
       screen.getByRole("checkbox", { name: /\/dev\/sdd · 100 GB · ext4/ }),
     ).toBeInTheDocument();
   });
+
+  it("shows the step a running create is on and holds the buttons", async () => {
+    render(
+      <BtrfsCreatePoolDialog
+        isPending
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+        pooledDevices={[]}
+        progress="Formatting: SSDs are trimmed first, which can take a few minutes"
+      />,
+    );
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Formatting: SSDs are trimmed first",
+    );
+    expect(screen.getByRole("button", { name: "Creating..." })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+  });
 });

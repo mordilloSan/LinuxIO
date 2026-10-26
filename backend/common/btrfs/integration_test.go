@@ -1,7 +1,9 @@
 package btrfs
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -317,4 +319,213 @@ func (p *itPool) partitioned() {
 	p.must("unmount partition", unix.Unmount(p.mnt, 0))
 	p.must("wipe free space", WipeDevice(free))
 	p.must("wipe partition", WipeDevice(part))
+}
+
+// itDisk is the loop disk TestPartitionIntegration partitions.
+type itDisk struct {
+	t        *testing.T
+	ctx      context.Context
+	dev, mnt string
+}
+
+func (d *itDisk) must(what string, err error) {
+	d.t.Helper()
+	if err != nil {
+		d.t.Fatalf("%s: %v", what, err)
+	}
+}
+
+// busy fails unless err is the kernel's EBUSY.
+func (d *itDisk) busy(what string, err error) {
+	d.t.Helper()
+	if !errors.Is(err, unix.EBUSY) {
+		d.t.Fatalf("%s = %v, want EBUSY", what, err)
+	}
+}
+
+// locked runs fn holding the disk's udev lock, as the bridge does around a
+// change. Meanwhile udev cannot re-read the table, which would remove and
+// re-add every partition not in use while fn works on or checks them.
+func (d *itDisk) locked(fn func()) {
+	d.t.Helper()
+	unlock, err := LockDisk(d.ctx, d.dev)
+	d.must("lock "+d.dev, err)
+	defer unlock()
+	fn()
+}
+
+// create adds the partition want places and returns its path.
+func (d *itDisk) create(want kernelPartition) string {
+	d.t.Helper()
+	part, err := CreatePartition(d.ctx, d.dev, want.start, want.length)
+	d.must("create partition", err)
+	return part
+}
+
+// table fails unless the kernel and both GPT copies list exactly want.
+func (d *itDisk) table(want ...kernelPartition) {
+	d.t.Helper()
+	size, ss, err := diskGeometry(d.dev)
+	d.must("disk geometry", err)
+	kernel, err := kernelPartitions(d.dev)
+	d.must("kernel partitions", err)
+	var gpt []kernelPartition
+	entries := readCopies(d.t, d.dev, ss, size/ss).entries
+	for i := range len(entries) / gptEntrySize {
+		if e := entries[i*gptEntrySize:]; [16]byte(e) != [16]byte{} {
+			first, last := binary.LittleEndian.Uint64(e[32:]), binary.LittleEndian.Uint64(e[40:])
+			gpt = append(gpt, kernelPartition{i + 1, first * ss, (last - first + 1) * ss})
+		}
+	}
+	if !slices.Equal(kernel, want) || !slices.Equal(gpt, want) {
+		d.t.Fatalf("the kernel lists %+v and the GPT %+v, want %+v", kernel, gpt, want)
+	}
+}
+
+// gptBytes reads the first and last 32 KiB of the disk, where the GPT lives.
+func (d *itDisk) gptBytes() []byte {
+	d.t.Helper()
+	size, err := blockDeviceSize(d.dev)
+	d.must("disk size", err)
+	head, tail := diskEdges(d.t, d.dev, size)
+	return append(head, tail...)
+}
+
+// TestPartitionIntegration drives partition management against the real
+// kernel on a loop device, holding the disk's udev lock around each change as
+// the bridge does: initialize, create, format, mount, delete and initialize
+// again. The kernel must refuse to drop a mounted partition and to initialize
+// the disk while a partition is mounted or merely open, leaving the table as
+// it was; in the open case Initialize must give back the partitions it had
+// already dropped. A partition created where a deleted one was must not show
+// the old filesystem. Run it with `make test-btrfs-integration`.
+func TestPartitionIntegration(t *testing.T) {
+	if os.Getenv("LINUXIO_RUN_BTRFS_INTEGRATION") != "1" {
+		t.Skip("set LINUXIO_RUN_BTRFS_INTEGRATION=1 and run as root")
+	}
+	if os.Geteuid() != 0 {
+		t.Fatal("the partition integration test needs root")
+	}
+	dir := t.TempDir()
+	d := &itDisk{t: t, ctx: context.Background(), dev: loopDevice(t, filepath.Join(dir, "disk.img"), 2<<30), mnt: filepath.Join(dir, "mnt")}
+	d.must("create mountpoint", os.Mkdir(d.mnt, 0o755))
+	t.Cleanup(func() { _ = unix.Unmount(d.mnt, 0) })
+	first := kernelPartition{1, 1 << 20, 256 << 20}
+	// Big enough for xfs: MinFormatSize("xfs") is 300 MiB.
+	second := kernelPartition{2, 512 << 20, 512 << 20}
+
+	// 1. Initialize: an empty GPT and no partitions.
+	d.locked(func() {
+		d.must("initialize", InitializeDisk(d.ctx, d.dev))
+		d.table()
+	})
+
+	// 2 and 3. Create two partitions, formatting and mounting p1 right after
+	// the second create under its lock: without the lock, udev would re-read
+	// the table when that create closes the disk and remove p1 under mkfs.
+	// The kernel and both GPT copies then list both partitions.
+	var p1, p2 string
+	d.locked(func() { p1 = d.create(first) })
+	d.locked(func() {
+		p2 = d.create(second)
+		_, err := Format(d.ctx, p1, "ext4", "it", false)
+		d.must("format "+p1, err)
+		d.must("mount "+p1, unix.Mount(p1, d.mnt, "ext4", 0, ""))
+		d.table(first, second)
+	})
+
+	// 4. The kernel refuses to drop the mounted p1, before the table is
+	// touched, and to open it exclusively.
+	d.locked(func() {
+		before := d.gptBytes()
+		d.busy("delete of mounted "+p1, DeletePartition(d.ctx, d.dev, 1))
+		if !bytes.Equal(d.gptBytes(), before) {
+			t.Fatal("the refused delete changed the partition table")
+		}
+	})
+	d.busy("exclusive open of mounted "+p1, CheckNotBusy(p1))
+
+	// 5. Unmounted, p1 is deleted and its node goes.
+	d.must("unmount "+p1, unix.Unmount(d.mnt, 0))
+	d.locked(func() {
+		d.must("delete "+p1, DeletePartition(d.ctx, d.dev, 1))
+		d.table(second)
+	})
+	for i := 0; ; i++ {
+		_, err := os.Stat(p1)
+		if errors.Is(err, os.ErrNotExist) {
+			break
+		}
+		if i == 100 { // waitForNode's 10 s
+			t.Fatalf("%s is still there 10 s after its delete: %v", p1, err)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// 6. A partition created in p1's place starts with zeros, so the old
+	// ext4 superblock is gone.
+	d.locked(func() {
+		part := d.create(first)
+		f, err := os.Open(part)
+		d.must("open "+part, err)
+		defer f.Close()
+		head := make([]byte, edgeWipeBytes)
+		_, err = f.ReadAt(head, 0)
+		d.must("read "+part, err)
+		if !bytes.Equal(head, make([]byte, edgeWipeBytes)) {
+			t.Fatalf("the first %d bytes of the new %s are not zeros", edgeWipeBytes, part)
+		}
+	})
+
+	// 7. Initialize is refused while p2 is mounted and leaves both
+	// partitions. A claimed partition marks its whole disk as claimed too,
+	// so Initialize's exclusive open of the disk is what refuses.
+	fsType := "ext4"
+	if _, err := findCommand("mkfs.xfs"); err == nil {
+		fsType = "xfs"
+	}
+	d.locked(func() {
+		_, err := Format(d.ctx, p2, fsType, "", false)
+		d.must("format "+p2, err)
+		d.must("mount "+p2, unix.Mount(p2, d.mnt, fsType, 0, ""))
+	})
+	d.locked(func() {
+		d.busy("exclusive open of the disk with "+p2+" mounted", CheckNotBusy(d.dev))
+		d.busy("initialize with "+p2+" mounted", InitializeDisk(d.ctx, d.dev))
+		d.table(first, second)
+	})
+	d.must("unmount "+p2, unix.Unmount(d.mnt, 0))
+
+	// 8. With p2 merely open nothing is claimed, so the exclusive open of the
+	// disk succeeds. kernelPartitions lists p1 before p2, so Initialize drops
+	// p1, finds p2 busy and must give p1 back: p1's node is made anew, and
+	// the kernel, both GPT copies and the table bytes are as before.
+	d.locked(func() {
+		f, err := os.Open(p2)
+		d.must("open "+p2, err)
+		defer f.Close()
+		d.must("exclusive open of the disk with "+p2+" open", CheckNotBusy(d.dev))
+		var node, renode unix.Stat_t
+		d.must("stat "+p1, unix.Stat(p1, &node))
+		before := d.gptBytes()
+		d.busy("initialize with "+p2+" open", InitializeDisk(d.ctx, d.dev))
+		for _, part := range []string{p1, p2} {
+			_, err = waitForNode(d.ctx, part)
+			d.must("node of "+part, err)
+		}
+		d.must("stat "+p1, unix.Stat(p1, &renode))
+		if renode.Ino == node.Ino {
+			t.Fatalf("%s kept its node, so Initialize never dropped and re-added it", p1)
+		}
+		d.table(first, second)
+		if !bytes.Equal(d.gptBytes(), before) {
+			t.Fatal("the refused initialize changed the partition table")
+		}
+	})
+
+	// 9. With nothing open, Initialize empties the table.
+	d.locked(func() {
+		d.must("initialize", InitializeDisk(d.ctx, d.dev))
+		d.table()
+	})
 }

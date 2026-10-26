@@ -225,3 +225,34 @@ func TestPruneKeepsNewestOnLastIndexedTie(t *testing.T) {
 		t.Fatalf("prune deleted the just-published generation: latest = %d, want %d", latestAfter, lastID)
 	}
 }
+
+func TestBeginGenerationBypassesFTSTriggersForLargeLeftover(t *testing.T) {
+	skipWithoutFTS(t)
+	ctx, db, dbPath := setupTestDB(t)
+	store := NewStoreWithDB(db, dbPath, nil)
+	if _, err := db.ExecContext(ctx, `INSERT INTO indexes (last_indexed) VALUES (1), (0);`); err != nil {
+		t.Fatalf("insert generations: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i <= ?)
+		INSERT INTO entries (index_id, relative_path, name, size, mod_time, type)
+		SELECT CASE WHEN i = 1 THEN 1 ELSE 2 END, '/file-' || i, 'file-' || i, 1, 1, 'file' FROM n;
+	`, ftsPruneBypassEntries); err != nil {
+		t.Fatalf("insert entries: %v", err)
+	}
+
+	if _, err := store.BeginGeneration(ctx); err != nil {
+		t.Fatalf("begin generation: %v", err)
+	}
+
+	var entries, triggers, matches int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM entries;`).Scan(&entries); err != nil || entries != 1 {
+		t.Fatalf("entries = %d, %v; want 1", entries, err)
+	}
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'entries_fts%';`).Scan(&triggers); err != nil || triggers != len(ftsTriggers) {
+		t.Fatalf("fts triggers = %d, %v; want %d", triggers, err, len(ftsTriggers))
+	}
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM entries_fts WHERE entries_fts MATCH '"file-1"';`).Scan(&matches); err != nil || matches != 1 {
+		t.Fatalf("fts matches = %d, %v; want 1", matches, err)
+	}
+}

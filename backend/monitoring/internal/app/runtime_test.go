@@ -196,7 +196,7 @@ func TestSmartRefreshIntervalStringIsSafeAgainstReloads(t *testing.T) {
 	<-done
 }
 
-func TestFailedSmartRefreshWaitsOneInterval(t *testing.T) {
+func TestCancelledSmartRefreshStaysDue(t *testing.T) {
 	a := &App{smartManager: &smart.Manager{}}
 	a.smartManager.SetRefreshInterval(time.Hour)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -204,8 +204,7 @@ func TestFailedSmartRefreshWaitsOneInterval(t *testing.T) {
 	now := time.Now()
 	require.True(t, a.smartManager.RefreshDue(now))
 	require.Error(t, a.refreshSmart(ctx, now, false))
-	assert.False(t, a.smartManager.RefreshDue(now.Add(time.Minute)))
-	assert.True(t, a.smartManager.RefreshDue(now.Add(time.Hour)))
+	assert.True(t, a.smartManager.RefreshDue(now.Add(time.Minute)))
 }
 
 func TestHistoryIntervalsReachTheStoreAndConfigMeta(t *testing.T) {

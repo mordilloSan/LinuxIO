@@ -2,6 +2,7 @@ package live
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
 	"os/exec"
@@ -35,7 +36,7 @@ func fetchSensorsInfo(ctx context.Context) []monitoringapi.SensorGroup {
 		return nil
 	}
 	var raw map[string]any
-	if err := json.Unmarshal(out, &raw, json.MatchCaseInsensitiveNames(true)); err != nil {
+	if err := json.Unmarshal(out, &raw, json.MatchCaseInsensitiveNames(true), jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true)); err != nil {
 		return nil
 	}
 

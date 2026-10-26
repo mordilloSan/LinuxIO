@@ -2,12 +2,12 @@ import type { CSSProperties, ReactNode } from "react";
 
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
+import { formatFileSize } from "@/utils/formatters";
 
 import type { DriveInfo, SmartData } from "./types";
 
 interface DriveInfoTabProps {
   drive: DriveInfo;
-  rawDriveSize?: string;
   smartData?: SmartData;
 }
 
@@ -32,11 +32,7 @@ const driveInfoColumns: AppVirtualTableColumnDef<DriveInfoRow>[] = [
   },
 ];
 
-export const DriveInfoTab = ({
-  drive,
-  rawDriveSize,
-  smartData,
-}: DriveInfoTabProps) => {
+export const DriveInfoTab = ({ drive, smartData }: DriveInfoTabProps) => {
   const isNvme = drive.transport === "nvme";
   const rows: DriveInfoRow[] = [
     { property: "Model", value: drive.model || "N/A" },
@@ -46,7 +42,7 @@ export const DriveInfoTab = ({
       property: "Firmware Version",
       value: smartData?.firmware_version || "N/A",
     },
-    { property: "Capacity", value: rawDriveSize || "N/A" },
+    { property: "Capacity", value: formatFileSize(drive.sizeBytes) },
     {
       property: "Transport",
       value: drive.transport?.toUpperCase() || "N/A",

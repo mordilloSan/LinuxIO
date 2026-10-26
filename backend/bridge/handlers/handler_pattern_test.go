@@ -177,6 +177,10 @@ func isAllowedBackground(path, funcName string) bool {
 		},
 		"filebrowser/indexer_sync.go": {
 			"runDetachedIndexerUpdate": true,
+			"withIndexerTimeout":       true,
+		},
+		"storage/fstab.go": {
+			"withFstabLock": true, // runs in mount rollback paths that must outlive a cancelled request
 		},
 	}
 	return allowed[filepath.ToSlash(path)][funcName]

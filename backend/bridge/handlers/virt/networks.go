@@ -224,7 +224,7 @@ func validateVMNetworkName(name string) error {
 	if name == "" || name == defaultNetworkName {
 		return nil
 	}
-	if len(name) > 15 || name == "." || name == ".." {
+	if len(name) > 15 || name == "." || name == ".." || strings.HasPrefix(name, "-") {
 		return badRequestf("network name %q is invalid", name)
 	}
 	for _, r := range name {

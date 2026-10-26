@@ -1,6 +1,7 @@
 package wireguard
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -237,10 +238,19 @@ func exportPeerFile(interfaceName string, file peerFile) error {
 	}
 	path := peerConfigPath(interfaceName, file.ID)
 	// The exported file holds the only copy of the client's private key.
-	if _, err := os.Lstat(path); err == nil {
-		return fmt.Errorf("peer config %s already exists", path)
+	// O_EXCL claims the path atomically; writePeerFile then fills it.
+	claim, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("peer config %s already exists", path)
+		}
+		return fmt.Errorf("create peer config: %w", err)
 	}
-	if err := writePeerFile(path, file); err != nil {
+	if err = claim.Close(); err != nil {
+		return fmt.Errorf("create peer config: %w", err)
+	}
+	if err = writePeerFile(path, file); err != nil {
+		_ = os.Remove(path)
 		return err
 	}
 	slog.Debug("wrote peer config", "component", "wireguard", "subsystem", "peer", "interface", interfaceName, "path", path)

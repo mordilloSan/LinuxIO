@@ -1,6 +1,12 @@
 package docker
 
-import "testing"
+import (
+	"errors"
+	"strings"
+	"testing"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+)
 
 func TestVolumePruneOptions(t *testing.T) {
 	tests := []struct {
@@ -21,5 +27,17 @@ func TestVolumePruneOptions(t *testing.T) {
 				t.Fatalf("all option = %v, want %v", opts.All, tt.expectAll)
 			}
 		})
+	}
+}
+
+func TestWithPrunedNamesEarlierSteps(t *testing.T) {
+	failed := errors.New("volume prune failed")
+	if got := withPruned(failed, &apischema.DockerSystemPruneResponse{}); got.Error() != failed.Error() {
+		t.Fatalf("withPruned with nothing pruned = %v, want the original error", got)
+	}
+
+	got := withPruned(failed, &apischema.DockerSystemPruneResponse{ContainersDeleted: []string{"a", "b"}, SpaceReclaimed: 42})
+	if !errors.Is(got, failed) || !strings.Contains(got.Error(), "already pruned: 2 containers, 0 images, 0 networks, 0 volumes, 42 bytes reclaimed") {
+		t.Fatalf("withPruned = %v, want wrapped error naming 2 containers and 42 bytes", got)
 	}
 }

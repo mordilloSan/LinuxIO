@@ -17,7 +17,7 @@ func appConfigToAPI(value userconfig.Settings, storageMode userconfig.StorageMod
 		},
 		Jobs: apischema.JobSettings{
 			ProgressMinIntervalMs: value.Jobs.ProgressMinIntervalMs, NotificationMinIntervalMs: value.Jobs.NotificationMinIntervalMs,
-			ProgressMinBytesMB: value.Jobs.ProgressMinBytesMB, HeavyArchiveConcurrency: value.Jobs.HeavyArchiveConcurrency,
+			ProgressMinBytesMB:        value.Jobs.ProgressMinBytesMB,
 			ArchiveCompressionWorkers: value.Jobs.ArchiveCompressionWorkers, ArchiveExtractWorkers: value.Jobs.ArchiveExtractWorkers,
 		},
 		Assistant:   apischema.AssistantSettings{Agent: value.Assistant.Agent, Defaults: assistantDefaultsToAPI(value.Assistant.Defaults)},

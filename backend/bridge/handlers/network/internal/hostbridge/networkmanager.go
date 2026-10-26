@@ -27,7 +27,7 @@ const (
 	networkManagerSettingsConnection  = "org.freedesktop.NetworkManager.Settings.Connection"
 	networkManagerCheckpointTimeout   = uint32(BridgeHandoffConfirmationTimeout / time.Second)
 	networkManagerCheckpointFlags     = uint32(0x02 | 0x04) // delete new profiles and disconnect new devices on rollback
-	networkManagerAutoconnectPriority = int32(1<<31 - 1)
+	networkManagerAutoconnectPriority = int32(999)
 )
 
 func createNetworkManagerBridge(ctx context.Context, env Environment, plan BridgePlan) (BridgeResult, error) {
@@ -344,7 +344,9 @@ func networkManagerStableIDDependsOnRenamedContext(settings map[string]map[strin
 func networkManagerHandoffSettings(plan BridgeHandoffPlan, memberMAC string, source map[string]map[string]godbus.Variant) (map[string]map[string]godbus.Variant, map[string]map[string]godbus.Variant) {
 	bridge := networkManagerBridgeSettings(plan.Name, uuid.NewV4().String())
 	bridge["connection"]["autoconnect-priority"] = godbus.MakeVariant(networkManagerAutoconnectPriority)
-	bridge["802-3-ethernet"] = map[string]godbus.Variant{"cloned-mac-address": godbus.MakeVariant(memberMAC)}
+	// STP would hold the port for ~30 s, longer than the hand-off verify timeout.
+	bridge["bridge"]["stp"] = godbus.MakeVariant(false)
+	bridge["802-3-ethernet"] = map[string]godbus.Variant{"assigned-mac-address": godbus.MakeVariant(memberMAC)}
 	bridge["ipv4"] = maps.Clone(source["ipv4"])
 	bridge["ipv6"] = maps.Clone(source["ipv6"])
 	pinNetworkManagerDynamicIPv6(bridge["ipv6"])

@@ -2,11 +2,24 @@ package logs
 
 import (
 	"errors"
+	"fmt"
 	"regexp"
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
+
+// linesMatch limits the lines value to "all" or a plain count so it can never
+// be parsed by journalctl as an option after -n.
+var linesMatch = regexp.MustCompile(`^(all|[0-9]{1,6})$`)
+
+func validateLines(lines string) error {
+	if !linesMatch.MatchString(lines) {
+		return fmt.Errorf("%w: lines must be \"all\" or a number", bridgeipc.ErrInvalidArgs)
+	}
+	return nil
+}
 
 // journaldFieldMatch matches journald-style KEY=VALUE operands. The key must
 // start with an uppercase letter or underscore and contain only uppercase
@@ -48,9 +61,6 @@ type generalLogsRequest struct {
 
 func parseGeneralLogsRequest(request apischema.GeneralLogsFollowRequest) generalLogsRequest {
 	req := generalLogsRequest{lines: "100", follow: true}
-	if request.Lines != nil && strings.TrimSpace(*request.Lines) != "" {
-		req.lines = strings.TrimSpace(*request.Lines)
-	}
 	if request.TimePeriod != nil && strings.TrimSpace(*request.TimePeriod) != "" {
 		req.timePeriod = strings.TrimSpace(*request.TimePeriod)
 	}
@@ -61,6 +71,12 @@ func parseGeneralLogsRequest(request apischema.GeneralLogsFollowRequest) general
 		req.identifier = strings.TrimSpace(*request.Identifier)
 	}
 	req.unit, req.invocationID, req.scopeError = parseLogScope(request.Unit, request.InvocationID)
+	if request.Lines != nil && strings.TrimSpace(*request.Lines) != "" {
+		req.lines = strings.TrimSpace(*request.Lines)
+		if linesErr := validateLines(req.lines); linesErr != nil {
+			req.scopeError = linesErr
+		}
+	}
 	if request.Follow != nil {
 		req.follow = *request.Follow
 	}

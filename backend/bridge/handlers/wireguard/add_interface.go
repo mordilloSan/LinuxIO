@@ -27,17 +27,22 @@ type addInterfaceRequest struct {
 }
 
 func AddInterface(ctx context.Context, request apischema.WireGuardAddInterfaceRequest) (any, error) {
+	configMu.Lock()
+	defer configMu.Unlock()
 	req, err := parseAddInterfaceRequest(request)
 	if err != nil {
 		return nil, err
 	}
 
 	// Refuse before anything is written: an existing interface would otherwise
-	// get a new private key and its peers overwritten while possibly still up.
-	if _, statErr := os.Stat(configPath(req.name)); statErr == nil {
-		return nil, fmt.Errorf("%w: interface %s already exists", bridgeipc.ErrConflict, req.name)
-	} else if !errors.Is(statErr, os.ErrNotExist) {
-		return nil, fmt.Errorf("check interface config: %w", statErr)
+	// get a new private key and its peers overwritten while possibly still up,
+	// and a leftover peer directory holds client keys a failed add would wipe.
+	for _, path := range []string{configPath(req.name), peerDirPath(req.name)} {
+		if _, statErr := os.Stat(path); statErr == nil {
+			return nil, fmt.Errorf("%w: interface %s already exists", bridgeipc.ErrConflict, req.name)
+		} else if !errors.Is(statErr, os.ErrNotExist) {
+			return nil, fmt.Errorf("check %s: %w", path, statErr)
+		}
 	}
 
 	var peers []PeerConfig
@@ -63,6 +68,7 @@ func AddInterface(ctx context.Context, request apischema.WireGuardAddInterfaceRe
 
 	// Write main config, including wg-quick NAT hooks for boot persistence.
 	if err := WriteWireGuardConfig(configPath(req.name), cfg); err != nil {
+		_ = os.RemoveAll(peerDirPath(req.name))
 		return nil, fmt.Errorf("write config: %w", err)
 	}
 

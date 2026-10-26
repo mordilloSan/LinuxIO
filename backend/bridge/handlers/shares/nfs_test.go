@@ -2,9 +2,11 @@ package shares
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 
@@ -18,12 +20,13 @@ import (
 // availability gate and exportfs reload, and returns the file path.
 func useTempExports(t *testing.T, initial string) string {
 	t.Helper()
-	origFile, origAvail, origApply := exportsFile, nfsServerAvailable, applyNFSExports
+	origFile, origLock, origAvail, origApply := exportsFile, confLockFile, nfsServerAvailable, applyNFSExports
 	t.Cleanup(func() {
-		exportsFile, nfsServerAvailable, applyNFSExports = origFile, origAvail, origApply
+		exportsFile, confLockFile, nfsServerAvailable, applyNFSExports = origFile, origLock, origAvail, origApply
 	})
 
-	exportsFile = filepath.Join(t.TempDir(), "exports")
+	dir := t.TempDir()
+	exportsFile, confLockFile = filepath.Join(dir, "exports"), filepath.Join(dir, "lock")
 	nfsServerAvailable = func() (bool, error) { return true, nil }
 	applyNFSExports = func(context.Context) error { return nil }
 	if initial != "" {
@@ -77,6 +80,23 @@ func TestCreateNFSShareAppendsOnFreshLine(t *testing.T) {
 	lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
 	require.Len(t, lines, 2)
 	assert.Equal(t, "/srv/a\t*(ro)", lines[0])
+}
+
+func TestAppendToConfFileConcurrentKeepsEveryLine(t *testing.T) {
+	path := useTempExports(t, "")
+
+	const n = 20
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Go(func() {
+			assert.NoError(t, appendToConfFile(context.Background(), path, fmt.Sprintf("/srv/%d\n", i)))
+		})
+	}
+	wg.Wait()
+
+	content, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Equal(t, n, strings.Count(string(content), "\n"))
 }
 
 func TestNFSShareRewriteKeepsOtherLines(t *testing.T) {

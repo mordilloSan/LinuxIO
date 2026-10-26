@@ -33,7 +33,6 @@ type WALCheckpointStats struct {
 // WALCheckpointTruncate checkpoints the WAL and truncates the -wal file.
 // This helps prevent unbounded WAL growth in long-running processes.
 func WALCheckpointTruncate(ctx context.Context, db *sql.DB) (WALCheckpointStats, error) {
-	ctx = ensureContext(ctx)
 	if db == nil {
 		return WALCheckpointStats{}, fmt.Errorf("db is nil")
 	}
@@ -68,7 +67,6 @@ func incrementalVacuum(ctx context.Context, db *sql.DB) error {
 // ReleaseSQLiteMemory forces SQLite to release cached memory.
 // Call this after heavy write operations to return memory to the OS.
 func ReleaseSQLiteMemory(ctx context.Context, db *sql.DB) error {
-	ctx = ensureContext(ctx)
 	if db == nil {
 		return fmt.Errorf("db is nil")
 	}

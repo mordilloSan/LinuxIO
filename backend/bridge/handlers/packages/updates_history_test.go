@@ -19,6 +19,7 @@ func TestApplyDpkgLogLineRecordsNewVersion(t *testing.T) {
 		"2026-10-20 08:15:04 install bar:amd64 <none> 2.0-1",
 		"2026-10-20 08:15:05 configure foo:amd64 1.0-1 <none>",
 		"2026-10-20 08:15:06 status installed foo:amd64 1.0-1",
+		"2026-10-20 08:15:07 install baz:amd64 0.9-1 1.1-1",
 	}
 	history := map[string][]apischema.UpgradeItem{}
 	pending := map[string]string{}
@@ -30,6 +31,7 @@ func TestApplyDpkgLogLineRecordsNewVersion(t *testing.T) {
 	assert.Equal(t, []apischema.UpgradeItem{
 		{Package: "libc6:amd64", Version: "2.36-10"},
 		{Package: "foo:amd64", Version: "1.0-1"},
+		{Package: "baz:amd64", Version: "1.1-1"},
 	}, history["2026-10-20"])
 	assert.Equal(t, map[string]string{"bar:amd64": "2026-10-20"}, pending)
 }

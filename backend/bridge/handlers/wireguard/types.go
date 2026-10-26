@@ -1,5 +1,7 @@
 package wireguard
 
+import "sync"
+
 const (
 	configExt        = ".conf"
 	defaultKeepalive = 25
@@ -7,6 +9,10 @@ const (
 )
 
 var wgConfigDir = "/etc/wireguard"
+
+// configMu serializes the handlers that read-modify-write interface configs
+// and exported peer files.
+var configMu sync.Mutex
 
 type PeerConfig struct {
 	PublicKey           string   `json:"public_key"`

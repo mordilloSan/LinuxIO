@@ -39,6 +39,10 @@ const (
 	// other streams or WebSocket control frames. Message sizes remain unrestricted.
 	streamWriteQueueSize = 16
 	relayReadBufferSize  = 32 * 1024
+
+	// Largest inbound frame: one 32 MiB upload chunk (userconfig ValidChunkSizeMB)
+	// plus stream header. Larger frames close the socket.
+	maxReadMessageSize = 33 << 20
 )
 
 // Stream flags for WebSocket binary protocol
@@ -168,6 +172,7 @@ func AuthMiddleware(sm *sessions.Manager, next http.Handler) http.Handler {
 				slog.Debug("failed to upgrade unauthenticated WebSocket", "error", upgradeErr)
 				return
 			}
+			conn.SetReadLimit(maxReadMessageSize)
 			closeMsg := websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "no-session")
 			if writeErr := conn.WriteControl(websocket.CloseMessage, closeMsg, time.Now().Add(writeWait)); writeErr != nil {
 				slog.Debug("failed to send no-session close", "error", writeErr)
@@ -221,6 +226,7 @@ func RelayHandler(sm *sessions.Manager) http.Handler {
 			slog.Error("WebSocket upgrade failed", "error", err)
 			return
 		}
+		conn.SetReadLimit(maxReadMessageSize)
 
 		relay := newStreamRelay(r.Context(), conn)
 

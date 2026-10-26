@@ -12,6 +12,8 @@ import (
 )
 
 func RemovePeer(ctx context.Context, req apischema.WireGuardPeerRequest) error {
+	configMu.Lock()
+	defer configMu.Unlock()
 	if req.InterfaceName == "" || req.PeerID == "" {
 		return fmt.Errorf("usage: remove_peer <interface> <peerId>")
 	}

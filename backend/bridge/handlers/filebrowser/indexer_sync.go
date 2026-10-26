@@ -123,12 +123,18 @@ func notifyIndexerAfterPatch(ctx context.Context, root *fsroot.FSRoot, req resou
 // that should outlive the request/task which already completed the filesystem change.
 func runDetachedIndexerUpdate(label string, fn func(context.Context) error) {
 	detachedIndexerUpdates.Go(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := fn(ctx); err != nil {
+		if err := withIndexerTimeout(fn); err != nil {
 			slog.Debug("detached indexer update failed", "operation", label, "error", err)
 		}
 	})
+}
+
+// withIndexerTimeout runs one indexer notification under its own deadline,
+// detached from the request or task that finished the filesystem change.
+func withIndexerTimeout(fn func(context.Context) error) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return fn(ctx)
 }
 
 func addToIndexerDetached(label, path string) {
@@ -143,18 +149,18 @@ func reindexDetached(label, path string) {
 	})
 }
 
-// reconcileDetached applies fn to every item inside one detached update. A
-// failing item is logged and skipped so the rest still reach the indexer.
+// reconcileDetached applies fn to every item in one detached goroutine, each
+// under its own timeout. A failing item is logged and skipped so the rest
+// still reach the indexer.
 func reconcileDetached[T any](label string, items []T, fn func(context.Context, T) error) {
 	if len(items) == 0 {
 		return
 	}
-	runDetachedIndexerUpdate(label, func(ctx context.Context) error {
+	detachedIndexerUpdates.Go(func() {
 		for _, item := range items {
-			if err := fn(ctx, item); err != nil {
+			if err := withIndexerTimeout(func(ctx context.Context) error { return fn(ctx, item) }); err != nil {
 				slog.Debug("indexer reconciliation failed", "operation", label, "error", err)
 			}
 		}
-		return nil
 	})
 }

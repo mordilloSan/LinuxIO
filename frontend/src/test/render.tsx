@@ -143,7 +143,6 @@ export function buildTestConfigSnapshots(
     jobs: {
       archiveCompressionWorkers: 0,
       archiveExtractWorkers: 0,
-      heavyArchiveConcurrency: 1,
       notificationMinIntervalMs: 1000,
       progressMinBytesMB: 16,
       progressMinIntervalMs: 250,

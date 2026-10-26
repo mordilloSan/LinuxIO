@@ -13,9 +13,11 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
+	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
 	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
 )
 
@@ -100,7 +102,7 @@ func CreateNFSShare(ctx context.Context, path string, clients []apischema.NFSCli
 		return fmt.Errorf("failed to create directory %s: %w", path, dirErr)
 	}
 
-	if err := appendToConfFile(exportsFile, formatExportLine(path, clients)+"\n"); err != nil {
+	if err := appendToConfFile(ctx, exportsFile, formatExportLine(path, clients)+"\n"); err != nil {
 		return err
 	}
 	slog.Info("NFS export added", "path", path, "count", len(clients))
@@ -118,36 +120,27 @@ func UpdateNFSShare(ctx context.Context, path string, clients []apischema.NFSCli
 		return err
 	}
 
-	content, err := os.ReadFile(exportsFile)
-	if err != nil {
-		return fmt.Errorf("failed to read %s: %w", exportsFile, err)
-	}
-
-	newLine := formatExportLine(path, clients)
-	found := false
-	var newLines []string
-
-	for line := range strings.SplitSeq(string(content), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
-			newLines = append(newLines, line)
-			continue
+	if err := rewriteExports(ctx, path, func(content string) ([]string, bool) {
+		newLine := formatExportLine(path, clients)
+		found := false
+		var newLines []string
+		for line := range strings.SplitSeq(content, "\n") {
+			trimmed := strings.TrimSpace(line)
+			if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+				newLines = append(newLines, line)
+				continue
+			}
+			fields := strings.Fields(trimmed)
+			if len(fields) >= 1 && filepath.Clean(fields[0]) == path {
+				newLines = append(newLines, newLine)
+				found = true
+			} else {
+				newLines = append(newLines, line)
+			}
 		}
-		fields := strings.Fields(trimmed)
-		if len(fields) >= 1 && filepath.Clean(fields[0]) == path {
-			newLines = append(newLines, newLine)
-			found = true
-		} else {
-			newLines = append(newLines, line)
-		}
-	}
-
-	if !found {
-		return fmt.Errorf("export not found for path: %s", path)
-	}
-
-	if err := atomicfile.Write(exportsFile, []byte(strings.Join(newLines, "\n")), 0o644); err != nil {
-		return fmt.Errorf("failed to write %s: %w", exportsFile, err)
+		return newLines, found
+	}); err != nil {
+		return err
 	}
 	slog.Info("NFS export updated", "path", path, "count", len(clients))
 	return applyNFSExports(ctx)
@@ -159,32 +152,23 @@ func DeleteNFSShare(ctx context.Context, path string) error {
 		return err
 	}
 
-	content, err := os.ReadFile(exportsFile)
-	if err != nil {
-		return fmt.Errorf("failed to read %s: %w", exportsFile, err)
-	}
-
-	found := false
-	var newLines []string
-
-	for line := range strings.SplitSeq(string(content), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
-			fields := strings.Fields(trimmed)
-			if len(fields) >= 1 && fields[0] == path {
-				found = true
-				continue
+	if err := rewriteExports(ctx, path, func(content string) ([]string, bool) {
+		found := false
+		var newLines []string
+		for line := range strings.SplitSeq(content, "\n") {
+			trimmed := strings.TrimSpace(line)
+			if trimmed != "" && !strings.HasPrefix(trimmed, "#") {
+				fields := strings.Fields(trimmed)
+				if len(fields) >= 1 && fields[0] == path {
+					found = true
+					continue
+				}
 			}
+			newLines = append(newLines, line)
 		}
-		newLines = append(newLines, line)
-	}
-
-	if !found {
-		return fmt.Errorf("export not found for path: %s", path)
-	}
-
-	if err := atomicfile.Write(exportsFile, []byte(strings.Join(newLines, "\n")), 0o644); err != nil {
-		return fmt.Errorf("failed to write %s: %w", exportsFile, err)
+		return newLines, found
+	}); err != nil {
+		return err
 	}
 	slog.Info("NFS export removed", "path", path)
 	return applyNFSExports(ctx)
@@ -338,20 +322,48 @@ func mkdirShareDir(dir string) error {
 	return nil
 }
 
-// appendToConfFile appends text to path atomically, starting on a fresh line
-// when the existing content does not end with a newline.
-func appendToConfFile(path, text string) error {
-	content, err := os.ReadFile(path)
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("failed to read %s: %w", path, err)
-	}
-	if len(content) > 0 && !bytes.HasSuffix(content, []byte("\n")) {
-		content = append(content, '\n')
-	}
-	if err := atomicfile.Write(path, append(content, text...), 0o644); err != nil {
-		return fmt.Errorf("failed to write %s: %w", path, err)
-	}
-	return nil
+// confLockFile serialises every read-modify-write of smb.conf and
+// /etc/exports; a var so tests can use a temp path.
+var confLockFile = "/run/lock/linuxio-shares.lock"
+
+func withConfLock(ctx context.Context, fn func() error) error {
+	return filelock.RunExclusive(ctx, confLockFile, fn, filelock.WithTimeout(10*time.Second))
+}
+
+// rewriteExports applies edit to /etc/exports under the shares lock.
+func rewriteExports(ctx context.Context, path string, edit func(content string) ([]string, bool)) error {
+	return withConfLock(ctx, func() error {
+		content, err := os.ReadFile(exportsFile)
+		if err != nil {
+			return fmt.Errorf("failed to read %s: %w", exportsFile, err)
+		}
+		newLines, found := edit(string(content))
+		if !found {
+			return fmt.Errorf("export not found for path: %s", path)
+		}
+		if writeErr := atomicfile.Write(exportsFile, []byte(strings.Join(newLines, "\n")), 0o644); writeErr != nil {
+			return fmt.Errorf("failed to write %s: %w", exportsFile, writeErr)
+		}
+		return nil
+	})
+}
+
+// appendToConfFile appends text to path atomically under the shares lock,
+// starting on a fresh line when the existing content does not end with one.
+func appendToConfFile(ctx context.Context, path, text string) error {
+	return withConfLock(ctx, func() error {
+		content, err := os.ReadFile(path)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("failed to read %s: %w", path, err)
+		}
+		if len(content) > 0 && !bytes.HasSuffix(content, []byte("\n")) {
+			content = append(content, '\n')
+		}
+		if writeErr := atomicfile.Write(path, append(content, text...), 0o644); writeErr != nil {
+			return fmt.Errorf("failed to write %s: %w", path, writeErr)
+		}
+		return nil
+	})
 }
 
 // formatExportLine builds a /etc/exports line from path and clients

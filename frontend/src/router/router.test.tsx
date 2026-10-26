@@ -104,7 +104,6 @@ describe("generated application router", () => {
         "/storage/rsync",
         "/storage/shares",
         "/storage/subvolumes",
-        "/storage/topology",
         "/terminal",
         "/updates",
         "/updates/",

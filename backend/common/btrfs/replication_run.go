@@ -360,6 +360,12 @@ func RunReplication(ctx context.Context, jobs []BtrfsReplicationJob) []error {
 	return errs
 }
 
+// ResolveJobAlert clears the alert of a replication job that was deleted or
+// disabled.
+func ResolveJobAlert(ctx context.Context, id string) {
+	resolve(ctx, "replication-"+id)
+}
+
 // RecordReplicationOutcome stores LastRun and LastError on the job with the
 // same ID and raises or resolves its alert. A run skipped as ErrAlreadyRunning
 // records nothing: the run holding the lock records its own outcome.

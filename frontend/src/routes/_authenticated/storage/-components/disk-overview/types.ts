@@ -1,4 +1,4 @@
-import type { DiskPowerData, SmartData } from "@/api";
+import type { DiskPowerData, LiveDiskRates, SmartData } from "@/api";
 
 export type { SmartAttribute, SmartData } from "@/api";
 
@@ -6,6 +6,8 @@ export interface DriveInfo {
   model: string;
   name: string;
   power?: DiskPowerData;
+  /** Live read and write rates; absent while monitoring is unavailable. */
+  rates?: LiveDiskRates;
   ro?: boolean;
   /** Spinning disk; false for SSD and NVMe, absent when unknown. */
   rotational?: boolean;

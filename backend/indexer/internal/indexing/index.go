@@ -112,9 +112,6 @@ func (idx *Index) EnableStreaming(writer StreamingWriter) {
 
 // StartIndexing begins indexing the configured path.
 func (idx *Index) StartIndexing(ctx context.Context) error {
-	if ctx == nil {
-		ctx = context.TODO()
-	}
 	idx.mu.RLock()
 	writer := idx.streamWriter
 	idx.mu.RUnlock()
@@ -142,9 +139,6 @@ func (idx *Index) StartIndexing(ctx context.Context) error {
 // StartIndexingFromPath begins indexing from a specific subdirectory within the configured path.
 // relativePath should be a normalized path like "/home/user" relative to the index root.
 func (idx *Index) StartIndexingFromPath(ctx context.Context, relativePath string) error {
-	if ctx == nil {
-		ctx = context.TODO()
-	}
 	idx.mu.RLock()
 	writer := idx.streamWriter
 	idx.mu.RUnlock()

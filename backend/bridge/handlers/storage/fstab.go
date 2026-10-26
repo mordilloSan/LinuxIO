@@ -2,13 +2,16 @@ package storage
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
+	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
 )
 
 // fstabPath is the system mount table; a var so tests can use a temp file.
@@ -52,6 +55,35 @@ func getFstabEntries() map[string]fstabEntry {
 	return fstabEntries
 }
 
+// fstabSources returns the first field of every fstab line with at least two
+// fields, octal escapes such as \040 decoded, in file order. Unlike
+// getFstabEntries it keeps lines that share a mount point (every swap line
+// has "none").
+func fstabSources() []string {
+	file, err := os.Open(fstabPath)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+
+	var sources []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if fields := strings.Fields(line); len(fields) >= 2 {
+			sources = append(sources, unescapeOctal(fields[0]))
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		// The in-use rule for fstab then misses the lines after the failure.
+		slog.Warn("read fstab sources failed", "error", err)
+	}
+	return sources
+}
+
 // replaceFstabOption returns options without any option starting with prefix,
 // plus replacement appended when it is not empty. Other options keep order.
 func replaceFstabOption(options []string, prefix, replacement string) []string {
@@ -73,6 +105,17 @@ func isFstabComment(line string) bool {
 	return trimmed == "" || strings.HasPrefix(trimmed, "#")
 }
 
+// fstabLockFile serialises every fstab read-modify-write so concurrent adds
+// cannot drop each other's entry; a var so tests can use a temp path.
+var fstabLockFile = "/run/lock/linuxio-fstab.lock"
+
+// withFstabLock runs fn under the fstab lock. It also runs in the rollback
+// paths of a failed mount, which must complete after the request ctx is
+// cancelled, so the wait is bounded by the lock timeout alone.
+func withFstabLock(fn func() error) error {
+	return filelock.RunExclusive(context.Background(), fstabLockFile, fn, filelock.WithTimeout(10*time.Second))
+}
+
 // writeFstab replaces the mount table atomically so a crash or a full disk
 // never leaves it empty or half-written.
 func writeFstab(content string) error {
@@ -81,6 +124,10 @@ func writeFstab(content string) error {
 
 // addToFstab adds an entry to /etc/fstab.
 func addToFstab(source, mountpoint, fstype string, options []string) error {
+	return withFstabLock(func() error { return addToFstabLocked(source, mountpoint, fstype, options) })
+}
+
+func addToFstabLocked(source, mountpoint, fstype string, options []string) error {
 	// Check if entry already exists
 	content, err := os.ReadFile(fstabPath)
 	if err != nil {
@@ -104,7 +151,13 @@ func addToFstab(source, mountpoint, fstype string, options []string) error {
 	if len(options) > 0 {
 		optStr = strings.Join(options, ",")
 	}
-	entry := fmt.Sprintf("%s %s %s %s 0 0\n", source, mountpoint, fstype, optStr)
+	// fstab(5) gives non-root filesystems fsck pass 2; fsck.xfs is a no-op
+	// and btrfs documents 0.
+	pass := 0
+	if fstype == "ext4" {
+		pass = 2
+	}
+	entry := fmt.Sprintf("%s %s %s %s 0 %d\n", source, mountpoint, fstype, optStr, pass)
 
 	existing := string(content)
 	if existing != "" && !strings.HasSuffix(existing, "\n") {
@@ -120,6 +173,10 @@ var fstabField = regexp.MustCompile(`\S+`)
 // are skipped; the first four fields are replaced where they stand, so the
 // original separators, the dump/pass fields and trailing comments survive.
 func updateFstabEntry(mountpoint, source, fstype string, options []string) error {
+	return withFstabLock(func() error { return updateFstabEntryLocked(mountpoint, source, fstype, options) })
+}
+
+func updateFstabEntryLocked(mountpoint, source, fstype string, options []string) error {
 	file, err := os.Open(fstabPath)
 	if err != nil {
 		return err
@@ -170,6 +227,10 @@ func updateFstabEntry(mountpoint, source, fstype string, options []string) error
 
 // removeFromFstab removes an entry from /etc/fstab.
 func removeFromFstab(mountpoint string) error {
+	return withFstabLock(func() error { return removeFromFstabLocked(mountpoint) })
+}
+
+func removeFromFstabLocked(mountpoint string) error {
 	file, err := os.Open(fstabPath)
 	if err != nil {
 		return err

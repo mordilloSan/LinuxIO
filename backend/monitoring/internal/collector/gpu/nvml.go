@@ -72,6 +72,9 @@ type nvmlProcessUtilization struct {
 	DecUtil   uint32
 }
 
+// nvmlPciInfo is the v3 nvmlPciInfo_t layout (68 bytes). Older ABIs write a
+// prefix of it (the v1/v2 struct ends in four reserved uints), so this buffer is
+// large enough for whichever nvmlDeviceGetPciInfo the library exports.
 type nvmlPciInfo struct {
 	BusId          [16]byte
 	Domain         uint32
@@ -79,6 +82,7 @@ type nvmlPciInfo struct {
 	Device         uint32
 	PciDeviceId    uint32
 	PciSubSystemId uint32
+	BusIdV3        [32]byte
 }
 
 // NVML function signatures

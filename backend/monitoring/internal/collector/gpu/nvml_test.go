@@ -33,6 +33,9 @@ func TestNVMLProcessABISizes(t *testing.T) {
 	if got := unsafe.Sizeof(nvmlProcessInfoV2{}); got != 24 {
 		t.Fatalf("nvmlProcessInfoV2 size = %d, want 24", got)
 	}
+	if got := unsafe.Sizeof(nvmlPciInfo{}); got != 68 {
+		t.Fatalf("nvmlPciInfo size = %d, want 68 (v3 layout, the largest ABI)", got)
+	}
 	if got := unsafe.Sizeof(nvmlProcessUtilization{}); got != 32 {
 		t.Fatalf("nvmlProcessUtilization size = %d, want 32", got)
 	}

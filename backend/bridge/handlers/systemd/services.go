@@ -39,6 +39,31 @@ func ListServices(ctx context.Context) ([]ServiceStatus, error) {
 	return services, err
 }
 
+// ListServiceStates lists services with the name, description and states
+// that ListUnits already returns, skipping the per-unit property reads.
+func ListServiceStates(ctx context.Context) ([]ServiceStatus, error) {
+	var services []ServiceStatus
+	err := dbusclient.SystemdManager.UseSession(ctx, func(session dbusclient.SystemSession) error {
+		entries, err := listUnitsBySuffix(session, ".service")
+		if err != nil {
+			return err
+		}
+		services = make([]ServiceStatus, len(entries))
+		for i, entry := range entries {
+			services[i] = ServiceStatus{
+				Name:          entry.Name,
+				Description:   entry.Description,
+				LoadState:     entry.LoadState,
+				ActiveState:   entry.ActiveState,
+				SubState:      entry.SubState,
+				UnitFileState: entry.UnitFileState,
+			}
+		}
+		return nil
+	})
+	return services, err
+}
+
 func fetchServiceStatus(session dbusclient.SystemSession, entry listedUnit) ServiceStatus {
 	service := ServiceStatus{
 		Name:          entry.Name,

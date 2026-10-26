@@ -53,7 +53,6 @@ func RetryOnceIfClosed(ctx context.Context, do func() error) error {
 	if do == nil {
 		return fmt.Errorf("nil D-Bus retry callback")
 	}
-	ctx = requireContext(ctx)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -76,7 +75,6 @@ func UseSystemBusWithOptions(ctx context.Context, opts SystemBusOptions, fn func
 		return fmt.Errorf("nil D-Bus callback")
 	}
 
-	ctx = requireContext(ctx)
 	if opts.Timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
@@ -226,13 +224,6 @@ func useSystemBusOnce(ctx context.Context, subsystem string, fn func(context.Con
 	defer closeSystemBus(conn, subsystem)
 
 	return fn(ctx, conn)
-}
-
-func requireContext(ctx context.Context) context.Context {
-	if ctx == nil {
-		panic("dbusclient: nil context")
-	}
-	return ctx
 }
 
 func waitBeforeRetry(ctx context.Context) error {

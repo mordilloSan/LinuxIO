@@ -83,6 +83,9 @@ type batchIndexerUpdate struct {
 	dest     string
 	info     os.FileInfo
 	replaced bool
+	// partial marks a move that stopped with part of the directory moved:
+	// the source still exists, so both sides are rescanned.
+	partial bool
 }
 
 // planBatchTransfer validates each source, computes its destination directory
@@ -222,12 +225,10 @@ func runBatchTransferTask(ctx context.Context, task *bridgeipc.Task, store *user
 	// into a single aggregate bar instead of resetting per file.
 	opts := newTaskPhaseCallbacks(ctx, task, store, knownSize(grandTotal), phase)
 
-	succeeded, failures, updates, err := executeBatchTransfer(ctx, root, items, overwrite, opts, action, transfer, failures)
-	if err != nil {
-		return FileBatchResult{}, err
-	}
-	if err := root.Close(); err != nil {
-		slog.Debug("failed to close filesystem root", "error", err)
+	// An aborted batch still returns what it finished, so the index matches.
+	succeeded, failures, updates, execErr := executeBatchTransfer(ctx, root, items, overwrite, opts, action, transfer, failures)
+	if closeErr := root.Close(); closeErr != nil {
+		slog.Debug("failed to close filesystem root", "error", closeErr)
 	}
 	rootClosed = true
 	reconcileDetached(action+"_batch", updates, func(ctx context.Context, update batchIndexerUpdate) error {
@@ -236,6 +237,9 @@ func runBatchTransferTask(ctx context.Context, task *bridgeipc.Task, store *user
 		}
 		return nil
 	})
+	if execErr != nil {
+		return FileBatchResult{}, execErr
+	}
 
 	slog.Info("batch operation complete", "action", action, "total", len(req.Sources), "succeeded", succeeded, "failed", len(failures))
 	return batchResult(len(req.Sources), succeeded, failures), nil
@@ -246,11 +250,16 @@ func executeBatchTransfer(ctx context.Context, root *fsroot.FSRoot, items []batc
 	updates := make([]batchIndexerUpdate, 0, len(items))
 	for _, item := range items {
 		if ctx.Err() != nil {
-			return 0, failures, nil, abortErr(ctx)
+			return succeeded, failures, updates, abortErr(ctx)
 		}
 		err := transfer(item, opts, overwrite)
+		if err != nil && action == "move" {
+			if update, ok := partialMoveUpdate(root, item); ok {
+				updates = append(updates, update)
+			}
+		}
 		if errors.Is(err, services.ErrAborted) {
-			return 0, failures, nil, abortErr(ctx)
+			return succeeded, failures, updates, abortErr(ctx)
 		}
 		if err != nil {
 			slog.Debug("batch item failed", "action", action, "source", item.source, "destination", item.dest, "error", err)
@@ -263,6 +272,18 @@ func executeBatchTransfer(ctx context.Context, root *fsroot.FSRoot, items []batc
 		}
 	}
 	return succeeded, failures, updates, nil
+}
+
+// partialMoveUpdate reports a failed or aborted directory move that left both
+// the source and the destination directory in place: a merge moves the regular
+// children before it fails on a skipped special file, so the index must follow.
+func partialMoveUpdate(root *fsroot.FSRoot, item batchTransferItem) (batchIndexerUpdate, bool) {
+	srcInfo, srcErr := root.Root.Lstat(fsroot.ToRel(item.source))
+	destInfo, destErr := root.Root.Lstat(fsroot.ToRel(item.dest))
+	if srcErr != nil || destErr != nil || !srcInfo.IsDir() || !destInfo.IsDir() {
+		return batchIndexerUpdate{}, false
+	}
+	return batchIndexerUpdate{source: item.source, dest: item.dest, info: destInfo, partial: true}, true
 }
 
 // runCopyBatchTask copies many sources into one destination directory as a single
@@ -281,6 +302,9 @@ func runMoveBatchTask(ctx context.Context, task *bridgeipc.Task, store *userconf
 	return runBatchTransferTask(ctx, task, store, req, "move", "moving", func(item batchTransferItem, opts *services.OperationCallbacks, overwrite bool) error {
 		return services.MoveFileWithCallbacks(item.source, item.dest, overwrite, opts, moveFileOptions(item.size))
 	}, func(ctx context.Context, update batchIndexerUpdate) error {
+		if update.partial {
+			return errors.Join(requestIndexerReindex(ctx, update.source), requestIndexerReindex(ctx, update.dest))
+		}
 		return movePathInIndexer(ctx, update.source, update.dest, update.replaced, func() (os.FileInfo, error) {
 			return update.info, nil
 		})
@@ -384,6 +408,15 @@ func runDeleteBatchTask(ctx context.Context, task *bridgeipc.Task, store *userco
 	var processed int64
 	succeeded := 0
 	updates := make([]string, 0, len(items))
+	// A cancelled batch still reconciles the items it already deleted.
+	defer func() {
+		reconcileDetached("delete_batch", updates, func(ctx context.Context, path string) error {
+			if err := deleteFromIndexer(ctx, path); err != nil {
+				return fmt.Errorf("%s: %w", path, err)
+			}
+			return nil
+		})
+	}()
 
 	for _, item := range items {
 		if ctx.Err() != nil {
@@ -405,12 +438,6 @@ func runDeleteBatchTask(ctx context.Context, task *bridgeipc.Task, store *userco
 
 		updates = append(updates, item.path)
 	}
-	reconcileDetached("delete_batch", updates, func(ctx context.Context, path string) error {
-		if err := deleteFromIndexer(ctx, path); err != nil {
-			return fmt.Errorf("%s: %w", path, err)
-		}
-		return nil
-	})
 
 	slog.Info("batch delete complete", "total", len(req.Paths), "succeeded", succeeded, "failed", len(failures), "processed", processed)
 	return batchResult(len(req.Paths), succeeded, failures), nil

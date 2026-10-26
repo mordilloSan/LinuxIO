@@ -284,15 +284,6 @@ export function groupDockerLogRows(entries: DockerLogEntry[]): DockerLogRow[] {
   return rows;
 }
 
-/** Deterministic hue for a container name so its badge colour is stable across sessions. */
-export function dockerLogHue(name: string): number {
-  let hash = 0;
-  for (const char of name) {
-    hash = (hash * 31 + (char.codePointAt(0) ?? 0)) >>> 0;
-  }
-  return hash % 360;
-}
-
 export function formatDockerLogTime(ts: string): string {
   if (!ts) return "";
   const date = new Date(ts);

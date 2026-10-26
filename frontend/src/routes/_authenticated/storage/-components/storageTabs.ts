@@ -4,7 +4,6 @@ export const STORAGE_TABS = [
   { label: "Disks", to: "/storage" },
   { label: "LVM", to: "/storage/lvm" },
   { label: "Subvolumes", to: "/storage/subvolumes" },
-  { label: "Topology", to: "/storage/topology" },
   { label: "Shares", to: "/storage/shares" },
   { label: "Mounts", to: "/storage/mounts" },
   { label: "rsync", to: "/storage/rsync" },

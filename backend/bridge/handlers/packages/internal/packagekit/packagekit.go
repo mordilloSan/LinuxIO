@@ -41,9 +41,6 @@ func Run(ctx context.Context, opts OperationOptions, fn func(ClientSession) erro
 	if fn == nil {
 		return fmt.Errorf("nil PackageKit callback")
 	}
-	if ctx == nil {
-		return fmt.Errorf("nil context")
-	}
 	if opts.Timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
@@ -67,9 +64,6 @@ func Run(ctx context.Context, opts OperationOptions, fn func(ClientSession) erro
 }
 
 func withOperationGate(ctx context.Context, fn func() error) error {
-	if ctx == nil {
-		return fmt.Errorf("nil context")
-	}
 	if fn == nil {
 		return fmt.Errorf("nil PackageKit gate callback")
 	}
@@ -145,9 +139,6 @@ func (t *Transaction) AwaitFinished(ctx context.Context, action string) error {
 }
 
 func AwaitFinished(ctx context.Context, signals <-chan *dbusclient.Signal, action string) error {
-	if ctx == nil {
-		return fmt.Errorf("nil context")
-	}
 	for {
 		select {
 		case sig := <-signals:
@@ -171,9 +162,6 @@ func AwaitFinished(ctx context.Context, signals <-chan *dbusclient.Signal, actio
 var ErrSignalsClosed = errors.New("PackageKit signal channel closed")
 
 func CollectPackageIDs(ctx context.Context, signals <-chan *dbusclient.Signal, action string) ([]string, error) {
-	if ctx == nil {
-		return nil, fmt.Errorf("nil context")
-	}
 	var packageIDs []string
 	for {
 		select {

@@ -57,14 +57,26 @@ func TestCoreExplicitFalseAndZeroSurviveValidatedRoundTrip(t *testing.T) {
 	cfg := defaultSettings(base)
 	cfg.AppSettings.ShowHiddenFiles = false
 	cfg.AppSettings.ChunkSizeMB = 0
-	cfg.Jobs.HeavyArchiveConcurrency = 0
+	cfg.Jobs.ProgressMinBytesMB = 0
 	require.NoError(t, writeCoreConfig(path, *cfg))
 
 	reloaded, err := readCoreLatest(path, base)
 	require.NoError(t, err)
 	require.False(t, reloaded.AppSettings.ShowHiddenFiles)
 	require.Zero(t, reloaded.AppSettings.ChunkSizeMB)
-	require.Zero(t, reloaded.Jobs.HeavyArchiveConcurrency)
+	require.Zero(t, reloaded.Jobs.ProgressMinBytesMB)
+}
+
+func TestParseCoreConfigAcceptsRemovedHeavyArchiveConcurrency(t *testing.T) {
+	base := t.TempDir()
+	cfg, err := parseCoreConfig([]byte("jobs:\n  heavyArchiveConcurrency: 4\n  progressMinBytesMB: 3\n"), base)
+	require.NoError(t, err)
+	require.Equal(t, 3, cfg.Jobs.ProgressMinBytesMB)
+	require.Nil(t, cfg.Jobs.LegacyHeavyArchiveConcurrency)
+
+	out, err := yaml.Marshal(cfg)
+	require.NoError(t, err)
+	require.NotContains(t, string(out), "heavyArchiveConcurrency")
 }
 
 func TestInitializeCreatesMissingFilesIndependently(t *testing.T) {

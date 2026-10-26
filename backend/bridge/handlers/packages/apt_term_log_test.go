@@ -61,6 +61,22 @@ func TestAptTermLogRelaysOnlyNewCompleteTerminalLines(t *testing.T) {
 	}
 }
 
+func TestAptTermLogKeepsLinesEndingInCRLF(t *testing.T) {
+	writer := useTempAptTermLog(t, "")
+	termLog := openAptTermLog()
+	if termLog == nil {
+		t.Fatal("openAptTermLog returned nil for a readable log")
+	}
+	defer termLog.Close()
+
+	if _, err := writer.WriteString("Unpacking gh (2.103.2) ...\r\n(Reading database ... 5%\r(Reading database ... 100%\r\n"); err != nil {
+		t.Fatalf("append term.log: %v", err)
+	}
+	if got, want := termLog.lines(), []string{"Unpacking gh (2.103.2) ...", "(Reading database ... 100%"}; !slices.Equal(got, want) {
+		t.Fatalf("lines = %#v, want %#v", got, want)
+	}
+}
+
 func TestOpenAptTermLogWithoutLogDisablesOutput(t *testing.T) {
 	previous := aptTermLogPath
 	aptTermLogPath = filepath.Join(t.TempDir(), "missing.log")

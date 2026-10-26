@@ -27,12 +27,12 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useLiveStream } from "@/hooks/useLiveStream";
 import { copyToClipboard } from "@/utils/clipboard";
 import { getContainerName } from "@/utils/dockerContainer";
+import { logSourceHue } from "@/utils/logHue";
 
 import {
   DOCKER_LOG_BUFFER_LIMIT,
   type DockerLogEntry,
   type DockerLogRow,
-  dockerLogHue,
   formatDockerLogTime,
   groupDockerLogRows,
   mergeDockerLogEntries,
@@ -41,6 +41,7 @@ import {
   stageDockerLogEntries,
 } from "./dockerLogs";
 
+import "@/components/tables/log-row.css";
 import "./docker-logs.css";
 
 const INITIAL_SILENCE_TIMEOUT_MS = 1500;
@@ -229,7 +230,7 @@ const DockerLogsPage = ({
           row.original.position === "middle" ||
           row.original.position === "end" ? null : (
             <AppTypography
-              className="docker-logs__time"
+              className="log-time"
               color="text.secondary"
               noWrap
               title={row.original.ts}
@@ -257,7 +258,7 @@ const DockerLogsPage = ({
               enableSorting: false,
               cell: ({ row }) => (
                 <Chip
-                  className="docker-logs__source"
+                  className="log-source"
                   label={row.original.name}
                   onClick={(event) => {
                     event.stopPropagation();
@@ -266,7 +267,7 @@ const DockerLogsPage = ({
                   size="xsmall"
                   style={
                     {
-                      "--docker-log-hue": dockerLogHue(row.original.name),
+                      "--log-hue": logSourceHue(row.original.name),
                     } as CSSProperties
                   }
                   title={`Show only ${row.original.name} (${row.original.id})`}
@@ -286,7 +287,7 @@ const DockerLogsPage = ({
         enableSorting: false,
         cell: ({ row }) => (
           <span
-            className="docker-logs__level"
+            className="log-level"
             data-level={row.original.level}
             data-position={row.original.position}
             title={
@@ -295,7 +296,7 @@ const DockerLogsPage = ({
           />
         ),
         meta: {
-          cellClassName: "docker-logs__level-cell",
+          cellClassName: "log-level-cell",
           getCellRenderKey: (row) => [
             (row as DockerLogRow).seq,
             (row as DockerLogRow).level,
@@ -309,7 +310,7 @@ const DockerLogsPage = ({
         header: "Message",
         enableSorting: false,
         cell: ({ row }) => (
-          <AppTypography className="docker-logs__line" variant="body2">
+          <AppTypography className="log-line" variant="body2">
             {parseDockerLogAnsi(row.original.line).map((segment, index) =>
               segment.color || segment.bold ? (
                 <span

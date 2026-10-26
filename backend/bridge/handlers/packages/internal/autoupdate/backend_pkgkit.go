@@ -11,6 +11,9 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
 )
 
+// offlineDownloadTimeout mirrors packages.packageKitTransactionTimeout, which this package cannot import.
+const offlineDownloadTimeout = 30 * time.Minute
+
 type pkgkitBackend struct{}
 
 var errNoUpdates = errors.New("no updates available")
@@ -18,7 +21,7 @@ var errNoUpdates = errors.New("no updates available")
 func newPkgKitBackend() *pkgkitBackend         { return &pkgkitBackend{} }
 func (*pkgkitBackend) Name() AutoUpdateBackend { return "packagekit" }
 func (*pkgkitBackend) Detect(ctx context.Context) bool {
-	if ctx == nil || ctx.Err() != nil {
+	if ctx.Err() != nil {
 		return false
 	}
 	ok, err := dbusclient.PackageKit.Available(ctx)
@@ -145,7 +148,7 @@ func downloadPackageKitUpdates(ctx context.Context, session packagekit.ClientSes
 		return err
 	}
 
-	waitCtx, cancel := context.WithTimeout(ctx, 300*time.Second)
+	waitCtx, cancel := context.WithTimeout(ctx, offlineDownloadTimeout)
 	defer cancel()
 	if err := trans.AwaitFinished(waitCtx, "UpdatePackages"); err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {

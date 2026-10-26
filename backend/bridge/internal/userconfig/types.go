@@ -136,9 +136,13 @@ type PersistedJobSettings struct {
 	ProgressMinIntervalMs     int `json:"progressMinIntervalMs" yaml:"progressMinIntervalMs"`
 	NotificationMinIntervalMs int `json:"notificationMinIntervalMs" yaml:"notificationMinIntervalMs"`
 	ProgressMinBytesMB        int `json:"progressMinBytesMB" yaml:"progressMinBytesMB"`
-	HeavyArchiveConcurrency   int `json:"heavyArchiveConcurrency" yaml:"heavyArchiveConcurrency"`
 	ArchiveCompressionWorkers int `json:"archiveCompressionWorkers" yaml:"archiveCompressionWorkers"`
 	ArchiveExtractWorkers     int `json:"archiveExtractWorkers" yaml:"archiveExtractWorkers"`
+
+	// LegacyHeavyArchiveConcurrency is the removed archive concurrency limit.
+	// Strict decoding rejects unknown keys, so old files are still accepted;
+	// parseCoreConfig discards the value and it is never written back.
+	LegacyHeavyArchiveConcurrency *int `json:"-" yaml:"heavyArchiveConcurrency,omitempty"`
 }
 
 // Accepted UIPreferences.NavigationMode values.

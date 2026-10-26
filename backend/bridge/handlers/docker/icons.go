@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -490,6 +491,9 @@ func GetIcon(ctx context.Context, identifier string) ([]byte, error) {
 	if iconType == IconTypeFile {
 		// User files are never fetched or cached.
 		data, err := os.ReadFile(filepath.Join(userIconsDir, value))
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, fmt.Errorf("user icon %q: %w", value, bridgeipc.ErrNotFound)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("failed to read user icon: %w", err)
 		}
@@ -563,7 +567,7 @@ func fetchIconData(ctx context.Context, iconType IconType, value string) ([]byte
 	case IconTypeDerived:
 		return fetchDerivedIcon(ctx, value)
 	default:
-		return nil, iconType, fmt.Errorf("unknown icon type: %s", iconType)
+		return nil, iconType, fmt.Errorf("unknown icon type %q: %w", iconType, bridgeipc.ErrNotFound)
 	}
 }
 

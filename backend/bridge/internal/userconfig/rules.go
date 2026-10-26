@@ -84,7 +84,6 @@ func ValidateJobSettings(jobs PersistedJobSettings) []string {
 		{"jobs.progressMinIntervalMs", jobs.ProgressMinIntervalMs},
 		{"jobs.notificationMinIntervalMs", jobs.NotificationMinIntervalMs},
 		{"jobs.progressMinBytesMB", jobs.ProgressMinBytesMB},
-		{"jobs.heavyArchiveConcurrency", jobs.HeavyArchiveConcurrency},
 		{"jobs.archiveCompressionWorkers", jobs.ArchiveCompressionWorkers},
 		{"jobs.archiveExtractWorkers", jobs.ArchiveExtractWorkers},
 	} {

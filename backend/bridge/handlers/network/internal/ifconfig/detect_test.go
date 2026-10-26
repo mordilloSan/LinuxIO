@@ -69,3 +69,18 @@ func TestReadConfigBestEffortTreatsMissingBackendAsUnavailable(t *testing.T) {
 		t.Fatal("ReadConfigBestEffort reported config for unsupported interface")
 	}
 }
+
+func TestOpenBackendRejectsUnsafeInterfaceNames(t *testing.T) {
+	env, _, _ := testEnv(t)
+	for _, name := range []string{"x/../../y", "-eth0", "eth 0", "eth\n0", "abcdefghijklmnop"} {
+		_, err := OpenBackend(env, name)
+		if err == nil || errors.Is(err, ErrUnsupportedBackend) {
+			t.Fatalf("OpenBackend(%q) = %v, want invalid name error", name, err)
+		}
+	}
+	for _, name := range []string{"eth0.100", "eth0:1"} {
+		if _, err := OpenBackend(env, name); !errors.Is(err, ErrUnsupportedBackend) {
+			t.Fatalf("OpenBackend(%q) = %v, want unsupported backend", name, err)
+		}
+	}
+}
