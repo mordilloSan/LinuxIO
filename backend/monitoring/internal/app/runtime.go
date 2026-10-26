@@ -107,7 +107,7 @@ func (a *App) StartContext(ctx context.Context, opts RunOptions) error {
 	a.setRuntimeConfig(opts.CollectorInterval, opts.SmartRefreshInterval, opts.HistoryRetention, historyPlugins, opts.HistoryIntervals, opts.ConfigPath, opts.ConfigSource, opts.ConfigVersion)
 	a.applyDiskUsageCache(opts.DiskUsageCache)
 
-	persistentStore, err := store.OpenStore(a.dataDir, store.Options{HistoryPlugins: historyPlugins, HistoryEvery: historyEvery, HistoryRetention: opts.HistoryRetention})
+	persistentStore, err := store.OpenStore(ctx, a.dataDir, store.Options{HistoryPlugins: historyPlugins, HistoryEvery: historyEvery, HistoryRetention: opts.HistoryRetention})
 	if err != nil {
 		return err
 	}
@@ -408,13 +408,13 @@ func (a *App) collectAndPersist(ctx context.Context, now time.Time) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := a.store.WriteSnapshot(capturedAt, data); err != nil {
+	if err := a.store.WriteSnapshot(ctx, capturedAt, data); err != nil {
 		return err
 	}
 	a.lastCollectedMs.Store(capturedAt)
 	a.rememberTelemetry(data.ContainerTelemetry, time.UnixMilli(capturedAt))
 
-	if err := a.store.RunMaintenance(now); err != nil {
+	if err := a.store.RunMaintenance(ctx, now); err != nil {
 		return fmt.Errorf("maintenance failed: %w", err)
 	}
 	// Collection builds large transient process/network snapshots; release them
@@ -454,7 +454,7 @@ func (a *App) refreshSmart(ctx context.Context, now time.Time, forceScan bool) e
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		return a.store.WriteSmartDevices(now.UnixMilli(), map[string]smartmodel.SmartData{})
+		return a.store.WriteSmartDevices(ctx, now.UnixMilli(), map[string]smartmodel.SmartData{})
 	}
 
 	refreshErr := a.smartManager.Refresh(ctx, forceScan)
@@ -469,7 +469,7 @@ func (a *App) refreshSmart(ctx context.Context, now time.Time, forceScan bool) e
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return a.store.WriteSmartDevices(now.UnixMilli(), a.smartManager.GetCurrentData())
+	return a.store.WriteSmartDevices(ctx, now.UnixMilli(), a.smartManager.GetCurrentData())
 }
 
 func (a *App) Listeners() []monitoringapi.ListenerMeta {
@@ -524,24 +524,21 @@ func (a *App) StatusMeta() monitoringapi.Status {
 	}
 }
 
-func (a *App) CheckDatabase() error {
+func (a *App) CheckDatabase(ctx context.Context) error {
 	if a.store == nil {
 		return errors.New("database not open")
 	}
-	return a.store.IntegrityCheck()
+	return a.store.IntegrityCheck(ctx)
 }
 
 func (a *App) MaintainDatabase(ctx context.Context) error {
 	if a.store == nil {
 		return errors.New("database not open")
 	}
-	if err := ctx.Err(); err != nil {
+	if err := a.store.RunMaintenance(ctx, time.Now().UTC()); err != nil {
 		return err
 	}
-	if err := a.store.RunMaintenance(time.Now().UTC()); err != nil {
-		return err
-	}
-	return a.store.IntegrityCheck()
+	return a.store.IntegrityCheck(ctx)
 }
 
 func (a *App) CollectorInterval() time.Duration {

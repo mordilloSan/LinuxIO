@@ -74,7 +74,7 @@ func (e *commandExecutor) ExecuteCommand(ctx context.Context, req monitoringapi.
 		}
 		return commandOK(req, monitoringapi.MonitoringSmartRefreshResult{Refreshed: true}, false)
 	case monitoringapi.CommandDBCheck:
-		if err := e.app.CheckDatabase(); err != nil {
+		if err := e.app.CheckDatabase(ctx); err != nil {
 			return commandError(req, http.StatusInternalServerError, "db_check_failed", err.Error())
 		}
 		return commandOK(req, monitoringapi.MonitoringDatabaseResult{Path: e.app.StatusMeta().DBPath}, false)

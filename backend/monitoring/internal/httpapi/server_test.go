@@ -115,13 +115,13 @@ func newHTTPTestServer(t *testing.T) *Server {
 	t.Helper()
 
 	tmpDir := t.TempDir()
-	store, err := storepkg.OpenStore(tmpDir)
+	store, err := storepkg.OpenStore(t.Context(), tmpDir)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 
 	capturedAt := time.Now().UTC().UnixMilli()
 	data := storetest.SampleCombinedData(55)
-	require.NoError(t, store.WriteSnapshot(capturedAt, data))
+	require.NoError(t, store.WriteSnapshot(t.Context(), capturedAt, data))
 
 	payloads := make(map[string]jsontext.Value)
 	for name, payload := range plugins.Snapshot(data) {
@@ -186,12 +186,12 @@ func TestHandlerForSeparatesMetricsAndCommandAPIs(t *testing.T) {
 
 func TestCurrentRoutesUseCurrentReaderAndHistoryUsesStore(t *testing.T) {
 	tmpDir := t.TempDir()
-	store, err := storepkg.OpenStore(tmpDir)
+	store, err := storepkg.OpenStore(t.Context(), tmpDir)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 
 	capturedAt := time.Now().UTC().UnixMilli()
-	require.NoError(t, store.WriteSnapshot(capturedAt, storetest.SampleCombinedData(55)))
+	require.NoError(t, store.WriteSnapshot(t.Context(), capturedAt, storetest.SampleCombinedData(55)))
 
 	current := &fakeCurrentReader{
 		capturedAt: 123,
@@ -230,7 +230,7 @@ func TestCurrentRoutesUseCurrentReaderAndHistoryUsesStore(t *testing.T) {
 
 func TestMetaReportsActiveStoreRetention(t *testing.T) {
 	tmpDir := t.TempDir()
-	store, err := storepkg.OpenStore(tmpDir, storepkg.Options{
+	store, err := storepkg.OpenStore(t.Context(), tmpDir, storepkg.Options{
 		HistoryPlugins:   plugins.DefaultHistory(),
 		HistoryRetention: 14 * 24 * time.Hour,
 	})
@@ -253,12 +253,12 @@ func TestMetaReportsActiveStoreRetention(t *testing.T) {
 
 func TestHistoryRoutesReflectUpdatedHistoryAllowlist(t *testing.T) {
 	tmpDir := t.TempDir()
-	store, err := storepkg.OpenStore(tmpDir, storepkg.Options{HistoryPlugins: []string{plugins.CPU}})
+	store, err := storepkg.OpenStore(t.Context(), tmpDir, storepkg.Options{HistoryPlugins: []string{plugins.CPU}})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 
 	capturedAt := time.Now().UTC().UnixMilli()
-	require.NoError(t, store.WriteSnapshot(capturedAt, storetest.SampleCombinedData(55)))
+	require.NoError(t, store.WriteSnapshot(t.Context(), capturedAt, storetest.SampleCombinedData(55)))
 
 	server := NewServer(Options{
 		Metrics: store,
@@ -279,7 +279,7 @@ func TestHistoryRoutesReflectUpdatedHistoryAllowlist(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, disabledRec.Code)
 
 	store.SetHistoryPlugins([]string{plugins.CPU, plugins.Swap})
-	require.NoError(t, store.WriteSnapshot(capturedAt+1, storetest.SampleCombinedData(60)))
+	require.NoError(t, store.WriteSnapshot(t.Context(), capturedAt+1, storetest.SampleCombinedData(60)))
 
 	pluginsReq = httptest.NewRequest(http.MethodGet, "/api/v1/plugins", nil)
 	pluginsRec = httptest.NewRecorder()
@@ -296,13 +296,13 @@ func TestHistoryRoutesReflectUpdatedHistoryAllowlist(t *testing.T) {
 
 func TestHistoryQueryValidationAndLimit(t *testing.T) {
 	tmpDir := t.TempDir()
-	store, err := storepkg.OpenStore(tmpDir, storepkg.Options{HistoryPlugins: []string{plugins.CPU}})
+	store, err := storepkg.OpenStore(t.Context(), tmpDir, storepkg.Options{HistoryPlugins: []string{plugins.CPU}})
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 
 	start := time.Now().UTC().Truncate(time.Millisecond)
 	for i := range 3 {
-		require.NoError(t, store.WriteSnapshot(start.Add(time.Duration(i)*time.Millisecond).UnixMilli(), storetest.SampleCombinedData(float64(i+1))))
+		require.NoError(t, store.WriteSnapshot(t.Context(), start.Add(time.Duration(i)*time.Millisecond).UnixMilli(), storetest.SampleCombinedData(float64(i+1))))
 	}
 
 	server := NewServer(Options{Metrics: store, Current: fakeCurrentReader{}, DataDir: tmpDir})
@@ -344,7 +344,7 @@ func TestHistoryQueryValidationAndLimit(t *testing.T) {
 
 func TestEmptyStoreCurrentRouteReturnsNotFound(t *testing.T) {
 	tmpDir := t.TempDir()
-	store, err := storepkg.OpenStore(tmpDir)
+	store, err := storepkg.OpenStore(t.Context(), tmpDir)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 
@@ -378,7 +378,7 @@ func TestEmptyStoreCurrentRouteReturnsNotFound(t *testing.T) {
 
 func TestAllRouteReturnsNotFoundWhenEveryPluginHasNoRows(t *testing.T) {
 	tmpDir := t.TempDir()
-	store, err := storepkg.OpenStore(tmpDir)
+	store, err := storepkg.OpenStore(t.Context(), tmpDir)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 
@@ -408,7 +408,7 @@ func TestAllRouteReturnsNotFoundWhenEveryPluginHasNoRows(t *testing.T) {
 
 func TestAllRouteReturnsInternalErrorWhenEveryPluginFails(t *testing.T) {
 	tmpDir := t.TempDir()
-	store, err := storepkg.OpenStore(tmpDir)
+	store, err := storepkg.OpenStore(t.Context(), tmpDir)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 
@@ -434,7 +434,7 @@ func TestAllRouteReturnsInternalErrorWhenEveryPluginFails(t *testing.T) {
 
 func TestInternalErrorsUseGenericBodies(t *testing.T) {
 	tmpDir := t.TempDir()
-	store, err := storepkg.OpenStore(tmpDir)
+	store, err := storepkg.OpenStore(t.Context(), tmpDir)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 
@@ -460,7 +460,7 @@ func TestInternalErrorsUseGenericBodies(t *testing.T) {
 
 func TestAllRouteReturnsPartialDataAndPluginErrors(t *testing.T) {
 	tmpDir := t.TempDir()
-	store, err := storepkg.OpenStore(tmpDir)
+	store, err := storepkg.OpenStore(t.Context(), tmpDir)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 
@@ -493,7 +493,7 @@ func TestAllRouteReturnsPartialDataAndPluginErrors(t *testing.T) {
 
 func TestAllRouteBatchesCurrentReads(t *testing.T) {
 	tmpDir := t.TempDir()
-	store, err := storepkg.OpenStore(tmpDir)
+	store, err := storepkg.OpenStore(t.Context(), tmpDir)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = store.Close() })
 

@@ -39,9 +39,6 @@ fix, so each item can be accepted or rejected on that basis.
   - Policy decision first: flagging removes anything polkit lets a non-admin do. See `docs/privilege_pattern.md` for the survey command.
   - Behaviour change: a non-sudo session gets 403 before anything runs instead of a host permission error part-way through.
 
-- [ ] **107. Monitoring store transactions do not take the caller's ctx**
-  `backend/monitoring/internal/store/store.go`, `maintenance.go`: `db.Begin()`/`tx.Exec` with no ctx (the deferred `rollbackTx` half landed 2026-10-26). Threading ctx needs `WriteSnapshot`, `WriteSmartDevices`, `RunMaintenance` and `OpenStore` to take it, with callers in `monitoring/internal/app/runtime.go` and the `httpapi` tests. Behaviour change: a cancelled ctx (shutdown) aborts an in-flight write instead of letting it finish — decide whether that is wanted.
-
 ## B. Needs a host or a measurement first
 
 - [ ] **36. File operations fail below a directory symlink whose target is absolute**

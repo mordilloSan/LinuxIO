@@ -26,12 +26,12 @@ import (
 func TestStoreSnapshotAndHistoryQueries(t *testing.T) {
 	ctx := context.Background()
 	tmpDir := t.TempDir()
-	store, err := OpenStore(tmpDir)
+	store, err := OpenStore(t.Context(), tmpDir)
 	require.NoError(t, err)
 	defer store.Close()
 
 	capturedAt := time.Now().UTC().UnixMilli()
-	require.NoError(t, store.WriteSnapshot(capturedAt, storetest.SampleCombinedData(42)))
+	require.NoError(t, store.WriteSnapshot(t.Context(), capturedAt, storetest.SampleCombinedData(42)))
 	var tableCount int
 	require.NoError(t, store.db.QueryRow(`
 		SELECT COUNT(*) FROM sqlite_master
@@ -61,7 +61,7 @@ func TestStoreSnapshotAndHistoryQueries(t *testing.T) {
 }
 
 func TestWriteSmartDevicesPersistsCompactData(t *testing.T) {
-	store, err := OpenStore(t.TempDir(), Options{HistoryPlugins: []string{plugins.Smart}})
+	store, err := OpenStore(t.Context(), t.TempDir(), Options{HistoryPlugins: []string{plugins.Smart}})
 	require.NoError(t, err)
 	defer store.Close()
 
@@ -86,7 +86,7 @@ func TestWriteSmartDevicesPersistsCompactData(t *testing.T) {
 	}
 
 	capturedAt := time.Now().UTC().UnixMilli()
-	require.NoError(t, store.WriteSmartDevices(capturedAt, map[string]smartmodel.SmartData{"serial": item}))
+	require.NoError(t, store.WriteSmartDevices(t.Context(), capturedAt, map[string]smartmodel.SmartData{"serial": item}))
 	records, err := store.PluginHistory(context.Background(), plugins.Smart, resolution1m, 0, capturedAt, 10)
 	require.NoError(t, err)
 	require.Len(t, records, 1)
@@ -141,7 +141,7 @@ func TestStoreMigratesV4AndV5ToV7HistoryOnly(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, db.Close())
 
-			store, err := OpenStore(tmpDir)
+			store, err := OpenStore(t.Context(), tmpDir)
 			require.NoError(t, err)
 			var version int
 			require.NoError(t, store.db.QueryRow("PRAGMA user_version").Scan(&version))
@@ -192,7 +192,7 @@ func TestStoreMigratesV6ToV7WithoutDroppingFullResolutionHistory(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 
-	store, err := OpenStore(tmpDir)
+	store, err := OpenStore(t.Context(), tmpDir)
 	require.NoError(t, err)
 	defer store.Close()
 
@@ -208,11 +208,11 @@ func TestStoreMigratesV6ToV7WithoutDroppingFullResolutionHistory(t *testing.T) {
 
 func TestStoreRejectsNilSnapshot(t *testing.T) {
 	tmpDir := t.TempDir()
-	store, err := OpenStore(tmpDir)
+	store, err := OpenStore(t.Context(), tmpDir)
 	require.NoError(t, err)
 	defer store.Close()
 
-	err = store.WriteSnapshot(time.Now().UTC().UnixMilli(), nil)
+	err = store.WriteSnapshot(t.Context(), time.Now().UTC().UnixMilli(), nil)
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "snapshot data is nil")
@@ -229,7 +229,7 @@ func TestStoreRejectsUnsupportedSchemaVersion(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 
-	store, err := OpenStore(tmpDir)
+	store, err := OpenStore(t.Context(), tmpDir)
 	require.Error(t, err)
 	assert.Nil(t, store)
 	assert.Contains(t, err.Error(), "unsupported store schema version 3")
@@ -242,7 +242,7 @@ func TestStoreMovesAsideCorruptDatabaseAndRecreatesSchema(t *testing.T) {
 	require.NoError(t, os.WriteFile(dbPath+"-wal", []byte("stale wal"), 0600))
 	require.NoError(t, os.WriteFile(dbPath+"-shm", []byte("stale shm"), 0600))
 
-	store, err := OpenStore(tmpDir)
+	store, err := OpenStore(t.Context(), tmpDir)
 	require.NoError(t, err)
 	defer store.Close()
 
@@ -256,21 +256,21 @@ func TestStoreMovesAsideCorruptDatabaseAndRecreatesSchema(t *testing.T) {
 	var version int
 	require.NoError(t, store.db.QueryRow("PRAGMA user_version").Scan(&version))
 	assert.Equal(t, storeSchemaVersion, version)
-	require.NoError(t, store.WriteSnapshot(time.Now().UTC().UnixMilli(), storetest.SampleCombinedData(42)))
+	require.NoError(t, store.WriteSnapshot(t.Context(), time.Now().UTC().UnixMilli(), storetest.SampleCombinedData(42)))
 }
 
 func TestStoreDatabaseIntegrity(t *testing.T) {
-	s, err := OpenStore(t.TempDir())
+	s, err := OpenStore(t.Context(), t.TempDir())
 	require.NoError(t, err)
 	defer s.Close()
 
-	require.NoError(t, s.WriteSnapshot(time.Now().UTC().UnixMilli(), storetest.SampleCombinedData(42)))
-	require.NoError(t, s.IntegrityCheck())
+	require.NoError(t, s.WriteSnapshot(t.Context(), time.Now().UTC().UnixMilli(), storetest.SampleCombinedData(42)))
+	require.NoError(t, s.IntegrityCheck(t.Context()))
 }
 
 func TestStoreUnknownPluginHistory(t *testing.T) {
 	tmpDir := t.TempDir()
-	store, err := OpenStore(tmpDir)
+	store, err := OpenStore(t.Context(), tmpDir)
 	require.NoError(t, err)
 	defer store.Close()
 
@@ -281,12 +281,12 @@ func TestStoreUnknownPluginHistory(t *testing.T) {
 
 func TestStoreWritesHistoryOnlyForAllowlistedPlugins(t *testing.T) {
 	tmpDir := t.TempDir()
-	store, err := OpenStore(tmpDir, Options{HistoryPlugins: []string{plugins.CPU}})
+	store, err := OpenStore(t.Context(), tmpDir, Options{HistoryPlugins: []string{plugins.CPU}})
 	require.NoError(t, err)
 	defer store.Close()
 
 	capturedAt := time.Now().UTC().UnixMilli()
-	require.NoError(t, store.WriteSnapshot(capturedAt, storetest.SampleCombinedData(42)))
+	require.NoError(t, store.WriteSnapshot(t.Context(), capturedAt, storetest.SampleCombinedData(42)))
 
 	var cpuRows int
 	require.NoError(t, store.db.QueryRow("SELECT COUNT(1) FROM cpu_history").Scan(&cpuRows))
@@ -308,19 +308,19 @@ func TestStoreWritesHistoryOnlyForAllowlistedPlugins(t *testing.T) {
 
 func TestStoreConcurrentReadsDuringWriteSnapshot(t *testing.T) {
 	tmpDir := t.TempDir()
-	store, err := OpenStore(tmpDir, Options{HistoryPlugins: []string{plugins.CPU}})
+	store, err := OpenStore(t.Context(), tmpDir, Options{HistoryPlugins: []string{plugins.CPU}})
 	require.NoError(t, err)
 	defer store.Close()
 
 	start := time.Now().UTC().Truncate(time.Millisecond)
-	require.NoError(t, store.WriteSnapshot(start.UnixMilli(), storetest.SampleCombinedData(1)))
+	require.NoError(t, store.WriteSnapshot(t.Context(), start.UnixMilli(), storetest.SampleCombinedData(1)))
 
 	errs := make(chan error, 128)
 	var wg sync.WaitGroup
 	wg.Go(func() {
 		for i := range 50 {
 			capturedAt := start.Add(time.Duration(i+1) * time.Millisecond).UnixMilli()
-			if writeErr := store.WriteSnapshot(capturedAt, storetest.SampleCombinedData(float64(i))); writeErr != nil {
+			if writeErr := store.WriteSnapshot(t.Context(), capturedAt, storetest.SampleCombinedData(float64(i))); writeErr != nil {
 				errs <- writeErr
 			}
 		}
@@ -346,7 +346,7 @@ func TestStoreConcurrentReadsDuringWriteSnapshot(t *testing.T) {
 func TestStoreMaintenanceAppliesRetentionToAllHistoryTables(t *testing.T) {
 	tmpDir := t.TempDir()
 	retention := 14 * 24 * time.Hour
-	store, err := OpenStore(tmpDir, Options{HistoryPlugins: plugins.HistoryCapable(), HistoryRetention: retention})
+	store, err := OpenStore(t.Context(), tmpDir, Options{HistoryPlugins: plugins.HistoryCapable(), HistoryRetention: retention})
 	require.NoError(t, err)
 	defer store.Close()
 
@@ -363,7 +363,7 @@ func TestStoreMaintenanceAppliesRetentionToAllHistoryTables(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	require.NoError(t, store.RunMaintenance(now))
+	require.NoError(t, store.RunMaintenance(t.Context(), now))
 
 	cutoff := now.Add(-retention).UnixMilli()
 	for _, plugin := range plugins.HistoryCapable() {
@@ -390,18 +390,39 @@ func TestStoreMaintenanceAppliesRetentionToAllHistoryTables(t *testing.T) {
 func TestStoreMaintenanceCullsDisabledPluginTables(t *testing.T) {
 	tmpDir := t.TempDir()
 	retention := time.Hour
-	store, err := OpenStore(tmpDir, Options{HistoryPlugins: []string{plugins.CPU}, HistoryRetention: retention})
+	store, err := OpenStore(t.Context(), tmpDir, Options{HistoryPlugins: []string{plugins.CPU}, HistoryRetention: retention})
 	require.NoError(t, err)
 	defer store.Close()
 	now := time.Now().UTC().Truncate(time.Minute)
 	_, err = store.db.Exec(`INSERT INTO mem_history (resolution, captured_at, stats_json) VALUES ('1m', ?, '{}')`, now.Add(-retention-time.Millisecond).UnixMilli())
 	require.NoError(t, err)
 
-	require.NoError(t, store.RunMaintenance(now))
+	require.NoError(t, store.RunMaintenance(t.Context(), now))
 
 	var rows int
 	require.NoError(t, store.db.QueryRow("SELECT COUNT(1) FROM mem_history").Scan(&rows))
 	assert.Zero(t, rows)
+}
+
+func TestStoreWritesAbortOnCancelledContext(t *testing.T) {
+	store, err := OpenStore(t.Context(), t.TempDir(), Options{HistoryPlugins: []string{plugins.CPU, plugins.Smart}})
+	require.NoError(t, err)
+	defer store.Close()
+	_, err = store.db.Exec(`INSERT INTO cpu_history (resolution, captured_at, stats_json) VALUES ('1m', 0, '{}')`)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	now := time.Now().UTC()
+	require.ErrorIs(t, store.WriteSnapshot(ctx, now.UnixMilli(), storetest.SampleCombinedData(42)), context.Canceled)
+	require.ErrorIs(t, store.WriteSmartDevices(ctx, now.UnixMilli(), map[string]smartmodel.SmartData{}), context.Canceled)
+	require.ErrorIs(t, store.RunMaintenance(ctx, now), context.Canceled)
+
+	var cpuRows, smartRows int
+	require.NoError(t, store.db.QueryRow("SELECT COUNT(1) FROM cpu_history").Scan(&cpuRows))
+	require.NoError(t, store.db.QueryRow("SELECT COUNT(1) FROM smart_history").Scan(&smartRows))
+	assert.Equal(t, 1, cpuRows, "neither the snapshot insert nor the expired-row delete ran")
+	assert.Zero(t, smartRows)
 }
 
 func TestHistorySupportsQueryResolutions(t *testing.T) {
@@ -414,7 +435,7 @@ func TestHistorySupportsQueryResolutions(t *testing.T) {
 
 func TestPluginHistoryDownsamplesAtQueryTimeAndAppliesLimitToNewest(t *testing.T) {
 	tmpDir := t.TempDir()
-	store, err := OpenStore(tmpDir, Options{HistoryPlugins: []string{plugins.CPU}})
+	store, err := OpenStore(t.Context(), tmpDir, Options{HistoryPlugins: []string{plugins.CPU}})
 	require.NoError(t, err)
 	defer store.Close()
 	base := int64(1_700_000_000_000)
@@ -442,7 +463,7 @@ func TestPluginHistoryDownsamplesAtQueryTimeAndAppliesLimitToNewest(t *testing.T
 
 func TestPluginHistoryDownsamplesContainersByStableIdentityAndPresence(t *testing.T) {
 	tmpDir := t.TempDir()
-	store, err := OpenStore(tmpDir, Options{HistoryPlugins: []string{plugins.Containers}})
+	store, err := OpenStore(t.Context(), tmpDir, Options{HistoryPlugins: []string{plugins.Containers}})
 	require.NoError(t, err)
 	defer store.Close()
 	base := int64(1_700_000_000_000)
@@ -489,7 +510,7 @@ func TestRecoverableStoreOpenErrorMatchesMattnCodes(t *testing.T) {
 
 func TestPluginHistoryBoundsTheScanToTheNewestRowsAndBuckets(t *testing.T) {
 	tmpDir := t.TempDir()
-	store, err := OpenStore(tmpDir, Options{HistoryPlugins: []string{plugins.CPU}})
+	store, err := OpenStore(t.Context(), tmpDir, Options{HistoryPlugins: []string{plugins.CPU}})
 	require.NoError(t, err)
 	defer store.Close()
 	base := int64(1_700_000_000_000)
@@ -524,7 +545,7 @@ func TestPluginHistoryBoundsTheScanToTheNewestRowsAndBuckets(t *testing.T) {
 
 func TestWriteSnapshotHonoursHistoryEvery(t *testing.T) {
 	ctx := context.Background()
-	store, err := OpenStore(t.TempDir(), Options{
+	store, err := OpenStore(t.Context(), t.TempDir(), Options{
 		HistoryPlugins: []string{plugins.CPU, plugins.Mem},
 		HistoryEvery:   map[string]uint64{plugins.Mem: 3},
 	})
@@ -534,7 +555,7 @@ func TestWriteSnapshotHonoursHistoryEvery(t *testing.T) {
 	start := time.Now().UTC().Truncate(time.Minute).Add(-time.Hour)
 	for i := range 4 {
 		capturedAt := start.Add(time.Duration(i) * time.Minute).UnixMilli()
-		require.NoError(t, store.WriteSnapshot(capturedAt, storetest.SampleCombinedData(float64(i))))
+		require.NoError(t, store.WriteSnapshot(t.Context(), capturedAt, storetest.SampleCombinedData(float64(i))))
 	}
 	end := start.Add(time.Hour).UnixMilli()
 
@@ -550,7 +571,7 @@ func TestWriteSnapshotHonoursHistoryEvery(t *testing.T) {
 
 	// Reload to every tick: the next snapshot writes mem again.
 	store.SetHistoryEvery(nil)
-	require.NoError(t, store.WriteSnapshot(start.Add(4*time.Minute).UnixMilli(), storetest.SampleCombinedData(4)))
+	require.NoError(t, store.WriteSnapshot(t.Context(), start.Add(4*time.Minute).UnixMilli(), storetest.SampleCombinedData(4)))
 	mem, err = store.PluginHistory(ctx, plugins.Mem, resolution1m, 0, end, 10)
 	require.NoError(t, err)
 	assert.Len(t, mem, 3)
@@ -560,7 +581,7 @@ func TestOpenStoreAppliesPragmasToAnyConnectionAndEscapesPath(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), "a b#c?d%e")
 	require.NoError(t, os.Mkdir(dataDir, 0o700))
 
-	store, err := OpenStore(dataDir)
+	store, err := OpenStore(t.Context(), dataDir)
 	require.NoError(t, err)
 	defer store.Close()
 
