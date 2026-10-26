@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -262,6 +263,9 @@ func kernelPartitions(device string) ([]kernelPartition, error) {
 		}
 		if err != nil {
 			return nil, err
+		}
+		if number > math.MaxInt32 {
+			return nil, fmt.Errorf("partition number %d of %s out of range", number, device)
 		}
 		start, err := sysNumber(filepath.Join(sub, "start"))
 		if err != nil {

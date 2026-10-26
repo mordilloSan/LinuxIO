@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -138,7 +139,10 @@ func readBlockDevice(kname string) (blockDevice, bool) {
 	if d.Type == "part" {
 		number, _ := readSysUint(kname, "partition")
 		start, _ := readSysUint(kname, "start")
-		d.PartNumber, d.StartBytes = int(number), start*512
+		if number <= math.MaxInt32 {
+			d.PartNumber = int(number)
+		}
+		d.StartBytes = start * 512
 		// The kernel nests a partition's directory under its disk's.
 		if resolved, err := filepath.EvalSymlinks(filepath.Join(sysClassBlockRoot, kname)); err == nil {
 			d.Parents = append(d.Parents, blockPath(filepath.Base(filepath.Dir(resolved))))
