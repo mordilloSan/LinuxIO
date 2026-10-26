@@ -33,6 +33,7 @@ clean: ## Remove binaries, node_modules, and generated assets
 	@rm -f "$(VITE_DEV_PID)" "$(VITE_DEV_LOG)" "$(frontend_dir)/tsconfig.tsbuildinfo" || true
 	@rm -rf "$(cache_dir)" "$(frontend_node_modules_dir)" || true
 	@find "$(backend_frontend_dir)" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
+	@rmdir "$(bin_dir)" 2>/dev/null || true
 	@echo "🧹 Cleaned workspace."
 
 cloc: ## Count handwritten source lines
