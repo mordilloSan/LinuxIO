@@ -73,10 +73,13 @@ describe("TrashDialog", () => {
 
     const list = await screen.findByRole("list");
     expect(within(list).getAllByRole("listitem")).toHaveLength(2);
+    // The dialog fades in; content can land before the first animation frame.
+    await waitFor(() =>
+      expect(screen.getByRole("dialog", { name: "Trash (2)" })).toBeVisible(),
+    );
     expect(within(list).getByText("report.pdf")).toBeVisible();
     expect(within(list).getByText("/home/alice/docs")).toBeVisible();
     expect(within(list).getByText("Original location unknown")).toBeVisible();
-    expect(screen.getByRole("dialog", { name: "Trash (2)" })).toBeVisible();
   });
 
   it("restores the selected entries", async () => {
@@ -130,7 +133,9 @@ describe("TrashDialog", () => {
     mocks.entries = [];
     render(<TrashDialog onClose={vi.fn()} open />);
 
-    expect(await screen.findByText("Trash is empty")).toBeVisible();
+    await waitFor(() =>
+      expect(screen.getByText("Trash is empty")).toBeVisible(),
+    );
     await waitFor(() =>
       expect(
         screen.getByRole("button", { name: "Empty trash" }),
