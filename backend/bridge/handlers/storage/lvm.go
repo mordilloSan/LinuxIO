@@ -30,9 +30,6 @@ var (
 	listPartitions = disk.Partitions
 )
 
-// lvmExitNoObjects is the exit status pvs/vgs/lvs use when nothing matches.
-const lvmExitNoObjects = 5
-
 func runLVMCommand(ctx context.Context, name string, args ...string) ([]byte, error) {
 	path, err := hostcmd.LookPath(name)
 	if err != nil {
@@ -42,7 +39,9 @@ func runLVMCommand(ctx context.Context, name string, args ...string) ([]byte, er
 }
 
 // lvmReport runs a pvs/vgs/lvs JSON report into report. A missing LVM toolset
-// or an empty result (exit 5) leaves report empty; every other failure is an error.
+// leaves report empty; every other failure is an error. Listing every object
+// exits 0 with an empty report when none exist, and exit 5 is lvm2's generic
+// ECMD_FAILED (lock, permission and metadata failures), so it is not "empty".
 func lvmReport(ctx context.Context, report any, name string, args ...string) error {
 	out, err := lvmCommand(ctx, name, args...)
 	if err != nil {
@@ -50,9 +49,6 @@ func lvmReport(ctx context.Context, report any, name string, args ...string) err
 			return nil
 		}
 		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
-			if exitErr.ExitCode() == lvmExitNoObjects {
-				return nil
-			}
 			out = exitErr.Stderr
 		}
 		if ctxErr := ctx.Err(); ctxErr != nil {

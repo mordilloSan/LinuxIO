@@ -39,11 +39,6 @@ fix, so each item can be accepted or rejected on that basis.
   - Policy decision first: flagging removes anything polkit lets a non-admin do. See `docs/privilege_pattern.md` for the survey command.
   - Behaviour change: a non-sudo session gets 403 before anything runs instead of a host permission error part-way through.
 
-- [ ] **128. LVM exit status 5 is lvm2's generic `ECMD_FAILED`, so lock/permission/metadata failures show as "no LVM"**
-  `storage/lvm.go:33-34,53`. Verified `[host]`: as a non-root user `vgs nosuchvg` fails on `/dev/mapper/control` and `/run/lock/lvm` permissions and exits 5, the same code as root's "not found"; `pvs` as non-root fails on `/run/lock/lvm/P_global`. LinuxIO lists all objects (no names), which exits 0 with an empty report when nothing exists.
-  - Fix: keep only `exec.ErrNotFound` as "no volumes".
-  - Behaviour change: a non-root bridge's LVM listing errors instead of showing an empty list — decide together with 99 (the LVM mutations are already privileged; the listing is not).
-
 - [ ] **107. Monitoring store transactions do not take the caller's ctx**
   `backend/monitoring/internal/store/store.go`, `maintenance.go`: `db.Begin()`/`tx.Exec` with no ctx (the deferred `rollbackTx` half landed 2026-10-26). Threading ctx needs `WriteSnapshot`, `WriteSmartDevices`, `RunMaintenance` and `OpenStore` to take it, with callers in `monitoring/internal/app/runtime.go` and the `httpapi` tests. Behaviour change: a cancelled ctx (shutdown) aborts an in-flight write instead of letting it finish — decide whether that is wanted.
 
