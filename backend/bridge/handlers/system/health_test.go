@@ -13,6 +13,21 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 )
 
+func TestFetchSystemHealthSummaryReturnsServiceListingError(t *testing.T) {
+	originalFetchServices := healthFetchServices
+	t.Cleanup(func() { healthFetchServices = originalFetchServices })
+
+	listErr := errors.New("systemd unavailable")
+	healthFetchServices = func(context.Context) ([]ServiceInfo, error) {
+		return nil, listErr
+	}
+
+	summary, err := FetchSystemHealthSummary(context.Background(), "", false, time.Time{})
+
+	require.ErrorIs(t, err, listErr)
+	require.Nil(t, summary)
+}
+
 func TestDetectUncleanShutdownUsesPreviousUncleanBoot(t *testing.T) {
 	originalFetchPreviousUncleanBoot := healthFetchPreviousUncleanBoot
 	t.Cleanup(func() { healthFetchPreviousUncleanBoot = originalFetchPreviousUncleanBoot })

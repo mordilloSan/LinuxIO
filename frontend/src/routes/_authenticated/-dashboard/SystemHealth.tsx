@@ -25,6 +25,7 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import AppSkeleton from "@/components/ui/AppSkeleton";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
+import { useCapability } from "@/hooks/useCapabilities";
 import DashboardCard from "@/routes/_authenticated/-dashboard/DashboardCard";
 import { GAP_MD } from "@/theme/constants";
 
@@ -103,6 +104,20 @@ interface FailedLoginsProps {
   onOpenFailedLogins: () => void;
 }
 
+// Shares the Updates page's query, so installing updates refreshes the card.
+// count is undefined while checking or when PackageKit cannot answer.
+function usePendingUpdates() {
+  const { isEnabled } = useCapability("packageKitAvailable");
+  const { data: count, isError } = useQuery({
+    ...linuxio.updates.get_updates_basic,
+    enabled: isEnabled,
+    meta: { silent: true },
+    refetchInterval: HEALTH_REFETCH_MS,
+    select: (updates) => updates.length,
+  });
+  return { count, checking: isEnabled && !isError && count === undefined };
+}
+
 const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
   const { user: currentUser } = useAuth();
 
@@ -110,6 +125,7 @@ const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
     ...linuxio.system.get_health_summary,
     refetchInterval: HEALTH_REFETCH_MS,
   });
+  const updates = usePendingUpdates();
 
   const { mutate: dismissUncleanShutdown, isPending: dismissingUnclean } =
     useCallMutation(linuxio.system.dismiss_unclean_shutdown);
@@ -170,16 +186,27 @@ const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
     });
   }
 
-  if (!health?.upToDate) {
+  if (updates.count === undefined) {
     items.push({
       icon: "mdi:package-up",
-      color: "var(--app-palette-warning-main)",
-      text: `${pluralize(health.updatesAvailable, "update", "updates")} available`,
+      color: "var(--app-palette-text-secondary)",
+      text: updates.checking
+        ? "Checking for updates"
+        : "Update status unavailable",
       to: "/updates",
       spaceBefore: true,
       iconStyle: { transform: "translateY(2px)" },
     });
-  } else if (health) {
+  } else if (updates.count > 0) {
+    items.push({
+      icon: "mdi:package-up",
+      color: "var(--app-palette-warning-main)",
+      text: `${pluralize(updates.count, "update", "updates")} available`,
+      to: "/updates",
+      spaceBefore: true,
+      iconStyle: { transform: "translateY(2px)" },
+    });
+  } else {
     items.push({
       icon: "mdi:check-circle",
       color: "var(--app-palette-success-main)",
@@ -438,6 +465,7 @@ const HealthShield = ({ onOpenFailedLogins }: FailedLoginsProps) => {
     ...linuxio.system.get_health_summary,
     refetchInterval: HEALTH_REFETCH_MS,
   });
+  const updates = usePendingUpdates();
 
   const failedLoginAlert = health?.failedLoginAlert;
 
@@ -452,10 +480,13 @@ const HealthShield = ({ onOpenFailedLogins }: FailedLoginsProps) => {
   } else if (failedLoginAlert) {
     statusColor = "var(--app-palette-warning-main)";
     iconName = "mdi:shield-alert-outline";
-  } else if ((health?.updatesAvailable ?? 0) > 0 || health?.uncleanShutdown) {
+  } else if ((updates.count ?? 0) > 0 || health?.uncleanShutdown) {
     statusColor = "var(--app-palette-warning-main)";
     iconName = "mdi:shield-alert-outline";
     iconLink = health?.uncleanShutdown ? "/logs" : "/updates";
+  } else if (updates.checking) {
+    // Stay neutral until updates answer instead of flashing green, then amber.
+    statusColor = "var(--app-palette-text-secondary)";
   }
 
   const handleStatusIconClick = () => {

@@ -2977,8 +2977,6 @@ export interface SystemHealthSummary {
   runningServicesCount: number;
   uncleanShutdown: boolean;
   uncleanShutdownBootId?: string;
-  updatesAvailable: number;
-  upToDate: boolean;
 }
 
 export interface SystemInfo {

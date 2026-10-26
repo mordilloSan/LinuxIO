@@ -4,37 +4,37 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/packages"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/loginhistory"
 )
 
-var healthFetchPreviousUncleanBoot = loginhistory.FetchPreviousUncleanBoot
+var (
+	healthFetchServices            = FetchServices
+	healthFetchPreviousUncleanBoot = loginhistory.FetchPreviousUncleanBoot
+)
 
+// FetchSystemHealthSummary leaves pending updates to updates.get_updates_basic,
+// which the dashboard queries on its own so a PackageKit failure stays visible.
 func FetchSystemHealthSummary(ctx context.Context, username string, privileged bool, sessionStartedAt time.Time) (*apischema.SystemHealthSummary, error) {
-	summary := &apischema.SystemHealthSummary{
-		UpToDate: true,
+	services, err := healthFetchServices(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list services: %w", err)
 	}
 
-	if services, err := FetchServices(ctx); err == nil {
-		for _, service := range services {
-			if service.Failed {
-				summary.FailedServicesCount++
-				summary.FailedServices = append(summary.FailedServices, service.Name)
-			}
-			if service.SubState == "running" {
-				summary.RunningServicesCount++
-			}
+	summary := &apischema.SystemHealthSummary{}
+	for _, service := range services {
+		if service.Failed {
+			summary.FailedServicesCount++
+			summary.FailedServices = append(summary.FailedServices, service.Name)
 		}
-	}
-
-	if updates, err := fetchPendingUpdates(ctx); err == nil {
-		summary.UpdatesAvailable = len(updates)
-		summary.UpToDate = len(updates) == 0
+		if service.SubState == "running" {
+			summary.RunningServicesCount++
+		}
 	}
 
 	if login, err := FetchLastSuccessfulLogin(ctx, username); err == nil {
@@ -54,12 +54,6 @@ func FetchSystemHealthSummary(ctx context.Context, username string, privileged b
 	}
 
 	return summary, nil
-}
-
-func fetchPendingUpdates(parent context.Context) ([]packages.UpdateDetail, error) {
-	ctx, cancel := context.WithTimeout(parent, 15*time.Second)
-	defer cancel()
-	return packages.GetUpdatesBasic(ctx)
 }
 
 func FetchLastSuccessfulLogin(parent context.Context, username string) (*apischema.SystemLastLogin, error) {

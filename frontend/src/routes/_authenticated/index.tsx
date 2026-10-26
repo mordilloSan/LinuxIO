@@ -24,8 +24,12 @@ export const Route = createFileRoute("/_authenticated/")({
         linuxio.system.get_server_time,
       );
     }
-    if (!hiddenCards.has("system"))
+    if (!hiddenCards.has("system")) {
       queries.push(linuxio.system.get_health_summary);
+      if (context.access.packageKitAvailable === true) {
+        queries.push(linuxio.updates.get_updates_basic);
+      }
+    }
     if (!hiddenCards.has("cpu")) {
       queries.push({
         ...linuxio.system.get_cpu_info,

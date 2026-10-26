@@ -100,8 +100,6 @@ type SystemHealthSummary struct {
 	RunningServicesCount  int                     `json:"runningServicesCount"`
 	UncleanShutdown       bool                    `json:"uncleanShutdown"`
 	UncleanShutdownBootID *string                 `json:"uncleanShutdownBootId,omitzero"`
-	UpdatesAvailable      int                     `json:"updatesAvailable"`
-	UpToDate              bool                    `json:"upToDate"`
 }
 
 type PCIDevice struct {

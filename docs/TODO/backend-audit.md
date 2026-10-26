@@ -44,9 +44,6 @@ fix, so each item can be accepted or rejected on that basis.
   - Fix: keep only `exec.ErrNotFound` as "no volumes".
   - Behaviour change: a non-root bridge's LVM listing errors instead of showing an empty list — decide together with 99 (the LVM mutations are already privileged; the listing is not).
 
-- [ ] **68. Health summary hides a failed unit listing as "0 failed"**
-  `backend/bridge/handlers/system/health.go:23` ignores the `FetchServices` error. The per-unit property reads are gone (2026-10-26: `systemd.ListServiceStates`); the honest card needs an error flag on `SystemHealthSummary` (`make generate`, `SystemHealth.tsx`), i.e. a contract and frontend change. Behaviour: the card says the count is unknown instead of 0.
-
 - [ ] **107. Monitoring store transactions do not take the caller's ctx**
   `backend/monitoring/internal/store/store.go`, `maintenance.go`: `db.Begin()`/`tx.Exec` with no ctx (the deferred `rollbackTx` half landed 2026-10-26). Threading ctx needs `WriteSnapshot`, `WriteSmartDevices`, `RunMaintenance` and `OpenStore` to take it, with callers in `monitoring/internal/app/runtime.go` and the `httpapi` tests. Behaviour change: a cancelled ctx (shutdown) aborts an in-flight write instead of letting it finish — decide whether that is wanted.
 

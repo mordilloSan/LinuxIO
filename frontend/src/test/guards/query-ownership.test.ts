@@ -128,7 +128,7 @@ describe("targeted route query ownership", () => {
     expect(dashboardRoute).toContain("linuxio.system.get_health_summary");
     expect(dashboardRoute).toContain("context.access.dockerAvailable === true");
     expect(dashboardRoute).not.toContain(".queryOptions(");
-    expect(dashboardRoute.match(/linuxio\./g)).toHaveLength(14);
+    expect(dashboardRoute.match(/linuxio\./g)).toHaveLength(15);
     expect(hardwareRoute).toContain("sections.sensors");
     expect(hardwareRoute).toContain("sections.systemInfo");
     expect(hardwareRoute).toContain("sections.pciDevices");
