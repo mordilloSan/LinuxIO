@@ -98,7 +98,7 @@ func renderRouteMetadata() string {
 func renderRouteMetadataForRoutes(routes []apischema.RouteSpec) string {
 	var b strings.Builder
 	b.WriteString(header())
-	b.WriteString("export type RouteMode = \"call\" | \"task\" | \"duplex\";\n\n")
+	b.WriteString("export type RouteMode = \"call\" | \"task\" | \"mutation\" | \"duplex\";\n\n")
 	b.WriteString("export const ROUTE_MODES = {\n")
 	for _, route := range routes {
 		fmt.Fprintf(&b, "  %q: %q,\n", route.Route, string(route.Mode))
@@ -263,6 +263,11 @@ func renderClientForRoutes(routes []apischema.RouteSpec) string {
 	b.WriteString(header())
 	b.WriteString("import { defineCall, defineCallWithRequest } from \"../call-react-query\";\n")
 	b.WriteString("import type { TypedAPI } from \"../endpoint-types\";\n")
+	if slices.ContainsFunc(routes, func(route apischema.RouteSpec) bool {
+		return route.Mode == bridgeipc.ModeMutation && route.Endpoint()
+	}) {
+		b.WriteString("import { defineMutation } from \"../mutation-react-query\";\n")
+	}
 	b.WriteString("import { createTaskEndpoint } from \"../task-react-query\";\n")
 	b.WriteString("\n")
 	b.WriteString("const linuxio = {\n")
@@ -285,14 +290,20 @@ func renderClientForRoutes(routes []apischema.RouteSpec) string {
 				fmt.Fprintf(&b, "    %s: %s(%q),\n", route.Command(), factory, route.Route)
 				continue
 			}
-			if route.Mode != bridgeipc.ModeTask {
+			var factory string
+			switch route.Mode {
+			case bridgeipc.ModeTask:
+				factory = "createTaskEndpoint"
+			case bridgeipc.ModeMutation:
+				factory = "defineMutation"
+			default:
 				continue
 			}
 			fmt.Fprintf(
 				&b,
 				"    %s: %s(%q, %q, %s),\n",
 				route.Command(),
-				"createTaskEndpoint",
+				factory,
 				route.Handler(),
 				route.Command(),
 				requestShape(route.RequestSpec()),

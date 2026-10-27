@@ -50,16 +50,70 @@ func ListTimers(ctx context.Context) ([]apischema.Timer, error) {
 }
 ```
 
-Handlers do not receive a universal emitter. Calls use
+Handlers do not receive a universal emitter. Calls and Mutations use
 `func(context.Context, Request) (Result, error)` (or `error` with
-`HandleVoid`); Task runners use
-`func(context.Context, *bridgeipc.Task, Request) (Result, error)`; Channels use
+`HandleVoid` and `MutationVoid`); Channels use
 `func(context.Context, net.Conn, Request) error` for the lifetime of the stream.
-The compiler checks each Call and Task terminal result against its route
-declaration. `WithTaskProgress[T]` declares the route-specific detail carried by
+Legacy Task runners use
+`func(context.Context, *bridgeipc.Task, Request) (Result, error)`; add no new
+ones, a new long or progress-reporting write is a Mutation. The compiler checks
+each terminal result against its route declaration. `Progress[T]()` (on Task
+routes `WithTaskProgress[T]()`) declares the route-specific detail carried by
 the common `TaskProgress<T>` envelope. Detail types implement
-`ProgressEnvelope()` and are passed to `task.ReportProgress()`; Task data uses
-the focused data-attachment Channel.
+`ProgressEnvelope()`; a Mutation handler passes the envelope to
+`bridgeipc.ReportProgress(ctx, …)`, a Task runner to `task.ReportProgress()`.
+Task data uses the focused data-attachment Channel.
+
+## Mutations
+
+A route that changes the host is declared with `apischema.Mutation` (or
+`apischema.MutationVoid`) and runs as a job in the caller's job host (see
+[API Contract](./api-contract.md#tasks-and-jobs)). The declaration takes the
+handler, and Go infers the request and result types from it:
+
+From `backend/bridge/handlers/docker/background_operations.go`:
+
+```go
+apischema.Mutation(
+    "docker.update_container",
+    handleUpdateContainer,
+    apischema.Privileged(),
+    apischema.Progress[apischema.DockerContainerUpdateProgress](),
+)
+
+func handleUpdateContainer(ctx context.Context, req apischema.DockerContainerUpdateRequest) (apischema.DockerContainerUpdateResult, error) {
+    if err := dockerupdate.ValidateTarget(req.ContainerID); err != nil {
+        return apischema.DockerContainerUpdateResult{}, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
+    }
+    // A job queues behind another update: lock wait 0 waits until ctx ends.
+    result, err := updateContainer(ctx, req.ContainerID, 0, func(phase, message string) {
+        bridgeipc.ReportProgress(ctx, apischema.DockerContainerUpdateProgress{Phase: phase, Message: message}.ProgressEnvelope())
+    })
+    if err != nil {
+        return apischema.DockerContainerUpdateResult{}, err
+    }
+    if result.Updated {
+        slog.Info("updated Docker container", "component", "docker", "subsystem", "update",
+            "container", result.ContainerName, "old_image", result.PreviousImageID, "new_image", result.NewImageID)
+    }
+    return result, nil
+}
+```
+
+- The handler has the Call signature. Its `ctx` is cancelled by `tasks.cancel`,
+  a stream abort or the host stopping, never by the browser going away, so
+  pass it to every callee and clean up partial work when it ends.
+- Report progress with `bridgeipc.ReportProgress(ctx, detail.ProgressEnvelope())`.
+  Outside a job it does nothing, so the same function can serve a Call.
+- Name the target with a method on the request type, not in the declaration
+  (`apischema.DockerContainerUpdateRequest` aliases the type in
+  `backend/common/dockerupdate/types.go`):
+  `func (r DockerContainerUpdateRequest) Target() []string { return []string{r.ContainerID} }`.
+  The host then refuses a second job of the route on the same target while the
+  first runs. A request type without `Target()` is never refused as a
+  duplicate.
+- Log the completed change at Info once, as for any host mutation; the task
+  runner logs a failed job, so the handler returns its error without logging it.
 
 ## Context
 
@@ -163,13 +217,13 @@ Where a shared library goes depends on who needs it:
 | Needed by | Home | Examples |
 |-----------|------|----------|
 | One route family | `backend/bridge/handlers/<family>` | everything a family alone uses |
-| Several bridge families only | `backend/bridge/internal/<name>` | `usercmd`, `acpagents`, `loginhistory`, `transientunit`, `bridgeipc`, `goroutinelabel`, `streamrelay`, `dockerclient`, `userconfig`, `apigen` |
-| The bridge and another binary (CLI, workers, daemons) | `backend/common/<name>` | `systemd`, `dbusclient`, `btrfs`, `alerts`, `atomicfile`, `hostcmd`, `hwprobe`, `iolimit`, `osrelease`, `updatestatus`, `dockerupdate`, `version` |
+| Several bridge families only | `backend/bridge/internal/<name>` | `usercmd`, `acpagents`, `loginhistory`, `bridgeipc`, `goroutinelabel`, `streamrelay`, `dockerclient`, `userconfig`, `apigen` |
+| The bridge and another binary (CLI, workers, daemons) | `backend/common/<name>` | `systemd`, `dbusclient`, `btrfs`, `alerts`, `atomicfile`, `hostcmd`, `hwprobe`, `iolimit`, `osrelease`, `updatestatus`, `dockerupdate`, `jobs`, `version` |
 
 There is no catch-all `utils` package; each shared helper lives in a package
-named for its responsibility. The Docker worker side (scheduled and durable
-updates) lives in `common/dockerupdate`, shared by the `docker-update` binary
-and the bridge. The `capabilities` family owns `system.get_capabilities`
+named for its responsibility. The Docker update engine lives in
+`common/dockerupdate`, shared by the scheduled `docker-update` binary and the
+`docker.update_container` job. The `capabilities` family owns `system.get_capabilities`
 and the capability registry that `packages` reads to install them.
 
 ## File Naming
@@ -181,7 +235,7 @@ Handler packages should name files after the domain operation they implement, no
 | `backend/bridge/internal/bridgeipc` | Framework terms such as `tasks.go`, `task_primitives.go`, `router.go` | Domain-specific handler code |
 | `backend/bridge/handlers/<domain>` | Domain terms such as `package_update_operation.go`, `package_update_operation.go`, `journal_follow.go`, `host_session.go`, `smart_test_operation.go` | Generic `tasks.go`, `stream.go`, `rpc.go`, `handler.go` |
 
-Use `operation` for Task-backed mutations or long-running work, `follow` for
+Use `operation` for Mutations, Task-backed work, or other long-running work, `follow` for
 log/watch Channels, and `session` for bidirectional Channels. The route mode
 still lives in the route spec; the filename should help humans find the domain
 behavior without implying a second IPC subsystem.
@@ -224,7 +278,9 @@ apischema.Call[apischema.NoRequest, apischema.SystemInfo](
 
 The Go option is emitted into generated route metadata; handlers and frontend
 call sites must not infer safety from `get_`, `list_`, or another route-name
-pattern. Task starts and mutating Calls remain no-retry. Return structured
+pattern. Task starts and mutating Calls remain no-retry; a Mutation is never
+retried as a Call, its client resends or reattaches by the job ID instead.
+Return structured
 `bridgeipc.Error` codes when feature code must distinguish outcomes; human error
 messages are presentation, not control flow.
 

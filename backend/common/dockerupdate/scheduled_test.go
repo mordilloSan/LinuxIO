@@ -33,6 +33,42 @@ func TestAcquireDockerUpdateLockAtExcludesConcurrentUpdate(t *testing.T) {
 	release()
 }
 
+// A job's update (lock wait 0) queues behind the holder until its context
+// ends, while a bounded wait still gives up.
+func TestAcquireDockerUpdateLockAtZeroWaitBlocksUntilContextEnds(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "docker-update.lock")
+	release, err := acquireDockerUpdateLockAt(context.Background(), path, time.Second, time.Millisecond)
+	if err != nil {
+		t.Fatalf("first lock: %v", err)
+	}
+	defer release()
+
+	if _, err := acquireDockerUpdateLockAt(context.Background(), path, 20*time.Millisecond, time.Millisecond); err == nil || !strings.Contains(err.Error(), "already in progress") {
+		t.Fatalf("bounded wait error = %v, want already in progress", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := acquireDockerUpdateLockAt(ctx, path, 0, time.Millisecond)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		t.Fatalf("zero wait returned %v while the lock is held, want it to block", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("zero wait error = %v, want context.Canceled", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("zero wait did not return after the context was canceled")
+	}
+}
+
 func TestRunScheduledPassChecksAllRunningContainersWithoutSelection(t *testing.T) {
 	checkErr := errors.New("check failed")
 	var checked []container.Summary

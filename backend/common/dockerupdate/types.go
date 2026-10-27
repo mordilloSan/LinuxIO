@@ -1,8 +1,8 @@
 // Package dockerupdate is the Docker image-update engine: update checks, the
 // standalone and Compose replacement flows, the scheduled runner and its
-// systemd timer, the durable worker entry point and the files they persist.
-// It is shared by the bridge (which launches and observes the worker) and the
-// root-sandboxed linuxio-docker-update binary (which runs it), so it imports
+// systemd timer, and the files they persist. It is shared by the bridge (whose
+// docker.update_container job calls UpdateContainerWait) and the root-sandboxed
+// linuxio-docker-update binary (which runs the scheduled pass), so it imports
 // only common packages. The bridge re-exports the wire types below from
 // bridge/apischema as aliases; the generated frontend contract names them by
 // their Go type name, so renaming one is a contract change.
@@ -50,14 +50,14 @@ type DockerContainerAutoUpdateState struct {
 	TimerEnabled          bool                              `json:"timer_enabled"`
 }
 
-// DockerContainerUpdateRequest identifies one durable native Docker update.
-// RunID is allocated by the client before the request so a retry after bridge
-// loss can reclaim the same persisted operation instead of starting another
-// mutation.
+// DockerContainerUpdateRequest names the container one update replaces.
 type DockerContainerUpdateRequest struct {
 	ContainerID string `json:"containerId"`
-	RunID       string `json:"runId"`
 }
+
+// Target makes the container the job's target, so a second update of the
+// same container is refused while one runs.
+func (r DockerContainerUpdateRequest) Target() []string { return []string{r.ContainerID} }
 
 type DockerUpdateCheckResult struct {
 	Checked     int `json:"checked"`

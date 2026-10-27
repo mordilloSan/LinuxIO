@@ -7,7 +7,8 @@ const mocks = vi.hoisted(() => ({
   request: vi.fn(),
 }));
 
-vi.mock("@/api/linuxio-core", () => ({
+vi.mock("@/api/linuxio-core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/linuxio-core")>()),
   request: mocks.request,
 }));
 

@@ -9,8 +9,8 @@ import {
 
 // Feature code talks to the backend through centralized descriptors. Migrated
 // Calls pass their descriptor directly to TanStack Query or `useCallMutation`.
-// Progress work uses `useTaskAction`/`useTaskStreamAction` or the
-// background-tasks layer. Imperative cache reads and cache surgery use the
+// Mutation routes use their endpoint's `.useMutation(`. Progress work uses
+// `useTaskAction`/`useTaskStreamAction` or the background-tasks layer. Imperative cache reads and cache surgery use the
 // QueryClient directly; transport-only work uses typed `call()`.
 
 // The one directory that IS the primitive layer.
@@ -158,6 +158,7 @@ describe("API layering guard", () => {
   it("keeps the Call query layer independent of Tasks", () => {
     const source = readSource("api/call-react-query.ts");
     const forbidden = [
+      '"./mutation-react-query"',
       '"./task-react-query"',
       '"./tasks"',
       "TaskEndpoint",
@@ -242,7 +243,7 @@ describe("API layering guard", () => {
       violations,
       "Feature code must not call linuxio endpoints as bare promises. " +
         "Reads go through TanStack Query descriptors; writes go through " +
-        "useCallMutation / useTaskAction / " +
+        "useCallMutation / .useMutation / useTaskAction / " +
         "useTaskStreamAction or the " +
         "background-tasks layer.",
     ).toEqual([]);
@@ -259,7 +260,8 @@ describe("API layering guard", () => {
     expect(
       violations,
       "Mutations belong on the typed endpoint surface " +
-        "(useCallMutation / useTaskAction / useTaskStreamAction), " +
+        "(useCallMutation / .useMutation / useTaskAction / " +
+        "useTaskStreamAction), " +
         "not raw useMutation.",
     ).toEqual([]);
   });

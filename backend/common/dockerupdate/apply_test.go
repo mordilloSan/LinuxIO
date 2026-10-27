@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/containerd/errdefs"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/image"
 	"github.com/moby/moby/api/types/jsonstream"
@@ -836,6 +837,29 @@ func TestStoppedStandaloneJournalRecoversVerifiedCleanup(t *testing.T) {
 	}
 }
 
+func TestStandaloneUpdateJournalClearsWhenTheOriginalIsGone(t *testing.T) {
+	journal := Journal{path: filepath.Join(t.TempDir(), "transaction.json")}
+	err := journal.write(standaloneUpdateTransaction{
+		Phase: standaloneUpdatePrepared, OriginalID: "old-container", OriginalName: "web",
+		BackupName: "web.old", ReplacementName: "web", OriginalRunning: true,
+	})
+	if err != nil {
+		t.Fatalf("write journal: %v", err)
+	}
+	fake := newStandaloneUpdateFake()
+	fake.inspectErrors = map[string]error{"old-container": errdefs.ErrNotFound}
+
+	if err := recoverStandaloneUpdate(context.Background(), fake, journal); err != nil {
+		t.Fatalf("recoverStandaloneUpdate = %v, want nil: a removed original leaves nothing to restore", err)
+	}
+	if _, err := os.Stat(journal.path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("journal still exists: %v", err)
+	}
+	if len(fake.calls) != 1 || fake.calls[0] != "inspect-container:old-container" {
+		t.Fatalf("calls = %v, want only the original inspect", fake.calls)
+	}
+}
+
 func TestStandaloneUpdateJournalRetriesVerifiedBackupCleanup(t *testing.T) {
 	withTempUpdateStatusPath(t)
 	journal := Journal{path: filepath.Join(t.TempDir(), "transaction.json")}
@@ -1001,6 +1025,7 @@ type fakeNativeUpdateClient struct {
 	pullCloseErr     error
 	imageInspectErr  error
 	imageInspectErrs []error
+	inspectErrors    map[string]error
 	inspectResults   map[string]container.InspectResponse
 	startErrors      map[string]error
 	renameErrors     map[string]error
@@ -1051,6 +1076,9 @@ func (f *fakeNativeUpdateClient) ContainerInspect(
 	_ client.ContainerInspectOptions,
 ) (client.ContainerInspectResult, error) {
 	f.calls = append(f.calls, "inspect-container:"+containerID)
+	if err, ok := f.inspectErrors[containerID]; ok {
+		return client.ContainerInspectResult{}, err
+	}
 	inspect, ok := f.inspectResults[containerID]
 	if !ok {
 		return client.ContainerInspectResult{}, errors.New("unexpected container inspect")

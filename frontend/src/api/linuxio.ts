@@ -14,7 +14,7 @@ import type {
   StreamRouteName,
   TaskSnapshot,
 } from "./generated/linuxio-types";
-import { request as bridgeRequest } from "./linuxio-core";
+import { request as bridgeRequest, streamOpenPayload } from "./linuxio-core";
 import {
   encodeString,
   getStreamMux,
@@ -39,15 +39,6 @@ function openMuxStream(
     return null;
   }
   return mux.openStream(type, initialPayload, options);
-}
-
-function streamOpenPayload(route: string, request: unknown = {}): Uint8Array {
-  return encodeString(
-    JSON.stringify({
-      route,
-      request: request ?? {},
-    }),
-  );
 }
 
 /**

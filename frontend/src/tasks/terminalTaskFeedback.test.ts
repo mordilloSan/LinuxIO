@@ -304,6 +304,15 @@ describe("terminalTaskFeedback", () => {
     });
     expect(cancel?.kind).toBe("canceled");
 
+    const interrupted = terminalSnapshotOutcome({
+      ...base,
+      state: "interrupted",
+    });
+    expect(interrupted?.kind).toBe("failed");
+    expect(
+      interrupted && "error" in interrupted && interrupted.error,
+    ).toMatchObject({ message: "interrupted" });
+
     expect(
       terminalSnapshotOutcome({ ...base, state: "completed", result: 1 }),
     ).toEqual({ kind: "completed", result: 1 });

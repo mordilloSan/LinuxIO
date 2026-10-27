@@ -159,6 +159,8 @@ func ReadRelayFrameProgressive(r io.Reader) (*StreamFrame, error) {
 type StreamOpenEnvelope struct {
 	Route   string         `json:"route"`
 	Request jsontext.Value `json:"request"`
+	// ID is the client-chosen job ID of a Mutation route.
+	ID string `json:"id,omitzero"`
 }
 
 // ParseStreamOpenPayload parses the payload of an OpStreamOpen frame.

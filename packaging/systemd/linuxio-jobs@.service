@@ -1,0 +1,21 @@
+[Unit]
+Description=LinuxIO jobs for uid %i
+Documentation=https://github.com/mordilloSan/LinuxIO
+# Early in boot, wait until the reconcile has marked the last boot's jobs;
+# never Wants= it: hosts must not pull the reconcile in.
+After=local-fs.target linuxio-jobs-reconcile.service
+# Deliberately not PartOf=linuxio.target: updates must not stop running jobs.
+
+[Service]
+Type=notify
+NotifyAccess=main
+User=%i
+ExecStart=/usr/local/bin/linuxio-bridge jobs host
+StateDirectory=linuxio/jobs/%i
+StateDirectoryMode=0700
+RuntimeDirectory=linuxio/jobs/%i
+RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
+TimeoutStopSec=2min
+KillMode=mixed
+NoNewPrivileges=yes

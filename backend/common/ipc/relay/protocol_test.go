@@ -232,6 +232,17 @@ func TestParseStreamOpenPayloadRejectsInvalidEnvelope(t *testing.T) {
 	}
 }
 
+func TestParseStreamOpenPayloadAcceptsID(t *testing.T) {
+	const id = "00000000-0000-4000-8000-000000000001"
+	envelope, err := ParseStreamOpenPayload([]byte(`{"route":"storage.zfs_scrub","request":{"pool":"tank"},"id":"` + id + `"}`))
+	if err != nil {
+		t.Fatalf("ParseStreamOpenPayload() error = %v", err)
+	}
+	if envelope.ID != id || envelope.Route != "storage.zfs_scrub" || string(envelope.Request) != `{"pool":"tank"}` {
+		t.Fatalf("envelope = %#v, want the route, request and id", envelope)
+	}
+}
+
 func TestParseStreamOpenPayloadRejectsUnknownMembers(t *testing.T) {
 	_, err := ParseStreamOpenPayload([]byte(`{"route":"system.get_cpu_info","extra":true}`))
 	if !errors.Is(err, ErrInvalidRequest) {

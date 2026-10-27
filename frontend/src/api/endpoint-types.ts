@@ -9,6 +9,7 @@ import type {
   HandlerName,
 } from "./generated/linuxio-types";
 import type { RouteModeFor } from "./generated/route-metadata";
+import type { MutationEndpoint } from "./mutation-react-query";
 import type { ProgressFrame } from "./StreamMultiplexer";
 import type { TaskEndpoint } from "./task-react-query";
 
@@ -36,7 +37,14 @@ type DeclaredCommandEndpoint<
         CommandResult<H, C>,
         DeclaredCommandProgress<H, C>
       >
-    : never;
+    : RouteModeFor<`${Extract<H, string>}.${Extract<C, string>}`> extends "mutation"
+      ? MutationEndpoint<
+          CommandInput<H, C>,
+          CommandRequest<H, C>,
+          CommandResult<H, C>,
+          DeclaredCommandProgress<H, C>
+        >
+      : never;
 
 type HandlerEndpoints<H extends HandlerName> = {
   [C in CommandName<H>]: DeclaredCommandEndpoint<H, C>;

@@ -6,6 +6,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -120,10 +121,12 @@ func recoverStandaloneUpdate(ctx context.Context, cli ContainerClient, journal J
 
 	originalResult, originalErr := cli.ContainerInspect(ctx, tx.OriginalID, client.ContainerInspectOptions{})
 	if errdefs.IsNotFound(originalErr) {
-		if tx.Phase == standaloneUpdateVerified {
-			return journal.clear()
+		if tx.Phase != standaloneUpdateVerified {
+			// Nothing is left to restore; keeping the journal would only
+			// refuse every later update. The replacement, if any, stays.
+			slog.Warn("standalone Docker update journal cleared without rollback", "component", "docker", "container", tx.OriginalName, "phase", tx.Phase)
 		}
-		return fmt.Errorf("recover standalone update for %q: original container is missing before verification", tx.OriginalName)
+		return journal.clear()
 	}
 	if originalErr != nil {
 		return fmt.Errorf("inspect journaled rollback container %q: %w", tx.OriginalID, originalErr)

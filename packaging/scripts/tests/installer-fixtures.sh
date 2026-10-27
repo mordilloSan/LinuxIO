@@ -301,6 +301,49 @@ grep -Fq 'DATA_DIR="/var/lib/linuxio"' "$UNINSTALLER" || fail "uninstaller must 
 [[ -f "${REPO_ROOT}/docs/THIRD_PARTY_NOTICES.md" ]] || fail "third-party notices must live under docs"
 printf '   \033[1;32m✓\033[0m %s\n' "first-party indexer packaging policy"
 
+# Updates and linuxio.target restarts must never stop a running job.
+for unit in linuxio-jobs@.service linuxio-jobs-launcher.socket linuxio-jobs-launcher@.service linuxio-jobs-reconcile.service; do
+	assert_line "$unit" "$unit_list" "installer unit list"
+	if grep -Eq '^PartOf=.*linuxio\.target' "${REPO_ROOT}/packaging/systemd/${unit}"; then
+		fail "${unit} must not stop with linuxio.target"
+	fi
+done
+if grep -Fq 'linuxio-jobs' "${REPO_ROOT}/packaging/systemd/linuxio.target"; then
+	fail "linuxio.target must not pull in job hosts, the launcher or the reconcile"
+fi
+JOBS_LAUNCHER_SOCKET="${REPO_ROOT}/packaging/systemd/linuxio-jobs-launcher.socket"
+JOBS_LAUNCHER_SERVICE="${REPO_ROOT}/packaging/systemd/linuxio-jobs-launcher@.service"
+grep -Fqx 'ListenStream=/run/linuxio/jobs-launcher.sock' "$JOBS_LAUNCHER_SOCKET" || fail "job launcher socket path"
+grep -Fqx 'SocketMode=0666' "$JOBS_LAUNCHER_SOCKET" || fail "every user must reach the job launcher"
+grep -Fqx 'Accept=yes' "$JOBS_LAUNCHER_SOCKET" || fail "job launcher must run one instance per connection"
+# stdin is the client connection; output on it would corrupt the reply.
+grep -Fqx 'StandardOutput=journal' "$JOBS_LAUNCHER_SERVICE" || fail "job launcher stdout must go to the journal"
+grep -Fqx 'StandardError=journal' "$JOBS_LAUNCHER_SERVICE" || fail "job launcher stderr must go to the journal"
+grep -Fqx 'RuntimeMaxSec=15s' "$JOBS_LAUNCHER_SERVICE" || fail "job launcher instances must be time-bounded"
+JOBS_RECONCILE="${REPO_ROOT}/packaging/systemd/linuxio-jobs-reconcile.service"
+JOBS_HOST="${REPO_ROOT}/packaging/systemd/linuxio-jobs@.service"
+grep -Fqx 'User=%i' "$JOBS_HOST" || fail "a job host must run as its own uid"
+grep -Fqx 'StateDirectoryMode=0700' "$JOBS_HOST" || fail "job records must be private to their uid"
+grep -Fqx 'NoNewPrivileges=yes' "$JOBS_HOST" || fail "job hosts must not gain privileges"
+# A second run in the same boot would mark live jobs interrupted.
+grep -Fqx 'RemainAfterExit=yes' "$JOBS_RECONCILE" || fail "job reconcile must run once per boot"
+# Hosts wait for the reconcile's marking; its READY=1 lets the root host start for the resumes.
+grep -Fqx 'Type=notify' "$JOBS_RECONCILE" || fail "job reconcile must signal readiness before resuming"
+grep -Eq '^After=.*linuxio-jobs-reconcile\.service' "$JOBS_HOST" || fail "job hosts must start after the boot reconcile"
+if grep -Eq '^(Wants|Requires|BindsTo)=.*linuxio-jobs-reconcile' "$JOBS_HOST"; then
+	fail "job hosts must not pull in the boot reconcile"
+fi
+grep -Fq 'systemctl enable --now linuxio-jobs-launcher.socket' "$installer" ||
+	fail "installer does not enable and start the job launcher socket"
+grep -Fq 'systemctl enable linuxio-jobs-reconcile.service' "$installer" ||
+	fail "installer does not enable the boot reconcile"
+if grep -Eq 'systemctl (enable --now|start|restart) [^#]*linuxio-jobs-reconcile' "$installer"; then
+	fail "installer must never run the boot reconcile"
+fi
+grep -Fq 'rm -rf "${DATA_DIR}/durable-operations"' "$installer" ||
+	fail "installer must remove the orphaned durable-operations store"
+printf '   \033[1;32m✓\033[0m %s\n' "job units stay outside linuxio.target"
+
 # The standalone scripts each carry their own Show/Header; keep them identical.
 ui_sum() { sed -n '/^Show() {/,/^}/p;/^Header() {/,/^}/p;/^readonly COLOUR_RESET/,/^readonly YELLOW/p' "$1" | sha256sum; }
 for script in install-dependencies.sh uninstall.sh; do

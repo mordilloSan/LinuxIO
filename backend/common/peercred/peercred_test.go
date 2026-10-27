@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 )
 
@@ -47,5 +48,36 @@ func TestConnContextAttachesOwnUID(t *testing.T) {
 func TestUIDAbsentOnPlainContext(t *testing.T) {
 	if _, ok := UID(httptest.NewRequest(http.MethodGet, "/", nil).Context()); ok {
 		t.Fatal("expected no uid")
+	}
+}
+
+func TestReadReturnsOwnCredentialsOverSocketpair(t *testing.T) {
+	fds, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var conns []*net.UnixConn
+	for _, fd := range fds {
+		f := os.NewFile(uintptr(fd), "socketpair")
+		c, connErr := net.FileConn(f)
+		_ = f.Close()
+		if connErr != nil {
+			t.Fatal(connErr)
+		}
+		t.Cleanup(func() { _ = c.Close() })
+		uc, ok := c.(*net.UnixConn)
+		if !ok {
+			t.Fatalf("FileConn returned %T, want *net.UnixConn", c)
+		}
+		conns = append(conns, uc)
+	}
+
+	cred, err := Read(conns[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Cred{UID: uint32(os.Getuid()), GID: uint32(os.Getgid()), PID: int32(os.Getpid())}
+	if cred != want {
+		t.Fatalf("Read = %+v, want %+v", cred, want)
 	}
 }

@@ -26,8 +26,9 @@ host's own mail. This design sits between the two: a store, but a file.
 
 The file is written with the same pattern as `docker-update-status.json`:
 take the lock, read, modify, write atomically. The shared package is
-`backend/common/alerts`. The Docker update worker, the `linuxio` CLI, and
-privileged bridges all use it. Nothing else opens the file.
+`backend/common/alerts`. The Docker update worker, the `linuxio` CLI, the
+root job host, the boot job reconcile, and privileged bridges all use it.
+Nothing else opens the file.
 
 Only root can read the file, so only privileged sessions see alerts. That is
 the audience rule. Unprivileged sessions get an empty list.
@@ -78,6 +79,7 @@ incomplete checks leave the record alone.
 |---|---|---|---|
 | Automatic updates | `ExecStopPost=` drop-in on the provider's upgrade service, running `linuxio alert auto-update` | A run that matches the configured policy: failed, installed packages, or always | Never; each run is a new occurrence of the one `auto-update/run` record |
 | Docker update outcome | `linuxio-docker-update` worker, already root | A scheduled update fails or the replacement container is not healthy. One record per container name | The next successful update of that container |
+| Jobs | The root job host (`linuxio-jobs@0`) and `linuxio-bridge jobs reconcile` at boot; a user's job host raises none | `jobs/<job id>`: a root job failed, or was interrupted by a shutdown, a host crash or a reboot (not when the boot reconcile resumes it) | Never; dismissed by the user |
 | Btrfs health | `linuxio-btrfs-timer health run` every ten minutes, and the `storage.btrfs_list` bridge route | `btrfs/health-<uuid>`, `btrfs/scrub-<uuid>`, `btrfs/space-<uuid>`, `btrfs/offline-<uuid>`, `btrfs/resync-<uuid>`; see [Btrfs management](./btrfs.md#filesystem-health) | The next check that shows the condition cleared, or the pool gone |
 | Btrfs missing disks | `linuxio-btrfs-timer degraded run` at boot and `linuxio-btrfs-timer resync`; see [Missing disks](./btrfs.md#missing-disks) | At once rather than at the next health run: `btrfs/health-<uuid>` for a pool mounted without a disk, `btrfs/offline-<uuid>` with the reason a pool was left unmounted, `btrfs/resync-<uuid>` when a resync gives up, and the info `btrfs/resynced-<uuid>` when it finished | As Btrfs health; `resynced` stays until dismissed, or until the next resync starts |
 | Btrfs snapshots | `linuxio-btrfs-timer snapshot` (hourly timer, pre-update hook, Run now) | `btrfs/snapshot-<uuid8>-<path>`: a failed snapshot or an unmounted filesystem | The next successful run for that rule |

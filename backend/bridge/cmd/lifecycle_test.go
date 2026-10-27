@@ -1,10 +1,14 @@
 package cmd
 
 import (
+	"context"
+	"errors"
 	"net"
 	"testing"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/jobsclient"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 type shutdownTestConn struct {
@@ -42,7 +46,15 @@ func TestShutdownBridgeCancelsBeforeClosingTransport(t *testing.T) {
 		done:            done,
 	}
 
-	shutdownBridge(conn, registry, sessionID, func() { sessionCanceled = true }, done)
+	oldConnect := jobsConnect
+	jobsConnect = func(context.Context, uint32, bridgeipc.HelloSession, string, string) (*jobsclient.Client, error) {
+		return nil, errors.New("no job host in this test")
+	}
+	t.Cleanup(func() { jobsConnect = oldConnect })
+	relayCtx, relayCancel := context.WithCancel(context.Background())
+	hostRelay := newJobsRelay(relayCtx, &session.Session{SessionID: sessionID})
+
+	shutdownBridge(conn, registry, hostRelay, sessionID, func() { sessionCanceled = true; relayCancel() }, done)
 
 	if !conn.canceledOnClose {
 		t.Fatal("transport closed before session context was canceled")

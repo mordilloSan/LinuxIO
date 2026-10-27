@@ -4,6 +4,7 @@ import type {
   DockerContainerUpdateProgress,
   DockerContainerUpdateResult,
   TaskProgress,
+  TaskSnapshot,
 } from "@/api";
 import AppButton from "@/components/ui/AppButton";
 import { act, render, screen } from "@/test/render";
@@ -13,14 +14,15 @@ import {
   useDockerUpdateOperation,
 } from "./DockerUpdateOperationProvider";
 
-interface TaskStreamConfig {
+interface MutationConfig {
   onProgress?: (progress: TaskProgress<DockerContainerUpdateProgress>) => void;
   success?: (result: DockerContainerUpdateResult) => void;
 }
 
 const mocks = vi.hoisted(() => ({
-  config: null as TaskStreamConfig | null,
+  config: null as MutationConfig | null,
   mutate: vi.fn(),
+  onRecover: null as ((task: TaskSnapshot) => void) | null,
   watch: vi.fn(),
 }));
 
@@ -38,7 +40,7 @@ vi.mock("@/api", async (importOriginal) => {
         ...actual.linuxio.docker,
         update_container: {
           ...actual.linuxio.docker.update_container,
-          useTaskStreamAction: (config: TaskStreamConfig) => {
+          useMutation: (config: MutationConfig) => {
             mocks.config = config;
             return {
               isPending: false,
@@ -54,7 +56,12 @@ vi.mock("@/api", async (importOriginal) => {
 });
 
 vi.mock("@/tasks/useActiveTaskRecovery", () => ({
-  useActiveTaskRecovery: () => ({ isScanning: false, status: "missed" }),
+  useActiveTaskRecovery: (options: {
+    onRecover: (task: TaskSnapshot) => void;
+  }) => {
+    mocks.onRecover = options.onRecover;
+    return { isScanning: false, status: "missed" };
+  },
 }));
 
 const StartUpdate = () => {
@@ -66,9 +73,15 @@ const StartUpdate = () => {
   );
 };
 
+const CanUpdate = () => {
+  const { canUpdate } = useDockerUpdateOperation();
+  return <span>{canUpdate ? "can update" : "cannot update"}</span>;
+};
+
 describe("DockerUpdateOperationProvider", () => {
   beforeEach(() => {
     mocks.config = null;
+    mocks.onRecover = null;
     mocks.mutate.mockReset();
     mocks.watch.mockReset();
   });
@@ -84,7 +97,6 @@ describe("DockerUpdateOperationProvider", () => {
 
     expect(mocks.mutate).toHaveBeenCalledWith({
       containerId: "container-123",
-      runId: expect.any(String),
     });
     expect(screen.getByText("Updating homepage")).toBeInTheDocument();
 
@@ -122,5 +134,42 @@ describe("DockerUpdateOperationProvider", () => {
     expect(screen.getByText("Container update completed")).toBeInTheDocument();
     expect(screen.getByText("aaaaaaaaaaaa")).toBeInTheDocument();
     expect(screen.getByText("bbbbbbbbbbbb")).toBeInTheDocument();
+  });
+
+  it("adopts a recovered update by its job id", () => {
+    render(
+      <DockerUpdateOperationProvider>
+        <StartUpdate />
+      </DockerUpdateOperationProvider>,
+    );
+
+    act(() =>
+      mocks.onRecover?.({
+        id: "job-1",
+        metadata: { identity: ["container-123"] },
+      } as TaskSnapshot),
+    );
+
+    expect(mocks.watch).toHaveBeenCalledExactlyOnceWith("job-1", {
+      containerId: "container-123",
+    });
+  });
+
+  it("reports canUpdate only for a privileged session", () => {
+    const { unmount } = render(
+      <DockerUpdateOperationProvider>
+        <CanUpdate />
+      </DockerUpdateOperationProvider>,
+    );
+    expect(screen.getByText("cannot update")).toBeInTheDocument();
+    unmount();
+
+    render(
+      <DockerUpdateOperationProvider>
+        <CanUpdate />
+      </DockerUpdateOperationProvider>,
+      { auth: { privileged: true } },
+    );
+    expect(screen.getByText("can update")).toBeInTheDocument();
   });
 });

@@ -7,8 +7,9 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
-// handleBridgeArgs handles informational and invalid CLI invocations. A real
-// bridge process is normally exec'd by the auth daemon without arguments.
+// handleBridgeArgs handles informational and invalid CLI invocations and the
+// jobs subcommands. A real bridge process is normally exec'd by the auth
+// daemon without arguments.
 func handleBridgeArgs(args []string) (bool, int) {
 	if len(args) <= 1 {
 		return false, 0
@@ -17,6 +18,8 @@ func handleBridgeArgs(args []string) (bool, int) {
 	case "version", "--version", "-v":
 		printBridgeVersion()
 		return true, 0
+	case "jobs":
+		return true, runJobsCommand(args[2:], os.Stdin, os.Stdout, os.Stderr)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown argument: %q\n", args[1])
 		return true, 2

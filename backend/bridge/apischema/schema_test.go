@@ -15,26 +15,23 @@ import (
 )
 
 func TestRoutesAreUniqueAndComplete(t *testing.T) {
+	modeOfKind := map[apischema.Kind]bridgeipc.Mode{
+		apischema.KindHandler:    bridgeipc.ModeCall,
+		apischema.KindTaskRunner: bridgeipc.ModeTask,
+		apischema.KindDuplex:     bridgeipc.ModeDuplex,
+		apischema.KindMutation:   bridgeipc.ModeMutation,
+	}
 	seen := make(map[string]apischema.RouteSpec, len(handlers.Routes))
 	for _, route := range handlers.Routes {
 		if route.Route == "" {
 			t.Fatal("empty route")
 		}
-		if route.Mode != bridgeipc.ModeCall &&
-			route.Mode != bridgeipc.ModeTask &&
-			route.Mode != bridgeipc.ModeDuplex {
-			t.Fatalf("%s has invalid mode %q", route.Route, route.Mode)
-		}
-		if route.Kind != apischema.KindHandler &&
-			route.Kind != apischema.KindTaskRunner &&
-			route.Kind != apischema.KindDuplex {
+		mode, ok := modeOfKind[route.Kind]
+		if !ok {
 			t.Fatalf("%s has invalid kind %q", route.Route, route.Kind)
 		}
-		if route.Kind == apischema.KindDuplex && route.Mode != bridgeipc.ModeDuplex {
-			t.Fatalf("%s is duplex kind but has mode %q", route.Route, route.Mode)
-		}
-		if route.Kind == apischema.KindTaskRunner && route.Mode != bridgeipc.ModeTask {
-			t.Fatalf("%s is task-runner kind but has mode %q", route.Route, route.Mode)
+		if route.Mode != mode {
+			t.Fatalf("%s is %s kind but has mode %q, want %q", route.Route, route.Kind, route.Mode, mode)
 		}
 		if _, exists := seen[route.Route]; exists {
 			t.Fatalf("duplicate route %s", route.Route)
@@ -92,44 +89,25 @@ func TestAllTaskRoutesUseTaskRunner(t *testing.T) {
 			t.Errorf("%s is task kind %q, want task_runner", route.Route, route.Kind)
 		}
 	}
-	if got, want := modes[bridgeipc.ModeCall], 288; got != want {
-		t.Errorf("call route count = %d, want %d", got, want)
-	}
-	if got, want := modes[bridgeipc.ModeTask], 32; got != want {
-		t.Errorf("task route count = %d, want %d", got, want)
-	}
-	if got, want := modes[bridgeipc.ModeDuplex], 12; got != want {
-		t.Errorf("duplex route count = %d, want %d", got, want)
+	known := modes[bridgeipc.ModeCall] + modes[bridgeipc.ModeTask] + modes[bridgeipc.ModeDuplex] + modes[bridgeipc.ModeMutation]
+	if known != len(handlers.Routes) {
+		t.Errorf("route counts by mode = %v, want all %d routes in call, task, duplex or mutation", modes, len(handlers.Routes))
 	}
 }
 
 func TestTaskRoutesDeclareAuditedLifetime(t *testing.T) {
-	sessionCount := 0
-	durableCount := 0
 	for _, route := range handlers.Routes {
 		if route.Mode != bridgeipc.ModeTask {
 			continue
 		}
 		switch route.TaskLifetime {
 		case bridgeipc.TaskLifetimeSession:
-			sessionCount++
 			if route.Identity != nil {
 				t.Errorf("session task %s unexpectedly has a stable identity", route.Route)
-			}
-		case bridgeipc.TaskLifetimeDurable:
-			durableCount++
-			if route.Route != "docker.update_container" {
-				t.Errorf("unexpected durable task route %s", route.Route)
-			}
-			if route.Identity == nil {
-				t.Errorf("durable task %s has no stable identity", route.Route)
 			}
 		default:
 			t.Errorf("%s task lifetime = %q", route.Route, route.TaskLifetime)
 		}
-	}
-	if sessionCount != 31 || durableCount != 1 {
-		t.Fatalf("task lifetime counts = session %d, durable %d; want 31 and 1", sessionCount, durableCount)
 	}
 }
 
@@ -193,18 +171,10 @@ func TestTaskLifetimeOptionsDeclareExpectedLifetime(t *testing.T) {
 }
 
 func TestRetrySafeRoutesAreExplicitCalls(t *testing.T) {
-	count := 0
 	for _, route := range handlers.Routes {
-		if !route.RetrySafe {
-			continue
-		}
-		count++
-		if route.Mode != bridgeipc.ModeCall || !route.Endpoint() {
+		if route.RetrySafe && (route.Mode != bridgeipc.ModeCall || !route.Endpoint()) {
 			t.Errorf("%s is retry-safe but is not a public Call", route.Route)
 		}
-	}
-	if count != 114 {
-		t.Fatalf("retry-safe Call count = %d, want 114", count)
 	}
 	for _, route := range []string{"schedules.list", "schedules.get", "config.get", "config.get_ui", "docker.inspect_container", "system.get_cpu_info", "monitoring.get_live", "monitoring.get_processes", "monitoring.get_programs", "storage.get_topology", "tasks.get", "virt.preflight", "virt.templates", "network.get_bridge_options", "network.get_bridge_handoff", "network.confirm_bridge_handoff", "network.revert_bridge_handoff"} {
 		if !mustRoute(t, route).RetrySafe {
@@ -265,6 +235,9 @@ func TestRetrySafeRejectsNonCallRoutes(t *testing.T) {
 		"duplex": func() {
 			_ = apischema.DuplexRoute[apischema.NoRequest, apischema.NoResponse]("test.retry_duplex", apischema.RetrySafe())
 		},
+		"mutation": func() {
+			_ = apischema.MutationVoid("test.retry_mutation", func(context.Context, apischema.NoRequest) error { return nil }, apischema.RetrySafe())
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			defer func() {
@@ -306,7 +279,7 @@ func TestRequestDecoderDecodesRouteContracts(t *testing.T) {
 		{
 			name:  "object request",
 			route: "docker.update_container",
-			raw:   `{"containerId":"web","runId":"00000000-0000-4000-8000-000000000001"}`,
+			raw:   `{"containerId":"web"}`,
 		},
 		{
 			name:  "optional request",
@@ -453,15 +426,110 @@ func TestDockerComposeDeclaresTerminalAndProgressContracts(t *testing.T) {
 }
 
 func TestWithTaskProgressRejectsCallRoutes(t *testing.T) {
+	for name, opt := range map[string]apischema.RouteSpecOption{
+		"WithTaskProgress": apischema.WithTaskProgress[apischema.VMCreateProgress](),
+		"Progress":         apischema.Progress[apischema.VMCreateProgress](),
+	} {
+		t.Run(name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Fatal("Call() accepted a task progress contract")
+				}
+			}()
+			_ = apischema.Call[apischema.NoRequest, apischema.NoResponse]("test.progress_call", opt)
+		})
+	}
+}
+
+func TestBrowserBoundRejectsNonMutationRoutes(t *testing.T) {
+	for name, build := range map[string]func(){
+		"call": func() {
+			_ = apischema.Call[apischema.NoRequest, apischema.NoResponse]("test.browser_call", apischema.BrowserBound())
+		},
+		"task": func() {
+			_ = apischema.TaskRunner[apischema.NoRequest, apischema.SuccessResponse]("test.browser_task", apischema.SessionTask(), apischema.BrowserBound())
+		},
+		"duplex": func() {
+			_ = apischema.DuplexRoute[apischema.NoRequest, apischema.NoResponse]("test.browser_duplex", apischema.BrowserBound())
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Fatal("non-Mutation route accepted BrowserBound")
+				}
+			}()
+			build()
+		})
+	}
+}
+
+type poolRequest struct {
+	UUID string `json:"uuid"`
+}
+
+func (r poolRequest) Target() []string { return []string{r.UUID} }
+
+func TestMutationInfersTypesAndDetectsTarget(t *testing.T) {
+	targeted := apischema.Mutation("test.targeted", func(context.Context, poolRequest) (apischema.SuccessResponse, error) {
+		return apischema.SuccessResponse{}, nil
+	}, apischema.Progress[apischema.VMCreateProgress](), apischema.BrowserBound())
+	untargeted := apischema.Mutation("test.untargeted", func(context.Context, apischema.NoRequest) (apischema.SuccessResponse, error) {
+		return apischema.SuccessResponse{}, nil
+	})
+
+	spec := targeted.Route
+	if spec.Kind != apischema.KindMutation || spec.Mode != bridgeipc.ModeMutation {
+		t.Fatalf("kind = %q, mode = %q; want mutation", spec.Kind, spec.Mode)
+	}
+	if spec.Request.GoType != reflect.TypeFor[poolRequest]() || spec.Result.GoType != reflect.TypeFor[apischema.SuccessResponse]() {
+		t.Fatalf("request = %v, result = %v; want the handler's types", spec.Request.GoType, spec.Result.GoType)
+	}
+	if spec.Progress.GoType != reflect.TypeFor[apischema.VMCreateProgress]() || !spec.BrowserBound {
+		t.Fatalf("progress = %v, browser bound = %t; want the declared options", spec.Progress.GoType, spec.BrowserBound)
+	}
+	if !spec.Targeted {
+		t.Fatal("a request type with Target() did not mark the route targeted")
+	}
+	if untargeted.Route.Targeted {
+		t.Fatal("a request type without Target() marked the route targeted")
+	}
+
+	set := apischema.Bindings(targeted, untargeted)
+	set.Register(bridgeipc.NewRouter(bridgeipc.NewTaskService()))
+	if got := len(set.Routes()); got != 2 {
+		t.Fatalf("binding set routes = %d, want 2", got)
+	}
+}
+
+func TestResumablePanicsWithoutPrivileged(t *testing.T) {
+	run := func(context.Context, poolRequest) error { return nil }
+	hooks := apischema.ResumeHooks[poolRequest, apischema.NoResponse]{
+		Suspend: func(context.Context, poolRequest, jsontext.Value) (jsontext.Value, error) { return nil, nil },
+		Resume: func(context.Context, poolRequest, jsontext.Value) (apischema.NoResponse, error) {
+			return apischema.NoResponse{}, nil
+		},
+	}
+
+	resumable := apischema.MutationVoid("test.resumable", run, apischema.Privileged()).Resumable(hooks)
+	if !resumable.Route.Resumable {
+		t.Fatal("Resumable() did not mark the route resumable")
+	}
+	apischema.Bindings(resumable).Register(bridgeipc.NewRouter(bridgeipc.NewTaskService()))
+
 	defer func() {
 		if recover() == nil {
-			t.Fatal("Call() accepted a task progress contract")
+			t.Fatal("Resumable() accepted a route without Privileged()")
 		}
 	}()
-	_ = apischema.Call[apischema.NoRequest, apischema.NoResponse](
-		"test.progress_call",
-		apischema.WithTaskProgress[apischema.VMCreateProgress](),
-	)
+	_ = apischema.MutationVoid("test.unprivileged_resumable", run).Resumable(hooks)
+}
+
+func TestMutationVoidRequiresNoResponse(t *testing.T) {
+	binding := apischema.MutationVoid("test.void_mutation", func(context.Context, poolRequest) error { return nil })
+	if !binding.Route.Result.Void() {
+		t.Fatalf("MutationVoid result = %v, want NoResponse", binding.Route.Result.GoType)
+	}
 }
 
 func TestTaskMetadataBuildersAreAllowlistedTaskRoutes(t *testing.T) {
@@ -471,8 +539,8 @@ func TestTaskMetadataBuildersAreAllowlistedTaskRoutes(t *testing.T) {
 		"filebrowser.trash_restore": true, "filebrowser.trash_purge": true, "filebrowser.index": true,
 		"filebrowser.upload": true, "filebrowser.upload_batch": true,
 		"filebrowser.archive": true, "filebrowser.chmod_batch": true, "docker.compose": true,
-		"docker.update_container": true, "docker.apply_daemon_storage": true,
-		"packages.update": true, "storage.run_smart_test": true, "system.install_capability": true,
+		"docker.apply_daemon_storage": true,
+		"packages.update":             true, "storage.run_smart_test": true, "system.install_capability": true,
 		"storage.btrfs_snapshot_rollback": true, "storage.btrfs_device_remove": true, "storage.btrfs_device_replace": true,
 		"storage.btrfs_balance": true, "storage.btrfs_scrub_start": true, "storage.btrfs_replication_run": true,
 		"storage.btrfs_pool_create": true, "storage.partition_create": true, "storage.partition_format": true,

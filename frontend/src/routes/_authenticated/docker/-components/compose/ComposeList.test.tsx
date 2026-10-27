@@ -102,6 +102,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 
 vi.mock("../shared/DockerUpdateOperationProvider", () => ({
   useDockerUpdateOperation: () => ({
+    canUpdate: true,
     isUpdating: () => false,
     startUpdate: mocks.startUpdate,
     updating: false,

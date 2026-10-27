@@ -4,6 +4,7 @@ import type { ContainerInfo } from "@/api";
 import { render, screen } from "@/test/render";
 
 import ContainerCard from "./ContainerCard";
+import { DockerUpdateOperationProvider } from "../shared/DockerUpdateOperationProvider";
 
 const container: ContainerInfo = {
   Id: "container-1",
@@ -39,16 +40,6 @@ vi.mock("@/api", async () => {
 
   return {
     ...actual,
-    linuxio: {
-      ...actual.linuxio,
-      docker: {
-        ...actual.linuxio.docker,
-        update_container: {
-          ...actual.linuxio.docker.update_container,
-          useTaskAction: noOpAction,
-        },
-      },
-    },
     useCallMutation: noOpAction,
   };
 });
@@ -103,18 +94,31 @@ describe("ContainerCard", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("offers the update from the update-available badge", async () => {
-    const { user } = render(
-      <ContainerCard containerId={container.Id} selected={false} />,
-    );
+  it.each([
+    [true, "enabled"],
+    [false, "disabled"],
+  ])(
+    "offers the update from the update-available badge (privileged %s: %s)",
+    async (privileged, state) => {
+      const { user } = render(
+        <DockerUpdateOperationProvider>
+          <ContainerCard containerId={container.Id} selected={false} />
+        </DockerUpdateOperationProvider>,
+        { auth: { privileged } },
+      );
 
-    expect(screen.queryByRole("button", { name: "Update example" })).toBeNull();
-    await user.click(
-      screen.getByRole("button", { name: "Update available for example" }),
-    );
+      expect(
+        screen.queryByRole("button", { name: "Update example" }),
+      ).toBeNull();
+      await user.click(
+        screen.getByRole("button", { name: "Update available for example" }),
+      );
 
-    expect(screen.getByRole("menuitem", { name: "Update" })).toBeEnabled();
-  });
+      const update = screen.getByRole("menuitem", { name: "Update" });
+      if (state === "enabled") expect(update).toBeEnabled();
+      else expect(update).toBeDisabled();
+    },
+  );
 
   it.each([
     ["stale", "Stale metrics"],

@@ -168,7 +168,9 @@ address settings, set the NIC to `inet manual`, restart networking, then pick
 
 ## Durable operation record
 
-The existing durable-task store keeps only the data needed after reconnect:
+The root job store (`backend/common/jobs`, `/var/lib/linuxio/jobs/0`) keeps one
+record per handoff under the route label `network.start_bridge_handoff`, with
+only the data needed after reconnect:
 
 - operation ID and initiating numeric UID;
 - backend, bridge, member, and confirmation deadline; and

@@ -111,6 +111,10 @@ systemd_units() {
 		linuxio-btrfs-health.timer \
 		linuxio-btrfs-degraded.service \
 		linuxio-btrfs-resync@.service \
+		linuxio-jobs-launcher.socket \
+		linuxio-jobs-launcher@.service \
+		linuxio-jobs-reconcile.service \
+		linuxio-jobs@.service \
 		linuxio-monitoring.service
 }
 
@@ -659,6 +663,10 @@ install_systemd_files() {
 		systemd-tmpfiles --create /usr/lib/tmpfiles.d/linuxio.conf 2>/dev/null || true
 		Show 0 "tmpfiles.d configuration installed"
 	fi
+	# The job store replaced the durable-operations store; drop its orphaned data.
+	if [[ -d "${DATA_DIR}/durable-operations" ]]; then
+		rm -rf "${DATA_DIR}/durable-operations"
+	fi
 
 	# libvirt hook: lets bridged VM traffic through Docker's FORWARD DROP policy
 	Show 2 "Installing libvirt bridge hook..."
@@ -698,6 +706,20 @@ enable_services() {
 		Show 0 "Enabled linuxio-monitoring.service"
 	else
 		Show 3 "Failed to enable linuxio-monitoring.service"
+	fi
+	# Outside linuxio.target so that updates never stop a running job; job
+	# hosts themselves are started on demand. Starting a listening socket is a
+	# no-op, but the reconcile runs at boot only: started now, it would mark
+	# live jobs interrupted.
+	if systemctl enable --now linuxio-jobs-launcher.socket >/dev/null 2>&1; then
+		Show 0 "Enabled linuxio-jobs-launcher.socket"
+	else
+		Show 3 "Failed to enable linuxio-jobs-launcher.socket"
+	fi
+	if systemctl enable linuxio-jobs-reconcile.service >/dev/null 2>&1; then
+		Show 0 "Enabled linuxio-jobs-reconcile.service"
+	else
+		Show 3 "Failed to enable linuxio-jobs-reconcile.service"
 	fi
 	# Pools created later get the timer when an admin lists btrfs filesystems.
 	if lsblk -nro FSTYPE 2>/dev/null | grep -qx btrfs; then

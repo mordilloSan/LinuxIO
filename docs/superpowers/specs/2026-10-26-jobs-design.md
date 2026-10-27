@@ -204,7 +204,7 @@ Write policy, from the spike measurements (1.4 ms fsync, 35 µs without, on NVMe
 - progress goes to `/run`, never to `/var/lib`;
 - a job that completes in under one second is deleted from the store when it completes, unless it failed. Such jobs never appear in the list or history. This is TrueNAS's `transient` without a flag.
 
-Retention: terminal records are kept 30 days and at most 200 per uid; pruning runs at host start and daily, removing artifacts with records. This is today's `durabletask` policy; the package is generalised rather than replaced.
+Retention: terminal records are kept 30 days and at most 200 per uid; pruning runs at host start and daily, removing artifacts with records. The job store, `backend/common/jobs`, implements this policy; phase 1 prunes at host start only.
 
 ## 11. Job lifecycle
 
@@ -228,6 +228,21 @@ Retention: terminal records are kept 30 days and at most 200 per uid; pruning ru
 **Boot.** `linuxio-jobs-reconcile.service` runs after `local-fs.target` and after the pools are mounted (ordered after `linuxio-btrfs-degraded.service`). For every uid directory: records in `running` → `interrupted/reboot` (a power loss leaves them `running`; an orderly shutdown already marked them). For each `interrupted` resumable record (always uid 0) it runs `jobs submit --resume <id>`, which starts the root host if needed and asks it to run the route's `Resume` hook on that record; the outcome is written to the same record. Interrupted non-resumable jobs raise one alert each. The host then exits under its normal rule once the resumed jobs end.
 
 **Submit CLI.** `linuxio-bridge jobs submit --route <route> --request <json> [--wait]` creates a job in the caller's host exactly as a bridge would: as root it calls `StartUnit` on `linuxio-jobs@0.service` and connects to its socket; as a user it asks the launcher. `--resume <id>` resumes an interrupted resumable record; `--from <scheduled-job-id>` creates a run record from a scheduled job's stored request. `--wait` follows the job and exits with its outcome, so a timer's oneshot service reflects the job's success or failure. There is no second executor: a job submitted by a timer runs in the same host, with the same progress, record, log and alert as one started from the browser.
+
+### Fault matrix
+
+What each event does to a job, as phase 1 implements it:
+
+- **Page reload, tab close, connection loss**: the stream detaches and the job runs on. Lost before the `task.snapshot` frame, the client resends the same envelope once (it attaches, or gets the stored outcome); lost after it, the client reattaches with `tasks.watch`. A second loss is `outcome_unknown`.
+- **Resend of an `id` with another route or request**: 409.
+- **Logout, session expiry, bridge exit**: the bridge closes its host connection; jobs run on. The host exits one minute after its last bridge left and its last job ended. A later login of the uid sees the jobs the host still holds through `tasks.list` and `tasks.events`.
+- **Host unreachable from the bridge**: mutations fail with 503 before anything starts; the bridge reconnects with backoff from 1 s to 30 s.
+- **Host on another protocol (an update in between)**: new mutations fail with 409 `update_pending`; reads work; the old host finishes its jobs.
+- **LinuxIO update**: hosts, the launcher socket and the reconcile service are outside `linuxio.target`; the installer never stops them.
+- **`systemctl stop` or orderly shutdown**: running jobs become `interrupted/shutdown`, resumable ones after `Suspend` stored a checkpoint; the root host alerts.
+- **Host crash or kill**: the next start of that uid's host marks its `running` records whose pid and start time are gone `interrupted/crash`; the root host alerts.
+- **Reboot or power loss**: the boot reconcile marks every uid's `running` records `interrupted/reboot`, resumes interrupted resumable root jobs, and alerts on the non-resumable root jobs it marked.
+- **Cancel** (`tasks.cancel`, stream abort): the job's context is cancelled and its record becomes `canceled` at once; the target stays taken until the handler returns. Phase 1 does not write `cancel_requested`.
 
 ## 12. Updates
 
@@ -308,7 +323,7 @@ Each phase ends with `make test-quiet`, the docs below updated, and a suggested 
 
 ## 21. Documentation to update
 
-`docs/api-contract.md` (modes, admission, lifetime, tasks section), `docs/durable-operations-architecture.md` (replaced by this design; keep the fault matrix), `docs/process-systemd-architecture.md` (binaries, units, boot flow), `docs/bridge_handler_patterns.md`, `docs/btrfs.md` (resume semantics), `docs/TODO/scheduled-execution.md`, `docs/frontend-task-state-unification.md`, `docs/TODO/api-reliability-roadmap.md` (phase 4 superseded), and `AGENTS.md` if the handler guidance there changes.
+`docs/api-contract.md` (modes, admission, lifetime, tasks section), the durable-operations architecture document (deleted; its fault matrix is in section 11), `docs/process-systemd-architecture.md` (binaries, units, boot flow), `docs/bridge_handler_patterns.md`, `docs/btrfs.md` (resume semantics), `docs/TODO/scheduled-execution.md`, `docs/frontend-task-state-unification.md`, `docs/TODO/api-reliability-roadmap.md` (phase 4 superseded), and `AGENTS.md` if the handler guidance there changes.
 
 ## 22. Measured, not estimated
 

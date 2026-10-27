@@ -5,6 +5,7 @@
  *   useQuery(linuxio.system.get_cpu_info)
  *   useCallMutation(linuxio.docker.start_container, { success, error })
  *   linuxio.docker.compose.useTaskStreamAction({ onProgress })
+ *   linuxio.<handler>.<mutation>.useMutation({ onStart, onProgress })
  *
  * Streaming API (persistent/long-lived streams):
  *   const stream = openTerminalStream(cols, rows);
@@ -28,6 +29,7 @@ export type {
   TaskStreamActionConfig,
   TaskStreamActionResult,
 } from "./task-react-query";
+export type { MutationConfig, MutationEndpoint } from "./mutation-react-query";
 export {
   ROUTE_MODES,
   getRouteMode,

@@ -198,7 +198,8 @@ export const UpdateCell = memo(function UpdateCell({
   updateError,
 }: UpdateCellProps) {
   const toast = useScopedToast(DOCKER_TOAST_META);
-  const { isUpdating, startUpdate, updating } = useDockerUpdateOperation();
+  const { canUpdate, isUpdating, startUpdate, updating } =
+    useDockerUpdateOperation();
   const checkingUpdates = useContext(CheckingUpdatesContext);
   const updateStatus = getUpdateStatus({
     updateAvailable,
@@ -254,7 +255,7 @@ export const UpdateCell = memo(function UpdateCell({
     return (
       <Chip
         color="warning"
-        disabled={updating}
+        disabled={!canUpdate || updating}
         label={
           isUpdatePending ? (
             <span

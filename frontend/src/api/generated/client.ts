@@ -2,6 +2,7 @@
 
 import { defineCall, defineCallWithRequest } from "../call-react-query";
 import type { TypedAPI } from "../endpoint-types";
+import { defineMutation } from "../mutation-react-query";
 import { createTaskEndpoint } from "../task-react-query";
 
 const linuxio = {
@@ -109,8 +110,9 @@ const linuxio = {
     stop_container: defineCallWithRequest("docker.stop_container"),
     system_prune: defineCallWithRequest("docker.system_prune"),
     unpause_container: defineCallWithRequest("docker.unpause_container"),
-    update_container: createTaskEndpoint("docker", "update_container", {
-      kind: "object",
+    update_container: defineMutation("docker", "update_container", {
+      kind: "field",
+      field: "containerId",
     }),
     validate_compose: defineCallWithRequest("docker.validate_compose"),
     validate_stack_directory: defineCallWithRequest(

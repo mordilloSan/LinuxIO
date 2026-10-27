@@ -1199,7 +1199,6 @@ export interface DockerContainerUpdateProgress {
 
 export interface DockerContainerUpdateRequest {
   containerId: string;
-  runId: string;
 }
 
 export interface DockerContainerUpdateResult {
@@ -3069,7 +3068,8 @@ export type TaskState =
   | "running"
   | "completed"
   | "failed"
-  | "canceled";
+  | "canceled"
+  | "interrupted";
 
 export interface TerminalOpenRequest {
   cols: number;
@@ -3866,7 +3866,7 @@ export interface LinuxIOSchema {
       result: void;
     };
     update_container: {
-      input: [request: DockerContainerUpdateRequest];
+      input: [containerId: string];
       request: DockerContainerUpdateRequest;
       result: DockerContainerUpdateResult;
       progress: TaskProgress<DockerContainerUpdateProgress>;

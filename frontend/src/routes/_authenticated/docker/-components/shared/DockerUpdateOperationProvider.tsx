@@ -3,9 +3,7 @@ import {
   type ReactNode,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 
@@ -14,10 +12,10 @@ import {
   type DockerContainerUpdateProgress,
   type DockerContainerUpdateRequest,
   type DockerContainerUpdateResult,
-  type Stream,
   type TaskProgress,
   useStreamMux,
 } from "@/api";
+import useAuth from "@/hooks/useAuth";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { TASK_TYPE_DOCKER_UPDATE } from "@/tasks/taskTypes";
 import { useActiveTaskRecovery } from "@/tasks/useActiveTaskRecovery";
@@ -28,9 +26,10 @@ import {
   type DockerUpdateEvent,
   type DockerUpdateTarget,
 } from "./DockerUpdateOperationDialog";
-import { createDockerContainerUpdateRequest } from "./dockerUpdates";
 
 interface DockerUpdateOperationContextValue {
+  /** The update route is privileged; a non-sudo session cannot run it. */
+  canUpdate: boolean;
   isUpdating: (containerId: string) => boolean;
   startUpdate: (containerId: string, containerName: string) => void;
   updating: boolean;
@@ -38,6 +37,7 @@ interface DockerUpdateOperationContextValue {
 
 const DockerUpdateOperationContext =
   createContext<DockerUpdateOperationContextValue>({
+    canUpdate: false,
     isUpdating: () => false,
     startUpdate: () => undefined,
     updating: false,
@@ -52,6 +52,7 @@ export function DockerUpdateOperationProvider({
   children: ReactNode;
 }) {
   const toast = useScopedToast(DOCKER_TOAST_META);
+  const { privileged } = useAuth();
   const [target, setTarget] = useState<DockerUpdateTarget | null>(null);
   const [events, setEvents] = useState<DockerUpdateEvent[]>([]);
   const [result, setResult] = useState<DockerContainerUpdateResult | null>(
@@ -59,18 +60,12 @@ export function DockerUpdateOperationProvider({
   );
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
-  const streamRef = useRef<Stream | null>(null);
   const { isOpen: muxIsOpen } = useStreamMux();
 
-  const operation = linuxio.docker.update_container.useTaskStreamAction({
-    closeMessage: "Container update stream closed unexpectedly",
+  const operation = linuxio.docker.update_container.useMutation({
     error: (streamError) => {
       if (streamError.name === "AbortError") return;
-      streamRef.current = null;
       setError(streamError.message || "Container update failed");
-    },
-    onOpen: (stream) => {
-      streamRef.current = stream;
     },
     onProgress: (progress: TaskProgress<DockerContainerUpdateProgress>) => {
       const detail = progress.detail;
@@ -83,9 +78,7 @@ export function DockerUpdateOperationProvider({
         return [...previous, { message, phase }];
       });
     },
-    openErrorMessage: "Failed to watch the container update",
     success: (updateResult) => {
-      streamRef.current = null;
       setResult(updateResult);
       setError(null);
     },
@@ -110,10 +103,7 @@ export function DockerUpdateOperationProvider({
         setOpen(true);
         return;
       }
-      begin(
-        { id: containerId, name: containerName },
-        createDockerContainerUpdateRequest(containerId),
-      );
+      begin({ id: containerId, name: containerName }, { containerId });
     },
     [begin, isPending],
   );
@@ -134,16 +124,9 @@ export function DockerUpdateOperationProvider({
       setResult(null);
       setError(null);
       setOpen(true);
-      watch(task, { containerId, runId: task.id });
+      watch(task.id, { containerId });
     },
   });
-
-  useEffect(
-    () => () => {
-      streamRef.current?.close();
-    },
-    [],
-  );
 
   const handleClose = () => {
     setOpen(false);
@@ -154,11 +137,12 @@ export function DockerUpdateOperationProvider({
 
   const value = useMemo<DockerUpdateOperationContextValue>(
     () => ({
+      canUpdate: privileged,
       isUpdating: (containerId) => isPending && target?.id === containerId,
       startUpdate,
       updating: isPending,
     }),
-    [isPending, startUpdate, target?.id],
+    [isPending, privileged, startUpdate, target?.id],
   );
 
   return (

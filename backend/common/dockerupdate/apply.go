@@ -42,10 +42,12 @@ type ContainerClient interface {
 }
 
 // AcquireLock takes the host-wide Docker update lock shared by scheduled and
-// durable updates and by standalone container edits.
+// on-demand updates and by standalone container edits.
 func AcquireLock(ctx context.Context) (func(), error) {
 	return acquireDockerUpdateLockAt(ctx, dockerUpdateLockPath, dockerUpdateLockWait, dockerUpdateLockPoll)
 }
+
+var errUpdateInProgress = errors.New("another Docker update is already in progress")
 
 func acquireDockerUpdateLockAt(ctx context.Context, path string, wait, poll time.Duration) (func(), error) {
 	release, err := filelock.AcquireExclusive(
@@ -55,7 +57,7 @@ func acquireDockerUpdateLockAt(ctx context.Context, path string, wait, poll time
 		filelock.WithRetryDelay(poll),
 	)
 	if errors.Is(err, filelock.ErrTimeout) {
-		return nil, errors.New("another Docker update is already in progress")
+		return nil, errUpdateInProgress
 	}
 	if err != nil {
 		return nil, fmt.Errorf("acquire Docker update lock: %w", err)
@@ -73,13 +75,40 @@ func reportProgress(report progressReporter, phase, message string) {
 	}
 }
 
-func updateContainerWithProgress(
+// ValidateTarget checks the container ID of an update request.
+func ValidateTarget(target string) error {
+	if strings.TrimSpace(target) == "" {
+		return errors.New("container ID is required")
+	}
+	if target != strings.TrimSpace(target) {
+		return errors.New("container ID must not have surrounding whitespace")
+	}
+	if len(target) > 256 {
+		return errors.New("container ID is too long")
+	}
+	for _, char := range target {
+		if char < 0x20 || char == 0x7f {
+			return errors.New("container ID contains an invalid control character")
+		}
+	}
+	return nil
+}
+
+// UpdateContainerWait updates one container to its registry image, reporting
+// each phase to report (nil discards progress). It waits up to lockWait for
+// the engine lock another update holds; a lockWait of 0 waits until ctx ends.
+func UpdateContainerWait(
 	ctx context.Context,
 	containerID string,
-	report progressReporter,
+	lockWait time.Duration,
+	report func(phase, message string),
 ) (DockerContainerUpdateResult, error) {
-	reportProgress(report, "waiting", "Waiting for the Docker update lock")
-	release, err := AcquireLock(ctx)
+	// One poll tells whether the lock is free before the waiting phase shows.
+	release, err := acquireDockerUpdateLockAt(ctx, dockerUpdateLockPath, dockerUpdateLockPoll, dockerUpdateLockPoll)
+	if errors.Is(err, errUpdateInProgress) {
+		reportProgress(report, "waiting", "Waiting for another update to finish")
+		release, err = acquireDockerUpdateLockAt(ctx, dockerUpdateLockPath, lockWait, dockerUpdateLockPoll)
+	}
 	if err != nil {
 		return DockerContainerUpdateResult{}, err
 	}

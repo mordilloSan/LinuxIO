@@ -63,7 +63,8 @@ const ContainerActions = ({
   const [editOpen, setEditOpen] = useState(false);
   const [forceRemove, setForceRemove] = useState(false);
   const navigate = useNavigate();
-  const { isUpdating, startUpdate, updating } = useDockerUpdateOperation();
+  const { canUpdate, isUpdating, startUpdate, updating } =
+    useDockerUpdateOperation();
 
   const { mutate: startContainer, isPending: isStartPending } = useCallMutation(
     linuxio.docker.start_container,
@@ -216,7 +217,7 @@ const ContainerActions = ({
           {
             // The card offers it from its update-available badge instead.
             detailsOnly: true,
-            disabled: isUpdatePending,
+            disabled: !canUpdate || isUpdatePending,
             icon: "mdi:update",
             label: isUpdatePending ? "Updating" : "Update",
             loading: isUpdatePending,

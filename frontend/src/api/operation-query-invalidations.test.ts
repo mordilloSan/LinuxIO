@@ -265,11 +265,12 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
     }
   });
 
-  it("maps only Call or Task routes", () => {
+  it("maps only Call, Task or Mutation routes", () => {
     for (const route of Object.keys(OPERATION_QUERY_INVALIDATIONS)) {
-      expect(["call", "task"], `${route} is not an operation route`).toContain(
-        MODES[route],
-      );
+      expect(
+        ["call", "task", "mutation"],
+        `${route} is not an operation route`,
+      ).toContain(MODES[route]);
     }
   });
 

@@ -83,7 +83,8 @@ const ContainerCardBody = ({
   const [updateMenuAnchor, setUpdateMenuAnchor] = useState<HTMLElement | null>(
     null,
   );
-  const { isUpdating, startUpdate, updating } = useDockerUpdateOperation();
+  const { canUpdate, isUpdating, startUpdate, updating } =
+    useDockerUpdateOperation();
 
   // derived
   const name = useMemo(
@@ -391,7 +392,9 @@ const ContainerCardBody = ({
                           open={Boolean(updateMenuAnchor)}
                         >
                           <AppMenuItem
-                            disabled={updating || isUpdating(container.Id)}
+                            disabled={
+                              !canUpdate || updating || isUpdating(container.Id)
+                            }
                             onClick={() => {
                               setUpdateMenuAnchor(null);
                               startUpdate(container.Id, name);

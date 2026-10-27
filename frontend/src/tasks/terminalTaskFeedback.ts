@@ -264,6 +264,14 @@ export function terminalSnapshotOutcome(
         kind: task.state,
         error: new LinuxIOError(task.error?.message ?? "", task.error?.code),
       };
+    case "interrupted":
+      return {
+        kind: "failed",
+        error: new LinuxIOError(
+          task.error?.message || "interrupted",
+          task.error?.code,
+        ),
+      };
     default:
       return null;
   }

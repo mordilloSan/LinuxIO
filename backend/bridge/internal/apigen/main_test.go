@@ -50,7 +50,8 @@ func TestRenderClientEmitsRequestObjectEndpoints(t *testing.T) {
 		`set_timezone: defineCallWithRequest("datetime.set_timezone")`,
 		`start_container: defineCallWithRequest("docker.start_container")`,
 		`system_prune: defineCallWithRequest("docker.system_prune")`,
-		`update_container: createTaskEndpoint("docker", "update_container", { kind: "object" })`,
+		`update_container: defineMutation("docker", "update_container", { kind: "field", field: "containerId" })`,
+		`import { defineMutation } from "../mutation-react-query";`,
 		`set_hostname: defineCallWithRequest("hostname.set_hostname")`,
 		`compose: createTaskEndpoint("docker", "compose", { kind: "object" })`,
 		`archive: createTaskEndpoint("filebrowser", "archive", { kind: "object" })`,
@@ -77,10 +78,50 @@ func TestRenderClientEmitsRequestObjectEndpoints(t *testing.T) {
 	}
 }
 
+func TestRenderClientEmitsMutationEndpoints(t *testing.T) {
+	routes := []apischema.RouteSpec{
+		{
+			Kind:    apischema.KindTaskRunner,
+			Route:   "docker.compose",
+			Mode:    bridgeipc.ModeTask,
+			Request: apischema.TypeOf[GoldenNestedRequest](),
+			Result:  apischema.TypeOf[GoldenResponse](),
+		},
+		{
+			Kind:     apischema.KindMutation,
+			Route:    "docker.update_container",
+			Mode:     bridgeipc.ModeMutation,
+			Request:  apischema.TypeOf[GoldenNestedRequest](),
+			Result:   apischema.TypeOf[GoldenResponse](),
+			Progress: apischema.TypeOf[GoldenProgress](),
+		},
+	}
+
+	out := renderClientForRoutes(routes)
+	for _, expected := range []string{
+		`import { defineMutation } from "../mutation-react-query";`,
+		`compose: createTaskEndpoint("docker", "compose", { kind: "object" })`,
+		`update_container: defineMutation("docker", "update_container", { kind: "object" })`,
+	} {
+		if !strings.Contains(out, expected) {
+			t.Fatalf("generated client.ts missing mutation fragment %s\n%s", expected, out)
+		}
+	}
+	if strings.Contains(renderClientForRoutes(routes[:1]), "defineMutation") {
+		t.Fatal("generated client.ts imports defineMutation without a mutation route")
+	}
+
+	types := renderTypesForRoutes(routes)
+	expected := "update_container: { input: [request: GoldenNestedRequest]; request: GoldenNestedRequest; result: GoldenResponse; progress: TaskProgress<GoldenProgress> };"
+	if !strings.Contains(types, expected) {
+		t.Fatalf("generated types missing mutation schema %s\n%s", expected, types)
+	}
+}
+
 func TestRenderRouteMetadataIncludesStreamOnlyRoutes(t *testing.T) {
 	out := renderRouteMetadata()
 	for _, expected := range []string{
-		`export type RouteMode = "call" | "task" | "duplex";`,
+		`export type RouteMode = "call" | "task" | "mutation" | "duplex";`,
 		"export type RouteName = keyof typeof ROUTE_MODES;",
 		"export const RETRY_SAFE_CALLS = {",
 		`"system.get_cpu_info": true`,
@@ -150,7 +191,7 @@ func TestRenderTypesCoversCoreRouteShapes(t *testing.T) {
 		"input: [request: DockerSystemPruneRequest]; request: DockerSystemPruneRequest;",
 		"export interface DockerContainerUpdateResult",
 		"export interface MessageResponse",
-		"update_container: { input: [request: DockerContainerUpdateRequest]; request: DockerContainerUpdateRequest; result: DockerContainerUpdateResult; progress: TaskProgress<DockerContainerUpdateProgress> };",
+		"update_container: { input: [containerId: string]; request: DockerContainerUpdateRequest; result: DockerContainerUpdateResult; progress: TaskProgress<DockerContainerUpdateProgress> };",
 		"export interface DockerContainerUpdateRequest",
 		"export interface DockerContainerUpdateProgress",
 		"set_ntp_servers: { input: [servers: string[]]; request: NTPServersRequest; result: void };",

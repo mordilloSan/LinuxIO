@@ -13,8 +13,9 @@ Focused implementation and design details remain in their own documents:
 
 - [API Contract](../api-contract.md) describes implemented API behavior.
 - [Handler Patterns](../bridge_handler_patterns.md) defines handler code style.
-- [Durable Operations Architecture](../durable-operations-architecture.md)
-  defines durable Task execution and recovery mechanics.
+- [Jobs Design](../superpowers/specs/2026-10-26-jobs-design.md) defines how
+  mutations run as jobs that outlive the login, and replaces the durable Task
+  execution of phase 4.
 - [Notifications](../alerts.md) defines the notification product and
   storage contract.
 - [Scheduled Execution](./scheduled-execution.md) defines the systemd timer,
@@ -306,10 +307,14 @@ session Tasks end with the session.
 - [x] Passive WebSocket traffic does not refresh activity; only the explicit
   `FlagActivity` bit does.
 
-## Phase 4: Durable Task Foundation (complete)
+## Phase 4: Durable Task Foundation (complete, superseded)
 
-The [Durable Operations Architecture](../durable-operations-architecture.md)
-is implemented for the current durable route, `docker.update_container`.
+Superseded by the [jobs design](../superpowers/specs/2026-10-26-jobs-design.md).
+`docker.update_container` is now a `Mutation` that runs in the per-uid job host;
+the transient-unit executor, the `linuxio-docker-update run-operation` worker,
+the `durabletask` store and the durable-operations architecture document are
+deleted, and section 11 of the jobs design holds the fault matrix that replaces
+the one below. This section records what phase 4 built.
 
 A durable Task requires both:
 
@@ -512,10 +517,7 @@ release checks) and external delivery are listed under "Not in this slice" in
 
 After the progress, alert, and scheduled-run vertical slices:
 
-- reassess the current durable route: keep its external systemd executor and
-  stable results, but replace replacement-bridge Task reconstruction if the
-  generic run status model gives the same honest post-login recovery with less
-  machinery;
+- reassess the current durable route (done: the jobs design replaced it);
 - recover PackageKit work through PackageKit when supported;
 - recover SMART tests from drive state;
 - extend durable execution to another route only with explicit idempotency and
@@ -564,7 +566,7 @@ LinuxIO should adopt focused lessons, not another product's full protocol:
 - `api-contract.md`: the implemented contract and clearly labelled local
   follow-up; cross-cutting future work stays in this roadmap.
 - `bridge_handler_patterns.md`: current handler style.
-- `durable-operations-architecture.md`: durable execution and recovery
+- `superpowers/specs/2026-10-26-jobs-design.md`: job execution and recovery
   mechanics.
 - `docs/alerts.md`: alert lifecycle, file store, API, polling,
   and frontend behavior.
@@ -585,7 +587,7 @@ This roadmap is complete when:
   outcome honestly;
 - every Task has an explicit lifetime and owner scope;
 - session deletion cancels session Tasks in production;
-- the durable route survives every event it claims to survive;
+- jobs survive every event the jobs design's fault matrix claims;
 - all Tasks expose uniform generic progress while route UIs retain typed detail;
 - alerts have one persistent server owner and one frontend cache owner;
 - scheduled scripts use systemd execution/state and journald logs, with explicit

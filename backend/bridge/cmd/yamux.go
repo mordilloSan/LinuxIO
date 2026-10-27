@@ -121,6 +121,8 @@ func handleYamuxStream(ctx context.Context, rt runtime.Runtime, router *bridgeip
 	if err := router.Dispatch(ctx, stream, bridgeipc.Request{
 		Route:      envelope.Route,
 		RawRequest: envelope.Request,
+		ID:         envelope.ID,
+		OpenRaw:    frame.Payload,
 		Session:    sess,
 	}); err != nil {
 		return

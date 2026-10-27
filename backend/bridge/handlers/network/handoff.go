@@ -12,15 +12,26 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network/internal/hostbridge"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
-	"github.com/mordilloSan/LinuxIO/backend/common/durabletask"
+	"github.com/mordilloSan/LinuxIO/backend/common/jobs"
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
-const bridgeHandoffRoute = "network.bridge_handoff"
+const bridgeHandoffRoute = "network.start_bridge_handoff"
 
 const (
 	bridgeHandoffStartTimeout    = 60 * time.Second
 	bridgeHandoffDecisionTimeout = 30 * time.Second
 )
+
+// A handoff job stays running from its start until a decision or the native
+// rollback window ends it; its checkpoint records the phase it is in.
+const (
+	handoffPhaseStarting  = "starting"
+	handoffPhaseLaunching = "launching"
+	handoffPhaseRunning   = "running"
+)
+
+var errHandoffPhaseChanged = errors.New("network handoff phase changed")
 
 var (
 	prepareBridgeHandoff = hostbridge.PrepareBridgeHandoff
@@ -30,7 +41,7 @@ var (
 )
 
 type bridgeHandoffService interface {
-	Start(context.Context, uint32, apischema.NetworkBridgeHandoffRequest) (apischema.NetworkBridgeHandoffStatus, error)
+	Start(context.Context, jobs.Owner, apischema.NetworkBridgeHandoffRequest) (apischema.NetworkBridgeHandoffStatus, error)
 	Status(context.Context, uint32, string) (apischema.NetworkBridgeHandoffStatus, error)
 	Confirm(context.Context, uint32, string) (apischema.NetworkBridgeHandoffStatus, error)
 	Revert(context.Context, uint32, string) (apischema.NetworkBridgeHandoffStatus, error)
@@ -43,46 +54,49 @@ type networkHandlers struct {
 
 func newBridgeHandoffAdapter(_ runtime.Runtime) bridgeHandoffService {
 	return &durableBridgeHandoffService{
-		env:   bridgeEnv,
-		store: durabletask.NewStore(durabletask.DefaultRoot),
+		env: bridgeEnv,
+		// The handoff runs only in the root bridge, so its job is root's.
+		store: jobs.NewStore(version.DataDir+"/jobs/0", version.RunDir+"/jobs/0"),
 		now:   func() time.Time { return time.Now().UTC() },
 	}
 }
 
 type durableBridgeHandoffService struct {
 	env   hostbridge.Environment
-	store *durabletask.Store
+	store *jobs.Store
 	now   func() time.Time
 }
 
 type bridgeHandoffRecord struct {
+	Phase               string                        `json:"phase"`
 	State               hostbridge.BridgeHandoffState `json:"state"`
 	Deadline            time.Time                     `json:"deadline"`
 	SafeReleaseDeadline time.Time                     `json:"safe_release_deadline"`
+	DecisionStartedAt   time.Time                     `json:"decision_started_at,omitzero"`
 }
 
-func (s *durableBridgeHandoffService) Start(ctx context.Context, uid uint32, req apischema.NetworkBridgeHandoffRequest) (apischema.NetworkBridgeHandoffStatus, error) {
+func (s *durableBridgeHandoffService) Start(ctx context.Context, owner jobs.Owner, req apischema.NetworkBridgeHandoffRequest) (apischema.NetworkBridgeHandoffStatus, error) {
 	if err := ctx.Err(); err != nil {
 		return apischema.NetworkBridgeHandoffStatus{}, err
 	}
 	networkMutationMu.Lock()
 	defer networkMutationMu.Unlock()
-	operationCtx, cancel := durabletask.DetachedContext(bridgeHandoffStartTimeout)
+	operationCtx, cancel := jobs.DetachedContext(bridgeHandoffStartTimeout)
 	defer cancel()
 
-	id := strings.TrimSpace(req.OperationID)
-	name := strings.TrimSpace(req.Name)
-	member := strings.TrimSpace(req.Member)
-	record, created, err := s.claimRecord(operationCtx, uid, id, name, member)
+	req.OperationID = strings.TrimSpace(req.OperationID)
+	req.Name = strings.TrimSpace(req.Name)
+	req.Member = strings.TrimSpace(req.Member)
+	record, created, err := s.claimRecord(operationCtx, owner, req)
 	if err != nil {
 		return apischema.NetworkBridgeHandoffStatus{}, err
 	}
 	if !created {
-		return s.status(operationCtx, uid, record)
+		return s.status(operationCtx, record)
 	}
 
 	state, err := prepareBridgeHandoff(operationCtx, s.env, hostbridge.BridgeHandoffPlan{
-		Name: name, Member: member, ConsoleAcknowledged: req.ConsoleAcknowledged,
+		Name: req.Name, Member: req.Member, ConsoleAcknowledged: req.ConsoleAcknowledged,
 	})
 	if err != nil {
 		s.failRecord(operationCtx, record, err)
@@ -90,12 +104,13 @@ func (s *durableBridgeHandoffService) Start(ctx context.Context, uid uint32, req
 	}
 	now := s.now().UTC()
 	data := bridgeHandoffRecord{
+		Phase:               handoffPhaseStarting,
 		State:               state,
 		Deadline:            now.Add(hostbridge.BridgeHandoffConfirmationTimeout),
 		SafeReleaseDeadline: now.Add(bridgeHandoffStartTimeout + hostbridge.BridgeHandoffConfirmationTimeout),
 	}
-	record, err = s.updateData(operationCtx, record, data, func(current *durabletask.Record) {
-		current.AppendProgress(s.now(), "applying", "Moving the host IP configuration to the bridge")
+	record, err = s.updateData(operationCtx, record, data, func(current *jobs.Record) {
+		setHandoffProgress(current, "applying", "Moving the host IP configuration to the bridge")
 	})
 	if err != nil {
 		return apischema.NetworkBridgeHandoffStatus{}, fmt.Errorf("record network handoff: %w", err)
@@ -104,52 +119,82 @@ func (s *durableBridgeHandoffService) Start(ctx context.Context, uid uint32, req
 		s.retainFailedStart(operationCtx, record, applyErr)
 		return apischema.NetworkBridgeHandoffStatus{}, fmt.Errorf("apply network handoff: %w", applyErr)
 	}
-	now = s.now().UTC()
-	record, err = s.updateData(operationCtx, record, data, func(current *durabletask.Record) {
-		current.State = durabletask.StateRunning
-		current.Executor = durabletask.Executor{Kind: data.State.Backend, Handle: data.State.Handle, Identity: "system-bus"}
-		current.StartedAt = &now
-		current.AppendProgress(now, "awaiting_confirmation", "Network handoff applied; waiting for confirmation")
+	data.Phase = handoffPhaseRunning
+	record, err = s.updateData(operationCtx, record, data, func(current *jobs.Record) {
+		current.Executor = jobs.Executor{Kind: data.State.Backend, Unit: data.State.Handle}
+		setHandoffProgress(current, "awaiting_confirmation", "Network handoff applied; waiting for confirmation")
 	})
 	if err != nil {
 		return apischema.NetworkBridgeHandoffStatus{}, fmt.Errorf("persist native network transaction: %w", err)
 	}
-	return s.status(operationCtx, uid, record)
+	return s.status(operationCtx, record)
 }
 
-func (s *durableBridgeHandoffService) claimRecord(ctx context.Context, uid uint32, id, name, member string) (durabletask.Record, bool, error) {
-	record, created, err := s.store.Claim(ctx, durabletask.Claim{
-		ID:                 id,
-		Route:              bridgeHandoffRoute,
-		UID:                uid,
-		RequestFingerprint: durabletask.Fingerprint(bridgeHandoffRoute, name+"\x00"+member),
-		Target:             member,
-		ExclusiveRoute:     true,
-		ReconcileActive:    s.reconcileActiveRecord,
-	})
-	if errors.Is(err, durabletask.ErrConflict) {
-		return durabletask.Record{}, false, fmt.Errorf("%w: operation ID was already used for another network handoff", bridgeipc.ErrConflict)
+func (s *durableBridgeHandoffService) claimRecord(ctx context.Context, owner jobs.Owner, req apischema.NetworkBridgeHandoffRequest) (jobs.Record, bool, error) {
+	// Releasing expired handoffs is not atomic with the create below, which is
+	// acceptable: handoffs are rare and run only in the root bridge.
+	if err := s.expireStale(ctx); err != nil {
+		return jobs.Record{}, false, fmt.Errorf("claim durable network handoff: %w", err)
 	}
-	if errors.Is(err, durabletask.ErrActive) {
-		return durabletask.Record{}, false, fmt.Errorf("%w: another network handoff is already active", bridgeipc.ErrConflict)
-	}
+	request, err := json.Marshal(req)
 	if err != nil {
-		return durabletask.Record{}, false, fmt.Errorf("claim durable network handoff: %w", err)
+		return jobs.Record{}, false, fmt.Errorf("encode network handoff request: %w", err)
 	}
-	return record, created, nil
-}
-
-func (s *durableBridgeHandoffService) updateData(ctx context.Context, record durabletask.Record, data bridgeHandoffRecord, update func(*durabletask.Record)) (durabletask.Record, error) {
-	encoded, err := json.Marshal(data)
-	if err != nil {
-		return durabletask.Record{}, err
+	now := s.now().UTC()
+	record := jobs.Record{
+		ID:        req.OperationID,
+		Route:     bridgeHandoffRoute,
+		Owner:     owner,
+		Target:    []string{req.Member},
+		State:     jobs.StateRunning,
+		CreatedAt: now,
+		StartedAt: now,
+		Request:   request,
+		Protocol:  jobs.Protocol,
 	}
-	return s.store.Update(ctx, record.ID, record.UID, func(current *durabletask.Record) error {
-		current.Result = encoded
-		if update != nil {
-			update(current)
+	err = s.store.CreateUnlessActive(ctx, record)
+	if errors.Is(err, jobs.ErrExists) {
+		existing, getErr := s.store.Get(ctx, record.ID)
+		if getErr != nil {
+			return jobs.Record{}, false, fmt.Errorf("claim durable network handoff: %w", getErr)
 		}
-		return nil
+		var existingReq apischema.NetworkBridgeHandoffRequest
+		if existing.Route != bridgeHandoffRoute || existing.Owner.UID != owner.UID || json.Unmarshal(existing.Request, &existingReq) != nil || existingReq != req {
+			return jobs.Record{}, false, fmt.Errorf("%w: operation ID was already used for another network handoff", bridgeipc.ErrConflict)
+		}
+		return existing, false, nil
+	}
+	if errors.Is(err, jobs.ErrActive) {
+		return jobs.Record{}, false, fmt.Errorf("%w: another network handoff is already active", bridgeipc.ErrConflict)
+	}
+	if err != nil {
+		return jobs.Record{}, false, fmt.Errorf("claim durable network handoff: %w", err)
+	}
+	return record, true, nil
+}
+
+// expireStale settles every running handoff whose native rollback window has
+// ended, so it no longer holds the route.
+func (s *durableBridgeHandoffService) expireStale(ctx context.Context) error {
+	active, err := s.store.ListActive(ctx)
+	if err != nil {
+		return err
+	}
+	for _, record := range active {
+		if record.Route != bridgeHandoffRoute {
+			continue
+		}
+		if _, err := s.expire(ctx, record); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *durableBridgeHandoffService) updateData(ctx context.Context, record jobs.Record, data bridgeHandoffRecord, update func(*jobs.Record)) (jobs.Record, error) {
+	return s.store.Update(ctx, record.ID, func(current *jobs.Record) error {
+		update(current)
+		return setHandoffCheckpoint(current, data)
 	})
 }
 
@@ -158,119 +203,84 @@ func (s *durableBridgeHandoffService) Status(ctx context.Context, uid uint32, id
 	if err != nil {
 		return apischema.NetworkBridgeHandoffStatus{}, err
 	}
-	return s.status(ctx, uid, record)
+	return s.status(ctx, record)
 }
 
-func (s *durableBridgeHandoffService) getRecord(ctx context.Context, uid uint32, id string) (durabletask.Record, error) {
-	record, err := s.store.Get(ctx, id, uid)
-	if errors.Is(err, durabletask.ErrNotFound) || err == nil && record.Route != bridgeHandoffRoute {
-		return durabletask.Record{}, fmt.Errorf("%w: network handoff", bridgeipc.ErrNotFound)
+func (s *durableBridgeHandoffService) getRecord(ctx context.Context, uid uint32, id string) (jobs.Record, error) {
+	record, err := s.store.Get(ctx, id)
+	if errors.Is(err, jobs.ErrNotFound) || err == nil && (record.Route != bridgeHandoffRoute || record.Owner.UID != uid) {
+		return jobs.Record{}, fmt.Errorf("%w: network handoff", bridgeipc.ErrNotFound)
 	}
 	return record, err
 }
 
-func (s *durableBridgeHandoffService) status(ctx context.Context, uid uint32, record durabletask.Record) (apischema.NetworkBridgeHandoffStatus, error) {
-	data, err := decodeBridgeHandoffRecord(record)
-	if err != nil {
-		data = bridgeHandoffRecord{}
-	}
-	record, err = s.expire(ctx, uid, record, data)
+func (s *durableBridgeHandoffService) status(ctx context.Context, record jobs.Record) (apischema.NetworkBridgeHandoffStatus, error) {
+	record, err := s.expire(ctx, record)
 	if err != nil {
 		return apischema.NetworkBridgeHandoffStatus{}, err
 	}
+	data, _ := decodeBridgeHandoffRecord(record)
 	return handoffStatusFromRecord(record, data), nil
 }
 
-func (s *durableBridgeHandoffService) expire(ctx context.Context, uid uint32, record durabletask.Record, data bridgeHandoffRecord) (durabletask.Record, error) {
+func (s *durableBridgeHandoffService) expire(ctx context.Context, record jobs.Record) (jobs.Record, error) {
 	now := s.now().UTC()
-	if !handoffExpired(record, data, now) {
+	if data, _ := decodeBridgeHandoffRecord(record); !handoffExpired(record, data, now) {
 		return record, nil
 	}
-	return s.store.Update(ctx, record.ID, uid, func(current *durabletask.Record) error {
-		if current.Terminal() {
-			return nil
+	return s.store.Update(ctx, record.ID, func(current *jobs.Record) error {
+		if data, _ := decodeBridgeHandoffRecord(*current); handoffExpired(*current, data, now) {
+			expireHandoffRecord(current, data, now)
 		}
-		currentData, decodeErr := decodeBridgeHandoffRecord(*current)
-		if decodeErr != nil {
-			currentData = bridgeHandoffRecord{}
-		}
-		if !handoffExpired(*current, currentData, now) {
-			return nil
-		}
-		expireHandoffRecord(current, now)
 		return nil
 	})
 }
 
-func (s *durableBridgeHandoffService) reconcileActiveRecord(record *durabletask.Record, _ time.Time) error {
-	now := s.now().UTC()
-	data, err := decodeBridgeHandoffRecord(*record)
-	if err != nil {
-		data = bridgeHandoffRecord{}
-	}
-	if handoffExpired(*record, data, now) {
-		expireHandoffRecord(record, now)
-	}
-	return nil
-}
-
-func handoffExpired(record durabletask.Record, data bridgeHandoffRecord, now time.Time) bool {
-	if record.Terminal() {
+func handoffExpired(record jobs.Record, data bridgeHandoffRecord, now time.Time) bool {
+	if record.State != jobs.StateRunning {
 		return false
 	}
 	deadline := data.SafeReleaseDeadline
-	if deadline.IsZero() && data.Deadline.IsZero() {
-		if record.State != durabletask.StateQueued {
-			return false
-		}
+	if deadline.IsZero() {
+		// No native transaction was recorded: release the handoff once its
+		// start could no longer be running.
 		deadline = record.CreatedAt.Add(bridgeHandoffStartTimeout + hostbridge.BridgeHandoffConfirmationTimeout)
 	}
-	if deadline.IsZero() {
-		// Older records persisted the native deadline before the native start;
-		// allow the bounded start context to finish before recovering them.
-		deadline = data.Deadline.Add(bridgeHandoffStartTimeout)
-	}
-	if record.State == durabletask.StateLaunching {
-		decisionDeadline := record.UpdatedAt.Add(bridgeHandoffDecisionTimeout)
-		if decisionDeadline.After(deadline) {
-			deadline = decisionDeadline
-		}
-	}
-	if deadline.IsZero() {
-		return false
+	if decisionDeadline := data.DecisionStartedAt.Add(bridgeHandoffDecisionTimeout); data.Phase == handoffPhaseLaunching && decisionDeadline.After(deadline) {
+		deadline = decisionDeadline
 	}
 	return !now.Before(deadline)
 }
 
-func expireHandoffRecord(record *durabletask.Record, finished time.Time) {
-	if record.Error != nil || record.State == durabletask.StateLaunching {
-		record.State = durabletask.StateUnknown
+func expireHandoffRecord(record *jobs.Record, data bridgeHandoffRecord, finished time.Time) {
+	if record.Error != nil || data.Phase == handoffPhaseLaunching {
+		record.State = jobs.StateFailed
 		if record.Error == nil {
-			record.Error = &durabletask.StructuredError{Code: 500, Message: "network handoff decision outcome is unknown; inspect the host bridge"}
+			record.Error = &jobs.Error{Code: 500, Message: "network handoff decision outcome is unknown; inspect the host bridge"}
 		}
-		record.AppendProgress(finished, "unknown", "Native network recovery could not be verified; inspect the host bridge")
+		setHandoffProgress(record, "unknown", "Native network recovery could not be verified; inspect the host bridge")
 	} else {
-		record.State = durabletask.StateCanceled
-		record.AppendProgress(finished, "reverted", "The native rollback window elapsed")
+		record.State = jobs.StateCanceled
+		setHandoffProgress(record, "reverted", "The native rollback window elapsed")
 	}
-	record.FinishedAt = &finished
+	record.FinishedAt = finished
 }
 
 func (s *durableBridgeHandoffService) Confirm(ctx context.Context, uid uint32, id string) (apischema.NetworkBridgeHandoffStatus, error) {
-	return s.finish(ctx, uid, id, "confirming", durabletask.StateCompleted, confirmBridgeHandoff)
+	return s.finish(ctx, uid, id, "confirming", jobs.StateCompleted, confirmBridgeHandoff)
 }
 
 func (s *durableBridgeHandoffService) Revert(ctx context.Context, uid uint32, id string) (apischema.NetworkBridgeHandoffStatus, error) {
-	return s.finish(ctx, uid, id, "reverting", durabletask.StateCanceled, revertBridgeHandoff)
+	return s.finish(ctx, uid, id, "reverting", jobs.StateCanceled, revertBridgeHandoff)
 }
 
-func (s *durableBridgeHandoffService) finish(ctx context.Context, uid uint32, id, phase string, terminal durabletask.State, action func(context.Context, hostbridge.Environment, *hostbridge.BridgeHandoffState) error) (apischema.NetworkBridgeHandoffStatus, error) {
+func (s *durableBridgeHandoffService) finish(ctx context.Context, uid uint32, id, phase string, terminal jobs.State, action func(context.Context, hostbridge.Environment, *hostbridge.BridgeHandoffState) error) (apischema.NetworkBridgeHandoffStatus, error) {
 	if err := ctx.Err(); err != nil {
 		return apischema.NetworkBridgeHandoffStatus{}, err
 	}
 	networkMutationMu.Lock()
 	defer networkMutationMu.Unlock()
-	operationCtx, cancel := durabletask.DetachedContext(bridgeHandoffDecisionTimeout)
+	operationCtx, cancel := jobs.DetachedContext(bridgeHandoffDecisionTimeout)
 	defer cancel()
 
 	record, err := s.getRecord(operationCtx, uid, id)
@@ -281,58 +291,52 @@ func (s *durableBridgeHandoffService) finish(ctx context.Context, uid uint32, id
 	if err != nil {
 		return apischema.NetworkBridgeHandoffStatus{}, err
 	}
-	record, err = s.expire(operationCtx, uid, record, data)
+	record, err = s.expire(operationCtx, record)
 	if err != nil {
 		return apischema.NetworkBridgeHandoffStatus{}, err
 	}
 	if record.State == terminal {
 		return handoffStatusFromRecord(record, data), nil
 	}
-	if record.State != durabletask.StateRunning {
+	if record.State != jobs.StateRunning || data.Phase != handoffPhaseRunning {
 		return apischema.NetworkBridgeHandoffStatus{}, fmt.Errorf("%w: network handoff is no longer awaiting a decision", bridgeipc.ErrConflict)
 	}
 	if !s.now().UTC().Before(data.Deadline) {
 		return apischema.NetworkBridgeHandoffStatus{}, fmt.Errorf("%w: network handoff decision window has elapsed", bridgeipc.ErrConflict)
 	}
 	now := s.now().UTC()
-	_, err = s.store.Update(operationCtx, id, uid, func(current *durabletask.Record) error {
-		if current.State != durabletask.StateRunning {
-			return durabletask.ErrConflict
+	_, err = s.store.Update(operationCtx, id, func(current *jobs.Record) error {
+		currentData, ok := handoffInPhase(*current, handoffPhaseRunning)
+		if !ok {
+			return errHandoffPhaseChanged
 		}
-		current.State = durabletask.StateLaunching
-		current.AppendProgress(now, phase, "Network handoff "+phase)
-		return nil
+		currentData.Phase, currentData.DecisionStartedAt = handoffPhaseLaunching, now
+		setHandoffProgress(current, phase, "Network handoff "+phase)
+		return setHandoffCheckpoint(current, currentData)
 	})
-	if errors.Is(err, durabletask.ErrConflict) {
+	if errors.Is(err, errHandoffPhaseChanged) {
 		return apischema.NetworkBridgeHandoffStatus{}, fmt.Errorf("%w: another network handoff decision is already in progress", bridgeipc.ErrConflict)
 	}
 	if err != nil {
 		return apischema.NetworkBridgeHandoffStatus{}, err
 	}
 	if actionErr := action(operationCtx, s.env, &data.State); actionErr != nil {
-		_, _ = s.store.Update(operationCtx, id, uid, func(current *durabletask.Record) error {
-			if current.State == durabletask.StateLaunching {
-				current.State = durabletask.StateRunning
-				current.Error = &durabletask.StructuredError{Code: 500, Message: actionErr.Error()}
-				current.AppendProgress(s.now(), "awaiting_confirmation", actionErr.Error())
-			}
-			return nil
-		})
+		s.retainFailedDecision(operationCtx, id, actionErr)
 		return apischema.NetworkBridgeHandoffStatus{}, fmt.Errorf("%s network handoff: %w", strings.TrimSuffix(phase, "ing"), actionErr)
 	}
 	finished := s.now().UTC()
-	record, err = s.store.Update(operationCtx, id, uid, func(current *durabletask.Record) error {
-		if current.State != durabletask.StateLaunching {
-			return durabletask.ErrConflict
+	record, err = s.store.Update(operationCtx, id, func(current *jobs.Record) error {
+		if _, ok := handoffInPhase(*current, handoffPhaseLaunching); !ok {
+			return errHandoffPhaseChanged
 		}
 		current.State = terminal
 		current.Error = nil
-		current.FinishedAt = &finished
+		current.FinishedAt = finished
 		message := "The network handoff was reverted"
-		if terminal == durabletask.StateCompleted {
+		if terminal == jobs.StateCompleted {
 			message = "The network handoff was confirmed"
 		}
-		current.AppendProgress(finished, string(terminal), message)
+		setHandoffProgress(current, string(terminal), message)
 		return nil
 	})
 	if err != nil {
@@ -341,68 +345,111 @@ func (s *durableBridgeHandoffService) finish(ctx context.Context, uid uint32, id
 	return handoffStatusFromRecord(record, data), nil
 }
 
-func (s *durableBridgeHandoffService) failRecord(ctx context.Context, record durabletask.Record, operationErr error) {
-	finished := s.now().UTC()
-	_, _ = s.store.Update(ctx, record.ID, record.UID, func(current *durabletask.Record) error {
-		current.State = durabletask.StateFailed
-		current.FinishedAt = &finished
-		current.Error = &durabletask.StructuredError{Code: 500, Message: operationErr.Error()}
-		current.AppendProgress(finished, "failed", operationErr.Error())
-		return nil
-	})
-}
-
-func (s *durableBridgeHandoffService) retainFailedStart(ctx context.Context, record durabletask.Record, operationErr error) {
-	failed := s.now().UTC()
-	_, _ = s.store.Update(ctx, record.ID, record.UID, func(current *durabletask.Record) error {
-		if current.Terminal() {
+// retainFailedDecision returns a handoff whose decision failed to awaiting a
+// decision, keeping the error for the expiry to report.
+func (s *durableBridgeHandoffService) retainFailedDecision(ctx context.Context, id string, actionErr error) {
+	_, _ = s.store.Update(ctx, id, func(current *jobs.Record) error {
+		data, ok := handoffInPhase(*current, handoffPhaseLaunching)
+		if !ok {
 			return nil
 		}
-		current.Error = &durabletask.StructuredError{Code: 500, Message: operationErr.Error()}
-		current.AppendProgress(failed, "failed", operationErr.Error())
+		data.Phase = handoffPhaseRunning
+		current.Error = &jobs.Error{Code: 500, Message: actionErr.Error()}
+		setHandoffProgress(current, "awaiting_confirmation", actionErr.Error())
+		return setHandoffCheckpoint(current, data)
+	})
+}
+
+func (s *durableBridgeHandoffService) failRecord(ctx context.Context, record jobs.Record, operationErr error) {
+	finished := s.now().UTC()
+	_, _ = s.store.Update(ctx, record.ID, func(current *jobs.Record) error {
+		current.State = jobs.StateFailed
+		current.FinishedAt = finished
+		current.Error = &jobs.Error{Code: 500, Message: operationErr.Error()}
+		setHandoffProgress(current, "failed", operationErr.Error())
 		return nil
 	})
 }
 
-func decodeBridgeHandoffRecord(record durabletask.Record) (bridgeHandoffRecord, error) {
+func (s *durableBridgeHandoffService) retainFailedStart(ctx context.Context, record jobs.Record, operationErr error) {
+	_, _ = s.store.Update(ctx, record.ID, func(current *jobs.Record) error {
+		if current.State != jobs.StateRunning {
+			return nil
+		}
+		current.Error = &jobs.Error{Code: 500, Message: operationErr.Error()}
+		setHandoffProgress(current, "failed", operationErr.Error())
+		return nil
+	})
+}
+
+// decodeBridgeHandoffRecord returns the zero record with any error.
+func decodeBridgeHandoffRecord(record jobs.Record) (bridgeHandoffRecord, error) {
 	var data bridgeHandoffRecord
-	if len(record.Result) == 0 {
+	if len(record.Checkpoint) == 0 {
 		return data, errors.New("network handoff has no native transaction record")
 	}
-	if err := json.Unmarshal(record.Result, &data); err != nil {
-		return data, fmt.Errorf("decode network handoff record: %w", err)
+	if err := json.Unmarshal(record.Checkpoint, &data); err != nil {
+		return bridgeHandoffRecord{}, fmt.Errorf("decode network handoff record: %w", err)
 	}
 	return data, nil
 }
 
-func handoffStatusFromRecord(record durabletask.Record, data bridgeHandoffRecord) apischema.NetworkBridgeHandoffStatus {
+// handoffInPhase reports whether the handoff is running in phase, with its checkpoint.
+func handoffInPhase(record jobs.Record, phase string) (bridgeHandoffRecord, bool) {
+	data, err := decodeBridgeHandoffRecord(record)
+	return data, err == nil && record.State == jobs.StateRunning && data.Phase == phase
+}
+
+func setHandoffCheckpoint(record *jobs.Record, data bridgeHandoffRecord) error {
+	encoded, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	record.Checkpoint = encoded
+	return nil
+}
+
+// setHandoffProgress shows the handoff's latest step in the jobs list; a
+// message that cannot be encoded keeps the previous step.
+func setHandoffProgress(record *jobs.Record, phase, message string) {
+	if progress, err := json.Marshal(bridgeipc.TaskProgress{Phase: phase, Message: message}); err == nil {
+		record.Progress = progress
+	}
+}
+
+func handoffStatusFromRecord(record jobs.Record, data bridgeHandoffRecord) apischema.NetworkBridgeHandoffStatus {
 	status := apischema.NetworkBridgeHandoffStatus{
 		OperationID: record.ID,
 		Name:        data.State.Plan.Name,
-		Member:      record.Target,
 		Backend:     data.State.Backend,
+	}
+	if len(record.Target) > 0 {
+		status.Member = record.Target[0]
 	}
 	if !data.Deadline.IsZero() {
 		status.Deadline = data.Deadline.UTC().Format(time.RFC3339)
 	}
 	switch record.State {
-	case durabletask.StateQueued:
-		status.State = apischema.NetworkBridgeHandoffApplying
-		status.Message = "Applying the network handoff"
-		if record.Error != nil {
-			status.Error = record.Error.Message
-			status.Message = "Network handoff failed while applying; waiting for native rollback"
+	case jobs.StateRunning:
+		switch data.Phase {
+		case handoffPhaseLaunching:
+			status.State = apischema.NetworkBridgeHandoffApplying
+			status.Message = "Finishing the network handoff decision"
+		case handoffPhaseRunning:
+			status.State = apischema.NetworkBridgeHandoffAwaitingConfirmation
+			status.Message = "The bridge is active; confirm it before the deadline"
+		default: // starting, or not yet recorded
+			status.State = apischema.NetworkBridgeHandoffApplying
+			status.Message = "Applying the network handoff"
+			if record.Error != nil {
+				status.Error = record.Error.Message
+				status.Message = "Network handoff failed while applying; waiting for native rollback"
+			}
 		}
-	case durabletask.StateLaunching:
-		status.State = apischema.NetworkBridgeHandoffApplying
-		status.Message = "Finishing the network handoff decision"
-	case durabletask.StateRunning:
-		status.State = apischema.NetworkBridgeHandoffAwaitingConfirmation
-		status.Message = "The bridge is active; confirm it before the deadline"
-	case durabletask.StateCompleted:
+	case jobs.StateCompleted:
 		status.State = apischema.NetworkBridgeHandoffConfirmed
 		status.Message = "The network handoff is confirmed"
-	case durabletask.StateCanceled:
+	case jobs.StateCanceled:
 		status.State = apischema.NetworkBridgeHandoffReverted
 		status.Message = "The original network configuration was restored"
 	default:
@@ -416,7 +463,7 @@ func handoffStatusFromRecord(record durabletask.Record, data bridgeHandoffRecord
 }
 
 func validateHandoffOperationID(value string) error {
-	if err := durabletask.ValidateID(strings.TrimSpace(value)); err != nil {
+	if err := jobs.ValidateID(strings.TrimSpace(value)); err != nil {
 		return fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
 	}
 	return nil
@@ -440,11 +487,11 @@ func validateHandoffStartRequest(req apischema.NetworkBridgeHandoffRequest) erro
 
 type validatingBridgeHandoffService struct{ inner bridgeHandoffService }
 
-func (s validatingBridgeHandoffService) Start(ctx context.Context, uid uint32, req apischema.NetworkBridgeHandoffRequest) (apischema.NetworkBridgeHandoffStatus, error) {
+func (s validatingBridgeHandoffService) Start(ctx context.Context, owner jobs.Owner, req apischema.NetworkBridgeHandoffRequest) (apischema.NetworkBridgeHandoffStatus, error) {
 	if err := validateHandoffStartRequest(req); err != nil {
 		return apischema.NetworkBridgeHandoffStatus{}, err
 	}
-	return s.inner.Start(ctx, uid, req)
+	return s.inner.Start(ctx, owner, req)
 }
 
 func (s validatingBridgeHandoffService) Status(ctx context.Context, uid uint32, id string) (apischema.NetworkBridgeHandoffStatus, error) {

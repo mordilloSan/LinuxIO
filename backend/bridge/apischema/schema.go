@@ -2,6 +2,8 @@ package apischema
 
 import (
 	"context"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"net"
 	"strings"
@@ -18,6 +20,9 @@ type RouteSpec struct {
 	NoEndpoint   bool
 	RetrySafe    bool
 	TaskLifetime bridgeipc.TaskLifetime
+	BrowserBound bool
+	Resumable    bool
+	Targeted     bool
 
 	Request  TypeSpec
 	Result   TypeSpec
@@ -64,13 +69,23 @@ func NoEndpoint() RouteSpecOption {
 	}
 }
 
-// WithTaskProgress declares the route-specific detail carried by the common
-// TaskProgress envelope. The result contract remains the task's terminal
-// payload.
-func WithTaskProgress[Detail bridgeipc.ProgressDetail]() RouteSpecOption {
+// BrowserBound keeps a Mutation in the bridge because its bytes come from or
+// go to the browser.
+func BrowserBound() RouteSpecOption {
+	return func(spec *RouteSpec) { spec.BrowserBound = true }
+}
+
+// Progress declares the route-specific detail carried by the common
+// TaskProgress envelope. The result contract remains the terminal payload.
+func Progress[Detail bridgeipc.ProgressDetail]() RouteSpecOption {
 	return func(spec *RouteSpec) {
 		spec.Progress = TypeOf[Detail]()
 	}
+}
+
+// WithTaskProgress is the Task route name for Progress.
+func WithTaskProgress[Detail bridgeipc.ProgressDetail]() RouteSpecOption {
+	return Progress[Detail]()
 }
 
 type Route[Request, Result any] struct {
@@ -134,6 +149,62 @@ func DuplexRoute[Request, Result any](name string, opts ...RouteSpecOption) Rout
 	return newRoute[Request, Result](KindDuplex, bridgeipc.ModeDuplex, name, opts...)
 }
 
+// Targeted is implemented by a Mutation request type that names what the job
+// works on, such as a pool UUID or a device, so the job host refuses a second
+// run on the same target.
+type Targeted interface {
+	Target() []string
+}
+
+// Job record members a resume hook reads.
+const (
+	recordRequestMember    = "request"
+	recordCheckpointMember = "checkpoint"
+)
+
+// ResumeHooks lets a privileged Mutation survive a shutdown: Suspend stops the
+// job and returns a checkpoint, Resume continues the job from it.
+type ResumeHooks[Req, Res any] struct {
+	Suspend func(ctx context.Context, req Req, checkpoint jsontext.Value) (jsontext.Value, error)
+	Resume  func(ctx context.Context, req Req, checkpoint jsontext.Value) (Res, error)
+}
+
+// MutationBinding carries a Mutation route and its handler.
+type MutationBinding[Req, Res any] struct {
+	Route RouteSpec
+	fn    func(context.Context, Req) (Res, error)
+	hooks ResumeHooks[Req, Res]
+}
+
+// Mutation declares a route that changes the host. Its request and result
+// types come from fn, and Req implementing Targeted makes the route targeted.
+func Mutation[Req, Res any](name string, fn func(context.Context, Req) (Res, error), opts ...RouteSpecOption) MutationBinding[Req, Res] {
+	spec := newRoute[Req, Res](KindMutation, bridgeipc.ModeMutation, name, opts...).spec
+	_, spec.Targeted = any(*new(Req)).(Targeted)
+	return MutationBinding[Req, Res]{Route: spec, fn: fn}
+}
+
+// MutationVoid declares a Mutation whose handler returns no result.
+func MutationVoid[Req any](name string, fn func(context.Context, Req) error, opts ...RouteSpecOption) MutationBinding[Req, NoResponse] {
+	return Mutation(name, func(ctx context.Context, req Req) (NoResponse, error) {
+		return NoResponse{}, fn(ctx, req)
+	}, opts...)
+}
+
+// Resumable returns the binding with resume hooks. Only a Privileged route may
+// resume, because resumption runs in the root job host after a reboot.
+func (b MutationBinding[Req, Res]) Resumable(h ResumeHooks[Req, Res]) MutationBinding[Req, Res] {
+	if !b.Route.Privileged {
+		panic(fmt.Sprintf("apischema: resumable route %s must be privileged", b.Route.Route))
+	}
+	if h.Suspend == nil || h.Resume == nil {
+		panic(fmt.Sprintf("apischema: resumable route %s needs both hooks", b.Route.Route))
+	}
+	b.Route.Resumable = true
+	b.hooks = h
+	return b
+}
+
 func newRoute[Request, Result any](kind Kind, mode bridgeipc.Mode, name string, opts ...RouteSpecOption) Route[Request, Result] {
 	spec := routeSpec(kind, mode, name, TypeOf[Request](), TypeOf[Result](), bridgeipc.JSONRequestDecoder[Request](), opts...)
 	if spec.Metadata != nil && (spec.Kind != KindTaskRunner || spec.Mode != bridgeipc.ModeTask) {
@@ -142,8 +213,11 @@ func newRoute[Request, Result any](kind Kind, mode bridgeipc.Mode, name string, 
 	if spec.Identity != nil && (spec.Kind != KindTaskRunner || spec.Mode != bridgeipc.ModeTask) {
 		panic(fmt.Sprintf("apischema: route %s identity is allowed only on task runners", spec.Route))
 	}
-	if spec.Progress.GoType != nil && spec.Mode != bridgeipc.ModeTask {
-		panic(fmt.Sprintf("apischema: route %s progress is allowed only on task routes", spec.Route))
+	if spec.Progress.GoType != nil && spec.Mode != bridgeipc.ModeTask && spec.Mode != bridgeipc.ModeMutation {
+		panic(fmt.Sprintf("apischema: route %s progress is allowed only on task and mutation routes", spec.Route))
+	}
+	if spec.BrowserBound && spec.Mode != bridgeipc.ModeMutation {
+		panic(fmt.Sprintf("apischema: route %s browser binding is allowed only on mutation routes", spec.Route))
 	}
 	if spec.RetrySafe && spec.Mode != bridgeipc.ModeCall {
 		panic(fmt.Sprintf("apischema: route %s retry safety is allowed only on call routes", spec.Route))
@@ -181,6 +255,7 @@ const (
 	KindHandler    Kind = "handler"
 	KindTaskRunner Kind = "task_runner"
 	KindDuplex     Kind = "duplex"
+	KindMutation   Kind = "mutation"
 )
 
 func (r RouteSpec) Handler() string {
@@ -289,10 +364,11 @@ type Binding interface {
 }
 
 type BindingSet struct {
-	handlers []HandlerBinding
-	tasks    []TaskBinding
-	duplexes []DuplexBinding
-	routes   []RouteSpec
+	handlers  []HandlerBinding
+	tasks     []TaskBinding
+	duplexes  []DuplexBinding
+	mutations []func(*bridgeipc.Router)
+	routes    []RouteSpec
 }
 
 func Bindings(bindings ...Binding) BindingSet {
@@ -329,6 +405,9 @@ func (s BindingSet) Register(router *bridgeipc.Router) {
 	for _, binding := range s.duplexes {
 		AttachDuplex(router, binding)
 	}
+	for _, attach := range s.mutations {
+		attach(router)
+	}
 }
 
 func (r Route[Request, Result]) addTo(set *BindingSet) {
@@ -347,6 +426,11 @@ func (b TaskBinding) addTo(set *BindingSet) {
 
 func (b DuplexBinding) addTo(set *BindingSet) {
 	set.duplexes = append(set.duplexes, b)
+	set.routes = append(set.routes, requireRouteSpec(b.Route))
+}
+
+func (b MutationBinding[Req, Res]) addTo(set *BindingSet) {
+	set.mutations = append(set.mutations, func(router *bridgeipc.Router) { AttachMutation(router, b) })
 	set.routes = append(set.routes, requireRouteSpec(b.Route))
 }
 
@@ -387,6 +471,21 @@ func AttachDuplex(router *bridgeipc.Router, binding DuplexBinding) {
 	opts := routeOptions(spec, binding.Options)
 	opts = append(opts, bridgeipc.WithRequestDecoder(requireDecoder(spec, binding.Decode)))
 	router.Duplex(spec.Route, binding.Handle, opts...)
+}
+
+// AttachMutation registers a Mutation binding. Its resume hooks, if any, read
+// the request and checkpoint members of the job record.
+func AttachMutation[Req, Res any](router *bridgeipc.Router, binding MutationBinding[Req, Res]) {
+	spec := requireRouteSpec(binding.Route)
+	if spec.Kind != KindMutation {
+		panic(fmt.Sprintf("apischema: route %s is %s, not mutation", spec.Route, spec.Kind))
+	}
+	opts := routeOptions(spec, nil)
+	opts = append(opts, bridgeipc.WithRequestDecoder(requireDecoder(spec, spec.Decode)))
+	if spec.Resumable {
+		opts = append(opts, bridgeipc.WithResume(resumeHooks(spec, binding.hooks)))
+	}
+	router.Mutation(spec.Route, wrapMutation(spec, binding.fn), opts...)
 }
 
 func requireRouteSpec(spec RouteSpec) RouteSpec {
@@ -446,6 +545,61 @@ func wrapDuplex[Request any](route string, handle DuplexFunc[Request]) bridgeipc
 	}
 }
 
+func wrapMutation[Req, Res any](spec RouteSpec, fn func(context.Context, Req) (Res, error)) bridgeipc.TaskRunner {
+	return func(ctx context.Context, _ *bridgeipc.Task, request any) (any, error) {
+		req, err := typedRequest[Req](spec.Route, request)
+		if err != nil {
+			return nil, err
+		}
+		result, err := fn(ctx, req)
+		return mutationResult(spec, result, err)
+	}
+}
+
+func resumeHooks[Req, Res any](spec RouteSpec, hooks ResumeHooks[Req, Res]) (bridgeipc.SuspendFunc, bridgeipc.ResumeFunc) {
+	suspend := func(ctx context.Context, record jsontext.Value) (jsontext.Value, error) {
+		req, checkpoint, err := decodeRecord[Req](spec, record)
+		if err != nil {
+			return nil, err
+		}
+		return hooks.Suspend(ctx, req, checkpoint)
+	}
+	resume := func(ctx context.Context, record jsontext.Value) (any, error) {
+		req, checkpoint, err := decodeRecord[Req](spec, record)
+		if err != nil {
+			return nil, err
+		}
+		result, err := hooks.Resume(ctx, req, checkpoint)
+		return mutationResult(spec, result, err)
+	}
+	return suspend, resume
+}
+
+// decodeRecord reads a job record's request through the route decoder and
+// returns it with the record's checkpoint.
+func decodeRecord[Req any](spec RouteSpec, record jsontext.Value) (Req, jsontext.Value, error) {
+	var zero Req
+	var members map[string]jsontext.Value
+	if err := json.Unmarshal(record, &members); err != nil {
+		return zero, nil, fmt.Errorf("decode %s job record: %w", spec.Route, err)
+	}
+	decoded, err := spec.Decode(members[recordRequestMember])
+	if err != nil {
+		return zero, nil, fmt.Errorf("decode %s job record request: %w", spec.Route, err)
+	}
+	req, err := typedRequest[Req](spec.Route, decoded)
+	return req, members[recordCheckpointMember], err
+}
+
+// mutationResult erases a typed result at the bridge boundary. A NoResponse
+// result is sent as no result, as for a void Call.
+func mutationResult[Res any](spec RouteSpec, result Res, err error) (any, error) {
+	if err != nil || spec.Result.Void() {
+		return nil, err
+	}
+	return result, nil
+}
+
 func typedRequest[Request any](route string, request any) (Request, error) {
 	req, ok := request.(Request)
 	if ok {
@@ -475,6 +629,18 @@ func routeOptions(spec RouteSpec, explicit []bridgeipc.RouteOption) []bridgeipc.
 	}
 	if spec.TaskLifetime != "" {
 		opts = append(opts, bridgeipc.WithTaskLifetime(spec.TaskLifetime))
+	}
+	if spec.Targeted {
+		opts = append(opts, bridgeipc.WithTarget(func(request any) []string {
+			// A request of another type has no target; the runner rejects it.
+			if targeted, ok := request.(Targeted); ok {
+				return targeted.Target()
+			}
+			return nil
+		}))
+	}
+	if spec.BrowserBound {
+		opts = append(opts, bridgeipc.WithBrowserBound())
 	}
 	return opts
 }

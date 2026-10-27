@@ -81,7 +81,6 @@ func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
 	prepareDockerHandlers(router, handlers)
 
 	routeBindings(rt, handlers).Register(router)
-	recoverDockerUpdates(rt, router)
 }
 
 func (h dockerHandlers) handleListContainers(ctx context.Context, _ apischema.NoRequest) ([]apischema.ContainerInfo, error) {

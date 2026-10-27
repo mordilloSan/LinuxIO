@@ -50,6 +50,7 @@ describe("tasks helpers", () => {
     expect(isTerminalTaskState("completed")).toBe(true);
     expect(isTerminalTaskState("failed")).toBe(true);
     expect(isTerminalTaskState("canceled")).toBe(true);
+    expect(isTerminalTaskState("interrupted")).toBe(true);
     expect(isTerminalTaskState("running")).toBe(false);
 
     expect(isTaskSnapshot(snapshot())).toBe(true);
