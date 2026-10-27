@@ -9,9 +9,51 @@ import (
 	"testing"
 	"time"
 
+	"github.com/containerd/errdefs"
 	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/image"
 	"github.com/moby/moby/client"
+	digest "github.com/opencontainers/go-digest"
 )
+
+func TestRegistryLookupCacheReusesOnlySuccessfulLookups(t *testing.T) {
+	const imageRef = "lscr.io/linuxserver/speedtest-tracker:latest"
+	localDigest := digest.FromString("local")
+	remoteDigest := digest.FromString("remote")
+	calls := 0
+	fake := &fakeImageUpdateCheckClient{
+		images: map[string]client.ImageInspectResult{
+			"image-id": {InspectResponse: image.InspectResponse{
+				RepoDigests: []string{"lscr.io/linuxserver/speedtest-tracker@" + localDigest.String()},
+			}},
+		},
+		distributionHook: func(context.Context, string, client.DistributionInspectOptions) (client.DistributionInspectResult, error) {
+			calls++
+			if calls == 1 {
+				return client.DistributionInspectResult{}, errdefs.ErrNotFound
+			}
+			return distributionInspectResult(remoteDigest), nil
+		},
+	}
+	registry := newRegistryLookupCache(fake)
+
+	statuses, _, err := checkContainerImageUpdates(t.Context(), registry, []containerImageUpdateTarget{{
+		ContainerID: "container-id", ContainerName: "speedtest-tracker", ImageID: "image-id", ImageRef: imageRef,
+	}}, time.Now())
+	if err != nil || len(statuses) != 1 || statuses[0].Err == "" {
+		t.Fatalf("check pass = %+v, %v; want one failed lookup", statuses, err)
+	}
+	// The update pass asks again after a failed check, then reuses the success.
+	for range 2 {
+		observation, err := inspectImageUpdate(t.Context(), registry, "image-id", imageRef)
+		if err != nil || observation.err != nil || observation.remoteDigest != remoteDigest.String() {
+			t.Fatalf("update pass observation = %+v, %v", observation, err)
+		}
+	}
+	if calls != 2 {
+		t.Fatalf("registry lookups = %d, want 2", calls)
+	}
+}
 
 func TestAcquireDockerUpdateLockAtExcludesConcurrentUpdate(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "docker-update.lock")

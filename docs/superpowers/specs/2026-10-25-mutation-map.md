@@ -141,8 +141,8 @@ Added by the partition feature on 2026-10-25, after the rest of the map was trac
 | docker.edit_container | call | recreates a container with new settings | journaled stop, rename, create, start, wait | long (pull, readiness wait up to 90 s) | half-done: the original stays stopped and renamed until the next recovery pass | J |
 | docker.update_container | durable task | pulls the new image, recreates the container | systemd transient unit with a root worker | long | survives; reattached at the next login | D |
 | docker.set_container_auto_update | call | writes the auto-update config and timer | 3 files, systemd | seconds | half-done | M |
-| docker.check_updates | call | refreshes the update-status cache | registry lookups through Docker | >30s (retry backoff 5 + 10 + 20 s) | harmless | R |
-| docker.check_container_update | call | refreshes one cache entry | same | >30s (backoff) | harmless | R |
+| docker.check_updates | call | refreshes the update-status cache | registry lookups through Docker | minutes (retry backoff 5 + 10 + 20 + 40 + 80 s) | harmless | R |
+| docker.check_container_update | call | refreshes one cache entry | same | minutes (backoff) | harmless | R |
 | docker.compose | task | runs up, down, stop or restart on a stack, with progress | docker compose CLI | long (pull, build, health waits) | stops: stack half-reconciled | J |
 | docker.compose_up | call | starts a stack, pulling missing images | docker compose CLI | long | stops: stack half-up | J |
 | docker.compose_down | call | removes a stack's containers and networks | docker compose CLI | >30s (stop grace per container) | stops: stack half-down | J |

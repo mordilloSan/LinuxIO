@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/moby/moby/api/types/container"
@@ -52,18 +53,53 @@ func RunScheduled(ctx context.Context, configPath string) error {
 		return fmt.Errorf("recover previous standalone Docker update: %w", err)
 	}
 
+	registry := newRegistryLookupCache(cli)
 	return runScheduledPass(ctx, opts, scheduledPassOperations{
 		list: func(ctx context.Context) ([]container.Summary, error) {
 			containers, err := cli.ContainerList(ctx, client.ContainerListOptions{All: true})
 			return containers.Items, err
 		},
 		check: func(ctx context.Context, summaries []container.Summary) error {
-			return runScheduledUpdateCheck(ctx, cli, summaries)
+			return runScheduledUpdateCheck(ctx, registry, summaries)
 		},
 		update: func(ctx context.Context, summaries, all []container.Summary, opts DockerContainerAutoUpdateOptions) error {
-			return runScheduledUpdates(ctx, cli, summaries, all, opts)
+			return runScheduledUpdates(ctx, cli, registry, summaries, all, opts)
 		},
 	})
+}
+
+// registryLookupCache keeps successful registry lookups for one scheduled run,
+// so the update pass reuses what the check pass fetched instead of asking the
+// registry again. Failed lookups are not kept: the update pass tries them again.
+type registryLookupCache struct {
+	imageUpdateCheckClient
+	mu      sync.Mutex
+	results map[string]client.DistributionInspectResult
+}
+
+func newRegistryLookupCache(cli imageUpdateCheckClient) *registryLookupCache {
+	return &registryLookupCache{imageUpdateCheckClient: cli, results: make(map[string]client.DistributionInspectResult)}
+}
+
+func (c *registryLookupCache) DistributionInspect(
+	ctx context.Context,
+	imageRef string,
+	options client.DistributionInspectOptions,
+) (client.DistributionInspectResult, error) {
+	c.mu.Lock()
+	result, ok := c.results[imageRef]
+	c.mu.Unlock()
+	if ok {
+		return result, nil
+	}
+	result, err := c.imageUpdateCheckClient.DistributionInspect(ctx, imageRef, options)
+	if err != nil {
+		return result, err
+	}
+	c.mu.Lock()
+	c.results[imageRef] = result
+	c.mu.Unlock()
+	return result, nil
 }
 
 func runScheduledPass(ctx context.Context, opts DockerContainerAutoUpdateOptions, operations scheduledPassOperations) error {
@@ -133,7 +169,7 @@ func scheduledUpdateSelection(opts DockerContainerAutoUpdateOptions, containers 
 	return selected, errs
 }
 
-func runScheduledUpdateCheck(ctx context.Context, cli *client.Client, containers []container.Summary) error {
+func runScheduledUpdateCheck(ctx context.Context, cli imageUpdateCheckClient, containers []container.Summary) error {
 	targets := make([]containerImageUpdateTarget, 0, len(containers))
 	for _, summary := range containers {
 		targets = append(targets, containerImageUpdateTarget{
@@ -160,8 +196,9 @@ func runScheduledUpdateCheck(ctx context.Context, cli *client.Client, containers
 	return nil
 }
 
-func runScheduledUpdates(ctx context.Context, cli *client.Client, summaries, all []container.Summary, opts DockerContainerAutoUpdateOptions) error {
+func runScheduledUpdates(ctx context.Context, cli *client.Client, registry imageUpdateCheckClient, summaries, all []container.Summary, opts DockerContainerAutoUpdateOptions) error {
 	state := newScheduledUpdateState(ctx, cli)
+	state.registry = registry
 	state.allContainers = all
 	state.updateStopped = opts.UpdateStopped
 	state.reviveStopped = opts.ReviveStopped

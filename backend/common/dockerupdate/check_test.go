@@ -308,6 +308,9 @@ func TestInspectImageUpdateRegistryRetries(t *testing.T) {
 	rateLimit := errors.New("Error response from daemon: toomanyrequests: retry-after: 787.973µs, allowed: 44000/minute")
 	daemonTimeout := errors.New("Error response from daemon: Get \"https://lscr.io/v2/\": context deadline exceeded (Client.Timeout exceeded while awaiting headers)")
 	tlsTimeout := errors.New("Error response from daemon: Get \"https://lscr.io/v2/\": net/http: TLS handshake timeout")
+	dialTimeout := errors.New("Error response from daemon: Get \"https://lscr.io/v2/\": dial tcp 3.67.33.93:443: i/o timeout")
+	refused := errors.New("Error response from daemon: Get \"https://lscr.io/v2/\": dial tcp 3.67.33.93:443: connect: connection refused")
+	reset := errors.New("Error response from daemon: Get \"https://lscr.io/v2/\": read tcp 192.0.2.10:51234->3.67.33.93:443: read: connection reset by peer")
 	denied := errors.New("unauthorized: authentication required")
 	tests := []struct {
 		name     string
@@ -318,13 +321,16 @@ func TestInspectImageUpdateRegistryRetries(t *testing.T) {
 		{name: "registry rate limit recovers", errors: []error{rateLimit, nil}, wantWait: 5 * time.Second},
 		{name: "typed HTTP 429 recovers", errors: []error{fmt.Errorf("daemon: %w", errdefs.ErrResourceExhausted), nil}, wantWait: 5 * time.Second},
 		{name: "plain HTTP 429 recovers", errors: []error{errors.New("Error response from daemon: Too Many Requests"), nil}, wantWait: 5 * time.Second},
-		{name: "rate limit recovers on final attempt", errors: []error{rateLimit, rateLimit, rateLimit, nil}, wantWait: 35 * time.Second},
-		{name: "persistent rate limit", errors: []error{rateLimit, rateLimit, rateLimit, rateLimit}, wantErr: rateLimit, wantWait: 35 * time.Second},
+		{name: "rate limit recovers on final attempt", errors: []error{rateLimit, rateLimit, rateLimit, rateLimit, rateLimit, nil}, wantWait: 155 * time.Second},
+		{name: "persistent rate limit", errors: []error{rateLimit, rateLimit, rateLimit, rateLimit, rateLimit, rateLimit}, wantErr: rateLimit, wantWait: 155 * time.Second},
 		{name: "daemon timeout recovers", errors: []error{daemonTimeout, nil}, wantWait: 5 * time.Second},
 		{name: "typed timeout recovers", errors: []error{fmt.Errorf("daemon: %w", context.DeadlineExceeded), nil}, wantWait: 5 * time.Second},
 		{name: "transport timeout recovers", errors: []error{&url.Error{Op: "Get", URL: "http://docker/distribution", Err: os.ErrDeadlineExceeded}, nil}, wantWait: 5 * time.Second},
 		{name: "TLS handshake timeout recovers", errors: []error{tlsTimeout, nil}, wantWait: 5 * time.Second},
-		{name: "persistent daemon timeout", errors: []error{daemonTimeout, daemonTimeout, daemonTimeout, daemonTimeout}, wantErr: daemonTimeout, wantWait: 35 * time.Second},
+		{name: "dial timeout recovers", errors: []error{dialTimeout, nil}, wantWait: 5 * time.Second},
+		{name: "refused connection recovers", errors: []error{refused, refused, nil}, wantWait: 15 * time.Second},
+		{name: "reset connection recovers", errors: []error{reset, nil}, wantWait: 5 * time.Second},
+		{name: "persistent daemon timeout", errors: []error{daemonTimeout, daemonTimeout, daemonTimeout, daemonTimeout, daemonTimeout, daemonTimeout}, wantErr: daemonTimeout, wantWait: 155 * time.Second},
 		{name: "authentication failure", errors: []error{denied}, wantErr: denied},
 		{name: "authentication failure after rate limit", errors: []error{rateLimit, denied}, wantErr: denied, wantWait: 5 * time.Second},
 		{name: "missing image", errors: []error{errdefs.ErrNotFound}, wantErr: errdefs.ErrNotFound},

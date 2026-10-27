@@ -39,7 +39,7 @@ func TestApplyContainerAutoUpdateEnablesNativeTimerAndWritesFiles(t *testing.T) 
 	if document.Version != dockerUpdateConfigVersion || document.Mode != "check_only" || !document.Cleanup || !document.IncludeStopped || !document.UpdateStopped || !document.ReviveStopped || !reflect.DeepEqual(document.ContainerNames, []string{"app.service", "redis"}) {
 		t.Fatalf("config = %+v", document)
 	}
-	if timer := readTestFile(t, store.timerPath); !strings.Contains(timer, "OnCalendar=*-*-* 06:15:00") || !strings.Contains(timer, "Unit="+dockerUpdateUnitName) {
+	if timer := readTestFile(t, store.timerPath); !strings.Contains(timer, "OnCalendar=*-*-* 06:15:00") || !strings.Contains(timer, "RandomizedDelaySec=1m\n") || !strings.Contains(timer, "Unit="+dockerUpdateUnitName) {
 		t.Fatalf("timer file did not render schedule:\n%s", timer)
 	}
 	unit := readTestFile(t, store.unitPath)

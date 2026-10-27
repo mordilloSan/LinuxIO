@@ -16,6 +16,7 @@ type scheduledUpdateCandidate = containerUpdateCandidate
 type scheduledUpdateState struct {
 	ctx           context.Context
 	cli           *client.Client
+	registry      imageUpdateCheckClient
 	allContainers []container.Summary
 	dependencyCli ContainerClient
 	dependencies  *standaloneDependencyIndex
@@ -33,6 +34,7 @@ func newScheduledUpdateState(ctx context.Context, cli *client.Client) *scheduled
 	return &scheduledUpdateState{
 		ctx:           ctx,
 		cli:           cli,
+		registry:      cli,
 		dependencyCli: cli,
 		composeGroups: make(map[string]*scheduledComposeTarget),
 		composeUpdate: composePullAndUpServices,
@@ -40,7 +42,7 @@ func newScheduledUpdateState(ctx context.Context, cli *client.Client) *scheduled
 }
 
 func (s *scheduledUpdateState) prepare(summary container.Summary) error {
-	candidate, err := inspectScheduledUpdateCandidate(s.ctx, s.cli, summary)
+	candidate, err := inspectScheduledUpdateCandidate(s.ctx, s.cli, s.registry, summary)
 	if err != nil {
 		if ctxErr := s.ctx.Err(); ctxErr != nil {
 			return ctxErr
@@ -183,13 +185,14 @@ func (s *scheduledUpdateState) recordStandaloneUpdateOutcome(
 func inspectScheduledUpdateCandidate(
 	ctx context.Context,
 	cli *client.Client,
+	registry imageUpdateCheckClient,
 	summary container.Summary,
 ) (scheduledUpdateCandidate, error) {
 	inspectResult, err := cli.ContainerInspect(ctx, summary.ID, client.ContainerInspectOptions{})
 	if err != nil {
 		return scheduledUpdateCandidate{}, fmt.Errorf("inspect scheduled container %q: %w", PrimaryContainerName(summary), err)
 	}
-	return inspectContainerUpdateCandidate(ctx, cli, inspectResult.Container)
+	return inspectContainerUpdateCandidate(ctx, registry, inspectResult.Container)
 }
 
 func (s *scheduledUpdateState) recordCandidateError(inspect container.InspectResponse, err error) {

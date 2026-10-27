@@ -259,9 +259,10 @@ func inspectImageUpdate(
 	observation.localDigest = localDigests[0].String()
 
 	remote, err := cli.DistributionInspect(ctx, imageRef, client.DistributionInspectOptions{})
-	for retry := 0; err != nil && retry < 3; retry++ {
-		// Retry only the registry read. Give throttled or slow registries
-		// time to recover without retrying authentication or missing-image errors.
+	for retry := 0; err != nil && retry < 5; retry++ {
+		// Retry only the registry read. Give throttled, slow or briefly
+		// unreachable registries a few minutes to recover without retrying
+		// authentication or missing-image errors.
 		if !retryableRegistryInspectError(err) {
 			break
 		}
@@ -306,7 +307,10 @@ func retryableRegistryInspectError(err error) bool {
 		strings.Contains(message, "too many requests") ||
 		strings.Contains(message, "context deadline exceeded") ||
 		strings.Contains(message, "client.timeout exceeded while awaiting headers") ||
-		strings.Contains(message, "tls handshake timeout")
+		strings.Contains(message, "tls handshake timeout") ||
+		strings.Contains(message, "i/o timeout") ||
+		strings.Contains(message, "connection refused") ||
+		strings.Contains(message, "connection reset")
 }
 
 // NormalizeImageReference returns the canonical tagged reference for imageRef,
