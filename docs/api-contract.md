@@ -595,7 +595,10 @@ directory owned by the uid), written by `backend/common/jobs`. It holds the
 route, owner, target, state, timestamps, the full decoded request, and the
 result or error. No API returns the request. The host writes a job's live
 progress to `/run/linuxio/jobs/<uid>/<id>.progress`, at most twice a second,
-never into the record; the file is removed with the record.
+never into the record; the file is removed with the record. The one exception
+is the network bridge handoff, which keeps its latest progress step and a
+checkpoint (its phase, state and deadlines) in its record, because the job
+stays running until a decision or the native rollback window ends it.
 
 States are `running`, `completed`, `failed`, `canceled` and `interrupted`; an
 `interrupted` record carries its reason: `shutdown`, `crash` or `reboot`. The
@@ -634,9 +637,9 @@ the host keeps running it, and any login of the same uid sees it through
 `tasks.list` and `tasks.events` and can watch or cancel it. The host holds a
 terminal job in memory for 30 minutes. The username and `session_ref` in the
 bridge's hello are recorded as the job's owner for display; authorization is
-the host's uid. On the root host a live snapshot's `owner.uid` is therefore
-the host uid (0), while the stored record names the real user's uid; the
-frontend reads `owner.username` only.
+the host's uid. On the root host a live snapshot's `owner.uid` is the host uid
+(0) while the stored record holds the real user's uid, so clients read
+`owner.username` only.
 
 `TaskOwner.SessionID` is an internal authorization value and is never emitted
 in public Task snapshots, serialized API models, client-visible errors, or

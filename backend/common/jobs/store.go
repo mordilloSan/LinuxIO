@@ -127,7 +127,7 @@ func (s *Store) Finish(ctx context.Context, id string, state State, result jsont
 		r.Result = result
 		r.Error = jobErr
 		r.FinishedAt = s.now()
-		return state == StateCompleted && r.FinishedAt.Sub(r.StartedAt) < TransientMaxDuration, nil
+		return state == StateCompleted && r.FinishedAt.Sub(startedOrCreated(*r)) < TransientMaxDuration, nil
 	})
 }
 
@@ -158,7 +158,10 @@ func (s *Store) mutate(ctx context.Context, id string, fn func(*Record) (remove 
 		}
 		return s.writeRecord(current, needsSync(before, current, s.now()))
 	})
-	return record, err
+	if err != nil {
+		return Record{}, err
+	}
+	return record, nil
 }
 
 func (s *Store) ListActive(ctx context.Context) ([]Record, error) {
@@ -190,6 +193,16 @@ func (s *Store) WriteProgress(id string, progress jsontext.Value) error {
 	}
 	if len(progress) > maxProgressBytes {
 		return fmt.Errorf("job progress exceeds %d bytes", maxProgressBytes)
+	}
+	if !progress.IsValid() {
+		return errors.New("job progress is not valid JSON")
+	}
+	// shortcut: unlocked check, so a delete racing this write can still leave a
+	// progress file (runDir is tmpfs); take the store lock if that ever matters.
+	if _, err := os.Lstat(s.recordPath(id)); errors.Is(err, fs.ErrNotExist) {
+		return ErrNotFound
+	} else if err != nil {
+		return fmt.Errorf("stat job %s: %w", id, err)
 	}
 	return writeFileNoSync(s.progressPath(id), progress, 0o600)
 }
@@ -241,8 +254,8 @@ func (s *Store) terminalByUID() (map[uint32][]Record, error) {
 			continue
 		}
 		if err != nil {
-			// A file that does not decode, normally a torn write after a power
-			// loss (live writes are a temp file plus rename): remove it.
+			// A file that cannot be read, decoded or validated, such as a torn
+			// write after a power loss (unknown members still decode): remove it.
 			slog.Warn("removing unreadable job record", "path", s.recordPath(id), "error", err)
 			if err := s.removeRecord(id); err != nil {
 				return nil, err
@@ -259,6 +272,12 @@ func (s *Store) terminalByUID() (map[uint32][]Record, error) {
 // ReconcileCrashed marks running host-executed records whose executor is gone
 // as interrupted and returns the records it changed.
 func (s *Store) ReconcileCrashed(ctx context.Context, alive func(Executor) bool, reason Reason) ([]Record, error) {
+	if alive == nil {
+		return nil, errors.New("job liveness check is nil")
+	}
+	if !reason.valid() {
+		return nil, fmt.Errorf("invalid job reason %q", reason)
+	}
 	var changed []Record
 	err := s.withLock(ctx, func() error {
 		records, err := s.readAll()
@@ -280,7 +299,10 @@ func (s *Store) ReconcileCrashed(ctx context.Context, alive func(Executor) bool,
 		}
 		return nil
 	})
-	return changed, err
+	if err != nil {
+		return nil, err
+	}
+	return changed, nil
 }
 
 func (s *Store) withLock(ctx context.Context, fn func() error) error {
@@ -298,11 +320,14 @@ func needsSync(before, after Record, now time.Time) bool {
 	if !slices.Equal(before.Checkpoint, after.Checkpoint) {
 		return true
 	}
-	started := after.StartedAt
-	if started.IsZero() {
-		started = after.CreatedAt
+	return after.State.terminal() && now.Sub(startedOrCreated(after)) > TransientMaxDuration
+}
+
+func startedOrCreated(r Record) time.Time {
+	if r.StartedAt.IsZero() {
+		return r.CreatedAt
 	}
-	return after.State.terminal() && now.Sub(started) > TransientMaxDuration
+	return r.StartedAt
 }
 
 // mkdirStore creates dir with perm and each missing parent with 0755, whatever
@@ -399,7 +424,9 @@ func (s *Store) recordIDs() ([]string, error) {
 	}
 	var out []string
 	for _, entry := range entries {
-		if id, ok := strings.CutSuffix(entry.Name(), ".json"); ok && ValidateID(id) == nil {
+		// Only regular files are records; a directory or other entry under a
+		// record name is left alone rather than aborting Prune.
+		if id, ok := strings.CutSuffix(entry.Name(), ".json"); ok && entry.Type().IsRegular() && ValidateID(id) == nil {
 			out = append(out, id)
 		}
 	}
@@ -418,8 +445,8 @@ func (s *Store) readAll() ([]Record, error) {
 			continue // removed since the directory was listed
 		}
 		if err != nil {
-			// A file that does not decode, normally a torn write after a power
-			// loss, must not break listing or recovery; Prune removes it.
+			// An unreadable file (a torn write after a power loss, or another
+			// corrupt file) must not break listing or recovery; Prune removes it.
 			slog.Warn("skipping unreadable job record", "path", s.recordPath(id), "error", err)
 			continue
 		}
@@ -432,6 +459,12 @@ func (s *Store) readAll() ([]Record, error) {
 // is ever visible under the final name, but nothing is durable until an fsync
 // write: after a power loss the file may be empty or partial.
 func writeFileNoSync(path string, data []byte, mode fs.FileMode) error {
+	// Like atomicfile.Write, refuse to replace anything but a plain file.
+	if info, err := os.Lstat(path); err == nil && !plainFile(info.Mode()) {
+		return fmt.Errorf("refusing to replace non-regular job file %q", path)
+	} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
 	f, err := os.CreateTemp(filepath.Dir(path), ".linuxio-*")
 	if err != nil {
 		return err
@@ -453,6 +486,9 @@ func writeFileNoSync(path string, data []byte, mode fs.FileMode) error {
 }
 
 func readRegularFile(root, name string, limit int64) ([]byte, error) {
+	if !filepath.IsLocal(name) {
+		return nil, fmt.Errorf("job file name %q is not local", name)
+	}
 	rootDir, err := os.OpenRoot(root)
 	if err != nil {
 		return nil, err
@@ -463,7 +499,7 @@ func readRegularFile(root, name string, limit int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !info.Mode().IsRegular() || info.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) != 0 {
+	if !plainFile(info.Mode()) {
 		return nil, fmt.Errorf("refusing to read non-regular job file %q", name)
 	}
 	file, err := rootDir.Open(name)
@@ -472,4 +508,8 @@ func readRegularFile(root, name string, limit int64) ([]byte, error) {
 	}
 	defer file.Close()
 	return iolimit.ReadAll(file, limit)
+}
+
+func plainFile(mode fs.FileMode) bool {
+	return mode.IsRegular() && mode&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) == 0
 }

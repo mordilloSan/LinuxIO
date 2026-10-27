@@ -26,6 +26,9 @@ type recorder struct {
 	h *Host
 
 	mu sync.Mutex
+	// stopped: the host has shut down; progress is no longer timed, and
+	// Finished flushes the latest.
+	stopped bool
 	// jobs holds the started jobs that have not finished; a job leaves it
 	// when it finishes, after which its progress is ignored.
 	jobs map[string]*job
@@ -72,10 +75,13 @@ func (r *recorder) Started(task *bridgeipc.Task, raw jsontext.Value) {
 	ctx, cancel := jobs.DetachedContext(storeTimeout)
 	defer cancel()
 	err := r.h.cfg.Store.Create(ctx, r.h.newRecord(task, raw))
-	if errors.Is(err, jobs.ErrExists) {
-		err = r.h.rerun(ctx, id) // a resumed job keeps its record
-	}
-	if err != nil {
+	switch {
+	case errors.Is(err, jobs.ErrExists):
+		// A resumed job keeps its record.
+		if err = r.h.rerun(ctx, id); err != nil {
+			slog.Error("job record not reopened for a rerun", "job_id", id, "route", task.Type(), "error", err)
+		}
+	case err != nil:
 		slog.Error("job record not created", "job_id", id, "route", task.Type(), "error", err)
 	}
 
@@ -129,7 +135,7 @@ func (r *recorder) Progress(task *bridgeipc.Task, p bridgeipc.TaskProgress) {
 		return
 	}
 	j.pending = data
-	if j.timer != nil {
+	if j.timer != nil || r.stopped {
 		return
 	}
 	if wait := progressInterval - time.Since(j.lastWrite); wait > 0 {
@@ -150,10 +156,26 @@ func (r *recorder) writeProgressLocked(id string, j *job) {
 	if j.pending == nil {
 		return
 	}
-	if err := r.h.cfg.Store.WriteProgress(id, j.pending); err != nil {
-		slog.Debug("job progress not written", "job_id", id, "error", err)
+	// A transient job's record may already be gone; its progress no longer matters.
+	if err := r.h.cfg.Store.WriteProgress(id, j.pending); err != nil && !errors.Is(err, jobs.ErrNotFound) {
+		slog.Warn("job progress not written", "job_id", id, "error", err)
 	}
 	j.pending, j.lastWrite = nil, time.Now()
+}
+
+// stop cancels the pending progress timers when the host shuts down and
+// writes their progress now.
+func (r *recorder) stop() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.stopped = true
+	for id, j := range r.jobs {
+		if j.timer != nil {
+			j.timer.Stop()
+			j.timer = nil
+			r.writeProgressLocked(id, j)
+		}
+	}
 }
 
 // Finished flushes a job's last progress and finishes its record, unless

@@ -95,6 +95,15 @@ func (s State) terminal() bool {
 	}
 }
 
+func (r Reason) valid() bool {
+	switch r {
+	case ReasonNone, ReasonShutdown, ReasonCrash, ReasonReboot:
+		return true
+	default:
+		return false
+	}
+}
+
 func validateRecord(r Record) error {
 	if err := ValidateID(r.ID); err != nil {
 		return err
@@ -105,9 +114,7 @@ func validateRecord(r Record) error {
 	if r.State != StateRunning && !r.State.terminal() {
 		return fmt.Errorf("invalid job state %q", r.State)
 	}
-	switch r.Reason {
-	case ReasonNone, ReasonShutdown, ReasonCrash, ReasonReboot:
-	default:
+	if !r.Reason.valid() {
 		return fmt.Errorf("invalid job reason %q", r.Reason)
 	}
 	if r.CreatedAt.IsZero() {

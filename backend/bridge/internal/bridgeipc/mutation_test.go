@@ -57,17 +57,21 @@ func TestMutationRouteDefaultsToDurableLifetime(t *testing.T) {
 func TestMutationOptionsAreAllowedOnlyOnMutationRoutes(t *testing.T) {
 	suspend := func(context.Context, jsontext.Value) (jsontext.Value, error) { return nil, nil }
 	resume := func(context.Context, jsontext.Value) (any, error) { return nil, nil }
-	options := map[string]RouteOption{
-		"browser bound": WithBrowserBound(),
-		"target":        WithTarget(func(any) []string { return []string{"pool"} }),
-		"resume":        WithResume(suspend, resume),
+	options := map[string]struct {
+		opt  RouteOption
+		kept func(Route) bool
+	}{
+		"browser bound": {WithBrowserBound(), func(r Route) bool { return r.BrowserBound }},
+		"target":        {WithTarget(func(any) []string { return []string{"pool"} }), func(r Route) bool { return r.Target != nil }},
+		"resume":        {WithResume(suspend, resume), func(r Route) bool { return r.Suspend != nil && r.Resume != nil }},
 	}
-	for name, opt := range options {
+	for name, option := range options {
 		t.Run(name, func(t *testing.T) {
+			opt := option.opt
 			router := NewRouter(NewTaskService())
 			router.Mutation("test.mutation", func(context.Context, *Task, any) (any, error) { return nil, nil }, opt)
 			route, _ := router.lookup("test.mutation")
-			if !route.BrowserBound && route.Target == nil && route.Suspend == nil && route.Resume == nil {
+			if !option.kept(route) {
 				t.Fatal("mutation route dropped the option")
 			}
 

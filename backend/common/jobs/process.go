@@ -30,7 +30,11 @@ func ProcessStart(pid int32) (uint64, error) {
 	if len(fields) < 20 {
 		return 0, errors.New("malformed /proc stat: too few fields")
 	}
-	return strconv.ParseUint(fields[19], 10, 64)
+	start, err := strconv.ParseUint(fields[19], 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse start time of pid %d: %w", pid, err)
+	}
+	return start, nil
 }
 
 // BootID returns the kernel's id of the running boot.

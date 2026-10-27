@@ -135,6 +135,7 @@ func (h *Host) serve(ctx context.Context) error {
 
 	acceptErr := make(chan error, 1)
 	h.conns.Go(func() { acceptErr <- h.accept(ctx, ln) })
+	defer h.rec.stop() // after closeAll: no progress timer outlives Serve
 	defer h.closeAll(ln)
 	h.notify("READY=1")
 	slog.Debug("job host listening", "user", h.cfg.Username, "socket", ln.Addr().String())
@@ -420,10 +421,11 @@ func awaitPeerClose(ctx context.Context, stream net.Conn) {
 }
 
 // newMutation reports whether open would start a job: a Mutation route with
-// an ID this host has no task for. A resend of a known ID only attaches.
+// a valid ID this host has no task for. A resend of a known ID only attaches,
+// and Dispatch answers an invalid ID with 400.
 func (h *Host) newMutation(open relay.StreamOpenEnvelope) bool {
 	route, ok := h.cfg.Router.Route(open.Route)
-	if !ok || route.Mode != bridgeipc.ModeMutation {
+	if !ok || route.Mode != bridgeipc.ModeMutation || jobs.ValidateID(open.ID) != nil {
 		return false
 	}
 	_, known := h.cfg.Tasks.Get(open.ID)
@@ -433,16 +435,13 @@ func (h *Host) newMutation(open relay.StreamOpenEnvelope) bool {
 // answerStored answers the resend of a job this host ran before, from its
 // record, without running it again. It reports false when there is no record.
 func (h *Host) answerStored(ctx context.Context, stream net.Conn, open relay.StreamOpenEnvelope) bool {
-	if jobs.ValidateID(open.ID) != nil {
-		return false // Dispatch refuses the ID
-	}
 	// A plain file read: a resend is still answered while the host stops.
 	record, err := h.cfg.Store.Get(context.WithoutCancel(ctx), open.ID)
 	if errors.Is(err, jobs.ErrNotFound) {
 		return false
 	}
 	if err != nil {
-		slog.Warn("job record unreadable for a resend", "job_id", open.ID, "error", err)
+		slog.Error("job record unreadable for a resend", "job_id", open.ID, "error", err)
 		_ = relay.WriteResultErrorAndClose(stream, 0, "job record unreadable", 500)
 		return true
 	}

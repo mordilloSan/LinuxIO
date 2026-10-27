@@ -531,29 +531,29 @@ names a concrete line; the rest are as recorded.
 ### Task 1: store
 
 - [ ] *Gap.* Record limit 1 MiB: an oversized result makes `Finish` fail and the record stays `running`. Route names are capped at 128 characters (not requested by the spec).
-- [ ] *Gap.* `ProcessAlive` treats a zombie (state `Z`/`X`) as alive; its `ParseUint` error lacks context.
-- [ ] `writeFileNoSync` duplicates `atomicfile.Write` without `validateDestination`; `readRegularFile` duplicates the old reader without `filepath.IsLocal`.
+- [ ] *Gap.* `ProcessAlive` treats a zombie (state `Z`/`X`) as alive. (Its `ParseUint` error now names the pid.)
+- [x] `writeFileNoSync` duplicates `atomicfile.Write` without `validateDestination`; `readRegularFile` duplicates the old reader without `filepath.IsLocal`.
 - [ ] The fsync rule keys on terminal state, not on a state change; `Finish` on a terminal record still rewrites the file.
-- [ ] `Finish` measures age from `StartedAt` only; `needsSync` falls back to `CreatedAt`.
-- [ ] `ReconcileCrashed` with a nil `alive` panics; an invalid reason returns a partial list; `mutate` returns a record together with an error.
-- [ ] `Prune` swallows the read error without logging.
-- [ ] `WriteProgress` after a transient delete leaves an orphan `.progress` file; progress bytes are not validated as JSON.
-- [ ] Tests discard errors in `store_test.go`.
+- [x] `Finish` measures age from `StartedAt` only; `needsSync` falls back to `CreatedAt`.
+- [x] `ReconcileCrashed` with a nil `alive` panics; an invalid reason returns a partial list; `mutate` returns a record together with an error.
+- [x] `Prune` swallows the read error without logging. (no change needed: `terminalByUID` already logs it at Warn)
+- [x] `WriteProgress` after a transient delete leaves an orphan `.progress` file; progress bytes are not validated as JSON. (a write racing the delete can still leave one; `shortcut:` comment)
+- [x] Tests discard errors in `store_test.go`.
 - [x] Records with unknown members are no longer pruned (final fix wave). Open part: the comment in `store.go` still says an unreadable record can only be a torn write.
-- [ ] A non-empty directory named `<uuid>.json` aborts `Prune`; a running job whose record was torn is never alerted after a reboot (inherent to no fsync on create).
+- [x] A non-empty directory named `<uuid>.json` aborted `Prune`: non-regular entries are skipped now. Still inherent: a running job whose record was torn is never alerted after a reboot (no fsync on create).
 
 ### Task 2: peer credentials and sd_notify
 
-- [ ] No test for the `@` abstract-socket conversion in `Notify` (redundant on Linux, harmless).
-- [ ] `peercred_test` leaks an fd on a path that is already failing.
+- [x] No test for the `@` abstract-socket conversion in `Notify` (redundant on Linux, harmless).
+- [x] `peercred_test` leaks an fd on a path that is already failing.
 
 ### Task 3: declarations
 
 - [ ] Redundant derived count in `TestAllTaskRoutesUseTaskRunner` (goes away in phase 3).
 - [ ] The 114 retry-safe count has no replacement beyond the two name lists (phase 3).
-- [ ] `TestMutationOptionsAreAllowedOnlyOnMutationRoutes` asserts the conjunction, not each option.
-- [ ] The `WithTarget` closure is untested.
-- [ ] `mutationResult` duplicates `wrapTypedCall`'s void erasure.
+- [x] `TestMutationOptionsAreAllowedOnlyOnMutationRoutes` asserts the conjunction, not each option.
+- [x] The `WithTarget` closure is untested.
+- [x] `mutationResult` duplicates `wrapTypedCall`'s void erasure.
 
 ### Task 4: one stream per mutation
 
@@ -568,13 +568,13 @@ names a concrete line; the rest are as recorded.
 - [ ] *Gap.* A running record with no in-memory task is answered as interrupted but stays `running` in the store until the next host start.
 - [ ] *Gap.* A job completed in under a second keeps no record, so a resend after the 30-minute sweep runs it again (limit of the transient rule).
 - [ ] Progress writes hold `rec.mu`.
-- [ ] A progress-write error is logged at Debug only.
-- [ ] A pending progress `AfterFunc` can outlive `Serve`.
+- [x] A progress-write error is logged at Debug only.
+- [x] A pending progress `AfterFunc` can outlive `Serve`.
 - [ ] The owner username comes from the bridge's hello, not `cfg.Username` (the root host needs the hello's; a user host could use its own).
-- [ ] The 503 "stopping" path and a hello while closing are untested.
+- [x] The 503 "stopping" path and a hello while closing are untested.
 - [ ] `sameJSON` is sensitive to key order (fine for the browser's identical resend).
-- [ ] An unreadable record answers 500 at Warn.
-- [ ] An invalid id lets the refusal answer 503 or 409 before `Dispatch`'s 400.
+- [x] An unreadable record answers 500 at Warn. (now Error)
+- [x] An invalid id lets the refusal answer 503 or 409 before `Dispatch`'s 400.
 - [x] Misleading attributes on the refused-connection log (fixed, final wave).
 - [x] "job host started" Info before the host listened (removed, final wave).
 
@@ -586,9 +586,9 @@ The launcher was removed in `0b44d7d3`; all its items are obsolete: success log 
 
 - [x] Stale-socket wait on the root path: the client now dials with retries.
 - [x] `StartResume` bypassing the Privileged check is documented as root-only by design (final wave).
-- [ ] The "job record not created" log text also fires on a refused rerun.
+- [x] The "job record not created" log text also fires on a refused rerun.
 - [ ] The CLI accepts a malformed `--resume` id, and `--wait` beside `--resume` (depends on the `jobs submit` decision).
-- [ ] Two test strengthenings: a hello as uid 0 against a user host; `tasks.get` after a no-wait submit.
+- [x] Two test strengthenings: a hello as uid 0 against a user host; `tasks.get` after a no-wait submit.
 
 ### Task 8: units and boot reconcile (mostly obsolete)
 
@@ -601,11 +601,11 @@ The launcher was removed in `0b44d7d3`; all its items are obsolete: success log 
 - [ ] *Gap.* `tasks.get` and `tasks.cancel` of a job id with no host answer 404, not 503.
 - [ ] *Gap.* Events from the window with no host are not replayed to an already open stream (also final review Important 3).
 - [ ] *Gap.* On the root host the 200-record cap applies per admin (drop the `byUID` grouping in `Prune`).
-- [ ] The first failure after a drop logs at Debug, not Warn.
-- [ ] `Events` waits for EOF instead of returning on `OpStreamClose`.
-- [ ] The merge test does not exercise concurrent writes.
-- [ ] The three cmd relay tests skip as root; `TestHostServesMutationOverYamuxAndRecords` would misbehave as root.
-- [ ] The resume owner change in `lifecycle.go` is untested.
+- [x] The first failure after a drop logs at Debug, not Warn.
+- [x] `Events` waits for EOF instead of returning on `OpStreamClose`.
+- [x] The merge test does not exercise concurrent writes. (a `net.Pipe` serialises writes, so it cannot catch a missing lock)
+- [ ] The three cmd relay tests skip as root (running them needs an exported test hook in `jobsclient`; the skip message says so). `TestHostServesMutationOverYamuxAndRecords` now runs as a user host under root too.
+- [x] The resume owner change in `lifecycle.go` is untested.
 - [x] Live snapshots show owner uid 0 on the root host while records show the real uid: documented in the API contract (final wave); the frontend reads only `owner.username`.
 
 ### Task 10: first route
@@ -613,14 +613,14 @@ The launcher was removed in `0b44d7d3`; all its items are obsolete: success log 
 - [x] `Target()` drives the same-target refusal (test `TestMutationTargetRefusesASecondRunOnTheSameTarget`; the smoke "same" case confirms it).
 - [x] A second concurrent update waited 10 s and failed: it now waits for the lock and reports "Waiting for another update to finish" (final wave).
 - [x] `bridge_handler_patterns.md` had no durable mention left.
-- [ ] No 400 case in `update_mutation_test`.
-- [ ] Pre-existing `useCallback`/`useMemo` in the Docker update provider could go.
-- [ ] The details-mode action and the `UpdateCell` chip have no unprivileged-case test.
-- [ ] A redundant `it.each` state string.
+- [x] No 400 case in `update_mutation_test`.
+- [x] Pre-existing `useCallback`/`useMemo` in the Docker update provider could go.
+- [x] The details-mode action and the `UpdateCell` chip have no unprivileged-case test.
+- [x] A redundant `it.each` state string.
 
 ### Task 11: network handoff
 
-- [ ] `status()` decodes the checkpoint twice.
+- [x] `status()` decodes the checkpoint twice.
 - Accepted by ruling: store paths inline instead of package variables; a stale handoff shows as running until the next status poll or start.
 - Obsolete: the durable-operations doc naming the deleted package (doc deleted).
 
@@ -628,16 +628,16 @@ The launcher was removed in `0b44d7d3`; all its items are obsolete: success log 
 
 - [ ] *Gap.* Resend-then-reattach: after a resend succeeds, a second loss ends in `outcome_unknown` instead of one reattach (also final review Important 4).
 - [ ] An abort while waiting for the mux after the job started cannot reach the server (no caller passes a signal yet).
-- [ ] The `sent === false` branch is untested.
-- [ ] A long comment line in `apiLayering.test.ts`.
+- [x] The `sent === false` branch is untested.
+- [x] A long comment line in `apiLayering.test.ts`.
 - [ ] `watch()` does `tasks.get` then `tasks.watch`.
 
 ### Task 13: docs and browser spec
 
 - [ ] *Gap.* The host's `tasks.list` and `tasks.get` see only in-memory jobs.
 - [ ] *Gap.* Cancel marks the record canceled at once without `cancel_requested`; pruning runs only at host start.
-- [ ] `jobs.spec.ts` does not assert the password environment variable.
-- [ ] The records list in the docs omits the handoff's progress step and checkpoint.
+- [x] `jobs.spec.ts` does not assert the password environment variable.
+- [x] The records list in the docs omits the handoff's progress step and checkpoint.
 - Obsolete with the reconcile service: boot-flow step order and its alert-exception wording; "session_ref recorded as owner" wording (owner is uid and username).
 
 ### Final review and fix wave
@@ -645,7 +645,7 @@ The launcher was removed in `0b44d7d3`; all its items are obsolete: success log 
 - [ ] Important 3: terminal-event replay after a host crash (same as Task 9).
 - [ ] Important 4: resend-then-reattach (same as Task 12).
 - [ ] The host-side drain does not cover forwarded `tasks.watch` streams.
-- [ ] A doc clause about `owner.username` (D7) could be clearer.
+- [x] A doc clause about `owner.username` (D7) could be clearer.
 
 ### Commit `0b44d7d3` review
 

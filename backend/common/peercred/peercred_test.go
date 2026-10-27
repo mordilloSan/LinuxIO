@@ -56,11 +56,14 @@ func TestReadReturnsOwnCredentialsOverSocketpair(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Wrap both fds before anything can fail so neither leaks; FileConn dups them.
+	files := []*os.File{os.NewFile(uintptr(fds[0]), "socketpair"), os.NewFile(uintptr(fds[1]), "socketpair")}
+	for _, f := range files {
+		t.Cleanup(func() { _ = f.Close() })
+	}
 	var conns []*net.UnixConn
-	for _, fd := range fds {
-		f := os.NewFile(uintptr(fd), "socketpair")
+	for _, f := range files {
 		c, connErr := net.FileConn(f)
-		_ = f.Close()
 		if connErr != nil {
 			t.Fatal(connErr)
 		}

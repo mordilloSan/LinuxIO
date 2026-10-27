@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	"testing"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
 func TestMutationAdaptersDecodeTheRecordRequestAndPassTheCheckpoint(t *testing.T) {
@@ -45,5 +47,30 @@ func TestMutationAdaptersDecodeTheRecordRequestAndPassTheCheckpoint(t *testing.T
 
 	if _, err := resume(context.Background(), jsontext.Value(`{"request":{"unexpected":true}}`)); err == nil {
 		t.Fatal("resume accepted a record whose request the route decoder rejects")
+	}
+}
+
+type targetedRequest struct {
+	Pool string `json:"pool"`
+}
+
+func (r targetedRequest) Target() []string { return []string{r.Pool} }
+
+func TestTargetedRouteOptionNamesTheRequestTarget(t *testing.T) {
+	binding := Mutation("test.target", func(context.Context, targetedRequest) (SuccessResponse, error) {
+		return SuccessResponse{}, nil
+	})
+	var route bridgeipc.Route
+	for _, opt := range routeOptions(binding.Route, nil) {
+		opt(&route)
+	}
+	if route.Target == nil {
+		t.Fatal("a targeted route has no target option")
+	}
+	if got := route.Target(targetedRequest{Pool: "tank"}); len(got) != 1 || got[0] != "tank" {
+		t.Fatalf("target = %v, want [tank]", got)
+	}
+	if got := route.Target("not a request"); got != nil {
+		t.Fatalf("target of a foreign request = %v, want nil", got)
 	}
 }

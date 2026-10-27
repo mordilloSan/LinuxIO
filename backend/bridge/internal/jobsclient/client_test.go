@@ -37,7 +37,7 @@ type testHost struct {
 // task-service built-ins, test.job (reports progress, returns {"ok":true}),
 // test.fail (fails with "boom") and test.resumable, whose Resume hook returns
 // the record's checkpoint.
-func startHost(t *testing.T, uid uint32) *testHost {
+func startHost(t *testing.T, uid uint32, configure ...func(*jobshost.Config)) *testHost {
 	t.Helper()
 	dir := t.TempDir()
 	th := &testHost{
@@ -89,6 +89,9 @@ func startHost(t *testing.T, uid uint32) *testHost {
 	if uid != uint32(os.Getuid()) {
 		// A host for another uid admits only that uid; the test claims it.
 		cfg.Peer = func(*net.UnixConn) (peercred.Cred, error) { return peercred.Cred{UID: uid}, nil }
+	}
+	for _, fn := range configure {
+		fn(&cfg)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	served := make(chan error, 1)
@@ -321,6 +324,25 @@ func TestSubmitWaitPrintsResult(t *testing.T) {
 	lines = strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n")
 	if err != nil || code != 0 || len(lines) != 2 || jobs.ValidateID(lines[0]) != nil {
 		t.Fatalf("Submit(no wait) = %d, %v with output %q; want 0 with the id and the snapshot", code, err, out.String())
+	}
+	// The detached job stays reachable by its id.
+	data, err := c.Call(t.Context(), "tasks.get", map[string]string{"taskId": lines[0]})
+	var snapshot bridgeipc.TaskSnapshot
+	if err != nil || json.Unmarshal(data, &snapshot) != nil || snapshot.ID != lines[0] || snapshot.Type != "test.job" {
+		t.Fatalf("tasks.get after a detached submit = %s, %v; want the job %s", data, err, lines[0])
+	}
+}
+
+func TestUserHostRefusesARootPeer(t *testing.T) {
+	uid := uint32(os.Getuid()) + 1 // a user host, never root's
+	th := startHost(t, uid, func(cfg *jobshost.Config) {
+		cfg.Peer = func(*net.UnixConn) (peercred.Cred, error) { return peercred.Cred{UID: 0}, nil }
+	})
+	asRoot(t, false)
+	hello := bridgeipc.HelloSession{Username: "alice", UID: uid, Privileged: true, SessionRef: "root-bridge"}
+	if c, err := Connect(t.Context(), uid, hello, th.socket); err == nil {
+		_ = c.Close()
+		t.Fatal("a user host accepted a hello from uid 0")
 	}
 }
 

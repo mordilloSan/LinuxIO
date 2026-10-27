@@ -1,11 +1,4 @@
-import {
-  createContext,
-  type ReactNode,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-} from "react";
+import { createContext, type ReactNode, useContext, useState } from "react";
 
 import {
   linuxio,
@@ -85,28 +78,25 @@ export function DockerUpdateOperationProvider({
   });
   const { isPending, mutate, watch } = operation;
 
-  const begin = useCallback(
-    (nextTarget: DockerUpdateTarget, request: DockerContainerUpdateRequest) => {
-      setTarget(nextTarget);
-      setEvents([]);
-      setResult(null);
-      setError(null);
-      setOpen(true);
-      mutate(request);
-    },
-    [mutate],
-  );
+  const begin = (
+    nextTarget: DockerUpdateTarget,
+    request: DockerContainerUpdateRequest,
+  ) => {
+    setTarget(nextTarget);
+    setEvents([]);
+    setResult(null);
+    setError(null);
+    setOpen(true);
+    mutate(request);
+  };
 
-  const startUpdate = useCallback(
-    (containerId: string, containerName: string) => {
-      if (isPending) {
-        setOpen(true);
-        return;
-      }
-      begin({ id: containerId, name: containerName }, { containerId });
-    },
-    [begin, isPending],
-  );
+  const startUpdate = (containerId: string, containerName: string) => {
+    if (isPending) {
+      setOpen(true);
+      return;
+    }
+    begin({ id: containerId, name: containerName }, { containerId });
+  };
 
   useActiveTaskRecovery({
     type: TASK_TYPE_DOCKER_UPDATE,
@@ -135,15 +125,12 @@ export function DockerUpdateOperationProvider({
     }
   };
 
-  const value = useMemo<DockerUpdateOperationContextValue>(
-    () => ({
-      canUpdate: privileged,
-      isUpdating: (containerId) => isPending && target?.id === containerId,
-      startUpdate,
-      updating: isPending,
-    }),
-    [isPending, privileged, startUpdate, target?.id],
-  );
+  const value: DockerUpdateOperationContextValue = {
+    canUpdate: privileged,
+    isUpdating: (containerId) => isPending && target?.id === containerId,
+    startUpdate,
+    updating: isPending,
+  };
 
   return (
     <DockerUpdateOperationContext.Provider value={value}>

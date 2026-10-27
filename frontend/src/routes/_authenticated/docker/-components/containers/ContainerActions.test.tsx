@@ -4,6 +4,7 @@ import * as core from "@/api/linuxio-core";
 import { render, screen } from "@/test/render";
 
 import ContainerActions from "./ContainerActions";
+import { DockerUpdateOperationProvider } from "../shared/DockerUpdateOperationProvider";
 
 const callbacks = { onOpenLogs: vi.fn(), onOpenTerminal: vi.fn() };
 
@@ -176,6 +177,28 @@ describe("ContainerActions", () => {
     ).toBeVisible();
     expect(screen.queryByRole("button", { name: /^Edit/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Update/ })).toBeNull();
+  });
+
+  it("disables Update in full mode for an unprivileged session", () => {
+    render(
+      <DockerUpdateOperationProvider>
+        <ContainerActions
+          container={{
+            Id: "running-id",
+            State: "running",
+            updateAvailable: true,
+          }}
+          mode="full"
+          name="example"
+          {...callbacks}
+        />
+      </DockerUpdateOperationProvider>,
+      { auth: { privileged: false } },
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Update example" }),
+    ).toBeDisabled();
   });
 
   it("shows every action as an icon in full mode", () => {

@@ -8,6 +8,7 @@ import { act, render, screen, waitFor, within } from "@/test/render";
 
 import type { ContainerTableRow } from "./containerStacks";
 import ContainerTable from "./ContainerTable";
+import { DockerUpdateOperationProvider } from "../shared/DockerUpdateOperationProvider";
 
 vi.mock("@tanstack/react-virtual", async () =>
   (await import("@/test/reactVirtualMock")).reactVirtualMock(),
@@ -182,6 +183,26 @@ describe("ContainerTable mutation feedback", () => {
     });
     expect(rescan).toHaveTextContent("Cannot check");
     expect(rescan).not.toHaveTextContent("Up to date");
+  });
+
+  it("disables the Update chip for an unprivileged session", () => {
+    media.compact = false;
+    render(
+      <DockerUpdateOperationProvider>
+        <ContainerTable
+          containers={[
+            container("alpha-id", "alpha", "running", {
+              updateAvailable: true,
+            }),
+          ]}
+        />
+      </DockerUpdateOperationProvider>,
+      { auth: { privileged: false } },
+    );
+
+    expect(
+      within(rowNamed("alpha")).getByRole("button", { name: "Update" }),
+    ).toHaveAttribute("aria-disabled", "true");
   });
 
   it.each([

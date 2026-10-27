@@ -184,7 +184,7 @@ func (s *durableBridgeHandoffService) expireStale(ctx context.Context) error {
 		if record.Route != bridgeHandoffRoute {
 			continue
 		}
-		if _, err := s.expire(ctx, record); err != nil {
+		if _, _, err := s.expire(ctx, record); err != nil {
 			return err
 		}
 	}
@@ -215,25 +215,29 @@ func (s *durableBridgeHandoffService) getRecord(ctx context.Context, uid uint32,
 }
 
 func (s *durableBridgeHandoffService) status(ctx context.Context, record jobs.Record) (apischema.NetworkBridgeHandoffStatus, error) {
-	record, err := s.expire(ctx, record)
+	record, data, err := s.expire(ctx, record)
 	if err != nil {
 		return apischema.NetworkBridgeHandoffStatus{}, err
 	}
-	data, _ := decodeBridgeHandoffRecord(record)
 	return handoffStatusFromRecord(record, data), nil
 }
 
-func (s *durableBridgeHandoffService) expire(ctx context.Context, record jobs.Record) (jobs.Record, error) {
+// expire releases an expired handoff and returns the record with its decoded
+// checkpoint, which expiry leaves unchanged.
+func (s *durableBridgeHandoffService) expire(ctx context.Context, record jobs.Record) (jobs.Record, bridgeHandoffRecord, error) {
 	now := s.now().UTC()
-	if data, _ := decodeBridgeHandoffRecord(record); !handoffExpired(record, data, now) {
-		return record, nil
+	data, _ := decodeBridgeHandoffRecord(record)
+	if !handoffExpired(record, data, now) {
+		return record, data, nil
 	}
-	return s.store.Update(ctx, record.ID, func(current *jobs.Record) error {
-		if data, _ := decodeBridgeHandoffRecord(*current); handoffExpired(*current, data, now) {
+	record, err := s.store.Update(ctx, record.ID, func(current *jobs.Record) error {
+		data, _ = decodeBridgeHandoffRecord(*current)
+		if handoffExpired(*current, data, now) {
 			expireHandoffRecord(current, data, now)
 		}
 		return nil
 	})
+	return record, data, err
 }
 
 func handoffExpired(record jobs.Record, data bridgeHandoffRecord, now time.Time) bool {
@@ -291,7 +295,7 @@ func (s *durableBridgeHandoffService) finish(ctx context.Context, uid uint32, id
 	if err != nil {
 		return apischema.NetworkBridgeHandoffStatus{}, err
 	}
-	record, err = s.expire(operationCtx, record)
+	record, _, err = s.expire(operationCtx, record)
 	if err != nil {
 		return apischema.NetworkBridgeHandoffStatus{}, err
 	}

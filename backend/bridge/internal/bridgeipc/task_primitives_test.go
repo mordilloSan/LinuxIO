@@ -231,8 +231,9 @@ func TestTasksCancelRoutesUUIDToRemote(t *testing.T) {
 }
 
 func TestTasksEventsMergesStreamsAndSurvivesRemoteDrop(t *testing.T) {
+	const remoteEvents = 50
 	remote := &fakeRemote{dropped: make(chan struct{})}
-	for _, pct := range []int{10, 20} {
+	for pct := range remoteEvents {
 		remote.events = append(remote.events, TaskEvent{Type: TaskEventProgress, Task: TaskSnapshot{ID: remoteJobID}, Progress: testTaskProgress(pct)})
 	}
 	router, service := newRemoteTestRouter(t, remote)
@@ -240,6 +241,11 @@ func TestTasksEventsMergesStreamsAndSurvivesRemoteDrop(t *testing.T) {
 
 	client, errCh := dispatchOnPipe(router, "tasks.events", `{}`)
 	defer client.Close()
+	// Local tasks start while the remote writes, so both write the stream at once.
+	locals := []*Task{local}
+	for range 4 {
+		locals = append(locals, startBlockedTask(t, service))
+	}
 	readEvent := func() TaskEvent {
 		t.Helper()
 		_ = client.SetReadDeadline(time.Now().Add(5 * time.Second))
@@ -255,17 +261,18 @@ func TestTasksEventsMergesStreamsAndSurvivesRemoteDrop(t *testing.T) {
 	}
 
 	counts := map[string]int{}
-	for range 3 {
-		counts[readEvent().Task.ID]++
+	seen := func() bool {
+		return counts[remoteJobID] == remoteEvents && !slices.ContainsFunc(locals, func(task *Task) bool { return counts[task.ID()] == 0 })
 	}
-	if counts[local.ID()] != 1 || counts[remoteJobID] != 2 {
-		t.Fatalf("events by task = %v, want 1 local snapshot and 2 remote events", counts)
+	for !seen() {
+		counts[readEvent().Task.ID]++
 	}
 	<-remote.dropped
 
 	local.ReportProgress(testTaskProgress(50))
-	if event := readEvent(); event.Task.ID != local.ID() || event.Type != TaskEventProgress {
-		t.Fatalf("event after remote drop = %+v, want local progress", event)
+	event := readEvent()
+	for event.Task.ID != local.ID() || event.Type != TaskEventProgress {
+		event = readEvent() // a local task's second start event may still be queued
 	}
 
 	if err := relay.WriteRelayFrame(client, &relay.StreamFrame{Opcode: relay.OpStreamClose}); err != nil {

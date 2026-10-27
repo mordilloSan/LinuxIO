@@ -496,21 +496,13 @@ func requireRouteSpec(spec RouteSpec) RouteSpec {
 }
 
 func wrapTypedCall[Request, Result any](spec RouteSpec, handle TypedHandlerFunc[Request, Result]) bridgeipc.CallFunc {
-	voidResult := spec.Result.Void()
-	route := spec.Route
 	return func(ctx context.Context, request bridgeipc.Request) (any, error) {
-		req, err := typedRequest[Request](route, request.DecodedValue)
+		req, err := typedRequest[Request](spec.Route, request.DecodedValue)
 		if err != nil {
 			return nil, err
 		}
 		result, err := handle(ctx, req)
-		if err != nil {
-			return nil, err
-		}
-		if voidResult {
-			return nil, nil
-		}
-		return result, nil
+		return erasedResult(spec, result, err)
 	}
 }
 
@@ -552,7 +544,7 @@ func wrapMutation[Req, Res any](spec RouteSpec, fn func(context.Context, Req) (R
 			return nil, err
 		}
 		result, err := fn(ctx, req)
-		return mutationResult(spec, result, err)
+		return erasedResult(spec, result, err)
 	}
 }
 
@@ -570,7 +562,7 @@ func resumeHooks[Req, Res any](spec RouteSpec, hooks ResumeHooks[Req, Res]) (bri
 			return nil, err
 		}
 		result, err := hooks.Resume(ctx, req, checkpoint)
-		return mutationResult(spec, result, err)
+		return erasedResult(spec, result, err)
 	}
 	return suspend, resume
 }
@@ -591,9 +583,9 @@ func decodeRecord[Req any](spec RouteSpec, record jsontext.Value) (Req, jsontext
 	return req, members[recordCheckpointMember], err
 }
 
-// mutationResult erases a typed result at the bridge boundary. A NoResponse
-// result is sent as no result, as for a void Call.
-func mutationResult[Res any](spec RouteSpec, result Res, err error) (any, error) {
+// erasedResult erases a typed Call or Mutation result at the bridge boundary.
+// A NoResponse result is sent as no result.
+func erasedResult[Res any](spec RouteSpec, result Res, err error) (any, error) {
 	if err != nil || spec.Result.Void() {
 		return nil, err
 	}

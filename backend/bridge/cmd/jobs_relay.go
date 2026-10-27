@@ -99,6 +99,8 @@ func newJobsRelay(ctx context.Context, sess *session.Session) *jobsRelay {
 func (j *jobsRelay) run(ctx context.Context, uid uint32, hello bridgeipc.HelloSession) {
 	defer close(j.done)
 	retry := jobsRetryMin
+	// warned: this outage's first failure was logged at Warn.
+	warned := false
 	for {
 		c, err := jobsConnect(ctx, uid, hello, jobsHostSocket(uid))
 		if ctx.Err() != nil {
@@ -108,7 +110,7 @@ func (j *jobsRelay) run(ctx context.Context, uid uint32, hello bridgeipc.HelloSe
 			return
 		}
 		if err == nil {
-			retry = jobsRetryMin
+			retry, warned = jobsRetryMin, false
 			j.set(c, nil)
 			select {
 			case <-c.Done():
@@ -121,7 +123,8 @@ func (j *jobsRelay) run(ctx context.Context, uid uint32, hello bridgeipc.HelloSe
 			}
 		} else {
 			j.set(nil, err)
-			if retry == jobsRetryMin {
+			if !warned {
+				warned = true
 				slog.Warn("job host connection failed", "user", hello.Username, "error", err)
 			} else {
 				slog.Debug("job host connection retry failed", "user", hello.Username, "retry_in", retry, "error", err)
@@ -286,6 +289,9 @@ func copyHostEvents(ctx context.Context, c *jobsclient.Client, stream net.Conn) 
 			if ctx.Err() == nil && !errors.Is(err, io.EOF) {
 				slog.Debug("job host events ended", "error", err)
 			}
+			return nil
+		}
+		if frame.Opcode == relay.OpStreamClose {
 			return nil
 		}
 		if frame.Opcode != relay.OpStreamProgress {

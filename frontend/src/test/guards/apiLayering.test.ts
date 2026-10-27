@@ -10,8 +10,9 @@ import {
 // Feature code talks to the backend through centralized descriptors. Migrated
 // Calls pass their descriptor directly to TanStack Query or `useCallMutation`.
 // Mutation routes use their endpoint's `.useMutation(`. Progress work uses
-// `useTaskAction`/`useTaskStreamAction` or the background-tasks layer. Imperative cache reads and cache surgery use the
-// QueryClient directly; transport-only work uses typed `call()`.
+// `useTaskAction`/`useTaskStreamAction` or the background-tasks layer.
+// Imperative cache reads and cache surgery use the QueryClient directly;
+// transport-only work uses typed `call()`.
 
 // The one directory that IS the primitive layer.
 const SANCTIONED_DIR_PREFIXES = ["api/"];

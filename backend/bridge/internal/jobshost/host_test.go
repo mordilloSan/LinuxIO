@@ -20,6 +20,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	"github.com/mordilloSan/LinuxIO/backend/common/jobs"
 	"github.com/mordilloSan/LinuxIO/backend/common/peercred"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 const (
@@ -282,8 +283,15 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 	}
 }
 
+// asUserHost makes a host a user's, uid 1000, with its peers that uid, so a
+// user-host test holds when it runs as root.
+func asUserHost(c *Config) {
+	c.UID, c.GID = 1000, 1000
+	c.Peer = func(*net.UnixConn) (peercred.Cred, error) { return peercred.Cred{UID: 1000}, nil }
+}
+
 func TestHostServesMutationOverYamuxAndRecords(t *testing.T) {
-	th := newTestHost(t, nil)
+	th := newTestHost(t, asUserHost)
 	th.start()
 	sess := th.connect()
 	if bridges, _ := th.host.counts(); bridges != 1 {
@@ -559,7 +567,10 @@ func earlierBootRecord(id, route string, state jobs.State) jobs.Record {
 
 func TestUserHostMarksAnEarlierBootsJobWithoutResumingIt(t *testing.T) {
 	resumed := make(chan string, 1)
-	th := newTestHost(t, func(c *Config) { addResumableRoute(c, resumed) })
+	th := newTestHost(t, func(c *Config) {
+		asUserHost(c)
+		addResumableRoute(c, resumed)
+	})
 	if err := th.cfg.Store.Create(context.Background(), earlierBootRecord(jobA, "test.resumable", jobs.StateRunning)); err != nil {
 		t.Fatalf("Store.Create: %v", err)
 	}
@@ -633,6 +644,14 @@ func TestRootHostResumesOnlyTheJobsAnEarlierBootInterrupted(t *testing.T) {
 	waitFor(t, "the resumed jobs to complete", func() bool {
 		return th.record(jobA).State == jobs.StateCompleted && th.record(jobB).State == jobs.StateCompleted
 	})
+	// The resumed task is the host's for permission checks; the record keeps
+	// naming the user who started the job.
+	if task, ok := th.cfg.Tasks.Get(jobA); !ok || task.Owner().UID != 0 || task.Owner().Username != "alice" {
+		t.Fatalf("resumed task owner = %#v (found %v), want alice as uid 0", task.Owner(), ok)
+	}
+	if r := th.record(jobA); r.Owner != (jobs.Owner{UID: 1000, Username: "alice"}) {
+		t.Fatalf("resumed record owner = %#v, want alice as uid 1000", r.Owner)
+	}
 	select {
 	case id := <-resumed:
 		t.Fatalf("also resumed %s", id)
@@ -831,6 +850,29 @@ func TestRecorderCoalescesProgressWrites(t *testing.T) {
 	}
 }
 
+func TestRecorderStopFlushesAndCancelsProgressTimers(t *testing.T) {
+	th := newTestHost(t, nil)
+	task := claim(t, th, jobA)
+	th.host.rec.Started(task, jsontext.Value(`{}`))
+	th.host.rec.Progress(task, progress(10))
+	th.host.rec.Progress(task, progress(20)) // waits for a timer
+
+	th.host.rec.stop() // the host shut down
+	if got := th.progressFile(jobA); got != `{"percentage":20}` {
+		t.Fatalf("progress after stop = %s, want the pending value written", got)
+	}
+	th.host.rec.Progress(task, progress(30))
+	time.Sleep(2 * progressInterval)
+	if got := th.progressFile(jobA); got != `{"percentage":20}` {
+		t.Fatalf("progress after stop = %s, want no timed write", got)
+	}
+	task.Cancel()
+	th.host.rec.Finished(task)
+	if got := th.progressFile(jobA); got != `{"percentage":30}` {
+		t.Fatalf("progress after Finished = %s, want the last value flushed", got)
+	}
+}
+
 func TestHostAnswersAResendOfAStoredJobFromItsRecord(t *testing.T) {
 	th := newTestHost(t, nil)
 	now := time.Now().UTC()
@@ -936,4 +978,76 @@ func TestRootHostRecordsTheClaimedOwnerUID(t *testing.T) {
 		return len(th.host.owners) == 0
 	})
 	th.release <- nil
+}
+
+// serveOneStream serves one stream opening route test.job with id, under ctx,
+// and returns its result.
+func serveOneStream(t *testing.T, th *testHost, ctx context.Context, id string) relay.ResultFrame {
+	t.Helper()
+	server, client := net.Pipe()
+	defer client.Close()
+	served := make(chan struct{})
+	go func() {
+		defer close(served)
+		defer server.Close()
+		th.host.serveStream(ctx, server, &session.Session{SessionID: "s", User: session.User{Username: "alice", UID: th.cfg.UID}})
+	}()
+	payload, err := json.Marshal(relay.StreamOpenEnvelope{Route: "test.job", Request: jsontext.Value(`{}`), ID: id})
+	if err != nil {
+		t.Fatalf("json.Marshal(open): %v", err)
+	}
+	if err := relay.WriteRelayFrame(client, &relay.StreamFrame{Opcode: relay.OpStreamOpen, Payload: payload}); err != nil {
+		t.Fatalf("write stream open: %v", err)
+	}
+	result := readResult(t, client)
+	_ = client.Close()
+	<-served
+	return result
+}
+
+func TestStoppingHostRefusesANewJobButAnInvalidIDFirst(t *testing.T) {
+	th := newTestHost(t, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // SIGTERM
+
+	if result := serveOneStream(t, th, ctx, jobA); result.Status != "error" || result.Code != 503 || result.Error != "job host is stopping" {
+		t.Fatalf("new job on a stopping host = %#v, want 503 job host is stopping", result)
+	}
+	if result := serveOneStream(t, th, ctx, "not-a-job-id"); result.Status != "error" || result.Code != 400 {
+		t.Fatalf("invalid job id on a stopping host = %#v, want 400", result)
+	}
+	if runs := th.runs.Load(); runs != 0 {
+		t.Fatalf("handler ran %d times, want 0", runs)
+	}
+}
+
+func TestClosingHostDropsANewBridge(t *testing.T) {
+	th := newTestHost(t, nil)
+	th.start()
+	th.host.mu.Lock()
+	th.host.closing = true
+	th.host.mu.Unlock()
+
+	body, err := json.Marshal(bridgeipc.Hello{Protocol: jobs.Protocol})
+	if err != nil {
+		t.Fatalf("json.Marshal(hello): %v", err)
+	}
+	payload, err := json.Marshal(relay.StreamOpenEnvelope{Route: bridgeipc.HelloRoute, Request: body})
+	if err != nil {
+		t.Fatalf("json.Marshal(open): %v", err)
+	}
+	sess := th.dial()
+	// The hello may or may not get out before the host closes the session.
+	if stream, err := sess.Open(context.Background()); err == nil {
+		defer stream.Close()
+		_ = relay.WriteRelayFrame(stream, &relay.StreamFrame{Opcode: relay.OpStreamOpen, Payload: payload})
+	}
+	select {
+	case <-sess.CloseChan():
+	case <-time.After(ioTimeout):
+		t.Fatal("session still open on a closing host")
+	}
+	if bridges, _ := th.host.counts(); bridges != 0 {
+		t.Fatalf("bridges = %d, want 0", bridges)
+	}
 }

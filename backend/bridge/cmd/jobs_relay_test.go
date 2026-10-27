@@ -29,7 +29,7 @@ const relayTestJobID = "00000000-0000-4000-8000-0000000000c1"
 func relayTestSockets(t *testing.T, hostSocket string) {
 	t.Helper()
 	if os.Geteuid() == 0 {
-		t.Skip("as root the job client starts the host through systemd")
+		t.Skip("as root jobsclient.Connect starts the host's socket unit through systemd; that StartUnit seam is internal to jobsclient, whose tests cover the root path with it stubbed")
 	}
 	oldHost := jobsHostSocket
 	jobsHostSocket = func(uint32) string { return hostSocket }

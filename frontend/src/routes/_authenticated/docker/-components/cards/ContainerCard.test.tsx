@@ -94,12 +94,9 @@ describe("ContainerCard", () => {
     ).not.toBeInTheDocument();
   });
 
-  it.each([
-    [true, "enabled"],
-    [false, "disabled"],
-  ])(
-    "offers the update from the update-available badge (privileged %s: %s)",
-    async (privileged, state) => {
+  it.each([true, false])(
+    "offers the update from the update-available badge (privileged: %s)",
+    async (privileged) => {
       const { user } = render(
         <DockerUpdateOperationProvider>
           <ContainerCard containerId={container.Id} selected={false} />
@@ -115,7 +112,7 @@ describe("ContainerCard", () => {
       );
 
       const update = screen.getByRole("menuitem", { name: "Update" });
-      if (state === "enabled") expect(update).toBeEnabled();
+      if (privileged) expect(update).toBeEnabled();
       else expect(update).toBeDisabled();
     },
   );

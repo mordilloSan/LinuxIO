@@ -231,6 +231,15 @@ describe("mutationRequest", () => {
     expect(mux.openStream).toHaveBeenCalledTimes(2);
   });
 
+  it("rejects the original error when the request was never sent", async () => {
+    const mux = installMux();
+
+    await expect(
+      mutationRequest("docker", "update_container", REQUEST, {}),
+    ).rejects.toMatchObject({ code: "connection_unavailable" });
+    expect(mux.openStream).toHaveBeenCalledTimes(2);
+  });
+
   it("aborts the stream when the signal fires", async () => {
     const stream = createStream();
     installMux(stream);

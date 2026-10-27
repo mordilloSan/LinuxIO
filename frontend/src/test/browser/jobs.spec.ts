@@ -24,6 +24,7 @@ test.describe("jobs", () => {
     test.setTimeout(120_000);
     expect(container, "LINUXIO_E2E_CONTAINER").not.toBe("");
     expect(username, "LINUXIO_E2E_USER").not.toBe("");
+    expect(password, "LINUXIO_E2E_PASSWORD").not.toBe("");
 
     await page.goto("/sign-in");
     await page.locator('input[autocomplete="username"]').fill(username);

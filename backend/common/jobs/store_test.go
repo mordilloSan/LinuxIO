@@ -136,6 +136,20 @@ func TestStoreFinishKeepsLongJobs(t *testing.T) {
 	}
 }
 
+// A record without a start time ages from its creation, as needsSync does.
+func TestStoreFinishAgesFromCreatedWithoutStart(t *testing.T) {
+	s := newTestStore(t)
+	r := testRecord(1, "a")
+	r.StartedAt = time.Time{}
+	mustCreate(t, s, r)
+	if _, err := s.Finish(t.Context(), r.ID, StateCompleted, nil, nil); err != nil {
+		t.Fatalf("Finish: %v", err)
+	}
+	if _, err := s.Get(t.Context(), r.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("transient job without a start time kept: %v", err)
+	}
+}
+
 func TestStoreUpdateAppliesAndPersists(t *testing.T) {
 	s := newTestStore(t)
 	r := testRecord(1, "a")
@@ -149,13 +163,13 @@ func TestStoreUpdateAppliesAndPersists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Update: %v", err)
 	}
-	got, _ := s.Get(t.Context(), r.ID)
-	if compact(got.Checkpoint) != `{"step":2}` || !got.CancelRequested {
-		t.Fatalf("stored = %+v", got)
+	got, err := s.Get(t.Context(), r.ID)
+	if err != nil || compact(got.Checkpoint) != `{"step":2}` || !got.CancelRequested {
+		t.Fatalf("stored = %+v, %v", got, err)
 	}
 	boom := errors.New("boom")
-	if _, err := s.Update(t.Context(), r.ID, func(*Record) error { return boom }); !errors.Is(err, boom) {
-		t.Fatalf("Update error = %v, want boom", err)
+	if got, err := s.Update(t.Context(), r.ID, func(*Record) error { return boom }); !errors.Is(err, boom) || got.ID != "" {
+		t.Fatalf("Update = %+v, %v; want the zero record and boom", got, err)
 	}
 	if _, err := s.Update(t.Context(), r.ID, func(r *Record) error { r.ID = testID(9); return nil }); err == nil {
 		t.Fatal("Update accepted an ID change")
@@ -265,7 +279,10 @@ func TestStorePruneKeepsRetentionAndCap(t *testing.T) {
 	if _, err := s.Get(t.Context(), running.ID); err != nil {
 		t.Errorf("running record pruned: %v", err)
 	}
-	all, _ := s.List(t.Context())
+	all, err := s.List(t.Context())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
 	if terminal := len(all) - 1; terminal != MaxTerminalRecordsPerUID {
 		t.Errorf("terminal records kept = %d, want %d", terminal, MaxTerminalRecordsPerUID)
 	}
@@ -295,9 +312,9 @@ func TestStoreReconcileCrashedMarksDeadRunningRecords(t *testing.T) {
 			t.Errorf("changed record = %+v", r)
 		}
 	}
-	got, _ := s.Get(t.Context(), unit.ID)
-	if got.State != StateRunning {
-		t.Errorf("unit-run record touched: %+v", got)
+	got, err := s.Get(t.Context(), unit.ID)
+	if err != nil || got.State != StateRunning {
+		t.Errorf("unit-run record touched: %+v, %v", got, err)
 	}
 
 	// A live executor is left alone.
@@ -307,9 +324,26 @@ func TestStoreReconcileCrashedMarksDeadRunningRecords(t *testing.T) {
 	if err != nil || len(changed) != 0 {
 		t.Fatalf("alive executors changed = %v, %v", ids(changed), err)
 	}
-	got, _ = s.Get(t.Context(), again.ID)
-	if got.State != StateRunning || got.Reason != ReasonNone {
-		t.Errorf("alive record = %+v", got)
+	got, err = s.Get(t.Context(), again.ID)
+	if err != nil || got.State != StateRunning || got.Reason != ReasonNone {
+		t.Errorf("alive record = %+v, %v", got, err)
+	}
+}
+
+func TestStoreReconcileCrashedRejectsBadArgumentsBeforeWriting(t *testing.T) {
+	s := newTestStore(t)
+	r := testRecord(1, "a")
+	mustCreate(t, s, r)
+	if _, err := s.ReconcileCrashed(t.Context(), nil, ReasonCrash); err == nil {
+		t.Error("nil alive accepted")
+	}
+	changed, err := s.ReconcileCrashed(t.Context(), func(Executor) bool { return false }, Reason("bogus"))
+	if err == nil || changed != nil {
+		t.Errorf("invalid reason = %v, %v; want an error and no records", ids(changed), err)
+	}
+	got, err := s.Get(t.Context(), r.ID)
+	if err != nil || got.State != StateRunning {
+		t.Errorf("record after refused reconcile = %+v, %v", got, err)
 	}
 }
 
@@ -349,6 +383,68 @@ func TestStoreProgressRoundTrip(t *testing.T) {
 	got, err := s.ReadProgress(r.ID)
 	if err != nil || compact(got) != `{"pct":50}` {
 		t.Fatalf("ReadProgress = %s, %v", got, err)
+	}
+}
+
+func TestStoreWriteProgressRefusesInvalidJSONAndMissingRecord(t *testing.T) {
+	s := newTestStore(t)
+	r := testRecord(1, "a")
+	mustCreate(t, s, r)
+	if err := s.WriteProgress(r.ID, jsontext.Value(`{"pct":`)); err == nil {
+		t.Error("invalid progress JSON accepted")
+	}
+	if _, err := s.Finish(t.Context(), r.ID, StateCompleted, nil, nil); err != nil {
+		t.Fatalf("Finish: %v", err)
+	}
+	if err := s.WriteProgress(r.ID, jsontext.Value(`{}`)); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("WriteProgress after transient delete = %v, want ErrNotFound", err)
+	}
+	if _, err := os.Lstat(s.progressPath(r.ID)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("orphan progress file: %v", err)
+	}
+}
+
+func TestStoreWriteProgressRefusesSymlink(t *testing.T) {
+	s := newTestStore(t)
+	r := testRecord(1, "a")
+	mustCreate(t, s, r)
+	target := filepath.Join(t.TempDir(), "target")
+	if err := os.WriteFile(target, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, s.progressPath(r.ID)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.WriteProgress(r.ID, jsontext.Value(`{}`)); err == nil {
+		t.Fatal("WriteProgress replaced a symlink")
+	}
+	if info, err := os.Lstat(s.progressPath(r.ID)); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("symlink replaced: %v, %v", info, err)
+	}
+}
+
+func TestReadRegularFileRejectsNonLocalName(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := readRegularFile(filepath.Join(dir, "sub"), "../x", 10); err == nil {
+		t.Fatal("non-local name accepted")
+	}
+}
+
+func TestStorePruneSkipsDirectoryNamedLikeRecord(t *testing.T) {
+	s := newTestStore(t)
+	mustCreate(t, s, testRecord(1, "a"))
+	dir := s.recordPath(testID(2))
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "x"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Prune(t.Context(), time.Now()); err != nil {
+		t.Fatalf("Prune: %v", err)
+	}
+	if all, err := s.List(t.Context()); err != nil || len(all) != 1 {
+		t.Fatalf("List = %v, %v", ids(all), err)
 	}
 }
 
@@ -425,8 +521,8 @@ func TestStoreToleratesTornRecord(t *testing.T) {
 	if _, err := os.Stat(s.progressPath(testID(3))); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("torn record's progress file kept: %v", err)
 	}
-	if all, _ := s.List(t.Context()); len(all) != 3 {
-		t.Errorf("good records after Prune = %v", ids(all))
+	if all, err := s.List(t.Context()); err != nil || len(all) != 3 {
+		t.Errorf("good records after Prune = %v, %v", ids(all), err)
 	}
 }
 

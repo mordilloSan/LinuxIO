@@ -88,6 +88,50 @@ func TestUpdateContainerMutationReportsProgressAndResult(t *testing.T) {
 	}
 }
 
+func TestUpdateContainerMutationRejectsAnEmptyContainerID(t *testing.T) {
+	original := updateContainer
+	t.Cleanup(func() { updateContainer = original })
+	updateContainer = func(context.Context, string, time.Duration, func(phase, message string)) (apischema.DockerContainerUpdateResult, error) {
+		t.Error("updateContainer ran for an empty container ID")
+		return apischema.DockerContainerUpdateResult{}, nil
+	}
+
+	router := bridgeipc.NewRouter(bridgeipc.NewTaskService())
+	RegisterTaskRoutes(router, runtime.Runtime{})
+	server, client := net.Pipe()
+	t.Cleanup(func() { _ = client.Close() })
+	errCh := make(chan error, 1)
+	go func() {
+		defer server.Close()
+		errCh <- router.Dispatch(context.Background(), server, bridgeipc.Request{
+			Route:      dockerUpdateRoute,
+			RawRequest: jsontext.Value(`{"containerId":""}`),
+			ID:         "00000000-0000-4000-8000-0000000000ab",
+			Session:    &session.Session{SessionID: "session", Privileged: true, User: session.User{Username: "root"}},
+		})
+	}()
+
+	_ = client.SetReadDeadline(time.Now().Add(5 * time.Second))
+	for {
+		frame, err := relay.ReadRelayFrame(client)
+		if err != nil {
+			t.Fatalf("ReadRelayFrame: %v", err)
+		}
+		if frame.Opcode != relay.OpStreamResult {
+			continue // the task snapshot
+		}
+		var result relay.ResultFrame
+		if err := json.Unmarshal(frame.Payload, &result); err != nil || result.Status != "error" || result.Code != 400 {
+			t.Fatalf("result = %s (%v), want a 400 error", frame.Payload, err)
+		}
+		break
+	}
+	_ = client.Close()
+	if err := <-errCh; err != nil {
+		t.Fatalf("Dispatch = %v, want nil: the 400 is a result frame", err)
+	}
+}
+
 func readMutationFrame(t *testing.T, conn net.Conn, opcode byte, into any) {
 	t.Helper()
 	frame, err := relay.ReadRelayFrame(conn)
