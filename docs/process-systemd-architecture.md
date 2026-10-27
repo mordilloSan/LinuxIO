@@ -14,7 +14,7 @@ LinuxIO uses **privilege separation** (the same shape Cockpit uses): split the s
 | Serve HTTP/WebSocket to the browser | `linuxio-webserver` | Big attack surface (TLS-less HTTP, untrusted input) → runs **unprivileged**, heavily sandboxed, never root. |
 | Authenticate (PAM) and launch a session | `linuxio-auth` | Needs **root** for PAM + privilege drop → kept tiny, written in C, audited, socket-activated per connection. |
 | Execute user-facing operations | `linuxio-bridge` | Runs with **exactly the logged-in user's** privileges (or root only when the user is privileged). One process per login. |
-| Run mutations that outlive the login | `linuxio-bridge jobs host` | One long-lived job host per uid, as that uid (root for admins), so a change started from the UI does not depend on the login, the browser tab or the bridge staying alive. A user's bridge cannot start a system unit, so `linuxio-auth` starts a user's host once PAM has authenticated them; root starts its own. |
+| Run mutations that outlive the login | `linuxio-bridge`, as `linuxio-jobs@<uid>.service` | One long-lived job host per uid, as that uid (root for admins), so a change started from the UI does not depend on the login, the browser tab or the bridge staying alive. systemd holds each host's socket and starts the host on a connection. A user's bridge cannot start a system unit, so `linuxio-auth` starts a user's socket once PAM has authenticated them; root starts its own. |
 | Maintain the filesystem index | `linuxio-indexer` | Needs broad read access but a narrow write boundary → isolated, sandboxed, and socket activated. |
 | Sample and store host metrics | `linuxio-monitoring` | Needs **root** for SMART, hwmon, GPU and the Docker socket, and must keep sampling with no session open → one long-running collector, read-only metrics on a world-readable socket, commands behind a root-only one. |
 | Operate/inspect the stack | `linuxio` (CLI) | Convenience wrapper over `systemctl`/`journalctl` → runs as the invoking admin. |
@@ -26,7 +26,7 @@ LinuxIO uses **privilege separation** (the same shape Cockpit uses): split the s
 | `linuxio` | Go | `backend/cli/` | invoking user (often via `sudo`) | on-demand | CLI: status, logs, start/stop/restart, verbose, version |
 | `linuxio-webserver` | Go | `backend/webserver/` | `DynamicUser` + group `linuxio-bridge-socket` | long-running (socket-activated) | HTTP + WebSocket relay; **yamux client** |
 | `linuxio-auth` | C | `backend/auth/linuxio-auth.c` | `root` | per auth connection (supervises its bridge) | PAM authentication, sudoers policy query, fork + supervise bridge |
-| `linuxio-bridge` | Go | `backend/bridge/` | logged-in user (root only if privileged); `jobs host` as its uid | per login session; `jobs host` per uid, started at login or by root, idle exit | **yamux server**; executes reads and relays mutations to the job host; `jobs host` runs mutations as jobs |
+| `linuxio-bridge` | Go | `backend/bridge/` | logged-in user (root only if privileged); the job host as its uid | per login session; the job host per uid, started by a connection to its socket, idle exit | **yamux server**; executes reads and relays mutations to the job host; the job host runs mutations as jobs |
 | `linuxio-docker-update` | Go | `backend/docker-update/` | root, sandboxed | per scheduled update run | Docker update worker |
 | `linuxio-indexer` | Go | `backend/indexer/` | root, sandboxed | socket activated; exits when idle | Filesystem scanner, SQLite index, local HTTP/SSE API |
 | `linuxio-btrfs-timer` | Go | `backend/btrfs-timer/` | root | oneshot, started by systemd timers and the auto-update drop-in | Btrfs timeline/pre-update snapshots and the periodic health check |
@@ -47,13 +47,13 @@ the auth/bridge launch protocol.
 | `linuxio` | `status`, `logs`, `start`, `stop`, `restart [--full]`, `verbose enable\|disable\|status` (daemons switch live via SIGHUP reload, open sessions at next login; persists across restarts; also in Settings), `version [--self]`, `help`/`-h`/`--help` | `alert raise\|resolve\|auto-update` for systemd hooks (needs sudo); hidden `btrfs-snapshot`/`btrfs-health` shims that exec `linuxio-btrfs-timer` for units installed by earlier releases |
 | `linuxio-webserver` | `help`/`-h`/`--help`, `version`/`-v`/`--version` | `run [-port N] [-verbose]`; used by `linuxio-webserver.service` |
 | `linuxio-auth` | `version`, `--version` | No-argument accepted-socket process; root and systemd only |
-| `linuxio-bridge` | `version`, `--version`, `-v` | No-argument session process with inherited fd 3 and auth bootstrap; `linuxio-auth` only. `jobs host` (`linuxio-jobs@<uid>.service`), `jobs submit --route ROUTE [--request JSON] [--wait] \| --resume ID` (the caller's own job host: root starts it, a user's login started it; timers and admin shells), `jobs reconcile` (`linuxio-jobs-reconcile.service`) |
+| `linuxio-bridge` | `version`, `--version`, `-v` | No-argument session process with inherited fd 3 and auth bootstrap; `linuxio-auth` only. With no arguments and the `linuxio-jobs` socket from systemd, the job host (`linuxio-jobs@<uid>.service`). `jobs submit --route ROUTE [--request JSON] [--wait] \| --resume ID` reaches the caller's own job host for admin shells and tests: root starts its socket, and a user's exists once they have logged in since boot |
 | `linuxio-docker-update` | `help`/`-h`/`--help` | `run [--config PATH]` for the managed timer |
 | `linuxio-indexer` | `--help`, `-h`, `--version` | Managed daemon; private `--trigger-index` timer client and `--index-mode` scanner worker |
 | `linuxio-monitoring` | `help`/`-h`/`--help`, `version`/`-v`/`--version` | `run [--config PATH] [--verbose]`; used by `linuxio-monitoring.service` |
 | `linuxio-btrfs-timer` | `help`/`-h`/`--help` | `snapshot run [--now RFC3339]`, `snapshot pre-update`, `health run`; used by the btrfs snapshot and health units and the pre-update hook |
 
-User lookup in `jobs host` and `jobs submit` goes through `os/user`, which
+User lookup in the job host and `jobs submit` goes through `os/user`, which
 resolves SSSD/LDAP users only in a cgo build (the default native build); a
 `CGO_ENABLED=0` bridge sees only `/etc/passwd` users.
 
@@ -91,17 +91,13 @@ linuxio-btrfs-degraded.service       boot oneshot, WantedBy=multi-user.target, e
                                      (`linuxio-btrfs-timer degraded run`)
 linuxio-btrfs-resync@<uuid>.service  started by the health check once a returned disk is back;
                                      runs `linuxio-btrfs-timer resync <uuid>` (scrub, then soft convert)
-linuxio-jobs@<uid>.service           job host for one uid (`linuxio-bridge jobs host`, User=<uid>);
-                                     a user's is started by linuxio-auth at login, the root one by a
-                                     root bridge, the submit CLI or the boot reconcile; exits when idle,
-                                     ordered after the reconcile; TasksMax=8192, MemoryMax=2G;
-                                     store in /var/lib/linuxio/jobs/<uid>, socket in /run/linuxio/jobs/<uid>
-linuxio-jobs-reconcile.service       once per boot (Type=notify, RemainAfterExit), WantedBy=multi-user.target,
-                                     after the degraded mount; enabled, never started, by the installer.
-                                     Marks jobs a reboot cut short interrupted, signals READY (hosts
-                                     start from here), resumes every interrupted resumable job in the
-                                     root host and alerts on the non-resumable root jobs it marked;
-                                     other uids' jobs are only marked (their users see them in tasks.list)
+linuxio-jobs@<uid>.socket            /run/linuxio/jobs/<uid>.sock, 0600, owned by the uid; started by
+                                     linuxio-auth at that user's login and by root for uid 0; a
+                                     connection starts the host whenever it is down
+└─ linuxio-jobs@<uid>.service        job host for one uid (`linuxio-bridge`, no arguments, User=<uid>);
+                                     enabled for uid 0, so the root host starts at boot; exits when idle;
+                                     TasksMax=8192, MemoryMax=2G; store in /var/lib/linuxio/jobs/<uid>,
+                                     progress in /run/linuxio/jobs/<uid>
 ```
 
 Key unit facts (see `packaging/systemd/`):
@@ -130,9 +126,9 @@ Key unit facts (see `packaging/systemd/`):
   uid-0 check, metrics and commands). See the
   [monitoring daemon guide](./monitoring.md).
 - **`linuxio-bridge-socket-user.service`** — `Type=oneshot`, `DynamicUser=yes`, `User=linuxio-bridge-socket`, `Before=linuxio-auth.socket`. Its only job is to make the `linuxio-bridge-socket` user/group exist *before* the auth socket is created with that group ownership.
-- **`linuxio-jobs@.service`** — template, instance = uid. `Type=notify` (READY once the socket listens, STOPPING on idle exit), `User=%i`, `ExecStart=/usr/local/bin/linuxio-bridge jobs host`. `StateDirectory=linuxio/jobs/%i` and `RuntimeDirectory=linuxio/jobs/%i`, both `0700` and owned by the uid, hold the job store and `host.sock` (`0600`); `RuntimeDirectoryPreserve=yes`. `TimeoutStopSec=2min`, `KillMode=mixed`, `NoNewPrivileges=yes`, `TasksMax=8192` (room for 256 jobs each waiting on a subprocess tree) and `MemoryMax=2G` with `OOMPolicy=continue`, so an OOM kill of one job's subprocess fails that job instead of stopping the host. Ordered `After=linuxio-jobs-reconcile.service` and deliberately not `PartOf=linuxio.target`, so updates and `linuxio restart --full` never stop a running job. The host accepts a connection only from its own uid (`SO_PEERCRED`) and a hello of its protocol number, stays up while a bridge is connected or a job runs, exits after 60 s with neither, and refuses new jobs above 256 running.
-- **Who starts a host** — `linuxio-auth` runs `systemctl start --no-block linuxio-jobs@<uid>.service` as root once PAM has authenticated an unprivileged login, before the PAM session opens and the bridge spawns, so `pam_selinux` cannot hand systemctl the user's context; a failure is logged and the login proceeds. A privileged bridge, the submit CLI run as root and the boot reconcile call `StartUnit` on `linuxio-jobs@0.service` themselves. Nothing else starts a host and no socket exists for it, so a user's host exists only after that user authenticated through LinuxIO, or when root starts it. A user bridge whose host is gone answers mutations with 503 until the next login.
-- **`linuxio-jobs-reconcile.service`** — `Type=notify`, `RemainAfterExit=yes`, `After=local-fs.target linuxio-btrfs-degraded.service`, runs `linuxio-bridge jobs reconcile` once per boot. Started again on a running system it would mark live jobs interrupted, which is why the installer only enables it.
+- **`linuxio-jobs@.socket`** — template, instance = uid. `ListenStream=/run/linuxio/jobs/%i.sock`, `SocketUser=%i`, `SocketMode=0600`, `Accept=no`, `FileDescriptorName=linuxio-jobs`, deliberately not `PartOf=linuxio.target`. systemd holds the socket and starts the host on a connection that finds it down: after an idle exit, a crash, an OOM kill of the host process, or an update that replaced its binary. A connection that arrives while the host is exiting waits in the socket's queue and starts the next host. A host that cannot start closes the connections that were waiting, so the clients' backoff paces the next attempt instead of systemd's start limit failing the socket.
+- **`linuxio-jobs@.service`** — template, instance = uid. `Type=notify` (READY once it serves, STOPPING on idle exit), `User=%i`, `ExecStart=/usr/local/bin/linuxio-bridge` with no arguments: the binary is the job host when systemd passes it the socket named `linuxio-jobs`, and refuses to run by hand without it. `Wants=` and `After=` its socket. `StateDirectory=linuxio/jobs/%i` and `RuntimeDirectory=linuxio/jobs/%i`, both `0700` and owned by the uid, hold the job store and live progress; `RuntimeDirectoryPreserve=yes`. `TimeoutStopSec=2min`, `KillMode=mixed`, `NoNewPrivileges=yes`, `TasksMax=8192` (room for 256 jobs each waiting on a subprocess tree) and `MemoryMax=2G` with `OOMPolicy=continue`, so an OOM kill of one job's subprocess fails that job instead of stopping the host. Ordered after local filesystems and `linuxio-btrfs-degraded.service`, and deliberately not `PartOf=linuxio.target`, so updates and `linuxio restart --full` never stop a running job. `WantedBy=multi-user.target`, enabled for uid 0 only, so the root host starts at boot. At every start a host marks the jobs its uid's last host left running as interrupted, `reboot` when that host ran in an earlier boot and `crash` otherwise; the root host then resumes the resumable jobs an earlier boot interrupted and alerts on the others. A host touches only its own uid's store. It accepts a connection only from its own uid (`SO_PEERCRED`) and a hello of its protocol number, stays up while a bridge is connected or a job runs, exits after 60 s with neither, and refuses new jobs above 256 running.
+- **Who starts a host** — a connection to its socket. `linuxio-auth` runs `systemctl start --no-block linuxio-jobs@<uid>.socket` as root once PAM has authenticated an unprivileged login, before the PAM session opens and the bridge spawns, so `pam_selinux` cannot hand systemctl the user's context; a failure is logged as a warning and the login proceeds. A privileged bridge and `jobs submit` run as root start uid 0's socket themselves. A socket stays until reboot, so a user's socket exists only after that user authenticated through LinuxIO, or when root starts it, and only that user can connect to it.
 - **tmpfiles** — `/var/lib/linuxio/jobs` and `/run/linuxio/jobs` are `0755 root:root`, so each host's `0700` uid directory below them is reachable.
 
 ### The `linuxio-bridge-socket` group trick
@@ -157,12 +153,11 @@ linuxio.target → pulls in the webserver, auth, and indexer sockets
   No linuxio-webserver / linuxio-auth / linuxio-bridge / linuxio-indexer process exists.
 
 multi-user.target → also pulls in, outside linuxio.target:
-  linuxio-jobs-reconcile.service, after the btrfs degraded mount:
-    1. marks every uid's `running` job record interrupted/reboot
-    2. sends READY=1; job hosts are ordered after it
-    3. if an interrupted root job is resumable: starts linuxio-jobs@0 and sends it jobs.resume
-    4. raises an alert for each non-resumable root job it marked, then exits (RemainAfterExit)
-  No job host runs until a login, a root `jobs submit`, or step 3 needs one.
+  linuxio-jobs@0.socket, then linuxio-jobs@0.service after the btrfs degraded mount:
+    1. marks the root host's `running` job records interrupted: reboot, or crash for a host of this boot
+    2. resumes the resumable root jobs an earlier boot interrupted
+    3. raises an alert for each other root job it marked, then exits once idle for 60 s
+  A user's host marks their records the same way when the first connection after their login starts it.
 ```
 
 ### First request — webserver starts via socket activation
@@ -208,10 +203,11 @@ The auth instance does **not** exit after forking — it holds the PAM session o
 
 ```
 linuxio-auth (root), once PAM authenticated an unprivileged login U, before the session opens and the bridge spawns:
-          systemctl start --no-block linuxio-jobs@U.service   (a running host: no-op; a failure is logged, the login proceeds)
+          systemctl start --no-block linuxio-jobs@U.socket   (a listening socket: no-op; a failure is logged, the login proceeds)
 linuxio-bridge running as uid U (0 for a privileged login), at startup, in the background:
-  U = 0:  StartUnit linuxio-jobs@0.service over the system bus itself
-  then:   connect /run/linuxio/jobs/U/host.sock (0600; host checks SO_PEERCRED = U), retrying for 5 s while it starts
+  U = 0:  StartUnit linuxio-jobs@0.socket over the system bus itself
+  then:   connect /run/linuxio/jobs/U.sock (0600, owned by U; systemd starts the host if it is down,
+          and the host checks SO_PEERCRED = U), retrying for 5 s while the socket starts
           yamux; first stream jobs.hello {protocol, session {username, uid, privileged, session_ref}}
           protocol mismatch → mutations answer 409 update_pending; reads keep working
   failure → retry with backoff 1 s … 30 s; meanwhile mutations answer 503
@@ -221,10 +217,10 @@ From then on the bridge relays every Mutation stream over that connection and
 serves `tasks.*` for host jobs (see [API Contract](./api-contract.md#tasks-and-jobs)).
 At logout the bridge closes the connection; the host keeps running its jobs and
 exits 60 s after its last bridge left and its last job ended. The next login of
-the same uid reconnects to the same host if it is still up. A shell or a
-timer reaches its own uid's host the same way with `linuxio-bridge jobs submit`
-(root starts the unit itself; a user reaches the host their login started), and
-the boot reconcile reaches the root host with the same client.
+the same uid reconnects to the same host if it is still up. A shell or
+root reaches its own uid's host the same way with `linuxio-bridge jobs submit`:
+root starts the socket itself, and a user's socket exists once they have
+logged in since boot.
 
 ### After login — the connection becomes the yamux transport
 
@@ -238,8 +234,8 @@ The webserver keeps its end of the socket it dialed; it is now wired straight to
 | Webserver ↔ auth socket | unix socket, `root:linuxio-bridge-socket 0660` | only the webserver's group may request a login |
 | Auth ↔ bridge | PAM authentication + root-side sudoers query + `fork`/privilege drop | bridge stays root only when sudoers permits the exact bridge command; otherwise it starts with the user's uid/gid |
 | Webserver ↔ bridge | inherited socket fd + yamux | webserver never gains the bridge's privileges; just relays bytes |
-| Auth ↔ job host start | `linuxio-auth` runs `systemctl start` for the uid PAM admitted; no socket starts a host | a user's job host exists only after that user logged in through PAM, or when root starts it |
-| Bridge ↔ job host | `/run/linuxio/jobs/<uid>/host.sock` `0600` in a `0700` directory owned by the uid + `SO_PEERCRED` uid check + hello protocol check | only that uid reaches its host; the root host serves only root; hello session facts are owner metadata, never authorization |
+| Auth ↔ job host socket | `linuxio-auth` runs `systemctl start` on the socket of the uid PAM admitted | a user's job host socket exists only after that user logged in through PAM, or when root starts it |
+| Bridge ↔ job host | `/run/linuxio/jobs/<uid>.sock`, `0600` and owned by the uid, held by systemd + `SO_PEERCRED` uid check + hello protocol check | only that uid reaches or starts its host; the root host serves only root; hello session facts are owner metadata, never authorization |
 | Bridge ↔ indexer socket | privileged route metadata + `root:root 0600` Unix socket | only a sudo-authorized root bridge reaches the machine-wide index |
 | Bridge ↔ monitoring `api.sock` | `root:root 0666` Unix socket, read-only metrics API, no commands | any local process may read measurements it could already read from `/proc`; nothing can be mutated through it |
 | Bridge ↔ monitoring `control.sock` | privileged route metadata + `root:root 0600` Unix socket + `SO_PEERCRED` uid-0 check | only a sudo-authorized root bridge reaches history, configuration and commands |
@@ -290,9 +286,9 @@ not tear the calling bridge down before the others are signalled).
 
 Neither `restart`, `stop` nor the installer stops a job host: they are outside
 `linuxio.target`. `systemctl stop linuxio-jobs@<uid>` does, and marks that
-host's running jobs `interrupted`. A connected root bridge starts
-`linuxio-jobs@0` again within 1–30 s and the next login of a user starts
-theirs, so `systemctl mask linuxio-jobs@<uid>` is the way to keep one down.
+host's running jobs `interrupted`. The next connection to its socket starts it
+again, within 1–30 s while a bridge is connected, so stop
+`linuxio-jobs@<uid>.socket` too, or mask the service, to keep one down.
 
 `restart` (no args) cycles only the control-plane units — `linuxio-bridge-socket-user.service`, `linuxio-auth.socket`, `linuxio-webserver.service` — and deliberately leaves `linuxio-webserver.socket` alone, so the listening TCP fd on :8090 stays bound and browser connections aren't dropped (`restartTargets` in `backend/cli/services.go`). `--full` restarts the whole `linuxio.target`.
 
@@ -312,7 +308,7 @@ follow the [Production Diagnostic Data Policy](./production-diagnostics.md).
 | Auth daemon (PAM, fork, supervise) | `backend/auth/linuxio-auth.c` |
 | Bridge entry point | `backend/bridge/cmd/lifecycle.go`, `cmd/yamux.go` |
 | Job host, client and their commands | `backend/bridge/internal/jobshost`, `backend/bridge/internal/jobsclient`, `backend/bridge/cmd/jobs.go` and the `jobs_*.go` files beside it (bridge → host relay in `jobs_relay.go`) |
-| Job store | `backend/common/jobs`; records in `/var/lib/linuxio/jobs/<uid>/`, live progress and `host.sock` in `/run/linuxio/jobs/<uid>/` |
+| Job store | `backend/common/jobs`; records in `/var/lib/linuxio/jobs/<uid>/`, live progress in `/run/linuxio/jobs/<uid>/`, the host socket at `/run/linuxio/jobs/<uid>.sock` |
 | Indexer daemon and API | `backend/indexer/`, `backend/indexer/api/` |
 | Monitoring daemon and shared wire types | `backend/monitoring/`, `backend/monitoring/api/` |
 | Build | `Makefile` + `mk/go.mk` (`build-*`, `build-go-binaries`, `build-binaries`); output in `build/` |

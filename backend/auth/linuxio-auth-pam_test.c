@@ -522,7 +522,7 @@ static int test_happy_path_login(void)
   // after authenticate, acct_mgmt and setcred establish (lines=3): before
   // open_session, so pam_selinux's exec context cannot reach systemctl.
   CHECK(safe_snprintf(expected_trace, sizeof(expected_trace),
-                      "start --no-block --quiet linuxio-jobs@%u.service lines=3\n",
+                      "start --no-block --quiet linuxio-jobs@%u.socket lines=3\n",
                       g_real_uid) > 0);
   CHECK(t_read_file("systemctl-trace", dump, sizeof(dump), &dump_len) == 0);
   CHECK(strcmp(dump, expected_trace) == 0);

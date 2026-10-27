@@ -301,7 +301,7 @@ static int test_jobs_host_argv(void)
   char unit[64];
 
   CHECK(build_jobs_host_argv(1000, unit, sizeof(unit), argv, 6) == 0);
-  CHECK(strcmp(unit, "linuxio-jobs@1000.service") == 0);
+  CHECK(strcmp(unit, "linuxio-jobs@1000.socket") == 0);
   CHECK(strcmp(argv[0], LINUXIO_SYSTEMCTL) == 0);
   CHECK(strcmp(argv[1], "start") == 0);
   CHECK(strcmp(argv[2], "--no-block") == 0);

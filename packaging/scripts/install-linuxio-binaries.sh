@@ -111,8 +111,8 @@ systemd_units() {
 		linuxio-btrfs-health.timer \
 		linuxio-btrfs-degraded.service \
 		linuxio-btrfs-resync@.service \
-		linuxio-jobs-reconcile.service \
 		linuxio-jobs@.service \
+		linuxio-jobs@.socket \
 		linuxio-monitoring.service
 }
 
@@ -667,6 +667,12 @@ install_systemd_files() {
 		systemctl disable --now linuxio-jobs-launcher.socket >/dev/null 2>&1 || true
 		rm -f "${SYSTEMD_DIR}/linuxio-jobs-launcher.socket" "${SYSTEMD_DIR}/linuxio-jobs-launcher@.service"
 	fi
+	# The boot reconcile moved into the job host, which marks its own
+	# interrupted jobs when it starts. Retire its unit.
+	if [[ -e "${SYSTEMD_DIR}/linuxio-jobs-reconcile.service" ]]; then
+		systemctl disable --now linuxio-jobs-reconcile.service >/dev/null 2>&1 || true
+		rm -f "${SYSTEMD_DIR}/linuxio-jobs-reconcile.service"
+	fi
 	# The job store replaced the durable-operations store; drop its orphaned data.
 	if [[ -d "${DATA_DIR}/durable-operations" ]]; then
 		rm -rf "${DATA_DIR}/durable-operations"
@@ -711,14 +717,14 @@ enable_services() {
 	else
 		Show 3 "Failed to enable linuxio-monitoring.service"
 	fi
-	# Outside linuxio.target so that updates never stop a running job. Job
-	# hosts are started by linuxio-auth at login and by root tools; the
-	# reconcile runs at boot only: started now, it would mark live jobs
-	# interrupted.
-	if systemctl enable linuxio-jobs-reconcile.service >/dev/null 2>&1; then
-		Show 0 "Enabled linuxio-jobs-reconcile.service"
+	# Outside linuxio.target so that updates never stop a running job. The
+	# root host starts at boot to mark, alert and resume the jobs a reboot
+	# interrupted; a user's host starts through the socket linuxio-auth
+	# starts at their login.
+	if systemctl enable linuxio-jobs@0.service >/dev/null 2>&1; then
+		Show 0 "Enabled linuxio-jobs@0.service"
 	else
-		Show 3 "Failed to enable linuxio-jobs-reconcile.service"
+		Show 3 "Failed to enable linuxio-jobs@0.service"
 	fi
 	# Pools created later get the timer when an admin lists btrfs filesystems.
 	if lsblk -nro FSTYPE 2>/dev/null | grep -qx btrfs; then

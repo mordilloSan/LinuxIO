@@ -20,9 +20,9 @@ import (
 const jobsSubmitUsage = "usage: linuxio-bridge jobs submit --route ROUTE [--request JSON] [--wait] | --resume ID"
 
 // runJobsSubmit starts a job in the caller's own job host, as a bridge does,
-// or resumes an interrupted one. Root starts the host; a user's host exists
-// only while a LinuxIO login of theirs started one. It exits 2 on bad arguments, and with --wait
-// 0 or 1 on the job's outcome.
+// or resumes an interrupted one. Root starts the host's socket; a user's
+// socket exists once they have logged in to LinuxIO since boot. It exits 2 on
+// bad arguments, and with --wait 0 or 1 on the job's outcome.
 func runJobsSubmit(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("jobs submit", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)

@@ -16,7 +16,7 @@ its plan lands.
 | [API Contract](./api-contract.md) | Canonical implemented contract for Go-owned routes, generated frontend types, JSON request envelopes, Calls, Mutations and jobs, Channels, Tasks, and adding endpoints. |
 | [Bridge Configuration Storage](./config-storage.md) | Per-user core/UI files, home and `/var/lib/linuxio` fallback, memory-only degradation, corrupt-document recovery, ownership, and logging. |
 | [Configuration and Storage Layout](./configuration-storage-layout.md) | Indexer paths and bridge per-user configuration files, with ownership and lifecycle. |
-| [Jobs Design](./superpowers/specs/2026-10-26-jobs-design.md) | Mutations that outlive the login: the per-uid job host and who starts it, the job store and records, the job lifecycle and its fault matrix, and the migration phases. Phase 1 (host, relay, boot reconcile, `docker.update_container`) is implemented; the API Contract and Process & Systemd Architecture docs describe what shipped. |
+| [Jobs Design](./superpowers/specs/2026-10-26-jobs-design.md) | Mutations that outlive the login: the per-uid job host and who starts it, the job store and records, the job lifecycle and its fault matrix, and the migration phases. Phase 1 (host, relay, `docker.update_container`) is implemented; the API Contract and Process & Systemd Architecture docs describe what shipped. |
 | [Handler Patterns](./bridge_handler_patterns.md) | Handler package style: `handlers.go` layout, context propagation, logging, naming, validation. |
 | [Privilege Pattern](./privilege_pattern.md) | How to decide and declare privileged routes. |
 | [Capabilities](./capabilities.md) | Detecting optional host tooling, gating features/routes on it, and the UI install flow. |

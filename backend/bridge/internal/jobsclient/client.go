@@ -1,7 +1,8 @@
 // Package jobsclient connects to the caller's own job host and runs jobs on
 // it: the bridge's side of a host connection and the "linuxio-bridge jobs
-// submit" CLI. Root starts the host first; linuxio-auth starts a user's host
-// at login.
+// submit" CLI. systemd holds each host's socket, and a connection starts a
+// host that is down; root starts that socket unit first, and linuxio-auth
+// starts a user's at login.
 package jobsclient
 
 import (
@@ -48,13 +49,13 @@ type Client struct {
 
 // Connect connects to uid's job host at hostSocket and introduces hello,
 // whose SessionRef the host uses as the connection's session ID. As root it
-// starts the host unit first; a user's host was started by linuxio-auth at
-// login, since a user cannot start a system unit.
+// starts the host's socket unit first; a user cannot start a system unit, so
+// linuxio-auth starts theirs at login.
 func Connect(ctx context.Context, uid uint32, hello bridgeipc.HelloSession, hostSocket string) (*Client, error) {
 	if hello.SessionRef == "" {
 		return nil, errors.New("job host hello needs a session ref")
 	}
-	if err := startHostUnit(ctx, uid); err != nil {
+	if err := startHostSocket(ctx, uid); err != nil {
 		return nil, err
 	}
 	conn, err := dialHost(ctx, hostSocket)
@@ -85,31 +86,30 @@ func Connect(ctx context.Context, uid uint32, hello bridgeipc.HelloSession, host
 	return c, nil
 }
 
-// startHostUnit starts uid's host as root. StartUnit only queues the start,
-// so the caller dials with retries.
-func startHostUnit(ctx context.Context, uid uint32) error {
+// startHostSocket starts uid's host socket unit as root; a listening one is a
+// no-op. StartUnit only queues the start, so the caller dials with retries.
+func startHostSocket(ctx context.Context, uid uint32) error {
 	if !isRoot() {
 		return nil
 	}
-	if err := startUnit(ctx, UnitName(uid)); err != nil {
-		return fmt.Errorf("start job host: %w", err)
+	if err := startUnit(ctx, socketUnitName(uid)); err != nil {
+		return fmt.Errorf("start job host socket: %w", err)
 	}
 	return nil
 }
 
-// UnitName is the systemd unit of uid's job host.
-func UnitName(uid uint32) string {
-	return fmt.Sprintf("linuxio-jobs@%d.service", uid)
+// socketUnitName is the systemd socket unit of uid's job host.
+func socketUnitName(uid uint32) string {
+	return fmt.Sprintf("linuxio-jobs@%d.socket", uid)
 }
 
-// HostSocketPath is where uid's job host listens.
+// HostSocketPath is uid's job host socket, which systemd holds.
 func HostSocketPath(uid uint32) string {
-	return fmt.Sprintf("/run/linuxio/jobs/%d/host.sock", uid)
+	return fmt.Sprintf("/run/linuxio/jobs/%d.sock", uid)
 }
 
-// dialHost connects to hostSocket, retrying for hostWait while the host is
-// still starting: the socket is missing, or a crashed host left a stale one
-// that systemd has not removed yet.
+// dialHost connects to hostSocket, retrying for hostWait while its socket
+// unit starts: the socket is missing or not listening yet.
 func dialHost(ctx context.Context, hostSocket string) (net.Conn, error) {
 	var dialer net.Dialer
 	deadline := time.Now().Add(hostWait)

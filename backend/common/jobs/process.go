@@ -33,6 +33,15 @@ func ProcessStart(pid int32) (uint64, error) {
 	return strconv.ParseUint(fields[19], 10, 64)
 }
 
+// BootID returns the kernel's id of the running boot.
+func BootID() (string, error) {
+	data, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(data)), nil
+}
+
 // ProcessAlive reports whether the executor's pid exists with the recorded start time.
 func ProcessAlive(e Executor) bool {
 	start, err := ProcessStart(e.PID)

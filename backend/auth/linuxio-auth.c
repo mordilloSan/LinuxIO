@@ -70,7 +70,7 @@
 #ifndef LINUXIO_BRIDGE_OWNER
 #define LINUXIO_BRIDGE_OWNER ((uid_t)0)
 #endif
-// systemctl starts the jobs host of an unprivileged login (see
+// systemctl starts the jobs host socket of an unprivileged login (see
 // start_jobs_host); the hermetic PAM suite points it at a stub.
 #ifndef LINUXIO_SYSTEMCTL
 #define LINUXIO_SYSTEMCTL "/usr/bin/systemctl"
@@ -1634,13 +1634,14 @@ static int user_can_run_bridge_as_root(const char *canonical_username,
   return rc == 0;
 }
 
-// Jobs host of an unprivileged login. The bridge will run as the user and a
-// user cannot start a system unit, so the host is started here, as root,
-// once PAM has admitted the user and before the session opens: pam_selinux
-// gives later children the user's exec context, and systemctl must run as
-// this worker, like the sudo probe. A privileged bridge starts the root host
-// itself. --no-block: the bridge connects with retries, and a host that
-// fails to start is a warning, never a failed login.
+// Jobs host socket of an unprivileged login. The bridge will run as the user
+// and a user cannot start a system unit, so the host's socket unit is started
+// here, as root, once PAM has admitted the user and before the session opens:
+// pam_selinux gives later children the user's exec context, and systemctl
+// must run as this worker, like the sudo probe. systemd then starts the host
+// for any connection that finds it down. A privileged bridge starts the root
+// host's socket itself. --no-block: the bridge connects with retries, and a
+// socket that fails to start is a warning, never a failed login.
 #ifndef JOBS_HOST_START_TIMEOUT_SEC
 #define JOBS_HOST_START_TIMEOUT_SEC 3
 #endif
@@ -1650,7 +1651,7 @@ static int build_jobs_host_argv(uid_t uid, char *unit, size_t unitsz,
 {
   if (!unit || !argv || argv_cap < 6)
     return -1;
-  int n = safe_snprintf(unit, unitsz, "linuxio-jobs@%u.service", (unsigned)uid);
+  int n = safe_snprintf(unit, unitsz, "linuxio-jobs@%u.socket", (unsigned)uid);
   if (n <= 0 || (size_t)n >= unitsz)
     return -1;
   argv[0] = LINUXIO_SYSTEMCTL;
@@ -1675,17 +1676,17 @@ static void start_jobs_host(const struct auth_user *auth_user,
   if (build_jobs_host_argv(auth_user->uid, unit, sizeof(unit), argv_list,
                            sizeof(argv_list) / sizeof(argv_list[0])) != 0)
   {
-    journal_warning_fieldsf(fields, 1, "jobs host unit name not built");
+    journal_warning_fieldsf(fields, 1, "jobs host socket unit name not built");
     return;
   }
   int rc = run_root_command(argv_list, JOBS_HOST_START_TIMEOUT_SEC,
                             request_deadline_ns);
   if (rc < 0)
-    journal_warning_fieldsf(fields, 2, "jobs host start failed: %m");
+    journal_warning_fieldsf(fields, 2, "jobs host socket start failed: %m");
   else if (rc == 127)
-    journal_warning_fieldsf(fields, 2, "jobs host start failed to execute systemctl");
+    journal_warning_fieldsf(fields, 2, "jobs host socket start failed to execute systemctl");
   else if (rc != 0)
-    journal_warning_fieldsf(fields, 2, "jobs host start exited with status %d", rc);
+    journal_warning_fieldsf(fields, 2, "jobs host socket start exited with status %d", rc);
 }
 
 // Fatal error in the forked bridge child, pre-exec: emit a diagnostic on

@@ -36,8 +36,11 @@ type Config struct {
 	UID, GID   uint32
 	Username   string
 	SocketPath string
-	Store      *jobs.Store
-	Router     *bridgeipc.Router
+	// Listener is the socket systemd passed the host; nil makes Serve listen
+	// on SocketPath.
+	Listener *net.UnixListener
+	Store    *jobs.Store
+	Router   *bridgeipc.Router
 	// Tasks is the router's task service; Serve installs the job recorder on it.
 	Tasks *bridgeipc.TaskService
 	// IdleExit is how long the host stays up with no bridge and no running job.
@@ -81,9 +84,9 @@ type ownerClaim struct {
 	conns int
 }
 
-// Serve listens on cfg.SocketPath (0600) and serves bridges until ctx is done,
-// when it interrupts the running jobs, or until the host has been idle for
-// cfg.IdleExit. It returns nil on either.
+// Serve serves bridges on cfg.Listener, or on cfg.SocketPath (0600) when
+// there is none, until ctx is done, when it interrupts the running jobs, or
+// until the host has been idle for cfg.IdleExit. It returns nil on either.
 func Serve(ctx context.Context, cfg Config) error {
 	return newHost(cfg).serve(ctx)
 }
@@ -109,13 +112,20 @@ func (h *Host) serve(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("read job host start time: %w", err)
 	}
-	h.executor = jobs.Executor{Kind: "host", PID: pid, PIDStart: start}
-	if err = h.reconcile(ctx); err != nil {
-		return err
+	boot, err := jobs.BootID()
+	if err != nil {
+		return fmt.Errorf("read boot id: %w", err)
 	}
-	ln, err := listen(h.cfg.SocketPath)
+	h.executor = jobs.Executor{Kind: "host", PID: pid, PIDStart: start, BootID: boot}
+	resumes, err := h.reconcile(ctx)
 	if err != nil {
 		return err
+	}
+	ln := h.cfg.Listener
+	if ln == nil {
+		if ln, err = listen(h.cfg.SocketPath); err != nil {
+			return err
+		}
 	}
 	h.cfg.Tasks.SetRecorder(h.rec)
 	h.cfg.Tasks.SetResumer(h.resume)
@@ -127,7 +137,8 @@ func (h *Host) serve(ctx context.Context) error {
 	h.conns.Go(func() { acceptErr <- h.accept(ctx, ln) })
 	defer h.closeAll(ln)
 	h.notify("READY=1")
-	slog.Debug("job host listening", "user", h.cfg.Username, "socket", h.cfg.SocketPath)
+	slog.Debug("job host listening", "user", h.cfg.Username, "socket", ln.Addr().String())
+	h.resumeEarlierBoot(ctx, resumes)
 	return h.run(ctx, ln, acceptErr)
 }
 

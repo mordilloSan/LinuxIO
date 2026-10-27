@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"slices"
 	"sync"
 	"time"
 
@@ -26,20 +27,86 @@ const (
 	streamDrainTimeout = 5 * time.Second
 )
 
-// reconcile marks the jobs a crashed host left running as interrupted and
-// prunes old records before the host takes new jobs.
-func (h *Host) reconcile(ctx context.Context) error {
+// reconcile marks the jobs this uid's last host left running as interrupted,
+// by a reboot when that host ran in an earlier boot and by its crash
+// otherwise, and prunes old records before the host takes new jobs. On the
+// root host it returns the resumable jobs an earlier boot interrupted, to
+// resume once the host serves: once per boot, since a job interrupted in this
+// boot was stopped on purpose or crashed the host.
+func (h *Host) reconcile(ctx context.Context) ([]string, error) {
+	// A record from before boot ids were kept counts as this boot's.
+	thisBoot := func(e jobs.Executor) bool { return e.BootID == "" || e.BootID == h.executor.BootID }
+	rebooted, err := h.cfg.Store.ReconcileCrashed(ctx, thisBoot, jobs.ReasonReboot)
+	if err != nil {
+		return nil, fmt.Errorf("reconcile rebooted jobs: %w", err)
+	}
 	crashed, err := h.cfg.Store.ReconcileCrashed(ctx, jobs.ProcessAlive, jobs.ReasonCrash)
 	if err != nil {
-		return fmt.Errorf("reconcile crashed jobs: %w", err)
+		return nil, fmt.Errorf("reconcile crashed jobs: %w", err)
 	}
-	for _, record := range crashed {
-		h.alertInterrupted(ctx, record)
+	resumes, err := h.earlierBootResumes(ctx, thisBoot)
+	if err != nil {
+		slog.Warn("interrupted jobs not listed for resume", "error", err)
+	}
+	for _, record := range slices.Concat(rebooted, crashed) {
+		slog.Info("job marked interrupted", "job_id", record.ID, "route", record.Route, "reason", record.Reason)
+		if !slices.Contains(resumes, record.ID) {
+			h.alertInterrupted(ctx, record)
+		}
 	}
 	if err := h.cfg.Store.Prune(ctx, h.cfg.Now()); err != nil {
 		slog.Warn("job record pruning failed", "error", err)
 	}
-	return nil
+	return resumes, nil
+}
+
+// earlierBootResumes lists, on the root host, the interrupted resumable jobs
+// whose last executor ran in an earlier boot.
+func (h *Host) earlierBootResumes(ctx context.Context, thisBoot func(jobs.Executor) bool) ([]string, error) {
+	if h.cfg.UID != 0 {
+		return nil, nil
+	}
+	records, err := h.cfg.Store.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for _, record := range records {
+		if record.State == jobs.StateInterrupted && record.Resumable && !thisBoot(record.Executor) {
+			ids = append(ids, record.ID)
+		}
+	}
+	return ids, nil
+}
+
+// resumeEarlierBoot starts the Resume hook of each job an earlier boot
+// interrupted.
+func (h *Host) resumeEarlierBoot(ctx context.Context, ids []string) {
+	for _, id := range ids {
+		if _, err := h.resume(ctx, id); err != nil {
+			h.giveUpResume(ctx, id, err)
+		}
+	}
+}
+
+// giveUpResume alerts on a job this boot could not resume and stamps it with
+// this host's executor, so later host starts in this boot leave it alone.
+func (h *Host) giveUpResume(ctx context.Context, id string, cause error) {
+	slog.Warn("interrupted job not resumed", "job_id", id, "error", cause)
+	stamped := false
+	record, err := h.cfg.Store.Update(ctx, id, func(r *jobs.Record) error {
+		if r.State == jobs.StateInterrupted {
+			r.Executor, stamped = h.executor, true
+		}
+		return nil
+	})
+	if err != nil {
+		slog.Warn("job not stamped after a failed resume", "job_id", id, "error", err)
+		return
+	}
+	if stamped {
+		h.alert(ctx, id, record.Route+" was interrupted", fmt.Sprintf("It could not be resumed after the reboot: %v.", cause))
+	}
 }
 
 // run waits for SIGTERM (ctx done), idle exit or a listener failure.

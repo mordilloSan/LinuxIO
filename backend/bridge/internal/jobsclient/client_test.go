@@ -173,8 +173,8 @@ func TestClientConnectSendsHelloAndOpensMutation(t *testing.T) {
 	// As root the client starts the uid's host unit itself.
 	started := asRoot(t, true)
 	c := connect(t, th, uid, hello)
-	if !slices.Equal(*started, []string{UnitName(uid)}) {
-		t.Fatalf("started units = %v, want [%s]", *started, UnitName(uid))
+	if !slices.Equal(*started, []string{socketUnitName(uid)}) {
+		t.Fatalf("started units = %v, want [%s]", *started, socketUnitName(uid))
 	}
 	if c.Protocol() != jobs.Protocol {
 		t.Fatalf("Protocol() = %d, want %d", c.Protocol(), jobs.Protocol)
@@ -230,8 +230,8 @@ func TestClientConnectSendsHelloAndOpensMutation(t *testing.T) {
 func TestClientConnectRetriesAStaleSocket(t *testing.T) {
 	uid := uint32(os.Getuid())
 	th := startHost(t, uid)
-	// A crashed host leaves its socket file behind until systemd removes the
-	// runtime directory; connecting to it is refused.
+	// A socket file nobody listens on, such as one a stopped socket unit left
+	// behind, refuses connections until its unit listens again.
 	stale := filepath.Join(t.TempDir(), "host.sock")
 	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: stale, Net: "unix"})
 	if err != nil {

@@ -549,7 +549,8 @@ Refusals arrive as the error frame, before any job starts:
 
 Every bridge connects at startup to the job host of the uid it runs as,
 `linuxio-jobs@<uid>.service`, and keeps one yamux connection to
-`/run/linuxio/jobs/<uid>/host.sock`, reconnecting with backoff from 1 s to 30 s.
+`/run/linuxio/jobs/<uid>.sock`, which systemd holds and which starts the host
+when it is down, reconnecting with backoff from 1 s to 30 s.
 The bridge decodes the request and checks privilege, then relays each Mutation
 stream to the host unchanged, frames both ways. The host checks them again with
 its own session: the uid comes from `SO_PEERCRED`, not from the bridge's hello,
@@ -607,17 +608,18 @@ when a host starts.
 `interrupted` (`TaskStateInterrupted`) is terminal. A job becomes interrupted
 when its host stops under it (`systemctl stop`, shutdown: reason `shutdown`),
 when its host died (marked by the next host of that uid: `crash`), or across a
-reboot (marked by `linuxio-jobs-reconcile.service` at boot: `reboot`). A host
+reboot (marked by the next host of that uid, whose last host ran in an earlier
+boot: `reboot`). A host
 that stops interrupts its live tasks: a client attached then reads `job was
 interrupted` (`409`) as the stream's error, the host waiting up to 5 s for the
 bridge to close the stream before it closes the connection, and a resend of
-the envelope is answered from the record with the same error. The root host and the boot reconcile raise
+the envelope is answered from the record with the same error. The root host raises
 an alert (source `jobs`, key the job ID) for a root job that failed or was
-interrupted, except a resumable job the boot reconcile resumes; a user host
+interrupted, except a resumable job it resumes after a reboot; a user host
 writes the record only. Successful and canceled jobs never alert.
 
-At boot the reconcile asks the root host to resume each interrupted job of a
-`Resumable` route with the root-only `jobs.resume`; no route is resumable yet.
+The root host starts at boot and resumes each job of a `Resumable` route that
+an earlier boot interrupted, once per boot; no route is resumable yet.
 
 ### Task lifetime, ownership, and activity
 
@@ -726,8 +728,7 @@ Two `jobs.*` routes are internal, not generated for the frontend:
 `jobs.hello` is the first stream of a connection to a job host and carries the
 protocol number and the session facts; `jobs.resume {id}` asks the root job
 host to run the `Resume` hook of an interrupted resumable job. `jobs.resume` is
-served to root only; the boot reconcile and `linuxio-bridge jobs submit
---resume` use it.
+served to root only; `linuxio-bridge jobs submit --resume` uses it.
 
 The `tasks.*` namespace is reserved by `bridgeipc`. The `tasks` handler family
 provides the generated route catalog, and its registration callback asks the

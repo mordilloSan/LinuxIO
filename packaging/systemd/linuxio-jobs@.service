@@ -1,16 +1,19 @@
 [Unit]
 Description=LinuxIO jobs for uid %i
 Documentation=https://github.com/mordilloSan/LinuxIO
-# Early in boot, wait until the reconcile has marked the last boot's jobs;
-# never Wants= it: hosts must not pull the reconcile in.
-After=local-fs.target linuxio-jobs-reconcile.service
+# A connection to the socket starts the host. Pools must be mounted before the
+# root host resumes the jobs a reboot interrupted.
+Wants=linuxio-jobs@%i.socket
+After=linuxio-jobs@%i.socket local-fs.target linuxio-btrfs-degraded.service
 # Deliberately not PartOf=linuxio.target: updates must not stop running jobs.
 
 [Service]
 Type=notify
 NotifyAccess=main
 User=%i
-ExecStart=/usr/local/bin/linuxio-bridge jobs host
+# No arguments: the bridge knows it is the job host from the socket systemd
+# passes it.
+ExecStart=/usr/local/bin/linuxio-bridge
 StateDirectory=linuxio/jobs/%i
 StateDirectoryMode=0700
 RuntimeDirectory=linuxio/jobs/%i
@@ -27,3 +30,8 @@ NoNewPrivileges=yes
 TasksMax=8192
 MemoryMax=2G
 OOMPolicy=continue
+
+[Install]
+# Enabled for uid 0, so the root host starts at boot to mark, alert and resume
+# the jobs a reboot interrupted.
+WantedBy=multi-user.target

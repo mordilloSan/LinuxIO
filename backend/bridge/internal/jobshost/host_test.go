@@ -26,6 +26,7 @@ const (
 	jobA = "00000000-0000-4000-8000-00000000000a"
 	jobB = "00000000-0000-4000-8000-00000000000b"
 	jobC = "00000000-0000-4000-8000-00000000000c"
+	jobD = "00000000-0000-4000-8000-00000000000d"
 
 	ioTimeout = 5 * time.Second
 )
@@ -295,7 +296,11 @@ func TestHostServesMutationOverYamuxAndRecords(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ProcessStart: %v", err)
 	}
-	wantExecutor := jobs.Executor{Kind: "host", PID: int32(os.Getpid()), PIDStart: pidStart}
+	boot, err := jobs.BootID()
+	if err != nil {
+		t.Fatalf("BootID: %v", err)
+	}
+	wantExecutor := jobs.Executor{Kind: "host", PID: int32(os.Getpid()), PIDStart: pidStart, BootID: boot}
 	if record.State != jobs.StateRunning || record.Route != "test.job" || record.Executor != wantExecutor ||
 		record.Protocol != jobs.Protocol || compact(t, record.Request) != `{}` {
 		t.Fatalf("running record = %#v, want a running host record of the request", record)
@@ -516,6 +521,169 @@ func TestHostReconcilesCrashedRecordsAtStart(t *testing.T) {
 	got := th.observed()
 	if len(got) != 1 || got[0].Key != jobA || got[0].Title != "test.job was interrupted" {
 		t.Fatalf("alerts = %#v, want one interrupted alert for %s", got, jobA)
+	}
+}
+
+// addResumableRoute registers "test.resumable", whose Resume hook sends the
+// job's ID on resumed and completes.
+func addResumableRoute(c *Config, resumed chan<- string) {
+	c.Router.Mutation("test.resumable",
+		func(context.Context, *bridgeipc.Task, any) (any, error) { return nil, nil },
+		bridgeipc.WithResume(
+			func(context.Context, jsontext.Value) (jsontext.Value, error) { return nil, nil },
+			func(_ context.Context, raw jsontext.Value) (any, error) {
+				var record jobs.Record
+				if err := json.Unmarshal(raw, &record); err != nil {
+					return nil, err
+				}
+				resumed <- record.ID
+				return map[string]bool{"ok": true}, nil
+			}))
+}
+
+// earlierBootRecord is a resumable job record an hour old, so a resumed run is
+// not dropped as transient, whose last host ran in an earlier boot.
+func earlierBootRecord(id, route string, state jobs.State) jobs.Record {
+	started := time.Now().UTC().Add(-time.Hour)
+	r := jobs.Record{
+		ID: id, Route: route, Owner: jobs.Owner{UID: 1000, Username: "alice"},
+		State: state, CreatedAt: started, StartedAt: started, Request: jsontext.Value(`{}`),
+		Executor:  jobs.Executor{Kind: "host", PID: math.MaxInt32, PIDStart: 1, BootID: "an-earlier-boot"},
+		Resumable: true, Protocol: jobs.Protocol,
+	}
+	if state == jobs.StateInterrupted {
+		r.Reason, r.FinishedAt = jobs.ReasonShutdown, started
+	}
+	return r
+}
+
+func TestUserHostMarksAnEarlierBootsJobWithoutResumingIt(t *testing.T) {
+	resumed := make(chan string, 1)
+	th := newTestHost(t, func(c *Config) { addResumableRoute(c, resumed) })
+	if err := th.cfg.Store.Create(context.Background(), earlierBootRecord(jobA, "test.resumable", jobs.StateRunning)); err != nil {
+		t.Fatalf("Store.Create: %v", err)
+	}
+
+	th.start()
+	if r := th.record(jobA); r.State != jobs.StateInterrupted || r.Reason != jobs.ReasonReboot {
+		t.Fatalf("record = %s/%s, want interrupted/reboot", r.State, r.Reason)
+	}
+	select {
+	case id := <-resumed:
+		t.Fatalf("a user host resumed %s; only the root host resumes", id)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestRootHostAlertsAndKeepsAJobItCannotResume(t *testing.T) {
+	th := newTestHost(t, func(c *Config) { c.UID = 0 })
+	boot, err := jobs.BootID()
+	if err != nil {
+		t.Fatalf("BootID: %v", err)
+	}
+	// Its route is gone after an update, so the resume fails.
+	if err := th.cfg.Store.Create(context.Background(), earlierBootRecord(jobA, "test.gone", jobs.StateInterrupted)); err != nil {
+		t.Fatalf("Store.Create: %v", err)
+	}
+
+	th.start()
+	waitFor(t, "the failed resume alert", func() bool { return len(th.observed()) == 1 })
+	if got := th.observed(); got[0].Key != jobA || got[0].Title != "test.gone was interrupted" {
+		t.Fatalf("alert = %#v, want one for %s", got[0], jobA)
+	}
+	// Stamped as this boot's, so a later host start does not retry it.
+	if r := th.record(jobA); r.State != jobs.StateInterrupted || r.Executor.BootID != boot {
+		t.Fatalf("record = %s with boot %q, want interrupted and stamped with %q", r.State, r.Executor.BootID, boot)
+	}
+}
+
+func TestRootHostResumesOnlyTheJobsAnEarlierBootInterrupted(t *testing.T) {
+	resumed := make(chan string, 4)
+	th := newTestHost(t, func(c *Config) {
+		c.UID = 0
+		addResumableRoute(c, resumed)
+	})
+	boot, err := jobs.BootID()
+	if err != nil {
+		t.Fatalf("BootID: %v", err)
+	}
+	thisBoot := earlierBootRecord(jobC, "test.resumable", jobs.StateInterrupted)
+	thisBoot.Executor.BootID = boot
+	notResumable := earlierBootRecord(jobD, "test.job", jobs.StateRunning)
+	notResumable.Resumable = false
+	for _, r := range []jobs.Record{
+		// A power loss left it running: marked reboot, then resumed.
+		earlierBootRecord(jobA, "test.resumable", jobs.StateRunning),
+		// An orderly shutdown of the earlier boot interrupted it: resumed.
+		earlierBootRecord(jobB, "test.resumable", jobs.StateInterrupted),
+		// Stopped or crashed in this boot: stays interrupted.
+		thisBoot,
+		// Not resumable: marked reboot and alerted.
+		notResumable,
+	} {
+		if err := th.cfg.Store.Create(context.Background(), r); err != nil {
+			t.Fatalf("Store.Create(%s): %v", r.ID, err)
+		}
+	}
+
+	th.start()
+	if got := receiveIDs(t, resumed, 2); !slices.Equal(got, []string{jobA, jobB}) {
+		t.Fatalf("resumed %v, want %s and %s", got, jobA, jobB)
+	}
+	waitFor(t, "the resumed jobs to complete", func() bool {
+		return th.record(jobA).State == jobs.StateCompleted && th.record(jobB).State == jobs.StateCompleted
+	})
+	select {
+	case id := <-resumed:
+		t.Fatalf("also resumed %s", id)
+	default:
+	}
+	if r := th.record(jobC); r.State != jobs.StateInterrupted || r.Reason != jobs.ReasonShutdown {
+		t.Fatalf("job interrupted in this boot = %s/%s, want interrupted/shutdown", r.State, r.Reason)
+	}
+	if r := th.record(jobD); r.State != jobs.StateInterrupted || r.Reason != jobs.ReasonReboot {
+		t.Fatalf("job a reboot interrupted = %s/%s, want interrupted/reboot", r.State, r.Reason)
+	}
+	if got := th.observed(); len(got) != 1 || got[0].Key != jobD {
+		t.Fatalf("alerts = %#v, want one for %s", got, jobD)
+	}
+}
+
+// receiveIDs reads n job IDs from ch and returns them sorted.
+func receiveIDs(t *testing.T, ch <-chan string, n int) []string {
+	t.Helper()
+	var ids []string
+	for range n {
+		select {
+		case id := <-ch:
+			ids = append(ids, id)
+		case <-time.After(ioTimeout):
+			t.Fatalf("received %v, want %d job IDs", ids, n)
+		}
+	}
+	slices.Sort(ids)
+	return ids
+}
+
+func TestHostServesOnTheSocketSystemdPassedAndLeavesIt(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "passed.sock")
+	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	// A socket systemd passes is not unlinked when the host closes its copy.
+	ln.SetUnlinkOnClose(false)
+	th := newTestHost(t, func(c *Config) {
+		c.Listener = ln
+		c.SocketPath = path
+	})
+	th.start()
+	_ = th.connect().Close()
+	if err := th.stop(); err != nil {
+		t.Fatalf("Serve = %v, want nil", err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("passed socket after the host stopped: %v, want it left for systemd", err)
 	}
 }
 

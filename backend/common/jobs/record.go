@@ -45,6 +45,9 @@ type Executor struct {
 	PIDStart     uint64 `json:"pid_start,omitzero"`
 	Unit         string `json:"unit,omitzero"`
 	InvocationID string `json:"invocation_id,omitzero"`
+	// BootID is the boot the executor ran in, so a host can tell a job a
+	// reboot interrupted from one its crashed predecessor left.
+	BootID string `json:"boot_id,omitzero"`
 }
 
 type Error struct {
