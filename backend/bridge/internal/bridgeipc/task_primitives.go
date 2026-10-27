@@ -20,6 +20,17 @@ type taskListRequest struct {
 	Status string `json:"status,omitempty"`
 }
 
+// TaskEventsRequest is the tasks.events request. IDs are jobs the caller saw
+// running: once the stream is subscribed it sends the snapshot of each that
+// has ended, so a job that ended while the caller was away is seen ending. A
+// bridge names them when it reopens its job host's stream; at most
+// maxTaskEventIDs are looked up.
+type TaskEventsRequest struct {
+	IDs []string `json:"ids,omitzero"`
+}
+
+const maxTaskEventIDs = 256
+
 type taskDataRequest struct {
 	TaskID string `json:"taskId"`
 	Offset string `json:"offset,omitempty"`
@@ -75,7 +86,7 @@ func (r *TaskService) RegisterRoutes(router *Router) {
 		{Name: "tasks.cancel", Mode: ModeCall, Call: r.handleTaskCancel, Decode: JSONRequestDecoder[taskIDRequest]()},
 		{Name: "tasks.watch", Mode: ModeDuplex, Duplex: r.handleTaskWatch, Decode: JSONRequestDecoder[taskIDRequest]()},
 		{Name: "tasks.data", Mode: ModeDuplex, Duplex: r.handleTaskData, Decode: JSONRequestDecoder[taskDataRequest]()},
-		{Name: "tasks.events", Mode: ModeDuplex, Duplex: r.handleTaskEvents, Decode: JSONRequestDecoder[struct{}]()},
+		{Name: "tasks.events", Mode: ModeDuplex, Duplex: r.handleTaskEvents, Decode: JSONRequestDecoder[TaskEventsRequest]()},
 		{Name: ResumeRoute, Mode: ModeCall, Call: r.handleJobResume, Decode: JSONRequestDecoder[jobResumeRequest]()},
 	}
 	for _, route := range routes {
@@ -231,6 +242,10 @@ func (r *TaskService) handleTaskEvents(ctx context.Context, conn net.Conn, req R
 	if !r.writeInitialTaskSnapshots(stream, req.Owner) {
 		return nil
 	}
+	payload, _ := req.DecodedValue.(TaskEventsRequest)
+	if !r.writeEndedSnapshots(ctx, stream, req.Owner, payload.IDs[:min(len(payload.IDs), maxTaskEventIDs)]) {
+		return nil
+	}
 	if remote := r.getRemote(); remote != nil {
 		remoteCtx, cancel := context.WithCancel(ctx)
 		var merged sync.WaitGroup
@@ -275,6 +290,29 @@ func (r *TaskService) handleTaskEvents(ctx context.Context, conn net.Conn, req R
 
 func (r *TaskService) writeInitialTaskSnapshots(stream net.Conn, owner TaskOwner) bool {
 	for _, snapshot := range r.ListActiveForOwner(owner) {
+		if !writeTaskEvent(stream, TaskEvent{Type: TaskEventSnapshot, Task: snapshot}) {
+			return false
+		}
+	}
+	return true
+}
+
+// writeEndedSnapshots writes the snapshot of each job in ids that has ended,
+// held here or by the remote; a running one is among the initial snapshots.
+func (r *TaskService) writeEndedSnapshots(ctx context.Context, stream net.Conn, owner TaskOwner, ids []string) bool {
+	for _, id := range ids {
+		var snapshot TaskSnapshot
+		if task, ok := r.GetForOwner(id, owner); ok {
+			snapshot = task.Snapshot()
+		} else if remote := r.remoteFor(id); remote != nil {
+			var err error
+			if snapshot, err = remote.Get(ctx, id); err != nil {
+				continue
+			}
+		}
+		if !snapshot.State.Terminal() {
+			continue
+		}
 		if !writeTaskEvent(stream, TaskEvent{Type: TaskEventSnapshot, Task: snapshot}) {
 			return false
 		}

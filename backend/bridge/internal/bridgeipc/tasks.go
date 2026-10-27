@@ -196,6 +196,11 @@ type TaskService struct {
 	nextID        uint64
 	cleanupStop   chan struct{}
 	cleanupOnce   sync.Once
+
+	// admitMu guards the counts of running tasks that admission checks.
+	admitMu       sync.Mutex
+	activeByRoute map[string]int
+	activeTargets map[string]int
 }
 
 type Task struct {
@@ -267,6 +272,8 @@ func NewTaskService() *TaskService {
 		tasks:         make(map[string]*Task),
 		subscribers:   make(map[chan TaskEvent]*eventSubscriber),
 		cleanupStop:   make(chan struct{}),
+		activeByRoute: make(map[string]int),
+		activeTargets: make(map[string]int),
 	}
 	r.startCleanupLoop(DefaultTerminalTaskTTL, DefaultTerminalTaskSweepPeriod)
 	return r

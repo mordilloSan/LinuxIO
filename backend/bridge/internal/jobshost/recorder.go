@@ -29,6 +29,9 @@ type recorder struct {
 	// stopped: the host has shut down; progress is no longer timed, and
 	// Finished flushes the latest.
 	stopped bool
+	// interrupting: the shutdown has listed the running jobs to interrupt;
+	// Started interrupts a job admitted after that.
+	interrupting bool
 	// jobs holds the started jobs that have not finished; a job leaves it
 	// when it finishes, after which its progress is ignored.
 	jobs map[string]*job
@@ -51,9 +54,12 @@ func (r *recorder) running() int {
 	return len(r.jobs)
 }
 
-func (r *recorder) runningTasks() []*bridgeipc.Task {
+// interruptAll lists the running jobs for the shutdown to interrupt, and makes
+// Started interrupt every job that starts from now on.
+func (r *recorder) interruptAll() []*bridgeipc.Task {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.interrupting = true
 	tasks := make([]*bridgeipc.Task, 0, len(r.jobs))
 	for _, j := range r.jobs {
 		tasks = append(tasks, j.task)
@@ -70,6 +76,7 @@ func (r *recorder) Started(task *bridgeipc.Task, raw jsontext.Value) {
 	j := &job{task: task}
 	r.mu.Lock()
 	r.jobs[id] = j
+	late := r.interrupting
 	r.mu.Unlock()
 
 	ctx, cancel := jobs.DetachedContext(storeTimeout)
@@ -92,8 +99,13 @@ func (r *recorder) Started(task *bridgeipc.Task, raw jsontext.Value) {
 		delete(r.jobs, id)
 	}
 	r.mu.Unlock()
-	if finish {
+	switch {
+	case finish:
 		r.finish(ctx, task)
+	case late:
+		// Admitted as the host began to stop, after the shutdown listed the
+		// jobs it interrupts.
+		r.h.interrupt(ctx, task)
 	}
 }
 
@@ -104,7 +116,7 @@ func (h *Host) newRecord(task *bridgeipc.Task, raw jsontext.Value) jobs.Record {
 	record := jobs.Record{
 		ID:        task.ID(),
 		Route:     task.Type(),
-		Owner:     jobs.Owner{UID: h.ownerUID(owner.SessionID, owner.UID), Username: owner.Username},
+		Owner:     h.recordOwner(owner),
 		State:     jobs.StateRunning,
 		CreatedAt: now,
 		StartedAt: now,

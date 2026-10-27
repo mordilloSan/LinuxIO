@@ -19,8 +19,8 @@ and [Notifications](../alerts.md).
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Store, host, relay, units, first route (`docker.update_container`) | done, verified on a real host |
-| 2 | The remaining long work: 28 task routes and 14 long calls, btrfs resume | next, no plan yet |
-| 3 | The ~140 quick mutations, the frontend codemod, old task code deleted | not started |
+| 2 | Every mutation runs as a job: prerequisites, the ~199 routes and their callers, old task code deleted | in progress, plan in section 4.2 |
+| 3 | btrfs resume hooks, with kill-and-resume root tests | not started |
 | 4 | Schedules and system jobs | not started; one open decision |
 | 5 | History view, login notice, update banner | not started |
 
@@ -256,7 +256,7 @@ Write policy, from the spike measurements (1.4 ms fsync, 35 µs without, on NVMe
 - progress goes to `/run`, never to `/var/lib`;
 - a job that completes in under one second is deleted from the store when it completes, unless it failed. Such jobs never appear in the list or history. This is TrueNAS's `transient` without a flag.
 
-Retention: terminal records are kept 30 days and at most 200 per uid; pruning runs at host start and daily, removing artifacts with records. The job store, `backend/common/jobs`, implements this policy; phase 1 prunes at host start only.
+Retention: terminal records are kept 30 days and at most 200 per uid; pruning runs at host start and daily, removing artifacts with records. The job store, `backend/common/jobs`, implements this policy; a host prunes at start and every 24 hours while it runs.
 
 ### 2.11 Job lifecycle
 
@@ -285,22 +285,22 @@ Retention: terminal records are kept 30 days and at most 200 per uid; pruning ru
 
 What each event does to a job, as phase 1 implements it:
 
-- **Page reload, tab close, connection loss**: the stream detaches and the job runs on. Lost before the `task.snapshot` frame, the client resends the same envelope once (it attaches, or gets the stored outcome); lost after it, the client reattaches with `tasks.watch`. A second loss is `outcome_unknown`.
+- **Page reload, tab close, connection loss**: the stream detaches and the job runs on. Lost before the `task.snapshot` frame, the client resends the same envelope once (it attaches, or gets the stored outcome); lost after it, the client reattaches with `tasks.watch`. Each is tried once, so a resend that reached the job still reattaches once; a further loss is `outcome_unknown`.
 - **Resend of an `id` with another route or request**: 409.
 - **Logout, session expiry, bridge exit**: the bridge closes its host connection; jobs run on. The host exits one minute after its last bridge left and its last job ended. A later login of the uid sees the jobs the host still holds through `tasks.list` and `tasks.events`.
-- **Host unreachable from the bridge**: mutations fail with 503 before anything starts; the bridge reconnects with backoff from 1 s to 30 s.
+- **Host unreachable from the bridge**: mutations fail with 503 before anything starts; `tasks.get`, `tasks.cancel` and `tasks.watch` of a host job wait up to 10 s for the host, then answer 503; the bridge reconnects with backoff from 1 s to 30 s. An open `tasks.events` stream gets, on the next connection, the end of every job it saw running.
 - **Host on another protocol (an update in between)**: new mutations fail with 409 `update_pending`; reads work; the old host finishes its jobs.
 - **LinuxIO update**: hosts and their sockets are outside `linuxio.target`; the installer never stops them. A host still running the old binary answers a newer bridge `update_pending` until it exits; the next connection then starts the new one.
 - **`systemctl stop` or orderly shutdown**: running jobs become `interrupted/shutdown`, resumable ones after `Suspend` stored a checkpoint; the root host alerts.
 - **Host crash or kill**: the next start of that uid's host marks its `running` records whose pid and start time are gone `interrupted/crash`; the root host alerts.
 - **Reboot or power loss**: the root host, started at boot, marks its `running` records `interrupted/reboot`, resumes the resumable ones and alerts on the rest; a user's host marks theirs the same way when their next login connects.
-- **Cancel** (`tasks.cancel`, stream abort): the job's context is cancelled and its record becomes `canceled` at once; the target stays taken until the handler returns. Phase 1 does not write `cancel_requested`.
+- **Cancel** (`tasks.cancel`, stream abort): the job's context is cancelled and its record becomes `canceled` at once; the target stays taken until the handler returns. `cancel_requested` is not written yet (phase 3).
 
 ### 2.12 Updates
 
 - `linuxio.target` does not pull in hosts or their sockets. The installer never stops or restarts them; it may `daemon-reload`.
 - The hello frame carries a protocol number. Same number: carry on. Older host: the bridge refuses new mutations with error code `update_pending` and message "LinuxIO update waits for N running jobs"; reads work; the UI shows the count on the update banner. The old host exits when idle under its normal rule and the next login starts the new binary.
-- Within one release the protocol number only changes when a frame changes shape; adding routes does not change it.
+- The protocol number changes when a frame changes shape or a route moves between the bridge and the host; adding a route to the host does not change it.
 
 ### 2.13 Alerts
 
@@ -447,57 +447,113 @@ All with the installed build of `0c82d2d7` (section 7 lists the procedure):
   set them with `pam_putenv` before the session opens. Untested. The doc lines
   stay until this is decided.
 
-### 4.2 Phase 2: long work
+### 4.2 Phase 2: every mutation is a job
 
-1. Move the 28 remaining task routes and the 14 long calls to `Mutation`
-   (list in the [mutation map](../superpowers/specs/2026-10-25-mutation-map.md)):
-   btrfs scrub, balance, replace, remove, pool create, file-browser copy,
-   move, compress, extract, Docker compose, and the rest. Several are the first
-   routes non-admins run in their own host.
-2. `Resumable` hooks for `storage.btrfs_scrub_start`, `storage.btrfs_balance`,
-   `storage.btrfs_device_replace`, `storage.btrfs_device_remove`
-   (section 2.11), with kill-and-resume steps in `make test-btrfs-integration`
-   (root, run by the user). Data-safety work: upstream prior art and an
-   independent review first.
-3. The bugs fixed during migration, each with a test when its route moves:
-   - `storage.btrfs_device_remove`: cancel issues the kernel cancel instead of
-     only marking the task.
-   - `storage.btrfs_pool_create`: on failure, undo the partitions it created
-     and wipe the superblocks it wrote.
-   - `docker.apply_daemon_storage`: write a checkpoint after stopping Docker so
-     an interrupted run restarts Docker at the next host start rather than
-     leaving it down.
-   - The 13 routes missing `Privileged()`.
-   - `/etc/default/btrfsmaintenance` and the WireGuard configs: atomic writes.
-   - `docs/api-contract.md` route counts and the lifetime section.
-4. The behaviour gaps from the deferred items (section 5) that the moved
-   routes depend on:
-   - A result over 1 MiB makes `Finish` fail and the record stays `running`.
-   - `ProcessAlive` treats a zombie as alive.
-   - A stream admitted just as the host gets SIGTERM can run on uninterrupted.
-   - A record whose task is no longer in memory stays `running` until the next
-     host start.
-   - A forwarded mutation whose host drops mid-run ends with a bare close.
-   - `tasks.get` and `tasks.cancel` with no host answer 404 instead of 503.
-   - Events from the window with no host are not replayed to an open
-     `tasks.events` stream (final review, Important 3).
-   - A second connection loss after a resend does not reattach (final review,
-     Important 4).
-   - The host's `tasks.list` and `tasks.get` see only in-memory jobs, not the
-     interrupted ones in its store.
-   - Cancel does not write `cancel_requested` first; pruning runs only at host
-     start (section 2.11 describes the target behaviour).
-   - On the root host the 200-record cap applies per admin, not per store.
-   - A job that completes in under a second keeps no record, so a resend after
-     the 30-minute memory sweep runs it again.
-5. The host-side drain does not cover forwarded `tasks.watch` streams.
+Phase 2 moves all the mutations at once rather than the long ones first: a
+split would rewrite the same call sites twice and keep both task systems alive
+in between. Each step below is one commit that leaves `make test-quiet` green.
 
-### 4.3 Phase 3: everything else
+**Step 1: prerequisites.** What every mutation would hit once it runs in a host. Done, not yet committed.
 
-The ~140 quick mutations re-declared as `Mutation`; `Call` reads marked
-`RetrySafe`; the frontend codemod for the ~120 call sites; `useCallMutation`,
-`useTaskAction`, `useTaskStreamAction`, `TaskRunner`, lifetimes and policies
-deleted; the guard tests of section 2.5.
+1. **Handlers act for the job's user.** Handlers read the user and the user's
+   config store from the `runtime.Runtime` they were registered with, and the
+   root host registers them once, as root. It would run every admin's job as
+   root's user: a Compose action resolves root's Docker folders, a file
+   operation gives new files to root, a setting lands in root's file. The root
+   host therefore builds a router per bridge connection for the hello's user,
+   with that user's config store, as the privileged bridge does; the hello and
+   the record's owner gain the gid, and a resume builds one for the record's
+   owner. A user host keeps its single router, since its only peers are its own
+   uid. The task service stays shared, so admission, `tasks.*` and cancel do
+   not change.
+2. **Config reads see other processes' writes.** The bridge and the host each
+   keep the user's settings in memory and reread the file only to write it, so
+   a setting changed by a job would never reach the bridge's `config.get`; two
+   logins of one user already disagree this way. `Snapshot` and `UISnapshot`
+   reread a file that changed on disk, which is safe because writes are atomic
+   renames.
+3. **The behaviour gaps of section 5, fixed:**
+   - An oversized result is dropped from the record instead of leaving it
+     `running`.
+   - A zombie executor counts as dead.
+   - A job admitted as the host stops is interrupted like the running ones.
+   - A record a host left `running` with no task to finish it is marked
+     interrupted when a resend or `tasks.*` asks for it. Records no host ran,
+     such as the root bridge's network handoffs, are left alone.
+   - `tasks.get`, `tasks.watch` and `tasks.cancel` of a job no longer in memory
+     are answered from its record. Through the bridge they wait up to 10 s for
+     a host that is reconnecting, then answer 503 instead of 404.
+   - When the bridge reopens its host's `tasks.events`, it names the jobs it
+     saw running, and the host sends the end of those that ended meanwhile
+     (final review, Important 3).
+   - A resend and a reattach each get one try, so a loss after a resend still
+     reattaches (final review, Important 4).
+   - A host prunes daily as well as at start, and the 200-record cap is per
+     store, not per admin.
+   - The shutdown drain also waits for `tasks.watch` streams.
+   - Found while building item 1: same-target admission was counted per
+     router, so two admins' routers on the root host would not refuse each
+     other. The counts moved to the shared task service. Suspend and resume
+     hooks also act for the record's owner.
+
+   Unchanged: a forwarded mutation whose host drops still ends with a bare
+   close; the client takes it for a lost connection and reattaches, which now
+   works. `cancel_requested` moved to phase 3: it matters for resume, and the
+   record staying `running` until the handler returns needs a canceling state
+   in the UI. Accepted: a job that completes in under a second keeps no record,
+   so a resend after the 30-minute memory sweep runs it again; the browser
+   resends only right after a start it lost.
+4. **No default deadline.** A server-side timeout for quick mutations was
+   considered and dropped: it brings back the fast/slow decision per route
+   that section 2.1 removes, and turns a slow change into a failure part-way.
+   A stuck job stays in the tray, where it can be cancelled.
+
+**Step 2: the routes, family by family.** One commit per batch of families,
+each with its backend routes, `make generate` and its frontend callers, since
+a route that becomes a `Mutation` no longer type-checks in `useCallMutation`.
+
+- Every mutation route of the map becomes `Mutation` or `MutationVoid`
+  (section 2.17). `TaskRunner` runners take `ctx` and report through
+  `bridgeipc.ReportProgress`; `WithTaskMetadata` identities become `Target()`
+  on the request type.
+- Stay in the bridge: the three `BrowserBound` routes, and any route whose
+  effect is the bridge's own process state (a cache only the bridge reads, the
+  session itself). Each batch checks its family for these and lists them here.
+- The nine self-severing routes run in the host like the rest: the change
+  completes there and only the reply is lost.
+- Fixed when their route moves, each with a test:
+  - `storage.btrfs_device_remove`: cancel issues the kernel cancel instead of
+    only marking the task.
+  - `storage.btrfs_pool_create`: on failure, undo the partitions it created
+    and wipe the superblocks it wrote.
+  - `docker.apply_daemon_storage`: write a checkpoint after stopping Docker so
+    an interrupted run restarts Docker at the next host start rather than
+    leaving it down.
+  - The 13 routes missing `Privileged()`.
+  - `/etc/default/btrfsmaintenance` and the WireGuard configs: atomic writes.
+- Frontend: `useCallMutation(linuxio.<domain>.<name>, config)` becomes
+  `linuxio.<domain>.<name>.useMutation(config)` (about 190 calls in 80
+  files); the `useTaskStreamAction` callers and the transfer engine in
+  `frontend/src/tasks/` move to `.useMutation` with `onProgress`.
+- `jobs.Protocol` goes up once, because routes move from the bridge to the
+  host: an older host answers a newer bridge `update_pending` and exits when
+  idle instead of running a route as a `Call`.
+
+**Step 3: delete the old task code.** `useCallMutation`, `useTaskAction`,
+`useTaskStreamAction`, `TaskRunner`, `SessionTask`, `DurableTask`,
+`WithTaskLifetime`, `WithTaskIdentity`, `WithTaskProgress` and the
+`TaskPolicy` admission; the guard tests of section 2.5;
+`docs/api-contract.md` route counts, modes and the lifetime section.
+
+### 4.3 Phase 3: btrfs resume
+
+`Resumable` hooks for `storage.btrfs_scrub_start`, `storage.btrfs_balance`,
+`storage.btrfs_device_replace` and `storage.btrfs_device_remove` (section
+2.11), with kill-and-resume steps in `make test-btrfs-integration` (root, run
+by the user). Data-safety work: upstream prior art and an independent review
+first. Cancel writes `cancel_requested` before it cancels, and the record turns
+`canceled` only when the handler returns (section 2.11), so a cancelled job is
+never resumed.
 
 ### 4.4 Phase 4: schedules and system jobs
 
@@ -530,8 +586,8 @@ names a concrete line; the rest are as recorded.
 
 ### Task 1: store
 
-- [ ] *Gap.* Record limit 1 MiB: an oversized result makes `Finish` fail and the record stays `running`. Route names are capped at 128 characters (not requested by the spec).
-- [ ] *Gap.* `ProcessAlive` treats a zombie (state `Z`/`X`) as alive. (Its `ParseUint` error now names the pid.)
+- [x] *Gap.* Record limit 1 MiB: an oversized result makes `Finish` fail and the record stays `running`. Fixed in phase 2, step 1. Route names are capped at 128 characters (not requested by the spec).
+- [x] *Gap.* `ProcessAlive` treats a zombie (state `Z`/`X`) as alive. Fixed in phase 2, step 1. (Its `ParseUint` error now names the pid.)
 - [x] `writeFileNoSync` duplicates `atomicfile.Write` without `validateDestination`; `readRegularFile` duplicates the old reader without `filepath.IsLocal`.
 - [ ] The fsync rule keys on terminal state, not on a state change; `Finish` on a terminal record still rewrites the file.
 - [x] `Finish` measures age from `StartedAt` only; `needsSync` falls back to `CreatedAt`.
@@ -549,8 +605,8 @@ names a concrete line; the rest are as recorded.
 
 ### Task 3: declarations
 
-- [ ] Redundant derived count in `TestAllTaskRoutesUseTaskRunner` (goes away in phase 3).
-- [ ] The 114 retry-safe count has no replacement beyond the two name lists (phase 3).
+- [ ] Redundant derived count in `TestAllTaskRoutesUseTaskRunner` (goes away in phase 2, step 3).
+- [ ] The 114 retry-safe count has no replacement beyond the two name lists (phase 2, step 3).
 - [x] `TestMutationOptionsAreAllowedOnlyOnMutationRoutes` asserts the conjunction, not each option.
 - [x] The `WithTarget` closure is untested.
 - [x] `mutationResult` duplicates `wrapTypedCall`'s void erasure.
@@ -564,9 +620,9 @@ names a concrete line; the rest are as recorded.
 
 ### Task 5: job host
 
-- [ ] *Gap.* Admission races SIGTERM: a stream admitted just before cancel can run on with no interrupt.
-- [ ] *Gap.* A running record with no in-memory task is answered as interrupted but stays `running` in the store until the next host start.
-- [ ] *Gap.* A job completed in under a second keeps no record, so a resend after the 30-minute sweep runs it again (limit of the transient rule).
+- [x] *Gap.* Admission races SIGTERM: a stream admitted just before cancel can run on with no interrupt. Fixed in phase 2, step 1.
+- [x] *Gap.* A running record with no in-memory task is answered as interrupted but stays `running` in the store until the next host start. Fixed in phase 2, step 1.
+- [ ] *Gap.* A job completed in under a second keeps no record, so a resend after the 30-minute sweep runs it again (limit of the transient rule; accepted in phase 2, step 1).
 - [ ] Progress writes hold `rec.mu`.
 - [x] A progress-write error is logged at Debug only.
 - [x] A pending progress `AfterFunc` can outlive `Serve`.
@@ -597,10 +653,10 @@ The launcher was removed in `0b44d7d3`; all its items are obsolete: success log 
 
 ### Task 9: relay
 
-- [ ] *Gap.* A forwarded mutation whose host drops mid-run ends with a bare close.
-- [ ] *Gap.* `tasks.get` and `tasks.cancel` of a job id with no host answer 404, not 503.
-- [ ] *Gap.* Events from the window with no host are not replayed to an already open stream (also final review Important 3).
-- [ ] *Gap.* On the root host the 200-record cap applies per admin (drop the `byUID` grouping in `Prune`).
+- [x] *Gap.* A forwarded mutation whose host drops mid-run ends with a bare close. Kept: the client takes the close for a lost connection and reattaches; since phase 2, step 1 the bridge's `tasks.watch` waits up to 10 s for the host to return and the host answers from the record.
+- [x] *Gap.* `tasks.get` and `tasks.cancel` of a job id with no host answer 404, not 503. Fixed in phase 2, step 1.
+- [x] *Gap.* Events from the window with no host are not replayed to an already open stream (also final review Important 3). Fixed in phase 2, step 1.
+- [x] *Gap.* On the root host the 200-record cap applies per admin (drop the `byUID` grouping in `Prune`). Fixed in phase 2, step 1.
 - [x] The first failure after a drop logs at Debug, not Warn.
 - [x] `Events` waits for EOF instead of returning on `OpStreamClose`.
 - [x] The merge test does not exercise concurrent writes. (a `net.Pipe` serialises writes, so it cannot catch a missing lock)
@@ -626,7 +682,7 @@ The launcher was removed in `0b44d7d3`; all its items are obsolete: success log 
 
 ### Task 12: frontend
 
-- [ ] *Gap.* Resend-then-reattach: after a resend succeeds, a second loss ends in `outcome_unknown` instead of one reattach (also final review Important 4).
+- [x] *Gap.* Resend-then-reattach: after a resend succeeds, a second loss ends in `outcome_unknown` instead of one reattach (also final review Important 4). Fixed in phase 2, step 1.
 - [ ] An abort while waiting for the mux after the job started cannot reach the server (no caller passes a signal yet).
 - [x] The `sent === false` branch is untested.
 - [x] A long comment line in `apiLayering.test.ts`.
@@ -634,17 +690,17 @@ The launcher was removed in `0b44d7d3`; all its items are obsolete: success log 
 
 ### Task 13: docs and browser spec
 
-- [ ] *Gap.* The host's `tasks.list` and `tasks.get` see only in-memory jobs.
-- [ ] *Gap.* Cancel marks the record canceled at once without `cancel_requested`; pruning runs only at host start.
+- [x] *Gap.* The host's `tasks.list` and `tasks.get` see only in-memory jobs. Phase 2, step 1: `tasks.get`, `tasks.watch` and `tasks.cancel` answer from the record; `tasks.list` of past jobs is the history view, phase 5.
+- [ ] *Gap.* Cancel marks the record canceled at once without `cancel_requested` (moved to phase 3, where resume needs it). The daily prune was added in phase 2, step 1.
 - [x] `jobs.spec.ts` does not assert the password environment variable.
 - [x] The records list in the docs omits the handoff's progress step and checkpoint.
 - Obsolete with the reconcile service: boot-flow step order and its alert-exception wording; "session_ref recorded as owner" wording (owner is uid and username).
 
 ### Final review and fix wave
 
-- [ ] Important 3: terminal-event replay after a host crash (same as Task 9).
-- [ ] Important 4: resend-then-reattach (same as Task 12).
-- [ ] The host-side drain does not cover forwarded `tasks.watch` streams.
+- [x] Important 3: terminal-event replay after a host crash (same as Task 9). Fixed in phase 2, step 1.
+- [x] Important 4: resend-then-reattach (same as Task 12). Fixed in phase 2, step 1.
+- [x] The host-side drain does not cover forwarded `tasks.watch` streams. Fixed in phase 2, step 1.
 - [x] A doc clause about `owner.username` (D7) could be clearer.
 
 ### Commit `0b44d7d3` review
@@ -714,6 +770,11 @@ cost if they turn out wrong where it was recorded.
   executor for timers and the boot resume.
 - **No compatibility code for unreleased builds.** The jobs commits exist
   only on the dev branch; v0.52.0 has no job hosts.
+- **Phase 2 moves every mutation at once** (2026-10-27), instead of the long
+  routes in phase 2 and the quick ones in phase 3: one migration per call
+  site, and one task system at a time. Resume hooks became phase 3.
+- **No default deadline for mutations** (2026-10-27): see section 4.2,
+  step 1, item 4.
 
 ## 7. Manual verification
 

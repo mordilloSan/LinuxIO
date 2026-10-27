@@ -321,10 +321,10 @@ func waitForRouterSettle(t *testing.T, router *Router, routeName string) {
 	t.Helper()
 	deadline := time.Now().Add(time.Second)
 	for {
-		router.mu.RLock()
-		activeCount := router.activeByRoute[routeName]
-		targets := len(router.activeTargets)
-		router.mu.RUnlock()
+		router.registry.admitMu.Lock()
+		activeCount := router.registry.activeByRoute[routeName]
+		targets := len(router.registry.activeTargets)
+		router.registry.admitMu.Unlock()
 		if activeCount == 0 && targets == 0 {
 			return
 		}

@@ -13,6 +13,7 @@ type Hello struct {
 type HelloSession struct {
 	Username   string `json:"username"`
 	UID        uint32 `json:"uid"`
+	GID        uint32 `json:"gid"`
 	Privileged bool   `json:"privileged"`
 	SessionRef string `json:"session_ref"`
 }

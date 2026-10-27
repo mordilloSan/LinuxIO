@@ -35,7 +35,9 @@ const (
 )
 
 type Owner struct {
-	UID      uint32 `json:"uid"`
+	UID uint32 `json:"uid"`
+	// GID is the user's primary group, which a root host's job acts with.
+	GID      uint32 `json:"gid,omitzero"`
 	Username string `json:"username"`
 }
 

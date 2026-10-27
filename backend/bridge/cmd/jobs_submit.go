@@ -44,7 +44,7 @@ func runJobsSubmit(args []string, stdout, stderr io.Writer) int {
 	}
 	var ref [4]byte
 	_, _ = rand.Read(ref[:])
-	hello := bridgeipc.HelloSession{Username: account.Username, UID: uid, Privileged: uid == 0, SessionRef: "cli-" + hex.EncodeToString(ref[:])}
+	hello := bridgeipc.HelloSession{Username: account.Username, UID: uid, GID: uint32(os.Getgid()), Privileged: uid == 0, SessionRef: "cli-" + hex.EncodeToString(ref[:])}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()

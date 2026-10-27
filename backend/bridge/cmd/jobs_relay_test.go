@@ -174,7 +174,18 @@ func waitRelay(t *testing.T, jr *jobsRelay, ok func(error) bool) {
 // returns the client end of its stream.
 func dispatchMutation(t *testing.T, router *bridgeipc.Router, sess *session.Session, id string) net.Conn {
 	t.Helper()
-	raw, err := json.Marshal(relay.StreamOpenEnvelope{Route: "test.job", Request: []byte(`{}`), ID: id})
+	return dispatchRoute(t, router, sess, "test.job", id)
+}
+
+// dispatchRoute sends route with an empty request, as job id when id is set,
+// through router and returns the client end of its stream.
+func dispatchRoute(t *testing.T, router *bridgeipc.Router, sess *session.Session, route, id string) net.Conn {
+	t.Helper()
+	request := []byte(`{}`)
+	if id == "" {
+		request = []byte(`{"taskId":"` + relayTestJobID + `"}`)
+	}
+	raw, err := json.Marshal(relay.StreamOpenEnvelope{Route: route, Request: request, ID: id})
 	if err != nil {
 		t.Fatalf("encode open: %v", err)
 	}
@@ -183,7 +194,7 @@ func dispatchMutation(t *testing.T, router *bridgeipc.Router, sess *session.Sess
 	go func() {
 		defer server.Close()
 		_ = router.Dispatch(context.Background(), server, bridgeipc.Request{
-			Route: "test.job", RawRequest: []byte(`{}`), ID: id, OpenRaw: raw, Session: sess,
+			Route: route, RawRequest: request, ID: id, OpenRaw: raw, Session: sess,
 		})
 	}()
 	_ = client.SetReadDeadline(time.Now().Add(5 * time.Second))
@@ -251,6 +262,98 @@ func TestBridgeFailsMutationWhenHostUnavailable(t *testing.T) {
 	// Reads still answer without a host.
 	if snapshots, err := jr.List(context.Background()); err != nil || snapshots != nil {
 		t.Fatalf("remote List = %v, %v; want nothing", snapshots, err)
+	}
+	// A host job's state is unknown, not missing.
+	oldWait := hostWaitTimeout
+	hostWaitTimeout = 50 * time.Millisecond
+	t.Cleanup(func() { hostWaitTimeout = oldWait })
+	if _, err := jr.Get(context.Background(), relayTestJobID); bridgeipc.StatusCode(err) != 503 {
+		t.Fatalf("remote Get = %v, want 503", err)
+	}
+	watch := dispatchRoute(t, router, sess, "tasks.watch", "")
+	if result := readRelayTestResult(t, watch); result.Code != 503 {
+		t.Fatalf("tasks.watch = %+v, want 503", result)
+	}
+}
+
+// storedRelayTestJob is a store holding job relayTestJobID, completed an
+// hour ago with {"ok":true}.
+func storedRelayTestJob(t *testing.T) *jobs.Store {
+	t.Helper()
+	dir := t.TempDir()
+	store := jobs.NewStore(filepath.Join(dir, "state"), filepath.Join(dir, "run"))
+	at := time.Now().UTC().Add(-time.Hour)
+	if err := store.Create(context.Background(), jobs.Record{
+		ID: relayTestJobID, Route: "test.job", Owner: jobs.Owner{UID: uint32(os.Getuid()), Username: "alice"},
+		State: jobs.StateCompleted, CreatedAt: at, StartedAt: at, FinishedAt: at, Result: []byte(`{"ok":true}`),
+		Request: []byte(`{}`), Executor: jobs.Executor{Kind: "host"}, Protocol: jobs.Protocol,
+	}); err != nil {
+		t.Fatalf("Store.Create: %v", err)
+	}
+	return store
+}
+
+func TestBridgeWatchWaitsForTheHostToReturn(t *testing.T) {
+	socket := filepath.Join(t.TempDir(), "host.sock")
+	relayTestSockets(t, socket)
+	router, _, sess := newRelayTestBridge(t)
+
+	watch := dispatchRoute(t, router, sess, "tasks.watch", "")
+	store := storedRelayTestJob(t)
+	startRelayTestHost(t, socket, false, func(c *jobshost.Config) { c.Store = store })
+
+	_ = watch.SetReadDeadline(time.Now().Add(hostWaitTimeout))
+	var event bridgeipc.TaskEvent
+	if err := json.Unmarshal(readRelayTestFrame(t, watch, relay.OpStreamProgress), &event); err != nil || event.Task.State != bridgeipc.TaskStateCompleted {
+		t.Fatalf("watch snapshot = %+v, %v; want the stored completed job", event, err)
+	}
+	if result := readRelayTestResult(t, watch); result.Status != "ok" || string(result.Data) != `{"ok":true}` {
+		t.Fatalf("watch result = %+v, want ok with the stored result", result)
+	}
+}
+
+func TestBridgeEventsSendAJobThatEndedWhileTheHostWasAway(t *testing.T) {
+	release := make(chan struct{})
+	socket := filepath.Join(t.TempDir(), "host.sock")
+	startRelayTestHost(t, socket, false, func(c *jobshost.Config) {
+		c.Router.Mutation("test.release", func(ctx context.Context, _ *bridgeipc.Task, _ any) (any, error) {
+			select {
+			case <-release:
+				return map[string]bool{"ok": true}, nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		})
+	})
+	relayTestSockets(t, socket)
+	router, jr, sess := newRelayTestBridge(t)
+	router.Mutation("test.release", func(context.Context, *bridgeipc.Task, any) (any, error) {
+		return nil, errors.New("ran in the bridge")
+	})
+	waitRelay(t, jr, func(err error) bool { return err == nil })
+	server, events := net.Pipe()
+	t.Cleanup(func() { _ = events.Close() })
+	go func() {
+		defer server.Close()
+		_ = router.Dispatch(context.Background(), server, bridgeipc.Request{Route: "tasks.events", RawRequest: []byte(`{}`), Session: sess})
+	}()
+	dispatchRoute(t, router, sess, "test.release", relayTestJobID)
+	waitForHostEvent(t, events, relayTestJobID)
+
+	// The job ends while the bridge has no host connection, so no event
+	// carries its end; the reconnected stream sends it.
+	first, _ := jr.current()
+	_ = first.Close()
+	close(release)
+	_ = events.SetReadDeadline(time.Now().Add(hostWaitTimeout))
+	for {
+		var event bridgeipc.TaskEvent
+		if err := json.Unmarshal(readRelayTestFrame(t, events, relay.OpStreamProgress), &event); err != nil {
+			t.Fatalf("decode event: %v", err)
+		}
+		if event.Task.ID == relayTestJobID && event.Task.State == bridgeipc.TaskStateCompleted {
+			return
+		}
 	}
 }
 

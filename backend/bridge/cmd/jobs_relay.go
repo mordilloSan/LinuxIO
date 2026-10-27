@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"net"
 	"os"
+	"slices"
 	"sync"
 	"time"
 
@@ -23,6 +25,10 @@ var (
 	jobsHostSocket = jobsclient.HostSocketPath
 	jobsConnect    = jobsclient.Connect
 	effectiveUID   = func() uint32 { return uint32(os.Geteuid()) }
+	// hostWaitTimeout bounds how long a tasks.* request for a host job waits
+	// for the host connection, which a client reattaching after a lost
+	// connection often finds reconnecting.
+	hostWaitTimeout = 10 * time.Second
 )
 
 const (
@@ -31,8 +37,9 @@ const (
 )
 
 var (
-	errJobHostConnecting = errors.New("job host connection not ready")
-	errJobHostGone       = errors.New("job host connection closed")
+	errJobHostConnecting  = errors.New("job host connection not ready")
+	errJobHostGone        = errors.New("job host connection closed")
+	errJobHostUnavailable = bridgeipc.NewError("job host unavailable", 503)
 )
 
 // relayForwarder runs the bridge's Mutation streams on the job host.
@@ -87,6 +94,7 @@ func newJobsRelay(ctx context.Context, sess *session.Session) *jobsRelay {
 	hello := bridgeipc.HelloSession{
 		Username:   sess.User.Username,
 		UID:        sess.User.UID,
+		GID:        sess.User.GID,
 		Privileged: sess.Privileged,
 		SessionRef: session.DiagnosticRef(sess.SessionID),
 	}
@@ -174,6 +182,20 @@ func (j *jobsRelay) current() (*jobsclient.Client, error) {
 	return j.client, j.err
 }
 
+// waitConnected returns the connected client, waiting up to hostWaitTimeout
+// for one.
+func (j *jobsRelay) waitConnected(ctx context.Context) (*jobsclient.Client, error) {
+	waitCtx, cancel := context.WithTimeout(ctx, hostWaitTimeout)
+	defer cancel()
+	if c := j.connectedAfter(waitCtx, nil); c != nil {
+		return c, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return nil, errJobHostUnavailable
+}
+
 // Close stops reconnecting and closes the host connection, which ends every
 // stream relayed over it.
 func (j *jobsRelay) Close() {
@@ -194,13 +216,12 @@ func openRoute(ctx context.Context, c *jobsclient.Client, route string, request 
 	return c.Open(ctx, raw)
 }
 
-// snapshot calls route for job id on the host. Without a host the job is
-// not found.
+// snapshot calls route for job id on the host.
 func (j *jobsRelay) snapshot(ctx context.Context, route, id string) (bridgeipc.TaskSnapshot, error) {
 	var snapshot bridgeipc.TaskSnapshot
-	c, err := j.current()
+	c, err := j.waitConnected(ctx)
 	if err != nil {
-		return snapshot, fmt.Errorf("%w: task %s: %w", bridgeipc.ErrNotFound, id, err)
+		return snapshot, err
 	}
 	data, err := c.Call(ctx, route, map[string]string{"taskId": id})
 	if err != nil {
@@ -237,17 +258,16 @@ func (j *jobsRelay) List(ctx context.Context) ([]bridgeipc.TaskSnapshot, error) 
 	return snapshots, nil
 }
 
-// Watch relays the host's tasks.watch of job id onto stream. Without a host
-// the job is not found.
+// Watch relays the host's tasks.watch of job id onto stream.
 func (j *jobsRelay) Watch(ctx context.Context, stream net.Conn, id string) error {
-	c, err := j.current()
+	c, err := j.waitConnected(ctx)
 	var host net.Conn
 	if err == nil {
 		host, err = openRoute(ctx, c, "tasks.watch", map[string]string{"taskId": id})
 	}
 	if err != nil {
 		slog.Debug("job host unavailable for tasks watch", "task_id", id, "error", err)
-		return relay.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("task not found: %s", id), 404)
+		return relay.WriteResultErrorAndClose(stream, 0, "job host unavailable", 503)
 	}
 	return c.Relay(ctx, stream, host)
 }
@@ -258,28 +278,34 @@ func (j *jobsRelay) Watch(ctx context.Context, stream net.Conn, id string) error
 // host's active jobs, so an open stream keeps seeing host jobs.
 func (j *jobsRelay) Events(ctx context.Context, stream net.Conn) error {
 	var prev *jobsclient.Client
+	// running holds the host jobs this stream last saw running. One that ended
+	// while no host was connected sent no event; the next connection sends
+	// its state.
+	running := make(map[string]struct{})
 	for {
 		c := j.connectedAfter(ctx, prev)
 		if c == nil {
 			return nil
 		}
 		prev = c
-		if err := copyHostEvents(ctx, c, stream); err != nil {
+		if err := copyHostEvents(ctx, c, stream, running); err != nil {
 			return err
 		}
 	}
 }
 
-// copyHostEvents copies one host tasks.events stream onto stream. Only event
-// frames pass: the bridge reads stream for the client's close itself, and a
-// host stream that ends must not end the client's. It returns an error only
-// when stream fails.
-func copyHostEvents(ctx context.Context, c *jobsclient.Client, stream net.Conn) error {
-	host, err := openRoute(ctx, c, "tasks.events", struct{}{})
+// copyHostEvents copies one host tasks.events stream onto stream. The stream
+// is asked for the end of the jobs in running, and refills running from its
+// snapshots and events. Only event frames pass: the bridge reads stream for
+// the client's close itself, and a host stream that ends must not end the
+// client's. It returns an error only when stream fails.
+func copyHostEvents(ctx context.Context, c *jobsclient.Client, stream net.Conn, running map[string]struct{}) error {
+	host, err := openRoute(ctx, c, "tasks.events", bridgeipc.TaskEventsRequest{IDs: slices.Collect(maps.Keys(running))})
 	if err != nil {
 		slog.Debug("job host events unavailable", "error", err)
 		return nil
 	}
+	clear(running)
 	defer host.Close()
 	stop := context.AfterFunc(ctx, func() { _ = host.Close() })
 	defer stop()
@@ -297,8 +323,27 @@ func copyHostEvents(ctx context.Context, c *jobsclient.Client, stream net.Conn) 
 		if frame.Opcode != relay.OpStreamProgress {
 			continue
 		}
+		trackRunning(running, frame.Payload)
 		if err := relay.WriteRelayFrame(stream, frame); err != nil {
 			return err
 		}
+	}
+}
+
+// trackRunning keeps running up to date with the job an event frame reports.
+func trackRunning(running map[string]struct{}, payload []byte) {
+	var event struct {
+		Task struct {
+			ID    string              `json:"id"`
+			State bridgeipc.TaskState `json:"state"`
+		} `json:"task"`
+	}
+	if json.Unmarshal(payload, &event) != nil || event.Task.ID == "" {
+		return
+	}
+	if event.Task.State.Terminal() {
+		delete(running, event.Task.ID)
+	} else {
+		running[event.Task.ID] = struct{}{}
 	}
 }

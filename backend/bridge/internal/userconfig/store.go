@@ -47,6 +47,10 @@ type UserStore struct {
 	uiUpdateMu sync.Mutex
 	cfg        Settings
 	ui         UIPreferences
+	// cfgFile and uiFile describe the files cfg and ui were read from, so a
+	// snapshot rereads a file that the job host or another login replaced.
+	cfgFile os.FileInfo
+	uiFile  os.FileInfo
 }
 
 // OpenUserStore prefers the authenticated user's home, falls back to
@@ -136,6 +140,8 @@ func openDiskUserStore(username, configBase, defaultBase string, owner fileOwner
 		}
 		store.cfg = *cloneSettings(cfg)
 		store.ui = *cloneUIPreferences(ui)
+		store.cfgFile, _ = os.Lstat(cfgPath)
+		store.uiFile, _ = os.Lstat(uiPath)
 		return nil
 	}); err != nil {
 		return nil, err
@@ -309,7 +315,8 @@ func validateStoreUser(username string, store *UserStore) error {
 	return nil
 }
 
-// Snapshot returns a copy of the current core snapshot.
+// Snapshot returns a copy of the current core snapshot, reread first when
+// another process replaced the file.
 func (s *UserStore) Snapshot(ctx context.Context) (*Settings, error) {
 	if s == nil {
 		return nil, errors.New("config store is nil")
@@ -317,12 +324,20 @@ func (s *UserStore) Snapshot(ctx context.Context) (*Settings, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.mode != StorageModeMemory && replaced(s.path, &s.cfgFile) {
+		if cfg, err := readCoreLatest(s.path, s.base); err != nil {
+			slog.Warn("config not reread", "component", "config", "path", s.path, "error", err)
+		} else {
+			s.cfg = *cfg
+		}
+	}
 	return cloneSettings(&s.cfg), nil
 }
 
-// UISnapshot returns a copy of the current UI snapshot.
+// UISnapshot returns a copy of the current UI snapshot, reread first when
+// another process replaced the file.
 func (s *UserStore) UISnapshot(ctx context.Context) (*UIPreferences, error) {
 	if s == nil {
 		return nil, errors.New("config store is nil")
@@ -330,9 +345,48 @@ func (s *UserStore) UISnapshot(ctx context.Context) (*UIPreferences, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	s.uiMu.RLock()
-	defer s.uiMu.RUnlock()
+	s.uiMu.Lock()
+	defer s.uiMu.Unlock()
+	if s.mode != StorageModeMemory && replaced(s.uiPath, &s.uiFile) {
+		ui, err := readUI(s.uiPath)
+		if err != nil {
+			slog.Warn("UI config not reread", "component", "config", "path", s.uiPath, "error", err)
+		} else {
+			s.ui = *ui
+		}
+	}
 	return cloneUIPreferences(&s.ui), nil
+}
+
+// readUI reads the UI preferences at path without repairing them, refusing a
+// path that is not a regular file.
+func readUI(path string) (*UIPreferences, error) {
+	exists, err := regularFileExists(path)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, fmt.Errorf("UI config path is not a regular file: %s", path)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return parseUIConfig(raw)
+}
+
+// replaced reports whether the file at path is no longer the one *seen
+// describes, and records the current one. Writers replace the files by
+// rename, so another inode, size or modification time means another write.
+// A file that cannot be examined counts as unchanged.
+func replaced(path string, seen *os.FileInfo) bool {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return false
+	}
+	old := *seen
+	*seen = info
+	return old == nil || !os.SameFile(old, info) || !old.ModTime().Equal(info.ModTime()) || old.Size() != info.Size()
 }
 
 // Update applies a mutation to the latest disk snapshot or the memory store.
@@ -379,7 +433,8 @@ func (s *UserStore) Update(ctx context.Context, mutate func(*Settings) error) (*
 		return nil, err
 	}
 	s.mu.Lock()
-	s.cfg = *cloneSettings(updated)
+	// A snapshot may have read a newer file meanwhile: reread at the next one.
+	s.cfg, s.cfgFile = *cloneSettings(updated), nil
 	s.mu.Unlock()
 	return cloneSettings(updated), nil
 }
@@ -436,7 +491,8 @@ func (s *UserStore) ReplaceUI(ctx context.Context, replacement UIPreferences) (*
 		return nil, err
 	}
 	s.uiMu.Lock()
-	s.ui = *cloneUIPreferences(updated)
+	// A snapshot may have read a newer file meanwhile: reread at the next one.
+	s.ui, s.uiFile = *cloneUIPreferences(updated), nil
 	s.uiMu.Unlock()
 	return cloneUIPreferences(updated), nil
 }

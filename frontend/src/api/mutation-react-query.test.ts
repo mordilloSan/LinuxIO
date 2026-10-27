@@ -216,6 +216,41 @@ describe("mutationRequest", () => {
     expect(onProgress).toHaveBeenCalledExactlyOnceWith(PROGRESS);
   });
 
+  it("reattaches once after a resend that reached the job", async () => {
+    const first = createStream();
+    const resend = createStream();
+    const watch = createStream();
+    const mux = installMux(first, resend, watch);
+
+    const pending = mutationRequest("docker", "update_container", REQUEST, {});
+    await whenBound(first);
+    first.onClose?.();
+    await whenBound(resend);
+    resend.onProgress?.(snapshotFrame(runningTask("job-1")));
+    resend.onClose?.();
+    await whenBound(watch);
+
+    expect(opened(mux, 2).type).toBe("tasks.watch");
+    watch.onResult?.({ status: "ok", data: 3 });
+    await expect(pending).resolves.toBe(3);
+  });
+
+  it("rejects outcome_unknown when the reattached watch is lost too", async () => {
+    const first = createStream();
+    const watch = createStream();
+    const mux = installMux(first, watch, createStream());
+
+    const pending = mutationRequest("docker", "update_container", REQUEST, {});
+    await whenBound(first);
+    first.onProgress?.(snapshotFrame(runningTask("job-1")));
+    first.onClose?.();
+    await whenBound(watch);
+    watch.onClose?.();
+
+    await expect(pending).rejects.toMatchObject({ code: "outcome_unknown" });
+    expect(mux.openStream).toHaveBeenCalledTimes(2);
+  });
+
   it("rejects outcome_unknown after a second loss", async () => {
     const first = createStream();
     const second = createStream();

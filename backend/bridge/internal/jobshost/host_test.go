@@ -198,7 +198,7 @@ func hello(t *testing.T, sess *relay.YamuxSession, protocol int) relay.ResultFra
 	t.Helper()
 	stream := openStream(t, sess, bridgeipc.HelloRoute, bridgeipc.Hello{
 		Protocol: protocol,
-		Session:  bridgeipc.HelloSession{Username: "alice", UID: 4242, Privileged: true, SessionRef: "ref-1"},
+		Session:  bridgeipc.HelloSession{Username: "alice", UID: 4242, GID: 4243, Privileged: true, SessionRef: "ref-1"},
 	}, "")
 	defer stream.Close()
 	return readResult(t, stream)
@@ -314,8 +314,8 @@ func TestHostServesMutationOverYamuxAndRecords(t *testing.T) {
 		t.Fatalf("running record = %#v, want a running host record of the request", record)
 	}
 	// A user host records its own uid, never the one the hello claims.
-	if record.Owner != (jobs.Owner{UID: th.cfg.UID, Username: "alice"}) {
-		t.Fatalf("record owner = %#v, want uid %d from the host", record.Owner, th.cfg.UID)
+	if record.Owner != (jobs.Owner{UID: th.cfg.UID, GID: th.cfg.GID, Username: "alice"}) {
+		t.Fatalf("record owner = %#v, want uid %d and gid %d from the host", record.Owner, th.cfg.UID, th.cfg.GID)
 	}
 	if _, running := th.host.counts(); running != 1 {
 		t.Fatalf("running = %d, want 1", running)
@@ -424,6 +424,12 @@ func TestHostIdleExitAfterGrace(t *testing.T) {
 func TestHostSIGTERMMarksRunningJobsInterrupted(t *testing.T) {
 	suspended := make(chan jsontext.Value, 2)
 	th := newTestHost(t, nil)
+	th.cfg.Tasks.RegisterRoutes(th.cfg.Router)
+	th.cfg.Router.Mutation("test.progress", func(ctx context.Context, _ *bridgeipc.Task, _ any) (any, error) {
+		bridgeipc.ReportProgress(ctx, bridgeipc.TaskProgress{Message: "started"})
+		<-ctx.Done()
+		return nil, ctx.Err()
+	})
 	th.cfg.Router.Mutation("test.resumable", th.run, bridgeipc.WithResume(
 		func(_ context.Context, record jsontext.Value) (jsontext.Value, error) {
 			suspended <- record
@@ -445,15 +451,22 @@ func TestHostSIGTERMMarksRunningJobsInterrupted(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Store.Update(cancel requested): %v", err)
 	}
+	// A watch from another tab also reads the end before the host exits; the
+	// job's replayed progress shows it is attached.
+	streams[jobD] = th.startJob(sess, "test.progress", jobD)
+	readFrame(t, streams[jobD], relay.OpStreamProgress)
+	watch := openStream(t, sess, "tasks.watch", map[string]string{"taskId": jobD}, "")
+	readFrame(t, watch, relay.OpStreamProgress)
 
 	th.cancel() // SIGTERM
 	for id, stream := range streams {
 		readInterrupted(t, id, stream)
 	}
+	readInterrupted(t, jobD+" watch", watch)
 	if err := th.wait(); err != nil {
 		t.Fatalf("Serve after SIGTERM = %v, want nil", err)
 	}
-	for id, checkpoint := range map[string]string{jobA: "", jobB: `{"offset":7}`, jobC: ""} {
+	for id, checkpoint := range map[string]string{jobA: "", jobB: `{"offset":7}`, jobC: "", jobD: ""} {
 		record := th.record(id)
 		if record.State != jobs.StateInterrupted || record.Reason != jobs.ReasonShutdown || record.FinishedAt.IsZero() {
 			t.Fatalf("record %s = %s/%s, want interrupted/shutdown", id, record.State, record.Reason)
@@ -554,7 +567,7 @@ func addResumableRoute(c *Config, resumed chan<- string) {
 func earlierBootRecord(id, route string, state jobs.State) jobs.Record {
 	started := time.Now().UTC().Add(-time.Hour)
 	r := jobs.Record{
-		ID: id, Route: route, Owner: jobs.Owner{UID: 1000, Username: "alice"},
+		ID: id, Route: route, Owner: jobs.Owner{UID: 1000, GID: 1001, Username: "alice"},
 		State: state, CreatedAt: started, StartedAt: started, Request: jsontext.Value(`{}`),
 		Executor:  jobs.Executor{Kind: "host", PID: math.MaxInt32, PIDStart: 1, BootID: "an-earlier-boot"},
 		Resumable: true, Protocol: jobs.Protocol,
@@ -610,9 +623,15 @@ func TestRootHostAlertsAndKeepsAJobItCannotResume(t *testing.T) {
 
 func TestRootHostResumesOnlyTheJobsAnEarlierBootInterrupted(t *testing.T) {
 	resumed := make(chan string, 4)
+	actedFor := make(chan session.User, 4)
 	th := newTestHost(t, func(c *Config) {
 		c.UID = 0
 		addResumableRoute(c, resumed)
+		router := c.Router
+		c.Handlers = func(sess *session.Session) (*bridgeipc.Router, error) {
+			actedFor <- sess.User
+			return router, nil
+		}
 	})
 	boot, err := jobs.BootID()
 	if err != nil {
@@ -649,8 +668,14 @@ func TestRootHostResumesOnlyTheJobsAnEarlierBootInterrupted(t *testing.T) {
 	if task, ok := th.cfg.Tasks.Get(jobA); !ok || task.Owner().UID != 0 || task.Owner().Username != "alice" {
 		t.Fatalf("resumed task owner = %#v (found %v), want alice as uid 0", task.Owner(), ok)
 	}
-	if r := th.record(jobA); r.Owner != (jobs.Owner{UID: 1000, Username: "alice"}) {
+	if r := th.record(jobA); r.Owner != (jobs.Owner{UID: 1000, GID: 1001, Username: "alice"}) {
 		t.Fatalf("resumed record owner = %#v, want alice as uid 1000", r.Owner)
+	}
+	// The resume runs with handlers acting for the job's user.
+	for range 2 {
+		if user := <-actedFor; user != (session.User{Username: "alice", UID: 1000, GID: 1001}) {
+			t.Fatalf("resume acted for %#v, want alice as uid 1000 gid 1001", user)
+		}
 	}
 	select {
 	case id := <-resumed:
@@ -961,8 +986,8 @@ func TestRootHostRecordsTheClaimedOwnerUID(t *testing.T) {
 	sess := th.connect() // alice, claiming uid 4242
 
 	th.startJob(sess, "test.job", jobA)
-	if record := th.record(jobA); record.Owner != (jobs.Owner{UID: 4242, Username: "alice"}) {
-		t.Fatalf("record owner = %#v, want alice as uid 4242", record.Owner)
+	if record := th.record(jobA); record.Owner != (jobs.Owner{UID: 4242, GID: 4243, Username: "alice"}) {
+		t.Fatalf("record owner = %#v, want alice as uid 4242 gid 4243", record.Owner)
 	}
 	// Permission checks keep the host uid: the task is root's, so every
 	// admin's connection sees it.
@@ -980,6 +1005,51 @@ func TestRootHostRecordsTheClaimedOwnerUID(t *testing.T) {
 	th.release <- nil
 }
 
+func TestRootHostRunsEachConnectionsJobsAsItsUser(t *testing.T) {
+	th := newTestHost(t, func(c *Config) {
+		c.UID = 0
+		c.Peer = func(*net.UnixConn) (peercred.Cred, error) { return peercred.Cred{UID: 0}, nil }
+		tasks := c.Tasks
+		c.Handlers = func(sess *session.Session) (*bridgeipc.Router, error) {
+			router := bridgeipc.NewRouter(tasks)
+			router.Mutation("test.job", func(context.Context, *bridgeipc.Task, any) (any, error) { return sess, nil })
+			return router, nil
+		}
+	})
+	th.start()
+
+	result := readResult(t, th.startJob(th.connect(), "test.job", jobA))
+	var got session.Session
+	if result.Status != "ok" || json.Unmarshal(result.Data, &got) != nil {
+		t.Fatalf("result = %#v, want ok with the session the handlers act for", result)
+	}
+	if got.User != (session.User{Username: "alice", UID: 4242, GID: 4243}) || !got.Privileged || got.SessionID != "ref-1" {
+		t.Fatalf("handlers acted for %#v, want the hello's privileged alice, uid 4242 gid 4243", got)
+	}
+}
+
+func TestRootHostRefusesABridgeItCannotActFor(t *testing.T) {
+	th := newTestHost(t, func(c *Config) {
+		c.UID = 0
+		c.Peer = func(*net.UnixConn) (peercred.Cred, error) { return peercred.Cred{UID: 0}, nil }
+		c.Handlers = func(*session.Session) (*bridgeipc.Router, error) { return nil, errors.New("no config store") }
+	})
+	th.start()
+	sess := th.dial()
+
+	if result := hello(t, sess, jobs.Protocol); result.Status != "error" || result.Code != 500 {
+		t.Fatalf("hello result = %#v, want 500", result)
+	}
+	select {
+	case <-sess.CloseChan():
+	case <-time.After(ioTimeout):
+		t.Fatal("session still open after a refused hello")
+	}
+	if bridges, _ := th.host.counts(); bridges != 0 {
+		t.Fatalf("bridges = %d, want 0", bridges)
+	}
+}
+
 // serveOneStream serves one stream opening route test.job with id, under ctx,
 // and returns its result.
 func serveOneStream(t *testing.T, th *testHost, ctx context.Context, id string) relay.ResultFrame {
@@ -990,7 +1060,7 @@ func serveOneStream(t *testing.T, th *testHost, ctx context.Context, id string) 
 	go func() {
 		defer close(served)
 		defer server.Close()
-		th.host.serveStream(ctx, server, &session.Session{SessionID: "s", User: session.User{Username: "alice", UID: th.cfg.UID}})
+		th.host.serveStream(ctx, server, &session.Session{SessionID: "s", User: session.User{Username: "alice", UID: th.cfg.UID}}, th.cfg.Router)
 	}()
 	payload, err := json.Marshal(relay.StreamOpenEnvelope{Route: "test.job", Request: jsontext.Value(`{}`), ID: id})
 	if err != nil {
@@ -1049,5 +1119,143 @@ func TestClosingHostDropsANewBridge(t *testing.T) {
 	}
 	if bridges, _ := th.host.counts(); bridges != 0 {
 		t.Fatalf("bridges = %d, want 0", bridges)
+	}
+}
+
+func TestHostInterruptsAJobAdmittedAsItStops(t *testing.T) {
+	th := newTestHost(t, nil)
+	th.start()
+	sess := th.connect()
+	// The shutdown has listed the jobs it interrupts; this one passed
+	// admission just before the host's context ended.
+	th.host.rec.interruptAll()
+
+	stream := openStream(t, sess, "test.job", struct{}{}, jobA)
+	readSnapshot(t, stream)
+	if result := readResult(t, stream); result.Status != "error" || result.Code != 409 {
+		t.Fatalf("result = %#v, want 409 interrupted", result)
+	}
+	if r := th.record(jobA); r.State != jobs.StateInterrupted || r.Reason != jobs.ReasonShutdown {
+		t.Fatalf("record = %s/%s, want interrupted/shutdown", r.State, r.Reason)
+	}
+	if runs := th.runs.Load(); runs != 0 {
+		t.Fatalf("handler ran %d times, want 0", runs)
+	}
+}
+
+func TestHostMarksARunningRecordWithNoTaskInterruptedOnAResend(t *testing.T) {
+	th := newTestHost(t, nil)
+	th.start()
+	// Left running after the host start, by a finish that failed to write.
+	now := time.Now().UTC()
+	if err := th.cfg.Store.Create(context.Background(), jobs.Record{
+		ID: jobA, Route: "test.job", Owner: jobs.Owner{UID: th.cfg.UID, Username: "alice"},
+		State: jobs.StateRunning, CreatedAt: now, StartedAt: now,
+		Request: jsontext.Value(`{}`), Executor: th.host.executor, Protocol: jobs.Protocol,
+	}); err != nil {
+		t.Fatalf("Store.Create: %v", err)
+	}
+
+	stream := openStream(t, th.connect(), "test.job", struct{}{}, jobA)
+	if snapshot := readSnapshot(t, stream); snapshot.State != bridgeipc.TaskStateInterrupted {
+		t.Fatalf("snapshot state = %s, want interrupted", snapshot.State)
+	}
+	if result := readResult(t, stream); result.Status != "error" || result.Code != 409 {
+		t.Fatalf("result = %#v, want 409 interrupted", result)
+	}
+	if r := th.record(jobA); r.State != jobs.StateInterrupted || r.Reason != jobs.ReasonCrash {
+		t.Fatalf("record = %s/%s, want interrupted/crash", r.State, r.Reason)
+	}
+	if runs := th.runs.Load(); runs != 0 {
+		t.Fatalf("handler ran %d times, want 0", runs)
+	}
+}
+
+func TestHostPrunesItsStoreDaily(t *testing.T) {
+	base := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
+	var offset atomic.Int64
+	th := newTestHost(t, func(cfg *Config) {
+		cfg.Now = func() time.Time { return base.Add(time.Duration(offset.Load())) }
+	})
+	// A week old at the host start, so that prune keeps it.
+	finished := base.Add(-7 * 24 * time.Hour)
+	if err := th.cfg.Store.Create(context.Background(), jobs.Record{
+		ID: jobA, Route: "test.job", Owner: jobs.Owner{UID: th.cfg.UID, Username: "alice"},
+		State: jobs.StateCompleted, CreatedAt: finished, StartedAt: finished, FinishedAt: finished,
+		Request: jsontext.Value(`{}`), Executor: jobs.Executor{Kind: "host"}, Protocol: jobs.Protocol,
+	}); err != nil {
+		t.Fatalf("Store.Create: %v", err)
+	}
+	th.start()
+	th.connect() // keeps the host from its idle exit
+	th.record(jobA)
+
+	offset.Add(int64(24*24*time.Hour + time.Hour))
+	waitFor(t, "the expired record to be pruned", func() bool {
+		_, err := th.cfg.Store.Get(context.Background(), jobA)
+		return errors.Is(err, jobs.ErrNotFound)
+	})
+}
+
+func TestHostAnswersTasksOfAStoredJobFromItsRecord(t *testing.T) {
+	th := newTestHost(t, nil)
+	th.cfg.Tasks.RegisterRoutes(th.cfg.Router)
+	now := time.Now().UTC()
+	if err := th.cfg.Store.Create(context.Background(), jobs.Record{
+		ID: jobA, Route: "test.job", Owner: jobs.Owner{UID: th.cfg.UID, Username: "alice"},
+		State: jobs.StateFailed, CreatedAt: now, StartedAt: now, FinishedAt: now, Error: &jobs.Error{Code: 500, Message: "boom"},
+		Request: jsontext.Value(`{}`), Executor: jobs.Executor{Kind: "host"}, Protocol: jobs.Protocol,
+	}); err != nil {
+		t.Fatalf("Store.Create: %v", err)
+	}
+	th.start()
+	sess := th.connect()
+
+	get := openStream(t, sess, "tasks.get", map[string]string{"taskId": jobA}, "")
+	var snapshot bridgeipc.TaskSnapshot
+	if result := readResult(t, get); result.Status != "ok" || json.Unmarshal(result.Data, &snapshot) != nil ||
+		snapshot.State != bridgeipc.TaskStateFailed || snapshot.Error == nil || snapshot.Error.Message != "boom" {
+		t.Fatalf("tasks.get = %#v, want the stored failure", result)
+	}
+	watch := openStream(t, sess, "tasks.watch", map[string]string{"taskId": jobA}, "")
+	if watched := readSnapshot(t, watch); watched.State != bridgeipc.TaskStateFailed {
+		t.Fatalf("watch snapshot state = %s, want failed", watched.State)
+	}
+	if result := readResult(t, watch); result.Status != "error" || result.Error != "boom" {
+		t.Fatalf("watch result = %#v, want the stored failure", result)
+	}
+	cancel := openStream(t, sess, "tasks.cancel", map[string]string{"taskId": jobA}, "")
+	if result := readResult(t, cancel); result.Status != "ok" || json.Unmarshal(result.Data, &snapshot) != nil || snapshot.State != bridgeipc.TaskStateFailed {
+		t.Fatalf("tasks.cancel of an ended job = %#v, want its failed snapshot", result)
+	}
+	unknown := openStream(t, sess, "tasks.get", map[string]string{"taskId": jobB}, "")
+	if result := readResult(t, unknown); result.Code != 404 {
+		t.Fatalf("tasks.get of an unknown job = %#v, want 404", result)
+	}
+
+	// A record a host left running with no task here is marked lost; one a
+	// host never ran, such as a network handoff, is not this host's job.
+	for id, executor := range map[string]jobs.Executor{jobC: th.host.executor, jobD: {Kind: "netplan", Unit: "/io/netplan"}} {
+		if err := th.cfg.Store.Create(context.Background(), jobs.Record{
+			ID: id, Route: "test.job", Owner: jobs.Owner{UID: th.cfg.UID, Username: "alice"},
+			State: jobs.StateRunning, CreatedAt: now, StartedAt: now,
+			Request: jsontext.Value(`{}`), Executor: executor, Protocol: jobs.Protocol,
+		}); err != nil {
+			t.Fatalf("Store.Create(%s): %v", id, err)
+		}
+	}
+	lost := openStream(t, sess, "tasks.get", map[string]string{"taskId": jobC}, "")
+	if result := readResult(t, lost); result.Status != "ok" || json.Unmarshal(result.Data, &snapshot) != nil || snapshot.State != bridgeipc.TaskStateInterrupted {
+		t.Fatalf("tasks.get of a lost job = %#v, want interrupted", result)
+	}
+	if r := th.record(jobC); r.State != jobs.StateInterrupted || r.Reason != jobs.ReasonCrash {
+		t.Fatalf("lost record = %s/%s, want interrupted/crash", r.State, r.Reason)
+	}
+	handoff := openStream(t, sess, "tasks.get", map[string]string{"taskId": jobD}, "")
+	if result := readResult(t, handoff); result.Code != 404 {
+		t.Fatalf("tasks.get of a record no host ran = %#v, want 404", result)
+	}
+	if r := th.record(jobD); r.State != jobs.StateRunning {
+		t.Fatalf("record no host ran = %s, want it left running", r.State)
 	}
 }

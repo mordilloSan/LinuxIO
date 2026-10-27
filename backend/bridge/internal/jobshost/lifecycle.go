@@ -14,6 +14,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/jobs"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 const (
@@ -25,6 +26,8 @@ const (
 	// streamDrainTimeout bounds the wait for the Mutation streams to write
 	// their terminal frame once the jobs ended.
 	streamDrainTimeout = 5 * time.Second
+	// pruneInterval is how often a running host prunes its store.
+	pruneInterval = 24 * time.Hour
 )
 
 // reconcile marks the jobs this uid's last host left running as interrupted,
@@ -54,10 +57,16 @@ func (h *Host) reconcile(ctx context.Context) ([]string, error) {
 			h.alertInterrupted(ctx, record)
 		}
 	}
-	if err := h.cfg.Store.Prune(ctx, h.cfg.Now()); err != nil {
+	h.prune(ctx)
+	return resumes, nil
+}
+
+// prune applies the store's retention, at host start and then daily.
+func (h *Host) prune(ctx context.Context) {
+	h.pruned = h.cfg.Now()
+	if err := h.cfg.Store.Prune(ctx, h.pruned); err != nil {
 		slog.Warn("job record pruning failed", "error", err)
 	}
-	return resumes, nil
 }
 
 // earlierBootResumes lists, on the root host, the interrupted resumable jobs
@@ -127,6 +136,9 @@ func (h *Host) run(ctx context.Context, ln *net.UnixListener, acceptErr <-chan e
 				h.notify("STOPPING=1")
 				return nil
 			}
+			if h.cfg.Now().Sub(h.pruned) >= pruneInterval {
+				h.prune(ctx)
+			}
 		}
 	}
 }
@@ -182,7 +194,7 @@ func (h *Host) idle() bool {
 func (h *Host) interruptRunning() {
 	ctx, cancel := jobs.DetachedContext(drainTimeout)
 	defer cancel()
-	tasks := h.rec.runningTasks()
+	tasks := h.rec.interruptAll()
 	var wg sync.WaitGroup
 	for _, task := range tasks {
 		wg.Go(func() { h.interrupt(ctx, task) })
@@ -246,8 +258,7 @@ func (h *Host) interrupt(ctx context.Context, task *bridgeipc.Task) {
 // suspend asks a resumable job for its checkpoint, unless its owner already
 // asked to cancel it. It returns nil when the job is not suspended.
 func (h *Host) suspend(ctx context.Context, task *bridgeipc.Task) jsontext.Value {
-	route, ok := h.cfg.Router.Route(task.Type())
-	if !ok || route.Suspend == nil {
+	if route, ok := h.cfg.Router.Route(task.Type()); !ok || route.Suspend == nil {
 		return nil
 	}
 	record, err := h.cfg.Store.Get(ctx, task.ID())
@@ -256,6 +267,15 @@ func (h *Host) suspend(ctx context.Context, task *bridgeipc.Task) jsontext.Value
 		return nil
 	}
 	if record.State != jobs.StateRunning || record.CancelRequested {
+		return nil
+	}
+	router, err := h.ownerRouter(record.Owner)
+	if err != nil {
+		slog.Warn("job not suspended", "job_id", task.ID(), "error", err)
+		return nil
+	}
+	route, ok := router.Route(task.Type())
+	if !ok || route.Suspend == nil {
 		return nil
 	}
 	raw, err := json.Marshal(record)
@@ -289,7 +309,11 @@ func (h *Host) resume(ctx context.Context, id string) (any, error) {
 	if record.State != jobs.StateInterrupted || !record.Resumable {
 		return nil, fmt.Errorf("%w: job %s is %s, not an interrupted resumable job", bridgeipc.ErrConflict, id, record.State)
 	}
-	route, ok := h.cfg.Router.Route(record.Route)
+	router, err := h.ownerRouter(record.Owner)
+	if err != nil {
+		return nil, fmt.Errorf("handlers for job %s: %w", id, err)
+	}
+	route, ok := router.Route(record.Route)
 	if !ok {
 		return nil, fmt.Errorf("%w: route %s", bridgeipc.ErrNotFound, record.Route)
 	}
@@ -300,12 +324,25 @@ func (h *Host) resume(ctx context.Context, id string) (any, error) {
 	// The task's uid is the permission key, the host's; the record keeps
 	// naming the user who started the job.
 	owner := bridgeipc.TaskOwner{Username: record.Owner.Username, UID: h.cfg.UID}
-	task, err := h.cfg.Router.StartResume(route, raw, owner, id)
+	task, err := router.StartResume(route, raw, owner, id)
 	if err != nil {
 		return nil, err
 	}
 	slog.Info("job resumed", "job_id", id, "route", record.Route)
 	return task.Snapshot(), nil
+}
+
+// ownerRouter returns the router whose handlers act for a job's owner: on the
+// root host one built for that user, else the host's own.
+func (h *Host) ownerRouter(owner jobs.Owner) (*bridgeipc.Router, error) {
+	if h.cfg.Handlers == nil || h.cfg.UID != 0 {
+		return h.cfg.Router, nil
+	}
+	return h.cfg.Handlers(&session.Session{
+		User:       session.User{Username: owner.Username, UID: owner.UID, GID: owner.GID},
+		Privileged: true,
+		Timing:     session.Timing{CreatedAt: h.cfg.Now()},
+	})
 }
 
 // rerun moves the interrupted record of a resumed job back to running in this

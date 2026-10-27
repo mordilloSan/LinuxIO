@@ -354,7 +354,8 @@ the job. When the stream closes with `connection_closed` or
 `connection_unavailable` before the `task.snapshot` frame, the client resends
 the same envelope once; the job host attaches to the job with that `id`, or
 answers from its record, so a resend never starts a second job. After the
-snapshot the client reattaches with `tasks.watch {taskId: id}` instead. A second
+snapshot the client reattaches with `tasks.watch {taskId: id}` instead. Each is
+tried once, so a resend that reached the job still reattaches once; a further
 loss rejects with `outcome_unknown` (`connection_unavailable` when no stream
 could be opened at all). Aborting the caller's signal aborts the stream, which
 cancels the job. A resend of an `id` with a different route or request is `409`.
@@ -531,7 +532,8 @@ gets no `task.snapshot` frame: `watchMutation` fetches the snapshot with
 (`OpStreamAbort`) cancels the job. A resend of the same `id` with the same route
 and request bytes attaches to the running job, or, when the host no longer holds
 it, is answered from its record. `tasks.watch {taskId}` reattaches later from
-any tab or login of the same uid.
+any tab or login of the same uid; `tasks.get`, `tasks.watch` and `tasks.cancel`
+of a job the host no longer holds in memory are answered from its record.
 
 Refusals arrive as the error frame, before any job starts:
 
@@ -543,7 +545,7 @@ Refusals arrive as the error frame, before any job starts:
 | `409` | The `id` was used for another route or request. |
 | `409` | The host already runs 256 jobs (`too many running jobs`), a safety valve. |
 | `409` | `update_pending: …`: the bridge and the job host speak different protocol numbers, because one of them predates an update. Reads keep working. |
-| `503` | `job host unavailable`: the bridge has no connection to its job host yet; it keeps reconnecting. `job host is stopping` while the host shuts down. |
+| `503` | `job host unavailable`: the bridge has no connection to its job host yet; it keeps reconnecting. `tasks.get`, `tasks.cancel` and `tasks.watch` of a host job first wait up to 10 s for it. `job host is stopping` while the host shuts down. |
 
 ### Where mutations run
 
@@ -556,7 +558,9 @@ stream to the host unchanged, frames both ways. The host checks them again with
 its own session: the uid comes from `SO_PEERCRED`, not from the bridge's hello,
 and only the root host's sessions are privileged. A sudo-authorized login runs
 a root bridge, so all admin logins share the root host, `linuxio-jobs@0`; any
-other login gets a host running as that user. See
+other login gets a host running as that user. The root host runs each admin's
+jobs with handlers acting for that admin and their config store, as their
+bridge would, while same-target admission spans all of them. See
 [Process & Systemd Architecture](./process-systemd-architecture.md#login-and-jobs)
 for how hosts start.
 
@@ -716,16 +720,18 @@ Built-in Task routes:
 | `tasks.cancel` | Cancel one owned Task or job. |
 | `tasks.watch` | Common progress envelope plus typed detail and terminal result. Closing detaches; aborting cancels. |
 | `tasks.data` | Upload/download/archive data stream. Bridge only. |
-| `tasks.events` | Owner-wide lifecycle events and coalesced common progress. |
+| `tasks.events` | Owner-wide lifecycle events and coalesced common progress. An optional `ids` request field names jobs the caller saw running; the stream sends the snapshot of each that has ended (at most 256 are looked up). |
 
 The bridge and the job host both serve `tasks.*`. The bridge answers
 `tasks.get`, `tasks.cancel` and `tasks.watch` for its own Tasks and forwards a
 job ID (a UUID) it does not hold to its host. `tasks.list` appends the host's
 jobs to the bridge's Tasks, and `tasks.events` merges the host's event stream
-into the bridge's, reopening it after the bridge reconnects to its host, so one
-stream shows both. The host's list is what it holds in memory: running jobs and
-terminal ones for 30 minutes. Records from before a host restart are not listed
-yet.
+into the bridge's, reopening it after the bridge reconnects to its host with
+the `ids` of the jobs it saw running, so one stream shows both and a job that
+ended while no host was connected is seen ending. The host's list is what it
+holds in memory: running jobs and terminal ones for 30 minutes. Records from
+before a host restart are not listed yet; `tasks.get`, `tasks.watch` and
+`tasks.cancel` of such a job are answered from its record.
 
 Two `jobs.*` routes are internal, not generated for the frontend:
 `jobs.hello` is the first stream of a connection to a job host and carries the

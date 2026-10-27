@@ -532,6 +532,50 @@ func TestMutationTargetRefusesASecondRunOnTheSameTarget(t *testing.T) {
 	waitForRouterSettle(t, router, "test.mutation")
 }
 
+// Two routers on one task service, as a root job host builds one per user,
+// refuse each other's second run on a target.
+func TestRoutersSharingATaskServiceAdmitAgainstEachOther(t *testing.T) {
+	tasks := NewTaskService()
+	proceed := make(chan struct{})
+	newRouter := func() *Router {
+		router := NewRouter(tasks)
+		router.Mutation("test.mutation", func(ctx context.Context, _ *Task, _ any) (any, error) {
+			select {
+			case <-proceed:
+				return nil, nil
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		},
+			WithRequestDecoder(JSONRequestDecoder[poolRequest]()),
+			WithTarget(func(request any) []string {
+				pool, _ := request.(poolRequest)
+				return []string{pool.Pool}
+			}),
+		)
+		return router
+	}
+	alice, bob := newRouter(), newRouter()
+
+	first, firstErr := openMutation(t, alice, mutationRequest(`{"pool":"tank"}`))
+	readSnapshotEvent(t, first)
+	sameTarget := mutationRequest(`{"pool":"tank"}`)
+	sameTarget.ID = "00000000-0000-4000-8000-000000000002"
+	result, err := dispatchResult(t, bob, sameTarget)
+	if !errors.Is(err, ErrDuplicateActive) || result.Status != "error" || result.Code != 409 {
+		t.Fatalf("same target through another router = %#v, error = %v; want 409 duplicate active", result, err)
+	}
+
+	close(proceed)
+	if result := readResult(t, first); result.Status != "ok" {
+		t.Fatalf("result = %#v, want ok", result)
+	}
+	if err := <-firstErr; err != nil {
+		t.Fatalf("Dispatch returned error: %v", err)
+	}
+	waitForRouterSettle(t, bob, "test.mutation")
+}
+
 func TestInterruptedIsATerminalTaskState(t *testing.T) {
 	for state, want := range map[TaskState]bool{
 		TaskStateQueued:      false,

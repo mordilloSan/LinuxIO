@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -262,6 +263,8 @@ func TestStorePruneKeepsRetentionAndCap(t *testing.T) {
 
 	for i := range MaxTerminalRecordsPerUID + 1 {
 		r := testRecord(100+i, "a")
+		// The root host's store holds every admin's jobs; the cap is the store's.
+		r.Owner.UID += uint32(i % 2)
 		r.State = StateCompleted
 		r.FinishedAt = now.Add(-time.Duration(i) * time.Minute)
 		mustCreate(t, s, r)
@@ -289,6 +292,22 @@ func TestStorePruneKeepsRetentionAndCap(t *testing.T) {
 	// The oldest of the 201 is the one dropped.
 	if _, err := s.Get(t.Context(), testID(100+MaxTerminalRecordsPerUID)); !errors.Is(err, ErrNotFound) {
 		t.Errorf("oldest terminal record kept: %v", err)
+	}
+}
+
+func TestStoreFinishKeepsTheOutcomeOfAResultTooLargeToStore(t *testing.T) {
+	s := newTestStore(t)
+	r := testRecord(1, "a")
+	r.StartedAt = time.Now().UTC().Add(-time.Minute)
+	mustCreate(t, s, r)
+
+	big := jsontext.Value(`"` + strings.Repeat("x", maxRecordBytes) + `"`)
+	if _, err := s.Finish(t.Context(), r.ID, StateCompleted, big, nil); err != nil {
+		t.Fatalf("Finish: %v", err)
+	}
+	stored, err := s.Get(t.Context(), r.ID)
+	if err != nil || stored.State != StateCompleted || stored.Result != nil {
+		t.Fatalf("stored = %s with %d result bytes, %v; want completed without the result", stored.State, len(stored.Result), err)
 	}
 }
 

@@ -218,36 +218,36 @@ func (s *Store) ReadProgress(id string) (jsontext.Value, error) {
 	return data, err
 }
 
-// Prune removes unreadable records and terminal records older than TerminalRetention and, per owner,
-// all but the newest MaxTerminalRecordsPerUID. Running records are never removed.
+// Prune removes unreadable records, terminal records older than
+// TerminalRetention, and all but the newest MaxTerminalRecordsPerUID terminal
+// records: a store is one uid's, and the root host's holds every admin's.
+// Running records are never removed.
 func (s *Store) Prune(ctx context.Context, now time.Time) error {
 	return s.withLock(ctx, func() error {
-		byUID, err := s.terminalByUID()
+		records, err := s.terminalRecords()
 		if err != nil {
 			return err
 		}
 		cutoff := now.Add(-TerminalRetention)
-		for _, records := range byUID {
-			slices.SortFunc(records, func(a, b Record) int { return finishedOrCreated(b).Compare(finishedOrCreated(a)) })
-			for i, record := range records {
-				if i < MaxTerminalRecordsPerUID && !finishedOrCreated(record).Before(cutoff) {
-					continue
-				}
-				if err := s.removeRecord(record.ID); err != nil {
-					return err
-				}
+		slices.SortFunc(records, func(a, b Record) int { return finishedOrCreated(b).Compare(finishedOrCreated(a)) })
+		for i, record := range records {
+			if i < MaxTerminalRecordsPerUID && !finishedOrCreated(record).Before(cutoff) {
+				continue
+			}
+			if err := s.removeRecord(record.ID); err != nil {
+				return err
 			}
 		}
 		return nil
 	})
 }
 
-func (s *Store) terminalByUID() (map[uint32][]Record, error) {
+func (s *Store) terminalRecords() ([]Record, error) {
 	ids, err := s.recordIDs()
 	if err != nil {
 		return nil, err
 	}
-	byUID := make(map[uint32][]Record)
+	var terminal []Record
 	for _, id := range ids {
 		record, err := s.readRecord(id)
 		if errors.Is(err, ErrNotFound) {
@@ -263,10 +263,10 @@ func (s *Store) terminalByUID() (map[uint32][]Record, error) {
 			continue
 		}
 		if record.State.terminal() {
-			byUID[record.Owner.UID] = append(byUID[record.Owner.UID], record)
+			terminal = append(terminal, record)
 		}
 	}
-	return byUID, nil
+	return terminal, nil
 }
 
 // ReconcileCrashed marks running host-executed records whose executor is gone
@@ -385,11 +385,20 @@ func (s *Store) writeRecord(r Record, sync bool) error {
 	if err := validateRecord(r); err != nil {
 		return err
 	}
-	data, err := json.Marshal(r, json.Deterministic(true), jsontext.WithIndent("  "))
+	data, err := encodeRecord(r)
 	if err != nil {
-		return fmt.Errorf("encode job %s: %w", r.ID, err)
+		return err
 	}
-	data = append(data, '\n')
+	if len(data) > maxRecordBytes && len(r.Result) > 0 {
+		// Keep the outcome without a result too large to store; the clients
+		// attached when the job ended received it whole.
+		slog.Warn("job result too large to keep", "job_id", r.ID, "bytes", len(r.Result))
+		r.Result = nil
+		data, err = encodeRecord(r)
+	}
+	if err != nil {
+		return err
+	}
 	if len(data) > maxRecordBytes {
 		return fmt.Errorf("job %s exceeds %d bytes", r.ID, maxRecordBytes)
 	}
@@ -402,6 +411,14 @@ func (s *Store) writeRecord(r Record, sync bool) error {
 		return fmt.Errorf("persist job %s: %w", r.ID, err)
 	}
 	return nil
+}
+
+func encodeRecord(r Record) ([]byte, error) {
+	data, err := json.Marshal(r, json.Deterministic(true), jsontext.WithIndent("  "))
+	if err != nil {
+		return nil, fmt.Errorf("encode job %s: %w", r.ID, err)
+	}
+	return append(data, '\n'), nil
 }
 
 func (s *Store) removeRecord(id string) error {

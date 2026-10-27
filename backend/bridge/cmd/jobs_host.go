@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/jobshost"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
@@ -90,17 +91,15 @@ func serveJobsHost(ln *net.UnixListener, runtimeDir, stateDir string) error {
 	if err != nil {
 		return fmt.Errorf("look up job host user: %w", err)
 	}
-	store, err := userconfig.OpenUserStore(account.Username, uid, gid)
-	if err != nil {
-		return fmt.Errorf("failed to open config store: %w", err)
-	}
-	rt := runtime.New(&session.Session{
+	router, err := userHandlers(&session.Session{
 		SessionID:  "jobs-host",
 		User:       session.User{Username: account.Username, UID: uid, GID: gid},
 		Privileged: uid == 0,
 		Timing:     session.Timing{CreatedAt: time.Now()},
-	}, store)
-	router := handlers.RegisterAllHandlers(rt)
+	})
+	if err != nil {
+		return err
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
@@ -119,10 +118,21 @@ func serveJobsHost(ln *net.UnixListener, runtimeDir, stateDir string) error {
 	}
 	if uid == 0 {
 		cfg.Alert = alerts.Raise
+		cfg.Handlers = userHandlers
 	}
 	if err := jobshost.Serve(ctx, cfg); err != nil {
 		return err
 	}
 	slog.Info("job host stopped", "user", account.Username, "uid", uid)
 	return nil
+}
+
+// userHandlers registers every handler to act for sess with its user's
+// config store, as that user's bridge does.
+func userHandlers(sess *session.Session) (*bridgeipc.Router, error) {
+	store, err := userconfig.OpenUserStore(sess.User.Username, sess.User.UID, sess.User.GID)
+	if err != nil {
+		return nil, fmt.Errorf("open config store of %s: %w", sess.User.Username, err)
+	}
+	return handlers.RegisterAllHandlers(runtime.New(sess, store)), nil
 }

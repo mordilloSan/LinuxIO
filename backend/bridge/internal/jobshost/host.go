@@ -41,6 +41,11 @@ type Config struct {
 	Listener *net.UnixListener
 	Store    *jobs.Store
 	Router   *bridgeipc.Router
+	// Handlers builds the router whose handlers act for sess, the user a
+	// connection's hello names; nil serves every connection with Router. The
+	// root host runs every admin's jobs, each as their own user with their
+	// own config store, as their privileged bridge would.
+	Handlers func(sess *session.Session) (*bridgeipc.Router, error)
 	// Tasks is the router's task service; Serve installs the job recorder on it.
 	Tasks *bridgeipc.TaskService
 	// IdleExit is how long the host stays up with no bridge and no running job.
@@ -68,6 +73,10 @@ type Host struct {
 	// their terminal frame before it closes the sessions.
 	jobStreams sync.WaitGroup
 
+	// pruned is when the store was last pruned; only the serve goroutine
+	// reads or writes it.
+	pruned time.Time
+
 	mu       sync.Mutex
 	bridges  int
 	lastBusy time.Time
@@ -80,8 +89,8 @@ type Host struct {
 }
 
 type ownerClaim struct {
-	uid   uint32
-	conns int
+	uid, gid uint32
+	conns    int
 }
 
 // Serve serves bridges on cfg.Listener, or on cfg.SocketPath (0600) when
@@ -129,6 +138,7 @@ func (h *Host) serve(ctx context.Context) error {
 	}
 	h.cfg.Tasks.SetRecorder(h.rec)
 	h.cfg.Tasks.SetResumer(h.resume)
+	h.cfg.Tasks.SetRemote(storedJobs{h})
 	h.mu.Lock()
 	h.lastBusy = h.cfg.Now()
 	h.mu.Unlock()
@@ -229,7 +239,7 @@ func (h *Host) serveConn(ctx context.Context, conn *net.UnixConn) {
 	}
 	defer h.untrack(ymux)
 
-	sess, ok := h.hello(ymux)
+	sess, router, ok := h.hello(ymux)
 	if !ok {
 		return
 	}
@@ -248,17 +258,17 @@ func (h *Host) serveConn(ctx context.Context, conn *net.UnixConn) {
 		}
 		streams.Go(func() {
 			defer stream.Close()
-			h.serveStream(ctx, stream, sess)
+			h.serveStream(ctx, stream, sess, router)
 		})
 	}
 }
 
 // hello reads the first stream, which must be a jobs.hello of this protocol,
-// and returns the session the connection acts for.
-func (h *Host) hello(ymux *relay.YamuxSession) (*session.Session, bool) {
+// and returns the session the connection acts for and the router serving it.
+func (h *Host) hello(ymux *relay.YamuxSession) (*session.Session, *bridgeipc.Router, bool) {
 	stream, err := ymux.Accept()
 	if err != nil {
-		return nil, false
+		return nil, nil, false
 	}
 	defer stream.Close()
 	hello, err := readHello(stream)
@@ -267,36 +277,53 @@ func (h *Host) hello(ymux *relay.YamuxSession) (*session.Session, bool) {
 	}
 	if err != nil {
 		slog.Warn("job host refused a bridge hello", "error", err)
-		_ = relay.WriteResultErrorAndClose(stream, 0, "unsupported jobs protocol", 426)
-		// Let the bridge read the answer before the session closes under it.
-		_ = stream.SetReadDeadline(time.Now().Add(streamOpenTimeout))
-		_, _ = io.Copy(io.Discard, stream)
-		return nil, false
+		refuseHello(stream, "unsupported jobs protocol", 426)
+		return nil, nil, false
 	}
-	if err := relay.WriteResultOKAndClose(stream, 0, bridgeipc.Hello{Protocol: jobs.Protocol}); err != nil {
-		slog.Debug("job host hello answer failed", "error", err)
-		return nil, false
-	}
-	h.claimOwner(hello.Session.SessionRef, hello.Session.UID)
-	return &session.Session{
+	sess := &session.Session{
 		SessionID: hello.Session.SessionRef,
 		// The uid is the host's own, never the one the bridge claims.
 		User:       session.User{Username: hello.Session.Username, UID: h.cfg.UID, GID: h.cfg.GID},
 		Privileged: hello.Session.Privileged && h.cfg.UID == 0,
 		Timing:     session.Timing{CreatedAt: h.cfg.Now()},
-	}, true
+	}
+	router := h.cfg.Router
+	if h.cfg.Handlers != nil && h.cfg.UID == 0 {
+		// A root host's peers are root, so the user their hello names is trusted.
+		user := *sess
+		user.User = session.User{Username: hello.Session.Username, UID: hello.Session.UID, GID: hello.Session.GID}
+		if router, err = h.cfg.Handlers(&user); err != nil {
+			slog.Error("job host refused a bridge hello", "user", user.User.Username, "error", err)
+			refuseHello(stream, "job host cannot act for this user", 500)
+			return nil, nil, false
+		}
+	}
+	if err := relay.WriteResultOKAndClose(stream, 0, bridgeipc.Hello{Protocol: jobs.Protocol}); err != nil {
+		slog.Debug("job host hello answer failed", "error", err)
+		return nil, nil, false
+	}
+	h.claimOwner(hello.Session)
+	return sess, router, true
 }
 
-// claimOwner remembers uid as the user of the connections with session ref
+// refuseHello answers a hello with an error and lets the bridge read it
+// before the session closes under it.
+func refuseHello(stream net.Conn, msg string, code int) {
+	_ = relay.WriteResultErrorAndClose(stream, 0, msg, code)
+	_ = stream.SetReadDeadline(time.Now().Add(streamOpenTimeout))
+	_, _ = io.Copy(io.Discard, stream)
+}
+
+// claimOwner remembers the user of the connections with the hello's session
 // ref. Only the root host, which admins share, records it: a user host's jobs
 // are its own uid's.
-func (h *Host) claimOwner(ref string, uid uint32) {
-	if h.cfg.UID != 0 || ref == "" {
+func (h *Host) claimOwner(hello bridgeipc.HelloSession) {
+	if h.cfg.UID != 0 || hello.SessionRef == "" {
 		return
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.owners[ref] = ownerClaim{uid: uid, conns: h.owners[ref].conns + 1}
+	h.owners[hello.SessionRef] = ownerClaim{uid: hello.UID, gid: hello.GID, conns: h.owners[hello.SessionRef].conns + 1}
 }
 
 // releaseOwner forgets a connection's claim once its last connection closes.
@@ -314,15 +341,15 @@ func (h *Host) releaseOwner(ref string) {
 	}
 }
 
-// ownerUID is the uid a job record names for a task of session ref: the
-// claimed user's on the root host, else fallback.
-func (h *Host) ownerUID(ref string, fallback uint32) uint32 {
+// recordOwner is the owner a job record names for a task: on the root host
+// the user its connection claimed, else the task's own user.
+func (h *Host) recordOwner(owner bridgeipc.TaskOwner) jobs.Owner {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if claim, ok := h.owners[ref]; ok && ref != "" {
-		return claim.uid
+	if claim, ok := h.owners[owner.SessionID]; ok && owner.SessionID != "" {
+		return jobs.Owner{UID: claim.uid, GID: claim.gid, Username: owner.Username}
 	}
-	return fallback
+	return jobs.Owner{UID: owner.UID, GID: h.cfg.GID, Username: owner.Username}
 }
 
 func readHello(stream net.Conn) (bridgeipc.Hello, error) {
@@ -356,9 +383,9 @@ func readOpen(stream net.Conn) (relay.StreamOpenEnvelope, []byte, error) {
 	return open, frame.Payload, err
 }
 
-// serveStream dispatches one stream as the bridge's own stream loop does,
-// refusing a new job when the host is stopping or full.
-func (h *Host) serveStream(ctx context.Context, stream net.Conn, sess *session.Session) {
+// serveStream dispatches one stream to router as the bridge's own stream
+// loop does, refusing a new job when the host is stopping or full.
+func (h *Host) serveStream(ctx context.Context, stream net.Conn, sess *session.Session, router *bridgeipc.Router) {
 	open, raw, err := readOpen(stream)
 	if err != nil {
 		slog.Warn("job host stream open failed", "error", err)
@@ -367,7 +394,8 @@ func (h *Host) serveStream(ctx context.Context, stream net.Conn, sess *session.S
 		}
 		return
 	}
-	if route, ok := h.cfg.Router.Route(open.Route); ok && route.Mode == bridgeipc.ModeMutation && h.trackJobStream() {
+	// A watch, like a mutation, carries a job to its end; the drain lets it.
+	if route, ok := router.Route(open.Route); ok && (route.Mode == bridgeipc.ModeMutation || route.Name == "tasks.watch") && h.trackJobStream() {
 		defer h.jobStreams.Done()
 		defer awaitPeerClose(ctx, stream)
 	}
@@ -382,7 +410,7 @@ func (h *Host) serveStream(ctx context.Context, stream net.Conn, sess *session.S
 		}
 	}
 	// Dispatch logs every failed route itself.
-	_ = h.cfg.Router.Dispatch(ctx, stream, bridgeipc.Request{
+	_ = router.Dispatch(ctx, stream, bridgeipc.Request{
 		Route:      open.Route,
 		RawRequest: open.Request,
 		ID:         open.ID,
@@ -450,16 +478,103 @@ func (h *Host) answerStored(ctx context.Context, stream net.Conn, open relay.Str
 		_ = relay.WriteResultErrorAndClose(stream, 0, "job id was used for another request", 409)
 		return true
 	}
+	if record.State == jobs.StateRunning && record.Executor.Kind == "host" {
+		if _, live := h.cfg.Tasks.Get(open.ID); live {
+			return false // started since newMutation looked: Dispatch attaches
+		}
+		record = h.markLost(ctx, record)
+	}
+	writeStored(stream, record)
+	return true
+}
+
+// writeStored answers a resend or a watch of a stored job: its snapshot,
+// then its outcome.
+func writeStored(stream net.Conn, record jobs.Record) {
 	snapshot := snapshotFromRecord(record)
 	if relay.WriteProgress(stream, 0, bridgeipc.TaskEvent{Type: bridgeipc.TaskEventSnapshot, Task: snapshot}) != nil {
-		return true
+		return
 	}
 	if snapshot.Error != nil {
 		_ = relay.WriteResultErrorAndClose(stream, 0, snapshot.Error.Message, snapshot.Error.Code)
 	} else {
 		_ = relay.WriteResultOKAndClose(stream, 0, snapshot.Result)
 	}
-	return true
+}
+
+// storedJobs answers tasks.get, tasks.watch and tasks.cancel of a job the host
+// has no task for from its record: a job that ended before the memory sweep,
+// or before this host started. Records a host did not run, such as the root
+// bridge's network handoffs, are not its jobs.
+type storedJobs struct{ h *Host }
+
+func (s storedJobs) record(ctx context.Context, id string) (jobs.Record, error) {
+	record, err := s.h.cfg.Store.Get(ctx, id)
+	if errors.Is(err, jobs.ErrNotFound) || (err == nil && record.Executor.Kind != "host") {
+		return record, bridgeipc.NewError(fmt.Sprintf("task not found: %s", id), 404)
+	}
+	if err != nil {
+		return record, fmt.Errorf("read job %s: %w", id, err)
+	}
+	if record.State == jobs.StateRunning {
+		if _, live := s.h.cfg.Tasks.Get(id); live {
+			// Its task is in memory but not the caller's to see.
+			return record, bridgeipc.NewError(fmt.Sprintf("task not found: %s", id), 404)
+		}
+		record = s.h.markLost(ctx, record)
+	}
+	return record, nil
+}
+
+func (s storedJobs) Get(ctx context.Context, id string) (bridgeipc.TaskSnapshot, error) {
+	record, err := s.record(ctx, id)
+	if err != nil {
+		return bridgeipc.TaskSnapshot{}, err
+	}
+	return snapshotFromRecord(record), nil
+}
+
+// Cancel finds a stored job ended, with nothing left to cancel.
+func (s storedJobs) Cancel(ctx context.Context, id string) (bridgeipc.TaskSnapshot, error) {
+	return s.Get(ctx, id)
+}
+
+func (s storedJobs) Watch(ctx context.Context, stream net.Conn, id string) error {
+	record, err := s.record(ctx, id)
+	if err != nil {
+		_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), bridgeipc.StatusCode(err))
+		return err
+	}
+	writeStored(stream, record)
+	return nil
+}
+
+// List adds nothing: a job with no task has ended, and history is listed elsewhere.
+func (storedJobs) List(context.Context) ([]bridgeipc.TaskSnapshot, error) { return nil, nil }
+
+// Events adds nothing: a stored job sends no more events.
+func (storedJobs) Events(context.Context, net.Conn) error { return nil }
+
+// markLost marks interrupted a record a host left running with no task in
+// this host to finish it, such as one whose finish failed to write, and
+// returns it.
+func (h *Host) markLost(ctx context.Context, record jobs.Record) jobs.Record {
+	marked := false
+	updated, err := h.cfg.Store.Update(context.WithoutCancel(ctx), record.ID, func(r *jobs.Record) error {
+		if r.State == jobs.StateRunning && r.Executor.Kind == "host" {
+			r.State, r.Reason, r.FinishedAt = jobs.StateInterrupted, jobs.ReasonCrash, h.cfg.Now().UTC()
+			marked = true
+		}
+		return nil
+	})
+	if err != nil {
+		slog.Warn("lost job not marked interrupted", "job_id", record.ID, "error", err)
+		return record
+	}
+	if marked {
+		slog.Info("job marked interrupted", "job_id", record.ID, "route", record.Route, "reason", updated.Reason)
+	}
+	return updated
 }
 
 // snapshotFromRecord is the terminal task snapshot of a stored job. A record

@@ -208,7 +208,7 @@ linuxio-bridge running as uid U (0 for a privileged login), at startup, in the b
   U = 0:  StartUnit linuxio-jobs@0.socket over the system bus itself
   then:   connect /run/linuxio/jobs/U.sock (0600, owned by U; systemd starts the host if it is down,
           and the host checks SO_PEERCRED = U), retrying for 5 s while the socket starts
-          yamux; first stream jobs.hello {protocol, session {username, uid, privileged, session_ref}}
+          yamux; first stream jobs.hello {protocol, session {username, uid, gid, privileged, session_ref}}
           protocol mismatch → mutations answer 409 update_pending; reads keep working
   failure → retry with backoff 1 s … 30 s; meanwhile mutations answer 503
 ```

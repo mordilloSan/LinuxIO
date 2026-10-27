@@ -91,9 +91,14 @@ type fakeRemote struct {
 	canceled chan string
 	events   []TaskEvent
 	dropped  chan struct{}
+	// ended is the one job Get finds.
+	ended TaskSnapshot
 }
 
 func (f *fakeRemote) Get(_ context.Context, id string) (TaskSnapshot, error) {
+	if id == f.ended.ID {
+		return f.ended, nil
+	}
 	return TaskSnapshot{}, NewError("task not found: "+id, 404)
 }
 
@@ -227,6 +232,24 @@ func TestTasksCancelRoutesUUIDToRemote(t *testing.T) {
 	// A bridge-local id never reaches the host.
 	if result := callOnPipe(t, router, "tasks.cancel", `{"taskId":"task-99"}`); result.Code != 404 || len(remote.canceled) != 0 {
 		t.Fatalf("tasks.cancel task-99 = %+v, want a local 404", result)
+	}
+}
+
+func TestTasksEventsSendsTheEndOfTheJobsItIsAskedAbout(t *testing.T) {
+	remote := &fakeRemote{dropped: make(chan struct{}), ended: TaskSnapshot{ID: remoteJobID, State: TaskStateInterrupted}}
+	router, _ := newRemoteTestRouter(t, remote)
+
+	client, _ := dispatchOnPipe(router, "tasks.events", `{"ids":["`+remoteJobID+`","00000000-0000-4000-8000-0000000000ab"]}`)
+	defer client.Close()
+	_ = client.SetReadDeadline(time.Now().Add(5 * time.Second))
+	frame, err := relay.ReadRelayFrame(client)
+	if err != nil || frame.Opcode != relay.OpStreamProgress {
+		t.Fatalf("events frame %+v, error %v; want a progress frame", frame, err)
+	}
+	var event TaskEvent
+	if err := json.Unmarshal(frame.Payload, &event); err != nil || event.Type != TaskEventSnapshot ||
+		event.Task.ID != remoteJobID || event.Task.State != TaskStateInterrupted {
+		t.Fatalf("first event = %+v, %v; want the interrupted snapshot of %s", event, err, remoteJobID)
 	}
 }
 

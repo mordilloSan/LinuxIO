@@ -295,8 +295,8 @@ function isMutationStreamLoss(error: unknown): boolean {
  * Run a mutation on one stream with no client deadline. The envelope carries a
  * client-chosen job id, so a connection lost before the job's snapshot resends
  * the same envelope once, and one lost after it reattaches through
- * tasks.watch. A second loss leaves the outcome unknown. Aborting `signal`
- * aborts the stream, which cancels the job.
+ * tasks.watch once. A further loss leaves the outcome unknown. Aborting
+ * `signal` aborts the stream, which cancels the job.
  */
 export function mutationRequest<TResult, TProgress = ProgressFrame>(
   handler: string,
@@ -335,7 +335,9 @@ async function followMutation<TResult, TProgress>(
 ): Promise<TResult> {
   let started = start === null;
   let sent = false;
-  for (let attempt = 1; ; attempt += 1) {
+  let resent = false;
+  let reattached = false;
+  for (;;) {
     try {
       // Waiting for the transport is bounded; the job itself is not.
       const mux = await ensureRequestMuxReady(
@@ -365,9 +367,11 @@ async function followMutation<TResult, TProgress>(
       });
     } catch (error) {
       if (!isMutationStreamLoss(error)) throw error;
-      if (attempt >= MAX_REQUEST_ATTEMPTS) {
+      if (started ? reattached : resent) {
         throw sent ? outcomeUnknownError() : error;
       }
+      if (started) reattached = true;
+      else resent = true;
     }
   }
 }

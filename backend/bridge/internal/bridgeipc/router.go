@@ -177,8 +177,6 @@ type Router struct {
 	routes            map[string]Route
 	registry          *TaskService
 	forwarder         MutationForwarder
-	activeByRoute     map[string]int
-	activeTargets     map[string]int
 	pendingIdentities map[string]chan struct{}
 }
 
@@ -194,8 +192,6 @@ func NewRouter(registry *TaskService) *Router {
 	return &Router{
 		routes:            make(map[string]Route),
 		registry:          registry,
-		activeByRoute:     make(map[string]int),
-		activeTargets:     make(map[string]int),
 		pendingIdentities: make(map[string]chan struct{}),
 	}
 }
@@ -237,9 +233,9 @@ func (r *Router) RecoverDurableTask(routeName string, request any, owner TaskOwn
 		return task, created, err
 	}
 	target := admissionTarget(routeName, metadata)
-	r.mu.Lock()
-	r.markActiveLocked(routeName, target)
-	r.mu.Unlock()
+	r.registry.admitMu.Lock()
+	r.registry.markActiveLocked(routeName, target)
+	r.registry.admitMu.Unlock()
 	r.startTrackedTask(route, task, owner, target)
 	return task, true, nil
 }
@@ -613,17 +609,20 @@ func (r *Router) startTaskWithIdentity(route Route, req Request, identity TaskId
 }
 
 // admit counts a task in before it is claimed, refusing a second task of an
-// exclusive route or a second task on the same target.
+// exclusive route or a second task on the same target. The counts are the
+// task service's, so routers sharing it, such as a root job host's one per
+// user, admit against each other.
 func (r *Router) admit(route Route, target string) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if normalizedPolicy(route.Policy).Exclusive && r.activeByRoute[route.Name] > 0 {
+	s := r.registry
+	s.admitMu.Lock()
+	defer s.admitMu.Unlock()
+	if normalizedPolicy(route.Policy).Exclusive && s.activeByRoute[route.Name] > 0 {
 		return fmt.Errorf("%w: %s", ErrDuplicateActive, route.Name)
 	}
-	if target != "" && r.activeTargets[target] > 0 {
+	if target != "" && s.activeTargets[target] > 0 {
 		return fmt.Errorf("%w: %s is already running on this target", ErrDuplicateActive, route.Name)
 	}
-	r.markActiveLocked(route.Name, target)
+	s.markActiveLocked(route.Name, target)
 	return nil
 }
 
@@ -663,25 +662,26 @@ func normalizedTaskLifetime(lifetime TaskLifetime) TaskLifetime {
 	return lifetime
 }
 
-func (r *Router) markActiveLocked(routeName, target string) {
-	r.activeByRoute[routeName]++
+func (s *TaskService) markActiveLocked(routeName, target string) {
+	s.activeByRoute[routeName]++
 	if target != "" {
-		r.activeTargets[target]++
+		s.activeTargets[target]++
 	}
 }
 
 func (r *Router) release(routeName, target string) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.activeByRoute[routeName] > 1 {
-		r.activeByRoute[routeName]--
+	s := r.registry
+	s.admitMu.Lock()
+	defer s.admitMu.Unlock()
+	if s.activeByRoute[routeName] > 1 {
+		s.activeByRoute[routeName]--
 	} else {
-		delete(r.activeByRoute, routeName)
+		delete(s.activeByRoute, routeName)
 	}
-	if r.activeTargets[target] > 1 {
-		r.activeTargets[target]--
+	if s.activeTargets[target] > 1 {
+		s.activeTargets[target]--
 	} else {
-		delete(r.activeTargets, target)
+		delete(s.activeTargets, target)
 	}
 }
 
