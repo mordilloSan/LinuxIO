@@ -13,7 +13,7 @@ Focused implementation and design details remain in their own documents:
 
 - [API Contract](../api-contract.md) describes implemented API behavior.
 - [Handler Patterns](../bridge_handler_patterns.md) defines handler code style.
-- [Jobs Design](../superpowers/specs/2026-10-26-jobs-design.md) defines how
+- [Jobs](./jobs.md) defines how
   mutations run as jobs that outlive the login, and replaces the durable Task
   execution of phase 4.
 - [Notifications](../alerts.md) defines the notification product and
@@ -309,11 +309,11 @@ session Tasks end with the session.
 
 ## Phase 4: Durable Task Foundation (complete, superseded)
 
-Superseded by the [jobs design](../superpowers/specs/2026-10-26-jobs-design.md).
+Superseded by the [jobs plan](./jobs.md).
 `docker.update_container` is now a `Mutation` that runs in the per-uid job host;
 the transient-unit executor, the `linuxio-docker-update run-operation` worker,
 the `durabletask` store and the durable-operations architecture document are
-deleted, and section 11 of the jobs design holds the fault matrix that replaces
+deleted, and section 2.11 of the jobs plan holds the fault matrix that replaces
 the one below. This section records what phase 4 built.
 
 A durable Task requires both:
@@ -566,8 +566,8 @@ LinuxIO should adopt focused lessons, not another product's full protocol:
 - `api-contract.md`: the implemented contract and clearly labelled local
   follow-up; cross-cutting future work stays in this roadmap.
 - `bridge_handler_patterns.md`: current handler style.
-- `superpowers/specs/2026-10-26-jobs-design.md`: job execution and recovery
-  mechanics.
+- `TODO/jobs.md`: job execution and recovery mechanics, and the remaining
+  phases.
 - `docs/alerts.md`: alert lifecycle, file store, API, polling,
   and frontend behavior.
 - `scheduled-execution.md`: schedule, systemd unit, status, and journald
