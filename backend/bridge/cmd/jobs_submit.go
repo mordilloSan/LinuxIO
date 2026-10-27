@@ -15,13 +15,13 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/jobsclient"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/jobslauncher"
 )
 
 const jobsSubmitUsage = "usage: linuxio-bridge jobs submit --route ROUTE [--request JSON] [--wait] | --resume ID"
 
 // runJobsSubmit starts a job in the caller's own job host, as a bridge does,
-// or resumes an interrupted one. It exits 2 on bad arguments, and with --wait
+// or resumes an interrupted one. Root starts the host; a user's host exists
+// only while a LinuxIO login of theirs started one. It exits 2 on bad arguments, and with --wait
 // 0 or 1 on the job's outcome.
 func runJobsSubmit(args []string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("jobs submit", flag.ContinueOnError)
@@ -48,7 +48,7 @@ func runJobsSubmit(args []string, stdout, stderr io.Writer) int {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT)
 	defer stop()
-	c, err := jobsclient.Connect(ctx, uid, hello, jobslauncher.LauncherSocketPath, jobslauncher.HostSocketPath(uid))
+	c, err := jobsclient.Connect(ctx, uid, hello, jobsclient.HostSocketPath(uid))
 	if err != nil {
 		fmt.Fprintf(stderr, "linuxio-bridge jobs submit: %v\n", err)
 		return 1

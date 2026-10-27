@@ -295,6 +295,27 @@ static int test_sudo_policy_argv(void)
   return 0;
 }
 
+static int test_jobs_host_argv(void)
+{
+  const char *argv[6] = {0};
+  char unit[64];
+
+  CHECK(build_jobs_host_argv(1000, unit, sizeof(unit), argv, 6) == 0);
+  CHECK(strcmp(unit, "linuxio-jobs@1000.service") == 0);
+  CHECK(strcmp(argv[0], LINUXIO_SYSTEMCTL) == 0);
+  CHECK(strcmp(argv[1], "start") == 0);
+  CHECK(strcmp(argv[2], "--no-block") == 0);
+  CHECK(strcmp(argv[3], "--quiet") == 0);
+  CHECK(argv[4] == unit);
+  CHECK(argv[5] == NULL);
+  CHECK(build_jobs_host_argv(1000, NULL, 0, argv, 6) == -1);
+  CHECK(build_jobs_host_argv(1000, unit, sizeof(unit), NULL, 6) == -1);
+  CHECK(build_jobs_host_argv(1000, unit, sizeof(unit), argv, 5) == -1);
+  // A unit name that does not fit is refused, never truncated.
+  CHECK(build_jobs_host_argv(1000, unit, 8, argv, 6) == -1);
+  return 0;
+}
+
 static int test_bootstrap_encoding(void)
 {
   const uint8_t expected[] = {
@@ -920,6 +941,7 @@ int main(void)
       {"PAM conversation", test_pam_conversation},
       {"bridge policy", test_bridge_policy},
       {"sudo policy argv", test_sudo_policy_argv},
+      {"jobs host argv", test_jobs_host_argv},
       {"bootstrap encoding", test_bootstrap_encoding},
       {"child status reporting", test_child_status_reporting},
       {"elapsed microseconds", test_elapsed_microseconds},

@@ -70,6 +70,11 @@
 #ifndef LINUXIO_BRIDGE_OWNER
 #define LINUXIO_BRIDGE_OWNER ((uid_t)0)
 #endif
+// systemctl starts the jobs host of an unprivileged login (see
+// start_jobs_host); the hermetic PAM suite points it at a stub.
+#ifndef LINUXIO_SYSTEMCTL
+#define LINUXIO_SYSTEMCTL "/usr/bin/systemctl"
+#endif
 
 #ifndef AT_EMPTY_PATH
 #define AT_EMPTY_PATH 0x1000
@@ -192,6 +197,15 @@ static void journal_error_fieldsf(const struct journal_field *fields, size_t fie
   va_list ap;
   va_start(ap, fmt);
   journal_send_formatted(LOG_ERR, fields, field_count, fmt, ap);
+  va_end(ap);
+}
+
+static void journal_warning_fieldsf(const struct journal_field *fields, size_t field_count,
+                                    const char *fmt, ...)
+{
+  va_list ap;
+  va_start(ap, fmt);
+  journal_send_formatted(LOG_WARNING, fields, field_count, fmt, ap);
   va_end(ap);
 }
 
@@ -1529,10 +1543,12 @@ static int wait_for_session_child(pid_t pid, int *status)
   }
 }
 
-// sudo policy probing. This runs from the root launcher context: -U asks
-// sudoers about the authenticated identity without changing credentials.
-static int run_sudo_policy_query(const char *const argv[], int timeout_sec,
-                                 int64_t request_deadline_ns)
+// Runs argv[0], an absolute path chosen by this program, as root with a
+// sanitized environment and nothing from the client in reach, bounded by
+// timeout_sec and the request deadline. Returns the exit status, 127 when
+// the exec failed, or -1 with errno set.
+static int run_root_command(const char *const argv[], int timeout_sec,
+                            int64_t request_deadline_ns)
 {
   pid_t pid = fork();
   if (pid < 0)
@@ -1540,7 +1556,7 @@ static int run_sudo_policy_query(const char *const argv[], int timeout_sec,
   if (pid == 0)
   {
     // The launcher keeps SIGTERM blocked for its own shutdown handling and
-    // the mask survives exec; sudo must stay terminable.
+    // the mask survives exec; the child must stay terminable.
     sigset_t child_mask;
     if (sigemptyset(&child_mask) != 0 ||
         sigprocmask(SIG_SETMASK, &child_mask, NULL) != 0)
@@ -1559,13 +1575,15 @@ static int run_sudo_policy_query(const char *const argv[], int timeout_sec,
                "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", 1) != 0 ||
         setenv("LANG", "C", 1) != 0)
       _exit(127);
-    execv("/usr/bin/sudo", ARGV_UNCONST(argv));
+    execv(argv[0], ARGV_UNCONST(argv));
 
     _exit(127);
   }
   return wait_for_child_with_timeout(pid, timeout_sec, request_deadline_ns);
 }
 
+// sudo policy probing. This runs from the root launcher context: -U asks
+// sudoers about the authenticated identity without changing credentials.
 static int build_sudo_policy_argv(const char *canonical_username,
                                   const char **argv, size_t argv_cap)
 {
@@ -1602,7 +1620,7 @@ static int user_can_run_bridge_as_root(const char *canonical_username,
   if (build_sudo_policy_argv(canonical_username, argv_list,
                              sizeof(argv_list) / sizeof(argv_list[0])) != 0)
     return 0;
-  int rc = run_sudo_policy_query(argv_list, timeout_sec, request_deadline_ns);
+  int rc = run_root_command(argv_list, timeout_sec, request_deadline_ns);
   if (rc < 0)
   {
     journal_errorf("sudo policy probe infrastructure failure: %m");
@@ -1614,6 +1632,60 @@ static int user_can_run_bridge_as_root(const char *canonical_username,
     return 0;
   }
   return rc == 0;
+}
+
+// Jobs host of an unprivileged login. The bridge will run as the user and a
+// user cannot start a system unit, so the host is started here, as root,
+// once PAM has admitted the user and before the session opens: pam_selinux
+// gives later children the user's exec context, and systemctl must run as
+// this worker, like the sudo probe. A privileged bridge starts the root host
+// itself. --no-block: the bridge connects with retries, and a host that
+// fails to start is a warning, never a failed login.
+#ifndef JOBS_HOST_START_TIMEOUT_SEC
+#define JOBS_HOST_START_TIMEOUT_SEC 3
+#endif
+
+static int build_jobs_host_argv(uid_t uid, char *unit, size_t unitsz,
+                                const char **argv, size_t argv_cap)
+{
+  if (!unit || !argv || argv_cap < 6)
+    return -1;
+  int n = safe_snprintf(unit, unitsz, "linuxio-jobs@%u.service", (unsigned)uid);
+  if (n <= 0 || (size_t)n >= unitsz)
+    return -1;
+  argv[0] = LINUXIO_SYSTEMCTL;
+  argv[1] = "start";
+  argv[2] = "--no-block";
+  argv[3] = "--quiet";
+  argv[4] = unit;
+  argv[5] = NULL;
+  return 0;
+}
+
+static void start_jobs_host(const struct auth_user *auth_user,
+                            int64_t request_deadline_ns)
+{
+  char unit[64] = "";
+  const char *argv_list[6];
+  const struct journal_field fields[] = {
+      {"LINUXIO_USER", auth_user->name},
+      {"LINUXIO_UNIT", unit},
+  };
+
+  if (build_jobs_host_argv(auth_user->uid, unit, sizeof(unit), argv_list,
+                           sizeof(argv_list) / sizeof(argv_list[0])) != 0)
+  {
+    journal_warning_fieldsf(fields, 1, "jobs host unit name not built");
+    return;
+  }
+  int rc = run_root_command(argv_list, JOBS_HOST_START_TIMEOUT_SEC,
+                            request_deadline_ns);
+  if (rc < 0)
+    journal_warning_fieldsf(fields, 2, "jobs host start failed: %m");
+  else if (rc == 127)
+    journal_warning_fieldsf(fields, 2, "jobs host start failed to execute systemctl");
+  else if (rc != 0)
+    journal_warning_fieldsf(fields, 2, "jobs host start exited with status %d", rc);
 }
 
 // Fatal error in the forked bridge child, pre-exec: emit a diagnostic on
@@ -2541,6 +2613,11 @@ static int handle_client(int input_fd, int output_fd)
       goto out;
     }
   }
+
+  // The user's jobs host, before the session opens (see start_jobs_host). A
+  // privileged bridge runs as root and starts the root host itself.
+  if (!want_privileged)
+    start_jobs_host(&auth_user, request_deadline_ns);
 
   // Validate bridge binary and keep fd open (prevents TOCTOU)
   (void)monotonic_now_ns(&timing.session_setup_started_ns);

@@ -19,3 +19,11 @@ RuntimeDirectoryPreserve=yes
 TimeoutStopSec=2min
 KillMode=mixed
 NoNewPrivileges=yes
+# A runaway job hits these instead of the machine. TasksMax leaves room for
+# 256 jobs each waiting on a subprocess tree: below that, the Go runtime
+# cannot create a thread and aborts the host with every job in it.
+# OOMPolicy=continue: one job's subprocess killed for memory must not
+# interrupt the others.
+TasksMax=8192
+MemoryMax=2G
+OOMPolicy=continue

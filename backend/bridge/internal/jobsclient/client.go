@@ -1,10 +1,10 @@
-// Package jobsclient connects to the caller's own job host, starting it
-// first, and runs jobs on it: the bridge's side of a host connection and the
-// "linuxio-bridge jobs submit" CLI.
+// Package jobsclient connects to the caller's own job host and runs jobs on
+// it: the bridge's side of a host connection and the "linuxio-bridge jobs
+// submit" CLI. Root starts the host first; linuxio-auth starts a user's host
+// at login.
 package jobsclient
 
 import (
-	"bufio"
 	"cmp"
 	"context"
 	"encoding/json/jsontext"
@@ -15,14 +15,12 @@ import (
 	"io/fs"
 	"net"
 	"os"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
 	"uuid"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/jobslauncher"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	"github.com/mordilloSan/LinuxIO/backend/common/jobs"
 	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
@@ -32,13 +30,11 @@ import (
 // the two runs a binary from before an update.
 var ErrUpdatePending = errors.New("update_pending")
 
-const (
-	hostWait = 5 * time.Second
-	hostPoll = 50 * time.Millisecond
-)
+const hostPoll = 50 * time.Millisecond
 
 // Seams for tests.
 var (
+	hostWait  = 5 * time.Second
 	startUnit = systemd.StartUnit
 	isRoot    = func() bool { return os.Geteuid() == 0 }
 	protocol  = jobs.Protocol
@@ -50,14 +46,15 @@ type Client struct {
 	protocol int
 }
 
-// Connect starts uid's job host, as root through systemd and otherwise
-// through the launcher, connects to hostSocket and introduces hello, whose
-// SessionRef the host uses as the connection's session ID.
-func Connect(ctx context.Context, uid uint32, hello bridgeipc.HelloSession, launcherSocket, hostSocket string) (*Client, error) {
+// Connect connects to uid's job host at hostSocket and introduces hello,
+// whose SessionRef the host uses as the connection's session ID. As root it
+// starts the host unit first; a user's host was started by linuxio-auth at
+// login, since a user cannot start a system unit.
+func Connect(ctx context.Context, uid uint32, hello bridgeipc.HelloSession, hostSocket string) (*Client, error) {
 	if hello.SessionRef == "" {
 		return nil, errors.New("job host hello needs a session ref")
 	}
-	if err := ensureHost(ctx, uid, launcherSocket); err != nil {
+	if err := startHostUnit(ctx, uid); err != nil {
 		return nil, err
 	}
 	conn, err := dialHost(ctx, hostSocket)
@@ -88,17 +85,26 @@ func Connect(ctx context.Context, uid uint32, hello bridgeipc.HelloSession, laun
 	return c, nil
 }
 
-// ensureHost starts uid's host: as root through systemd, otherwise through
-// the launcher. StartUnit only queues the start, so the caller dials with
-// retries.
-func ensureHost(ctx context.Context, uid uint32, launcherSocket string) error {
+// startHostUnit starts uid's host as root. StartUnit only queues the start,
+// so the caller dials with retries.
+func startHostUnit(ctx context.Context, uid uint32) error {
 	if !isRoot() {
-		return launch(ctx, launcherSocket)
+		return nil
 	}
-	if err := startUnit(ctx, jobslauncher.UnitName(uid)); err != nil {
+	if err := startUnit(ctx, UnitName(uid)); err != nil {
 		return fmt.Errorf("start job host: %w", err)
 	}
 	return nil
+}
+
+// UnitName is the systemd unit of uid's job host.
+func UnitName(uid uint32) string {
+	return fmt.Sprintf("linuxio-jobs@%d.service", uid)
+}
+
+// HostSocketPath is where uid's job host listens.
+func HostSocketPath(uid uint32) string {
+	return fmt.Sprintf("/run/linuxio/jobs/%d/host.sock", uid)
 }
 
 // dialHost connects to hostSocket, retrying for hostWait while the host is
@@ -122,27 +128,6 @@ func dialHost(ctx context.Context, hostSocket string) (net.Conn, error) {
 		case <-time.After(hostPoll):
 		}
 	}
-}
-
-// launch asks the launcher to start this uid's host: it sends nothing and
-// reads one line, "ok" or "error: <reason>".
-func launch(ctx context.Context, socket string) error {
-	var dialer net.Dialer
-	conn, err := dialer.DialContext(ctx, "unix", socket)
-	if err != nil {
-		return fmt.Errorf("dial job launcher: %w", err)
-	}
-	defer conn.Close()
-	stop := context.AfterFunc(ctx, func() { _ = conn.SetReadDeadline(time.Now()) })
-	defer stop()
-	line, err := bufio.NewReader(conn).ReadString('\n')
-	if err != nil {
-		return fmt.Errorf("read job launcher reply: %w", cmp.Or(ctx.Err(), err))
-	}
-	if line = strings.TrimSuffix(line, "\n"); line != "ok" {
-		return fmt.Errorf("job launcher refused: %s", strings.TrimPrefix(line, "error: "))
-	}
-	return nil
 }
 
 // Protocol is the jobs protocol the host answered the hello with.

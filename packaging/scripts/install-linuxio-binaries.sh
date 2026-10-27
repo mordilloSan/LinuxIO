@@ -111,8 +111,6 @@ systemd_units() {
 		linuxio-btrfs-health.timer \
 		linuxio-btrfs-degraded.service \
 		linuxio-btrfs-resync@.service \
-		linuxio-jobs-launcher.socket \
-		linuxio-jobs-launcher@.service \
 		linuxio-jobs-reconcile.service \
 		linuxio-jobs@.service \
 		linuxio-monitoring.service
@@ -663,6 +661,12 @@ install_systemd_files() {
 		systemd-tmpfiles --create /usr/lib/tmpfiles.d/linuxio.conf 2>/dev/null || true
 		Show 0 "tmpfiles.d configuration installed"
 	fi
+	# Pre-release builds started job hosts through a world-connectable
+	# launcher socket; linuxio-auth starts them at login now. Retire it.
+	if [[ -e "${SYSTEMD_DIR}/linuxio-jobs-launcher.socket" ]]; then
+		systemctl disable --now linuxio-jobs-launcher.socket >/dev/null 2>&1 || true
+		rm -f "${SYSTEMD_DIR}/linuxio-jobs-launcher.socket" "${SYSTEMD_DIR}/linuxio-jobs-launcher@.service"
+	fi
 	# The job store replaced the durable-operations store; drop its orphaned data.
 	if [[ -d "${DATA_DIR}/durable-operations" ]]; then
 		rm -rf "${DATA_DIR}/durable-operations"
@@ -707,15 +711,10 @@ enable_services() {
 	else
 		Show 3 "Failed to enable linuxio-monitoring.service"
 	fi
-	# Outside linuxio.target so that updates never stop a running job; job
-	# hosts themselves are started on demand. Starting a listening socket is a
-	# no-op, but the reconcile runs at boot only: started now, it would mark
-	# live jobs interrupted.
-	if systemctl enable --now linuxio-jobs-launcher.socket >/dev/null 2>&1; then
-		Show 0 "Enabled linuxio-jobs-launcher.socket"
-	else
-		Show 3 "Failed to enable linuxio-jobs-launcher.socket"
-	fi
+	# Outside linuxio.target so that updates never stop a running job. Job
+	# hosts are started by linuxio-auth at login and by root tools; the
+	# reconcile runs at boot only: started now, it would mark live jobs
+	# interrupted.
 	if systemctl enable linuxio-jobs-reconcile.service >/dev/null 2>&1; then
 		Show 0 "Enabled linuxio-jobs-reconcile.service"
 	else

@@ -25,7 +25,7 @@ connection; changing how reads work; changing authentication.
 | API shape | `Call` means read. Every write is a `Mutation`. One stream carries request, progress and result. One round trip. |
 | Client timeout | None for mutations. Connection loss never cancels a mutation. Reads keep the 30 s timeout and the retry policy. |
 | Where mutations run | In a **job host**: one long-lived process per uid, as that uid (root for admins), started at login, exiting when no bridge is connected and no job runs. |
-| Who starts hosts | A **launcher**: root, socket-activated, one instance per request, no handler code. It can only start `linuxio-jobs@<peer uid>`. |
+| Who starts hosts | `linuxio-auth`, after PAM, for an unprivileged login (`systemctl start --no-block linuxio-jobs@<uid>`); root processes start the root host with `StartUnit`. No socket starts a host. |
 | Identity | The kernel's `SO_PEERCRED` on every socket. A claim from a bridge is metadata, never authorization. |
 | Same target twice | Refused with 409 while the first runs. No queue, no per-user or per-route cap, no runtime cap. |
 | Reboot and power loss | Running jobs become `interrupted`. Resumable ones (btrfs scrub, balance, replace, remove) are restarted by the boot service; the rest alert. |
@@ -42,8 +42,8 @@ connection; changing how reads work; changing authentication.
 
 - **Bridge**: today's per-login process, as the user. Keeps reads, terminals, uploads and downloads. Relays mutations to the host.
 - **Host**: `linuxio-jobs@<uid>.service`. Runs every mutation for that uid as a goroutine. Owns the in-memory job registry for that uid and writes the store.
-- **Launcher**: `linuxio-jobs-launcher.socket` plus `linuxio-jobs-launcher@.service`. Starts a host for the caller's uid.
-- **Submit CLI**: `linuxio-bridge jobs submit`, the local client that starts a job in a host without a browser: timers, the boot service, an admin shell, tests. As root it starts the root host itself; as a user it goes through the launcher like a bridge.
+- **Auth**: `linuxio-auth` starts an unprivileged login's host once PAM has authenticated the user, before the session opens and the bridge spawns.
+- **Submit CLI**: `linuxio-bridge jobs submit`, the local client that starts a job in a host without a browser: timers, the boot service, an admin shell, tests. As root it starts the root host itself; as a user it connects to the host its login started.
 - **Store**: `/var/lib/linuxio/jobs/<uid>/`, one JSON record per job, owned by the uid.
 - **Job**: a record plus a handler run in a host. Started by a user through the bridge, or by the system through the submit CLI. The host is the only executor.
 - **Target**: what a job works on (pool UUID, disk, container, compose project, set of paths), declared by the route.
@@ -57,8 +57,8 @@ browser ──WebSocket── linuxio-webserver (unprivileged) ──yamux──
                                                                      │
                                             every mutation stream, relayed unchanged
                                                                      ▼
-   launcher (root, socket-activated) ──StartUnit──▶ systemd ──▶ linuxio-jobs@<uid>.service
-        ▲  "start my host" at login                               host, as <uid>
+   linuxio-auth (root, after PAM) ──systemctl start──▶ systemd ──▶ linuxio-jobs@<uid>.service
+        │  for an unprivileged login, before the bridge              host, as <uid>
         │                                                         ├─ job registry (memory)
    bridge, once per login                                         ├─ handlers (shared code)
                                                                   └─ store /var/lib/linuxio/jobs/<uid>/
@@ -69,9 +69,7 @@ browser ──WebSocket── linuxio-webserver (unprivileged) ──yamux──
 ```
 
 The webserver, `linuxio-auth` and the bridge keep their roles and boundaries.
-Nothing new listens on the network. The two new root pieces are the launcher
-(starts one unit) and the root host, which runs admin mutations as root exactly
-as the root bridge does today.
+Nothing new listens on the network and no new socket is reachable by other users. The one new root piece is the root host, which runs admin mutations as root exactly as the root bridge does today; `linuxio-auth` gains one bounded `systemctl start`.
 
 ## 5. Programming model
 
@@ -111,7 +109,6 @@ func (r UUIDRequest) Target() []string { return []string{r.UUID} }
 
 - A `Call` is retried after connection loss by construction, so the eight reads not marked `RetrySafe` today (`docker.get_icon`, `docker.get_icon_uri`, `docker.check_updates`, `docker.check_container_update`, `monitoring.check_database`, `system.get_health_summary`, `network.get_network_info`, `terminal.list_shells`) are reviewed once for a side effect a repeat could double; none is expected, since they only refresh caches.
 - Every `Mutation` appears in a checked inventory table with its `Resumable` and `BrowserBound` flags, the way `handleEventsInventory` worked. Adding a mutation without a row fails the test.
-- A handler package may not import the launcher package and the launcher package may not import handlers (`import_boundary_test.go`).
 
 ### Frontend
 
@@ -135,7 +132,7 @@ No client-side timeout for mutations. The 25 ms settle wait and `InitialTaskSett
 
 ## 7. Bridge to host relay
 
-- At startup the bridge asks the launcher to start its host (section 9), then connects to `/run/linuxio/jobs/<uid>/host.sock` and keeps one yamux session for its lifetime. If the connect fails it retries with backoff and reports mutations as `connection_unavailable` meanwhile. Measured cost per mutation on the development machine: 27 µs median, 55 µs p99.
+- At startup the bridge connects to `/run/linuxio/jobs/<uid>/host.sock`, retrying for 5 s while the host comes up, and keeps one yamux session for its lifetime. `linuxio-auth` started a user's host before spawning the bridge; a privileged bridge starts the root host itself (section 9). If the connect fails it retries with backoff and reports mutations as `connection_unavailable` meanwhile. Measured cost per mutation on the development machine: 27 µs median, 55 µs p99.
 - The first stream is a hello: `{protocol: N, session: {username, uid, privileged, session_ref}}`. The host checks the peer uid with `SO_PEERCRED`: a user host accepts only its own uid; the root host accepts only uid 0. The session facts are recorded as the job's owner for listing, history and alerts; they are not authorization.
 - Each mutation opens one stream; the bridge forwards frames in both directions unchanged and closes when either side closes. Abort forwards as abort.
 - The bridge serves itself: all `Call` routes, duplex channels (terminals, log follows), the three browser-bound routes and their `tasks.data`.
@@ -163,25 +160,22 @@ KillMode=mixed
 NoNewPrivileges=yes
 ```
 
-- **Start**: by the launcher when a bridge logs in, or by any root process that wants to submit a job (a timer's service, the boot reconcile service, an admin shell) with `StartUnit` on `linuxio-jobs@0.service`, which the submit CLI does itself. Starting a running host is a no-op. `StateDirectory` and `RuntimeDirectory` create the store and socket directories owned by the uid; no custom code creates them.
+- **Start**: by `linuxio-auth` when an unprivileged user logs in (`systemctl start --no-block linuxio-jobs@<uid>.service` once PAM has authenticated the user, before the session opens and the bridge is spawned; a failure is logged and the login proceeds), or by any root process that wants to submit a job (a timer's service, the boot reconcile service, an admin shell) with `StartUnit` on `linuxio-jobs@0.service`, which the submit CLI does itself. Starting a running host is a no-op. `StateDirectory` and `RuntimeDirectory` create the store and socket directories owned by the uid; no custom code creates them.
 - **Stay up while** connected bridges > 0 or running jobs > 0.
 - **Exit** when both are zero for one minute (so a logout and login within seconds does not restart it). Exit is `sd_notify(STOPPING=1)` then process exit; systemd collects the unit.
 - **Stop by systemd** (shutdown, or `systemctl stop`): SIGTERM. The host marks every running job: resumable ones get up to `TimeoutStopSec` to suspend (section 11), the rest are marked `interrupted` with reason `shutdown`. Then it exits.
 - **Crash**: the next host for that uid, or the boot service, finds records in `running` whose executor pid and start time are not alive and marks them `interrupted` with reason `crash`.
 - **Limits**: a host refuses a new job above 256 running jobs for its uid with 409. This is a safety valve against a runaway client, not a UX limit.
 
-## 9. Launcher
+## 9. Who starts a host
 
-`linuxio-jobs-launcher.socket` listens on `/run/linuxio/jobs-launcher.sock`, mode `0666`, `Accept=yes`; `linuxio-jobs-launcher@.service` runs as root, `ExecStart=/usr/local/bin/linuxio-bridge jobs launch`, one process per connection, exits after answering.
+`linuxio-auth` starts an unprivileged login's host. Once PAM has authenticated the user and the sudoers probe has decided the login is unprivileged, it runs `/usr/bin/systemctl start --no-block --quiet linuxio-jobs@<uid>.service` as root in a child with a cleared environment, bounded by 3 s and the login's request deadline. It does so before the PAM session opens, because `pam_selinux` gives later children the user's exec context; systemctl runs as the auth worker, like the sudo probe. The bridge is spawned after the session opens. The uid is the one PAM resolved; nothing from the wire reaches the command. A failure is a journal entry with the user and the unit; the login proceeds and the bridge answers mutations with 503 until the next login starts the host.
 
-Protocol: the client sends nothing. The launcher:
-1. reads the peer uid, gid and pid with `SO_PEERCRED`;
-2. resolves the uid with `getpwuid`; refuses an unknown uid and any user in `/etc/linuxio/disallowed-users`;
-3. calls `StartUnit("linuxio-jobs@<uid>.service", "replace")` over the system bus; starting a running unit is a no-op;
-4. waits up to 5 s for `/run/linuxio/jobs/<uid>/host.sock` to appear;
-5. replies one line, `ok` or `error: <reason>`, and exits.
+A privileged bridge runs as root and calls `StartUnit` on `linuxio-jobs@0.service` itself, as do the submit CLI run as root and the boot reconcile. Starting a running unit is a no-op.
 
-It never reads a unit name, a uid or any property from the client. The only thing a caller can make it do is start the caller's own host. The launcher package imports `peercred`, `systemd` and `logging`, nothing from `handlers`.
+Nothing else starts a host: there is no socket a local process can use to request one, so a user's host exists only after that user authenticated through LinuxIO, or when root starts it. The host unit sets `TasksMax=8192`, room for 256 jobs each waiting on a subprocess tree, and `MemoryMax=2G`, with `OOMPolicy=continue`, so an OOM kill of one job's subprocess fails that job instead of stopping the host.
+
+**Open before phase 2.** A user's host that exits while that user is logged in is not started again until their next login: a crash, an OOM kill of the host process itself, a queued start that fails, or the idle exit racing a new login whose bridge has not joined yet. No phase 1 route reaches a user's host, so nothing is lost today, but the routes phase 2 moves for non-admins need this closed first. The candidate fix is a per-uid activation socket, `linuxio-jobs@<uid>.socket`, owned by the uid with mode `0600`, which `linuxio-auth` starts instead of the service: a dial then starts the host whenever it is down, and the idle exit cannot race a login.
 
 ## 10. Store and records
 
@@ -227,7 +221,7 @@ Retention: terminal records are kept 30 days and at most 200 per uid; pruning ru
 
 **Boot.** `linuxio-jobs-reconcile.service` runs after `local-fs.target` and after the pools are mounted (ordered after `linuxio-btrfs-degraded.service`). For every uid directory: records in `running` → `interrupted/reboot` (a power loss leaves them `running`; an orderly shutdown already marked them). For each `interrupted` resumable record (always uid 0) it runs `jobs submit --resume <id>`, which starts the root host if needed and asks it to run the route's `Resume` hook on that record; the outcome is written to the same record. Interrupted non-resumable jobs raise one alert each. The host then exits under its normal rule once the resumed jobs end.
 
-**Submit CLI.** `linuxio-bridge jobs submit --route <route> --request <json> [--wait]` creates a job in the caller's host exactly as a bridge would: as root it calls `StartUnit` on `linuxio-jobs@0.service` and connects to its socket; as a user it asks the launcher. `--resume <id>` resumes an interrupted resumable record; `--from <scheduled-job-id>` creates a run record from a scheduled job's stored request. `--wait` follows the job and exits with its outcome, so a timer's oneshot service reflects the job's success or failure. There is no second executor: a job submitted by a timer runs in the same host, with the same progress, record, log and alert as one started from the browser.
+**Submit CLI.** `linuxio-bridge jobs submit --route <route> --request <json> [--wait]` creates a job in the caller's host exactly as a bridge would: as root it calls `StartUnit` on `linuxio-jobs@0.service` and connects to its socket; as a user it connects to the host its login started, so it works only while that user has a LinuxIO login or the host is still up. `--resume <id>` resumes an interrupted resumable record; `--from <scheduled-job-id>` creates a run record from a scheduled job's stored request. `--wait` follows the job and exits with its outcome, so a timer's oneshot service reflects the job's success or failure. There is no second executor: a job submitted by a timer runs in the same host, with the same progress, record, log and alert as one started from the browser.
 
 ### Fault matrix
 
@@ -238,7 +232,7 @@ What each event does to a job, as phase 1 implements it:
 - **Logout, session expiry, bridge exit**: the bridge closes its host connection; jobs run on. The host exits one minute after its last bridge left and its last job ended. A later login of the uid sees the jobs the host still holds through `tasks.list` and `tasks.events`.
 - **Host unreachable from the bridge**: mutations fail with 503 before anything starts; the bridge reconnects with backoff from 1 s to 30 s.
 - **Host on another protocol (an update in between)**: new mutations fail with 409 `update_pending`; reads work; the old host finishes its jobs.
-- **LinuxIO update**: hosts, the launcher socket and the reconcile service are outside `linuxio.target`; the installer never stops them.
+- **LinuxIO update**: hosts and the reconcile service are outside `linuxio.target`; the installer never stops them.
 - **`systemctl stop` or orderly shutdown**: running jobs become `interrupted/shutdown`, resumable ones after `Suspend` stored a checkpoint; the root host alerts.
 - **Host crash or kill**: the next start of that uid's host marks its `running` records whose pid and start time are gone `interrupted/crash`; the root host alerts.
 - **Reboot or power loss**: the boot reconcile marks every uid's `running` records `interrupted/reboot`, resumes interrupted resumable root jobs, and alerts on the non-resumable root jobs it marked.
@@ -246,7 +240,7 @@ What each event does to a job, as phase 1 implements it:
 
 ## 12. Updates
 
-- `linuxio.target` does not pull in hosts, the launcher socket or the reconcile service except through ordering. The installer never stops or restarts them; it may `daemon-reload`.
+- `linuxio.target` does not pull in hosts or the reconcile service except through ordering. The installer never stops or restarts them; it may `daemon-reload`.
 - The hello frame carries a protocol number. Same number: carry on. Older host: the bridge refuses new mutations with error code `update_pending` and message "LinuxIO update waits for N running jobs"; reads work; the UI shows the count on the update banner. The old host exits when idle under its normal rule and the next login starts the new binary.
 - Within one release the protocol number only changes when a frame changes shape; adding routes does not change it.
 
@@ -266,11 +260,11 @@ What each event does to a job, as phase 1 implements it:
 ## 15. Security
 
 - Nothing new is reachable from the network. The webserver still relays bytes to a bridge that is the user.
-- Authorization is the uid of the connecting process, read by the kernel. The root host accepts only root; a user host accepts only its uid. The launcher starts only the caller's host.
+- Authorization is the uid of the connecting process, read by the kernel. The root host accepts only root; a user host accepts only its uid. `linuxio-auth` starts a host only for the uid PAM admitted.
 - The record contains the request. It is `0600`, owned by the uid, and no API returns it; snapshots expose `route`, `target`, `owner`, `progress`, `result`, `error` and timestamps, as today.
-- The root host runs admin mutations as root, as the root bridge does now. The set of code running as root does not grow: the launcher is about 150 lines and imports no handler.
+- The root host runs admin mutations as root, as the root bridge does now. The set of code running as root grows by one bounded `systemctl start` in `linuxio-auth`.
 - A user host runs with `NoNewPrivileges`. The root host too; root does not need setuid binaries. If a handler turns out to need one, the unit drops the flag for uid 0 with a comment saying which.
-- Ceilings: 256 running jobs per host; one host per uid; the launcher is idempotent so repeated requests cannot multiply units.
+- Ceilings: 256 running jobs per host; one host per uid; starting a running unit is a no-op, so repeated logins cannot multiply hosts.
 - The 13 root-only routes the map found without `Privileged()` get it during migration.
 
 ## 16. Frontend
@@ -304,7 +298,7 @@ Each is fixed when its route moves, with a test:
 - **Store**: claim, attach, 409 paths, write policy, pruning, crash detection by pid and start time, transient deletion. Unit tests.
 - **Relay and protocol**: a bridge and a host in one test process over a socketpair: start, progress, result, detach, abort, resend attaches, protocol mismatch returns `update_pending`. Unit tests.
 - **Host lifecycle**: exit rule with fake clock; SIGTERM marks running jobs and calls `Suspend` within the deadline. Unit tests.
-- **Launcher**: fake systemd (`testdbus` exists), peer uid checks, disallowed user, timeout waiting for the socket. Unit tests.
+- **Auth**: the hermetic PAM suite asserts the exact `systemctl` arguments of an unprivileged login and that a failed start keeps the login.
 - **Submit CLI and reconcile**: `jobs submit` against a host in the test process; interrupted records are resumed or alerted; a `running` record with a dead pid becomes `interrupted/crash`. Unit tests with the fake kernel for btrfs.
 - **btrfs suspend and resume**: added to `make test-btrfs-integration` (root, run by the user): kill the host mid-scrub and check the pool is consistent; SIGTERM a balance and check it resumes after unmount and mount; scrub resumes from its stored offset; a killed replace is reported and restarted.
 - **Browser**: start a copy, log out, log in, find it running in the tray and completed in history (`make test-frontend-browser-quiet`).
@@ -313,7 +307,7 @@ Each is fixed when its route moves, with a test:
 
 ## 20. Phasing
 
-1. **Skeleton**: store generalisation, host, launcher, relay, units, reconcile service; `docker.update_container` is the first route, since it already has the record shape. The old durable code path is deleted with it. `make test-quiet` green; the launcher and host installed by the installer.
+1. **Skeleton**: store generalisation, host, relay, units, reconcile service; `docker.update_container` is the first route, since it already has the record shape. The old durable code path is deleted with it. `make test-quiet` green; the host installed by the installer.
 2. **Long work**: the 28 remaining task routes and the 14 long calls move, with the bug fixes of section 18 and the btrfs suspend hooks. The root integration test gains its kill-and-resume steps.
 3. **Everything else**: the ~140 quick mutations re-declared as `Mutation`; `Call` reads marked `RetrySafe`; the frontend codemod; the old hooks, `TaskRunner`, lifetimes and policies deleted.
 4. **Schedules and system jobs**: `ExecStopPost` record, the unit adapter in the list, scheduled jobs through `jobs submit --from`, btrfs timer units writing records.

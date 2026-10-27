@@ -25,42 +25,15 @@ import (
 
 const relayTestJobID = "00000000-0000-4000-8000-0000000000c1"
 
-// relayTestSockets points the relay at a fake launcher that always answers
-// ok and at hostSocket, for the rest of the test.
+// relayTestSockets points the relay at hostSocket for the rest of the test.
 func relayTestSockets(t *testing.T, hostSocket string) {
-	t.Helper()
-	relayTestLauncher(t, hostSocket, "ok\n")
-}
-
-// relayTestLauncher points the relay at hostSocket and at a launcher that
-// answers every connection with reply.
-func relayTestLauncher(t *testing.T, hostSocket, reply string) {
 	t.Helper()
 	if os.Geteuid() == 0 {
 		t.Skip("as root the job client starts the host through systemd")
 	}
-	launcher := filepath.Join(t.TempDir(), "launcher.sock")
-	ln, err := net.Listen("unix", launcher)
-	if err != nil {
-		t.Fatalf("listen launcher: %v", err)
-	}
-	go func() {
-		for {
-			conn, err := ln.Accept()
-			if err != nil {
-				return
-			}
-			_, _ = conn.Write([]byte(reply))
-			_ = conn.Close()
-		}
-	}()
-	oldLauncher, oldHost := jobsLauncherSocket, jobsHostSocket
-	jobsLauncherSocket = launcher
+	oldHost := jobsHostSocket
 	jobsHostSocket = func(uint32) string { return hostSocket }
-	t.Cleanup(func() {
-		_ = ln.Close()
-		jobsLauncherSocket, jobsHostSocket = oldLauncher, oldHost
-	})
+	t.Cleanup(func() { jobsHostSocket = oldHost })
 }
 
 // startRelayTestHost serves a job host in-process on socket whose "test.job"
@@ -263,9 +236,11 @@ func TestBridgeForwardsMutationToHost(t *testing.T) {
 }
 
 func TestBridgeFailsMutationWhenHostUnavailable(t *testing.T) {
-	// The launcher could not start the host, so the client gives up at once
-	// instead of retrying a socket that is not coming.
-	relayTestLauncher(t, filepath.Join(t.TempDir(), "missing.sock"), "error: host did not start\n")
+	oldConnect := jobsConnect
+	jobsConnect = func(context.Context, uint32, bridgeipc.HelloSession, string) (*jobsclient.Client, error) {
+		return nil, errors.New("dial job host: no such file or directory")
+	}
+	t.Cleanup(func() { jobsConnect = oldConnect })
 	router, jr, sess := newRelayTestBridge(t)
 	waitRelay(t, jr, func(err error) bool { return err != nil && !errors.Is(err, errJobHostConnecting) })
 
@@ -361,9 +336,9 @@ func TestPrivilegedBridgeUsesRootHost(t *testing.T) {
 		}
 		return socket
 	}
-	jobsConnect = func(ctx context.Context, uid uint32, hello bridgeipc.HelloSession, launcher, hostSocket string) (*jobsclient.Client, error) {
+	jobsConnect = func(ctx context.Context, uid uint32, hello bridgeipc.HelloSession, hostSocket string) (*jobsclient.Client, error) {
 		connects <- connectArgs{uid: uid, hostSocket: hostSocket, hello: hello}
-		return jobsclient.Connect(ctx, uid, hello, launcher, hostSocket)
+		return jobsclient.Connect(ctx, uid, hello, hostSocket)
 	}
 
 	alice := &session.Session{SessionID: "alice-session", User: session.User{Username: "alice", UID: 1000}, Privileged: true}

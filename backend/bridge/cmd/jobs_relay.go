@@ -14,17 +14,15 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/jobsclient"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/jobslauncher"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 // Seams for tests.
 var (
-	jobsLauncherSocket = jobslauncher.LauncherSocketPath
-	jobsHostSocket     = jobslauncher.HostSocketPath
-	jobsConnect        = jobsclient.Connect
-	effectiveUID       = func() uint32 { return uint32(os.Geteuid()) }
+	jobsHostSocket = jobsclient.HostSocketPath
+	jobsConnect    = jobsclient.Connect
+	effectiveUID   = func() uint32 { return uint32(os.Geteuid()) }
 )
 
 const (
@@ -102,7 +100,7 @@ func (j *jobsRelay) run(ctx context.Context, uid uint32, hello bridgeipc.HelloSe
 	defer close(j.done)
 	retry := jobsRetryMin
 	for {
-		c, err := jobsConnect(ctx, uid, hello, jobsLauncherSocket, jobsHostSocket(uid))
+		c, err := jobsConnect(ctx, uid, hello, jobsHostSocket(uid))
 		if ctx.Err() != nil {
 			if c != nil {
 				_ = c.Close()

@@ -18,7 +18,6 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/jobsclient"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/jobslauncher"
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
 	"github.com/mordilloSan/LinuxIO/backend/common/jobs"
 	"github.com/mordilloSan/LinuxIO/backend/common/logging"
@@ -70,7 +69,7 @@ func runJobsReconcile(stderr io.Writer) int {
 		},
 		connect: func(ctx context.Context) (resumer, error) {
 			hello := bridgeipc.HelloSession{Username: "root", UID: 0, Privileged: true, SessionRef: "reconcile"}
-			c, err := jobsclient.Connect(ctx, 0, hello, jobslauncher.LauncherSocketPath, jobslauncher.HostSocketPath(0))
+			c, err := jobsclient.Connect(ctx, 0, hello, jobsclient.HostSocketPath(0))
 			if err != nil {
 				return nil, err
 			}

@@ -18,6 +18,9 @@ static unsigned int g_real_uid;
 static unsigned int g_real_gid;
 
 #define BRIDGE_DIR "bridge-bin"
+#define LINUXIO_SYSTEMCTL "systemctl-stub"
+// A hanging systemctl is killed after a second instead of three.
+#define JOBS_HOST_START_TIMEOUT_SEC 1
 #define LINUXIO_BRIDGE_OWNER ((uid_t)g_real_uid)
 #define LINUXIO_PATH_UTMP "acct-utmp"
 #define LINUXIO_PATH_WTMP "acct-wtmp"
@@ -142,6 +145,21 @@ static int reset_case(const char *pam_control, const char *bridge_control)
     return -1;
   t_remove("acct-btmp");
   t_remove("pam-trace");
+  t_remove("systemctl-trace");
+  t_remove("systemctl-status");
+  t_remove("systemctl-hang");
+  {
+    // The systemctl seam records its arguments and how many PAM steps had
+    // run, hangs while systemctl-hang exists, and exits with the status in
+    // systemctl-status (0 when absent). exec keeps the pid a timeout kills.
+    static const char stub[] =
+        "#!/bin/sh\n"
+        "printf '%s lines=%s\\n' \"$*\" \"$(wc -l <pam-trace)\" >>systemctl-trace\n"
+        "[ -e systemctl-hang ] && exec sleep 30\n"
+        "exit \"$(cat systemctl-status 2>/dev/null || echo 0)\"\n";
+    if (t_write_file(LINUXIO_SYSTEMCTL, stub, sizeof(stub) - 1, 0755) != 0)
+      return -1;
+  }
   if (t_write_file("pam-control", pam_control, strlen(pam_control), 0644) != 0)
     return -1;
 
@@ -500,6 +518,15 @@ static int test_happy_path_login(void)
                       CANON_USER) > 0);
   CHECK(check_trace_equals(expected_trace) == 0);
 
+  // The unprivileged login started its jobs host through the systemctl seam
+  // after authenticate, acct_mgmt and setcred establish (lines=3): before
+  // open_session, so pam_selinux's exec context cannot reach systemctl.
+  CHECK(safe_snprintf(expected_trace, sizeof(expected_trace),
+                      "start --no-block --quiet linuxio-jobs@%u.service lines=3\n",
+                      g_real_uid) > 0);
+  CHECK(t_read_file("systemctl-trace", dump, sizeof(dump), &dump_len) == 0);
+  CHECK(strcmp(dump, expected_trace) == 0);
+
   // Working directory: the launcher chdir()ed the child to the fake home.
   CHECK(read_home_dump("dump_cwd", dump, sizeof(dump), &dump_len) == 0);
   CHECK(strcmp(dump, g_home) == 0);
@@ -652,6 +679,51 @@ static int test_happy_path_login(void)
     CHECK(stat("acct-btmp", &st) != 0);
   }
 
+  return 0;
+}
+
+// A host that fails to start is a journal entry, never a failed login.
+static int test_jobs_host_start_failure_keeps_login(void)
+{
+  struct login_result res;
+  char dump[256];
+  size_t dump_len = 0;
+
+  CHECK(reset_case("", "ok") == 0);
+  CHECK(t_write_file("systemctl-status", "1\n", 2, 0644) == 0);
+  CHECK(run_login(CANON_USER, TEST_PASSWORD, 0, &res) == 0);
+  CHECK(res.rc == 0);
+  CHECK(check_ok_response(&res, CANON_USER, STUB_MARKER) == 0);
+  CHECK(t_read_file("systemctl-trace", dump, sizeof(dump), &dump_len) == 0);
+  CHECK(dump_len > 0);
+  return 0;
+}
+
+// A missing systemctl is a warning, never a failed login.
+static int test_jobs_host_exec_failure_keeps_login(void)
+{
+  struct login_result res;
+
+  CHECK(reset_case("", "ok") == 0);
+  t_remove(LINUXIO_SYSTEMCTL);
+  CHECK(run_login(CANON_USER, TEST_PASSWORD, 0, &res) == 0);
+  CHECK(res.rc == 0);
+  CHECK(check_ok_response(&res, CANON_USER, STUB_MARKER) == 0);
+  CHECK(access("systemctl-trace", F_OK) != 0);
+  return 0;
+}
+
+// A systemctl that hangs is killed at the start timeout; the login proceeds.
+static int test_jobs_host_hang_keeps_login(void)
+{
+  struct login_result res;
+
+  CHECK(reset_case("", "ok") == 0);
+  CHECK(t_write_file("systemctl-hang", "", 0, 0644) == 0);
+  CHECK(run_login(CANON_USER, TEST_PASSWORD, 0, &res) == 0);
+  CHECK(res.rc == 0);
+  CHECK(check_ok_response(&res, CANON_USER, STUB_MARKER) == 0);
+  CHECK(access("systemctl-trace", F_OK) == 0);
   return 0;
 }
 
@@ -828,6 +900,9 @@ static int test_open_session_failure(void)
 
   CHECK(read_utmp_records("acct-wtmp", recs, 4, &count) == 0);
   CHECK(count == 0);
+  // The host starts before the session opens, so a failed session still
+  // started it; it idles out.
+  CHECK(access("systemctl-trace", F_OK) == 0);
   return 0;
 }
 
@@ -1266,6 +1341,9 @@ int main(void)
 {
   const struct test_case tests[] = {
       {"happy-path login", test_happy_path_login},
+      {"jobs host start failure keeps the login", test_jobs_host_start_failure_keeps_login},
+      {"jobs host exec failure keeps the login", test_jobs_host_exec_failure_keeps_login},
+      {"jobs host hang keeps the login", test_jobs_host_hang_keeps_login},
       {"wrong password hits btmp", test_wrong_password_hits_btmp},
       {"unknown user hits btmp", test_unknown_user_hits_btmp},
       {"PAM_USER canonicalization", test_pam_user_canonicalization},

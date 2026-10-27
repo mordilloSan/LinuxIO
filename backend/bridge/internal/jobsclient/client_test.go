@@ -6,6 +6,7 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
+	"io/fs"
 	"net"
 	"os"
 	"path/filepath"
@@ -16,7 +17,6 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/jobshost"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/jobslauncher"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	"github.com/mordilloSan/LinuxIO/backend/common/jobs"
 	"github.com/mordilloSan/LinuxIO/backend/common/peercred"
@@ -129,31 +129,9 @@ func asRoot(t *testing.T, root bool) *[]string {
 	return &started
 }
 
-// fakeLauncher answers every connection with reply, as jobs-launcher.sock does.
-func fakeLauncher(t *testing.T, reply string) string {
-	t.Helper()
-	path := filepath.Join(t.TempDir(), "launcher.sock")
-	ln, err := net.Listen("unix", path)
-	if err != nil {
-		t.Fatalf("listen launcher: %v", err)
-	}
-	t.Cleanup(func() { _ = ln.Close() })
-	go func() {
-		for {
-			conn, err := ln.Accept()
-			if err != nil {
-				return
-			}
-			_, _ = conn.Write([]byte(reply))
-			_ = conn.Close()
-		}
-	}()
-	return path
-}
-
 func connect(t *testing.T, th *testHost, uid uint32, hello bridgeipc.HelloSession) *Client {
 	t.Helper()
-	c, err := Connect(t.Context(), uid, hello, filepath.Join(t.TempDir(), "no-launcher.sock"), th.socket)
+	c, err := Connect(t.Context(), uid, hello, th.socket)
 	if err != nil {
 		t.Fatalf("Connect: %v", err)
 	}
@@ -195,8 +173,8 @@ func TestClientConnectSendsHelloAndOpensMutation(t *testing.T) {
 	// As root the client starts the uid's host unit itself.
 	started := asRoot(t, true)
 	c := connect(t, th, uid, hello)
-	if !slices.Equal(*started, []string{jobslauncher.UnitName(uid)}) {
-		t.Fatalf("started units = %v, want [%s]", *started, jobslauncher.UnitName(uid))
+	if !slices.Equal(*started, []string{UnitName(uid)}) {
+		t.Fatalf("started units = %v, want [%s]", *started, UnitName(uid))
 	}
 	if c.Protocol() != jobs.Protocol {
 		t.Fatalf("Protocol() = %d, want %d", c.Protocol(), jobs.Protocol)
@@ -232,23 +210,19 @@ func TestClientConnectSendsHelloAndOpensMutation(t *testing.T) {
 		break
 	}
 
-	// As a user it asks the launcher, and never starts a unit.
+	// As a user it only dials: linuxio-auth started the host at login.
 	started = asRoot(t, false)
-	user, err := Connect(t.Context(), uid, hello, fakeLauncher(t, "ok\n"), th.socket)
+	user, err := Connect(t.Context(), uid, hello, th.socket)
 	if err != nil {
-		t.Fatalf("Connect through the launcher: %v", err)
+		t.Fatalf("Connect as a user: %v", err)
 	}
 	_ = user.Close()
 	if len(*started) != 0 {
 		t.Fatalf("started units as a user = %v, want none", *started)
 	}
-	if _, err := Connect(t.Context(), uid, hello, fakeLauncher(t, "error: user is not allowed\n"), th.socket); err == nil ||
-		!strings.Contains(err.Error(), "user is not allowed") {
-		t.Fatalf("Connect with a refused launch = %v, want the launcher's reason", err)
-	}
 
 	hello.SessionRef = ""
-	if _, err := Connect(t.Context(), uid, hello, fakeLauncher(t, "ok\n"), th.socket); err == nil {
+	if _, err := Connect(t.Context(), uid, hello, th.socket); err == nil {
 		t.Fatal("Connect without a session ref succeeded")
 	}
 }
@@ -279,11 +253,29 @@ func TestClientConnectRetriesAStaleSocket(t *testing.T) {
 	}
 
 	hello := bridgeipc.HelloSession{Username: "alice", UID: uid, SessionRef: "ref-stale"}
-	c, err := Connect(t.Context(), uid, hello, filepath.Join(t.TempDir(), "no-launcher.sock"), stale)
+	c, err := Connect(t.Context(), uid, hello, stale)
 	if err != nil {
 		t.Fatalf("Connect through a stale socket: %v", err)
 	}
 	_ = c.Close()
+}
+
+func TestClientConnectFailsWhenNoHostListens(t *testing.T) {
+	oldWait := hostWait
+	t.Cleanup(func() { hostWait = oldWait })
+	hostWait = 4 * hostPoll
+	asRoot(t, false)
+	uid := uint32(os.Getuid())
+	hello := bridgeipc.HelloSession{Username: "alice", UID: uid, SessionRef: "ref-none"}
+
+	started := time.Now()
+	_, err := Connect(t.Context(), uid, hello, filepath.Join(t.TempDir(), "host.sock"))
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("Connect with no host = %v, want a missing-socket error", err)
+	}
+	if elapsed := time.Since(started); elapsed < hostWait {
+		t.Fatalf("Connect gave up after %v, want the %v dial window", elapsed, hostWait)
+	}
 }
 
 func TestClientReturnsUpdatePendingOnProtocolMismatch(t *testing.T) {
@@ -294,7 +286,7 @@ func TestClientReturnsUpdatePendingOnProtocolMismatch(t *testing.T) {
 	protocol = jobs.Protocol + 1
 	t.Cleanup(func() { protocol = old })
 
-	c, err := Connect(t.Context(), uid, bridgeipc.HelloSession{Username: "alice", UID: uid, SessionRef: "ref-1"}, "", th.socket)
+	c, err := Connect(t.Context(), uid, bridgeipc.HelloSession{Username: "alice", UID: uid, SessionRef: "ref-1"}, th.socket)
 	if !errors.Is(err, ErrUpdatePending) || c != nil {
 		t.Fatalf("Connect = %v, %v; want ErrUpdatePending", c, err)
 	}

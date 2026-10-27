@@ -47,7 +47,7 @@ func TestShutdownBridgeCancelsBeforeClosingTransport(t *testing.T) {
 	}
 
 	oldConnect := jobsConnect
-	jobsConnect = func(context.Context, uint32, bridgeipc.HelloSession, string, string) (*jobsclient.Client, error) {
+	jobsConnect = func(context.Context, uint32, bridgeipc.HelloSession, string) (*jobsclient.Client, error) {
 		return nil, errors.New("no job host in this test")
 	}
 	t.Cleanup(func() { jobsConnect = oldConnect })

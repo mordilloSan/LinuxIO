@@ -90,22 +90,6 @@ func TestJobsSubcommandsAreDispatched(t *testing.T) {
 	}
 }
 
-func TestJobsLaunchRequiresSocketStdin(t *testing.T) {
-	var stderr bytes.Buffer
-	if code := runJobsCommand([]string{"launch"}, strings.NewReader(""), io.Discard, &stderr); code != 2 {
-		t.Fatalf("launch with a non-file stdin = %d, want 2", code)
-	}
-	file, err := os.CreateTemp(t.TempDir(), "stdin")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() { _ = file.Close() }()
-	stderr.Reset()
-	if code := runJobsCommand([]string{"launch"}, file, io.Discard, &stderr); code != 2 || !strings.Contains(stderr.String(), "not a socket") {
-		t.Fatalf("launch with a regular file = %d, %q; want 2 and a not-a-socket message", code, stderr.String())
-	}
-}
-
 func TestJobsSubmitRejectsBadArguments(t *testing.T) {
 	for _, args := range [][]string{
 		{"submit"},
