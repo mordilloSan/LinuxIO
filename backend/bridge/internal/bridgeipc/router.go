@@ -73,6 +73,7 @@ type Route struct {
 	// Mutation routes only.
 	BrowserBound bool
 	Target       func(request any) []string
+	Secrets      []string
 	Suspend      SuspendFunc
 	Resume       ResumeFunc
 }
@@ -138,6 +139,34 @@ func WithTarget(fn func(any) []string) RouteOption {
 	return func(r *Route) {
 		r.Target = fn
 	}
+}
+
+// WithSecrets names the request members a Mutation's job record leaves out.
+func WithSecrets(members ...string) RouteOption {
+	return func(r *Route) {
+		r.Secrets = members
+	}
+}
+
+// RecordedRequest returns the request a job record keeps: raw without the
+// route's secret members. It returns nil for a request that is not an object.
+func (r Route) RecordedRequest(raw jsontext.Value) jsontext.Value {
+	if len(r.Secrets) == 0 {
+		return raw
+	}
+	var members map[string]jsontext.Value
+	if err := json.Unmarshal(raw, &members); err != nil {
+		return nil
+	}
+	for _, name := range r.Secrets {
+		delete(members, name)
+	}
+	// Sorted, so a resend compares equal to the record.
+	data, err := json.Marshal(members, json.Deterministic(true))
+	if err != nil {
+		return nil
+	}
+	return data
 }
 
 // WithResume declares the hooks that suspend a Mutation job at shutdown and
@@ -612,7 +641,7 @@ func (r *Router) startTaskWithIdentity(route Route, req Request, identity TaskId
 		return task, false, err
 	}
 	if route.Mode == ModeMutation {
-		r.registry.recordStarted(task, req.RawRequest)
+		r.registry.recordStarted(task, route.RecordedRequest(req.RawRequest))
 	}
 	r.startTrackedTask(route, task, req.Owner, target)
 	return task, true, nil

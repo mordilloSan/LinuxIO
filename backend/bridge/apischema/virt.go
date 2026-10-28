@@ -169,7 +169,7 @@ type VMCreateRequest struct {
 	ImagePresetID     VMImagePresetID `json:"imagePresetId,omitempty"`
 	TemplateID        string          `json:"templateId,omitempty"`
 	CloudInitUsername string          `json:"cloudInitUsername,omitempty"`
-	CloudInitPassword string          `json:"cloudInitPassword,omitempty"`
+	CloudInitPassword string          `json:"cloudInitPassword,omitempty" secret:"true"`
 	CloudInitSSHKey   string          `json:"cloudInitSshKey,omitempty"`
 	CloudInitHostname string          `json:"cloudInitHostname,omitempty"`
 	Network           string          `json:"network,omitempty"`

@@ -12,7 +12,7 @@ type RsyncConfig struct {
 type RsyncSaveRequest struct {
 	RsyncConfig
 	// An empty password keeps the existing secret when the username is unchanged.
-	Password string `json:"password"`
+	Password string `json:"password" secret:"true"`
 }
 
 type RsyncStatus struct {

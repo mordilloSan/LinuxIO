@@ -474,7 +474,8 @@ func (h *Host) answerStored(ctx context.Context, stream net.Conn, open relay.Str
 		return true
 	}
 	// A record too large to keep its request is matched by route alone.
-	if record.Route != open.Route || (len(record.Request) > 0 && !sameJSON(record.Request, open.Request)) {
+	route, _ := h.cfg.Router.Route(open.Route)
+	if record.Route != open.Route || (len(record.Request) > 0 && !sameJSON(record.Request, route.RecordedRequest(open.Request))) {
 		slog.Warn("job host refused a reused job id", "job_id", open.ID, "route", record.Route)
 		_ = relay.WriteResultErrorAndClose(stream, 0, "job id was used for another request", 409)
 		return true

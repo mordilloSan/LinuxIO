@@ -977,6 +977,51 @@ func TestHostRefusesAResendOfAStoredJobWithAnotherRequest(t *testing.T) {
 	}
 }
 
+type secretRequest struct {
+	User     string `json:"user"`
+	Password string `json:"password"`
+}
+
+// A route with secrets records its request without them, and a resend that
+// carries them still matches the record.
+func TestHostRecordsARedactedRequestAndMatchesItsResend(t *testing.T) {
+	th := newTestHost(t, nil)
+	th.cfg.Router.Mutation("test.secret", th.run,
+		bridgeipc.WithRequestDecoder(bridgeipc.JSONRequestDecoder[secretRequest]()),
+		bridgeipc.WithSecrets("password"))
+	th.start()
+	sess := th.connect()
+	request := secretRequest{User: "bob", Password: "hunter2"}
+	const redacted = `{"user":"bob"}`
+
+	running := openStream(t, sess, "test.secret", request, jobA)
+	readSnapshot(t, running)
+	if got := compact(t, th.record(jobA).Request); got != redacted {
+		t.Fatalf("recorded request = %s, want %s", got, redacted)
+	}
+	th.release <- nil
+	readResult(t, running)
+
+	now := time.Now().UTC()
+	if err := th.cfg.Store.Create(context.Background(), jobs.Record{
+		ID: jobB, Route: "test.secret", Owner: jobs.Owner{UID: th.cfg.UID, Username: "alice"},
+		State: jobs.StateCompleted, CreatedAt: now, StartedAt: now, FinishedAt: now, Result: jsontext.Value(`{"ok":true}`),
+		Request: jsontext.Value(redacted), Executor: jobs.Executor{Kind: "host"}, Protocol: jobs.Protocol,
+	}); err != nil {
+		t.Fatalf("Store.Create: %v", err)
+	}
+	resend := openStream(t, sess, "test.secret", request, jobB)
+	if snapshot := readSnapshot(t, resend); snapshot.State != bridgeipc.TaskStateCompleted {
+		t.Fatalf("resend snapshot state = %q, want the stored completed job", snapshot.State)
+	}
+	if result := readResult(t, resend); result.Status != "ok" {
+		t.Fatalf("resend result = %#v, want ok", result)
+	}
+	if runs := th.runs.Load(); runs != 1 {
+		t.Fatalf("handler ran %d times, want 1: the resend is answered from the record", runs)
+	}
+}
+
 func TestRootHostRecordsTheClaimedOwnerUID(t *testing.T) {
 	th := newTestHost(t, func(cfg *Config) {
 		cfg.UID = 0

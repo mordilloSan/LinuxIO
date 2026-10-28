@@ -525,6 +525,35 @@ func TestResumablePanicsWithoutPrivileged(t *testing.T) {
 	_ = apischema.MutationVoid("test.unprivileged_resumable", run).Resumable(hooks)
 }
 
+type passwordRequest struct {
+	User     string `json:"user"`
+	Password string `json:"password" secret:"true"`
+}
+
+// A Mutation records its request without the members tagged secret, so it
+// cannot resume from that record.
+func TestRedactedMutationRecordsItsRequestWithoutTheSecret(t *testing.T) {
+	binding := apischema.MutationVoid("test.redacted", func(context.Context, passwordRequest) error { return nil }, apischema.Privileged())
+	router := bridgeipc.NewRouter(bridgeipc.NewTaskService())
+	apischema.Bindings(binding).Register(router)
+	route, _ := router.Route("test.redacted")
+	if got := string(route.RecordedRequest(jsontext.Value(`{"user":"bob","password":"hunter2"}`))); got != `{"user":"bob"}` {
+		t.Fatalf("recorded request = %s, want it without the password", got)
+	}
+
+	defer func() {
+		if recover() == nil {
+			t.Fatal("Resumable() accepted a route that redacts its request")
+		}
+	}()
+	_ = binding.Resumable(apischema.ResumeHooks[passwordRequest, apischema.NoResponse]{
+		Suspend: func(context.Context, passwordRequest, jsontext.Value) (jsontext.Value, error) { return nil, nil },
+		Resume: func(context.Context, passwordRequest, jsontext.Value) (apischema.NoResponse, error) {
+			return apischema.NoResponse{}, nil
+		},
+	})
+}
+
 func TestMutationVoidRequiresNoResponse(t *testing.T) {
 	binding := apischema.MutationVoid("test.void_mutation", func(context.Context, poolRequest) error { return nil })
 	if !binding.Route.Result.Void() {

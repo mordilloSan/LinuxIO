@@ -141,14 +141,20 @@ Mutation options:
 - `apischema.Privileged()`, as for every route that needs root.
 - `apischema.Progress[T]()` for the typed progress detail.
 - `apischema.BrowserBound()` keeps the route in the bridge because its bytes
-  come from or go to the browser. No route declares it yet.
+  come from or go to the browser: `filebrowser.upload`, `upload_batch` and
+  `archive`. Logout cancels its jobs.
+- `apischema.Exclusive()` runs one job of the route at a time.
 - A request type that implements `apischema.Targeted`, `Target() []string`,
   names what the job works on (a container, a pool); the binding detects it
   once. A second job of the same route on the same target is refused while the
   first runs. `DockerContainerUpdateRequest` returns its container ID.
+- A request field tagged `secret:"true"`, such as a password, is left out of
+  the request the job record keeps. `TestMutationRequestsKeepTheirSecretsOutOfTheRecord`
+  fails for a Mutation request field named like a password or key without it.
 - `.Resumable(apischema.ResumeHooks[Req, Res]{Suspend, Resume})` on the
   binding lets a job continue after a shutdown or reboot. It panics unless the
-  route is `Privileged()`. No route declares it yet.
+  route is `Privileged()` and has no secret fields. No route declares it
+  yet.
 
 ## Frontend Shape
 
@@ -586,8 +592,8 @@ is canceled. These checks refuse with `409` instead of waiting:
   paths), is refused, as the kernel or device would refuse it. The target stays
   taken until the first handler has exited, even after a cancel. A request type
   without `Target()` has no target and is never refused as a duplicate.
-- **Exclusive routes** (`bridgeipc.TaskExclusive`, legacy Task routes only) run
-  one at a time because they own a whole system resource: `packages.update`,
+- **Exclusive routes** (`apischema.Exclusive()`) run one at a time because
+  they own a whole system resource: `packages.update`,
   `system.install_capability`, `control.app_update`,
   `docker.apply_daemon_storage` and `filebrowser.index`.
 - **Host ceiling.** A job host refuses a new job while it runs 256.

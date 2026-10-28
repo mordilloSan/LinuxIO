@@ -318,7 +318,7 @@ What each event does to a job, as phase 1 implements it:
 
 - Nothing new is reachable from the network. The webserver still relays bytes to a bridge that is the user.
 - Authorization is the uid of the connecting process, read by the kernel. The root host accepts only root; a user host accepts only its uid. `linuxio-auth` starts a host only for the uid PAM admitted.
-- The record contains the request. It is `0600`, owned by the uid, and no API returns it; snapshots expose `route`, `target`, `owner`, `progress`, `result`, `error` and timestamps, as today.
+- The record contains the request, without the fields tagged `secret:"true"`. It is `0600`, owned by the uid, and no API returns it; snapshots expose `route`, `target`, `owner`, `progress`, `result`, `error` and timestamps, as today.
 - The root host runs admin mutations as root, as the root bridge does now. The set of code running as root grows by one bounded `systemctl start` in `linuxio-auth`.
 - A user host runs with `NoNewPrivileges`. The root host too; root does not need setuid binaries. If a handler turns out to need one, the unit drops the flag for uid 0 with a comment saying which.
 - Ceilings: 256 running jobs per host; one host per uid; starting a running unit is a no-op, so repeated logins cannot multiply hosts.
@@ -775,10 +775,11 @@ The launcher was removed in `0b44d7d3`; all its items are obsolete: success log 
 
 ### Other open items
 
-- [ ] Stored requests keep secrets for the retention period: `virt.create`'s
-  cloud-init password, and the account and SMTP passwords since batch 1. The
-  records are `0600` and no API returns them (section 2.15); redact secret
-  fields before storing.
+- [x] Stored requests kept secrets for the retention period: `virt.create`'s
+  cloud-init password, the account, CIFS, rsync and SMTP passwords. Those
+  fields are tagged `secret:"true"` and the record leaves them out; a resend is
+  compared in the same form. A handlers test fails for a Mutation request field
+  named like a secret without the tag.
 
 - [ ] The power-loss reboot path (`interrupted/reboot` marked at boot) has only unit-test coverage.
 - [ ] The bridge resource limits (section 4.1).

@@ -70,6 +70,9 @@ test("keeps volume usage and paths readable in tables and cards", async ({
   await sortable.focus();
   await page.keyboard.press("Space");
   await expect(sortable).toHaveAttribute("aria-pressed", "true");
+  // dnd-kit listens for the cancel key from a setTimeout queued at drag start,
+  // and Chromium runs input before timers: run that timer before Escape.
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve)));
   await page.keyboard.press("Escape");
   await expect(sortable).not.toHaveAttribute("aria-pressed", "true");
   await page.getByPlaceholder("Search volumes…").fill("no-such-volume");

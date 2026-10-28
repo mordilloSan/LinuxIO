@@ -199,7 +199,7 @@ type CIFSMountRequest struct {
 	Share      string   `json:"share"`
 	Mountpoint string   `json:"mountpoint"`
 	Username   string   `json:"username"`
-	Password   string   `json:"password"`
+	Password   string   `json:"password" secret:"true"`
 	Domain     string   `json:"domain"`
 	Options    []string `json:"options"`
 }

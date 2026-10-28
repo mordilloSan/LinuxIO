@@ -33,7 +33,7 @@ type NotificationSettings struct {
 	EmailTo      []string `json:"emailTo"`
 	MinSeverity  string   `json:"minSeverity"`
 	SMTPHost     string   `json:"smtpHost"`
-	SMTPPassword string   `json:"smtpPassword,omitempty"`
+	SMTPPassword string   `json:"smtpPassword,omitempty" secret:"true"`
 	SMTPPort     int      `json:"smtpPort"`
 	SMTPUsername string   `json:"smtpUsername"`
 	WebhookURL   string   `json:"webhookUrl"`

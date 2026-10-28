@@ -6,6 +6,7 @@ import (
 	"encoding/json/v2"
 	"fmt"
 	"net"
+	"reflect"
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
@@ -27,6 +28,9 @@ type RouteSpec struct {
 	TaskClient bool
 	Resumable  bool
 	Targeted   bool
+	// Secrets are the request members tagged `secret:"true"`, which the job
+	// record leaves out.
+	Secrets []string
 
 	Request  TypeSpec
 	Result   TypeSpec
@@ -166,6 +170,28 @@ type Targeted interface {
 	Target() []string
 }
 
+// secretMembers names the JSON members of t's fields tagged `secret:"true"`,
+// with those of its embedded structs.
+func secretMembers(t reflect.Type) []string {
+	if t.Kind() != reflect.Struct {
+		return nil
+	}
+	var names []string
+	for field := range t.Fields() {
+		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		switch {
+		case field.Anonymous && name == "":
+			names = append(names, secretMembers(field.Type)...)
+		case field.Tag.Get("secret") == "true":
+			if name == "" {
+				name = field.Name
+			}
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
 // Job record members a resume hook reads.
 const (
 	recordRequestMember    = "request"
@@ -187,10 +213,12 @@ type MutationBinding[Req, Res any] struct {
 }
 
 // Mutation declares a route that changes the host. Its request and result
-// types come from fn, and Req implementing Targeted makes the route targeted.
+// types come from fn, Req implementing Targeted makes the route targeted, and
+// its fields tagged `secret:"true"` stay out of the job record.
 func Mutation[Req, Res any](name string, fn func(context.Context, Req) (Res, error), opts ...RouteSpecOption) MutationBinding[Req, Res] {
 	spec := newRoute[Req, Res](KindMutation, bridgeipc.ModeMutation, name, opts...).spec
 	_, spec.Targeted = any(*new(Req)).(Targeted)
+	spec.Secrets = secretMembers(reflect.TypeFor[Req]())
 	return MutationBinding[Req, Res]{Route: spec, fn: fn}
 }
 
@@ -220,6 +248,9 @@ func (b MutationBinding[Req, Res]) Resumable(h ResumeHooks[Req, Res]) MutationBi
 	}
 	if h.Suspend == nil || h.Resume == nil {
 		panic(fmt.Sprintf("apischema: resumable route %s needs both hooks", b.Route.Route))
+	}
+	if len(b.Route.Secrets) > 0 {
+		panic(fmt.Sprintf("apischema: resumable route %s cannot resume without its secret fields", b.Route.Route))
 	}
 	b.Route.Resumable = true
 	b.hooks = h
@@ -654,6 +685,9 @@ func routeOptions(spec RouteSpec, explicit []bridgeipc.RouteOption) []bridgeipc.
 			}
 			return nil
 		}))
+	}
+	if len(spec.Secrets) > 0 {
+		opts = append(opts, bridgeipc.WithSecrets(spec.Secrets...))
 	}
 	if spec.BrowserBound {
 		opts = append(opts, bridgeipc.WithBrowserBound())
