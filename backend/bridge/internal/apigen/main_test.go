@@ -38,7 +38,6 @@ func TestRenderClientEmitsCallsAndSkipsChannels(t *testing.T) {
 func TestRenderClientEmitsRequestObjectEndpoints(t *testing.T) {
 	out := renderClient()
 	for _, expected := range []string{
-		`import { createTaskEndpoint } from "../task-react-query";`,
 		`import type { TypedAPI } from "../endpoint-types";`,
 		`get_ntp_servers: defineCall("datetime.get_ntp_servers")`,
 		`get_ntp_status: defineCall("datetime.get_ntp_status")`,
@@ -52,8 +51,8 @@ func TestRenderClientEmitsRequestObjectEndpoints(t *testing.T) {
 		`update_container: defineMutation("docker", "update_container", { kind: "field", field: "containerId" })`,
 		`import { defineMutation } from "../mutation-react-query";`,
 		`set_hostname: defineMutation("hostname", "set_hostname", { kind: "field", field: "hostname" })`,
-		`compose: createTaskEndpoint("docker", "compose", { kind: "object" })`,
-		`archive: createTaskEndpoint("filebrowser", "archive", { kind: "object" })`,
+		`compose: defineMutation("docker", "compose", { kind: "object" })`,
+		`archive: defineMutation("filebrowser", "archive", { kind: "object" })`,
 		`validate_compose: defineCallWithRequest("docker.validate_compose")`,
 		`import { defineCall, defineCallWithRequest } from "../call-react-query";`,
 	} {
@@ -65,7 +64,7 @@ func TestRenderClientEmitsRequestObjectEndpoints(t *testing.T) {
 		"createEndpoint(",
 		"createQueryEndpoint(",
 		`from "../react-query"`,
-		"\n    get_cpu_info: createTaskEndpoint(",
+		"task-react-query",
 		"serialize" + "StringArg",
 		"serialize" + "OptionalStringArg",
 		"trimTrailing" + "Undefined",
@@ -80,9 +79,9 @@ func TestRenderClientEmitsRequestObjectEndpoints(t *testing.T) {
 func TestRenderClientEmitsMutationEndpoints(t *testing.T) {
 	routes := []apischema.RouteSpec{
 		{
-			Kind:    apischema.KindTaskRunner,
-			Route:   "docker.compose",
-			Mode:    bridgeipc.ModeTask,
+			Kind:    apischema.KindHandler,
+			Route:   "docker.inspect_container",
+			Mode:    bridgeipc.ModeCall,
 			Request: apischema.TypeOf[GoldenNestedRequest](),
 			Result:  apischema.TypeOf[GoldenResponse](),
 		},
@@ -99,7 +98,6 @@ func TestRenderClientEmitsMutationEndpoints(t *testing.T) {
 	out := renderClientForRoutes(routes)
 	for _, expected := range []string{
 		`import { defineMutation } from "../mutation-react-query";`,
-		`compose: createTaskEndpoint("docker", "compose", { kind: "object" })`,
 		`update_container: defineMutation("docker", "update_container", { kind: "object" })`,
 	} {
 		if !strings.Contains(out, expected) {
@@ -120,7 +118,7 @@ func TestRenderClientEmitsMutationEndpoints(t *testing.T) {
 func TestRenderRouteMetadataIncludesStreamOnlyRoutes(t *testing.T) {
 	out := renderRouteMetadata()
 	for _, expected := range []string{
-		`export type RouteMode = "call" | "task" | "mutation" | "duplex";`,
+		`export type RouteMode = "call" | "mutation" | "duplex";`,
 		"export type RouteName = keyof typeof ROUTE_MODES;",
 		"export const RETRY_SAFE_CALLS = {",
 		`"system.get_cpu_info": true`,
@@ -282,16 +280,16 @@ func TestRenderTypesFromGoContracts(t *testing.T) {
 			Result:  apischema.TypeOf[GoldenResponse](),
 		},
 		{
-			Kind:    apischema.KindHandler,
+			Kind:    apischema.KindMutation,
 			Route:   "golden.nested",
-			Mode:    bridgeipc.ModeTask,
+			Mode:    bridgeipc.ModeMutation,
 			Request: apischema.TypeOf[GoldenNestedRequest](),
 			Result:  apischema.TypeOf[GoldenResponse](),
 		},
 		{
-			Kind:     apischema.KindTaskRunner,
+			Kind:     apischema.KindMutation,
 			Route:    "golden.runner",
-			Mode:     bridgeipc.ModeTask,
+			Mode:     bridgeipc.ModeMutation,
 			Request:  apischema.TypeOf[apischema.NTPServersRequest](),
 			Result:   apischema.TypeOf[apischema.TaskSnapshot](),
 			Progress: apischema.TypeOf[GoldenProgress](),

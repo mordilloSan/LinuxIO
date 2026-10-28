@@ -8,7 +8,6 @@ import type {
   StorageTopologyInventory,
 } from "@/api";
 import { render } from "@/test/render";
-import type { TaskStreamActionMockConfig } from "@/test/taskStreamAction";
 
 import BtrfsDevicesCard from "./BtrfsDevicesCard";
 import BtrfsHealthBanner from "./BtrfsHealthBanner";
@@ -26,26 +25,34 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
-  const { createTaskStreamActionMock } =
-    await import("@/test/taskStreamAction");
-  const task = (name: string) => ({
-    useTaskStreamAction: (config?: TaskStreamActionMockConfig) => ({
-      isPending: mocks.pending.has(name),
-      ...createTaskStreamActionMock(
-        {
-          openStream: () => ({}),
-          runStream: () => Promise.resolve(undefined),
-          submit: (request) => mocks.submit(name, request),
-        },
-        config,
-      ),
-    }),
-  });
+  const { createMutationJobMock } = await import("@/test/mutationJob");
   const { mockMutationHooks } = await import("@/test/mutationHooks");
   const useCallMutation = (endpoint: { route: string }) => ({
     isPending: false,
     mutate: (mocks.mutations[endpoint.route] ??= vi.fn()),
   });
+  const jobs = new Set([
+    "btrfs_balance",
+    "btrfs_device_remove",
+    "btrfs_device_replace",
+    "btrfs_scrub_start",
+  ]);
+  // The long operations are jobs; the rest answer from the call mock.
+  const useMutation = (endpoint: { route: string }, config: never) => {
+    const call = useCallMutation(endpoint);
+    const [, name] = endpoint.route.split(".");
+    if (!jobs.has(name)) return call;
+    return {
+      isPending: mocks.pending.has(name),
+      ...createMutationJobMock(
+        {
+          follow: () => Promise.resolve(undefined),
+          start: (request) => mocks.submit(name, request),
+        },
+        config,
+      ),
+    };
+  };
   const mocked = {
     ...actual,
     call: (route: string) =>
@@ -59,16 +66,12 @@ vi.mock("@/api", async (importOriginal) => {
           queryKey: ["test-get-topology"],
           queryFn: () => mocks.topology(),
         },
-        btrfs_balance: task("btrfs_balance"),
-        btrfs_device_remove: task("btrfs_device_remove"),
-        btrfs_device_replace: task("btrfs_device_replace"),
-        btrfs_scrub_start: task("btrfs_scrub_start"),
       },
     },
   };
   return {
     ...mocked,
-    linuxio: mockMutationHooks(mocked.linuxio, useCallMutation),
+    linuxio: mockMutationHooks(mocked.linuxio, useMutation),
   };
 });
 

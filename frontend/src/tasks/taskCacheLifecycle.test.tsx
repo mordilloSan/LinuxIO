@@ -44,9 +44,9 @@ vi.mock("@/api", async (importOriginal) => {
       ...api.linuxio,
       filebrowser: {
         ...api.linuxio.filebrowser,
-        upload_batch: mocks.upload,
-        compress: mocks.compress,
-        index: mocks.index,
+        upload_batch: { start: mocks.upload },
+        compress: { start: mocks.compress },
+        index: { start: mocks.index },
       },
     },
   };

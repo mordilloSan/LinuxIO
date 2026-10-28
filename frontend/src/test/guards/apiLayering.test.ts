@@ -9,16 +9,16 @@ import {
 
 // Feature code talks to the backend through centralized descriptors. Migrated
 // Calls pass their descriptor directly to TanStack Query or `useCallMutation`.
-// Mutation routes use their endpoint's `.useMutation(`. Progress work uses
-// `useTaskAction`/`useTaskStreamAction` or the background-tasks layer.
+// Mutation routes use their endpoint's `.useMutation(`; only the
+// background-tasks layer starts a job detached with `.start(`.
 // Imperative cache reads and cache surgery use the QueryClient directly;
 // transport-only work uses typed `call()`.
 
 // The one directory that IS the primitive layer.
 const SANCTIONED_DIR_PREFIXES = ["api/"];
 
-// Background-task engine files that start Tasks through bare `linuxio.*`
-// endpoint calls. Everything else in tasks/ goes through the api layer.
+// Background-task engine files that start jobs through `linuxio.*.start(`.
+// Everything else in tasks/ goes through the api layer.
 const BARE_ENDPOINT_CALL_ALLOWED_FILES = new Set([
   "tasks/engine/useDownloadTasks.ts",
   "tasks/engine/useIndexerTasks.ts",
@@ -26,11 +26,12 @@ const BARE_ENDPOINT_CALL_ALLOWED_FILES = new Set([
   "tasks/engine/useUploadTasks.ts",
 ]);
 
-// Matches `linuxio.<handler>.<command>(`. A migrated request-bearing Call uses
-// exactly that syntax to create a query descriptor, so only Task
-// routes are forbidden here. A Call value can no longer be invoked as a
-// Promise; imperative Call transport is the separate typed `call()` function.
-const BARE_ENDPOINT_CALL = /\blinuxio\.(\w+)\.(\w+)\(/g;
+// Matches `linuxio.<handler>.<command>(` and `.start(`. A migrated
+// request-bearing Call uses the first syntax to create a query descriptor, so
+// only Mutation routes are forbidden here. A Call value can no longer be
+// invoked as a Promise; imperative Call transport is the separate typed
+// `call()` function.
+const BARE_ENDPOINT_CALL = /\blinuxio\.(\w+)\.(\w+)(?:\.start)?\(/g;
 const ENDPOINT_QUERY_WRAPPER = /\blinuxio\.\w+\.\w+\.useQuer(?:y|ies)\s*\(/;
 const LEGACY_QUERY_ENDPOINT_METHOD =
   /\blinuxio\.\w+\.\w+\.(?:queryOptions|useAction|useFetcher|useCache)\s*\(/;
@@ -160,15 +161,9 @@ describe("API layering guard", () => {
     const source = readSource("api/call-react-query.ts");
     const forbidden = [
       '"./mutation-react-query"',
-      '"./task-react-query"',
       '"./tasks"',
-      "TaskEndpoint",
       "TaskSnapshot",
       "openTaskWatchStream",
-      "useTaskAction",
-      "useTaskStreamAction",
-      "waitForTaskCompletion",
-      "waitForTaskStreamAction",
       "waitForStreamResult",
     ];
 
@@ -244,9 +239,7 @@ describe("API layering guard", () => {
       violations,
       "Feature code must not call linuxio endpoints as bare promises. " +
         "Reads go through TanStack Query descriptors; writes go through " +
-        "useCallMutation / .useMutation / useTaskAction / " +
-        "useTaskStreamAction or the " +
-        "background-tasks layer.",
+        "useCallMutation / .useMutation or the background-tasks layer.",
     ).toEqual([]);
   });
 
@@ -261,9 +254,7 @@ describe("API layering guard", () => {
     expect(
       violations,
       "Mutations belong on the typed endpoint surface " +
-        "(useCallMutation / .useMutation / useTaskAction / " +
-        "useTaskStreamAction), " +
-        "not raw useMutation.",
+        "(useCallMutation / .useMutation), not raw useMutation.",
     ).toEqual([]);
   });
 

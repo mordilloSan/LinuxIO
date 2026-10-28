@@ -20,14 +20,10 @@ type RouteSpec struct {
 	Privileged   bool
 	NoEndpoint   bool
 	RetrySafe    bool
-	TaskLifetime bridgeipc.TaskLifetime
 	BrowserBound bool
 	Exclusive    bool
-	// TaskClient: the frontend starts this Mutation with its task client,
-	// which takes the job's first snapshot and follows it with tasks.watch.
-	TaskClient bool
-	Resumable  bool
-	Targeted   bool
+	Resumable    bool
+	Targeted     bool
 	// Secrets are the request members tagged `secret:"true"`, which the job
 	// record leaves out.
 	Secrets []string
@@ -38,7 +34,6 @@ type RouteSpec struct {
 
 	Decode   bridgeipc.RequestDecoder
 	Metadata bridgeipc.TaskMetadataBuilder
-	Identity bridgeipc.TaskIdentityBuilder
 }
 
 type RouteSpecOption func(*RouteSpec)
@@ -53,22 +48,6 @@ func Privileged() RouteSpecOption {
 // cause a user-visible mutation. Calls default to no retry.
 func RetrySafe() RouteSpecOption {
 	return func(spec *RouteSpec) { spec.RetrySafe = true }
-}
-
-// WithTaskLifetime declares how long a Task remains owned by its caller.
-// Lifetime declarations are valid only for Task routes.
-func WithTaskLifetime(lifetime bridgeipc.TaskLifetime) RouteSpecOption {
-	return func(spec *RouteSpec) { spec.TaskLifetime = lifetime }
-}
-
-// SessionTask declares a Task whose lifetime is bound to the owning session.
-func SessionTask() RouteSpecOption {
-	return WithTaskLifetime(bridgeipc.TaskLifetimeSession)
-}
-
-// DurableTask declares a Task whose lifetime is independent of one session.
-func DurableTask() RouteSpecOption {
-	return WithTaskLifetime(bridgeipc.TaskLifetimeDurable)
 }
 
 func NoEndpoint() RouteSpecOption {
@@ -97,11 +76,6 @@ func Progress[Detail bridgeipc.ProgressDetail]() RouteSpecOption {
 	}
 }
 
-// WithTaskProgress is the Task route name for Progress.
-func WithTaskProgress[Detail bridgeipc.ProgressDetail]() RouteSpecOption {
-	return Progress[Detail]()
-}
-
 type Route[Request, Result any] struct {
 	spec RouteSpec
 }
@@ -116,7 +90,7 @@ type VoidHandlerFunc[Request any] func(ctx context.Context, req Request) error
 type TaskRunnerFunc[Request, Result any] func(ctx context.Context, task *bridgeipc.Task, req Request) (Result, error)
 type DuplexFunc[Request any] func(ctx context.Context, stream net.Conn, req Request) error
 
-// WithTaskMetadata declares a typed, safe request projection for a Task runner.
+// WithTaskMetadata declares a typed, safe request projection for a Mutation's task.
 // Its generic request parameter prevents a route from accidentally reading an
 // unrelated request model, while bridge snapshots remain free of raw requests.
 func WithTaskMetadata[Request any](build func(Request) bridgeipc.TaskMetadata) RouteSpecOption {
@@ -132,31 +106,8 @@ func WithTaskMetadata[Request any](build func(Request) bridgeipc.TaskMetadata) R
 	}
 }
 
-// WithTaskIdentity declares the canonical ID and safe request fingerprint for
-// a durable Task. The typed wrapper prevents identity logic from accidentally
-// inspecting another route's request model.
-func WithTaskIdentity[Request any](build func(Request) (bridgeipc.TaskIdentity, error)) RouteSpecOption {
-	return func(spec *RouteSpec) {
-		if build == nil {
-			panic("apischema: task identity builder cannot be nil")
-		}
-		spec.Identity = func(value any) (bridgeipc.TaskIdentity, error) {
-			req, ok := value.(Request)
-			if !ok {
-				var zero Request
-				panic(fmt.Sprintf("apischema: identity for %s got %T, want %T", spec.Route, value, zero))
-			}
-			return build(req)
-		}
-	}
-}
-
 func Call[Request, Result any](name string, opts ...RouteSpecOption) Route[Request, Result] {
 	return newRoute[Request, Result](KindHandler, bridgeipc.ModeCall, name, opts...)
-}
-
-func TaskRunner[Request, Result any](name string, opts ...RouteSpecOption) Route[Request, Result] {
-	return newRoute[Request, Result](KindTaskRunner, bridgeipc.ModeTask, name, opts...)
 }
 
 func DuplexRoute[Request, Result any](name string, opts ...RouteSpecOption) Route[Request, Result] {
@@ -225,12 +176,10 @@ func Mutation[Req, Res any](name string, fn func(context.Context, Req) (Res, err
 // MutationTask declares a Mutation whose handler takes the job's task, for
 // runners that report through it or name files after its ID.
 func MutationTask[Req, Res any](name string, fn TaskRunnerFunc[Req, Res], opts ...RouteSpecOption) MutationBinding[Req, Res] {
-	b := Mutation(name, func(ctx context.Context, req Req) (Res, error) {
+	return Mutation(name, func(ctx context.Context, req Req) (Res, error) {
 		task, _ := bridgeipc.TaskFromContext(ctx) // a Mutation always runs as a task
 		return fn(ctx, task, req)
 	}, opts...)
-	b.Route.TaskClient = true
-	return b
 }
 
 // MutationVoid declares a Mutation whose handler returns no result.
@@ -259,32 +208,20 @@ func (b MutationBinding[Req, Res]) Resumable(h ResumeHooks[Req, Res]) MutationBi
 
 func newRoute[Request, Result any](kind Kind, mode bridgeipc.Mode, name string, opts ...RouteSpecOption) Route[Request, Result] {
 	spec := routeSpec(kind, mode, name, TypeOf[Request](), TypeOf[Result](), bridgeipc.JSONRequestDecoder[Request](), opts...)
-	if spec.Metadata != nil && spec.Mode != bridgeipc.ModeTask && spec.Mode != bridgeipc.ModeMutation {
-		panic(fmt.Sprintf("apischema: route %s metadata is allowed only on task and mutation routes", spec.Route))
+	if spec.Metadata != nil && spec.Mode != bridgeipc.ModeMutation {
+		panic(fmt.Sprintf("apischema: route %s metadata is allowed only on mutation routes", spec.Route))
 	}
 	if spec.Exclusive && spec.Mode != bridgeipc.ModeMutation {
 		panic(fmt.Sprintf("apischema: route %s exclusivity is allowed only on mutation routes", spec.Route))
 	}
-	if spec.Identity != nil && (spec.Kind != KindTaskRunner || spec.Mode != bridgeipc.ModeTask) {
-		panic(fmt.Sprintf("apischema: route %s identity is allowed only on task runners", spec.Route))
-	}
-	if spec.Progress.GoType != nil && spec.Mode != bridgeipc.ModeTask && spec.Mode != bridgeipc.ModeMutation {
-		panic(fmt.Sprintf("apischema: route %s progress is allowed only on task and mutation routes", spec.Route))
+	if spec.Progress.GoType != nil && spec.Mode != bridgeipc.ModeMutation {
+		panic(fmt.Sprintf("apischema: route %s progress is allowed only on mutation routes", spec.Route))
 	}
 	if spec.BrowserBound && spec.Mode != bridgeipc.ModeMutation {
 		panic(fmt.Sprintf("apischema: route %s browser binding is allowed only on mutation routes", spec.Route))
 	}
 	if spec.RetrySafe && spec.Mode != bridgeipc.ModeCall {
 		panic(fmt.Sprintf("apischema: route %s retry safety is allowed only on call routes", spec.Route))
-	}
-	if spec.Mode == bridgeipc.ModeTask && spec.TaskLifetime == "" {
-		panic(fmt.Sprintf("apischema: task route %s must declare a lifetime", spec.Route))
-	}
-	if spec.Identity != nil && spec.TaskLifetime != bridgeipc.TaskLifetimeDurable {
-		panic(fmt.Sprintf("apischema: route %s stable identity requires durable lifetime", spec.Route))
-	}
-	if spec.Mode != bridgeipc.ModeTask && spec.TaskLifetime != "" {
-		panic(fmt.Sprintf("apischema: route %s task lifetime is allowed only on task routes", spec.Route))
 	}
 	return Route[Request, Result]{spec: spec}
 }
@@ -307,10 +244,9 @@ func routeSpec(kind Kind, mode bridgeipc.Mode, route string, request TypeSpec, r
 type Kind string
 
 const (
-	KindHandler    Kind = "handler"
-	KindTaskRunner Kind = "task_runner"
-	KindDuplex     Kind = "duplex"
-	KindMutation   Kind = "mutation"
+	KindHandler  Kind = "handler"
+	KindDuplex   Kind = "duplex"
+	KindMutation Kind = "mutation"
 )
 
 func (r RouteSpec) Handler() string {
@@ -372,16 +308,6 @@ func (r Route[Request, Result]) HandleVoid(handle VoidHandlerFunc[Request], opti
 	return binding
 }
 
-func (r Route[Request, Result]) Run(runner TaskRunnerFunc[Request, Result], policy bridgeipc.TaskPolicy, options ...bridgeipc.RouteOption) TaskBinding {
-	return TaskBinding{
-		Route:   r.spec,
-		Decode:  r.spec.Decode,
-		Runner:  wrapTaskRunner(r.spec.Route, runner),
-		Policy:  policy,
-		Options: options,
-	}
-}
-
 func (r Route[Request, Result]) Duplex(handle DuplexFunc[Request], options ...bridgeipc.RouteOption) DuplexBinding {
 	return DuplexBinding{
 		Route:   r.spec,
@@ -399,14 +325,6 @@ type HandlerBinding struct {
 	Options []bridgeipc.RouteOption
 }
 
-type TaskBinding struct {
-	Route   RouteSpec
-	Runner  bridgeipc.TaskRunner
-	Decode  bridgeipc.RequestDecoder
-	Policy  bridgeipc.TaskPolicy
-	Options []bridgeipc.RouteOption
-}
-
 type DuplexBinding struct {
 	Route   RouteSpec
 	Handle  bridgeipc.DuplexFunc
@@ -420,7 +338,6 @@ type Binding interface {
 
 type BindingSet struct {
 	handlers  []HandlerBinding
-	tasks     []TaskBinding
 	duplexes  []DuplexBinding
 	mutations []func(*bridgeipc.Router)
 	routes    []RouteSpec
@@ -454,9 +371,6 @@ func (s BindingSet) Register(router *bridgeipc.Router) {
 	for _, binding := range s.handlers {
 		AttachHandler(router, binding)
 	}
-	for _, binding := range s.tasks {
-		AttachTask(router, binding)
-	}
 	for _, binding := range s.duplexes {
 		AttachDuplex(router, binding)
 	}
@@ -471,11 +385,6 @@ func (r Route[Request, Result]) addTo(set *BindingSet) {
 
 func (b HandlerBinding) addTo(set *BindingSet) {
 	set.handlers = append(set.handlers, b)
-	set.routes = append(set.routes, requireRouteSpec(b.Route))
-}
-
-func (b TaskBinding) addTo(set *BindingSet) {
-	set.tasks = append(set.tasks, b)
 	set.routes = append(set.routes, requireRouteSpec(b.Route))
 }
 
@@ -500,19 +409,6 @@ func AttachHandler(router *bridgeipc.Router, binding HandlerBinding) {
 		panic(fmt.Sprintf("apischema: route %s is %s, not call", spec.Route, spec.Mode))
 	}
 	router.Call(spec.Route, binding.Call, opts...)
-}
-
-func AttachTask(router *bridgeipc.Router, binding TaskBinding) {
-	spec := requireRouteSpec(binding.Route)
-	if spec.Kind != KindTaskRunner {
-		panic(fmt.Sprintf("apischema: route %s is %s, not task runner", spec.Route, spec.Kind))
-	}
-	if spec.Mode != bridgeipc.ModeTask {
-		panic(fmt.Sprintf("apischema: route %s is %s, not task", spec.Route, spec.Mode))
-	}
-	opts := routeOptions(spec, binding.Options)
-	opts = append(opts, bridgeipc.WithRequestDecoder(requireDecoder(spec, binding.Decode)))
-	router.TaskRunner(spec.Route, binding.Runner, taskPolicy(binding.Policy), opts...)
 }
 
 func AttachDuplex(router *bridgeipc.Router, binding DuplexBinding) {
@@ -568,17 +464,6 @@ func wrapVoidCall[Request any](route string, handle VoidHandlerFunc[Request]) br
 			return nil, err
 		}
 		return nil, handle(ctx, req)
-	}
-}
-
-func wrapTaskRunner[Request, Result any](route string, runner TaskRunnerFunc[Request, Result]) bridgeipc.TaskRunner {
-	return func(ctx context.Context, task *bridgeipc.Task, request any) (any, error) {
-		req, err := typedRequest[Request](route, request)
-		if err != nil {
-			return nil, err
-		}
-		result, err := runner(ctx, task, req)
-		return any(result), err
 	}
 }
 
@@ -671,12 +556,6 @@ func routeOptions(spec RouteSpec, explicit []bridgeipc.RouteOption) []bridgeipc.
 	if spec.Metadata != nil {
 		opts = append(opts, bridgeipc.WithTaskMetadata(spec.Metadata))
 	}
-	if spec.Identity != nil {
-		opts = append(opts, bridgeipc.WithTaskIdentity(spec.Identity))
-	}
-	if spec.TaskLifetime != "" {
-		opts = append(opts, bridgeipc.WithTaskLifetime(spec.TaskLifetime))
-	}
 	if spec.Targeted {
 		opts = append(opts, bridgeipc.WithTarget(func(request any) []string {
 			// A request of another type has no target; the runner rejects it.
@@ -696,11 +575,4 @@ func routeOptions(spec RouteSpec, explicit []bridgeipc.RouteOption) []bridgeipc.
 		opts = append(opts, bridgeipc.Exclusive)
 	}
 	return opts
-}
-
-func taskPolicy(explicit bridgeipc.TaskPolicy) bridgeipc.TaskPolicy {
-	if explicit.Name != "" {
-		return explicit
-	}
-	return bridgeipc.TaskDefault
 }

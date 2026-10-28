@@ -271,6 +271,8 @@ export interface MutationHandlers<TProgress> {
   onSnapshot?(snapshot: TaskSnapshot): void;
   onProgress?(progress: TProgress): void;
   signal?: AbortSignal;
+  /** On abort: "abort" (default) cancels the job, "close" detaches from it. */
+  closeOnAbort?: "abort" | "close";
 }
 
 function isTaskSnapshotFrame(
@@ -296,7 +298,8 @@ function isMutationStreamLoss(error: unknown): boolean {
  * client-chosen job id, so a connection lost before the job's snapshot resends
  * the same envelope once, and one lost after it reattaches through
  * tasks.watch once. A further loss leaves the outcome unknown. Aborting
- * `signal` aborts the stream, which cancels the job.
+ * `signal` aborts the stream, which cancels the job, or with `closeOnAbort:
+ * "close"` closes it, which leaves the job running.
  */
 export function mutationRequest<TResult, TProgress = ProgressFrame>(
   handler: string,
@@ -357,13 +360,15 @@ async function followMutation<TResult, TProgress>(
         closeMessage: "Connection closed before the mutation finished",
         onProgress: (frame) => {
           if (isTaskSnapshotFrame(frame)) {
+            // A watch of a stored job starts with its snapshot too: report one.
+            if (!started) handlers.onSnapshot?.(frame.task);
             started = true;
-            handlers.onSnapshot?.(frame.task);
           } else {
             handlers.onProgress?.(frame as TProgress);
           }
         },
         signal: handlers.signal,
+        closeOnAbort: handlers.closeOnAbort,
       });
     } catch (error) {
       if (!isMutationStreamLoss(error)) throw error;

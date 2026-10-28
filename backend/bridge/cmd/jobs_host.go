@@ -24,6 +24,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 	"github.com/mordilloSan/LinuxIO/backend/common/socketactivation"
 	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
+	"github.com/mordilloSan/LinuxIO/backend/common/verbosemode"
 )
 
 // jobsSocketName is the FileDescriptorName= of linuxio-jobs@.socket.
@@ -81,7 +82,9 @@ func drainQueued(ln *net.UnixListener) {
 }
 
 func serveJobsHost(ln *net.UnixListener, runtimeDir, stateDir string) error {
-	if err := logging.Configure("linuxio-jobs", false); err != nil {
+	// The level logging.set_debug persisted; a running host keeps the level it
+	// started with until it idles out.
+	if err := logging.Configure("linuxio-jobs", verbosemode.Enabled()); err != nil {
 		return fmt.Errorf("failed to initialize logger: %w", err)
 	}
 	syscall.Umask(0o077)

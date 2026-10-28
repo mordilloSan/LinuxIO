@@ -6,7 +6,6 @@ import type { BtrfsFilesystem, StorageBlockDevice } from "@/api";
 import { LinuxIOError } from "@/api/errors";
 import { renderWithTanStackRouter as render } from "@/test/render";
 import { storageBlock } from "@/test/storageTopologyFixture";
-import type { TaskStreamActionMockConfig } from "@/test/taskStreamAction";
 
 import PartitionsTab from "./PartitionsTab";
 
@@ -23,30 +22,30 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
-  const { createTaskStreamActionMock } =
-    await import("@/test/taskStreamAction");
-  const task = (name: string) => ({
-    useTaskStreamAction: (config?: TaskStreamActionMockConfig) => ({
-      isPending: false,
-      ...createTaskStreamActionMock(
-        {
-          openStream: () => ({}),
-          runStream: () => Promise.resolve(undefined),
-          submit: (request) => mocks.submit(name, request),
-        },
-        // The real hook toasts a string `error`; the double only takes a function.
-        config && {
-          ...config,
-          error: typeof config.error === "function" ? config.error : undefined,
-        },
-      ),
-    }),
-  });
+  const { createMutationJobMock } = await import("@/test/mutationJob");
   const { mockMutationHooks } = await import("@/test/mutationHooks");
   const useCallMutation = (endpoint: { route: string }) => ({
     isPending: false,
     mutate: (mocks.mutations[endpoint.route] ??= vi.fn()),
   });
+  // Create and format are jobs; the rest answer from the call mock.
+  const useMutation = (endpoint: { route: string }, config: never) => {
+    const call = useCallMutation(endpoint);
+    const [, name] = endpoint.route.split(".");
+    if (name !== "partition_create" && name !== "partition_format") {
+      return call;
+    }
+    return {
+      isPending: false,
+      ...createMutationJobMock(
+        {
+          follow: () => Promise.resolve(undefined),
+          start: (request) => mocks.submit(name, request),
+        },
+        config,
+      ),
+    };
+  };
   const mocked = {
     ...actual,
     call: (route: string) =>
@@ -68,14 +67,12 @@ vi.mock("@/api", async (importOriginal) => {
           queryKey: ["test-get-topology"],
           queryFn: () => mocks.topology(),
         },
-        partition_create: task("partition_create"),
-        partition_format: task("partition_format"),
       },
     },
   };
   return {
     ...mocked,
-    linuxio: mockMutationHooks(mocked.linuxio, useCallMutation),
+    linuxio: mockMutationHooks(mocked.linuxio, useMutation),
   };
 });
 

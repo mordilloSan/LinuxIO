@@ -15,14 +15,14 @@ import { capabilitiesQueryKey } from "@/api/capabilities";
 import type { InstallOutputLine } from "@/components/terminal/InstallOutputPanel";
 import { createTestQueryClient, render } from "@/test/render";
 
-interface TaskStreamConfig {
+interface InstallMutationConfig {
   error?: (error: Error, variables: CapabilityRequest) => void;
   onProgress?: (
     progress: TaskProgress<InstallCapabilityProgress>,
     task: TaskSnapshot,
     variables: CapabilityRequest,
   ) => void;
-  onTaskStart?: (task: TaskSnapshot, variables: CapabilityRequest) => void;
+  onStart?: (task: TaskSnapshot, variables: CapabilityRequest) => void;
   success?: (
     result: InstallCapabilityResult,
     variables: CapabilityRequest,
@@ -41,7 +41,7 @@ const mocks = vi.hoisted(() => ({
   packageKitAvailable: true,
   recoveryConfig: null as RecoveryConfig | null,
   refreshCapabilities: vi.fn(),
-  taskConfig: null as TaskStreamConfig | null,
+  taskConfig: null as InstallMutationConfig | null,
   watch: vi.fn(),
 }));
 
@@ -74,7 +74,7 @@ vi.mock("@/api", async (importOriginal) => {
         ...actual.linuxio.system,
         install_capability: {
           ...actual.linuxio.system.install_capability,
-          useTaskStreamAction: (config: TaskStreamConfig) => {
+          useMutation: (config: InstallMutationConfig) => {
             mocks.taskConfig = config;
             return { mutate: mocks.mutate, watch: mocks.watch };
           },
@@ -337,14 +337,14 @@ describe("CapabilityManagerSection", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run in background" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
-    act(() => mocks.taskConfig?.onTaskStart?.(task, request));
+    act(() => mocks.taskConfig?.onStart?.(task, request));
     act(() =>
       mocks.taskConfig?.error?.(new Error("stream disconnected"), request),
     );
     act(() => mocks.recoveryConfig?.onRecover?.(task));
 
     await waitFor(() =>
-      expect(mocks.watch).toHaveBeenCalledWith(task, request),
+      expect(mocks.watch).toHaveBeenCalledWith(task.id, request),
     );
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
@@ -364,7 +364,7 @@ describe("CapabilityManagerSection", () => {
     act(() => mocks.recoveryConfig?.onRecover?.(task));
 
     await waitFor(() =>
-      expect(mocks.watch).toHaveBeenCalledWith(task, request),
+      expect(mocks.watch).toHaveBeenCalledWith(task.id, request),
     );
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
@@ -462,7 +462,7 @@ describe("CapabilityManagerSection", () => {
     act(() => mocks.recoveryConfig?.onRecover?.(task));
 
     await waitFor(() =>
-      expect(mocks.watch).toHaveBeenCalledWith(task, request),
+      expect(mocks.watch).toHaveBeenCalledWith(task.id, request),
     );
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.getByText("Retained output only")).toBeInTheDocument();

@@ -662,8 +662,8 @@ frosted frame and stats-only or split/chart geometry as the resolved cards.
 `WidgetLoader` remains the generic fallback for non-card Hardware sections.
 
 For the endpoint layer itself — Call descriptors, `useCallMutation`, remaining
-`queryOptions`/`useFetcher`/`useAction`, `useTaskAction`, and the invalidation
-manifest — see
+`queryOptions`/`useFetcher`/`useAction`, Mutation `useMutation`, and the
+invalidation manifest — see
 [API Contract](./api-contract.md#frontend-shape). Do not add parallel
 `queryOptions` factories, duplicate query-key constants, or `useSomethingQuery`
 wrappers that only hide an observer.

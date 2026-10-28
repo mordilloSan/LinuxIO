@@ -4,13 +4,11 @@ import { useState, type CSSProperties, type ReactNode } from "react";
 
 import {
   linuxio,
-  type BtrfsFilesystem,
   type BtrfsOfflinePool,
   type BtrfsOpProgress,
   type FilesystemInfo,
   type NFSMount,
   type StorageBlockDevice,
-  type TaskProgress,
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
@@ -626,10 +624,7 @@ const StoragePools = ({
   // A task, not a call: the bridge trims every disk before mkfs, which can
   // outlast any request timeout on large SSDs.
   const [createStep, setCreateStep] = useState<BtrfsOpProgress | null>(null);
-  const createPool = linuxio.storage.btrfs_pool_create.useTaskStreamAction<
-    BtrfsFilesystem,
-    TaskProgress<BtrfsOpProgress>
-  >({
+  const createPool = linuxio.storage.btrfs_pool_create.useMutation({
     onProgress: (progress) => setCreateStep(progress.detail ?? null),
     success: "Pool created",
     error: "Failed to create pool",

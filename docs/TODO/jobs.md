@@ -19,7 +19,7 @@ and [Notifications](../alerts.md).
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Store, host, relay, units, first route (`docker.update_container`) | done, verified on a real host |
-| 2 | Every mutation runs as a job: prerequisites, the ~199 routes and their callers, old task code deleted | in progress: steps 1 and 2 done, step 3 left (section 4.2) |
+| 2 | Every mutation runs as a job: prerequisites, the ~199 routes and their callers, old task code deleted | done (section 4.2); step 3 not yet committed |
 | 3 | btrfs resume hooks, with kill-and-resume root tests | not started |
 | 4 | Schedules and system jobs | not started; one open decision |
 | 5 | History view, login notice, update banner | not started |
@@ -567,7 +567,7 @@ Batches:
    Docker. Left as
    Calls: `storage.btrfs_replication_ssh_key`, a get-or-create read the UI uses
    as a query, and the four cache refreshes of section 2.17.
-3. **Done, not yet committed.** All 31 task routes are Mutations: 28 run in
+3. **Done** (`2170f6bf`). All 31 task routes are Mutations: 28 run in
    the job host, and `filebrowser.upload`, `filebrowser.upload_batch` and
    `filebrowser.archive` stay in the bridge with `BrowserBound()`. Their
    runners are unchanged: `apischema.MutationTask` hands a runner its task from
@@ -583,13 +583,27 @@ Batches:
    the admin who started it rather than the host's uid. Moving the
    frontend's task hooks onto `.useMutation` is step 3.
 
-**Step 3: delete the old task code.** `useCallMutation`, `useTaskAction`,
-`TaskRunner`, `SessionTask`, `DurableTask`, `WithTaskLifetime`,
-`WithTaskIdentity` and the bridge's own task path; the guard tests of section
-2.5; `docs/api-contract.md` route counts, modes and the lifetime section.
-Decide whether `useTaskStreamAction` and the transfer engine move onto
-`.useMutation` (`onStart`, `onProgress`, `watch`) or stay as the task client
-over mutation routes, and what `logging.set_debug` becomes.
+**Step 3: delete the old task code.** Done, not yet committed.
+
+- Backend: `apischema` loses `TaskRunner`, `SessionTask`, `DurableTask`,
+  `WithTaskLifetime`, `WithTaskProgress`, `WithTaskIdentity`, `KindTaskRunner`
+  and the task binding path; `bridgeipc` loses `ModeTask`,
+  `Router.TaskRunner`, `RecoverDurableTask`, the 25 ms settle start and
+  per-route task identities. A Mutation's lifetime is set at registration:
+  durable, or session for `BrowserBound()`. The guards that checked only Task
+  routes are gone; admission, identity, disconnect and redaction tests run on
+  Mutations.
+- Frontend: the generator emits the 31 routes with `defineMutation`, and
+  `RouteMode` has no `"task"`. `task-react-query.ts` (`createTaskEndpoint`,
+  `useTaskAction`, `useTaskStreamAction`) is deleted. Components use
+  `.useMutation`, which gained `signal` and `closeOnAbort: "close"` to detach
+  (Compose, SMART tests, package updates); the tray engines and uploads start
+  jobs with `endpoint.start`, which resolves with the first snapshot and
+  detaches, and follow them with `tasks.watch` and `tasks.data` as before.
+- `useCallMutation` stays: its callers are Calls run as commands (update
+  checks, config downloads, `tasks.cancel`, folder validation), not writes.
+- `logging.set_debug` stays a Call, and a job host starts at the debug level
+  it persisted (it always started at Info before).
 
 ### 4.3 Phase 3: storage safety and btrfs resume
 
@@ -662,7 +676,7 @@ names a concrete line; the rest are as recorded.
 
 ### Task 3: declarations
 
-- [ ] Redundant derived count in `TestAllTaskRoutesUseTaskRunner` (goes away in phase 2, step 3).
+- [x] Redundant derived count in `TestAllTaskRoutesUseTaskRunner`: the test is deleted with the Task mode (phase 2, step 3).
 - [ ] The 114 retry-safe count has no replacement beyond the two name lists (phase 2, step 3).
 - [x] `TestMutationOptionsAreAllowedOnlyOnMutationRoutes` asserts the conjunction, not each option.
 - [x] The `WithTarget` closure is untested.
@@ -849,6 +863,17 @@ cost if they turn out wrong where it was recorded.
   frontend starts them over the Mutation stream and follows them as before,
   so batch 3 moved them into the job host without rewriting the tray, the
   transfer engine, recovery and uploads; step 3 decides their hooks.
+  Superseded in step 3: components use `.useMutation`, the tray uses
+  `endpoint.start`.
+- **`useCallMutation` kept** (2026-10-28), against section 2.16's "deleted
+  after migration": every write is a Mutation, and what remains are Calls a
+  button runs once (`docker.check_updates`, `wireguard.peer_config_download`,
+  `tasks.cancel`, folder validation, the network handoff steps). A raw
+  `useMutation` around `call()` would lose the shared toasts and invalidation.
+- **`logging.set_debug` stays a Call** (2026-10-28): it is instant and
+  idempotent, and its point is the calling bridge's own level, which a job in
+  the job host could not change. Job hosts read the persisted level when they
+  start.
 
 ## 7. Manual verification
 

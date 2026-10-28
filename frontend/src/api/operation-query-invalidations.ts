@@ -101,7 +101,7 @@ const NETWORK_BRIDGE_KEYS = [
  * stale, keyed by route.
  *
  * Consumed from direct and Task lifecycles:
- * - `useCallMutation`/`useTaskAction`/`useTaskStreamAction` use the
+ * - `useCallMutation` and `.useMutation` use the
  *   entry as the default `invalidates` for operations started and awaited
  *   locally.
  * - `useRecoveredTasks` applies the entry when a task reaches a terminal state

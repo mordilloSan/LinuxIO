@@ -3,7 +3,7 @@ import linuxio from "./generated/client";
 import type { TaskSnapshot } from "./generated/linuxio-types";
 import { openTaskDataStream } from "./linuxio";
 import { streamWriteChunks, waitForStreamResult } from "./stream-helpers";
-import { isTerminalTaskState, terminalSnapshotOrThrow } from "./tasks";
+import { isTerminalTaskState } from "./tasks";
 
 export interface UploadContentOptions {
   chunkSize?: number;
@@ -32,7 +32,7 @@ export async function uploadContent(
   data: Uint8Array,
   options: UploadContentOptions = {},
 ): Promise<void> {
-  const task = await linuxio.filebrowser.upload({
+  const task = await linuxio.filebrowser.upload.start({
     targetPath,
     size: String(data.length),
     overwrite: options.overwrite,
@@ -47,8 +47,11 @@ export async function uploadContent(
   // snapshot. Throw the structured error here: attaching a data stream to a
   // dead Task would misreport it as a 404 "transfer task not ready".
   if (isTerminalTaskState(task.state)) {
-    terminalSnapshotOrThrow(task);
-    return;
+    if (task.state === "completed") return;
+    throw new LinuxIOError(
+      task.error?.message ?? "Task failed",
+      task.error?.code,
+    );
   }
 
   const stream = openTaskDataStream(task.id, 0);

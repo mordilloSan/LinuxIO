@@ -6,8 +6,6 @@ import {
   getMutationErrorMessage,
   type BtrfsOpProgress,
   type StorageBlockDevice,
-  type SuccessPathResponse,
-  type SuccessResponse,
   type TaskProgress,
 } from "@/api";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
@@ -107,14 +105,12 @@ const PartitionsTab = ({ driveName }: { driveName: string }) => {
       onSettled: () => setStep(null),
     },
   });
-  const create = linuxio.storage.partition_create.useTaskStreamAction<
-    SuccessPathResponse,
-    TaskProgress<BtrfsOpProgress>
-  >(taskConfig("Partition created", "Failed to create partition"));
-  const format = linuxio.storage.partition_format.useTaskStreamAction<
-    SuccessResponse,
-    TaskProgress<BtrfsOpProgress>
-  >(taskConfig("Partition formatted", "Failed to format partition"));
+  const create = linuxio.storage.partition_create.useMutation(
+    taskConfig("Partition created", "Failed to create partition"),
+  );
+  const format = linuxio.storage.partition_format.useMutation(
+    taskConfig("Partition formatted", "Failed to format partition"),
+  );
   const { mutate: deletePartition, isPending: isDeleting } =
     linuxio.storage.partition_delete.useMutation({
       success: "Partition deleted",
@@ -138,7 +134,7 @@ const PartitionsTab = ({ driveName }: { driveName: string }) => {
     scanKey: disk?.path ?? null,
     match: (task) => task.metadata?.device === disk?.path,
     onRecover: (task) =>
-      create.watch(task, {
+      create.watch(task.id, {
         device: task.metadata?.device ?? "",
         startBytes: 0,
         sizeBytes: 0,
@@ -153,7 +149,7 @@ const PartitionsTab = ({ driveName }: { driveName: string }) => {
           row.kind === "partition" && row.device.path === task.metadata?.device,
       ),
     onRecover: (task) =>
-      format.watch(task, {
+      format.watch(task.id, {
         device: task.metadata?.device ?? "",
         fsType: "",
         label: "",

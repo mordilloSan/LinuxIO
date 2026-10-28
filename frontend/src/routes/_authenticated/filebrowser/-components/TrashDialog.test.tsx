@@ -23,13 +23,13 @@ vi.mock("@/api", async (importOriginal) => {
           queryKey: ["linuxio", "filebrowser", "trash_list"],
         },
         trash_purge: {
-          useTaskStreamAction: () => ({
+          useMutation: () => ({
             isPending: false,
             mutate: mocks.purge,
           }),
         },
         trash_restore: {
-          useTaskStreamAction: (options: typeof mocks.restoreOptions) => {
+          useMutation: (options: typeof mocks.restoreOptions) => {
             mocks.restoreOptions = options;
             return { isPending: false, mutate: mocks.restore };
           },

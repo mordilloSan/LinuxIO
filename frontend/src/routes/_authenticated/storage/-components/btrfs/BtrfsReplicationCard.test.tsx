@@ -8,7 +8,6 @@ import type {
   BtrfsSubvolume,
 } from "@/api";
 import { render } from "@/test/render";
-import type { TaskStreamActionMockConfig } from "@/test/taskStreamAction";
 
 import BtrfsReplicationCard from "./BtrfsReplicationCard";
 
@@ -36,13 +35,27 @@ vi.mock("@/hooks/useScopedToast", () => ({
 
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
-  const { createTaskStreamActionMock } =
-    await import("@/test/taskStreamAction");
+  const { createMutationJobMock } = await import("@/test/mutationJob");
   const { mockMutationHooks } = await import("@/test/mutationHooks");
   const useCallMutation = (endpoint: { route: string }) => ({
     isPending: false,
     mutate: (mocks.mutations[endpoint.route] ??= vi.fn()),
   });
+  // A replication run is a job; the rest answer from the call mock.
+  const useMutation = (endpoint: { route: string }, config: never) => {
+    const call = useCallMutation(endpoint);
+    if (endpoint.route !== "storage.btrfs_replication_run") return call;
+    return {
+      isPending: false,
+      ...createMutationJobMock(
+        {
+          follow: () => Promise.resolve(mocks.runResult),
+          start: mocks.submit,
+        },
+        config,
+      ),
+    };
+  };
   const mocked = {
     ...actual,
     call: (route: string) =>
@@ -65,25 +78,12 @@ vi.mock("@/api", async (importOriginal) => {
           queryFn: () =>
             Promise.resolve({ publicKey: "ssh-ed25519 AAAA test" }),
         },
-        btrfs_replication_run: {
-          useTaskStreamAction: (config?: TaskStreamActionMockConfig) => ({
-            isPending: false,
-            ...createTaskStreamActionMock(
-              {
-                openStream: () => ({}),
-                runStream: () => Promise.resolve(mocks.runResult),
-                submit: mocks.submit,
-              },
-              config,
-            ),
-          }),
-        },
       },
     },
   };
   return {
     ...mocked,
-    linuxio: mockMutationHooks(mocked.linuxio, useCallMutation),
+    linuxio: mockMutationHooks(mocked.linuxio, useMutation),
   };
 });
 

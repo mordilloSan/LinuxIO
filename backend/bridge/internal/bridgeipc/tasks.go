@@ -157,15 +157,13 @@ type TaskEvent struct {
 type TaskRunner func(ctx context.Context, task *Task, request any) (any, error)
 type TaskDataAttacher func(ctx context.Context, task *Task, stream net.Conn, request any) error
 
-// TaskIdentity is a route-defined, stable identity for a durable Task. The
-// fingerprint proves that replaying the same ID refers to the same sanitized
-// request without retaining the raw request in public or persistent state.
+// TaskIdentity is the stable identity of a Mutation's task: its job ID. The
+// fingerprint proves that replaying the same ID refers to the same request
+// without retaining the raw request in public or persistent state.
 type TaskIdentity struct {
 	ID          string
 	Fingerprint string
 }
-
-type TaskIdentityBuilder func(request any) (TaskIdentity, error)
 
 var ErrTaskIdentityConflict = errors.New("task identity conflict")
 

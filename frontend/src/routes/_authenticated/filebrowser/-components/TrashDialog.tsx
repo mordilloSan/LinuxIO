@@ -83,14 +83,12 @@ const TrashDialog = ({ open, onClose }: TrashDialogProps) => {
     toast.error(getMutationErrorMessage(err, fallback));
   };
 
-  const restore = linuxio.filebrowser.trash_restore.useTaskStreamAction({
-    closeMessage: "Restore task stream closed before completion",
+  const restore = linuxio.filebrowser.trash_restore.useMutation({
     onProgress: setProgress,
     success: (result) => report(result, "Restored", "restore"),
     error: (err) => reportError(err, "Failed to restore items"),
   });
-  const purge = linuxio.filebrowser.trash_purge.useTaskStreamAction({
-    closeMessage: "Delete task stream closed before completion",
+  const purge = linuxio.filebrowser.trash_purge.useMutation({
     onProgress: setProgress,
     success: (result) => report(result, "Deleted", "delete"),
     error: (err) => reportError(err, "Failed to delete items"),

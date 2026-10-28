@@ -33,8 +33,8 @@ vi.mock("@/api", async () => {
       ...actual.linuxio,
       filebrowser: {
         ...actual.linuxio.filebrowser,
-        copy_batch: apiMocks.copy_batch,
-        move_batch: apiMocks.move_batch,
+        copy_batch: { start: apiMocks.copy_batch },
+        move_batch: { start: apiMocks.move_batch },
       },
     },
   };

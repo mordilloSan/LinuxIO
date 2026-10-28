@@ -131,8 +131,8 @@ export function useIndexerTasks(runtime: BackgroundTaskRuntime) {
     try {
       task =
         path && path !== "/"
-          ? await linuxio.filebrowser.index({ path })
-          : await linuxio.filebrowser.index({});
+          ? await linuxio.filebrowser.index.start({ path })
+          : await linuxio.filebrowser.index.start({});
     } catch (error) {
       pendingLocalTaskKeysRef.current.delete(pendingKey);
       const message =

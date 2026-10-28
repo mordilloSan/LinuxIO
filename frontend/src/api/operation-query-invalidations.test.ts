@@ -265,10 +265,10 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
     }
   });
 
-  it("maps only Call, Task or Mutation routes", () => {
+  it("maps only Call or Mutation routes", () => {
     for (const route of Object.keys(OPERATION_QUERY_INVALIDATIONS)) {
       expect(
-        ["call", "task", "mutation"],
+        ["call", "mutation"],
         `${route} is not an operation route`,
       ).toContain(MODES[route]);
     }
@@ -311,7 +311,7 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
 
 // Files allowed to call queryClient.invalidateQueries directly. Everything
 // else must declare invalidations in OPERATION_QUERY_INVALIDATIONS (applied by
-// useCallMutation/useTaskAction/useTaskStreamAction and the
+// useCallMutation, `.useMutation` and the
 // recovered-tasks stream) or pass an explicit `invalidates` config. Shrink this
 // list over time; never grow it without a reason a manifest entry cannot express.
 const ALLOWED_INVALIDATE_FILES = new Set([
@@ -359,7 +359,7 @@ describe("invalidation guard", () => {
     expect(
       violations,
       "Operation query invalidations belong in api/operation-query-invalidations.ts " +
-        "(applied automatically by useCallMutation/useTaskAction " +
+        "(applied automatically by useCallMutation/.useMutation " +
         "and the recovered-tasks stream) " +
         "or in an action `invalidates` config — not in ad-hoc " +
         "queryClient.invalidateQueries calls.",

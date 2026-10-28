@@ -282,7 +282,10 @@ Settings drives the same switch through two privileged bridge routes:
 `set_debug` writes or removes the drop-ins (`backend/common/verbosemode`),
 applies the level to that bridge and signals the monitoring and indexer daemons
 and then the webserver (last, so a unit that restarts instead of reloading does
-not tear the calling bridge down before the others are signalled).
+not tear the calling bridge down before the others are signalled). A job host
+reads the drop-ins when it starts; one already running keeps its level until it
+idles out. `set_debug` stays a Call rather than a Mutation: it is an instant,
+idempotent switch whose point is the calling bridge's own level.
 
 Neither `restart`, `stop` nor the installer stops a job host: they are outside
 `linuxio.target`. `systemctl stop linuxio-jobs@<uid>` does, and marks that

@@ -36,7 +36,7 @@ vi.mock("@/api", async () => {
       ...actual.linuxio,
       filebrowser: {
         ...actual.linuxio.filebrowser,
-        archive: apiMocks.archive,
+        archive: { start: apiMocks.archive },
       },
     },
   };

@@ -16,10 +16,9 @@ import (
 
 func TestRoutesAreUniqueAndComplete(t *testing.T) {
 	modeOfKind := map[apischema.Kind]bridgeipc.Mode{
-		apischema.KindHandler:    bridgeipc.ModeCall,
-		apischema.KindTaskRunner: bridgeipc.ModeTask,
-		apischema.KindDuplex:     bridgeipc.ModeDuplex,
-		apischema.KindMutation:   bridgeipc.ModeMutation,
+		apischema.KindHandler:  bridgeipc.ModeCall,
+		apischema.KindDuplex:   bridgeipc.ModeDuplex,
+		apischema.KindMutation: bridgeipc.ModeMutation,
 	}
 	seen := make(map[string]apischema.RouteSpec, len(handlers.Routes))
 	for _, route := range handlers.Routes {
@@ -78,96 +77,6 @@ func mustRoute(t *testing.T, name string) apischema.RouteSpec {
 	}
 	t.Fatalf("unknown route %q", name)
 	return apischema.RouteSpec{}
-}
-
-func TestAllTaskRoutesUseTaskRunner(t *testing.T) {
-	modes := map[bridgeipc.Mode]int{}
-
-	for _, route := range handlers.Routes {
-		modes[route.Mode]++
-		if route.Mode == bridgeipc.ModeTask && route.Kind != apischema.KindTaskRunner {
-			t.Errorf("%s is task kind %q, want task_runner", route.Route, route.Kind)
-		}
-	}
-	known := modes[bridgeipc.ModeCall] + modes[bridgeipc.ModeTask] + modes[bridgeipc.ModeDuplex] + modes[bridgeipc.ModeMutation]
-	if known != len(handlers.Routes) {
-		t.Errorf("route counts by mode = %v, want all %d routes in call, task, duplex or mutation", modes, len(handlers.Routes))
-	}
-}
-
-func TestTaskRoutesDeclareAuditedLifetime(t *testing.T) {
-	for _, route := range handlers.Routes {
-		if route.Mode != bridgeipc.ModeTask {
-			continue
-		}
-		switch route.TaskLifetime {
-		case bridgeipc.TaskLifetimeSession:
-			if route.Identity != nil {
-				t.Errorf("session task %s unexpectedly has a stable identity", route.Route)
-			}
-		default:
-			t.Errorf("%s task lifetime = %q", route.Route, route.TaskLifetime)
-		}
-	}
-}
-
-func TestTaskLifetimeOptionsRejectInvalidRoutes(t *testing.T) {
-	tests := map[string]func(){
-		"missing task lifetime": func() {
-			_ = apischema.TaskRunner[apischema.NoRequest, apischema.SuccessResponse]("test.missing_lifetime")
-		},
-		"call lifetime": func() {
-			_ = apischema.Call[apischema.NoRequest, apischema.SuccessResponse]("test.call_lifetime", apischema.SessionTask())
-		},
-		"duplex lifetime": func() {
-			_ = apischema.DuplexRoute[apischema.NoRequest, apischema.NoResponse]("test.duplex_lifetime", apischema.SessionTask())
-		},
-		"stable identity on session task": func() {
-			_ = apischema.TaskRunner[apischema.NoRequest, apischema.SuccessResponse](
-				"test.session_identity",
-				apischema.SessionTask(),
-				apischema.WithTaskIdentity(func(apischema.NoRequest) (bridgeipc.TaskIdentity, error) {
-					return bridgeipc.TaskIdentity{ID: "id", Fingerprint: "fingerprint"}, nil
-				}),
-			)
-		},
-	}
-
-	for name, build := range tests {
-		t.Run(name, func(t *testing.T) {
-			defer func() {
-				if recover() == nil {
-					t.Fatal("invalid task lifetime declaration was accepted")
-				}
-			}()
-			build()
-		})
-	}
-}
-
-func TestTaskLifetimeOptionsDeclareExpectedLifetime(t *testing.T) {
-	tests := []struct {
-		name string
-		want bridgeipc.TaskLifetime
-		opt  apischema.RouteSpecOption
-	}{
-		{name: "session", want: bridgeipc.TaskLifetimeSession, opt: apischema.SessionTask()},
-		{name: "durable", want: bridgeipc.TaskLifetimeDurable, opt: apischema.DurableTask()},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			binding := apischema.TaskRunner[apischema.NoRequest, apischema.SuccessResponse]("test."+tc.name+"_lifetime", tc.opt).Run(
-				func(context.Context, *bridgeipc.Task, apischema.NoRequest) (apischema.SuccessResponse, error) {
-					return apischema.SuccessResponse{}, nil
-				},
-				bridgeipc.TaskDefault,
-			)
-			if binding.Route.TaskLifetime != tc.want {
-				t.Fatalf("task lifetime = %q, want %q", binding.Route.TaskLifetime, tc.want)
-			}
-		})
-	}
 }
 
 func TestRetrySafeRoutesAreExplicitCalls(t *testing.T) {
@@ -229,9 +138,6 @@ func TestRootOnlyStorageAndDockerRoutesArePrivileged(t *testing.T) {
 
 func TestRetrySafeRejectsNonCallRoutes(t *testing.T) {
 	for name, build := range map[string]func(){
-		"task": func() {
-			_ = apischema.TaskRunner[apischema.NoRequest, apischema.SuccessResponse]("test.retry_task", apischema.RetrySafe())
-		},
 		"duplex": func() {
 			_ = apischema.DuplexRoute[apischema.NoRequest, apischema.NoResponse]("test.retry_duplex", apischema.RetrySafe())
 		},
@@ -247,21 +153,6 @@ func TestRetrySafeRejectsNonCallRoutes(t *testing.T) {
 			}()
 			build()
 		})
-	}
-}
-
-func TestTaskRoutesDeclareTerminalResultsAndProgress(t *testing.T) {
-	taskSnapshotType := reflect.TypeFor[apischema.TaskSnapshot]()
-	for _, route := range handlers.Routes {
-		if route.Mode != bridgeipc.ModeTask {
-			continue
-		}
-		if route.Result.GoType == taskSnapshotType || route.Result.Void() {
-			t.Errorf("%s has placeholder terminal result %v", route.Route, route.Result.GoType)
-		}
-		if route.Progress.GoType == nil {
-			t.Errorf("%s reports progress but has no progress contract", route.Route)
-		}
 	}
 }
 
@@ -425,29 +316,19 @@ func TestDockerComposeDeclaresTerminalAndProgressContracts(t *testing.T) {
 	}
 }
 
-func TestWithTaskProgressRejectsCallRoutes(t *testing.T) {
-	for name, opt := range map[string]apischema.RouteSpecOption{
-		"WithTaskProgress": apischema.WithTaskProgress[apischema.VMCreateProgress](),
-		"Progress":         apischema.Progress[apischema.VMCreateProgress](),
-	} {
-		t.Run(name, func(t *testing.T) {
-			defer func() {
-				if recover() == nil {
-					t.Fatal("Call() accepted a task progress contract")
-				}
-			}()
-			_ = apischema.Call[apischema.NoRequest, apischema.NoResponse]("test.progress_call", opt)
-		})
-	}
+func TestProgressRejectsCallRoutes(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("Call() accepted a task progress contract")
+		}
+	}()
+	_ = apischema.Call[apischema.NoRequest, apischema.NoResponse]("test.progress_call", apischema.Progress[apischema.VMCreateProgress]())
 }
 
 func TestBrowserBoundRejectsNonMutationRoutes(t *testing.T) {
 	for name, build := range map[string]func(){
 		"call": func() {
 			_ = apischema.Call[apischema.NoRequest, apischema.NoResponse]("test.browser_call", apischema.BrowserBound())
-		},
-		"task": func() {
-			_ = apischema.TaskRunner[apischema.NoRequest, apischema.SuccessResponse]("test.browser_task", apischema.SessionTask(), apischema.BrowserBound())
 		},
 		"duplex": func() {
 			_ = apischema.DuplexRoute[apischema.NoRequest, apischema.NoResponse]("test.browser_duplex", apischema.BrowserBound())
@@ -561,7 +442,7 @@ func TestMutationVoidRequiresNoResponse(t *testing.T) {
 	}
 }
 
-func TestTaskMetadataBuildersAreAllowlistedTaskClientRoutes(t *testing.T) {
+func TestTaskMetadataBuildersAreAllowlisted(t *testing.T) {
 	want := map[string]bool{
 		"filebrowser.compress": true, "filebrowser.extract": true, "filebrowser.copy_batch": true,
 		"filebrowser.move_batch": true, "filebrowser.delete_batch": true, "filebrowser.trash_batch": true,
@@ -581,27 +462,10 @@ func TestTaskMetadataBuildersAreAllowlistedTaskClientRoutes(t *testing.T) {
 		if !want[route.Route] {
 			t.Fatalf("%s unexpectedly declares public task metadata", route.Route)
 		}
-		if !route.TaskClient {
-			t.Fatalf("%s metadata is not on a task-client mutation", route.Route)
-		}
 		delete(want, route.Route)
 	}
 	if len(want) != 0 {
 		t.Fatalf("missing metadata builders: %v", want)
-	}
-}
-
-func TestTaskRunnerErasesOnlyAtBridgeBoundary(t *testing.T) {
-	route := apischema.TaskRunner[apischema.UsernameRequest, apischema.SuccessNameResponse]("test.runner", apischema.SessionTask())
-	binding := route.Run(func(_ context.Context, _ *bridgeipc.Task, req apischema.UsernameRequest) (apischema.SuccessNameResponse, error) {
-		return apischema.SuccessNameResponse{Success: true, Name: req.Username}, nil
-	}, bridgeipc.TaskDefault)
-	got, err := binding.Runner(context.Background(), &bridgeipc.Task{}, apischema.UsernameRequest{Username: "ada"})
-	if err != nil {
-		t.Fatalf("Runner() error = %v", err)
-	}
-	if got != (apischema.SuccessNameResponse{Success: true, Name: "ada"}) {
-		t.Fatalf("Runner() result = %#v", got)
 	}
 }
 

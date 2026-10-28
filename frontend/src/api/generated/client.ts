@@ -3,7 +3,6 @@
 import { defineCall, defineCallWithRequest } from "../call-react-query";
 import type { TypedAPI } from "../endpoint-types";
 import { defineMutation } from "../mutation-react-query";
-import { createTaskEndpoint } from "../task-react-query";
 
 const linuxio = {
   accounts: {
@@ -99,7 +98,7 @@ const linuxio = {
     }),
   },
   docker: {
-    apply_daemon_storage: createTaskEndpoint("docker", "apply_daemon_storage", {
+    apply_daemon_storage: defineMutation("docker", "apply_daemon_storage", {
       kind: "object",
     }),
     check_container_update: defineCallWithRequest(
@@ -109,7 +108,7 @@ const linuxio = {
     clear_icon_cache: defineMutation("docker", "clear_icon_cache", {
       kind: "none",
     }),
-    compose: createTaskEndpoint("docker", "compose", { kind: "object" }),
+    compose: defineMutation("docker", "compose", { kind: "object" }),
     compose_down: defineMutation("docker", "compose_down", {
       kind: "field",
       field: "projectName",
@@ -226,29 +225,25 @@ const linuxio = {
     ),
   },
   filebrowser: {
-    archive: createTaskEndpoint("filebrowser", "archive", { kind: "object" }),
-    chmod_batch: createTaskEndpoint("filebrowser", "chmod_batch", {
+    archive: defineMutation("filebrowser", "archive", { kind: "object" }),
+    chmod_batch: defineMutation("filebrowser", "chmod_batch", {
       kind: "object",
     }),
-    compress: createTaskEndpoint("filebrowser", "compress", { kind: "object" }),
-    copy_batch: createTaskEndpoint("filebrowser", "copy_batch", {
-      kind: "object",
-    }),
-    delete_batch: createTaskEndpoint("filebrowser", "delete_batch", {
+    compress: defineMutation("filebrowser", "compress", { kind: "object" }),
+    copy_batch: defineMutation("filebrowser", "copy_batch", { kind: "object" }),
+    delete_batch: defineMutation("filebrowser", "delete_batch", {
       kind: "field",
       field: "paths",
     }),
     dir_size: defineCallWithRequest("filebrowser.dir_size"),
     directory_children: defineCallWithRequest("filebrowser.directory_children"),
     exists_batch: defineCallWithRequest("filebrowser.exists_batch"),
-    extract: createTaskEndpoint("filebrowser", "extract", { kind: "object" }),
-    index: createTaskEndpoint("filebrowser", "index", { kind: "object" }),
+    extract: defineMutation("filebrowser", "extract", { kind: "object" }),
+    index: defineMutation("filebrowser", "index", { kind: "object" }),
     list_directory: defineCallWithRequest("filebrowser.list_directory"),
-    move_batch: createTaskEndpoint("filebrowser", "move_batch", {
-      kind: "object",
-    }),
+    move_batch: defineMutation("filebrowser", "move_batch", { kind: "object" }),
     read_text: defineCallWithRequest("filebrowser.read_text"),
-    resource_patch: createTaskEndpoint("filebrowser", "resource_patch", {
+    resource_patch: defineMutation("filebrowser", "resource_patch", {
       kind: "object",
     }),
     resource_post: defineMutation("filebrowser", "resource_post", {
@@ -258,21 +253,21 @@ const linuxio = {
     resource_stat: defineCallWithRequest("filebrowser.resource_stat"),
     search: defineCallWithRequest("filebrowser.search"),
     subfolders: defineCallWithRequest("filebrowser.subfolders"),
-    trash_batch: createTaskEndpoint("filebrowser", "trash_batch", {
+    trash_batch: defineMutation("filebrowser", "trash_batch", {
       kind: "field",
       field: "paths",
     }),
     trash_list: defineCall("filebrowser.trash_list"),
-    trash_purge: createTaskEndpoint("filebrowser", "trash_purge", {
+    trash_purge: defineMutation("filebrowser", "trash_purge", {
       kind: "field",
       field: "paths",
     }),
-    trash_restore: createTaskEndpoint("filebrowser", "trash_restore", {
+    trash_restore: defineMutation("filebrowser", "trash_restore", {
       kind: "field",
       field: "paths",
     }),
-    upload: createTaskEndpoint("filebrowser", "upload", { kind: "object" }),
-    upload_batch: createTaskEndpoint("filebrowser", "upload_batch", {
+    upload: defineMutation("filebrowser", "upload", { kind: "object" }),
+    upload_batch: defineMutation("filebrowser", "upload_batch", {
       kind: "object",
     }),
     users_groups: defineCall("filebrowser.users_groups"),
@@ -356,7 +351,7 @@ const linuxio = {
     start_bridge_handoff: defineCallWithRequest("network.start_bridge_handoff"),
   },
   packages: {
-    update: createTaskEndpoint("packages", "update", {
+    update: defineMutation("packages", "update", {
       kind: "field",
       field: "packageIds",
     }),
@@ -425,7 +420,7 @@ const linuxio = {
     }),
   },
   storage: {
-    btrfs_balance: createTaskEndpoint("storage", "btrfs_balance", {
+    btrfs_balance: defineMutation("storage", "btrfs_balance", {
       kind: "object",
     }),
     btrfs_balance_cancel: defineMutation("storage", "btrfs_balance_cancel", {
@@ -438,16 +433,14 @@ const linuxio = {
     btrfs_device_grow: defineMutation("storage", "btrfs_device_grow", {
       kind: "object",
     }),
-    btrfs_device_remove: createTaskEndpoint("storage", "btrfs_device_remove", {
+    btrfs_device_remove: defineMutation("storage", "btrfs_device_remove", {
       kind: "object",
     }),
-    btrfs_device_replace: createTaskEndpoint(
-      "storage",
-      "btrfs_device_replace",
-      { kind: "object" },
-    ),
+    btrfs_device_replace: defineMutation("storage", "btrfs_device_replace", {
+      kind: "object",
+    }),
     btrfs_list: defineCall("storage.btrfs_list"),
-    btrfs_pool_create: createTaskEndpoint("storage", "btrfs_pool_create", {
+    btrfs_pool_create: defineMutation("storage", "btrfs_pool_create", {
       kind: "object",
     }),
     btrfs_pool_destroy: defineMutation("storage", "btrfs_pool_destroy", {
@@ -472,11 +465,10 @@ const linuxio = {
       { kind: "field", field: "job" },
     ),
     btrfs_replication_jobs: defineCall("storage.btrfs_replication_jobs"),
-    btrfs_replication_run: createTaskEndpoint(
-      "storage",
-      "btrfs_replication_run",
-      { kind: "field", field: "id" },
-    ),
+    btrfs_replication_run: defineMutation("storage", "btrfs_replication_run", {
+      kind: "field",
+      field: "id",
+    }),
     btrfs_replication_ssh_key: defineCall("storage.btrfs_replication_ssh_key"),
     btrfs_replication_ssh_trust: defineMutation(
       "storage",
@@ -487,7 +479,7 @@ const linuxio = {
       kind: "field",
       field: "uuid",
     }),
-    btrfs_scrub_start: createTaskEndpoint("storage", "btrfs_scrub_start", {
+    btrfs_scrub_start: defineMutation("storage", "btrfs_scrub_start", {
       kind: "field",
       field: "uuid",
     }),
@@ -507,7 +499,7 @@ const linuxio = {
     btrfs_snapshot_delete: defineMutation("storage", "btrfs_snapshot_delete", {
       kind: "object",
     }),
-    btrfs_snapshot_rollback: createTaskEndpoint(
+    btrfs_snapshot_rollback: defineMutation(
       "storage",
       "btrfs_snapshot_rollback",
       { kind: "object" },
@@ -589,14 +581,14 @@ const linuxio = {
     }),
     mount_cifs: defineMutation("storage", "mount_cifs", { kind: "object" }),
     mount_nfs: defineMutation("storage", "mount_nfs", { kind: "object" }),
-    partition_create: createTaskEndpoint("storage", "partition_create", {
+    partition_create: defineMutation("storage", "partition_create", {
       kind: "object",
     }),
     partition_delete: defineMutation("storage", "partition_delete", {
       kind: "field",
       field: "device",
     }),
-    partition_format: createTaskEndpoint("storage", "partition_format", {
+    partition_format: defineMutation("storage", "partition_format", {
       kind: "object",
     }),
     partition_mount: defineMutation("storage", "partition_mount", {
@@ -605,7 +597,7 @@ const linuxio = {
     remount_cifs: defineMutation("storage", "remount_cifs", { kind: "object" }),
     remount_nfs: defineMutation("storage", "remount_nfs", { kind: "object" }),
     resize_lv: defineMutation("storage", "resize_lv", { kind: "object" }),
-    run_smart_test: createTaskEndpoint("storage", "run_smart_test", {
+    run_smart_test: defineMutation("storage", "run_smart_test", {
       kind: "object",
     }),
     set_btrfs_maintenance: defineMutation("storage", "set_btrfs_maintenance", {
@@ -639,7 +631,7 @@ const linuxio = {
     get_server_time: defineCall("system.get_server_time"),
     get_system_info: defineCall("system.get_system_info"),
     get_timezones: defineCall("system.get_timezones"),
-    install_capability: createTaskEndpoint("system", "install_capability", {
+    install_capability: defineMutation("system", "install_capability", {
       kind: "field",
       field: "capability",
     }),
@@ -711,7 +703,7 @@ const linuxio = {
     }),
   },
   virt: {
-    create: createTaskEndpoint("virt", "create", { kind: "object" }),
+    create: defineMutation("virt", "create", { kind: "object" }),
     delete: defineMutation("virt", "delete", { kind: "object" }),
     force_off: defineMutation("virt", "force_off", {
       kind: "field",
@@ -737,7 +729,7 @@ const linuxio = {
     template_delete: defineMutation("virt", "template_delete", {
       kind: "object",
     }),
-    template_download: createTaskEndpoint("virt", "template_download", {
+    template_download: defineMutation("virt", "template_download", {
       kind: "field",
       field: "imagePresetId",
     }),

@@ -37,7 +37,7 @@ Read-only system inventory can usually remain unprivileged unless it exposes sen
 To list the candidates (mutations with neither guard; routes that mutate only through polkit-gated D-Bus calls such as hostname, datetime, login1, systemd and NetworkManager also appear here and are a separate decision):
 
 ```sh
-rg -n 'apischema\.(Call|Task|Job)\[' backend/bridge/handlers -g '!*_test.go' | rg -v 'Privileged\(\)|RetrySafe\(\)'
+rg -n 'apischema\.(Call\[|Mutation(Void|Task)?\()' backend/bridge/handlers -g '!*_test.go' | rg -v 'Privileged\(\)|RetrySafe\(\)'
 ```
 
 ## Testing

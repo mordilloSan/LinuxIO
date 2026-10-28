@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { linuxio, type VirtualMachine } from "@/api";
+import type {
+  MutationJobMockConfig,
+  MutationJobStream,
+} from "@/test/mutationJob";
 import {
   act,
   createTestQueryClient,
@@ -118,11 +122,10 @@ const mocks = vi.hoisted(() => {
     refetchList: vi.fn(),
     rfbConstructor: vi.fn(),
     rfbDisconnect: vi.fn(),
-    openTaskWatchStream: vi.fn(),
     virtCreate: vi.fn(),
     virtDelete: vi.fn(),
     virtUpdate: vi.fn(),
-    waitForStreamResult: vi.fn(),
+    followCreate: vi.fn(),
   };
 });
 
@@ -147,6 +150,7 @@ vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
   const { useState } = await import("react");
   const { mockMutationHooks } = await import("@/test/mutationHooks");
+  const { createMutationJobMock } = await import("@/test/mutationJob");
   // Mirrors useCallMutation: on success runs invalidates -> success ->
   // options.onSuccess, with the unwrapped task result (undefined here).
   const taskAction = (
@@ -175,61 +179,30 @@ vi.mock("@/api", async (importOriginal) => {
     mutateAsync: fn,
   });
   type TaskActionConfig = Parameters<typeof taskAction>[1];
-  // Mirrors useTaskStreamAction: submit -> onTaskStart -> attach -> progress
-  // frames -> result, driven by the openTaskWatchStream/waitForStreamResult
-  // mocks so tests control the task stream.
-  interface TaskStreamActionConfig extends NonNullable<TaskActionConfig> {
-    onTaskStart?: (task: unknown, variables: unknown) => void;
-    onOpen?: (stream: unknown, task: unknown, variables: unknown) => void;
-    onProgress?: (progress: unknown, task: unknown, variables: unknown) => void;
-    options?: {
-      onMutate?: (variables: unknown) => void;
-      onSettled?: () => void;
-      onSuccess?: (result: unknown, variables: unknown) => void;
-    };
-  }
-  // Called during component render, so it can hold pending state in a hook.
-  const useTaskStreamActionMock = (
-    submit: (request: unknown) => Promise<{ id: string }>,
-    config?: TaskStreamActionConfig,
-  ) => {
+  // virt.create is a job: it follows the createMutationJobMock lifecycle, with
+  // `followCreate` standing in for its progress frames and result. Called
+  // during component render, so it can hold pending state in a hook.
+  const useCreateMutationMock = (config?: MutationJobMockConfig) => {
     const [isPending, setIsPending] = useState(false);
-    const run = async (request: unknown) => {
-      setIsPending(true);
-      config?.options?.onMutate?.(request);
-      try {
-        const task = await submit(request);
-        config?.onTaskStart?.(task, request);
-        const stream = mocks.openTaskWatchStream(task.id);
-        config?.onOpen?.(stream, task, request);
-        const result = await mocks.waitForStreamResult(stream, {
-          onProgress: (progress: unknown) =>
-            config?.onProgress?.(progress, task, request),
-        });
-        if (typeof config?.invalidates === "function") {
-          config.invalidates(result, request);
-        }
-        if (typeof config?.success === "function") {
-          config.success(result, request);
-        }
-        config?.options?.onSuccess?.(result, request);
-        return result;
-      } catch (error) {
-        if (typeof config?.error === "function") {
-          config.error(error, request);
-        }
-        throw error;
-      } finally {
-        setIsPending(false);
-        config?.options?.onSettled?.();
-      }
-    };
     return {
       isPending,
-      mutate: (request: unknown) => {
-        void run(request).catch(() => undefined);
-      },
-      mutateAsync: run,
+      ...createMutationJobMock(
+        { follow: mocks.followCreate, start: mocks.virtCreate },
+        {
+          ...config,
+          options: {
+            ...config?.options,
+            onMutate: (variables) => {
+              setIsPending(true);
+              config?.options?.onMutate?.(variables);
+            },
+            onSettled: () => {
+              setIsPending(false);
+              config?.options?.onSettled?.();
+            },
+          },
+        },
+      ),
     };
   };
   const useDirectActionMock = (
@@ -270,6 +243,8 @@ vi.mock("@/api", async (importOriginal) => {
     endpoint: { route?: string },
     config?: TaskActionConfig,
   ) => {
+    // Both hooks run on every render to keep the hook order stable.
+    const create = useCreateMutationMock(config);
     const handlers: Record<string, (request: unknown) => Promise<unknown>> = {
       "filebrowser.resource_post": mocks.resourcePost,
       "virt.delete": mocks.virtDelete,
@@ -281,10 +256,11 @@ vi.mock("@/api", async (importOriginal) => {
       "virt.start": mocks.mutations.start,
       "virt.suspend": mocks.mutations.suspend,
     };
-    return useDirectActionMock(
+    const direct = useDirectActionMock(
       handlers[endpoint.route ?? ""] ?? vi.fn().mockResolvedValue(undefined),
       config,
     );
+    return endpoint.route === "virt.create" ? create : direct;
   };
   const callDescriptor = (
     route: string,
@@ -354,10 +330,7 @@ vi.mock("@/api", async (importOriginal) => {
               ],
             }),
         ),
-        create: Object.assign(mocks.virtCreate, {
-          useTaskStreamAction: (config?: TaskStreamActionConfig) =>
-            useTaskStreamActionMock(mocks.virtCreate, config),
-        }),
+        create: actual.linuxio.virt.create,
         delete: Object.assign(mocks.virtDelete, { route: "virt.delete" }),
         update: Object.assign(mocks.virtUpdate, { route: "virt.update" }),
         force_off: Object.assign(mocks.mutations.forceOff, {
@@ -416,10 +389,8 @@ vi.mock("@/api", async (importOriginal) => {
       }
       return Promise.resolve(undefined);
     },
-    openTaskWatchStream: mocks.openTaskWatchStream,
     openVMConsoleStream: mocks.openVMConsoleStream,
     useStreamMux: () => ({ isOpen: true }),
-    waitForStreamResult: mocks.waitForStreamResult,
   };
   return {
     ...mocked,
@@ -457,22 +428,6 @@ function fakeConsoleStream() {
     resize: vi.fn(),
     status: "open",
     type: "virt.console_open",
-    write: vi.fn(),
-  };
-}
-
-function fakeTaskStream() {
-  return {
-    abort: vi.fn(),
-    close: vi.fn(),
-    id: 2,
-    onClose: null,
-    onData: null,
-    onProgress: null,
-    onResult: null,
-    resize: vi.fn(),
-    status: "open",
-    type: "tasks.watch",
     write: vi.fn(),
   };
 }
@@ -543,8 +498,6 @@ beforeEach(() => {
       type: "bridge",
     },
   ];
-  mocks.openTaskWatchStream.mockReset();
-  mocks.openTaskWatchStream.mockReturnValue(fakeTaskStream());
   mocks.openVMConsoleStream.mockReset();
   mocks.openVMConsoleStream.mockReturnValue(fakeConsoleStream());
   mocks.virtCreate.mockReset();
@@ -583,9 +536,9 @@ beforeEach(() => {
   mocks.refetchList.mockReset();
   mocks.rfbConstructor.mockReset();
   mocks.rfbDisconnect.mockReset();
-  mocks.waitForStreamResult.mockReset();
-  mocks.waitForStreamResult.mockImplementation(async (_stream, options) => {
-    options?.onProgress?.({
+  mocks.followCreate.mockReset();
+  mocks.followCreate.mockImplementation(async (stream: MutationJobStream) => {
+    stream.onProgress({
       percentage: 100,
       phase: "complete",
       message: "VM created",
@@ -1377,9 +1330,9 @@ describe("Virtual Machines page", () => {
 
   it("shows VM create progress while a ready image imports", async () => {
     let resolveCreate: (value: unknown) => void = () => {};
-    mocks.waitForStreamResult.mockImplementationOnce(
-      async (_stream, options) => {
-        options?.onProgress?.({
+    mocks.followCreate.mockImplementationOnce(
+      async (stream: MutationJobStream) => {
+        stream.onProgress({
           percentage: 10,
           phase: "download",
           message: "Downloading Debian Server image (10.0 MiB / 100.0 MiB)",

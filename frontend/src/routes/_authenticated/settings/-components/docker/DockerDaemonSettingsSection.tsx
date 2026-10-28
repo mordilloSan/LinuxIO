@@ -3,13 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import {
-  linuxio,
-  type DockerDaemonConfig,
-  type DockerDaemonConfigSetResult,
-  type DockerDaemonStorageProgress,
-  type TaskProgress,
-} from "@/api";
+import { linuxio, type DockerDaemonConfig } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import PathPickerField from "@/components/pathpicker/PathPickerField";
 import {
@@ -126,32 +120,27 @@ const DockerDaemonSettingsSection = () => {
   });
   const [confirmStorage, setConfirmStorage] = useState(false);
   const [storageStep, setStorageStep] = useState<string | null>(null);
-  const storageMutation =
-    linuxio.docker.apply_daemon_storage.useTaskStreamAction<
-      DockerDaemonConfigSetResult,
-      TaskProgress<DockerDaemonStorageProgress>
-    >({
-      closeMessage: "Docker storage change stream closed unexpectedly",
-      onProgress: (progress) => setStorageStep(progress.message ?? null),
-      success: (result) => {
-        queryClient.setQueryData(
-          linuxio.docker.get_daemon_config.queryKey,
-          result.config,
-        );
-        reset();
-        setRestartRequired(false);
-        toast.success(
-          "Docker restarted on the new storage. Deploy your stacks again.",
-        );
+  const storageMutation = linuxio.docker.apply_daemon_storage.useMutation({
+    onProgress: (progress) => setStorageStep(progress.message ?? null),
+    success: (result) => {
+      queryClient.setQueryData(
+        linuxio.docker.get_daemon_config.queryKey,
+        result.config,
+      );
+      reset();
+      setRestartRequired(false);
+      toast.success(
+        "Docker restarted on the new storage. Deploy your stacks again.",
+      );
+    },
+    error: "Failed to change Docker storage",
+    options: {
+      onSettled: () => {
+        setStorageStep(null);
+        setConfirmStorage(false);
       },
-      error: "Failed to change Docker storage",
-      options: {
-        onSettled: () => {
-          setStorageStep(null);
-          setConfirmStorage(false);
-        },
-      },
-    });
+    },
+  });
   const busy =
     saveMutation.isPending ||
     restartMutation.isPending ||

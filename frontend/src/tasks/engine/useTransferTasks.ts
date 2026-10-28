@@ -508,7 +508,7 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
     return startTransfer(
       "compression",
       [request.targetPath],
-      () => linuxio.filebrowser.compress(request),
+      () => linuxio.filebrowser.compress.start(request),
       archiveName || "archive.zip",
       (labelBase) => ({
         type: "compression",
@@ -532,7 +532,7 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
     return startTransfer(
       "extraction",
       identity,
-      () => linuxio.filebrowser.extract({ archivePath, destination }),
+      () => linuxio.filebrowser.extract.start({ archivePath, destination }),
       extractionLabelBase(archivePath),
       () => ({
         type: "extraction",
@@ -557,7 +557,7 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
       "copy",
       [...sources, destination],
       () =>
-        linuxio.filebrowser.copy_batch({
+        linuxio.filebrowser.copy_batch.start({
           sources,
           destination,
           overwrite,
@@ -583,7 +583,7 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
       "move",
       [...sources, destination],
       () =>
-        linuxio.filebrowser.move_batch({
+        linuxio.filebrowser.move_batch.start({
           sources,
           destination,
           overwrite,

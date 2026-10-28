@@ -36,7 +36,7 @@ const VMImagesPage = () => {
   const toast = useScopedToast(VM_TOAST);
   const [progress, setProgress] = useState<VMCreateProgress | null>(null);
   const [deleting, setDeleting] = useState<VMTemplate | null>(null);
-  const download = linuxio.virt.template_download.useTaskStreamAction({
+  const download = linuxio.virt.template_download.useMutation({
     onProgress: (event) =>
       setProgress(
         event.detail ?? {

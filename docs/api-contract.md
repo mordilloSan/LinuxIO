@@ -4,24 +4,24 @@ This is the canonical guide for LinuxIO's Go-owned API contract between the fron
 
 ## Summary
 
-LinuxIO exposes four deliberately different operation shapes:
+LinuxIO exposes three deliberately different operation shapes:
 
 - **Call** is bounded request/response work.
 - **Mutation** is a change to the host that runs as a job in the caller's job
   host. One stream carries the job's snapshot, progress and result; the job
   outlives the stream, the browser tab and the login.
 - **Channel** is a live stream with an explicit resume/reconnect contract.
-- **Task** is the frontend's client for Mutations it starts and then watches
-  with `tasks.watch`: progress, identity metadata and recovery after a reload.
-  No backend route is a Task any more.
+
+A Mutation's job is a **task** to the `tasks.*` routes, which read its
+snapshot (`tasks.get`, `tasks.events`), follow it (`tasks.watch`), cancel it
+and carry its bytes (`tasks.data`).
 
 Every write is a Mutation except five Calls: `logging.set_debug`, the three
 network bridge-handoff routes, which keep their own durable record, and
-`storage.btrfs_replication_ssh_key`, which creates the key on first read. The
-31 routes that were Tasks are Mutations the frontend still drives with its
-task client: the generated route metadata calls them `"task"`, and the client
-starts each over the Mutation stream with a job `id`, takes the first
-`task.snapshot` frame, detaches, and follows the job with `tasks.watch`
+`storage.btrfs_replication_ssh_key`, which creates the key on first read.
+Components follow a Mutation with `endpoint.useMutation`; the background tray
+starts one with `endpoint.start`, which resolves with the job's first snapshot
+and detaches, then follows it with `tasks.watch` and `tasks.data`
 ([phase 2](./TODO/jobs.md#42-phase-2-every-mutation-is-a-job)). This browser-to-bridge API is an internal product
 surface. A future supported external API would be a separate contract.
 
@@ -93,14 +93,13 @@ For request routes:
 | `frontend/src/api/index.ts` | Public barrel. Feature code should import from `@/api`. |
 | `frontend/src/api/calls.ts` | Framework-independent typed `call()` transport and consumer of the generated retry-safety policy. |
 | `frontend/src/api/call-react-query.ts` | Final TanStack descriptor builders and the shared bounded-mutation lifecycle. It has no dependency on Task lifecycle or streams. |
-| `frontend/src/api/mutation-react-query.ts` | Mutation endpoints: `defineMutation` and `useMutation` with `onStart`, `onProgress` and `watch`. Transport recovery lives in `linuxio-core.ts`. |
-| `frontend/src/api/task-react-query.ts` | Task-only mutation integration: `useTaskAction`, `useTaskStreamAction`, completion waiting, watching, and progress handling. It imports the shared mutation lifecycle; Call fetching never imports Task lifecycle. |
-| `frontend/src/api/endpoint-types.ts` | Type-only aggregate that maps generated routes to Call descriptors, Task capabilities or Mutation endpoints without merging their runtime factories. |
-| `frontend/src/api/linuxio-core.ts` | Low-level JSON Call path, deadline ownership, bounded retry, and connection-outcome classification; the Mutation stream path (`mutationRequest`, `watchMutation`) with its job `id`, resend and reattach. API internals only. |
+| `frontend/src/api/mutation-react-query.ts` | Mutation endpoints: `defineMutation`, `start`, and `useMutation` with `onStart`, `onProgress`, `signal` and `watch`. Transport recovery lives in `linuxio-core.ts`. |
+| `frontend/src/api/endpoint-types.ts` | Type-only aggregate that maps generated routes to Call descriptors or Mutation endpoints without merging their runtime factories. |
+| `frontend/src/api/linuxio-core.ts` | Low-level JSON Call path, deadline ownership, bounded retry, and connection-outcome classification; the Mutation stream path (`mutationRequest`, `watchMutation`, `startJob`) with its job `id`, resend and reattach. API internals only. |
 | `frontend/src/api/linuxio.ts` | Typed `openChannel()` transport, connection hooks, terminal/Task stream helpers, and the app-update Task data stream. |
 | `frontend/src/api/StreamMultiplexer.ts` | WebSocket stream multiplexer, relay frame encoding, stream lifecycle, singleton connection management. |
 | `frontend/src/api/stream-helpers.ts` | Helpers for binding stream callbacks, awaiting result frames, and writing byte chunks. |
-| `frontend/src/api/tasks.ts` | Task snapshot guards, cancellation classification, and `waitForTaskCompletion()`. |
+| `frontend/src/api/tasks.ts` | Terminal-state and cancellation classification. |
 | `frontend/src/api/task-state.ts` | Shared terminal Task-state predicate. |
 | `frontend/src/api/operation-query-invalidations.ts` | Default query invalidations shared by direct actions and Tasks. |
 | `frontend/src/api/capabilities.ts` | Frontend capability manifest and state helpers. |
@@ -113,7 +112,6 @@ Every route has one mode:
 |------|-----|
 | `bridgeipc.ModeCall` | Bounded request/response work: reads, and the quick writes not yet migrated to `Mutation`. React Query caching versus mutation behavior is chosen only at the frontend callsite. |
 | `bridgeipc.ModeMutation` | A change to the host that runs as a job. The bridge relays the stream to the caller's job host, which runs the handler and records the job; a `BrowserBound()` route runs in the bridge on the same stream. No client timeout. See [Tasks and jobs](#tasks-and-jobs). |
-| `bridgeipc.ModeTask` | Legacy: tracked work with Task identity, progress and watcher recovery, run in the bridge and owned by the login session. Being migrated to `ModeMutation`; add no new Task routes. |
 | `bridgeipc.ModeDuplex` | Long-lived Channels, including server-producing logs and bidirectional terminals; resumption is explicit in each Channel protocol. |
 
 Every route has one schema kind:
@@ -121,18 +119,17 @@ Every route has one schema kind:
 | Kind | Go binding |
 |------|------------|
 | `KindHandler` | `.Handle(func(context.Context, TRequest) (TResult, error))` or `.HandleVoid(func(context.Context, TRequest) error)`. |
-| `KindMutation` | `apischema.Mutation(name, fn, opts...)` with `fn func(context.Context, TRequest) (TResult, error)`, or `apischema.MutationVoid(name, fn, opts...)` with `fn func(context.Context, TRequest) error`. Go infers the request and result types from `fn`. |
-| `KindTaskRunner` | Legacy. `.Run(func(context.Context, *bridgeipc.Task, TRequest) (TResult, error), policy)`; the compiler checks the terminal result before the binding erases it at the bridge registry boundary. |
+| `KindMutation` | `apischema.Mutation(name, fn, opts...)` with `fn func(context.Context, TRequest) (TResult, error)`, or `apischema.MutationVoid(name, fn, opts...)` with `fn func(context.Context, TRequest) error`. Go infers the request and result types from `fn`. `apischema.MutationTask(name, fn, opts...)` hands `fn` its `*bridgeipc.Task` too, for runners that report through it or name files after its ID. |
 | `KindDuplex` | `func(context.Context, net.Conn, TRequest) error` |
 
 Use `apischema.NoRequest` for no request payload and `apischema.NoResponse` for no result payload. They are API contract marker types owned by `apischema`.
 
-Calls, Mutations and Task runners are typed at their binding.
-`apischema.Progress[T]()` (`WithTaskProgress[T]()` on Task routes) declares the
+Calls and Mutations are typed at their binding.
+`apischema.Progress[T]()` declares the
 route-specific detail inside the common `TaskProgress<T>` envelope; the detail
 type implements `ProgressEnvelope()`. A Mutation handler reports it with
 `bridgeipc.ReportProgress(ctx, detail.ProgressEnvelope())`, which does nothing
-outside a job; a Task runner passes it to `task.ReportProgress()`. Task data
+outside a job; a `MutationTask` runner may pass it to `task.ReportProgress()`. Task data
 uses the focused `tasks.data` attachment Channel. Ordinary handlers have no
 universal emitter surface.
 
@@ -223,21 +220,14 @@ Every generated Call exposes one of two shapes:
 | No-request descriptor (`linuxio.system.get_cpu_info`) | Pass directly to `useQuery`, `useSuspenseQuery`, route loaders, or QueryClient. |
 | Request descriptor factory (`linuxio.systemd.get_unit_info(request)`) | Bind the complete generated request object, then use the returned descriptor in the same places. |
 
-Task endpoints are generated through a separate factory. They expose the
-framework-agnostic Promise call and query key plus:
-
-| Member | Use |
-|--------|-----|
-| `endpoint.useTaskAction(config?)` | React Query mutation lifecycle for a Task route: waits for completion, unwraps the final result, and applies declarative invalidation/toasts. |
-| `endpoint.useTaskStreamAction(config?)` | Task-route mutation lifecycle with live progress: starts the Task, watches its stream, and surfaces `onTaskStart`/`onOpen`/`onProgress`. The returned mutation also exposes `watch(task, variables)` for page-reload recovery. |
-
 Mutation endpoints are generated with `defineMutation`. They expose the Promise
 call (`linuxio.docker.update_container(request)` resolves with the typed
 result), the query key, and:
 
 | Member | Use |
 |--------|-----|
-| `endpoint.useMutation(config?)` | The `ActionConfig` of `useCallMutation` plus `onStart(snapshot, variables)`, called once when the job exists, and `onProgress(progress, snapshot, variables)` per progress frame. The returned mutation also exposes `watch(taskId, variables)` to adopt a running job of the route after a reload or from another tab. |
+| `endpoint.useMutation(config?)` | The `ActionConfig` of `useCallMutation` plus `onStart(snapshot, variables)`, called once when the job exists, and `onProgress(progress, snapshot, variables)` per progress frame. `signal` (or a function of the variables returning one) stops following when aborted: `closeOnAbort: "abort"`, the default, cancels the job, `"close"` detaches and leaves it running. The returned mutation also exposes `watch(taskId, variables)` to adopt a running job of the route after a reload or from another tab. |
+| `endpoint.start(request)` | Starts the job and resolves with its first snapshot, then detaches. For the background tray, which follows jobs itself. |
 
 ```typescript
 const update = linuxio.docker.update_container.useMutation({
@@ -250,11 +240,9 @@ update.mutate({ containerId });
 Feature code imports TanStack Query's read primitives directly. Calls
 pass their descriptor directly (`useSuspenseQuery(linuxio.system.get_cpu_info)`)
 or invoke their request descriptor factory. Mutation routes use their
-generated `useMutation`. Bounded writes still declared as Calls use
-`useCallMutation`.
-Progress work on legacy Task routes uses the separate Task module's
-`useTaskAction`/`useTaskStreamAction` or the background-Tasks layer,
-while imperative cache work uses QueryClient directly. Feature code does not
+generated `useMutation`, and Calls run as commands use `useCallMutation`.
+Transfers that show in the navbar use the background-Tasks layer, while
+imperative cache work uses QueryClient directly. Feature code does not
 invent query keys/functions or use raw mutations. Guard tests
 (`frontend/src/test/guards/apiLayering.test.ts`) enforce that boundary.
 
@@ -262,7 +250,7 @@ Route loaders use `loadRouteQueries` from `src/routes/-loader.ts` to wait for th
 
 The same guard file also fences the byte/mux-level transport primitives (`encodeString`, `bindStreamHandlers`, `getStreamMux`, …): feature code opens typed Channels with `openChannel(route, request)` and uses the stream lifecycle hooks (`useLiveStream`/`useLogStream`/`useStreamResult`). Only a short, shrink-only allowlist may import lower-level primitives from `@/api`.
 
-Call descriptors compose with normal React Query options, including `select` for transformed output data. `useCallMutation` and `useTaskAction` take an `ActionConfig` — `invalidates` (query keys, static or derived from result/variables), `success`/`error` (toast message strings or callbacks; the error string is only a fallback, the server error message wins), `warning` (an extractor like `(result) => result.warning`; a non-empty return fires a warning toast that replaces the string-form success toast — invalidation and callback-form `success` still run), `toast` (toast metadata such as an action link), and `options` as a raw React Query options escape hatch.
+Call descriptors compose with normal React Query options, including `select` for transformed output data. `useCallMutation` and `useMutation` take an `ActionConfig` — `invalidates` (query keys, static or derived from result/variables), `success`/`error` (toast message strings or callbacks; the error string is only a fallback, the server error message wins), `warning` (an extractor like `(result) => result.warning`; a non-empty return fires a warning toast that replaces the string-form success toast — invalidation and callback-form `success` still run), `toast` (toast metadata such as an action link), and `options` as a raw React Query options escape hatch.
 
 ### Choosing a member (decision table)
 
@@ -273,14 +261,13 @@ Call descriptors compose with normal React Query options, including `select` for
 | Call invoked as a command (validate, generate download, resolve path) | `useCallMutation(endpoint, config)` for declarative pending/error/feedback behavior. |
 | Single bounded mutation triggered by one user action | `useCallMutation(endpoint, config)`, fired with `mutate`. |
 | Route generated as a Mutation (`RouteMode` `mutation`) | `endpoint.useMutation(config)`, with `onProgress` when the UI renders progress and `watch(taskId, variables)` in a `useActiveTaskRecovery` callback to adopt the running job after a reload. |
-| Legacy Task route whose live progress the UI renders, or that must survive page reload | `useTaskStreamAction` (+ `watch` with `useActiveTaskRecovery` for recovery). Don't pick it just to customize an error string. |
 | Several mutations sequenced or looped in one flow (batch delete, multi-step save) | Create the actions **configless** with a comment, `await mutateAsync` per step/item inside `try/catch`, and aggregate the outcome into one toast. The catch owns flow control only — never re-toast an error a config already toasted. |
 | Long-running transfer that must outlive the page and show in the navbar | The background-Tasks layer (`useBackgroundTaskActions`), not a component-local Task action. |
 | Optimistic updates / seeding cache from a result | QueryClient `cancelQueries`/`setQueryData` with the descriptor's `queryKey`. |
 
 Refreshes after mutations come from the invalidation manifest by default — do not add `refetch()` calls or `onSuccess` refresh props on top of it; if a list does not refresh, fix the manifest entry instead.
 
-Query invalidation is manifest-driven: `frontend/src/api/operation-query-invalidations.ts` maps each Call or Task route to the Call caches it makes stale, using the same centralized query keys. It is the single source of truth for mutation lifecycles — `useCallMutation`, `useMutation`, `useTaskAction`, and `useTaskStreamAction` use it as the default `invalidates` for locally awaited work, and the recovered-Tasks stream applies it to Tasks that finish with no local handler (page reload, another session). Call sites only pass `invalidates` to override the manifest (`[]` opts out; a function derives keys from result/variables). The few path-precise File Browser invalidations use QueryClient directly and are source-guarded.
+Query invalidation is manifest-driven: `frontend/src/api/operation-query-invalidations.ts` maps each Call or Mutation route to the Call caches it makes stale, using the same centralized query keys. It is the single source of truth for mutation lifecycles — `useCallMutation` and `useMutation` use it as the default `invalidates` for locally awaited work, and the recovered-Tasks stream applies it to Tasks that finish with no local handler (page reload, another session). Call sites only pass `invalidates` to override the manifest (`[]` opts out; a function derives keys from result/variables). The few path-precise File Browser invalidations use QueryClient directly and are source-guarded.
 
 Input is generated from the Go request contract:
 
@@ -408,28 +395,19 @@ func handleUpdateContainer(ctx context.Context, req apischema.DockerContainerUpd
 The handler has the Call signature; `DockerContainerUpdateRequest.Target()`
 makes the container the job's target.
 
-Legacy Task runner route:
+Mutation whose runner takes its task:
 
 ```go
-var dockerTaskRoutes = dockerTaskBindings(runtime.Runtime{}).Routes()
-
-func dockerTaskBindings(rt runtime.Runtime) apischema.BindingSet {
-    return apischema.Bindings(
-        apischema.TaskRunner[apischema.DockerComposeRequest, ComposeTaskResult](
-            "docker.compose",
-            apischema.WithTaskProgress[ComposeTaskMessage](),
-        ).Run(runDockerComposeTask, bridgeipc.TaskDefault),
-    )
-}
-
-func RegisterTaskRoutes(router *bridgeipc.Router, rt runtime.Runtime) {
-    dockerTaskBindings(rt).Register(router)
-}
+apischema.MutationTask("docker.compose", func(ctx context.Context, task *bridgeipc.Task, req apischema.DockerComposeRequest) (ComposeTaskResult, error) {
+    return runDockerComposeTask(ctx, task, rt.Username(), rt.Store, req)
+}, apischema.Privileged(), apischema.Progress[ComposeTaskMessage](), apischema.WithTaskMetadata(func(req apischema.DockerComposeRequest) bridgeipc.TaskMetadata {
+    return bridgeipc.TaskMetadata{Identity: []string{req.ProjectName}, Label: "Docker compose " + req.Action, Action: req.Action, ProjectName: req.ProjectName}
+})),
 ```
 
 The route's `ComposeTaskResult` is both the generated terminal-result contract
-and the runner's Go return type. `TaskSnapshot` is the immediate response to
-starting any Task; it is not a route's terminal result type.
+and the runner's Go return type. `WithTaskMetadata` names what the tray and
+recovery show, and its identity is the job's target.
 
 Duplex route:
 
@@ -520,10 +498,11 @@ recreated, so concurrent bridges continue to coordinate through `flock`.
 ## Tasks and jobs
 
 A Mutation runs as a **job**: a Task in the task service of the caller's job
-host, identified by the client's UUID, with a record in the job store. Legacy
-Task routes run as session Tasks in the bridge. Both are discovered and
-controlled through the same `tasks.*` routes. Bounded writes that are still
-Calls complete through a single direct `useCallMutation` request/response.
+host, identified by the client's UUID, with a record in the job store. A
+`BrowserBound()` Mutation runs as a session-owned task in the bridge. Both are
+discovered and controlled through the same `tasks.*` routes. Bounded writes
+that are still Calls complete through a single direct `useCallMutation`
+request/response.
 
 ### The mutation stream
 
@@ -577,7 +556,7 @@ for how hosts start.
 
 The host runs each job's handler in a goroutine whose context ends only on
 `tasks.cancel`, a stream abort, or the host stopping. The bridge keeps all Calls,
-Channels, legacy Task routes, `tasks.data`, and the `BrowserBound()` Mutations,
+Channels, `tasks.data`, and the `BrowserBound()` Mutations,
 which it runs itself on the same stream.
 
 ### Task admission
@@ -587,9 +566,8 @@ limit, no start-rate limit and no runtime cap. A task ends when it finishes or
 is canceled. These checks refuse with `409` instead of waiting:
 
 - **Same target.** A second job of a Mutation route whose request `Target()`
-  matches a running one, or a second task of a Task route whose metadata
-  identity does (the same pool, disk, container, compose project or set of
-  paths), is refused, as the kernel or device would refuse it. The target stays
+  or `WithTaskMetadata` identity matches a running one (the same pool, disk,
+  container, compose project or set of paths) is refused, as the kernel or device would refuse it. The target stays
   taken until the first handler has exited, even after a cancel. A request type
   without `Target()` has no target and is never refused as a duplicate.
 - **Exclusive routes** (`apischema.Exclusive()`) run one at a time because
@@ -641,10 +619,10 @@ an earlier boot interrupted, once per boot; no route is resumable yet.
 
 ### Task lifetime, ownership, and activity
 
-The 31 legacy Task routes, including `control.app_update`, declare
-`SessionTask()`. Their owner is the exact authenticated `SessionID`; logout,
-expiry, session deletion, bridge failure, or bridge shutdown cancels the
-in-memory Task. Session Tasks exist only for these `TaskRunner` routes.
+A `BrowserBound()` Mutation (`filebrowser.upload`, `upload_batch`, `archive`)
+is owned by the exact authenticated `SessionID`; logout, expiry, session
+deletion, bridge failure, or bridge shutdown cancels it, and its cleanup removes
+the partial upload or the archive.
 
 A Mutation job is owned by the numeric uid of its job host, not by a session.
 Logout, session expiry, bridge exit and connection loss only detach from it;
@@ -668,16 +646,10 @@ activity signal: the frontend emits it on throttled document interaction and
 selected interactive stream data, and the server strips it before forwarding
 the payload and refreshes session activity.
 
-Starting a generated legacy Task endpoint returns a `TaskSnapshot` immediately.
-On the frontend, `useTaskAction` awaits the terminal state via
-`waitForTaskCompletion()`: a failed Task rejects with a `LinuxIOError` carrying
-the Task's error message/code, and success resolves with the unwrapped typed
-`TaskSnapshot.result`. A Task start is never retried after connection loss; Task
-recovery begins only after the client has received its snapshot identity. If the
-watch stream cannot be opened (the mux dropped between Task start and watch),
-completion waiting falls back to the explicitly retry-safe `tasks.get` Call;
-`useTaskStreamAction` instead fails fast because it promises live progress, and
-the recovered-Tasks stream can pick the Task up.
+A failed job rejects its Mutation with a `LinuxIOError` carrying the job's
+error message and code; a completed one resolves with the typed result.
+`endpoint.start` resolves with the first snapshot instead and leaves the
+outcome to `tasks.watch`, `tasks.events` or the recovered-Tasks stream.
 
 ### Task progress
 
@@ -695,8 +667,7 @@ interface TaskProgress<TDetail = unknown> {
 `percentage` is clamped to 0 through 100 by `TaskService`; `phase` is a stable
 machine-readable stage; and `message` is concise presentation-ready status.
 Generic Task lists and recovery use only those fields. A generated route
-endpoint binds `detail` to its declared `Progress[T]()` (or
-`WithTaskProgress[T]()`) type, so a feature-owned UI retains its concrete
+endpoint binds `detail` to its declared `Progress[T]()` type, so a feature-owned UI retains its concrete
 counters, paths, package state, or compose event without teaching the global
 Task UI every route shape.
 
@@ -855,8 +826,8 @@ After `make generate`, the frontend gets:
 const result = await call("packages.search", { query });
 ```
 
-A new route that changes the host is a `Mutation`, not a `TaskRunner` and,
-for work that reports progress or may run long, not a `Call`. The binding entry
+A new route that changes the host is a `Mutation` and, for work that reports
+progress or may run long, not a `Call`. The binding entry
 takes the handler and Go infers the types:
 
 ```go

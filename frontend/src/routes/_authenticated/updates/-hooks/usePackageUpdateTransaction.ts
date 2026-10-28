@@ -5,9 +5,7 @@ import {
   linuxio,
   type PkgUpdateProgress,
   type PackageUpdateRequest,
-  type PackageUpdateResult,
   type TaskSnapshot,
-  type Stream,
   useCallMutation,
 } from "@/api";
 import { TASK_TYPE_PACKAGE_UPDATE } from "@/tasks/taskTypes";
@@ -24,7 +22,8 @@ interface ActiveTransaction {
   task: TaskSnapshot | null;
   releaseFeedback: () => void;
   request: PackageUpdateRequest;
-  stream: Stream | null;
+  // Aborted on unmount: this page stops following, the update runs on.
+  detach: AbortController;
 }
 
 interface PackageUpdateTransactionOptions {
@@ -61,7 +60,7 @@ export function usePackageUpdateTransaction({
       task: null,
       releaseFeedback: claimTerminalFeedback(TASK_TYPE_PACKAGE_UPDATE),
       request,
-      stream: null,
+      detach: new AbortController(),
     };
     setCanCancel(false);
     return true;
@@ -83,42 +82,30 @@ export function usePackageUpdateTransaction({
     [accepts],
   );
 
-  const streamAction =
-    linuxio.packages.update.useTaskStreamAction<PackageUpdateResult>({
-      closeMessage: "Update stream closed unexpectedly",
-      onTaskStart: (task, request) => {
-        if (!accepts(request)) return;
-        const transaction = transactionRef.current;
-        if (!transaction) return;
-        transaction.task = task;
-        setCanCancel(
-          !transaction.cancelRequested && !isTerminalTaskState(task.state),
-        );
-      },
-      onOpen: (stream, task, request) => {
-        const transaction = transactionRef.current;
-        if (
-          !accepts(request) ||
-          !transaction ||
-          transaction.task?.id !== task.id
-        ) {
-          stream.close();
-          return;
-        }
-        transaction.stream = stream;
-      },
-      onProgress: (progress, _task, request) => {
-        if (accepts(request) && progress.detail) {
-          onProgress(progress.detail, request);
-        }
-      },
-      success: (_result, request) => {
-        if (settle(request)) onSuccess(request);
-      },
-      error: (error, request) => {
-        if (settle(request)) onError(error, request);
-      },
-    });
+  const streamAction = linuxio.packages.update.useMutation({
+    onStart: (task, request) => {
+      if (!accepts(request)) return;
+      const transaction = transactionRef.current;
+      if (!transaction) return;
+      transaction.task = task;
+      setCanCancel(
+        !transaction.cancelRequested && !isTerminalTaskState(task.state),
+      );
+    },
+    signal: () => transactionRef.current?.detach.signal,
+    closeOnAbort: "close",
+    onProgress: (progress, _task, request) => {
+      if (accepts(request) && progress.detail) {
+        onProgress(progress.detail, request);
+      }
+    },
+    success: (_result, request) => {
+      if (settle(request)) onSuccess(request);
+    },
+    error: (error, request) => {
+      if (settle(request)) onError(error, request);
+    },
+  });
 
   const start = useCallback(
     (request: PackageUpdateRequest): Promise<void> | null => {
@@ -139,7 +126,7 @@ export function usePackageUpdateTransaction({
       const request = { packageIds };
       if (!begin(request)) return false;
       onRecover(request);
-      streamAction.watch(task, request);
+      streamAction.watch(task.id, request);
       return true;
     },
     [begin, onRecover, streamAction],
@@ -184,7 +171,7 @@ export function usePackageUpdateTransaction({
   useEffect(() => {
     return () => {
       const transaction = transactionRef.current;
-      transaction?.stream?.close();
+      transaction?.detach.abort();
       transaction?.releaseFeedback();
       transactionRef.current = null;
     };

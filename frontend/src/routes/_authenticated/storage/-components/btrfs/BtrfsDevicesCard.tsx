@@ -79,26 +79,22 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
     toast: BTRFS_POOL_TOAST_META,
     options: { onSettled: () => setProgress(null) },
   });
-  const removeDevice = linuxio.storage.btrfs_device_remove.useTaskStreamAction<
-    BtrfsFilesystem,
-    TaskProgress<BtrfsOpProgress>
-  >(taskConfig("Device removed", "Failed to remove device"));
-  const replaceDevice =
-    linuxio.storage.btrfs_device_replace.useTaskStreamAction<
-      BtrfsFilesystem,
-      TaskProgress<BtrfsOpProgress>
-    >(taskConfig("Device replaced", "Failed to replace device"));
-  const balance = linuxio.storage.btrfs_balance.useTaskStreamAction<
-    BtrfsFilesystem,
-    TaskProgress<BtrfsOpProgress>
-  >(taskConfig("Balance finished", "Failed to balance filesystem"));
+  const removeDevice = linuxio.storage.btrfs_device_remove.useMutation(
+    taskConfig("Device removed", "Failed to remove device"),
+  );
+  const replaceDevice = linuxio.storage.btrfs_device_replace.useMutation(
+    taskConfig("Device replaced", "Failed to replace device"),
+  );
+  const balance = linuxio.storage.btrfs_balance.useMutation(
+    taskConfig("Balance finished", "Failed to balance filesystem"),
+  );
 
   // Balance is the long task, so it is the only one re-attached after a reload.
   useActiveTaskRecovery({
     type: TASK_TYPE_STORAGE_BTRFS_BALANCE,
     scanKey: uuid,
     match: (task) => task.metadata?.identity?.[0] === uuid,
-    onRecover: (task) => balance.watch(task, { uuid }),
+    onRecover: (task) => balance.watch(task.id, { uuid }),
   });
 
   const pending =

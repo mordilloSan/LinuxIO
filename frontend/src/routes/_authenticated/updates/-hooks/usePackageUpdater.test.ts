@@ -1,24 +1,32 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { PkgUpdateProgress, Stream, TaskProgress } from "@/api";
-import type { TaskStreamActionMockConfig } from "@/test/taskStreamAction";
+import type { PkgUpdateProgress, TaskProgress } from "@/api";
+import type { MutationJobStream } from "@/test/mutationJob";
 
 const apiMocks = vi.hoisted(() => ({
   cancelTask: vi.fn(),
+  getTask: vi.fn(),
   listTasks: vi.fn(),
-  openTaskWatchStream: vi.fn(),
   updatePackages: vi.fn(),
 }));
 
 const streamMocks = vi.hoisted(() => ({
-  runStream: vi.fn(),
-  streamActionConfigs: [] as (TaskStreamActionMockConfig | undefined)[],
+  follow: vi.fn(),
+  mutationConfigs: [] as unknown[],
 }));
 
 vi.mock("@/api", async () => {
   const actual = await vi.importActual<typeof import("@/api")>("@/api");
-  const { createTaskStreamActionMock } =
-    await import("@/test/taskStreamAction");
+  const { createMutationJobMock } = await import("@/test/mutationJob");
+  const { mockMutationHooks } = await import("@/test/mutationHooks");
+  const linuxio = {
+    ...actual.linuxio,
+    tasks: {
+      ...actual.linuxio.tasks,
+      list: apiMocks.listTasks,
+      cancel: actual.linuxio.tasks.cancel,
+    },
+  };
   return {
     ...actual,
     call: (route: string, request?: unknown) =>
@@ -30,34 +38,23 @@ vi.mock("@/api", async () => {
       mutate: (request: unknown) => apiMocks.cancelTask(request),
       mutateAsync: apiMocks.cancelTask,
     }),
-    openTaskWatchStream: apiMocks.openTaskWatchStream,
-    linuxio: {
-      ...actual.linuxio,
-      tasks: {
-        ...actual.linuxio.tasks,
-        list: apiMocks.listTasks,
-        cancel: actual.linuxio.tasks.cancel,
-      },
-      packages: {
-        ...actual.linuxio.packages,
-        update: {
-          useTaskStreamAction: (config?: TaskStreamActionMockConfig) => {
-            streamMocks.streamActionConfigs.push(config);
-            return {
-              isPending: false,
-              ...createTaskStreamActionMock(
-                {
-                  openStream: apiMocks.openTaskWatchStream,
-                  runStream: streamMocks.runStream,
-                  submit: apiMocks.updatePackages,
-                },
-                config,
-              ),
-            };
+    linuxio: mockMutationHooks(linuxio, (endpoint, config) => {
+      if (endpoint.route !== "packages.update") {
+        throw new Error(`unexpected mutation ${endpoint.route}`);
+      }
+      streamMocks.mutationConfigs.push(config);
+      return {
+        isPending: false,
+        ...createMutationJobMock(
+          {
+            follow: streamMocks.follow,
+            get: apiMocks.getTask,
+            start: apiMocks.updatePackages,
           },
-        },
-      },
-    },
+          config,
+        ),
+      };
+    }),
   };
 });
 
@@ -71,21 +68,8 @@ const {
 const { usePackageUpdater } = await import("./usePackageUpdater");
 const { act, renderHook } = await import("@/test/render");
 
-function createStream(overrides: Partial<Stream> = {}): Stream {
-  return {
-    abort: vi.fn(),
-    close: vi.fn(),
-    id: 1,
-    onClose: null,
-    onData: null,
-    onProgress: null,
-    onResult: null,
-    resize: vi.fn(),
-    status: "open",
-    type: "request",
-    write: vi.fn(),
-    ...overrides,
-  };
+function followedStream(call = -1): MutationJobStream {
+  return streamMocks.follow.mock.calls.at(call)?.[0] as MutationJobStream;
 }
 
 function packageTaskProgress(
@@ -102,6 +86,10 @@ function packageTaskProgress(
 describe("usePackageUpdater", () => {
   beforeEach(() => {
     apiMocks.cancelTask.mockResolvedValue(undefined);
+    apiMocks.getTask.mockImplementation(async (id: string) => ({
+      id,
+      state: "running",
+    }));
     apiMocks.listTasks.mockResolvedValue([]);
     apiMocks.listTasks.mockClear();
   });
@@ -109,7 +97,7 @@ describe("usePackageUpdater", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.clearAllMocks();
-    streamMocks.streamActionConfigs.length = 0;
+    streamMocks.mutationConfigs.length = 0;
     resetTerminalTaskFeedback();
   });
 
@@ -118,9 +106,8 @@ describe("usePackageUpdater", () => {
       id: "task-1",
       state: "running",
     });
-    apiMocks.openTaskWatchStream.mockReturnValue(createStream());
-    streamMocks.runStream.mockImplementation(async (_stream, handlers) => {
-      handlers.onProgress(
+    streamMocks.follow.mockImplementation(async (stream: MutationJobStream) => {
+      stream.onProgress(
         packageTaskProgress({ type: "percentage", percentage: 40 }),
       );
     });
@@ -138,7 +125,7 @@ describe("usePackageUpdater", () => {
     expect(result.current.updatingPackage).toBeNull();
     expect(result.current.status).toBeNull();
     // The page keeps its manifest invalidation as the direct completion path.
-    const config = streamMocks.streamActionConfigs.at(-1);
+    const config = streamMocks.mutationConfigs.at(-1);
     expect(config).not.toHaveProperty("invalidates", []);
   });
 
@@ -161,8 +148,7 @@ describe("usePackageUpdater", () => {
       id: "task-canceled-elsewhere",
       state: "running",
     });
-    apiMocks.openTaskWatchStream.mockReturnValue(createStream());
-    streamMocks.runStream.mockRejectedValue(
+    streamMocks.follow.mockRejectedValue(
       new LinuxIOError("operation aborted", 499),
     );
     const { result } = renderHook(() => usePackageUpdater());
@@ -181,19 +167,18 @@ describe("usePackageUpdater", () => {
       id: "task-1",
       state: "running",
     });
-    apiMocks.openTaskWatchStream.mockReturnValue(createStream());
-    streamMocks.runStream.mockImplementation(async (_stream, handlers) => {
-      handlers.onProgress(
+    streamMocks.follow.mockImplementation(async (stream: MutationJobStream) => {
+      stream.onProgress(
         packageTaskProgress({ type: "percentage", percentage: 40 }),
       );
-      handlers.onProgress(
+      stream.onProgress(
         packageTaskProgress({
           type: "status",
           status: "Installing packages",
           percentage: 25,
         }),
       );
-      handlers.onProgress(
+      stream.onProgress(
         packageTaskProgress({
           type: "item_progress",
           package_id: "nginx;1.24.0;amd64;ubuntu",
@@ -214,7 +199,7 @@ describe("usePackageUpdater", () => {
     expect(apiMocks.updatePackages).toHaveBeenCalledWith({
       packageIds: ["nginx;1.24.0;amd64;ubuntu", "curl;8.0;amd64;ubuntu"],
     });
-    expect(apiMocks.openTaskWatchStream).toHaveBeenCalledWith("task-1");
+    expect(followedStream().taskId).toBe("task-1");
     expect(result.current.progress).toBe(100);
     expect(result.current.eventLog).toEqual([]);
     expect(result.current.updatingPackage).toBeNull();
@@ -226,12 +211,11 @@ describe("usePackageUpdater", () => {
       id: "task-progress-message",
       state: "running",
     });
-    apiMocks.openTaskWatchStream.mockReturnValue(createStream());
     let finishStream!: () => void;
-    streamMocks.runStream.mockImplementation(
-      (_stream, handlers) =>
+    streamMocks.follow.mockImplementation(
+      (stream: MutationJobStream) =>
         new Promise<void>((resolve) => {
-          handlers.onProgress(
+          stream.onProgress(
             packageTaskProgress({
               type: "status",
               package_id: "curl;8.0;amd64;ubuntu",
@@ -239,13 +223,13 @@ describe("usePackageUpdater", () => {
               percentage: 0,
             }),
           );
-          handlers.onProgress(
+          stream.onProgress(
             packageTaskProgress({
               type: "output",
               message: "Unpacking curl (8.1) over (8.0) ...",
             }),
           );
-          handlers.onProgress(
+          stream.onProgress(
             packageTaskProgress({
               type: "message",
               message:
@@ -281,14 +265,12 @@ describe("usePackageUpdater", () => {
   });
 
   it("requests backend cancellation and waits for its terminal frame", async () => {
-    const stream = createStream();
     apiMocks.updatePackages.mockResolvedValue({
       id: "task-2",
       state: "running",
     });
-    apiMocks.openTaskWatchStream.mockReturnValue(stream);
     let rejectStream!: (error: unknown) => void;
-    streamMocks.runStream.mockImplementation(
+    streamMocks.follow.mockImplementation(
       () =>
         new Promise((_resolve, reject) => {
           rejectStream = reject;
@@ -301,11 +283,13 @@ describe("usePackageUpdater", () => {
       promise = result.current.updateAll(["nginx"]);
       await Promise.resolve();
     });
-    await vi.waitFor(() => expect(streamMocks.runStream).toHaveBeenCalled());
+    await vi.waitFor(() => expect(streamMocks.follow).toHaveBeenCalled());
 
     act(() => result.current.cancelUpdate());
 
-    expect(stream.abort).not.toHaveBeenCalled();
+    // Cancel goes through tasks.cancel; the stream stays attached for the
+    // backend's terminal frame.
+    expect(followedStream().signal?.aborted).not.toBe(true);
     expect(apiMocks.cancelTask).toHaveBeenCalledWith({ taskId: "task-2" });
     expect(result.current.canCancel).toBe(false);
     expect(result.current.isUpdating).toBe(true);
@@ -327,10 +311,9 @@ describe("usePackageUpdater", () => {
       id: "task-cancel-rejected",
       state: "running",
     });
-    apiMocks.openTaskWatchStream.mockReturnValue(createStream());
     apiMocks.cancelTask.mockRejectedValueOnce(new Error("cancel failed"));
     let finishStream!: () => void;
-    streamMocks.runStream.mockImplementation(
+    streamMocks.follow.mockImplementation(
       () =>
         new Promise<void>((resolve) => {
           finishStream = resolve;
@@ -360,8 +343,7 @@ describe("usePackageUpdater", () => {
       id: "task-fast",
       state: "running",
     });
-    apiMocks.openTaskWatchStream.mockReturnValue(createStream());
-    streamMocks.runStream.mockResolvedValue(undefined);
+    streamMocks.follow.mockResolvedValue(undefined);
     const { result } = renderHook(() => usePackageUpdater());
 
     await act(async () => {
@@ -380,8 +362,7 @@ describe("usePackageUpdater", () => {
       id: "task-failed",
       state: "running",
     });
-    apiMocks.openTaskWatchStream.mockReturnValue(createStream());
-    streamMocks.runStream.mockRejectedValue(new Error("dpkg exploded"));
+    streamMocks.follow.mockRejectedValue(new Error("dpkg exploded"));
     const { result } = renderHook(() => usePackageUpdater());
 
     await act(async () => {
@@ -402,8 +383,7 @@ describe("usePackageUpdater", () => {
       id: "task-empty-error",
       state: "running",
     });
-    apiMocks.openTaskWatchStream.mockReturnValue(createStream());
-    streamMocks.runStream.mockRejectedValue(new LinuxIOError("", 500));
+    streamMocks.follow.mockRejectedValue(new LinuxIOError("", 500));
     const { result } = renderHook(() => usePackageUpdater());
 
     await act(async () => {
@@ -418,9 +398,8 @@ describe("usePackageUpdater", () => {
       id: "task-claimed",
       state: "running",
     });
-    apiMocks.openTaskWatchStream.mockReturnValue(createStream());
     let finishStream!: () => void;
-    streamMocks.runStream.mockImplementation(
+    streamMocks.follow.mockImplementation(
       () =>
         new Promise<void>((resolve) => {
           finishStream = resolve;
@@ -453,14 +432,11 @@ describe("usePackageUpdater", () => {
       id: "task-abandoned",
       state: "running",
     });
-    apiMocks.openTaskWatchStream.mockReturnValue(createStream());
-    streamMocks.runStream.mockImplementation(
-      () => new Promise(() => undefined),
-    );
+    streamMocks.follow.mockImplementation(() => new Promise(() => undefined));
     const { result, unmount } = renderHook(() => usePackageUpdater());
 
     void result.current.updateAll(["nginx;1.0;amd64;ubuntu"]);
-    await vi.waitFor(() => expect(streamMocks.runStream).toHaveBeenCalled());
+    await vi.waitFor(() => expect(streamMocks.follow).toHaveBeenCalled());
     expect(hasTerminalFeedbackOwner(TASK_TYPE_PACKAGE_UPDATE)).toBe(true);
 
     unmount();
@@ -475,8 +451,7 @@ describe("usePackageUpdater", () => {
       id: "task-painted",
       state: "running",
     });
-    apiMocks.openTaskWatchStream.mockReturnValue(createStream());
-    streamMocks.runStream.mockRejectedValue(new Error("dpkg exploded"));
+    streamMocks.follow.mockRejectedValue(new Error("dpkg exploded"));
     const { result } = renderHook(() => usePackageUpdater());
 
     await act(async () => {
@@ -499,23 +474,18 @@ describe("usePackageUpdater", () => {
         metadata: { packageIds: ["nginx;1.0;amd64;ubuntu"] },
       },
     ]);
-    apiMocks.openTaskWatchStream.mockReturnValue(createStream());
-    streamMocks.runStream.mockImplementation(
-      () => new Promise(() => undefined),
-    );
+    streamMocks.follow.mockImplementation(() => new Promise(() => undefined));
     renderHook(() => usePackageUpdater());
 
     await vi.waitFor(() =>
-      expect(apiMocks.openTaskWatchStream).toHaveBeenCalledWith(
-        "recovered-claim",
-      ),
+      expect(followedStream()?.taskId).toBe("recovered-claim"),
     );
+    expect(apiMocks.getTask).toHaveBeenCalledWith("recovered-claim");
 
     expect(hasTerminalFeedbackOwner(TASK_TYPE_PACKAGE_UPDATE)).toBe(true);
   });
 
   it("adopts a recovered update through completion", async () => {
-    const stream = createStream();
     apiMocks.listTasks.mockResolvedValue([
       {
         id: "recovered-1",
@@ -524,12 +494,11 @@ describe("usePackageUpdater", () => {
         metadata: { packageIds: ["nginx;1.0;amd64;ubuntu"] },
       },
     ]);
-    apiMocks.openTaskWatchStream.mockReturnValue(stream);
-    streamMocks.runStream.mockResolvedValue(undefined);
+    streamMocks.follow.mockResolvedValue(undefined);
     const { result } = renderHook(() => usePackageUpdater());
 
     await vi.waitFor(() =>
-      expect(apiMocks.openTaskWatchStream).toHaveBeenCalledWith("recovered-1"),
+      expect(followedStream()?.taskId).toBe("recovered-1"),
     );
     await vi.waitFor(() => expect(result.current.isUpdating).toBe(false));
     expect(result.current.updatingPackage).toBeNull();
@@ -537,7 +506,6 @@ describe("usePackageUpdater", () => {
   });
 
   it("cancels a recovered update against the adopted task id", async () => {
-    const stream = createStream();
     let rejectStream!: (error: unknown) => void;
     apiMocks.listTasks.mockResolvedValue([
       {
@@ -547,8 +515,7 @@ describe("usePackageUpdater", () => {
         metadata: { packageIds: ["nginx;1.0;amd64;ubuntu"] },
       },
     ]);
-    apiMocks.openTaskWatchStream.mockReturnValue(stream);
-    streamMocks.runStream.mockImplementation(
+    streamMocks.follow.mockImplementation(
       () =>
         new Promise((_resolve, reject) => {
           rejectStream = reject;
@@ -557,9 +524,7 @@ describe("usePackageUpdater", () => {
     const { result } = renderHook(() => usePackageUpdater());
 
     await vi.waitFor(() =>
-      expect(apiMocks.openTaskWatchStream).toHaveBeenCalledWith(
-        "recovered-cancel",
-      ),
+      expect(followedStream()?.taskId).toBe("recovered-cancel"),
     );
 
     act(() => result.current.cancelUpdate());
@@ -567,7 +532,7 @@ describe("usePackageUpdater", () => {
     expect(apiMocks.cancelTask).toHaveBeenCalledWith({
       taskId: "recovered-cancel",
     });
-    expect(stream.abort).not.toHaveBeenCalled();
+    expect(followedStream().signal?.aborted).not.toBe(true);
     expect(result.current.isUpdating).toBe(true);
     expect(result.current.canCancel).toBe(false);
 
@@ -586,8 +551,7 @@ describe("usePackageUpdater", () => {
         metadata: { packageIds: ["curl;1.0;amd64;ubuntu"] },
       },
     ]);
-    apiMocks.openTaskWatchStream.mockReturnValue(createStream());
-    streamMocks.runStream.mockRejectedValue(new Error("backend failed"));
+    streamMocks.follow.mockRejectedValue(new Error("backend failed"));
     const { result } = renderHook(() => usePackageUpdater());
 
     await vi.waitFor(() =>
@@ -598,26 +562,28 @@ describe("usePackageUpdater", () => {
     expect(result.current.updatingPackage).toBeNull();
   });
 
-  it("closes a stream that opens after the controller unmounts", async () => {
-    const stream = createStream();
-    let resolveSubmit!: (task: { id: string; state: string }) => void;
+  it("detaches a run still starting when the controller unmounts", async () => {
+    let resolveStart!: (task: { id: string; state: string }) => void;
     apiMocks.updatePackages.mockImplementation(
       () =>
         new Promise((resolve) => {
-          resolveSubmit = resolve;
+          resolveStart = resolve;
         }),
     );
-    apiMocks.openTaskWatchStream.mockReturnValue(stream);
-    streamMocks.runStream.mockResolvedValue(undefined);
     const { result, unmount } = renderHook(() => usePackageUpdater());
     void result.current.updateAll(["nginx"]);
     await vi.waitFor(() => expect(apiMocks.updatePackages).toHaveBeenCalled());
+    expect(streamMocks.mutationConfigs.at(-1)).toMatchObject({
+      closeOnAbort: "close",
+    });
     unmount();
 
-    // The task was still being created at unmount, so onOpen lands detached and
-    // has to close the stream itself.
-    resolveSubmit({ id: "late-open", state: "running" });
-    await vi.waitFor(() => expect(stream.close).toHaveBeenCalledTimes(1));
+    // The job was still starting at unmount: the detach signal closes its
+    // stream, so the late snapshot is never followed into the dead view.
+    resolveStart({ id: "late-open", state: "running" });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(streamMocks.follow).not.toHaveBeenCalled();
+    expect(markTerminalFeedbackEmitted("late-open")).toBe(true);
   });
 
   it("attaches a recovered update only once across controller rerenders", async () => {
@@ -629,41 +595,37 @@ describe("usePackageUpdater", () => {
         metadata: { packageIds: ["nginx;1.0;amd64;ubuntu"] },
       },
     ]);
-    apiMocks.openTaskWatchStream.mockReturnValue(createStream());
-    streamMocks.runStream.mockImplementation(
-      () => new Promise(() => undefined),
-    );
+    streamMocks.follow.mockImplementation(() => new Promise(() => undefined));
     const { rerender } = renderHook(() => usePackageUpdater());
 
     await vi.waitFor(() =>
-      expect(apiMocks.openTaskWatchStream).toHaveBeenCalledWith(
-        "recovered-once",
-      ),
+      expect(followedStream()?.taskId).toBe("recovered-once"),
     );
     rerender();
     await Promise.resolve();
 
     expect(apiMocks.listTasks).toHaveBeenCalledTimes(1);
-    expect(apiMocks.openTaskWatchStream).toHaveBeenCalledTimes(1);
-    expect(streamMocks.runStream).toHaveBeenCalledTimes(1);
+    expect(apiMocks.getTask).toHaveBeenCalledTimes(1);
+    expect(streamMocks.follow).toHaveBeenCalledTimes(1);
   });
 
-  it("closes a live stream on unmount without treating it as terminal", async () => {
-    const stream = createStream();
+  it("detaches a live stream on unmount without treating it as terminal", async () => {
     apiMocks.updatePackages.mockResolvedValue({
       id: "close-before-terminal",
       state: "running",
     });
-    streamMocks.runStream.mockImplementation(
-      () => new Promise(() => undefined),
-    );
-    apiMocks.openTaskWatchStream.mockReturnValue(stream);
+    streamMocks.follow.mockImplementation(() => new Promise(() => undefined));
     const { result, unmount } = renderHook(() => usePackageUpdater());
 
     void result.current.updateAll(["nginx;1.0;amd64;ubuntu"]);
-    await vi.waitFor(() => expect(streamMocks.runStream).toHaveBeenCalled());
+    await vi.waitFor(() => expect(streamMocks.follow).toHaveBeenCalled());
+    expect(followedStream()).toMatchObject({ closeOnAbort: "close" });
     unmount();
 
-    expect(stream.close).toHaveBeenCalledTimes(1);
+    expect(followedStream().signal?.aborted).toBe(true);
+    await Promise.resolve();
+    // The AbortError of the detach is not a terminal outcome: the task id is
+    // left for the global terminal-event path to report.
+    expect(markTerminalFeedbackEmitted("close-before-terminal")).toBe(true);
   });
 });

@@ -14,17 +14,21 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@iconify/react", () => ({ Icon: () => <span /> }));
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
-  type StorageOptions = {
-    success?: (result: unknown) => void;
-    options?: { onSettled?: () => void };
-  };
   const { mockMutationHooks } = await import("@/test/mutationHooks");
   const useCallMutation = (
     endpoint: { route: string },
-    options: { success?: (result: unknown) => void },
+    options: {
+      success?: (result: unknown) => void;
+      options?: { onSettled?: () => void };
+    },
   ) => ({
     isPending: false,
     mutate: (request: Record<string, unknown>) => {
+      if (endpoint.route === "docker.apply_daemon_storage") {
+        mocks.applyStorage(request);
+        options.success?.({ config: request, restart_required: false });
+        options.options?.onSettled?.();
+      }
       if (endpoint.route === "docker.set_daemon_config") {
         mocks.save(request);
         options.success?.({
@@ -40,28 +44,7 @@ vi.mock("@/api", async (importOriginal) => {
   });
   return {
     ...actual,
-    linuxio: mockMutationHooks(
-      {
-        ...actual.linuxio,
-        docker: {
-          ...actual.linuxio.docker,
-          apply_daemon_storage: {
-            useTaskStreamAction: (options: StorageOptions) => ({
-              isPending: false,
-              mutate: (request: Record<string, unknown>) => {
-                mocks.applyStorage(request);
-                options.success?.({
-                  config: request,
-                  restart_required: false,
-                });
-                options.options?.onSettled?.();
-              },
-            }),
-          },
-        },
-      },
-      useCallMutation,
-    ),
+    linuxio: mockMutationHooks(actual.linuxio, useCallMutation),
     useCallMutation,
   };
 });

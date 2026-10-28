@@ -231,40 +231,23 @@ func TestTaskStartAndEventsSnapshotsNeverExposeDecodedRequest(t *testing.T) {
 	registry := NewTaskService()
 	router := NewRouter(registry)
 	owner := TaskOwner{SessionID: "session-a", Username: "alice", UID: 1000}
-	secret := map[string]string{"password": "sentinel-secret"}
 	started := make(chan struct{})
 	release := make(chan struct{})
-	router.TaskRunner("test.start.secret", func(_ context.Context, _ *Task, _ any) (any, error) {
+	router.Mutation("test.mutation", func(_ context.Context, _ *Task, _ any) (any, error) {
 		close(started)
 		<-release
 		return nil, nil
-	}, TaskDefault, WithTaskMetadata(func(any) TaskMetadata { return TaskMetadata{Label: "safe"} }))
+	}, WithRequestDecoder(JSONRequestDecoder[map[string]string]()), WithTaskMetadata(func(any) TaskMetadata { return TaskMetadata{Label: "safe"} }))
 
-	server, client := net.Pipe()
-	errCh := make(chan error, 1)
-	go func() {
-		defer server.Close()
-		errCh <- router.dispatchTask(context.Background(), server, router.routes["test.start.secret"], Request{Route: "test.start.secret", Owner: owner, DecodedValue: secret})
-	}()
-	frame, readErr := relay.ReadRelayFrame(client)
-	if readErr != nil {
-		t.Fatalf("start ReadRelayFrame: %v", readErr)
-	}
-	var start relay.ResultFrame
-	if decodeErr := json.Unmarshal(frame.Payload, &start); decodeErr != nil {
-		t.Fatalf("decode start: %v", decodeErr)
-	}
-	assertNoRequestLeak(t, start.Data)
-	if _, closeErr := relay.ReadRelayFrame(client); closeErr != nil {
-		t.Fatalf("start close: %v", closeErr)
-	}
+	client, errCh := openMutation(t, router, mutationRequest(`{"password":"sentinel-secret"}`))
+	assertNoRequestLeak(t, readFrame(t, client, relay.OpStreamProgress))
 	_ = client.Close()
 	if dispatchErr := <-errCh; dispatchErr != nil {
-		t.Fatalf("dispatch task: %v", dispatchErr)
+		t.Fatalf("dispatch mutation: %v", dispatchErr)
 	}
 	<-started
 
-	task, ok := registry.Get(registry.ListForOwner(owner)[0].ID)
+	task, ok := registry.Get(testMutationID)
 	if !ok {
 		t.Fatal("started task missing from registry")
 	}

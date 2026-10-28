@@ -289,6 +289,23 @@ describe("mutationRequest", () => {
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });
     expect(stream.abort).toHaveBeenCalledTimes(1);
   });
+
+  it("closes the stream instead with closeOnAbort close, leaving the job running", async () => {
+    const stream = createStream();
+    installMux(stream);
+    const controller = new AbortController();
+
+    const pending = mutationRequest("docker", "update_container", REQUEST, {
+      signal: controller.signal,
+      closeOnAbort: "close",
+    });
+    await whenBound(stream);
+    controller.abort();
+
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(stream.close).toHaveBeenCalledTimes(1);
+    expect(stream.abort).not.toHaveBeenCalled();
+  });
 });
 
 describe("startJob", () => {
@@ -383,6 +400,42 @@ describe("defineMutation", () => {
     expect(onProgress).toHaveBeenCalledExactlyOnceWith(PROGRESS, task, REQUEST);
   });
 
+  it("start resolves with the job's first snapshot and detaches", async () => {
+    const stream = createStream();
+    const mux = installMux(stream);
+    const endpoint = defineMutation("docker", "compose", { kind: "object" });
+
+    const pending = endpoint.start(REQUEST);
+    await whenBound(stream);
+    const task = runningTask("job-1");
+    stream.onProgress?.(snapshotFrame(task));
+
+    await expect(pending).resolves.toEqual(task);
+    expect(opened(mux, 0).type).toBe("docker.compose");
+    expect(stream.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("useMutation detaches from its job when its signal aborts", async () => {
+    const stream = createStream();
+    installMux(stream);
+    const endpoint = defineMutation("docker", "compose", { kind: "object" });
+    const controller = new AbortController();
+    const signal = vi.fn(() => controller.signal);
+    const { result } = renderQueryHook(() =>
+      endpoint.useMutation({ signal, closeOnAbort: "close" }),
+    );
+
+    act(() => result.current.mutate(REQUEST));
+    await whenBound(stream);
+    controller.abort();
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(signal).toHaveBeenCalledExactlyOnceWith(REQUEST);
+    expect(result.current.error).toMatchObject({ name: "AbortError" });
+    expect(stream.close).toHaveBeenCalledTimes(1);
+    expect(stream.abort).not.toHaveBeenCalled();
+  });
+
   it("watch adopts a running job through tasks.watch", async () => {
     const get = createStream();
     const watch = createStream();
@@ -398,6 +451,8 @@ describe("defineMutation", () => {
     const task = runningTask("job-7");
     get.onResult?.({ status: "ok", data: task });
     await whenBound(watch);
+    // A stored job's watch replays its snapshot before the outcome.
+    watch.onProgress?.(snapshotFrame(task));
     watch.onResult?.({ status: "ok", data: 7 });
     await waitFor(() => expect(result.current.data).toBe(7));
 

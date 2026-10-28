@@ -126,7 +126,7 @@ export function useUploadTasks(
 
     let task: TaskSnapshot;
     try {
-      task = await linuxio.filebrowser.upload_batch(request);
+      task = await linuxio.filebrowser.upload_batch.start(request);
     } catch (error) {
       pendingLocalTaskKeysRef.current.delete(pendingUploadKey);
       return {

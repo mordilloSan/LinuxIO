@@ -2,13 +2,7 @@ import { Icon } from "@iconify/react";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import {
-  linuxio,
-  type BtrfsOpProgress,
-  type BtrfsReplicationJob,
-  type BtrfsReplicationResult,
-  type TaskProgress,
-} from "@/api";
+import { linuxio, type BtrfsOpProgress, type BtrfsReplicationJob } from "@/api";
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -68,11 +62,7 @@ const BtrfsReplicationCard = ({ uuid }: { uuid: string }) => {
       toast: BTRFS_TOAST_META,
     });
   // One config drives fresh runs (mutate) and reload recovery (watch).
-  const replicate = linuxio.storage.btrfs_replication_run.useTaskStreamAction<
-    BtrfsReplicationResult,
-    TaskProgress<BtrfsOpProgress>
-  >({
-    closeMessage: "Replication stream closed unexpectedly",
+  const replicate = linuxio.storage.btrfs_replication_run.useMutation({
     onProgress: (taskProgress) => setProgress(taskProgress.detail ?? null),
     success: (result) =>
       toast.success(
@@ -93,7 +83,7 @@ const BtrfsReplicationCard = ({ uuid }: { uuid: string }) => {
       task.metadata.identity[1] === "replication",
     onRecover: (task) => {
       const id = task.metadata?.identity?.[2];
-      if (id) replicate.watch(task, { id });
+      if (id) replicate.watch(task.id, { id });
     },
   });
 

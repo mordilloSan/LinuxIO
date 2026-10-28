@@ -95,22 +95,13 @@ func renderRouteMetadata() string {
 	return renderRouteMetadataForRoutes(handlers.Routes)
 }
 
-// clientMode is the mode the frontend drives a route with: a Mutation whose
-// callers use the task client is a "task" route to them.
-func clientMode(route apischema.RouteSpec) bridgeipc.Mode {
-	if route.TaskClient {
-		return bridgeipc.ModeTask
-	}
-	return route.Mode
-}
-
 func renderRouteMetadataForRoutes(routes []apischema.RouteSpec) string {
 	var b strings.Builder
 	b.WriteString(header())
-	b.WriteString("export type RouteMode = \"call\" | \"task\" | \"mutation\" | \"duplex\";\n\n")
+	b.WriteString("export type RouteMode = \"call\" | \"mutation\" | \"duplex\";\n\n")
 	b.WriteString("export const ROUTE_MODES = {\n")
 	for _, route := range routes {
-		fmt.Fprintf(&b, "  %q: %q,\n", route.Route, string(clientMode(route)))
+		fmt.Fprintf(&b, "  %q: %q,\n", route.Route, string(route.Mode))
 	}
 	b.WriteString("} as const satisfies Record<string, RouteMode>;\n\n")
 	b.WriteString("export type RouteName = keyof typeof ROUTE_MODES;\n\n")
@@ -273,11 +264,10 @@ func renderClientForRoutes(routes []apischema.RouteSpec) string {
 	b.WriteString("import { defineCall, defineCallWithRequest } from \"../call-react-query\";\n")
 	b.WriteString("import type { TypedAPI } from \"../endpoint-types\";\n")
 	if slices.ContainsFunc(routes, func(route apischema.RouteSpec) bool {
-		return clientMode(route) == bridgeipc.ModeMutation && route.Endpoint()
+		return route.Mode == bridgeipc.ModeMutation && route.Endpoint()
 	}) {
 		b.WriteString("import { defineMutation } from \"../mutation-react-query\";\n")
 	}
-	b.WriteString("import { createTaskEndpoint } from \"../task-react-query\";\n")
 	b.WriteString("\n")
 	b.WriteString("const linuxio = {\n")
 	byHandler := routesByHandler(routes)
@@ -299,20 +289,13 @@ func renderClientForRoutes(routes []apischema.RouteSpec) string {
 				fmt.Fprintf(&b, "    %s: %s(%q),\n", route.Command(), factory, route.Route)
 				continue
 			}
-			var factory string
-			switch clientMode(route) {
-			case bridgeipc.ModeTask:
-				factory = "createTaskEndpoint"
-			case bridgeipc.ModeMutation:
-				factory = "defineMutation"
-			default:
+			if route.Mode != bridgeipc.ModeMutation {
 				continue
 			}
 			fmt.Fprintf(
 				&b,
-				"    %s: %s(%q, %q, %s),\n",
+				"    %s: defineMutation(%q, %q, %s),\n",
 				route.Command(),
-				factory,
 				route.Handler(),
 				route.Command(),
 				requestShape(route.RequestSpec()),

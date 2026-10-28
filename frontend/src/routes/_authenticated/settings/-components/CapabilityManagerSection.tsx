@@ -145,109 +145,108 @@ const CapabilityManagerSection = () => {
   // The dialog owns live presentation only. Completion feedback and the
   // app-wide capability refresh remain in useRecoveredTasks, so closing this
   // panel or dialog never takes ownership away from the system Task.
-  const installCapability =
-    linuxio.system.install_capability.useTaskStreamAction({
-      error: (streamError, variables) => {
-        if (!mountedRef.current) return;
-        const dismissed = dismissedInstallRef.current;
+  const installCapability = linuxio.system.install_capability.useMutation({
+    error: (streamError, variables) => {
+      if (!mountedRef.current) return;
+      const dismissed = dismissedInstallRef.current;
+      if (
+        dismissed?.wire === variables.capability &&
+        dismissed.taskID === undefined
+      ) {
+        dismissedInstallRef.current = null;
+      }
+      setInstallRun((previous) => {
+        if (!previous || previous.wire !== variables.capability) {
+          return previous;
+        }
+        return {
+          ...previous,
+          error: streamError.message || "Capability installation failed",
+          running: false,
+          success: false,
+          warning: null,
+        };
+      });
+    },
+    onProgress: (progress, task, variables) => {
+      if (!mountedRef.current) return;
+      setInstallRun((previous) => {
         if (
-          dismissed?.wire === variables.capability &&
-          dismissed.taskID === undefined
+          !previous ||
+          !previous.running ||
+          previous.wire !== variables.capability
         ) {
-          dismissedInstallRef.current = null;
+          return previous;
         }
-        setInstallRun((previous) => {
-          if (!previous || previous.wire !== variables.capability) {
-            return previous;
-          }
-          return {
-            ...previous,
-            error: streamError.message || "Capability installation failed",
-            running: false,
-            success: false,
-            warning: null,
-          };
-        });
-      },
-      onProgress: (progress, task, variables) => {
-        if (!mountedRef.current) return;
-        setInstallRun((previous) => {
-          if (
-            !previous ||
-            !previous.running ||
-            previous.wire !== variables.capability
-          ) {
-            return previous;
-          }
-          const detail = progress.detail;
-          const next = {
-            ...previous,
-            message: progress.message ?? detail?.message ?? previous.message,
-            task: task ?? previous.task,
-            percentage:
-              typeof progress.percentage === "number"
-                ? progress.percentage
-                : typeof detail?.percentage === "number"
-                  ? detail.percentage
-                  : previous.percentage,
-            stage: detail?.stage ?? progress.phase ?? previous.stage,
-          };
-          return appendInstallOutput(next, detail?.output);
-        });
-      },
-      onTaskStart: (task, variables) => {
-        if (!mountedRef.current) return;
-        const dismissed = dismissedInstallRef.current;
-        if (
-          dismissed?.wire === variables.capability &&
-          dismissed.taskID === undefined
-        ) {
-          dismissedInstallRef.current = { ...dismissed, taskID: task.id };
+        const detail = progress.detail;
+        const next = {
+          ...previous,
+          message: progress.message ?? detail?.message ?? previous.message,
+          task: task ?? previous.task,
+          percentage:
+            typeof progress.percentage === "number"
+              ? progress.percentage
+              : typeof detail?.percentage === "number"
+                ? detail.percentage
+                : previous.percentage,
+          stage: detail?.stage ?? progress.phase ?? previous.stage,
+        };
+        return appendInstallOutput(next, detail?.output);
+      });
+    },
+    onStart: (task, variables) => {
+      if (!mountedRef.current) return;
+      const dismissed = dismissedInstallRef.current;
+      if (
+        dismissed?.wire === variables.capability &&
+        dismissed.taskID === undefined
+      ) {
+        dismissedInstallRef.current = { ...dismissed, taskID: task.id };
+      }
+      setInstallRun((previous) =>
+        previous?.wire === variables.capability
+          ? { ...previous, task }
+          : previous,
+      );
+    },
+    success: (result, variables) => {
+      if (!mountedRef.current) return;
+      if (dismissedInstallRef.current?.wire === variables.capability) {
+        dismissedInstallRef.current = null;
+      }
+      queryClient.setQueryData<Partial<CapabilitiesResponse>>(
+        capabilitiesKey,
+        (previous) => ({
+          ...previous,
+          [`${variables.capability}_available`]: result.available,
+          [`${variables.capability}_error`]: result.error ?? "",
+        }),
+      );
+      setLastChecked(new Date());
+      setInstallRun((previous) => {
+        if (!previous || previous.wire !== variables.capability) {
+          return previous;
         }
-        setInstallRun((previous) =>
-          previous?.wire === variables.capability
-            ? { ...previous, task }
-            : previous,
-        );
-      },
-      success: (result, variables) => {
-        if (!mountedRef.current) return;
-        if (dismissedInstallRef.current?.wire === variables.capability) {
-          dismissedInstallRef.current = null;
+        const resultWarning = result.warning;
+        let warning: string | null = resultWarning ?? null;
+        if (!result.available) {
+          warning =
+            resultWarning ||
+            result.error ||
+            `${previous.label} was installed but is still unavailable`;
         }
-        queryClient.setQueryData<Partial<CapabilitiesResponse>>(
-          capabilitiesKey,
-          (previous) => ({
-            ...previous,
-            [`${variables.capability}_available`]: result.available,
-            [`${variables.capability}_error`]: result.error ?? "",
-          }),
-        );
-        setLastChecked(new Date());
-        setInstallRun((previous) => {
-          if (!previous || previous.wire !== variables.capability) {
-            return previous;
-          }
-          const resultWarning = result.warning;
-          let warning: string | null = resultWarning ?? null;
-          if (!result.available) {
-            warning =
-              resultWarning ||
-              result.error ||
-              `${previous.label} was installed but is still unavailable`;
-          }
-          return {
-            ...previous,
-            error: null,
-            message: warning ?? "Installation completed",
-            percentage: 100,
-            running: false,
-            success: result.available && !warning,
-            warning,
-          };
-        });
-      },
-    });
+        return {
+          ...previous,
+          error: null,
+          message: warning ?? "Installation completed",
+          percentage: 100,
+          running: false,
+          success: result.available && !warning,
+          warning,
+        };
+      });
+    },
+  });
 
   const installingWire = installRun?.running ? installRun.wire : null;
 
@@ -309,7 +308,7 @@ const CapabilityManagerSection = () => {
     launchedInstallRunID.current = installRun.id;
     const request = { capability: installRun.wire };
     if (installRun.task) {
-      installCapability.watch(installRun.task, request);
+      installCapability.watch(installRun.task.id, request);
     } else {
       installCapability.mutate(request);
     }

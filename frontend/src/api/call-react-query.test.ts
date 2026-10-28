@@ -10,7 +10,6 @@ import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import {
   type ActionConfig,
   linuxio,
-  type ComposeTaskMessage,
   type ComposeTaskResult,
   type ContainerIDRequest,
   type DockerComposeRequest,
@@ -19,27 +18,16 @@ import {
 import { LinuxIOError } from "@/api/errors";
 import type { TaskSnapshot } from "@/api/generated/linuxio-types";
 import { getRouteMode } from "@/api/generated/route-metadata";
-import { openTaskWatchStream } from "@/api/linuxio";
 import * as core from "@/api/linuxio-core";
 import { OPERATION_QUERY_INVALIDATIONS } from "@/api/operation-query-invalidations";
-import type { Stream } from "@/api/StreamMultiplexer";
-import { createTaskEndpoint } from "@/api/task-react-query";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
 }));
 
-vi.mock("@/api/linuxio", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/api/linuxio")>();
-  return {
-    ...actual,
-    openTaskWatchStream: vi.fn(),
-  };
-});
-
-describe("generated Call and Task definitions", () => {
+describe("generated Call and Mutation definitions", () => {
   it("exposes only the capabilities owned by each route kind", () => {
-    const taskStart: Awaited<ReturnType<typeof linuxio.docker.compose>> =
+    const jobStart: Awaited<ReturnType<typeof linuxio.docker.compose.start>> =
       taskSnapshot();
     const callHasLegacyAction: "useAction" extends keyof typeof linuxio.tasks.get
       ? true
@@ -47,23 +35,20 @@ describe("generated Call and Task definitions", () => {
     const callHasQueryOptions: "queryOptions" extends keyof typeof linuxio.tasks.get
       ? true
       : false = false;
-    const callHasTaskAction: "useTaskAction" extends keyof typeof linuxio.tasks.get
+    const callHasMutation: "useMutation" extends keyof typeof linuxio.tasks.get
       ? true
       : false = false;
-    const taskHasTaskAction: "useTaskAction" extends keyof typeof linuxio.docker.compose
+    const mutationHasTaskAction: "useTaskStreamAction" extends keyof typeof linuxio.docker.compose
       ? true
-      : false = true;
-    const taskHasTaskStreamAction: "useTaskStreamAction" extends keyof typeof linuxio.docker.compose
-      ? true
-      : false = true;
+      : false = false;
     const callActionConfig: ActionConfig<ContainerIDRequest, void> = {
       success: (result, variables) => {
         expectTypeOf(result).toEqualTypeOf<void>();
         expectTypeOf(variables).toEqualTypeOf<ContainerIDRequest>();
       },
     };
-    const taskActionConfig: NonNullable<
-      Parameters<typeof linuxio.docker.compose.useTaskAction>[0]
+    const mutationConfig: NonNullable<
+      Parameters<typeof linuxio.docker.compose.useMutation>[0]
     > = {
       success: (result, variables) => {
         expectTypeOf(result).toEqualTypeOf<ComposeTaskResult>();
@@ -74,25 +59,24 @@ describe("generated Call and Task definitions", () => {
     expect({
       callHasLegacyAction,
       callHasQueryOptions,
-      callHasTaskAction,
-      taskHasTaskAction,
-      taskHasTaskStreamAction,
+      callHasMutation,
+      mutationHasTaskAction,
     }).toEqual({
       callHasLegacyAction: false,
       callHasQueryOptions: false,
-      callHasTaskAction: false,
-      taskHasTaskAction: true,
-      taskHasTaskStreamAction: true,
+      callHasMutation: false,
+      mutationHasTaskAction: false,
     });
     expect(linuxio.tasks.get).toHaveProperty("route", "tasks.get");
     expect(linuxio.tasks.get).not.toHaveProperty("queryOptions");
     expect(linuxio.system.get_cpu_info).toHaveProperty("queryFn");
     expect(linuxio.system.get_cpu_info).toHaveProperty("queryKey");
-    expect(linuxio.docker.compose).toHaveProperty("useTaskAction");
+    expect(linuxio.docker.compose).toHaveProperty("useMutation");
+    expect(linuxio.docker.compose).toHaveProperty("start");
     expect(linuxio.docker.compose).not.toHaveProperty("queryOptions");
     expect(callActionConfig.success).toBeTypeOf("function");
-    expect(taskActionConfig.success).toBeTypeOf("function");
-    expectTypeOf(taskStart).toEqualTypeOf<TaskSnapshot>();
+    expect(mutationConfig.success).toBeTypeOf("function");
+    expectTypeOf(jobStart).toEqualTypeOf<TaskSnapshot>();
   });
 
   it("builds canonical keys for no-request and request Calls", () => {
@@ -136,14 +120,8 @@ describe("generated Call and Task definitions", () => {
     );
   });
 
-  it("keeps task primitives such as cancel out of Task route mode", () => {
+  it("keeps task primitives such as cancel Calls", () => {
     expect(getRouteMode("tasks.cancel")).toBe("call");
-    expect(() =>
-      createTaskEndpoint("tasks", "cancel", {
-        kind: "field",
-        field: "taskId",
-      }).useTaskAction(),
-    ).toThrow(/not mutation\/task/);
   });
 });
 
@@ -156,23 +134,6 @@ function taskSnapshot(overrides: Partial<TaskSnapshot> = {}): TaskSnapshot {
     updated_at: "2026-01-01T00:00:00.000Z",
     ...overrides,
   };
-}
-
-function createStream(): Stream {
-  const stream: Stream = {
-    abort: vi.fn(() => stream.onClose?.()),
-    close: vi.fn(() => stream.onClose?.()),
-    id: 1,
-    onClose: null,
-    onData: null,
-    onProgress: null,
-    onResult: null,
-    resize: vi.fn(),
-    status: "open",
-    type: "tasks.watch",
-    write: vi.fn(),
-  };
-  return stream;
 }
 
 function renderQueryHook<T>(useHook: () => T) {
@@ -269,76 +230,5 @@ describe("Call queries and mutations", () => {
     act(() => result.current.mutate({ content: "nope" }));
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(toast.error).toHaveBeenCalledWith("bad yaml", undefined);
-  });
-});
-
-describe("Task React Query integration", () => {
-  it("rejects Call and Duplex routes", () => {
-    expect(() =>
-      createTaskEndpoint("system", "get_cpu_info", {
-        kind: "none",
-      }).useTaskAction(),
-    ).toThrow(/not mutation\/task/);
-    expect(() =>
-      createTaskEndpoint("container", "open", {
-        kind: "object",
-      }).useTaskAction(),
-    ).toThrow(/not mutation\/task/);
-  });
-
-  it("unwraps a terminal Task result and invalidates its keys", async () => {
-    const start = vi
-      .spyOn(core, "startJob")
-      .mockResolvedValue(taskSnapshot({ result: { updated: true } }));
-    const endpoint = createTaskEndpoint<{ updated: boolean }>(
-      "virt",
-      "create",
-      { kind: "object" },
-    );
-    const { result, invalidateSpy } = renderQueryHook(() =>
-      endpoint.useTaskAction({ invalidates: [["linuxio", "virt", "list"]] }),
-    );
-
-    act(() => result.current.mutate({ name: "vm" }));
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data).toEqual({ updated: true });
-    expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: ["linuxio", "virt", "list"],
-    });
-    expect(start).toHaveBeenCalledWith("virt", "create", { name: "vm" });
-  });
-
-  it("watches Task progress and resolves its terminal result", async () => {
-    vi.spyOn(core, "startJob").mockResolvedValue(
-      taskSnapshot({ state: "running" }),
-    );
-    const stream = createStream();
-    vi.mocked(openTaskWatchStream).mockReturnValue(stream);
-    const onProgress = vi.fn();
-    const request = { action: "up", projectName: "web" };
-    const { result } = renderQueryHook(() =>
-      linuxio.docker.compose.useTaskStreamAction({
-        invalidates: [],
-        onProgress: (progress) => {
-          const message: ComposeTaskMessage | undefined = progress.detail;
-          onProgress(message);
-        },
-      }),
-    );
-
-    act(() => result.current.mutate(request));
-    await waitFor(() =>
-      expect(openTaskWatchStream).toHaveBeenCalledWith("task-1"),
-    );
-    const detail = { message: "Pulling image", type: "progress" } as const;
-    const progress = { message: detail.message, detail } as const;
-    act(() => stream.onProgress?.(progress as never));
-    expect(onProgress).toHaveBeenCalledWith(detail);
-
-    const complete = { message: "done", type: "complete" } as const;
-    act(() => stream.onResult?.({ data: complete, status: "ok" }));
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    const terminalResult: ComposeTaskResult | undefined = result.current.data;
-    expect(terminalResult).toEqual(complete);
   });
 });

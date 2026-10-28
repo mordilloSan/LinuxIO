@@ -58,11 +58,11 @@ A write, quick or long, is a Mutation. The runners that were Task routes keep
 `func(context.Context, *bridgeipc.Task, Request) (Result, error)` through
 `apischema.MutationTask`, which hands them their task; a new handler takes no
 task and reports through `bridgeipc.ReportProgress(ctx, …)`. The compiler checks
-each terminal result against its route declaration. `Progress[T]()` (on Task
-routes `WithTaskProgress[T]()`) declares the route-specific detail carried by
-the common `TaskProgress<T>` envelope. Detail types implement
-`ProgressEnvelope()`; a Mutation handler passes the envelope to
-`bridgeipc.ReportProgress(ctx, …)`, a Task runner to `task.ReportProgress()`.
+each terminal result against its route declaration. `Progress[T]()` declares
+the route-specific detail carried by the common `TaskProgress<T>` envelope.
+Detail types implement `ProgressEnvelope()`; a Mutation handler passes the
+envelope to `bridgeipc.ReportProgress(ctx, …)`, a `MutationTask` runner may
+pass it to `task.ReportProgress()`.
 Task data uses the focused data-attachment Channel.
 
 ## Mutations

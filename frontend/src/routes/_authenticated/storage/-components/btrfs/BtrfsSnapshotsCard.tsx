@@ -8,7 +8,6 @@ import {
   type BtrfsRollbackProgress,
   type BtrfsRollbackResult,
   type BtrfsSnapshot,
-  type TaskProgress,
 } from "@/api";
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
@@ -99,11 +98,7 @@ const BtrfsSnapshotsCard = ({ uuid }: { uuid: string }) => {
       toast: BTRFS_TOAST_META,
     });
   // One config drives fresh runs (mutate) and reload recovery (watch).
-  const rollback = linuxio.storage.btrfs_snapshot_rollback.useTaskStreamAction<
-    BtrfsRollbackResult,
-    TaskProgress<BtrfsRollbackProgress>
-  >({
-    closeMessage: "Rollback stream closed unexpectedly",
+  const rollback = linuxio.storage.btrfs_snapshot_rollback.useMutation({
     onProgress: (taskProgress) => setProgress(taskProgress.detail ?? null),
     success: setResult,
     error: "Failed to roll back snapshot",
@@ -118,7 +113,7 @@ const BtrfsSnapshotsCard = ({ uuid }: { uuid: string }) => {
       const snapshotPath = task.metadata?.identity?.[1];
       if (!snapshotPath) return;
       setRollbackPath(snapshotPath);
-      rollback.watch(task, { uuid, snapshotPath });
+      rollback.watch(task.id, { uuid, snapshotPath });
     },
   });
 

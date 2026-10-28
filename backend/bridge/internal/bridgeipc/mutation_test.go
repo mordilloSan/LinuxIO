@@ -89,9 +89,6 @@ func TestMutationOptionsAreAllowedOnlyOnMutationRoutes(t *testing.T) {
 				ModeCall: func() {
 					router.Call("test.call", func(context.Context, Request) (any, error) { return nil, nil }, opt)
 				},
-				ModeTask: func() {
-					router.TaskRunner("test.task", func(context.Context, *Task, any) (any, error) { return nil, nil }, TaskDefault, opt)
-				},
 				ModeDuplex: func() {
 					router.Duplex("test.duplex", func(context.Context, net.Conn, Request) error { return nil }, opt)
 				},
@@ -400,7 +397,6 @@ func TestRecorderSeesStartProgressFinish(t *testing.T) {
 	close(proceed)
 	var runs atomic.Int32
 	gatedMutation(router, proceed, &runs)
-	router.TaskRunner("test.task", func(context.Context, *Task, any) (any, error) { return nil, nil }, TaskDefault)
 
 	client, errCh := openMutation(t, router, mutationRequest(`{"pool":"tank"}`))
 	readSnapshotEvent(t, client)
@@ -417,14 +413,6 @@ func TestRecorderSeesStartProgressFinish(t *testing.T) {
 	}
 	if got := recorder.snapshot(); len(got) != len(want) || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
 		t.Fatalf("recorder calls = %#v, want %#v", got, want)
-	}
-
-	if _, err := dispatchResult(t, router, Request{Route: "test.task", Session: testMutationSession}); err != nil {
-		t.Fatalf("Dispatch(task route) returned error: %v", err)
-	}
-	waitForRouterSettle(t, router, "test.task")
-	if got := recorder.snapshot(); len(got) != len(want) {
-		t.Fatalf("a task route reached the recorder: %#v", got[len(want):])
 	}
 }
 

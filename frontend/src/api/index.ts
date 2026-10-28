@@ -4,7 +4,6 @@
  * JSON API (generated, Go-owned request/response contracts):
  *   useQuery(linuxio.system.get_cpu_info)
  *   linuxio.docker.start_container.useMutation({ success, error })
- *   linuxio.docker.compose.useTaskStreamAction({ onProgress })
  *   linuxio.<handler>.<mutation>.useMutation({ onStart, onProgress })
  *
  * Streaming API (persistent/long-lived streams):
@@ -25,10 +24,6 @@ export {
   type CallQueryOptions,
 } from "./call-react-query";
 export { call } from "./calls";
-export type {
-  TaskStreamActionConfig,
-  TaskStreamActionResult,
-} from "./task-react-query";
 export type { MutationConfig, MutationEndpoint } from "./mutation-react-query";
 export {
   ROUTE_MODES,
@@ -38,9 +33,7 @@ export {
 export type { RouteMode } from "./generated/route-metadata";
 export {
   isTaskCancellationError,
-  isTaskSnapshot,
   isTerminalTaskState,
-  taskSnapshotResult,
   TASK_CANCELED_CODE,
 } from "./tasks";
 

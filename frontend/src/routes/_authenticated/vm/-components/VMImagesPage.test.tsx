@@ -24,7 +24,13 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
   const { mockMutationHooks } = await import("@/test/mutationHooks");
-  const useCallMutation = () => ({ mutate: mocks.remove, isPending: false });
+  const useCallMutation = (endpoint: { route: string }) => ({
+    mutate:
+      endpoint.route === "virt.template_download"
+        ? mocks.download
+        : mocks.remove,
+    isPending: false,
+  });
   return {
     ...actual,
     useCallMutation,
@@ -42,12 +48,6 @@ vi.mock("@/api", async (importOriginal) => {
           templates: {
             queryKey: ["test-templates"],
             queryFn: () => mocks.list(),
-          },
-          template_download: {
-            useTaskStreamAction: () => ({
-              mutate: mocks.download,
-              isPending: false,
-            }),
           },
         },
       },

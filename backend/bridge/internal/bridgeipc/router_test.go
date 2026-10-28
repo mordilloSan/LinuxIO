@@ -3,6 +3,7 @@ package bridgeipc
 import (
 	"bytes"
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -86,29 +87,44 @@ func TestFailureLevel(t *testing.T) {
 	}
 }
 
-func TestRouterExclusiveAdmissionIsAtomic(t *testing.T) {
-	registry := NewTaskService()
-	router := NewRouter(registry)
-	policy := TaskExclusive
-	release := make(chan struct{})
-	route := Route{
-		Name:   "test.atomic.singleton",
-		Mode:   ModeTask,
-		Policy: policy,
-		Runner: func(context.Context, *Task, any) (any, error) {
-			<-release
-			return nil, nil
-		},
+// testJobID returns the nth distinct job ID.
+func testJobID(n int) string {
+	return fmt.Sprintf("00000000-0000-4000-8000-%012d", n)
+}
+
+// registeredMutation registers a Mutation route and returns it as the router
+// keeps it.
+func registeredMutation(t *testing.T, router *Router, name string, runner TaskRunner, opts ...RouteOption) Route {
+	t.Helper()
+	router.Mutation(name, runner, opts...)
+	route, ok := router.lookup(name)
+	if !ok {
+		t.Fatalf("mutation route %s was not registered", name)
 	}
+	return route
+}
+
+// startJob starts route's task for req as job id, as dispatchMutation does.
+func startJob(router *Router, route Route, req Request, id string) (*Task, bool, error) {
+	return router.startStableTask(route, req, mutationIdentity(route.Name, id, req.RawRequest))
+}
+
+func TestRouterExclusiveAdmissionIsAtomic(t *testing.T) {
+	router := NewRouter(NewTaskService())
+	release := make(chan struct{})
+	route := registeredMutation(t, router, "test.atomic.singleton", func(context.Context, *Task, any) (any, error) {
+		<-release
+		return nil, nil
+	}, Exclusive)
 
 	const callers = 24
 	start := make(chan struct{})
 	var wg sync.WaitGroup
 	results := make(chan error, callers)
-	for range callers {
+	for i := range callers {
 		wg.Go(func() {
 			<-start
-			_, _, err := router.startTask(route, Request{Route: route.Name})
+			_, _, err := startJob(router, route, Request{Route: route.Name}, testJobID(i))
 			results <- err
 		})
 	}
@@ -123,7 +139,7 @@ func TestRouterExclusiveAdmissionIsAtomic(t *testing.T) {
 			continue
 		}
 		if !errors.Is(err, ErrDuplicateActive) {
-			t.Fatalf("startTask error = %v, want ErrDuplicateActive", err)
+			t.Fatalf("start error = %v, want ErrDuplicateActive", err)
 		}
 	}
 	if successes != 1 {
@@ -133,34 +149,20 @@ func TestRouterExclusiveAdmissionIsAtomic(t *testing.T) {
 }
 
 func TestRouterConcurrentStableIdentityStartsOnlyOnce(t *testing.T) {
-	registry := NewTaskService()
-	router := NewRouter(registry)
+	router := NewRouter(NewTaskService())
 	release := make(chan struct{})
 	runnerStarted := make(chan struct{})
 	var runs atomic.Int32
-	route := Route{
-		Name:     "control.app_update",
-		Mode:     ModeTask,
-		Policy:   TaskExclusive,
-		Lifetime: TaskLifetimeDurable,
-		Identity: func(request any) (TaskIdentity, error) {
-			fingerprint, ok := request.(string)
-			if !ok {
-				return TaskIdentity{}, fmt.Errorf("unexpected identity request %T", request)
-			}
-			return TaskIdentity{ID: "00000000-0000-4000-8000-000000000042", Fingerprint: fingerprint}, nil
-		},
-		Runner: func(context.Context, *Task, any) (any, error) {
-			runs.Add(1)
-			close(runnerStarted)
-			<-release
-			return nil, nil
-		},
-	}
+	route := registeredMutation(t, router, "control.app_update", func(context.Context, *Task, any) (any, error) {
+		runs.Add(1)
+		close(runnerStarted)
+		<-release
+		return nil, nil
+	}, Exclusive)
 	request := Request{
-		Route:        route.Name,
-		DecodedValue: "same-request",
-		Owner:        TaskOwner{SessionID: "session-a", Username: "alice", UID: 1000},
+		Route:      route.Name,
+		RawRequest: jsontext.Value(`"same-request"`),
+		Owner:      TaskOwner{SessionID: "session-a", Username: "alice", UID: 1000},
 	}
 
 	type startResult struct {
@@ -173,7 +175,7 @@ func TestRouterConcurrentStableIdentityStartsOnlyOnce(t *testing.T) {
 	for range 2 {
 		go func() {
 			defer starts.Done()
-			task, _, err := router.startTask(route, request)
+			task, _, err := startJob(router, route, request, testJobID(42))
 			results <- startResult{task: task, err: err}
 		}()
 	}
@@ -195,57 +197,6 @@ func TestRouterConcurrentStableIdentityStartsOnlyOnce(t *testing.T) {
 	}
 	close(release)
 	<-claimed[0].Done()
-}
-
-func TestRouterRecoveredDurableTaskIsCancelableAndBlocksExclusiveStart(t *testing.T) {
-	type identityRequest struct {
-		id          string
-		fingerprint string
-	}
-	registry := NewTaskService()
-	router := NewRouter(registry)
-	runnerStarted := make(chan struct{})
-	route := Route{
-		Name:     "control.app_update",
-		Mode:     ModeTask,
-		Policy:   TaskExclusive,
-		Lifetime: TaskLifetimeDurable,
-		Identity: func(request any) (TaskIdentity, error) {
-			value, ok := request.(identityRequest)
-			if !ok {
-				return TaskIdentity{}, fmt.Errorf("unexpected identity request %T", request)
-			}
-			return TaskIdentity{ID: value.id, Fingerprint: value.fingerprint}, nil
-		},
-		Runner: func(ctx context.Context, _ *Task, _ any) (any, error) {
-			close(runnerStarted)
-			<-ctx.Done()
-			return nil, ctx.Err()
-		},
-	}
-	router.register(route)
-	owner := TaskOwner{SessionID: "new-session", Username: "alice", UID: 1000}
-	identity := TaskIdentity{ID: "00000000-0000-4000-8000-000000000042", Fingerprint: "same-request"}
-	task, created, err := router.RecoverDurableTask(route.Name, identityRequest{id: identity.ID, fingerprint: identity.Fingerprint}, owner, identity)
-	if err != nil || !created {
-		t.Fatalf("RecoverDurableTask = %v, %t, %v", task, created, err)
-	}
-	<-runnerStarted
-	if _, _, err := router.startTask(route, Request{
-		Route: route.Name,
-		DecodedValue: identityRequest{
-			id:          "00000000-0000-4000-8000-000000000043",
-			fingerprint: "different-request",
-		},
-		Owner: owner,
-	}); !errors.Is(err, ErrDuplicateActive) {
-		t.Fatalf("new exclusive start error = %v, want ErrDuplicateActive", err)
-	}
-	task.Cancel()
-	<-task.Done()
-	if state := task.Snapshot().State; state != TaskStateCanceled {
-		t.Fatalf("recovered task state = %q, want canceled", state)
-	}
 }
 
 func TestRouterDoesNotLabelUnknownClientRoute(t *testing.T) {
@@ -337,35 +288,29 @@ func waitForRouterSettle(t *testing.T, router *Router, routeName string) {
 
 // targetRoute runs a task per request string until release closes, naming
 // the request as its target.
-func targetRoute(name string, policy TaskPolicy, release <-chan struct{}, running *atomic.Int32) Route {
-	return Route{
-		Name:   name,
-		Mode:   ModeTask,
-		Policy: policy,
-		Metadata: func(request any) TaskMetadata {
-			target, _ := request.(string)
-			return TaskMetadata{Identity: []string{target}}
-		},
-		Runner: func(context.Context, *Task, any) (any, error) {
-			running.Add(1)
-			defer running.Add(-1)
-			<-release // Deliberately ignore cancellation.
-			return nil, nil
-		},
-	}
+func targetRoute(t *testing.T, router *Router, name string, release <-chan struct{}, running *atomic.Int32) Route {
+	return registeredMutation(t, router, name, func(context.Context, *Task, any) (any, error) {
+		running.Add(1)
+		defer running.Add(-1)
+		<-release // Deliberately ignore cancellation.
+		return nil, nil
+	}, WithTaskMetadata(func(request any) TaskMetadata {
+		target, _ := request.(string)
+		return TaskMetadata{Identity: []string{target}}
+	}))
 }
 
 func TestRouterRunsTasksOnDifferentTargetsSideBySide(t *testing.T) {
 	router := NewRouter(NewTaskService())
 	release := make(chan struct{})
 	var running atomic.Int32
-	route := targetRoute("test.side-by-side", TaskDefault, release, &running)
+	route := targetRoute(t, router, "test.side-by-side", release, &running)
 	owner := TaskOwner{SessionID: "session-a", Username: "alice", UID: 1000}
 
 	// One user copies six folders at once.
 	var tasks []*Task
 	for i := range 6 {
-		task, started, err := router.startTask(route, Request{Route: route.Name, DecodedValue: fmt.Sprintf("folder-%d", i), Owner: owner})
+		task, started, err := startJob(router, route, Request{Route: route.Name, DecodedValue: fmt.Sprintf("folder-%d", i), Owner: owner}, testJobID(i))
 		if err != nil || !started {
 			t.Fatalf("start %d = %t, %v; want started", i, started, err)
 		}
@@ -389,13 +334,14 @@ func TestRouterRefusesASecondTaskOnTheSameTargetUntilItsHandlerExits(t *testing.
 	router := NewRouter(NewTaskService())
 	release := make(chan struct{})
 	var running atomic.Int32
-	route := targetRoute("test.same-target", TaskDefault, release, &running)
+	route := targetRoute(t, router, "test.same-target", release, &running)
+	poolA := Request{Route: route.Name, DecodedValue: "pool-a"}
 
-	first, _, err := router.startTask(route, Request{Route: route.Name, DecodedValue: "pool-a"})
+	first, _, err := startJob(router, route, poolA, testJobID(1))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err = router.startTask(route, Request{Route: route.Name, DecodedValue: "pool-a"}); !errors.Is(err, ErrDuplicateActive) {
+	if _, _, err = startJob(router, route, poolA, testJobID(2)); !errors.Is(err, ErrDuplicateActive) {
 		t.Fatalf("second start on pool-a = %v, want ErrDuplicateActive", err)
 	}
 	if StatusCode(fmt.Errorf("%w: x", ErrDuplicateActive)) != 409 {
@@ -409,70 +355,16 @@ func TestRouterRefusesASecondTaskOnTheSameTargetUntilItsHandlerExits(t *testing.
 	if state := first.Snapshot().State; state != TaskStateCanceled {
 		t.Fatalf("first state = %q, want canceled", state)
 	}
-	if _, _, err = router.startTask(route, Request{Route: route.Name, DecodedValue: "pool-a"}); !errors.Is(err, ErrDuplicateActive) {
+	if _, _, err = startJob(router, route, poolA, testJobID(3)); !errors.Is(err, ErrDuplicateActive) {
 		t.Fatalf("start while the canceled handler runs = %v, want ErrDuplicateActive", err)
 	}
 	close(release)
 	waitForRouterSettle(t, router, route.Name)
-	again, started, err := router.startTask(route, Request{Route: route.Name, DecodedValue: "pool-a"})
+	again, started, err := startJob(router, route, poolA, testJobID(4))
 	if err != nil || !started {
 		t.Fatalf("start after the handler exited = %t, %v", started, err)
 	}
 	<-again.Done()
-}
-
-func TestRouterTaskFastCompleteReturnsTerminalSnapshot(t *testing.T) {
-	registry := NewTaskService()
-	router := NewRouter(registry)
-	router.TaskRunner("test.fast", func(ctx context.Context, task *Task, _ any) (any, error) {
-		return map[string]any{"ok": true}, nil
-	}, TaskDefault)
-
-	server, client := net.Pipe()
-	defer client.Close()
-
-	errCh := make(chan error, 1)
-	go func() {
-		defer server.Close()
-		errCh <- router.Dispatch(context.Background(), server, Request{Route: "test.fast"})
-	}()
-
-	frame, err := relay.ReadRelayFrame(client)
-	if err != nil {
-		t.Fatalf("ReadRelayFrame(result): %v", err)
-	}
-	if frame.Opcode != relay.OpStreamResult {
-		t.Fatalf("opcode = 0x%02x, want OpStreamResult", frame.Opcode)
-	}
-
-	var result relay.ResultFrame
-	if unmarshalErr := json.Unmarshal(frame.Payload, &result); unmarshalErr != nil {
-		t.Fatalf("json.Unmarshal(result): %v", unmarshalErr)
-	}
-	if result.Status != "ok" {
-		t.Fatalf("status = %q, want ok", result.Status)
-	}
-	var snapshot TaskSnapshot
-	if unmarshalErr := json.Unmarshal(result.Data, &snapshot); unmarshalErr != nil {
-		t.Fatalf("json.Unmarshal(snapshot): %v", unmarshalErr)
-	}
-	if snapshot.State != TaskStateCompleted {
-		t.Fatalf("state = %q, want completed", snapshot.State)
-	}
-	if snapshot.Result == nil {
-		t.Fatal("fast-complete snapshot missing result")
-	}
-	closeFrame, err := relay.ReadRelayFrame(client)
-	if err != nil {
-		t.Fatalf("ReadRelayFrame(close): %v", err)
-	}
-	if closeFrame.Opcode != relay.OpStreamClose {
-		t.Fatalf("close opcode = 0x%02x, want OpStreamClose", closeFrame.Opcode)
-	}
-
-	if err := <-errCh; err != nil {
-		t.Fatalf("Dispatch returned error: %v", err)
-	}
 }
 
 func TestRouterCallWritesOneResultAndClose(t *testing.T) {

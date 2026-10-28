@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/api/generated/client", () => ({
-  default: { filebrowser: { upload: mocks.upload } },
+  default: { filebrowser: { upload: { start: mocks.upload } } },
 }));
 
 vi.mock("@/api/linuxio", () => ({

@@ -33,6 +33,10 @@ export interface MutationConfig<
     snapshot: TaskSnapshot,
     variables: TRequest,
   ) => void;
+  /** Stops following the job when aborted, per `closeOnAbort`. */
+  signal?: AbortSignal | ((variables: TRequest) => AbortSignal | undefined);
+  /** On abort: "abort" (default) cancels the job, "close" detaches from it. */
+  closeOnAbort?: "abort" | "close";
 }
 
 /** Public endpoint surface for Mutation routes. */
@@ -43,6 +47,8 @@ export interface MutationEndpoint<
   TProgress,
 > {
   (...args: TInput): Promise<TResult>;
+  /** Start a job and resolve with its first snapshot, without following it. */
+  start(...args: TInput): Promise<TaskSnapshot>;
   useMutation(
     config?: MutationConfig<TRequest, TResult, TProgress>,
   ): UseMutationResult<TResult, LinuxIOError, TRequest> & {
@@ -67,6 +73,8 @@ export function defineMutation<TResult, TProgress = ProgressFrame>(
 
   endpoint.queryKey = (...rawArgs: [] | [unknown]) =>
     endpointQueryKey(handler, command, requestShape, rawArgs[0]);
+  endpoint.start = (...rawArgs: [] | [unknown]) =>
+    core.startJob(handler, command, requestForWire(requestShape, rawArgs[0]));
 
   endpoint.useMutation = (config) => {
     const adoptedTaskRef = useRef<string | null>(null);
@@ -84,6 +92,11 @@ export function defineMutation<TResult, TProgress = ProgressFrame>(
           onProgress: (progress) => {
             if (task) config?.onProgress?.(progress, task, request);
           },
+          signal:
+            typeof config?.signal === "function"
+              ? config.signal(request)
+              : config?.signal,
+          closeOnAbort: config?.closeOnAbort,
         };
         return adoptedTaskId === null
           ? core.mutationRequest<TResult, TProgress>(

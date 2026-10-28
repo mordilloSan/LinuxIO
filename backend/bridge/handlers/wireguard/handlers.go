@@ -13,8 +13,8 @@ import (
 // output, `"removed"`, and in add_interface's case the generated *private key* —
 // onto routes whose generated TypeScript is `void`. Every consumer discards the
 // result (`success: (_result: void, variables) => ...`), so the payloads were
-// unreachable by design and, for Task routes, sat in the Task snapshot for
-// DefaultTerminalTaskTTL where tasks.get/tasks.list could read them back.
+// unreachable by design and, for routes run as tasks, sat in the task snapshot
+// for DefaultTerminalTaskTTL where tasks.get/tasks.list could read them back.
 var api = apischema.Bindings(
 	apischema.Call[apischema.NoRequest, []apischema.WireGuardInterface]("wireguard.list_interfaces", apischema.RetrySafe()).Handle(handleListInterfaces),
 	apischema.MutationVoid("wireguard.add_interface", handleAddInterface),

@@ -24,12 +24,9 @@ type Mode string
 
 const (
 	ModeCall     Mode = "call"
-	ModeTask     Mode = "task"
 	ModeDuplex   Mode = "duplex"
 	ModeMutation Mode = "mutation"
 )
-
-const InitialTaskSettleTimeout = 25 * time.Millisecond
 
 var (
 	ErrInvalidArgs     = errors.New("invalid arguments")
@@ -68,7 +65,6 @@ type Route struct {
 	Decode     RequestDecoder
 	Lifetime   TaskLifetime
 	Metadata   TaskMetadataBuilder
-	Identity   TaskIdentityBuilder
 
 	// Mutation routes only.
 	BrowserBound bool
@@ -100,28 +96,6 @@ func WithRequestDecoder(decode RequestDecoder) RouteOption {
 func WithTaskMetadata(build TaskMetadataBuilder) RouteOption {
 	return func(r *Route) {
 		r.Metadata = build
-	}
-}
-
-// WithTaskLifetime declares the owner scope for a Task route.
-func WithTaskLifetime(lifetime TaskLifetime) RouteOption {
-	return func(r *Route) {
-		if lifetime != TaskLifetimeSession && lifetime != TaskLifetimeDurable {
-			panic("bridge task route has invalid lifetime: " + string(lifetime))
-		}
-		r.Lifetime = lifetime
-	}
-}
-
-// WithTaskIdentity declares a stable Task ID and safe request fingerprint.
-// It is reserved for durable routes whose persistent operation store enforces
-// the same identity across bridge processes.
-func WithTaskIdentity(build TaskIdentityBuilder) RouteOption {
-	return func(r *Route) {
-		if build == nil {
-			panic("bridge task identity builder cannot be nil")
-		}
-		r.Identity = build
 	}
 }
 
@@ -243,51 +217,11 @@ func (r *Router) TaskService() *TaskService {
 	return r.registry
 }
 
-// RecoverDurableTask reattaches a persisted operation to its registered route
-// without treating recovery as a new admission. The recovered Task counts as
-// active so the exclusive and same-target checks still protect new starts.
-func (r *Router) RecoverDurableTask(routeName string, request any, owner TaskOwner, identity TaskIdentity) (*Task, bool, error) {
-	route, ok := r.lookup(routeName)
-	if !ok || route.Mode != ModeTask || route.Lifetime != TaskLifetimeDurable || route.Identity == nil {
-		return nil, false, fmt.Errorf("%w: durable task route %s", ErrRouteNotFound, routeName)
-	}
-	if owner.Username == "" || owner.SessionID == "" {
-		return nil, false, fmt.Errorf("%w: durable task recovery requires an authenticated owner", ErrForbidden)
-	}
-	expected, err := route.Identity(request)
-	if err != nil {
-		return nil, false, err
-	}
-	if identity.ID == "" || identity.Fingerprint == "" || expected != identity {
-		return nil, false, fmt.Errorf("%w: durable task recovery identity mismatch", ErrInvalidArgs)
-	}
-	metadata := buildTaskMetadata(route, request)
-	task, created, err := r.registry.ClaimForOwnerWithIdentity(routeName, request, owner, TaskLifetimeDurable, identity, metadata)
-	if err != nil || !created {
-		return task, created, err
-	}
-	target := admissionTarget(routeName, metadata)
-	r.registry.admitMu.Lock()
-	r.registry.markActiveLocked(routeName, target)
-	r.registry.admitMu.Unlock()
-	r.startTrackedTask(route, task, owner, target)
-	return task, true, nil
-}
-
 // Call registers a bounded request-response route. The handler returns one
 // result directly; the router writes its result or error frame and closes the
 // stream.
 func (r *Router) Call(name string, handler CallFunc, opts ...RouteOption) {
 	r.register(Route{Name: name, Mode: ModeCall, Call: handler}, opts...)
-}
-
-// TaskRunner registers a background task route. The runner receives the *Task
-// directly for progress reporting. If policy.Name is empty, TaskDefault is used.
-func (r *Router) TaskRunner(name string, runner TaskRunner, policy TaskPolicy, opts ...RouteOption) {
-	if policy.Name == "" {
-		policy = TaskDefault
-	}
-	r.register(Route{Name: name, Mode: ModeTask, Runner: runner, Policy: policy}, opts...)
 }
 
 // Mutation registers a route that changes the host. It runs as a durable task
@@ -355,8 +289,6 @@ func (r *Router) Dispatch(ctx context.Context, stream net.Conn, req Request) (di
 	switch route.Mode {
 	case ModeCall:
 		err = r.dispatchCall(ctx, stream, route, req)
-	case ModeTask:
-		err = r.dispatchTask(ctx, stream, route, req)
 	case ModeDuplex:
 		err = route.Duplex(ctx, stream, req)
 	case ModeMutation:
@@ -391,24 +323,13 @@ func (r *Router) registerRoute(route Route, allowTaskServiceRoute bool, opts ...
 	for _, opt := range opts {
 		opt(&route)
 	}
-	switch route.Mode {
-	case ModeTask:
-		if route.Lifetime == "" {
+	if route.Mode == ModeMutation {
+		route.Lifetime = TaskLifetimeDurable
+		if route.BrowserBound {
+			// Its bytes ride the session, so the session's end cancels it and
+			// its cleanup removes the partial upload or the archive.
 			route.Lifetime = TaskLifetimeSession
 		}
-		validateTaskRouteOptions(route)
-	case ModeMutation:
-		if route.Lifetime == "" {
-			route.Lifetime = TaskLifetimeDurable
-			if route.BrowserBound {
-				// Its bytes ride the session, so the session's end cancels it and
-				// its cleanup removes the partial upload or the archive.
-				route.Lifetime = TaskLifetimeSession
-			}
-		}
-		validateTaskRouteOptions(route)
-	default:
-		validateNonTaskRouteOptions(route)
 	}
 	if route.Mode != ModeMutation && (route.BrowserBound || route.Target != nil || route.Suspend != nil || route.Resume != nil) {
 		panic("bridge mutation options are allowed only on mutation routes: " + route.Name)
@@ -428,9 +349,9 @@ func validateRouteHandler(route Route) {
 		if route.Call == nil {
 			panic("bridge call route handler cannot be nil: " + route.Name)
 		}
-	case ModeTask, ModeMutation:
+	case ModeMutation:
 		if route.Runner == nil {
-			panic("bridge task route handler cannot be nil: " + route.Name)
+			panic("bridge mutation route handler cannot be nil: " + route.Name)
 		}
 	case ModeDuplex:
 		if route.Duplex == nil {
@@ -438,24 +359,6 @@ func validateRouteHandler(route Route) {
 		}
 	default:
 		panic("bridge route has invalid mode: " + string(route.Mode))
-	}
-}
-
-func validateTaskRouteOptions(route Route) {
-	if route.Lifetime != TaskLifetimeSession && route.Lifetime != TaskLifetimeDurable {
-		panic("bridge task route has invalid lifetime: " + string(route.Lifetime))
-	}
-	if route.Identity != nil && route.Lifetime != TaskLifetimeDurable {
-		panic("bridge stable task identity requires durable lifetime: " + route.Name)
-	}
-}
-
-func validateNonTaskRouteOptions(route Route) {
-	if route.Lifetime != "" {
-		panic("bridge task lifetime is allowed only on task routes: " + route.Name)
-	}
-	if route.Identity != nil {
-		panic("bridge task identity is allowed only on task routes: " + route.Name)
 	}
 }
 
@@ -480,22 +383,6 @@ func (r *Router) dispatchCall(ctx context.Context, stream net.Conn, route Route,
 		return err
 	}
 	return relay.WriteResultOKAndClose(stream, 0, result)
-}
-
-func (r *Router) dispatchTask(ctx context.Context, stream net.Conn, route Route, req Request) error {
-	task, started, err := r.startTask(route, req)
-	if err != nil {
-		_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), StatusCode(err))
-		return err
-	}
-	if started {
-		select {
-		case <-task.Done():
-		case <-time.After(InitialTaskSettleTimeout):
-		case <-ctx.Done():
-		}
-	}
-	return relay.WriteResultOKAndClose(stream, 0, task.Snapshot())
 }
 
 // dispatchMutation forwards a Mutation to the job host or, in the host or for
@@ -580,20 +467,6 @@ func (r *Router) routeRunner(route Route, executionDone chan<- struct{}) TaskRun
 	}
 }
 
-func (r *Router) startTask(route Route, req Request) (*Task, bool, error) {
-	if route.Identity == nil {
-		return r.startTaskWithIdentity(route, req, TaskIdentity{})
-	}
-	identity, err := route.Identity(req.DecodedValue)
-	if err != nil {
-		return nil, false, err
-	}
-	if identity.ID == "" || identity.Fingerprint == "" {
-		return nil, false, fmt.Errorf("%w: durable task identity is incomplete", ErrInvalidArgs)
-	}
-	return r.startStableTask(route, req, identity)
-}
-
 // startStableTask serialises the starts of one stable identity: a retry of an
 // existing task attaches to it without being admitted again.
 func (r *Router) startStableTask(route Route, req Request, identity TaskIdentity) (*Task, bool, error) {
@@ -640,9 +513,7 @@ func (r *Router) startTaskWithIdentity(route Route, req Request, identity TaskId
 		r.release(route.Name, target)
 		return task, false, err
 	}
-	if route.Mode == ModeMutation {
-		r.registry.recordStarted(task, route.RecordedRequest(req.RawRequest))
-	}
+	r.registry.recordStarted(task, route.RecordedRequest(req.RawRequest))
 	r.startTrackedTask(route, task, req.Owner, target)
 	return task, true, nil
 }

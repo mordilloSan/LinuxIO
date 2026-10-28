@@ -1,13 +1,7 @@
 import { Icon } from "@iconify/react";
 import { useState, type CSSProperties } from "react";
 
-import {
-  linuxio,
-  type BtrfsFilesystem,
-  type BtrfsOpProgress,
-  type BtrfsScrubStatus,
-  type TaskProgress,
-} from "@/api";
+import { linuxio, type BtrfsFilesystem, type BtrfsScrubStatus } from "@/api";
 import { STATUS_COLOR } from "@/components/cards/EntityCardKit";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppButton from "@/components/ui/AppButton";
@@ -112,18 +106,15 @@ const BtrfsHealthBanner = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
     error,
     toast: BTRFS_POOL_TOAST_META,
   });
-  const scrub = linuxio.storage.btrfs_scrub_start.useTaskStreamAction<
-    BtrfsFilesystem,
-    TaskProgress<BtrfsOpProgress>
-  >(taskConfig("Check finished", "Failed to check filesystem"));
-  const replace = linuxio.storage.btrfs_device_replace.useTaskStreamAction<
-    BtrfsFilesystem,
-    TaskProgress<BtrfsOpProgress>
-  >(taskConfig("Device replaced", "Failed to replace device"));
-  const reclaim = linuxio.storage.btrfs_balance.useTaskStreamAction<
-    BtrfsFilesystem,
-    TaskProgress<BtrfsOpProgress>
-  >(taskConfig("Space reclaimed", "Failed to reclaim space"));
+  const scrub = linuxio.storage.btrfs_scrub_start.useMutation(
+    taskConfig("Check finished", "Failed to check filesystem"),
+  );
+  const replace = linuxio.storage.btrfs_device_replace.useMutation(
+    taskConfig("Device replaced", "Failed to replace device"),
+  );
+  const reclaim = linuxio.storage.btrfs_balance.useMutation(
+    taskConfig("Space reclaimed", "Failed to reclaim space"),
+  );
   const { mutate: cancelScrub } =
     linuxio.storage.btrfs_scrub_cancel.useMutation({
       error: "Failed to stop the check",

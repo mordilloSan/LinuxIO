@@ -21,11 +21,9 @@ const mocks = vi.hoisted(() => ({
   taskOptions: {} as Record<string, { success?: (result: unknown) => void }>,
 }));
 
-function taskEndpoint(name?: string) {
+function jobEndpoint(name?: string) {
   return {
-    useTaskStreamAction: (options?: {
-      success?: (result: unknown) => void;
-    }) => {
+    useMutation: (options?: { success?: (result: unknown) => void }) => {
       if (name && options) mocks.taskOptions[name] = options;
       return { isPending: false, mutateAsync: mocks.mutateAsync };
     },
@@ -40,10 +38,10 @@ vi.mock("@/api", async (importOriginal) => {
     linuxio: {
       filebrowser: {
         exists_batch: { route: "filebrowser.exists_batch" },
-        chmod_batch: taskEndpoint(),
-        delete_batch: taskEndpoint("delete"),
-        trash_batch: taskEndpoint("trash"),
-        resource_patch: taskEndpoint(),
+        chmod_batch: jobEndpoint(),
+        delete_batch: jobEndpoint("delete"),
+        trash_batch: jobEndpoint("trash"),
+        resource_patch: jobEndpoint(),
         resource_post: {
           useMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
         },

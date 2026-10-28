@@ -177,46 +177,35 @@ func TestTaskCallPrimitivesHonorCanceledContext(t *testing.T) {
 	}
 }
 
-func TestTaskStartDisconnectDoesNotCancelTaskContext(t *testing.T) {
-	registry := NewTaskService()
-	router := NewRouter(registry)
+func TestMutationDisconnectDoesNotCancelTaskContext(t *testing.T) {
+	router := NewRouter(NewTaskService())
 	started := make(chan struct{})
 	release := make(chan struct{})
 	canceled := make(chan struct{})
-	router.TaskRunner(
-		"test.task.disconnect",
-		func(ctx context.Context, _ *Task, _ any) (any, error) {
-			close(started)
-			select {
-			case <-ctx.Done():
-				close(canceled)
-				return nil, ctx.Err()
-			case <-release:
-				return nil, nil
-			}
-		},
-		TaskDefault,
-	)
+	router.Mutation("test.mutation", func(ctx context.Context, _ *Task, _ any) (any, error) {
+		close(started)
+		select {
+		case <-ctx.Done():
+			close(canceled)
+			return nil, ctx.Err()
+		case <-release:
+			return nil, nil
+		}
+	})
 
-	server, client := net.Pipe()
-	dispatchDone := make(chan error, 1)
-	go func() {
-		defer server.Close()
-		dispatchDone <- router.Dispatch(context.Background(), server, Request{Route: "test.task.disconnect"})
-	}()
-
-	waitForSignal(t, started, "task runner did not start")
+	client, dispatchDone := openMutation(t, router, mutationRequest(`{}`))
+	waitForSignal(t, started, "mutation runner did not start")
 	_ = client.Close()
-	assertNoSignal(t, canceled, "task-start disconnect canceled the detached task")
+	assertNoSignal(t, canceled, "mutation stream disconnect canceled the detached task")
 	close(release)
 
 	select {
 	case err := <-dispatchDone:
-		if !errors.Is(err, io.ErrClosedPipe) {
-			t.Fatalf("Dispatch error = %v, want io.ErrClosedPipe", err)
+		if err != nil {
+			t.Fatalf("Dispatch error = %v, want a detached stream", err)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("Dispatch did not return after the detached task completed")
+		t.Fatal("Dispatch did not return after the stream disconnected")
 	}
 }
 

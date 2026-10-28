@@ -8,9 +8,6 @@ import {
   type FilesystemInfo,
   linuxio,
   type MonitoringLive,
-  type SmartTestResult,
-  type Stream,
-  type TaskProgress,
 } from "@/api";
 import TabSelector from "@/components/tabbar/TabSelector";
 import AppCollapse from "@/components/ui/AppCollapse";
@@ -75,20 +72,19 @@ const DriveDetails = ({
   );
   const [testProgress, setTestProgress] =
     useState<SmartTestProgressEvent | null>(null);
-  const streamRef = useRef<Stream | null>(null);
+  // Aborting detaches this view from a running test; the test runs on.
+  const detachRef = useRef<AbortController | null>(null);
   // One config drives both lifecycles: fresh runs via smartTest.mutate() and
   // page-reload recovery via smartTest.watch() (see useActiveTaskRecovery
   // below). Drive-info refresh comes from the invalidation manifest.
-  const smartTest = linuxio.storage.run_smart_test.useTaskStreamAction<
-    SmartTestResult,
-    TaskProgress<SmartTestProgressEvent>
-  >({
-    closeMessage: "SMART self-test stream closed unexpectedly",
-    onOpen: (stream) => {
-      streamRef.current = stream;
+  const smartTest = linuxio.storage.run_smart_test.useMutation({
+    signal: () => {
+      detachRef.current = new AbortController();
+      return detachRef.current.signal;
     },
+    closeOnAbort: "close",
     onProgress: (progress, _task, variables) => {
-      const data = progress.detail;
+      const data = progress.detail as SmartTestProgressEvent | undefined;
       if (!data) return;
       const testType: "short" | "long" =
         variables.testType === "long" ? "long" : "short";
@@ -146,19 +142,11 @@ const DriveDetails = ({
     },
     options: {
       onSettled: () => {
-        streamRef.current = null;
         setStartPending(null);
       },
     },
   });
-  useEffect(() => {
-    return () => {
-      if (streamRef.current) {
-        streamRef.current.close();
-        streamRef.current = null;
-      }
-    };
-  }, []);
+  useEffect(() => () => detachRef.current?.abort(), []);
 
   // Refresh recovery: if a SMART self-test task for this drive is already running
   // (e.g. user refreshed the page mid-test), adopt it into the same action —
@@ -182,7 +170,7 @@ const DriveDetails = ({
         device: deviceName,
         message: "Resuming SMART self-test",
       });
-      smartTest.watch(task, { device: deviceName, testType });
+      smartTest.watch(task.id, { device: deviceName, testType });
     },
   });
 
@@ -200,9 +188,7 @@ const DriveDetails = ({
       device: rawDrive.name,
       message: `Starting SMART ${testType} self-test`,
     });
-    if (streamRef.current) {
-      streamRef.current.close();
-    }
+    detachRef.current?.abort();
     smartTest.mutate({ device: rawDrive.name, testType });
   };
   const handleTabChange = (newValue: number) => {
