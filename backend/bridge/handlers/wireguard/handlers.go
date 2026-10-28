@@ -16,20 +16,20 @@ import (
 // unreachable by design and, for routes run as tasks, sat in the task snapshot
 // for DefaultTerminalTaskTTL where tasks.get/tasks.list could read them back.
 var api = apischema.Bindings(
-	apischema.Call[apischema.NoRequest, []apischema.WireGuardInterface]("wireguard.list_interfaces", apischema.RetrySafe()).Handle(handleListInterfaces),
-	apischema.MutationVoid("wireguard.add_interface", handleAddInterface),
-	apischema.MutationVoid("wireguard.update_interface", UpdateInterface),
-	apischema.MutationVoid("wireguard.remove_interface", handleRemoveInterface),
-	apischema.Call[apischema.InterfaceNameRequest, []apischema.Peer]("wireguard.list_peers", apischema.RetrySafe()).Handle(handleListPeers),
-	apischema.MutationVoid("wireguard.add_peer", handleAddPeer),
-	apischema.MutationVoid("wireguard.update_peer", UpdatePeer),
-	apischema.MutationVoid("wireguard.remove_peer", RemovePeer),
-	apischema.Call[apischema.WireGuardPeerRequest, apischema.QRCodeResponse]("wireguard.peer_qrcode", apischema.RetrySafe()).Handle(PeerQRCode),
-	apischema.Call[apischema.WireGuardPeerRequest, apischema.PeerConfigDownload]("wireguard.peer_config_download", apischema.RetrySafe()).Handle(PeerConfigDownload),
-	apischema.MutationVoid("wireguard.up_interface", handleUpInterface),
-	apischema.MutationVoid("wireguard.down_interface", handleDownInterface),
-	apischema.MutationVoid("wireguard.enable_interface", handleEnableInterface),
-	apischema.MutationVoid("wireguard.disable_interface", handleDisableInterface),
+	apischema.Call[apischema.NoRequest, []apischema.WireGuardInterface]("wireguard.list_interfaces", apischema.RetrySafe(), apischema.Privileged()).Handle(handleListInterfaces),
+	apischema.MutationVoid("wireguard.add_interface", handleAddInterface, apischema.Privileged()),
+	apischema.MutationVoid("wireguard.update_interface", UpdateInterface, apischema.Privileged()),
+	apischema.MutationVoid("wireguard.remove_interface", handleRemoveInterface, apischema.Privileged()),
+	apischema.Call[apischema.InterfaceNameRequest, []apischema.Peer]("wireguard.list_peers", apischema.RetrySafe(), apischema.Privileged()).Handle(handleListPeers),
+	apischema.MutationVoid("wireguard.add_peer", handleAddPeer, apischema.Privileged()),
+	apischema.MutationVoid("wireguard.update_peer", UpdatePeer, apischema.Privileged()),
+	apischema.MutationVoid("wireguard.remove_peer", RemovePeer, apischema.Privileged()),
+	apischema.Call[apischema.WireGuardPeerRequest, apischema.QRCodeResponse]("wireguard.peer_qrcode", apischema.RetrySafe(), apischema.Privileged()).Handle(PeerQRCode),
+	apischema.Call[apischema.WireGuardPeerRequest, apischema.PeerConfigDownload]("wireguard.peer_config_download", apischema.RetrySafe(), apischema.Privileged()).Handle(PeerConfigDownload),
+	apischema.MutationVoid("wireguard.up_interface", handleUpInterface, apischema.Privileged()),
+	apischema.MutationVoid("wireguard.down_interface", handleDownInterface, apischema.Privileged()),
+	apischema.MutationVoid("wireguard.enable_interface", handleEnableInterface, apischema.Privileged()),
+	apischema.MutationVoid("wireguard.disable_interface", handleDisableInterface, apischema.Privileged()),
 )
 
 var Routes = api.Routes()
