@@ -12,7 +12,6 @@ import {
   linuxio,
   LinuxIOError,
   type UIConfig,
-  useCallMutation,
   useStreamMux,
 } from "@/api";
 import type {
@@ -183,14 +182,14 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
   const canSaveRef = useRef(false);
   const warnedUnsavedRef = useRef(false);
   const { isOpen: isMuxOpen } = useStreamMux();
-  const { mutateAsync: setConfigRemote } = useCallMutation(linuxio.config.set, {
+  const { mutateAsync: setConfigRemote } = linuxio.config.set.useMutation({
     error: "Failed to save settings",
     invalidates: (_result, patch) =>
       patch.docker?.folders !== undefined
         ? [linuxio.docker.list_compose_projects.queryKey]
         : [],
   });
-  const { mutateAsync: setUIRemote } = useCallMutation(linuxio.config.set_ui, {
+  const { mutateAsync: setUIRemote } = linuxio.config.set_ui.useMutation({
     error: "Failed to save appearance settings",
     invalidates: [],
   });

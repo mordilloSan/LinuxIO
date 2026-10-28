@@ -18,43 +18,51 @@ vi.mock("@/api", async (importOriginal) => {
     success?: (result: unknown) => void;
     options?: { onSettled?: () => void };
   };
+  const { mockMutationHooks } = await import("@/test/mutationHooks");
+  const useCallMutation = (
+    endpoint: { route: string },
+    options: { success?: (result: unknown) => void },
+  ) => ({
+    isPending: false,
+    mutate: (request: Record<string, unknown>) => {
+      if (endpoint.route === "docker.set_daemon_config") {
+        mocks.save(request);
+        options.success?.({
+          config: request,
+          restart_required: mocks.restartRequired,
+        });
+      }
+      if (endpoint.route === "systemd.restart_service") {
+        mocks.restart(request);
+        options.success?.(undefined);
+      }
+    },
+  });
   return {
     ...actual,
-    linuxio: {
-      ...actual.linuxio,
-      docker: {
-        ...actual.linuxio.docker,
-        apply_daemon_storage: {
-          useTaskStreamAction: (options: StorageOptions) => ({
-            isPending: false,
-            mutate: (request: Record<string, unknown>) => {
-              mocks.applyStorage(request);
-              options.success?.({ config: request, restart_required: false });
-              options.options?.onSettled?.();
-            },
-          }),
+    linuxio: mockMutationHooks(
+      {
+        ...actual.linuxio,
+        docker: {
+          ...actual.linuxio.docker,
+          apply_daemon_storage: {
+            useTaskStreamAction: (options: StorageOptions) => ({
+              isPending: false,
+              mutate: (request: Record<string, unknown>) => {
+                mocks.applyStorage(request);
+                options.success?.({
+                  config: request,
+                  restart_required: false,
+                });
+                options.options?.onSettled?.();
+              },
+            }),
+          },
         },
       },
-    },
-    useCallMutation: (
-      endpoint: { route: string },
-      options: { success?: (result: unknown) => void },
-    ) => ({
-      isPending: false,
-      mutate: (request: Record<string, unknown>) => {
-        if (endpoint.route === "docker.set_daemon_config") {
-          mocks.save(request);
-          options.success?.({
-            config: request,
-            restart_required: mocks.restartRequired,
-          });
-        }
-        if (endpoint.route === "systemd.restart_service") {
-          mocks.restart(request);
-          options.success?.(undefined);
-        }
-      },
-    }),
+      useCallMutation,
+    ),
+    useCallMutation,
   };
 });
 

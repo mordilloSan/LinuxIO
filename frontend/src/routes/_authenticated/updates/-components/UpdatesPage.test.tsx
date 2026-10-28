@@ -33,7 +33,7 @@ vi.mock("@/api", async () => {
           queryOptions: () => ({}),
         },
         refresh_cache: {
-          useAction: () => ({
+          useMutation: () => ({
             isPending: false,
             mutate: mocks.refreshCache,
           }),

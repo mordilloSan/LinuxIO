@@ -2,7 +2,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { useCallback, useMemo, useState } from "react";
 
-import { type AccountUser, linuxio, useCallMutation } from "@/api";
+import { type AccountUser, linuxio } from "@/api";
 import { useReorderableSurface } from "@/components/reorder/useReorderableSurface";
 import { RoutedTabSearch } from "@/components/tabbar";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
@@ -150,22 +150,16 @@ const UsersTab = ({
     setDialogUser(user);
     setPasswordDialogOpen(true);
   }, []);
-  const { mutateAsync: lockUser } = useCallMutation(
-    linuxio.accounts.lock_user,
-    {
-      success: "User locked successfully",
-      error: "Failed to lock user",
-      toast: ACCOUNTS_TOAST_META,
-    },
-  );
-  const { mutateAsync: unlockUser } = useCallMutation(
-    linuxio.accounts.unlock_user,
-    {
-      success: "User unlocked successfully",
-      error: "Failed to unlock user",
-      toast: ACCOUNTS_TOAST_META,
-    },
-  );
+  const { mutateAsync: lockUser } = linuxio.accounts.lock_user.useMutation({
+    success: "User locked successfully",
+    error: "Failed to lock user",
+    toast: ACCOUNTS_TOAST_META,
+  });
+  const { mutateAsync: unlockUser } = linuxio.accounts.unlock_user.useMutation({
+    success: "User unlocked successfully",
+    error: "Failed to unlock user",
+    toast: ACCOUNTS_TOAST_META,
+  });
 
   const handleToggleLock = useCallback(
     (user: AccountUser) => {

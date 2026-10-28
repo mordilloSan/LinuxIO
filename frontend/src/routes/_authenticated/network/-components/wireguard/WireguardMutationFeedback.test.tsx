@@ -132,7 +132,13 @@ describe("WireGuard mutation feedback", () => {
   it("retains interface action ownership across status polling", async () => {
     const turningOn = createDeferred<void>();
     const turningOff = createDeferred<void>();
-    vi.spyOn(core, "request").mockImplementation(
+    vi.spyOn(core, "request").mockImplementation((_handler, command) => {
+      if (command === "list_interfaces") {
+        return Promise.resolve([wg0, wg1]);
+      }
+      return Promise.resolve();
+    });
+    vi.spyOn(core, "mutationRequest").mockImplementation(
       (_handler, command, request) => {
         const name = (request as { name?: string } | undefined)?.name;
         if (command === "up_interface" && name === "wg0") {
@@ -140,9 +146,6 @@ describe("WireGuard mutation feedback", () => {
         }
         if (command === "down_interface" && name === "wg1") {
           return turningOff.promise;
-        }
-        if (command === "list_interfaces") {
-          return Promise.resolve([wg0, wg1]);
         }
         return Promise.resolve();
       },
@@ -232,14 +235,20 @@ describe("WireGuard mutation feedback", () => {
     vi.spyOn(core, "request").mockImplementation(
       (_handler, command, request) => {
         const peerId = (request as { peerId?: string } | undefined)?.peerId;
-        if (command === "remove_peer" && peerId === "Peer2") {
-          return deleting.promise;
-        }
         if (command === "peer_config_download" && peerId === "Peer3") {
           return downloading.promise;
         }
         if (command === "list_peers") {
           return Promise.resolve(peers);
+        }
+        return Promise.resolve();
+      },
+    );
+    vi.spyOn(core, "mutationRequest").mockImplementation(
+      (_handler, command, request) => {
+        const peerId = (request as { peerId?: string } | undefined)?.peerId;
+        if (command === "remove_peer" && peerId === "Peer2") {
+          return deleting.promise;
         }
         return Promise.resolve();
       },
@@ -312,10 +321,13 @@ describe("WireGuard mutation feedback", () => {
     const peersQuery = linuxio.wireguard.list_peers({ interfaceName: "wg0" });
     queryClient.setQueryData(peersQuery.queryKey, peers);
     const updates: unknown[] = [];
-    vi.spyOn(core, "request").mockImplementation(
+    vi.spyOn(core, "request").mockImplementation((_handler, command) => {
+      if (command === "list_peers") return Promise.resolve(peers);
+      return Promise.resolve();
+    });
+    vi.spyOn(core, "mutationRequest").mockImplementation(
       (_handler, command, request) => {
         if (command === "update_peer") updates.push(request);
-        if (command === "list_peers") return Promise.resolve(peers);
         return Promise.resolve();
       },
     );

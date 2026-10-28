@@ -59,31 +59,36 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
+  const { mockMutationHooks } = await import("@/test/mutationHooks");
+  const useCallMutation = (
+    endpoint: { route: string },
+    config?: { success?: () => void },
+  ) => ({
+    isPending: false,
+    mutate: (request: unknown) => {
+      mocks.mutations.push({ route: endpoint.route, request });
+      config?.success?.();
+    },
+  });
   return {
     ...actual,
-    linuxio: {
-      ...actual.linuxio,
-      filebrowser: {
-        ...actual.linuxio.filebrowser,
-        directory_children: (request: {
-          path: string;
-          includeFiles: boolean;
-        }) => ({
-          queryKey: ["test", "directories", request],
-          queryFn: async () => ({ folders: ["backups"], files: [] }),
-        }),
+    linuxio: mockMutationHooks(
+      {
+        ...actual.linuxio,
+        filebrowser: {
+          ...actual.linuxio.filebrowser,
+          directory_children: (request: {
+            path: string;
+            includeFiles: boolean;
+          }) => ({
+            queryKey: ["test", "directories", request],
+            queryFn: async () => ({ folders: ["backups"], files: [] }),
+          }),
+        },
       },
-    },
-    useCallMutation: (
-      endpoint: { route: string },
-      config?: { success?: () => void },
-    ) => ({
-      isPending: false,
-      mutate: (request: unknown) => {
-        mocks.mutations.push({ route: endpoint.route, request });
-        config?.success?.();
-      },
-    }),
+      useCallMutation,
+    ),
+    useCallMutation,
   };
 });
 

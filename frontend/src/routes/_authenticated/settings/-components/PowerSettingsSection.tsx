@@ -5,7 +5,7 @@ import { toast } from "sonner";
 
 import "./power-settings.css";
 
-import { linuxio, type PowerStatus, useCallMutation } from "@/api";
+import { linuxio, type PowerStatus } from "@/api";
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -81,18 +81,15 @@ const PowerSettingsSection = () => {
     error: "Power action failed",
   });
 
-  const startMutation = useCallMutation(
-    linuxio.power.start,
+  const startMutation = linuxio.power.start.useMutation(
     powerActionConfig("TuneD started"),
   );
 
-  const setProfileMutation = useCallMutation(
-    linuxio.power.set_profile,
+  const setProfileMutation = linuxio.power.set_profile.useMutation(
     powerActionConfig("Power profile applied"),
   );
 
-  const disableMutation = useCallMutation(
-    linuxio.power.disable,
+  const disableMutation = linuxio.power.disable.useMutation(
     powerActionConfig("TuneD tunings disabled"),
   );
 

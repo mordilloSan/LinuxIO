@@ -9,7 +9,7 @@ import {
 } from "react";
 
 import type { UnitInfo } from "@/api";
-import { linuxio, useCallMutation } from "@/api";
+import { linuxio } from "@/api";
 import ResourceDetailsLayout from "@/components/cards/ResourceDetailsLayout";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import type { ReorderableSurface } from "@/components/reorder/useReorderableSurface";
@@ -238,43 +238,24 @@ export const UnitCardActions = ({
     toast: SERVICES_TOAST_META,
   });
 
-  const { mutate: startService, isPending: isStarting } = useCallMutation(
-    linuxio.systemd.start_service,
-    actionConfig("started"),
-  );
-  const { mutate: stopService, isPending: isStopping } = useCallMutation(
-    linuxio.systemd.stop_service,
-    actionConfig("stopped"),
-  );
-  const { mutate: restartService, isPending: isRestarting } = useCallMutation(
-    linuxio.systemd.restart_service,
-    actionConfig("restarted"),
-  );
-  const { mutate: reloadService, isPending: isReloading } = useCallMutation(
-    linuxio.systemd.reload_service,
-    actionConfig("reloaded"),
-  );
-  const { mutate: enableService, isPending: isEnabling } = useCallMutation(
-    linuxio.systemd.enable_service,
-    actionConfig("enabled"),
-  );
-  const { mutate: disableService, isPending: isDisabling } = useCallMutation(
-    linuxio.systemd.disable_service,
-    actionConfig("disabled"),
-  );
-  const { mutate: maskService, isPending: isMasking } = useCallMutation(
-    linuxio.systemd.mask_service,
-    actionConfig("masked"),
-  );
-  const { mutate: unmaskService, isPending: isUnmasking } = useCallMutation(
-    linuxio.systemd.unmask_service,
-    actionConfig("unmasked"),
-  );
+  const { mutate: startService, isPending: isStarting } =
+    linuxio.systemd.start_service.useMutation(actionConfig("started"));
+  const { mutate: stopService, isPending: isStopping } =
+    linuxio.systemd.stop_service.useMutation(actionConfig("stopped"));
+  const { mutate: restartService, isPending: isRestarting } =
+    linuxio.systemd.restart_service.useMutation(actionConfig("restarted"));
+  const { mutate: reloadService, isPending: isReloading } =
+    linuxio.systemd.reload_service.useMutation(actionConfig("reloaded"));
+  const { mutate: enableService, isPending: isEnabling } =
+    linuxio.systemd.enable_service.useMutation(actionConfig("enabled"));
+  const { mutate: disableService, isPending: isDisabling } =
+    linuxio.systemd.disable_service.useMutation(actionConfig("disabled"));
+  const { mutate: maskService, isPending: isMasking } =
+    linuxio.systemd.mask_service.useMutation(actionConfig("masked"));
+  const { mutate: unmaskService, isPending: isUnmasking } =
+    linuxio.systemd.unmask_service.useMutation(actionConfig("unmasked"));
   const { mutate: resetFailedService, isPending: isResettingFailed } =
-    useCallMutation(
-      linuxio.systemd.reset_failed_service,
-      actionConfig("reset"),
-    );
+    linuxio.systemd.reset_failed_service.useMutation(actionConfig("reset"));
 
   const isActive = activeState === "active";
   const isFailed = activeState === "failed";

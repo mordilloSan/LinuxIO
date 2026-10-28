@@ -19,7 +19,7 @@ and [Notifications](../alerts.md).
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Store, host, relay, units, first route (`docker.update_container`) | done, verified on a real host |
-| 2 | Every mutation runs as a job: prerequisites, the ~199 routes and their callers, old task code deleted | in progress, plan in section 4.2 |
+| 2 | Every mutation runs as a job: prerequisites, the ~199 routes and their callers, old task code deleted | in progress: step 1 and batch 1 of step 2 done (section 4.2) |
 | 3 | btrfs resume hooks, with kill-and-resume root tests | not started |
 | 4 | Schedules and system jobs | not started; one open decision |
 | 5 | History view, login notice, update banner | not started |
@@ -453,7 +453,7 @@ Phase 2 moves all the mutations at once rather than the long ones first: a
 split would rewrite the same call sites twice and keep both task systems alive
 in between. Each step below is one commit that leaves `make test-quiet` green.
 
-**Step 1: prerequisites.** What every mutation would hit once it runs in a host. Done, not yet committed.
+**Step 1: prerequisites.** What every mutation would hit once it runs in a host. Done (`645134bf`).
 
 1. **Handlers act for the job's user.** Handlers read the user and the user's
    config store from the `runtime.Runtime` they were registered with, and the
@@ -538,6 +538,36 @@ a route that becomes a `Mutation` no longer type-checks in `useCallMutation`.
 - `jobs.Protocol` goes up once, because routes move from the bridge to the
   host: an older host answers a newer bridge `update_pending` and exits when
   idle instead of running a route as a `Call`.
+
+Batches:
+
+1. **Done, not yet committed.** The 92 writes of the accounts, alerts, config,
+   control, datetime, hostname, indexer, monitoring, network, power,
+   schedules, shares, system, systemd, updates, virt and WireGuard families
+   are `Mutation` or `MutationVoid`, and their 94 callers use `.useMutation`;
+   `jobs.Protocol` is 2. The account writes declare `Privileged()` (they run
+   `useradd`, `chpasswd`, `passwd` and `gpasswd`), and the WireGuard configs
+   are written atomically and `0600`. No route of these families changes state
+   that only the bridge process holds. Left as Calls:
+   - `logging.set_debug`: it also switches the calling bridge's own log level.
+     Step 3 decides between a bridge-local `Mutation` and making each process
+     follow the setting.
+   - `network.start_bridge_handoff`, `network.confirm_bridge_handoff` and
+     `network.revert_bridge_handoff`: already durable through their own record
+     and native rollback; they move with their dialog.
+   - The reads `network.get_network_info` and `system.get_health_summary`.
+
+   Tests that mock `useCallMutation` reach the new hooks through
+   `frontend/src/test/mutationHooks.ts`. A non-admin who logs in from the
+   server's own browser gets a local logind session, where polkit allows a
+   PackageKit refresh and the offline-update trigger without a password; a job
+   host is a service, which polkit asks for one. Remote logins are
+   `Remote=yes`, which polkit already treats like a service.
+2. Docker, with its two task routes.
+3. The file browser and the transfer engine in `frontend/src/tasks/`.
+4. Storage, with the fixes above: an independent review and root tests.
+5. The remaining task routes: `control.app_update`, `packages.update`,
+   `system.install_capability`, `virt.create`, `virt.template_download`.
 
 **Step 3: delete the old task code.** `useCallMutation`, `useTaskAction`,
 `useTaskStreamAction`, `TaskRunner`, `SessionTask`, `DurableTask`,

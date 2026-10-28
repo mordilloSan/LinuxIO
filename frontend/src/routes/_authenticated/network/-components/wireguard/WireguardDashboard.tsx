@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 
-import { linuxio, type WireGuardInterface, useCallMutation } from "@/api";
+import { linuxio, type WireGuardInterface } from "@/api";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { useReorderableSurface } from "@/components/reorder/useReorderableSurface";
 import AppGrid from "@/components/ui/AppGrid";
@@ -81,7 +81,7 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
   });
 
   // Mutations
-  const removeInterface = useCallMutation(linuxio.wireguard.remove_interface, {
+  const removeInterface = linuxio.wireguard.remove_interface.useMutation({
     success: (_result, variables) => {
       toast.success(`WireGuard interface '${variables.name}' deleted`);
       setSelectedInterface(null);
@@ -90,33 +90,29 @@ const WireGuardDashboard = ({ interfaces }: WireGuardDashboardProps) => {
     toast: WIREGUARD_TOAST_META,
   });
 
-  const addPeer = useCallMutation(linuxio.wireguard.add_peer, {
+  const addPeer = linuxio.wireguard.add_peer.useMutation({
     success: (_result, variables) =>
       toast.success(`Peer added to '${variables.interfaceName}'`),
     error: "Failed to add peer",
     toast: WIREGUARD_TOAST_META,
   });
 
-  const upInterface = useCallMutation(
-    linuxio.wireguard.up_interface,
+  const upInterface = linuxio.wireguard.up_interface.useMutation(
     interfaceActionConfig("turned on.", "Failed to bring interface up"),
   );
 
-  const downInterface = useCallMutation(
-    linuxio.wireguard.down_interface,
+  const downInterface = linuxio.wireguard.down_interface.useMutation(
     interfaceActionConfig("turned off.", "Failed to bring interface down"),
   );
 
-  const enableInterface = useCallMutation(
-    linuxio.wireguard.enable_interface,
+  const enableInterface = linuxio.wireguard.enable_interface.useMutation(
     interfaceActionConfig(
       "enabled for boot persistence.",
       "Failed to enable boot persistence",
     ),
   );
 
-  const disableInterface = useCallMutation(
-    linuxio.wireguard.disable_interface,
+  const disableInterface = linuxio.wireguard.disable_interface.useMutation(
     interfaceActionConfig(
       "disabled for boot persistence.",
       "Failed to disable boot persistence",

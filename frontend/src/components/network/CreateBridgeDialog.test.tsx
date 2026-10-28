@@ -45,16 +45,20 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
+  const { mockMutationHooks } = await import("@/test/mutationHooks");
   return {
     ...actual,
-    linuxio: {
-      ...actual.linuxio,
-      network: {
-        ...actual.linuxio.network,
-        create_bridge: { route: "network.create_bridge" },
-        get_bridge_options: { route: "network.get_bridge_options" },
+    linuxio: mockMutationHooks(
+      {
+        ...actual.linuxio,
+        network: {
+          ...actual.linuxio.network,
+          create_bridge: { route: "network.create_bridge" },
+          get_bridge_options: { route: "network.get_bridge_options" },
+        },
       },
-    },
+      mocks.useCallMutation,
+    ),
     useCallMutation: mocks.useCallMutation,
   };
 });

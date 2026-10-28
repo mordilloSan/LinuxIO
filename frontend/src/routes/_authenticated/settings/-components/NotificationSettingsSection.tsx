@@ -4,7 +4,6 @@ import { useState } from "react";
 
 import {
   linuxio,
-  useCallMutation,
   type NotificationSettings,
   type NotificationSettingsView,
 } from "@/api";
@@ -52,11 +51,11 @@ const NotificationSettingsSection = () => {
   const { data, isPending, error } = useQuery(linuxio.alerts.get_notifications);
   // null until edited: the saved settings are shown as they are.
   const [draft, setDraft] = useState<Draft | null>(null);
-  const save = useCallMutation(linuxio.alerts.set_notifications, {
+  const save = linuxio.alerts.set_notifications.useMutation({
     success: "Notification settings saved",
     error: "Failed to save notification settings",
   });
-  const test = useCallMutation(linuxio.alerts.test_notifications, {
+  const test = linuxio.alerts.test_notifications.useMutation({
     success: "Test notification sent",
     error: "Test notification failed",
   });

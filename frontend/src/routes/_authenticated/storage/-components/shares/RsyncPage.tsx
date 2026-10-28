@@ -8,7 +8,6 @@ import {
   linuxio,
   type RsyncConfig,
   type RsyncStatus,
-  useCallMutation,
 } from "@/api";
 import PathPickerField from "@/components/pathpicker/PathPickerField";
 import { SettingsGrid } from "@/components/settings/SettingsSectionForm";
@@ -52,12 +51,9 @@ function RsyncForm({
   const handleFailure = (failure: Error) => {
     onError(failure.message);
     // A failed save can still have stopped the daemon or written its config.
-    void invalidateOperationQueries(
-      queryClient,
-      linuxio.shares.save_rsync.route,
-    );
+    void invalidateOperationQueries(queryClient, "shares.save_rsync");
   };
-  const save = useCallMutation(linuxio.shares.save_rsync, {
+  const save = linuxio.shares.save_rsync.useMutation({
     success: (next) => {
       updateStatus(next);
       setPassword("");
@@ -65,7 +61,7 @@ function RsyncForm({
     error: handleFailure,
     options: { gcTime: 0 },
   });
-  const stop = useCallMutation(linuxio.shares.stop_rsync, {
+  const stop = linuxio.shares.stop_rsync.useMutation({
     success: updateStatus,
     error: handleFailure,
   });

@@ -11,18 +11,18 @@ import (
 var api = apischema.Bindings(
 	apischema.Call[apischema.RsyncSSHRequest, apischema.RsyncSSHStatus]("shares.get_rsync_ssh", apischema.RetrySafe(), apischema.Privileged()).Handle(handleGetRsyncSSH),
 	apischema.Call[apischema.NoRequest, apischema.RsyncStatus]("shares.get_rsync", apischema.RetrySafe(), apischema.Privileged()).Handle(handleGetRsync),
-	apischema.Call[apischema.RsyncSaveRequest, apischema.RsyncStatus]("shares.save_rsync", apischema.Privileged()).Handle(handleSaveRsync),
-	apischema.Call[apischema.NoRequest, apischema.RsyncStatus]("shares.stop_rsync", apischema.Privileged()).Handle(handleStopRsync),
+	apischema.Mutation("shares.save_rsync", handleSaveRsync, apischema.Privileged()),
+	apischema.Mutation("shares.stop_rsync", handleStopRsync, apischema.Privileged()),
 	// NFS exports (server-side shares via /etc/exports)
 	apischema.Call[apischema.NoRequest, []apischema.NFSExport]("shares.list_nfs_shares", apischema.RetrySafe()).Handle(handleListNFSShares),
-	apischema.Call[apischema.ShareNFSRequest, apischema.SuccessPathResponse]("shares.create_nfs_share").Handle(handleCreateNFSShare),
-	apischema.Call[apischema.ShareNFSRequest, apischema.SuccessPathResponse]("shares.update_nfs_share").Handle(handleUpdateNFSShare),
-	apischema.Call[apischema.PathRequest, apischema.SuccessResponse]("shares.delete_nfs_share").Handle(handleDeleteNFSShare),
+	apischema.Mutation("shares.create_nfs_share", handleCreateNFSShare),
+	apischema.Mutation("shares.update_nfs_share", handleUpdateNFSShare),
+	apischema.Mutation("shares.delete_nfs_share", handleDeleteNFSShare),
 	// Samba shares (via /etc/samba/smb.conf)
 	apischema.Call[apischema.NoRequest, []apischema.SambaShare]("shares.list_samba_shares", apischema.RetrySafe()).Handle(handleListSambaShares),
-	apischema.Call[apischema.ShareSambaRequest, apischema.SuccessNameResponse]("shares.create_samba_share").Handle(handleCreateSambaShare),
-	apischema.Call[apischema.ShareUpdateSambaRequest, apischema.SuccessNameResponse]("shares.update_samba_share").Handle(handleUpdateSambaShare),
-	apischema.Call[apischema.NameRequest, apischema.SuccessResponse]("shares.delete_samba_share").Handle(handleDeleteSambaShare),
+	apischema.Mutation("shares.create_samba_share", handleCreateSambaShare),
+	apischema.Mutation("shares.update_samba_share", handleUpdateSambaShare),
+	apischema.Mutation("shares.delete_samba_share", handleDeleteSambaShare),
 )
 
 var Routes = api.Routes()

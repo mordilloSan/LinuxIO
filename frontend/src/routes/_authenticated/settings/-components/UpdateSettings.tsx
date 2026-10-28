@@ -11,7 +11,6 @@ import {
   type AutoUpdateState,
   type Timer,
   linuxio,
-  useCallMutation,
 } from "@/api";
 import { cardBodyToggleProps } from "@/components/cards/cardBodyToggle";
 import CardIconHeader from "@/components/cards/CardIconHeader";
@@ -218,7 +217,7 @@ export const useUpdateSettingsState = (enabled = true) => {
     setExcludeInputOverride(null);
   };
   const { mutate: setAutoUpdates, isPending: isSettingAutoUpdates } =
-    useCallMutation(linuxio.updates.set_auto_updates, {
+    linuxio.updates.set_auto_updates.useMutation({
       success: () => {
         reset();
         toast.success("Automatic Updates Settings saved");

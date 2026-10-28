@@ -1,6 +1,7 @@
 package wireguard
 
 import (
+	"bytes"
 	"fmt"
 	"log/slog"
 	"os"
@@ -10,6 +11,8 @@ import (
 	"strings"
 
 	"gopkg.in/ini.v1"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 )
 
 const (
@@ -113,6 +116,17 @@ func ParseWireGuardConfig(path string) (WireGuardConfig, error) {
 	return cfg, nil
 }
 
+// saveINI replaces path with f atomically and readable by root only: the
+// configs hold private keys, and a crash mid-write must not leave half a
+// tunnel config behind.
+func saveINI(f *ini.File, path string) error {
+	var buf bytes.Buffer
+	if _, err := f.WriteTo(&buf); err != nil {
+		return err
+	}
+	return atomicfile.Write(path, buf.Bytes(), 0o600)
+}
+
 func WriteWireGuardConfig(path string, cfg WireGuardConfig) error {
 	iniFile := ini.Empty(ini.LoadOptions{
 		AllowNonUniqueSections: true,
@@ -159,7 +173,7 @@ func WriteWireGuardConfig(path string, cfg WireGuardConfig) error {
 	}
 
 	// Save file
-	if err := iniFile.SaveTo(path); err != nil {
+	if err := saveINI(iniFile, path); err != nil {
 		return fmt.Errorf("save config: %w", err)
 	}
 	slog.Debug("wrote WireGuard config", "component", "wireguard", "subsystem", "config", "path", path)

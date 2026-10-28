@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { linuxio, type NetworkBridgeCandidate, useCallMutation } from "@/api";
+import { linuxio, type NetworkBridgeCandidate } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
@@ -72,9 +72,8 @@ const CreateBridgeDialog = ({
     "";
   const effectiveBridgeName = bridgeName || defaultBridgeName(selectedMember);
 
-  const { mutate: createBridge, isPending: isCreating } = useCallMutation(
-    linuxio.network.create_bridge,
-    {
+  const { mutate: createBridge, isPending: isCreating } =
+    linuxio.network.create_bridge.useMutation({
       success: (result, request) => {
         toast.success(`Bridge "${result.name || request.name}" created`);
         setMember("");
@@ -83,8 +82,7 @@ const CreateBridgeDialog = ({
       },
       error: "Failed to create bridge",
       toast: NETWORK_TOAST_META,
-    },
-  );
+    });
 
   const handleClose = () => {
     if (isCreating) return;

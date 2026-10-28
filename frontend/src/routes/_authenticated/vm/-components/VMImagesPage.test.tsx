@@ -23,31 +23,36 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
+  const { mockMutationHooks } = await import("@/test/mutationHooks");
+  const useCallMutation = () => ({ mutate: mocks.remove, isPending: false });
   return {
     ...actual,
-    useCallMutation: () => ({ mutate: mocks.remove, isPending: false }),
-    linuxio: {
-      ...actual.linuxio,
-      virt: {
-        ...actual.linuxio.virt,
-        preflight: () => ({
-          queryKey: ["test-preflight"],
-          queryFn: async () => ({
-            managedPaths: { cloudImages: "/vm-disks", isos: "/isos" },
+    useCallMutation,
+    linuxio: mockMutationHooks(
+      {
+        ...actual.linuxio,
+        virt: {
+          ...actual.linuxio.virt,
+          preflight: () => ({
+            queryKey: ["test-preflight"],
+            queryFn: async () => ({
+              managedPaths: { cloudImages: "/vm-disks", isos: "/isos" },
+            }),
           }),
-        }),
-        templates: {
-          queryKey: ["test-templates"],
-          queryFn: () => mocks.list(),
-        },
-        template_download: {
-          useTaskStreamAction: () => ({
-            mutate: mocks.download,
-            isPending: false,
-          }),
+          templates: {
+            queryKey: ["test-templates"],
+            queryFn: () => mocks.list(),
+          },
+          template_download: {
+            useTaskStreamAction: () => ({
+              mutate: mocks.download,
+              isPending: false,
+            }),
+          },
         },
       },
-    },
+      useCallMutation,
+    ),
   };
 });
 

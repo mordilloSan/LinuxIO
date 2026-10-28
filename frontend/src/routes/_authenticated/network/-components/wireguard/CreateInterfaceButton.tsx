@@ -4,7 +4,6 @@ import { useCallback, useState } from "react";
 import {
   getMutationErrorMessage,
   linuxio,
-  useCallMutation,
   type WireGuardInterface,
 } from "@/api";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
@@ -51,7 +50,7 @@ const CreateInterfaceButton = ({ interfaces }: CreateInterfaceButtonProps) => {
   // Task action for adding an interface; invalidation comes from the
   // OPERATION_QUERY_INVALIDATIONS manifest.
   const { mutate: addInterface, isPending: isAddingInterface } =
-    useCallMutation(linuxio.wireguard.add_interface, {
+    linuxio.wireguard.add_interface.useMutation({
       error: (error) => {
         setError(
           getMutationErrorMessage(

@@ -33,58 +33,63 @@ vi.mock("sonner", () => ({
 
 vi.mock("@/api", async () => {
   const actual = await vi.importActual<typeof import("@/api")>("@/api");
+  const { mockMutationHooks } = await import("@/test/mutationHooks");
+  const useCallMutation = (endpoint: { route?: string }, config: unknown) => {
+    if (endpoint.route === "config.set") {
+      apiMocks.configSetUseAction(config);
+    } else if (endpoint.route === "config.set_ui") {
+      apiMocks.uiSetUseAction(config);
+    }
+    return {
+      mutate:
+        endpoint.route === "config.set_ui"
+          ? apiMocks.setUIRemote
+          : apiMocks.setConfigRemote,
+      mutateAsync:
+        endpoint.route === "config.set_ui"
+          ? apiMocks.setUIRemote
+          : apiMocks.setConfigRemote,
+    };
+  };
   return {
     ...actual,
     call: apiMocks.configGetCall,
-    useCallMutation: (endpoint: { route?: string }, config: unknown) => {
-      if (endpoint.route === "config.set") {
-        apiMocks.configSetUseAction(config);
-      } else if (endpoint.route === "config.set_ui") {
-        apiMocks.uiSetUseAction(config);
-      }
-      return {
-        mutate:
-          endpoint.route === "config.set_ui"
-            ? apiMocks.setUIRemote
-            : apiMocks.setConfigRemote,
-        mutateAsync:
-          endpoint.route === "config.set_ui"
-            ? apiMocks.setUIRemote
-            : apiMocks.setConfigRemote,
-      };
-    },
+    useCallMutation,
     useStreamMux: apiMocks.useStreamMux,
-    linuxio: {
-      ...actual.linuxio,
-      config: {
-        get: {
-          queryKey: ["linuxio", "config", "get"],
-          queryFn: () =>
-            apiMocks.configGetCall("config.get", undefined, {
-              staleTime: 0,
-            }),
+    linuxio: mockMutationHooks(
+      {
+        ...actual.linuxio,
+        config: {
+          get: {
+            queryKey: ["linuxio", "config", "get"],
+            queryFn: () =>
+              apiMocks.configGetCall("config.get", undefined, {
+                staleTime: 0,
+              }),
+          },
+          get_ui: {
+            queryKey: ["linuxio", "config", "get_ui"],
+            queryFn: () =>
+              apiMocks.uiGetCall("config.get_ui", undefined, {
+                staleTime: 0,
+              }),
+          },
+          set: {
+            route: "config.set",
+          },
+          set_ui: {
+            route: "config.set_ui",
+          },
         },
-        get_ui: {
-          queryKey: ["linuxio", "config", "get_ui"],
-          queryFn: () =>
-            apiMocks.uiGetCall("config.get_ui", undefined, {
-              staleTime: 0,
-            }),
-        },
-        set: {
-          route: "config.set",
-        },
-        set_ui: {
-          route: "config.set_ui",
+        docker: {
+          ...actual.linuxio.docker,
+          list_compose_projects: {
+            queryKey: apiMocks.dockerListComposeProjectsQueryKey,
+          },
         },
       },
-      docker: {
-        ...actual.linuxio.docker,
-        list_compose_projects: {
-          queryKey: apiMocks.dockerListComposeProjectsQueryKey,
-        },
-      },
-    },
+      useCallMutation,
+    ),
   };
 });
 const { LinuxIOError } = await import("@/api");

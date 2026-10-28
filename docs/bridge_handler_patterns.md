@@ -56,7 +56,7 @@ Handlers do not receive a universal emitter. Calls and Mutations use
 `func(context.Context, net.Conn, Request) error` for the lifetime of the stream.
 Legacy Task runners use
 `func(context.Context, *bridgeipc.Task, Request) (Result, error)`; add no new
-ones, a new long or progress-reporting write is a Mutation. The compiler checks
+ones: a new write, quick or long, is a Mutation. The compiler checks
 each terminal result against its route declaration. `Progress[T]()` (on Task
 routes `WithTaskProgress[T]()`) declares the route-specific detail carried by
 the common `TaskProgress<T>` envelope. Detail types implement

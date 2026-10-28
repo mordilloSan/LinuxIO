@@ -16,7 +16,7 @@ func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 	return apischema.Bindings(
 		apischema.Call[apischema.NoRequest, []apischema.NetworkInterface]("network.get_network_info").Handle(h.handleGetNetworkInfo),
 		apischema.Call[apischema.NoRequest, apischema.NetworkBridgeOptions]("network.get_bridge_options", apischema.RetrySafe(), apischema.Privileged()).Handle(h.handleGetBridgeOptions),
-		apischema.Call[apischema.NetworkBridgeCreateRequest, apischema.NetworkBridgeCreateResult]("network.create_bridge", apischema.Privileged()).Handle(h.handleCreateBridge),
+		apischema.Mutation("network.create_bridge", h.handleCreateBridge, apischema.Privileged()),
 		apischema.Call[apischema.NetworkBridgeHandoffRequest, apischema.NetworkBridgeHandoffStatus]("network.start_bridge_handoff", apischema.Privileged()).Handle(h.handleStartBridgeHandoff),
 		apischema.Call[apischema.NetworkBridgeHandoffOperationRequest, apischema.NetworkBridgeHandoffStatus]("network.get_bridge_handoff", apischema.RetrySafe(), apischema.Privileged()).Handle(h.handleGetBridgeHandoff),
 		apischema.Call[apischema.NetworkBridgeHandoffOperationRequest, apischema.NetworkBridgeHandoffStatus]("network.confirm_bridge_handoff", apischema.RetrySafe(), apischema.Privileged()).Handle(h.handleConfirmBridgeHandoff),
@@ -24,13 +24,13 @@ func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 		// NetworkManager owns an accepted configuration change. Applying it can
 		// sever this bridge, so transport loss is an expected ambiguous outcome and
 		// callers must not retry the mutation automatically.
-		apischema.Call[apischema.IPv4ManualRequest, apischema.NoResponse]("network.set_ipv4_manual").HandleVoid(h.handleSetIPv4Manual),
-		apischema.Call[apischema.IPv4DHCPRequest, apischema.NoResponse]("network.set_ipv4").HandleVoid(h.handleSetIPv4),
-		apischema.Call[apischema.InterfaceMethodRequest, apischema.NoResponse]("network.set_ipv6").HandleVoid(h.handleSetIPv6),
-		apischema.Call[apischema.InterfaceMTURequest, apischema.NoResponse]("network.set_mtu").HandleVoid(h.handleSetMTU),
-		apischema.Call[apischema.InterfaceOptionalRequest, apischema.NoResponse]("network.set_optional").HandleVoid(h.handleSetOptional),
-		apischema.Call[apischema.InterfaceRequest, apischema.NoResponse]("network.enable_connection").HandleVoid(h.handleEnableConnection),
-		apischema.Call[apischema.InterfaceRequest, apischema.NoResponse]("network.disable_connection").HandleVoid(h.handleDisableConnection),
+		apischema.MutationVoid("network.set_ipv4_manual", h.handleSetIPv4Manual),
+		apischema.MutationVoid("network.set_ipv4", h.handleSetIPv4),
+		apischema.MutationVoid("network.set_ipv6", h.handleSetIPv6),
+		apischema.MutationVoid("network.set_mtu", h.handleSetMTU),
+		apischema.MutationVoid("network.set_optional", h.handleSetOptional),
+		apischema.MutationVoid("network.enable_connection", h.handleEnableConnection),
+		apischema.MutationVoid("network.disable_connection", h.handleDisableConnection),
 	)
 }
 

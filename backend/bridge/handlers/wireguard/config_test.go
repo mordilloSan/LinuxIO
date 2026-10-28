@@ -49,6 +49,9 @@ func TestWriteWireGuardConfigPersistsPostHooks(t *testing.T) {
 	if err := WriteWireGuardConfig(path, cfg); err != nil {
 		t.Fatalf("WriteWireGuardConfig returned error: %v", err)
 	}
+	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("config mode = %v, %v; want 0600", info.Mode().Perm(), err)
+	}
 
 	got, err := ParseWireGuardConfig(path)
 	if err != nil {

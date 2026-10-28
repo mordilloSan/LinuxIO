@@ -28,7 +28,7 @@ func TestRenderClientEmitsCallsAndSkipsChannels(t *testing.T) {
 		`get_programs: defineCall("monitoring.get_programs")`,
 		`start_container: defineCallWithRequest("docker.start_container")`,
 		`list_containers: defineCall("docker.list_containers")`,
-		`set_hostname: defineCallWithRequest("hostname.set_hostname")`,
+		`inspect_container: defineCallWithRequest("docker.inspect_container")`,
 	} {
 		if !strings.Contains(out, expected) {
 			t.Fatalf("generated client.ts is missing Call %s", expected)
@@ -44,15 +44,15 @@ func TestRenderClientEmitsRequestObjectEndpoints(t *testing.T) {
 		`get_ntp_servers: defineCall("datetime.get_ntp_servers")`,
 		`get_ntp_status: defineCall("datetime.get_ntp_status")`,
 		`get_timezone: defineCall("datetime.get_timezone")`,
-		`set_ntp: defineCallWithRequest("datetime.set_ntp")`,
-		`set_ntp_servers: defineCallWithRequest("datetime.set_ntp_servers")`,
-		`set_server_time: defineCallWithRequest("datetime.set_server_time")`,
-		`set_timezone: defineCallWithRequest("datetime.set_timezone")`,
+		`set_ntp: defineMutation("datetime", "set_ntp", { kind: "field", field: "enabled" })`,
+		`set_ntp_servers: defineMutation("datetime", "set_ntp_servers", { kind: "field", field: "servers" })`,
+		`set_server_time: defineMutation("datetime", "set_server_time", { kind: "field", field: "isoTime" })`,
+		`set_timezone: defineMutation("datetime", "set_timezone", { kind: "field", field: "timezone" })`,
 		`start_container: defineCallWithRequest("docker.start_container")`,
 		`system_prune: defineCallWithRequest("docker.system_prune")`,
 		`update_container: defineMutation("docker", "update_container", { kind: "field", field: "containerId" })`,
 		`import { defineMutation } from "../mutation-react-query";`,
-		`set_hostname: defineCallWithRequest("hostname.set_hostname")`,
+		`set_hostname: defineMutation("hostname", "set_hostname", { kind: "field", field: "hostname" })`,
 		`compose: createTaskEndpoint("docker", "compose", { kind: "object" })`,
 		`archive: createTaskEndpoint("filebrowser", "archive", { kind: "object" })`,
 		`validate_compose: defineCallWithRequest("docker.validate_compose")`,
@@ -135,7 +135,7 @@ func TestRenderRouteMetadataIncludesStreamOnlyRoutes(t *testing.T) {
 		`"docker.logs.follow": "duplex"`,
 		`"logs.general.follow": "duplex"`,
 		`"logs.service.follow": "duplex"`,
-		`"datetime.set_ntp": "call"`,
+		`"datetime.set_ntp": "mutation"`,
 	} {
 		if !strings.Contains(out, expected) {
 			t.Fatalf("generated route metadata missing %s", expected)
@@ -157,7 +157,7 @@ func TestRenderTypesCoversCoreRouteShapes(t *testing.T) {
 	for _, expected := range []string{
 		`export interface LinuxIOCallSchema`,
 		`"datetime.get_timezone": { request: void; result: string };`,
-		`"datetime.set_timezone": { request: TimezoneRequest; result: void };`,
+		"set_timezone: { input: [timezone: string]; request: TimezoneRequest; result: void };",
 		`"system.get_cpu_info": { request: void; result: CPUInfoResponse };`,
 		`"monitoring.get_live": { request: void; result: MonitoringLive };`,
 		"export interface MonitoringLive",

@@ -19,8 +19,8 @@ func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 	return apischema.Bindings(
 		apischema.Call[apischema.NoRequest, apischema.AppConfig]("config.get", apischema.RetrySafe()).Handle(handlers.handleGetConfig),
 		apischema.Call[apischema.NoRequest, apischema.UIConfig]("config.get_ui", apischema.RetrySafe()).Handle(handlers.handleGetUIConfig),
-		apischema.Call[apischema.ConfigSetPayload, apischema.ConfigSetResult]("config.set").Handle(handlers.handleSetConfig),
-		apischema.Call[apischema.ConfigUISetPayload, apischema.ConfigSetResult]("config.set_ui").Handle(handlers.handleSetUIConfig),
+		apischema.Mutation("config.set", handlers.handleSetConfig),
+		apischema.Mutation("config.set_ui", handlers.handleSetUIConfig),
 		apischema.Call[apischema.NoRequest, apischema.LoggingDebugState]("logging.get_debug", apischema.RetrySafe(), apischema.Privileged()).Handle(handleGetDebug),
 		apischema.Call[apischema.LoggingDebugRequest, apischema.LoggingDebugState]("logging.set_debug", apischema.Privileged()).Handle(handleSetDebug),
 	)

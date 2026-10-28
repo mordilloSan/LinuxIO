@@ -118,7 +118,7 @@ const DockerDaemonSettingsSection = () => {
     },
     error: "Failed to save Docker daemon settings",
   });
-  const restartMutation = useCallMutation(linuxio.systemd.restart_service, {
+  const restartMutation = linuxio.systemd.restart_service.useMutation({
     success: () => {
       setRestartRequired(false);
       toast.success("Docker restarted.");

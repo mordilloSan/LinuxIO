@@ -58,7 +58,7 @@ describe("dashboard VirtualMachines card", () => {
 
   it("offers state-aware power actions from a row's context menu", async () => {
     const request = vi
-      .spyOn(core, "request")
+      .spyOn(core, "mutationRequest")
       .mockReturnValue(new Promise(() => undefined));
     const { user } = render(<VirtualMachinesCard />);
 

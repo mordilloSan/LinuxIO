@@ -21,7 +21,6 @@ import {
   type AccountUserLogin,
   type AccountUserProcess,
   linuxio,
-  useCallMutation,
 } from "@/api";
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
@@ -493,14 +492,13 @@ export const UserActivityCard = ({ username }: { username: string }) => {
   const loginRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const dismissedAlertRef = useRef("");
   const [flashingLoginKey, setFlashingLoginKey] = useState("");
-  const { mutate: dismissFailedLoginAlert } = useCallMutation(
-    linuxio.system.dismiss_failed_login_alert,
-  );
+  const { mutate: dismissFailedLoginAlert } =
+    linuxio.system.dismiss_failed_login_alert.useMutation();
   const [pendingKillSession, setPendingKillSession] =
     useState<AccountActiveSession | null>(null);
   const [killError, setKillError] = useState<string>("");
   const { mutate: terminateSession, isPending: terminateIsPending } =
-    useCallMutation(linuxio.accounts.terminate_session, {
+    linuxio.accounts.terminate_session.useMutation({
       success: () => {
         setPendingKillSession(null);
         setKillError("");

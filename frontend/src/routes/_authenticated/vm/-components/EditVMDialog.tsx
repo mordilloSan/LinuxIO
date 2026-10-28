@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, useParams } from "@tanstack/react-router";
 import { useState, type CSSProperties, type SyntheticEvent } from "react";
 
-import { getMutationErrorMessage, linuxio, useCallMutation } from "@/api";
+import { getMutationErrorMessage, linuxio } from "@/api";
 import type { VirtualMachine, VMFirmware, VMUpdateRequest } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
@@ -58,7 +58,7 @@ function EditVMForm({
     (candidate) => candidate.type === "bridge",
   );
 
-  const updateMutation = useCallMutation(linuxio.virt.update, {
+  const updateMutation = linuxio.virt.update.useMutation({
     // Invalidating virt.get would refetch a renamed VM under its old name
     // while that route is still mounted, so the cache takes the result.
     invalidates: () => [],

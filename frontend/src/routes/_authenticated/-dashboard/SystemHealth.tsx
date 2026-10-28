@@ -9,7 +9,7 @@ import {
   type MouseEvent,
 } from "react";
 
-import { type AccountUserLogin, linuxio, useCallMutation } from "@/api";
+import { type AccountUserLogin, linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
@@ -128,10 +128,10 @@ const HealthStats = ({ onOpenFailedLogins }: FailedLoginsProps) => {
   const updates = usePendingUpdates();
 
   const { mutate: dismissUncleanShutdown, isPending: dismissingUnclean } =
-    useCallMutation(linuxio.system.dismiss_unclean_shutdown);
+    linuxio.system.dismiss_unclean_shutdown.useMutation();
 
   const { mutate: dismissFailedLoginAlert, isPending: dismissingFailedLogin } =
-    useCallMutation(linuxio.system.dismiss_failed_login_alert);
+    linuxio.system.dismiss_failed_login_alert.useMutation();
 
   const items: HealthItem[] = [];
   const failedLoginAlert = health?.failedLoginAlert;
@@ -536,7 +536,7 @@ const FailedLoginsDialog = ({ onClose, open }: FailedLoginsDialogProps) => {
   });
 
   const { mutate: dismissFailedLoginAlert, isPending: dismissingFailedLogin } =
-    useCallMutation(linuxio.system.dismiss_failed_login_alert, {
+    linuxio.system.dismiss_failed_login_alert.useMutation({
       success: () => {
         onClose();
       },

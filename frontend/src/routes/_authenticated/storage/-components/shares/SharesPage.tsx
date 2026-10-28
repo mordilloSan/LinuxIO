@@ -533,12 +533,12 @@ const FolderShareDialog = ({
   const quotasSet = useCallMutation(linuxio.storage.btrfs_set_quotas);
   const limitSet = useCallMutation(linuxio.storage.btrfs_qgroup_limit);
   const ruleSet = useCallMutation(linuxio.storage.btrfs_snapshot_rule_set);
-  const sambaCreate = useCallMutation(linuxio.shares.create_samba_share);
-  const sambaUpdate = useCallMutation(linuxio.shares.update_samba_share);
-  const sambaDelete = useCallMutation(linuxio.shares.delete_samba_share);
-  const nfsCreate = useCallMutation(linuxio.shares.create_nfs_share);
-  const nfsUpdate = useCallMutation(linuxio.shares.update_nfs_share);
-  const nfsDelete = useCallMutation(linuxio.shares.delete_nfs_share);
+  const sambaCreate = linuxio.shares.create_samba_share.useMutation();
+  const sambaUpdate = linuxio.shares.update_samba_share.useMutation();
+  const sambaDelete = linuxio.shares.delete_samba_share.useMutation();
+  const nfsCreate = linuxio.shares.create_nfs_share.useMutation();
+  const nfsUpdate = linuxio.shares.update_nfs_share.useMutation();
+  const nfsDelete = linuxio.shares.delete_nfs_share.useMutation();
 
   const isPending =
     subvolumeCreate.isPending ||

@@ -4900,11 +4900,6 @@ export interface LinuxIOSchema {
 
 /** Type-only contracts for migrated Call routes. */
 export interface LinuxIOCallSchema {
-  "accounts.change_password": { request: ChangePasswordRequest; result: void };
-  "accounts.create_group": { request: CreateGroupRequest; result: void };
-  "accounts.create_user": { request: CreateUserRequest; result: void };
-  "accounts.delete_group": { request: GroupNameRequest; result: void };
-  "accounts.delete_user": { request: UsernameRequest; result: void };
   "accounts.get_user_details": {
     request: UsernameRequest;
     result: AccountUserDetails;
@@ -4916,45 +4911,17 @@ export interface LinuxIOCallSchema {
     result: AccountUserLogin[];
   };
   "accounts.list_users": { request: void; result: AccountUser[] };
-  "accounts.lock_user": { request: UsernameRequest; result: void };
-  "accounts.modify_group_members": {
-    request: ModifyGroupMembersRequest;
-    result: void;
-  };
-  "accounts.modify_user": { request: ModifyUserRequest; result: void };
-  "accounts.terminate_session": {
-    request: TerminateSessionRequest;
-    result: void;
-  };
-  "accounts.unlock_user": { request: UsernameRequest; result: void };
-  "alerts.dismiss": { request: AlertDismissRequest; result: AlertList };
   "alerts.get_notifications": {
     request: void;
     result: NotificationSettingsView;
   };
   "alerts.list": { request: void; result: AlertList };
-  "alerts.mark_all_seen": { request: void; result: AlertList };
-  "alerts.mark_seen": { request: AlertIDsRequest; result: AlertList };
-  "alerts.set_notifications": {
-    request: NotificationSettings;
-    result: NotificationSettingsView;
-  };
-  "alerts.test_notifications": { request: void; result: SuccessResponse };
   "config.get": { request: void; result: AppConfig };
   "config.get_ui": { request: void; result: UIConfig };
-  "config.set": { request: ConfigSetPayload; result: ConfigSetResult };
-  "config.set_ui": { request: ConfigUISetPayload; result: ConfigSetResult };
-  "control.logoff": { request: SessionIDRequest; result: void };
-  "control.power_off": { request: void; result: void };
-  "control.reboot": { request: void; result: void };
   "control.version": { request: void; result: VersionResponse };
   "datetime.get_ntp_servers": { request: void; result: string[] };
   "datetime.get_ntp_status": { request: void; result: boolean };
   "datetime.get_timezone": { request: void; result: string };
-  "datetime.set_ntp": { request: EnabledRequest; result: void };
-  "datetime.set_ntp_servers": { request: NTPServersRequest; result: void };
-  "datetime.set_server_time": { request: ISOTimeRequest; result: void };
-  "datetime.set_timezone": { request: TimezoneRequest; result: void };
   "docker.check_container_update": {
     request: ContainerIDRequest;
     result: DockerUpdateCheckResult;
@@ -5105,17 +5072,8 @@ export interface LinuxIOCallSchema {
   };
   "filebrowser.trash_list": { request: void; result: TrashListResponse };
   "filebrowser.users_groups": { request: void; result: UsersGroupsResponse };
-  "hostname.set_hostname": { request: HostnameRequest; result: void };
   "indexer.get_config": { request: void; result: IndexerConfig };
   "indexer.get_status": { request: void; result: IndexerDaemonStatus };
-  "indexer.set_config": {
-    request: IndexerConfigPatch;
-    result: IndexerConfigSetResult;
-  };
-  "indexer.set_timer_interval": {
-    request: IntervalRequest;
-    result: IndexerTimerSetResult;
-  };
   "logging.get_debug": { request: void; result: LoggingDebugState };
   "logging.set_debug": {
     request: LoggingDebugRequest;
@@ -5164,29 +5122,10 @@ export interface LinuxIOCallSchema {
     result: MonitoringProgramsResponse;
   };
   "monitoring.get_status": { request: void; result: MonitoringStatus };
-  "monitoring.maintain_database": {
-    request: void;
-    result: MonitoringDatabaseResult;
-  };
-  "monitoring.refresh_smart": {
-    request: void;
-    result: MonitoringSmartRefreshResult;
-  };
-  "monitoring.restart": { request: void; result: void };
-  "monitoring.set_config": {
-    request: MonitoringConfigPatch;
-    result: MonitoringConfigSetResult;
-  };
   "network.confirm_bridge_handoff": {
     request: NetworkBridgeHandoffOperationRequest;
     result: NetworkBridgeHandoffStatus;
   };
-  "network.create_bridge": {
-    request: NetworkBridgeCreateRequest;
-    result: NetworkBridgeCreateResult;
-  };
-  "network.disable_connection": { request: InterfaceRequest; result: void };
-  "network.enable_connection": { request: InterfaceRequest; result: void };
   "network.get_bridge_handoff": {
     request: NetworkBridgeHandoffOperationRequest;
     result: NetworkBridgeHandoffStatus;
@@ -5197,61 +5136,17 @@ export interface LinuxIOCallSchema {
     request: NetworkBridgeHandoffOperationRequest;
     result: NetworkBridgeHandoffStatus;
   };
-  "network.set_ipv4": { request: IPv4DHCPRequest; result: void };
-  "network.set_ipv4_manual": { request: IPv4ManualRequest; result: void };
-  "network.set_ipv6": { request: InterfaceMethodRequest; result: void };
-  "network.set_mtu": { request: InterfaceMTURequest; result: void };
-  "network.set_optional": { request: InterfaceOptionalRequest; result: void };
   "network.start_bridge_handoff": {
     request: NetworkBridgeHandoffRequest;
     result: NetworkBridgeHandoffStatus;
   };
-  "power.disable": { request: void; result: PowerStatus };
   "power.get_status": { request: void; result: PowerStatus };
-  "power.set_profile": { request: ProfileRequest; result: PowerStatus };
-  "power.start": { request: void; result: PowerStatus };
-  "schedules.create": {
-    request: ScheduleCreateRequest;
-    result: ScheduleStatus;
-  };
-  "schedules.delete": { request: ScheduleIDRequest; result: void };
-  "schedules.disable": { request: ScheduleIDRequest; result: void };
-  "schedules.enable": { request: ScheduleIDRequest; result: void };
   "schedules.get": { request: ScheduleIDRequest; result: ScheduleStatus };
   "schedules.list": { request: void; result: SchedulesListResult };
-  "schedules.run_now": { request: ScheduleIDRequest; result: void };
-  "schedules.stop": { request: ScheduleStopRequest; result: void };
-  "schedules.update": {
-    request: ScheduleUpdateRequest;
-    result: ScheduleStatus;
-  };
-  "shares.create_nfs_share": {
-    request: ShareNFSRequest;
-    result: SuccessPathResponse;
-  };
-  "shares.create_samba_share": {
-    request: ShareSambaRequest;
-    result: SuccessNameResponse;
-  };
-  "shares.delete_nfs_share": { request: PathRequest; result: SuccessResponse };
-  "shares.delete_samba_share": {
-    request: NameRequest;
-    result: SuccessResponse;
-  };
   "shares.get_rsync": { request: void; result: RsyncStatus };
   "shares.get_rsync_ssh": { request: RsyncSSHRequest; result: RsyncSSHStatus };
   "shares.list_nfs_shares": { request: void; result: NFSExport[] };
   "shares.list_samba_shares": { request: void; result: SambaShare[] };
-  "shares.save_rsync": { request: RsyncSaveRequest; result: RsyncStatus };
-  "shares.stop_rsync": { request: void; result: RsyncStatus };
-  "shares.update_nfs_share": {
-    request: ShareNFSRequest;
-    result: SuccessPathResponse;
-  };
-  "shares.update_samba_share": {
-    request: ShareUpdateSambaRequest;
-    result: SuccessNameResponse;
-  };
   "storage.btrfs_balance_cancel": {
     request: UUIDRequest;
     result: SuccessResponse;
@@ -5436,14 +5331,6 @@ export interface LinuxIOCallSchema {
     request: MountpointRemoveFstabRequest;
     result: StorageWarningResult;
   };
-  "system.dismiss_failed_login_alert": {
-    request: AlertIDRequest;
-    result: MessageResponse;
-  };
-  "system.dismiss_unclean_shutdown": {
-    request: BootIDRequest;
-    result: MessageResponse;
-  };
   "system.get_capabilities": { request: void; result: CapabilitiesResponse };
   "system.get_cpu_info": { request: void; result: CPUInfoResponse };
   "system.get_gpu_info": { request: void; result: GpuDevice[] };
@@ -5459,62 +5346,25 @@ export interface LinuxIOCallSchema {
     request: FailedLoginEventsRequest;
     result: AccountUserLogin[];
   };
-  "systemd.disable_service": { request: ServiceNameRequest; result: void };
-  "systemd.enable_service": { request: ServiceNameRequest; result: void };
   "systemd.get_unit_info": { request: UnitNameRequest; result: UnitInfo };
   "systemd.list_services": { request: void; result: Service[] };
   "systemd.list_sockets": { request: void; result: Socket[] };
   "systemd.list_timers": { request: void; result: Timer[] };
-  "systemd.mask_service": { request: ServiceNameRequest; result: void };
-  "systemd.reload_service": { request: ServiceNameRequest; result: void };
-  "systemd.reset_failed_service": { request: ServiceNameRequest; result: void };
-  "systemd.restart_service": { request: ServiceNameRequest; result: void };
-  "systemd.start_service": { request: ServiceNameRequest; result: void };
-  "systemd.stop_service": { request: ServiceNameRequest; result: void };
-  "systemd.unmask_service": { request: ServiceNameRequest; result: void };
   "tasks.cancel": { request: TaskIDRequest; result: TaskSnapshot };
   "tasks.get": { request: TaskIDRequest; result: TaskSnapshot };
   "tasks.list": { request: TaskListRequest; result: TaskSnapshot[] };
   "terminal.list_shells": { request: ContainerIDRequest; result: string[] };
-  "updates.apply_offline_updates": {
-    request: void;
-    result: OfflineUpdatesResponse;
-  };
   "updates.get_auto_updates": { request: void; result: AutoUpdateState };
   "updates.get_update_detail": { request: PackageIDRequest; result: Update };
   "updates.get_update_history": { request: void; result: UpdateHistoryRow[] };
   "updates.get_updates_basic": { request: void; result: Update[] };
-  "updates.refresh_cache": { request: void; result: SuccessResponse };
-  "updates.set_auto_updates": {
-    request: AutoUpdateOptions;
-    result: AutoUpdateState;
-  };
-  "virt.delete": { request: VMDeleteRequest; result: VMDeleteResult };
-  "virt.force_off": { request: NameRequest; result: void };
   "virt.get": { request: NameRequest; result: VirtualMachine };
   "virt.list": { request: void; result: VirtualMachine[] };
   "virt.networks": { request: void; result: VMNetwork[] };
   "virt.pools": { request: void; result: VMStoragePool[] };
   "virt.preflight": { request: VMPreflightRequest; result: VMPreflight };
-  "virt.reboot": { request: NameRequest; result: void };
-  "virt.resume": { request: NameRequest; result: void };
-  "virt.set_autostart": { request: VMAutostartRequest; result: VirtualMachine };
-  "virt.shutdown": { request: NameRequest; result: void };
-  "virt.start": { request: NameRequest; result: void };
-  "virt.suspend": { request: NameRequest; result: void };
-  "virt.template_delete": { request: VMTemplateRequest; result: void };
   "virt.templates": { request: void; result: VMTemplateLibrary };
-  "virt.unused_disk_delete": { request: PathRequest; result: void };
   "virt.unused_disks": { request: void; result: VMUnusedDisk[] };
-  "virt.update": { request: VMUpdateRequest; result: VirtualMachine };
-  "wireguard.add_interface": {
-    request: WireGuardAddInterfaceRequest;
-    result: void;
-  };
-  "wireguard.add_peer": { request: WireGuardAddPeerRequest; result: void };
-  "wireguard.disable_interface": { request: NameRequest; result: void };
-  "wireguard.down_interface": { request: NameRequest; result: void };
-  "wireguard.enable_interface": { request: NameRequest; result: void };
   "wireguard.list_interfaces": { request: void; result: WireGuardInterface[] };
   "wireguard.list_peers": { request: InterfaceNameRequest; result: Peer[] };
   "wireguard.peer_config_download": {
@@ -5524,17 +5374,6 @@ export interface LinuxIOCallSchema {
   "wireguard.peer_qrcode": {
     request: WireGuardPeerRequest;
     result: QRCodeResponse;
-  };
-  "wireguard.remove_interface": { request: NameRequest; result: void };
-  "wireguard.remove_peer": { request: WireGuardPeerRequest; result: void };
-  "wireguard.up_interface": { request: NameRequest; result: void };
-  "wireguard.update_interface": {
-    request: WireGuardUpdateInterfaceRequest;
-    result: void;
-  };
-  "wireguard.update_peer": {
-    request: WireGuardUpdatePeerRequest;
-    result: void;
   };
 }
 

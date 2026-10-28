@@ -67,8 +67,7 @@ const DriveDetails = ({
   smartmontoolsReason,
 }: DriveDetailsProps) => {
   const toast = useScopedToast(STORAGE_TOAST_META);
-  const { mutate: refreshSmart } = useCallMutation(
-    linuxio.monitoring.refresh_smart,
+  const { mutate: refreshSmart } = linuxio.monitoring.refresh_smart.useMutation(
     { error: "Failed to refresh SMART data", toast: STORAGE_TOAST_META },
   );
   const [tabIndex, setTabIndex] = useState(0);

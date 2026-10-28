@@ -4,7 +4,6 @@ import { useState } from "react";
 import {
   getMutationErrorMessage,
   linuxio,
-  useCallMutation,
   type VMCreateProgress,
   type VMTemplate,
 } from "@/api";
@@ -63,7 +62,7 @@ const VMImagesPage = () => {
         }),
     },
   });
-  const remove = useCallMutation(linuxio.virt.template_delete, {
+  const remove = linuxio.virt.template_delete.useMutation({
     success: () => {
       setDeleting(null);
       toast.success("Deleted saved template");

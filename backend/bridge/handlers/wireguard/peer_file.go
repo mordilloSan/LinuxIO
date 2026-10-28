@@ -127,7 +127,7 @@ func writePeerFile(path string, p peerFile) error {
 	setKeyIfNotEmpty(peerSec, "Endpoint", p.Endpoint)
 	setKeyIfPositive(peerSec, "PersistentKeepalive", p.PersistentKeepalive)
 
-	if err := iniFile.SaveTo(path); err != nil {
+	if err := saveINI(iniFile, path); err != nil {
 		return fmt.Errorf("save peer config: %w", err)
 	}
 	return nil

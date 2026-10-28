@@ -21,13 +21,16 @@ describe("CreateInterfaceButton", () => {
 
   it("sends the optional host and MTU with the create request", async () => {
     const creates: unknown[] = [];
-    vi.spyOn(core, "request").mockImplementation(
+    vi.spyOn(core, "request").mockImplementation((_handler, command) => {
+      if (command === "get_network_info") {
+        return Promise.resolve([
+          testNetworkInterface({ ipv4: ["192.168.1.2/24"], name: "eth0" }),
+        ]);
+      }
+      return Promise.resolve();
+    });
+    vi.spyOn(core, "mutationRequest").mockImplementation(
       (_handler, command, request) => {
-        if (command === "get_network_info") {
-          return Promise.resolve([
-            testNetworkInterface({ ipv4: ["192.168.1.2/24"], name: "eth0" }),
-          ]);
-        }
         if (command === "add_interface") creates.push(request);
         return Promise.resolve();
       },

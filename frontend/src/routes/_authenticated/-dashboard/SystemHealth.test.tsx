@@ -104,34 +104,41 @@ vi.mock("@tanstack/react-router", () => ({
 
 vi.mock("@/api", async () => {
   const actual = await vi.importActual<typeof import("@/api")>("@/api");
+  const { mockMutationHooks } = await import("@/test/mutationHooks");
+  const useCallMutation = (endpoint: { route?: string }) => ({
+    mutate:
+      endpoint.route === "system.dismiss_failed_login_alert"
+        ? dismissFailedLoginAlert
+        : vi.fn(),
+    isPending: Boolean(endpoint.route && pendingState[endpoint.route]),
+  });
   return {
     ...actual,
-    useCallMutation: (endpoint: { route?: string }) => ({
-      mutate:
-        endpoint.route === "system.dismiss_failed_login_alert"
-          ? dismissFailedLoginAlert
-          : vi.fn(),
-      isPending: Boolean(endpoint.route && pendingState[endpoint.route]),
-    }),
-    linuxio: {
-      system: {
-        get_health_summary: {
-          queryKey: ["linuxio", "system", "get_health_summary"],
+    useCallMutation,
+    linuxio: mockMutationHooks(
+      {
+        system: {
+          get_health_summary: {
+            queryKey: ["linuxio", "system", "get_health_summary"],
+          },
+          list_failed_login_events: () => ({
+            queryKey: ["linuxio", "system", "list_failed_login_events"],
+          }),
+          dismiss_unclean_shutdown: {
+            route: "system.dismiss_unclean_shutdown",
+          },
+          dismiss_failed_login_alert: {
+            route: "system.dismiss_failed_login_alert",
+          },
         },
-        list_failed_login_events: () => ({
-          queryKey: ["linuxio", "system", "list_failed_login_events"],
-        }),
-        dismiss_unclean_shutdown: { route: "system.dismiss_unclean_shutdown" },
-        dismiss_failed_login_alert: {
-          route: "system.dismiss_failed_login_alert",
-        },
-      },
-      updates: {
-        get_updates_basic: {
-          queryKey: ["linuxio", "updates", "get_updates_basic"],
+        updates: {
+          get_updates_basic: {
+            queryKey: ["linuxio", "updates", "get_updates_basic"],
+          },
         },
       },
-    },
+      useCallMutation,
+    ),
   };
 });
 

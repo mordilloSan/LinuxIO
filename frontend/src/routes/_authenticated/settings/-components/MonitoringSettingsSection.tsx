@@ -9,7 +9,6 @@ import {
   type MonitoringConfig,
   type MonitoringConfigPatch,
   type MonitoringListener,
-  useCallMutation,
 } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import {
@@ -420,7 +419,7 @@ const MonitoringSettingsSection = () => {
     mergeMonitoringDraft,
   );
 
-  const setConfigMutation = useCallMutation(linuxio.monitoring.set_config, {
+  const setConfigMutation = linuxio.monitoring.set_config.useMutation({
     success: (result) => {
       queryClient.setQueryData(
         linuxio.monitoring.get_config.queryKey,
@@ -437,7 +436,7 @@ const MonitoringSettingsSection = () => {
     },
     error: "Failed to save monitoring settings",
   });
-  const restartMutation = useCallMutation(linuxio.monitoring.restart, {
+  const restartMutation = linuxio.monitoring.restart.useMutation({
     success: () => {
       setRestartRequired(false);
       toast.success("linuxio-monitoring restarted");

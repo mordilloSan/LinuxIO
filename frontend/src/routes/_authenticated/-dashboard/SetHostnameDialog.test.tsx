@@ -10,9 +10,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
+  const { mockMutationHooks } = await import("@/test/mutationHooks");
   return {
     ...actual,
-    useCallMutation: mocks.useCallMutation,
+    linuxio: mockMutationHooks(actual.linuxio, mocks.useCallMutation),
   };
 });
 

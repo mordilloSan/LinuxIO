@@ -146,6 +146,7 @@ vi.mock("@/hooks/useViewMode", () => ({
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
   const { useState } = await import("react");
+  const { mockMutationHooks } = await import("@/test/mutationHooks");
   // Mirrors useCallMutation: on success runs invalidates -> success ->
   // options.onSuccess, with the unwrapped task result (undefined here).
   const taskAction = (
@@ -322,7 +323,7 @@ vi.mock("@/api", async (importOriginal) => {
   const resourcePost = Object.assign(mocks.resourcePost, {
     route: "filebrowser.resource_post",
   });
-  return {
+  const mocked = {
     ...actual,
     useCallMutation: useCallMutationMock,
     linuxio: {
@@ -419,6 +420,10 @@ vi.mock("@/api", async (importOriginal) => {
     openVMConsoleStream: mocks.openVMConsoleStream,
     useStreamMux: () => ({ isOpen: true }),
     waitForStreamResult: mocks.waitForStreamResult,
+  };
+  return {
+    ...mocked,
+    linuxio: mockMutationHooks(mocked.linuxio, useCallMutationMock),
   };
 });
 

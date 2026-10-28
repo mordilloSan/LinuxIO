@@ -3,7 +3,6 @@ import { useState } from "react";
 import {
   getMutationErrorMessage,
   linuxio,
-  useCallMutation,
   type WireGuardInterface,
   type WireGuardUpdateInterfaceRequest,
 } from "@/api";
@@ -85,7 +84,7 @@ const EditInterfaceDialog = ({
   });
   const [error, setError] = useState<string | null>(null);
 
-  const updateInterface = useCallMutation(linuxio.wireguard.update_interface, {
+  const updateInterface = linuxio.wireguard.update_interface.useMutation({
     success: () => {
       toast.success(`Interface '${iface.name}' updated`);
       onClose();

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { type CreateUserRequest, linuxio, useCallMutation } from "@/api";
+import { type CreateUserRequest, linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
 import AppButton from "@/components/ui/AppButton";
@@ -49,17 +49,15 @@ const CreateUserDialog = ({ open, onClose }: CreateUserDialogProps) => {
   const shellsList = Array.isArray(shells) ? shells : [];
   const groupsList = Array.isArray(groups) ? groups : [];
 
-  const { mutate: createUser, isPending } = useCallMutation(
-    linuxio.accounts.create_user,
-    {
+  const { mutate: createUser, isPending } =
+    linuxio.accounts.create_user.useMutation({
       success: () => {
         toast.success(`User "${username}" created successfully`);
         handleClose();
       },
       error: "Failed to create user",
       toast: ACCOUNTS_TOAST_META,
-    },
-  );
+    });
 
   const handleClose = () => {
     setUsername("");

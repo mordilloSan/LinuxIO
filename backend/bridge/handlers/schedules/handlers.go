@@ -21,25 +21,25 @@ func routeBindings(m manager) apischema.BindingSet {
 		apischema.Call[apischema.ScheduleIDRequest, apischema.ScheduleStatus]("schedules.get", apischema.Privileged(), apischema.RetrySafe()).Handle(func(ctx context.Context, req apischema.ScheduleIDRequest) (apischema.ScheduleStatus, error) {
 			return m.get(ctx, req.ID)
 		}),
-		apischema.Call[apischema.ScheduleCreateRequest, apischema.ScheduleStatus]("schedules.create", apischema.Privileged()).Handle(m.create),
-		apischema.Call[apischema.ScheduleUpdateRequest, apischema.ScheduleStatus]("schedules.update", apischema.Privileged()).Handle(func(ctx context.Context, req apischema.ScheduleUpdateRequest) (apischema.ScheduleStatus, error) {
+		apischema.Mutation("schedules.create", m.create, apischema.Privileged()),
+		apischema.Mutation("schedules.update", func(ctx context.Context, req apischema.ScheduleUpdateRequest) (apischema.ScheduleStatus, error) {
 			if err := m.change(ctx, req.ID, &req.Options, nil, false); err != nil {
 				return apischema.ScheduleStatus{}, err
 			}
 			return m.get(ctx, req.ID)
-		}),
-		apischema.Call[apischema.ScheduleIDRequest, apischema.NoResponse]("schedules.delete", apischema.Privileged()).HandleVoid(func(ctx context.Context, req apischema.ScheduleIDRequest) error {
+		}, apischema.Privileged()),
+		apischema.MutationVoid("schedules.delete", func(ctx context.Context, req apischema.ScheduleIDRequest) error {
 			return m.change(ctx, req.ID, nil, nil, true)
-		}),
-		apischema.Call[apischema.ScheduleIDRequest, apischema.NoResponse]("schedules.enable", apischema.Privileged()).HandleVoid(func(ctx context.Context, req apischema.ScheduleIDRequest) error {
+		}, apischema.Privileged()),
+		apischema.MutationVoid("schedules.enable", func(ctx context.Context, req apischema.ScheduleIDRequest) error {
 			enabled := true
 			return m.change(ctx, req.ID, nil, &enabled, false)
-		}),
-		apischema.Call[apischema.ScheduleIDRequest, apischema.NoResponse]("schedules.disable", apischema.Privileged()).HandleVoid(func(ctx context.Context, req apischema.ScheduleIDRequest) error {
+		}, apischema.Privileged()),
+		apischema.MutationVoid("schedules.disable", func(ctx context.Context, req apischema.ScheduleIDRequest) error {
 			enabled := false
 			return m.change(ctx, req.ID, nil, &enabled, false)
-		}),
-		apischema.Call[apischema.ScheduleIDRequest, apischema.NoResponse]("schedules.run_now", apischema.Privileged()).HandleVoid(func(ctx context.Context, req apischema.ScheduleIDRequest) error { return m.runNow(ctx, req.ID) }),
-		apischema.Call[apischema.ScheduleStopRequest, apischema.NoResponse]("schedules.stop", apischema.Privileged()).HandleVoid(m.stop),
+		}, apischema.Privileged()),
+		apischema.MutationVoid("schedules.run_now", func(ctx context.Context, req apischema.ScheduleIDRequest) error { return m.runNow(ctx, req.ID) }, apischema.Privileged()),
+		apischema.MutationVoid("schedules.stop", m.stop, apischema.Privileged()),
 	)
 }

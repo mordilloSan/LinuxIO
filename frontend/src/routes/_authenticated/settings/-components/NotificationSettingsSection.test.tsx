@@ -14,22 +14,27 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
+  const { mockMutationHooks } = await import("@/test/mutationHooks");
+  const useCallMutation = (endpoint: { route: string }) => ({
+    isPending: false,
+    mutate: (mocks.mutations[endpoint.route] ??= vi.fn()),
+  });
   return {
     ...actual,
-    useCallMutation: (endpoint: { route: string }) => ({
-      isPending: false,
-      mutate: (mocks.mutations[endpoint.route] ??= vi.fn()),
-    }),
-    linuxio: {
-      ...actual.linuxio,
-      alerts: {
-        ...actual.linuxio.alerts,
-        get_notifications: {
-          queryKey: ["test-get-notifications"],
-          queryFn: () => mocks.get(),
+    useCallMutation,
+    linuxio: mockMutationHooks(
+      {
+        ...actual.linuxio,
+        alerts: {
+          ...actual.linuxio.alerts,
+          get_notifications: {
+            queryKey: ["test-get-notifications"],
+            queryFn: () => mocks.get(),
+          },
         },
       },
-    },
+      useCallMutation,
+    ),
   };
 });
 

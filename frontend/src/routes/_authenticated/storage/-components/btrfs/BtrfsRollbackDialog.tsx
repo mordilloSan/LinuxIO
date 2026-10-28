@@ -1,4 +1,4 @@
-import { linuxio, useCallMutation } from "@/api";
+import { linuxio } from "@/api";
 import type {
   BtrfsRollbackProgress,
   BtrfsRollbackResult,
@@ -37,7 +37,7 @@ const BtrfsRollbackDialog = ({
 }: BtrfsRollbackDialogProps) => {
   const { triggerReboot } = usePowerAction();
   // The server may die before responding, so errors are expected and only logged.
-  const { mutate: reboot } = useCallMutation(linuxio.control.reboot, {
+  const { mutate: reboot } = linuxio.control.reboot.useMutation({
     error: (error) => {
       console.warn("Reboot error (may be expected):", error);
     },

@@ -2,12 +2,7 @@ import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 
-import {
-  linuxio,
-  useCallMutation,
-  type ScheduleOptions,
-  type ScheduleStatus,
-} from "@/api";
+import { linuxio, type ScheduleOptions, type ScheduleStatus } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import PathPickerField from "@/components/pathpicker/PathPickerField";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
@@ -95,29 +90,28 @@ export default function SchedulesTab({
   const [draft, setDraft] = useState<Draft | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ScheduleStatus | null>(null);
   const toast = useScopedToast(toastMeta);
-  const { mutate: enable } = useCallMutation(linuxio.schedules.enable, {
+  const { mutate: enable } = linuxio.schedules.enable.useMutation({
     success: () => toast.success("Task enabled"),
     error: "Failed to enable task",
     toast: toastMeta,
   });
-  const { mutate: disable } = useCallMutation(linuxio.schedules.disable, {
+  const { mutate: disable } = linuxio.schedules.disable.useMutation({
     success: () => toast.success("Task disabled"),
     error: "Failed to disable task",
     toast: toastMeta,
   });
-  const { mutate: runNow } = useCallMutation(linuxio.schedules.run_now, {
+  const { mutate: runNow } = linuxio.schedules.run_now.useMutation({
     success: () => toast.success("Task queued"),
     error: "Failed to queue task",
     toast: toastMeta,
   });
-  const { mutate: stop } = useCallMutation(linuxio.schedules.stop, {
+  const { mutate: stop } = linuxio.schedules.stop.useMutation({
     success: () => toast.success("Stop requested"),
     error: "Failed to stop task",
     toast: toastMeta,
   });
-  const { mutate: remove, isPending: deleting } = useCallMutation(
-    linuxio.schedules.delete,
-    {
+  const { mutate: remove, isPending: deleting } =
+    linuxio.schedules.delete.useMutation({
       success: () => {
         toast.success("Task deleted");
         setDeleteTarget(null);
@@ -125,30 +119,25 @@ export default function SchedulesTab({
       },
       error: "Failed to delete task",
       toast: toastMeta,
-    },
-  );
-  const { mutate: create, isPending: creating } = useCallMutation(
-    linuxio.schedules.create,
-    {
+    });
+  const { mutate: create, isPending: creating } =
+    linuxio.schedules.create.useMutation({
       success: () => {
         toast.success("Task created");
         setDraft(null);
       },
       error: "Failed to create task",
       toast: toastMeta,
-    },
-  );
-  const { mutate: update, isPending: updating } = useCallMutation(
-    linuxio.schedules.update,
-    {
+    });
+  const { mutate: update, isPending: updating } =
+    linuxio.schedules.update.useMutation({
       success: () => {
         toast.success("Task updated");
         setDraft(null);
       },
       error: "Failed to update task",
       toast: toastMeta,
-    },
-  );
+    });
   const edit = (status: ScheduleStatus) =>
     setDraft({
       ...status.definition.options,

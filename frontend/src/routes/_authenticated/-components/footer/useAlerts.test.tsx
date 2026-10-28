@@ -12,19 +12,24 @@ vi.mock("@/hooks/useAuth", () => ({
 }));
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
+  const { mockMutationHooks } = await import("@/test/mutationHooks");
+  const useCallMutation = () => ({ mutate: vi.fn() });
   return {
     ...actual,
-    linuxio: {
-      alerts: {
-        list: {
-          queryKey: ["linuxio", "alerts.list"],
-          queryFn: mocks.fetch,
+    linuxio: mockMutationHooks(
+      {
+        alerts: {
+          list: {
+            queryKey: ["linuxio", "alerts.list"],
+            queryFn: mocks.fetch,
+          },
+          mark_all_seen: { route: "alerts.mark_all_seen" },
+          dismiss: { route: "alerts.dismiss" },
         },
-        mark_all_seen: { route: "alerts.mark_all_seen" },
-        dismiss: { route: "alerts.dismiss" },
       },
-    },
-    useCallMutation: () => ({ mutate: vi.fn() }),
+      useCallMutation,
+    ),
+    useCallMutation,
   };
 });
 

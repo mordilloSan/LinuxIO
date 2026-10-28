@@ -15,9 +15,13 @@ LinuxIO exposes four deliberately different operation shapes:
   progress, and watcher recovery, run in the bridge and owned by the login
   session. Task routes are being migrated to `Mutation`.
 
-`docker.update_container` is the only Mutation so far. The 31 Task routes,
-including `control.app_update`, are owned by the authenticated session; quick
-writes are still Calls. This browser-to-bridge API is an internal product
+93 routes are Mutations so far: `docker.update_container` and the writes of
+the accounts, alerts, config, control, datetime, hostname, indexer,
+monitoring, network, power, schedules, shares, system, systemd, updates, virt
+and WireGuard families. The 31 Task routes, including `control.app_update`,
+are owned by the authenticated session, and the Docker, file browser and
+storage writes are still Calls, until [phase 2](./TODO/jobs.md#42-phase-2-every-mutation-is-a-job)
+moves them. This browser-to-bridge API is an internal product
 surface. A future supported external API would be a separate contract.
 
 Task progress and data streams are not a durable audit/history API. A Task

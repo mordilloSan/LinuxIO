@@ -96,17 +96,20 @@ describe("UsersTab mutation feedback", () => {
     const lockAlice = deferred<void>();
     const unlockBob = deferred<void>();
 
-    vi.spyOn(core, "request").mockImplementation((_host, command, request) => {
-      const username = (request as { username?: string } | undefined)?.username;
-      if (command === "lock_user" && username === "alice") {
-        return lockAlice.promise;
-      }
-      if (command === "unlock_user" && username === "bob") {
-        return unlockBob.promise;
-      }
+    vi.spyOn(core, "mutationRequest").mockImplementation(
+      (_host, command, request) => {
+        const username = (request as { username?: string } | undefined)
+          ?.username;
+        if (command === "lock_user" && username === "alice") {
+          return lockAlice.promise;
+        }
+        if (command === "unlock_user" && username === "bob") {
+          return unlockBob.promise;
+        }
 
-      return Promise.resolve(undefined);
-    });
+        return Promise.resolve(undefined);
+      },
+    );
 
     const view = render(<UsersTab viewMode="table" />);
 

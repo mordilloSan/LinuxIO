@@ -27,26 +27,26 @@ func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 		apischema.Call[apischema.NoRequest, apischema.AlertList]("alerts.list", apischema.Privileged(), apischema.RetrySafe()).Handle(func(context.Context, apischema.NoRequest) (apischema.AlertList, error) {
 			return listForUID(uid())
 		}),
-		apischema.Call[apischema.AlertIDsRequest, apischema.AlertList]("alerts.mark_seen", apischema.Privileged()).Handle(func(ctx context.Context, req apischema.AlertIDsRequest) (apischema.AlertList, error) {
+		apischema.Mutation("alerts.mark_seen", func(ctx context.Context, req apischema.AlertIDsRequest) (apischema.AlertList, error) {
 			return markSeenForUID(ctx, uid(), req.IDs)
-		}),
-		apischema.Call[apischema.NoRequest, apischema.AlertList]("alerts.mark_all_seen", apischema.Privileged()).Handle(func(ctx context.Context, _ apischema.NoRequest) (apischema.AlertList, error) {
+		}, apischema.Privileged()),
+		apischema.Mutation("alerts.mark_all_seen", func(ctx context.Context, _ apischema.NoRequest) (apischema.AlertList, error) {
 			return markSeenForUID(ctx, uid(), nil)
-		}),
-		apischema.Call[apischema.AlertDismissRequest, apischema.AlertList]("alerts.dismiss", apischema.Privileged()).Handle(func(ctx context.Context, req apischema.AlertDismissRequest) (apischema.AlertList, error) {
+		}, apischema.Privileged()),
+		apischema.Mutation("alerts.dismiss", func(ctx context.Context, req apischema.AlertDismissRequest) (apischema.AlertList, error) {
 			return dismissForUID(ctx, uid(), req.ID)
-		}),
+		}, apischema.Privileged()),
 		apischema.Call[apischema.NoRequest, apischema.NotificationSettingsView]("alerts.get_notifications", apischema.Privileged(), apischema.RetrySafe()).Handle(func(context.Context, apischema.NoRequest) (apischema.NotificationSettingsView, error) {
 			n, err := store.LoadNotifications()
 			return notificationsView(n), err
 		}),
-		apischema.Call[apischema.NotificationSettings, apischema.NotificationSettingsView]("alerts.set_notifications", apischema.Privileged()).Handle(func(_ context.Context, req apischema.NotificationSettings) (apischema.NotificationSettingsView, error) {
+		apischema.Mutation("alerts.set_notifications", func(_ context.Context, req apischema.NotificationSettings) (apischema.NotificationSettingsView, error) {
 			n, err := store.SaveNotifications(notificationsFromRequest(req))
 			if err == nil {
 				slog.Info("alert notification settings saved", "minSeverity", req.MinSeverity, "webhook", req.WebhookURL != "", "email", req.SMTPHost != "")
 			}
 			return notificationsView(n), err
-		}),
-		apischema.Call[apischema.NoRequest, apischema.SuccessResponse]("alerts.test_notifications", apischema.Privileged()).Handle(handleTestNotifications),
+		}, apischema.Privileged()),
+		apischema.Mutation("alerts.test_notifications", handleTestNotifications, apischema.Privileged()),
 	)
 }

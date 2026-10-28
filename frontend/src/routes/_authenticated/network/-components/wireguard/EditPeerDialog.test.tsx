@@ -30,10 +30,12 @@ const alice: Peer = {
 
 function spyUpdates() {
   const updates: unknown[] = [];
-  vi.spyOn(core, "request").mockImplementation((_handler, command, request) => {
-    if (command === "update_peer") updates.push(request);
-    return Promise.resolve();
-  });
+  vi.spyOn(core, "mutationRequest").mockImplementation(
+    (_handler, command, request) => {
+      if (command === "update_peer") updates.push(request);
+      return Promise.resolve();
+    },
+  );
   return updates;
 }
 

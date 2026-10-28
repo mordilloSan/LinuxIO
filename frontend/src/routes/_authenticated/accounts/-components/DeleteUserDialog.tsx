@@ -1,4 +1,4 @@
-import { linuxio, useCallMutation } from "@/api";
+import { linuxio } from "@/api";
 import BatchDeleteDialog from "@/components/dialog/BatchDeleteDialog";
 
 const ACCOUNTS_TOAST_META = {
@@ -20,9 +20,8 @@ const DeleteUserDialog = ({
   onSuccess,
 }: DeleteUserDialogProps) => {
   // Configless: this is a batch flow — the dialog owns aggregation and toasts.
-  const { mutateAsync: deleteUser } = useCallMutation(
-    linuxio.accounts.delete_user,
-  );
+  const { mutateAsync: deleteUser } =
+    linuxio.accounts.delete_user.useMutation();
 
   return (
     <BatchDeleteDialog

@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { linuxio, useCallMutation, type AlertList } from "@/api";
+import { linuxio, type AlertList } from "@/api";
 import useAuth from "@/hooks/useAuth";
 
 const EMPTY: AlertList = { alerts: [], unseen: 0 };
@@ -17,12 +17,12 @@ export function useAlerts() {
   const replace = (result: AlertList) => {
     queryClient.setQueryData(linuxio.alerts.list.queryKey, result);
   };
-  const markAllSeenMutation = useCallMutation(linuxio.alerts.mark_all_seen, {
+  const markAllSeenMutation = linuxio.alerts.mark_all_seen.useMutation({
     error: "Failed to update alerts",
     invalidates: [],
     success: replace,
   });
-  const dismissMutation = useCallMutation(linuxio.alerts.dismiss, {
+  const dismissMutation = linuxio.alerts.dismiss.useMutation({
     error: "Failed to dismiss alert",
     invalidates: [],
     success: replace,
