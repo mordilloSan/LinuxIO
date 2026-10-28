@@ -66,7 +66,7 @@ func dockerTaskBindings(rt runtime.Runtime) apischema.BindingSet {
 		apischema.TaskRunner[apischema.DockerDaemonConfig, apischema.DockerDaemonConfigSetResult]("docker.apply_daemon_storage", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[apischema.DockerDaemonStorageProgress](), apischema.WithTaskMetadata(func(apischema.DockerDaemonConfig) bridgeipc.TaskMetadata {
 			return bridgeipc.TaskMetadata{Label: "Docker storage change"}
 		})).Run(runApplyDaemonStorageTask, bridgeipc.TaskExclusive),
-		apischema.TaskRunner[apischema.DockerComposeRequest, ComposeTaskResult]("docker.compose", apischema.SessionTask(), apischema.WithTaskProgress[ComposeTaskMessage](), apischema.WithTaskMetadata(func(req apischema.DockerComposeRequest) bridgeipc.TaskMetadata {
+		apischema.TaskRunner[apischema.DockerComposeRequest, ComposeTaskResult]("docker.compose", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[ComposeTaskMessage](), apischema.WithTaskMetadata(func(req apischema.DockerComposeRequest) bridgeipc.TaskMetadata {
 			return bridgeipc.TaskMetadata{Identity: []string{req.ProjectName}, Label: "Docker compose " + req.Action, Action: req.Action, ProjectName: req.ProjectName}
 		})).Run(
 			func(ctx context.Context, task *bridgeipc.Task, req apischema.DockerComposeRequest) (ComposeTaskResult, error) {

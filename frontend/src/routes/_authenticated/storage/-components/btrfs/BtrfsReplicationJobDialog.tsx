@@ -1,12 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import {
-  linuxio,
-  useCallMutation,
-  type BtrfsReplicationJob,
-  type BtrfsSSHTrust,
-} from "@/api";
+import { linuxio, type BtrfsReplicationJob, type BtrfsSSHTrust } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
@@ -65,10 +60,11 @@ const BtrfsReplicationJobDialog = ({
     ...linuxio.storage.btrfs_replication_ssh_key,
     enabled: isSsh,
   });
-  const { mutate: trustHost, isPending: isTrusting } = useCallMutation(
-    linuxio.storage.btrfs_replication_ssh_trust,
-    { error: "Failed to check host key", toast: BTRFS_TOAST_META },
-  );
+  const { mutate: trustHost, isPending: isTrusting } =
+    linuxio.storage.btrfs_replication_ssh_trust.useMutation({
+      error: "Failed to check host key",
+      toast: BTRFS_TOAST_META,
+    });
 
   const setTarget = (patch: Partial<BtrfsReplicationJob["target"]>) =>
     setDraft({ ...draft, target: { ...draft.target, ...patch } });

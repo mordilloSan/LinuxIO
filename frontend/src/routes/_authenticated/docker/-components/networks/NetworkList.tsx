@@ -2,7 +2,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { useCallback, useMemo, useState, type SyntheticEvent } from "react";
 
-import { linuxio, useCallMutation } from "@/api";
+import { linuxio } from "@/api";
 import ResourceDetailsLayout from "@/components/cards/ResourceDetailsLayout";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
@@ -125,12 +125,10 @@ const NetworkList = ({
   useRegisterCreateHandler(onMountCreateHandler, handleCreateNetwork);
 
   // Configless: this is a batch flow — the dialog owns aggregation and toasts.
-  const { mutateAsync: deleteNetwork } = useCallMutation(
-    linuxio.docker.delete_network,
-  );
-  const { mutate: connectNetwork, isPending: isConnecting } = useCallMutation(
-    linuxio.docker.connect_network,
-    {
+  const { mutateAsync: deleteNetwork } =
+    linuxio.docker.delete_network.useMutation();
+  const { mutate: connectNetwork, isPending: isConnecting } =
+    linuxio.docker.connect_network.useMutation({
       success: () => {
         toast.success("Container connected to network");
         setConnectDialogOpen(false);
@@ -138,10 +136,9 @@ const NetworkList = ({
       },
       error: "Failed to connect container",
       toast: DOCKER_TOAST_META,
-    },
-  );
+    });
   const { mutate: disconnectNetwork, isPending: isDisconnecting } =
-    useCallMutation(linuxio.docker.disconnect_network, {
+    linuxio.docker.disconnect_network.useMutation({
       success: () => {
         toast.success("Container disconnected from network");
         setDisconnectTarget(null);

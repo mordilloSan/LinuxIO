@@ -27,17 +27,18 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
 
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
-  return {
+  const { mockMutationHooks } = await import("@/test/mutationHooks");
+  const useMutation = (endpoint: { route?: string }) => {
+    if (endpoint.route === "docker.stop_container") {
+      return { mutateAsync: mocks.stopContainer, isPending: false };
+    }
+    if (endpoint.route === "docker.start_all_stopped") {
+      return { mutate: mocks.startAllStopped, isPending: false };
+    }
+    return { mutate: mocks.systemPrune, isPending: false };
+  };
+  const mocked = {
     ...actual,
-    useCallMutation: (endpoint: { route?: string }) => {
-      if (endpoint.route === "docker.stop_container") {
-        return { mutateAsync: mocks.stopContainer, isPending: false };
-      }
-      if (endpoint.route === "docker.start_all_stopped") {
-        return { mutate: mocks.startAllStopped, isPending: false };
-      }
-      return { mutate: mocks.systemPrune, isPending: false };
-    },
     linuxio: {
       ...actual.linuxio,
       docker: {
@@ -47,17 +48,12 @@ vi.mock("@/api", async (importOriginal) => {
           queryFn: vi.fn(),
           ...(actual.linuxio.docker.list_containers as object),
         },
-        start_all_stopped: {
-          route: "docker.start_all_stopped",
-        },
-        stop_container: {
-          route: "docker.stop_container",
-        },
-        system_prune: {
-          route: "docker.system_prune",
-        },
       },
     },
+  };
+  return {
+    ...mocked,
+    linuxio: mockMutationHooks(mocked.linuxio, useMutation),
   };
 });
 

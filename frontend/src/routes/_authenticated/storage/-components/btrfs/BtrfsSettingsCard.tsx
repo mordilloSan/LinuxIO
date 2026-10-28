@@ -2,7 +2,7 @@ import { Icon } from "@iconify/react";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { linuxio, useCallMutation, type BtrfsCompression } from "@/api";
+import { linuxio, type BtrfsCompression } from "@/api";
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppAlert from "@/components/ui/AppAlert";
@@ -63,14 +63,12 @@ const CompressionControl = ({
     !range ||
     (Number.isInteger(level) && level >= range.min && level <= range.max);
 
-  const { mutate: setCompression, isPending } = useCallMutation(
-    linuxio.storage.btrfs_set_compression,
-    {
+  const { mutate: setCompression, isPending } =
+    linuxio.storage.btrfs_set_compression.useMutation({
       success: "Compression updated",
       error: "Failed to update compression",
       toast: BTRFS_POOL_TOAST_META,
-    },
-  );
+    });
 
   const apply = () =>
     setCompression(
@@ -174,14 +172,12 @@ const BtrfsSettingsCard = ({ uuid, mountpoint }: BtrfsSettingsCardProps) => {
   const { data: settings, error } = useQuery(
     linuxio.storage.btrfs_settings({ uuid }),
   );
-  const { mutate: setQuotas, isPending: isSettingQuotas } = useCallMutation(
-    linuxio.storage.btrfs_set_quotas,
-    {
+  const { mutate: setQuotas, isPending: isSettingQuotas } =
+    linuxio.storage.btrfs_set_quotas.useMutation({
       success: "Quota setting updated",
       error: "Failed to update quotas",
       toast: BTRFS_POOL_TOAST_META,
-    },
-  );
+    });
 
   const { isEnabled, reason } = useCapability("btrfsMaintenanceAvailable");
   const { data: schedule } = useQuery({
@@ -189,7 +185,7 @@ const BtrfsSettingsCard = ({ uuid, mountpoint }: BtrfsSettingsCardProps) => {
     enabled: isEnabled,
   });
   const { mutate: setMaintenance, isPending: isUpdatingMaintenance } =
-    useCallMutation(linuxio.storage.set_btrfs_maintenance, {
+    linuxio.storage.set_btrfs_maintenance.useMutation({
       success: "Btrfs maintenance schedule updated",
       error: "Failed to update btrfs maintenance schedule",
       toast: BTRFS_POOL_TOAST_META,

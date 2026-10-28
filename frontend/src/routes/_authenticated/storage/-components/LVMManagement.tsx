@@ -4,7 +4,6 @@ import { useCallback, useMemo, useState, type CSSProperties } from "react";
 
 import {
   linuxio,
-  useCallMutation,
   type LogicalVolume,
   type PhysicalVolume,
   type VolumeGroup,
@@ -83,9 +82,8 @@ const CreateLVDialog = ({
   const [lvName, setLvName] = useState("");
   const [size, setSize] = useState("");
   const [validationError, setValidationError] = useState<string | null>(null);
-  const { mutate: createLV, isPending: isCreating } = useCallMutation(
-    linuxio.storage.create_lv,
-    {
+  const { mutate: createLV, isPending: isCreating } =
+    linuxio.storage.create_lv.useMutation({
       success: () => {
         toast.success(`Logical volume ${lvName} created successfully`);
         onSuccess();
@@ -93,8 +91,7 @@ const CreateLVDialog = ({
       },
       error: "Failed to create logical volume",
       toast: STORAGE_TOAST_META,
-    },
-  );
+    });
   const handleCreate = () => {
     if (!vgName || !lvName || !size) {
       setValidationError("All fields are required");
@@ -203,9 +200,8 @@ const ResizeLVDialog = ({
     lv ? `${Math.round(lv.size / (1024 * 1024 * 1024))}G` : "",
   );
   const [validationError, setValidationError] = useState<string | null>(null);
-  const { mutate: resizeLV, isPending: isResizing } = useCallMutation(
-    linuxio.storage.resize_lv,
-    {
+  const { mutate: resizeLV, isPending: isResizing } =
+    linuxio.storage.resize_lv.useMutation({
       success: () => {
         toast.success(`Logical volume ${lv?.name} resized successfully`);
         onSuccess();
@@ -213,8 +209,7 @@ const ResizeLVDialog = ({
       },
       error: "Failed to resize logical volume",
       toast: STORAGE_TOAST_META,
-    },
-  );
+    });
   const handleResize = () => {
     if (!lv || !newSize) {
       setValidationError("Size is required");
@@ -300,9 +295,8 @@ const DeleteLVDialog = ({
   onSuccess,
 }: DeleteLVDialogProps) => {
   const toast = useScopedToast(STORAGE_TOAST_META);
-  const { mutate: deleteLV, isPending: isDeleting } = useCallMutation(
-    linuxio.storage.delete_lv,
-    {
+  const { mutate: deleteLV, isPending: isDeleting } =
+    linuxio.storage.delete_lv.useMutation({
       success: () => {
         toast.success(`Logical volume ${lv?.name} deleted successfully`);
         onSuccess();
@@ -310,8 +304,7 @@ const DeleteLVDialog = ({
       },
       error: "Failed to delete logical volume",
       toast: STORAGE_TOAST_META,
-    },
-  );
+    });
   const handleDelete = () => {
     if (!lv) return;
     deleteLV({ vgName: lv.vgName, lvName: lv.name });

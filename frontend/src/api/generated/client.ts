@@ -106,22 +106,57 @@ const linuxio = {
       "docker.check_container_update",
     ),
     check_updates: defineCall("docker.check_updates"),
-    clear_icon_cache: defineCall("docker.clear_icon_cache"),
+    clear_icon_cache: defineMutation("docker", "clear_icon_cache", {
+      kind: "none",
+    }),
     compose: createTaskEndpoint("docker", "compose", { kind: "object" }),
-    compose_down: defineCallWithRequest("docker.compose_down"),
-    compose_restart: defineCallWithRequest("docker.compose_restart"),
-    compose_stop: defineCallWithRequest("docker.compose_stop"),
-    compose_up: defineCallWithRequest("docker.compose_up"),
-    connect_network: defineCallWithRequest("docker.connect_network"),
-    create_container: defineCallWithRequest("docker.create_container"),
-    create_network: defineCallWithRequest("docker.create_network"),
-    create_volume: defineCallWithRequest("docker.create_volume"),
-    delete_image: defineCallWithRequest("docker.delete_image"),
-    delete_network: defineCallWithRequest("docker.delete_network"),
-    delete_stack: defineCallWithRequest("docker.delete_stack"),
-    delete_volume: defineCallWithRequest("docker.delete_volume"),
-    disconnect_network: defineCallWithRequest("docker.disconnect_network"),
-    edit_container: defineCallWithRequest("docker.edit_container"),
+    compose_down: defineMutation("docker", "compose_down", {
+      kind: "field",
+      field: "projectName",
+    }),
+    compose_restart: defineMutation("docker", "compose_restart", {
+      kind: "field",
+      field: "projectName",
+    }),
+    compose_stop: defineMutation("docker", "compose_stop", {
+      kind: "field",
+      field: "projectName",
+    }),
+    compose_up: defineMutation("docker", "compose_up", {
+      kind: "field",
+      field: "projectName",
+    }),
+    connect_network: defineMutation("docker", "connect_network", {
+      kind: "object",
+    }),
+    create_container: defineMutation("docker", "create_container", {
+      kind: "object",
+    }),
+    create_network: defineMutation("docker", "create_network", {
+      kind: "object",
+    }),
+    create_volume: defineMutation("docker", "create_volume", {
+      kind: "object",
+    }),
+    delete_image: defineMutation("docker", "delete_image", {
+      kind: "field",
+      field: "imageId",
+    }),
+    delete_network: defineMutation("docker", "delete_network", {
+      kind: "field",
+      field: "id",
+    }),
+    delete_stack: defineMutation("docker", "delete_stack", { kind: "object" }),
+    delete_volume: defineMutation("docker", "delete_volume", {
+      kind: "field",
+      field: "name",
+    }),
+    disconnect_network: defineMutation("docker", "disconnect_network", {
+      kind: "object",
+    }),
+    edit_container: defineMutation("docker", "edit_container", {
+      kind: "object",
+    }),
     get_compose_file_path: defineCallWithRequest(
       "docker.get_compose_file_path",
     ),
@@ -134,25 +169,53 @@ const linuxio = {
     get_icon_info: defineCallWithRequest("docker.get_icon_info"),
     get_icon_uri: defineCallWithRequest("docker.get_icon_uri"),
     inspect_container: defineCallWithRequest("docker.inspect_container"),
-    kill_container: defineCallWithRequest("docker.kill_container"),
+    kill_container: defineMutation("docker", "kill_container", {
+      kind: "field",
+      field: "containerId",
+    }),
     list_compose_projects: defineCall("docker.list_compose_projects"),
     list_containers: defineCall("docker.list_containers"),
     list_images: defineCall("docker.list_images"),
     list_networks: defineCall("docker.list_networks"),
     list_volumes: defineCall("docker.list_volumes"),
-    pause_container: defineCallWithRequest("docker.pause_container"),
-    remove_container: defineCallWithRequest("docker.remove_container"),
-    restart_container: defineCallWithRequest("docker.restart_container"),
-    set_container_auto_update: defineCallWithRequest(
-      "docker.set_container_auto_update",
+    pause_container: defineMutation("docker", "pause_container", {
+      kind: "field",
+      field: "containerId",
+    }),
+    remove_container: defineMutation("docker", "remove_container", {
+      kind: "object",
+    }),
+    restart_container: defineMutation("docker", "restart_container", {
+      kind: "field",
+      field: "containerId",
+    }),
+    set_container_auto_update: defineMutation(
+      "docker",
+      "set_container_auto_update",
+      { kind: "object" },
     ),
-    set_daemon_config: defineCallWithRequest("docker.set_daemon_config"),
-    start_all_stopped: defineCall("docker.start_all_stopped"),
-    start_container: defineCallWithRequest("docker.start_container"),
-    stop_all_running: defineCall("docker.stop_all_running"),
-    stop_container: defineCallWithRequest("docker.stop_container"),
-    system_prune: defineCallWithRequest("docker.system_prune"),
-    unpause_container: defineCallWithRequest("docker.unpause_container"),
+    set_daemon_config: defineMutation("docker", "set_daemon_config", {
+      kind: "object",
+    }),
+    start_all_stopped: defineMutation("docker", "start_all_stopped", {
+      kind: "none",
+    }),
+    start_container: defineMutation("docker", "start_container", {
+      kind: "field",
+      field: "containerId",
+    }),
+    stop_all_running: defineMutation("docker", "stop_all_running", {
+      kind: "none",
+    }),
+    stop_container: defineMutation("docker", "stop_container", {
+      kind: "field",
+      field: "containerId",
+    }),
+    system_prune: defineMutation("docker", "system_prune", { kind: "object" }),
+    unpause_container: defineMutation("docker", "unpause_container", {
+      kind: "field",
+      field: "containerId",
+    }),
     update_container: defineMutation("docker", "update_container", {
       kind: "field",
       field: "containerId",
@@ -188,7 +251,10 @@ const linuxio = {
     resource_patch: createTaskEndpoint("filebrowser", "resource_patch", {
       kind: "object",
     }),
-    resource_post: defineCallWithRequest("filebrowser.resource_post"),
+    resource_post: defineMutation("filebrowser", "resource_post", {
+      kind: "field",
+      field: "path",
+    }),
     resource_stat: defineCallWithRequest("filebrowser.resource_stat"),
     search: defineCallWithRequest("filebrowser.search"),
     subfolders: defineCallWithRequest("filebrowser.subfolders"),
@@ -362,9 +428,16 @@ const linuxio = {
     btrfs_balance: createTaskEndpoint("storage", "btrfs_balance", {
       kind: "object",
     }),
-    btrfs_balance_cancel: defineCallWithRequest("storage.btrfs_balance_cancel"),
-    btrfs_device_add: defineCallWithRequest("storage.btrfs_device_add"),
-    btrfs_device_grow: defineCallWithRequest("storage.btrfs_device_grow"),
+    btrfs_balance_cancel: defineMutation("storage", "btrfs_balance_cancel", {
+      kind: "field",
+      field: "uuid",
+    }),
+    btrfs_device_add: defineMutation("storage", "btrfs_device_add", {
+      kind: "object",
+    }),
+    btrfs_device_grow: defineMutation("storage", "btrfs_device_grow", {
+      kind: "object",
+    }),
     btrfs_device_remove: createTaskEndpoint("storage", "btrfs_device_remove", {
       kind: "object",
     }),
@@ -377,15 +450,26 @@ const linuxio = {
     btrfs_pool_create: createTaskEndpoint("storage", "btrfs_pool_create", {
       kind: "object",
     }),
-    btrfs_pool_destroy: defineCallWithRequest("storage.btrfs_pool_destroy"),
-    btrfs_pool_mount: defineCallWithRequest("storage.btrfs_pool_mount"),
+    btrfs_pool_destroy: defineMutation("storage", "btrfs_pool_destroy", {
+      kind: "field",
+      field: "uuid",
+    }),
+    btrfs_pool_mount: defineMutation("storage", "btrfs_pool_mount", {
+      kind: "object",
+    }),
     btrfs_pools_offline: defineCall("storage.btrfs_pools_offline"),
-    btrfs_qgroup_limit: defineCallWithRequest("storage.btrfs_qgroup_limit"),
-    btrfs_replication_job_delete: defineCallWithRequest(
-      "storage.btrfs_replication_job_delete",
+    btrfs_qgroup_limit: defineMutation("storage", "btrfs_qgroup_limit", {
+      kind: "object",
+    }),
+    btrfs_replication_job_delete: defineMutation(
+      "storage",
+      "btrfs_replication_job_delete",
+      { kind: "field", field: "id" },
     ),
-    btrfs_replication_job_set: defineCallWithRequest(
-      "storage.btrfs_replication_job_set",
+    btrfs_replication_job_set: defineMutation(
+      "storage",
+      "btrfs_replication_job_set",
+      { kind: "field", field: "job" },
     ),
     btrfs_replication_jobs: defineCall("storage.btrfs_replication_jobs"),
     btrfs_replication_run: createTaskEndpoint(
@@ -394,59 +478,89 @@ const linuxio = {
       { kind: "field", field: "id" },
     ),
     btrfs_replication_ssh_key: defineCall("storage.btrfs_replication_ssh_key"),
-    btrfs_replication_ssh_trust: defineCallWithRequest(
-      "storage.btrfs_replication_ssh_trust",
+    btrfs_replication_ssh_trust: defineMutation(
+      "storage",
+      "btrfs_replication_ssh_trust",
+      { kind: "object" },
     ),
-    btrfs_scrub_cancel: defineCallWithRequest("storage.btrfs_scrub_cancel"),
+    btrfs_scrub_cancel: defineMutation("storage", "btrfs_scrub_cancel", {
+      kind: "field",
+      field: "uuid",
+    }),
     btrfs_scrub_start: createTaskEndpoint("storage", "btrfs_scrub_start", {
       kind: "field",
       field: "uuid",
     }),
-    btrfs_set_compression: defineCallWithRequest(
-      "storage.btrfs_set_compression",
-    ),
-    btrfs_set_label: defineCallWithRequest("storage.btrfs_set_label"),
-    btrfs_set_quotas: defineCallWithRequest("storage.btrfs_set_quotas"),
+    btrfs_set_compression: defineMutation("storage", "btrfs_set_compression", {
+      kind: "object",
+    }),
+    btrfs_set_label: defineMutation("storage", "btrfs_set_label", {
+      kind: "object",
+    }),
+    btrfs_set_quotas: defineMutation("storage", "btrfs_set_quotas", {
+      kind: "object",
+    }),
     btrfs_settings: defineCallWithRequest("storage.btrfs_settings"),
-    btrfs_snapshot_create: defineCallWithRequest(
-      "storage.btrfs_snapshot_create",
-    ),
-    btrfs_snapshot_delete: defineCallWithRequest(
-      "storage.btrfs_snapshot_delete",
-    ),
+    btrfs_snapshot_create: defineMutation("storage", "btrfs_snapshot_create", {
+      kind: "object",
+    }),
+    btrfs_snapshot_delete: defineMutation("storage", "btrfs_snapshot_delete", {
+      kind: "object",
+    }),
     btrfs_snapshot_rollback: createTaskEndpoint(
       "storage",
       "btrfs_snapshot_rollback",
       { kind: "object" },
     ),
-    btrfs_snapshot_rule_delete: defineCallWithRequest(
-      "storage.btrfs_snapshot_rule_delete",
+    btrfs_snapshot_rule_delete: defineMutation(
+      "storage",
+      "btrfs_snapshot_rule_delete",
+      { kind: "object" },
     ),
-    btrfs_snapshot_rule_set: defineCallWithRequest(
-      "storage.btrfs_snapshot_rule_set",
+    btrfs_snapshot_rule_set: defineMutation(
+      "storage",
+      "btrfs_snapshot_rule_set",
+      { kind: "field", field: "rule" },
     ),
     btrfs_snapshot_rules: defineCall("storage.btrfs_snapshot_rules"),
-    btrfs_snapshot_run_now: defineCall("storage.btrfs_snapshot_run_now"),
+    btrfs_snapshot_run_now: defineMutation(
+      "storage",
+      "btrfs_snapshot_run_now",
+      { kind: "none" },
+    ),
     btrfs_snapshots: defineCallWithRequest("storage.btrfs_snapshots"),
-    btrfs_subvolume_create: defineCallWithRequest(
-      "storage.btrfs_subvolume_create",
+    btrfs_subvolume_create: defineMutation(
+      "storage",
+      "btrfs_subvolume_create",
+      { kind: "object" },
     ),
-    btrfs_subvolume_delete: defineCallWithRequest(
-      "storage.btrfs_subvolume_delete",
+    btrfs_subvolume_delete: defineMutation(
+      "storage",
+      "btrfs_subvolume_delete",
+      { kind: "object" },
     ),
-    btrfs_subvolume_set_compression: defineCallWithRequest(
-      "storage.btrfs_subvolume_set_compression",
+    btrfs_subvolume_set_compression: defineMutation(
+      "storage",
+      "btrfs_subvolume_set_compression",
+      { kind: "object" },
     ),
-    btrfs_subvolume_set_default: defineCallWithRequest(
-      "storage.btrfs_subvolume_set_default",
+    btrfs_subvolume_set_default: defineMutation(
+      "storage",
+      "btrfs_subvolume_set_default",
+      { kind: "object" },
     ),
-    btrfs_subvolume_set_readonly: defineCallWithRequest(
-      "storage.btrfs_subvolume_set_readonly",
+    btrfs_subvolume_set_readonly: defineMutation(
+      "storage",
+      "btrfs_subvolume_set_readonly",
+      { kind: "object" },
     ),
     btrfs_subvolumes: defineCallWithRequest("storage.btrfs_subvolumes"),
-    create_lv: defineCallWithRequest("storage.create_lv"),
-    delete_lv: defineCallWithRequest("storage.delete_lv"),
-    disk_initialize: defineCallWithRequest("storage.disk_initialize"),
+    create_lv: defineMutation("storage", "create_lv", { kind: "object" }),
+    delete_lv: defineMutation("storage", "delete_lv", { kind: "object" }),
+    disk_initialize: defineMutation("storage", "disk_initialize", {
+      kind: "field",
+      field: "device",
+    }),
     get_btrfs_maintenance: defineCall("storage.get_btrfs_maintenance"),
     get_drive_info: defineCall("storage.get_drive_info"),
     get_topology: defineCall("storage.get_topology"),
@@ -458,33 +572,50 @@ const linuxio = {
     list_pvs: defineCall("storage.list_pvs"),
     list_vgs: defineCall("storage.list_vgs"),
     md_list: defineCall("storage.md_list"),
-    md_member_add: defineCallWithRequest("storage.md_member_add"),
-    md_member_fail: defineCallWithRequest("storage.md_member_fail"),
-    md_member_remove: defineCallWithRequest("storage.md_member_remove"),
-    md_member_replace: defineCallWithRequest("storage.md_member_replace"),
-    md_sync_action: defineCallWithRequest("storage.md_sync_action"),
-    mount_cifs: defineCallWithRequest("storage.mount_cifs"),
-    mount_nfs: defineCallWithRequest("storage.mount_nfs"),
+    md_member_add: defineMutation("storage", "md_member_add", {
+      kind: "object",
+    }),
+    md_member_fail: defineMutation("storage", "md_member_fail", {
+      kind: "object",
+    }),
+    md_member_remove: defineMutation("storage", "md_member_remove", {
+      kind: "object",
+    }),
+    md_member_replace: defineMutation("storage", "md_member_replace", {
+      kind: "object",
+    }),
+    md_sync_action: defineMutation("storage", "md_sync_action", {
+      kind: "object",
+    }),
+    mount_cifs: defineMutation("storage", "mount_cifs", { kind: "object" }),
+    mount_nfs: defineMutation("storage", "mount_nfs", { kind: "object" }),
     partition_create: createTaskEndpoint("storage", "partition_create", {
       kind: "object",
     }),
-    partition_delete: defineCallWithRequest("storage.partition_delete"),
+    partition_delete: defineMutation("storage", "partition_delete", {
+      kind: "field",
+      field: "device",
+    }),
     partition_format: createTaskEndpoint("storage", "partition_format", {
       kind: "object",
     }),
-    partition_mount: defineCallWithRequest("storage.partition_mount"),
-    remount_cifs: defineCallWithRequest("storage.remount_cifs"),
-    remount_nfs: defineCallWithRequest("storage.remount_nfs"),
-    resize_lv: defineCallWithRequest("storage.resize_lv"),
+    partition_mount: defineMutation("storage", "partition_mount", {
+      kind: "object",
+    }),
+    remount_cifs: defineMutation("storage", "remount_cifs", { kind: "object" }),
+    remount_nfs: defineMutation("storage", "remount_nfs", { kind: "object" }),
+    resize_lv: defineMutation("storage", "resize_lv", { kind: "object" }),
     run_smart_test: createTaskEndpoint("storage", "run_smart_test", {
       kind: "object",
     }),
-    set_btrfs_maintenance: defineCallWithRequest(
-      "storage.set_btrfs_maintenance",
-    ),
-    unmount_cifs: defineCallWithRequest("storage.unmount_cifs"),
-    unmount_filesystem: defineCallWithRequest("storage.unmount_filesystem"),
-    unmount_nfs: defineCallWithRequest("storage.unmount_nfs"),
+    set_btrfs_maintenance: defineMutation("storage", "set_btrfs_maintenance", {
+      kind: "object",
+    }),
+    unmount_cifs: defineMutation("storage", "unmount_cifs", { kind: "object" }),
+    unmount_filesystem: defineMutation("storage", "unmount_filesystem", {
+      kind: "object",
+    }),
+    unmount_nfs: defineMutation("storage", "unmount_nfs", { kind: "object" }),
   },
   system: {
     dismiss_failed_login_alert: defineMutation(

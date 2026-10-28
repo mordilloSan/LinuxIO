@@ -128,7 +128,7 @@ describe("ComposeList expanded-container mutation feedback", () => {
   it("keeps action progress scoped to each expanded container", async () => {
     const restarting = createDeferred<void>();
     mocks.startUpdate.mockReset();
-    vi.spyOn(core, "request").mockImplementation(
+    vi.spyOn(core, "mutationRequest").mockImplementation(
       (_handler, command, request) => {
         const containerId = (request as { containerId?: string }).containerId;
         if (command === "restart_container" && containerId === beta.Id) {

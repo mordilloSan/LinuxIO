@@ -86,9 +86,8 @@ const DockerSettingsSection = () => {
   const { isEnabled: dockerUpdatesEnabled, reason: dockerUpdatesReason } =
     useCapability("dockerUpdatesAvailable");
   // Errors and toasts are handled by handleSave's try/catch.
-  const { mutateAsync: createDockerFolder } = useCallMutation(
-    linuxio.filebrowser.resource_post,
-  );
+  const { mutateAsync: createDockerFolder } =
+    linuxio.filebrowser.resource_post.useMutation();
   const { mutateAsync: validateDockerFolder } = useCallMutation(
     linuxio.docker.validate_stack_directory,
   );

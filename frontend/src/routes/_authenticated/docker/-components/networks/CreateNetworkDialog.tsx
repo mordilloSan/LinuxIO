@@ -1,6 +1,6 @@
 import { useState, type SyntheticEvent } from "react";
 
-import { linuxio, useCallMutation } from "@/api";
+import { linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
 import AppCollapse from "@/components/ui/AppCollapse";
@@ -46,17 +46,15 @@ export const CreateNetworkDialog = ({
   const parsedOptions = parseDockerKeyValueLines(optionsText);
   const trimmedName = networkName.trim();
 
-  const { mutate: createNetwork, isPending: isCreating } = useCallMutation(
-    linuxio.docker.create_network,
-    {
+  const { mutate: createNetwork, isPending: isCreating } =
+    linuxio.docker.create_network.useMutation({
       success: () => {
         toast.success(`Network "${trimmedName}" created`);
         handleClose();
       },
       error: "Failed to create network",
       toast: DOCKER_TOAST_META,
-    },
-  );
+    });
 
   const nameTaken = existingNames.includes(trimmedName);
   const isValidName = DOCKER_RESOURCE_NAME.test(trimmedName);

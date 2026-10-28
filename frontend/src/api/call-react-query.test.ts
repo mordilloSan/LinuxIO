@@ -125,12 +125,12 @@ describe("generated Call and Task definitions", () => {
       { retryPolicy: "connection_loss", signal: controller.signal },
     );
 
-    const write = linuxio.docker.stop_container({ containerId: "abc" });
+    const write = linuxio.docker.check_container_update({ containerId: "abc" });
     if (typeof write.queryFn !== "function") throw new Error("missing queryFn");
     await write.queryFn({ signal: controller.signal } as never);
     expect(request).toHaveBeenLastCalledWith(
       "docker",
-      "stop_container",
+      "check_container_update",
       { containerId: "abc" },
       { retryPolicy: "none", signal: controller.signal },
     );
@@ -217,12 +217,12 @@ describe("Call queries and mutations", () => {
     expect(request).toHaveBeenCalledTimes(2);
   });
 
-  it("applies manifest invalidation to a Call mutation", async () => {
-    vi.spyOn(core, "request").mockResolvedValue(undefined);
+  it("applies manifest invalidation to a mutation", async () => {
+    vi.spyOn(core, "mutationRequest").mockResolvedValue(undefined);
     const manifestKeys =
       OPERATION_QUERY_INVALIDATIONS["docker.start_container"];
     const { result, invalidateSpy } = renderQueryHook(() =>
-      useCallMutation(linuxio.docker.start_container),
+      linuxio.docker.start_container.useMutation(),
     );
 
     act(() => result.current.mutate({ containerId: "abc" }));

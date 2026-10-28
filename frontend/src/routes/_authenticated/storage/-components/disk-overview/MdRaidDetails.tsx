@@ -1,7 +1,7 @@
 import { Icon } from "@iconify/react";
 import { useState } from "react";
 
-import { linuxio, useCallMutation, type MDArray, type MDMember } from "@/api";
+import { linuxio, type MDArray, type MDMember } from "@/api";
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -67,30 +67,35 @@ const MdRaidDetails = ({ array }: { array: MDArray }) => {
   const { privileged } = useAuth();
   const [dialog, setDialog] = useState<RaidDialog | null>(null);
   const closeDialog = () => setDialog(null);
-  const { mutate: setSyncAction, isPending: isSetting } = useCallMutation(
-    linuxio.storage.md_sync_action,
-    { error: "Failed to change the RAID check", ...toast },
-  );
-  const { mutate: failMember, isPending: isFailing } = useCallMutation(
-    linuxio.storage.md_member_fail,
-    { success: "Disk marked failed", error: "Failed to fail disk", ...toast },
-  );
-  const { mutate: removeMember, isPending: isRemoving } = useCallMutation(
-    linuxio.storage.md_member_remove,
-    { success: "Disk removed", error: "Failed to remove disk", ...toast },
-  );
-  const { mutate: addMember, isPending: isAdding } = useCallMutation(
-    linuxio.storage.md_member_add,
-    { success: "Disk added as a spare", error: "Failed to add disk", ...toast },
-  );
-  const { mutate: replaceMember, isPending: isReplacing } = useCallMutation(
-    linuxio.storage.md_member_replace,
-    {
+  const { mutate: setSyncAction, isPending: isSetting } =
+    linuxio.storage.md_sync_action.useMutation({
+      error: "Failed to change the RAID check",
+      ...toast,
+    });
+  const { mutate: failMember, isPending: isFailing } =
+    linuxio.storage.md_member_fail.useMutation({
+      success: "Disk marked failed",
+      error: "Failed to fail disk",
+      ...toast,
+    });
+  const { mutate: removeMember, isPending: isRemoving } =
+    linuxio.storage.md_member_remove.useMutation({
+      success: "Disk removed",
+      error: "Failed to remove disk",
+      ...toast,
+    });
+  const { mutate: addMember, isPending: isAdding } =
+    linuxio.storage.md_member_add.useMutation({
+      success: "Disk added as a spare",
+      error: "Failed to add disk",
+      ...toast,
+    });
+  const { mutate: replaceMember, isPending: isReplacing } =
+    linuxio.storage.md_member_replace.useMutation({
       success: "Replacement started",
       error: "Failed to start replacement",
       ...toast,
-    },
-  );
+    });
   const pending =
     isSetting || isFailing || isRemoving || isAdding || isReplacing;
   const { name } = array;

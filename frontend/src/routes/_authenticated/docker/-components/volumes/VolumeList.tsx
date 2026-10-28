@@ -3,7 +3,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { useCallback, useMemo, useState } from "react";
 
-import { linuxio, useCallMutation } from "@/api";
+import { linuxio } from "@/api";
 import ResourceDetailsLayout from "@/components/cards/ResourceDetailsLayout";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
@@ -106,9 +106,8 @@ const VolumeList = ({
   );
 
   // Configless: this is a batch flow — the dialog owns aggregation and toasts.
-  const { mutateAsync: deleteVolume } = useCallMutation(
-    linuxio.docker.delete_volume,
-  );
+  const { mutateAsync: deleteVolume } =
+    linuxio.docker.delete_volume.useMutation();
   const handleDeleteSuccess = () => {
     updateFocusedVolume(null);
   };

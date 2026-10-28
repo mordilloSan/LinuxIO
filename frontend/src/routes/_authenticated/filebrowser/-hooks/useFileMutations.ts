@@ -11,7 +11,6 @@ import {
   getMutationErrorMessage,
   linuxio,
   type TaskProgress,
-  useCallMutation,
 } from "@/api";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { describeBatchFailures } from "@/tasks/batchFailures";
@@ -88,17 +87,14 @@ export const useFileMutations = ({
 
   const invalidateListing = useListingInvalidation(normalizedPath);
 
-  const createFileMutation = useCallMutation(
-    linuxio.filebrowser.resource_post,
-    {
-      success: () => {
-        invalidateListing();
-        toast.success("File created successfully");
-      },
-      error: "Failed to create file",
-      toast: FILES_TOAST_META,
+  const createFileMutation = linuxio.filebrowser.resource_post.useMutation({
+    success: () => {
+      invalidateListing();
+      toast.success("File created successfully");
     },
-  );
+    error: "Failed to create file",
+    toast: FILES_TOAST_META,
+  });
 
   const createFile = useCallback(
     async (fileName: string) => {
@@ -112,17 +108,14 @@ export const useFileMutations = ({
     [createFileMutation, createPending, normalizedPath],
   );
 
-  const createFolderMutation = useCallMutation(
-    linuxio.filebrowser.resource_post,
-    {
-      success: () => {
-        invalidateListing();
-        toast.success("Folder created successfully");
-      },
-      error: "Failed to create folder",
-      toast: FILES_TOAST_META,
+  const createFolderMutation = linuxio.filebrowser.resource_post.useMutation({
+    success: () => {
+      invalidateListing();
+      toast.success("Folder created successfully");
     },
-  );
+    error: "Failed to create folder",
+    toast: FILES_TOAST_META,
+  });
 
   const createFolder = useCallback(
     async (folderName: string) => {

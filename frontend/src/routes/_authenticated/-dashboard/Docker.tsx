@@ -2,12 +2,7 @@ import { Icon } from "@iconify/react";
 import { useSuspenseQueries, useSuspenseQuery } from "@tanstack/react-query";
 import { lazy, Suspense, useCallback, useState, type MouseEvent } from "react";
 
-import {
-  type ContainerInfo,
-  getMutationErrorMessage,
-  linuxio,
-  useCallMutation,
-} from "@/api";
+import { type ContainerInfo, getMutationErrorMessage, linuxio } from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppDivider from "@/components/ui/AppDivider";
@@ -174,18 +169,14 @@ const DockerContainers = () => {
         return "var(--app-palette-text-disabled)";
     }
   }, []);
-  const { mutateAsync: startContainer } = useCallMutation(
-    linuxio.docker.start_container,
-  );
-  const { mutateAsync: stopContainer } = useCallMutation(
-    linuxio.docker.stop_container,
-  );
-  const { mutateAsync: restartContainer } = useCallMutation(
-    linuxio.docker.restart_container,
-  );
-  const { mutateAsync: removeContainer } = useCallMutation(
-    linuxio.docker.remove_container,
-  );
+  const { mutateAsync: startContainer } =
+    linuxio.docker.start_container.useMutation();
+  const { mutateAsync: stopContainer } =
+    linuxio.docker.stop_container.useMutation();
+  const { mutateAsync: restartContainer } =
+    linuxio.docker.restart_container.useMutation();
+  const { mutateAsync: removeContainer } =
+    linuxio.docker.remove_container.useMutation();
   const handleContextMenu = useCallback(
     (e: MouseEvent<HTMLElement>, id: string, name: string, state: string) => {
       e.preventDefault();

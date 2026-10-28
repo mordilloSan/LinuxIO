@@ -9,7 +9,6 @@ import {
   type DockerNetwork,
   type DockerVolume,
   linuxio,
-  useCallMutation,
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
@@ -125,12 +124,12 @@ const ContainerConfigurationForm = ({
   }));
   const imageListId = useId();
   const volumeListId = useId();
-  const createMutation = useCallMutation(linuxio.docker.create_container, {
+  const createMutation = linuxio.docker.create_container.useMutation({
     success: "Container created",
     error: "Failed to create container",
     toast: DOCKER_TOAST_META,
   });
-  const editMutation = useCallMutation(linuxio.docker.edit_container, {
+  const editMutation = linuxio.docker.edit_container.useMutation({
     success: "Container recreated",
     error: "Failed to recreate container",
     toast: DOCKER_TOAST_META,

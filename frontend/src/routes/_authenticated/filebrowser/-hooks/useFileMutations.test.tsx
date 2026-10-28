@@ -44,10 +44,11 @@ vi.mock("@/api", async (importOriginal) => {
         delete_batch: taskEndpoint("delete"),
         trash_batch: taskEndpoint("trash"),
         resource_patch: taskEndpoint(),
-        resource_post: {},
+        resource_post: {
+          useMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
+        },
       },
     },
-    useCallMutation: () => ({ mutateAsync: vi.fn() }),
   };
 });
 

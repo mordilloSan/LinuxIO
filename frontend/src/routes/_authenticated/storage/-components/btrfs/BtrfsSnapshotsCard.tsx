@@ -5,7 +5,6 @@ import { useState } from "react";
 
 import {
   linuxio,
-  useCallMutation,
   type BtrfsRollbackProgress,
   type BtrfsRollbackResult,
   type BtrfsSnapshot,
@@ -87,22 +86,18 @@ const BtrfsSnapshotsCard = ({ uuid }: { uuid: string }) => {
   const [progress, setProgress] = useState<BtrfsRollbackProgress | null>(null);
   const [result, setResult] = useState<BtrfsRollbackResult | null>(null);
 
-  const { mutate: createSnapshot, isPending: isTaking } = useCallMutation(
-    linuxio.storage.btrfs_snapshot_create,
-    {
+  const { mutate: createSnapshot, isPending: isTaking } =
+    linuxio.storage.btrfs_snapshot_create.useMutation({
       success: "Snapshot created",
       error: "Failed to create snapshot",
       toast: BTRFS_TOAST_META,
-    },
-  );
-  const { mutate: deleteSnapshot, isPending: isDeleting } = useCallMutation(
-    linuxio.storage.btrfs_snapshot_delete,
-    {
+    });
+  const { mutate: deleteSnapshot, isPending: isDeleting } =
+    linuxio.storage.btrfs_snapshot_delete.useMutation({
       success: "Snapshot deleted",
       error: "Failed to delete snapshot",
       toast: BTRFS_TOAST_META,
-    },
-  );
+    });
   // One config drives fresh runs (mutate) and reload recovery (watch).
   const rollback = linuxio.storage.btrfs_snapshot_rollback.useTaskStreamAction<
     BtrfsRollbackResult,

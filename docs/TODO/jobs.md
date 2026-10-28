@@ -19,7 +19,7 @@ and [Notifications](../alerts.md).
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Store, host, relay, units, first route (`docker.update_container`) | done, verified on a real host |
-| 2 | Every mutation runs as a job: prerequisites, the ~199 routes and their callers, old task code deleted | in progress: step 1 and batch 1 of step 2 done (section 4.2) |
+| 2 | Every mutation runs as a job: prerequisites, the ~199 routes and their callers, old task code deleted | in progress: step 1 and batches 1–2 of step 2 done (section 4.2) |
 | 3 | btrfs resume hooks, with kill-and-resume root tests | not started |
 | 4 | Schedules and system jobs | not started; one open decision |
 | 5 | History view, login notice, update banner | not started |
@@ -529,7 +529,8 @@ a route that becomes a `Mutation` no longer type-checks in `useCallMutation`.
   - `docker.apply_daemon_storage`: write a checkpoint after stopping Docker so
     an interrupted run restarts Docker at the next host start rather than
     leaving it down.
-  - The 13 routes missing `Privileged()`.
+  - The 13 routes missing `Privileged()`: found already declared when batch 2
+    moved them.
   - `/etc/default/btrfsmaintenance` and the WireGuard configs: atomic writes.
 - Frontend: `useCallMutation(linuxio.<domain>.<name>, config)` becomes
   `linuxio.<domain>.<name>.useMutation(config)` (about 190 calls in 80
@@ -541,7 +542,7 @@ a route that becomes a `Mutation` no longer type-checks in `useCallMutation`.
 
 Batches:
 
-1. **Done, not yet committed.** The 92 writes of the accounts, alerts, config,
+1. **Done** (`d17eef19`). The 92 writes of the accounts, alerts, config,
    control, datetime, hostname, indexer, monitoring, network, power,
    schedules, shares, system, systemd, updates, virt and WireGuard families
    are `Mutation` or `MutationVoid`, and their 94 callers use `.useMutation`;
@@ -563,11 +564,22 @@ Batches:
    PackageKit refresh and the offline-update trigger without a password; a job
    host is a service, which polkit asks for one. Remote logins are
    `Remote=yes`, which polkit already treats like a service.
-2. Docker, with its two task routes.
-3. The file browser and the transfer engine in `frontend/src/tasks/`.
-4. Storage, with the fixes above: an independent review and root tests.
-5. The remaining task routes: `control.app_update`, `packages.update`,
-   `system.install_capability`, `virt.create`, `virt.template_download`.
+2. **Done, not yet committed.** The 70 remaining writes that were plain Calls,
+   in the Docker, file browser and storage families, are `Mutation` or
+   `MutationVoid`, and their callers use `.useMutation`;
+   `/etc/default/btrfsmaintenance` is written atomically. Every Docker write,
+   `docker.compose` included, declares `Privileged()`: by security policy the
+   `docker` group has no members, so only a sudo-authorized login reaches
+   Docker. Left as
+   Calls: `storage.btrfs_replication_ssh_key`, a get-or-create read the UI uses
+   as a query, and the four cache refreshes of section 2.17.
+3. **All 31 task routes in one sweep**: runners report through
+   `bridgeipc.ReportProgress` and name their target with `Target()`; the
+   `useTaskStreamAction` callers and the transfer engine in
+   `frontend/src/tasks/` move to `.useMutation` with `onProgress`; the three
+   browser-bound routes stay in the bridge with `BrowserBound()`; and the
+   storage and Docker fixes above land with their routes, after an independent
+   review and with root tests.
 
 **Step 3: delete the old task code.** `useCallMutation`, `useTaskAction`,
 `useTaskStreamAction`, `TaskRunner`, `SessionTask`, `DurableTask`,

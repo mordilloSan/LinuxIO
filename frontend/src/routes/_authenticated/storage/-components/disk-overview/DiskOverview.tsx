@@ -11,7 +11,6 @@ import {
   type SmartTestResult,
   type Stream,
   type TaskProgress,
-  useCallMutation,
 } from "@/api";
 import TabSelector from "@/components/tabbar/TabSelector";
 import AppCollapse from "@/components/ui/AppCollapse";
@@ -318,7 +317,7 @@ const DiskOverview = () => {
   const nfsMounts = Array.isArray(nfsMountsData) ? nfsMountsData : [];
   const [unmounting, setUnmounting] = useState<string | null>(null);
   const { mutate: unmountFilesystem, isPending: isUnmounting } =
-    useCallMutation(linuxio.storage.unmount_filesystem, {
+    linuxio.storage.unmount_filesystem.useMutation({
       success: () => {
         setUnmounting(null);
         toast.success("Filesystem unmounted");

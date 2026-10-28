@@ -9,7 +9,6 @@ import {
   type DockerDaemonConfigSetResult,
   type DockerDaemonStorageProgress,
   type TaskProgress,
-  useCallMutation,
 } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import PathPickerField from "@/components/pathpicker/PathPickerField";
@@ -102,7 +101,7 @@ const DockerDaemonSettingsSection = () => {
     reset,
   } = useSettingsDraft<DockerDaemonConfig, DraftErrors>(config ?? null);
 
-  const saveMutation = useCallMutation(linuxio.docker.set_daemon_config, {
+  const saveMutation = linuxio.docker.set_daemon_config.useMutation({
     success: (result) => {
       queryClient.setQueryData(
         linuxio.docker.get_daemon_config.queryKey,

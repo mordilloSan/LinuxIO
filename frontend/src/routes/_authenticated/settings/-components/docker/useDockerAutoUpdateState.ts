@@ -6,7 +6,6 @@ import {
   type DockerContainerAutoUpdateState,
   getMutationErrorMessage,
   linuxio,
-  useCallMutation,
 } from "@/api";
 import { useScopedToast } from "@/hooks/useScopedToast";
 
@@ -54,10 +53,8 @@ export const useDockerAutoUpdateState = () => {
   });
   // This hook reconciles the cache itself (optimistic setQueryData + save
   // loop), so opt out of the manifest invalidation.
-  const { mutateAsync: saveAutoUpdateOptions } = useCallMutation(
-    linuxio.docker.set_container_auto_update,
-    { invalidates: [] },
-  );
+  const { mutateAsync: saveAutoUpdateOptions } =
+    linuxio.docker.set_container_auto_update.useMutation({ invalidates: [] });
 
   const targetEligibility = useMemo<
     ReadonlyMap<string, ContainerAutoUpdateTargetEligibility>

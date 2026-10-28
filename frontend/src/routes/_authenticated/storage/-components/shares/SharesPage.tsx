@@ -15,7 +15,6 @@ import {
   type NFSClient,
   type NFSExport,
   type SambaShare,
-  useCallMutation,
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import PathPickerField from "@/components/pathpicker/PathPickerField";
@@ -527,12 +526,10 @@ const FolderShareDialog = ({
     ? `${poolMount ?? ""}/${folder.name}`
     : path;
 
-  const subvolumeCreate = useCallMutation(
-    linuxio.storage.btrfs_subvolume_create,
-  );
-  const quotasSet = useCallMutation(linuxio.storage.btrfs_set_quotas);
-  const limitSet = useCallMutation(linuxio.storage.btrfs_qgroup_limit);
-  const ruleSet = useCallMutation(linuxio.storage.btrfs_snapshot_rule_set);
+  const subvolumeCreate = linuxio.storage.btrfs_subvolume_create.useMutation();
+  const quotasSet = linuxio.storage.btrfs_set_quotas.useMutation();
+  const limitSet = linuxio.storage.btrfs_qgroup_limit.useMutation();
+  const ruleSet = linuxio.storage.btrfs_snapshot_rule_set.useMutation();
   const sambaCreate = linuxio.shares.create_samba_share.useMutation();
   const sambaUpdate = linuxio.shares.update_samba_share.useMutation();
   const sambaDelete = linuxio.shares.delete_samba_share.useMutation();

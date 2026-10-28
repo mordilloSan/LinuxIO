@@ -3,7 +3,6 @@ import { useState } from "react";
 
 import {
   linuxio,
-  useCallMutation,
   type BtrfsDevice,
   type BtrfsFilesystem,
   type BtrfsOpProgress,
@@ -55,26 +54,23 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
   const [dialog, setDialog] = useState<DeviceDialog | null>(null);
   const [progress, setProgress] = useState<BtrfsOpProgress | null>(null);
 
-  const { mutate: addDevice, isPending: isAdding } = useCallMutation(
-    linuxio.storage.btrfs_device_add,
-    {
+  const { mutate: addDevice, isPending: isAdding } =
+    linuxio.storage.btrfs_device_add.useMutation({
       success: "Device added",
       error: "Failed to add device",
       toast: BTRFS_POOL_TOAST_META,
-    },
-  );
-  const { mutate: cancelBalance } = useCallMutation(
-    linuxio.storage.btrfs_balance_cancel,
-    { error: "Failed to cancel balance", toast: BTRFS_POOL_TOAST_META },
-  );
-  const { mutate: growDevice, isPending: isGrowing } = useCallMutation(
-    linuxio.storage.btrfs_device_grow,
-    {
+    });
+  const { mutate: cancelBalance } =
+    linuxio.storage.btrfs_balance_cancel.useMutation({
+      error: "Failed to cancel balance",
+      toast: BTRFS_POOL_TOAST_META,
+    });
+  const { mutate: growDevice, isPending: isGrowing } =
+    linuxio.storage.btrfs_device_grow.useMutation({
       success: "Device grown to its disk size",
       error: "Failed to grow device",
       toast: BTRFS_POOL_TOAST_META,
-    },
-  );
+    });
   const taskConfig = (success: string, error: string) => ({
     onProgress: (taskProgress: TaskProgress<BtrfsOpProgress>) =>
       setProgress(taskProgress.detail ?? null),

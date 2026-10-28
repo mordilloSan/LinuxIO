@@ -4,7 +4,6 @@ import { useState } from "react";
 
 import {
   linuxio,
-  useCallMutation,
   type BtrfsOpProgress,
   type BtrfsReplicationJob,
   type BtrfsReplicationResult,
@@ -56,22 +55,18 @@ const BtrfsReplicationCard = ({ uuid }: { uuid: string }) => {
   const [deleting, setDeleting] = useState<BtrfsReplicationJob | null>(null);
   const [progress, setProgress] = useState<BtrfsOpProgress | null>(null);
 
-  const { mutate: saveJob, isPending: isSaving } = useCallMutation(
-    linuxio.storage.btrfs_replication_job_set,
-    {
+  const { mutate: saveJob, isPending: isSaving } =
+    linuxio.storage.btrfs_replication_job_set.useMutation({
       success: "Replication job saved",
       error: "Failed to save replication job",
       toast: BTRFS_TOAST_META,
-    },
-  );
-  const { mutate: deleteJob, isPending: isDeleting } = useCallMutation(
-    linuxio.storage.btrfs_replication_job_delete,
-    {
+    });
+  const { mutate: deleteJob, isPending: isDeleting } =
+    linuxio.storage.btrfs_replication_job_delete.useMutation({
       success: "Replication job deleted",
       error: "Failed to delete replication job",
       toast: BTRFS_TOAST_META,
-    },
-  );
+    });
   // One config drives fresh runs (mutate) and reload recovery (watch).
   const replicate = linuxio.storage.btrfs_replication_run.useTaskStreamAction<
     BtrfsReplicationResult,

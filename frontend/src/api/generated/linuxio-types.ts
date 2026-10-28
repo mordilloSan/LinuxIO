@@ -4927,51 +4927,6 @@ export interface LinuxIOCallSchema {
     result: DockerUpdateCheckResult;
   };
   "docker.check_updates": { request: void; result: DockerUpdateCheckResult };
-  "docker.clear_icon_cache": { request: void; result: MessageResponse };
-  "docker.compose_down": {
-    request: ProjectNameRequest;
-    result: ComposeActionResult;
-  };
-  "docker.compose_restart": {
-    request: ProjectNameRequest;
-    result: ComposeActionResult;
-  };
-  "docker.compose_stop": {
-    request: ProjectNameRequest;
-    result: ComposeActionResult;
-  };
-  "docker.compose_up": {
-    request: ProjectNameRequest;
-    result: ComposeActionResult;
-  };
-  "docker.connect_network": {
-    request: DockerNetworkConnectRequest;
-    result: void;
-  };
-  "docker.create_container": {
-    request: ContainerCreateRequest;
-    result: ContainerConfigurationResult;
-  };
-  "docker.create_network": {
-    request: DockerNetworkCreateRequest;
-    result: void;
-  };
-  "docker.create_volume": { request: DockerVolumeCreateRequest; result: void };
-  "docker.delete_image": { request: ImageIDRequest; result: void };
-  "docker.delete_network": { request: IDRequest; result: void };
-  "docker.delete_stack": {
-    request: DeleteStackRequest;
-    result: DeleteStackResult;
-  };
-  "docker.delete_volume": { request: NameRequest; result: void };
-  "docker.disconnect_network": {
-    request: DockerNetworkDisconnectRequest;
-    result: void;
-  };
-  "docker.edit_container": {
-    request: ContainerEditRequest;
-    result: ContainerConfigurationResult;
-  };
   "docker.get_compose_file_path": {
     request: StackNameRequest;
     result: ComposeFilePathResponse;
@@ -5003,38 +4958,11 @@ export interface LinuxIOCallSchema {
     request: ContainerIDRequest;
     result: ContainerInspectInfo;
   };
-  "docker.kill_container": { request: ContainerIDRequest; result: void };
   "docker.list_compose_projects": { request: void; result: ComposeProject[] };
   "docker.list_containers": { request: void; result: ContainerInfo[] };
   "docker.list_images": { request: void; result: DockerImage[] };
   "docker.list_networks": { request: void; result: DockerNetwork[] };
   "docker.list_volumes": { request: void; result: DockerVolume[] };
-  "docker.pause_container": { request: ContainerIDRequest; result: void };
-  "docker.remove_container": { request: ContainerRemoveRequest; result: void };
-  "docker.restart_container": { request: ContainerIDRequest; result: void };
-  "docker.set_container_auto_update": {
-    request: DockerContainerAutoUpdateOptions;
-    result: DockerContainerAutoUpdateState;
-  };
-  "docker.set_daemon_config": {
-    request: DockerDaemonConfig;
-    result: DockerDaemonConfigSetResult;
-  };
-  "docker.start_all_stopped": {
-    request: void;
-    result: DockerStartedFailedResponse;
-  };
-  "docker.start_container": { request: ContainerIDRequest; result: void };
-  "docker.stop_all_running": {
-    request: void;
-    result: DockerStoppedFailedResponse;
-  };
-  "docker.stop_container": { request: ContainerIDRequest; result: void };
-  "docker.system_prune": {
-    request: DockerSystemPruneRequest;
-    result: DockerSystemPruneResponse;
-  };
-  "docker.unpause_container": { request: ContainerIDRequest; result: void };
   "docker.validate_compose": {
     request: ValidateComposeRequest;
     result: ValidateComposeResponse;
@@ -5057,10 +4985,6 @@ export interface LinuxIOCallSchema {
     result: DirectoryListing;
   };
   "filebrowser.read_text": { request: PathRequest; result: TextFile };
-  "filebrowser.resource_post": {
-    request: FileResourcePostRequest;
-    result: void;
-  };
   "filebrowser.resource_stat": {
     request: PathRequest;
     result: ResourceStatData;
@@ -5147,123 +5071,22 @@ export interface LinuxIOCallSchema {
   "shares.get_rsync_ssh": { request: RsyncSSHRequest; result: RsyncSSHStatus };
   "shares.list_nfs_shares": { request: void; result: NFSExport[] };
   "shares.list_samba_shares": { request: void; result: SambaShare[] };
-  "storage.btrfs_balance_cancel": {
-    request: UUIDRequest;
-    result: SuccessResponse;
-  };
-  "storage.btrfs_device_add": {
-    request: BtrfsDeviceAddRequest;
-    result: BtrfsFilesystem;
-  };
-  "storage.btrfs_device_grow": {
-    request: BtrfsDeviceRequest;
-    result: BtrfsFilesystem;
-  };
   "storage.btrfs_list": { request: void; result: BtrfsFilesystem[] };
-  "storage.btrfs_pool_destroy": {
-    request: UUIDRequest;
-    result: SuccessResponse;
-  };
-  "storage.btrfs_pool_mount": {
-    request: BtrfsPoolMountRequest;
-    result: BtrfsFilesystem;
-  };
   "storage.btrfs_pools_offline": { request: void; result: BtrfsOfflinePool[] };
-  "storage.btrfs_qgroup_limit": {
-    request: BtrfsQgroupLimitRequest;
-    result: BtrfsSubvolume;
-  };
-  "storage.btrfs_replication_job_delete": {
-    request: BtrfsJobIDRequest;
-    result: BtrfsReplicationJob[];
-  };
-  "storage.btrfs_replication_job_set": {
-    request: BtrfsReplicationJobRequest;
-    result: BtrfsReplicationJob[];
-  };
   "storage.btrfs_replication_jobs": {
     request: void;
     result: BtrfsReplicationJob[];
   };
   "storage.btrfs_replication_ssh_key": { request: void; result: BtrfsSSHKey };
-  "storage.btrfs_replication_ssh_trust": {
-    request: BtrfsSSHTrustRequest;
-    result: BtrfsSSHTrust;
-  };
-  "storage.btrfs_scrub_cancel": {
-    request: UUIDRequest;
-    result: SuccessResponse;
-  };
-  "storage.btrfs_set_compression": {
-    request: BtrfsCompressionRequest;
-    result: BtrfsSettings;
-  };
-  "storage.btrfs_set_label": {
-    request: BtrfsLabelRequest;
-    result: BtrfsFilesystem;
-  };
-  "storage.btrfs_set_quotas": {
-    request: BtrfsQuotaRequest;
-    result: BtrfsSettings;
-  };
   "storage.btrfs_settings": { request: UUIDRequest; result: BtrfsSettings };
-  "storage.btrfs_snapshot_create": {
-    request: BtrfsSubvolumeRequest;
-    result: BtrfsSnapshot;
-  };
-  "storage.btrfs_snapshot_delete": {
-    request: BtrfsSnapshotRequest;
-    result: SuccessResponse;
-  };
-  "storage.btrfs_snapshot_rule_delete": {
-    request: BtrfsSubvolumeRequest;
-    result: BtrfsSnapshotRules;
-  };
-  "storage.btrfs_snapshot_rule_set": {
-    request: BtrfsSnapshotRuleRequest;
-    result: BtrfsSnapshotRules;
-  };
   "storage.btrfs_snapshot_rules": { request: void; result: BtrfsSnapshotRules };
-  "storage.btrfs_snapshot_run_now": { request: void; result: RunReport };
   "storage.btrfs_snapshots": {
     request: BtrfsSnapshotsRequest;
     result: BtrfsSnapshot[];
   };
-  "storage.btrfs_subvolume_create": {
-    request: BtrfsSubvolumeRequest;
-    result: BtrfsSubvolume;
-  };
-  "storage.btrfs_subvolume_delete": {
-    request: BtrfsSubvolumeRequest;
-    result: SuccessResponse;
-  };
-  "storage.btrfs_subvolume_set_compression": {
-    request: BtrfsSubvolumeCompressionRequest;
-    result: BtrfsSubvolume;
-  };
-  "storage.btrfs_subvolume_set_default": {
-    request: BtrfsSubvolumeRequest;
-    result: SuccessResponse;
-  };
-  "storage.btrfs_subvolume_set_readonly": {
-    request: BtrfsSubvolumeReadOnlyRequest;
-    result: BtrfsSubvolume;
-  };
   "storage.btrfs_subvolumes": {
     request: UUIDRequest;
     result: BtrfsSubvolume[];
-  };
-  "storage.create_lv": {
-    request: CreateLogicalVolumeRequest;
-    result: SuccessPathResponse;
-  };
-  "storage.delete_lv": {
-    request: VolumeGroupLogicalVolumeRequest;
-    result: SuccessResponse;
-  };
-  "storage.disk_initialize": {
-    request: BlockDeviceRequest;
-    result: SuccessResponse;
   };
   "storage.get_btrfs_maintenance": {
     request: void;
@@ -5279,58 +5102,6 @@ export interface LinuxIOCallSchema {
   "storage.list_pvs": { request: void; result: PhysicalVolume[] };
   "storage.list_vgs": { request: void; result: VolumeGroup[] };
   "storage.md_list": { request: void; result: MDArray[] };
-  "storage.md_member_add": { request: MDMemberAddRequest; result: MDArray };
-  "storage.md_member_fail": { request: MDMemberRequest; result: MDArray };
-  "storage.md_member_remove": { request: MDMemberRequest; result: MDArray };
-  "storage.md_member_replace": {
-    request: MDMemberReplaceRequest;
-    result: MDArray;
-  };
-  "storage.md_sync_action": { request: MDSyncActionRequest; result: MDArray };
-  "storage.mount_cifs": {
-    request: CIFSMountRequest;
-    result: StorageMountResult;
-  };
-  "storage.mount_nfs": {
-    request: ServerExportMountOptionsPersistRequest;
-    result: StorageMountResult;
-  };
-  "storage.partition_delete": {
-    request: BlockDeviceRequest;
-    result: SuccessResponse;
-  };
-  "storage.partition_mount": {
-    request: PartitionMountRequest;
-    result: StorageMountResult;
-  };
-  "storage.remount_cifs": {
-    request: MountpointOptionsUpdateFstabRequest;
-    result: StorageMountResult;
-  };
-  "storage.remount_nfs": {
-    request: MountpointOptionsUpdateFstabRequest;
-    result: StorageMountResult;
-  };
-  "storage.resize_lv": {
-    request: ResizeLogicalVolumeRequest;
-    result: SuccessResponse;
-  };
-  "storage.set_btrfs_maintenance": {
-    request: BtrfsMaintenanceRequest;
-    result: BtrfsMaintenanceSchedule;
-  };
-  "storage.unmount_cifs": {
-    request: MountpointRemoveFstabRequest;
-    result: StorageWarningResult;
-  };
-  "storage.unmount_filesystem": {
-    request: MountpointRemoveFstabRequest;
-    result: StorageMountResult;
-  };
-  "storage.unmount_nfs": {
-    request: MountpointRemoveFstabRequest;
-    result: StorageWarningResult;
-  };
   "system.get_capabilities": { request: void; result: CapabilitiesResponse };
   "system.get_cpu_info": { request: void; result: CPUInfoResponse };
   "system.get_gpu_info": { request: void; result: GpuDevice[] };

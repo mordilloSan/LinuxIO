@@ -3,7 +3,6 @@ import { useState, type CSSProperties } from "react";
 
 import {
   linuxio,
-  useCallMutation,
   type BtrfsFilesystem,
   type BtrfsOpProgress,
   type BtrfsScrubStatus,
@@ -125,10 +124,11 @@ const BtrfsHealthBanner = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
     BtrfsFilesystem,
     TaskProgress<BtrfsOpProgress>
   >(taskConfig("Space reclaimed", "Failed to reclaim space"));
-  const { mutate: cancelScrub } = useCallMutation(
-    linuxio.storage.btrfs_scrub_cancel,
-    { error: "Failed to stop the check", toast: BTRFS_POOL_TOAST_META },
-  );
+  const { mutate: cancelScrub } =
+    linuxio.storage.btrfs_scrub_cancel.useMutation({
+      error: "Failed to stop the check",
+      toast: BTRFS_POOL_TOAST_META,
+    });
 
   return (
     <FrostedCard style={bannerStyle}>

@@ -216,7 +216,7 @@ describe("ContainerTable mutation feedback", () => {
       media.compact = false;
       const deferred = createDeferred<void>();
       const request = vi
-        .spyOn(core, "request")
+        .spyOn(core, "mutationRequest")
         .mockImplementation((_handler, calledCommand) =>
           calledCommand === command ? deferred.promise : Promise.resolve(),
         );
@@ -264,7 +264,10 @@ describe("ContainerTable mutation feedback", () => {
         label === "Remove"
           ? { containerId: "alpha-id", force: false }
           : { containerId: "alpha-id" },
-        { retryPolicy: "none" },
+        {
+          onProgress: expect.any(Function),
+          onSnapshot: expect.any(Function),
+        },
       );
 
       await act(async () => {
@@ -393,7 +396,7 @@ describe("ContainerTable mutation feedback", () => {
   it("keeps a compact row spinner after its action menu closes", async () => {
     media.compact = true;
     const deferred = createDeferred<void>();
-    vi.spyOn(core, "request").mockImplementation((_handler, command) =>
+    vi.spyOn(core, "mutationRequest").mockImplementation((_handler, command) =>
       command === "start_container" ? deferred.promise : Promise.resolve(),
     );
     const { user } = renderTable([

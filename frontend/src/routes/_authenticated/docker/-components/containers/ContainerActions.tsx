@@ -2,7 +2,7 @@ import { Icon } from "@iconify/react";
 import { useNavigate } from "@tanstack/react-router";
 import { lazy, Suspense, useState } from "react";
 
-import { linuxio, type ContainerInfo, useCallMutation } from "@/api";
+import { linuxio, type ContainerInfo } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
@@ -66,53 +66,45 @@ const ContainerActions = ({
   const { canUpdate, isUpdating, startUpdate, updating } =
     useDockerUpdateOperation();
 
-  const { mutate: startContainer, isPending: isStartPending } = useCallMutation(
-    linuxio.docker.start_container,
-    {
+  const { mutate: startContainer, isPending: isStartPending } =
+    linuxio.docker.start_container.useMutation({
       success: `Container ${name} started`,
       error: `Failed to start ${name}`,
       toast: DOCKER_TOAST_META,
-    },
-  );
-  const { mutate: stopContainer, isPending: isStopPending } = useCallMutation(
-    linuxio.docker.stop_container,
-    {
+    });
+  const { mutate: stopContainer, isPending: isStopPending } =
+    linuxio.docker.stop_container.useMutation({
       success: `Container ${name} stopped`,
       error: `Failed to stop ${name}`,
       toast: DOCKER_TOAST_META,
-    },
-  );
+    });
   const { mutate: restartContainer, isPending: isRestartPending } =
-    useCallMutation(linuxio.docker.restart_container, {
+    linuxio.docker.restart_container.useMutation({
       success: `Container ${name} restarted`,
       error: `Failed to restart ${name}`,
       toast: DOCKER_TOAST_META,
     });
-  const { mutate: pauseContainer, isPending: isPausePending } = useCallMutation(
-    linuxio.docker.pause_container,
-    {
+  const { mutate: pauseContainer, isPending: isPausePending } =
+    linuxio.docker.pause_container.useMutation({
       success: `Container ${name} paused`,
       error: `Failed to pause ${name}`,
       toast: DOCKER_TOAST_META,
-    },
-  );
+    });
   const { mutate: unpauseContainer, isPending: isUnpausePending } =
-    useCallMutation(linuxio.docker.unpause_container, {
+    linuxio.docker.unpause_container.useMutation({
       success: `Container ${name} resumed`,
       error: `Failed to resume ${name}`,
       toast: DOCKER_TOAST_META,
     });
-  const { mutate: killContainer, isPending: isKillPending } = useCallMutation(
-    linuxio.docker.kill_container,
-    {
+  const { mutate: killContainer, isPending: isKillPending } =
+    linuxio.docker.kill_container.useMutation({
       success: `Container ${name} killed`,
       error: `Failed to kill ${name}`,
       toast: DOCKER_TOAST_META,
       options: { onSuccess: () => setConfirmation(null) },
-    },
-  );
+    });
   const { mutate: removeContainer, isPending: isRemovePending } =
-    useCallMutation(linuxio.docker.remove_container, {
+    linuxio.docker.remove_container.useMutation({
       success: `Container ${name} removed`,
       error: `Failed to remove ${name}`,
       toast: DOCKER_TOAST_META,

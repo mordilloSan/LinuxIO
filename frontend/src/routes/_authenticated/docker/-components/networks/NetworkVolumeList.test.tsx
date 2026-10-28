@@ -48,13 +48,16 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
+  const { mockMutationHooks } = await import("@/test/mutationHooks");
+  const useCallMutation = () => ({
+    isPending: false,
+    mutate: mocks.mutate,
+    mutateAsync: mocks.mutateAsync,
+  });
   return {
     ...actual,
-    useCallMutation: () => ({
-      isPending: false,
-      mutate: mocks.mutate,
-      mutateAsync: mocks.mutateAsync,
-    }),
+    useCallMutation,
+    linuxio: mockMutationHooks(actual.linuxio, useCallMutation),
   };
 });
 

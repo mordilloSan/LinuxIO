@@ -3,7 +3,7 @@
  *
  * JSON API (generated, Go-owned request/response contracts):
  *   useQuery(linuxio.system.get_cpu_info)
- *   useCallMutation(linuxio.docker.start_container, { success, error })
+ *   linuxio.docker.start_container.useMutation({ success, error })
  *   linuxio.docker.compose.useTaskStreamAction({ onProgress })
  *   linuxio.<handler>.<mutation>.useMutation({ onStart, onProgress })
  *

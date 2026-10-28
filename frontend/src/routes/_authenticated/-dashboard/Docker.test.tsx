@@ -91,7 +91,7 @@ describe("dashboard Docker mutation feedback", () => {
   it("retains concurrent action targets after their menus close", async () => {
     const starting = createDeferred<void>();
     const restarting = createDeferred<void>();
-    vi.spyOn(core, "request").mockImplementation(
+    vi.spyOn(core, "mutationRequest").mockImplementation(
       (_handler, command, request) => {
         const containerId = (request as { containerId?: string }).containerId;
         if (command === "start_container" && containerId === "alpha-id") {

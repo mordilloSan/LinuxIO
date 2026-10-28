@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 
-import { CACHE_TTL_MS, linuxio, type NFSMount, useCallMutation } from "@/api";
+import { CACHE_TTL_MS, linuxio, type NFSMount } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAlert from "@/components/ui/AppAlert";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
@@ -258,16 +258,14 @@ const MountNFSDialog = ({ open, onClose }: MountNFSDialogProps) => {
     serverToBrowse,
     serverToBrowse ? 500 : 0,
   );
-  const { mutate: mountNFS, isPending: isMounting } = useCallMutation(
-    linuxio.storage.mount_nfs,
-    {
+  const { mutate: mountNFS, isPending: isMounting } =
+    linuxio.storage.mount_nfs.useMutation({
       success: `NFS share mounted at ${mountpoint}`,
       warning: (result) => result.warning,
       error: "Failed to mount NFS share",
       toast: STORAGE_TOAST_META,
       options: { onSuccess: () => handleClose() },
-    },
-  );
+    });
 
   // Browsing is best-effort; on error the field falls back to free text.
   const exportsQuery = useQuery({
@@ -414,16 +412,14 @@ const RemoveDialog = ({ open, onClose, mount }: RemoveDialogProps) => {
       ? `Removed ${mount.mountpoint}`
       : `Unmounted ${mount.mountpoint}`
     : `Removed saved entry for ${mount?.mountpoint}`;
-  const { mutate: removeEntry, isPending: isRemoving } = useCallMutation(
-    linuxio.storage.unmount_nfs,
-    {
+  const { mutate: removeEntry, isPending: isRemoving } =
+    linuxio.storage.unmount_nfs.useMutation({
       success: removedMessage,
       warning: (result) => result.warning,
       error: "Failed to remove entry",
       toast: STORAGE_TOAST_META,
       options: { onSuccess: () => onClose() },
-    },
-  );
+    });
 
   const handleRemove = () => {
     if (!mount) return;
@@ -530,16 +526,14 @@ const EditNFSForm = ({ mount, onClose }: EditNFSFormProps) => {
       return [...base, value];
     });
   };
-  const { mutate: remountNFS, isPending: isRemounting } = useCallMutation(
-    linuxio.storage.remount_nfs,
-    {
+  const { mutate: remountNFS, isPending: isRemounting } =
+    linuxio.storage.remount_nfs.useMutation({
       success: "NFS mount options updated",
       warning: (result) => result.warning,
       error: "Failed to update mount options",
       toast: STORAGE_TOAST_META,
       options: { onSuccess: () => onClose() },
-    },
-  );
+    });
   const buildOptions = () => {
     const opts: string[] = [];
     opts.push(readOnly ? "ro" : "rw");
@@ -742,13 +736,13 @@ const NFSMounts = ({
   const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedMount, setSelectedMount] = useState<NFSMount | null>(null);
-  const mountExistingEntry = useCallMutation(linuxio.storage.mount_nfs, {
+  const mountExistingEntry = linuxio.storage.mount_nfs.useMutation({
     success: "NFS entry mounted",
     warning: (result) => result.warning,
     error: "Failed to mount NFS entry",
     toast: STORAGE_TOAST_META,
   });
-  const unmountEntry = useCallMutation(linuxio.storage.unmount_nfs, {
+  const unmountEntry = linuxio.storage.unmount_nfs.useMutation({
     // The message needs `variables`, so the toast stays in a callback; the
     // warning affordance still owns the warning case.
     success: (result, variables) => {

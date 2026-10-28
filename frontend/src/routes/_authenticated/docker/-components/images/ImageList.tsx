@@ -2,7 +2,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { useCallback, useMemo, useState } from "react";
 
-import { type DockerImage, linuxio, useCallMutation } from "@/api";
+import { type DockerImage, linuxio } from "@/api";
 import ResourceDetailsLayout from "@/components/cards/ResourceDetailsLayout";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { useReorderableSurface } from "@/components/reorder/useReorderableSurface";
@@ -217,9 +217,8 @@ const ImageList = ({
     [navigate, surface.editMode],
   );
   // Configless: this is a batch flow — the dialog owns aggregation and toasts.
-  const { mutateAsync: deleteImage } = useCallMutation(
-    linuxio.docker.delete_image,
-  );
+  const { mutateAsync: deleteImage } =
+    linuxio.docker.delete_image.useMutation();
   const handleDeleteSuccess = () => {
     clearFocusedImage();
   };

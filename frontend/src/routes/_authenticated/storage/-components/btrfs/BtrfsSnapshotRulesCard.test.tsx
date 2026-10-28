@@ -23,12 +23,14 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
-  return {
+  const { mockMutationHooks } = await import("@/test/mutationHooks");
+  const useCallMutation = (endpoint: { route: string }) => ({
+    isPending: false,
+    mutate: (mocks.mutations[endpoint.route] ??= vi.fn()),
+  });
+  const mocked = {
     ...actual,
-    useCallMutation: (endpoint: { route: string }) => ({
-      isPending: false,
-      mutate: (mocks.mutations[endpoint.route] ??= vi.fn()),
-    }),
+    useCallMutation,
     linuxio: {
       ...actual.linuxio,
       storage: {
@@ -43,6 +45,10 @@ vi.mock("@/api", async (importOriginal) => {
         },
       },
     },
+  };
+  return {
+    ...mocked,
+    linuxio: mockMutationHooks(mocked.linuxio, useCallMutation),
   };
 });
 

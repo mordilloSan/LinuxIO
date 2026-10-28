@@ -16,7 +16,9 @@ describe("ContainerActions", () => {
   });
 
   it("guards actions by state and confirms SIGKILL", async () => {
-    const request = vi.spyOn(core, "request").mockResolvedValue(undefined);
+    const request = vi
+      .spyOn(core, "mutationRequest")
+      .mockResolvedValue(undefined);
     const { user } = render(
       <ContainerActions
         container={{ Id: "running-id", State: "running" }}
@@ -45,12 +47,17 @@ describe("ContainerActions", () => {
       "docker",
       "kill_container",
       { containerId: "running-id" },
-      { retryPolicy: "none" },
+      {
+        onProgress: expect.any(Function),
+        onSnapshot: expect.any(Function),
+      },
     );
   });
 
   it("requires explicit force for an active removal", async () => {
-    const request = vi.spyOn(core, "request").mockResolvedValue(undefined);
+    const request = vi
+      .spyOn(core, "mutationRequest")
+      .mockResolvedValue(undefined);
     const { user } = render(
       <ContainerActions
         container={{ Id: "running-id", State: "running" }}
@@ -76,7 +83,10 @@ describe("ContainerActions", () => {
       "docker",
       "remove_container",
       { containerId: "running-id", force: true },
-      { retryPolicy: "none" },
+      {
+        onProgress: expect.any(Function),
+        onSnapshot: expect.any(Function),
+      },
     );
   });
 
@@ -86,7 +96,9 @@ describe("ContainerActions", () => {
   ] as const)(
     "offers %s containers the %s action",
     async (state, label, route) => {
-      const request = vi.spyOn(core, "request").mockResolvedValue(undefined);
+      const request = vi
+        .spyOn(core, "mutationRequest")
+        .mockResolvedValue(undefined);
       const { user } = render(
         <ContainerActions
           container={{ Id: "container-id", State: state }}
@@ -104,13 +116,18 @@ describe("ContainerActions", () => {
         "docker",
         route,
         { containerId: "container-id" },
-        { retryPolicy: "none" },
+        {
+          onProgress: expect.any(Function),
+          onSnapshot: expect.any(Function),
+        },
       );
     },
   );
 
   it("offers only valid stopped-container lifecycle actions", async () => {
-    const request = vi.spyOn(core, "request").mockResolvedValue(undefined);
+    const request = vi
+      .spyOn(core, "mutationRequest")
+      .mockResolvedValue(undefined);
     const { user } = render(
       <ContainerActions
         container={{ Id: "stopped-id", State: "exited" }}
@@ -138,7 +155,10 @@ describe("ContainerActions", () => {
       "docker",
       "remove_container",
       { containerId: "stopped-id", force: false },
-      { retryPolicy: "none" },
+      {
+        onProgress: expect.any(Function),
+        onSnapshot: expect.any(Function),
+      },
     );
   });
 

@@ -125,9 +125,8 @@ const ComposeStacksPage = ({
   const projects = rawProjects;
 
   // Success/error toasts are composed per delete option in handleDeleteConfirm.
-  const { mutateAsync: deleteStack } = useCallMutation(
-    linuxio.docker.delete_stack,
-  );
+  const { mutateAsync: deleteStack } =
+    linuxio.docker.delete_stack.useMutation();
 
   // Loader-style read: the file content feeds the editor, fetched fresh on
   // every open (no cache entry wanted).

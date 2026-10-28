@@ -1,6 +1,6 @@
 import { useState, type ComponentType } from "react";
 
-import { linuxio, useCallMutation } from "@/api";
+import { linuxio } from "@/api";
 import { RoutedTabActions } from "@/components/tabbar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import HeaderActions from "@/components/ui/HeaderActions";
@@ -35,17 +35,15 @@ const DockerResourcePage = ({
   const [view, setView] = useViewMode(viewModeKey);
   const [pruneDialogOpen, setPruneDialogOpen] = useState(false);
   const [createHandler, setCreateHandler] = useState<(() => void) | null>(null);
-  const { mutate: systemPrune, isPending: isPruning } = useCallMutation(
-    linuxio.docker.system_prune,
-    {
+  const { mutate: systemPrune, isPending: isPruning } =
+    linuxio.docker.system_prune.useMutation({
       success: () => {
         toast.success("Docker prune completed");
         setPruneDialogOpen(false);
       },
       error: "Prune failed",
       toast: DOCKER_TOAST_META,
-    },
-  );
+    });
 
   const actions = (
     <HeaderActions

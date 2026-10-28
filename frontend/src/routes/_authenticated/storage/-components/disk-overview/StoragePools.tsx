@@ -4,7 +4,6 @@ import { useState, type CSSProperties, type ReactNode } from "react";
 
 import {
   linuxio,
-  useCallMutation,
   type BtrfsFilesystem,
   type BtrfsOfflinePool,
   type BtrfsOpProgress,
@@ -636,18 +635,21 @@ const StoragePools = ({
     error: "Failed to create pool",
     options: { onSettled: () => setCreateStep(null) },
   });
-  const { mutate: mountPool, isPending: isMounting } = useCallMutation(
-    linuxio.storage.btrfs_pool_mount,
-    { success: "Pool mounted", error: "Failed to mount pool" },
-  );
-  const { mutate: destroyPool, isPending: isDestroying } = useCallMutation(
-    linuxio.storage.btrfs_pool_destroy,
-    { success: "Pool destroyed", error: "Failed to destroy pool" },
-  );
-  const { mutate: renamePool, isPending: isRenaming } = useCallMutation(
-    linuxio.storage.btrfs_set_label,
-    { success: "Pool renamed", error: "Failed to rename pool" },
-  );
+  const { mutate: mountPool, isPending: isMounting } =
+    linuxio.storage.btrfs_pool_mount.useMutation({
+      success: "Pool mounted",
+      error: "Failed to mount pool",
+    });
+  const { mutate: destroyPool, isPending: isDestroying } =
+    linuxio.storage.btrfs_pool_destroy.useMutation({
+      success: "Pool destroyed",
+      error: "Failed to destroy pool",
+    });
+  const { mutate: renamePool, isPending: isRenaming } =
+    linuxio.storage.btrfs_set_label.useMutation({
+      success: "Pool renamed",
+      error: "Failed to rename pool",
+    });
   const hasArrays = (topology?.devices ?? []).some((device) =>
     device.type.startsWith("raid"),
   );

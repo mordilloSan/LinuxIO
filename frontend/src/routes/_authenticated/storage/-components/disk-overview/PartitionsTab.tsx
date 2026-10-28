@@ -3,7 +3,6 @@ import { useState } from "react";
 
 import {
   linuxio,
-  useCallMutation,
   getMutationErrorMessage,
   type BtrfsOpProgress,
   type StorageBlockDevice,
@@ -116,18 +115,21 @@ const PartitionsTab = ({ driveName }: { driveName: string }) => {
     SuccessResponse,
     TaskProgress<BtrfsOpProgress>
   >(taskConfig("Partition formatted", "Failed to format partition"));
-  const { mutate: deletePartition, isPending: isDeleting } = useCallMutation(
-    linuxio.storage.partition_delete,
-    { success: "Partition deleted", error: "Failed to delete partition" },
-  );
-  const { mutate: mountPartition, isPending: isMounting } = useCallMutation(
-    linuxio.storage.partition_mount,
-    { success: "Filesystem mounted", error: "Failed to mount filesystem" },
-  );
-  const { mutate: initializeDisk, isPending: isInitializing } = useCallMutation(
-    linuxio.storage.disk_initialize,
-    { success: "Disk initialized", error: "Failed to initialize disk" },
-  );
+  const { mutate: deletePartition, isPending: isDeleting } =
+    linuxio.storage.partition_delete.useMutation({
+      success: "Partition deleted",
+      error: "Failed to delete partition",
+    });
+  const { mutate: mountPartition, isPending: isMounting } =
+    linuxio.storage.partition_mount.useMutation({
+      success: "Filesystem mounted",
+      error: "Failed to mount filesystem",
+    });
+  const { mutate: initializeDisk, isPending: isInitializing } =
+    linuxio.storage.disk_initialize.useMutation({
+      success: "Disk initialized",
+      error: "Failed to initialize disk",
+    });
 
   // After a reload, adopt a running create or format of this disk so its
   // progress and completion toast come back.
