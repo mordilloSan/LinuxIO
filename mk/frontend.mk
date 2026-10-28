@@ -79,12 +79,12 @@ test-frontend-browser: ensure-node setup ## Build frontend + run router browser 
 	@cd "$(frontend_dir)" && ./node_modules/.bin/playwright test --config config/playwright.config.ts $(PLAYWRIGHT_ARGS)
 	@echo "✅ Frontend browser tests passed!"
 
-# Rewrites the screenshot baselines src/test/browser/styling-gallery.spec.ts
-# compares against. Run after a deliberate visual change, then review the PNG
+# Rewrites the screenshot baselines the styling gallery and dialog specs
+# compare against. Run after a deliberate visual change, then review the PNG
 # diff in git; the gallery does not need the production build.
 update-frontend-screenshots: ensure-node setup ## Rewrite the browser screenshot baselines
 	@echo "📸 Rewriting frontend screenshot baselines..."
-	@cd "$(frontend_dir)" && ./node_modules/.bin/playwright test --config config/playwright.config.ts --update-snapshots=all src/test/browser/styling-gallery.spec.ts
+	@cd "$(frontend_dir)" && ./node_modules/.bin/playwright test --config config/playwright.config.ts --update-snapshots=all src/test/browser/styling-gallery.spec.ts src/test/browser/dialog-styling.spec.ts
 	@echo "✅ Screenshot baselines updated!"
 
 bundle-metrics: ## Report frontend bundle sizes after a Vite build (informational)
