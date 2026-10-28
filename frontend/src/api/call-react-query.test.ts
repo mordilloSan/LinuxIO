@@ -287,8 +287,8 @@ describe("Task React Query integration", () => {
   });
 
   it("unwraps a terminal Task result and invalidates its keys", async () => {
-    const request = vi
-      .spyOn(core, "request")
+    const start = vi
+      .spyOn(core, "startJob")
       .mockResolvedValue(taskSnapshot({ result: { updated: true } }));
     const endpoint = createTaskEndpoint<{ updated: boolean }>(
       "virt",
@@ -305,16 +305,11 @@ describe("Task React Query integration", () => {
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: ["linuxio", "virt", "list"],
     });
-    expect(request).toHaveBeenCalledWith(
-      "virt",
-      "create",
-      { name: "vm" },
-      { retryPolicy: "none" },
-    );
+    expect(start).toHaveBeenCalledWith("virt", "create", { name: "vm" });
   });
 
   it("watches Task progress and resolves its terminal result", async () => {
-    vi.spyOn(core, "request").mockResolvedValue(
+    vi.spyOn(core, "startJob").mockResolvedValue(
       taskSnapshot({ state: "running" }),
     );
     const stream = createStream();

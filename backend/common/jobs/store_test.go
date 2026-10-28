@@ -311,6 +311,21 @@ func TestStoreFinishKeepsTheOutcomeOfAResultTooLargeToStore(t *testing.T) {
 	}
 }
 
+func TestStoreKeepsAJobWhoseRequestIsTooLargeToStore(t *testing.T) {
+	s := newTestStore(t)
+	r := testRecord(1, "a")
+	paths := strings.Repeat(`"/srv/data/some/long/path/name",`, maxRecordBytes/30)
+	r.Request = jsontext.Value(`{"paths":[` + paths + `"/last"]}`)
+	r.Target = []string{strings.Repeat("x", maxRecordBytes)}
+	mustCreate(t, s, r)
+
+	stored, err := s.Get(t.Context(), r.ID)
+	if err != nil || stored.State != StateRunning || stored.Request != nil || stored.Target != nil {
+		t.Fatalf("stored = %s with %d request bytes and %d targets, %v; want running without them",
+			stored.State, len(stored.Request), len(stored.Target), err)
+	}
+}
+
 func TestStoreReconcileCrashedMarksDeadRunningRecords(t *testing.T) {
 	s := newTestStore(t)
 	mustCreate(t, s, testRecord(1, "a"))

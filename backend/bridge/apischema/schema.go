@@ -21,8 +21,12 @@ type RouteSpec struct {
 	RetrySafe    bool
 	TaskLifetime bridgeipc.TaskLifetime
 	BrowserBound bool
-	Resumable    bool
-	Targeted     bool
+	Exclusive    bool
+	// TaskClient: the frontend starts this Mutation with its task client,
+	// which takes the job's first snapshot and follows it with tasks.watch.
+	TaskClient bool
+	Resumable  bool
+	Targeted   bool
 
 	Request  TypeSpec
 	Result   TypeSpec
@@ -73,6 +77,12 @@ func NoEndpoint() RouteSpecOption {
 // go to the browser.
 func BrowserBound() RouteSpecOption {
 	return func(spec *RouteSpec) { spec.BrowserBound = true }
+}
+
+// Exclusive runs one job of a Mutation at a time, whatever its target, for
+// work that cannot overlap itself: a package transaction, a LinuxIO update.
+func Exclusive() RouteSpecOption {
+	return func(spec *RouteSpec) { spec.Exclusive = true }
 }
 
 // Progress declares the route-specific detail carried by the common
@@ -184,6 +194,17 @@ func Mutation[Req, Res any](name string, fn func(context.Context, Req) (Res, err
 	return MutationBinding[Req, Res]{Route: spec, fn: fn}
 }
 
+// MutationTask declares a Mutation whose handler takes the job's task, for
+// runners that report through it or name files after its ID.
+func MutationTask[Req, Res any](name string, fn TaskRunnerFunc[Req, Res], opts ...RouteSpecOption) MutationBinding[Req, Res] {
+	b := Mutation(name, func(ctx context.Context, req Req) (Res, error) {
+		task, _ := bridgeipc.TaskFromContext(ctx) // a Mutation always runs as a task
+		return fn(ctx, task, req)
+	}, opts...)
+	b.Route.TaskClient = true
+	return b
+}
+
 // MutationVoid declares a Mutation whose handler returns no result.
 func MutationVoid[Req any](name string, fn func(context.Context, Req) error, opts ...RouteSpecOption) MutationBinding[Req, NoResponse] {
 	return Mutation(name, func(ctx context.Context, req Req) (NoResponse, error) {
@@ -207,8 +228,11 @@ func (b MutationBinding[Req, Res]) Resumable(h ResumeHooks[Req, Res]) MutationBi
 
 func newRoute[Request, Result any](kind Kind, mode bridgeipc.Mode, name string, opts ...RouteSpecOption) Route[Request, Result] {
 	spec := routeSpec(kind, mode, name, TypeOf[Request](), TypeOf[Result](), bridgeipc.JSONRequestDecoder[Request](), opts...)
-	if spec.Metadata != nil && (spec.Kind != KindTaskRunner || spec.Mode != bridgeipc.ModeTask) {
-		panic(fmt.Sprintf("apischema: route %s metadata is allowed only on task runners", spec.Route))
+	if spec.Metadata != nil && spec.Mode != bridgeipc.ModeTask && spec.Mode != bridgeipc.ModeMutation {
+		panic(fmt.Sprintf("apischema: route %s metadata is allowed only on task and mutation routes", spec.Route))
+	}
+	if spec.Exclusive && spec.Mode != bridgeipc.ModeMutation {
+		panic(fmt.Sprintf("apischema: route %s exclusivity is allowed only on mutation routes", spec.Route))
 	}
 	if spec.Identity != nil && (spec.Kind != KindTaskRunner || spec.Mode != bridgeipc.ModeTask) {
 		panic(fmt.Sprintf("apischema: route %s identity is allowed only on task runners", spec.Route))
@@ -633,6 +657,9 @@ func routeOptions(spec RouteSpec, explicit []bridgeipc.RouteOption) []bridgeipc.
 	}
 	if spec.BrowserBound {
 		opts = append(opts, bridgeipc.WithBrowserBound())
+	}
+	if spec.Exclusive {
+		opts = append(opts, bridgeipc.Exclusive)
 	}
 	return opts
 }

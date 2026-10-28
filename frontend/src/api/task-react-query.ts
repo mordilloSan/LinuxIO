@@ -179,12 +179,7 @@ export function createTaskEndpoint<TResult>(
   const queryKey = (...rawArgs: [] | [unknown]): QueryKey =>
     endpointQueryKey(handler, command, requestShape, rawArgs[0]);
   const execute = (...rawArgs: [] | [unknown]): Promise<TaskSnapshot> =>
-    core.request<TaskSnapshot>(
-      handler,
-      command,
-      requestForWire(requestShape, rawArgs[0]),
-      { retryPolicy: "none" },
-    );
+    core.startJob(handler, command, requestForWire(requestShape, rawArgs[0]));
 
   const endpoint = ((...rawArgs: [] | [unknown]) =>
     execute(...rawArgs)) as TaskEndpoint<[] | [unknown], unknown, TResult>;

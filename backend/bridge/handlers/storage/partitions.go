@@ -54,12 +54,12 @@ var partitionRoutes = partitionBindings().Routes()
 
 func partitionBindings() apischema.BindingSet {
 	return apischema.Bindings(
-		apischema.TaskRunner[apischema.PartitionCreateRequest, apischema.SuccessPathResponse]("storage.partition_create", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[BtrfsOpProgress](), apischema.WithTaskMetadata(func(req apischema.PartitionCreateRequest) bridgeipc.TaskMetadata {
+		apischema.MutationTask("storage.partition_create", runPartitionCreateTask, apischema.Privileged(), apischema.Progress[BtrfsOpProgress](), apischema.WithTaskMetadata(func(req apischema.PartitionCreateRequest) bridgeipc.TaskMetadata {
 			return bridgeipc.TaskMetadata{Identity: []string{req.Device, "partition"}, Label: "Creating partition", Device: req.Device}
-		})).Run(runPartitionCreateTask, bridgeipc.TaskDefault),
-		apischema.TaskRunner[apischema.PartitionFormatRequest, apischema.SuccessResponse]("storage.partition_format", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[BtrfsOpProgress](), apischema.WithTaskMetadata(func(req apischema.PartitionFormatRequest) bridgeipc.TaskMetadata {
+		})),
+		apischema.MutationTask("storage.partition_format", runPartitionFormatTask, apischema.Privileged(), apischema.Progress[BtrfsOpProgress](), apischema.WithTaskMetadata(func(req apischema.PartitionFormatRequest) bridgeipc.TaskMetadata {
 			return bridgeipc.TaskMetadata{Identity: []string{req.Device, "format"}, Label: "Formatting partition", Device: req.Device}
-		})).Run(runPartitionFormatTask, bridgeipc.TaskDefault),
+		})),
 	)
 }
 

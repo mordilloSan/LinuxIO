@@ -13,12 +13,9 @@ var Routes = routeBindings(runtime.Runtime{}).Routes()
 func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 	return apischema.Bindings(
 		apischema.Call[apischema.NoRequest, apischema.VersionResponse]("control.version", apischema.RetrySafe()).Handle(handleVersion),
-		apischema.TaskRunner[apischema.AppUpdateRequest, AppUpdateResult](routeAppUpdate, apischema.NoEndpoint(), apischema.SessionTask(), apischema.WithTaskProgress[AppUpdateProgressDetail]()).Run(
-			func(ctx context.Context, task *bridgeipc.Task, req apischema.AppUpdateRequest) (AppUpdateResult, error) {
-				return runAppUpdateTask(ctx, rt, task, req)
-			},
-			bridgeipc.TaskExclusive,
-		),
+		apischema.MutationTask(routeAppUpdate, func(ctx context.Context, task *bridgeipc.Task, req apischema.AppUpdateRequest) (AppUpdateResult, error) {
+			return runAppUpdateTask(ctx, rt, task, req)
+		}, apischema.NoEndpoint(), apischema.Progress[AppUpdateProgressDetail](), apischema.Exclusive()),
 	)
 }
 

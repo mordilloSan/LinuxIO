@@ -375,3 +375,43 @@ async function followMutation<TResult, TProgress>(
     }
   }
 }
+
+/**
+ * Start a mutation job and resolve with its first snapshot, then detach: the
+ * job runs on, and the caller follows it with tasks.watch. A connection lost
+ * before the snapshot resends the same envelope once, which attaches to the
+ * job if it started.
+ */
+export async function startJob(
+  handler: string,
+  command: string,
+  request: unknown,
+): Promise<TaskSnapshot> {
+  const route = `${handler}.${command}`;
+  const payload = streamOpenPayload(route, request, crypto.randomUUID());
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      const mux = await ensureRequestMuxReady(
+        STREAM_MULTIPLEXER_CONFIG.defaultRequestTimeoutMs,
+      );
+      const stream = mux.openStream(route, payload);
+      if (!stream) throw connectionUnavailableError();
+      return await new Promise<TaskSnapshot>((resolve, reject) => {
+        let started = false;
+        waitForStreamResult<TaskSnapshot>(stream, {
+          closeMessage: "Connection closed before the job started",
+          onProgress: (frame) => {
+            if (started || !isTaskSnapshotFrame(frame)) return;
+            started = true;
+            resolve(frame.task);
+            stream.close();
+          },
+        }).then(resolve, reject);
+      });
+    } catch (error) {
+      if (!isMutationStreamLoss(error) || attempt >= MAX_REQUEST_ATTEMPTS) {
+        throw error;
+      }
+    }
+  }
+}

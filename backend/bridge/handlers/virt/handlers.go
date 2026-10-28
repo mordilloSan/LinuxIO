@@ -14,7 +14,7 @@ func routeBindings(_ runtime.Runtime) apischema.BindingSet {
 	return apischema.Bindings(
 		apischema.Call[apischema.NoRequest, apischema.VMTemplateLibrary]("virt.templates", apischema.RetrySafe(), apischema.Privileged()).Handle(handleTemplates),
 		apischema.MutationVoid("virt.template_delete", handleTemplateDelete, apischema.Privileged()),
-		apischema.TaskRunner[apischema.VMTemplateDownloadRequest, apischema.VMTemplate]("virt.template_download", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[apischema.VMCreateProgress]()).Run(handleTemplateDownload, bridgeipc.TaskDefault),
+		apischema.MutationTask("virt.template_download", handleTemplateDownload, apischema.Privileged(), apischema.Progress[apischema.VMCreateProgress]()),
 		apischema.Call[apischema.NoRequest, []apischema.VMNetwork]("virt.networks", apischema.RetrySafe(), apischema.Privileged()).Handle(handleNetworks),
 		apischema.Call[apischema.NoRequest, []apischema.VMStoragePool]("virt.pools", apischema.RetrySafe(), apischema.Privileged()).Handle(handlePools),
 		apischema.Call[apischema.NoRequest, []apischema.VMUnusedDisk]("virt.unused_disks", apischema.RetrySafe(), apischema.Privileged()).Handle(handleUnusedDisks),
@@ -31,7 +31,7 @@ func routeBindings(_ runtime.Runtime) apischema.BindingSet {
 		apischema.Mutation("virt.delete", handleDelete, apischema.Privileged()),
 		apischema.Mutation("virt.update", handleUpdate, apischema.Privileged()),
 		apischema.Mutation("virt.set_autostart", handleSetAutostart, apischema.Privileged()),
-		apischema.TaskRunner[apischema.VMCreateRequest, apischema.VirtualMachine]("virt.create", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[apischema.VMCreateProgress]()).Run(handleCreate, bridgeipc.TaskDefault),
+		apischema.MutationTask("virt.create", handleCreate, apischema.Privileged(), apischema.Progress[apischema.VMCreateProgress]()),
 		apischema.DuplexRoute[apischema.NameRequest, apischema.NoResponse]("virt.console_open", apischema.Privileged(), apischema.NoEndpoint()).Duplex(
 			HandleConsoleSession,
 		),

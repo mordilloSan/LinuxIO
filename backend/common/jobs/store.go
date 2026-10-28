@@ -389,11 +389,22 @@ func (s *Store) writeRecord(r Record, sync bool) error {
 	if err != nil {
 		return err
 	}
-	if len(data) > maxRecordBytes && len(r.Result) > 0 {
-		// Keep the outcome without a result too large to store; the clients
-		// attached when the job ended received it whole.
-		slog.Warn("job result too large to keep", "job_id", r.ID, "bytes", len(r.Result))
-		r.Result = nil
+	// A record too large to keep sheds its result, which attached clients
+	// received whole, then its target and its request, as a batch of
+	// thousands of paths has, keeping the job's state and history.
+	for _, part := range []struct {
+		name string
+		drop func()
+	}{
+		{"result", func() { r.Result = nil }},
+		{"target", func() { r.Target = nil }},
+		{"request", func() { r.Request = nil }},
+	} {
+		if err != nil || len(data) <= maxRecordBytes {
+			break
+		}
+		slog.Warn("job record part dropped to fit", "job_id", r.ID, "part", part.name)
+		part.drop()
 		data, err = encodeRecord(r)
 	}
 	if err != nil {

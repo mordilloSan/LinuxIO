@@ -70,7 +70,7 @@ type Record struct {
 	CreatedAt  time.Time      `json:"created_at"`
 	StartedAt  time.Time      `json:"started_at,omitzero"`
 	FinishedAt time.Time      `json:"finished_at,omitzero"`
-	Request    jsontext.Value `json:"request"`
+	Request    jsontext.Value `json:"request,omitzero"`
 	Progress   jsontext.Value `json:"progress,omitzero"`
 	Result     jsontext.Value `json:"result,omitzero"`
 	Error      *Error         `json:"error,omitzero"`

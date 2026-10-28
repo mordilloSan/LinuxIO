@@ -4,7 +4,7 @@ import { createElement, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TaskSnapshot } from "@/api/generated/linuxio-types";
-import { mutationRequest } from "@/api/linuxio-core";
+import { mutationRequest, startJob } from "@/api/linuxio-core";
 import { defineMutation } from "@/api/mutation-react-query";
 import { OPERATION_QUERY_INVALIDATIONS } from "@/api/operation-query-invalidations";
 import type { ProgressFrame, Stream } from "@/api/StreamMultiplexer";
@@ -288,6 +288,60 @@ describe("mutationRequest", () => {
 
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });
     expect(stream.abort).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("startJob", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    muxMocks.waitForStreamMux.mockResolvedValue(true);
+  });
+
+  it("resolves with the first snapshot and detaches the stream", async () => {
+    const stream = createStream();
+    const mux = installMux(stream);
+
+    const pending = startJob("docker", "compose", REQUEST);
+    await whenBound(stream);
+    expect(opened(mux, 0).envelope).toEqual({
+      route: "docker.compose",
+      request: REQUEST,
+      id: expect.stringMatching(UUID),
+    });
+    const task = runningTask("job-1");
+    stream.onProgress?.(snapshotFrame(task));
+
+    await expect(pending).resolves.toEqual(task);
+    expect(stream.close).toHaveBeenCalledTimes(1);
+    expect(stream.abort).not.toHaveBeenCalled();
+  });
+
+  it("resends once with the same id when the stream closes before the snapshot", async () => {
+    const first = createStream();
+    const second = createStream();
+    const mux = installMux(first, second);
+
+    const pending = startJob("docker", "compose", REQUEST);
+    await whenBound(first);
+    first.onClose?.();
+    await whenBound(second);
+    expect(opened(mux, 1)).toEqual(opened(mux, 0));
+    const task = runningTask("job-1");
+    second.onProgress?.(snapshotFrame(task));
+
+    await expect(pending).resolves.toEqual(task);
+  });
+
+  it("rejects a refusal without resending", async () => {
+    const stream = createStream();
+    const mux = installMux(stream, createStream());
+
+    const pending = startJob("docker", "compose", REQUEST);
+    await whenBound(stream);
+    stream.onResult?.({ status: "error", error: "already running", code: 409 });
+
+    await expect(pending).rejects.toMatchObject({ code: 409 });
+    expect(mux.openStream).toHaveBeenCalledTimes(1);
   });
 });
 

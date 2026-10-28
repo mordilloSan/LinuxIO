@@ -83,6 +83,11 @@ func Privileged(r *Route) {
 	r.Privileged = true
 }
 
+// Exclusive admits one task of the route at a time, whatever its target.
+func Exclusive(r *Route) {
+	r.Policy = TaskExclusive
+}
+
 func WithRequestDecoder(decode RequestDecoder) RouteOption {
 	return func(r *Route) {
 		r.Decode = decode
@@ -366,6 +371,11 @@ func (r *Router) registerRoute(route Route, allowTaskServiceRoute bool, opts ...
 	case ModeMutation:
 		if route.Lifetime == "" {
 			route.Lifetime = TaskLifetimeDurable
+			if route.BrowserBound {
+				// Its bytes ride the session, so the session's end cancels it and
+				// its cleanup removes the partial upload or the archive.
+				route.Lifetime = TaskLifetimeSession
+			}
 		}
 		validateTaskRouteOptions(route)
 	default:

@@ -532,7 +532,7 @@ func TestMutationVoidRequiresNoResponse(t *testing.T) {
 	}
 }
 
-func TestTaskMetadataBuildersAreAllowlistedTaskRoutes(t *testing.T) {
+func TestTaskMetadataBuildersAreAllowlistedTaskClientRoutes(t *testing.T) {
 	want := map[string]bool{
 		"filebrowser.compress": true, "filebrowser.extract": true, "filebrowser.copy_batch": true,
 		"filebrowser.move_batch": true, "filebrowser.delete_batch": true, "filebrowser.trash_batch": true,
@@ -552,8 +552,8 @@ func TestTaskMetadataBuildersAreAllowlistedTaskRoutes(t *testing.T) {
 		if !want[route.Route] {
 			t.Fatalf("%s unexpectedly declares public task metadata", route.Route)
 		}
-		if route.Kind != apischema.KindTaskRunner || route.Mode != bridgeipc.ModeTask {
-			t.Fatalf("%s metadata is not a task route", route.Route)
+		if !route.TaskClient {
+			t.Fatalf("%s metadata is not on a task-client mutation", route.Route)
 		}
 		delete(want, route.Route)
 	}

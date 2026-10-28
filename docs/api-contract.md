@@ -11,16 +11,18 @@ LinuxIO exposes four deliberately different operation shapes:
   host. One stream carries the job's snapshot, progress and result; the job
   outlives the stream, the browser tab and the login.
 - **Channel** is a live stream with an explicit resume/reconnect contract.
-- **Task** is the legacy shape for tracked background work with identity,
-  progress, and watcher recovery, run in the bridge and owned by the login
-  session. Task routes are being migrated to `Mutation`.
+- **Task** is the frontend's client for Mutations it starts and then watches
+  with `tasks.watch`: progress, identity metadata and recovery after a reload.
+  No backend route is a Task any more.
 
-163 routes are Mutations so far: every write except the 31 Task routes,
-including `control.app_update`, which are owned by the authenticated session,
-and five Calls: `logging.set_debug`, the three network bridge-handoff
-routes, which keep their own durable record, and
-`storage.btrfs_replication_ssh_key`, which creates the key on first read. [Phase 2](./TODO/jobs.md#42-phase-2-every-mutation-is-a-job)
-moves the rest. This browser-to-bridge API is an internal product
+Every write is a Mutation except five Calls: `logging.set_debug`, the three
+network bridge-handoff routes, which keep their own durable record, and
+`storage.btrfs_replication_ssh_key`, which creates the key on first read. The
+31 routes that were Tasks are Mutations the frontend still drives with its
+task client: the generated route metadata calls them `"task"`, and the client
+starts each over the Mutation stream with a job `id`, takes the first
+`task.snapshot` frame, detaches, and follows the job with `tasks.watch`
+([phase 2](./TODO/jobs.md#42-phase-2-every-mutation-is-a-job)). This browser-to-bridge API is an internal product
 surface. A future supported external API would be a separate contract.
 
 Task progress and data streams are not a durable audit/history API. A Task

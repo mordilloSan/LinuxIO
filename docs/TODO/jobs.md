@@ -19,7 +19,7 @@ and [Notifications](../alerts.md).
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Store, host, relay, units, first route (`docker.update_container`) | done, verified on a real host |
-| 2 | Every mutation runs as a job: prerequisites, the ~199 routes and their callers, old task code deleted | in progress: step 1 and batches 1–2 of step 2 done (section 4.2) |
+| 2 | Every mutation runs as a job: prerequisites, the ~199 routes and their callers, old task code deleted | in progress: steps 1 and 2 done, step 3 left (section 4.2) |
 | 3 | btrfs resume hooks, with kill-and-resume root tests | not started |
 | 4 | Schedules and system jobs | not started; one open decision |
 | 5 | History view, login notice, update banner | not started |
@@ -522,13 +522,7 @@ a route that becomes a `Mutation` no longer type-checks in `useCallMutation`.
 - The nine self-severing routes run in the host like the rest: the change
   completes there and only the reply is lost.
 - Fixed when their route moves, each with a test:
-  - `storage.btrfs_device_remove`: cancel issues the kernel cancel instead of
-    only marking the task.
-  - `storage.btrfs_pool_create`: on failure, undo the partitions it created
-    and wipe the superblocks it wrote.
-  - `docker.apply_daemon_storage`: write a checkpoint after stopping Docker so
-    an interrupted run restarts Docker at the next host start rather than
-    leaving it down.
+  - The btrfs and Docker storage fixes moved to phase 3 (section 4.3).
   - The 13 routes missing `Privileged()`: found already declared when batch 2
     moved them.
   - `/etc/default/btrfsmaintenance` and the WireGuard configs: atomic writes.
@@ -564,7 +558,7 @@ Batches:
    PackageKit refresh and the offline-update trigger without a password; a job
    host is a service, which polkit asks for one. Remote logins are
    `Remote=yes`, which polkit already treats like a service.
-2. **Done, not yet committed.** The 70 remaining writes that were plain Calls,
+2. **Done** (`e92e3161`). The 70 remaining writes that were plain Calls,
    in the Docker, file browser and storage families, are `Mutation` or
    `MutationVoid`, and their callers use `.useMutation`;
    `/etc/default/btrfsmaintenance` is written atomically. Every Docker write,
@@ -573,21 +567,42 @@ Batches:
    Docker. Left as
    Calls: `storage.btrfs_replication_ssh_key`, a get-or-create read the UI uses
    as a query, and the four cache refreshes of section 2.17.
-3. **All 31 task routes in one sweep**: runners report through
-   `bridgeipc.ReportProgress` and name their target with `Target()`; the
-   `useTaskStreamAction` callers and the transfer engine in
-   `frontend/src/tasks/` move to `.useMutation` with `onProgress`; the three
-   browser-bound routes stay in the bridge with `BrowserBound()`; and the
-   storage and Docker fixes above land with their routes, after an independent
-   review and with root tests.
+3. **Done, not yet committed.** All 31 task routes are Mutations: 28 run in
+   the job host, and `filebrowser.upload`, `filebrowser.upload_batch` and
+   `filebrowser.archive` stay in the bridge with `BrowserBound()`. Their
+   runners are unchanged: `apischema.MutationTask` hands a runner its task from
+   the context. They keep their task metadata, which the tray, recovery and
+   the transfer engine read, and the five that ran one at a time
+   (`control.app_update`, `docker.apply_daemon_storage`, `packages.update`,
+   `system.install_capability`, `filebrowser.index`) declare
+   `apischema.Exclusive()`. The frontend keeps its task client and its callers:
+   the generator still emits these routes as `"task"` with
+   `createTaskEndpoint`, and the client starts each over the mutation stream
+   with a job id (`startJob`), takes the first snapshot, detaches and follows
+   with `tasks.watch` and `tasks.data` as before. `control.app_update` records
+   the admin who started it rather than the host's uid. Moving the
+   frontend's task hooks onto `.useMutation` is step 3.
 
 **Step 3: delete the old task code.** `useCallMutation`, `useTaskAction`,
-`useTaskStreamAction`, `TaskRunner`, `SessionTask`, `DurableTask`,
-`WithTaskLifetime`, `WithTaskIdentity`, `WithTaskProgress` and the
-`TaskPolicy` admission; the guard tests of section 2.5;
-`docs/api-contract.md` route counts, modes and the lifetime section.
+`TaskRunner`, `SessionTask`, `DurableTask`, `WithTaskLifetime`,
+`WithTaskIdentity` and the bridge's own task path; the guard tests of section
+2.5; `docs/api-contract.md` route counts, modes and the lifetime section.
+Decide whether `useTaskStreamAction` and the transfer engine move onto
+`.useMutation` (`onStart`, `onProgress`, `watch`) or stay as the task client
+over mutation routes, and what `logging.set_debug` becomes.
 
-### 4.3 Phase 3: btrfs resume
+### 4.3 Phase 3: storage safety and btrfs resume
+
+Fixes that change what a storage or Docker job does to the host, each with a
+test:
+
+- `storage.btrfs_device_remove`: cancel issues the kernel cancel instead of
+  only marking the task.
+- `storage.btrfs_pool_create`: on failure, undo the partitions it created and
+  wipe the superblocks it wrote.
+- `docker.apply_daemon_storage`: write a checkpoint after stopping Docker so an
+  interrupted run restarts Docker at the next host start rather than leaving it
+  down.
 
 `Resumable` hooks for `storage.btrfs_scrub_start`, `storage.btrfs_balance`,
 `storage.btrfs_device_replace` and `storage.btrfs_device_remove` (section
@@ -760,6 +775,11 @@ The launcher was removed in `0b44d7d3`; all its items are obsolete: success log 
 
 ### Other open items
 
+- [ ] Stored requests keep secrets for the retention period: `virt.create`'s
+  cloud-init password, and the account and SMTP passwords since batch 1. The
+  records are `0600` and no API returns them (section 2.15); redact secret
+  fields before storing.
+
 - [ ] The power-loss reboot path (`interrupted/reboot` marked at boot) has only unit-test coverage.
 - [ ] The bridge resource limits (section 4.1).
 
@@ -817,6 +837,17 @@ cost if they turn out wrong where it was recorded.
   site, and one task system at a time. Resume hooks became phase 3.
 - **No default deadline for mutations** (2026-10-27): see section 4.2,
   step 1, item 4.
+- **`Exclusive()` for five routes** (2026-10-28), against "no per-route cap"
+  in section 2.2: `control.app_update`, `docker.apply_daemon_storage`,
+  `packages.update`, `system.install_capability` and `filebrowser.index` ran
+  one at a time as tasks, and two overlapping runs would race on binaries,
+  Docker's data directory, the package manager or the index. Their targets
+  could not express it: two have none, and the others' identities are the
+  tray's dedupe keys. On the root host the rule spans every admin.
+- **Task client kept for the 31 former task routes** (2026-10-28): the
+  frontend starts them over the Mutation stream and follows them as before,
+  so batch 3 moved them into the job host without rewriting the tray, the
+  transfer engine, recovery and uploads; step 3 decides their hooks.
 
 ## 7. Manual verification
 

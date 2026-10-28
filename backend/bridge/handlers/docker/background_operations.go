@@ -63,17 +63,14 @@ var dockerTaskRoutes = dockerTaskBindings(runtime.Runtime{}).Routes()
 func dockerTaskBindings(rt runtime.Runtime) apischema.BindingSet {
 	return apischema.Bindings(
 		apischema.Mutation(dockerUpdateRoute, handleUpdateContainer, apischema.Privileged(), apischema.Progress[apischema.DockerContainerUpdateProgress]()),
-		apischema.TaskRunner[apischema.DockerDaemonConfig, apischema.DockerDaemonConfigSetResult]("docker.apply_daemon_storage", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[apischema.DockerDaemonStorageProgress](), apischema.WithTaskMetadata(func(apischema.DockerDaemonConfig) bridgeipc.TaskMetadata {
+		apischema.MutationTask("docker.apply_daemon_storage", runApplyDaemonStorageTask, apischema.Privileged(), apischema.Progress[apischema.DockerDaemonStorageProgress](), apischema.WithTaskMetadata(func(apischema.DockerDaemonConfig) bridgeipc.TaskMetadata {
 			return bridgeipc.TaskMetadata{Label: "Docker storage change"}
-		})).Run(runApplyDaemonStorageTask, bridgeipc.TaskExclusive),
-		apischema.TaskRunner[apischema.DockerComposeRequest, ComposeTaskResult]("docker.compose", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[ComposeTaskMessage](), apischema.WithTaskMetadata(func(req apischema.DockerComposeRequest) bridgeipc.TaskMetadata {
+		}), apischema.Exclusive()),
+		apischema.MutationTask("docker.compose", func(ctx context.Context, task *bridgeipc.Task, req apischema.DockerComposeRequest) (ComposeTaskResult, error) {
+			return runDockerComposeTask(ctx, task, rt.Username(), rt.Store, req)
+		}, apischema.Privileged(), apischema.Progress[ComposeTaskMessage](), apischema.WithTaskMetadata(func(req apischema.DockerComposeRequest) bridgeipc.TaskMetadata {
 			return bridgeipc.TaskMetadata{Identity: []string{req.ProjectName}, Label: "Docker compose " + req.Action, Action: req.Action, ProjectName: req.ProjectName}
-		})).Run(
-			func(ctx context.Context, task *bridgeipc.Task, req apischema.DockerComposeRequest) (ComposeTaskResult, error) {
-				return runDockerComposeTask(ctx, task, rt.Username(), rt.Store, req)
-			},
-			bridgeipc.TaskDefault,
-		),
+		})),
 	)
 }
 

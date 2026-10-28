@@ -54,9 +54,10 @@ Handlers do not receive a universal emitter. Calls and Mutations use
 `func(context.Context, Request) (Result, error)` (or `error` with
 `HandleVoid` and `MutationVoid`); Channels use
 `func(context.Context, net.Conn, Request) error` for the lifetime of the stream.
-Legacy Task runners use
-`func(context.Context, *bridgeipc.Task, Request) (Result, error)`; add no new
-ones: a new write, quick or long, is a Mutation. The compiler checks
+A write, quick or long, is a Mutation. The runners that were Task routes keep
+`func(context.Context, *bridgeipc.Task, Request) (Result, error)` through
+`apischema.MutationTask`, which hands them their task; a new handler takes no
+task and reports through `bridgeipc.ReportProgress(ctx, …)`. The compiler checks
 each terminal result against its route declaration. `Progress[T]()` (on Task
 routes `WithTaskProgress[T]()`) declares the route-specific detail carried by
 the common `TaskProgress<T>` envelope. Detail types implement

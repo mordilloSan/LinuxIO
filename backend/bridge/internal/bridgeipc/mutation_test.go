@@ -54,6 +54,16 @@ func TestMutationRouteDefaultsToDurableLifetime(t *testing.T) {
 	}
 }
 
+// A browser-bound job's bytes ride the session, so the session's end cancels
+// it and its cleanup runs.
+func TestBrowserBoundMutationIsOwnedByTheSession(t *testing.T) {
+	router := NewRouter(NewTaskService())
+	router.Mutation("test.upload", func(context.Context, *Task, any) (any, error) { return nil, nil }, WithBrowserBound())
+	if route, _ := router.lookup("test.upload"); route.Lifetime != TaskLifetimeSession {
+		t.Fatalf("browser-bound lifetime = %q, want %q", route.Lifetime, TaskLifetimeSession)
+	}
+}
+
 func TestMutationOptionsAreAllowedOnlyOnMutationRoutes(t *testing.T) {
 	suspend := func(context.Context, jsontext.Value) (jsontext.Value, error) { return nil, nil }
 	resume := func(context.Context, jsontext.Value) (any, error) { return nil, nil }

@@ -2,12 +2,15 @@ package filebrowser
 
 import (
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"io/fs"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -15,6 +18,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
 func TestUploadTaskRejectsChangedExpectedVersion(t *testing.T) {
@@ -210,6 +214,21 @@ func TestUploadTaskRejectsExistingDestinationWithoutOverwrite(t *testing.T) {
 	if got, readErr := os.ReadFile(target); readErr != nil || string(got) != "old" {
 		t.Fatalf("existing file was touched: %q, err %v", got, readErr)
 	}
+
+	// The browser opens tasks.data after a start that still read running:
+	// the attach answers with the refusal, not with a timeout.
+	server, client := net.Pipe()
+	defer client.Close()
+	go func() {
+		defer server.Close()
+		_ = attachFileTransferData(context.Background(), task, server, bridgeipc.TaskDataAttachRequest{})
+	}()
+	_ = client.SetReadDeadline(time.Now().Add(5 * time.Second))
+	frame, err := ipc.ReadRelayFrame(client)
+	var result ipc.ResultFrame
+	if err != nil || json.Unmarshal(frame.Payload, &result) != nil || result.Code != 409 {
+		t.Fatalf("attach answer = %+v (%s), %v; want the 409 refusal", result, frame.Payload, err)
+	}
 }
 
 func TestUploadTaskOverwriteAcceptsExistingDestination(t *testing.T) {
@@ -233,7 +252,7 @@ func TestUploadTaskOverwriteAcceptsExistingDestination(t *testing.T) {
 	// The task must get past the conflict check and park waiting for a client
 	// stream; cancel it to finish the test.
 	waitForTransfer := func() bool {
-		_, ok := waitForFileTransferTask(context.Background(), task.ID())
+		_, ok := waitForFileTransferTask(context.Background(), task)
 		return ok
 	}
 	if !waitForTransfer() {

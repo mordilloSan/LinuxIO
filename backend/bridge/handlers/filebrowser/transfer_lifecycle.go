@@ -259,14 +259,22 @@ func attachFileTransferData(ctx context.Context, task *bridgeipc.Task, stream ne
 	if !ok {
 		return ipc.WriteResultErrorAndClose(stream, 0, "invalid transfer request", 400)
 	}
-	transfer, ok := waitForFileTransferTask(ctx, task.ID())
+	transfer, ok := waitForFileTransferTask(ctx, task)
 	if !ok {
+		// A transfer that failed before it was ready, such as an upload whose
+		// destination exists, answers with its own error.
+		if failure := task.Snapshot().Error; failure != nil {
+			return ipc.WriteResultErrorAndClose(stream, 0, failure.Message, failure.Code)
+		}
 		return ipc.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("transfer task not ready: %s", task.ID()), 404)
 	}
 	return transfer.attach(stream, req)
 }
 
-func waitForFileTransferTask(ctx context.Context, taskID string) (transferAttacher, bool) {
+// waitForFileTransferTask waits for task's transfer to register, until the
+// task ends or the attach wait runs out.
+func waitForFileTransferTask(ctx context.Context, task *bridgeipc.Task) (transferAttacher, bool) {
+	taskID := task.ID()
 	deadline := time.NewTimer(transferAttachWaitTimeout)
 	defer deadline.Stop()
 
@@ -281,6 +289,8 @@ func waitForFileTransferTask(ctx context.Context, taskID string) (transferAttach
 		}
 		select {
 		case <-ctx.Done():
+			return nil, false
+		case <-task.Done():
 			return nil, false
 		case <-deadline.C:
 			return nil, false

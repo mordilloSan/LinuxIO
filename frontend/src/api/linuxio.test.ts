@@ -5,11 +5,13 @@ import type { Stream } from "@/api/StreamMultiplexer";
 const mocks = vi.hoisted(() => ({
   getStreamMux: vi.fn(),
   request: vi.fn(),
+  startJob: vi.fn(),
 }));
 
 vi.mock("@/api/linuxio-core", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/linuxio-core")>()),
   request: mocks.request,
+  startJob: mocks.startJob,
 }));
 
 vi.mock("@/api/StreamMultiplexer", async () => {
@@ -48,14 +50,14 @@ describe("session-bound app-update stream", () => {
       openStream: vi.fn().mockReturnValue(watch),
       status: "open",
     });
-    mocks.request.mockResolvedValue({ id: "operation-1", state: "running" });
+    mocks.startJob.mockResolvedValue({ id: "operation-1", state: "running" });
 
     const stream = openAppUpdateStream(
       "00000000-0000-4000-8000-000000000042",
       "v2.3.4",
     );
     expect(stream).not.toBeNull();
-    await vi.waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(mocks.startJob).toHaveBeenCalledTimes(1));
 
     stream?.close();
 
@@ -73,10 +75,10 @@ describe("session-bound app-update stream", () => {
       openStream: vi.fn().mockReturnValue(watch),
       status: "open",
     });
-    mocks.request.mockResolvedValue({ id: "operation-1", state: "running" });
+    mocks.startJob.mockResolvedValue({ id: "operation-1", state: "running" });
 
     const stream = openAppUpdateStream("00000000-0000-4000-8000-000000000042");
-    await vi.waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(mocks.startJob).toHaveBeenCalledTimes(1));
     stream?.abort();
 
     await vi.waitFor(() =>
