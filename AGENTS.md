@@ -11,56 +11,17 @@
   - Messages are lowercase constant text (a leading acronym or product name from the `logguard` allow-list is fine), no trailing punctuation, no `[Tag]` or `Prefix: `; context goes in attributes and the error key is `error`, never `err`.
   - Client errors wrap a status sentinel with `%w`: `ErrInvalidArgs` 400, `ErrForbidden` 403, `ErrNotFound` 404, `ErrConflict` 409; `bridgeipc.NewError` only where the code itself is the point.
   - Success is one Info line per completed host mutation, past tense, identifiers as attributes; progress and reads are Debug.
-- In React, keep rendering pure and derive values instead of mirroring props or query data in state. Use Effects only to synchronize with external systems, with complete dependencies and cleanup; handle user actions in event handlers. Keep server state in TanStack Query, shareable URL state in validated  TanStack Router search or path parameters, and transient UI state locally. Reuse generated query options and route helpers, preserving their invalidation and cancellation paths. Treat memoization as an optimization, not a default. Don't add `useCallback`/`useMemo`/`memo` outside `*Virtual*` files or props consumed by them; the compiler handles it. Existing ones may be removed when touching the file, confirming with `make compiler-coverage`.
+- In React, keep rendering pure and derive values instead of mirroring props or query data in state. Use Effects only to synchronize with external systems, with complete dependencies and cleanup; handle user actions in event handlers. Keep server state in TanStack Query, shareable URL state in validated TanStack Router search or path parameters, and transient UI state locally. Reuse generated query options and route helpers, preserving their invalidation and cancellation paths. Treat memoization as an optimization, not a default. Don't add `useCallback`/`useMemo`/`memo` outside `*Virtual*` files or props consumed by them; the compiler handles it. Existing ones may be removed when touching the file, confirming with `make compiler-coverage`.
 - In the frontend, style through the shared `components/ui` components and the `--app-*` CSS variables `AppThemeProvider` writes to `:root` (`theme/variables.css`, `theme/cssVariables.ts`). Outside `components/ui` and `theme/`, code does not call `useAppTheme()`, compute colours with `alpha()`/`darken()`/`lighten()`, branch on `palette.mode`, or set hex colours or `fontSize` inline; `test/guards/styling-boundary.test.ts` lists the few files that must hand a browser API a resolved colour (canvas charts, xterm, ace, colour editors) and fails on any new one.
-- The backend targets Linux; do not add portability layers without a concrete requirement. Prefer Go APIs and existing D-Bus or service abstractions over shell commands. When a subprocess is necessary, use the existing context-aware command path, pass arguments separately, honor cancellation and timeouts, and return useful stderr with the error. Treat optional host  facilities as capabilities so their absence does not break unrelated features, keep privileged mutations narrow and validated, and distinguish unit tests from tests requiring systemd, Docker, libvirt, root, or a real host.
+- The backend targets Linux; do not add portability layers without a concrete requirement. Prefer Go APIs and existing D-Bus or service abstractions over shell commands. When a subprocess is necessary, use the existing context-aware command path, pass arguments separately, honor cancellation and timeouts, and return useful stderr with the error. Treat optional host facilities as capabilities so their absence does not break unrelated features, keep privileged mutations narrow and validated, and distinguish unit tests from tests requiring systemd, Docker, libvirt, root, or a real host.
 - Every route whose handler needs root (writes under `/etc` or `/var/lib`, mounts, block-device or filesystem ioctls, systemd, NetworkManager, Docker, libvirt, PackageKit, user and group changes, power) must declare `apischema.Privileged()` in its binding, so the dispatcher refuses it with 403 for a non-sudo session instead of the handler failing with a permission error part-way through. Reads stay unprivileged unless they expose sensitive data. See `docs/privilege_pattern.md`.
 
 ## Task execution and architectural authority
 
-- Treat an implementation specification supplied with the task as the approved
-  product and architectural direction for that task.
-
-- Before editing, inspect the relevant current implementation and validate the
-  specification against the actual working tree.
-
-- Do not repeat high-level product or architectural planning that has already
-  been established in the supplied specification.
-
-- If the specification differs from the current implementation only in minor
-  details, adapt the implementation using existing repository patterns.
-
-- If the current repository fundamentally conflicts with the specification in
-  a way that would make the requested implementation incorrect, unsafe, or
-  architecturally invalid, report the conflict rather than silently redesigning
-  the feature.
-
-- Keep low-level implementation decisions in the coding agent: exact functions,
-  types, file edits, test structure, error propagation, and other details that
-  are already determined by existing repository patterns.
-
-- Preserve the security and responsibility boundaries between
-  `linuxio-webserver`, `linuxio-bridge`, and `linuxio-auth`. Do not move
-  privileged or authentication-sensitive behavior across these boundaries
-  merely for implementation convenience.
-
-- Subagents may be used when they provide a clear benefit for bounded,
-  independent work, but they are not required for non-trivial tasks and should
-  not be spawned merely to repeat planning already provided with the task.
-
-- When delegating, prefer capable, faster, lower-cost worker models for bounded
-  exploration, implementation, and test execution. Keep architecture,
-  integration, conflict resolution, final diff review, and final decisions in
-  the main agent.
-
-- When subagents are used, parallel agents must be read-only or own clearly
-  disjoint files. Never allow overlapping edits in the same worktree.
-
-- Never run Make verification concurrently with implementation or with another
-  Make invocation when repository tooling may mutate the shared worktree.
-
-- Wait for every spawned agent before handoff and review the complete resulting
-  diff after all implementation and verification work is complete.
+- An implementation specification supplied with the task is the approved product and architecture direction: validate it against the working tree, adapt minor differences to existing patterns, and do not re-plan it. If the repository fundamentally conflicts with it (the result would be incorrect, unsafe, or architecturally invalid), report the conflict instead of silently redesigning.
+- Preserve the security and responsibility boundaries between `linuxio-webserver`, `linuxio-bridge`, and `linuxio-auth`; never move privileged or authentication-sensitive behavior across them for convenience.
+- Use subagents only for bounded, independent work, preferring faster, lower-cost models; keep integration, conflict resolution, final diff review, and final decisions in the main agent. Parallel agents must be read-only or own disjoint files.
+- Never run Make concurrently with implementation or with another Make invocation in the same worktree.
 
 ## Required quality workflow
 
