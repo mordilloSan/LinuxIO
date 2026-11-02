@@ -1,6 +1,7 @@
 package autoupdate
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -12,6 +13,7 @@ import (
 const (
 	notifyDropInName   = "linuxio-alert.conf"
 	aptUpgradeService  = "apt-daily-upgrade.service"
+	aptRefreshService  = "apt-daily.service"
 	mintUpgradeService = "mintupdate-automation-upgrade.service"
 )
 
@@ -59,4 +61,28 @@ func readNotifyPolicy(host backendHost, service string) AutoUpdateNotify {
 		}
 	}
 	return AutoUpdateNotifyNever
+}
+
+// writePendingDropIn installs or removes the ExecStopPost hook on the
+// package-list refresh service that reports packages waiting to be
+// installed. The caller runs daemon-reload afterwards.
+func writePendingDropIn(host backendHost, service, provider string, enabled bool) error {
+	path := notifyDropInPath(service)
+	if !enabled {
+		if err := host.removeFile(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("remove %s: %w", path, err)
+		}
+		return nil
+	}
+	body := fmt.Sprintf("[Service]\nExecStopPost=%s/linuxio alert pending-updates --provider %s\n", version.BinDir, provider)
+	if err := host.writeFileAtomic(path, []byte(body), 0o644); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	return nil
+}
+
+// readPendingEnabled reads the setting back from disk: the drop-in is the authority.
+func readPendingEnabled(host backendHost, service string) bool {
+	data, err := host.readFile(notifyDropInPath(service))
+	return err == nil && bytes.Contains(data, []byte("alert pending-updates"))
 }

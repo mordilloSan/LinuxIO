@@ -3,6 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
 import {
+  type AutoUpdateNotify,
+  type AutoUpdateOptions,
+  type DockerUpdateNotify,
   linuxio,
   type NotificationSettings,
   type NotificationSettingsView,
@@ -12,6 +15,8 @@ import FrostedCard from "@/components/cards/FrostedCard";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
+import AppCheckbox from "@/components/ui/AppCheckbox";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
@@ -22,6 +27,8 @@ type Draft = Omit<NotificationSettings, "emailTo"> & { emailTo: string };
 // Built field by field: the view carries smtpPasswordSet, which the strict
 // set_notifications decoder would reject if it were spread into the request.
 const toDraft = (settings: NotificationSettingsView): Draft => ({
+  dockerUpdates: settings.dockerUpdates,
+  dockerUpdatesAvailable: settings.dockerUpdatesAvailable,
   emailFrom: settings.emailFrom,
   emailTo: settings.emailTo.join(", "),
   minSeverity: settings.minSeverity,
@@ -46,6 +53,77 @@ const fieldsStyle = {
   gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
 } as const;
 
+const systemRunLabels: Record<AutoUpdateNotify, string> = {
+  never: "Never",
+  on_failure: "On failure",
+  on_change: "On install",
+  always: "After every run",
+};
+
+const dockerRunLabels: Record<DockerUpdateNotify, string> = {
+  never: "Never",
+  on_failure: "On failure",
+  on_change: "On install",
+};
+
+/**
+ * The system update policies live with the automatic update configuration,
+ * so they save as they change instead of with the delivery settings.
+ */
+const SystemUpdateReporting = () => {
+  const { data: auto } = useQuery(linuxio.updates.get_auto_updates);
+  const save = linuxio.updates.set_auto_updates.useMutation({
+    success: "System update notifications saved",
+    error: "Failed to save system update notifications",
+  });
+  if (
+    !auto ||
+    (auto.support.notify_policies.length === 0 &&
+      !auto.support.notify_available)
+  ) {
+    return null;
+  }
+  const disabled = !auto.can_configure || save.isPending;
+  const apply = (change: Partial<AutoUpdateOptions>) =>
+    save.mutate({ ...auto.options, ...change });
+  return (
+    <>
+      {auto.support.notify_policies.length > 0 ? (
+        <AppSelect
+          disabled={disabled}
+          fullWidth
+          label="System update runs"
+          onChange={(event) =>
+            apply({ notify: event.target.value as AutoUpdateNotify })
+          }
+          value={auto.options.notify}
+        >
+          {auto.support.notify_policies.map((policy) => (
+            <option key={policy} value={policy}>
+              {systemRunLabels[policy]}
+            </option>
+          ))}
+        </AppSelect>
+      ) : null}
+      {auto.support.notify_available ? (
+        <AppFormControlLabel
+          control={
+            <AppCheckbox
+              checked={auto.options.notify_available}
+              disabled={disabled}
+              onChange={(event) =>
+                apply({ notify_available: event.target.checked })
+              }
+              size="small"
+            />
+          }
+          label="Tell me when system updates are waiting"
+        />
+      ) : null}
+    </>
+  );
+};
+
 /** Where new alerts are sent besides the alerts menu: a webhook and email. */
 const NotificationSettingsSection = () => {
   const { data, isPending, error } = useQuery(linuxio.alerts.get_notifications);
@@ -66,8 +144,8 @@ const NotificationSettingsSection = () => {
         Notifications
       </AppTypography>
       <AppTypography color="text.secondary" variant="caption">
-        Send new alerts, such as a failed disk or a degraded pool, by webhook or
-        email.
+        Which updates raise an alert, and where new alerts, such as a failed
+        disk or a degraded pool, are sent.
       </AppTypography>
     </div>
   );
@@ -117,8 +195,53 @@ const NotificationSettingsSection = () => {
         <CardIconHeader
           align="flex-start"
           headingVariant="section"
+          icon={<Icon height={22} icon="mdi:update" width={22} />}
+          iconTint
+          subtitle="Failures are always reported. Choose what else to hear about; system choices save as you change them."
+          title="Updates"
+        />
+        <div style={fieldsStyle}>
+          <SystemUpdateReporting />
+          <AppSelect
+            fullWidth
+            label="Docker update runs"
+            onChange={(event) =>
+              edit({ dockerUpdates: event.target.value as DockerUpdateNotify })
+            }
+            value={value.dockerUpdates}
+          >
+            {(Object.keys(dockerRunLabels) as DockerUpdateNotify[]).map(
+              (policy) => (
+                <option key={policy} value={policy}>
+                  {dockerRunLabels[policy]}
+                </option>
+              ),
+            )}
+          </AppSelect>
+          <AppFormControlLabel
+            control={
+              <AppCheckbox
+                checked={value.dockerUpdatesAvailable}
+                onChange={(event) =>
+                  edit({ dockerUpdatesAvailable: event.target.checked })
+                }
+                size="small"
+              />
+            }
+            label="Tell me when Docker updates are waiting"
+          />
+        </div>
+        <AppTypography color="text.secondary" variant="caption">
+          Docker needs its update schedule switched on; Check only mode is
+          enough. Updates are information alerts, so webhook and email carry
+          them only when Send alerts is set to Everything.
+        </AppTypography>
+        <CardIconHeader
+          align="flex-start"
+          headingVariant="section"
           icon={<Icon height={22} icon="mdi:bell-ring-outline" width={22} />}
           iconTint
+          style={{ marginTop: "var(--app-space-6)" }}
           subtitle="Each alert is sent once, when it first appears or changes."
           title="Delivery"
         />

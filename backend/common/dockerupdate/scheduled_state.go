@@ -162,6 +162,7 @@ func (s *scheduledUpdateState) recordStandaloneUpdateOutcome(
 			"container", updated.ContainerName,
 			"old_image", updated.PreviousImageID,
 			"new_image", updated.NewImageID)
+		raiseDockerUpdatedAlert(s.ctx, updated.ContainerName, updated.PreviousImageID, updated.NewImageID)
 	}
 	if updateErr != nil {
 		if ctxErr := s.ctx.Err(); ctxErr != nil {
@@ -299,6 +300,7 @@ func (s *scheduledUpdateState) verifyComposeGroup(group *scheduledComposeTarget)
 			"container", strings.TrimPrefix(before.Name, "/"),
 			"old_image", before.Image,
 			"new_image", after.Image)
+		raiseDockerUpdatedAlert(s.ctx, before.Name, before.Image, after.Image)
 	}
 	return nil
 }

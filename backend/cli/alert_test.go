@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -149,5 +150,52 @@ func TestRunAlertAutoUpdateAptEndToEnd(t *testing.T) {
 	doc, _ = alerts.Load()
 	if doc.Alerts[0].OccurrenceCount != 1 {
 		t.Fatalf("count = %d", doc.Alerts[0].OccurrenceCount)
+	}
+}
+
+func TestRunAlertPendingUpdatesRaisesThenResolves(t *testing.T) {
+	useTempAlertStore(t)
+	output := "NOTE: This is only a simulation!\nInst zlib1g [1:1.3] (1:1.3.1 Ubuntu:resolute [amd64])\nConf zlib1g (1:1.3.1 Ubuntu:resolute [amd64])\nInst curl [8.5] (8.6 Ubuntu:resolute-security [amd64])\n"
+	old := pendingExecCommand
+	pendingExecCommand = func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "printf", "%s", output)
+	}
+	t.Cleanup(func() { pendingExecCommand = old })
+
+	if code := runAlert(context.Background(), []string{"pending-updates", "--provider", "apt"}); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	doc, _ := alerts.Load()
+	if len(doc.Alerts) != 1 || doc.Alerts[0].ID != "auto-update/pending" || doc.Alerts[0].Title != "2 system updates available" || doc.Alerts[0].Message != "curl zlib1g" {
+		t.Fatalf("store = %+v", doc.Alerts)
+	}
+	first := doc.Alerts[0].OccurrenceID
+	// The same set again is not a new occurrence.
+	_ = runAlert(context.Background(), []string{"pending-updates", "--provider", "apt"})
+	doc, _ = alerts.Load()
+	if doc.Alerts[0].OccurrenceCount != 1 || doc.Alerts[0].OccurrenceID != first {
+		t.Fatalf("repeat = %+v", doc.Alerts[0])
+	}
+
+	output = "NOTE: This is only a simulation!\n"
+	_ = runAlert(context.Background(), []string{"pending-updates", "--provider", "apt"})
+	doc, _ = alerts.Load()
+	if len(doc.Alerts) != 0 {
+		t.Fatalf("nothing pending kept %+v", doc.Alerts)
+	}
+}
+
+func TestRunAlertPendingUpdatesReportsAptFailure(t *testing.T) {
+	useTempAlertStore(t)
+	old := pendingExecCommand
+	pendingExecCommand = func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "sh", "-c", "echo 'E: Could not open lock' >&2; exit 100")
+	}
+	t.Cleanup(func() { pendingExecCommand = old })
+	if code := runAlert(context.Background(), []string{"pending-updates", "--provider", "apt"}); code != 1 {
+		t.Fatalf("exit %d, want 1", code)
+	}
+	if code := runAlert(context.Background(), []string{"pending-updates", "--provider", "dnf"}); code != 1 {
+		t.Fatalf("dnf exit %d, want 1", code)
 	}
 }

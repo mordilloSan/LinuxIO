@@ -76,3 +76,50 @@ func TestValidateOptionsRejectsUnsupportedNotify(t *testing.T) {
 		t.Fatalf("empty notify should be allowed without support: %v", err)
 	}
 }
+
+func TestWritePendingDropIn(t *testing.T) {
+	fake, host := newFakeAutoUpdateHost()
+	path := "/etc/systemd/system/apt-daily.service.d/linuxio-alert.conf"
+	if err := writePendingDropIn(host, aptRefreshService, "apt", true); err != nil {
+		t.Fatal(err)
+	}
+	want := "[Service]\nExecStopPost=/usr/local/bin/linuxio alert pending-updates --provider apt\n"
+	if got := string(fake.files[path]); got != want {
+		t.Fatalf("drop-in = %q, want %q", got, want)
+	}
+	if !readPendingEnabled(host, aptRefreshService) {
+		t.Fatal("readPendingEnabled = false after write")
+	}
+	if err := writePendingDropIn(host, aptRefreshService, "apt", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := fake.files[path]; ok || readPendingEnabled(host, aptRefreshService) {
+		t.Fatal("drop-in not removed")
+	}
+}
+
+func TestAptPeriodicRefreshesListsForPendingAlerts(t *testing.T) {
+	update, download, unattended := aptPeriodicValues(AutoUpdateOptions{Enabled: false, NotifyAvailable: true})
+	if update != "1" || download != "0" || unattended != "0" {
+		t.Fatalf("values = %s %s %s", update, download, unattended)
+	}
+	if update, _, _ := aptPeriodicValues(AutoUpdateOptions{Enabled: false}); update != "0" {
+		t.Fatalf("disabled without pending alerts refreshes lists: %s", update)
+	}
+}
+
+func TestValidateOptionsRejectsPendingWithoutSupport(t *testing.T) {
+	support := AutoUpdateOptionSupport{
+		Frequencies:    []AutoUpdateFrequency{"daily"},
+		Scopes:         []AutoUpdateScope{"all"},
+		RebootPolicies: []AutoUpdateRebootPolicy{"never"},
+	}
+	opts := AutoUpdateOptions{Frequency: "daily", Scope: "all", RebootPolicy: "never", NotifyAvailable: true}
+	if err := validateOptions(opts, support); err == nil || !strings.Contains(err.Error(), "pending") {
+		t.Fatalf("err = %v", err)
+	}
+	support.NotifyAvailable = true
+	if err := validateOptions(opts, support); err != nil {
+		t.Fatal(err)
+	}
+}

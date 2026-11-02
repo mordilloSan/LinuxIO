@@ -66,3 +66,21 @@ func TestSaveNotificationsValidates(t *testing.T) {
 		t.Fatalf("valid email settings: %v", err)
 	}
 }
+
+func TestNotificationsDockerUpdatesDefaultAndValidate(t *testing.T) {
+	useTempStore(t)
+	n, err := LoadNotifications()
+	if err != nil || n.DockerUpdates != DockerUpdateOnFailure {
+		t.Fatalf("missing file = %+v, %v", n, err)
+	}
+	if _, err = SaveNotifications(NotificationSettings{DockerUpdates: "sometimes"}); err == nil {
+		t.Fatal("invalid Docker policy accepted")
+	}
+	if _, err = SaveNotifications(NotificationSettings{DockerUpdatesAvailable: true}); err != nil {
+		t.Fatal(err)
+	}
+	n, err = LoadNotifications()
+	if err != nil || n.DockerUpdates != DockerUpdateOnFailure || !n.DockerUpdatesAvailable {
+		t.Fatalf("saved = %+v, %v", n, err)
+	}
+}

@@ -3,20 +3,25 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
+	"os/exec"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
+	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
 )
 
 const (
-	alertUsage = "Usage: linuxio alert raise|resolve|auto-update [flags]"
+	alertUsage = "Usage: linuxio alert raise|resolve|auto-update|pending-updates [flags]"
 
 	aptLogTailBytes = 256 << 10
 )
@@ -25,6 +30,7 @@ var (
 	aptUnattendedLogPath = "/var/log/unattended-upgrades/unattended-upgrades.log"
 	rebootRequiredPath   = "/run/reboot-required"
 	lookupEnv            = os.Getenv
+	pendingExecCommand   = exec.CommandContext
 )
 
 func runAlert(ctx context.Context, args []string) int {
@@ -40,6 +46,8 @@ func runAlert(ctx context.Context, args []string) int {
 		err = alertResolve(ctx, args[1:])
 	case "auto-update":
 		err = alertAutoUpdate(ctx, args[1:])
+	case "pending-updates":
+		err = alertPendingUpdates(ctx, args[1:])
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown alert action: %s\n%s\n", args[0], alertUsage)
 		return 1
@@ -215,4 +223,54 @@ func autoUpdateAlert(policy, serviceResult string, run autoUpdateRun, rebootRequ
 	}
 	obs.Message = strings.Join(parts, "\n")
 	return obs, true
+}
+
+// alertPendingUpdates runs after the package lists were refreshed: it
+// raises one info alert naming the packages an upgrade would install and
+// clears it once nothing is pending.
+func alertPendingUpdates(ctx context.Context, args []string) error {
+	fs := newAlertFlagSet("pending-updates")
+	var provider string
+	fs.StringVar(&provider, "provider", "", "apt")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if provider != "apt" {
+		return fmt.Errorf("invalid --provider %q", provider)
+	}
+	// --quiet=2 leaves only the Inst/Conf/Remv lines of the simulation.
+	aptArgs := []string{"--simulate", "--quiet=2", "dist-upgrade"}
+	out, err := pendingExecCommand(ctx, "apt-get", aptArgs...).CombinedOutput()
+	if err != nil {
+		return hostcmd.OutputError("apt-get", aptArgs, out, err)
+	}
+	pending := parseAptSimulation(strings.NewReader(string(out)))
+	if len(pending) == 0 {
+		return alerts.Resolve(ctx, "auto-update", "pending")
+	}
+	sum := sha256.Sum256([]byte(strings.Join(pending, "\n")))
+	title := fmt.Sprintf("%d system updates available", len(pending))
+	if len(pending) == 1 {
+		title = "1 system update available"
+	}
+	return alerts.Raise(ctx, alerts.Observation{
+		Source: "auto-update", Key: "pending", Severity: alerts.SeverityInfo, Link: "/updates",
+		Title: title, Message: strings.Join(pending, " "), OccurrenceID: hex.EncodeToString(sum[:]),
+	})
+}
+
+// parseAptSimulation returns the sorted package names of the "Inst" lines
+// of an apt-get --simulate run.
+func parseAptSimulation(r io.Reader) []string {
+	var pending []string
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		if name, ok := strings.CutPrefix(scanner.Text(), "Inst "); ok {
+			if fields := strings.Fields(name); len(fields) > 0 {
+				pending = append(pending, fields[0])
+			}
+		}
+	}
+	slices.Sort(pending)
+	return pending
 }

@@ -22,15 +22,28 @@ import (
 type NotificationSettings struct {
 	// MinSeverity is the least severe alert delivered: info, warning or
 	// error. Empty delivers nothing.
-	MinSeverity  string   `json:"minSeverity"`
-	WebhookURL   string   `json:"webhookUrl"`
-	SMTPHost     string   `json:"smtpHost"`
-	SMTPPort     int      `json:"smtpPort"`
-	SMTPUsername string   `json:"smtpUsername"`
-	SMTPPassword string   `json:"smtpPassword,omitempty"`
-	EmailFrom    string   `json:"emailFrom"`
-	EmailTo      []string `json:"emailTo"`
+	MinSeverity string `json:"minSeverity"`
+	// DockerUpdates is what the scheduled Docker update worker reports:
+	// never, on_failure (the default) or on_change.
+	DockerUpdates string `json:"dockerUpdates"`
+	// DockerUpdatesAvailable also reports every container whose image has a
+	// newer version after each scheduled check.
+	DockerUpdatesAvailable bool     `json:"dockerUpdatesAvailable"`
+	WebhookURL             string   `json:"webhookUrl"`
+	SMTPHost               string   `json:"smtpHost"`
+	SMTPPort               int      `json:"smtpPort"`
+	SMTPUsername           string   `json:"smtpUsername"`
+	SMTPPassword           string   `json:"smtpPassword,omitempty"`
+	EmailFrom              string   `json:"emailFrom"`
+	EmailTo                []string `json:"emailTo"`
 }
+
+// Docker update policies; DockerUpdateOnFailure is what an unset value means.
+const (
+	DockerUpdateNever     = "never"
+	DockerUpdateOnFailure = "on_failure"
+	DockerUpdateOnChange  = "on_change"
+)
 
 var severityRank = map[string]int{SeverityInfo: 0, SeverityWarning: 1, SeverityError: 2}
 
@@ -40,7 +53,7 @@ func notificationsPath() string { return filepath.Join(filepath.Dir(Path), "noti
 func LoadNotifications() (NotificationSettings, error) {
 	data, err := os.ReadFile(notificationsPath())
 	if errors.Is(err, fs.ErrNotExist) {
-		return NotificationSettings{EmailTo: []string{}}, nil
+		return NotificationSettings{DockerUpdates: DockerUpdateOnFailure, EmailTo: []string{}}, nil
 	}
 	if err != nil {
 		return NotificationSettings{}, fmt.Errorf("read %s: %w", notificationsPath(), err)
@@ -52,6 +65,9 @@ func LoadNotifications() (NotificationSettings, error) {
 	if n.EmailTo == nil {
 		n.EmailTo = []string{}
 	}
+	if n.DockerUpdates == "" {
+		n.DockerUpdates = DockerUpdateOnFailure
+	}
 	return n, nil
 }
 
@@ -62,6 +78,9 @@ func SaveNotifications(n NotificationSettings) (NotificationSettings, error) {
 	n.EmailFrom = strings.TrimSpace(n.EmailFrom)
 	if n.SMTPPort == 0 {
 		n.SMTPPort = 587
+	}
+	if n.DockerUpdates == "" {
+		n.DockerUpdates = DockerUpdateOnFailure
 	}
 	if err := n.validate(); err != nil {
 		return NotificationSettings{}, err
@@ -89,6 +108,11 @@ func SaveNotifications(n NotificationSettings) (NotificationSettings, error) {
 func (n NotificationSettings) validate() error {
 	if _, ok := severityRank[n.MinSeverity]; !ok && n.MinSeverity != "" {
 		return fmt.Errorf("invalid minimum severity %q", n.MinSeverity)
+	}
+	switch n.DockerUpdates {
+	case DockerUpdateNever, DockerUpdateOnFailure, DockerUpdateOnChange:
+	default:
+		return fmt.Errorf("invalid Docker update policy %q", n.DockerUpdates)
 	}
 	if n.WebhookURL != "" {
 		u, err := url.Parse(n.WebhookURL)

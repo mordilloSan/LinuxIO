@@ -199,6 +199,7 @@ export interface AutoUpdateOptionSupport {
   exclude_packages: boolean;
   extra_origins: boolean;
   frequencies: AutoUpdateFrequency[];
+  notify_available: boolean;
   notify_policies: AutoUpdateNotify[];
   reboot_policies: AutoUpdateRebootPolicy[];
   scopes: AutoUpdateScope[];
@@ -211,6 +212,7 @@ export interface AutoUpdateOptions {
   extra_origins: string[];
   frequency: AutoUpdateFrequency;
   notify: AutoUpdateNotify;
+  notify_available: boolean;
   reboot_policy: AutoUpdateRebootPolicy;
   scope: AutoUpdateScope;
 }
@@ -1416,6 +1418,8 @@ export type DockerUpdateCheckState =
   | "uncheckable"
   | "error";
 
+export type DockerUpdateNotify = "never" | "on_failure" | "on_change";
+
 export interface DockerVolume {
   ClusterVolume?: Record<string, unknown>;
   Containers?: DockerVolumeContainer[];
@@ -2396,6 +2400,8 @@ export interface NetworkInterface {
 }
 
 export interface NotificationSettings {
+  dockerUpdates: DockerUpdateNotify;
+  dockerUpdatesAvailable: boolean;
   emailFrom: string;
   emailTo: string[];
   minSeverity: string;
@@ -2407,6 +2413,8 @@ export interface NotificationSettings {
 }
 
 export interface NotificationSettingsView {
+  dockerUpdates: DockerUpdateNotify;
+  dockerUpdatesAvailable: boolean;
   emailFrom: string;
   emailTo: string[];
   minSeverity: string;

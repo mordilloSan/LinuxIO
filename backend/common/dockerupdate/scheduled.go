@@ -186,6 +186,7 @@ func runScheduledUpdateCheck(ctx context.Context, cli imageUpdateCheckClient, co
 	if err := mergeUpdateStatuses(ctx, statuses); err != nil {
 		return err
 	}
+	syncAvailableAlerts(ctx, statuses)
 	slog.Debug("scheduled Docker image check complete",
 		"component", "docker",
 		"subsystem", "update",

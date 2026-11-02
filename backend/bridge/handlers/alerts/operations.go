@@ -59,7 +59,7 @@ func dismissForUID(ctx context.Context, uid uint32, id string) (apischema.AlertL
 
 func notificationsFromRequest(r apischema.NotificationSettings) store.NotificationSettings {
 	return store.NotificationSettings{
-		MinSeverity: r.MinSeverity, WebhookURL: r.WebhookURL,
+		MinSeverity: r.MinSeverity, DockerUpdates: string(r.DockerUpdates), DockerUpdatesAvailable: r.DockerUpdatesAvailable, WebhookURL: r.WebhookURL,
 		SMTPHost: r.SMTPHost, SMTPPort: r.SMTPPort, SMTPUsername: r.SMTPUsername, SMTPPassword: r.SMTPPassword,
 		EmailFrom: r.EmailFrom, EmailTo: r.EmailTo,
 	}
@@ -69,7 +69,7 @@ func notificationsFromRequest(r apischema.NotificationSettings) store.Notificati
 // back, only whether one is stored.
 func notificationsView(n store.NotificationSettings) apischema.NotificationSettingsView {
 	return apischema.NotificationSettingsView{
-		MinSeverity: n.MinSeverity, WebhookURL: n.WebhookURL,
+		MinSeverity: n.MinSeverity, DockerUpdates: apischema.DockerUpdateNotify(n.DockerUpdates), DockerUpdatesAvailable: n.DockerUpdatesAvailable, WebhookURL: n.WebhookURL,
 		SMTPHost: n.SMTPHost, SMTPPort: n.SMTPPort, SMTPUsername: n.SMTPUsername, SMTPPasswordSet: n.SMTPPassword != "",
 		EmailFrom: n.EmailFrom, EmailTo: n.EmailTo,
 	}

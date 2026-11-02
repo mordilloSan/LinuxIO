@@ -65,7 +65,13 @@ Disabling LinuxIO-managed automatic installation does not require disabling
 `apt-daily.timer`. APT may continue using that timer to refresh package metadata;
 `apt-daily-upgrade.timer` is the unit that performs unattended installation.
 
-When notifications are enabled, LinuxIO writes
-`/etc/systemd/system/<upgrade-service>.d/linuxio-alert.conf` with an
-`ExecStopPost=` that runs `linuxio alert auto-update` after each run. The
-drop-in is removed when the policy is `never`. See [Alerts](./alerts.md).
+The notify policy is chosen in the Notifications settings tab, beside the
+Docker update policy and the delivery channels, and stored as a drop-in:
+LinuxIO writes `/etc/systemd/system/<upgrade-service>.d/linuxio-alert.conf`
+with an `ExecStopPost=` that runs `linuxio alert auto-update` after each run.
+The drop-in is removed when the policy is `never`. On APT, "tell me when
+system updates are waiting" writes the same drop-in name under
+`apt-daily.service.d`, running `linuxio alert pending-updates` after each
+package-list refresh, and keeps `APT::Periodic::Update-Package-Lists` at `1`
+even while automatic installation is off, so the lists stay fresh. See
+[Alerts](./alerts.md).

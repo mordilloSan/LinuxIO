@@ -2,13 +2,14 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { NotificationSettingsView } from "@/api";
+import type { AutoUpdateState, NotificationSettingsView } from "@/api";
 import { render } from "@/test/render";
 
 import NotificationSettingsSection from "./NotificationSettingsSection";
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
+  getAutoUpdates: vi.fn(),
   mutations: {} as Record<string, ReturnType<typeof vi.fn> | undefined>,
 }));
 
@@ -32,6 +33,13 @@ vi.mock("@/api", async (importOriginal) => {
             queryFn: () => mocks.get(),
           },
         },
+        updates: {
+          ...actual.linuxio.updates,
+          get_auto_updates: {
+            queryKey: ["test-get-auto-updates"],
+            queryFn: () => mocks.getAutoUpdates(),
+          },
+        },
       },
       useCallMutation,
     ),
@@ -39,6 +47,8 @@ vi.mock("@/api", async (importOriginal) => {
 });
 
 const saved: NotificationSettingsView = {
+  dockerUpdates: "on_failure",
+  dockerUpdatesAvailable: false,
   minSeverity: "error",
   webhookUrl: "",
   smtpHost: "smtp.example.com",
@@ -49,9 +59,36 @@ const saved: NotificationSettingsView = {
   smtpPasswordSet: true,
 };
 
+const autoUpdates: AutoUpdateState = {
+  backend: "apt-unattended",
+  can_configure: true,
+  options: {
+    download_only: false,
+    enabled: false,
+    exclude_packages: [],
+    extra_origins: [],
+    frequency: "daily",
+    notify: "on_failure",
+    notify_available: false,
+    reboot_policy: "never",
+    scope: "security",
+  },
+  support: {
+    download_only: true,
+    exclude_packages: true,
+    extra_origins: true,
+    frequencies: ["hourly", "daily", "weekly"],
+    notify_available: true,
+    notify_policies: ["never", "on_failure", "on_change", "always"],
+    reboot_policies: ["never", "if_needed"],
+    scopes: ["security", "updates", "all"],
+  },
+};
+
 beforeEach(() => {
   mocks.mutations = {};
   mocks.get.mockResolvedValue(saved);
+  mocks.getAutoUpdates.mockResolvedValue(autoUpdates);
 });
 
 describe("NotificationSettingsSection", () => {
@@ -94,6 +131,69 @@ describe("NotificationSettingsSection", () => {
         smtpPassword: "",
         webhookUrl: "https://hooks.example.com/x",
         emailTo: ["a@example.com", "b@example.com"],
+      },
+      expect.anything(),
+    );
+  });
+
+  it("saves the system update policies as they change", async () => {
+    const user = userEvent.setup();
+    render(<NotificationSettingsSection />);
+
+    await user.click(await screen.findByLabelText("System update runs"));
+    await user.click(screen.getByRole("option", { name: "On install" }));
+    expect(mocks.mutations["updates.set_auto_updates"]).toHaveBeenCalledWith({
+      ...autoUpdates.options,
+      notify: "on_change",
+    });
+    await user.click(
+      screen.getByLabelText("Tell me when system updates are waiting"),
+    );
+    expect(
+      mocks.mutations["updates.set_auto_updates"],
+    ).toHaveBeenLastCalledWith({
+      ...autoUpdates.options,
+      notify_available: true,
+    });
+    // Those save on their own: the delivery form is still clean.
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("hides the system controls when the backend offers none", async () => {
+    mocks.getAutoUpdates.mockResolvedValue({
+      ...autoUpdates,
+      support: {
+        ...autoUpdates.support,
+        notify_available: false,
+        notify_policies: [],
+      },
+    });
+    render(<NotificationSettingsSection />);
+
+    expect(
+      await screen.findByLabelText("Docker update runs"),
+    ).toHaveTextContent("On failure");
+    expect(screen.queryByLabelText("System update runs")).toBeNull();
+  });
+
+  it("saves the Docker update policies with the delivery settings", async () => {
+    const user = userEvent.setup();
+    render(<NotificationSettingsSection />);
+
+    await user.click(await screen.findByLabelText("Docker update runs"));
+    await user.click(screen.getByRole("option", { name: "On install" }));
+    await user.click(
+      screen.getByLabelText("Tell me when Docker updates are waiting"),
+    );
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    const { smtpPasswordSet: _set, ...savedSettings } = saved;
+    expect(mocks.mutations["alerts.set_notifications"]).toHaveBeenCalledWith(
+      {
+        ...savedSettings,
+        smtpPassword: "",
+        dockerUpdates: "on_change",
+        dockerUpdatesAvailable: true,
       },
       expect.anything(),
     );

@@ -88,6 +88,7 @@ var StringEnums = map[string][]string{
 	"AutoUpdateNotify":              {"never", "on_failure", "on_change", "always"},
 	"AutoUpdateBackend":             {"apt-unattended", "mintupdate-automation", "dnf-automatic", "dnf5-automatic"},
 	"DockerContainerAutoUpdateMode": {"update", "check_only"},
+	"DockerUpdateNotify":            {"never", "on_failure", "on_change"},
 	"DockerUpdateCheckState":        {"current", "available", "uncheckable", "error"},
 	"ContainerMetricsStatus":        {"available", "stale", "unavailable", "not_running"},
 	"ConfigStorageMode":             {"home", "fallback", "memory"},

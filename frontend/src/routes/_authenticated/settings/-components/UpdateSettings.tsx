@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 
 import {
   type AutoUpdateFrequency,
-  type AutoUpdateNotify,
   type AutoUpdateOptions,
   type AutoUpdateRebootPolicy,
   type AutoUpdateScope,
@@ -161,13 +160,6 @@ const rebootLabels: Record<AutoUpdateRebootPolicy, string> = {
   if_needed: "Reboot if needed",
   always: "Always reboot",
   schedule: "Scheduled reboot",
-};
-
-const notifyLabels: Record<AutoUpdateNotify, string> = {
-  never: "Never",
-  on_failure: "On failure",
-  on_change: "On install",
-  always: "After every run",
 };
 
 const backendLabels: Record<AutoUpdateState["backend"], string> = {
@@ -439,14 +431,6 @@ const SavedConfiguration = ({
       label: "Reboots",
       value: rebootLabels[state.options.reboot_policy],
     },
-    ...(state.support.notify_policies.length > 0
-      ? [
-          {
-            label: "Notifications",
-            value: notifyLabels[state.options.notify],
-          },
-        ]
-      : []),
     {
       label: "Package exclusions",
       value: state.options.exclude_packages.length
@@ -812,27 +796,6 @@ const UpdateSettings = ({
               </option>
             ))}
           </AppSelect>
-
-          {serverState.support.notify_policies.length > 0 ? (
-            <AppSelect
-              disabled={saving || !serverState.can_configure}
-              fullWidth
-              label="Notifications"
-              onChange={(event) =>
-                setDraftOverrides((previous) => ({
-                  ...previous,
-                  notify: event.target.value as AutoUpdateNotify,
-                }))
-              }
-              value={currentOptions.notify}
-            >
-              {serverState.support.notify_policies.map((policy) => (
-                <option key={policy} value={policy}>
-                  {notifyLabels[policy]}
-                </option>
-              ))}
-            </AppSelect>
-          ) : null}
 
           <div
             style={{
