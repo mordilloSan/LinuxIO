@@ -190,7 +190,7 @@ describe("UpdateSettings", () => {
     render(<UpdateSettings state={settingsState(aptState(), [])} />);
 
     expect(screen.getByLabelText("Notifications")).toHaveTextContent(
-      "When packages are installed",
+      "On install",
     );
   });
 

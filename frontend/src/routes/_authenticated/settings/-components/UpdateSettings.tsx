@@ -166,7 +166,7 @@ const rebootLabels: Record<AutoUpdateRebootPolicy, string> = {
 const notifyLabels: Record<AutoUpdateNotify, string> = {
   never: "Never",
   on_failure: "On failure",
-  on_change: "When packages are installed",
+  on_change: "On install",
   always: "After every run",
 };
 
