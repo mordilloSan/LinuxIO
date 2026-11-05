@@ -4,7 +4,12 @@ import { getRouteApi, useParams } from "@tanstack/react-router";
 import { useState, type CSSProperties, type SyntheticEvent } from "react";
 
 import { getMutationErrorMessage, linuxio } from "@/api";
-import type { VirtualMachine, VMFirmware, VMUpdateRequest } from "@/api";
+import type {
+  VirtualMachine,
+  VMCPUMode,
+  VMFirmware,
+  VMUpdateRequest,
+} from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
@@ -50,6 +55,8 @@ function EditVMForm({
   const [memoryMB, setMemoryMB] = useState(String(vm.memoryMB));
   const [diskGB, setDiskGB] = useState(String(vm.diskGB));
   const [firmware, setFirmware] = useState<VMFirmware>(vm.firmware ?? "bios");
+  const currentCPUMode = vm.cpuMode ?? "default";
+  const [cpuMode, setCPUMode] = useState<VMCPUMode>(currentCPUMode);
   const [network, setNetwork] = useState(currentNetwork);
   const currentOS = vm.os ?? "";
   const [os, setOS] = useState(currentOS);
@@ -121,6 +128,7 @@ function EditVMForm({
     if (diskResizable && parsedDiskGB !== vm.diskGB) {
       request.diskGB = parsedDiskGB;
     }
+    if (cpuMode !== currentCPUMode) request.cpuMode = cpuMode;
     if (network !== currentNetwork) request.network = network;
     if (os !== currentOS) request.os = os;
     updateMutation.mutate(request);
@@ -183,6 +191,21 @@ function EditVMForm({
           >
             <option value="uefi">UEFI</option>
             <option value="bios">BIOS (legacy)</option>
+          </AppSelect>
+          <AppSelect
+            fullWidth
+            label="CPU model"
+            onChange={(event) => setCPUMode(event.target.value as VMCPUMode)}
+            value={cpuMode}
+          >
+            <option value="host-passthrough">Host passthrough (fastest)</option>
+            <option value="host-model">Host model</option>
+            {currentCPUMode === "default" ? (
+              <option value="default">Hypervisor default (slow)</option>
+            ) : null}
+            {currentCPUMode === "custom" ? (
+              <option value="custom">Custom</option>
+            ) : null}
           </AppSelect>
           <AppSelect
             fullWidth

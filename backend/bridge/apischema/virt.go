@@ -45,6 +45,7 @@ type VirtualMachine struct {
 	DiskGB      int        `json:"diskGB"`
 	Autostart   bool       `json:"autostart"`
 	Firmware    VMFirmware `json:"firmware,omitempty"`
+	CPUMode     VMCPUMode  `json:"cpuMode,omitempty"`
 	HasGraphics bool       `json:"hasGraphics"`
 	// OS is a distro id such as "ubuntu" or "win", from LinuxIO's own metadata
 	// or libosinfo's; empty when unknown.
@@ -158,6 +159,10 @@ type VMSourceType string
 type VMImagePresetID string
 type VMFirmware string
 
+// VMCPUMode is the guest CPU model: "default" is the hypervisor's own (no
+// model set) and "custom" any other libvirt mode; both are read-only.
+type VMCPUMode string
+
 type VMCreateRequest struct {
 	Name              string          `json:"name"`
 	VCPUs             int             `json:"vcpus"`
@@ -178,8 +183,8 @@ type VMCreateRequest struct {
 	Start    bool       `json:"start"`
 }
 
-// VMUpdateRequest redefines a shut-off VM. An empty NewName, OS or Network
-// keeps the current value, and DiskGB 0 keeps the disk size.
+// VMUpdateRequest redefines a shut-off VM. An empty NewName, CPUMode, OS or
+// Network keeps the current value, and DiskGB 0 keeps the disk size.
 type VMUpdateRequest struct {
 	Name     string     `json:"name"`
 	NewName  string     `json:"newName,omitempty"`
@@ -187,7 +192,9 @@ type VMUpdateRequest struct {
 	MemoryMB int        `json:"memoryMB"`
 	DiskGB   int        `json:"diskGB,omitzero"`
 	Firmware VMFirmware `json:"firmware"`
-	Network  string     `json:"network,omitempty"`
+	// CPUMode accepts only "host-passthrough" or "host-model".
+	CPUMode VMCPUMode `json:"cpuMode,omitempty"`
+	Network string    `json:"network,omitempty"`
 	// OS is a distro id such as "ubuntu", stored in LinuxIO's metadata.
 	OS string `json:"os,omitempty"`
 }

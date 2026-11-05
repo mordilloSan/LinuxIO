@@ -105,6 +105,7 @@ var StringEnums = map[string][]string{
 	"VMImagePresetID":           {"home-assistant-os", "debian-server", "ubuntu-server", "fedora-cloud"},
 	"VMSourceType":              {"iso", "imagePreset", "import"},
 	"VMFirmware":                {"bios", "uefi"},
+	"VMCPUMode":                 {"host-passthrough", "host-model", "default", "custom"},
 	"NetworkBridgeHandoffState": {"applying", "awaiting_confirmation", "confirmed", "reverted", "unknown"},
 }
 

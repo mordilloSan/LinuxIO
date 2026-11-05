@@ -68,6 +68,11 @@ func validateUpdateRequest(req apischema.VMUpdateRequest) error {
 	if req.OS != "" && !validVMOS.MatchString(req.OS) {
 		return badRequestf("os must be a lowercase distro id such as \"ubuntu\"")
 	}
+	switch req.CPUMode {
+	case "", vmCPUModeHostPassthrough, vmCPUModeHostModel:
+	default:
+		return badRequestf("cpuMode must be %q or %q", vmCPUModeHostPassthrough, vmCPUModeHostModel)
+	}
 	return validateVMFirmware(req.Firmware, true)
 }
 
@@ -95,6 +100,7 @@ func updateVMWithConn(ctx context.Context, conn libvirtConn, req apischema.VMUpd
 		return apischema.VirtualMachine{}, err
 	}
 	setDomainResources(&parsed, req.VCPUs, req.MemoryMB)
+	updateDomainCPUMode(&parsed, req.CPUMode)
 	staleNVRAM, err := updateDomainFirmware(parsed.OS, req.Firmware)
 	if err != nil {
 		return apischema.VirtualMachine{}, err
@@ -226,6 +232,22 @@ func setDomainResources(domain *libvirtxml.Domain, vcpus, memoryMB int) {
 	}
 	domain.Memory.Value, domain.Memory.Unit = uint(memoryMB), "MiB"
 	domain.CurrentMemory = &libvirtxml.DomainCurrentMemory{Value: uint(memoryMB), Unit: "MiB"}
+}
+
+// updateDomainCPUMode switches the guest CPU to a host mode, keeping its
+// topology, cache, NUMA and feature settings; an empty mode keeps it as is.
+func updateDomainCPUMode(domain *libvirtxml.Domain, mode apischema.VMCPUMode) {
+	if mode == "" || domainCPUMode(domain.CPU) == mode {
+		return
+	}
+	if domain.CPU == nil {
+		domain.CPU = &libvirtxml.DomainCPU{}
+	}
+	cpu := domain.CPU
+	cpu.Mode = string(mode)
+	// Match, model and vendor belong to custom mode and libvirt rejects
+	// migratable outside passthrough; it refills check and migratable itself.
+	cpu.Match, cpu.Check, cpu.Migratable, cpu.Vendor, cpu.Model = "", "", "", "", nil
 }
 
 // updateDomainFirmware switches osConfig to firmware and returns the NVRAM

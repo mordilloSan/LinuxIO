@@ -3227,6 +3227,12 @@ export interface VMAutostartRequest {
   autostart: boolean;
 }
 
+export type VMCPUMode =
+  | "host-passthrough"
+  | "host-model"
+  | "default"
+  | "custom";
+
 export interface VMCreateProgress {
   phase: string;
   message: string;
@@ -3398,6 +3404,7 @@ export interface VMUpdateRequest {
   memoryMB: number;
   diskGB?: number;
   firmware: VMFirmware;
+  cpuMode?: VMCPUMode;
   network?: string;
   os?: string;
 }
@@ -3441,6 +3448,7 @@ export interface VirtualMachine {
   diskGB: number;
   autostart: boolean;
   firmware?: VMFirmware;
+  cpuMode?: VMCPUMode;
   hasGraphics: boolean;
   os?: string;
   ownedDisks: string[];

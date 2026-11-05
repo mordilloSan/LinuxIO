@@ -762,6 +762,34 @@ describe("Virtual Machines page", () => {
     expect(mocks.routeNavigate).not.toHaveBeenCalled();
   });
 
+  it("moves a VM off the hypervisor default CPU model", async () => {
+    const shutOff = { ...mocks.alpha, state: "shutoff" };
+    mocks.listVMs = [shutOff];
+    mocks.virtUpdate.mockResolvedValue({
+      ...shutOff,
+      cpuMode: "host-passthrough",
+    });
+    const { user } = await renderVMPage();
+
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    const dialog = screen.getByRole("dialog");
+    const cpuModel = within(dialog).getByRole("combobox", {
+      name: "CPU model",
+    });
+    expect(cpuModel).toHaveTextContent("Hypervisor default (slow)");
+    await user.click(cpuModel);
+    await user.click(
+      screen.getByRole("option", { name: "Host passthrough (fastest)" }),
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(mocks.virtUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ cpuMode: "host-passthrough", name: "alpha" }),
+      ),
+    );
+  });
+
   it("follows a rename of the focused VM", async () => {
     const shutOff = { ...mocks.alpha, state: "shutoff" };
     mocks.listVMs = [shutOff];
