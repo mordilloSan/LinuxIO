@@ -560,6 +560,7 @@ func (dm *Manager) updateContainerStats(ctx context.Context, ctr *mobycontainer.
 	stats.Cpu = 0
 	stats.Mem = 0
 	stats.Bandwidth = [2]uint64{0, 0}
+	stats.MemLimitBytes = apiStats.MemoryStats.Limit
 
 	dm.initializeCpuTracking(cacheTimeMs)
 	previousContainer, previousSystem := dm.getCpuPreviousValues(cacheTimeMs, id)

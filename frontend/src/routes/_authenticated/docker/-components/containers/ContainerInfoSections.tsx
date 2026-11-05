@@ -79,7 +79,7 @@ const ContainerInfoSections = ({
     memUsage === undefined
       ? "Memory metrics unavailable"
       : memLimit === undefined
-        ? `Memory Usage: ${formatFileSize(memUsage)} (limit unavailable)`
+        ? `Memory Usage: ${formatFileSize(memUsage)} (no limit)`
         : `Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`;
   const formatRate = (value?: number) =>
     value === undefined ? "Unavailable" : formatThroughput(value);

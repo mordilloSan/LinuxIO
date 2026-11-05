@@ -181,6 +181,7 @@ type LiveContainer struct {
 	Name                  string   `json:"name"`
 	CPUPercent            float64  `json:"cpu_percent"`
 	MemoryBytes           uint64   `json:"memory_bytes"`
+	MemoryLimitBytes      *uint64  `json:"memory_limit_bytes,omitzero"`
 	RxBytesPerSec         float64  `json:"rx_bytes_per_sec"`
 	TxBytesPerSec         float64  `json:"tx_bytes_per_sec"`
 	BlockReadBytesPerSec  *float64 `json:"block_read_bytes_per_sec,omitzero"`

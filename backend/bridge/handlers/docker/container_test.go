@@ -22,6 +22,7 @@ func TestContainerMetricsFromSnapshot(t *testing.T) {
 	fullID := "abc123456789def123456789def123456789def123456789def123456789def1"
 	readRate := float64(300)
 	writeRate := float64(400)
+	memoryLimit := uint64(1 << 30)
 	snapshot := monitoring.ContainerMetricsSnapshot{
 		CapturedAtMs:      now.Add(-30 * time.Second).UnixMilli(),
 		CollectorInterval: 15 * time.Second,
@@ -30,6 +31,7 @@ func TestContainerMetricsFromSnapshot(t *testing.T) {
 				ID:                           fullID[:12],
 				CPUPercent:                   125.5,
 				MemoryUsageBytes:             512 << 20,
+				MemoryLimitBytes:             &memoryLimit,
 				NetworkReceiveBytesPerSecond: 100,
 				NetworkSendBytesPerSecond:    200,
 				BlockReadBytesPerSecond:      &readRate,
@@ -43,7 +45,8 @@ func TestContainerMetricsFromSnapshot(t *testing.T) {
 	if got.Status != apischema.ContainerMetricsStatusAvailable || got.CapturedAtMs == nil || *got.CapturedAtMs != snapshot.CapturedAtMs {
 		t.Fatalf("metrics status/capture = %#v", got)
 	}
-	if got.CPUPercent == nil || *got.CPUPercent != 125.5 || got.MemoryUsageBytes == nil || *got.MemoryUsageBytes != 512<<20 {
+	if got.CPUPercent == nil || *got.CPUPercent != 125.5 || got.MemoryUsageBytes == nil || *got.MemoryUsageBytes != 512<<20 ||
+		got.MemoryLimitBytes == nil || *got.MemoryLimitBytes != memoryLimit {
 		t.Fatalf("CPU/memory metrics = %#v", got)
 	}
 	if got.NetworkReceiveBytesPerSecond == nil || *got.NetworkReceiveBytesPerSecond != 100 ||

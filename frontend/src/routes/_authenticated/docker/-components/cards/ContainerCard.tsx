@@ -122,7 +122,7 @@ const ContainerCardBody = ({
     memUsage === undefined
       ? metricsStatusLabel
       : memLimit === undefined
-        ? `Memory Usage: ${formatFileSize(memUsage)} (limit unavailable)`
+        ? `Memory Usage: ${formatFileSize(memUsage)} (no limit)`
         : `Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`;
   const metricsStatusAffordance =
     metricsStatus === "available" ? null : (

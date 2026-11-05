@@ -3,6 +3,7 @@ package dockerupdate
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"iter"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/containerd/errdefs"
@@ -66,6 +68,47 @@ func TestComposeCommandArgsRejectsIncompleteTarget(t *testing.T) {
 	}
 	if _, err := composeCommandArgs(ComposeTarget{Name: "media", ConfigFiles: []string{"compose.yml"}, EnvironmentFiles: []string{""}}, "up"); err == nil {
 		t.Fatal("composeCommandArgs accepted an empty environment file path")
+	}
+}
+
+func TestComposePullServicesRetriesTransientRegistryFailures(t *testing.T) {
+	// The exact line `docker compose pull` printed when GHCR throttled a scheduled run.
+	const ghcrThrottle = `{"error":true,"message":"Error response from daemon: error from registry: retry-after: 449.12µs, allowed: 44000/minute"}`
+	tests := []struct {
+		name      string
+		failures  int
+		output    string
+		wantPulls int
+		wantWait  time.Duration
+		wantErr   bool
+	}{
+		{name: "throttle recovers", failures: 2, output: ghcrThrottle, wantPulls: 3, wantWait: 15 * time.Second},
+		{name: "persistent throttle", failures: 99, output: ghcrThrottle, wantPulls: 6, wantWait: 155 * time.Second, wantErr: true},
+		{name: "missing image", failures: 99, output: "Error response from daemon: manifest unknown", wantPulls: 1, wantErr: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			pulls := filepath.Join(dir, "pulls")
+			script := fmt.Sprintf("#!/bin/sh\nn=0\n[ -f %[1]q ] && read n < %[1]q\nn=$((n + 1))\necho $n > %[1]q\n[ $n -le %[2]d ] || exit 0\necho '%[3]s'\nexit 1\n", pulls, tt.failures, tt.output)
+			if err := os.WriteFile(filepath.Join(dir, "docker"), []byte(script), 0o755); err != nil {
+				t.Fatalf("write fake docker: %v", err)
+			}
+			t.Setenv("PATH", dir)
+
+			synctest.Test(t, func(t *testing.T) {
+				collector := &ComposeMessageCollector{}
+				started := time.Now()
+				err := composePullServices(t.Context(), ComposeTarget{Name: "immich", ConfigFiles: []string{"compose.yml"}}, []string{"immich-server"}, collector.Emit)
+				if (err != nil) != tt.wantErr || time.Since(started) != tt.wantWait {
+					t.Fatalf("error = %v, elapsed = %v; want error %v, elapsed %v\n%s", err, time.Since(started), tt.wantErr, tt.wantWait, collector)
+				}
+			})
+			got, err := os.ReadFile(pulls)
+			if err != nil || strings.TrimSpace(string(got)) != fmt.Sprint(tt.wantPulls) {
+				t.Fatalf("pull attempts = %q (%v), want %d", got, err, tt.wantPulls)
+			}
+		})
 	}
 }
 

@@ -148,6 +148,10 @@ func Build(data *systemmodel.CombinedData, capturedAt time.Time, threads int, te
 			read, write := float64(rec.DiskReadBytesPerSecond), float64(rec.DiskWriteBytesPerSecond)
 			item.BlockReadBytesPerSec, item.BlockWriteBytesPerSec = &read, &write
 		}
+		// Docker reports host RAM as the limit of a container without one.
+		if limit := ctr.MemLimitBytes; limit > 0 && limit < stats.MemoryBytes.Total {
+			item.MemoryLimitBytes = &limit
+		}
 		live.Containers.Items = append(live.Containers.Items, item)
 	}
 	return live

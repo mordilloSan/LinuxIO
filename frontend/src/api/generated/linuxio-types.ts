@@ -1855,6 +1855,7 @@ export interface LiveContainer {
   name: string;
   cpu_percent: number;
   memory_bytes: number;
+  memory_limit_bytes?: number;
   rx_bytes_per_sec: number;
   tx_bytes_per_sec: number;
   block_read_bytes_per_sec?: number;

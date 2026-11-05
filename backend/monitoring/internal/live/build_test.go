@@ -33,7 +33,7 @@ func TestBuildMapsSample(t *testing.T) {
 		},
 		Info: systemmodel.Info{Uptime: 4242},
 		Containers: []*containermodel.Stats{
-			{Id: "abc123def456", Name: "web", Cpu: 25, Mem: 512, Bandwidth: [2]uint64{7, 9}},
+			{Id: "abc123def456", Name: "web", Cpu: 25, Mem: 512, Bandwidth: [2]uint64{7, 9}, MemLimitBytes: 1 << 30},
 		},
 	}
 	telemetry := []containermodel.Telemetry{{ID: "abc123def456", DiskReadBytesPerSecond: 11, DiskWriteBytesPerSecond: 13}}
@@ -67,10 +67,17 @@ func TestBuildMapsSample(t *testing.T) {
 	if ctr.BlockReadBytesPerSec == nil || *ctr.BlockReadBytesPerSec != 11 || *ctr.BlockWriteBytesPerSec != 13 {
 		t.Fatalf("telemetry not attached: %+v", ctr)
 	}
+	if ctr.MemoryLimitBytes == nil || *ctr.MemoryLimitBytes != 1<<30 {
+		t.Fatalf("MemoryLimitBytes = %v, want 1 GiB", ctr.MemoryLimitBytes)
+	}
 
+	data.Containers[0].MemLimitBytes = 16 << 30 // Docker reports host RAM when unlimited.
 	stale := Build(data, at, 4, telemetry, at.Add(-10*time.Minute), 3*time.Minute)
 	if stale.Containers.Items[0].BlockReadBytesPerSec != nil {
 		t.Fatal("stale telemetry must leave block rates nil")
+	}
+	if stale.Containers.Items[0].MemoryLimitBytes != nil {
+		t.Fatal("a limit equal to host RAM must be reported as no limit")
 	}
 }
 

@@ -259,22 +259,15 @@ func inspectImageUpdate(
 	observation.localDigest = localDigests[0].String()
 
 	remote, err := cli.DistributionInspect(ctx, imageRef, client.DistributionInspectOptions{})
-	for retry := 0; err != nil && retry < 5; retry++ {
+	for retry := 0; err != nil && retry < registryRetries; retry++ {
 		// Retry only the registry read. Give throttled, slow or briefly
 		// unreachable registries a few minutes to recover without retrying
 		// authentication or missing-image errors.
 		if !retryableRegistryInspectError(err) {
 			break
 		}
-		timer := time.NewTimer(5 * time.Second << retry)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return observation, ctx.Err()
-		case <-timer.C:
-		}
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return observation, ctxErr
+		if waitErr := waitRegistryBackoff(ctx, retry); waitErr != nil {
+			return observation, waitErr
 		}
 		remote, err = cli.DistributionInspect(ctx, imageRef, client.DistributionInspectOptions{})
 	}
@@ -295,6 +288,20 @@ func inspectImageUpdate(
 	return observation, nil
 }
 
+// registryRetries is how many times a throttled or unreachable registry call
+// is retried; waitRegistryBackoff spreads them over 5+10+20+40+80 seconds.
+const registryRetries = 5
+
+func waitRegistryBackoff(ctx context.Context, retry int) error {
+	timer := time.NewTimer(5 * time.Second << retry)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+	case <-timer.C:
+	}
+	return ctx.Err()
+}
+
 func retryableRegistryInspectError(err error) bool {
 	var networkError net.Error
 	if errdefs.IsResourceExhausted(err) || errdefs.IsDeadlineExceeded(err) ||
@@ -302,8 +309,14 @@ func retryableRegistryInspectError(err error) bool {
 		return true
 	}
 	// Errors from the daemon's registry client lose their type across HTTP.
-	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "toomanyrequests") ||
+	return retryableRegistryMessage(err.Error())
+}
+
+func retryableRegistryMessage(message string) bool {
+	message = strings.ToLower(message)
+	// GHCR throttles with "error from registry: retry-after: …" and no 429 text.
+	return strings.Contains(message, "retry-after:") ||
+		strings.Contains(message, "toomanyrequests") ||
 		strings.Contains(message, "too many requests") ||
 		strings.Contains(message, "context deadline exceeded") ||
 		strings.Contains(message, "client.timeout exceeded while awaiting headers") ||

@@ -17,7 +17,7 @@ func TestFetchContainerMetricsSnapshotMapsLiveSamples(t *testing.T) {
 		return jsonResponse(http.StatusOK, `{
 			"captured_at_ms": 1700000000000,
 			"containers": {"captured_at_ms": 1700000000000, "items": [
-				{"id":"abc123","name":"web","cpu_percent":50,"memory_bytes":1572864,"rx_bytes_per_sec":2048,"tx_bytes_per_sec":1024,"block_read_bytes_per_sec":4096,"block_write_bytes_per_sec":8192}
+				{"id":"abc123","name":"web","cpu_percent":50,"memory_bytes":1572864,"memory_limit_bytes":2097152,"rx_bytes_per_sec":2048,"tx_bytes_per_sec":1024,"block_read_bytes_per_sec":4096,"block_write_bytes_per_sec":8192}
 			]}
 		}`), nil
 	})
@@ -42,6 +42,9 @@ func TestFetchContainerMetricsSnapshotMapsLiveSamples(t *testing.T) {
 	}
 	if sample.MemoryUsageBytes != 1572864 {
 		t.Fatalf("MemoryUsageBytes = %d, want 1572864", sample.MemoryUsageBytes)
+	}
+	if sample.MemoryLimitBytes == nil || *sample.MemoryLimitBytes != 2097152 {
+		t.Fatalf("MemoryLimitBytes = %v, want 2097152", sample.MemoryLimitBytes)
 	}
 	if sample.NetworkSendBytesPerSecond != 1024 || sample.NetworkReceiveBytesPerSecond != 2048 {
 		t.Fatalf("network rates = %v/%v", sample.NetworkSendBytesPerSecond, sample.NetworkReceiveBytesPerSecond)
