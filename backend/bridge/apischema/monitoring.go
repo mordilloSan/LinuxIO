@@ -66,9 +66,19 @@ type MonitoringMemoryHistoryPoint struct {
 	// CachedGB and BuffersGB split BufferCacheGB.
 	CachedGB  float64 `json:"cached_gb,omitzero"`
 	BuffersGB float64 `json:"buffers_gb,omitzero"`
-	// DockerUsedGB sums container memory from the containers history plugin;
-	// zero when that plugin has no sample near the point's timestamp.
+	// DockerUsedGB and VMUsedGB are the parts of UsedGB that Docker
+	// containers and libvirt VMs hold, page cache excluded; zero on points
+	// recorded before the agent collected them.
 	DockerUsedGB float64 `json:"docker_used_gb,omitzero"`
+	VMUsedGB     float64 `json:"vm_used_gb,omitzero"`
+}
+
+// MonitoringSensorHistoryPoint holds each sensor input reading, keyed by the
+// adapter and label of monitoring.get_live's sensors section; units come from
+// that live reading.
+type MonitoringSensorHistoryPoint struct {
+	CapturedAtMs int64                         `json:"captured_at_ms"`
+	Readings     map[string]map[string]float64 `json:"readings"`
 }
 
 type MonitoringDiskIOHistoryPoint struct {

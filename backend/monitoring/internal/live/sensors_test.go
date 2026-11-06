@@ -112,6 +112,15 @@ func TestGetTemperatureMapUsesInputReadingsOnly(t *testing.T) {
 	}, temps)
 }
 
+func TestInputReadingsKeepsMeasurementsOnly(t *testing.T) {
+	stubSensorsCommand(t, "success")
+
+	require.Equal(t, map[string]map[string]float64{
+		"coretemp-isa-0000": {"Core 0 (input)": 48, "Package id 0 (input)": 55.5},
+		"nct6798-isa-0290":  {"3VCC (input)": 3.31, "fan1 (input)": 1520, "nested (subsystem / input)": 65.2},
+	}, InputReadings(fetchSensorsInfo(context.Background())))
+}
+
 func stubSensorsCommand(t *testing.T, mode string) {
 	original := sensorsCommand
 	sensorsCommand = func(ctx context.Context, name string, args ...string) *exec.Cmd {

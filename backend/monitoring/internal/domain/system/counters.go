@@ -11,9 +11,11 @@ type Counters struct {
 }
 
 // MemoryBytes carries the raw memory counters behind the rounded gigabyte
-// fields above.
+// fields above. Docker and VMs are the memory their cgroups hold outside the
+// page cache, so both are parts of Used.
 type MemoryBytes struct {
 	Total, Used, Available, Free, Cached, Buffers, Shared, SwapTotal, SwapFree, ZFSArc uint64
+	Docker, VMs                                                                        uint64
 }
 
 // DiskDeviceRates carries per-block-device I/O rates.

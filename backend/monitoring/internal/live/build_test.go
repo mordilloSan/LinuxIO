@@ -20,7 +20,7 @@ func TestBuildMapsSample(t *testing.T) {
 			CpuCoresUsage: systemmodel.Uint8Slice{10, 15},
 			LoadAvg:       [3]float64{1, 2, 3},
 			Counters: systemmodel.Counters{
-				MemoryBytes: systemmodel.MemoryBytes{Total: 16 << 30, Used: 8 << 30, ZFSArc: 1 << 30},
+				MemoryBytes: systemmodel.MemoryBytes{Total: 16 << 30, Used: 8 << 30, ZFSArc: 1 << 30, Docker: 256 << 20, VMs: 2 << 30},
 				DiskDevices: map[string]systemmodel.DiskDeviceRates{
 					"sda":     {ReadBytesPerSec: 100, WriteBytesPerSec: 50, ReadOpsPerSec: 1, WriteOpsPerSec: 2},
 					"nvme0n1": {ReadBytesPerSec: 300, WriteBytesPerSec: 0},
@@ -46,7 +46,8 @@ func TestBuildMapsSample(t *testing.T) {
 	if live.CPU.Percent != 12.5 || live.CPU.Breakdown.Idle != 90 || len(live.CPU.PerCorePercent) != 2 || live.CPU.PerCorePercent[1] != 15 {
 		t.Fatalf("cpu = %+v", live.CPU)
 	}
-	if live.Memory.TotalBytes != 16<<30 || live.Memory.ZFSArcBytes != 1<<30 || live.Memory.DockerUsedBytes != 512<<20 {
+	// Docker memory is the cgroup figure, not the sum of the containers' 512 MiB.
+	if live.Memory.TotalBytes != 16<<30 || live.Memory.ZFSArcBytes != 1<<30 || live.Memory.DockerUsedBytes != 256<<20 || live.Memory.VMUsedBytes != 2<<30 {
 		t.Fatalf("memory = %+v", live.Memory)
 	}
 	if live.DiskIO.ReadBytesPerSec != 400 || live.Disks["sda"].WriteOpsPerSec != 2 {

@@ -1933,6 +1933,7 @@ export interface LiveMemory {
   swap_free_bytes: number;
   zfs_arc_bytes: number;
   docker_used_bytes: number;
+  vm_used_bytes: number;
 }
 
 export interface LiveSmart {
@@ -2165,6 +2166,7 @@ export interface MonitoringMemoryHistoryPoint {
   cached_gb?: number;
   buffers_gb?: number;
   docker_used_gb?: number;
+  vm_used_gb?: number;
 }
 
 export interface MonitoringNetworkHistoryPoint {
@@ -2188,6 +2190,11 @@ export interface MonitoringProcessesResponse {
 export interface MonitoringProgramsResponse {
   captured_at_ms: number;
   items: Program[];
+}
+
+export interface MonitoringSensorHistoryPoint {
+  captured_at_ms: number;
+  readings: Record<string, Record<string, number>>;
 }
 
 export interface MonitoringSmartRefreshResult {
@@ -4122,6 +4129,11 @@ export interface LinuxIOSchema {
       request: void;
       result: MonitoringProgramsResponse;
     };
+    get_sensor_history: {
+      input: [request: MonitoringHistoryRequest];
+      request: MonitoringHistoryRequest;
+      result: MonitoringSensorHistoryPoint[];
+    };
     get_status: { input: []; request: void; result: MonitoringStatus };
     maintain_database: {
       input: [];
@@ -5061,6 +5073,10 @@ export interface LinuxIOCallSchema {
   "monitoring.get_programs": {
     request: void;
     result: MonitoringProgramsResponse;
+  };
+  "monitoring.get_sensor_history": {
+    request: MonitoringHistoryRequest;
+    result: MonitoringSensorHistoryPoint[];
   };
   "monitoring.get_status": { request: void; result: MonitoringStatus };
   "network.confirm_bridge_handoff": {

@@ -42,6 +42,9 @@ func TestHistoryStatsPayloadsMatchTheStore(t *testing.T) {
 	data.Stats.CpuCoresUsage = []uint8{10, 20}
 	data.Stats.CpuFrequencies = []float64{3200, 3300}
 	data.Stats.MemZfsArc = 1.5
+	data.Stats.MemDocker = 0.5
+	data.Stats.MemVMs = 2
+	data.Stats.SensorReadings = map[string]map[string]float64{"k10temp-pci-00c3": {"Tctl": 48}}
 	data.Stats.DiskIO = [2]uint64{100, 200}
 	data.Stats.NetworkInterfaces = map[string][4]uint64{"eth0": {1, 2, 3, 4}}
 	payloads := plugins.Snapshot(data)
@@ -54,6 +57,8 @@ func TestHistoryStatsPayloadsMatchTheStore(t *testing.T) {
 	assertEveryFieldDecoded(t, payloads[plugins.DiskIO], &diskIO)
 	var network monitoringapi.NetworkHistoryStats
 	assertEveryFieldDecoded(t, payloads[plugins.Network], &network)
+	var sensors monitoringapi.SensorsHistoryStats
+	assertEveryFieldDecoded(t, payloads[plugins.Sensors], &sensors)
 
 	raw, err := json.Marshal(payloads[plugins.Containers])
 	require.NoError(t, err)

@@ -216,14 +216,34 @@ func CPUTemperatures(groups []monitoringapi.SensorGroup) map[string]float64 {
 }
 
 func isCPUTemperature(reading monitoringapi.SensorReading) bool {
-	if reading.Kind != monitoringapi.SensorReadingKindNumber {
-		return false
-	}
-	if reading.Field != "" && reading.Field != "input" && !strings.HasSuffix(reading.Field, "_input") {
-		return false
-	}
 	unit := strings.ToLower(reading.Unit)
-	return unit == "c" || unit == "°c"
+	return isInputReading(reading) && (unit == "c" || unit == "°c")
+}
+
+// isInputReading reports a numeric measurement rather than a limit, alarm or
+// flag: the readings the hardware page shows.
+func isInputReading(reading monitoringapi.SensorReading) bool {
+	field := reading.Field
+	return reading.Kind == monitoringapi.SensorReadingKindNumber &&
+		(field == "" || field == "input" || strings.HasSuffix(field, "_input"))
+}
+
+// InputReadings keys every input reading by adapter and label, the shape the
+// sensors history stores; limits, alarms and flags stay live-only.
+func InputReadings(groups []monitoringapi.SensorGroup) map[string]map[string]float64 {
+	out := map[string]map[string]float64{}
+	for _, group := range groups {
+		for _, reading := range group.Readings {
+			if !isInputReading(reading) {
+				continue
+			}
+			if out[group.Adapter] == nil {
+				out[group.Adapter] = map[string]float64{}
+			}
+			out[group.Adapter][reading.Label] = reading.Value
+		}
+	}
+	return out
 }
 
 func cpuTemperatureName(label string, fallbackCore int) (string, bool) {

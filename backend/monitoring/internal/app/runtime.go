@@ -25,6 +25,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/config"
 	smartmodel "github.com/mordilloSan/LinuxIO/backend/monitoring/internal/domain/smart"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/httpapi"
+	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/live"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/plugins"
 	"github.com/mordilloSan/LinuxIO/backend/monitoring/internal/store"
 )
@@ -396,6 +397,10 @@ func (a *App) collectAndPersist(ctx context.Context, now time.Time) error {
 	if err != nil {
 		a.finishCollectorRun(run, nil, err)
 		return err
+	}
+	// Live requests read sensors on demand; only history needs them per tick.
+	if a.store.HistoryEnabled(plugins.Sensors) {
+		data.Stats.SensorReadings = live.InputReadings(live.Sensors(ctx, a.sensorTimeout()))
 	}
 	capturedAt := time.Now().UTC().UnixMilli()
 	sample, err := newCollectorAPISample(capturedAt, data)

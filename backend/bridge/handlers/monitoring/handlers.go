@@ -24,6 +24,7 @@ var api = apischema.Bindings(
 	apischema.Call[apischema.MonitoringHistoryRequest, []apischema.MonitoringDiskIOHistoryPoint]("monitoring.get_diskio_history", apischema.RetrySafe(), apischema.Privileged()).Handle(handleGetDiskIOHistory),
 	apischema.Call[apischema.MonitoringHistoryRequest, []apischema.MonitoringNetworkHistoryPoint]("monitoring.get_network_history", apischema.RetrySafe(), apischema.Privileged()).Handle(handleGetNetworkHistory),
 	apischema.Call[apischema.MonitoringHistoryRequest, []apischema.MonitoringContainerHistoryPoint]("monitoring.get_container_history", apischema.RetrySafe(), apischema.Privileged()).Handle(handleGetContainerHistory),
+	apischema.Call[apischema.MonitoringHistoryRequest, []apischema.MonitoringSensorHistoryPoint]("monitoring.get_sensor_history", apischema.RetrySafe(), apischema.Privileged()).Handle(handleGetSensorHistory),
 	apischema.Mutation("monitoring.set_config", handleSetConfig, apischema.Privileged()),
 	apischema.MutationVoid("monitoring.restart", handleRestart, apischema.Privileged()),
 )
@@ -94,6 +95,10 @@ func handleGetCPUHistory(ctx context.Context, req apischema.MonitoringHistoryReq
 
 func handleGetMemoryHistory(ctx context.Context, req apischema.MonitoringHistoryRequest) ([]apischema.MonitoringMemoryHistoryPoint, error) {
 	return FetchMemoryHistory(ctx, req)
+}
+
+func handleGetSensorHistory(ctx context.Context, req apischema.MonitoringHistoryRequest) ([]apischema.MonitoringSensorHistoryPoint, error) {
+	return FetchSensorHistory(ctx, req)
 }
 
 func handleGetDiskIOHistory(ctx context.Context, req apischema.MonitoringHistoryRequest) ([]apischema.MonitoringDiskIOHistoryPoint, error) {

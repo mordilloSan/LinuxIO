@@ -310,6 +310,7 @@ const linuxio = {
     ),
     get_processes: defineCall("monitoring.get_processes"),
     get_programs: defineCall("monitoring.get_programs"),
+    get_sensor_history: defineCallWithRequest("monitoring.get_sensor_history"),
     get_status: defineCall("monitoring.get_status"),
     maintain_database: defineMutation("monitoring", "maintain_database", {
       kind: "none",

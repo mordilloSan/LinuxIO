@@ -15,6 +15,7 @@ const (
 	PluginNetwork            = "network"
 	PluginContainers         = "containers"
 	PluginContainerTelemetry = "container_telemetry"
+	PluginSensors            = "sensors"
 )
 
 var historyResolutions = []string{"1m", "10m", "20m", "120m", "480m"}
@@ -65,6 +66,16 @@ type MemHistoryStats struct {
 	ZFSArcGB      float64 `json:"memory_zfs_arc_gb"`
 	CachedGB      float64 `json:"memory_cached_gb"`
 	BuffersGB     float64 `json:"memory_buffers_gb"`
+	// DockerGB and VMGB are the parts of UsedGB that Docker containers and
+	// libvirt VMs hold, page cache excluded.
+	DockerGB float64 `json:"memory_docker_gb"`
+	VMGB     float64 `json:"memory_vm_gb"`
+}
+
+// SensorsHistoryStats holds each primary sensor reading, keyed by adapter and
+// then by the label the live sensors section shows.
+type SensorsHistoryStats struct {
+	Readings map[string]map[string]float64 `json:"readings"`
 }
 
 type DiskIOHistoryStats struct {

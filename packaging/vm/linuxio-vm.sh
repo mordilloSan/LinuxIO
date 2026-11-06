@@ -50,14 +50,28 @@ vol_exists() { v vol-info --pool "$POOL" "$1" >/dev/null 2>&1; }
 # shellcheck disable=SC2029 # the caller's command is meant for the VM's shell
 vm_ssh() { ssh "${SSH_OPTS[@]}" "${VM_USER}@${IP}" "$@"; }
 
-# The address the default network's DHCP server leased to the domain.
-lease_ip() {
-	v domifaddr "$DOMAIN" | awk '$3 == "ipv4" { sub(/\/.*/, "", $4); print $4; exit }'
+# The addresses the default network's DHCP server leased to the domain, the
+# one that last answered first. A boot whose initrd also took a lease (seen
+# after a power cut mid device replace) leaves a dead address listed.
+lease_ips() {
+	local last=""
+	[[ -f "${STATE}/ip" ]] && last="$(<"${STATE}/ip")"
+	v domifaddr "$DOMAIN" | awk -v last="$last" '$3 == "ipv4" {
+		sub(/\/.*/, "", $4)
+		if ($4 == last) print $4; else rest = rest $4 "\n"
+	} END { printf "%s", rest }'
 }
 
+# Sets IP to the leased address that answers SSH.
 wait_for_ssh() {
 	local deadline=$((SECONDS + $1))
-	until IP="$(lease_ip)" && [[ -n $IP ]] && vm_ssh true </dev/null 2>/dev/null; do
+	while true; do
+		for IP in $(lease_ips); do
+			if vm_ssh true </dev/null 2>/dev/null; then
+				echo "$IP" >"${STATE}/ip"
+				return
+			fi
+		done
 		((SECONDS < deadline)) || die "no SSH to ${DOMAIN} within $1 seconds"
 		sleep 3
 	done

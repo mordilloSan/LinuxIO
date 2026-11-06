@@ -111,3 +111,26 @@ func TestAverageSystemStatsAveragesKeysOverTheirOwnSamples(t *testing.T) {
 	assert.InDelta(t, 60.0, got.GPUData["g0"].Usage, 0.001)
 	assert.InDelta(t, 30.0, got.GPUData["g0"].Engines["render"], 0.001)
 }
+
+func TestAverageKeepsMemorySplitAndSensorReadings(t *testing.T) {
+	mem, err := Average(Mem, []string{
+		`{"memory_used_gb":8,"memory_docker_gb":1,"memory_vm_gb":4}`,
+		`{"memory_used_gb":10,"memory_docker_gb":2,"memory_vm_gb":5}`,
+	})
+	require.NoError(t, err)
+	assert.Contains(t, mem, `"memory_docker_gb":1.5`)
+	assert.Contains(t, mem, `"memory_vm_gb":4.5`)
+
+	sensors, err := Average(Sensors, []string{
+		`{"readings":{"k10temp":{"Tctl":40},"ec":{"CPU fan":1000}}}`,
+		`{"readings":{"k10temp":{"Tctl":50}}}`,
+	})
+	require.NoError(t, err)
+	var got SensorsData
+	require.NoError(t, json.Unmarshal([]byte(sensors), &got))
+	// A reading missing from a sample averages over the samples that have it.
+	assert.Equal(t, map[string]map[string]float64{
+		"k10temp": {"Tctl": 45},
+		"ec":      {"CPU fan": 1000},
+	}, got.Readings)
+}

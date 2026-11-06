@@ -161,6 +161,17 @@ a standby drive keeps serving its cached record. Drive power readings have a
 hwmon temperatures, GPU measurements and the adapter readings from `sensors -j`.
 Missing sensor or SMART tools leave their optional sections empty.
 
+The memory collection splits Docker and VM memory out of "used" by reading
+cgroup v2 `memory.stat` files: every `system.slice/docker-*.scope` and
+`docker/` for the two Docker cgroup drivers, and `machine.slice` for libvirt.
+It counts only what a cgroup cannot give back without swapping (`anon`,
+`shmem`, kernel stacks, page tables, per-CPU and unreclaimable slab), the same
+pages "used" (total minus available) counts, so both figures are parts of it
+and page cache stays out. Docker's own stats keep active page cache, so the
+container list can show more than this split. A cgroup v1 host reads both as
+zero. The ZFS ARC is still read from `/proc/spl/kstat/zfs/arcstats` and kept
+out of "used".
+
 Live SMART records also include typed self-test history, NVMe health details
 and power counters for the storage page. The history writer projects them
 back to the original compact SMART fields before writing JSON to SQLite.
@@ -202,6 +213,19 @@ breakdown, the per-core percent and the per-core `cpu_frequencies_mhz`, each
 averaged over the collector tick; the bridge surfaces the frequencies as
 `frequencies_mhz` on `monitoring.get_cpu_history`.
 
+The `mem` history row adds `memory_docker_gb` and `memory_vm_gb`, the Docker
+and VM parts of `memory_used_gb`; `monitoring.get_memory_history` surfaces
+them as `docker_used_gb` and `vm_used_gb`, and the hardware page stacks System
+(the rest of used), Docker, VMs and, when non-zero, the ZFS ARC.
+
+The `sensors` history row keeps the hwmon `temperatures` and adds `readings`:
+every numeric input reading from `sensors -j` (temperatures, fans, voltages,
+power, current), keyed by adapter and then by the label the live `sensors`
+section shows. Limits, alarms and flags stay live-only. Live requests read
+sensors on demand, so only a collector tick with `sensors` history enabled
+runs `sensors -j` for this row. `monitoring.get_sensor_history` returns the
+readings per point.
+
 `/healthz` answers from memory: it compares the last collector tick against the
 configured interval and returns `503 Service Unavailable` only when no tick has
 happened yet or the last one is older than twice the interval. A freshly started
@@ -221,7 +245,7 @@ and storage views select measurements from this shared query:
 | `captured_at_ms` | Sample time in Unix milliseconds |
 | `uptime_seconds` | Host uptime |
 | `cpu` | Total percent, per-core percent, breakdown (user, system, iowait, steal, idle), three load averages, per-core MHz and CPU temperatures |
-| `memory` | Total, used, available, free, cached, buffers, shared, swap total, swap free, ZFS ARC and Docker-used bytes |
+| `memory` | Total, used, available, free, cached, buffers, shared, swap total, swap free, ZFS ARC, and the Docker-used and VM-used parts of used |
 | `disks` | Per physical block device: read and write bytes per second and operations per second |
 | `disk_io` | Host totals across those devices |
 | `interfaces` | Per interface: rx and tx bytes per second, byte and packet totals, errors and drops |
@@ -325,7 +349,7 @@ collector:
   disk_usage_cache: 0s      # 0 re-reads usage on every collection; set e.g. 15m to keep sleeping disks asleep
 history:
   retention: 720h0m0s
-  plugins: [cpu, mem, swap, diskio, network, containers, container_telemetry]
+  plugins: [cpu, mem, swap, diskio, network, sensors, containers, container_telemetry]
   # intervals:              # per-plugin sampling interval, a whole multiple of collector.interval; absent means every tick
   #   containers: 5m0s
   #   container_telemetry: 5m0s
