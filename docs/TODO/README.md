@@ -6,6 +6,7 @@ Each active plan has its own document:
 - [Jobs: mutations that outlive the login](./jobs.md)
 - [Frontend test coverage](./e2e-testing.md)
 - [Backend audit checklist](./backend-audit.md)
+- [Memory overflow: swap, zswap and zram from Settings](./memory-overflow.md)
 
 ## Dependency maintenance
 
