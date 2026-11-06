@@ -5,6 +5,7 @@ package systemd
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"strings"
 
@@ -117,6 +118,32 @@ func GetActiveState(ctx context.Context, name string) (string, error) {
 		return "", err
 	}
 	return state, nil
+}
+
+// GetInvocationID returns the unit's InvocationID (systemd 232 and later) as
+// hex. It is "" for a unit that is not loaded or has never run. Each start of
+// the unit gets a new one, so it tells a restarted unit from the old run.
+func GetInvocationID(ctx context.Context, name string) (string, error) {
+	if err := requireUnitName(name); err != nil {
+		return "", err
+	}
+	var id string
+	err := dbusclient.SystemdManager.UseSession(ctx, func(session dbusclient.SystemSession) error {
+		var path dbusclient.ObjectPath
+		if err := session.CallStore(dbusclient.SystemdManagerIface+".GetUnit", dbusclient.CallPolicy{}, []any{name}, &path); err != nil {
+			if session.Context().Err() != nil {
+				return session.Context().Err()
+			}
+			return nil
+		}
+		raw, err := dbusclient.GetProperty[[]byte](session, session.ObjectAt(path), dbusclient.SystemdUnitIface, "InvocationID")
+		if err != nil {
+			return fmt.Errorf("get invocation id %s: %w", name, err)
+		}
+		id = hex.EncodeToString(raw)
+		return nil
+	})
+	return id, err
 }
 
 // UnitObjectPath resolves a unit's object path, loading the unit when it is

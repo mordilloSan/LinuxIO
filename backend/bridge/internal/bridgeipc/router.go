@@ -188,11 +188,6 @@ type Router struct {
 	pendingIdentities map[string]chan struct{}
 }
 
-type runnerResult struct {
-	result any
-	err    error
-}
-
 func NewRouter(registry *TaskService) *Router {
 	if registry == nil {
 		registry = DefaultTaskService
@@ -445,28 +440,6 @@ func (r *Router) StartResume(route Route, record jsontext.Value, owner TaskOwner
 	return task, err
 }
 
-// routeRunner reports physical completion through executionDone. A canceled
-// task becomes terminal as soon as its context ends, even when its handler
-// ignores cancellation, so admission accounting must wait for this signal
-// rather than relying on Task.Done alone.
-func (r *Router) routeRunner(route Route, executionDone chan<- struct{}) TaskRunner {
-	return func(ctx context.Context, task *Task, request any) (any, error) {
-		done := make(chan runnerResult, 1)
-		go func() {
-			defer close(executionDone)
-			result, err := route.Runner(ctx, task, request)
-			done <- runnerResult{result: result, err: err}
-		}()
-
-		select {
-		case result := <-done:
-			return result.result, result.err
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-	}
-}
-
 // startStableTask serialises the starts of one stable identity: a retry of an
 // existing task attaches to it without being admitted again.
 func (r *Router) startStableTask(route Route, req Request, identity TaskIdentity) (*Task, bool, error) {
@@ -595,12 +568,11 @@ func (r *Router) release(routeName, target string) {
 	}
 }
 
-// startTrackedTask runs task and releases its admission only once its handler
-// has exited, not when the task turns terminal: a canceled handler that
-// ignores its context must not overlap a successor on the same target.
+// startTrackedTask runs task and releases its admission once it ends. A
+// task, canceled or not, ends only when its handler has returned, so its
+// cleanup never overlaps a successor on the same target.
 func (r *Router) startTrackedTask(route Route, task *Task, owner TaskOwner, target string) {
-	executionDone := make(chan struct{})
-	if !task.Start(r.routeRunner(route, executionDone)) {
+	if !task.Start(route.Runner) {
 		r.release(route.Name, target)
 		return
 	}
@@ -612,7 +584,6 @@ func (r *Router) startTrackedTask(route Route, task *Task, owner TaskOwner, targ
 		)
 
 		<-task.Done()
-		<-executionDone
 		r.release(route.Name, target)
 	}()
 }

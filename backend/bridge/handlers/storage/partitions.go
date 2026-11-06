@@ -30,6 +30,15 @@ var (
 	checkNotBusy        = btrfs.CheckNotBusy
 	mountDevice         = unix.Mount
 	lockDisk            = btrfs.LockDisk
+	partitionDisk       = btrfs.PartitionDisk
+	addPartition        = btrfs.AddPartition
+	createBtrfsPool     = btrfs.CreatePool
+	mountBtrfsPool      = btrfs.MountPool
+	wipePoolSuperblocks = btrfs.WipePoolSuperblocks
+	partitionNumber     = btrfs.PartitionNumber
+	unmountPool         = unix.Unmount
+	addPoolFstab        = addToFstab
+	findBtrfsFilesystem = btrfs.FindFilesystem
 )
 
 // formatProgress turns Format's trim progress into steps: the trim, with

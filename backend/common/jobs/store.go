@@ -104,7 +104,7 @@ func (s *Store) Get(ctx context.Context, id string) (Record, error) {
 
 // Update applies fn to the record under the lock. The write is fsynced when
 // the job reached a terminal state after running longer than
-// TransientMaxDuration, or when the checkpoint changed.
+// TransientMaxDuration, or when the checkpoint or the cancel request changed.
 func (s *Store) Update(ctx context.Context, id string, fn func(*Record) error) (Record, error) {
 	if fn == nil {
 		return Record{}, errors.New("job update is nil")
@@ -317,7 +317,7 @@ func (s *Store) withLock(ctx context.Context, fn func() error) error {
 }
 
 func needsSync(before, after Record, now time.Time) bool {
-	if !slices.Equal(before.Checkpoint, after.Checkpoint) {
+	if !slices.Equal(before.Checkpoint, after.Checkpoint) || before.CancelRequested != after.CancelRequested {
 		return true
 	}
 	return after.State.terminal() && now.Sub(startedOrCreated(after)) > TransientMaxDuration

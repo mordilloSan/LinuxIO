@@ -158,15 +158,39 @@ non-privileged.
 
 ## Tier 3: VM Playwright For Privileged Queries And Safe Mutations
 
-Tier 3 runs against a disposable Ubuntu 24.04 VM. It is the place for privileged
+Tier 3 runs against a disposable Ubuntu 26.04 VM. It is the place for privileged
 queries and safe mutations/jobs that need a real Linux host, Docker, systemd, or
 filesystem effects.
+
+### What Exists Now
+
+The rig is in place; the specs are still few. See `docs/development.md`, "Test
+VM", for usage.
+
+- `packaging/vm/linuxio-vm.sh` and `mk/vm.mk` drive one libvirt domain,
+  `linuxio-e2e` on `qemu:///system`: 4 vCPU, 4 GiB RAM, a 25 GiB system disk
+  over the checksummed Ubuntu 26.04 cloud image, and four 8 GiB data disks
+  (`vdb`–`vde`) for storage tests. All disks are qcow2.
+- `make vm-create` boots it once with `packaging/vm/user-data.yaml.in`
+  (cloud-init over HTTP: test user with passwordless sudo, Docker, btrfs-progs,
+  `install-dependencies.sh`) and snapshots it as `clean`. The image cache, SSH
+  key and login live in `~/.cache/linuxio-vm`, outside git.
+- `make vm-install` installs the current build; `make vm-reset` reverts every
+  disk to `clean`; `make vm-destroy` removes the domain and its volumes.
+- `make test-vm-browser` runs `frontend/src/test/vm/*.spec.ts` with
+  `frontend/config/playwright.vm.config.ts`; `login.spec.ts` signs in, sees the
+  dashboard and signs out.
+- `make vm-test-btrfs-integration` runs the root btrfs and partition kernel
+  tests (`test-btrfs-integration`) as root in the VM.
+
+Not yet: tags, the mutation allowlist, fixtures, and artifact collection beyond
+Playwright's own traces and screenshots.
 
 ### VM Baseline
 
 The committed repo should contain a VM recipe, not a VM image. The recipe should:
 
-- install Ubuntu 24.04
+- install Ubuntu 26.04
 - create a sudo-capable test user
 - enable password or key-based login for the test harness
 - install and enable Docker
@@ -235,7 +259,7 @@ These remain manual until there is a stronger isolation story:
 
 ### Tier 3 Done Criteria
 
-- A clean Ubuntu 24.04 VM can be prepared from committed scripts.
+- A clean Ubuntu 26.04 VM can be prepared from committed scripts.
 - The prepared VM can be cached outside the repo and reused by test runs.
 - Privileged queries and safe mutations are covered through real browser flows.
 - Unsafe routes are not automated.
@@ -248,7 +272,7 @@ These remain manual until there is a stronger isolation story:
    tags, and a small real login/logout suite.
 3. Expand Tier 2 to non-privileged generated query smoke tests and session
    expiry flows.
-4. Add the VM recipe for Ubuntu 24.04 with Docker and a sudo test user.
+4. Add the VM recipe for Ubuntu 26.04 with Docker and a sudo test user.
 5. Add Tier 3 fixtures and the safe mutation allowlist.
 6. Add VM Playwright specs for privileged queries, config write/read,
    filebrowser mutations, Docker compose flows, and terminal streaming.

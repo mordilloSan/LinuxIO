@@ -52,6 +52,8 @@ quiet_targets := \
 	test-updater \
 	test-docker-update-integration \
 	test-btrfs-integration \
+	vm-test-btrfs-integration \
+	test-vm-browser \
 	analyze \
 	bundle-metrics \
 	compiler-coverage \
@@ -214,12 +216,14 @@ include $(mk_dir)/frontend.mk
 include $(mk_dir)/auth.mk
 include $(mk_dir)/quality.mk
 include $(mk_dir)/install.mk
+include $(mk_dir)/vm.mk
 
 # ---- help -------------------------------------------------------------------
 # Generated from the `##` annotations in this file and mk/*.mk by
 # scripts/help.awk. The section order is declared here.
 ##@ Toolchain setup|green
 ##@ Quality checks|green
+##@ Test VM|yellow
 ##@ Development|yellow
 ##@ Build|yellow
 ##@ Install / Uninstall|red
@@ -255,3 +259,4 @@ $(quiet_aliases): ## Run a validation target with compact output and a saved ful
 .PHONY: dev-prep dev generate
 .PHONY: build build-nocheck fastbuild build-vite build-backend build-bridge build-cli build-docker-update build-indexer build-monitoring build-btrfs-timer build-auth build-leak-profile build-go-binaries build-binaries print-binaries print-bin-dir
 .PHONY: localinstall reinstall uninstall clean cloc
+.PHONY: vm-create vm-install vm-ssh vm-reset vm-destroy vm-test-btrfs-integration test-vm-browser

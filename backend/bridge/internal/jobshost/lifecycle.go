@@ -33,9 +33,9 @@ const (
 // reconcile marks the jobs this uid's last host left running as interrupted,
 // by a reboot when that host ran in an earlier boot and by its crash
 // otherwise, and prunes old records before the host takes new jobs. On the
-// root host it returns the resumable jobs an earlier boot interrupted, to
-// resume once the host serves: once per boot, since a job interrupted in this
-// boot was stopped on purpose or crashed the host.
+// root host it returns the resumable jobs the last shutdown or reboot of an
+// earlier boot interrupted, to resume once the host serves; any other
+// interrupted job is never resumed (earlierBootResumes).
 func (h *Host) reconcile(ctx context.Context) ([]string, error) {
 	// A record from before boot ids were kept counts as this boot's.
 	thisBoot := func(e jobs.Executor) bool { return e.BootID == "" || e.BootID == h.executor.BootID }
@@ -69,21 +69,33 @@ func (h *Host) prune(ctx context.Context) {
 	}
 }
 
-// earlierBootResumes lists, on the root host, the interrupted resumable jobs
-// whose last executor ran in an earlier boot.
+// earlierBootResumes lists, on the root host, the resumable jobs the shutdown
+// or reboot of an earlier boot interrupted and their owner did not cancel. It
+// clears Resumable on every other interrupted record, so a job is resumed
+// once and a crash, a host stopped by hand or a cancel is never resumed.
 func (h *Host) earlierBootResumes(ctx context.Context, thisBoot func(jobs.Executor) bool) ([]string, error) {
-	if h.cfg.UID != 0 {
-		return nil, nil
-	}
 	records, err := h.cfg.Store.List(ctx)
 	if err != nil {
 		return nil, err
 	}
 	var ids []string
 	for _, record := range records {
-		if record.State == jobs.StateInterrupted && record.Resumable && !thisBoot(record.Executor) {
-			ids = append(ids, record.ID)
+		if record.State != jobs.StateInterrupted || !record.Resumable {
+			continue
 		}
+		if h.cfg.UID == 0 && !record.CancelRequested && !thisBoot(record.Executor) &&
+			(record.Reason == jobs.ReasonShutdown || record.Reason == jobs.ReasonReboot) {
+			ids = append(ids, record.ID)
+			continue
+		}
+		if _, err := h.cfg.Store.Update(ctx, record.ID, func(r *jobs.Record) error {
+			r.Resumable = false
+			return nil
+		}); err != nil {
+			slog.Warn("job resumable flag not cleared", "job_id", record.ID, "error", err)
+			continue
+		}
+		slog.Debug("job not resumable after this start", "job_id", record.ID, "route", record.Route, "reason", record.Reason)
 	}
 	return ids, nil
 }
@@ -231,15 +243,28 @@ func (h *Host) drainJobStreams() {
 
 // interrupt marks a running job interrupted by the shutdown, with the
 // checkpoint of a resumable job, then interrupts its task. The record turns
-// terminal first, so the job's own Finish leaves it interrupted.
+// terminal first, so the job's own Finish leaves it interrupted. A resumable
+// task is marked interrupted before Suspend, so a handler the hook stops ends
+// interrupted, and the record its Finish wrote gets the reason and checkpoint.
+// A job its owner canceled is left to its handler, which ends it canceled.
 func (h *Host) interrupt(ctx context.Context, task *bridgeipc.Task) {
+	if record, err := h.cfg.Store.Get(ctx, task.ID()); err == nil && record.CancelRequested {
+		return
+	}
+	if route, ok := h.cfg.Router.Route(task.Type()); ok && route.Suspend != nil {
+		task.BeginInterrupt()
+	}
 	checkpoint := h.suspend(ctx, task)
 	marked := false
 	record, err := h.cfg.Store.Update(ctx, task.ID(), func(r *jobs.Record) error {
-		if r.State != jobs.StateRunning {
+		switch {
+		case r.State == jobs.StateRunning:
+			r.State, r.FinishedAt = jobs.StateInterrupted, h.cfg.Now().UTC()
+		case r.State != jobs.StateInterrupted || r.Reason != jobs.ReasonNone:
+			// It ended on its own during Suspend, such as completed.
 			return nil
 		}
-		r.State, r.Reason, r.FinishedAt = jobs.StateInterrupted, jobs.ReasonShutdown, h.cfg.Now().UTC()
+		r.Reason = jobs.ReasonShutdown
 		if checkpoint != nil {
 			r.Checkpoint = checkpoint
 		}

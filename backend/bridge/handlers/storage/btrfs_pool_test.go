@@ -3,6 +3,8 @@ package storage
 import (
 	"context"
 	"errors"
+	"fmt"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -109,6 +111,150 @@ func TestPartitionLockedHoldsTheDiskLock(t *testing.T) {
 	}
 	if want := []string{"lock /dev/sdc", "partition /dev/sdc", "unlock /dev/sdc"}; !slices.Equal(calls, want) {
 		t.Fatalf("calls = %q, want %q", calls, want)
+	}
+}
+
+var errStep = errors.New("step failed")
+
+// poolCreateEnv stubs every seam CreateBtrfsPool locks, writes or undoes
+// through; calls records each in order, and a step listed in fail fails.
+type poolCreateEnv struct {
+	calls []string
+	fail  []string
+}
+
+func stubPoolCreate(t *testing.T) *poolCreateEnv {
+	t.Helper()
+	origDevices, origFss, origLock, origDelete := storageBlockDevices, btrfsFilesystems, lockDisk, deletePartition
+	origPartDisk, origAdd, origCreate, origMount := partitionDisk, addPartition, createBtrfsPool, mountBtrfsPool
+	origWipe, origNumber, origUnmount, origFstab, origFind := wipePoolSuperblocks, partitionNumber, unmountPool, addPoolFstab, findBtrfsFilesystem
+	t.Cleanup(func() {
+		storageBlockDevices, btrfsFilesystems, lockDisk, deletePartition = origDevices, origFss, origLock, origDelete
+		partitionDisk, addPartition, createBtrfsPool, mountBtrfsPool = origPartDisk, origAdd, origCreate, origMount
+		wipePoolSuperblocks, partitionNumber, unmountPool, addPoolFstab, findBtrfsFilesystem = origWipe, origNumber, origUnmount, origFstab, origFind
+	})
+	useTempFstab(t, "")
+
+	env := &poolCreateEnv{}
+	step := func(format string, args ...any) error {
+		s := fmt.Sprintf(format, args...)
+		env.calls = append(env.calls, s)
+		if slices.Contains(env.fail, s) {
+			return errStep
+		}
+		return nil
+	}
+	storageBlockDevices = func(context.Context) ([]apischema.StorageBlockDevice, error) {
+		return []apischema.StorageBlockDevice{
+			{Path: "/dev/sdb", Type: "disk", FreeBytes: 1 << 30, Mountpoints: []string{}},
+			{Path: "/dev/sdc", Type: "disk", FreeBytes: 1 << 30, Mountpoints: []string{}},
+		}, nil
+	}
+	btrfsFilesystems = func(context.Context) ([]btrfs.BtrfsFilesystem, error) { return nil, nil }
+	lockDisk = func(_ context.Context, disk string) (func(), error) {
+		_ = step("lock %s", disk)
+		return func() { _ = step("unlock %s", disk) }, nil
+	}
+	newPartition := func(_ context.Context, disk string) (string, error) {
+		if err := step("partition %s", disk); err != nil {
+			return "", err
+		}
+		return disk + "1", nil
+	}
+	partitionDisk, addPartition = newPartition, newPartition
+	createBtrfsPool = func(_ context.Context, _, _, _ string, devices []string, _ bool, _ func(float64)) (string, error) {
+		return "pool-uuid", step("mkfs %s", strings.Join(devices, " ")) // the UUID is known once mkfs ran
+	}
+	mountBtrfsPool = func(_ context.Context, device, _ string, _ []string, _ bool) error { return step("mount %s", device) }
+	addPoolFstab = func(source, _, _ string, _ []string) error { return step("fstab %s", source) }
+	findBtrfsFilesystem = func(_ context.Context, uuid string) (btrfs.BtrfsFilesystem, error) {
+		return btrfs.BtrfsFilesystem{UUID: uuid}, step("find %s", uuid)
+	}
+	unmountPool = func(string, int) error { return step("unmount") }
+	wipePoolSuperblocks = func(device, uuid string) (bool, error) { return true, step("wipe %s %s", device, uuid) }
+	partitionNumber = func(string) (int, error) { return 1, nil }
+	deletePartition = func(ctx context.Context, disk string, number int) error {
+		if ctx.Err() != nil {
+			return step("delete on a canceled context")
+		}
+		return step("delete %s %d", disk, number)
+	}
+	return env
+}
+
+// canceledCreate runs CreateBtrfsPool on a canceled context, as when the job
+// is canceled mid-create: the undo must still run to the end.
+func canceledCreate(t *testing.T, devices, freeSpace []string) error {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := apischema.BtrfsPoolCreateRequest{
+		Label: "tank", Mountpoint: filepath.Join(t.TempDir(), "tank"), DataProfile: "raid1", MetadataProfile: "raid1",
+		Devices: devices, FreeSpace: freeSpace,
+	}
+	_, err := CreateBtrfsPool(ctx, req, func(string, float64) {})
+	return err
+}
+
+func TestCreateBtrfsPoolUndoesOnFailure(t *testing.T) {
+	made := []string{"lock /dev/sdb", "partition /dev/sdb", "lock /dev/sdc", "partition /dev/sdc", "mkfs /dev/sdb1 /dev/sdc1"}
+	mounted := []string{"mount /dev/sdb1", "fstab UUID=pool-uuid"}
+	wipes := []string{"wipe /dev/sdb1 pool-uuid", "wipe /dev/sdc1 pool-uuid"}
+	unlocks := []string{"unlock /dev/sdc", "unlock /dev/sdb"}
+	cases := []struct {
+		name     string
+		fail     []string
+		want     []string
+		undoFail bool
+	}{
+		{"second partition", []string{"partition /dev/sdc"}, slices.Concat(made[:4], []string{"unlock /dev/sdc", "delete /dev/sdb 1", "unlock /dev/sdb"}), false},
+		{"mkfs", []string{made[4]}, slices.Concat(made, wipes, []string{"delete /dev/sdc 1", "delete /dev/sdb 1"}, unlocks), false},
+		{"mount", []string{mounted[0]}, slices.Concat(made, mounted[:1], wipes, []string{"delete /dev/sdc 1", "delete /dev/sdb 1"}, unlocks), false},
+		{"fstab", []string{mounted[1]}, slices.Concat(made, mounted, []string{"unmount"}, wipes, []string{"delete /dev/sdc 1", "delete /dev/sdb 1"}, unlocks), false},
+		// A partition whose superblocks are still there is kept: its offsets would be lost.
+		{"mkfs then a wipe", []string{made[4], wipes[1]}, slices.Concat(made, wipes, []string{"delete /dev/sdb 1"}, unlocks), true},
+		// A pool still mounted is left alone.
+		{"fstab then the unmount", []string{mounted[1], "unmount"}, slices.Concat(made, mounted, []string{"unmount"}, unlocks), true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			env := stubPoolCreate(t)
+			env.fail = c.fail
+			err := canceledCreate(t, nil, []string{"/dev/sdb", "/dev/sdc"})
+			if !errors.Is(err, errStep) {
+				t.Fatalf("err = %v, want the step's error", err)
+			}
+			if got := strings.Contains(err.Error(), "undo btrfs pool create"); got != c.undoFail {
+				t.Fatalf("err = %v, want an undo error: %t", err, c.undoFail)
+			}
+			if !slices.Equal(env.calls, c.want) {
+				t.Fatalf("calls:\n%q\nwant:\n%q", env.calls, c.want)
+			}
+		})
+	}
+}
+
+func TestCreateBtrfsPoolKeepsAPoolInFstab(t *testing.T) {
+	env := stubPoolCreate(t)
+	env.fail = []string{"find pool-uuid"}
+	if err := canceledCreate(t, nil, []string{"/dev/sdb", "/dev/sdc"}); !errors.Is(err, errStep) || strings.Contains(err.Error(), "undo") {
+		t.Fatalf("err = %v, want the lookup's error alone", err)
+	}
+	want := []string{"lock /dev/sdb", "partition /dev/sdb", "lock /dev/sdc", "partition /dev/sdc", "mkfs /dev/sdb1 /dev/sdc1", "mount /dev/sdb1", "fstab UUID=pool-uuid", "find pool-uuid", "unlock /dev/sdc", "unlock /dev/sdb"}
+	if !slices.Equal(env.calls, want) {
+		t.Fatalf("calls:\n%q\nwant:\n%q", env.calls, want)
+	}
+}
+
+func TestCreateBtrfsPoolKeepsWholeDevicesOnFailure(t *testing.T) {
+	env := stubPoolCreate(t)
+	env.fail = []string{"mkfs /dev/sdb /dev/sdc"}
+	if err := canceledCreate(t, []string{"/dev/sdb", "/dev/sdc"}, nil); !errors.Is(err, errStep) {
+		t.Fatalf("err = %v, want the step's error", err)
+	}
+	want := []string{"mkfs /dev/sdb /dev/sdc", "wipe /dev/sdb pool-uuid", "wipe /dev/sdc pool-uuid"}
+	if !slices.Equal(env.calls, want) {
+		t.Fatalf("calls:\n%q\nwant:\n%q", env.calls, want)
 	}
 }
 

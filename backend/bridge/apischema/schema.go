@@ -8,6 +8,7 @@ import (
 	"net"
 	"reflect"
 	"strings"
+	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
@@ -145,9 +146,19 @@ func secretMembers(t reflect.Type) []string {
 
 // Job record members a resume hook reads.
 const (
+	recordStartedMember    = "started_at"
 	recordRequestMember    = "request"
 	recordCheckpointMember = "checkpoint"
 )
+
+type jobStartKey struct{}
+
+// JobStartedAt returns when the job a Resume hook continues first started,
+// from its record. It is zero outside a Resume hook.
+func JobStartedAt(ctx context.Context) time.Time {
+	start, _ := ctx.Value(jobStartKey{}).(time.Time)
+	return start
+}
 
 // ResumeHooks lets a privileged Mutation survive a shutdown: Suspend stops the
 // job and returns a checkpoint, Resume continues the job from it.
@@ -490,37 +501,43 @@ func wrapMutation[Req, Res any](spec RouteSpec, fn func(context.Context, Req) (R
 
 func resumeHooks[Req, Res any](spec RouteSpec, hooks ResumeHooks[Req, Res]) (bridgeipc.SuspendFunc, bridgeipc.ResumeFunc) {
 	suspend := func(ctx context.Context, record jsontext.Value) (jsontext.Value, error) {
-		req, checkpoint, err := decodeRecord[Req](spec, record)
+		req, checkpoint, _, err := decodeRecord[Req](spec, record)
 		if err != nil {
 			return nil, err
 		}
 		return hooks.Suspend(ctx, req, checkpoint)
 	}
 	resume := func(ctx context.Context, record jsontext.Value) (any, error) {
-		req, checkpoint, err := decodeRecord[Req](spec, record)
+		req, checkpoint, started, err := decodeRecord[Req](spec, record)
 		if err != nil {
 			return nil, err
 		}
-		result, err := hooks.Resume(ctx, req, checkpoint)
+		result, err := hooks.Resume(context.WithValue(ctx, jobStartKey{}, started), req, checkpoint)
 		return erasedResult(spec, result, err)
 	}
 	return suspend, resume
 }
 
 // decodeRecord reads a job record's request through the route decoder and
-// returns it with the record's checkpoint.
-func decodeRecord[Req any](spec RouteSpec, record jsontext.Value) (Req, jsontext.Value, error) {
+// returns it with the record's checkpoint and start time.
+func decodeRecord[Req any](spec RouteSpec, record jsontext.Value) (Req, jsontext.Value, time.Time, error) {
 	var zero Req
 	var members map[string]jsontext.Value
 	if err := json.Unmarshal(record, &members); err != nil {
-		return zero, nil, fmt.Errorf("decode %s job record: %w", spec.Route, err)
+		return zero, nil, time.Time{}, fmt.Errorf("decode %s job record: %w", spec.Route, err)
+	}
+	var started time.Time
+	if raw, ok := members[recordStartedMember]; ok {
+		if err := json.Unmarshal(raw, &started); err != nil {
+			return zero, nil, time.Time{}, fmt.Errorf("decode %s job record start: %w", spec.Route, err)
+		}
 	}
 	decoded, err := spec.Decode(members[recordRequestMember])
 	if err != nil {
-		return zero, nil, fmt.Errorf("decode %s job record request: %w", spec.Route, err)
+		return zero, nil, time.Time{}, fmt.Errorf("decode %s job record request: %w", spec.Route, err)
 	}
 	req, err := typedRequest[Req](spec.Route, decoded)
-	return req, members[recordCheckpointMember], err
+	return req, members[recordCheckpointMember], started, err
 }
 
 // erasedResult erases a typed Call or Mutation result at the bridge boundary.

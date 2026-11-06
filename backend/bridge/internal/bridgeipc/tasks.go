@@ -177,10 +177,13 @@ type TaskDataAttachRequest struct {
 // or after Finished; an implementation must ignore it once the record is
 // terminal. Started may see an already-terminal snapshot (a queued task
 // canceled before it started) and must treat that state as final.
+// CancelRequested is called when Cancel stops a running task, before its
+// context is canceled; never for Interrupt or a queued task.
 type Recorder interface {
 	Started(task *Task, raw jsontext.Value)
 	Progress(task *Task, p TaskProgress)
 	Finished(task *Task)
+	CancelRequested(task *Task)
 }
 
 type TaskService struct {
@@ -539,13 +542,28 @@ func (j *Task) Snapshot() TaskSnapshot {
 }
 
 // Cancel requests cancellation of the task. If the task is queued, it is marked
-// canceled immediately; if running, the context is canceled and the task will
-// transition to canceled when it detects the cancellation.
+// canceled immediately; if running, the request is recorded, the context is
+// canceled, and the task turns canceled when its handler returns.
 func (j *Task) Cancel() { j.stop(false) }
 
 // Interrupt stops the task because its job host is shutting down. It is
 // Cancel, except that the task ends interrupted (409) instead of canceled.
 func (j *Task) Interrupt() { j.stop(true) }
+
+// BeginInterrupt marks the task interrupted without stopping it, so a handler
+// that a Suspend hook stops ends interrupted, not failed.
+func (j *Task) BeginInterrupt() {
+	j.mu.Lock()
+	j.interrupted = true
+	j.mu.Unlock()
+}
+
+// Interrupted reports whether the task's job host is interrupting it.
+func (j *Task) Interrupted() bool {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	return j.interrupted
+}
 
 func (j *Task) stop(interrupt bool) {
 	j.mu.Lock()
@@ -562,7 +580,13 @@ func (j *Task) stop(interrupt bool) {
 		j.publishTerminal(event)
 		return
 	}
+	rec, running := j.recorder, j.state == TaskStateRunning
 	j.mu.Unlock()
+	// Recorded first, so a shutdown or reboot before the handler returns
+	// neither suspends nor resumes a job its owner canceled.
+	if running && !interrupt && rec != nil {
+		rec.CancelRequested(j)
+	}
 	// A running task owns its runner; cancellation is delivered through its
 	// context and the runner's normal terminal path publishes the event.
 	j.cancel()
@@ -773,8 +797,8 @@ func (j *Task) run(ctx context.Context, runner TaskRunner, request any) {
 	// Every field is set explicitly rather than inherited. A task context is
 	// rooted at context.Background (see ClaimForOwnerWithIdentity), and a queued task is
 	// promoted by whichever goroutine finished the task ahead of it, so an
-	// inherited label set would name the wrong session. The routeRunner timeout
-	// goroutine picks these up from here.
+	// inherited label set would name the wrong session. The runner's own
+	// goroutines pick these up from here.
 	ctx = goroutinelabel.WithSession(ctx, j.owner.SessionID, j.owner.UID,
 		"component", "task",
 		"task_id", j.id,
@@ -787,13 +811,14 @@ func (j *Task) run(ctx context.Context, runner TaskRunner, request any) {
 		// A failed task is logged here and nowhere else: runners return
 		// errors instead of logging them.
 		msg, level := "task failed", failureLevel(err)
-		j.mu.RLock()
-		interrupted := j.interrupted
-		j.mu.RUnlock()
+		interrupted := j.Interrupted()
+		// A stopped handler may report how it stopped, such as a killed
+		// subprocess, instead of the context's error.
+		canceled := errors.Is(err, context.Canceled) || ctx.Err() != nil
 		switch {
 		case interrupted:
 			msg, level = "task interrupted", slog.LevelInfo
-		case errors.Is(err, context.Canceled):
+		case canceled:
 			msg, level = "task canceled", slog.LevelInfo
 		}
 		slog.Log(ctx, level, msg, "task_id", j.id, "task_type", j.typ, "user", j.owner.Username, "error", err)
@@ -801,7 +826,7 @@ func (j *Task) run(ctx context.Context, runner TaskRunner, request any) {
 			j.markFailed(NewError("operation timed out", 504))
 			return
 		}
-		if interrupted || errors.Is(err, context.Canceled) {
+		if interrupted || canceled {
 			j.markCanceled() // ends interrupted after Interrupt
 			return
 		}

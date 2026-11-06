@@ -135,3 +135,81 @@ func TestLastScrubPrefersNewer(t *testing.T) {
 		t.Fatalf("ours newer: %+v ok=%v", s, ok)
 	}
 }
+
+func TestScrubFromStartsAtOffsets(t *testing.T) {
+	k := raid1Kernel()
+	k.maxID = 3
+	k.devices[3] = &fakeDevice{path: "/dev/sdc1", total: 100 << 30, used: 51 << 30, physical: 100 << 30}
+	stubKernel(t, k)
+	got, err := ScrubFrom(context.Background(), dataUUID, map[int]uint64{1: 4096, 3: 0}, func(BtrfsScrubStatus) {})
+	if err != nil || got.Status != "finished" {
+		t.Fatalf("got=%+v err=%v", got, err)
+	}
+	calls := k.Calls()
+	slices.Sort(calls)
+	if want := []string{"SCRUB 1 from 4096", "SCRUB 3"}; !reflect.DeepEqual(calls, want) {
+		t.Fatalf("calls = %v, want %v", calls, want)
+	}
+}
+
+func TestScrubFromMergesTheCanceledRecord(t *testing.T) {
+	first := time.Unix(1700000000, 0)
+	for _, tc := range []struct {
+		name          string
+		record        string
+		starts        map[int]uint64
+		uncorrectable uint64
+	}{
+		{"resumed after a cancel", "canceled", map[int]uint64{2: 4096}, 3},
+		{"full scrub", "canceled", nil, 1},
+		{"resumed after a finished scrub", "finished", map[int]uint64{2: 4096}, 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			k := raid1Kernel()
+			k.devices[2].scrubResult = scrubProgress{DataBytesScrubbed: 1 << 30, CsumErrors: 1, UncorrectableErrors: 1}
+			stubKernel(t, k)
+			saveScrubRecord(dataUUID, BtrfsScrubStatus{Status: tc.record, StartedAt: &first, ErrorCount: 2, UncorrectableErrors: 2, BytesScrubbed: 3 << 30})
+			got, err := ScrubFrom(context.Background(), dataUUID, tc.starts, func(BtrfsScrubStatus) {})
+			if err != nil || got.Status != "finished" || got.UncorrectableErrors != tc.uncorrectable || got.FinishedAt == nil {
+				t.Fatalf("got=%+v err=%v, want %d uncorrectable", got, err, tc.uncorrectable)
+			}
+			merged := tc.uncorrectable == 3
+			if got.StartedAt.Equal(first) != merged || (got.ErrorCount == 3) != merged || (got.BytesScrubbed == 4<<30) != merged {
+				t.Fatalf("got=%+v, merged=%v", got, merged)
+			}
+			if rec, ok := loadScrubRecord(dataUUID); !ok || rec.UncorrectableErrors != got.UncorrectableErrors || !rec.StartedAt.Equal(*got.StartedAt) {
+				t.Fatalf("record = %+v ok=%v, want %+v", rec, ok, got)
+			}
+		})
+	}
+}
+
+func TestScrubPositionsSkipsIdleDevices(t *testing.T) {
+	k := raid1Kernel()
+	k.devices[1].running = &scrubProgress{LastPhysical: 8 << 20}
+	stubKernel(t, k)
+	got, err := ScrubPositions(context.Background(), dataUUID)
+	if err != nil || !reflect.DeepEqual(got, map[int]uint64{1: 8 << 20}) {
+		t.Fatalf("positions = %v err=%v", got, err)
+	}
+	// An unreadable position is not an idle device: the caller rescans.
+	k.fail = map[uintptr]error{iocScrubProgress: unix.EIO}
+	if got, err := ScrubPositions(context.Background(), dataUUID); err == nil {
+		t.Fatalf("positions = %v despite EIO", got)
+	}
+}
+
+func TestScrubCancelSparesARunningReplace(t *testing.T) {
+	k := raid1Kernel()
+	state := uint64(replaceStateStarted)
+	k.replaceStatus = func() (uint64, uint64) { return state, 500 }
+	stubKernel(t, k)
+	if err := ScrubCancel(context.Background(), dataUUID); err == nil || slices.Contains(k.Calls(), "SCRUB_CANCEL") {
+		t.Fatalf("err = %v, calls = %v", err, k.Calls())
+	}
+	// STATUS still reports a replace that finished long ago.
+	state = replaceStateFinished
+	if err := ScrubCancel(context.Background(), dataUUID); err != nil || !slices.Contains(k.Calls(), "SCRUB_CANCEL") {
+		t.Fatalf("err = %v, calls = %v", err, k.Calls())
+	}
+}

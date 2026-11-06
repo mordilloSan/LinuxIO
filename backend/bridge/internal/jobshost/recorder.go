@@ -216,6 +216,31 @@ func (r *recorder) Finished(task *bridgeipc.Task) {
 	}
 }
 
+// CancelRequested marks the running record of a job its owner canceled, before
+// the handler is told to stop, so neither a shutdown nor a later boot resumes it.
+func (r *recorder) CancelRequested(task *bridgeipc.Task) {
+	id := task.ID()
+	r.mu.Lock()
+	j, ok := r.jobs[id]
+	created := ok && j.created
+	r.mu.Unlock()
+	if !created {
+		return
+	}
+	ctx, cancel := jobs.DetachedContext(storeTimeout)
+	defer cancel()
+	_, err := r.h.cfg.Store.Update(ctx, id, func(record *jobs.Record) error {
+		if record.State == jobs.StateRunning {
+			record.CancelRequested = true
+		}
+		return nil
+	})
+	// A job that completed in under a second meanwhile has no record left.
+	if err != nil && !errors.Is(err, jobs.ErrNotFound) {
+		slog.Warn("job cancel request not recorded", "job_id", id, "error", err)
+	}
+}
+
 // finish moves the record to the task's terminal state and alerts on a
 // failure. A record already terminal, such as one interrupted at shutdown,
 // is left as it is.

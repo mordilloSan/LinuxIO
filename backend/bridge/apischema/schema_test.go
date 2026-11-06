@@ -6,6 +6,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
@@ -380,6 +381,22 @@ func TestMutationInfersTypesAndDetectsTarget(t *testing.T) {
 	set.Register(bridgeipc.NewRouter(bridgeipc.NewTaskService()))
 	if got := len(set.Routes()); got != 2 {
 		t.Fatalf("binding set routes = %d, want 2", got)
+	}
+}
+
+// The resumable set is pinned: a route resumes after a shutdown only when
+// its operation is known to survive one.
+func TestResumableRoutes(t *testing.T) {
+	var got []string
+	for _, route := range handlers.Routes {
+		if route.Resumable {
+			got = append(got, route.Route)
+		}
+	}
+	slices.Sort(got)
+	want := []string{"storage.btrfs_balance", "storage.btrfs_device_remove", "storage.btrfs_device_replace", "storage.btrfs_scrub_start"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("resumable routes = %v, want %v", got, want)
 	}
 }
 

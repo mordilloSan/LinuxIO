@@ -28,6 +28,7 @@ const (
 	jobB = "00000000-0000-4000-8000-00000000000b"
 	jobC = "00000000-0000-4000-8000-00000000000c"
 	jobD = "00000000-0000-4000-8000-00000000000d"
+	jobE = "00000000-0000-4000-8000-00000000000e"
 
 	ioTimeout = 5 * time.Second
 )
@@ -443,13 +444,6 @@ func TestHostSIGTERMMarksRunningJobsInterrupted(t *testing.T) {
 	streams := map[string]net.Conn{
 		jobA: th.startJob(sess, "test.job", jobA),
 		jobB: th.startJob(sess, "test.resumable", jobB),
-		jobC: th.startJob(sess, "test.resumable", jobC),
-	}
-	if _, err := th.cfg.Store.Update(context.Background(), jobC, func(r *jobs.Record) error {
-		r.CancelRequested = true
-		return nil
-	}); err != nil {
-		t.Fatalf("Store.Update(cancel requested): %v", err)
 	}
 	// A watch from another tab also reads the end before the host exits; the
 	// job's replayed progress shows it is attached.
@@ -466,7 +460,7 @@ func TestHostSIGTERMMarksRunningJobsInterrupted(t *testing.T) {
 	if err := th.wait(); err != nil {
 		t.Fatalf("Serve after SIGTERM = %v, want nil", err)
 	}
-	for id, checkpoint := range map[string]string{jobA: "", jobB: `{"offset":7}`, jobC: "", jobD: ""} {
+	for id, checkpoint := range map[string]string{jobA: "", jobB: `{"offset":7}`, jobD: ""} {
 		record := th.record(id)
 		if record.State != jobs.StateInterrupted || record.Reason != jobs.ReasonShutdown || record.FinishedAt.IsZero() {
 			t.Fatalf("record %s = %s/%s, want interrupted/shutdown", id, record.State, record.Reason)
@@ -484,7 +478,7 @@ func TestHostSIGTERMMarksRunningJobsInterrupted(t *testing.T) {
 		}
 	}
 	if len(suspended) != 1 {
-		t.Fatalf("Suspend called %d times, want once (only the job without a cancel request)", len(suspended))
+		t.Fatalf("Suspend called %d times, want once", len(suspended))
 	}
 	var record jobs.Record
 	if err := json.Unmarshal(<-suspended, &record); err != nil || record.ID != jobB || !record.Resumable {
@@ -501,6 +495,165 @@ func readInterrupted(t *testing.T, id string, stream net.Conn) {
 		t.Fatalf("job %s stream result = %#v, want 409 job was interrupted", id, result)
 	}
 	_ = stream.Close()
+}
+
+// A Suspend hook that stops the handler, as a paused balance returns an error,
+// leaves the job interrupted with its checkpoint, not failed.
+func TestSuspendThatStopsTheHandlerKeepsCheckpoint(t *testing.T) {
+	stop := make(chan struct{})
+	th := newTestHost(t, nil)
+	th.cfg.Router.Mutation("test.resumable",
+		func(context.Context, *bridgeipc.Task, any) (any, error) {
+			<-stop
+			return nil, errors.New("paused")
+		},
+		bridgeipc.WithResume(
+			func(context.Context, jsontext.Value) (jsontext.Value, error) {
+				close(stop)
+				// The job's own Finish writes its record before the hook returns.
+				task, _ := th.cfg.Tasks.Get(jobA)
+				<-task.Done()
+				return jsontext.Value(`{"at":5}`), nil
+			},
+			func(context.Context, jsontext.Value) (any, error) { return nil, nil },
+		))
+	th.start()
+	stream := th.startJob(th.connect(), "test.resumable", jobA)
+
+	th.cancel() // SIGTERM
+	readInterrupted(t, jobA, stream)
+	if err := th.wait(); err != nil {
+		t.Fatalf("Serve after SIGTERM = %v, want nil", err)
+	}
+	record := th.record(jobA)
+	if record.State != jobs.StateInterrupted || record.Reason != jobs.ReasonShutdown || compact(t, record.Checkpoint) != `{"at":5}` {
+		t.Fatalf("record = %s/%s with checkpoint %s, want interrupted/shutdown with {\"at\":5}", record.State, record.Reason, record.Checkpoint)
+	}
+	if task, ok := th.cfg.Tasks.Get(jobA); !ok || task.Snapshot().State != bridgeipc.TaskStateInterrupted {
+		t.Fatal("task was not interrupted")
+	}
+	if got := th.observed(); len(got) != 1 || got[0].Title != "test.resumable was interrupted" {
+		t.Fatalf("alerts = %#v, want one interrupted alert", got)
+	}
+}
+
+// A job that completes while its Suspend hook runs keeps its outcome.
+func TestJobThatCompletesDuringSuspendStaysCompleted(t *testing.T) {
+	th := newTestHost(t, func(c *Config) {
+		// Started an hour ago, so its completed record is kept, not dropped as transient.
+		c.Now = func() time.Time { return time.Now().Add(-time.Hour) }
+	})
+	th.cfg.Router.Mutation("test.resumable", th.run, bridgeipc.WithResume(
+		func(context.Context, jsontext.Value) (jsontext.Value, error) {
+			th.release <- nil
+			task, _ := th.cfg.Tasks.Get(jobA)
+			<-task.Done()
+			return jsontext.Value(`{"at":5}`), nil
+		},
+		func(context.Context, jsontext.Value) (any, error) { return nil, nil },
+	))
+	th.start()
+	stream := th.startJob(th.connect(), "test.resumable", jobA)
+
+	th.cancel() // SIGTERM
+	if result := readResult(t, stream); result.Status != "ok" {
+		t.Fatalf("job stream result = %#v, want ok", result)
+	}
+	_ = stream.Close()
+	if err := th.wait(); err != nil {
+		t.Fatalf("Serve after SIGTERM = %v, want nil", err)
+	}
+	if record := th.record(jobA); record.State != jobs.StateCompleted || record.Reason != jobs.ReasonNone || len(record.Checkpoint) != 0 {
+		t.Fatalf("record = %s/%s with checkpoint %s, want completed", record.State, record.Reason, record.Checkpoint)
+	}
+	if got := th.observed(); len(got) != 0 {
+		t.Fatalf("alerts = %#v, want none", got)
+	}
+}
+
+// A job its owner canceled is not interrupted by a shutdown that overlaps its
+// cleanup: its handler ends it canceled.
+func TestCanceledJobDuringShutdownEndsCanceled(t *testing.T) {
+	suspended := make(chan struct{}, 1)
+	th := newTestHost(t, nil)
+	th.cfg.Tasks.RegisterRoutes(th.cfg.Router)
+	th.cfg.Router.Mutation("test.resumable",
+		func(ctx context.Context, _ *bridgeipc.Task, _ any) (any, error) {
+			<-ctx.Done()
+			time.Sleep(100 * time.Millisecond) // its cleanup, while the host stops
+			return nil, ctx.Err()
+		},
+		bridgeipc.WithResume(
+			func(context.Context, jsontext.Value) (jsontext.Value, error) {
+				suspended <- struct{}{}
+				return nil, nil
+			},
+			func(context.Context, jsontext.Value) (any, error) { return nil, nil },
+		))
+	th.start()
+	sess := th.connect()
+	stream := th.startJob(sess, "test.resumable", jobA)
+	cancel := openStream(t, sess, "tasks.cancel", map[string]string{"taskId": jobA}, "")
+	if result := readResult(t, cancel); result.Status != "ok" {
+		t.Fatalf("tasks.cancel = %#v, want ok", result)
+	}
+
+	th.cancel() // SIGTERM
+	if result := readResult(t, stream); result.Status != "error" || result.Code != 499 {
+		t.Fatalf("job stream result = %#v, want 499 canceled", result)
+	}
+	_ = stream.Close()
+	if err := th.wait(); err != nil {
+		t.Fatalf("Serve after SIGTERM = %v, want nil", err)
+	}
+	if record := th.record(jobA); record.State != jobs.StateCanceled || record.Reason != jobs.ReasonNone {
+		t.Fatalf("record = %s/%s, want canceled", record.State, record.Reason)
+	}
+	if task, ok := th.cfg.Tasks.Get(jobA); !ok || task.Snapshot().State != bridgeipc.TaskStateCanceled {
+		t.Fatal("task did not end canceled")
+	}
+	if len(suspended) != 0 {
+		t.Fatal("a canceled job was suspended")
+	}
+	if got := th.observed(); len(got) != 0 {
+		t.Fatalf("alerts = %#v, want none", got)
+	}
+}
+
+// A cancel is recorded before the handler is told to stop, so a shutdown or
+// reboot before the handler returns sees the owner's request.
+func TestCancelRecordsRequestBeforeHandlerReturns(t *testing.T) {
+	th := newTestHost(t, nil)
+	th.cfg.Tasks.RegisterRoutes(th.cfg.Router)
+	requested := make(chan bool, 1)
+	th.cfg.Router.Mutation("test.cancel", func(ctx context.Context, task *bridgeipc.Task, _ any) (any, error) {
+		<-ctx.Done()
+		record, err := th.cfg.Store.Get(context.Background(), task.ID())
+		requested <- err == nil && record.CancelRequested
+		return nil, ctx.Err()
+	})
+	th.start()
+	sess := th.connect()
+	stream := th.startJob(sess, "test.cancel", jobA)
+
+	cancel := openStream(t, sess, "tasks.cancel", map[string]string{"taskId": jobA}, "")
+	if result := readResult(t, cancel); result.Status != "ok" {
+		t.Fatalf("tasks.cancel = %#v, want ok", result)
+	}
+	select {
+	case ok := <-requested:
+		if !ok {
+			t.Fatal("the handler's record has no cancel request once its context ended")
+		}
+	case <-time.After(ioTimeout):
+		t.Fatal("the handler did not see its context end")
+	}
+	if result := readResult(t, stream); result.Status != "error" || result.Code != 499 {
+		t.Fatalf("job stream result = %#v, want 499 canceled", result)
+	}
+	if record := th.record(jobA); record.State != jobs.StateCanceled || !record.CancelRequested {
+		t.Fatalf("record = %s with cancel_requested %t, want canceled with the request", record.State, record.CancelRequested)
+	}
 }
 
 func TestHostReconcilesCrashedRecordsAtStart(t *testing.T) {
@@ -690,6 +843,54 @@ func TestRootHostResumesOnlyTheJobsAnEarlierBootInterrupted(t *testing.T) {
 	}
 	if got := th.observed(); len(got) != 1 || got[0].Key != jobD {
 		t.Fatalf("alerts = %#v, want one for %s", got, jobD)
+	}
+}
+
+// Only a job the last shutdown, reboot or power loss interrupted is resumed,
+// and once: every other interrupted record stops being resumable.
+func TestResumeOnlyWhatTheLastShutdownInterrupted(t *testing.T) {
+	resumed := make(chan string, 5)
+	th := newTestHost(t, func(c *Config) {
+		c.UID = 0
+		addResumableRoute(c, resumed)
+	})
+	boot, err := jobs.BootID()
+	if err != nil {
+		t.Fatalf("BootID: %v", err)
+	}
+	interrupted := func(id string, edit func(*jobs.Record)) jobs.Record {
+		r := earlierBootRecord(id, "test.resumable", jobs.StateInterrupted)
+		edit(&r)
+		return r
+	}
+	for _, r := range []jobs.Record{
+		interrupted(jobA, func(*jobs.Record) {}),
+		interrupted(jobB, func(r *jobs.Record) { r.Reason = jobs.ReasonReboot }),
+		interrupted(jobC, func(r *jobs.Record) { r.Reason = jobs.ReasonCrash }),
+		interrupted(jobD, func(r *jobs.Record) { r.CancelRequested = true }),
+		interrupted(jobE, func(r *jobs.Record) { r.Executor.BootID = boot }),
+	} {
+		if err := th.cfg.Store.Create(context.Background(), r); err != nil {
+			t.Fatalf("Store.Create(%s): %v", r.ID, err)
+		}
+	}
+
+	th.start()
+	if got := receiveIDs(t, resumed, 2); !slices.Equal(got, []string{jobA, jobB}) {
+		t.Fatalf("resumed %v, want %s and %s", got, jobA, jobB)
+	}
+	waitFor(t, "the resumed jobs to complete", func() bool {
+		return th.record(jobA).State == jobs.StateCompleted && th.record(jobB).State == jobs.StateCompleted
+	})
+	select {
+	case id := <-resumed:
+		t.Fatalf("also resumed %s", id)
+	default:
+	}
+	for _, id := range []string{jobC, jobD, jobE} {
+		if r := th.record(id); r.State != jobs.StateInterrupted || r.Resumable {
+			t.Fatalf("record %s = %s, resumable %t; want interrupted and no longer resumable", id, r.State, r.Resumable)
+		}
 	}
 }
 

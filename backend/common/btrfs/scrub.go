@@ -28,17 +28,34 @@ var ScrubRecordPath = version.DataDir + "/btrfs-scrub.json"
 // btrfsmaintenance timer's, as scrub.status.<uuid> files.
 var progsScrubDir = "/var/lib/btrfs"
 
-// Scrub scrubs every present device of the filesystem to completion, reporting
-// progress on the way, and records the outcome. Canceling ctx cancels the
-// scrub; the kernel then returns each device's partial counters.
+// ErrScrubNotRunning is ScrubCancel's answer when no scrub runs.
+var ErrScrubNotRunning = errors.New("no scrub is running")
+
+// Scrub scrubs every present device of the filesystem from the start; see
+// ScrubFrom.
 func Scrub(ctx context.Context, uuid string, report func(BtrfsScrubStatus)) (BtrfsScrubStatus, error) {
+	return ScrubFrom(ctx, uuid, nil, report)
+}
+
+// ScrubFrom scrubs the filesystem to completion, reporting progress on the
+// way, and records the outcome. Nil starts scrub every present device from 0;
+// otherwise only the devices in starts are scrubbed, each from its offset,
+// carrying on the canceled scrub on record: the outcome keeps its start and
+// counters, so errors its first part found stay in the record. Canceling ctx
+// cancels the scrub; the kernel then returns each device's partial counters.
+func ScrubFrom(ctx context.Context, uuid string, starts map[int]uint64, report func(BtrfsScrubStatus)) (BtrfsScrubStatus, error) {
 	fs, err := FindFilesystem(ctx, uuid)
 	if err != nil {
 		return BtrfsScrubStatus{}, err
 	}
 	mnt := fs.Mountpoints[0].Mountpoint
-	start := time.Now()
-	saveScrubRecord(uuid, BtrfsScrubStatus{Status: "running", StartedAt: &start})
+	now := time.Now()
+	final := BtrfsScrubStatus{Status: "finished", StartedAt: &now}
+	if rec, ok := loadScrubRecord(uuid); ok && starts != nil && rec.Status == "canceled" && rec.StartedAt != nil {
+		final = rec
+		final.Status, final.FinishedAt, final.Percent = "finished", nil, 0
+	}
+	saveScrubRecord(uuid, BtrfsScrubStatus{Status: "running", StartedAt: final.StartedAt})
 
 	type result struct {
 		progress scrubProgress
@@ -47,19 +64,20 @@ func Scrub(ctx context.Context, uuid string, report func(BtrfsScrubStatus)) (Btr
 	results := make(chan result)
 	pending := 0
 	for _, d := range fs.Devices {
-		if d.Missing {
+		start, listed := starts[d.ID]
+		if d.Missing || (starts != nil && !listed) {
 			continue
 		}
 		pending++
-		go func(id int) {
-			// The kernel scrubs only [Start, End]; the whole device, as btrfs-progs asks.
-			args := scrubArgs{DevID: uint64(id), End: ^uint64(0)}
-			err := fsIoctl(mnt, iocScrub, unsafe.Pointer(&args))
+		go func(id int, start uint64) {
+			// The kernel scrubs only [Start, End]; up to the device's end, as
+			// btrfs-progs asks.
+			args := scrubArgs{DevID: uint64(id), Start: start, End: ^uint64(0)}
+			err := blockingIoctl(mnt, iocScrub, unsafe.Pointer(&args))
 			results <- result{args.Progress, err}
-		}(d.ID)
+		}(d.ID, start)
 	}
 
-	final := BtrfsScrubStatus{Status: "finished", StartedAt: &start}
 	ticker := time.NewTicker(progressInterval)
 	defer ticker.Stop()
 	ctxDone := ctx.Done()
@@ -72,7 +90,9 @@ func Scrub(ctx context.Context, uuid string, report func(BtrfsScrubStatus)) (Btr
 			firstErr = final.absorb(r.err, firstErr)
 		case <-ctxDone:
 			ctxDone = nil
-			_ = fsIoctl(mnt, iocScrubCancel, nil)
+			if err := cancelScrub(mnt); err != nil && !errors.Is(err, unix.ENOTCONN) {
+				slog.Warn("btrfs scrub not canceled", "mountpoint", mnt, "error", err)
+			}
 		case <-ticker.C:
 			report(scrubStatus(mnt, uuid, fs.Devices, fs.UsedBytes, func(string, error) {}))
 		}
@@ -118,13 +138,48 @@ func ScrubCancel(ctx context.Context, uuid string) error {
 	if err != nil {
 		return err
 	}
-	if err := fsIoctl(mnt, iocScrubCancel, nil); err != nil {
+	if err := cancelScrub(mnt); err != nil {
 		if errors.Is(err, unix.ENOTCONN) {
-			return errors.New("no scrub is running")
+			return ErrScrubNotRunning
 		}
 		return fmt.Errorf("cancel scrub: %w", err)
 	}
 	return nil
+}
+
+// cancelScrub cancels the running scrub, unless a device replace runs:
+// SCRUB_CANCEL cancels every scrub of the filesystem, the replace's too.
+// STATUS may report an earlier replace's end, so only STARTED refuses.
+func cancelScrub(mnt string) error {
+	status := devReplaceArgs{Cmd: replaceCmdStatus}
+	if fsIoctl(mnt, iocDevReplace, unsafe.Pointer(&status)) == nil && getU64(status.Params[:], replaceStatusState) == replaceStateStarted {
+		return errors.New("a device replace is running, and canceling the scrub would cancel it too")
+	}
+	return fsIoctl(mnt, iocScrubCancel, nil)
+}
+
+// ScrubPositions returns where each device's running scrub stands, its
+// last_physical, for ScrubFrom to start from. A device the kernel reports
+// idle (ENOTCONN), whether it finished, failed or never started, is left out.
+func ScrubPositions(ctx context.Context, uuid string) (map[int]uint64, error) {
+	fs, err := FindFilesystem(ctx, uuid)
+	if err != nil {
+		return nil, err
+	}
+	positions := map[int]uint64{}
+	for _, d := range fs.Devices {
+		if d.Missing {
+			continue
+		}
+		args := scrubArgs{DevID: uint64(d.ID)}
+		switch err := fsIoctl(fs.Mountpoints[0].Mountpoint, iocScrubProgress, unsafe.Pointer(&args)); {
+		case err == nil:
+			positions[d.ID] = args.Progress.LastPhysical
+		case !errors.Is(err, unix.ENOTCONN):
+			return nil, fmt.Errorf("scrub progress of device %d: %w", d.ID, err)
+		}
+	}
+	return positions, nil
 }
 
 func loadScrubRecords() map[string]BtrfsScrubStatus {

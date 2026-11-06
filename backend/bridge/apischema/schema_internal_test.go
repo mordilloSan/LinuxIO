@@ -3,9 +3,12 @@ package apischema
 import (
 	"context"
 	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"testing"
+	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/jobs"
 )
 
 func TestMutationAdaptersDecodeTheRecordRequestAndPassTheCheckpoint(t *testing.T) {
@@ -14,6 +17,7 @@ func TestMutationAdaptersDecodeTheRecordRequestAndPassTheCheckpoint(t *testing.T
 	}
 	var gotUUID string
 	var gotCheckpoint jsontext.Value
+	var gotStart time.Time
 	binding := MutationVoid("test.adapters", func(_ context.Context, req poolRequest) error {
 		gotUUID = req.UUID
 		return nil
@@ -22,8 +26,8 @@ func TestMutationAdaptersDecodeTheRecordRequestAndPassTheCheckpoint(t *testing.T
 			gotUUID, gotCheckpoint = req.UUID, checkpoint
 			return jsontext.Value(`{"offset":2}`), nil
 		},
-		Resume: func(_ context.Context, req poolRequest, checkpoint jsontext.Value) (NoResponse, error) {
-			gotUUID, gotCheckpoint = req.UUID, checkpoint
+		Resume: func(ctx context.Context, req poolRequest, checkpoint jsontext.Value) (NoResponse, error) {
+			gotUUID, gotCheckpoint, gotStart = req.UUID, checkpoint, JobStartedAt(ctx)
 			return NoResponse{}, nil
 		},
 	})
@@ -34,7 +38,7 @@ func TestMutationAdaptersDecodeTheRecordRequestAndPassTheCheckpoint(t *testing.T
 	}
 
 	suspend, resume := resumeHooks(binding.Route, binding.hooks)
-	record := jsontext.Value(`{"id":"job-1","` + recordRequestMember + `":{"uuid":"pool"},"` + recordCheckpointMember + `":{"offset":1}}`)
+	record := jsontext.Value(`{"id":"job-1","` + recordStartedMember + `":"2026-11-05T10:00:00.5Z","` + recordRequestMember + `":{"uuid":"pool"},"` + recordCheckpointMember + `":{"offset":1}}`)
 	checkpoint, err := suspend(context.Background(), record)
 	if err != nil || string(checkpoint) != `{"offset":2}` || gotUUID != "pool" || string(gotCheckpoint) != `{"offset":1}` {
 		t.Fatalf("suspend = %s, %v with uuid %q and checkpoint %s", checkpoint, err, gotUUID, gotCheckpoint)
@@ -43,6 +47,21 @@ func TestMutationAdaptersDecodeTheRecordRequestAndPassTheCheckpoint(t *testing.T
 	result, err = resume(context.Background(), record)
 	if err != nil || result != nil || gotUUID != "pool" || string(gotCheckpoint) != `{"offset":1}` {
 		t.Fatalf("resume = %#v, %v with uuid %q and checkpoint %s", result, err, gotUUID, gotCheckpoint)
+	}
+	// Resume learns when the job it continues first started, from the
+	// store's own record encoding.
+	if want := time.Date(2026, 11, 5, 10, 0, 0, 5e8, time.UTC); !gotStart.Equal(want) {
+		t.Fatalf("resume saw job start %v, want %v", gotStart, want)
+	}
+	stored, err := json.Marshal(jobs.Record{ID: "job-2", StartedAt: time.Unix(1_800_000_000, 0), Request: jsontext.Value(`{"uuid":"pool"}`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = resume(context.Background(), stored); err != nil || !gotStart.Equal(time.Unix(1_800_000_000, 0)) {
+		t.Fatalf("resume of a stored record = %v with job start %v", err, gotStart)
+	}
+	if !JobStartedAt(context.Background()).IsZero() {
+		t.Fatal("a context outside a resume has a job start")
 	}
 
 	if _, err := resume(context.Background(), jsontext.Value(`{"request":{"unexpected":true}}`)); err == nil {

@@ -229,9 +229,16 @@ func (p *itPool) devices() {
 	}
 	usage := 50
 	p.must("balance", Balance(p.ctx, p.uuid, BalanceOptions{DataUsageMax: &usage}, func(float64) {}))
+	start := time.Now()
 	p.must("replace", Replace(p.ctx, p.uuid, 2, p.disks[2], func(float64) {}))
 	_, err = ReplaceResult(p.ctx, p.uuid, 2, p.disks[2])
 	p.must("replace result", err)
+	// STATUS's time_started tells this replace's end from an earlier one's.
+	p.must("resume a replace finished since its start", ResumeReplace(p.ctx, p.uuid, 2, start, func(float64) {}))
+	err = ResumeReplace(p.ctx, p.uuid, 2, time.Now().Add(time.Minute), func(float64) {})
+	if want := "the replace of device 2 did not survive the interruption; start it again"; err == nil || err.Error() != want {
+		t.Fatalf("resume a replace finished before the job: %v, want %s", err, want)
+	}
 	p.must("add device", AddDevice(p.ctx, p.uuid, p.disks[1], true))
 	fs := p.filesystem()
 	i := slices.IndexFunc(fs.Devices, func(d BtrfsDevice) bool { return d.Path == p.disks[1] })

@@ -152,7 +152,7 @@ const DockerDaemonSettingsSection = () => {
     const nextErrors = validateDraft(draft);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
-    // Storage only changes with Docker stopped, which needs the user's go-ahead.
+    // Storage only changes with every container stopped and Docker restarted, which needs the user's go-ahead.
     if (
       trimDataRoot(draft.data_root) !== config.data_root ||
       draft.image_store !== config.image_store ||
@@ -410,10 +410,10 @@ const DockerDaemonSettingsSection = () => {
 
       <ConfirmDialog
         cancelText="Cancel"
-        confirmText="Stop Docker and apply"
+        confirmText="Change storage"
         destructive
         isPending={storageMutation.isPending}
-        message="Every running container stops, then Docker stops, switches to the new storage and starts again. Anything in the old location is kept but hidden. Deploy your stacks again afterwards."
+        message="Every running container stops and Docker restarts on the new storage. Anything on the old storage is kept but hidden, so deploy your stacks again afterwards. If you reach LinuxIO or other apps through a reverse proxy, tunnel or VPN running in Docker, that access stops until its stack is deployed again, so make sure you can reach this server another way first."
         onClose={() => {
           if (!storageMutation.isPending) setConfirmStorage(false);
         }}
@@ -421,9 +421,9 @@ const DockerDaemonSettingsSection = () => {
           if (draft) storageMutation.mutate(toRequest(draft));
         }}
         open={confirmStorage}
-        pendingText="Applying…"
+        pendingText="Changing storage…"
         progress={storageStep ? { message: storageStep } : null}
-        title="Stop Docker to change storage?"
+        title="Stop all containers to change Docker storage?"
       />
 
       <SettingsSaveFooter

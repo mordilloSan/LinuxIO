@@ -2,7 +2,7 @@
 
 The repository Makefile is the supported entry point for setup, checks, tests,
 builds, and packaging. `Makefile` owns the public variables, validation and
-`.PHONY`; targets live in `mk/{toolchain,go,frontend,auth,quality,install}.mk`
+`.PHONY`; targets live in `mk/{toolchain,go,frontend,auth,quality,install,vm}.mk`
 and the longer shell programs behind them in `scripts/`. Prefer focused targets
 when working on one area:
 
@@ -87,6 +87,53 @@ and installer tests consume. `make localinstall` runs
 `packaging/scripts/localinstall.sh`, a wrapper for
 `install-linuxio-binaries.sh --local --build-dir build/`. Only
 `common/version.Version` is stamped into binaries at link time.
+
+## Test VM
+
+`mk/vm.mk` drives a disposable Ubuntu 26.04 VM for checks that need root, a
+real kernel, systemd or Docker. `packaging/vm/linuxio-vm.sh` does the work on
+`qemu:///system`, so it needs `virsh`, membership in the `libvirt` group, the
+`default` NAT network (`192.168.122.1`), `curl`, `openssl` and `python3`, but no
+`sudo`. It touches only the domain `linuxio-e2e` and its `linuxio-e2e-*`
+volumes in the `default` pool. Its state (the cloud image cache, the SSH key
+and the login) lives in `~/.cache/linuxio-vm`.
+
+While it runs, the VM takes about 4 GiB of RAM and 4 vCPU. Its disks are
+sparse qcow2 files: a 25 GiB system disk and four 8 GiB data disks
+(`vdb`–`vde`) for storage tests.
+
+```sh
+make vm-create        # download and check the image, first boot, snapshot "clean"
+make vm-install       # make build-nocheck, then install this build in the VM
+make vm-ssh CMD='systemctl is-active linuxio.target'
+make test-vm-browser  # Playwright specs in frontend/src/test/vm
+make vm-test-btrfs-integration
+make vm-reset         # revert every disk to "clean" and stop the VM
+make vm-destroy       # delete the domain and its volumes; the cache stays
+```
+
+- `vm-create` downloads the cloud image (checked against the release's
+  `SHA256SUMS`), and boots it once with `packaging/vm/user-data.yaml.in`.
+  cloud-init reads its seed over HTTP from a server on
+  `192.168.122.1:8399` that runs only during that boot. It creates the user
+  `linuxio-e2e` with passwordless sudo and installs `docker.io`,
+  `btrfs-progs` and the LinuxIO dependencies. The VM is then shut down and
+  snapshotted as `clean`, without LinuxIO.
+- Every target that needs the VM starts it if it is stopped. `vm-reset` leaves
+  it stopped, without LinuxIO; run `vm-install` again after a reset.
+- `make vm-ssh` without `CMD` opens a shell. The user can `sudo` without a
+  password. Make expands `$` in `CMD`, so write `$$`.
+- `test-vm-browser` signs in at `https://<vm-ip>:8090` as `linuxio-e2e`, with
+  the password in `~/.cache/linuxio-vm/password`. `PLAYWRIGHT_ARGS` applies.
+  The specs reach the VM through `linuxio-vm.sh`: `ssh`, and for host events
+  `reboot` (an orderly ACPI reboot) and `power-cut` (`virsh destroy`, then
+  `start`), each of which waits for the next boot. `jobs-phase2.spec.ts`
+  installs Docker's Compose plugin, creates a btrfs pool on `vdb` and `vdc`
+  and reboots the VM, so run `vm-reset` and `vm-install` before reusing it
+  for other checks.
+- `vm-test-btrfs-integration` builds the `common/btrfs` test binary on the host,
+  prints the VM's kernel version and runs the same tests as
+  `test-btrfs-integration`, as root in the VM.
 
 ## Overrides
 
@@ -258,6 +305,8 @@ follows:
   `build-docker-update`, `build-leak-profile`, `generate`, `dev-prep`, `dev`,
   `clean`, `cloc`
 - installation: `localinstall`, `reinstall`, `uninstall`
+- test VM: `vm-create`, `vm-install`, `vm-ssh`, `vm-reset`, `vm-destroy`,
+  `vm-test-btrfs-integration`, `test-vm-browser`
 - documentation: `help-overrides`
 
 For release-helper smoke coverage, run `make test-release-automation`.

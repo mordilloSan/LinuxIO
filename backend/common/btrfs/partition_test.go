@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"golang.org/x/sys/unix"
 )
@@ -619,6 +620,71 @@ func TestCreatePartitionClearsAnEntryTheKernelRefuses(t *testing.T) {
 	afterHead, afterTail := diskEdges(t, device, size)
 	if !bytes.Equal(beforeHead, afterHead) || !bytes.Equal(beforeTail, afterTail) || len(calls.wiped) != 0 {
 		t.Fatalf("the table kept the refused partition, or it was wiped: %v", calls.wiped)
+	}
+}
+
+// noUdev is a context that gives up on a partition node before udev, which
+// tests do not run, could create it.
+func noUdev(t *testing.T) context.Context {
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	t.Cleanup(cancel)
+	return ctx
+}
+
+func TestAddPartitionUndoesWhenTheNodeNeverAppears(t *testing.T) {
+	const size = 700 << 20
+	p1 := [2]uint64{2048, 4095}
+	device, _ := writeTestDisk(t, size, 512, [][2]uint64{p1}, [][2]uint64{p1})
+	calls := stubDisk(t, size, 512)
+	var dropped []int
+	stubDelKernelPartition(t, func(_ string, number int) error { dropped = append(dropped, number); return nil })
+	beforeHead, beforeTail := diskEdges(t, device, size)
+
+	if _, err := AddPartition(noUdev(t), device); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want the node wait's deadline", err)
+	}
+	if len(calls.adds) != 1 || !slices.Equal(dropped, []int{2}) || len(calls.wiped) != 0 {
+		t.Fatalf("added %v, dropped %v, wiped %v; want partition 2 added then dropped", calls.adds, dropped, calls.wiped)
+	}
+	if afterHead, afterTail := diskEdges(t, device, size); !bytes.Equal(beforeHead, afterHead) || !bytes.Equal(beforeTail, afterTail) {
+		t.Fatal("the table kept the partition")
+	}
+}
+
+func TestPartitionDiskUndoesWhenTheNodeNeverAppears(t *testing.T) {
+	const size = 4 << 30
+	device := filepath.Join(t.TempDir(), "sdb")
+	if err := os.WriteFile(device, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(device, size); err != nil {
+		t.Fatal(err)
+	}
+	stubDisk(t, size, 512)
+	oldReread := rereadPartitions
+	rereadPartitions = func(string) error { return nil }
+	t.Cleanup(func() { rereadPartitions = oldReread })
+	var dropped []int
+	stubDelKernelPartition(t, func(_ string, number int) error { dropped = append(dropped, number); return nil })
+
+	if _, err := PartitionDisk(noUdev(t), device); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("err = %v, want the node wait's deadline", err)
+	}
+	if !slices.Equal(dropped, []int{1}) {
+		t.Fatalf("dropped %v, want partition 1", dropped)
+	}
+	if e := readCopies(t, device, 512, size/512).entries; !bytes.Equal(e, make([]byte, len(e))) {
+		t.Fatal("the table kept the partition")
+	}
+}
+
+func TestPartitionNumber(t *testing.T) {
+	fakeSysfs(t, "nvme0n1", 4<<30, [][2]uint64{{2048, 4095}, {4096, 8191}})
+	if n, err := PartitionNumber("/dev/nvme0n1p2"); err != nil || n != 2 {
+		t.Fatalf("n = %d, err = %v", n, err)
+	}
+	if _, err := PartitionNumber("/dev/nvme0n1"); err == nil {
+		t.Fatal("a whole disk has no partition number")
 	}
 }
 

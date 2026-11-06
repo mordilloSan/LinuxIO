@@ -158,7 +158,7 @@ Added by the partition feature on 2026-10-25, after the rest of the map was trac
 | docker.create_volume | call | creates a volume | Docker API | <1s | reply lost | Q |
 | docker.delete_volume | call | removes a volume and its data | Docker API | seconds | reply lost | Q |
 | docker.set_daemon_config | call | writes daemon.json, reloads dockerd | file, systemd reload | <1s | harmless | Q |
-| docker.apply_daemon_storage | task | moves Docker's data root; stops Docker | stop all, systemd, drop-in, daemon.json, start | long | half-done: Docker and every container can stay stopped | J |
+| docker.apply_daemon_storage | task | moves Docker's data root; restarts Docker | stop all containers, drop-in, daemon.json, one systemd restart | long | resolved: systemd finishes the restart if the job dies | J |
 | docker.clear_icon_cache | call | clears cached icons | file delete | <1s | harmless | Q |
 | docker.get_icon | call | fetches and caches an icon | HTTP, cache file | seconds | harmless | R |
 | docker.get_icon_uri | call | same, returned as a data URI | HTTP, cache file | seconds | harmless | R |
@@ -348,7 +348,7 @@ None of these are fixed. Items 1 to 3, 8 and 10 were confirmed in the code;
 item 7 is an inference that needs a test.
 
 1. Cancelling `storage.btrfs_device_remove` does not stop the kernel. `RemoveDevice` uses its context only for the lookup and never issues a cancel. The task reads "canceled" while the disk keeps emptying, which contradicts `docs/btrfs.md`.
-2. If the bridge dies during `docker.apply_daemon_storage` after Docker has stopped, Docker and every container stay down.
+2. Resolved (phase 3): `docker.apply_daemon_storage` writes the files while Docker runs and hands one restart to systemd, so a dead job cannot leave Docker down. It was: if the bridge died after Docker had stopped, Docker and every container stayed down.
 3. `storage.btrfs_pool_create` has no rollback. A failure or kill leaves disks partitioned or half-formatted.
 4. These 13 routes need root but are not declared `Privileged()`:
    - `storage.create_lv`, `storage.delete_lv`, `storage.resize_lv`

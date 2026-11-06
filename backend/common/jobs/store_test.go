@@ -202,6 +202,18 @@ func TestNeedsSync(t *testing.T) {
 	}
 }
 
+// A cancel request must survive a power loss, or a reboot would resume a job
+// its owner canceled.
+func TestNeedsSyncOnCancelRequest(t *testing.T) {
+	now := time.Now()
+	young := Record{State: StateRunning, StartedAt: now}
+	requested := young
+	requested.CancelRequested = true
+	if !needsSync(young, requested, now) {
+		t.Fatal("needsSync = false for a cancel request, want true")
+	}
+}
+
 func TestStoreListActiveAndNewestFirst(t *testing.T) {
 	s := newTestStore(t)
 	base := time.Now().UTC().Add(-time.Hour)

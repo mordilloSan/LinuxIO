@@ -145,12 +145,11 @@ describe("DockerDaemonSettingsSection", () => {
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     expect(
-      await screen.findByText("Stop Docker to change storage?"),
+      await screen.findByText("Stop all containers to change Docker storage?"),
     ).toBeInTheDocument();
+    expect(screen.getByText(/reverse proxy/)).toBeInTheDocument();
     expect(mocks.applyStorage).not.toHaveBeenCalled();
-    await user.click(
-      screen.getByRole("button", { name: "Stop Docker and apply" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Change storage" }));
 
     expect(mocks.applyStorage).toHaveBeenCalledWith({
       ...config,
@@ -161,7 +160,7 @@ describe("DockerDaemonSettingsSection", () => {
     expect(mocks.save).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(
-        screen.queryByText("Stop Docker to change storage?"),
+        screen.queryByText("Stop all containers to change Docker storage?"),
       ).not.toBeInTheDocument(),
     );
   });

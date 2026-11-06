@@ -6,6 +6,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"net"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -382,6 +383,16 @@ func (f *fakeRecorder) Finished(task *Task) {
 	f.add(recordedCall{kind: "finished", state: task.Snapshot().State})
 }
 
+// CancelRequested tells a request recorded while the task's context was live
+// from one recorded too late.
+func (f *fakeRecorder) CancelRequested(task *Task) {
+	kind := "cancel_requested"
+	if task.ctx.Err() != nil {
+		kind = "cancel_requested_late"
+	}
+	f.add(recordedCall{kind: kind, state: task.Snapshot().State})
+}
+
 func (f *fakeRecorder) snapshot() []recordedCall {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -413,6 +424,44 @@ func TestRecorderSeesStartProgressFinish(t *testing.T) {
 	}
 	if got := recorder.snapshot(); len(got) != len(want) || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
 		t.Fatalf("recorder calls = %#v, want %#v", got, want)
+	}
+}
+
+// A cancel reaches the recorder before the handler's context ends; a host
+// stop is not a cancel request.
+func TestCancelNotifiesRecorderBeforeContext(t *testing.T) {
+	for name, tc := range map[string]struct {
+		stop func(*Task)
+		want []string
+	}{
+		"cancel":    {(*Task).Cancel, []string{"started", "cancel_requested", "ctx_done", "finished"}},
+		"interrupt": {(*Task).Interrupt, []string{"started", "ctx_done", "finished"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			registry := NewTaskService()
+			recorder := &fakeRecorder{}
+			registry.SetRecorder(recorder)
+			router := NewRouter(registry)
+			route := registeredMutation(t, router, "test.mutation", func(ctx context.Context, _ *Task, _ any) (any, error) {
+				<-ctx.Done()
+				recorder.add(recordedCall{kind: "ctx_done"})
+				return nil, ctx.Err()
+			})
+			task, _, err := startJob(router, route, Request{Route: route.Name}, testJobID(1))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			tc.stop(task)
+			<-task.Done()
+			var got []string
+			for _, call := range recorder.snapshot() {
+				got = append(got, call.kind)
+			}
+			if !slices.Equal(got, tc.want) {
+				t.Fatalf("recorder calls = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"golang.org/x/sys/unix"
 
@@ -24,13 +25,14 @@ var btrfsPoolFstabOptions = []string{"defaults", "noatime", "nofail"}
 
 // CreateBtrfsPool validates the request, formats the member devices, mounts the
 // new pool and records it in /etc/fstab, reporting each step and, while it
-// trims, the percent done.
-func CreateBtrfsPool(ctx context.Context, req apischema.BtrfsPoolCreateRequest, report func(step string, pct float64)) (btrfs.BtrfsFilesystem, error) {
-	devices, err := ListBlockDevices(ctx)
+// trims, the percent done. A failure before the pool is in fstab undoes what
+// the call made (see poolCreateUndo).
+func CreateBtrfsPool(ctx context.Context, req apischema.BtrfsPoolCreateRequest, report func(step string, pct float64)) (_ btrfs.BtrfsFilesystem, err error) {
+	devices, err := storageBlockDevices(ctx)
 	if err != nil {
 		return btrfs.BtrfsFilesystem{}, err
 	}
-	filesystems, err := btrfs.ListFilesystems(ctx)
+	filesystems, err := btrfsFilesystems(ctx)
 	if err != nil {
 		return btrfs.BtrfsFilesystem{}, err
 	}
@@ -42,42 +44,121 @@ func CreateBtrfsPool(ctx context.Context, req apischema.BtrfsPoolCreateRequest, 
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("mountpoint %s is not empty", req.Mountpoint)
 	}
 	slog.Debug("creating btrfs pool", "label", req.Label, "devices", req.Devices, "freeSpace", req.FreeSpace, "data", req.DataProfile, "metadata", req.MetadataProfile, "mountpoint", req.Mountpoint, "force", req.Force, "partition", req.Partition)
-	members := slices.Clone(req.Devices)
+	made := &poolCreateUndo{members: slices.Clone(req.Devices)}
+	defer func() { err = made.finish(ctx, req.Label, err) }()
 	if req.Partition || len(req.FreeSpace) > 0 {
 		report("Partitioning disks", 0)
 	}
 	if req.Partition {
-		members = make([]string, 0, len(req.Devices))
+		made.members = make([]string, 0, len(req.Devices))
 		for _, d := range req.Devices {
-			part, unlock, partErr := partitionLocked(ctx, d, btrfs.PartitionDisk)
+			part, unlock, partErr := partitionLocked(ctx, d, partitionDisk)
 			if partErr != nil {
 				return btrfs.BtrfsFilesystem{}, fmt.Errorf("partition %s for btrfs pool: %w", d, partErr)
 			}
-			defer unlock()
-			members = append(members, part)
+			made.record(d, part, unlock)
 		}
 	}
 	for _, d := range req.FreeSpace {
-		part, unlock, partErr := partitionLocked(ctx, d, btrfs.AddPartition)
+		part, unlock, partErr := partitionLocked(ctx, d, addPartition)
 		if partErr != nil {
 			return btrfs.BtrfsFilesystem{}, fmt.Errorf("add partition on %s for btrfs pool: %w", d, partErr)
 		}
-		defer unlock()
-		members = append(members, part)
+		made.record(d, part, unlock)
 	}
-	uuid, err := btrfs.CreatePool(ctx, req.Label, req.DataProfile, req.MetadataProfile, members, req.Force, formatProgress(report))
+	made.uuid, err = createBtrfsPool(ctx, req.Label, req.DataProfile, req.MetadataProfile, made.members, req.Force, formatProgress(report))
 	if err != nil {
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("create btrfs pool %q: %w", req.Label, err)
 	}
 	report("Mounting at "+req.Mountpoint, 0)
-	if err := btrfs.MountPool(ctx, members[0], req.Mountpoint, btrfsPoolFstabOptions, false); err != nil {
-		return btrfs.BtrfsFilesystem{}, fmt.Errorf("pool %s was created but not mounted: %w", uuid, err)
+	if err = mountBtrfsPool(ctx, made.members[0], req.Mountpoint, btrfsPoolFstabOptions, false); err != nil {
+		return btrfs.BtrfsFilesystem{}, fmt.Errorf("mount btrfs pool %s: %w", made.uuid, err)
 	}
-	if err := addToFstab("UUID="+uuid, req.Mountpoint, "btrfs", btrfsPoolFstabOptions); err != nil {
-		return btrfs.BtrfsFilesystem{}, fmt.Errorf("pool %s is mounted but could not be added to /etc/fstab: %w", uuid, err)
+	made.mounted = req.Mountpoint
+	if err = addPoolFstab("UUID="+made.uuid, req.Mountpoint, "btrfs", btrfsPoolFstabOptions); err != nil {
+		return btrfs.BtrfsFilesystem{}, fmt.Errorf("add btrfs pool %s to /etc/fstab: %w", made.uuid, err)
 	}
-	slog.Info("created btrfs pool", "uuid", uuid, "mountpoint", req.Mountpoint)
-	return btrfs.FindFilesystem(ctx, uuid)
+	made.committed = true
+	slog.Info("created btrfs pool", "uuid", made.uuid, "mountpoint", req.Mountpoint)
+	return findBtrfsFilesystem(ctx, made.uuid)
+}
+
+// poolCreateUndo is what a CreateBtrfsPool call made, so that a failure
+// before the pool is in fstab can undo it while the disk locks are held.
+type poolCreateUndo struct {
+	members   []string
+	unlocks   []func()
+	created   []createdPartition // in the order made
+	uuid      string             // set once mkfs.btrfs ran
+	mounted   string             // the mountpoint, once the call mounted the pool
+	committed bool               // the pool is in fstab: it is kept whatever fails after
+}
+
+// createdPartition is a partition CreateBtrfsPool made on disk.
+type createdPartition struct{ disk, part string }
+
+// record notes part, made on disk, as a member the undo deletes and
+// unlock as the release of disk's lock.
+func (u *poolCreateUndo) record(disk, part string, unlock func()) {
+	u.members = append(u.members, part)
+	u.created = append(u.created, createdPartition{disk, part})
+	u.unlocks = append(u.unlocks, unlock)
+}
+
+// finish undoes the create when it failed with err before the pool reached
+// fstab, joining any undo error to err, then releases the disk locks.
+func (u *poolCreateUndo) finish(ctx context.Context, label string, err error) error {
+	if err != nil && !u.committed && (u.uuid != "" || len(u.created) > 0) {
+		// The undo runs to the end even when the job was canceled.
+		undoCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
+		undoErr := u.undo(undoCtx)
+		cancel()
+		if undoErr != nil {
+			err = errors.Join(err, fmt.Errorf("undo btrfs pool create: %w", undoErr))
+		} else {
+			slog.Info("rolled back failed btrfs pool create", "label", label, "uuid", u.uuid, "partitions", len(u.created))
+		}
+	}
+	for _, unlock := range slices.Backward(u.unlocks) {
+		unlock()
+	}
+	return err
+}
+
+// undo unmounts the pool if the call mounted it, zeroes the superblocks
+// mkfs.btrfs wrote with the pool's UUID on the members, then deletes the
+// partitions the call made, newest first. Nothing is touched while the pool
+// stays mounted, and a partition whose wipe failed is kept: its superblock
+// offsets are relative to the partition.
+func (u *poolCreateUndo) undo(ctx context.Context) error {
+	if u.mounted != "" {
+		if err := unmountPool(u.mounted, 0); err != nil {
+			return fmt.Errorf("unmount %s: %w", u.mounted, err)
+		}
+	}
+	var errs []error
+	kept := map[string]bool{}
+	if u.uuid != "" {
+		for _, m := range u.members {
+			if _, err := wipePoolSuperblocks(m, u.uuid); err != nil {
+				errs = append(errs, fmt.Errorf("wipe %s: %w", m, err))
+				kept[m] = true
+			}
+		}
+	}
+	for _, c := range slices.Backward(u.created) {
+		if kept[c.part] {
+			continue
+		}
+		number, err := partitionNumber(c.part)
+		if err == nil {
+			err = deletePartition(ctx, c.disk, number)
+		}
+		if err != nil {
+			errs = append(errs, fmt.Errorf("delete %s: %w", c.part, err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // partitionLocked locks disk against udev, then partitions it. The caller

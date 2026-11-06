@@ -278,6 +278,19 @@ smaller still take a member's place. The table is written by the same code as
 page, where these partitions can be deleted once the pool is gone, or the
 disk initialized to be used whole again.
 
+A create that fails or is canceled before the pool is recorded in
+`/etc/fstab` is rolled back while the disks are still locked. The pool is
+unmounted if the create mounted it. Every superblock copy (64 KiB, 64 MiB and
+256 GiB into each member) that carries the new pool's UUID has its magic
+zeroed, including the temporary magic a failed `mkfs.btrfs` leaves; copies of
+any other filesystem are left alone. Then the partitions the create added are
+deleted, newest first. A partition whose superblocks could not be wiped is
+kept, and nothing is wiped while the pool cannot be unmounted; the error
+reports what was left. Once the pool is in fstab it is kept, whatever fails
+after. The rollback removes only what the create made: what was on a disk
+before, such as a filesystem overwritten with **Force** or the old contents
+of a disk given a new GPT, is not restored.
+
 A shared folder can be created on a pool from **Shares → Add Folder Share →
 New folder on a pool**: it creates a subvolume under the pool's top-level
 mount, optionally limits its size (turning quotas on) and adds the default
@@ -318,6 +331,13 @@ primary superblock at 64 KiB.
 Remove, replace, balance and scrub are blocking kernel calls run inside the
 task, so progress comes from the kernel and cancelling the task cancels the
 operation. A balance or scrub started elsewhere is still shown as running.
+
+Cancelling a device removal needs kernel 5.14; an older kernel refuses the
+cancel and the removal runs to the end. A cancelled removal leaves the device
+a member, and the data already moved off it stays moved, so removing it again
+continues where it stopped. A cancel that lands just as a removal finishes can
+make the kernel cancel the next balance or removal at its start
+(`chunk relocation canceled on start` in dmesg); start it again.
 
 ## Replication
 

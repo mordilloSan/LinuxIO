@@ -229,3 +229,61 @@ func TestPackageLevelOperationHonorsCanceledContextBeforeConnecting(t *testing.T
 		t.Fatalf("StartUnit error = %v, want context.Canceled", err)
 	}
 }
+
+// invocationManager serves GetUnit for the units it knows; the unit object
+// answers property reads.
+type invocationManager struct{ paths map[string]godbus.ObjectPath }
+
+func (m invocationManager) GetUnit(name string) (godbus.ObjectPath, *godbus.Error) {
+	path, ok := m.paths[name]
+	if !ok {
+		return "", &godbus.Error{Name: "org.freedesktop.systemd1.NoSuchUnit", Body: []any{"not loaded"}}
+	}
+	return path, nil
+}
+
+type unitProperties map[string]godbus.Variant
+
+func (p unitProperties) Get(iface, property string) (godbus.Variant, *godbus.Error) {
+	value, ok := p[iface+"."+property]
+	if !ok {
+		return godbus.Variant{}, godbus.MakeFailedError(errors.New("unknown property"))
+	}
+	return value, nil
+}
+
+func TestGetInvocationID(t *testing.T) {
+	bus := testdbus.Start(t)
+	bus.SetSystemBus(t)
+	conn := bus.OwnName(t, dbusclient.SystemdBusName)
+	manager := invocationManager{paths: map[string]godbus.ObjectPath{
+		"started.service": "/org/freedesktop/systemd1/unit/started_2eservice",
+		"idle.service":    "/org/freedesktop/systemd1/unit/idle_2eservice",
+	}}
+	if err := conn.Export(manager, godbus.ObjectPath(dbusclient.SystemdPath), dbusclient.SystemdManagerIface); err != nil {
+		t.Fatalf("export manager: %v", err)
+	}
+	for name, id := range map[string][]byte{
+		"started.service": {0xde, 0xad, 0xbe, 0xef, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+		"idle.service":    {},
+	} {
+		props := unitProperties{dbusclient.SystemdUnitIface + ".InvocationID": godbus.MakeVariant(id)}
+		if err := conn.Export(props, manager.paths[name], dbusclient.PropertiesIface); err != nil {
+			t.Fatalf("export unit %s: %v", name, err)
+		}
+	}
+
+	for name, want := range map[string]string{
+		"started.service": "deadbeef0102030405060708090a0b0c",
+		"idle.service":    "",
+		"missing.service": "",
+	} {
+		got, err := GetInvocationID(context.Background(), name)
+		if err != nil {
+			t.Fatalf("GetInvocationID(%s): %v", name, err)
+		}
+		if got != want {
+			t.Fatalf("GetInvocationID(%s) = %q, want %q", name, got, want)
+		}
+	}
+}

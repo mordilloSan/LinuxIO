@@ -210,6 +210,63 @@ func TestWipeDevice(t *testing.T) {
 	}
 }
 
+func TestSuperblockOffsetsSkipsBeyondDevice(t *testing.T) {
+	if got, want := superblockOffsets(100<<20), []int64{65536, 67108864}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+func TestWipePoolSuperblocksOnlyTouchesItsOwnFSID(t *testing.T) {
+	ioctls := stubControlIoctl(t, unix.ENOENT)
+	ours, theirs := [16]byte{0xa}, [16]byte{0xb}
+	image := filepath.Join(t.TempDir(), "disk")
+	f, err := os.Create(image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err = f.Truncate(257 << 30); err != nil { // sparse: three superblocks' worth on disk
+		t.Fatal(err)
+	}
+	// A failed mkfs leaves the temporary magic; a pool of another fsid owns the last copy.
+	temporary := superblock(ours, "tank", 1, 1, 0)
+	binary.LittleEndian.PutUint64(temporary[superMagicAt:], superMagicTemporary)
+	for off, sb := range map[int64][]byte{superOffset: superblock(ours, "tank", 1, 1, 0), 64 << 20: temporary, 256 << 30: superblock(theirs, "other", 1, 1, 0)} {
+		if _, err = f.WriteAt(sb, off); err != nil {
+			t.Fatal(err)
+		}
+	}
+	magic := func(off int64) uint64 {
+		b := make([]byte, 8)
+		if _, readErr := f.ReadAt(b, off+superMagicAt); readErr != nil {
+			t.Fatal(readErr)
+		}
+		return binary.LittleEndian.Uint64(b)
+	}
+
+	wiped, err := WipePoolSuperblocks(image, formatUUID(ours[:]))
+	if err != nil || !wiped {
+		t.Fatalf("wiped = %t, err = %v", wiped, err)
+	}
+	if got := []uint64{magic(superOffset), magic(64 << 20), magic(256 << 30)}; !reflect.DeepEqual(got, []uint64{0, 0, superMagic}) {
+		t.Fatalf("magics = %#x, want only the other fsid's left", got)
+	}
+	label := make([]byte, 4)
+	if _, err = f.ReadAt(label, superOffset+superLabel); err != nil || string(label) != "tank" {
+		t.Fatalf("more than the magic was overwritten: %q %v", label, err)
+	}
+	if !reflect.DeepEqual(*ioctls, []string{"forget " + image}) {
+		t.Fatalf("ioctls = %v", *ioctls)
+	}
+
+	if wiped, err = WipePoolSuperblocks(image, formatUUID(ours[:])); err != nil || wiped {
+		t.Fatalf("second call: wiped = %t, err = %v", wiped, err)
+	}
+	if len(*ioctls) != 1 {
+		t.Fatalf("forgot a device it did not wipe: %v", *ioctls)
+	}
+}
+
 func TestFindOfflinePools(t *testing.T) {
 	stubMounts(t, []Mount{{Mountpoint: "/data", UUID: "mounted-uuid", SubvolID: 5}})
 	old := readSuperblock

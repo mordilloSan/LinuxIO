@@ -19,13 +19,13 @@ and [Notifications](../alerts.md).
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Store, host, relay, units, first route (`docker.update_container`) | done, verified on a real host |
-| 2 | Every mutation runs as a job: prerequisites, the ~199 routes and their callers, old task code deleted | done (section 4.2); step 3 not yet committed |
+| 2 | Every mutation runs as a job: prerequisites, the ~199 routes and their callers, old task code deleted | done (section 4.2), last step `d2871872`; checked in the test VM (section 3.5) |
 | 3 | btrfs resume hooks, with kill-and-resume root tests | not started |
 | 4 | Schedules and system jobs | not started; one open decision |
 | 5 | History view, login notice, update banner | not started |
 
 Contents: 1. Summary · 2. Design · 3. Done · 4. Left to do · 5. Deferred
-items · 6. Decision log · 7. Manual verification
+items · 6. Decision log · 7. Host-event checks
 
 ## 1. Summary
 
@@ -294,7 +294,7 @@ What each event does to a job, as phase 1 implements it:
 - **`systemctl stop` or orderly shutdown**: running jobs become `interrupted/shutdown`, resumable ones after `Suspend` stored a checkpoint; the root host alerts.
 - **Host crash or kill**: the next start of that uid's host marks its `running` records whose pid and start time are gone `interrupted/crash`; the root host alerts.
 - **Reboot or power loss**: the root host, started at boot, marks its `running` records `interrupted/reboot`, resumes the resumable ones and alerts on the rest; a user's host marks theirs the same way when their next login connects.
-- **Cancel** (`tasks.cancel`, stream abort): the job's context is cancelled and its record becomes `canceled` at once; the target stays taken until the handler returns. `cancel_requested` is not written yet (phase 3).
+- **Cancel** (`tasks.cancel`, stream abort): `cancel_requested` is written to the record, then the job's context is cancelled; the record becomes `canceled` when the handler returns, and the target stays taken until then.
 
 ### 2.12 Updates
 
@@ -417,7 +417,8 @@ fails is alerted and not retried in the same boot.
 
 ### 3.4 Verified on the development machine (2026-10-27)
 
-All with the installed build of `0c82d2d7` (section 7 lists the procedure):
+All with the installed build of `0c82d2d7`, by the `jobs submit` procedure
+section 7 had then (in git history; section 7 now has the VM checks):
 
 | Case | Result |
 |---|---|
@@ -428,6 +429,46 @@ All with the installed build of `0c82d2d7` (section 7 lists the procedure):
 | Only `version` and `jobs submit` accepted; launcher socket and reconcile unit gone; root host enabled | pass |
 | Orderly reboot with a job running: record `interrupted/shutdown`; root host starts at boot with nobody logged in | pass |
 | Power-loss reboot: record `interrupted/reboot` marked by the root host at boot | not run (unit tests only) |
+
+### 3.5 Phase 2 checked in the test VM (2026-11-05)
+
+`make test-vm-browser` ran `frontend/src/test/vm/jobs-phase2.spec.ts`
+against this tree (`e5f2e14d` with the VM rig), right after `make vm-reset`
+and `make vm-install`, in Ubuntu 26.04 with kernel 7.0.0-38. It signs in as
+the VM's sudo user, so every job ran in the root job host, and it started each
+job in the browser. All 12 specs passed in 6.6 minutes, `login.spec.ts`
+included. Section 7 describes the host events.
+
+| Check | Result |
+|---|---|
+| Reload mid package update: a local package whose postinst sleeps 20 s | pass: the tray shows the job again; one `packages.update` record, `completed`; 2.0 installed |
+| Reload mid Compose up: a service healthy after about 30 s | pass: the tray shows the job again; one `docker.compose` record, `completed`; both services up |
+| Reload mid file copy: 2 GiB, the host's reads capped at 100 MB/s | pass: the tray shows `Copying` again; one `filebrowser.copy_batch` record, `completed`; the copy matches |
+| Close the Compose dialog mid-run | pass: the dialog says the job runs on and the tray shows it; `completed`; both services up |
+| Upload, batch upload, folder download as a zip | pass: the uploaded files and the zip's entries match the originals by SHA-256; no record failed (jobs under a second keep none) |
+| Save a Compose stack over an existing file | pass: "File Already Exists" names the file; Overwrite writes the new content |
+| Scrub across logout and login: pool on `vdb` and `vdc`, 1 GiB, 8 MiB/s per disk | pass: running after the new login, then `completed` and "Last check: …, 0 errors" |
+| `systemctl stop linuxio-jobs@0.service` | pass: `interrupted/shutdown`, and the alert in the tray |
+| `kill -9` of the host | pass: `interrupted/crash` once the bridge's reconnect started a new host |
+| `virsh reboot` | pass: the root host started at boot with no login; record `interrupted/shutdown` |
+| `virsh destroy`, then `virsh start` | pass: `interrupted/reboot`, and `job marked interrupted` in that boot's journal |
+
+Seen on the way. None of these is a phase 2 failure:
+
+- After a reload mid package update, the Updates page shows its loader until
+  PackageKit ends the transaction, because its update list waits for it. Only
+  the tray shows the running job.
+- The scrub banner prints the percentage unrounded, for example
+  `Checking for errors · 18.986434994665448%`.
+- The journal field `LINUXIO_REASON` holds the reason JSON-quoted (`"reboot"`).
+- A browser closed without signing out keeps its session, and with it one of
+  the 16 connections `linuxio-auth.socket` accepts (`MaxConnections=16`). With
+  16 such sessions, the next login fails with "could not start the session
+  bridge".
+- A Compose stack saved by a sudo user gets a stack folder owned by root with
+  mode 0700, inside that user's home.
+- The VM's `clean` snapshot has `docker.io` without the Compose plugin and no
+  `~/docker`. The spec installs `docker-compose-v2` and creates the folder.
 
 ## 4. Left to do
 
@@ -583,7 +624,7 @@ Batches:
    the admin who started it rather than the host's uid. Moving the
    frontend's task hooks onto `.useMutation` is step 3.
 
-**Step 3: delete the old task code.** Done, not yet committed.
+**Step 3: delete the old task code.** Done (`d2871872`).
 
 - Backend: `apischema` loses `TaskRunner`, `SessionTask`, `DurableTask`,
   `WithTaskLifetime`, `WithTaskProgress`, `WithTaskIdentity`, `KindTaskRunner`
@@ -614,9 +655,12 @@ test:
   only marking the task.
 - `storage.btrfs_pool_create`: on failure, undo the partitions it created and
   wipe the superblocks it wrote.
-- `docker.apply_daemon_storage`: write a checkpoint after stopping Docker so an
-  interrupted run restarts Docker at the next host start rather than leaving it
-  down.
+- `docker.apply_daemon_storage` (done): stops the containers, writes the
+  files while Docker still runs and asks systemd for one restart of
+  `docker.service`, which systemd finishes even if the job host dies. Nothing
+  stops Docker or `docker.socket` as a step of its own, so a dead job cannot
+  leave Docker down (D1). The confirm dialog warns that a reverse proxy, tunnel
+  or VPN running in Docker goes away until its stack is deployed again.
 
 `Resumable` hooks for `storage.btrfs_scrub_start`, `storage.btrfs_balance`,
 `storage.btrfs_device_replace` and `storage.btrfs_device_remove` (section
@@ -762,7 +806,7 @@ The launcher was removed in `0b44d7d3`; all its items are obsolete: success log 
 ### Task 13: docs and browser spec
 
 - [x] *Gap.* The host's `tasks.list` and `tasks.get` see only in-memory jobs. Phase 2, step 1: `tasks.get`, `tasks.watch` and `tasks.cancel` answer from the record; `tasks.list` of past jobs is the history view, phase 5.
-- [ ] *Gap.* Cancel marks the record canceled at once without `cancel_requested` (moved to phase 3, where resume needs it). The daily prune was added in phase 2, step 1.
+- [x] *Gap.* Cancel marks the record canceled at once without `cancel_requested` (moved to phase 3, where resume needs it). The daily prune was added in phase 2, step 1. Fixed in phase 3, task 2.
 - [x] `jobs.spec.ts` does not assert the password environment variable.
 - [x] The records list in the docs omits the handoff's progress step and checkpoint.
 - Obsolete with the reconcile service: boot-flow step order and its alert-exception wording; "session_ref recorded as owner" wording (owner is uid and username).
@@ -874,38 +918,38 @@ cost if they turn out wrong where it was recorded.
   idempotent, and its point is the calling bridge's own level, which a job in
   the job host could not change. Job hosts read the persisted level when they
   start.
+- **Docker storage switch is one systemd restart** (2026-10-29, D1): the route
+  stopped Docker and started it again as two steps of its own, so a job that
+  died in between left Docker and every container down (systemd never restarts
+  a deliberately stopped unit, and `docker.socket` was stopped too). A
+  checkpoint would not help, because `Resume` runs only after a reboot. The
+  route now writes `daemon.json` and the data-root drop-in while Docker runs
+  (dockerd reads them at start) and queues `RestartUnit`; it waits for the unit
+  to fail or to be active on a new `InvocationID`, for at most three minutes.
+  Accepted gap: a host that dies after writing the files but before the
+  restart request leaves Docker on its old settings; the job is marked
+  interrupted and alerted, and applying again finishes the switch.
 
-## 7. Manual verification
+## 7. Host-event checks
 
-Run on an installed build, as root, after logging in once through the browser
-as an admin. The commands use a throwaway container whose update takes about
-15 s: `sleep` as PID 1 ignores SIGTERM, so Docker waits the stop timeout.
+These run in the test VM ([Test VM](../development.md#test-vm)): after
+`make vm-install`, `make test-vm-browser` runs
+`frontend/src/test/vm/jobs-phase2.spec.ts`. The spec signs in as the VM's
+sudo user, so its jobs run in the root job host, and starts each one in the
+browser. The evidence is the record in `/var/lib/linuxio/jobs/0`, read over
+SSH, and the host's journal. The long job is a scrub of the test pool on `vdb`
+and `vdc`, with each disk's `scrub_speed_max` capped so it outlasts the event.
+The events act on the domain `linuxio-e2e` alone, through
+`packaging/vm/linuxio-vm.sh`.
 
-```bash
-# A container that always has an update: local alpine:3.21 is really 3.20.
-docker pull -q alpine:3.20 && docker tag alpine:3.20 alpine:3.21
-docker rm -f jobs-smoke; docker run -d --name jobs-smoke --stop-timeout 15 alpine:3.21 sleep infinity
-# Run one update and follow it; without --wait the command returns at once.
-linuxio-bridge jobs submit --route docker.update_container --request '{"containerId":"jobs-smoke"}' --wait
-# Read a record (the directory is root-only, so let root expand the glob).
-sh -c 'ls -t /var/lib/linuxio/jobs/0/*.json | head -1 | xargs grep -E "\"(state|reason)\""'
-```
-
-| Case | How | Expect |
+| Event | How | Expect |
 |---|---|---|
-| complete | submit with `--wait` | exit 0, `"updated":true`, record `completed` |
-| detach | submit without `--wait`, wait | record `completed` |
-| stop | submit, after 3 s `systemctl stop linuxio-jobs@0.service` | `interrupted/shutdown`, an alert |
-| crash | submit, after 3 s `kill -9` the host's main pid, then submit again | first record `interrupted/crash`, an alert |
-| fail | submit for a container that does not exist | exit 1, record `failed`, an alert |
-| same | two submits for the same container | the second refused, "already running on this target" |
-| twice | submits for two containers | both `completed`; the second waited for the update lock |
-| wake | kill or stop the host, then connect to `/run/linuxio/jobs/0.sock` | the host is active again |
-| verbs | `linuxio-bridge jobs host`, `jobs reconcile`, `jobs launch`, and no arguments | exit 2 each |
-| idle | log out of the browser, wait 70 s | host inactive, socket active; one connection wakes it |
-| non-admin | log in as a user without sudo, stop their host, submit as them | socket owned by them, mode 600; host woken; root route refused with 403 |
-| orderly reboot | submit, then `systemctl reboot` | `interrupted/shutdown`; the root host starts at boot |
-| power loss | submit, then `systemctl reboot --force --force` (test machines only) | `interrupted/reboot` and `job marked interrupted` in `journalctl -b -u linuxio-jobs@0.service` |
+| stop | `systemctl stop linuxio-jobs@0.service` | record `interrupted/shutdown`; the alert `storage.btrfs_scrub_start was interrupted` in the tray |
+| crash | `kill -9` the host's main pid; the browser's bridge reconnects and the socket starts a new host | record `interrupted/crash` |
+| orderly reboot | browser closed, `linuxio-vm.sh reboot` (`virsh reboot`) | the root host started at boot with nobody logged in; record `interrupted/shutdown` |
+| power loss | 40 s into the job, browser closed, `linuxio-vm.sh power-cut` (`virsh destroy`, then `virsh start`) | record `interrupted/reboot`; `job marked interrupted` with its id and reason `reboot` in `journalctl -b -u linuxio-jobs@0.service` |
+| docker switch kill | submit `docker.apply_daemon_storage`, then `kill -9` the host's main pid once the containers have stopped | Docker still running, or running again, on either the old or the new settings, never stopped; record `interrupted/crash` with an alert |
 
-The stop, crash and power-loss cases leave the container update half done; the
-next update of that container recovers it.
+The power-loss case waits 40 s because a job's first record write is not
+fsynced (section 2.10): a power loss within the kernel's 30 s writeback may
+lose the record of a job that just started. That window is not tested.

@@ -348,23 +348,56 @@ func TestRouterRefusesASecondTaskOnTheSameTargetUntilItsHandlerExits(t *testing.
 		t.Fatal("a refused duplicate must map to 409")
 	}
 
-	// A canceled task turns terminal at once, but its handler still runs, so
-	// the target stays taken until the handler exits.
+	// A canceled task runs until its handler exits, so the target stays taken
+	// until then.
 	first.Cancel()
-	<-first.Done()
-	if state := first.Snapshot().State; state != TaskStateCanceled {
-		t.Fatalf("first state = %q, want canceled", state)
+	if state := first.Snapshot().State; state != TaskStateRunning {
+		t.Fatalf("first state after cancel = %q, want running until its handler exits", state)
 	}
 	if _, _, err = startJob(router, route, poolA, testJobID(3)); !errors.Is(err, ErrDuplicateActive) {
 		t.Fatalf("start while the canceled handler runs = %v, want ErrDuplicateActive", err)
 	}
 	close(release)
+	<-first.Done()
 	waitForRouterSettle(t, router, route.Name)
 	again, started, err := startJob(router, route, poolA, testJobID(4))
 	if err != nil || !started {
 		t.Fatalf("start after the handler exited = %t, %v", started, err)
 	}
 	<-again.Done()
+}
+
+// A canceled Mutation ends only when its handler returns, so the handler's
+// cleanup finishes first. It ends canceled even when the handler reports how
+// it stopped, as a killed subprocess does, instead of the context's error.
+func TestCanceledMutationEndsWhenItsHandlerReturns(t *testing.T) {
+	router := NewRouter(NewTaskService())
+	route := registeredMutation(t, router, "test.slow-cancel", func(ctx context.Context, _ *Task, _ any) (any, error) {
+		<-ctx.Done()
+		time.Sleep(200 * time.Millisecond) // cleanup that ignores the context
+		return nil, errors.New("signal: killed")
+	})
+	task, _, err := startJob(router, route, Request{Route: route.Name}, testJobID(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	canceledAt := time.Now()
+	task.Cancel()
+	if state := task.Snapshot().State; state != TaskStateRunning {
+		t.Fatalf("state after cancel = %q, want running until the handler returns", state)
+	}
+	select {
+	case <-task.Done():
+	case <-time.After(time.Second):
+		t.Fatal("task did not end after its handler returned")
+	}
+	if elapsed := time.Since(canceledAt); elapsed < 200*time.Millisecond {
+		t.Fatalf("task ended %v after the cancel, before its handler returned", elapsed)
+	}
+	if state := task.Snapshot().State; state != TaskStateCanceled {
+		t.Fatalf("state = %q, want canceled", state)
+	}
 }
 
 func TestRouterCallWritesOneResultAndClose(t *testing.T) {

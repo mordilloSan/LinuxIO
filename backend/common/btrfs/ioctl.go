@@ -214,14 +214,17 @@ const (
 	balanceData     = 1 << 0
 	balanceSystem   = 1 << 1
 	balanceMetadata = 1 << 2
+	balanceResume   = 1 << 4 // continue the paused balance
 
 	balanceArgsUsage   = 1 << 1
 	balanceArgsConvert = 1 << 8
 	balanceArgsSoft    = 1 << 9 // convert only chunks not already in the target profile
 
-	balanceStateRunning  = 1 << 0
-	balanceStatePauseReq = 1 << 1
+	balanceStateRunning   = 1 << 0
+	balanceStatePauseReq  = 1 << 1
+	balanceStateCancelReq = 1 << 2
 
+	balanceCtlPause  = 1
 	balanceCtlCancel = 2
 )
 
@@ -268,15 +271,18 @@ const (
 	replaceCmdStatus = 1
 	replaceCmdCancel = 2
 
-	replaceStateStarted  = 1
-	replaceStateFinished = 2
+	replaceStateStarted   = 1
+	replaceStateFinished  = 2
+	replaceStateCanceled  = 3
+	replaceStateSuspended = 4 // an unmount stopped it; the next rw mount resumes it
 
 	// Offsets inside Params.
-	replaceSrcDevID      = 0
-	replaceContReading   = 8
-	replaceTgtDevName    = 16 + 1025
-	replaceStatusState   = 0
-	replaceStatusPerMill = 8
+	replaceSrcDevID          = 0
+	replaceContReading       = 8
+	replaceTgtDevName        = 16 + 1025
+	replaceStatusState       = 0
+	replaceStatusPerMill     = 8
+	replaceStatusTimeStarted = 16 // seconds since the epoch, kept across a power loss
 )
 
 // replaceResults are the Result codes of a start command.
@@ -292,6 +298,31 @@ func cstring(b []byte) string {
 	return s
 }
 
+// kernelCode is a refusal a btrfs ioctl returns as a positive value, an
+// enum btrfs_err_code such as 8 while another exclusive operation runs.
+type kernelCode uint64
+
+// kernelCodeTexts are btrfs_err_str's texts (btrfs-progs libbtrfs/ioctl.h).
+var kernelCodeTexts = map[kernelCode]string{
+	1:  "unable to go below two devices on raid1",
+	2:  "unable to go below four/two devices on raid10",
+	3:  "unable to go below two devices on raid5",
+	4:  "unable to go below three devices on raid6",
+	5:  "unable to remove the dev_replace target dev",
+	6:  "no missing devices found to remove",
+	7:  "unable to remove the only writeable device",
+	8:  "add/delete/balance/replace/resize operation in progress",
+	9:  "unable to go below three devices on raid1c3",
+	10: "unable to go below four devices on raid1c4",
+}
+
+func (c kernelCode) Error() string {
+	if text, ok := kernelCodeTexts[c]; ok {
+		return text
+	}
+	return fmt.Sprintf("kernel refused with code %d", uint64(c))
+}
+
 // fsIoctl issues one ioctl on an open descriptor of the mounted filesystem;
 // a var so tests can fake the kernel.
 var fsIoctl = func(mountpoint string, req uintptr, arg unsafe.Pointer) error {
@@ -300,9 +331,66 @@ var fsIoctl = func(mountpoint string, req uintptr, arg unsafe.Pointer) error {
 		return fmt.Errorf("open %s: %w", mountpoint, err)
 	}
 	defer unix.Close(fd)
-	_, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), req, uintptr(arg))
+	r1, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), req, uintptr(arg))
 	if errno != 0 {
 		return errno
+	}
+	if r1 != 0 {
+		return kernelCode(r1)
+	}
+	return nil
+}
+
+// balanceCtl sends cmd, pause or cancel, to BALANCE_CTL. The kernel reads
+// the command from the argument itself, not through a pointer; a var so tests
+// can fake the kernel.
+var balanceCtl = func(mountpoint string, cmd uintptr) error {
+	fd, err := unix.Open(mountpoint, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", mountpoint, err)
+	}
+	defer unix.Close(fd)
+	if _, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), iocBalanceCtl, cmd); errno != 0 {
+		return errno
+	}
+	return nil
+}
+
+// syncSignals are the faults a thread raises itself. Blocked, the kernel
+// would kill the process on one instead of letting Go panic.
+var syncSignals = []unix.Signal{unix.SIGSEGV, unix.SIGBUS, unix.SIGFPE, unix.SIGILL, unix.SIGTRAP, unix.SIGSYS}
+
+// blockingIoctl runs a long ioctl (scrub, replace, balance, device removal)
+// on a thread that blocks every other signal. Since 6.19 any signal pending
+// on the calling thread aborts a scrub or a replace, and Go takes all of them
+// (SIGURG, SIGCHLD, ...) on whichever thread it likes.
+func blockingIoctl(mountpoint string, req uintptr, arg unsafe.Pointer) error {
+	done := make(chan error, 1)
+	go func() {
+		// Never unlocked: the runtime ends the thread, and its mask, with
+		// this goroutine.
+		runtime.LockOSThread()
+		var set unix.Sigset_t
+		set.Val[0] = ^uint64(0) // the kernel's 64 signals; amd64 and arm64 only
+		for _, sig := range syncSignals {
+			set.Val[0] &^= 1 << (sig - 1)
+		}
+		if err := unix.PthreadSigmask(unix.SIG_BLOCK, &set, nil); err != nil {
+			done <- fmt.Errorf("block signals: %w", err)
+			return
+		}
+		done <- fsIoctl(mountpoint, req, arg)
+	}()
+	return <-done
+}
+
+// rmDevCancel cancels the running device removal (kernel 5.14). The kernel
+// answers ECANCELED when a removal holds the pool and ENOTCONN otherwise.
+func rmDevCancel(mountpoint string) error {
+	var args volArgsV2 // Flags 0: BTRFS_DEVICE_SPEC_BY_ID turns the cancel off
+	copy(args.Name[:], "cancel")
+	if err := fsIoctl(mountpoint, iocRmDevV2, unsafe.Pointer(&args)); !errors.Is(err, unix.ECANCELED) {
+		return err
 	}
 	return nil
 }
