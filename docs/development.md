@@ -31,7 +31,7 @@ use the corresponding Make target.
 ## Prerequisites
 
 - Go 1.21 or newer on PATH (Go fetches the exact version `go.mod` pins)
-- Node.js 24 or newer
+- Node.js 26 or newer
 - GNU Make
 
 For Debian/Ubuntu, install the development libraries and optional analysis/test

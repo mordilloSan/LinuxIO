@@ -336,15 +336,57 @@ primary superblock at 64 KiB.
 | Scrub | Start and cancel. The last result is recorded in `/var/lib/linuxio/btrfs-scrub.json`; scrubs run by btrfsmaintenance are read from `/var/lib/btrfs/scrub.status.<uuid>`. |
 
 Remove, replace, balance and scrub are blocking kernel calls run inside the
-task, so progress comes from the kernel and cancelling the task cancels the
-operation. A balance or scrub started elsewhere is still shown as running.
+job, so progress comes from the kernel. A balance or scrub started elsewhere
+is still shown as running. The ioctls run on a locked thread with async signals
+blocked: since kernel 6.19 any signal aborts a scrub or a replace (and a replace
+aborted that way loses its target). A freeze, such as a suspend to RAM, still
+aborts them. A refusal the kernel answers with a positive code, such as 8
+("exclusive operation in progress"), fails the job.
 
-Cancelling a device removal needs kernel 5.14; an older kernel refuses the
-cancel and the removal runs to the end. A cancelled removal leaves the device
-a member, and the data already moved off it stays moved, so removing it again
-continues where it stopped. A cancel that lands just as a removal finishes can
-make the kernel cancel the next balance or removal at its start
-(`chunk relocation canceled on start` in dmesg); start it again.
+### Cancel
+
+Cancel asks the kernel to stop, and the job ends `canceled` when its handler
+has returned. A cancelled job is never resumed.
+
+- **Balance**: `BALANCE_CTL cancel`. The kernel deletes the balance item, so
+  the work done stays but the rest is dropped.
+- **Scrub**: `SCRUB_CANCEL`, refused while a device replace runs, because the
+  kernel would cancel the replace with it.
+- **Replace**: `DEV_REPLACE cancel`. The target is destroyed and the source
+  kept.
+- **Remove**: `RM_DEV_V2` with the name `cancel`, which needs kernel 5.14; an
+  older kernel refuses it and the removal runs to the end. It is sent again
+  while the kernel answers that no removal runs yet. A cancelled removal leaves
+  the device a member, and the data already moved off it stays moved, so
+  removing it again continues where it stopped. A cancel that lands just as a
+  removal finishes can make the kernel cancel the next balance or removal at
+  its start (`chunk relocation canceled on start` in dmesg); start it again.
+
+### Shutdown and resume
+
+When the job host stops (a shutdown or `systemctl stop`), each of these jobs
+is suspended and recorded as interrupted with a checkpoint. After a shutdown or
+a power loss the root host resumes it once at the next boot. A job a crash
+interrupted, or a host stopped by hand, is not resumed at a later reboot; start
+it again. There is no manual resume.
+
+| Job | On stop | After the boot |
+|---|---|---|
+| Balance | Paused; the kernel keeps the item and continues it when the pool is mounted read-write | Follows the kernel's balance; resumes it if still paused; counts it finished if it is gone after a pause; runs it again (`soft` when converting) if it is gone and was never paused |
+| Scrub | Stopped, each device's progress stored | Starts again from each device's stored position, or from the start when none was read; the counters add up. Errors in the extent where it stopped count twice |
+| Replace | Cancelled with the job's context; the source is kept | Follows the replace the kernel continued at mount. A finished replace counts only if it began after the job did; otherwise start it again. A suspended one needs the pool remounted |
+| Remove | Cancelled as above; moved data stays moved | Issues the removal again; refuses a degraded pool |
+
+A stop pauses a balance every time, so a paused balance holds the pool's
+exclusive operation after `systemctl stop linuxio-jobs@0` by hand: remove,
+replace and resize are refused until the pool is mounted again or the balance
+is resumed (`btrfs balance resume`); a host started again in the same boot
+does not resume it. A SIGKILL of the host cancels a balance in the kernel, so
+a crash loses it.
+
+A replace the power loss cut is continued by the kernel when the pool is
+mounted, and the job follows it by device id, never by device path. See
+[Missing disks](#missing-disks) for why such a pool is mounted at boot.
 
 ## Replication
 

@@ -150,8 +150,12 @@ Mutation options:
   fails for a Mutation request field named like a password or key without it.
 - `.Resumable(apischema.ResumeHooks[Req, Res]{Suspend, Resume})` on the
   binding lets a job continue after a shutdown or reboot. It panics unless the
-  route is `Privileged()` and has no secret fields. No route declares it
-  yet.
+  route is `Privileged()` and has no secret fields. Four routes declare it:
+  `storage.btrfs_balance`, `storage.btrfs_scrub_start`,
+  `storage.btrfs_device_replace` and `storage.btrfs_device_remove`. On a
+  shutdown the host runs `Suspend`, stores its checkpoint in the record and
+  then cancels the context; at the next boot `Resume` runs once, and only for a
+  `shutdown` or `reboot` interruption.
 
 ## Frontend Shape
 
@@ -601,6 +605,14 @@ its checkpoint changes. A job that completes in under one second is deleted from
 the store. Terminal records are kept 30 days and at most 200 per uid, pruned
 when a host starts.
 
+`tasks.cancel` and a stream abort write `cancel_requested` to the record first
+and only then cancel the job's context. The snapshot stays `running` while the
+handler cleans up (there is no "canceling" state), and the record becomes
+`canceled` only when the handler returns, whatever error it returns after the
+cancel; the job's target stays taken until then. A job with `cancel_requested`
+is never resumed, and a host stop that overlaps the cancel leaves it to end
+`canceled`.
+
 `interrupted` (`TaskStateInterrupted`) is terminal. A job becomes interrupted
 when its host stops under it (`systemctl stop`, shutdown: reason `shutdown`),
 when its host died (marked by the next host of that uid: `crash`), or across a
@@ -615,7 +627,13 @@ interrupted, except a resumable job it resumes after a reboot; a user host
 writes the record only. Successful and canceled jobs never alert.
 
 The root host starts at boot and resumes each job of a `Resumable` route that
-an earlier boot interrupted, once per boot; no route is resumable yet.
+the last shutdown or a power loss interrupted: a record `interrupted` with
+reason `shutdown` or `reboot`, still `Resumable`, with no `cancel_requested`,
+whose executor ran in an earlier boot. Every other `interrupted` record (a
+crash, a host stopped by hand in this boot, a cancel that overlapped a stop)
+loses `Resumable` when a host starts, so a job is resumed once and never at a
+later reboot. The outcome is written to the same record. There is no manual
+resume.
 
 ### Task lifetime, ownership, and activity
 
@@ -719,7 +737,8 @@ Two `jobs.*` routes are internal, not generated for the frontend:
 `jobs.hello` is the first stream of a connection to a job host and carries the
 protocol number and the session facts; `jobs.resume {id}` asks the root job
 host to run the `Resume` hook of an interrupted resumable job. `jobs.resume` is
-served to root only; `linuxio-bridge jobs submit --resume` uses it.
+served to root only; `linuxio-bridge jobs submit --resume` uses it. Both exist
+for testing and are to be removed in a later commit.
 
 The `tasks.*` namespace is reserved by `bridgeipc`. The `tasks` handler family
 provides the generated route catalog, and its registration callback asks the

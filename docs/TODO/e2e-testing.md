@@ -164,8 +164,8 @@ filesystem effects.
 
 ### What Exists Now
 
-The rig is in place; the specs are still few. See `docs/development.md`, "Test
-VM", for usage.
+The rig is in place and drives the jobs checks; the other specs are still few.
+See `docs/development.md`, "Test VM", for usage.
 
 - `packaging/vm/linuxio-vm.sh` and `mk/vm.mk` drive one libvirt domain,
   `linuxio-e2e` on `qemu:///system`: 4 vCPU, 4 GiB RAM, a 25 GiB system disk
@@ -180,8 +180,15 @@ VM", for usage.
 - `make test-vm-browser` runs `frontend/src/test/vm/*.spec.ts` with
   `frontend/config/playwright.vm.config.ts`; `login.spec.ts` signs in, sees the
   dashboard and signs out.
+- `jobs-phase2.spec.ts` and `jobs-phase3.spec.ts` start real jobs in the browser
+  (package update, Compose, file copy, scrub, balance, device replace, pool
+  create, Docker storage switch) and cut the host: `systemctl stop`, `kill -9`,
+  reboot and power loss (`virsh destroy`). `linuxio-vm.sh throttle` caps a data
+  disk's speed so a job outlasts the event. The checks and their results are in
+  [jobs.md](jobs.md#36-phase-3-storage-safety-and-btrfs-resume-commits-938e32c5-f8db05af).
 - `make vm-test-btrfs-integration` runs the root btrfs and partition kernel
-  tests (`test-btrfs-integration`) as root in the VM.
+  tests (`test-btrfs-integration`) as root in the VM; the kernel-level claims
+  of the btrfs resume work rest on that run.
 
 Not yet: tags, the mutation allowlist, fixtures, and artifact collection beyond
 Playwright's own traces and screenshots.

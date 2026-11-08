@@ -103,7 +103,17 @@ func handleUpdateContainer(ctx context.Context, req apischema.DockerContainerUpd
 
 - The handler has the Call signature. Its `ctx` is cancelled by `tasks.cancel`,
   a stream abort or the host stopping, never by the browser going away, so
-  pass it to every callee and clean up partial work when it ends.
+  pass it to every callee and clean up partial work when it ends. The job is
+  `running` until the handler returns, and it ends `canceled` after a cancel
+  whatever error the handler returns. Its target stays taken until then.
+- A route whose work the kernel can continue after a reboot declares
+  `.Resumable(apischema.ResumeHooks{Suspend, Resume})` (see the four btrfs
+  routes). `Suspend` runs on a shutdown, before the context is cancelled, and
+  returns the checkpoint; do not undo the work there, because the context
+  cancel that follows runs the handler's own cleanup. `Resume` runs once, at
+  the next boot, and only after a shutdown or power loss. Never let a
+  cancel-on-context path destroy what `Suspend` kept (a balance pause, for
+  example).
 - Report progress with `bridgeipc.ReportProgress(ctx, detail.ProgressEnvelope())`.
   Outside a job it does nothing, so the same function can serve a Call.
 - Name the target with a method on the request type, not in the declaration

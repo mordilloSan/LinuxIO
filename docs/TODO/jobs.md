@@ -20,7 +20,7 @@ and [Notifications](../alerts.md).
 |---|---|---|
 | 1 | Store, host, relay, units, first route (`docker.update_container`) | done, verified on a real host |
 | 2 | Every mutation runs as a job: prerequisites, the ~199 routes and their callers, old task code deleted | done (section 4.2), last step `d2871872`; checked in the test VM (section 3.5) |
-| 3 | btrfs resume hooks, with kill-and-resume root tests | not started |
+| 3 | Storage safety and btrfs resume: cancel that ends when the handler returns, resume hooks for four btrfs routes, rollbacks, Docker storage switch, kill-and-resume root tests | done (section 4.3), commits `938e32c5` and `f8db05af`; checked in the test VM (section 3.6). The `jobs submit` and `jobs.resume` removal moved to a later commit |
 | 4 | Schedules and system jobs | not started; one open decision |
 | 5 | History view, login notice, update banner | not started |
 
@@ -38,7 +38,7 @@ update. `linuxio-auth` starts a non-admin's socket at login, after PAM; root
 starts uid 0's, and the root host also starts at boot. Each job is a JSON
 record in `/var/lib/linuxio/jobs/<uid>/`. A host marks the jobs its
 predecessor left running as interrupted when it starts, and the root host
-resumes the resumable ones once per boot.
+resumes the resumable ones the last shutdown or reboot interrupted (section 2.11).
 
 ## 2. Design
 
@@ -68,7 +68,7 @@ connection; changing how reads work; changing authentication.
 | Who starts hosts | A connection to the host's socket, `linuxio-jobs@<uid>.socket`, which systemd holds. `linuxio-auth` starts a user's socket after PAM; root processes start uid 0's, and the root host is enabled at boot. Only that uid can connect. |
 | Identity | The kernel's `SO_PEERCRED` on every socket. A claim from a bridge is metadata, never authorization. |
 | Same target twice | Refused with 409 while the first runs. No queue, no per-user or per-route cap, no runtime cap. |
-| Reboot and power loss | Running jobs become `interrupted`. The root host starts at boot, restarts the resumable ones (btrfs scrub, balance, replace, remove) and alerts on the rest. |
+| Reboot and power loss | Running jobs become `interrupted`. The root host starts at boot, resumes the resumable ones the shutdown or power loss interrupted (btrfs scrub, balance, replace, remove) and alerts on the rest. Nothing is resumed later than that boot. |
 | Orderly shutdown | Resumable jobs pause and checkpoint on SIGTERM so the restart continues where they were. |
 | Updates | Hosts are not part of `linuxio.target` and are never restarted by the installer. An old host finishes its jobs and exits when idle. |
 | History | On disk, 30 days or 200 jobs per user. Jobs that succeed in under a second are not kept. |
@@ -268,18 +268,22 @@ Retention: terminal records are kept 30 days and at most 200 per uid; pruning ru
 
 **Cancel.** `tasks.cancel` or an abort sets `cancel_requested` in the record *first*, then cancels the context. The handler's own cleanup runs (removing a partial copy, `BALANCE_CTL cancel`, `SCRUB_CANCEL`, `DEV_REPLACE cancel`). The record becomes `canceled` only when the handler has returned.
 
-**Interrupt.** A SIGTERM to the host with no `cancel_requested` on a job is a shutdown. For a non-resumable job the context is cancelled and the record is written `interrupted/shutdown`. For a resumable job the host calls the route's `Suspend(ctx, record)` hook with a deadline inside `TimeoutStopSec`; the hook returns the `checkpoint` and the record is written `interrupted/shutdown`. The contract is generic: any route may declare the two hooks, and the host and the store know nothing about what they do. The first four resumable routes are the btrfs operations, because the kernel ties them to a process:
+**Interrupt.** A SIGTERM to the host with no `cancel_requested` on a job is a shutdown. For a non-resumable job the context is cancelled and the record is written `interrupted/shutdown`. For a resumable job the host calls the route's `Suspend(ctx, record)` hook with a deadline inside `TimeoutStopSec`; the hook returns the `checkpoint` and the record is written `interrupted/shutdown`, before the context is cancelled. The contract is generic: any route may declare the two hooks, and the host and the store know nothing about what they do. The first four resumable routes are the btrfs operations, because the kernel ties them to a process.
+
+On a shutdown the host handles a route with a `Suspend` hook in this order: it flags the task interrupted (`Task.BeginInterrupt`), runs `Suspend`, writes the record `interrupted/shutdown` with the checkpoint, and only then cancels the job's context. The flag comes first so the handler's own cleanup, which the cancel starts, cannot turn the record `canceled`. A job whose record already has `cancel_requested`, because a `tasks.cancel` overlaps the SIGTERM, is left alone by the shutdown: it ends `canceled` within the drain.
 
 | Route | Suspend | Resume |
 |---|---|---|
-| `storage.btrfs_balance` | `BALANCE_CTL pause`; the kernel keeps the balance item and resumes it at the next mount by itself | attach an observer: `BALANCE_PROGRESS` until the kernel finishes |
-| `storage.btrfs_scrub_start` | `SCRUB_CANCEL`; store each device's `last_physical` | restart each device's scrub from its stored offset |
-| `storage.btrfs_device_replace` | nothing to do: the kernel cancels on any signal; after a crash the kernel resumes from its item | if the kernel shows the replace running, observe; else start it again with the same source and target |
-| `storage.btrfs_device_remove` | nothing: cancelled by the kernel on signal; moved chunks stay moved | issue the remove again |
+| `storage.btrfs_balance` | `BALANCE_CTL pause`; checkpoint `{"paused":<bool>}`, true only when this call paused it. The kernel keeps the balance item and resumes it at the next rw mount | paused: resume it with the resume flag; running (the kernel resumed it at mount): observe with `BALANCE_PROGRESS`; gone with `paused=true`: finished (the kernel resumes a paused balance at mount and may end it before the host starts); gone with `paused=false`: run it again (`soft` when converting) |
+| `storage.btrfs_scrub_start` | read each device's `last_physical`, `SCRUB_CANCEL`; checkpoint `{"remaining":{devid:offset}}`, or none (a full rescan) when nothing was read | restart each device's scrub from its stored offset; counters merge with the record of the canceled first part. An error in the extent straddling the cut is counted twice |
+| `storage.btrfs_device_replace` | nothing: the interrupt's own context cancel cancels the kernel replace and the source is kept | follow a replace the kernel resumed at mount (`STARTED`); trust `FINISHED` only when the kernel's `time_started` is not before the job's original start, else fail with "start it again"; report `SUSPENDED` as "remount to continue". Device paths are never compared, because they are not stable across reboots |
+| `storage.btrfs_device_remove` | nothing: the interrupt's context cancel sends `RM_DEV_V2 name=cancel`; moved chunks stay moved | issue the removal again; refuses a degraded pool or an unreadable device list |
 
-**Host start and boot.** Every host, before it serves, marks the records its uid's last host left `running`: `interrupted/reboot` when that host ran in an earlier boot (executors carry the boot ID; a power loss leaves records `running`, an orderly shutdown already marked them `shutdown`), `interrupted/crash` when it ran in this boot and is gone. A host touches only its own uid's store. `linuxio-jobs@0.service` is enabled, so the root host starts at boot, after `local-fs.target` and the degraded pool mounts (`linuxio-btrfs-degraded.service`). For each `interrupted` resumable record an earlier boot left (always uid 0) it runs the route's `Resume` hook on that record, and the outcome is written to the same record. That happens once per boot: a job interrupted in this boot was stopped on purpose or crashed the host, so it stays interrupted, and a job the host cannot resume is alerted and stamped with its executor so later starts leave it alone. The jobs it marks and does not resume raise one alert each. The host then exits under its normal rule once the resumed jobs end.
+Why the hooks differ, as the kernel behaves (7.0, section 5): a fatal signal, a SIGKILL included, cancels a balance in the kernel and deletes its item, so only a pause keeps it. A scrub has no kernel state, so the checkpoint is the offset. A replace is tracked by the kernel in an item and continued at mount by device id, so Resume follows it and never starts one on a path. Removal is never continued by the kernel, so Resume issues it again.
 
-**Submit CLI.** `linuxio-bridge jobs submit --route <route> --request <json> [--wait]` creates a job in the caller's host exactly as a bridge would: as root it calls `StartUnit` on `linuxio-jobs@0.socket` and connects to it; as a user it connects to their socket, which exists once they have logged in to LinuxIO since boot. `--resume <id>` resumes an interrupted resumable record. `--wait` follows the job and exits with its outcome. It is the bridge binary's only verb besides `version`, kept for admin shells and tests; whether timers use it is open for phase 4 (section 2.14).
+**Host start and boot.** Every host, before it serves, marks the records its uid's last host left `running`: `interrupted/reboot` when that host ran in an earlier boot (executors carry the boot ID; a power loss leaves records `running`, an orderly shutdown already marked them `shutdown`), `interrupted/crash` when it ran in this boot and is gone. A host touches only its own uid's store. `linuxio-jobs@0.service` is enabled, so the root host starts at boot, after `local-fs.target` and the degraded pool mounts (`linuxio-btrfs-degraded.service`). It runs the route's `Resume` hook, and writes the outcome to the same record, only for an `interrupted` record with reason `shutdown` or `reboot` that is `Resumable`, has no `cancel_requested`, and whose executor ran in an earlier boot (always uid 0). That is one resume, for the last shutdown. A record any other way interrupted (a crash, a host stopped in this boot by hand, a cancel that overlapped a stop) loses `Resumable` when the host starts, so a job is never resumed at some later reboot, weeks on, and there is no manual resume. A job the host cannot resume is alerted and stamped with its executor so later starts leave it alone. The jobs it marks and does not resume raise one alert each. The host then exits under its normal rule once the resumed jobs end.
+
+**Submit CLI.** `linuxio-bridge jobs submit --route <route> --request <json> [--wait]` creates a job in the caller's host exactly as a bridge would: as root it calls `StartUnit` on `linuxio-jobs@0.socket` and connects to it; as a user it connects to their socket, which exists once they have logged in to LinuxIO since boot. `--resume <id>` resumes an interrupted resumable record. `--wait` follows the job and exits with its outcome. It is the bridge binary's only verb besides `version`, kept for admin shells and tests; whether timers use it is open for phase 4 (section 2.14). It and the host's `jobs.resume` call exist only for testing, and the VM checks (section 3.6) have replaced them. Their removal, planned for phase 3, was deferred to a later commit; until then they still resume any `Resumable` interrupted record, which after D4 is only what the last shutdown interrupted.
 
 #### Fault matrix
 
@@ -291,10 +295,10 @@ What each event does to a job, as phase 1 implements it:
 - **Host unreachable from the bridge**: mutations fail with 503 before anything starts; `tasks.get`, `tasks.cancel` and `tasks.watch` of a host job wait up to 10 s for the host, then answer 503; the bridge reconnects with backoff from 1 s to 30 s. An open `tasks.events` stream gets, on the next connection, the end of every job it saw running.
 - **Host on another protocol (an update in between)**: new mutations fail with 409 `update_pending`; reads work; the old host finishes its jobs.
 - **LinuxIO update**: hosts and their sockets are outside `linuxio.target`; the installer never stops them. A host still running the old binary answers a newer bridge `update_pending` until it exits; the next connection then starts the new one.
-- **`systemctl stop` or orderly shutdown**: running jobs become `interrupted/shutdown`, resumable ones after `Suspend` stored a checkpoint; the root host alerts.
+- **`systemctl stop` or orderly shutdown**: running jobs become `interrupted/shutdown`, resumable ones after `Suspend` stored a checkpoint and before their context is cancelled; the root host alerts. A job with `cancel_requested` is left to end `canceled`.
 - **Host crash or kill**: the next start of that uid's host marks its `running` records whose pid and start time are gone `interrupted/crash`; the root host alerts.
-- **Reboot or power loss**: the root host, started at boot, marks its `running` records `interrupted/reboot`, resumes the resumable ones and alerts on the rest; a user's host marks theirs the same way when their next login connects.
-- **Cancel** (`tasks.cancel`, stream abort): `cancel_requested` is written to the record, then the job's context is cancelled; the record becomes `canceled` when the handler returns, and the target stays taken until then.
+- **Reboot or power loss**: the root host, started at boot, marks its `running` records `interrupted/reboot`, resumes the resumable ones (rule above) and alerts on the rest; a user's host marks theirs the same way when their next login connects.
+- **Cancel** (`tasks.cancel`, stream abort): `cancel_requested` is written to the record, then the job's context is cancelled; the record becomes `canceled` only when the handler returns, whatever error it returns after the cancel, and the target stays taken until then. A snapshot stays `running` meanwhile: there is no "canceling" state in the UI.
 
 ### 2.12 Updates
 
@@ -346,8 +350,9 @@ What each event does to a job, as phase 1 implements it:
 - **Relay and protocol**: a bridge and a host in one test process over a socketpair: start, progress, result, detach, abort, resend attaches, protocol mismatch returns `update_pending`. Unit tests.
 - **Host lifecycle**: exit rule with fake clock; SIGTERM marks running jobs and calls `Suspend` within the deadline. Unit tests.
 - **Auth**: the hermetic PAM suite asserts the exact `systemctl` arguments of an unprivileged login and that a failed start keeps the login.
-- **Submit CLI and host start**: `jobs submit` against a host in the test process; at host start, records of an earlier boot become `interrupted/reboot` and the resumable ones are resumed, a `running` record with a dead pid of this boot becomes `interrupted/crash`, and the rest are alerted. Unit tests with the fake kernel for btrfs.
-- **btrfs suspend and resume**: added to `make test-btrfs-integration` (root, run by the user): kill the host mid-scrub and check the pool is consistent; SIGTERM a balance and check it resumes after unmount and mount; scrub resumes from its stored offset; a killed replace is reported and restarted.
+- **Submit CLI and host start**: `jobs submit` against a host in the test process; at host start, only `shutdown` and `reboot` records of an earlier boot without `cancel_requested` are resumed (`TestResumeOnlyWhatTheLastShutdownInterrupted`), every other interrupted record loses `Resumable`, a `running` record with a dead pid of this boot becomes `interrupted/crash`, and the rest are alerted. Unit tests with the fake kernel for btrfs.
+- **btrfs suspend and resume**: root tests in `TestBtrfsResumeIntegration` (`make test-btrfs-integration`; in the test VM `make vm-test-btrfs-integration`, which is the run that counts as kernel-verified): `signals`, `removeCancel`, `removeKill`, `rollback`, `balancePauseRemount`, `balancePauseSameMount`, `refusedWhilePaused`, `balanceKill`, `balanceCancel`, `scrubResume`, `scrubKill`, `replaceKill` and `replacePowerCut`. They kill the host mid-operation, pause and remount a balance, and resume a scrub from its stored offset; `replacePowerCut` builds the on-disk state of a power cut mid-replace from a frozen copy of the images. A run on the user's own hardware (`make test-btrfs-integration`, sudo) is optional and theirs to start.
+- **Test VM browser specs**: `frontend/src/test/vm/jobs-phase3.spec.ts` starts each real route in the browser and cuts the host (section 3.6); `jobs-phase2.spec.ts` covers the generic host events (section 7).
 - **Browser**: start a copy, log out, log in, find it running in the tray and completed in history (`make test-frontend-browser-quiet`).
 - **Performance**: a test that starts a no-op mutation through the relay 1 000 times and asserts a median under 1 ms, so a regression in the relay is caught.
 - **Guards**: the inventory test, the `Call` ⇒ `RetrySafe` test, the import boundary test, `logging/style_test.go` for the new log lines.
@@ -469,6 +474,90 @@ Seen on the way. None of these is a phase 2 failure:
   mode 0700, inside that user's home.
 - The VM's `clean` snapshot has `docker.io` without the Compose plugin and no
   `~/docker`. The spec installs `docker-compose-v2` and creates the folder.
+
+### 3.6 Phase 3: storage safety and btrfs resume (commits `938e32c5`, `f8db05af`)
+
+What the code does, as built. Where it differs from the plan text, this is
+what holds; section 4.3 lists what moved out.
+
+- **Cancel.** `cancel_requested` is recorded before the context is cancelled.
+  The record turns `canceled` only when the handler returns, and any handler
+  error after a cancel ends `canceled`. A cancel-requested job that overlaps a
+  host SIGTERM is left alone by the shutdown and ends `canceled` within the
+  drain. A job is never resumed after a cancel.
+- **Shutdown and resume** (D4). A route with `Suspend` is flagged interrupted
+  first (`Task.BeginInterrupt`), then suspended, then recorded
+  `interrupted/shutdown` with its checkpoint, then its context is cancelled.
+  At host start only `interrupted` records with reason `shutdown` or `reboot`,
+  `Resumable`, no `cancel_requested` and an executor from an earlier boot are
+  resumed; every other interrupted record loses `Resumable`. No manual resume.
+- **The four hooks** are in the table of section 2.11.
+- **Signals.** Long ioctls (scrub, replace, balance, removal) run on a locked
+  OS thread with async signals blocked, because kernels from 6.19 abort a
+  scrub or replace on any pending signal (section 5). A freeze or
+  suspend-to-RAM still aborts them. Positive kernel refusal codes, such as 8
+  for "exclusive operation in progress", are errors now; a refused remove or
+  balance used to read as success.
+- **Balance.** `BALANCE_CTL` was passed by pointer, so pause and cancel failed
+  with `EINVAL` on real kernels before phase 3: the cancel button never
+  worked. Fixed.
+- **Scrub.** `SCRUB_CANCEL` is refused while a replace is `STARTED`, because
+  the kernel would cancel the replace with it.
+- **Device remove.** Cancel sends `RM_DEV_V2 name=cancel` (kernel 5.14 or
+  later), resent while the kernel answers `ENOTCONN`. A cancel that lands as a
+  removal finishes can cancel the next relocation at its start.
+- **Pool create.** A failed or canceled create rolls back: only superblocks
+  with the create's own fsid are wiped, before only the partitions it created
+  are deleted, and never once the pool is in fstab. A disk overwritten with
+  `force` is not restored ([btrfs.md](../btrfs.md#pools)).
+- **Docker storage switch** (D1). The files are written while Docker runs and
+  one systemd `RestartUnit` follows; the job waits for a new `InvocationID`.
+- **Replace across a power cut** (11c). udev holds back a pool whose replace
+  target (devid 0) makes the device count one too high, so systemd never
+  mounted it and the kernel could not continue the replace.
+  `linuxio-btrfs-degraded` now mounts such a pool at boot with its fstab
+  options, without `degraded`, after the same 30 s grace; the kernel continues
+  the replace and the job follows it ([btrfs.md](../btrfs.md#missing-disks)).
+
+**Checked in the test VM** (kernel 7.0.0-38, Ubuntu 26.04, the sudo user so
+every job ran in the root host): `make test-vm-browser` runs the phase 2 and
+phase 3 specs, `login.spec.ts` included, 19 checks, all passing after the
+replace fix; `make vm-test-btrfs-integration` passes `TestBtrfsResumeIntegration`
+(including `replacePowerCut`), `TestBtrfsDegradedIntegration`,
+`TestBtrfsIntegration` and `TestPartitionIntegration`. `make test-quiet`
+passed on the phase's code. The root tests have not been run on the user's own
+hardware (`make test-btrfs-integration`, sudo).
+
+| Check | Result |
+|---|---|
+| Balance across `systemctl stop` and a reboot (data raid1 to raid0, 256 MiB chunks, disks capped at 32 MiB/s) | pass: `interrupted/shutdown`, checkpoint `{"paused":true}`, sysfs `balance paused`; after the boot the kernel logs `balance: resume`, the host `job resumed`, `completed` |
+| Scrub across a power cut | pass: `interrupted/reboot`, `job resumed`, `completed`; a full rescan, since nothing was checkpointed |
+| Replace across a power cut | pass after 11c: the pool is mounted at boot, the kernel continues the replace and the job follows it. Before 11c it failed as described above |
+| Scrub cancel, then reboot | pass: the record stays `canceled`, no `job resumed`, no kernel scrub |
+| Crash (`kill -9`), then reboot | pass: stays `interrupted/crash`, `Resumable` cleared, no `job resumed`; the alert shows in the tray |
+| Pool create rollback (a file where the mountpoint goes) | pass: `failed`, `rolled back failed btrfs pool create`, no partition, no btrfs magic on the disk |
+| Docker switch kill | pass: `interrupted/crash`, Docker running on the new data root, the alert in the tray |
+
+Seen on the way. None of these blocks phase 3:
+
+- No browser cancel path sets `cancel_requested` for a scrub: the banner's
+  "Stop check" calls `storage.btrfs_scrub_cancel` and bypasses `tasks.cancel`,
+  and the tray does not list scrubs or balances. The cancel-then-SIGTERM path
+  is covered by unit tests only. If such a stop raced a host SIGTERM, the
+  record would read `interrupted/shutdown` without `cancel_requested` and be
+  resumed (inferred from the code, window of a few milliseconds).
+- The "was interrupted" alert stays after a successful resume (balance,
+  scrub); nothing resolves it when the resumed job completes.
+- The overview and the bridge's mount count still treat a replace target as a
+  present disk, so a pool that is both missing a member and mid-replace shows
+  **Mount** where the kernel needs **Mount degraded**. The boot path counts
+  correctly. Follow-up: it needs an offline-pool API change.
+- The Docker kill always landed after the restart was queued. The accepted gap
+  (files written, restart not yet requested) was not exercised.
+- A pause waits for the chunk in hand: with the default 1 GiB data chunks on
+  slow disks, `systemctl stop` can take a while.
+- The root test step `balanceKill` is flaky on a nearly full shared test pool
+  (the kernel aborts a transaction with ENOSPC); it passed in every other run.
 
 ## 4. Left to do
 
@@ -646,29 +735,43 @@ Batches:
 - `logging.set_debug` stays a Call, and a job host starts at the debug level
   it persisted (it always started at Info before).
 
-### 4.3 Phase 3: storage safety and btrfs resume
+### 4.3 Phase 3: storage safety and btrfs resume (done)
 
-Fixes that change what a storage or Docker job does to the host, each with a
-test:
+Done in `938e32c5` and `f8db05af`; section 3.6 describes what was built and how
+it was checked.
 
 - `storage.btrfs_device_remove`: cancel issues the kernel cancel instead of
   only marking the task.
-- `storage.btrfs_pool_create`: on failure, undo the partitions it created and
-  wipe the superblocks it wrote.
-- `docker.apply_daemon_storage` (done): stops the containers, writes the
-  files while Docker still runs and asks systemd for one restart of
-  `docker.service`, which systemd finishes even if the job host dies. Nothing
-  stops Docker or `docker.socket` as a step of its own, so a dead job cannot
-  leave Docker down (D1). The confirm dialog warns that a reverse proxy, tunnel
-  or VPN running in Docker goes away until its stack is deployed again.
+- `storage.btrfs_pool_create`: on failure, undoes the partitions it created
+  and wipes the superblocks it wrote.
+- `docker.apply_daemon_storage`: stops the containers, writes the files while
+  Docker still runs and asks systemd for one restart of `docker.service`,
+  which systemd finishes even if the job host dies. Nothing stops Docker or
+  `docker.socket` as a step of its own, so a dead job cannot leave Docker down
+  (D1). The confirm dialog warns that a reverse proxy, tunnel or VPN running
+  in Docker goes away until its stack is deployed again.
+- `Resumable` hooks for `storage.btrfs_scrub_start`, `storage.btrfs_balance`,
+  `storage.btrfs_device_replace` and `storage.btrfs_device_remove` (section
+  2.11), with kill-and-resume steps in `make test-btrfs-integration` and the
+  VM checks of section 3.6. Cancel writes `cancel_requested` before it
+  cancels, and the record turns `canceled` only when the handler returns, so a
+  cancelled job is never resumed.
+- A pool a power cut left mid-replace is mounted at boot by
+  `linuxio-btrfs-degraded`, so the kernel continues the replace.
 
-`Resumable` hooks for `storage.btrfs_scrub_start`, `storage.btrfs_balance`,
-`storage.btrfs_device_replace` and `storage.btrfs_device_remove` (section
-2.11), with kill-and-resume steps in `make test-btrfs-integration` (root, run
-by the user). Data-safety work: upstream prior art and an independent review
-first. Cancel writes `cancel_requested` before it cancels, and the record turns
-`canceled` only when the handler returns (section 2.11), so a cancelled job is
-never resumed.
+Moved out of phase 3 (not lost):
+
+- Removing `linuxio-bridge jobs submit` and the host's `jobs.resume` call (D6):
+  deferred to a later commit of its own. Phase 4 designs how timers reach the
+  job store (section 4.1).
+- A "canceling" state in the UI: `cancel_requested` stays backend-only and the
+  snapshot stays `running` until the handler returns.
+- Periodic scrub checkpoints: a power loss rescans from 0.
+- Progress for device removal.
+- Browser cancel through `tasks.cancel` for scrubs and balances, and resolving
+  the "was interrupted" alert once a resumed job completes (section 3.6).
+- The overview and the bridge's offline-pool mount counting a replace target as
+  a present disk (section 3.6).
 
 ### 4.4 Phase 4: schedules and system jobs
 
@@ -828,8 +931,43 @@ The launcher was removed in `0b44d7d3`; all its items are obsolete: success log 
 
 - [x] A host that cannot start closes the queued connections; a failed resume is alerted and stamped; the socketless host message; wording; a user-host test: fixed in the same commit.
 - Accepted: an upgrade from the unreleased dev builds leaves an old host that blocks the new socket until it exits (one-time `systemctl stop 'linuxio-jobs@*.service'` on dev machines; no released build ran a job host).
-- Accepted: records written before boot IDs existed are marked `crash` instead of `reboot` (only unreleased builds wrote them; no route is resumable yet).
+- Accepted: records written before boot IDs existed are marked `crash` instead of `reboot` (only unreleased builds wrote them; no route was resumable then).
 - Accepted: the explicit `After=` on the socket is redundant with systemd's implicit ordering.
+
+### Phase 3 reviews
+
+Kernel facts the phase relies on, read from torvalds/linux master (2026-10-28)
+and tag `v7.0` (2026-11-06), and checked in the VM.
+
+- **Signals** (6.19 and later, `937f99c73613`): any pending signal on the
+  ioctl thread aborts a scrub or a device replace with `-EINTR`, and so does a
+  freeze. An aborted replace ends `CANCELED` and its target is destroyed. Go
+  handles every signal (SIGCHLD, SIGURG, ...), so a child exit in another job
+  could land on the ioctl's thread. Long ioctls therefore run on a locked
+  thread with async signals blocked (`TestBlockingIoctlBlocksAsyncSignals` and
+  the `signals` root step, which sends `tgkill` SIGURG to every thread). That
+  does not cover a freeze: a suspend to RAM still aborts a scrub or replace on
+  6.19 and later.
+- **Positive return codes**: btrfs ioctls report refusals as positive values
+  (`enum btrfs_err_code`, for example 8 = `BTRFS_ERROR_DEV_EXCL_RUN_IN_PROGRESS`).
+  `fsIoctl` dropped them, so a refused remove or balance read as success; they
+  are errors now (`TestRemoveDeviceReportsKernelRefusal`, `refusedWhilePaused`).
+- **Stale `reloc_cancel_req`**: a removal cancel that arrives after relocation
+  ended leaves `reloc_cancel_req` set, and the next relocation is cancelled at
+  its start (`chunk relocation canceled on start`). Documented, not worked
+  around ([btrfs.md](../btrfs.md#devices-and-profiles)).
+- **`BALANCE_CTL` by pointer**: pause and cancel failed with `EINVAL` on real
+  kernels. Fixed; the balance cancel never worked before.
+- **A cancel racing a pause**: the job's context cancel runs after `Suspend`
+  paused the balance, and a `BALANCE_CTL cancel` then deletes the paused
+  balance. Pinned by `TestBalancePauseIsNotCanceledByTheJobContext`.
+- **Straddling extent**: errors in the extent a scrub's cut falls in are
+  counted twice after a resume. Accepted.
+- Reviewers' minor items not fixed in phase 3: the resume of a replace does not
+  check the source device id (only that the target's id is present); a cancel
+  of a replace answered `NOT_STARTED` after the kernel finished leaves a job
+  `canceled` while the pool holds the new disk; the pre-6.19 `replaceKill`
+  branch has never run on a real kernel (the VM runs 7.0).
 
 ### Other open items
 
@@ -930,26 +1068,100 @@ cost if they turn out wrong where it was recorded.
   restart request leaves Docker on its old settings; the job is marked
   interrupted and alerted, and applying again finishes the switch.
 
+Phase 3 (2026-10-29 to 2026-11-08), with the cost where it was recorded. D1 is
+the Docker entry above.
+
+- **D2, balance Suspend pauses on every host stop** (user, 2026-11-05).
+  `systemctl stop linuxio-jobs@0` leaves the balance paused, and a paused
+  balance holds the pool's exclusive operation: remove, replace and resize are
+  refused until the next mount or `btrfs balance resume`. The alternative,
+  pausing only when systemd's `SystemState` is `stopping` and cancelling
+  otherwise, was not taken. Cost if wrong: a stop by hand blocks other pool operations until the
+  host resumes the balance.
+- **D3, a replace is followed, never restarted** (user, 2026-11-05), against
+  the spec's "else start it again". The request names the target by path and
+  paths are not stable across reboots, so a restart could write to whichever
+  blank disk now has that name. The kernel tracks a replace it resumes by
+  device id. `FINISHED` is trusted only when the kernel's `time_started` is not
+  before the job's own start (a power cut on small disks can let the kernel
+  finish the resumed replace before the host starts, and `STATUS` can also
+  report an earlier replace's `FINISHED`). Cost if wrong: a clock step back
+  between the job's start and an older replace could misattribute a `FINISHED`;
+  an older replace that began after this job is impossible while this job holds
+  the exclusive operation.
+- **D4, one resume, for the last shutdown** (user, 2026-11-05), against "once
+  per boot". `ReconcileCrashed` and `markLost` kept the dead executor's boot
+  id, so a job a crash or a stop by hand interrupted would have been resumed at
+  some later reboot, possibly weeks on. Only `shutdown` and `reboot` records of
+  an earlier boot without `cancel_requested` are resumed, and every other
+  interrupted record loses `Resumable` at host start. No manual resume.
+- **D5, the test VM** (user, 2026-10-29 and 2026-11-05): the agent runs the
+  kernel tests itself in a disposable libvirt domain, `linuxio-e2e`, which
+  touches only its own domain and volumes. `virsh destroy` is the power cut.
+  This is Tier 3 of [e2e-testing.md](e2e-testing.md), started in phase 2.
+- **D6, the jobs CLI goes** (user, 2026-10-29): `jobs submit` and `jobs.resume`
+  exist only for testing. Their removal (Task 12) is deferred to a later commit
+  of its own, after the VM checks replaced them; they remain until then
+  (section 2.11).
+- **Signals are masked, not retried.** Retrying an aborted replace is not an
+  option (the target is destroyed), so the ioctl never sees the signal: section 5.
+- **A freeze is not handled.** A suspend to RAM still aborts a scrub or replace
+  on 6.19 and later.
+- **Kernel refusals are errors**, for every `fsIoctl` caller.
+- **Rollback is narrow.** Only superblocks with the create's own fsid are
+  wiped, before the partition they sit in is deleted, only partitions the
+  request created are deleted, never once the pool is in fstab, and a
+  `force`-overwritten disk is not restored. udisks2 and Cockpit do no rollback
+  at all; this goes further, and no further.
+- **Native ioctls, not btrfs-progs output**, for every phase 3 operation.
+- **11c: mount a pool a replace target holds back** (user, 2026-11-06, option
+  (a)). The alternatives were a Resume hook that mounts the pool from fstab and
+  documenting a manual mount. The kernel's ready check counts the devid 0
+  target, so the pool never reads complete; no workaround exists upstream. The
+  service mounts the pool with its fstab options, not `degraded`, unless its
+  disks disagree on their superblock generation (the kernel itself would not
+  refuse; this is LinuxIO's caution, as on the degraded path). A pool both
+  missing a member and mid-replace stays on the degraded path. Cost if wrong:
+  a power cut inside the superblock writes leaves that pool for a person, with
+  the alert saying why. The bridge's mount button and the overview still count
+  the target as a disk (section 3.6): a follow-up, because the kernel's refusal
+  keeps the data safe.
+- **No separate final review of the whole branch** (user, 2026-11-08): the VM
+  suite ran once, and a fix wave got a scoped re-review.
+
 ## 7. Host-event checks
 
 These run in the test VM ([Test VM](../development.md#test-vm)): after
 `make vm-install`, `make test-vm-browser` runs
-`frontend/src/test/vm/jobs-phase2.spec.ts`. The spec signs in as the VM's
-sudo user, so its jobs run in the root job host, and starts each one in the
-browser. The evidence is the record in `/var/lib/linuxio/jobs/0`, read over
-SSH, and the host's journal. The long job is a scrub of the test pool on `vdb`
-and `vdc`, with each disk's `scrub_speed_max` capped so it outlasts the event.
-The events act on the domain `linuxio-e2e` alone, through
-`packaging/vm/linuxio-vm.sh`.
+`frontend/src/test/vm/jobs-phase2.spec.ts` and `jobs-phase3.spec.ts`, with the
+other specs in that folder; pass `PLAYWRIGHT_ARGS='src/test/vm/login.spec.ts
+src/test/vm/jobs-phase2.spec.ts src/test/vm/jobs-phase3.spec.ts'` to run only
+these three. The specs sign in as the VM's sudo user, so their jobs run in the
+root job host, and start each one in the browser. The evidence is the record in
+`/var/lib/linuxio/jobs/0`, read over SSH, and the host's journal. The kernel
+is asked directly whether an operation still runs (a `BTRFS_IOC_SCRUB_PROGRESS`
+probe, sysfs `exclusive_operation`), because `btrfs scrub status` cannot see a
+scrub it did not start. Long jobs are slowed so they outlast the event: a
+scrub with each disk's `scrub_speed_max` capped, other btrfs operations with
+`linuxio-vm.sh throttle` (`virsh blkdeviotune`, dropped by `make vm-reset`), a
+copy with the host's reads capped through `systemctl set-property`. The events
+act on the domain `linuxio-e2e` alone, through `packaging/vm/linuxio-vm.sh`.
+`make vm-test-btrfs-integration` runs the root kernel tests in the same VM.
 
 | Event | How | Expect |
 |---|---|---|
-| stop | `systemctl stop linuxio-jobs@0.service` | record `interrupted/shutdown`; the alert `storage.btrfs_scrub_start was interrupted` in the tray |
-| crash | `kill -9` the host's main pid; the browser's bridge reconnects and the socket starts a new host | record `interrupted/crash` |
-| orderly reboot | browser closed, `linuxio-vm.sh reboot` (`virsh reboot`) | the root host started at boot with nobody logged in; record `interrupted/shutdown` |
-| power loss | 40 s into the job, browser closed, `linuxio-vm.sh power-cut` (`virsh destroy`, then `virsh start`) | record `interrupted/reboot`; `job marked interrupted` with its id and reason `reboot` in `journalctl -b -u linuxio-jobs@0.service` |
-| docker switch kill | submit `docker.apply_daemon_storage`, then `kill -9` the host's main pid once the containers have stopped | Docker still running, or running again, on either the old or the new settings, never stopped; record `interrupted/crash` with an alert |
+| stop | `systemctl stop linuxio-jobs@0.service` | record `interrupted/shutdown`; the alert `storage.btrfs_scrub_start was interrupted` in the tray. A bridge still connected restarts the host in the same boot, which clears `Resumable` |
+| crash | `kill -9` the host's main pid; the browser's bridge reconnects and the socket starts a new host | record `interrupted/crash`; a later reboot does not resume it |
+| orderly reboot | browser closed, `linuxio-vm.sh reboot` (`virsh reboot`) | the root host started at boot with nobody logged in; a scrub is resumed: same job `completed`, its checkpoint kept, `job resumed` in the boot's journal |
+| power loss | a 2 GiB copy (not resumable) with the browser closed and a `sync` in the VM, `linuxio-vm.sh power-cut` (`virsh destroy`, then `virsh start`) | record `interrupted/reboot`; `job marked interrupted` with its id and reason `reboot` in `journalctl -b -u linuxio-jobs@0.service`; no `job resumed` |
+| balance stop, then reboot | balance data raid1 to raid0 on 256 MiB chunks; sign out; `systemctl stop`; `virsh reboot` | after the stop: `interrupted/shutdown`, `{"paused":true}`, `balance paused` in sysfs; after the boot: the kernel resumes it, `job resumed`, `completed` |
+| scrub power loss | scrub at 4 MiB/s per disk, `sync`, `power-cut` | `interrupted/reboot`, `job resumed`, `completed` |
+| replace power loss | replace of `vdc` onto `vde` capped at 16 MiB/s, `sync`, `power-cut` | the pool mounted within 60 s of boot, `continuing dev_replace` in the kernel log, the job `completed`, the pool on `vdb` and `vde` |
+| cancel, then reboot | "Stop check" on a running scrub; `virsh reboot` | the record stays `canceled`, no `job resumed`, no kernel scrub |
+| crash, then reboot | `kill -9` of the host mid-scrub; `virsh reboot` | stays `interrupted/crash`, `Resumable` cleared, no `job resumed` |
+| pool create rollback | a file where the mountpoint goes; create a pool on a blank disk | `failed`, `rolled back failed btrfs pool create`, no partition and no btrfs magic left |
+| docker switch kill | change the Docker data root, then `kill -9` the host's main pid once the containers have stopped | Docker running, never stopped; record `interrupted/crash` with an alert |
 
-The power-loss case waits 40 s because a job's first record write is not
+The power-loss cases `sync` first because a job's first record write is not
 fsynced (section 2.10): a power loss within the kernel's 30 s writeback may
 lose the record of a job that just started. That window is not tested.
