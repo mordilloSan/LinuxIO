@@ -207,3 +207,41 @@ func TestHealthAlertSaysAPoolRunsWithoutADisk(t *testing.T) {
 		t.Fatalf("error alert = %q", obs.Title)
 	}
 }
+
+// A replace target is no member: a pool lacking a member while its replace
+// target is present misses 1 disk, not 0, in both the boot check's alert and
+// the health run's.
+func TestOfflineAlertCountsAReplaceTargetAsNoMember(t *testing.T) {
+	stubKernel(t, raid1Kernel())
+	stubDisks(t, map[string]Superblock{
+		"sdc": {UUID: "cold-uuid", Label: "cold", DevID: 1, NumDevices: 2},
+		"sdd": {UUID: "cold-uuid", Label: "cold", DevID: replaceTargetDevID, NumDevices: 2},
+	})
+	ctx := context.Background()
+	wantMissingOne := func(how string) {
+		t.Helper()
+		doc, err := alerts.Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, a := range doc.Alerts {
+			if a.Key == "offline-cold-uuid" {
+				if a.Title != "Pool cold is missing 1 of 2 disks" || a.Severity != alerts.SeverityError || a.OccurrenceID != "1" {
+					t.Fatalf("%s: offline alert = %q (%s, occurrence %q)", how, a.Title, a.Severity, a.OccurrenceID)
+				}
+				return
+			}
+		}
+		t.Fatalf("%s: no offline alert in %+v", how, doc.Alerts)
+	}
+
+	stubAlerts(t)
+	RaiseOfflineAlert(ctx, BtrfsOfflinePool{UUID: "cold-uuid", Label: "cold", NumDevices: 2, Devices: []string{"/dev/sdc", "/dev/sdd"}, devids: []uint64{1, replaceTargetDevID}}, "")
+	wantMissingOne("RaiseOfflineAlert")
+
+	stubAlerts(t)
+	if _, err := CheckHealth(ctx); err != nil {
+		t.Fatal(err)
+	}
+	wantMissingOne("CheckHealth")
+}

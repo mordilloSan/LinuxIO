@@ -1,10 +1,12 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"encoding/json/jsontext"
 	"errors"
 	"fmt"
+	"log/slog"
 	"reflect"
 	"strings"
 	"testing"
@@ -253,5 +255,67 @@ func TestBtrfsResumeHooks(t *testing.T) {
 				t.Errorf("resume: %v", resumeErr)
 			}
 		})
+	}
+}
+
+// A resume that cannot finish fails the job with its cause, and neither
+// reports success nor reads the filesystem.
+func TestBtrfsResumeHookFailures(t *testing.T) {
+	cause := errors.New("device busy")
+	found := false
+	oldResumeRemove, oldScrubFrom, oldFind := btrfsResumeRemove, btrfsScrubFrom, btrfsFindFilesystem
+	t.Cleanup(func() {
+		btrfsResumeRemove, btrfsScrubFrom, btrfsFindFilesystem = oldResumeRemove, oldScrubFrom, oldFind
+	})
+	btrfsResumeRemove = func(context.Context, string, int) error { return cause }
+	// A device of the first part aborted, so the merged outcome is aborted.
+	btrfsScrubFrom = func(context.Context, string, map[int]uint64, func(btrfs.BtrfsScrubStatus)) (btrfs.BtrfsScrubStatus, error) {
+		return btrfs.BtrfsScrubStatus{Status: "aborted"}, nil
+	}
+	btrfsFindFilesystem = func(context.Context, string) (btrfs.BtrfsFilesystem, error) {
+		found = true
+		return btrfs.BtrfsFilesystem{}, nil
+	}
+	var logs bytes.Buffer
+	prev := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(prev) })
+
+	ctx := context.Background()
+	for _, c := range []struct {
+		name   string
+		resume func() error
+		cause  error
+		want   []string
+	}{
+		{
+			name: "device removal",
+			resume: func() error {
+				_, err := resumeBtrfsRemove(ctx, apischema.BtrfsDeviceRequest{UUID: testBtrfsUUID, DeviceID: 3}, nil)
+				return err
+			},
+			cause: cause,
+			want:  []string{"resume removal of btrfs device 3 of " + testBtrfsUUID, "device busy"},
+		},
+		{
+			name: "aborted scrub",
+			resume: func() error {
+				_, err := resumeBtrfsScrub(ctx, apischema.UUIDRequest{UUID: testBtrfsUUID}, jsontext.Value(`{"remaining":{"2":7}}`))
+				return err
+			},
+			want: []string{"scrub btrfs filesystem " + testBtrfsUUID + " ended aborted"},
+		},
+	} {
+		found = false
+		logs.Reset()
+		err := c.resume()
+		if err == nil || c.cause != nil && !errors.Is(err, c.cause) || found || strings.Contains(logs.String(), "level=INFO") {
+			t.Fatalf("%s: err = %v, find called = %v, logs = %q", c.name, err, found, logs.String())
+		}
+		for _, w := range c.want {
+			if !strings.Contains(err.Error(), w) {
+				t.Errorf("%s: err = %q, want it to contain %q", c.name, err, w)
+			}
+		}
 	}
 }

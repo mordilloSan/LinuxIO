@@ -383,6 +383,10 @@ func TestMountDegradedPoolsMountsAPoolMidReplace(t *testing.T) {
 			nil, "did not mount the pool because /dev/sdb missed writes the other present disks have",
 		},
 		{
+			"the target missed writes", map[string]Superblock{"sdb": disk(1, 90), "sdc": disk(2, 90), "sdd": disk(0, 80)},
+			nil, "did not mount the pool because the replace target /dev/sdd missed writes the other present disks have",
+		},
+		{
 			"a member is missing too", map[string]Superblock{"sdb": disk(1, 90), "sdd": disk(0, 90)},
 			[]string{"register /dev/sdb", "register /dev/sdd", "mount /dev/sdb MNT subvol=@data,degraded"}, "",
 		},
@@ -404,14 +408,38 @@ func TestMountDegradedPoolsMountsAPoolMidReplace(t *testing.T) {
 			if !reflect.DeepEqual(*calls, want) {
 				t.Fatalf("calls = %v, want %v", *calls, want)
 			}
-			doc, err := alerts.Load()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if tc.alert == "" && len(doc.Alerts) != 0 || tc.alert != "" && (len(doc.Alerts) != 1 || !strings.Contains(doc.Alerts[0].Message, tc.alert)) {
-				t.Fatalf("alerts = %+v, want %q", doc.Alerts, tc.alert)
-			}
+			wantRefusal(t, tc.alert)
 		})
+	}
+}
+
+// wantRefusal checks that the boot check raised only an error alert saying
+// want, or none for "", and that a health run raises the same on its own:
+// an alert keeps the message of its first raise while its occurrence holds,
+// so whichever runs first must say why.
+func wantRefusal(t *testing.T, want string) {
+	t.Helper()
+	check := func(after string) {
+		t.Helper()
+		doc, err := alerts.Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		// A refusal is an error, as it is for a pool missing a disk.
+		if want == "" && len(doc.Alerts) != 0 || want != "" && (len(doc.Alerts) != 1 || !strings.Contains(doc.Alerts[0].Message, want) || doc.Alerts[0].Severity != alerts.SeverityError) {
+			t.Fatalf("alerts after %s = %+v, want %q", after, doc.Alerts, want)
+		}
+	}
+	check("the boot check")
+	if want == "" {
+		return
+	}
+	stubAlerts(t)
+	for _, after := range []string{"a health run alone", "a second health run"} {
+		if _, err := CheckHealth(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		check(after)
 	}
 }
 

@@ -58,7 +58,7 @@ filesystems, covering pools created after install.
 | `btrfs/health-<uuid>` | error | a device reports errors or is missing; "running without n of m disks" when degraded | the counters are zero and no device is missing |
 | `btrfs/scrub-<uuid>` | error | the last scrub found uncorrectable errors | a later scrub finishes clean |
 | `btrfs/space-<uuid>` | warning | metadata is over 90% full with less than 1 GiB unallocated | space is reclaimed |
-| `btrfs/offline-<uuid>` | error or warning | a pool is found on disk but not mounted (error when disks are missing; says why the boot check left it unmounted) | the pool is mounted |
+| `btrfs/offline-<uuid>` | error or warning | a pool is found on disk but not mounted (error when disks are missing or the boot check refused to mount it, and then says why) | the pool is mounted |
 | `btrfs/resync-<uuid>` | warning, error after three failed resyncs | a pool that ran with a disk missing has all its disks again and is being resynced | the resync finished |
 | `btrfs/resynced-<uuid>` | info | a resync finished and the pool is whole again | dismissed, or the next resync starts |
 

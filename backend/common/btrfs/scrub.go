@@ -40,22 +40,22 @@ func Scrub(ctx context.Context, uuid string, report func(BtrfsScrubStatus)) (Btr
 // ScrubFrom scrubs the filesystem to completion, reporting progress on the
 // way, and records the outcome. Nil starts scrub every present device from 0;
 // otherwise only the devices in starts are scrubbed, each from its offset,
-// carrying on the canceled scrub on record: the outcome keeps its start and
-// counters, so errors its first part found stay in the record. Canceling ctx
-// cancels the scrub; the kernel then returns each device's partial counters.
+// carrying on the canceled or aborted scrub on record: the outcome keeps its
+// start, counters and abort, so errors its first part found stay in the
+// record. Canceling ctx cancels the scrub; the kernel then returns each
+// device's partial counters. A device that aborted fails the scrub even then.
 func ScrubFrom(ctx context.Context, uuid string, starts map[int]uint64, report func(BtrfsScrubStatus)) (BtrfsScrubStatus, error) {
 	fs, err := FindFilesystem(ctx, uuid)
 	if err != nil {
 		return BtrfsScrubStatus{}, err
 	}
 	mnt := fs.Mountpoints[0].Mountpoint
-	now := time.Now()
-	final := BtrfsScrubStatus{Status: "finished", StartedAt: &now}
-	if rec, ok := loadScrubRecord(uuid); ok && starts != nil && rec.Status == "canceled" && rec.StartedAt != nil {
-		final = rec
-		final.Status, final.FinishedAt, final.Percent = "finished", nil, 0
-	}
-	saveScrubRecord(uuid, BtrfsScrubStatus{Status: "running", StartedAt: final.StartedAt})
+	final := scrubSeed(uuid, starts)
+	// The resumed run's record keeps the first part's counters, so a crash
+	// mid-resume does not lose them.
+	running := final
+	running.Status = "running"
+	saveScrubRecord(uuid, running)
 
 	type result struct {
 		progress scrubProgress
@@ -105,26 +105,44 @@ func ScrubFrom(ctx context.Context, uuid string, starts map[int]uint64, report f
 		final.Percent = min(100, float64(final.BytesScrubbed)*100/float64(fs.UsedBytes))
 	}
 	saveScrubRecord(uuid, final)
-	if ctx.Err() != nil {
-		return final, ctx.Err()
-	}
 	if firstErr != nil {
 		return final, fmt.Errorf("scrub: %w", firstErr)
+	}
+	if ctx.Err() != nil {
+		return final, ctx.Err()
 	}
 	return final, nil
 }
 
-// absorb folds one device's outcome into the status: a cancel wins over an
-// abort, and the first real error is kept.
+// scrubSeed is the outcome a scrub starts from: on a resume (starts set) the
+// canceled or aborted scrub on record, keeping its start, counters and
+// abort; otherwise a scrub starting now.
+func scrubSeed(uuid string, starts map[int]uint64) BtrfsScrubStatus {
+	rec, ok := loadScrubRecord(uuid)
+	if !ok || starts == nil || rec.StartedAt == nil || rec.Status != "canceled" && rec.Status != "aborted" {
+		now := time.Now()
+		return BtrfsScrubStatus{Status: "finished", StartedAt: &now}
+	}
+	rec.FinishedAt, rec.Percent = nil, 0
+	// An abort stays: the resume skips the device that aborted.
+	if rec.Status == "canceled" {
+		rec.Status = "finished"
+	}
+	return rec
+}
+
+// absorb folds one device's outcome into the status: an abort wins over a
+// cancel, since a resume would skip the aborted device, and the first real
+// error is kept.
 func (s *BtrfsScrubStatus) absorb(err, firstErr error) error {
 	switch {
 	case err == nil:
 	case errors.Is(err, unix.ECANCELED):
-		s.Status = "canceled"
-	default:
 		if s.Status == "finished" {
-			s.Status = "aborted"
+			s.Status = "canceled"
 		}
+	default:
+		s.Status = "aborted"
 		if firstErr == nil {
 			firstErr = err
 		}

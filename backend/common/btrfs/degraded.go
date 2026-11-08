@@ -243,7 +243,11 @@ func staleDisks(pool BtrfsOfflinePool) string {
 	var stale []string
 	for i, g := range pool.generations {
 		if g < newest {
-			stale = append(stale, pool.Devices[i])
+			name := pool.Devices[i]
+			if pool.devids[i] == replaceTargetDevID {
+				name = "the replace target " + name
+			}
+			stale = append(stale, name)
 		}
 	}
 	if len(stale) == 0 {
@@ -265,6 +269,20 @@ func missingDisks(pool BtrfsOfflinePool) int {
 		}
 	}
 	return missing
+}
+
+// refusal says why the boot check leaves pool, held back by udev, unmounted,
+// or returns "": for a pool missing disks, degradedMountBlocker's objection;
+// for one held back only by a replace target, a disk that missed writes.
+// The health run asks too, so the offline alert says the same either way.
+func refusal(pool BtrfsOfflinePool, state poolState) string {
+	switch {
+	case missingDisks(pool) > 0:
+		return degradedMountBlocker(pool, state)
+	case slices.Contains(pool.devids, replaceTargetDevID):
+		return staleDisks(pool)
+	}
+	return ""
 }
 
 type fstabPool struct {
@@ -329,11 +347,7 @@ func mountHeld(ctx context.Context, pools []fstabPool) error {
 		// degraded the kernel refuses a replace whose source is missing
 		// (dev-replace.c btrfs_init_dev_replace).
 		missing := missingDisks(p.pool)
-		reason := staleDisks(p.pool)
-		if missing > 0 {
-			reason = degradedMountBlocker(p.pool, states[p.pool.UUID])
-		}
-		if reason != "" {
+		if reason := refusal(p.pool, states[p.pool.UUID]); reason != "" {
 			slog.Warn("btrfs pool left unmounted", "uuid", p.pool.UUID, "reason", reason)
 			RaiseOfflineAlert(ctx, p.pool, reason)
 			continue

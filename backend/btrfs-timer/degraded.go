@@ -20,7 +20,7 @@ func runDegraded(ctx context.Context, args []string, stderr io.Writer) int {
 		return 2
 	}
 	if err := mountDegradedPools(ctx, btrfs.DegradedGrace); err != nil {
-		fmt.Fprintf(stderr, "btrfs degraded mount failed: %v\n", err)
+		fmt.Fprintf(stderr, "btrfs mount of pools missing disks or held back by a device replace failed: %v\n", err)
 		return 1
 	}
 	return 0

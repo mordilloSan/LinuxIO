@@ -370,6 +370,9 @@ func blockingIoctl(mountpoint string, req uintptr, arg unsafe.Pointer) error {
 		// Never unlocked: the runtime ends the thread, and its mask, with
 		// this goroutine.
 		runtime.LockOSThread()
+		// The mask also blocks signal 33, Go's per-thread syscall signal, so
+		// a syscall.Setuid-family call elsewhere in the process would stall
+		// until the ioctl returns; none exists today.
 		var set unix.Sigset_t
 		set.Val[0] = ^uint64(0) // the kernel's 64 signals; amd64 and arm64 only
 		for _, sig := range syncSignals {
