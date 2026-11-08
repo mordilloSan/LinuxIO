@@ -99,6 +99,13 @@ check. The kernel itself refuses a pool missing more disks than its profiles
 survive. A mount that fails leaves the entries inside its mountpoint
 unmounted.
 
+udev also holds back a complete pool whose device replace a power loss cut,
+because the kernel's ready check counts the replace target as an extra disk;
+after the same 30 seconds the service mounts it with its fstab options and
+without `degraded`, unless its disks disagree on their generation, and the
+kernel continues the replace (a pool also missing a disk takes the degraded
+path above).
+
 The record lives in `/var/lib/linuxio/btrfs-pools.json`: every mount LinuxIO
 makes and every health run notes each pool's generation, and while a pool runs
 degraded, which disks take its writes. A disk that dies while the pool is

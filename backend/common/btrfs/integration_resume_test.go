@@ -63,6 +63,7 @@ func TestBtrfsResumeIntegration(t *testing.T) {
 		{"scrubResume", (*itPool).scrubResume},
 		{"scrubKill", (*itPool).scrubKill},
 		{"replaceKill", (*itPool).replaceKill},
+		{"replacePowerCut", (*itPool).replacePowerCut},
 	} {
 		if !t.Run(step.name, func(t *testing.T) {
 			s := *p
@@ -608,4 +609,92 @@ func (p *itPool) replaceKill() {
 	}
 	p.scrubClean("the kill")
 	p.must("blank the disk", wipeDeviceEdges(p.disks[2]))
+}
+
+// replacePowerCut cuts the power of a replace and boots what its disks kept.
+// The disk images of a pool of its own sit on an ext4 the step freezes
+// mid-replace, and the copy it then takes holds exactly the writes that
+// reached the disks, as a power cut leaves them. udev holds that copy back:
+// the kernel counts the replace target, devid 0, as a third disk of two
+// (DEVICES_READY). The boot check must mount it as fstab says, not degraded,
+// and the kernel then continues the replace for ResumeReplace to follow.
+func (p *itPool) replacePowerCut() {
+	t, dir := p.t, p.t.TempDir()
+	run := func(name string, args ...string) {
+		t.Helper()
+		if out, err := exec.Command(name, args...).CombinedOutput(); err != nil {
+			t.Fatalf("%s %v: %v: %s", name, args, err, out)
+		}
+	}
+	shelfDev, shelf := loopDevice(t, filepath.Join(dir, "shelf.img"), 16<<30), filepath.Join(dir, "shelf")
+	run("mkfs.ext4", "-q", shelfDev)
+	p.must("shelf mountpoint", os.Mkdir(shelf, 0o755))
+	p.must("mount the shelf", unix.Mount(shelfDev, shelf, "ext4", 0, ""))
+	t.Cleanup(func() { _ = unix.Unmount(shelf, 0) })
+	var disks []*loopDisk
+	for i := range 3 {
+		disks = append(disks, newLoopDisk(t, filepath.Join(shelf, fmt.Sprintf("disk%d.img", i)), 6<<30))
+	}
+	cut := &itPool{t: t, ctx: p.ctx, mnt: filepath.Join(dir, "mnt")}
+	uuid, err := CreatePool(p.ctx, "linuxio-cut", "raid1", "raid1", []string{disks[0].dev, disks[1].dev}, true, nil)
+	p.must("create pool", err)
+	cut.uuid = uuid
+	p.must("mount pool", MountPool(p.ctx, disks[0].dev, cut.mnt, []string{"noatime"}, false))
+	t.Cleanup(func() { _ = unix.Unmount(cut.mnt, 0) })
+	cut.fill(1024)
+
+	start := time.Now()
+	child := cut.runChild("replace:2:" + disks[2].dev)
+	ended := make(chan error, 1)
+	go func() { ended <- child.Wait() }()
+	// Progress means the commit that recorded the replace is on the disks.
+	cut.waitFor("replace", func() bool {
+		state, pct, _, statusErr := replaceStatusOf(cut.mnt)
+		return statusErr == nil && state == replaceStateStarted && pct > 0
+	}, ended)
+	run("fsfreeze", "--freeze", shelf)
+	t.Cleanup(func() { _ = exec.Command("fsfreeze", "--unfreeze", shelf).Run() })
+	copies := make([]*loopDisk, len(disks))
+	for i, d := range disks {
+		copies[i] = &loopDisk{t: t, file: filepath.Join(dir, filepath.Base(d.file)), fd: -1}
+		run("cp", "--sparse=always", d.file, copies[i].file)
+	}
+	run("fsfreeze", "--unfreeze", shelf)
+	_ = child.Process.Kill()
+	t.Logf("the live pool's replace child after the kill: %v", <-ended)
+	p.must("unmount pool", unix.Unmount(cut.mnt, 0))
+	for _, d := range disks {
+		d.unplug()
+	}
+	for _, c := range copies {
+		c.plug()
+		t.Cleanup(func() {
+			if c.fd >= 0 {
+				detachLoop(c.fd)
+			}
+		})
+	}
+	t.Cleanup(func() { _ = unix.Unmount(cut.mnt, 0) })
+	// udev's view, logged rather than asserted: a kernel that stops counting
+	// the target leaves the boot check nothing to do here, which is not wrong.
+	_ = exec.Command("udevadm", "settle").Run()
+	for _, c := range copies {
+		out, _ := exec.Command("udevadm", "info", "--query=property", "--property=ID_BTRFS_READY", c.dev).CombinedOutput()
+		t.Logf("%s (copy of %s): %s", c.dev, filepath.Base(c.file), strings.TrimSpace(string(out)))
+	}
+
+	writeFstab(t, fmt.Sprintf("UUID=%s %s btrfs noatime 0 0\n", uuid, cut.mnt))
+	p.must("boot check", MountDegradedPools(p.ctx, 0))
+	fs, err := FindFilesystem(p.ctx, uuid)
+	if err != nil || fs.Degraded {
+		t.Fatalf("after the boot check: %v, degraded %v", err, fs.Degraded)
+	}
+	followed := false
+	p.must("follow the replace", ResumeReplace(p.ctx, uuid, 2, start, func(float64) { followed = true }))
+	fs = cut.filesystem()
+	if i := slices.IndexFunc(fs.Devices, func(d BtrfsDevice) bool { return d.ID == 2 }); i < 0 || fs.Devices[i].Path != copies[2].dev {
+		t.Fatalf("devices after the replace: %v, want device 2 on %s", devicePaths(fs), copies[2].dev)
+	}
+	t.Logf("ResumeReplace followed a running replace: %v", followed)
+	cut.scrubClean("the resumed replace")
 }

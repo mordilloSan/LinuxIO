@@ -221,19 +221,25 @@ test("a replace cut by a power loss is resumed by the kernel and followed to the
     ).toBe("device replace");
 
     await rig(["power-cut"]);
-    // The kernel resumes the replace when systemd mounts the pool from fstab.
+    // udev never calls the pool ready, because the kernel counts the replace
+    // target as a third disk of two. linuxio-btrfs-degraded mounts it after
+    // its grace, and the kernel resumes the replace at mount.
     await expect
       .poll(
         async () =>
           (await vmSsh(`findmnt -no UUID ${POOL_MOUNT} || true`)).trim(),
         {
           intervals: [2_000],
-          message:
-            "the pool is mounted at boot (udev's btrfs ready check counts the replace target)",
+          message: "the boot check mounts the pool its replace target held back",
           timeout: 60_000,
         },
       )
       .toBe(uuid);
+    console.log(
+      await vmSsh(
+        "sudo journalctl -b -o short-monotonic --no-pager --grep 'continue a device replace|continuing dev_replace'",
+      ),
+    );
     expect(await kernelLog("continuing dev_replace")).toMatch(
       new RegExp(`continuing dev_replace from .* to target ${target}`),
     );
@@ -269,8 +275,9 @@ test("a replace cut by a power loss is resumed by the kernel and followed to the
     expect(await poolDisks()).toEqual(["/dev/vdb", target].sort());
   } finally {
     await throttle(0, [target.slice("/dev/".length)]);
-    // A pool left unmounted at boot is mounted by hand, and the replace the
-    // kernel then resumes is waited for, so the checks after this one run.
+    // Cleanup only: a pool the boot check left unmounted is mounted by hand,
+    // and the replace the kernel then resumes is waited for, so the checks
+    // after this one run.
     await vmSsh(`findmnt ${POOL_MOUNT} >/dev/null || sudo mount ${POOL_MOUNT}`);
     await expect
       .poll(() => exclusiveOperation(uuid), { timeout: 180_000 })

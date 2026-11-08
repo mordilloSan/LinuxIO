@@ -109,7 +109,7 @@ func TestCheckHealthFlagsOfflinePoolsAndDropsStaleAlerts(t *testing.T) {
 	sysBlockDir = dir
 	readSuperblock = func(device string) (Superblock, error) {
 		if device == "/dev/sdc" {
-			return Superblock{UUID: "cold-uuid", Label: "cold", NumDevices: 2}, nil
+			return Superblock{UUID: "cold-uuid", Label: "cold", DevID: 1, NumDevices: 2}, nil
 		}
 		return Superblock{}, errNotBtrfs
 	}

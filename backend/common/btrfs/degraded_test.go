@@ -333,8 +333,10 @@ func TestMountDegradedPoolsLeavesStalePoolsToAPerson(t *testing.T) {
 func TestMountDegradedPoolsWaitsForLateDisks(t *testing.T) {
 	stubPoolGeneration(t, dataUUID, 0)
 	calls := stubMountCalls(t)
-	member := Superblock{UUID: dataUUID, NumDevices: 2, Generation: 90}
-	supers := map[string]Superblock{"sdb": member, "sdc": {}}
+	member := func(devid uint64) Superblock {
+		return Superblock{UUID: dataUUID, DevID: devid, NumDevices: 2, Generation: 90}
+	}
+	supers := map[string]Superblock{"sdb": member(1), "sdc": {}}
 	stubDisks(t, supers)
 	writeFstab(t, "UUID="+dataUUID+" /srv/data btrfs defaults 0 0\n")
 	old := readSuperblock
@@ -342,7 +344,7 @@ func TestMountDegradedPoolsWaitsForLateDisks(t *testing.T) {
 	readSuperblock = func(device string) (Superblock, error) {
 		if device == "/dev/sdb" {
 			if polls++; polls == 2 {
-				supers["sdc"] = member // the slow disk shows up on the second look
+				supers["sdc"] = member(2) // the slow disk shows up on the second look
 			}
 		}
 		return old(device)
@@ -353,6 +355,63 @@ func TestMountDegradedPoolsWaitsForLateDisks(t *testing.T) {
 	}
 	if len(*calls) != 0 || polls != 2 {
 		t.Fatalf("calls = %v after %d polls; the complete pool is systemd's to mount", *calls, polls)
+	}
+}
+
+// A power cut mid-replace leaves the target, devid 0, scanned next to every
+// member, and udev never calls the pool ready: DEVICES_READY counts the
+// target against the superblock's num_devices. The boot check mounts it as
+// fstab says, so the kernel continues the replace, unless a member missed
+// writes. A pool also missing a member mounts degraded, as without the
+// replace.
+func TestMountDegradedPoolsMountsAPoolMidReplace(t *testing.T) {
+	disk := func(devid, gen uint64) Superblock {
+		return Superblock{UUID: dataUUID, Label: "data", DevID: devid, NumDevices: 2, Generation: gen}
+	}
+	for _, tc := range []struct {
+		name   string
+		supers map[string]Superblock
+		want   []string // calls, with MNT for the mountpoint
+		alert  string
+	}{
+		{
+			"every member and the target", map[string]Superblock{"sdb": disk(1, 90), "sdc": disk(2, 90), "sdd": disk(0, 90)},
+			[]string{"register /dev/sdb", "register /dev/sdc", "register /dev/sdd", "mount /dev/sdb MNT subvol=@data"}, "",
+		},
+		{
+			"a member missed writes", map[string]Superblock{"sdb": disk(1, 80), "sdc": disk(2, 90), "sdd": disk(0, 90)},
+			nil, "did not mount the pool because /dev/sdb missed writes the other present disks have",
+		},
+		{
+			"a member is missing too", map[string]Superblock{"sdb": disk(1, 90), "sdd": disk(0, 90)},
+			[]string{"register /dev/sdb", "register /dev/sdd", "mount /dev/sdb MNT subvol=@data,degraded"}, "",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stubPoolGeneration(t, dataUUID, 91, "/dev/sdb", "/dev/sdc")
+			calls := stubMountCalls(t)
+			stubDisks(t, tc.supers)
+			mnt := filepath.Join(t.TempDir(), "data")
+			writeFstab(t, "UUID="+dataUUID+" "+mnt+" btrfs defaults,nofail,subvol=@data 0 0\n")
+
+			if err := MountDegradedPools(context.Background(), 0); err != nil {
+				t.Fatal(err)
+			}
+			var want []string
+			for _, c := range tc.want {
+				want = append(want, strings.ReplaceAll(c, "MNT", mnt))
+			}
+			if !reflect.DeepEqual(*calls, want) {
+				t.Fatalf("calls = %v, want %v", *calls, want)
+			}
+			doc, err := alerts.Load()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.alert == "" && len(doc.Alerts) != 0 || tc.alert != "" && (len(doc.Alerts) != 1 || !strings.Contains(doc.Alerts[0].Message, tc.alert)) {
+				t.Fatalf("alerts = %+v, want %q", doc.Alerts, tc.alert)
+			}
+		})
 	}
 }
 
