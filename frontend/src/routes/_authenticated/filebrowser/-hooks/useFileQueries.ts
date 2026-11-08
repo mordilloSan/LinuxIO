@@ -2,10 +2,10 @@ import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 
 import { linuxio, type TextFile } from "@/api";
 
-import type { FileBrowserListingQueryOptions } from "./fileBrowserListingQueryOptions";
-import { useFileMultipleDirectoryDetails } from "./useFileMultipleDirectoryDetails";
 import { isImageFile } from "../-fileUtils";
 import type { FileItem, FileResource } from "../-types";
+import type { FileBrowserListingQueryOptions } from "./fileBrowserListingQueryOptions";
+import { useFileMultipleDirectoryDetails } from "./useFileMultipleDirectoryDetails";
 
 interface UseFileQueriesParams {
   detailItems?: FileItem[];

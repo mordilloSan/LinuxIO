@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { render } from "@/test/render";
 
-import FileDetail from "./FileDetail";
 import type { FileResource } from "../-types";
+import FileDetail from "./FileDetail";
 
 const directorySizeState = vi.hoisted(() => ({
   error: null as Error | null,

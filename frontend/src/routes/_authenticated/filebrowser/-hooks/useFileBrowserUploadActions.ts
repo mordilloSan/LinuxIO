@@ -5,9 +5,9 @@ import type { BackgroundTaskActions } from "@/tasks/types";
 import { joinPath } from "@/utils/path";
 import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
+import { buildEntriesFromFileList } from "../-fileUpload";
 import type { ResolveCollisionsFn } from "./useFileConflicts";
 import type { UploadSlice } from "./useFileUpload";
-import { buildEntriesFromFileList } from "../-fileUpload";
 
 interface UseFileBrowserUploadActionsParams {
   invalidateListing: () => void;

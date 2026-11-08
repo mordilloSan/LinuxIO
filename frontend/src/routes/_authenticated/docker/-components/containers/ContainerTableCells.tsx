@@ -27,6 +27,8 @@ import {
 } from "@/utils/dockerContainer";
 import { formatFileSize } from "@/utils/formatters";
 
+import { DOCKER_TOAST_META } from "../shared/dockerToast";
+import { useDockerUpdateOperation } from "../shared/DockerUpdateOperationProvider";
 import ContainerActions from "./ContainerActions";
 import {
   formatStackSummary,
@@ -38,8 +40,6 @@ import {
   getVisibleEntries,
   isCollapsible,
 } from "./containerTableModel";
-import { DOCKER_TOAST_META } from "../shared/dockerToast";
-import { useDockerUpdateOperation } from "../shared/DockerUpdateOperationProvider";
 
 // Expanded-row state is shared with the cells via context rather than baked into
 // the column definitions. flexRender renders a cell function as a component, so

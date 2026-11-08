@@ -6,8 +6,8 @@ import HeaderActions from "@/components/ui/HeaderActions";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useViewMode } from "@/hooks/useViewMode";
 
-import ContainerList from "./ContainerList";
 import { useDockerUpdateCheck } from "../../-hooks/useDockerUpdateCheck";
+import ContainerList from "./ContainerList";
 
 const ContainerFormDialog = lazy(() => import("./ContainerFormDialog"));
 

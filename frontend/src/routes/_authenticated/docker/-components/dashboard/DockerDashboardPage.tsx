@@ -8,10 +8,10 @@ import HeaderActions from "@/components/ui/HeaderActions";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { getContainerName } from "@/utils/dockerContainer";
 
-import DockerDashboard from "./DockerDashboard";
 import { useDockerUpdateCheck } from "../../-hooks/useDockerUpdateCheck";
 import { DOCKER_TOAST_META } from "../shared/dockerToast";
 import PruneDialog, { type PruneOptions } from "../shared/PruneDialog";
+import DockerDashboard from "./DockerDashboard";
 
 const DockerDashboardPage = () => {
   const toast = useScopedToast(DOCKER_TOAST_META);

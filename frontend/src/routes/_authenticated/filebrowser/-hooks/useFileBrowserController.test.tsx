@@ -3,9 +3,9 @@ import { act, renderHook } from "@testing-library/react";
 import type { MouseEvent, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { FileItem, FileResource } from "../-types";
 import { createFileBrowserListingQueryOptions } from "./fileBrowserListingQueryOptions";
 import { useFileBrowserController } from "./useFileBrowserController";
-import type { FileItem, FileResource } from "../-types";
 
 const mocks = vi.hoisted(() => ({
   archiveActions: {

@@ -16,9 +16,9 @@ import {
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTypography from "@/components/ui/AppTypography";
 
-import { getComposeProject } from "./containerStacks";
 import { DOCKER_TOAST_META } from "../shared/dockerToast";
 import { useDockerUpdateOperation } from "../shared/DockerUpdateOperationProvider";
+import { getComposeProject } from "./containerStacks";
 
 interface ContainerActionsProps {
   actionPending?: boolean;

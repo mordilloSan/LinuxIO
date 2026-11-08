@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { render, screen, waitFor, within } from "@/test/render";
 
-import NetworkList from "./NetworkList";
 import VolumeList from "../volumes/VolumeList";
+import NetworkList from "./NetworkList";
 
 const mocks = vi.hoisted(() => ({
   containers: [] as unknown[],

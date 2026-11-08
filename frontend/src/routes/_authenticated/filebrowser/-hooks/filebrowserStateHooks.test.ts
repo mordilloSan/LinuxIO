@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { act, renderHook } from "@/test/render";
 
+import type { FileItem } from "../-types";
 import { useFileDialogs } from "./useFileDialogs";
 import { useFileUpload } from "./useFileUpload";
-import type { FileItem } from "../-types";
 
 describe("filebrowser state hooks", () => {
   it("tracks dialog state for create, delete, detail, and permissions flows", () => {

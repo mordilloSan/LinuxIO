@@ -15,11 +15,11 @@ import {
 } from "@/theme/constants";
 import { getContainerName } from "@/utils/dockerContainer";
 
+import ContainerCard from "../cards/ContainerCard";
 import ContainerInfoSections from "./ContainerInfoSections";
 import ContainerInspectSections, {
   type ContainerInspectSection,
 } from "./ContainerInspectSections";
-import ContainerCard from "../cards/ContainerCard";
 
 interface ContainerResourceDetailsProps {
   container: ContainerInfo;

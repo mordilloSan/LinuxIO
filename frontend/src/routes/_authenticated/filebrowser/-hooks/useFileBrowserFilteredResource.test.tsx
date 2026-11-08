@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SearchResult } from "@/api";
 import { renderHook } from "@/test/render";
 
-import { useFileBrowserFilteredResource } from "./useFileBrowserFilteredResource";
 import type { FileResource } from "../-types";
+import { useFileBrowserFilteredResource } from "./useFileBrowserFilteredResource";
 
 const useFileSearchMock = vi.hoisted(() => vi.fn());
 

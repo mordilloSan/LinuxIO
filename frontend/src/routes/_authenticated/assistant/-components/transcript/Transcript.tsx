@@ -6,6 +6,8 @@ import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppTypography from "@/components/ui/AppTypography";
 
+import type { Attachment } from "../attachments";
+import AttachmentChip from "../composer/AttachmentChip";
 import DiffView from "./DiffView";
 import MarkdownBlock from "./MarkdownBlock";
 import {
@@ -14,8 +16,6 @@ import {
   type TranscriptBlock,
 } from "./transcript";
 import { useFollowBottom } from "./useFollowBottom";
-import type { Attachment } from "../attachments";
-import AttachmentChip from "../composer/AttachmentChip";
 
 const KIND_LABEL: Record<string, string> = {
   read: "Read",

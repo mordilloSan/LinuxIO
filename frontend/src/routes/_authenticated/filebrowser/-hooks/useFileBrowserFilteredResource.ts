@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 
-import { isSearchableQuery, useFileSearch } from "./useFileSearch";
 import type { FileResource } from "../-types";
+import { isSearchableQuery, useFileSearch } from "./useFileSearch";
 
 interface UseFileBrowserFilteredResourceParams {
   caseSensitive?: boolean;

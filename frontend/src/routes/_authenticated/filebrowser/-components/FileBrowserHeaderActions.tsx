@@ -13,9 +13,9 @@ import { useBackgroundTaskActions } from "@/tasks/useBackgroundTaskActions";
 import { useIsIndexing } from "@/tasks/useIsIndexing";
 import { iconSize } from "@/theme/constants";
 
+import type { ViewMode } from "../-types";
 import FileBrowserSearch from "./FileBrowserSearch";
 import TrashDialog from "./TrashDialog";
-import type { ViewMode } from "../-types";
 
 interface FileBrowserHeaderActionsProps {
   isMobile: boolean;

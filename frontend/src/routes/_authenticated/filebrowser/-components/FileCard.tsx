@@ -17,12 +17,12 @@ import AppTypography from "@/components/ui/AppTypography";
 import { CARD_PADDING_SM } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formatters";
 
+import { useFileDirectorySize } from "../-hooks/useFileDirectorySize";
 import {
   getFileEntryBackground,
   getSubtleDividerColor,
 } from "./fileBrowserSurfaces";
 import FileIcon from "./FileIcon";
-import { useFileDirectorySize } from "../-hooks/useFileDirectorySize";
 
 interface FileCardProps {
   directorySizeError?: Error | null;

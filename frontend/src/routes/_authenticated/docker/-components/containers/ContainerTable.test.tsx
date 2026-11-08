@@ -6,9 +6,9 @@ import * as core from "@/api/linuxio-core";
 import type { AppVirtualTableDndOptions } from "@/components/tables/AppVirtualTable";
 import { act, render, screen, waitFor, within } from "@/test/render";
 
+import { DockerUpdateOperationProvider } from "../shared/DockerUpdateOperationProvider";
 import type { ContainerTableRow } from "./containerStacks";
 import ContainerTable from "./ContainerTable";
-import { DockerUpdateOperationProvider } from "../shared/DockerUpdateOperationProvider";
 
 vi.mock("@tanstack/react-virtual", async () =>
   (await import("@/test/reactVirtualMock")).reactVirtualMock(),

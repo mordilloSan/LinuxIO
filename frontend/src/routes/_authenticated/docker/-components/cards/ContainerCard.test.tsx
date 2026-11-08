@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ContainerInfo } from "@/api";
 import { render, screen } from "@/test/render";
 
-import ContainerCard from "./ContainerCard";
 import { DockerUpdateOperationProvider } from "../shared/DockerUpdateOperationProvider";
+import ContainerCard from "./ContainerCard";
 
 const container: ContainerInfo = {
   Id: "container-1",

@@ -29,12 +29,12 @@ import { useBackgroundTaskActions } from "@/tasks/useBackgroundTaskActions";
 import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
 import { ensureTrailingSlash } from "@/utils/path";
 
-import { CreateVolumeDialog } from "./CreateVolumeDialog";
-import { VolumeDetailsContent } from "./VolumeDetailsContent";
-import { formatReferenceCount, formatVolumeSize } from "./volumeFormat";
 import { useFocusedResourceParam } from "../../-hooks/useFocusedResourceParam";
 import VolumeCard from "../cards/VolumeCard";
 import BatchDeleteDialog from "../shared/BatchDeleteDialog";
+import { CreateVolumeDialog } from "./CreateVolumeDialog";
+import { VolumeDetailsContent } from "./VolumeDetailsContent";
+import { formatReferenceCount, formatVolumeSize } from "./volumeFormat";
 
 const dockerRouteApi = getRouteApi("/_authenticated/docker/volumes");
 

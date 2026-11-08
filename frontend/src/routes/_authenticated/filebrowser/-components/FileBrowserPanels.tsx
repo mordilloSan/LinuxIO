@@ -27,9 +27,6 @@ import { formatDate, formatFileSize } from "@/utils/formatters";
 import { nativeFileInlineUrl } from "@/utils/nativeDownload";
 import { baseName } from "@/utils/path";
 
-import FileBrowserHeader from "./FileBrowserHeader";
-import FileDetail from "./FileDetail";
-import MultiFileDetail from "./MultiFileDetail";
 import type { DroppedEntry } from "../-fileUpload";
 import { isImageFile } from "../-fileUtils";
 import type { EditorSaveConflict } from "../-hooks/useFileBrowserEditorActions";
@@ -45,6 +42,9 @@ import type {
   ResourceStatData,
   ViewMode,
 } from "../-types";
+import FileBrowserHeader from "./FileBrowserHeader";
+import FileDetail from "./FileDetail";
+import MultiFileDetail from "./MultiFileDetail";
 
 const FileEditor = lazy(() => import("@/components/editor/FileEditor"));
 

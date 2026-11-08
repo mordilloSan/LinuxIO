@@ -6,8 +6,8 @@ import HeaderActions from "@/components/ui/HeaderActions";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useViewMode } from "@/hooks/useViewMode";
 
-import ComposeStacksPage from "./ComposeStacksPage";
 import { useDockerUpdateCheck } from "../../-hooks/useDockerUpdateCheck";
+import ComposeStacksPage from "./ComposeStacksPage";
 
 const DockerComposePage = () => {
   const { button: checkUpdatesButton } = useDockerUpdateCheck();

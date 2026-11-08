@@ -17,12 +17,12 @@ import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppTypography from "@/components/ui/AppTypography";
 import { formatFileSize } from "@/utils/formatters";
 
+import { useFileDirectorySize } from "../-hooks/useFileDirectorySize";
 import {
   getFileEntryBackground,
   getFileEntryHoverBackground,
 } from "./fileBrowserSurfaces";
 import FileIcon from "./FileIcon";
-import { useFileDirectorySize } from "../-hooks/useFileDirectorySize";
 
 interface FileListRowProps {
   borderRadius?: number | string;

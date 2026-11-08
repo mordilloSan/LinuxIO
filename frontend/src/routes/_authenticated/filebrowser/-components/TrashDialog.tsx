@@ -25,8 +25,8 @@ import { describeBatchFailures } from "@/tasks/batchFailures";
 import { formatDate, formatFileSize } from "@/utils/formatters";
 import { parentPath } from "@/utils/path";
 
-import FileIcon from "./FileIcon";
 import { FILES_TOAST_META } from "../-hooks/useFileMutations";
+import FileIcon from "./FileIcon";
 
 import "./TrashDialog.css";
 

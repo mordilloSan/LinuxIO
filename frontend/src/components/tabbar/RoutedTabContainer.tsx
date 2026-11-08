@@ -19,10 +19,10 @@ import type { FileRouteTypes } from "@/routeTree.gen";
 import { down } from "@/theme/breakpoints";
 import { iconSize } from "@/theme/constants";
 
-import { getTabSelectorThemeVars } from "./TabSelector";
 import AppIconButton from "../ui/AppIconButton";
 import AppMobileActionsMenu from "../ui/AppMobileActionsMenu";
 import AppPopover from "../ui/AppPopover";
+import { getTabSelectorThemeVars } from "./TabSelector";
 
 import "./tab-container.css";
 import "./tab-panel.css";

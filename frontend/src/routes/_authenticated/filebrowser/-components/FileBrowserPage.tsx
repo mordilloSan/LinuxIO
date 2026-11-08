@@ -1,9 +1,9 @@
 import { getRouteApi } from "@tanstack/react-router";
 
+import { useFileBrowserController } from "../-hooks/useFileBrowserController";
 import FileBrowserBreadcrumbs from "./FileBrowserBreadcrumbs";
 import FileBrowserContent from "./FileBrowserContent";
 import FileBrowserDialogs from "./FileBrowserDialogs";
-import { useFileBrowserController } from "../-hooks/useFileBrowserController";
 
 const fileBrowserRouteApi = getRouteApi("/_authenticated/filebrowser/$");
 const FileBrowserPage = () => {

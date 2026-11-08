@@ -3,11 +3,11 @@ import { useQueries } from "@tanstack/react-query";
 import { linuxio } from "@/api";
 import { stripTrailingSlash } from "@/utils/path";
 
+import type { MultiStatsItem } from "../-types";
 import {
   getDirectorySizeQueryOptions,
   shouldSkipSizeCalculation,
 } from "./useFileDirectorySizeBase";
-import type { MultiStatsItem } from "../-types";
 
 interface UseMultipleDirectoryDetailsResult {
   isAnyError: boolean;

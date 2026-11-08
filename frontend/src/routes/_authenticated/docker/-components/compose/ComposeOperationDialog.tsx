@@ -22,9 +22,9 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { TASK_TYPE_DOCKER_COMPOSE } from "@/tasks/taskTypes";
 import { useActiveTaskRecovery } from "@/tasks/useActiveTaskRecovery";
 
+import { DOCKER_TOAST_META } from "../shared/dockerToast";
 import { type ComposeTask, mergeTask } from "./composeProgress";
 import DockerComposeProgress from "./DockerComposeProgress";
-import { DOCKER_TOAST_META } from "../shared/dockerToast";
 
 import "../shared/compose-operation-dialog.css";
 

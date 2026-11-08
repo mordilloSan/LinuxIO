@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { act, renderHook } from "@/test/render";
 
-import { useFileBrowserArchiveActions } from "./useFileBrowserArchiveActions";
 import type { FileItem, FileResource } from "../-types";
+import { useFileBrowserArchiveActions } from "./useFileBrowserArchiveActions";
 
 const toastMocks = vi.hoisted(() => ({
   error: vi.fn(),

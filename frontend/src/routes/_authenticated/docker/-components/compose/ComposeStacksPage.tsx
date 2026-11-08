@@ -25,6 +25,7 @@ import { useUploadChunkSize } from "@/hooks/useUploadChunkSize";
 import { markTerminalFeedbackEmitted } from "@/tasks/terminalTaskFeedback";
 import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
+import { DOCKER_TOAST_META } from "../shared/dockerToast";
 import ComposeEditorDialog from "./ComposeEditorDialog";
 import ComposeList from "./ComposeList";
 import ComposeOperationDialog from "./ComposeOperationDialog";
@@ -32,7 +33,6 @@ import ComposePostSaveDialog from "./ComposePostSaveDialog";
 import type { ValidationResult } from "./ComposeValidationFeedback";
 import DeleteStackDialog, { type DeleteOption } from "./DeleteStackDialog";
 import StackSetupDialog from "./StackSetupDialog";
-import { DOCKER_TOAST_META } from "../shared/dockerToast";
 
 interface ComposeStacksPageProps {
   onMountCreateHandler?: (handler: () => void) => void;

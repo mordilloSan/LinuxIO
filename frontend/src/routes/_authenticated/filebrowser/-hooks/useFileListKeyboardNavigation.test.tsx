@@ -3,8 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { fireEvent, render, screen } from "@/test/render";
 
-import { useFileListKeyboardNavigation } from "./useFileListKeyboardNavigation";
 import type { FileItem } from "../-types";
+import { useFileListKeyboardNavigation } from "./useFileListKeyboardNavigation";
 
 const items: FileItem[] = [
   { name: "alpha.txt", path: "/alpha.txt", type: "file" },

@@ -12,14 +12,14 @@ import { useConfigValue } from "@/hooks/useConfig";
 import { useAppTheme } from "@/theme";
 import { fromHsl, lighten, toHsl } from "@/theme/colorUtils";
 
+import type { SidebarItem } from "../sidebar/types";
+import { useSidebarItems } from "../sidebar/useSidebarItems";
 import DockItem from "./DockItem";
 import { sampleDockAccentColor, type TileGradient } from "./dockPalette";
 import {
   DockMagnificationProvider,
   useDockPointerLiveness,
 } from "./useDockMagnification";
-import type { SidebarItem } from "../sidebar/types";
-import { useSidebarItems } from "../sidebar/useSidebarItems";
 
 import "@/components/reorder/reorder.css";
 import "./dock.css";

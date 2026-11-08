@@ -4,7 +4,6 @@ import type { FileExtractRequest } from "@/api";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
-import { useFilePathUtilities } from "./useFilePathUtilities";
 import { splitName, stripNumericSuffix } from "../-fileUpload";
 import {
   ensureTarGzExtension,
@@ -13,6 +12,7 @@ import {
   stripArchiveExtension,
 } from "../-fileUtils";
 import type { FileItem, FileResource } from "../-types";
+import { useFilePathUtilities } from "./useFilePathUtilities";
 
 interface CompressPayload {
   archiveName?: string;

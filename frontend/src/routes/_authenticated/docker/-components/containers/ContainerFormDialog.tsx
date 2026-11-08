@@ -27,6 +27,7 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import SectionHeader from "@/components/ui/SectionHeader";
 
+import { DOCKER_TOAST_META } from "../shared/dockerToast";
 import {
   changedSections,
   configurationFromInspect,
@@ -35,7 +36,6 @@ import {
   normalizedConfiguration,
   validateConfiguration,
 } from "./containerConfiguration";
-import { DOCKER_TOAST_META } from "../shared/dockerToast";
 
 import "./container-form-dialog.css";
 

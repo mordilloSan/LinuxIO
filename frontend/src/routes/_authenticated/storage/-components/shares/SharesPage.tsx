@@ -50,6 +50,7 @@ import { useViewMode } from "@/hooks/useViewMode";
 import FolderShareCard from "@/routes/_authenticated/storage/-components/shares/FolderShareCard";
 import { CARD_GRID_SIZE_DENSE, GAP_LG, GAP_XL } from "@/theme/constants";
 
+import { defaultRule } from "../btrfs/btrfsShared";
 import {
   DeleteNFSShareDialog,
   DeleteSambaShareDialog,
@@ -59,7 +60,6 @@ import PoolFolderFields, {
   sharePools,
   type PoolFolder,
 } from "./PoolFolderFields";
-import { defaultRule } from "../btrfs/btrfsShared";
 
 type ShareGroup = {
   id: string;

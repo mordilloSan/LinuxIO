@@ -19,10 +19,6 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 
-import AttachmentChip from "./AttachmentChip";
-import ConfigControls from "./ConfigControls";
-import ContextGauge from "./ContextGauge";
-import ModeMenu from "./ModeMenu";
 import type { AssistantState, MessageDisplay } from "../assistant-store";
 import {
   type Attachment,
@@ -32,6 +28,10 @@ import {
   isLongPaste,
   textAttachment,
 } from "../attachments";
+import AttachmentChip from "./AttachmentChip";
+import ConfigControls from "./ConfigControls";
+import ContextGauge from "./ContextGauge";
+import ModeMenu from "./ModeMenu";
 
 export interface ComposerProps {
   disabled: boolean;

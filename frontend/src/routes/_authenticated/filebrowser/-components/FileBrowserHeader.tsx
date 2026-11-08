@@ -7,10 +7,10 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { down } from "@/theme/breakpoints";
 
+import type { ViewMode } from "../-types";
 import FileBrowserHeaderActions from "./FileBrowserHeaderActions";
 import FileBrowserSearch from "./FileBrowserSearch";
 import IndexerDialog from "./IndexerDialog";
-import type { ViewMode } from "../-types";
 
 const noopSearchChange = () => {};
 const noopSearchCaseChange = () => {};

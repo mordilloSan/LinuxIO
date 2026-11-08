@@ -5,9 +5,9 @@ import { describe, expect, it, vi } from "vitest";
 import { linuxio, type DirectoryListing } from "@/api";
 import { act, createTestQueryClient, renderHook, waitFor } from "@/test/render";
 
+import { normalizeResource } from "../-fileUtils";
 import type { FileBrowserListingQueryOptions } from "./fileBrowserListingQueryOptions";
 import { useFileQueries } from "./useFileQueries";
-import { normalizeResource } from "../-fileUtils";
 
 vi.mock("./useFileMultipleDirectoryDetails", () => ({
   useFileMultipleDirectoryDetails: () => ({

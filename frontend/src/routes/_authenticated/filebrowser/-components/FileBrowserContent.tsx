@@ -9,11 +9,6 @@ import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import { allowContextMenuProps } from "@/utils/contextMenu";
 
-import DirectoryListing from "./DirectoryListing";
-import FileBrowserHeader from "./FileBrowserHeader";
-import { FileDropOverlay } from "./FileBrowserPanels";
-import FileDetail from "./FileDetail";
-import SortBar from "./SortBar";
 import type {
   FileItem,
   FileResource,
@@ -21,6 +16,11 @@ import type {
   SortOrder,
   ViewMode,
 } from "../-types";
+import DirectoryListing from "./DirectoryListing";
+import FileBrowserHeader from "./FileBrowserHeader";
+import { FileDropOverlay } from "./FileBrowserPanels";
+import FileDetail from "./FileDetail";
+import SortBar from "./SortBar";
 
 interface FileBrowserSurfaceProps {
   isDragOver: boolean;

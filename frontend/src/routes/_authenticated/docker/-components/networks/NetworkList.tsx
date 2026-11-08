@@ -30,15 +30,15 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
 import { getContainerName } from "@/utils/dockerContainer";
 
+import { useFocusedResourceParam } from "../../-hooks/useFocusedResourceParam";
+import DockerNetworkCard from "../cards/DockerNetworkCard";
+import BatchDeleteDialog from "../shared/BatchDeleteDialog";
+import { DOCKER_TOAST_META } from "../shared/dockerToast";
 import { CreateNetworkDialog } from "./CreateNetworkDialog";
 import {
   NetworkDetailsContent,
   type ConnectedContainerRow,
 } from "./NetworkDetailsContent";
-import { useFocusedResourceParam } from "../../-hooks/useFocusedResourceParam";
-import DockerNetworkCard from "../cards/DockerNetworkCard";
-import BatchDeleteDialog from "../shared/BatchDeleteDialog";
-import { DOCKER_TOAST_META } from "../shared/dockerToast";
 
 interface NetworkListProps {
   onMountCreateHandler?: (handler: () => void) => void;

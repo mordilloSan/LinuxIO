@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as core from "@/api/linuxio-core";
 import { render, screen } from "@/test/render";
 
-import ContainerActions from "./ContainerActions";
 import { DockerUpdateOperationProvider } from "../shared/DockerUpdateOperationProvider";
+import ContainerActions from "./ContainerActions";
 
 const callbacks = { onOpenLogs: vi.fn(), onOpenTerminal: vi.fn() };
 

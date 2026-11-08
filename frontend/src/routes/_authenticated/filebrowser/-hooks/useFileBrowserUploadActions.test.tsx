@@ -3,9 +3,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { act, renderHook } from "@/test/render";
 
+import type { DroppedEntry } from "../-fileUpload";
 import { useFileBrowserUploadActions } from "./useFileBrowserUploadActions";
 import type { UploadSlice } from "./useFileUpload";
-import type { DroppedEntry } from "../-fileUpload";
 
 const toastMocks = vi.hoisted(() => ({
   error: vi.fn(),
