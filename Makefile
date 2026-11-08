@@ -75,7 +75,7 @@ GOARCH       ?=
 GOAMD64      ?= v3
 # Host architecture, used to decide amd64-only build tags for a native build.
 GOARCH_HOST  ?= $(shell go env GOARCH 2>/dev/null || echo amd64)
-GO_TOOLCHAIN ?= auto
+GO_TOOLCHAIN ?= go$(go_version)
 SKIP_ENSURE_GO ?= 0
 
 # --- Go project root autodetection ---
@@ -97,6 +97,10 @@ endif
 # Toolchain versions (sourced from repo files)
 go_version := $(if $(GO_VERSION),$(GO_VERSION),$(shell awk '/^go / {print $$2; exit}' "$(backend_dir)/go.mod"))
 GO_VERSION ?= $(go_version)
+# GOTOOLCHAIN needs a full release (go1.27.3); a bare 1.27 is rejected by Go.
+ifneq ($(words $(subst ., ,$(go_version))),3)
+$(error GO_VERSION must be a full release like 1.27.3, got '$(go_version)')
+endif
 node_version := $(if $(NODE_VERSION),$(NODE_VERSION),$(shell python3 -c "import json, pathlib; data=json.loads(pathlib.Path('$(frontend_dir)/package.json').read_text()); print((data.get('engines') or {}).get('node',''))" 2>/dev/null))
 NODE_VERSION ?= $(node_version)
 CC ?= cc

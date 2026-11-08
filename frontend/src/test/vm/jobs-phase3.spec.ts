@@ -230,7 +230,8 @@ test("a replace cut by a power loss is resumed by the kernel and followed to the
           (await vmSsh(`findmnt -no UUID ${POOL_MOUNT} || true`)).trim(),
         {
           intervals: [2_000],
-          message: "the boot check mounts the pool its replace target held back",
+          message:
+            "the boot check mounts the pool its replace target held back",
           timeout: 60_000,
         },
       )

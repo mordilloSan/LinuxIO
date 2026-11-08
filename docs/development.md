@@ -30,7 +30,7 @@ use the corresponding Make target.
 
 ## Prerequisites
 
-- Go 1.27 or newer
+- Go 1.21 or newer on PATH (Go fetches the exact version `go.mod` pins)
 - Node.js 24 or newer
 - GNU Make
 
@@ -151,7 +151,6 @@ details; the uppercase aliases below are kept for CI and existing scripts.
 | `CACHE_DIR` | `$(REPO_ROOT)/.cache` | Make caches, logs, and analysis artifacts. |
 | `BIN_DIR` | `$(REPO_ROOT)/build` | Built binary output directory. |
 | `GO_TOOLS_DIR` | `$(HOME)/.go` | Installed Go tool binaries. |
-| `GO_TOOLCHAIN_VERSIONS_DIR` | `$(HOME)/.go-versions` | Managed Go installations. |
 | `NVM_DIR` | `$(HOME)/.nvm` | Node Version Manager installation. |
 | `VITE_DEV_LOG` | `$(FRONTEND_DIR)/.vite-dev.log` | Vite log file. |
 | `VITE_DEV_PID` | `$(FRONTEND_DIR)/.vite-dev.pid` | Vite PID file. |
@@ -164,14 +163,14 @@ an intentional user-local tool directory.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `GO_VERSION` | `go.mod` version | Go version installed by `ensure-go`. |
+| `GO_VERSION` | `go.mod` version | Go version used for builds; Go fetches it when the installed one differs. |
 | `NODE_VERSION` | `frontend/package.json` engine | Node version installed by `ensure-node`. |
 | `NVM_VERSION` | `0.40.2` | NVM installer release. |
 | `GOOS` | `linux` | Go target operating system; LinuxIO validates this as `linux`. |
 | `GOARCH` | Host architecture | Go target architecture (`amd64` or `arm64`). |
 | `GOAMD64` | `v3` | amd64 microarchitecture level. |
-| `GO_TOOLCHAIN` | `auto` | Go toolchain selection mode. |
-| `GO_BIN` | Managed Go binary | Go executable; useful for CodeQL or system-Go integration. |
+| `GO_TOOLCHAIN` | `go$(GO_VERSION)` | `GOTOOLCHAIN` passed to every Go command. |
+| `GO_BIN` | `go` on PATH | Go executable; useful for CodeQL integration. |
 | `CC` | `cc` | C compiler for the authentication helper. |
 | `sha256_cmd` | `sha256sum` | SHA-256 command; use `shasum -a 256` where required by a host. |
 | `setsid_cmd` | `setsid` | Session launcher used to terminate complete validation process groups. |
@@ -185,8 +184,10 @@ an intentional user-local tool directory.
 | `GOVULNCHECK_VERSION` | `latest` | govulncheck version installed by Make. |
 | `GOLANGCI_LINT_OPTS` | `--modules-download-mode=mod` | Additional golangci-lint options. |
 
-`SKIP_ENSURE_GO=1` skips managed Go installation and uses `GO_BIN` or the
-system `go`. `CODEQL_ACTION_GO_BINARY` is honored automatically when present.
+Go is not installed by Make: any Go 1.21 or newer on PATH works (linux-toolbox
+installs it to `/usr/local/go`), and `GOTOOLCHAIN` makes Go download the exact
+version `go.mod` pins. `SKIP_ENSURE_GO=1` is accepted for compatibility.
+`CODEQL_ACTION_GO_BINARY` is honored automatically when present.
 
 ### Test, analysis, and build behavior
 
