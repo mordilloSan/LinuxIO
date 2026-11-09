@@ -273,21 +273,29 @@ func TestFindOfflinePools(t *testing.T) {
 	readSuperblock = func(device string) (Superblock, error) {
 		switch device {
 		case "/dev/sdb":
-			return Superblock{UUID: "pool-uuid", Label: "tank", NumDevices: 3, TotalBytes: 300, Generation: 8}, nil
+			return Superblock{UUID: "pool-uuid", Label: "tank", DevID: 1, NumDevices: 3, TotalBytes: 300, Generation: 8}, nil
 		case "/dev/sdc":
-			return Superblock{UUID: "pool-uuid", Label: "tank", NumDevices: 3, TotalBytes: 300, Generation: 9}, nil
+			return Superblock{UUID: "pool-uuid", Label: "tank", DevID: 3, NumDevices: 3, TotalBytes: 300, Generation: 9}, nil
 		case "/dev/sdd":
 			return Superblock{UUID: "mounted-uuid", Label: "data", NumDevices: 1}, nil
+		// A replace target is scanned but is no member: cold misses a disk.
+		case "/dev/sdf":
+			return Superblock{UUID: "cold-uuid", Label: "cold", DevID: 1, NumDevices: 2, Generation: 4}, nil
+		case "/dev/sdg":
+			return Superblock{UUID: "cold-uuid", Label: "cold", DevID: replaceTargetDevID, NumDevices: 2, Generation: 4}, nil
 		}
 		return Superblock{}, errNotBtrfs
 	}
 	t.Cleanup(func() { readSuperblock = old })
 
-	pools, err := FindOfflinePools(context.Background(), []string{"/dev/sdb", "/dev/sdd", "/dev/sde", "/dev/sdc"})
+	pools, err := FindOfflinePools(context.Background(), []string{"/dev/sdb", "/dev/sdd", "/dev/sde", "/dev/sdc", "/dev/sdf", "/dev/sdg"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []BtrfsOfflinePool{{UUID: "pool-uuid", Label: "tank", NumDevices: 3, Devices: []string{"/dev/sdb", "/dev/sdc"}, TotalBytes: 300, devids: []uint64{0, 0}, generations: []uint64{8, 9}}}
+	want := []BtrfsOfflinePool{
+		{UUID: "pool-uuid", Label: "tank", NumDevices: 3, Devices: []string{"/dev/sdb", "/dev/sdc"}, TotalBytes: 300, Missing: 1, devids: []uint64{1, 3}, generations: []uint64{8, 9}},
+		{UUID: "cold-uuid", Label: "cold", NumDevices: 2, Devices: []string{"/dev/sdf", "/dev/sdg"}, Missing: 1, devids: []uint64{1, replaceTargetDevID}, generations: []uint64{4, 4}},
+	}
 	if !reflect.DeepEqual(pools, want) {
 		t.Fatalf("got %+v, want %+v", pools, want)
 	}

@@ -307,7 +307,9 @@ a permanent top-level mount are offered.
 `nofail` keeps a pool with a missing disk from blocking boot. Such a pool is
 not mounted, since btrfs refuses that without `degraded`, so the overview
 lists it from the disks' superblocks as an unmounted pool with its missing
-disk count. **Mount** mounts a complete pool and **Mount degraded** one with
+disk count. The backend computes that count (`missing`) and leaves out an
+interrupted device replace's target, which the kernel scans as devid 0 but is
+no member. **Mount** mounts a complete pool and **Mount degraded** one with
 missing disks, so its data stays reachable until the disk is replaced; both
 use the pool's fstab options, so `subvol=` and `compress=` apply. A pool
 without an fstab entry is mounted at `/mnt/<label>` and recorded. Pools in

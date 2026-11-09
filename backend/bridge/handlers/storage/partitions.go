@@ -34,6 +34,7 @@ var (
 	addPartition        = btrfs.AddPartition
 	createBtrfsPool     = btrfs.CreatePool
 	mountBtrfsPool      = btrfs.MountPool
+	mountOfflinePool    = btrfs.MountOfflinePool
 	wipePoolSuperblocks = btrfs.WipePoolSuperblocks
 	partitionNumber     = btrfs.PartitionNumber
 	unmountPool         = unix.Unmount

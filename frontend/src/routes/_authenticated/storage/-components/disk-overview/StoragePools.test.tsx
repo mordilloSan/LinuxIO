@@ -210,6 +210,7 @@ const cold: BtrfsOfflinePool = {
   devices: ["/dev/sdb"],
   totalBytes: 100 * GiB,
   mountpoint: "/mnt/cold",
+  missing: 1,
 };
 
 const mdTopology = {

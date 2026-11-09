@@ -617,6 +617,7 @@ describe("buildStorageGraph", () => {
           devices: ["/dev/sdb"],
           totalBytes: 0,
           mountpoint: "/mnt/cold",
+          missing: 2,
         },
       ],
     });
@@ -628,6 +629,33 @@ describe("buildStorageGraph", () => {
       ["drive:sdb", false],
       ["missing:cold", false],
     ]);
+  });
+
+  it("takes an offline pool's missing count from the backend, which skips a replace target", () => {
+    // sdc is a replace target: scanned with the pool, yet no member.
+    const graph = buildStorageGraph({
+      ...empty,
+      devices: [
+        storageBlock("/dev/sdb", "disk", 100),
+        storageBlock("/dev/sdc", "disk", 100),
+      ],
+      drives: [drive("sdb"), drive("sdc")],
+      offline: [
+        {
+          uuid: "cold",
+          label: "cold",
+          numDevices: 2,
+          devices: ["/dev/sdb", "/dev/sdc"],
+          totalBytes: 0,
+          mountpoint: "/mnt/cold",
+          missing: 1,
+        },
+      ],
+    });
+    const pool = graph.nodes.find((node) => node.kind === "offlinePool");
+    expect(pool?.kind === "offlinePool" && pool.missing).toBe(1);
+    const missing = graph.nodes.find((node) => node.kind === "missing");
+    expect(missing?.kind === "missing" && missing.count).toBe(1);
   });
 
   it("keeps a plain partition's volume beside its drive and pushes the middle column around the line", () => {

@@ -317,6 +317,9 @@ type BtrfsOfflinePool struct {
 	// Mountpoint is where /etc/fstab mounts the filesystem; the caller that
 	// knows fstab fills it.
 	Mountpoint string `json:"mountpoint"`
+	// Missing counts the members absent; a device replace's target, which
+	// the kernel scans as devid 0, is no member.
+	Missing int `json:"missing"`
 	// devids and generations hold each of Devices' superblock devid and
 	// generation.
 	devids, generations []uint64
@@ -357,6 +360,9 @@ func FindOfflinePools(ctx context.Context, candidates []string) ([]BtrfsOfflineP
 		pools[i].Devices = append(pools[i].Devices, device)
 		pools[i].devids = append(pools[i].devids, sb.DevID)
 		pools[i].generations = append(pools[i].generations, sb.Generation)
+	}
+	for i := range pools {
+		pools[i].Missing = missingDisks(pools[i])
 	}
 	return pools, nil
 }

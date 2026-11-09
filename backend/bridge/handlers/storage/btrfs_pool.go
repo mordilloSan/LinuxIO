@@ -333,8 +333,8 @@ func MountBtrfsPool(ctx context.Context, req apischema.BtrfsPoolMountRequest) (b
 	if err != nil {
 		return btrfs.BtrfsFilesystem{}, err
 	}
-	if len(pool.Devices) < pool.NumDevices && !req.Degraded {
-		return btrfs.BtrfsFilesystem{}, fmt.Errorf("pool %s is missing %d of %d devices; mount it degraded to use it anyway", pool.UUID, pool.NumDevices-len(pool.Devices), pool.NumDevices)
+	if pool.Missing > 0 && !req.Degraded {
+		return btrfs.BtrfsFilesystem{}, fmt.Errorf("%w: pool %s is missing %d of %d devices; mount it degraded to use it anyway", bridgeipc.ErrConflict, pool.UUID, pool.Missing, pool.NumDevices)
 	}
 	mountpoint := pool.Mountpoint
 	persist := mountpoint == ""
@@ -352,7 +352,7 @@ func MountBtrfsPool(ctx context.Context, req apischema.BtrfsPoolMountRequest) (b
 		// subvol=, compress= and the like decide what the mount shows.
 		options = strings.Split(getFstabEntries()[mountpoint].options, ",")
 	}
-	if err := btrfs.MountOfflinePool(ctx, pool, mountpoint, options, req.Degraded); err != nil {
+	if err := mountOfflinePool(ctx, pool, mountpoint, options, req.Degraded); err != nil {
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("mount btrfs pool %s at %s: %w", pool.UUID, mountpoint, err)
 	}
 	if persist {
@@ -406,13 +406,13 @@ func SetBtrfsLabel(ctx context.Context, req apischema.BtrfsLabelRequest) (btrfs.
 }
 
 func findOfflinePool(ctx context.Context, uuid string) (btrfs.BtrfsOfflinePool, error) {
-	pools, err := ListOfflinePools(ctx)
+	pools, err := offlinePools(ctx)
 	if err != nil {
 		return btrfs.BtrfsOfflinePool{}, err
 	}
 	i := slices.IndexFunc(pools, func(p btrfs.BtrfsOfflinePool) bool { return p.UUID == uuid })
 	if i < 0 {
-		return btrfs.BtrfsOfflinePool{}, fmt.Errorf("unmounted btrfs filesystem %s not found", uuid)
+		return btrfs.BtrfsOfflinePool{}, fmt.Errorf("%w: unmounted btrfs filesystem %s", bridgeipc.ErrNotFound, uuid)
 	}
 	return pools[i], nil
 }

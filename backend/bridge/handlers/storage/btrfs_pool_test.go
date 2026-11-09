@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
 )
 
@@ -286,6 +287,34 @@ func TestFstabMountpointFor(t *testing.T) {
 	}
 	if got := fstabMountpointFor(entries, "missing"); got != "" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+// A pool whose present devices include a replace target, scanned as a
+// device but no member, still misses a member and mounts only degraded.
+func TestMountBtrfsPoolNeedsDegradedWhenMissing(t *testing.T) {
+	useTempFstab(t, "UUID=cold-uuid /mnt/cold btrfs noatime 0 0\n")
+	oldOffline, oldMount := offlinePools, mountOfflinePool
+	t.Cleanup(func() { offlinePools, mountOfflinePool = oldOffline, oldMount })
+	pool := btrfs.BtrfsOfflinePool{UUID: "cold-uuid", NumDevices: 2, Devices: []string{"/dev/sdc", "/dev/sdd"}, Mountpoint: "/mnt/cold", Missing: 1}
+	offlinePools = func(context.Context) ([]btrfs.BtrfsOfflinePool, error) { return []btrfs.BtrfsOfflinePool{pool}, nil }
+	var mounts []bool
+	mountOfflinePool = func(_ context.Context, _ btrfs.BtrfsOfflinePool, _ string, _ []string, degraded bool) error {
+		mounts = append(mounts, degraded)
+		return errStep
+	}
+	ctx := context.Background()
+
+	_, err := MountBtrfsPool(ctx, apischema.BtrfsPoolMountRequest{UUID: "cold-uuid"})
+	if !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), "missing 1 of 2 devices") || len(mounts) != 0 {
+		t.Fatalf("plain mount: err = %v, mounts = %v; want a conflict before any mount", err, mounts)
+	}
+	if _, err = MountBtrfsPool(ctx, apischema.BtrfsPoolMountRequest{UUID: "gone-uuid", Degraded: true}); !errors.Is(err, bridgeipc.ErrNotFound) || len(mounts) != 0 {
+		t.Fatalf("unknown pool: err = %v, mounts = %v; want not found before any mount", err, mounts)
+	}
+	_, err = MountBtrfsPool(ctx, apischema.BtrfsPoolMountRequest{UUID: "cold-uuid", Degraded: true})
+	if !errors.Is(err, errStep) || !slices.Equal(mounts, []bool{true}) {
+		t.Fatalf("degraded mount: err = %v, mounts = %v; want one degraded mount", err, mounts)
 	}
 }
 

@@ -386,7 +386,7 @@ export const buildStorageGraph = ({
   });
 
   for (const pool of offline) {
-    const missing = pool.numDevices - pool.devices.length;
+    const { missing } = pool;
     const node = add({
       ...place,
       id: `pool:${pool.uuid}`,
