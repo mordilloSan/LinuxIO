@@ -223,6 +223,10 @@ export function useRecoveredTasks(
                 : (message ?? "Updating packages");
           case TaskTypes.TASK_TYPE_STORAGE_SMART_TEST:
             return message ?? "Running SMART self-test";
+          case TaskTypes.TASK_TYPE_STORAGE_BTRFS_BALANCE:
+            return `Balancing btrfs filesystem${percentage !== undefined ? ` (${percentage}%)` : ""}`;
+          case TaskTypes.TASK_TYPE_STORAGE_BTRFS_SCRUB:
+            return `Scrubbing btrfs filesystem${percentage !== undefined ? ` (${percentage}%)` : ""}`;
           case TaskTypes.TASK_TYPE_SYSTEM_INSTALL_CAPABILITY: {
             const cap = requestString(metadata, "capability") ?? "capability";
             return message ?? `Installing ${cap}`;
@@ -342,6 +346,8 @@ export function useRecoveredTasks(
         case TaskTypes.TASK_TYPE_DOCKER_UPDATE:
         case TaskTypes.TASK_TYPE_PACKAGE_UPDATE:
         case TaskTypes.TASK_TYPE_STORAGE_SMART_TEST:
+        case TaskTypes.TASK_TYPE_STORAGE_BTRFS_BALANCE:
+        case TaskTypes.TASK_TYPE_STORAGE_BTRFS_SCRUB:
         case TaskTypes.TASK_TYPE_SYSTEM_INSTALL_CAPABILITY:
         case TaskTypes.TASK_TYPE_FILE_UPLOAD:
         case TaskTypes.TASK_TYPE_FILE_UPLOAD_BATCH:

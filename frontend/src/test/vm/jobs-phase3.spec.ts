@@ -290,7 +290,7 @@ test("a scrub canceled before a reboot is not resumed", async ({ page }) => {
   test.setTimeout(300_000);
   const before = await jobIds();
   const { job } = await startScrub(page, before, 4 * MiB);
-  // The tray does not list scrubs; the banner's Stop check is the cancel.
+  // The banner's Stop check cancels the scrub's job, as the tray's cancel does.
   const stop = page.getByRole("button", { name: "Stop check" });
   await expect(stop).toBeVisible({ timeout: 30_000 });
   expect(

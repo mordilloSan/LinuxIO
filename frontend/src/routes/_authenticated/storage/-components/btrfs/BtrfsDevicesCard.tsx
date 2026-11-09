@@ -1,7 +1,10 @@
 import { Icon } from "@iconify/react";
 import { useState } from "react";
+import { toast } from "sonner";
 
 import {
+  call,
+  getMutationErrorMessage,
   linuxio,
   type BtrfsDevice,
   type BtrfsFilesystem,
@@ -65,6 +68,29 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
       error: "Failed to cancel balance",
       toast: BTRFS_POOL_TOAST_META,
     });
+  // A balance with a job is canceled through the job, so the record gets
+  // cancel_requested and a shutdown right after does not resume it. Only a
+  // balance without a running job falls back to the kernel cancel.
+  const cancelBalanceJob = async () => {
+    const jobs = await call("tasks.list", { status: "active" }).catch(() => []);
+    const job = jobs.find(
+      (task) =>
+        task.type === TASK_TYPE_STORAGE_BTRFS_BALANCE &&
+        task.state === "running" &&
+        task.metadata?.identity?.[0] === uuid,
+    );
+    if (!job) {
+      cancelBalance({ uuid });
+      return;
+    }
+    try {
+      await call("tasks.cancel", { taskId: job.id });
+    } catch (error) {
+      toast.error(getMutationErrorMessage(error, "Failed to cancel balance"), {
+        meta: BTRFS_POOL_TOAST_META,
+      });
+    }
+  };
   const { mutate: growDevice, isPending: isGrowing } =
     linuxio.storage.btrfs_device_grow.useMutation({
       success: "Device grown to its disk size",
@@ -257,7 +283,7 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
             </AppTypography>
             {balance.isPending && (
               <AppButton
-                onClick={() => cancelBalance({ uuid })}
+                onClick={() => void cancelBalanceJob()}
                 size="small"
                 variant="outlined"
               >

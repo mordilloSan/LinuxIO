@@ -1,11 +1,19 @@
 import { Icon } from "@iconify/react";
 import { useState, type CSSProperties } from "react";
+import { toast } from "sonner";
 
-import { linuxio, type BtrfsFilesystem, type BtrfsScrubStatus } from "@/api";
+import {
+  call,
+  getMutationErrorMessage,
+  linuxio,
+  type BtrfsFilesystem,
+  type BtrfsScrubStatus,
+} from "@/api";
 import { STATUS_COLOR } from "@/components/cards/EntityCardKit";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
+import { TASK_TYPE_STORAGE_BTRFS_SCRUB } from "@/tasks/taskTypes";
 import { formatDate } from "@/utils/formatters";
 
 import BtrfsAddDeviceDialog from "./BtrfsAddDeviceDialog";
@@ -120,6 +128,29 @@ const BtrfsHealthBanner = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
       error: "Failed to stop the check",
       toast: BTRFS_POOL_TOAST_META,
     });
+  // A scrub with a job is canceled through the job, so the record gets
+  // cancel_requested and a shutdown right after does not resume it. Only a
+  // scrub without a running job (the timer's) falls back to the kernel cancel.
+  const stopCheck = async () => {
+    const jobs = await call("tasks.list", { status: "active" }).catch(() => []);
+    const job = jobs.find(
+      (task) =>
+        task.type === TASK_TYPE_STORAGE_BTRFS_SCRUB &&
+        task.state === "running" &&
+        task.metadata?.identity?.[0] === uuid,
+    );
+    if (!job) {
+      cancelScrub({ uuid });
+      return;
+    }
+    try {
+      await call("tasks.cancel", { taskId: job.id });
+    } catch (error) {
+      toast.error(getMutationErrorMessage(error, "Failed to stop the check"), {
+        meta: BTRFS_POOL_TOAST_META,
+      });
+    }
+  };
 
   return (
     <FrostedCard style={bannerStyle}>
@@ -160,7 +191,7 @@ const BtrfsHealthBanner = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
       )}
       {scrubRunning ? (
         <AppButton
-          onClick={() => cancelScrub({ uuid })}
+          onClick={() => void stopCheck()}
           size="small"
           variant="outlined"
         >

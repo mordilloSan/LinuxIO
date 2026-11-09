@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -20,6 +20,8 @@ const mocks = vi.hoisted(() => ({
   mutations: {} as Record<string, ReturnType<typeof vi.fn> | undefined>,
   pending: new Set<string>(),
   submit: vi.fn(),
+  tasks: vi.fn(),
+  cancelTask: vi.fn(),
   topology: vi.fn(),
 }));
 
@@ -55,8 +57,12 @@ vi.mock("@/api", async (importOriginal) => {
   };
   const mocked = {
     ...actual,
-    call: (route: string) =>
-      route === "tasks.list" ? Promise.resolve([]) : Promise.reject(),
+    call: (route: string, args: unknown) =>
+      route === "tasks.list"
+        ? Promise.resolve(mocks.tasks())
+        : route === "tasks.cancel"
+          ? mocks.cancelTask(args)
+          : Promise.reject(),
     useCallMutation,
     linuxio: {
       ...actual.linuxio,
@@ -144,6 +150,8 @@ beforeEach(() => {
   mocks.mutations = {};
   mocks.pending.clear();
   mocks.submit.mockResolvedValue({ id: "task-1" });
+  mocks.tasks.mockReturnValue([]);
+  mocks.cancelTask.mockResolvedValue(undefined);
   mocks.topology.mockResolvedValue(
     topology([
       blockDevice({}),
@@ -280,7 +288,6 @@ describe("BtrfsDevicesCard actions", () => {
   });
 
   it("shows progress and locks the actions while a balance runs", async () => {
-    const user = userEvent.setup();
     mocks.pending.add("btrfs_balance");
     render(<BtrfsDevicesCard filesystem={filesystem(2)} />);
 
@@ -294,10 +301,50 @@ describe("BtrfsDevicesCard actions", () => {
         expect(button).toBeDisabled();
       }
     }
+  });
+
+  const balanceJob = (id: string, uuid: string, state = "running") => ({
+    id,
+    metadata: { identity: [uuid] },
+    state,
+    type: "storage.btrfs_balance",
+  });
+
+  it("cancels the running balance through its job", async () => {
+    const user = userEvent.setup();
+    mocks.pending.add("btrfs_balance");
+    mocks.tasks.mockReturnValue([
+      balanceJob("other-fs", "uuid-2"),
+      balanceJob("queued", "uuid-1", "queued"),
+      balanceJob("mine", "uuid-1"),
+    ]);
+    render(<BtrfsDevicesCard filesystem={filesystem(2)} />);
+
     await user.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(route("btrfs_balance_cancel")).toHaveBeenCalledWith({
-      uuid: "uuid-1",
-    });
+
+    await waitFor(() =>
+      expect(mocks.cancelTask).toHaveBeenCalledWith({ taskId: "mine" }),
+    );
+    expect(mocks.cancelTask).toHaveBeenCalledTimes(1);
+    expect(
+      mocks.mutations["storage.btrfs_balance_cancel"],
+    ).not.toHaveBeenCalled();
+  });
+
+  it("cancels in the kernel when the balance has no running job", async () => {
+    const user = userEvent.setup();
+    mocks.pending.add("btrfs_balance");
+    mocks.tasks.mockReturnValue([balanceJob("other-fs", "uuid-2")]);
+    render(<BtrfsDevicesCard filesystem={filesystem(2)} />);
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() =>
+      expect(route("btrfs_balance_cancel")).toHaveBeenCalledWith({
+        uuid: "uuid-1",
+      }),
+    );
+    expect(mocks.cancelTask).not.toHaveBeenCalled();
   });
 
   it("adds a free device", async () => {
@@ -396,10 +443,40 @@ describe("BtrfsDevicesCard actions", () => {
     expect(
       screen.queryByRole("button", { name: "Check for errors" }),
     ).not.toBeInTheDocument();
+    // No scrub job (the timer started it): the kernel cancel stops it.
     await user.click(screen.getByRole("button", { name: "Stop check" }));
-    expect(route("btrfs_scrub_cancel")).toHaveBeenCalledWith({
-      uuid: "uuid-1",
+    await waitFor(() =>
+      expect(route("btrfs_scrub_cancel")).toHaveBeenCalledWith({
+        uuid: "uuid-1",
+      }),
+    );
+    expect(mocks.cancelTask).not.toHaveBeenCalled();
+  });
+
+  it("stops a running scrub through its job", async () => {
+    const user = userEvent.setup();
+    const scrubJob = (id: string, uuid: string, state = "running") => ({
+      id,
+      metadata: { identity: [uuid, "scrub"] },
+      state,
+      type: "storage.btrfs_scrub_start",
     });
+    mocks.tasks.mockReturnValue([
+      scrubJob("other-fs", "uuid-2"),
+      scrubJob("queued", "uuid-1", "queued"),
+      scrubJob("mine", "uuid-1"),
+    ]);
+    const running = filesystem(1);
+    running.scrub.status = "running";
+    render(<BtrfsHealthBanner filesystem={running} />);
+
+    await user.click(screen.getByRole("button", { name: "Stop check" }));
+
+    await waitFor(() =>
+      expect(mocks.cancelTask).toHaveBeenCalledWith({ taskId: "mine" }),
+    );
+    expect(mocks.cancelTask).toHaveBeenCalledTimes(1);
+    expect(route("btrfs_scrub_cancel")).not.toHaveBeenCalled();
   });
 
   it("offers to grow a device whose disk is bigger than the filesystem's view", async () => {

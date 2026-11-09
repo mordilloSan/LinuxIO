@@ -202,6 +202,10 @@ export const TERMINAL_TASK_FEEDBACK: Record<string, TerminalFeedbackEntry> = {
   // Page-owned: DiskOverview fires its own scoped toast for SMART tests, so
   // the global handler stays silent for every terminal state.
   [TaskTypes.TASK_TYPE_STORAGE_SMART_TEST]: {},
+  // Page-owned the same way: BtrfsDevicesCard toasts the balance outcome.
+  [TaskTypes.TASK_TYPE_STORAGE_BTRFS_BALANCE]: {},
+  // And BtrfsHealthBanner toasts the scrub outcome.
+  [TaskTypes.TASK_TYPE_STORAGE_BTRFS_SCRUB]: {},
 };
 
 /**

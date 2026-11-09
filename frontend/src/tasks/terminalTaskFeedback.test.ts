@@ -15,6 +15,8 @@ const {
   TASK_TYPE_DOCKER_UPDATE,
   TASK_TYPE_DOCKER_COMPOSE,
   TASK_TYPE_PACKAGE_UPDATE,
+  TASK_TYPE_STORAGE_BTRFS_BALANCE,
+  TASK_TYPE_STORAGE_BTRFS_SCRUB,
   TASK_TYPE_STORAGE_SMART_TEST,
   TASK_TYPE_SYSTEM_INSTALL_CAPABILITY,
 } = await import("./taskTypes");
@@ -238,6 +240,26 @@ describe("terminalTaskFeedback", () => {
     emitTerminalTaskFeedback(
       task("smart-failed", TASK_TYPE_STORAGE_SMART_TEST),
       failed("self-test failed"),
+      deps,
+    );
+
+    expect(toastMocks.error).not.toHaveBeenCalled();
+  });
+
+  it("keeps balances silent — BtrfsDevicesCard toasts the outcome", () => {
+    emitTerminalTaskFeedback(
+      task("balance-failed", TASK_TYPE_STORAGE_BTRFS_BALANCE),
+      failed("no space"),
+      deps,
+    );
+
+    expect(toastMocks.error).not.toHaveBeenCalled();
+  });
+
+  it("keeps scrubs silent — BtrfsHealthBanner toasts the outcome", () => {
+    emitTerminalTaskFeedback(
+      task("scrub-failed", TASK_TYPE_STORAGE_BTRFS_SCRUB),
+      failed("device gone"),
       deps,
     );
 

@@ -9,6 +9,8 @@ import {
   TASK_TYPE_DOCKER_UPDATE,
   TASK_TYPE_FILE_INDEXER,
   TASK_TYPE_PACKAGE_UPDATE,
+  TASK_TYPE_STORAGE_BTRFS_BALANCE,
+  TASK_TYPE_STORAGE_BTRFS_SCRUB,
   TASK_TYPE_SYSTEM_INSTALL_CAPABILITY,
 } from "@/tasks/taskTypes";
 import { makeCountedSet } from "@/tasks/taskUtils";
@@ -178,6 +180,60 @@ describe("useRecoveredTasks package updates", () => {
         id: "docker-update-active",
         label: "Pulling the updated image",
         taskType: TASK_TYPE_DOCKER_UPDATE,
+      }),
+    ]);
+  });
+
+  it("lists a running btrfs balance in the tray with progress", async () => {
+    const { controls, emitTerminalEvent } = renderRecoveredTasks();
+
+    await emitTerminalEvent({
+      created_at: "2026-01-01T00:00:00Z",
+      id: "balance-active",
+      metadata: { identity: ["uuid-1"] },
+      progress: { percentage: 42, phase: "running" },
+      state: "running",
+      type: TASK_TYPE_STORAGE_BTRFS_BALANCE,
+      updated_at: "2026-01-01T00:00:01Z",
+    });
+
+    const update = controls.genericTasks.setBackgroundTasks.mock.calls[0]?.[0];
+    if (typeof update !== "function") {
+      throw new Error("expected recovered task state updater");
+    }
+    expect(update([])).toEqual([
+      expect.objectContaining({
+        id: "balance-active",
+        label: "Balancing btrfs filesystem (42%)",
+        progress: 42,
+        taskType: TASK_TYPE_STORAGE_BTRFS_BALANCE,
+      }),
+    ]);
+  });
+
+  it("lists a running btrfs scrub in the tray with progress", async () => {
+    const { controls, emitTerminalEvent } = renderRecoveredTasks();
+
+    await emitTerminalEvent({
+      created_at: "2026-01-01T00:00:00Z",
+      id: "scrub-active",
+      metadata: { identity: ["uuid-1", "scrub"] },
+      progress: { message: "Scrubbing: 42.0% complete", percentage: 42 },
+      state: "running",
+      type: TASK_TYPE_STORAGE_BTRFS_SCRUB,
+      updated_at: "2026-01-01T00:00:01Z",
+    });
+
+    const update = controls.genericTasks.setBackgroundTasks.mock.calls[0]?.[0];
+    if (typeof update !== "function") {
+      throw new Error("expected recovered task state updater");
+    }
+    expect(update([])).toEqual([
+      expect.objectContaining({
+        id: "scrub-active",
+        label: "Scrubbing btrfs filesystem (42%)",
+        progress: 42,
+        taskType: TASK_TYPE_STORAGE_BTRFS_SCRUB,
       }),
     ]);
   });

@@ -39,6 +39,9 @@ export const TASK_TYPE_STORAGE_BTRFS_REPLICATION = taskType(
 export const TASK_TYPE_STORAGE_BTRFS_BALANCE = taskType(
   "storage.btrfs_balance",
 );
+export const TASK_TYPE_STORAGE_BTRFS_SCRUB = taskType(
+  "storage.btrfs_scrub_start",
+);
 export const TASK_TYPE_STORAGE_PARTITION_CREATE = taskType(
   "storage.partition_create",
 );

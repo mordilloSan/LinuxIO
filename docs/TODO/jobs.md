@@ -546,8 +546,11 @@ Seen on the way. None of these blocks phase 3:
   resumed (inferred from the code, window of a few milliseconds). Resolved for
   scrubs: "Stop check" now cancels the scrub's job through `tasks.cancel` and
   calls `storage.btrfs_scrub_cancel` only for a scrub without a job (the
-  timer's), and the tray lists scrub jobs with a cancel. Balances still cancel
-  in the kernel and are not in the tray.
+  timer's), and the tray lists scrub jobs with a cancel. Balances follow the
+  same pattern: the Devices card's "Cancel" cancels the running balance job
+  through `tasks.cancel` and calls `storage.btrfs_balance_cancel` only for a
+  balance without a running job, and the tray lists balance jobs with a cancel
+  (the outcome toast stays with the Devices card).
 - The "was interrupted" alert stayed after a successful resume (balance,
   scrub). Fixed: the root host resolves it when the resumed job completes
   (`TestResumedJobThatCompletesClearsItsInterruptedAlert`).
@@ -770,7 +773,6 @@ Moved out of phase 3 (not lost):
   snapshot stays `running` until the handler returns.
 - Periodic scrub checkpoints: a power loss rescans from 0.
 - Progress for device removal.
-- Browser cancel through `tasks.cancel` for balances (scrubs have it; section 3.6).
 - The overview and the bridge's offline-pool mount counting a replace target as
   a present disk (section 3.6).
 
