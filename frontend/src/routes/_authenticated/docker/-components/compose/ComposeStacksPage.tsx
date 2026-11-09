@@ -339,6 +339,8 @@ const ComposeStacksPage = ({
     ) => {
       const encoder = new TextEncoder();
       const contentBytes = encoder.encode(content);
+      // A stack folder belongs to the user, not to the root bridge: new
+      // stack folders and files are created as the session user.
       await uploadContent(filePath, contentBytes, {
         chunkSize,
         // handleSave owns the outcome (overwrite dialog on 409, toasts
@@ -346,10 +348,12 @@ const ComposeStacksPage = ({
         // report this task's failure.
         onTaskStart: (task) => markTerminalFeedbackEmitted(task.id),
         overwrite: override || undefined,
+        owner: "session",
       });
 
       // Persist the sibling .env when its buffer changed. The editor is
       // authoritative for it (loaded fresh on open), so overwrite is safe.
+      // A new .env may hold secrets, so only its owner can read it.
       if (envContent !== undefined) {
         const envPath = envPathFor(filePath);
         if (envPath) {
@@ -357,6 +361,8 @@ const ComposeStacksPage = ({
             chunkSize,
             onTaskStart: (task) => markTerminalFeedbackEmitted(task.id),
             overwrite: true,
+            owner: "session",
+            private: true,
           });
         }
       }

@@ -28,6 +28,13 @@ vm-test-btrfs-integration: ensure-go ## Run the root btrfs and partition kernel 
 	@"$(vm_script)" ssh 'cat > btrfs.test && chmod +x btrfs.test' < "$(cache_dir)/vm/btrfs.test"
 	@"$(vm_script)" ssh "echo \"VM kernel: \$$(uname -r)\" && sudo env LINUXIO_RUN_BTRFS_INTEGRATION=1 ./btrfs.test -test.run $$(printf %q '$(BTRFS_INTEGRATION_RUN)') -test.count=1 -test.v -test.timeout=20m"
 
+vm-test-filebrowser-root: ensure-go ## Run the root-only file browser ownership tests in the test VM
+	@set -e
+	@mkdir -p "$(cache_dir)/vm"
+	@cd "$(backend_dir)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" "$(GO_BIN)" test -c -o "$(cache_dir)/vm/filebrowser.test" ./bridge/handlers/filebrowser
+	@"$(vm_script)" ssh 'cat > filebrowser.test && chmod +x filebrowser.test' < "$(cache_dir)/vm/filebrowser.test"
+	@"$(vm_script)" ssh "sudo ./filebrowser.test -test.run $$(printf %q '$(FILEBROWSER_ROOT_RUN)') -test.count=1 -test.v"
+
 test-vm-browser: ensure-node setup ## Run the Playwright specs in frontend/src/test/vm against the test VM
 	@set -e
 	@ip="$$("$(vm_script)" ip)"

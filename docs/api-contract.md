@@ -733,12 +733,10 @@ holds in memory: running jobs and terminal ones for 30 minutes. Records from
 before a host restart are not listed yet; `tasks.get`, `tasks.watch` and
 `tasks.cancel` of such a job are answered from its record.
 
-Two `jobs.*` routes are internal, not generated for the frontend:
-`jobs.hello` is the first stream of a connection to a job host and carries the
-protocol number and the session facts; `jobs.resume {id}` asks the root job
-host to run the `Resume` hook of an interrupted resumable job. `jobs.resume` is
-served to root only; `linuxio-bridge jobs submit --resume` uses it. Both exist
-for testing and are to be removed in a later commit.
+`jobs.hello` is an internal route, not generated for the frontend: the first
+stream of a connection to a job host, carrying the protocol number and the
+session facts. The host serves no manual resume; it resumes interrupted jobs
+itself at start.
 
 The `tasks.*` namespace is reserved by `bridgeipc`. The `tasks` handler family
 provides the generated route catalog, and its registration callback asks the

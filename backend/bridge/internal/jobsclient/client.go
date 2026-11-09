@@ -1,6 +1,5 @@
-// Package jobsclient connects to the caller's own job host and runs jobs on
-// it: the bridge's side of a host connection and the "linuxio-bridge jobs
-// submit" CLI. systemd holds each host's socket, and a connection starts a
+// Package jobsclient connects to the caller's own job host: the bridge's side
+// of a host connection. systemd holds each host's socket, and a connection starts a
 // host that is down; root starts that socket unit first, and linuxio-auth
 // starts a user's at login.
 package jobsclient
@@ -19,7 +18,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-	"uuid"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
@@ -228,70 +226,4 @@ func (c *Client) Call(ctx context.Context, route string, request any) (jsontext.
 		return nil, bridgeipc.NewError(result.Error, result.Code)
 	}
 	return result.Data, nil
-}
-
-// Submit starts a job of route with request on the host and prints its ID on
-// a line of out. With wait it then prints a line per progress frame and the
-// result, and returns exit code 0, or 1 after printing "error: <message>";
-// without, it detaches once the job has started and returns 0.
-func Submit(ctx context.Context, c *Client, route string, request jsontext.Value, wait bool, out io.Writer) (exitCode int, err error) {
-	id := uuid.New().String()
-	raw, err := json.Marshal(relay.StreamOpenEnvelope{Route: route, Request: request, ID: id})
-	if err != nil {
-		return 1, fmt.Errorf("encode job request: %w", err)
-	}
-	stream, err := c.Open(ctx, raw)
-	if err != nil {
-		return 1, err
-	}
-	defer stream.Close() // a close detaches; the job keeps running
-	stop := context.AfterFunc(ctx, func() { _ = stream.SetReadDeadline(time.Now()) })
-	defer stop()
-	fmt.Fprintln(out, id)
-	for {
-		frame, err := relay.ReadRelayFrame(stream)
-		if err != nil {
-			return 1, fmt.Errorf("read job %s: %w", id, cmp.Or(ctx.Err(), err))
-		}
-		switch frame.Opcode {
-		case relay.OpStreamProgress:
-			fmt.Fprintln(out, progressLine(frame.Payload))
-			if !wait {
-				return 0, nil
-			}
-		case relay.OpStreamResult:
-			var result relay.ResultFrame
-			if err := json.Unmarshal(frame.Payload, &result); err != nil {
-				return 1, fmt.Errorf("decode job %s result: %w", id, err)
-			}
-			if result.Status != "ok" {
-				fmt.Fprintf(out, "error: %s\n", result.Error)
-				return 1, nil
-			}
-			if len(result.Data) > 0 {
-				fmt.Fprintln(out, string(result.Data))
-			}
-			return 0, nil
-		}
-	}
-}
-
-// progressLine is "phase: message" for a progress frame with a message, else
-// its raw JSON (the task.snapshot frame included).
-func progressLine(payload []byte) string {
-	var p bridgeipc.TaskProgress
-	if json.Unmarshal(payload, &p) != nil || p.Message == "" {
-		return string(payload)
-	}
-	if p.Phase == "" {
-		return p.Message
-	}
-	return p.Phase + ": " + p.Message
-}
-
-// Resume asks the root host to run the Resume hook of the interrupted
-// resumable job id. It returns once the resumed job has started.
-func Resume(ctx context.Context, c *Client, id string) error {
-	_, err := c.Call(ctx, bridgeipc.ResumeRoute, map[string]string{"id": id})
-	return err
 }

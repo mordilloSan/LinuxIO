@@ -134,6 +134,8 @@ make vm-destroy       # delete the domain and its volumes; the cache stays
 - `vm-test-btrfs-integration` builds the `common/btrfs` test binary on the host,
   prints the VM's kernel version and runs the same tests as
   `test-btrfs-integration`, as root in the VM.
+- `vm-test-filebrowser-root` does the same for the file browser's root-only
+  ownership tests (`test-filebrowser-root`).
 
 ## Overrides
 
@@ -299,7 +301,7 @@ follows:
 - backend checks: `golint`, `golint-only`, `test-backend`, `test-go`, `deadcode`,
   `deadcode-only`, `check-backend`, `test-auth`, `test-auth-protocol`,
   `test-auth-pam`, `test-updater`, `test-docker-update-integration`,
-  `check-c-build-deps`
+  `test-filebrowser-root`, `check-c-build-deps`
 - analysis: `bundle-metrics`, `compiler-coverage`, `analyze`, `analyze-auth`
 - builds and development: `test`, `build`, `build-nocheck`, `fastbuild`,
   `build-vite`, `build-backend`, `build-bridge`, `build-auth`, `build-cli`,
@@ -307,7 +309,7 @@ follows:
   `clean`, `cloc`
 - installation: `localinstall`, `reinstall`, `uninstall`
 - test VM: `vm-create`, `vm-install`, `vm-ssh`, `vm-reset`, `vm-destroy`,
-  `vm-test-btrfs-integration`, `test-vm-browser`
+  `vm-test-btrfs-integration`, `vm-test-filebrowser-root`, `test-vm-browser`
 - documentation: `help-overrides`
 
 For release-helper smoke coverage, run `make test-release-automation`.

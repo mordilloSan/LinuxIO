@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
@@ -37,11 +39,17 @@ type uploadTransferTask struct {
 	expectedSize    int64
 	expectedVersion string
 	overwrite       bool
+	newOwner        sessionOwner // set when a root bridge hands what this upload creates to the session user
+	private         bool         // a new file is owner-only (0600)
 
-	// finalRel, tempRel and attrs are guarded by mu.
-	finalRel string
-	tempRel  string
-	attrs    uploadAttributes
+	// finalRel, tempRel, attrs, folderInfo, bufferInfo and fileOwner are
+	// guarded by mu.
+	finalRel   string
+	tempRel    string
+	attrs      uploadAttributes
+	folderInfo os.FileInfo  // the folder prepare put the buffer in; the commit must find this folder
+	bufferInfo os.FileInfo  // the buffer prepare created; every reopen must find this file
+	fileOwner  sessionOwner // newOwner when the buffer's folder is already theirs
 }
 
 var errUploadVersionConflict = errors.New("file changed since it was opened")
@@ -107,34 +115,49 @@ func restoreUploadedFile(root *fsroot.FSRoot, rel string, attrs uploadAttributes
 	return nil
 }
 
-// commitUploadBuffer moves the finished buffer into place. Without overwrite
-// it links instead of renaming, so a file that appeared since the upload
-// started is never replaced.
-func commitUploadBuffer(root *fsroot.FSRoot, tempRel, finalRel string, overwrite bool) error {
+// commitUploadBuffer moves the finished buffer tempName to finalName. Both
+// live in dir and every step works on that one handle, so a folder swapped
+// for a symlink between two path resolutions cannot send the buffer anywhere
+// else. Without overwrite it links instead of renaming, so a file that
+// appeared since the upload started is never replaced.
+func commitUploadBuffer(dir *os.File, tempName, finalName string, overwrite bool) error {
+	fd := int(dir.Fd())
 	if overwrite {
-		return root.Root.Rename(tempRel, finalRel)
+		return renameInDir(fd, tempName, finalName)
 	}
-	if err := root.Root.Link(tempRel, finalRel); err != nil {
-		if errors.Is(err, fs.ErrExist) {
-			return err
+	if err := unix.Linkat(fd, tempName, fd, finalName, 0); err != nil {
+		if errors.Is(err, unix.EEXIST) {
+			return &os.LinkError{Op: "linkat", Old: tempName, New: finalName, Err: err}
 		}
 		// No hard links here (FAT, SMB, some FUSE): fall back to the old
 		// stat-then-rename rather than refusing every upload on that mount.
-		if _, statErr := root.Root.Lstat(finalRel); statErr == nil {
+		var st unix.Stat_t
+		if unix.Fstatat(fd, finalName, &st, unix.AT_SYMLINK_NOFOLLOW) == nil {
 			return fs.ErrExist
 		}
-		return root.Root.Rename(tempRel, finalRel)
+		return renameInDir(fd, tempName, finalName)
 	}
-	if err := root.Root.Remove(tempRel); err != nil {
-		slog.Warn("failed to remove committed upload buffer", "path", tempRel, "error", err)
+	if err := unix.Unlinkat(fd, tempName, 0); err != nil {
+		slog.Warn("failed to remove committed upload buffer", "path", filepath.Join(dir.Name(), tempName), "error", err)
 	}
 	return nil
 }
 
-func runUploadTask(ctx context.Context, task *bridgeipc.Task, req apischema.FileUploadRequest) (any, error) {
+func renameInDir(fd int, oldName, newName string) error {
+	if err := unix.Renameat(fd, oldName, fd, newName); err != nil {
+		return &os.LinkError{Op: "renameat", Old: oldName, New: newName, Err: err}
+	}
+	return nil
+}
+
+func runUploadTask(ctx context.Context, task *bridgeipc.Task, req apischema.FileUploadRequest, session sessionOwner) (any, error) {
 	path, expectedSize, overwrite, expectedVersion, err := parseUploadRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
+	}
+	newOwner, err := uploadNewOwner(req.Owner, session, os.Geteuid())
+	if err != nil {
+		return nil, err
 	}
 	if expectedVersion != "" && expectedSize >= services.MaxTextFileBytes {
 		return nil, fmt.Errorf("%w: editor save exceeds the maximum text file size", bridgeipc.ErrInvalidArgs)
@@ -162,6 +185,8 @@ func runUploadTask(ctx context.Context, task *bridgeipc.Task, req apischema.File
 		expectedSize:    expectedSize,
 		expectedVersion: expectedVersion,
 		overwrite:       overwrite,
+		newOwner:        newOwner,
+		private:         req.Private != nil && *req.Private,
 	}
 	transfer.transferLifecycle = newTransferLifecycle(task, transfer.cleanupPartial, transfer.reportProgress)
 	defer registerTransfer(task.ID(), transfer)()
@@ -192,7 +217,10 @@ func (t *uploadTransferTask) attach(stream net.Conn, req bridgeipc.TaskDataAttac
 		return t.fail(stream, err.Error(), code, err)
 	}
 
-	file, err := root.Root.OpenFile(t.tempRel, os.O_RDWR, services.PermFile)
+	t.mu.Lock()
+	tempRel, bufferInfo := t.tempRel, t.bufferInfo
+	t.mu.Unlock()
+	file, err := openUploadBuffer(root, tempRel, bufferInfo)
 	if err != nil {
 		return t.fail(stream, fmt.Sprintf("cannot open upload buffer: %v", err), 500, err)
 	}
@@ -240,27 +268,47 @@ func (t *uploadTransferTask) prepare(root *fsroot.FSRoot) error {
 	if versionErr != nil {
 		return versionErr
 	}
-	err = root.Root.MkdirAll(fsroot.ToRel(filepath.Dir(realPath)), services.PermDir)
+	dir, err := openUploadDir(root, filepath.Dir(realRel), t.newOwner)
 	if err != nil {
 		return fmt.Errorf("create parent dir: %w", err)
 	}
+	defer dir.Close()
+	folderInfo, err := dir.Stat()
+	if err != nil {
+		return fmt.Errorf("stat parent dir: %w", err)
+	}
 
 	partName := "." + filepath.Base(realRel) + ".linuxio-upload-" + t.task.ID() + ".part"
-	tempRel := filepath.Join(filepath.Dir(realRel), partName)
-	file, err := root.Root.OpenFile(tempRel, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600) // owner-only until restoreUploadedFile applies the target mode
+	bufferInfo, err := createUploadBuffer(dir, partName)
 	if err != nil {
 		return fmt.Errorf("create upload buffer: %w", err)
-	}
-	if err := file.Close(); err != nil {
-		return fmt.Errorf("close upload buffer: %w", err)
 	}
 
 	t.mu.Lock()
 	t.finalRel = realRel
-	t.tempRel = tempRel
+	t.tempRel = filepath.Join(filepath.Dir(realRel), partName)
 	t.attrs = attrs
+	t.folderInfo = folderInfo
+	t.bufferInfo = bufferInfo
+	if handsOverIn(folderInfo, t.newOwner) {
+		t.fileOwner = t.newOwner
+	}
 	t.mu.Unlock()
 	return nil
+}
+
+// newFileMode is the mode a file this upload creates gets: owner-only when
+// the request asked for a private file, 0644 when it is handed to the session
+// user, otherwise the file browser's create mode.
+func (t *uploadTransferTask) newFileMode(handedOver bool) os.FileMode {
+	switch {
+	case t.private:
+		return privateUploadMode
+	case handedOver:
+		return handedFileMode
+	default:
+		return services.PermFile
+	}
 }
 
 func (t *uploadTransferTask) verifyExpectedVersion(root *fsroot.FSRoot, path string) error {
@@ -344,19 +392,26 @@ func (t *uploadTransferTask) commit(root *fsroot.FSRoot, file *os.File, path, te
 		}
 		return 500, err
 	}
+	t.mu.Lock()
+	attrs, fileOwner, folderInfo := t.attrs, t.fileOwner, t.folderInfo
+	t.mu.Unlock()
+	// Open the folder before the buffer is handed over, so a swapped folder
+	// leaves it the bridge's.
+	dir, err := openUploadFolder(root, filepath.Dir(tempRel), folderInfo)
+	if err != nil {
+		return 500, fmt.Errorf("finalize upload: %w", err)
+	}
+	defer dir.Close()
+	if err := settleUploadBuffer(file, attrs, fileOwner, t.newFileMode(fileOwner.set), isSetgid(folderInfo)); err != nil {
+		return 500, err
+	}
 	if err := file.Sync(); err != nil {
 		return 500, fmt.Errorf("sync upload: %w", err)
 	}
 	if err := file.Close(); err != nil {
 		return 500, fmt.Errorf("close upload: %w", err)
 	}
-	t.mu.Lock()
-	attrs := t.attrs
-	t.mu.Unlock()
-	if err := restoreUploadedFile(root, tempRel, attrs); err != nil {
-		return 500, err
-	}
-	if err := commitUploadBuffer(root, tempRel, finalRel, t.overwrite); err != nil {
+	if err := commitUploadBuffer(dir, filepath.Base(tempRel), filepath.Base(finalRel), t.overwrite); err != nil {
 		if errors.Is(err, fs.ErrExist) {
 			return 409, fmt.Errorf("destination already exists: %w", err)
 		}

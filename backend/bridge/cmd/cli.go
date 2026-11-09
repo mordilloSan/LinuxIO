@@ -7,8 +7,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
-// handleBridgeArgs handles informational and invalid CLI invocations and
-// "jobs submit". A bridge is exec'd by the auth daemon without arguments, and
+// handleBridgeArgs handles informational and invalid CLI invocations. A bridge is exec'd by the auth daemon without arguments, and
 // systemd starts the job host without arguments too.
 func handleBridgeArgs(args []string) (bool, int) {
 	if len(args) <= 1 {
@@ -18,8 +17,6 @@ func handleBridgeArgs(args []string) (bool, int) {
 	case "version", "--version", "-v":
 		printBridgeVersion()
 		return true, 0
-	case "jobs":
-		return true, runJobsCommand(args[2:], os.Stdout, os.Stderr)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown argument: %q\n", args[1])
 		return true, 2

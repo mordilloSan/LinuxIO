@@ -441,7 +441,12 @@ func (t *uploadBatchTransferTask) finalizeCurrent(session *uploadBatchSession) e
 	if err := restoreUploadedFile(session.root, tempRel, attrs); err != nil {
 		return err
 	}
-	if err := commitUploadBuffer(session.root, tempRel, finalRel, overwrite); err != nil {
+	dir, err := openUploadFolder(session.root, filepath.Dir(tempRel), nil)
+	if err != nil {
+		return fmt.Errorf("finalize upload: %w", err)
+	}
+	defer dir.Close()
+	if err := commitUploadBuffer(dir, filepath.Base(tempRel), filepath.Base(finalRel), overwrite); err != nil {
 		if errors.Is(err, fs.ErrExist) {
 			return fmt.Errorf("destination already exists: %w", err)
 		}

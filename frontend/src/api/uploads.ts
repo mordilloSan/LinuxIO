@@ -1,6 +1,6 @@
 import { LinuxIOError } from "./errors";
 import linuxio from "./generated/client";
-import type { TaskSnapshot } from "./generated/linuxio-types";
+import type { FileUploadOwner, TaskSnapshot } from "./generated/linuxio-types";
 import { openTaskDataStream } from "./linuxio";
 import { streamWriteChunks, waitForStreamResult } from "./stream-helpers";
 import { isTerminalTaskState } from "./tasks";
@@ -18,6 +18,15 @@ export interface UploadContentOptions {
   overwrite?: boolean;
   /** Content version returned when the file was opened for editing. */
   expectedVersion?: string;
+  /**
+   * `"session"` makes a root bridge hand a new file, and the folders the save
+   * creates, to the session user (inside a folder that user already owns).
+   * Unset, a root bridge keeps them root-owned. An overwritten file always
+   * keeps its owner.
+   */
+  owner?: FileUploadOwner;
+  /** Create a new file readable only by its owner (0600). */
+  private?: boolean;
   signal?: AbortSignal;
 }
 
@@ -39,6 +48,8 @@ export async function uploadContent(
     ...(options.expectedVersion
       ? { expectedVersion: options.expectedVersion }
       : {}),
+    ...(options.owner ? { owner: options.owner } : {}),
+    ...(options.private ? { private: true } : {}),
   });
   options.onTaskStart?.(task);
 

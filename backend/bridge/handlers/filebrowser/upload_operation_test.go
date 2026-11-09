@@ -201,7 +201,7 @@ func TestUploadTaskRejectsExistingDestinationWithoutOverwrite(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 	task.Start(func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
-		return runUploadTask(ctx, j, req)
+		return runUploadTask(ctx, j, req, sessionOwner{})
 	})
 
 	snapshot := waitTaskDone(t, task)
@@ -246,7 +246,7 @@ func TestUploadTaskOverwriteAcceptsExistingDestination(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 	task.Start(func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
-		return runUploadTask(ctx, j, req)
+		return runUploadTask(ctx, j, req, sessionOwner{})
 	})
 
 	// The task must get past the conflict check and park waiting for a client

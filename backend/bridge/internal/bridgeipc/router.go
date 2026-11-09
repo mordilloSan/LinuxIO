@@ -414,8 +414,8 @@ func mutationIdentity(route, id string, request jsontext.Value) TaskIdentity {
 // by running route's Resume hook on record, the job's stored record. The task
 // is admitted, recorded and identified as the job's first run was, so it is
 // visible through tasks.* and a resend of the job attaches to it. It skips
-// Dispatch's Privileged check by design: only the root host's jobs.resume,
-// which admits root peers only, reaches it.
+// Dispatch's Privileged check by design: only the root host's own resume
+// at start reaches it.
 func (r *Router) StartResume(route Route, record jsontext.Value, owner TaskOwner, id string) (*Task, error) {
 	if route.Mode != ModeMutation || route.Resume == nil {
 		return nil, fmt.Errorf("%w: %s cannot resume", ErrConflict, route.Name)

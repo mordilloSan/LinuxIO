@@ -168,11 +168,25 @@ type FileSearchRequest struct {
 	BasePath *string `json:"basePath,omitzero"`
 }
 
+// FileUploadOwner names who the entries an upload creates belong to. The only
+// value is "session": the bridge takes the ids from the authenticated
+// session, never from the request.
+type FileUploadOwner string
+
 type FileUploadRequest struct {
 	TargetPath      string  `json:"targetPath"`
 	Size            string  `json:"size"`
 	Overwrite       *bool   `json:"overwrite,omitzero"`
 	ExpectedVersion *string `json:"expectedVersion,omitzero"`
+	// Owner "session" makes a root bridge hand the new file (0644), and the
+	// folders the upload creates (0755), to the session user, but only inside
+	// a folder that user already owns; in a setgid folder they keep the
+	// inherited group. Unset, a root bridge keeps them root-owned. An
+	// overwritten file always keeps its owner and mode.
+	Owner FileUploadOwner `json:"owner,omitempty"`
+	// Private creates a new file readable only by its owner (0600), for files
+	// such as a Compose .env that may hold secrets.
+	Private *bool `json:"private,omitzero"`
 }
 
 // FileUploadBatchEntry is one file in a batch upload manifest. Path is

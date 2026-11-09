@@ -1571,11 +1571,15 @@ export interface FileUploadBatchResult {
   size: number;
 }
 
+export type FileUploadOwner = "session";
+
 export interface FileUploadRequest {
   targetPath: string;
   size: string;
   overwrite?: boolean;
   expectedVersion?: string;
+  owner?: FileUploadOwner;
+  private?: boolean;
 }
 
 export interface FileUploadResult {

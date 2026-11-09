@@ -20,7 +20,7 @@ and [Notifications](../alerts.md).
 |---|---|---|
 | 1 | Store, host, relay, units, first route (`docker.update_container`) | done, verified on a real host |
 | 2 | Every mutation runs as a job: prerequisites, the ~199 routes and their callers, old task code deleted | done (section 4.2), last step `d2871872`; checked in the test VM (section 3.5) |
-| 3 | Storage safety and btrfs resume: cancel that ends when the handler returns, resume hooks for four btrfs routes, rollbacks, Docker storage switch, kill-and-resume root tests | done (section 4.3), commits `938e32c5` and `f8db05af`; checked in the test VM (section 3.6). The `jobs submit` and `jobs.resume` removal moved to a later commit |
+| 3 | Storage safety and btrfs resume: cancel that ends when the handler returns, resume hooks for four btrfs routes, rollbacks, Docker storage switch, kill-and-resume root tests | done (section 4.3), commits `938e32c5` and `f8db05af`; checked in the test VM (section 3.6). The jobs CLI verb and the host's resume call are removed (D6) |
 | 4 | Schedules and system jobs | not started; one open decision |
 | 5 | History view, login notice, update banner | not started |
 
@@ -74,7 +74,7 @@ connection; changing how reads work; changing authentication.
 | History | On disk, 30 days or 200 jobs per user. Jobs that succeed in under a second are not kept. |
 | Alerts | A failed or interrupted job raises an alert (admin hosts). Success goes to history only. |
 | Scheduled scripts | Stay systemd timers and services. They appear in the same list and history and use the same alert hook. |
-| Jobs with no user | An admin shell submits jobs to the root host with `linuxio-bridge jobs submit`; how timers do it is open for phase 4 (section 2.14). One executor, same record, same list. |
+| Jobs with no user | Nothing outside the browser starts a job yet; how timers reach the job store is open for phase 4 (section 2.14). One executor, same record, same list. |
 | Logs | journald. Host jobs carry a `JOB_ID` field; unit jobs are their own unit. |
 | Rejected | A system-wide root daemon running jobs (TrueNAS shape): it would run non-admins' work as root. A process per job started from the bridge: 15 ms each, which forces a fast/slow decision per route. ZFS: out-of-tree module on the user's distro. |
 
@@ -83,9 +83,8 @@ connection; changing how reads work; changing authentication.
 - **Bridge**: today's per-login process, as the user. Keeps reads, terminals, uploads and downloads. Relays mutations to the host.
 - **Host**: `linuxio-jobs@<uid>.service`. Runs every mutation for that uid as a goroutine. Owns the in-memory job registry for that uid and writes the store.
 - **Auth**: `linuxio-auth` starts an unprivileged login's host once PAM has authenticated the user, before the session opens and the bridge spawns.
-- **Submit CLI**: `linuxio-bridge jobs submit`, the local client that starts a job in a host without a browser: an admin shell and tests, and timers if phase 4 keeps it. As root it starts the root host's socket itself; as a user it reaches their socket, which exists once they have logged in since boot.
 - **Store**: `/var/lib/linuxio/jobs/<uid>/`, one JSON record per job, owned by the uid.
-- **Job**: a record plus a handler run in a host. Started by a user through the bridge, or by the system through the submit CLI. The host is the only executor.
+- **Job**: a record plus a handler run in a host. Started by a user through the bridge. The host is the only executor.
 - **Target**: what a job works on (pool UUID, disk, container, compose project, set of paths), declared by the route.
 
 ### 2.4 Architecture
@@ -103,9 +102,6 @@ browser ──WebSocket── linuxio-webserver (unprivileged) ──yamux──
    bridge, once per login                                         ├─ handlers (shared code)
                                                                   └─ store /var/lib/linuxio/jobs/<uid>/
                                                                        live progress /run/linuxio/jobs/<uid>/
-
-   admin shell, as root ──jobs submit──▶ linuxio-jobs@0.socket ──▶ linuxio-jobs@0.service
-                          (same socket, same host, same record; timers are open, section 2.14)
 ```
 
 The webserver, `linuxio-auth` and the bridge keep their roles and boundaries.
@@ -216,7 +212,7 @@ SocketMode=0600
 Accept=no
 ```
 
-- **Start**: by a connection to its socket, which systemd holds. `linuxio-auth` starts a user's socket when they log in (section 2.9); root processes start uid 0's with `StartUnit` on `linuxio-jobs@0.socket`, which the submit CLI does itself, and `linuxio-jobs@0.service` is enabled so the root host also starts at boot. Starting a listening socket or a running host is a no-op. `StateDirectory` and `RuntimeDirectory` create the store and progress directories owned by the uid; no custom code creates them.
+- **Start**: by a connection to its socket, which systemd holds. `linuxio-auth` starts a user's socket when they log in (section 2.9); root processes start uid 0's with `StartUnit` on `linuxio-jobs@0.socket`, and `linuxio-jobs@0.service` is enabled so the root host also starts at boot. Starting a listening socket or a running host is a no-op. `StateDirectory` and `RuntimeDirectory` create the store and progress directories owned by the uid; no custom code creates them.
 - **Stay up while** connected bridges > 0 or running jobs > 0.
 - **Exit** when both are zero for one minute (so a logout and login within seconds does not restart it). Exit is `sd_notify(STOPPING=1)` then process exit; systemd collects the unit.
 - **Stop by systemd** (shutdown, or `systemctl stop`): SIGTERM. The host marks every running job: resumable ones get up to `TimeoutStopSec` to suspend (section 2.11), the rest are marked `interrupted` with reason `shutdown`. Then it exits.
@@ -229,7 +225,7 @@ A connection to its socket. `linuxio-jobs@<uid>.socket` listens on `/run/linuxio
 
 `linuxio-auth` starts an unprivileged login's socket. Once PAM has authenticated the user and the sudoers probe has decided the login is unprivileged, it runs `/usr/bin/systemctl start --no-block --quiet linuxio-jobs@<uid>.socket` as root in a child with a cleared environment, bounded by 3 s and the login's request deadline. It does so before the PAM session opens, because `pam_selinux` gives later children the user's exec context; systemctl runs as the auth worker, like the sudo probe. The bridge is spawned after the session opens. The uid is the one PAM resolved; nothing from the wire reaches the command. A failure is a warning in the journal with the user and the unit; the login proceeds and the bridge answers mutations with 503 until the next login.
 
-A privileged bridge runs as root and calls `StartUnit` on `linuxio-jobs@0.socket` itself, as does the submit CLI run as root. A socket stays until reboot, so a user's socket exists only after that user authenticated through LinuxIO, or when root starts it.
+A privileged bridge runs as root and calls `StartUnit` on `linuxio-jobs@0.socket` itself. A socket stays until reboot, so a user's socket exists only after that user authenticated through LinuxIO, or when root starts it.
 
 As the host, the bridge binary takes no arguments: it is the job host when systemd passes it the socket named `linuxio-jobs` (`FileDescriptorName=`), and refuses to run without it.
 
@@ -283,7 +279,7 @@ Why the hooks differ, as the kernel behaves (7.0, section 5): a fatal signal, a 
 
 **Host start and boot.** Every host, before it serves, marks the records its uid's last host left `running`: `interrupted/reboot` when that host ran in an earlier boot (executors carry the boot ID; a power loss leaves records `running`, an orderly shutdown already marked them `shutdown`), `interrupted/crash` when it ran in this boot and is gone. A host touches only its own uid's store. `linuxio-jobs@0.service` is enabled, so the root host starts at boot, after `local-fs.target` and the degraded pool mounts (`linuxio-btrfs-degraded.service`). It runs the route's `Resume` hook, and writes the outcome to the same record, only for an `interrupted` record with reason `shutdown` or `reboot` that is `Resumable`, has no `cancel_requested`, and whose executor ran in an earlier boot (always uid 0). That is one resume, for the last shutdown. A record any other way interrupted (a crash, a host stopped in this boot by hand, a cancel that overlapped a stop) loses `Resumable` when the host starts, so a job is never resumed at some later reboot, weeks on, and there is no manual resume. A job the host cannot resume is alerted and stamped with its executor so later starts leave it alone. The jobs it marks and does not resume raise one alert each. The host then exits under its normal rule once the resumed jobs end.
 
-**Submit CLI.** `linuxio-bridge jobs submit --route <route> --request <json> [--wait]` creates a job in the caller's host exactly as a bridge would: as root it calls `StartUnit` on `linuxio-jobs@0.socket` and connects to it; as a user it connects to their socket, which exists once they have logged in to LinuxIO since boot. `--resume <id>` resumes an interrupted resumable record. `--wait` follows the job and exits with its outcome. It is the bridge binary's only verb besides `version`, kept for admin shells and tests; whether timers use it is open for phase 4 (section 2.14). It and the host's `jobs.resume` call exist only for testing, and the VM checks (section 3.6) have replaced them. Their removal, planned for phase 3, was deferred to a later commit; until then they still resume any `Resumable` interrupted record, which after D4 is only what the last shutdown interrupted.
+The bridge binary has no verb besides `version`: nothing outside the browser starts a job, and the host serves no manual resume. A command for timers is open for phase 4 (section 2.14).
 
 #### Fault matrix
 
@@ -316,7 +312,7 @@ What each event does to a job, as phase 1 implements it:
 
 - Schedules stay as built: a timer and a oneshot service per schedule, `run_now` and `stop` as quick mutations, status from systemd.
 - The job list includes running scripts by reading systemd: `linuxio-schedule-*.service` and the btrfs timer units, with the invocation ID as job ID, `ActiveState` as state and the journal as log. This is a read-only adapter in the host's `tasks.list`/`tasks.events`; scripts are the one kind of work that does not run in a host, because they are arbitrary commands under a configured user.
-- **Open for phase 4: how a timer reaches the job store.** A timer can only start a unit that runs a program, so either a command hands each firing to the root host, where it runs with the same progress, record and alert as a browser job, or scheduled work keeps running in its own unit, as the btrfs snapshot, health and resync units and the Docker update timer do today, and writes a record (`executor.kind=unit`, the invocation ID) when it ends so it appears in history. The first needs a command such as `jobs submit --from <scheduled-job-id> --wait`, in the bridge or in the `linuxio` admin CLI; the second needs a small record writer. The bridge binary gains no new verb either way.
+- **Open for phase 4: how a timer reaches the job store.** A timer can only start a unit that runs a program, so either a command hands each firing to the root host, where it runs with the same progress, record and alert as a browser job, or scheduled work keeps running in its own unit, as the btrfs snapshot, health and resync units and the Docker update timer do today, and writes a record (`executor.kind=unit`, the invocation ID) when it ends so it appears in history. The first needs a new command that takes a scheduled job ID and waits for it, in the `linuxio` admin CLI (the bridge has no job verb); the second needs a small record writer. The bridge binary gains no new verb either way.
 
 ### 2.15 Security
 
@@ -350,7 +346,7 @@ What each event does to a job, as phase 1 implements it:
 - **Relay and protocol**: a bridge and a host in one test process over a socketpair: start, progress, result, detach, abort, resend attaches, protocol mismatch returns `update_pending`. Unit tests.
 - **Host lifecycle**: exit rule with fake clock; SIGTERM marks running jobs and calls `Suspend` within the deadline. Unit tests.
 - **Auth**: the hermetic PAM suite asserts the exact `systemctl` arguments of an unprivileged login and that a failed start keeps the login.
-- **Submit CLI and host start**: `jobs submit` against a host in the test process; at host start, only `shutdown` and `reboot` records of an earlier boot without `cancel_requested` are resumed (`TestResumeOnlyWhatTheLastShutdownInterrupted`), every other interrupted record loses `Resumable`, a `running` record with a dead pid of this boot becomes `interrupted/crash`, and the rest are alerted. Unit tests with the fake kernel for btrfs.
+- **Host start**: at host start, only `shutdown` and `reboot` records of an earlier boot without `cancel_requested` are resumed (`TestResumeOnlyWhatTheLastShutdownInterrupted`), every other interrupted record loses `Resumable`, a `running` record with a dead pid of this boot becomes `interrupted/crash`, and the rest are alerted. Unit tests with the fake kernel for btrfs.
 - **btrfs suspend and resume**: root tests in `TestBtrfsResumeIntegration` (`make test-btrfs-integration`; in the test VM `make vm-test-btrfs-integration`, which is the run that counts as kernel-verified): `signals`, `removeCancel`, `removeKill`, `rollback`, `balancePauseRemount`, `balancePauseSameMount`, `refusedWhilePaused`, `balanceKill`, `balanceCancel`, `scrubResume`, `scrubKill`, `replaceKill` and `replacePowerCut`. They kill the host mid-operation, pause and remount a balance, and resume a scrub from its stored offset; `replacePowerCut` builds the on-disk state of a power cut mid-replace from a frozen copy of the images. A run on the user's own hardware (`make test-btrfs-integration`, sudo) is optional and theirs to start.
 - **Test VM browser specs**: `frontend/src/test/vm/jobs-phase3.spec.ts` starts each real route in the browser and cuts the host (section 3.6); `jobs-phase2.spec.ts` covers the generic host events (section 7).
 - **Browser**: start a copy, log out, log in, find it running in the tray and completed in history (`make test-frontend-browser-quiet`).
@@ -377,7 +373,7 @@ until the review was clean; then a whole-branch review and one fix wave.
 | 4 | One stream per mutation: snapshot, progress, result; close detaches, abort cancels |
 | 5 | The job host: hello, `SO_PEERCRED`, recorder, admission, idle exit, SIGTERM handling, the `interrupted` task state |
 | 6 | Root launcher socket (removed by `0b44d7d3`) |
-| 7 | Job client and `jobs submit`, built-in `jobs.resume` |
+| 7 | Job client, the submit CLI and the host's resume call (CLI and call removed in Task 12) |
 | 8 | Units, installer and the boot reconcile service (reconcile removed by `0c82d2d7`) |
 | 9 | Bridge relay: one yamux session per bridge, `tasks.*` merged, reconnect with backoff, `update_pending` |
 | 10 | `docker.update_container` as the first mutation; transient units and the durable worker deleted |
@@ -422,7 +418,7 @@ fails is alerted and not retried in the same boot.
 
 ### 3.4 Verified on the development machine (2026-10-27)
 
-All with the installed build of `0c82d2d7`, by the `jobs submit` procedure
+All with the installed build of `0c82d2d7`, by the submit-CLI procedure
 section 7 had then (in git history; section 7 now has the VM checks):
 
 | Case | Result |
@@ -431,7 +427,7 @@ section 7 had then (in git history; section 7 now has the VM checks):
 | Killed or stopped host comes back on the next connection | pass; a logged-in bridge brought it back within 1 s |
 | Idle exit after 60 s, socket keeps listening, one connection wakes the host | pass |
 | Non-admin login: socket `teste 600`, a stopped host wakes on that user's connection, root route refused with 403 | pass |
-| Only `version` and `jobs submit` accepted; launcher socket and reconcile unit gone; root host enabled | pass |
+| Only `version` and the submit verb accepted; launcher socket and reconcile unit gone; root host enabled | pass |
 | Orderly reboot with a job running: record `interrupted/shutdown`; root host starts at boot with nobody logged in | pass |
 | Power-loss reboot: record `interrupted/reboot` marked by the root host at boot | not run (unit tests only) |
 
@@ -469,7 +465,9 @@ Seen on the way. None of these is a phase 2 failure:
 - A browser closed without signing out keeps its session, and with it one of
   the 16 connections `linuxio-auth.socket` accepts (`MaxConnections=16`). With
   16 such sessions, the next login fails with "could not start the session
-  bridge".
+  bridge". Fixed: the connection is the bridge's transport for the session's
+  life by design, so the cap counts live sessions; it is now
+  `MaxConnections=64`, and `make test-installation-scripts` keeps it there.
 - A Compose stack saved by a sudo user gets a stack folder owned by root with
   mode 0700, inside that user's home.
 - The VM's `clean` snapshot has `docker.io` without the Compose plugin and no
@@ -540,14 +538,19 @@ hardware (`make test-btrfs-integration`, sudo).
 
 Seen on the way. None of these blocks phase 3:
 
-- No browser cancel path sets `cancel_requested` for a scrub: the banner's
-  "Stop check" calls `storage.btrfs_scrub_cancel` and bypasses `tasks.cancel`,
-  and the tray does not list scrubs or balances. The cancel-then-SIGTERM path
+- No browser cancel path set `cancel_requested` for a scrub: the banner's
+  "Stop check" called `storage.btrfs_scrub_cancel` and bypassed `tasks.cancel`,
+  and the tray did not list scrubs or balances. The cancel-then-SIGTERM path
   is covered by unit tests only. If such a stop raced a host SIGTERM, the
   record would read `interrupted/shutdown` without `cancel_requested` and be
-  resumed (inferred from the code, window of a few milliseconds).
-- The "was interrupted" alert stays after a successful resume (balance,
-  scrub); nothing resolves it when the resumed job completes.
+  resumed (inferred from the code, window of a few milliseconds). Resolved for
+  scrubs: "Stop check" now cancels the scrub's job through `tasks.cancel` and
+  calls `storage.btrfs_scrub_cancel` only for a scrub without a job (the
+  timer's), and the tray lists scrub jobs with a cancel. Balances still cancel
+  in the kernel and are not in the tray.
+- The "was interrupted" alert stayed after a successful resume (balance,
+  scrub). Fixed: the root host resolves it when the resumed job completes
+  (`TestResumedJobThatCompletesClearsItsInterruptedAlert`).
 - The overview and the bridge's mount count still treat a replace target as a
   present disk, so a pool that is both missing a member and mid-replace shows
   **Mount** where the kernel needs **Mount degraded**. The boot path counts
@@ -563,11 +566,11 @@ Seen on the way. None of these blocks phase 3:
 
 ### 4.1 Open decisions
 
-- **`jobs submit`.** Nothing in production calls it; it serves admin shells
-  and the manual tests. Phase 4 needs a way for a timer to hand a run to the
-  root host, or decides that scheduled work keeps running in its own unit and
-  only writes a record (section 2.14). Options: drop it now and test through
-  the browser; keep it until phase 4; move it into the `linuxio` admin CLI.
+- **How a timer reaches the job store.** The submit CLI was removed in phase 3
+  (D6), so nothing outside the browser starts a job. Phase 4 needs a way for a
+  timer to hand a run to the root host, or decides that scheduled work keeps
+  running in its own unit and only writes a record (section 2.14), for example
+  a command in the `linuxio` admin CLI.
 - **The bridge has no resource limits.** `linuxio-auth@.service` declares
   `TasksMax=1024` and `MemoryMax=2G` and the architecture doc says they bound
   the bridge, but `pam_systemd` moves the login into a logind session scope
@@ -761,15 +764,13 @@ it was checked.
 
 Moved out of phase 3 (not lost):
 
-- Removing `linuxio-bridge jobs submit` and the host's `jobs.resume` call (D6):
-  deferred to a later commit of its own. Phase 4 designs how timers reach the
-  job store (section 4.1).
+- The submit CLI and the host's resume call (D6) were removed in Task 12;
+  phase 4 designs how timers reach the job store (section 4.1).
 - A "canceling" state in the UI: `cancel_requested` stays backend-only and the
   snapshot stays `running` until the handler returns.
 - Periodic scrub checkpoints: a power loss rescans from 0.
 - Progress for device removal.
-- Browser cancel through `tasks.cancel` for scrubs and balances, and resolving
-  the "was interrupted" alert once a resumed job completes (section 3.6).
+- Browser cancel through `tasks.cancel` for balances (scrubs have it; section 3.6).
 - The overview and the bridge's offline-pool mount counting a replace target as
   a present disk (section 3.6).
 
@@ -861,7 +862,7 @@ The launcher was removed in `0b44d7d3`; all its items are obsolete: success log 
 - [x] Stale-socket wait on the root path: the client now dials with retries.
 - [x] `StartResume` bypassing the Privileged check is documented as root-only by design (final wave).
 - [x] The "job record not created" log text also fires on a refused rerun.
-- [ ] The CLI accepts a malformed `--resume` id, and `--wait` beside `--resume` (depends on the `jobs submit` decision).
+- [x] The CLI accepting a malformed `--resume` id: obsolete, the CLI is removed (D6).
 - [x] Two test strengthenings: a hello as uid 0 against a user host; `tasks.get` after a no-wait submit.
 
 ### Task 8: units and boot reconcile (mostly obsolete)
@@ -1100,9 +1101,8 @@ the Docker entry above.
   touches only its own domain and volumes. `virsh destroy` is the power cut.
   This is Tier 3 of [e2e-testing.md](e2e-testing.md), started in phase 2.
 - **D6, the jobs CLI goes** (user, 2026-10-29): `jobs submit` and `jobs.resume`
-  exist only for testing. Their removal (Task 12) is deferred to a later commit
-  of its own, after the VM checks replaced them; they remain until then
-  (section 2.11).
+  existed only for testing. Task 12 removed them after the VM checks replaced
+  them; phase 4 designs how timers reach the job store (section 4.1).
 - **Signals are masked, not retried.** Retrying an aborted replace is not an
   option (the target is destroyed), so the ioctl never sees the signal: section 5.
 - **A freeze is not handled.** A suspend to RAM still aborts a scrub or replace

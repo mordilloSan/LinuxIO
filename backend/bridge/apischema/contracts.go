@@ -92,6 +92,7 @@ var StringEnums = map[string][]string{
 	"DockerUpdateCheckState":        {"current", "available", "uncheckable", "error"},
 	"ContainerMetricsStatus":        {"available", "stale", "unavailable", "not_running"},
 	"ConfigStorageMode":             {"home", "fallback", "memory"},
+	"FileUploadOwner":               {"session"},
 	"TaskState":                     {"queued", "running", "completed", "failed", "canceled", "interrupted"},
 	"MonitoringHistoryResolution":   monitoringapi.HistoryResolutions(),
 	// SensorReadingKind is defined by the shared monitoring API; keeping its

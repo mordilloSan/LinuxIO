@@ -189,7 +189,6 @@ type Recorder interface {
 type TaskService struct {
 	mu            sync.RWMutex
 	recorder      Recorder
-	resumer       func(ctx context.Context, id string) (any, error)
 	remote        RemoteTasks
 	dataAttachers map[string]TaskDataAttacher
 	tasks         map[string]*Task
@@ -285,13 +284,6 @@ func (r *TaskService) SetRecorder(rec Recorder) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.recorder = rec
-}
-
-// SetResumer sets the handler of jobs.resume, which only a job host has.
-func (r *TaskService) SetResumer(fn func(ctx context.Context, id string) (any, error)) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.resumer = fn
 }
 
 // recordStarted gives task the service's recorder, if any, and records it

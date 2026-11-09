@@ -318,7 +318,7 @@ func (h *Host) suspend(ctx context.Context, task *bridgeipc.Task) jsontext.Value
 	return checkpoint
 }
 
-// resume serves jobs.resume: it starts a task that runs the Resume hook of
+// resume starts a task that runs the Resume hook of
 // the interrupted resumable job id on its record, under the job's own ID.
 func (h *Host) resume(ctx context.Context, id string) (any, error) {
 	if msg, code := h.refusal(ctx); code != 0 {

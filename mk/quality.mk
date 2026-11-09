@@ -116,6 +116,18 @@ test-btrfs-integration: ensure-go ## Run the root-only btrfs and partition kerne
 	    LINUXIO_RUN_BTRFS_INTEGRATION=1 \
 	    "$(GO_BIN)" test ./common/btrfs -run '$(BTRFS_INTEGRATION_RUN)' -count=1 -v -timeout 20m
 
+# The file browser tests that hand entries to other users or groups, which only
+# root can do; without root they skip or cover less.
+FILEBROWSER_ROOT_RUN := AsRoot$$|^TestUpload(BufferNameIsNeverFollowed|HandsOverOnlyAFreshFolder|KeepsTheGroupOfASetgidFolder)$$
+
+test-filebrowser-root: ensure-go ## Run the root-only file browser ownership tests (needs sudo)
+	@echo "🧪 Running file browser ownership tests as root (needs sudo)..."
+	@cd "$(backend_dir)" && \
+	  sudo env \
+	    PATH="$$(dirname "$(GO_BIN)"):$${PATH}" \
+	    GOTOOLCHAIN="$(GO_TOOLCHAIN)" \
+	    "$(GO_BIN)" test ./bridge/handlers/filebrowser/... -run '$(FILEBROWSER_ROOT_RUN)' -count=1 -v
+
 deadcode: ensure-deadcode ## Report unreachable Go functions (informational)
 	@$(MAKE) --no-print-directory deadcode-only
 

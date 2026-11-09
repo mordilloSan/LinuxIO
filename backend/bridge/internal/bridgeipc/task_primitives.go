@@ -36,13 +36,6 @@ type taskDataRequest struct {
 	Offset string `json:"offset,omitempty"`
 }
 
-// ResumeRoute asks the root job host to resume an interrupted resumable job.
-const ResumeRoute = "jobs.resume"
-
-type jobResumeRequest struct {
-	ID string `json:"id"`
-}
-
 // RemoteTasks serves the tasks.* routes for the jobs of a bridge's job host,
 // whose IDs are UUIDs, as the bridge's own registry serves its tasks.
 type RemoteTasks interface {
@@ -87,7 +80,6 @@ func (r *TaskService) RegisterRoutes(router *Router) {
 		{Name: "tasks.watch", Mode: ModeDuplex, Duplex: r.handleTaskWatch, Decode: JSONRequestDecoder[taskIDRequest]()},
 		{Name: "tasks.data", Mode: ModeDuplex, Duplex: r.handleTaskData, Decode: JSONRequestDecoder[taskDataRequest]()},
 		{Name: "tasks.events", Mode: ModeDuplex, Duplex: r.handleTaskEvents, Decode: JSONRequestDecoder[TaskEventsRequest]()},
-		{Name: ResumeRoute, Mode: ModeCall, Call: r.handleJobResume, Decode: JSONRequestDecoder[jobResumeRequest]()},
 	}
 	for _, route := range routes {
 		router.registerTaskServiceRoute(r, route)
@@ -113,25 +105,6 @@ func (r *TaskService) handleTaskGet(ctx context.Context, req Request) (any, erro
 		return nil, NewError(fmt.Sprintf("task not found: %s", payload.TaskID), 404)
 	}
 	return task.Snapshot(), nil
-}
-
-// handleJobResume serves jobs.resume to root only: resumable jobs are
-// privileged, so only the root job host has them.
-func (r *TaskService) handleJobResume(ctx context.Context, req Request) (any, error) {
-	if req.Session == nil || req.Session.User.UID != 0 {
-		return nil, fmt.Errorf("%w: %s is served only to root", ErrForbidden, ResumeRoute)
-	}
-	payload, _ := req.DecodedValue.(jobResumeRequest)
-	if err := jobs.ValidateID(payload.ID); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidArgs, err)
-	}
-	r.mu.RLock()
-	resume := r.resumer
-	r.mu.RUnlock()
-	if resume == nil {
-		return nil, NewError("no resumer", 503)
-	}
-	return resume(ctx, payload.ID)
 }
 
 func (r *TaskService) handleTaskList(ctx context.Context, req Request) (any, error) {

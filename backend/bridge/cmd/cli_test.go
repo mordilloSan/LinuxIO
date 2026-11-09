@@ -61,33 +61,9 @@ func TestIsDirectBridgeInvocationRecognizesBootstrapPipe(t *testing.T) {
 	}
 }
 
-func TestJobsSubcommandsAreDispatched(t *testing.T) {
-	var stdout, stderr bytes.Buffer
-	if code := runJobsCommand([]string{"unknown"}, &stdout, &stderr); code != 2 {
-		t.Fatalf("runJobsCommand exit code = %d, want 2", code)
-	}
-	if !strings.Contains(stderr.String(), jobsSubmitUsage) {
-		t.Fatalf("stderr = %q, want the jobs usage", stderr.String())
-	}
-
-	// Through run: "jobs" reaches runJobsCommand, not the unknown-argument
-	// path, and skips the direct-invocation check (stdin is nil here).
-	read, write, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("os.Pipe: %v", err)
-	}
-	saved := os.Stderr
-	os.Stderr = write
-	code := run([]string{"linuxio-bridge", "jobs", "unknown"}, nil)
-	os.Stderr = saved
-	_ = write.Close()
-	output, err := io.ReadAll(read)
-	_ = read.Close()
-	if err != nil {
-		t.Fatalf("read stderr: %v", err)
-	}
-	if code != 2 || !strings.Contains(string(output), jobsSubmitUsage) {
-		t.Fatalf("run(jobs unknown) = %d with stderr %q; want 2 and the jobs usage", code, output)
+func TestBridgeRefusesTheJobsVerb(t *testing.T) {
+	if code := run([]string{"linuxio-bridge", "jobs", "submit", "--route", "x"}, nil); code != 2 {
+		t.Fatalf("run(jobs submit) exit code = %d, want 2", code)
 	}
 }
 
@@ -107,12 +83,6 @@ func TestJobHostIsChosenBySystemdNotByArguments(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "job host needs its socket") {
 		t.Fatalf("stderr = %q, want the job host message", stderr.String())
-	}
-	for _, verb := range []string{"host", "reconcile", "launch"} {
-		stderr.Reset()
-		if code := runJobsCommand([]string{verb}, io.Discard, &stderr); code != 2 {
-			t.Fatalf("jobs %s = %d, want 2: only submit is a verb", verb, code)
-		}
 	}
 }
 
@@ -136,20 +106,5 @@ func TestJobHostUnitWithoutItsSocketSaysSo(t *testing.T) {
 	}
 	if code != 2 || !strings.Contains(string(output), "job host needs its socket") {
 		t.Fatalf("run = %d with stderr %q; want 2 and the job host message", code, output)
-	}
-}
-
-func TestJobsSubmitRejectsBadArguments(t *testing.T) {
-	for _, args := range [][]string{
-		{"submit"},
-		{"submit", "--route", "storage.scrub", "--resume", "00000000-0000-4000-8000-00000000000a"},
-		{"submit", "--route", "storage.scrub", "--request", "{"},
-		{"submit", "--route", "storage.scrub", "extra"},
-		{"submit", "--unknown"},
-	} {
-		var stderr bytes.Buffer
-		if code := runJobsCommand(args, io.Discard, &stderr); code != 2 || !strings.Contains(stderr.String(), jobsSubmitUsage) {
-			t.Errorf("jobs %v = %d with stderr %q; want 2 and the submit usage", args, code, stderr.String())
-		}
 	}
 }

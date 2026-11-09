@@ -1,7 +1,6 @@
 package jobsclient
 
 import (
-	"bytes"
 	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
@@ -11,7 +10,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
@@ -28,22 +26,18 @@ const (
 )
 
 type testHost struct {
-	socket  string
-	store   *jobs.Store
-	resumed chan jsontext.Value
+	socket string
+	store  *jobs.Store
 }
 
 // startHost serves a job host for uid on a temp socket. Its router holds the
-// task-service built-ins, test.job (reports progress, returns {"ok":true}),
-// test.fail (fails with "boom") and test.resumable, whose Resume hook returns
-// the record's checkpoint.
+// task-service built-ins and test.job (reports progress, returns {"ok":true}).
 func startHost(t *testing.T, uid uint32, configure ...func(*jobshost.Config)) *testHost {
 	t.Helper()
 	dir := t.TempDir()
 	th := &testHost{
-		socket:  filepath.Join(dir, "host.sock"),
-		store:   jobs.NewStore(filepath.Join(dir, "state"), filepath.Join(dir, "run")),
-		resumed: make(chan jsontext.Value, 1),
+		socket: filepath.Join(dir, "host.sock"),
+		store:  jobs.NewStore(filepath.Join(dir, "state"), filepath.Join(dir, "run")),
 	}
 	tasks := bridgeipc.NewTaskService()
 	router := bridgeipc.NewRouter(tasks)
@@ -52,21 +46,6 @@ func startHost(t *testing.T, uid uint32, configure ...func(*jobshost.Config)) *t
 		bridgeipc.ReportProgress(ctx, bridgeipc.TaskProgress{Phase: "copy", Message: "halfway"})
 		return map[string]bool{"ok": true}, nil
 	})
-	router.Mutation("test.fail", func(context.Context, *bridgeipc.Task, any) (any, error) {
-		return nil, errors.New("boom")
-	})
-	router.Mutation("test.resumable",
-		func(context.Context, *bridgeipc.Task, any) (any, error) { return nil, nil },
-		bridgeipc.WithResume(
-			func(context.Context, jsontext.Value) (jsontext.Value, error) { return nil, nil },
-			func(_ context.Context, raw jsontext.Value) (any, error) {
-				th.resumed <- raw
-				var record jobs.Record
-				if err := json.Unmarshal(raw, &record); err != nil {
-					return nil, err
-				}
-				return record.Checkpoint, nil
-			}))
 
 	ready := make(chan struct{})
 	cfg := jobshost.Config{
@@ -159,13 +138,6 @@ func compact(t *testing.T, value jsontext.Value) string {
 		t.Fatalf("compact %s: %v", value, err)
 	}
 	return string(value)
-}
-
-func statusCode(err error) int {
-	if taskErr, ok := errors.AsType[*bridgeipc.Error](err); ok {
-		return taskErr.Code
-	}
-	return 0
 }
 
 func TestClientConnectSendsHelloAndOpensMutation(t *testing.T) {
@@ -295,44 +267,6 @@ func TestClientReturnsUpdatePendingOnProtocolMismatch(t *testing.T) {
 	}
 }
 
-func TestSubmitWaitPrintsResult(t *testing.T) {
-	uid := uint32(os.Getuid())
-	th := startHost(t, uid)
-	asRoot(t, true)
-	c := connect(t, th, uid, bridgeipc.HelloSession{Username: "alice", UID: uid, SessionRef: "cli-test"})
-
-	var out bytes.Buffer
-	code, err := Submit(t.Context(), c, "test.job", jsontext.Value(`{}`), true, &out)
-	if err != nil || code != 0 {
-		t.Fatalf("Submit(wait) = %d, %v; want 0", code, err)
-	}
-	lines := strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n")
-	if len(lines) != 4 || jobs.ValidateID(lines[0]) != nil ||
-		!strings.Contains(lines[1], `"task.snapshot"`) || lines[2] != "copy: halfway" || lines[3] != `{"ok":true}` {
-		t.Fatalf("Submit(wait) output =\n%s\nwant the id, the snapshot, \"copy: halfway\" and the result", out.String())
-	}
-
-	out.Reset()
-	code, err = Submit(t.Context(), c, "test.fail", jsontext.Value(`{}`), true, &out)
-	if err != nil || code != 1 || !strings.HasSuffix(out.String(), "error: boom\n") {
-		t.Fatalf("Submit(wait) of a failing job = %d, %v with output %q; want 1 ending in error: boom", code, err, out.String())
-	}
-
-	// Without --wait the client detaches after the snapshot.
-	out.Reset()
-	code, err = Submit(t.Context(), c, "test.job", jsontext.Value(`{}`), false, &out)
-	lines = strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n")
-	if err != nil || code != 0 || len(lines) != 2 || jobs.ValidateID(lines[0]) != nil {
-		t.Fatalf("Submit(no wait) = %d, %v with output %q; want 0 with the id and the snapshot", code, err, out.String())
-	}
-	// The detached job stays reachable by its id.
-	data, err := c.Call(t.Context(), "tasks.get", map[string]string{"taskId": lines[0]})
-	var snapshot bridgeipc.TaskSnapshot
-	if err != nil || json.Unmarshal(data, &snapshot) != nil || snapshot.ID != lines[0] || snapshot.Type != "test.job" {
-		t.Fatalf("tasks.get after a detached submit = %s, %v; want the job %s", data, err, lines[0])
-	}
-}
-
 func TestUserHostRefusesARootPeer(t *testing.T) {
 	uid := uint32(os.Getuid()) + 1 // a user host, never root's
 	th := startHost(t, uid, func(cfg *jobshost.Config) {
@@ -343,82 +277,6 @@ func TestUserHostRefusesARootPeer(t *testing.T) {
 	if c, err := Connect(t.Context(), uid, hello, th.socket); err == nil {
 		_ = c.Close()
 		t.Fatal("a user host accepted a hello from uid 0")
-	}
-}
-
-func TestResumeRunsTheRouteHook(t *testing.T) {
-	th := startHost(t, 0)
-	now := time.Now().UTC()
-	if err := th.store.Create(t.Context(), jobs.Record{
-		ID: jobA, Route: "test.resumable", Owner: jobs.Owner{UID: 0, Username: "root"},
-		State: jobs.StateInterrupted, Reason: jobs.ReasonReboot,
-		CreatedAt: now.Add(-time.Minute), StartedAt: now.Add(-time.Minute), FinishedAt: now.Add(-time.Second),
-		Request: jsontext.Value(`{}`), Executor: jobs.Executor{Kind: "host", PID: 1, PIDStart: 1},
-		Resumable: true, Checkpoint: jsontext.Value(`{"offset":7}`), Protocol: jobs.Protocol,
-	}); err != nil {
-		t.Fatalf("Store.Create: %v", err)
-	}
-	asRoot(t, true)
-	c := connect(t, th, 0, bridgeipc.HelloSession{Username: "root", UID: 0, Privileged: true, SessionRef: "cli-test"})
-
-	if err := Resume(t.Context(), c, jobA); err != nil {
-		t.Fatalf("Resume: %v", err)
-	}
-	select {
-	case raw := <-th.resumed:
-		var record jobs.Record
-		if err := json.Unmarshal(raw, &record); err != nil || record.ID != jobA || compact(t, record.Checkpoint) != `{"offset":7}` {
-			t.Fatalf("Resume hook record = %s, want %s with its checkpoint", raw, jobA)
-		}
-	case <-time.After(ioTimeout):
-		t.Fatal("Resume hook not called")
-	}
-
-	var record jobs.Record
-	deadline := time.Now().Add(ioTimeout)
-	for {
-		var err error
-		record, err = th.store.Get(t.Context(), jobA)
-		if err != nil {
-			t.Fatalf("Store.Get: %v", err)
-		}
-		if record.State != jobs.StateInterrupted && record.State != jobs.StateRunning {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("record still %s", record.State)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	if record.State != jobs.StateCompleted || record.Reason != jobs.ReasonNone || compact(t, record.Result) != `{"offset":7}` ||
-		compact(t, record.Checkpoint) != `{"offset":7}` || !record.Resumable {
-		t.Fatalf("record after resume = %#v, want completed with the hook's result", record)
-	}
-
-	// The resumed job is a task of the host, visible through tasks.get.
-	data, err := c.Call(t.Context(), "tasks.get", map[string]string{"taskId": jobA})
-	var snapshot bridgeipc.TaskSnapshot
-	if err != nil || json.Unmarshal(data, &snapshot) != nil || snapshot.ID != jobA || snapshot.Type != "test.resumable" ||
-		snapshot.State != bridgeipc.TaskStateCompleted {
-		t.Fatalf("tasks.get = %s, %v; want the completed resumed task", data, err)
-	}
-
-	// A job that is no longer interrupted is not resumed again.
-	if err := Resume(t.Context(), c, jobA); statusCode(err) != 409 {
-		t.Fatalf("second Resume = %v, want 409", err)
-	}
-}
-
-func TestResumeIsRefusedOutsideTheRootHost(t *testing.T) {
-	uid := uint32(os.Getuid())
-	if uid == 0 {
-		t.Skip("needs a non-root uid")
-	}
-	th := startHost(t, uid)
-	asRoot(t, true)
-	c := connect(t, th, uid, bridgeipc.HelloSession{Username: "alice", UID: uid, Privileged: true, SessionRef: "cli-test"})
-	if err := Resume(t.Context(), c, jobA); statusCode(err) != 403 {
-		t.Fatalf("Resume in a user host = %v, want 403", err)
 	}
 }
 

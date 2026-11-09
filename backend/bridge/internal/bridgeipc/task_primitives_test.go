@@ -15,6 +15,15 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
+func TestNoJobsResumeRoute(t *testing.T) {
+	service := NewTaskService()
+	router := NewRouter(service)
+	service.RegisterRoutes(router)
+	if _, ok := router.lookup("jobs.resume"); ok {
+		t.Fatal("jobs.resume is registered")
+	}
+}
+
 func TestTaskPrimitiveDecoderEnforcesStrictSingleValuePolicy(t *testing.T) {
 	service := NewTaskService()
 	router := NewRouter(service)
