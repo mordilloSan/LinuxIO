@@ -84,6 +84,12 @@ func newTestHost(t *testing.T, configure func(*Config)) *testHost {
 			th.alerts = append(th.alerts, obs)
 			return nil
 		},
+		ResolveAlert: func(_ context.Context, source, key string) error {
+			th.mu.Lock()
+			defer th.mu.Unlock()
+			th.alerts = slices.DeleteFunc(th.alerts, func(obs alerts.Observation) bool { return obs.Source == source && obs.Key == key })
+			return nil
+		},
 		Now: time.Now,
 	}
 	if configure != nil {
@@ -892,6 +898,49 @@ func TestResumeOnlyWhatTheLastShutdownInterrupted(t *testing.T) {
 			t.Fatalf("record %s = %s, resumable %t; want interrupted and no longer resumable", id, r.State, r.Resumable)
 		}
 	}
+}
+
+// A shutdown alerts on the resumable job it interrupts; when the next boot
+// resumes the job and it completes, that alert is cleared.
+func TestResumedJobThatCompletesClearsItsInterruptedAlert(t *testing.T) {
+	first := newTestHost(t, func(c *Config) {
+		c.UID = 0
+		c.Peer = func(*net.UnixConn) (peercred.Cred, error) { return peercred.Cred{UID: 0}, nil }
+	})
+	first.cfg.Router.Mutation("test.resumable", first.run, bridgeipc.WithResume(
+		func(context.Context, jsontext.Value) (jsontext.Value, error) { return jsontext.Value(`{"at":5}`), nil },
+		func(context.Context, jsontext.Value) (any, error) { return nil, nil },
+	))
+	first.start()
+	stream := first.startJob(first.connect(), "test.resumable", jobA)
+
+	first.cancel() // SIGTERM
+	readInterrupted(t, jobA, stream)
+	if err := first.wait(); err != nil {
+		t.Fatalf("Serve after SIGTERM = %v, want nil", err)
+	}
+	if got := first.observed(); len(got) != 1 || got[0].Key != jobA || got[0].Title != "test.resumable was interrupted" {
+		t.Fatalf("alerts after shutdown = %#v, want one interrupted alert for %s", got, jobA)
+	}
+	// The record is now an earlier boot's.
+	if _, err := first.cfg.Store.Update(context.Background(), jobA, func(r *jobs.Record) error {
+		r.Executor.BootID = "an-earlier-boot"
+		return nil
+	}); err != nil {
+		t.Fatalf("Store.Update: %v", err)
+	}
+
+	resumed := make(chan string, 1)
+	next := newTestHost(t, func(c *Config) {
+		c.UID = 0
+		c.Store, c.Alert, c.ResolveAlert = first.cfg.Store, first.cfg.Alert, first.cfg.ResolveAlert
+		addResumableRoute(c, resumed)
+	})
+	next.start()
+	if got := receiveIDs(t, resumed, 1); !slices.Equal(got, []string{jobA}) {
+		t.Fatalf("resumed %v, want %s", got, jobA)
+	}
+	waitFor(t, "the interrupted alert to clear", func() bool { return len(first.observed()) == 0 })
 }
 
 // receiveIDs reads n job IDs from ch and returns them sorted.

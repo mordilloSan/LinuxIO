@@ -40,9 +40,11 @@ type recorder struct {
 type job struct {
 	task *bridgeipc.Task
 	// created: Started has written the record. finished: Finished came
-	// first and left finishing the record to Started.
+	// first and left finishing the record to Started. resumed: Started
+	// reopened the interrupted record of a resumed job.
 	created   bool
 	finished  bool
+	resumed   bool
 	pending   jsontext.Value
 	lastWrite time.Time
 	timer     *time.Timer
@@ -82,18 +84,20 @@ func (r *recorder) Started(task *bridgeipc.Task, raw jsontext.Value) {
 	ctx, cancel := jobs.DetachedContext(storeTimeout)
 	defer cancel()
 	err := r.h.cfg.Store.Create(ctx, r.h.newRecord(task, raw))
+	resumed := false
 	switch {
 	case errors.Is(err, jobs.ErrExists):
 		// A resumed job keeps its record.
 		if err = r.h.rerun(ctx, id); err != nil {
 			slog.Error("job record not reopened for a rerun", "job_id", id, "route", task.Type(), "error", err)
 		}
+		resumed = err == nil
 	case err != nil:
 		slog.Error("job record not created", "job_id", id, "route", task.Type(), "error", err)
 	}
 
 	r.mu.Lock()
-	j.created = true
+	j.created, j.resumed = true, resumed
 	finish := j.finished || task.IsTerminal()
 	if finish && r.jobs[id] == j {
 		delete(r.jobs, id)
@@ -101,7 +105,7 @@ func (r *recorder) Started(task *bridgeipc.Task, raw jsontext.Value) {
 	r.mu.Unlock()
 	switch {
 	case finish:
-		r.finish(ctx, task)
+		r.finish(ctx, task, resumed)
 	case late:
 		// Admitted as the host began to stop, after the shutdown listed the
 		// jobs it interrupts.
@@ -207,12 +211,12 @@ func (r *recorder) Finished(task *bridgeipc.Task) {
 	}
 	r.writeProgressLocked(id, j)
 	j.finished = true
-	created := j.created
+	created, resumed := j.created, j.resumed
 	r.mu.Unlock()
 	if created {
 		ctx, cancel := jobs.DetachedContext(storeTimeout)
 		defer cancel()
-		r.finish(ctx, task)
+		r.finish(ctx, task, resumed)
 	}
 }
 
@@ -242,9 +246,10 @@ func (r *recorder) CancelRequested(task *bridgeipc.Task) {
 }
 
 // finish moves the record to the task's terminal state and alerts on a
-// failure. A record already terminal, such as one interrupted at shutdown,
-// is left as it is.
-func (r *recorder) finish(ctx context.Context, task *bridgeipc.Task) {
+// failure, which replaces the alert of an earlier interruption; a resumed job
+// that completed clears that alert. A record already terminal, such as one
+// interrupted at shutdown, is left as it is.
+func (r *recorder) finish(ctx context.Context, task *bridgeipc.Task, resumed bool) {
 	snapshot := task.Snapshot()
 	var state jobs.State
 	var result jsontext.Value
@@ -274,8 +279,11 @@ func (r *recorder) finish(ctx context.Context, task *bridgeipc.Task) {
 		slog.Error("job record not finished", "job_id", task.ID(), "route", task.Type(), "error", err)
 		return
 	}
-	// Only this run's failure alerts, never a record that was already terminal.
-	if state == jobs.StateFailed && record.State == jobs.StateFailed && record.Error != nil {
+	// Only this run's outcome alerts, never a record that was already terminal.
+	switch {
+	case state == jobs.StateFailed && record.State == jobs.StateFailed && record.Error != nil:
 		r.h.alert(ctx, record.ID, record.Route+" failed", record.Error.Message)
+	case resumed && state == jobs.StateCompleted && record.State == jobs.StateCompleted:
+		r.h.resolveAlert(ctx, record.ID)
 	}
 }

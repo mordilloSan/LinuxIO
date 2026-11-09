@@ -121,6 +121,7 @@ func serveJobsHost(ln *net.UnixListener, runtimeDir, stateDir string) error {
 	}
 	if uid == 0 {
 		cfg.Alert = alerts.Raise
+		cfg.ResolveAlert = alerts.Resolve
 		cfg.Handlers = userHandlers
 	}
 	if err := jobshost.Serve(ctx, cfg); err != nil {

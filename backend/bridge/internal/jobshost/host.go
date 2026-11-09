@@ -56,6 +56,8 @@ type Config struct {
 	Notify func(string) error
 	// Alert raises a host alert for a failed or interrupted job; nil raises none.
 	Alert func(ctx context.Context, obs alerts.Observation) error
+	// ResolveAlert clears the alert of a resumed job that completed; nil clears none.
+	ResolveAlert func(ctx context.Context, source, key string) error
 	// Now is the host clock; nil means time.Now.
 	Now func() time.Time
 	// Peer reads the peer credentials of a connection; nil means
@@ -137,7 +139,6 @@ func (h *Host) serve(ctx context.Context) error {
 		}
 	}
 	h.cfg.Tasks.SetRecorder(h.rec)
-	h.cfg.Tasks.SetResumer(h.resume)
 	h.cfg.Tasks.SetRemote(storedJobs{h})
 	h.mu.Lock()
 	h.lastBusy = h.cfg.Now()
@@ -651,14 +652,28 @@ func (h *Host) notify(state string) {
 	}
 }
 
+// alertSource is the alerts source of every job alert; the job ID is its key.
+const alertSource = "jobs"
+
 // alert raises a host alert about job id when the host raises alerts.
 func (h *Host) alert(ctx context.Context, id, title, message string) {
 	if h.cfg.Alert == nil {
 		return
 	}
-	obs := alerts.Observation{Source: "jobs", Key: id, Severity: alerts.SeverityError, Title: title, Message: message, Link: "/"}
+	obs := alerts.Observation{Source: alertSource, Key: id, Severity: alerts.SeverityError, Title: title, Message: message, Link: "/"}
 	if err := h.cfg.Alert(ctx, obs); err != nil {
 		slog.Warn("job alert failed", "job_id", id, "error", err)
+	}
+}
+
+// resolveAlert clears the alert about job id, such as the one its
+// interruption raised, when the host clears alerts.
+func (h *Host) resolveAlert(ctx context.Context, id string) {
+	if h.cfg.ResolveAlert == nil {
+		return
+	}
+	if err := h.cfg.ResolveAlert(ctx, alertSource, id); err != nil {
+		slog.Warn("job alert not resolved", "job_id", id, "error", err)
 	}
 }
 
