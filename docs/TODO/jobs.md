@@ -523,8 +523,14 @@ phase 3 specs, `login.spec.ts` included, 19 checks, all passing after the
 replace fix; `make vm-test-btrfs-integration` passes `TestBtrfsResumeIntegration`
 (including `replacePowerCut`), `TestBtrfsDegradedIntegration`,
 `TestBtrfsIntegration` and `TestPartitionIntegration`. `make test-quiet`
-passed on the phase's code. The root tests have not been run on the user's own
-hardware (`make test-btrfs-integration`, sudo).
+passed on the phase's code.
+
+**Checked on the development machine** (kernel 7.0.0-43, 2026-11-09, at
+`07d04f7b`, with sudo): `make test-btrfs-integration` passes the same four
+tests, every `TestBtrfsResumeIntegration` step included. `replaceKill` took
+the 6.19-and-later branch (the kill cancels the replace and `ResumeReplace`
+refuses it), so the branch for earlier kernels is still not exercised.
+`balanceKill` passed in this run.
 
 | Check | Result |
 |---|---|
@@ -557,7 +563,8 @@ Seen on the way. None of these blocks phase 3:
 - The overview and the bridge's mount count still treat a replace target as a
   present disk, so a pool that is both missing a member and mid-replace shows
   **Mount** where the kernel needs **Mount degraded**. The boot path counts
-  correctly. Follow-up: it needs an offline-pool API change.
+  correctly. Fixed in `4d73aac5`: the offline pool carries a missing count
+  that discounts the replace target, and the handler and the overview read it.
 - The Docker kill always landed after the restart was queued. The accepted gap
   (files written, restart not yet requested) was not exercised.
 - A pause waits for the chunk in hand: with the default 1 GiB data chunks on
@@ -773,8 +780,10 @@ Moved out of phase 3 (not lost):
   snapshot stays `running` until the handler returns.
 - Periodic scrub checkpoints: a power loss rescans from 0.
 - Progress for device removal.
-- The overview and the bridge's offline-pool mount counting a replace target as
-  a present disk (section 3.6).
+
+The overview and the bridge's offline-pool mount counting a replace target as
+a present disk also moved out, and was fixed afterwards in `4d73aac5`
+(section 3.6).
 
 ### 4.4 Phase 4: schedules and system jobs
 
@@ -970,7 +979,8 @@ and tag `v7.0` (2026-11-06), and checked in the VM.
   check the source device id (only that the target's id is present); a cancel
   of a replace answered `NOT_STARTED` after the kernel finished leaves a job
   `canceled` while the pool holds the new disk; the pre-6.19 `replaceKill`
-  branch has never run on a real kernel (the VM runs 7.0).
+  branch has never run on a real kernel (the VM and the development machine
+  run 7.0).
 
 ### Other open items
 
@@ -980,7 +990,7 @@ and tag `v7.0` (2026-11-06), and checked in the VM.
   compared in the same form. A handlers test fails for a Mutation request field
   named like a secret without the tag.
 
-- [ ] The power-loss reboot path (`interrupted/reboot` marked at boot) has only unit-test coverage.
+- [x] The power-loss reboot path (`interrupted/reboot` marked at boot) had only unit-test coverage. The VM spec now cuts the power under a scrub and a replace and checks the `interrupted/reboot` record and the resume (section 3.6).
 - [ ] The bridge resource limits (section 4.1).
 
 ## 6. Decision log
