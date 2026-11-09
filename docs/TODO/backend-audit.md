@@ -39,6 +39,23 @@ fix, so each item can be accepted or rejected on that basis.
   - Policy decision first: flagging removes anything polkit lets a non-admin do. See `docs/privilege_pattern.md` for the survey command.
   - Behaviour change: a non-sudo session gets 403 before anything runs instead of a host permission error part-way through.
 
+- [ ] **131. An owned upload follows symlinks in the folder path**
+  `backend/bridge/handlers/filebrowser/upload_owner.go` (`openUploadDir`), `upload_operation.go` (`prepare`), `upload_batch_operation.go` (`ensurePrepared`)
+  - `[source]`: an upload that sets `owner` (the Compose save) refuses a symlink at the final name (409), but `openUploadDir` resolves the folder path through `os.Root`, which follows relative links anywhere under `/`. A process running as the user can replace `~/docker/web` with a relative link to another root-writable folder (`../../../opt/stacks/prod`) and redirect an admin's owned save there. The names are fixed (`docker-compose.yml`, `.env`) and the content is the admin's own; an edit save stops on the version check, but where the files are absent the save creates them without a prompt, and an overwrite the admin confirms replaces them.
+  - Fix (proposed): for owned uploads, refuse a symlink in any path component whose parent folder the session user can write, the only place the user can plant one. Links in folders the user cannot write (`/home -> /var/home`) keep working. Check each component through the handles of the walk, not by path.
+  - Behaviour change: an owned save under a user-planted folder link fails with 409 instead of landing in the link's target.
+- [ ] **132. A trash restore goes where the user-editable `.trashinfo` says**
+  `backend/bridge/handlers/filebrowser/services/trash.go` (`RestoreFromTrash`, `userCouldWrite`)
+  - `[source]`: on a root bridge a restore into a folder the session user does not own takes only an item the user neither owns nor can write (any group- or world-writable mode counts), staged under a hidden name and re-checked there. `Path=` stays the user's to edit, so a process running as the user can still send such an item (one an admin trashed from `/etc`, or another user's file it could rename into the trash) to a different system folder; the Trash view shows that path before the admin restores. A trashed folder is judged at its top only. The admin's own file trashed from a shared folder such as `/srv` cannot be restored there, as it is indistinguishable from a planted one.
+  - Fix (proposed): record the original location root-side at trash time (a root-owned record beside the user's trash) and restore only to it, or confirm a restore whose destination is a system folder. `services.openDirNoUserLinks` is the walk item 131 proposes for uploads.
+  - Behaviour change: a restore to a system folder needs the recorded location or a confirmation.
+
+- [ ] **133. High: a delete on a root bridge follows links a user process swaps in mid-walk**
+  `backend/bridge/handlers/filebrowser/services/file_operations.go:641-770` (`DeleteFilesWithProgress`, `deleteFilesDuringWalk`, `removeDeleteDirs`)
+  - `[source]`: the file browser's normal delete walks the tree with `fs.WalkDir` over `os.Root` and calls `root.Root.Remove` with the full path of every entry, and `os.Root` follows relative symlinks in the folders on the way. A process running as the session user can swap a subfolder of what an admin deletes for a link to `../../../../etc`, timed with inotify, and have root unlink the matching names there: arbitrary deletion as root from an everyday action. Copy, move and rename in the same file probably share the pattern (`[unverified]`).
+  - Fix (proposed): on a root bridge open the parent with `services.openDirNoUserLinks` and delete with `removeAllAt` (unlinkat, O_NOFOLLOW opens per level), both added with the trash fix; then check copy, move and rename.
+  - Behaviour change: none for a normal delete; a delete through a link the user could have planted is refused.
+
 ## B. Needs a host or a measurement first
 
 - [ ] **36. File operations fail below a directory symlink whose target is absolute**

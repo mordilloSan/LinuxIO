@@ -32,8 +32,11 @@ vm-test-filebrowser-root: ensure-go ## Run the root-only file browser ownership 
 	@set -e
 	@mkdir -p "$(cache_dir)/vm"
 	@cd "$(backend_dir)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" "$(GO_BIN)" test -c -o "$(cache_dir)/vm/filebrowser.test" ./bridge/handlers/filebrowser
+	@cd "$(backend_dir)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" "$(GO_BIN)" test -c -o "$(cache_dir)/vm/filebrowser-services.test" ./bridge/handlers/filebrowser/services
 	@"$(vm_script)" ssh 'cat > filebrowser.test && chmod +x filebrowser.test' < "$(cache_dir)/vm/filebrowser.test"
+	@"$(vm_script)" ssh 'cat > filebrowser-services.test && chmod +x filebrowser-services.test' < "$(cache_dir)/vm/filebrowser-services.test"
 	@"$(vm_script)" ssh "sudo ./filebrowser.test -test.run $$(printf %q '$(FILEBROWSER_ROOT_RUN)') -test.count=1 -test.v"
+	@"$(vm_script)" ssh "sudo ./filebrowser-services.test -test.run $$(printf %q '$(FILEBROWSER_ROOT_RUN)') -test.count=1 -test.v"
 
 test-vm-browser: ensure-node setup ## Run the Playwright specs in frontend/src/test/vm against the test VM
 	@set -e

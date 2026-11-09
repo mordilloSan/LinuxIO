@@ -3,11 +3,9 @@ package filebrowser
 import (
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
-	"slices"
 	"syscall"
 
 	"golang.org/x/sys/unix"
@@ -31,7 +29,6 @@ const uploadOwnerSession apischema.FileUploadOwner = "session"
 // as root, so they must not be writable by a primary group others may share.
 // A private file (private set) is owner-only either way.
 const (
-	handedDirMode     os.FileMode = 0o755
 	handedFileMode    os.FileMode = 0o644
 	privateUploadMode os.FileMode = 0o600
 )
@@ -60,15 +57,15 @@ func uploadNewOwner(requested apischema.FileUploadOwner, session sessionOwner, e
 	}
 }
 
-// handsOverIn reports whether an entry created in a folder goes to owner:
-// only when owner is set and the folder, as fstat saw its open handle,
-// already belongs to them.
+// asOwner is whom the services hand the entries they create to.
+func (o sessionOwner) asOwner() services.Owner {
+	return services.Owner{UID: o.uid, GID: o.gid, Set: o.set}
+}
+
+// handsOverIn reports whether an entry created in a folder goes to owner
+// (see services.HandsOverIn).
 func handsOverIn(folder os.FileInfo, owner sessionOwner) bool {
-	if !owner.set {
-		return false
-	}
-	st, ok := folder.Sys().(*syscall.Stat_t)
-	return ok && st.Uid == owner.uid
+	return services.HandsOverIn(folder, owner.asOwner())
 }
 
 // isSetgid reports whether entries created in folder inherit its group.
@@ -82,109 +79,17 @@ func isSetgid(folder os.FileInfo) bool {
 // handed over relative to the handle of their parent, never by path. Folders
 // that already exist are only opened.
 func openUploadDir(root *fsroot.FSRoot, dirRel string, owner sessionOwner) (*os.File, error) {
-	var missing []string
-	existing := dirRel
-	for {
-		_, err := root.Root.Stat(existing)
-		if err == nil {
-			break
-		}
-		if !errors.Is(err, fs.ErrNotExist) || existing == "." {
-			return nil, err
-		}
-		missing = append(missing, filepath.Base(existing))
-		existing = filepath.Dir(existing)
-	}
-	dir, err := root.Root.OpenFile(existing, os.O_RDONLY|syscall.O_DIRECTORY, 0)
+	dir, missing, err := services.OpenNearestDir(root, dirRel)
 	if err != nil {
 		return nil, err
 	}
-	for _, name := range slices.Backward(missing) {
-		next, err := mkdirUploadDir(dir, name, owner)
-		_ = dir.Close()
-		if err != nil {
-			return nil, err
-		}
-		dir = next
-	}
-	return dir, nil
-}
-
-// mkdirUploadDir makes name in parent and returns it open. Only a folder this
-// call made (mkdirat succeeded, so not EEXIST) inside a folder owner owns is
-// handed over (see handOverDir); any other folder keeps the bridge's
-// ownership and the service umask, as MkdirAll leaves it.
-func mkdirUploadDir(parent *os.File, name string, owner sessionOwner) (*os.File, error) {
-	parentInfo, err := parent.Stat()
-	if err != nil {
-		return nil, err
-	}
-	err = unix.Mkdirat(int(parent.Fd()), name, uint32(services.PermDir))
-	created := err == nil
-	if err != nil && !errors.Is(err, unix.EEXIST) {
-		return nil, &fs.PathError{Op: "mkdirat", Path: name, Err: err}
-	}
-	fd, err := unix.Openat(int(parent.Fd()), name, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
-	if err != nil {
-		return nil, &fs.PathError{Op: "openat", Path: name, Err: err}
-	}
-	dir := os.NewFile(uintptr(fd), filepath.Join(parent.Name(), name))
-	if created && handsOverIn(parentInfo, owner) {
-		if err := handOverDir(dir, owner); err != nil {
-			_ = dir.Close()
-			return nil, err
-		}
-	}
-	return dir, nil
-}
-
-// handOverDir hands the folder mkdirUploadDir just made to owner with mode
-// 0755. Between mkdirat and openat a process that can write the parent could
-// have put another folder under the name, so only a folder the bridge owns
-// that is still empty, as a new one is, is handed over. A folder made in a
-// setgid folder keeps the setgid bit and the group it inherited, as if the
-// user had made it there.
-func handOverDir(dir *os.File, owner sessionOwner) error {
-	info, err := dir.Stat()
-	if err != nil {
-		return err
-	}
-	fresh, err := isFreshUploadDir(dir, info)
-	if err != nil || !fresh {
-		return err
-	}
-	return handOver(dir, owner, handedDirMode|info.Mode()&os.ModeSetgid, isSetgid(info))
-}
-
-// isFreshUploadDir reports whether dir, described by info, looks like the
-// folder the bridge has just made: owned by the bridge's euid and empty.
-func isFreshUploadDir(dir *os.File, info os.FileInfo) (bool, error) {
-	st, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || int(st.Uid) != os.Geteuid() {
-		return false, nil
-	}
-	_, err := dir.Readdirnames(1)
-	if errors.Is(err, io.EOF) {
-		return true, nil
-	}
-	return false, err // nil when the folder has entries
+	return services.MkdirAllAt(dir, missing, services.PermDir, owner.asOwner())
 }
 
 // handOver gives an entry this upload created, held open, to owner and sets
-// its mode. In a setgid folder the entry keeps the group it inherited.
-// Ownership goes first because a chown clears setuid and setgid.
+// its mode (see services.HandOver).
 func handOver(f *os.File, owner sessionOwner, mode os.FileMode, inSetgidFolder bool) error {
-	gid := int(owner.gid)
-	if inSetgidFolder {
-		gid = -1
-	}
-	if err := f.Chown(int(owner.uid), gid); err != nil {
-		return fmt.Errorf("hand %s to session user: %w", f.Name(), err)
-	}
-	if err := f.Chmod(mode); err != nil {
-		return fmt.Errorf("set permissions of %s: %w", f.Name(), err)
-	}
-	return nil
+	return services.HandOver(f, owner.asOwner(), mode, inSetgidFolder)
 }
 
 // createUploadBuffer creates the buffer exclusively in dir, so a name planted

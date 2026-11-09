@@ -12,6 +12,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
@@ -193,7 +194,7 @@ func TestUploadDirLeavesAFolderSomeoneElseMadeAlone(t *testing.T) {
 	require.NoError(t, err)
 	defer parent.Close()
 
-	dir, err := mkdirUploadDir(parent, "stack", selfOwner())
+	dir, err := services.MkdirAt(parent, "stack", services.PermDir, selfOwner().asOwner())
 	require.NoError(t, err)
 	require.NoError(t, dir.Close())
 
@@ -223,7 +224,7 @@ func TestUploadHandsOverOnlyAFreshFolder(t *testing.T) {
 		require.NoError(t, err)
 		info, err := dir.Stat()
 		require.NoError(t, err)
-		got, err := isFreshUploadDir(dir, info)
+		got, err := services.IsFreshDir(dir, info)
 		require.NoError(t, err)
 		require.NoError(t, dir.Close())
 		require.Equalf(t, fresh, got, "fresh %s", path)
