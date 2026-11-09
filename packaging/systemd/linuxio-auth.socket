@@ -13,7 +13,12 @@ SocketMode=0660
 DirectoryMode=0755
 RemoveOnStop=yes
 Accept=yes
-MaxConnections=16
+# Each connection is one login. Its linuxio-auth@ worker keeps it as the
+# bridge's transport until the session ends (sign-out, or the webserver's 60 min
+# idle or 12 h absolute expiry), so this caps live sessions host-wide, including
+# those left by browsers closed without signing out. The webserver separately
+# allows at most 8 logins in flight. 64 bounds the root workers and bridges.
+MaxConnections=64
 
 [Install]
 WantedBy=linuxio.target

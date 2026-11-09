@@ -346,6 +346,13 @@ grep -Fq 'rm -rf "${DATA_DIR}/durable-operations"' "$installer" ||
 	fail "installer must remove the orphaned durable-operations store"
 printf '   \033[1;32m✓\033[0m %s\n' "job units stay outside linuxio.target"
 
+# Each auth connection stays open as its bridge's transport until the session
+# ends, so MaxConnections caps live sessions host-wide, not login attempts.
+AUTH_MAX_CONNECTIONS="$(sed -n 's/^MaxConnections=//p' "${REPO_ROOT}/packaging/systemd/linuxio-auth.socket")"
+((AUTH_MAX_CONNECTIONS >= 64)) ||
+	fail "linuxio-auth.socket MaxConnections=${AUTH_MAX_CONNECTIONS} caps live sessions; keep it at least 64"
+printf '   \033[1;32m✓\033[0m %s\n' "auth socket leaves room for live sessions"
+
 # The standalone scripts each carry their own Show/Header; keep them identical.
 ui_sum() { sed -n '/^Show() {/,/^}/p;/^Header() {/,/^}/p;/^readonly COLOUR_RESET/,/^readonly YELLOW/p' "$1" | sha256sum; }
 for script in install-dependencies.sh uninstall.sh; do

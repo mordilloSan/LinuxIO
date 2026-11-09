@@ -18,4 +18,6 @@ packages:
   - docker.io
   - btrfs-progs
 runcmd:
+  # Unattended apt runs stall the reboot and power-cut checks.
+  - systemctl disable --now apt-daily.timer apt-daily-upgrade.timer
   - curl -fsS -o /root/install-dependencies.sh @SEED_URL@install-dependencies.sh && bash /root/install-dependencies.sh
