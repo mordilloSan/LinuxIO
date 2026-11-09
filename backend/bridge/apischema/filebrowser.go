@@ -182,7 +182,9 @@ type FileUploadRequest struct {
 	// folders the upload creates (0755), to the session user, but only inside
 	// a folder that user already owns; in a setgid folder they keep the
 	// inherited group. Unset, a root bridge keeps them root-owned. An
-	// overwritten file always keeps its owner and mode.
+	// overwritten file always keeps its owner and mode. Set, a symbolic link
+	// at the target is refused (409) instead of written through, as an
+	// upload without owner does.
 	Owner FileUploadOwner `json:"owner,omitempty"`
 	// Private creates a new file readable only by its owner (0600), for files
 	// such as a Compose .env that may hold secrets.

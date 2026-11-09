@@ -42,13 +42,14 @@ type uploadBatchFile struct {
 // stream bytes are discarded so the rest of the batch still lands.
 type uploadBatchTransferTask struct {
 	*transferLifecycle
-	destination string
-	files       []uploadBatchFile
-	directories []string
-	total       int64
-	overwrite   bool
-	newOwner    sessionOwner // set when a root bridge hands what this upload creates to the session user
-	private     bool         // new files are owner-only (0600)
+	destination   string
+	files         []uploadBatchFile
+	directories   []string
+	total         int64
+	overwrite     bool
+	newOwner      sessionOwner // set when a root bridge hands what this upload creates to the session user
+	private       bool         // new files are owner-only (0600)
+	refuseSymlink bool         // the request set owner: a symlink at a file's target is refused, not replaced
 
 	// The fields below are guarded by mu. bytes (stream bytes consumed across
 	// the whole batch) lives in the lifecycle.
@@ -191,13 +192,14 @@ func runUploadBatchTask(ctx context.Context, task *bridgeipc.Task, req apischema
 	}
 
 	transfer := &uploadBatchTransferTask{
-		destination: destination,
-		files:       files,
-		directories: directories,
-		total:       total,
-		overwrite:   req.Overwrite != nil && *req.Overwrite,
-		newOwner:    newOwner,
-		private:     req.Private != nil && *req.Private,
+		destination:   destination,
+		files:         files,
+		directories:   directories,
+		total:         total,
+		overwrite:     req.Overwrite != nil && *req.Overwrite,
+		newOwner:      newOwner,
+		private:       req.Private != nil && *req.Private,
+		refuseSymlink: req.Owner != "",
 	}
 	transfer.transferLifecycle = newTransferLifecycle(task, transfer.cleanupPartial, transfer.reportProgress)
 	defer registerTransfer(task.ID(), transfer)()
@@ -374,6 +376,11 @@ func (t *uploadBatchTransferTask) ensurePrepared(session *uploadBatchSession) er
 		return fmt.Errorf("create parent dir: %w", err)
 	}
 	defer dir.Close()
+	if t.refuseSymlink {
+		if err = refuseSymlinkTarget(dir, filepath.Base(finalRel)); err != nil {
+			return err
+		}
+	}
 	folderInfo, err := dir.Stat()
 	if err != nil {
 		return fmt.Errorf("stat parent dir: %w", err)

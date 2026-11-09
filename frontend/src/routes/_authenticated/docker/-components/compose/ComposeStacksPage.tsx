@@ -7,6 +7,7 @@ import {
   LinuxIOError,
   uploadContent,
   type ComposeProject,
+  type TextFile,
   useCallMutation,
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -49,15 +50,12 @@ const envPathFor = (composeFilePath: string): string => {
   return dir ? `${dir}/.env` : "";
 };
 
-// Returns the env file's content, or null when it doesn't exist (or can't be
-// read) — the editor uses null to mean "will be created on save".
-const loadEnvContent = async (envPath: string): Promise<string | null> => {
+// Returns the env file as read for editing, or null when it doesn't exist (or
+// can't be read) — the editor uses null to mean "will be created on save".
+const loadEnvFile = async (envPath: string): Promise<TextFile | null> => {
   if (!envPath) return null;
   try {
-    const result = await call(linuxio.filebrowser.read_text.route, {
-      path: envPath,
-    });
-    return result?.content ?? "";
+    return await call(linuxio.filebrowser.read_text.route, { path: envPath });
   } catch {
     return null;
   }
@@ -84,6 +82,10 @@ const ComposeStacksPage = ({
   const [editingEnvContent, setEditingEnvContent] = useState<string | null>(
     null,
   );
+  // Version of each file the editor loaded, by path: a save replaces only that.
+  const [editingVersions, setEditingVersions] = useState<
+    Record<string, string>
+  >({});
 
   // Post-save dialog state
   const [postSaveDialogOpen, setPostSaveDialogOpen] = useState(false);
@@ -250,13 +252,14 @@ const ComposeStacksPage = ({
       setSetupDialogOpen(false);
       const envPath = `${workingDir}/.env`;
       // The chosen directory may already hold a .env; surface it for editing.
-      void loadEnvContent(envPath).then((envContent) => {
+      void loadEnvFile(envPath).then((envFile) => {
         setEditorMode("create");
         setEditingStackName(stackName);
         setEditingFilePath(`${workingDir}/docker-compose.yml`);
         setEditingContent("");
         setEditingEnvPath(envPath);
-        setEditingEnvContent(envContent);
+        setEditingEnvContent(envFile?.content ?? null);
+        setEditingVersions(envFile ? { [envPath]: envFile.version } : {});
         setEditorOpen(true);
       });
     },
@@ -270,9 +273,9 @@ const ComposeStacksPage = ({
     async (projectName: string, configPath: string) => {
       try {
         const envPath = envPathFor(configPath);
-        const [result, envContent] = await Promise.all([
+        const [result, envFile] = await Promise.all([
           call(linuxio.filebrowser.read_text.route, { path: configPath }),
-          loadEnvContent(envPath),
+          loadEnvFile(envPath),
         ]);
 
         if (result && result.content) {
@@ -281,7 +284,11 @@ const ComposeStacksPage = ({
           setEditingFilePath(configPath);
           setEditingContent(result.content);
           setEditingEnvPath(envPath);
-          setEditingEnvContent(envContent);
+          setEditingEnvContent(envFile?.content ?? null);
+          setEditingVersions({
+            [configPath]: result.version,
+            ...(envFile ? { [envPath]: envFile.version } : {}),
+          });
           setEditorOpen(true);
         } else {
           toast.error("Failed to load compose file content");
@@ -348,19 +355,23 @@ const ComposeStacksPage = ({
         // report this task's failure.
         onTaskStart: (task) => markTerminalFeedbackEmitted(task.id),
         overwrite: override || undefined,
+        expectedVersion: editingVersions[filePath],
         owner: "session",
       });
 
-      // Persist the sibling .env when its buffer changed. The editor is
-      // authoritative for it (loaded fresh on open), so overwrite is safe.
-      // A new .env may hold secrets, so only its owner can read it.
+      // Persist the sibling .env when its buffer changed. A .env the editor
+      // loaded is replaced only at that version; a new one is created and
+      // never replaced unprompted (a 409 asks first). A new .env may hold
+      // secrets, so only its owner can read it.
       if (envContent !== undefined) {
         const envPath = envPathFor(filePath);
         if (envPath) {
+          const envVersion = editingVersions[envPath];
           await uploadContent(envPath, encoder.encode(envContent), {
             chunkSize,
             onTaskStart: (task) => markTerminalFeedbackEmitted(task.id),
-            overwrite: true,
+            overwrite: override || Boolean(envVersion),
+            expectedVersion: envVersion,
             owner: "session",
             private: true,
           });
@@ -396,7 +407,7 @@ const ComposeStacksPage = ({
       setPostSaveStackState(state);
       setPostSaveDialogOpen(true);
     },
-    [chunkSize, projects, refetch, toast],
+    [chunkSize, editingVersions, projects, refetch, toast],
   );
 
   // Save compose file with overwrite protection

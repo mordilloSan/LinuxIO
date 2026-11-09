@@ -22,7 +22,8 @@ export interface UploadContentOptions {
    * `"session"` makes a root bridge hand a new file, and the folders the save
    * creates, to the session user (inside a folder that user already owns).
    * Unset, a root bridge keeps them root-owned. An overwritten file always
-   * keeps its owner.
+   * keeps its owner. Set, a symbolic link at the target is refused (409)
+   * instead of written through.
    */
   owner?: FileUploadOwner;
   /** Create a new file readable only by its owner (0600). */

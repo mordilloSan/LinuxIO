@@ -41,6 +41,7 @@ type uploadTransferTask struct {
 	overwrite       bool
 	newOwner        sessionOwner // set when a root bridge hands what this upload creates to the session user
 	private         bool         // a new file is owner-only (0600)
+	refuseSymlink   bool         // the request set owner: a symlink at the target is refused, never followed
 
 	// finalRel, tempRel, attrs, folderInfo, bufferInfo and fileOwner are
 	// guarded by mu.
@@ -100,6 +101,19 @@ func loadUploadAttributes(root *fsroot.FSRoot, realRel string) (uploadAttributes
 		attrs.hasExisting = true
 	}
 	return attrs, nil
+}
+
+// refuseSymlinkTarget refuses an upload that sets owner when name in dir is a
+// symbolic link. Such an upload writes into a user's folder on their behalf,
+// where any process running as the user can plant .env -> /etc/environment,
+// so it never writes through a link there. fstatat on the open folder sees the
+// entry the commit's renameat would replace, so no path walk can be raced.
+func refuseSymlinkTarget(dir *os.File, name string) error {
+	var st unix.Stat_t
+	if unix.Fstatat(int(dir.Fd()), name, &st, unix.AT_SYMLINK_NOFOLLOW) == nil && st.Mode&unix.S_IFMT == unix.S_IFLNK {
+		return fmt.Errorf("%w: %s is a symbolic link; replace it with a regular file", bridgeipc.ErrConflict, name)
+	}
+	return nil
 }
 
 // commitUploadBuffer moves the finished buffer tempName to finalName. Both
@@ -174,6 +188,7 @@ func runUploadTask(ctx context.Context, task *bridgeipc.Task, req apischema.File
 		overwrite:       overwrite,
 		newOwner:        newOwner,
 		private:         req.Private != nil && *req.Private,
+		refuseSymlink:   req.Owner != "",
 	}
 	transfer.transferLifecycle = newTransferLifecycle(task, transfer.cleanupPartial, transfer.reportProgress)
 	defer registerTransfer(task.ID(), transfer)()
@@ -198,7 +213,7 @@ func (t *uploadTransferTask) attach(stream net.Conn, req bridgeipc.TaskDataAttac
 	err = t.prepare(root)
 	if err != nil {
 		code := 500
-		if errors.Is(err, errUploadVersionConflict) {
+		if errors.Is(err, errUploadVersionConflict) || errors.Is(err, bridgeipc.ErrConflict) {
 			code = 409
 		}
 		return t.fail(stream, err.Error(), code, err)
@@ -239,27 +254,42 @@ func (t *uploadTransferTask) prepare(root *fsroot.FSRoot) error {
 	t.mu.Unlock()
 
 	realPath := filepath.Clean(t.path)
-	// Write through a symlink so the atomic rename replaces the target, not the
-	// link (dotfile repos, sites-enabled). A dangling link is replaced as-is.
-	if resolvedPath, _, err := iteminfo.ResolveSymlinksAt(t.ctx, root, realPath); err == nil {
-		realPath = resolvedPath
-	} else if ctxErr := t.ctx.Err(); ctxErr != nil {
-		return ctxErr
+	// Without owner (editor saves, plain uploads) write through a symlink so
+	// the atomic rename replaces the target, not the link (dotfile repos,
+	// sites-enabled); a dangling link is replaced as-is. With owner the link
+	// is refused below instead.
+	if !t.refuseSymlink {
+		if resolvedPath, _, err := iteminfo.ResolveSymlinksAt(t.ctx, root, realPath); err == nil {
+			realPath = resolvedPath
+		} else if ctxErr := t.ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 	}
 	realRel := fsroot.ToRel(realPath)
 	attrs, err := loadUploadAttributes(root, realRel)
 	if err != nil {
 		return err
 	}
-	versionErr := t.verifyExpectedVersion(root, realPath)
-	if versionErr != nil {
-		return versionErr
+	// Without owner the version is checked before any missing folder is made.
+	if !t.refuseSymlink {
+		if err = t.verifyExpectedVersion(root, realPath); err != nil {
+			return err
+		}
 	}
 	dir, err := openUploadDir(root, filepath.Dir(realRel), t.newOwner)
 	if err != nil {
 		return fmt.Errorf("create parent dir: %w", err)
 	}
 	defer dir.Close()
+	// With owner the link is refused first, so its target is never read.
+	if t.refuseSymlink {
+		if err = refuseSymlinkTarget(dir, filepath.Base(realRel)); err != nil {
+			return err
+		}
+		if err = t.verifyExpectedVersion(root, realPath); err != nil {
+			return err
+		}
+	}
 	folderInfo, err := dir.Stat()
 	if err != nil {
 		return fmt.Errorf("stat parent dir: %w", err)

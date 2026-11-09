@@ -372,3 +372,37 @@ func TestUploadBatchOverwriteOfASymlinkTakesNothingFromItsTarget(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 0o755|os.ModeSetuid, info.Mode()&(os.ModePerm|os.ModeSetuid))
 }
+
+// A batch that sets owner refuses a symlink at a file's target like the single
+// upload does, instead of following or silently replacing it.
+func TestUploadBatchWithOwnerRefusesASymlinkAtTheTarget(t *testing.T) {
+	victim := seedVictim(t)
+	stack := t.TempDir()
+	env := filepath.Join(stack, ".env")
+	plant(t, victim, env)
+	overwrite := true
+
+	task := startUploadBatchTaskAs(t, apischema.FileUploadBatchRequest{
+		Destination: stack,
+		Files:       []apischema.FileUploadBatchEntry{{Path: ".env", Size: "3"}},
+		Overwrite:   &overwrite,
+		Owner:       uploadOwnerSession,
+	}, selfOwner())
+	conn, results, _ := attachUploadBatchStream(t, task, "")
+	writeData(t, conn, []byte("new"))
+	writeClose(t, conn)
+
+	result := waitResult(t, results)
+	require.Equalf(t, "ok", result.Status, "batch answered %+v", result)
+	failed := decodeUploadBatchResult(t, result).Failed
+	require.Len(t, failed, 1)
+	require.Contains(t, failed[0].Error, ".env is a symbolic link; replace it with a regular file")
+	requireVictimUntouched(t, victim)
+	info, err := os.Lstat(env)
+	require.NoError(t, err)
+	require.NotZero(t, info.Mode()&os.ModeSymlink, "the link is left alone")
+	entries, err := os.ReadDir(stack)
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "no upload buffer is left behind")
+	require.Equal(t, ".env", entries[0].Name())
+}
