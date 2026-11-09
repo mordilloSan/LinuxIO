@@ -216,4 +216,8 @@ type FileUploadBatchRequest struct {
 	// KeepBoth lists manifest paths that land under a unique name when their
 	// destination already exists, instead of being skipped or replaced.
 	KeepBoth []string `json:"keepBoth,omitempty"`
+	// Owner and Private apply to every file and folder the batch creates,
+	// as they do for FileUploadRequest.
+	Owner   FileUploadOwner `json:"owner,omitempty"`
+	Private *bool           `json:"private,omitzero"`
 }

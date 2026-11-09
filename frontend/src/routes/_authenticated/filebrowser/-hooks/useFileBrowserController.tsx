@@ -66,9 +66,11 @@ export function useFileBrowserController(
   // Upload slice: state plus a stable semantic-action API
   const upload = useFileUpload();
   const {
+    actions: uploadActions,
     fileInputRef,
     folderInputRef,
     isUploadProcessing,
+    ownUploads,
     uploadDialogOpen,
     uploadEntries,
     uploadSummary,
@@ -533,10 +535,12 @@ export function useFileBrowserController(
       onChangeInput: handleUploadInputChange,
       onClearSelection: handleClearUploadSelection,
       onClose: handleCloseUploadDialog,
+      onOwnUploadsChange: uploadActions.setOwnUploads,
       onPickFiles: handlePickFiles,
       onPickFolder: handlePickFolder,
       onStart: handleStartUpload,
       open: uploadDialogOpen,
+      ownUploads,
       summary: uploadSummary,
     }),
     [
@@ -550,6 +554,8 @@ export function useFileBrowserController(
       handleUploadInputChange,
       isUploadProcessing,
       normalizedPath,
+      ownUploads,
+      uploadActions,
       uploadDialogOpen,
       uploadEntries,
       uploadSummary,

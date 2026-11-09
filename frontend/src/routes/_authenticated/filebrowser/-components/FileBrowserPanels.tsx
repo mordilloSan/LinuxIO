@@ -14,15 +14,18 @@ import ComponentLoader from "@/components/loaders/ComponentLoader";
 import PageLoader from "@/components/loaders/PageLoader";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
+import AppCheckbox from "@/components/ui/AppCheckbox";
 import AppConfirmDialog from "@/components/ui/AppConfirmDialog";
 import {
   AppDialogActions,
   AppDialogContent,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
+import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppFullscreenDialog from "@/components/ui/AppFullscreenDialog";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTypography from "@/components/ui/AppTypography";
+import useAuth from "@/hooks/useAuth";
 import { formatDate, formatFileSize } from "@/utils/formatters";
 import { nativeFileInlineUrl } from "@/utils/nativeDownload";
 import { baseName } from "@/utils/path";
@@ -437,10 +440,12 @@ interface FileBrowserUploadDialogProps {
   onChangeUploadInput: (event: ChangeEvent<HTMLInputElement>) => void;
   onClearUploadSelection: () => void;
   onClose: () => void;
+  onOwnUploadsChange: (ownUploads: boolean) => void;
   onPickFiles: () => void;
   onPickFolder: () => void;
   onStartUpload: () => Promise<void> | void;
   open: boolean;
+  ownUploads: boolean;
   uploadEntries: DroppedEntry[];
   uploadSummary: UploadSummary;
 }
@@ -453,13 +458,18 @@ export const FileBrowserUploadDialog = ({
   onChangeUploadInput,
   onClearUploadSelection,
   onClose,
+  onOwnUploadsChange,
   onPickFiles,
   onPickFolder,
   onStartUpload,
   open,
+  ownUploads,
   uploadEntries,
   uploadSummary,
 }: FileBrowserUploadDialogProps) => {
+  // Only a privileged session's bridge runs as root and keeps uploads
+  // root-owned; any other bridge already writes as the user.
+  const { privileged } = useAuth();
   return (
     <FileBrowserDialog
       disableEscapeKeyDown={isUploadProcessing}
@@ -511,6 +521,28 @@ export const FileBrowserUploadDialog = ({
             ? `Selected ${uploadSummary.files} file${uploadSummary.files === 1 ? "" : "s"} and ${uploadSummary.folders} folder${uploadSummary.folders === 1 ? "" : "s"}.`
             : "No items selected yet."}
         </AppTypography>
+        {privileged && (
+          <div style={{ marginTop: "var(--app-space-6)" }}>
+            <AppFormControlLabel
+              control={
+                <AppCheckbox
+                  checked={ownUploads}
+                  disabled={isUploadProcessing}
+                  onChange={(_, checked) => onOwnUploadsChange(checked)}
+                />
+              }
+              label="Make me the owner of new files and folders"
+            />
+            <AppTypography
+              color="text.secondary"
+              component="div"
+              variant="caption"
+            >
+              Applies inside folders you own. Otherwise new items belong to
+              root.
+            </AppTypography>
+          </div>
+        )}
         {uploadEntries.length > 0 && (
           <ul
             style={{

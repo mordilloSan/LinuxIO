@@ -138,10 +138,12 @@ export interface FileBrowserUploadDialogProps {
   onChangeInput: (event: ChangeEvent<HTMLInputElement>) => void;
   onClearSelection: () => void;
   onClose: () => void;
+  onOwnUploadsChange: (ownUploads: boolean) => void;
   onPickFiles: () => void;
   onPickFolder: () => void;
   onStart: () => Promise<void> | void;
   open: boolean;
+  ownUploads: boolean;
   summary: UploadSummary;
 }
 
@@ -303,10 +305,12 @@ const FileBrowserDialogs = ({
         onChangeUploadInput={upload.onChangeInput}
         onClearUploadSelection={upload.onClearSelection}
         onClose={upload.onClose}
+        onOwnUploadsChange={upload.onOwnUploadsChange}
         onPickFiles={upload.onPickFiles}
         onPickFolder={upload.onPickFolder}
         onStartUpload={upload.onStart}
         open={upload.open}
+        ownUploads={upload.ownUploads}
         uploadEntries={upload.entries}
         uploadSummary={upload.summary}
       />

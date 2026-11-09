@@ -73,10 +73,21 @@ func parseUploadRequest(req apischema.FileUploadRequest) (string, int64, bool, s
 	return req.TargetPath, expectedSize, req.Overwrite != nil && *req.Overwrite, expectedVersion, nil
 }
 
+// loadUploadAttributes reads the owner and mode of the file the commit
+// replaces: the entry at realRel itself. The commit's renameat replaces a
+// symlink there, not its target, so the target lends no owner or mode (a
+// setuid bit included); a link to a folder still refuses like the folder.
 func loadUploadAttributes(root *fsroot.FSRoot, realRel string) (uploadAttributes, error) {
-	existingStat, err := root.Root.Stat(realRel)
+	existingStat, err := root.Root.Lstat(realRel)
 	if err != nil {
 		return uploadAttributes{}, nil
+	}
+	if existingStat.Mode()&os.ModeSymlink != 0 {
+		target, err := root.Root.Stat(realRel)
+		if err != nil || !target.IsDir() {
+			return uploadAttributes{}, nil
+		}
+		existingStat = target // only to refuse the folder below
 	}
 	if existingStat.IsDir() {
 		return uploadAttributes{}, fmt.Errorf("destination is a directory")
@@ -89,30 +100,6 @@ func loadUploadAttributes(root *fsroot.FSRoot, realRel string) (uploadAttributes
 		attrs.hasExisting = true
 	}
 	return attrs, nil
-}
-
-// restoreUploadedFile settles ownership, mode and time on the upload buffer
-// before it is committed, so the target mode never lags behind the content.
-// Ownership goes first because a chown clears setuid and setgid bits.
-func restoreUploadedFile(root *fsroot.FSRoot, rel string, attrs uploadAttributes) error {
-	if attrs.hasExisting {
-		// Only root may hand files to other users or groups; an unprivileged
-		// session keeps its own ownership, as cp -p does (see chownLike).
-		if err := root.Root.Chown(rel, attrs.uid, attrs.gid); err != nil && !errors.Is(err, os.ErrPermission) {
-			return fmt.Errorf("restore upload ownership: %w", err)
-		}
-		if err := root.Root.Chmod(rel, attrs.mode); err != nil {
-			return fmt.Errorf("restore upload permissions: %w", err)
-		}
-	} else if err := root.Root.Chmod(rel, services.PermFile); err != nil {
-		return fmt.Errorf("set upload permissions: %w", err)
-	}
-	if !attrs.modTime.IsZero() {
-		if err := root.Root.Chtimes(rel, attrs.modTime, attrs.modTime); err != nil {
-			slog.Debug("failed to apply uploaded file modified time", "path", rel, "error", err)
-		}
-	}
-	return nil
 }
 
 // commitUploadBuffer moves the finished buffer tempName to finalName. Both
@@ -297,12 +284,12 @@ func (t *uploadTransferTask) prepare(root *fsroot.FSRoot) error {
 	return nil
 }
 
-// newFileMode is the mode a file this upload creates gets: owner-only when
-// the request asked for a private file, 0644 when it is handed to the session
-// user, otherwise the file browser's create mode.
-func (t *uploadTransferTask) newFileMode(handedOver bool) os.FileMode {
+// newUploadFileMode is the mode a file an upload creates gets: owner-only
+// when the request asked for a private file, 0644 when it is handed to the
+// session user, otherwise the file browser's create mode.
+func newUploadFileMode(private, handedOver bool) os.FileMode {
 	switch {
-	case t.private:
+	case private:
 		return privateUploadMode
 	case handedOver:
 		return handedFileMode
@@ -402,7 +389,7 @@ func (t *uploadTransferTask) commit(root *fsroot.FSRoot, file *os.File, path, te
 		return 500, fmt.Errorf("finalize upload: %w", err)
 	}
 	defer dir.Close()
-	if err := settleUploadBuffer(file, attrs, fileOwner, t.newFileMode(fileOwner.set), isSetgid(folderInfo)); err != nil {
+	if err := settleUploadBuffer(file, attrs, fileOwner, newUploadFileMode(t.private, fileOwner.set), isSetgid(folderInfo)); err != nil {
 		return 500, err
 	}
 	if err := file.Sync(); err != nil {

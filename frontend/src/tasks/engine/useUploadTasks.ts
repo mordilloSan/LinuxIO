@@ -5,6 +5,7 @@ import {
   bindStreamHandlers,
   type FileUploadBatchRequest,
   type FileUploadBatchResult,
+  type FileUploadOwner,
   isConnected,
   type TaskSnapshot,
   linuxio,
@@ -74,6 +75,7 @@ export function useUploadTasks(
     destination: string,
     overwrite: boolean,
     keepBoth: string[],
+    owner: FileUploadOwner | undefined,
     uploadId: string,
     onProgress: (progress: BatchUploadProgress) => void,
     abortSignal: AbortSignal,
@@ -102,6 +104,7 @@ export function useUploadTasks(
       ...(directories.length ? { directories } : {}),
       ...(overwrite ? { overwrite: true } : {}),
       ...(keepBoth.length ? { keepBoth } : {}),
+      ...(owner ? { owner } : {}),
     };
 
     const pendingUploadKey = taskIdentityKey(
@@ -319,6 +322,9 @@ export function useUploadTasks(
     // Manifest-relative paths that land under a unique "name (copy)" when
     // their destination exists.
     keepBoth?: string[],
+    // "session" makes a root bridge hand the new files and folders to the
+    // session user, inside folders that user already owns.
+    owner?: FileUploadOwner,
   ) => {
     if (!entries.length) {
       return { uploaded: 0, failures: [] };
@@ -411,6 +417,7 @@ export function useUploadTasks(
         targetPath,
         overwrite ?? false,
         keepBoth ?? [],
+        owner,
         uploadId,
         onProgress,
         abortController.signal,

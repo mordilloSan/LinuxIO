@@ -385,6 +385,7 @@ export interface BtrfsOfflinePool {
   devices: string[];
   totalBytes: number;
   mountpoint: string;
+  missing: number;
 }
 
 export interface BtrfsOpProgress {
@@ -1561,6 +1562,8 @@ export interface FileUploadBatchRequest {
   directories?: string[];
   overwrite?: boolean;
   keepBoth?: string[];
+  owner?: FileUploadOwner;
+  private?: boolean;
 }
 
 export interface FileUploadBatchResult {

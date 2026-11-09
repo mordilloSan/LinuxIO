@@ -69,13 +69,20 @@ func TestParseUploadBatchRequestValidation(t *testing.T) {
 // returns the task. The runner parks until a data stream drives it.
 func startUploadBatchTask(t *testing.T, req apischema.FileUploadBatchRequest) *bridgeipc.Task {
 	t.Helper()
+	return startUploadBatchTaskAs(t, req, sessionOwner{})
+}
+
+// startUploadBatchTaskAs is startUploadBatchTask on a bridge whose session
+// user is session.
+func startUploadBatchTaskAs(t *testing.T, req apischema.FileUploadBatchRequest, session sessionOwner) *bridgeipc.Task {
+	t.Helper()
 	registry := bridgeipc.NewTaskService()
 	task, _, err := registry.ClaimForOwnerWithIdentity(routeUploadBatch, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
 	task.Start(func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
-		return runUploadBatchTask(ctx, j, req)
+		return runUploadBatchTask(ctx, j, req, session)
 	})
 	return task
 }

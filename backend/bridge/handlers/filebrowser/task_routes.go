@@ -90,7 +90,7 @@ func fileTaskBindings(store *userconfig.UserStore, owner sessionOwner) apischema
 			return bridgeipc.TaskMetadata{Identity: []string{req.TargetPath}, Path: req.TargetPath, Label: req.TargetPath}
 		}), apischema.BrowserBound()),
 		apischema.MutationTask(routeUploadBatch, func(ctx context.Context, task *bridgeipc.Task, req apischema.FileUploadBatchRequest) (FileUploadBatchResult, error) {
-			return transferResult[FileUploadBatchResult](runUploadBatchTask(ctx, task, req))
+			return transferResult[FileUploadBatchResult](runUploadBatchTask(ctx, task, req, owner))
 		}, apischema.Progress[BatchUploadProgress](), apischema.WithTaskMetadata(func(req apischema.FileUploadBatchRequest) bridgeipc.TaskMetadata {
 			identity := []string{req.Destination}
 			for _, file := range req.Files {

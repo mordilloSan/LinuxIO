@@ -9,6 +9,8 @@ interface UploadSummary {
 
 interface UploadState {
   isUploadProcessing: boolean;
+  /** Hand new files and folders to the session user (owner "session"). */
+  ownUploads: boolean;
   uploadDialogOpen: boolean;
   uploadEntries: DroppedEntry[];
 }
@@ -18,10 +20,12 @@ type UploadEvent =
   | { type: "closeDialog" }
   | { entries: DroppedEntry[]; type: "mergeEntries" }
   | { type: "openDialog" }
+  | { ownUploads: boolean; type: "setOwnUploads" }
   | { processing: boolean; type: "setProcessing" };
 
 const initialUploadState: UploadState = {
   isUploadProcessing: false,
+  ownUploads: false,
   uploadDialogOpen: false,
   uploadEntries: [],
 };
@@ -31,14 +35,26 @@ function uploadReducer(state: UploadState, event: UploadEvent): UploadState {
     case "clearEntries":
       return { ...state, uploadEntries: [] };
     case "closeDialog":
-      return { ...state, uploadDialogOpen: false, uploadEntries: [] };
+      return {
+        ...state,
+        ownUploads: false,
+        uploadDialogOpen: false,
+        uploadEntries: [],
+      };
     case "mergeEntries":
       return {
         ...state,
         uploadEntries: mergeDroppedEntries(state.uploadEntries, event.entries),
       };
     case "openDialog":
-      return { ...state, uploadDialogOpen: true, uploadEntries: [] };
+      return {
+        ...state,
+        ownUploads: false,
+        uploadDialogOpen: true,
+        uploadEntries: [],
+      };
+    case "setOwnUploads":
+      return { ...state, ownUploads: event.ownUploads };
     case "setProcessing":
       return { ...state, isUploadProcessing: event.processing };
   }
@@ -49,6 +65,7 @@ interface UploadActions {
   closeDialog: () => void;
   mergeEntries: (entries: DroppedEntry[]) => void;
   openDialog: () => void;
+  setOwnUploads: (ownUploads: boolean) => void;
   setProcessing: (processing: boolean) => void;
 }
 
@@ -75,6 +92,8 @@ export const useFileUpload = (): UploadSlice => {
       closeDialog: () => dispatch({ type: "closeDialog" }),
       mergeEntries: (entries) => dispatch({ entries, type: "mergeEntries" }),
       openDialog: () => dispatch({ type: "openDialog" }),
+      setOwnUploads: (ownUploads) =>
+        dispatch({ ownUploads, type: "setOwnUploads" }),
       setProcessing: (processing) =>
         dispatch({ processing, type: "setProcessing" }),
     }),

@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
@@ -45,18 +47,23 @@ type uploadBatchTransferTask struct {
 	directories []string
 	total       int64
 	overwrite   bool
+	newOwner    sessionOwner // set when a root bridge hands what this upload creates to the session user
+	private     bool         // new files are owner-only (0600)
 
 	// The fields below are guarded by mu. bytes (stream bytes consumed across
 	// the whole batch) lives in the lifecycle.
-	prepared  bool  // manifest directories created
-	index     int   // current manifest file
-	fileBytes int64 // stream bytes consumed for the current file
-	tempRel   string
-	finalRel  string
-	attrs     uploadAttributes
-	curFailed bool // current file failed; its remaining bytes are discarded
-	succeeded int
-	failures  []FileBatchItemFailure
+	prepared   bool  // manifest directories created
+	index      int   // current manifest file
+	fileBytes  int64 // stream bytes consumed for the current file
+	tempRel    string
+	finalRel   string
+	attrs      uploadAttributes
+	folderInfo os.FileInfo  // the folder the current buffer was created in; the commit must find this folder
+	bufferInfo os.FileInfo  // the current buffer as created; every reopen must find this file
+	fileOwner  sessionOwner // newOwner when the current buffer's folder is already theirs
+	curFailed  bool         // current file failed; its remaining bytes are discarded
+	succeeded  int
+	failures   []FileBatchItemFailure
 }
 
 // uploadBatchSession holds per-attach state: the filesystem root and the open
@@ -157,10 +164,14 @@ func parseUploadBatchRequest(req apischema.FileUploadBatchRequest) (string, []up
 	return destination, files, directories, total, nil
 }
 
-func runUploadBatchTask(ctx context.Context, task *bridgeipc.Task, req apischema.FileUploadBatchRequest) (any, error) {
+func runUploadBatchTask(ctx context.Context, task *bridgeipc.Task, req apischema.FileUploadBatchRequest, session sessionOwner) (any, error) {
 	destination, files, directories, total, err := parseUploadBatchRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
+	}
+	newOwner, err := uploadNewOwner(req.Owner, session, os.Geteuid())
+	if err != nil {
+		return nil, err
 	}
 
 	root, err := fsroot.Open()
@@ -185,6 +196,8 @@ func runUploadBatchTask(ctx context.Context, task *bridgeipc.Task, req apischema
 		directories: directories,
 		total:       total,
 		overwrite:   req.Overwrite != nil && *req.Overwrite,
+		newOwner:    newOwner,
+		private:     req.Private != nil && *req.Private,
 	}
 	transfer.transferLifecycle = newTransferLifecycle(task, transfer.cleanupPartial, transfer.reportProgress)
 	defer registerTransfer(task.ID(), transfer)()
@@ -224,8 +237,9 @@ func (t *uploadBatchTransferTask) attach(stream net.Conn, req bridgeipc.TaskData
 		})
 }
 
-// prepareDirectories creates the manifest's explicit directories once per task.
-// Failures are per-item: they are recorded and the batch continues.
+// prepareDirectories creates the manifest's explicit directories once per task,
+// handing the new ones over as openUploadDir does. Failures are per-item: they
+// are recorded and the batch continues.
 func (t *uploadBatchTransferTask) prepareDirectories(root *fsroot.FSRoot) {
 	t.mu.Lock()
 	if t.prepared {
@@ -237,11 +251,13 @@ func (t *uploadBatchTransferTask) prepareDirectories(root *fsroot.FSRoot) {
 
 	for _, rel := range t.directories {
 		absPath := filepath.Join(t.destination, rel)
-		if err := root.Root.MkdirAll(fsroot.ToRel(absPath), services.PermDir); err != nil {
+		dir, err := openUploadDir(root, fsroot.ToRel(absPath), t.newOwner)
+		if err != nil {
 			slog.Debug("batch upload directory failed", "path", absPath, "error", err)
 			t.recordFailure(rel, fmt.Sprintf("create directory: %v", err))
 			continue
 		}
+		_ = dir.Close()
 		t.mu.Lock()
 		t.succeeded++
 		t.mu.Unlock()
@@ -317,12 +333,16 @@ func (t *uploadBatchTransferTask) settle(session *uploadBatchSession) {
 		t.tempRel = ""
 		t.finalRel = ""
 		t.attrs = uploadAttributes{}
+		t.folderInfo = nil
+		t.bufferInfo = nil
+		t.fileOwner = sessionOwner{}
 		t.curFailed = false
 		t.mu.Unlock()
 	}
 }
 
-// ensurePrepared lazily creates the current file's temp buffer and captures
+// ensurePrepared lazily creates the current file's temp buffer, exclusively
+// and through the handle of its folder (see createUploadBuffer), and captures
 // existing-file attributes. Idempotent across re-attaches: the temp survives a
 // dropped stream and is reused on resume.
 func (t *uploadBatchTransferTask) ensurePrepared(session *uploadBatchSession) error {
@@ -349,25 +369,31 @@ func (t *uploadBatchTransferTask) ensurePrepared(session *uploadBatchSession) er
 		return err
 	}
 	attrs.modTime = current.modTime
-	err = session.root.Root.MkdirAll(fsroot.ToRel(filepath.Dir(current.absPath)), services.PermDir)
+	dir, err := openUploadDir(session.root, filepath.Dir(finalRel), t.newOwner)
 	if err != nil {
 		return fmt.Errorf("create parent dir: %w", err)
 	}
+	defer dir.Close()
+	folderInfo, err := dir.Stat()
+	if err != nil {
+		return fmt.Errorf("stat parent dir: %w", err)
+	}
 
 	partName := fmt.Sprintf(".%s.linuxio-upload-%s-%d.part", filepath.Base(finalRel), t.task.ID(), index)
-	tempRel := filepath.Join(filepath.Dir(finalRel), partName)
-	file, err := session.root.Root.OpenFile(tempRel, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600) // owner-only until restoreUploadedFile applies the target mode
+	bufferInfo, err := createUploadBuffer(dir, partName)
 	if err != nil {
 		return fmt.Errorf("create upload buffer: %w", err)
-	}
-	if err := file.Close(); err != nil {
-		return fmt.Errorf("close upload buffer: %w", err)
 	}
 
 	t.mu.Lock()
 	t.finalRel = finalRel
-	t.tempRel = tempRel
+	t.tempRel = filepath.Join(filepath.Dir(finalRel), partName)
 	t.attrs = attrs
+	t.folderInfo = folderInfo
+	t.bufferInfo = bufferInfo
+	if handsOverIn(folderInfo, t.newOwner) {
+		t.fileOwner = t.newOwner
+	}
 	t.mu.Unlock()
 	return nil
 }
@@ -385,9 +411,9 @@ func (t *uploadBatchTransferTask) writeChunk(session *uploadBatchSession, chunk 
 			return err
 		}
 		t.mu.Lock()
-		tempRel, at := t.tempRel, t.fileBytes
+		tempRel, bufferInfo, at := t.tempRel, t.bufferInfo, t.fileBytes
 		t.mu.Unlock()
-		file, err := session.root.Root.OpenFile(tempRel, os.O_RDWR, services.PermFile)
+		file, err := openUploadBuffer(session.root, tempRel, bufferInfo)
 		if err != nil {
 			return fmt.Errorf("cannot open upload buffer: %w", err)
 		}
@@ -423,29 +449,50 @@ func (t *uploadBatchTransferTask) failCurrent(session *uploadBatchSession, cause
 	t.cleanupCurrentTemp(session.root)
 }
 
+// finalizeCurrent settles the current buffer through its open handle, so a
+// name swapped under it is never touched, and commits it in the folder it was
+// created in.
 func (t *uploadBatchTransferTask) finalizeCurrent(session *uploadBatchSession) error {
 	// Zero-size files never opened a buffer; create the (empty) temp now so
 	// every finalize is a rename of a fully-written buffer.
 	if err := t.ensurePrepared(session); err != nil {
 		return err
 	}
-	if err := session.syncAndCloseFile(); err != nil {
-		return err
-	}
+	defer session.closeFile() // a failed item must not leave its buffer for the next one
 
 	t.mu.Lock()
 	tempRel, finalRel, attrs := t.tempRel, t.finalRel, t.attrs
+	folderInfo, bufferInfo, fileOwner := t.folderInfo, t.bufferInfo, t.fileOwner
 	overwrite := t.overwrite && !t.files[t.index].keepBoth
 	t.mu.Unlock()
 
-	if err := restoreUploadedFile(session.root, tempRel, attrs); err != nil {
-		return err
+	if session.file == nil {
+		file, err := openUploadBuffer(session.root, tempRel, bufferInfo)
+		if err != nil {
+			return fmt.Errorf("cannot open upload buffer: %w", err)
+		}
+		session.file = file
 	}
-	dir, err := openUploadFolder(session.root, filepath.Dir(tempRel), nil)
+	// Open the folder before the buffer is handed over, so a swapped folder
+	// leaves it the bridge's.
+	dir, err := openUploadFolder(session.root, filepath.Dir(tempRel), folderInfo)
 	if err != nil {
 		return fmt.Errorf("finalize upload: %w", err)
 	}
 	defer dir.Close()
+	if err := settleUploadBuffer(session.file, attrs, fileOwner, newUploadFileMode(t.private, fileOwner.set), isSetgid(folderInfo)); err != nil {
+		return err
+	}
+	if !attrs.modTime.IsZero() {
+		// Through the open file (/proc/self/fd), not the buffer's name.
+		tv := unix.NsecToTimeval(attrs.modTime.UnixNano())
+		if err := unix.Futimes(int(session.file.Fd()), []unix.Timeval{tv, tv}); err != nil {
+			slog.Debug("failed to apply uploaded file modified time", "path", tempRel, "error", err)
+		}
+	}
+	if err := session.syncAndCloseFile(); err != nil {
+		return err
+	}
 	if err := commitUploadBuffer(dir, filepath.Base(tempRel), filepath.Base(finalRel), overwrite); err != nil {
 		if errors.Is(err, fs.ErrExist) {
 			return fmt.Errorf("destination already exists: %w", err)

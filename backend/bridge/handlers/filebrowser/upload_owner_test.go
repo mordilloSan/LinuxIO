@@ -269,33 +269,37 @@ func TestUploadKeepsTheGroupOfASetgidFolder(t *testing.T) {
 	requireOwnerAndMode(t, compose, owner.uid, uint32(group), 0o644)
 }
 
+// seedVictim is a file a swapped buffer name points at, standing in for
+// /etc/passwd.
+func seedVictim(t *testing.T) string {
+	t.Helper()
+	victim := filepath.Join(t.TempDir(), "victim")
+	require.NoError(t, os.WriteFile(victim, []byte("victim"), 0o640))
+	return victim
+}
+
+// plant points link at victim relatively: os.Root refuses absolute targets
+// as escaping, so a relative link is what a path-based call would follow.
+func plant(t *testing.T, victim, link string) {
+	t.Helper()
+	target, err := filepath.Rel(filepath.Dir(link), victim)
+	require.NoError(t, err)
+	require.NoError(t, os.Symlink(target, link))
+}
+
+func requireVictimUntouched(t *testing.T, victim string) {
+	t.Helper()
+	content, err := os.ReadFile(victim)
+	require.NoError(t, err)
+	require.Equal(t, "victim", string(content))
+	requireOwnerAndMode(t, victim, uint32(os.Geteuid()), uint32(os.Getegid()), 0o640)
+}
+
 // The buffer's name sits in a folder the session user may write to, so the
 // bridge never follows or trusts that name: it creates the buffer
 // exclusively, reopens it without following a symlink and only if it is
 // still the same file, and sets owner and mode through the open handle.
 func TestUploadBufferNameIsNeverFollowed(t *testing.T) {
-	seedVictim := func(t *testing.T) string {
-		victim := filepath.Join(t.TempDir(), "victim")
-		require.NoError(t, os.WriteFile(victim, []byte("victim"), 0o640))
-		return victim
-	}
-	// plant points link at victim relatively: os.Root refuses absolute
-	// targets as escaping, so a relative link is what a path-based call
-	// would follow.
-	plant := func(t *testing.T, victim, link string) {
-		t.Helper()
-		target, err := filepath.Rel(filepath.Dir(link), victim)
-		require.NoError(t, err)
-		require.NoError(t, os.Symlink(target, link))
-	}
-	requireVictimUntouched := func(t *testing.T, victim string) {
-		t.Helper()
-		content, err := os.ReadFile(victim)
-		require.NoError(t, err)
-		require.Equal(t, "victim", string(content))
-		requireOwnerAndMode(t, victim, uint32(os.Geteuid()), uint32(os.Getegid()), 0o640)
-	}
-
 	t.Run("planted before the buffer is created", func(t *testing.T) {
 		victim := seedVictim(t)
 		target := filepath.Join(t.TempDir(), "docker-compose.yml")

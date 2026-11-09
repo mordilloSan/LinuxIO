@@ -160,11 +160,13 @@ const mocks = vi.hoisted(() => ({
       closeDialog: vi.fn(),
       mergeEntries: vi.fn(),
       openDialog: vi.fn(),
+      setOwnUploads: vi.fn(),
       setProcessing: vi.fn(),
     },
     fileInputRef: { current: null },
     folderInputRef: { current: null },
     isUploadProcessing: false,
+    ownUploads: false,
     uploadDialogOpen: false,
     uploadEntries: [],
     uploadSummary: {

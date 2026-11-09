@@ -36,11 +36,13 @@ function uploadSlice(overrides: Partial<UploadSlice> = {}): UploadSlice {
       closeDialog: vi.fn(),
       mergeEntries: vi.fn(),
       openDialog: vi.fn(),
+      setOwnUploads: vi.fn(),
       setProcessing: vi.fn(),
     },
     fileInputRef: inputRef(),
     folderInputRef: inputRef(),
     isUploadProcessing: false,
+    ownUploads: false,
     uploadDialogOpen: false,
     uploadEntries: [],
     uploadSummary: { files: 0, folders: 0 },
@@ -212,7 +214,13 @@ describe("useFileBrowserUploadActions", () => {
     const getDestPath = (params.resolveCollisions as ReturnType<typeof vi.fn>)
       .mock.calls[0][1] as (item: DroppedEntry) => string;
     expect(getDestPath(entry)).toBe("/srv/data/a.txt");
-    expect(startUpload).toHaveBeenCalledWith([entry], "/srv/data", false, []);
+    expect(startUpload).toHaveBeenCalledWith(
+      [entry],
+      "/srv/data",
+      false,
+      [],
+      undefined,
+    );
     expect(params.invalidateListing).toHaveBeenCalledTimes(1);
     expect(params.upload.actions.closeDialog).toHaveBeenCalledTimes(1);
     expect(params.upload.actions.setProcessing).toHaveBeenNthCalledWith(
@@ -272,6 +280,30 @@ describe("useFileBrowserUploadActions", () => {
       "/srv/data",
       true,
       ["a.txt"],
+      undefined,
+    );
+  });
+
+  it("asks for the session owner when the user ticked the ownership box", async () => {
+    const startUpload = vi.fn().mockResolvedValue({
+      failures: [],
+      uploaded: 1,
+    });
+    const { result } = setup({
+      startUpload,
+      upload: uploadSlice({ ownUploads: true, uploadEntries: [entry] }),
+    });
+
+    await act(async () => {
+      await result.current.handleStartUpload();
+    });
+
+    expect(startUpload).toHaveBeenCalledWith(
+      [entry],
+      "/srv/data",
+      false,
+      [],
+      "session",
     );
   });
 

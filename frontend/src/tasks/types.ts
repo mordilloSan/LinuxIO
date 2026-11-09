@@ -1,4 +1,4 @@
-import type { FileExtractRequest, Stream } from "@/api";
+import type { FileExtractRequest, FileUploadOwner, Stream } from "@/api";
 
 // A copy/move operates on a whole selection in one batch task. `destination` is
 // the target directory; each source keeps its basename.
@@ -144,6 +144,8 @@ export interface BackgroundTaskActions {
     overwrite?: boolean,
     // Manifest-relative paths that land under a unique "name (copy)".
     keepBoth?: string[],
+    // "session" hands what the upload creates to the session user.
+    owner?: FileUploadOwner,
   ) => Promise<{
     uploaded: number;
     failures: { path: string; message: string }[];

@@ -118,7 +118,7 @@ test-btrfs-integration: ensure-go ## Run the root-only btrfs and partition kerne
 
 # The file browser tests that hand entries to other users or groups, which only
 # root can do; without root they skip or cover less.
-FILEBROWSER_ROOT_RUN := AsRoot$$|^TestUpload(BufferNameIsNeverFollowed|HandsOverOnlyAFreshFolder|KeepsTheGroupOfASetgidFolder)$$
+FILEBROWSER_ROOT_RUN := AsRoot$$|^TestUpload(BufferNameIsNeverFollowed|BatchBufferNameIsNeverFollowed|BatchOverwriteOfASymlinkTakesNothingFromItsTarget|HandsOverOnlyAFreshFolder|KeepsTheGroupOfASetgidFolder)$$
 
 test-filebrowser-root: ensure-go ## Run the root-only file browser ownership tests (needs sudo)
 	@echo "🧪 Running file browser ownership tests as root (needs sudo)..."

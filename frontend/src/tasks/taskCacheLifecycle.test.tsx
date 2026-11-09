@@ -280,6 +280,33 @@ describe("task streams write the shared cache", () => {
         keepBoth: ["a.txt"],
       }),
     );
+    expect(mocks.upload.mock.calls[0][0]).not.toHaveProperty("owner");
+    await act(async () => {
+      data.onResult?.({ status: "ok", data: { succeeded: 1 } });
+      await completion;
+    });
+  });
+
+  it("sends the session owner with the upload request when asked", async () => {
+    const { result } = setup();
+    const data = stream();
+    mocks.data.mockReturnValue(data);
+    mocks.upload.mockResolvedValue(
+      snapshot("upload", TASK_TYPE_FILE_UPLOAD_BATCH),
+    );
+    let completion: ReturnType<typeof result.current.uploads.startUpload>;
+    await act(async () => {
+      completion = result.current.uploads.startUpload(
+        [{ relativePath: "folder", isDirectory: true }],
+        "/home/alice",
+        false,
+        [],
+        "session",
+      );
+    });
+    expect(mocks.upload).toHaveBeenCalledWith(
+      expect.objectContaining({ destination: "/home/alice", owner: "session" }),
+    );
     await act(async () => {
       data.onResult?.({ status: "ok", data: { succeeded: 1 } });
       await completion;

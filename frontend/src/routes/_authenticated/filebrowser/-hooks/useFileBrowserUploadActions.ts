@@ -36,6 +36,7 @@ export const useFileBrowserUploadActions = ({
     fileInputRef,
     folderInputRef,
     isUploadProcessing,
+    ownUploads,
     uploadEntries,
   } = upload;
 
@@ -128,6 +129,7 @@ export const useFileBrowserUploadActions = ({
             normalizedPath,
             resolution.overwrite,
             resolution.keepBoth.map((entry) => entry.relativePath),
+            ownUploads ? "session" : undefined,
           );
           if (result.uploaded > 0) {
             invalidateListing();
@@ -145,6 +147,7 @@ export const useFileBrowserUploadActions = ({
   }, [
     invalidateListing,
     normalizedPath,
+    ownUploads,
     resolveCollisions,
     startUpload,
     toast,
