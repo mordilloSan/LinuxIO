@@ -683,10 +683,14 @@ func removeAllAt(ctx context.Context, dir *os.File, name string, removed func())
 		removed()
 		return nil
 	}
+	unlinkErr := &fs.PathError{Op: "unlinkat", Path: filepath.Join(dir.Name(), name), Err: err}
 	if !errors.Is(err, unix.EISDIR) && !errors.Is(err, unix.EPERM) {
-		return &fs.PathError{Op: "unlinkat", Path: filepath.Join(dir.Name(), name), Err: err}
+		return unlinkErr
 	}
 	sub, err := openDirAt(dir, name)
+	if errors.Is(err, unix.ENOTDIR) || errors.Is(err, unix.ELOOP) {
+		return unlinkErr // not a folder, so the unlink failed for its own reason
+	}
 	if err != nil {
 		return err
 	}

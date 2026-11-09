@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -602,6 +601,10 @@ type DeleteOptions struct {
 	// directories, including the deleted root). Totals and percentages are the
 	// caller's concern, since only the caller can aggregate across a batch.
 	Progress func(processed int64)
+	// Owner is the session user a root bridge deletes for. The item's folder
+	// is then reached without following a link that user could have planted
+	// (see openDirNoUserLinks). Unset, the path is opened as it resolves.
+	Owner Owner
 }
 
 // CountEntries counts the entries an operation over absPath touches: absPath
@@ -637,135 +640,39 @@ func TopLevelEntryCountWithin(absPath string, maxEntries int) (bool, error) {
 	return len(entries) <= maxEntries, nil
 }
 
-// DeleteFilesWithProgress removes a file or directory while reporting item-count progress.
+// DeleteFilesWithProgress removes a file or directory while reporting
+// item-count progress. The item's folder is resolved once and the item is then
+// judged and removed through handles (see removeAllAt), so a folder swapped
+// for a link during the delete cannot send it elsewhere.
 func DeleteFilesWithProgress(ctx context.Context, absPath string, opts DeleteOptions) (int64, error) {
 	absPath = fsroot.CleanAbsPath(absPath)
+	if absPath == "/" {
+		return 0, fmt.Errorf("cannot delete root")
+	}
 	root, err := fsroot.Open()
 	if err != nil {
 		return 0, err
 	}
 	defer root.Close()
 
-	targetRel := relPath(absPath)
-	if targetRel == "." {
-		return 0, fmt.Errorf("cannot delete root")
-	}
-
-	info, err := root.Root.Lstat(targetRel)
+	dir, err := openDirNoUserLinks(root, filepath.Dir(absPath), opts.Owner)
 	if err != nil {
 		return 0, err
 	}
+	defer dir.Close()
+	name := filepath.Base(absPath)
+	if _, err = checkNotProtectedAt(dir, name, absPath); err != nil {
+		return 0, err
+	}
 
-	if !info.IsDir() {
-		if err := ctx.Err(); err != nil {
-			return 0, err
-		}
-		if err := root.Root.Remove(targetRel); err != nil {
-			return 0, err
-		}
+	var processed int64
+	err = removeAllAt(ctx, dir, name, func() {
+		processed++
 		if opts.Progress != nil {
-			opts.Progress(1)
+			opts.Progress(processed)
 		}
-		return 1, nil
-	}
-
-	return deleteDirectoryWithProgress(ctx, root, absPath, opts.Progress)
-}
-
-func deleteDirectoryWithProgress(
-	ctx context.Context,
-	root *fsroot.FSRoot,
-	absPath string,
-	progress func(processed int64),
-) (int64, error) {
-	reporter := deleteItemReporter{progress: progress}
-
-	dirs, err := deleteFilesDuringWalk(ctx, root, absPath, &reporter)
-	if err != nil {
-		return reporter.processed, err
-	}
-	sortDeleteDirsDeepestFirst(dirs)
-
-	if err := removeDeleteDirs(ctx, root, dirs, &reporter); err != nil {
-		return reporter.processed, err
-	}
-
-	return reporter.processed, nil
-}
-
-type deleteItemReporter struct {
-	processed int64
-	progress  func(processed int64)
-}
-
-func (r *deleteItemReporter) report() {
-	r.processed++
-	if r.progress != nil {
-		r.progress(r.processed)
-	}
-}
-
-func deleteFilesDuringWalk(ctx context.Context, root *fsroot.FSRoot, absPath string, reporter *deleteItemReporter) ([]string, error) {
-	dirs := make([]string, 0)
-	err := root.WalkDir(absPath, func(walkRel string, entry fs.DirEntry, walkErr error) error {
-		return deleteWalkEntry(ctx, root, walkRel, entry, walkErr, &dirs, reporter)
 	})
-	return dirs, err
-}
-
-func deleteWalkEntry(
-	ctx context.Context,
-	root *fsroot.FSRoot,
-	walkRel string,
-	entry fs.DirEntry,
-	walkErr error,
-	dirs *[]string,
-	reporter *deleteItemReporter,
-) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if walkErr != nil {
-		return walkErr
-	}
-	if entry.IsDir() {
-		*dirs = append(*dirs, walkRel)
-		return nil
-	}
-	if err := root.Root.Remove(walkRel); err != nil {
-		return err
-	}
-	reporter.report()
-	return nil
-}
-
-func sortDeleteDirsDeepestFirst(dirs []string) {
-	slices.SortFunc(dirs, compareDeleteDirs)
-}
-
-func compareDeleteDirs(a, b string) int {
-	depthA := strings.Count(a, "/")
-	depthB := strings.Count(b, "/")
-	if depthA != depthB {
-		return depthB - depthA
-	}
-	if len(a) != len(b) {
-		return len(b) - len(a)
-	}
-	return strings.Compare(a, b)
-}
-
-func removeDeleteDirs(ctx context.Context, root *fsroot.FSRoot, dirs []string, reporter *deleteItemReporter) error {
-	for _, dir := range dirs {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if err := root.Root.Remove(dir); err != nil {
-			return err
-		}
-		reporter.report()
-	}
-	return nil
+	return processed, err
 }
 
 func isEditableTextContent(content []byte) bool {

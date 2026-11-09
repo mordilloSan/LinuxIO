@@ -254,7 +254,7 @@ func TestRunDeleteBatchTaskDeletesAndReportsFailures(t *testing.T) {
 	seedFile(t, filepath.Join(tree, "sub", "f.txt"), "f")
 	req := apischema.BatchPathRequest{Paths: []string{tree, filepath.Join(dir, "missing"), "/etc"}}
 
-	result, err := runDeleteBatchTask(context.Background(), newBatchTask(t, "filebrowser.delete_batch", req), nil, req)
+	result, err := runDeleteBatchTask(context.Background(), newBatchTask(t, "filebrowser.delete_batch", req), nil, req, sessionOwner{})
 	detachedIndexerUpdates.Wait()
 	if err != nil {
 		t.Fatalf("runDeleteBatchTask: %v", err)

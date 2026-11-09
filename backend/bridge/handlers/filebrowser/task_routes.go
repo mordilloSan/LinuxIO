@@ -58,7 +58,7 @@ func fileTaskBindings(store *userconfig.UserStore, owner sessionOwner) apischema
 			return bridgeipc.TaskMetadata{Identity: append(append([]string{}, req.Sources...), req.Destination), Label: batchTaskLabel(req.Sources), Path: req.Destination}
 		})),
 		apischema.MutationTask("filebrowser.delete_batch", func(ctx context.Context, task *bridgeipc.Task, req apischema.BatchPathRequest) (FileBatchResult, error) {
-			return runDeleteBatchTask(ctx, task, store, req)
+			return runDeleteBatchTask(ctx, task, store, req, owner)
 		}, apischema.Progress[CountProgress](), apischema.WithTaskMetadata(func(req apischema.BatchPathRequest) bridgeipc.TaskMetadata {
 			return bridgeipc.TaskMetadata{Identity: append([]string{}, req.Paths...), Label: batchTaskLabel(req.Paths)}
 		})),

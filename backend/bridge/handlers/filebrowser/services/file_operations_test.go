@@ -18,6 +18,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
 func TestMoveFileWithCallbacksUsesKnownSizeForRename(t *testing.T) {
@@ -621,6 +622,98 @@ func TestDeleteFilesWithProgress(t *testing.T) {
 		_, err = os.Lstat(targetFile)
 		require.NoError(t, err)
 	})
+
+	t.Run("link_inside_a_directory_is_removed_not_followed", func(t *testing.T) {
+		tmpDir := t.TempDir()
+		targetDir := createTestDir(t, tmpDir, "target")
+		targetFile := createTestFile(t, targetDir, "kept.txt", []byte("keep"))
+		dirPath := createTestDir(t, tmpDir, "tree")
+		createSymlinkOrSkip(t, "../target", filepath.Join(dirPath, "link"))
+
+		processed, err := DeleteFilesWithProgress(context.Background(), dirPath, DeleteOptions{})
+		require.NoError(t, err)
+		assert.Equal(t, int64(2), processed, "the link and the folder")
+		assert.NoDirExists(t, dirPath)
+		assert.FileExists(t, targetFile)
+	})
+}
+
+// A folder swapped for a link while its tree is being deleted must not send
+// the delete into the link's target: every level is emptied through the
+// handle of its folder, not by a path the swap can redirect.
+func TestDeleteNeverFollowsALinkSwappedInMidDelete(t *testing.T) {
+	tmp := t.TempDir()
+	tree := createTestDir(t, tmp, "tree")
+	sub := createTestDir(t, tree, "sub")
+	victim := createTestDir(t, tmp, "victim")
+	for _, name := range []string{"a.txt", "b.txt"} {
+		createTestFile(t, sub, name, []byte("doomed"))
+		createTestFile(t, victim, name, []byte("kept"))
+	}
+
+	swapped := false
+	_, err := DeleteFilesWithProgress(t.Context(), tree, DeleteOptions{Progress: func(int64) {
+		if swapped {
+			return
+		}
+		swapped = true
+		require.NoError(t, os.Rename(sub, filepath.Join(tmp, "moved")))
+		require.NoError(t, os.Symlink("../victim", sub))
+	}})
+	require.Error(t, err, "the link is not the folder that was emptied")
+	assert.FileExists(t, filepath.Join(victim, "a.txt"))
+	assert.FileExists(t, filepath.Join(victim, "b.txt"))
+	assertSymlinkTarget(t, sub, "../victim")
+}
+
+// On a root bridge the item to delete is reached without following a link in
+// a folder the session user can write, where a process of theirs could have
+// swapped a folder for a link, and the protected-folder check runs on the
+// folder the item is then removed from.
+func TestDeleteNeverDeletesThroughALinkTheUserCouldPlant(t *testing.T) {
+	home := t.TempDir()
+	victim := t.TempDir()
+	secret := createTestFile(t, victim, "notes.txt", []byte("secret"))
+	plantTrashLink(t, victim, filepath.Join(home, "docs"))
+	linked := filepath.Join(home, "docs", "notes.txt")
+	session := Owner{UID: uint32(os.Getuid()), GID: uint32(os.Getgid()), Set: true}
+
+	_, err := DeleteFilesWithProgress(t.Context(), linked, DeleteOptions{Owner: session})
+	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
+	assert.FileExists(t, secret)
+
+	// /proc stands in for a system folder: nothing in it can be unlinked.
+	_, err = DeleteFilesWithProgress(t.Context(), "/proc", DeleteOptions{Owner: session})
+	require.ErrorContains(t, err, "system folder")
+
+	// A bridge that is not root acts as the user and follows their own links.
+	processed, err := DeleteFilesWithProgress(t.Context(), linked, DeleteOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), processed)
+	assert.NoFileExists(t, secret)
+}
+
+// A link the session user cannot have planted, one in a folder only root can
+// write such as /home -> /var/home, is still followed on a root bridge, while
+// one in a folder of theirs is not.
+func TestDeleteFollowsOnlyALinkInARootFolderAsRoot(t *testing.T) {
+	home := rootSessionHome(t)
+	base := filepath.Dir(home)
+	actual := createTestDir(t, base, "real")
+	notes := createTestFile(t, actual, "notes.txt", []byte("notes"))
+	kept := createTestFile(t, actual, "kept.txt", []byte("kept"))
+	plantTrashLink(t, actual, filepath.Join(base, "alias"))
+	plantTrashLink(t, actual, filepath.Join(home, "docs"))
+	session := Owner{UID: rootTestUID, GID: rootTestGID, Set: true}
+
+	_, err := DeleteFilesWithProgress(t.Context(), filepath.Join(home, "docs", "kept.txt"), DeleteOptions{Owner: session})
+	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
+	assert.FileExists(t, kept)
+
+	processed, err := DeleteFilesWithProgress(t.Context(), filepath.Join(base, "alias", "notes.txt"), DeleteOptions{Owner: session})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), processed)
+	assert.NoFileExists(t, notes)
 }
 
 func TestCountEntries(t *testing.T) {

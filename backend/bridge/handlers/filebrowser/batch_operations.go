@@ -362,8 +362,9 @@ func planDeleteBatch(ctx context.Context, paths []string) (items []deletePlanIte
 	return items, grandTotal, failures
 }
 
-func deleteBatchItem(ctx context.Context, task *bridgeipc.Task, path, raw string, base, total int64, indeterminate bool, limiter *progressThrottle) (int64, *FileBatchItemFailure, error) {
+func deleteBatchItem(ctx context.Context, task *bridgeipc.Task, path, raw string, owner services.Owner, base, total int64, indeterminate bool, limiter *progressThrottle) (int64, *FileBatchItemFailure, error) {
 	count, err := services.DeleteFilesWithProgress(ctx, path, services.DeleteOptions{
+		Owner: owner,
 		Progress: func(p int64) {
 			cur, pct, ok := limiter.Set(base+p, total)
 			if !ok {
@@ -391,10 +392,16 @@ func deleteBatchItem(ctx context.Context, task *bridgeipc.Task, path, raw string
 // runDeleteBatchTask deletes many paths as a single task. It resolves entry
 // totals up front (indexer, else a bounded prescan) so progress reports a real
 // aggregate percentage; when a total stays unknown the task reports an
-// indeterminate running count instead.
-func runDeleteBatchTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.BatchPathRequest) (FileBatchResult, error) {
+// indeterminate running count instead. A root bridge deletes for the session
+// user, so it refuses a link that user could have planted on the way to an
+// item; a bridge that is not root already acts as that user.
+func runDeleteBatchTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.BatchPathRequest, session sessionOwner) (FileBatchResult, error) {
 	if len(req.Paths) == 0 {
 		return FileBatchResult{}, fmt.Errorf("%w: no paths provided", bridgeipc.ErrInvalidArgs)
+	}
+	var owner services.Owner
+	if os.Geteuid() == 0 {
+		owner = session.asOwner()
 	}
 
 	task.ReportProgress(CountProgress{Phase: "preparing", Indeterminate: true})
@@ -423,7 +430,7 @@ func runDeleteBatchTask(ctx context.Context, task *bridgeipc.Task, store *userco
 			return FileBatchResult{}, context.Canceled
 		}
 
-		count, failure, err := deleteBatchItem(ctx, task, item.path, item.raw, processed, grandTotal, indeterminate, limiter)
+		count, failure, err := deleteBatchItem(ctx, task, item.path, item.raw, owner, processed, grandTotal, indeterminate, limiter)
 		// count reflects entries actually removed, even when the item failed
 		// partway through, so aggregate progress stays monotonic.
 		processed += count
