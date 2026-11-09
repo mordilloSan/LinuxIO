@@ -116,17 +116,21 @@ func ScrubFrom(ctx context.Context, uuid string, starts map[int]uint64, report f
 
 // scrubSeed is the outcome a scrub starts from: on a resume (starts set) the
 // canceled or aborted scrub on record, keeping its start, counters and
-// abort; otherwise a scrub starting now.
+// abort; otherwise a scrub starting now. A record still running means a
+// crashed resume, as the inventory also reads it, and counts as aborted.
 func scrubSeed(uuid string, starts map[int]uint64) BtrfsScrubStatus {
 	rec, ok := loadScrubRecord(uuid)
-	if !ok || starts == nil || rec.StartedAt == nil || rec.Status != "canceled" && rec.Status != "aborted" {
+	if !ok || starts == nil || rec.StartedAt == nil || rec.Status != "canceled" && rec.Status != "aborted" && rec.Status != "running" {
 		now := time.Now()
 		return BtrfsScrubStatus{Status: "finished", StartedAt: &now}
 	}
 	rec.FinishedAt, rec.Percent = nil, 0
 	// An abort stays: the resume skips the device that aborted.
-	if rec.Status == "canceled" {
+	switch rec.Status {
+	case "canceled":
 		rec.Status = "finished"
+	case "running":
+		rec.Status = "aborted"
 	}
 	return rec
 }

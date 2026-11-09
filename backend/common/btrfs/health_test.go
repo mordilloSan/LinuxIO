@@ -245,3 +245,33 @@ func TestOfflineAlertCountsAReplaceTargetAsNoMember(t *testing.T) {
 	}
 	wantMissingOne("CheckHealth")
 }
+
+// A refusal raises a new occurrence: the unblocked alert raised earlier for
+// the same missing count must not hide the reason.
+func TestCheckHealthShowsARefusalAfterTheUnblockedAlert(t *testing.T) {
+	stubStatePaths(t, t.TempDir())
+	stubKernel(t, raid1Kernel())
+	stubDisks(t, map[string]Superblock{
+		"sdc": {UUID: "cold-uuid", Label: "cold", DevID: 1, NumDevices: 1, Generation: 5},
+		"sdd": {UUID: "cold-uuid", Label: "cold", DevID: replaceTargetDevID, NumDevices: 1, Generation: 3},
+	})
+	ctx := context.Background()
+	RaiseOfflineAlert(ctx, BtrfsOfflinePool{UUID: "cold-uuid", Label: "cold", NumDevices: 1, Devices: []string{"/dev/sdc", "/dev/sdd"}, devids: []uint64{1, replaceTargetDevID}}, "")
+	writeFstab(t, "UUID=cold-uuid /srv/cold btrfs defaults 0 0\n")
+	if _, err := CheckHealth(ctx); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := alerts.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range doc.Alerts {
+		if a.Key == "offline-cold-uuid" {
+			if a.Severity != alerts.SeverityError || !strings.Contains(a.Message, "the replace target /dev/sdd missed writes") {
+				t.Fatalf("offline alert = %s: %q", a.Severity, a.Message)
+			}
+			return
+		}
+	}
+	t.Fatalf("no offline alert in %+v", doc.Alerts)
+}

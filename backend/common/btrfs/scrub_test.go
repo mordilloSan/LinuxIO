@@ -167,6 +167,9 @@ func TestScrubFromMergesTheStoppedRecord(t *testing.T) {
 		// A device aborted as Suspend canceled the scrub: the resume skips
 		// it, so the outcome stays aborted and keeps the first part's errors.
 		{"resumed after an abort", "aborted", map[int]uint64{2: 4096}, 3, "aborted"},
+		// A crash mid-resume leaves the record running: it counts as an
+		// abort, so the next resume keeps the first part's counters.
+		{"resumed after a crash", "running", map[int]uint64{2: 4096}, 3, "aborted"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			k := raid1Kernel()

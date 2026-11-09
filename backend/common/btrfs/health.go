@@ -110,7 +110,9 @@ func healthObservation(fs BtrfsFilesystem, name, occurrence string) alerts.Obser
 
 // RaiseOfflineAlert flags an unmounted pool: an error when disks are
 // missing or the boot check refused it, a warning when it is merely
-// unmounted. blocked is why the boot check did not mount it, if it did not.
+// unmounted. blocked is why the boot check did not mount it, if it did not;
+// a changed reason is a new occurrence, so it replaces the message raised
+// earlier.
 func RaiseOfflineAlert(ctx context.Context, pool BtrfsOfflinePool, blocked string) {
 	name := poolName(pool.Label, pool.UUID)
 	missing := missingDisks(pool)
@@ -131,6 +133,10 @@ func RaiseOfflineAlert(ctx context.Context, pool BtrfsOfflinePool, blocked strin
 	case blocked != "":
 		obs.Severity = alerts.SeverityError
 		obs.Message = "LinuxIO did not mount the pool because " + blocked + ". Check the disks before you mount the pool from the Storage overview."
+	}
+	if blocked != "" {
+		sum := sha256.Sum256([]byte(blocked))
+		obs.OccurrenceID += "/" + hex.EncodeToString(sum[:4])
 	}
 	raise(ctx, obs)
 }
