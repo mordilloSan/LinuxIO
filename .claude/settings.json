@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "deny": [
+      "Edit(frontend/src/api/generated/**)",
+      "Edit(frontend/src/routeTree.gen.ts)",
+      "Bash(go test:*)",
+      "Bash(gofmt:*)",
+      "Bash(golangci-lint:*)",
+      "Bash(govulncheck:*)",
+      "Bash(npm:*)",
+      "Bash(npx:*)",
+      "Bash(tsc:*)",
+      "Bash(vitest:*)",
+      "Bash(oxlint:*)",
+      "Bash(oxfmt:*)"
+    ]
+  }
+}

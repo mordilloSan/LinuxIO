@@ -13,5 +13,6 @@ tsconfig.tsbuildinfo
 .cache
 .DS_Store
 .vscode
-.claude/
+.claude/settings.local.json
+.claude/worktrees/
 .codex/
