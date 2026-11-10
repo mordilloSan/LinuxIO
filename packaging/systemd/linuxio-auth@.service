@@ -15,11 +15,13 @@ Group=root
 SuccessExitStatus=1 5 126 127
 Restart=no
 
-# Bridge child limits. Keep UID-scoped process and virtual address-space
-# rlimits out of the way; TasksMax/MemoryMax are the bridge envelope.
+# Limits the bridge inherits. Keep UID-scoped process and virtual
+# address-space rlimits out of the way.
 LimitNOFILE=2048
 LimitNPROC=infinity
 LimitAS=infinity
 LimitCORE=0
-TasksMax=1024
-MemoryMax=2G
+# No TasksMax or MemoryMax: a login is not capped. pam_systemd moves it into a
+# logind session scope, as it does an SSH login, where limits set here would
+# not apply; and it holds the web terminal and the assistant's agents, whose
+# work is the user's to size. Jobs are bounded by linuxio-jobs@.service.

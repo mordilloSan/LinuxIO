@@ -647,14 +647,6 @@ as on 7.0.
   timer to hand a run to the root host, or decides that scheduled work keeps
   running in its own unit and only writes a record (section 2.14), for example
   a command in the `linuxio` admin CLI.
-- **The bridge has no resource limits.** `linuxio-auth@.service` declares
-  `TasksMax=1024` and `MemoryMax=2G` and the architecture doc says they bound
-  the bridge, but `pam_systemd` moves the login into a logind session scope
-  (`session-<n>.scope` under `user-<uid>.slice`, seen in the journal's
-  `_SYSTEMD_CGROUP`), so no bridge is bounded. The installed `pam_systemd`
-  supports `systemd.memory_max` and `systemd.tasks_max`; `linuxio-auth` could
-  set them with `pam_putenv` before the session opens. Untested. The doc lines
-  stay until this is decided.
 
 ### 4.2 Phase 2: every mutation is a job
 
@@ -1054,7 +1046,7 @@ and tag `v7.0` (2026-11-06), and checked in the VM.
   named like a secret without the tag.
 
 - [x] The power-loss reboot path (`interrupted/reboot` marked at boot) had only unit-test coverage. The VM spec now cuts the power under a scrub and a replace and checks the `interrupted/reboot` record and the resume (section 3.6).
-- [ ] The bridge resource limits (section 4.1).
+- [x] The bridge resource limits: a login stays uncapped and the unit and the docs say so (D7).
 
 ## 6. Decision log
 
@@ -1178,6 +1170,17 @@ the Docker entry above.
 - **D6, the jobs CLI goes** (user, 2026-10-29): `jobs submit` and `jobs.resume`
   existed only for testing. Task 12 removed them after the VM checks replaced
   them; phase 4 designs how timers reach the job store (section 4.1).
+- **D7, a login is not capped** (user, 2026-11-10). `linuxio-auth@.service`
+  declared `TasksMax=1024` and `MemoryMax=2G` and the architecture doc said
+  they bounded the bridge. They did not: `pam_systemd` moves the login into a
+  logind session scope (`session-<n>.scope` under `user-<uid>.slice`, the
+  `_SYSTEMD_CGROUP` of every bridge line in the test VM's journal), as it does
+  an SSH login. A real cap would also cover the web terminal and the
+  assistant's agents, which run in the session. The two lines are removed and
+  an installer fixture test keeps them out; jobs stay bounded by their host.
+  Where `pam_systemd` is absent the lines did cap the session; that cap is
+  gone too. Not pursued: `systemd.memory_max` and `systemd.tasks_max`, which
+  `pam_systemd` reads as PAM data set by another module (untested).
 - **Signals are masked, not retried.** Retrying an aborted replace is not an
   option (the target is destroyed), so the ioctl never sees the signal: section 5.
 - **A freeze is not handled.** A suspend to RAM still aborts a scrub or replace

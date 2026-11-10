@@ -106,7 +106,7 @@ Key unit facts (see `packaging/systemd/`):
 - **`linuxio-webserver.socket`** — `ListenStream=8090`, `BindIPv6Only=both` (one socket answers both the A and AAAA records Avahi publishes). systemd owns the listening fd; the service inherits it.
 - **`linuxio-webserver.service`** — `ExecStart=/usr/local/bin/linuxio-webserver run`, `DynamicUser=yes`, `Group=linuxio-bridge-socket`. `StateDirectory=linuxio/webserver` gives the dynamic user private persistent storage for the managed TLS certificate. `RuntimeDirectory=linuxio/webserver` is an indexer activity marker whose lifetime is owned by systemd; `Wants=linuxio-indexer.service` warms the indexer without making it a prerequisite. Extensive hardening: `ProtectSystem=strict`, `PrivateDevices`, `MemoryDenyWriteExecute`, `NoNewPrivileges`, `SystemCallFilter`, `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`, etc.
 - **`linuxio-auth.socket`** — `ListenStream=/run/linuxio/auth.sock`, `SocketUser=root`, `SocketGroup=linuxio-bridge-socket`, `SocketMode=0660`, **`Accept=yes`**, `MaxConnections=64`. The group+mode is the access-control boundary: only members of `linuxio-bridge-socket` (i.e. the webserver) may connect. Each accepted connection stays open as the bridge's transport until the session ends (sign-out, or the webserver's 60 min idle or 12 h absolute expiry), so `MaxConnections` caps live sessions host-wide, including those of browsers closed without signing out; concurrent login attempts are capped separately by the webserver (`maxConcurrentLogins`, 8).
-- **`linuxio-auth@.service`** — template; one instance per accepted connection, with the connected socket as `StandardInput=socket`. `User=root`. `TasksMax=1024` / `MemoryMax=2G` bound the bridge it spawns, because **the bridge runs inside this instance's cgroup** (see below).
+- **`linuxio-auth@.service`** — template; one instance per accepted connection, with the connected socket as `StandardInput=socket`. `User=root`. It declares no `TasksMax` or `MemoryMax`: a login is not capped (see below). The bridge inherits its rlimits (`LimitNOFILE=2048`, `LimitCORE=0`).
 - **`linuxio-indexer.socket` / `linuxio-indexer.service`** — the `root:root`,
   mode-`0600` Unix socket activates one database/scanner owner. The daemon exits
   after its fixed idle grace while systemd retains the socket. Indexer-backed
@@ -196,7 +196,7 @@ Webserver  ── connect ──►  /run/linuxio/auth.sock        (allowed via 
 
 The auth instance does **not** exit after forking — it holds the PAM session open and blocks in `waitpid` as the bridge's parent for the entire login ([linuxio-auth.c](../backend/auth/linuxio-auth.c)). Consequences:
 
-- The bridge lives in the `linuxio-auth@.service` cgroup → `TasksMax`/`MemoryMax` apply per login.
+- A login has no task or memory cap. `pam_systemd` (optional in the PAM stack) moves the worker, and with it the bridge, into a logind session scope (`session-<n>.scope` under `user-<uid>.slice`), as it does an SSH login; without it they stay in the `linuxio-auth@.service` cgroup. The session holds the web terminal and the assistant's agents, whose work is the user's to size. Jobs are bounded by their host, `linuxio-jobs@.service` (`TasksMax=8192`, `MemoryMax=2G`).
 - PAM session open/close brackets the bridge's lifetime exactly.
 - One bridge per login is fully isolated from other logins, and each holds one of the socket's 64 connections (`MaxConnections=64`) until its session ends.
 

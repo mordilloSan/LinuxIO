@@ -338,6 +338,13 @@ grep -Fqx 'NoNewPrivileges=yes' "$JOBS_HOST" || fail "job hosts must not gain pr
 grep -Fqx 'TasksMax=8192' "$JOBS_HOST" || fail "job hosts must bound their tasks"
 grep -Fqx 'MemoryMax=2G' "$JOBS_HOST" || fail "job hosts must bound their memory"
 grep -Fqx 'OOMPolicy=continue' "$JOBS_HOST" || fail "an OOM kill must not stop a job host"
+# A login is not capped: pam_systemd moves it into a logind session scope, where
+# limits on the auth worker would not apply, and where it stays in the worker's
+# cgroup they would cap the terminal and the assistant's agents.
+AUTH_WORKER="${REPO_ROOT}/packaging/systemd/linuxio-auth@.service"
+if grep -Eq '^(TasksMax|MemoryMax)=' "$AUTH_WORKER"; then
+	fail "the auth worker must not declare a task or memory cap for the login"
+fi
 # The root host starts at boot to mark, alert and resume what a reboot interrupted.
 grep -Fqx 'WantedBy=multi-user.target' "$JOBS_HOST" || fail "the root job host must be enableable at boot"
 grep -Fq 'systemctl enable linuxio-jobs@0.service' "$installer" ||
