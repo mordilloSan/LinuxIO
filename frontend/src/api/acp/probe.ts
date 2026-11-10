@@ -7,6 +7,7 @@ import {
   isAuthRequiredError,
   type SessionOpenResult,
 } from "./connection";
+import { withTimeout } from "./timeout";
 
 /** What a fresh chat offers: models, effort levels and permission modes. */
 export type ChatOptions = Pick<SessionOpenResult, "configOptions" | "modes">;
@@ -27,6 +28,9 @@ const chatOptions = ({ configOptions, modes }: SessionOpenResult) => ({
 });
 
 const STATUS_WAIT_MS = 2000;
+
+/** How long the probe waits for the agent to open its throwaway chat. */
+export const CHAT_OPEN_TIMEOUT_MS = 30_000;
 
 /** Races work against the signal; a pending connect is closed once it lands. */
 function abortable(signal: AbortSignal | undefined) {
@@ -91,7 +95,16 @@ export async function probeAssistant(
       signal,
       guard,
     );
-    const authMethods = connection.init.authMethods ?? [];
+    const opened = connection;
+    const authMethods = opened.init.authMethods ?? [];
+    const openChat = () =>
+      guard(
+        withTimeout(
+          opened.newSession(),
+          CHAT_OPEN_TIMEOUT_MS,
+          `The agent did not open a chat within ${CHAT_OPEN_TIMEOUT_MS / 1000} seconds`,
+        ),
+      );
     await guard(
       Promise.race([
         statusSeen,
@@ -107,18 +120,18 @@ export async function probeAssistant(
         canLogout: connection.canLogout,
         // The login answer stands even when no chat opens.
         chatOptions: loggedIn
-          ? await guard(connection.newSession()).then(chatOptions, () => null)
+          ? await openChat().then(chatOptions, () => null)
           : null,
       };
     }
     try {
-      const opened = await guard(connection.newSession());
+      const chat = await openChat();
       return {
         status: "logged_in",
         authStatus: null,
         authMethods,
-        canLogout: connection.canLogout,
-        chatOptions: chatOptions(opened),
+        canLogout: opened.canLogout,
+        chatOptions: chatOptions(chat),
       };
     } catch (error) {
       if (isAuthRequiredError(error)) {

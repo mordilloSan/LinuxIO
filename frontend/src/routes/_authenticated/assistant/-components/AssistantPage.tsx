@@ -12,6 +12,7 @@ import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTypography from "@/components/ui/AppTypography";
 import HeaderActions from "@/components/ui/HeaderActions";
 import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/overlay";
+import { useAssistantRequirements } from "@/hooks/useAssistantRequirements";
 import { useConfigValue } from "@/hooks/useConfig";
 import {
   readPersistedState,
@@ -74,9 +75,12 @@ export default function AssistantPage({
     assistantStore.setChatDefaults(chatDefaults);
   }, [chatDefaults]);
 
+  // Starting an agent never installs anything, so it is only started once
+  // everything it needs is installed.
+  const { ready, missing } = useAssistantRequirements(agent);
   useEffect(() => {
-    if (agent && isOpen) void assistantStore.connect(agent);
-  }, [agent, isOpen]);
+    if (agent && isOpen && ready) void assistantStore.connect(agent);
+  }, [agent, isOpen, ready]);
 
   const { status } = state;
   const sideRunning = state.side?.status === "running";
@@ -134,6 +138,33 @@ export default function AssistantPage({
         }
       >
         No agent is set up yet. Choose one to start a conversation.
+      </AppAlert>
+    );
+  }
+
+  if (missing.length > 0) {
+    return (
+      <AppAlert
+        severity="warning"
+        action={
+          <AppButton
+            onClick={() =>
+              void navigate({
+                to: "/settings",
+                search: { tab: "capabilities" },
+              })
+            }
+          >
+            Open Capabilities
+          </AppButton>
+        }
+      >
+        The agent cannot start until these are installed.
+        {missing.map((item) => (
+          <div key={item.key}>
+            <strong>{item.label}:</strong> {item.reason}
+          </div>
+        ))}
       </AppAlert>
     );
   }
@@ -259,6 +290,11 @@ export default function AssistantPage({
         className={`assistant__body${state.side?.open || (state.sideOpening && !state.side) ? " assistant__body--split" : ""}`}
       >
         <section className="assistant__main">
+          {!ready ? (
+            <AppTypography color="text.secondary">
+              Checking what is installed…
+            </AppTypography>
+          ) : null}
           {state.status === "connecting" ? (
             <AppTypography color="text.secondary">
               Starting {agentLabel}…

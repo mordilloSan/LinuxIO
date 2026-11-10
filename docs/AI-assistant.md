@@ -17,12 +17,19 @@ yamux stream. The bridge never parses ACP.
 
 The bridge first asks the user's interactive login shell for its PATH
 (`bash -i -l -c 'printf %s "$PATH"'`, run as that user with stdin and stderr
-detached), then resolves `npx` on that PATH and executes the agent directly
-with it. Interactive matters: `~/.bashrc` returns early for non-interactive
-shells, and that is where nvm, fnm and volta add themselves. Executing the
-agent directly, rather than through `bash -i`, keeps bash's "no job control"
+detached), then runs the agent's installed executable directly on that PATH.
+Interactive matters: `~/.bashrc` returns early for non-interactive shells,
+and that is where nvm, fnm and volta add themselves. Executing the agent
+directly, rather than through `bash -i`, keeps bash's "no job control"
 warnings out of the agent's stderr. Arguments are passed as an argv array and
 never interpolated into a script. `NO_BROWSER` is not set on the ACP process.
+
+Starting an agent never downloads, installs or updates anything. The relay
+runs the copy [installed for the user](#installing-agents) and refuses, with a
+409, when that copy is missing, is another version than the one LinuxIO pins,
+or needs a CLI that is not on the user's PATH. `npx` is not involved: it would
+ask the registry for the newest version on every start and reinstall inside
+the chat's or the login check's wait.
 
 The first data frame is `{"cwd":...,"linuxio":"ready"}`. When the process ends
 the last data frame is `{"code":N,"linuxio":"exit","stderr":<4 KiB tail>}`,
@@ -40,14 +47,17 @@ websocket ends the agent process.
 
 ## Agents
 
-| Id | Command |
-|----|---------|
-| `claude` | `npx @agentclientprotocol/claude-agent-acp` |
-| `gemini` | `npx @google/gemini-cli --acp` |
-| `codex` | `npx @agentclientprotocol/codex-acp` |
+| Id | Package (pinned version) | Executable | Runs |
+|----|--------------------------|------------|------|
+| `claude` | `@agentclientprotocol/claude-agent-acp` | `claude-agent-acp` | the `claude` on the user's PATH, through `CLAUDE_CODE_EXECUTABLE` |
+| `gemini` | `@google/gemini-cli` | `gemini --acp` | itself |
+| `codex` | `@agentclientprotocol/codex-acp` | `codex-acp` | its bundled Codex |
 
-The table is `agents` in `backend/bridge/internal/acpagents`, which the config handler and the Terminal agent login also use. The
-commands come from the ACP registry. The browser only ever sends an agent id;
+The table is `agents` in `backend/bridge/internal/acpagents`, which the
+capability installer, the config handler and the Terminal agent login also
+use. Packages and versions come from the ACP registry; a new version reaches
+users only when a LinuxIO release changes the pin. The browser only ever sends
+an agent id;
 it never supplies a command, and unknown ids are rejected before anything
 spawns. Settings: `config.get` returns `assistant.agent`; `config.set`
 `{assistant:{agent}}` stores it (empty clears, unknown ids error).
@@ -56,6 +66,41 @@ new chat starts with; `config.set {assistant:{defaults}}` replaces the whole
 map (unknown ids and values with control characters or over 128 bytes error).
 An agent with no entry gets LinuxIO's starting point, which exists only for
 `claude`: `opus`, `high`, `auto`.
+
+## Installing agents
+
+Each agent is a capability, `assistant_claude`, `assistant_gemini` and
+`assistant_codex`, installed from the Capability Manager and never by opening
+a chat. Install runs, as the session user and with the npm on that user's
+login-shell PATH:
+
+```text
+npm install --prefix ~/.local/share/linuxio/agents/<id>.new --no-audit --no-fund --no-progress [--omit=optional] <package>@<version>
+```
+
+and swaps the new directory in for `~/.local/share/linuxio/agents/<id>` only
+after npm succeeded, so a failed or interrupted install leaves the working
+copy alone. Agents are per user because the Node.js that runs them is. The
+capability is available when the installed package is exactly the pinned
+version; after a LinuxIO update that moves a pin it reports
+`<package> <installed> is installed, LinuxIO needs <pinned>` and the agent
+stays off until Install is pressed again. The install route is privileged, so
+a user without administrator rights runs the command above from the Terminal
+page instead.
+
+Claude's adapter is installed with `--omit=optional`, which leaves out the
+copy of Claude Code its SDK would otherwise bring (about 330 MB of a 400 MB
+install; without it the install is about 50 MB). It runs the `claude` on the
+user's PATH instead, which is the separate `claude_code` capability. That one
+installs Anthropic's `claude-code` package from Anthropic's own apt or dnf
+repository on the `latest` channel, so Claude Code is updated with the host's
+package updates on the Updates page rather than updating itself; a `claude`
+the user installed another way satisfies it as well. See
+[Capabilities](./capabilities.md#claude-code-and-the-assistant-agents).
+
+`make test-assistant-agent-integration` installs all three agents with the
+real npm into a temporary home and starts each far enough to answer
+`initialize`. It needs Node.js, network access and `claude` on the PATH.
 
 ## Client behavior
 
@@ -151,24 +196,40 @@ in". When logged in it keeps (or, after a pushed status, opens) that session to
 read the chat defaults' choices. Agent-handled auth methods call `authenticate`; `logout` is offered when
 the agent advertises it.
 
+Neither the probe nor the chat starts an agent until the capability scan
+confirms what the agent needs (`requires` in `frontend/src/api/acp/agents.ts`):
+Settings and the Assistant page list what is missing, with the scan's own
+reason, and link to the Capability Manager. Every wait is bounded: the agent
+has 30 s to start and answer `initialize` (`AGENT_START_TIMEOUT_MS`, which the
+chat shares) and the probe's chat has 30 s to open (`CHAT_OPEN_TIMEOUT_MS`).
+Past either, the stream is closed and Settings shows the reason with a retry
+instead of "Checking login…".
+
 Terminal-type auth methods navigate to `/terminal` with the agent and args in
 router history state (never the URL, so a crafted link cannot choose the
 arguments). The login PTY is opened uncached beside the user's shell and closed
 when the page is left. In that mode
-`terminal.open` accepts `agent` and `args` and runs the agent's command plus
-those args in the PTY with `NO_BROWSER=1`. The CLI therefore prints a login URL
+`terminal.open` accepts `agent` and `args` and runs the agent's installed
+executable plus those args in the PTY with `NO_BROWSER=1`, resolved the same
+way as the relay and refused the same way when it is not installed. The CLI therefore prints a login URL
 and asks for the code instead of trying to open a browser on the server. The
 browser never supplies a command. The API-key path is absent because LinuxIO
 deliberately holds no vendor credentials; the CLI keeps its own login.
 
-## The `node` capability
+## Capabilities
 
-The capability `node` resolves `npx` on the PATH the session user's
-interactive login shell reports, the same PATH the agent is executed with, so
-detection and execution agree. Per-user
-installs such as nvm, fnm or volta are therefore detected. It gates the
-Assistant route, the sidebar entry and the settings tab, and it cannot be
-installed from the UI. See [Capabilities](./capabilities.md).
+- `node` resolves `npx` on the PATH the session user's interactive login shell
+  reports, the same PATH agents are installed and executed with, so detection
+  and execution agree. Per-user installs such as nvm, fnm or volta are
+  therefore detected. It gates the Assistant route, the sidebar entry and the
+  settings tab.
+- `assistant_claude`, `assistant_gemini` and `assistant_codex` report whether
+  the pinned version of that agent is installed for the session user.
+- `claude_code` reports whether `claude` is on the session user's login-shell
+  PATH.
+
+The chosen agent starts only when its own capability is available, and
+`claude` also needs `claude_code`. See [Capabilities](./capabilities.md).
 
 ## Out of scope in v1
 
@@ -178,5 +239,6 @@ installed from the UI. See [Capabilities](./capabilities.md).
 - Persisted "allow always" permission choices.
 - A bridge-side session registry that survives websocket loss.
 - Proactive alerts.
-- Agent installation by LinuxIO.
+- Automatic agent updates: a newer agent arrives with a LinuxIO release and
+  is installed when the user presses Install.
 - Typed LinuxIO tools for the agent.

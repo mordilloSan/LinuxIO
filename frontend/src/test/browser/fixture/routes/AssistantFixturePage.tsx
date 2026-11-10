@@ -3,6 +3,10 @@ import { useEffect } from "react";
 
 import { closeStreamMux, initStreamMux } from "@/api";
 import type { ConfigContextType } from "@/api";
+import {
+  capabilitiesQueryKey,
+  wireFromCapabilityState,
+} from "@/api/capabilities";
 import { uiConfigQueryKey } from "@/api/config-query";
 import { ANONYMOUS_USER_ID } from "@/api/user-scope";
 import { ConfigContext } from "@/contexts/ConfigContext";
@@ -17,6 +21,14 @@ const queryClient = new QueryClient({
 queryClient.setQueryData(uiConfigQueryKey(ANONYMOUS_USER_ID), {
   terminalFontSize: 14,
 });
+// The page starts the agent only once what it needs is installed.
+queryClient.setQueryData(
+  capabilitiesQueryKey(ANONYMOUS_USER_ID),
+  wireFromCapabilityState({
+    claudeCodeAvailable: true,
+    assistantClaudeAvailable: true,
+  }),
+);
 
 const stubConfig = {
   isLoaded: true,

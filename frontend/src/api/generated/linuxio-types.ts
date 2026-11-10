@@ -631,6 +631,10 @@ export interface CapabilitiesResponse {
   wireguard_available: boolean;
   libvirt_available: boolean;
   node_available: boolean;
+  claude_code_available: boolean;
+  assistant_claude_available: boolean;
+  assistant_gemini_available: boolean;
+  assistant_codex_available: boolean;
   btrfs_maintenance_available: boolean;
   btrfs_available: boolean;
   e2fsprogs_available: boolean;
@@ -652,6 +656,10 @@ export interface CapabilitiesResponse {
   wireguard_error?: string;
   libvirt_error?: string;
   node_error?: string;
+  claude_code_error?: string;
+  assistant_claude_error?: string;
+  assistant_gemini_error?: string;
+  assistant_codex_error?: string;
   btrfs_maintenance_error?: string;
   btrfs_error?: string;
   e2fsprogs_error?: string;

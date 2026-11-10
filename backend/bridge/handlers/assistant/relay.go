@@ -18,9 +18,11 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/acpagents"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/streamrelay"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/usercmd"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 )
 
 const (
@@ -30,6 +32,10 @@ const (
 
 // signalGroup is a seam so tests can assert that no signal is sent after exit.
 var signalGroup = syscall.Kill
+
+// agentHome resolves the home directory agents are installed under. It is a
+// seam so tests can install a fake agent outside the real home.
+var agentHome = userconfig.Homedir
 
 // tailBuffer keeps the last stderrTailSize bytes written to it.
 type tailBuffer struct {
@@ -66,8 +72,7 @@ type relay struct {
 // line with the exit code and stderr tail.
 func HandleAssistantSession(ctx context.Context, rt runtime.Runtime, stream net.Conn, req apischema.AssistantOpenRequest) error {
 	sess := rt.Session
-	agent, ok := acpagents.Lookup(req.Agent)
-	if !ok {
+	if _, ok := acpagents.Lookup(req.Agent); !ok {
 		streamrelay.WriteClose(stream)
 		return fmt.Errorf("assistant: unknown agent %q", req.Agent)
 	}
@@ -80,17 +85,25 @@ func HandleAssistantSession(ctx context.Context, rt runtime.Runtime, stream net.
 		streamrelay.WriteClose(stream)
 		return fmt.Errorf("assistant: %w", err)
 	}
-	binary, err := usercmd.LookPathIn(userPath, agent.Command)
+	agentsHome, err := agentHome(sess.User.Username)
 	if err != nil {
 		streamrelay.WriteClose(stream)
-		return fmt.Errorf("assistant: %s: %w", req.Agent, err)
+		return fmt.Errorf("assistant: %w", err)
 	}
-	cmd, err := usercmd.Command(ctx, sess.User, binary, agent.Args...)
+	// Starting an agent never installs or updates it: a missing or outdated
+	// install is refused here and fixed from the Capability Manager.
+	launch, err := acpagents.Launch(req.Agent, agentsHome, userPath)
+	if err != nil {
+		streamrelay.WriteClose(stream)
+		return fmt.Errorf("assistant: %w: %w", bridgeipc.ErrConflict, err)
+	}
+	cmd, err := usercmd.Command(ctx, sess.User, launch.Path, launch.Args...)
 	if err != nil {
 		streamrelay.WriteClose(stream)
 		return fmt.Errorf("assistant: %w", err)
 	}
 	cmd.Env = append(cmd.Env, "PATH="+userPath)
+	cmd.Env = append(cmd.Env, launch.Env...)
 	home := cmd.Dir
 
 	stdin, err := cmd.StdinPipe()

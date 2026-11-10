@@ -161,7 +161,7 @@ func TestInstallCapabilityStopsWhenDockerScriptFails(t *testing.T) {
 		{
 			name:    "empty",
 			handler: serveScript(""),
-			want:    "script is empty",
+			want:    "response is empty",
 		},
 		{
 			name:    "script",

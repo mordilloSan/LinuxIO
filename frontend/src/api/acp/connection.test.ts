@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { Stream } from "../StreamMultiplexer";
-import { connectAssistant, isAuthRequiredError, textBlock } from "./connection";
+import {
+  AGENT_START_TIMEOUT_MS,
+  connectAssistant,
+  isAuthRequiredError,
+  textBlock,
+} from "./connection";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -419,5 +424,45 @@ describe("connectAssistant", () => {
       /closed before the agent was ready/,
     );
     expect(closeSpy).toHaveBeenCalled();
+  });
+
+  it("gives up and closes the stream when the agent never answers initialize", async () => {
+    vi.useFakeTimers();
+    try {
+      const agent = fakeAgent({});
+      // The bridge reports ready, then the agent stays silent.
+      agent.stream.write = () => {};
+      const closeSpy = vi.spyOn(agent.stream, "close");
+      const outcome = connectAssistant("claude", handlers(), agent.open).then(
+        () => "connected",
+        (error: Error) => error.message,
+      );
+      await vi.advanceTimersByTimeAsync(AGENT_START_TIMEOUT_MS - 1);
+      expect(closeSpy).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await outcome).toBe("The agent did not start within 30 seconds");
+      expect(closeSpy).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("gives up when the bridge never reports the agent as started", async () => {
+    vi.useFakeTimers();
+    try {
+      const agent = fakeAgent({});
+      const outcome = connectAssistant(
+        "claude",
+        handlers(),
+        () => agent.stream,
+      ).then(
+        () => "connected",
+        (error: Error) => error.message,
+      );
+      await vi.advanceTimersByTimeAsync(AGENT_START_TIMEOUT_MS);
+      expect(await outcome).toBe("The agent did not start within 30 seconds");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

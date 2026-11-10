@@ -7,6 +7,7 @@ import {
   type AssistantAgentId,
   isAssistantAgentId,
 } from "./agents";
+import { withTimeout } from "./timeout";
 import { type AssistantExit, createAcpTransport } from "./transport";
 
 export { ASSISTANT_AGENTS, type AssistantAgentId, isAssistantAgentId };
@@ -84,6 +85,14 @@ export interface AssistantConnection {
 
 const AUTH_REQUIRED_CODE = -32000;
 
+/**
+ * How long an agent gets to start and answer `initialize`. The bridge runs
+ * an agent that is already installed and never downloads one, so a healthy
+ * start takes a second or two; past this the caller is told instead of left
+ * waiting.
+ */
+export const AGENT_START_TIMEOUT_MS = 30_000;
+
 export function isAuthRequiredError(error: unknown): boolean {
   return (
     typeof error === "object" &&
@@ -129,11 +138,9 @@ export async function connectAssistant(
     })
     .connect(transport.stream);
 
-  let cwd: string;
-  let init: acp.InitializeResponse;
-  try {
-    ({ cwd } = await transport.ready);
-    init = await connection.agent.request(acp.methods.agent.initialize, {
+  const handshake = async () => {
+    const { cwd } = await transport.ready;
+    const init = await connection.agent.request(acp.methods.agent.initialize, {
       protocolVersion: acp.PROTOCOL_VERSION,
       // Boolean options (Fast mode) arrive as real toggles instead of an
       // "On"/"Off" select once the agent knows the client can show them.
@@ -142,6 +149,16 @@ export async function connectAssistant(
         session: { configOptions: { boolean: {} } },
       },
     });
+    return { cwd, init };
+  };
+  let cwd: string;
+  let init: acp.InitializeResponse;
+  try {
+    ({ cwd, init } = await withTimeout(
+      handshake(),
+      AGENT_START_TIMEOUT_MS,
+      `The agent did not start within ${AGENT_START_TIMEOUT_MS / 1000} seconds`,
+    ));
   } catch (error) {
     connection.close();
     transport.close();

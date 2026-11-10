@@ -38,6 +38,10 @@ type CapabilitiesAvailable struct {
 	WireGuardAvailable        bool `json:"wireguard_available"`
 	LibvirtAvailable          bool `json:"libvirt_available"`
 	NodeAvailable             bool `json:"node_available"`
+	ClaudeCodeAvailable       bool `json:"claude_code_available"`
+	AssistantClaudeAvailable  bool `json:"assistant_claude_available"`
+	AssistantGeminiAvailable  bool `json:"assistant_gemini_available"`
+	AssistantCodexAvailable   bool `json:"assistant_codex_available"`
 	BtrfsMaintenanceAvailable bool `json:"btrfs_maintenance_available"`
 	BtrfsAvailable            bool `json:"btrfs_available"`
 	E2fsprogsAvailable        bool `json:"e2fsprogs_available"`
@@ -62,6 +66,10 @@ type CapabilitiesError struct {
 	WireGuardError        *string `json:"wireguard_error,omitzero"`
 	LibvirtError          *string `json:"libvirt_error,omitzero"`
 	NodeError             *string `json:"node_error,omitzero"`
+	ClaudeCodeError       *string `json:"claude_code_error,omitzero"`
+	AssistantClaudeError  *string `json:"assistant_claude_error,omitzero"`
+	AssistantGeminiError  *string `json:"assistant_gemini_error,omitzero"`
+	AssistantCodexError   *string `json:"assistant_codex_error,omitzero"`
 	BtrfsMaintenanceError *string `json:"btrfs_maintenance_error,omitzero"`
 	BtrfsError            *string `json:"btrfs_error,omitzero"`
 	E2fsprogsError        *string `json:"e2fsprogs_error,omitzero"`

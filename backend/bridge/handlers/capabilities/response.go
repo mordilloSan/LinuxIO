@@ -64,6 +64,14 @@ func setCapabilityField(out *apischema.CapabilitiesResponse, name string, ok boo
 		out.RsyncAvailable, out.RsyncError = ok, errPtr
 	case "node":
 		out.NodeAvailable, out.NodeError = ok, errPtr
+	case "claude_code":
+		out.ClaudeCodeAvailable, out.ClaudeCodeError = ok, errPtr
+	case "assistant_claude":
+		out.AssistantClaudeAvailable, out.AssistantClaudeError = ok, errPtr
+	case "assistant_gemini":
+		out.AssistantGeminiAvailable, out.AssistantGeminiError = ok, errPtr
+	case "assistant_codex":
+		out.AssistantCodexAvailable, out.AssistantCodexError = ok, errPtr
 	case "tuned":
 		out.TunedAvailable, out.TunedError = ok, errPtr
 	case "avahi":

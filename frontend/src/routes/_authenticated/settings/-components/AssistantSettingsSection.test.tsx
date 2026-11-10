@@ -34,6 +34,15 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
   useNavigate: () => mocks.navigate,
 }));
 
+// Everything any of the three agents needs is installed.
+const READY = {
+  nodeAvailable: true,
+  claudeCodeAvailable: true,
+  assistantClaudeAvailable: true,
+  assistantGeminiAvailable: true,
+  assistantCodexAvailable: true,
+};
+
 beforeEach(() => {
   mocks.agent = "";
   mocks.defaults = {};
@@ -52,7 +61,7 @@ describe("AssistantSettingsSection", () => {
       >
         <AssistantSettingsSection />
       </ConfigContext.Provider>,
-      { capabilities: { nodeAvailable: true } },
+      { capabilities: READY },
     );
     // AppSelect is a combobox + listbox, not a native <select>.
     await userEvent.click(screen.getByLabelText("Agent"));
@@ -60,6 +69,79 @@ describe("AssistantSettingsSection", () => {
     expect(updateConfig).toHaveBeenCalledWith({
       assistant: { agent: "gemini" },
     });
+  });
+
+  it("names what is missing and does not start the agent", async () => {
+    mocks.agent = "claude";
+    render(<AssistantSettingsSection />, {
+      capabilities: {
+        ...READY,
+        claudeCodeAvailable: false,
+        assistantClaudeAvailable: false,
+      },
+    });
+    expect(
+      await screen.findByText(/Claude Code is not installed/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Claude adapter is not installed/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/checking login/i)).not.toBeInTheDocument();
+    expect(mocks.probe).not.toHaveBeenCalled();
+
+    await userEvent.click(
+      screen.getByRole("button", { name: "Open Capabilities" }),
+    );
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      to: "/settings",
+      search: { tab: "capabilities" },
+    });
+  });
+
+  it("asks only for what the chosen agent needs", async () => {
+    mocks.agent = "gemini";
+    mocks.probe.mockResolvedValue({
+      status: "logged_in",
+      authStatus: null,
+      authMethods: [],
+      canLogout: false,
+    });
+    render(<AssistantSettingsSection />, {
+      capabilities: {
+        ...READY,
+        claudeCodeAvailable: false,
+        assistantClaudeAvailable: false,
+      },
+    });
+    expect(await screen.findByText("Logged in")).toBeInTheDocument();
+    expect(mocks.probe).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not start the agent before the capability scan lands", async () => {
+    mocks.agent = "codex";
+    render(<AssistantSettingsSection />, {
+      capabilities: { nodeAvailable: true },
+    });
+    expect(
+      await screen.findByText(/checking what is installed/i),
+    ).toBeInTheDocument();
+    expect(mocks.probe).not.toHaveBeenCalled();
+  });
+
+  it("re-scans what is installed from the refresh button until the agent can start", async () => {
+    mocks.agent = "codex";
+    const refreshCapabilities = vi.fn(async () => ({}));
+    render(<AssistantSettingsSection />, {
+      auth: { refreshCapabilities },
+      capabilities: { ...READY, assistantCodexAvailable: false },
+    });
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "Check what is installed again",
+      }),
+    );
+    expect(refreshCapabilities).toHaveBeenCalledTimes(1);
+    expect(mocks.probe).not.toHaveBeenCalled();
   });
 
   it("shows login status and a login button from the probe", async () => {
@@ -78,7 +160,7 @@ describe("AssistantSettingsSection", () => {
       canLogout: false,
     });
     render(<AssistantSettingsSection />, {
-      capabilities: { nodeAvailable: true },
+      capabilities: READY,
     });
     expect(await screen.findByText(/not logged in/i)).toBeInTheDocument();
     await userEvent.click(
@@ -105,7 +187,7 @@ describe("AssistantSettingsSection", () => {
     });
     mocks.authenticate.mockResolvedValue(undefined);
     render(<AssistantSettingsSection />, {
-      capabilities: { nodeAvailable: true },
+      capabilities: READY,
     });
     await userEvent.click(
       await screen.findByRole("button", { name: "API key" }),
@@ -130,7 +212,7 @@ describe("AssistantSettingsSection", () => {
     });
     mocks.logout.mockResolvedValue(undefined);
     render(<AssistantSettingsSection />, {
-      capabilities: { nodeAvailable: true },
+      capabilities: READY,
     });
     expect(await screen.findByText(/Claude Max/)).toBeInTheDocument();
     expect(screen.getByText(/a@example.com/)).toBeInTheDocument();
@@ -181,7 +263,7 @@ describe("AssistantSettingsSection", () => {
       >
         <AssistantSettingsSection />
       </ConfigContext.Provider>,
-      { capabilities: { nodeAvailable: true } },
+      { capabilities: READY },
     );
     await userEvent.click(await screen.findByLabelText("Model"));
     expect(

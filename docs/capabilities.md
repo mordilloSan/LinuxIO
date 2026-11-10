@@ -144,7 +144,7 @@ resolve -> [install_package] -> [post_install] -> [enable_service] -> [start_ser
 | `OptionalPackageRHELFailureWarning` | Concise capability-specific consequence returned to the UI; raw package-manager errors remain in task output. |
 | `ServiceDebian` / `ServiceRHEL` | systemd unit to start after install (empty = none). |
 | `EnableService` | Also `systemctl enable` the unit, not just start it. |
-| `OptionalComponent` | Names a LinuxIO-managed non-package installer, run before any package step. `"docker"` downloads Docker's convenience script from `https://get.docker.com`, reports its sha256, and streams its output (skipped when a `docker` binary is already on `PATH`). `"node"` downloads the pinned nvm install script and runs it, then `nvm install --lts`, as the session user (see [Node.js](#nodejs-assistant)). `handlers/packages` rejects any other value. |
+| `OptionalComponent` | Names a LinuxIO-managed non-package installer, run before any package step. `"docker"` downloads Docker's convenience script from `https://get.docker.com`, reports its sha256, and streams its output (skipped when a `docker` binary is already on `PATH`). `"node"` downloads the pinned nvm install script and runs it, then `nvm install --lts`, as the session user (see [Node.js](#nodejs-assistant)). `"claude_code"` adds Anthropic's package repository after checking its signing key, and `"assistant_<agent>"` installs that agent's pinned npm package for the session user (see [Claude Code and the Assistant agents](#claude-code-and-the-assistant-agents)). `handlers/packages` rejects any other value. |
 | `RequiresDocker` | Optional-component prerequisite checked before install. |
 
 Omit `Install` entirely for capabilities with no UI install path (the
@@ -236,12 +236,60 @@ it from the UI runs the pinned nvm install script and then
 as root, so Node.js lands in that user's `~/.nvm` and nvm adds itself to their
 `~/.bashrc`; verification then re-runs the same login-shell probe as that
 user. A host-wide Node.js from the package manager also satisfies the probe.
-It gates the Assistant route and its settings tab, whose ACP agent adapters
-run through `npx`.
+It gates the Assistant route and its settings tab; the agents themselves are
+installed with its npm and run on its `node`.
 
 `DetectAsUser(ctx, user)` is the variant for capabilities that depend on the
 session user's own environment; every other capability keeps `Detect(ctx)`.
 Exactly one of the two is set, which the registry test enforces.
+
+## Claude Code and the Assistant agents
+
+Four capabilities cover what the [Assistant](./AI-assistant.md) runs. None of
+them is installed or updated by opening a chat.
+
+`claude_code` resolves `claude` on the session user's login-shell PATH with
+`DetectAsUser`, the PATH the Claude agent runs it from, so a copy under the
+home directory counts as much as the system package. Installing it from the UI
+makes Anthropic's own repository known to the package manager and then
+installs `claude-code` through PackageKit like any other package:
+
+- The signing key is downloaded from
+  `https://downloads.claude.ai/keys/claude-code.asc` and refused unless it
+  holds exactly one primary key whose fingerprint is
+  `31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE`, the one Anthropic publishes with
+  its install instructions. A package manager trusts every key in the file, so
+  a second key is refused as well, and so is anything another parser might
+  read differently: text around the one armored block, lines that are not
+  armor headers, data after the checksum, and any packet that is not part of
+  a public key (a secret key above all). Nothing is written for a refused key.
+- Debian family: the key goes to `/etc/apt/keyrings/claude-code.asc` and
+  `/etc/apt/sources.list.d/claude-code.list` gets
+  `deb [signed-by=/etc/apt/keyrings/claude-code.asc] https://downloads.claude.ai/claude-code/apt/latest latest main`.
+- RHEL family: the key goes to `/etc/pki/rpm-gpg/RPM-GPG-KEY-claude-code`, is
+  imported with `rpm --import` so no fingerprint prompt appears later, and
+  `/etc/yum.repos.d/claude-code.repo` points at
+  `https://downloads.claude.ai/claude-code/rpm/latest` with `gpgcheck=1`.
+- The channel is `latest`, which offers every release as it ships. A
+  repository file that already exists is left unchanged, so an administrator
+  who chose `stable` keeps it.
+- The package lists are refreshed before the package step so `claude-code`
+  resolves.
+
+Installed this way Claude Code does not update itself: new versions appear on
+the Updates page with the rest of the system's packages.
+
+`assistant_claude`, `assistant_gemini` and `assistant_codex` each report, with
+`DetectAsUser`, whether the version of that agent pinned in
+`backend/bridge/internal/acpagents` is installed under
+`~/.local/share/linuxio/agents/<id>` for the session user. Install runs
+`npm install` of that exact version as the session user, never as root, into a
+staging directory that replaces the old one only on success. Detection and
+launch read that directory through an `os.Root`, so no link in it leads the
+bridge elsewhere, and accept only a regular manifest of ordinary size. A
+different installed version reports
+`<package> <installed> is installed, LinuxIO needs <pinned>`, which is how a
+LinuxIO update that moves a pin asks for the agent to be installed again.
 
 ## Consuming A Capability
 

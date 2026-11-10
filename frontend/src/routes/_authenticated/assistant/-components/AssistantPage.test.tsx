@@ -60,8 +60,37 @@ describe("AssistantPage", () => {
   });
 
   it("connects to the configured agent on mount", () => {
-    render(<AssistantPage agent="claude" />);
+    render(<AssistantPage agent="claude" />, {
+      capabilities: {
+        claudeCodeAvailable: true,
+        assistantClaudeAvailable: true,
+      },
+    });
     expect(connectSpy).toHaveBeenCalledWith("claude");
+  });
+
+  it("says what to install instead of starting an agent that is not ready", () => {
+    render(<AssistantPage agent="claude" />, {
+      capabilities: {
+        claudeCodeAvailable: false,
+        assistantClaudeAvailable: true,
+      },
+    });
+    expect(
+      screen.getByText(/Claude Code is not installed/),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open Capabilities" }));
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      to: "/settings",
+      search: { tab: "capabilities" },
+    });
+    expect(connectSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not start the agent before the capability scan lands", () => {
+    render(<AssistantPage agent="claude" />);
+    expect(screen.getByText(/checking what is installed/i)).toBeInTheDocument();
+    expect(connectSpy).not.toHaveBeenCalled();
   });
 
   it("lists previous chats in a dropdown from the history icon and loads one", async () => {

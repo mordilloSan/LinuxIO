@@ -309,6 +309,7 @@ follows:
 - backend checks: `golint`, `golint-only`, `test-backend`, `test-go`, `deadcode`,
   `deadcode-only`, `check-backend`, `test-auth`, `test-auth-protocol`,
   `test-auth-pam`, `test-updater`, `test-docker-update-integration`,
+  `test-assistant-agent-integration`,
   `test-filebrowser-root`, `check-c-build-deps`
 - analysis: `bundle-metrics`, `compiler-coverage`, `analyze`, `analyze-auth`
 - builds and development: `test`, `build`, `build-nocheck`, `fastbuild`,

@@ -103,6 +103,13 @@ test-docker-update-integration: ensure-go ## Run the opt-in real Docker/Compose 
 	  $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" \
 	  "$(GO_BIN)" test ./common/dockerupdate -run '^TestDockerUpdateCompose' -count=1 -v
 
+test-assistant-agent-integration: ensure-go ## Run the opt-in real npm install and launch of the assistant agents (needs Node.js and network)
+	@echo "🤖 Running assistant agent install integration test..."
+	@cd "$(backend_dir)" && \
+	  LINUXIO_RUN_ASSISTANT_AGENT_INTEGRATION=1 \
+	  $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" \
+	  "$(GO_BIN)" test ./bridge/handlers/packages -run '^TestAssistantAgentIntegration$$' -count=1 -v -timeout 10m
+
 # The root btrfs and partition kernel tests, run on this host by
 # test-btrfs-integration and in the test VM by vm-test-btrfs-integration.
 BTRFS_INTEGRATION_RUN := ^Test(Btrfs(Degraded|Resume)?|Partition)Integration$$

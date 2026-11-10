@@ -8,7 +8,9 @@ import (
 	nfsshares "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/shares"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/virt"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/acpagents"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/usercmd"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
 	"github.com/mordilloSan/LinuxIO/backend/common/dockerupdate"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -55,9 +57,41 @@ type InstallSpec struct {
 
 	// OptionalComponent names a LinuxIO-managed install that is not provided by
 	// the distro package manager ("docker" runs Docker's convenience script,
-	// "node" installs nvm and Node.js LTS for the session user).
+	// "node" installs nvm and Node.js LTS for the session user, "claude_code"
+	// adds Anthropic's package repository, and "assistant_<agent>" installs
+	// that agent's pinned package for the session user).
 	OptionalComponent string
 	RequiresDocker    bool
+}
+
+// AssistantAgentPrefix starts the capability name, and the OptionalComponent
+// value, of each assistant agent: "assistant_" plus the acpagents id.
+const AssistantAgentPrefix = "assistant_"
+
+// agentHome resolves the home directory agents are installed under. It is a
+// seam so tests can install a fake agent outside a real home.
+var agentHome = userconfig.Homedir
+
+// assistantAgentCapability reports whether the session user has the pinned
+// version of one assistant agent installed. Agents are per user, like the
+// Node.js that runs them, and the assistant never installs one on its own.
+func assistantAgentCapability(id, logName string) CapabilitySpec {
+	name := AssistantAgentPrefix + id
+	return CapabilitySpec{
+		Name:    name,
+		LogName: logName,
+		DetectAsUser: func(_ context.Context, u session.User) (bool, string) {
+			home, err := agentHome(u.Username)
+			if err != nil {
+				return false, err.Error()
+			}
+			if err := acpagents.Installed(id, home); err != nil {
+				return false, err.Error()
+			}
+			return true, ""
+		},
+		Install: &InstallSpec{OptionalComponent: name},
+	}
 }
 
 // InstallCommand describes a capability-specific command that must run after
@@ -202,6 +236,23 @@ var capabilityRegistry = []CapabilitySpec{
 		},
 		Install: &InstallSpec{OptionalComponent: "node"},
 	},
+	{
+		Name:    "claude_code",
+		LogName: "Claude Code",
+		// The Claude agent runs the claude on the session user's own PATH, so
+		// detection asks that same login shell: a copy under the home
+		// directory counts as much as the system package.
+		DetectAsUser: func(ctx context.Context, u session.User) (bool, string) {
+			if err := usercmd.ProbeLoginShell(ctx, u, "claude"); err != nil {
+				return false, err.Error()
+			}
+			return true, ""
+		},
+		Install: &InstallSpec{OptionalComponent: "claude_code", PackageDebian: "claude-code", PackageRHEL: "claude-code"},
+	},
+	assistantAgentCapability("claude", "Claude assistant adapter"),
+	assistantAgentCapability("gemini", "Gemini CLI for the assistant"),
+	assistantAgentCapability("codex", "Codex assistant adapter"),
 	{
 		Name:    "tuned",
 		LogName: "TuneD",

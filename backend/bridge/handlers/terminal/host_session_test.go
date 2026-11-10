@@ -2,11 +2,10 @@ package terminal
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
-	"os"
 	"os/user"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -14,6 +13,8 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/acpagents"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/acpagents/acpagentstest"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -102,11 +103,15 @@ func TestHandleTerminalSessionRunsAgentLoginCommand(t *testing.T) {
 	if err != nil {
 		t.Skipf("non-numeric gid %q: %v", u.Gid, err)
 	}
-	script := filepath.Join(t.TempDir(), "agent.sh")
-	if err := os.WriteFile(script, []byte("#!/bin/sh\nprintf 'LOGIN %s %s\\n' \"$1\" \"$NO_BROWSER\"\n"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(acpagents.Override("fake", acpagents.Agent{Command: script}))
+	// sh is on every login-shell PATH, so it stands in for the agent's CLI.
+	agent := acpagents.Agent{Package: "fake-agent", Version: "1.0.0", Bin: "fake-agent", CLI: "sh", CLIEnv: "FAKE_CLI_EXECUTABLE"}
+	t.Cleanup(acpagents.Override("fake", agent))
+	home := t.TempDir()
+	acpagentstest.Install(t, home, "fake", agent, agent.Version,
+		"#!/bin/sh\nprintf 'LOGIN %s %s %s\\n' \"$1\" \"$NO_BROWSER\" \"${FAKE_CLI_EXECUTABLE##*/}\"\n")
+	origHome := agentHome
+	agentHome = func(string) (string, error) { return home, nil }
+	t.Cleanup(func() { agentHome = origHome })
 
 	rt := runtime.Runtime{Session: &session.Session{
 		SessionID: "terminal-login-test",
@@ -123,7 +128,7 @@ func TestHandleTerminalSessionRunsAgentLoginCommand(t *testing.T) {
 
 	var output []byte
 	deadline := time.Now().Add(15 * time.Second)
-	for !strings.Contains(string(output), "LOGIN --cli 1") {
+	for !strings.Contains(string(output), "LOGIN --cli 1 sh") {
 		_ = client.SetReadDeadline(deadline)
 		frame, err := ipc.ReadRelayFrame(client)
 		if err != nil {
@@ -163,5 +168,46 @@ func TestHandleTerminalSessionRejectsUnknownAgent(t *testing.T) {
 	}
 	if err := <-done; err == nil {
 		t.Fatal("expected an error for an unknown agent")
+	}
+}
+
+func TestHandleTerminalSessionRefusesAnAgentThatIsNotInstalled(t *testing.T) {
+	u, err := user.Current()
+	if err != nil {
+		t.Fatalf("current user: %v", err)
+	}
+	uid, err := strconv.ParseUint(u.Uid, 10, 32)
+	if err != nil {
+		t.Skipf("non-numeric uid %q: %v", u.Uid, err)
+	}
+	gid, err := strconv.ParseUint(u.Gid, 10, 32)
+	if err != nil {
+		t.Skipf("non-numeric gid %q: %v", u.Gid, err)
+	}
+	t.Cleanup(acpagents.Override("fake", acpagents.Agent{Package: "fake-agent", Version: "1.0.0", Bin: "fake-agent"}))
+	home := t.TempDir()
+	origHome := agentHome
+	agentHome = func(string) (string, error) { return home, nil }
+	t.Cleanup(func() { agentHome = origHome })
+
+	rt := runtime.Runtime{Session: &session.Session{
+		User: session.User{Username: u.Username, UID: uint32(uid), GID: uint32(gid)},
+	}}
+	client, server := net.Pipe()
+	defer client.Close()
+	done := make(chan error, 1)
+	go func() {
+		done <- HandleTerminalSession(context.Background(), rt, server, apischema.TerminalOpenRequest{Agent: "fake"})
+	}()
+	frame, err := ipc.ReadRelayFrame(client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if frame.Opcode != ipc.OpStreamClose {
+		t.Fatalf("expected close frame, got opcode %#x", frame.Opcode)
+	}
+	err = <-done
+	if !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), "fake-agent is not installed") {
+		t.Fatalf("expected a not-installed conflict, got %v", err)
 	}
 }

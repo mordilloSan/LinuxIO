@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/acpagents"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/acpagents/acpagentstest"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
@@ -171,5 +173,71 @@ func TestLMSensorsInstallPostInstallCommand(t *testing.T) {
 	}
 	if got, want := spec.Install.PostInstall.Args, []string{"--auto"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("post-install args = %v, want %v", got, want)
+	}
+}
+
+func TestClaudeCodeCapabilityInstallsAnthropicsPackage(t *testing.T) {
+	spec, ok := CapabilitySpecByName("claude_code")
+	if !ok {
+		t.Fatal("claude_code capability not registered")
+	}
+	if spec.Install == nil || spec.Install.OptionalComponent != "claude_code" ||
+		spec.Install.PackageDebian != "claude-code" || spec.Install.PackageRHEL != "claude-code" {
+		t.Fatalf("claude_code must add Anthropic's repository and install claude-code, got %+v", spec.Install)
+	}
+	if spec.Detect != nil || spec.DetectAsUser == nil {
+		t.Fatal("claude_code must detect through the session user's login shell, like the agent that runs it")
+	}
+	available, message := spec.DetectAsUser(context.Background(), session.User{Username: "linuxio-no-such-user"})
+	if available || message == "" {
+		t.Fatalf("expected unavailable with a reason for an unknown user, got available=%v message=%q", available, message)
+	}
+}
+
+func TestAssistantAgentCapabilitiesCoverTheCatalogue(t *testing.T) {
+	for _, id := range acpagents.IDs() {
+		name := AssistantAgentPrefix + id
+		spec, ok := CapabilitySpecByName(name)
+		if !ok {
+			t.Errorf("agent %q has no %s capability", id, name)
+			continue
+		}
+		if spec.Install == nil || spec.Install.OptionalComponent != name ||
+			spec.Install.PackageDebian != "" || spec.Install.PackageRHEL != "" {
+			t.Errorf("%s must install only its own component, got %+v", name, spec.Install)
+		}
+		if spec.Detect != nil || spec.DetectAsUser == nil {
+			t.Errorf("%s must detect the session user's own install", name)
+		}
+	}
+}
+
+func TestAssistantAgentCapabilityReportsTheInstalledVersion(t *testing.T) {
+	agent, ok := acpagents.Lookup("claude")
+	if !ok {
+		t.Fatal("claude agent missing from the catalogue")
+	}
+	spec, ok := CapabilitySpecByName("assistant_claude")
+	if !ok {
+		t.Fatal("assistant_claude capability not registered")
+	}
+	home := t.TempDir()
+	orig := agentHome
+	agentHome = func(string) (string, error) { return home, nil }
+	t.Cleanup(func() { agentHome = orig })
+	user := session.User{Username: "alice"}
+
+	if available, message := spec.DetectAsUser(context.Background(), user); available || !strings.Contains(message, "is not installed") {
+		t.Fatalf("nothing installed: got available=%v message=%q", available, message)
+	}
+
+	acpagentstest.Install(t, home, "claude", agent, "0.0.1", "#!/bin/sh\n")
+	if available, message := spec.DetectAsUser(context.Background(), user); available || !strings.Contains(message, "0.0.1 is installed, LinuxIO needs "+agent.Version) {
+		t.Fatalf("other version installed: got available=%v message=%q", available, message)
+	}
+
+	acpagentstest.Install(t, home, "claude", agent, agent.Version, "#!/bin/sh\n")
+	if available, message := spec.DetectAsUser(context.Background(), user); !available || message != "" {
+		t.Fatalf("pinned version installed: got available=%v message=%q", available, message)
 	}
 }
