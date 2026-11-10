@@ -204,12 +204,13 @@ describe("FileBrowserHeader", () => {
     );
 
     // Mirrors .tab-selector in tab-selector.css — the search must sit at the
-    // same screen-centered spot here as on tab routes.
-    expect(container.querySelector(".file-browser-header")).toHaveStyle({
-      display: "grid",
-      gridTemplateColumns:
-        "minmax(0, 1fr) clamp(140px, 40vw, 400px) minmax(0, 1fr)",
-    });
+    // same screen-centered spot here as on tab routes. Read from the inline
+    // style: the computed value has clamp() resolved to a pixel width.
+    const header = container.querySelector<HTMLElement>(".file-browser-header");
+    expect(header).toHaveStyle({ display: "grid" });
+    expect(header?.style.gridTemplateColumns).toBe(
+      "minmax(0px, 1fr) clamp(140px, 40vw, 400px) minmax(0px, 1fr)",
+    );
     expect(
       screen.getByRole("textbox", { name: "Search files and folders..." }),
     ).toBeVisible();
