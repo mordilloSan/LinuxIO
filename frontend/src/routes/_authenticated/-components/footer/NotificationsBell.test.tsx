@@ -1,15 +1,25 @@
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterContextProvider,
+} from "@tanstack/react-router";
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Alert } from "@/api";
+import type { BackgroundTaskLink } from "@/tasks/types";
 
 const state = {
   transfers: [] as Array<{
     cancelRequested?: boolean;
     id: string;
+    indeterminate?: boolean;
     label?: string;
+    link?: BackgroundTaskLink;
     progress: number;
     type: string;
   }>,
@@ -101,15 +111,32 @@ vi.mock("@/components/ui/AppLinearProgress", () => ({
   default: () => <div />,
 }));
 
-vi.mock("@/components/ui/AppRouterLinkButton", () => ({
-  default: () => <button />,
-}));
-
 vi.mock("@/components/ui/AppTooltip", () => ({
   default: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 
 const { NotificationsBell } = await import("./NotificationsBell");
+
+// Alert and scheduled-run rows link to their pages through the real router
+// link, which needs a router holding those pages.
+function renderBell() {
+  const rootRoute = createRootRoute();
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routeTree: rootRoute.addChildren([
+      createRoute({
+        getParentRoute: () => rootRoute,
+        path: "/services/schedules",
+      }),
+      createRoute({ getParentRoute: () => rootRoute, path: "/updates" }),
+    ]),
+  });
+  return render(<NotificationsBell />, {
+    wrapper: ({ children }: { children: ReactNode }) => (
+      <RouterContextProvider router={router}>{children}</RouterContextProvider>
+    ),
+  });
+}
 
 describe("NotificationsBell peek timer", () => {
   beforeEach(() => {
@@ -159,7 +186,7 @@ describe("NotificationsBell running jobs", () => {
     state.transfers = [
       { id: "job-1", label: "Balancing", progress: 40, type: "task" },
     ];
-    render(<NotificationsBell />);
+    renderBell();
     await userEvent.click(
       screen.getByRole("button", { name: "Notifications" }),
     );
@@ -179,13 +206,87 @@ describe("NotificationsBell running jobs", () => {
         type: "task",
       },
     ];
-    render(<NotificationsBell />);
+    renderBell();
     await userEvent.click(
       screen.getByRole("button", { name: "Notifications" }),
     );
     expect(await screen.findByText("Cancelling…")).toBeInTheDocument();
     expect(screen.queryByText("40%")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cancel task" })).toBeDisabled();
+  });
+});
+
+// A systemd timer runs these: the bridge refuses to cancel one, so the row
+// offers a link to the page that owns the run where others offer a cancel.
+describe("NotificationsBell scheduled runs", () => {
+  const scheduledScript = {
+    id: "run-1",
+    indeterminate: true,
+    label: "Nightly backup",
+    link: { search: { schedule: "sched-1" }, to: "/services/schedules" },
+    progress: 0,
+    type: "task",
+  };
+
+  const openTray = async () => {
+    await userEvent.click(
+      screen.getByRole("button", { name: "Notifications" }),
+    );
+    return screen.findByRole("link", { name: "Open Nightly backup" });
+  };
+
+  beforeEach(() => {
+    cancelTask.mockClear();
+    useAlertsMock.mockReturnValue(noAlerts());
+  });
+
+  it("links the row to the run's page instead of offering a cancel", async () => {
+    state.transfers = [scheduledScript];
+    renderBell();
+
+    const link = await openTray();
+    expect(link).toHaveTextContent("Open");
+    expect(link).toHaveAttribute(
+      "href",
+      "/services/schedules?schedule=sched-1",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Cancel task" }),
+    ).not.toBeInTheDocument();
+    // The row stays an ordinary list item; only the link is interactive.
+    expect(link.closest("li")).not.toHaveAttribute("role");
+    expect(link.closest("li")).not.toHaveAttribute("tabindex");
+  });
+
+  it("reaches the link from the keyboard", async () => {
+    state.transfers = [scheduledScript];
+    renderBell();
+
+    const link = await openTray();
+    await userEvent.tab();
+    expect(link).toHaveFocus();
+  });
+
+  it("closes the tray when the link is followed", async () => {
+    state.transfers = [scheduledScript];
+    renderBell();
+
+    await userEvent.click(await openTray());
+    expect(
+      screen.queryByRole("dialog", { name: "Notifications" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows a run whose stop was requested as cancelling", async () => {
+    state.transfers = [{ ...scheduledScript, cancelRequested: true }];
+    renderBell();
+
+    const link = await openTray();
+    expect(screen.getByText("Cancelling…")).toBeInTheDocument();
+    expect(link).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Cancel task" }),
+    ).not.toBeInTheDocument();
   });
 });
 
@@ -203,7 +304,7 @@ describe("NotificationsBell alerts", () => {
       unseen: 1,
       markAllSeen,
     });
-    render(<NotificationsBell />);
+    renderBell();
     await userEvent.click(
       screen.getByRole("button", { name: "Notifications" }),
     );
@@ -226,7 +327,7 @@ describe("NotificationsBell alerts", () => {
       ],
       unseen: 2,
     });
-    render(<NotificationsBell />);
+    renderBell();
     expect(
       screen.getByRole("button", { name: "Notifications" }),
     ).toHaveTextContent("2");
@@ -239,7 +340,7 @@ describe("NotificationsBell alerts", () => {
       alerts: [alertFixture()],
       dismiss,
     });
-    render(<NotificationsBell />);
+    renderBell();
     await userEvent.click(
       screen.getByRole("button", { name: "Notifications" }),
     );
@@ -256,7 +357,7 @@ describe("NotificationsBell alerts", () => {
       alerts: [alertFixture({ seen: true })],
       markAllSeen,
     });
-    render(<NotificationsBell />);
+    renderBell();
     await userEvent.click(
       screen.getByRole("button", { name: "Notifications" }),
     );

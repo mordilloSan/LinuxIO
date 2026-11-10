@@ -44,6 +44,10 @@ type Owner struct {
 	Username string `json:"username"`
 }
 
+// ExecutorUnit is the executor kind of a scheduled run: an invocation of the
+// systemd unit Executor.Unit that a timer started.
+const ExecutorUnit = "unit"
+
 type Executor struct {
 	Kind         string `json:"kind"`
 	PID          int32  `json:"pid,omitzero"`
@@ -71,6 +75,9 @@ type Record struct {
 	StartedAt  time.Time      `json:"started_at,omitzero"`
 	FinishedAt time.Time      `json:"finished_at,omitzero"`
 	Request    jsontext.Value `json:"request,omitzero"`
+	// Metadata is the public projection shown with the job. Unlike Request it is
+	// returned by the API.
+	Metadata   jsontext.Value `json:"metadata,omitzero"`
 	Progress   jsontext.Value `json:"progress,omitzero"`
 	Result     jsontext.Value `json:"result,omitzero"`
 	Error      *Error         `json:"error,omitzero"`

@@ -11,6 +11,7 @@ import (
 
 	"github.com/moby/moby/api/types/container"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
@@ -237,5 +238,16 @@ func TestRenderDockerUpdateUnitDerivesFromWorkerUnit(t *testing.T) {
 		if !strings.Contains(unit, want) {
 			t.Errorf("unit file is missing %q:\n%s", want, unit)
 		}
+	}
+	// The scheduled run hooks live in the packaged drop-in
+	// (linuxio-run-record.conf), never in the rendered unit.
+	if strings.Contains(unit, "scheduled-run") {
+		t.Errorf("rendered unit carries a run hook:\n%s", unit)
+	}
+}
+
+func TestScheduledRunKnowsTheDockerUpdateUnit(t *testing.T) {
+	if kind, ok := scheduledrun.KindOf(dockerUpdateUnitName, ""); !ok || kind.Route != scheduledrun.RouteDockerUpdate {
+		t.Errorf("KindOf(%q) = %+v, %v", dockerUpdateUnitName, kind, ok)
 	}
 }

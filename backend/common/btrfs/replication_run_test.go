@@ -413,7 +413,7 @@ func TestRunReplicationRecordsOutcome(t *testing.T) {
 	ctx := context.Background()
 	saveJobs(t, jobs)
 
-	errs := RunReplication(ctx, jobs)
+	errs := RunReplication(ctx, jobs, nil)
 	if len(errs) != 1 || !strings.Contains(errs[0].Error(), jobs[0].ID+": boom") {
 		t.Fatalf("errs = %v", errs)
 	}
@@ -447,7 +447,7 @@ func TestRunReplicationRecordsOutcome(t *testing.T) {
 	}
 
 	delete(failing, jobs[0].ID)
-	if errs := RunReplication(ctx, jobs); len(errs) != 0 {
+	if errs := RunReplication(ctx, jobs, nil); len(errs) != 0 {
 		t.Fatalf("second run errs = %v", errs)
 	}
 	if doc, _ = alerts.Load(); len(doc.Alerts) != 0 {
@@ -455,6 +455,33 @@ func TestRunReplicationRecordsOutcome(t *testing.T) {
 	}
 	if stored, _ = LoadJobs(); stored[0].LastError != nil {
 		t.Fatalf("LastError not cleared: %+v", stored[0])
+	}
+}
+
+func TestRunReplicationReportsEachEnabledJob(t *testing.T) {
+	useTempAlerts(t)
+	oldPath, oldReplicate := ReplicationPath, replicate
+	ReplicationPath = filepath.Join(t.TempDir(), "btrfs-replication.json")
+	t.Cleanup(func() { ReplicationPath, replicate = oldPath, oldReplicate })
+	replicate = func(context.Context, BtrfsReplicationJob, func(int64)) (BtrfsReplicationResult, error) {
+		return BtrfsReplicationResult{}, nil
+	}
+	jobs := []BtrfsReplicationJob{
+		{ID: "aaaaaaaa-0000-4000-8000-000000000001", UUID: rootUUID, Path: "@home", Enabled: true},
+		{ID: "aaaaaaaa-0000-4000-8000-000000000003", UUID: rootUUID, Path: "data", Enabled: false},
+		{ID: "aaaaaaaa-0000-4000-8000-000000000002", UUID: rootUUID, Path: "@", Enabled: true},
+	}
+	saveJobs(t, jobs)
+
+	var calls [][2]int
+	errs := RunReplication(context.Background(), jobs, func(done, total int) {
+		calls = append(calls, [2]int{done, total})
+	})
+	if len(errs) != 0 {
+		t.Fatalf("errs = %v", errs)
+	}
+	if want := [][2]int{{0, 2}, {1, 2}}; !reflect.DeepEqual(calls, want) {
+		t.Fatalf("report calls = %v, want %v", calls, want)
 	}
 }
 
@@ -470,7 +497,7 @@ func TestRunReplicationSkipsAlreadyRunning(t *testing.T) {
 	jobs := []BtrfsReplicationJob{{ID: "aaaaaaaa-0000-4000-8000-000000000001", UUID: rootUUID, Path: "@home", Enabled: true}}
 	saveJobs(t, jobs)
 
-	if errs := RunReplication(context.Background(), jobs); len(errs) != 0 {
+	if errs := RunReplication(context.Background(), jobs, nil); len(errs) != 0 {
 		t.Fatalf("errs = %v, want none", errs)
 	}
 	stored, err := LoadJobs()

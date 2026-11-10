@@ -336,7 +336,16 @@ func (t *tailBuffer) Write(p []byte) (int, error) {
 
 // RunReplication replicates each enabled job and records its outcome,
 // returning one error per failed job. It stops early only when ctx is done.
-func RunReplication(ctx context.Context, jobs []BtrfsReplicationJob) []error {
+// report, when not nil, is called before each enabled job with the number of
+// enabled jobs already finished and the number of enabled jobs.
+func RunReplication(ctx context.Context, jobs []BtrfsReplicationJob, report func(done, total int)) []error {
+	total := 0
+	for _, job := range jobs {
+		if job.Enabled {
+			total++
+		}
+	}
+	done := 0
 	var errs []error
 	for _, job := range jobs {
 		if err := ctx.Err(); err != nil {
@@ -345,6 +354,10 @@ func RunReplication(ctx context.Context, jobs []BtrfsReplicationJob) []error {
 		if !job.Enabled {
 			continue
 		}
+		if report != nil {
+			report(done, total)
+		}
+		done++
 		_, err := replicate(ctx, job, nil)
 		if errors.Is(err, ErrAlreadyRunning) {
 			slog.Debug("skipped btrfs replication already running", "job", job.ID)

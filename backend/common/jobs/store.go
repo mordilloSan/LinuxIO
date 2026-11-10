@@ -57,14 +57,20 @@ func DetachedContext(timeout time.Duration) (context.Context, context.CancelFunc
 }
 
 func (s *Store) Create(ctx context.Context, r Record) error {
-	return s.create(ctx, r, false)
+	return s.create(ctx, r, false, false)
+}
+
+// CreateSynced is Create with the record fsynced before it returns, for a
+// record that must outlive a power loss right after it was written.
+func (s *Store) CreateSynced(ctx context.Context, r Record) error {
+	return s.create(ctx, r, false, true)
 }
 
 func (s *Store) CreateUnlessActive(ctx context.Context, r Record) error {
-	return s.create(ctx, r, true)
+	return s.create(ctx, r, true, false)
 }
 
-func (s *Store) create(ctx context.Context, r Record, exclusiveRoute bool) error {
+func (s *Store) create(ctx context.Context, r Record, exclusiveRoute, sync bool) error {
 	if err := validateRecord(r); err != nil {
 		return err
 	}
@@ -88,7 +94,7 @@ func (s *Store) create(ctx context.Context, r Record, exclusiveRoute bool) error
 				return ErrActive
 			}
 		}
-		return s.writeRecord(r, false)
+		return s.writeRecord(r, sync)
 	})
 }
 
@@ -433,7 +439,9 @@ func encodeRecord(r Record) ([]byte, error) {
 }
 
 func (s *Store) removeRecord(id string) error {
-	for _, path := range []string{s.recordPath(id), s.progressPath(id)} {
+	// The record goes last: while it exists, a later prune can still find the
+	// files a failed removal left behind.
+	for _, path := range []string{s.progressPath(id), s.OutputPath(id), s.recordPath(id)} {
 		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return fmt.Errorf("remove job %s: %w", id, err)
 		}

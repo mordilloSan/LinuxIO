@@ -289,7 +289,7 @@ func (m *itMirror) resyncRepairsTheReturnedDisk() {
 		t.Fatalf("complete pool: state %+v", m.state())
 	}
 
-	m.must("resync", Resync(m.ctx, m.uuid))
+	m.must("resync", Resync(m.ctx, m.uuid, nil))
 	if scrub, ok := loadScrubRecord(m.uuid); !ok || scrub.CorrectedErrors == 0 || scrub.UncorrectableErrors != 0 {
 		t.Fatalf("resync scrub = %+v; want stale copies corrected", scrub)
 	}

@@ -20,15 +20,18 @@ type scheduledComposeTarget struct {
 }
 
 type scheduledPassOperations struct {
-	list   func(context.Context) ([]container.Summary, error)
-	check  func(context.Context, []container.Summary) error
-	update func(context.Context, []container.Summary, []container.Summary, DockerContainerAutoUpdateOptions) error
+	list  func(context.Context) ([]container.Summary, error)
+	check func(context.Context, []container.Summary) error
+	// update calls announce with the name of each container or Compose
+	// project right before it updates it.
+	update func(context.Context, []container.Summary, []container.Summary, DockerContainerAutoUpdateOptions, func(name string)) error
 }
 
 // RunScheduled executes one configured check or update pass. It is called by
 // the short-lived Docker update worker; no updater daemon remains resident
-// between timer activations.
-func RunScheduled(ctx context.Context, configPath string) error {
+// between timer activations. report, when not nil, is told what the pass is
+// doing.
+func RunScheduled(ctx context.Context, configPath string, report func(message string)) error {
 	store := defaultContainerAutoUpdateStore
 	if strings.TrimSpace(configPath) != "" {
 		store.configPath = configPath
@@ -62,10 +65,10 @@ func RunScheduled(ctx context.Context, configPath string) error {
 		check: func(ctx context.Context, summaries []container.Summary) error {
 			return runScheduledUpdateCheck(ctx, registry, summaries)
 		},
-		update: func(ctx context.Context, summaries, all []container.Summary, opts DockerContainerAutoUpdateOptions) error {
-			return runScheduledUpdates(ctx, cli, registry, summaries, all, opts)
+		update: func(ctx context.Context, summaries, all []container.Summary, opts DockerContainerAutoUpdateOptions, announce func(string)) error {
+			return runScheduledUpdates(ctx, cli, registry, summaries, all, opts, announce)
 		},
-	})
+	}, report)
 }
 
 // registryLookupCache keeps successful registry lookups for one scheduled run,
@@ -102,7 +105,10 @@ func (c *registryLookupCache) DistributionInspect(
 	return result, nil
 }
 
-func runScheduledPass(ctx context.Context, opts DockerContainerAutoUpdateOptions, operations scheduledPassOperations) error {
+func runScheduledPass(ctx context.Context, opts DockerContainerAutoUpdateOptions, operations scheduledPassOperations, report func(message string)) error {
+	if report == nil {
+		report = func(string) {}
+	}
 	containers, err := operations.list(ctx)
 	if err != nil {
 		return fmt.Errorf("list scheduled Docker update targets: %w", err)
@@ -133,13 +139,15 @@ func runScheduledPass(ctx context.Context, opts DockerContainerAutoUpdateOptions
 	}
 	// Every scheduled pass refreshes availability for the configured scope.
 	// Selection only controls which containers are subsequently updated.
+	report("Checking for updates")
 	checkErr := operations.check(ctx, checkTargets)
 	if opts.Mode == "check_only" {
 		return checkErr
 	}
 	var updateErr error
 	if len(selected) > 0 {
-		updateErr = operations.update(ctx, selected, containers, opts)
+		announce := func(name string) { report("Updating " + name) }
+		updateErr = operations.update(ctx, selected, containers, opts, announce)
 	}
 	return errors.Join(append(runErrs, checkErr, updateErr)...)
 }
@@ -197,8 +205,9 @@ func runScheduledUpdateCheck(ctx context.Context, cli imageUpdateCheckClient, co
 	return nil
 }
 
-func runScheduledUpdates(ctx context.Context, cli *client.Client, registry imageUpdateCheckClient, summaries, all []container.Summary, opts DockerContainerAutoUpdateOptions) error {
+func runScheduledUpdates(ctx context.Context, cli *client.Client, registry imageUpdateCheckClient, summaries, all []container.Summary, opts DockerContainerAutoUpdateOptions, announce func(string)) error {
 	state := newScheduledUpdateState(ctx, cli)
+	state.announce = announce
 	state.registry = registry
 	state.allContainers = all
 	state.updateStopped = opts.UpdateStopped

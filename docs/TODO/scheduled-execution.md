@@ -128,17 +128,20 @@ state through query invalidation after controls and five-second polling. Do not 
 `scheduled_runs` persistence API or an execution Task solely to duplicate
 systemd state.
 
-## Notifications are a separate follow-up
+## Run records and alerts
 
-Scheduling and logging work without an alert service. When scheduled-script
-notifications are implemented, start with native failure triggers such as
-`OnFailure=` and connect them to the chosen notification mechanism. Systemd
-provides the trigger; LinuxIO-specific alert policy or delivery may still need
-an adapter. Do not add a scheduler worker just to anticipate that integration.
+Scheduling and logging work without them. Jobs phase 4 added both without a
+scheduler worker ([jobs design, section 2.14](./jobs.md#214-scheduled-runs)):
+an `ExecStartPre=`/`ExecStopPost=` drop-in for every `linuxio-schedule-*`
+unit runs `linuxio scheduled-run begin|end` as root, which writes one record
+per run under `/var/lib/linuxio/jobs/scheduled`, keeps a copy of the run's
+journal lines beside it and raises the jobs alert of a run that failed or was
+interrupted ([Alerts](../alerts.md)). `ExecStopPost=` rather than
+`OnFailure=`: it sees every outcome, a stop and a shutdown included, and the
+rendered units stay as they were. The records serve the bell and the
+Schedules page; there is still no `scheduled_runs` API.
 
-Unattended retries, deduplication, recovery, and retention gaps must be resolved
-by that notification design. A missing historical log alone is not a failed
-script. Durable alert state, if required, is distinct from storing every run.
+A missing historical log alone is not a failed script.
 
 ## Verification boundary
 
@@ -151,7 +154,9 @@ or multi-day retention on a real host. User-provided development-host logs
 confirmed successive every-second executions as the selected account and
 successful journal capture. Timeout, catch-up, reboot survival, and multi-day
 retention remain deployment checks against the host’s systemd and journald
-configuration.
+configuration. The run records, saved output, alerts, stop, an orderly reboot
+and a power cut were checked in the test VM ([jobs.md, section
+3.8](./jobs.md#38-phase-4-scheduled-runs-checked-in-the-test-vm-2026-11-10)).
 
 ## Completion criteria
 

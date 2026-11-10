@@ -391,3 +391,46 @@ func TestBtrfsResumeHookFailures(t *testing.T) {
 		}
 	}
 }
+
+func TestScrubCancelMarksATimersResync(t *testing.T) {
+	oldMark, oldWithdraw, oldCancel := btrfsMarkResyncCanceled, btrfsWithdrawResyncCancel, btrfsScrubCancel
+	t.Cleanup(func() {
+		btrfsMarkResyncCanceled, btrfsWithdrawResyncCancel, btrfsScrubCancel = oldMark, oldWithdraw, oldCancel
+	})
+	unit := btrfs.ResyncUnitName(testBtrfsUUID)
+	mark, cancel, withdraw := "mark:"+unit, "cancel:"+testBtrfsUUID, "withdraw:"+unit
+	cancelFailure := errors.New("no scrub is running")
+
+	for _, c := range []struct {
+		name                            string
+		markErr, cancelErr, withdrawErr error
+		want                            []string
+	}{
+		{"cancel leaves the mark", nil, nil, nil, []string{mark, cancel}},
+		{"a failed mark does not stop the cancel", errors.New("store unavailable"), nil, nil, []string{mark, cancel}},
+		{"a failed cancel withdraws the mark", nil, cancelFailure, nil, []string{mark, cancel, withdraw}},
+		{"a failed withdraw keeps the cancel's error", nil, cancelFailure, errors.New("store unavailable"), []string{mark, cancel, withdraw}},
+	} {
+		var calls []string
+		btrfsMarkResyncCanceled = func(_ context.Context, unit string) error {
+			calls = append(calls, "mark:"+unit)
+			return c.markErr
+		}
+		btrfsWithdrawResyncCancel = func(_ context.Context, unit string) error {
+			calls = append(calls, "withdraw:"+unit)
+			return c.withdrawErr
+		}
+		btrfsScrubCancel = func(_ context.Context, uuid string) error {
+			calls = append(calls, "cancel:"+uuid)
+			return c.cancelErr
+		}
+
+		err := CancelBtrfsScrub(t.Context(), testBtrfsUUID)
+		if c.cancelErr == nil && err != nil || c.cancelErr != nil && !errors.Is(err, c.cancelErr) {
+			t.Errorf("%s: CancelBtrfsScrub = %v, want %v", c.name, err, c.cancelErr)
+		}
+		if !slices.Equal(calls, c.want) {
+			t.Errorf("%s: calls = %v, want %v", c.name, calls, c.want)
+		}
+	}
+}

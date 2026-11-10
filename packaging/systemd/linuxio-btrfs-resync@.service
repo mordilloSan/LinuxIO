@@ -4,4 +4,6 @@ Documentation=https://github.com/mordilloSan/LinuxIO
 
 [Service]
 Type=oneshot
+ExecStartPre=-+/usr/local/bin/linuxio scheduled-run begin --unit %n
 ExecStart=/usr/local/bin/linuxio-btrfs-timer resync %i
+ExecStopPost=-+/usr/local/bin/linuxio scheduled-run end --unit %n

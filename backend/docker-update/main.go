@@ -11,12 +11,24 @@ import (
 	"syscall"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/dockerupdate"
+	"github.com/mordilloSan/LinuxIO/backend/common/jobs"
 	"github.com/mordilloSan/LinuxIO/backend/common/logging"
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 // runUpdates keeps argument and dispatch behavior testable without contacting Docker.
 var runUpdates = dockerupdate.RunScheduled
 var configureLogging = logging.Configure
+
+// reportProgress writes the progress of the scheduled run this process belongs
+// to; tests swap it. A negative percentage means unknown.
+var reportProgress = func(int, string) {}
+
+// newReporter finds the scheduled run this process belongs to and returns its
+// progress writer; tests swap it.
+var newReporter = func() func(int, string) {
+	return scheduledrun.ReporterFromEnv(jobs.NewScheduledStore()).Report
+}
 
 func main() {
 	os.Exit(run(os.Args))
@@ -33,6 +45,8 @@ func runWorker(ctx context.Context, args []string, stdout, stderr io.Writer) int
 		fmt.Fprintf(stderr, "linuxio-docker-update: initialize logging: %v\n", err)
 		return 1
 	}
+	// After the logging setup, so the reporter logs through the configured logger.
+	reportProgress = newReporter()
 	return runCLI(ctx, args, stdout, stderr)
 }
 
@@ -48,7 +62,8 @@ func runCLI(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		if !ok {
 			return 2
 		}
-		if err := runUpdates(ctx, configPath); err != nil {
+		report := func(message string) { reportProgress(-1, message) }
+		if err := runUpdates(ctx, configPath, report); err != nil {
 			fmt.Fprintf(stderr, "linuxio-docker-update: run failed: %v\n", err)
 			return 1
 		}

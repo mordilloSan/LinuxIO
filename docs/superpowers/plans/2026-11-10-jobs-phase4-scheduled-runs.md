@@ -19,7 +19,7 @@
 - Hook lines are exactly `ExecStartPre=-+/usr/local/bin/linuxio scheduled-run begin --unit %n` and `ExecStopPost=-+/usr/local/bin/linuxio scheduled-run end --unit %n`. A hook takes no other input than `--unit` and systemd's environment.
 - Store: `/var/lib/linuxio/jobs/scheduled`, progress in `/run/linuxio/jobs/scheduled`, directories `0700`, files `0600`, root.
 - Limits: newest 50 ended runs per unit, none older than 30 days, output at most 10 MiB (first 5 MiB and last 5 MiB of a longer one).
-- Every saved output line carries its time: the journal's `short-iso` format (`2026-11-10T03:00:01+0000 host linuxio-schedule[4242]: text`), the same lines the live view shows.
+- Every saved output line carries its time: the journal's `short-iso` format (`2026-11-10T03:00:01+00:00 host linuxio-schedule[4242]: text`; systemd 259 writes the offset with a colon, older versions without), the same lines the live view shows.
 - Routes: `scheduled.script`, `scheduled.btrfs_snapshot`, `scheduled.btrfs_resync`, `scheduled.docker_update`. Labels: the schedule's name (fallback `Scheduled task`), `Snapshots and replication`, `Pool resync`, `Container updates`.
 - Logging follows AGENTS.md: return or log, never both; lowercase constant messages; the key is `error`.
 - No new bridge route. `frontend/src/api/generated/*` changes only through `make generate`.
@@ -157,7 +157,7 @@ func SystemStopping(ctx context.Context) bool
     | `linuxio-docker-update.service` | `scheduled.docker_update` | `Container updates` | `""` | `/docker/containers` | false |
 
     and `ok == false` for `linuxio-btrfs-health.service`, `ssh.service`, `linuxio-schedule-not-a-uuid.service`, `linuxio-btrfs-resync@.service`.
-  - `TestScriptLabelIsTheScheduleName`: with `<scheduleDir>/<id>.json` holding `{"version":1,"definition":{"id":"<id>","options":{"name":"Nightly backup"}}}` the label is `Nightly backup`.
+  - `TestScriptLabelIsTheScheduleName`: with `<scheduleDir>/definitions/<id>.json` (where the schedules store keeps definitions) holding `{"version":1,"definition":{"id":"<id>","options":{"name":"Nightly backup"}}}` the label is `Nightly backup`.
   - `TestScriptLabelFallsBackWhenTheDefinitionIsUnreadable`: a missing file, invalid JSON, an empty name and a file larger than 512 KiB each give `Scheduled task`.
 - [ ] **Step 2: Write the failing hook tests** (`hooks_test.go`, a temp store, fixed clock, fakes for `Output`, `Stopping`, `Alert`):
   - `TestBeginCreatesTheRunningRecord`: ID is `UnitRunID(invocation)`; `Route`, `Target == []string{unit}`, `State == running`, `CreatedAt == StartedAt == now`, `Owner == {UID: 0, Username: "root"}`, `Metadata` is `{"label":"Nightly backup","identity":["<id>"]}`, `Executor == {Kind: "unit", Unit: unit, InvocationID: invocation, BootID: boot}`, `Protocol == jobs.Protocol`.
@@ -200,10 +200,10 @@ Run: `make test-go GO_TEST_PKGS=./common/scheduledrun/...`
 Expected: FAIL, package does not build.
 
 - [ ] **Step 6: Implement.**
-  - `End` order: decide the outcome and write the terminal record with `Store.Update` (not `Finish`, which deletes short runs); then copy the output; then alert; then `PrunePerTarget(ctx, now, jobs.MaxScheduledRunsPerUnit)`. It returns the joined errors of the later steps.
+  - `End` order: decide the outcome and write the terminal record with `Store.Update` (not `Finish`, which deletes short runs); then `PrunePerTarget(ctx, now, jobs.MaxScheduledRunsPerUnit)`; then copy the output under its own limit (`outputTimeout`, 5 s, derived from the caller's context); then alert, with `context.WithoutCancel`, so the alert is raised even after the caller's deadline. A slow journal cannot starve the prune, and a slow alert delivery (webhook and SMTP, up to 15 s) cannot keep the output from being saved. It returns the joined errors of the later steps. (Changed in the final fix wave; the first build alerted before the copy and pruned last.)
   - Outcome order: `success` first, then `cancel_requested`, then `Stopping`, then failed.
   - The output goes through a writer that keeps the first and last `jobs.MaxOutputBytes/2` bytes and counts the rest, then is written with `atomicfile.Write`.
-  - `DefaultHooks`: `Store` is `jobs.NewScheduledStore()`, `ScheduleDir` is `version.ConfigDir + "/schedules"`, `Alert` is `alerts.Raise`, `Stopping` is `systemd.SystemStopping`, and `Output` runs `journalctl --sync` and then `journalctl --no-pager -o short-iso _SYSTEMD_INVOCATION_ID=<invocation>` with `exec.CommandContext`, separate arguments, stderr in the returned error.
+  - `DefaultHooks`: `Store` is `jobs.NewScheduledStore()`, `ScheduleDir` is `version.ConfigDir + "/schedules"`, `Alert` is `alerts.Raise`, `Stopping` is `systemd.SystemStopping`, and `Output` runs `journalctl --sync` and then `journalctl --no-pager --quiet --all -o short-iso _SYSTEMD_INVOCATION_ID=<invocation>` (`--quiet` so an empty run saves nothing, `--all` so lines with `\r`, colour codes or invalid UTF-8 are kept and not replaced by `[N blob data]`) with `exec.CommandContext`, separate arguments, stderr in the returned error.
   - `scheduledrun` does not import `backend/common/btrfs`, `dockerupdate` or anything under `backend/bridge`; the guard tests keep its unit names in step.
 - [ ] **Step 7: Run the tests**
 
@@ -244,7 +244,7 @@ Expected: FAIL, undefined `runScheduledRun`; the fixture reports the missing dro
 
 - [ ] **Step 5: Implement.**
   - `main.go`: `case "scheduled-run"` calls `runScheduledRun(ctx, args, os.Getenv, scheduledrun.DefaultHooks(), os.Stderr)`; the help text gets `scheduled-run begin|end   Record a scheduled run (used by systemd hooks; needs root)`.
-  - A hook error is printed to stderr and returns 1; the `-` prefix makes systemd ignore it.
+  - A hook error is printed to stderr and returns 1; the `-` prefix makes systemd ignore it. `end` runs under a 10 s deadline, below the schedule units' `TimeoutStopSec=15s`.
   - `linuxio-run-record.conf` holds `[Service]` and the two hook lines from Global Constraints. The installer copies it to the three drop-in directories as `10-linuxio-run.conf`, mode `0644`, before its `daemon-reload`.
   - `linuxio-btrfs-resync@.service` gets the two lines in its `[Service]` section.
 - [ ] **Step 6: Run the checks**
@@ -298,7 +298,7 @@ A nil `report` is allowed in all three.
   - `backend/btrfs-timer`: `TestSnapshotPassReportsItsPhases`: with the `runSnapshots` and `runReplication` fakes (the replication fake calls `report(0, 2)` and `report(1, 2)`) and a recording `reportProgress` seam, the messages are `Taking snapshots`, `Replicating 1 of 2`, `Replicating 2 of 2`, all with percentage -1.
   - `backend/btrfs-timer`: `TestResyncReportsTheScrubPercent`: the `resyncPool` fake calls `report(42.6)`; the seam records `(42, "Scrubbing")`.
   - `backend/common/btrfs`: `TestRunReplicationReportsEachEnabledJob`: two enabled jobs and one disabled give `report(0, 2)` then `report(1, 2)`.
-  - `backend/common/dockerupdate`: `TestScheduledPassReportsItsSteps`: with fake operations and two selected containers `web` and `db`, the messages are `Checking for updates`, `Updating web (1 of 2)`, `Updating db (2 of 2)`.
+  - `backend/common/dockerupdate`: `TestScheduledPassReportsItsSteps`: with fake operations and two selected containers `web` and `db`, the messages are `Checking for updates`, `Updating web`, `Updating db` (no count: the runner does not know up front how many containers need an update).
 - [ ] **Step 3: Run and see them fail**
 
 Run: `make test-go GO_TEST_PKGS="./common/scheduledrun/... ./btrfs-timer/... ./common/btrfs/... ./common/dockerupdate/..." GO_TEST_FLAGS='-run "Reporter|Reports"'`
@@ -406,11 +406,19 @@ Expected: PASS.
 
 ```go
 // RequestCancel marks the running record of unit as canceled by request, so
-// End records the run as canceled. No running record is not an error.
-func RequestCancel(ctx context.Context, store *jobs.Store, unit string) error
+// End records the run as canceled. With an invocationID only the record of
+// that run is marked; without one (a scrub cancel) every running record of
+// unit is. No running record is not an error.
+func RequestCancel(ctx context.Context, store *jobs.Store, unit, invocationID string) error
+
+// WithdrawCancel takes back RequestCancel after the stop it preceded failed,
+// matching records the same way.
+func WithdrawCancel(ctx context.Context, store *jobs.Store, unit, invocationID string) error
 ```
 
-and in `hostOps`: `markCanceled func(ctx context.Context, unit string) error`.
+(Changed in the final fix wave: the first build took only `unit`, so a stale stop could mark the next run, and a failed stop left its mark.)
+
+and in `hostOps`: `markCanceled func(ctx context.Context, unit, invocationID string) error` and `withdrawCancel` with the same signature.
 
 - [ ] **Step 1: Write the failing tests:**
   - `TestRequestCancelMarksTheUnitsRunningRecord`: the unit's running record gets `CancelRequested`; an ended record of the same unit and a running record of another unit are untouched.
@@ -520,7 +528,7 @@ Expected: PASS.
 - Modify: `frontend/src/test/vm/vm.ts` (add `scheduledRecords()` and `scheduledOutput(id)` reading `/var/lib/linuxio/jobs/scheduled`), `docs/TODO/jobs.md` (status table, new section 3.8, section 4.4), `docs/api-contract.md` (tasks section: the four types, `metadata`, the two 409s, `invocationId` on `logs.service.follow`), `docs/process-systemd-architecture.md` (the hooks, the store, the command), `docs/alerts.md` (the script failure alert)
 
 - [ ] **Step 1: Write the VM spec.** Each test creates its schedule on the Schedules page with a calendar that never fires on its own and starts it with "Run now".
-  1. *A running script shows in the bell and on its page, and leaves its output.* Script `echo first; sleep 20; echo last >&2`. While it runs: the bell lists the schedule's name with no `Cancel task`; clicking the row opens `/services/schedules?schedule=<id>`; the page's output card shows `first`. After it ends: one record with route `scheduled.script`, state `completed`; its saved output has exactly two lines, matching `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{4} \S+ linuxio-schedule\[\d+\]: first$` and the same with `last`.
+  1. *A running script shows in the bell and on its page, and leaves its output.* Script `echo first; sleep 20; echo last >&2`. While it runs: the bell lists the schedule's name with no `Cancel task`; clicking the row opens `/services/schedules?schedule=<id>`; the page's output card shows `first`. After it ends: one record with route `scheduled.script`, state `completed`; its saved output has exactly two lines, matching `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:?\d{2} \S+ linuxio-schedule\[\d+\]: first$` and the same with `last`.
   2. *A failing script raises an alert.* Script `echo boom; exit 3`: state `failed`, error `exited with status 3`; the bell shows the alert `<name> failed`.
   3. *A script stopped on its page ends canceled.* Script `sleep 300`; "Stop": state `canceled`, `cancel_requested` true, no alert.
   4. *A script cut by a power loss is marked after the boot.* Script `sleep 300`; `rig(["power-cut"])`; after the boot and a sign-in: state `interrupted`, reason `reboot`; the alert `<name> was interrupted`.

@@ -22,6 +22,8 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
 	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
+	"github.com/mordilloSan/LinuxIO/backend/common/jobs"
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
 )
 
@@ -41,6 +43,8 @@ type unitState struct {
 type hostOps struct {
 	inspect        func(context.Context, string) (unitState, error)
 	stopInvocation func(context.Context, string, string) error
+	markCanceled   func(context.Context, string, string) error
+	withdrawCancel func(context.Context, string, string) error
 	start          func(context.Context, string) error
 	stop           func(context.Context, string) error
 	enable         func(context.Context, string) error
@@ -55,6 +59,8 @@ func nativeHost() hostOps {
 	return hostOps{
 		inspect:        inspectUnit,
 		stopInvocation: stopInvocation,
+		markCanceled:   markCanceled,
+		withdrawCancel: withdrawCancel,
 		start:          startUnit,
 		stop:           systemd.StopUnit,
 		enable:         systemd.EnableUnit,
@@ -289,6 +295,17 @@ func invocationObject(session dbusclient.SystemSession, scheduleID, invocationID
 		return nil, errors.New("scheduled invocation belongs to another unit")
 	}
 	return unit, nil
+}
+
+// markCanceled makes the end hook record the run of unit that has
+// invocationID as canceled.
+func markCanceled(ctx context.Context, unit, invocationID string) error {
+	return scheduledrun.RequestCancel(ctx, jobs.NewScheduledStore(), unit, invocationID)
+}
+
+// withdrawCancel takes back markCanceled after a stop that failed.
+func withdrawCancel(ctx context.Context, unit, invocationID string) error {
+	return scheduledrun.WithdrawCancel(ctx, jobs.NewScheduledStore(), unit, invocationID)
 }
 
 func stopInvocation(ctx context.Context, scheduleID, invocationID string) error {

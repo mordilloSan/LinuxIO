@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -330,6 +331,18 @@ func (m manager) stop(ctx context.Context, req apischema.ScheduleStopRequest) er
 		if _, err := m.store.definition(req.ID); err != nil {
 			return err
 		}
-		return m.host.stopInvocation(ctx, req.ID, req.InvocationID)
+		// The mark names the run, so a stop that comes after its run ended
+		// cannot mark the next one. A stop that fails takes it back.
+		unit := serviceName(req.ID)
+		if err := m.host.markCanceled(ctx, unit, req.InvocationID); err != nil {
+			slog.Warn("could not mark the scheduled run canceled", "unit", unit, "invocation_id", req.InvocationID, "error", err)
+		}
+		err := m.host.stopInvocation(ctx, req.ID, req.InvocationID)
+		if err != nil {
+			if withdrawErr := m.host.withdrawCancel(ctx, unit, req.InvocationID); withdrawErr != nil {
+				slog.Warn("could not withdraw the cancel request of the scheduled run", "unit", unit, "invocation_id", req.InvocationID, "error", withdrawErr)
+			}
+		}
+		return err
 	})
 }

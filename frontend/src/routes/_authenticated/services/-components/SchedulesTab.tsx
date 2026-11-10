@@ -2,7 +2,13 @@ import { useQuery, useSuspenseQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 
-import { linuxio, type ScheduleOptions, type ScheduleStatus } from "@/api";
+import {
+  linuxio,
+  openChannel,
+  type ScheduleOptions,
+  type ScheduleStatus,
+} from "@/api";
+import UnitLogsCard from "@/components/cards/UnitLogsCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import PathPickerField from "@/components/pathpicker/PathPickerField";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
@@ -378,35 +384,61 @@ function Details({
     <div
       style={{
         display: "flex",
-        gap: 8,
-        alignItems: "center",
-        flexWrap: "wrap",
+        flexDirection: "column",
+        gap: "var(--app-space-12)",
       }}
     >
-      <AppTypography>
-        {status.result || status.active_state} · next{" "}
-        {status.next_run_at ?? "—"} · last {status.last_run_at ?? "—"}
-        {status.error ? ` · ${status.error}` : ""}
-      </AppTypography>
-      {canStop(status) && (
-        <AppButton onClick={onStop} size="small">
-          Stop
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          alignItems: "center",
+          flexWrap: "wrap",
+        }}
+      >
+        <AppTypography>
+          {status.result || status.active_state} · next{" "}
+          {status.next_run_at ?? "—"} · last {status.last_run_at ?? "—"}
+          {status.error ? ` · ${status.error}` : ""}
+        </AppTypography>
+        {canStop(status) && (
+          <AppButton onClick={onStop} size="small">
+            Stop
+          </AppButton>
+        )}
+        <AppButton onClick={onLogs} size="small">
+          Logs
         </AppButton>
-      )}
-      <AppButton onClick={onLogs} size="small">
-        Logs
-      </AppButton>
-      {onLatestLogs && (
-        <AppButton onClick={onLatestLogs} size="small">
-          Latest run logs
+        {onLatestLogs && (
+          <AppButton onClick={onLatestLogs} size="small">
+            Latest run logs
+          </AppButton>
+        )}
+        <AppButton onClick={onEdit} size="small">
+          Edit
         </AppButton>
+        <AppButton onClick={onClose} size="small">
+          Close
+        </AppButton>
+      </div>
+      {status.invocation_id && (
+        // The card fills its parent's height, so the parent needs one.
+        <div style={{ height: 320 }}>
+          {/* Keyed on the run so a new invocation restarts the stream. */}
+          <UnitLogsCard
+            key={status.invocation_id}
+            createStream={(tail) =>
+              openChannel("logs.service.follow", {
+                serviceName: status.unit_name,
+                invocationId: status.invocation_id,
+                lines: tail,
+              })
+            }
+            title="Output of the latest run"
+            unitName={status.unit_name}
+          />
+        </div>
       )}
-      <AppButton onClick={onEdit} size="small">
-        Edit
-      </AppButton>
-      <AppButton onClick={onClose} size="small">
-        Close
-      </AppButton>
     </div>
   );
 }

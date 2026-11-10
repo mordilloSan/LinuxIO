@@ -14,6 +14,8 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
+	"github.com/mordilloSan/LinuxIO/backend/common/jobs"
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 // BtrfsOpProgress reports a running pool create, device, balance or scrub
@@ -31,20 +33,22 @@ func (p BtrfsOpProgress) ProgressEnvelope() bridgeipc.TaskProgress {
 
 var btrfsDeviceRoutes = btrfsDeviceBindings().Routes()
 
-// Seams for tests: the btrfs calls the resume hooks make.
+// Seams for tests: the btrfs calls the resume hooks and the scrub cancel make.
 var (
-	btrfsPauseBalance   = btrfs.PauseBalance
-	btrfsResumeBalance  = btrfs.ResumeBalance
-	btrfsBalanceResult  = btrfs.BalanceResult
-	btrfsScrubPositions = btrfs.ScrubPositions
-	btrfsScrubCancel    = btrfs.ScrubCancel
-	btrfsScrubFrom      = btrfs.ScrubFrom
-	btrfsResumeReplace  = btrfs.ResumeReplace
-	btrfsCancelReplace  = btrfs.CancelReplace
-	btrfsRemoveDevice   = btrfs.RemoveDevice
-	btrfsResumeRemove   = btrfs.ResumeRemove
-	btrfsGrowDevice     = btrfs.GrowDevice
-	btrfsFindFilesystem = btrfs.FindFilesystem
+	btrfsPauseBalance         = btrfs.PauseBalance
+	btrfsResumeBalance        = btrfs.ResumeBalance
+	btrfsBalanceResult        = btrfs.BalanceResult
+	btrfsScrubPositions       = btrfs.ScrubPositions
+	btrfsScrubCancel          = btrfs.ScrubCancel
+	btrfsMarkResyncCanceled   = markScheduledRunCanceled
+	btrfsWithdrawResyncCancel = withdrawScheduledRunCancel
+	btrfsScrubFrom            = btrfs.ScrubFrom
+	btrfsResumeReplace        = btrfs.ResumeReplace
+	btrfsCancelReplace        = btrfs.CancelReplace
+	btrfsRemoveDevice         = btrfs.RemoveDevice
+	btrfsResumeRemove         = btrfs.ResumeRemove
+	btrfsGrowDevice           = btrfs.GrowDevice
+	btrfsFindFilesystem       = btrfs.FindFilesystem
 )
 
 func btrfsDeviceBindings() apischema.BindingSet {
@@ -406,9 +410,31 @@ func CancelBtrfsBalance(ctx context.Context, uuid string) error {
 	return nil
 }
 
+// markScheduledRunCanceled makes the end hook record the running run of unit
+// as canceled. A scrub knows no invocation, so any running run of the unit is
+// marked.
+func markScheduledRunCanceled(ctx context.Context, unit string) error {
+	return scheduledrun.RequestCancel(ctx, jobs.NewScheduledStore(), unit, "")
+}
+
+// withdrawScheduledRunCancel takes back markScheduledRunCanceled after a
+// cancel that failed.
+func withdrawScheduledRunCancel(ctx context.Context, unit string) error {
+	return scheduledrun.WithdrawCancel(ctx, jobs.NewScheduledStore(), unit, "")
+}
+
 // CancelBtrfsScrub cancels a running scrub.
 func CancelBtrfsScrub(ctx context.Context, uuid string) error {
-	if err := btrfs.ScrubCancel(ctx, uuid); err != nil {
+	// A scrub that belongs to a timer's pool resync ends that run as canceled.
+	// A cancel that fails takes the mark back.
+	unit := btrfs.ResyncUnitName(uuid)
+	if err := btrfsMarkResyncCanceled(ctx, unit); err != nil {
+		slog.Warn("could not mark the pool resync canceled", "unit", unit, "error", err)
+	}
+	if err := btrfsScrubCancel(ctx, uuid); err != nil {
+		if withdrawErr := btrfsWithdrawResyncCancel(ctx, unit); withdrawErr != nil {
+			slog.Warn("could not withdraw the cancel request of the pool resync", "unit", unit, "error", withdrawErr)
+		}
 		return fmt.Errorf("cancel btrfs scrub of %s: %w", uuid, err)
 	}
 	slog.Info("btrfs scrub canceled", "uuid", uuid)

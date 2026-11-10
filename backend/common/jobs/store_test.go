@@ -51,6 +51,37 @@ func mustCreate(t *testing.T, s *Store, r Record) {
 	}
 }
 
+// CreateSynced fsyncs the record, which a unit test cannot observe; it can
+// show that the record reads back and that duplicates behave as with Create.
+func TestStoreCreateSyncedReadsBackAndRefusesDuplicates(t *testing.T) {
+	s := newTestStore(t)
+	r := testRecord(1, "scheduled.script")
+	if err := s.CreateSynced(t.Context(), r); err != nil {
+		t.Fatalf("CreateSynced: %v", err)
+	}
+	got, err := s.Get(t.Context(), r.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.ID != r.ID || got.Route != r.Route || got.State != StateRunning || compact(got.Request) != `{"x":1}` {
+		t.Fatalf("Get = %+v", got)
+	}
+	if info, err := os.Stat(s.recordPath(r.ID)); err != nil || info.Mode().Perm() != 0o600 {
+		t.Errorf("record mode = %v, %v; want 0600", info, err)
+	}
+	if err := s.CreateSynced(t.Context(), r); !errors.Is(err, ErrExists) {
+		t.Errorf("second CreateSynced = %v, want ErrExists", err)
+	}
+	if err := s.Create(t.Context(), r); !errors.Is(err, ErrExists) {
+		t.Errorf("Create after CreateSynced = %v, want ErrExists", err)
+	}
+	other := testRecord(2, "scheduled.script")
+	mustCreate(t, s, other)
+	if err := s.CreateSynced(t.Context(), other); !errors.Is(err, ErrExists) {
+		t.Errorf("CreateSynced after Create = %v, want ErrExists", err)
+	}
+}
+
 func TestStoreCreateGetAndDuplicate(t *testing.T) {
 	s := newTestStore(t)
 	r := testRecord(1, "network.apply")

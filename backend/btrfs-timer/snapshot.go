@@ -65,6 +65,7 @@ func snapshotPass(ctx context.Context, now time.Time, kind btrfs.SnapshotKind, s
 	rules, err := btrfs.LoadRules()
 	if err == nil {
 		var report btrfs.RunReport
+		reportProgress(-1, "Taking snapshots")
 		report, err = runSnapshots(ctx, rules, now, kind)
 		summary := fmt.Sprintf("taken=%d pruned=%d skipped=%d errors=%d", len(report.Taken), len(report.Pruned), len(report.Skipped), len(report.Errors))
 		failures := report.Errors
@@ -100,7 +101,9 @@ func replicateJobs(ctx context.Context) (int, []error) {
 	if err != nil {
 		return 0, []error{fmt.Errorf("load replication jobs: %w", err)}
 	}
-	errs := runReplication(ctx, jobs)
+	errs := runReplication(ctx, jobs, func(done, total int) {
+		reportProgress(-1, fmt.Sprintf("Replicating %d of %d", done+1, total))
+	})
 	enabled := 0
 	for _, j := range jobs {
 		if j.Enabled {

@@ -20,9 +20,11 @@ import type { BackgroundTaskRuntime } from "./useBackgroundTaskRuntime";
 
 const apiMocks = vi.hoisted(() => ({
   openTaskEventsStream: vi.fn(),
+  streamMux: { status: "open" },
 }));
 const toastMocks = vi.hoisted(() => ({
   error: vi.fn(),
+  info: vi.fn(),
   success: vi.fn(),
   warning: vi.fn(),
 }));
@@ -32,7 +34,9 @@ vi.mock("@/api", async () => {
   return {
     ...actual,
     openTaskEventsStream: apiMocks.openTaskEventsStream,
-    useStreamMux: () => ({ status: "open" }),
+    // Still the real opener; spied on so a test can tell no watch opened.
+    openTaskWatchStream: vi.fn(actual.openTaskWatchStream),
+    useStreamMux: () => ({ status: apiMocks.streamMux.status }),
   };
 });
 
@@ -44,6 +48,7 @@ vi.mock("sonner", () => ({
   toast: toastMocks,
 }));
 
+const { openTaskWatchStream } = await import("@/api");
 const { useRecoveredTasks } = await import("./useRecoveredTasks");
 const {
   claimTerminalFeedback,
@@ -97,7 +102,9 @@ function renderRecoveredTasks() {
   const controls = {
     genericTasks: {
       removeBackgroundTask: vi.fn(),
-      setBackgroundTasks: vi.fn(),
+      // Writes the runtime's own cache, as the provider wires it, so rows
+      // can be read back from runtime.tasks.
+      setBackgroundTasks: vi.fn(runtime.tasks.backgroundTasks.set),
     },
     indexers: {
       removeIndexer: vi.fn(),
@@ -112,14 +119,65 @@ function renderRecoveredTasks() {
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
 
-  renderHook(() => useRecoveredTasks(runtime, controls), { wrapper });
+  const { rerender } = renderHook(() => useRecoveredTasks(runtime, controls), {
+    wrapper,
+  });
 
   const emitTerminalEvent = (task: Record<string, unknown>) =>
     act(async () => {
       events.onProgress?.({ task, type: "task.result" } as never);
     });
 
-  return { controls, emitTerminalEvent, events, queryClient, runtime };
+  // Sends on whichever events stream the hook opened last.
+  const emit = (type: string, task: Record<string, unknown>) =>
+    act(async () => {
+      const stream = apiMocks.openTaskEventsStream.mock.results.at(-1)
+        ?.value as Stream;
+      stream.onProgress?.({ task, type } as never);
+    });
+
+  // The latest events stream ends on its own, not through the effect cleanup.
+  const closeEvents = () =>
+    act(async () => {
+      const stream = apiMocks.openTaskEventsStream.mock.results.at(-1)
+        ?.value as Stream;
+      stream.onClose?.();
+    });
+
+  // The mux drops and comes back, so the hook opens a new events stream.
+  const reconnect = () => {
+    apiMocks.streamMux.status = "closed";
+    rerender();
+    apiMocks.openTaskEventsStream.mockReturnValue(createStream());
+    apiMocks.streamMux.status = "open";
+    rerender();
+  };
+
+  return {
+    closeEvents,
+    controls,
+    emit,
+    emitTerminalEvent,
+    events,
+    queryClient,
+    reconnect,
+    runtime,
+  };
+}
+
+function scheduledRun(
+  type: string,
+  state: string,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    created_at: "2026-11-10T03:00:00Z",
+    id: "12345678-90ab-cdef-1234-567890abcdef",
+    state,
+    type,
+    updated_at: "2026-11-10T03:00:01Z",
+    ...overrides,
+  };
 }
 
 function packageUpdateTask(
@@ -348,5 +406,189 @@ describe("useRecoveredTasks package updates", () => {
       "operation aborted",
       undefined,
     );
+  });
+});
+
+// A systemd timer runs these; the bridge answers tasks.watch and tasks.cancel
+// of a running one with 409, so the events stream alone keeps the row.
+describe("useRecoveredTasks scheduled runs", () => {
+  afterEach(() => {
+    apiMocks.streamMux.status = "open";
+    resetTerminalTaskFeedback();
+    vi.clearAllMocks();
+  });
+
+  const script = (overrides: Record<string, unknown> = {}) =>
+    scheduledRun("scheduled.script", "running", {
+      metadata: { identity: ["sched-1"], label: "Nightly backup" },
+      ...overrides,
+    });
+
+  it("lists a running scheduled script without watching it", async () => {
+    const { emit, runtime } = renderRecoveredTasks();
+
+    await emit("task.snapshot", script());
+
+    expect(runtime.tasks.backgroundTasks.read()).toEqual([
+      expect.objectContaining({
+        cancelRequested: false,
+        id: "12345678-90ab-cdef-1234-567890abcdef",
+        indeterminate: true,
+        label: "Nightly backup",
+        link: { search: { schedule: "sched-1" }, to: "/services/schedules" },
+        progress: 0,
+        taskType: "scheduled.script",
+        type: "task",
+      }),
+    ]);
+    expect(openTaskWatchStream).not.toHaveBeenCalled();
+  });
+
+  it("follows a scheduled run's progress from the events stream", async () => {
+    const { emit, runtime } = renderRecoveredTasks();
+    const resync = (overrides: Record<string, unknown> = {}) =>
+      scheduledRun("scheduled.btrfs_resync", "running", {
+        metadata: { identity: ["pool-uuid"], label: "Pool resync" },
+        ...overrides,
+      });
+
+    await emit("task.snapshot", resync());
+    await emit(
+      "task.progress",
+      resync({ progress: { message: "Scrubbing", percentage: 43 } }),
+    );
+
+    expect(runtime.tasks.backgroundTasks.read()).toEqual([
+      expect.objectContaining({
+        indeterminate: false,
+        label: "Pool resync: Scrubbing",
+        progress: 43,
+      }),
+    ]);
+  });
+
+  it.each([
+    ["task.result", "completed"],
+    ["task.error", "failed"],
+    ["task.canceled", "canceled"],
+    ["task.error", "interrupted"],
+  ])("removes the row on %s (%s) and reports nothing", async (type, state) => {
+    const { emit, queryClient, runtime } = renderRecoveredTasks();
+    const invalidate = vi.spyOn(queryClient, "invalidateQueries");
+
+    await emit("task.snapshot", script());
+    expect(runtime.tasks.backgroundTasks.read()).toHaveLength(1);
+    await emit(
+      type,
+      script({
+        error:
+          state === "completed"
+            ? undefined
+            : { code: 500, message: "exit status 1" },
+        finished_at: "2026-11-10T03:05:00Z",
+        state,
+      }),
+    );
+
+    expect(runtime.tasks.backgroundTasks.read()).toEqual([]);
+    expect(toastMocks.error).not.toHaveBeenCalled();
+    expect(toastMocks.info).not.toHaveBeenCalled();
+    expect(toastMocks.success).not.toHaveBeenCalled();
+    expect(toastMocks.warning).not.toHaveBeenCalled();
+    expect(invalidate).not.toHaveBeenCalled();
+  });
+
+  it("ignores the end of a run it never saw running", async () => {
+    const { emit, runtime } = renderRecoveredTasks();
+
+    await expect(
+      emit(
+        "task.error",
+        script({
+          error: { code: 500, message: "exit status 1" },
+          finished_at: "2026-11-10T03:05:00Z",
+          state: "failed",
+        }),
+      ),
+    ).resolves.toBeUndefined();
+
+    expect(runtime.tasks.backgroundTasks.read()).toEqual([]);
+    expect(toastMocks.error).not.toHaveBeenCalled();
+    expect(toastMocks.info).not.toHaveBeenCalled();
+    expect(toastMocks.success).not.toHaveBeenCalled();
+    expect(toastMocks.warning).not.toHaveBeenCalled();
+  });
+
+  // Nothing reopens a stream that ended on its own until the mux status
+  // changes, and no other source would ever end a scheduled row.
+  it("drops scheduled rows when the events stream ends on its own", async () => {
+    const { closeEvents, emit, runtime } = renderRecoveredTasks();
+    const balance = {
+      abortController: new AbortController(),
+      id: "balance-1",
+      label: "Balancing btrfs filesystem",
+      progress: 10,
+      taskId: "balance-1",
+      taskType: TASK_TYPE_STORAGE_BTRFS_BALANCE,
+      type: "task" as const,
+    };
+    runtime.tasks.backgroundTasks.set([balance]);
+
+    await emit("task.snapshot", script());
+    expect(runtime.tasks.backgroundTasks.read()).toHaveLength(2);
+
+    await closeEvents();
+
+    expect(runtime.tasks.backgroundTasks.read()).toEqual([balance]);
+  });
+
+  it("updates the row a second snapshot of the same run announces", async () => {
+    const { emit, runtime } = renderRecoveredTasks();
+
+    await emit("task.snapshot", script());
+    await emit("task.snapshot", script({ cancel_requested: true }));
+
+    expect(runtime.tasks.backgroundTasks.read()).toEqual([
+      expect.objectContaining({
+        cancelRequested: true,
+        label: "Nightly backup",
+      }),
+    ]);
+  });
+
+  // A run that ends while the events stream is down sends its end to nobody,
+  // so a new stream starts without scheduled rows and its opening snapshots
+  // bring back the runs still going.
+  it("drops scheduled rows a reopened events stream does not announce again", async () => {
+    const { emit, reconnect, runtime } = renderRecoveredTasks();
+    const balance = {
+      abortController: new AbortController(),
+      id: "balance-1",
+      label: "Balancing btrfs filesystem",
+      progress: 10,
+      taskId: "balance-1",
+      taskType: TASK_TYPE_STORAGE_BTRFS_BALANCE,
+      type: "task" as const,
+    };
+    runtime.tasks.backgroundTasks.set([balance]);
+    const snapshotRun = scheduledRun("scheduled.btrfs_snapshot", "running", {
+      id: "snapshot-run",
+      metadata: { label: "Snapshots and replication" },
+    });
+
+    await emit("task.snapshot", script());
+    await emit("task.snapshot", snapshotRun);
+    expect(runtime.tasks.backgroundTasks.read()).toHaveLength(3);
+
+    reconnect();
+    await emit("task.snapshot", snapshotRun);
+
+    expect(runtime.tasks.backgroundTasks.read()).toEqual([
+      balance,
+      expect.objectContaining({
+        id: "snapshot-run",
+        label: "Snapshots and replication",
+      }),
+    ]);
   });
 });

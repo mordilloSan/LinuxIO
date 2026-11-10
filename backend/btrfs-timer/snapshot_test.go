@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -30,7 +32,7 @@ func stubRunReplication(t *testing.T, errs []error) *int {
 	old, oldPath := runReplication, btrfs.ReplicationPath
 	btrfs.ReplicationPath = filepath.Join(t.TempDir(), "btrfs-replication.json")
 	var runs int
-	runReplication = func(context.Context, []btrfs.BtrfsReplicationJob) []error {
+	runReplication = func(context.Context, []btrfs.BtrfsReplicationJob, func(done, total int)) []error {
 		runs++
 		return errs
 	}
@@ -84,5 +86,36 @@ func TestRunSnapshotReplicatesAfterTimelineOnly(t *testing.T) {
 	stubRunReplication(t, []error{errors.New("job: boom")})
 	if code := runSnapshot(context.Background(), []string{"run"}, io.Discard, io.Discard); code != 1 {
 		t.Fatalf("replication errors = %d, want 1", code)
+	}
+}
+
+// stubReportProgress records what the timer program reports.
+func stubReportProgress(t *testing.T) *[]string {
+	t.Helper()
+	old := reportProgress
+	var got []string
+	reportProgress = func(percentage int, message string) {
+		got = append(got, fmt.Sprintf("%d %s", percentage, message))
+	}
+	t.Cleanup(func() { reportProgress = old })
+	return &got
+}
+
+func TestSnapshotPassReportsItsPhases(t *testing.T) {
+	stubRunSnapshots(t, btrfs.RunReport{})
+	stubRunReplication(t, nil)
+	runReplication = func(_ context.Context, _ []btrfs.BtrfsReplicationJob, report func(done, total int)) []error {
+		report(0, 2)
+		report(1, 2)
+		return nil
+	}
+	got := stubReportProgress(t)
+
+	if code := runSnapshot(context.Background(), []string{"run"}, io.Discard, io.Discard); code != 0 {
+		t.Fatalf("run = %d, want 0", code)
+	}
+	want := []string{"-1 Taking snapshots", "-1 Replicating 1 of 2", "-1 Replicating 2 of 2"}
+	if !reflect.DeepEqual(*got, want) {
+		t.Fatalf("reported %q, want %q", *got, want)
 	}
 }

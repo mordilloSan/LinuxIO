@@ -448,8 +448,9 @@ func convertTargets(allocation []BtrfsAllocation) (data, meta *string) {
 // degraded mark is cleared once both are done; a scrub that found
 // uncorrectable errors is reported by the scrub alert and not run again. A
 // failure is recorded so the health run gives up after maxResyncAttempts.
-func Resync(ctx context.Context, uuid string) error {
-	err := resync(ctx, uuid)
+// report, when not nil, is given the scrub's percentage as it advances.
+func Resync(ctx context.Context, uuid string, report func(percent float64)) error {
+	err := resync(ctx, uuid, report)
 	// A disk that drops out starts a new episode, not a failed resync.
 	if err != nil && ctx.Err() == nil && !errors.Is(err, errDiskMissing) {
 		if recErr := updatePoolStates(ctx, func(s map[string]poolState) {
@@ -493,7 +494,7 @@ func refreshResyncAlerts(ctx context.Context, uuid string, resynced bool) {
 // errDiskMissing stops a resync while the pool lacks a disk.
 var errDiskMissing = errors.New("a disk is missing")
 
-func resync(ctx context.Context, uuid string) error {
+func resync(ctx context.Context, uuid string, report func(percent float64)) error {
 	fs, err := FindFilesystem(ctx, uuid)
 	if err != nil {
 		return err
@@ -510,7 +511,7 @@ func resync(ctx context.Context, uuid string) error {
 		return err
 	}
 	if !states[uuid].Scrubbed {
-		if err := resyncScrub(ctx, uuid); err != nil {
+		if err := resyncScrub(ctx, uuid, report); err != nil {
 			return err
 		}
 	}
@@ -532,8 +533,12 @@ func resync(ctx context.Context, uuid string) error {
 
 // resyncScrub scrubs the whole pool and notes that it did, so a retry after
 // a failed convert skips it.
-func resyncScrub(ctx context.Context, uuid string) error {
-	status, err := Scrub(ctx, uuid, func(BtrfsScrubStatus) {})
+func resyncScrub(ctx context.Context, uuid string, report func(percent float64)) error {
+	status, err := Scrub(ctx, uuid, func(s BtrfsScrubStatus) {
+		if report != nil {
+			report(s.Percent)
+		}
+	})
 	if err != nil {
 		return err
 	}

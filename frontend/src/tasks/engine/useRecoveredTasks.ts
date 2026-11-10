@@ -29,6 +29,11 @@ import {
   indexerResultFromFrame,
   mergeIndexerProgress,
 } from "@/tasks/indexerProgress";
+import {
+  applyScheduledRunEvent,
+  isScheduledRun,
+  withoutScheduledRuns,
+} from "@/tasks/scheduledRuns";
 import * as TaskTypes from "@/tasks/taskTypes";
 import {
   taskIdentityKey,
@@ -494,12 +499,36 @@ export function useRecoveredTasks(
     let cleanupEvents: (() => void) | undefined;
     let eventStream: Stream | null = null;
 
+    // No watch ends a scheduled row: only this events stream does, and a run
+    // that ends while none is open tells nobody. So the rows go when a new
+    // stream opens (its opening snapshots bring back the runs still going)
+    // and when one ends on its own (nothing reopens it until the mux status
+    // changes).
+    const dropScheduledRuns = () => {
+      if (
+        tasks.backgroundTasks
+          .read()
+          .some((item) => isScheduledRun(item.taskType))
+      ) {
+        setBackgroundTasks(withoutScheduledRuns);
+      }
+    };
+    dropScheduledRuns();
+
     eventStream = openTaskEventsStream();
     if (eventStream) {
       cleanupEvents = bindStreamHandlers<TaskEvent>(eventStream, {
         onProgress: (event) => {
           if (!event?.task || cancelled) return;
           const task = event.task;
+
+          // A systemd timer runs a scheduled run, and the bridge refuses to
+          // watch or cancel it: these events alone keep its row, and its own
+          // page (and, for a failed script, its alert) reports how it ended.
+          if (isScheduledRun(task.type)) {
+            setBackgroundTasks((prev) => applyScheduledRunEvent(prev, task));
+            return;
+          }
 
           // 1) Attach progress trackers to tasks that don't have a local handler.
           watchRecoveredTask(task);
@@ -552,6 +581,7 @@ export function useRecoveredTasks(
         onClose: () => {
           if (!cancelled) {
             console.debug("Task events stream closed");
+            dropScheduledRuns();
           }
         },
       });

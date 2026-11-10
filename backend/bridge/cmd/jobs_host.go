@@ -123,6 +123,8 @@ func serveJobsHost(ln *net.UnixListener, runtimeDir, stateDir string) error {
 		cfg.Alert = alerts.Raise
 		cfg.ResolveAlert = alerts.Resolve
 		cfg.Handlers = userHandlers
+		// Every admin sees the scheduled runs; other users do not.
+		cfg.Scheduled = jobs.NewScheduledStore()
 	}
 	if err := jobshost.Serve(ctx, cfg); err != nil {
 		return err

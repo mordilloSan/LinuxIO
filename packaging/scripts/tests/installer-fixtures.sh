@@ -202,7 +202,7 @@ unit_list=$(bash -c "source '$installer'; systemd_units")
 make_binaries=$(make -s -C "$REPO_ROOT" print-binaries | sort)
 assert_eq "$make_binaries" "$(printf '%s\n' "$binary_list" | sort)" "installer binary list vs make print-binaries"
 # Every non-unit file in packaging/systemd is installed separately.
-packaged_units=$(cd "${REPO_ROOT}/packaging/systemd" && printf '%s\n' * | grep -vx 'linuxio-tmpfiles.conf' | sort)
+packaged_units=$(cd "${REPO_ROOT}/packaging/systemd" && printf '%s\n' * | grep -vxE 'linuxio-tmpfiles.conf|linuxio-run-record.conf' | sort)
 assert_eq "$packaged_units" "$(printf '%s\n' "$unit_list" | sort)" "installer unit list vs packaging/systemd"
 # Every binary a packaged unit starts must be one the installer ships.
 while IFS= read -r exec_bin; do
@@ -359,6 +359,55 @@ AUTH_MAX_CONNECTIONS="$(sed -n 's/^MaxConnections=//p' "${REPO_ROOT}/packaging/s
 ((AUTH_MAX_CONNECTIONS >= 64)) ||
 	fail "linuxio-auth.socket MaxConnections=${AUTH_MAX_CONNECTIONS} caps live sessions; keep it at least 64"
 printf '   \033[1;32m✓\033[0m %s\n' "auth socket leaves room for live sessions"
+
+# Scheduled units record their runs through two hook lines. The schedule units
+# are generated, so the lines reach them (and the two packaged units) through one
+# drop-in; linuxio-btrfs-resync@.service carries them itself.
+BEGIN_HOOK='ExecStartPre=-+/usr/local/bin/linuxio scheduled-run begin --unit %n'
+END_HOOK='ExecStopPost=-+/usr/local/bin/linuxio scheduled-run end --unit %n'
+run_record_dropin_fixtures() {
+	local checkout="$REPO_ROOT"
+	(
+		# shellcheck disable=SC1090
+		source "$RELEASE_INSTALLER"
+		local fixture_dir dropin_dir dropin_file
+		fixture_dir=$(mktemp -d)
+		LOCAL_INSTALL=1
+		# shellcheck disable=SC2030
+		REPO_ROOT="$checkout"
+		mkdir -p "$STAGING"
+
+		install_run_record_dropins "${fixture_dir}/system" >/dev/null ||
+			fail "installing the run-record drop-ins failed"
+		for dropin_dir in linuxio-schedule-.service.d linuxio-btrfs-snapshot.service.d linuxio-docker-update.service.d; do
+			dropin_file="${fixture_dir}/system/${dropin_dir}/10-linuxio-run.conf"
+			[[ -f "$dropin_file" ]] || fail "missing ${dropin_dir}/10-linuxio-run.conf after install"
+			grep -Fqx '[Service]' "$dropin_file" || fail "${dropin_dir} drop-in has no [Service] section"
+			grep -Fqx "$BEGIN_HOOK" "$dropin_file" || fail "${dropin_dir} drop-in lacks the begin hook"
+			grep -Fqx "$END_HOOK" "$dropin_file" || fail "${dropin_dir} drop-in lacks the end hook"
+			assert_eq "644" "$(stat -c %a "$dropin_file")" "${dropin_dir} drop-in mode"
+		done
+		assert_eq "3" "$(find "${fixture_dir}/system" -mindepth 1 -maxdepth 1 | wc -l)" "installed drop-in directories"
+		if compgen -G "${fixture_dir}/system/*/*.new.*" >/dev/null; then
+			fail "drop-in install left a temporary file"
+		fi
+
+		# Uninstalling removes everything under linuxio*, drop-in directories included.
+		mkdir -p "${fixture_dir}/system/unrelated.service.d"
+		bash -c "$(grep -F 'rm -rf /etc/systemd/system/linuxio*' "$UNINSTALLER" | sed "s#/etc/systemd/system#${fixture_dir}/system#")"
+		for dropin_dir in linuxio-schedule-.service.d linuxio-btrfs-snapshot.service.d linuxio-docker-update.service.d; do
+			[[ ! -e "${fixture_dir}/system/${dropin_dir}" ]] || fail "uninstall left ${dropin_dir}"
+		done
+		[[ -d "${fixture_dir}/system/unrelated.service.d" ]] || fail "uninstall removed a directory that is not LinuxIO's"
+		rm -rf "$fixture_dir"
+	)
+}
+run_record_dropin_fixtures
+# shellcheck disable=SC2031
+RESYNC_UNIT="${REPO_ROOT}/packaging/systemd/linuxio-btrfs-resync@.service"
+grep -Fqx "$BEGIN_HOOK" "$RESYNC_UNIT" || fail "the resync unit lacks the begin hook"
+grep -Fqx "$END_HOOK" "$RESYNC_UNIT" || fail "the resync unit lacks the end hook"
+printf '   \033[1;32m✓\033[0m %s\n' "scheduled units record their runs"
 
 # The standalone scripts each carry their own Show/Header; keep them identical.
 ui_sum() { sed -n '/^Show() {/,/^}/p;/^Header() {/,/^}/p;/^readonly COLOUR_RESET/,/^readonly YELLOW/p' "$1" | sha256sum; }

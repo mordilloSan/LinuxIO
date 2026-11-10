@@ -7,6 +7,7 @@ import SchedulesTab from "./SchedulesTab";
 const mocks = vi.hoisted(() => ({
   mutations: [] as Array<{ route: string; request: unknown }>,
   navigate: vi.fn(),
+  openChannel: vi.fn(() => null),
 }));
 
 const status = {
@@ -37,6 +38,8 @@ const status = {
   error: null,
 };
 
+let selectedStatus: typeof status = status;
+
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tanstack/react-router")>()),
   useNavigate: () => mocks.navigate,
@@ -51,7 +54,7 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
     }),
     useQuery: (options: { queryKey?: unknown[] }) => ({
       data: options.queryKey?.some((part) => String(part).includes("get"))
-        ? status
+        ? selectedStatus
         : [{ username: "root" }, { username: "alice" }],
     }),
   };
@@ -72,6 +75,8 @@ vi.mock("@/api", async (importOriginal) => {
   });
   return {
     ...actual,
+    openChannel: mocks.openChannel,
+    useStreamMux: () => ({ isOpen: true }),
     linuxio: mockMutationHooks(
       {
         ...actual.linuxio,
@@ -102,6 +107,8 @@ describe("SchedulesTab interactions", () => {
   beforeEach(() => {
     mocks.mutations = [];
     mocks.navigate.mockReset();
+    mocks.openChannel.mockClear();
+    selectedStatus = status;
   });
 
   it("opens from null, selects root, and submits the exact create payload", async () => {
@@ -181,5 +188,38 @@ describe("SchedulesTab interactions", () => {
       to: "/logs",
       search: { unit: status.unit_name },
     });
+  });
+
+  it("follows the selected run's output live, scoped to its invocation", async () => {
+    selectedStatus = {
+      ...status,
+      unit_name: "linuxio-schedule-x.service",
+      invocation_id: "1234567890abcdef1234567890abcdef",
+    };
+    render(<SchedulesTab {...props} selected="backup" />);
+
+    expect(
+      await screen.findByText("Output of the latest run"),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(mocks.openChannel).toHaveBeenCalledWith(
+        "logs.service.follow",
+        expect.objectContaining({
+          serviceName: "linuxio-schedule-x.service",
+          invocationId: "1234567890abcdef1234567890abcdef",
+        }),
+      ),
+    );
+  });
+
+  it("shows no output card while the schedule has never run", async () => {
+    selectedStatus = { ...status, invocation_id: "" };
+    render(<SchedulesTab {...props} selected="backup" />);
+
+    await waitFor(() => expect(screen.getByText(/success/)).toBeVisible());
+    expect(
+      screen.queryByText("Output of the latest run"),
+    ).not.toBeInTheDocument();
+    expect(mocks.openChannel).not.toHaveBeenCalled();
   });
 });

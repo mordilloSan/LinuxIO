@@ -508,10 +508,12 @@ process runs inside the bridge.
 
 ## Phase 8: Alert Sources, Routing, and Delivery
 
-Later sources (storage checks, scheduled-task `OnFailure=`, unit failures,
-release checks) and external delivery are listed under "Not in this slice" in
-[Alerts](../alerts.md). Each new source is a root writer calling
-`alerts.Raise`/`alerts.Resolve` or a drop-in running `linuxio alert raise`.
+Later sources (storage checks, unit failures, release checks) and external
+delivery are listed under "Not in this slice" in [Alerts](../alerts.md). A
+scheduled script's failure is a source since jobs phase 4: its unit's end
+hook raises it ([jobs.md, section 2.14](./jobs.md#214-scheduled-runs)). Each
+new source is a root writer calling `alerts.Raise`/`alerts.Resolve` or a
+drop-in running `linuxio alert raise`.
 
 ## Phase 9: Converge and Extend from Evidence
 

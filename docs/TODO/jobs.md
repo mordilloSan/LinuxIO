@@ -22,7 +22,7 @@ and [Notifications](../alerts.md).
 | 1 | Store, host, relay, units, first route (`docker.update_container`) | done, verified on a real host |
 | 2 | Every mutation runs as a job: prerequisites, the ~199 routes and their callers, old task code deleted | done (section 4.2), last step `d2871872`; checked in the test VM (section 3.5) |
 | 3 | Storage safety and btrfs resume: cancel that ends when the handler returns, resume hooks for four btrfs routes, rollbacks, Docker storage switch, kill-and-resume root tests | done (section 4.3), commits `938e32c5` and `f8db05af`; checked in the test VM (section 3.6). The jobs CLI verb and the host's resume call are removed (D6) |
-| 4 | Scheduled runs in the job list and the store | designed (section 2.14, D8), not built; [plan](../superpowers/plans/2026-11-10-jobs-phase4-scheduled-runs.md) |
+| 4 | Scheduled runs in the job list and the store | done (section 4.4); checked in the test VM (section 3.8); [plan](../superpowers/plans/2026-11-10-jobs-phase4-scheduled-runs.md) |
 | 5 | History view, login notice, update banner | not started |
 
 Contents: 1. Summary · 2. Design · 3. Done · 4. Left to do · 5. Deferred
@@ -307,7 +307,7 @@ What each event does to a job, as phase 1 implements it:
 
 - `failed` and `interrupted` jobs raise an alert through `alerts.Raise` with source `jobs`, key `<id>`, the route, target and error message, and a link to the job in the UI. `canceled` and `completed` do not.
 - The alert store is root-owned, so only the root host raises alerts; a user host writes the record only. The frontend shows every user "N jobs ended while you were away" from `tasks.list` at login, so non-admins still learn about failures.
-- Scheduled scripts use the existing `OnFailure=` hook (`linuxio alert raise`), unchanged.
+- A scheduled script that fails or is interrupted raises the same jobs alert, from its unit's end hook or from the root host's liveness check (section 2.14). The timers' snapshots, replication, resyncs and Docker updates keep their own alerts.
 
 ### 2.14 Scheduled runs
 
@@ -334,8 +334,8 @@ ExecStopPost=-+/usr/local/bin/linuxio scheduled-run end --unit %n
 
 `+` runs the hook as root whatever `User=` and the sandbox say; `-` keeps a failed hook from failing or blocking the run. The drop-in applies to every schedule through the prefix directory `linuxio-schedule-.service.d/`.
 
-- `begin` creates the `running` record: `id` is `$INVOCATION_ID` written as a UUID, `route` and label come from the unit name, owner is root, `target` is `[unit]`, `metadata` is `{"label", "identity": [<schedule id or pool uuid>]}`, executor is `{kind: unit, unit, invocation_id, boot_id}`.
-- `end` reads `$SERVICE_RESULT`, `$EXIT_CODE` and `$EXIT_STATUS`: `success` is `completed`; otherwise a record with `cancel_requested` is `canceled`, a system that is shutting down gives `interrupted/shutdown`, and anything else is `failed` with a message such as "exited with status 3", "killed by signal KILL" or "timed out". It then saves the output, raises the alert and prunes. A run whose `begin` wrote nothing still gets its record from `end`.
+- `begin` creates the `running` record, fsynced so a power loss right after it cannot take it: `id` is `$INVOCATION_ID` written as a UUID, `route` and label come from the unit name, owner is root, `target` is `[unit]`, `metadata` is `{"label", "identity": [<schedule id or pool uuid>]}`, executor is `{kind: unit, unit, invocation_id, boot_id}`. `begin` runs as `ExecStartPre=`, so its time counts against the unit's start timeout, and a schedule's timeout can be as short as 1 s.
+- `end` reads `$SERVICE_RESULT`, `$EXIT_CODE` and `$EXIT_STATUS`: `success` is `completed`; otherwise a record with `cancel_requested` is `canceled`, a system that is shutting down gives `interrupted/shutdown`, and anything else is `failed` with a message such as "exited with status 3", "killed by signal KILL" or "timed out". Then, in this order, it prunes the unit's older runs, saves the output (with a limit of its own, 5 s) and raises the alert, so a slow journal cannot starve the prune and a slow alert delivery cannot keep the output from being saved. The command gives itself 10 s in all; the alert is raised even when those have run out, and its delivery by webhook or mail (up to 15 s) can outlast them. A run whose `begin` wrote nothing still gets its record from `end`.
 
 **Store.** `/var/lib/linuxio/jobs/scheduled` with progress under `/run/linuxio/jobs/scheduled`, root only. It is separate from the per-uid stores so scheduled runs have their own limit: each unit keeps its newest 50 ended runs and nothing older than 30 days. Every run is kept, also one shorter than a second.
 
@@ -345,7 +345,7 @@ ExecStopPost=-+/usr/local/bin/linuxio scheduled-run end --unit %n
 
 **Job list, root host only.** `tasks.list` adds the running scheduled runs, `tasks.events` polls the store every 2 s while a client listens and sends snapshot, progress and terminal events, `tasks.get` answers for a scheduled run, `tasks.cancel` and `tasks.watch` of a running one answer 409. A `running` record counts only while systemd agrees: same boot, the unit's current invocation is the record's, and the unit is `activating`, `active`, `reloading` or `deactivating`. Otherwise the host marks it `interrupted` (`reboot` for an earlier boot, `crash` in this one). Every admin sees scheduled runs; other users do not.
 
-**Stopping.** The bell shows no stop for a scheduled run; its row opens the owning page. `schedules.stop` and a scrub cancel that hits a timer's resync set `cancel_requested` on the record first, so the run ends `canceled`.
+**Stopping.** The bell shows no stop for a scheduled run; its row opens the owning page. `schedules.stop` and a scrub cancel that hits a timer's resync set `cancel_requested` on the record first, so the run ends `canceled`. `schedules.stop` names the invocation it stops and marks only that run's record, so a stop that arrives after its run ended cannot mark the next one; a scrub cancel knows no invocation and marks the resync unit's running record. Either takes the mark back when the stop or the cancel fails.
 
 **Alerts.** One alert per failure. A script that fails or is interrupted raises the jobs alert (source `jobs`, key the record ID, title "<label> failed" or "<label> was interrupted"), as a failed browser job does. Snapshots, replication, resync and Docker updates already raise their own alert and get no second one.
 
@@ -675,6 +675,193 @@ the killed replace of `replaceKill` runs to the end (`FINISHED`), which
 the removal progress and the refusal of another device's replace job behave
 as on 7.0.
 
+### 3.8 Phase 4: scheduled runs, checked in the test VM (2026-11-10)
+
+What the code does, as built, read from the source (the VM table further
+down is what was observed). Section 2.14 is the design; where the two differ,
+this holds.
+
+- **Hooks.** `packaging/systemd/linuxio-run-record.conf` holds the two lines.
+  The installer copies it as `10-linuxio-run.conf` into
+  `linuxio-schedule-.service.d`, `linuxio-btrfs-snapshot.service.d` and
+  `linuxio-docker-update.service.d` under `/etc/systemd/system`, then reloads
+  systemd; `linuxio-btrfs-resync@.service` carries the lines itself. What
+  `renderService`, `btrfs.RenderUnit` and `renderDockerUpdateUnit` write is
+  unchanged, and a guard test in each of those packages fails on a hook line:
+  the btrfs test compares the text byte for byte, the schedules and Docker
+  update tests refuse the hook lines in it.
+- **Command.** `linuxio scheduled-run begin|end --unit <unit>`
+  (`backend/cli/scheduled_run.go`) calls `backend/common/scheduledrun` with a
+  10 s deadline. `begin` writes its record with an fsync
+  (`jobs.Store.CreateSynced`), so a power loss right after the start cannot
+  take the record that the boot's liveness check marks `interrupted`. `end`
+  writes the record first, then prunes, then copies the output under its own
+  5 s limit, then raises the alert, even when the 10 s have run out; alert
+  delivery (webhook and mail, up to 15 s) can outlast the command's deadline
+  and the unit's stop timeout, by which time the record, the prune and the
+  output are done. `begin` runs as `ExecStartPre=`, so its time counts against
+  the unit's start timeout; a schedule's timeout can be as short as 1 s.
+- **Store.** `jobs.NewScheduledStore()`: `/var/lib/linuxio/jobs/scheduled`
+  and `/run/linuxio/jobs/scheduled`, both `0700 root`, files `0600` (seen in
+  the VM). `PrunePerTarget` keeps the newest 50 ended runs of each unit, none
+  older than 30 days; a run's output and progress files go with its record.
+  The progress file of an ended run stays in `/run` until then.
+- **Output.** `journalctl --sync`, then `--no-pager --quiet --all -o
+  short-iso _SYSTEMD_INVOCATION_ID=<id>`, through a writer that keeps the
+  first and last 5 MiB. Without `--all`, journalctl prints `[N blob data]`
+  for a line holding a carriage return, a colour code or invalid UTF-8;
+  without `--quiet` an empty run would save `-- No entries --`. systemd 259
+  writes the time with a colon in the offset: `2026-11-10T09:21:47+00:00`.
+- **Progress.** The btrfs timer program (snapshots, replication, resync) and
+  the Docker update runner write their run's progress file
+  (`scheduledrun.ReporterFromEnv`). The Docker message is `Updating <name>`,
+  with no count. `ReporterFromEnv` logs at Debug a run record it finds but
+  cannot read (a missing one is silent); the Docker update runner builds it
+  after its logging is set up. Neither timer program turns debug logging on,
+  so the line shows only where a build or a test does.
+- **Root host.** `tasks.list`, `tasks.events` and `tasks.get` serve the
+  scheduled runs; `tasks.cancel` and `tasks.watch` of a running one answer
+  `409` ([API Contract](../api-contract.md#scheduled-runs)). The liveness
+  check runs at host start and at every listing. A run no longer runs when
+  its unit is not loaded (systemd's `NoSuchUnit`), runs a different
+  invocation, or is in any state but `activating`, `active`, `reloading` or
+  `deactivating`. Of the D-Bus errors only `NoSuchUnit` means that: any other
+  leaves the record alone, so a bus hiccup cannot raise a false alert.
+- **Stopping.** `schedules.stop` sets `cancel_requested` on the record of
+  the invocation it names (`scheduledrun.RequestCancel` with that invocation
+  ID), then stops that invocation, so a stop that arrives after its run ended
+  marks nothing. `storage.btrfs_scrub_cancel` marks the running record of the
+  pool's resync unit (it knows no invocation), then cancels the scrub, which
+  ends the resync; it does not stop the unit. When the stop or the cancel
+  fails, either takes the mark back (`scheduledrun.WithdrawCancel`); a failed
+  mark or withdraw is logged at Warn.
+- **Frontend.** The bell lists a scheduled run with its label and progress,
+  capped at 99 % so a row never reads as complete, and an **Open** link
+  (`Open <label>`) to the owning page where other rows have **Cancel task**.
+  When a new events stream opens, the scheduled rows are dropped and come back
+  from its opening snapshots. The Schedules page shows "Output of the latest
+  run", `logs.service.follow` with `invocationId` and `--all`.
+- **Alerts.** A script that fails or is interrupted raises `jobs/<run id>`
+  ([Alerts](../alerts.md)); the other three kinds raise none of their own.
+
+**Checked in the test VM** (Ubuntu 26.04, kernel 7.0.0-38, systemd 259.5, as
+the sudo user, after `make vm-reset` and `make vm-install`):
+`make test-vm-browser PLAYWRIGHT_ARGS='login.spec.ts jobs-phase4.spec.ts'`
+runs `frontend/src/test/vm/jobs-phase4.spec.ts`. Each script is a schedule
+created on the Schedules page, disabled, with a calendar of 2099, and started
+with **Run now**; the snapshot and Docker update units are started with
+`systemctl start`, as their timers would start them. On a fresh VM all 13
+checks pass in 3.5 minutes, `login.spec.ts` included (final fix wave,
+2026-11-10, with the end order, the named cancel mark and the fsynced begin
+of this section). Earlier runs failed only on faults of the spec itself
+(below); no check needed a change to the product. On a VM where a snapshot
+rule or the Docker update setting was ever saved, the drop-in check skips the
+part that needs a missing unit and says why.
+
+| Check | Result |
+|---|---|
+| A drop-in alone creates no unit | pass: the three `10-linuxio-run.conf` are installed, and `linuxio-btrfs-snapshot.service` and `linuxio-docker-update.service` read `not-found` until a rule or a setting is saved |
+| A running script (`echo first; sleep 60; echo last >&2`) | pass: the bell lists the schedule's name with no **Cancel task**; **Open** leads to `/services/schedules?schedule=<id>`; the output card shows `first` while it runs; one record, `scheduled.script`, `completed`; the saved output is exactly two lines, `<time> linuxio-e2e linuxio-schedule[<pid>]: first` and `…: last` |
+| A failing script (`echo boom; exit 3`) | pass: `failed`, "exited with status 3"; the alert "`<name>` failed" with that message, in the bell after a reload (it reads alerts once a minute) |
+| Stop on the Schedules page (`sleep 300`) | pass: `canceled` with `cancel_requested`, no alert |
+| A long output (300 numbered lines, `line 001 ` to `line 300 ` and 45000 bytes each, 13.5 MB) | pass: 10485794 bytes saved, 10 MiB and the 34-byte line saying how many bytes were left out; the saved output begins with `line 001` and ends with `line 300`, both whole with their time, and the line saying what was left out lies between them |
+| The last line before the exit (`echo almost; echo last`, 10 runs in a row) | pass: every saved output ends with `: last`, so `--sync` is enough and `end` needs no wait |
+| Control characters (`printf 'a\rb\033[31mred\033[0m\n'`) | pass: the saved output holds `a\rb` and the escape sequences, and no `blob data` |
+| A broken hook (`/usr/local/bin/linuxio` moved aside) | pass: the script ran; systemd logged both hooks as `Unable to locate executable '/usr/local/bin/linuxio'` and the unit `Deactivated successfully`; the run left no record |
+| The snapshot unit (a rule saved on the Storage page, then `systemctl start`) | pass: one `scheduled.btrfs_snapshot` record, `completed`, label "Snapshots and replication" |
+| The Docker update unit (scheduled checks enabled in Settings, then `systemctl start`, no containers) | pass: one `scheduled.docker_update` record, `completed`, label "Container updates" |
+| A power cut (`sleep 300`, `virsh destroy`, `start`) | pass: `interrupted/reboot`, marked by the root host; the alert "`<name>` was interrupted" (polled for), and in the bell |
+| An orderly reboot (`sleep 300`, `virsh reboot`) | pass: `interrupted/shutdown`, written by the end hook as the system stopped (systemd logs the unit `Failed with result 'signal'`); the same alert. The bus still answered for `SystemState` then |
+
+**An alert webhook that never answers** (checked by hand in the same VM,
+not by the spec): with `webhookUrl` set to `http://10.255.255.1:9/` in
+`/var/lib/linuxio/notifications.json`, a failing script started with
+`systemctl start` left its record `failed` at 10:47:11.596, its `.log` at
+11.641 and its alert in `alerts.json` at 11.647; the hook's
+`alert delivery failed … webhook: context deadline exceeded` came at
+10:47:26.656, and only then systemd logged `State 'stop-post' timed out.
+Terminating.` The stop timeout cut off nothing but the delivery. The setting
+was removed again afterwards (there was none before).
+
+**On systemd 255** (the second VM, Ubuntu 24.04.5, kernel 6.8.0-147,
+systemd 255.4, after `make vm-install VM_RELEASE=noble`):
+`make test-vm-browser VM_RELEASE=noble PLAYWRIGHT_ARGS='jobs-phase4.spec.ts -g "last line before the exit|a running script"'`
+passes both: the running script's bell row, link, live output and two saved
+lines, and ten runs in a row whose saved output each ends with `: last`. So
+`journalctl --sync` makes the last lines readable on 255 too. systemd 255
+also writes the offset as `+00:00`. The other checks were not run there.
+
+Seen while numbering the long output's lines: journald starts a new entry
+when another process writes to the same stream in the middle of a line.
+`printf 'line 001 '` from the shell followed by `head | tr` saved
+`line 001` (its trailing space gone) and the run of `x` as two lines with two
+PIDs. The live view shows the same entries. The spec now has the shell write
+each line whole.
+
+`make vm-test-btrfs-integration` passes `TestBtrfsDegradedIntegration` (its
+resync goes through the changed `Resync` call), `TestBtrfsResumeIntegration`,
+`TestBtrfsIntegration` and `TestPartitionIntegration` on the same VM.
+
+**An update, simulated.** The VM did not install the previous release. With
+this build installed, a schedule was created; the three drop-in directories
+were removed and systemd reloaded, to stand for an install from before
+phase 4. Run now then ran the script (`upgraded` in its journal) with no
+`ExecStartPre=` and left no record. `make vm-install` put the drop-ins back
+without touching the schedule's unit or definition (their times stayed those
+of the creation), and Run now, with nothing saved again, left one record,
+`completed`. A real install of an older release over which this one is
+installed was not tried.
+
+`make test-quiet` passes on the tree of the final fix wave: both linters, the
+types, the installer fixtures, the C and PAM tests, the frontend's 1965 tests
+and every Go package, `bridge/handlers/filebrowser` included (from the test
+cache on that tree; run afresh in 1.3 s on the tree just before the wave's
+last test and document edits). Two earlier runs that day had hung in that package's
+`TestOwnedUploadReplacesASymlinkSwappedInAfterPrepare` until the 10-minute
+timeout (and one also failed `monitoring/internal/app`
+`TestStartContextDisabledHTTP`); both packages are outside phase 4 and
+unchanged by it. The hang's stacks hold no phase 4 code: the test goroutine
+waits writing to a `net.Pipe` that nothing reads any more, from the file
+browser's own test helpers.
+
+**Inferred, not observed:**
+
+- No run was started by its timer: Run now and `systemctl start` start the
+  same service, with the same drop-in.
+- `scheduled.btrfs_resync` never ran in the VM: no check returned a missing
+  disk. Its unit file carries the two lines like the drop-in;
+  `TestBtrfsDegradedIntegration` runs the resync through the changed
+  `Resync` call, and unit tests cover the reporter. `RunReplication`'s new
+  progress path is covered by unit tests only.
+- The bell's progress for a snapshot or a Docker update was not seen: those
+  runs end within a second or two. The snapshot run's progress file was
+  (`{"message":"Taking snapshots"}`). A Docker update with containers to
+  update, and its `Updating <name>` message, did not run.
+- The `409` answers of `tasks.cancel` and `tasks.watch`, the 50-run and
+  30-day prune, a non-admin seeing no scheduled run, a scrub cancel that
+  marks a timer's resync, a stale stop that marks nothing and a failed stop or
+  cancel that takes its mark back are covered by unit tests only. The fsync
+  of `begin`'s record is read from the source: no test observes it, and the
+  power-cut test runs `sync` first.
+- The live output card was checked for plain text only, not for a line
+  holding control characters.
+
+Seen on the way:
+
+- The plan's example of a saved line had the offset as `+0000`; systemd 259
+  writes `+00:00`, on the VM and on the development machine alike. The plan is
+  corrected and the spec accepts both.
+- The spec's own two faults: it looked for the snapshot rules on
+  `/storage?pool=<uuid>`, where they are not (they are on
+  `/storage/subvolumes?view=snapshots`), and a rule's switch shows the saved
+  rule, so it turns on only after the rules reload. Playwright's `check()`
+  gives up before that; the spec clicks and then waits.
+- systemd unloads a script's unit once it stops when nothing holds it, as
+  here, where the schedules' timers were never started. `systemctl show`
+  then loads it again: `InvocationID` reads empty (seen) and `Result` its
+  default, `success`, whatever the run did. The spec reads a run's outcome
+  from its record or the unit's journal, never from those properties.
+
 ## 4. Left to do
 
 ### 4.1 Open decisions
@@ -875,19 +1062,82 @@ and the progress for device removal (section 3.7), and the overview and the
 bridge's offline-pool mount counting a replace target as a present disk
 (`4d73aac5`, section 3.6).
 
-### 4.4 Phase 4: schedules and system jobs
+### 4.4 Phase 4: schedules and system jobs (done)
 
-Section 2.14 is the design. The tasks are in the
+Section 2.14 is the design and section 3.8 what was built and checked, task by
+task as in the
 [phase 4 plan](../superpowers/plans/2026-11-10-jobs-phase4-scheduled-runs.md):
 the scheduled store and its limit, the two unit hooks and the output copy,
 progress from the btrfs timer program and the Docker update runner, the root
 host's listing and liveness check, the bell rows and the live output on the
 Schedules page.
 
+Left open by the phase, none of them blocking:
+
+- Listing ended runs and reading their saved output belong to the history
+  view (phase 5, section 4.5).
+- A run shorter than one poll (2 s) never shows in the bell. A run that ends
+  while the bridge reconnects to the root host gets no terminal event on that
+  stream; its row goes at the next reconnect.
+- A stop or scrub cancel that fails takes its `cancel_requested` mark back;
+  when that withdraw fails too (logged at Warn), the flag stays, and a run
+  that later fails on its own reads `canceled`.
+- The mark is one flag per run, so two requests can cross. Two scrub cancels
+  at once for one pool: when the second fails, its withdraw clears the first
+  one's mark and the resync reads `failed`. A stop that reached systemd but
+  whose reply was lost withdraws the mark, so the run the user stopped reads
+  `failed` and a script raises its alert. A run that ends on its own between
+  the mark and a failed stop reads `canceled`.
+- A record that `end` cannot write gets no alert from `end`. When `begin`
+  wrote it, the root host's liveness check later finds the run gone, marks it
+  `interrupted/crash` and raises the alert ("The run ended without reporting
+  its result."); only a run neither hook could record goes unseen.
+- Every listing reads every record of the scheduled store, per listening
+  client, every 30 s and after each store change. Fine at 50 runs per unit.
+- The Docker update message names the container but no count, since a pass
+  does not know up front how many containers need an update. A resync's soft
+  convert reports no progress of its own.
+- A fresh install of an older release fetches `packaging/` from `main`, but
+  its installer does not install the drop-in. Only the resync unit
+  (`linuxio-btrfs-resync@.service`, fetched from `main`) then calls
+  `linuxio scheduled-run`, which the older CLI answers with "Unknown command";
+  the `-` prefix makes systemd ignore that, at one failed hook line per run.
+
 ### 4.5 Phase 5: history and notices
 
 The history view, the "ended while you were away" notice at login, the
 "waits for N jobs" update banner (section 2.16).
+
+Decided with the user on 2026-11-10, before the plan is written:
+
+- **History.** A "History" link at the bottom of the bell opens a page that
+  lists ended jobs and scheduled runs, newest first. Each schedule on the
+  Schedules page also lists its own past runs with their saved output.
+- **Who sees what.** Admins see everything, scheduled runs included. Other
+  users see only the jobs they started.
+- **Quick actions.** A job that succeeds in under a second still leaves no
+  history entry.
+- **Update banner.** "Update waits for N jobs", with a link to the bell and no
+  button to force the update: forcing means stopping the old job host, which
+  interrupts the jobs it runs, and the user wants a button only if it breaks
+  none. Letting the new host start beside the old one, so that new jobs never
+  wait, is the way to give that; it is a design change of its own and is not
+  part of phase 5.
+- **Saved output** is raw text with control characters kept (phase 4). The
+  view shows it as plain text and stays behind the admin gate.
+
+Open:
+
+- **The notice.** The user wants it "fully configurable like Unraid". Asked
+  back, not yet answered: whether that means Unraid's grid, where notices,
+  warnings and alerts are each ticked for browser, email and agents, with job
+  results mapped onto it (completed a notice, canceled or interrupted a
+  warning, failed an alert). Today there is one setting, a least severity
+  above which alerts also go out by email and webhook
+  (`alerts.NotificationSettings.MinSeverity`).
+- **The bell row of a scheduled run** has an "Open" link, not a clickable
+  row (phase 4, shared-component rule). The user was asked whether the whole
+  row should be clickable and has not answered.
 
 ### 4.6 Every phase
 

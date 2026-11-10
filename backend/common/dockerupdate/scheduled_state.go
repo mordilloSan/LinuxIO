@@ -28,6 +28,7 @@ type scheduledUpdateState struct {
 	updateStopped bool
 	reviveStopped bool
 	composeUpdate func(context.Context, ComposeTarget, []string, ComposeLineEmitter) error
+	announce      func(name string)
 }
 
 func newScheduledUpdateState(ctx context.Context, cli *client.Client) *scheduledUpdateState {
@@ -87,6 +88,7 @@ func (s *scheduledUpdateState) prepare(summary container.Summary) error {
 		s.recordCandidateError(candidate.inspect, err)
 		return nil
 	}
+	s.announceUpdate(strings.TrimPrefix(candidate.inspect.Name, "/"))
 	updated, err := updateStandaloneContainerWithDependenciesAndPolicy(
 		s.ctx,
 		s.cli,
@@ -98,6 +100,12 @@ func (s *scheduledUpdateState) prepare(summary container.Summary) error {
 		stoppedContainerUpdatePolicy{Allow: s.updateStopped, Revive: s.reviveStopped},
 	)
 	return s.recordStandaloneUpdateOutcome(candidate.inspect, updated, err)
+}
+
+func (s *scheduledUpdateState) announceUpdate(name string) {
+	if s.announce != nil {
+		s.announce(name)
+	}
 }
 
 func (s *scheduledUpdateState) prepareCandidateState(inspect container.InspectResponse) (bool, bool) {
@@ -259,6 +267,7 @@ func (s *scheduledUpdateState) validateComposeGroup(group *scheduledComposeTarge
 }
 
 func (s *scheduledUpdateState) runComposeUpdate(group *scheduledComposeTarget) (bool, error) {
+	s.announceUpdate(group.target.Name)
 	collector := &ComposeMessageCollector{}
 	if err := s.composeUpdate(s.ctx, group.target, group.services, collector.Emit); err != nil {
 		if ctxErr := s.ctx.Err(); ctxErr != nil {

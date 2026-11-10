@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 const testID = "123e4567-e89b-12d3-a456-426614174000"
@@ -56,10 +58,13 @@ func testOptions() apischema.ScheduleOptions {
 }
 
 type testNative struct {
-	units     map[string]unitState
-	calls     []string
-	reloadErr error
-	lookupErr error
+	units       map[string]unitState
+	calls       []string
+	reloadErr   error
+	lookupErr   error
+	markErr     error
+	stopErr     error
+	withdrawErr error
 }
 
 func testManager(t *testing.T) (manager, *testNative) {
@@ -90,11 +95,75 @@ func testManager(t *testing.T) (manager, *testNative) {
 			state.ActiveState = "inactive"
 		}
 		return state, nil
+	}, markCanceled: func(_ context.Context, unit, invocation string) error {
+		native.calls = append(native.calls, "mark:"+unit+":"+invocation)
+		return native.markErr
+	}, withdrawCancel: func(_ context.Context, unit, invocation string) error {
+		native.calls = append(native.calls, "withdraw:"+unit+":"+invocation)
+		return native.withdrawErr
 	}, start: operation("start"), stop: operation("stop"), enable: operation("enable"), disable: operation("disable"), reload: func(context.Context) error { native.calls = append(native.calls, "reload"); return native.reloadErr }, stopInvocation: func(_ context.Context, id, invocation string) error {
 		native.calls = append(native.calls, "stop-invocation:"+id+":"+invocation)
-		return nil
+		return native.stopErr
 	}}
 	return manager{store{configDir: filepath.Join(dir, "config"), unitDir: filepath.Join(dir, "units")}, host}, native
+}
+
+func TestStopMarksTheRunCanceledFirst(t *testing.T) {
+	m, native := testManager(t)
+	ctx := t.Context()
+	created, err := m.create(ctx, apischema.ScheduleCreateRequest{Options: testOptions()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := created.Definition.ID
+	req := apischema.ScheduleStopRequest{ID: id, InvocationID: testInvocation}
+	mark := "mark:" + serviceName(id) + ":" + testInvocation
+	stop := "stop-invocation:" + id + ":" + testInvocation
+
+	// A stop that succeeds leaves the mark of the run it named.
+	if err := m.stop(ctx, req); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := native.calls[len(native.calls)-2:], []string{mark, stop}; !slices.Equal(got, want) {
+		t.Fatalf("calls = %v, want them to end with %v", got, want)
+	}
+
+	native.markErr = errors.New("store unavailable")
+	native.calls = nil
+	if err := m.stop(ctx, req); err != nil {
+		t.Fatalf("a failed mark stopped the stop: %v", err)
+	}
+	if want := []string{mark, stop}; !slices.Equal(native.calls, want) {
+		t.Fatalf("calls = %v, want %v", native.calls, want)
+	}
+}
+
+func TestStopThatFailsWithdrawsTheMark(t *testing.T) {
+	m, native := testManager(t)
+	ctx := t.Context()
+	created, err := m.create(ctx, apischema.ScheduleCreateRequest{Options: testOptions()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := created.Definition.ID
+	req := apischema.ScheduleStopRequest{ID: id, InvocationID: testInvocation}
+	want := []string{
+		"mark:" + serviceName(id) + ":" + testInvocation,
+		"stop-invocation:" + id + ":" + testInvocation,
+		"withdraw:" + serviceName(id) + ":" + testInvocation,
+	}
+	native.stopErr = errors.New("unit is not running this invocation")
+
+	for _, withdrawErr := range []error{nil, errors.New("store unavailable")} {
+		native.withdrawErr = withdrawErr
+		native.calls = nil
+		if err := m.stop(ctx, req); !errors.Is(err, native.stopErr) {
+			t.Fatalf("stop = %v, want the stop's error (withdraw error %v)", err, withdrawErr)
+		}
+		if !slices.Equal(native.calls, want) {
+			t.Fatalf("calls = %v, want %v (withdraw error %v)", native.calls, want, withdrawErr)
+		}
+	}
 }
 
 func TestNativeScriptLifecycle(t *testing.T) {
@@ -321,5 +390,31 @@ func TestUnavailableHistoryNeverBecomesSuccess(t *testing.T) {
 	n.units[serviceName(testID)] = unitState{Exists: true, ActiveState: "failed", Result: "exit-code", ExitedAt: 100, ExitCode: 1, ExitStatus: 7}
 	if status := m.status(t.Context(), def); status.Result != "exit-code" || status.ExitStatus == nil || *status.ExitStatus != 7 {
 		t.Fatalf("lost native result: %+v", status)
+	}
+}
+
+func TestScheduledRunReadsTheScheduleName(t *testing.T) {
+	m, _ := testManager(t)
+	opts := testOptions()
+	opts.Name = "Nightly backup"
+	if err := m.store.save(apischema.ScheduleDefinition{ID: testID, Options: opts}); err != nil {
+		t.Fatal(err)
+	}
+	kind, ok := scheduledrun.KindOf(serviceName(testID), m.store.configDir)
+	if !ok || kind.Route != scheduledrun.RouteScript || kind.Label != "Nightly backup" || kind.Instance != testID {
+		t.Errorf("KindOf = %+v, %v", kind, ok)
+	}
+}
+
+// The run-record hooks are a packaged drop-in (packaging/systemd/
+// linuxio-run-record.conf), never part of the rendered unit: ensureInstalled
+// compares the unit on disk with renderService, so a hook line there would
+// make every schedule look out of date.
+func TestScheduleUnitCarriesNoRunHooks(t *testing.T) {
+	m, _ := testManager(t)
+	def := apischema.ScheduleDefinition{ID: testID, Options: testOptions()}
+	unit := string(m.store.renderService(def, &user.User{Uid: "1001", Gid: "1002"}))
+	if strings.Contains(unit, "scheduled-run") {
+		t.Errorf("rendered unit carries a run hook:\n%s", unit)
 	}
 }

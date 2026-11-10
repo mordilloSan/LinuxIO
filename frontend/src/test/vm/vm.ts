@@ -107,6 +107,39 @@ export async function waitForJob(
   return job!;
 }
 
+/** The record of a run a systemd timer starts (docs/TODO/jobs.md 2.14). */
+export interface ScheduledRecord extends JobRecord {
+  created_at: string;
+  target?: string[];
+  metadata?: { label?: string; identity?: string[] };
+  executor: { kind: string; unit?: string; invocation_id?: string };
+}
+
+const SCHEDULED_STORE = "/var/lib/linuxio/jobs/scheduled";
+const RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** The scheduled runs' records, read from their store in the VM, oldest first. */
+export async function scheduledRecords(
+  route?: string,
+): Promise<ScheduledRecord[]> {
+  const out = await vmSsh(
+    `sudo sh -c 'cat ${SCHEDULED_STORE}/*.json 2>/dev/null' | jq -cs .`,
+  );
+  const records = (JSON.parse(out) as ScheduledRecord[]).sort(
+    (a, b) => Date.parse(a.created_at) - Date.parse(b.created_at),
+  );
+  return route ? records.filter((r) => r.route === route) : records;
+}
+
+/** The output scheduled run id saved, byte for byte; empty when it saved none. */
+export async function scheduledOutput(id: string): Promise<Buffer> {
+  expect(id, "scheduled run ID").toMatch(RUN_ID);
+  const out = await vmSsh(
+    `sudo sh -c 'base64 -w0 ${SCHEDULED_STORE}/${id}.log 2>/dev/null' || true`,
+  );
+  return Buffer.from(out.trim(), "base64");
+}
+
 export async function signIn(page: Page) {
   const username = process.env.LINUXIO_VM_USER ?? "";
   const password = process.env.LINUXIO_VM_PASSWORD ?? "";

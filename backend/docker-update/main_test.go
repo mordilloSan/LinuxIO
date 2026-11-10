@@ -42,7 +42,7 @@ func TestRunCLIDispatchesInjectedOperations(t *testing.T) {
 	t.Cleanup(func() { runUpdates = originalRun })
 
 	var gotConfig string
-	runUpdates = func(ctx context.Context, configPath string) error {
+	runUpdates = func(ctx context.Context, configPath string, _ func(string)) error {
 		gotConfig = configPath
 		return nil
 	}
@@ -57,7 +57,7 @@ func TestRunCLIDispatchesInjectedOperations(t *testing.T) {
 func TestRunCLIExitCodesAndErrors(t *testing.T) {
 	originalRun := runUpdates
 	t.Cleanup(func() { runUpdates = originalRun })
-	runUpdates = func(context.Context, string) error { return errors.New("docker unavailable") }
+	runUpdates = func(context.Context, string, func(string)) error { return errors.New("docker unavailable") }
 
 	var stderr bytes.Buffer
 	if code := runCLI(context.Background(), []string{"linuxio-docker-update", "run"}, &bytes.Buffer{}, &stderr); code != 1 || !strings.Contains(stderr.String(), "run failed: docker unavailable") {
@@ -73,12 +73,33 @@ func TestRunCLIExitCodesAndErrors(t *testing.T) {
 	}
 }
 
+func TestRunCLIReportsUpdateStepsAsUnknownPercentage(t *testing.T) {
+	originalRun, originalReport := runUpdates, reportProgress
+	t.Cleanup(func() { runUpdates, reportProgress = originalRun, originalReport })
+
+	runUpdates = func(_ context.Context, _ string, report func(string)) error {
+		report("Checking for updates")
+		return nil
+	}
+	var percentage int
+	var message string
+	reportProgress = func(p int, m string) { percentage, message = p, m }
+	if code := runCLI(context.Background(), []string{"linuxio-docker-update", "run"}, &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("run exit code = %d, want 0", code)
+	}
+	if percentage != -1 || message != "Checking for updates" {
+		t.Fatalf("reported (%d, %q), want (-1, %q)", percentage, message, "Checking for updates")
+	}
+}
+
 func TestRunWorkerConfiguresLoggingBeforeDispatch(t *testing.T) {
 	originalConfigure := configureLogging
 	originalRun := runUpdates
+	originalReporter, originalReport := newReporter, reportProgress
 	t.Cleanup(func() {
 		configureLogging = originalConfigure
 		runUpdates = originalRun
+		newReporter, reportProgress = originalReporter, originalReport
 	})
 
 	configured := false
@@ -89,7 +110,17 @@ func TestRunWorkerConfiguresLoggingBeforeDispatch(t *testing.T) {
 		configured = true
 		return nil
 	}
-	runUpdates = func(context.Context, string) error {
+	// The reporter logs a record it cannot read, so it is built once the
+	// logger is configured.
+	reporterBuilt := false
+	newReporter = func() func(int, string) {
+		if !configured {
+			t.Fatal("progress reporter built before logging was configured")
+		}
+		reporterBuilt = true
+		return func(int, string) {}
+	}
+	runUpdates = func(context.Context, string, func(string)) error {
 		if !configured {
 			t.Fatal("update dispatched before logging was configured")
 		}
@@ -97,6 +128,9 @@ func TestRunWorkerConfiguresLoggingBeforeDispatch(t *testing.T) {
 	}
 	if code := runWorker(context.Background(), []string{"linuxio-docker-update", "run"}, &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
 		t.Fatalf("runWorker exit code = %d, want 0", code)
+	}
+	if !reporterBuilt {
+		t.Fatal("runWorker did not build the progress reporter")
 	}
 
 	configureLogging = func(string, bool) error { return errors.New("journald unavailable") }

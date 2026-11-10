@@ -92,8 +92,8 @@ release_download_assets() {
 	printf '%s\n' LICENSE THIRD_PARTY_NOTICES.md SHA256SUMS
 }
 
-# Must equal the units in packaging/systemd (linuxio-tmpfiles.conf is not a
-# unit); tests/installer-fixtures.sh enforces it.
+# Must equal the units in packaging/systemd (linuxio-tmpfiles.conf and
+# linuxio-run-record.conf are not units); tests/installer-fixtures.sh enforces it.
 systemd_units() {
 	printf '%s\n' \
 		linuxio.target \
@@ -114,6 +114,37 @@ systemd_units() {
 		linuxio-jobs@.service \
 		linuxio-jobs@.socket \
 		linuxio-monitoring.service
+}
+
+# Drop-in directories, relative to ${SYSTEMD_DIR}, that each receive
+# packaging/systemd/linuxio-run-record.conf as 10-linuxio-run.conf: it hooks a
+# unit so every run writes its job record. The first name ends in "-.service.d"
+# on purpose: systemd applies it to every unit named linuxio-schedule-*.
+run_record_dropin_dirs() {
+	printf '%s\n' \
+		linuxio-schedule-.service.d \
+		linuxio-btrfs-snapshot.service.d \
+		linuxio-docker-update.service.d
+}
+
+# Install the run-record drop-in under each directory of
+# run_record_dropin_dirs inside $1 (owner $2, when given).
+install_run_record_dropins() {
+	local systemd_dir="$1"
+	local owner="${2:-}"
+	local staged="${STAGING}/linuxio-run-record.conf"
+	local dir
+
+	Show 2 "Fetching linuxio-run-record.conf..."
+	if ! fetch_packaging_asset "systemd/linuxio-run-record.conf" "$staged"; then
+		Show 1 "Failed to fetch linuxio-run-record.conf"
+	fi
+	while IFS= read -r dir; do
+		if ! atomic_replace_file "$staged" "${systemd_dir}/${dir}/10-linuxio-run.conf" 0644 "$owner"; then
+			Show 1 "Failed to install ${dir}/10-linuxio-run.conf"
+		fi
+		Show 0 "Installed ${dir}/10-linuxio-run.conf"
+	done < <(run_record_dropin_dirs)
 }
 
 # Administrator-owned configuration, relative to ${CONFIG_DIR}: created when
@@ -611,6 +642,7 @@ install_systemd_files() {
 		fi
 		Show 0 "Installed ${file}"
 	done
+	install_run_record_dropins "$SYSTEMD_DIR" root:root
 
 	if ! SELECTED_PORT=$(find_available_port "$existing_port"); then
 		Show 1 "No available LinuxIO port in supported range ${LINUXIO_PORT_MIN}-${LINUXIO_PORT_MAX}"

@@ -263,7 +263,7 @@ func (r *TaskService) handleTaskEvents(ctx context.Context, conn net.Conn, req R
 
 func (r *TaskService) writeInitialTaskSnapshots(stream net.Conn, owner TaskOwner) bool {
 	for _, snapshot := range r.ListActiveForOwner(owner) {
-		if !writeTaskEvent(stream, TaskEvent{Type: TaskEventSnapshot, Task: snapshot}) {
+		if !WriteTaskEvent(stream, TaskEvent{Type: TaskEventSnapshot, Task: snapshot}) {
 			return false
 		}
 	}
@@ -286,7 +286,7 @@ func (r *TaskService) writeEndedSnapshots(ctx context.Context, stream net.Conn, 
 		if !snapshot.State.Terminal() {
 			continue
 		}
-		if !writeTaskEvent(stream, TaskEvent{Type: TaskEventSnapshot, Task: snapshot}) {
+		if !WriteTaskEvent(stream, TaskEvent{Type: TaskEventSnapshot, Task: snapshot}) {
 			return false
 		}
 	}
@@ -298,7 +298,7 @@ func flushPendingTaskEvents(stream net.Conn, pending map[string]TaskEvent, lastS
 		if sentAt := lastSent[id]; !sentAt.IsZero() && now.Sub(sentAt) < interval {
 			continue
 		}
-		if !writeTaskEvent(stream, event) {
+		if !WriteTaskEvent(stream, event) {
 			return false
 		}
 		lastSent[id] = now
@@ -334,7 +334,7 @@ func writeThrottledTaskProgress(stream net.Conn, event TaskEvent, pending map[st
 }
 
 func writeTrackedTaskEvent(stream net.Conn, event TaskEvent, lastSent map[string]time.Time, now time.Time) bool {
-	if !writeTaskEvent(stream, event) {
+	if !WriteTaskEvent(stream, event) {
 		return false
 	}
 	lastSent[event.Task.ID] = now
@@ -365,7 +365,7 @@ func watchTaskStream(stream net.Conn, task *Task, withSnapshot bool) error {
 	defer unsubscribe()
 
 	snapshot := task.Snapshot()
-	if withSnapshot && !writeTaskEvent(stream, TaskEvent{Type: TaskEventSnapshot, Task: snapshot}) {
+	if withSnapshot && !WriteTaskEvent(stream, TaskEvent{Type: TaskEventSnapshot, Task: snapshot}) {
 		return nil
 	}
 	if !writeWatchReplay(stream, replay, lagged) {
@@ -482,7 +482,10 @@ func monitorDetach(stream net.Conn, done chan<- struct{}) {
 	}
 }
 
-func writeTaskEvent(stream net.Conn, event TaskEvent) bool {
+// WriteTaskEvent writes event as one frame of a tasks.events stream and
+// reports whether it was written. A RemoteTasks's Events writes through it:
+// one Write per event keeps its frames whole on the stream it shares.
+func WriteTaskEvent(stream net.Conn, event TaskEvent) bool {
 	return relay.WriteProgress(stream, 0, event) == nil
 }
 

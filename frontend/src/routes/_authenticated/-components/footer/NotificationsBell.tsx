@@ -13,6 +13,7 @@ import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppPopover from "@/components/ui/AppPopover";
 import AppRouterLinkButton from "@/components/ui/AppRouterLinkButton";
 import AppTooltip from "@/components/ui/AppTooltip";
+import type { BackgroundTaskLink } from "@/tasks/types";
 import { useBackgroundTaskActions } from "@/tasks/useBackgroundTaskActions";
 import {
   useBackgroundTask,
@@ -133,6 +134,8 @@ interface TransferLike {
   id: string;
   indeterminate?: boolean;
   label?: string;
+  /** A scheduled run: no cancel here; the row opens this page. */
+  link?: BackgroundTaskLink;
   progress: number;
   speed?: unknown;
   total?: unknown;
@@ -143,6 +146,7 @@ interface TransferItemProps {
   getTransferIcon: (type: string) => { icon: ReactNode; color: string };
   onCancel: (transfer: TransferLike) => void;
   onIndexerClick: () => void;
+  onLinkClick: () => void;
   id: string;
 }
 
@@ -151,10 +155,12 @@ function TransferItem({
   getTransferIcon,
   onCancel,
   onIndexerClick,
+  onLinkClick,
 }: TransferItemProps) {
   const transfer: TransferLike | null | undefined = useBackgroundTask(id);
   if (!transfer) return null;
   const isIndexer = transfer.type === "indexer";
+  const link = transfer.link;
   const visuals = getTransferIcon(transfer.type);
   const label = transfer.label
     ? removePercentage(transfer.label)
@@ -188,6 +194,35 @@ function TransferItem({
   if (timeRemainingText) rateParts.push(timeRemainingText);
   const rateText = rateParts.join(" \u2022 ");
   const detailText = [statusText, ...rateParts].join(" \u2022 ");
+
+  /* A scheduled run's cancel is refused by the bridge, so its row links to
+     the page that owns the run where other rows offer a cancel. */
+  let action: ReactNode = null;
+  if (link) {
+    action = (
+      <AppRouterLinkButton
+        aria-label={`Open ${label}`}
+        className="app-navbar-notifications__link"
+        onClick={onLinkClick}
+        search={link.search}
+        size="small"
+        to={link.to}
+      >
+        Open
+      </AppRouterLinkButton>
+    );
+  } else if (!isIndexer) {
+    action = (
+      <AppIconButton
+        aria-label="Cancel task"
+        disabled={cancelRequested}
+        onClick={() => onCancel(transfer)}
+        size="small"
+      >
+        <Icon height={22} icon="mdi:close" width={22} />
+      </AppIconButton>
+    );
+  }
 
   return (
     <li
@@ -231,16 +266,7 @@ function TransferItem({
           ) : null}
         </div>
       </div>
-      {!isIndexer ? (
-        <AppIconButton
-          aria-label="Cancel task"
-          disabled={cancelRequested}
-          onClick={() => onCancel(transfer)}
-          size="small"
-        >
-          <Icon height={22} icon="mdi:close" width={22} />
-        </AppIconButton>
-      ) : null}
+      {action}
     </li>
   );
 }
@@ -619,6 +645,7 @@ export function NotificationsBell() {
                     key={`transfer-${transfer.id}`}
                     onCancel={handleCancel}
                     onIndexerClick={openIndexerDialog}
+                    onLinkClick={handleClose}
                     id={transfer.id}
                   />
                 ))}

@@ -2785,6 +2785,7 @@ export interface Service {
 export interface ServiceLogsFollowRequest {
   serviceName: string;
   lines?: string;
+  invocationId?: string;
 }
 
 export interface ServiceNameRequest {

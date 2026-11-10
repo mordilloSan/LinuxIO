@@ -603,7 +603,8 @@ record is written when the job starts and on every state change, and fsynced
 only when a job that ran longer than one second reaches a terminal state or when
 its checkpoint changes. A job that completes in under one second is deleted from
 the store. Terminal records are kept 30 days and at most 200 per uid, pruned
-when a host starts.
+when a host starts. The runs of timers have a store and limits of their own
+([Scheduled runs](#scheduled-runs)).
 
 `tasks.cancel` and a stream abort write `cancel_requested` to the record first
 and only then cancel the job's context. The snapshot stays `running` while the
@@ -637,6 +638,52 @@ crash, a host stopped by hand in this boot, a cancel that overlapped a stop)
 loses `Resumable` when a host starts, so a job is resumed once and never at a
 later reboot. The outcome is written to the same record. There is no manual
 resume.
+
+### Scheduled runs
+
+Work a systemd timer starts is not a job: no route starts it and no job host
+runs it. Each run writes a record of its own from two hooks on its unit
+([Process & Systemd Architecture](./process-systemd-architecture.md#scheduled-runs)):
+`/var/lib/linuxio/jobs/scheduled/<id>.json`, with a copy of its output beside
+it. The root job host reads those records, so the run shows in `tasks.list`
+and `tasks.events` while it runs. Four task types:
+
+| Type | Unit | `metadata.label` | `metadata.identity` |
+|------|------|------------------|---------------------|
+| `scheduled.script` | `linuxio-schedule-<id>.service` | the schedule's name, `Scheduled task` when its definition cannot be read | `[<schedule id>]` |
+| `scheduled.btrfs_snapshot` | `linuxio-btrfs-snapshot.service` | `Snapshots and replication` | none |
+| `scheduled.btrfs_resync` | `linuxio-btrfs-resync@<uuid>.service` | `Pool resync` | `[<pool uuid>]` |
+| `scheduled.docker_update` | `linuxio-docker-update.service` | `Container updates` | none |
+
+- **Who sees them.** Only the root host serves them, so every admin session
+  sees every scheduled run and other users see none. The snapshot's `owner`
+  is root; its `id` is the run's systemd invocation ID written as a UUID.
+- **`tasks.list`** adds the scheduled runs that run.
+- **`tasks.events`** reads the scheduled store every 2 s while a client
+  listens: a `task.snapshot` for each run that runs when the stream opens and
+  for each run that begins, a `task.progress` when a run's progress file
+  changes (the btrfs timer program and the Docker update runner write one;
+  scripts report none, their feedback is their output), and the terminal
+  event when it ends. It lists the store again after a record changes and at
+  least every 30 s. A run shorter than one poll may never be sent.
+- **`tasks.get`** answers for a scheduled run from its record, running or
+  ended.
+- **`tasks.cancel`** of a running scheduled run answers `409` `a scheduled run
+  is stopped on its page`, and **`tasks.watch`** answers `409` `a running
+  scheduled run is followed through tasks.events`. A script stops with
+  `schedules.stop` and a timer's resync with `storage.btrfs_scrub_cancel`;
+  both set `cancel_requested` on the record first, so the run ends `canceled`.
+- **Outcomes.** `completed`; `failed` with a message such as `exited with
+  status 3`, `killed by signal KILL` or `timed out`; `canceled`; `interrupted`
+  with reason `shutdown` when the system was stopping as the run ended. A
+  `running` record counts only while systemd runs the record's invocation in
+  this boot; otherwise the host marks it `interrupted`, `reboot` for a run of
+  an earlier boot and `crash` for one whose end hook never ran.
+
+The Schedules page follows the latest run's output with `logs.service.follow`
+and its `invocationId` ([Streams](#streams)). Listing ended runs and reading
+their saved output belong to the history view of
+[jobs phase 5](./TODO/jobs.md#45-phase-5-history-and-notices).
 
 ### Task lifetime, ownership, and activity
 
@@ -719,7 +766,7 @@ Built-in Task routes:
 | Route | Use |
 |-------|-----|
 | `tasks.get` | Fetch one owned Task or job snapshot. |
-| `tasks.list` | List owned Tasks and the jobs the job host holds. |
+| `tasks.list` | List owned Tasks and the jobs the job host holds; on the root host also the scheduled runs that run. |
 | `tasks.cancel` | Cancel one owned Task or job. |
 | `tasks.watch` | Common progress envelope plus typed detail and terminal result. Closing detaches; aborting cancels. |
 | `tasks.data` | Upload/download/archive data stream. Bridge only. |
@@ -757,7 +804,7 @@ payload-specific helper instead of constructing envelopes directly.
 | `openContainerStream(containerId, shell, cols, rows)` | `container.open` | Container shell. |
 | `openChannel("docker.logs.follow", request)` | `docker.logs.follow` | Direct server-producing container log Channel. |
 | `openChannel("docker.logs.follow_all", request)` | `docker.logs.follow_all` | Direct server-producing merged log Channel for every running container; NDJSON records `{id, name, ts, line, stderr?}`, containers that start later are attached. |
-| `openChannel("logs.service.follow", request)` | `logs.service.follow` | Direct server-producing unit log Channel. |
+| `openChannel("logs.service.follow", request)` | `logs.service.follow` | Direct server-producing unit log Channel. With `invocationId` (32 lowercase hex characters, `400` otherwise) it follows one run: only the lines of that invocation's own processes, control characters kept (`journalctl --all`), in the `short-iso` format a scheduled run's saved output uses. |
 | `openChannel("logs.general.follow", request)` | `logs.general.follow` | Direct journal Channel with backlog progress and cursor resume. |
 | `openAppUpdateStream(runId, version?)` | `control.app_update` | Task-backed app update output. |
 | `openTaskWatchStream(taskId)` | `tasks.watch` | Task progress/result. |

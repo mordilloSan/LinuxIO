@@ -6,8 +6,12 @@ package systemd
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
+
+	godbus "github.com/godbus/dbus/v5"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
 )
@@ -144,6 +148,75 @@ func GetInvocationID(ctx context.Context, name string) (string, error) {
 		return nil
 	})
 	return id, err
+}
+
+// UnitRunsInvocation reports whether unit's current invocation is
+// invocationID and its ActiveState is activating, active, reloading or
+// deactivating. A unit that is not loaded runs nothing. Any other failure to
+// ask, such as a manager that is re-executing or does not answer, is an error,
+// never false.
+func UnitRunsInvocation(ctx context.Context, unit, invocationID string) (bool, error) {
+	if err := requireUnitName(unit); err != nil {
+		return false, err
+	}
+	runs := false
+	err := dbusclient.SystemdManager.UseSession(ctx, func(session dbusclient.SystemSession) error {
+		var path dbusclient.ObjectPath
+		if err := session.CallStore(dbusclient.SystemdManagerIface+".GetUnit", dbusclient.CallPolicy{}, []any{unit}, &path); err != nil {
+			if noSuchUnit(err) {
+				return nil
+			}
+			return fmt.Errorf("get unit %s: %w", unit, err)
+		}
+		obj := session.ObjectAt(path)
+		raw, err := dbusclient.GetProperty[[]byte](session, obj, dbusclient.SystemdUnitIface, "InvocationID")
+		if err != nil {
+			return fmt.Errorf("get invocation id %s: %w", unit, err)
+		}
+		if hex.EncodeToString(raw) != invocationID {
+			return nil
+		}
+		state, err := dbusclient.GetProperty[string](session, obj, dbusclient.SystemdUnitIface, "ActiveState")
+		if err != nil {
+			return fmt.Errorf("get active state %s: %w", unit, err)
+		}
+		switch state {
+		case "activating", "active", "reloading", "deactivating":
+			runs = true
+		}
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+	return runs, nil
+}
+
+// noSuchUnit reports whether err is the manager's answer for a unit that is
+// not loaded.
+func noSuchUnit(err error) bool {
+	var busErr godbus.Error
+	return errors.As(err, &busErr) && busErr.Name == "org.freedesktop.systemd1.NoSuchUnit"
+}
+
+// SystemStopping reports whether the manager's SystemState is "stopping",
+// which is how a host shutting down looks to a unit it is stopping. It is
+// false when the state cannot be read.
+func SystemStopping(ctx context.Context) bool {
+	stopping := false
+	err := dbusclient.SystemdManager.UseSession(ctx, func(session dbusclient.SystemSession) error {
+		state, err := dbusclient.GetProperty[string](session, session.Object(), dbusclient.SystemdManagerIface, "SystemState")
+		if err != nil {
+			return err
+		}
+		stopping = state == "stopping"
+		return nil
+	})
+	if err != nil {
+		slog.Debug("could not read the system state", "error", err)
+		return false
+	}
+	return stopping
 }
 
 // UnitObjectPath resolves a unit's object path, loading the unit when it is

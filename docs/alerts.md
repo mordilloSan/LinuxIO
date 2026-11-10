@@ -26,8 +26,9 @@ host's own mail. This design sits between the two: a store, but a file.
 
 The file is written with the same pattern as `docker-update-status.json`:
 take the lock, read, modify, write atomically. The shared package is
-`backend/common/alerts`. The Docker update worker, the `linuxio` CLI, the
-root job host and privileged bridges all use it.
+`backend/common/alerts`. The Docker update worker, the `linuxio` CLI (also
+as the scheduled units' end hook), the root job host and privileged bridges
+all use it.
 Nothing else opens the file.
 
 Only root can read the file, so only privileged sessions see alerts. That is
@@ -82,6 +83,7 @@ incomplete checks leave the record alone.
 | Docker update outcome | `linuxio-docker-update` worker, already root; the policy is read from `notifications.json` | `docker-update/<name>` (error): a scheduled update fails or the replacement container is not healthy, under the on_failure (default) and on_change policies. `docker-update/updated-<name>` (info): a scheduled update replaced the container, under on_change | Failure: the next successful update of that container. Updated: dismissed by the user |
 | Docker update available | `linuxio-docker-update` worker, after the check every scheduled pass makes (the Check only mode is enough) | `docker-update/available-<name>` (info): the container's image has a newer version, when the Notifications tab asks for pending updates. The occurrence is the remote digest | The next check that finds the container current, or the update that replaces it |
 | Jobs | The root job host (`linuxio-jobs@0`); a user's job host raises none | `jobs/<job id>`: a root job failed, or was interrupted by a shutdown, a host crash or a reboot (not when the root host resumes it after the reboot) | A resumed job that completes clears its interrupted alert; otherwise dismissed by the user |
+| Scheduled scripts | The end hook of `linuxio-schedule-<id>.service` (`linuxio scheduled-run end`, run as root by the unit's `ExecStopPost=` drop-in); the root job host for a run it finds ended without that hook | `jobs/<run id>` (error), one per run: "`<name>` failed" with the reason, such as "exited with status 3", or "`<name>` was interrupted": "The system stopped before the run finished." (the hook saw the shutdown, or the root host found a run of an earlier boot) or "The run ended without reporting its result." (no end hook ran). A stopped run ends canceled and raises none. Timer runs of snapshots, replication, resyncs and Docker updates raise no second alert: the sources of their own rows report their failures | Dismissed by the user; each run has its own record |
 | Btrfs health | `linuxio-btrfs-timer health run` every ten minutes, and the `storage.btrfs_list` bridge route | `btrfs/health-<uuid>`, `btrfs/scrub-<uuid>`, `btrfs/space-<uuid>`, `btrfs/offline-<uuid>`, `btrfs/resync-<uuid>`; see [Btrfs management](./btrfs.md#filesystem-health) | The next check that shows the condition cleared, or the pool gone |
 | Btrfs missing disks | `linuxio-btrfs-timer degraded run` at boot and `linuxio-btrfs-timer resync`; see [Missing disks](./btrfs.md#missing-disks) | At once rather than at the next health run: `btrfs/health-<uuid>` for a pool mounted without a disk, `btrfs/offline-<uuid>` with the reason a pool was left unmounted, `btrfs/resync-<uuid>` when a resync gives up, and the info `btrfs/resynced-<uuid>` when it finished | As Btrfs health; `resynced` stays until dismissed, or until the next resync starts |
 | Btrfs snapshots | `linuxio-btrfs-timer snapshot` (hourly timer, pre-update hook, Run now) | `btrfs/snapshot-<uuid8>-<path>`: a failed snapshot or an unmounted filesystem | The next successful run for that rule |
@@ -202,5 +204,5 @@ unseen count.
   settings.
 - Matchers, digests, push services other than webhooks.
 - `alerts.restore`, `alerts.mark_unseen`, resolved history.
-- Storage, scheduled-task, unit-failure, and release-check sources.
+- Storage, unit-failure, and release-check sources.
 - Alerts raised by unprivileged sessions.

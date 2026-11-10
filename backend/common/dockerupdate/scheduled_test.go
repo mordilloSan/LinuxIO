@@ -129,11 +129,11 @@ func TestRunScheduledPassChecksAllRunningContainersWithoutSelection(t *testing.T
 			checked = summaries
 			return checkErr
 		},
-		update: func(context.Context, []container.Summary, []container.Summary, DockerContainerAutoUpdateOptions) error {
+		update: func(context.Context, []container.Summary, []container.Summary, DockerContainerAutoUpdateOptions, func(string)) error {
 			updateCalled = true
 			return nil
 		},
-	})
+	}, nil)
 	if !errors.Is(err, checkErr) {
 		t.Fatalf("runScheduledPass error = %v", err)
 	}
@@ -159,10 +159,10 @@ func TestRunScheduledPassCanCheckStoppedContainers(t *testing.T) {
 			checked = summaries
 			return nil
 		},
-		update: func(context.Context, []container.Summary, []container.Summary, DockerContainerAutoUpdateOptions) error {
+		update: func(context.Context, []container.Summary, []container.Summary, DockerContainerAutoUpdateOptions, func(string)) error {
 			return errors.New("unexpected update")
 		},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("runScheduledPass: %v", err)
 	}
@@ -190,12 +190,12 @@ func TestRunScheduledPassDispatchesUpdateCleanupOption(t *testing.T) {
 			}
 			return nil
 		},
-		update: func(_ context.Context, summaries, all []container.Summary, opts DockerContainerAutoUpdateOptions) error {
+		update: func(_ context.Context, summaries, all []container.Summary, opts DockerContainerAutoUpdateOptions, _ func(string)) error {
 			called = len(summaries) == 1 && summaries[0].ID == "web-id" &&
 				len(all) == 2 && all[0].ID == "web-id" && opts.Cleanup
 			return nil
 		},
-	})
+	}, nil)
 	if err == nil || !strings.Contains(err.Error(), "missing") || !called {
 		t.Fatalf("runScheduledPass = %v, called %v", err, called)
 	}
@@ -217,13 +217,13 @@ func TestRunScheduledPassUpdateAllSkipsIneligibleContainers(t *testing.T) {
 			}, nil
 		},
 		check: func(context.Context, []container.Summary) error { return nil },
-		update: func(_ context.Context, summaries, _ []container.Summary, _ DockerContainerAutoUpdateOptions) error {
+		update: func(_ context.Context, summaries, _ []container.Summary, _ DockerContainerAutoUpdateOptions, _ func(string)) error {
 			for _, summary := range summaries {
 				updated = append(updated, summary.ID)
 			}
 			return nil
 		},
-	})
+	}, nil)
 	if err != nil || !slices.Equal(updated, []string{"web-id"}) {
 		t.Fatalf("runScheduledPass = %v, updated %v", err, updated)
 	}
@@ -336,5 +336,34 @@ func TestCleanupUnusedUpdateImagesDeduplicatesAndSkipsInUseImages(t *testing.T) 
 	}
 	if len(fake.removed) != 1 || fake.removed[0] != "sha256:old" {
 		t.Fatalf("removed images = %v", fake.removed)
+	}
+}
+
+func TestScheduledPassReportsItsSteps(t *testing.T) {
+	var messages []string
+	err := runScheduledPass(context.Background(), DockerContainerAutoUpdateOptions{
+		Mode:           "update",
+		ContainerNames: []string{"web", "db"},
+	}, scheduledPassOperations{
+		list: func(context.Context) ([]container.Summary, error) {
+			return []container.Summary{
+				{ID: "web-id", Names: []string{"/web"}, State: container.StateRunning},
+				{ID: "db-id", Names: []string{"/db"}, State: container.StateRunning},
+			}, nil
+		},
+		check: func(context.Context, []container.Summary) error { return nil },
+		update: func(_ context.Context, summaries, _ []container.Summary, _ DockerContainerAutoUpdateOptions, announce func(string)) error {
+			for _, summary := range summaries {
+				announce(PrimaryContainerName(summary))
+			}
+			return nil
+		},
+	}, func(message string) { messages = append(messages, message) })
+	if err != nil {
+		t.Fatalf("runScheduledPass: %v", err)
+	}
+	want := []string{"Checking for updates", "Updating web", "Updating db"}
+	if !slices.Equal(messages, want) {
+		t.Fatalf("messages = %q, want %q", messages, want)
 	}
 }

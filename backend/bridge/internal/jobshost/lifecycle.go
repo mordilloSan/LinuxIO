@@ -35,7 +35,8 @@ const (
 // otherwise, and prunes old records before the host takes new jobs. On the
 // root host it returns the resumable jobs the last shutdown or reboot of an
 // earlier boot interrupted, to resume once the host serves; any other
-// interrupted job is never resumed (earlierBootResumes).
+// interrupted job is never resumed (earlierBootResumes). It also marks the
+// scheduled runs that no longer run, which are never resumed.
 func (h *Host) reconcile(ctx context.Context) ([]string, error) {
 	// A record from before boot ids were kept counts as this boot's.
 	thisBoot := func(e jobs.Executor) bool { return e.BootID == "" || e.BootID == h.executor.BootID }
@@ -55,6 +56,11 @@ func (h *Host) reconcile(ctx context.Context) ([]string, error) {
 		slog.Info("job marked interrupted", "job_id", record.ID, "route", record.Route, "reason", record.Reason)
 		if !slices.Contains(resumes, record.ID) {
 			h.alertInterrupted(ctx, record)
+		}
+	}
+	if h.cfg.Scheduled != nil {
+		if _, err := h.scheduledRuns().Running(ctx); err != nil {
+			slog.Warn("scheduled runs not checked at job host start", "error", err)
 		}
 	}
 	h.prune(ctx)

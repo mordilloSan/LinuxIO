@@ -31,7 +31,10 @@ func runResync(ctx context.Context, args []string, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "Usage: linuxio-btrfs-timer resync <uuid>")
 		return 2
 	}
-	if err := resyncPool(ctx, args[0]); err != nil {
+	err := resyncPool(ctx, args[0], func(percent float64) {
+		reportProgress(int(percent), "Scrubbing")
+	})
+	if err != nil {
 		fmt.Fprintf(stderr, "btrfs resync of %s failed: %v\n", args[0], err)
 		return 1
 	}

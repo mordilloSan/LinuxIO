@@ -460,7 +460,7 @@ func TestResyncScrubsThenConvertsSoftly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Resync(ctx, dataUUID); err != nil {
+	if err := Resync(ctx, dataUUID, nil); err != nil {
 		t.Fatal(err)
 	}
 	if balanced.Flags != balanceData || balanced.Data.Flags != balanceArgsConvert|balanceArgsSoft || balanced.Data.Target != bgRaid1 {
@@ -482,7 +482,7 @@ func TestResyncRefusesWhileADiskIsMissing(t *testing.T) {
 	k := raid1Kernel()
 	k.devices[2].path = ""
 	stubKernel(t, k)
-	if err := Resync(context.Background(), dataUUID); !errors.Is(err, errDiskMissing) {
+	if err := Resync(context.Background(), dataUUID, nil); !errors.Is(err, errDiskMissing) {
 		t.Fatalf("Resync = %v, want a missing disk", err)
 	}
 	if states, _ := loadPoolStates(); states[dataUUID].ResyncFailures != 0 {
@@ -499,7 +499,7 @@ func TestResyncDoesNotTrustACanceledScrub(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Resync(ctx, dataUUID); err == nil || !strings.Contains(err.Error(), "canceled before it checked every copy") {
+	if err := Resync(ctx, dataUUID, nil); err == nil || !strings.Contains(err.Error(), "canceled before it checked every copy") {
 		t.Fatalf("Resync = %v", err)
 	}
 	states, _ := loadPoolStates()

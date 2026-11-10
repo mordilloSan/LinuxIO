@@ -40,7 +40,12 @@ type Config struct {
 	// on SocketPath.
 	Listener *net.UnixListener
 	Store    *jobs.Store
-	Router   *bridgeipc.Router
+	// Scheduled is the scheduled runs' store; nil lists none.
+	Scheduled *jobs.Store
+	// UnitActive answers for Scheduled's running records; nil means
+	// systemd.UnitRunsInvocation.
+	UnitActive func(ctx context.Context, unit, invocationID string) (bool, error)
+	Router     *bridgeipc.Router
 	// Handlers builds the router whose handlers act for sess, the user a
 	// connection's hello names; nil serves every connection with Router. The
 	// root host runs every admin's jobs, each as their own user with their
@@ -111,6 +116,9 @@ func newHost(cfg Config) *Host {
 	}
 	if cfg.Peer == nil {
 		cfg.Peer = peercred.Read
+	}
+	if cfg.UnitActive == nil {
+		cfg.UnitActive = systemd.UnitRunsInvocation
 	}
 	h := &Host{cfg: cfg, sessions: make(map[*relay.YamuxSession]struct{}), owners: make(map[string]ownerClaim)}
 	h.rec = &recorder{h: h, jobs: make(map[string]*job)}
@@ -508,11 +516,15 @@ func writeStored(stream net.Conn, record jobs.Record) {
 // storedJobs answers tasks.get, tasks.watch and tasks.cancel of a job the host
 // has no task for from its record: a job that ended before the memory sweep,
 // or before this host started. Records a host did not run, such as the root
-// bridge's network handoffs, are not its jobs.
+// bridge's network handoffs, are not its jobs. On the root host it also lists
+// and follows the scheduled runs (scheduled.go).
 type storedJobs struct{ h *Host }
 
 func (s storedJobs) record(ctx context.Context, id string) (jobs.Record, error) {
 	record, err := s.h.cfg.Store.Get(ctx, id)
+	if errors.Is(err, jobs.ErrNotFound) && s.h.cfg.Scheduled != nil {
+		return s.scheduledRecord(ctx, id)
+	}
 	if errors.Is(err, jobs.ErrNotFound) || (err == nil && record.Executor.Kind != "host") {
 		return record, bridgeipc.NewError(fmt.Sprintf("task not found: %s", id), 404)
 	}
@@ -534,16 +546,28 @@ func (s storedJobs) Get(ctx context.Context, id string) (bridgeipc.TaskSnapshot,
 	if err != nil {
 		return bridgeipc.TaskSnapshot{}, err
 	}
-	return snapshotFromRecord(record), nil
+	return s.snapshot(record), nil
 }
 
-// Cancel finds a stored job ended, with nothing left to cancel.
+// Cancel finds a stored job ended, with nothing left to cancel. A running
+// scheduled run is stopped on the page that owns it.
 func (s storedJobs) Cancel(ctx context.Context, id string) (bridgeipc.TaskSnapshot, error) {
-	return s.Get(ctx, id)
+	record, err := s.record(ctx, id)
+	if err != nil {
+		return bridgeipc.TaskSnapshot{}, err
+	}
+	if scheduledRunning(record) {
+		return bridgeipc.TaskSnapshot{}, bridgeipc.NewError("a scheduled run is stopped on its page", 409)
+	}
+	return s.snapshot(record), nil
 }
 
 func (s storedJobs) Watch(ctx context.Context, stream net.Conn, id string) error {
 	record, err := s.record(ctx, id)
+	if err == nil && scheduledRunning(record) {
+		// It has no task to watch; tasks.events reads its progress file.
+		err = bridgeipc.NewError("a running scheduled run is followed through tasks.events", 409)
+	}
 	if err != nil {
 		_ = relay.WriteResultErrorAndClose(stream, 0, err.Error(), bridgeipc.StatusCode(err))
 		return err
@@ -551,12 +575,6 @@ func (s storedJobs) Watch(ctx context.Context, stream net.Conn, id string) error
 	writeStored(stream, record)
 	return nil
 }
-
-// List adds nothing: a job with no task has ended, and history is listed elsewhere.
-func (storedJobs) List(context.Context) ([]bridgeipc.TaskSnapshot, error) { return nil, nil }
-
-// Events adds nothing: a stored job sends no more events.
-func (storedJobs) Events(context.Context, net.Conn) error { return nil }
 
 // markLost marks interrupted a record a host left running with no task in
 // this host to finish it, such as one whose finish failed to write, and
@@ -580,8 +598,9 @@ func (h *Host) markLost(ctx context.Context, record jobs.Record) jobs.Record {
 	return updated
 }
 
-// snapshotFromRecord is the terminal task snapshot of a stored job. A record
-// still running with no task here was left by a crash: it reads as interrupted.
+// snapshotFromRecord is the task snapshot of a stored job, terminal but for a
+// scheduled run that runs. Any other record still running with no task here
+// was left by a crash: it reads as interrupted.
 func snapshotFromRecord(r jobs.Record) bridgeipc.TaskSnapshot {
 	snapshot := bridgeipc.TaskSnapshot{
 		ID:        r.ID,
@@ -596,6 +615,14 @@ func snapshotFromRecord(r jobs.Record) bridgeipc.TaskSnapshot {
 	}
 	if !r.FinishedAt.IsZero() {
 		snapshot.FinishedAt, snapshot.UpdatedAt = &r.FinishedAt, r.FinishedAt
+	}
+	if len(r.Metadata) > 0 {
+		var metadata bridgeipc.TaskMetadata
+		if err := json.Unmarshal(r.Metadata, &metadata); err != nil {
+			slog.Debug("job record metadata not decoded", "job_id", r.ID, "error", err)
+		} else {
+			snapshot.Metadata = &metadata
+		}
 	}
 	if len(r.Progress) > 0 {
 		var progress bridgeipc.TaskProgress
@@ -622,6 +649,9 @@ func snapshotFromRecord(r jobs.Record) bridgeipc.TaskSnapshot {
 			snapshot.Error.Message = r.Error.Message
 		}
 	default: // interrupted, or running with no task left to finish it
+		if scheduledRunning(r) {
+			break
+		}
 		snapshot.State = bridgeipc.TaskStateInterrupted
 		snapshot.Error = bridgeipc.NewError("job was interrupted", 409)
 	}

@@ -230,11 +230,18 @@ func TestPackageLevelOperationHonorsCanceledContextBeforeConnecting(t *testing.T
 	}
 }
 
-// invocationManager serves GetUnit for the units it knows; the unit object
-// answers property reads.
-type invocationManager struct{ paths map[string]godbus.ObjectPath }
+// invocationManager serves GetUnit for the units it knows and answers it with
+// the D-Bus error named in fail for those units; the unit object answers
+// property reads.
+type invocationManager struct {
+	paths map[string]godbus.ObjectPath
+	fail  map[string]string
+}
 
 func (m invocationManager) GetUnit(name string) (godbus.ObjectPath, *godbus.Error) {
+	if errName, ok := m.fail[name]; ok {
+		return "", &godbus.Error{Name: errName, Body: []any{"refused"}}
+	}
 	path, ok := m.paths[name]
 	if !ok {
 		return "", &godbus.Error{Name: "org.freedesktop.systemd1.NoSuchUnit", Body: []any{"not loaded"}}
@@ -285,5 +292,101 @@ func TestGetInvocationID(t *testing.T) {
 		if got != want {
 			t.Fatalf("GetInvocationID(%s) = %q, want %q", name, got, want)
 		}
+	}
+}
+
+func TestUnitRunsInvocation(t *testing.T) {
+	bus := testdbus.Start(t)
+	bus.SetSystemBus(t)
+	conn := bus.OwnName(t, dbusclient.SystemdBusName)
+	runID := []byte{0xde, 0xad, 0xbe, 0xef, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}
+	const run = "deadbeef0102030405060708090a0b0c"
+	// Each loaded unit runs invocation run in the state given; "" leaves a
+	// property out, so reading it fails.
+	units := map[string]struct{ invocation, state string }{
+		"activating.service":   {run, "activating"},
+		"active.service":       {run, "active"},
+		"reloading.service":    {run, "reloading"},
+		"deactivating.service": {run, "deactivating"},
+		"inactive.service":     {run, "inactive"},
+		"failed.service":       {run, "failed"},
+		"stateless.service":    {run, ""},
+		"anonymous.service":    {"", "active"},
+	}
+	manager := invocationManager{paths: map[string]godbus.ObjectPath{}, fail: map[string]string{
+		"busy.service":    "org.freedesktop.DBus.Error.LimitsExceeded",
+		"reexec.service":  "org.freedesktop.DBus.Error.ServiceUnknown",
+		"timeout.service": "org.freedesktop.DBus.Error.NoReply",
+	}}
+	for name := range units {
+		manager.paths[name] = godbus.ObjectPath("/org/freedesktop/systemd1/unit/" + strings.TrimSuffix(name, ".service"))
+	}
+	if err := conn.Export(manager, godbus.ObjectPath(dbusclient.SystemdPath), dbusclient.SystemdManagerIface); err != nil {
+		t.Fatalf("export manager: %v", err)
+	}
+	for name, unit := range units {
+		props := unitProperties{}
+		if unit.invocation != "" {
+			props[dbusclient.SystemdUnitIface+".InvocationID"] = godbus.MakeVariant(runID)
+		}
+		if unit.state != "" {
+			props[dbusclient.SystemdUnitIface+".ActiveState"] = godbus.MakeVariant(unit.state)
+		}
+		if err := conn.Export(props, manager.paths[name], dbusclient.PropertiesIface); err != nil {
+			t.Fatalf("export unit %s: %v", name, err)
+		}
+	}
+
+	for _, tt := range []struct {
+		unit, invocation string
+		want             bool
+	}{
+		{"activating.service", run, true},
+		{"active.service", run, true},
+		{"reloading.service", run, true},
+		{"deactivating.service", run, true},
+		{"inactive.service", run, false},
+		{"failed.service", run, false},
+		{"active.service", "0123456789abcdef0123456789abcdef", false},
+		{"missing.service", run, false}, // NoSuchUnit: not loaded, so not running
+	} {
+		got, err := UnitRunsInvocation(t.Context(), tt.unit, tt.invocation)
+		if err != nil {
+			t.Fatalf("UnitRunsInvocation(%s, %s): %v", tt.unit, tt.invocation, err)
+		}
+		if got != tt.want {
+			t.Errorf("UnitRunsInvocation(%s, %s) = %v, want %v", tt.unit, tt.invocation, got, tt.want)
+		}
+	}
+	// Systemd could not be asked: the caller must leave the run as it is.
+	for _, unit := range []string{"busy.service", "reexec.service", "timeout.service", "stateless.service", "anonymous.service"} {
+		if got, err := UnitRunsInvocation(t.Context(), unit, run); err == nil || got {
+			t.Errorf("UnitRunsInvocation(%s) = %v, %v; want false and an error", unit, got, err)
+		}
+	}
+}
+
+func TestSystemStopping(t *testing.T) {
+	for state, want := range map[string]bool{"running": false, "stopping": true} {
+		t.Run(state, func(t *testing.T) {
+			bus := testdbus.Start(t)
+			bus.SetSystemBus(t)
+			conn := bus.OwnName(t, dbusclient.SystemdBusName)
+			props := unitProperties{dbusclient.SystemdManagerIface + ".SystemState": godbus.MakeVariant(state)}
+			if err := conn.Export(props, godbus.ObjectPath(dbusclient.SystemdPath), dbusclient.PropertiesIface); err != nil {
+				t.Fatalf("export manager properties: %v", err)
+			}
+			if got := SystemStopping(t.Context()); got != want {
+				t.Fatalf("SystemStopping = %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+func TestSystemStoppingIsFalseWithoutAManager(t *testing.T) {
+	bus := testdbus.Start(t)
+	bus.SetSystemBus(t)
+	if SystemStopping(t.Context()) {
+		t.Fatal("SystemStopping is true with no manager on the bus")
 	}
 }

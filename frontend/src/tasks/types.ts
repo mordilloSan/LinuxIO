@@ -99,12 +99,20 @@ export interface Move extends ByteTrackedTaskItem<"move"> {
   source: string;
 }
 
+/** A page in the app, with its search parameters. */
+export interface BackgroundTaskLink {
+  to: string;
+  search?: Record<string, string>;
+}
+
 export interface BackgroundTask extends TrackedTaskItem<"task"> {
   /**
    * The job's cancel was requested, here or elsewhere. It keeps running
    * until its handler returns, so the row stays until the job ends.
    */
   cancelRequested?: boolean;
+  /** A scheduled run: no cancel here; the row opens this page. */
+  link?: BackgroundTaskLink;
   taskType: string;
   processed?: number;
 }

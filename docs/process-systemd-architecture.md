@@ -23,7 +23,7 @@ LinuxIO uses **privilege separation** (the same shape Cockpit uses): split the s
 
 | Binary | Lang | Source | Runs as | Lifetime | Role |
 |--------|------|--------|---------|----------|------|
-| `linuxio` | Go | `backend/cli/` | invoking user (often via `sudo`) | on-demand | CLI: status, logs, start/stop/restart, verbose, version |
+| `linuxio` | Go | `backend/cli/` | invoking user (often via `sudo`); root in the scheduled units' hooks | on-demand | CLI: status, logs, start/stop/restart, verbose, version; records scheduled runs |
 | `linuxio-webserver` | Go | `backend/webserver/` | `DynamicUser` + group `linuxio-bridge-socket` | long-running (socket-activated) | HTTP + WebSocket relay; **yamux client** |
 | `linuxio-auth` | C | `backend/auth/linuxio-auth.c` | `root` | per auth connection (supervises its bridge) | PAM authentication, sudoers policy query, fork + supervise bridge |
 | `linuxio-bridge` | Go | `backend/bridge/` | logged-in user (root only if privileged); the job host as its uid | per login session; the job host per uid, started by a connection to its socket, idle exit | **yamux server**; executes reads and relays mutations to the job host; the job host runs mutations as jobs |
@@ -44,7 +44,7 @@ the auth/bridge launch protocol.
 
 | Binary | Supported interactive surface | Managed or private surface |
 |---|---|---|
-| `linuxio` | `status`, `logs`, `start`, `stop`, `restart [--full]`, `verbose enable\|disable\|status` (daemons switch live via SIGHUP reload, open sessions at next login; persists across restarts; also in Settings), `version [--self]`, `help`/`-h`/`--help` | `alert raise\|resolve\|auto-update` for systemd hooks (needs sudo); hidden `btrfs-snapshot`/`btrfs-health` shims that exec `linuxio-btrfs-timer` for units installed by earlier releases |
+| `linuxio` | `status`, `logs`, `start`, `stop`, `restart [--full]`, `verbose enable\|disable\|status` (daemons switch live via SIGHUP reload, open sessions at next login; persists across restarts; also in Settings), `version [--self]`, `help`/`-h`/`--help` | `alert raise\|resolve\|auto-update` for systemd hooks (needs sudo); `scheduled-run begin\|end --unit <unit>`, the hooks of the scheduled units ([Scheduled runs](#scheduled-runs)); hidden `btrfs-snapshot`/`btrfs-health` shims that exec `linuxio-btrfs-timer` for units installed by earlier releases |
 | `linuxio-webserver` | `help`/`-h`/`--help`, `version`/`-v`/`--version` | `run [-port N] [-verbose]`; used by `linuxio-webserver.service` |
 | `linuxio-auth` | `version`, `--version` | No-argument accepted-socket process; root and systemd only |
 | `linuxio-bridge` | `version`, `--version`, `-v` | No-argument session process with inherited fd 3 and auth bootstrap; `linuxio-auth` only. With no arguments and the `linuxio-jobs` socket from systemd, the job host (`linuxio-jobs@<uid>.service`). |
@@ -91,7 +91,8 @@ linuxio-btrfs-degraded.service       boot oneshot, WantedBy=multi-user.target, e
                                      pools udev holds back for a device replace target normally
                                      (`linuxio-btrfs-timer degraded run`)
 linuxio-btrfs-resync@<uuid>.service  started by the health check once a returned disk is back;
-                                     runs `linuxio-btrfs-timer resync <uuid>` (scrub, then soft convert)
+                                     runs `linuxio-btrfs-timer resync <uuid>` (scrub, then soft convert);
+                                     its unit file carries the scheduled-run hooks itself
 linuxio-jobs@<uid>.socket            /run/linuxio/jobs/<uid>.sock, 0600, owned by the uid; started by
                                      linuxio-auth at that user's login and by root for uid 0; a
                                      connection starts the host whenever it is down
@@ -141,6 +142,86 @@ The webserver runs as a `DynamicUser` — its uid is **ephemeral** and changes a
 - `linuxio-webserver.service` joins that group via `Group=linuxio-bridge-socket`.
 
 So the (uid-less) webserver can `connect()` to the root-owned auth socket purely through stable group membership.
+
+### Scheduled runs
+
+The units systemd timers start record each run in a job store of their own
+([jobs design, section 2.14](./TODO/jobs.md#214-scheduled-runs)): scheduled
+scripts (`linuxio-schedule-<id>.service`), btrfs snapshots and replication
+(`linuxio-btrfs-snapshot.service`), pool resyncs
+(`linuxio-btrfs-resync@<uuid>.service`) and Docker updates
+(`linuxio-docker-update.service`). Two hooks do it:
+
+```ini
+[Service]
+ExecStartPre=-+/usr/local/bin/linuxio scheduled-run begin --unit %n
+ExecStopPost=-+/usr/local/bin/linuxio scheduled-run end --unit %n
+```
+
+- **Where they are.** Never in a rendered unit: `schedules.run_now` refuses a
+  schedule whose unit file differs from what the build renders, so the hooks
+  live in packaged files. The installer copies
+  `packaging/systemd/linuxio-run-record.conf` to `10-linuxio-run.conf` in
+  `/etc/systemd/system/linuxio-schedule-.service.d/` (a prefix directory, so
+  every `linuxio-schedule-<id>.service` gets it),
+  `linuxio-btrfs-snapshot.service.d/` and `linuxio-docker-update.service.d/`,
+  then reloads systemd. `linuxio-btrfs-resync@.service` carries the two lines
+  itself. A drop-in alone loads no unit: until a snapshot rule or the Docker
+  update settings are saved, that unit stays `not-found`. Schedules saved
+  before an update record their runs after it without being saved again.
+- **`+` and `-`.** `+` runs the hook as root, outside the unit's `User=` and
+  sandbox: a script runs as the user it was given, and the Docker update unit
+  has `ProtectSystem=strict`. `-` makes systemd ignore a failed hook, a missing
+  `linuxio` binary included, so recording never stops or fails a run. A hook
+  reads nothing but `--unit` and the environment systemd gives it
+  (`$INVOCATION_ID`, and for `end` `$SERVICE_RESULT`, `$EXIT_CODE` and
+  `$EXIT_STATUS`), refuses a unit that is none of the four, and gives itself
+  10 s, below the `TimeoutStopSec=15s` of a scheduled script's unit.
+- **`begin`** writes the `running` record, with an fsync: the ID is the
+  invocation ID written as a UUID, the route and label come from the unit name
+  (a script's label is its name in
+  `/etc/linuxio/schedules/definitions/<id>.json`), the owner is root and the
+  executor `{kind: unit, unit, invocation_id, boot_id}`. It runs as
+  `ExecStartPre=`, so its time counts against the unit's start timeout, and a
+  schedule's timeout can be as short as 1 s.
+- **`end`** writes the outcome: `success` is `completed`; otherwise the run is
+  `canceled` when its record carries `cancel_requested`, `interrupted` with
+  reason `shutdown` when systemd's `SystemState` reads `stopping`, and
+  `failed` with the reason otherwise. A run whose `begin` wrote nothing gets
+  its record here. Then, in this order, it prunes the unit's older runs,
+  copies the run's journal lines to `<id>.log` beside the record
+  (`journalctl --sync`, then `_SYSTEMD_INVOCATION_ID=<id> --all -o
+  short-iso`: every line keeps its time, and control characters are kept)
+  under a limit of its own of 5 s, and raises the alert of a script that
+  failed or was interrupted ([Alerts](./alerts.md)). The alert is raised even
+  when the command's 10 s have run out, and its delivery by webhook or mail
+  (up to 15 s) can outlast them and the unit's stop timeout; the record, the
+  prune and the output are done by then.
+- **Stopping.** `schedules.stop` sets `cancel_requested` on the record of the
+  invocation it names, then stops that invocation; a stop that arrives after
+  its run ended marks nothing. A scrub cancel (`storage.btrfs_scrub_cancel`)
+  marks the running record of the pool's resync unit, then cancels the scrub,
+  which ends the resync; it does not stop the unit. When the stop or the
+  cancel fails, the mark is taken back.
+- **Store.** `/var/lib/linuxio/jobs/scheduled/` (`0700`, root) holds each
+  run's `<id>.json` and `<id>.log` (`0600`). An output longer than 10 MiB keeps
+  its first and last 5 MiB with one line between saying how many bytes were
+  left out. Each unit keeps its newest 50 ended runs and none older than 30
+  days, and a run's output goes with its record. The btrfs timer program and
+  the Docker update runner write their run's progress to
+  `/run/linuxio/jobs/scheduled/<id>.progress`, finding the run through
+  `$INVOCATION_ID`.
+- **Liveness.** The root job host lists the running scheduled runs for
+  `tasks.list` and `tasks.events` ([API Contract](./api-contract.md#scheduled-runs)).
+  At its start and at every listing it marks a `running` record `interrupted`:
+  `reboot` when it is from an earlier boot, `crash` when systemd no longer runs
+  its invocation: the unit is not loaded, runs another invocation, or is
+  neither `activating`, `active`, `reloading` nor `deactivating`. Of the D-Bus
+  errors only `NoSuchUnit` (a unit that is not loaded) counts as gone; any
+  other leaves the record as it is.
+
+`linuxio-btrfs-health.service`, the degraded mount at boot, the indexer's
+timer and the distribution's package auto-update are not recorded.
 
 ## Boot & Login Flow
 
@@ -310,6 +391,7 @@ follow the [Production Diagnostic Data Policy](./production-diagnostics.md).
 | Bridge entry point | `backend/bridge/cmd/lifecycle.go`, `cmd/yamux.go` |
 | Job host, client and their commands | `backend/bridge/internal/jobshost`, `backend/bridge/internal/jobsclient`, `backend/bridge/cmd/jobs_host.go` and `jobs_relay.go` (bridge → host relay) |
 | Job store | `backend/common/jobs`; records in `/var/lib/linuxio/jobs/<uid>/`, live progress in `/run/linuxio/jobs/<uid>/`, the host socket at `/run/linuxio/jobs/<uid>.sock` |
+| Scheduled runs | hooks in `packaging/systemd/linuxio-run-record.conf` (installed as `10-linuxio-run.conf` in three drop-in directories) and `linuxio-btrfs-resync@.service`; command `backend/cli/scheduled_run.go`; recording, output copy and liveness `backend/common/scheduledrun`; listing in the root host `backend/bridge/internal/jobshost/scheduled.go`; records, outputs and progress in `/var/lib/linuxio/jobs/scheduled/` and `/run/linuxio/jobs/scheduled/` |
 | Indexer daemon and API | `backend/indexer/`, `backend/indexer/api/` |
 | Monitoring daemon and shared wire types | `backend/monitoring/`, `backend/monitoring/api/` |
 | Build | `Makefile` + `mk/go.mk` (`build-*`, `build-go-binaries`, `build-binaries`); output in `build/` |
