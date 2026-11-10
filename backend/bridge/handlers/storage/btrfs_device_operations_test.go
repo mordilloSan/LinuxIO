@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -110,6 +111,33 @@ func hooksOf[Req any](req Req, suspend func(context.Context, Req, jsontext.Value
 	}
 }
 
+// callIn names a call, marking one made with a context that already ended.
+func callIn(ctx context.Context, call string) string {
+	if ctx.Err() != nil {
+		return call + " (ended context)"
+	}
+	return call
+}
+
+// replaceFollow is how following a replace ends: with err, or because the
+// user cancels the job; a follow after the kernel cancel ends afterCancel.
+type replaceFollow struct {
+	err, afterCancel error
+	userCancels      bool
+}
+
+func (f replaceFollow) next(ctx context.Context, canceled bool) error {
+	switch {
+	case canceled:
+		return f.afterCancel
+	case f.userCancels:
+		task, _ := bridgeipc.TaskFromContext(ctx)
+		task.Cancel()
+		return ctx.Err()
+	}
+	return f.err
+}
+
 // TestBtrfsResumeHooks drives each resumable route's Suspend and Resume
 // through the btrfs seams: what Suspend checkpoints, and which btrfs calls
 // Resume makes from it.
@@ -117,9 +145,9 @@ func TestBtrfsResumeHooks(t *testing.T) {
 	var calls []string
 	record := func(format string, args ...any) { calls = append(calls, fmt.Sprintf(format, args...)) }
 	var (
-		paused     bool
-		positions  map[int]uint64
-		replaceErr error
+		paused    bool
+		positions map[int]uint64
+		follow    replaceFollow
 	)
 	oldPause, oldResumeBalance, oldBalanceResult := btrfsPauseBalance, btrfsResumeBalance, btrfsBalanceResult
 	oldPositions, oldScrubCancel, oldScrubFrom := btrfsScrubPositions, btrfsScrubCancel, btrfsScrubFrom
@@ -155,20 +183,20 @@ func TestBtrfsResumeHooks(t *testing.T) {
 		record("scrub-from %v nil=%v", starts, starts == nil)
 		return btrfs.BtrfsScrubStatus{Status: "finished"}, nil
 	}
-	btrfsResumeReplace = func(_ context.Context, _ string, id int, _ time.Time, _ func(float64)) error {
-		record("resume-replace %d", id)
-		return replaceErr
+	btrfsResumeReplace = func(ctx context.Context, _ string, id int, _ time.Time, _ func(float64)) error {
+		record("%s", callIn(ctx, fmt.Sprintf("resume-replace %d", id)))
+		return follow.next(ctx, slices.Contains(calls, "cancel-replace 3"))
 	}
-	btrfsCancelReplace = func(context.Context, string) error {
-		record("cancel-replace")
+	btrfsCancelReplace = func(ctx context.Context, _ string, id int) error {
+		record("%s", callIn(ctx, fmt.Sprintf("cancel-replace %d", id)))
 		return nil
 	}
-	btrfsResumeRemove = func(_ context.Context, _ string, id int) error {
+	btrfsResumeRemove = func(_ context.Context, _ string, id int, _ func(float64)) error {
 		record("resume-remove %d", id)
 		return nil
 	}
-	btrfsFindFilesystem = func(context.Context, string) (btrfs.BtrfsFilesystem, error) {
-		record("find")
+	btrfsFindFilesystem = func(ctx context.Context, _ string) (btrfs.BtrfsFilesystem, error) {
+		record("%s", callIn(ctx, "find"))
 		return btrfs.BtrfsFilesystem{}, nil
 	}
 
@@ -180,7 +208,7 @@ func TestBtrfsResumeHooks(t *testing.T) {
 		name        string
 		paused      bool
 		positions   map[int]uint64
-		replaceErr  error
+		follow      replaceFollow
 		interrupted bool
 		hooks       func(ctx context.Context) (jsontext.Value, error, error)
 		checkpoint  string
@@ -216,13 +244,21 @@ func TestBtrfsResumeHooks(t *testing.T) {
 			calls: []string{"resume-replace 3", "find"},
 		},
 		{
-			name: "replace canceled by the user is canceled in the kernel", replaceErr: context.Canceled,
+			name:       "replace canceled by the user is canceled in the kernel",
+			follow:     replaceFollow{userCancels: true, afterCancel: errors.New("the replace of device 3 did not survive the interruption; start it again")},
 			hooks:      hooksOf(replace, suspendBtrfsReplace, resumeBtrfsReplace),
-			calls:      []string{"resume-replace 3", "cancel-replace"},
+			calls:      []string{"resume-replace 3", "cancel-replace 3", "resume-replace 3"},
 			wantCancel: true,
 		},
 		{
-			name: "replace interrupted is left to the kernel", replaceErr: context.Canceled, interrupted: true,
+			// The kernel had installed the new disk before the cancel reached it.
+			name:   "replace that finished as the user canceled is a success",
+			follow: replaceFollow{userCancels: true},
+			hooks:  hooksOf(replace, suspendBtrfsReplace, resumeBtrfsReplace),
+			calls:  []string{"resume-replace 3", "cancel-replace 3", "resume-replace 3", "find"},
+		},
+		{
+			name: "replace interrupted is left to the kernel", follow: replaceFollow{err: context.Canceled}, interrupted: true,
 			hooks:      hooksOf(replace, suspendBtrfsReplace, resumeBtrfsReplace),
 			calls:      []string{"resume-replace 3"},
 			wantCancel: true,
@@ -235,7 +271,7 @@ func TestBtrfsResumeHooks(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			calls, paused, positions, replaceErr = nil, c.paused, c.positions, c.replaceErr
+			calls, paused, positions, follow = nil, c.paused, c.positions, c.follow
 			var checkpoint jsontext.Value
 			var suspendErr, resumeErr error
 			inTask(t, c.interrupted, func(ctx context.Context) { checkpoint, suspendErr, resumeErr = c.hooks(ctx) })
@@ -258,6 +294,42 @@ func TestBtrfsResumeHooks(t *testing.T) {
 	}
 }
 
+// A removal reports the share it has moved through its task, in the first run
+// and in a resumed one.
+func TestBtrfsRemoveReportsProgress(t *testing.T) {
+	oldRemove, oldResume, oldFind := btrfsRemoveDevice, btrfsResumeRemove, btrfsFindFilesystem
+	t.Cleanup(func() { btrfsRemoveDevice, btrfsResumeRemove, btrfsFindFilesystem = oldRemove, oldResume, oldFind })
+	moved := func(_ context.Context, _ string, _ int, report func(float64)) error {
+		report(40)
+		return nil
+	}
+	btrfsRemoveDevice, btrfsResumeRemove = moved, moved
+	btrfsFindFilesystem = func(context.Context, string) (btrfs.BtrfsFilesystem, error) { return btrfs.BtrfsFilesystem{}, nil }
+	req := apischema.BtrfsDeviceRequest{UUID: testBtrfsUUID, DeviceID: 3}
+	for name, run := range map[string]func(context.Context, *bridgeipc.Task) error{
+		"first run": func(ctx context.Context, task *bridgeipc.Task) error {
+			_, err := runBtrfsDeviceRemoveTask(ctx, task, req)
+			return err
+		},
+		"resumed": func(ctx context.Context, _ *bridgeipc.Task) error {
+			_, err := resumeBtrfsRemove(ctx, req, nil)
+			return err
+		},
+	} {
+		inTask(t, false, func(ctx context.Context) {
+			task, _ := bridgeipc.TaskFromContext(ctx)
+			if err := run(ctx, task); err != nil {
+				t.Errorf("%s: %v", name, err)
+				return
+			}
+			progress := task.Snapshot().Progress
+			if progress == nil || progress.Percentage == nil || *progress.Percentage != 40 || progress.Phase != "remove" {
+				t.Errorf("%s: progress = %+v, want 40%% of a remove", name, progress)
+			}
+		})
+	}
+}
+
 // A resume that cannot finish fails the job with its cause, and neither
 // reports success nor reads the filesystem.
 func TestBtrfsResumeHookFailures(t *testing.T) {
@@ -267,7 +339,7 @@ func TestBtrfsResumeHookFailures(t *testing.T) {
 	t.Cleanup(func() {
 		btrfsResumeRemove, btrfsScrubFrom, btrfsFindFilesystem = oldResumeRemove, oldScrubFrom, oldFind
 	})
-	btrfsResumeRemove = func(context.Context, string, int) error { return cause }
+	btrfsResumeRemove = func(context.Context, string, int, func(float64)) error { return cause }
 	// A device of the first part aborted, so the merged outcome is aborted.
 	btrfsScrubFrom = func(context.Context, string, map[int]uint64, func(btrfs.BtrfsScrubStatus)) (btrfs.BtrfsScrubStatus, error) {
 		return btrfs.BtrfsScrubStatus{Status: "aborted"}, nil

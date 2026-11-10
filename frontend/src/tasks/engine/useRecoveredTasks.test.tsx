@@ -78,6 +78,7 @@ function makeRuntime(): BackgroundTaskRuntime {
     activeIndexerIdsRef: { current: new Set<string>() },
     allocateDownloadLabelBase: vi.fn((base: string) => base),
     cancelBridgeTask: vi.fn(),
+    locallyCanceledTaskIdsRef: { current: new Set<string>() },
     pendingLocalTaskKeysRef: { current: makeCountedSet() },
     primeTransferRate: vi.fn(),
     recordTransferRate: vi.fn(() => undefined),

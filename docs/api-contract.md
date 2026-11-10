@@ -607,7 +607,10 @@ when a host starts.
 
 `tasks.cancel` and a stream abort write `cancel_requested` to the record first
 and only then cancel the job's context. The snapshot stays `running` while the
-handler cleans up (there is no "canceling" state), and the record becomes
+handler cleans up and carries `cancel_requested: true`: `tasks.cancel` returns
+it, and `tasks.events` sends a `task.snapshot` frame for the change, so a client
+can show the job as cancelling and withhold a second cancel. A watch stream
+carries no such frame, only progress and the outcome. The record becomes
 `canceled` only when the handler returns, whatever error it returns after the
 cancel; the job's target stays taken until then. A job with `cancel_requested`
 is never resumed, and a host stop that overlaps the cancel leaves it to end

@@ -63,15 +63,19 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
       error: "Failed to add device",
       toast: BTRFS_POOL_TOAST_META,
     });
+  // A canceled balance runs on until the kernel finishes the chunk in hand.
+  const [canceling, setCanceling] = useState(false);
   const { mutate: cancelBalance } =
     linuxio.storage.btrfs_balance_cancel.useMutation({
       error: "Failed to cancel balance",
       toast: BTRFS_POOL_TOAST_META,
+      options: { onError: () => setCanceling(false) },
     });
   // A balance with a job is canceled through the job, so the record gets
   // cancel_requested and a shutdown right after does not resume it. Only a
   // balance without a running job falls back to the kernel cancel.
   const cancelBalanceJob = async () => {
+    setCanceling(true);
     const jobs = await call("tasks.list", { status: "active" }).catch(() => []);
     const job = jobs.find(
       (task) =>
@@ -86,6 +90,7 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
     try {
       await call("tasks.cancel", { taskId: job.id });
     } catch (error) {
+      setCanceling(false);
       toast.error(getMutationErrorMessage(error, "Failed to cancel balance"), {
         meta: BTRFS_POOL_TOAST_META,
       });
@@ -103,7 +108,12 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
     success,
     error,
     toast: BTRFS_POOL_TOAST_META,
-    options: { onSettled: () => setProgress(null) },
+    options: {
+      onSettled: () => {
+        setProgress(null);
+        setCanceling(false);
+      },
+    },
   });
   const removeDevice = linuxio.storage.btrfs_device_remove.useMutation(
     taskConfig("Device removed", "Failed to remove device"),
@@ -120,7 +130,10 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
     type: TASK_TYPE_STORAGE_BTRFS_BALANCE,
     scanKey: uuid,
     match: (task) => task.metadata?.identity?.[0] === uuid,
-    onRecover: (task) => balance.watch(task.id, { uuid }),
+    onRecover: (task) => {
+      setCanceling(task.cancel_requested === true);
+      balance.watch(task.id, { uuid });
+    },
   });
 
   const pending =
@@ -283,11 +296,12 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
             </AppTypography>
             {balance.isPending && (
               <AppButton
+                disabled={canceling}
                 onClick={() => void cancelBalanceJob()}
                 size="small"
                 variant="outlined"
               >
-                Cancel
+                {canceling ? "Cancelling…" : "Cancel"}
               </AppButton>
             )}
           </div>

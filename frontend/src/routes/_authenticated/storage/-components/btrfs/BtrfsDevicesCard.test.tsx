@@ -329,6 +329,24 @@ describe("BtrfsDevicesCard actions", () => {
     expect(
       mocks.mutations["storage.btrfs_balance_cancel"],
     ).not.toHaveBeenCalled();
+    // The balance stops once the kernel finishes the chunk in hand.
+    expect(screen.getByRole("button", { name: "Cancelling…" })).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: "Cancel" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers the cancel again when the request fails", async () => {
+    const user = userEvent.setup();
+    mocks.pending.add("btrfs_balance");
+    mocks.tasks.mockReturnValue([balanceJob("mine", "uuid-1")]);
+    mocks.cancelTask.mockRejectedValueOnce(new Error("bridge offline"));
+    render(<BtrfsDevicesCard filesystem={filesystem(2)} />);
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => expect(mocks.cancelTask).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole("button", { name: "Cancel" })).toBeEnabled();
   });
 
   it("cancels in the kernel when the balance has no running job", async () => {
@@ -477,6 +495,51 @@ describe("BtrfsDevicesCard actions", () => {
     );
     expect(mocks.cancelTask).toHaveBeenCalledTimes(1);
     expect(route("btrfs_scrub_cancel")).not.toHaveBeenCalled();
+    // The scrub stops when its job's handler returns.
+    expect(screen.getByRole("button", { name: "Stopping…" })).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: "Stop check" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers Stop check again when the request fails, and for the next scrub", async () => {
+    const user = userEvent.setup();
+    mocks.tasks.mockReturnValue([
+      {
+        id: "mine",
+        metadata: { identity: ["uuid-1", "scrub"] },
+        state: "running",
+        type: "storage.btrfs_scrub_start",
+      },
+    ]);
+    mocks.cancelTask.mockRejectedValueOnce(new Error("bridge offline"));
+    const running = filesystem(1);
+    running.scrub = {
+      ...running.scrub,
+      startedAt: "2026-11-09T10:00:00Z",
+      status: "running",
+    };
+    const view = render(<BtrfsHealthBanner filesystem={running} />);
+
+    await user.click(screen.getByRole("button", { name: "Stop check" }));
+    await waitFor(() => expect(mocks.cancelTask).toHaveBeenCalledTimes(1));
+    expect(
+      await screen.findByRole("button", { name: "Stop check" }),
+    ).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "Stop check" }));
+    expect(
+      await screen.findByRole("button", { name: "Stopping…" }),
+    ).toBeDisabled();
+    // A later scrub is a new one to stop.
+    const next = filesystem(1);
+    next.scrub = {
+      ...next.scrub,
+      startedAt: "2026-11-09T12:00:00Z",
+      status: "running",
+    };
+    view.rerender(<BtrfsHealthBanner filesystem={next} />);
+    expect(screen.getByRole("button", { name: "Stop check" })).toBeEnabled();
   });
 
   it("offers to grow a device whose disk is bigger than the filesystem's view", async () => {

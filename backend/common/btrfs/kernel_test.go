@@ -33,6 +33,7 @@ type fakeKernel struct {
 	spaces     []spaceInfo
 	fail       map[uintptr]error
 	calls      []string
+	trees      fakeTrees // what tree searches find, such as the replace item
 
 	balance         func(*balanceArgs) error
 	balanceProgress func() (balanceArgs, error)
@@ -61,11 +62,13 @@ func (k *fakeKernel) Calls() []string {
 
 func (k *fakeKernel) cancel() { k.cancelOnce.Do(func() { close(k.cancelled) }) }
 
-func (k *fakeKernel) ioctl(_ string, req uintptr, arg unsafe.Pointer) error {
+func (k *fakeKernel) ioctl(path string, req uintptr, arg unsafe.Pointer) error {
 	if err, ok := k.fail[req]; ok {
 		return err
 	}
 	switch req {
+	case iocTreeSearchV2:
+		return k.trees.ioctl(path, req, arg)
 	case iocFSInfo:
 		a := (*fsInfoArgs)(arg)
 		requested := a.Flags
@@ -85,7 +88,9 @@ func (k *fakeKernel) ioctl(_ string, req uintptr, arg unsafe.Pointer) error {
 		}
 		a.Path = [1024]byte{}
 		copy(a.Path[:], d.path)
+		k.mu.Lock() // a remove hook moves data off a device while it is polled
 		a.TotalBytes, a.BytesUsed = d.total, d.used
+		k.mu.Unlock()
 	case iocGetDevStats:
 		a := (*devStatsArgs)(arg)
 		d, ok := k.devices[a.DevID]

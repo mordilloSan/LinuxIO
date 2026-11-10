@@ -245,7 +245,7 @@ func (p *itPool) devices() {
 	if len(fs.Devices) != 3 || i < 0 {
 		t.Fatalf("after add: %v", devicePaths(fs))
 	}
-	p.must("remove device", RemoveDevice(p.ctx, p.uuid, fs.Devices[i].ID))
+	p.must("remove device", RemoveDevice(p.ctx, p.uuid, fs.Devices[i].ID, func(float64) {}))
 	if got := devicePaths(p.filesystem()); !slices.Equal(got, []string{p.disks[0], p.disks[2]}) {
 		t.Fatalf("after remove: %v", got)
 	}

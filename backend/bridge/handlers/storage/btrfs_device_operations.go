@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
@@ -40,6 +41,7 @@ var (
 	btrfsScrubFrom      = btrfs.ScrubFrom
 	btrfsResumeReplace  = btrfs.ResumeReplace
 	btrfsCancelReplace  = btrfs.CancelReplace
+	btrfsRemoveDevice   = btrfs.RemoveDevice
 	btrfsResumeRemove   = btrfs.ResumeRemove
 	btrfsGrowDevice     = btrfs.GrowDevice
 	btrfsFindFilesystem = btrfs.FindFilesystem
@@ -123,11 +125,15 @@ func runBtrfsPoolCreateTask(ctx context.Context, task *bridgeipc.Task, req apisc
 func runBtrfsDeviceRemoveTask(ctx context.Context, task *bridgeipc.Task, req apischema.BtrfsDeviceRequest) (btrfs.BtrfsFilesystem, error) {
 	slog.Debug("removing btrfs device", "uuid", req.UUID, "device", req.DeviceID)
 	task.ReportProgress(BtrfsOpProgress{Op: "remove", Message: fmt.Sprintf("Moving data off device %d", req.DeviceID)})
-	if err := btrfs.RemoveDevice(ctx, req.UUID, req.DeviceID); err != nil {
+	if err := btrfsRemoveDevice(ctx, req.UUID, req.DeviceID, removeReporter(task, req.DeviceID)); err != nil {
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("remove btrfs device %d of %s: %w", req.DeviceID, req.UUID, err)
 	}
 	slog.Info("removed btrfs device", "uuid", req.UUID, "device", req.DeviceID)
-	return btrfs.FindFilesystem(ctx, req.UUID)
+	return btrfsFindFilesystem(ctx, req.UUID)
+}
+
+func removeReporter(task *bridgeipc.Task, id int) func(float64) {
+	return progressReporter(task, "remove", fmt.Sprintf("Moving data off device %d", id))
 }
 
 // suspendBtrfsRemove keeps no checkpoint: the job's context cancel that
@@ -141,7 +147,8 @@ func suspendBtrfsRemove(context.Context, apischema.BtrfsDeviceRequest, jsontext.
 // removal finished would be removed here; practically unreachable at boot.
 func resumeBtrfsRemove(ctx context.Context, req apischema.BtrfsDeviceRequest, _ jsontext.Value) (btrfs.BtrfsFilesystem, error) {
 	slog.Debug("resuming btrfs device removal", "uuid", req.UUID, "device", req.DeviceID)
-	if err := btrfsResumeRemove(ctx, req.UUID, req.DeviceID); err != nil {
+	task, _ := bridgeipc.TaskFromContext(ctx)
+	if err := btrfsResumeRemove(ctx, req.UUID, req.DeviceID, removeReporter(task, req.DeviceID)); err != nil {
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("resume removal of btrfs device %d of %s: %w", req.DeviceID, req.UUID, err)
 	}
 	slog.Info("removed btrfs device", "uuid", req.UUID, "device", req.DeviceID, "resumed", true)
@@ -180,6 +187,10 @@ func growReplaced(ctx context.Context, uuid string, id int, fs btrfs.BtrfsFilesy
 	return fs
 }
 
+// replaceSettle bounds the wait for a canceled replace to end either way,
+// well inside the time a stopping job host is given.
+const replaceSettle = 30 * time.Second
+
 // suspendBtrfsReplace keeps no checkpoint. In the first run the job's context
 // cancel that follows cancels the kernel replace, which keeps the source.
 // Resume finds a replace running when a power loss cut it, or when a shutdown
@@ -191,15 +202,28 @@ func suspendBtrfsReplace(context.Context, apischema.BtrfsDeviceReplaceRequest, j
 
 // resumeBtrfsReplace follows a replace the kernel resumed, or accepts one it
 // finished since the job started, never starting one: the target path may
-// name another disk after a reboot. A user cancel cancels it. An interrupt
+// name another disk after a reboot. A user cancel cancels it, unless the
+// kernel installed the new disk first, which is a success. An interrupt
 // leaves it to the kernel: the unmount suspends it and the next mount
 // resumes it.
 func resumeBtrfsReplace(ctx context.Context, req apischema.BtrfsDeviceReplaceRequest, _ jsontext.Value) (btrfs.BtrfsFilesystem, error) {
 	slog.Debug("following resumed btrfs replace", "uuid", req.UUID, "device", req.DeviceID)
 	task, _ := bridgeipc.TaskFromContext(ctx)
-	err := btrfsResumeReplace(ctx, req.UUID, req.DeviceID, apischema.JobStartedAt(ctx), progressReporter(task, "replace", "Replacing"))
+	started, report := apischema.JobStartedAt(ctx), progressReporter(task, "replace", "Replacing")
+	err := btrfsResumeReplace(ctx, req.UUID, req.DeviceID, started, report)
 	if errors.Is(err, context.Canceled) && (task == nil || !task.Interrupted()) {
-		err = errors.Join(err, btrfsCancelReplace(context.WithoutCancel(ctx), req.UUID))
+		// The cancel is too late for a replace in its last step, and how it
+		// ended shows only once the kernel settled: follow it again, briefly.
+		ctx = context.WithoutCancel(ctx)
+		settle, stop := context.WithTimeout(ctx, replaceSettle)
+		defer stop()
+		if cancelErr := btrfsCancelReplace(ctx, req.UUID, req.DeviceID); cancelErr != nil {
+			err = errors.Join(err, cancelErr)
+		} else if followErr := btrfsResumeReplace(settle, req.UUID, req.DeviceID, started, report); followErr != nil {
+			slog.Debug("canceled btrfs replace did not install the new disk", "uuid", req.UUID, "device", req.DeviceID, "error", followErr)
+		} else {
+			err = nil
+		}
 	}
 	if err != nil {
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("resume replace of btrfs device %d of %s: %w", req.DeviceID, req.UUID, err)

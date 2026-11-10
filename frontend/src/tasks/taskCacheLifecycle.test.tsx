@@ -1,6 +1,7 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { toast } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Stream, TaskSnapshot } from "@/api";
@@ -372,5 +373,99 @@ describe("task streams write the shared cache", () => {
         .onResult?.({ status: "error", error: "Pull failed" }),
     );
     expect(queryClient.getQueryData(key)).toBeUndefined();
+  });
+
+  it("keeps a generic task it cancels in the tray until the job ends", async () => {
+    const { queryClient, events, watches, result } = setup();
+    const task = snapshot("docker", TASK_TYPE_DOCKER_UPDATE);
+    await act(async () =>
+      events.onProgress?.({ task, type: "task.snapshot" } as never),
+    );
+    const key = backgroundTaskKeys.task("anonymous", task.id);
+
+    await act(async () => result.current.generic.cancelTask(task.id));
+    expect(mocks.cancel).toHaveBeenCalledWith("tasks.cancel", {
+      taskId: task.id,
+    });
+    // The job ends when its handler returns: the row stays, marked.
+    expect(queryClient.getQueryData(key)).toMatchObject({
+      type: "task",
+      cancelRequested: true,
+    });
+    expect(watches.get(task.id)!.abort).not.toHaveBeenCalled();
+    expect(toast.info).not.toHaveBeenCalled();
+
+    await act(async () =>
+      watches.get(task.id)!.onResult?.({
+        status: "error",
+        error: "operation aborted",
+        code: 499,
+      }),
+    );
+    expect(queryClient.getQueryData(key)).toBeUndefined();
+    expect(toast.info).toHaveBeenCalledWith("Task cancelled");
+    // The cancel was asked for here, so the type's own report stays silent.
+    expect(toast.error).not.toHaveBeenCalled();
+
+    // A late event of the ended job brings its row back for a moment: the
+    // end is not reported a second time.
+    await act(async () =>
+      events.onProgress?.({ task, type: "task.progress" } as never),
+    );
+    await act(async () =>
+      watches.get(task.id)!.onResult?.({
+        status: "error",
+        error: "operation aborted",
+        code: 499,
+      }),
+    );
+    expect(queryClient.getQueryData(key)).toBeUndefined();
+    expect(toast.info).toHaveBeenCalledTimes(1);
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it("gives the cancel back when the request fails", async () => {
+    const { queryClient, events, result } = setup();
+    const task = snapshot("docker", TASK_TYPE_DOCKER_UPDATE);
+    await act(async () =>
+      events.onProgress?.({ task, type: "task.snapshot" } as never),
+    );
+    mocks.cancel.mockRejectedValueOnce(new Error("bridge offline"));
+    await act(async () => result.current.generic.cancelTask(task.id));
+    expect(
+      queryClient.getQueryData(backgroundTaskKeys.task("anonymous", task.id)),
+    ).toMatchObject({ type: "task", cancelRequested: false });
+    expect(toast.error).toHaveBeenCalledWith("bridge offline");
+  });
+
+  it("marks a task cancelling when the backend says its cancel was requested", async () => {
+    const { queryClient, events } = setup();
+    // Already being canceled when this tab first sees it.
+    const late = {
+      ...snapshot("late", TASK_TYPE_DOCKER_UPDATE),
+      cancel_requested: true,
+    };
+    // Canceled from a page or another session while its row is shown.
+    const known = snapshot("known", TASK_TYPE_DOCKER_UPDATE);
+    await act(async () => {
+      events.onProgress?.({ task: late, type: "task.snapshot" } as never);
+      events.onProgress?.({ task: known, type: "task.snapshot" } as never);
+    });
+    const keyOf = (id: string) => backgroundTaskKeys.task("anonymous", id);
+    expect(queryClient.getQueryData(keyOf(late.id))).toMatchObject({
+      cancelRequested: true,
+    });
+    expect(queryClient.getQueryData(keyOf(known.id))).not.toMatchObject({
+      cancelRequested: true,
+    });
+    await act(async () =>
+      events.onProgress?.({
+        task: { ...known, cancel_requested: true },
+        type: "task.snapshot",
+      } as never),
+    );
+    expect(queryClient.getQueryData(keyOf(known.id))).toMatchObject({
+      cancelRequested: true,
+    });
   });
 });

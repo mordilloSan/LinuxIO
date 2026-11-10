@@ -107,6 +107,11 @@ const BtrfsHealthBanner = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
     : `The filesystem${mountpoint ? ` at ${mountpoint}` : ""}`;
   const health = healthOf(filesystem, name);
   const scrubRunning = filesystem.scrub.status === "running";
+  // The scrub being stopped, named by its start: it runs on until its job's
+  // handler returns, and a later scrub is another one to stop.
+  const scrubRun = filesystem.scrub.startedAt ?? "";
+  const [stoppingScrub, setStoppingScrub] = useState<string | null>(null);
+  const stopping = scrubRunning && stoppingScrub === scrubRun;
   const missing = filesystem.devices.find((d) => d.missing);
 
   const taskConfig = (success: string, error: string) => ({
@@ -127,11 +132,13 @@ const BtrfsHealthBanner = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
     linuxio.storage.btrfs_scrub_cancel.useMutation({
       error: "Failed to stop the check",
       toast: BTRFS_POOL_TOAST_META,
+      options: { onError: () => setStoppingScrub(null) },
     });
   // A scrub with a job is canceled through the job, so the record gets
   // cancel_requested and a shutdown right after does not resume it. Only a
   // scrub without a running job (the timer's) falls back to the kernel cancel.
   const stopCheck = async () => {
+    setStoppingScrub(scrubRun);
     const jobs = await call("tasks.list", { status: "active" }).catch(() => []);
     const job = jobs.find(
       (task) =>
@@ -146,6 +153,7 @@ const BtrfsHealthBanner = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
     try {
       await call("tasks.cancel", { taskId: job.id });
     } catch (error) {
+      setStoppingScrub(null);
       toast.error(getMutationErrorMessage(error, "Failed to stop the check"), {
         meta: BTRFS_POOL_TOAST_META,
       });
@@ -191,11 +199,12 @@ const BtrfsHealthBanner = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
       )}
       {scrubRunning ? (
         <AppButton
+          disabled={stopping}
           onClick={() => void stopCheck()}
           size="small"
           variant="outlined"
         >
-          Stop check
+          {stopping ? "Stopping…" : "Stop check"}
         </AppButton>
       ) : (
         <AppButton

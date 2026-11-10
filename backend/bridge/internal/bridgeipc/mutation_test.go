@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -462,6 +463,124 @@ func TestCancelNotifiesRecorderBeforeContext(t *testing.T) {
 				t.Fatalf("recorder calls = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+// unwindingTask starts a task whose handler, once stopped, keeps running
+// until unwound is closed, and subscribes to the service's events.
+func unwindingTask(t *testing.T) (task *Task, events <-chan TaskEvent, unwound chan struct{}) {
+	t.Helper()
+	registry := NewTaskService()
+	router := NewRouter(registry)
+	unwound = make(chan struct{})
+	route := registeredMutation(t, router, "test.mutation", func(ctx context.Context, _ *Task, _ any) (any, error) {
+		<-ctx.Done()
+		<-unwound // the handler is still stopping its work
+		return nil, ctx.Err()
+	})
+	task, _, err := startJob(router, route, Request{Route: route.Name}, testJobID(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, unsubscribe := registry.Subscribe(8)
+	t.Cleanup(unsubscribe)
+	return task, events, unwound
+}
+
+func nextTaskEvent(t *testing.T, events <-chan TaskEvent) TaskEvent {
+	t.Helper()
+	select {
+	case event := <-events:
+		return event
+	case <-time.After(5 * time.Second):
+		t.Fatal("no task event")
+		return TaskEvent{}
+	}
+}
+
+// A canceled task stays running until its handler returns. Meanwhile its
+// snapshot says the cancel was requested and subscribers are told at once, so
+// a client can show that the cancel is under way.
+func TestCancelMarksTheRunningSnapshot(t *testing.T) {
+	task, events, unwound := unwindingTask(t)
+	task.Cancel()
+	if got := task.Snapshot(); got.State != TaskStateRunning || !got.CancelRequested {
+		t.Fatalf("snapshot after the cancel = %s with cancel_requested %t, want running with the request", got.State, got.CancelRequested)
+	}
+	if event := nextTaskEvent(t, events); event.Type != TaskEventSnapshot || event.Task.State != TaskStateRunning || !event.Task.CancelRequested {
+		t.Fatalf("event = %s %s with cancel_requested %t, want a running snapshot with the request", event.Type, event.Task.State, event.Task.CancelRequested)
+	}
+	close(unwound)
+	<-task.Done()
+	if got := task.Snapshot(); got.State != TaskStateCanceled || !got.CancelRequested {
+		t.Fatalf("final snapshot = %s with cancel_requested %t, want canceled with the request", got.State, got.CancelRequested)
+	}
+	if event := nextTaskEvent(t, events); event.Task.State != TaskStateCanceled {
+		t.Fatalf("next event = %s %s, want the task ended canceled", event.Type, event.Task.State)
+	}
+}
+
+// endsDuringCancel is a recorder under which the task ends, and its terminal
+// event is sent, while its cancel request is still being recorded.
+type endsDuringCancel struct {
+	fakeRecorder
+	finish chan struct{}
+	events <-chan TaskEvent
+}
+
+func (r *endsDuringCancel) CancelRequested(*Task) {
+	close(r.finish)
+	for event := range r.events {
+		if event.Task.State.Terminal() {
+			return
+		}
+	}
+}
+
+// A running snapshot sent after the terminal event would bring a finished
+// task back into a client's list, so a cancel request that lost the race
+// with the task's end is not announced.
+func TestCancelRequestIsNotAnnouncedAfterTheTaskEnded(t *testing.T) {
+	registry := NewTaskService()
+	ended, stopWatching := registry.Subscribe(8)
+	defer stopWatching()
+	recorder := &endsDuringCancel{finish: make(chan struct{}), events: ended}
+	registry.SetRecorder(recorder)
+	router := NewRouter(registry)
+	route := registeredMutation(t, router, "test.mutation", func(context.Context, *Task, any) (any, error) {
+		<-recorder.finish // ends by itself as the cancel request is recorded
+		return nil, nil
+	})
+	task, _, err := startJob(router, route, Request{Route: route.Name}, testJobID(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, unsubscribe := registry.Subscribe(8)
+	defer unsubscribe()
+
+	task.Cancel()
+	if event := nextTaskEvent(t, events); event.Task.State != TaskStateCompleted {
+		t.Fatalf("first event = %s %s, want the task ended completed", event.Type, event.Task.State)
+	}
+	select {
+	case event := <-events:
+		t.Fatalf("event after the task ended = %s %s with cancel_requested %t", event.Type, event.Task.State, event.Task.CancelRequested)
+	default:
+	}
+}
+
+// A host stop is not the owner's cancel: nothing is marked or announced, and
+// the next event is the task's end.
+func TestInterruptDoesNotMarkCancelRequested(t *testing.T) {
+	task, events, unwound := unwindingTask(t)
+	task.Interrupt()
+	if got := task.Snapshot(); got.State != TaskStateRunning || got.CancelRequested {
+		t.Fatalf("snapshot after the stop = %s with cancel_requested %t, want running without a request", got.State, got.CancelRequested)
+	}
+	close(unwound)
+	<-task.Done()
+	if event := nextTaskEvent(t, events); event.Task.State != TaskStateInterrupted || event.Task.CancelRequested {
+		t.Fatalf("next event = %s %s with cancel_requested %t, want the task ended interrupted", event.Type, event.Task.State, event.Task.CancelRequested)
 	}
 }
 

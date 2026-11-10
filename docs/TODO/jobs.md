@@ -262,7 +262,7 @@ Retention: terminal records are kept 30 days and at most 200 per uid; pruning ru
 
 **Finish.** The result frame goes to attached streams; the record is written `completed` or `failed`; a failed job raises an alert (section 2.13). A `completed` job younger than one second is dropped from the store.
 
-**Cancel.** `tasks.cancel` or an abort sets `cancel_requested` in the record *first*, then cancels the context. The handler's own cleanup runs (removing a partial copy, `BALANCE_CTL cancel`, `SCRUB_CANCEL`, `DEV_REPLACE cancel`). The record becomes `canceled` only when the handler has returned.
+**Cancel.** `tasks.cancel` or an abort sets `cancel_requested` in the record *first*, then cancels the context. The handler's own cleanup runs (removing a partial copy, `BALANCE_CTL cancel`, `SCRUB_CANCEL`, `DEV_REPLACE cancel`). The record becomes `canceled` only when the handler has returned. Until then the task snapshot reads `running` with `cancel_requested`, which a `task.snapshot` event on `tasks.events` announces.
 
 **Interrupt.** A SIGTERM to the host with no `cancel_requested` on a job is a shutdown. For a non-resumable job the context is cancelled and the record is written `interrupted/shutdown`. For a resumable job the host calls the route's `Suspend(ctx, record)` hook with a deadline inside `TimeoutStopSec`; the hook returns the `checkpoint` and the record is written `interrupted/shutdown`, before the context is cancelled. The contract is generic: any route may declare the two hooks, and the host and the store know nothing about what they do. The first four resumable routes are the btrfs operations, because the kernel ties them to a process.
 
@@ -294,7 +294,7 @@ What each event does to a job, as phase 1 implements it:
 - **`systemctl stop` or orderly shutdown**: running jobs become `interrupted/shutdown`, resumable ones after `Suspend` stored a checkpoint and before their context is cancelled; the root host alerts. A job with `cancel_requested` is left to end `canceled`.
 - **Host crash or kill**: the next start of that uid's host marks its `running` records whose pid and start time are gone `interrupted/crash`; the root host alerts.
 - **Reboot or power loss**: the root host, started at boot, marks its `running` records `interrupted/reboot`, resumes the resumable ones (rule above) and alerts on the rest; a user's host marks theirs the same way when their next login connects.
-- **Cancel** (`tasks.cancel`, stream abort): `cancel_requested` is written to the record, then the job's context is cancelled; the record becomes `canceled` only when the handler returns, whatever error it returns after the cancel, and the target stays taken until then. A snapshot stays `running` meanwhile: there is no "canceling" state in the UI.
+- **Cancel** (`tasks.cancel`, stream abort): `cancel_requested` is written to the record, then the job's context is cancelled; the record becomes `canceled` only when the handler returns, whatever error it returns after the cancel, and the target stays taken until then. A snapshot stays `running` meanwhile and carries `cancel_requested`; the tray row and the storage controls read "Cancelling…" until the job ends (section 3.7).
 
 ### 2.12 Updates
 
@@ -547,7 +547,8 @@ Seen on the way. None of these blocks phase 3:
 - No browser cancel path set `cancel_requested` for a scrub: the banner's
   "Stop check" called `storage.btrfs_scrub_cancel` and bypassed `tasks.cancel`,
   and the tray did not list scrubs or balances. The cancel-then-SIGTERM path
-  is covered by unit tests only. If such a stop raced a host SIGTERM, the
+  was covered by unit tests only (since checked in the VM, section 3.7). If
+  such a stop raced a host SIGTERM, the
   record would read `interrupted/shutdown` without `cancel_requested` and be
   resumed (inferred from the code, window of a few milliseconds). Resolved for
   scrubs: "Stop check" now cancels the scrub's job through `tasks.cancel` and
@@ -571,6 +572,60 @@ Seen on the way. None of these blocks phase 3:
   slow disks, `systemctl stop` can take a while.
 - The root test step `balanceKill` is flaky on a nearly full shared test pool
   (the kernel aborts a transaction with ENOSPC); it passed in every other run.
+  Explained and fixed in section 3.7.
+
+### 3.7 Phase 3 follow-ups (2026-11-09)
+
+Six items the phase left open, as built.
+
+- **A cancel shows in the UI.** A canceled job keeps running until its handler
+  returns (a balance or a removal finishes the chunk in hand). The task
+  snapshot now carries `cancel_requested`, set when a running task is
+  canceled; `tasks.cancel` returns it and `tasks.events` sends a
+  `task.snapshot` event for it, which also drops a progress event the
+  throttle held back, since that one is older. The event is never sent after
+  the task's terminal event, which would bring an ended job back into a
+  client's list (`TestCancelRequestIsNotAnnouncedAfterTheTaskEnded`). The tray
+  keeps the row of a job it cancels, reading "Cancelling…" with the cancel
+  disabled, and reports
+  "Task cancelled" when the job ends; before, it removed the row at once and
+  the next event of the still running job brought it back. A cancel from a
+  page or another session marks the row the same way. The Devices card's
+  **Cancel** and the banner's **Stop check** read "Cancelling…" and
+  "Stopping…" and are disabled until the job ends. Device removal and replace
+  still have no cancel control and no tray row.
+- **Device removal reports progress**: the share of the device's allocation
+  the kernel has freed (`DEV_INFO` `bytes_used`, which the kernel lowers as
+  each chunk goes). A resumed removal counts from 0 for what is left.
+- **A replace that finished as the user canceled** (resume path only) ends
+  `completed`: after the cancel the handler follows the replace again, for at
+  most 30 seconds, and takes a `FINISHED` one as the success it is, growing
+  a bigger disk as usual.
+- **The source of a followed replace is checked.** `ResumeReplace` reads the
+  replace item of the dev tree (`src_devid`) and refuses a running replace of
+  another device, and `CancelReplace` leaves such a replace running. The
+  kernel names no source once the replace ended, or when a degraded mount
+  lacked it; those are followed, and canceled, as before.
+- **Cancel, then a host stop** is checked in the VM: a balance canceled in
+  the browser with the disks slowed to 2 MiB/s, `systemctl stop` while the
+  record still reads `running` with `cancel_requested`, then a reboot. The
+  record ends `canceled`, nothing is resumed and the kernel logs no
+  `balance: resume`.
+- **`balanceKill` flake.** By that step every interrupted balance had left
+  half-filled chunks, and the 4 GiB test disks were 70 to 90 % allocated
+  (2878 to 3693 MiB of 4096 across four runs), so a relocation could find no
+  unallocated room. With 3.3 GiB disks the balance steps fail every time with
+  the kernel's `enospc errors during balance`. The disks are 8 GiB now
+  (sparse, 4384 MiB allocated at that step), and a failed run logs the
+  kernel's btrfs messages.
+
+Checked in the test VM (kernel 7.0.0-42): `make vm-test-btrfs-integration`
+passes its four tests, with the removal reporting a rise on a real kernel and
+`ResumeReplace` refusing device 1's job while device 2 is replaced;
+`make test-vm-browser` passes its 21 checks, the new one included.
+`make test-quiet` passes. The pre-6.19 `replaceKill` branch is still not
+exercised, and these changes have not run on the development machine's
+kernel as root.
 
 ## 4. Left to do
 
@@ -776,14 +831,12 @@ Moved out of phase 3 (not lost):
 
 - The submit CLI and the host's resume call (D6) were removed in Task 12;
   phase 4 designs how timers reach the job store (section 4.1).
-- A "canceling" state in the UI: `cancel_requested` stays backend-only and the
-  snapshot stays `running` until the handler returns.
 - Periodic scrub checkpoints: a power loss rescans from 0.
-- Progress for device removal.
 
-The overview and the bridge's offline-pool mount counting a replace target as
-a present disk also moved out, and was fixed afterwards in `4d73aac5`
-(section 3.6).
+Three more moved out and were done afterwards: the "canceling" state in the UI
+and the progress for device removal (section 3.7), and the overview and the
+bridge's offline-pool mount counting a replace target as a present disk
+(`4d73aac5`, section 3.6).
 
 ### 4.4 Phase 4: schedules and system jobs
 
@@ -975,12 +1028,11 @@ and tag `v7.0` (2026-11-06), and checked in the VM.
   balance. Pinned by `TestBalancePauseIsNotCanceledByTheJobContext`.
 - **Straddling extent**: errors in the extent a scrub's cut falls in are
   counted twice after a resume. Accepted.
-- Reviewers' minor items not fixed in phase 3: the resume of a replace does not
-  check the source device id (only that the target's id is present); a cancel
-  of a replace answered `NOT_STARTED` after the kernel finished leaves a job
-  `canceled` while the pool holds the new disk; the pre-6.19 `replaceKill`
-  branch has never run on a real kernel (the VM and the development machine
-  run 7.0).
+- Reviewers' minor items: the resume of a replace did not check the source
+  device id, and a cancel of a replace answered `NOT_STARTED` after the
+  kernel finished left a job `canceled` while the pool held the new disk.
+  Both are fixed (section 3.7). Still open: the pre-6.19 `replaceKill` branch
+  has never run on a real kernel (the VM and the development machine run 7.0).
 
 ### Other open items
 

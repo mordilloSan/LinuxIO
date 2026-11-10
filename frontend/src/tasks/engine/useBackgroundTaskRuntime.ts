@@ -28,6 +28,8 @@ export interface BackgroundTaskRuntime {
   activeIndexerIdsRef: RefObject<Set<string>>;
   allocateDownloadLabelBase: (base: string, id: string) => string;
   cancelBridgeTask: (id: string) => void;
+  /** Generic tasks the tray canceled, which reports their end itself. */
+  locallyCanceledTaskIdsRef: RefObject<Set<string>>;
   pendingLocalTaskKeysRef: RefObject<CountedSet>;
   primeTransferRate: (id: string, initialBytes?: number) => void;
   recordTransferRate: (
@@ -54,6 +56,7 @@ export function useBackgroundTaskRuntime(): BackgroundTaskRuntime {
   const activeBackgroundTaskIdsRef = useRef<Set<string>>(new Set());
   const activeFileTransferTaskIdsRef = useRef<Set<string>>(new Set());
   const recoveringTaskIdsRef = useRef<Set<string>>(new Set());
+  const locallyCanceledTaskIdsRef = useRef<Set<string>>(new Set());
   const pendingLocalTaskKeysRef = useMemo<RefObject<CountedSet>>(
     () => ({ current: makeCountedSet() }),
     [],
@@ -157,6 +160,7 @@ export function useBackgroundTaskRuntime(): BackgroundTaskRuntime {
       activeBackgroundTaskIdsRef,
       activeFileTransferTaskIdsRef,
       recoveringTaskIdsRef,
+      locallyCanceledTaskIdsRef,
       pendingLocalTaskKeysRef,
       streamRefsRef,
       transferRatesRef,
@@ -173,6 +177,7 @@ export function useBackgroundTaskRuntime(): BackgroundTaskRuntime {
       activeIndexerIdsRef,
       allocateDownloadLabelBase,
       cancelBridgeTask,
+      locallyCanceledTaskIdsRef,
       pendingLocalTaskKeysRef,
       primeTransferRate,
       recoveringTaskIdsRef,

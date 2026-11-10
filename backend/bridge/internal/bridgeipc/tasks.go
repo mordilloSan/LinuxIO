@@ -80,18 +80,21 @@ func (o TaskOwner) MatchesDurable(other TaskOwner) bool {
 }
 
 type TaskSnapshot struct {
-	ID         string        `json:"id"`
-	Type       string        `json:"type"`
-	Metadata   *TaskMetadata `json:"metadata,omitzero"`
-	Owner      TaskOwner     `json:"owner"`
-	State      TaskState     `json:"state"`
-	Progress   *TaskProgress `json:"progress,omitzero"`
-	Result     any           `json:"result,omitzero"`
-	Error      *Error        `json:"error,omitzero"`
-	CreatedAt  time.Time     `json:"created_at"`
-	StartedAt  *time.Time    `json:"started_at,omitzero"`
-	UpdatedAt  time.Time     `json:"updated_at"`
-	FinishedAt *time.Time    `json:"finished_at,omitzero"`
+	ID       string        `json:"id"`
+	Type     string        `json:"type"`
+	Metadata *TaskMetadata `json:"metadata,omitzero"`
+	Owner    TaskOwner     `json:"owner"`
+	State    TaskState     `json:"state"`
+	// CancelRequested is set once the owner cancels a running task, which
+	// stays running until its handler returns.
+	CancelRequested bool          `json:"cancel_requested,omitzero"`
+	Progress        *TaskProgress `json:"progress,omitzero"`
+	Result          any           `json:"result,omitzero"`
+	Error           *Error        `json:"error,omitzero"`
+	CreatedAt       time.Time     `json:"created_at"`
+	StartedAt       *time.Time    `json:"started_at,omitzero"`
+	UpdatedAt       time.Time     `json:"updated_at"`
+	FinishedAt      *time.Time    `json:"finished_at,omitzero"`
 }
 
 // TaskProgress is the common snapshot-retained progress envelope. Generic Task
@@ -232,6 +235,10 @@ type Task struct {
 	cancel           context.CancelFunc
 	// interrupted makes the cancellation end the task interrupted, not canceled.
 	interrupted bool
+	// cancelRequested is set once the owner cancels the running task.
+	cancelRequested bool
+	// publishMu orders the cancel-request snapshot before the terminal event.
+	publishMu   sync.Mutex
 	done        chan struct{}
 	doneOnce    sync.Once
 	subscribers map[chan TaskEvent]*eventSubscriber
@@ -517,25 +524,13 @@ func ownersMatch(lifetime TaskLifetime, taskOwner, requester TaskOwner) bool {
 func (j *Task) Snapshot() TaskSnapshot {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
-	return TaskSnapshot{
-		ID:         j.id,
-		Type:       j.typ,
-		Metadata:   cloneTaskMetadata(j.metadata),
-		Owner:      j.owner,
-		State:      j.state,
-		Progress:   j.progress,
-		Result:     j.result,
-		Error:      j.err,
-		CreatedAt:  j.createdAt,
-		StartedAt:  cloneTimePtr(j.startedAt),
-		UpdatedAt:  j.updatedAt,
-		FinishedAt: cloneTimePtr(j.finishedAt),
-	}
+	return j.snapshotLocked()
 }
 
 // Cancel requests cancellation of the task. If the task is queued, it is marked
-// canceled immediately; if running, the request is recorded, the context is
-// canceled, and the task turns canceled when its handler returns.
+// canceled immediately; if running, the request is recorded and announced in
+// a snapshot event, the context is canceled, and the task turns canceled when
+// its handler returns.
 func (j *Task) Cancel() { j.stop(false) }
 
 // Interrupt stops the task because its job host is shutting down. It is
@@ -573,15 +568,40 @@ func (j *Task) stop(interrupt bool) {
 		return
 	}
 	rec, running := j.recorder, j.state == TaskStateRunning
+	var requested *TaskEvent
+	if running && !interrupt && !j.cancelRequested {
+		j.cancelRequested = true
+		j.updatedAt = time.Now().UTC()
+		requested = &TaskEvent{Type: TaskEventSnapshot, Task: j.snapshotLocked()}
+	}
 	j.mu.Unlock()
 	// Recorded first, so a shutdown or reboot before the handler returns
 	// neither suspends nor resumes a job its owner canceled.
 	if running && !interrupt && rec != nil {
 		rec.CancelRequested(j)
 	}
+	if requested != nil {
+		j.announceCancelRequest(*requested)
+	}
 	// A running task owns its runner; cancellation is delivered through its
 	// context and the runner's normal terminal path publishes the event.
 	j.cancel()
+}
+
+// announceCancelRequest tells task lists that the owner canceled the running
+// task, whose handler may take a while to stop; a watch stream carries only
+// progress and the outcome. A task that ended meanwhile has sent its terminal
+// event, which a running snapshot must not follow.
+func (j *Task) announceCancelRequest(event TaskEvent) {
+	if j.registry == nil {
+		return
+	}
+	j.publishMu.Lock()
+	defer j.publishMu.Unlock()
+	if j.IsTerminal() {
+		return
+	}
+	j.registry.broadcast(event)
 }
 
 // CancelTasksForSession cancels all non-terminal tasks belonging to the given session.
@@ -847,7 +867,9 @@ func (j *Task) publishTerminal(event TaskEvent) {
 		rec.Finished(j)
 	}
 	j.signalDone()
+	j.publishMu.Lock()
 	j.broadcast(event)
+	j.publishMu.Unlock()
 	j.closeSubscribers()
 }
 
@@ -1047,18 +1069,19 @@ func (s TaskState) Terminal() bool {
 
 func (j *Task) snapshotLocked() TaskSnapshot {
 	return TaskSnapshot{
-		ID:         j.id,
-		Type:       j.typ,
-		Metadata:   cloneTaskMetadata(j.metadata),
-		Owner:      j.owner,
-		State:      j.state,
-		Progress:   j.progress,
-		Result:     j.result,
-		Error:      j.err,
-		CreatedAt:  j.createdAt,
-		StartedAt:  cloneTimePtr(j.startedAt),
-		UpdatedAt:  j.updatedAt,
-		FinishedAt: cloneTimePtr(j.finishedAt),
+		ID:              j.id,
+		Type:            j.typ,
+		Metadata:        cloneTaskMetadata(j.metadata),
+		Owner:           j.owner,
+		State:           j.state,
+		CancelRequested: j.cancelRequested,
+		Progress:        j.progress,
+		Result:          j.result,
+		Error:           j.err,
+		CreatedAt:       j.createdAt,
+		StartedAt:       cloneTimePtr(j.startedAt),
+		UpdatedAt:       j.updatedAt,
+		FinishedAt:      cloneTimePtr(j.finishedAt),
 	}
 }
 

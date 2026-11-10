@@ -21,8 +21,11 @@ import (
 )
 
 // TestBtrfsResumeIntegration interrupts long btrfs operations against a real
-// kernel and checks what is left: a two-disk raid1 pool on 4 GiB loop disks,
+// kernel and checks what is left: a two-disk raid1 pool on 8 GiB loop disks,
 // plus a third blank disk the steps share and leave blank for the next one.
+// The disks are sparse and far bigger than the data: every interrupted
+// balance leaves chunks half filled, and on 4 GiB disks the later balances
+// sometimes found no unallocated room (ENOSPC).
 // Run it with `make vm-test-btrfs-integration`.
 func TestBtrfsResumeIntegration(t *testing.T) {
 	if os.Getenv("LINUXIO_RUN_BTRFS_INTEGRATION") != "1" {
@@ -36,13 +39,19 @@ func TestBtrfsResumeIntegration(t *testing.T) {
 	stubStatePaths(t, dir)
 	p := &itPool{t: t, ctx: context.Background(), mnt: filepath.Join(dir, "mnt")}
 	for i := range 3 {
-		p.disks = append(p.disks, loopDevice(t, filepath.Join(dir, fmt.Sprintf("disk%d.img", i)), 4<<30))
+		p.disks = append(p.disks, loopDevice(t, filepath.Join(dir, fmt.Sprintf("disk%d.img", i)), 8<<30))
 	}
 	uuid, err := CreatePool(p.ctx, "linuxio-resume", "raid1", "raid1", p.disks[:2], true, nil)
 	p.must("create pool", err)
 	p.uuid = uuid
 	p.must("mount pool", MountPool(p.ctx, p.disks[0], p.mnt, []string{"noatime"}, false))
 	t.Cleanup(func() { _ = unix.Unmount(p.mnt, 0) })
+	began := time.Now()
+	t.Cleanup(func() {
+		if t.Failed() {
+			logKernelBtrfs(t, began)
+		}
+	})
 	var uts unix.Utsname
 	p.must("uname", unix.Uname(&uts))
 	t.Logf("kernel %s", unix.ByteSliceToString(uts.Release[:]))
@@ -75,6 +84,35 @@ func TestBtrfsResumeIntegration(t *testing.T) {
 	}
 }
 
+// logKernelBtrfs logs what the kernel said about btrfs since a failed test
+// began: that is where it explains an aborted transaction or a refusal.
+func logKernelBtrfs(t *testing.T, since time.Time) {
+	out, err := exec.Command("journalctl", "--dmesg", "--no-pager", "--output=short-monotonic", "--since", since.Format("2006-01-02 15:04:05")).CombinedOutput()
+	if err != nil {
+		t.Logf("kernel log not read: %v: %s", err, out)
+		return
+	}
+	var lines []string
+	for line := range strings.SplitSeq(string(out), "\n") {
+		if strings.Contains(strings.ToLower(line), "btrfs") {
+			lines = append(lines, line)
+		}
+	}
+	t.Logf("kernel btrfs messages since the test began (last %d of %d):\n%s", min(len(lines), 80), len(lines), strings.Join(lines[max(len(lines)-80, 0):], "\n"))
+}
+
+// logAllocation logs how much of each disk is allocated. A relocation writes
+// new chunks, so it needs unallocated room on the disks.
+func (p *itPool) logAllocation(when string) {
+	p.t.Helper()
+	fs := p.filesystem()
+	var disks []string
+	for _, d := range fs.Devices {
+		disks = append(disks, fmt.Sprintf("device %d has %d of %d MiB allocated", d.ID, d.UsedBytes>>20, d.SizeBytes>>20))
+	}
+	p.t.Logf("%s: %s; %+v", when, strings.Join(disks, ", "), fs.Allocation)
+}
+
 // TestBtrfsIntegrationChild runs one operation for runChild, so a step can
 // kill the process that issued the ioctl: scrub, balance, remove:<id> or
 // replace:<id>:<path>.
@@ -99,7 +137,7 @@ func TestBtrfsIntegrationChild(t *testing.T) {
 			t.Fatalf("operation %q: %v", op, convErr)
 		}
 		if kind == "remove" {
-			err = RemoveDevice(ctx, uuid, id)
+			err = RemoveDevice(ctx, uuid, id, func(float64) {})
 		} else {
 			err = Replace(ctx, uuid, id, path, func(float64) {})
 		}
@@ -287,9 +325,19 @@ func (p *itPool) resumeInterrupted(id int) {
 		p.t.Fatalf("device %d left the pool despite the interruption", id)
 	}
 	p.scrubClean("the interruption")
+	// The kernel frees the device's allocation chunk by chunk, which is the
+	// only progress a removal has.
+	interval := progressInterval
+	progressInterval = 50 * time.Millisecond
+	defer func() { progressInterval = interval }()
 	start := time.Now()
-	p.must("resume removal", ResumeRemove(p.ctx, p.uuid, id))
-	p.t.Logf("resumed removal took %v", time.Since(start))
+	var reported []float64
+	p.must("resume removal", ResumeRemove(p.ctx, p.uuid, id, func(pct float64) { reported = append(reported, pct) }))
+	reported = slices.Compact(reported)
+	p.t.Logf("resumed removal took %v, reporting %v", time.Since(start), reported)
+	if !slices.IsSorted(reported) || !slices.ContainsFunc(reported, func(pct float64) bool { return pct > 0 && pct < 100 }) {
+		p.t.Fatalf("removal progress = %v, want a rise between 0 and 100", reported)
+	}
 	if hasDevice(p.filesystem(), id) {
 		p.t.Fatalf("device %d still a member after ResumeRemove", id)
 	}
@@ -304,7 +352,7 @@ func (p *itPool) removeCancel() {
 	defer cancel()
 	ended := make(chan error, 1)
 	start := time.Now()
-	go func() { ended <- RemoveDevice(ctx, p.uuid, id) }()
+	go func() { ended <- RemoveDevice(ctx, p.uuid, id, func(float64) {}) }()
 	p.waitExclusive("device remove", ended)
 	cancel()
 	err := <-ended
@@ -448,11 +496,11 @@ func (p *itPool) balancePauseSameMount() {
 func (p *itPool) refusedWhilePaused() {
 	id := p.addThird()
 	p.pauseBalance()
-	if err := RemoveDevice(p.ctx, p.uuid, id); !errors.Is(err, kernelCode(8)) {
+	if err := RemoveDevice(p.ctx, p.uuid, id, func(float64) {}); !errors.Is(err, kernelCode(8)) {
 		p.t.Fatalf("removal under a paused balance: %v, want %v", err, kernelCode(8))
 	}
 	p.resumeBalance()
-	p.must("remove the third disk", RemoveDevice(p.ctx, p.uuid, id))
+	p.must("remove the third disk", RemoveDevice(p.ctx, p.uuid, id, func(float64) {}))
 	p.must("blank the disk", wipeDeviceEdges(p.disks[2]))
 }
 
@@ -460,7 +508,9 @@ func (p *itPool) refusedWhilePaused() {
 // The kernel cancels the balance and deletes it, so ResumeBalance runs it
 // again, and the pool must scrub clean.
 func (p *itPool) balanceKill() {
+	p.logAllocation("before the balance")
 	p.killWhile("balance", p.balanceMoved)
+	p.logAllocation("after the kill")
 	p.noBalance()
 	start := time.Now()
 	p.must("run the balance again", ResumeBalance(p.ctx, p.uuid, BalanceOptions{}, false, func(float64) {}))
@@ -689,6 +739,14 @@ func (p *itPool) replacePowerCut() {
 	if err != nil || fs.Degraded {
 		t.Fatalf("after the boot check: %v, degraded %v", err, fs.Degraded)
 	}
+	// The kernel names the source of a running replace, so the job of another
+	// device's replace must not follow this one. Once it finished there is no
+	// source left to compare.
+	other := ResumeReplace(p.ctx, uuid, 1, start, func(float64) { t.Error("device 1's job followed the replace of device 2") })
+	if want := fmt.Sprintf("pool %s is replacing device 2, not device 1", uuid); other != nil && other.Error() != want {
+		t.Fatalf("ResumeReplace for device 1: %v, want %s", other, want)
+	}
+	t.Logf("ResumeReplace for device 1 during the replace of device 2: %v", other)
 	followed := false
 	p.must("follow the replace", ResumeReplace(p.ctx, uuid, 2, start, func(float64) { followed = true }))
 	fs = cut.filesystem()

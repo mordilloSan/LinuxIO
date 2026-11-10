@@ -3,6 +3,7 @@ package btrfs
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"log/slog"
 	"reflect"
@@ -58,11 +59,11 @@ func threeDiskKernel() *fakeKernel {
 func TestRemoveDeviceRefusesBelowMinimum(t *testing.T) {
 	k := raid1Kernel() // 2 devices, raid1
 	stubKernel(t, k)
-	err := RemoveDevice(context.Background(), dataUUID, 1)
+	err := RemoveDevice(context.Background(), dataUUID, 1, func(float64) {})
 	if err == nil || !strings.Contains(err.Error(), "raid1") {
 		t.Fatalf("err = %v, want refusal naming raid1", err)
 	}
-	if err := RemoveDevice(context.Background(), dataUUID, 9); err == nil || !strings.Contains(err.Error(), "device 9 not found") {
+	if err := RemoveDevice(context.Background(), dataUUID, 9, func(float64) {}); err == nil || !strings.Contains(err.Error(), "device 9 not found") {
 		t.Fatalf("missing id: err = %v", err)
 	}
 	if calls := k.Calls(); len(calls) != 0 {
@@ -76,7 +77,7 @@ func TestRemoveDeviceIgnoresMissingDevices(t *testing.T) {
 	k := threeDiskKernel()
 	k.devices[3].path = ""
 	stubKernel(t, k)
-	if err := RemoveDevice(context.Background(), dataUUID, 1); err == nil || !strings.Contains(err.Error(), "raid1") {
+	if err := RemoveDevice(context.Background(), dataUUID, 1, func(float64) {}); err == nil || !strings.Contains(err.Error(), "raid1") {
 		t.Fatalf("err = %v, want refusal naming raid1", err)
 	}
 	if calls := k.Calls(); len(calls) != 0 {
@@ -96,7 +97,7 @@ func TestRemoveDeviceRefusesUnknownProfiles(t *testing.T) {
 		k := threeDiskKernel()
 		c.edit(k)
 		stubKernel(t, k)
-		if err := RemoveDevice(context.Background(), dataUUID, 2); err == nil || err.Error() != c.want {
+		if err := RemoveDevice(context.Background(), dataUUID, 2, func(float64) {}); err == nil || err.Error() != c.want {
 			t.Fatalf("%s: err = %v, want %q", c.name, err, c.want)
 		}
 		if calls := k.Calls(); len(calls) != 0 {
@@ -108,11 +109,68 @@ func TestRemoveDeviceRefusesUnknownProfiles(t *testing.T) {
 func TestRemoveDeviceRuns(t *testing.T) {
 	k := threeDiskKernel()
 	stubKernel(t, k)
-	if err := RemoveDevice(context.Background(), dataUUID, 2); err != nil {
+	if err := RemoveDevice(context.Background(), dataUUID, 2, func(float64) {}); err != nil {
 		t.Fatalf("RemoveDevice: %v", err)
 	}
 	if want := []string{"RM_DEV 2 flags=8"}; !reflect.DeepEqual(k.Calls(), want) {
 		t.Fatalf("calls = %v, want %v", k.Calls(), want)
+	}
+}
+
+// The kernel reports no progress for a removal, so the share of the device's
+// allocation already moved off it is the percentage.
+func TestRemoveDeviceReportsProgress(t *testing.T) {
+	k := threeDiskKernel()
+	k.devices[3].used = 40 << 30
+	var mu sync.Mutex
+	var reported []float64
+	report := func(pct float64) {
+		mu.Lock()
+		defer mu.Unlock()
+		reported = append(reported, pct)
+	}
+	k.remove = func(uint64) error {
+		for _, step := range []struct {
+			used uint64
+			pct  float64
+		}{{30 << 30, 25}, {10 << 30, 75}} {
+			k.mu.Lock()
+			k.devices[3].used = step.used
+			k.mu.Unlock()
+			for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(time.Millisecond) {
+				mu.Lock()
+				seen := slices.Contains(reported, step.pct)
+				mu.Unlock()
+				if seen {
+					break
+				}
+				if time.Now().After(deadline) {
+					return errors.New("no progress report for the moved data")
+				}
+			}
+		}
+		return nil
+	}
+	stubKernel(t, k)
+	if err := RemoveDevice(context.Background(), dataUUID, 3, report); err != nil {
+		t.Fatalf("RemoveDevice: %v", err)
+	}
+	if !slices.IsSorted(reported) || reported[len(reported)-1] != 75 {
+		t.Fatalf("reported = %v, want a rise to 75", slices.Compact(reported))
+	}
+}
+
+// A device that holds nothing has no share to report.
+func TestRemoveDeviceReportsNothingForAnEmptyDevice(t *testing.T) {
+	k := threeDiskKernel()
+	k.devices[3].used = 0
+	k.remove = func(uint64) error {
+		time.Sleep(20 * time.Millisecond) // several ticks
+		return nil
+	}
+	stubKernel(t, k)
+	if err := RemoveDevice(context.Background(), dataUUID, 3, func(pct float64) { t.Errorf("reported %v", pct) }); err != nil {
+		t.Fatalf("RemoveDevice: %v", err)
 	}
 }
 
@@ -122,7 +180,7 @@ func TestRemoveDeviceReportsKernelRefusal(t *testing.T) {
 	k := threeDiskKernel()
 	k.fail = map[uintptr]error{iocRmDevV2: kernelCode(8)}
 	stubKernel(t, k)
-	err := RemoveDevice(context.Background(), dataUUID, 2)
+	err := RemoveDevice(context.Background(), dataUUID, 2, func(float64) {})
 	var code kernelCode
 	if !errors.As(err, &code) || code != 8 {
 		t.Fatalf("err = %v, want one wrapping kernelCode(8)", err)
@@ -160,7 +218,7 @@ func TestRemoveDeviceCancelsWithContext(t *testing.T) {
 		}
 		return err
 	}
-	if err := RemoveDevice(ctx, dataUUID, 3); err == nil || err.Error() != "removal of device 3 canceled" {
+	if err := RemoveDevice(ctx, dataUUID, 3, func(float64) {}); err == nil || err.Error() != "removal of device 3 canceled" {
 		t.Fatalf("err = %v", err)
 	}
 	// Ticks may lose more cancels before the removal claims the pool.
@@ -172,13 +230,13 @@ func TestRemoveDeviceCancelsWithContext(t *testing.T) {
 func TestResumeRemoveSkipsAGoneDevice(t *testing.T) {
 	k := raid1Kernel()
 	stubKernel(t, k)
-	if err := ResumeRemove(context.Background(), dataUUID, 3); err != nil || len(k.Calls()) != 0 {
+	if err := ResumeRemove(context.Background(), dataUUID, 3, func(float64) {}); err != nil || len(k.Calls()) != 0 {
 		t.Fatalf("gone device: err = %v, calls = %v", err, k.Calls())
 	}
 
 	k = threeDiskKernel()
 	stubKernel(t, k)
-	if err := ResumeRemove(context.Background(), dataUUID, 3); err != nil {
+	if err := ResumeRemove(context.Background(), dataUUID, 3, func(float64) {}); err != nil {
 		t.Fatal(err)
 	}
 	if want := []string{"RM_DEV 3 flags=8"}; !reflect.DeepEqual(k.Calls(), want) {
@@ -188,7 +246,7 @@ func TestResumeRemoveSkipsAGoneDevice(t *testing.T) {
 	k = threeDiskKernel()
 	k.devices[2].path = ""
 	stubKernel(t, k)
-	if err := ResumeRemove(context.Background(), dataUUID, 3); err == nil || err.Error() != "pool "+dataUUID+" is degraded; removal not resumed" {
+	if err := ResumeRemove(context.Background(), dataUUID, 3, func(float64) {}); err == nil || err.Error() != "pool "+dataUUID+" is degraded; removal not resumed" {
 		t.Fatalf("degraded pool: err = %v", err)
 	}
 	if calls := k.Calls(); len(calls) != 0 {
@@ -200,7 +258,7 @@ func TestResumeRemoveSkipsAGoneDevice(t *testing.T) {
 		k = threeDiskKernel()
 		k.fail = map[uintptr]error{req: unix.EIO}
 		stubKernel(t, k)
-		if err := ResumeRemove(context.Background(), dataUUID, 3); err == nil || err.Error() != "could not read the devices of pool "+dataUUID {
+		if err := ResumeRemove(context.Background(), dataUUID, 3, func(float64) {}); err == nil || err.Error() != "could not read the devices of pool "+dataUUID {
 			t.Fatalf("failed read %#x: err = %v", req, err)
 		}
 		if calls := k.Calls(); len(calls) != 0 {
@@ -695,6 +753,7 @@ func TestResumeReplaceFollowsAKernelRun(t *testing.T) {
 			k.devices[1].path = ""
 		}
 		replaceStates(k, replaceStateStarted, replaceStateStarted, replaceStateFinished)
+		k.trees.items = []treeItem{replaceItem(1)}
 		stubKernel(t, k)
 		var reported []float64
 		err := ResumeReplace(context.Background(), dataUUID, 1, time.Time{}, func(p float64) { reported = append(reported, p) })
@@ -707,6 +766,76 @@ func TestResumeReplaceFollowsAKernelRun(t *testing.T) {
 		if !reflect.DeepEqual(reported, []float64{25, 25}) {
 			t.Fatalf("%s: reported = %v", c.name, reported)
 		}
+	}
+}
+
+// replaceItem is the dev tree's replace item of a replace copying from src.
+func replaceItem(src uint64) treeItem {
+	data := make([]byte, 72) // struct btrfs_dev_replace_item
+	binary.LittleEndian.PutUint64(data, src)
+	return treeItem{tree: devTreeObjectID, typ: devReplaceKey, data: data}
+}
+
+// A pool runs one replace at a time, but it need not be this job's: one of
+// another device, started by hand before the host came up, is not followed.
+func TestResumeReplaceRefusesAnotherDevicesReplace(t *testing.T) {
+	k := raid1Kernel()
+	replaceStates(k, replaceStateStarted)
+	k.trees.items = []treeItem{replaceItem(1)}
+	stubKernel(t, k)
+	// A replace that is followed never ends here: the deadline fails the test.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err := ResumeReplace(ctx, dataUUID, 2, time.Time{}, func(float64) { t.Error("progress reported") })
+	if want := "pool " + dataUUID + " is replacing device 1, not device 2"; err == nil || err.Error() != want {
+		t.Fatalf("err = %v, want %s", err, want)
+	}
+
+	// A source that cannot be read is not assumed to be this job's.
+	k = raid1Kernel()
+	replaceStates(k, replaceStateStarted)
+	k.fail = map[uintptr]error{iocTreeSearchV2: unix.EIO}
+	stubKernel(t, k)
+	err = ResumeReplace(ctx, dataUUID, 2, time.Time{}, func(float64) { t.Error("progress reported") })
+	if !errors.Is(err, unix.EIO) {
+		t.Fatalf("unread source: err = %v, want EIO", err)
+	}
+	if calls := k.Calls(); len(calls) != 0 {
+		t.Fatalf("calls = %v, want none", calls)
+	}
+}
+
+// A cancel destroys the target of the pool's one replace, which need not be
+// this job's: another device's is left running.
+func TestCancelReplaceLeavesAnotherDevicesReplace(t *testing.T) {
+	k := raid1Kernel()
+	replaceStates(k, replaceStateStarted)
+	k.trees.items = []treeItem{replaceItem(1)}
+	stubKernel(t, k)
+	err := CancelReplace(context.Background(), dataUUID, 2)
+	if want := "pool " + dataUUID + " is replacing device 1, not device 2"; err == nil || err.Error() != want {
+		t.Fatalf("err = %v, want %s", err, want)
+	}
+	if calls := k.Calls(); len(calls) != 0 {
+		t.Fatalf("calls = %v, want none", calls)
+	}
+	if err = CancelReplace(context.Background(), dataUUID, 1); err != nil {
+		t.Fatal(err)
+	}
+	if calls := k.Calls(); !reflect.DeepEqual(calls, []string{"REPLACE_CANCEL"}) {
+		t.Fatalf("calls after its own cancel = %v", calls)
+	}
+}
+
+// The kernel writes no source once it lost track of it (a degraded mount
+// without the source disk), so the replace is followed as before.
+func TestResumeReplaceFollowsAnUnnamedSource(t *testing.T) {
+	k := raid1Kernel()
+	replaceStates(k, replaceStateStarted, replaceStateFinished)
+	k.trees.items = []treeItem{replaceItem(^uint64(0))}
+	stubKernel(t, k)
+	if err := ResumeReplace(context.Background(), dataUUID, 2, time.Time{}, func(float64) {}); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -780,7 +909,7 @@ func TestResumeReplaceDoesNotCancelOnContextEnd(t *testing.T) {
 	if calls := k.Calls(); len(calls) != 0 {
 		t.Fatalf("calls = %v, want none", calls)
 	}
-	if err = CancelReplace(context.Background(), dataUUID); err != nil {
+	if err = CancelReplace(context.Background(), dataUUID, 2); err != nil {
 		t.Fatal(err)
 	}
 	if calls := k.Calls(); !reflect.DeepEqual(calls, []string{"REPLACE_CANCEL"}) {

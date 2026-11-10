@@ -338,8 +338,10 @@ primary superblock at 64 KiB.
 | Scrub | Start and cancel. The last result is recorded in `/var/lib/linuxio/btrfs-scrub.json`; scrubs run by btrfsmaintenance are read from `/var/lib/btrfs/scrub.status.<uuid>`. |
 
 Remove, replace, balance and scrub are blocking kernel calls run inside the
-job, so progress comes from the kernel. A balance or scrub started elsewhere
-is still shown as running. The ioctls run on a locked thread with async signals
+job, so progress comes from the kernel. A removal has no kernel progress: its
+percentage is the share of the device's allocation already moved off it, and
+a resumed removal starts again at 0 for what is left. A balance or scrub
+started elsewhere is still shown as running. The ioctls run on a locked thread with async signals
 blocked: since kernel 6.19 any signal aborts a scrub or a replace (and a replace
 aborted that way loses its target). A freeze, such as a suspend to RAM, still
 aborts them. A refusal the kernel answers with a positive code, such as 8
@@ -355,7 +357,10 @@ has returned. A cancelled job is never resumed.
 - **Scrub**: `SCRUB_CANCEL`, refused while a device replace runs, because the
   kernel would cancel the replace with it.
 - **Replace**: `DEV_REPLACE cancel`. The target is destroyed and the source
-  kept.
+  kept. A cancel that reaches a replace followed after a reboot in its last
+  step is too late: the new disk is installed and the job ends completed. A
+  replace the kernel says copies from another device is not this job's and is
+  left running.
 - **Remove**: `RM_DEV_V2` with the name `cancel`, which needs kernel 5.14; an
   older kernel refuses it and the removal runs to the end. It is sent again
   while the kernel answers that no removal runs yet. A cancelled removal leaves
@@ -376,8 +381,8 @@ it again. There is no manual resume.
 |---|---|---|
 | Balance | Paused; the kernel keeps the item and continues it when the pool is mounted read-write | Follows the kernel's balance; resumes it if still paused; counts it finished if it is gone after a pause; runs it again (`soft` when converting) if it is gone and was never paused |
 | Scrub | Stopped, each device's progress stored | Starts again from each device's stored position, or from the start when none was read; the counters add up. Errors in the extent where it stopped count twice |
-| Replace | Cancelled with the job's context; the source is kept | Follows the replace the kernel continued at mount. A finished replace counts only if it began after the job did; otherwise start it again. A suspended one needs the pool remounted |
-| Remove | Cancelled as above; moved data stays moved | Issues the removal again; refuses a degraded pool |
+| Replace | Cancelled with the job's context; the source is kept | Follows the replace the kernel continued at mount, and refuses one the kernel says copies from another device. A finished replace counts only if it began after the job did; otherwise start it again. A suspended one needs the pool remounted |
+| Remove | Cancelled as above; moved data stays moved | Issues the removal again, with its percentage counting what is left; refuses a degraded pool |
 
 A stop pauses a balance every time, so a paused balance holds the pool's
 exclusive operation after `systemctl stop linuxio-jobs@0` by hand: remove,

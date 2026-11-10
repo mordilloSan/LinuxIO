@@ -1070,6 +1070,35 @@ func TestTaskEventFilteringUsesLifetime(t *testing.T) {
 	<-done
 }
 
+// A snapshot event carries the task's newest state, such as a cancel request.
+// A progress event the throttle held back is older and must not follow it.
+func TestSnapshotEventDropsHeldBackProgress(t *testing.T) {
+	registry := NewTaskService()
+	owner := TaskOwner{SessionID: "session-a", Username: "alice", UID: 1000}
+	task, _, err := registry.ClaimForOwnerWithIdentity("test.events.snapshot", nil, owner, TaskLifetimeSession, TaskIdentity{})
+	if err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	defer task.Cancel()
+	pending := map[string]TaskEvent{task.ID(): {Type: TaskEventProgress, Task: task.Snapshot()}}
+	server, client := net.Pipe()
+	defer server.Close()
+	defer client.Close()
+	done := make(chan bool, 1)
+	go func() {
+		done <- registry.writeSubscribedTaskEvent(server, TaskEvent{Type: TaskEventSnapshot, Task: task.Snapshot()}, owner, pending, map[string]time.Time{}, time.Second, time.Now())
+	}()
+	if _, err := relay.ReadRelayFrame(client); err != nil {
+		t.Fatalf("snapshot event was not delivered: %v", err)
+	}
+	if !<-done {
+		t.Fatal("writing the snapshot event failed")
+	}
+	if _, held := pending[task.ID()]; held {
+		t.Fatal("the held-back progress event is still pending and would undo the snapshot")
+	}
+}
+
 func startTestTask(registry *TaskService, taskType string, request any, owner TaskOwner, runner TaskRunner) (*Task, error) {
 	task, _, err := registry.ClaimForOwnerWithIdentity(taskType, request, owner, TaskLifetimeSession, TaskIdentity{})
 	if err != nil {

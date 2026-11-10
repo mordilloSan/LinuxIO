@@ -6,8 +6,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Alert } from "@/api";
 
 const state = {
-  transfers: [] as Array<{ id: string; progress: number; type: string }>,
+  transfers: [] as Array<{
+    cancelRequested?: boolean;
+    id: string;
+    label?: string;
+    progress: number;
+    type: string;
+  }>,
 };
+const cancelTask = vi.hoisted(() => vi.fn());
 
 vi.mock("@/tasks/useBackgroundTaskState", () => ({
   useBackgroundTaskList: () => state.transfers,
@@ -22,7 +29,7 @@ vi.mock("@/tasks/useBackgroundTaskActions", () => ({
     cancelCopy: vi.fn(),
     cancelDownload: vi.fn(),
     cancelExtraction: vi.fn(),
-    cancelTask: vi.fn(),
+    cancelTask,
     cancelMove: vi.fn(),
     cancelUpload: vi.fn(),
     openIndexerDialog: vi.fn(),
@@ -139,6 +146,46 @@ describe("NotificationsBell peek timer", () => {
     const panel = screen.getByRole("dialog", { name: "Notifications" });
     expect(view.container).not.toContainElement(panel);
     expect(panel.closest(".app-popover-root")).toBeInTheDocument();
+  });
+});
+
+describe("NotificationsBell running jobs", () => {
+  beforeEach(() => {
+    cancelTask.mockClear();
+    useAlertsMock.mockReturnValue(noAlerts());
+  });
+
+  it("cancels a running job from its row", async () => {
+    state.transfers = [
+      { id: "job-1", label: "Balancing", progress: 40, type: "task" },
+    ];
+    render(<NotificationsBell />);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Notifications" }),
+    );
+    expect(await screen.findByText("40%")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Cancel task" }));
+    expect(cancelTask).toHaveBeenCalledWith("job-1");
+  });
+
+  // A canceled job keeps running until its handler returns.
+  it("shows a job whose cancel was requested as cancelling, with no second cancel", async () => {
+    state.transfers = [
+      {
+        cancelRequested: true,
+        id: "job-1",
+        label: "Balancing",
+        progress: 40,
+        type: "task",
+      },
+    ];
+    render(<NotificationsBell />);
+    await userEvent.click(
+      screen.getByRole("button", { name: "Notifications" }),
+    );
+    expect(await screen.findByText("Cancelling…")).toBeInTheDocument();
+    expect(screen.queryByText("40%")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cancel task" })).toBeDisabled();
   });
 });
 

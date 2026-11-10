@@ -6,6 +6,7 @@ import {
   useEffect,
   useMemo,
 } from "react";
+import { toast } from "sonner";
 
 import {
   bindStreamHandlers,
@@ -99,6 +100,7 @@ export function useRecoveredTasks(
     activeBackgroundTaskIdsRef,
     activeFileTransferTaskIdsRef,
     recoveringTaskIdsRef,
+    locallyCanceledTaskIdsRef,
     pendingLocalTaskKeysRef,
     streamRefsRef,
   } = runtime;
@@ -381,6 +383,7 @@ export function useRecoveredTasks(
               label: genericLabel(task.progress),
               indeterminate: initialMeta.indeterminate,
               processed: initialMeta.processed,
+              cancelRequested: task.cancel_requested === true,
               abortController,
             },
           ]);
@@ -428,10 +431,16 @@ export function useRecoveredTasks(
             },
             onError: (error) => {
               if (abortController.signal.aborted) return;
-              // Only the navbar cancel aborts the controller above; a cancel
-              // from an owning page or another session arrives here as an
-              // ordinary 499 stream error and must be classified so the
-              // registry can tell it apart from a failure.
+              // The tray's own cancel is reported here, once the job has
+              // ended. A cancel from an owning page or another session is
+              // classified so the registry can tell it apart from a failure.
+              if (
+                locallyCanceledTaskIdsRef.current.has(task.id) &&
+                isTaskCancellationError(error)
+              ) {
+                toast.info("Task cancelled");
+                return;
+              }
               emitTerminalTaskFeedback(
                 feedbackTask,
                 {
@@ -442,7 +451,10 @@ export function useRecoveredTasks(
                 feedbackEntry,
               );
             },
-            onFinally: () => removeBackgroundTask(task.id),
+            onFinally: () => {
+              locallyCanceledTaskIdsRef.current.delete(task.id);
+              removeBackgroundTask(task.id);
+            },
           });
           break;
         }
@@ -461,6 +473,7 @@ export function useRecoveredTasks(
       activeBackgroundTaskIdsRef,
       activeFileTransferTaskIdsRef,
       activeIndexerIdsRef,
+      locallyCanceledTaskIdsRef,
       pendingLocalTaskKeysRef,
       recoveringTaskIdsRef,
       streamRefsRef,
@@ -490,6 +503,21 @@ export function useRecoveredTasks(
 
           // 1) Attach progress trackers to tasks that don't have a local handler.
           watchRecoveredTask(task);
+
+          // A cancel requested from a page or another session marks the row
+          // the task already has; it stays until the job ends.
+          if (task.cancel_requested && !isTerminalTaskState(task.state)) {
+            const item = tasks.get(task.id);
+            if (item?.type === "task" && !item.cancelRequested) {
+              setBackgroundTasks((prev) =>
+                prev.map((entry) =>
+                  entry.id === task.id
+                    ? { ...entry, cancelRequested: true }
+                    : entry,
+                ),
+              );
+            }
+          }
 
           // 2) On terminal events, always invalidate mapped query caches. A
           //    local handler may already have done the same, but a duplicate
@@ -536,5 +564,12 @@ export function useRecoveredTasks(
       cleanupEvents?.();
       eventStream?.close();
     };
-  }, [watchRecoveredTask, feedbackDeps, queryClient, streamMuxStatus]);
+  }, [
+    watchRecoveredTask,
+    feedbackDeps,
+    queryClient,
+    streamMuxStatus,
+    tasks,
+    setBackgroundTasks,
+  ]);
 }

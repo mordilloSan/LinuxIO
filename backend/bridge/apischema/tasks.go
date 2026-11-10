@@ -25,18 +25,21 @@ type TaskMetadata struct {
 }
 
 type TaskSnapshot struct {
-	CreatedAt  string        `json:"created_at"`
-	Error      *TaskError    `json:"error,omitzero"`
-	FinishedAt *string       `json:"finished_at,omitzero"`
-	ID         string        `json:"id"`
-	Owner      *TaskOwner    `json:"owner,omitzero"`
-	Metadata   *TaskMetadata `json:"metadata,omitzero"`
-	Progress   *TaskProgress `json:"progress,omitzero"`
-	Result     any           `json:"result,omitzero"`
-	StartedAt  *string       `json:"started_at,omitzero"`
-	State      TaskState     `json:"state"`
-	Type       string        `json:"type"`
-	UpdatedAt  string        `json:"updated_at"`
+	// CancelRequested is set once the owner cancels a running task, which
+	// stays running until its handler returns.
+	CancelRequested *bool         `json:"cancel_requested,omitzero"`
+	CreatedAt       string        `json:"created_at"`
+	Error           *TaskError    `json:"error,omitzero"`
+	FinishedAt      *string       `json:"finished_at,omitzero"`
+	ID              string        `json:"id"`
+	Owner           *TaskOwner    `json:"owner,omitzero"`
+	Metadata        *TaskMetadata `json:"metadata,omitzero"`
+	Progress        *TaskProgress `json:"progress,omitzero"`
+	Result          any           `json:"result,omitzero"`
+	StartedAt       *string       `json:"started_at,omitzero"`
+	State           TaskState     `json:"state"`
+	Type            string        `json:"type"`
+	UpdatedAt       string        `json:"updated_at"`
 }
 
 type TaskEvent struct {

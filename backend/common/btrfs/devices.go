@@ -149,9 +149,12 @@ func AddDevice(ctx context.Context, uuid, device string, force bool) error {
 }
 
 // RemoveDevice removes device id, refusing when the remaining devices are
-// too few for any current profile. It blocks until data has been moved off;
-// canceling ctx cancels the removal in the kernel (5.14 and later).
-func RemoveDevice(ctx context.Context, uuid string, id int) error {
+// too few for any current profile. It blocks until data has been moved off,
+// reporting the share of the device's allocation freed since this call: the
+// kernel has no progress for a removal, and a resumed one starts again at 0
+// for what is left. Canceling ctx cancels the removal in the kernel (5.14
+// and later).
+func RemoveDevice(ctx context.Context, uuid string, id int, report func(float64)) error {
 	fs, err := FindFilesystem(ctx, uuid)
 	if err != nil {
 		return err
@@ -160,6 +163,7 @@ func RemoveDevice(ctx context.Context, uuid string, id int) error {
 		return err
 	}
 	mnt := fs.Mountpoints[0].Mountpoint
+	held := fs.Devices[slices.IndexFunc(fs.Devices, func(d BtrfsDevice) bool { return d.ID == id })].UsedBytes
 	args := volArgsV2{Flags: devSpecByID}
 	putU64(args.Name[:], 0, uint64(id))
 	done := make(chan error, 1)
@@ -178,8 +182,8 @@ func RemoveDevice(ctx context.Context, uuid string, id int) error {
 		if lost {
 			cancel()
 		}
-		return 0, false
-	}, func(float64) {})
+		return removalPercent(mnt, id, held)
+	}, report)
 	switch {
 	case errors.Is(err, unix.ECANCELED):
 		return fmt.Errorf("removal of device %d canceled", id)
@@ -187,6 +191,17 @@ func RemoveDevice(ctx context.Context, uuid string, id int) error {
 		return fmt.Errorf("remove device %d: %w", id, err)
 	}
 	return nil
+}
+
+// removalPercent is the share of the held bytes device id had allocated that
+// its removal has freed: the kernel frees them chunk by chunk. It is unknown
+// for a device that held nothing or has left the pool.
+func removalPercent(mnt string, id int, held uint64) (float64, bool) {
+	info := devInfoArgs{DevID: uint64(id)}
+	if held == 0 || fsIoctl(mnt, iocDevInfo, unsafe.Pointer(&info)) != nil {
+		return 0, false
+	}
+	return 100 * float64(held-min(info.BytesUsed, held)) / float64(held), true
 }
 
 // checkRemovable refuses removing device id when the remaining devices are
@@ -228,7 +243,7 @@ func checkRemovable(fs BtrfsFilesystem, id int) error {
 // ResumeRemove removes device id again after an interruption stopped its
 // removal; the chunks already moved stay moved and the kernel skips them. A
 // device no longer in the pool means the removal had finished.
-func ResumeRemove(ctx context.Context, uuid string, id int) error {
+func ResumeRemove(ctx context.Context, uuid string, id int, report func(float64)) error {
 	fs, err := FindFilesystem(ctx, uuid)
 	if err != nil {
 		return err
@@ -243,7 +258,7 @@ func ResumeRemove(ctx context.Context, uuid string, id int) error {
 	if fs.Degraded {
 		return fmt.Errorf("pool %s is degraded; removal not resumed", uuid)
 	}
-	return RemoveDevice(ctx, uuid, id)
+	return RemoveDevice(ctx, uuid, id, report)
 }
 
 // waitOp waits for a blocking kernel operation running in another
@@ -346,10 +361,42 @@ func cancelReplace(mnt string) error {
 	return fsIoctl(mnt, iocDevReplace, unsafe.Pointer(&args))
 }
 
+// replaceSource returns the id of the device the pool's replace copies from,
+// read from the replace item of the dev tree (struct btrfs_dev_replace_item,
+// src_devid first). The kernel names none once the replace ended, or when a
+// degraded mount lacked the source (dev-replace.c btrfs_run_dev_replace).
+func replaceSource(mnt string) (id uint64, known bool, err error) {
+	key := searchKey{TreeID: devTreeObjectID, MinType: devReplaceKey, MaxType: devReplaceKey, MaxTransid: ^uint64(0)}
+	err = treeSearch(mnt, key, func(_ searchHeader, item []byte) {
+		if len(item) >= 8 {
+			id, known = getU64(item, 0), true
+		}
+	})
+	if err != nil {
+		return 0, false, fmt.Errorf("read the replace item: %w", err)
+	}
+	return id, known && id != ^uint64(0), nil
+}
+
+// checkReplaceSource refuses the pool's replace when the kernel says it
+// copies from a device other than id: a pool runs one replace at a time, and
+// it need not be the one a job is about.
+func checkReplaceSource(mnt, uuid string, id int) error {
+	src, known, err := replaceSource(mnt)
+	switch {
+	case err != nil:
+		return err
+	case known && src != uint64(id):
+		return fmt.Errorf("pool %s is replacing device %d, not device %d", uuid, src, id)
+	}
+	return nil
+}
+
 // ResumeReplace follows the replace of device id that the kernel resumed at
 // mount after a power loss, reporting progress until it ends. It never starts
 // one: the request names the target by path, which a reboot may give to
-// another disk. A replace already FINISHED counts only when it started no
+// another disk. A running replace the kernel says copies from another device
+// is refused. A replace already FINISHED counts only when it started no
 // earlier than since, the job's start: the state persists, so it may be an
 // earlier replace's. When ctx ends it returns ctx.Err() and leaves the
 // replace running; the caller decides whether to cancel it.
@@ -361,6 +408,11 @@ func ResumeReplace(ctx context.Context, uuid string, id int, since time.Time, re
 	ticker := time.NewTicker(progressInterval)
 	defer ticker.Stop()
 	state, pct, started, err := replaceStatusOf(mnt)
+	if err == nil && state == replaceStateStarted {
+		if err = checkReplaceSource(mnt, uuid, id); err != nil {
+			return err
+		}
+	}
 	ours := !since.IsZero() && !started.Before(since.Truncate(time.Second)) // the kernel keeps whole seconds
 	for err == nil && state == replaceStateStarted {
 		ours = true
@@ -390,11 +442,15 @@ func ResumeReplace(ctx context.Context, uuid string, id int, since time.Time, re
 	return fmt.Errorf("the replace of device %d did not survive the interruption; start it again", id)
 }
 
-// CancelReplace cancels the running replace of filesystem uuid; the kernel
-// destroys the target and keeps the source.
-func CancelReplace(ctx context.Context, uuid string) error {
+// CancelReplace cancels the running replace of device id of filesystem uuid;
+// the kernel destroys the target and keeps the source. A replace of another
+// device is left running.
+func CancelReplace(ctx context.Context, uuid string, id int) error {
 	mnt, err := mountpointFor(ctx, uuid)
 	if err != nil {
+		return err
+	}
+	if err = checkReplaceSource(mnt, uuid, id); err != nil {
 		return err
 	}
 	if err = cancelReplace(mnt); err != nil {

@@ -315,7 +315,9 @@ func (r *TaskService) writeSubscribedTaskEvent(stream net.Conn, event TaskEvent,
 	switch event.Type {
 	case TaskEventProgress:
 		return writeThrottledTaskProgress(stream, event, pending, lastSent, interval, now)
-	case TaskEventResult, TaskEventError, TaskEventCanceled:
+	case TaskEventResult, TaskEventError, TaskEventCanceled, TaskEventSnapshot:
+		// Each carries the task's newest state, which a progress event the
+		// throttle held back would undo.
 		delete(pending, event.Task.ID)
 		return writeTrackedTaskEvent(stream, event, lastSent, now)
 	default:

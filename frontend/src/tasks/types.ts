@@ -100,6 +100,11 @@ export interface Move extends ByteTrackedTaskItem<"move"> {
 }
 
 export interface BackgroundTask extends TrackedTaskItem<"task"> {
+  /**
+   * The job's cancel was requested, here or elsewhere. It keeps running
+   * until its handler returns, so the row stays until the job ends.
+   */
+  cancelRequested?: boolean;
   taskType: string;
   processed?: number;
 }

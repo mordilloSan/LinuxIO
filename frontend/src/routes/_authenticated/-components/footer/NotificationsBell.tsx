@@ -128,6 +128,8 @@ const tileStyle = (color: string) =>
 
 interface TransferLike {
   bytes?: unknown;
+  /** The job runs on until its handler returns, so its row stays. */
+  cancelRequested?: boolean;
   id: string;
   indeterminate?: boolean;
   label?: string;
@@ -159,9 +161,10 @@ function TransferItem({
     : getTransferTitle(transfer.type);
 
   const isIndeterminate = transfer.indeterminate === true;
-  const statusText = isIndeterminate
-    ? "In progress"
-    : `${Math.round(transfer.progress)}%`;
+  const cancelRequested = transfer.cancelRequested === true;
+  let statusText = `${Math.round(transfer.progress)}%`;
+  if (cancelRequested) statusText = "Cancelling…";
+  else if (isIndeterminate) statusText = "In progress";
   const speedText =
     typeof transfer.speed === "number" ? formatSpeed(transfer.speed) : null;
 
@@ -231,6 +234,7 @@ function TransferItem({
       {!isIndexer ? (
         <AppIconButton
           aria-label="Cancel task"
+          disabled={cancelRequested}
           onClick={() => onCancel(transfer)}
           size="small"
         >

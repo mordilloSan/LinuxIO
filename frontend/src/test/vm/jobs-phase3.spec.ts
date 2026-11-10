@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import {
   ensurePool,
@@ -17,6 +17,7 @@ import {
   signOutIfSignedIn,
   startScrub,
   throttle,
+  trayJob,
   vmSsh,
   waitForJob,
 } from "./vm";
@@ -31,6 +32,8 @@ const BALANCE = "storage.btrfs_balance";
 const REPLACE = "storage.btrfs_device_replace";
 const POOL_CREATE = "storage.btrfs_pool_create";
 const DOCKER_STORAGE = "docker.apply_daemon_storage";
+/** A disk rate at which a canceled balance needs seconds to stop. */
+const CANCEL_CRAWL = 2 * MiB;
 
 test.afterEach(({ page }) => signOutIfSignedIn(page));
 
@@ -80,14 +83,14 @@ async function noSessions() {
     .toBe("0");
 }
 
-test("a balance a host stop paused is resumed by the kernel at boot and completes", async ({
-  page,
-}) => {
-  test.setTimeout(600_000);
+/**
+ * Signs in, gives the test pool 1 GiB more in 256 MiB chunks and picks the
+ * data profile a balance converts it to. A pause or a cancel waits for the
+ * chunk in hand, and the kernel relocates these chunks first (newest first).
+ */
+async function prepareBalance(page: Page) {
   await signIn(page);
   const uuid = await ensurePool(page);
-  // A pause waits for the chunk in hand, so the balance's data goes in
-  // 256 MiB chunks, which the kernel relocates first (newest first).
   await vmSsh(
     `echo ${256 * MiB} | sudo tee /sys/fs/btrfs/${uuid}/allocation/data/chunk_size >/dev/null && ` +
       `sudo rm -f ${POOL_MOUNT}/balance.bin && head -c 1G /dev/urandom | sudo tee ${POOL_MOUNT}/balance.bin >/dev/null && sync`,
@@ -97,20 +100,37 @@ test("a balance a host stop paused is resumed by the kernel at boot and complete
       `sudo btrfs filesystem df ${POOL_MOUNT} | sed -n 's/^Data, \\([A-Z0-9]*\\):.*/\\1/p'`,
     )
   ).trim();
-  const to = from === "RAID1" ? "raid0" : "raid1";
+  return { to: from === "RAID1" ? "raid0" : "raid1", uuid };
+}
+
+/** Starts the balance to data profile `to` in the browser and returns its running job. */
+async function startBalance(
+  page: Page,
+  uuid: string,
+  to: string,
+  before: Set<string>,
+) {
+  await page.goto(`/storage?pool=${uuid}`);
+  await page.getByRole("button", { name: "Change profile" }).click();
+  const dialog = page.getByRole("dialog", { name: "Change profile" });
+  await dialog
+    .getByRole("combobox", { name: "Data profile", exact: true })
+    .click();
+  await page.getByRole("option", { name: to, exact: true }).click();
+  await dialog.getByRole("button", { name: "Balance", exact: true }).click();
+  return waitForJob(BALANCE, before, "running");
+}
+
+test("a balance a host stop paused is resumed by the kernel at boot and completes", async ({
+  page,
+}) => {
+  test.setTimeout(600_000);
+  const { to, uuid } = await prepareBalance(page);
   // About 12 s per 256 MiB chunk, 1.5 min for the whole balance.
   await throttle(32 * MiB);
   try {
     const before = await jobIds();
-    await page.goto(`/storage?pool=${uuid}`);
-    await page.getByRole("button", { name: "Change profile" }).click();
-    const dialog = page.getByRole("dialog", { name: "Change profile" });
-    await dialog
-      .getByRole("combobox", { name: "Data profile", exact: true })
-      .click();
-    await page.getByRole("option", { name: to, exact: true }).click();
-    await dialog.getByRole("button", { name: "Balance", exact: true }).click();
-    const job = await waitForJob(BALANCE, before, "running");
+    const job = await startBalance(page, uuid, to, before);
 
     await signOut(page);
     await page.close();
@@ -143,6 +163,81 @@ test("a balance a host stop paused is resumed by the kernel at boot and complete
     expect(
       allocation.filter((a) => a.kind === "data").map((a) => a.profile),
     ).toEqual([to]);
+    expect(await exclusiveOperation(uuid)).toBe("none");
+  } finally {
+    await throttle(0);
+  }
+});
+
+// A cancel is recorded before the handler is told to stop, and the job ends
+// when the handler returns. A host stop in between must leave the job to end
+// canceled: a suspend would pause the balance and the next boot resume it.
+test("a balance canceled just before the host stops ends canceled and is not resumed", async ({
+  page,
+}) => {
+  test.setTimeout(600_000);
+  const { to, uuid } = await prepareBalance(page);
+  await throttle(32 * MiB);
+  try {
+    const before = await jobIds();
+    const job = await startBalance(page, uuid, to, before);
+    expect(
+      await exclusiveOperation(uuid),
+      "the balance ended before the cancel: raise the data size",
+    ).toBe("balance");
+    // The kernel stops a canceled balance once the writes in flight are
+    // done. At this rate that takes long enough to stop the host meanwhile.
+    await throttle(CANCEL_CRAWL);
+    await page.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "Cancelling…" }),
+    ).toBeDisabled();
+    const requested = () =>
+      jobRecord(job.id).then((r) => ({
+        cancel_requested: r?.cancel_requested,
+        state: r?.state,
+      }));
+    await expect
+      .poll(requested, { intervals: [500], timeout: 15_000 })
+      .toEqual({ cancel_requested: true, state: "running" });
+    const tray = await openTray(page);
+    await expect(trayJob(tray, /Balancing/)).toContainText("Cancelling…");
+
+    await vmSsh("sudo systemctl stop --no-block linuxio-jobs@0.service");
+    await expect
+      .poll(
+        async () =>
+          (
+            await vmSsh("systemctl is-active linuxio-jobs@0.service || true")
+          ).trim(),
+        { intervals: [500], message: "the job host stopping", timeout: 15_000 },
+      )
+      .toBe("deactivating");
+    expect(
+      await requested(),
+      "the balance stopped before the host did: lower CANCEL_CRAWL",
+    ).toEqual({ cancel_requested: true, state: "running" });
+
+    await throttle(0);
+    await expect
+      .poll(async () => (await jobRecord(job.id))?.state, {
+        intervals: [1_000],
+        message: `${BALANCE} canceled`,
+        timeout: 120_000,
+      })
+      .toBe("canceled");
+    expect(await exclusiveOperation(uuid)).toBe("none");
+    await page.close();
+
+    await rig(["reboot"]);
+    expect(await jobRecord(job.id)).toMatchObject({
+      cancel_requested: true,
+      state: "canceled",
+    });
+    expect((await loggedJobs("job resumed")).map((j) => j.id)).not.toContain(
+      job.id,
+    );
+    expect(await kernelLog("balance: resume")).toBe("");
     expect(await exclusiveOperation(uuid)).toBe("none");
   } finally {
     await throttle(0);

@@ -3072,6 +3072,7 @@ export interface TaskProgress<TDetail = unknown> {
 }
 
 export interface TaskSnapshot {
+  cancel_requested?: boolean;
   created_at: string;
   error?: TaskError;
   finished_at?: string;
