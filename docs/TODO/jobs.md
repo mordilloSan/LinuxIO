@@ -623,9 +623,12 @@ Checked in the test VM (kernel 7.0.0-42): `make vm-test-btrfs-integration`
 passes its four tests, with the removal reporting a rise on a real kernel and
 `ResumeReplace` refusing device 1's job while device 2 is replaced;
 `make test-vm-browser` passes its 21 checks, the new one included.
-`make test-quiet` passes. The pre-6.19 `replaceKill` branch is still not
-exercised, and these changes have not run on the development machine's
-kernel as root.
+`make test-quiet` passes. On the development machine (kernel 7.0.0-43,
+2026-11-10, at `f930876b`, with sudo) `make test-btrfs-integration` passes its
+four tests too: the resumed removals report a rise, `ResumeReplace` refuses
+device 1's job during the replace of device 2, and `balanceKill` runs with
+4384 of 8192 MiB allocated. The pre-6.19 `replaceKill` branch is still not
+exercised.
 
 ## 4. Left to do
 
