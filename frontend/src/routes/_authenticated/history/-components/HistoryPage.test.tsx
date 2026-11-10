@@ -133,6 +133,47 @@ describe("HistoryPage", () => {
     expect(screen.queryByText("Nothing has ended yet.")).toBeNull();
   });
 
+  it("marks each row with how its run ended", async () => {
+    answer([
+      history([
+        entry("ok"),
+        entry("bad", { state: "failed" }),
+        entry("stopped", { state: "canceled" }),
+      ]),
+    ]);
+
+    renderPage();
+
+    const level = async (name: string) =>
+      (await screen.findByText(name))
+        .closest('[role="row"]')
+        ?.querySelector(".log-level")
+        ?.getAttribute("data-level");
+    expect(await level("Job ok")).toBe("info");
+    expect(await level("Job bad")).toBe("error");
+    expect(await level("Job stopped")).toBe("warn");
+  });
+
+  it("narrows the table to one outcome and counts what is shown", async () => {
+    answer([history([entry("ok"), entry("bad", { state: "failed" })])]);
+
+    const { user } = renderPage();
+    await screen.findByText("Job ok");
+    expect(screen.getByText("2 shown")).toBeVisible();
+
+    await user.click(screen.getByRole("combobox", { name: "Outcome" }));
+    await user.click(await screen.findByRole("option", { name: "Failed" }));
+
+    expect(screen.getByText("Job bad")).toBeVisible();
+    expect(screen.queryByText("Job ok")).toBeNull();
+    expect(screen.getByText("1 shown")).toBeVisible();
+
+    await user.click(screen.getByRole("combobox", { name: "Outcome" }));
+    await user.click(await screen.findByRole("option", { name: "Cancelled" }));
+
+    expect(await screen.findByText("No matching jobs.")).toBeVisible();
+  });
+
   it("loads older entries from the exact end time it was given", async () => {
     const cursor = "2026-11-10T10:02:05.123456789Z";
     answer([

@@ -1,4 +1,5 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
+import { type CSSProperties, useState } from "react";
 
 import { call, linuxio, type TaskHistoryEntry } from "@/api";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
@@ -6,8 +7,10 @@ import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTab
 import SavedOutput from "@/components/tasks/SavedOutput";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
+import Chip from "@/components/ui/AppChip";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppRouterLinkButton from "@/components/ui/AppRouterLinkButton";
+import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
 import { isScheduledRun, scheduledRunLink } from "@/tasks/scheduledRuns";
@@ -18,32 +21,101 @@ import {
   taskTitle,
 } from "@/tasks/taskTitles";
 import { formatDate } from "@/utils/formatters";
+import { logSourceHue } from "@/utils/logHue";
+
+import "@/components/tables/log-row.css";
+
+// The log tables' level marker, reused for how a run ended: green for
+// completed, a red rail for failed, amber for one that was stopped.
+const outcomeLevel = (state: string) =>
+  state === "completed" ? "info" : state === "failed" ? "error" : "warn";
+
+const OUTCOME_FILTERS = [
+  { value: "completed", label: "Completed" },
+  { value: "failed", label: "Failed" },
+  { value: "canceled", label: "Cancelled" },
+  { value: "interrupted", label: "Interrupted" },
+];
 
 const columns: AppVirtualTableColumnDef<TaskHistoryEntry>[] = [
   {
+    id: "ended",
+    header: "Ended",
+    enableSorting: false,
+    cell: ({ row }) => (
+      <AppTypography
+        className="log-time"
+        color="text.secondary"
+        noWrap
+        title={taskEndedAt(row.original.task)}
+        variant="body2"
+      >
+        {formatDate(taskEndedAt(row.original.task))}
+      </AppTypography>
+    ),
+    // Wider than the log tables' clock time: this one carries the date.
+    meta: { width: "224px" },
+  },
+  {
+    id: "level",
+    header: "",
+    enableSorting: false,
+    cell: ({ row }) => (
+      <span
+        className="log-level"
+        data-level={outcomeLevel(row.original.task.state)}
+        title={taskOutcome(row.original)}
+      />
+    ),
+    meta: { cellClassName: "log-level-cell", width: "12px" },
+  },
+  {
     id: "title",
     header: "Job",
+    enableSorting: false,
     cell: ({ row }) => taskTitle(row.original.task),
+    meta: { align: "left" },
   },
   {
     id: "outcome",
     header: "Outcome",
+    enableSorting: false,
     cell: ({ row }) => taskOutcome(row.original),
+    meta: { align: "left", width: "minmax(110px, 220px)" },
   },
   {
     id: "owner",
     header: "Started by",
-    cell: ({ row }) => row.original.task.owner?.username ?? "",
-  },
-  {
-    id: "ended",
-    header: "Ended",
-    cell: ({ row }) => formatDate(taskEndedAt(row.original.task)),
+    enableSorting: false,
+    cell: ({ row }) => {
+      const username = row.original.task.owner?.username;
+      return username ? (
+        <Chip
+          className="log-source"
+          label={username}
+          size="xsmall"
+          style={{ "--log-hue": logSourceHue(username) } as CSSProperties}
+          variant="soft"
+        />
+      ) : null;
+    },
+    meta: { hideBelow: "md", width: "minmax(96px, 160px)" },
   },
   {
     id: "duration",
     header: "Ran for",
-    cell: ({ row }) => taskRunTime(row.original.task) ?? "",
+    enableSorting: false,
+    cell: ({ row }) => (
+      <AppTypography
+        className="log-time"
+        color="text.secondary"
+        noWrap
+        variant="body2"
+      >
+        {taskRunTime(row.original.task) ?? ""}
+      </AppTypography>
+    ),
+    meta: { hideBelow: "sm", width: "96px" },
   },
 ];
 
@@ -63,7 +135,11 @@ export default function HistoryPage({ selected, onSelectedChange }: Props) {
       return last.more && oldest ? taskEndedAt(oldest.task) : undefined;
     },
   });
+  const [outcome, setOutcome] = useState("");
   const entries = query.data?.pages.flatMap((page) => page.entries);
+  const visible = entries?.filter(
+    (entry) => !outcome || entry.task.state === outcome,
+  );
   const selectedEntry = entries?.find((entry) => entry.task.id === selected);
 
   return (
@@ -74,29 +150,56 @@ export default function HistoryPage({ selected, onSelectedChange }: Props) {
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: "var(--app-space-12)",
+        gap: "var(--app-space-8)",
         height: "100%",
         minHeight: 0,
       }}
     >
-      <AppTypography variant="h5">History</AppTypography>
-      <AppTypography color="text.secondary">
-        Jobs and scheduled runs that have ended, newest first.
-      </AppTypography>
+      {/* The Docker logs toolbar: a filter, then how much is on screen. */}
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          alignItems: "center",
+          gap: "var(--app-space-8)",
+        }}
+      >
+        <AppSelect
+          label="Outcome"
+          onChange={(event) => setOutcome(event.target.value)}
+          style={{ minWidth: 180 }}
+          value={outcome}
+        >
+          <option value="">All outcomes</option>
+          {OUTCOME_FILTERS.map(({ value, label }) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </AppSelect>
+        {visible && (
+          <AppTypography fontWeight={700}>{visible.length} shown</AppTypography>
+        )}
+      </div>
       {query.isError && (
         <AppAlert severity="error">
           Unable to load the history: {query.error.message}
         </AppAlert>
       )}
       {query.isPending && <AppLinearProgress aria-label="Loading history" />}
-      {entries && (
+      {entries && visible && (
         <>
           <div style={{ flex: "1 1 0", minHeight: 0 }}>
             <AppVirtualTable
               ariaLabel="Job history"
               columns={columns}
-              data={entries}
-              emptyMessage="Nothing has ended yet."
+              data={visible}
+              density="dense"
+              emptyMessage={
+                entries.length === 0
+                  ? "Nothing has ended yet."
+                  : "No matching jobs."
+              }
               fillAvailable
               getRowId={(entry) => entry.task.id}
               onRowClick={({ original }) => onSelectedChange(original.task.id)}
@@ -139,9 +242,11 @@ function Details({
       style={{
         display: "flex",
         flexDirection: "column",
-        gap: "var(--app-space-12)",
+        gap: "var(--app-space-8)",
         maxHeight: "50%",
         overflowY: "auto",
+        borderTop: "1px solid var(--app-palette-divider)",
+        paddingTop: "var(--app-space-8)",
       }}
     >
       <div
@@ -152,6 +257,7 @@ function Details({
           flexWrap: "wrap",
         }}
       >
+        <span className="log-level" data-level={outcomeLevel(task.state)} />
         <AppTypography variant="h6">{taskTitle(task)}</AppTypography>
         <AppTypography color="text.secondary">
           {taskOutcome(entry)}
