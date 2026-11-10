@@ -6,7 +6,8 @@ This is the one document for the jobs work: the design, the plan for every
 phase, what is done, what is left, and every item deferred by the reviews. It
 replaces the jobs design spec, the phase 1 implementation plan and the local
 ledger kept while phase 1 ran. Their history is in git:
-`git log -- '*jobs-design.md' '*jobs-phase-1.md'`.
+`git log -- '*jobs-design.md' '*jobs-phase-1.md'`. The phase 3 plan went the
+same way once phase 3 was done: `git log -- '*jobs-phase3-storage-safety.md'`.
 The route classification it relies on stays in the
 [mutation map](../superpowers/specs/2026-10-25-mutation-map.md).
 
@@ -21,7 +22,7 @@ and [Notifications](../alerts.md).
 | 1 | Store, host, relay, units, first route (`docker.update_container`) | done, verified on a real host |
 | 2 | Every mutation runs as a job: prerequisites, the ~199 routes and their callers, old task code deleted | done (section 4.2), last step `d2871872`; checked in the test VM (section 3.5) |
 | 3 | Storage safety and btrfs resume: cancel that ends when the handler returns, resume hooks for four btrfs routes, rollbacks, Docker storage switch, kill-and-resume root tests | done (section 4.3), commits `938e32c5` and `f8db05af`; checked in the test VM (section 3.6). The jobs CLI verb and the host's resume call are removed (D6) |
-| 4 | Schedules and system jobs | not started; one open decision |
+| 4 | Scheduled runs in the job list and the store | designed (section 2.14, D8), not built; [plan](../superpowers/plans/2026-11-10-jobs-phase4-scheduled-runs.md) |
 | 5 | History view, login notice, update banner | not started |
 
 Contents: 1. Summary · 2. Design · 3. Done · 4. Left to do · 5. Deferred
@@ -74,7 +75,7 @@ connection; changing how reads work; changing authentication.
 | History | On disk, 30 days or 200 jobs per user. Jobs that succeed in under a second are not kept. |
 | Alerts | A failed or interrupted job raises an alert (admin hosts). Success goes to history only. |
 | Scheduled scripts | Stay systemd timers and services. They appear in the same list and history and use the same alert hook. |
-| Jobs with no user | Nothing outside the browser starts a job yet; how timers reach the job store is open for phase 4 (section 2.14). One executor, same record, same list. |
+| Jobs with no user | Nothing outside the browser starts a job. Scheduled work runs in its own systemd unit and writes its own record (D8, section 2.14). Same record, same list. |
 | Logs | journald. Host jobs carry a `JOB_ID` field; unit jobs are their own unit. |
 | Rejected | A system-wide root daemon running jobs (TrueNAS shape): it would run non-admins' work as root. A process per job started from the bridge: 15 ms each, which forces a fast/slow decision per route. ZFS: out-of-tree module on the user's distro. |
 
@@ -242,7 +243,7 @@ Layout per uid, created by systemd:
 /run/linuxio/jobs/<uid>.sock                  host socket, 0600, owned by the uid, held by systemd
 ```
 
-Record fields: `id`, `route`, `owner {uid, username}`, `target []string`, `state`, `reason` (for `interrupted`: `shutdown`, `crash`, `reboot`), `created_at`, `started_at`, `finished_at`, `request` (the full decoded request, needed to run or resume; never returned by any API), `progress` (last envelope), `result` or `error {code, message}`, `executor {kind: host|unit, pid, pid_start, unit, invocation_id}`, `resumable`, `checkpoint` (opaque per route, section 2.11), `protocol`.
+Record fields: `id`, `route`, `owner {uid, username}`, `target []string`, `state`, `reason` (for `interrupted`: `shutdown`, `crash`, `reboot`), `created_at`, `started_at`, `finished_at`, `request` (the full decoded request, needed to run or resume; never returned by any API), `metadata` (the public projection shown with the job; scheduled runs write it, phase 4), `progress` (last envelope), `result` or `error {code, message}`, `executor {kind: host|unit, pid, pid_start, unit, invocation_id}`, `resumable`, `checkpoint` (opaque per route, section 2.11), `protocol`.
 
 States: `running`, `completed`, `failed`, `canceled`, `interrupted`. There is no `queued`: admission either starts the job or refuses it.
 
@@ -279,7 +280,7 @@ Why the hooks differ, as the kernel behaves (7.0, section 5): a fatal signal, a 
 
 **Host start and boot.** Every host, before it serves, marks the records its uid's last host left `running`: `interrupted/reboot` when that host ran in an earlier boot (executors carry the boot ID; a power loss leaves records `running`, an orderly shutdown already marked them `shutdown`), `interrupted/crash` when it ran in this boot and is gone. A host touches only its own uid's store. `linuxio-jobs@0.service` is enabled, so the root host starts at boot, after `local-fs.target` and the degraded pool mounts (`linuxio-btrfs-degraded.service`). It runs the route's `Resume` hook, and writes the outcome to the same record, only for an `interrupted` record with reason `shutdown` or `reboot` that is `Resumable`, has no `cancel_requested`, and whose executor ran in an earlier boot (always uid 0). That is one resume, for the last shutdown. A record any other way interrupted (a crash, a host stopped in this boot by hand, a cancel that overlapped a stop) loses `Resumable` when the host starts, so a job is never resumed at some later reboot, weeks on, and there is no manual resume. A job the host cannot resume is alerted and stamped with its executor so later starts leave it alone. The jobs it marks and does not resume raise one alert each. The host then exits under its normal rule once the resumed jobs end.
 
-The bridge binary has no verb besides `version`: nothing outside the browser starts a job, and the host serves no manual resume. A command for timers is open for phase 4 (section 2.14).
+The bridge binary has no verb besides `version`: nothing outside the browser starts a job, and the host serves no manual resume. Timers start no job either: scheduled work keeps its own unit and records itself (section 2.14).
 
 #### Fault matrix
 
@@ -308,11 +309,47 @@ What each event does to a job, as phase 1 implements it:
 - The alert store is root-owned, so only the root host raises alerts; a user host writes the record only. The frontend shows every user "N jobs ended while you were away" from `tasks.list` at login, so non-admins still learn about failures.
 - Scheduled scripts use the existing `OnFailure=` hook (`linuxio alert raise`), unchanged.
 
-### 2.14 Scheduled scripts and system jobs
+### 2.14 Scheduled runs
 
-- Schedules stay as built: a timer and a oneshot service per schedule, `run_now` and `stop` as quick mutations, status from systemd.
-- The job list includes running scripts by reading systemd: `linuxio-schedule-*.service` and the btrfs timer units, with the invocation ID as job ID, `ActiveState` as state and the journal as log. This is a read-only adapter in the host's `tasks.list`/`tasks.events`; scripts are the one kind of work that does not run in a host, because they are arbitrary commands under a configured user.
-- **Open for phase 4: how a timer reaches the job store.** A timer can only start a unit that runs a program, so either a command hands each firing to the root host, where it runs with the same progress, record and alert as a browser job, or scheduled work keeps running in its own unit, as the btrfs snapshot, health and resync units and the Docker update timer do today, and writes a record (`executor.kind=unit`, the invocation ID) when it ends so it appears in history. The first needs a new command that takes a scheduled job ID and waits for it, in the `linuxio` admin CLI (the bridge has no job verb); the second needs a small record writer. The bridge binary gains no new verb either way.
+Scheduled work stays in its own systemd unit (D8). It is never handed to a job host and no command starts a job. Each run writes its own record, shows in `tasks.list` and `tasks.events` while it runs, and keeps a copy of its output.
+
+**Units covered.**
+
+| Record `route` | Unit | Label | Owning page | Jobs alert |
+|---|---|---|---|---|
+| `scheduled.script` | `linuxio-schedule-<id>.service` | the schedule's name | `/services/schedules?schedule=<id>` | yes |
+| `scheduled.btrfs_snapshot` | `linuxio-btrfs-snapshot.service` | Snapshots and replication | `/storage/subvolumes?view=snapshots` | no |
+| `scheduled.btrfs_resync` | `linuxio-btrfs-resync@<uuid>.service` | Pool resync | `/storage?pool=<uuid>` | no |
+| `scheduled.docker_update` | `linuxio-docker-update.service` | Container updates | `/docker/containers` | no |
+
+Not covered: `linuxio-btrfs-health.service` (a check that only starts resyncs), the degraded mount at boot, the indexer's timer, the distribution's package auto-update.
+
+**Two hooks per unit write the record.** They sit in packaged drop-ins, never in a rendered unit: `schedules.run_now` refuses a schedule whose unit file differs from what the build renders (`ensureInstalled`), so changing the rendered text would break every existing schedule.
+
+```ini
+[Service]
+ExecStartPre=-+/usr/local/bin/linuxio scheduled-run begin --unit %n
+ExecStopPost=-+/usr/local/bin/linuxio scheduled-run end --unit %n
+```
+
+`+` runs the hook as root whatever `User=` and the sandbox say; `-` keeps a failed hook from failing or blocking the run. The drop-in applies to every schedule through the prefix directory `linuxio-schedule-.service.d/`.
+
+- `begin` creates the `running` record: `id` is `$INVOCATION_ID` written as a UUID, `route` and label come from the unit name, owner is root, `target` is `[unit]`, `metadata` is `{"label", "identity": [<schedule id or pool uuid>]}`, executor is `{kind: unit, unit, invocation_id, boot_id}`.
+- `end` reads `$SERVICE_RESULT`, `$EXIT_CODE` and `$EXIT_STATUS`: `success` is `completed`; otherwise a record with `cancel_requested` is `canceled`, a system that is shutting down gives `interrupted/shutdown`, and anything else is `failed` with a message such as "exited with status 3", "killed by signal KILL" or "timed out". It then saves the output, raises the alert and prunes. A run whose `begin` wrote nothing still gets its record from `end`.
+
+**Store.** `/var/lib/linuxio/jobs/scheduled` with progress under `/run/linuxio/jobs/scheduled`, root only. It is separate from the per-uid stores so scheduled runs have their own limit: each unit keeps its newest 50 ended runs and nothing older than 30 days. Every run is kept, also one shorter than a second.
+
+**Output.** `end` copies the run's journal lines (`_SYSTEMD_INVOCATION_ID`, message text only) to `<id>.log` next to the record, after `journalctl --sync`. At most 10 MiB: a longer output keeps its first and last 5 MiB with one line between saying how many bytes were left out. The file is removed with the record. Stdout and stderr are one stream and cannot be told apart (checked on systemd 259: same `_STREAM_ID`, same priority; sending stderr through a second journal connection lost lines).
+
+**Progress.** The btrfs timer program and the Docker update runner write the store's progress file of their own run, found through `$INVOCATION_ID`. Scripts report none; their feedback is their output.
+
+**Job list, root host only.** `tasks.list` adds the running scheduled runs, `tasks.events` polls the store every 2 s while a client listens and sends snapshot, progress and terminal events, `tasks.get` answers for a scheduled run, `tasks.cancel` and `tasks.watch` of a running one answer 409. A `running` record counts only while systemd agrees: same boot, the unit's current invocation is the record's, and the unit is `activating`, `active`, `reloading` or `deactivating`. Otherwise the host marks it `interrupted` (`reboot` for an earlier boot, `crash` in this one). Every admin sees scheduled runs; other users do not.
+
+**Stopping.** The bell shows no stop for a scheduled run; its row opens the owning page. `schedules.stop` and a scrub cancel that hits a timer's resync set `cancel_requested` on the record first, so the run ends `canceled`.
+
+**Alerts.** One alert per failure. A script that fails or is interrupted raises the jobs alert (source `jobs`, key the record ID, title "<label> failed" or "<label> was interrupted"), as a failed browser job does. Snapshots, replication, resync and Docker updates already raise their own alert and get no second one.
+
+**Frontend.** The bell lists each running scheduled run with its label and progress. The Schedules page shows the output of the selected schedule's current or latest run, live, from the journal. Listing old runs and reading their saved output belongs to the history view (phase 5).
 
 ### 2.15 Security
 
@@ -642,11 +679,8 @@ as on 7.0.
 
 ### 4.1 Open decisions
 
-- **How a timer reaches the job store.** The submit CLI was removed in phase 3
-  (D6), so nothing outside the browser starts a job. Phase 4 needs a way for a
-  timer to hand a run to the root host, or decides that scheduled work keeps
-  running in its own unit and only writes a record (section 2.14), for example
-  a command in the `linuxio` admin CLI.
+None. How a timer reaches the job store was decided on 2026-11-10 (D8, section
+2.14).
 
 ### 4.2 Phase 2: every mutation is a job
 
@@ -843,9 +877,12 @@ bridge's offline-pool mount counting a replace target as a present disk
 
 ### 4.4 Phase 4: schedules and system jobs
 
-Decide how timers reach the job store (section 2.14 and 4.1); the read-only
-adapter that lists `linuxio-schedule-*.service` and the btrfs timer units in
-`tasks.list`; btrfs timer units writing records.
+Section 2.14 is the design. The tasks are in the
+[phase 4 plan](../superpowers/plans/2026-11-10-jobs-phase4-scheduled-runs.md):
+the scheduled store and its limit, the two unit hooks and the output copy,
+progress from the btrfs timer program and the Docker update runner, the root
+host's listing and liveness check, the bell rows and the live output on the
+Schedules page.
 
 ### 4.5 Phase 5: history and notices
 
@@ -1181,6 +1218,20 @@ the Docker entry above.
   Where `pam_systemd` is absent the lines did cap the session; that cap is
   gone too. Not pursued: `systemd.memory_max` and `systemd.tasks_max`, which
   `pam_systemd` reads as PAM data set by another module (untested).
+- **D8, scheduled work keeps its own unit** (user, 2026-11-10), against a
+  command that hands each timer firing to the root host. A script runs as a
+  configured user with an arbitrary command, the snapshot, resync and Docker
+  update units already work and alert on their own, and D6 removed the only
+  verb that started a job from outside the browser. Each unit gets two hooks
+  that write its record (section 2.14). Also the user's: a script's output is
+  read live on the Schedules page, from the journal; our own programs report
+  progress; every ended run keeps up to 10 MiB of output next to its record;
+  scheduled runs have their own limit (the newest 50 per unit, 30 days); the
+  bell offers no stop for them and opens the owning page; a failed script
+  raises the same alert as a failed browser job. Dropped: log files of our own
+  in place of the journal (the Logs page would lose the output, and size
+  limits and clean-up would be ours to build), and showing stdout and stderr
+  apart (one journal stream; the workaround lost lines).
 - **Signals are masked, not retried.** Retrying an aborted replace is not an
   option (the target is destroyed), so the ioctl never sees the signal: section 5.
 - **A freeze is not handled.** A suspend to RAM still aborts a scrub or replace

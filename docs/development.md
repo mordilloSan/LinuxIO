@@ -293,6 +293,12 @@ make update-go-deps GO_MODULES='golang.org/x/net@latest golang.org/x/sys@latest'
 
 Required transitive dependencies may also change.
 
+When `go.mod` changes, the target prints a suggested commit message in the
+same shape as `make update-deps`: `chore(deps): update module <path> to
+<version>` for one direct module, or a `chore(deps): update N Go dependencies`
+subject with one line per direct module, Go version or toolchain change.
+Indirect-only changes give `chore(deps): update indirect Go modules`.
+
 ## Distro and WireGuard icons
 
 The existing icon generator bundles the literal IDs in
