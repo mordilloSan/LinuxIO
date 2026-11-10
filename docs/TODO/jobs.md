@@ -339,7 +339,7 @@ ExecStopPost=-+/usr/local/bin/linuxio scheduled-run end --unit %n
 
 **Store.** `/var/lib/linuxio/jobs/scheduled` with progress under `/run/linuxio/jobs/scheduled`, root only. It is separate from the per-uid stores so scheduled runs have their own limit: each unit keeps its newest 50 ended runs and nothing older than 30 days. Every run is kept, also one shorter than a second.
 
-**Output.** `end` copies the run's journal lines (`_SYSTEMD_INVOCATION_ID`, message text only) to `<id>.log` next to the record, after `journalctl --sync`. At most 10 MiB: a longer output keeps its first and last 5 MiB with one line between saying how many bytes were left out. The file is removed with the record. Stdout and stderr are one stream and cannot be told apart (checked on systemd 259: same `_STREAM_ID`, same priority; sending stderr through a second journal connection lost lines).
+**Output.** `end` copies the run's journal lines (`_SYSTEMD_INVOCATION_ID`) to `<id>.log` next to the record, after `journalctl --sync`. Each line carries its time: the journal's `short-iso` format, the same lines the live view shows. At most 10 MiB: a longer output keeps its first and last 5 MiB with one line between saying how many bytes were left out. The file is removed with the record. Stdout and stderr are one stream and cannot be told apart (checked on systemd 259: same `_STREAM_ID`, same priority; sending stderr through a second journal connection lost lines).
 
 **Progress.** The btrfs timer program and the Docker update runner write the store's progress file of their own run, found through `$INVOCATION_ID`. Scripts report none; their feedback is their output.
 

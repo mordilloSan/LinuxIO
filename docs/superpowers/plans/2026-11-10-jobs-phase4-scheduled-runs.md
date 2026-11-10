@@ -19,6 +19,7 @@
 - Hook lines are exactly `ExecStartPre=-+/usr/local/bin/linuxio scheduled-run begin --unit %n` and `ExecStopPost=-+/usr/local/bin/linuxio scheduled-run end --unit %n`. A hook takes no other input than `--unit` and systemd's environment.
 - Store: `/var/lib/linuxio/jobs/scheduled`, progress in `/run/linuxio/jobs/scheduled`, directories `0700`, files `0600`, root.
 - Limits: newest 50 ended runs per unit, none older than 30 days, output at most 10 MiB (first 5 MiB and last 5 MiB of a longer one).
+- Every saved output line carries its time: the journal's `short-iso` format (`2026-11-10T03:00:01+0000 host linuxio-schedule[4242]: text`), the same lines the live view shows.
 - Routes: `scheduled.script`, `scheduled.btrfs_snapshot`, `scheduled.btrfs_resync`, `scheduled.docker_update`. Labels: the schedule's name (fallback `Scheduled task`), `Snapshots and replication`, `Pool resync`, `Container updates`.
 - Logging follows AGENTS.md: return or log, never both; lowercase constant messages; the key is `error`.
 - No new bridge route. `frontend/src/api/generated/*` changes only through `make generate`.
@@ -202,7 +203,7 @@ Expected: FAIL, package does not build.
   - `End` order: decide the outcome and write the terminal record with `Store.Update` (not `Finish`, which deletes short runs); then copy the output; then alert; then `PrunePerTarget(ctx, now, jobs.MaxScheduledRunsPerUnit)`. It returns the joined errors of the later steps.
   - Outcome order: `success` first, then `cancel_requested`, then `Stopping`, then failed.
   - The output goes through a writer that keeps the first and last `jobs.MaxOutputBytes/2` bytes and counts the rest, then is written with `atomicfile.Write`.
-  - `DefaultHooks`: `Store` is `jobs.NewScheduledStore()`, `ScheduleDir` is `version.ConfigDir + "/schedules"`, `Alert` is `alerts.Raise`, `Stopping` is `systemd.SystemStopping`, and `Output` runs `journalctl --sync` and then `journalctl --no-pager -o cat _SYSTEMD_INVOCATION_ID=<invocation>` with `exec.CommandContext`, separate arguments, stderr in the returned error.
+  - `DefaultHooks`: `Store` is `jobs.NewScheduledStore()`, `ScheduleDir` is `version.ConfigDir + "/schedules"`, `Alert` is `alerts.Raise`, `Stopping` is `systemd.SystemStopping`, and `Output` runs `journalctl --sync` and then `journalctl --no-pager -o short-iso _SYSTEMD_INVOCATION_ID=<invocation>` with `exec.CommandContext`, separate arguments, stderr in the returned error.
   - `scheduledrun` does not import `backend/common/btrfs`, `dockerupdate` or anything under `backend/bridge`; the guard tests keep its unit names in step.
 - [ ] **Step 7: Run the tests**
 
@@ -519,12 +520,12 @@ Expected: PASS.
 - Modify: `frontend/src/test/vm/vm.ts` (add `scheduledRecords()` and `scheduledOutput(id)` reading `/var/lib/linuxio/jobs/scheduled`), `docs/TODO/jobs.md` (status table, new section 3.8, section 4.4), `docs/api-contract.md` (tasks section: the four types, `metadata`, the two 409s, `invocationId` on `logs.service.follow`), `docs/process-systemd-architecture.md` (the hooks, the store, the command), `docs/alerts.md` (the script failure alert)
 
 - [ ] **Step 1: Write the VM spec.** Each test creates its schedule on the Schedules page with a calendar that never fires on its own and starts it with "Run now".
-  1. *A running script shows in the bell and on its page, and leaves its output.* Script `echo first; sleep 20; echo last >&2`. While it runs: the bell lists the schedule's name with no `Cancel task`; clicking the row opens `/services/schedules?schedule=<id>`; the page's output card shows `first`. After it ends: one record with route `scheduled.script`, state `completed`; its saved output is exactly `first\nlast\n`.
+  1. *A running script shows in the bell and on its page, and leaves its output.* Script `echo first; sleep 20; echo last >&2`. While it runs: the bell lists the schedule's name with no `Cancel task`; clicking the row opens `/services/schedules?schedule=<id>`; the page's output card shows `first`. After it ends: one record with route `scheduled.script`, state `completed`; its saved output has exactly two lines, matching `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{4} \S+ linuxio-schedule\[\d+\]: first$` and the same with `last`.
   2. *A failing script raises an alert.* Script `echo boom; exit 3`: state `failed`, error `exited with status 3`; the bell shows the alert `<name> failed`.
   3. *A script stopped on its page ends canceled.* Script `sleep 300`; "Stop": state `canceled`, `cancel_requested` true, no alert.
   4. *A script cut by a power loss is marked after the boot.* Script `sleep 300`; `rig(["power-cut"])`; after the boot and a sign-in: state `interrupted`, reason `reboot`; the alert `<name> was interrupted`.
   5. *A long output keeps its start and its end.* Script `for i in $(seq 300); do head -c 45000 /dev/zero | tr '\0' x; echo; done`: the saved output is at most 10 MiB plus 64 bytes and contains `bytes left out`.
-  6. *The last line before the exit is saved.* Script `echo almost; echo last`, run 10 times in a row: every saved output ends with `last\n`.
+  6. *The last line before the exit is saved.* Script `echo almost; echo last`, run 10 times in a row: the last line of every saved output ends with `: last`.
   7. *A broken hook does not stop the run.* Move `/usr/local/bin/linuxio` aside over SSH, run a script that writes `/tmp/phase4-ran`, restore the binary: the file exists and the unit's result is `success`.
   8. *A drop-in alone creates no unit.* Before any snapshot rule exists, `systemctl show -p LoadState --value linuxio-btrfs-snapshot.service` over SSH prints `not-found`.
   9. *The snapshot unit records itself.* Save a snapshot rule for the test pool on the Storage page, then `sudo systemctl start linuxio-btrfs-snapshot.service` over SSH: one record with route `scheduled.btrfs_snapshot`, state `completed`.
