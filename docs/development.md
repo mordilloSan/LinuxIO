@@ -277,6 +277,12 @@ any remaining vulnerabilities. A clean audit skips fixes. Audit fixes
 can also update dependencies outside the selection. Selecting nothing skips
 installation and audit fixes; Go dependencies are not updated by this target.
 
+After a successful update the target prints a suggested Conventional Commits
+message built from the `package.json` changes: `chore(deps): update dependency
+<name> to v<version>` for one package, or a `chore(deps): update N frontend
+dependencies` subject with one line per package for several. It never creates
+the commit.
+
 Run `make update-go-deps` to update all Go dependencies, including test
 dependencies, with `go get -u -t ./...`, followed by `go mod tidy`.
 To update specific modules instead, pass explicit versions or `@latest`:
