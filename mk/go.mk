@@ -31,8 +31,17 @@ update-go-deps: ensure-go ## Update all Go dependencies (optional GO_MODULES=...
 	done; \
 	if [ "$${#modules[@]}" -eq 0 ]; then modules=(-u -t ./...); fi; \
 	cd "$(backend_dir)"; \
+	before="$$(cat go.mod)"; \
 	$(GO_CMD_ENV) "$(GO_BIN)" get "$${modules[@]}"; \
-	$(GO_CMD_ENV) "$(GO_BIN)" mod tidy
+	$(GO_CMD_ENV) "$(GO_BIN)" mod tidy; \
+	if [ "$$before" = "$$(cat go.mod)" ]; then \
+	  echo "No Go dependency changes in go.mod."; \
+	else \
+	  echo ""; \
+	  echo "📝 Suggested commit message:"; \
+	  echo ""; \
+	  "$(scripts_dir)/go-deps-commit-message.sh" <(printf '%s\n' "$$before") go.mod; \
+	fi
 
 ##@ Development|yellow
 generate: ensure-go ensure-node setup ## Regenerate frontend API contracts
