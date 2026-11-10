@@ -64,10 +64,14 @@ echo "🛡️  Checking for npm vulnerabilities..."
 audit_fixed=0
 if ! npm audit --audit-level=low; then
 	echo "🛡️  Applying available npm audit fixes..."
-	audit_fixed=1
+	lock_before="$(sha256sum package-lock.json)"
 	if ! npm audit fix --no-fund --audit-level=low; then
 		echo "⚠️  npm audit fix did not resolve all vulnerabilities or could not complete; review the report below." >&2
 		npm audit || true
+		echo "⚠️  npm audit fix has already run; what is listed above needs a manual upgrade or has no fix yet." >&2
+	fi
+	if [ "$lock_before" != "$(sha256sum package-lock.json)" ]; then
+		audit_fixed=1
 	fi
 fi
 echo ""
