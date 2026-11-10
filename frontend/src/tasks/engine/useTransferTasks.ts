@@ -11,6 +11,7 @@ import {
 } from "@/api";
 import { useStreamResult } from "@/hooks/useStreamResult";
 import { batchFailures, describeBatchFailures } from "@/tasks/batchFailures";
+import { extractionLabelBase, fileTaskText } from "@/tasks/taskTitles";
 import * as TaskTypes from "@/tasks/taskTypes";
 import {
   createProgressSpeedCalculator,
@@ -63,9 +64,8 @@ function batchLabelBase(sources: string[]): string {
  */
 interface TransferDescriptor {
   kind: TransferKind;
+  /** Progress labels are `${fileTaskText(taskType, labelBase)} (n%)`. */
   taskType: string;
-  /** "Compressing" — progress labels are `${active} ${labelBase} (n%)`. */
-  active: string;
   /** "Created" — success toasts are `${done} ${labelBase}`. */
   done: string;
   /** "compression" — start/stream/failure/cancel copy derives from this. */
@@ -93,7 +93,6 @@ const DESCRIPTORS: Record<TransferKind, TransferDescriptor> = {
   compression: {
     kind: "compression",
     taskType: TaskTypes.TASK_TYPE_FILE_COMPRESS,
-    active: "Compressing",
     done: "Created",
     noun: "compression",
     usesLabelAllocator: true,
@@ -114,7 +113,6 @@ const DESCRIPTORS: Record<TransferKind, TransferDescriptor> = {
   extraction: {
     kind: "extraction",
     taskType: TaskTypes.TASK_TYPE_FILE_EXTRACT,
-    active: "Extracting",
     done: "Extracted",
     noun: "extraction",
     usesLabelAllocator: true,
@@ -134,7 +132,6 @@ const DESCRIPTORS: Record<TransferKind, TransferDescriptor> = {
   copy: {
     kind: "copy",
     taskType: TaskTypes.TASK_TYPE_FILE_COPY_BATCH,
-    active: "Copying",
     done: "Copied",
     noun: "copy",
     usesLabelAllocator: false,
@@ -154,7 +151,6 @@ const DESCRIPTORS: Record<TransferKind, TransferDescriptor> = {
   move: {
     kind: "move",
     taskType: TaskTypes.TASK_TYPE_FILE_MOVE_BATCH,
-    active: "Moving",
     done: "Moved",
     noun: "move",
     usesLabelAllocator: false,
@@ -196,13 +192,7 @@ function progressLabel(
   labelBase: string,
   pct: number,
 ): string {
-  return `${descriptor.active} ${labelBase} (${pct}%)`;
-}
-
-// Extraction navbar entries drop the archive extension.
-function extractionLabelBase(archivePath: string): string {
-  const raw = basename(archivePath, "archive");
-  return raw.replace(/\.(tar\.gz|tgz|zip)$/i, "") || raw;
+  return `${fileTaskText(descriptor.taskType, labelBase)} (${pct}%)`;
 }
 
 /**

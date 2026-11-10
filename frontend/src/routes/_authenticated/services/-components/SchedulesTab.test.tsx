@@ -1,6 +1,9 @@
+import { useSyncExternalStore } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { fireEvent, render, screen, waitFor } from "@/test/render";
+import type { TaskHistoryEntry } from "@/api";
+import { act, fireEvent, render, screen, waitFor } from "@/test/render";
+import { formatDate } from "@/utils/formatters";
 
 import SchedulesTab from "./SchedulesTab";
 
@@ -8,7 +11,21 @@ const mocks = vi.hoisted(() => ({
   mutations: [] as Array<{ route: string; request: unknown }>,
   navigate: vi.fn(),
   openChannel: vi.fn(() => null),
+  history: {} as { data?: unknown; error?: Error },
+  historyListeners: new Set<() => void>(),
+  historyOptions: [] as Array<{
+    queryKey: unknown[];
+    refetchInterval?: number;
+  }>,
 }));
+
+// Like a query result that changes: a rerender alone would not reach a child
+// the React compiler has memoised.
+const setHistory = (history: typeof mocks.history) =>
+  act(() => {
+    mocks.history = history;
+    mocks.historyListeners.forEach((listener) => listener());
+  });
 
 const status = {
   definition: {
@@ -40,9 +57,37 @@ const status = {
 
 let selectedStatus: typeof status = status;
 
+const entry = (
+  id: string,
+  state: string,
+  extra: Partial<TaskHistoryEntry> & { error?: string } = {},
+) => ({
+  task: {
+    id,
+    type: "schedule.run",
+    state,
+    created_at: "2026-11-09T10:00:00Z",
+    started_at: "2026-11-09T10:00:00Z",
+    finished_at: "2026-11-09T10:00:42Z",
+    ...(extra.error ? { error: { message: extra.error } } : {}),
+  },
+  ...(extra.output === undefined ? {} : { output: extra.output }),
+});
+const failedRun = entry("run-failed", "failed", {
+  error: "exit status 2",
+  output: true,
+});
+const completedRun = entry("run-ok", "completed");
+const runLabel = (outcome: string) =>
+  `${formatDate("2026-11-09T10:00:42Z")} · ${outcome} · 42s`;
+
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tanstack/react-router")>()),
   useNavigate: () => mocks.navigate,
+}));
+
+vi.mock("@/components/tasks/SavedOutput", () => ({
+  default: ({ taskId }: { taskId: string }) => <div>Saved output {taskId}</div>,
 }));
 
 vi.mock("@tanstack/react-query", async (importOriginal) => {
@@ -52,11 +97,24 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
     useSuspenseQuery: () => ({
       data: { available: true, error: null, schedules: [] },
     }),
-    useQuery: (options: { queryKey?: unknown[] }) => ({
-      data: options.queryKey?.some((part) => String(part).includes("get"))
-        ? selectedStatus
-        : [{ username: "root" }, { username: "alice" }],
-    }),
+    useQuery: (options: { queryKey: unknown[]; refetchInterval?: number }) => {
+      const history = useSyncExternalStore(
+        (listener) => {
+          mocks.historyListeners.add(listener);
+          return () => mocks.historyListeners.delete(listener);
+        },
+        () => mocks.history,
+      );
+      if (options.queryKey.includes("history")) {
+        mocks.historyOptions.push(options);
+        return history;
+      }
+      return {
+        data: options.queryKey.some((part) => String(part).includes("get"))
+          ? selectedStatus
+          : [{ username: "root" }, { username: "alice" }],
+      };
+    },
   };
 });
 
@@ -109,6 +167,9 @@ describe("SchedulesTab interactions", () => {
     mocks.navigate.mockReset();
     mocks.openChannel.mockClear();
     selectedStatus = status;
+    mocks.history = { data: { entries: [], more: false } };
+    mocks.historyOptions = [];
+    mocks.historyListeners.clear();
   });
 
   it("opens from null, selects root, and submits the exact create payload", async () => {
@@ -221,5 +282,130 @@ describe("SchedulesTab interactions", () => {
       screen.queryByText("Output of the latest run"),
     ).not.toBeInTheDocument();
     expect(mocks.openChannel).not.toHaveBeenCalled();
+  });
+
+  it("lists a schedule's past runs with their outcome and how long they ran", async () => {
+    mocks.history = {
+      data: { entries: [failedRun, completedRun], more: false },
+    };
+    render(<SchedulesTab {...props} selected="backup" />);
+
+    expect(
+      await screen.findByRole("button", { name: runLabel("Failed") }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: runLabel("Completed") }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Past runs")).toBeInTheDocument();
+    expect(mocks.historyOptions.at(-1)).toMatchObject({
+      queryKey: ["linuxio", "tasks", "history", { unit: status.unit_name }],
+      refetchInterval: 5000,
+    });
+  });
+
+  it("does not ask for past runs while no schedule is selected", () => {
+    render(<SchedulesTab {...props} />);
+
+    expect(mocks.historyOptions).toEqual([]);
+  });
+
+  it("says so when the schedule has not run yet", async () => {
+    render(<SchedulesTab {...props} selected="backup" />);
+
+    expect(
+      await screen.findByText("This task has not run yet."),
+    ).toBeInTheDocument();
+  });
+
+  it("shows an error, not the empty text, when the history cannot be loaded", async () => {
+    mocks.history = { error: new Error("bridge unavailable") };
+    render(<SchedulesTab {...props} selected="backup" />);
+
+    expect(await screen.findByText(/bridge unavailable/)).toBeInTheDocument();
+    expect(
+      screen.queryByText("This task has not run yet."),
+    ).not.toBeInTheDocument();
+    // The card shows the error itself; a poll every 5 s must not also toast it.
+    expect(mocks.historyOptions.at(-1)).toMatchObject({
+      meta: { silent: true },
+    });
+  });
+
+  it("shows a selected failed run's error and saved output beside the live output", async () => {
+    mocks.history = {
+      data: { entries: [failedRun, completedRun], more: false },
+    };
+    const { user } = render(<SchedulesTab {...props} selected="backup" />);
+
+    await user.click(
+      await screen.findByRole("button", { name: runLabel("Failed") }),
+    );
+
+    expect(screen.getByText("exit status 2")).toBeInTheDocument();
+    expect(screen.getByText("Saved output run-failed")).toBeInTheDocument();
+    expect(screen.getByText("Output of the latest run")).toBeInTheDocument();
+  });
+
+  it("shows no output for a selected run that saved none", async () => {
+    mocks.history = {
+      data: { entries: [failedRun, completedRun], more: false },
+    };
+    const { user } = render(<SchedulesTab {...props} selected="backup" />);
+
+    await user.click(
+      await screen.findByRole("button", { name: runLabel("Completed") }),
+    );
+
+    expect(
+      screen.getByRole("button", {
+        name: runLabel("Completed"),
+        pressed: true,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Saved output/)).not.toBeInTheDocument();
+  });
+
+  it("selects a past run from the keyboard", async () => {
+    mocks.history = { data: { entries: [failedRun], more: false } };
+    const { user } = render(<SchedulesTab {...props} selected="backup" />);
+
+    (await screen.findByRole("button", { name: runLabel("Failed") })).focus();
+    await user.keyboard("{Enter}");
+
+    expect(screen.getByText("Saved output run-failed")).toBeInTheDocument();
+  });
+
+  it("selects nothing once the chosen run leaves the list", async () => {
+    mocks.history = { data: { entries: [failedRun], more: false } };
+    const { user } = render(<SchedulesTab {...props} selected="backup" />);
+    await user.click(
+      await screen.findByRole("button", { name: runLabel("Failed") }),
+    );
+    expect(screen.getByText("Saved output run-failed")).toBeInTheDocument();
+
+    setHistory({ data: { entries: [completedRun], more: false } });
+
+    expect(screen.queryByText(/Saved output/)).not.toBeInTheDocument();
+    expect(screen.queryByText("exit status 2")).not.toBeInTheDocument();
+  });
+
+  it("clears the chosen run when another schedule is selected", async () => {
+    mocks.history = { data: { entries: [failedRun], more: false } };
+    const { user, rerender } = render(
+      <SchedulesTab {...props} selected="backup" />,
+    );
+    await user.click(
+      await screen.findByRole("button", { name: runLabel("Failed") }),
+    );
+    expect(screen.getByText("Saved output run-failed")).toBeInTheDocument();
+
+    selectedStatus = {
+      ...status,
+      definition: { ...status.definition, id: "other" },
+      unit_name: "linuxio-schedule-other.service",
+    };
+    rerender(<SchedulesTab {...props} selected="other" />);
+
+    expect(screen.queryByText(/Saved output/)).not.toBeInTheDocument();
   });
 });

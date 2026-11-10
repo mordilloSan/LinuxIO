@@ -21,6 +21,7 @@ import {
   useBackgroundTasks,
 } from "@/tasks/useBackgroundTaskState";
 import { iconSize as iconSizes } from "@/theme/constants";
+import { formatDuration } from "@/utils/formatters";
 
 import { useAlerts } from "./useAlerts";
 
@@ -62,16 +63,6 @@ const formatSpeed = (speed?: number) => {
         ? value.toFixed(1)
         : value.toFixed(2);
   return `${formatted} ${units[unitIndex]}`;
-};
-
-const formatTimeRemaining = (seconds: number) => {
-  if (seconds < 0 || !isFinite(seconds)) return null;
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = Math.round(seconds % 60);
-  if (hours > 0) return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
-  return secs > 0 ? `${minutes}m ${secs}s` : `${minutes}m`;
 };
 
 const getTransferTitle = (type: string) => {
@@ -184,7 +175,7 @@ function TransferItem({
   ) {
     const remainingBytes = transfer.total - transfer.bytes;
     const secondsRemaining = remainingBytes / transfer.speed;
-    timeRemainingText = formatTimeRemaining(secondsRemaining);
+    timeRemainingText = formatDuration(secondsRemaining);
   }
 
   /* The row header already carries the status, so the caption under the bar is
@@ -761,6 +752,16 @@ export function NotificationsBell() {
                 })}
               </ul>
             )}
+
+            <div className="app-navbar-notifications__footer">
+              <AppRouterLinkButton
+                onClick={handleClose}
+                size="small"
+                to="/history"
+              >
+                History
+              </AppRouterLinkButton>
+            </div>
           </div>
         </AppPopover>
       </div>

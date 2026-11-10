@@ -685,7 +685,10 @@ const linuxio = {
   tasks: {
     cancel: defineCallWithRequest("tasks.cancel"),
     get: defineCallWithRequest("tasks.get"),
+    history: defineCallWithRequest("tasks.history"),
+    host: defineCall("tasks.host"),
     list: defineCallWithRequest("tasks.list"),
+    output: defineCallWithRequest("tasks.output"),
   },
   terminal: {
     list_shells: defineCallWithRequest("terminal.list_shells"),

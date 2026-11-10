@@ -3048,6 +3048,30 @@ export interface TaskEvent {
   type: string;
 }
 
+export interface TaskHistory {
+  entries: TaskHistoryEntry[];
+  more: boolean;
+}
+
+export interface TaskHistoryEntry {
+  task: TaskSnapshot;
+  reason?: string;
+  unit?: string;
+  output?: boolean;
+}
+
+export interface TaskHistoryRequest {
+  before?: string;
+  limit?: number;
+  unit?: string;
+}
+
+export interface TaskHostStatus {
+  update_pending: boolean;
+  running: number;
+  jobs?: TaskSnapshot[];
+}
+
 export interface TaskIDRequest {
   taskId: string;
 }
@@ -3066,6 +3090,18 @@ export interface TaskMetadata {
   path?: string;
   projectName?: string;
   testType?: string;
+}
+
+export interface TaskOutput {
+  content: string;
+  offset: number;
+  size: number;
+}
+
+export interface TaskOutputRequest {
+  taskId: string;
+  offset?: number;
+  limit?: number;
 }
 
 export interface TaskOwner {
@@ -4776,10 +4812,21 @@ export interface LinuxIOSchema {
       request: TaskIDRequest;
       result: TaskSnapshot;
     };
+    history: {
+      input: [request: TaskHistoryRequest];
+      request: TaskHistoryRequest;
+      result: TaskHistory;
+    };
+    host: { input: []; request: void; result: TaskHostStatus };
     list: {
       input: [request: TaskListRequest];
       request: TaskListRequest;
       result: TaskSnapshot[];
+    };
+    output: {
+      input: [request: TaskOutputRequest];
+      request: TaskOutputRequest;
+      result: TaskOutput;
     };
   };
 
@@ -5173,7 +5220,10 @@ export interface LinuxIOCallSchema {
   "systemd.list_timers": { request: void; result: Timer[] };
   "tasks.cancel": { request: TaskIDRequest; result: TaskSnapshot };
   "tasks.get": { request: TaskIDRequest; result: TaskSnapshot };
+  "tasks.history": { request: TaskHistoryRequest; result: TaskHistory };
+  "tasks.host": { request: void; result: TaskHostStatus };
   "tasks.list": { request: TaskListRequest; result: TaskSnapshot[] };
+  "tasks.output": { request: TaskOutputRequest; result: TaskOutput };
   "terminal.list_shells": { request: ContainerIDRequest; result: string[] };
   "updates.get_auto_updates": { request: void; result: AutoUpdateState };
   "updates.get_update_detail": { request: PackageIDRequest; result: Update };

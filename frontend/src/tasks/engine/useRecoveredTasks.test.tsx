@@ -7,7 +7,10 @@ import type { Stream } from "@/api";
 import { createBackgroundTaskCache } from "@/tasks/taskCache";
 import {
   TASK_TYPE_DOCKER_UPDATE,
+  TASK_TYPE_FILE_CHMOD_BATCH,
+  TASK_TYPE_FILE_DELETE_BATCH,
   TASK_TYPE_FILE_INDEXER,
+  TASK_TYPE_FILE_TRASH_RESTORE,
   TASK_TYPE_PACKAGE_UPDATE,
   TASK_TYPE_STORAGE_BTRFS_BALANCE,
   TASK_TYPE_STORAGE_BTRFS_SCRUB,
@@ -293,6 +296,41 @@ describe("useRecoveredTasks package updates", () => {
         label: "Scrubbing btrfs filesystem (42%)",
         progress: 42,
         taskType: TASK_TYPE_STORAGE_BTRFS_SCRUB,
+      }),
+    ]);
+  });
+
+  it("names a running file job by what it does and the items it has done", async () => {
+    const { emitTerminalEvent, runtime } = renderRecoveredTasks();
+
+    for (const [id, type, detail] of [
+      ["delete-active", TASK_TYPE_FILE_DELETE_BATCH, { processed: 3 }],
+      ["restore-active", TASK_TYPE_FILE_TRASH_RESTORE, { processed: 1 }],
+      ["chown-active", TASK_TYPE_FILE_CHMOD_BATCH, { phase: "chown" }],
+    ] as const) {
+      await emitTerminalEvent({
+        created_at: "2026-01-01T00:00:00Z",
+        id,
+        metadata: { label: "12 items" },
+        progress: { detail },
+        state: "running",
+        type,
+        updated_at: "2026-01-01T00:00:01Z",
+      });
+    }
+
+    expect(runtime.tasks.backgroundTasks.read()).toEqual([
+      expect.objectContaining({
+        id: "delete-active",
+        label: "Deleting 3 items",
+      }),
+      expect.objectContaining({
+        id: "restore-active",
+        label: "Restoring 1 item from Trash",
+      }),
+      expect.objectContaining({
+        id: "chown-active",
+        label: "Changing ownership: 0 items",
       }),
     ]);
   });

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -23,9 +24,18 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
-const relayTestJobID = "00000000-0000-4000-8000-0000000000c1"
+const (
+	relayTestJobID = "00000000-0000-4000-8000-0000000000c1"
+	// Jobs of the job host the relay waits for, or reads about.
+	hostJobOne   = "00000000-0000-4000-8000-0000000000f1"
+	hostJobTwo   = "00000000-0000-4000-8000-0000000000f2"
+	hostJobThree = "00000000-0000-4000-8000-0000000000f3"
+	hostJobFour  = "00000000-0000-4000-8000-0000000000f4"
+)
 
-// relayTestSockets points the relay at hostSocket for the rest of the test.
+// relayTestSockets points the relay at hostSocket, and at an empty store
+// standing for its host's, for the rest of the test: no test reads the records
+// of this machine's job host.
 func relayTestSockets(t *testing.T, hostSocket string) {
 	t.Helper()
 	if os.Geteuid() == 0 {
@@ -34,6 +44,166 @@ func relayTestSockets(t *testing.T, hostSocket string) {
 	oldHost := jobsHostSocket
 	jobsHostSocket = func(uint32) string { return hostSocket }
 	t.Cleanup(func() { jobsHostSocket = oldHost })
+	relayTestStore(t, t.TempDir())
+}
+
+// relayTestStore points the relay at the store under dir, standing for its
+// job host's, for the rest of the test, and returns it.
+func relayTestStore(t *testing.T, dir string) *jobs.Store {
+	t.Helper()
+	store := jobs.NewStore(filepath.Join(dir, "state"), filepath.Join(dir, "run"))
+	oldStore := jobsHostStore
+	jobsHostStore = func(uint32) *jobs.Store { return store }
+	t.Cleanup(func() { jobsHostStore = oldStore })
+	return store
+}
+
+// unreadableRelayTestStore points the relay at a store whose records cannot
+// be listed: a file stands where their directory should be.
+func unreadableRelayTestStore(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "state"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	relayTestStore(t, dir)
+}
+
+// gateRelayConnect holds each of the relay's connection attempts until the
+// test lets it through on release; it then connects to the host. connecting
+// receives a value when the first attempt is under way.
+func gateRelayConnect(t *testing.T) (connecting <-chan struct{}, release chan<- struct{}) {
+	t.Helper()
+	started, gate := make(chan struct{}, 1), make(chan struct{})
+	oldConnect := jobsConnect
+	jobsConnect = func(ctx context.Context, uid uint32, hello bridgeipc.HelloSession, hostSocket string) (*jobsclient.Client, error) {
+		select {
+		case started <- struct{}{}:
+		default:
+		}
+		select {
+		case <-gate:
+			return jobsclient.Connect(ctx, uid, hello, hostSocket)
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	t.Cleanup(func() { jobsConnect = oldConnect })
+	return started, gate
+}
+
+// shortHostWait makes a request wait at most d for the host, for the rest of
+// the test.
+func shortHostWait(t *testing.T, d time.Duration) {
+	t.Helper()
+	oldWait := hostWaitTimeout
+	hostWaitTimeout = d
+	t.Cleanup(func() { hostWaitTimeout = oldWait })
+}
+
+// liveExecutor is a host executor naming the test's own process, which runs.
+// The same pid with another start time names a process that has exited.
+func liveExecutor(t *testing.T) jobs.Executor {
+	t.Helper()
+	pid := int32(os.Getpid())
+	start, err := jobs.ProcessStart(pid)
+	if err != nil {
+		t.Fatalf("ProcessStart: %v", err)
+	}
+	return jobs.Executor{Kind: "host", PID: pid, PIDStart: start}
+}
+
+// runningRelayTestJob records in store a running job labelled label, created
+// at created, by the host of an older build, whose process executor names.
+func runningRelayTestJob(t *testing.T, store *jobs.Store, id, label string, created time.Time, executor jobs.Executor) jobs.Record {
+	t.Helper()
+	record := jobs.Record{
+		ID: id, Route: "test.job", Owner: jobs.Owner{UID: uint32(os.Getuid()), Username: "alice"},
+		State: jobs.StateRunning, CreatedAt: created, StartedAt: created,
+		Metadata: jsontext.Value(`{"label":"` + label + `"}`), Request: jsontext.Value(`{"secret":"x"}`),
+		Executor: executor, Protocol: jobs.Protocol - 1,
+	}
+	if err := store.Create(context.Background(), record); err != nil {
+		t.Fatalf("Store.Create: %v", err)
+	}
+	return record
+}
+
+// repeatTargetInMetadata gives the record id the paths and packages it acts
+// on, repeated in its metadata as an older host wrote them.
+func repeatTargetInMetadata(t *testing.T, store *jobs.Store, id, label string) {
+	t.Helper()
+	if _, err := store.Update(context.Background(), id, func(r *jobs.Record) error {
+		r.Target = []string{"/srv/a", "/srv/b"}
+		r.Metadata = jsontext.Value(`{"label":"` + label + `","identity":["/srv/a","/srv/b"],"packageIds":["pkg;1"]}`)
+		return nil
+	}); err != nil {
+		t.Fatalf("Store.Update: %v", err)
+	}
+}
+
+// startHostJob starts a test.job id on the host at socket over a connection
+// of its own, as another bridge of the uid does, and leaves it running.
+func startHostJob(t *testing.T, socket, id string) {
+	t.Helper()
+	uid := uint32(os.Getuid())
+	c, err := jobsclient.Connect(context.Background(), uid, bridgeipc.HelloSession{Username: "alice", UID: uid, SessionRef: "other-bridge"}, socket)
+	if err != nil {
+		t.Fatalf("connect another bridge: %v", err)
+	}
+	t.Cleanup(func() { _ = c.Close() })
+	raw, err := json.Marshal(relay.StreamOpenEnvelope{Route: "test.job", Request: []byte(`{}`), ID: id})
+	if err != nil {
+		t.Fatalf("encode open: %v", err)
+	}
+	stream, err := c.Open(context.Background(), raw)
+	if err != nil {
+		t.Fatalf("open test.job: %v", err)
+	}
+	t.Cleanup(func() { _ = stream.Close() })
+	_ = stream.SetReadDeadline(time.Now().Add(5 * time.Second))
+	readRelayTestFrame(t, stream, relay.OpStreamProgress)
+}
+
+// warnLog keeps the messages logged at Warn and above.
+type warnLog struct {
+	mu   sync.Mutex
+	msgs []string
+}
+
+// captureWarnings logs to a warnLog for the rest of the test.
+func captureWarnings(t *testing.T) *warnLog {
+	t.Helper()
+	w := &warnLog{}
+	previous := slog.Default()
+	slog.SetDefault(slog.New(w))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	return w
+}
+
+func (w *warnLog) Enabled(_ context.Context, level slog.Level) bool { return level >= slog.LevelWarn }
+
+func (w *warnLog) Handle(_ context.Context, r slog.Record) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.msgs = append(w.msgs, r.Message)
+	return nil
+}
+
+func (w *warnLog) WithAttrs([]slog.Attr) slog.Handler { return w }
+func (w *warnLog) WithGroup(string) slog.Handler      { return w }
+
+// count is how many times msg was logged.
+func (w *warnLog) count(msg string) int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	n := 0
+	for _, m := range w.msgs {
+		if m == msg {
+			n++
+		}
+	}
+	return n
 }
 
 // startRelayTestHost serves a job host in-process on socket whose "test.job"
@@ -270,6 +440,10 @@ func TestBridgeFailsMutationWhenHostUnavailable(t *testing.T) {
 	if _, err := jr.Get(context.Background(), relayTestJobID); bridgeipc.StatusCode(err) != 503 {
 		t.Fatalf("remote Get = %v, want 503", err)
 	}
+	// A saved output is unknown too, not empty.
+	if _, err := jr.Output(context.Background(), bridgeipc.TaskOutputRequest{TaskID: relayTestJobID}); bridgeipc.StatusCode(err) != 503 {
+		t.Fatalf("remote Output = %v, want 503", err)
+	}
 	watch := dispatchRoute(t, router, sess, "tasks.watch", "")
 	if result := readRelayTestResult(t, watch); result.Code != 503 {
 		t.Fatalf("tasks.watch = %+v, want 503", result)
@@ -465,5 +639,294 @@ func TestPrivilegedBridgeUsesRootHost(t *testing.T) {
 	}
 	if record.Owner != (jobs.Owner{UID: 1000, Username: "alice"}) {
 		t.Fatalf("record owner = %+v, want alice as uid 1000", record.Owner)
+	}
+}
+
+func TestRelayForwardsHistory(t *testing.T) {
+	socket := filepath.Join(t.TempDir(), "host.sock")
+	startRelayTestHost(t, socket, false, func(c *jobshost.Config) { c.Store = storedRelayTestJob(t) })
+	relayTestSockets(t, socket)
+	_, jr, _ := newRelayTestBridge(t)
+	waitRelay(t, jr, func(err error) bool { return err == nil })
+
+	history, err := jr.History(context.Background(), bridgeipc.TaskHistoryRequest{Limit: 5})
+	if err != nil || history.More || len(history.Entries) != 1 ||
+		history.Entries[0].Task.ID != relayTestJobID || history.Entries[0].Task.State != bridgeipc.TaskStateCompleted {
+		t.Fatalf("remote History = %+v, %v; want the host's completed job", history, err)
+	}
+}
+
+func TestRelayForwardsOutput(t *testing.T) {
+	socket := filepath.Join(t.TempDir(), "host.sock")
+	dir := t.TempDir()
+	scheduled := jobs.NewStore(filepath.Join(dir, "state"), filepath.Join(dir, "run"))
+	if err := os.MkdirAll(filepath.Dir(scheduled.OutputPath(relayTestJobID)), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(scheduled.OutputPath(relayTestJobID), []byte("line one\nline two\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Only the root host, which privileged bridges share, keeps scheduled runs.
+	startRelayTestHost(t, socket, false, func(c *jobshost.Config) {
+		c.UID, c.GID = 0, 0
+		c.Peer = func(*net.UnixConn) (peercred.Cred, error) { return peercred.Cred{UID: 0}, nil }
+		c.Scheduled = scheduled
+	})
+	relayTestSockets(t, socket)
+	admin := &session.Session{SessionID: "bridge-session", User: session.User{Username: "alice", UID: uint32(os.Getuid())}, Privileged: true}
+	_, jr, _ := newRelayTestBridge(t, admin)
+	waitRelay(t, jr, func(err error) bool { return err == nil })
+
+	offset := int64(5)
+	output, err := jr.Output(context.Background(), bridgeipc.TaskOutputRequest{TaskID: relayTestJobID, Offset: &offset, Limit: 3})
+	if want := (bridgeipc.TaskOutput{Content: "one", Offset: 5, Size: 18}); err != nil || output != want {
+		t.Fatalf("remote Output = %+v, %v; want the host's %+v", output, err, want)
+	}
+	// The host's error comes back as it is.
+	other := "00000000-0000-4000-8000-0000000000c2"
+	if _, err := jr.Output(context.Background(), bridgeipc.TaskOutputRequest{TaskID: other}); bridgeipc.StatusCode(err) != 404 {
+		t.Fatalf("remote Output of a run with no output = %v, want the host's 404", err)
+	}
+}
+
+func TestRelayHistoryWhileAnUpdateWaits(t *testing.T) {
+	relayTestSockets(t, startRefusingHost(t))
+	_, jr, _ := newRelayTestBridge(t)
+	waitRelay(t, jr, func(err error) bool { return errors.Is(err, jobsclient.ErrUpdatePending) })
+
+	// The older host cannot be asked, and no host of this build will come
+	// while it runs: the answer does not wait for one.
+	history, err := jr.History(context.Background(), bridgeipc.TaskHistoryRequest{})
+	if err != nil || len(history.Entries) != 0 || history.More {
+		t.Fatalf("remote History = %+v, %v; want an empty history", history, err)
+	}
+}
+
+func TestRelayHistoryWaitsForTheHost(t *testing.T) {
+	t.Run("connected", func(t *testing.T) {
+		socket := filepath.Join(t.TempDir(), "host.sock")
+		startRelayTestHost(t, socket, false, func(c *jobshost.Config) { c.Store = storedRelayTestJob(t) })
+		relayTestSockets(t, socket)
+		connecting, release := gateRelayConnect(t)
+		_, jr, _ := newRelayTestBridge(t)
+		<-connecting
+
+		type answer struct {
+			history bridgeipc.TaskHistory
+			err     error
+		}
+		answered := make(chan answer, 1)
+		go func() {
+			history, err := jr.History(context.Background(), bridgeipc.TaskHistoryRequest{})
+			answered <- answer{history, err}
+		}()
+		release <- struct{}{}
+		select {
+		case got := <-answered:
+			if got.err != nil || len(got.history.Entries) != 1 || got.history.Entries[0].Task.ID != relayTestJobID {
+				t.Fatalf("remote History = %+v, %v; want the host's job", got.history, got.err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("History did not answer once the host was connected")
+		}
+	})
+	t.Run("no host", func(t *testing.T) {
+		shortHostWait(t, 50*time.Millisecond)
+		gateRelayConnect(t)
+		_, jr, _ := newRelayTestBridge(t)
+
+		// No host is not the same as no history.
+		if history, err := jr.History(context.Background(), bridgeipc.TaskHistoryRequest{}); bridgeipc.StatusCode(err) != 503 {
+			t.Fatalf("remote History = %+v, %v; want 503", history, err)
+		}
+	})
+}
+
+func TestRelayStatusWhileAnUpdateWaits(t *testing.T) {
+	t.Run("running jobs", func(t *testing.T) {
+		relayTestSockets(t, startRefusingHost(t))
+		store := relayTestStore(t, t.TempDir())
+		now := time.Now().UTC().Truncate(time.Second)
+		live := liveExecutor(t)
+		gone := live
+		gone.PIDStart++
+		netplan := live
+		netplan.Kind = "netplan"
+		first := runningRelayTestJob(t, store, hostJobOne, "Scrubbing pool-1", now.Add(-3*time.Minute), live)
+		repeatTargetInMetadata(t, store, first.ID, "Scrubbing pool-1")
+		second := runningRelayTestJob(t, store, hostJobTwo, "Balancing pool-2", now.Add(-2*time.Minute), live)
+		// The next host start marks a job whose process is gone interrupted,
+		// and a record no host ran is no host job.
+		runningRelayTestJob(t, store, hostJobThree, "Lost job", now.Add(-time.Minute), gone)
+		runningRelayTestJob(t, store, hostJobFour, "Network change", now, netplan)
+		if err := store.WriteProgress(first.ID, jsontext.Value(`{"percentage":40,"message":"Scrubbing"}`)); err != nil {
+			t.Fatalf("WriteProgress: %v", err)
+		}
+		_, jr, _ := newRelayTestBridge(t)
+
+		status, err := jr.Status(context.Background())
+		if err != nil || !status.UpdatePending || status.Running != 2 || len(status.Jobs) != 2 {
+			t.Fatalf("remote Status = %+v, %v; want an update waiting for 2 running jobs", status, err)
+		}
+		got := status.Jobs[0]
+		if got.ID != first.ID || got.Type != "test.job" || got.State != bridgeipc.TaskStateRunning ||
+			got.Metadata == nil || got.Metadata.Label != "Scrubbing pool-1" ||
+			got.Metadata.Identity != nil || got.Metadata.PackageIDs != nil ||
+			got.Progress == nil || got.Progress.Percentage == nil || *got.Progress.Percentage != 40 || got.Progress.Message != "Scrubbing" {
+			t.Fatalf("first job = %+v, want %s running, labelled, without its paths or packages, with its last progress", got, first.ID)
+		}
+		got = status.Jobs[1]
+		if got.ID != second.ID || got.State != bridgeipc.TaskStateRunning || got.Metadata == nil || got.Metadata.Label != "Balancing pool-2" || got.Progress != nil {
+			t.Fatalf("second job = %+v, want %s running, labelled, with no progress", got, second.ID)
+		}
+		// A record's request, which may hold secrets, never reaches the answer.
+		if data, err := json.Marshal(status); err != nil || strings.Contains(string(data), "secret") {
+			t.Fatalf("remote Status = %s (%v), want no record's request in it", data, err)
+		}
+	})
+	t.Run("unreadable store", func(t *testing.T) {
+		relayTestSockets(t, startRefusingHost(t))
+		unreadableRelayTestStore(t)
+		_, jr, _ := newRelayTestBridge(t)
+		warnings := captureWarnings(t)
+
+		status, err := jr.Status(context.Background())
+		if err != nil || !status.UpdatePending || status.Running != 0 || status.Jobs != nil {
+			t.Fatalf("remote Status = %+v, %v; want an update waiting and no job read", status, err)
+		}
+		if got := warnings.count("job host records unreadable while an update waits"); got != 1 {
+			t.Fatalf("store read failure logged %d times at Warn, want once", got)
+		}
+	})
+}
+
+func TestRelayStatusWithACurrentHost(t *testing.T) {
+	socket := filepath.Join(t.TempDir(), "host.sock")
+	startRelayTestHost(t, socket, true)
+	relayTestSockets(t, socket)
+	router, jr, sess := newRelayTestBridge(t)
+	waitRelay(t, jr, func(err error) bool { return err == nil })
+	for _, id := range []string{hostJobOne, hostJobTwo} {
+		readRelayTestFrame(t, dispatchMutation(t, router, sess, id), relay.OpStreamProgress)
+	}
+
+	status, err := jr.Status(context.Background())
+	if err != nil || status.UpdatePending || status.Running != 2 || status.Jobs != nil {
+		t.Fatalf("remote Status = %+v, %v; want the host's 2 running jobs and no update waiting", status, err)
+	}
+}
+
+func TestRelayStatusWaitsForTheFirstConnection(t *testing.T) {
+	type answer struct {
+		status bridgeipc.TaskHostStatus
+		err    error
+	}
+	// ask asks Status while the relay's first connection attempt is under
+	// way, then lets the attempt reach the host and returns the answer.
+	ask := func(t *testing.T) answer {
+		t.Helper()
+		connecting, release := gateRelayConnect(t)
+		_, jr, _ := newRelayTestBridge(t)
+		<-connecting
+		answered := make(chan answer, 1)
+		go func() {
+			status, err := jr.Status(context.Background())
+			answered <- answer{status, err}
+		}()
+		release <- struct{}{}
+		select {
+		case got := <-answered:
+			return got
+		case <-time.After(5 * time.Second):
+			t.Fatal("Status did not answer once the connection attempt ended")
+			return answer{}
+		}
+	}
+
+	t.Run("refused", func(t *testing.T) {
+		relayTestSockets(t, startRefusingHost(t))
+		store := relayTestStore(t, t.TempDir())
+		runningRelayTestJob(t, store, hostJobOne, "Scrubbing pool-1", time.Now().UTC(), liveExecutor(t))
+
+		got := ask(t)
+		if got.err != nil || !got.status.UpdatePending || got.status.Running != 1 || len(got.status.Jobs) != 1 {
+			t.Fatalf("remote Status = %+v, %v; want an update waiting for 1 running job", got.status, got.err)
+		}
+	})
+	t.Run("connected", func(t *testing.T) {
+		socket := filepath.Join(t.TempDir(), "host.sock")
+		startRelayTestHost(t, socket, true)
+		relayTestSockets(t, socket)
+		startHostJob(t, socket, hostJobOne)
+
+		got := ask(t)
+		if got.err != nil || got.status.UpdatePending || got.status.Running != 1 || got.status.Jobs != nil {
+			t.Fatalf("remote Status = %+v, %v; want the host's 1 running job", got.status, got.err)
+		}
+	})
+	t.Run("no host", func(t *testing.T) {
+		shortHostWait(t, 100*time.Millisecond)
+		gateRelayConnect(t)
+		_, jr, _ := newRelayTestBridge(t)
+
+		asked := time.Now()
+		status, err := jr.Status(context.Background())
+		if err != nil || status.UpdatePending || status.Running != 0 || status.Jobs != nil {
+			t.Fatalf("remote Status = %+v, %v; want nothing waiting and no error", status, err)
+		}
+		if waited := time.Since(asked); waited < hostWaitTimeout {
+			t.Fatalf("Status answered after %v, want it to wait the host wait of %v", waited, hostWaitTimeout)
+		}
+	})
+}
+
+func TestRelayListIsEmptyWhileAnUpdateWaits(t *testing.T) {
+	relayTestSockets(t, startRefusingHost(t))
+	store := relayTestStore(t, t.TempDir())
+	runningRelayTestJob(t, store, hostJobOne, "Scrubbing pool-1", time.Now().UTC(), liveExecutor(t))
+	_, jr, _ := newRelayTestBridge(t)
+	waitRelay(t, jr, func(err error) bool { return errors.Is(err, jobsclient.ErrUpdatePending) })
+
+	// The jobs waited for travel in tasks.host; no stream could follow them.
+	if snapshots, err := jr.List(context.Background()); err != nil || snapshots != nil {
+		t.Fatalf("remote List = %+v, %v; want nothing", snapshots, err)
+	}
+}
+
+func TestUpdatePendingMessageCarriesTheCount(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		running    int
+		unreadable bool
+		want       string
+	}{
+		{name: "two jobs", running: 2, want: "update_pending: LinuxIO update waits for 2 running jobs"},
+		{name: "one job", running: 1, want: "update_pending: LinuxIO update waits for 1 running job"},
+		{name: "no job", want: "update_pending: LinuxIO was updated; new jobs can start shortly"},
+		{name: "unreadable store", unreadable: true, want: "update_pending: LinuxIO update waits for running jobs"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			relayTestSockets(t, startRefusingHost(t))
+			if tc.unreadable {
+				unreadableRelayTestStore(t)
+			} else {
+				store := relayTestStore(t, t.TempDir())
+				now := time.Now().UTC()
+				live := liveExecutor(t)
+				for i, id := range []string{hostJobOne, hostJobTwo}[:tc.running] {
+					runningRelayTestJob(t, store, id, "Job", now.Add(time.Duration(i)*time.Second), live)
+				}
+				gone := live
+				gone.PIDStart++
+				runningRelayTestJob(t, store, hostJobThree, "Lost job", now, gone)
+			}
+			router, jr, sess := newRelayTestBridge(t)
+			waitRelay(t, jr, func(err error) bool { return errors.Is(err, jobsclient.ErrUpdatePending) })
+
+			client := dispatchMutation(t, router, sess, relayTestJobID)
+			if result := readRelayTestResult(t, client); result.Code != 409 || result.Error != tc.want {
+				t.Fatalf("result = %+v, want 409 %q", result, tc.want)
+			}
+		})
 	}
 }

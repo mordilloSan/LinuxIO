@@ -231,4 +231,48 @@ describe("Call queries and mutations", () => {
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(toast.error).toHaveBeenCalledWith("bad yaml", undefined);
   });
+
+  it("refreshes the job host status when a mutation fails with update_pending", async () => {
+    const { toast } = await import("sonner");
+    vi.mocked(toast.error).mockClear();
+    vi.spyOn(core, "mutationRequest").mockRejectedValue(
+      new LinuxIOError("update_pending: LinuxIO was updated", 409),
+    );
+    const { result, invalidateSpy } = renderQueryHook(() =>
+      linuxio.docker.start_container.useMutation({ error: "Start failed" }),
+    );
+
+    act(() => result.current.mutate({ containerId: "abc" }));
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: linuxio.tasks.host.queryKey,
+    });
+    // The toast reads as a sentence, without the machine prefix.
+    expect(toast.error).toHaveBeenCalledWith("LinuxIO was updated", undefined);
+  });
+
+  it.each([
+    ["another 409", new LinuxIOError("already running", 409)],
+    ["another code", new LinuxIOError("update_pending: later", 500)],
+    ["a plain error", new Error("update_pending: later")],
+  ])(
+    "leaves the job host status and the message alone after %s",
+    async (_name, failure) => {
+      const { toast } = await import("sonner");
+      vi.mocked(toast.error).mockClear();
+      vi.spyOn(core, "mutationRequest").mockRejectedValue(failure);
+      const { result, invalidateSpy } = renderQueryHook(() =>
+        linuxio.docker.start_container.useMutation({ error: "Start failed" }),
+      );
+
+      act(() => result.current.mutate({ containerId: "abc" }));
+      await waitFor(() => expect(result.current.isError).toBe(true));
+
+      expect(invalidateSpy).not.toHaveBeenCalledWith({
+        queryKey: linuxio.tasks.host.queryKey,
+      });
+      expect(toast.error).toHaveBeenCalledWith(failure.message, undefined);
+    },
+  );
 });

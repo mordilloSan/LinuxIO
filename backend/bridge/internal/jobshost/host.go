@@ -562,6 +562,12 @@ func (s storedJobs) Cancel(ctx context.Context, id string) (bridgeipc.TaskSnapsh
 	return s.snapshot(record), nil
 }
 
+// Status counts the jobs the host runs, as its idle rule does. The host is of
+// this build, so no update waits for it.
+func (s storedJobs) Status(context.Context) (bridgeipc.TaskHostStatus, error) {
+	return bridgeipc.TaskHostStatus{Running: s.h.rec.running()}, nil
+}
+
 func (s storedJobs) Watch(ctx context.Context, stream net.Conn, id string) error {
 	record, err := s.record(ctx, id)
 	if err == nil && scheduledRunning(record) {
@@ -598,40 +604,40 @@ func (h *Host) markLost(ctx context.Context, record jobs.Record) jobs.Record {
 	return updated
 }
 
+// RunningSnapshot is the snapshot of a record whose job still runs. progress
+// is the newest progress the job wrote, its store's progress file; without
+// one the record's own stands.
+func RunningSnapshot(r jobs.Record, progress jsontext.Value) bridgeipc.TaskSnapshot {
+	if len(progress) > 0 {
+		r.Progress = progress
+	}
+	return recordSnapshot(r)
+}
+
+// WaitedSnapshot is the snapshot of a running job an update waits for, as
+// tasks.host lists it: without the paths or packages the job acts on.
+func WaitedSnapshot(r jobs.Record, progress jsontext.Value) bridgeipc.TaskSnapshot {
+	snapshot := RunningSnapshot(r, progress)
+	withoutTargets(r, &snapshot)
+	return snapshot
+}
+
+// withoutTargets drops from the snapshot of a host job's record the paths or
+// packages the job acts on, which can run to thousands and which no list of
+// jobs shows: its label names them. A scheduled run's identity names its
+// schedule and stays.
+func withoutTargets(r jobs.Record, snapshot *bridgeipc.TaskSnapshot) {
+	if snapshot.Metadata == nil || r.Executor.Kind == jobs.ExecutorUnit {
+		return
+	}
+	snapshot.Metadata.Identity, snapshot.Metadata.PackageIDs = nil, nil
+}
+
 // snapshotFromRecord is the task snapshot of a stored job, terminal but for a
 // scheduled run that runs. Any other record still running with no task here
 // was left by a crash: it reads as interrupted.
 func snapshotFromRecord(r jobs.Record) bridgeipc.TaskSnapshot {
-	snapshot := bridgeipc.TaskSnapshot{
-		ID:        r.ID,
-		Type:      r.Route,
-		Owner:     bridgeipc.TaskOwner{Username: r.Owner.Username, UID: r.Owner.UID},
-		State:     bridgeipc.TaskState(r.State),
-		CreatedAt: r.CreatedAt,
-		UpdatedAt: r.CreatedAt,
-	}
-	if !r.StartedAt.IsZero() {
-		snapshot.StartedAt, snapshot.UpdatedAt = &r.StartedAt, r.StartedAt
-	}
-	if !r.FinishedAt.IsZero() {
-		snapshot.FinishedAt, snapshot.UpdatedAt = &r.FinishedAt, r.FinishedAt
-	}
-	if len(r.Metadata) > 0 {
-		var metadata bridgeipc.TaskMetadata
-		if err := json.Unmarshal(r.Metadata, &metadata); err != nil {
-			slog.Debug("job record metadata not decoded", "job_id", r.ID, "error", err)
-		} else {
-			snapshot.Metadata = &metadata
-		}
-	}
-	if len(r.Progress) > 0 {
-		var progress bridgeipc.TaskProgress
-		if err := json.Unmarshal(r.Progress, &progress); err != nil {
-			slog.Debug("job record progress not decoded", "job_id", r.ID, "error", err)
-		} else {
-			snapshot.Progress = &progress
-		}
-	}
+	snapshot := recordSnapshot(r)
 	switch r.State {
 	case jobs.StateCompleted:
 		if len(r.Result) > 0 {
@@ -654,6 +660,47 @@ func snapshotFromRecord(r jobs.Record) bridgeipc.TaskSnapshot {
 		}
 		snapshot.State = bridgeipc.TaskStateInterrupted
 		snapshot.Error = bridgeipc.NewError("job was interrupted", 409)
+	}
+	return snapshot
+}
+
+// recordSnapshot is what every snapshot of a record shows, whatever its
+// state: never the record's request, which may hold secrets.
+func recordSnapshot(r jobs.Record) bridgeipc.TaskSnapshot {
+	snapshot := bridgeipc.TaskSnapshot{
+		ID:        r.ID,
+		Type:      r.Route,
+		Owner:     bridgeipc.TaskOwner{Username: r.Owner.Username, UID: r.Owner.UID},
+		State:     bridgeipc.TaskState(r.State),
+		CreatedAt: r.CreatedAt,
+		UpdatedAt: r.CreatedAt,
+	}
+	if !r.StartedAt.IsZero() {
+		snapshot.StartedAt, snapshot.UpdatedAt = &r.StartedAt, r.StartedAt
+	}
+	if !r.FinishedAt.IsZero() {
+		snapshot.FinishedAt, snapshot.UpdatedAt = &r.FinishedAt, r.FinishedAt
+	}
+	if len(r.Metadata) > 0 {
+		var metadata bridgeipc.TaskMetadata
+		if err := json.Unmarshal(r.Metadata, &metadata); err != nil {
+			slog.Debug("job record metadata not decoded", "job_id", r.ID, "error", err)
+		} else {
+			// A host job's record keeps its identity once, as its target; a
+			// scheduled run's metadata carries its own.
+			if metadata.Identity == nil && r.Executor.Kind != jobs.ExecutorUnit {
+				metadata.Identity = r.Target
+			}
+			snapshot.Metadata = &metadata
+		}
+	}
+	if len(r.Progress) > 0 {
+		var progress bridgeipc.TaskProgress
+		if err := json.Unmarshal(r.Progress, &progress); err != nil {
+			slog.Debug("job record progress not decoded", "job_id", r.ID, "error", err)
+		} else {
+			snapshot.Progress = &progress
+		}
 	}
 	return snapshot
 }

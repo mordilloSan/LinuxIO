@@ -31,6 +31,59 @@ type TaskEventsRequest struct {
 
 const maxTaskEventIDs = 256
 
+// TaskHistoryRequest is the tasks.history request. Before is the cursor of a
+// page: the end time of the last record of the page before, since a page never
+// splits records that ended at the same instant.
+type TaskHistoryRequest struct {
+	Before *time.Time `json:"before,omitzero"`
+	Limit  int        `json:"limit,omitzero"`
+	Unit   string     `json:"unit,omitzero"` // only the runs of this systemd unit
+}
+
+// TaskHistoryEntry is one ended job or scheduled run.
+type TaskHistoryEntry struct {
+	Task   TaskSnapshot `json:"task"`
+	Reason string       `json:"reason,omitzero"` // shutdown, reboot or crash for an interrupted job
+	Unit   string       `json:"unit,omitzero"`   // the unit of a scheduled run
+	Output bool         `json:"output,omitzero"` // a saved output exists
+}
+
+// TaskHistory is a page of ended jobs, newest first. More says that older
+// ones remain.
+type TaskHistory struct {
+	Entries []TaskHistoryEntry `json:"entries"`
+	More    bool               `json:"more"`
+}
+
+// TaskOutputRequest is the tasks.output request: Limit bytes of the saved
+// output of a scheduled run from Offset, or the last Limit bytes without one.
+// A Limit of 0 means jobs.DefaultOutputChunk; one above jobs.MaxOutputChunk is
+// capped.
+type TaskOutputRequest struct {
+	TaskID string `json:"taskId"`
+	Offset *int64 `json:"offset,omitzero"` // absent: the end of the output
+	Limit  int    `json:"limit,omitzero"`
+}
+
+// TaskOutput is a chunk of a saved output. A chunk starts on a character
+// boundary; one whose requested end falls inside a character ends in U+FFFD,
+// which a viewer avoids by ending each earlier chunk at the Offset the next
+// chunk reports.
+type TaskOutput struct {
+	Content string `json:"content"` // valid UTF-8; invalid bytes are replaced
+	Offset  int64  `json:"offset"`  // where Content starts in the output
+	Size    int64  `json:"size"`
+}
+
+// TaskHostStatus is the tasks.host answer: whether a LinuxIO update waits for
+// the job host, which is of an older build until its jobs end, and for which
+// of them.
+type TaskHostStatus struct {
+	UpdatePending bool           `json:"update_pending"` // the job host is of an older build
+	Running       int            `json:"running"`        // jobs it still runs
+	Jobs          []TaskSnapshot `json:"jobs,omitzero"`  // those jobs, only while an update waits
+}
+
 type taskDataRequest struct {
 	TaskID string `json:"taskId"`
 	Offset string `json:"offset,omitempty"`
@@ -43,6 +96,9 @@ type RemoteTasks interface {
 	Cancel(ctx context.Context, id string) (TaskSnapshot, error)
 	Watch(ctx context.Context, stream net.Conn, id string) error
 	List(ctx context.Context) ([]TaskSnapshot, error)
+	History(ctx context.Context, req TaskHistoryRequest) (TaskHistory, error)
+	Output(ctx context.Context, req TaskOutputRequest) (TaskOutput, error)
+	Status(ctx context.Context) (TaskHostStatus, error)
 	Events(ctx context.Context, stream net.Conn) error
 }
 
@@ -76,6 +132,9 @@ func (r *TaskService) RegisterRoutes(router *Router) {
 	routes := []Route{
 		{Name: "tasks.get", Mode: ModeCall, Call: r.handleTaskGet, Decode: JSONRequestDecoder[taskIDRequest]()},
 		{Name: "tasks.list", Mode: ModeCall, Call: r.handleTaskList, Decode: JSONRequestDecoder[taskListRequest]()},
+		{Name: "tasks.history", Mode: ModeCall, Call: r.handleTaskHistory, Decode: JSONRequestDecoder[TaskHistoryRequest]()},
+		{Name: "tasks.output", Mode: ModeCall, Call: r.handleTaskOutput, Decode: JSONRequestDecoder[TaskOutputRequest](), Privileged: true},
+		{Name: "tasks.host", Mode: ModeCall, Call: r.handleTaskHost, Decode: JSONRequestDecoder[struct{}]()},
 		{Name: "tasks.cancel", Mode: ModeCall, Call: r.handleTaskCancel, Decode: JSONRequestDecoder[taskIDRequest]()},
 		{Name: "tasks.watch", Mode: ModeDuplex, Duplex: r.handleTaskWatch, Decode: JSONRequestDecoder[taskIDRequest]()},
 		{Name: "tasks.data", Mode: ModeDuplex, Duplex: r.handleTaskData, Decode: JSONRequestDecoder[taskDataRequest]()},
@@ -136,6 +195,71 @@ func (r *TaskService) handleTaskList(ctx context.Context, req Request) (any, err
 		return nil, err
 	}
 	return snapshots, nil
+}
+
+// handleTaskHistory lists the ended jobs of the job host, which keeps them;
+// the bridge's own tasks end with the bridge. Without a host there are none.
+func (r *TaskService) handleTaskHistory(ctx context.Context, req Request) (any, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	payload, ok := req.DecodedValue.(TaskHistoryRequest)
+	if !ok {
+		return nil, fmt.Errorf("%w: invalid tasks history request", ErrInvalidArgs)
+	}
+	if payload.Limit < 0 {
+		return nil, fmt.Errorf("%w: history limit must not be negative", ErrInvalidArgs)
+	}
+	remote := r.getRemote()
+	if remote == nil {
+		return TaskHistory{Entries: []TaskHistoryEntry{}}, nil
+	}
+	history, err := remote.History(ctx, payload)
+	if err != nil {
+		return nil, err
+	}
+	if history.Entries == nil {
+		history.Entries = []TaskHistoryEntry{}
+	}
+	return history, nil
+}
+
+// handleTaskOutput reads a chunk of the saved output of a scheduled run, which
+// only the root job host keeps; the bridge's own tasks save none. The route is
+// privileged: the router refuses an unprivileged session before this runs.
+func (r *TaskService) handleTaskOutput(ctx context.Context, req Request) (any, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	payload, ok := req.DecodedValue.(TaskOutputRequest)
+	switch {
+	case !ok:
+		return nil, fmt.Errorf("%w: invalid tasks output request", ErrInvalidArgs)
+	case payload.TaskID == "":
+		return nil, fmt.Errorf("%w: missing task id", ErrInvalidArgs)
+	case payload.Offset != nil && *payload.Offset < 0:
+		return nil, fmt.Errorf("%w: output offset must not be negative", ErrInvalidArgs)
+	case payload.Limit < 0:
+		return nil, fmt.Errorf("%w: output limit must not be negative", ErrInvalidArgs)
+	}
+	remote := r.remoteFor(payload.TaskID)
+	if remote == nil {
+		return nil, fmt.Errorf("%w: task %s has no saved output", ErrNotFound, payload.TaskID)
+	}
+	return remote.Output(ctx, payload)
+}
+
+// handleTaskHost says whether a LinuxIO update waits for the job host, and for
+// how many of its jobs. Without a host nothing waits.
+func (r *TaskService) handleTaskHost(ctx context.Context, _ Request) (any, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	remote := r.getRemote()
+	if remote == nil {
+		return TaskHostStatus{}, nil
+	}
+	return remote.Status(ctx)
 }
 
 func (r *TaskService) handleTaskCancel(ctx context.Context, req Request) (any, error) {

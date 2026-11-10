@@ -97,3 +97,19 @@ export const formatSystemdUsec = (
     ? fallback
     : date.toLocaleString(undefined, options);
 };
+
+/**
+ * A span of seconds as "45s", "2m 5s", "1h 3m" or "1h". Rounds to whole
+ * seconds first, so 119.6 reads "2m", never "1m 60s". Null for a negative or
+ * non-finite span.
+ */
+export const formatDuration = (seconds: number): string | null => {
+  if (seconds < 0 || !Number.isFinite(seconds)) return null;
+  const total = Math.round(seconds);
+  if (total < 60) return `${total}s`;
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  if (hours > 0) return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  return secs > 0 ? `${minutes}m ${secs}s` : `${minutes}m`;
+};

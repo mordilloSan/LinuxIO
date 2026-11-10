@@ -6,9 +6,13 @@ import (
 	"encoding/json/jsontext"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
+	"os"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/jobs"
@@ -69,7 +73,7 @@ func (s storedJobs) scheduledRecord(ctx context.Context, id string) (jobs.Record
 // carries the progress its run last wrote.
 func (s storedJobs) snapshot(record jobs.Record) bridgeipc.TaskSnapshot {
 	if scheduledRunning(record) {
-		record.Progress = s.progress(record.ID)
+		return RunningSnapshot(record, s.progress(record.ID))
 	}
 	return snapshotFromRecord(record)
 }
@@ -102,6 +106,116 @@ func (s storedJobs) List(ctx context.Context) ([]bridgeipc.TaskSnapshot, error) 
 		snapshots = append(snapshots, s.snapshot(record))
 	}
 	return snapshots, nil
+}
+
+// History lists the ended jobs of the host, newest first: its own and, on the
+// root host, the scheduled runs. With a unit it lists the runs of that unit
+// only, and a host with no scheduled store has none. Each store is asked for a
+// page of its own, so the merged page, cut at the limit through records that
+// ended at the same instant, holds the newest records of both.
+func (s storedJobs) History(ctx context.Context, req bridgeipc.TaskHistoryRequest) (bridgeipc.TaskHistory, error) {
+	query := jobs.HistoryQuery{Limit: req.Limit}
+	if req.Before != nil {
+		query.Before = *req.Before
+	}
+	var lists [][]jobs.Record
+	more := false
+	if req.Unit == "" {
+		own := query
+		own.Executor = "host"
+		records, ownMore, err := s.h.cfg.Store.History(ctx, own)
+		if err != nil {
+			return bridgeipc.TaskHistory{}, fmt.Errorf("list ended jobs: %w", err)
+		}
+		lists, more = append(lists, records), ownMore
+	}
+	if s.h.cfg.Scheduled != nil {
+		runs := query
+		runs.Executor, runs.Target = jobs.ExecutorUnit, req.Unit
+		records, runsMore, err := s.h.cfg.Scheduled.History(ctx, runs)
+		if err != nil {
+			return bridgeipc.TaskHistory{}, fmt.Errorf("list ended scheduled runs: %w", err)
+		}
+		lists, more = append(lists, records), more || runsMore
+	}
+	page, cut := jobs.MergeHistory(query, lists...)
+	history := bridgeipc.TaskHistory{Entries: make([]bridgeipc.TaskHistoryEntry, 0, len(page)), More: more || cut}
+	for _, record := range page {
+		entry := bridgeipc.TaskHistoryEntry{Task: historySnapshot(record), Reason: string(record.Reason)}
+		if record.Executor.Kind == jobs.ExecutorUnit {
+			entry.Unit, entry.Output = record.Executor.Unit, s.hasOutput(record.ID)
+		}
+		history.Entries = append(history.Entries, entry)
+	}
+	return history, nil
+}
+
+// maxHistoryErrorBytes bounds the error message of a history entry, so a page
+// of entries fits a relay frame.
+const maxHistoryErrorBytes = 4096
+
+// historySnapshot is the snapshot of an ended job as a history entry shows
+// it: no result or last progress, which a record can hold up to its size
+// limit, no paths or packages of a host job, and an error message cut to
+// maxHistoryErrorBytes on a character boundary. tasks.get answers the whole.
+func historySnapshot(record jobs.Record) bridgeipc.TaskSnapshot {
+	snapshot := snapshotFromRecord(record)
+	snapshot.Result, snapshot.Progress = nil, nil
+	withoutTargets(record, &snapshot)
+	if snapshot.Error != nil && len(snapshot.Error.Message) > maxHistoryErrorBytes {
+		cut := maxHistoryErrorBytes
+		for cut > 0 && !utf8.RuneStart(snapshot.Error.Message[cut]) {
+			cut--
+		}
+		snapshot.Error.Message = snapshot.Error.Message[:cut] + "…"
+	}
+	return snapshot
+}
+
+// hasOutput reports whether a saved output of the scheduled run id exists: a
+// regular file, as Output reads, not a link to one. A host with no scheduled
+// store has none.
+func (s storedJobs) hasOutput(id string) bool {
+	if s.h.cfg.Scheduled == nil {
+		return false
+	}
+	info, err := os.Lstat(s.h.cfg.Scheduled.OutputPath(id))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		slog.Debug("scheduled run output not checked", "job_id", id, "error", err)
+	}
+	return err == nil && info.Mode().IsRegular()
+}
+
+// Output reads a chunk of the saved output of the scheduled run id. Only the
+// scheduled store keeps outputs: a job of the host's own saves none, and a
+// host with no scheduled store, a user's, has none to read. A chunk that
+// starts inside a character skips the rest of it and reports where it starts,
+// so it starts on a character boundary; one whose requested end falls inside
+// a character ends in U+FFFD, which a viewer avoids by ending each earlier
+// chunk at the offset the next chunk reports. Invalid bytes become U+FFFD.
+func (s storedJobs) Output(_ context.Context, req bridgeipc.TaskOutputRequest) (bridgeipc.TaskOutput, error) {
+	if s.h.cfg.Scheduled == nil {
+		return bridgeipc.TaskOutput{}, fmt.Errorf("%w: task %s has no saved output", bridgeipc.ErrNotFound, req.TaskID)
+	}
+	offset := int64(-1)
+	if req.Offset != nil {
+		offset = *req.Offset
+	}
+	data, start, size, err := s.h.cfg.Scheduled.ReadOutput(req.TaskID, offset, req.Limit)
+	if errors.Is(err, jobs.ErrNotFound) {
+		return bridgeipc.TaskOutput{}, fmt.Errorf("%w: task %s has no saved output", bridgeipc.ErrNotFound, req.TaskID)
+	}
+	if err != nil {
+		return bridgeipc.TaskOutput{}, fmt.Errorf("read output of scheduled run %s: %w", req.TaskID, err)
+	}
+	if start > 0 {
+		skip := 0
+		for skip < len(data) && skip < utf8.UTFMax-1 && !utf8.RuneStart(data[skip]) {
+			skip++
+		}
+		data, start = data[skip:], start+int64(skip)
+	}
+	return bridgeipc.TaskOutput{Content: strings.ToValidUTF8(string(data), "�"), Offset: start, Size: size}, nil
 }
 
 // Events follows the scheduled runs until ctx ends: a snapshot of each run

@@ -291,9 +291,37 @@ linuxio-bridge running as uid U (0 for a privileged login), at startup, in the b
   then:   connect /run/linuxio/jobs/U.sock (0600, owned by U; systemd starts the host if it is down,
           and the host checks SO_PEERCRED = U), retrying for 5 s while the socket starts
           yamux; first stream jobs.hello {protocol, session {username, uid, gid, privileged, session_ref}}
-          protocol mismatch → mutations answer 409 update_pending; reads keep working
-  failure → retry with backoff 1 s … 30 s; meanwhile mutations answer 503
+          protocol mismatch → the host refuses the hello: an update waits for this older host
+  failure or refusal → retry with backoff 1 s … 30 s; meanwhile mutations answer 503,
+          or 409 update_pending after a refusal (see below)
 ```
+
+**While an update waits.** A host still running the binary of an older build
+refuses the hello of a newer bridge. Until it exits, the bridge cannot ask it
+anything, so for `tasks.host` it reads that host's job store itself: the
+records in `/var/lib/linuxio/jobs/<uid>/` and the progress files in
+`/run/linuxio/jobs/<uid>/`, where `<uid>` is the bridge's own uid (0 for a
+privileged login). The bridge runs as that uid, which owns the `0700`
+directories, so the read needs no privilege of its own; it is read-only and
+touches no other uid's store. It counts the `running` records of executor kind
+`host` whose process still lives (pid and start time), lists them without
+their paths and package IDs, and refuses with that count each new mutation it
+would relay to the host (with none running the refusal says new jobs can
+start shortly; with the store unreadable it names no count); the three
+browser-bound mutations (`filebrowser.upload`, `filebrowser.upload_batch`,
+`filebrowser.archive`) run in the bridge and are not affected.
+`tasks.history` and `tasks.list` answer without the host's jobs, and
+`tasks.get`, `tasks.watch`, `tasks.cancel` and `tasks.output`
+of a host job answer `503` after waiting 10 s
+([API Contract](./api-contract.md#ended-jobs-saved-output-and-updates)). A
+refused hello does not count as a connected bridge, so the older host exits
+60 s after its last job and its last bridge of its own build; the bridge's next
+attempt, at most 30 s later, finds the socket free and systemd starts the new
+binary. One thing outside LinuxIO does restart an older host: on Ubuntu,
+needrestart, whose apt hook runs after a dpkg run, restarts every
+`linuxio-jobs@<uid>.service` still running a replaced binary, which interrupts
+its jobs (seen once in the test VM, during an unattended-upgrades run;
+[jobs.md 3.9](./TODO/jobs.md), finding 2).
 
 From then on the bridge relays every Mutation stream over that connection and
 serves `tasks.*` for host jobs (see [API Contract](./api-contract.md#tasks-and-jobs)).

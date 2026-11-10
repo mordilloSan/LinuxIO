@@ -11,7 +11,7 @@ import {
 import { toast } from "sonner";
 
 import { call, splitCallRoute } from "./calls";
-import { getMutationErrorMessage, type LinuxIOError } from "./errors";
+import { getMutationErrorMessage, LinuxIOError } from "./errors";
 import type {
   CallRequest,
   CallResult,
@@ -20,6 +20,7 @@ import type {
   RequestCallRoute,
 } from "./generated/linuxio-types";
 import { OPERATION_QUERY_INVALIDATIONS } from "./operation-query-invalidations";
+import { endpointQueryPrefix } from "./query-keys";
 import type { ToastMeta } from "./toast-meta";
 
 // Shared freshness presets for TanStack Query descriptors.
@@ -135,6 +136,14 @@ interface CallTarget<R extends CallRoute> {
   readonly route: R;
 }
 
+const UPDATE_PENDING_PREFIX = "update_pending:";
+
+/** A new job was refused because the job service is waiting to be replaced. */
+const isUpdatePendingError = (error: unknown) =>
+  error instanceof LinuxIOError &&
+  Number(error.code) === 409 &&
+  error.message.startsWith(UPDATE_PENDING_PREFIX);
+
 /** Run a migrated Call as a TanStack mutation. */
 export function useCallMutation<R extends CallRoute>(
   endpoint: CallTarget<R>,
@@ -193,10 +202,20 @@ export function useActionMutation<TResult, TRequest = unknown>(
       options?.onSuccess?.(result, variables, onMutateResult, context);
     },
     onError: (err, variables, onMutateResult, context) => {
+      if (isUpdatePendingError(err)) {
+        // The update banner asks the job host again at once.
+        void queryClient.invalidateQueries({
+          queryKey: endpointQueryPrefix("tasks.host"),
+        });
+      }
       if (typeof error === "function") {
         error(err, variables);
       } else if (error !== undefined) {
-        toast.error(getMutationErrorMessage(err, error), toastOpts);
+        // The refusal of an update that waits reads as a sentence.
+        const message = isUpdatePendingError(err)
+          ? err.message.slice(UPDATE_PENDING_PREFIX.length).trimStart()
+          : getMutationErrorMessage(err, error);
+        toast.error(message, toastOpts);
       }
       options?.onError?.(err, variables, onMutateResult, context);
     },

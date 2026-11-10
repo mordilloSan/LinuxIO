@@ -369,6 +369,20 @@ func TestStoreKeepsAJobWhoseRequestIsTooLargeToStore(t *testing.T) {
 	}
 }
 
+func TestStoreKeepsAJobWhoseMetadataIsTooLargeToStore(t *testing.T) {
+	s := newTestStore(t)
+	r := testRecord(1, "a")
+	r.Target = []string{"/srv/data"}
+	r.Metadata = jsontext.Value(`{"label":"` + strings.Repeat("x", maxRecordBytes) + `"}`)
+	mustCreate(t, s, r)
+
+	stored, err := s.Get(t.Context(), r.ID)
+	if err != nil || stored.State != StateRunning || stored.Metadata != nil || stored.Target != nil {
+		t.Fatalf("stored = %s with %d metadata bytes and %d targets, %v; want running without them",
+			stored.State, len(stored.Metadata), len(stored.Target), err)
+	}
+}
+
 func TestStoreReconcileCrashedMarksDeadRunningRecords(t *testing.T) {
 	s := newTestStore(t)
 	mustCreate(t, s, testRecord(1, "a"))
@@ -658,5 +672,194 @@ func TestStoreCreateLeavesSharedParentsTraversable(t *testing.T) {
 		} else if info.Mode().Perm() != want {
 			t.Errorf("%s mode = %v, want %v", path, info.Mode().Perm(), want)
 		}
+	}
+}
+
+// endedRecord creates a completed record n that ended at finished.
+func endedRecord(t *testing.T, s *Store, n int, finished time.Time, target ...string) Record {
+	t.Helper()
+	r := testRecord(n, "a")
+	r.State, r.FinishedAt, r.Target = StateCompleted, finished, target
+	mustCreate(t, s, r)
+	return r
+}
+
+func TestHistoryListsEndedRecordsNewestFirst(t *testing.T) {
+	s := newTestStore(t)
+	now := time.Now().UTC()
+	endedRecord(t, s, 1, now.Add(-3*time.Minute))
+	endedRecord(t, s, 2, now.Add(-1*time.Minute))
+	endedRecord(t, s, 3, now.Add(-2*time.Minute))
+	mustCreate(t, s, testRecord(4, "a"))
+
+	got, more, err := s.History(t.Context(), HistoryQuery{})
+	if err != nil {
+		t.Fatalf("History: %v", err)
+	}
+	if want := []string{testID(2), testID(3), testID(1)}; !slices.Equal(ids(got), want) || more {
+		t.Fatalf("History = %v more=%v, want %v more=false", ids(got), more, want)
+	}
+}
+
+func TestHistoryStopsAtTheLimit(t *testing.T) {
+	s := newTestStore(t)
+	now := time.Now().UTC()
+	for i := range 5 {
+		endedRecord(t, s, i+1, now.Add(-time.Duration(i)*time.Minute))
+	}
+
+	got, more, err := s.History(t.Context(), HistoryQuery{Limit: 2})
+	if err != nil {
+		t.Fatalf("History: %v", err)
+	}
+	if want := []string{testID(1), testID(2)}; !slices.Equal(ids(got), want) || !more {
+		t.Fatalf("History(Limit 2) = %v more=%v, want %v more=true", ids(got), more, want)
+	}
+
+	big := newTestStore(t)
+	for i := range DefaultHistoryLimit + 1 {
+		endedRecord(t, big, i+1, now.Add(-time.Duration(i)*time.Second))
+	}
+	got, more, err = big.History(t.Context(), HistoryQuery{})
+	if err != nil || len(got) != DefaultHistoryLimit || !more {
+		t.Fatalf("History(Limit 0) = %d records more=%v (%v), want %d more=true", len(got), more, err, DefaultHistoryLimit)
+	}
+	for i := DefaultHistoryLimit + 1; i < MaxHistoryLimit+2; i++ {
+		endedRecord(t, big, i+1, now.Add(-time.Duration(i)*time.Second))
+	}
+	got, more, err = big.History(t.Context(), HistoryQuery{Limit: 9999})
+	if err != nil || len(got) != MaxHistoryLimit || !more {
+		t.Fatalf("History(Limit 9999) = %d records more=%v (%v), want %d more=true", len(got), more, err, MaxHistoryLimit)
+	}
+}
+
+func TestHistoryBeforeATime(t *testing.T) {
+	s := newTestStore(t)
+	now := time.Now().UTC()
+	for i := range 4 {
+		endedRecord(t, s, i+1, now.Add(-time.Duration(i)*time.Minute))
+	}
+
+	got, more, err := s.History(t.Context(), HistoryQuery{Before: now.Add(-1 * time.Minute)})
+	if err != nil {
+		t.Fatalf("History: %v", err)
+	}
+	if want := []string{testID(3), testID(4)}; !slices.Equal(ids(got), want) || more {
+		t.Fatalf("History(Before) = %v more=%v, want %v more=false", ids(got), more, want)
+	}
+}
+
+func TestHistoryOfATarget(t *testing.T) {
+	s := newTestStore(t)
+	now := time.Now().UTC()
+	endedRecord(t, s, 1, now, "a.service")
+	endedRecord(t, s, 2, now.Add(-time.Minute), "b.service", "a.service")
+	endedRecord(t, s, 3, now.Add(-2*time.Minute), "a.service", "b.service")
+	endedRecord(t, s, 4, now.Add(-3*time.Minute))
+
+	got, _, err := s.History(t.Context(), HistoryQuery{Target: "a.service"})
+	if err != nil {
+		t.Fatalf("History: %v", err)
+	}
+	if want := []string{testID(1), testID(3)}; !slices.Equal(ids(got), want) {
+		t.Fatalf("History(Target) = %v, want %v", ids(got), want)
+	}
+}
+
+func TestHistoryKeepsARecordWithNoEndTime(t *testing.T) {
+	s := newTestStore(t)
+	now := time.Now().UTC()
+	endedRecord(t, s, 1, now.Add(-time.Hour))
+	old := testRecord(2, "a")
+	old.State, old.StartedAt, old.CreatedAt = StateFailed, now.Add(-time.Minute), now.Add(-2*time.Minute)
+	mustCreate(t, s, old)
+	unstarted := testRecord(3, "a")
+	unstarted.State, unstarted.StartedAt, unstarted.CreatedAt = StateCanceled, time.Time{}, now.Add(-30*time.Minute)
+	mustCreate(t, s, unstarted)
+
+	got, _, err := s.History(t.Context(), HistoryQuery{})
+	if err != nil {
+		t.Fatalf("History: %v", err)
+	}
+	if want := []string{testID(2), testID(3), testID(1)}; !slices.Equal(ids(got), want) {
+		t.Fatalf("History = %v, want %v (a record without an end time sorts by its start, or its creation when it never started)", ids(got), want)
+	}
+}
+
+// A page is cut by time alone, because the cursor of the next page is the end
+// time of the last record returned and selects strictly earlier records. Four
+// records that ended at the same instant therefore cannot be split: the page
+// grows past the limit to hold all of them, and the second page, asked for
+// records before that instant, has nothing left to repeat. Within a page ties
+// are ordered by ID.
+func TestHistoryPagesThroughRecordsWithEqualTimes(t *testing.T) {
+	s := newTestStore(t)
+	at := time.Now().UTC()
+	for i := range 4 {
+		endedRecord(t, s, i+1, at)
+	}
+
+	var seen []string
+	var q HistoryQuery
+	q.Limit = 2
+	for range 5 {
+		got, more, err := s.History(t.Context(), q)
+		if err != nil {
+			t.Fatalf("History: %v", err)
+		}
+		seen = append(seen, ids(got)...)
+		if !more {
+			break
+		}
+		q.Before = got[len(got)-1].FinishedAt
+	}
+	if want := []string{testID(1), testID(2), testID(3), testID(4)}; !slices.Equal(seen, want) {
+		t.Fatalf("paged records = %v, want each of %v once", seen, want)
+	}
+	if _, more, _ := s.History(t.Context(), HistoryQuery{Limit: 2}); more {
+		t.Fatal("more = true, want false: the first page held all four")
+	}
+}
+
+func TestHistoryExtendsAPageThroughEqualTimes(t *testing.T) {
+	s := newTestStore(t)
+	now := time.Now().UTC()
+	tie := now.Add(-2 * time.Minute)
+	endedRecord(t, s, 1, now)
+	endedRecord(t, s, 2, tie)
+	endedRecord(t, s, 3, tie)
+	endedRecord(t, s, 4, now.Add(-3*time.Minute))
+	endedRecord(t, s, 5, now.Add(-4*time.Minute))
+
+	first, more, err := s.History(t.Context(), HistoryQuery{Limit: 2})
+	if err != nil {
+		t.Fatalf("History: %v", err)
+	}
+	if want := []string{testID(1), testID(2), testID(3)}; !slices.Equal(ids(first), want) || !more {
+		t.Fatalf("first page = %v more=%v, want %v more=true", ids(first), more, want)
+	}
+	second, more, err := s.History(t.Context(), HistoryQuery{Limit: 2, Before: first[len(first)-1].FinishedAt})
+	if err != nil {
+		t.Fatalf("History: %v", err)
+	}
+	if want := []string{testID(4), testID(5)}; !slices.Equal(ids(second), want) || more {
+		t.Fatalf("second page = %v more=%v, want %v more=false", ids(second), more, want)
+	}
+}
+
+func TestHistoryOfAnExecutor(t *testing.T) {
+	s := newTestStore(t)
+	now := time.Now().UTC()
+	endedRecord(t, s, 1, now)
+	other := testRecord(2, "network.apply")
+	other.State, other.FinishedAt, other.Executor = StateCompleted, now, Executor{Kind: "netplan"}
+	mustCreate(t, s, other)
+
+	got, _, err := s.History(t.Context(), HistoryQuery{Executor: "host"})
+	if err != nil {
+		t.Fatalf("History: %v", err)
+	}
+	if want := []string{testID(1)}; !slices.Equal(ids(got), want) {
+		t.Fatalf("History(Executor) = %v, want %v", ids(got), want)
 	}
 }

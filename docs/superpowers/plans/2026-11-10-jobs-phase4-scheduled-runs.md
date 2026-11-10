@@ -174,7 +174,7 @@ func SystemStopping(ctx context.Context) bool
     | `core-dump`, `dumped`, `SEGV` | no | no | `failed` | | `killed by signal SEGV` |
     | `timeout`, `killed`, `TERM` | no | no | `failed` | | `timed out` |
     | `oom-kill`, `killed`, `KILL` | no | no | `failed` | | `killed for using too much memory` |
-    | `start-limit-hit`, ``, `` | no | no | `failed` | | `failed: start-limit-hit` |
+    | `start-limit-hit`, | no | no | `failed` | | `failed: start-limit-hit` |
     | `signal`, `killed`, `TERM` | yes | no | `canceled` | | `operation aborted`, code 499 |
     | `signal`, `killed`, `TERM` | yes | yes | `canceled` | | `operation aborted`, code 499 |
     | `signal`, `killed`, `TERM` | no | yes | `interrupted` | `shutdown` | none |

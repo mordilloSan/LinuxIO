@@ -74,7 +74,7 @@ For request routes:
 ## Contract Files
 
 | File | Role |
-|------|------|
+| ---| ---|
 | `backend/bridge/handlers/<domain>/handlers.go` | One `apischema.Bindings(...)` table per handler family. Each normal entry contains the route contract and typed handler binding together. The `tasks` family publishes the reserved Task-service contracts while `TaskService` supplies their runtime implementations. |
 | `backend/bridge/handlers/register.go` | Single handler-family composition table. Runtime registration, codegen, and tests all read from this one list. Edit this only when adding a new handler family. |
 | `backend/bridge/apischema/contracts.go` | `TypeSpec` payload-type reflection and the `NoRequest`/`NoResponse` marker types. |
@@ -89,7 +89,7 @@ For request routes:
 ## Frontend API Files
 
 | File | Role |
-|------|------|
+| ---| ---|
 | `frontend/src/api/index.ts` | Public barrel. Feature code should import from `@/api`. |
 | `frontend/src/api/calls.ts` | Framework-independent typed `call()` transport and consumer of the generated retry-safety policy. |
 | `frontend/src/api/call-react-query.ts` | Final TanStack descriptor builders and the shared bounded-mutation lifecycle. It has no dependency on Task lifecycle or streams. |
@@ -109,7 +109,7 @@ For request routes:
 Every route has one mode:
 
 | Mode | Use |
-|------|-----|
+| ---| ---|
 | `bridgeipc.ModeCall` | Bounded request/response work: reads, and the quick writes not yet migrated to `Mutation`. React Query caching versus mutation behavior is chosen only at the frontend callsite. |
 | `bridgeipc.ModeMutation` | A change to the host that runs as a job. The bridge relays the stream to the caller's job host, which runs the handler and records the job; a `BrowserBound()` route runs in the bridge on the same stream. No client timeout. See [Tasks and jobs](#tasks-and-jobs). |
 | `bridgeipc.ModeDuplex` | Long-lived Channels, including server-producing logs and bidirectional terminals; resumption is explicit in each Channel protocol. |
@@ -117,7 +117,7 @@ Every route has one mode:
 Every route has one schema kind:
 
 | Kind | Go binding |
-|------|------------|
+| ---| ---|
 | `KindHandler` | `.Handle(func(context.Context, TRequest) (TResult, error))` or `.HandleVoid(func(context.Context, TRequest) error)`. |
 | `KindMutation` | `apischema.Mutation(name, fn, opts...)` with `fn func(context.Context, TRequest) (TResult, error)`, or `apischema.MutationVoid(name, fn, opts...)` with `fn func(context.Context, TRequest) error`. Go infers the request and result types from `fn`. `apischema.MutationTask(name, fn, opts...)` hands `fn` its `*bridgeipc.Task` too, for runners that report through it or name files after its ID. |
 | `KindDuplex` | `func(context.Context, net.Conn, TRequest) error` |
@@ -220,7 +220,7 @@ await call("docker.start_container", { containerId });
 Every generated Call exposes one of two shapes:
 
 | Shape | Use |
-|-------|-----|
+| ---| ---|
 | No-request descriptor (`linuxio.system.get_cpu_info`) | Pass directly to `useQuery`, `useSuspenseQuery`, route loaders, or QueryClient. |
 | Request descriptor factory (`linuxio.systemd.get_unit_info(request)`) | Bind the complete generated request object, then use the returned descriptor in the same places. |
 
@@ -229,7 +229,7 @@ call (`linuxio.docker.update_container(request)` resolves with the typed
 result), the query key, and:
 
 | Member | Use |
-|--------|-----|
+| ---| ---|
 | `endpoint.useMutation(config?)` | The `ActionConfig` of `useCallMutation` plus `onStart(snapshot, variables)`, called once when the job exists, and `onProgress(progress, snapshot, variables)` per progress frame. `signal` (or a function of the variables returning one) stops following when aborted: `closeOnAbort: "abort"`, the default, cancels the job, `"close"` detaches and leaves it running. The returned mutation also exposes `watch(taskId, variables)` to adopt a running job of the route after a reload or from another tab. |
 | `endpoint.start(request)` | Starts the job and resolves with its first snapshot, then detaches. For the background tray, which follows jobs itself. |
 
@@ -259,7 +259,7 @@ Call descriptors compose with normal React Query options, including `select` for
 ### Choosing a member (decision table)
 
 | Situation | Use |
-|-----------|-----|
+| ---| ---|
 | Data rendered by this component | `useQuery(callDescriptor)`. For on-demand panels, compose `enabled` and other options at the callsite. |
 | Data needed inside an effect, loader, or event handler, then handed to something else | `queryClient.fetchQuery(callDescriptor)` when cache sharing matters; `call(route, request)` for transport-only work. |
 | Call invoked as a command (validate, generate download, resolve path) | `useCallMutation(endpoint, config)` for declarative pending/error/feedback behavior. |
@@ -276,7 +276,7 @@ Query invalidation is manifest-driven: `frontend/src/api/operation-query-invalid
 Input is generated from the Go request contract:
 
 | Go request shape | Frontend input | Wire request |
-|------------------|----------------|--------------|
+| ---| ---| ---|
 | Call + `apischema.NoRequest` | `linuxio.system.get_cpu_info` descriptor or `call("system.get_cpu_info")` | `{}` |
 | Call + request struct | descriptor factory or `call(route, request)` with the complete object | request object |
 | one required JSON field | `linuxio.filebrowser.dir_size({ path })` | `{ "path": path }` |
@@ -324,7 +324,7 @@ both attempts share the original absolute deadline.
 The Call transport exposes three outcome classes:
 
 | Outcome | Contract |
-|---------|----------|
+| ---| ---|
 | `connection_unavailable` | Readiness or stream-open send failed before the request SYN was enqueued. The operation was not sent. |
 | backend result or error | The bridge confirmed the outcome. Numeric or string error codes are preserved. |
 | `outcome_unknown` | The request SYN was enqueued, then the stream closed before a result. The operation may have been accepted. |
@@ -440,7 +440,7 @@ Per-user configuration is exposed as two resources because its fields have
 different owners and failure consequences:
 
 | Route | Contract | Semantics |
-|---|---|---|
+| ---| ---| ---|
 | `config.get` | `void -> AppConfig` | Retry-safe read of bridge-owned functional settings. |
 | `config.set` | `ConfigSetPayload -> ConfigSetResult` | Partial update of functional settings. |
 | `config.get_ui` | `void -> UIConfig` | Retry-safe read of effective UI preferences, including backend-owned defaults. |
@@ -532,14 +532,14 @@ of a job the host no longer holds in memory are answered from its record.
 Refusals arrive as the error frame, before any job starts:
 
 | Code | Cause |
-|------|-------|
+| ---| ---|
 | `400` | The `id` is not a canonical non-zero UUID, or the request fails decoding. |
 | `403` | A `Privileged()` route from a session that is not sudo-authorized. |
 | `409` | Same target: `<route> is already running on this target`. |
 | `409` | The `id` was used for another route or request. |
 | `409` | The host already runs 256 jobs (`too many running jobs`), a safety valve. |
-| `409` | `update_pending: …`: the bridge and the job host speak different protocol numbers, because one of them predates an update. Reads keep working. |
-| `503` | `job host unavailable`: the bridge has no connection to its job host yet; it keeps reconnecting. `tasks.get`, `tasks.cancel` and `tasks.watch` of a host job first wait up to 10 s for it. `job host is stopping` while the host shuts down. |
+| `409` | `update_pending: LinuxIO update waits for N running jobs` (`1 running job`), `update_pending: LinuxIO was updated; new jobs can start shortly` when the older host runs no job, or `update_pending: LinuxIO update waits for running jobs` when the bridge cannot read its store: the job host refused the bridge's hello because it is of an older build, and an update waits for its jobs to end. The shared mutation wrapper's toast shows the text after the `update_pending:` prefix. The `BrowserBound()` routes run in the bridge and are not refused. Which reads still work is listed under [Ended jobs, saved output and updates](#ended-jobs-saved-output-and-updates). |
+| `503` | `job host unavailable`: the bridge has no connection to its job host yet; it keeps reconnecting. `tasks.get`, `tasks.cancel`, `tasks.watch` and `tasks.output` of a host job, and `tasks.history`, first wait up to 10 s for it. `job host is stopping` while the host shuts down. |
 
 ### Where mutations run
 
@@ -589,8 +589,14 @@ is serialized by its owner (PackageKit, Docker, or the kernel).
 
 A job's record is `/var/lib/linuxio/jobs/<uid>/<id>.json` (`0600`, in a `0700`
 directory owned by the uid), written by `backend/common/jobs`. It holds the
-route, owner, target, state, timestamps, the full decoded request, and the
-result or error. No API returns the request. The host writes a job's live
+route, owner, target, state, timestamps, the full decoded request, the job's
+public metadata, and the result or error. No API returns the request. The
+target is the job's identity, stored once: the metadata does not repeat it,
+and every snapshot of the record (`tasks.get`, `tasks.watch`, `tasks.list`,
+`tasks.events`, a resend's answer) shows it as `metadata.identity`. A record
+over the 1 MiB limit sheds, in this order, its result, its target, its
+request and, last, its metadata, so a batch of thousands of paths keeps its
+record. The host writes a job's live
 progress to `/run/linuxio/jobs/<uid>/<id>.progress`, at most twice a second,
 never into the record; the file is removed with the record. The one exception
 is the network bridge handoff, which keeps its latest progress step and a
@@ -649,7 +655,7 @@ it. The root job host reads those records, so the run shows in `tasks.list`
 and `tasks.events` while it runs. Four task types:
 
 | Type | Unit | `metadata.label` | `metadata.identity` |
-|------|------|------------------|---------------------|
+| ---| ---| ---| ---|
 | `scheduled.script` | `linuxio-schedule-<id>.service` | the schedule's name, `Scheduled task` when its definition cannot be read | `[<schedule id>]` |
 | `scheduled.btrfs_snapshot` | `linuxio-btrfs-snapshot.service` | `Snapshots and replication` | none |
 | `scheduled.btrfs_resync` | `linuxio-btrfs-resync@<uuid>.service` | `Pool resync` | `[<pool uuid>]` |
@@ -681,9 +687,111 @@ and `tasks.events` while it runs. Four task types:
   an earlier boot and `crash` for one whose end hook never ran.
 
 The Schedules page follows the latest run's output with `logs.service.follow`
-and its `invocationId` ([Streams](#streams)). Listing ended runs and reading
-their saved output belong to the history view of
-[jobs phase 5](./TODO/jobs.md#45-phase-5-history-and-notices).
+and its `invocationId` ([Streams](#streams)). Its past runs and their saved
+output come from `tasks.history` with the run's `unit` and from `tasks.output`
+([Ended jobs, saved output and updates](#ended-jobs-saved-output-and-updates)).
+
+### Ended jobs, saved output and updates
+
+Three Calls serve the history page, a schedule's past runs and the update
+banner. The bridge forwards each to the caller's job host, and answers them
+itself while a LinuxIO update waits for an older host.
+
+**`tasks.history`**: `TaskHistoryRequest` to `TaskHistory`, `RetrySafe()`,
+open to every session.
+
+| Request member | Meaning |
+| ---| ---|
+| `before` | The cursor: the end time of the last entry of the previous page, exactly as received (its `finished_at`, else `started_at`, else `created_at`; the times carry nanoseconds that a JavaScript `Date` drops). Absent: the newest page. |
+| `limit` | Absent or 0: 100; more than 500 is capped. |
+| `unit` | Only the runs of this systemd unit, from the root host's scheduled store. |
+
+The answer holds `entries` and `more` (set when older entries remain). An
+entry (`TaskHistoryEntry`) is `task`, a slim `TaskSnapshot` of the ended job,
+`reason` (`shutdown`, `reboot` or `crash` for an interrupted job), `unit` (a
+scheduled run's unit) and `output` (set when the run's saved output exists).
+The slim snapshot keeps what a list of ended work shows (type, owner, times,
+state, error, the display members of `metadata`) and leaves out the rest, so
+a page of large records stays well inside a relay frame:
+
+- no entry carries `result` or `progress`;
+- a host job's entry carries no `metadata.identity` and no
+  `metadata.packageIds`; a scheduled run keeps `metadata.identity`, which
+  names its schedule or pool;
+- `error.message` is cut to at most 4096 bytes, on a character boundary, with
+  `…` appended when cut.
+
+`tasks.get` of the same ID still answers the full snapshot. Entries are
+terminal records, newest first by end time. A page never
+splits entries that ended at the same instant: it grows past `limit` to take
+all of them, and the next page starts strictly before that instant. The root
+host merges its own jobs with the scheduled runs, so every admin session sees
+every admin's jobs and every scheduled run; a user's host lists that user's
+jobs and never a scheduled run. A job that completed in under one second left
+no record and is not listed.
+
+Errors: `400` for a negative `limit` or a request that fails decoding; `503`
+when no job host connection comes within 10 s. While an update waits the
+answer is an empty page at once: the older host cannot be asked.
+
+**`tasks.output`**: `TaskOutputRequest` to `TaskOutput`, `RetrySafe()`,
+`Privileged()`.
+
+| Request member | Meaning |
+| ---| ---|
+| `taskId` | The scheduled run's ID. |
+| `offset` | Where the chunk starts, in bytes. Absent: the chunk is the end of the output. |
+| `limit` | Bytes. Absent or 0: 256 KiB; more than 1 MiB is capped. |
+
+The answer is `content`, `offset` (where `content` starts) and `size` (of the
+whole saved output, at most 10 MiB). `content` is valid UTF-8, with invalid
+bytes replaced by U+FFFD. A chunk starts on a character boundary: one asked to
+start inside a character starts after it, at most three bytes later, and
+reports that `offset`. A client that ends each earlier chunk at the `offset`
+the later chunk reported therefore cuts no character. The viewer on the history
+page and the Schedules page reads the end first, opens scrolled to it, and
+reads earlier chunks on request, keeping the text in view where it was. Only
+the root host keeps saved outputs.
+
+Errors: `403` for a session that is not sudo-authorized, refused before the
+handler runs; `400` for an empty `taskId`, a negative `offset` or a negative
+`limit`; `404` when the run saved no output, the ID is not a job ID, or the host
+keeps no scheduled store (a user's host); `503` when no job host connection
+comes within 10 s, as while an update waits.
+
+**`tasks.host`**: `NoRequest` to `TaskHostStatus`, `RetrySafe()`, open to
+every session. The answer is `update_pending`, set when the job host is of an
+older build and refused the bridge's hello; `running`, the number of jobs the
+host still runs; and, only while an update waits, `jobs`, their running
+snapshots: label and the other display members of `metadata` and the last
+progress, without `metadata.identity`, `metadata.packageIds` or
+`cancel_requested`. The bridge waits up to 10 s until it has a connection or
+its last connection attempt was refused for an older build; a failed attempt
+does not end the wait. With neither in that time it answers
+`update_pending: false, running: 0`. With a host of this build it asks the
+host. While an update waits it cannot ask the older host, so it reads that
+host's records: the bridge runs as the host's uid and reads that uid's job
+store read-only, counting each `running` record of executor kind `host` whose
+process still lives, with the progress file the host last wrote. After the
+older host exits, the answer stays `update_pending: true, running: 0` until the
+bridge's next connection attempt, at most 30 s later, starts and reaches the
+new host.
+
+While an update waits, the `tasks.*` routes behave as follows:
+
+| Answered by the bridge from the older host's records | Answered empty at once | Fail with `503` after waiting 10 s for a host |
+| ---| ---| ---|
+| `tasks.host` | `tasks.history`, `tasks.list` (the bridge's own tasks only); `tasks.events` sends none of the host's jobs | `tasks.get`, `tasks.watch`, `tasks.cancel` and `tasks.output` of a host job |
+
+Every new Mutation that the job host would run is refused with `409` and one
+of the three `update_pending` messages of the refusal table above (with the
+count, without jobs, or with the store unreadable). The three `BrowserBound()` Mutations,
+`filebrowser.upload`, `filebrowser.upload_batch` and `filebrowser.archive`, run
+in the bridge and are not affected, nor are Calls and Channels that do not go
+to the job host. There is no
+fallback for a job host of the same protocol built before these three routes:
+it answers them `route not found`, and the last release (v0.52.0) has no job
+host.
 
 ### Task lifetime, ownership, and activity
 
@@ -764,9 +872,12 @@ in-memory login session and the authenticated status request returns `401`.
 Built-in Task routes:
 
 | Route | Use |
-|-------|-----|
+| ---| ---|
 | `tasks.get` | Fetch one owned Task or job snapshot. |
 | `tasks.list` | List owned Tasks and the jobs the job host holds; on the root host also the scheduled runs that run. |
+| `tasks.history` | A page of the ended jobs of the job host, newest first; on the root host also the scheduled runs. Open to every session. See [Ended jobs, saved output and updates](#ended-jobs-saved-output-and-updates). |
+| `tasks.output` | Privileged. A chunk of a scheduled run's saved output. See [Ended jobs, saved output and updates](#ended-jobs-saved-output-and-updates). |
+| `tasks.host` | Whether a LinuxIO update waits for the job host, and for which of its jobs. Open to every session. See [Ended jobs, saved output and updates](#ended-jobs-saved-output-and-updates). |
 | `tasks.cancel` | Cancel one owned Task or job. |
 | `tasks.watch` | Common progress envelope plus typed detail and terminal result. Closing detaches; aborting cancels. |
 | `tasks.data` | Upload/download/archive data stream. Bridge only. |
@@ -799,7 +910,7 @@ Channels are multiplexed over `/ws`. Use typed `openChannel()` or an existing
 payload-specific helper instead of constructing envelopes directly.
 
 | Function | Route | Use |
-|----------|-------|-----|
+| ---| ---| ---|
 | `openTerminalStream(cols, rows)` | `terminal.open` | Host shell. |
 | `openContainerStream(containerId, shell, cols, rows)` | `container.open` | Container shell. |
 | `openChannel("docker.logs.follow", request)` | `docker.logs.follow` | Direct server-producing container log Channel. |
@@ -956,7 +1067,7 @@ Goal: `reflect` is allowed in `backend/bridge/internal/apigen`, but not in runti
 Current acceptable uses:
 
 | File | Reason |
-|------|--------|
+| ---| ---|
 | `backend/bridge/internal/apigen/main.go` | Reflects Go structs into generated TypeScript. |
 | `backend/bridge/apischema/contracts.go` | Stores `reflect.Type` metadata for the generator through `TypeSpec`. |
 | `*_test.go` files | Test comparison/introspection only. |

@@ -5,6 +5,7 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
+	"io"
 	"log/slog"
 	"net"
 	"slices"
@@ -102,6 +103,15 @@ type fakeRemote struct {
 	dropped  chan struct{}
 	// ended is the one job Get finds.
 	ended TaskSnapshot
+	// history is what History returns, and asked the request it was last given.
+	history TaskHistory
+	asked   TaskHistoryRequest
+	// output is what Output returns, and outputAsked the request it was last
+	// given, nil until it is asked.
+	output      TaskOutput
+	outputAsked *TaskOutputRequest
+	// status is what Status returns.
+	status TaskHostStatus
 }
 
 func (f *fakeRemote) Get(_ context.Context, id string) (TaskSnapshot, error) {
@@ -123,6 +133,18 @@ func (f *fakeRemote) Watch(context.Context, net.Conn, string) error { return nil
 
 func (f *fakeRemote) List(context.Context) ([]TaskSnapshot, error) { return f.list, nil }
 
+func (f *fakeRemote) History(_ context.Context, req TaskHistoryRequest) (TaskHistory, error) {
+	f.asked = req
+	return f.history, nil
+}
+
+func (f *fakeRemote) Output(_ context.Context, req TaskOutputRequest) (TaskOutput, error) {
+	f.outputAsked = &req
+	return f.output, nil
+}
+
+func (f *fakeRemote) Status(context.Context) (TaskHostStatus, error) { return f.status, nil }
+
 // Events writes its events and returns, as a host connection that drops does.
 func (f *fakeRemote) Events(_ context.Context, stream net.Conn) error {
 	defer close(f.dropped)
@@ -134,7 +156,11 @@ func (f *fakeRemote) Events(_ context.Context, stream net.Conn) error {
 	return nil
 }
 
-var remoteTestSession = &session.Session{SessionID: "session-a", User: session.User{Username: "alice", UID: 1000}}
+var (
+	remoteTestSession = &session.Session{SessionID: "session-a", User: session.User{Username: "alice", UID: 1000}}
+	// privilegedTestSession is remoteTestSession after sudo.
+	privilegedTestSession = &session.Session{SessionID: "session-a", User: session.User{Username: "alice", UID: 1000}, Privileged: true}
+)
 
 func newRemoteTestRouter(t *testing.T, remote RemoteTasks) (*Router, *TaskService) {
 	t.Helper()
@@ -168,21 +194,32 @@ func startBlockedTask(t *testing.T, service *TaskService) *Task {
 	return task
 }
 
-// dispatchOnPipe dispatches route over a net.Pipe and returns the client end
-// and the result of Dispatch.
+// dispatchOnPipe dispatches route for remoteTestSession over a net.Pipe and
+// returns the client end and the result of Dispatch.
 func dispatchOnPipe(router *Router, route string, request string) (net.Conn, <-chan error) {
+	return dispatchOnPipeAs(router, remoteTestSession, route, request)
+}
+
+// dispatchOnPipeAs is dispatchOnPipe for sess.
+func dispatchOnPipeAs(router *Router, sess *session.Session, route string, request string) (net.Conn, <-chan error) {
 	server, client := net.Pipe()
 	errCh := make(chan error, 1)
 	go func() {
 		defer server.Close()
-		errCh <- router.Dispatch(context.Background(), server, Request{Route: route, RawRequest: jsontext.Value(request), Session: remoteTestSession})
+		errCh <- router.Dispatch(context.Background(), server, Request{Route: route, RawRequest: jsontext.Value(request), Session: sess})
 	}()
 	return client, errCh
 }
 
 func callOnPipe(t *testing.T, router *Router, route string, request string) relay.ResultFrame {
 	t.Helper()
-	client, errCh := dispatchOnPipe(router, route, request)
+	return callOnPipeAs(t, router, remoteTestSession, route, request)
+}
+
+// callOnPipeAs is callOnPipe for sess.
+func callOnPipeAs(t *testing.T, router *Router, sess *session.Session, route string, request string) relay.ResultFrame {
+	t.Helper()
+	client, errCh := dispatchOnPipeAs(router, sess, route, request)
 	defer client.Close()
 	_ = client.SetReadDeadline(time.Now().Add(5 * time.Second))
 	frame, err := relay.ReadRelayFrame(client)
@@ -317,5 +354,105 @@ func TestTasksEventsMergesStreamsAndSurvivesRemoteDrop(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("tasks.events did not end when the client closed")
+	}
+}
+
+func TestTasksHistoryAsksTheRemote(t *testing.T) {
+	at := time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)
+	remote := &fakeRemote{history: TaskHistory{
+		Entries: []TaskHistoryEntry{{Task: TaskSnapshot{ID: remoteJobID, State: TaskStateCompleted}, Reason: "reboot", Unit: "a.service", Output: true}},
+		More:    true,
+	}}
+	router, _ := newRemoteTestRouter(t, remote)
+
+	result := callOnPipe(t, router, "tasks.history", `{"before":"2026-11-10T12:00:00Z","limit":5,"unit":"a.service"}`)
+	var history TaskHistory
+	if result.Status != "ok" || json.Unmarshal(result.Data, &history) != nil {
+		t.Fatalf("tasks.history = %+v, want ok", result)
+	}
+	if len(history.Entries) != 1 || history.Entries[0] != remote.history.Entries[0] || !history.More {
+		t.Fatalf("tasks.history = %+v, want the remote's %+v", history, remote.history)
+	}
+	if remote.asked.Before == nil || !remote.asked.Before.Equal(at) || remote.asked.Limit != 5 || remote.asked.Unit != "a.service" {
+		t.Fatalf("remote was asked %+v, want before %v, limit 5, unit a.service", remote.asked, at)
+	}
+
+	// Without a job host there is no history, and no error.
+	router, _ = newRemoteTestRouter(t, nil)
+	result = callOnPipe(t, router, "tasks.history", `{}`)
+	if result.Status != "ok" || string(result.Data) != `{"entries":[],"more":false}` {
+		t.Fatalf("tasks.history without a remote = %+v, want an empty history", result)
+	}
+}
+
+func TestTasksHistoryRejectsABadRequest(t *testing.T) {
+	router, _ := newRemoteTestRouter(t, &fakeRemote{})
+	client, errCh := dispatchOnPipe(router, "tasks.history", `{"limit":-1}`)
+	defer client.Close()
+	go func() { _, _ = io.Copy(io.Discard, client) }()
+	if err := <-errCh; !errors.Is(err, ErrInvalidArgs) {
+		t.Fatalf("tasks.history with limit -1 = %v, want ErrInvalidArgs", err)
+	}
+}
+
+func TestTasksHostWithoutARemote(t *testing.T) {
+	router, _ := newRemoteTestRouter(t, nil)
+	result := callOnPipe(t, router, "tasks.host", `{}`)
+	if result.Status != "ok" || string(result.Data) != `{"update_pending":false,"running":0}` {
+		t.Fatalf("tasks.host without a remote = %+v, want no update pending and no job running", result)
+	}
+
+	// With a remote, an unprivileged session gets the remote's status as it is.
+	remote := &fakeRemote{status: TaskHostStatus{UpdatePending: true, Running: 1, Jobs: []TaskSnapshot{{ID: remoteJobID, State: TaskStateRunning}}}}
+	router, _ = newRemoteTestRouter(t, remote)
+	result = callOnPipe(t, router, "tasks.host", `{}`)
+	var status TaskHostStatus
+	if result.Status != "ok" || json.Unmarshal(result.Data, &status) != nil ||
+		!status.UpdatePending || status.Running != 1 || len(status.Jobs) != 1 || status.Jobs[0].ID != remoteJobID {
+		t.Fatalf("tasks.host = %+v, want the remote's %+v", result, remote.status)
+	}
+}
+
+func TestTasksOutputIsPrivileged(t *testing.T) {
+	remote := &fakeRemote{output: TaskOutput{Content: "line\n", Offset: 3, Size: 8}}
+	router, _ := newRemoteTestRouter(t, remote)
+	request := `{"taskId":"` + remoteJobID + `","offset":3,"limit":5}`
+
+	if result := callOnPipe(t, router, "tasks.output", request); result.Code != 403 || remote.outputAsked != nil {
+		t.Fatalf("tasks.output of an unprivileged session = %+v (remote asked %+v), want 403 before the remote is asked", result, remote.outputAsked)
+	}
+
+	result := callOnPipeAs(t, router, privilegedTestSession, "tasks.output", request)
+	var output TaskOutput
+	if result.Status != "ok" || json.Unmarshal(result.Data, &output) != nil || output != remote.output {
+		t.Fatalf("tasks.output of a privileged session = %+v, want the remote's %+v", result, remote.output)
+	}
+	if asked := remote.outputAsked; asked == nil || asked.TaskID != remoteJobID || asked.Offset == nil || *asked.Offset != 3 || asked.Limit != 5 {
+		t.Fatalf("remote was asked %+v, want task %s, offset 3, limit 5", asked, remoteJobID)
+	}
+
+	// A bridge-local task has no saved output, and its ID never reaches the host.
+	remote.outputAsked = nil
+	if result := callOnPipeAs(t, router, privilegedTestSession, "tasks.output", `{"taskId":"task-99"}`); result.Code != 404 || remote.outputAsked != nil {
+		t.Fatalf("tasks.output of task-99 = %+v (remote asked %+v), want a local 404", result, remote.outputAsked)
+	}
+}
+
+func TestTasksOutputRejectsABadRequest(t *testing.T) {
+	remote := &fakeRemote{}
+	router, _ := newRemoteTestRouter(t, remote)
+	for _, request := range []string{
+		`{}`,
+		`{"taskId":""}`,
+		`{"taskId":"` + remoteJobID + `","limit":-1}`,
+		`{"taskId":"` + remoteJobID + `","offset":-1}`,
+	} {
+		client, errCh := dispatchOnPipeAs(router, privilegedTestSession, "tasks.output", request)
+		go func() { _, _ = io.Copy(io.Discard, client) }()
+		err := <-errCh
+		_ = client.Close()
+		if !errors.Is(err, ErrInvalidArgs) || remote.outputAsked != nil {
+			t.Fatalf("tasks.output %s = %v (remote asked %+v), want ErrInvalidArgs before the remote is asked", request, err, remote.outputAsked)
+		}
 	}
 }

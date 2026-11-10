@@ -193,6 +193,88 @@ func (s *Store) List(ctx context.Context) ([]Record, error) {
 	return records, nil
 }
 
+const (
+	DefaultHistoryLimit = 100
+	MaxHistoryLimit     = 500
+)
+
+// HistoryQuery selects ended records, newest first.
+type HistoryQuery struct {
+	Before time.Time // only records that ended before it; zero means no bound
+	Limit  int       // 0 means DefaultHistoryLimit; capped at MaxHistoryLimit
+	Target string    // only records whose first target is it; "" means all
+	// Executor keeps only the records of this executor kind, so a host lists
+	// the jobs it ran and not, say, a network handoff; "" means all.
+	Executor string
+}
+
+func (q HistoryQuery) limit() int {
+	switch {
+	case q.Limit <= 0:
+		return DefaultHistoryLimit
+	case q.Limit > MaxHistoryLimit:
+		return MaxHistoryLimit
+	default:
+		return q.Limit
+	}
+}
+
+// History returns ended records by the time they ended, newest first, and
+// whether older ones remain. A page is never cut between records that ended at
+// the same instant, see MergeHistory.
+func (s *Store) History(ctx context.Context, q HistoryQuery) ([]Record, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, false, err
+	}
+	records, err := s.readAll()
+	if err != nil {
+		return nil, false, err
+	}
+	records = slices.DeleteFunc(records, func(r Record) bool {
+		if !r.State.terminal() || (!q.Before.IsZero() && !endedAt(r).Before(q.Before)) {
+			return true
+		}
+		return (q.Target != "" && (len(r.Target) == 0 || r.Target[0] != q.Target)) ||
+			(q.Executor != "" && r.Executor.Kind != q.Executor)
+	})
+	page, more := MergeHistory(q, records)
+	return page, more, nil
+}
+
+// MergeHistory orders ended records newest first, ties by ID, and cuts them at
+// q's limit. The next page asks for records that ended strictly before the
+// last one returned, so the cut never separates records that ended at the same
+// instant: when the record at the limit shares its end time with the ones that
+// follow, the page grows to hold them all. more reports whether records were
+// cut off.
+func MergeHistory(q HistoryQuery, lists ...[]Record) (page []Record, more bool) {
+	page = slices.Concat(lists...)
+	slices.SortFunc(page, func(a, b Record) int {
+		if c := endedAt(b).Compare(endedAt(a)); c != 0 {
+			return c
+		}
+		return strings.Compare(a.ID, b.ID)
+	})
+	limit := q.limit()
+	if len(page) <= limit {
+		return page, false
+	}
+	cut := limit
+	for cut < len(page) && endedAt(page[cut]).Equal(endedAt(page[limit-1])) {
+		cut++
+	}
+	return page[:cut], cut < len(page)
+}
+
+// endedAt is when r ended. A terminal record that has no end time, which only
+// an old file lacks, ended when it started, or was created.
+func endedAt(r Record) time.Time {
+	if r.FinishedAt.IsZero() {
+		return startedOrCreated(r)
+	}
+	return r.FinishedAt
+}
+
 func (s *Store) WriteProgress(id string, progress jsontext.Value) error {
 	if err := ValidateID(id); err != nil {
 		return err
@@ -395,9 +477,10 @@ func (s *Store) writeRecord(r Record, sync bool) error {
 	if err != nil {
 		return err
 	}
-	// A record too large to keep sheds its result, which attached clients
-	// received whole, then its target and its request, as a batch of
-	// thousands of paths has, keeping the job's state and history.
+	// A record too large to keep sheds, in this order, its result, which
+	// attached clients received whole, then its target and its request, as a
+	// batch of thousands of paths has, and last its metadata, keeping the
+	// job's state and history.
 	for _, part := range []struct {
 		name string
 		drop func()
@@ -405,6 +488,7 @@ func (s *Store) writeRecord(r Record, sync bool) error {
 		{"result", func() { r.Result = nil }},
 		{"target", func() { r.Target = nil }},
 		{"request", func() { r.Request = nil }},
+		{"metadata", func() { r.Metadata = nil }},
 	} {
 		if err != nil || len(data) <= maxRecordBytes {
 			break
@@ -522,6 +606,17 @@ func writeFileNoSync(path string, data []byte, mode fs.FileMode) error {
 }
 
 func readRegularFile(root, name string, limit int64) ([]byte, error) {
+	file, err := openRegularFile(root, name)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	return iolimit.ReadAll(file, limit)
+}
+
+// openRegularFile opens name inside root for reading. It refuses anything but
+// a plain file and follows no link.
+func openRegularFile(root, name string) (*os.File, error) {
 	if !filepath.IsLocal(name) {
 		return nil, fmt.Errorf("job file name %q is not local", name)
 	}
@@ -538,12 +633,7 @@ func readRegularFile(root, name string, limit int64) ([]byte, error) {
 	if !plainFile(info.Mode()) {
 		return nil, fmt.Errorf("refusing to read non-regular job file %q", name)
 	}
-	file, err := rootDir.Open(name)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	return iolimit.ReadAll(file, limit)
+	return rootDir.Open(name)
 }
 
 func plainFile(mode fs.FileMode) bool {

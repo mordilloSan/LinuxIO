@@ -1,9 +1,11 @@
 package jobs
 
 import (
+	"bytes"
 	"encoding/json/jsontext"
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -165,5 +167,127 @@ func TestModTimeChangesWhenARecordIsWritten(t *testing.T) {
 	}
 	if !updated.After(old) {
 		t.Errorf("ModTime after Update = %v, not after the backdated %v", updated, old)
+	}
+}
+
+// withOutput saves output as the output of job 1 and returns its ID.
+func withOutput(t *testing.T, s *Store, output []byte) string {
+	t.Helper()
+	id := testID(1)
+	if err := os.MkdirAll(s.stateDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(s.OutputPath(id), output, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return id
+}
+
+// numbered is size bytes that differ from their neighbours, so a chunk read
+// from the wrong place does not match.
+func numbered(size int) []byte {
+	out := make([]byte, size)
+	for i := range out {
+		out[i] = byte(i % 251)
+	}
+	return out
+}
+
+func TestReadOutputReturnsTheEndByDefault(t *testing.T) {
+	s := newTestStore(t)
+	output := numbered(600 << 10)
+	id := withOutput(t, s, output)
+
+	data, start, size, err := s.ReadOutput(id, -1, 0)
+	if err != nil {
+		t.Fatalf("ReadOutput: %v", err)
+	}
+	if size != int64(len(output)) || start != size-262144 || !bytes.Equal(data, output[start:]) {
+		t.Fatalf("ReadOutput(-1, 0) = %d bytes from %d of %d, want the last 262144 bytes of %d", len(data), start, size, len(output))
+	}
+}
+
+func TestReadOutputFromAnOffset(t *testing.T) {
+	s := newTestStore(t)
+	id := withOutput(t, s, []byte("0123456789abcdefghij"))
+
+	data, start, size, err := s.ReadOutput(id, 10, 5)
+	if err != nil || string(data) != "abcde" || start != 10 || size != 20 {
+		t.Fatalf("ReadOutput(10, 5) = %q from %d of %d, %v; want abcde from 10 of 20", data, start, size, err)
+	}
+}
+
+func TestReadOutputCapsTheChunk(t *testing.T) {
+	s := newTestStore(t)
+	output := numbered(3 << 20)
+	id := withOutput(t, s, output)
+
+	data, start, _, err := s.ReadOutput(id, 0, 5<<20)
+	if err != nil || start != 0 || !bytes.Equal(data, output[:MaxOutputChunk]) {
+		t.Fatalf("ReadOutput(0, 5 MiB) = %d bytes from %d, %v; want the first %d", len(data), start, err, MaxOutputChunk)
+	}
+}
+
+func TestReadOutputPastTheEndIsEmpty(t *testing.T) {
+	s := newTestStore(t)
+	id := withOutput(t, s, []byte("line\n"))
+
+	for _, offset := range []int64{5, 100} {
+		data, start, size, err := s.ReadOutput(id, offset, 0)
+		if err != nil || len(data) != 0 || start != 5 || size != 5 {
+			t.Fatalf("ReadOutput(%d, 0) = %q from %d of %d, %v; want nothing from the end, 5", offset, data, start, size, err)
+		}
+	}
+}
+
+func TestReadOutputOfAMissingFileIsNotFound(t *testing.T) {
+	s := newTestStore(t)
+	if _, _, _, err := s.ReadOutput(testID(1), -1, 0); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("ReadOutput with no store directory = %v, want ErrNotFound", err)
+	}
+	r := testRecord(1, "scheduled.script")
+	mustCreate(t, s, r)
+	if _, _, _, err := s.ReadOutput(r.ID, -1, 0); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("ReadOutput of a record with no output = %v, want ErrNotFound", err)
+	}
+}
+
+func TestReadOutputRefusesALink(t *testing.T) {
+	s := newTestStore(t)
+	id := withOutput(t, s, []byte("line\n"))
+	// The link points inside the store, where opening it would stay.
+	target := filepath.Join(s.stateDir, "elsewhere")
+	if err := os.WriteFile(target, []byte("not this output\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(s.OutputPath(id)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, s.OutputPath(id)); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _, _, err := s.ReadOutput(id, -1, 0)
+	if err == nil || errors.Is(err, ErrNotFound) || data != nil {
+		t.Fatalf("ReadOutput of a link = %q, %v; want an error and nothing read", data, err)
+	}
+}
+
+func TestReadOutputRejectsABadID(t *testing.T) {
+	s := newTestStore(t)
+	withOutput(t, s, []byte("line\n"))
+	// A file the ../x ID would name.
+	if err := os.WriteFile(filepath.Join(filepath.Dir(s.stateDir), "x.log"), []byte("outside\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	upper := strings.ToUpper(testID(10))
+	if err := os.WriteFile(filepath.Join(s.stateDir, upper+".log"), []byte("line\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"", "../x", "task-1", upper, "00000000-0000-0000-0000-000000000000"} {
+		if data, _, _, err := s.ReadOutput(id, -1, 0); err == nil || errors.Is(err, ErrNotFound) || data != nil {
+			t.Errorf("ReadOutput(%q) = %q, %v; want the ID refused", id, data, err)
+		}
 	}
 }

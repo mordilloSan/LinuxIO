@@ -19,6 +19,9 @@ func routeBindings() apischema.BindingSet {
 		apischema.Call[apischema.TaskIDRequest, apischema.TaskSnapshot]("tasks.cancel"),
 		apischema.Call[apischema.TaskIDRequest, apischema.TaskSnapshot]("tasks.get", apischema.RetrySafe()),
 		apischema.Call[apischema.TaskListRequest, []apischema.TaskSnapshot]("tasks.list", apischema.RetrySafe()),
+		apischema.Call[apischema.TaskHistoryRequest, apischema.TaskHistory]("tasks.history", apischema.RetrySafe()),
+		apischema.Call[apischema.TaskOutputRequest, apischema.TaskOutput]("tasks.output", apischema.RetrySafe(), apischema.Privileged()),
+		apischema.Call[apischema.NoRequest, apischema.TaskHostStatus]("tasks.host", apischema.RetrySafe()),
 	)
 }
 

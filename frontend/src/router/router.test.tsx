@@ -84,6 +84,7 @@ describe("generated application router", () => {
         "/docker/volumes",
         "/filebrowser/$",
         "/hardware",
+        "/history",
         "/logs",
         "/network",
         "/network/",

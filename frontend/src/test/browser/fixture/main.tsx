@@ -65,6 +65,7 @@ const VirtualExpansionTablePage = lazy(
 );
 const GeneralLogsPage = lazy(() => import("./routes/GeneralLogsPage"));
 const SchedulesPage = lazy(() => import("./routes/SchedulesPage"));
+const HistoryPage = lazy(() => import("./routes/HistoryPage"));
 const StylingGalleryPage = lazy(() => import("./routes/StylingGalleryPage"));
 const DialogGalleryPage = lazy(() => import("./routes/DialogGalleryPage"));
 const DockerTopologyPage = lazy(() => import("./routes/DockerTopologyPage"));
@@ -238,6 +239,11 @@ const schedulesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "schedules",
 });
+const historyRoute = createRoute({
+  component: HistoryPage,
+  getParentRoute: () => rootRoute,
+  path: "history",
+});
 const lightGeneralLogsRoute = createRoute({
   component: GeneralLogsPage,
   getParentRoute: () => rootRoute,
@@ -374,6 +380,7 @@ const routeTree = rootRoute.addChildren([
   lightVirtualExpansionRoute,
   generalLogsRoute,
   schedulesRoute,
+  historyRoute,
   lightGeneralLogsRoute,
   virtualFileBrowserRoute,
   virtualGridRoute,

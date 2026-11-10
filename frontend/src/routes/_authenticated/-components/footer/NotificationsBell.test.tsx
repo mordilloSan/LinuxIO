@@ -129,6 +129,7 @@ function renderBell() {
         path: "/services/schedules",
       }),
       createRoute({ getParentRoute: () => rootRoute, path: "/updates" }),
+      createRoute({ getParentRoute: () => rootRoute, path: "/history" }),
     ]),
   });
   return render(<NotificationsBell />, {
@@ -166,7 +167,7 @@ describe("NotificationsBell peek timer", () => {
   });
 
   it("portals the notifications panel outside the footer row", () => {
-    const view = render(<NotificationsBell />);
+    const view = renderBell();
 
     fireEvent.click(screen.getByRole("button", { name: "Notifications" }));
 
@@ -363,5 +364,51 @@ describe("NotificationsBell alerts", () => {
     );
     await screen.findByText("Automatic updates installed 3 packages");
     expect(markAllSeen).not.toHaveBeenCalled();
+  });
+});
+
+describe("NotificationsBell history link", () => {
+  const openTray = () =>
+    userEvent.click(screen.getByRole("button", { name: "Notifications" }));
+
+  beforeEach(() => {
+    state.transfers = [];
+    useAlertsMock.mockReturnValue(noAlerts());
+  });
+
+  it("links the empty tray to the history page", async () => {
+    renderBell();
+
+    await openTray();
+
+    expect(await screen.findByText("No notifications")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "History" })).toHaveAttribute(
+      "href",
+      "/history",
+    );
+  });
+
+  it("keeps the link below a list of notifications", async () => {
+    useAlertsMock.mockReturnValue({ ...noAlerts(), alerts: [alertFixture()] });
+    renderBell();
+
+    await openTray();
+
+    const link = await screen.findByRole("link", { name: "History" });
+    const item = screen.getByText("Automatic updates installed 3 packages");
+    expect(
+      item.compareDocumentPosition(link) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("closes the tray when the link is followed", async () => {
+    renderBell();
+
+    await openTray();
+    await userEvent.click(await screen.findByRole("link", { name: "History" }));
+
+    expect(
+      screen.queryByRole("dialog", { name: "Notifications" }),
+    ).not.toBeInTheDocument();
   });
 });

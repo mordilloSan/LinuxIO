@@ -130,7 +130,17 @@ func (h *Host) newRecord(task *bridgeipc.Task, raw jsontext.Value) jobs.Record {
 		Protocol:  jobs.Protocol,
 	}
 	if metadata := task.Snapshot().Metadata; metadata != nil {
+		// The identity is the target, which a snapshot of the record shows
+		// as its identity; stored once, a batch of thousands of paths still
+		// fits a record.
 		record.Target = metadata.Identity
+		stored := *metadata
+		stored.Identity = nil
+		data, err := json.Marshal(stored)
+		if err != nil {
+			slog.Debug("job metadata not encoded", "job_id", task.ID(), "error", err)
+		}
+		record.Metadata = data
 	}
 	return record
 }

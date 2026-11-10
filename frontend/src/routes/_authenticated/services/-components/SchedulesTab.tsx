@@ -7,12 +7,14 @@ import {
   openChannel,
   type ScheduleOptions,
   type ScheduleStatus,
+  type TaskHistoryEntry,
 } from "@/api";
 import UnitLogsCard from "@/components/cards/UnitLogsCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import PathPickerField from "@/components/pathpicker/PathPickerField";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
+import SavedOutput from "@/components/tasks/SavedOutput";
 import AppButton from "@/components/ui/AppButton";
 import AppCheckbox from "@/components/ui/AppCheckbox";
 import {
@@ -26,6 +28,8 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
+import { taskEndedAt, taskOutcome, taskRunTime } from "@/tasks/taskTitles";
+import { formatDate } from "@/utils/formatters";
 
 import {
   frequencies,
@@ -438,6 +442,80 @@ function Details({
             unitName={status.unit_name}
           />
         </div>
+      )}
+      {/* Keyed on the schedule so another one starts with no run chosen. */}
+      <PastRuns key={status.definition.id} unit={status.unit_name} />
+    </div>
+  );
+}
+
+const runLabel = (entry: TaskHistoryEntry) =>
+  [
+    formatDate(taskEndedAt(entry.task)),
+    taskOutcome(entry),
+    taskRunTime(entry.task),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+// A unit keeps at most 50 runs, so one page of the history is the whole list.
+function PastRuns({ unit }: { unit: string }) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const query = useQuery({
+    ...linuxio.tasks.history({ unit }),
+    refetchInterval: 5000,
+    // The card shows its own error; a toast would come with every poll.
+    meta: { silent: true },
+  });
+  const entries = query.data?.entries;
+  const selectedEntry = entries?.find((entry) => entry.task.id === selectedId);
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "var(--app-space-12)",
+      }}
+    >
+      <AppTypography variant="h6">Past runs</AppTypography>
+      {query.error && (
+        <AppTypography color="error">{query.error.message}</AppTypography>
+      )}
+      {entries?.length === 0 && (
+        <AppTypography color="text.secondary">
+          This task has not run yet.
+        </AppTypography>
+      )}
+      {entries && entries.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {entries.map((entry) => (
+            <AppButton
+              aria-pressed={entry.task.id === selectedEntry?.task.id}
+              key={entry.task.id}
+              onClick={() =>
+                setSelectedId(
+                  entry.task.id === selectedId ? null : entry.task.id,
+                )
+              }
+              size="small"
+            >
+              {runLabel(entry)}
+            </AppButton>
+          ))}
+        </div>
+      )}
+      {selectedEntry?.task.error?.message && (
+        <AppTypography color="error">
+          {selectedEntry.task.error.message}
+        </AppTypography>
+      )}
+      {selectedEntry?.output && (
+        // Keyed on the run so another one starts from its own end.
+        <SavedOutput
+          key={selectedEntry.task.id}
+          taskId={selectedEntry.task.id}
+        />
       )}
     </div>
   );

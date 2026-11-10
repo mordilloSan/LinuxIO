@@ -34,6 +34,7 @@ import {
   isScheduledRun,
   withoutScheduledRuns,
 } from "@/tasks/scheduledRuns";
+import { fileTaskText } from "@/tasks/taskTitles";
 import * as TaskTypes from "@/tasks/taskTypes";
 import {
   taskIdentityKey,
@@ -195,25 +196,17 @@ export function useRecoveredTasks(
             return phase === "waiting_for_client"
               ? "Archive download waiting"
               : `Preparing archive${percentage !== undefined ? ` (${percentage}%)` : ""}`;
-          case TaskTypes.TASK_TYPE_FILE_CHMOD_BATCH: {
-            const processed = data?.processed ?? 0;
-            return `${data?.phase === "chown" ? "Changing ownership" : "Changing permissions"}: ${processed} item${processed === 1 ? "" : "s"}`;
-          }
-          case TaskTypes.TASK_TYPE_FILE_DELETE_BATCH: {
-            const processed = data?.processed ?? 0;
-            return `Deleting ${processed} item${processed === 1 ? "" : "s"}`;
-          }
-          case TaskTypes.TASK_TYPE_FILE_TRASH_BATCH: {
-            const processed = data?.processed ?? 0;
-            return `Moving ${processed} item${processed === 1 ? "" : "s"} to Trash`;
-          }
-          case TaskTypes.TASK_TYPE_FILE_TRASH_RESTORE: {
-            const processed = data?.processed ?? 0;
-            return `Restoring ${processed} item${processed === 1 ? "" : "s"} from Trash`;
-          }
+          case TaskTypes.TASK_TYPE_FILE_CHMOD_BATCH:
+          case TaskTypes.TASK_TYPE_FILE_DELETE_BATCH:
+          case TaskTypes.TASK_TYPE_FILE_TRASH_BATCH:
+          case TaskTypes.TASK_TYPE_FILE_TRASH_RESTORE:
           case TaskTypes.TASK_TYPE_FILE_TRASH_PURGE: {
             const processed = data?.processed ?? 0;
-            return `Deleting ${processed} item${processed === 1 ? "" : "s"} from Trash`;
+            return fileTaskText(
+              task.type,
+              `${processed} item${processed === 1 ? "" : "s"}`,
+              data?.phase,
+            );
           }
           case TaskTypes.TASK_TYPE_DOCKER_COMPOSE:
             return (

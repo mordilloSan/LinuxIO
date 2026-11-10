@@ -23,7 +23,7 @@ and [Notifications](../alerts.md).
 | 2 | Every mutation runs as a job: prerequisites, the ~199 routes and their callers, old task code deleted | done (section 4.2), last step `d2871872`; checked in the test VM (section 3.5) |
 | 3 | Storage safety and btrfs resume: cancel that ends when the handler returns, resume hooks for four btrfs routes, rollbacks, Docker storage switch, kill-and-resume root tests | done (section 4.3), commits `938e32c5` and `f8db05af`; checked in the test VM (section 3.6). The jobs CLI verb and the host's resume call are removed (D6) |
 | 4 | Scheduled runs in the job list and the store | done (section 4.4); checked in the test VM (section 3.8); [plan](../superpowers/plans/2026-11-10-jobs-phase4-scheduled-runs.md) |
-| 5 | History view, login notice, update banner | not started |
+| 5 | History view, update banner; configurable notifications and the notice at sign-in | 5a built: the history page, each schedule's past runs, the saved output viewer and the update banner; checked in the test VM, where the final run passed all 7 checks; of the three faults the VM found, the history page's empty table and the viewer's opening position are fixed and confirmed there, and needrestart restarting job hosts is open (section 3.9). Open with the owner: the bell and cancel while an update waits, and the empty history then (section 3.9, limits); [plan](../superpowers/plans/2026-11-10-jobs-phase5a-history-and-banner.md). 5b open: notification settings and the notice at sign-in; [plan](../superpowers/plans/2026-11-10-jobs-phase5b-notifications.md) |
 
 Contents: 1. Summary · 2. Design · 3. Done · 4. Left to do · 5. Deferred
 items · 6. Decision log · 7. Host-event checks
@@ -243,7 +243,7 @@ Layout per uid, created by systemd:
 /run/linuxio/jobs/<uid>.sock                  host socket, 0600, owned by the uid, held by systemd
 ```
 
-Record fields: `id`, `route`, `owner {uid, username}`, `target []string`, `state`, `reason` (for `interrupted`: `shutdown`, `crash`, `reboot`), `created_at`, `started_at`, `finished_at`, `request` (the full decoded request, needed to run or resume; never returned by any API), `metadata` (the public projection shown with the job; scheduled runs write it, phase 4), `progress` (last envelope), `result` or `error {code, message}`, `executor {kind: host|unit, pid, pid_start, unit, invocation_id}`, `resumable`, `checkpoint` (opaque per route, section 2.11), `protocol`.
+Record fields: `id`, `route`, `owner {uid, username}`, `target []string`, `state`, `reason` (for `interrupted`: `shutdown`, `crash`, `reboot`), `created_at`, `started_at`, `finished_at`, `request` (the full decoded request, needed to run or resume; never returned by any API), `metadata` (the public projection shown with the job; scheduled runs write it, phase 4, with their identity; jobs of a host write it since phase 5a without `identity`, which is the record's `target` and which a snapshot of the record restores into `metadata.identity`), `progress` (last envelope), `result` or `error {code, message}`, `executor {kind: host|unit, pid, pid_start, unit, invocation_id}`, `resumable`, `checkpoint` (opaque per route, section 2.11), `protocol`.
 
 States: `running`, `completed`, `failed`, `canceled`, `interrupted`. There is no `queued`: admission either starts the job or refuses it.
 
@@ -290,7 +290,7 @@ What each event does to a job, as phase 1 implements it:
 - **Resend of an `id` with another route or request**: 409.
 - **Logout, session expiry, bridge exit**: the bridge closes its host connection; jobs run on. The host exits one minute after its last bridge left and its last job ended. A later login of the uid sees the jobs the host still holds through `tasks.list` and `tasks.events`.
 - **Host unreachable from the bridge**: mutations fail with 503 before anything starts; `tasks.get`, `tasks.cancel` and `tasks.watch` of a host job wait up to 10 s for the host, then answer 503; the bridge reconnects with backoff from 1 s to 30 s. An open `tasks.events` stream gets, on the next connection, the end of every job it saw running.
-- **Host on another protocol (an update in between)**: new mutations fail with 409 `update_pending`; reads work; the old host finishes its jobs.
+- **Host on another protocol (an update in between)**: new mutations the host would run fail with 409 `update_pending` (the three `BrowserBound()` ones run in the bridge and are not affected); what reads answer is in section 2.12; the old host finishes its jobs.
 - **LinuxIO update**: hosts and their sockets are outside `linuxio.target`; the installer never stops them. A host still running the old binary answers a newer bridge `update_pending` until it exits; the next connection then starts the new one.
 - **`systemctl stop` or orderly shutdown**: running jobs become `interrupted/shutdown`, resumable ones after `Suspend` stored a checkpoint and before their context is cancelled; the root host alerts. A job with `cancel_requested` is left to end `canceled`.
 - **Host crash or kill**: the next start of that uid's host marks its `running` records whose pid and start time are gone `interrupted/crash`; the root host alerts.
@@ -299,14 +299,20 @@ What each event does to a job, as phase 1 implements it:
 
 ### 2.12 Updates
 
-- `linuxio.target` does not pull in hosts or their sockets. The installer never stops or restarts them; it may `daemon-reload`.
-- The hello frame carries a protocol number. Same number: carry on. Older host: the bridge refuses new mutations with error code `update_pending` and message "LinuxIO update waits for N running jobs"; reads work; the UI shows the count on the update banner. The old host exits when idle under its normal rule and the next login starts the new binary.
-- The protocol number changes when a frame changes shape or a route moves between the bridge and the host; adding a route to the host does not change it.
+- `linuxio.target` does not pull in hosts or their sockets. The installer never stops or restarts them; it may `daemon-reload`. On Ubuntu, needrestart, which apt runs after a dpkg run, does restart a host whose binary an update replaced (seen once in the test VM, during an unattended-upgrades run; section 3.9, finding 2).
+- The hello frame carries a protocol number. Same number: carry on. Another number: the host refuses the hello (`426`), and to the bridge it is an older host that an update waits for. The older host exits under its normal rule, 60 s after its last job and its last bridge (a refused hello is no bridge); the bridge tries again with its backoff, at most 30 s later, and that connection starts the new binary.
+- While an update waits, the bridge refuses every new mutation it would relay to the job host with `409` and a message that starts with the prefix `update_pending:` and then reads `LinuxIO update waits for N running jobs` (`1 running job`) while the older host runs jobs, `LinuxIO was updated; new jobs can start shortly` when it runs none, and `LinuxIO update waits for running jobs`, with no count, when the bridge cannot read the host's store. The shared mutation wrapper's default error toast shows the message without that prefix; a page that builds its own error text shows the message as received. The three `BrowserBound()` mutations, `filebrowser.upload`, `filebrowser.upload_batch` and `filebrowser.archive`, run in the bridge and are not affected. "Reads work" means, route by route (as built in phase 5a, section 3.9):
+  - Answered by the bridge from the older host's records: `tasks.host`, with `update_pending: true`, the count and the running jobs (their label and last progress, without `metadata.identity` or `metadata.packageIds`). The bridge runs as the host's uid and reads that uid's job store read-only: the `running` records of executor kind `host` whose process still lives, and their progress files.
+  - Answered empty at once: `tasks.history` (no entries) and `tasks.list` (the bridge's own tasks only); `tasks.events` sends none of the host's jobs.
+  - Failing until the new host runs: `tasks.get`, `tasks.watch`, `tasks.cancel` and `tasks.output` of a host job wait up to 10 s for a host and answer `503`.
+  - Calls and channels that do not go to the job host are not affected.
+- The update banner (section 2.16) shows the count and names the jobs. The bell does not list them, and the banner cannot cancel them; the owner asked to revisit this (section 3.9, limits). Because `tasks.history` answers empty, the history page and `Past runs` read as if nothing had ended; that too is open with the owner (section 3.9, limits).
+- The protocol number changes when a frame changes shape or a route moves between the bridge and the host; adding a route to the host does not change it. A host of the same protocol built before a route was added answers it `route not found`. Phase 5a adds no fallback for that: the last release (v0.52.0) has no job host, so only a development build of phase 4 is such a host.
 
 ### 2.13 Alerts
 
 - `failed` and `interrupted` jobs raise an alert through `alerts.Raise` with source `jobs`, key `<id>`, the route, target and error message, and a link to the job in the UI. `canceled` and `completed` do not.
-- The alert store is root-owned, so only the root host raises alerts; a user host writes the record only. The frontend shows every user "N jobs ended while you were away" from `tasks.list` at login, so non-admins still learn about failures.
+- The alert store is root-owned, so only the root host raises alerts; a user host writes the record only. The notice "N jobs ended while you were away" at login, which would tell every user, non-admins included, about failures, is plan 5b and not built (section 4.5).
 - A scheduled script that fails or is interrupted raises the same jobs alert, from its unit's end hook or from the root host's liveness check (section 2.14). The timers' snapshots, replication, resyncs and Docker updates keep their own alerts.
 
 ### 2.14 Scheduled runs
@@ -349,7 +355,7 @@ ExecStopPost=-+/usr/local/bin/linuxio scheduled-run end --unit %n
 
 **Alerts.** One alert per failure. A script that fails or is interrupted raises the jobs alert (source `jobs`, key the record ID, title "<label> failed" or "<label> was interrupted"), as a failed browser job does. Snapshots, replication, resync and Docker updates already raise their own alert and get no second one.
 
-**Frontend.** The bell lists each running scheduled run with its label and progress. The Schedules page shows the output of the selected schedule's current or latest run, live, from the journal. Listing old runs and reading their saved output belongs to the history view (phase 5).
+**Frontend.** The bell lists each running scheduled run with its label and progress. The Schedules page shows the output of the selected schedule's current or latest run, live, from the journal. Its past runs and their saved output, and the history page, came with phase 5a (sections 2.16 and 3.9).
 
 ### 2.15 Security
 
@@ -365,9 +371,11 @@ ExecStopPost=-+/usr/local/bin/linuxio scheduled-run end --unit %n
 
 - `useMutation` everywhere; the three task hooks and `useCallMutation` are deleted after migration, with a codemod for the ~120 call sites.
 - The running tray (`frontend/src/tasks/`) keeps its engines for uploads and downloads (bridge-local) and reads everything else from `tasks.events`. It shows running jobs older than one second, and every failed or interrupted one until dismissed.
-- A history view lists `tasks.list` for the user: route, target, owner (admins see all owners in the root host), state, duration, error, with a link to the journal filter. Small: one route, one table.
-- At login the frontend fetches `tasks.list` once and shows the "ended while you were away" notice when any job finished since the last seen timestamp in UI preferences.
-- The update banner shows "waits for N jobs" when a mutation returns `update_pending`.
+- **History** (built in phase 5a, section 3.9). The bell's tray ends with a `History` link to `/history`, a page open to every signed-in user and not in the sidebar. The page takes its height from the main layout's content area, so its table has height to fill (the test VM found the table at zero height, finding 1 of section 3.9; fixed since and confirmed there). It reads `tasks.history` and lists ended jobs and scheduled runs, newest first: the job's title, its outcome (`Completed`, `Failed`, `Cancelled`, `Interrupted (<reason>)`), who started it, when it ended and how long it ran. The title is the job's label; for a file job it names what was done in the bell's words (`Copying 12 items`, `Moving report.pdf to Trash`, `Compressing backup.zip`, `Extracting backup`; `frontend/src/tasks/taskTitles.ts`), for a scheduled run it is its label alone, and a job without a label is named from its route. `Load older` asks for the next page with the last entry's end time as `before`, exactly as received. Selecting a row (`?job=<id>`) highlights it and shows its error, an `Open` link for a scheduled run, and, for a privileged session, the saved output. Admins see the root host's jobs and every scheduled run; other users see their own host's jobs.
+- **Saved output.** A viewer reads the last 256 KiB through `tasks.output` and opens scrolled to its end. `Show earlier` reads the part before, which joins above the text while the text that was in view stays where it was; each part ends where the later one starts. When its query fetches again (after a failed `Show earlier` and a reconnect, or a remount) it rebuilds every part it had loaded. The text is shown as plain text.
+- **Past runs.** Each schedule on the Schedules page lists its runs (`tasks.history` with its unit), newest first, under `Past runs`; selecting one shows its error and its saved output. A failed fetch shows its error in the card and raises no toast. The live card `Output of the latest run` is unchanged.
+- **Update banner.** For every signed-in user the layout asks `tasks.host` when the connection opens, again every 15 s while an update waits, and at once after a mutation started through `useMutation` fails with `update_pending` (the tray's `endpoint.start` callers do not trigger that); the wrapper's default error toast for that mutation shows the refusal without its `update_pending:` prefix. The banner is a `role="status"` region. It reads `LinuxIO was updated. New jobs wait for N running jobs to finish.` (`1 running job`), and `Show running jobs` / `Hide running jobs` lists each job in the banner, in a list of bounded height that scrolls: its title (as on the history page), who started it, when, and its last progress percentage, rounded (`· 43%`), when it reports one. With none running it reads `LinuxIO was updated. New jobs can start shortly.` and has no button. There is no button to force the update.
+- **Not built (plan 5b).** At sign-in, the notice of the jobs that ended while the user was away; the notification settings (section 4.5).
 
 ### 2.17 Route classification
 
@@ -862,6 +870,307 @@ Seen on the way:
   default, `success`, whatever the run did. The spec reads a run's outcome
   from its record or the unit's journal, never from those properties.
 
+### 3.9 Phase 5a: history, past runs and the update banner (2026-11-10)
+
+[Plan](../superpowers/plans/2026-11-10-jobs-phase5a-history-and-banner.md),
+eight tasks, not yet committed. What the code does, as built, read from the
+source; the VM table further down is what was observed. Where the plan text
+and this differ, this holds.
+
+- **Records.** A job started in the browser keeps its public metadata (label,
+  path, action and the like) in its record's `metadata`, as scheduled runs
+  do, so an ended job keeps its title. The request is never copied into it
+  (`jobshost/recorder.go`). Its identity is stored once, as the record's
+  `target`, and not repeated in `metadata`; every snapshot built from the
+  record (`tasks.get`, `tasks.watch`, `tasks.list`, `tasks.events`, a resend's
+  answer) restores `metadata.identity` from the target, so those answers are
+  unchanged. Scheduled-run records keep their identity in `metadata`, and older
+  records that still carry one there are read as they are. A record too large
+  to store (1 MiB) sheds, in this order, its result, its target, its request
+  and, last, its metadata (`backend/common/jobs/store.go`), so a batch of
+  thousands of paths keeps its record.
+- **`tasks.history`, `tasks.output`, `tasks.host`.** Three Calls of the
+  reserved `tasks.*` namespace, declared in
+  `backend/bridge/handlers/tasks/handlers.go` and served by `TaskService`, the
+  bridge's relay and the job host. Their requests, answers, callers and errors
+  are in the [API Contract](../api-contract.md#ended-jobs-saved-output-and-updates).
+  Only `tasks.output` is `Privileged()`. A history page never splits entries
+  that ended at the same instant, so it can be longer than its limit; the
+  cursor `before` is the last entry's end time exactly as received
+  (`finished_at`, else `started_at`, else `created_at`). History entries are
+  slim, so a page of large records stays well inside a relay frame
+  (privilege review F1, below): no entry carries the job's result or its last
+  progress; a host job's entry carries no `metadata.identity` and no
+  `metadata.packageIds`; `error.message` is cut to at most 4096 bytes on a
+  character boundary, with `…` appended; a scheduled run keeps its identity,
+  which its `Open` link needs. `tasks.get` still answers the full snapshot.
+  The jobs `tasks.host` lists while an update waits leave out
+  `metadata.identity` and `metadata.packageIds` too, and keep their label and
+  last progress. An output chunk is at most 1 MiB, 256 KiB by default, starts
+  on a character boundary and reports its real `offset`.
+- **While an update waits** (section 2.12). The bridge answers `tasks.host`
+  from the older host's records, answers `tasks.history` and `tasks.list`
+  empty, and lets `tasks.get`, `tasks.watch`, `tasks.cancel` and
+  `tasks.output` wait 10 s and fail with `503`. A refused mutation (always
+  `409`) names the count, says `LinuxIO was updated; new jobs can start
+  shortly` when nothing runs, and names no count when the store cannot be
+  read; the shared mutation wrapper's default error toast shows it without its
+  `update_pending:` prefix. The
+  three `BrowserBound()` mutations run in the bridge and are not refused. Otherwise `tasks.history` waits up to 10 s until the bridge has a
+  connection or its last attempt was refused for an older build (a failed
+  attempt does not end the wait), and answers `503` when neither comes.
+- **Frontend** (section 2.16). The `History` link at the foot of the bell's
+  tray and the `/history` page; the saved output viewer
+  (`frontend/src/components/tasks/SavedOutput.tsx`), on that page for a
+  privileged session and under `Past runs` on the Schedules page; the update
+  banner (`JobsUpdateBanner`) beside the application's own update banner.
+- **No fallback** for a job host of the same protocol built before these
+  routes: it answers them `route not found`. The last release (v0.52.0) has no
+  job host, so only a development build of phase 4 can be such a host; the
+  history page then shows its error and the banner nothing until that host
+  exits.
+
+**Make targets run**, one Make at a time (Tasks 1 to 7 from their reports):
+
+| Task | Targets | Result |
+|---|---|---|
+| 1, record metadata | `make test-go` (jobshost; the new test failing first), `make golint-quiet` | pass |
+| 2, `tasks.history` | `make test-go` (six packages), `make generate`, `make golint-quiet`, `make test-quiet` | pass |
+| 3, `tasks.output` | `make test-go` (six packages; two deliberate breaks of the code shown failing), `make generate`, `make golint-quiet` (one shadowed `err` fixed); `make test-quiet` run on its tree during the review | pass |
+| 4, the relay while an update waits | `make test-go` (five packages, race detector), `make generate`, `make golint-quiet` (one staticcheck finding fixed), `make test-quiet` | pass |
+| 5, history page and viewer | `make test-frontend` per file, `make check-frontend-quiet` (309 files, 1990 tests) | pass, after one round of review fixes |
+| 6, past runs | `make test-frontend` per file, `make check-frontend-quiet` | pass, after one round of review fixes |
+| 7, update banner | `make test-frontend` per file, `make check-frontend-quiet` | pass |
+| 8, the VM spec and these documents | `make lint-quiet`, `make tsc-quiet`; `make test-quiet` (frontend 311 files and 2022 tests run; every Go package passed from the test cache, the Go code unchanged since its last run); `make build-nocheck` of the update build (below); `make vm-reset`, `make vm-install` and `make test-vm-browser-quiet`, twice; `make check-docs-quiet` | the gates pass; the VM runs below |
+| 8, fix round 1 (spec and documents only) | `make lint-quiet`, `make tsc-quiet`, `make check-docs-quiet`; the VM was not run in this round | pass |
+| 8, final round (after the final code fixes) | `make test-quiet` (311 frontend files and 2034 tests; Go packages from the test cache, unchanged since the fix round's own run); `make vm-reset`, `make vm-install`, `make build-nocheck` of the update build, `make test-vm-browser-quiet` (run 3), `make vm-reset`; `make check-docs-quiet`, `make lint-quiet` | pass; run 3: 7 of 7 |
+
+**Checked in the test VM** (Ubuntu 26.04.1 LTS, kernel 7.0.0-38-generic,
+systemd 259.5, as `lsb_release -ds`, `uname -r` and `systemctl --version`
+printed over `make vm-ssh` after run 2 and again after run 3; each run after
+`make vm-reset` and `make vm-install`):
+`make test-vm-browser-quiet PLAYWRIGHT_ARGS='login.spec.ts jobs-phase5a.spec.ts'`
+runs `frontend/src/test/vm/jobs-phase5a.spec.ts`, with `LINUXIO_VM_UPDATE_BUILD`
+naming the update build. The checks sign in as the sudo user, except the one
+that creates a user without sudo over SSH. Run 1 (14:07): 2 of 7 passed. Run 2
+(14:19), after the spec changes listed below: 3 of 7 passed, `login.spec.ts`
+included. Every failure of run 2 is a product finding below, not a fault of
+the spec. Run 3 (15:40), after the final code fixes and the spec's last
+changes: **7 of 7 passed**, in 3.8 minutes (its table follows run 2's). The
+results come from the runs' Playwright output; what the tables add from the
+VM's journal and stores was read over `make vm-ssh` after the run, and is
+marked so.
+
+| Check | Result (run 2) |
+|---|---|
+| A finished job in the history: a scrub of the test pool at 64 MiB/s per disk, then the bell's `History` | **fail** (finding 1). Following `History` closes the tray and opens `/history`; the page shows its title and no table rows. The spec saw the job's record reach `completed`; its label `Scrubbing btrfs filesystem` and owner `linuxio-e2e` were read from the store over `make vm-ssh` after the run |
+| A failed scheduled script, `echo boom; exit 3` | **fail** (finding 1): no row. Before that: the record is `failed`, and `tasks.output` from the admin's session answers `offset: 0`, the whole `size` and a `content` equal byte for byte to the saved output (`…: boom`) |
+| A schedule's past runs: a script run twice that prints its `$INVOCATION_ID` | pass (both runs). `Past runs` lists two runs `… · Completed · …`, newest first; selecting the older shows its saved output (its invocation ID) and not the newer's |
+| A long output: 600 numbered lines of 1000 characters, 637 800 bytes saved | **fail** on one soft check (finding 3). Opened by its link `/history?job=<id>`. The viewer holds `line 600` and not `line 001`; `Show earlier` is offered; two presses load the rest and the button goes; the text then holds lines 1 to 600 once each, in order and whole, so no part is lost or doubled where chunks meet; lines 1 and 2 are then in view. At opening the box shows lines 355 and 356, the start of the last 256 KiB, not the last line (the spec's log: `opened with lines 355 to 356 in view`). Fixed since; see run 3 |
+| A user without sudo: `e2e-plain`, created over SSH; a 1 GiB copy in the file browser, the user's host reading at most 100 MB/s | **fail** (finding 1): no row. Before that: the copy ran in that user's job host and left a `completed` record in `/var/lib/linuxio/jobs/<uid>/`; `tasks.output` of an admin's scheduled run, from that user's session, answers `403` (the bridge logs `forbidden: privileged route tasks.output requires elevated bridge`) |
+| The update banner: a scrub at 1 MiB/s per disk, then the update build installed over the running root host | pass. The install left the root host running (same `MainPID`) and the scrub running. After a new sign-in the banner reads `LinuxIO was updated. New jobs wait for 1 running job to finish.`, and the host logs `job host refused a bridge hello: protocol 3, want 2`. `Show running jobs` lists one job, `Scrubbing btrfs filesystem · linuxio-e2e · started …`, and then reads `Hide running jobs`. Saving a new schedule is refused with the toast `update_pending: LinuxIO update waits for 1 running job`, and no record appears. `tasks.history` answers no entries at once; `tasks.get` of the scrub answers `503` after 10 s. With its cap lifted the scrub completed; the banner then read `LinuxIO was updated. New jobs can start shortly.` and was gone within the spec's bound of 150 s, and the root host's `MainPID` was new. Read over `make vm-ssh` after the run (the scrub's record and `journalctl -u linuxio-jobs@0.service`): the scrub finished at 14:22:27.457, the older host logged `job host stopped` at 14:23:27.286 (59.8 s later), and systemd logged `Starting linuxio-jobs@0.service` at 14:23:43.161 (15.9 s after that), 30 s after the hello it refused at 14:23:13.153. In run 1 this check failed on finding 2 |
+| `login.spec.ts` | pass |
+
+The spec changed between the runs without touching what an assertion
+requires: the two checks that call `tasks.output` do it before the page's rows,
+so the route's answer is seen despite finding 1; the long output is opened by
+its link, as the row click cannot work; the update check stops the apt timers
+and waits for an apt run in progress (finding 2), checks the older host's
+`MainPID` once more before the scrub's end, and reads the empty history from
+the route, because the page's "Nothing has ended yet." sits in the zero-height
+table (Playwright called it visible in run 1, but the screenshot shows nothing).
+
+After run 2, with findings 1 and 3 fixed in the product, the spec changed
+again: the long output's check requires the decided behaviour of the viewer
+(it opens on line 600; across each `Show earlier` the line at the top of the
+view stays in view; scrolled to its top, the box shows line 1); the update
+check requires the host's `protocol N, want M` line to be there before it
+compares the numbers, and waits for apt until neither unit is active,
+activating, deactivating or reloading. For the final code fixes it finds the
+banner by `role="status"`, expects the refusal's toast without its
+`update_pending:` prefix, checks a second refusal once nothing runs, expects
+the copy's history row to read `Copying big.bin`, and checks, softly, that the
+banner's job line ends with a percentage.
+
+| Check | Result (run 3, the final VM run) |
+|---|---|
+| A finished job in the history | pass. Following `History` closes the tray and opens `/history`; the table is visible, and its first row names `Scrubbing btrfs filesystem`, `Completed` and `linuxio-e2e`; clicking it selects `?job=<the scrub's id>` |
+| A failed scheduled script | pass. `tasks.output` from the admin's session answers the saved output byte for byte; the row reads `Failed`; selecting it shows the alert `exited with status 3`, a viewer with `…: boom`, and an `Open` link to `/services/schedules?schedule=<id>` |
+| A schedule's past runs | pass, as in runs 1 and 2 |
+| A long output (638 400 bytes saved) | pass. The viewer opens with lines 599 and 600 in view; at each of the two `Show earlier` presses, line 599, at the top of the view before the press, is still in view after it (the spec's log: `press 1: line 599 was at the top; lines 599 to 600 in view`, and the same for press 2); lines 1 to 600 appear once each, in order and whole; scrolled to its top, the box shows line 1 first |
+| A user without sudo | pass. `tasks.output` of the admin's run answers `403`; `/history` has one row, which reads `Copying big.bin`, `Completed` and `e2e-plain`; the private schedule appears nowhere |
+| The update banner | pass, with every check of run 2, and also: the banner is found as a `role="status"` region; its job line reads `Scrubbing btrfs filesystem · linuxio-e2e · started 11/10/2026, 3:42:06 PM · 1%` (the spec's log); the refusal's toast reads `LinuxIO update waits for 1 running job`, without the prefix; once the scrub had ended, a new job was refused with the toast `LinuxIO was updated; new jobs can start shortly` while the older host still ran. Read over `make vm-ssh` after the run: the scrub finished at 15:42:31.927 and the bridge logged the second refusal at 15:42:34.497; the older host logged `job host stopped` at 15:43:32.894 (61.0 s after the scrub); systemd logged `Starting linuxio-jobs@0.service` at 15:43:47.410, 14.5 s later and 30.0 s after the hello it refused at 15:43:17.404. Both scrubs' records hold a `metadata` with the label and no identity |
+| `login.spec.ts` | pass |
+
+The VM was reset to its clean snapshot (`make vm-reset`) after run 3.
+
+Found in the VM, in the product:
+
+1. **The history page showed no rows** (fixed after run 2; confirmed in
+   run 3). `HistoryPage` laid its table out as the Schedules page
+   does: a flex column whose table wrapper is `flex: 1 1 0; min-height: 0`,
+   around an `AppVirtualTable` with `fillAvailable`. The Schedules page sits
+   in `RoutedTabLayout`, which bounds its height; `/history` had no such
+   parent, so the wrapper was 0 px high, the table's `height: 100%` was 0, and
+   the virtualiser rendered no row. The accessibility tree held the header row
+   and an empty body, Playwright called the table hidden, and the screenshot
+   showed the title and description only. Seen in runs 1 and 2; it failed three
+   checks. The page's unit tests run in jsdom, which has no layout. The page's
+   root now takes its height from the main layout's content area, as the logs
+   page does. Final VM run (run 3): confirmed fixed in the real layout; the
+   table is visible, its rows are found in three checks and a row is
+   selected in two.
+2. **needrestart restarts the job hosts after an update** (open). In run 1,
+   `apt-daily-upgrade.service` ran unattended-upgrades from 14:12:51 to
+   14:14:42, the fresh VM's first daily run. After the dpkg run that ended at
+   14:13:57 its needrestart hook (`/etc/apt/apt.conf.d/99needrestart`)
+   logged `systemctl restart linuxio-jobs@0.service linuxio-jobs@1001.service`
+   in `/var/log/unattended-upgrades/unattended-upgrades-dpkg.log`, because both
+   hosts ran the `linuxio-bridge` the install had replaced seconds before;
+   systemd ran the two restart jobs at 14:13:55. The root host interrupted the
+   running scrub (`interrupted/shutdown`) and a host of the new build started
+   at once. needrestart is installed by default on Ubuntu and its hook runs
+   after every dpkg run, so an apt run after a LinuxIO update can interrupt
+   the jobs the update was waiting for (observed once, in this
+   unattended-upgrades run): the
+   installer leaves the hosts alone, the distribution's tooling does not. A
+   host restarted in the same boot clears `Resumable` (section 2.11), so such a
+   scrub is not resumed; that is read from the source, not observed here.
+   An override that keeps needrestart from restarting `linuxio-jobs@` units is
+   the obvious remedy; it is the owner's decision.
+3. **The saved output opened at the start of its last part** (fixed after
+   run 2; confirmed in run 3). The viewer loaded the last
+   256 KiB but did not scroll, so it opened on the first lines of that part
+   (lines 355 and 356 of 600 here) rather than on the end. As decided since,
+   it opens scrolled to its end, and `Show earlier` keeps the text that was in
+   view where it was while the earlier text joins above it. Final VM run
+   (run 3): confirmed fixed; it opened with lines 599 and 600 in view, and the
+   line at the top stayed in view across both presses.
+
+**Privilege review** of the change as it stood after Task 7 (a reviewer the
+run's controller dispatched before VM run 1): no Critical or Important finding. F1:
+`tasks.history` returned each record's result and last progress, which the
+page never uses and which could make a page larger than a relay frame; fixed
+in the final fix round, with the slim entries described above. F2, a known
+limit with no fix: on the root host every admin's history shows other admins'
+failed jobs, with their error messages and metadata; admins are
+root-equivalent, and `tasks.get` already returns any record by its ID.
+
+**Final review** of the whole change (after fix round 1): no Critical
+finding; four Important. Three were fixed in the final fix round: a host
+job's record repeated its identity in `metadata` (it could push a large
+batch's target, or its whole record, over the size limit; now stored once, as
+the target), the saved output viewer lost its end when its query fetched
+again, and history rows did not name what a file job did. The fourth is left
+for the owner: while an update waits, the history page and `Past runs` read
+as empty (limits, below). The same round also changed the refusal text with
+nothing running, dropped the prefix from the refusal's toast, made the banner
+a status region with a bounded list and each job's percentage, highlighted
+the selected history row and silenced the `Past runs` query's toast.
+
+Unit tests only:
+
+- `Load older` (it needs more than 100 ended entries), pages through entries
+  that ended at the same instant, the nanoseconds of the cursor, the `400`
+  answers of both routes, a chunk asked to start inside a character, a run
+  without saved output and a link in place of `<id>.log`.
+- The slim history entries and `tasks.host` jobs (no result, progress,
+  identity or package IDs; error messages cut at 4096 bytes), the shedding
+  order of an oversized record, a batch of thousands of paths, a refetch of
+  the saved output after a failed `Show earlier`, and the refusal text when
+  the store cannot be read. Run 3 saw only that the scrubs' records keep no
+  identity in `metadata` and that the history and the banner still show them.
+
+Inferred or not checked:
+
+- A real update from an older release. The older host here is this tree with
+  the protocol one lower than the installed build; its records have the same
+  format, so reading the records of an older build was not exercised.
+- More than one waiting job, a user's host as the older host, and a waiting
+  job being cancelled (its `cancel_requested` is not carried): not checked.
+- `tasks.watch`, `tasks.cancel` and `tasks.output` while an update waits: only
+  `tasks.get` was seen failing with `503`; that the others do too is read from
+  the source, where they share its wait.
+- The `BrowserBound()` uploads and archive running while an update waits: read
+  from the source, not checked.
+- The banner after a failed poll, and how a screen reader announces it: not
+  checked.
+
+Known limits, by decision or deferred by the reviews:
+
+- While an update waits the bell does not list the jobs being waited for and
+  they cannot be cancelled from the banner, which names them itself (the bell
+  is fed by `tasks.events` and `tasks.watch`, which an older host cannot
+  serve). The owner asked to revisit this before phase 5a is called done:
+  keep it, have the relay serve `tasks.events` and `tasks.watch` from the
+  records, or find whether a cancel can reach a job on an older host at all.
+- While an update waits, the history page and `Past runs` read as empty
+  (`Nothing has ended yet.`, `This task has not run yet.`), because
+  `tasks.history` answers an empty history then. Open with the owner, with the
+  question above: the bridge could read the history from the store itself in
+  that state, or both views could say that the history is unavailable until
+  the update finishes.
+- No fallback for an older host of the same protocol (above).
+- A refused mutation names no count when the bridge cannot read the store
+  (`update_pending: LinuxIO update waits for running jobs`). With none
+  running the banner reads `New jobs can start shortly.` with no button, and a
+  refused mutation `LinuxIO was updated; new jobs can start shortly`. After
+  the older host exits, `tasks.host` answers `update_pending: true, running: 0`
+  until the bridge's next attempt, at most 30 s later (15.9 s in run 2, from
+  the root host's journal).
+- A history page can be longer than its limit when many entries ended at the
+  same instant (bounded by the stores' retention: 200 per uid, 50 per unit).
+- Up to three bytes of invalid data at the start of a chunk are not shown.
+- With a job host that cannot start, the history page shows an error after
+  10 s rather than an empty list.
+- The running snapshots of `tasks.host` carry no `cancel_requested`.
+- Each `tasks.host` poll while an update waits reads the store again, so a
+  corrupt record logs a warning every 15 s.
+- A row named by `?job=` that is not in the loaded pages shows nothing and no
+  message; plan 5b links alerts to it.
+- History rows are selected with the mouse only, as on the Schedules page.
+- A failed `Load older` shows the page's error above the loaded table and a
+  toast as well.
+- `Past runs` shows an error without saying what failed, and nothing while
+  its first page loads.
+- A failed banner poll hides the banner until the next good one, and a list
+  once opened opens again when jobs return.
+- A record whose error message alone is over the 1 MiB record limit still
+  fails to be written when the job ends, as before phase 5a.
+- The store reads check a file, then open it, in two steps
+  (`openRegularFile`); the directories belong to root or to the uid itself.
+- On the root host every admin's history shows the other admins' failed jobs,
+  with their error messages and metadata (privilege review F2).
+- Finding 2 above.
+
+**The update build** for the banner check is this tree with `jobs.Protocol`
+one higher, made without touching the tree through a Go overlay:
+
+```sh
+cp backend/common/jobs/record.go <dir>/record.go   # raise Protocol by one in the copy
+printf '{"Replace":{"%s":"%s"}}\n' "$PWD/backend/common/jobs/record.go" "<dir>/record.go" > <dir>/overlay.json
+make build-nocheck BIN_DIR=<dir>/build GO_BUILD_EXTRA_ENV="GOFLAGS='-buildvcs=false -overlay=<dir>/overlay.json'"
+make vm-reset && make vm-install
+LINUXIO_VM_UPDATE_BUILD=<dir>/build make test-vm-browser PLAYWRIGHT_ARGS='login.spec.ts jobs-phase5a.spec.ts'
+```
+
+Without `LINUXIO_VM_UPDATE_BUILD` the check is skipped and says why. In this
+run the two builds' `linuxio-indexer`, which does not use `jobs`, were the
+same byte for byte, while `linuxio-bridge` and `linuxio-webserver` (which
+embeds the bridge's hash) differed. The check leaves the update build
+installed.
+
+Seen on the way:
+
+- A fresh VM runs its first unattended-upgrades a few minutes after boot. In
+  run 1 it installed kernel 7.0.0-42 (not booted; the checks ran on 7.0.0-38)
+  and restarted journald, udisks2, polkit and ssh as well as the job hosts.
+- The bridge of the user without sudo logged `route failed: forbidden:
+  privileged route monitoring.get_cpu_history requires elevated bridge` (and
+  the network and disk histories, and `filebrowser.subfolders`) while that user
+  was on the dashboard and in the file browser. Not part of phase 5a; not
+  looked into.
+
 ## 4. Left to do
 
 ### 4.1 Open decisions
@@ -1108,6 +1417,12 @@ Left open by the phase, none of them blocking:
 The history view, the "ended while you were away" notice at login, the
 "waits for N jobs" update banner (section 2.16).
 
+Plan 5a (the history page, each schedule's past runs, the saved output viewer
+and the update banner) is built; section 3.9 says what was built, how it was
+checked, the three faults the test VM found and the limits. Plan 5b (the
+notification settings and the notice at sign-in) is open: nothing of it is
+built.
+
 Decided with the user on 2026-11-10, before the plan is written:
 
 - **History.** A "History" link at the bottom of the bell opens a page that
@@ -1122,22 +1437,49 @@ Decided with the user on 2026-11-10, before the plan is written:
   interrupts the jobs it runs, and the user wants a button only if it breaks
   none. Letting the new host start beside the old one, so that new jobs never
   wait, is the way to give that; it is a design change of its own and is not
-  part of phase 5.
+  part of phase 5. As built, the banner names the jobs itself instead of
+  linking to the bell, because the bell cannot show a job of an older host
+  (section 3.9); the user asked to revisit that.
 - **Saved output** is raw text with control characters kept (phase 4). The
   view shows it as plain text and stays behind the admin gate.
 
 Open:
 
-- **The notice.** The user wants it "fully configurable like Unraid". Asked
-  back, not yet answered: whether that means Unraid's grid, where notices,
-  warnings and alerts are each ticked for browser, email and agents, with job
-  results mapped onto it (completed a notice, canceled or interrupted a
-  warning, failed an alert). Today there is one setting, a least severity
-  above which alerts also go out by email and webhook
-  (`alerts.NotificationSettings.MinSeverity`).
+- **Notifications.** Decided on 2026-11-10: "fully configurable like Unraid",
+  in two parts.
+  - *What to hear about*, one line per kind of work: system updates, Docker
+    updates, scheduled scripts, snapshots and replication, pool resync, each
+    with "failures only" (the default), "also when something changed" or
+    "every run"; storage health (missing disk, errors, low space) is always
+    on; jobs started in the browser are one line, "failures only" or "also
+    long jobs that finish" (not one setting per mutation). Failures can never
+    be switched off. A schedule's own dialog can override the scheduled
+    scripts' line for that script.
+  - *Where each level goes*, Unraid's grid: notices (a run completed,
+    something changed), warnings (canceled, interrupted) and alerts (failed),
+    each ticked for browser, email and webhook; alerts always reach the
+    browser. It replaces the single least-severity setting
+    (`alerts.NotificationSettings.MinSeverity`).
+  - "While you were away" shows what reached the browser since the user last
+    looked.
+  - Proposed by the agent, not said by the user: a job is long when it ran
+    more than five minutes; the file indexer gets no line.
+- **Two plans.** Phase 5 is planned as two pieces, written on 2026-11-10: the
+  [history page, each schedule's past runs and the update banner](../superpowers/plans/2026-11-10-jobs-phase5a-history-and-banner.md)
+  (built, section 3.9), then the
+  [notification settings and the "while you were away" notice](../superpowers/plans/2026-11-10-jobs-phase5b-notifications.md)
+  (open).
+  The second plan lists the choices the agent made where the code left no
+  other honest option: scripts offer "failures only" and "every run" (a
+  script has no notion of having changed something); a pool resync offers
+  "failures only" and "also when a pool is whole again", and keeps today's
+  report by default; a canceled job reports nothing and an interruption is a
+  warning; on DNF and Mint only the service result of an update is known;
+  a host whose system updates were set to "Never" is told so and offered
+  one click; a level unticked for the browser is not shown in the bell.
 - **The bell row of a scheduled run** has an "Open" link, not a clickable
-  row (phase 4, shared-component rule). The user was asked whether the whole
-  row should be clickable and has not answered.
+  row (phase 4, shared-component rule). Explained to the user on 2026-11-10;
+  it stays unless they ask for the whole row to be clickable.
 
 ### 4.6 Every phase
 

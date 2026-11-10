@@ -5,6 +5,7 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"math"
 	"net"
 	"os"
@@ -1553,4 +1554,122 @@ func TestHostAnswersTasksOfAStoredJobFromItsRecord(t *testing.T) {
 	if r := th.record(jobD); r.State != jobs.StateRunning {
 		t.Fatalf("record no host ran = %s, want it left running", r.State)
 	}
+}
+
+func TestRecordKeepsTheTasksPublicMetadata(t *testing.T) {
+	th := newTestHost(t, nil)
+	th.cfg.Router.Mutation("test.labeled", th.run,
+		bridgeipc.WithTaskMetadata(func(any) bridgeipc.TaskMetadata {
+			return bridgeipc.TaskMetadata{Label: "Scrubbing btrfs filesystem", Identity: []string{"pool-1"}}
+		}))
+	th.start()
+	sess := th.connect()
+
+	labeled := th.startJob(sess, "test.labeled", jobA)
+	plain := th.startJob(sess, "test.job", jobB)
+	time.Sleep(jobs.TransientMaxDuration + 100*time.Millisecond)
+	// Either job may take either release.
+	th.release <- nil
+	th.release <- nil
+	readResult(t, labeled)
+	readResult(t, plain)
+
+	// The identity is the record's target; the metadata does not repeat it.
+	record := th.record(jobA)
+	var metadata bridgeipc.TaskMetadata
+	if err := json.Unmarshal(record.Metadata, &metadata); err != nil {
+		t.Fatalf("json.Unmarshal(record metadata %q): %v", record.Metadata, err)
+	}
+	if metadata.Label != "Scrubbing btrfs filesystem" || metadata.Identity != nil {
+		t.Fatalf("record metadata = %#v, want the label and no identity", metadata)
+	}
+	if !slices.Equal(record.Target, []string{"pool-1"}) {
+		t.Fatalf("record target = %v, want [pool-1]", record.Target)
+	}
+	if snapshot := snapshotFromRecord(record); snapshot.Metadata == nil || !slices.Equal(snapshot.Metadata.Identity, []string{"pool-1"}) {
+		t.Fatalf("snapshot metadata = %+v, want the identity [pool-1] from the target", snapshot.Metadata)
+	}
+	if got := th.record(jobB).Metadata; len(got) != 0 {
+		t.Fatalf("metadata of a route without a builder = %s, want none", got)
+	}
+}
+
+func TestRecordOfABatchOfManyPathsKeepsItsTarget(t *testing.T) {
+	paths := make([]string, 20000)
+	for i := range paths {
+		paths[i] = fmt.Sprintf("/srv/data/batch/some/folder/file-%05d.bin", i)
+	}
+	th := newTestHost(t, nil)
+	th.cfg.Router.Mutation("test.batch", th.run,
+		bridgeipc.WithTaskMetadata(func(any) bridgeipc.TaskMetadata {
+			return bridgeipc.TaskMetadata{Label: "20000 items", Action: "copy", Identity: paths}
+		}))
+	th.start()
+	sess := th.connect()
+
+	stream := th.startJob(sess, "test.batch", jobA)
+	time.Sleep(jobs.TransientMaxDuration + 100*time.Millisecond)
+	th.release <- nil
+	readResult(t, stream)
+
+	record := th.record(jobA)
+	if !slices.Equal(record.Target, paths) {
+		t.Fatalf("record target holds %d paths, want the %d of the batch", len(record.Target), len(paths))
+	}
+	snapshot := snapshotFromRecord(record)
+	if snapshot.Metadata == nil || snapshot.Metadata.Label != "20000 items" || !slices.Equal(snapshot.Metadata.Identity, record.Target) {
+		t.Fatalf("snapshot metadata = %+v, want the label and the target as its identity", snapshot.Metadata)
+	}
+}
+
+func TestTasksGetOfAnEndedHostJobCarriesItsIdentityAndResult(t *testing.T) {
+	th := newTestHost(t, nil)
+	th.cfg.Tasks.RegisterRoutes(th.cfg.Router)
+	now := time.Now().UTC()
+	createRuns(t, th.cfg.Store, jobs.Record{
+		ID: jobA, Route: "test.job", Owner: jobs.Owner{UID: th.cfg.UID, Username: "alice"},
+		State: jobs.StateCompleted, CreatedAt: now, StartedAt: now, FinishedAt: now,
+		Target: []string{"/srv/a", "/srv/b"}, Metadata: jsontext.Value(`{"label":"2 items","action":"delete"}`),
+		Result:  jsontext.Value(`{"ok":true}`),
+		Request: jsontext.Value(`{}`), Executor: jobs.Executor{Kind: "host"}, Protocol: jobs.Protocol,
+	})
+	th.start()
+
+	snapshot := decodeSnapshot(t, callTasks(t, th.connect(), "tasks.get", jobA))
+	if snapshot.Metadata == nil || snapshot.Metadata.Label != "2 items" || !slices.Equal(snapshot.Metadata.Identity, []string{"/srv/a", "/srv/b"}) {
+		t.Fatalf("tasks.get metadata = %+v, want the label and the target as its identity", snapshot.Metadata)
+	}
+	if result, err := json.Marshal(snapshot.Result); err != nil || string(result) != `{"ok":true}` {
+		t.Fatalf("tasks.get result = %s (%v), want the stored result", result, err)
+	}
+}
+
+func TestHostStatusCountsRunningJobs(t *testing.T) {
+	th := newTestHost(t, nil)
+	th.cfg.Tasks.RegisterRoutes(th.cfg.Router)
+	th.start()
+	sess := th.connect()
+	status := func() string {
+		t.Helper()
+		result := readResult(t, openStream(t, sess, "tasks.host", struct{}{}, ""))
+		if result.Status != "ok" {
+			t.Fatalf("tasks.host = %#v, want ok", result)
+		}
+		return compact(t, result.Data)
+	}
+
+	if got := status(); got != `{"update_pending":false,"running":0}` {
+		t.Fatalf("tasks.host of an idle host = %s, want nothing running", got)
+	}
+	first := th.startJob(sess, "test.job", jobA)
+	second := th.startJob(sess, "test.job", jobB)
+	// The host is of this build, so no update waits and it lists no jobs.
+	if got := status(); got != `{"update_pending":false,"running":2}` {
+		t.Fatalf("tasks.host with two jobs running = %s, want 2 running and no jobs listed", got)
+	}
+	// Either job may take either release.
+	th.release <- nil
+	th.release <- nil
+	readResult(t, first)
+	readResult(t, second)
 }

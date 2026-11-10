@@ -42,10 +42,13 @@ export interface JobRecord {
   result?: unknown;
 }
 
-/** The root job host's records, read from its store in the VM. */
-export async function jobRecords(route?: string): Promise<JobRecord[]> {
+/** The records of uid's job host (by default root's), read from its store in the VM. */
+export async function jobRecords(
+  route?: string,
+  uid = 0,
+): Promise<JobRecord[]> {
   const out = await vmSsh(
-    "sudo sh -c 'cat /var/lib/linuxio/jobs/0/*.json 2>/dev/null' | jq -cs .",
+    `sudo sh -c 'cat /var/lib/linuxio/jobs/${uid}/*.json 2>/dev/null' | jq -cs .`,
   );
   const records = JSON.parse(out) as JobRecord[];
   return route ? records.filter((r) => r.route === route) : records;
@@ -140,9 +143,15 @@ export async function scheduledOutput(id: string): Promise<Buffer> {
   return Buffer.from(out.trim(), "base64");
 }
 
-export async function signIn(page: Page) {
-  const username = process.env.LINUXIO_VM_USER ?? "";
-  const password = process.env.LINUXIO_VM_PASSWORD ?? "";
+export interface Login {
+  username: string;
+  password: string;
+}
+
+/** Signs in as login, by default the VM's test user, who can sudo. */
+export async function signIn(page: Page, login?: Login) {
+  const username = login?.username ?? process.env.LINUXIO_VM_USER ?? "";
+  const password = login?.password ?? process.env.LINUXIO_VM_PASSWORD ?? "";
   expect(username, "LINUXIO_VM_USER").not.toBe("");
   expect(password, "LINUXIO_VM_PASSWORD").not.toBe("");
 
@@ -166,6 +175,108 @@ export async function signOut(page: Page) {
   await page.getByRole("button", { name: "Account" }).click();
   await page.getByRole("menuitem", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/sign-in/);
+}
+
+/**
+ * Waits until no session bridge runs, so none holds a job host up: a host
+ * exits a minute after its last bridge and its last job.
+ */
+export async function noSessions() {
+  await expect
+    .poll(
+      async () =>
+        (
+          await vmSsh(
+            "systemctl list-units --no-legend --plain --state=active 'linuxio-auth@*' | wc -l",
+          )
+        ).trim(),
+      { intervals: [1_000], message: "linuxio-auth sessions", timeout: 30_000 },
+    )
+    .toBe("0");
+}
+
+/** A bridge's answer to one call, as its result frame carries it. */
+export interface BridgeResult {
+  status: "ok" | "error";
+  data?: unknown;
+  error?: string;
+  code?: number | string;
+}
+
+/**
+ * Calls route of the signed-in session's bridge on a WebSocket of its own,
+ * the way the app's call() does, for an answer the app never asks for (such
+ * as a privileged route from a session without sudo).
+ */
+export function bridgeCall(
+  page: Page,
+  route: string,
+  request: unknown,
+): Promise<BridgeResult> {
+  return page.evaluate(
+    async ({ route, request }) => {
+      // The framing of frontend/src/api/StreamMultiplexer.ts: a WebSocket
+      // frame [stream:4][flags:1] around a bridge frame [opcode:1][stream:4]
+      // [length:4][payload]. SYN 0x01, DATA 0x04; open 0x80, result 0x85.
+      const ws = new WebSocket(`wss://${location.host}/ws`);
+      ws.binaryType = "arraybuffer";
+      try {
+        return await new Promise<BridgeResult>((resolve, reject) => {
+          const timer = setTimeout(
+            () => reject(new Error(`no answer to ${route} in 30 s`)),
+            30_000,
+          );
+          let pending = new Uint8Array(0);
+          ws.onerror = () => reject(new Error("WebSocket error"));
+          ws.onclose = (event) =>
+            reject(
+              new Error(`WebSocket closed (${event.code}) before a result`),
+            );
+          ws.onopen = () => {
+            const body = new TextEncoder().encode(
+              JSON.stringify({ route, request }),
+            );
+            const frame = new Uint8Array(14 + body.length);
+            const view = new DataView(frame.buffer);
+            view.setUint32(0, 1);
+            frame[4] = 0x01;
+            frame[5] = 0x80;
+            view.setUint32(6, 1);
+            view.setUint32(10, body.length);
+            frame.set(body, 14);
+            ws.send(frame);
+          };
+          ws.onmessage = ({ data }) => {
+            const bytes = new Uint8Array(data as ArrayBuffer);
+            const outer = new DataView(bytes.buffer);
+            if (outer.getUint32(0) !== 1 || !(bytes[4] & 0x04)) return;
+            const joined = new Uint8Array(pending.length + bytes.length - 5);
+            joined.set(pending);
+            joined.set(bytes.subarray(5), pending.length);
+            pending = joined;
+            while (pending.length >= 9) {
+              const length = new DataView(
+                pending.buffer,
+                pending.byteOffset,
+              ).getUint32(5);
+              if (pending.length < 9 + length) return;
+              const opcode = pending[0];
+              const payload = pending.slice(9, 9 + length);
+              pending = pending.slice(9 + length);
+              if (opcode === 0x85) {
+                clearTimeout(timer);
+                resolve(JSON.parse(new TextDecoder().decode(payload)));
+                return;
+              }
+            }
+          };
+        });
+      } finally {
+        ws.close();
+      }
+    },
+    { route, request },
+  );
 }
 
 /** Opens the footer's notifications tray and returns it. */

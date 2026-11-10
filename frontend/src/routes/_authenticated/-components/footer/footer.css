@@ -205,3 +205,11 @@
   -webkit-line-clamp: 3;
   line-clamp: 3;
 }
+
+/* The history link, set apart from the list or the empty block above it. */
+.app-navbar-notifications__footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 12px;
+  border-top: 1px solid var(--app-palette-divider);
+}

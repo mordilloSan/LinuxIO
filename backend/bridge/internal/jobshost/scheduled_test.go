@@ -4,17 +4,21 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	"github.com/mordilloSan/LinuxIO/backend/common/jobs"
+	"github.com/mordilloSan/LinuxIO/backend/common/peercred"
 	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
@@ -445,5 +449,477 @@ func TestScheduledEventsListAgainAfterAFailedListing(t *testing.T) {
 	}
 	if !f.due() {
 		t.Fatal("the poll after a failed listing does not list again")
+	}
+}
+
+// callHistory sends a tasks.history request and decodes the history it answers.
+func callHistory(t *testing.T, sess *relay.YamuxSession, request any) bridgeipc.TaskHistory {
+	t.Helper()
+	result := readResult(t, openStream(t, sess, "tasks.history", request, ""))
+	var history bridgeipc.TaskHistory
+	if result.Status != "ok" {
+		t.Fatalf("tasks.history = %#v, want ok", result)
+	}
+	if err := json.Unmarshal(result.Data, &history); err != nil {
+		t.Fatalf("json.Unmarshal(history %s): %v", result.Data, err)
+	}
+	return history
+}
+
+func historyIDs(history bridgeipc.TaskHistory) []string {
+	ids := make([]string, len(history.Entries))
+	for i, entry := range history.Entries {
+		ids[i] = entry.Task.ID
+	}
+	return ids
+}
+
+// endedHostJob creates the record of a host job that ended at finished.
+func endedHostJob(t *testing.T, th *testHost, id string, finished time.Time, label string) jobs.Record {
+	t.Helper()
+	record := jobs.Record{
+		ID: id, Route: "test.job", Owner: jobs.Owner{UID: th.cfg.UID, Username: "alice"},
+		State: jobs.StateCompleted, CreatedAt: finished.Add(-time.Minute), StartedAt: finished.Add(-time.Minute), FinishedAt: finished,
+		Metadata: jsontext.Value(`{"label":"` + label + `"}`),
+		Request:  jsontext.Value(`{"secret":"x"}`), Executor: jobs.Executor{Kind: "host"}, Protocol: jobs.Protocol,
+	}
+	createRuns(t, th.cfg.Store, record)
+	return record
+}
+
+// endedScriptRun creates the record of a scheduled run of unit that ended at
+// finished.
+func endedScriptRun(t *testing.T, store *jobs.Store, invocation, unit string, finished time.Time) jobs.Record {
+	t.Helper()
+	record := scriptRun(t, invocation, "a-boot")
+	record.Target, record.Executor.Unit = []string{unit}, unit
+	record.State, record.CreatedAt, record.StartedAt, record.FinishedAt = jobs.StateCompleted, finished.Add(-time.Minute), finished.Add(-time.Minute), finished
+	createRuns(t, store, record)
+	return record
+}
+
+func TestTasksHistoryListsEndedJobsNewestFirst(t *testing.T) {
+	th := newTestHost(t, nil)
+	th.cfg.Tasks.RegisterRoutes(th.cfg.Router)
+	now := time.Now().UTC().Truncate(time.Second)
+	endedHostJob(t, th, jobA, now.Add(-2*time.Hour), "Older")
+	endedHostJob(t, th, jobB, now.Add(-time.Hour), "Newer")
+	th.start()
+	sess := th.connect()
+
+	history := callHistory(t, sess, map[string]any{})
+	if want := []string{jobB, jobA}; !slices.Equal(historyIDs(history), want) || history.More {
+		t.Fatalf("tasks.history = %v more=%v, want %v more=false", historyIDs(history), history.More, want)
+	}
+	// A record's request, which may hold secrets, never reaches the answer.
+	raw := readResult(t, openStream(t, sess, "tasks.history", map[string]any{}, ""))
+	if raw.Status != "ok" {
+		t.Fatalf("tasks.history = %#v, want ok", raw)
+	}
+	if strings.Contains(string(raw.Data), "secret") {
+		t.Fatalf("tasks.history = %s, want no record's request in it", raw.Data)
+	}
+	entry := history.Entries[0]
+	if entry.Task.State != bridgeipc.TaskStateCompleted || entry.Task.Metadata == nil || entry.Task.Metadata.Label != "Newer" ||
+		entry.Task.FinishedAt == nil || !entry.Task.FinishedAt.Equal(now.Add(-time.Hour)) ||
+		entry.Task.StartedAt == nil || !entry.Task.StartedAt.Equal(now.Add(-time.Hour-time.Minute)) {
+		t.Fatalf("entry = %+v, want a completed job labelled Newer with its times", entry)
+	}
+	if entry.Unit != "" || entry.Output || entry.Reason != "" {
+		t.Fatalf("entry = %+v, want no unit, output or reason for a host job", entry)
+	}
+}
+
+func TestTasksHistoryIncludesScheduledRunsOnTheRootHost(t *testing.T) {
+	dir := t.TempDir()
+	th := scheduledHost(t, dir, nil)
+	now := time.Now().UTC().Truncate(time.Second)
+	newest := endedScriptRun(t, th.cfg.Scheduled, invocationA, scriptUnit, now.Add(-time.Minute))
+	endedHostJob(t, th, jobA, now.Add(-2*time.Minute), "Host job")
+	oldest := endedScriptRun(t, th.cfg.Scheduled, invocationB, scriptUnit, now.Add(-3*time.Minute))
+	if err := os.WriteFile(th.cfg.Scheduled.OutputPath(newest.ID), []byte("line\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	th.start()
+
+	history := callHistory(t, th.connect(), map[string]any{})
+	if want := []string{newest.ID, jobA, oldest.ID}; !slices.Equal(historyIDs(history), want) {
+		t.Fatalf("tasks.history = %v, want %v", historyIDs(history), want)
+	}
+	if got := history.Entries[0]; got.Unit != scriptUnit || !got.Output || got.Task.Metadata == nil || got.Task.Metadata.Label != "Nightly backup" {
+		t.Fatalf("scheduled entry = %+v, want its unit, its output and its label", got)
+	}
+	if got := history.Entries[1]; got.Unit != "" || got.Output {
+		t.Fatalf("host entry = %+v, want no unit and no output", got)
+	}
+	if got := history.Entries[2]; got.Unit != scriptUnit || got.Output {
+		t.Fatalf("scheduled entry with no log = %+v, want its unit and no output", got)
+	}
+}
+
+func TestTasksHistoryReportsNoOutputForALink(t *testing.T) {
+	th := rootScheduledHost(t)
+	run := endedScriptRun(t, th.cfg.Scheduled, invocationA, scriptUnit, time.Now().UTC())
+	// tasks.output follows no link, so a link at the output's path is no output.
+	target := filepath.Join(t.TempDir(), "elsewhere.log")
+	if err := os.WriteFile(target, []byte("line\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, th.cfg.Scheduled.OutputPath(run.ID)); err != nil {
+		t.Fatal(err)
+	}
+	th.start()
+
+	history := callHistory(t, th.connect(), map[string]any{})
+	if len(history.Entries) != 1 || history.Entries[0].Task.ID != run.ID || history.Entries[0].Output {
+		t.Fatalf("tasks.history = %+v, want the run with no output", history)
+	}
+}
+
+func TestTasksHistoryOfAUnit(t *testing.T) {
+	th := scheduledHost(t, t.TempDir(), nil)
+	now := time.Now().UTC().Truncate(time.Second)
+	wanted := endedScriptRun(t, th.cfg.Scheduled, invocationA, scriptUnit, now.Add(-time.Minute))
+	endedScriptRun(t, th.cfg.Scheduled, invocationB, "linuxio-schedule-other.service", now.Add(-2*time.Minute))
+	endedHostJob(t, th, jobA, now.Add(-3*time.Minute), "Host job")
+	th.start()
+
+	history := callHistory(t, th.connect(), map[string]any{"unit": scriptUnit})
+	if want := []string{wanted.ID}; !slices.Equal(historyIDs(history), want) || history.More {
+		t.Fatalf("tasks.history of a unit = %v more=%v, want %v more=false", historyIDs(history), history.More, want)
+	}
+}
+
+func TestTasksHistoryCarriesTheReason(t *testing.T) {
+	th := newTestHost(t, nil)
+	th.cfg.Tasks.RegisterRoutes(th.cfg.Router)
+	record := endedHostJob(t, th, jobA, time.Now().UTC(), "Interrupted")
+	if _, err := th.cfg.Store.Update(context.Background(), record.ID, func(r *jobs.Record) error {
+		r.State, r.Reason = jobs.StateInterrupted, jobs.ReasonReboot
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	th.start()
+
+	history := callHistory(t, th.connect(), map[string]any{})
+	if len(history.Entries) != 1 || history.Entries[0].Reason != "reboot" || history.Entries[0].Task.State != bridgeipc.TaskStateInterrupted {
+		t.Fatalf("tasks.history = %+v, want one interrupted job with reason reboot", history)
+	}
+}
+
+func TestTasksHistoryHidesRecordsOfOtherExecutors(t *testing.T) {
+	th := scheduledHost(t, t.TempDir(), nil)
+	now := time.Now().UTC()
+	for store, id := range map[*jobs.Store]string{th.cfg.Store: jobB, th.cfg.Scheduled: jobC} {
+		createRuns(t, store, jobs.Record{
+			ID: id, Route: "network.apply", Owner: jobs.Owner{UID: th.cfg.UID, Username: "alice"},
+			State: jobs.StateCompleted, CreatedAt: now, StartedAt: now, FinishedAt: now,
+			Executor: jobs.Executor{Kind: "netplan", Unit: "/io/netplan"}, Protocol: jobs.Protocol,
+		})
+	}
+	endedHostJob(t, th, jobA, now.Add(-time.Minute), "Host job")
+	th.start()
+
+	history := callHistory(t, th.connect(), map[string]any{})
+	if want := []string{jobA}; !slices.Equal(historyIDs(history), want) {
+		t.Fatalf("tasks.history = %v, want %v: a record no host ran is not listed", historyIDs(history), want)
+	}
+}
+
+func TestUserHostHistoryHasNoScheduledRuns(t *testing.T) {
+	th := newTestHost(t, nil)
+	th.cfg.Tasks.RegisterRoutes(th.cfg.Router)
+	now := time.Now().UTC().Truncate(time.Second)
+	// The record of a unit's run in the host's own store is no job it ran.
+	endedScriptRun(t, th.cfg.Store, invocationA, scriptUnit, now.Add(-time.Minute))
+	endedHostJob(t, th, jobA, now.Add(-2*time.Minute), "Host job")
+	th.start()
+	sess := th.connect()
+
+	history := callHistory(t, sess, map[string]any{})
+	if want := []string{jobA}; !slices.Equal(historyIDs(history), want) {
+		t.Fatalf("tasks.history = %v, want only %v", historyIDs(history), want)
+	}
+	history = callHistory(t, sess, map[string]any{"unit": scriptUnit})
+	if len(history.Entries) != 0 || history.More {
+		t.Fatalf("tasks.history of a unit = %+v, want none", history)
+	}
+}
+
+func TestTasksHistoryMergesTheStoresThroughEqualTimes(t *testing.T) {
+	th := scheduledHost(t, t.TempDir(), nil)
+	now := time.Now().UTC().Truncate(time.Second)
+	tie := now.Add(-2 * time.Minute)
+	endedHostJob(t, th, jobA, now, "Newest")
+	endedHostJob(t, th, jobB, tie, "Tied")
+	run := endedScriptRun(t, th.cfg.Scheduled, invocationA, scriptUnit, tie)
+	endedScriptRun(t, th.cfg.Scheduled, invocationB, scriptUnit, now.Add(-3*time.Minute))
+	th.start()
+	sess := th.connect()
+
+	first := callHistory(t, sess, map[string]any{"limit": 2})
+	if want := []string{jobA, jobB, run.ID}; !slices.Equal(historyIDs(first), want) || !first.More {
+		t.Fatalf("first page = %v more=%v, want %v more=true", historyIDs(first), first.More, want)
+	}
+	second := callHistory(t, sess, map[string]any{"limit": 2, "before": tie})
+	if len(second.Entries) != 1 || second.More {
+		t.Fatalf("second page = %v more=%v, want the one older run", historyIDs(second), second.More)
+	}
+}
+
+func TestTasksHistoryEntriesLeaveOutWhatThePageDoesNotShow(t *testing.T) {
+	th := scheduledHost(t, t.TempDir(), nil)
+	now := time.Now().UTC().Truncate(time.Second)
+	completed := endedHostJob(t, th, jobA, now, "2 items")
+	failed := endedHostJob(t, th, jobB, now.Add(-time.Minute), "Update")
+	message := strings.Repeat("é", 3000) // 6000 bytes
+	for id, update := range map[string]func(r *jobs.Record){
+		completed.ID: func(r *jobs.Record) {
+			r.Target, r.Result = []string{"/srv/a", "/srv/b"}, jsontext.Value(`{"ok":true}`)
+			r.Metadata = jsontext.Value(`{"label":"2 items","action":"delete","path":"/srv","identity":["/srv/a","/srv/b"],"packageIds":["pkg;1"]}`)
+			r.Progress = jsontext.Value(`{"percentage":100,"message":"Deleted"}`)
+		},
+		failed.ID: func(r *jobs.Record) {
+			r.State, r.Error = jobs.StateFailed, &jobs.Error{Code: 500, Message: message}
+		},
+	} {
+		if _, err := th.cfg.Store.Update(context.Background(), id, func(r *jobs.Record) error {
+			update(r)
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run := endedScriptRun(t, th.cfg.Scheduled, invocationA, scriptUnit, now.Add(-2*time.Minute))
+	th.start()
+
+	history := callHistory(t, th.connect(), map[string]any{})
+	if want := []string{completed.ID, failed.ID, run.ID}; !slices.Equal(historyIDs(history), want) {
+		t.Fatalf("tasks.history = %v, want %v", historyIDs(history), want)
+	}
+	got := history.Entries[0].Task
+	if got.Result != nil || got.Progress != nil {
+		t.Fatalf("host entry = %+v, want no result and no progress", got)
+	}
+	if got.Metadata == nil || got.Metadata.Label != "2 items" || got.Metadata.Action != "delete" || got.Metadata.Path != "/srv" ||
+		got.Metadata.Identity != nil || got.Metadata.PackageIDs != nil {
+		t.Fatalf("host entry metadata = %+v, want its label, action and path and no identity or package IDs", got.Metadata)
+	}
+	errMessage := history.Entries[1].Task.Error
+	if errMessage == nil || !strings.HasSuffix(errMessage.Message, "…") || !utf8.ValidString(errMessage.Message) ||
+		len(strings.TrimSuffix(errMessage.Message, "…")) > 4096 || !strings.HasPrefix(message, strings.TrimSuffix(errMessage.Message, "…")) {
+		t.Fatalf("failed entry error = %d bytes, want the message cut to at most 4096 bytes on a character boundary and marked", len(errMessage.Message))
+	}
+	if got := history.Entries[2].Task.Metadata; got == nil || !slices.Equal(got.Identity, []string{testScheduleID}) {
+		t.Fatalf("scheduled entry metadata = %+v, want its identity [%s]", got, testScheduleID)
+	}
+}
+
+func TestHistoryPageOfLargeRecordsFitsARelayFrame(t *testing.T) {
+	const maxRelayFrame = 16 << 20
+	identity := make([]string, 0, 1000)
+	for i := range cap(identity) {
+		identity = append(identity, fmt.Sprintf("/srv/data/a/long/folder/name/file-%05d.bin", i))
+	}
+	metadata, err := json.Marshal(bridgeipc.TaskMetadata{Label: "1000 items", Action: "copy", Identity: identity, PackageIDs: identity[:500]})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(metadata) < 60<<10 {
+		t.Fatalf("metadata = %d bytes, want at least 60 KiB", len(metadata))
+	}
+	now := time.Now().UTC()
+	history := bridgeipc.TaskHistory{}
+	for i := range 100 {
+		record := jobs.Record{
+			ID: fmt.Sprintf("00000000-0000-4000-8000-%012d", i), Route: "test.job", Owner: jobs.Owner{Username: "alice"},
+			State: jobs.StateFailed, CreatedAt: now, StartedAt: now, FinishedAt: now, Target: identity,
+			Metadata: metadata, Error: &jobs.Error{Code: 500, Message: strings.Repeat("x", 1<<20)},
+			Progress: jsontext.Value(`{"percentage":50,"message":"` + strings.Repeat("y", 60<<10) + `"}`),
+			Executor: jobs.Executor{Kind: "host"}, Protocol: jobs.Protocol,
+		}
+		history.Entries = append(history.Entries, bridgeipc.TaskHistoryEntry{Task: historySnapshot(record)})
+	}
+	data, err := json.Marshal(history)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) >= maxRelayFrame {
+		t.Fatalf("history page = %d bytes, want under the %d of a relay frame", len(data), maxRelayFrame)
+	}
+}
+
+// rootScheduledHost is a scheduledHost that runs as root, so the sessions of
+// its privileged bridges are privileged, as tasks.output asks.
+func rootScheduledHost(t *testing.T) *testHost {
+	t.Helper()
+	dir := t.TempDir()
+	th := newTestHost(t, func(c *Config) {
+		c.UID, c.GID = 0, 0
+		c.Peer = func(*net.UnixConn) (peercred.Cred, error) { return peercred.Cred{UID: 0}, nil }
+		c.Scheduled = jobs.NewStore(filepath.Join(dir, "state"), filepath.Join(dir, "run"))
+		c.UnitActive = func(context.Context, string, string) (bool, error) { return true, nil }
+	})
+	th.cfg.Tasks.RegisterRoutes(th.cfg.Router)
+	return th
+}
+
+// writeRunOutput saves output as the output of the job id in store.
+func writeRunOutput(t *testing.T, store *jobs.Store, id, output string) {
+	t.Helper()
+	if err := os.WriteFile(store.OutputPath(id), []byte(output), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func callOutput(t *testing.T, sess *relay.YamuxSession, request any) relay.ResultFrame {
+	t.Helper()
+	return readResult(t, openStream(t, sess, "tasks.output", request, ""))
+}
+
+func decodeOutput(t *testing.T, result relay.ResultFrame) bridgeipc.TaskOutput {
+	t.Helper()
+	var output bridgeipc.TaskOutput
+	if result.Status != "ok" {
+		t.Fatalf("tasks.output = %#v, want ok", result)
+	}
+	if err := json.Unmarshal(result.Data, &output); err != nil {
+		t.Fatalf("json.Unmarshal(output %s): %v", result.Data, err)
+	}
+	return output
+}
+
+func TestTasksOutputReturnsAChunk(t *testing.T) {
+	th := rootScheduledHost(t)
+	run := endedScriptRun(t, th.cfg.Scheduled, invocationA, scriptUnit, time.Now().UTC())
+	writeRunOutput(t, th.cfg.Scheduled, run.ID, "line one\nline two\n")
+	th.start()
+	sess := th.connect()
+
+	got := decodeOutput(t, callOutput(t, sess, map[string]any{"taskId": run.ID, "offset": 5, "limit": 3}))
+	if want := (bridgeipc.TaskOutput{Content: "one", Offset: 5, Size: 18}); got != want {
+		t.Fatalf("tasks.output from 5 = %+v, want %+v", got, want)
+	}
+	// Without an offset it answers the end.
+	got = decodeOutput(t, callOutput(t, sess, map[string]any{"taskId": run.ID, "limit": 9}))
+	if want := (bridgeipc.TaskOutput{Content: "line two\n", Offset: 9, Size: 18}); got != want {
+		t.Fatalf("tasks.output of the end = %+v, want %+v", got, want)
+	}
+}
+
+func TestTasksOutputFromAnExplicitZeroOffset(t *testing.T) {
+	th := rootScheduledHost(t)
+	run := endedScriptRun(t, th.cfg.Scheduled, invocationA, scriptUnit, time.Now().UTC())
+	writeRunOutput(t, th.cfg.Scheduled, run.ID, "line one\nline two\n")
+	th.start()
+
+	// An offset of 0 is the start, not the end an absent offset means.
+	got := decodeOutput(t, callOutput(t, th.connect(), map[string]any{"taskId": run.ID, "offset": 0, "limit": 3}))
+	if want := (bridgeipc.TaskOutput{Content: "lin", Offset: 0, Size: 18}); got != want {
+		t.Fatalf("tasks.output from 0 = %+v, want %+v", got, want)
+	}
+}
+
+func TestTasksOutputOfAnEmptyOutput(t *testing.T) {
+	th := rootScheduledHost(t)
+	run := endedScriptRun(t, th.cfg.Scheduled, invocationA, scriptUnit, time.Now().UTC())
+	writeRunOutput(t, th.cfg.Scheduled, run.ID, "")
+	th.start()
+	sess := th.connect()
+
+	for _, request := range []map[string]any{{"taskId": run.ID}, {"taskId": run.ID, "offset": 0}} {
+		got := decodeOutput(t, callOutput(t, sess, request))
+		if want := (bridgeipc.TaskOutput{Content: "", Offset: 0, Size: 0}); got != want {
+			t.Fatalf("tasks.output %v of an empty output = %+v, want %+v", request, got, want)
+		}
+	}
+}
+
+func TestRootHostRefusesOutputForAnUnprivilegedSession(t *testing.T) {
+	th := rootScheduledHost(t)
+	run := endedScriptRun(t, th.cfg.Scheduled, invocationA, scriptUnit, time.Now().UTC())
+	writeRunOutput(t, th.cfg.Scheduled, run.ID, "line\n")
+	th.start()
+	// A bridge of a session without sudo says so in its hello.
+	sess := th.dial()
+	stream := openStream(t, sess, bridgeipc.HelloRoute, bridgeipc.Hello{
+		Protocol: jobs.Protocol,
+		Session:  bridgeipc.HelloSession{Username: "alice", UID: 4242, GID: 4243, SessionRef: "ref-1"},
+	}, "")
+	if result := readResult(t, stream); result.Status != "ok" {
+		t.Fatalf("hello result = %#v, want ok", result)
+	}
+
+	if result := callOutput(t, sess, map[string]any{"taskId": run.ID}); result.Code != 403 {
+		t.Fatalf("tasks.output for an unprivileged session on the root host = %#v, want 403", result)
+	}
+}
+
+func TestReadOutputReplacesInvalidUTF8(t *testing.T) {
+	th := rootScheduledHost(t)
+	run := endedScriptRun(t, th.cfg.Scheduled, invocationA, scriptUnit, time.Now().UTC())
+	writeRunOutput(t, th.cfg.Scheduled, run.ID, "a\xffb\x1b[31m")
+	th.start()
+
+	got := decodeOutput(t, callOutput(t, th.connect(), map[string]any{"taskId": run.ID}))
+	if want := (bridgeipc.TaskOutput{Content: "a�b\x1b[31m", Offset: 0, Size: 8}); got != want {
+		t.Fatalf("tasks.output = %#v, want %#v: invalid bytes replaced, control characters kept", got, want)
+	}
+}
+
+func TestTasksOutputStartsAtACharacterBoundary(t *testing.T) {
+	th := rootScheduledHost(t)
+	run := endedScriptRun(t, th.cfg.Scheduled, invocationA, scriptUnit, time.Now().UTC())
+	writeRunOutput(t, th.cfg.Scheduled, run.ID, "x\xc3\xa9y")
+	th.start()
+	sess := th.connect()
+
+	got := decodeOutput(t, callOutput(t, sess, map[string]any{"taskId": run.ID, "offset": 2, "limit": 2}))
+	if want := (bridgeipc.TaskOutput{Content: "y", Offset: 3, Size: 4}); got != want {
+		t.Fatalf("tasks.output from inside é = %#v, want %#v: the rest of é skipped", got, want)
+	}
+	got = decodeOutput(t, callOutput(t, sess, map[string]any{"taskId": run.ID, "offset": 1, "limit": 3}))
+	if want := (bridgeipc.TaskOutput{Content: "éy", Offset: 1, Size: 4}); got != want {
+		t.Fatalf("tasks.output from é = %#v, want %#v", got, want)
+	}
+}
+
+func TestTasksOutputOfAJobWithoutOneIs404(t *testing.T) {
+	th := rootScheduledHost(t)
+	run := endedScriptRun(t, th.cfg.Scheduled, invocationA, scriptUnit, time.Now().UTC())
+	// A job of the host's own saves no output: a file where one would be is
+	// not read.
+	own := endedHostJob(t, th, jobA, time.Now().UTC(), "Host job")
+	writeRunOutput(t, th.cfg.Store, own.ID, "own\n")
+	th.start()
+	sess := th.connect()
+
+	for _, id := range []string{run.ID, own.ID, jobB} {
+		if result := callOutput(t, sess, map[string]any{"taskId": id}); result.Code != 404 {
+			t.Fatalf("tasks.output of %s = %#v, want 404", id, result)
+		}
+	}
+}
+
+func TestUserHostAnswersNoOutput(t *testing.T) {
+	th := newTestHost(t, asUserHost)
+	th.cfg.Tasks.RegisterRoutes(th.cfg.Router)
+	own := endedHostJob(t, th, jobA, time.Now().UTC(), "Host job")
+	writeRunOutput(t, th.cfg.Store, own.ID, "own\n")
+	th.start()
+
+	stored := storedJobs{th.host}
+	for _, id := range []string{own.ID, jobB} {
+		if _, err := stored.Output(context.Background(), bridgeipc.TaskOutputRequest{TaskID: id}); bridgeipc.StatusCode(err) != 404 {
+			t.Fatalf("Output(%s) on a user host = %v, want 404", id, err)
+		}
+	}
+	if stored.hasOutput(own.ID) {
+		t.Fatal("a user host reports a saved output")
+	}
+	// Its sessions are never privileged, so its task service refuses first.
+	if result := callOutput(t, th.connect(), map[string]any{"taskId": own.ID}); result.Code != 403 {
+		t.Fatalf("tasks.output on a user host = %#v, want 403", result)
 	}
 }
