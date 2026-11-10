@@ -106,7 +106,10 @@ real npm into a temporary home and starts each far enough to answer
 
 The browser uses `@agentclientprotocol/sdk` (`frontend/src/api/acp/`: a
 transport over the LinuxIO duplex stream, a connection helper and the login
-probe). The client advertises only `auth.terminal` and declines the fs and
+probe). Every import comes from the `/unstable` entrypoint, the full ACP v1
+surface: the default entrypoint is stable-only since SDK 2.0 and leaves out
+`session/fork`, which the side-question panel needs, and the two cannot be
+mixed. The client advertises only `auth.terminal` and declines the fs and
 terminal client methods, so the agent uses its own tools. Messages are plain
 text, images and file context. Permission cards show the agent's own options.
 Stop sends `session/cancel`.

@@ -1,4 +1,4 @@
-import type * as acp from "@agentclientprotocol/sdk";
+import type * as acp from "@agentclientprotocol/sdk/unstable";
 import { useSyncExternalStore } from "react";
 
 import type { AssistantChatDefaults } from "@/api";

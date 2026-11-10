@@ -1,4 +1,4 @@
-import * as acp from "@agentclientprotocol/sdk";
+import * as acp from "@agentclientprotocol/sdk/unstable";
 
 import { bindStreamHandlers } from "../stream-helpers";
 import type { Stream } from "../StreamMultiplexer";

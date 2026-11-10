@@ -1,4 +1,4 @@
-import * as acp from "@agentclientprotocol/sdk";
+import * as acp from "@agentclientprotocol/sdk/unstable";
 
 import { openChannel } from "../linuxio";
 import type { Stream } from "../StreamMultiplexer";
