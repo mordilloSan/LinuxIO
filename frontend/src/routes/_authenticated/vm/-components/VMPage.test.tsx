@@ -14,6 +14,9 @@ import {
   within,
 } from "@/test/render";
 
+// VMMachinesLayout lazy-loads the console dialog. Load it here so the first
+// console test does not pay for the import inside waitFor's one second budget.
+import "./ConsoleDialog";
 import VMMachinesLayout from "./VMMachinesLayout";
 import VMPage from "./VMPage";
 
