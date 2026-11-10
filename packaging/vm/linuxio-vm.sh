@@ -5,23 +5,34 @@
 # or deletes any other domain, volume or network. State (image cache, SSH key,
 # login) lives in ~/.cache/linuxio-vm.
 #
+# LINUXIO_VM_RELEASE=noble selects a second VM on Ubuntu 24.04 for the root
+# tests on an older kernel: the domain linuxio-e2e-noble, its
+# linuxio-e2e-noble-* volumes and ~/.cache/linuxio-vm-noble, beside the first.
+#
 # Usage: linuxio-vm.sh create | install BUILD_DIR | ssh [COMMAND] | ip | reboot |
 #        power-cut | throttle DISK BYTES_PER_SEC | reset | destroy
 set -euo pipefail
 
-readonly DOMAIN=linuxio-e2e
+case "${LINUXIO_VM_RELEASE:-resolute}" in
+resolute) readonly RELEASE=resolute VERSION=26.04 DOMAIN=linuxio-e2e ;;
+noble) readonly RELEASE=noble VERSION=24.04 DOMAIN=linuxio-e2e-noble ;;
+*)
+	echo "linuxio-vm: unknown LINUXIO_VM_RELEASE '${LINUXIO_VM_RELEASE}' (resolute or noble)" >&2
+	exit 1
+	;;
+esac
 readonly VM_USER=linuxio-e2e
 readonly SNAPSHOT=clean
 readonly POOL=default
-readonly BASE_VOL=linuxio-e2e-base.qcow2
-readonly SYSTEM_VOL=linuxio-e2e-system.qcow2
-readonly DATA_VOLS=(linuxio-e2e-data1.qcow2 linuxio-e2e-data2.qcow2 linuxio-e2e-data3.qcow2 linuxio-e2e-data4.qcow2)
+readonly BASE_VOL="${DOMAIN}-base.qcow2"
+readonly SYSTEM_VOL="${DOMAIN}-system.qcow2"
+readonly DATA_VOLS=("${DOMAIN}-data1.qcow2" "${DOMAIN}-data2.qcow2" "${DOMAIN}-data3.qcow2" "${DOMAIN}-data4.qcow2")
 readonly HOST_IP=192.168.122.1
 readonly SEED_PORT=8399
 readonly SEED_URL="http://${HOST_IP}:${SEED_PORT}/"
-readonly IMAGE_BASE_URL=https://cloud-images.ubuntu.com/releases/resolute/release
-readonly IMAGE_NAME=ubuntu-26.04-server-cloudimg-amd64.img
-readonly STATE="${HOME}/.cache/linuxio-vm"
+readonly IMAGE_BASE_URL="https://cloud-images.ubuntu.com/releases/${RELEASE}/release"
+readonly IMAGE_NAME="ubuntu-${VERSION}-server-cloudimg-amd64.img"
+readonly STATE="${HOME}/.cache/linuxio-vm${DOMAIN#linuxio-e2e}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 readonly REPO_ROOT
 readonly SSH_OPTS=(

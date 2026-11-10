@@ -627,8 +627,16 @@ passes its four tests, with the removal reporting a rise on a real kernel and
 2026-11-10, at `f930876b`, with sudo) `make test-btrfs-integration` passes its
 four tests too: the resumed removals report a rise, `ResumeReplace` refuses
 device 1's job during the replace of device 2, and `balanceKill` runs with
-4384 of 8192 MiB allocated. The pre-6.19 `replaceKill` branch is still not
-exercised.
+4384 of 8192 MiB allocated.
+
+Checked on a kernel before 6.19 (2026-11-10): a second test VM on Ubuntu
+24.04, kernel 6.8.0-147 (`make vm-test-btrfs-integration VM_RELEASE=noble`,
+[development.md](../development.md#test-vm)), passes the four tests twice.
+There a signal does not abort the unmasked scrub of the `signals` step, and
+the killed replace of `replaceKill` runs to the end (`FINISHED`), which
+`ResumeReplace` accepts: the branch that had never run. The removal cancel,
+the removal progress and the refusal of another device's replace job behave
+as on 7.0.
 
 ## 4. Left to do
 
@@ -1034,8 +1042,8 @@ and tag `v7.0` (2026-11-06), and checked in the VM.
 - Reviewers' minor items: the resume of a replace did not check the source
   device id, and a cancel of a replace answered `NOT_STARTED` after the
   kernel finished left a job `canceled` while the pool held the new disk.
-  Both are fixed (section 3.7). Still open: the pre-6.19 `replaceKill` branch
-  has never run on a real kernel (the VM and the development machine run 7.0).
+  Both are fixed (section 3.7). The pre-6.19 `replaceKill` branch, which had
+  never run on a real kernel, passes on 6.8 in a second test VM (section 3.7).
 
 ### Other open items
 

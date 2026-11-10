@@ -102,6 +102,14 @@ While it runs, the VM takes about 4 GiB of RAM and 4 vCPU. Its disks are
 sparse qcow2 files: a 25 GiB system disk and four 8 GiB data disks
 (`vdb`–`vde`) for storage tests.
 
+`VM_RELEASE=noble` on a `vm-*` target selects a second VM on Ubuntu 24.04
+(kernel 6.8): the domain `linuxio-e2e-noble`, its `linuxio-e2e-noble-*`
+volumes and `~/.cache/linuxio-vm-noble`, beside the first one. It is there for
+`make vm-test-btrfs-integration VM_RELEASE=noble`, the root btrfs tests on a
+kernel before 6.19, where a signal does not abort a scrub or a replace. The
+test program is built without cgo, so it runs on the older glibc. LinuxIO
+itself is not installed or tested in that VM.
+
 ```sh
 make vm-create        # download and check the image, first boot, snapshot "clean"
 make vm-install       # make build-nocheck, then install this build in the VM

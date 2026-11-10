@@ -3,7 +3,11 @@
 # ~/.cache/linuxio-vm, never in git. docs/development.md, "Test VM".
 
 vm_script := $(repo_root)/packaging/vm/linuxio-vm.sh
-vm_state_dir := $(HOME)/.cache/linuxio-vm
+# VM_RELEASE=noble selects the second VM (linuxio-e2e-noble, Ubuntu 24.04),
+# kept for the root tests on an older kernel.
+VM_RELEASE ?=
+export LINUXIO_VM_RELEASE := $(VM_RELEASE)
+vm_state_dir := $(HOME)/.cache/linuxio-vm$(if $(filter-out resolute,$(VM_RELEASE)),-$(VM_RELEASE))
 
 ##@ Test VM|yellow
 vm-create: ## Create the test VM from the Ubuntu 26.04 cloud image and snapshot it as clean
@@ -24,7 +28,7 @@ vm-destroy: ## Delete the test VM and its linuxio-e2e-* volumes
 vm-test-btrfs-integration: ensure-go ## Run the root btrfs and partition kernel tests in the test VM
 	@set -e
 	@mkdir -p "$(cache_dir)/vm"
-	@cd "$(backend_dir)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" "$(GO_BIN)" test -c -o "$(cache_dir)/vm/btrfs.test" ./common/btrfs
+	@cd "$(backend_dir)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" CGO_ENABLED=0 "$(GO_BIN)" test -c -o "$(cache_dir)/vm/btrfs.test" ./common/btrfs
 	@"$(vm_script)" ssh 'cat > btrfs.test && chmod +x btrfs.test' < "$(cache_dir)/vm/btrfs.test"
 	@"$(vm_script)" ssh "echo \"VM kernel: \$$(uname -r)\" && sudo env LINUXIO_RUN_BTRFS_INTEGRATION=1 ./btrfs.test -test.run $$(printf %q '$(BTRFS_INTEGRATION_RUN)') -test.count=1 -test.v -test.timeout=20m"
 
