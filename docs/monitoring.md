@@ -170,7 +170,9 @@ pages "used" (total minus available) counts, so both figures are parts of it
 and page cache stays out. Docker's own stats keep active page cache, so the
 container list can show more than this split. A cgroup v1 host reads both as
 zero. The ZFS ARC is still read from `/proc/spl/kstat/zfs/arcstats` and kept
-out of "used".
+out of "used". LinuxIO has no ZFS support in the UI, but the collector and the
+ARC fields in the live and history payloads are kept on purpose: add new
+memory fields beside them and do not remove them as unused code.
 
 Live SMART records also include typed self-test history, NVMe health details
 and power counters for the storage page. The history writer projects them

@@ -23,6 +23,18 @@ the missing-disk handling, and exercises
 [partition management](./storage-disks.md#partition-management); it needs
 sudo.
 
+Parsing command output is avoided because `btrfs-progs` prints JSON for only a
+few commands, and no Go btrfs library covers balance, scrub and devices. A new
+storage feature therefore starts from the ioctl or syscall, and each kernel
+struct is pinned by the request-number test in `ioctl_test.go`, because the
+request number encodes the struct size. A bug here can lose data, and the unit
+tests run against a fake kernel that has missed real ones. Work on degraded
+mounts, resync, replace or split brain therefore starts from what the kernel,
+`btrfs-progs`, mdadm and systemd do, gets an independent review, and adds a
+case to `make test-btrfs-integration`. Only that target, or
+`make vm-test-btrfs-integration` in the test VM, counts as kernel-level
+verification.
+
 ## Capability and privileges
 
 The `btrfs` capability checks for the `btrfs` executable (`btrfs-progs`) and

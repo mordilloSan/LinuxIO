@@ -15,12 +15,17 @@
 - In the frontend, style through the shared `components/ui` components and the `--app-*` CSS variables `AppThemeProvider` writes to `:root` (`theme/variables.css`, `theme/cssVariables.ts`). Outside `components/ui` and `theme/`, code does not call `useAppTheme()`, compute colours with `alpha()`/`darken()`/`lighten()`, branch on `palette.mode`, or set hex colours or `fontSize` inline; `test/guards/styling-boundary.test.ts` lists the few files that must hand a browser API a resolved colour (canvas charts, xterm, ace, colour editors) and fails on any new one.
 - The backend targets Linux; do not add portability layers without a concrete requirement. Prefer Go APIs and existing D-Bus or service abstractions over shell commands. When a subprocess is necessary, use the existing context-aware command path, pass arguments separately, honor cancellation and timeouts, and return useful stderr with the error. Treat optional host facilities as capabilities so their absence does not break unrelated features, keep privileged mutations narrow and validated, and distinguish unit tests from tests requiring systemd, Docker, libvirt, root, or a real host.
 - Every route whose handler needs root (writes under `/etc` or `/var/lib`, mounts, block-device or filesystem ioctls, systemd, NetworkManager, Docker, libvirt, PackageKit, user and group changes, power) must declare `apischema.Privileged()` in its binding, so the dispatcher refuses it with 403 for a non-sudo session instead of the handler failing with a permission error part-way through. Reads stay unprivileged unless they expose sensitive data. See `docs/privilege_pattern.md`.
+- Docker access is root-equivalent and the `docker` group is kept empty by policy, so every Docker write (containers, images, networks, volumes, compose stacks, daemon settings) declares `Privileged()`; never rely on group membership for Docker access. See `docs/privilege_pattern.md`.
+- LinuxIO has one authenticated door: webserver → `auth.sock` → PAM → bridge. A root action on behalf of a user happens in `linuxio-auth` after PAM or inside an existing root component, never through a new socket that other local users can connect to; the only world-connectable socket is the read-only metrics API. Keep `linuxio-bridge` verbs to systemd entry points and root tools. See `docs/process-systemd-architecture.md`.
+- For storage, use kernel interfaces first (ioctls through `x/sys/unix`, `mount(2)`, superblocks) and pin every kernel struct with a request-number test; use `btrfs-progs` only where the kernel has no interface, and add no third-party btrfs library. The UI exposes every choice the backend makes instead of picking defaults silently. See `docs/btrfs.md`.
+- File browser operations follow Windows File Explorer: folder conflicts merge, a same-folder paste makes "name (copy)", delete goes to the trash before anything permanent, and failures are reported per item. Prefer the safe default even when it costs a prompt.
 
 ## Task execution and architectural authority
 
 - An implementation specification supplied with the task is the approved product and architecture direction: validate it against the working tree, adapt minor differences to existing patterns, and do not re-plan it. If the repository fundamentally conflicts with it (the result would be incorrect, unsafe, or architecturally invalid), report the conflict instead of silently redesigning.
 - Preserve the security and responsibility boundaries between `linuxio-webserver`, `linuxio-bridge`, and `linuxio-auth`; never move privileged or authentication-sensitive behavior across them for convenience.
 - Use subagents only for bounded, independent work, preferring faster, lower-cost models; keep integration, conflict resolution, final diff review, and final decisions in the main agent. Parallel agents must be read-only or own disjoint files.
+- An `isolation: "worktree"` agent may get a worktree based on `main` instead of the current branch, and a worktree at HEAD lacks uncommitted work. Compare each worktree's HEAD with `git rev-parse HEAD` before using its patch, or create the worktree yourself from HEAD.
 - Never run Make concurrently with implementation or with another Make invocation in the same worktree.
 
 ## Required quality workflow
@@ -34,6 +39,8 @@
 - Backend-only changes: iterate with focused targets and finish with `make check-backend-quiet`.
 - Changes spanning frontend and backend, generated API contracts, shared build tooling, or unclear ownership boundaries: run `make test-quiet`.
 - For claims that depend on real browser navigation, chunk loading, or browser behavior, additionally run `make test-frontend-browser-quiet`. Run `make setup-frontend-browser-quiet` first only when its browser dependency is not already installed.
+- Data-safety storage work (degraded mounts, resync, replace, split brain) starts from what upstream does (kernel, btrfs-progs, mdadm, systemd), gets an independent review, and adds a root test on loop devices to `make test-btrfs-integration`; unit tests against the fake kernel are not kernel-level verification.
+- Checks that need root, a real kernel, systemd or reboots run in the disposable VM (`make vm-*`, see `docs/development.md`): after a change under `backend/common/btrfs` that issues ioctls run `make vm-test-btrfs-integration`, and run `make vm-reset` and `make vm-install` before `make test-vm-browser`. The targets touch only the `linuxio-e2e*` domains; never touch any other domain on the host.
 - Report the exact Make target or targets run and their results. Call out any target that could not run, distinguish introduced failures from pre-existing or environmental failures, and do not claim browser/runtime coverage from source inspection or unit tests alone.
 
 - Quiet targets retain complete logs in `.cache/test-logs/`; inspect those logs after a failure before rerunning with normal output.
@@ -48,6 +55,7 @@
 
 - Add or update tests for behavior changes. Reconcile related documentation, audit resolution text, and checkboxes when the implementation lands.
 - Before removing code that looks like a compatibility wrapper or legacy API, inspect callers, generated references, history, and production reachability; do not delete it based on naming alone.
+- ZFS is not supported in the UI, but the monitoring agent's ZFS ARC collector and its payload fields stay; add new memory fields beside them and do not remove them as cleanup. See `docs/monitoring.md`.
 - Keep conclusions scoped to the evidence gathered. Clearly separate source-verified findings, automated-test results, and runtime-observed behavior.
 
 ## Git and handoff

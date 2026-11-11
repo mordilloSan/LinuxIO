@@ -32,6 +32,8 @@ Handlers should not duplicate the route-level admin check.
 
 The rule: a route whose handler needs root must be declared `Privileged()`. The bridge runs as the logged-in user and stays root only when sudoers permits it, so a route that writes under `/etc` or `/var/lib`, mounts or unmounts, issues block-device or filesystem ioctls, or talks to systemd, NetworkManager, Docker, libvirt, PackageKit or the account database only works in a privileged bridge. Without the guard a non-sudo session sees the route, starts it, and gets a permission error from the host part-way through instead of a 403 before anything ran. It is not a privilege escalation, but it is a bug: declare the guard with the route, not inside the handler.
 
+Docker is a fixed case. Access to the Docker socket is root-equivalent, so the deployment keeps the `docker` group empty and only a sudo-authorized bridge or the root job host may reach it. Every Docker write declares `Privileged()`: mutations, task routes, and anything else that changes containers, images, networks, volumes, compose stacks or daemon settings. Do not make a Docker write unprivileged on the grounds that members of the `docker` group could run it. Docker reads are not covered by this rule.
+
 Read-only system inventory can usually remain unprivileged unless it exposes sensitive information.
 
 To list the candidates (mutations with neither guard; routes that mutate only through polkit-gated D-Bus calls such as hostname, datetime, login1, systemd and NetworkManager also appear here and are a separate decision):
