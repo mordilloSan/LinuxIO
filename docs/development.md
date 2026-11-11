@@ -331,7 +331,8 @@ follows:
 - installation: `localinstall`, `reinstall`, `uninstall`
 - test VM: `vm-create`, `vm-install`, `vm-ssh`, `vm-reset`, `vm-destroy`,
   `vm-test-btrfs-integration`, `vm-test-filebrowser-root`, `test-vm-browser`
-- documentation: `help-overrides`
+- documentation: `help-overrides`, `check-docs` (the docs index in
+  `docs/README.md`, and the paths and links docs name)
 
 For release-helper smoke coverage, run `make test-release-automation`.
 

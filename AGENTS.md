@@ -51,9 +51,18 @@
 - When Go-owned API contracts or generator inputs change, use `make generate` and then validate the combined result with `make test-quiet`.
 - Trace contract, router, and query-ownership changes through their callers, invalidation paths, cancellation paths, tests, source guards, and canonical documentation rather than changing one layer in isolation.
 
-## Reviews, cleanup, and documentation
+## Documentation
 
-- Add or update tests for behavior changes. Reconcile related documentation, audit resolution text, and checkboxes when the implementation lands.
+- `docs/README.md` is the index of implemented behaviour, and its Code column names the code each doc covers. Before designing or changing a subsystem, read the docs that cover the files you will touch; `scripts/docs-for.sh <path>...` lists them. Plans that have not shipped are in `docs/TODO`.
+- The code is the truth. When a doc and the code disagree, say so and fix the doc in the same change instead of following the doc.
+- A behaviour change updates the docs that cover it in the same change.
+- Write a new doc in `docs/` when a change adds a subsystem, a host integration, a protocol or file format, or a decision the code cannot explain by itself, and no existing doc covers it; when one does, extend that doc instead. A doc states what the system does and why, not how the change was reached. Plans, phases and open work go in `docs/TODO` and move up when they land.
+- Adding, removing or renaming a doc, or moving the code it covers, updates its row in `docs/README.md` in the same change; `make check-docs` fails otherwise.
+- A rule learned during a session that applies to anyone working on LinuxIO becomes one line in this file, with its reasoning in the doc that covers the area. Do not leave it only in agent memory.
+
+## Reviews and cleanup
+
+- Add or update tests for behavior changes. Reconcile audit resolution text and checkboxes when the implementation lands.
 - Before removing code that looks like a compatibility wrapper or legacy API, inspect callers, generated references, history, and production reachability; do not delete it based on naming alone.
 - ZFS is not supported in the UI, but the monitoring agent's ZFS ARC collector and its payload fields stay; add new memory fields beside them and do not remove them as cleanup. See `docs/monitoring.md`.
 - Keep conclusions scoped to the evidence gathered. Clearly separate source-verified findings, automated-test results, and runtime-observed behavior.

@@ -9,7 +9,7 @@ check-actions: ## Validate GitHub Actions workflows
 	@command -v actionlint >/dev/null 2>&1 || { echo "❌ actionlint is required" >&2; exit 1; }
 	@actionlint
 
-check-docs: ## Verify repo paths and links referenced by docs exist
+check-docs: ## Verify the docs index, and that paths and links named in docs exist
 	@bash "$(scripts_dir)/check-doc-links.sh"
 
 check-systemd: ## Validate LinuxIO systemd units
