@@ -12,9 +12,9 @@ var api = apischema.Bindings(
 	apischema.Call[apischema.NoRequest, []apischema.Update]("updates.get_updates_basic", apischema.RetrySafe()).Handle(handleGetUpdatesBasic),
 	apischema.Call[apischema.PackageIDRequest, apischema.Update]("updates.get_update_detail", apischema.RetrySafe()).Handle(handleGetUpdateDetail),
 	apischema.Call[apischema.NoRequest, apischema.AutoUpdateState]("updates.get_auto_updates", apischema.RetrySafe()).Handle(handleGetAutoUpdates),
-	apischema.Mutation("updates.set_auto_updates", handleSetAutoUpdates),
-	apischema.Mutation("updates.apply_offline_updates", handleApplyOfflineUpdates),
-	apischema.Mutation("updates.refresh_cache", handleRefreshUpdateCache),
+	apischema.Mutation("updates.set_auto_updates", handleSetAutoUpdates, apischema.Privileged()),
+	apischema.Mutation("updates.apply_offline_updates", handleApplyOfflineUpdates, apischema.Privileged()),
+	apischema.Mutation("updates.refresh_cache", handleRefreshUpdateCache, apischema.Privileged()),
 	apischema.Call[apischema.NoRequest, []apischema.UpdateHistoryRow]("updates.get_update_history", apischema.RetrySafe()).Handle(handleGetUpdateHistory),
 )
 

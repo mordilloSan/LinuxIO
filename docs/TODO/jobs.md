@@ -1487,18 +1487,20 @@ work (below). Its minor findings are among the open items.
 **Open, for the owner:**
 
 1. **Four update routes without `Privileged()`** (pre-existing, from the
-   privilege review): `updates.set_auto_updates`,
+   privilege review): **done.** `updates.set_auto_updates`,
    `updates.apply_offline_updates`, `updates.refresh_cache`
    (`backend/bridge/handlers/packages/handlers.go`) and `packages.update`
-   (`package_update_operation.go`) need root but do not declare it, so a
-   session without sudo fails part-way with a permission error instead of a
-   403. No escalation: the bridge runs as that user.
+   (`package_update_operation.go`) needed root but did not declare it, so a
+   session without sudo failed part-way with a permission error instead of a
+   403. They declare it now, pinned by
+   `TestHostChangingRoutesArePrivileged`. It was no escalation: the bridge
+   runs as that user.
 2. **The Go release.** `backend/go.mod` pins Go 1.27.3, on which the
    repository's lint lane fails since GO-2026-6859 was published; Task 5's
    second fix round met it first, and every `make golint-quiet` and
    `make test-quiet` that passed after it ran with `GO_VERSION=1.27.4`.
-   Moving the pin is the owner's dependency decision; a separate
-   `chore(deps)` commit is recommended.
+   **Done** in `bb00caf7`, which moves the pin to Go 1.27.4; the targets pass
+   again without the variable.
 3. **Two alert gaps** that predate this work and sit badly with "failures are
    always reported": a timer pass that fails as a whole without a failure of
    one of its items (Docker not reachable, an unreadable rules or jobs file, a
