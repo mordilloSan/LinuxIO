@@ -11,6 +11,14 @@ dev: setup dev-prep ## Start frontend dev server (detached) + tail LinuxIO logs
 	@echo ""
 	@"$(scripts_dir)/dev.sh" "$(frontend_dir)" "$(VITE_DEV_PID)" "$(VITE_DEV_LOG)" "$(VITE_DEV_PORT)" "$(DEV_LOG_LINES)"
 
+dev-stop: ## Stop the Vite dev server; every running make dev then exits
+	@if [ -f "$(VITE_DEV_PID)" ] && kill "$$(cat "$(VITE_DEV_PID)")" 2>/dev/null; then \
+		echo "✅ Vite stopped"; \
+	else \
+		echo "  Vite not running"; \
+	fi
+	@rm -f "$(VITE_DEV_PID)" "$(VITE_DEV_LOG)"
+
 ##@ Install / Uninstall|red
 localinstall: ## Install from local build
 	@echo ""
