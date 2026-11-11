@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
 	"github.com/mordilloSan/LinuxIO/backend/common/jobs"
 )
 
@@ -257,8 +258,9 @@ func (r *recorder) CancelRequested(task *bridgeipc.Task) {
 
 // finish moves the record to the task's terminal state and alerts on a
 // failure, which replaces the alert of an earlier interruption; a resumed job
-// that completed clears that alert. A record already terminal, such as one
-// interrupted at shutdown, is left as it is.
+// that completed clears that alert, and a long job that completed raises its
+// notice when the settings ask. A canceled job reports nothing. A record
+// already terminal, such as one interrupted at shutdown, is left as it is.
 func (r *recorder) finish(ctx context.Context, task *bridgeipc.Task, resumed bool) {
 	snapshot := task.Snapshot()
 	var state jobs.State
@@ -292,8 +294,11 @@ func (r *recorder) finish(ctx context.Context, task *bridgeipc.Task, resumed boo
 	// Only this run's outcome alerts, never a record that was already terminal.
 	switch {
 	case state == jobs.StateFailed && record.State == jobs.StateFailed && record.Error != nil:
-		r.h.alert(ctx, record.ID, record.Route+" failed", record.Error.Message)
-	case resumed && state == jobs.StateCompleted && record.State == jobs.StateCompleted:
-		r.h.resolveAlert(ctx, record.ID)
+		r.h.alert(ctx, record, alerts.SeverityError, "failed", record.Error.Message)
+	case state == jobs.StateCompleted && record.State == jobs.StateCompleted:
+		if resumed {
+			r.h.resolveAlert(ctx, record.ID)
+		}
+		r.h.alertLongJob(ctx, record)
 	}
 }

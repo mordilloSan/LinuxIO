@@ -31,6 +31,7 @@ func TestConfigConversionsPreservePersistedJSONShapes(t *testing.T) {
 		Dismissals: &userconfig.PersistedDismissals{
 			UncleanShutdownBootID: "boot-id",
 			FailedLoginAlertID:    "login-id",
+			HistorySeenAt:         "2026-11-10T09:30:00.123Z",
 		},
 	}
 	ui := userconfig.UIPreferences{

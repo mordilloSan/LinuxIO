@@ -43,6 +43,9 @@ type UIPreferences struct {
 type PersistedDismissals struct {
 	UncleanShutdownBootID string `json:"uncleanShutdownBootId,omitempty" yaml:"uncleanShutdownBootId,omitempty"`
 	FailedLoginAlertID    string `json:"failedLoginAlertId,omitempty" yaml:"failedLoginAlertId,omitempty"`
+	// HistorySeenAt is when the user last opened the job history (RFC 3339).
+	// The sign-in notice counts only the jobs that ended after it.
+	HistorySeenAt string `json:"historySeenAt,omitempty" yaml:"historySeenAt,omitempty"`
 }
 
 // DockerDashboardSections holds the collapsed state of each Docker dashboard section

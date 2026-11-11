@@ -11,6 +11,9 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 LOCAL_WRAPPER="${SCRIPT_DIR}/../localinstall.sh"
 RELEASE_INSTALLER="${SCRIPT_DIR}/../install-linuxio-binaries.sh"
 UNINSTALLER="${SCRIPT_DIR}/../uninstall.sh"
+# Sourcing the installer creates its staging directory; its EXIT trap removes
+# it. Directories of that name that exist already are not this run's.
+STAGING_BEFORE=$(compgen -G '/tmp/linuxio-install.*' | sort || true)
 
 fail() {
 	echo "❌ $*" >&2
@@ -51,7 +54,6 @@ run_release_integrity_fixtures() {
 	(
 		# shellcheck disable=SC1090
 		source "$RELEASE_INSTALLER"
-		mkdir -p "$STAGING"
 		printf 'known release asset\n' >"${STAGING}/linuxio-indexer"
 		printf '%s  %s\n' "$(sha256sum "${STAGING}/linuxio-indexer" | awk '{print $1}')" linuxio-indexer >"${STAGING}/SHA256SUMS"
 		verify_checksums >/dev/null
@@ -128,8 +130,8 @@ run_port_fixtures() {
 		# shellcheck disable=SC1090
 		source "$installer"
 
-		socket_file=$(mktemp)
-		trap 'rm -f "$socket_file"' EXIT
+		# In the installer's staging directory, which its EXIT trap removes.
+		socket_file=$(mktemp "${STAGING}/socket.XXXXXX")
 
 		printf '[Socket]\nListenStream=8094\n' >"$socket_file"
 		assert_eq "8094" "$(extract_linuxio_socket_port "$socket_file")" \
@@ -375,7 +377,6 @@ run_record_dropin_fixtures() {
 		LOCAL_INSTALL=1
 		# shellcheck disable=SC2030
 		REPO_ROOT="$checkout"
-		mkdir -p "$STAGING"
 
 		install_run_record_dropins "${fixture_dir}/system" >/dev/null ||
 			fail "installing the run-record drop-ins failed"
@@ -409,11 +410,239 @@ grep -Fqx "$BEGIN_HOOK" "$RESYNC_UNIT" || fail "the resync unit lacks the begin 
 grep -Fqx "$END_HOOK" "$RESYNC_UNIT" || fail "the resync unit lacks the end hook"
 printf '   \033[1;32m✓\033[0m %s\n' "scheduled units record their runs"
 
+# The needrestart override reaches /etc/needrestart/conf.d only where
+# needrestart's directory exists, from the checkout (--local) or current main
+# (release), only when its content has the shipped form, and the uninstaller
+# removes it.
+# shellcheck disable=SC2031
+NEEDRESTART_CONF="${REPO_ROOT}/packaging/etc/needrestart/conf.d/linuxio.conf"
+needrestart_override_fixtures() {
+	# shellcheck disable=SC2031
+	local checkout="$REPO_ROOT"
+	(
+		# shellcheck disable=SC1090
+		source "$RELEASE_INSTALLER"
+		local fixture_dir conf_d installed fake out status inode bad
+		fixture_dir=$(mktemp -d)
+		conf_d="${fixture_dir}/needrestart/conf.d"
+		installed="${conf_d}/linuxio.conf"
+		LOCAL_INSTALL=1
+		# shellcheck disable=SC2030
+		REPO_ROOT="$checkout"
+
+		needrestart_override_valid "$NEEDRESTART_CONF" || fail "the shipped needrestart override fails its own content check"
+		local shipped_entry one="${fixture_dir}/one.conf"
+		while IFS= read -r shipped_entry; do
+			printf '%s\n' "$shipped_entry" >"$one"
+			needrestart_override_valid "$one" || fail "the content check refuses the shipped line ${shipped_entry}"
+		done < <(grep '^\$nrconf' "$NEEDRESTART_CONF")
+		assert_eq "6" "$(grep -c '^\$nrconf' "$NEEDRESTART_CONF")" "shipped needrestart override entries"
+		# Where Perl is present, the file must also compile under strict.
+		if command -v perl >/dev/null 2>&1; then
+			needrestart_override_loads "$NEEDRESTART_CONF" || fail "the shipped needrestart override does not compile under strict"
+			printf '$nrconf{override_rc}->{qr(^linuxio-jobs@abc$)} = 0;\n' >"$one"
+			if needrestart_override_loads "$one"; then
+				fail "an interpolated @abc compiled under strict"
+			fi
+		fi
+		# Without Perl, the token check alone decides.
+		local no_perl="${fixture_dir}/no-perl-bin"
+		mkdir -p "$no_perl"
+		ln -s "$(command -v grep)" "${no_perl}/grep"
+		printf '$nrconf{override_rc}->{qr(^linuxio-jobs@abc\.service$)} = 0;\n' >"$one"
+		# The PATH without Perl applies only to the checks, so the installer's
+		# EXIT trap still finds rm.
+		out=$(bash -c 'source "$1"; PATH="$4"; command -v perl >/dev/null && echo "perl found"; needrestart_override_valid "$2" && echo "shipped accepted"; needrestart_override_valid "$3" || echo "bad refused"; PATH="$5"' \
+			_ "$RELEASE_INSTALLER" "$NEEDRESTART_CONF" "$one" "$no_perl" "$PATH" 2>&1) || true
+		assert_eq $'shipped accepted\nbad refused' "$out" "the content check without Perl"
+
+		install_needrestart_override "${fixture_dir}/needrestart" >/dev/null ||
+			fail "the needrestart override failed without needrestart"
+		[[ ! -e "${fixture_dir}/needrestart" ]] || fail "the needrestart override was installed without needrestart"
+
+		mkdir -p "$conf_d"
+		printf 'keep\n' >"${conf_d}/admin.conf"
+		install_needrestart_override "${fixture_dir}/needrestart" >/dev/null ||
+			fail "installing the needrestart override failed"
+		cmp -s "$NEEDRESTART_CONF" "$installed" || fail "the installed needrestart override is not the packaged one"
+		assert_eq "644" "$(stat -c %a "$installed")" "needrestart override mode"
+		if compgen -G "${installed}.new.*" >/dev/null; then
+			fail "the needrestart override install left a temporary file"
+		fi
+
+		rm -f "$installed"
+		LOCAL_INSTALL=0
+		curl() {
+			printf '%s\n' "$2" >"${fixture_dir}/fetched"
+			cp "$NEEDRESTART_CONF" "$4"
+		}
+		install_needrestart_override "${fixture_dir}/needrestart" >/dev/null ||
+			fail "the release install of the needrestart override failed"
+		assert_eq "${CURRENT_MAIN_PACKAGING_BASE}/etc/needrestart/conf.d/linuxio.conf" "$(<"${fixture_dir}/fetched")" \
+			"release source of the needrestart override"
+		cmp -s "$NEEDRESTART_CONF" "$installed" || fail "the release install did not install the needrestart override"
+
+		# Called as main calls it: in a shell of its own, under errexit and
+		# outside any condition, with the snippet taken from checkout $2.
+		soft_install() {
+			bash -c 'source "$1"; LOCAL_INSTALL=1; REPO_ROOT="$2"; install_needrestart_override "$3"; echo "the install went on"' \
+				_ "$RELEASE_INSTALLER" "${2:-$checkout}" "$1" 2>&1
+		}
+
+		# A fetched file that is not the shipped form is refused with a
+		# notice; the install goes on and the override already installed stays
+		# as it was. Besides a statement added, an entry for another unit, a
+		# captive portal's page and an empty file: patterns Perl cannot load
+		# under strict (an interpolated @abc, nested quantifiers, an empty \p),
+		# one wider than LinuxIO's work (^linuxio-.+$), one that does not end
+		# in \.service$, and entries for the four always-on daemons.
+		fake="${fixture_dir}/fake"
+		mkdir -p "${fake}/packaging/etc/needrestart/conf.d"
+		inode=$(stat -c %i "$installed")
+		entry_for() { printf '$nrconf{override_rc}->{qr(^linuxio-%s$)} = 0;\n' "$1"; }
+		for bad in statement other-unit html empty at-abc nested-quantifiers empty-p any-linuxio-unit no-service webserver monitoring indexer auth; do
+			case "$bad" in
+			statement) { cat "$NEEDRESTART_CONF" && echo 'system("id");'; } ;;
+			other-unit) { cat "$NEEDRESTART_CONF" && echo '$nrconf{override_rc}->{qr(^ssh\.service$)} = 0;'; } ;;
+			html) printf '<!DOCTYPE html>\n<html><body>Sign in to the network</body></html>\n' ;;
+			empty) : ;;
+			at-abc) entry_for 'jobs@abc\.service' ;;
+			nested-quantifiers) entry_for 'a+++\.service' ;;
+			empty-p) entry_for '\p\.service' ;;
+			any-linuxio-unit) entry_for '.+' ;;
+			no-service) entry_for 'jobs@\d+' ;;
+			webserver) entry_for 'webserver\.service' ;;
+			monitoring) entry_for 'monitoring\.service' ;;
+			indexer) entry_for 'indexer\.service' ;;
+			auth) entry_for 'auth@.+\.service' ;;
+			esac >"${fake}/packaging/etc/needrestart/conf.d/linuxio.conf"
+			status=0
+			out=$(soft_install "${fixture_dir}/needrestart" "$fake") || status=$?
+			((status == 0)) || fail "a ${bad} snippet aborted the install: ${out}"
+			[[ $out == *"The needrestart override was not installed: the fetched file is not what LinuxIO ships"*"the install went on"* ]] ||
+				fail "a ${bad} snippet was not refused with the notice: ${out}"
+			cmp -s "$NEEDRESTART_CONF" "$installed" || fail "a ${bad} snippet changed the installed override"
+			assert_eq "$inode" "$(stat -c %i "$installed")" "installed override after a ${bad} snippet"
+		done
+
+		# An in-app update launched by a bridge without
+		# /etc/needrestart/conf.d among its writable paths runs the installer
+		# with it read-only: a notice, and the install goes on, with or
+		# without conf.d. Each mode is restored before any check can fail.
+		if [[ $EUID -ne 0 ]]; then
+			rm -f "$installed"
+			chmod 0555 "$conf_d"
+			status=0
+			out=$(soft_install "${fixture_dir}/needrestart") || status=$?
+			chmod 0755 "$conf_d"
+			((status == 0)) || fail "a read-only conf.d aborted the install: ${out}"
+			[[ $out == *"Could not write ${installed}"*"the install went on"* ]] ||
+				fail "a read-only conf.d gave no notice or stopped the install: ${out}"
+			[[ ! -e "$installed" ]] || fail "the needrestart override was written into a read-only conf.d"
+			cp "$NEEDRESTART_CONF" "$installed"
+
+			mkdir -p "${fixture_dir}/bare"
+			chmod 0555 "${fixture_dir}/bare"
+			status=0
+			out=$(soft_install "${fixture_dir}/bare") || status=$?
+			chmod 0755 "${fixture_dir}/bare"
+			((status == 0)) || fail "a read-only needrestart directory aborted the install: ${out}"
+			[[ $out == *"Could not write ${fixture_dir}/bare/conf.d/linuxio.conf"*"the install went on"* ]] ||
+				fail "a read-only needrestart directory gave no notice or stopped the install: ${out}"
+			[[ ! -e "${fixture_dir}/bare/conf.d" ]] || fail "conf.d was created in a read-only needrestart directory"
+		else
+			printf '   \033[1;33m-\033[0m %s\n' "needrestart override in a read-only directory not checked: root writes through the mode"
+		fi
+
+		bash -c "$(grep -F 'rm -f /etc/needrestart/conf.d/linuxio.conf' "$UNINSTALLER" | sed "s#/etc/needrestart#${fixture_dir}/needrestart#")"
+		[[ ! -e "$installed" ]] || fail "uninstall left the needrestart override"
+		[[ -f "${conf_d}/admin.conf" ]] || fail "uninstall removed a needrestart file that is not LinuxIO's"
+		rm -rf "$fixture_dir"
+	)
+}
+needrestart_override_fixtures
+# Installed after the dry run has exited and the release assets are verified,
+# so that a failed verification installs nothing, and before the binaries
+# change, so that an apt run during the install finds it.
+needrestart_line=$(grep -n -m1 '^[[:space:]]*install_needrestart_override "$NEEDRESTART_DIR"' "$installer" | cut -d: -f1)
+dry_run_line=$(grep -n -m1 '^[[:space:]]*if \[\[ $dry_run -eq 1 \]\]; then' "$installer" | cut -d: -f1)
+checksums_line=$(grep -n -m1 '^[[:space:]]*if ! verify_checksums; then' "$installer" | cut -d: -f1)
+[[ -n "$needrestart_line" && -n "$dry_run_line" && -n "$checksums_line" && -n "$binary_line" ]] ||
+	fail "needrestart override ordering could not be resolved"
+((dry_run_line < needrestart_line)) || fail "the needrestart override must be installed after the dry run exits"
+((checksums_line < needrestart_line)) || fail "the needrestart override must be installed after the checksums are verified"
+((needrestart_line < binary_line)) || fail "the needrestart override must be installed before the binaries change"
+# The updater's dry run checks that each target is writable in its sandbox,
+# where /etc/needrestart is not.
+dry_run_body=$(sed -n '/^verify_dry_run_targets() {/,/^}/p' "$installer")
+[[ -n "$dry_run_body" ]] || fail "verify_dry_run_targets not found in the installer"
+if grep -Fq needrestart <<<"$dry_run_body"; then
+	fail "the dry run must not require a writable needrestart directory"
+fi
+printf '   \033[1;32m✓\033[0m %s\n' "needrestart override checked, installed where needrestart is, removed on uninstall"
+
+# Staged files live in a directory created by mktemp -d (mode 0700, owned by
+# the installing user, an unpredictable name), and the EXIT trap removes it.
+# The command substitution waits for that shell, and so for its EXIT trap.
+staging_stat=$(bash -c 'source "$1"; stat -c "%a %u %n" "$STAGING"' _ "$RELEASE_INSTALLER")
+read -r staging_mode staging_owner staging_dir <<<"$staging_stat"
+assert_eq "700" "$staging_mode" "staging directory mode"
+assert_eq "$(id -u)" "$staging_owner" "staging directory owner"
+[[ $staging_dir =~ ^/tmp/linuxio-install\.[[:alnum:]]{10}$ ]] || fail "staging directory ${staging_dir} is not a mktemp name"
+[[ ! -e "$staging_dir" ]] || fail "the EXIT trap left ${staging_dir}"
+if grep -Eq 'linuxio-install-\$\$|mkdir -p "\$STAGING"' "$installer"; then
+	fail "the installer must not name or create a predictable staging directory"
+fi
+printf '   \033[1;32m✓\033[0m %s\n' "staging directory is private and removed"
+
+# Loaded the way needrestart.conf loads a conf.d file, the override adds to the
+# distribution's override_rc and leaves its entries; deciding as needrestart
+# does (the first matching expression, in sorted order), it exempts exactly the
+# units that run work an update must not interrupt.
+if command -v perl >/dev/null 2>&1; then
+	perl -w - "$NEEDRESTART_CONF" <<'PERL' || fail "the needrestart override does not exempt exactly the LinuxIO work units"
+use strict;
+our %nrconf = (override_rc => { qr(^dbus) => 0, qr(^user@\d+\.service) => 0 });
+my $fn = shift;
+eval do { local(@ARGV, $/) = $fn; <> };
+die "Error parsing $fn: $@" if $@;
+my $rc = $nrconf{override_rc};
+die "override_rc lost the distribution's entries\n" unless 2 == grep { $_ eq qr(^dbus) || $_ eq qr(^user@\d+\.service) } keys %$rc;
+die "override_rc has " . scalar(keys %$rc) . " entries, want 8\n" unless 8 == keys %$rc;
+sub restarts { my $unit = shift; for my $re (sort keys %$rc) { return $rc->{$re} if $unit =~ /$re/ } 1 }
+my $id = "0b7c9a1e-5d2f-4c3b-9a8e-1f2e3d4c5b6a";
+for my $unit ("linuxio-jobs\@0.service", "linuxio-jobs\@1001.service", "linuxio-schedule-$id.service",
+	"linuxio-btrfs-snapshot.service", "linuxio-btrfs-resync\@$id.service", "linuxio-docker-update.service",
+	"linuxio-updater-1794345333839000000.service") {
+	die "$unit would be restarted\n" if restarts($unit);
+}
+for my $unit ("linuxio-webserver.service", "linuxio-monitoring.service", "linuxio-indexer.service",
+	"linuxio-auth\@0-1234-0.service", "linuxio-btrfs-health.service", "linuxio-indexer-index.service",
+	"linuxio-issue.service", "linuxio-jobs\@0.socket", "linuxio-jobs-reconcile.service") {
+	die "$unit would not be restarted\n" unless restarts($unit);
+}
+PERL
+	printf '   \033[1;32m✓\033[0m %s\n' "needrestart override exempts exactly the LinuxIO work units"
+else
+	printf '   \033[1;33m-\033[0m %s\n' "needrestart override expressions not checked: no perl"
+fi
+
 # The standalone scripts each carry their own Show/Header; keep them identical.
 ui_sum() { sed -n '/^Show() {/,/^}/p;/^Header() {/,/^}/p;/^readonly COLOUR_RESET/,/^readonly YELLOW/p' "$1" | sha256sum; }
 for script in install-dependencies.sh uninstall.sh; do
 	assert_eq "$(ui_sum "$RELEASE_INSTALLER")" "$(ui_sum "${SCRIPT_DIR}/../${script}")" "${script} Show/Header styling"
 done
 printf '   \033[1;32m✓\033[0m %s\n' "standalone scripts share Show/Header styling"
+
+# No fixture may leave the installer's staging directory behind. A directory
+# that another run, still going, created goes away within moments; a leaked one
+# stays.
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+	staging_left=$(comm -13 <(printf '%s\n' "$STAGING_BEFORE") <(compgen -G '/tmp/linuxio-install.*' | sort || true))
+	[[ -z "$staging_left" ]] && break
+	sleep 0.5
+done
+[[ -z "$staging_left" ]] || fail "the fixtures left staging directories behind: ${staging_left}"
+printf '   \033[1;32m✓\033[0m %s\n' "no staging directory left behind"
 
 printf '\033[1;32m%s\033[0m\n' "✅ Installer and recovery-asset fixtures passed!"

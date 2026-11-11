@@ -38,7 +38,7 @@ func webhookSink(t *testing.T) (string, func() []map[string]string) {
 func TestRaiseDeliversNewOccurrencesOnly(t *testing.T) {
 	useTempStore(t)
 	hook, received := webhookSink(t)
-	if _, err := SaveNotifications(NotificationSettings{MinSeverity: SeverityWarning, WebhookURL: hook}); err != nil {
+	if _, err := saveNotifications(t.Context(), NotificationSettings{MinSeverity: SeverityWarning, WebhookURL: hook}); err != nil {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
@@ -62,6 +62,63 @@ func TestRaiseDeliversNewOccurrencesOnly(t *testing.T) {
 	}
 	if got[0]["severity"] != SeverityError || got[0]["source"] != "test" || got[0]["title"] == "" || !strings.Contains(got[0]["text"], "ERROR") {
 		t.Fatalf("payload = %v", got[0])
+	}
+}
+
+func TestDeliveryFollowsTheGrid(t *testing.T) {
+	for name, tc := range map[string]struct {
+		severity         string
+		ticks            Channels
+		emails, webhooks int
+	}{
+		"a warning with only email": {severity: SeverityWarning, ticks: Channels{Browser: true, Email: true}, emails: 1},
+		"a notice with nothing":     {severity: SeverityInfo, ticks: Channels{}},
+		"an alert with both":        {severity: SeverityError, ticks: Channels{Browser: true, Email: true, Webhook: true}, emails: 1, webhooks: 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			useTempStore(t)
+			hook, posted := webhookSink(t)
+			port, mailed := fakeSMTP(t)
+			if _, err := saveNotifications(t.Context(), NotificationSettings{
+				Levels: map[string]Channels{tc.severity: tc.ticks}, WebhookURL: hook,
+				SMTPHost: "127.0.0.1", SMTPPort: port, EmailFrom: "nas@example.com", EmailTo: []string{"me@example.com"},
+			}); err != nil {
+				t.Fatal(err)
+			}
+			o := obs("disk")
+			o.Severity = tc.severity
+			if err := Raise(t.Context(), o); err != nil {
+				t.Fatal(err)
+			}
+			if got := len(posted()); got != tc.webhooks {
+				t.Errorf("webhooks = %d, want %d", got, tc.webhooks)
+			}
+			if got := len(mailed); got != tc.emails {
+				t.Errorf("emails = %d, want %d", got, tc.emails)
+			}
+		})
+	}
+}
+
+// A file an older build wrote names only the least severity sent: each level
+// is delivered as that build delivered it.
+func TestDeliveryFromAnOlderBuildsFile(t *testing.T) {
+	for least, want := range map[string]int{"": 0, SeverityError: 1, SeverityWarning: 2, SeverityInfo: 3} {
+		t.Run("minSeverity="+least, func(t *testing.T) {
+			useTempStore(t)
+			hook, posted := webhookSink(t)
+			writeNotificationsFile(t, `{"minSeverity": "`+least+`", "webhookUrl": "`+hook+`"}`)
+			for _, severity := range []string{SeverityInfo, SeverityWarning, SeverityError} {
+				o := obs(severity)
+				o.Severity = severity
+				if err := Raise(t.Context(), o); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if got := len(posted()); got != want {
+				t.Fatalf("deliveries = %d, want %d", got, want)
+			}
+		})
 	}
 }
 
@@ -94,7 +151,8 @@ func tcpPort(t *testing.T, ln net.Listener) int {
 	return addr.Port
 }
 
-// serveSMTP answers one SMTP session and sends the message body on QUIT.
+// serveSMTP answers one SMTP session and sends the message body on QUIT,
+// before its reply, so the message is there when the client's send returns.
 func serveSMTP(r *bufio.Reader, w io.Writer, msg chan<- string) {
 	reply := func(s string) { _, _ = io.WriteString(w, s+"\r\n") }
 	reply("220 fake")
@@ -118,8 +176,8 @@ func serveSMTP(r *bufio.Reader, w io.Writer, msg chan<- string) {
 			readData(r, &data)
 			reply("250 queued")
 		case cmd == "QUIT":
-			reply("221 bye")
 			msg <- data.String()
+			reply("221 bye")
 			return
 		default:
 			reply("250 ok")
@@ -143,7 +201,7 @@ func TestSendEmail(t *testing.T) {
 	n := NotificationSettings{SMTPHost: "127.0.0.1", SMTPPort: port, EmailFrom: "nas@example.com", EmailTo: []string{"me@example.com"}}
 	a := TestAlert()
 	a.Title = "Pool tank\r\nBcc: evil@example.com"
-	if err := Send(context.Background(), n, a); err != nil {
+	if err := Send(context.Background(), n, Channels{Email: true}, a); err != nil {
 		t.Fatal(err)
 	}
 	got := <-msg
@@ -158,7 +216,7 @@ func TestSendEmail(t *testing.T) {
 func TestSendEmailEnvelopeUsesBareAddresses(t *testing.T) {
 	port, msg := fakeSMTP(t)
 	n := NotificationSettings{SMTPHost: "127.0.0.1", SMTPPort: port, EmailFrom: "LinuxIO <alerts@example.com>", EmailTo: []string{"Me <me@example.com>"}}
-	if err := Send(context.Background(), n, TestAlert()); err != nil {
+	if err := Send(context.Background(), n, Channels{Email: true}, TestAlert()); err != nil {
 		t.Fatal(err)
 	}
 	got := <-msg
@@ -167,16 +225,41 @@ func TestSendEmailEnvelopeUsesBareAddresses(t *testing.T) {
 	}
 }
 
-func TestPostWebhookTransportErrorOmitsURL(t *testing.T) {
-	srv := httptest.NewServer(http.NotFoundHandler())
-	target := srv.URL + "/services/T000/B000/secret-token"
-	srv.Close() // nothing listens: the connection is refused
-	err := postWebhook(context.Background(), target, TestAlert())
-	if err == nil {
-		t.Fatal("expected a transport error")
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// A webhook's path or query can carry its token (Slack, Discord), and its
+// errors reach the journal and the test button, so they name the host only.
+func TestPostWebhookErrorsNameOnlyTheHost(t *testing.T) {
+	const target = "https://hooks.example/services/T000/SECRET?token=SECRET"
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if strings.Contains(err.Error(), "secret-token") || strings.Contains(err.Error(), srv.URL) {
-		t.Fatalf("error leaks the webhook URL: %v", err)
+	refused := ln.Addr().String()
+	_ = ln.Close() // nothing listens: the connection is refused
+	for name, transport := range map[string]http.RoundTripper{
+		"an answer that is not 2xx": roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusForbidden, Status: "403 Forbidden", Body: http.NoBody}, nil
+		}),
+		"a connection failure": &http.Transport{DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, network, refused)
+		}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			previous := http.DefaultClient.Transport
+			http.DefaultClient.Transport = transport
+			t.Cleanup(func() { http.DefaultClient.Transport = previous })
+			err := postWebhook(t.Context(), target, TestAlert())
+			if err == nil || !strings.Contains(err.Error(), "hooks.example") || strings.Contains(err.Error(), "SECRET") || strings.Contains(err.Error(), "/services") {
+				t.Fatalf("err = %v, want the host and nothing of the path or query", err)
+			}
+		})
+	}
+	// A URL that does not parse, as a hand edit may leave, is not quoted either.
+	if err := postWebhook(t.Context(), target+"\x7f", TestAlert()); err == nil || strings.Contains(err.Error(), "SECRET") {
+		t.Fatalf("err = %v, want one that quotes nothing of the URL", err)
 	}
 }
 
@@ -190,7 +273,7 @@ func TestSendJoinsChannelErrors(t *testing.T) {
 	port := tcpPort(t, ln)
 	_ = ln.Close() // nothing listens: the connection is refused
 	n := NotificationSettings{WebhookURL: srv.URL, SMTPHost: "127.0.0.1", SMTPPort: port, EmailFrom: "a@b.c", EmailTo: []string{"d@e.f"}}
-	err = Send(context.Background(), n, TestAlert())
+	err = Send(context.Background(), n, Channels{Email: true, Webhook: true}, TestAlert())
 	if err == nil || !strings.Contains(err.Error(), "webhook: ") || !strings.Contains(err.Error(), "502") || !strings.Contains(err.Error(), "email: ") {
 		t.Fatalf("err = %v", err)
 	}

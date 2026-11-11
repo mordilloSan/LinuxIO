@@ -170,3 +170,50 @@ test("chooses Saturday at 7am and a working directory with shared dialog typogra
     });
   await expect(dialog).not.toBeVisible();
 });
+
+test("keeps the table's rows while a selected task's details are tall", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 720 });
+  // Forty past runs and the live output card: far taller than the page.
+  const entries = Array.from({ length: 40 }, (_, index) => ({
+    task: {
+      id: `run-${index}`,
+      type: "scheduled.script",
+      state: "completed",
+      created_at: "2026-11-10T09:59:00Z",
+      started_at: "2026-11-10T10:00:00Z",
+      finished_at: "2026-11-10T10:02:05Z",
+      updated_at: "2026-11-10T10:02:05Z",
+      owner: { username: "root" },
+    },
+    unit: "linuxio-schedule-nightly.service",
+  }));
+  await page.routeWebSocket("**/ws", (socket) => {
+    socket.onMessage((message) => {
+      if (typeof message === "string" || message[4] !== 0x01) return;
+      const { route } = JSON.parse(message.subarray(14).toString());
+      if (route !== "tasks.history") return;
+      const body = Buffer.from(
+        JSON.stringify({ status: "ok", data: { entries, more: false } }),
+      );
+      const frame = Buffer.alloc(14 + body.length);
+      const id = message.readUInt32BE(0);
+      frame.writeUInt32BE(id, 0);
+      frame[4] = 0x04;
+      frame[5] = 0x85;
+      frame.writeUInt32BE(id, 6);
+      frame.writeUInt32BE(body.length, 10);
+      body.copy(frame, 14);
+      socket.send(frame);
+    });
+  });
+  await page.goto("/schedules");
+  await expect(page.getByText("Output of the latest run")).toBeAttached();
+  await expect(page.getByRole("button", { name: /Completed/ })).toHaveCount(40);
+
+  const table = page.getByRole("table", { name: "Scheduled tasks" });
+  const box = await table.boundingBox();
+  expect(box?.height ?? 0).toBeGreaterThan(100);
+  await expect(table.getByText("Nightly", { exact: true })).toBeInViewport();
+});

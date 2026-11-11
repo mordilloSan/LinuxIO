@@ -20,6 +20,7 @@ import {
   signOut,
   signOutIfSignedIn,
   startScrub,
+  stopAptRuns,
   vmSsh,
   waitForJob,
 } from "./vm";
@@ -424,22 +425,14 @@ test("the update banner counts the jobs an update waits for", async ({
   // the scrub's end 300 s, the second refused job 15 s, the two banner texts
   // 30 s and 150 s: some 1375 s.
   test.setTimeout(1_500_000);
-  // After a dpkg run, apt runs needrestart, which restarts every job host
-  // still running a replaced binary and so interrupts its jobs (seen once in
+  // After a dpkg run, apt runs needrestart, which restarted the job hosts
+  // running a replaced binary and so interrupted their jobs (seen once in
   // this VM, during an unattended-upgrades run, on 2026-11-10;
-  // docs/TODO/jobs.md 3.9). That is a finding of its own; this check needs no
-  // apt run during it, so the apt timers stop until the next boot and a run
-  // in progress is waited for.
-  await vmSsh("sudo systemctl stop apt-daily.timer apt-daily-upgrade.timer");
-  await expect
-    .poll(
-      async () =>
-        vmSsh(
-          "systemctl is-active apt-daily.service apt-daily-upgrade.service || true",
-        ),
-      { intervals: [5_000], message: "apt runs in progress", timeout: 600_000 },
-    )
-    .not.toMatch(/^(active|activating|deactivating|reloading)$/m);
+  // docs/TODO/jobs.md 3.9, finding 2). The installer's needrestart override
+  // fixes that, and jobs-needrestart.spec.ts checks it. An apt run in the
+  // middle of this check is still noise, so the apt timers stop until the
+  // next boot and a run in progress is waited for.
+  await stopAptRuns();
   const before = await jobIds();
   // 1 MiB/s per disk: the scrub outlasts the install and the checks of the
   // banner by minutes. The cap is lifted once they are done.
@@ -520,6 +513,23 @@ test("the update banner counts the jobs an update waits for", async ({
       .soft(await bridgeCall(page, "tasks.get", { taskId: job.id }))
       .toEqual(expect.objectContaining({ status: "error", code: 503 }));
 
+    // The history page says it is unavailable rather than empty. It is a
+    // second page of the signed-in session, so the first keeps the schedules
+    // dialog the refusals above need.
+    const historyPage = await page.context().newPage();
+    await historyPage.goto("/history");
+    await expect(
+      historyPage.getByRole("table", { name: "Job history" }),
+    ).toBeVisible();
+    await expect(
+      historyPage.getByText(
+        "History is unavailable until the LinuxIO update finishes.",
+      ),
+    ).toBeVisible();
+    await expect(historyPage.getByText("Nothing has ended yet.")).toHaveCount(
+      0,
+    );
+
     expect(await hostPid(), "the older host still runs").toBe(olderHost);
     expect(
       await scrubRunning(),
@@ -542,6 +552,16 @@ test("the update banner counts the jobs an update waits for", async ({
     const newerHost = await hostPid();
     expect(newerHost, "a host of the new build runs").not.toBe("0");
     expect(newerHost).not.toBe(olderHost);
+    // Without a reload, the history page loads the real history once the
+    // banner's poll sees the wait end: the scrub's row replaces the sentence.
+    await expect(
+      historyRows(historyPage).filter({ hasText: SCRUB_LABEL }).first(),
+    ).toBeVisible({ timeout: 30_000 });
+    await expect(
+      historyPage.getByText(
+        "History is unavailable until the LinuxIO update finishes.",
+      ),
+    ).toHaveCount(0);
   } finally {
     await speed(0);
   }

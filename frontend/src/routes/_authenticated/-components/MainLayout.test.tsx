@@ -57,6 +57,7 @@ vi.mock("./sidebar/useSidebar", () => ({
 vi.mock("./sidebar/useSidebarItems", () => ({
   useSidebarItems: () => [],
 }));
+vi.mock("./useAwayNotice", () => ({ useAwayNotice: () => undefined }));
 vi.mock("./app-update/useAppUpdateInfo", () => ({
   useAppUpdateInfo: () => ({ dismissUpdate: vi.fn(), updateInfo: null }),
 }));

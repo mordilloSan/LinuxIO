@@ -72,7 +72,7 @@ filesystems, covering pools created after install.
 | `btrfs/space-<uuid>` | warning | metadata is over 90% full with less than 1 GiB unallocated | space is reclaimed |
 | `btrfs/offline-<uuid>` | error or warning | a pool is found on disk but not mounted (error when disks are missing or the boot check refused to mount it, and then says why) | the pool is mounted |
 | `btrfs/resync-<uuid>` | warning, error after three failed resyncs | a pool that ran with a disk missing has all its disks again and is being resynced | the resync finished |
-| `btrfs/resynced-<uuid>` | info | a resync finished and the pool is whole again | dismissed, or the next resync starts |
+| `btrfs/resynced-<uuid>` | info | a resync finished and the pool is whole again, while the notification settings' *Pool resync* is *Also when a pool is whole again* (the default) | dismissed, or the next resync starts |
 
 Incomplete health data neither raises nor resolves; alerts of pools that no
 longer exist are dropped by the timer. Scrub start/cancel is on the banner;

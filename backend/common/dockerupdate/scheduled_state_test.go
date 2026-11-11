@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/moby/moby/api/types/container"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
 )
 
 func TestScheduledStandaloneCleanupFailurePreservesCurrentStatus(t *testing.T) {
@@ -32,6 +34,11 @@ func TestScheduledStandaloneCleanupFailurePreservesCurrentStatus(t *testing.T) {
 	if len(state.oldImageIDs) != 1 || state.oldImageIDs[0] != before.Image {
 		t.Fatalf("old image IDs = %v, want [%s]", state.oldImageIDs, before.Image)
 	}
+	// The replacement counts even though its cleanup failed: every_run's
+	// "nothing to update" depends on this count.
+	if state.updated != 1 {
+		t.Fatalf("replaced containers = %d, want 1", state.updated)
+	}
 
 	snapshot := ReadStatusSnapshot()
 	status, ok := snapshot.ForContainerName("web")
@@ -43,6 +50,35 @@ func TestScheduledStandaloneCleanupFailurePreservesCurrentStatus(t *testing.T) {
 	}
 	if _, ok := snapshot.ForContainer(before.ID); ok {
 		t.Fatal("old container status was retained")
+	}
+}
+
+func TestScheduledComposeVerifyCountsReplacedContainers(t *testing.T) {
+	withTempUpdateStatusPath(t)
+	useTempAlertStore(t)
+	state := newScheduledUpdateState(t.Context(), nil)
+	state.alertReport = alerts.ReportChanges
+	web := readyContainer("web-old", "sha256:web-old")
+	worker := readyContainer("worker", "sha256:worker")
+	worker.Name = "/worker"
+	newWeb := readyContainer("web-new", "sha256:web-new")
+	// Each container is inspected by name, then by ID until it is ready.
+	state.readiness = &sequenceReadinessClient{results: []container.InspectResponse{newWeb, newWeb, worker, worker}}
+	group := &scheduledComposeTarget{
+		target:   ComposeTarget{Name: "media", ConfigFiles: []string{"compose.yml"}},
+		services: []string{"web", "worker"},
+		before:   []container.InspectResponse{web, worker},
+	}
+
+	if err := state.verifyComposeGroup(group); err != nil {
+		t.Fatalf("verifyComposeGroup: %v", err)
+	}
+	// Only web got a new image; worker kept its own.
+	if state.updated != 1 || len(state.oldImageIDs) != 1 || state.oldImageIDs[0] != web.Image || len(state.errs) != 0 {
+		t.Fatalf("replaced = %d, old images %v, errors %v; want 1, [%s], none", state.updated, state.oldImageIDs, state.errs, web.Image)
+	}
+	if ids := alertIDs(t); len(ids) != 1 || ids[0] != "docker-update/updated-web" {
+		t.Fatalf("alerts = %v, want the one updated notice", ids)
 	}
 }
 

@@ -245,15 +245,23 @@ func Raise(ctx context.Context, obs Observation) error {
 	return err
 }
 
-// evictIndex picks the oldest dismissed alert, else the oldest alert. The
-// slice is sorted newest-first, so both are found from the end.
+// evictIndex picks the oldest dismissed alert, else the oldest alert of the
+// lowest severity present: a full store drops its notices, then its warnings,
+// before any error. The slice is sorted newest-first, so both are found from
+// the end.
 func evictIndex(alerts []Alert) int {
 	for i, alert := range slices.Backward(alerts) {
 		if alert.DismissedAt != nil {
 			return i
 		}
 	}
-	return len(alerts) - 1
+	evict := len(alerts) - 1
+	for i, alert := range slices.Backward(alerts) {
+		if severityRank[alert.Severity] < severityRank[alerts[evict].Severity] {
+			evict = i
+		}
+	}
+	return evict
 }
 
 // Resolve removes the record, finding it by the key as Raise normalises it. Resolving an absent alert is not an error.

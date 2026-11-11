@@ -62,15 +62,17 @@ func (b *dnfBackend) Read(ctx context.Context) (AutoUpdateState, error) {
 		return AutoUpdateState{}, err
 	}
 	support := b.support(config)
+	notify := readNotifyPolicy(b.host, b.service(), support.NotifyPolicies)
 	state := AutoUpdateState{
-		Backend:      b.Name(),
-		CanConfigure: b.providerInstalled(),
+		Backend:            b.Name(),
+		CanConfigure:       b.providerInstalled(),
+		FailuresUnreported: notify == AutoUpdateNotifyNever,
 		Options: AutoUpdateOptions{
 			DownloadOnly:    true,
 			Enabled:         false,
 			ExcludePackages: []string{},
 			Frequency:       "daily",
-			Notify:          readNotifyPolicy(b.host, b.service()),
+			Notify:          notify,
 			RebootPolicy:    "never",
 			Scope:           "all",
 		},
@@ -121,7 +123,7 @@ func (b *dnfBackend) support(config *ini.File) AutoUpdateOptionSupport {
 		DownloadOnly:    true,
 		ExcludePackages: true,
 		Frequencies:     []AutoUpdateFrequency{"hourly", "daily", "weekly"},
-		NotifyPolicies:  allNotifyPolicies,
+		NotifyPolicies:  resultOnlyNotifyPolicies,
 		RebootPolicies:  reboots,
 		Scopes:          []AutoUpdateScope{"security", "all"},
 	}

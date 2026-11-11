@@ -23,7 +23,7 @@ func routeBindings(m manager) apischema.BindingSet {
 		}),
 		apischema.Mutation("schedules.create", m.create, apischema.Privileged()),
 		apischema.Mutation("schedules.update", func(ctx context.Context, req apischema.ScheduleUpdateRequest) (apischema.ScheduleStatus, error) {
-			if err := m.change(ctx, req.ID, &req.Options, nil, false); err != nil {
+			if err := m.update(ctx, req); err != nil {
 				return apischema.ScheduleStatus{}, err
 			}
 			return m.get(ctx, req.ID)

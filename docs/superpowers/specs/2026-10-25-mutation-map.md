@@ -229,8 +229,8 @@ Added by the partition feature on 2026-10-25, after the rest of the map was trac
 | monitoring.maintain_database | call | prunes old history | daemon, one transaction | seconds | harmless | Q |
 | monitoring.check_database | call | runs an integrity check, changes nothing | daemon | seconds | harmless | R |
 | schedules.create | call | creates a scheduled script, disabled | files, systemd reload | seconds | half-done, recoverable | M |
-| schedules.update | call | rewrites a schedule | files, systemd | seconds | half-done: timer left stopped | M |
-| schedules.delete | call | removes a schedule | systemd, files | seconds | half-done; a repeat finishes | M |
+| schedules.update | call | rewrites a schedule; an update of only its `notify` choice writes `notifications.json` and no unit, script or definition, and is accepted while the script runs | files, systemd | seconds | half-done: timer left stopped | M |
+| schedules.delete | call | removes a schedule, clears its `notify` choice in `notifications.json` and resolves its `jobs/finished-<id>` notice; the frontend then refetches `alerts.list` | systemd, files | seconds | half-done; a repeat finishes | M |
 | schedules.enable | call | enables and starts its timer | files, systemd | seconds | half-done | M |
 | schedules.disable | call | stops and disables its timer | systemd, file | seconds | half-done | M |
 | schedules.run_now | call | runs the script now | systemd starts its oneshot service | <1s | reply lost (the script runs under systemd) | X |
@@ -261,7 +261,7 @@ Added by the partition feature on 2026-10-25, after the rest of the map was trac
 | alerts.dismiss | call | dismisses an alert | alert store | <1s | harmless | Q |
 | alerts.mark_seen | call | marks alerts seen | alert store | <1s | harmless | Q |
 | alerts.mark_all_seen | call | marks all alerts seen | alert store | <1s | harmless | Q |
-| alerts.set_notifications | call | email and webhook settings | file | <1s | harmless | Q |
+| alerts.set_notifications | call | notification settings: what each kind reports, the level-by-channel grid, email and webhook; the frontend then refetches `alerts.get_notifications` and `alerts.list` | file | <1s | harmless | Q |
 | alerts.test_notifications | call | sends a test email or webhook | SMTP, HTTP (15 s cap) | seconds | harmless | Q |
 | config.set | call | user settings, plus a Docker mount-order drop-in | file, drop-in, systemd reload | <1s | half-done: settings saved, drop-in not | M |
 | config.set_ui | call | UI preferences | file | <1s | harmless | Q |

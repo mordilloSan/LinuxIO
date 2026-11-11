@@ -90,6 +90,7 @@ Show 0 "Binaries removed"
 Show 2 "Removing configuration files..."
 rm -rf /etc/linuxio
 rm -f /etc/pam.d/linuxio
+rm -f /etc/needrestart/conf.d/linuxio.conf
 Show 0 "Configuration files removed"
 
 # ========== REMOVE RUNTIME FILES ==========

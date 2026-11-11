@@ -478,6 +478,92 @@ func TestResyncScrubsThenConvertsSoftly(t *testing.T) {
 	}
 }
 
+// storeResyncReport stores what a pool resync reports, as the settings page
+// would.
+func storeResyncReport(t *testing.T, report string) {
+	t.Helper()
+	if _, err := alerts.UpdateNotifications(t.Context(), func(n *alerts.NotificationSettings) error {
+		n.Report[alerts.KindResync] = report
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A pool that is whole again is reported under changes, the default, and not
+// under failures; either way the resync alert is resolved.
+func TestWholeAgainFollowsTheSetting(t *testing.T) {
+	for _, tc := range []struct {
+		report string
+		whole  bool
+	}{
+		{alerts.ReportChanges, true},
+		{alerts.ReportFailures, false},
+	} {
+		t.Run(tc.report, func(t *testing.T) {
+			stubKernel(t, raid1Kernel())
+			ctx := t.Context()
+			storeResyncReport(t, tc.report)
+			if err := updatePoolStates(ctx, func(s map[string]poolState) { s[dataUUID] = poolState{Generation: 9, Degraded: true} }); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := Resync(ctx, dataUUID, nil); err != nil {
+				t.Fatal(err)
+			}
+			got := alertKeys(t)
+			if severity, raised := got["resynced-"+dataUUID]; raised != tc.whole || raised && severity != alerts.SeverityInfo {
+				t.Fatalf("alerts = %v, want the resynced notice %v", got, tc.whole)
+			}
+			if _, raised := got["resync-"+dataUUID]; raised {
+				t.Fatalf("alerts = %v, want the resync alert resolved", got)
+			}
+		})
+	}
+}
+
+// A resync that fails its last attempt raises the same alert under failures as
+// under changes, and no resynced notice.
+func TestFailedResyncIgnoresTheSetting(t *testing.T) {
+	changes := failedResyncAlerts(t, alerts.ReportChanges)
+	failures := failedResyncAlerts(t, alerts.ReportFailures)
+	if !reflect.DeepEqual(failures, changes) {
+		t.Fatalf("failures raised %+v, changes raised %+v; want the same", failures, changes)
+	}
+}
+
+// failedResyncAlerts fails the last resync attempt of a pool under report and
+// returns the alerts it leaves, without their timestamps.
+func failedResyncAlerts(t *testing.T, report string) []alerts.Alert {
+	t.Helper()
+	k := raid1Kernel()
+	k.scrub = func(uint64) (scrubProgress, error) { return scrubProgress{}, unix.ECANCELED }
+	stubKernel(t, k)
+	ctx := t.Context()
+	storeResyncReport(t, report)
+	if err := updatePoolStates(ctx, func(s map[string]poolState) {
+		s[dataUUID] = poolState{Generation: 9, Degraded: true, ResyncFailures: maxResyncAttempts - 1}
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Resync(ctx, dataUUID, nil); err == nil {
+		t.Fatalf("%s: Resync succeeded, want the canceled scrub to fail it", report)
+	}
+	if got := alertKeys(t); got["resync-"+dataUUID] != alerts.SeverityError || got["resynced-"+dataUUID] != "" {
+		t.Fatalf("%s: alerts = %v, want the failed resync alert and no resynced notice", report, got)
+	}
+	doc, err := alerts.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raised []alerts.Alert
+	for _, a := range doc.Alerts {
+		raised = append(raised, alerts.Alert{ID: a.ID, Severity: a.Severity, Title: a.Title, Message: a.Message, Link: a.Link})
+	}
+	return raised
+}
+
 func TestResyncRefusesWhileADiskIsMissing(t *testing.T) {
 	k := raid1Kernel()
 	k.devices[2].path = ""

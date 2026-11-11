@@ -367,10 +367,7 @@ const linuxio = {
     start: defineMutation("power", "start", { kind: "none" }),
   },
   schedules: {
-    create: defineMutation("schedules", "create", {
-      kind: "field",
-      field: "options",
-    }),
+    create: defineMutation("schedules", "create", { kind: "object" }),
     delete: defineMutation("schedules", "delete", {
       kind: "field",
       field: "id",

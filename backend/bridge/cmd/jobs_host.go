@@ -122,6 +122,7 @@ func serveJobsHost(ln *net.UnixListener, runtimeDir, stateDir string) error {
 	if uid == 0 {
 		cfg.Alert = alerts.Raise
 		cfg.ResolveAlert = alerts.Resolve
+		cfg.Notifications = alerts.NotificationsOrDefaults // read when a long job completes
 		cfg.Handlers = userHandlers
 		// Every admin sees the scheduled runs; other users do not.
 		cfg.Scheduled = jobs.NewScheduledStore()

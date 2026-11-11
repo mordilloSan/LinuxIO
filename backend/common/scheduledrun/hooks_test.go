@@ -285,6 +285,7 @@ func TestEndAlertsOnlyForScripts(t *testing.T) {
 	if err := h.End(t.Context(), testUnit, testInvocation, killed); err != nil {
 		t.Fatal(err)
 	}
+	want.Severity = alerts.SeverityWarning
 	want.Title = "Nightly backup was interrupted"
 	want.Message = "The system stopped before the run finished."
 	if len(h.alerts) != 1 || h.alerts[0] != want {
@@ -313,6 +314,201 @@ func TestEndAlertsOnlyForScripts(t *testing.T) {
 		if len(h.alerts) != 0 {
 			t.Errorf("%s raised %+v", tt.name, h.alerts)
 		}
+	}
+}
+
+// reportingScripts is the settings in which scheduled scripts report report,
+// and the schedules in scripts what they name.
+func reportingScripts(report string, scripts map[string]string) func() alerts.NotificationSettings {
+	return func() alerts.NotificationSettings {
+		n := alerts.DefaultNotifications()
+		n.Report[alerts.KindScripts] = report
+		n.Scripts = scripts
+		return n
+	}
+}
+
+// completeRun begins and ends a successful run of testUnit with invocation,
+// which takes ran.
+func completeRun(t *testing.T, h *fakeHooks, invocation string, ran time.Duration) {
+	t.Helper()
+	h.Now = func() time.Time { return testNow }
+	mustBegin(t, h, testUnit, invocation)
+	h.Now = func() time.Time { return testNow.Add(ran) }
+	if err := h.End(t.Context(), testUnit, invocation, Result{"success", "exited", "0"}); err != nil {
+		t.Fatalf("End: %v", err)
+	}
+}
+
+func TestEndReportsEveryRunWhenAsked(t *testing.T) {
+	h := newHooks(t)
+	h.Settings = reportingScripts(alerts.ReportEveryRun, nil)
+	completeRun(t, h, testInvocation, 12*time.Minute)
+	want := alerts.Observation{
+		Source:       "jobs",
+		Key:          "finished-" + testScheduleID,
+		Severity:     alerts.SeverityInfo,
+		Title:        "Nightly backup finished",
+		Message:      "It ran for 12 min.",
+		Link:         testLink,
+		OccurrenceID: testRunID,
+	}
+	if len(h.alerts) != 1 || h.alerts[0] != want {
+		t.Errorf("alerts = %+v, want [%+v]", h.alerts, want)
+	}
+
+	h = newHooks(t)
+	h.Settings = reportingScripts(alerts.ReportFailures, nil)
+	completeRun(t, h, testInvocation, 12*time.Minute)
+	if len(h.alerts) != 0 {
+		t.Errorf("with failures only a completed script raised %+v", h.alerts)
+	}
+
+	// Each run is a new occurrence of the schedule's one notice.
+	path := alerts.Path
+	alerts.Path = filepath.Join(t.TempDir(), "alerts.json")
+	t.Cleanup(func() { alerts.Path = path })
+	const (
+		secondInvocation = "fedcba0987654321fedcba0987654321"
+		secondRunID      = "fedcba09-8765-4321-fedc-ba0987654321"
+	)
+	h = newHooks(t)
+	h.Settings = reportingScripts(alerts.ReportEveryRun, nil)
+	h.Alert = alerts.Raise
+	completeRun(t, h, testInvocation, time.Minute)
+	if err := alerts.MarkSeen(t.Context(), "1000", nil); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := alerts.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Alerts) != 1 || doc.Alerts[0].Seen["1000"] != 1 {
+		t.Fatalf("after the first run alerts = %+v, want one notice seen once", doc.Alerts)
+	}
+	completeRun(t, h, secondInvocation, time.Minute)
+	if doc, err = alerts.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if len(doc.Alerts) != 1 {
+		t.Fatalf("alerts = %+v, want the schedule's one notice", doc.Alerts)
+	}
+	a := doc.Alerts[0]
+	if a.ID != "jobs/finished-"+testScheduleID || a.OccurrenceID != secondRunID || a.OccurrenceCount != 2 {
+		t.Errorf("notice = %s, occurrence %s of %d; want jobs/finished-%s, occurrence %s of 2", a.ID, a.OccurrenceID, a.OccurrenceCount, testScheduleID, secondRunID)
+	}
+	if a.Seen["1000"] >= a.OccurrenceCount {
+		t.Errorf("seen %d of %d occurrences; want the newer run unseen", a.Seen["1000"], a.OccurrenceCount)
+	}
+}
+
+func TestEndFollowsTheScriptsOverride(t *testing.T) {
+	for _, tc := range []struct {
+		name, report, override string
+		notices                int
+	}{
+		{"override asks for every run", alerts.ReportFailures, alerts.ReportEveryRun, 1},
+		{"override asks for failures", alerts.ReportEveryRun, alerts.ReportFailures, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHooks(t)
+			h.Settings = reportingScripts(tc.report, map[string]string{testScheduleID: tc.override})
+			completeRun(t, h, testInvocation, time.Minute)
+			if len(h.alerts) != tc.notices {
+				t.Fatalf("alerts = %+v, want %d notices", h.alerts, tc.notices)
+			}
+			if tc.notices == 1 && h.alerts[0].Title != "Nightly backup finished" {
+				t.Errorf("notice = %+v, want one titled %q", h.alerts[0], "Nightly backup finished")
+			}
+		})
+	}
+}
+
+// A run cut short by a shutdown or a reboot is a warning; one whose end hook
+// never reported (a crash) is a failure in effect, an alert.
+func TestInterruptedScriptLevelFollowsItsReason(t *testing.T) {
+	want := alerts.Observation{
+		Source:   "jobs",
+		Key:      testRunID,
+		Severity: alerts.SeverityWarning,
+		Title:    "Nightly backup was interrupted",
+		Message:  "The system stopped before the run finished.",
+		Link:     testLink,
+	}
+	t.Run("by a shutdown, in End", func(t *testing.T) {
+		h := newHooks(t)
+		h.stopping = true
+		mustBegin(t, h, testUnit, testInvocation)
+		if err := h.End(t.Context(), testUnit, testInvocation, Result{"signal", "killed", "TERM"}); err != nil {
+			t.Fatal(err)
+		}
+		if len(h.alerts) != 1 || h.alerts[0] != want {
+			t.Errorf("alerts = %+v, want [%+v]", h.alerts, want)
+		}
+	})
+	t.Run("by a reboot, in Liveness", func(t *testing.T) {
+		h := newHooks(t)
+		mustBegin(t, h, testUnit, testInvocation)
+		if _, err := liveness(h, "a-later-boot", notAsked(t)).Running(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		if len(h.alerts) != 1 || h.alerts[0] != want {
+			t.Errorf("alerts = %+v, want [%+v]", h.alerts, want)
+		}
+	})
+	t.Run("by a crash, in Liveness", func(t *testing.T) {
+		h := newHooks(t)
+		mustBegin(t, h, testUnit, testInvocation)
+		gone := func(context.Context, string, string) (bool, error) { return false, nil }
+		if _, err := liveness(h, testBoot, gone).Running(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		crashed := want
+		crashed.Severity = alerts.SeverityError
+		crashed.Message = "The run ended without reporting its result."
+		if len(h.alerts) != 1 || h.alerts[0] != crashed {
+			t.Errorf("alerts = %+v, want [%+v]", h.alerts, crashed)
+		}
+	})
+}
+
+func TestCompletedSnapshotUnitRaisesNothingHere(t *testing.T) {
+	everyRun := func() alerts.NotificationSettings {
+		n := alerts.DefaultNotifications()
+		for _, kind := range []string{alerts.KindScripts, alerts.KindSnapshots, alerts.KindDockerUpdates} {
+			n.Report[kind] = alerts.ReportEveryRun
+		}
+		n.Report[alerts.KindResync] = alerts.ReportChanges
+		return n
+	}
+	// Their own sources report these runs.
+	for _, unit := range []string{
+		"linuxio-btrfs-snapshot.service",
+		"linuxio-docker-update.service",
+		"linuxio-btrfs-resync@" + testScheduleID + ".service",
+	} {
+		h := newHooks(t)
+		h.Settings = everyRun
+		mustBegin(t, h, unit, testInvocation)
+		if err := h.End(t.Context(), unit, testInvocation, Result{"success", "exited", "0"}); err != nil {
+			t.Fatalf("End %s: %v", unit, err)
+		}
+		if len(h.alerts) != 0 {
+			t.Errorf("a completed run of %s raised %+v", unit, h.alerts)
+		}
+	}
+}
+
+func TestDefaultHooksReadTheNotificationSettings(t *testing.T) {
+	path := alerts.Path
+	alerts.Path = filepath.Join(t.TempDir(), "alerts.json")
+	t.Cleanup(func() { alerts.Path = path })
+	settings := `{"report":{"scheduled_scripts":"every_run"}}`
+	if err := os.WriteFile(filepath.Join(filepath.Dir(alerts.Path), "notifications.json"), []byte(settings), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := DefaultHooks().Settings().ReportFor(alerts.KindScripts); got != alerts.ReportEveryRun {
+		t.Errorf("scripts report = %q, want the stored every_run", got)
 	}
 }
 

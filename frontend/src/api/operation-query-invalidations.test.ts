@@ -274,6 +274,14 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
     }
   });
 
+  it("refreshes the bell after the notification settings are saved", () => {
+    // The levels grid decides which notices the bell lists and counts.
+    expect(OPERATION_QUERY_INVALIDATIONS["alerts.set_notifications"]).toEqual([
+      ["linuxio", "alerts", "get_notifications"],
+      ["linuxio", "alerts", "list"],
+    ]);
+  });
+
   it("refreshes live SMART records after a daemon refresh", () => {
     expect(OPERATION_QUERY_INVALIDATIONS["monitoring.refresh_smart"]).toEqual([
       ["linuxio", "monitoring", "get_live"],
@@ -318,6 +326,9 @@ const ALLOWED_INVALIDATE_FILES = new Set([
   // Shared mutation lifecycle and recovered Task terminal handling.
   "api/call-react-query.ts",
   "tasks/engine/useRecoveredTasks.ts",
+  // The end of an update's wait is a state change, not a mutation: it refetches
+  // the history that was answered empty meanwhile.
+  "routes/_authenticated/-components/app-update/useRefreshHistoryAfterUpdate.ts",
   // File Browser owns path-precise cache invalidation that cannot be expressed
   // as a static operation manifest entry.
   "routes/_authenticated/filebrowser/-hooks/useFileBrowserEditorActions.ts",
@@ -340,7 +351,12 @@ describe("schedule invalidations", () => {
       "schedules.run_now",
       "schedules.stop",
     ])
-      expect(OPERATION_QUERY_INVALIDATIONS[route]).toEqual(expected);
+      expect(OPERATION_QUERY_INVALIDATIONS[route]).toEqual(
+        // The delete also resolves the schedule's "finished" notice.
+        route === "schedules.delete"
+          ? [...expected, ["linuxio", "alerts", "list"]]
+          : expected,
+      );
   });
 });
 

@@ -43,7 +43,7 @@ type Kind struct {
 	Label    string
 	Instance string // schedule ID or pool UUID; "" for a single unit
 	Link     string // the page that owns it
-	Alerts   bool   // a failed or interrupted run raises a jobs alert
+	Alerts   bool   // a failed or interrupted run raises a jobs alert, a completed one a notice when asked
 }
 
 // KindOf names the scheduled work unit runs. scheduleDir holds the schedule

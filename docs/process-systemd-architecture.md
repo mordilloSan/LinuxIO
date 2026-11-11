@@ -317,17 +317,66 @@ of a host job answer `503` after waiting 10 s
 refused hello does not count as a connected bridge, so the older host exits
 60 s after its last job and its last bridge of its own build; the bridge's next
 attempt, at most 30 s later, finds the socket free and systemd starts the new
-binary. One thing outside LinuxIO does restart an older host: on Ubuntu,
-needrestart, whose apt hook runs after a dpkg run, restarts every
-`linuxio-jobs@<uid>.service` still running a replaced binary, which interrupts
-its jobs (seen once in the test VM, during an unattended-upgrades run;
-[jobs.md 3.9](./TODO/jobs.md), finding 2).
+binary.
 
 From then on the bridge relays every Mutation stream over that connection and
 serves `tasks.*` for host jobs (see [API Contract](./api-contract.md#tasks-and-jobs)).
 At logout the bridge closes the connection; the host keeps running its jobs and
 exits 60 s after its last bridge left and its last job ended. The next login of
 the same uid reconnects to the same host if it is still up.
+
+**needrestart.** On Ubuntu, needrestart, whose apt hook runs after every dpkg
+run, restarts each service still running a replaced binary; for an older host
+that interrupts its jobs (seen once in the test VM, during an unattended-upgrades
+run; [jobs.md 3.9](./TODO/jobs.md), finding 2). Where `/etc/needrestart`
+exists the installer therefore installs
+`packaging/etc/needrestart/conf.d/linuxio.conf` as
+`/etc/needrestart/conf.d/linuxio.conf`, after the release binaries are
+verified and before it replaces any of them. Each of its lines adds one
+regular expression with the value 0 ("do not restart") to needrestart's
+`$nrconf{override_rc}` and keeps the distribution's entries:
+`linuxio-jobs@<uid>.service`, the timer-run units `linuxio-schedule-*`,
+`linuxio-btrfs-snapshot`, `linuxio-btrfs-resync@*` and
+`linuxio-docker-update`, and the updater's `linuxio-updater-*` unit.
+needrestart then lists them under "Service restarts being deferred" instead of
+restarting them. The daemons the installer restarts itself (`linuxio-webserver`,
+`linuxio-monitoring`, `linuxio-indexer`, `linuxio-auth`) are not listed, and
+needrestart restarts them as before. The uninstaller removes the file.
+needrestart evaluates the file as Perl, as root, and a release install fetches
+it from `main` without a checksum; a file needrestart cannot load stops all its
+restarts. So the installer installs it only when every line is blank, a
+comment, or one such entry whose pattern has, token by token, the shipped form
+(`^linuxio-`, lowercase words joined by `-`, at most one `@` or `-` followed
+by `\d+` or `.+`, then `\.service$`), never for one of the four always-on
+daemons, and, where Perl is present, only when the file compiles under
+`strict` as needrestart loads it (`needrestart_override_valid`). Any other
+file is not installed, an installed copy stays as it is, and the installer
+prints a notice.
+
+In the test VM, against needrestart 3.11-1ubuntu2 on Ubuntu 26.04
+([jobs.md 3.9](./TODO/jobs.md), runs 4 and 5): in list mode needrestart put
+`linuxio-jobs@0.service` under "Service restarts being deferred" and
+`linuxio-monitoring.service` under "Services to be restarted"; in automatic
+mode it deferred the job host, whose `MainPID` stayed, and restarted
+`linuxio-monitoring.service`, which got a new one. That the other five
+expressions match their units and no daemon, that the content check refuses
+other files, and that the uninstaller removes the file is covered by the
+installer's fixture tests, not seen in the VM.
+
+An in-app update runs the installer in a `linuxio-updater-<n>.service` unit
+with `ProtectSystem=full`, which keeps `/etc` read-only except for the unit's
+writable paths; the bridge installed *before* the update starts that unit with
+its own list (`updaterWritablePaths` in `backend/bridge/handlers/appupdate`).
+The list has `/etc/needrestart/conf.d` as an optional entry (`-` in
+`ReadWritePaths`: a system without it is unaffected, and the updater creates
+nothing there), so the first in-app update launched by a build with that entry
+installs the file (where `conf.d` exists, as Ubuntu's package ships it). An
+update launched by an earlier build, which includes every release up to now,
+cannot write it: the installer then prints a notice and the install goes on;
+a run of the installer from a terminal, or the next in-app update, which the
+newly installed bridge launches, installs it. That is read from the source and
+the installer's fixture tests, which simulate a read-only directory; no in-app
+update was run.
 
 ### After login — the connection becomes the yamux transport
 
@@ -370,6 +419,7 @@ The `Makefile` (recipes in `mk/go.mk` and `mk/auth.mk`) produces eight release a
 - tmpfiles → `/usr/lib/tmpfiles.d/linuxio.conf`
 - PAM stack → `/etc/pam.d/linuxio`
 - config → `/etc/linuxio/`
+- needrestart override → `/etc/needrestart/conf.d/linuxio.conf`, only where `/etc/needrestart` exists (see the **needrestart.** paragraph in "Login and jobs — the bridge connects to its job host")
 
 ## Managing the Stack (`linuxio` CLI)
 
@@ -411,6 +461,7 @@ follow the [Production Diagnostic Data Policy](./production-diagnostics.md).
 |-----------|------|
 | Systemd units | `packaging/systemd/*.{target,socket,service}` |
 | libvirt QEMU hook (bridged VM forwarding past Docker's FORWARD DROP) | `packaging/libvirt/hooks/qemu.d/linuxio-bridge-netfilter` → `/etc/libvirt/hooks/qemu.d/` |
+| needrestart override (apt's needrestart run defers the job hosts and the timer-run units) | `packaging/etc/needrestart/conf.d/linuxio.conf` → `/etc/needrestart/conf.d/`, only where `/etc/needrestart` exists |
 | Managed TLS certificate | `/var/lib/linuxio/webserver/certificates/0-self-signed.{cert,key}` |
 | Install script | `packaging/scripts/install-linuxio-binaries.sh` (`--local` for a checkout); `packaging/scripts/localinstall.sh` is a wrapper for it |
 | CLI (commands) | `backend/cli/` (`main.go` dispatch, `services.go`, `logs.go`, `verbose.go`, `version.go`) |

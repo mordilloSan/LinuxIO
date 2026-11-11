@@ -5,9 +5,10 @@ import {
   createRouter,
   RouterContextProvider,
 } from "@tanstack/react-router";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { toast, Toaster } from "sonner";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Alert } from "@/api";
@@ -116,6 +117,7 @@ vi.mock("@/components/ui/AppTooltip", () => ({
 }));
 
 const { NotificationsBell } = await import("./NotificationsBell");
+const { openNotificationsPanel } = await import("./notificationsPanel");
 
 // Alert and scheduled-run rows link to their pages through the real router
 // link, which needs a router holding those pages.
@@ -410,5 +412,96 @@ describe("NotificationsBell history link", () => {
     expect(
       screen.queryByRole("dialog", { name: "Notifications" }),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("NotificationsBell opened from elsewhere", () => {
+  const trigger = () => screen.getByRole("button", { name: "Notifications" });
+  const tray = () => screen.queryByRole("dialog", { name: "Notifications" });
+
+  beforeEach(() => {
+    state.transfers = [];
+    useAlertsMock.mockReturnValue(noAlerts());
+  });
+
+  it("opens the tray when openNotificationsPanel() is called", async () => {
+    useAlertsMock.mockReturnValue({
+      ...noAlerts(),
+      alerts: [alertFixture()],
+      unseen: 1,
+    });
+    renderBell();
+    expect(tray()).not.toBeInTheDocument();
+
+    act(() => openNotificationsPanel());
+
+    expect(
+      await screen.findByRole("dialog", { name: "Notifications" }),
+    ).toBeInTheDocument();
+    expect(trigger()).toHaveAttribute("aria-expanded", "true");
+    expect(
+      screen.getByText("Automatic updates installed 3 packages"),
+    ).toBeInTheDocument();
+    // The tray reads its clock when it opens, as it does for a click.
+    expect(screen.getByText(/(ago|just now)$/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "History" })).toBeInTheDocument();
+  });
+
+  it("closes a tray opened that way from its trigger", async () => {
+    renderBell();
+    act(() => openNotificationsPanel());
+    await screen.findByRole("dialog", { name: "Notifications" });
+
+    await userEvent.click(trigger());
+
+    expect(tray()).not.toBeInTheDocument();
+    expect(trigger()).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("does not answer a request made before it was mounted", () => {
+    act(() => openNotificationsPanel());
+
+    renderBell();
+
+    expect(tray()).not.toBeInTheDocument();
+    expect(trigger()).not.toHaveFocus();
+  });
+
+  it("puts focus on its trigger, beside the tray, as a click leaves it", async () => {
+    render(<button type="button">Elsewhere</button>);
+    renderBell();
+    screen.getByRole("button", { name: "Elsewhere" }).focus();
+
+    act(() => openNotificationsPanel());
+
+    await screen.findByRole("dialog", { name: "Notifications" });
+    expect(trigger()).toHaveFocus();
+  });
+
+  it("takes focus from a toast's Show from the keyboard, past the toaster's own focus return", async () => {
+    render(
+      <>
+        <button type="button">Elsewhere</button>
+        <Toaster />
+      </>,
+    );
+    renderBell();
+    screen.getByRole("button", { name: "Elsewhere" }).focus();
+    act(() => {
+      toast("While you were away: 1 new notification", {
+        action: { label: "Show", onClick: () => openNotificationsPanel() },
+      });
+    });
+    const show = await screen.findByRole("button", { name: "Show" });
+    // A keyboard user reaches the toast; the toaster notes where they came from.
+    act(() => show.focus());
+
+    await userEvent.keyboard("{Enter}");
+
+    await screen.findByRole("dialog", { name: "Notifications" });
+    expect(trigger()).toHaveFocus();
+    act(() => {
+      toast.dismiss();
+    });
   });
 });

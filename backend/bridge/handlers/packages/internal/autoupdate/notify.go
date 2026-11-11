@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"regexp"
+	"slices"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
@@ -18,8 +19,14 @@ const (
 )
 
 var (
-	allNotifyPolicies = []AutoUpdateNotify{AutoUpdateNotifyNever, AutoUpdateNotifyOnFailure, AutoUpdateNotifyOnChange, AutoUpdateNotifyAlways}
-	notifyPolicyRe    = regexp.MustCompile(`--policy (\S+)`)
+	// allNotifyPolicies are the policies a drop-in can name. "never" is no
+	// drop-in; no backend offers it, since failures are always reported, but
+	// it is still read and saved: an older host has it stored.
+	allNotifyPolicies = []AutoUpdateNotify{AutoUpdateNotifyOnFailure, AutoUpdateNotifyOnChange, AutoUpdateNotifyAlways}
+	// resultOnlyNotifyPolicies are offered where only the service result is
+	// known (DNF, Mint): a run that installed something looks like any other.
+	resultOnlyNotifyPolicies = []AutoUpdateNotify{AutoUpdateNotifyOnFailure, AutoUpdateNotifyAlways}
+	notifyPolicyRe           = regexp.MustCompile(`--policy (\S+)`)
 )
 
 func notifyDropInPath(service string) string {
@@ -44,9 +51,13 @@ func writeNotifyDropIn(host backendHost, service, provider string, policy AutoUp
 	return nil
 }
 
-// readNotifyPolicy reads the policy back from disk. Anything missing or
-// unrecognised is "never": the drop-in is the authority.
-func readNotifyPolicy(host backendHost, service string) AutoUpdateNotify {
+// readNotifyPolicy reads the policy back from disk for a backend that offers
+// offered. Anything missing or unrecognised is "never": the drop-in is the
+// authority. An on_change the backend does not offer, which an older build
+// wrote where only the service result is known, reads as on_failure, which is
+// what it runs as there; any other policy reads as stored, so a save cannot
+// quietly narrow it.
+func readNotifyPolicy(host backendHost, service string, offered []AutoUpdateNotify) AutoUpdateNotify {
 	data, err := host.readFile(notifyDropInPath(service))
 	if err != nil {
 		return AutoUpdateNotifyNever
@@ -55,10 +66,11 @@ func readNotifyPolicy(host backendHost, service string) AutoUpdateNotify {
 	if m == nil {
 		return AutoUpdateNotifyNever
 	}
-	for _, p := range allNotifyPolicies {
-		if string(m[1]) == string(p) && p != AutoUpdateNotifyNever {
-			return p
-		}
+	switch policy := AutoUpdateNotify(m[1]); {
+	case policy == AutoUpdateNotifyOnChange && !slices.Contains(offered, policy):
+		return AutoUpdateNotifyOnFailure
+	case slices.Contains(allNotifyPolicies, policy):
+		return policy
 	}
 	return AutoUpdateNotifyNever
 }

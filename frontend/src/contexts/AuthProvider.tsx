@@ -31,6 +31,7 @@ import {
   type AuthState,
   type AuthUser,
 } from "@/contexts/AuthContext";
+import { clearFreshSignIn, markFreshSignIn } from "@/utils/freshSignIn";
 import { redirectToSignIn } from "@/utils/navigation";
 import { setSigninNotice } from "@/utils/signinNotice";
 
@@ -216,6 +217,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         /* ignore */
       }
+      clearFreshSignIn();
       if (broadcast) {
         try {
           localStorage.setItem(broadcast, String(Date.now()));
@@ -339,6 +341,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         console.error("Failed to store user info:", error);
       }
+
+      // The shell says once what happened while the user was away; a page
+      // reload in the same session is no fresh sign-in.
+      markFreshSignIn();
 
       const user: AuthUser = { id: username, name: username };
       authGeneration.current += 1;

@@ -12,6 +12,8 @@ separate. LinuxIO does not install a host-wide frontend configuration file.
 | `/var/lib/linuxio/indexer/indexer.db` | `root:root`; persistent rebuildable cache | SQLite index data; `-wal` and `-shm` sidecars may appear beside it. |
 | `/run/linuxio/indexer.sock` | `root:root`, mode `0600`; recreated by systemd | Root-only Unix HTTP/SSE API socket. |
 | `/var/lib/linuxio/alerts.json` | `root:root` `0600`; persistent | Alert records; `alerts.json.lock` sits beside it. |
+| `/var/lib/linuxio/notifications.json` | `root:root` `0600`; persistent, replaced atomically under `notifications.json.lock` | Notification settings, including the SMTP password ([Alerts](./alerts.md#notification-settings)). |
+| `/var/lib/linuxio/notifications.json.unreadable` | `root:root` `0600`; written only when a settings-page save replaces a `notifications.json` that does not parse, replacing an older copy; removed by hand | A copy of that unparsable file, which may hold the only copy of the SMTP password, the webhook URL and the schedules' choices. |
 
 The config API writes only the canonical YAML atomically. The service's only
 writable `/etc` path is `/etc/linuxio/indexer`; index data is written only

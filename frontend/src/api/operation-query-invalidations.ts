@@ -206,7 +206,8 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
 
   "schedules.create": SCHEDULE_KEYS,
   "schedules.update": SCHEDULE_KEYS,
-  "schedules.delete": SCHEDULE_KEYS,
+  // Deleting a schedule resolves its "finished" notice.
+  "schedules.delete": [...SCHEDULE_KEYS, endpointQueryPrefix("alerts.list")],
   "schedules.enable": SCHEDULE_KEYS,
   "schedules.disable": SCHEDULE_KEYS,
   "schedules.run_now": SCHEDULE_KEYS,
@@ -216,7 +217,11 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "alerts.mark_seen": [],
   "alerts.mark_all_seen": [],
   "alerts.dismiss": [],
-  "alerts.set_notifications": [endpointQueryPrefix("alerts.get_notifications")],
+  // The levels grid decides which notices the bell lists and counts.
+  "alerts.set_notifications": [
+    endpointQueryPrefix("alerts.get_notifications"),
+    endpointQueryPrefix("alerts.list"),
+  ],
   "alerts.test_notifications": [],
 
   "network.set_ipv4": [

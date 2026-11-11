@@ -234,6 +234,7 @@ export interface AutoUpdateState {
   available_origins?: AutoUpdateOrigin[];
   backend: AutoUpdateBackend;
   can_configure: boolean;
+  failures_unreported?: boolean;
   notes?: string[];
   options: AutoUpdateOptions;
   support: AutoUpdateOptionSupport;
@@ -745,6 +746,7 @@ export interface ConfigAssistantPayload {
 export interface ConfigDismissalsPayload {
   uncleanShutdownBootId?: string;
   failedLoginAlertId?: string;
+  historySeenAt?: string;
 }
 
 export interface ConfigDockAccentGradient {
@@ -1159,6 +1161,7 @@ export interface DiskPowerState {
 export interface Dismissals {
   failedLoginAlertId?: string;
   uncleanShutdownBootId?: string;
+  historySeenAt?: string;
 }
 
 export type DockTileColors = "accent" | "mono" | "neutral" | "vibrant";
@@ -2422,12 +2425,20 @@ export interface NetworkInterface {
   type: string;
 }
 
+export interface NotificationChannels {
+  browser: boolean;
+  email: boolean;
+  webhook: boolean;
+}
+
 export interface NotificationSettings {
   dockerUpdates: DockerUpdateNotify;
   dockerUpdatesAvailable: boolean;
   emailFrom: string;
   emailTo: string[];
+  levels?: Record<string, NotificationChannels>;
   minSeverity: string;
+  report?: Record<string, string>;
   smtpHost: string;
   smtpPassword?: string;
   smtpPort: number;
@@ -2440,7 +2451,10 @@ export interface NotificationSettingsView {
   dockerUpdatesAvailable: boolean;
   emailFrom: string;
   emailTo: string[];
+  levels: Record<string, NotificationChannels>;
   minSeverity: string;
+  report: Record<string, string>;
+  settingsUnreadable?: boolean;
   smtpHost: string;
   smtpPasswordSet: boolean;
   smtpPort: number;
@@ -2676,6 +2690,7 @@ export interface SambaShare {
 
 export interface ScheduleCreateRequest {
   options: ScheduleOptions;
+  notify?: string;
 }
 
 export interface ScheduleDefinition {
@@ -2702,6 +2717,7 @@ export interface ScheduleOptions {
 
 export interface ScheduleStatus {
   definition: ScheduleDefinition;
+  notify: string;
   unit_name: string;
   active_state: string;
   result: string;
@@ -2722,6 +2738,7 @@ export interface ScheduleStopRequest {
 export interface ScheduleUpdateRequest {
   id: string;
   options: ScheduleOptions;
+  notify?: string;
 }
 
 export interface SchedulesListResult {
@@ -4297,7 +4314,7 @@ export interface LinuxIOSchema {
 
   schedules: {
     create: {
-      input: [options: ScheduleOptions];
+      input: [request: ScheduleCreateRequest];
       request: ScheduleCreateRequest;
       result: ScheduleStatus;
     };

@@ -1,5 +1,5 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
-import { type CSSProperties, useState } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 
 import { call, linuxio, type TaskHistoryEntry } from "@/api";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
@@ -13,6 +13,8 @@ import AppRouterLinkButton from "@/components/ui/AppRouterLinkButton";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
+import { useConfig } from "@/hooks/useConfig";
+import { useJobHostStatus } from "@/routes/_authenticated/-components/app-update/useJobHostStatus";
 import { isScheduledRun, scheduledRunLink } from "@/tasks/scheduledRuns";
 import {
   taskEndedAt,
@@ -125,6 +127,8 @@ interface Props {
 }
 
 export default function HistoryPage({ selected, onSelectedChange }: Props) {
+  const { updatePending } = useJobHostStatus();
+  const { updateConfig } = useConfig();
   const query = useInfiniteQuery({
     queryKey: [...linuxio.tasks.history({}).queryKey, "pages"],
     initialPageParam: undefined as string | undefined,
@@ -141,6 +145,20 @@ export default function HistoryPage({ selected, onSelectedChange }: Props) {
     (entry) => !outcome || entry.task.state === outcome,
   );
   const selectedEntry = entries?.find((entry) => entry.task.id === selected);
+  // While an update waits the job service answers with no entries at all.
+  const unavailable = updatePending && entries?.length === 0;
+
+  // Seeing the history is looking at it: the sign-in notice then counts only
+  // the jobs that end after this visit. Only a loaded history with entries in
+  // it, and no update hiding it, has been seen; that is stored once a visit.
+  const historyShown =
+    query.isSuccess && !updatePending && (entries?.length ?? 0) > 0;
+  const storedSeenAtRef = useRef(false);
+  useEffect(() => {
+    if (!historyShown || storedSeenAtRef.current) return;
+    storedSeenAtRef.current = true;
+    updateConfig({ dismissals: { historySeenAt: new Date().toISOString() } });
+  }, [historyShown, updateConfig]);
 
   return (
     // Fills the route's content area like the logs page does: a percentage
@@ -196,9 +214,11 @@ export default function HistoryPage({ selected, onSelectedChange }: Props) {
               data={visible}
               density="dense"
               emptyMessage={
-                entries.length === 0
-                  ? "Nothing has ended yet."
-                  : "No matching jobs."
+                entries.length > 0
+                  ? "No matching jobs."
+                  : unavailable
+                    ? "History is unavailable until the LinuxIO update finishes."
+                    : "Nothing has ended yet."
               }
               fillAvailable
               getRowId={(entry) => entry.task.id}
@@ -220,6 +240,14 @@ export default function HistoryPage({ selected, onSelectedChange }: Props) {
       )}
       {selectedEntry && (
         <Details entry={selectedEntry} onClose={() => onSelectedChange(null)} />
+      )}
+      {/* An alert links to its job, which may have left the first page. */}
+      {selected && entries && !selectedEntry && !unavailable && (
+        <AppAlert severity="info">
+          {query.hasNextPage
+            ? "This job is not among the loaded entries. Load older to look for it."
+            : "This job is not among the loaded entries."}
+        </AppAlert>
       )}
     </div>
   );

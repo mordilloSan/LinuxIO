@@ -1,8 +1,115 @@
 package autoupdate
 
 import (
+	"slices"
 	"testing"
 )
+
+// installedBackend is a provider's backend on a fake host where it is
+// installed, with the host's files to see what Apply wrote.
+type installedBackend struct {
+	name    string
+	service string // the upgrade service the notify drop-in belongs to
+	backend UpdateBackend
+	files   map[string][]byte
+}
+
+func installedBackends() []installedBackend {
+	apt, aptHost := newFakeAutoUpdateHost()
+	apt.files["/usr/bin/unattended-upgrades"] = []byte{}
+	apt.units["apt-daily.timer"], apt.units["apt-daily-upgrade.timer"] = "enabled", "enabled"
+	mint, mintHost := newFakeAutoUpdateHost()
+	installMint(mint)
+	dnf4Host, dnf5Host := newFakeDNFHost(), newFakeDNFHost()
+	dnf4Host.installTimer("dnf-automatic.timer")
+	dnf5Host.installTimer("dnf5-automatic.timer")
+	return []installedBackend{
+		{name: "apt", service: aptUpgradeService, backend: &aptBackend{host: aptHost, flavor: aptDebian}, files: apt.files},
+		{name: "mint", service: mintUpgradeService, backend: &mintBackend{host: mintHost}, files: mint.files},
+		{name: "dnf4", service: "dnf-automatic.service", backend: newDNFBackend(dnf4Host.host(), dnf4), files: dnf4Host.files},
+		{name: "dnf5", service: "dnf5-automatic.service", backend: newDNFBackend(dnf5Host.host(), dnf5), files: dnf5Host.files},
+	}
+}
+
+func TestOfferedPoliciesHaveNoNever(t *testing.T) {
+	// Only unattended-upgrades says what a run installed; DNF and Mint give
+	// the service result alone, so "on install" cannot differ from "on failure".
+	want := map[string][]AutoUpdateNotify{
+		"apt":  {AutoUpdateNotifyOnFailure, AutoUpdateNotifyOnChange, AutoUpdateNotifyAlways},
+		"mint": {AutoUpdateNotifyOnFailure, AutoUpdateNotifyAlways},
+		"dnf4": {AutoUpdateNotifyOnFailure, AutoUpdateNotifyAlways},
+		"dnf5": {AutoUpdateNotifyOnFailure, AutoUpdateNotifyAlways},
+	}
+	for _, tc := range installedBackends() {
+		t.Run(tc.name, func(t *testing.T) {
+			state, err := tc.backend.Read(t.Context())
+			if err != nil {
+				t.Fatalf("Read: %v", err)
+			}
+			if !slices.Equal(state.Support.NotifyPolicies, want[tc.name]) {
+				t.Fatalf("NotifyPolicies = %v, want %v", state.Support.NotifyPolicies, want[tc.name])
+			}
+		})
+	}
+}
+
+// An older build offered on_change everywhere. Where only the service result
+// is known it runs as on_failure, so it reads as that, and the options the
+// page sends back are not refused.
+func TestAnOlderOnChangeReadsAsWhatItRuns(t *testing.T) {
+	for _, tc := range installedBackends() {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.files[notifyDropInPath(tc.service)] = []byte("[Service]\nExecStopPost=/usr/local/bin/linuxio alert auto-update --provider x --policy on_change\n")
+			want := AutoUpdateNotifyOnFailure
+			if tc.name == "apt" {
+				want = AutoUpdateNotifyOnChange
+			}
+			state := wantNotify(t, tc.backend, want, false)
+			if err := tc.backend.Apply(t.Context(), state.Options); err != nil {
+				t.Fatalf("Apply of the options read back: %v", err)
+			}
+		})
+	}
+}
+
+func TestAStoredNeverIsReported(t *testing.T) {
+	for _, tc := range installedBackends() {
+		t.Run(tc.name, func(t *testing.T) {
+			// A host with no drop-in reads as never.
+			wantNotify(t, tc.backend, AutoUpdateNotifyNever, true)
+
+			// A stored never still saves, installs no hook, and stays reported.
+			options := AutoUpdateOptions{ExcludePackages: []string{}, Frequency: "daily", Notify: AutoUpdateNotifyNever, RebootPolicy: "never", Scope: "security"}
+			if err := tc.backend.Apply(t.Context(), options); err != nil {
+				t.Fatalf("Apply never: %v", err)
+			}
+			if _, ok := tc.files[notifyDropInPath(tc.service)]; ok {
+				t.Fatal("never wrote the notify drop-in")
+			}
+			wantNotify(t, tc.backend, AutoUpdateNotifyNever, true)
+
+			options.Notify = AutoUpdateNotifyOnFailure
+			if err := tc.backend.Apply(t.Context(), options); err != nil {
+				t.Fatalf("Apply on_failure: %v", err)
+			}
+			wantNotify(t, tc.backend, AutoUpdateNotifyOnFailure, false)
+		})
+	}
+}
+
+// wantNotify reads backend's state and fails unless it holds notify and says
+// whether failures go unreported.
+func wantNotify(t *testing.T, backend UpdateBackend, notify AutoUpdateNotify, unreported bool) AutoUpdateState {
+	t.Helper()
+	state, err := backend.Read(t.Context())
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if state.Options.Notify != notify || state.FailuresUnreported != unreported {
+		t.Fatalf("notify %q, failures unreported %v; want %q, %v", state.Options.Notify, state.FailuresUnreported, notify, unreported)
+	}
+	return state
+}
 
 func TestParsePlatform(t *testing.T) {
 	platform := parsePlatform([]byte(`ID=linuxmint

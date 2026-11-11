@@ -467,7 +467,8 @@ func Resync(ctx context.Context, uuid string, report func(percent float64)) erro
 }
 
 // refreshResyncAlerts updates the pool's alerts when a resync ends rather
-// than at the next health run, and on success says the pool is whole again.
+// than at the next health run, and on success says the pool is whole again
+// unless the notification settings report resync failures only.
 func refreshResyncAlerts(ctx context.Context, uuid string, resynced bool) {
 	fs, err := FindFilesystem(ctx, uuid)
 	if err != nil {
@@ -481,7 +482,7 @@ func refreshResyncAlerts(ctx context.Context, uuid string, resynced bool) {
 	}
 	RaiseAlerts(ctx, fs)
 	raiseResyncAlert(ctx, fs, states[uuid])
-	if resynced {
+	if resynced && alerts.NotificationsOrDefaults().ReportFor(alerts.KindResync) == alerts.ReportChanges {
 		raise(ctx, alerts.Observation{
 			Key: "resynced-" + uuid, Severity: alerts.SeverityInfo,
 			Title:   "Pool " + poolName(fs.Label, uuid) + " is whole again",

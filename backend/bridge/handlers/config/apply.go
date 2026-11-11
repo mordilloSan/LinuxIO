@@ -27,7 +27,9 @@ func applyConfigPayload(cfg *userconfig.Settings, payload *apischema.ConfigSetPa
 		}
 	}
 	if payload.Dismissals != nil {
-		applyDismissalsUpdate(&cfg.Dismissals, payload.Dismissals)
+		if err := applyDismissalsUpdate(&cfg.Dismissals, payload.Dismissals); err != nil {
+			return err
+		}
 	}
 	return nil
 }

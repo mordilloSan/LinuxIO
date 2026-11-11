@@ -51,19 +51,22 @@ func (b *aptBackend) Read(ctx context.Context) (AutoUpdateState, error) {
 		return AutoUpdateState{}, err
 	}
 
+	support := aptSupport()
+	notify := readNotifyPolicy(b.host, aptUpgradeService, support.NotifyPolicies)
 	state := AutoUpdateState{
-		Backend:      b.Name(),
-		CanConfigure: b.installed(),
+		Backend:            b.Name(),
+		CanConfigure:       b.installed(),
+		FailuresUnreported: notify == AutoUpdateNotifyNever,
 		Options: AutoUpdateOptions{
 			Frequency:       AutoUpdateFrequency(readTimerFrequency(b.host, "apt-daily.timer")),
-			Notify:          readNotifyPolicy(b.host, aptUpgradeService),
+			Notify:          notify,
 			NotifyAvailable: readPendingEnabled(b.host, aptRefreshService),
 			Scope:           "security",
 			RebootPolicy:    "never",
 			ExcludePackages: []string{},
 			ExtraOrigins:    []string{},
 		},
-		Support:          aptSupport(),
+		Support:          support,
 		AvailableOrigins: b.availableOrigins(),
 	}
 	if !state.CanConfigure {

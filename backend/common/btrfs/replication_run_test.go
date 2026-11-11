@@ -413,7 +413,7 @@ func TestRunReplicationRecordsOutcome(t *testing.T) {
 	ctx := context.Background()
 	saveJobs(t, jobs)
 
-	errs := RunReplication(ctx, jobs, nil)
+	_, errs := RunReplication(ctx, jobs, nil)
 	if len(errs) != 1 || !strings.Contains(errs[0].Error(), jobs[0].ID+": boom") {
 		t.Fatalf("errs = %v", errs)
 	}
@@ -447,7 +447,7 @@ func TestRunReplicationRecordsOutcome(t *testing.T) {
 	}
 
 	delete(failing, jobs[0].ID)
-	if errs := RunReplication(ctx, jobs, nil); len(errs) != 0 {
+	if _, errs := RunReplication(ctx, jobs, nil); len(errs) != 0 {
 		t.Fatalf("second run errs = %v", errs)
 	}
 	if doc, _ = alerts.Load(); len(doc.Alerts) != 0 {
@@ -474,7 +474,7 @@ func TestRunReplicationReportsEachEnabledJob(t *testing.T) {
 	saveJobs(t, jobs)
 
 	var calls [][2]int
-	errs := RunReplication(context.Background(), jobs, func(done, total int) {
+	_, errs := RunReplication(context.Background(), jobs, func(done, total int) {
 		calls = append(calls, [2]int{done, total})
 	})
 	if len(errs) != 0 {
@@ -482,6 +482,39 @@ func TestRunReplicationReportsEachEnabledJob(t *testing.T) {
 	}
 	if want := [][2]int{{0, 2}, {1, 2}}; !reflect.DeepEqual(calls, want) {
 		t.Fatalf("report calls = %v, want %v", calls, want)
+	}
+}
+
+// Only a job that sent a snapshot counts: not one already up to date, and not
+// one that failed after its send, as a failed prune of the target does.
+func TestRunReplicationCountsWhatItSent(t *testing.T) {
+	useTempAlerts(t)
+	oldPath, oldReplicate := ReplicationPath, replicate
+	ReplicationPath = filepath.Join(t.TempDir(), "btrfs-replication.json")
+	t.Cleanup(func() { ReplicationPath, replicate = oldPath, oldReplicate })
+	jobs := []BtrfsReplicationJob{
+		{ID: "aaaaaaaa-0000-4000-8000-000000000001", UUID: rootUUID, Path: "@home", Enabled: true},
+		{ID: "aaaaaaaa-0000-4000-8000-000000000002", UUID: rootUUID, Path: "@", Enabled: true},
+		{ID: "aaaaaaaa-0000-4000-8000-000000000003", UUID: rootUUID, Path: "data", Enabled: true},
+	}
+	snap := &BtrfsSnapshot{Path: ".snapshots/@home/2026-11-10T10:00:00Z-timeline"}
+	replicate = func(_ context.Context, job BtrfsReplicationJob, _ func(int64)) (BtrfsReplicationResult, error) {
+		switch job.ID {
+		case jobs[0].ID:
+			return BtrfsReplicationResult{Sent: snap, Bytes: 4096}, nil
+		case jobs[1].ID:
+			return BtrfsReplicationResult{UpToDate: true}, nil
+		}
+		return BtrfsReplicationResult{Sent: snap}, errors.New("prune: boom")
+	}
+	saveJobs(t, jobs)
+
+	sent, errs := RunReplication(context.Background(), jobs, nil)
+	if sent != 1 {
+		t.Fatalf("sent = %d, want 1", sent)
+	}
+	if len(errs) != 1 || !strings.Contains(errs[0].Error(), jobs[2].ID+": prune: boom") {
+		t.Fatalf("errs = %v, want the failed job's", errs)
 	}
 }
 
@@ -497,7 +530,7 @@ func TestRunReplicationSkipsAlreadyRunning(t *testing.T) {
 	jobs := []BtrfsReplicationJob{{ID: "aaaaaaaa-0000-4000-8000-000000000001", UUID: rootUUID, Path: "@home", Enabled: true}}
 	saveJobs(t, jobs)
 
-	if errs := RunReplication(context.Background(), jobs, nil); len(errs) != 0 {
+	if _, errs := RunReplication(context.Background(), jobs, nil); len(errs) != 0 {
 		t.Fatalf("errs = %v, want none", errs)
 	}
 	stored, err := LoadJobs()

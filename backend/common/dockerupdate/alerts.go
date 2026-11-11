@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
 )
@@ -13,6 +15,13 @@ import (
 const (
 	dockerUpdateAlertSource = "docker-update"
 	dockerUpdateAlertLink   = "/docker/containers"
+	// dockerUpdatePassAlertKey is the key of the every_run pass notice
+	// ("nothing to update", "N waiting"). It shares the source with the per-container alerts, whose keys
+	// are the container name itself or it behind "updated-" or "available-",
+	// and every key the store accepts is also a valid container name. A short
+	// word such as "run" would let a container of that name have its failure
+	// replaced by the notice, so the key is a name no one gives a container.
+	dockerUpdatePassAlertKey = "linuxio-update-pass"
 )
 
 // dockerUpdateAlertKey is the container name; alerts normalises it into a key.
@@ -23,22 +32,10 @@ func dockerUpdateAlertKey(containerName string) string {
 	return containerName
 }
 
-// loadNotify reads what the worker should report; an unreadable settings
-// file keeps the defaults, since the update itself must not depend on it.
-func loadNotify() alerts.NotificationSettings {
-	n, err := alerts.LoadNotifications()
-	if err != nil {
-		slog.Warn("Docker update notification settings unreadable", "component", "docker", "error", err)
-		return alerts.NotificationSettings{DockerUpdates: alerts.DockerUpdateOnFailure}
-	}
-	return n
-}
-
-// raiseDockerUpdateAlert is best effort: failures are logged, never returned.
+// raiseDockerUpdateAlert records a failed scheduled update whatever the
+// notification settings say: a failure is always reported. Best effort:
+// failures are logged, never returned.
 func raiseDockerUpdateAlert(ctx context.Context, containerName string, err error) {
-	if loadNotify().DockerUpdates == alerts.DockerUpdateNever {
-		return
-	}
 	name := strings.TrimPrefix(containerName, "/")
 	sum := sha256.Sum256([]byte(err.Error()))
 	obs := alerts.Observation{
@@ -56,9 +53,10 @@ func raiseDockerUpdateAlert(ctx context.Context, containerName string, err error
 }
 
 // raiseDockerUpdatedAlert records a successful scheduled replacement when
-// the policy is on_change. Best effort: failures are logged, never returned.
-func raiseDockerUpdatedAlert(ctx context.Context, containerName, oldImage, newImage string) {
-	if loadNotify().DockerUpdates != alerts.DockerUpdateOnChange {
+// alertReport, the Docker updates' alerts.ReportFor, asks for changes or every
+// run. Best effort: failures are logged, never returned.
+func raiseDockerUpdatedAlert(ctx context.Context, alertReport, containerName, oldImage, newImage string) {
+	if alertReport != alerts.ReportChanges && alertReport != alerts.ReportEveryRun {
 		return
 	}
 	name := strings.TrimPrefix(containerName, "/")
@@ -76,11 +74,33 @@ func raiseDockerUpdatedAlert(ctx context.Context, containerName, oldImage, newIm
 	}
 }
 
+// raiseDockerPassAlert records a pass the every_run report asks for that
+// raised nothing else. waiting is how many containers the pass left with a
+// newer image; none is "nothing to update". Each pass is a new occurrence of
+// the one notice. Best effort: failures are logged, never returned.
+func raiseDockerPassAlert(ctx context.Context, now time.Time, waiting int) {
+	title := "Docker updates: nothing to update"
+	if waiting > 0 {
+		title = fmt.Sprintf("Docker updates: %d waiting", waiting)
+	}
+	obs := alerts.Observation{
+		Source:       dockerUpdateAlertSource,
+		Key:          dockerUpdatePassAlertKey,
+		Severity:     alerts.SeverityInfo,
+		Title:        title,
+		Link:         dockerUpdateAlertLink,
+		OccurrenceID: now.UTC().Format(time.RFC3339Nano),
+	}
+	if err := alerts.Raise(ctx, obs); err != nil {
+		slog.Warn("failed to record Docker update run notice", "component", "docker", "error", err)
+	}
+}
+
 // syncAvailableAlerts raises one alert per container with a newer image when
-// the setting is on, and clears the alert of every container that no longer
-// has one. Best effort: failures are logged, never returned.
-func syncAvailableAlerts(ctx context.Context, statuses []ImageUpdateStatus) {
-	wanted := loadNotify().DockerUpdatesAvailable
+// wanted, the DockerUpdatesAvailable setting, is on, and clears the alert of
+// every container that no longer has one. Best effort: failures are logged,
+// never returned.
+func syncAvailableAlerts(ctx context.Context, statuses []ImageUpdateStatus, wanted bool) {
 	for _, status := range statuses {
 		name := strings.TrimPrefix(status.ContainerName, "/")
 		key := "available-" + dockerUpdateAlertKey(name)

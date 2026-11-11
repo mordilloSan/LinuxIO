@@ -335,10 +335,11 @@ func (t *tailBuffer) Write(p []byte) (int, error) {
 }
 
 // RunReplication replicates each enabled job and records its outcome,
-// returning one error per failed job. It stops early only when ctx is done.
-// report, when not nil, is called before each enabled job with the number of
-// enabled jobs already finished and the number of enabled jobs.
-func RunReplication(ctx context.Context, jobs []BtrfsReplicationJob, report func(done, total int)) []error {
+// returning how many jobs sent a snapshot (not those already up to date) and
+// one error per failed job. It stops early only when ctx is done. report,
+// when not nil, is called before each enabled job with the number of enabled
+// jobs already finished and the number of enabled jobs.
+func RunReplication(ctx context.Context, jobs []BtrfsReplicationJob, report func(done, total int)) (sent int, errs []error) {
 	total := 0
 	for _, job := range jobs {
 		if job.Enabled {
@@ -346,10 +347,9 @@ func RunReplication(ctx context.Context, jobs []BtrfsReplicationJob, report func
 		}
 	}
 	done := 0
-	var errs []error
 	for _, job := range jobs {
 		if err := ctx.Err(); err != nil {
-			return append(errs, err)
+			return sent, append(errs, err)
 		}
 		if !job.Enabled {
 			continue
@@ -358,7 +358,7 @@ func RunReplication(ctx context.Context, jobs []BtrfsReplicationJob, report func
 			report(done, total)
 		}
 		done++
-		_, err := replicate(ctx, job, nil)
+		result, err := replicate(ctx, job, nil)
 		if errors.Is(err, ErrAlreadyRunning) {
 			slog.Debug("skipped btrfs replication already running", "job", job.ID)
 			continue
@@ -366,11 +366,14 @@ func RunReplication(ctx context.Context, jobs []BtrfsReplicationJob, report func
 		if recErr := RecordReplicationOutcome(ctx, job, err); recErr != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", job.ID, recErr))
 		}
-		if err != nil {
+		switch {
+		case err != nil:
 			errs = append(errs, fmt.Errorf("%s: %w", job.ID, err))
+		case result.Sent != nil:
+			sent++
 		}
 	}
-	return errs
+	return sent, errs
 }
 
 // ResolveJobAlert clears the alert of a replication job that was deleted or

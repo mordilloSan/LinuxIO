@@ -7,6 +7,7 @@ import { taskTitle } from "@/tasks/taskTitles";
 import { formatDate } from "@/utils/formatters";
 
 import { useJobHostStatus } from "./useJobHostStatus";
+import { useRefreshHistoryAfterUpdate } from "./useRefreshHistoryAfterUpdate";
 
 const waitingText = (running: number) => {
   if (running === 0) return "LinuxIO was updated. New jobs can start shortly.";
@@ -24,11 +25,13 @@ const progressText = (job: TaskSnapshot) => {
 
 /**
  * Tells every signed-in user that a LinuxIO update waits for running jobs to
- * finish before new jobs can start, and which jobs those are.
+ * finish before new jobs can start, and which jobs those are. Mounted once, it
+ * also refetches the history when the wait ends.
  */
 const JobsUpdateBanner = () => {
   const { updatePending, running, jobs } = useJobHostStatus();
   const [expanded, setExpanded] = useState(false);
+  useRefreshHistoryAfterUpdate(updatePending);
 
   if (!updatePending) return null;
 

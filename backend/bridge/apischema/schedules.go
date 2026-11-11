@@ -21,17 +21,20 @@ type ScheduleDefinition struct {
 
 // Native properties are the current/latest state, not a durable run ledger.
 type ScheduleStatus struct {
-	Definition   ScheduleDefinition `json:"definition"`
-	UnitName     string             `json:"unit_name"`
-	ActiveState  string             `json:"active_state"`
-	Result       string             `json:"result"`
-	InvocationID string             `json:"invocation_id"`
-	ExitCode     *int32             `json:"exit_code"`
-	ExitStatus   *int32             `json:"exit_status"`
-	NextRunAt    *string            `json:"next_run_at"`
-	LastRunAt    *string            `json:"last_run_at"`
-	CanStop      bool               `json:"can_stop"`
-	Error        *string            `json:"error"`
+	Definition ScheduleDefinition `json:"definition"`
+	// Notify is what the task reports: failures or every_run, kept in the
+	// notification settings; "" follows the line for scheduled scripts.
+	Notify       string  `json:"notify"`
+	UnitName     string  `json:"unit_name"`
+	ActiveState  string  `json:"active_state"`
+	Result       string  `json:"result"`
+	InvocationID string  `json:"invocation_id"`
+	ExitCode     *int32  `json:"exit_code"`
+	ExitStatus   *int32  `json:"exit_status"`
+	NextRunAt    *string `json:"next_run_at"`
+	LastRunAt    *string `json:"last_run_at"`
+	CanStop      bool    `json:"can_stop"`
+	Error        *string `json:"error"`
 }
 
 type SchedulesListResult struct {
@@ -45,10 +48,12 @@ type ScheduleIDRequest struct {
 }
 type ScheduleCreateRequest struct {
 	Options ScheduleOptions `json:"options"`
+	Notify  string          `json:"notify,omitzero"` // as in ScheduleStatus
 }
 type ScheduleUpdateRequest struct {
 	ID      string          `json:"id"`
 	Options ScheduleOptions `json:"options"`
+	Notify  *string         `json:"notify,omitzero"` // absent keeps the stored choice; "" clears it
 }
 type ScheduleStopRequest struct {
 	ID           string `json:"id"`

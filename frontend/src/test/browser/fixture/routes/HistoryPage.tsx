@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
-import { linuxio, type TaskHistoryEntry } from "@/api";
+import { type ConfigContextType, linuxio, type TaskHistoryEntry } from "@/api";
+import { ConfigContext } from "@/contexts/ConfigContext";
 import HistoryPage from "@/routes/_authenticated/history/-components/HistoryPage";
 
 const entries: TaskHistoryEntry[] = Array.from({ length: 30 }, (_, index) => ({
@@ -25,12 +26,21 @@ queryClient.setQueryData([...linuxio.tasks.history({}).queryKey, "pages"], {
   pageParams: [undefined],
 });
 
+// The page stores when it was opened; the fixture has nowhere to save it.
+const config: ConfigContextType = {
+  isLoaded: true,
+  setKey: () => {},
+  updateConfig: () => {},
+};
+
 export default function HistoryFixture() {
   return (
     <QueryClientProvider client={queryClient}>
-      <main style={{ padding: "var(--app-space-24)", height: "100dvh" }}>
-        <HistoryPage onSelectedChange={() => {}} />
-      </main>
+      <ConfigContext value={config}>
+        <main style={{ padding: "var(--app-space-24)", height: "100dvh" }}>
+          <HistoryPage onSelectedChange={() => {}} />
+        </main>
+      </ConfigContext>
     </QueryClientProvider>
   );
 }

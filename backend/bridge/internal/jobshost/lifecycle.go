@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
 	"github.com/mordilloSan/LinuxIO/backend/common/jobs"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
@@ -116,8 +117,9 @@ func (h *Host) resumeEarlierBoot(ctx context.Context, ids []string) {
 	}
 }
 
-// giveUpResume alerts on a job this boot could not resume and stamps it with
-// this host's executor, so later host starts in this boot leave it alone.
+// giveUpResume alerts on a job this boot could not resume, an error since it
+// will never finish, and stamps it with this host's executor, so later host
+// starts in this boot leave it alone.
 func (h *Host) giveUpResume(ctx context.Context, id string, cause error) {
 	slog.Warn("interrupted job not resumed", "job_id", id, "error", cause)
 	stamped := false
@@ -132,7 +134,7 @@ func (h *Host) giveUpResume(ctx context.Context, id string, cause error) {
 		return
 	}
 	if stamped {
-		h.alert(ctx, id, record.Route+" was interrupted", fmt.Sprintf("It could not be resumed after the reboot: %v.", cause))
+		h.alert(ctx, record, alerts.SeverityError, "was interrupted", fmt.Sprintf("It could not be resumed after the reboot: %v.", cause))
 	}
 }
 

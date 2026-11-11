@@ -16,6 +16,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -59,10 +60,14 @@ type Config struct {
 	MaxRunning int
 	// Notify sends sd_notify states; nil means systemd.Notify.
 	Notify func(string) error
-	// Alert raises a host alert for a failed or interrupted job; nil raises none.
+	// Alert raises a host alert for a failed or interrupted job, and the
+	// notice of a long one that completed when Notifications asks; nil raises
+	// none.
 	Alert func(ctx context.Context, obs alerts.Observation) error
 	// ResolveAlert clears the alert of a resumed job that completed; nil clears none.
 	ResolveAlert func(ctx context.Context, source, key string) error
+	// Notifications returns the notification settings; nil means the defaults.
+	Notifications func() alerts.NotificationSettings
 	// Now is the host clock; nil means time.Now.
 	Now func() time.Time
 	// Peer reads the peer credentials of a connection; nil means
@@ -119,6 +124,9 @@ func newHost(cfg Config) *Host {
 	}
 	if cfg.UnitActive == nil {
 		cfg.UnitActive = systemd.UnitRunsInvocation
+	}
+	if cfg.Notifications == nil {
+		cfg.Notifications = alerts.DefaultNotifications
 	}
 	h := &Host{cfg: cfg, sessions: make(map[*relay.YamuxSession]struct{}), owners: make(map[string]ownerClaim)}
 	h.rec = &recorder{h: h, jobs: make(map[string]*job)}
@@ -732,15 +740,56 @@ func (h *Host) notify(state string) {
 // alertSource is the alerts source of every job alert; the job ID is its key.
 const alertSource = "jobs"
 
-// alert raises a host alert about job id when the host raises alerts.
-func (h *Host) alert(ctx context.Context, id, title, message string) {
+// alert raises a host alert about the job of r when the host raises alerts,
+// titled with the job's name and what happened to it, linking to the job in
+// the history.
+func (h *Host) alert(ctx context.Context, r jobs.Record, severity, happened, message string) {
 	if h.cfg.Alert == nil {
 		return
 	}
-	obs := alerts.Observation{Source: alertSource, Key: id, Severity: alerts.SeverityError, Title: title, Message: message, Link: "/"}
-	if err := h.cfg.Alert(ctx, obs); err != nil {
-		slog.Warn("job alert failed", "job_id", id, "error", err)
+	obs := alerts.Observation{
+		Source: alertSource, Key: r.ID, Severity: severity, Title: jobName(r) + " " + happened,
+		Message: message, Link: "/history?job=" + r.ID,
 	}
+	if err := h.cfg.Alert(ctx, obs); err != nil {
+		slog.Warn("job alert failed", "job_id", r.ID, "error", err)
+	}
+}
+
+// fileActions names the file browser actions whose route does not read as one.
+var fileActions = map[string]string{
+	"filebrowser.trash_batch":   "Move to Trash",
+	"filebrowser.trash_restore": "Restore from Trash",
+	"filebrowser.trash_purge":   "Delete from Trash",
+	"filebrowser.chmod_batch":   "Change permissions",
+}
+
+// jobName names a job in its alerts: its label, or its route when it has none.
+// A file browser job's label names only what it acts on, such as "12 items",
+// so its action comes first: one fileActions names, or else its route's,
+// without a trailing "_batch": filebrowser.copy_batch gives "Copy: 12 items".
+func jobName(r jobs.Record) string {
+	var metadata bridgeipc.TaskMetadata
+	if len(r.Metadata) > 0 {
+		if err := json.Unmarshal(r.Metadata, &metadata); err != nil {
+			slog.Debug("job record metadata not decoded", "job_id", r.ID, "error", err)
+		}
+	}
+	if metadata.Label == "" {
+		return r.Route
+	}
+	if action, ok := fileActions[r.Route]; ok {
+		return action + ": " + metadata.Label
+	}
+	if !strings.HasPrefix(r.Route, "filebrowser.") {
+		return metadata.Label
+	}
+	action := strings.TrimSuffix(r.Route[strings.LastIndexByte(r.Route, '.')+1:], "_batch")
+	action = strings.ReplaceAll(action, "_", " ")
+	if action == "" {
+		return metadata.Label
+	}
+	return strings.ToUpper(action[:1]) + action[1:] + ": " + metadata.Label
 }
 
 // resolveAlert clears the alert about job id, such as the one its
@@ -754,6 +803,25 @@ func (h *Host) resolveAlert(ctx context.Context, id string) {
 	}
 }
 
+// alertInterrupted raises the alert of a job its host stopped before it
+// finished, whatever the report settings say: a warning for a shutdown or a
+// reboot, and an error for a crash, whose outcome is unknown. A warning
+// follows the levels grid like any other.
 func (h *Host) alertInterrupted(ctx context.Context, r jobs.Record) {
-	h.alert(ctx, r.ID, r.Route+" was interrupted", fmt.Sprintf("The job host stopped before the job finished (%s).", r.Reason))
+	severity := alerts.SeverityWarning
+	if r.Reason == jobs.ReasonCrash {
+		severity = alerts.SeverityError
+	}
+	h.alert(ctx, r, severity, "was interrupted", fmt.Sprintf("The job host stopped before the job finished (%s).", r.Reason))
+}
+
+// alertLongJob raises the notice of a job that completed after running for
+// alerts.LongJob or longer, from its record's start to its end, when the
+// settings ask for long jobs.
+func (h *Host) alertLongJob(ctx context.Context, r jobs.Record) {
+	ran := r.FinishedAt.Sub(r.StartedAt)
+	if h.cfg.Alert == nil || ran < alerts.LongJob || h.cfg.Notifications().ReportFor(alerts.KindBrowserJobs) != alerts.ReportLongJobs {
+		return
+	}
+	h.alert(ctx, r, alerts.SeverityInfo, "finished", alerts.RanFor(ran))
 }

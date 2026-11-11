@@ -114,6 +114,10 @@ func alertResolve(ctx context.Context, args []string) error {
 }
 
 type autoUpdateRun struct {
+	// Listed says the provider told what the run installed. Only
+	// unattended-upgrades does, through its log; for the others a run that
+	// succeeded ran, rather than found nothing to install.
+	Listed   bool
 	Upgraded []string
 	Errors   []string
 }
@@ -169,14 +173,14 @@ func readAptUnattendedRun() autoUpdateRun {
 // parseAptUnattendedLog keeps only the block after the last
 // "Starting unattended upgrades script" line.
 func parseAptUnattendedLog(r io.Reader) autoUpdateRun {
-	var run autoUpdateRun
+	run := autoUpdateRun{Listed: true}
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 64<<10), 1<<20)
 	for scanner.Scan() {
 		line := scanner.Text()
 		switch {
 		case strings.Contains(line, "Starting unattended upgrades script"):
-			run = autoUpdateRun{}
+			run = autoUpdateRun{Listed: true}
 		case strings.Contains(line, "Packages that were upgraded:"):
 			_, list, _ := strings.Cut(line, "Packages that were upgraded:")
 			run.Upgraded = append(run.Upgraded, strings.Fields(list)...)
@@ -212,8 +216,10 @@ func autoUpdateAlert(policy, serviceResult string, run autoUpdateRun, rebootRequ
 	case changed:
 		obs.Title = fmt.Sprintf("Automatic updates installed %d packages", len(run.Upgraded))
 		parts = append(parts, strings.Join(run.Upgraded, " "))
-	default:
+	case run.Listed:
 		obs.Title = "Automatic updates found nothing to install"
+	default:
+		obs.Title = "Automatic updates ran"
 	}
 	if rebootRequired {
 		if obs.Severity == alerts.SeverityInfo {

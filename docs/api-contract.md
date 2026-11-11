@@ -447,7 +447,13 @@ different owners and failure consequences:
 | `config.set_ui` | `ConfigUISetPayload -> ConfigSetResult` | Full UI snapshot replacement; omitted fields resolve to backend defaults. |
 
 `AppConfig.appSettings` contains only `showHiddenFiles` and `chunkSizeMB`.
-Docker, job, and dismissal fields remain on `AppConfig`. `UIConfig` contains
+Docker, job, and dismissal fields remain on `AppConfig`. Among the dismissals,
+`historySeenAt` (on `Dismissals` and on `ConfigDismissalsPayload`) is when the
+user last saw a loaded job history, as an RFC 3339 time: `config.set` refuses
+a value that does not parse with 400 and keeps the stored one, stores a valid
+one in UTC with nanoseconds (trailing zeros trimmed) and never later than the
+bridge's clock, an empty value clears it, and a payload changes only the dismissals it names. The notice at
+sign-in reads it ([Alerts](./alerts.md#navbar)). `UIConfig` contains
 theme, navigation, section visibility, view-mode, layout-order, and related
 presentation fields. The frontend combines these responses into its internal
 effective configuration; that combined type is not a wire contract.
@@ -498,6 +504,72 @@ owner; it follows a symlinked passwd home only after verifying the resolved
 directory's owner, and it neither falls back to the bridge process home nor
 changes ownership of the home directory. Lock inodes are never unlinked and
 recreated, so concurrent bridges continue to coordinate through `flock`.
+
+## Notification settings
+
+The alert routes are all `Privileged()`; [Alerts](./alerts.md) describes the
+settings file and what each producer raises. The wire types live in
+`backend/bridge/apischema/alerts.go`, `schedules.go` and `packages.go`.
+
+| Route | Contract | Semantics |
+| ---| ---| ---|
+| `alerts.get_notifications` | `void -> NotificationSettingsView` | Read. Over a stored file that does not parse it answers the defaults with `settingsUnreadable: true` instead of an error, and logs the warning `notification settings unreadable, showing the defaults`; any other read error fails. |
+| `alerts.set_notifications` | `NotificationSettings -> NotificationSettingsView` | One locked read, change and write of `notifications.json`. Keeps the stored per-schedule choices. Over a file that does not parse it starts from the defaults; when the request is valid, the old file is copied to `notifications.json.unreadable` (root `0600`, replacing an older one; a failed copy fails the save) just before the new one replaces it, so the new file has neither those choices nor the SMTP password. A refused request (400) leaves the unparsable file as it is and keeps no copy. The frontend refetches `alerts.get_notifications` and `alerts.list` after it. |
+| `alerts.test_notifications` | `void -> SuccessResponse` | Sends a test alert to every configured channel, whatever `levels` says. |
+| `alerts.list`, `alerts.mark_all_seen` | `void -> AlertList` | List, count as unseen and mark seen only the alerts whose level `levels` ticks for the browser (`error` always). |
+
+- `NotificationChannels` is `{ browser, email, webhook }`.
+- `NotificationSettings` (the request) gains `levels?: Record<string,
+  NotificationChannels>` (keys `info`, `warning`, `error`) and `report?:
+  Record<string, string>` (keys `docker_updates`, `scheduled_scripts`,
+  `snapshots`, `resync`, `browser_jobs`). A sent map decides alone: a level or
+  kind it leaves out takes its default, and `{}` is a sent map. A request
+  without them, which an older page sends, sets the levels from its
+  `minSeverity`, the Docker report from its `dockerUpdates`, and keeps the
+  other stored kinds. `minSeverity` and `dockerUpdates` stay on both types;
+  the stored file's copies are what an older build acts on. With `levels`
+  sent, the request's `minSeverity` is neither used nor validated and is
+  stored as derived from the levels; with `report` sent, the same holds for
+  `dockerUpdates`.
+- `NotificationSettingsView` gains `levels` and `report`, which always name
+  every level and kind, and `settingsUnreadable?: boolean`. It never carries
+  the SMTP password, only `smtpPasswordSet`.
+- A refused request answers **400**: an unknown kind or level, a value the kind
+  does not offer, a webhook URL that is not http or https, a bad SMTP setting
+  or address (the last three answered as server errors before). The message
+  reads, for example, `invalid arguments: invalid notification settings:
+  invalid report "every_run" for browser_jobs`.
+- `ScheduleStatus.notify: string` is the schedule's own choice: `failures`,
+  `every_run`, or `""` for the line for scheduled scripts. It is read from
+  `notifications.json`; over a file that does not parse, `schedules.list` and
+  `schedules.get` show `""` and log it at debug level.
+- `ScheduleCreateRequest.notify?: string` stores a choice with the new
+  schedule, before its files are written, and takes it back when the create
+  saved no definition. `ScheduleUpdateRequest.notify?: string` keeps the
+  stored choice when absent and clears it when `""`. An update whose options
+  are the stored ones (the same definition revision) and whose choice
+  differs writes `notifications.json` alone: no unit file, script, definition
+  or timer changes, so it is accepted while the script runs. An update that
+  changes the options stores the choice after the checks that can refuse it
+  and before the units change. Any other value answers 400. With a settings
+  file that does not parse, an update that names a choice (even `""`) or a
+  create that names one answers **409** (`conflict: the notification settings
+  could not be read; saving them on the Notifications settings page repairs
+  them: parse …`) and changes nothing; a stored file that parses but that
+  validation refuses answers 409 too (`the stored notification settings are
+  not valid; saving them on the Notifications settings page repairs them`);
+  an update or create without a choice works.
+  `schedules.delete` clears the choice and resolves the schedule's
+  `jobs/finished-<id>` notice, and only warns when either cannot be done; the
+  frontend refetches `alerts.list` after it.
+  The generated `schedules.create` now takes the request object (its kind
+  changed from `field` to `object`).
+- `AutoUpdateState.failures_unreported?: boolean` is true while the stored
+  policy is `never` (no drop-in), whatever `can_configure` says.
+  `support.notify_policies` offers `on_failure`, `on_change` and `always` on
+  APT and `on_failure` and `always` on DNF and Mint; `never` is offered by
+  none but stays in `AutoUpdateNotify` and is still accepted by
+  `updates.set_auto_updates`, which then writes no drop-in.
 
 ## Tasks and jobs
 

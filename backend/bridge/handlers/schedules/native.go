@@ -20,6 +20,8 @@ import (
 	godbus "github.com/godbus/dbus/v5"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
 	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
 	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
 	"github.com/mordilloSan/LinuxIO/backend/common/jobs"
@@ -53,22 +55,28 @@ type hostOps struct {
 	calendar       func(context.Context, string) error
 	lookupUser     func(string) (*user.User, error)
 	available      func() error
+	// The schedules' own notification choices, by schedule ID, and the write
+	// of one; "" clears it.
+	notifyChoices   func() (map[string]string, error)
+	setNotifyChoice func(context.Context, string, string) error
 }
 
 func nativeHost() hostOps {
 	return hostOps{
-		inspect:        inspectUnit,
-		stopInvocation: stopInvocation,
-		markCanceled:   markCanceled,
-		withdrawCancel: withdrawCancel,
-		start:          startUnit,
-		stop:           systemd.StopUnit,
-		enable:         systemd.EnableUnit,
-		disable:        systemd.DisableUnit,
-		reload:         systemd.DaemonReload,
-		calendar:       validateCalendar,
-		lookupUser:     user.Lookup,
-		available:      nativeAvailable,
+		inspect:         inspectUnit,
+		stopInvocation:  stopInvocation,
+		markCanceled:    markCanceled,
+		withdrawCancel:  withdrawCancel,
+		start:           startUnit,
+		stop:            systemd.StopUnit,
+		enable:          systemd.EnableUnit,
+		disable:         systemd.DisableUnit,
+		reload:          systemd.DaemonReload,
+		calendar:        validateCalendar,
+		lookupUser:      user.Lookup,
+		available:       nativeAvailable,
+		notifyChoices:   notifyChoices,
+		setNotifyChoice: setNotifyChoice,
 	}
 }
 
@@ -183,6 +191,15 @@ func validateOptions(options apischema.ScheduleOptions) error {
 	return nil
 }
 
+// validateNotify accepts what a scheduled script can report, and "" for the
+// line for scheduled scripts.
+func validateNotify(choice string) error {
+	if choice != "" && !alerts.ReportOffered(alerts.KindScripts, choice) {
+		return fmt.Errorf("%w: unknown notification choice %q", bridgeipc.ErrInvalidArgs, choice)
+	}
+	return nil
+}
+
 func validateArguments(arguments []string) error {
 	if len(arguments) > 64 {
 		return errors.New("a scheduled task supports at most 64 arguments")
@@ -208,6 +225,12 @@ func definitionRevision(def apischema.ScheduleDefinition) string {
 	}
 	digest := sha256.Sum256(data)
 	return hex.EncodeToString(digest[:])
+}
+
+// sameOptions reports whether a and b are one revision, with the same script
+// and units.
+func sameOptions(a, b apischema.ScheduleOptions) bool {
+	return definitionRevision(apischema.ScheduleDefinition{Options: a}) == definitionRevision(apischema.ScheduleDefinition{Options: b})
 }
 
 // ExecStart uses ':' to disable environment substitution; percent specifiers
@@ -306,6 +329,49 @@ func markCanceled(ctx context.Context, unit, invocationID string) error {
 // withdrawCancel takes back markCanceled after a stop that failed.
 func withdrawCancel(ctx context.Context, unit, invocationID string) error {
 	return scheduledrun.WithdrawCancel(ctx, jobs.NewScheduledStore(), unit, invocationID)
+}
+
+// notifyChoices are the choices in the notification settings, which the end
+// hook reads through ReportForScript.
+func notifyChoices() (map[string]string, error) {
+	n, err := alerts.LoadNotifications()
+	if err != nil {
+		return nil, fmt.Errorf("read the notification choices of scheduled tasks: %w", settingsAsConflict(err))
+	}
+	return n.Scripts, nil
+}
+
+// setNotifyChoice stores the choice of schedule id, or clears it when choice
+// is "", and leaves every other setting as it is.
+func setNotifyChoice(ctx context.Context, id, choice string) error {
+	_, err := alerts.UpdateNotifications(ctx, func(n *alerts.NotificationSettings) error {
+		if choice == "" {
+			delete(n.Scripts, id)
+			return nil
+		}
+		if n.Scripts == nil {
+			n.Scripts = map[string]string{}
+		}
+		n.Scripts[id] = choice
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("store the notification choice of scheduled task %s: %w", id, settingsAsConflict(err))
+	}
+	return nil
+}
+
+// settingsAsConflict makes stored notification settings that do not parse, or
+// that validation refuses, a conflict the admin repairs on the settings page,
+// not a server fault. The choice itself is validated before it gets here.
+func settingsAsConflict(err error) error {
+	switch {
+	case errors.Is(err, alerts.ErrUnparsableSettings):
+		return fmt.Errorf("%w: the notification settings could not be read; saving them on the Notifications settings page repairs them: %w", bridgeipc.ErrConflict, err)
+	case errors.Is(err, alerts.ErrInvalidSettings):
+		return fmt.Errorf("%w: the stored notification settings are not valid; saving them on the Notifications settings page repairs them: %w", bridgeipc.ErrConflict, err)
+	}
+	return err
 }
 
 func stopInvocation(ctx context.Context, scheduleID, invocationID string) error {

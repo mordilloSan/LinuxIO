@@ -1,8 +1,16 @@
+import { QueryObserver } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { linuxio } from "@/api";
 import type { TaskSnapshot } from "@/api/generated/linuxio-types";
 import { taskTitle } from "@/tasks/taskTitles";
-import { render, screen, within } from "@/test/render";
+import {
+  createTestQueryClient,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@/test/render";
 import { formatDate } from "@/utils/formatters";
 
 import JobsUpdateBanner from "./JobsUpdateBanner";
@@ -189,5 +197,27 @@ describe("JobsUpdateBanner", () => {
     expect(
       screen.getByText("LinuxIO was updated. New jobs can start shortly."),
     ).toBeInTheDocument();
+  });
+
+  it("refetches a mounted history query once when the wait ends", async () => {
+    const queryClient = createTestQueryClient();
+    const queryFn = vi.fn(async () => ({ entries: [], more: false }));
+    const unsubscribe = new QueryObserver(queryClient, {
+      queryKey: linuxio.tasks.history({}).queryKey,
+      queryFn,
+      staleTime: Infinity,
+    }).subscribe(() => {});
+    await waitFor(() => expect(queryFn).toHaveBeenCalledTimes(1));
+    queryFn.mockClear();
+
+    mocks.status = { updatePending: true, running: 1, jobs: [job()] };
+    const { rerender } = render(<JobsUpdateBanner />, { queryClient });
+    expect(queryFn).not.toHaveBeenCalled();
+
+    mocks.status = { updatePending: false, running: 0, jobs: [] };
+    rerender(<JobsUpdateBanner />);
+
+    await waitFor(() => expect(queryFn).toHaveBeenCalledTimes(1));
+    unsubscribe();
   });
 });

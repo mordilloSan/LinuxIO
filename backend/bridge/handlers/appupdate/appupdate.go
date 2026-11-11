@@ -142,6 +142,9 @@ func updaterWritablePaths() []updaterWritablePath {
 		{path: "/etc/motd.d", optional: true},
 		{path: "/etc/update-motd.d", optional: true},
 		{path: "/etc/avahi/services", optional: true},
+		// The needrestart override; an updater launched by a bridge without
+		// this entry cannot write it (the installer prints a notice).
+		{path: "/etc/needrestart/conf.d", optional: true},
 		{path: "/etc/libvirt/hooks/qemu.d"},
 		{path: "/usr/lib/tmpfiles.d"},
 		{path: "/usr/share/linuxio"},

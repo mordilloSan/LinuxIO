@@ -21,10 +21,17 @@ readonly SYSTEMD_DIR="/etc/systemd/system"
 readonly PAM_DIR="/etc/pam.d"
 readonly CONFIG_DIR="/etc/linuxio"
 readonly DATA_DIR="/var/lib/linuxio"
+readonly NEEDRESTART_DIR="/etc/needrestart"
 # In-app updates run with the installed bridge's writable-path allowlist.
 # Keep mandatory release files under paths supported since v0.27.0.
 readonly DOC_DIR="/usr/share/linuxio/doc"
-readonly STAGING="/tmp/linuxio-install-$$"
+# Downloads and copies are staged in a directory no other user can predict or
+# write to (mktemp -d: a random name, mode 0700); the EXIT trap removes it.
+STAGING="$(mktemp -d /tmp/linuxio-install.XXXXXXXXXX)" || {
+	echo "Cannot create a staging directory under /tmp" >&2
+	exit 1
+}
+readonly STAGING
 readonly INDEXER_TIMER_UNIT_NAME="linuxio-indexer-index.timer"
 readonly BTRFS_HEALTH_TIMER_UNIT_NAME="linuxio-btrfs-health.timer"
 readonly BTRFS_DEGRADED_UNIT_NAME="linuxio-btrfs-degraded.service"
@@ -42,7 +49,10 @@ NOTICES_SRC="${STAGING}/THIRD_PARTY_NOTICES.md"
 # and systemd packaging assets. This lets a maintainer repair an installer or
 # service-definition bug for an already-published release without rebuilding
 # or republishing its binaries. Current-main assets must remain compatible
-# with supported historical binaries.
+# with supported historical binaries. The needrestart override is fetched the
+# same way; it is Perl that needrestart runs as root and SHA256SUMS does not
+# cover it, so it is installed only when its content has the shipped form
+# (needrestart_override_valid).
 readonly CURRENT_MAIN_PACKAGING_BASE="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/packaging"
 
 release_architecture_supported() {
@@ -258,8 +268,6 @@ download_binaries() {
 	local version="$1"
 	local base_url
 
-	mkdir -p "$STAGING"
-
 	if [[ -n "$version" ]]; then
 		base_url="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${version}"
 		Show 2 "Downloading version ${BOLD}${version}${COLOUR_RESET}"
@@ -376,7 +384,6 @@ install_license_files() {
 
 install_config_files() {
 	Show 2 "Installing configuration files..."
-	mkdir -p "$STAGING"
 
 	if [[ ! -d "$CONFIG_DIR" ]]; then
 		mkdir -p "$CONFIG_DIR"
@@ -449,6 +456,89 @@ install_avahi_service() {
 	fi
 
 	return 0
+}
+
+# The needrestart override is Perl that needrestart evaluates as root on every
+# apt run, and a release install fetches it from main without a checksum. A
+# file needrestart cannot load stops all its restarts, and a pattern that is
+# too wide exempts more than LinuxIO's work, so accept a file only in the form
+# the shipped one has: printable ASCII; blank lines and comments; at least one
+# line that sets an override_rc entry to 0 whose pattern is, token by token,
+# what the six shipped patterns use. That is "^linuxio-", lowercase words
+# joined by "-", then at most one "@" or "-" followed by "\d+" or ".+", then
+# "\.service$". A pattern for an always-on daemon (linuxio-webserver,
+# linuxio-monitoring, linuxio-indexer, linuxio-auth), which the installer
+# restarts itself, is refused. Where Perl is present, the file must also
+# compile under strict, as needrestart loads it (needrestart_override_loads).
+needrestart_override_valid() {
+	local file="$1" line words entries=0
+	local word='[abcdefghijklmnopqrstuvwxyz]+'
+	# shellcheck disable=SC2016 # a literal Perl variable, not a shell expansion
+	local entry='^\$nrconf\{override_rc\}->\{qr\(\^linuxio-('"$word"'(-'"$word"')*)((@|-)(\\d\+|\.\+))?\\\.service\$\)\} = 0;$'
+
+	if LC_ALL=C grep -qa '[^[:print:][:blank:]]' "$file"; then
+		return 1
+	fi
+	while IFS= read -r line || [[ -n "$line" ]]; do
+		if [[ $line =~ $entry ]]; then
+			words="${BASH_REMATCH[1]}"
+			case "$words" in
+			webserver | webserver-* | monitoring | monitoring-* | indexer | indexer-* | auth | auth-*) return 1 ;;
+			esac
+			entries=$((entries + 1))
+		elif [[ ! $line =~ ^[[:blank:]]*(#.*)?$ ]]; then
+			return 1
+		fi
+	done <"$file"
+	((entries > 0)) || return 1
+	if command -v perl >/dev/null 2>&1; then
+		needrestart_override_loads "$file" || return 1
+	fi
+}
+
+# Whether Perl compiles file $1 under strict with %nrconf declared, as
+# needrestart's configuration evaluates it. perl -c compiles without running
+# the file's statements; needrestart_override_valid lets no BEGIN block or
+# other code through to it.
+needrestart_override_loads() {
+	# shellcheck disable=SC2016 # Perl source, not a shell expansion
+	{ printf '%s\n' 'use strict; our %nrconf;' && cat "$1"; } | perl -c - >/dev/null 2>&1
+}
+
+# On Ubuntu, apt runs needrestart after every dpkg run, and it restarts each
+# service still running a replaced binary: the job hosts an update leaves
+# running would lose their jobs. Install the override that exempts them (and
+# the timer-run work) into $1/conf.d, owner $2 when given, only where
+# needrestart's directory $1 exists: a system without needrestart gets nothing.
+# Never fatal, and a file that fails needrestart_override_valid leaves any
+# installed override as it is. An in-app update runs this installer in a unit
+# whose writable paths come from the bridge installed before the update; one
+# without /etc/needrestart/conf.d among them (every build before this file
+# existed) leaves it read-only.
+install_needrestart_override() {
+	local needrestart_dir="$1"
+	local owner="${2:-}"
+	local staged="${STAGING}/needrestart-linuxio.conf"
+	local dest="${needrestart_dir}/conf.d/linuxio.conf"
+
+	if [[ ! -d "$needrestart_dir" ]]; then
+		Show 2 "needrestart not installed — no override needed"
+		return 0
+	fi
+	Show 2 "Installing needrestart override..."
+	if ! fetch_packaging_asset "etc/needrestart/conf.d/linuxio.conf" "$staged"; then
+		Show 3 "Failed to fetch the needrestart override — apt runs may restart running jobs"
+		return 0
+	fi
+	if ! needrestart_override_valid "$staged"; then
+		Show 3 "The needrestart override was not installed: the fetched file is not what LinuxIO ships"
+		return 0
+	fi
+	if ! atomic_replace_file "$staged" "$dest" 0644 "$owner"; then
+		Show 3 "Could not write ${dest}, so needrestart may restart running LinuxIO work after an update; running this installer from a terminal installs it (the usual cause is an in-app update started by an older LinuxIO, which cannot write there)"
+		return 0
+	fi
+	Show 0 "Installed ${dest}"
 }
 
 # ---------- Systemd Functions ----------
@@ -968,7 +1058,7 @@ main() {
 		Show 2 "Target version: ${BOLD}${version:-latest}${COLOUR_RESET}"
 	fi
 
-	# Step 1-3: Binaries
+	# Step 1-2: Binaries, fetched and verified
 	if [[ $skip_binaries -eq 0 ]]; then
 		if [[ $LOCAL_INSTALL -eq 1 ]]; then
 			Header "Steps 1-2 — Verify Local Build"
@@ -984,7 +1074,17 @@ main() {
 				Show 1 "Checksum verification failed"
 			fi
 		fi
+	else
+		Header "Steps 1-3 — Skipping binary installation"
+	fi
 
+	# After the release assets are verified, so that a failed verification
+	# installs nothing, and before any binary is replaced, so that an apt run
+	# during the install already finds it.
+	install_needrestart_override "$NEEDRESTART_DIR" root:root
+
+	# Step 3: Release files
+	if [[ $skip_binaries -eq 0 ]]; then
 		Header "Step 3/5 — Install Release Files"
 		if ! install_license_files; then
 			Show 1 "License file installation failed"
@@ -992,8 +1092,6 @@ main() {
 		if ! install_binaries; then
 			Show 1 "Binary installation failed"
 		fi
-	else
-		Header "Steps 1-3 — Skipping binary installation"
 	fi
 
 	# Step 4: Configuration
@@ -1083,6 +1181,7 @@ What gets installed:
   - Config:       /etc/linuxio/indexer/config.yaml, /etc/linuxio/monitoring/config.yaml, /etc/linuxio/disallowed-users (created if missing, never overwritten)
   - Licenses:     ${DOC_DIR}/
   - Avahi mDNS:   /etc/avahi/services/linuxio.service (advertises <hostname>.local)
+  - needrestart:  ${NEEDRESTART_DIR}/conf.d/linuxio.conf (when needrestart is installed; keeps it from restarting running jobs)
 
 Examples:
   $(basename "$0")                 # Install latest release

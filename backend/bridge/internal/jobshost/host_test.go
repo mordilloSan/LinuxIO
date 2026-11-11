@@ -504,6 +504,15 @@ func readInterrupted(t *testing.T, id string, stream net.Conn) {
 	_ = stream.Close()
 }
 
+// readResultAndClose reads the result of a job stream and closes the stream as
+// the bridge does, so a host stop that follows does not wait for its close.
+func readResultAndClose(t *testing.T, stream net.Conn) relay.ResultFrame {
+	t.Helper()
+	result := readResult(t, stream)
+	_ = stream.Close()
+	return result
+}
+
 // A Suspend hook that stops the handler, as a paused balance returns an error,
 // leaves the job interrupted with its checkpoint, not failed.
 func TestSuspendThatStopsTheHandlerKeepsCheckpoint(t *testing.T) {
@@ -1014,11 +1023,11 @@ func TestHostRaisesAlertForFailedAndInterruptedJobs(t *testing.T) {
 
 	completed := th.startJob(sess, "test.job", jobA)
 	th.release <- nil
-	readResult(t, completed)
+	readResultAndClose(t, completed)
 
 	failed := th.startJob(sess, "test.job", jobB)
 	th.release <- errors.New("boom")
-	if result := readResult(t, failed); result.Status != "error" || result.Error != "boom" {
+	if result := readResultAndClose(t, failed); result.Status != "error" || result.Error != "boom" {
 		t.Fatalf("failed result = %#v, want error boom", result)
 	}
 
@@ -1030,11 +1039,238 @@ func TestHostRaisesAlertForFailedAndInterruptedJobs(t *testing.T) {
 	}
 
 	want := []alerts.Observation{
-		{Source: "jobs", Key: jobB, Severity: alerts.SeverityError, Title: "test.job failed", Message: "boom", Link: "/"},
-		{Source: "jobs", Key: jobC, Severity: alerts.SeverityError, Title: "test.job was interrupted", Message: "The job host stopped before the job finished (shutdown).", Link: "/"},
+		{Source: "jobs", Key: jobB, Severity: alerts.SeverityError, Title: "test.job failed", Message: "boom", Link: "/history?job=" + jobB},
+		{Source: "jobs", Key: jobC, Severity: alerts.SeverityWarning, Title: "test.job was interrupted", Message: "The job host stopped before the job finished (shutdown).", Link: "/history?job=" + jobC},
 	}
 	if got := th.observed(); !slices.Equal(got, want) {
 		t.Fatalf("alerts = %#v, want %#v", got, want)
+	}
+}
+
+// labeledRoute registers route, which runs as test.job does, with a task
+// label.
+func labeledRoute(th *testHost, route, label string) {
+	th.cfg.Router.Mutation(route, th.run, bridgeipc.WithTaskMetadata(func(any) bridgeipc.TaskMetadata {
+		return bridgeipc.TaskMetadata{Label: label}
+	}))
+}
+
+// reportingJobs is the settings in which jobs started in the browser report
+// report.
+func reportingJobs(report string) func() alerts.NotificationSettings {
+	return func() alerts.NotificationSettings {
+		n := alerts.DefaultNotifications()
+		n.Report[alerts.KindBrowserJobs] = report
+		return n
+	}
+}
+
+func TestFailedJobAlertNamesTheJob(t *testing.T) {
+	th := newTestHost(t, nil)
+	labeledRoute(th, "test.labeled", "Scrubbing btrfs filesystem")
+	th.start()
+	sess := th.connect()
+
+	labeled := th.startJob(sess, "test.labeled", jobA)
+	th.release <- errors.New("boom")
+	readResultAndClose(t, labeled)
+	plain := th.startJob(sess, "test.job", jobB)
+	th.release <- errors.New("bang")
+	readResultAndClose(t, plain)
+
+	waitFor(t, "both failure alerts", func() bool { return len(th.observed()) == 2 })
+	want := []alerts.Observation{
+		{Source: "jobs", Key: jobA, Severity: alerts.SeverityError, Title: "Scrubbing btrfs filesystem failed", Message: "boom", Link: "/history?job=" + jobA},
+		{Source: "jobs", Key: jobB, Severity: alerts.SeverityError, Title: "test.job failed", Message: "bang", Link: "/history?job=" + jobB},
+	}
+	if got := th.observed(); !slices.Equal(got, want) {
+		t.Fatalf("alerts = %#v, want %#v", got, want)
+	}
+}
+
+// A job cut short by a shutdown or a reboot is a warning; one whose host died
+// or that could not be resumed is a failure in effect, an alert.
+func TestInterruptedJobLevelFollowsItsReason(t *testing.T) {
+	t.Run("by a shutdown", func(t *testing.T) {
+		th := newTestHost(t, nil)
+		labeledRoute(th, "test.labeled", "Scrubbing btrfs filesystem")
+		th.start()
+		stream := th.startJob(th.connect(), "test.labeled", jobA)
+		th.cancel() // SIGTERM
+		readInterrupted(t, jobA, stream)
+		if err := th.wait(); err != nil {
+			t.Fatalf("Serve after SIGTERM = %v, want nil", err)
+		}
+		want := []alerts.Observation{{
+			Source: "jobs", Key: jobA, Severity: alerts.SeverityWarning, Title: "Scrubbing btrfs filesystem was interrupted",
+			Message: "The job host stopped before the job finished (shutdown).", Link: "/history?job=" + jobA,
+		}}
+		if got := th.observed(); !slices.Equal(got, want) {
+			t.Fatalf("alerts = %#v, want %#v", got, want)
+		}
+	})
+	t.Run("by a host crash", func(t *testing.T) {
+		th := newTestHost(t, nil)
+		now := time.Now().UTC()
+		if err := th.cfg.Store.Create(context.Background(), jobs.Record{
+			ID: jobA, Route: "test.job", Owner: jobs.Owner{UID: th.cfg.UID, Username: "alice"},
+			State: jobs.StateRunning, CreatedAt: now, StartedAt: now, Request: jsontext.Value(`{}`),
+			Metadata: jsontext.Value(`{"label":"Scrubbing btrfs filesystem"}`),
+			Executor: jobs.Executor{Kind: "host", PID: math.MaxInt32, PIDStart: 1}, Protocol: jobs.Protocol,
+		}); err != nil {
+			t.Fatalf("Store.Create: %v", err)
+		}
+		th.start()
+		want := []alerts.Observation{{
+			Source: "jobs", Key: jobA, Severity: alerts.SeverityError, Title: "Scrubbing btrfs filesystem was interrupted",
+			Message: "The job host stopped before the job finished (crash).", Link: "/history?job=" + jobA,
+		}}
+		if got := th.observed(); !slices.Equal(got, want) {
+			t.Fatalf("alerts = %#v, want %#v", got, want)
+		}
+	})
+	t.Run("by a reboot", func(t *testing.T) {
+		// A user host resumes nothing, so it raises the interruption.
+		th := newTestHost(t, asUserHost)
+		if err := th.cfg.Store.Create(context.Background(), earlierBootRecord(jobA, "test.job", jobs.StateRunning)); err != nil {
+			t.Fatalf("Store.Create: %v", err)
+		}
+		th.start()
+		want := []alerts.Observation{{
+			Source: "jobs", Key: jobA, Severity: alerts.SeverityWarning, Title: "test.job was interrupted",
+			Message: "The job host stopped before the job finished (reboot).", Link: "/history?job=" + jobA,
+		}}
+		if got := th.observed(); !slices.Equal(got, want) {
+			t.Fatalf("alerts = %#v, want %#v", got, want)
+		}
+	})
+	t.Run("and not resumed", func(t *testing.T) {
+		th := newTestHost(t, func(c *Config) { c.UID = 0 })
+		if err := th.cfg.Store.Create(context.Background(), earlierBootRecord(jobA, "test.gone", jobs.StateInterrupted)); err != nil {
+			t.Fatalf("Store.Create: %v", err)
+		}
+		th.start()
+		waitFor(t, "the failed resume alert", func() bool { return len(th.observed()) == 1 })
+		if got := th.observed(); got[0].Severity != alerts.SeverityError || got[0].Title != "test.gone was interrupted" {
+			t.Fatalf("alert = %#v, want an interrupted alert", got[0])
+		}
+	})
+}
+
+func TestLongJobThatFinishesIsANotice(t *testing.T) {
+	notice := alerts.Observation{
+		Source: "jobs", Key: jobA, Severity: alerts.SeverityInfo, Title: "Scrubbing btrfs filesystem finished",
+		Message: "It ran for 5 min.", Link: "/history?job=" + jobA,
+	}
+	t.Run("raised when a long job completes", func(t *testing.T) {
+		th := newTestHost(t, func(c *Config) {
+			// The record starts five minutes before the store stamps its end.
+			c.Now = func() time.Time { return time.Now().Add(-5 * time.Minute) }
+			c.Notifications = reportingJobs(alerts.ReportLongJobs)
+		})
+		labeledRoute(th, "test.labeled", "Scrubbing btrfs filesystem")
+		th.start()
+		stream := th.startJob(th.connect(), "test.labeled", jobA)
+		th.release <- nil
+		if result := readResultAndClose(t, stream); result.Status != "ok" {
+			t.Fatalf("result = %#v, want ok", result)
+		}
+		if err := th.stop(); err != nil {
+			t.Fatalf("Serve = %v, want nil", err)
+		}
+		if record := th.record(jobA); record.State != jobs.StateCompleted {
+			t.Fatalf("record = %s, want completed", record.State)
+		}
+		if got := th.observed(); !slices.Equal(got, []alerts.Observation{notice}) {
+			t.Fatalf("alerts = %#v, want %#v", got, notice)
+		}
+	})
+
+	// The boundary, decided on records with exact start and end times.
+	started := time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name   string
+		report string
+		ran    time.Duration
+		want   []alerts.Observation
+	}{
+		{"five minutes", alerts.ReportLongJobs, 5 * time.Minute, []alerts.Observation{notice}},
+		{"a second less", alerts.ReportLongJobs, 4*time.Minute + 59*time.Second, nil},
+		{"failures only", alerts.ReportFailures, 5 * time.Minute, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			th := newTestHost(t, func(c *Config) { c.Notifications = reportingJobs(tc.report) })
+			th.host.alertLongJob(context.Background(), jobs.Record{
+				ID: jobA, Route: "test.labeled", State: jobs.StateCompleted,
+				StartedAt: started, FinishedAt: started.Add(tc.ran),
+				Metadata: jsontext.Value(`{"label":"Scrubbing btrfs filesystem"}`),
+			})
+			if got := th.observed(); !slices.Equal(got, tc.want) {
+				t.Fatalf("alerts = %#v, want %#v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCanceledJobReportsNothing(t *testing.T) {
+	th := newTestHost(t, func(c *Config) {
+		c.Now = func() time.Time { return time.Now().Add(-time.Hour) } // it ran long
+		c.Notifications = reportingJobs(alerts.ReportLongJobs)
+	})
+	th.cfg.Tasks.RegisterRoutes(th.cfg.Router)
+	th.start()
+	sess := th.connect()
+	stream := th.startJob(sess, "test.job", jobA)
+
+	cancel := openStream(t, sess, "tasks.cancel", map[string]string{"taskId": jobA}, "")
+	if result := readResult(t, cancel); result.Status != "ok" {
+		t.Fatalf("tasks.cancel = %#v, want ok", result)
+	}
+	if result := readResultAndClose(t, stream); result.Status != "error" || result.Code != 499 {
+		t.Fatalf("job stream result = %#v, want 499 canceled", result)
+	}
+	if err := th.stop(); err != nil {
+		t.Fatalf("Serve = %v, want nil", err)
+	}
+	if record := th.record(jobA); record.State != jobs.StateCanceled {
+		t.Fatalf("record = %s, want canceled", record.State)
+	}
+	if got := th.observed(); len(got) != 0 {
+		t.Fatalf("alerts = %#v, want none", got)
+	}
+}
+
+// TestJobNameForAlerts shows the failure title of every file browser route
+// that runs as a job, with the label its binding gives (task_routes.go,
+// handlers.go), so a title that reads badly shows here.
+func TestJobNameForAlerts(t *testing.T) {
+	for _, tc := range []struct{ route, metadata, title string }{
+		{"filebrowser.compress", `{"label":"/srv/photos.zip"}`, "Compress: /srv/photos.zip failed"},
+		{"filebrowser.extract", `{"label":"/srv/backup.tar.gz"}`, "Extract: /srv/backup.tar.gz failed"},
+		{"filebrowser.copy_batch", `{"label":"12 items"}`, "Copy: 12 items failed"},
+		{"filebrowser.move_batch", `{"label":"12 items"}`, "Move: 12 items failed"},
+		{"filebrowser.delete_batch", `{"label":"notes.txt"}`, "Delete: notes.txt failed"},
+		{"filebrowser.trash_batch", `{"label":"report.pdf"}`, "Move to Trash: report.pdf failed"},
+		{"filebrowser.trash_restore", `{"label":"2 items"}`, "Restore from Trash: 2 items failed"},
+		{"filebrowser.trash_purge", `{"label":"2 items"}`, "Delete from Trash: 2 items failed"},
+		{"filebrowser.index", `{"label":"/srv/data"}`, "Index: /srv/data failed"},
+		{"filebrowser.index", `{}`, "filebrowser.index failed"}, // the whole index has no path
+		{"filebrowser.upload", `{"label":"/srv/iso/debian.iso"}`, "Upload: /srv/iso/debian.iso failed"},
+		{"filebrowser.upload_batch", `{"label":"/srv/uploads"}`, "Upload: /srv/uploads failed"},
+		{"filebrowser.archive", `{"label":"12 items"}`, "Archive: 12 items failed"},
+		{"filebrowser.chmod_batch", `{"label":"3 items"}`, "Change permissions: 3 items failed"}, // also owner and group
+		{"filebrowser.resource_post", "", "filebrowser.resource_post failed"},                    // no task label
+		{"filebrowser.resource_patch", "", "filebrowser.resource_patch failed"},                  // no task label
+		{"filebrowser.copy", `{"label":"12 items","action":"copy"}`, "Copy: 12 items failed"},
+		{"storage.btrfs_scrub", `{"label":"Scrubbing btrfs filesystem"}`, "Scrubbing btrfs filesystem failed"},
+		{"test.job", "", "test.job failed"},
+		{"test.job", `{"label":""}`, "test.job failed"},
+		{"test.job", `{"label":`, "test.job failed"},
+	} {
+		record := jobs.Record{ID: jobA, Route: tc.route, Metadata: jsontext.Value(tc.metadata)}
+		if got := jobName(record) + " failed"; got != tc.title {
+			t.Errorf("title of %s with %s = %q, want %q", tc.route, tc.metadata, got, tc.title)
+		}
 	}
 }
 

@@ -7,17 +7,20 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"time"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
 )
 
 const snapshotUsage = "Usage: linuxio-btrfs-timer snapshot run [--now RFC3339] | pre-update"
 
-// runSnapshots and runReplication are swapped by tests.
+// runSnapshots, runReplication and raiseAlert are swapped by tests.
 var (
 	runSnapshots   = btrfs.Run
 	runReplication = btrfs.RunReplication
+	raiseAlert     = alerts.Raise
 )
 
 func runSnapshot(ctx context.Context, args []string, stdout, stderr io.Writer) int {
@@ -60,7 +63,8 @@ func runSnapshot(ctx context.Context, args []string, stdout, stderr io.Writer) i
 }
 
 // snapshotPass runs the snapshot rules and, after a timeline pass, the
-// replication jobs, printing a summary and returning the exit code.
+// replication jobs and the notice the settings ask for, printing a summary
+// and returning the exit code.
 func snapshotPass(ctx context.Context, now time.Time, kind btrfs.SnapshotKind, stdout, stderr io.Writer) int {
 	rules, err := btrfs.LoadRules()
 	if err == nil {
@@ -70,10 +74,14 @@ func snapshotPass(ctx context.Context, now time.Time, kind btrfs.SnapshotKind, s
 		summary := fmt.Sprintf("taken=%d pruned=%d skipped=%d errors=%d", len(report.Taken), len(report.Pruned), len(report.Skipped), len(report.Errors))
 		failures := report.Errors
 		if err == nil && kind == btrfs.KindTimeline {
-			replicated, replErrs := replicateJobs(ctx)
-			summary += fmt.Sprintf(" replicated=%d replication_errors=%d", replicated, len(replErrs))
+			replicated, sent, replErrs := replicateJobs(ctx)
+			summary += fmt.Sprintf(" replicated=%d sent=%d replication_errors=%d", replicated, sent, len(replErrs))
 			for _, e := range replErrs {
 				failures = append(failures, e.Error())
+			}
+			// A stopped pass reports nothing.
+			if ctx.Err() == nil {
+				reportRun(ctx, now, len(report.Taken), sent, len(failures) > 0)
 			}
 		}
 		fmt.Fprintln(stdout, summary)
@@ -95,13 +103,14 @@ func snapshotPass(ctx context.Context, now time.Time, kind btrfs.SnapshotKind, s
 }
 
 // replicateJobs runs the replication jobs after a timeline pass and returns
-// how many enabled jobs succeeded (sent or already up to date) and the errors.
-func replicateJobs(ctx context.Context) (int, []error) {
+// how many enabled jobs succeeded (sent or already up to date), how many sent
+// a snapshot, and the errors.
+func replicateJobs(ctx context.Context) (replicated, sent int, errs []error) {
 	jobs, err := btrfs.LoadJobs()
 	if err != nil {
-		return 0, []error{fmt.Errorf("load replication jobs: %w", err)}
+		return 0, 0, []error{fmt.Errorf("load replication jobs: %w", err)}
 	}
-	errs := runReplication(ctx, jobs, func(done, total int) {
+	sent, errs = runReplication(ctx, jobs, func(done, total int) {
 		reportProgress(-1, fmt.Sprintf("Replicating %d of %d", done+1, total))
 	})
 	enabled := 0
@@ -110,5 +119,32 @@ func replicateJobs(ctx context.Context) (int, []error) {
 			enabled++
 		}
 	}
-	return max(enabled-len(errs), 0), errs
+	return max(enabled-len(errs), 0), sent, errs
+}
+
+// reportRun raises the notice of a timeline pass that the notification
+// settings ask for: under changes a pass that took or sent a snapshot, under
+// every_run every pass, except one that failed and took and sent nothing.
+// Each pass is a new occurrence of the one notice. A failed rule or job raises
+// its own alert whatever the settings say.
+func reportRun(ctx context.Context, now time.Time, taken, sent int, failed bool) {
+	changed := taken+sent > 0
+	if failed && !changed {
+		return
+	}
+	report := alerts.NotificationsOrDefaults().ReportFor(alerts.KindSnapshots)
+	if report != alerts.ReportEveryRun && (report != alerts.ReportChanges || !changed) {
+		return
+	}
+	title := "Snapshots: nothing to do"
+	if changed {
+		title = fmt.Sprintf("Snapshots: %d taken, %d sent", taken, sent)
+	}
+	if err := raiseAlert(ctx, alerts.Observation{
+		Source: btrfs.AlertSource, Key: "snapshot-run", Severity: alerts.SeverityInfo,
+		Title: title, Link: "/storage/subvolumes?view=snapshots",
+		OccurrenceID: now.UTC().Format(time.RFC3339Nano),
+	}); err != nil {
+		slog.Warn("failed to raise btrfs snapshot run notice", "error", err)
+	}
 }

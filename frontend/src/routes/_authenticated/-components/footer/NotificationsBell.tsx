@@ -1,8 +1,10 @@
 import { Icon } from "@iconify/react";
 import {
   useEffect,
+  useEffectEvent,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
   type ReactNode,
 } from "react";
@@ -23,6 +25,11 @@ import {
 import { iconSize as iconSizes } from "@/theme/constants";
 import { formatDuration } from "@/utils/formatters";
 
+import {
+  type NotificationsPanelRequest,
+  notificationsPanelRequest,
+  subscribeNotificationsPanel,
+} from "./notificationsPanel";
 import { useAlerts } from "./useAlerts";
 
 const PEEK_DURATION_MS = 3000;
@@ -341,7 +348,8 @@ function TransferPeek({
 // --- Main component ---
 
 export function NotificationsBell() {
-  const ref = useRef<HTMLButtonElement>(null);
+  // Held in state so a request from elsewhere can anchor the tray on it.
+  const [trigger, setTrigger] = useState<HTMLButtonElement | null>(null);
   const iconSize = iconSizes.md;
 
   // Full dropdown state (user-clicked)
@@ -352,6 +360,40 @@ export function NotificationsBell() {
   // Peek state (auto-triggered)
   const [peekOpen, setPeekOpen] = useState(false);
   const peekTimerRef = useRef<number>(0);
+
+  // A request from elsewhere (openNotificationsPanel) opens the tray as the
+  // trigger does, with the clock read at the request. Marking the alerts seen
+  // is left to the requester's handler: render cannot do it.
+  const panelRequest = useSyncExternalStore(
+    subscribeNotificationsPanel,
+    notificationsPanelRequest,
+  );
+  const [answeredRequest, setAnsweredRequest] = useState(panelRequest);
+  const [openedByRequest, setOpenedByRequest] =
+    useState<NotificationsPanelRequest | null>(null);
+  if (panelRequest !== answeredRequest) {
+    setAnsweredRequest(panelRequest);
+    if (panelRequest && trigger) {
+      setPeekOpen(false);
+      setNow(panelRequest.at);
+      setAnchorEl(trigger);
+      setOpenedByRequest(panelRequest);
+    }
+  }
+
+  // Focus follows a request to the trigger beside the tray, where a click
+  // leaves it. Blurring first lets a toaster that returns focus when it loses
+  // it (sonner, whose Show asked) do so before the trigger takes it: a focus
+  // move made in a blur handler would otherwise win over this one.
+  const focusTrigger = useEffectEvent(() => {
+    const active = document.activeElement;
+    if (!trigger || active === trigger) return;
+    if (active instanceof HTMLElement) active.blur();
+    trigger.focus();
+  });
+  useEffect(() => {
+    if (openedByRequest) focusTrigger();
+  }, [openedByRequest]);
 
   const { alerts, unseen, markAllSeen, dismiss } = useAlerts();
 
@@ -439,7 +481,7 @@ export function NotificationsBell() {
     setPeekOpen(false);
     setNow(Date.now());
     if (!anchorEl && unseen > 0) markAllSeen();
-    setAnchorEl((current) => (current ? null : ref.current));
+    setAnchorEl((current) => (current ? null : trigger));
   };
 
   const handleClose = () => setAnchorEl(null);
@@ -450,7 +492,7 @@ export function NotificationsBell() {
     setPeekOpen(false);
     setNow(Date.now());
     if (unseen > 0) markAllSeen();
-    setAnchorEl(ref.current);
+    setAnchorEl(trigger);
   };
 
   const handleCancel = (transfer: TransferLike) => {
@@ -569,7 +611,7 @@ export function NotificationsBell() {
             className="app-navbar-notifications__trigger"
             color="primary"
             onClick={handleOpen}
-            ref={ref}
+            ref={setTrigger}
             size="small"
           >
             {/* Filled only when the bell has something to report, so an idle

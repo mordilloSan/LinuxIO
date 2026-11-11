@@ -14,7 +14,9 @@ import (
 	"uuid"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
 	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 type manager struct {
@@ -69,8 +71,11 @@ func (m manager) list(ctx context.Context) (apischema.SchedulesListResult, error
 		return result, err
 	}
 	result.Available = true
+	choices := m.shownNotifyChoices()
 	for _, def := range defs {
-		result.Schedules = append(result.Schedules, m.status(ctx, def))
+		status := m.status(ctx, def)
+		status.Notify = choices[def.ID]
+		result.Schedules = append(result.Schedules, status)
 	}
 	return result, nil
 }
@@ -80,11 +85,27 @@ func (m manager) get(ctx context.Context, id string) (apischema.ScheduleStatus, 
 	if err != nil {
 		return apischema.ScheduleStatus{}, err
 	}
-	return m.status(ctx, def), nil
+	status := m.status(ctx, def)
+	status.Notify = m.shownNotifyChoices()[id]
+	return status, nil
+}
+
+// shownNotifyChoices are the choices list and get show. Settings it cannot
+// read show none, so the schedules stay listed; that is logged at Debug, as
+// the Schedules tab polls both and alerts.get_notifications warns.
+func (m manager) shownNotifyChoices() map[string]string {
+	choices, err := m.host.notifyChoices()
+	if err != nil {
+		slog.Debug("notification settings unreadable, showing no notification choices", "error", err)
+	}
+	return choices
 }
 
 func (m manager) create(ctx context.Context, req apischema.ScheduleCreateRequest) (apischema.ScheduleStatus, error) {
 	if err := m.host.available(); err != nil {
+		return apischema.ScheduleStatus{}, err
+	}
+	if err := validateNotify(req.Notify); err != nil {
 		return apischema.ScheduleStatus{}, err
 	}
 	opts, account, err := normalizeOptions(ctx, req.Options, m.host)
@@ -100,12 +121,86 @@ func (m manager) create(ctx context.Context, req apischema.ScheduleCreateRequest
 		if len(defs) >= maxSchedules {
 			return errors.New("at most 100 scheduled scripts are supported")
 		}
-		return m.apply(ctx, def, account)
+		// The choice is stored first: a create that cannot store it changes
+		// nothing.
+		if req.Notify != "" {
+			if notifyErr := m.host.setNotifyChoice(ctx, def.ID, req.Notify); notifyErr != nil {
+				return notifyErr
+			}
+		}
+		applyErr := m.apply(ctx, def, account)
+		if applyErr != nil && req.Notify != "" {
+			// A create that saved no definition takes its choice back; one that
+			// did leaves a disabled task, repaired by saving it again, which
+			// keeps it.
+			if _, defErr := m.store.definition(def.ID); errors.Is(defErr, os.ErrNotExist) {
+				m.takeBackNotifyChoice(ctx, def.ID)
+			}
+		}
+		return applyErr
 	})
 	if err != nil {
 		return apischema.ScheduleStatus{}, err
 	}
-	return m.status(ctx, def), nil
+	status := m.status(ctx, def)
+	status.Notify = req.Notify
+	return status, nil
+}
+
+// update replaces the options of a schedule and, when req names one that
+// differs from the stored one, its notification choice. A change of only the
+// choice leaves the definition and units alone, so it also works while the
+// script runs.
+func (m manager) update(ctx context.Context, req apischema.ScheduleUpdateRequest) error {
+	if req.Notify != nil {
+		if err := validateNotify(*req.Notify); err != nil {
+			return err
+		}
+	}
+	return m.store.locked(ctx, func() error {
+		def, err := m.store.definition(req.ID)
+		if err != nil {
+			return err
+		}
+		notify := req.Notify
+		if notify != nil {
+			// Settings that cannot be read refuse any choice, even a clear:
+			// what they store is unknown.
+			choices, readErr := m.host.notifyChoices()
+			if readErr != nil {
+				return readErr
+			}
+			if *notify == choices[req.ID] {
+				notify = nil
+			}
+		}
+		if notify != nil && sameOptions(req.Options, def.Options) {
+			return m.host.setNotifyChoice(ctx, req.ID, *notify)
+		}
+		return m.changeLocked(ctx, req.ID, &req.Options, notify, nil, false)
+	})
+}
+
+// A choice left behind names no schedule and is harmless, so the two
+// clean-ups below log a failure instead of returning it.
+
+// takeBackNotifyChoice clears the choice stored for a create that saved no
+// definition.
+func (m manager) takeBackNotifyChoice(ctx context.Context, id string) {
+	if err := m.host.setNotifyChoice(ctx, id, ""); err != nil {
+		slog.Warn("could not take back the notification choice of a scheduled task that was not created", "schedule", id, "error", err)
+	}
+}
+
+// forgetNotifyChoice clears the choice of a deleted schedule, when it has one.
+func (m manager) forgetNotifyChoice(ctx context.Context, id string) {
+	choices, err := m.host.notifyChoices()
+	if _, ok := choices[id]; ok && err == nil {
+		err = m.host.setNotifyChoice(ctx, id, "")
+	}
+	if err != nil {
+		slog.Warn("could not clear the notification choice of a deleted scheduled task", "schedule", id, "error", err)
+	}
 }
 
 // A disabled desired definition survives partial writes/reload failures, so the
@@ -186,11 +281,14 @@ func (m manager) pauseTimer(ctx context.Context, id string) error {
 
 func (m manager) change(ctx context.Context, id string, options *apischema.ScheduleOptions, enabled *bool, deleting bool) error {
 	return m.store.locked(ctx, func() error {
-		return m.changeLocked(ctx, id, options, enabled, deleting)
+		return m.changeLocked(ctx, id, options, nil, enabled, deleting)
 	})
 }
 
-func (m manager) changeLocked(ctx context.Context, id string, options *apischema.ScheduleOptions, enabled *bool, deleting bool) error {
+// changeLocked stores notify, when given, after the checks that can refuse the
+// change and before the schedule changes, so a choice that cannot be stored
+// leaves the schedule as it was.
+func (m manager) changeLocked(ctx context.Context, id string, options *apischema.ScheduleOptions, notify *string, enabled *bool, deleting bool) error {
 	def, err := m.store.definition(id)
 	if err != nil {
 		return err
@@ -214,6 +312,9 @@ func (m manager) changeLocked(ctx context.Context, id string, options *apischema
 			return err
 		}
 	}
+	if err := m.storeNotifyChoice(ctx, def, notify); err != nil {
+		return err
+	}
 	// Remove boot enablement before modifying files. Failure leaves a disabled,
 	// recoverable definition rather than activating partially written units.
 	if err := m.host.disable(ctx, timerName(id)); err != nil {
@@ -230,6 +331,23 @@ func (m manager) changeLocked(ctx context.Context, id string, options *apischema
 		return m.store.save(def)
 	}
 	return m.apply(ctx, def, account)
+}
+
+// storeNotifyChoice stores notify, when given, while the timer of def is
+// paused. One that cannot be stored resumes the timer, as a refused change
+// does.
+func (m manager) storeNotifyChoice(ctx context.Context, def apischema.ScheduleDefinition, notify *string) error {
+	if notify == nil {
+		return nil
+	}
+	err := m.host.setNotifyChoice(ctx, def.ID, *notify)
+	if err == nil || !def.Enabled {
+		return err
+	}
+	if startErr := m.host.start(ctx, timerName(def.ID)); startErr != nil {
+		return fmt.Errorf("%w; restore timer: %w", err, startErr)
+	}
+	return err
 }
 
 func (m manager) requireIdle(ctx context.Context, def apischema.ScheduleDefinition) error {
@@ -268,7 +386,21 @@ func (m manager) delete(ctx context.Context, def apischema.ScheduleDefinition) e
 	if err != nil {
 		return err
 	}
-	return removeFile(path)
+	if err := removeFile(path); err != nil {
+		return err
+	}
+	m.forgetNotifyChoice(ctx, def.ID)
+	resolveFinishedNotice(ctx, def.ID)
+	return nil
+}
+
+// resolveFinishedNotice clears the notice the completed runs of a deleted
+// schedule raised, which links to a task that is gone. One that cannot be
+// cleared is logged, as the choice is: the schedule is deleted either way.
+func resolveFinishedNotice(ctx context.Context, id string) {
+	if err := alerts.Resolve(ctx, scheduledrun.AlertSource, scheduledrun.FinishedAlertKey(id)); err != nil {
+		slog.Warn("could not resolve the finished notice of a deleted scheduled task", "schedule", id, "error", err)
+	}
 }
 
 func (m manager) runNow(ctx context.Context, id string) error {

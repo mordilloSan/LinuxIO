@@ -30,6 +30,24 @@ export async function rig(
 export const vmSsh = (command: string, input?: string | Buffer) =>
   rig(["ssh", command], input);
 
+/**
+ * Stops the apt timers until the next boot and waits for an apt run in
+ * progress to end. A fresh VM runs unattended-upgrades minutes after boot, and
+ * an apt run in the middle of a check is noise: it restarts services.
+ */
+export async function stopAptRuns() {
+  await vmSsh("sudo systemctl stop apt-daily.timer apt-daily-upgrade.timer");
+  await expect
+    .poll(
+      async () =>
+        vmSsh(
+          "systemctl is-active apt-daily.service apt-daily-upgrade.service || true",
+        ),
+      { intervals: [5_000], message: "apt runs in progress", timeout: 600_000 },
+    )
+    .not.toMatch(/^(active|activating|deactivating|reloading)$/m);
+}
+
 export interface JobRecord {
   id: string;
   route: string;
@@ -379,4 +397,92 @@ export async function throttle(bytesPerSecond: number, disks = DATA_DISKS) {
   for (const disk of disks) {
     await rig(["throttle", disk, String(bytesPerSecond)]);
   }
+}
+
+// Scheduled scripts created on the Schedules page, disabled, with a calendar
+// of 2099, and started with "Run now". jobs-phase4.spec.ts and
+// jobs-phase5a.spec.ts keep copies of their own of these helpers.
+
+export const SCHEDULED_SCRIPT = "scheduled.script";
+const NEVER = "2099-01-01 00:00:00";
+
+/** A schedule name no earlier run of a spec used. */
+export const uniqueName = (what: string) =>
+  `e2e ${what} ${Date.now().toString(36)}`;
+
+export const unitOf = (id: string) => `linuxio-schedule-${id}.service`;
+
+export const scheduleRow = (page: Page, name: string) =>
+  page.getByRole("row").filter({ hasText: name });
+
+/**
+ * Creates a schedule that runs script as the test user, selects it on the
+ * Schedules page and returns its ID.
+ */
+export async function createSchedule(page: Page, name: string, script: string) {
+  await page.goto("/services/schedules");
+  await page.getByRole("button", { name: "Create task" }).click();
+  const dialog = page.getByRole("dialog", { name: "Create scheduled task" });
+  await dialog.getByLabel("Name", { exact: true }).fill(name);
+  await dialog.getByLabel("Bash script").fill(`${script}\n`);
+  await dialog.getByRole("combobox", { name: "Run as" }).click();
+  await page
+    .getByRole("option", { name: process.env.LINUXIO_VM_USER, exact: true })
+    .click();
+  await dialog.getByRole("combobox", { name: "Repeat" }).click();
+  await page.getByRole("option", { name: "Custom (advanced)" }).click();
+  await dialog.getByLabel("Calendar expression").fill(NEVER);
+  await dialog.getByLabel("Timeout seconds").fill("3600");
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(dialog).toBeHidden({ timeout: 30_000 });
+  await scheduleRow(page, name).getByText(name, { exact: true }).click();
+  await expect(page).toHaveURL(/[?&]schedule=[0-9a-f-]{36}$/);
+  return new URL(page.url()).searchParams.get("schedule")!;
+}
+
+export const runNow = (page: Page, name: string) =>
+  scheduleRow(page, name).getByRole("button", { name: "Run now" }).click();
+
+/** The runs of schedule id, oldest first. */
+export const runsOf = async (id: string) =>
+  (await scheduledRecords(SCHEDULED_SCRIPT)).filter(
+    (r) => r.metadata?.identity?.[0] === id,
+  );
+
+/** Polls until schedule id has count runs, the newest in state (and reason), and returns that one. */
+export async function waitForRun(
+  id: string,
+  state: string,
+  {
+    count = 1,
+    reason,
+    timeout = 60_000,
+  }: { count?: number; reason?: string; timeout?: number } = {},
+): Promise<ScheduledRecord> {
+  let run: ScheduledRecord | undefined;
+  await expect
+    .poll(
+      async () => {
+        const runs = await runsOf(id);
+        run = runs.at(-1);
+        return { runs: runs.length, state: run?.state, reason: run?.reason };
+      },
+      { intervals: [1_000], message: `run ${count} ${state}`, timeout },
+    )
+    .toEqual({ runs: count, state, reason });
+  return run!;
+}
+
+/**
+ * Waits until unit has stopped, its stop hooks included: the end hook records
+ * the run, raises its alert and delivers it before the unit is inactive.
+ */
+export async function waitForIdle(unit: string) {
+  await expect
+    .poll(
+      async () =>
+        (await vmSsh(`systemctl show -p ActiveState --value ${unit}`)).trim(),
+      { intervals: [500], message: `${unit} stopped`, timeout: 60_000 },
+    )
+    .toMatch(/^(inactive|failed)$/);
 }

@@ -28,6 +28,7 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
+import { useJobHostStatus } from "@/routes/_authenticated/-components/app-update/useJobHostStatus";
 import { taskEndedAt, taskOutcome, taskRunTime } from "@/tasks/taskTitles";
 import { formatDate } from "@/utils/formatters";
 
@@ -40,7 +41,11 @@ import {
   type ScheduleTiming,
 } from "./scheduleTiming";
 
-type Draft = ScheduleOptions & { id?: string; enabled: boolean };
+type Draft = ScheduleOptions & {
+  id?: string;
+  enabled: boolean;
+  notify: string;
+};
 const initialDraft: Draft = {
   name: "",
   script: "#!/usr/bin/env bash\nset -euo pipefail\n",
@@ -52,6 +57,13 @@ const initialDraft: Draft = {
   timeout_seconds: 300,
   working_directory: "",
   enabled: false,
+  notify: "",
+};
+// What a task reports; "" follows the line for scheduled scripts.
+const notifyChoices = {
+  "": "Use the default",
+  failures: "Failures only",
+  every_run: "After every run",
 };
 const toastMeta = {
   label: "Scheduled tasks",
@@ -153,6 +165,7 @@ export default function SchedulesTab({
       ...status.definition.options,
       id: status.definition.id,
       enabled: status.definition.enabled,
+      notify: status.notify,
     });
 
   return (
@@ -245,11 +258,21 @@ export default function SchedulesTab({
           draft={draft}
           busy={creating || updating}
           onClose={() => setDraft(null)}
-          onSave={(value) =>
-            value.id
-              ? update({ id: value.id, options: createOptions(value) })
-              : create({ options: createOptions(value) })
-          }
+          onSave={(value) => {
+            // An unchanged choice is left out: the request keeps what is
+            // stored, and writes no notification settings.
+            const notify =
+              value.notify === draft.notify ? {} : { notify: value.notify };
+            if (value.id) {
+              update({
+                id: value.id,
+                options: createOptions(value),
+                ...notify,
+              });
+            } else {
+              create({ options: createOptions(value), ...notify });
+            }
+          }}
         />
       )}
       <GeneralDialog
@@ -385,11 +408,15 @@ function Details({
   onLatestLogs?: () => void;
 }) {
   return (
+    // At most half the page, scrolling inside, so the table keeps the rest
+    // while the live output and the past runs are shown.
     <div
       style={{
         display: "flex",
         flexDirection: "column",
         gap: "var(--app-space-12)",
+        maxHeight: "50%",
+        overflowY: "auto",
       }}
     >
       <div
@@ -426,8 +453,9 @@ function Details({
         </AppButton>
       </div>
       {status.invocation_id && (
-        // The card fills its parent's height, so the parent needs one.
-        <div style={{ height: 320 }}>
+        // The card fills its parent's height, so the parent needs one; it
+        // keeps it while the details scroll.
+        <div style={{ flexShrink: 0, height: 320 }}>
           {/* Keyed on the run so a new invocation restarts the stream. */}
           <UnitLogsCard
             key={status.invocation_id}
@@ -460,6 +488,7 @@ const runLabel = (entry: TaskHistoryEntry) =>
 
 // A unit keeps at most 50 runs, so one page of the history is the whole list.
 function PastRuns({ unit }: { unit: string }) {
+  const { updatePending } = useJobHostStatus();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const query = useQuery({
     ...linuxio.tasks.history({ unit }),
@@ -484,7 +513,9 @@ function PastRuns({ unit }: { unit: string }) {
       )}
       {entries?.length === 0 && (
         <AppTypography color="text.secondary">
-          This task has not run yet.
+          {updatePending
+            ? "History is unavailable until the LinuxIO update finishes."
+            : "This task has not run yet."}
         </AppTypography>
       )}
       {entries && entries.length > 0 && (
@@ -681,6 +712,17 @@ function ScheduleDialog({
             }
             label="Run after a missed activation"
           />
+          <AppSelect
+            label="Notify me"
+            value={value.notify}
+            onChange={(e) => set("notify", e.target.value)}
+          >
+            {Object.entries(notifyChoices).map(([choice, label]) => (
+              <option key={choice} value={choice}>
+                {label}
+              </option>
+            ))}
+          </AppSelect>
         </div>
       </AppDialogContent>
       <AppDialogActions>
@@ -696,11 +738,21 @@ function ScheduleDialog({
             !calendar.trim() ||
             value.timeout_seconds < 1
           }
+          // A field left as it opened sends the stored value, which its
+          // control may render differently ("daily" opens as 00:00, empty
+          // arguments are dropped): saving only the choice changes no option.
           onClick={() =>
             onSave({
               ...value,
-              on_calendar: calendar,
-              arguments: argumentText.split("\n").filter((line) => line !== ""),
+              on_calendar:
+                calendar ===
+                scheduleCalendar(parseScheduleTiming(draft.on_calendar))
+                  ? draft.on_calendar
+                  : calendar,
+              arguments:
+                argumentText === draft.arguments.join("\n")
+                  ? draft.arguments
+                  : argumentText.split("\n").filter((line) => line !== ""),
             })
           }
           variant="contained"

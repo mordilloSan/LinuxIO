@@ -5,6 +5,22 @@ import useAuth from "@/hooks/useAuth";
 
 const EMPTY: AlertList = { alerts: [], unseen: 0 };
 
+/**
+ * Marks every alert seen and keeps the list the bridge answers with: the
+ * bell's tray on open, and the sign-in notice's Show.
+ */
+export function useMarkAlertsSeen(): () => void {
+  const queryClient = useQueryClient();
+  const { mutate } = linuxio.alerts.mark_all_seen.useMutation({
+    error: "Failed to update alerts",
+    invalidates: [],
+    success: (result) => {
+      queryClient.setQueryData(linuxio.alerts.list.queryKey, result);
+    },
+  });
+  return () => mutate(undefined);
+}
+
 export function useAlerts() {
   const { privileged } = useAuth();
   const queryClient = useQueryClient();
@@ -17,11 +33,7 @@ export function useAlerts() {
   const replace = (result: AlertList) => {
     queryClient.setQueryData(linuxio.alerts.list.queryKey, result);
   };
-  const markAllSeenMutation = linuxio.alerts.mark_all_seen.useMutation({
-    error: "Failed to update alerts",
-    invalidates: [],
-    success: replace,
-  });
+  const markAllSeen = useMarkAlertsSeen();
   const dismissMutation = linuxio.alerts.dismiss.useMutation({
     error: "Failed to dismiss alert",
     invalidates: [],
@@ -32,7 +44,7 @@ export function useAlerts() {
     alerts: data.alerts,
     unseen: data.unseen,
     enabled: privileged,
-    markAllSeen: () => markAllSeenMutation.mutate(undefined),
+    markAllSeen,
     dismiss: (id: string) => dismissMutation.mutate({ id }),
   };
 }

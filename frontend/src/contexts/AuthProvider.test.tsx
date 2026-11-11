@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { publishAppUpdateInProgress } from "@/contexts/appUpdateInProgress";
 import { act, render, screen, waitFor } from "@/test/render";
+import { hasFreshSignIn } from "@/utils/freshSignIn";
 import { readSigninNotice } from "@/utils/signinNotice";
 
 const apiMocks = vi.hoisted(() => ({
@@ -144,6 +145,62 @@ describe("AuthProvider", () => {
     expect(localStorage.getItem("auth_privileged")).toBe("true");
     expect(localStorage.getItem("auth_capabilities")).toBeNull();
     expect(sessionStorage.getItem("update_info")).toBeNull();
+  });
+
+  it("marks a fresh sign-in for the notice shown after it", async () => {
+    vi.mocked(fetch).mockResolvedValue({
+      json: async () => ({ privileged: false, success: true }),
+      ok: true,
+    } as Response);
+
+    const { user } = renderAuthProvider();
+    expect(hasFreshSignIn()).toBe(false);
+    await user.click(screen.getByRole("button", { name: "sign in" }));
+
+    await waitFor(() =>
+      expect(screen.getByText("miguel:true:false:null")).toBeInTheDocument(),
+    );
+    expect(hasFreshSignIn()).toBe(true);
+  });
+
+  it("does not take a page reload for a fresh sign-in", async () => {
+    localStorage.setItem("auth_username", "miguel");
+    localStorage.setItem("auth_privileged", "false");
+
+    renderAuthProvider();
+
+    expect(
+      await screen.findByText("miguel:true:false:null"),
+    ).toBeInTheDocument();
+    expect(hasFreshSignIn()).toBe(false);
+  });
+
+  it("still signs in when session storage refuses the mark", async () => {
+    const setItem = Storage.prototype.setItem;
+    const refuse = vi
+      .spyOn(Storage.prototype, "setItem")
+      .mockImplementation(function (this: Storage, key, value) {
+        if (this === window.sessionStorage) {
+          throw new DOMException("full", "QuotaExceededError");
+        }
+        setItem.call(this, key, value);
+      });
+    vi.mocked(fetch).mockResolvedValue({
+      json: async () => ({ privileged: true, success: true }),
+      ok: true,
+    } as Response);
+
+    const { user } = renderAuthProvider();
+    await user.click(screen.getByRole("button", { name: "sign in" }));
+
+    await waitFor(() =>
+      expect(screen.getByText("miguel:true:true:null")).toBeInTheDocument(),
+    );
+    expect(toastMocks.success).toHaveBeenCalledWith("Welcome, miguel!");
+    expect(localStorage.getItem("auth_username")).toBe("miguel");
+    expect(refuse).toHaveBeenCalledWith("fresh_sign_in", expect.any(String));
+    refuse.mockRestore();
+    expect(hasFreshSignIn()).toBe(false);
   });
 
   it("refreshes and persists capabilities when the mux is already open", async () => {
@@ -361,6 +418,26 @@ describe("AuthProvider", () => {
     expect(apiMocks.redirectToSignIn).toHaveBeenCalledTimes(1);
     // Deliberate sign-out must not preserve the current path.
     expect(apiMocks.redirectToSignIn).toHaveBeenCalledWith(false);
+  });
+
+  it("drops a sign-in mark nobody took when the session ends", async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        json: async () => ({ privileged: true, success: true }),
+        ok: true,
+      } as Response)
+      .mockResolvedValue({ ok: true } as Response);
+
+    const { user } = renderAuthProvider();
+    await user.click(screen.getByRole("button", { name: "sign in" }));
+    await waitFor(() => expect(hasFreshSignIn()).toBe(true));
+
+    await user.click(screen.getByRole("button", { name: "sign out" }));
+
+    await waitFor(() =>
+      expect(apiMocks.redirectToSignIn).toHaveBeenCalledTimes(1),
+    );
+    expect(hasFreshSignIn()).toBe(false);
   });
 
   it("handles a real session-timeout signal from the stream mux", async () => {

@@ -77,6 +77,8 @@ type JobSettings struct {
 type Dismissals struct {
 	FailedLoginAlertID    *string `json:"failedLoginAlertId,omitzero"`
 	UncleanShutdownBootID *string `json:"uncleanShutdownBootId,omitzero"`
+	// HistorySeenAt is when the user last opened the job history (RFC 3339).
+	HistorySeenAt *string `json:"historySeenAt,omitzero"`
 }
 
 type ConfigSetPayload struct {
@@ -182,4 +184,6 @@ type ConfigJobSettingsPayload struct {
 type ConfigDismissalsPayload struct {
 	UncleanShutdownBootID *string `json:"uncleanShutdownBootId,omitzero"`
 	FailedLoginAlertID    *string `json:"failedLoginAlertId,omitzero"`
+	// HistorySeenAt must be an RFC 3339 time; an empty value clears it.
+	HistorySeenAt *string `json:"historySeenAt,omitzero"`
 }

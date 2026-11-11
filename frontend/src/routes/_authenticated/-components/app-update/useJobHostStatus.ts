@@ -14,8 +14,9 @@ const NOTHING_WAITING = {
 
 /**
  * Whether a LinuxIO update waits for running jobs of an older job service,
- * how many, and which. An error (a job service built before this route
- * answers "route not found") counts as nothing waiting.
+ * how many, and which. An error with no earlier answer (a job service built
+ * before this route answers "route not found") counts as nothing waiting; a
+ * failed poll after an answer keeps that answer until the next poll.
  */
 export function useJobHostStatus() {
   const { isOpen } = useStreamMux();
@@ -28,7 +29,7 @@ export function useJobHostStatus() {
     meta: { silent: true },
   });
 
-  if (query.isError || !query.data) return NOTHING_WAITING;
+  if (!query.data) return NOTHING_WAITING;
   return {
     updatePending: query.data.update_pending,
     running: query.data.running,

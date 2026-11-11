@@ -17,7 +17,7 @@ func TestWriteNotifyDropInContent(t *testing.T) {
 	if got != want {
 		t.Fatalf("drop-in = %q, want %q", got, want)
 	}
-	if got := readNotifyPolicy(host, "apt-daily-upgrade.service"); got != AutoUpdateNotifyOnChange {
+	if got := readNotifyPolicy(host, "apt-daily-upgrade.service", allNotifyPolicies); got != AutoUpdateNotifyOnChange {
 		t.Fatalf("readNotifyPolicy = %q, want on_change", got)
 	}
 }
@@ -41,16 +41,38 @@ func TestReadNotifyPolicy(t *testing.T) {
 	fake, host := newFakeAutoUpdateHost()
 	svc := "dnf-automatic.service"
 	path := "/etc/systemd/system/dnf-automatic.service.d/linuxio-alert.conf"
-	if got := readNotifyPolicy(host, svc); got != AutoUpdateNotifyNever {
+	if got := readNotifyPolicy(host, svc, allNotifyPolicies); got != AutoUpdateNotifyNever {
 		t.Fatalf("missing drop-in = %q", got)
 	}
 	fake.files[path] = []byte("[Service]\nExecStopPost=/usr/local/bin/linuxio alert auto-update --provider dnf --policy always\n")
-	if got := readNotifyPolicy(host, svc); got != AutoUpdateNotifyAlways {
+	if got := readNotifyPolicy(host, svc, allNotifyPolicies); got != AutoUpdateNotifyAlways {
 		t.Fatalf("policy = %q", got)
 	}
 	fake.files[path] = []byte("[Service]\nExecStopPost=/usr/local/bin/linuxio alert auto-update --provider dnf --policy sometimes\n")
-	if got := readNotifyPolicy(host, svc); got != AutoUpdateNotifyNever {
+	if got := readNotifyPolicy(host, svc, allNotifyPolicies); got != AutoUpdateNotifyNever {
 		t.Fatalf("invalid policy read as %q, want never", got)
+	}
+}
+
+// Only on_change, which an older build offered where only the service result
+// is known, reads as on_failure. Any other stored policy a backend does not
+// offer reads as stored, so a save cannot quietly narrow it.
+func TestReadNotifyPolicyFallsBackOnlyForOnChange(t *testing.T) {
+	fake, host := newFakeAutoUpdateHost()
+	offered := []AutoUpdateNotify{AutoUpdateNotifyOnFailure}
+	for stored, want := range map[AutoUpdateNotify]AutoUpdateNotify{
+		AutoUpdateNotifyOnChange:  AutoUpdateNotifyOnFailure,
+		AutoUpdateNotifyAlways:    AutoUpdateNotifyAlways,
+		AutoUpdateNotifyOnFailure: AutoUpdateNotifyOnFailure,
+	} {
+		fake.files[aptAlertDropIn] = []byte("[Service]\nExecStopPost=/usr/local/bin/linuxio alert auto-update --provider apt --policy " + string(stored) + "\n")
+		if got := readNotifyPolicy(host, aptUpgradeService, offered); got != want {
+			t.Errorf("stored %q read as %q, want %q", stored, got, want)
+		}
+	}
+	delete(fake.files, aptAlertDropIn)
+	if got := readNotifyPolicy(host, aptUpgradeService, offered); got != AutoUpdateNotifyNever {
+		t.Errorf("no drop-in read as %q, want never", got)
 	}
 }
 

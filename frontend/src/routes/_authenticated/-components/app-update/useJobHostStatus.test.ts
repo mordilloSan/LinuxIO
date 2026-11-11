@@ -142,6 +142,36 @@ describe("useJobHostStatus", () => {
     expect(request).toHaveBeenCalledTimes(3);
   });
 
+  it("keeps the last answer when one poll fails, and keeps polling", async () => {
+    const request = vi
+      .spyOn(core, "request")
+      .mockResolvedValueOnce(pending())
+      .mockRejectedValueOnce(new LinuxIOError("bridge busy", 503))
+      .mockResolvedValue({ update_pending: false, running: 0 });
+
+    const { result } = renderHostStatus(testQueryClient());
+    await act(() => vi.advanceTimersByTimeAsync(0));
+    expect(result.current).toMatchObject({ updatePending: true, jobs: [job] });
+
+    await act(() => vi.advanceTimersByTimeAsync(15_000));
+    expect(request).toHaveBeenCalledTimes(2);
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    expect(result.current).toMatchObject({
+      updatePending: true,
+      running: 1,
+      jobs: [job],
+    });
+
+    await act(() => vi.advanceTimersByTimeAsync(15_000));
+    expect(request).toHaveBeenCalledTimes(3);
+    await act(() => vi.advanceTimersByTimeAsync(1));
+    expect(result.current).toEqual({
+      updatePending: false,
+      running: 0,
+      jobs: [],
+    });
+  });
+
   it("asks at once when a mutation fails because an update is pending", async () => {
     const request = vi
       .spyOn(core, "request")

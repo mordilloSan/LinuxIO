@@ -85,7 +85,7 @@ func TestRunningMarksARunFromAnEarlierBootInterrupted(t *testing.T) {
 	want := alerts.Observation{
 		Source:   "jobs",
 		Key:      testRunID,
-		Severity: alerts.SeverityError,
+		Severity: alerts.SeverityWarning,
 		Title:    "Nightly backup was interrupted",
 		Message:  "The system stopped before the run finished.",
 		Link:     testLink,
@@ -112,7 +112,7 @@ func TestRunningMarksAGoneRunCrashed(t *testing.T) {
 		t.Errorf("record = %s/%s finished %v, want interrupted/crash at %v", record.State, record.Reason, record.FinishedAt, laterNow)
 	}
 	if len(h.alerts) != 1 || h.alerts[0].Title != "Nightly backup was interrupted" ||
-		h.alerts[0].Message != "The run ended without reporting its result." {
+		h.alerts[0].Message != "The run ended without reporting its result." || h.alerts[0].Severity != alerts.SeverityError {
 		t.Errorf("alerts = %+v, want one crash alert", h.alerts)
 	}
 }

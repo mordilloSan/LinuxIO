@@ -7,7 +7,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
-	store "github.com/mordilloSan/LinuxIO/backend/common/alerts"
 )
 
 var Routes = routeBindings(runtime.Runtime{}).Routes()
@@ -37,13 +36,12 @@ func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 			return dismissForUID(ctx, uid(), req.ID)
 		}, apischema.Privileged()),
 		apischema.Call[apischema.NoRequest, apischema.NotificationSettingsView]("alerts.get_notifications", apischema.Privileged(), apischema.RetrySafe()).Handle(func(context.Context, apischema.NoRequest) (apischema.NotificationSettingsView, error) {
-			n, err := store.LoadNotifications()
-			return notificationsView(n), err
+			return getNotifications()
 		}),
-		apischema.Mutation("alerts.set_notifications", func(_ context.Context, req apischema.NotificationSettings) (apischema.NotificationSettingsView, error) {
-			n, err := store.SaveNotifications(notificationsFromRequest(req))
+		apischema.Mutation("alerts.set_notifications", func(ctx context.Context, req apischema.NotificationSettings) (apischema.NotificationSettingsView, error) {
+			n, err := saveNotifications(ctx, req)
 			if err == nil {
-				slog.Info("alert notification settings saved", "minSeverity", req.MinSeverity, "webhook", req.WebhookURL != "", "email", req.SMTPHost != "")
+				slog.Info("alert notification settings saved", "webhook", n.WebhookURL != "", "email", n.SMTPHost != "")
 			}
 			return notificationsView(n), err
 		}, apischema.Privileged()),

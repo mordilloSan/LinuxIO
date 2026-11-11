@@ -20,6 +20,7 @@ const schedule = {
       working_directory: "",
     },
   },
+  notify: "",
   unit_name: "linuxio-schedule-nightly.service",
   active_state: "active",
   result: "success",

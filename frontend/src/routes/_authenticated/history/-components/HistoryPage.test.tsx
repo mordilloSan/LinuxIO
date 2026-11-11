@@ -1,13 +1,35 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TaskHistory, TaskHistoryEntry, TaskSnapshot } from "@/api";
 import { LinuxIOError } from "@/api/errors";
-import { renderWithTanStackRouter, screen, within } from "@/test/render";
+import { ConfigContext } from "@/contexts/ConfigContext";
+import {
+  act,
+  createConfigContextValue,
+  renderWithTanStackRouter,
+  screen,
+  within,
+} from "@/test/render";
 import { formatDate } from "@/utils/formatters";
 
 import HistoryPage from "./HistoryPage";
 
-const mocks = vi.hoisted(() => ({ call: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  call: vi.fn(),
+  updateConfig: vi.fn(),
+  updatePending: false,
+}));
+
+vi.mock(
+  "@/routes/_authenticated/-components/app-update/useJobHostStatus",
+  () => ({
+    useJobHostStatus: () => ({
+      updatePending: mocks.updatePending,
+      running: 0,
+      jobs: [],
+    }),
+  }),
+);
 
 vi.mock("@/api/calls", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/calls")>()),
@@ -54,18 +76,168 @@ function answer(pages: TaskHistory[], output = "saved text") {
   });
 }
 
+const config = createConfigContextValue({ updateConfig: mocks.updateConfig });
+
+const page = (
+  props: Partial<React.ComponentProps<typeof HistoryPage>> = {},
+) => (
+  <ConfigContext.Provider value={config}>
+    <HistoryPage onSelectedChange={vi.fn()} {...props} />
+  </ConfigContext.Provider>
+);
+
+// Let queries settle and effects run, for tests that assert nothing happened.
+const settle = () => act(() => new Promise((resolve) => setTimeout(resolve)));
+
 const renderPage = (
   props: Partial<React.ComponentProps<typeof HistoryPage>> = {},
   privileged = false,
-) =>
-  renderWithTanStackRouter(
-    <HistoryPage onSelectedChange={vi.fn()} {...props} />,
-    { auth: { privileged } },
-  );
+) => renderWithTanStackRouter(page(props), { auth: { privileged } });
 
 describe("HistoryPage", () => {
   beforeEach(() => {
     mocks.call.mockReset();
+    mocks.updateConfig.mockReset();
+    mocks.updatePending = false;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("stores when the history was seen, once per visit", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-11T08:00:00.000Z"));
+    answer([history([entry("a"), entry("b")])]);
+
+    const { rerender, user } = renderPage();
+    await user.click(await screen.findByText("Job a"));
+    rerender(page({ selected: "a" }));
+    await screen.findAllByText("Job a");
+
+    expect(mocks.updateConfig).toHaveBeenCalledTimes(1);
+    expect(mocks.updateConfig).toHaveBeenCalledWith({
+      dismissals: { historySeenAt: "2026-11-11T08:00:00.000Z" },
+    });
+  });
+
+  it("stores the time again on the next visit", async () => {
+    answer([history([entry("a")])]);
+
+    const first = renderPage();
+    await screen.findByText("Job a");
+    expect(mocks.updateConfig).toHaveBeenCalledTimes(1);
+    first.unmount();
+
+    renderPage();
+    await screen.findByText("Job a");
+    expect(mocks.updateConfig).toHaveBeenCalledTimes(2);
+  });
+
+  it("stores no time while an update waits and the history is unavailable", async () => {
+    mocks.updatePending = true;
+    answer([history([])]);
+
+    renderPage();
+
+    await screen.findByText(
+      "History is unavailable until the LinuxIO update finishes.",
+    );
+    await settle();
+    expect(mocks.updateConfig).not.toHaveBeenCalled();
+  });
+
+  it("stores the time once the update has finished and the history is shown", async () => {
+    mocks.updatePending = true;
+    answer([history([entry("a")])]);
+
+    const { rerender } = renderPage();
+    await screen.findByText("Job a");
+    await settle();
+    expect(mocks.updateConfig).not.toHaveBeenCalled();
+
+    mocks.updatePending = false;
+    rerender(page());
+    await settle();
+    expect(mocks.updateConfig).toHaveBeenCalledTimes(1);
+  });
+
+  it("stores no time when the history fails to load", async () => {
+    mocks.call.mockRejectedValue(new LinuxIOError("job service down", 503));
+
+    renderPage();
+
+    await screen.findByText(/job service down/);
+    await settle();
+    expect(mocks.updateConfig).not.toHaveBeenCalled();
+  });
+
+  it("stores no time for a history with nothing in it to have seen", async () => {
+    answer([history([])]);
+
+    renderPage();
+
+    await screen.findByText("Nothing has ended yet.");
+    await settle();
+    expect(mocks.updateConfig).not.toHaveBeenCalled();
+  });
+
+  it("says only that the history is unavailable for a selected job while an update waits", async () => {
+    mocks.updatePending = true;
+    answer([history([])]);
+
+    renderPage({ selected: "gone" });
+
+    expect(
+      await screen.findByText(
+        "History is unavailable until the LinuxIO update finishes.",
+      ),
+    ).toBeVisible();
+    await settle();
+    expect(screen.queryByText(/not among the loaded entries/)).toBeNull();
+  });
+
+  it("says a selected job is not among the loaded entries, and to load older", async () => {
+    answer([history([entry("a")], true)]);
+
+    renderPage({ selected: "gone" });
+
+    expect(
+      await screen.findByText(
+        "This job is not among the loaded entries. Load older to look for it.",
+      ),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Load older" })).toBeVisible();
+  });
+
+  it("says a selected job is not among the loaded entries when none are older", async () => {
+    answer([history([entry("a")])]);
+
+    renderPage({ selected: "gone" });
+
+    expect(
+      await screen.findByText("This job is not among the loaded entries."),
+    ).toBeVisible();
+    expect(screen.queryByText(/Load older to look for it/)).toBeNull();
+  });
+
+  it("finds a selected job once it is loaded", async () => {
+    answer([
+      history([entry("a")], true),
+      history([
+        entry("older", { state: "failed", error: { message: "gone wrong" } }),
+      ]),
+    ]);
+
+    const { user } = renderPage({ selected: "older" });
+    await screen.findByText(
+      "This job is not among the loaded entries. Load older to look for it.",
+    );
+
+    await user.click(screen.getByRole("button", { name: "Load older" }));
+
+    expect(await screen.findByText("gone wrong")).toBeVisible();
+    expect(screen.queryByText(/not among the loaded entries/)).toBeNull();
   });
 
   it("lists what ended with its outcome, owner, end time and run time", async () => {
@@ -122,6 +294,48 @@ describe("HistoryPage", () => {
     renderPage();
 
     expect(await screen.findByText("Nothing has ended yet.")).toBeVisible();
+  });
+
+  it("says history is unavailable, not empty, while an update waits", async () => {
+    mocks.updatePending = true;
+    answer([history([])]);
+
+    renderPage();
+
+    expect(
+      await screen.findByText(
+        "History is unavailable until the LinuxIO update finishes.",
+      ),
+    ).toBeVisible();
+    expect(screen.queryByText("Nothing has ended yet.")).toBeNull();
+  });
+
+  it("still lists the entries it has while an update waits", async () => {
+    mocks.updatePending = true;
+    answer([history([entry("a")])]);
+
+    renderPage();
+
+    expect(await screen.findByText("Job a")).toBeVisible();
+    expect(
+      screen.queryByText(
+        "History is unavailable until the LinuxIO update finishes.",
+      ),
+    ).toBeNull();
+  });
+
+  it("shows a failed query as an error, not as an unavailable history", async () => {
+    mocks.updatePending = true;
+    mocks.call.mockRejectedValue(new LinuxIOError("job service down", 503));
+
+    renderPage();
+
+    expect(await screen.findByText(/job service down/)).toBeVisible();
+    expect(
+      screen.queryByText(
+        "History is unavailable until the LinuxIO update finishes.",
+      ),
+    ).toBeNull();
   });
 
   it("shows a failed query as an error, not as an empty history", async () => {

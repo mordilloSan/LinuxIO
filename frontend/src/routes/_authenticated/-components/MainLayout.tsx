@@ -16,6 +16,7 @@ import Sidebar from "./sidebar/Sidebar";
 import { useCloseMobileSidebarOnNavigate } from "./sidebar/useCloseMobileSidebarOnNavigate";
 import useSidebar from "./sidebar/useSidebar";
 import { useSidebarItems } from "./sidebar/useSidebarItems";
+import { useAwayNotice } from "./useAwayNotice";
 
 import "@/icons/icons";
 
@@ -30,6 +31,7 @@ const MainLayout = () => {
   const sidebarItems = useSidebarItems();
 
   useCloseMobileSidebarOnNavigate();
+  useAwayNotice();
 
   /*
    * The gap between the header and the first thing on the page. A routed tab

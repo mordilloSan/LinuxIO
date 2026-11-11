@@ -19,6 +19,7 @@ type scheduledUpdateState struct {
 	registry      imageUpdateCheckClient
 	allContainers []container.Summary
 	dependencyCli ContainerClient
+	readiness     containerReadinessClient // inspects a replaced Compose container
 	dependencies  *standaloneDependencyIndex
 	dependencyErr error
 	dependencySet bool
@@ -29,6 +30,8 @@ type scheduledUpdateState struct {
 	reviveStopped bool
 	composeUpdate func(context.Context, ComposeTarget, []string, ComposeLineEmitter) error
 	announce      func(name string)
+	alertReport   string // the Docker updates' alerts.ReportFor
+	updated       int    // containers this pass replaced
 }
 
 func newScheduledUpdateState(ctx context.Context, cli *client.Client) *scheduledUpdateState {
@@ -37,6 +40,7 @@ func newScheduledUpdateState(ctx context.Context, cli *client.Client) *scheduled
 		cli:           cli,
 		registry:      cli,
 		dependencyCli: cli,
+		readiness:     cli,
 		composeGroups: make(map[string]*scheduledComposeTarget),
 		composeUpdate: composePullAndUpServices,
 	}
@@ -163,6 +167,7 @@ func (s *scheduledUpdateState) recordStandaloneUpdateOutcome(
 	updateErr error,
 ) error {
 	if updated.Updated {
+		s.updated++
 		s.oldImageIDs = append(s.oldImageIDs, updated.PreviousImageID)
 		slog.Info("updated standalone Docker container",
 			"component", "docker",
@@ -170,7 +175,7 @@ func (s *scheduledUpdateState) recordStandaloneUpdateOutcome(
 			"container", updated.ContainerName,
 			"old_image", updated.PreviousImageID,
 			"new_image", updated.NewImageID)
-		raiseDockerUpdatedAlert(s.ctx, updated.ContainerName, updated.PreviousImageID, updated.NewImageID)
+		raiseDockerUpdatedAlert(s.ctx, s.alertReport, updated.ContainerName, updated.PreviousImageID, updated.NewImageID)
 	}
 	if updateErr != nil {
 		if ctxErr := s.ctx.Err(); ctxErr != nil {
@@ -289,7 +294,7 @@ func (s *scheduledUpdateState) recordComposeGroupError(group *scheduledComposeTa
 
 func (s *scheduledUpdateState) verifyComposeGroup(group *scheduledComposeTarget) error {
 	for _, before := range group.before {
-		after, err := verifyScheduledComposeContainer(s.ctx, s.cli, before)
+		after, err := verifyScheduledComposeContainer(s.ctx, s.readiness, before)
 		if err != nil {
 			if ctxErr := s.ctx.Err(); ctxErr != nil {
 				return ctxErr
@@ -301,6 +306,7 @@ func (s *scheduledUpdateState) verifyComposeGroup(group *scheduledComposeTarget)
 		if after.Image == before.Image {
 			continue
 		}
+		s.updated++
 		s.oldImageIDs = append(s.oldImageIDs, before.Image)
 		slog.Info("updated Compose Docker container",
 			"component", "docker",
@@ -309,14 +315,14 @@ func (s *scheduledUpdateState) verifyComposeGroup(group *scheduledComposeTarget)
 			"container", strings.TrimPrefix(before.Name, "/"),
 			"old_image", before.Image,
 			"new_image", after.Image)
-		raiseDockerUpdatedAlert(s.ctx, before.Name, before.Image, after.Image)
+		raiseDockerUpdatedAlert(s.ctx, s.alertReport, before.Name, before.Image, after.Image)
 	}
 	return nil
 }
 
 func verifyScheduledComposeContainer(
 	ctx context.Context,
-	cli *client.Client,
+	cli containerReadinessClient,
 	before container.InspectResponse,
 ) (container.InspectResponse, error) {
 	name := strings.TrimPrefix(before.Name, "/")

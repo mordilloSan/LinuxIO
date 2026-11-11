@@ -144,6 +144,8 @@ func validateOptions(options AutoUpdateOptions, support AutoUpdateOptionSupport)
 	if !slices.Contains(support.RebootPolicies, options.RebootPolicy) {
 		return fmt.Errorf("reboot policy %q is not supported by this update backend", options.RebootPolicy)
 	}
+	// "never" is offered by no backend but still saved: an older host has it
+	// stored and the page sends it back.
 	if options.Notify != "" && options.Notify != AutoUpdateNotifyNever && !slices.Contains(support.NotifyPolicies, options.Notify) {
 		return fmt.Errorf("notify policy %q is not supported by this update backend", options.Notify)
 	}

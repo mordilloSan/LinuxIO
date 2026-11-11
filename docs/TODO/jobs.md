@@ -23,7 +23,7 @@ and [Notifications](../alerts.md).
 | 2 | Every mutation runs as a job: prerequisites, the ~199 routes and their callers, old task code deleted | done (section 4.2), last step `d2871872`; checked in the test VM (section 3.5) |
 | 3 | Storage safety and btrfs resume: cancel that ends when the handler returns, resume hooks for four btrfs routes, rollbacks, Docker storage switch, kill-and-resume root tests | done (section 4.3), commits `938e32c5` and `f8db05af`; checked in the test VM (section 3.6). The jobs CLI verb and the host's resume call are removed (D6) |
 | 4 | Scheduled runs in the job list and the store | done (section 4.4); checked in the test VM (section 3.8); [plan](../superpowers/plans/2026-11-10-jobs-phase4-scheduled-runs.md) |
-| 5 | History view, update banner; configurable notifications and the notice at sign-in | 5a built: the history page, each schedule's past runs, the saved output viewer and the update banner; checked in the test VM, where the final run passed all 7 checks; of the three faults the VM found, the history page's empty table and the viewer's opening position are fixed and confirmed there, and needrestart restarting job hosts is open (section 3.9). Open with the owner: the bell and cancel while an update waits, and the empty history then (section 3.9, limits); [plan](../superpowers/plans/2026-11-10-jobs-phase5a-history-and-banner.md). 5b open: notification settings and the notice at sign-in; [plan](../superpowers/plans/2026-11-10-jobs-phase5b-notifications.md) |
+| 5 | History view, update banner; configurable notifications and the notice at sign-in | 5a built: the history page, each schedule's past runs, the saved output viewer and the update banner; checked in the test VM, where run 3 passed all 7 checks and run 4, with the needrestart check added, all 8; of the three faults the VM found, the history page's empty table and the viewer's opening position are fixed and confirmed there, and needrestart restarting job hosts is fixed by an override the installer ships, checked there too (section 3.9, finding 2). Open with the owner: the bell and cancel while an update waits (section 3.9, limits); the history then says it is unavailable (decided on 2026-11-10, section 3.9); [plan](../superpowers/plans/2026-11-10-jobs-phase5a-history-and-banner.md). 5b built, not yet committed: what each kind of work reports, the grid of level by channel, a schedule's own choice and the notice at sign-in; checked in the test VM, where run 4, after the final fix round, passed all 11 checks (section 3.10). Open with the owner: four update routes without `Privileged()`, the Go 1.27.4 pin, two alert gaps that predate it (section 3.10); [plan](../superpowers/plans/2026-11-10-jobs-phase5b-notifications.md) |
 
 Contents: 1. Summary · 2. Design · 3. Done · 4. Left to do · 5. Deferred
 items · 6. Decision log · 7. Host-event checks
@@ -73,7 +73,7 @@ connection; changing how reads work; changing authentication.
 | Orderly shutdown | Resumable jobs pause and checkpoint on SIGTERM so the restart continues where they were. |
 | Updates | Hosts are not part of `linuxio.target` and are never restarted by the installer. An old host finishes its jobs and exits when idle. |
 | History | On disk, 30 days or 200 jobs per user. Jobs that succeed in under a second are not kept. |
-| Alerts | A failed or interrupted job raises an alert (admin hosts). Success goes to history only. |
+| Alerts | A failed job raises an alert, and an interrupted one an alert or a warning by its cause: a crash is an alert, a shutdown or a reboot a warning (root host only). A job that succeeds goes to history only, unless the notification settings ask for long jobs (`browser_jobs: long_jobs`) or for every run of a script (`every_run`), which raise a notice (plan 5b). |
 | Scheduled scripts | Stay systemd timers and services. They appear in the same list and history and use the same alert hook. |
 | Jobs with no user | Nothing outside the browser starts a job. Scheduled work runs in its own systemd unit and writes its own record (D8, section 2.14). Same record, same list. |
 | Logs | journald. Host jobs carry a `JOB_ID` field; unit jobs are their own unit. |
@@ -299,21 +299,21 @@ What each event does to a job, as phase 1 implements it:
 
 ### 2.12 Updates
 
-- `linuxio.target` does not pull in hosts or their sockets. The installer never stops or restarts them; it may `daemon-reload`. On Ubuntu, needrestart, which apt runs after a dpkg run, does restart a host whose binary an update replaced (seen once in the test VM, during an unattended-upgrades run; section 3.9, finding 2).
+- `linuxio.target` does not pull in hosts or their sockets. The installer never stops or restarts them; it may `daemon-reload`. On Ubuntu, needrestart, which apt runs after a dpkg run, restarts each service whose binary was replaced, and so restarted the job hosts once in the test VM, during an unattended-upgrades run (section 3.9, finding 2). Where `/etc/needrestart` exists the installer therefore installs, after the release binaries are verified and before it replaces any of them, and only when its content has the shipped form (`needrestart_override_valid`), an override (`packaging/etc/needrestart/conf.d/linuxio.conf` as `/etc/needrestart/conf.d/linuxio.conf`) that keeps needrestart from restarting the job hosts, the timer-run units and the updater's unit; the uninstaller removes it ([process-systemd-architecture.md](../process-systemd-architecture.md), needrestart). An in-app update runs the installer in a unit whose writable paths come from the bridge installed before the update; this build adds `/etc/needrestart/conf.d` to them as an optional entry, so the first in-app update launched by a build with it installs the file, while one launched by an earlier build (every release up to now) cannot write it and prints a notice, and the next update or a run of the installer from a terminal installs it (read from the source, not run).
 - The hello frame carries a protocol number. Same number: carry on. Another number: the host refuses the hello (`426`), and to the bridge it is an older host that an update waits for. The older host exits under its normal rule, 60 s after its last job and its last bridge (a refused hello is no bridge); the bridge tries again with its backoff, at most 30 s later, and that connection starts the new binary.
 - While an update waits, the bridge refuses every new mutation it would relay to the job host with `409` and a message that starts with the prefix `update_pending:` and then reads `LinuxIO update waits for N running jobs` (`1 running job`) while the older host runs jobs, `LinuxIO was updated; new jobs can start shortly` when it runs none, and `LinuxIO update waits for running jobs`, with no count, when the bridge cannot read the host's store. The shared mutation wrapper's default error toast shows the message without that prefix; a page that builds its own error text shows the message as received. The three `BrowserBound()` mutations, `filebrowser.upload`, `filebrowser.upload_batch` and `filebrowser.archive`, run in the bridge and are not affected. "Reads work" means, route by route (as built in phase 5a, section 3.9):
   - Answered by the bridge from the older host's records: `tasks.host`, with `update_pending: true`, the count and the running jobs (their label and last progress, without `metadata.identity` or `metadata.packageIds`). The bridge runs as the host's uid and reads that uid's job store read-only: the `running` records of executor kind `host` whose process still lives, and their progress files.
   - Answered empty at once: `tasks.history` (no entries) and `tasks.list` (the bridge's own tasks only); `tasks.events` sends none of the host's jobs.
   - Failing until the new host runs: `tasks.get`, `tasks.watch`, `tasks.cancel` and `tasks.output` of a host job wait up to 10 s for a host and answer `503`.
   - Calls and channels that do not go to the job host are not affected.
-- The update banner (section 2.16) shows the count and names the jobs. The bell does not list them, and the banner cannot cancel them; the owner asked to revisit this (section 3.9, limits). Because `tasks.history` answers empty, the history page and `Past runs` read as if nothing had ended; that too is open with the owner (section 3.9, limits).
+- The update banner (section 2.16) shows the count and names the jobs. The bell does not list them, and the banner cannot cancel them; the owner asked to revisit this (section 3.9, limits). Because `tasks.history` answers empty, the history page and `Past runs` say `History is unavailable until the LinuxIO update finishes.` in place of their empty texts, and refetch the history once the wait ends, without the user leaving the page (decided on 2026-11-10; section 2.16, section 3.9).
 - The protocol number changes when a frame changes shape or a route moves between the bridge and the host; adding a route to the host does not change it. A host of the same protocol built before a route was added answers it `route not found`. Phase 5a adds no fallback for that: the last release (v0.52.0) has no job host, so only a development build of phase 4 is such a host.
 
 ### 2.13 Alerts
 
-- `failed` and `interrupted` jobs raise an alert through `alerts.Raise` with source `jobs`, key `<id>`, the route, target and error message, and a link to the job in the UI. `canceled` and `completed` do not.
-- The alert store is root-owned, so only the root host raises alerts; a user host writes the record only. The notice "N jobs ended while you were away" at login, which would tell every user, non-admins included, about failures, is plan 5b and not built (section 4.5).
-- A scheduled script that fails or is interrupted raises the same jobs alert, from its unit's end hook or from the root host's liveness check (section 2.14). The timers' snapshots, replication, resyncs and Docker updates keep their own alerts.
+- Through `alerts.Raise` with source `jobs` and key `<id>`, titled by the job's name (its label; a file-browser job `<Action>: <label>`; else its route) and linked to `/history?job=<id>`: a `failed` job raises an alert (`error`) with the error message; an `interrupted` one a warning when a shutdown or a reboot stopped it, and an alert when its host crashed or it could not be resumed after the reboot. A `completed` job that ran five minutes or more raises a notice, `<name> finished` with how long it ran, when `browser_jobs` is `long_jobs` in the notification settings (plan 5b, section 3.10). A `canceled` job raises nothing.
+- The alert store is root-owned, so only the root host raises alerts and reads the settings; a user host writes the record only. Right after a sign-in, an admin is told how many alerts are unseen and another user how many of their own jobs failed or were interrupted since they last saw the history (plan 5b, section 3.10).
+- A scheduled script that fails or is interrupted raises the same jobs alert, from its unit's end hook or from the root host's liveness check (section 2.14); a completed one raises its schedule's one `finished` notice when the schedule's own choice, or else the scheduled scripts' line, is `every_run`. The timers' snapshots, replication, resyncs and Docker updates keep their own alerts, which follow the notification settings too ([Alerts](../alerts.md)).
 
 ### 2.14 Scheduled runs
 
@@ -353,7 +353,7 @@ ExecStopPost=-+/usr/local/bin/linuxio scheduled-run end --unit %n
 
 **Stopping.** The bell shows no stop for a scheduled run; its row opens the owning page. `schedules.stop` and a scrub cancel that hits a timer's resync set `cancel_requested` on the record first, so the run ends `canceled`. `schedules.stop` names the invocation it stops and marks only that run's record, so a stop that arrives after its run ended cannot mark the next one; a scrub cancel knows no invocation and marks the resync unit's running record. Either takes the mark back when the stop or the cancel fails.
 
-**Alerts.** One alert per failure. A script that fails or is interrupted raises the jobs alert (source `jobs`, key the record ID, title "<label> failed" or "<label> was interrupted"), as a failed browser job does. Snapshots, replication, resync and Docker updates already raise their own alert and get no second one.
+**Alerts.** One alert per failure. A script that fails raises the jobs alert (source `jobs`, key the record ID, title `<label> failed`, level `error`), as a failed browser job does; one that is interrupted raises `<label> was interrupted` as a warning when the system stopped, and as an alert when the root host found its unit gone in the same boot without the end hook having reported. With `every_run` (the schedule's own choice in `notifications.json`, or else the scheduled scripts' line), a completed run raises the notice `jobs/finished-<schedule id>`, `<label> finished`: one record per schedule, each run a new occurrence (plan 5b). Snapshots, replication, resync and Docker updates already raise their own alert and get no second one.
 
 **Frontend.** The bell lists each running scheduled run with its label and progress. The Schedules page shows the output of the selected schedule's current or latest run, live, from the journal. Its past runs and their saved output, and the history page, came with phase 5a (sections 2.16 and 3.9).
 
@@ -373,7 +373,7 @@ ExecStopPost=-+/usr/local/bin/linuxio scheduled-run end --unit %n
 - The running tray (`frontend/src/tasks/`) keeps its engines for uploads and downloads (bridge-local) and reads everything else from `tasks.events`. It shows running jobs older than one second, and every failed or interrupted one until dismissed.
 - **History** (built in phase 5a, section 3.9). The bell's tray ends with a `History` link to `/history`, a page open to every signed-in user and not in the sidebar. The page takes its height from the main layout's content area, so its table has height to fill (the test VM found the table at zero height, finding 1 of section 3.9; fixed since and confirmed there). It reads `tasks.history` and lists ended jobs and scheduled runs, newest first: the job's title, its outcome (`Completed`, `Failed`, `Cancelled`, `Interrupted (<reason>)`), who started it, when it ended and how long it ran. The title is the job's label; for a file job it names what was done in the bell's words (`Copying 12 items`, `Moving report.pdf to Trash`, `Compressing backup.zip`, `Extracting backup`; `frontend/src/tasks/taskTitles.ts`), for a scheduled run it is its label alone, and a job without a label is named from its route. `Load older` asks for the next page with the last entry's end time as `before`, exactly as received. Selecting a row (`?job=<id>`) highlights it and shows its error, an `Open` link for a scheduled run, and, for a privileged session, the saved output. Admins see the root host's jobs and every scheduled run; other users see their own host's jobs.
 - **Saved output.** A viewer reads the last 256 KiB through `tasks.output` and opens scrolled to its end. `Show earlier` reads the part before, which joins above the text while the text that was in view stays where it was; each part ends where the later one starts. When its query fetches again (after a failed `Show earlier` and a reconnect, or a remount) it rebuilds every part it had loaded. The text is shown as plain text.
-- **Past runs.** Each schedule on the Schedules page lists its runs (`tasks.history` with its unit), newest first, under `Past runs`; selecting one shows its error and its saved output. A failed fetch shows its error in the card and raises no toast. The live card `Output of the latest run` is unchanged.
+- **Past runs.** Each schedule on the Schedules page lists its runs (`tasks.history` with its unit), newest first, under `Past runs`; selecting one shows its error and its saved output. A failed fetch shows its error in the card and raises no toast. While an update waits and the list is empty, the card says `History is unavailable until the LinuxIO update finishes.` in place of `This task has not run yet.`; the history page says the same in place of `Nothing has ended yet.` (decided on 2026-11-10, section 3.9). When the wait ends (the banner's flag goes from true to false), `JobsUpdateBanner`, mounted once for every signed-in user, invalidates every `tasks.history` query once, so both views load the real history without a reload. The live card `Output of the latest run` is unchanged.
 - **Update banner.** For every signed-in user the layout asks `tasks.host` when the connection opens, again every 15 s while an update waits, and at once after a mutation started through `useMutation` fails with `update_pending` (the tray's `endpoint.start` callers do not trigger that); the wrapper's default error toast for that mutation shows the refusal without its `update_pending:` prefix. The banner is a `role="status"` region. It reads `LinuxIO was updated. New jobs wait for N running jobs to finish.` (`1 running job`), and `Show running jobs` / `Hide running jobs` lists each job in the banner, in a list of bounded height that scrolls: its title (as on the history page), who started it, when, and its last progress percentage, rounded (`· 43%`), when it reports one. With none running it reads `LinuxIO was updated. New jobs can start shortly.` and has no button. There is no button to force the update.
 - **Not built (plan 5b).** At sign-in, the notice of the jobs that ended while the user was away; the notification settings (section 4.5).
 
@@ -944,6 +944,10 @@ and this differ, this holds.
 | 8, the VM spec and these documents | `make lint-quiet`, `make tsc-quiet`; `make test-quiet` (frontend 311 files and 2022 tests run; every Go package passed from the test cache, the Go code unchanged since its last run); `make build-nocheck` of the update build (below); `make vm-reset`, `make vm-install` and `make test-vm-browser-quiet`, twice; `make check-docs-quiet` | the gates pass; the VM runs below |
 | 8, fix round 1 (spec and documents only) | `make lint-quiet`, `make tsc-quiet`, `make check-docs-quiet`; the VM was not run in this round | pass |
 | 8, final round (after the final code fixes) | `make test-quiet` (311 frontend files and 2034 tests; Go packages from the test cache, unchanged since the fix round's own run); `make vm-reset`, `make vm-install`, `make build-nocheck` of the update build, `make test-vm-browser-quiet` (run 3), `make vm-reset`; `make check-docs-quiet`, `make lint-quiet` | pass; run 3: 7 of 7 |
+| Follow-up B, the needrestart override (finding 2) | `shellcheck` and `shfmt -d` on the three changed scripts; `make test-installation-scripts-quiet`, `make lint-quiet`, `make test-quiet` (312 frontend files and 2047 tests; Go packages from the test cache, no Go change); `make vm-reset`, `make vm-install`, `make build-nocheck` of the update build, `make test-vm-browser-quiet` (run 4), `make vm-reset`; `make check-docs-quiet` | pass; run 4: 8 of 8 |
+| Follow-up B, the updater's writable paths (an optional `/etc/needrestart/conf.d`) | `make test-go GO_TEST_PKGS=./bridge/handlers/appupdate/...`, `make golint-quiet`; `shellcheck` and `shfmt -d` on the installer and its fixtures, `make test-installation-scripts-quiet`, `make test-quiet`, `make check-docs-quiet`; the VM was not run again: the installer's changed notice runs only when the write fails, and the path list only in an in-app update, neither of which run 4's checks reach | pass |
+| Follow-up B, review fixes (the snippet's content check, its step after the checksums, a private staging directory, notices and documents) | `shellcheck` and `shfmt -d` on the installer and its fixtures, `make test-installation-scripts-quiet`, `make lint-quiet`, `make check-docs-quiet`; neither `make test-quiet` nor the VM in this round | pass |
+| Follow-up B, VM confirmation of the review fixes (run 5) | `make test-quiet` (312 frontend files and 2047 tests), `make vm-reset`, `make vm-install`, `make test-vm-browser-quiet` (run 5), the refusal check over `make vm-ssh`, `make vm-reset`; `make check-docs-quiet` | pass; run 5: 2 of 2 |
 
 **Checked in the test VM** (Ubuntu 26.04.1 LTS, kernel 7.0.0-38-generic,
 systemd 259.5, as `lsb_release -ds`, `uname -r` and `systemctl --version`
@@ -992,7 +996,7 @@ banner by `role="status"`, expects the refusal's toast without its
 the copy's history row to read `Copying big.bin`, and checks, softly, that the
 banner's job line ends with a percentage.
 
-| Check | Result (run 3, the final VM run) |
+| Check | Result (run 3, the last run before the follow-ups) |
 |---|---|
 | A finished job in the history | pass. Following `History` closes the tray and opens `/history`; the table is visible, and its first row names `Scrubbing btrfs filesystem`, `Completed` and `linuxio-e2e`; clicking it selects `?job=<the scrub's id>` |
 | A failed scheduled script | pass. `tasks.output` from the admin's session answers the saved output byte for byte; the row reads `Failed`; selecting it shows the alert `exited with status 3`, a viewer with `…: boom`, and an `Open` link to `/services/schedules?schedule=<id>` |
@@ -1003,6 +1007,51 @@ banner's job line ends with a percentage.
 | `login.spec.ts` | pass |
 
 The VM was reset to its clean snapshot (`make vm-reset`) after run 3.
+
+**Run 4** (22:13, after the needrestart override of finding 2 and the history
+sentence of the limits below; the same VM, kernel and systemd as run 3,
+needrestart 3.11-1ubuntu2 as `dpkg-query -W needrestart` printed): `make
+vm-reset`, `make vm-install`, `make build-nocheck` of the update build, then
+`make test-vm-browser-quiet PLAYWRIGHT_ARGS='login.spec.ts
+jobs-phase5a.spec.ts jobs-needrestart.spec.ts'` with `LINUXIO_VM_UPDATE_BUILD`
+naming the update build: **8 of 8 passed**, in 3.8 minutes. `make vm-install`
+logged `Installed /etc/needrestart/conf.d/linuxio.conf`, as did both installs
+in the specs. What the table adds from the VM's journal and store was read over
+`make vm-ssh` after the run.
+
+| Check | Result (run 4) |
+|---|---|
+| needrestart and a replaced job host (`jobs-needrestart.spec.ts`): a scrub at 1 MiB/s per disk, then the installed build installed again with the rig's `install`, and `linuxio-monitoring`'s binary replaced by a copy renamed over it | pass. The install left the root host running (same `MainPID`; its `/proc/<pid>/exe` read `/usr/local/bin/linuxio-bridge (deleted)`) and the scrub `running`. Control, with the override moved out of `conf.d`: `override_rc` held 6 entries fewer, and `needrestart -r l -l` listed `systemctl restart linuxio-jobs@0.service` and `systemctl restart linuxio-monitoring.service` under `Services to be restarted:`. With the override: list mode named only `linuxio-monitoring.service` there and `linuxio-jobs@0.service` under `Service restarts being deferred:`; `needrestart -r a -l` printed the same under `Restarting services...` and the deferred heading, exited 0, gave `linuxio-monitoring.service` a new `MainPID` and left the host's; the scrub was still `running` and then, with its cap lifted, `completed` in the same host. Read over `make vm-ssh` after the run: that host started at 22:13:48.573 and stopped at 22:16:59.844, after the update build's install of the last check, with no restart between; systemd restarted `linuxio-monitoring.service` at 22:14:02.649 and 22:14:04.778 (the install) and at 22:14:11.247 (the needrestart run, by its timing); the scrub finished at 22:14:13.872 |
+| The five checks of run 3 before the update banner, and `login.spec.ts` | pass |
+| The update banner, with the history page open in a second page of the session | pass, with every check of run 3, and also: during the wait `/history` showed its table with `History is unavailable until the LinuxIO update finishes.` and without `Nothing has ended yet.`; after the banner was gone and the root host's `MainPID` was new, the same page, not reloaded, showed the scrub's row within the spec's bound of 30 s, and the sentence was gone. The banner's job line read `Scrubbing btrfs filesystem · linuxio-e2e · started 11/10/2026, 10:15:34 PM · 1%`. Read over `make vm-ssh` after the run, from `journalctl -b -u linuxio-jobs@0.service -o short-precise`: the older host logged `job host refused a bridge hello: protocol 3, want 2` seven times, the first at 22:15:44.232, the scrub finished at 22:15:59.544, the older host logged `job host stopped` at 22:16:59.844 (60.3 s later), and systemd logged `Starting linuxio-jobs@0.service` at 22:17:15.270 (15.4 s after that). No apt unit ran in this boot |
+
+The VM was reset to its clean snapshot after run 4.
+
+**Run 5** (22:46, after the review fixes to the installer: the snippet's
+content check, its step after the checksums and the `mktemp -d` staging
+directory): `make test-quiet`, `make vm-reset`, `make vm-install`, then `make
+test-vm-browser-quiet PLAYWRIGHT_ARGS='login.spec.ts jobs-needrestart.spec.ts'`
+(no update build; the phase 5a spec was not run again): **2 of 2 passed**, in
+35.8 s, `jobs-needrestart.spec.ts` (31.5 s) and `login.spec.ts` (3.7 s).
+`make vm-install` ran the changed installer end to end through its local path;
+it printed `Installing needrestart override...` and `Installed
+/etc/needrestart/conf.d/linuxio.conf` after `Steps 1-2 — Verify Local Build`
+and before `Step 3/5 — Install Release Files`, and ended `Installation
+complete!`. Read over `make vm-ssh` after it: the file is mode 644, owned by
+`root:root`, with the checkout's SHA-256; no `/tmp/linuxio-install*` directory
+was left; `needrestart -v -r l -l` evaluated the file and exited 0. The needrestart
+check printed the same three needrestart reports as in run 4. Then, by hand
+over `make vm-ssh`, the refusal path: a copy of the rig's checkout in the VM
+(`Makefile`, `LICENSE`, `docs/THIRD_PARTY_NOTICES.md` and `packaging/`), whose
+snippet had `system("id");` appended, installed with its own
+`install-linuxio-binaries.sh --local --build-dir ~/linuxio/build` as root: the
+installer printed `The needrestart override was not installed: the fetched
+file is not what LinuxIO ships`, went on, exited 0 and ended `Installation
+complete!`; the installed file kept its inode, modification time and SHA-256
+and holds no `system("id")`; no staging directory was left; `linuxio.target`,
+`linuxio-webserver.socket` and `linuxio-monitoring.service` were active, and
+needrestart's list mode still exited 0. The VM was reset to its clean snapshot
+after run 5.
 
 Found in the VM, in the product:
 
@@ -1017,10 +1066,11 @@ Found in the VM, in the product:
    showed the title and description only. Seen in runs 1 and 2; it failed three
    checks. The page's unit tests run in jsdom, which has no layout. The page's
    root now takes its height from the main layout's content area, as the logs
-   page does. Final VM run (run 3): confirmed fixed in the real layout; the
+   page does. Run 3: confirmed fixed in the real layout; the
    table is visible, its rows are found in three checks and a row is
    selected in two.
-2. **needrestart restarts the job hosts after an update** (open). In run 1,
+2. **needrestart restarts the job hosts after an update** (fixed after run 3;
+   checked in run 4, above). In run 1,
    `apt-daily-upgrade.service` ran unattended-upgrades from 14:12:51 to
    14:14:42, the fresh VM's first daily run. After the dpkg run that ended at
    14:13:57 its needrestart hook (`/etc/apt/apt.conf.d/99needrestart`)
@@ -1036,15 +1086,42 @@ Found in the VM, in the product:
    installer leaves the hosts alone, the distribution's tooling does not. A
    host restarted in the same boot clears `Resumable` (section 2.11), so such a
    scrub is not resumed; that is read from the source, not observed here.
-   An override that keeps needrestart from restarting `linuxio-jobs@` units is
-   the obvious remedy; it is the owner's decision.
+   The owner decided on 2026-11-10 that the installer ships a needrestart
+   override. `packaging/etc/needrestart/conf.d/linuxio.conf` adds to
+   needrestart's `$nrconf{override_rc}` one regular expression with the value
+   0 ("do not restart") for each of `linuxio-jobs@<uid>.service`,
+   `linuxio-schedule-*.service`, `linuxio-btrfs-snapshot.service`,
+   `linuxio-btrfs-resync@*.service`, `linuxio-docker-update.service` and
+   `linuxio-updater-*.service`; the daemons the installer restarts itself are
+   not listed. The installer installs it as
+   `/etc/needrestart/conf.d/linuxio.conf` where `/etc/needrestart` exists,
+   after the release binaries are verified and before it replaces any of
+   them, and only when every line is blank, a comment or one such entry for a
+   `linuxio-` unit (`needrestart_override_valid`: the file is Perl that
+   needrestart runs as root, and a release install fetches it from `main`
+   without a checksum); the uninstaller removes it
+   ([process-systemd-architecture.md](../process-systemd-architecture.md),
+   needrestart). The in-app updater's writable paths gain an optional
+   `/etc/needrestart/conf.d`, which reaches only updates launched by a build
+   that has it (limits, below). The syntax was read in the VM, from
+   needrestart 3.11-1ubuntu2 (`dpkg-query -W needrestart`): `needrestart.conf`
+   sets `override_rc` as a hash of regular expressions ("the first matching
+   regex will be used") and then evaluates each `conf.d/*.conf` as Perl;
+   `/usr/sbin/needrestart`, in list and automatic mode, puts a service whose
+   matching value is 0 under "Service restarts being deferred" and restarts
+   the others; `man needrestart` gives `-r l` (list only), `-r a` (restart
+   automatically) and `-l` (libraries only). The VM saw
+   `linuxio-jobs@0.service` deferred and `linuxio-monitoring.service`
+   restarted (`jobs-needrestart.spec.ts`, run 4); the installer fixture tests
+   cover the install cases, the content check, the uninstall and, with Perl,
+   all six expressions.
 3. **The saved output opened at the start of its last part** (fixed after
    run 2; confirmed in run 3). The viewer loaded the last
    256 KiB but did not scroll, so it opened on the first lines of that part
    (lines 355 and 356 of 600 here) rather than on the end. As decided since,
    it opens scrolled to its end, and `Show earlier` keeps the text that was in
-   view where it was while the earlier text joins above it. Final VM run
-   (run 3): confirmed fixed; it opened with lines 599 and 600 in view, and the
+   view where it was while the earlier text joins above it. Run 3:
+   confirmed fixed; it opened with lines 599 and 600 in view, and the
    line at the top stayed in view across both presses.
 
 **Privilege review** of the change as it stood after Task 7 (a reviewer the
@@ -1063,7 +1140,7 @@ batch's target, or its whole record, over the size limit; now stored once, as
 the target), the saved output viewer lost its end when its query fetched
 again, and history rows did not name what a file job did. The fourth is left
 for the owner: while an update waits, the history page and `Past runs` read
-as empty (limits, below). The same round also changed the refusal text with
+as empty; decided on 2026-11-10 and built (limits, below). The same round also changed the refusal text with
 nothing running, dropped the prefix from the refusal's toast, made the banner
 a status region with a bounded list and each job's percentage, highlighted
 the selected history row and silenced the `Past runs` query's toast.
@@ -1104,12 +1181,20 @@ Known limits, by decision or deferred by the reviews:
   serve). The owner asked to revisit this before phase 5a is called done:
   keep it, have the relay serve `tasks.events` and `tasks.watch` from the
   records, or find whether a cancel can reach a job on an older host at all.
-- While an update waits, the history page and `Past runs` read as empty
-  (`Nothing has ended yet.`, `This task has not run yet.`), because
-  `tasks.history` answers an empty history then. Open with the owner, with the
-  question above: the bridge could read the history from the store itself in
-  that state, or both views could say that the history is unavailable until
-  the update finishes.
+- While an update waits, `tasks.history` answers an empty history, so the
+  history page and `Past runs` would read as empty. Decided on 2026-11-10 and
+  built: with an empty list they say `History is unavailable until the LinuxIO
+  update finishes.` in place of `Nothing has ended yet.` and `This task has not
+  run yet.`; entries already loaded stay, a failed query still shows its
+  error, and when the wait ends every `tasks.history` query is refetched once
+  so the pages fill without a reload (`useRefreshHistoryAfterUpdate`, called
+  by `JobsUpdateBanner`). The bridge reading the history from the store itself
+  in that state stays a possible later change. VM confirmation (scenario 6 of
+  `jobs-phase5a.spec.ts`, run 4): while the update waited, `/history` showed
+  `History is unavailable until the LinuxIO update finishes.` and not `Nothing
+  has ended yet.`; once the wait had ended, the same page, not reloaded, showed
+  the scrub's row and no longer the sentence. `Past runs` during the wait was
+  not checked in the VM.
 - No fallback for an older host of the same protocol (above).
 - A refused mutation names no count when the bridge cannot read the store
   (`update_pending: LinuxIO update waits for running jobs`). With none
@@ -1141,7 +1226,18 @@ Known limits, by decision or deferred by the reviews:
   (`openRegularFile`); the directories belong to root or to the uid itself.
 - On the root host every admin's history shows the other admins' failed jobs,
   with their error messages and metadata (privilege review F2).
-- Finding 2 above.
+- The needrestart override of finding 2 and in-app updates. The bridge
+  installed before an update starts the updater unit (`ProtectSystem=full`)
+  with its own writable paths (`updaterWritablePaths` in
+  `backend/bridge/handlers/appupdate`). This build adds
+  `/etc/needrestart/conf.d` to them as an optional entry, so the first in-app
+  update launched by a build with it installs the override. An in-app update
+  launched by an earlier build, every release up to now included, cannot write
+  it: the installer prints a notice, the install goes on, and the next update
+  or a run of the installer from a terminal installs it. Read from the source
+  and from the installer fixtures, which simulate a read-only `conf.d` and a
+  read-only needrestart directory; no in-app update was run, and the VM run 4
+  above did not exercise this.
 
 **The update build** for the banner check is this tree with `jobs.Protocol`
 one higher, made without touching the tree through a Go overlay:
@@ -1170,6 +1266,298 @@ Seen on the way:
   the network and disk histories, and `filebrowser.subfolders`) while that user
   was on the dashboard and in the file browser. Not part of phase 5a; not
   looked into.
+
+### 3.10 Phase 5b: configurable notifications and the notice at sign-in (2026-11-11)
+
+[Plan](../superpowers/plans/2026-11-10-jobs-phase5b-notifications.md), nine
+tasks, not yet committed. What the code does is described in
+[Alerts](../alerts.md), the canonical document, and in the
+[API Contract](../api-contract.md#notification-settings); where the plan's
+text and the decisions taken while it was built differ (section 4.5), the
+decisions are what was built. Below: what each task built, read from the
+source and the task reports; the Make targets run; what the test VM showed;
+what only unit tests or the source cover; and what is left open.
+
+**Built.**
+
+- **Task 1, the settings.** `notifications.json` gains `report` (per kind),
+  `scripts` (per schedule) and `levels` (level by channel), with
+  `ReportFor`, `ReportForScript` and `ChannelsFor`; an older file loads into
+  the behaviour it had, and every save still writes `minSeverity` and
+  `dockerUpdates` for an older build. Every write is one locked read, change
+  and atomic write under `notifications.json.lock`. A parse error never quotes
+  the file. The wire types carry `levels` and `report`
+  (`backend/common/alerts/settings.go`, `backend/bridge/apischema/alerts.go`,
+  `backend/bridge/handlers/alerts/operations.go`).
+- **Task 2, the grid.** Email and webhook follow each level's ticks
+  (`backend/common/alerts/deliver.go`); `alerts.list` lists and counts only
+  the levels ticked for the browser, errors always; mark all seen marks only
+  what is listed; the test notification ignores the grid; a refused save
+  answers 400; `alerts.get_notifications` over a file that does not parse
+  answers the defaults with `settingsUnreadable`.
+- **Task 3, jobs and scripts.** The root job host names a job in its alert
+  (file jobs `<Action>: <label>`), links `/history?job=<id>`, raises an
+  interruption by a shutdown or a reboot as a warning (a crash, and a job
+  that could not be resumed, stay alerts after the final fix round) and,
+  under `long_jobs`, a notice for a completed
+  job of five minutes or more (`backend/bridge/internal/jobshost/`). A
+  script's end hook raises one `jobs/finished-<schedule id>` notice per
+  schedule under `every_run` (`backend/common/scheduledrun/`).
+  `alerts.RanFor` writes durations; `alerts.NotificationsOrDefaults` reads
+  the settings for producers; a full store evicts the lowest level first.
+- **Task 4, snapshots and resync.** `RunReplication` also returns how many
+  jobs sent a snapshot; the timer's pass raises the `btrfs/snapshot-run`
+  notice under `snapshots: changes` or `every_run`
+  (`backend/btrfs-timer/snapshot.go`); `resynced-<uuid>` follows `resync`
+  (`backend/common/btrfs/degraded.go`).
+- **Task 5, updates.** The Docker updater reads the settings once per pass,
+  always raises failures, raises "updated" under `changes` and `every_run`,
+  and the pass notice `linuxio-update-pass` under `every_run`
+  (`backend/common/dockerupdate/`). System updates offer no `never` (APT three
+  policies, DNF and Mint two), `AutoUpdateState.failures_unreported` reports
+  a stored `never`, and a provider that cannot tell what it installed says
+  "Automatic updates ran" (`backend/cli/alert.go`,
+  `backend/bridge/handlers/packages/internal/autoupdate/`).
+- **Task 6, a schedule's own choice.** `notify` on `ScheduleStatus`,
+  `schedules.create` and `schedules.update`, kept in `notifications.json`; an
+  update of only the choice writes nothing else; the dialog's *Notify me*
+  select (`backend/bridge/handlers/schedules/`, `SchedulesTab.tsx`).
+- **Task 7, the settings page.** The cards *What to hear about*, *Where each
+  level goes* and *Delivery*, *Save* under them, the warning and *Report
+  failures* for a stored `never`, and the warning for an unreadable file
+  (`NotificationSettingsSection.tsx`).
+- **Task 8, the notice at sign-in.** The toast for an admin and for another
+  user (`useAwayNotice.ts`), `openNotificationsPanel()`, the bell's focus on
+  its trigger, `dismissals.historySeenAt`, and the history page's sentence for
+  a job outside the loaded entries.
+- **Task 9.** `frontend/src/test/vm/jobs-phase5b.spec.ts`, the schedule
+  helpers it shares in `frontend/src/test/vm/vm.ts`, and these documents.
+- **Final fix round** (after the final review, Rulings 21 to 25 in 4.5): an
+  interruption by a crash, a job that could not be resumed and a script whose
+  end hook never reported are alerts again, a shutdown or a reboot a warning;
+  the reads polled while `notifications.json` does not parse (`alerts.list`,
+  `schedules.list`, `schedules.get`) log at debug level; webhook errors name
+  only the URL's host; `historySeenAt` is stored in UTC and never ahead of the
+  bridge's clock; a save that sends `levels` or `report` ignores the echoed
+  `minSeverity` or `dockerUpdates`; a schedule's choice over an unparsable
+  file, or over a stored file that validation refuses, answers 409; a page
+  save over an unparsable file keeps a copy of it as
+  `notifications.json.unreadable` (made only when the save goes through); deleting a schedule resolves its
+  `finished` notice and refetches the bell; an updating Docker pass that
+  replaced nothing reports like a Check only pass; saving the settings
+  refetches the bell; the page's copy states the levels of interruptions and
+  of storage health, and the "not reported" warning shows only while
+  automatic updates are on; `SaveNotifications`, which had no caller, is
+  removed; the Schedules page's details area is capped at half the page.
+
+**Make targets run**, one Make at a time (Tasks 1 to 8 from their reports and
+the run's ledger). Since 2026-11-11 a Go standard-library advisory
+(GO-2026-6859, `net/http` of Go 1.27.3, fixed in 1.27.4) makes the
+govulncheck step of `make golint-quiet`, and so of `make test-quiet`, fail on
+the Go release `backend/go.mod` pins, for the whole repository and not
+because of this work. From then on the gates ran with `GO_VERSION=1.27.4`;
+`backend/go.mod` was not changed.
+
+| Task | Targets | Result |
+|---|---|---|
+| 1 | `make test-go` (store and handlers; failing first; a deliberate break of the lock and one of the parse error shown failing), `make generate`, `make tsc-quiet`, `make test-frontend` (the page), `make lint-quiet`, `make golint-quiet`, `make check-frontend-quiet`, `make test-quiet` | pass. The first `make test-quiet` failed once in `TestOwnedUploadRefusesASymlinkAtTheTarget` (`bridge/handlers/filebrowser`, untouched), which passed alone three times and on the rerun |
+| 2 | `make test-go` (failing first, twice), `make generate`, `make golint-quiet`, `make check-frontend-quiet`, `make test-quiet` | pass |
+| 3 | `make test-go` (failing first), `make golint-quiet`, `make test-quiet`; fix round: `make test-go` (the three job-stream tests 30 times on one CPU), `make golint-quiet` | pass. One `make test-quiet` failed once in `TestHostRaisesAlertForFailedAndInterruptedJobs` (`Serve did not return` after the 5 s stream drain), passed on the rerun and 200 of 200 times alone; the fix round removed its cause (the tests now close each job stream) |
+| 4 | `make test-go` (failing first), `make golint-quiet`, `make test-quiet`; round 2: `make test-go`, `make golint-quiet` | pass |
+| 5 | `make test-go` (failing first), `make generate`, `make golint-quiet`, `make check-frontend-quiet`, `make test-quiet`; fix rounds: `make test-go`; then `make golint-quiet` and `make test-quiet` stopped at the advisory; the controller's `make golint-quiet GO_VERSION=1.27.4` | pass in the end. The first `make golint-quiet` failed on a complexity finding in its own test (fixed); in fix round 1 it stopped at type errors in Task 6's tests, then mid-change; in fix round 2 `make golint-quiet` and `make test-quiet` stopped at the advisory (every other lane passed); the controller's `make golint-quiet GO_VERSION=1.27.4` then passed (97.8 s) |
+| 6 | `make test-go` and `make test-frontend` (failing first), `make generate`, `make golint-quiet`, `make check-frontend-quiet`, `make test-quiet`; fix round: `make test-go`, `make test-frontend`, `make check-frontend-quiet`, `make golint-quiet GO_VERSION=1.27.4`, `make test-quiet GO_VERSION=1.27.4` (2051 frontend tests) | pass in the fix round. In the first round `make golint-quiet` found 13 issues, 12 its own (fixed), and then one left in Task 5's `runScheduledPass`, on which `make test-quiet` failed in its lint lane only (every other lane passed); Task 5 fixed that finding |
+| 7 | `make test-frontend` (failing first), `make check-frontend-quiet` (2060 tests); round 2: `make test-frontend` (a deliberate undo of three fixes shown failing); its lint and type check ran in Task 8's gates | pass |
+| 8 | `make test-go`, `make test-frontend` (failing first), `make generate`, `make golint-quiet GO_VERSION=1.27.4`, `make check-frontend-quiet`, `make test-quiet GO_VERSION=1.27.4`, `make lint-quiet`, `make tsc-quiet`, `make compiler-coverage` (no bailouts), `make test-frontend-browser-quiet` (112 passed, 1 skipped); round 2: `make check-frontend-quiet` (2101 tests), `make golint-quiet GO_VERSION=1.27.4`, `make test-quiet GO_VERSION=1.27.4` | pass |
+| Final fix round (from its report) | `make test-go` per package (failing first, then 9 packages pass), `make test-frontend` (the settings page, 20; the invalidations, 24; failing first), `make test-frontend-browser PLAYWRIGHT_ARGS=src/test/browser/schedules.spec.ts` (failing first, then 4 pass), `make golint-quiet GO_VERSION=1.27.4` (two complexity findings in its tests, fixed, then pass), `make check-frontend-quiet`, `make test-quiet GO_VERSION=1.27.4` (313 files, 2103 tests, no dead code), `make test-frontend-browser-quiet` (113 passed) | pass |
+| 9 | `make test-quiet GO_VERSION=1.27.4` (313 frontend files and 2101 tests; every Go package from the test cache, no Go change since Task 8's run); `make vm-reset`, `make vm-install`, `make test-vm-browser-quiet PLAYWRIGHT_ARGS='login.spec.ts jobs-phase5b.spec.ts'`, three times (below); `make vm-test-btrfs-integration`; `make check-frontend-quiet` after the spec's last changes (313 files, 2101 tests); `make check-docs-quiet`; `make vm-reset` | the gates pass; VM run 3: 11 of 11; the btrfs tests pass |
+| 9, final round | part 1: `make check-frontend-quiet` (2103 tests), `make check-docs-quiet`; part 2: `make test-quiet GO_VERSION=1.27.4` (313 files, 2103 tests, no dead code), `make vm-reset`, `make vm-install`, `make test-vm-browser-quiet PLAYWRIGHT_ARGS='login.spec.ts jobs-phase5b.spec.ts'` (run 4), `make check-docs-quiet`, `make vm-reset` | pass; run 4: 11 of 11 in 4.7 min |
+| After the last reviews (the controller's own changes) | `make test-frontend VITEST_FILE=src/api/operation-query-invalidations.test.ts` (the delete's bell refresh); `make test-go` on `./bridge/handlers/alerts ./bridge/handlers/schedules ./common/alerts` (failing first: the kept copy on a refused save, the 409 for stored settings validation refuses); `make golint-quiet GO_VERSION=1.27.4`; after moving the kept-copy warning behind the write: `make golint-quiet GO_VERSION=1.27.4`, `make test-quiet GO_VERSION=1.27.4`, `make check-docs-quiet` | pass. Run 4 in the VM ran on the tree before the warning moved behind the write; that move changes when one journal line is written, nothing else |
+
+**Checked in the test VM** (Ubuntu 26.04.1 LTS, kernel 7.0.0-38-generic,
+systemd 259.5, as `lsb_release -ds`, `uname -r` and `systemctl --version`
+printed over `make vm-ssh` after run 3; each run after `make vm-reset` and
+`make vm-install`):
+`make test-vm-browser-quiet PLAYWRIGHT_ARGS='login.spec.ts jobs-phase5b.spec.ts'`
+runs `frontend/src/test/vm/jobs-phase5b.spec.ts`, signed in as the VM's sudo
+user. Each check starts from settings of its own (it deletes
+`notifications.json` or writes the file it needs) and marks every alert seen
+through the bell before it counts unseen ones. Webhook posts go to a listener
+the spec installs in the VM (`e2e-webhook.socket` on `127.0.0.1:18089`, a few
+lines of `python3` recording each body), so nothing leaves the VM. Run 1
+(07:15): 6 of 11 passed, run 2 (07:19): 10 of 11, both failing on faults of
+the spec (below). Run 3 (07:26): **11 of 11 passed**, in 3.5 minutes, with
+the earlier spec and before the final fix round; its table follows. Run 4
+(11:13, all on 2026-11-11), with the code final and the spec's last version:
+**11 of 11 passed**, in 4.7 minutes; its table follows run 3's. The results
+are the runs' Playwright output; what the run 3 table adds from the VM's
+stores and journal was read over `make vm-ssh` after run 3, and is marked so.
+
+| Check | Result (run 3: the earlier spec, before the final fix round) |
+|---|---|
+| The grid on the page, and a save's file | pass. With no file, *Where each level goes* is a table (`display: table`) with column headers *Browser*, *Email*, *Webhook* and row headers *Notices*, *Warnings*, *Alerts*; its nine boxes are laid out as a grid (a column's boxes share their centre within 1 px, a row's likewise, in the headers' order) and show the defaults: every level in the browser, alerts also by email and webhook. *Alerts in the browser* is ticked, disabled and described by "Alerts always show in the bell.". Saving *Jobs started in the browser* as *Also long jobs that finish* stores `report.browser_jobs: long_jobs`; the file and its lock are then `600 root:root` |
+| A script that reports every run | pass. With *Scheduled scripts* at *Every run* (stored), a completed `echo` run raises `jobs/finished-<schedule id>`, notice, *`<name>` finished*, linked to its schedule, count 1; after a reload the badge reads 1 and the tray lists one line with "It ran for …"; opening the tray takes the badge away. A second run adds no line: the record's count is 2, the badge reads 1 again and the line reads ×2. Back at *Failures only* (stored), a third run leaves every member of the record as it was, and `alerts.list` answers no unseen alert and the line as seen, count 2 |
+| A schedule's own choice | pass. With the kind at *Failures only* (no file), the dialog of schedule A shows *Use the default*; saving *After every run* stores `scripts: {A: every_run}` and leaves A's service and timer files, definition and script (inode, size, time and content) and its timer's state as they were; the file the dialog created and its lock are `600 root:root`; the dialog then shows *After every run*. A's run raises `A finished`; schedule B's run raises nothing; the tray lists A's line and not B's. While a `sleep 60` script runs, saving its choice is accepted (in this run the dialog was opened from the list with nothing selected, because of the layout fault below; run 4 opens it with the schedule selected): its files and timer state are unchanged, its unit keeps the same invocation, its record stays `running`, the choice is stored beside A's, and its end raises its `finished` notice |
+| A level kept from the bell | pass. With *Notices in the browser* unticked (stored `info` with no channel) and scripts at *Every run*: a completed run raises its notice into the store, which `alerts.list` does not list; with a failed run beside it the badge reads 1 (the failure only) and the tray lists the failure and not the notice. Ticked again, the notice is listed as unseen (mark all seen had skipped it); after it was seen, the next run makes the badge read 1 and the line ×2 |
+| An older settings file | pass. A file holding only `minSeverity: warning`, a webhook URL and `dockerUpdates: on_change`, written over SSH: the page ticks every level for the browser, warnings and alerts by webhook and by email, notices by neither; *Docker updates* reads *Also when something changed*; the webhook URL is shown; the file's SHA-256 is unchanged after the page read it |
+| An unreadable settings file | pass. Over `{not json`: the page shows "The stored notification settings could not be read. Saving replaces them."; *Send test* is disabled with the title "Save first"; *Save* is enabled without an edit and writes the defaults (a valid file, `600 root:root`), after which the warning goes without a reload and *Send test* is enabled. The root job host, which runs the save, logged `notification settings unreadable, starting from the defaults: parse /var/lib/linuxio/notifications.json: not valid notification settings at offset 2` (the spec's journal read) |
+| The grid picks the channel | pass. With the webhook URL saved and only *Alerts by webhook* ticked, and scripts at *Every run*: a failing script (`exit 5`) is posted once, `severity: error`, `source: jobs`, message "exited with status 5"; a completing script's notice is in the store and is not posted; no `alert delivery failed` in the journal |
+| An interruption by a reboot is a warning | pass. Two power cuts during a `sleep 300` run, each followed by a sign-in on a new page; the root job host marks the run `interrupted` with reason `reboot` and raises *`<name>` was interrupted* as a **warning**, "The system stopped before the run finished.". With only *Alerts by webhook* ticked, nothing is posted for it within 20 s of its raise (delivery is bounded at 15 s and logs nothing when it sends nothing), no `alert delivery failed` is logged in that boot, and a probe posted afterwards is recorded. With *Warnings by webhook* ticked, the next interruption is posted once with `severity: warning`. The tray shows both lines with the warning tile (`--app-palette-warning-main`). The power cut was chosen over an orderly reboot because the interruption is then raised at boot, after the listener's socket exists; in an orderly reboot the end hook raises it while units stop, the listener among them |
+| The notice at sign-in | pass. With every alert seen and one failed run since, after signing out and in: the toast "While you were away: 1 new notification"; its *Show*, focused and pressed with Enter, opens the tray and leaves keyboard focus on the bell's button (the first time this was seen outside jsdom); the alert is then seen in the store (the user's `seen` count is 1) and the badge is gone. After a reload, with the alerts listed in the tray, no toast |
+| A stored `never` for system updates | pass. The fresh VM reads `notify: never`, `failures_unreported: true`, `can_configure: true`, offered `on_failure`, `on_change`, `always` (printed by the spec). The page shows "System update failures are not reported on this machine." and *System updates* reads *Not reported*, its list offering only *Failures only*, *Also when something changed* and *Every run*. *Report failures* saves; the warning goes, the select reads *Failures only*, the drop-in `/etc/systemd/system/apt-daily-upgrade.service.d/linuxio-alert.conf` holds `--policy on_failure` (directory `700 root:root`, file `644 root:root`), and the state reads `on_failure` with no flag |
+| `login.spec.ts` | pass |
+
+Read over `make vm-ssh` after run 3: the listener recorded the two posts above
+and three probes, nothing else; the jobs alerts in the store were the ten the
+checks raised, with the levels and counts the table gives; the boot after the
+second power cut logged no `alert delivery failed`.
+
+The spec changed between the runs without weakening an assertion. Run 1
+failed five checks on two faults of the spec: it marked alerts seen through
+`alerts.mark_all_seen` called on a WebSocket of its own, which the bridge
+refuses (`job ID must be a canonical non-zero UUID`: that route is a mutation,
+and the spec's helper sends no job ID), so it now opens the tray as a user
+does; and it read the APT drop-in without `sudo`, which its `0700` directory
+refuses. Run 2 failed the choice saved while the script runs: the row's
+*Edit* was not there for 59 s (the trace's own log), because while a selected
+schedule's script runs the page's live output takes its height and the
+schedules table renders no rows (seen on the way, below); for run 3 the spec
+opened the dialog from the list with nothing selected.
+
+| Check | Result (run 4: the spec's last version, the code final) |
+|---|---|
+| The grid on the page, and a save's file | pass (4.6 s), as in run 3 |
+| A script that reports every run | pass (14.2 s), as in run 3, and further: with the tray listing the schedule's `finished` line, deleting the schedule (its row's *Delete*, then *Delete* in the confirmation) removes `jobs/finished-<id>` from the store, and without a reload the tray no longer lists the line within 10 s, well inside the bell's one-minute poll |
+| A schedule's own choice | pass (1.2 min), as in run 3, except that while the `sleep 60` script runs the schedule stays selected: the URL selects it, *Output of the latest run* is shown, and its row in the schedules table is in the viewport at 1280×720 (the layout fixed in the final fix round, in the real app); the dialog is opened from that row, the save is accepted, the files, timer state and invocation are unchanged, and its end raises its `finished` notice |
+| A level kept from the bell | pass (10.4 s), as in run 3 |
+| An older settings file | pass (3.2 s), as in run 3 |
+| An unreadable settings file | pass (4.6 s), as in run 3, and further: exactly one `notification settings unreadable, starting from the defaults` line in the journal (from `linuxio-jobs@0.service`), and `notifications.json.unreadable` is `600 root:root` and holds the old bytes `{not json` |
+| An interruption by a reboot is a warning | pass (1.2 min), as in run 3, with the apt timers stopped (and any apt run waited for) after each power cut. A power cut gives reason `reboot`, which stays a warning after the final fix round |
+| The notice at sign-in | pass (1.2 min), as in run 3, and further: after the toast was handled, the same schedule fails again; the bell's own poll shows the badge `1`; after a reload, with the badge `1` again (the list the notice counts has loaded with something unseen), no "While you were away" toast |
+| A stored `never` for system updates | pass (6.3 s). The check first removes the APT drop-in over SSH and runs `daemon-reload`, and skips only when the tool cannot be configured or automatic updates are off; the VM read `enabled: true`, `notify: never`, `failures_unreported: true`, `can_configure: true`, which the check now asserts. The rest as in run 3 |
+| `login.spec.ts` | pass (12.5 s) |
+
+Run 4 did not read the VM's stores or journal beyond what the spec itself
+reads, and covered no orderly reboot, no crash of a job host (whose
+interruption is now an alert), no refused page save over an unparsable file,
+no 409 for a schedule's choice, and no Docker, email or DNF/Mint path; those
+rest on unit tests (below).
+
+**Root btrfs tests in the VM** (`make vm-test-btrfs-integration`; Task 4
+changed what `RunReplication` returns): pass, after run 3 and before the
+last reset, on kernel 7.0.0-38-generic: `TestBtrfsIntegration`,
+`TestBtrfsDegradedIntegration`, `TestBtrfsResumeIntegration` (its 13
+subtests) and `TestPartitionIntegration`, nothing failed or skipped. None of
+them calls `RunReplication` or `replicate`; `TestBtrfsIntegration` streams a
+snapshot through the kernel's send ioctl. So this run shows the btrfs code
+still works against the kernel, not that the new `sent` count is right on a
+real send: that rests on `TestRunReplicationCountsWhatItSent`, a unit test.
+
+**Covered by unit tests only** (not run in the VM): the email channel (a fake
+SMTP server); DNF and Mint, their two policies and an older `on_change`
+drop-in (no such VM); the Docker producers, the pass notice and
+`linuxio-update-pass` (not exercised in this spec); the `snapshot-run`
+notice and `resynced-` following `resync`; the long-job notice and the
+file-job titles; an older page's save without `levels` or `report`; the
+other `minSeverity` values of an older file at delivery
+(`TestDeliveryFromAnOlderBuildsFile`); eviction by level; the notice at
+sign-in for a user without sudo and `historySeenAt`'s validation; the
+Schedules page over an unreadable settings file; an interruption by an
+orderly reboot raised as a warning by the end hook (the VM checked the
+power-cut path).
+
+**Read from the source only, or not checked.** The end hook's privileges on a
+real unit were not checked on their own; the VM shows only that it reads the
+root-only `notifications.json` (the `finished` notices followed the stored
+choices). No automatic update ran in the VM, so the hook *Report failures*
+installs was not seen raising anything. The test notification was not sent.
+
+**Privilege review** (the `privilege-boundary-reviewer` on the whole backend
+change after Task 8, run by the controller): no Critical finding; nothing
+widens root for an unprivileged request. Every alerts and schedules route is
+`Privileged()`, and no unprivileged route reads or writes
+`notifications.json`; the SMTP password is never returned, logged or put in
+an error; the file is written `0600` by an atomic replace under a root-owned
+directory, with no request value in a path and schedule IDs validated before
+they become map keys; only root processes read it (a user's job host uses the
+defaults in memory); an error can never be kept from the browser;
+`historySeenAt` goes only to the caller's own config; alert sources are
+constants and keys are IDs or constants. One Important finding predates this
+work (below). Its minor findings are among the open items.
+
+**Open, for the owner:**
+
+1. **Four update routes without `Privileged()`** (pre-existing, from the
+   privilege review): `updates.set_auto_updates`,
+   `updates.apply_offline_updates`, `updates.refresh_cache`
+   (`backend/bridge/handlers/packages/handlers.go`) and `packages.update`
+   (`package_update_operation.go`) need root but do not declare it, so a
+   session without sudo fails part-way with a permission error instead of a
+   403. No escalation: the bridge runs as that user.
+2. **The Go release.** `backend/go.mod` pins Go 1.27.3, on which the
+   repository's lint lane fails since GO-2026-6859 was published; Task 5's
+   second fix round met it first, and every `make golint-quiet` and
+   `make test-quiet` that passed after it ran with `GO_VERSION=1.27.4`.
+   Moving the pin is the owner's dependency decision; a separate
+   `chore(deps)` commit is recommended.
+3. **Two alert gaps** that predate this work and sit badly with "failures are
+   always reported": a timer pass that fails as a whole without a failure of
+   one of its items (Docker not reachable, an unreadable rules or jobs file, a
+   scheduled container that is gone) is recorded as failed and raises no
+   alert; a container whose update check fails raises no alert (status file
+   and *Scan failed* chip only) and has its "update available" alert cleared
+   ([Alerts](../alerts.md#limits)).
+4. **Behaviour changes to state in the release notes**: a stored Docker
+   `never` no longer silences failures; an interruption by a shutdown or a
+   reboot is a warning (it was an alert), which the grid can keep from the
+   bell, email and webhook, so on a host that had "Errors only" it is no
+   longer emailed unless *Warnings* is ticked for *Email* (a crash, and a job
+   that could not be resumed, stay alerts); a save from the page over an
+   unreadable `notifications.json` writes a file without the per-schedule
+   choices and the SMTP password, and keeps a copy of the old one as
+   `notifications.json.unreadable`, which the admin removes by hand.
+5. **Deferred minor findings** of the reviews, not fixed: while the file
+   does not parse, a delete of a schedule with no choice logs "could not
+   clear"; a hand-edited invalid `minSeverity` or `dockerUpdates` in the
+   stored file makes a schedule's choice fail (409, naming the settings page
+   as the repair) until a page save repairs it; the schedule dialog gives no hint when a choice
+   has no effect; a user without sudo who signs in while an update waits
+   loses that sign-in's notice; mark all seen lists
+   and marks under separate locks (predates); `alerts.mark_seen` with
+   explicit IDs is not filtered by the grid; a notice raised into a store full
+   of undismissed alerts evicts the oldest alert; a long job's last frame
+   waits for its notice's delivery, and a resumed job's run time includes the
+   downtime; the snapshot pass's summary prints `replicated=0 sent=1` when
+   recording fails after a send; a container named `linuxio-update-pass`
+   would share its failure key with the pass notice, and the existing Docker
+   keys already overlap (`updated-run` against a container named
+   `updated-run`); a choice-only schedule update skips the re-apply that
+   repairs an incomplete schedule (a second save repairs it);
+   `changeLocked` takes six positional parameters; the *Scheduled scripts*
+   help line is not tied to its select for assistive technology, and both
+   page warnings use `role="alert"`; after a failed first history load, a
+   non-admin's notice observer refetches on focus (its result ignored); a
+   bare `\r` in a message is not normalised in the email body
+   (pre-existing). Fixed in the final fix round, of the earlier list:
+   `SaveNotifications` (removed), the warning per poll (now debug), the
+   comments on interruptions, the webhook error's URL path (host only now)
+   and `historySeenAt` (normalised and clamped by the bridge).
+
+Seen on the way:
+
+- While a selected schedule's script ran, the Schedules page's *Output of
+  the latest run* took the page's height at 1280×720 and the schedules table
+  rendered no rows, only its header; the table came back when the run ended
+  (run 2's trace, two screencast frames 56 s apart). A layout fault of phase
+  4's page; fixed in the final fix round (Ruling 25: the details area is at
+  most half the page and scrolls), with a real-browser test at 1280×720 in
+  `frontend/src/test/browser/schedules.spec.ts`. The VM spec checks it
+  too, and run 4 saw the table keep its rows in the real app.
+- A settings save is a mutation, so it runs in the root job host: its warning
+  over an unreadable file is in `linuxio-jobs@0.service`'s journal, not the
+  bridge's.
+- The session bridge logged `route failed: write frame: i/o deadline
+  reached` twice during run 2 (07:20:10 and 07:21:14), the second as the
+  `sleep 60` run ended. Not looked into.
 
 ## 4. Left to do
 
@@ -1420,8 +1808,8 @@ The history view, the "ended while you were away" notice at login, the
 Plan 5a (the history page, each schedule's past runs, the saved output viewer
 and the update banner) is built; section 3.9 says what was built, how it was
 checked, the three faults the test VM found and the limits. Plan 5b (the
-notification settings and the notice at sign-in) is open: nothing of it is
-built.
+notification settings and the notice at sign-in) is built, not yet committed;
+section 3.10 says what was built, how it was checked and what is left open.
 
 Decided with the user on 2026-11-10, before the plan is written:
 
@@ -1443,7 +1831,7 @@ Decided with the user on 2026-11-10, before the plan is written:
 - **Saved output** is raw text with control characters kept (phase 4). The
   view shows it as plain text and stays behind the admin gate.
 
-Open:
+Decided for plan 5b, and built (section 3.10):
 
 - **Notifications.** Decided on 2026-11-10: "fully configurable like Unraid",
   in two parts.
@@ -1460,15 +1848,20 @@ Open:
     each ticked for browser, email and webhook; alerts always reach the
     browser. It replaces the single least-severity setting
     (`alerts.NotificationSettings.MinSeverity`).
+    As built: a cancelled job or run reports nothing; an interruption by a
+    shutdown, a reboot or a power loss is a warning, and one by a crash, or a
+    job that could not be resumed, is an alert (below); `minSeverity` is no
+    longer read where `levels` is stored, but every save still writes it, as
+    the least severe level ticked for email or webhook, for an older build.
   - "While you were away" shows what reached the browser since the user last
     looked.
   - Proposed by the agent, not said by the user: a job is long when it ran
-    more than five minutes; the file indexer gets no line.
+    five minutes or more; the file indexer gets no line.
 - **Two plans.** Phase 5 is planned as two pieces, written on 2026-11-10: the
   [history page, each schedule's past runs and the update banner](../superpowers/plans/2026-11-10-jobs-phase5a-history-and-banner.md)
   (built, section 3.9), then the
   [notification settings and the "while you were away" notice](../superpowers/plans/2026-11-10-jobs-phase5b-notifications.md)
-  (open).
+  (built, section 3.10).
   The second plan lists the choices the agent made where the code left no
   other honest option: scripts offer "failures only" and "every run" (a
   script has no notion of having changed something); a pool resync offers
@@ -1477,6 +1870,81 @@ Open:
   warning; on DNF and Mint only the service result of an update is known;
   a host whose system updates were set to "Never" is told so and offered
   one click; a level unticked for the browser is not shown in the bell.
+- **Decided while it was built** (the rulings of the run, each with what it
+  costs if wrong; where they differ from the plan's text, they are what was
+  built):
+  - A kind named in the stored `report` wins over the older `dockerUpdates`
+    member, as stored `levels` win over `minSeverity`.
+  - The "failures are not reported" flag is
+    `AutoUpdateState.failures_unreported`, true while the stored system
+    policy is `never`.
+  - `/history?job=<id>` for a job outside the loaded entries says so: "This
+    job is not among the loaded entries. Load older to look for it." (the
+    second sentence only when older entries remain).
+  - A settings save with no `levels` sets them from its `minSeverity`, and
+    one with no `report` sets the Docker report from its `dockerUpdates`
+    and keeps the other stored kinds: that is how an older page says what it
+    wants.
+  - A save from the settings page replaces a `notifications.json` that does
+    not parse, from the defaults, with one warning; the new file has neither
+    the per-schedule choices nor the SMTP password, and a copy of the old
+    one is kept as `notifications.json.unreadable` (root `0600`, replacing an
+    older one; made only when the save is valid and about to write), since it
+    may hold the only copy of them. Every other writer refuses it; a
+    schedule's choice then answers 409 and names the settings page as the
+    repair, as it does over a stored file that validation refuses.
+    `alerts.get_notifications` over such a file answers the defaults with
+    `settingsUnreadable`, and the page says "The stored notification settings
+    could not be read. Saving replaces them."
+  - A stored Docker `never` no longer silences failures, from the first save
+    by this build on (a save writes `dockerUpdates` as `on_failure`) and in
+    the updater, which no longer reads it.
+  - A script's "finished" notice is one alert per schedule
+    (`jobs/finished-<schedule id>`), each run a new occurrence; and a full
+    store with nothing dismissed evicts the oldest alert of the lowest level
+    first. One alert per run would have pushed undismissed failures out of
+    the 200-record store.
+  - A file-browser job's alert is titled `<Action>: <label>` (`Copy: 12 items
+    failed`), with *Move to Trash*, *Restore from Trash*, *Delete from Trash*
+    and *Change permissions* for the routes whose words do not read as an
+    action; other jobs use their label.
+  - Liveness reads no settings: it raises only interruptions, and no report
+    setting decides whether an interruption is raised; a warning it raises
+    then follows the levels grid like any other.
+  - Under `every_run` a snapshot pass that failed and took and sent nothing
+    raises no "nothing to do" notice; the pass before a package upgrade
+    raises no `snapshot-run` notice, only the timer's own pass does.
+  - The Docker pass notice's key is `linuxio-update-pass`, not the plan's
+    `run`, which a container may be named. Under `every_run` any pass that
+    replaced nothing raises it, a Check only pass and an updating one alike
+    ("nothing to update", or "N waiting" while the "waiting" alerts are off,
+    nothing more while they are on); a pass that replaced a container raises
+    only the per-container notices, and one that could not check one of its
+    containers raises none.
+  - A successful system update that needs a reboot stays a warning, so no
+    mail an admin receives today stops.
+  - The Schedules dialog sends `notify` only when the user changed it, and
+    the stored calendar and arguments when their fields are untouched, so a
+    change of only the choice is seen as one.
+  - A user with no stored `historySeenAt` gets no notice at that sign-in,
+    which stores the baseline; and the time is stored only once the history
+    page has shown a loaded history with at least one entry.
+  - The settings page keeps its rule that any edit enables *Save*, without
+    comparing values.
+  - From the final review: an interruption by a crash (the job host died, or
+    a script's end hook never reported) and a job that could not be resumed
+    after the reboot stay alerts; one by an orderly shutdown, a reboot or a
+    power loss is a warning. A crash leaves the outcome unknown, a failure in
+    effect, so "failures are always reported" stays whole.
+  - No migration tweak for hosts that had "Errors only": after the upgrade a
+    run cut short by a shutdown or a reboot is a warning there and is no
+    longer emailed unless *Warnings* is ticked for *Email* (or posted unless
+    ticked for *Webhook*). Ticking it in the migration would send every other
+    warning too.
+  - The Schedules page's details area is at most half the page and scrolls,
+    as the history page's does, so the table keeps its rows while a selected
+    script's live output is shown (a layout fault of phase 4's page, found in
+    the VM by Task 9).
 - **The bell row of a scheduled run** has an "Open" link, not a clickable
   row (phase 4, shared-component rule). Explained to the user on 2026-11-10;
   it stays unless they ask for the whole row to be clickable.

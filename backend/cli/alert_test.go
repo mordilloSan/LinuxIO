@@ -153,6 +153,41 @@ func TestRunAlertAutoUpdateAptEndToEnd(t *testing.T) {
 	}
 }
 
+func TestAlwaysWithoutPackageListSaysItRan(t *testing.T) {
+	dir := t.TempDir()
+	oldLog, oldReboot, oldEnv := aptUnattendedLogPath, rebootRequiredPath, lookupEnv
+	aptUnattendedLogPath = filepath.Join(dir, "unattended-upgrades.log")
+	rebootRequiredPath = filepath.Join(dir, "reboot-required")
+	lookupEnv = func(k string) string {
+		return map[string]string{"SERVICE_RESULT": "success", "INVOCATION_ID": "inv-1"}[k]
+	}
+	t.Cleanup(func() { aptUnattendedLogPath, rebootRequiredPath, lookupEnv = oldLog, oldReboot, oldEnv })
+	if err := os.WriteFile(aptUnattendedLogPath, []byte("2026-10-08 06:00:00,000 INFO Starting unattended upgrades script\n2026-10-08 06:00:01,000 INFO No packages found that can be upgraded unattended and no pending auto-removals\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	for provider, want := range map[string]string{
+		"dnf":  "Automatic updates ran",
+		"mint": "Automatic updates ran",
+		// unattended-upgrades' log says what a run installed.
+		"apt": "Automatic updates found nothing to install",
+	} {
+		t.Run(provider, func(t *testing.T) {
+			useTempAlertStore(t)
+			if code := runAlert(t.Context(), []string{"auto-update", "--provider", provider, "--policy", "always"}); code != 0 {
+				t.Fatalf("exit %d", code)
+			}
+			doc, err := alerts.Load()
+			if err != nil || len(doc.Alerts) != 1 {
+				t.Fatalf("store = %+v err = %v", doc.Alerts, err)
+			}
+			if a := doc.Alerts[0]; a.ID != "auto-update/run" || a.Title != want || a.Severity != alerts.SeverityInfo {
+				t.Fatalf("alert = %+v, want info %q", a, want)
+			}
+		})
+	}
+}
+
 func TestRunAlertPendingUpdatesRaisesThenResolves(t *testing.T) {
 	useTempAlertStore(t)
 	output := "NOTE: This is only a simulation!\nInst zlib1g [1:1.3] (1:1.3.1 Ubuntu:resolute [amd64])\nConf zlib1g (1:1.3.1 Ubuntu:resolute [amd64])\nInst curl [8.5] (8.6 Ubuntu:resolute-security [amd64])\n"

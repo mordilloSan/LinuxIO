@@ -27,7 +27,11 @@ func appConfigToAPI(value userconfig.Settings, storageMode userconfig.StorageMod
 		result.AppSettings.ChunkSizeMB = &value.AppSettings.ChunkSizeMB
 	}
 	if value.Dismissals != nil {
-		result.Dismissals = &apischema.Dismissals{UncleanShutdownBootID: optionalString(value.Dismissals.UncleanShutdownBootID), FailedLoginAlertID: optionalString(value.Dismissals.FailedLoginAlertID)}
+		result.Dismissals = &apischema.Dismissals{
+			UncleanShutdownBootID: optionalString(value.Dismissals.UncleanShutdownBootID),
+			FailedLoginAlertID:    optionalString(value.Dismissals.FailedLoginAlertID),
+			HistorySeenAt:         optionalString(value.Dismissals.HistorySeenAt),
+		}
 	}
 	return result
 }

@@ -34,6 +34,8 @@ type Hooks struct {
 	Output      func(ctx context.Context, invocationID string, w io.Writer) error
 	Stopping    func(ctx context.Context) bool
 	Alert       func(ctx context.Context, obs alerts.Observation) error
+	// Settings returns the notification settings; nil means the defaults.
+	Settings func() alerts.NotificationSettings
 }
 
 // DefaultHooks is the production wiring.
@@ -46,6 +48,7 @@ func DefaultHooks() Hooks {
 		Output:      journalOutput,
 		Stopping:    systemd.SystemStopping,
 		Alert:       alerts.Raise,
+		Settings:    alerts.NotificationsOrDefaults,
 	}
 }
 
@@ -66,12 +69,13 @@ func (h Hooks) Begin(ctx context.Context, unit, invocationID string) error {
 }
 
 // End finishes the record of the run, prunes the unit's older runs, saves a
-// copy of the run's output and raises the alert a failed script deserves, in
-// that order, so a slow step cannot keep a quicker one from running: the
-// output copy has its own limit (outputTimeout), and the alert, whose delivery
-// may outlast the caller's deadline, comes last and is raised even when the
-// caller's context has ended by then. It returns the errors of the steps after
-// the record. Ending a run that has ended changes nothing.
+// copy of the run's output and raises the alert or notice the script's
+// outcome deserves, in that order, so a slow step cannot keep a quicker one
+// from running: the output copy has its own limit (outputTimeout), and the
+// alert, whose delivery may outlast the caller's deadline, comes last and is
+// raised even when the caller's context has ended by then. It returns the
+// errors of the steps after the record. Ending a run that has ended changes
+// nothing.
 func (h Hooks) End(ctx context.Context, unit, invocationID string, result Result) error {
 	kind, ok := KindOf(unit, h.ScheduleDir)
 	if !ok {
@@ -92,7 +96,7 @@ func (h Hooks) End(ctx context.Context, unit, invocationID string, result Result
 	if outputErr != nil {
 		errs = append(errs, outputErr)
 	}
-	if obs, ok := alertFor(kind, record); ok {
+	if obs, ok := alertFor(kind, record, h.Settings); ok {
 		// alerts.Raise bounds its own lock wait and delivery.
 		if alertErr := h.Alert(context.WithoutCancel(ctx), obs); alertErr != nil {
 			errs = append(errs, fmt.Errorf("raise alert: %w", alertErr))
@@ -248,9 +252,15 @@ func outcome(result Result, cancelRequested, stopping bool) (jobs.State, jobs.Re
 	return jobs.StateFailed, jobs.ReasonNone, &jobs.Error{Code: 500, Message: message}
 }
 
-// alertFor is the alert a run that ended raises, if any: one that failed, or
-// one the system stopped or that ended without its end hook (Liveness).
-func alertFor(kind Kind, record jobs.Record) (alerts.Observation, bool) {
+// alertFor is the alert a run that ended raises, if any: one that failed, one
+// the system stopped or that ended without its end hook (Liveness), whatever
+// the report settings say, and one that completed when they ask for every run
+// of its script. An interruption by a shutdown or a reboot is a warning, which
+// follows the levels grid like any other; one whose end hook never reported
+// (a crash) is an error, since its outcome is unknown. A script's completed
+// runs are occurrences of one notice per schedule; a nil settings means the
+// defaults.
+func alertFor(kind Kind, record jobs.Record, settings func() alerts.NotificationSettings) (alerts.Observation, bool) {
 	if !kind.Alerts {
 		return alerts.Observation{}, false
 	}
@@ -263,26 +273,45 @@ func alertFor(kind Kind, record jobs.Record) (alerts.Observation, bool) {
 		label = metadata.Label
 	}
 	obs := alerts.Observation{
-		Source:   AlertSource,
-		Key:      record.ID,
-		Severity: alerts.SeverityError,
-		Link:     kind.Link,
+		Source: AlertSource,
+		Key:    record.ID,
+		Link:   kind.Link,
 	}
 	switch record.State {
 	case jobs.StateFailed:
+		obs.Severity = alerts.SeverityError
 		obs.Title = label + " failed"
 		obs.Message = record.Error.Message
 	case jobs.StateInterrupted:
+		obs.Severity = alerts.SeverityWarning
 		obs.Title = label + " was interrupted"
 		obs.Message = "The system stopped before the run finished."
 		if record.Reason == jobs.ReasonCrash {
+			obs.Severity = alerts.SeverityError
 			obs.Message = "The run ended without reporting its result."
 		}
+	case jobs.StateCompleted:
+		n := alerts.DefaultNotifications()
+		if settings != nil {
+			n = settings()
+		}
+		if n.ReportForScript(kind.Instance) != alerts.ReportEveryRun {
+			return alerts.Observation{}, false
+		}
+		obs.Key = FinishedAlertKey(kind.Instance)
+		obs.Severity = alerts.SeverityInfo
+		obs.Title = label + " finished"
+		obs.Message = alerts.RanFor(record.FinishedAt.Sub(record.StartedAt))
+		obs.OccurrenceID = record.ID
 	default:
 		return alerts.Observation{}, false
 	}
 	return obs, true
 }
+
+// FinishedAlertKey is the key, under AlertSource, of the one notice the
+// completed runs of schedule scheduleID raise.
+func FinishedAlertKey(scheduleID string) string { return "finished-" + scheduleID }
 
 // saveOutput keeps a copy of the run's output next to its record. A run with
 // no output leaves no file. When reading the output fails part-way, what was

@@ -28,10 +28,10 @@ configuration.
 
 | Provider | Frequency | Scope | Download only | Reboot policy | Exclusions | Notify |
 |---|---|---|---|---|---|---|
-| Ubuntu/Debian APT | Hourly, daily, weekly | Security, updates, all | Yes | Never, if needed | Yes | Never, on failure, on change, always |
-| Linux Mint | Hourly, daily, weekly | Security, all enabled repositories | No | Never | Yes | Never, on failure, on change, always |
-| DNF4 | Hourly, daily, weekly | Security, all enabled repositories | Yes | Never; if needed/always when supported by the installed version | Yes | Never, on failure, on change, always |
-| DNF5 | Hourly, daily, weekly | Security, all enabled repositories | Yes | Never, if needed, always | Yes | Never, on failure, on change, always |
+| Ubuntu/Debian APT | Hourly, daily, weekly | Security, updates, all | Yes | Never, if needed | Yes | On failure, on change, always |
+| Linux Mint | Hourly, daily, weekly | Security, all enabled repositories | No | Never | Yes | On failure, always |
+| DNF4 | Hourly, daily, weekly | Security, all enabled repositories | Yes | Never; if needed/always when supported by the installed version | Yes | On failure, always |
+| DNF5 | Hourly, daily, weekly | Security, all enabled repositories | Yes | Never, if needed, always | Yes | On failure, always |
 
 On Ubuntu and Debian, scopes only cover distribution archives (the widest
 APT scope is security, updates, and backports). Third-party repositories such
@@ -69,7 +69,10 @@ The notify policy is chosen in the Notifications settings tab, beside the
 Docker update policy and the delivery channels, and stored as a drop-in:
 LinuxIO writes `/etc/systemd/system/<upgrade-service>.d/linuxio-alert.conf`
 with an `ExecStopPost=` that runs `linuxio alert auto-update` after each run.
-The drop-in is removed when the policy is `never`. On APT, "tell me when
+The drop-in is removed when the policy is `never`, which no provider offers
+any more, since every other policy reports a failed run; a stored `never`
+still loads and saves, and the settings page offers to report failures. Mint
+and DNF report only the service result, so they offer no "on change". On APT, "tell me when
 system updates are waiting" writes the same drop-in name under
 `apt-daily.service.d`, running `linuxio alert pending-updates` after each
 package-list refresh, and keeps `APT::Periodic::Update-Package-Lists` at `1`

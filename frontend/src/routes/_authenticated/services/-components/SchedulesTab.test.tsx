@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   openChannel: vi.fn(() => null),
   history: {} as { data?: unknown; error?: Error },
   historyListeners: new Set<() => void>(),
+  updatePending: false,
   historyOptions: [] as Array<{
     queryKey: unknown[];
     refetchInterval?: number;
@@ -35,7 +36,7 @@ const status = {
       name: "Backup",
       script: "echo old",
       user: "root",
-      arguments: [],
+      arguments: [] as string[],
       on_calendar: "daily",
       timezone: "UTC",
       persistent: false,
@@ -43,6 +44,7 @@ const status = {
       working_directory: "",
     },
   },
+  notify: "",
   unit_name: "linuxio-schedule-backup.service",
   active_state: "active",
   result: "success",
@@ -85,6 +87,17 @@ vi.mock("@tanstack/react-router", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tanstack/react-router")>()),
   useNavigate: () => mocks.navigate,
 }));
+
+vi.mock(
+  "@/routes/_authenticated/-components/app-update/useJobHostStatus",
+  () => ({
+    useJobHostStatus: () => ({
+      updatePending: mocks.updatePending,
+      running: 0,
+      jobs: [],
+    }),
+  }),
+);
 
 vi.mock("@/components/tasks/SavedOutput", () => ({
   default: ({ taskId }: { taskId: string }) => <div>Saved output {taskId}</div>,
@@ -170,6 +183,7 @@ describe("SchedulesTab interactions", () => {
     mocks.history = { data: { entries: [], more: false } };
     mocks.historyOptions = [];
     mocks.historyListeners.clear();
+    mocks.updatePending = false;
   });
 
   it("opens from null, selects root, and submits the exact create payload", async () => {
@@ -200,6 +214,96 @@ describe("SchedulesTab interactions", () => {
           timeout_seconds: 300,
           working_directory: "",
         },
+      },
+    });
+  });
+
+  it("offers what a new task reports and sends the choice with it", async () => {
+    const { user } = render(<SchedulesTab {...props} />);
+    await user.click(screen.getByRole("button", { name: "Create task" }));
+    await user.type(screen.getByLabelText("Name"), "nightly");
+    await user.click(screen.getByLabelText("Run as"));
+    await user.click(screen.getByRole("option", { name: "root" }));
+    expect(screen.getByLabelText("Notify me")).toHaveTextContent(
+      "Use the default",
+    );
+    await user.click(screen.getByLabelText("Notify me"));
+    expect(
+      screen.getAllByRole("option").map((option) => option.textContent),
+    ).toEqual(["Use the default", "Failures only", "After every run"]);
+    await user.click(screen.getByRole("option", { name: "After every run" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(mocks.mutations).toContainEqual({
+      route: "schedules.create",
+      request: {
+        options: expect.objectContaining({ name: "nightly", user: "root" }),
+        notify: "every_run",
+      },
+    });
+  });
+
+  // The timing controls render "daily" as "*-*-* 00:00:00" and the argument
+  // text drops empty lines: an untouched form still sends the stored options.
+  it("shows a task's stored choice when editing and sends it beside the stored options", async () => {
+    const options = {
+      ...status.definition.options,
+      arguments: ["first", "", "last"],
+    };
+    selectedStatus = {
+      ...status,
+      definition: { ...status.definition, options },
+      notify: "every_run",
+    };
+    const { user } = render(<SchedulesTab {...props} selected="backup" />);
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    expect(screen.getByLabelText("Notify me")).toHaveTextContent(
+      "After every run",
+    );
+    await user.click(screen.getByLabelText("Notify me"));
+    await user.click(screen.getByRole("option", { name: "Failures only" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(mocks.mutations).toContainEqual({
+      route: "schedules.update",
+      request: { id: "backup", options, notify: "failures" },
+    });
+  });
+
+  it("sends the calendar the timing controls render once the time changes", async () => {
+    const { user } = render(<SchedulesTab {...props} selected="backup" />);
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.change(screen.getByLabelText("Time"), {
+      target: { value: "07:00" },
+    });
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(mocks.mutations).toContainEqual({
+      route: "schedules.update",
+      request: {
+        id: "backup",
+        options: {
+          ...status.definition.options,
+          on_calendar: "*-*-* 07:00:00",
+        },
+      },
+    });
+  });
+
+  it("sends the stored calendar and the new arguments when only the arguments change", async () => {
+    const { user } = render(<SchedulesTab {...props} selected="backup" />);
+    await user.click(screen.getByRole("button", { name: "Edit" }));
+    await user.type(
+      screen.getByLabelText("Arguments (one per line)"),
+      "--verbose",
+    );
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(mocks.mutations).toContainEqual({
+      route: "schedules.update",
+      request: {
+        id: "backup",
+        options: { ...status.definition.options, arguments: ["--verbose"] },
       },
     });
   });
@@ -315,6 +419,35 @@ describe("SchedulesTab interactions", () => {
     expect(
       await screen.findByText("This task has not run yet."),
     ).toBeInTheDocument();
+  });
+
+  it("says history is unavailable, not that the schedule has not run, while an update waits", async () => {
+    mocks.updatePending = true;
+    render(<SchedulesTab {...props} selected="backup" />);
+
+    expect(
+      await screen.findByText(
+        "History is unavailable until the LinuxIO update finishes.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("This task has not run yet."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("still lists past runs it has while an update waits", async () => {
+    mocks.updatePending = true;
+    mocks.history = { data: { entries: [completedRun], more: false } };
+    render(<SchedulesTab {...props} selected="backup" />);
+
+    expect(
+      await screen.findByRole("button", { name: runLabel("Completed") }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        "History is unavailable until the LinuxIO update finishes.",
+      ),
+    ).not.toBeInTheDocument();
   });
 
   it("shows an error, not the empty text, when the history cannot be loaded", async () => {
