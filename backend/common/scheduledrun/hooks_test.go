@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"testing"
 	"time"
 
@@ -300,7 +301,6 @@ func TestEndAlertsOnlyForScripts(t *testing.T) {
 	}{
 		{"completed script", testUnit, Result{"success", "exited", "0"}, false},
 		{"canceled script", testUnit, killed, true},
-		{"failed snapshot", "linuxio-btrfs-snapshot.service", failed, false},
 	}
 	for _, tt := range quiet {
 		h = newHooks(t)
@@ -507,8 +507,13 @@ func TestDefaultHooksReadTheNotificationSettings(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(filepath.Dir(alerts.Path), "notifications.json"), []byte(settings), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got := DefaultHooks().Settings().ReportFor(alerts.KindScripts); got != alerts.ReportEveryRun {
+	hooks := DefaultHooks()
+	if got := hooks.Settings().ReportFor(alerts.KindScripts); got != alerts.ReportEveryRun {
 		t.Errorf("scripts report = %q, want the stored every_run", got)
+	}
+	// A worker run with nothing left to report clears its run alert.
+	if hooks.Resolve == nil {
+		t.Error("Resolve is not wired")
 	}
 }
 
@@ -826,5 +831,111 @@ func TestRequestCancelWithoutARunIsNil(t *testing.T) {
 	}
 	if err := WithdrawCancel(t.Context(), h.Store, testUnit, testInvocation); err != nil {
 		t.Fatalf("WithdrawCancel: %v", err)
+	}
+}
+
+// resolving makes h collect the alerts it resolves.
+func resolving(h *fakeHooks) *[]string {
+	var resolved []string
+	h.Resolve = func(_ context.Context, source, key string) error {
+		resolved = append(resolved, source+"/"+key)
+		return nil
+	}
+	return &resolved
+}
+
+// A worker (snapshots, resync, Docker updates) raises an alert for each rule,
+// job, pool or container that fails and then exits with ExitReported. A run
+// that failed in any other way, such as a worker that could not read its
+// configuration, reach Docker or stay within its memory, reports here
+// instead, once per unit.
+func TestFailedWorkerRunRaisesTheRunAlert(t *testing.T) {
+	const pool = "0a1b2c3d-1111-2222-3333-444455556666"
+	for _, tt := range []struct {
+		unit, key, title string
+		result           Result
+		message          string
+	}{
+		{"linuxio-docker-update.service", "run-docker-update", "Container updates failed", Result{"exit-code", "exited", "1"}, "Exited with status 1."},
+		{"linuxio-btrfs-snapshot.service", "run-btrfs-snapshot", "Snapshots and replication failed", Result{"oom-kill", "killed", "KILL"}, "Killed for using too much memory."},
+		{"linuxio-btrfs-resync@" + pool + ".service", "run-btrfs-resync-" + pool, "Pool resync failed", Result{"signal", "killed", "SEGV"}, "Killed by signal SEGV."},
+		{"linuxio-docker-update.service", "run-docker-update", "Container updates failed", Result{"timeout", "killed", "TERM"}, "Timed out."},
+	} {
+		h := newHooks(t)
+		resolved := resolving(h)
+		mustBegin(t, h, tt.unit, testInvocation)
+		if err := h.End(t.Context(), tt.unit, testInvocation, tt.result); err != nil {
+			t.Fatal(err)
+		}
+		want := alerts.Observation{
+			Source: "jobs", Key: tt.key, Severity: alerts.SeverityError,
+			Title: tt.title, Message: tt.message + " The run's output is in the history.",
+			Link: "/history?job=" + testRunID, OccurrenceID: testRunID,
+		}
+		if len(h.alerts) != 1 || h.alerts[0] != want || len(*resolved) != 0 {
+			t.Errorf("%s: alerts = %+v, resolved = %v; want [%+v] and nothing resolved", tt.unit, h.alerts, *resolved, want)
+		}
+	}
+}
+
+// A run that completed, and one whose worker reported every failure itself,
+// raise nothing and clear the run alert of an earlier run.
+func TestWorkerRunWithNothingLeftToReportClearsTheRunAlert(t *testing.T) {
+	const unit = "linuxio-docker-update.service"
+	for name, result := range map[string]Result{
+		"completed":            {"success", "exited", "0"},
+		"failed, all reported": {"exit-code", "exited", strconv.Itoa(ExitReported)},
+	} {
+		h := newHooks(t)
+		resolved := resolving(h)
+		mustBegin(t, h, unit, testInvocation)
+		if err := h.End(t.Context(), unit, testInvocation, result); err != nil {
+			t.Fatal(err)
+		}
+		if len(h.alerts) != 0 || len(*resolved) != 1 || (*resolved)[0] != "jobs/run-docker-update" {
+			t.Errorf("%s: alerts = %+v, resolved = %v; want only the run alert resolved", name, h.alerts, *resolved)
+		}
+	}
+	// A script that exits with the same status is a failed script.
+	h := newHooks(t)
+	resolved := resolving(h)
+	mustBegin(t, h, testUnit, testInvocation)
+	if err := h.End(t.Context(), testUnit, testInvocation, Result{"exit-code", "exited", strconv.Itoa(ExitReported)}); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.alerts) != 1 || h.alerts[0].Key != testRunID || len(*resolved) != 0 {
+		t.Errorf("script: alerts = %+v, resolved = %v; want its own failure alert", h.alerts, *resolved)
+	}
+}
+
+// A worker run that a shutdown stopped, or that was canceled, is not a
+// failure: its timer runs it again, and a standing run alert stays.
+func TestStoppedWorkerRunChangesNoRunAlert(t *testing.T) {
+	const unit = "linuxio-btrfs-snapshot.service"
+	killed := Result{"signal", "killed", "TERM"}
+	h := newHooks(t)
+	resolved := resolving(h)
+	h.stopping = true
+	mustBegin(t, h, unit, testInvocation)
+	if err := h.End(t.Context(), unit, testInvocation, killed); err != nil {
+		t.Fatal(err)
+	}
+	h2 := newHooks(t)
+	resolved2 := resolving(h2)
+	mustBegin(t, h2, unit, testInvocation)
+	requestCancel(t, h2)
+	if err := h2.End(t.Context(), unit, testInvocation, killed); err != nil {
+		t.Fatal(err)
+	}
+	// A run that did no work, such as a Docker pass that found a manual
+	// update holding the lock.
+	h3 := newHooks(t)
+	resolved3 := resolving(h3)
+	mustBegin(t, h3, unit, testInvocation)
+	if err := h3.End(t.Context(), unit, testInvocation, Result{"exit-code", "exited", strconv.Itoa(ExitSkipped)}); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.alerts)+len(h2.alerts)+len(h3.alerts)+len(*resolved)+len(*resolved2)+len(*resolved3) != 0 {
+		t.Errorf("alerts = %+v %+v %+v, resolved = %v %v %v; want none", h.alerts, h2.alerts, h3.alerts, *resolved, *resolved2, *resolved3)
 	}
 }

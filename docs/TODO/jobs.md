@@ -353,7 +353,7 @@ ExecStopPost=-+/usr/local/bin/linuxio scheduled-run end --unit %n
 
 **Stopping.** The bell shows no stop for a scheduled run; its row opens the owning page. `schedules.stop` and a scrub cancel that hits a timer's resync set `cancel_requested` on the record first, so the run ends `canceled`. `schedules.stop` names the invocation it stops and marks only that run's record, so a stop that arrives after its run ended cannot mark the next one; a scrub cancel knows no invocation and marks the resync unit's running record. Either takes the mark back when the stop or the cancel fails.
 
-**Alerts.** One alert per failure. A script that fails raises the jobs alert (source `jobs`, key the record ID, title `<label> failed`, level `error`), as a failed browser job does; one that is interrupted raises `<label> was interrupted` as a warning when the system stopped, and as an alert when the root host found its unit gone in the same boot without the end hook having reported. With `every_run` (the schedule's own choice in `notifications.json`, or else the scheduled scripts' line), a completed run raises the notice `jobs/finished-<schedule id>`, `<label> finished`: one record per schedule, each run a new occurrence (plan 5b). Snapshots, replication, resync and Docker updates already raise their own alert and get no second one.
+**Alerts.** One alert per failure. A script that fails raises the jobs alert (source `jobs`, key the record ID, title `<label> failed`, level `error`), as a failed browser job does; one that is interrupted raises `<label> was interrupted` as a warning when the system stopped, and as an alert when the root host found its unit gone in the same boot without the end hook having reported. With `every_run` (the schedule's own choice in `notifications.json`, or else the scheduled scripts' line), a completed run raises the notice `jobs/finished-<schedule id>`, `<label> finished`: one record per schedule, each run a new occurrence (plan 5b). Snapshots, replication, resync and Docker updates raise their own alert for each rule, job, pool or container that fails; a worker whose every failure has one exits with status 3 (`scheduledrun.ExitReported`) and gets no second alert, and one that did no work (a Docker pass that found a manual update holding the lock) exits with 4 (`ExitSkipped`) and changes none. A run of theirs that fails in any other way (configuration that cannot be read, a Docker daemon that does not answer, a killed worker) raises one run alert per unit from the same end hook, `jobs/run-…`, which the next run that completes or exits with 3 clears; the root host raises it for a run it finds ended without its end hook.
 
 **Frontend.** The bell lists each running scheduled run with its label and progress. The Schedules page shows the output of the selected schedule's current or latest run, live, from the journal. Its past runs and their saved output, and the history page, came with phase 5a (sections 2.16 and 3.9).
 
@@ -1501,13 +1501,18 @@ work (below). Its minor findings are among the open items.
    `make test-quiet` that passed after it ran with `GO_VERSION=1.27.4`.
    **Done** in `bb00caf7`, which moves the pin to Go 1.27.4; the targets pass
    again without the variable.
-3. **Two alert gaps** that predate this work and sit badly with "failures are
-   always reported": a timer pass that fails as a whole without a failure of
-   one of its items (Docker not reachable, an unreadable rules or jobs file, a
-   scheduled container that is gone) is recorded as failed and raises no
-   alert; a container whose update check fails raises no alert (status file
-   and *Scan failed* chip only) and has its "update available" alert cleared
-   ([Alerts](../alerts.md#limits)).
+3. **Three alert gaps** that predated this work and sat badly with "failures
+   are always reported": **done.** A timer run that fails as a whole without
+   a failure of one of its items (a Docker daemon that does not answer, an
+   unreadable rules or jobs file, a scheduled container that is gone, a
+   killed worker) now raises one alert per unit from the end hook
+   (`jobs/run-…`): the worker exits with status 3 when every failure it met
+   has its own alert and 1 otherwise, and the next run that completes or
+   exits with 3 clears the alert. A container whose update check fails
+   raises a warning (`docker-update-check/<name>`) until a scheduled check
+   no longer finds it failing. A job found with no task to finish it, whose
+   result was not recorded, raises an alert
+   ([Alerts](../alerts.md#who-writes-with-no-session)).
 4. **Behaviour changes to state in the release notes**: a stored Docker
    `never` no longer silences failures; an interruption by a shutdown or a
    reboot is a warning (it was an alert), which the grid can keep from the

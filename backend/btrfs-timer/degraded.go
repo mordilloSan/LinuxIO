@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 // mountDegradedPools and resyncPool are swapped by tests.
@@ -36,7 +37,11 @@ func runResync(ctx context.Context, args []string, stderr io.Writer) int {
 	})
 	if err != nil {
 		fmt.Fprintf(stderr, "btrfs resync of %s failed: %v\n", args[0], err)
-		return 1
+		// The pool's own alerts report a resync that failed (it is retried
+		// and gives up with an alert; a disk that dropped out again is a
+		// health alert), so the unit's end hook raises no run alert for it.
+		// One that left those alerts as they were gets the run alert.
+		return scheduledrun.ExitStatus(err)
 	}
 	return 0
 }

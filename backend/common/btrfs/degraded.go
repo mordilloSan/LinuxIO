@@ -18,6 +18,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
 	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
@@ -448,7 +449,9 @@ func convertTargets(allocation []BtrfsAllocation) (data, meta *string) {
 // degraded mark is cleared once both are done; a scrub that found
 // uncorrectable errors is reported by the scrub alert and not run again. A
 // failure is recorded so the health run gives up after maxResyncAttempts.
-// report, when not nil, is given the scrub's percentage as it advances.
+// report, when not nil, is given the scrub's percentage as it advances. A
+// failure the pool's alerts report, refreshed here, is marked
+// scheduledrun.Reported; one that left them as they were is not.
 func Resync(ctx context.Context, uuid string, report func(percent float64)) error {
 	err := resync(ctx, uuid, report)
 	// A disk that drops out starts a new episode, not a failed resync.
@@ -462,23 +465,26 @@ func Resync(ctx context.Context, uuid string, report func(percent float64)) erro
 			return errors.Join(err, recErr)
 		}
 	}
-	refreshResyncAlerts(ctx, uuid, err == nil)
+	if refreshResyncAlerts(ctx, uuid, err == nil) {
+		return scheduledrun.Reported(err)
+	}
 	return err
 }
 
 // refreshResyncAlerts updates the pool's alerts when a resync ends rather
 // than at the next health run, and on success says the pool is whole again
-// unless the notification settings report resync failures only.
-func refreshResyncAlerts(ctx context.Context, uuid string, resynced bool) {
+// unless the notification settings report resync failures only. It reports
+// whether the pool's health was known and its alerts were brought up to date.
+func refreshResyncAlerts(ctx context.Context, uuid string, resynced bool) bool {
 	fs, err := FindFilesystem(ctx, uuid)
 	if err != nil {
 		slog.Warn("failed to refresh btrfs alerts after resync", "uuid", uuid, "error", err)
-		return
+		return false
 	}
 	states, err := loadPoolStates()
 	if err != nil {
 		slog.Warn("failed to refresh btrfs alerts after resync", "uuid", uuid, "error", err)
-		return
+		return false
 	}
 	RaiseAlerts(ctx, fs)
 	raiseResyncAlert(ctx, fs, states[uuid])
@@ -490,6 +496,7 @@ func refreshResyncAlerts(ctx context.Context, uuid string, resynced bool) {
 			Link:    "/storage?pool=" + uuid, OccurrenceID: strconv.FormatInt(time.Now().Unix(), 10),
 		})
 	}
+	return fs.HealthKnown
 }
 
 // errDiskMissing stops a resync while the pool lacks a disk.

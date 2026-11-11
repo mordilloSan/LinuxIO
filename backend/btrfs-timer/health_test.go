@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 func TestRunHealth(t *testing.T) {
@@ -75,6 +76,14 @@ func TestRunDegradedAndResync(t *testing.T) {
 	resyncPool = func(context.Context, string, func(float64)) error { return errors.New("still missing a disk") }
 	if code := runCLI(ctx, []string{"resync", "uuid-1"}, io.Discard, io.Discard); code != 1 {
 		t.Fatalf("failed resync = %d, want 1", code)
+	}
+	// The pool's own alerts report a failed resync, so its unit's end hook
+	// raises no run alert.
+	resyncPool = func(context.Context, string, func(float64)) error {
+		return scheduledrun.Reported(errors.New("the scrub failed"))
+	}
+	if code := runCLI(ctx, []string{"resync", "uuid-1"}, io.Discard, io.Discard); code != scheduledrun.ExitReported {
+		t.Fatalf("reported failed resync = %d, want %d", code, scheduledrun.ExitReported)
 	}
 }
 

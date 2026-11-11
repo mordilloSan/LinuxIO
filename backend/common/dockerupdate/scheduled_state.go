@@ -9,6 +9,8 @@ import (
 
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 type scheduledUpdateCandidate = containerUpdateCandidate
@@ -286,8 +288,16 @@ func (s *scheduledUpdateState) runComposeUpdate(group *scheduledComposeTarget) (
 }
 
 func (s *scheduledUpdateState) recordComposeGroupError(group *scheduledComposeTarget, err error) {
+	// Each container's alert reports the group's failure; what else went
+	// wrong while recording it, such as a status file that cannot be written,
+	// stays unmarked beside it.
 	for _, inspect := range group.before {
-		_ = scheduledUpdateError(s.ctx, inspect, err)
+		if recorded := scheduledUpdateError(s.ctx, inspect, err); !scheduledrun.AllReported(recorded) {
+			s.errs = append(s.errs, fmt.Errorf("record the failed update of %s: %w", strings.TrimPrefix(inspect.Name, "/"), unreportedPart(recorded)))
+		}
+	}
+	if len(group.before) > 0 {
+		err = scheduledrun.Reported(err)
 	}
 	s.errs = append(s.errs, err)
 }
@@ -331,4 +341,19 @@ func verifyScheduledComposeContainer(
 		return container.InspectResponse{}, fmt.Errorf("verify updated Compose container %q: %w", name, err)
 	}
 	return after, nil
+}
+
+// unreportedPart is what joined err holds besides its reported failures.
+func unreportedPart(err error) error {
+	joined, ok := err.(interface{ Unwrap() []error })
+	if !ok {
+		return err
+	}
+	var rest []error
+	for _, e := range joined.Unwrap() {
+		if !scheduledrun.AllReported(e) {
+			rest = append(rest, e)
+		}
+	}
+	return errors.Join(rest...)
 }

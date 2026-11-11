@@ -214,3 +214,26 @@ func TestRunningDoesNotAlertForUnitsWithTheirOwnAlerts(t *testing.T) {
 		t.Errorf("alerts = %+v, want none", h.alerts)
 	}
 }
+
+// A worker unit's run found gone in the same boot ended without its end hook:
+// nothing else reports it.
+func TestRunningAlertsForAWorkerRunThatEndedWithoutItsHook(t *testing.T) {
+	const unit = "linuxio-docker-update.service"
+	h := newHooks(t)
+	mustBegin(t, h, unit, testInvocation)
+
+	if _, err := liveness(h, testBoot, func(context.Context, string, string) (bool, error) { return false, nil }).Running(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if record := mustGet(t, h, testRunID); record.State != jobs.StateInterrupted || record.Reason != jobs.ReasonCrash {
+		t.Fatalf("record = %s/%s, want interrupted/crash", record.State, record.Reason)
+	}
+	want := alerts.Observation{
+		Source: "jobs", Key: "run-docker-update", Severity: alerts.SeverityError,
+		Title: "Container updates failed", Message: "The run ended without reporting its result.",
+		Link: "/history?job=" + testRunID, OccurrenceID: testRunID,
+	}
+	if len(h.alerts) != 1 || h.alerts[0] != want {
+		t.Errorf("alerts = %+v, want [%+v]", h.alerts, want)
+	}
+}

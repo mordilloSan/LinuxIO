@@ -1783,6 +1783,13 @@ func TestHostAnswersTasksOfAStoredJobFromItsRecord(t *testing.T) {
 	if r := th.record(jobC); r.State != jobs.StateInterrupted || r.Reason != jobs.ReasonCrash {
 		t.Fatalf("lost record = %s/%s, want interrupted/crash", r.State, r.Reason)
 	}
+	// Its outcome is unknown, so it is an alert like any crash, raised once.
+	_ = readResult(t, openStream(t, sess, "tasks.get", map[string]string{"taskId": jobC}, ""))
+	lostAlerts := slices.DeleteFunc(th.observed(), func(obs alerts.Observation) bool { return obs.Key != jobC })
+	if len(lostAlerts) != 1 || lostAlerts[0].Severity != alerts.SeverityError || lostAlerts[0].Title != "test.job was interrupted" ||
+		lostAlerts[0].Message != "Its result was not recorded, so it is not known whether it finished." {
+		t.Fatalf("alerts for the lost job = %+v, want one error", lostAlerts)
+	}
 	handoff := openStream(t, sess, "tasks.get", map[string]string{"taskId": jobD}, "")
 	if result := readResult(t, handoff); result.Code != 404 {
 		t.Fatalf("tasks.get of a record no host ran = %#v, want 404", result)

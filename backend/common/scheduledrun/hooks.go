@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
@@ -36,6 +38,8 @@ type Hooks struct {
 	Alert       func(ctx context.Context, obs alerts.Observation) error
 	// Settings returns the notification settings; nil means the defaults.
 	Settings func() alerts.NotificationSettings
+	// Resolve clears an alert; nil clears nothing.
+	Resolve func(ctx context.Context, source, key string) error
 }
 
 // DefaultHooks is the production wiring.
@@ -49,6 +53,7 @@ func DefaultHooks() Hooks {
 		Stopping:    systemd.SystemStopping,
 		Alert:       alerts.Raise,
 		Settings:    alerts.NotificationsOrDefaults,
+		Resolve:     alerts.Resolve,
 	}
 }
 
@@ -102,7 +107,72 @@ func (h Hooks) End(ctx context.Context, unit, invocationID string, result Result
 			errs = append(errs, fmt.Errorf("raise alert: %w", alertErr))
 		}
 	}
+	if !kind.Alerts {
+		if alertErr := h.reportWorkerRun(context.WithoutCancel(ctx), kind, record, result); alertErr != nil {
+			errs = append(errs, alertErr)
+		}
+	}
 	return errors.Join(errs...)
+}
+
+// reportWorkerRun raises or clears the run alert of a worker unit (snapshots,
+// resync, Docker updates) whose run ended as record says. The worker raises
+// an alert for each rule, job, pool or container that fails and then exits
+// with ExitReported; a run that failed in any other way (configuration that
+// cannot be read, a Docker daemon that does not answer, a killed worker) has
+// nothing of its own to report it under, so it is reported here, whatever the
+// report settings say. The alert is one per unit, each such run an occurrence
+// of it, and links to the run in the history, where its output is. A run
+// that completes, or that failed with everything reported, clears it; one the
+// system stopped, that was canceled or that did no work (ExitSkipped) changes
+// nothing.
+func (h Hooks) reportWorkerRun(ctx context.Context, kind Kind, record jobs.Record, result Result) error {
+	switch {
+	case record.State == jobs.StateFailed && result.exited(ExitSkipped):
+		// The run did no work: it neither failed nor cleared anything.
+	case record.State == jobs.StateCompleted, record.State == jobs.StateFailed && result.exited(ExitReported):
+		if h.Resolve == nil {
+			return nil
+		}
+		if err := h.Resolve(ctx, AlertSource, runAlertKey(kind)); err != nil {
+			return fmt.Errorf("resolve run alert: %w", err)
+		}
+	case record.State == jobs.StateFailed:
+		reason := record.Error.Message
+		message := strings.ToUpper(reason[:1]) + reason[1:] + ". The run's output is in the history."
+		if err := h.Alert(ctx, runAlert(kind, record, message)); err != nil {
+			return fmt.Errorf("raise run alert: %w", err)
+		}
+	}
+	return nil
+}
+
+// exited reports whether the worker exited with status.
+func (r Result) exited(status int) bool {
+	return r.Service == "exit-code" && r.Status == strconv.Itoa(status)
+}
+
+// runAlert is the run alert of the worker unit of kind for the run of record.
+func runAlert(kind Kind, record jobs.Record, message string) alerts.Observation {
+	return alerts.Observation{
+		Source:       AlertSource,
+		Key:          runAlertKey(kind),
+		Severity:     alerts.SeverityError,
+		Title:        kind.Label + " failed",
+		Message:      message,
+		Link:         "/history?job=" + record.ID,
+		OccurrenceID: record.ID,
+	}
+}
+
+// runAlertKey is the key, under AlertSource, of the run alert of a worker
+// unit: its route's name, and its instance when it has one.
+func runAlertKey(kind Kind) string {
+	key := "run-" + strings.ReplaceAll(strings.TrimPrefix(kind.Route, "scheduled."), "_", "-")
+	if kind.Instance != "" {
+		key += "-" + kind.Instance
+	}
+	return key
 }
 
 // RequestCancel marks the running record of unit as canceled by request, so

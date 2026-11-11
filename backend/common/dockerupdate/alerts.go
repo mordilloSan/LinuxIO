@@ -14,7 +14,9 @@ import (
 
 const (
 	dockerUpdateAlertSource = "docker-update"
-	dockerUpdateAlertLink   = "/docker/containers"
+	// dockerCheckAlertSource is the source of the failed-check warnings.
+	dockerCheckAlertSource = "docker-update-check"
+	dockerUpdateAlertLink  = "/docker/containers"
 	// dockerUpdatePassAlertKey is the key of the every_run pass notice
 	// ("nothing to update", "N waiting"). It shares the source with the per-container alerts, whose keys
 	// are the container name itself or it behind "updated-" or "available-",
@@ -125,6 +127,52 @@ func syncAvailableAlerts(ctx context.Context, statuses []ImageUpdateStatus, want
 	}
 }
 
+// syncCheckAlerts raises a warning for each container whose update check
+// failed, such as one whose registry could not be reached, and clears the
+// warning of every container this pass did not find failing: one whose check
+// succeeded, and one that is gone or no longer checked. A check that keeps
+// failing is one occurrence, so it is delivered once; the reason, which can
+// change from pass to pass, is on the containers page. The warnings have
+// their own source, so a container's name is its key. Best effort: failures
+// are logged, never returned.
+func syncCheckAlerts(ctx context.Context, statuses []ImageUpdateStatus) {
+	failing := make(map[string]bool)
+	for _, status := range statuses {
+		if status.Err == "" {
+			continue
+		}
+		name := strings.TrimPrefix(status.ContainerName, "/")
+		key := dockerUpdateAlertKey(name)
+		// Kept even when the raise fails: its warning still stands.
+		failing[alerts.NormalizeKey(key)] = true
+		obs := alerts.Observation{
+			Source:       dockerCheckAlertSource,
+			Key:          key,
+			Severity:     alerts.SeverityWarning,
+			Title:        "Docker update check failed: " + name,
+			Message:      "The image " + status.ImageRef + " could not be checked for updates. The containers page shows the reason.",
+			Link:         dockerUpdateAlertLink,
+			OccurrenceID: "failing",
+		}
+		if err := alerts.Raise(ctx, obs); err != nil {
+			slog.Warn("failed to record Docker update check alert", "component", "docker", "container", name, "error", err)
+		}
+	}
+	doc, err := alerts.Load()
+	if err != nil {
+		slog.Warn("failed to read alerts to clear Docker update check alerts", "component", "docker", "error", err)
+		return
+	}
+	for _, a := range doc.Alerts {
+		if a.Source != dockerCheckAlertSource || failing[a.Key] {
+			continue
+		}
+		if err := alerts.Resolve(ctx, a.Source, a.Key); err != nil {
+			slog.Warn("failed to clear Docker update check alert", "component", "docker", "key", a.Key, "error", err)
+		}
+	}
+}
+
 func shortImageID(id string) string {
 	id = strings.TrimPrefix(id, "sha256:")
 	if len(id) > 12 {
@@ -133,8 +181,8 @@ func shortImageID(id string) string {
 	return id
 }
 
-// resolveDockerUpdateAlert clears the failure and the update-available
-// records of a container that was just replaced. Best effort: failures are
+// resolveDockerUpdateAlert clears the failure, the failed-check and the
+// update-available records of a container that was just replaced. Best effort: failures are
 // logged, never returned.
 func resolveDockerUpdateAlert(ctx context.Context, containerName string) {
 	name := strings.TrimPrefix(containerName, "/")
@@ -142,5 +190,8 @@ func resolveDockerUpdateAlert(ctx context.Context, containerName string) {
 		if err := alerts.Resolve(ctx, dockerUpdateAlertSource, key); err != nil {
 			slog.Debug("failed to clear Docker update alert", "component", "docker", "container", name, "error", err)
 		}
+	}
+	if err := alerts.Resolve(ctx, dockerCheckAlertSource, dockerUpdateAlertKey(name)); err != nil {
+		slog.Debug("failed to clear Docker update check alert", "component", "docker", "container", name, "error", err)
 	}
 }

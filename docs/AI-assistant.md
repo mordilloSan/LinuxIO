@@ -160,8 +160,9 @@ advertises the matching capability.
 - **@-mentions.** The `@` button, or typing `@` at a word start, opens the file
   picker. The file is read through `filebrowser.read_text` and attached as an
   embedded resource (capped at 200 KB), or as a link when it is larger, cannot
-  be read, or the agent does not take embedded context. Chips above the
-  composer show the attachments.
+  be read, or the agent does not take embedded context. Chips in the top
+  row of the composer box show the attachments; a line divides that row from
+  the text field, and another divides the text field from the composer bar.
 - **Usage.** A context gauge in the composer bar shows the share of the
   context window used, from the latest `usage_update`. Its tooltip gives the
   tokens used and, when reported, the cost.

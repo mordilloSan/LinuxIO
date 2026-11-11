@@ -16,6 +16,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 const replPayload = "btrfs-send-stream-0123456789"
@@ -416,6 +417,11 @@ func TestRunReplicationRecordsOutcome(t *testing.T) {
 	_, errs := RunReplication(ctx, jobs, nil)
 	if len(errs) != 1 || !strings.Contains(errs[0].Error(), jobs[0].ID+": boom") {
 		t.Fatalf("errs = %v", errs)
+	}
+	// The job's alert reports the failure, so the timer's pass needs no run
+	// alert for it.
+	if got := alertKeys(t); got["replication-"+jobs[0].ID] != alerts.SeverityError || !scheduledrun.AllReported(errs[0]) {
+		t.Fatalf("alerts = %v, err reported %v; want the job's alert and the error marked", got, scheduledrun.AllReported(errs[0]))
 	}
 	if want := []string{jobs[0].ID, jobs[1].ID}; !reflect.DeepEqual(ran, want) {
 		t.Fatalf("ran %v, want %v", ran, want)

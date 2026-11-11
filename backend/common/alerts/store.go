@@ -90,16 +90,17 @@ func validSeverity(s string) bool {
 // normalize makes obs storable so no caller has to: the key is mapped onto
 // the identifier alphabet and title and message are cut to their limits.
 func (o Observation) normalize() Observation {
-	o.Key = normalizeKey(o.Key)
+	o.Key = NormalizeKey(o.Key)
 	o.Title = truncate(strings.ToValidUTF8(o.Title, "\uFFFD"), maxTitleLen)
 	o.Message = truncate(strings.ToValidUTF8(o.Message, "\uFFFD"), MaxMessageLen)
 	return o
 }
 
-// normalizeKey lower-cases key, maps characters outside [a-z0-9._-] to '-',
-// makes it start with [a-z0-9] and cuts it to 64 characters. An empty key
-// stays empty and fails validation.
-func normalizeKey(key string) string {
+// NormalizeKey is the key an observation with key is stored under: it
+// lower-cases key, maps characters outside [a-z0-9._-] to '-', makes it start
+// with [a-z0-9] and cuts it to 64 characters. An empty key stays empty and
+// fails validation.
+func NormalizeKey(key string) string {
 	if key == "" {
 		return ""
 	}
@@ -266,7 +267,7 @@ func evictIndex(alerts []Alert) int {
 
 // Resolve removes the record, finding it by the key as Raise normalises it. Resolving an absent alert is not an error.
 func Resolve(ctx context.Context, source, key string) error {
-	id := ID(source, normalizeKey(key))
+	id := ID(source, NormalizeKey(key))
 	return update(ctx, func(doc *Document) error {
 		kept := doc.Alerts[:0]
 		for _, a := range doc.Alerts {

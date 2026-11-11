@@ -12,6 +12,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 const snapshotUsage = "Usage: linuxio-btrfs-timer snapshot run [--now RFC3339] | pre-update"
@@ -64,7 +65,9 @@ func runSnapshot(ctx context.Context, args []string, stdout, stderr io.Writer) i
 
 // snapshotPass runs the snapshot rules and, after a timeline pass, the
 // replication jobs and the notice the settings ask for, printing a summary
-// and returning the exit code.
+// and returning the exit code: scheduledrun.ExitReported for a timeline pass
+// whose every failure raised its rule's or job's alert, 1 for any other
+// failure.
 func snapshotPass(ctx context.Context, now time.Time, kind btrfs.SnapshotKind, stdout, stderr io.Writer) int {
 	rules, err := btrfs.LoadRules()
 	if err == nil {
@@ -72,13 +75,16 @@ func snapshotPass(ctx context.Context, now time.Time, kind btrfs.SnapshotKind, s
 		reportProgress(-1, "Taking snapshots")
 		report, err = runSnapshots(ctx, rules, now, kind)
 		summary := fmt.Sprintf("taken=%d pruned=%d skipped=%d errors=%d", len(report.Taken), len(report.Pruned), len(report.Skipped), len(report.Errors))
-		failures := report.Errors
+		// A failed rule raised its own alert, and so did a failed job: only a
+		// failure without one needs the run alert of the unit's end hook.
+		failures, reported := report.Errors, kind == btrfs.KindTimeline
 		if err == nil && kind == btrfs.KindTimeline {
 			replicated, sent, replErrs := replicateJobs(ctx)
 			summary += fmt.Sprintf(" replicated=%d sent=%d replication_errors=%d", replicated, sent, len(replErrs))
 			for _, e := range replErrs {
 				failures = append(failures, e.Error())
 			}
+			reported = allReported(replErrs)
 			// A stopped pass reports nothing.
 			if ctx.Err() == nil {
 				reportRun(ctx, now, len(report.Taken), sent, len(failures) > 0)
@@ -89,7 +95,7 @@ func snapshotPass(ctx context.Context, now time.Time, kind btrfs.SnapshotKind, s
 			fmt.Fprintln(stderr, e)
 		}
 		if err == nil && len(failures) > 0 {
-			return 1
+			return failedExit(reported)
 		}
 	}
 	if err != nil {
@@ -100,6 +106,26 @@ func snapshotPass(ctx context.Context, now time.Time, kind btrfs.SnapshotKind, s
 		return 1
 	}
 	return 0
+}
+
+// allReported reports whether each of errs is a failure its job's alert
+// reports.
+func allReported(errs []error) bool {
+	for _, e := range errs {
+		if !scheduledrun.AllReported(e) {
+			return false
+		}
+	}
+	return true
+}
+
+// failedExit is the exit status of a pass with failures: ExitReported when
+// each of them raised its own alert.
+func failedExit(reported bool) int {
+	if reported {
+		return scheduledrun.ExitReported
+	}
+	return 1
 }
 
 // replicateJobs runs the replication jobs after a timeline pass and returns

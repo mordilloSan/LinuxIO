@@ -288,8 +288,8 @@ func TestRaiseAndResolveNormalise(t *testing.T) {
 		t.Fatalf("not normalised: key=%q title=%d message=%d", a.Key, len(a.Title), len(a.Message))
 	}
 	for key, want := range map[string]string{"-x": "x-x", "_y": "x_y", strings.Repeat("a", 100): strings.Repeat("a", maxKeyLen)} {
-		if got := normalizeKey(key); got != want {
-			t.Errorf("normalizeKey(%q) = %q, want %q", key, got, want)
+		if got := NormalizeKey(key); got != want {
+			t.Errorf("NormalizeKey(%q) = %q, want %q", key, got, want)
 		}
 	}
 	if err := Resolve(ctx, "test", "Web App/1"); err != nil {

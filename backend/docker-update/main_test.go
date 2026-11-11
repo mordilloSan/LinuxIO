@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/dockerupdate"
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 func TestParseRunArgs(t *testing.T) {
@@ -62,6 +63,25 @@ func TestRunCLIExitCodesAndErrors(t *testing.T) {
 	var stderr bytes.Buffer
 	if code := runCLI(context.Background(), []string{"linuxio-docker-update", "run"}, &bytes.Buffer{}, &stderr); code != 1 || !strings.Contains(stderr.String(), "run failed: docker unavailable") {
 		t.Fatalf("run failure = code %d, stderr %q", code, stderr.String())
+	}
+	// A pass whose every failure has its container's alert says so, and the
+	// end hook raises no run alert; one failure without an alert undoes that.
+	reported := scheduledrun.Reported(errors.New("web: pull failed"))
+	runUpdates = func(context.Context, string, func(string)) error { return reported }
+	if code := runCLI(context.Background(), []string{"linuxio-docker-update", "run"}, &bytes.Buffer{}, &stderr); code != scheduledrun.ExitReported {
+		t.Fatalf("reported failure exit code = %d, want %d", code, scheduledrun.ExitReported)
+	}
+	runUpdates = func(context.Context, string, func(string)) error {
+		return errors.Join(reported, errors.New("a scheduled container is gone"))
+	}
+	if code := runCLI(context.Background(), []string{"linuxio-docker-update", "run"}, &bytes.Buffer{}, &stderr); code != 1 {
+		t.Fatalf("partly reported failure exit code = %d, want 1", code)
+	}
+	runUpdates = func(context.Context, string, func(string)) error {
+		return scheduledrun.Skipped(errors.New("another Docker update is already in progress"))
+	}
+	if code := runCLI(context.Background(), []string{"linuxio-docker-update", "run"}, &bytes.Buffer{}, &stderr); code != scheduledrun.ExitSkipped {
+		t.Fatalf("skipped pass exit code = %d, want %d", code, scheduledrun.ExitSkipped)
 	}
 	stderr.Reset()
 	if code := runCLI(context.Background(), []string{"linuxio-docker-update", "bogus"}, &bytes.Buffer{}, &stderr); code != 2 || !strings.Contains(stderr.String(), "unknown command") {

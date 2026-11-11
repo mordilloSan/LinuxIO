@@ -591,8 +591,8 @@ func (s storedJobs) Watch(ctx context.Context, stream net.Conn, id string) error
 }
 
 // markLost marks interrupted a record a host left running with no task in
-// this host to finish it, such as one whose finish failed to write, and
-// returns it.
+// this host to finish it, such as one whose finish failed to write, raises
+// an alert, since its outcome is unknown, and returns it.
 func (h *Host) markLost(ctx context.Context, record jobs.Record) jobs.Record {
 	marked := false
 	updated, err := h.cfg.Store.Update(context.WithoutCancel(ctx), record.ID, func(r *jobs.Record) error {
@@ -608,6 +608,7 @@ func (h *Host) markLost(ctx context.Context, record jobs.Record) jobs.Record {
 	}
 	if marked {
 		slog.Info("job marked interrupted", "job_id", record.ID, "route", record.Route, "reason", updated.Reason)
+		h.alert(context.WithoutCancel(ctx), updated, alerts.SeverityError, "was interrupted", "Its result was not recorded, so it is not known whether it finished.")
 	}
 	return updated
 }

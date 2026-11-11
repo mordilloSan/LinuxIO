@@ -65,7 +65,9 @@ func runCLI(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		report := func(message string) { reportProgress(-1, message) }
 		if err := runUpdates(ctx, configPath, report); err != nil {
 			fmt.Fprintf(stderr, "linuxio-docker-update: run failed: %v\n", err)
-			return 1
+			// The end hook raises no run alert when every failure has its
+			// container's alert, and changes nothing for a skipped pass.
+			return scheduledrun.ExitStatus(err)
 		}
 		return 0
 	case "help", "-h", "--help":

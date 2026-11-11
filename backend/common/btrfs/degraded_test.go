@@ -16,6 +16,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 // stubStatePaths points every file the degraded mount and resync read or
@@ -547,8 +548,13 @@ func failedResyncAlerts(t *testing.T, report string) []alerts.Alert {
 		t.Fatal(err)
 	}
 
-	if err := Resync(ctx, dataUUID, nil); err == nil {
+	err := Resync(ctx, dataUUID, nil)
+	if err == nil {
 		t.Fatalf("%s: Resync succeeded, want the canceled scrub to fail it", report)
+	}
+	// The pool's alert reports it, so the unit needs no run alert.
+	if !scheduledrun.AllReported(err) {
+		t.Fatalf("%s: the failure the resync alert reports is not marked reported: %v", report, err)
 	}
 	if got := alertKeys(t); got["resync-"+dataUUID] != alerts.SeverityError || got["resynced-"+dataUUID] != "" {
 		t.Fatalf("%s: alerts = %v, want the failed resync alert and no resynced notice", report, got)
@@ -562,6 +568,20 @@ func failedResyncAlerts(t *testing.T, report string) []alerts.Alert {
 		raised = append(raised, alerts.Alert{ID: a.ID, Severity: a.Severity, Title: a.Title, Message: a.Message, Link: a.Link})
 	}
 	return raised
+}
+
+// A resync of a pool that is not there fails with no alert of the pool to
+// report it: the unit's run alert has to.
+func TestResyncOfAnUnknownPoolIsNotReported(t *testing.T) {
+	stubKernel(t, raid1Kernel())
+	useTempAlerts(t)
+	err := Resync(t.Context(), "0a1b2c3d-1111-2222-3333-444455556666", nil)
+	if err == nil || scheduledrun.AllReported(err) {
+		t.Fatalf("Resync = %v, reported %v; want a failure that is not marked reported", err, scheduledrun.AllReported(err))
+	}
+	if got := alertKeys(t); len(got) != 0 {
+		t.Fatalf("alerts = %v, want none", got)
+	}
 }
 
 func TestResyncRefusesWhileADiskIsMissing(t *testing.T) {

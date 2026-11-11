@@ -3,13 +3,16 @@ package dockerupdate
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/moby/moby/api/types/container"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 func useTempAlertStore(t *testing.T) {
@@ -365,5 +368,150 @@ func TestSyncAvailableAlertsFollowsSettingAndState(t *testing.T) {
 	resolveDockerUpdateAlert(ctx, "/web")
 	if ids := alertIDs(t); len(ids) != 0 {
 		t.Fatalf("resolve kept %v", ids)
+	}
+}
+
+// A container whose registry could not be asked is not known to be current:
+// the failed check is a warning until a check of it succeeds, raised once
+// however many passes it lasts.
+func TestSyncCheckAlertsFollowsTheCheckError(t *testing.T) {
+	useTempAlertStore(t)
+	ctx := context.Background()
+	statuses := []ImageUpdateStatus{
+		{ContainerName: "/web", CheckState: DockerUpdateCheckStateError, ImageRef: "nginx:latest", Err: "registry unreachable"},
+		{ContainerName: "db", CheckState: DockerUpdateCheckStateCurrent},
+		{ContainerName: "local", CheckState: DockerUpdateCheckStateUncheckable},
+	}
+	// The failure alert of a container with the same name is another record.
+	raiseDockerUpdateAlert(ctx, "/web", errors.New("pull failed"))
+	syncCheckAlerts(ctx, statuses)
+	doc, err := alerts.Load()
+	if err != nil || len(doc.Alerts) != 2 {
+		t.Fatalf("alerts = %+v, %v; want the update failure and the failed check", doc.Alerts, err)
+	}
+	check := func(doc alerts.Document) alerts.Alert {
+		for _, a := range doc.Alerts {
+			if a.ID == "docker-update-check/web" {
+				return a
+			}
+		}
+		t.Fatalf("no failed-check warning in %+v", doc.Alerts)
+		return alerts.Alert{}
+	}
+	got := check(doc)
+	if got.Severity != alerts.SeverityWarning || got.Title != "Docker update check failed: web" ||
+		got.Message != "The image nginx:latest could not be checked for updates. The containers page shows the reason." || got.Link != dockerUpdateAlertLink {
+		t.Fatalf("alert = %+v", got)
+	}
+
+	// The next pass fails for another reason: the same occurrence.
+	statuses[0].Err = "unauthorized"
+	syncCheckAlerts(ctx, statuses)
+	if doc, _ = alerts.Load(); len(doc.Alerts) != 2 || check(doc).OccurrenceCount != 1 {
+		t.Fatalf("second failing pass: alerts = %+v, want one occurrence of the check", doc.Alerts)
+	}
+
+	statuses[0].CheckState, statuses[0].Err = DockerUpdateCheckStateCurrent, ""
+	syncCheckAlerts(ctx, statuses)
+	if ids := alertIDs(t); len(ids) != 1 || ids[0] != "docker-update/web" {
+		t.Fatalf("after a successful check: %v, want only the update failure", ids)
+	}
+
+	// A container that is gone, or no longer checked, loses its warning too.
+	statuses[0].CheckState, statuses[0].Err = DockerUpdateCheckStateError, "registry unreachable"
+	syncCheckAlerts(ctx, statuses)
+	syncCheckAlerts(ctx, statuses[1:])
+	if ids := alertIDs(t); len(ids) != 1 || ids[0] != "docker-update/web" {
+		t.Fatalf("after the container left the check: %v", ids)
+	}
+
+	// A replaced container clears its failed check too.
+	syncCheckAlerts(ctx, statuses)
+	resolveDockerUpdateAlert(ctx, "/web")
+	if ids := alertIDs(t); len(ids) != 0 {
+		t.Fatalf("resolve kept %v", ids)
+	}
+}
+
+// A failure with its container's alert is marked reported, so the worker's
+// exit status tells the end hook that no run alert is needed.
+func TestScheduledUpdateErrorIsReported(t *testing.T) {
+	useTempAlertStore(t)
+	old := updateStatusPath
+	updateStatusPath = filepath.Join(t.TempDir(), "status.json")
+	t.Cleanup(func() { updateStatusPath = old })
+
+	cause := errors.New("pull failed")
+	err := scheduledUpdateError(t.Context(), container.InspectResponse{ID: "abc", Name: "/web"}, cause)
+	if !scheduledrun.AllReported(err) || !errors.Is(err, cause) {
+		t.Fatalf("err = %v, want the cause, marked reported", err)
+	}
+	if ids := alertIDs(t); len(ids) != 1 || ids[0] != "docker-update/web" {
+		t.Fatalf("alerts = %v, want the container's", ids)
+	}
+	if scheduledrun.AllReported(errors.Join(err, errors.New("a scheduled container is gone"))) {
+		t.Fatal("a pass with an unreported failure counts as reported")
+	}
+}
+
+// A failed Compose update is reported by each of its containers' alerts; a
+// status file that could not be written beside it is not, so the pass still
+// needs its run alert.
+func TestComposeGroupErrorIsReportedExceptForTheStatusFile(t *testing.T) {
+	useTempAlertStore(t)
+	old := updateStatusPath
+	t.Cleanup(func() { updateStatusPath = old })
+	group := &scheduledComposeTarget{before: []container.InspectResponse{{ID: "a", Name: "/web"}, {ID: "b", Name: "/db"}}}
+	cause := errors.New("compose up failed")
+
+	updateStatusPath = filepath.Join(t.TempDir(), "status.json")
+	state := &scheduledUpdateState{ctx: t.Context()}
+	state.recordComposeGroupError(group, cause)
+	if err := errors.Join(state.errs...); !scheduledrun.AllReported(err) || !errors.Is(err, cause) {
+		t.Fatalf("errs = %v, want the cause, marked reported", state.errs)
+	}
+	if ids := alertIDs(t); len(ids) != 2 {
+		t.Fatalf("alerts = %v, want one per container", ids)
+	}
+
+	// The status file's directory is a file: the status cannot be written.
+	blocked := filepath.Join(t.TempDir(), "blocked")
+	if err := os.WriteFile(blocked, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	updateStatusPath = filepath.Join(blocked, "status.json")
+	state = &scheduledUpdateState{ctx: t.Context()}
+	state.recordComposeGroupError(group, cause)
+	if err := errors.Join(state.errs...); scheduledrun.AllReported(err) || !strings.Contains(err.Error(), "record the failed update of web") {
+		t.Fatalf("errs = %v, want the status-file failure kept unmarked", state.errs)
+	}
+}
+
+// A scheduled pass that finds another update holding the lock did no work.
+func TestPassLockHeldByAnotherUpdateIsSkipped(t *testing.T) {
+	old := acquireLock
+	t.Cleanup(func() { acquireLock = old })
+	acquireLock = func(context.Context) (func(), error) { return nil, errUpdateInProgress }
+	if _, err := acquirePassLock(t.Context()); scheduledrun.ExitStatus(err) != scheduledrun.ExitSkipped || !errors.Is(err, errUpdateInProgress) {
+		t.Fatalf("err = %v, exit status %d; want the lock error marked skipped", err, scheduledrun.ExitStatus(err))
+	}
+	other := errors.New("lock file cannot be opened")
+	acquireLock = func(context.Context) (func(), error) { return nil, other }
+	if _, err := acquirePassLock(t.Context()); scheduledrun.ExitStatus(err) != 1 {
+		t.Fatalf("err = %v, exit status %d; want an ordinary failure", err, scheduledrun.ExitStatus(err))
+	}
+}
+
+// A name the store normalises is still matched: the warning of a container
+// that keeps failing stays one occurrence instead of being cleared and raised
+// again each pass.
+func TestSyncCheckAlertsKeepsAWarningWhoseNameIsNormalised(t *testing.T) {
+	useTempAlertStore(t)
+	statuses := []ImageUpdateStatus{{ContainerName: "/Web_App", CheckState: DockerUpdateCheckStateError, ImageRef: "app:1", Err: "timeout"}}
+	syncCheckAlerts(t.Context(), statuses)
+	syncCheckAlerts(t.Context(), statuses)
+	doc, err := alerts.Load()
+	if err != nil || len(doc.Alerts) != 1 || doc.Alerts[0].ID != "docker-update-check/web_app" || doc.Alerts[0].OccurrenceCount != 1 {
+		t.Fatalf("alerts = %+v, %v; want the one warning, raised once", doc.Alerts, err)
 	}
 }

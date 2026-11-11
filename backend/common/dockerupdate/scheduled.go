@@ -13,6 +13,7 @@ import (
 	"github.com/moby/moby/client"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 type scheduledComposeTarget struct {
@@ -46,7 +47,7 @@ func RunScheduled(ctx context.Context, configPath string, report func(message st
 		return err
 	}
 
-	release, err := AcquireLock(ctx)
+	release, err := acquirePassLock(ctx)
 	if err != nil {
 		return err
 	}
@@ -78,6 +79,20 @@ func RunScheduled(ctx context.Context, configPath string, report func(message st
 		},
 	}, report)
 }
+
+// acquirePassLock takes the update lock for a scheduled pass. A pass that
+// finds another update holding it did no work and failed nothing: its error
+// is marked skipped, so the unit's end hook changes no alert.
+func acquirePassLock(ctx context.Context) (func(), error) {
+	release, err := acquireLock(ctx)
+	if errors.Is(err, errUpdateInProgress) {
+		return nil, scheduledrun.Skipped(err)
+	}
+	return release, err
+}
+
+// acquireLock is swapped by tests.
+var acquireLock = AcquireLock
 
 // registryLookupCache keeps successful registry lookups for one scheduled run,
 // so the update pass reuses what the check pass fetched instead of asking the
@@ -240,6 +255,7 @@ func runScheduledUpdateCheck(ctx context.Context, cli imageUpdateCheckClient, co
 		return DockerUpdateCheckResult{}, err
 	}
 	syncAvailableAlerts(ctx, statuses, reportAvailable)
+	syncCheckAlerts(ctx, statuses)
 	slog.Debug("scheduled Docker image check complete",
 		"component", "docker",
 		"subsystem", "update",
@@ -295,6 +311,9 @@ func scheduledUpdateError(ctx context.Context, inspect container.InspectResponse
 		status.ImageRef = inspect.Config.Image
 	}
 	raiseDockerUpdateAlert(ctx, inspect.Name, err)
+	// The container's alert reports it; a status file that cannot be written
+	// is the pass's own failure, joined unmarked.
+	err = scheduledrun.Reported(err)
 	if mergeErr := mergeUpdateStatuses(ctx, []ImageUpdateStatus{status}); mergeErr != nil {
 		return errors.Join(err, mergeErr)
 	}

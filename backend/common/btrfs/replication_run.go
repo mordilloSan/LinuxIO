@@ -21,6 +21,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
 	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 const (
@@ -336,7 +337,8 @@ func (t *tailBuffer) Write(p []byte) (int, error) {
 
 // RunReplication replicates each enabled job and records its outcome,
 // returning how many jobs sent a snapshot (not those already up to date) and
-// one error per failed job. It stops early only when ctx is done. report,
+// one error per failed job, marked scheduledrun.Reported since the job's alert
+// reports it. It stops early only when ctx is done. report,
 // when not nil, is called before each enabled job with the number of enabled
 // jobs already finished and the number of enabled jobs.
 func RunReplication(ctx context.Context, jobs []BtrfsReplicationJob, report func(done, total int)) (sent int, errs []error) {
@@ -368,7 +370,8 @@ func RunReplication(ctx context.Context, jobs []BtrfsReplicationJob, report func
 		}
 		switch {
 		case err != nil:
-			errs = append(errs, fmt.Errorf("%s: %w", job.ID, err))
+			// The job's alert, raised with its outcome, reports it.
+			errs = append(errs, scheduledrun.Reported(fmt.Errorf("%s: %w", job.ID, err)))
 		case result.Sent != nil:
 			sent++
 		}

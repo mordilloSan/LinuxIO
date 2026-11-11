@@ -138,7 +138,12 @@ Only a scrub that finished counts: one canceled from the overview, or cut
 short by a crash (its record then reads as aborted), is run again. A failed
 resync is retried by the next health run, without scrubbing again once the
 scrub finished; after three failures the alert turns into an error with the
-last cause, and mounting the pool again (or a reboot) re-arms it.
+last cause, and mounting the pool again (or a reboot) re-arms it. Since these
+alerts report it, a resync that fails exits with status 3 once they were
+brought up to date, which tells the unit's end hook to raise no run alert of
+its own ([Alerts](./alerts.md#who-writes-with-no-session)); a resync that
+could not find its pool or read its state, or whose worker is killed, gets
+that run alert.
 Uncorrectable scrub errors go to the scrub alert. Files with copy-on-write
 disabled (`nodatacow`, common for VM images) have no checksums, so a scrub
 cannot tell their stale copies; replace a disk that returns to a pool holding
@@ -238,7 +243,11 @@ starts `linuxio-btrfs-snapshot.service`, which runs
 `linuxio-btrfs-timer snapshot run`. The timer is enabled while at least one rule or
 replication job is enabled and disabled otherwise. **Run now** runs the
 snapshot and prune pass from the bridge; it does not replicate (each
-replication job has its own **Run now**).
+replication job has its own **Run now**). A timer pass in which a rule or a
+job failed exits with status 3 when each failure raised its own alert, and
+with 1 for a failure without one (rules or jobs that cannot be read, an
+outcome that could not be recorded); only the latter gets the run alert of
+the unit's end hook ([Alerts](./alerts.md#who-writes-with-no-session)).
 
 - A rule is due when its newest `timeline` snapshot is older than its period
   (5-minute tolerance for the hourly tick).
