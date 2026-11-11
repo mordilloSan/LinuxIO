@@ -331,17 +331,6 @@ export default function Composer({
 
   return (
     <div className="assistant__composer-stack">
-      {attachments.length > 0 ? (
-        <div className="assistant__attachments">
-          {attachments.map((attachment) => (
-            <AttachmentChip
-              attachment={attachment}
-              key={attachment.id}
-              onRemove={() => remove(attachment)}
-            />
-          ))}
-        </div>
-      ) : null}
       {pickerOpen ? (
         <PathPickerField
           includeFiles
@@ -361,22 +350,35 @@ export default function Composer({
           onPaste={onPaste}
           ref={setAnchor}
         >
-          <AppTextField
-            aria-keyshortcuts="Shift+Tab"
-            aria-label="Message"
-            disabled={disabled}
-            fullWidth
-            size="small"
-            helperText={hint}
-            multiline
-            onChange={(event) => changeDraft(event.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder="Ask about this server"
-            ref={inputRef}
-            rows={1}
-            value={draft}
-            variant="standard"
-          />
+          {attachments.length > 0 ? (
+            <div className="assistant__attachments">
+              {attachments.map((attachment) => (
+                <AttachmentChip
+                  attachment={attachment}
+                  key={attachment.id}
+                  onRemove={() => remove(attachment)}
+                />
+              ))}
+            </div>
+          ) : null}
+          <div className="assistant__composer-input">
+            <AppTextField
+              aria-keyshortcuts="Shift+Tab"
+              aria-label="Message"
+              disabled={disabled}
+              fullWidth
+              size="small"
+              helperText={hint}
+              multiline
+              onChange={(event) => changeDraft(event.target.value)}
+              onKeyDown={onKeyDown}
+              placeholder="Ask about this server"
+              ref={inputRef}
+              rows={1}
+              value={draft}
+              variant="standard"
+            />
+          </div>
           <div className="assistant__composer-bar">
             <div className="assistant__bar-group">
               <AppActionIconButton
@@ -412,14 +414,14 @@ export default function Composer({
                 disabled={connecting}
                 onChange={onSetConfigOption}
                 widthAnchor={anchor}
-                // The agent may list the mode both as a config option and in `modes`.
-                options={
-                  modes
-                    ? configOptions.filter(
-                        (option) => option.category !== "mode",
-                      )
-                    : configOptions
-                }
+                // The agent may list the mode both as a config option and in
+                // `modes`. The "agent" option swaps the main-thread persona
+                // for a subagent definition, which is not a choice to offer here.
+                options={configOptions.filter(
+                  (option) =>
+                    option.id !== "agent" &&
+                    !(modes && option.category === "mode"),
+                )}
               />
             </div>
             <div className="assistant__bar-group">

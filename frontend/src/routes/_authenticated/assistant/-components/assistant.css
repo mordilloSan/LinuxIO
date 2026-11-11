@@ -528,7 +528,8 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* The box owns the border; the text field and the bar sit inside it. */
+/* The box owns the border; the attachments, the text field and the bar sit
+   inside it as rows, each divided from the next by a full-width line. */
 .assistant__composer-box {
   /* The small text field has its own fixed size; the prompt follows the
      chat font size instead. */
@@ -539,7 +540,6 @@
   flex-direction: column;
   border: 1px solid var(--app-palette-action-disabled);
   border-radius: var(--app-radius-card);
-  padding: var(--app-space-8) var(--app-space-12) var(--app-space-4);
   overflow: hidden;
   outline: 1px solid transparent;
   outline-offset: 2px;
@@ -555,13 +555,15 @@
   outline-color: color-mix(in srgb, var(--app-palette-primary-main), transparent 60%);
 }
 
-/* 1. A quiet placeholder: hint text, not content. */
+/* 1. A quiet placeholder: hint text, not content. It keeps the fixed size of
+   the model chip under it instead of scaling with the chat font size. */
 .assistant__composer-box .app-text-field__input::placeholder {
+  font-size: 0.75rem;
   color: var(--app-palette-text-secondary);
   opacity: 0.6;
 }
 
-/* One surface: no underline between the field and the bar, at rest, hover or focus. */
+/* The rows draw their own dividers: no field underline at rest, hover or focus. */
 .assistant__composer-box .app-text-field--standard .app-text-field__wrapper,
 .assistant__composer-box .app-text-field--standard .app-text-field__wrapper:hover,
 .assistant__composer-box
@@ -575,10 +577,21 @@
   overflow-y: auto;
 }
 
+.assistant__composer-input {
+  padding: var(--app-space-8) var(--app-space-12);
+}
+
 .assistant__composer-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  padding: var(--app-space-4) var(--app-space-12);
+  border-top: 1px solid var(--app-palette-divider);
+}
+
+.assistant__composer-box > .assistant__attachments {
+  padding: var(--app-space-8) var(--app-space-12);
+  border-bottom: 1px solid var(--app-palette-divider);
 }
 
 .assistant__bar-group {
@@ -620,6 +633,8 @@
   border: 1px solid var(--app-palette-divider);
   border-radius: var(--app-radius-md);
   color: var(--app-palette-text-secondary);
+  /* A label on the message, not part of it: a step smaller than chat text. */
+  font-size: calc(var(--app-font-size-body) * 0.85);
 }
 
 .assistant__attachment .assistant__attachment-open {

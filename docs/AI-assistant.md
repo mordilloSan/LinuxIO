@@ -125,7 +125,9 @@ advertises the matching capability.
   option, and on the right the mode select and Send (a red Stop button while a
   turn runs). Changing one sends `session/set_config_option` or
   `session/set_mode` and replaces the local options with the agent's reply.
-  Pieces the agent does not offer are hidden.
+  Pieces the agent does not offer are hidden, and so is the `agent` option
+  (Claude Code's main-thread persona picker): it lists subagent definitions
+  such as `web-fetch`, which fail when they run a whole conversation.
 - **Chat defaults.** Settings → Assistant lists the models, effort levels and
   permission modes from a chat the probe opens, so a new model shows up as
   soon as the agent offers it, with no LinuxIO release. The values stored are

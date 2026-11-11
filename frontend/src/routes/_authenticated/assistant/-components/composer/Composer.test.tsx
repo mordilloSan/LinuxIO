@@ -481,6 +481,24 @@ describe("Composer", () => {
     expect(onSetConfigOption).toHaveBeenCalledWith("think", true);
   });
 
+  it("hides the agent persona option", () => {
+    setup({
+      configOptions: [
+        {
+          id: "agent",
+          name: "Agent",
+          type: "select",
+          currentValue: "default",
+          options: [
+            { value: "default", name: "Default" },
+            { value: "web-fetch", name: "web-fetch" },
+          ],
+        },
+      ],
+    });
+    expect(screen.queryAllByRole("combobox")).toHaveLength(0);
+  });
+
   it("changes the mode and hides a duplicate mode option", async () => {
     const { onSetMode } = setup({
       configOptions: [{ ...modelOption, id: "mode", category: "mode" }],
