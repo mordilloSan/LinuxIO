@@ -15,14 +15,14 @@ var api = apischema.Bindings(
 	apischema.Mutation("shares.stop_rsync", handleStopRsync, apischema.Privileged()),
 	// NFS exports (server-side shares via /etc/exports)
 	apischema.Call[apischema.NoRequest, []apischema.NFSExport]("shares.list_nfs_shares", apischema.RetrySafe()).Handle(handleListNFSShares),
-	apischema.Mutation("shares.create_nfs_share", handleCreateNFSShare),
-	apischema.Mutation("shares.update_nfs_share", handleUpdateNFSShare),
-	apischema.Mutation("shares.delete_nfs_share", handleDeleteNFSShare),
+	apischema.Mutation("shares.create_nfs_share", handleCreateNFSShare, apischema.Privileged()),
+	apischema.Mutation("shares.update_nfs_share", handleUpdateNFSShare, apischema.Privileged()),
+	apischema.Mutation("shares.delete_nfs_share", handleDeleteNFSShare, apischema.Privileged()),
 	// Samba shares (via /etc/samba/smb.conf)
 	apischema.Call[apischema.NoRequest, []apischema.SambaShare]("shares.list_samba_shares", apischema.RetrySafe()).Handle(handleListSambaShares),
-	apischema.Mutation("shares.create_samba_share", handleCreateSambaShare),
-	apischema.Mutation("shares.update_samba_share", handleUpdateSambaShare),
-	apischema.Mutation("shares.delete_samba_share", handleDeleteSambaShare),
+	apischema.Mutation("shares.create_samba_share", handleCreateSambaShare, apischema.Privileged()),
+	apischema.Mutation("shares.update_samba_share", handleUpdateSambaShare, apischema.Privileged()),
+	apischema.Mutation("shares.delete_samba_share", handleDeleteSambaShare, apischema.Privileged()),
 )
 
 var Routes = api.Routes()
