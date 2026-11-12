@@ -668,19 +668,22 @@
   flex-direction: column;
   border: 1px solid var(--app-palette-action-disabled);
   border-radius: var(--app-radius-card);
+  /* The same surface as the cards in the transcript above it. */
+  background: var(--app-palette-background-paper);
   overflow: hidden;
-  outline: 1px solid transparent;
-  outline-offset: 2px;
+  /* The focus halo's resting state, so it fades in instead of appearing. */
+  box-shadow: 0 0 0 4px transparent;
   transition:
     border-color var(--app-transition-duration-fast) var(--app-easing-standard),
-    outline-color var(--app-transition-duration-fast) var(--app-easing-standard);
+    box-shadow var(--app-transition-duration-fast) var(--app-easing-standard);
 }
 
-/* Two lines, like the Claude prompt: the border in the accent and a fainter
-   ring two pixels outside it. */
+/* Two layers, with no gap: the border in the accent, and against it a halo
+   several times as thick and much dimmer, which blends into the page. */
 .assistant__composer-box:focus-within {
   border-color: var(--app-palette-primary-main);
-  outline-color: color-mix(in srgb, var(--app-palette-primary-main), transparent 60%);
+  box-shadow: 0 0 0 4px
+    color-mix(in srgb, var(--app-palette-primary-main), transparent 82%);
 }
 
 /* 1. A quiet placeholder: hint text, not content. It keeps the fixed size of
