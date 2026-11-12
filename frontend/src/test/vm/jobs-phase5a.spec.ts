@@ -32,7 +32,7 @@ import {
   waitForRun,
 } from "./vm";
 
-// Phase 5a of docs/TODO/jobs.md (sections 2.12, 2.16, 4.5): the history page
+// docs/jobs.md (Frontend, Updates): the history page
 // the bell links to, each schedule's past runs, a saved output read in chunks,
 // and the update banner. The scheduled scripts are schedules created on the
 // Schedules page, disabled, with a calendar of 2099, and started with "Run
@@ -334,9 +334,9 @@ test("a user who is not an admin sees only their own jobs", async ({
 // The build in LINUXIO_VM_UPDATE_BUILD differs from the installed one only in
 // jobs.Protocol, one higher: installed over it, it makes the running root job
 // host an older one to every new bridge, without stopping it (installing over
-// a running host is what an update does; docs/TODO/jobs.md 2.12). The test
+// a running host is what an update does; docs/jobs.md, Updates). The test
 // installs it with the rig's install, which `make vm-install` runs after its
-// build. docs/TODO/jobs.md 3.9 gives the make command that builds it from
+// build. docs/jobs.md (Testing) gives the make command that builds it from
 // this tree with a Go overlay of backend/common/jobs/record.go.
 test("the update banner counts the jobs an update waits for", async ({
   page,
@@ -344,7 +344,7 @@ test("the update banner counts the jobs an update waits for", async ({
   const build = process.env.LINUXIO_VM_UPDATE_BUILD ?? "";
   test.skip(
     build === "",
-    "needs LINUXIO_VM_UPDATE_BUILD: a build directory of this tree with jobs.Protocol one higher (docs/TODO/jobs.md 3.9)",
+    "needs LINUXIO_VM_UPDATE_BUILD: a build directory of this tree with jobs.Protocol one higher (docs/jobs.md, Testing)",
   );
   // The bounds of the waits below: an apt run 600 s, the scrub's start (with
   // the pool on a fresh VM) about 120 s, the sessions 30 s, the install about
@@ -355,7 +355,7 @@ test("the update banner counts the jobs an update waits for", async ({
   // After a dpkg run, apt runs needrestart, which restarted the job hosts
   // running a replaced binary and so interrupted their jobs (seen once in
   // this VM, during an unattended-upgrades run, on 2026-11-10;
-  // docs/TODO/jobs.md 3.9, finding 2). The installer's needrestart override
+  // docs/jobs.md, Updates). The installer's needrestart override
   // fixes that, and jobs-needrestart.spec.ts checks it. An apt run in the
   // middle of this check is still noise, so the apt timers stop until the
   // next boot and a run in progress is waited for.
@@ -430,7 +430,7 @@ test("the update banner counts the jobs an update waits for", async ({
     };
     await refuse("LinuxIO update waits for 1 running job");
 
-    // The reads that need the older host (docs/TODO/jobs.md 2.12): the
+    // The reads that need the older host (docs/jobs.md, Updates): the
     // history answers empty at once, a job's own reads wait for a host that
     // does not come.
     expect

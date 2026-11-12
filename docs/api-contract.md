@@ -22,7 +22,7 @@ network bridge-handoff routes, which keep their own durable record, and
 Components follow a Mutation with `endpoint.useMutation`; the background tray
 starts one with `endpoint.start`, which resolves with the job's first snapshot
 and detaches, then follows it with `tasks.watch` and `tasks.data`
-([phase 2](./TODO/jobs.md#42-phase-2-every-mutation-is-a-job)). This browser-to-bridge API is an internal product
+([Jobs](./jobs.md#writing-a-route-that-runs-as-a-job)). This browser-to-bridge API is an internal product
 surface. A future supported external API would be a separate contract.
 
 Task progress and data streams are not a durable audit/history API. A Task
@@ -681,10 +681,11 @@ States are `running`, `completed`, `failed`, `canceled` and `interrupted`; an
 `interrupted` record carries its reason: `shutdown`, `crash` or `reboot`. The
 record is written when the job starts and on every state change, and fsynced
 only when a job that ran longer than one second reaches a terminal state or when
-its checkpoint changes. A job that completes in under one second is deleted from
-the store. Terminal records are kept 30 days and at most 200 per uid, pruned
-when a host starts. The runs of timers have a store and limits of their own
-([Scheduled runs](#scheduled-runs)).
+its checkpoint or its cancel request changes. A job that completes in under one
+second is deleted from the store. Terminal records are kept 30 days and at most
+200 per store (the root host's holds every admin's jobs), pruned when a host
+starts and every 24 hours while it runs. The runs of timers have a store and
+limits of their own ([Scheduled runs](#scheduled-runs)).
 
 `tasks.cancel` and a stream abort write `cancel_requested` to the record first
 and only then cancel the job's context. The snapshot stays `running` while the
@@ -726,7 +727,7 @@ runs it. Each run writes a record of its own from two hooks on its unit
 ([Process & Systemd Architecture](./process-systemd-architecture.md#scheduled-runs)):
 `/var/lib/linuxio/jobs/scheduled/<id>.json`, with a copy of its output beside
 it. The root job host reads those records, so the run shows in `tasks.list`
-and `tasks.events` while it runs. Four task types:
+and `tasks.events` while it runs. Five task types:
 
 | Type | Unit | `metadata.label` | `metadata.identity` |
 | ---| ---| ---| ---|
@@ -734,6 +735,7 @@ and `tasks.events` while it runs. Four task types:
 | `scheduled.btrfs_snapshot` | `linuxio-btrfs-snapshot.service` | `Snapshots and replication` | none |
 | `scheduled.btrfs_resync` | `linuxio-btrfs-resync@<uuid>.service` | `Pool resync` | `[<pool uuid>]` |
 | `scheduled.docker_update` | `linuxio-docker-update.service` | `Container updates` | none |
+| `scheduled.system_update` | the distribution's automatic update service: `apt-daily-upgrade.service`, `dnf-automatic.service`, `dnf5-automatic.service` or `mintupdate-automation-upgrade.service` | `System updates` | none |
 
 - **Who sees them.** Only the root host serves them, so every admin session
   sees every scheduled run and other users see none. The snapshot's `owner`

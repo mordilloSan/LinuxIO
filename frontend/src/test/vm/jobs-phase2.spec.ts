@@ -21,7 +21,7 @@ import {
   waitForJob,
 } from "./vm";
 
-// Phase 2 of docs/TODO/jobs.md: every mutation runs as a job in the root job
+// docs/jobs.md: every mutation runs as a job in the root job
 // host (the test user can sudo, so its login is privileged). Each job here is
 // started in the browser; the VM's job store and journal are the evidence.
 
@@ -320,7 +320,8 @@ test("upload, batch upload and archive download complete with matching files", a
     `batch-a.txt ${sums["batch-a.txt"]}\nbatch-b.txt ${sums["batch-b.txt"]}\n`,
   );
 
-  // Jobs under a second leave no record (jobs.md 2.10); none may fail.
+  // Jobs under a second leave no record (docs/jobs.md, Store and records);
+  // none may fail.
   const records = (await jobRecords()).filter(
     (r) =>
       !before.has(r.id) &&
@@ -354,7 +355,7 @@ test("a btrfs scrub keeps running across logout and login", async ({
   });
 });
 
-// Host events (docs/TODO/jobs.md section 7). Each acts on the VM only.
+// Host events (docs/jobs.md, What each event does). Each acts on the VM only.
 
 test("stopping the root job host marks the job interrupted/shutdown with an alert", async ({
   page,
@@ -450,7 +451,8 @@ test("after a power loss the root job host marks the job interrupted/reboot", as
     await page.keyboard.press("Control+v");
     await waitForJob("filebrowser.copy_batch", before, "running");
     await page.close();
-    // A job's first record write is not fsynced (jobs.md 2.10).
+    // A job's first record write is not fsynced (docs/jobs.md, Store and
+    // records).
     await vmSsh("sync");
     expect(
       (await jobRecords("filebrowser.copy_batch")).filter(

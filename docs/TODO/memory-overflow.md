@@ -187,7 +187,7 @@ Fedora, exposes zram writeback, or touches swap partitions on the storage page.
   TuneD read-only slider and the confirm dialog.
 - Docs: a new memory document under docs for the behaviour, the capability in
   `docs/capabilities.md`, the routes in `docs/privilege_pattern.md`'s table,
-  and the mutations in the mutation map.
+  and the mutations in the [mutation map](./mutation-map.md).
 - Finish with `make generate` and `make test-quiet`; the section test also
   needs `make test-frontend-browser-quiet` for the confirm dialog focus.
 

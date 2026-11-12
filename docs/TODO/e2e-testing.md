@@ -184,8 +184,8 @@ See `docs/development.md`, "Test VM", for usage.
   (package update, Compose, file copy, scrub, balance, device replace, pool
   create, Docker storage switch) and cut the host: `systemctl stop`, `kill -9`,
   reboot and power loss (`virsh destroy`). `linuxio-vm.sh throttle` caps a data
-  disk's speed so a job outlasts the event. The checks and their results are in
-  [jobs.md](jobs.md#36-phase-3-storage-safety-and-btrfs-resume-commits-938e32c5-f8db05af).
+  disk's speed so a job outlasts the event. What each spec file covers is in
+  [Jobs](../jobs.md#testing).
 - `make vm-test-btrfs-integration` runs the root btrfs and partition kernel
   tests (`test-btrfs-integration`) as root in the VM; the kernel-level claims
   of the btrfs resume work rest on that run.

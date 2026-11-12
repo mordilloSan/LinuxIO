@@ -25,7 +25,7 @@ import {
   waitForRun,
 } from "./vm";
 
-// Phase 4 of docs/TODO/jobs.md (section 2.14): work a systemd timer runs
+// docs/jobs.md (Scheduled runs): work a systemd timer runs
 // writes its own record through two hooks in packaged drop-ins, shows in the
 // bell while it runs and keeps a copy of its output. Each script is a schedule
 // created on the Schedules page, disabled and with a calendar of 2099, and

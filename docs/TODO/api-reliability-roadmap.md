@@ -13,7 +13,7 @@ Focused implementation and design details remain in their own documents:
 
 - [API Contract](../api-contract.md) describes implemented API behavior.
 - [Handler Patterns](../bridge_handler_patterns.md) defines handler code style.
-- [Jobs](./jobs.md) defines how
+- [Jobs](../jobs.md) defines how
   mutations run as jobs that outlive the login, and replaces the durable Task
   execution of phase 4.
 - [Notifications](../alerts.md) defines the notification product and
@@ -309,12 +309,12 @@ session Tasks end with the session.
 
 ## Phase 4: Durable Task Foundation (complete, superseded)
 
-Superseded by the [jobs plan](./jobs.md).
+Superseded by [Jobs](../jobs.md).
 `docker.update_container` is now a `Mutation` that runs in the per-uid job host;
 the transient-unit executor, the `linuxio-docker-update run-operation` worker,
 the `durabletask` store and the durable-operations architecture document are
-deleted, and section 2.11 of the jobs plan holds the fault matrix that replaces
-the one below. This section records what phase 4 built.
+deleted, and [What each event does](../jobs.md#what-each-event-does) holds the
+fault matrix that replaces the one below. This section records what phase 4 built.
 
 A durable Task requires both:
 
@@ -511,7 +511,7 @@ process runs inside the bridge.
 Later sources (storage checks, unit failures, release checks) and external
 delivery are listed under "Not in this slice" in [Alerts](../alerts.md). A
 scheduled script's failure is a source since jobs phase 4: its unit's end
-hook raises it ([jobs.md, section 2.14](./jobs.md#214-scheduled-runs)). Each
+hook raises it ([Jobs](../jobs.md#scheduled-runs)). Each
 new source is a root writer calling `alerts.Raise`/`alerts.Resolve` or a
 drop-in running `linuxio alert raise`.
 
@@ -568,8 +568,8 @@ LinuxIO should adopt focused lessons, not another product's full protocol:
 - `api-contract.md`: the implemented contract and clearly labelled local
   follow-up; cross-cutting future work stays in this roadmap.
 - `bridge_handler_patterns.md`: current handler style.
-- `TODO/jobs.md`: job execution and recovery mechanics, and the remaining
-  phases.
+- `jobs.md`: job execution and recovery mechanics; `TODO/jobs-follow-ups.md`:
+  what is still open there.
 - `docs/alerts.md`: alert lifecycle, file store, API, polling,
   and frontend behavior.
 - `scheduled-execution.md`: schedule, systemd unit, status, and journald

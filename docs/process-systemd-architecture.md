@@ -146,7 +146,7 @@ So the (uid-less) webserver can `connect()` to the root-owned auth socket purely
 ### Scheduled runs
 
 The units systemd timers start record each run in a job store of their own
-([jobs design, section 2.14](./TODO/jobs.md#214-scheduled-runs)): scheduled
+([Jobs](./jobs.md#scheduled-runs)): scheduled
 scripts (`linuxio-schedule-<id>.service`), btrfs snapshots and replication
 (`linuxio-btrfs-snapshot.service`), pool resyncs
 (`linuxio-btrfs-resync@<uuid>.service`) and Docker updates
@@ -182,7 +182,7 @@ ExecStopPost=-+/usr/local/bin/linuxio scheduled-run end --unit %n
   `linuxio` binary included, so recording never stops or fails a run. A hook
   reads nothing but `--unit` and the environment systemd gives it
   (`$INVOCATION_ID`, and for `end` `$SERVICE_RESULT`, `$EXIT_CODE` and
-  `$EXIT_STATUS`), refuses a unit that is none of the four, and gives itself
+  `$EXIT_STATUS`), refuses a unit that is none of those above, and gives itself
   10 s, below the `TimeoutStopSec=15s` of a scheduled script's unit.
 - **`begin`** writes the `running` record, with an fsync: the ID is the
   invocation ID written as a UUID, the route and label come from the unit name
@@ -227,8 +227,8 @@ ExecStopPost=-+/usr/local/bin/linuxio scheduled-run end --unit %n
   errors only `NoSuchUnit` (a unit that is not loaded) counts as gone; any
   other leaves the record as it is.
 
-`linuxio-btrfs-health.service`, the degraded mount at boot, the indexer's
-timer and the distribution's package auto-update are not recorded.
+`linuxio-btrfs-health.service`, the degraded mount at boot and the indexer's
+timer are not recorded.
 
 ## Boot & Login Flow
 
@@ -335,7 +335,7 @@ the same uid reconnects to the same host if it is still up.
 **needrestart.** On Ubuntu, needrestart, whose apt hook runs after every dpkg
 run, restarts each service still running a replaced binary; for an older host
 that interrupts its jobs (seen once in the test VM, during an unattended-upgrades
-run; [jobs.md 3.9](./TODO/jobs.md), finding 2). Where `/etc/needrestart`
+run; [Jobs](./jobs.md#updates)). Where `/etc/needrestart`
 exists the installer therefore installs
 `packaging/etc/needrestart/conf.d/linuxio.conf` as
 `/etc/needrestart/conf.d/linuxio.conf`, after the release binaries are
@@ -361,7 +361,7 @@ file is not installed, an installed copy stays as it is, and the installer
 prints a notice.
 
 In the test VM, against needrestart 3.11-1ubuntu2 on Ubuntu 26.04
-([jobs.md 3.9](./TODO/jobs.md), runs 4 and 5): in list mode needrestart put
+(`frontend/src/test/vm/jobs-needrestart.spec.ts`): in list mode needrestart put
 `linuxio-jobs@0.service` under "Service restarts being deferred" and
 `linuxio-monitoring.service` under "Services to be restarted"; in automatic
 mode it deferred the job host, whose `MainPID` stayed, and restarted

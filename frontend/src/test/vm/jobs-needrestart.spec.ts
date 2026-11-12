@@ -19,10 +19,10 @@ import {
   waitForJob,
 } from "./vm";
 
-// docs/TODO/jobs.md 3.9, finding 2: on Ubuntu, apt runs needrestart after each
+// docs/jobs.md, Updates: on Ubuntu, apt runs needrestart after each
 // dpkg run, and needrestart restarts every service still running a binary
 // that was replaced. An update replaces the binaries and leaves the job hosts
-// running (docs/TODO/jobs.md 2.12), so the installer ships an override,
+// running, so the installer ships an override,
 // packaging/etc/needrestart/conf.d/linuxio.conf, that exempts them. This check
 // installs the build `make vm-install` installed a second time, under a
 // running scrub, and runs `needrestart -u NeedRestart::UI::stdio -l` itself as

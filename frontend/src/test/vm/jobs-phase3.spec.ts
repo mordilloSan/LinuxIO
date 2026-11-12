@@ -22,7 +22,7 @@ import {
   waitForJob,
 } from "./vm";
 
-// Phase 3 of docs/TODO/jobs.md: the resumable storage routes across host
+// docs/jobs.md (Job lifecycle): the resumable storage routes across host
 // stops, reboots, power cuts, crashes and cancels, the pool create rollback
 // and the Docker storage switch. Jobs start in the browser; the host events go
 // through packaging/vm/linuxio-vm.sh. Each check fails, rather than passing
@@ -251,7 +251,8 @@ test("a scrub cut by a power loss is scrubbed again in full at boot", async ({
   const before = await jobIds();
   const { uuid, job } = await startScrub(page, before, 4 * MiB);
   await page.close();
-  // A job's first record write is not fsynced (jobs.md 2.10).
+  // A job's first record write is not fsynced (docs/jobs.md, Store and
+  // records).
   await vmSsh("sync");
   expect(
     await scrubRunning(),

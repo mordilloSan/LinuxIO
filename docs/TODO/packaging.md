@@ -181,7 +181,7 @@ Use this common layout:
       `/etc/needrestart/conf.d/linuxio.conf`, only where `/etc/needrestart`
       exists): a package update runs through dpkg, after which Ubuntu's
       needrestart would restart the job hosts and their jobs
-      ([jobs.md](jobs.md) 3.9, finding 2).
+      ([Jobs](../jobs.md#updates)).
 - [ ] Keep `/var/lib/linuxio` across package removal.
 - [ ] Install licenses using each distribution's native locations:
   - DEB: `/usr/share/doc/linuxio/copyright` and third-party notices.

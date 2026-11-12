@@ -128,7 +128,7 @@ export async function waitForJob(
   return job!;
 }
 
-/** The record of a run a systemd timer starts (docs/TODO/jobs.md 2.14). */
+/** The record of a timer-started run (docs/jobs.md, Scheduled runs). */
 export interface ScheduledRecord extends JobRecord {
   created_at: string;
   target?: string[];

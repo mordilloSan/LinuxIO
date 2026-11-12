@@ -10,8 +10,7 @@ report() {
 	fail=1
 }
 
-# Implementation plans name files that do not exist yet, so they are not checked.
-mapfile -t files < <(find docs -name '*.md' -not -path 'docs/superpowers/plans/*' | sort && printf '%s\n' README.md AGENTS.md)
+mapfile -t files < <(find docs -name '*.md' | sort && printf '%s\n' README.md AGENTS.md)
 
 for f in "${files[@]}"; do
 	dir=$(dirname "$f")

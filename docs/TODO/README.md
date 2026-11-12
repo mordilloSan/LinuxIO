@@ -3,7 +3,7 @@
 Each active plan has its own document:
 
 - [API reliability, recovery, and notifications](./api-reliability-roadmap.md)
-- [Jobs: mutations that outlive the login](./jobs.md)
+- [Jobs: follow-ups](./jobs-follow-ups.md)
 - [Frontend test coverage](./e2e-testing.md)
 - [Backend audit checklist](./backend-audit.md)
 - [Memory overflow: swap, zswap and zram from Settings](./memory-overflow.md)
@@ -20,3 +20,5 @@ Each active plan has its own document:
   `make check-frontend-quiet` before closing this item.
 
 Other plans: [package-managed installation](./packaging.md) and [scheduled scripts](./scheduled-execution.md).
+The [mutation map](./mutation-map.md), which traces every route that changes
+the host, is input to the memory plan.

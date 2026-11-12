@@ -25,9 +25,10 @@ import {
   waitForRun,
 } from "./vm";
 
-// Plan 5b of docs/TODO/jobs.md (section 4.5; docs/alerts.md): what each kind
-// of work reports besides its failures, the grid of level by channel at
-// delivery and in the bell, a schedule's own choice, and the notice at sign-in.
+// docs/alerts.md (Notification settings) and docs/jobs.md (Alerts): what
+// each kind of work reports besides its failures, the grid of level by
+// channel at delivery and in the bell, a schedule's own choice, and the notice
+// at sign-in.
 // The scheduled scripts are schedules created on the Schedules page, disabled,
 // with a calendar of 2099, and started with "Run now", as in
 // jobs-phase4.spec.ts.

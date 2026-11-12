@@ -131,7 +131,7 @@ systemd state.
 ## Run records and alerts
 
 Scheduling and logging work without them. Jobs phase 4 added both without a
-scheduler worker ([jobs design, section 2.14](./jobs.md#214-scheduled-runs)):
+scheduler worker ([Jobs](../jobs.md#scheduled-runs)):
 an `ExecStartPre=`/`ExecStopPost=` drop-in for every `linuxio-schedule-*`
 unit runs `linuxio scheduled-run begin|end` as root, which writes one record
 per run under `/var/lib/linuxio/jobs/scheduled`, keeps a copy of the run's
@@ -155,8 +155,8 @@ confirmed successive every-second executions as the selected account and
 successful journal capture. Timeout, catch-up, reboot survival, and multi-day
 retention remain deployment checks against the host’s systemd and journald
 configuration. The run records, saved output, alerts, stop, an orderly reboot
-and a power cut were checked in the test VM ([jobs.md, section
-3.8](./jobs.md#38-phase-4-scheduled-runs-checked-in-the-test-vm-2026-11-10)).
+and a power cut are checked in the test VM by
+`frontend/src/test/vm/jobs-phase4.spec.ts` ([Jobs](../jobs.md#testing)).
 
 ## Completion criteria
 
