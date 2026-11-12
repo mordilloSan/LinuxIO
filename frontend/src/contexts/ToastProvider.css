@@ -29,6 +29,8 @@
   --gray5: var(--app-palette-divider);
   --gray11: var(--app-palette-text-secondary);
   font-family: var(--app-font-family);
+  /* Over dialogs and tooltips: a toast reports on what a dialog just did. */
+  z-index: var(--app-z-toast);
 }
 
 /* ── Severity ──
