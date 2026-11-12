@@ -7,8 +7,15 @@ import {
   type SessionOpenResult,
   textBlock,
 } from "@/api/acp";
+import {
+  paneAttachAnswer,
+  paneCapabilities,
+  panePanesAnswer,
+  panePushedRoster,
+  paneRenderAnswer,
+} from "@/test/assistantPaneFixture";
 
-import { assistantStore } from "./assistant-store";
+import { assistantStore, chatPane } from "./assistant-store";
 
 function fakeConnection(overrides: Partial<AssistantConnection> = {}) {
   let handlers!: AssistantHandlers;
@@ -1588,5 +1595,100 @@ describe("assistantStore", () => {
       expect(assistantStore.getState().side).toBeNull();
       expect(conn.closeSession).toHaveBeenCalledWith("s-side");
     });
+  });
+});
+
+describe("assistantStore plugin panes", () => {
+  type OnPane = NonNullable<AssistantHandlers["onPane"]>;
+
+  // Walks one Claude Code process through attach, roster and first render.
+  function showPane(onPane: OnPane, conn: number, sessionId: string) {
+    const send = vi.fn<Parameters<OnPane>[1]>();
+    const answer = (response: unknown) =>
+      onPane(
+        {
+          conn,
+          message: {
+            type: "pane_response",
+            id: send.mock.lastCall?.[1],
+            ok: true,
+            response,
+          },
+        },
+        send,
+      );
+    onPane({ conn, event: "open" }, send);
+    onPane(
+      {
+        conn,
+        message: { type: "relay_ready", capabilities: paneCapabilities },
+      },
+      send,
+    );
+    answer(paneAttachAnswer);
+    onPane(
+      { conn, message: { ...panePushedRoster, session_id: sessionId } },
+      send,
+    );
+    answer(panePanesAnswer);
+    answer(paneRenderAnswer);
+    return send;
+  }
+
+  it("opens with panes and offers the open chat's pane", async () => {
+    const { connector, handlers } = fakeConnection();
+    assistantStore._setConnector(connector);
+    await assistantStore.connect("claude");
+    const { onPane } = handlers();
+    expect(onPane).toEqual(expect.any(Function));
+    showPane(onPane!, 1, "s-fork");
+    expect(chatPane(assistantStore.getState())).toBeNull();
+    showPane(onPane!, 2, "s-old");
+    expect(chatPane(assistantStore.getState())).toMatchObject({
+      conn: 2,
+      sessionId: "s-old",
+      id: "lot-map",
+      title: "Work map",
+      tree: paneRenderAnswer.tree,
+    });
+  });
+
+  it("never touches the chat when a pane fails", async () => {
+    const { connector, handlers } = fakeConnection();
+    assistantStore._setConnector(connector);
+    await assistantStore.connect("claude");
+    const before = assistantStore.getState();
+    const send = showPane(handlers().onPane!, 1, "s-old");
+    handlers().onPane!({ conn: 1, message: "not json" }, send);
+    const after = assistantStore.getState();
+    expect(after.panes).toEqual([]);
+    expect(after).toMatchObject({
+      status: before.status,
+      error: null,
+      sessionId: before.sessionId,
+      blocks: before.blocks,
+    });
+  });
+
+  it("drops the panes when the agent exits", async () => {
+    const { connector, handlers } = fakeConnection();
+    assistantStore._setConnector(connector);
+    await assistantStore.connect("claude");
+    showPane(handlers().onPane!, 1, "s-old");
+    expect(assistantStore.getState().panes).toHaveLength(1);
+    handlers().onExit(null);
+    expect(assistantStore.getState().panes).toEqual([]);
+  });
+
+  it("drops the panes on disconnect and ignores the old stream", async () => {
+    const { connector, handlers } = fakeConnection();
+    assistantStore._setConnector(connector);
+    await assistantStore.connect("claude");
+    const stale = handlers().onPane!;
+    showPane(stale, 1, "s-old");
+    assistantStore.disconnect();
+    expect(assistantStore.getState().panes).toEqual([]);
+    showPane(stale, 2, "s-old");
+    expect(assistantStore.getState().panes).toEqual([]);
   });
 });

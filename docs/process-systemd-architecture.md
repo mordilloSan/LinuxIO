@@ -31,6 +31,7 @@ LinuxIO uses **privilege separation** (the same shape Cockpit uses): split the s
 | `linuxio-indexer` | Go | `backend/indexer/` | root, sandboxed | socket activated; exits when idle | Filesystem scanner, SQLite index, local HTTP/SSE API |
 | `linuxio-btrfs-timer` | Go | `backend/btrfs-timer/` | root | oneshot, started by systemd timers and the auto-update drop-in | Btrfs timeline/pre-update snapshots and the periodic health check |
 | `linuxio-monitoring` | Go | `backend/monitoring/` | root, sandboxed | long-running (no idle exit) | Metrics collector, SQLite history, local HTTP API on two Unix sockets |
+| `linuxio-claude-relay` | Go | `backend/claude-relay/` | logged-in user, never root | one per `claude` an Assistant chat starts | Runs the real `claude` for the ACP adapter and carries plugin pane requests to the bridge ([Assistant](./AI-assistant.md#plugin-panes)) |
 
 These binaries install to `/usr/local/bin/`. The CLI is a thin management
 front-end; the remaining processes are independently constrained by their
@@ -49,6 +50,7 @@ the auth/bridge launch protocol.
 | `linuxio-auth` | `version`, `--version` | No-argument accepted-socket process; root and systemd only |
 | `linuxio-bridge` | `version`, `--version`, `-v` | No-argument session process with inherited fd 3 and auth bootstrap; `linuxio-auth` only. With no arguments and the `linuxio-jobs` socket from systemd, the job host (`linuxio-jobs@<uid>.service`). |
 | `linuxio-docker-update` | `help`/`-h`/`--help` | `run [--config PATH]` for the managed timer |
+| `linuxio-claude-relay` | None | Claude Code's own arguments, with `LINUXIO_CLAUDE_BIN` naming the real CLI; started only by `claude-agent-acp` in an Assistant chat. Exits 2 without that variable. |
 | `linuxio-indexer` | `--help`, `-h`, `--version` | Managed daemon; private `--trigger-index` timer client and `--index-mode` scanner worker |
 | `linuxio-monitoring` | `help`/`-h`/`--help`, `version`/`-v`/`--version` | `run [--config PATH] [--verbose]`; used by `linuxio-monitoring.service` |
 | `linuxio-btrfs-timer` | `help`/`-h`/`--help` | `snapshot run [--now RFC3339]`, `snapshot pre-update`, `health run`; used by the btrfs snapshot and health units and the pre-update hook |

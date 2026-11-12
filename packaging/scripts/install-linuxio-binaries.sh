@@ -94,7 +94,8 @@ binary_names() {
 		linuxio-docker-update \
 		linuxio-indexer \
 		linuxio-monitoring \
-		linuxio-btrfs-timer
+		linuxio-btrfs-timer \
+		linuxio-claude-relay
 }
 
 release_download_assets() {
@@ -1182,7 +1183,7 @@ Options:
   -h, --help        Show this help message
 
 What gets installed:
-  - Binaries:     /usr/local/bin/linuxio, linuxio-webserver, linuxio-bridge, linuxio-auth, linuxio-docker-update, linuxio-indexer, linuxio-monitoring, linuxio-btrfs-timer
+  - Binaries:     /usr/local/bin/linuxio, linuxio-webserver, linuxio-bridge, linuxio-auth, linuxio-docker-update, linuxio-indexer, linuxio-monitoring, linuxio-btrfs-timer, linuxio-claude-relay
   - Systemd:      /etc/systemd/system/linuxio*
   - Tmpfiles:     /usr/lib/tmpfiles.d/linuxio.conf (creates ${DATA_DIR} and ${DATA_DIR}/icons)
   - PAM:          /etc/pam.d/linuxio

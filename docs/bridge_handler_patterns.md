@@ -220,8 +220,8 @@ this section states them in words:
 - **Daemons import only `common` and their own tree.** `indexer` and
   `monitoring` keep their internals private; the bridge reaches them only
   through `indexer/api` and `monitoring/api`.
-- **Worker binaries import only `common`.** This covers `cli`, `docker-update`
-  and `btrfs-timer`.
+- **Worker binaries import only `common`.** This covers `cli`, `docker-update`,
+  `btrfs-timer` and `claude-relay`.
 
 Where a shared library goes depends on who needs it:
 

@@ -204,6 +204,7 @@ export interface AssistantMarketplaceRequest {
 
 export interface AssistantOpenRequest {
   agent: string;
+  panes?: boolean;
 }
 
 export interface AssistantPlugin {

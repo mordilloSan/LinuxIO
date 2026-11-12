@@ -8,7 +8,12 @@ import {
   isAssistantAgentId,
 } from "./agents";
 import { withTimeout } from "./timeout";
-import { type AssistantExit, createAcpTransport } from "./transport";
+import {
+  type AssistantExit,
+  createAcpTransport,
+  type PaneLine,
+  type PaneSend,
+} from "./transport";
 
 export { ASSISTANT_AGENTS, type AssistantAgentId, isAssistantAgentId };
 
@@ -27,7 +32,18 @@ export interface AssistantHandlers {
   ): Promise<acp.RequestPermissionResponse>;
   onAuthStatus?(status: AuthStatus): void;
   onExit(exit: AssistantExit | null): void;
+  /**
+   * Plugin pane lines from Claude Code; `send` answers on the same stream.
+   * Only a handler that sets this opens the stream with panes on.
+   */
+  onPane?: (line: PaneLine, send: PaneSend) => void;
 }
+
+/** Opens the agent's duplex stream; `panes` asks the bridge to carry plugin panes. */
+export type AssistantOpen = (
+  agent: AssistantAgentId,
+  options: { panes: boolean },
+) => Stream | null;
 
 export interface SessionOpenResult {
   sessionId: string;
@@ -108,19 +124,23 @@ const parseAuthStatus = (params: unknown): { authStatus: AuthStatus } =>
 const newestFirst = (a: acp.SessionInfo, b: acp.SessionInfo) =>
   (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "");
 
-const defaultOpen = (agent: AssistantAgentId): Stream | null =>
-  openChannel("assistant.open", { agent });
+const defaultOpen: AssistantOpen = (agent, { panes }) =>
+  openChannel("assistant.open", panes ? { agent, panes } : { agent });
 
 export async function connectAssistant(
   agent: AssistantAgentId,
   handlers: AssistantHandlers,
-  open: (agent: AssistantAgentId) => Stream | null = defaultOpen,
+  open: AssistantOpen = defaultOpen,
 ): Promise<AssistantConnection> {
-  const stream = open(agent);
+  const { onPane } = handlers;
+  const stream = open(agent, { panes: Boolean(onPane) });
   if (!stream) {
     throw new Error("Not connected to the server");
   }
-  const transport = createAcpTransport(stream);
+  const transport = createAcpTransport(
+    stream,
+    onPane ? { onPane: (line) => onPane(line, transport.sendPane) } : {},
+  );
   void transport.exit.then((exit) => {
     handlers.onExit(exit);
   });

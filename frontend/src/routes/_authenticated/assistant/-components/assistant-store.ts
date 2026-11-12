@@ -8,7 +8,10 @@ import {
   type AssistantExit,
   type AuthStatus,
   connectAssistant,
+  createPaneClient,
   isAuthRequiredError,
+  type PaneClient,
+  type PaneView,
   type SessionOpenResult,
   textBlock,
 } from "@/api/acp";
@@ -77,6 +80,11 @@ export interface AssistantState {
   /** When the running main turn started (ms since epoch); null while idle. */
   turnStartedAt: number | null;
   side: SideSession | null;
+  /**
+   * Plugin panes of every Claude Code process behind this connection, one per
+   * process; `chatPane` picks the open chat's.
+   */
+  panes: PaneView[];
 }
 
 /** What the user's message looks like in the transcript. */
@@ -121,10 +129,13 @@ const initialState = (): AssistantState => ({
   queuedPrompt: null,
   turnStartedAt: null,
   side: null,
+  panes: [],
 });
 
 let state = initialState();
 let connection: AssistantConnection | null = null;
+// Lives as long as the stream of the current connect(); reset with it.
+let paneClient: PaneClient | null = null;
 let connector: typeof connectAssistant = connectAssistant;
 // Bumped by every connect() and disconnect(); handlers of a superseded
 // connection compare against it and go quiet (a closed transport still emits
@@ -483,9 +494,18 @@ export const assistantStore = {
     const attempt = currentAttempt;
     const isCurrent = () => attempt === currentAttempt;
     setState({ agent, status: "connecting" });
+    const panes = createPaneClient({
+      onChange: (views) => {
+        if (isCurrent()) setState({ panes: views });
+      },
+    });
+    paneClient = panes;
     let conn: AssistantConnection | undefined;
     try {
       conn = await connector(agent, {
+        onPane: (line, send) => {
+          if (isCurrent()) panes.receive(line, send);
+        },
         onUpdate: (notification) => {
           if (isCurrent()) queueUpdate(notification);
         },
@@ -516,6 +536,7 @@ export const assistantStore = {
           connection = null;
           sideEpoch++;
           forking = false;
+          panes.reset();
           state.pending?.resolve(cancelled);
           state.side?.pending?.resolve(cancelled);
           setState({
@@ -526,6 +547,7 @@ export const assistantStore = {
             side: null,
             turnStartedAt: null,
             error: null,
+            panes: [],
           });
         },
       });
@@ -540,8 +562,9 @@ export const assistantStore = {
       if (!isCurrent()) return;
       conn?.close();
       connection = null;
+      panes.reset();
       if (state.status === "stopped") return;
-      setState({ status: "error", error: errorMessage(error) });
+      setState({ status: "error", error: errorMessage(error), panes: [] });
     }
   },
 
@@ -862,6 +885,8 @@ export const assistantStore = {
     void dropSide();
     connection?.close();
     connection = null;
+    paneClient?.reset();
+    paneClient = null;
     state = initialState();
     listeners.forEach((listener) => listener());
   },
@@ -878,6 +903,18 @@ export const assistantStore = {
     flushUpdates();
   },
 };
+
+/**
+ * The open chat's plugin pane: Claude Code's session id is the chat's ACP
+ * session id. A chat resumed twice has two processes; the newest one wins.
+ */
+export function chatPane({
+  panes,
+  sessionId,
+}: Pick<AssistantState, "panes" | "sessionId">): PaneView | null {
+  if (!sessionId) return null;
+  return panes.findLast((pane) => pane.sessionId === sessionId) ?? null;
+}
 
 export function useAssistantState(): AssistantState {
   return useSyncExternalStore(

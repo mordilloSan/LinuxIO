@@ -104,9 +104,10 @@ hostname, `<hostname>.local`, and the host's current IP addresses. The same
 certificate is reused across restarts, reboots, and updates until it enters its
 30-day renewal window.
 
-The installer places eight binaries in `/usr/local/bin`: `linuxio`,
+The installer places nine binaries in `/usr/local/bin`: `linuxio`,
 `linuxio-webserver`, `linuxio-bridge`, `linuxio-auth`, `linuxio-docker-update`,
-`linuxio-indexer`, `linuxio-monitoring`, and `linuxio-btrfs-timer`. From a
+`linuxio-indexer`, `linuxio-monitoring`, `linuxio-btrfs-timer`, and
+`linuxio-claude-relay`. From a
 checkout, `make localinstall` runs the same installer with `--local` against the
 binaries in `build/`.
 

@@ -34,6 +34,10 @@ type Agent struct {
 	// Both are empty for a self-contained package.
 	CLI    string
 	CLIEnv string
+	// Panes marks a CLI that serves plugin panes over stream-JSON control
+	// requests. The assistant then runs linuxio-claude-relay in its place, so
+	// the browser can reach them.
+	Panes bool
 }
 
 // Spec is the exact `npm install` argument for the agent.
@@ -47,6 +51,9 @@ type Command struct {
 	Args []string
 	// Env holds the variables to add to the user's environment.
 	Env []string
+	// CLI is the resolved path of the agent's CLI, empty for a self-contained
+	// package.
+	CLI string
 }
 
 var (
@@ -61,6 +68,7 @@ var (
 			InstallArgs: []string{"--omit=optional"},
 			CLI:         "claude",
 			CLIEnv:      "CLAUDE_CODE_EXECUTABLE",
+			Panes:       true,
 		},
 		"gemini": {
 			Package: "@google/gemini-cli",
@@ -208,6 +216,7 @@ func Launch(id, home, path string) (Command, error) {
 			return Command{}, lookErr
 		}
 		command.Env = []string{agent.CLIEnv + "=" + cli}
+		command.CLI = cli
 	}
 	return command, nil
 }

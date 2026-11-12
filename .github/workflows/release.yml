@@ -215,7 +215,7 @@ jobs:
                 "./$bin" --version >/dev/null || { echo "$bin verification failed"; exit 1; }
                 echo "✓ $bin runs correctly"
                 ;;
-              linuxio-bridge|linuxio-auth)
+              linuxio-bridge|linuxio-auth|linuxio-claude-relay)
                 # These require special input/privileges to actually run.
                 file "$bin" | grep -q "ELF.*executable" || {
                   echo "$bin is not a valid executable"

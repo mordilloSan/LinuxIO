@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { Stream } from "../StreamMultiplexer";
 import { createAcpTransport } from "./transport";
@@ -151,5 +151,111 @@ describe("createAcpTransport", () => {
     const transport = createAcpTransport(stream);
     transport.close();
     expect(() => feed('{"jsonrpc":"2.0","id":1,"result":{}}\n')).not.toThrow();
+  });
+});
+
+describe("createAcpTransport pane lines", () => {
+  it("hands pane lines to the pane handler and keeps them from the SDK", async () => {
+    const { feed, stream } = fakeStream();
+    const onPane = vi.fn();
+    const transport = createAcpTransport(stream, { onPane });
+    feed(
+      [
+        '{"conn":1,"event":"open","linuxio":"pane"}',
+        '{"jsonrpc":"2.0","id":1,"result":{}}',
+        '{"conn":1,"linuxio":"pane","message":{"type":"relay_ready","capabilities":["ui_surface_v1"]}}',
+        '{"jsonrpc":"2.0","id":2,"result":{"text":"{\\"linuxio\\":\\"pane\\"}"}}',
+        '{"conn":1,"event":"close","linuxio":"pane"}',
+        "",
+      ].join("\n"),
+    );
+    expect(onPane.mock.calls.map(([line]) => line)).toEqual([
+      { conn: 1, event: "open", linuxio: "pane" },
+      {
+        conn: 1,
+        linuxio: "pane",
+        message: { type: "relay_ready", capabilities: ["ui_surface_v1"] },
+      },
+      { conn: 1, event: "close", linuxio: "pane" },
+    ]);
+    const out = await readAll(transport.stream.readable, 2);
+    expect(out).toEqual([
+      { jsonrpc: "2.0", id: 1, result: {} },
+      { jsonrpc: "2.0", id: 2, result: { text: '{"linuxio":"pane"}' } },
+    ]);
+  });
+
+  it("reassembles a pane line split across frames", () => {
+    const { feed, stream } = fakeStream();
+    const onPane = vi.fn();
+    createAcpTransport(stream, { onPane });
+    feed('{"conn":3,"linuxio":"pa');
+    expect(onPane).not.toHaveBeenCalled();
+    feed('ne","message":{"type":"system"}}\n');
+    expect(onPane).toHaveBeenCalledWith({
+      conn: 3,
+      linuxio: "pane",
+      message: { type: "system" },
+    });
+  });
+
+  it("drops pane lines when nobody asked for panes", async () => {
+    const { feed, stream } = fakeStream();
+    const transport = createAcpTransport(stream);
+    feed(
+      '{"conn":1,"event":"open","linuxio":"pane"}\n{"jsonrpc":"2.0","id":9,"result":{}}\n',
+    );
+    const [message] = await readAll(transport.stream.readable, 1);
+    expect(message).toEqual({ jsonrpc: "2.0", id: 9, result: {} });
+  });
+
+  it("drops pane lines without a connection number", () => {
+    const { feed, stream } = fakeStream();
+    const onPane = vi.fn();
+    createAcpTransport(stream, { onPane });
+    feed(
+      '{"conn":"1","linuxio":"pane","message":{}}\n{"linuxio":"pane","message":{}}\n',
+    );
+    expect(onPane).not.toHaveBeenCalled();
+  });
+
+  it("keeps the chat going when the pane handler throws", async () => {
+    const { feed, stream } = fakeStream();
+    const transport = createAcpTransport(stream, {
+      onPane: () => {
+        throw new Error("pane bug");
+      },
+    });
+    feed(
+      '{"conn":1,"event":"open","linuxio":"pane"}\n{"jsonrpc":"2.0","id":4,"result":{}}\n',
+    );
+    const [message] = await readAll(transport.stream.readable, 1);
+    expect(message).toEqual({ jsonrpc: "2.0", id: 4, result: {} });
+  });
+
+  it("sends a pane request as one line with linuxio, conn, id, request in that order", async () => {
+    const { stream, written } = fakeStream();
+    const transport = createAcpTransport(stream);
+    const writer = transport.stream.writable.getWriter();
+    await writer.write({ jsonrpc: "2.0", id: 1, method: "initialize" });
+    transport.sendPane(2, "p7", {
+      subtype: "ui_panes",
+      client_id: "linuxio-a",
+    });
+    await writer.write({ jsonrpc: "2.0", id: 2, method: "session/new" });
+    writer.releaseLock();
+    expect(written).toEqual([
+      '{"jsonrpc":"2.0","id":1,"method":"initialize"}\n',
+      '{"linuxio":"pane","conn":2,"id":"p7","request":{"subtype":"ui_panes","client_id":"linuxio-a"}}\n',
+      '{"jsonrpc":"2.0","id":2,"method":"session/new"}\n',
+    ]);
+  });
+
+  it("sends nothing once closed", () => {
+    const { stream, written } = fakeStream();
+    const transport = createAcpTransport(stream);
+    transport.close();
+    transport.sendPane(1, "p1", { subtype: "ui_panes" });
+    expect(written).toEqual([]);
   });
 });

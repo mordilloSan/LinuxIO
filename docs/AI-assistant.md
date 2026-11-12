@@ -300,9 +300,84 @@ the way Claude Code's editor extensions do: the bridge runs
   new chats and offers one unless a turn is running.
 
 A plugin's skills, commands, agents, hooks and MCP servers work in a LinuxIO
-chat. A plugin pane does not: panes are drawn by Claude Code's own interfaces
-over a private protocol (`ui_surface_v1`) that the ACP adapter does not carry,
-so they are not shown until the adapter exposes them.
+chat because Claude Code loads them itself. A plugin's pane is drawn by the
+interface in front of Claude Code; see [Plugin panes](#plugin-panes).
+
+## Plugin panes
+
+A plugin can draw a pane beside the chat (a live map of the work, for
+example). Claude Code serves panes to its interfaces over control requests on
+its stream-JSON stdin and stdout (`ui_attach`, `ui_panes`, `ui_render`, pushed
+`ui_panes` and `ui_invalidate` messages), advertised by the `ui_surface_v1`
+capability. The ACP adapter starts Claude Code itself and carries none of
+this, so LinuxIO reaches it beside the adapter:
+
+```text
+browser ── assistant.open ── bridge ── claude-agent-acp ── linuxio-claude-relay ── claude
+                               └──── unix socket (pane lines) ────┘
+```
+
+Nothing below is a published interface of Claude Code. It was read from what
+Claude Code 2.1.322 does, it accepts only the surface names `desktop`,
+`mobile` and `vscode` (LinuxIO attaches as `vscode`), and it can change with a
+Claude Code update, which arrives with the host's packages and not with a
+LinuxIO release. Every step is therefore optional: when a capability is
+missing or a message does not parse, the pane is not shown and the chat is
+untouched.
+
+- **Opt-in.** `assistant.open` takes `panes`. The Assistant page's chat sets
+  it; the Settings login probe does not. Without it, or for an agent that is
+  not marked `Panes` in `acpagents` (only `claude` is), or when
+  `/usr/local/bin/linuxio-claude-relay` is missing, the stream is exactly what
+  it was.
+- **The relay.** With panes on, the bridge points the adapter's
+  `CLAUDE_CODE_EXECUTABLE` at `linuxio-claude-relay` and passes the real CLI
+  in `LINUXIO_CLAUDE_BIN` and a socket path in `LINUXIO_PANE_SOCKET`. The
+  relay starts the real `claude` with the same arguments and copies the
+  adapter's stdin and Claude Code's stdout byte for byte. It adds its own
+  `ui_*` control requests between the adapter's lines, removes their answers
+  from what the adapter reads, and copies the pushed `ui_*` messages to the
+  socket (the adapter still receives them and ignores them). It refuses any
+  request whose subtype does not start with `ui_`. Claude Code's children
+  never see the three variables: the relay removes them and puts the real
+  path back. An invocation that is not stream-JSON on both sides, or one
+  without a reachable socket, is `exec`ed straight into `claude`.
+- **The socket.** One private directory per stream (0700) with one unix
+  socket (0600), both owned by the session user, removed when the stream
+  ends. The bridge accepts a connection only when its `SO_PEERCRED` uid is the
+  session user's, at most 16 at a time (a chat, a `/btw` fork and a resumed
+  chat each start their own `claude`). It carries no root action: the bridge
+  relays lines between that user's Claude Code and that user's browser.
+- **In-band lines.** Pane traffic rides the `assistant.open` stream as whole
+  lines between the agent's lines: `{"conn":1,"event":"open","linuxio":"pane"}`,
+  `{"conn":1,"linuxio":"pane","message":{...}}` and a matching `close`. The
+  browser sends `{"linuxio":"pane","conn":1,"id":"p7","request":{...}}`; a
+  line that starts with exactly `{"linuxio":"pane",` goes to that connection
+  and never to the agent's stdin. Lines over 64 KiB from the browser and over
+  4 MiB from a relay are dropped. The bridge still does not parse ACP.
+- **The browser.** `frontend/src/api/acp/panes.ts` attaches once the relay
+  reports `ui_surface_v1`, reads the roster, renders the shown pane and
+  renders it again on each `ui_invalidate`, with one render in flight and one
+  queued. The pane of the Claude Code process whose `session_id` equals the
+  chat's ACP session id is drawn on a card that floats in the margin beside
+  the chat, so the conversation keeps its centred column. Dragging the card's
+  left edge (or the arrow keys on it) resizes it between 240 and 720 px, a
+  double click restores 340 px, and the width is kept in the browser. Where
+  the margin cannot hold the card it starts minimized to its header and opens
+  over the chat on request; the header's close button hides it and a page
+  header button brings it back. An open side question replaces it. A refused attach or roster, a message that does
+  not parse, or three renders failing in a row hides the pane until that
+  process ends; one failed render keeps the last drawing.
+- **Drawing.** Read-only: `Box`, `Text`, `Svg`, `Markdown`, `Code` and `Link`.
+  Plugin content is untrusted: an `Svg` is shown as an image from a `data:`
+  URI and never inserted into the page, a link opens only `http` and `https`
+  in a new tab, and depth, node-count and size limits bound the tree.
+  `Button`, `Input` and `Select` are left out, with a line under the pane
+  saying it has controls LinuxIO cannot use yet. A picture follows LinuxIO's
+  theme for its own light and dark rules, because an image takes its colour
+  scheme from the page, and it is blended into the card (screen on dark,
+  multiply on light) so the plugin's own background does not read as a box;
+  browsers without CSS style queries show that background as drawn.
 
 ## Login
 
@@ -359,6 +434,7 @@ The chosen agent starts only when its own capability is available, and
 - Automatic agent updates: a newer agent arrives with a LinuxIO release and
   is installed when the user presses Install.
 - Typed LinuxIO tools for the agent.
-- Plugin panes, until the ACP adapter carries them (see [Plugins](#plugins)).
+- Pane controls (buttons, inputs, selects), and the status lines and toasts
+  a plugin draws (see [Plugin panes](#plugin-panes)).
 - Updating an installed plugin (`claude plugin update`), plugins for Gemini
   CLI and Codex, and reloading plugins into a running chat.

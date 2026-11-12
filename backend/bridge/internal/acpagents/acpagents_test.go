@@ -40,6 +40,18 @@ func TestClaudeUsesTheInstalledClaudeCode(t *testing.T) {
 	require.Contains(t, agent.InstallArgs, "--omit=optional")
 }
 
+func TestOnlyClaudeServesPanes(t *testing.T) {
+	for _, id := range acpagents.IDs() {
+		agent, _ := acpagents.Lookup(id)
+		require.Equal(t, id == "claude", agent.Panes, id)
+		if agent.Panes {
+			// The relay stands in for the CLI, so a pane agent must drive one.
+			require.NotEmpty(t, agent.CLI, id)
+			require.NotEmpty(t, agent.CLIEnv, id)
+		}
+	}
+}
+
 func TestOverrideRestores(t *testing.T) {
 	restore := acpagents.Override("fake", acpagents.Agent{Package: "fake", Version: "1.0.0", Bin: "fake"})
 	_, ok := acpagents.Lookup("fake")
@@ -94,6 +106,7 @@ func TestLaunch(t *testing.T) {
 		require.Equal(t, filepath.Join(acpagents.Dir(home, "fake"), "node_modules", ".bin", "fake-agent"), command.Path)
 		require.Equal(t, []string{"--acp"}, command.Args)
 		require.Empty(t, command.Env)
+		require.Empty(t, command.CLI)
 	})
 
 	t.Run("refuses an agent that is not installed", func(t *testing.T) {
@@ -114,6 +127,7 @@ func TestLaunch(t *testing.T) {
 		command, err := acpagents.Launch("fake", home, "/nonexistent:"+bin)
 		require.NoError(t, err)
 		require.Equal(t, []string{"FAKE_CLI_EXECUTABLE=" + cli}, command.Env)
+		require.Equal(t, cli, command.CLI)
 	})
 
 	t.Run("refuses when the CLI is missing", func(t *testing.T) {

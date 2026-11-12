@@ -72,7 +72,8 @@ type relay struct {
 // line with the exit code and stderr tail.
 func HandleAssistantSession(ctx context.Context, rt runtime.Runtime, stream net.Conn, req apischema.AssistantOpenRequest) error {
 	sess := rt.Session
-	if _, ok := acpagents.Lookup(req.Agent); !ok {
+	agent, ok := acpagents.Lookup(req.Agent)
+	if !ok {
 		streamrelay.WriteClose(stream)
 		return fmt.Errorf("assistant: unknown agent %q", req.Agent)
 	}
@@ -104,6 +105,11 @@ func HandleAssistantSession(ctx context.Context, rt runtime.Runtime, stream net.
 	}
 	cmd.Env = append(cmd.Env, "PATH="+userPath)
 	cmd.Env = append(cmd.Env, launch.Env...)
+	panes := openPanes(stream, req, agent, sess.User)
+	defer panes.close()
+	if panes != nil {
+		cmd.Env = append(cmd.Env, panes.agentEnv(agent.CLIEnv, launch.CLI)...)
+	}
 	home := cmd.Dir
 
 	stdin, err := cmd.StdinPipe()
@@ -143,20 +149,30 @@ func HandleAssistantSession(ctx context.Context, rt runtime.Runtime, stream net.
 		}
 	}()
 
+	var agentIn io.Writer = stdin
+	pumpOut := func() error { return streamrelay.PumpToStream(stream, stdout, 0) }
+	if panes != nil {
+		panes.serve()
+		agentIn = panes.splitter(stdin)
+		pumpOut = func() error { return panes.pumpAgentOutput(stdout) }
+	}
+
 	var wg sync.WaitGroup
 	wg.Go(func() {
-		_ = streamrelay.PumpFromStream(stream, stdin, nil)
+		_ = streamrelay.PumpFromStream(stream, agentIn, nil)
 		r.terminate()
 	})
 
 	// The exit line and close frame follow the agent's exit, so a stdout
 	// EOF must not write a close frame here.
-	if err := streamrelay.PumpToStream(stream, stdout, 0); errors.Is(err, streamrelay.ErrStreamWrite) {
+	if err := pumpOut(); errors.Is(err, streamrelay.ErrStreamWrite) {
 		r.terminate()
 		_, _ = io.Copy(io.Discard, stdout)
 	}
 	code := exitCode(cmd.Wait())
 	close(r.done)
+	// Every pane line goes out before the exit line.
+	panes.close()
 
 	// The stderr tail can end mid-rune, so invalid UTF-8 must not drop the exit line.
 	exit, marshalErr := json.Marshal(map[string]any{"linuxio": "exit", "code": code, "stderr": stderr.String()}, jsontext.AllowInvalidUTF8(true))

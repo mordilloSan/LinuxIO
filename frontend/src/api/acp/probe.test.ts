@@ -107,6 +107,13 @@ describe("probeAssistant", () => {
     expect(conn.close).toHaveBeenCalledTimes(1);
   });
 
+  it("opens the agent without plugin panes", async () => {
+    const { connect } = fakeConnect({}, { kind: "account", label: "Max" });
+    await probeAssistant("claude", connect);
+    const handlers = vi.mocked(connect).mock.calls[0][1];
+    expect(handlers.onPane).toBeUndefined();
+  });
+
   it("keeps a pushed login when no chat opens", async () => {
     const { connect } = fakeConnect(
       {

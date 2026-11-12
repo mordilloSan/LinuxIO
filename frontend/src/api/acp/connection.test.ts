@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Stream } from "../StreamMultiplexer";
 import {
   AGENT_START_TIMEOUT_MS,
+  type AssistantHandlers,
   connectAssistant,
   isAuthRequiredError,
   textBlock,
@@ -393,6 +394,34 @@ describe("connectAssistant", () => {
         agent.sent.find((m) => m.id === 99 && "result" in m),
       ).toMatchObject({ result: { outcome: { outcome: "cancelled" } } }),
     );
+  });
+
+  it("opens without panes unless a pane handler is given", async () => {
+    const agent = fakeAgent({ initialize: () => ({ protocolVersion: 1 }) });
+    const open = vi.fn(agent.open);
+    await connectAssistant("claude", handlers(), open);
+    expect(open).toHaveBeenCalledWith("claude", { panes: false });
+  });
+
+  it("opens with panes for a pane handler and lets it answer on the stream", async () => {
+    const agent = fakeAgent({ initialize: () => ({ protocolVersion: 1 }) });
+    const open = vi.fn(agent.open);
+    const onPane = vi.fn<NonNullable<AssistantHandlers["onPane"]>>();
+    await connectAssistant("claude", { ...handlers(), onPane }, open);
+    expect(open).toHaveBeenCalledWith("claude", { panes: true });
+    agent.feed('{"conn":4,"event":"open","linuxio":"pane"}\n');
+    expect(onPane).toHaveBeenCalledWith(
+      { conn: 4, event: "open", linuxio: "pane" },
+      expect.any(Function),
+    );
+    const send = onPane.mock.calls[0][1];
+    send(4, "p1", { subtype: "ui_panes", client_id: "linuxio-x" });
+    expect(agent.sent.at(-1)).toEqual({
+      linuxio: "pane",
+      conn: 4,
+      id: "p1",
+      request: { subtype: "ui_panes", client_id: "linuxio-x" },
+    });
   });
 
   it("reports the exit line through onExit", async () => {

@@ -19,8 +19,10 @@ import {
   writePersistedState,
 } from "@/utils/persistedState";
 
-import { assistantStore, useAssistantState } from "./assistant-store";
+import { assistantStore, chatPane, useAssistantState } from "./assistant-store";
 import Composer from "./composer/Composer";
+import PanePanel from "./pane/PanePanel";
+import { paneTitle } from "./pane/readPaneTree";
 import PluginsDialog from "./plugins/PluginsDialog";
 import SidePanel, { SidePanelOpening } from "./session/SidePanel";
 import StatusLine from "./session/StatusLine";
@@ -59,6 +61,8 @@ export default function AssistantPage({
     sessionId: string;
     label: string;
   } | null>(null);
+  // The plugin pane the user closed; a header button brings it back.
+  const [hiddenPaneId, setHiddenPaneId] = useState<string | null>(null);
 
   // Follows the terminal's font size until the user picks one here.
   const [terminalFontSize] = useConfigValue("terminalFontSize");
@@ -86,6 +90,11 @@ export default function AssistantPage({
 
   const { status } = state;
   const sideRunning = state.side?.status === "running";
+  const sideShown = state.side?.open || (state.sideOpening && !state.side);
+  const pane = chatPane(state);
+  const paneHidden = pane !== null && pane.id === hiddenPaneId;
+  // A side question takes the space beside the chat while it is open.
+  const shownPane = pane && !paneHidden && !sideShown ? pane : null;
   const loadingOrRunning = status === "running" || status === "connecting";
   // Page shortcuts work wherever focus is, e.g. on <body> after the Stop button
   // took it away.
@@ -216,6 +225,15 @@ export default function AssistantPage({
               onClick={() => setPluginsOpen(true)}
             />
           ) : null}
+          {paneHidden ? (
+            <AppActionIconButton
+              ariaLabel={`Show ${paneTitle(pane)}`}
+              icon="mdi:dock-right"
+              iconSize={20}
+              label={`Show ${paneTitle(pane)}`}
+              onClick={() => setHiddenPaneId(null)}
+            />
+          ) : null}
         </>
       }
       create={
@@ -313,7 +331,7 @@ export default function AssistantPage({
       ) : null}
 
       <div
-        className={`assistant__body${state.side?.open || (state.sideOpening && !state.side) ? " assistant__body--split" : ""}`}
+        className={`assistant__body${sideShown ? " assistant__body--split" : ""}`}
       >
         <section className="assistant__main">
           {!ready ? (
@@ -450,6 +468,11 @@ export default function AssistantPage({
           <SidePanel side={state.side} />
         ) : state.sideOpening && !state.side ? (
           <SidePanelOpening />
+        ) : shownPane ? (
+          <PanePanel
+            onHide={() => setHiddenPaneId(shownPane.id)}
+            pane={shownPane}
+          />
         ) : null}
       </div>
     </div>

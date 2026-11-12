@@ -1,0 +1,393 @@
+/* A plugin pane is a card floating in the margin beside the chat, so the
+   conversation keeps its centred column. It joins the floating-panel family
+   (the navbar's panels): same corner, same shadow with the lit top edge, over
+   a face the transcript shows through when the card overlaps it. The tree
+   inside is laid out by the classes readPaneTree picks. */
+
+.assistant-pane-card {
+  /* PanePanel.tsx mirrors this inset to know whether the card fits. */
+  --assistant-pane-inset: var(--app-space-16);
+  position: absolute;
+  top: var(--app-space-8);
+  right: var(--assistant-pane-inset);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  max-width: calc(100% - 2 * var(--assistant-pane-inset));
+  max-height: calc(100% - 2 * var(--app-space-8));
+  border: 1px solid var(--app-palette-divider);
+  border-radius: var(--app-floating-panel-radius);
+  background: color-mix(
+    in srgb,
+    var(--app-palette-background-paper) 84%,
+    transparent
+  );
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
+  backdrop-filter: blur(16px) saturate(1.3);
+  box-shadow: var(--app-floating-panel-shadow);
+  animation: assistant-pane-arrive var(--app-transition-duration-standard)
+    var(--app-easing-decelerate);
+}
+
+@keyframes assistant-pane-arrive {
+  from {
+    opacity: 0;
+    transform: translateX(var(--app-space-12)) scale(0.98);
+  }
+}
+
+.assistant-pane-card--minimized {
+  border-radius: var(--app-radius-pill);
+}
+
+/* While the edge is dragged the width follows the pointer exactly. */
+.assistant-pane-card--dragging {
+  user-select: none;
+}
+
+.assistant-pane-card__header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--app-space-8);
+  padding: var(--app-space-6) var(--app-space-6) var(--app-space-6)
+    var(--app-space-16);
+}
+
+.assistant-pane-card__title {
+  flex: 1;
+  min-width: 0;
+}
+
+.assistant-pane-card--minimized .assistant-pane-card__title {
+  max-width: 14rem;
+}
+
+/* The dot says the pane is live; its ring ripples once per redraw. */
+.assistant-pane-card__live {
+  position: relative;
+  flex: 0 0 auto;
+  width: var(--app-space-8);
+  height: var(--app-space-8);
+  border-radius: var(--app-radius-pill);
+  background: var(--app-palette-primary-main);
+}
+
+.assistant-pane-card__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--app-radius-pill);
+  background: var(--app-palette-primary-main);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.assistant-pane-card__body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--app-space-8);
+  min-height: 0;
+  padding: 0 var(--app-space-12) var(--app-space-12);
+  overflow: auto;
+  font-size: var(--app-font-size-body);
+}
+
+/* The left edge resizes the card: a strip wider than it looks, with a grip
+   that shows on hover, focus and while dragging. */
+.assistant-pane-card__resize {
+  position: absolute;
+  top: var(--app-floating-panel-radius);
+  bottom: var(--app-floating-panel-radius);
+  left: calc(-1 * var(--app-space-6));
+  width: var(--app-space-12);
+  cursor: ew-resize;
+  outline: none;
+  touch-action: none;
+}
+
+.assistant-pane-card__resize::after {
+  position: absolute;
+  top: 50%;
+  left: var(--app-space-4);
+  width: var(--app-space-4);
+  height: var(--app-space-48);
+  border-radius: var(--app-radius-pill);
+  background: var(--app-palette-primary-main);
+  content: "";
+  opacity: 0;
+  transform: translateY(-50%) scaleY(0.6);
+  transition:
+    opacity var(--app-transition-duration-fast) var(--app-easing-decelerate),
+    transform var(--app-transition-duration-fast) var(--app-easing-decelerate);
+}
+
+.assistant-pane-card__resize:hover::after,
+.assistant-pane-card__resize:focus-visible::after,
+.assistant-pane-card--dragging .assistant-pane-card__resize::after {
+  opacity: 1;
+  transform: translateY(-50%) scaleY(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assistant-pane-card {
+    animation: none;
+  }
+
+  .assistant-pane-card__resize::after {
+    transition: none;
+  }
+}
+
+.assistant-pane {
+  min-width: 0;
+  color: var(--app-palette-text-primary);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* Box: a flex container like Ink's; a row wraps unless told otherwise. */
+.assistant-pane-box {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.assistant-pane-box--column {
+  flex-direction: column;
+  flex-wrap: nowrap;
+}
+
+.assistant-pane-box--row-reverse {
+  flex-direction: row-reverse;
+}
+
+.assistant-pane-box--column-reverse {
+  flex-direction: column-reverse;
+  flex-wrap: nowrap;
+}
+
+.assistant-pane-box--wrap {
+  flex-wrap: wrap;
+}
+
+.assistant-pane-box--nowrap {
+  flex-wrap: nowrap;
+}
+
+.assistant-pane-box--wrap-reverse {
+  flex-wrap: wrap-reverse;
+}
+
+.assistant-pane-box--align-start {
+  align-items: flex-start;
+}
+
+.assistant-pane-box--align-center {
+  align-items: center;
+}
+
+.assistant-pane-box--align-end {
+  align-items: flex-end;
+}
+
+.assistant-pane-box--align-stretch {
+  align-items: stretch;
+}
+
+.assistant-pane-box--justify-start {
+  justify-content: flex-start;
+}
+
+.assistant-pane-box--justify-center {
+  justify-content: center;
+}
+
+.assistant-pane-box--justify-end {
+  justify-content: flex-end;
+}
+
+.assistant-pane-box--justify-between {
+  justify-content: space-between;
+}
+
+.assistant-pane-box--justify-around {
+  justify-content: space-around;
+}
+
+.assistant-pane-box--justify-evenly {
+  justify-content: space-evenly;
+}
+
+/* Gaps and padding come in terminal cells: 1, 2 and 3 or more. */
+.assistant-pane-box--gap-1 {
+  gap: var(--app-space-8);
+}
+
+.assistant-pane-box--gap-2 {
+  gap: var(--app-space-16);
+}
+
+.assistant-pane-box--gap-3 {
+  gap: var(--app-space-24);
+}
+
+.assistant-pane-box--pad-1 {
+  padding: var(--app-space-8);
+}
+
+.assistant-pane-box--pad-2 {
+  padding: var(--app-space-16);
+}
+
+.assistant-pane-box--pad-3 {
+  padding: var(--app-space-24);
+}
+
+.assistant-pane-box--pad-x-1 {
+  padding-inline: var(--app-space-8);
+}
+
+.assistant-pane-box--pad-x-2 {
+  padding-inline: var(--app-space-16);
+}
+
+.assistant-pane-box--pad-x-3 {
+  padding-inline: var(--app-space-24);
+}
+
+.assistant-pane-box--pad-y-1 {
+  padding-block: var(--app-space-8);
+}
+
+.assistant-pane-box--pad-y-2 {
+  padding-block: var(--app-space-16);
+}
+
+.assistant-pane-box--pad-y-3 {
+  padding-block: var(--app-space-24);
+}
+
+.assistant-pane-box--border {
+  border: 1px solid var(--app-palette-divider);
+}
+
+.assistant-pane-box--round {
+  border-radius: var(--app-radius-md);
+}
+
+.assistant-pane-box--grow {
+  flex-grow: 1;
+}
+
+/* Text: spaces line columns up in monospaced text, so they are kept. */
+.assistant-pane-text {
+  white-space: pre-wrap;
+}
+
+.assistant-pane-text--bold {
+  font-weight: 700;
+}
+
+.assistant-pane-text--italic {
+  font-style: italic;
+}
+
+.assistant-pane-text--underline {
+  text-decoration: underline;
+}
+
+.assistant-pane-text--strike {
+  text-decoration: line-through;
+}
+
+.assistant-pane-text--underline.assistant-pane-text--strike {
+  text-decoration: underline line-through;
+}
+
+.assistant-pane-text--dim {
+  opacity: 0.7;
+}
+
+.assistant-pane-text--mono {
+  font-family: var(--app-font-mono);
+}
+
+.assistant-pane-text--small {
+  font-size: calc(var(--app-font-size-body) * 0.85);
+}
+
+.assistant-pane-text--large {
+  font-size: calc(var(--app-font-size-body) * 1.15);
+  font-weight: 600;
+}
+
+.assistant-pane-text--secondary {
+  color: var(--app-palette-text-secondary);
+}
+
+.assistant-pane-text--error {
+  color: var(--app-palette-error-main);
+}
+
+.assistant-pane-text--success {
+  color: var(--app-palette-success-main);
+}
+
+.assistant-pane-text--warning {
+  color: var(--app-palette-warning-main);
+}
+
+.assistant-pane-text--info {
+  color: var(--app-palette-info-main);
+}
+
+.assistant-pane-text--accent {
+  color: var(--app-palette-primary-main);
+}
+
+/* A plugin picture scales down to the panel; one without a size fills it. */
+.assistant-pane-svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--app-radius-lg);
+}
+
+/* A plugin draws its picture on its own background, which reads as a box set
+   into the card. Blending lets the card's face stand in for that background,
+   so the drawing sits on the card itself: screen keeps what is lighter than a
+   dark background, multiply what is darker than a light one. The picture
+   already follows the theme (an image takes its colour scheme from the page).
+   Browsers without style queries keep the plugin's own background. */
+@container style(--app-color-scheme: dark) {
+  .assistant-pane-svg {
+    mix-blend-mode: screen;
+  }
+}
+
+@container style(--app-color-scheme: light) {
+  .assistant-pane-svg {
+    mix-blend-mode: multiply;
+  }
+}
+
+.assistant-pane-svg--fill {
+  width: 100%;
+}
+
+.assistant-pane-code {
+  margin: 0;
+  padding: var(--app-space-8) var(--app-space-12);
+  border-radius: var(--app-radius-base);
+  background: var(--app-palette-background-default);
+  overflow: auto;
+  font-family: var(--app-font-mono);
+  font-size: calc(var(--app-font-size-body) * 0.92);
+  white-space: pre;
+}
+
+.assistant-pane-link {
+  color: var(--app-palette-primary-main);
+}

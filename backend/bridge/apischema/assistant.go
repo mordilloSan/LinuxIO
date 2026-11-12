@@ -2,6 +2,9 @@ package apischema
 
 type AssistantOpenRequest struct {
 	Agent string `json:"agent"`
+	// Panes asks for the agent's plugin panes, carried in-band on the stream.
+	// Agents that cannot serve them ignore it.
+	Panes bool `json:"panes,omitempty"`
 }
 
 // AssistantAgentRequest names the agent whose plugins a request is about.
