@@ -233,9 +233,9 @@ advertises the matching capability.
   and each code block is one surface with a bar naming the fence language and
   a Copy button, as wide as the column. The block's background is the theme
   colour `codeInsetBackground` (`--app-code-inset-background`, "Assistant code
-  background" under Settings → Theme). A new configuration starts it at the
-  default page background a shade darker; a configuration without the key
-  derives it from its own page background (18% darker on dark, 3% on light),
+  background" under Settings → Theme). The backend gives it no default, so
+  until the user picks a colour the key stays unset and the UI derives it
+  from the page background (18% darker on dark, 3% on light),
   so the block is set into the page and keeps the page's hue. The code and
   Copy read at full text colour. It is not the theme's code block colour
   (`codeBackground`), which is the surface of the log views. Fenced code is
@@ -440,7 +440,7 @@ untouched.
   therefore added to everything the plugin drew, its background included;
   the nearer it is to black on dark (white on light), the nearer the picture
   is to how the plugin drew it. Until the colour is set, a dark theme uses
-  the page background 30% darker (a new configuration starts at `#131B25`),
+  the page background 30% darker (the backend gives the key no default),
   so a picture drawn on a near-black ground comes out with its ground about
   on the page background and its raised parts about on the paper colour and
   reads as part of the page. A light theme uses the paper colour: multiply

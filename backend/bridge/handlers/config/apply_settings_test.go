@@ -74,10 +74,13 @@ func TestThemeColorsDecodeFromTheWire(t *testing.T) {
 func TestThemeColorsToAPIKeepsEveryColor(t *testing.T) {
 	defaults := userconfig.DefaultUIPreferences().ThemeColors
 	api := themeColorsToAPI(defaults)
-	require.Len(t, api.Dark, len(userconfig.ThemeColorKeys()))
-	for _, key := range userconfig.ThemeColorKeys() {
-		require.Equal(t, string(defaults.Dark[key]), *api.Dark[apischema.ThemeColorKey(key)], key)
-		require.Equal(t, string(defaults.Light[key]), *api.Light[apischema.ThemeColorKey(key)], key)
+	require.Len(t, api.Dark, len(defaults.Dark))
+	require.Len(t, api.Light, len(defaults.Light))
+	for key, color := range defaults.Dark {
+		require.Equal(t, string(color), *api.Dark[apischema.ThemeColorKey(key)], key)
+	}
+	for key, color := range defaults.Light {
+		require.Equal(t, string(color), *api.Light[apischema.ThemeColorKey(key)], key)
 	}
 	require.Nil(t, themeColorsToAPI(nil))
 	require.Nil(t, themeColorsToAPI(&userconfig.ThemeColorsByMode{}).Light)

@@ -461,7 +461,9 @@ effective configuration; that combined type is not a wire contract.
 `UIConfig.themeColors` holds the colour overrides of each scheme as a map
 from `ThemeColorKey` to a CSS colour. The keys, their order in `ui.yaml` and
 the colours a new configuration starts with are one table,
-`themeColorDefs` in `backend/bridge/internal/userconfig/themecolors.go`, so a
+`themeColorDefs` in `backend/bridge/internal/userconfig/themecolors.go` (an
+empty default there means the key has none: it stays unset and the UI derives
+the colour, as `codeInsetBackground` and `panePictureBackground` do), so a
 new theme colour is one line of Go: the stored type, validation, defaults and
 both conversions iterate the table, and `apischema.StringEnums` publishes its
 keys as the `ThemeColorKey` union. The generator renders a Go map keyed by a

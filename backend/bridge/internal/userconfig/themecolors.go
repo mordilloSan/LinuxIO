@@ -10,7 +10,9 @@ import (
 
 // themeColorDefs is the single list of theme colours: the key used in the API
 // and in the YAML file, and the colour a new configuration starts with in each
-// scheme. Adding a theme colour to the backend is one line here; validation,
+// scheme. An empty default means the backend has none: the key stays unset
+// until the user picks a colour, and the UI derives one from the rest of the
+// theme. Adding a theme colour to the backend is one line here; validation,
 // defaults, the order in the file and the API's key type all follow this list.
 var themeColorDefs = []struct{ Key, Light, Dark string }{
 	{"backgroundDefault", "#F7F9FC", "#1B2635"},
@@ -24,15 +26,8 @@ var themeColorDefs = []struct{ Key, Light, Dark string }{
 	{"dialogBackdrop", "#000000", "#000000"},
 	{"codeBackground", "#F5F5F5", "#1E1E1E"},
 	{"codeText", "#333333", "#D4D4D4"},
-	// The surface of code set into a page (the Assistant's code blocks). Unset,
-	// the UI uses the page background a shade darker, so it follows
-	// backgroundDefault.
-	{"codeInsetBackground", "#F0F2F4", "#161F2B"},
-	// The box behind a plugin pane's picture in the Assistant, the colour the
-	// picture is blended onto. Unset, the UI uses the page background well
-	// darker on dark, so it follows backgroundDefault, and the paper colour on
-	// light.
-	{"panePictureBackground", "#FFFFFF", "#131B25"},
+	{"codeInsetBackground", "", ""},
+	{"panePictureBackground", "", ""},
 	{"chartRx", "#8884D8", "#8884D8"},
 	{"chartTx", "#82CA9D", "#82CA9D"},
 	{"chartNeutral", "#808080", "#808080"},
@@ -72,8 +67,12 @@ func defaultThemeColors() *ThemeColorsByMode {
 	light := make(ThemeColors, len(themeColorDefs))
 	dark := make(ThemeColors, len(themeColorDefs))
 	for _, def := range themeColorDefs {
-		light[def.Key] = CSSColor(def.Light)
-		dark[def.Key] = CSSColor(def.Dark)
+		if def.Light != "" {
+			light[def.Key] = CSSColor(def.Light)
+		}
+		if def.Dark != "" {
+			dark[def.Key] = CSSColor(def.Dark)
+		}
 	}
 	return &ThemeColorsByMode{Light: light, Dark: dark}
 }

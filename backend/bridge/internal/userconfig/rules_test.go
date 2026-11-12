@@ -55,10 +55,15 @@ func TestThemeColorDefsAreUniqueWithValidDefaults(t *testing.T) {
 	}
 	defaults := defaultThemeColors()
 	for _, colors := range []ThemeColors{defaults.Light, defaults.Dark} {
-		require.Len(t, colors, len(keys))
 		for key, color := range colors {
+			require.True(t, IsThemeColorKey(key), key)
 			require.True(t, isValidCSSColor(string(color)), key)
 		}
+		// The UI derives these two from the page background, so the backend
+		// gives them no default that a load would merge back in.
+		require.NotContains(t, colors, "codeInsetBackground")
+		require.NotContains(t, colors, "panePictureBackground")
+		require.Len(t, colors, len(keys)-2)
 	}
 	ui := DefaultUIPreferences()
 	require.Empty(t, validateThemeColors(&ui))
