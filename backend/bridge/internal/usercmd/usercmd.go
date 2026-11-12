@@ -57,6 +57,12 @@ func Path(ctx context.Context, u session.User) (string, error) {
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
 	if err := cmd.Run(); err != nil {
+		// A caller that gave up, or the timeout, is the reason the shell was
+		// killed: report that, so a cancelled request is not logged as a
+		// failed one.
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			err = ctxErr
+		}
 		return "", fmt.Errorf("read %s's login-shell PATH: %w", u.Username, err)
 	}
 	path := strings.TrimSpace(stdout.String())

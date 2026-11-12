@@ -47,6 +47,13 @@ func TestProbeLoginShellFindsCommandsOnTheUsersPath(t *testing.T) {
 
 	err = ProbeLoginShell(context.Background(), session.User{Username: "linuxio-no-such-user"}, "sh")
 	require.Error(t, err)
+
+	// A cancelled caller is reported as cancelled, not as a killed shell: the
+	// router logs the first as "route canceled" and the second as a failure.
+	canceled, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err = Path(canceled, me)
+	require.ErrorIs(t, err, context.Canceled)
 }
 
 func TestLookPathIn(t *testing.T) {
