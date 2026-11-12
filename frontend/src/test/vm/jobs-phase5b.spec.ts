@@ -1,4 +1,10 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import {
+  errors,
+  expect,
+  test,
+  type Locator,
+  type Page,
+} from "@playwright/test";
 
 import {
   bridgeCall,
@@ -449,7 +455,8 @@ test("a script that reports every run keeps one line, made unseen by each run", 
   page,
 }) => {
   // Three runs of a short script, each waited for with its stop hooks, and
-  // two settings saves: 11 s in run 3; the bound leaves room for a slow VM.
+  // two settings saves: 11 s in run 3, plus up to a minute waiting for the
+  // bell's poll before the delete; the bound leaves room for a slow VM.
   test.setTimeout(300_000);
   await resetNotifications();
   await signIn(page);
@@ -498,6 +505,16 @@ test("a script that reports every run keeps one line, made unseen by each run", 
   await saveSettings(page);
   expect((await storedSettings()).report.scheduled_scripts).toBe("failures");
   const before = await storedAlert(key);
+  // The times the page sends alerts.list, for the delete below: the listener
+  // goes on before the goto opens the app's socket.
+  const listReads: number[] = [];
+  page.on("websocket", (socket) => {
+    socket.on("framesent", ({ payload }) => {
+      if (payload.toString().includes('"route":"alerts.list"')) {
+        listReads.push(Date.now());
+      }
+    });
+  });
   await page.goto(`/services/schedules?schedule=${id}`);
   await runOnce(page, name, id, "completed", 3);
   expect(await storedAlert(key)).toEqual(before);
@@ -509,10 +526,20 @@ test("a script that reports every run keeps one line, made unseen by each run", 
 
   // Deleting the schedule takes its notice out of the bell, without a
   // reload: the delete resolves it and refetches the list, which the bell
-  // would otherwise read only on its next poll, a minute later.
+  // would otherwise read only on its next poll, a minute after its last read.
+  // The delete starts right after a poll and the check ends well within the
+  // minute, so the poll cannot be what passes it.
   tray = await openTray(page);
   await expect(trayLine(tray, title)).toHaveCount(1);
   await page.keyboard.press("Escape");
+  const idleFrom = Date.now();
+  await expect
+    .poll(() => listReads.some((at) => at > idleFrom), {
+      message: "the bell's poll",
+      timeout: 75_000,
+    })
+    .toBe(true);
+  const polledAt = Math.max(...listReads);
   await scheduleRow(page, name)
     .getByRole("button", { name: "Delete", exact: true })
     .click();
@@ -524,6 +551,7 @@ test("a script that reports every run keeps one line, made unseen by each run", 
   expect(await storedAlert(key)).toBeNull();
   tray = await openTray(page);
   await expect(trayLine(tray, title)).toHaveCount(0, { timeout: 10_000 });
+  expect(Date.now() - polledAt, "ms since the poll").toBeLessThan(50_000);
 });
 
 test("a schedule's own choice wins, and saving only it leaves the unit alone", async ({
@@ -960,6 +988,15 @@ test("the notice at sign-in counts the unseen alert and Show opens the bell", as
   await expect(badge(page)).toHaveText("1", { timeout: 90_000 });
   await page.reload();
   await expect(badge(page)).toHaveText("1", { timeout: 30_000 });
+  // A notice would follow the badge (an Effect, then sonner): watch for 5 s.
+  let raised = true;
+  try {
+    await notice.first().waitFor({ state: "attached", timeout: 5_000 });
+  } catch (error) {
+    if (!(error instanceof errors.TimeoutError)) throw error;
+    raised = false;
+  }
+  expect(raised, "a notice raised by the reload").toBe(false);
   await expect(
     page
       .locator("[data-sonner-toast]")

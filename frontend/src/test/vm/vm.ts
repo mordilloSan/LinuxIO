@@ -400,8 +400,7 @@ export async function throttle(bytesPerSecond: number, disks = DATA_DISKS) {
 }
 
 // Scheduled scripts created on the Schedules page, disabled, with a calendar
-// of 2099, and started with "Run now". jobs-phase4.spec.ts and
-// jobs-phase5a.spec.ts keep copies of their own of these helpers.
+// of 2099, and started with "Run now".
 
 export const SCHEDULED_SCRIPT = "scheduled.script";
 const NEVER = "2099-01-01 00:00:00";
@@ -416,10 +415,10 @@ export const scheduleRow = (page: Page, name: string) =>
   page.getByRole("row").filter({ hasText: name });
 
 /**
- * Creates a schedule that runs script as the test user, selects it on the
- * Schedules page and returns its ID.
+ * Opens the Schedules page's create dialog, fills it in to run script as the
+ * test user, unsaved, and returns the dialog.
  */
-export async function createSchedule(page: Page, name: string, script: string) {
+export async function fillSchedule(page: Page, name: string, script: string) {
   await page.goto("/services/schedules");
   await page.getByRole("button", { name: "Create task" }).click();
   const dialog = page.getByRole("dialog", { name: "Create scheduled task" });
@@ -433,6 +432,15 @@ export async function createSchedule(page: Page, name: string, script: string) {
   await page.getByRole("option", { name: "Custom (advanced)" }).click();
   await dialog.getByLabel("Calendar expression").fill(NEVER);
   await dialog.getByLabel("Timeout seconds").fill("3600");
+  return dialog;
+}
+
+/**
+ * Creates a schedule that runs script as the test user, selects it on the
+ * Schedules page and returns its ID.
+ */
+export async function createSchedule(page: Page, name: string, script: string) {
+  const dialog = await fillSchedule(page, name, script);
   await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await expect(dialog).toBeHidden({ timeout: 30_000 });
   await scheduleRow(page, name).getByText(name, { exact: true }).click();
@@ -449,15 +457,24 @@ export const runsOf = async (id: string) =>
     (r) => r.metadata?.identity?.[0] === id,
   );
 
-/** Polls until schedule id has count runs, the newest in state (and reason), and returns that one. */
+/**
+ * Polls until schedule id has count runs, the newest in state and with reason
+ * (none unless given; any at all with anyReason), and returns that one.
+ */
 export async function waitForRun(
   id: string,
   state: string,
   {
     count = 1,
     reason,
+    anyReason = false,
     timeout = 60_000,
-  }: { count?: number; reason?: string; timeout?: number } = {},
+  }: {
+    count?: number;
+    reason?: string;
+    anyReason?: boolean;
+    timeout?: number;
+  } = {},
 ): Promise<ScheduledRecord> {
   let run: ScheduledRecord | undefined;
   await expect
@@ -465,7 +482,11 @@ export async function waitForRun(
       async () => {
         const runs = await runsOf(id);
         run = runs.at(-1);
-        return { runs: runs.length, state: run?.state, reason: run?.reason };
+        return {
+          runs: runs.length,
+          state: run?.state,
+          reason: anyReason ? reason : run?.reason,
+        };
       },
       { intervals: [1_000], message: `run ${count} ${state}`, timeout },
     )
@@ -475,7 +496,8 @@ export async function waitForRun(
 
 /**
  * Waits until unit has stopped, its stop hooks included: the end hook records
- * the run, raises its alert and delivers it before the unit is inactive.
+ * the run, saves its output, and raises and delivers its alert before the unit
+ * is inactive.
  */
 export async function waitForIdle(unit: string) {
   await expect

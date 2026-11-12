@@ -1,11 +1,15 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 
 import {
+  createSchedule,
   ensurePool,
   MiB,
   openTray,
   POOL_MOUNT,
   rig,
+  runNow,
+  runsOf,
+  SCHEDULED_SCRIPT,
   type ScheduledRecord,
   scheduledOutput,
   scheduledRecords,
@@ -13,7 +17,11 @@ import {
   signOut,
   signOutIfSignedIn,
   trayJob,
+  uniqueName,
+  unitOf,
   vmSsh,
+  waitForIdle,
+  waitForRun,
 } from "./vm";
 
 // Phase 4 of docs/TODO/jobs.md (section 2.14): work a systemd timer runs
@@ -23,13 +31,11 @@ import {
 // started with "Run now"; the snapshot and Docker update units are started
 // over SSH, as their timers would.
 
-const SCRIPT = "scheduled.script";
 const SNAPSHOT = "scheduled.btrfs_snapshot";
 const DOCKER_UPDATE = "scheduled.docker_update";
 const SNAPSHOT_UNIT = "linuxio-btrfs-snapshot.service";
 const DOCKER_UPDATE_UNIT = "linuxio-docker-update.service";
 const SCRIPT_DROPIN = "linuxio-schedule-.service.d";
-const NEVER = "2099-01-01 00:00:00";
 /**
  * A saved output line: the journal's short-iso time, host, identifier and PID.
  * systemd 259 writes the offset as +00:00; +0000 is accepted too.
@@ -40,72 +46,6 @@ const outputLine = (text: string) =>
   );
 
 test.afterEach(({ page }) => signOutIfSignedIn(page));
-
-const unitOf = (id: string) => `linuxio-schedule-${id}.service`;
-
-/** A schedule name no earlier run of this spec used. */
-const uniqueName = (what: string) => `e2e ${what} ${Date.now().toString(36)}`;
-
-const scheduleRow = (page: Page, name: string) =>
-  page.getByRole("row").filter({ hasText: name });
-
-/**
- * Creates a schedule that runs script as the test user, selects it on the
- * Schedules page and returns its ID.
- */
-async function createSchedule(page: Page, name: string, script: string) {
-  await page.goto("/services/schedules");
-  await page.getByRole("button", { name: "Create task" }).click();
-  const dialog = page.getByRole("dialog", { name: "Create scheduled task" });
-  await dialog.getByLabel("Name", { exact: true }).fill(name);
-  await dialog.getByLabel("Bash script").fill(`${script}\n`);
-  await dialog.getByRole("combobox", { name: "Run as" }).click();
-  await page
-    .getByRole("option", { name: process.env.LINUXIO_VM_USER, exact: true })
-    .click();
-  await dialog.getByRole("combobox", { name: "Repeat" }).click();
-  await page.getByRole("option", { name: "Custom (advanced)" }).click();
-  await dialog.getByLabel("Calendar expression").fill(NEVER);
-  await dialog.getByLabel("Timeout seconds").fill("3600");
-  await dialog.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(dialog).toBeHidden({ timeout: 30_000 });
-  await scheduleRow(page, name).getByText(name, { exact: true }).click();
-  await expect(page).toHaveURL(/[?&]schedule=[0-9a-f-]{36}$/);
-  return new URL(page.url()).searchParams.get("schedule")!;
-}
-
-const runNow = (page: Page, name: string) =>
-  scheduleRow(page, name).getByRole("button", { name: "Run now" }).click();
-
-/** The runs of schedule id, oldest first. */
-const runsOf = async (id: string) =>
-  (await scheduledRecords(SCRIPT)).filter(
-    (r) => r.metadata?.identity?.[0] === id,
-  );
-
-/** Polls until schedule id has count runs, the newest in state (and reason), and returns that one. */
-async function waitForRun(
-  id: string,
-  state: string,
-  {
-    count = 1,
-    reason,
-    timeout = 60_000,
-  }: { count?: number; reason?: string; timeout?: number } = {},
-): Promise<ScheduledRecord> {
-  let run: ScheduledRecord | undefined;
-  await expect
-    .poll(
-      async () => {
-        const runs = await runsOf(id);
-        run = runs.at(-1);
-        return { runs: runs.length, state: run?.state, reason: run?.reason };
-      },
-      { intervals: [1_000], message: `run ${count} ${state}`, timeout },
-    )
-    .toEqual({ runs: count, state, reason });
-  return run!;
-}
 
 /** Polls until the one run of route not in before reaches state, and returns it. */
 async function waitForNewRun(
@@ -133,17 +73,6 @@ const recordIds = async (route: string) =>
 
 const unitProperty = async (unit: string, property: string) =>
   (await vmSsh(`systemctl show -p ${property} --value ${unit}`)).trim();
-
-/** Waits until unit has stopped, its stop hooks included. */
-async function waitForIdle(unit: string) {
-  await expect
-    .poll(() => unitProperty(unit, "ActiveState"), {
-      intervals: [500],
-      message: `${unit} stopped`,
-      timeout: 60_000,
-    })
-    .toMatch(/^(inactive|failed)$/);
-}
 
 /** The alert raised for scheduled run id, if one was. */
 async function alertOf(id: string) {
@@ -221,7 +150,7 @@ test("a running script shows in the bell and on its page, and leaves its output"
   ).toBe("running");
 
   const done = await waitForRun(id, "completed", { timeout: 90_000 });
-  expect(done).toMatchObject({ id: run.id, route: SCRIPT });
+  expect(done).toMatchObject({ id: run.id, route: SCHEDULED_SCRIPT });
   await waitForIdle(unitOf(id));
   const lines = await outputLines(run.id);
   expect(lines).toHaveLength(2);

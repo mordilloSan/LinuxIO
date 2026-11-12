@@ -4,6 +4,8 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import {
   bridgeCall,
+  createSchedule,
+  fillSchedule,
   jobIds,
   jobRecord,
   jobRecords,
@@ -11,18 +13,23 @@ import {
   noSessions,
   openTray,
   rig,
+  runNow,
+  runsOf,
   SCRUB,
   type ScheduledRecord,
   scheduledOutput,
-  scheduledRecords,
   scrubRunning,
   signIn,
   signOut,
   signOutIfSignedIn,
   startScrub,
   stopAptRuns,
+  uniqueName,
+  unitOf,
   vmSsh,
+  waitForIdle,
   waitForJob,
+  waitForRun,
 } from "./vm";
 
 // Phase 5a of docs/TODO/jobs.md (sections 2.12, 2.16, 4.5): the history page
@@ -35,9 +42,7 @@ import {
 // with the apt timers stopped: run `make vm-reset` and `make vm-install`
 // before the next run.
 
-const SCRIPT = "scheduled.script";
 const COPY = "filebrowser.copy_batch";
-const NEVER = "2099-01-01 00:00:00";
 const SCRUB_LABEL = "Scrubbing btrfs filesystem";
 /** A user without sudo, created for the check that needs one. */
 const PLAIN_USER = "e2e-plain";
@@ -47,87 +52,6 @@ const OUTPUT_CHUNK = 256 * 1024;
 const vmUser = () => process.env.LINUXIO_VM_USER ?? "";
 
 test.afterEach(({ page }) => signOutIfSignedIn(page));
-
-/** A schedule name no earlier run of this spec used. */
-const uniqueName = (what: string) => `e2e ${what} ${Date.now().toString(36)}`;
-
-const unitOf = (id: string) => `linuxio-schedule-${id}.service`;
-
-const scheduleRow = (page: Page, name: string) =>
-  page.getByRole("row").filter({ hasText: name });
-
-/** Opens the Schedules page's create dialog and fills it in, unsaved. */
-async function fillSchedule(page: Page, name: string, script: string) {
-  await page.goto("/services/schedules");
-  await page.getByRole("button", { name: "Create task" }).click();
-  const dialog = page.getByRole("dialog", { name: "Create scheduled task" });
-  await dialog.getByLabel("Name", { exact: true }).fill(name);
-  await dialog.getByLabel("Bash script").fill(`${script}\n`);
-  await dialog.getByRole("combobox", { name: "Run as" }).click();
-  await page.getByRole("option", { name: vmUser(), exact: true }).click();
-  await dialog.getByRole("combobox", { name: "Repeat" }).click();
-  await page.getByRole("option", { name: "Custom (advanced)" }).click();
-  await dialog.getByLabel("Calendar expression").fill(NEVER);
-  await dialog.getByLabel("Timeout seconds").fill("3600");
-  return dialog;
-}
-
-/**
- * Creates a schedule that runs script as the test user, selects it on the
- * Schedules page and returns its ID.
- */
-async function createSchedule(page: Page, name: string, script: string) {
-  const dialog = await fillSchedule(page, name, script);
-  await dialog.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(dialog).toBeHidden({ timeout: 30_000 });
-  await scheduleRow(page, name).getByText(name, { exact: true }).click();
-  await expect(page).toHaveURL(/[?&]schedule=[0-9a-f-]{36}$/);
-  return new URL(page.url()).searchParams.get("schedule")!;
-}
-
-const runNow = (page: Page, name: string) =>
-  scheduleRow(page, name).getByRole("button", { name: "Run now" }).click();
-
-/** The runs of schedule id, oldest first. */
-const runsOf = async (id: string) =>
-  (await scheduledRecords(SCRIPT)).filter(
-    (r) => r.metadata?.identity?.[0] === id,
-  );
-
-/** Polls until schedule id has count runs, the newest in state, and returns that one. */
-async function waitForRun(
-  id: string,
-  state: string,
-  { count = 1, timeout = 60_000 }: { count?: number; timeout?: number } = {},
-): Promise<ScheduledRecord> {
-  let run: ScheduledRecord | undefined;
-  await expect
-    .poll(
-      async () => {
-        const runs = await runsOf(id);
-        run = runs.at(-1);
-        return { runs: runs.length, state: run?.state };
-      },
-      { intervals: [1_000], message: `run ${count} ${state}`, timeout },
-    )
-    .toEqual({ runs: count, state });
-  return run!;
-}
-
-/**
- * Waits until unit has stopped, its stop hooks included: the end hook saves
- * the output after it writes the record, and the history offers an output
- * only once it exists.
- */
-async function waitForIdle(unit: string) {
-  await expect
-    .poll(
-      async () =>
-        (await vmSsh(`systemctl show -p ActiveState --value ${unit}`)).trim(),
-      { intervals: [500], message: `${unit} stopped`, timeout: 60_000 },
-    )
-    .toMatch(/^(inactive|failed)$/);
-}
 
 /** The history page's rows, without its header. */
 const historyRows = (page: Page) =>
@@ -197,7 +121,7 @@ test("a failed scheduled script shows with its error and its output", async ({
   const name = uniqueName("failure");
   const id = await createSchedule(page, name, "echo boom; exit 3");
   await runNow(page, name);
-  const run = await waitForRun(id, "failed");
+  const run = await waitForRun(id, "failed", { anyReason: true });
   await waitForIdle(unitOf(id));
 
   // An admin's session is served the saved output, byte for byte; the check
@@ -235,7 +159,7 @@ test("a schedule lists its past runs", async ({ page }) => {
   const id = await createSchedule(page, name, 'echo "run $INVOCATION_ID"');
   for (const count of [1, 2]) {
     await runNow(page, name);
-    await waitForRun(id, "completed", { count });
+    await waitForRun(id, "completed", { count, anyReason: true });
     await waitForIdle(unitOf(id));
   }
   const [older, newer] = await runsOf(id);
@@ -275,7 +199,10 @@ test("a long output opens at its end and loads earlier parts", async ({
     "x=$(head -c 991 /dev/zero | tr '\\0' x); for i in $(seq 600); do printf 'line %03d %s\\n' \"$i\" \"$x\"; done",
   );
   await runNow(page, name);
-  const run = await waitForRun(id, "completed", { timeout: 120_000 });
+  const run = await waitForRun(id, "completed", {
+    timeout: 120_000,
+    anyReason: true,
+  });
   await waitForIdle(unitOf(id));
   const size = (await scheduledOutput(run.id)).length;
   console.log(`saved output: ${size} bytes`);
@@ -342,7 +269,7 @@ test("a user who is not an admin sees only their own jobs", async ({
   const name = uniqueName("private");
   const id = await createSchedule(page, name, "echo private");
   await runNow(page, name);
-  const run = await waitForRun(id, "completed");
+  const run = await waitForRun(id, "completed", { anyReason: true });
   await waitForIdle(unitOf(id));
   expect((await scheduledOutput(run.id)).length).toBeGreaterThan(0);
   await signOut(page);
