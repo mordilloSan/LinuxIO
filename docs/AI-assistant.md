@@ -115,6 +115,16 @@ text, images and file context. Permission cards show the agent's own options
 and say that nothing has changed yet.
 Stop sends `session/cancel`.
 
+When the agent advertises `sessionCapabilities.systemPrompt`, every
+`session/new`, `session/load`, `session/fork` and `session/resume` carries a
+`systemPrompt` in `append` mode (`LINUXIO_SYSTEM_PROMPT` in `connection.ts`),
+so the agent keeps its own instructions and gains LinuxIO's. It is sent on
+reopening too because the agent rebuilds its instructions each time. Today it
+says one thing: a shell command meant for the user goes in a fence tagged
+`bash`, alone, with output in a separate block, which is what gives the block
+its [Open in terminal](#features) button. An agent that does not advertise the
+capability gets no instructions, and its untagged commands can only be copied.
+
 ## Features
 
 The agent drives most of the surface, so a control only appears when the agent

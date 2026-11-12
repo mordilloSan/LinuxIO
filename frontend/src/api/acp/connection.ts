@@ -25,6 +25,26 @@ export interface AuthStatus {
   account?: { email?: string; organization?: string; plan?: string };
 }
 
+/**
+ * Appended to the agent's own instructions when it advertises
+ * `sessionCapabilities.systemPrompt`. The transcript offers "Open in
+ * terminal" only on a fence tagged as shell, so an untagged command can
+ * only be copied.
+ */
+const LINUXIO_SYSTEM_PROMPT: acp.SystemPrompt = {
+  mode: "append",
+  content: [
+    {
+      type: "text",
+      text: [
+        "You are running inside the LinuxIO web interface, which shows your answers as Markdown.",
+        'When you give the user a shell command to run themselves, put it in a fenced code block tagged `bash`. LinuxIO adds an "Open in terminal" button to those blocks, which types the block into the user\'s terminal for them to run.',
+        "Keep such a block to the commands alone: no prompt characters such as `$`, and no output. Put command output, logs and file contents in a separate block with their own language tag, or none.",
+      ].join("\n\n"),
+    },
+  ],
+};
+
 export interface AssistantHandlers {
   onUpdate(notification: acp.SessionNotification): void;
   onPermission(
@@ -190,6 +210,18 @@ export async function connectAssistant(
   const canListSessions = Boolean(caps.sessionCapabilities?.list);
   const canClose = Boolean(caps.sessionCapabilities?.close);
   const canResume = Boolean(caps.sessionCapabilities?.resume);
+  // Sent with every request that starts or reopens a session: an agent
+  // rebuilds its instructions each time, so a reopened chat would lose them.
+  const sessionSetup: Pick<
+    acp.NewSessionRequest,
+    "cwd" | "mcpServers" | "systemPrompt"
+  > = {
+    cwd,
+    mcpServers: [],
+    ...(caps.sessionCapabilities?.systemPrompt
+      ? { systemPrompt: LINUXIO_SYSTEM_PROMPT }
+      : {}),
+  };
 
   return {
     agent,
@@ -218,7 +250,7 @@ export async function connectAssistant(
     async loadSession(sessionId) {
       const result = await connection.agent.request(
         acp.methods.agent.session.load,
-        { sessionId, cwd, mcpServers: [] },
+        { sessionId, ...sessionSetup },
       );
       return {
         sessionId,
@@ -229,7 +261,7 @@ export async function connectAssistant(
     async newSession() {
       const result = await connection.agent.request(
         acp.methods.agent.session.new,
-        { cwd, mcpServers: [] },
+        { ...sessionSetup },
       );
       return {
         sessionId: result.sessionId,
@@ -273,7 +305,7 @@ export async function connectAssistant(
     async forkSession(sessionId) {
       const result = await connection.agent.request(
         acp.methods.agent.session.fork,
-        { sessionId, cwd, mcpServers: [] },
+        { sessionId, ...sessionSetup },
       );
       const forked = {
         sessionId: result.sessionId,
@@ -283,7 +315,7 @@ export async function connectAssistant(
       if (!canResume) return forked;
       const resumed = await connection.agent.request(
         acp.methods.agent.session.resume,
-        { sessionId: forked.sessionId, cwd, mcpServers: [] },
+        { sessionId: forked.sessionId, ...sessionSetup },
       );
       return {
         sessionId: forked.sessionId,

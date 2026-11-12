@@ -224,6 +224,52 @@ describe("connectAssistant", () => {
     });
   });
 
+  it("appends the LinuxIO instructions for an agent that takes a system prompt", async () => {
+    const agent = fakeAgent({
+      initialize: () => ({
+        protocolVersion: 1,
+        agentCapabilities: {
+          sessionCapabilities: { fork: {}, resume: {}, systemPrompt: {} },
+        },
+      }),
+      "session/new": () => ({ sessionId: "s1" }),
+      "session/load": () => ({}),
+      "session/fork": () => ({ sessionId: "s2" }),
+      "session/resume": () => ({}),
+    });
+    const conn = await connectAssistant("claude", handlers(), agent.open);
+    await conn.newSession();
+    await conn.loadSession("s1");
+    await conn.forkSession("s1");
+    for (const method of [
+      "session/new",
+      "session/load",
+      "session/fork",
+      "session/resume",
+    ]) {
+      const params = agent.sent.find((m) => m.method === method)?.params as {
+        systemPrompt?: { mode: string; content: { text: string }[] };
+      };
+      expect(params.systemPrompt?.mode, method).toBe("append");
+      expect(params.systemPrompt?.content[0].text, method).toContain(
+        "tagged `bash`",
+      );
+    }
+  });
+
+  it("sends no system prompt to an agent that does not advertise it", async () => {
+    const agent = fakeAgent({
+      initialize: () => ({ protocolVersion: 1 }),
+      "session/new": () => ({ sessionId: "s1" }),
+    });
+    const conn = await connectAssistant("claude", handlers(), agent.open);
+    await conn.newSession();
+    expect(agent.sent.find((m) => m.method === "session/new")?.params).toEqual({
+      cwd: "/home/alice",
+      mcpServers: [],
+    });
+  });
+
   it("sends image and resource blocks verbatim", async () => {
     const agent = fakeAgent({
       initialize: () => ({ protocolVersion: 1 }),
