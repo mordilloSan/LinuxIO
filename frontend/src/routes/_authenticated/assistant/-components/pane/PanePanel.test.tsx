@@ -74,36 +74,36 @@ describe("PanePanel", () => {
     expect(setup().card()).toHaveStyle({ width: "340px" });
   });
 
-  it("widens when the left edge is dragged left, and remembers it", () => {
+  it("widens when the right edge is dragged right, and remembers it", () => {
     const { card, edge } = setup();
     fireEvent.pointerDown(edge(), { clientX: 900, pointerId: 1 });
-    fireEvent.pointerMove(edge(), { clientX: 800, pointerId: 1 });
+    fireEvent.pointerMove(edge(), { clientX: 1000, pointerId: 1 });
     expect(card()).toHaveStyle({ width: "440px" });
     // Nothing is stored until the drag ends.
     expect(window.localStorage.getItem(WIDTH_KEY)).toBeNull();
-    fireEvent.pointerUp(edge(), { clientX: 800, pointerId: 1 });
+    fireEvent.pointerUp(edge(), { clientX: 1000, pointerId: 1 });
     expect(window.localStorage.getItem(WIDTH_KEY)).toBe("440");
     // A move after the drag ended changes nothing.
-    fireEvent.pointerMove(edge(), { clientX: 600, pointerId: 1 });
+    fireEvent.pointerMove(edge(), { clientX: 1200, pointerId: 1 });
     expect(card()).toHaveStyle({ width: "440px" });
   });
 
   it("keeps the width between its limits while dragging", () => {
     const { card, edge } = setup();
     fireEvent.pointerDown(edge(), { clientX: 900, pointerId: 1 });
-    fireEvent.pointerMove(edge(), { clientX: 2000, pointerId: 1 });
-    expect(card()).toHaveStyle({ width: "240px" });
     fireEvent.pointerMove(edge(), { clientX: -2000, pointerId: 1 });
+    expect(card()).toHaveStyle({ width: "240px" });
+    fireEvent.pointerMove(edge(), { clientX: 2000, pointerId: 1 });
     expect(card()).toHaveStyle({ width: "720px" });
   });
 
   it("resizes from the keyboard", async () => {
     const { card, edge } = setup();
     edge().focus();
-    await userEvent.keyboard("{ArrowLeft}{ArrowLeft}");
+    await userEvent.keyboard("{ArrowRight}{ArrowRight}");
     expect(card()).toHaveStyle({ width: "372px" });
     expect(edge()).toHaveAttribute("aria-valuenow", "372");
-    await userEvent.keyboard("{ArrowRight}");
+    await userEvent.keyboard("{ArrowLeft}");
     expect(card()).toHaveStyle({ width: "356px" });
     await userEvent.keyboard("{Home}");
     expect(card()).toHaveStyle({ width: "240px" });
@@ -141,11 +141,11 @@ describe("PanePanel", () => {
   });
 
   it("starts closed where the margin beside the chat cannot hold it", async () => {
-    // 860 for the reading column plus 412 on each side: the card, its
-    // insets and the tabs.
-    const { card, tab, setRoom } = setup(1684);
+    // 860 for the reading column plus 396 on each side: the card, its
+    // inset and the tabs.
+    const { card, tab, setRoom } = setup(1652);
     expect(card()).toHaveTextContent("Nothing is running");
-    setRoom(1683);
+    setRoom(1651);
     expect(card()).toBeNull();
     // Opening it there is the user's call, and it stays open.
     await userEvent.click(tab());
@@ -157,8 +157,8 @@ describe("PanePanel", () => {
     window.localStorage.setItem(WIDTH_KEY, "700");
     const { card, tab } = setup(500);
     await userEvent.click(tab());
-    // The area minus its insets and the tabs.
-    expect(card()).toHaveStyle({ width: "428px" });
+    // The area minus the card's inset and the tabs.
+    expect(card()).toHaveStyle({ width: "444px" });
   });
 
   it("pulses its tab's dot while the agent works", () => {

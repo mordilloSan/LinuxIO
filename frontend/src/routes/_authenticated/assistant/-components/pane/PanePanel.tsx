@@ -92,11 +92,11 @@ export default function PanePanel({
   const maxWidth =
     room === null
       ? MAX_WIDTH
-      : clamp(room - 2 * DOCK_INSET - DOCK_TABS, MIN_WIDTH, MAX_WIDTH);
+      : clamp(room - DOCK_INSET - DOCK_TABS, MIN_WIDTH, MAX_WIDTH);
   const shownWidth = Math.min(width, maxWidth);
   const fits =
     room === null ||
-    room >= READING_COLUMN + 2 * (shownWidth + 2 * DOCK_INSET + DOCK_TABS);
+    room >= READING_COLUMN + 2 * (shownWidth + DOCK_INSET + DOCK_TABS);
   const shown = open ?? fits;
 
   // The tab glows twice when a turn ends while the card is closed.
@@ -133,8 +133,8 @@ export default function PanePanel({
   const moveDrag = (event: PointerEvent<HTMLDivElement>) => {
     const start = drag.current;
     if (!start) return;
-    // The card is anchored on the right, so dragging left widens it.
-    start.latest = resizeTo(start.width + start.x - event.clientX);
+    // The card is anchored on the left, so dragging right widens it.
+    start.latest = resizeTo(start.width + event.clientX - start.x);
   };
   const endDrag = () => {
     const start = drag.current;
@@ -145,9 +145,9 @@ export default function PanePanel({
   };
   const resizeByKey = (event: KeyboardEvent<HTMLDivElement>) => {
     const next =
-      event.key === "ArrowLeft"
+      event.key === "ArrowRight"
         ? shownWidth + KEY_STEP
-        : event.key === "ArrowRight"
+        : event.key === "ArrowLeft"
           ? shownWidth - KEY_STEP
           : event.key === "Home"
             ? MIN_WIDTH

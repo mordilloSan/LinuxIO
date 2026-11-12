@@ -246,7 +246,7 @@ advertises the matching capability.
 - **Diff view.** Tool calls that carry a diff show it as a line diff with the
   file path as header, additions and removals tinted.
 - **Chats.** The page header holds one action, New chat. The previous chats
-  are a tab on the chat's right edge: it opens a card that floats beside the
+  are a tab on the chat's left edge: it opens a card that floats beside the
   chat, as tall as its list, with a search field and the chats grouped under
   Today, Yesterday and Earlier by when they were last used. The open chat is
   marked, and clicking another loads it. The tab is disabled when the agent
@@ -415,9 +415,9 @@ untouched.
   queued. The pane of the Claude Code process whose `session_id` equals the
   chat's ACP session id is drawn on a card that floats in the margin beside
   the chat, so the conversation keeps its centred column. Dragging the card's
-  left edge (or the arrow keys on it) resizes it between 240 and 720 px, a
+  right edge (or the arrow keys on it) resizes it between 240 and 720 px, a
   double click restores 340 px, and the width is kept in the browser. The
-  pane has a tab on the chat's right edge, under the Chats tab: the card's
+  pane has a tab on the chat's left edge, under the Chats tab: the card's
   one header button closes it to that tab, and the tab opens it again. Where
   the margin cannot hold the card beside the tabs it starts closed and opens
   over the chat on request. What the user chose holds for that pane; another

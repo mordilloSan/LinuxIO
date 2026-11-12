@@ -11,7 +11,7 @@ import DockTab from "./DockTab";
 import "./dock.css";
 
 /**
- * The tabs on the chat's right edge and the card each one opens: the previous
+ * The tabs on the chat's left edge and the card each one opens: the previous
  * chats, and a plugin's pane while there is one. One card is open at a time,
  * so the two never run past the bottom of a short window.
  */
@@ -82,9 +82,7 @@ export default function AssistantDock({
         canLoad={canLoad}
         currentId={currentId}
         maxWidth={
-          room === null
-            ? undefined
-            : Math.max(0, room - 2 * DOCK_INSET - DOCK_TABS)
+          room === null ? undefined : Math.max(0, room - DOCK_INSET - DOCK_TABS)
         }
         now={chats.now}
         onClose={() => {

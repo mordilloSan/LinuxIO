@@ -1,12 +1,12 @@
-/* The chat's right edge: a column of tabs, each opening one card beside it
-   (the chats, a plugin's pane). The cards float in the margin, so the
+/* The chat's left edge: a column of tabs flush against it, each opening one
+   card beside it (the chats, a plugin's pane). The right edge belongs to the
+   transcript's scrollbar. The cards float in the margin, so the
    conversation keeps its centred column. They join the floating-panel family
    (the navbar's panels): same corner, same shadow with the lit top edge, over
    a face the transcript shows through when a card overlaps it. */
 
 .assistant-dock {
-  /* dockLayout.ts mirrors these three for the code that sizes the cards. */
-  --assistant-dock-inset: var(--app-space-16);
+  /* dockLayout.ts mirrors these two for the code that sizes the cards. */
   --assistant-dock-tab: var(--app-space-32);
   --assistant-dock-gap: var(--app-space-8);
   --assistant-dock-face: color-mix(
@@ -16,8 +16,9 @@
   );
   position: absolute;
   top: var(--app-space-8);
-  /* Clear of the transcript's scrollbar. */
-  right: var(--assistant-dock-inset);
+  /* Out through the page's own inline padding (MainLayout hands it down),
+     so the tabs touch the edge of the screen and not the chat's column. */
+  left: calc(-1 * var(--page-inset-inline, 0px));
   bottom: var(--app-space-8);
   z-index: 2;
   display: flex;
@@ -37,8 +38,10 @@
   width: 100%;
   min-width: 0;
   padding: var(--app-space-12) 0;
+  /* Flush against the edge: no border or corners on that side. */
   border: 1px solid var(--app-palette-divider);
-  border-radius: var(--app-radius-lg);
+  border-left: 0;
+  border-radius: 0 var(--app-radius-lg) var(--app-radius-lg) 0;
   background: var(--assistant-dock-face);
   -webkit-backdrop-filter: blur(16px) saturate(1.3);
   backdrop-filter: blur(16px) saturate(1.3);
@@ -116,7 +119,7 @@
 .assistant-dock-card {
   position: absolute;
   top: 0;
-  right: calc(100% + var(--assistant-dock-gap));
+  left: calc(100% + var(--assistant-dock-gap));
   display: flex;
   flex-direction: column;
   max-height: 100%;
@@ -127,7 +130,7 @@
   backdrop-filter: blur(16px) saturate(1.3);
   box-shadow: var(--app-floating-panel-shadow);
   pointer-events: auto;
-  transform-origin: top right;
+  transform-origin: top left;
   transition:
     opacity var(--app-transition-duration-standard)
       var(--app-easing-decelerate),
@@ -141,7 +144,7 @@
    it inert. */
 .assistant-dock-card--closed {
   opacity: 0;
-  transform: translateX(var(--app-space-24)) scale(0.96);
+  transform: translateX(calc(-1 * var(--app-space-24))) scale(0.96);
   visibility: hidden;
   pointer-events: none;
   transition:
@@ -295,6 +298,6 @@
 @starting-style {
   .assistant-dock-card:not(.assistant-dock-card--closed) {
     opacity: 0;
-    transform: translateX(var(--app-space-24)) scale(0.96);
+    transform: translateX(calc(-1 * var(--app-space-24))) scale(0.96);
   }
 }

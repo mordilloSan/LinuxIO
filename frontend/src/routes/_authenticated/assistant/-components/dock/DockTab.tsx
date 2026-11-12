@@ -6,7 +6,7 @@ import AppButton from "@/components/ui/AppButton";
 import "./dock.css";
 
 /**
- * A tab on the chat's right edge that opens and closes its card. It stays in
+ * A tab on the chat's left edge that opens and closes its card. It stays in
  * place while the card is open, so the same spot does both.
  */
 export default function DockTab({

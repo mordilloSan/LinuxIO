@@ -28,13 +28,13 @@
   font-size: var(--app-font-size-body);
 }
 
-/* The left edge resizes the card: a strip wider than it looks, with a grip
+/* The right edge resizes the card: a strip wider than it looks, with a grip
    that shows on hover, focus and while dragging. */
 .assistant-pane-card__resize {
   position: absolute;
   top: var(--app-floating-panel-radius);
   bottom: var(--app-floating-panel-radius);
-  left: calc(-1 * var(--app-space-6));
+  right: calc(-1 * var(--app-space-6));
   width: var(--app-space-12);
   cursor: ew-resize;
   outline: none;
