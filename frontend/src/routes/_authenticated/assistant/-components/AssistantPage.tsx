@@ -1,4 +1,3 @@
-import { Icon } from "@iconify/react";
 import { useNavigate } from "@tanstack/react-router";
 import { type CSSProperties, useEffect, useState } from "react";
 
@@ -8,26 +7,28 @@ import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import ConfirmDialog from "@/components/ui/AppConfirmDialog";
-import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTypography from "@/components/ui/AppTypography";
 import HeaderActions from "@/components/ui/HeaderActions";
 import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/overlay";
 import { useAssistantRequirements } from "@/hooks/useAssistantRequirements";
 import { useConfigValue } from "@/hooks/useConfig";
+import { useAlerts } from "@/routes/_authenticated/-components/footer/useAlerts";
 import {
   readPersistedState,
   writePersistedState,
 } from "@/utils/persistedState";
 
 import { assistantStore, chatPane, useAssistantState } from "./assistant-store";
+import { buildPrompt } from "./attachments";
 import Composer from "./composer/Composer";
-import PanePanel from "./pane/PanePanel";
-import { paneTitle } from "./pane/readPaneTree";
+import AssistantDock from "./dock/AssistantDock";
 import PluginsDialog from "./plugins/PluginsDialog";
 import SidePanel, { SidePanelOpening } from "./session/SidePanel";
 import StatusLine from "./session/StatusLine";
+import { OpenInTerminalContext } from "./transcript/MarkdownBlock";
 import PermissionCard from "./transcript/PermissionCard";
 import Transcript from "./transcript/Transcript";
+import Welcome from "./welcome/Welcome";
 
 import "./assistant-tokens.css";
 import "./assistant.css";
@@ -56,13 +57,12 @@ export default function AssistantPage({
   const agentEntry = ASSISTANT_AGENTS.find((entry) => entry.id === agent);
   const agentLabel = agentEntry?.label ?? agent;
   const [pluginsOpen, setPluginsOpen] = useState(false);
-  const [historyAnchor, setHistoryAnchor] = useState<HTMLElement | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{
     sessionId: string;
     label: string;
   } | null>(null);
-  // The plugin pane the user closed; a header button brings it back.
-  const [hiddenPaneId, setHiddenPaneId] = useState<string | null>(null);
+  // What the welcome screen of a new chat offers to look at.
+  const { alerts } = useAlerts();
 
   // Follows the terminal's font size until the user picks one here.
   const [terminalFontSize] = useConfigValue("terminalFontSize");
@@ -91,10 +91,8 @@ export default function AssistantPage({
   const { status } = state;
   const sideRunning = state.side?.status === "running";
   const sideShown = state.side?.open || (state.sideOpening && !state.side);
-  const pane = chatPane(state);
-  const paneHidden = pane !== null && pane.id === hiddenPaneId;
   // A side question takes the space beside the chat while it is open.
-  const shownPane = pane && !paneHidden && !sideShown ? pane : null;
+  const pane = sideShown ? null : chatPane(state);
   const loadingOrRunning = status === "running" || status === "connecting";
   // Page shortcuts work wherever focus is, e.g. on <body> after the Stop button
   // took it away.
@@ -180,67 +178,16 @@ export default function AssistantPage({
     );
   }
 
+  // New chat is the page's one action. The previous chats and a plugin's pane
+  // are tabs on the chat's edge (dock/AssistantDock), and the text size is in
+  // the composer's menu.
   const actions = (
     <HeaderActions
-      options={
-        <>
-          <AppActionIconButton
-            disabled={fontSize <= MIN_FONT}
-            icon="mdi:format-font-size-decrease"
-            iconSize={20}
-            label="Decrease font size"
-            onClick={() => adjustFontSize(-1)}
-          />
-          <AppTypography
-            align="center"
-            color="text.secondary"
-            style={{ minWidth: 24, fontVariantNumeric: "tabular-nums" }}
-            variant="body2"
-          >
-            {fontSize}
-          </AppTypography>
-          <AppActionIconButton
-            disabled={fontSize >= MAX_FONT}
-            icon="mdi:format-font-size-increase"
-            iconSize={20}
-            label="Increase font size"
-            onClick={() => adjustFontSize(1)}
-          />
-          <AppActionIconButton
-            ariaLabel="Previous chats"
-            disabled={!state.canListSessions}
-            icon="mdi:history"
-            iconSize={20}
-            label="Previous chats"
-            onClick={(event) => setHistoryAnchor(event.currentTarget)}
-          />
-          {/* Also here, not only as /plugins: a plugin that stops the agent
-              from starting leaves the composer disabled. */}
-          {agentEntry?.plugins ? (
-            <AppActionIconButton
-              ariaLabel="Plugins"
-              icon="mdi:puzzle-outline"
-              iconSize={20}
-              label="Plugins"
-              onClick={() => setPluginsOpen(true)}
-            />
-          ) : null}
-          {paneHidden ? (
-            <AppActionIconButton
-              ariaLabel={`Show ${paneTitle(pane)}`}
-              icon="mdi:dock-right"
-              iconSize={20}
-              label={`Show ${paneTitle(pane)}`}
-              onClick={() => setHiddenPaneId(null)}
-            />
-          ) : null}
-        </>
-      }
       create={
         <AppActionIconButton
           ariaLabel="New chat"
           disabled={loadingOrRunning}
-          icon="mdi:chat-plus-outline"
+          icon="mdi:message-plus-outline"
           iconSize={20}
           label="New chat (Ctrl+Shift+O)"
           onClick={() => void assistantStore.newSession()}
@@ -248,6 +195,48 @@ export default function AssistantPage({
       }
     />
   );
+
+  const textSize = (
+    <div className="assistant__text-size">
+      <AppTypography
+        className="assistant__text-size-label"
+        color="text.secondary"
+        variant="body2"
+      >
+        Text size
+      </AppTypography>
+      <AppActionIconButton
+        disabled={fontSize <= MIN_FONT}
+        icon="mdi:format-font-size-decrease"
+        iconSize={20}
+        label="Decrease font size"
+        onClick={() => adjustFontSize(-1)}
+      />
+      <AppTypography
+        align="center"
+        color="text.secondary"
+        style={{ minWidth: 24, fontVariantNumeric: "tabular-nums" }}
+        variant="body2"
+      >
+        {fontSize}
+      </AppTypography>
+      <AppActionIconButton
+        disabled={fontSize >= MAX_FONT}
+        icon="mdi:format-font-size-increase"
+        iconSize={20}
+        label="Increase font size"
+        onClick={() => adjustFontSize(1)}
+      />
+    </div>
+  );
+
+  // The plugin manager stays reachable when the composer is disabled: a
+  // plugin can be what keeps the agent from starting.
+  const managePlugins = agentEntry?.plugins ? (
+    <AppButton onClick={() => setPluginsOpen(true)} variant="outlined">
+      Manage plugins
+    </AppButton>
+  ) : null;
 
   return (
     <div
@@ -257,52 +246,6 @@ export default function AssistantPage({
       {/* Like the terminal: the chat's icons sit in the page above it, not
           in the shell header. */}
       <div className="assistant__actions">{actions}</div>
-      <AppMenu
-        anchorEl={historyAnchor}
-        ariaLabel="Previous chats"
-        minWidth={240}
-        onClose={() => setHistoryAnchor(null)}
-        open={historyAnchor !== null}
-      >
-        {state.sessions.length === 0 ? (
-          <AppMenuItem disabled>No previous chats</AppMenuItem>
-        ) : (
-          state.sessions.map((session) => {
-            const label = session.title ?? session.sessionId;
-            const isOpenChat = session.sessionId === state.sessionId;
-            return (
-              <div className="assistant__history-row" key={session.sessionId}>
-                <AppMenuItem
-                  disabled={!state.canLoadSession || loadingOrRunning}
-                  onClick={() => {
-                    setHistoryAnchor(null);
-                    void assistantStore.selectSession(session.sessionId);
-                  }}
-                  selected={isOpenChat}
-                >
-                  {label}
-                </AppMenuItem>
-                {state.canDeleteSession ? (
-                  <AppActionIconButton
-                    ariaLabel={`Delete ${label}`}
-                    disabled={isOpenChat && loadingOrRunning}
-                    icon="mdi:delete-outline"
-                    onClick={() => {
-                      setHistoryAnchor(null);
-                      setDeleteTarget({
-                        sessionId: session.sessionId,
-                        label,
-                      });
-                    }}
-                    size="small"
-                    tooltip={false}
-                  />
-                ) : null}
-              </div>
-            );
-          })
-        )}
-      </AppMenu>
       <ConfirmDialog
         confirmText="Delete chat"
         destructive
@@ -379,9 +322,12 @@ export default function AssistantPage({
             <AppAlert
               severity="error"
               action={
-                <AppButton onClick={() => void assistantStore.restart()}>
-                  Restart
-                </AppButton>
+                <>
+                  {managePlugins}
+                  <AppButton onClick={() => void assistantStore.restart()}>
+                    Restart
+                  </AppButton>
+                </>
               }
             >
               <div>
@@ -396,9 +342,12 @@ export default function AssistantPage({
               severity="error"
               action={
                 state.status === "error" ? (
-                  <AppButton onClick={() => void assistantStore.restart()}>
-                    Restart
-                  </AppButton>
+                  <>
+                    {managePlugins}
+                    <AppButton onClick={() => void assistantStore.restart()}>
+                      Restart
+                    </AppButton>
+                  </>
                 ) : undefined
               }
             >
@@ -406,23 +355,37 @@ export default function AssistantPage({
             </AppAlert>
           ) : null}
 
-          <Transcript
-            blocks={state.blocks}
-            pendingToolCallId={
-              state.pending?.request.toolCall.toolCallId ?? null
+          {/* A shell command in an answer can be handed to the terminal,
+              which types it and leaves running it to the user. */}
+          <OpenInTerminalContext
+            value={(command) =>
+              void navigate({
+                to: "/terminal",
+                state: { terminalCommand: command },
+              })
             }
-            sessionId={state.sessionId}
           >
-            {state.status === "ready" ? (
-              <div className="assistant__empty">
-                <Icon icon="mdi:robot-outline" width={48} />
-                <AppTypography>New chat</AppTypography>
-                <AppTypography color="text.secondary">
-                  Ask {agentLabel} anything about this host.
-                </AppTypography>
-              </div>
-            ) : null}
-          </Transcript>
+            <Transcript
+              blocks={state.blocks}
+              pendingToolCallId={
+                state.pending?.request.toolCall.toolCallId ?? null
+              }
+              sessionId={state.sessionId}
+            >
+              {state.status === "ready" ? (
+                <Welcome
+                  agentLabel={agentLabel ?? ""}
+                  alerts={alerts}
+                  onAsk={(prompt) =>
+                    void assistantStore.send(buildPrompt(prompt, []), {
+                      text: prompt,
+                      attachments: [],
+                    })
+                  }
+                />
+              ) : null}
+            </Transcript>
+          </OpenInTerminalContext>
 
           {state.pending ? (
             <PermissionCard
@@ -445,6 +408,7 @@ export default function AssistantPage({
             connecting={status === "connecting"}
             modes={state.modes}
             disabled={state.status !== "ready" && state.status !== "running"}
+            menuExtra={textSize}
             onBtw={(text) => void assistantStore.openSide(text || undefined)}
             onPlugins={
               agentEntry?.plugins ? () => setPluginsOpen(true) : undefined
@@ -463,16 +427,25 @@ export default function AssistantPage({
             running={state.status === "running"}
             usage={state.usage}
           />
+          <AssistantDock
+            busy={loadingOrRunning}
+            canDelete={state.canDeleteSession}
+            canList={state.canListSessions}
+            canLoad={state.canLoadSession}
+            currentId={state.sessionId}
+            onDelete={setDeleteTarget}
+            onSelect={(sessionId) =>
+              void assistantStore.selectSession(sessionId)
+            }
+            pane={pane}
+            running={status === "running"}
+            sessions={state.sessions}
+          />
         </section>
         {state.side?.open ? (
           <SidePanel side={state.side} />
         ) : state.sideOpening && !state.side ? (
           <SidePanelOpening />
-        ) : shownPane ? (
-          <PanePanel
-            onHide={() => setHiddenPaneId(shownPane.id)}
-            pane={shownPane}
-          />
         ) : null}
       </div>
     </div>

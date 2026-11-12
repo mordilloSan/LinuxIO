@@ -1,0 +1,124 @@
+/* A new chat's first screen: a heading and up to four prompt cards, in the
+   chat's own column and left-aligned like the answers that follow. */
+
+.assistant-welcome {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--app-space-24);
+  animation: assistant-welcome-arrive var(--app-transition-duration-standard)
+    var(--app-easing-decelerate);
+}
+
+@keyframes assistant-welcome-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(var(--app-space-8));
+  }
+}
+
+.assistant-welcome__intro {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-8);
+}
+
+.assistant-welcome__eyebrow {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-8);
+}
+
+.assistant-welcome__dot {
+  flex: 0 0 auto;
+  width: var(--app-space-8);
+  height: var(--app-space-8);
+  border-radius: var(--app-radius-pill);
+  background: var(--app-palette-primary-main);
+}
+
+.assistant-welcome__title {
+  margin: 0;
+  font-size: calc(var(--app-font-size-body) * 2.4);
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+
+/* Two columns in the chat's column, one on a narrow screen. */
+.assistant-welcome__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  gap: var(--app-space-12);
+}
+
+/* A card is a shared button (AppButton), which brings the focus ring; this
+   gives it a card's shape. */
+.assistant-welcome .assistant-welcome__card {
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: var(--app-space-12);
+  min-height: 5.25rem;
+  padding: var(--app-space-16);
+  border: 1px solid var(--app-palette-divider);
+  border-radius: var(--app-radius-lg);
+  background: var(--app-palette-background-paper);
+  color: var(--app-palette-text-primary);
+  font-size: inherit;
+  font-weight: 400;
+  line-height: inherit;
+  text-align: left;
+  transition:
+    border-color var(--app-transition-duration-fast)
+      var(--app-easing-decelerate),
+    transform var(--app-transition-duration-fast) var(--app-easing-decelerate);
+}
+
+.assistant-welcome .assistant-welcome__card:hover {
+  border-color: var(--app-palette-primary-main);
+  background: var(--app-palette-background-paper);
+  transform: translateY(-1px);
+}
+
+.assistant-welcome__icon {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: var(--app-space-32);
+  height: var(--app-space-32);
+  border-radius: var(--app-radius-md);
+  background: color-mix(
+    in srgb,
+    var(--app-palette-primary-main) 16%,
+    transparent
+  );
+  color: var(--app-palette-primary-main);
+}
+
+.assistant-welcome__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-2);
+  min-width: 0;
+}
+
+.assistant-welcome__card-title {
+  font-weight: 600;
+  font-size: calc(var(--app-font-size-body) * 1.1);
+}
+
+.assistant-welcome__hint {
+  color: var(--app-palette-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assistant-welcome {
+    animation: none;
+  }
+
+  .assistant-welcome .assistant-welcome__card {
+    transition: none;
+  }
+}

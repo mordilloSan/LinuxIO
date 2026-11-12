@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { render } from "@/test/render";
 
 import { highlightCode, type HighlightSpan } from "./highlight";
-import MarkdownBlock from "./MarkdownBlock";
+import MarkdownBlock, { OpenInTerminalContext } from "./MarkdownBlock";
 
 vi.mock("./highlight", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./highlight")>();
@@ -196,5 +196,43 @@ describe("MarkdownBlock", () => {
       "const",
     );
     expect(container.querySelector("pre")).toHaveTextContent("const x");
+  });
+});
+
+describe("MarkdownBlock open in terminal", () => {
+  const fence = (lang: string) => "```" + lang + "\nsudo virsh list --all\n```";
+
+  it("hands a shell block's code to the page that offers a terminal", async () => {
+    const open = vi.fn();
+    render(
+      <OpenInTerminalContext value={open}>
+        <MarkdownBlock text={fence("bash")} />
+      </OpenInTerminalContext>,
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Open in terminal" }),
+    );
+    expect(open).toHaveBeenCalledWith("sudo virsh list --all");
+  });
+
+  it("offers no terminal for code that is not a shell command", () => {
+    render(
+      <OpenInTerminalContext value={vi.fn()}>
+        <MarkdownBlock text={fence("json") + "\n\n" + fence("")} />
+      </OpenInTerminalContext>,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Open in terminal" }),
+    ).toBeNull();
+    expect(screen.getAllByRole("button", { name: "Copy code" })).toHaveLength(
+      2,
+    );
+  });
+
+  it("offers no terminal where the page gives none, as in a plugin pane", () => {
+    render(<MarkdownBlock text={fence("bash")} />);
+    expect(
+      screen.queryByRole("button", { name: "Open in terminal" }),
+    ).toBeNull();
   });
 });

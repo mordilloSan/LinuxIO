@@ -50,20 +50,37 @@ describe("AssistantPage plugins", () => {
   });
 
   // A plugin that keeps the agent from starting must stay removable.
-  it("opens the plugin manager from the header when the agent has stopped", async () => {
+  it("opens the plugin manager from the alert when the agent has stopped", async () => {
     render(<AssistantPage agent="claude" />);
     setState({ status: "stopped", exit: { code: 1, stderr: "" } });
     await userEvent.click(
-      await screen.findByRole("button", { name: "Plugins" }),
+      await screen.findByRole("button", { name: "Manage plugins" }),
     );
     expect(screen.getByRole("dialog", { name: "Plugins" })).toBeInTheDocument();
+  });
+
+  it("opens the plugin manager from the alert when the agent failed to start", async () => {
+    render(<AssistantPage agent="claude" />);
+    setState({ status: "error", error: "spawn failed" });
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Manage plugins" }),
+    );
+    expect(screen.getByRole("dialog", { name: "Plugins" })).toBeInTheDocument();
+  });
+
+  it("has no plugins button in the page header", async () => {
+    render(<AssistantPage agent="claude" />);
+    setState({ status: "ready", sessionId: "s" });
+    await screen.findByLabelText("Message");
+    expect(screen.queryByRole("button", { name: /plugins/i })).toBeNull();
   });
 
   it("offers no new chat from the plugin manager while a turn runs", async () => {
     render(<AssistantPage agent="claude" />);
     setState({ status: "running", sessionId: "s", canSteer: true });
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Plugins" }),
+    await userEvent.type(
+      await screen.findByLabelText("Message"),
+      "/plugins{Enter}",
     );
     expect(screen.getByRole("dialog", { name: "Plugins" })).toHaveTextContent(
       "turn running",
@@ -78,8 +95,10 @@ describe("AssistantPage plugins", () => {
     expect(
       screen.queryByRole("menuitem", { name: "/plugins" }),
     ).not.toBeInTheDocument();
+    setState({ status: "stopped", exit: { code: 1, stderr: "" } });
+    await screen.findByRole("button", { name: "Restart" });
     expect(
-      screen.queryByRole("button", { name: "Plugins" }),
+      screen.queryByRole("button", { name: "Manage plugins" }),
     ).not.toBeInTheDocument();
   });
 });

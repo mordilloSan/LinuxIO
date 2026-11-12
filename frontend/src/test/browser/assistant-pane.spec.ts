@@ -98,13 +98,37 @@ async function fakeAgentWithPane(page: Page) {
               id: line.id,
               result: {
                 protocolVersion: 1,
-                agentCapabilities: { loadSession: true },
+                // Chats are listed but not loadable, so the page starts a
+                // new chat (which is what brings the pane) and still has
+                // chats to show on their card.
+                agentCapabilities: { sessionCapabilities: { list: {} } },
                 authMethods: [],
               },
             });
             break;
           case "session/list":
-            send({ jsonrpc: "2.0", id: line.id, result: { sessions: [] } });
+            send({
+              jsonrpc: "2.0",
+              id: line.id,
+              result: {
+                sessions: [
+                  {
+                    sessionId: "earlier-today",
+                    cwd: "/home/alice",
+                    title: "Full health check",
+                    updatedAt: new Date(Date.now() - 3_600_000).toISOString(),
+                  },
+                  {
+                    sessionId: "last-week",
+                    cwd: "/home/alice",
+                    title: "Reboot gap on 8 Nov",
+                    updatedAt: new Date(
+                      Date.now() - 7 * 86_400_000,
+                    ).toISOString(),
+                  },
+                ],
+              },
+            });
             break;
           case "session/new":
             send({
@@ -168,29 +192,55 @@ test("floats a plugin pane beside a chat that stays centred", async ({
   const grabY = edgeBox!.y + edgeBox!.height / 2;
   await page.mouse.move(grabX, grabY);
   await page.mouse.down();
-  await page.mouse.move(grabX - 120, grabY, { steps: 6 });
+  // Not so wide that the margin can no longer hold it beside the tabs.
+  await page.mouse.move(grabX - 60, grabY, { steps: 6 });
   await page.mouse.up();
   await expect
     .poll(async () => (await card.boundingBox())!.width)
-    .toBeCloseTo(cardBox!.width + 120, 0);
+    .toBeCloseTo(cardBox!.width + 60, 0);
   await page.reload();
   await expect(card).toBeVisible();
   await expect
     .poll(async () => (await card.boundingBox())!.width)
-    .toBeCloseTo(cardBox!.width + 120, 0);
+    .toBeCloseTo(cardBox!.width + 60, 0);
 
-  // Minimized, only the header is left; hidden, a header button brings it back.
-  await card.getByRole("button", { name: "Minimize Work map" }).click();
-  await expect(picture).toBeHidden();
-  await card.getByRole("button", { name: "Open Work map" }).click();
-  await expect(picture).toBeVisible();
-  await card.getByRole("button", { name: "Hide Work map" }).click();
+  // Its one button closes it to its tab on the chat's edge, which opens it
+  // again.
+  const tab = page.getByRole("button", { name: "Work map", exact: true });
+  await expect(tab).toHaveAttribute("aria-expanded", "true");
+  await card.getByRole("button", { name: "Close Work map" }).click();
   await expect(card).toBeHidden();
-  await page.getByRole("button", { name: "Show Work map" }).click();
+  await expect(tab).toHaveAttribute("aria-expanded", "false");
+  await tab.click();
   await expect(card).toBeVisible();
+  await expect(picture).toBeVisible();
+
+  // The chats have their own tab above it, and one card is open at a time.
+  const chatsTab = page.getByRole("button", { name: "Chats", exact: true });
+  const chats = page.getByRole("complementary", { name: "Chats" });
+  await expect(chats).toBeHidden();
+  await chatsTab.click();
+  await expect(chats).toBeVisible();
+  await expect(chats.getByText("Full health check")).toBeVisible();
+  await expect(chats.getByRole("heading", { name: "Earlier" })).toBeVisible();
+  await expect(card).toBeHidden();
+  // Once it has slid out of its tab it floats beside the chat, left of the
+  // tabs.
+  const tabBox = await chatsTab.boundingBox();
+  await expect
+    .poll(async () => {
+      const box = await chats.boundingBox();
+      return box!.x + box!.width;
+    })
+    .toBeLessThanOrEqual(tabBox!.x);
+  const chatsBox = await chats.boundingBox();
+  expect(chatsBox!.x).toBeGreaterThan(composer!.x + composer!.width);
+  await chats.getByRole("button", { name: "Close Chats" }).click();
+  await expect(chats).toBeHidden();
+  await expect(chatsTab).toBeFocused();
 });
 
-test("starts the pane as a pill where the margin cannot hold it", async ({
+test("starts the pane behind its tab where the margin cannot hold it", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -199,15 +249,16 @@ test("starts the pane as a pill where the margin cannot hold it", async ({
   await expect(page.getByLabel("Message")).toBeEnabled();
 
   const card = page.getByRole("complementary", { name: "Work map" });
-  await expect(card).toBeVisible();
-  await expect(card.getByRole("img")).toBeHidden();
+  const tab = page.getByRole("button", { name: "Work map", exact: true });
+  await expect(tab).toHaveAttribute("aria-expanded", "false");
+  await expect(card).toBeHidden();
 
   const area = await page.locator(".assistant__body").boundingBox();
   const composer = await page.locator(".assistant__composer").boundingBox();
   expect(Math.abs(centre(composer) - centre(area))).toBeLessThan(2);
 
   // Opened on request, it lies over the chat without moving it.
-  await card.getByRole("button", { name: "Open Work map" }).click();
+  await tab.click();
   await expect(card.getByRole("img")).toBeVisible();
   const after = await page.locator(".assistant__composer").boundingBox();
   expect(after!.x).toBe(composer!.x);

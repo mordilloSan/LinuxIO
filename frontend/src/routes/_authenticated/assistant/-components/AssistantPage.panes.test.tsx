@@ -61,7 +61,7 @@ describe("AssistantPage plugin panes", () => {
     expect(container.querySelector(".assistant__body")).not.toHaveClass(
       "assistant__body--split",
     );
-    expect(screen.queryByRole("button", { name: /^Show / })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Work map" })).toBeNull();
   });
 
   it("floats the pane of the open chat beside it and leaves the chat centred", async () => {
@@ -77,9 +77,13 @@ describe("AssistantPage plugin panes", () => {
     });
     expect(panel).toHaveClass("assistant-pane-card");
     expect(panel).toHaveTextContent("Nothing is running");
-    // The card floats over the chat area; it never takes a column from it.
-    expect(panel.parentElement).toHaveClass("assistant__body");
-    expect(panel.parentElement).not.toHaveClass("assistant__body--split");
+    // The card floats over the chat from the dock on its edge; it never takes
+    // a column from it.
+    expect(panel.parentElement).toHaveClass("assistant-dock");
+    expect(panel.parentElement?.parentElement).toHaveClass("assistant__main");
+    expect(container.querySelector(".assistant__body")).not.toHaveClass(
+      "assistant__body--split",
+    );
     expect(screen.queryByText("Other chat")).toBeNull();
     expect(container.querySelector(".assistant__main")).toBeInTheDocument();
   });
@@ -105,30 +109,29 @@ describe("AssistantPage plugin panes", () => {
     await waitFor(() => expect(panePanel()).toBeNull());
   });
 
-  it("hides the pane and shows it again from the header", async () => {
+  it("closes the pane to its tab and opens it again from there", async () => {
     const { container } = await renderReady();
     setState({ panes: [pane()] });
     await userEvent.click(
-      await screen.findByRole("button", { name: "Hide Work map" }),
+      await screen.findByRole("button", { name: "Close Work map" }),
     );
     expect(panePanel()).toBeNull();
     expect(container.querySelector(".assistant__body")).not.toHaveClass(
       "assistant__body--split",
     );
-    await userEvent.click(
-      screen.getByRole("button", { name: "Show Work map" }),
-    );
+    const tab = screen.getByRole("button", { name: "Work map" });
+    expect(tab).toHaveAttribute("aria-expanded", "false");
+    await userEvent.click(tab);
     expect(
       await screen.findByRole("complementary", { name: "Work map" }),
     ).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Show Work map" })).toBeNull();
   });
 
-  it("keeps another plugin's pane visible after hiding one", async () => {
+  it("keeps another plugin's pane open after closing one", async () => {
     await renderReady();
     setState({ panes: [pane()] });
     await userEvent.click(
-      await screen.findByRole("button", { name: "Hide Work map" }),
+      await screen.findByRole("button", { name: "Close Work map" }),
     );
     setState({
       panes: [pane({ id: "notes", title: "Notes", plugin: "notes" })],

@@ -14,6 +14,8 @@ import {
   writePersistedState,
 } from "@/utils/persistedState";
 
+import { DOCK_INSET, DOCK_TABS } from "../dock/dockLayout";
+import DockTab from "../dock/DockTab";
 import PaneTree from "./PaneTree";
 import { paneTitle } from "./readPaneTree";
 
@@ -24,9 +26,7 @@ const DEFAULT_WIDTH = 340;
 const MIN_WIDTH = 240;
 const MAX_WIDTH = 720;
 const KEY_STEP = 16;
-// Both mirror the stylesheets: the card's inset in pane.css and the reading
-// column (--assistant-column) in assistant.css.
-const INSET = 16;
+// Mirrors the reading column (--assistant-column) in assistant.css.
 const READING_COLUMN = 860;
 
 const isWidth = (value: unknown): value is number =>
@@ -37,20 +37,32 @@ const clamp = (value: number, min: number, max: number) =>
 
 /**
  * A Claude Code plugin's pane, drawn read-only on a card that floats in the
- * margin beside the chat, so the conversation stays centred. The card is as
- * wide as the user dragged it; where the margin cannot hold it, it starts as
- * a pill and opens over the chat on request.
+ * margin beside the chat, so the conversation stays centred, with the tab on
+ * the chat's edge that opens and closes it. The card is as wide as the user
+ * dragged it; where the margin cannot hold it, it starts closed and opens
+ * over the chat on request.
  */
 export default function PanePanel({
   pane,
-  onHide,
+  room,
+  open,
+  onOpenChange,
+  running,
 }: {
   pane: PaneView;
-  onHide: () => void;
+  /** The width of the chat area the card floats in; null until measured. */
+  room: number | null;
+  /** null follows the room: open where the card fits beside the chat. */
+  open: boolean | null;
+  onOpenChange: (open: boolean) => void;
+  /** A turn is running: the tab's dot pulses, and glows when it ends. */
+  running: boolean;
 }) {
   const title = paneTitle(pane);
-  const cardRef = useRef<HTMLElement>(null);
+  const tabRef = useRef<HTMLButtonElement>(null);
   const ringRef = useRef<HTMLSpanElement>(null);
+  const glowRef = useRef<HTMLSpanElement>(null);
+  const wasRunning = useRef(running);
   const drawn = useRef<PaneView["tree"] | null>(null);
   const drag = useRef<{ x: number; width: number; latest: number } | null>(
     null,
@@ -59,22 +71,8 @@ export default function PanePanel({
     () => readPersistedState(WIDTH_KEY, isWidth) ?? DEFAULT_WIDTH,
   );
   const [dragging, setDragging] = useState(false);
-  // The width of the chat area the card floats in; unknown until measured.
-  const [room, setRoom] = useState<number | null>(null);
-  // null follows the room: open where the card fits beside the chat.
-  const [minimizedByUser, setMinimizedByUser] = useState<boolean | null>(null);
 
-  useEffect(() => {
-    const area = cardRef.current?.parentElement;
-    if (!area || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(([entry]) =>
-      setRoom(entry.contentRect.width),
-    );
-    observer.observe(area);
-    return () => observer.disconnect();
-  }, []);
-
-  // One ripple from the header dot each time the plugin redraws.
+  // One ripple from the tab's dot each time the plugin redraws.
   useEffect(() => {
     if (drawn.current === pane.tree) return;
     drawn.current = pane.tree;
@@ -92,11 +90,33 @@ export default function PanePanel({
   }, [pane.tree]);
 
   const maxWidth =
-    room === null ? MAX_WIDTH : clamp(room - 2 * INSET, MIN_WIDTH, MAX_WIDTH);
+    room === null
+      ? MAX_WIDTH
+      : clamp(room - 2 * DOCK_INSET - DOCK_TABS, MIN_WIDTH, MAX_WIDTH);
   const shownWidth = Math.min(width, maxWidth);
   const fits =
-    room === null || room >= READING_COLUMN + 2 * (shownWidth + 2 * INSET);
-  const minimized = minimizedByUser ?? !fits;
+    room === null ||
+    room >= READING_COLUMN + 2 * (shownWidth + 2 * DOCK_INSET + DOCK_TABS);
+  const shown = open ?? fits;
+
+  // The tab glows twice when a turn ends while the card is closed.
+  useEffect(() => {
+    const finished = wasRunning.current && !running;
+    wasRunning.current = running;
+    const glow = glowRef.current;
+    if (!finished || shown || !glow || typeof glow.animate !== "function") {
+      return;
+    }
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const lit = glow.animate(
+      [
+        { opacity: 0.45, transform: "scale(1)" },
+        { opacity: 0, transform: "scale(1.5, 1.2)" },
+      ],
+      { duration: 900, easing: "ease-out", iterations: 2 },
+    );
+    return () => lit.cancel();
+  }, [running, shown]);
 
   const resizeTo = (next: number) => {
     const clamped = clamp(Math.round(next), MIN_WIDTH, maxWidth);
@@ -140,19 +160,30 @@ export default function PanePanel({
   };
 
   return (
-    <aside
-      aria-label={title}
-      className={[
-        "assistant-pane-card",
-        minimized && "assistant-pane-card--minimized",
-        dragging && "assistant-pane-card--dragging",
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      ref={cardRef}
-      style={minimized ? undefined : { width: shownWidth }}
-    >
-      {minimized ? null : (
+    <>
+      <DockTab
+        glowRef={glowRef}
+        label={title}
+        onClick={() => onOpenChange(!shown)}
+        open={shown}
+        ref={tabRef}
+        ringRef={ringRef}
+        running={running}
+      />
+      <aside
+        aria-hidden={!shown}
+        aria-label={title}
+        className={[
+          "assistant-dock-card",
+          "assistant-pane-card",
+          !shown && "assistant-dock-card--closed",
+          dragging && "assistant-pane-card--dragging",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        inert={!shown}
+        style={{ width: shownWidth }}
+      >
         <div
           aria-label={`Resize ${title}`}
           aria-orientation="vertical"
@@ -171,38 +202,31 @@ export default function PanePanel({
           role="separator"
           tabIndex={0}
         />
-      )}
-      <header className="assistant-pane-card__header">
-        <span aria-hidden className="assistant-pane-card__live">
-          <span className="assistant-pane-card__ring" ref={ringRef} />
-        </span>
-        <AppTypography
-          className="assistant-pane-card__title"
-          fontWeight={600}
-          noWrap
-        >
-          {title}
-        </AppTypography>
-        <AppActionIconButton
-          ariaLabel={minimized ? `Open ${title}` : `Minimize ${title}`}
-          icon={minimized ? "mdi:chevron-down" : "mdi:chevron-up"}
-          onClick={() => setMinimizedByUser(!minimized)}
-          size="small"
-          tooltip={false}
-        />
-        <AppActionIconButton
-          ariaLabel={`Hide ${title}`}
-          icon="mdi:close"
-          onClick={onHide}
-          size="small"
-          tooltip={false}
-        />
-      </header>
-      {minimized ? null : (
+        <header className="assistant-dock-card__header">
+          <span aria-hidden className="assistant-pane-card__live" />
+          <AppTypography
+            className="assistant-dock-card__title"
+            fontWeight={600}
+            noWrap
+          >
+            {title}
+          </AppTypography>
+          <AppActionIconButton
+            ariaLabel={`Close ${title}`}
+            icon="mdi:close"
+            onClick={() => {
+              onOpenChange(false);
+              // The card goes inert; its tab is where it went.
+              tabRef.current?.focus();
+            }}
+            size="small"
+            tooltip={false}
+          />
+        </header>
         <div className="assistant-pane-card__body">
           <PaneTree tree={pane.tree} />
         </div>
-      )}
-    </aside>
+      </aside>
+    </>
   );
 }

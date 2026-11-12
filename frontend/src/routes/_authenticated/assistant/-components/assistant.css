@@ -15,21 +15,21 @@
   flex-shrink: 0;
 }
 
-.assistant__history-row {
+/* The text size, as a row at the foot of the composer's menu. */
+.assistant__text-size {
   display: flex;
   align-items: center;
   gap: var(--app-space-4);
-  padding-right: var(--app-space-8);
+  margin-top: var(--app-space-4);
+  padding: var(--app-space-4) var(--app-space-8) 0 var(--app-space-16);
+  border-top: 1px solid var(--app-palette-divider);
 }
 
-.assistant__history-row > .app-menu__item {
+.assistant__text-size-label {
   flex: 1;
-  min-width: 0;
 }
 
 .assistant__body {
-  /* A plugin pane floats over this area (pane/pane.css). */
-  position: relative;
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -84,6 +84,8 @@
 }
 
 .assistant__main {
+  /* The dock's tabs and cards float over this area (dock/dock.css). */
+  position: relative;
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -118,18 +120,6 @@
   margin-inline: auto;
 }
 
-/* A new chat: nothing to read yet, so say so in the middle of the space. */
-.assistant__empty {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--app-space-4);
-  text-align: center;
-  color: var(--app-palette-primary-main);
-}
-
 /* Answers and tool calls take the column; only the prompt is a bubble. */
 .assistant-block {
   overflow-wrap: anywhere;
@@ -162,10 +152,23 @@
   color: var(--app-palette-text-primary);
 }
 
+/* Paragraphs and lists stand a little under a line apart, and the items of a
+   list are not packed: an answer is read, not scanned. In em, so the air
+   grows with the chat's text size. */
 .assistant-markdown p,
 .assistant-markdown ul,
 .assistant-markdown ol {
-  margin-block: var(--app-space-8);
+  margin-block: 0.9em;
+}
+
+.assistant-markdown li + li {
+  margin-top: 0.4em;
+}
+
+.assistant-markdown li > p,
+.assistant-markdown li > ul,
+.assistant-markdown li > ol {
+  margin-block: 0.4em;
 }
 
 .assistant-markdown strong {
@@ -189,14 +192,15 @@
   font-size: calc(var(--app-font-size-body) * 0.92);
 }
 
-/* A code block is one surface: a bar naming the language with the copy
-   button in it, then the code. It takes the column, like the cards. */
+/* A code block is one surface: a bar naming the language with its actions,
+   then the code. It takes the column, like the cards, and wears the theme's
+   code block colours (Settings → Theme), as the log views do: set into the
+   page, not raised from it. */
 .assistant-code {
-  margin: var(--app-space-8) 0;
+  margin: 0.9em 0;
   border: 1px solid var(--app-palette-divider);
   border-radius: var(--app-radius-md);
-  /* The same surface as the change and permission cards. */
-  background: var(--app-palette-background-paper);
+  background: var(--app-code-block-background);
   overflow: hidden;
 }
 
@@ -212,10 +216,22 @@
   font-size: calc(var(--app-font-size-body) * 0.85);
 }
 
+/* Copy reads in the code's own colour; Open in terminal is the one accent,
+   in the theme's primary colour (AppButton's default). */
+.assistant-code__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--app-space-4);
+  color: var(--app-code-block-color);
+}
+
 .assistant-block .assistant-code pre {
   margin: 0;
   border-radius: 0;
   background: none;
+  color: var(--app-code-block-color);
 }
 
 /* Under a finished answer: time and tokens on the right. */

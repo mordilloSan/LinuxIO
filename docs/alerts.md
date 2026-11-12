@@ -453,6 +453,9 @@ at a temporary directory never read a host's real delivery settings.
 
 ## Navbar
 
+The Assistant's welcome screen reads the same `alerts.list` and turns the
+alerts that need a look into prompts; see [AI-assistant.md](./AI-assistant.md).
+
 The bell shows persisted alerts and live transfers. The localStorage toast
 history is removed; toasts still pop, they are not kept. Opening the panel
 marks everything it lists seen. Each alert has a dismiss action. The badge is

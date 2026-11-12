@@ -221,14 +221,52 @@ advertises the matching capability.
 - **Markdown.** Agent replies render as Markdown with GitHub tables,
   strikethrough, task lists and autolinks, no raw HTML. Links open in a new tab
   and each code block is one surface with a bar naming the fence language and
-  a Copy button, as wide as the column. Fenced code is syntax-highlighted using
+  a Copy button, as wide as the column. The block uses the theme's code block
+  colours (`--app-code-block-background` and `--app-code-block-color`, the ones
+  Settings → Theme edits and the log views use): the background sets it into
+  the page, and the code and Copy read in the code colour. Fenced code is
+  syntax-highlighted using
   the file editor's languages (blocks over 20,000 characters stay plain). User,
-  thought and plan text stay plain.
+  thought and plan text stay plain. Paragraphs and lists are spaced in `em`,
+  so the air between them grows with the chat's text size.
 - **Diff view.** Tool calls that carry a diff show it as a line diff with the
   file path as header, additions and removals tinted.
-- **Delete.** When the agent advertises session deletion, each entry in the
-  previous-chats menu has a delete button behind a confirmation. Deleting the
-  open chat starts a new one, and a running chat cannot be deleted.
+- **Chats.** The page header holds one action, New chat. The previous chats
+  are a tab on the chat's right edge: it opens a card that floats beside the
+  chat, as tall as its list, with a search field and the chats grouped under
+  Today, Yesterday and Earlier by when they were last used. The open chat is
+  marked, and clicking another loads it. The tab is disabled when the agent
+  cannot list sessions. The tabs stay in place while a card is open, and one
+  card is open at a time (the chats or a [plugin pane](#plugin-panes)), so
+  two cards never run past the bottom of a short window.
+- **Delete.** When the agent advertises session deletion, each chat on the
+  Chats card has a delete button behind a confirmation. Deleting the open
+  chat starts a new one, and a running chat cannot be deleted.
+- **Welcome screen.** A new chat shows up to four prompts, one click each.
+  The host's open alerts that need a look come first (errors, then warnings,
+  newest first; `info` alerts are left out), with a line saying how many
+  there are, and standing prompts fill the rest (a health check, CPU and
+  memory, failed services, recent errors). An alert's title and message can
+  carry text from outside the host (a login name someone tried, a script's
+  name), so the message is only displayed and the prompt quotes the title
+  alone, on one line and capped at 200 characters; the agent looks up the
+  rest. The alerts come from `alerts.list`, which only a privileged session
+  reads; any other session gets the standing prompts.
+- **Open in terminal.** A fenced block labelled `bash`, `sh`, `shell` or `zsh`
+  in an answer has an Open in terminal button beside Copy, in the theme's
+  primary colour. It navigates to
+  `/terminal` with the command in router history state (never the URL, so a
+  crafted link cannot choose it), and the terminal types it into the user's
+  shell without running it. The command is agent-written text on its way into
+  a shell, so `typedCommand.ts` first reduces it to printable characters and
+  newlines (no Enter, no interrupt, no escape that could end a paste early)
+  and refuses more than 8000 characters. One line is typed as it is. Several
+  lines go as one bracketed paste, and only once the shell has turned
+  bracketed paste on; a shell without it would run every line but the last,
+  so until then the terminal waits and says so. The command is removed from
+  history state once taken, so a reload does not type it again, and nothing
+  is typed into an agent login PTY. Code in a plugin pane or a side question
+  has Copy only.
 - **Auto-scroll.** The transcript follows new content while it is scrolled to
   the bottom and pauses when the user scrolls up.
 - **Shortcuts.** Enter sends, Shift+Enter inserts a newline, Escape stops a
@@ -236,17 +274,19 @@ advertises the matching capability.
   which is chosen from the mode menu), Ctrl/Cmd+Shift+O starts a new chat. The
   header tooltips show them.
 - **Text size.** The transcript and composer use the app body size, and code
-  uses a smaller monospace size.
-- **Titles.** A `session_info_update` title renames the chat in the history
-  menu; untitled chats show their session id.
+  uses a smaller monospace size. The chat starts at the terminal's font size;
+  the Text size row at the foot of the composer's `+` menu changes it, and
+  the choice is kept in the browser.
+- **Titles.** A `session_info_update` title renames the chat on the Chats
+  card; untitled chats show their session id.
 
 ## Plugins
 
 `/plugins` opens a dialog over the chat with three tabs: Installed (enable
 switch, uninstall), Browse (search the marketplaces' catalogue, install) and
-Marketplaces (add, refresh, remove). The page header has a Plugins button for
-the same dialog, because the composer is disabled when the agent has not
-started, and a plugin can be the reason. It exists for Claude Code only
+Marketplaces (add, refresh, remove). The alert shown when the agent stopped or
+failed to start has a Manage plugins button for the same dialog, because the
+composer is disabled then, and a plugin can be the reason. It exists for Claude Code only
 (`plugins` in `frontend/src/api/acp/agents.ts`, `pluginAgent` in the bridge);
 the other agents' ids are refused with 400. Claude Code's own `/plugin` is a
 terminal screen the ACP adapter does not advertise, so LinuxIO manages plugins
@@ -362,10 +402,14 @@ untouched.
   chat's ACP session id is drawn on a card that floats in the margin beside
   the chat, so the conversation keeps its centred column. Dragging the card's
   left edge (or the arrow keys on it) resizes it between 240 and 720 px, a
-  double click restores 340 px, and the width is kept in the browser. Where
-  the margin cannot hold the card it starts minimized to its header and opens
-  over the chat on request; the header's close button hides it and a page
-  header button brings it back. An open side question replaces it. A refused attach or roster, a message that does
+  double click restores 340 px, and the width is kept in the browser. The
+  pane has a tab on the chat's right edge, under the Chats tab: the card's
+  one header button closes it to that tab, and the tab opens it again. Where
+  the margin cannot hold the card beside the tabs it starts closed and opens
+  over the chat on request. What the user chose holds for that pane; another
+  plugin's pane starts from the margin again. The tab's dot ripples on each
+  redraw and pulses while a turn runs, and the tab glows when a turn ends
+  with the card closed. An open side question replaces the pane and its tab. A refused attach or roster, a message that does
   not parse, or three renders failing in a row hides the pane until that
   process ends; one failed render keeps the last drawing.
 - **Drawing.** Read-only: `Box`, `Text`, `Svg`, `Markdown`, `Code` and `Link`.

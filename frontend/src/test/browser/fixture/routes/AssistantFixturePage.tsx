@@ -9,6 +9,7 @@ import {
 } from "@/api/capabilities";
 import { uiConfigQueryKey } from "@/api/config-query";
 import { ANONYMOUS_USER_ID } from "@/api/user-scope";
+import { AuthContext, type AuthContextType } from "@/contexts/AuthContext";
 import { ConfigContext } from "@/contexts/ConfigContext";
 import AssistantPage from "@/routes/_authenticated/assistant/-components/AssistantPage";
 
@@ -36,6 +37,10 @@ const stubConfig = {
   updateConfig: () => {},
 } as unknown as ConfigContextType;
 
+// The welcome screen reads the host's alerts, which only a privileged session
+// may list; this one is not, so it shows the standing prompts.
+const stubAuth = { privileged: false } as unknown as AuthContextType;
+
 export default function AssistantFixture() {
   useEffect(() => {
     initStreamMux();
@@ -43,14 +48,16 @@ export default function AssistantFixture() {
   }, []);
   return (
     <QueryClientProvider client={queryClient}>
-      <ConfigContext value={stubConfig}>
-        <main style={{ padding: "var(--app-space-24)", height: "100dvh" }}>
-          <AssistantPage
-            agent="claude"
-            chatDefaults={{ model: "opus", effort: "high", mode: "plan" }}
-          />
-        </main>
-      </ConfigContext>
+      <AuthContext value={stubAuth}>
+        <ConfigContext value={stubConfig}>
+          <main style={{ padding: "var(--app-space-24)", height: "100dvh" }}>
+            <AssistantPage
+              agent="claude"
+              chatDefaults={{ model: "opus", effort: "high", mode: "plan" }}
+            />
+          </main>
+        </ConfigContext>
+      </AuthContext>
     </QueryClientProvider>
   );
 }

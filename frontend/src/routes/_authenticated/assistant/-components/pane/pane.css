@@ -1,69 +1,13 @@
-/* A plugin pane is a card floating in the margin beside the chat, so the
-   conversation keeps its centred column. It joins the floating-panel family
-   (the navbar's panels): same corner, same shadow with the lit top edge, over
-   a face the transcript shows through when the card overlaps it. The tree
-   inside is laid out by the classes readPaneTree picks. */
-
-.assistant-pane-card {
-  /* PanePanel.tsx mirrors this inset to know whether the card fits. */
-  --assistant-pane-inset: var(--app-space-16);
-  position: absolute;
-  top: var(--app-space-8);
-  right: var(--assistant-pane-inset);
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  max-width: calc(100% - 2 * var(--assistant-pane-inset));
-  max-height: calc(100% - 2 * var(--app-space-8));
-  border: 1px solid var(--app-palette-divider);
-  border-radius: var(--app-floating-panel-radius);
-  background: color-mix(
-    in srgb,
-    var(--app-palette-background-paper) 84%,
-    transparent
-  );
-  -webkit-backdrop-filter: blur(16px) saturate(1.3);
-  backdrop-filter: blur(16px) saturate(1.3);
-  box-shadow: var(--app-floating-panel-shadow);
-  animation: assistant-pane-arrive var(--app-transition-duration-standard)
-    var(--app-easing-decelerate);
-}
-
-@keyframes assistant-pane-arrive {
-  from {
-    opacity: 0;
-    transform: translateX(var(--app-space-12)) scale(0.98);
-  }
-}
-
-.assistant-pane-card--minimized {
-  border-radius: var(--app-radius-pill);
-}
+/* A plugin pane is drawn on one of the dock's cards (dock/dock.css), which
+   the user can drag wider. The tree inside is laid out by the classes
+   readPaneTree picks. */
 
 /* While the edge is dragged the width follows the pointer exactly. */
 .assistant-pane-card--dragging {
   user-select: none;
 }
 
-.assistant-pane-card__header {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: var(--app-space-8);
-  padding: var(--app-space-6) var(--app-space-6) var(--app-space-6)
-    var(--app-space-16);
-}
-
-.assistant-pane-card__title {
-  flex: 1;
-  min-width: 0;
-}
-
-.assistant-pane-card--minimized .assistant-pane-card__title {
-  max-width: 14rem;
-}
-
-/* The dot says the pane is live; its ring ripples once per redraw. */
+/* The header's dot matches the one on the tab. */
 .assistant-pane-card__live {
   position: relative;
   flex: 0 0 auto;
@@ -71,15 +15,6 @@
   height: var(--app-space-8);
   border-radius: var(--app-radius-pill);
   background: var(--app-palette-primary-main);
-}
-
-.assistant-pane-card__ring {
-  position: absolute;
-  inset: 0;
-  border-radius: var(--app-radius-pill);
-  background: var(--app-palette-primary-main);
-  opacity: 0;
-  pointer-events: none;
 }
 
 .assistant-pane-card__body {
@@ -130,10 +65,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .assistant-pane-card {
-    animation: none;
-  }
-
   .assistant-pane-card__resize::after {
     transition: none;
   }
