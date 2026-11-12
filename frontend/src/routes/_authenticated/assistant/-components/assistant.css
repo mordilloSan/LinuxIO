@@ -193,14 +193,13 @@
 }
 
 /* A code block is one surface: a bar naming the language with its actions,
-   then the code. It takes the column, like the cards, and wears the theme's
-   code block colours (Settings → Theme), as the log views do: set into the
-   page, not raised from it. */
+   then the code. It takes the column, like the cards, and is set into the
+   page, not raised from it: a shade below the page's own background. */
 .assistant-code {
   margin: 0.9em 0;
   border: 1px solid var(--app-palette-divider);
   border-radius: var(--app-radius-md);
-  background: var(--app-code-block-background);
+  background: var(--app-code-inset-background);
   overflow: hidden;
 }
 
@@ -209,29 +208,31 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--app-space-8);
-  padding: var(--app-space-2) var(--app-space-4) var(--app-space-2)
+  padding: var(--app-space-12) var(--app-space-8) var(--app-space-12)
     var(--app-space-12);
   border-bottom: 1px solid var(--app-palette-divider);
   color: var(--app-palette-text-secondary);
   font-size: calc(var(--app-font-size-body) * 0.85);
 }
 
-/* Copy reads in the code's own colour; Open in terminal is the one accent,
-   in the theme's primary colour (AppButton's default). */
+/* Copy reads at full text colour, like the code; Open in terminal is the one
+   accent, in the theme's primary colour (AppButton's default). */
 .assistant-code__actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: var(--app-space-4);
-  color: var(--app-code-block-color);
+  color: var(--app-palette-text-primary);
 }
 
+/* The code has room around it and between its lines. */
 .assistant-block .assistant-code pre {
   margin: 0;
+  padding: var(--app-space-12);
   border-radius: 0;
   background: none;
-  color: var(--app-code-block-color);
+  line-height: 1.7;
 }
 
 /* Under a finished answer: time and tokens on the right. */

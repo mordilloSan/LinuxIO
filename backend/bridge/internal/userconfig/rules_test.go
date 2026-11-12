@@ -37,9 +37,17 @@ func TestNewThemeColorsValidatesAndSkipsUnset(t *testing.T) {
 	require.EqualError(t, err, "invalid themeColors.light.codeText")
 }
 
+func TestNewThemeColorsTakesTheCodeInsetBackground(t *testing.T) {
+	colors, err := NewThemeColors(map[string]*string{"codeInsetBackground": new("#161F2B")}, "dark")
+	require.NoError(t, err)
+	require.NotNil(t, colors)
+	require.NotNil(t, colors.CodeInsetBackground)
+	require.Equal(t, "#161F2B", string(*colors.CodeInsetBackground))
+}
+
 func TestThemeColorSlotsCoverEveryField(t *testing.T) {
 	colors := &ThemeColors{}
-	require.Len(t, themeColorSlots(colors), 18)
+	require.Len(t, themeColorSlots(colors), 19)
 	cloned := cloneThemeColors(defaultThemeColors().Dark)
 	for _, slot := range themeColorSlots(cloned) {
 		require.NotNil(t, *slot.Value, slot.Key)

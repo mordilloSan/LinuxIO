@@ -896,6 +896,7 @@ export interface ConfigThemeColorsPayload {
   dialogBackdrop?: string;
   codeBackground?: string;
   codeText?: string;
+  codeInsetBackground?: string;
   chartRx?: string;
   chartTx?: string;
   chartNeutral?: string;

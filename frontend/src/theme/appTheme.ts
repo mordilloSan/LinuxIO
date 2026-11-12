@@ -3,7 +3,7 @@ import {
   getContrastText,
   resolvePrimaryColor,
 } from "@/theme/colors";
-import { darken, lighten } from "@/theme/colorUtils";
+import { darken, lighten, toHexColor } from "@/theme/colorUtils";
 import variants from "@/theme/variants";
 
 /* User overrides for the theme's resolved colours, per colour scheme. The
@@ -20,6 +20,7 @@ export interface ThemeColors {
   dialogGlow?: string;
   dialogBackdrop?: string;
   codeBackground?: string;
+  codeInsetBackground?: string;
   codeText?: string;
   chartRx?: string;
   chartTx?: string;
@@ -60,6 +61,8 @@ export interface AppTheme {
   codeBlock: {
     background: string;
     color: string;
+    /** The surface of code set into a page, as in the Assistant's answers. */
+    insetBackground: string;
   };
   colorScheme: "light" | "dark";
   dialog: {
@@ -266,6 +269,9 @@ function resolveVariantTheme(
       background:
         themeColors?.codeBackground ?? themeConfig.codeBlock.background,
       color: themeColors?.codeText ?? themeConfig.codeBlock.color,
+      insetBackground:
+        themeColors?.codeInsetBackground ??
+        defaultCodeInset(palette.background.default, mode),
     },
     chart: {
       rx: themeColors?.chartRx ?? themeConfig.chart.rx,
@@ -315,6 +321,14 @@ function resolveVariantTheme(
       },
     },
   };
+}
+
+// Until the user sets it, code set into a page sits a shade below the page's
+// own background, so it keeps the page's hue under any background colour. Hex,
+// because the Settings colour input shows it.
+function defaultCodeInset(background: string, mode: "light" | "dark") {
+  const shade = darken(background, mode === "dark" ? 0.18 : 0.03);
+  return toHexColor(shade) ?? shade;
 }
 
 export function buildAppTheme(

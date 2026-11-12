@@ -221,10 +221,14 @@ advertises the matching capability.
 - **Markdown.** Agent replies render as Markdown with GitHub tables,
   strikethrough, task lists and autolinks, no raw HTML. Links open in a new tab
   and each code block is one surface with a bar naming the fence language and
-  a Copy button, as wide as the column. The block uses the theme's code block
-  colours (`--app-code-block-background` and `--app-code-block-color`, the ones
-  Settings → Theme edits and the log views use): the background sets it into
-  the page, and the code and Copy read in the code colour. Fenced code is
+  a Copy button, as wide as the column. The block's background is the theme
+  colour `codeInsetBackground` (`--app-code-inset-background`, "Assistant code
+  background" under Settings → Theme). A new configuration starts it at the
+  default page background a shade darker; a configuration without the key
+  derives it from its own page background (18% darker on dark, 3% on light),
+  so the block is set into the page and keeps the page's hue. The code and
+  Copy read at full text colour. It is not the theme's code block colour
+  (`codeBackground`), which is the surface of the log views. Fenced code is
   syntax-highlighted using
   the file editor's languages (blocks over 20,000 characters stay plain). User,
   thought and plan text stay plain. Paragraphs and lists are spaced in `em`,

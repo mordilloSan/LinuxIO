@@ -117,6 +117,9 @@ export function getThemeCssVariables(theme: AppTheme): Record<string, string> {
     "--app-chart-neutral": theme.chart.neutral,
     "--app-code-block-background": theme.codeBlock.background,
     "--app-code-block-color": theme.codeBlock.color,
+    // Code set into the page (the Assistant's code blocks). The code block
+    // colours above are a surface of their own, with its own text.
+    "--app-code-inset-background": theme.codeBlock.insetBackground,
     "--app-file-browser-surface": theme.fileBrowser.surface,
     "--app-file-browser-chrome": theme.fileBrowser.chrome,
     "--app-file-browser-breadcrumb-background":

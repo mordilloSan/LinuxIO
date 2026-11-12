@@ -75,17 +75,21 @@ type ThemeColorsByMode struct {
 
 // ThemeColors holds optional per-field color overrides for the UI theme
 type ThemeColors struct {
-	BackgroundDefault               *CSSColor `json:"backgroundDefault,omitzero" yaml:"backgroundDefault,omitempty"`
-	BackgroundPaper                 *CSSColor `json:"backgroundPaper,omitzero" yaml:"backgroundPaper,omitempty"`
-	HeaderBackground                *CSSColor `json:"headerBackground,omitzero" yaml:"headerBackground,omitempty"`
-	FooterBackground                *CSSColor `json:"footerBackground,omitzero" yaml:"footerBackground,omitempty"`
-	SidebarBackground               *CSSColor `json:"sidebarBackground,omitzero" yaml:"sidebarBackground,omitempty"`
-	CardBackground                  *CSSColor `json:"cardBackground,omitzero" yaml:"cardBackground,omitempty"`
-	DialogBorder                    *CSSColor `json:"dialogBorder,omitzero" yaml:"dialogBorder,omitempty"`
-	DialogGlow                      *CSSColor `json:"dialogGlow,omitzero" yaml:"dialogGlow,omitempty"`
-	DialogBackdrop                  *CSSColor `json:"dialogBackdrop,omitzero" yaml:"dialogBackdrop,omitempty"`
-	CodeBackground                  *CSSColor `json:"codeBackground,omitzero" yaml:"codeBackground,omitempty"`
-	CodeText                        *CSSColor `json:"codeText,omitzero" yaml:"codeText,omitempty"`
+	BackgroundDefault *CSSColor `json:"backgroundDefault,omitzero" yaml:"backgroundDefault,omitempty"`
+	BackgroundPaper   *CSSColor `json:"backgroundPaper,omitzero" yaml:"backgroundPaper,omitempty"`
+	HeaderBackground  *CSSColor `json:"headerBackground,omitzero" yaml:"headerBackground,omitempty"`
+	FooterBackground  *CSSColor `json:"footerBackground,omitzero" yaml:"footerBackground,omitempty"`
+	SidebarBackground *CSSColor `json:"sidebarBackground,omitzero" yaml:"sidebarBackground,omitempty"`
+	CardBackground    *CSSColor `json:"cardBackground,omitzero" yaml:"cardBackground,omitempty"`
+	DialogBorder      *CSSColor `json:"dialogBorder,omitzero" yaml:"dialogBorder,omitempty"`
+	DialogGlow        *CSSColor `json:"dialogGlow,omitzero" yaml:"dialogGlow,omitempty"`
+	DialogBackdrop    *CSSColor `json:"dialogBackdrop,omitzero" yaml:"dialogBackdrop,omitempty"`
+	CodeBackground    *CSSColor `json:"codeBackground,omitzero" yaml:"codeBackground,omitempty"`
+	CodeText          *CSSColor `json:"codeText,omitzero" yaml:"codeText,omitempty"`
+	// CodeInsetBackground is the surface of code set into a page (the
+	// Assistant's code blocks). Unset, the UI uses the page background a shade
+	// darker, so it follows BackgroundDefault.
+	CodeInsetBackground             *CSSColor `json:"codeInsetBackground,omitzero" yaml:"codeInsetBackground,omitempty"`
 	ChartRx                         *CSSColor `json:"chartRx,omitzero" yaml:"chartRx,omitempty"`
 	ChartTx                         *CSSColor `json:"chartTx,omitzero" yaml:"chartTx,omitempty"`
 	ChartNeutral                    *CSSColor `json:"chartNeutral,omitzero" yaml:"chartNeutral,omitempty"`

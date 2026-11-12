@@ -142,6 +142,7 @@ type ConfigThemeColorsPayload struct {
 	DialogBackdrop                  *string `json:"dialogBackdrop,omitzero"`
 	CodeBackground                  *string `json:"codeBackground,omitzero"`
 	CodeText                        *string `json:"codeText,omitzero"`
+	CodeInsetBackground             *string `json:"codeInsetBackground,omitzero"`
 	ChartRx                         *string `json:"chartRx,omitzero"`
 	ChartTx                         *string `json:"chartTx,omitzero"`
 	ChartNeutral                    *string `json:"chartNeutral,omitzero"`

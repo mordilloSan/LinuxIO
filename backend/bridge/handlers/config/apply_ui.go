@@ -120,6 +120,7 @@ func buildThemeColors(payload *apischema.ConfigThemeColorsPayload, mode string) 
 		"dialogBackdrop":                  payload.DialogBackdrop,
 		"codeBackground":                  payload.CodeBackground,
 		"codeText":                        payload.CodeText,
+		"codeInsetBackground":             payload.CodeInsetBackground,
 		"chartRx":                         payload.ChartRx,
 		"chartTx":                         payload.ChartTx,
 		"chartNeutral":                    payload.ChartNeutral,
