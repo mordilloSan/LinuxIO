@@ -15,6 +15,7 @@ import {
 
 import type { Attachment } from "./attachments";
 import {
+  appendTurnEnd,
   appendUserMessage,
   applySessionUpdate,
   type TranscriptBlock,
@@ -379,8 +380,11 @@ async function runTurn(
 ) {
   const attempt = currentAttempt;
   const isCurrent = () => attempt === currentAttempt;
+  // Callers set turnStartedAt before the turn; it is cleared when it ends.
+  const startedAt = state.turnStartedAt ?? Date.now();
+  let response: acp.PromptResponse | null = null;
   try {
-    await conn.prompt(sessionId, blocks);
+    response = await conn.prompt(sessionId, blocks);
   } catch (error) {
     if (!isCurrent()) return;
     if (isAuthRequiredError(error)) {
@@ -395,6 +399,16 @@ async function runTurn(
   } finally {
     if (isCurrent()) {
       flushUpdates();
+      if (response) {
+        // The footer under the answer: how long the turn took and its tokens.
+        setState({
+          blocks: appendTurnEnd(
+            state.blocks,
+            Date.now() - startedAt,
+            response.usage ?? null,
+          ),
+        });
+      }
       const queued = state.queuedPrompt;
       // getState(): TS narrows `state.status` after the guards in the callers.
       if (assistantStore.getState().status === "running") {

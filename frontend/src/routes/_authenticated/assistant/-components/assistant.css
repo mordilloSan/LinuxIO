@@ -110,7 +110,7 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: var(--app-space-12);
+  gap: var(--app-space-16);
   width: 100%;
   max-width: var(--assistant-column);
   margin-inline: auto;
@@ -188,11 +188,8 @@
 }
 
 /* A code block is one surface: a bar naming the language with the copy
-   button in it, then the code. It hugs its longest line. */
+   button in it, then the code. It takes the column, like the cards. */
 .assistant-code {
-  width: fit-content;
-  min-width: min(240px, 100%);
-  max-width: 100%;
   margin: var(--app-space-8) 0;
   border: 1px solid var(--app-palette-divider);
   border-radius: var(--app-radius-md);
@@ -218,18 +215,33 @@
   background: none;
 }
 
-/* Copying an answer is offered once the pointer or the keyboard is on it. */
-.assistant-block__actions {
+/* Under a finished answer: copy on the left, time and tokens on the right. */
+.assistant-turn {
   display: flex;
-  margin-top: var(--app-space-2);
-  opacity: 0;
-  transition: opacity var(--app-transition-duration-fast)
-    var(--app-easing-standard);
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--app-space-8);
+  color: var(--app-palette-text-secondary);
+  font-size: calc(var(--app-font-size-body) * 0.85);
 }
 
-.assistant-block--agent:hover .assistant-block__actions,
-.assistant-block__actions:focus-within {
-  opacity: 1;
+.app-btn.assistant-turn__action {
+  margin-inline-start: calc(-1 * var(--app-space-8));
+  padding: var(--app-space-2) var(--app-space-8);
+  color: inherit;
+  font: inherit;
+  text-transform: none;
+}
+
+.app-btn.assistant-turn__action:hover,
+.app-btn.assistant-turn__action:focus-visible {
+  color: var(--app-palette-text-primary);
+}
+
+.assistant-turn__stats {
+  margin-inline-start: auto;
+  font-variant-numeric: tabular-nums;
 }
 
 .assistant-markdown > :first-child {

@@ -53,6 +53,7 @@ export default function SidePanel({ side }: { side: SideSession }) {
       <Transcript
         blocks={side.blocks}
         label="Side question"
+        running={running}
         sessionId={side.sessionId}
       />
       {side.pending ? (

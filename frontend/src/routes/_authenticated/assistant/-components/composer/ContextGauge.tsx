@@ -5,7 +5,7 @@ import type { AssistantState } from "../assistant-store";
 const RADIUS = 6;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
-const fmtTokens = (n: number) =>
+export const fmtTokens = (n: number) =>
   n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k` : String(n);
 
 function fmtCost({ amount, currency }: { amount: number; currency: string }) {

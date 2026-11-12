@@ -157,6 +157,79 @@ describe("Transcript", () => {
     expect(await navigator.clipboard.readText()).toBe("**hi**");
   });
 
+  describe("turn footer", () => {
+    const turn = (usage: { outputTokens: number } | null): TranscriptBlock => ({
+      kind: "turn",
+      id: "t",
+      durationMs: 14_200,
+      usage: usage && { inputTokens: 12, totalTokens: 0, ...usage },
+    });
+
+    it("shows how long the turn took and the tokens it wrote", () => {
+      render(
+        <Transcript
+          blocks={[
+            { kind: "agent", id: "1", text: "done" },
+            turn({ outputTokens: 2100 }),
+          ]}
+        />,
+      );
+      const stats = screen.getByText("14 s · 2.1k tokens");
+      expect(stats).toHaveAttribute("title", "Output 2,100, input 12");
+    });
+
+    it("shows the time alone when the agent reports no usage", () => {
+      render(
+        <Transcript
+          blocks={[{ kind: "agent", id: "1", text: "done" }, turn(null)]}
+        />,
+      );
+      expect(screen.getByText("14 s")).toBeInTheDocument();
+    });
+
+    it("copies every part of the answer, around its tool calls", async () => {
+      const user = userEvent.setup();
+      render(
+        <Transcript
+          blocks={[
+            { kind: "user", id: "0", text: "go", attachments: [] },
+            { kind: "agent", id: "1", text: "first" },
+            check("a"),
+            { kind: "agent", id: "2", text: "second" },
+            turn(null),
+          ]}
+        />,
+      );
+      await user.click(screen.getByRole("button", { name: "Copy answer" }));
+      expect(await navigator.clipboard.readText()).toBe("first\n\nsecond");
+    });
+
+    it("gives a replayed answer a footer before the next prompt", () => {
+      render(
+        <Transcript
+          blocks={[
+            { kind: "agent", id: "1", text: "old answer" },
+            { kind: "user", id: "2", text: "next", attachments: [] },
+          ]}
+          running
+        />,
+      );
+      expect(
+        screen.getAllByRole("button", { name: "Copy answer" }),
+      ).toHaveLength(1);
+    });
+
+    it("has no footer while the answer is still being written", () => {
+      render(
+        <Transcript
+          blocks={[{ kind: "agent", id: "1", text: "so far" }]}
+          running
+        />,
+      );
+      expect(screen.queryByRole("button", { name: "Copy answer" })).toBeNull();
+    });
+  });
+
   describe("tool runs", () => {
     const read = (id: string, status = "completed") => check(id, status);
 

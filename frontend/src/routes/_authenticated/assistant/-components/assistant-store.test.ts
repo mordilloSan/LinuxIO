@@ -228,8 +228,37 @@ describe("assistantStore", () => {
     expect(assistantStore.getState().blocks.map((b) => b.kind)).toEqual([
       "user",
       "agent",
+      "turn",
     ]);
     expect(assistantStore.getState().status).toBe("ready");
+  });
+
+  it("ends a turn with its duration and the agent's token usage", async () => {
+    const usage = { inputTokens: 3, outputTokens: 40, totalTokens: 43 };
+    const { conn, connector } = fakeConnection();
+    vi.mocked(conn.prompt).mockResolvedValueOnce({
+      stopReason: "end_turn",
+      usage,
+    });
+    assistantStore._setConnector(connector);
+    await assistantStore.connect("claude");
+    await send("hello");
+    expect(assistantStore.getState().blocks.at(-1)).toMatchObject({
+      kind: "turn",
+      durationMs: expect.any(Number),
+      usage,
+    });
+  });
+
+  it("adds no turn end when the prompt fails", async () => {
+    const { conn, connector } = fakeConnection();
+    vi.mocked(conn.prompt).mockRejectedValueOnce(new Error("boom"));
+    assistantStore._setConnector(connector);
+    await assistantStore.connect("claude");
+    await send("hello");
+    expect(assistantStore.getState().blocks.map((b) => b.kind)).toEqual([
+      "user",
+    ]);
   });
 
   it("applies streamed chunks in one state update per frame, and flushes at turn end", async () => {

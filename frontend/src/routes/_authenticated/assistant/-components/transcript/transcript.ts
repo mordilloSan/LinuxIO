@@ -19,7 +19,17 @@ export type TranscriptBlock =
   | { kind: "agent"; id: string; text: string }
   | { kind: "thought"; id: string; text: string }
   | ToolBlock
-  | { kind: "plan"; id: string; entries: acp.PlanEntry[] };
+  | { kind: "plan"; id: string; entries: acp.PlanEntry[] }
+  | TurnBlock;
+
+/** The end of a finished turn: how long it took and what it used. */
+export type TurnBlock = {
+  kind: "turn";
+  id: string;
+  durationMs: number;
+  /** The agent's token count for the turn, when it reports one. */
+  usage: acp.Usage | null;
+};
 
 /** A non-blank string field of an agent's untyped tool input, if it has one. */
 export const stringField = (value: unknown, key: string) => {
@@ -57,6 +67,14 @@ export function appendUserMessage(
   attachments: Attachment[],
 ): TranscriptBlock[] {
   return [...blocks, { kind: "user", id: newId(), text, attachments }];
+}
+
+export function appendTurnEnd(
+  blocks: readonly TranscriptBlock[],
+  durationMs: number,
+  usage: acp.Usage | null,
+): TranscriptBlock[] {
+  return [...blocks, { kind: "turn", id: newId(), durationMs, usage }];
 }
 
 export function applySessionUpdate(

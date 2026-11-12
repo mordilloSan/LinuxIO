@@ -2,13 +2,13 @@ import type * as acp from "@agentclientprotocol/sdk/unstable";
 import { Icon } from "@iconify/react";
 import { type ReactNode, useRef, useState } from "react";
 
-import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import { copyToClipboard } from "@/utils/clipboard";
 
 import type { Attachment } from "../attachments";
 import AttachmentChip from "../composer/AttachmentChip";
+import { fmtTokens } from "../composer/ContextGauge";
 import DiffView from "./DiffView";
 import MarkdownBlock from "./MarkdownBlock";
 import { isReadOnlyCommand } from "./readOnlyCommand";
@@ -16,6 +16,7 @@ import {
   stringField,
   type ToolBlock,
   type TranscriptBlock,
+  type TurnBlock,
 } from "./transcript";
 import { useFollowBottom } from "./useFollowBottom";
 
@@ -255,30 +256,56 @@ function ChangeCard({ tools }: { tools: ToolBlock[] }) {
 
 type Row =
   | { key: string; block: TranscriptBlock }
-  | { key: string; tools: ToolBlock[]; acting: boolean };
+  | { key: string; tools: ToolBlock[]; acting: boolean }
+  | { key: string; answer: string; turn: TurnBlock | null };
 
 /**
  * Consecutive tool blocks become runs: checks in a log, actions in a card,
  * each keyed by its first call. The call waiting for an answer is left out;
- * the permission card shows it.
+ * the permission card shows it. Every answer ends in a footer: before the
+ * next prompt, and at the end unless the turn is still running.
  */
 function groupRows(
   blocks: TranscriptBlock[],
   pendingToolCallId: string | null,
+  running: boolean,
 ): Row[] {
   const rows: Row[] = [];
   let run: ToolBlock[] = [];
   let acting = false;
+  let answer: string[] = [];
+  let turn: TurnBlock | null = null;
+  let anchor = "";
   const flush = () => {
     if (run.length > 0) {
       rows.push({ key: `group:${run[0].toolCallId}`, tools: run, acting });
     }
     run = [];
   };
+  const endTurn = () => {
+    flush();
+    if (answer.length > 0 || turn) {
+      rows.push({ key: `turn:${anchor}`, answer: answer.join("\n\n"), turn });
+    }
+    answer = [];
+    turn = null;
+    anchor = "";
+  };
   for (const block of blocks) {
+    if (block.kind === "turn") {
+      turn = block;
+      anchor ||= block.id;
+      endTurn();
+      continue;
+    }
+    if (block.kind === "user") endTurn();
     if (block.kind !== "tool") {
       flush();
       rows.push({ key: block.id, block });
+      if (block.kind === "agent") {
+        answer.push(block.text);
+        anchor ||= block.id;
+      }
       continue;
     }
     if (block.toolCallId === pendingToolCallId) continue;
@@ -287,7 +314,8 @@ function groupRows(
     acting = blockActs;
     run.push(block);
   }
-  flush();
+  if (running) flush();
+  else endTurn();
   return rows;
 }
 
@@ -314,20 +342,65 @@ function UserBlock({
 
 function AgentBlock({ text }: { text: string }) {
   return (
-    <div className="assistant-block assistant-block--agent">
+    <div className="assistant-block">
       <MarkdownBlock text={text} />
-      <div className="assistant-block__actions">
-        <AppActionIconButton
-          ariaLabel="Copy answer"
-          icon="mdi:content-copy"
-          iconSize={14}
-          label="Copy answer"
+    </div>
+  );
+}
+
+const duration = (ms: number) => {
+  const seconds = Math.max(1, Math.round(ms / 1000));
+  return seconds < 60
+    ? `${seconds} s`
+    : `${Math.floor(seconds / 60)} min ${seconds % 60} s`;
+};
+
+/**
+ * Under a finished answer: copy it, and what the turn cost. The count shown
+ * is what the model wrote; the tooltip has what it read, cached or not.
+ */
+function TurnFooter({
+  answer,
+  turn,
+}: {
+  answer: string;
+  turn: TurnBlock | null;
+}) {
+  const usage = turn?.usage ?? null;
+  const breakdown = usage
+    ? [
+        `Output ${usage.outputTokens.toLocaleString()}`,
+        `input ${usage.inputTokens.toLocaleString()}`,
+        usage.cachedReadTokens
+          ? `cache read ${usage.cachedReadTokens.toLocaleString()}`
+          : null,
+        usage.cachedWriteTokens
+          ? `cache write ${usage.cachedWriteTokens.toLocaleString()}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(", ")
+    : undefined;
+  return (
+    <div className="assistant-turn">
+      {answer ? (
+        <AppButton
+          className="assistant-turn__action"
+          color="inherit"
           onClick={() => {
-            copyToClipboard(text).catch(() => {});
+            copyToClipboard(answer).catch(() => {});
           }}
           size="small"
-        />
-      </div>
+        >
+          Copy answer
+        </AppButton>
+      ) : null}
+      {turn ? (
+        <span className="assistant-turn__stats" title={breakdown}>
+          {duration(turn.durationMs)}
+          {usage ? ` · ${fmtTokens(usage.outputTokens)} tokens` : ""}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -381,6 +454,7 @@ export default function Transcript({
   blocks,
   sessionId,
   pendingToolCallId = null,
+  running = false,
   label = "Conversation",
   children,
 }: {
@@ -388,6 +462,8 @@ export default function Transcript({
   sessionId?: string | null;
   /** The tool call a permission card is asking about, if any. */
   pendingToolCallId?: string | null;
+  /** A turn is in progress, so the last answer has no footer yet. */
+  running?: boolean;
   label?: string;
   /** Shown in place of the rows while the conversation is empty. */
   children?: ReactNode;
@@ -405,13 +481,15 @@ export default function Transcript({
       <div className="assistant__transcript-column">
         {blocks.length === 0
           ? children
-          : groupRows(blocks, pendingToolCallId).map((row) =>
+          : groupRows(blocks, pendingToolCallId, running).map((row) =>
               "tools" in row ? (
                 row.acting ? (
                   <ChangeCard key={row.key} tools={row.tools} />
                 ) : (
                   <CheckLog key={row.key} tools={row.tools} />
                 )
+              ) : "answer" in row ? (
+                <TurnFooter answer={row.answer} key={row.key} turn={row.turn} />
               ) : (
                 <TranscriptRow key={row.key} block={row.block} />
               ),

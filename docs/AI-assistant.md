@@ -163,6 +163,15 @@ advertises the matching capability.
   pipeline must read, and a redirection or command substitution makes the
   whole command count as acting. This is presentation only and errs towards
   "acting"; permissions stay with the agent.
+- **Turn footer.** Every answer ends in a footer: before the next prompt,
+  and at the end of the conversation once the turn is over. Copy answer copies
+  the Markdown source of the turn's agent text. For a turn that ran in this
+  page, the footer also shows how long it took and, when the agent's
+  `session/prompt` response carries `usage`, the output tokens (`14 s · 2.1k
+  tokens`), with input and cache counts in the tooltip. The store appends a
+  `turn` block when the prompt resolves; a failed prompt gets none, and
+  replayed history has the copy button without the numbers, since the agent
+  does not replay them.
 - **Reading column.** The transcript scrolls across the page, but its rows,
   the permission card, the status line and the prompt share one centred
   860 px column. The user's prompt is a bubble sized to its text on the
@@ -198,8 +207,7 @@ advertises the matching capability.
 - **Markdown.** Agent replies render as Markdown with GitHub tables,
   strikethrough, task lists and autolinks, no raw HTML. Links open in a new tab
   and each code block is one surface with a bar naming the fence language and
-  a Copy button. An answer shows a Copy answer button on hover or focus, which
-  copies its Markdown source. Fenced code is syntax-highlighted using
+  a Copy button, as wide as the column. Fenced code is syntax-highlighted using
   the file editor's languages (blocks over 20,000 characters stay plain). User,
   thought and plan text stay plain.
 - **Diff view.** Tool calls that carry a diff show it as a line diff with the

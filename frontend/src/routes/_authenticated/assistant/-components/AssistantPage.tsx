@@ -367,6 +367,7 @@ export default function AssistantPage({
             pendingToolCallId={
               state.pending?.request.toolCall.toolCallId ?? null
             }
+            running={status === "running"}
             sessionId={state.sessionId}
           >
             {state.status === "ready" ? (
