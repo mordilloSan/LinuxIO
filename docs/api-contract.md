@@ -458,6 +458,23 @@ theme, navigation, section visibility, view-mode, layout-order, and related
 presentation fields. The frontend combines these responses into its internal
 effective configuration; that combined type is not a wire contract.
 
+`UIConfig.themeColors` holds the colour overrides of each scheme as a map
+from `ThemeColorKey` to a CSS colour. The keys, their order in `ui.yaml` and
+the colours a new configuration starts with are one table,
+`themeColorDefs` in `backend/bridge/internal/userconfig/themecolors.go`, so a
+new theme colour is one line of Go: the stored type, validation, defaults and
+both conversions iterate the table, and `apischema.StringEnums` publishes its
+keys as the `ThemeColorKey` union. The generator renders a Go map keyed by a
+string enum as `Partial<Record<Enum, Value>>`, which keeps the keys typed on
+the frontend; any other map stays `Record<string, Value>`. On `config.set_ui`
+a key that is absent or `null` is left out of the stored overrides, so like
+any omitted UI field it resolves to the backend default on the next read; an
+invalid colour is refused, and a key that is not a theme colour is refused
+with 400 by the handler, because a map lets the request decoder accept any
+key. `ui.yaml` is read over the defaults: a key replaces that colour, a
+`null` key or scheme unsets it (the bridge itself never writes one), and an
+unknown key or scheme fails the strict decode.
+
 This is an intentional change to the prior `config.get`/`config.set` shape.
 Keeping UI fields in those messages would preserve the ownership ambiguity and
 make omission impossible to define as reset-to-backend-default. The bridge and

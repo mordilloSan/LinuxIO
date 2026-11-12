@@ -67,43 +67,6 @@ type HardwareSections struct {
 	MemoryModules bool `json:"memoryModules" yaml:"memoryModules"`
 }
 
-// ThemeColorsByMode holds separate color overrides for light and dark mode
-type ThemeColorsByMode struct {
-	Light *ThemeColors `json:"light,omitzero" yaml:"light,omitempty"`
-	Dark  *ThemeColors `json:"dark,omitzero" yaml:"dark,omitempty"`
-}
-
-// ThemeColors holds optional per-field color overrides for the UI theme
-type ThemeColors struct {
-	BackgroundDefault *CSSColor `json:"backgroundDefault,omitzero" yaml:"backgroundDefault,omitempty"`
-	BackgroundPaper   *CSSColor `json:"backgroundPaper,omitzero" yaml:"backgroundPaper,omitempty"`
-	HeaderBackground  *CSSColor `json:"headerBackground,omitzero" yaml:"headerBackground,omitempty"`
-	FooterBackground  *CSSColor `json:"footerBackground,omitzero" yaml:"footerBackground,omitempty"`
-	SidebarBackground *CSSColor `json:"sidebarBackground,omitzero" yaml:"sidebarBackground,omitempty"`
-	CardBackground    *CSSColor `json:"cardBackground,omitzero" yaml:"cardBackground,omitempty"`
-	DialogBorder      *CSSColor `json:"dialogBorder,omitzero" yaml:"dialogBorder,omitempty"`
-	DialogGlow        *CSSColor `json:"dialogGlow,omitzero" yaml:"dialogGlow,omitempty"`
-	DialogBackdrop    *CSSColor `json:"dialogBackdrop,omitzero" yaml:"dialogBackdrop,omitempty"`
-	CodeBackground    *CSSColor `json:"codeBackground,omitzero" yaml:"codeBackground,omitempty"`
-	CodeText          *CSSColor `json:"codeText,omitzero" yaml:"codeText,omitempty"`
-	// CodeInsetBackground is the surface of code set into a page (the
-	// Assistant's code blocks). Unset, the UI uses the page background a shade
-	// darker, so it follows BackgroundDefault.
-	CodeInsetBackground *CSSColor `json:"codeInsetBackground,omitzero" yaml:"codeInsetBackground,omitempty"`
-	// PanePictureBackground is the box behind a plugin pane's picture in the
-	// Assistant, the colour the picture is blended onto. Unset, the UI uses the
-	// page background well darker on dark, so it follows BackgroundDefault, and
-	// the paper colour on light.
-	PanePictureBackground           *CSSColor `json:"panePictureBackground,omitzero" yaml:"panePictureBackground,omitempty"`
-	ChartRx                         *CSSColor `json:"chartRx,omitzero" yaml:"chartRx,omitempty"`
-	ChartTx                         *CSSColor `json:"chartTx,omitzero" yaml:"chartTx,omitempty"`
-	ChartNeutral                    *CSSColor `json:"chartNeutral,omitzero" yaml:"chartNeutral,omitempty"`
-	FileBrowserSurface              *CSSColor `json:"fileBrowserSurface,omitzero" yaml:"fileBrowserSurface,omitempty"`
-	FileBrowserChrome               *CSSColor `json:"fileBrowserChrome,omitzero" yaml:"fileBrowserChrome,omitempty"`
-	FileBrowserBreadcrumbBackground *CSSColor `json:"fileBrowserBreadcrumbBackground,omitzero" yaml:"fileBrowserBreadcrumbBackground,omitempty"`
-	FileBrowserBreadcrumbText       *CSSColor `json:"fileBrowserBreadcrumbText,omitzero" yaml:"fileBrowserBreadcrumbText,omitempty"`
-}
-
 // DockAccentGradient controls the generated accent palette used by dock tiles.
 // Empty colors derive their values from the active theme accent.
 type DockAccentGradient struct {

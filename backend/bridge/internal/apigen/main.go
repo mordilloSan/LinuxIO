@@ -411,11 +411,7 @@ func (r *tsRenderer) reflectType(t reflect.Type) string {
 	case reflect.Slice, reflect.Array:
 		return r.reflectType(t.Elem()) + "[]"
 	case reflect.Map:
-		key := r.reflectType(t.Key())
-		if key != "string" && key != "number" {
-			key = "string"
-		}
-		return fmt.Sprintf("Record<%s, %s>", key, r.reflectType(t.Elem()))
+		return r.mapType(t)
 	case reflect.Struct:
 		if t.Name() != "" {
 			r.addDefinition(t)
@@ -471,6 +467,21 @@ func (r *tsRenderer) addAlias(t reflect.Type) {
 	r.defs[t.Name()] = fmt.Sprintf("export type %s = %s;\n\n", t.Name(), r.unnamedType(t))
 }
 
+// mapType renders a Go map. A map keyed by a string enum keeps its keys typed
+// and, since a map need not hold every key, is partial; any other key is a
+// plain string or number.
+func (r *tsRenderer) mapType(t reflect.Type) string {
+	key := r.reflectType(t.Key())
+	value := r.reflectType(t.Elem())
+	if _, isEnum := apischema.StringEnums[t.Key().Name()]; isEnum && t.Key().Kind() == reflect.String {
+		return fmt.Sprintf("Partial<Record<%s, %s>>", key, value)
+	}
+	if key != "string" && key != "number" {
+		key = "string"
+	}
+	return fmt.Sprintf("Record<%s, %s>", key, value)
+}
+
 func (r *tsRenderer) unnamedType(t reflect.Type) string {
 	switch t.Kind() {
 	case reflect.Bool:
@@ -484,11 +495,7 @@ func (r *tsRenderer) unnamedType(t reflect.Type) string {
 	case reflect.Slice, reflect.Array:
 		return r.reflectType(t.Elem()) + "[]"
 	case reflect.Map:
-		key := r.reflectType(t.Key())
-		if key != "string" && key != "number" {
-			key = "string"
-		}
-		return fmt.Sprintf("Record<%s, %s>", key, r.reflectType(t.Elem()))
+		return r.mapType(t)
 	default:
 		return "unknown"
 	}

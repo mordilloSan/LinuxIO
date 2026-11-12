@@ -54,8 +54,8 @@ func TestConfigConversionsPreservePersistedJSONShapes(t *testing.T) {
 			GPU: true, PCIDevices: false, MemoryModules: true,
 		},
 		ThemeColors: &userconfig.ThemeColorsByMode{
-			Light: &userconfig.ThemeColors{BackgroundDefault: &light},
-			Dark:  &userconfig.ThemeColors{CodeText: &dark, CodeInsetBackground: &dark, PanePictureBackground: &dark},
+			Light: userconfig.ThemeColors{"backgroundDefault": light},
+			Dark:  userconfig.ThemeColors{"codeText": dark, "codeInsetBackground": dark, "panePictureBackground": dark},
 		},
 		ViewModes:        map[string]string{"docker": "table", "storage": "card"},
 		TerminalFontSize: 18,

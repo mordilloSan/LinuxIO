@@ -126,32 +126,17 @@ type ConfigDockAccentGradient struct {
 }
 
 type ConfigThemeColorsByModePayload struct {
-	Light *ConfigThemeColorsPayload `json:"light,omitzero"`
-	Dark  *ConfigThemeColorsPayload `json:"dark,omitzero"`
+	Light ConfigThemeColorsPayload `json:"light,omitzero"`
+	Dark  ConfigThemeColorsPayload `json:"dark,omitzero"`
 }
 
-type ConfigThemeColorsPayload struct {
-	BackgroundDefault               *string `json:"backgroundDefault,omitzero"`
-	BackgroundPaper                 *string `json:"backgroundPaper,omitzero"`
-	HeaderBackground                *string `json:"headerBackground,omitzero"`
-	FooterBackground                *string `json:"footerBackground,omitzero"`
-	SidebarBackground               *string `json:"sidebarBackground,omitzero"`
-	CardBackground                  *string `json:"cardBackground,omitzero"`
-	DialogBorder                    *string `json:"dialogBorder,omitzero"`
-	DialogGlow                      *string `json:"dialogGlow,omitzero"`
-	DialogBackdrop                  *string `json:"dialogBackdrop,omitzero"`
-	CodeBackground                  *string `json:"codeBackground,omitzero"`
-	CodeText                        *string `json:"codeText,omitzero"`
-	CodeInsetBackground             *string `json:"codeInsetBackground,omitzero"`
-	PanePictureBackground           *string `json:"panePictureBackground,omitzero"`
-	ChartRx                         *string `json:"chartRx,omitzero"`
-	ChartTx                         *string `json:"chartTx,omitzero"`
-	ChartNeutral                    *string `json:"chartNeutral,omitzero"`
-	FileBrowserSurface              *string `json:"fileBrowserSurface,omitzero"`
-	FileBrowserChrome               *string `json:"fileBrowserChrome,omitzero"`
-	FileBrowserBreadcrumbBackground *string `json:"fileBrowserBreadcrumbBackground,omitzero"`
-	FileBrowserBreadcrumbText       *string `json:"fileBrowserBreadcrumbText,omitzero"`
-}
+// ThemeColorKey names one theme colour. The keys are userconfig's list, which
+// StringEnums publishes as the literal union.
+type ThemeColorKey string
+
+// ConfigThemeColorsPayload holds one scheme's colour overrides by key. A key
+// that is absent or null is unset.
+type ConfigThemeColorsPayload map[ThemeColorKey]*string
 
 type ConfigDockerDashboardSections struct {
 	Overview   bool `json:"overview"`

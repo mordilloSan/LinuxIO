@@ -66,27 +66,7 @@ func cloneThemeColorsByMode(in *ThemeColorsByMode) *ThemeColorsByMode {
 		return nil
 	}
 	return &ThemeColorsByMode{
-		Light: cloneThemeColors(in.Light),
-		Dark:  cloneThemeColors(in.Dark),
+		Light: maps.Clone(in.Light),
+		Dark:  maps.Clone(in.Dark),
 	}
-}
-
-func cloneThemeColors(in *ThemeColors) *ThemeColors {
-	if in == nil {
-		return nil
-	}
-	out := *in
-	src := themeColorSlots(in)
-	for i, slot := range themeColorSlots(&out) {
-		*slot.Value = cloneCSSColor(*src[i].Value)
-	}
-	return &out
-}
-
-func cloneCSSColor(in *CSSColor) *CSSColor {
-	if in == nil {
-		return nil
-	}
-	out := *in
-	return &out
 }

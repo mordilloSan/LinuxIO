@@ -159,6 +159,8 @@ func TestRenderTypesCoversCoreRouteShapes(t *testing.T) {
 		`"monitoring.get_live": { request: void; result: MonitoringLive };`,
 		"export interface MonitoringLive",
 		"gpus: Record<string, LiveGPU>;",
+		"export type ConfigThemeColorsPayload = Partial<Record<ThemeColorKey, string>>;",
+		`export type ThemeColorKey = "backgroundDefault" | "backgroundPaper" |`,
 		"export interface LiveGPU",
 		`"docker.inspect_container": { request: ContainerIDRequest; result: ContainerInspectInfo };`,
 		"export type CallRoute = keyof LinuxIOCallSchema;",

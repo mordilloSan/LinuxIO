@@ -4,6 +4,7 @@ import (
 	"reflect"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 	monitoringapi "github.com/mordilloSan/LinuxIO/backend/monitoring/api"
 )
 
@@ -99,6 +100,7 @@ var StringEnums = map[string][]string{
 	// generator metadata here preserves the public literal union.
 	"SensorReadingKind":         {"number", "boolean"},
 	"TableCardViewMode":         {"card", "table"},
+	"ThemeColorKey":             userconfig.ThemeColorKeys(),
 	"Theme":                     {"LIGHT", "DARK"},
 	"NavigationMode":            {"sidebar", "dock"},
 	"DockTileColors":            {"accent", "mono", "neutral", "vibrant"},

@@ -3,9 +3,12 @@ package config
 import (
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 )
 
@@ -102,34 +105,18 @@ func applyThemeColorOverrides(ui *userconfig.UIPreferences, payload *apischema.C
 	return nil
 }
 
-// buildThemeColors maps the API payload fields to theme colour keys; the key
-// table, validation and field assignment live in internal/userconfig.
-func buildThemeColors(payload *apischema.ConfigThemeColorsPayload, mode string) (*userconfig.ThemeColors, error) {
-	if payload == nil {
-		return nil, nil
+// buildThemeColors hands the API payload to internal/userconfig, which owns
+// the key table and validation. The payload is a map, so the request decoder
+// no longer refuses a key that is not a theme colour; this does.
+func buildThemeColors(payload apischema.ConfigThemeColorsPayload, mode string) (userconfig.ThemeColors, error) {
+	values := make(map[string]*string, len(payload))
+	for _, key := range slices.Sorted(maps.Keys(payload)) {
+		if !userconfig.IsThemeColorKey(string(key)) {
+			return nil, fmt.Errorf("%w: unknown themeColors.%s.%s", bridgeipc.ErrInvalidArgs, mode, key)
+		}
+		values[string(key)] = payload[key]
 	}
-	return userconfig.NewThemeColors(map[string]*string{
-		"backgroundDefault":               payload.BackgroundDefault,
-		"backgroundPaper":                 payload.BackgroundPaper,
-		"headerBackground":                payload.HeaderBackground,
-		"footerBackground":                payload.FooterBackground,
-		"sidebarBackground":               payload.SidebarBackground,
-		"cardBackground":                  payload.CardBackground,
-		"dialogBorder":                    payload.DialogBorder,
-		"dialogGlow":                      payload.DialogGlow,
-		"dialogBackdrop":                  payload.DialogBackdrop,
-		"codeBackground":                  payload.CodeBackground,
-		"codeText":                        payload.CodeText,
-		"codeInsetBackground":             payload.CodeInsetBackground,
-		"panePictureBackground":           payload.PanePictureBackground,
-		"chartRx":                         payload.ChartRx,
-		"chartTx":                         payload.ChartTx,
-		"chartNeutral":                    payload.ChartNeutral,
-		"fileBrowserSurface":              payload.FileBrowserSurface,
-		"fileBrowserChrome":               payload.FileBrowserChrome,
-		"fileBrowserBreadcrumbBackground": payload.FileBrowserBreadcrumbBackground,
-		"fileBrowserBreadcrumbText":       payload.FileBrowserBreadcrumbText,
-	}, mode)
+	return userconfig.NewThemeColors(values, mode)
 }
 
 func applyOptionalDockerDashboardSections(ui *userconfig.UIPreferences, sections *apischema.ConfigDockerDashboardSections) {

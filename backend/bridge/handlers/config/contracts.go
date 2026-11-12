@@ -140,21 +140,15 @@ func themeColorsToAPI(value *userconfig.ThemeColorsByMode) *apischema.ConfigThem
 	return &apischema.ConfigThemeColorsByModePayload{Light: themeColorToAPI(value.Light), Dark: themeColorToAPI(value.Dark)}
 }
 
-func themeColorToAPI(value *userconfig.ThemeColors) *apischema.ConfigThemeColorsPayload {
+func themeColorToAPI(value userconfig.ThemeColors) apischema.ConfigThemeColorsPayload {
 	if value == nil {
 		return nil
 	}
-	return &apischema.ConfigThemeColorsPayload{
-		BackgroundDefault: cssColorToString(value.BackgroundDefault), BackgroundPaper: cssColorToString(value.BackgroundPaper), HeaderBackground: cssColorToString(value.HeaderBackground), FooterBackground: cssColorToString(value.FooterBackground), SidebarBackground: cssColorToString(value.SidebarBackground), CardBackground: cssColorToString(value.CardBackground), DialogBorder: cssColorToString(value.DialogBorder), DialogGlow: cssColorToString(value.DialogGlow), DialogBackdrop: cssColorToString(value.DialogBackdrop), CodeBackground: cssColorToString(value.CodeBackground), CodeText: cssColorToString(value.CodeText), CodeInsetBackground: cssColorToString(value.CodeInsetBackground), PanePictureBackground: cssColorToString(value.PanePictureBackground), ChartRx: cssColorToString(value.ChartRx), ChartTx: cssColorToString(value.ChartTx), ChartNeutral: cssColorToString(value.ChartNeutral), FileBrowserSurface: cssColorToString(value.FileBrowserSurface), FileBrowserChrome: cssColorToString(value.FileBrowserChrome), FileBrowserBreadcrumbBackground: cssColorToString(value.FileBrowserBreadcrumbBackground), FileBrowserBreadcrumbText: cssColorToString(value.FileBrowserBreadcrumbText),
+	colors := make(apischema.ConfigThemeColorsPayload, len(value))
+	for key, color := range value {
+		colors[apischema.ThemeColorKey(key)] = new(color.String())
 	}
-}
-
-func cssColorToString(value *userconfig.CSSColor) *string {
-	if value == nil {
-		return nil
-	}
-	result := value.String()
-	return &result
+	return colors
 }
 func optionalString(value string) *string {
 	if value == "" {

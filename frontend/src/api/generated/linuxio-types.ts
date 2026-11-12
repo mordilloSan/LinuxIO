@@ -884,28 +884,7 @@ export interface ConfigThemeColorsByModePayload {
   dark?: ConfigThemeColorsPayload;
 }
 
-export interface ConfigThemeColorsPayload {
-  backgroundDefault?: string;
-  backgroundPaper?: string;
-  headerBackground?: string;
-  footerBackground?: string;
-  sidebarBackground?: string;
-  cardBackground?: string;
-  dialogBorder?: string;
-  dialogGlow?: string;
-  dialogBackdrop?: string;
-  codeBackground?: string;
-  codeText?: string;
-  codeInsetBackground?: string;
-  panePictureBackground?: string;
-  chartRx?: string;
-  chartTx?: string;
-  chartNeutral?: string;
-  fileBrowserSurface?: string;
-  fileBrowserChrome?: string;
-  fileBrowserBreadcrumbBackground?: string;
-  fileBrowserBreadcrumbText?: string;
-}
+export type ConfigThemeColorsPayload = Partial<Record<ThemeColorKey, string>>;
 
 export interface ConfigUISetPayload {
   theme?: string;
@@ -3256,6 +3235,28 @@ export interface TextFile {
 }
 
 export type Theme = "LIGHT" | "DARK";
+
+export type ThemeColorKey =
+  | "backgroundDefault"
+  | "backgroundPaper"
+  | "headerBackground"
+  | "footerBackground"
+  | "sidebarBackground"
+  | "cardBackground"
+  | "dialogBorder"
+  | "dialogGlow"
+  | "dialogBackdrop"
+  | "codeBackground"
+  | "codeText"
+  | "codeInsetBackground"
+  | "panePictureBackground"
+  | "chartRx"
+  | "chartTx"
+  | "chartNeutral"
+  | "fileBrowserSurface"
+  | "fileBrowserChrome"
+  | "fileBrowserBreadcrumbBackground"
+  | "fileBrowserBreadcrumbText";
 
 export interface Timer {
   active_enter_timestamp: number;

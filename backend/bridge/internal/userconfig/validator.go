@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/goccy/go-yaml"
@@ -140,16 +142,15 @@ func validateUIPreferences(cfg *UIPreferences) []string {
 
 func validateThemeColors(cfg *UIPreferences) []string {
 	var errs []string
-	for modeName, colors := range map[string]*ThemeColors{
+	for modeName, colors := range map[string]ThemeColors{
 		"light": cfg.themeColorsValue(ThemeLight),
 		"dark":  cfg.themeColorsValue(ThemeDark),
 	} {
-		if colors == nil {
-			continue
-		}
-		for _, slot := range themeColorSlots(colors) {
-			if color := *slot.Value; color != nil && *color != "" && !isValidCSSColor(string(*color)) {
-				errs = append(errs, fmt.Sprintf("themeColors.%s.%s must be a valid CSS color", modeName, slot.Key))
+		for _, key := range slices.Sorted(maps.Keys(colors)) {
+			if !IsThemeColorKey(key) {
+				errs = append(errs, fmt.Sprintf("themeColors.%s.%s is not a theme color", modeName, key))
+			} else if color := colors[key]; color != "" && !isValidCSSColor(string(color)) {
+				errs = append(errs, fmt.Sprintf("themeColors.%s.%s must be a valid CSS color", modeName, key))
 			}
 		}
 	}
@@ -187,7 +188,7 @@ func validateSettings(cfg *Settings) []string {
 	return errs
 }
 
-func (p *UIPreferences) themeColorsValue(mode PersistedTheme) *ThemeColors {
+func (p *UIPreferences) themeColorsValue(mode PersistedTheme) ThemeColors {
 	if p == nil || p.ThemeColors == nil {
 		return nil
 	}
