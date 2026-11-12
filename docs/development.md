@@ -133,6 +133,10 @@ make vm-destroy       # delete the domain and its volumes; the cache stays
   password. Make expands `$` in `CMD`, so write `$$`.
 - `test-vm-browser` signs in at `https://<vm-ip>:8090` as `linuxio-e2e`, with
   the password in `~/.cache/linuxio-vm/password`. `PLAYWRIGHT_ARGS` applies.
+  Run each jobs spec file on its own fresh VM (`login.spec.ts` plus one
+  file): the specs leave their schedules behind, and the Schedules table
+  renders only the rows near what is visible, so a later file does not find
+  its own row among an earlier file's.
   The specs reach the VM through `linuxio-vm.sh`: `ssh`, and for host events
   `reboot` (an orderly ACPI reboot) and `power-cut` (`virsh destroy`, then
   `start`), each of which waits for the next boot. `jobs-phase2.spec.ts`

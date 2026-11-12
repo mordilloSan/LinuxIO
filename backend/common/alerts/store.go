@@ -216,8 +216,12 @@ func Raise(ctx context.Context, obs Observation) error {
 				continue
 			}
 			if obs.OccurrenceID != "" && a.OccurrenceID == obs.OccurrenceID {
-				// The link follows the latest observation of the occurrence.
-				a.LastObservedAt, a.Link = t, obs.Link
+				// The link follows the latest observation of the occurrence;
+				// one without a link keeps the stored link.
+				a.LastObservedAt = t
+				if obs.Link != "" {
+					a.Link = obs.Link
+				}
 				return nil
 			}
 			a.Severity, a.Title, a.Message, a.Link = obs.Severity, obs.Title, obs.Message, obs.Link

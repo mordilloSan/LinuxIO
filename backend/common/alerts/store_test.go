@@ -78,6 +78,15 @@ func TestRaiseSameOccurrenceIsSilent(t *testing.T) {
 	if a = doc.Alerts[0]; a.Link != "/history?job=latest" || a.OccurrenceCount != 1 || a.DismissedAt == nil || a.Seen["1000"] != 1 {
 		t.Fatalf("re-observed with another link: %+v", a)
 	}
+	// An observation without a link keeps the stored one.
+	again.Link = ""
+	if err := Raise(ctx, again); err != nil {
+		t.Fatal(err)
+	}
+	doc, _ = Load()
+	if a = doc.Alerts[0]; a.Link != "/history?job=latest" {
+		t.Fatalf("re-observed without a link: %+v", a)
+	}
 }
 
 func TestRaiseNewOccurrenceRestoresAndUnsees(t *testing.T) {
