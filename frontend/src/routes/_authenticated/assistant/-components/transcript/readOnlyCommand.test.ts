@@ -17,6 +17,9 @@ describe("isReadOnlyCommand", () => {
     "LANG=C date",
     "find /var -name '*.log'",
     "timedatectl",
+    "rg -n --no-heading -i '^\\s*(PubkeyAuthentication|PasswordAuthentication)' /etc/ssh",
+    'grep -E "a|b; c > d" /etc/hosts',
+    "echo 'a > b' | wc -c",
   ])("treats %s as reading", (command) => {
     expect(isReadOnlyCommand(command)).toBe(true);
   });
@@ -36,6 +39,9 @@ describe("isReadOnlyCommand", () => {
     "apt upgrade",
     "git checkout main",
     "timedatectl set-timezone UTC",
+    'echo "$(reboot)"',
+    "echo 'x' > /etc/motd",
+    "find / '-delete'",
   ])("treats %s as acting", (command) => {
     expect(isReadOnlyCommand(command)).toBe(false);
   });

@@ -166,10 +166,19 @@ function segmentReads(segment: string): boolean {
   );
 }
 
+// Inside quotes, the characters that split or redirect a command are text.
+const literal = (text: string) => text.replace(/[|;&<>\s]/g, "_");
+
 export function isReadOnlyCommand(command: string): boolean {
-  // Sending stderr elsewhere is not a write to a file anyone keeps.
-  const stripped = command.replace(/\d*>\s*(\/dev\/null|&\d)/g, "");
-  // Redirections write; substitutions hide a command this cannot see.
-  if (/[<>`]|\$\(/.test(stripped)) return false;
-  return stripped.split(/\|\||&&|[|;\n&]/).every(segmentReads);
+  // Single quotes are literal, so nothing inside them can run or redirect.
+  const unquoted = command.replace(/'([^']*)'/g, (_, text) => literal(text));
+  // Substitutions hide a command this cannot see, even inside double quotes.
+  if (/`|\$\(/.test(unquoted)) return false;
+  const plain = unquoted
+    .replace(/"((?:[^"\\]|\\.)*)"/g, (_, text) => literal(text))
+    // Sending stderr elsewhere is not a write to a file anyone keeps.
+    .replace(/\d*>\s*(\/dev\/null|&\d)/g, "");
+  // What is left of < and > redirects to or from a file.
+  if (/[<>]/.test(plain)) return false;
+  return plain.split(/\|\||&&|[|;\n&]/).every(segmentReads);
 }

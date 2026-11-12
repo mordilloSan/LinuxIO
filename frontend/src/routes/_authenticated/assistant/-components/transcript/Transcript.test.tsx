@@ -101,7 +101,7 @@ describe("Transcript", () => {
       />,
     );
     expect(container.querySelector(".assistant-diff__add")).toBeNull();
-    await userEvent.click(screen.getByRole("button", { name: /Edit file/ }));
+    await userEvent.click(screen.getByRole("button", { name: /\/a\.txt/ }));
     expect(container.querySelector(".assistant-diff__add")).toHaveTextContent(
       "+y",
     );
@@ -131,7 +131,7 @@ describe("Transcript", () => {
       />,
     );
     // The line shows the step; its input and output wait behind it.
-    expect(screen.getByText("Run")).toBeInTheDocument();
+    expect(screen.getByText("Read")).toBeInTheDocument();
     expect(screen.getByText("List files")).toBeInTheDocument();
     expect(screen.queryByText("IN")).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: /ls -la/ }));
@@ -235,6 +235,9 @@ describe("Transcript", () => {
 
     it("lists checks as log lines, with no card", () => {
       render(<Transcript blocks={[read("a"), read("b"), read("c")]} />);
+      // A command that only reads is labelled as a read, not a run.
+      expect(screen.getAllByText("Read")).toHaveLength(3);
+      expect(screen.queryByText("Run")).toBeNull();
       for (const id of ["a", "b", "c"]) {
         expect(screen.getByText(`cat ${id}`)).toBeInTheDocument();
       }
@@ -281,6 +284,40 @@ describe("Transcript", () => {
       ).toBeInTheDocument();
     });
 
+    it("says in words which file a file tool wrote or edited", async () => {
+      const edit = (
+        id: string,
+        oldText: string | null,
+        newText: string,
+      ): TranscriptBlock => ({
+        kind: "tool",
+        id,
+        toolCallId: id,
+        title: `Write ${id}`,
+        toolKind: "edit",
+        status: "completed",
+        rawInput: { file_path: `/home/u/${id}`, content: newText },
+        content: [{ type: "diff", path: `/home/u/${id}`, oldText, newText }],
+      });
+      render(
+        <Transcript
+          blocks={[edit("new.txt", null, "a\nb\n"), edit("old.txt", "x", "y")]}
+        />,
+      );
+      const wrote = screen.getByRole("button", { name: /new\.txt/ });
+      expect(within(wrote).getByText("Wrote")).toBeInTheDocument();
+      expect(within(wrote).getByText("/home/u/new.txt")).toBeInTheDocument();
+      expect(within(wrote).getByText("2 lines")).toBeInTheDocument();
+      const edited = screen.getByRole("button", { name: /old\.txt/ });
+      expect(within(edited).getByText("Edited")).toBeInTheDocument();
+      // The tool's own title is replaced, not repeated.
+      expect(screen.queryByText(/Write new\.txt/)).toBeNull();
+      // Opened, the diff stands alone: no raw JSON input beside it.
+      await userEvent.click(wrote);
+      expect(screen.queryByText("IN")).toBeNull();
+      expect(screen.getByText("+a")).toBeInTheDocument();
+    });
+
     it("says the card is running while a step is in progress", () => {
       render(<Transcript blocks={[tool("a"), tool("b", "in_progress")]} />);
       expect(
@@ -291,6 +328,7 @@ describe("Transcript", () => {
     it("counts failed steps on the card and marks the line", () => {
       render(<Transcript blocks={[tool("a"), tool("b", "failed")]} />);
       expect(screen.getByText("1 failed")).toBeInTheDocument();
+      expect(screen.getByRole("group")).toHaveClass("assistant-change--failed");
       expect(screen.getByRole("img", { name: "failed" })).toHaveAttribute(
         "title",
         "failed",

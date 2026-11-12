@@ -113,9 +113,13 @@ function ToolDetail({ block }: { block: ToolBlock }) {
     typeof block.rawInput === "object" &&
     block.rawInput !== null &&
     Object.keys(block.rawInput).length > 0;
-  const input =
-    command ?? (hasInput ? JSON.stringify(block.rawInput, null, 2) : null);
   const diffs = block.content.flatMap((c) => (c.type === "diff" ? [c] : []));
+  // A diff already shows the file and its text; the raw input repeats both.
+  const input =
+    command ??
+    (hasInput && diffs.length === 0
+      ? JSON.stringify(block.rawInput, null, 2)
+      : null);
   const text = block.content
     .map((c) =>
       c.type === "content" && c.content.type === "text" ? c.content.text : "",
@@ -154,6 +158,31 @@ function ToolDetail({ block }: { block: ToolBlock }) {
   );
 }
 
+const lineCount = (text: string) =>
+  text === "" ? 0 : text.replace(/\n$/, "").split("\n").length;
+
+/**
+ * What a file tool did, in words: "Wrote /etc/motd" says more than the
+ * tool's own "Edit · Write motd". Null until the agent sends the diff.
+ */
+function fileChange(block: ToolBlock) {
+  if (block.toolKind !== "edit") return null;
+  const diffs = block.content.flatMap((c) => (c.type === "diff" ? [c] : []));
+  if (diffs.length === 0) return null;
+  const path = [...new Set(diffs.map((diff) => diff.path))].join(", ");
+  // A diff with nothing before it is a whole file written. The agent sends
+  // the same for a new file and an overwrite, so this cannot say "created".
+  if (diffs.some((diff) => diff.oldText != null)) {
+    return { verb: "Edited", path, note: null };
+  }
+  const lines = diffs.reduce((n, diff) => n + lineCount(diff.newText), 0);
+  return {
+    verb: "Wrote",
+    path,
+    note: `${lines} ${lines === 1 ? "line" : "lines"}`,
+  };
+}
+
 /**
  * One tool call as a log line: its state, what kind of step it was, and the
  * command or title. The line opens to the input, output and diffs.
@@ -161,9 +190,12 @@ function ToolDetail({ block }: { block: ToolBlock }) {
 function ToolLine({ block }: { block: ToolBlock }) {
   const [open, setOpen] = useState(false);
   const command = stringField(block.rawInput, "command");
-  const description = stringField(block.rawInput, "description");
-  const note =
-    description ?? (command && block.title !== command ? block.title : null);
+  const change = fileChange(block);
+  // What the step is for, in words: the agent's description, or the title
+  // when there is no command to show in its place.
+  const what =
+    stringField(block.rawInput, "description") ??
+    (command ? null : block.title);
   return (
     <div className="assistant-tool">
       <AppButton
@@ -174,14 +206,36 @@ function ToolLine({ block }: { block: ToolBlock }) {
       >
         <StateMarker state={toolState(block.status)} />
         <span className="assistant-tool__kind">
-          {KIND_LABEL[block.toolKind] ?? "Tool"}
+          {/* A command that only reads is a read, whatever ran it. */}
+          {change
+            ? change.verb
+            : block.toolKind === "execute" && !actsOnHost(block)
+              ? KIND_LABEL.read
+              : (KIND_LABEL[block.toolKind] ?? "Tool")}
         </span>
-        {command ? (
-          <span className="assistant-tool__command">{command}</span>
+        {change ? (
+          <>
+            <span className="assistant-tool__command">{change.path}</span>
+            {change.note ? (
+              <span className="assistant-tool__detail">{change.note}</span>
+            ) : null}
+          </>
         ) : (
-          <span className="assistant-tool__detail">{block.title}</span>
+          <>
+            {what ? <span className="assistant-tool__what">{what}</span> : null}
+            {command ? (
+              <span
+                className={
+                  what
+                    ? "assistant-tool__command assistant-tool__command--aside"
+                    : "assistant-tool__command"
+                }
+              >
+                {command}
+              </span>
+            ) : null}
+          </>
         )}
-        {note ? <span className="assistant-tool__detail">{note}</span> : null}
       </AppButton>
       {open ? <ToolDetail block={block} /> : null}
     </div>
@@ -235,7 +289,9 @@ function ChangeCard({ tools }: { tools: ToolBlock[] }) {
       className={
         active
           ? "assistant-change assistant-change--active"
-          : "assistant-change"
+          : failed > 0
+            ? "assistant-change assistant-change--failed"
+            : "assistant-change"
       }
       role="group"
     >

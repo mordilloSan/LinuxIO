@@ -143,17 +143,25 @@ advertises the matching capability.
   while the turn runs.
 - **Run log and change cards.** Consecutive tool calls are split by whether
   they acted on the host. Steps that only looked (read, search, fetch, think,
-  and commands recognised as read-only) are lines in a log on a rail: a state
-  marker (green done, spinner while pending or running, red alert on failure),
-  the kind of step and the command or title. A log longer than five lines
+  and commands recognised as read-only) are lines in a log on a rail: the
+  kind of step (a read-only command is labelled Read, not Run), coloured by
+  state (green done, amber with a spinner while
+  pending or running, red with an alert on failure), then the agent's
+  description of the step with the command after it in grey, truncated when
+  long (the command alone when there is no description, the title when there
+  is no command). A log longer than five lines
   shows the newest five behind a "Show N earlier steps" button. Steps that
   acted (edit, delete, move, and any command not recognised as read-only) are
   grouped in one card, titled "Running on this server" while one is in
   progress, then "Changed on this server" when a file was edited, deleted or
   moved, or "Ran on this server" for commands alone, with a failed count. The
   card appears whether or not the agent asked first, so a change made under an
-  automatic mode is as visible as an approved one. Any line opens to the
-  call's input, output and diff. The call a permission card is asking about
+  automatic mode is as visible as an approved one. A file tool's line says what it did to which
+  file: "Wrote /path · N lines" for a whole file (the agent reports a new file
+  and an overwrite alike, so it cannot say "created") and "Edited /path" for a
+  change inside one. Any line opens to the call's input, output and diff; a
+  call with a diff shows the diff alone, without the raw input that repeats
+  it. The call a permission card is asking about
   is left out of the transcript until it is answered.
 - **Read-only commands.** `transcript/readOnlyCommand.ts` decides which
   commands only read: a list of readers (`cat`, `ls`, `ss`, `df`, ...),
@@ -161,7 +169,9 @@ advertises the matching capability.
   usage`, ...) and commands that read unless a mutating flag is present
   (`find -delete`, `sed -i`, `journalctl --vacuum-*`). Every segment of a
   pipeline must read, and a redirection or command substitution makes the
-  whole command count as acting. This is presentation only and errs towards
+  whole command count as acting. Quoted text is literal, so a `|` or `>`
+  inside a search pattern does not split or redirect; a substitution inside
+  double quotes still counts. This is presentation only and errs towards
   "acting"; permissions stay with the agent.
 - **Turn footer.** Every answer ends in a footer: before the next prompt,
   and at the end of the conversation once the turn is over. Copy answer copies

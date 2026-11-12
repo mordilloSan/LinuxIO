@@ -153,11 +153,11 @@
   background: var(--app-palette-action-hover);
 }
 
-/* Answers read as prose: a touch of leading, and bold that stands out from
-   the slightly softened body text. */
+/* Answers read as prose: a touch of leading, at full text colour. Colour is
+   kept for code and links, so an answer is one tone with one accent. */
 .assistant-markdown {
   line-height: 1.6;
-  color: color-mix(in srgb, var(--app-palette-text-primary), transparent 12%);
+  color: var(--app-palette-text-primary);
 }
 
 .assistant-markdown p,
@@ -193,7 +193,8 @@
   margin: var(--app-space-8) 0;
   border: 1px solid var(--app-palette-divider);
   border-radius: var(--app-radius-md);
-  background: var(--app-palette-background-default);
+  /* The same surface as the change and permission cards. */
+  background: var(--app-palette-background-paper);
   overflow: hidden;
 }
 
@@ -267,11 +268,11 @@
 .assistant-markdown h4,
 .assistant-markdown h5,
 .assistant-markdown h6 {
-  color: var(--app-code-type);
+  color: var(--app-palette-text-primary);
 }
 
 .assistant-markdown li::marker {
-  color: var(--app-code-keyword);
+  color: var(--app-palette-text-secondary);
 }
 
 .assistant-markdown blockquote {
@@ -281,10 +282,13 @@
   color: var(--app-code-meta);
 }
 
+/* Inline code is a quiet chip in the text colour, not a syntax colour. */
 .assistant-markdown :not(pre) > code {
+  padding: 1px var(--app-space-4);
+  border-radius: var(--app-radius-base);
+  background: var(--app-palette-action-hover);
   font-family: var(--app-font-mono);
   font-size: calc(var(--app-font-size-body) * 0.92);
-  color: var(--app-code-string);
 }
 
 /* Classes are the ones classHighlighter emits (@lezer/highlight). */
@@ -423,6 +427,39 @@
   align-self: center;
 }
 
+/* In a line the kind carries the state by colour, so a finished step needs
+   no dot; a running one keeps its spinner and a failed one its alert. */
+.assistant-tool__line > .assistant-tool-state--done {
+  display: none;
+}
+
+.assistant-tool__line .assistant-tool__kind {
+  color: var(--app-palette-success-main);
+  font-weight: 500;
+}
+
+.assistant-tool__line:has(.assistant-tool-state--active) .assistant-tool__kind {
+  color: var(--app-palette-warning-main);
+}
+
+.assistant-tool__line:has(.assistant-tool-state--failed) .assistant-tool__kind {
+  color: var(--app-palette-error-main);
+}
+
+/* The words come first and keep their room; a long command gives way. */
+.assistant-tool__what {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assistant-tool__command--aside {
+  flex-shrink: 1000;
+  color: var(--app-palette-text-secondary);
+}
+
 .assistant-tool__command {
   min-width: 0;
   overflow: hidden;
@@ -452,6 +489,15 @@
   border-color: color-mix(
     in srgb,
     var(--app-palette-warning-main),
+    transparent 40%
+  );
+}
+
+/* A green border would say all went well. */
+.assistant-change--failed {
+  border-color: color-mix(
+    in srgb,
+    var(--app-palette-error-main),
     transparent 40%
   );
 }
