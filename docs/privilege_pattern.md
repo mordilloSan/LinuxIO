@@ -42,6 +42,8 @@ To list the candidates (mutations with neither guard; routes that mutate only th
 rg -n 'apischema\.(Call\[|Mutation(Void|Task)?\()' backend/bridge/handlers -g '!*_test.go' | rg -v 'Privileged\(\)|RetrySafe\(\)'
 ```
 
+The Assistant plugin routes (`assistant.install_plugin`, `uninstall_plugin`, `set_plugin_enabled` and the three `*_marketplace` routes) appear in that list and are unprivileged on purpose: they run the session user's own `claude` CLI as that user and write only under that user's home. See [Assistant](./AI-assistant.md#plugins).
+
 ## Testing
 
 Dispatcher tests should cover:

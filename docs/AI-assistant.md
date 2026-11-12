@@ -197,7 +197,9 @@ advertises the matching capability.
   the image blocks are sent before the text.
 - **Slash commands.** Typing `/` at the start of the composer lists the
   agent's `availableCommands`, filtered by what was typed. Enter or a click
-  inserts `/name `, and the message is sent as ordinary text.
+  inserts `/name `, and the message is sent as ordinary text. Two entries are
+  LinuxIO's own and are never sent to the agent: `/btw` and, for an agent
+  whose plugins LinuxIO manages, `/plugins` (see [Plugins](#plugins)).
 - **@-mentions.** The `@` button, or typing `@` at a word start, opens the file
   picker. The file is read through `filebrowser.read_text` and attached as an
   embedded resource (capped at 200 KB), or as a link when it is larger, cannot
@@ -235,6 +237,70 @@ advertises the matching capability.
   uses a smaller monospace size.
 - **Titles.** A `session_info_update` title renames the chat in the history
   menu; untitled chats show their session id.
+
+## Plugins
+
+`/plugins` opens a dialog over the chat with three tabs: Installed (enable
+switch, uninstall), Browse (search the marketplaces' catalogue, install) and
+Marketplaces (add, refresh, remove). The page header has a Plugins button for
+the same dialog, because the composer is disabled when the agent has not
+started, and a plugin can be the reason. It exists for Claude Code only
+(`plugins` in `frontend/src/api/acp/agents.ts`, `pluginAgent` in the bridge);
+the other agents' ids are refused with 400. Claude Code's own `/plugin` is a
+terminal screen the ACP adapter does not advertise, so LinuxIO manages plugins
+the way Claude Code's editor extensions do: the bridge runs
+`claude plugin ... --json` and never edits `~/.claude` itself.
+
+| Route | Kind | Runs |
+|-------|------|------|
+| `assistant.list_plugins` | Call | `plugin list --json`, `plugin marketplace list --json` |
+| `assistant.search_plugins` | Call | `plugin list --json --available`, filtered in the bridge |
+| `assistant.install_plugin` | Mutation | `plugin install <id> --json --scope user [--accept-command <sha256>]` |
+| `assistant.uninstall_plugin` | Mutation | `plugin uninstall <id> --json --scope <scope>` |
+| `assistant.set_plugin_enabled` | Mutation | `plugin enable\|disable <id> --json --scope <scope>` |
+| `assistant.add_marketplace` | Mutation | `plugin marketplace add <source> --json --scope user` |
+| `assistant.remove_marketplace` | Mutation | `plugin marketplace remove <name> --json` |
+| `assistant.update_marketplace` | Mutation | `plugin marketplace update <name> --json` |
+
+- **Who runs it.** Every command runs as the session user, in their home, with
+  the `claude` on their login-shell PATH (409 when there is none), standard
+  input closed and arguments passed as an argv array. It writes only under
+  that user's `~/.claude`, so no route is privileged: it is what the user can
+  already type in the Terminal page. Reads have 30 s, writes 10 min, and a
+  cancelled job kills the CLI's whole process group.
+- **Search.** The catalogue is a few megabytes (about 4,000 entries), so the
+  browser never receives it. The bridge drops installed plugins, keeps the
+  entries where every word of the query appears in the name, description or
+  marketplace, and returns the 50 most installed with the total count.
+- **Validation.** A plugin id is `<name>@<marketplace>` and a marketplace name
+  one word, both starting with a letter or digit so neither can read as a
+  flag. A marketplace source is a GitHub `owner/repo` or an `https` URL
+  without credentials; local paths and other schemes are refused and stay a
+  Terminal task. The log line for an added marketplace leaves out the URL's
+  query and fragment, where a private catalogue may carry a token.
+- **Installed plugins only.** `claude plugin enable` accepts an id it has never
+  seen and writes it to the user's settings. Enable, disable and uninstall
+  therefore look the plugin up in `plugin list` first, answer 404 when it is
+  not installed, and use the scope the list reports. A plugin an
+  organization's managed settings install is shown but not changeable (409).
+- **Marketplace-declared commands.** Some marketplaces install a plugin by
+  running a command. The CLI refuses those without a terminal and reports the
+  command with its sha256; the bridge never passes `-y`. The install result
+  then carries the command with `installed: false`, the dialog shows it
+  ("Nothing has run yet"), and only a confirmation repeats the install with
+  `--accept-command <sha256>`, which the CLI honours for exactly that command.
+- **Errors.** A failed write returns the `message` of the CLI's JSON result
+  line, or the stderr tail when there is none; `not_found` and `not_installed`
+  map to 404.
+- **When a change applies.** Claude Code loads plugins when a chat starts
+  (the adapter passes the user, project and local settings) and the pinned
+  adapter has no way to reload them, so the dialog says that changes apply to
+  new chats and offers one unless a turn is running.
+
+A plugin's skills, commands, agents, hooks and MCP servers work in a LinuxIO
+chat. A plugin pane does not: panes are drawn by Claude Code's own interfaces
+over a private protocol (`ui_surface_v1`) that the ACP adapter does not carry,
+so they are not shown until the adapter exposes them.
 
 ## Login
 
@@ -291,3 +357,6 @@ The chosen agent starts only when its own capability is available, and
 - Automatic agent updates: a newer agent arrives with a LinuxIO release and
   is installed when the user presses Install.
 - Typed LinuxIO tools for the agent.
+- Plugin panes, until the ACP adapter carries them (see [Plugins](#plugins)).
+- Updating an installed plugin (`claude plugin update`), plugins for Gemini
+  CLI and Codex, and reloading plugins into a running chat.

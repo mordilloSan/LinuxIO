@@ -169,14 +169,92 @@ export interface AppUpdateRequest {
   version?: string;
 }
 
+export interface AssistantAgentRequest {
+  agent: string;
+}
+
+export interface AssistantAvailablePlugin {
+  id: string;
+  name: string;
+  description: string;
+  marketplace: string;
+  installCount: number;
+}
+
 export interface AssistantChatDefaults {
   model: string;
   effort: string;
   mode: string;
 }
 
+export interface AssistantMarketplace {
+  name: string;
+  source: string;
+}
+
+export interface AssistantMarketplaceAddRequest {
+  agent: string;
+  source: string;
+}
+
+export interface AssistantMarketplaceRequest {
+  agent: string;
+  name: string;
+}
+
 export interface AssistantOpenRequest {
   agent: string;
+}
+
+export interface AssistantPlugin {
+  id: string;
+  name: string;
+  marketplace: string;
+  version: string;
+  scope: string;
+  enabled: boolean;
+}
+
+export interface AssistantPluginCommand {
+  command: string;
+  sha256: string;
+}
+
+export interface AssistantPluginEnabledRequest {
+  agent: string;
+  plugin: string;
+  enabled: boolean;
+}
+
+export interface AssistantPluginInstallRequest {
+  agent: string;
+  plugin: string;
+  acceptCommand?: string;
+}
+
+export interface AssistantPluginInstallResult {
+  installed: boolean;
+  command?: AssistantPluginCommand;
+}
+
+export interface AssistantPluginList {
+  plugins: AssistantPlugin[];
+  marketplaces: AssistantMarketplace[];
+}
+
+export interface AssistantPluginRequest {
+  agent: string;
+  plugin: string;
+}
+
+export interface AssistantPluginSearchRequest {
+  agent: string;
+  query: string;
+}
+
+export interface AssistantPluginSearchResult {
+  plugins: AssistantAvailablePlugin[];
+  total: number;
 }
 
 export interface AssistantSettings {
@@ -3706,6 +3784,49 @@ export interface LinuxIOSchema {
     test_notifications: { input: []; request: void; result: SuccessResponse };
   };
 
+  assistant: {
+    add_marketplace: {
+      input: [request: AssistantMarketplaceAddRequest];
+      request: AssistantMarketplaceAddRequest;
+      result: void;
+    };
+    install_plugin: {
+      input: [request: AssistantPluginInstallRequest];
+      request: AssistantPluginInstallRequest;
+      result: AssistantPluginInstallResult;
+    };
+    list_plugins: {
+      input: [agent: string];
+      request: AssistantAgentRequest;
+      result: AssistantPluginList;
+    };
+    remove_marketplace: {
+      input: [request: AssistantMarketplaceRequest];
+      request: AssistantMarketplaceRequest;
+      result: void;
+    };
+    search_plugins: {
+      input: [request: AssistantPluginSearchRequest];
+      request: AssistantPluginSearchRequest;
+      result: AssistantPluginSearchResult;
+    };
+    set_plugin_enabled: {
+      input: [request: AssistantPluginEnabledRequest];
+      request: AssistantPluginEnabledRequest;
+      result: void;
+    };
+    uninstall_plugin: {
+      input: [request: AssistantPluginRequest];
+      request: AssistantPluginRequest;
+      result: void;
+    };
+    update_marketplace: {
+      input: [request: AssistantMarketplaceRequest];
+      request: AssistantMarketplaceRequest;
+      result: void;
+    };
+  };
+
   config: {
     get: { input: []; request: void; result: AppConfig };
     get_ui: { input: []; request: void; result: UIConfig };
@@ -5026,6 +5147,14 @@ export interface LinuxIOCallSchema {
     result: NotificationSettingsView;
   };
   "alerts.list": { request: void; result: AlertList };
+  "assistant.list_plugins": {
+    request: AssistantAgentRequest;
+    result: AssistantPluginList;
+  };
+  "assistant.search_plugins": {
+    request: AssistantPluginSearchRequest;
+    result: AssistantPluginSearchResult;
+  };
   "config.get": { request: void; result: AppConfig };
   "config.get_ui": { request: void; result: UIConfig };
   "control.version": { request: void; result: VersionResponse };

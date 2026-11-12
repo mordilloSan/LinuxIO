@@ -62,6 +62,13 @@ const SCHEDULE_KEYS = [
   endpointQueryPrefix("schedules.get"),
 ];
 
+// A plugin or marketplace change moves a plugin between the installed list
+// and the catalogue search.
+const ASSISTANT_PLUGIN_KEYS = [
+  endpointQueryPrefix("assistant.list_plugins"),
+  endpointQueryPrefix("assistant.search_plugins"),
+];
+
 // The datetime handler prefix covers get_timezone/get_ntp_status/get_ntp_servers.
 const DATETIME_KEYS: QueryKey[] = [
   handlerQueryPrefix("datetime"),
@@ -257,6 +264,13 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "system.dismiss_failed_login_alert": [
     endpointQueryPrefix("system.get_health_summary"),
   ],
+
+  "assistant.install_plugin": ASSISTANT_PLUGIN_KEYS,
+  "assistant.uninstall_plugin": ASSISTANT_PLUGIN_KEYS,
+  "assistant.set_plugin_enabled": ASSISTANT_PLUGIN_KEYS,
+  "assistant.add_marketplace": ASSISTANT_PLUGIN_KEYS,
+  "assistant.remove_marketplace": ASSISTANT_PLUGIN_KEYS,
+  "assistant.update_marketplace": ASSISTANT_PLUGIN_KEYS,
 
   "datetime.set_timezone": DATETIME_KEYS,
   "datetime.set_ntp": DATETIME_KEYS,

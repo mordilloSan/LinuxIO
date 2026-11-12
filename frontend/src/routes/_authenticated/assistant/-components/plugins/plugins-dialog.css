@@ -1,0 +1,80 @@
+.assistant-plugins {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-12);
+  /* A fixed height keeps the dialog still while tabs and results change. */
+  height: min(560px, 70vh);
+}
+
+.assistant-plugins__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--app-space-12);
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.assistant-plugins__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.assistant-plugins__row {
+  align-items: center;
+  border-bottom: 1px solid var(--app-palette-divider);
+  display: flex;
+  gap: var(--app-space-12);
+  padding: var(--app-space-8) 0;
+}
+
+.assistant-plugins__row:last-child {
+  border-bottom: 0;
+}
+
+.assistant-plugins__row-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--app-space-2);
+  min-width: 0;
+}
+
+.assistant-plugins__row-actions {
+  align-items: center;
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--app-space-8);
+}
+
+.assistant-plugins__description {
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  display: -webkit-box;
+  line-clamp: 2;
+  margin: 0;
+  overflow: hidden;
+}
+
+.assistant-plugins__notice {
+  margin: 0;
+  padding: var(--app-space-8) 0;
+}
+
+.assistant-plugins__add {
+  align-items: flex-start;
+  display: flex;
+  gap: var(--app-space-8);
+}
+
+.assistant-plugins__command {
+  background: var(--app-palette-action-hover);
+  border-radius: var(--app-radius-md);
+  margin: var(--app-space-12) 0 0;
+  max-height: 40vh;
+  overflow: auto;
+  padding: var(--app-space-12);
+  white-space: pre-wrap;
+  word-break: break-word;
+}

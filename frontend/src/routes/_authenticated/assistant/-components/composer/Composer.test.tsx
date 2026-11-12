@@ -688,6 +688,62 @@ describe("Composer", () => {
     });
   });
 
+  describe("/plugins", () => {
+    it("is offered only when the agent's plugins can be managed", async () => {
+      const { unmount } = setup();
+      await userEvent.type(screen.getByLabelText("Message"), "/");
+      await screen.findByRole("menuitem", { name: "/btw" });
+      expect(
+        screen.queryByRole("menuitem", { name: "/plugins" }),
+      ).not.toBeInTheDocument();
+      unmount();
+
+      setup({ onPlugins: vi.fn() });
+      await userEvent.type(screen.getByLabelText("Message"), "/");
+      const items = await screen.findAllByRole("menuitem");
+      expect(items[1]).toHaveTextContent("/plugins");
+    });
+
+    it("opens the plugin manager instead of sending the text", async () => {
+      const onPlugins = vi.fn();
+      const { onSend } = setup({ onPlugins });
+      const input = screen.getByLabelText("Message");
+      await userEvent.type(input, "/plugins{Enter}");
+      expect(onPlugins).toHaveBeenCalledTimes(1);
+      expect(onSend).not.toHaveBeenCalled();
+      expect(input).toHaveValue("");
+    });
+
+    it("opens the plugin manager when clicked in the menu", async () => {
+      const onPlugins = vi.fn();
+      setup({ onPlugins });
+      await userEvent.type(screen.getByLabelText("Message"), "/");
+      await userEvent.click(
+        await screen.findByRole("menuitem", { name: "/plugins" }),
+      );
+      expect(onPlugins).toHaveBeenCalledTimes(1);
+      expect(screen.getByLabelText("Message")).toHaveValue("");
+    });
+
+    it("replaces an agent command of the same name", async () => {
+      setup({
+        onPlugins: vi.fn(),
+        commands: [{ name: "plugins", description: "Agent's own" }],
+      });
+      await userEvent.type(screen.getByLabelText("Message"), "/");
+      expect(
+        await screen.findAllByRole("menuitem", { name: "/plugins" }),
+      ).toHaveLength(1);
+    });
+
+    it("sends /plugins to an agent whose plugins LinuxIO does not manage", async () => {
+      const { onSend } = setup();
+      await userEvent.type(screen.getByLabelText("Message"), "/plugins x");
+      await userEvent.keyboard("{Enter}");
+      expect(onSend).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("auto-grow", () => {
     const stubHeight = (height: number) =>
       Object.defineProperty(screen.getByLabelText("Message"), "scrollHeight", {

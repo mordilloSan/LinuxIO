@@ -46,6 +46,8 @@ export interface ComposerProps {
   connecting: boolean;
   usage: AssistantState["usage"];
   onBtw: (text: string) => void;
+  /** Opens the plugin manager; absent when the agent's plugins cannot be managed. */
+  onPlugins?: () => void;
   onSetConfigOption: (configId: string, value: string | boolean) => void;
   onSetMode: (modeId: string) => void;
   onSend: (blocks: acp.ContentBlock[], display: MessageDisplay) => void;
@@ -55,6 +57,7 @@ export interface ComposerProps {
 
 const SLASH_PREFIX = /^\/(\S*)$/;
 const BTW = /^\/btw(?:\s+([\s\S]*))?$/;
+const PLUGINS = /^\/plugins$/;
 const MAX_LINES = 10;
 
 // Handled by the composer itself, never sent to the agent.
@@ -62,6 +65,12 @@ const BTW_COMMAND: acp.AvailableCommand = {
   name: "btw",
   description: "Ask a side question without touching this chat",
   input: { hint: "<question>" },
+};
+
+// Opens LinuxIO's own plugin manager; the agent's /plugin needs a terminal.
+const PLUGINS_COMMAND: acp.AvailableCommand = {
+  name: "plugins",
+  description: "Install, enable or disable plugins",
 };
 
 // Grows the textarea with its content, up to 10 lines or 40% of the viewport.
@@ -127,6 +136,7 @@ export default function Composer({
   connecting,
   usage,
   onBtw,
+  onPlugins,
   onSetConfigOption,
   onSetMode,
   onSend,
@@ -150,9 +160,14 @@ export default function Composer({
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const ownCommands = onPlugins
+    ? [BTW_COMMAND, PLUGINS_COMMAND]
+    : [BTW_COMMAND];
   const commands = [
-    BTW_COMMAND,
-    ...agentCommands.filter((command) => command.name !== BTW_COMMAND.name),
+    ...ownCommands,
+    ...agentCommands.filter(
+      (command) => !ownCommands.some((own) => own.name === command.name),
+    ),
   ];
   // Attachments need a send that can actually happen.
   const locked = disabled || (running && !canSteer);
@@ -203,6 +218,11 @@ export default function Composer({
       inputRef.current?.focus();
       return;
     }
+    if (onPlugins && command.name === PLUGINS_COMMAND.name) {
+      setDraft("");
+      onPlugins();
+      return;
+    }
     setDraft(`/${command.name} `);
     inputRef.current?.focus();
   };
@@ -213,6 +233,11 @@ export default function Composer({
     const btw = BTW.exec(text);
     if (btw) {
       runBtw(btw[1] ?? "");
+      return;
+    }
+    if (onPlugins && PLUGINS.test(text)) {
+      setDraft("");
+      onPlugins();
       return;
     }
     // A turn the agent cannot steer takes nothing but /btw until it ends.

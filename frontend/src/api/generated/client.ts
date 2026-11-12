@@ -61,6 +61,28 @@ const linuxio = {
       kind: "none",
     }),
   },
+  assistant: {
+    add_marketplace: defineMutation("assistant", "add_marketplace", {
+      kind: "object",
+    }),
+    install_plugin: defineMutation("assistant", "install_plugin", {
+      kind: "object",
+    }),
+    list_plugins: defineCallWithRequest("assistant.list_plugins"),
+    remove_marketplace: defineMutation("assistant", "remove_marketplace", {
+      kind: "object",
+    }),
+    search_plugins: defineCallWithRequest("assistant.search_plugins"),
+    set_plugin_enabled: defineMutation("assistant", "set_plugin_enabled", {
+      kind: "object",
+    }),
+    uninstall_plugin: defineMutation("assistant", "uninstall_plugin", {
+      kind: "object",
+    }),
+    update_marketplace: defineMutation("assistant", "update_marketplace", {
+      kind: "object",
+    }),
+  },
   config: {
     get: defineCall("config.get"),
     get_ui: defineCall("config.get_ui"),

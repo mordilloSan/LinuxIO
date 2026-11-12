@@ -8,18 +8,27 @@ export const ASSISTANT_AGENTS: ReadonlyArray<{
   label: string;
   /** Capabilities that must be installed before the agent can start. */
   requires: readonly CapabilityKey[];
+  /** The agent has a plugin CLI the bridge can drive (assistant.*_plugin). */
+  plugins: boolean;
 }> = [
   {
     id: "claude",
     label: "Claude Code",
     requires: ["claudeCodeAvailable", "assistantClaudeAvailable"],
+    plugins: true,
   },
   {
     id: "gemini",
     label: "Gemini CLI",
     requires: ["assistantGeminiAvailable"],
+    plugins: false,
   },
-  { id: "codex", label: "Codex", requires: ["assistantCodexAvailable"] },
+  {
+    id: "codex",
+    label: "Codex",
+    requires: ["assistantCodexAvailable"],
+    plugins: false,
+  },
 ];
 
 export function isAssistantAgentId(value: unknown): value is AssistantAgentId {

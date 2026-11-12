@@ -21,6 +21,7 @@ import {
 
 import { assistantStore, useAssistantState } from "./assistant-store";
 import Composer from "./composer/Composer";
+import PluginsDialog from "./plugins/PluginsDialog";
 import SidePanel, { SidePanelOpening } from "./session/SidePanel";
 import StatusLine from "./session/StatusLine";
 import PermissionCard from "./transcript/PermissionCard";
@@ -50,8 +51,9 @@ export default function AssistantPage({
   const { isOpen } = useStreamMux();
   const state = useAssistantState();
   const navigate = useNavigate();
-  const agentLabel =
-    ASSISTANT_AGENTS.find((entry) => entry.id === agent)?.label ?? agent;
+  const agentEntry = ASSISTANT_AGENTS.find((entry) => entry.id === agent);
+  const agentLabel = agentEntry?.label ?? agent;
+  const [pluginsOpen, setPluginsOpen] = useState(false);
   const [historyAnchor, setHistoryAnchor] = useState<HTMLElement | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{
     sessionId: string;
@@ -203,6 +205,17 @@ export default function AssistantPage({
             label="Previous chats"
             onClick={(event) => setHistoryAnchor(event.currentTarget)}
           />
+          {/* Also here, not only as /plugins: a plugin that stops the agent
+              from starting leaves the composer disabled. */}
+          {agentEntry?.plugins ? (
+            <AppActionIconButton
+              ariaLabel="Plugins"
+              icon="mdi:puzzle-outline"
+              iconSize={20}
+              label="Plugins"
+              onClick={() => setPluginsOpen(true)}
+            />
+          ) : null}
         </>
       }
       create={
@@ -285,6 +298,19 @@ export default function AssistantPage({
         open={deleteTarget !== null}
         title="Delete chat"
       />
+      {agent && agentEntry?.plugins ? (
+        <PluginsDialog
+          agent={agent}
+          // A running turn cannot be replaced by a new chat.
+          onNewChat={
+            loadingOrRunning
+              ? undefined
+              : () => void assistantStore.newSession()
+          }
+          onClose={() => setPluginsOpen(false)}
+          open={pluginsOpen}
+        />
+      ) : null}
 
       <div
         className={`assistant__body${state.side?.open || (state.sideOpening && !state.side) ? " assistant__body--split" : ""}`}
@@ -402,6 +428,9 @@ export default function AssistantPage({
             modes={state.modes}
             disabled={state.status !== "ready" && state.status !== "running"}
             onBtw={(text) => void assistantStore.openSide(text || undefined)}
+            onPlugins={
+              agentEntry?.plugins ? () => setPluginsOpen(true) : undefined
+            }
             onSend={(blocks, display) =>
               void assistantStore.send(blocks, display)
             }
