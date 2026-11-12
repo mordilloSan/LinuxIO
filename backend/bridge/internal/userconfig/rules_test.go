@@ -45,9 +45,17 @@ func TestNewThemeColorsTakesTheCodeInsetBackground(t *testing.T) {
 	require.Equal(t, "#161F2B", string(*colors.CodeInsetBackground))
 }
 
+func TestNewThemeColorsTakesThePanePictureBackground(t *testing.T) {
+	colors, err := NewThemeColors(map[string]*string{"panePictureBackground": new("#131B25")}, "dark")
+	require.NoError(t, err)
+	require.NotNil(t, colors)
+	require.NotNil(t, colors.PanePictureBackground)
+	require.Equal(t, "#131B25", string(*colors.PanePictureBackground))
+}
+
 func TestThemeColorSlotsCoverEveryField(t *testing.T) {
 	colors := &ThemeColors{}
-	require.Len(t, themeColorSlots(colors), 19)
+	require.Len(t, themeColorSlots(colors), 20)
 	cloned := cloneThemeColors(defaultThemeColors().Dark)
 	for _, slot := range themeColorSlots(cloned) {
 		require.NotNil(t, *slot.Value, slot.Key)

@@ -21,22 +21,33 @@ function renderItems(items: PaneItem[]): ReactNode[] {
             {renderItems(item.children)}
           </span>
         );
-      case "svg":
+      case "svg": {
+        const fill = item.width === undefined && item.height === undefined;
         // An <img> runs no script and loads nothing; the SVG never joins the DOM.
+        // The box around it is the colour the picture is blended onto.
         return (
-          <img
-            alt={item.alt}
+          <div
             className={
-              item.width === undefined && item.height === undefined
-                ? "assistant-pane-svg assistant-pane-svg--fill"
-                : "assistant-pane-svg"
+              fill
+                ? "assistant-pane-picture assistant-pane-picture--fill"
+                : "assistant-pane-picture"
             }
-            height={item.height}
             key={index}
-            src={item.src}
-            width={item.width}
-          />
+          >
+            <img
+              alt={item.alt}
+              className={
+                fill
+                  ? "assistant-pane-svg assistant-pane-svg--fill"
+                  : "assistant-pane-svg"
+              }
+              height={item.height}
+              src={item.src}
+              width={item.width}
+            />
+          </div>
         );
+      }
       case "markdown":
         return (
           <div

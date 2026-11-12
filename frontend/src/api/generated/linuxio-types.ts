@@ -897,6 +897,7 @@ export interface ConfigThemeColorsPayload {
   codeBackground?: string;
   codeText?: string;
   codeInsetBackground?: string;
+  panePictureBackground?: string;
   chartRx?: string;
   chartTx?: string;
   chartNeutral?: string;

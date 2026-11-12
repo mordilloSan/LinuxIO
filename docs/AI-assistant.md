@@ -433,9 +433,20 @@ untouched.
   `Button`, `Input` and `Select` are left out, with a line under the pane
   saying it has controls LinuxIO cannot use yet. A picture follows LinuxIO's
   theme for its own light and dark rules, because an image takes its colour
-  scheme from the page, and it is blended into the card (screen on dark,
-  multiply on light) so the plugin's own background does not read as a box;
-  browsers without CSS style queries show that background as drawn.
+  scheme from the page. It sits in a box coloured by the theme colour
+  `panePictureBackground` (`--app-pane-picture-background`, "Assistant pane
+  picture background" under Settings → Theme) and is blended onto that box,
+  not onto the card: screen on dark, multiply on light. The box's colour is
+  therefore added to everything the plugin drew, its background included;
+  the nearer it is to black on dark (white on light), the nearer the picture
+  is to how the plugin drew it. Until the colour is set, a dark theme uses
+  the page background 30% darker (a new configuration starts at `#131B25`),
+  so a picture drawn on a near-black ground comes out with its ground about
+  on the page background and its raised parts about on the paper colour and
+  reads as part of the page. A light theme uses the paper colour: multiply
+  can only darken, so no box colour brings a plugin's light ground up to the
+  page background, and white leaves the picture as drawn. Browsers without
+  CSS style queries show the plugin's background as drawn.
 
 ## Login
 

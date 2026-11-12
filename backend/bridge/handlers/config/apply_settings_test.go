@@ -25,6 +25,12 @@ func TestApplyThemeColorOverridesBuildsPerModeColors(t *testing.T) {
 	require.Equal(t, userconfig.CSSColor("#161F2B"), *ui.ThemeColors.Dark.CodeInsetBackground)
 
 	err = applyThemeColorOverrides(&ui, &apischema.ConfigThemeColorsByModePayload{
+		Dark: &apischema.ConfigThemeColorsPayload{PanePictureBackground: new("#131B25")},
+	})
+	require.NoError(t, err)
+	require.Equal(t, userconfig.CSSColor("#131B25"), *ui.ThemeColors.Dark.PanePictureBackground)
+
+	err = applyThemeColorOverrides(&ui, &apischema.ConfigThemeColorsByModePayload{
 		Light: &apischema.ConfigThemeColorsPayload{CodeText: new("nope")},
 	})
 	require.EqualError(t, err, "invalid themeColors.light.codeText")

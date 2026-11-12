@@ -141,6 +141,12 @@ function ThemeColorsSection() {
         effectiveColor: editTheme.codeBlock.insetBackground,
       },
       {
+        key: "panePictureBackground",
+        label: "Assistant pane picture background",
+        description: "Behind a plugin pane's picture in the Assistant",
+        effectiveColor: editTheme.pane.pictureBackground,
+      },
+      {
         key: "chartRx",
         label: "Chart RX",
         description: "Receive traffic chart color",

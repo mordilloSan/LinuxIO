@@ -21,6 +21,7 @@ export interface ThemeColors {
   dialogBackdrop?: string;
   codeBackground?: string;
   codeInsetBackground?: string;
+  panePictureBackground?: string;
   codeText?: string;
   chartRx?: string;
   chartTx?: string;
@@ -63,6 +64,10 @@ export interface AppTheme {
     color: string;
     /** The surface of code set into a page, as in the Assistant's answers. */
     insetBackground: string;
+  };
+  pane: {
+    /** The box a plugin pane's picture is blended onto, in the Assistant. */
+    pictureBackground: string;
   };
   colorScheme: "light" | "dark";
   dialog: {
@@ -273,6 +278,11 @@ function resolveVariantTheme(
         themeColors?.codeInsetBackground ??
         defaultCodeInset(palette.background.default, mode),
     },
+    pane: {
+      pictureBackground:
+        themeColors?.panePictureBackground ??
+        defaultPanePicture(palette.background, mode),
+    },
     chart: {
       rx: themeColors?.chartRx ?? themeConfig.chart.rx,
       tx: themeColors?.chartTx ?? themeConfig.chart.tx,
@@ -329,6 +339,22 @@ function resolveVariantTheme(
 function defaultCodeInset(background: string, mode: "light" | "dark") {
   const shade = darken(background, mode === "dark" ? 0.18 : 0.03);
   return toHexColor(shade) ?? shade;
+}
+
+// Until the user sets it, a plugin pane's picture is blended onto a box well
+// below the page's background on a dark theme: a plugin draws on a near-black
+// ground and stations a little above it, and screened onto this box they land
+// about on the page's background and on the paper colour, so the picture
+// reads as part of the page. On a light theme multiply can only darken, so
+// the box is the paper colour, which leaves the picture as drawn. Hex,
+// because the Settings colour input shows it.
+function defaultPanePicture(
+  background: { default: string; paper: string },
+  mode: "light" | "dark",
+) {
+  const box =
+    mode === "dark" ? darken(background.default, 0.3) : background.paper;
+  return toHexColor(box) ?? box;
 }
 
 export function buildAppTheme(

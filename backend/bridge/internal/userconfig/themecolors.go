@@ -25,6 +25,7 @@ func themeColorSlots(colors *ThemeColors) []ThemeColorSlot {
 		{"codeBackground", &colors.CodeBackground},
 		{"codeText", &colors.CodeText},
 		{"codeInsetBackground", &colors.CodeInsetBackground},
+		{"panePictureBackground", &colors.PanePictureBackground},
 		{"chartRx", &colors.ChartRx},
 		{"chartTx", &colors.ChartTx},
 		{"chartNeutral", &colors.ChartNeutral},

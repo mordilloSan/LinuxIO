@@ -35,4 +35,31 @@ describe("getThemeCssVariables", () => {
     // A colour input needs a hex value for the unset default too.
     expect(inset(buildAppTheme("DARK"))).toMatch(/^#[0-9a-f]{6}$/i);
   });
+
+  it("blends a pane's picture onto a box below the page when dark, paper when light", () => {
+    const box = (theme: ReturnType<typeof buildAppTheme>) =>
+      getThemeCssVariables(theme)["--app-pane-picture-background"];
+    const dark = buildAppTheme("DARK");
+    expect(box(dark)).toBe(
+      toHexColor(darken(dark.palette.background.default, 0.3)),
+    );
+    const light = buildAppTheme("LIGHT");
+    expect(box(light)).toBe(toHexColor(light.palette.background.paper));
+  });
+
+  it("follows the page background and takes the colour the user set", () => {
+    const box = (colors: {
+      backgroundDefault: string;
+      panePictureBackground?: string;
+    }) =>
+      getThemeCssVariables(buildAppTheme("DARK", undefined, { dark: colors }))[
+        "--app-pane-picture-background"
+      ];
+    expect(box({ backgroundDefault: "#102030" })).toBe(
+      toHexColor(darken("#102030", 0.3)),
+    );
+    expect(
+      box({ backgroundDefault: "#102030", panePictureBackground: "#000000" }),
+    ).toBe("#000000");
+  });
 });

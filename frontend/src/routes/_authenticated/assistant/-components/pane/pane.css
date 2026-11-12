@@ -278,6 +278,23 @@
   color: var(--app-palette-primary-main);
 }
 
+/* A plugin picture sits in a box as wide as the picture. The box's colour is
+   what the picture is blended onto, so it is the one colour of the picture
+   LinuxIO chooses, the theme colour panePictureBackground (appTheme.ts has
+   its default). */
+.assistant-pane-picture {
+  width: fit-content;
+  max-width: 100%;
+  border-radius: var(--app-radius-lg);
+  background: var(--app-pane-picture-background);
+  /* The picture blends with this box only, not with the card behind it. */
+  isolation: isolate;
+}
+
+.assistant-pane-picture--fill {
+  width: 100%;
+}
+
 /* A plugin picture scales down to the panel; one without a size fills it. */
 .assistant-pane-svg {
   display: block;
@@ -286,12 +303,13 @@
   border-radius: var(--app-radius-lg);
 }
 
-/* A plugin draws its picture on its own background, which reads as a box set
-   into the card. Blending lets the card's face stand in for that background,
-   so the drawing sits on the card itself: screen keeps what is lighter than a
-   dark background, multiply what is darker than a light one. The picture
-   already follows the theme (an image takes its colour scheme from the page).
-   Browsers without style queries keep the plugin's own background. */
+/* A plugin draws its picture on its own background. Blending adds the box's
+   colour to it: screen lightens a dark box by what the plugin drew, multiply
+   darkens a light one. The darker the box on a dark theme (the lighter on a
+   light one), the closer the picture is to how the plugin drew it; black (or
+   white) leaves it untouched. The picture already follows the theme (an
+   image takes its colour scheme from the page). Browsers without style
+   queries keep the plugin's own background. */
 @container style(--app-color-scheme: dark) {
   .assistant-pane-svg {
     mix-blend-mode: screen;

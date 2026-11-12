@@ -89,7 +89,12 @@ type ThemeColors struct {
 	// CodeInsetBackground is the surface of code set into a page (the
 	// Assistant's code blocks). Unset, the UI uses the page background a shade
 	// darker, so it follows BackgroundDefault.
-	CodeInsetBackground             *CSSColor `json:"codeInsetBackground,omitzero" yaml:"codeInsetBackground,omitempty"`
+	CodeInsetBackground *CSSColor `json:"codeInsetBackground,omitzero" yaml:"codeInsetBackground,omitempty"`
+	// PanePictureBackground is the box behind a plugin pane's picture in the
+	// Assistant, the colour the picture is blended onto. Unset, the UI uses the
+	// page background well darker on dark, so it follows BackgroundDefault, and
+	// the paper colour on light.
+	PanePictureBackground           *CSSColor `json:"panePictureBackground,omitzero" yaml:"panePictureBackground,omitempty"`
 	ChartRx                         *CSSColor `json:"chartRx,omitzero" yaml:"chartRx,omitempty"`
 	ChartTx                         *CSSColor `json:"chartTx,omitzero" yaml:"chartTx,omitempty"`
 	ChartNeutral                    *CSSColor `json:"chartNeutral,omitzero" yaml:"chartNeutral,omitempty"`
