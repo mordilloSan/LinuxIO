@@ -967,19 +967,37 @@ func TestStoppedWorkerRunChangesNoRunAlert(t *testing.T) {
 }
 
 // The provider's automatic update is recorded like any run, but it is not one
-// of LinuxIO's workers: its own hook reports a failed run ("Automatic updates
-// failed"), so the end hook neither raises nor clears a run alert for it.
-func TestSystemUpdateRunIsRecordedWithoutARunAlert(t *testing.T) {
+// of LinuxIO's workers: it gets no run alert. A failed one is reported by the
+// provider's notify hook where that is installed, and here where it is not,
+// as the same alert, so a failed update is reported on every host.
+func TestSystemUpdateRunIsRecordedAndAFailureAlwaysReported(t *testing.T) {
 	const unit = "apt-daily-upgrade.service"
+	failure := alerts.Observation{
+		Source: "auto-update", Key: "run", Severity: alerts.SeverityError,
+		Title:   "Automatic updates failed",
+		Message: "Service result: exit-code. The run's output is in the history.",
+		// The occurrence is systemd's invocation ID as the provider's hook
+		// reads it, so a run both hooks report is one occurrence.
+		Link: "/history?job=" + testRunID, OccurrenceID: testInvocation,
+	}
 	for name, tt := range map[string]struct {
-		result Result
-		state  jobs.State
+		result    Result
+		state     jobs.State
+		hasNotify bool
+		want      []alerts.Observation
 	}{
-		"completed": {Result{"success", "exited", "0"}, jobs.StateCompleted},
-		"failed":    {Result{"exit-code", "exited", "100"}, jobs.StateFailed},
+		"completed":                          {Result{"success", "exited", "0"}, jobs.StateCompleted, false, nil},
+		"failed, the provider's hook is in":  {Result{"exit-code", "exited", "100"}, jobs.StateFailed, true, nil},
+		"failed, no provider's hook":         {Result{"exit-code", "exited", "100"}, jobs.StateFailed, false, []alerts.Observation{failure}},
+		"failed with a worker's exit status": {Result{"exit-code", "exited", strconv.Itoa(ExitReported)}, jobs.StateFailed, false, []alerts.Observation{failure}},
 	} {
 		h := newHooks(t)
 		resolved := resolving(h)
+		var asked []string
+		h.UpdateNotifyHook = func(unit string) bool {
+			asked = append(asked, unit)
+			return tt.hasNotify
+		}
 		mustBegin(t, h, unit, testInvocation)
 		if record := mustGet(t, h, testRunID); record.Route != RouteSystemUpdate || record.State != jobs.StateRunning {
 			t.Fatalf("%s: running record = %s/%s, want %s running", name, record.Route, record.State, RouteSystemUpdate)
@@ -990,8 +1008,40 @@ func TestSystemUpdateRunIsRecordedWithoutARunAlert(t *testing.T) {
 		if record := mustGet(t, h, testRunID); record.State != tt.state {
 			t.Errorf("%s: record = %s, want %s", name, record.State, tt.state)
 		}
-		if len(h.alerts) != 0 || len(*resolved) != 0 {
-			t.Errorf("%s: alerts = %+v, resolved = %v; want neither", name, h.alerts, *resolved)
+		if !slices.Equal(h.alerts, tt.want) || len(*resolved) != 0 {
+			t.Errorf("%s: alerts = %+v, resolved = %v; want %+v and nothing resolved", name, h.alerts, *resolved, tt.want)
 		}
+		if tt.state == jobs.StateFailed && !slices.Equal(asked, []string{unit}) {
+			t.Errorf("%s: asked about %v, want the unit once", name, asked)
+		}
+	}
+}
+
+// A unit of LinuxIO's is never asked about a provider's notify hook.
+func TestOnlySystemUpdatesAskForTheProvidersHook(t *testing.T) {
+	h := newHooks(t)
+	h.UpdateNotifyHook = func(unit string) bool {
+		t.Errorf("asked about %s", unit)
+		return false
+	}
+	for _, unit := range []string{testUnit, "linuxio-docker-update.service"} {
+		mustBegin(t, h, unit, testInvocation)
+		if err := h.End(t.Context(), unit, testInvocation, Result{"exit-code", "exited", "1"}); err != nil {
+			t.Fatal(err)
+		}
+		h = newHooks(t)
+		h.UpdateNotifyHook = func(unit string) bool {
+			t.Errorf("asked about %s", unit)
+			return false
+		}
+	}
+}
+
+func TestUpdateNotifyDropInIsTheProvidersAlertDropIn(t *testing.T) {
+	if got := UpdateNotifyDropIn("apt-daily-upgrade.service"); got != "/etc/systemd/system/apt-daily-upgrade.service.d/linuxio-alert.conf" {
+		t.Errorf("UpdateNotifyDropIn = %q", got)
+	}
+	if DefaultHooks().UpdateNotifyHook == nil {
+		t.Error("UpdateNotifyHook is not wired")
 	}
 }

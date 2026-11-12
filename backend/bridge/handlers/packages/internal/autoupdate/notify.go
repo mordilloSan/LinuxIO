@@ -21,7 +21,8 @@ const (
 var (
 	// allNotifyPolicies are the policies a drop-in can name. "never" is no
 	// drop-in; no backend offers it, since failures are always reported, but
-	// it is still read and saved: an older host has it stored.
+	// it is still saved when an older page sends it, and then reads back as
+	// on_failure.
 	allNotifyPolicies = []AutoUpdateNotify{AutoUpdateNotifyOnFailure, AutoUpdateNotifyOnChange, AutoUpdateNotifyAlways}
 	// resultOnlyNotifyPolicies are offered where only the service result is
 	// known (DNF, Mint): a run that installed something looks like any other.
@@ -52,19 +53,21 @@ func writeNotifyDropIn(host backendHost, service, provider string, policy AutoUp
 }
 
 // readNotifyPolicy reads the policy back from disk for a backend that offers
-// offered. Anything missing or unrecognised is "never": the drop-in is the
-// authority. An on_change the backend does not offer, which an older build
-// wrote where only the service result is known, reads as on_failure, which is
-// what it runs as there; any other policy reads as stored, so a save cannot
+// offered: the drop-in is the authority. Anything missing or unrecognised
+// reads as on_failure, which is what the host runs as without the drop-in:
+// the run-record hook on the update service reports a failed run where this
+// hook is not installed (scheduledrun). An on_change the backend does not
+// offer, which an older build wrote where only the service result is known,
+// reads as on_failure too; any other policy reads as stored, so a save cannot
 // quietly narrow it.
 func readNotifyPolicy(host backendHost, service string, offered []AutoUpdateNotify) AutoUpdateNotify {
 	data, err := host.readFile(notifyDropInPath(service))
 	if err != nil {
-		return AutoUpdateNotifyNever
+		return AutoUpdateNotifyOnFailure
 	}
 	m := notifyPolicyRe.FindSubmatch(data)
 	if m == nil {
-		return AutoUpdateNotifyNever
+		return AutoUpdateNotifyOnFailure
 	}
 	switch policy := AutoUpdateNotify(m[1]); {
 	case policy == AutoUpdateNotifyOnChange && !slices.Contains(offered, policy):
@@ -72,7 +75,7 @@ func readNotifyPolicy(host backendHost, service string, offered []AutoUpdateNoti
 	case slices.Contains(allNotifyPolicies, policy):
 		return policy
 	}
-	return AutoUpdateNotifyNever
+	return AutoUpdateNotifyOnFailure
 }
 
 // writePendingDropIn installs or removes the ExecStopPost hook on the

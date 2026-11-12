@@ -201,27 +201,6 @@ const ReportCard = ({ edit, value }: DraftProps) => {
         subtitle="Failures are always reported. A run cut short by a shutdown or a reboot is a warning. Choose what else to hear about; system choices save as you change them."
         title="What to hear about"
       />
-      {auto?.failures_unreported &&
-      auto.options.enabled &&
-      auto.can_configure &&
-      policies.length > 0 ? (
-        <AppAlert
-          action={
-            <AppButton
-              color="inherit"
-              disabled={saveAuto.isPending}
-              onClick={() => applyAuto({ notify: "on_failure" })}
-              size="small"
-            >
-              Report failures
-            </AppButton>
-          }
-          severity="warning"
-          style={{ marginBottom: "var(--app-space-6)" }}
-        >
-          System update failures are not reported on this machine.
-        </AppAlert>
-      ) : null}
       <div style={fieldsStyle}>
         {showSystem ? (
           <AppSelect
@@ -233,11 +212,6 @@ const ReportCard = ({ edit, value }: DraftProps) => {
             }
             value={auto?.options.notify ?? ""}
           >
-            {auto?.options.notify === "never" ? (
-              <option disabled hidden value="never">
-                Not reported
-              </option>
-            ) : null}
             {policies.map((policy) => (
               <option key={policy} value={policy}>
                 {systemPolicyLabels[policy]}

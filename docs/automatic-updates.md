@@ -74,17 +74,21 @@ hooks the provider's upgrade service (`apt-daily-upgrade.service`,
 LinuxIO's own timers use
 ([Process and systemd architecture](./process-systemd-architecture.md)). A
 running update shows in the bell, without a cancel. The record raises no
-alert: a failed run is reported by the notify hook below, where a notify
-policy is stored; on a host with none (a stored `never`, or a schedule
-LinuxIO never configured) a failed run shows in the history only.
+alert of its own, with one exception: on a host where the notify hook below
+is not installed (no policy was ever saved, or an older build stored
+`never`), the same hook raises *Automatic updates failed* for a failed run,
+so a failed automatic update is reported on every host.
 
 The notify policy is chosen in the Notifications settings tab, beside the
 Docker update policy and the delivery channels, and stored as a drop-in:
 LinuxIO writes `/etc/systemd/system/<upgrade-service>.d/linuxio-alert.conf`
 with an `ExecStopPost=` that runs `linuxio alert auto-update` after each run.
 The drop-in is removed when the policy is `never`, which no provider offers
-any more, since every other policy reports a failed run; a stored `never`
-still loads and saves, and the settings page offers to report failures. Mint
+any more and only a page of an older build still sends; a host without the
+drop-in reads as "failures only", which is what it runs as. The first save
+of any automatic-update option on such a host therefore writes the drop-in
+with `on_failure`, which also adds its pre-update snapshot line (it does
+something only where a snapshot rule asks for a snapshot before updates). Mint
 and DNF report only the service result, so they offer no "on change". On APT, "tell me when
 system updates are waiting" writes the same drop-in name under
 `apt-daily.service.d`, running `linuxio alert pending-updates` after each

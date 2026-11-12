@@ -18,6 +18,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
 	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 const (
@@ -201,7 +202,7 @@ func autoUpdateAlert(policy, serviceResult string, run autoUpdateRun, rebootRequ
 		return alerts.Observation{}, false
 	}
 	obs := alerts.Observation{
-		Source: "auto-update", Key: "run", Link: "/updates", OccurrenceID: occurrence,
+		Source: scheduledrun.UpdateAlertSource, Key: scheduledrun.UpdateAlertKey, Link: "/updates", OccurrenceID: occurrence,
 		Severity: alerts.SeverityInfo,
 	}
 	var parts []string

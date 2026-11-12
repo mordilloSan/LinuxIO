@@ -37,16 +37,12 @@ type AutoUpdateOrigin struct {
 }
 
 type AutoUpdateState struct {
-	AvailableOrigins []AutoUpdateOrigin `json:"available_origins,omitempty"`
-	Backend          AutoUpdateBackend  `json:"backend"`
-	CanConfigure     bool               `json:"can_configure"`
-	// FailuresUnreported says the stored notify policy is "never" (no hook is
-	// installed), which no backend offers any more: a failed run raises no
-	// alert until another policy is saved.
-	FailuresUnreported bool                    `json:"failures_unreported,omitzero"`
-	Notes              []string                `json:"notes,omitempty"`
-	Options            AutoUpdateOptions       `json:"options"`
-	Support            AutoUpdateOptionSupport `json:"support"`
+	AvailableOrigins []AutoUpdateOrigin      `json:"available_origins,omitempty"`
+	Backend          AutoUpdateBackend       `json:"backend"`
+	CanConfigure     bool                    `json:"can_configure"`
+	Notes            []string                `json:"notes,omitempty"`
+	Options          AutoUpdateOptions       `json:"options"`
+	Support          AutoUpdateOptionSupport `json:"support"`
 }
 
 type UpgradeItem struct {

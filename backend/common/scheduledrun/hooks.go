@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -40,6 +41,9 @@ type Hooks struct {
 	Settings func() alerts.NotificationSettings
 	// Resolve clears an alert; nil clears nothing.
 	Resolve func(ctx context.Context, source, key string) error
+	// UpdateNotifyHook reports whether the provider's own notify hook is
+	// installed on the system update unit; nil means it is not.
+	UpdateNotifyHook func(unit string) bool
 }
 
 // DefaultHooks is the production wiring.
@@ -54,8 +58,27 @@ func DefaultHooks() Hooks {
 		Alert:       alerts.Raise,
 		Settings:    alerts.NotificationsOrDefaults,
 		Resolve:     alerts.Resolve,
+		UpdateNotifyHook: func(unit string) bool {
+			_, err := os.Stat(UpdateNotifyDropIn(unit))
+			return err == nil
+		},
 	}
 }
+
+// UpdateNotifyDropIn is the drop-in the auto-update settings write on the
+// provider's update service unit to report its runs (`linuxio alert
+// auto-update`). That package owns the path and tests it against this one.
+func UpdateNotifyDropIn(unit string) string {
+	return "/etc/systemd/system/" + unit + ".d/linuxio-alert.conf"
+}
+
+// The alert a failed automatic update raises, the same record whichever
+// hook reports it: the provider's notify hook, which owns these names in
+// the linuxio command and tests them against these, or End below.
+const (
+	UpdateAlertSource = "auto-update"
+	UpdateAlertKey    = "run"
+)
 
 // Begin writes the running record of the run of unit that has invocationID.
 // The record is fsynced: a run whose record a power loss took would get no
@@ -112,7 +135,38 @@ func (h Hooks) End(ctx context.Context, unit, invocationID string, result Result
 			errs = append(errs, alertErr)
 		}
 	}
+	if obs, ok := h.failedUpdateAlert(kind, unit, invocationID, record, result); ok {
+		if alertErr := h.Alert(context.WithoutCancel(ctx), obs); alertErr != nil {
+			errs = append(errs, fmt.Errorf("raise alert: %w", alertErr))
+		}
+	}
 	return errors.Join(errs...)
+}
+
+// failedUpdateAlert is the alert of a system update that failed on a host
+// where the provider's notify hook is not installed (no notify policy was
+// ever saved, or a "never" from an older build is stored): that hook reports
+// a failed run under every policy it is installed with, so without it the
+// failure is reported here, as the same record, and a failed automatic update
+// is reported on every host. Each failed run is a new occurrence, named by
+// its invocation ID as the provider's hook names it, so a run both hooks
+// report (the drop-in removed, systemd not yet reloaded) is one occurrence.
+func (h Hooks) failedUpdateAlert(kind Kind, unit, invocationID string, record jobs.Record, result Result) (alerts.Observation, bool) {
+	if kind.Route != RouteSystemUpdate || record.State != jobs.StateFailed {
+		return alerts.Observation{}, false
+	}
+	if h.UpdateNotifyHook != nil && h.UpdateNotifyHook(unit) {
+		return alerts.Observation{}, false
+	}
+	return alerts.Observation{
+		Source:       UpdateAlertSource,
+		Key:          UpdateAlertKey,
+		Severity:     alerts.SeverityError,
+		Title:        "Automatic updates failed",
+		Message:      "Service result: " + result.Service + ". The run's output is in the history.",
+		Link:         "/history?job=" + record.ID,
+		OccurrenceID: invocationID,
+	}, true
 }
 
 // reportWorkerRun raises or clears the run alert of a worker unit (snapshots,

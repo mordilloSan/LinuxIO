@@ -64,7 +64,7 @@ func TestAnOlderOnChangeReadsAsWhatItRuns(t *testing.T) {
 			if tc.name == "apt" {
 				want = AutoUpdateNotifyOnChange
 			}
-			state := wantNotify(t, tc.backend, want, false)
+			state := wantNotify(t, tc.backend, want)
 			if err := tc.backend.Apply(t.Context(), state.Options); err != nil {
 				t.Fatalf("Apply of the options read back: %v", err)
 			}
@@ -72,13 +72,14 @@ func TestAnOlderOnChangeReadsAsWhatItRuns(t *testing.T) {
 	}
 }
 
-func TestAStoredNeverIsReported(t *testing.T) {
+// A host with no notify drop-in reports failures only: the run-record hook
+// reports a failed update there. A "never" an older page sends still saves and
+// installs no drop-in, and reads back as what it runs as.
+func TestNoNotifyDropInReadsAsFailuresOnly(t *testing.T) {
 	for _, tc := range installedBackends() {
 		t.Run(tc.name, func(t *testing.T) {
-			// A host with no drop-in reads as never.
-			wantNotify(t, tc.backend, AutoUpdateNotifyNever, true)
+			wantNotify(t, tc.backend, AutoUpdateNotifyOnFailure)
 
-			// A stored never still saves, installs no hook, and stays reported.
 			options := AutoUpdateOptions{ExcludePackages: []string{}, Frequency: "daily", Notify: AutoUpdateNotifyNever, RebootPolicy: "never", Scope: "security"}
 			if err := tc.backend.Apply(t.Context(), options); err != nil {
 				t.Fatalf("Apply never: %v", err)
@@ -86,27 +87,29 @@ func TestAStoredNeverIsReported(t *testing.T) {
 			if _, ok := tc.files[notifyDropInPath(tc.service)]; ok {
 				t.Fatal("never wrote the notify drop-in")
 			}
-			wantNotify(t, tc.backend, AutoUpdateNotifyNever, true)
+			wantNotify(t, tc.backend, AutoUpdateNotifyOnFailure)
 
 			options.Notify = AutoUpdateNotifyOnFailure
 			if err := tc.backend.Apply(t.Context(), options); err != nil {
 				t.Fatalf("Apply on_failure: %v", err)
 			}
-			wantNotify(t, tc.backend, AutoUpdateNotifyOnFailure, false)
+			if _, ok := tc.files[notifyDropInPath(tc.service)]; !ok {
+				t.Fatal("on_failure wrote no notify drop-in")
+			}
+			wantNotify(t, tc.backend, AutoUpdateNotifyOnFailure)
 		})
 	}
 }
 
-// wantNotify reads backend's state and fails unless it holds notify and says
-// whether failures go unreported.
-func wantNotify(t *testing.T, backend UpdateBackend, notify AutoUpdateNotify, unreported bool) AutoUpdateState {
+// wantNotify reads backend's state and fails unless it holds notify.
+func wantNotify(t *testing.T, backend UpdateBackend, notify AutoUpdateNotify) AutoUpdateState {
 	t.Helper()
 	state, err := backend.Read(t.Context())
 	if err != nil {
 		t.Fatalf("Read: %v", err)
 	}
-	if state.Options.Notify != notify || state.FailuresUnreported != unreported {
-		t.Fatalf("notify %q, failures unreported %v; want %q, %v", state.Options.Notify, state.FailuresUnreported, notify, unreported)
+	if state.Options.Notify != notify {
+		t.Fatalf("notify %q, want %q", state.Options.Notify, notify)
 	}
 	return state
 }

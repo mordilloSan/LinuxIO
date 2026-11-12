@@ -312,7 +312,6 @@ export interface AutoUpdateState {
   available_origins?: AutoUpdateOrigin[];
   backend: AutoUpdateBackend;
   can_configure: boolean;
-  failures_unreported?: boolean;
   notes?: string[];
   options: AutoUpdateOptions;
   support: AutoUpdateOptionSupport;

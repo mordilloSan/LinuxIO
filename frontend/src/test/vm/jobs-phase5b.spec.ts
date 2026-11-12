@@ -1004,13 +1004,15 @@ test("the notice at sign-in counts the unseen alert and Show opens the bell", as
   ).toHaveCount(0);
 });
 
-test("a stored never for system updates is reported and fixed in one click", async ({
+test("a machine with no system update notify hook reads as failures only", async ({
   page,
 }) => {
-  // A sign-in, two reads of the state and one save: 6 s in run 3.
+  // A sign-in, two reads of the state and one save.
   test.setTimeout(120_000);
-  // A stored "never" is no drop-in: remove it, whatever an earlier run of
-  // this check or the image left there.
+  // No drop-in is what an older "never" left, and what a machine has before
+  // any policy is saved: remove it, whatever an earlier check or the image
+  // left there. A failed update is then reported by the run-record hook
+  // (jobs-phase4.spec.ts), so the page has nothing to warn about.
   const dropIn =
     "/etc/systemd/system/apt-daily-upgrade.service.d/linuxio-alert.conf";
   await vmSsh(`sudo rm -f ${dropIn} && sudo systemctl daemon-reload`);
@@ -1030,19 +1032,17 @@ test("a stored never for system updates is reported and fixed in one click", asy
     `system updates: ${JSON.stringify({
       enabled: state.options.enabled,
       notify: state.options.notify,
-      failures_unreported: state.failures_unreported,
       can_configure: state.can_configure,
       offered: state.support.notify_policies,
     })}`,
   );
-  // Only facts of the machine skip: no automatic-update tool to configure,
-  // or automatic updates off, where the page rightly shows no warning.
+  // Only a fact of the machine skips: no automatic-update tool to configure.
   test.skip(
-    !state.can_configure || !state.options.enabled,
-    `this VM reads can_configure ${state.can_configure}, enabled ${state.options.enabled}`,
+    !state.can_configure,
+    `this VM reads can_configure ${state.can_configure}`,
   );
-  expect(state.options.notify).toBe("never");
-  expect(state.failures_unreported).toBe(true);
+  expect(state.options.notify).toBe("on_failure");
+  expect(state.failures_unreported).toBeUndefined();
   expect(state.support.notify_policies).toEqual([
     "on_failure",
     "on_change",
@@ -1050,36 +1050,34 @@ test("a stored never for system updates is reported and fixed in one click", asy
   ]);
 
   await openNotificationSettings(page);
-  const warning = page.getByText(
-    "System update failures are not reported on this machine.",
-  );
-  await expect(warning).toBeVisible({ timeout: 15_000 });
   const system = page.getByRole("combobox", {
     name: "System updates",
     exact: true,
   });
-  await expect(system).toHaveText("Not reported");
+  await expect(system).toHaveText("Failures only", { timeout: 15_000 });
+  await expect(
+    page.getByText("System update failures are not reported on this machine."),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Report failures", exact: true }),
+  ).toHaveCount(0);
+
+  // Choosing another policy installs the provider's hook; choosing failures
+  // only again keeps it, now named in the drop-in.
   await system.click();
   await expect(page.getByRole("option")).toHaveText([
     "Failures only",
     "Also when something changed",
     "Every run",
   ]);
-  await page.keyboard.press("Escape");
-
-  await page
-    .getByRole("button", { name: "Report failures", exact: true })
-    .click();
+  await page.getByRole("option", { name: "Every run", exact: true }).click();
   await expect(
     page.getByText("System update notifications saved").last(),
   ).toBeVisible({ timeout: 30_000 });
-  await expect(warning).toBeHidden({ timeout: 15_000 });
-  await expect(system).toHaveText("Failures only");
+  await expect(system).toHaveText("Every run");
   console.log(
     await vmSsh(`sudo stat -c '%n %a %U:%G' $(dirname ${dropIn}) ${dropIn}`),
   );
-  expect(await vmSsh(`sudo cat ${dropIn}`)).toContain("--policy on_failure");
-  const after = await read();
-  expect(after.options.notify).toBe("on_failure");
-  expect(after.failures_unreported ?? false).toBe(false);
+  expect(await vmSsh(`sudo cat ${dropIn}`)).toContain("--policy always");
+  expect((await read()).options.notify).toBe("always");
 });

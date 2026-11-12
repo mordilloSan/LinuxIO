@@ -564,8 +564,10 @@ settings file and what each producer raises. The wire types live in
   frontend refetches `alerts.list` after it.
   The generated `schedules.create` now takes the request object (its kind
   changed from `field` to `object`).
-- `AutoUpdateState.failures_unreported?: boolean` is true while the stored
-  policy is `never` (no drop-in), whatever `can_configure` says.
+- `AutoUpdateState.options.notify` reads `on_failure` on a host with no
+  notify drop-in (an older build read `never` there and flagged it with
+  `failures_unreported`, which is gone): a failed update is reported there
+  by the run-record hook.
   `support.notify_policies` offers `on_failure`, `on_change` and `always` on
   APT and `on_failure` and `always` on DNF and Mint; `never` is offered by
   none but stays in `AutoUpdateNotify` and is still accepted by

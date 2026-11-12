@@ -101,13 +101,6 @@ const autoUpdates: AutoUpdateState = {
   },
 };
 
-/** A machine that updates itself and whose stored policy is "never". */
-const unreported: AutoUpdateState = {
-  ...autoUpdates,
-  failures_unreported: true,
-  options: { ...autoUpdates.options, enabled: true, notify: "never" },
-};
-
 /** What the backend answers when notifications.json cannot be read. */
 const unreadable: NotificationSettingsView = {
   ...saved,
@@ -579,102 +572,29 @@ describe("NotificationSettingsSection", () => {
     ).toBeNull();
   });
 
-  it("offers to report system update failures where the stored policy is never", async () => {
+  it("says nothing about unreported system update failures: a failure is always reported", async () => {
     const user = userEvent.setup();
-    mocks.getAutoUpdates.mockResolvedValue(unreported);
+    // A machine with no policy stored reads as failures only.
+    mocks.getAutoUpdates.mockResolvedValue({
+      ...autoUpdates,
+      options: { ...autoUpdates.options, enabled: true, notify: "on_failure" },
+    });
     render(<NotificationSettingsSection />);
 
+    const system = await loadedSystemSelect();
+    expect(system).toHaveTextContent("Failures only");
     expect(
-      await screen.findByText(
+      screen.queryByText(
         "System update failures are not reported on this machine.",
       ),
-    ).toBeInTheDocument();
-    // The select is not an empty control: it says so and offers no never.
-    const system = screen.getByRole("combobox", { name: "System updates" });
-    expect(system).toHaveTextContent("Not reported");
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Report failures" }),
+    ).toBeNull();
     await user.click(system);
-    const options = screen.getAllByRole("option");
-    expect(options.map((option) => option.textContent)).toEqual([
-      "Failures only",
-      "Also when something changed",
-      "Every run",
-    ]);
-    for (const option of options) {
-      expect(option).toHaveAttribute("aria-selected", "false");
-    }
-    await user.keyboard("{Escape}");
-
-    await user.click(screen.getByRole("button", { name: "Report failures" }));
-    expect(mocks.mutations["updates.set_auto_updates"]).toHaveBeenCalledWith({
-      ...unreported.options,
-      notify: "on_failure",
-    });
-    expect(mocks.mutations["alerts.set_notifications"]).not.toHaveBeenCalled();
-  });
-
-  it("does not offer to report system update failures where it cannot be set", async () => {
-    mocks.getAutoUpdates.mockResolvedValue({
-      ...unreported,
-      can_configure: false,
-    });
-    render(<NotificationSettingsSection />);
-
-    // The waiting box appears once the state has loaded.
-    const waiting = await screen.findByLabelText(
-      "Tell me when system updates are waiting",
-    );
-    const system = screen.getByRole("combobox", { name: "System updates" });
-    expect(system).toHaveTextContent("Not reported");
-    // Nothing here can change the system policy.
-    expect(system).toHaveAttribute("aria-disabled", "true");
-    expect(waiting).toBeDisabled();
     expect(
-      screen.queryByText(
-        "System update failures are not reported on this machine.",
-      ),
-    ).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Report failures" }),
-    ).toBeNull();
-  });
-
-  it("does not warn of unreported failures while automatic updates are off", async () => {
-    mocks.getAutoUpdates.mockResolvedValue({
-      ...unreported,
-      options: { ...unreported.options, enabled: false },
-    });
-    render(<NotificationSettingsSection />);
-
-    // The select still says so once the state has loaded.
-    expect(await loadedSystemSelect()).toHaveTextContent("Not reported");
-    expect(
-      screen.queryByText(
-        "System update failures are not reported on this machine.",
-      ),
-    ).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Report failures" }),
-    ).toBeNull();
-  });
-
-  it("does not offer to report system update failures without a policy to choose", async () => {
-    mocks.getAutoUpdates.mockResolvedValue({
-      ...unreported,
-      support: { ...unreported.support, notify_policies: [] },
-    });
-    render(<NotificationSettingsSection />);
-
-    expect(
-      await screen.findByLabelText("Tell me when system updates are waiting"),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText(
-        "System update failures are not reported on this machine.",
-      ),
-    ).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Report failures" }),
-    ).toBeNull();
+      screen.getAllByRole("option").map((option) => option.textContent),
+    ).toEqual(["Failures only", "Also when something changed", "Every run"]);
   });
 
   it("warns of an unreadable settings file and saves the defaults over it", async () => {

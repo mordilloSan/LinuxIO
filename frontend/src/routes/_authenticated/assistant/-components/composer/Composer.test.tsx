@@ -614,7 +614,10 @@ describe("Composer", () => {
   });
 
   it("keeps the context gauge inert when the agent has no /compact", async () => {
-    const { onSend } = setup({ commands: [] });
+    const { onSend } = setup({
+      commands: [],
+      usage: { used: 12000, size: 200000, cost: null },
+    });
     await userEvent.click(
       screen.getByRole("button", { name: "12k / 200k tokens (6%)" }),
     );

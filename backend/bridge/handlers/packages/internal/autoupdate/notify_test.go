@@ -43,16 +43,18 @@ func TestReadNotifyPolicy(t *testing.T) {
 	fake, host := newFakeAutoUpdateHost()
 	svc := "dnf-automatic.service"
 	path := "/etc/systemd/system/dnf-automatic.service.d/linuxio-alert.conf"
-	if got := readNotifyPolicy(host, svc, allNotifyPolicies); got != AutoUpdateNotifyNever {
-		t.Fatalf("missing drop-in = %q", got)
+	// No drop-in runs as failures only: the run-record hook reports a failed
+	// update where the provider's hook is not installed.
+	if got := readNotifyPolicy(host, svc, allNotifyPolicies); got != AutoUpdateNotifyOnFailure {
+		t.Fatalf("missing drop-in = %q, want on_failure", got)
 	}
 	fake.files[path] = []byte("[Service]\nExecStopPost=/usr/local/bin/linuxio alert auto-update --provider dnf --policy always\n")
 	if got := readNotifyPolicy(host, svc, allNotifyPolicies); got != AutoUpdateNotifyAlways {
 		t.Fatalf("policy = %q", got)
 	}
 	fake.files[path] = []byte("[Service]\nExecStopPost=/usr/local/bin/linuxio alert auto-update --provider dnf --policy sometimes\n")
-	if got := readNotifyPolicy(host, svc, allNotifyPolicies); got != AutoUpdateNotifyNever {
-		t.Fatalf("invalid policy read as %q, want never", got)
+	if got := readNotifyPolicy(host, svc, allNotifyPolicies); got != AutoUpdateNotifyOnFailure {
+		t.Fatalf("invalid policy read as %q, want on_failure", got)
 	}
 }
 
@@ -73,8 +75,8 @@ func TestReadNotifyPolicyFallsBackOnlyForOnChange(t *testing.T) {
 		}
 	}
 	delete(fake.files, aptAlertDropIn)
-	if got := readNotifyPolicy(host, aptUpgradeService, offered); got != AutoUpdateNotifyNever {
-		t.Errorf("no drop-in read as %q, want never", got)
+	if got := readNotifyPolicy(host, aptUpgradeService, offered); got != AutoUpdateNotifyOnFailure {
+		t.Errorf("no drop-in read as %q, want on_failure", got)
 	}
 }
 
@@ -162,5 +164,13 @@ func TestScheduledRunKnowsTheUpgradeServices(t *testing.T) {
 		if kind, ok := scheduledrun.KindOf(service, ""); !ok || kind.Route != scheduledrun.RouteSystemUpdate {
 			t.Errorf("KindOf(%q) = %+v, %v; want a system update", service, kind, ok)
 		}
+	}
+}
+
+// The run-record hook looks for this drop-in to know whether the provider's
+// hook reports a failed update.
+func TestNotifyDropInIsTheOneTheRunRecordHookLooksFor(t *testing.T) {
+	if got, want := notifyDropInPath(aptUpgradeService), scheduledrun.UpdateNotifyDropIn(aptUpgradeService); got != want {
+		t.Errorf("notifyDropInPath = %q, the run-record hook looks for %q", got, want)
 	}
 }

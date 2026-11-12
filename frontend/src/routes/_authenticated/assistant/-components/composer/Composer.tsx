@@ -288,14 +288,6 @@ export default function Composer({
     // Reset so choosing the same file again still fires a change.
     event.target.value = "";
     if (files.length > 0) void addImages(files);
-  // The gauge runs the agent's own /compact, as a prompt of its own.
-  const canCompact =
-    !disabled &&
-    !running &&
-    agentCommands.some((command) => command.name === "compact");
-  const compact = () =>
-    onSend(buildPrompt("/compact", []), { text: "/compact", attachments: [] });
-
   };
 
   const onKeyDown = (event: KeyboardEvent) => {

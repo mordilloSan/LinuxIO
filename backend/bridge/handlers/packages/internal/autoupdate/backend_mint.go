@@ -43,9 +43,8 @@ func (b *mintBackend) Read(ctx context.Context) (AutoUpdateState, error) {
 	support := mintSupport()
 	notify := readNotifyPolicy(b.host, mintUpgradeService, support.NotifyPolicies)
 	state := AutoUpdateState{
-		Backend:            b.Name(),
-		CanConfigure:       b.installed(),
-		FailuresUnreported: notify == AutoUpdateNotifyNever,
+		Backend:      b.Name(),
+		CanConfigure: b.installed(),
 		Options: AutoUpdateOptions{
 			Frequency:       AutoUpdateFrequency(readTimerFrequency(b.host, mintTimer)),
 			Notify:          notify,

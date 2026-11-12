@@ -440,14 +440,32 @@ test("a system update records its run and shows in the history", async ({
       page.getByRole("row").filter({ hasText: "System updates" }).first(),
     ).toBeVisible({ timeout: 30_000 });
 
-    // A failed run is recorded as failed and raises no jobs alert: the
-    // provider's own hook reports a failed automatic update.
+    // A failed run is recorded as failed and raises no jobs alert. This VM
+    // has no notify policy saved, so the provider's hook is not installed
+    // and the run-record hook reports the failed update itself.
+    await vmSsh(
+      `sudo rm -f /etc/systemd/system/${SYSTEM_UPDATE_UNIT}.d/linuxio-alert.conf && sudo systemctl daemon-reload`,
+    );
     await stub("/bin/false");
     before = await recordIds(SYSTEM_UPDATE);
     await vmSsh(`sudo systemctl start ${SYSTEM_UPDATE_UNIT} || true`);
     const failed = await waitForNewRun(SYSTEM_UPDATE, before, "failed");
     expect(failed.error?.message).toBe("exited with status 1");
     expect(await jobsAlerts(failed.id), "jobs alerts").toEqual([]);
+    const reported = JSON.parse(
+      await vmSsh(
+        `sudo sh -c 'cat /var/lib/linuxio/alerts.json 2>/dev/null || echo "{}"' | jq -c '[(.alerts // [])[] | select(.id == "auto-update/run")][0]'`,
+      ),
+    ) as { severity: string; title: string; message: string; link: string };
+    expect(reported).toMatchObject({
+      severity: "error",
+      title: "Automatic updates failed",
+      message: "Service result: exit-code. The run's output is in the history.",
+      link: `/history?job=${failed.id}`,
+      // The run's invocation ID, as the provider's hook would name it.
+      occurrence_id: failed.executor.invocation_id,
+      occurrence_count: 1,
+    });
   } finally {
     await vmSsh(
       `sudo rm -f ${override} && sudo systemctl daemon-reload && sudo systemctl reset-failed ${SYSTEM_UPDATE_UNIT} || true`,

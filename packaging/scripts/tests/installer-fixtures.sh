@@ -405,7 +405,18 @@ run_record_dropin_fixtures() {
 		: >"${fixture_dir}/system/dnf-automatic.service.d/override.conf"
 		: >"${fixture_dir}/system/apt-daily-upgrade.service.d/linuxio-alert.conf"
 		: >"${fixture_dir}/system/apt-daily.service.d/linuxio-alert.conf"
-		bash -c "$(grep -E '^(rm -rf /etc/systemd/system/linuxio\*|rm -f /etc/systemd/system/\*\.service\.d/|rmdir --ignore-fail-on-non-empty /etc/systemd/system/)' "$UNINSTALLER" | sed "s#/etc/systemd/system#${fixture_dir}/system#g")"
+		# The schedule the auto-update settings write on the update timers, and
+		# an administrator's own override of one of them.
+		mkdir -p "${fixture_dir}/system/apt-daily-upgrade.timer.d" "${fixture_dir}/system/dnf-automatic.timer.d" "${fixture_dir}/system/other.timer.d"
+		: >"${fixture_dir}/system/apt-daily-upgrade.timer.d/linuxio.conf"
+		: >"${fixture_dir}/system/dnf-automatic.timer.d/linuxio.conf"
+		: >"${fixture_dir}/system/dnf-automatic.timer.d/override.conf"
+		: >"${fixture_dir}/system/other.timer.d/linuxio.conf"
+		bash -c "$(grep -E '^(rm -rf /etc/systemd/system/linuxio\*|rm -f /etc/systemd/system/(\*\.service\.d|apt-daily\.timer\.d)/|rmdir --ignore-fail-on-non-empty /etc/systemd/system/)' "$UNINSTALLER" | sed "s#/etc/systemd/system#${fixture_dir}/system#g")"
+		[[ ! -e "${fixture_dir}/system/apt-daily-upgrade.timer.d" ]] || fail "uninstall left the update timer's schedule override"
+		[[ ! -e "${fixture_dir}/system/dnf-automatic.timer.d/linuxio.conf" ]] || fail "uninstall left the schedule override beside an administrator's file"
+		[[ -f "${fixture_dir}/system/dnf-automatic.timer.d/override.conf" ]] || fail "uninstall removed an administrator's drop-in of an update timer"
+		[[ -f "${fixture_dir}/system/other.timer.d/linuxio.conf" ]] || fail "uninstall removed a linuxio.conf of a timer that is not an update timer"
 		for dropin_dir in $linuxio_dirs apt-daily-upgrade.service.d apt-daily.service.d dnf5-automatic.service.d mintupdate-automation-upgrade.service.d; do
 			[[ ! -e "${fixture_dir}/system/${dropin_dir}" ]] || fail "uninstall left ${dropin_dir}"
 		done

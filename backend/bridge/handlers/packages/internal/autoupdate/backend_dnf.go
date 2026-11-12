@@ -64,9 +64,8 @@ func (b *dnfBackend) Read(ctx context.Context) (AutoUpdateState, error) {
 	support := b.support(config)
 	notify := readNotifyPolicy(b.host, b.service(), support.NotifyPolicies)
 	state := AutoUpdateState{
-		Backend:            b.Name(),
-		CanConfigure:       b.providerInstalled(),
-		FailuresUnreported: notify == AutoUpdateNotifyNever,
+		Backend:      b.Name(),
+		CanConfigure: b.providerInstalled(),
 		Options: AutoUpdateOptions{
 			DownloadOnly:    true,
 			Enabled:         false,

@@ -211,7 +211,7 @@ which setting governs it. Every raise is then delivered as the
 
 | Source | Writer | Raises | Setting | Resolve |
 |---|---|---|---|---|
-| Automatic updates | `ExecStopPost=` drop-in on the provider's upgrade service, running `linuxio alert auto-update` | `auto-update/run`: *Automatic updates failed* (alert) on a failed run; on a successful run that the policy reports, *Automatic updates installed N packages*, *Automatic updates found nothing to install* or, where the provider cannot tell what it installed, *Automatic updates ran* (notice). A notice becomes a warning with "Reboot required." when `/run/reboot-required` exists | The provider's policy ([below](#automatic-updates-notification-policy)); failures under every policy that installs the drop-in | Never; each run is a new occurrence of the one record |
+| Automatic updates | `ExecStopPost=` drop-in on the provider's upgrade service, running `linuxio alert auto-update` | `auto-update/run`: *Automatic updates failed* (alert) on a failed run; on a successful run that the policy reports, *Automatic updates installed N packages*, *Automatic updates found nothing to install* or, where the provider cannot tell what it installed, *Automatic updates ran* (notice). A notice becomes a warning with "Reboot required." when `/run/reboot-required` exists | The provider's policy ([below](#automatic-updates-notification-policy)); failures always: under every policy from the drop-in, and from the run-record hook where there is none | Never; each run is a new occurrence of the one record |
 | Pending system updates | `ExecStopPost=` drop-in on `apt-daily.service`, running `linuxio alert pending-updates` after each package-list refresh (APT only) | `auto-update/pending` (notice): packages an upgrade would install. The occurrence is the package set, so an unchanged set is not re-delivered | *Tell me when system updates are waiting* (the automatic-update options) | The next refresh that finds nothing pending |
 | Docker update outcome | `linuxio-docker-update` worker, already root; reads the settings once per pass | `docker-update/<name>` (alert): a scheduled update fails or the replacement container is not healthy. `docker-update/updated-<name>` (notice), *Docker container updated: `<name>`*: a scheduled update replaced the container. `docker-update/linuxio-update-pass` (notice), one record for every pass, each pass a new occurrence, for a pass that replaced nothing (in either mode): *Docker updates: nothing to update* when nothing waits, *Docker updates: N waiting* when updates wait while the "waiting" alerts are off | Failures always, whatever is stored (also a stored `never`). `updated-` under `changes` and `every_run`. The pass notice under `every_run` only, and not for a pass that failed, replaced a container (it raises only the per-container notices), could not check one of its containers, or whose waiting updates the "waiting" alerts report | Failure: the next successful update of that container. Updated and pass notice: dismissed by the user |
 | Docker update available | `linuxio-docker-update` worker, after the check every scheduled pass makes (the Check only mode is enough) | `docker-update/available-<name>` (notice), *Docker update available: `<name>`*. The occurrence is the remote digest | `dockerUpdatesAvailable` (*Tell me when Docker updates are waiting*) | The next check that finds the container current or cannot check it, or runs with the setting off, or the update that replaces it |
@@ -237,10 +237,19 @@ What the sources cannot tell, or do not report, as built:
   run installed, so they offer no "when something changed", and their "every
   run" notice reads *Automatic updates ran*. APT whose log cannot be read
   reads the same way.
-- **A stored `never` for system updates** means no drop-in is installed, so a
-  failed automatic update raises nothing until another policy is saved.
-  Nothing rewrites it on its own; the settings page says so and offers one
-  click ([below](#automatic-updates-notification-policy)).
+- **A host with no notify drop-in for system updates** (no policy was ever
+  saved, or an older build stored `never`) still reports a failed automatic
+  update: the run-record hook on the update service raises the same
+  `auto-update/run` alert, with the service result and a link to the run in
+  the history, where its output is. It does not read the APT log, so it names
+  no package errors and does not see a run that ended well but logged errors;
+  saving a policy installs the provider's hook, which does
+  ([below](#automatic-updates-notification-policy)). It reports what the run's
+  record says: a run the system stopped, or one whose record could not be
+  written, is not reported by it. It decides by whether the drop-in file is
+  there, while systemd runs the hooks it last loaded: between a policy's save
+  and the reload that follows it, a failing run can be reported by both hooks
+  (as one occurrence) or by neither.
 - **A stored Docker `never` no longer silences failures**: a failed scheduled
   Docker update is always raised. An admin who chose *Never* for Docker gets
   those alerts from this build on.
@@ -305,16 +314,15 @@ What each provider offers, as `support.notify_policies`:
 | DNF5 | `dnf5-automatic.service` | `on_failure`, `always` |
 | Linux Mint | `mintupdate-automation-upgrade.service` | `on_failure`, `always` |
 
-`never` is offered by none, since no choice may silence a failure, but it is
-still read (a host with no drop-in has it) and still accepted by
-`updates.set_auto_updates`, where it writes no drop-in. While the stored
-policy is `never`, `AutoUpdateState.failures_unreported` is true; where the
-policy can be configured and automatic updates are enabled, the settings page
-then shows *System update
-failures are not reported on this machine.* with a *Report failures* button,
-which saves `on_failure`, and its *System updates* select reads *Not
-reported*. A DNF or Mint drop-in an older build wrote with `on_change` reads
-as `on_failure`, which is what it runs as there; the next save writes
+`never` is offered by none, since no choice may silence a failure. It is
+still accepted by `updates.set_auto_updates`, where it writes no drop-in, for
+a page of an older build. A host with no drop-in reads as `on_failure`, which
+is what it runs as: the run-record hook on the update service
+(`backend/common/scheduledrun`, `failedUpdateAlert`) raises *Automatic
+updates failed* for a failed run whenever the provider's drop-in is not
+there, so the settings page shows *Failures only* and has nothing to warn
+about. A DNF or Mint drop-in an older build wrote with `on_change` reads as
+`on_failure` too, which is what it runs as there; the next save writes
 `on_failure`.
 
 The drop-in is `/etc/systemd/system/<upgrade-service>.d/linuxio-alert.conf`:
