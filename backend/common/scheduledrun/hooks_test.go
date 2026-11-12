@@ -855,11 +855,12 @@ func TestFailedWorkerRunRaisesTheRunAlert(t *testing.T) {
 		unit, key, title string
 		result           Result
 		message          string
+		occurrence       string
 	}{
-		{"linuxio-docker-update.service", "run-docker-update", "Container updates failed", Result{"exit-code", "exited", "1"}, "Exited with status 1."},
-		{"linuxio-btrfs-snapshot.service", "run-btrfs-snapshot", "Snapshots and replication failed", Result{"oom-kill", "killed", "KILL"}, "Killed for using too much memory."},
-		{"linuxio-btrfs-resync@" + pool + ".service", "run-btrfs-resync-" + pool, "Pool resync failed", Result{"signal", "killed", "SEGV"}, "Killed by signal SEGV."},
-		{"linuxio-docker-update.service", "run-docker-update", "Container updates failed", Result{"timeout", "killed", "TERM"}, "Timed out."},
+		{"linuxio-docker-update.service", "run-docker-update", "Container updates failed", Result{"exit-code", "exited", "1"}, "Exited with status 1.", "exited with status 1"},
+		{"linuxio-btrfs-snapshot.service", "run-btrfs-snapshot", "Snapshots and replication failed", Result{"oom-kill", "killed", "KILL"}, "Killed for using too much memory.", "killed for using too much memory"},
+		{"linuxio-btrfs-resync@" + pool + ".service", "run-btrfs-resync-" + pool, "Pool resync failed", Result{"signal", "killed", "SEGV"}, "Killed by signal SEGV.", "killed by signal SEGV"},
+		{"linuxio-docker-update.service", "run-docker-update", "Container updates failed", Result{"timeout", "killed", "TERM"}, "Timed out.", "timed out"},
 	} {
 		h := newHooks(t)
 		resolved := resolving(h)
@@ -867,13 +868,38 @@ func TestFailedWorkerRunRaisesTheRunAlert(t *testing.T) {
 		if err := h.End(t.Context(), tt.unit, testInvocation, tt.result); err != nil {
 			t.Fatal(err)
 		}
+		// The occurrence is how the run failed: a unit that keeps failing
+		// the same way is delivered once, and its link follows the latest run.
 		want := alerts.Observation{
 			Source: "jobs", Key: tt.key, Severity: alerts.SeverityError,
 			Title: tt.title, Message: tt.message + " The run's output is in the history.",
-			Link: "/history?job=" + testRunID, OccurrenceID: testRunID,
+			Link: "/history?job=" + testRunID, OccurrenceID: tt.occurrence,
 		}
 		if len(h.alerts) != 1 || h.alerts[0] != want || len(*resolved) != 0 {
 			t.Errorf("%s: alerts = %+v, resolved = %v; want [%+v] and nothing resolved", tt.unit, h.alerts, *resolved, want)
+		}
+	}
+}
+
+// The btrfs health check finds the pool of a resync run alert from the key
+// the end hook raised, and no other run or job alert names a pool.
+func TestResyncRunAlertPoolReadsTheKeyTheEndHookRaises(t *testing.T) {
+	const pool = "0a1b2c3d-1111-2222-3333-444455556666"
+	const unit = "linuxio-btrfs-resync@" + pool + ".service"
+	h := newHooks(t)
+	mustBegin(t, h, unit, testInvocation)
+	if err := h.End(t.Context(), unit, testInvocation, Result{"exit-code", "exited", "1"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.alerts) != 1 || h.alerts[0].Source != AlertSource {
+		t.Fatalf("alerts = %+v, want the run alert", h.alerts)
+	}
+	if got, ok := ResyncRunAlertPool(h.alerts[0].Key); !ok || got != pool {
+		t.Errorf("ResyncRunAlertPool(%q) = %q, %v; want %q", h.alerts[0].Key, got, ok, pool)
+	}
+	for _, key := range []string{"run-docker-update", "run-btrfs-snapshot", "run-btrfs-resync", "run-btrfs-resync-", "run-btrfs-resync-not-a-uuid", testRunID, FinishedAlertKey(pool)} {
+		if got, ok := ResyncRunAlertPool(key); ok {
+			t.Errorf("ResyncRunAlertPool(%q) = %q; want no pool", key, got)
 		}
 	}
 }

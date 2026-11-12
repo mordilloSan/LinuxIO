@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 func stubAlerts(t *testing.T) {
@@ -133,6 +134,48 @@ func TestCheckHealthFlagsOfflinePoolsAndDropsStaleAlerts(t *testing.T) {
 	slices.Sort(keys)
 	if want := []string{"offline-cold-uuid", "snapshot-gone-uuid"}; !reflect.DeepEqual(keys, want) || got["offline-cold-uuid"] != alerts.SeverityError {
 		t.Fatalf("alerts = %v, want %v", got, want)
+	}
+}
+
+// A removed pool never runs its resync unit again, so the health check clears
+// the unit's run alert as it clears the pool's own. A live pool's run alert
+// and the other run and job alerts stay.
+func TestCheckHealthDropsTheResyncRunAlertOfAGonePool(t *testing.T) {
+	stubKernel(t, raid1Kernel())
+	stubDisks(t, nil)
+	ctx := context.Background()
+	const gone = "0a1b2c3d-1111-2222-3333-444455556666"
+	const jobID = "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+	kept := []string{
+		"run-btrfs-resync-" + dataUUID,
+		"run-docker-update",
+		"run-btrfs-snapshot",
+		jobID,
+		"finished-" + jobID,
+	}
+	for _, key := range append([]string{"run-btrfs-resync-" + gone}, kept...) {
+		if err := alerts.Raise(ctx, alerts.Observation{Source: scheduledrun.AlertSource, Key: key, Severity: alerts.SeverityError, Title: "run failed"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, err := CheckHealth(ctx); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := alerts.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var keys []string
+	for _, a := range doc.Alerts {
+		if a.Source == scheduledrun.AlertSource {
+			keys = append(keys, a.Key)
+		}
+	}
+	slices.Sort(keys)
+	slices.Sort(kept)
+	if !reflect.DeepEqual(keys, kept) {
+		t.Fatalf("jobs alerts = %v, want %v", keys, kept)
 	}
 }
 
@@ -274,4 +317,52 @@ func TestCheckHealthShowsARefusalAfterTheUnblockedAlert(t *testing.T) {
 		}
 	}
 	t.Fatalf("no offline alert in %+v", doc.Alerts)
+}
+
+// A standing condition is one occurrence however many health checks see it,
+// so it is delivered once, and again only after it cleared and came back.
+func TestStandingWarningsAreOneOccurrence(t *testing.T) {
+	stubAlerts(t)
+	ctx := context.Background()
+	occurrences := func(key string) int {
+		t.Helper()
+		doc, err := alerts.Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, a := range doc.Alerts {
+			if a.Source == AlertSource && a.Key == key {
+				return a.OccurrenceCount
+			}
+		}
+		return 0
+	}
+
+	low := BtrfsFilesystem{UUID: dataUUID, Label: "data", HealthKnown: true, LowMetadataSpace: true, Scrub: BtrfsScrubStatus{Status: "none"}}
+	for range 3 {
+		RaiseAlerts(ctx, low)
+	}
+	if got := occurrences("space-" + dataUUID); got != 1 {
+		t.Fatalf("low space seen by three checks = %d occurrences, want 1", got)
+	}
+	low.LowMetadataSpace = false
+	RaiseAlerts(ctx, low)
+	low.LowMetadataSpace = true
+	RaiseAlerts(ctx, low)
+	if got := occurrences("space-" + dataUUID); got != 1 {
+		t.Fatalf("low space that cleared and came back = %d occurrences of a new record, want 1", got)
+	}
+
+	whole := BtrfsFilesystem{UUID: dataUUID, Label: "data", HealthKnown: true, Scrub: BtrfsScrubStatus{Status: "none"}}
+	for range 3 {
+		raiseResyncAlert(ctx, whole, poolState{Degraded: true})
+	}
+	if got := occurrences("resync-" + dataUUID); got != 1 {
+		t.Fatalf("resync warning seen by three checks = %d occurrences, want 1", got)
+	}
+	// Giving up is a new occurrence: it is delivered.
+	raiseResyncAlert(ctx, whole, poolState{Degraded: true, ResyncFailures: maxResyncAttempts, ResyncError: "boom"})
+	if got := occurrences("resync-" + dataUUID); got != 2 {
+		t.Fatalf("resync that gave up = %d occurrences, want 2", got)
+	}
 }

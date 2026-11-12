@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 // AlertSource is the alerts source of every btrfs health alert.
@@ -35,6 +36,14 @@ func raise(ctx context.Context, obs alerts.Observation) {
 func resolve(ctx context.Context, key string) {
 	if err := alerts.Resolve(ctx, AlertSource, key); err != nil {
 		slog.Warn("failed to resolve btrfs alert", "key", key, "error", err)
+	}
+}
+
+// resolveRunAlert resolves the run alert key of a pool's resync unit, which
+// the scheduled run hooks raise under their own source.
+func resolveRunAlert(ctx context.Context, key string) {
+	if err := alerts.Resolve(ctx, scheduledrun.AlertSource, key); err != nil {
+		slog.Warn("failed to resolve resync run alert", "key", key, "error", err)
 	}
 }
 
@@ -72,7 +81,8 @@ func RaiseAlerts(ctx context.Context, fs BtrfsFilesystem) {
 			Key: "space-" + fs.UUID, Severity: alerts.SeverityWarning,
 			Title:   name + " is nearly out of metadata space",
 			Message: "Metadata is over 90% full and less than 1 GiB is unallocated, so writes will start failing. Balance data chunks to reclaim space.",
-			Link:    link,
+			// One occurrence while it lasts: every health check sees it again.
+			Link: link, OccurrenceID: "low",
 		})
 	} else {
 		resolve(ctx, "space-"+fs.UUID)
@@ -168,7 +178,8 @@ func raiseResyncAlert(ctx context.Context, fs BtrfsFilesystem, state poolState) 
 		Key: key, Severity: alerts.SeverityWarning,
 		Title:   "Pool " + name + " is resyncing a returned disk",
 		Message: "A disk that missed writes while the pool ran without it is back. LinuxIO scrubs the pool to rewrite its stale copies, then restores redundancy to data written without it.",
-		Link:    "/storage?pool=" + fs.UUID,
+		// One occurrence while it lasts: every health check sees it again.
+		Link: "/storage?pool=" + fs.UUID, OccurrenceID: "resyncing",
 	})
 	return fs.Scrub.Status != "running"
 }
@@ -215,7 +226,8 @@ func CheckHealth(ctx context.Context) ([]string, error) {
 }
 
 // resolveStale resolves the alerts of filesystems that are neither mounted
-// nor found on any disk, such as destroyed pools.
+// nor found on any disk, such as destroyed pools, and the run alert of their
+// resync unit, which no later run of that unit will clear.
 func resolveStale(ctx context.Context, live map[string]bool) {
 	doc, err := alerts.Load()
 	if err != nil {
@@ -223,13 +235,20 @@ func resolveStale(ctx context.Context, live map[string]bool) {
 		return
 	}
 	for _, a := range doc.Alerts {
-		kind, uuid, ok := strings.Cut(a.Key, "-")
-		if a.Source != AlertSource || !ok || live[uuid] {
-			continue
-		}
-		for _, k := range alertKinds {
-			if kind == k {
-				resolve(ctx, a.Key)
+		switch a.Source {
+		case AlertSource:
+			kind, uuid, ok := strings.Cut(a.Key, "-")
+			if !ok || live[uuid] {
+				continue
+			}
+			for _, k := range alertKinds {
+				if kind == k {
+					resolve(ctx, a.Key)
+				}
+			}
+		case scheduledrun.AlertSource:
+			if uuid, ok := scheduledrun.ResyncRunAlertPool(a.Key); ok && !live[uuid] {
+				resolveRunAlert(ctx, a.Key)
 			}
 		}
 	}

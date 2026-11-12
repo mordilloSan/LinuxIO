@@ -198,7 +198,7 @@ func write(doc Document) error {
 }
 
 // Raise records an observation. The same occurrence id only refreshes
-// last_observed_at; a new one is a material change, which is also delivered
+// last_observed_at and the link; a new one is a material change, which is also delivered
 // to the configured notification channels after the store is written. The key,
 // title and message are normalised here (see Observation.normalize).
 func Raise(ctx context.Context, obs Observation) error {
@@ -216,7 +216,8 @@ func Raise(ctx context.Context, obs Observation) error {
 				continue
 			}
 			if obs.OccurrenceID != "" && a.OccurrenceID == obs.OccurrenceID {
-				a.LastObservedAt = t
+				// The link follows the latest observation of the occurrence.
+				a.LastObservedAt, a.Link = t, obs.Link
 				return nil
 			}
 			a.Severity, a.Title, a.Message, a.Link = obs.Severity, obs.Title, obs.Message, obs.Link

@@ -66,6 +66,18 @@ func TestRaiseSameOccurrenceIsSilent(t *testing.T) {
 	if a.OccurrenceCount != 1 || a.DismissedAt == nil || a.Seen["1000"] != 1 {
 		t.Fatalf("unchanged observation mutated state: %+v", a)
 	}
+
+	// The link follows the latest observation, such as the latest failed run
+	// of a timer; that is no new occurrence.
+	again := obs("a")
+	again.Link = "/history?job=latest"
+	if err := Raise(ctx, again); err != nil {
+		t.Fatal(err)
+	}
+	doc, _ = Load()
+	if a = doc.Alerts[0]; a.Link != "/history?job=latest" || a.OccurrenceCount != 1 || a.DismissedAt == nil || a.Seen["1000"] != 1 {
+		t.Fatalf("re-observed with another link: %+v", a)
+	}
 }
 
 func TestRaiseNewOccurrenceRestoresAndUnsees(t *testing.T) {

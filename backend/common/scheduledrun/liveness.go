@@ -114,7 +114,7 @@ func (l Liveness) markInterrupted(ctx context.Context, record jobs.Record, reaso
 	if !ok && !kind.Alerts && reason == jobs.ReasonCrash {
 		// A worker unit's run that ended without its end hook: nothing else
 		// reports it. One a reboot cut short runs again with its timer.
-		obs, ok = runAlert(kind, updated, "The run ended without reporting its result."), true
+		obs, ok = runAlert(kind, updated, "ended without reporting its result", "The run ended without reporting its result."), true
 	}
 	if ok {
 		if err := l.Alert(ctx, obs); err != nil {

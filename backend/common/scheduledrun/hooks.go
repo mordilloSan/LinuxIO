@@ -121,8 +121,8 @@ func (h Hooks) End(ctx context.Context, unit, invocationID string, result Result
 // with ExitReported; a run that failed in any other way (configuration that
 // cannot be read, a Docker daemon that does not answer, a killed worker) has
 // nothing of its own to report it under, so it is reported here, whatever the
-// report settings say. The alert is one per unit, each such run an occurrence
-// of it, and links to the run in the history, where its output is. A run
+// report settings say. The alert is one per unit and links to the latest such
+// run in the history, where its output is. A run
 // that completes, or that failed with everything reported, clears it; one the
 // system stopped, that was canceled or that did no work (ExitSkipped) changes
 // nothing.
@@ -140,7 +140,7 @@ func (h Hooks) reportWorkerRun(ctx context.Context, kind Kind, record jobs.Recor
 	case record.State == jobs.StateFailed:
 		reason := record.Error.Message
 		message := strings.ToUpper(reason[:1]) + reason[1:] + ". The run's output is in the history."
-		if err := h.Alert(ctx, runAlert(kind, record, message)); err != nil {
+		if err := h.Alert(ctx, runAlert(kind, record, reason, message)); err != nil {
 			return fmt.Errorf("raise run alert: %w", err)
 		}
 	}
@@ -153,7 +153,11 @@ func (r Result) exited(status int) bool {
 }
 
 // runAlert is the run alert of the worker unit of kind for the run of record.
-func runAlert(kind Kind, record jobs.Record, message string) alerts.Observation {
+// reason is how the run failed, and is the alert's occurrence: a unit that
+// keeps failing the same way is one occurrence, delivered once, whose link
+// follows the latest run; one that fails in another way, or again after a run
+// cleared the alert, is delivered again.
+func runAlert(kind Kind, record jobs.Record, reason, message string) alerts.Observation {
 	return alerts.Observation{
 		Source:       AlertSource,
 		Key:          runAlertKey(kind),
@@ -161,7 +165,7 @@ func runAlert(kind Kind, record jobs.Record, message string) alerts.Observation 
 		Title:        kind.Label + " failed",
 		Message:      message,
 		Link:         "/history?job=" + record.ID,
-		OccurrenceID: record.ID,
+		OccurrenceID: reason,
 	}
 }
 
@@ -173,6 +177,17 @@ func runAlertKey(kind Kind) string {
 		key += "-" + kind.Instance
 	}
 	return key
+}
+
+// ResyncRunAlertPool returns the pool whose resync unit raised the run alert
+// key under AlertSource. The btrfs health check uses it to clear the run
+// alert of a pool that is gone, since only the unit's next run clears it.
+func ResyncRunAlertPool(key string) (string, bool) {
+	uuid, ok := strings.CutPrefix(key, runAlertKey(Kind{Route: RouteResync})+"-")
+	if !ok || jobs.ValidateID(uuid) != nil {
+		return "", false
+	}
+	return uuid, true
 }
 
 // RequestCancel marks the running record of unit as canceled by request, so

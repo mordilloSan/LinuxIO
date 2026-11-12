@@ -231,7 +231,7 @@ func TestRunningAlertsForAWorkerRunThatEndedWithoutItsHook(t *testing.T) {
 	want := alerts.Observation{
 		Source: "jobs", Key: "run-docker-update", Severity: alerts.SeverityError,
 		Title: "Container updates failed", Message: "The run ended without reporting its result.",
-		Link: "/history?job=" + testRunID, OccurrenceID: testRunID,
+		Link: "/history?job=" + testRunID, OccurrenceID: "ended without reporting its result",
 	}
 	if len(h.alerts) != 1 || h.alerts[0] != want {
 		t.Errorf("alerts = %+v, want [%+v]", h.alerts, want)
