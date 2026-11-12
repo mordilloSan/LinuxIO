@@ -4,7 +4,6 @@ import { type ReactNode, useRef, useState } from "react";
 
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
-import { copyToClipboard } from "@/utils/clipboard";
 
 import type { Attachment } from "../attachments";
 import AttachmentChip from "../composer/AttachmentChip";
@@ -313,55 +312,35 @@ function ChangeCard({ tools }: { tools: ToolBlock[] }) {
 type Row =
   | { key: string; block: TranscriptBlock }
   | { key: string; tools: ToolBlock[]; acting: boolean }
-  | { key: string; answer: string; turn: TurnBlock | null };
+  | { key: string; turn: TurnBlock };
 
 /**
  * Consecutive tool blocks become runs: checks in a log, actions in a card,
  * each keyed by its first call. The call waiting for an answer is left out;
- * the permission card shows it. Every answer ends in a footer: before the
- * next prompt, and at the end unless the turn is still running.
+ * the permission card shows it. A turn that ran in this page ends in a footer.
  */
 function groupRows(
   blocks: TranscriptBlock[],
   pendingToolCallId: string | null,
-  running: boolean,
 ): Row[] {
   const rows: Row[] = [];
   let run: ToolBlock[] = [];
   let acting = false;
-  let answer: string[] = [];
-  let turn: TurnBlock | null = null;
-  let anchor = "";
   const flush = () => {
     if (run.length > 0) {
       rows.push({ key: `group:${run[0].toolCallId}`, tools: run, acting });
     }
     run = [];
   };
-  const endTurn = () => {
-    flush();
-    if (answer.length > 0 || turn) {
-      rows.push({ key: `turn:${anchor}`, answer: answer.join("\n\n"), turn });
-    }
-    answer = [];
-    turn = null;
-    anchor = "";
-  };
   for (const block of blocks) {
     if (block.kind === "turn") {
-      turn = block;
-      anchor ||= block.id;
-      endTurn();
+      flush();
+      rows.push({ key: block.id, turn: block });
       continue;
     }
-    if (block.kind === "user") endTurn();
     if (block.kind !== "tool") {
       flush();
       rows.push({ key: block.id, block });
-      if (block.kind === "agent") {
-        answer.push(block.text);
-        anchor ||= block.id;
-      }
       continue;
     }
     if (block.toolCallId === pendingToolCallId) continue;
@@ -370,8 +349,7 @@ function groupRows(
     acting = blockActs;
     run.push(block);
   }
-  if (running) flush();
-  else endTurn();
+  flush();
   return rows;
 }
 
@@ -412,17 +390,11 @@ const duration = (ms: number) => {
 };
 
 /**
- * Under a finished answer: copy it, and what the turn cost. The count shown
- * is what the model wrote; the tooltip has what it read, cached or not.
+ * Under a finished answer: what the turn cost. The count shown is what the
+ * model wrote; the tooltip has what it read, cached or not.
  */
-function TurnFooter({
-  answer,
-  turn,
-}: {
-  answer: string;
-  turn: TurnBlock | null;
-}) {
-  const usage = turn?.usage ?? null;
+function TurnFooter({ turn }: { turn: TurnBlock }) {
+  const usage = turn.usage;
   const breakdown = usage
     ? [
         `Output ${usage.outputTokens.toLocaleString()}`,
@@ -439,24 +411,10 @@ function TurnFooter({
     : undefined;
   return (
     <div className="assistant-turn">
-      {answer ? (
-        <AppButton
-          className="assistant-turn__action"
-          color="inherit"
-          onClick={() => {
-            copyToClipboard(answer).catch(() => {});
-          }}
-          size="small"
-        >
-          Copy answer
-        </AppButton>
-      ) : null}
-      {turn ? (
-        <span className="assistant-turn__stats" title={breakdown}>
-          {duration(turn.durationMs)}
-          {usage ? ` · ${fmtTokens(usage.outputTokens)} tokens` : ""}
-        </span>
-      ) : null}
+      <span className="assistant-turn__stats" title={breakdown}>
+        {duration(turn.durationMs)}
+        {usage ? ` · ${fmtTokens(usage.outputTokens)} tokens` : ""}
+      </span>
     </div>
   );
 }
@@ -510,7 +468,6 @@ export default function Transcript({
   blocks,
   sessionId,
   pendingToolCallId = null,
-  running = false,
   label = "Conversation",
   children,
 }: {
@@ -518,8 +475,6 @@ export default function Transcript({
   sessionId?: string | null;
   /** The tool call a permission card is asking about, if any. */
   pendingToolCallId?: string | null;
-  /** A turn is in progress, so the last answer has no footer yet. */
-  running?: boolean;
   label?: string;
   /** Shown in place of the rows while the conversation is empty. */
   children?: ReactNode;
@@ -537,15 +492,15 @@ export default function Transcript({
       <div className="assistant__transcript-column">
         {blocks.length === 0
           ? children
-          : groupRows(blocks, pendingToolCallId, running).map((row) =>
+          : groupRows(blocks, pendingToolCallId).map((row) =>
               "tools" in row ? (
                 row.acting ? (
                   <ChangeCard key={row.key} tools={row.tools} />
                 ) : (
                   <CheckLog key={row.key} tools={row.tools} />
                 )
-              ) : "answer" in row ? (
-                <TurnFooter answer={row.answer} key={row.key} turn={row.turn} />
+              ) : "turn" in row ? (
+                <TurnFooter key={row.key} turn={row.turn} />
               ) : (
                 <TranscriptRow key={row.key} block={row.block} />
               ),

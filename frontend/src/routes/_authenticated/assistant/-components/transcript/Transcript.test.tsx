@@ -148,15 +148,6 @@ describe("Transcript", () => {
     expect(out).not.toHaveClass("assistant-tool__out--clipped");
   });
 
-  it("copies an answer", async () => {
-    const user = userEvent.setup();
-    render(
-      <Transcript blocks={[{ kind: "agent", id: "1", text: "**hi**" }]} />,
-    );
-    await user.click(screen.getByRole("button", { name: "Copy answer" }));
-    expect(await navigator.clipboard.readText()).toBe("**hi**");
-  });
-
   describe("turn footer", () => {
     const turn = (usage: { outputTokens: number } | null): TranscriptBlock => ({
       kind: "turn",
@@ -185,48 +176,6 @@ describe("Transcript", () => {
         />,
       );
       expect(screen.getByText("14 s")).toBeInTheDocument();
-    });
-
-    it("copies every part of the answer, around its tool calls", async () => {
-      const user = userEvent.setup();
-      render(
-        <Transcript
-          blocks={[
-            { kind: "user", id: "0", text: "go", attachments: [] },
-            { kind: "agent", id: "1", text: "first" },
-            check("a"),
-            { kind: "agent", id: "2", text: "second" },
-            turn(null),
-          ]}
-        />,
-      );
-      await user.click(screen.getByRole("button", { name: "Copy answer" }));
-      expect(await navigator.clipboard.readText()).toBe("first\n\nsecond");
-    });
-
-    it("gives a replayed answer a footer before the next prompt", () => {
-      render(
-        <Transcript
-          blocks={[
-            { kind: "agent", id: "1", text: "old answer" },
-            { kind: "user", id: "2", text: "next", attachments: [] },
-          ]}
-          running
-        />,
-      );
-      expect(
-        screen.getAllByRole("button", { name: "Copy answer" }),
-      ).toHaveLength(1);
-    });
-
-    it("has no footer while the answer is still being written", () => {
-      render(
-        <Transcript
-          blocks={[{ kind: "agent", id: "1", text: "so far" }]}
-          running
-        />,
-      );
-      expect(screen.queryByRole("button", { name: "Copy answer" })).toBeNull();
     });
   });
 

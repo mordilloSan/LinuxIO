@@ -216,32 +216,15 @@
   background: none;
 }
 
-/* Under a finished answer: copy on the left, time and tokens on the right. */
+/* Under a finished answer: time and tokens on the right. */
 .assistant-turn {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--app-space-8);
+  justify-content: flex-end;
   color: var(--app-palette-text-secondary);
   font-size: calc(var(--app-font-size-body) * 0.85);
 }
 
-.app-btn.assistant-turn__action {
-  margin-inline-start: calc(-1 * var(--app-space-8));
-  padding: var(--app-space-2) var(--app-space-8);
-  color: inherit;
-  font: inherit;
-  text-transform: none;
-}
-
-.app-btn.assistant-turn__action:hover,
-.app-btn.assistant-turn__action:focus-visible {
-  color: var(--app-palette-text-primary);
-}
-
 .assistant-turn__stats {
-  margin-inline-start: auto;
   font-variant-numeric: tabular-nums;
 }
 
@@ -725,6 +708,10 @@
   align-items: center;
 }
 
+.assistant__bar-group--send {
+  gap: var(--app-space-12);
+}
+
 .assistant__bar-group--config {
   flex: 1;
   flex-wrap: wrap;
@@ -900,8 +887,13 @@
   cursor: default;
 }
 
-.assistant__gauge-wrap {
-  display: inline-flex;
+.app-icon-btn.assistant__gauge-button[aria-disabled="true"] {
+  cursor: default;
+}
+
+.app-icon-btn.assistant__gauge-button[aria-disabled="true"]:hover {
+  background-color: transparent;
+  box-shadow: none;
 }
 
 .assistant__gauge-track {

@@ -261,7 +261,7 @@ describe("AssistantPage", () => {
         cost: { amount: 0.42, currency: "USD" },
       },
     });
-    const gauge = await screen.findByRole("img", {
+    const gauge = await screen.findByRole("button", {
       name: /12\.3k \/ 200k tokens/,
     });
     expect(gauge.getAttribute("aria-label")).toMatch(/0\.42/);

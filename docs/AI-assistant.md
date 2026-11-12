@@ -173,15 +173,12 @@ advertises the matching capability.
   inside a search pattern does not split or redirect; a substitution inside
   double quotes still counts. This is presentation only and errs towards
   "acting"; permissions stay with the agent.
-- **Turn footer.** Every answer ends in a footer: before the next prompt,
-  and at the end of the conversation once the turn is over. Copy answer copies
-  the Markdown source of the turn's agent text. For a turn that ran in this
-  page, the footer also shows how long it took and, when the agent's
-  `session/prompt` response carries `usage`, the output tokens (`14 s · 2.1k
-  tokens`), with input and cache counts in the tooltip. The store appends a
-  `turn` block when the prompt resolves; a failed prompt gets none, and
-  replayed history has the copy button without the numbers, since the agent
-  does not replay them.
+- **Turn footer.** A turn that ran in this page ends in a footer showing how
+  long it took and, when the agent's `session/prompt` response carries
+  `usage`, the output tokens (`14 s · 2.1k tokens`), with input and cache
+  counts in the tooltip. The store appends a `turn` block when the prompt
+  resolves; a failed prompt gets none, and replayed history has no footer,
+  since the agent does not replay the numbers.
 - **Reading column.** The transcript scrolls across the page, but its rows,
   the permission card, the status line and the prompt share one centred
   860 px column. The user's prompt is a bubble sized to its text on the
@@ -208,8 +205,11 @@ advertises the matching capability.
   row of the composer box show the attachments; a line divides that row from
   the text field, and another divides the text field from the composer bar.
 - **Usage.** A context gauge in the composer bar shows the share of the
-  context window used, from the latest `usage_update`. Its tooltip gives the
-  tokens used and, when reported, the cost.
+  context window used, from the latest `usage_update`; it is always there,
+  as an empty ring until the agent reports usage. Its tooltip gives the
+  tokens used and, when reported, the cost. Clicking it sends the agent's
+  `/compact` command as a prompt of its own; the click does nothing while a
+  turn runs or when the agent does not list `compact` in `availableCommands`.
 - **Steering.** When the agent supports `_session/steering`, the composer stays
   enabled during a turn and Enter injects the message into the running turn.
   If the agent answers `promptRequired`, the text is sent as a normal prompt

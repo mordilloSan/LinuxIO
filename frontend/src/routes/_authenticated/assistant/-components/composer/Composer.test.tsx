@@ -598,11 +598,27 @@ describe("Composer", () => {
     expect(screen.getByRole("button", { name: "Stop" })).toBeEnabled();
   });
 
-  it("shows the context gauge once usage exists", () => {
-    setup({ usage: { used: 12000, size: 200000, cost: null } });
-    expect(
-      screen.getByRole("img", { name: "12k / 200k tokens (6%)" }),
-    ).toBeInTheDocument();
+  it("compacts the conversation from the context gauge", async () => {
+    const { onSend } = setup({
+      usage: { used: 12000, size: 200000, cost: null },
+    });
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: "12k / 200k tokens (6%) · Click to compact",
+      }),
+    );
+    expect(onSend).toHaveBeenCalledWith([{ type: "text", text: "/compact" }], {
+      text: "/compact",
+      attachments: [],
+    });
+  });
+
+  it("keeps the context gauge inert when the agent has no /compact", async () => {
+    const { onSend } = setup({ commands: [] });
+    await userEvent.click(
+      screen.getByRole("button", { name: "Context usage not reported yet" }),
+    );
+    expect(onSend).not.toHaveBeenCalled();
   });
 
   describe("/btw", () => {
