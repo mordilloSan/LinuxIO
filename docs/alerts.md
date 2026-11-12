@@ -67,8 +67,9 @@ Lifecycle:
 
 - **Raise** with a new `(source, key)` creates an active record.
 - **Raise** with an existing key and the same `occurrence_id` only updates
-  `last_observed_at`. Repeated observation of an unchanged condition is
-  silent: no count change, no seen reset, no undismiss.
+  `last_observed_at` and the link, which follows the latest observation.
+  Repeated observation of an unchanged condition is silent: no count change,
+  no seen reset, no undismiss.
 - **Raise** with a different `occurrence_id` is a material change: the count
   increments, `last_occurrence` moves, title/message/severity are replaced,
   the alert becomes unseen for everyone, and a dismissal is cleared.
@@ -129,7 +130,9 @@ setting and is always raised. A job is long when it ran five minutes or more
 `every_run`; it is kept here, keyed by the schedule's ID, and never in the
 schedule's definition file, whose text decides the script path and the unit:
 a new member there would change every schedule and make an older build refuse
-to list them.
+to list them. A finished run is a notice, so when the choice in effect is
+every run and the levels send notices nowhere, the schedule's dialog says so
+under *Notify me*; the hint changes nothing the dialog saves.
 
 **Defaults** (no file): every level reaches the browser, alerts also reach
 email and webhook once those are set up, and every kind reports as in the
@@ -219,7 +222,7 @@ which setting governs it. Every raise is then delivered as the
 | Btrfs snapshots | `linuxio-btrfs-timer snapshot` (hourly timer, pre-update hook), and the page's Run now (`storage.btrfs_snapshot_run_now`, a Mutation, so a job in the root job host) | `btrfs/snapshot-<uuid8>-<path>` (alert): a failed snapshot or an unmounted filesystem. `btrfs/snapshot-run` (notice), one record, each timer pass a new occurrence: *Snapshots: N taken, M sent* or, under `every_run`, *Snapshots: nothing to do*, link `/storage/subvolumes?view=snapshots`. Only the timer's own pass (`snapshot run`) raises it: not the pre-update pass, not the page's Run now (which runs the rules itself, not the timer), not a stopped pass, and not a pass that failed and took and sent nothing | Failures always. The notice under `report.snapshots`: `changes` for a pass that took or sent a snapshot, `every_run` for every pass | Failure: the next successful run for that rule. Notice: dismissed by the user |
 | Btrfs replication | `linuxio-btrfs-timer snapshot run` and Run now | `btrfs/replication-<job id>` (alert): a failed replication run. What it sent counts in the snapshot pass's notice | None for the failure | The next successful run of that job |
 | Docker update check | `linuxio-docker-update` worker, after the check every scheduled pass makes | `docker-update-check/<name>` (warning), *Docker update check failed: `<name>`*, "The image `<image>` could not be checked for updates. The containers page shows the reason.", for a container whose check failed, such as one whose registry could not be reached or throttled the request. A check that keeps failing is one occurrence, so it is delivered once. The source is its own, so a container's name is the whole key | None: a failed check is always raised | The next scheduled check that does not find that container failing (its check succeeded, or it is gone or no longer checked), or the update that replaces it |
-| Timer runs that fail as a whole | The end hook of `linuxio-docker-update.service`, `linuxio-btrfs-snapshot.service` and `linuxio-btrfs-resync@<uuid>.service` (`linuxio scheduled-run end`, run as root by `ExecStopPost=`); the root job host for a run it finds ended without that hook | `jobs/run-docker-update`, `jobs/run-btrfs-snapshot`, `jobs/run-btrfs-resync-<uuid>` (alert): *Container updates failed*, *Snapshots and replication failed* or *Pool resync failed*, with how the run ended and where its output is: "Exited with status 1. The run's output is in the history." (or "Killed by signal …", "Timed out", "Killed for using too much memory"), or "The run ended without reporting its result." from the root job host. A worker that raised an alert for every failure it met (a container, a rule, a replication job, a pool) exits with status 3 and gets no run alert; any other failed run gets it: a worker that could not read its configuration, a Docker daemon that does not answer, a scheduled container that is gone, an outcome that could not be recorded, a worker that was killed. One record per unit, each such run a new occurrence. Link `/history?job=<run id>`. A run the system stopped or that was cancelled, and one that did no work (status 4, a Docker pass that found a manual update holding the lock), raises none and clears none | None: a failure is always raised | The next run of that unit that completes or that exits with status 3 |
+| Timer runs that fail as a whole | The end hook of `linuxio-docker-update.service`, `linuxio-btrfs-snapshot.service` and `linuxio-btrfs-resync@<uuid>.service` (`linuxio scheduled-run end`, run as root by `ExecStopPost=`); the root job host for a run it finds ended without that hook | `jobs/run-docker-update`, `jobs/run-btrfs-snapshot`, `jobs/run-btrfs-resync-<uuid>` (alert): *Container updates failed*, *Snapshots and replication failed* or *Pool resync failed*, with how the run ended and where its output is: "Exited with status 1. The run's output is in the history." (or "Killed by signal …", "Timed out", "Killed for using too much memory"), or "The run ended without reporting its result." from the root job host. A worker that raised an alert for every failure it met (a container, a rule, a replication job, a pool) exits with status 3 and gets no run alert; any other failed run gets it: a worker that could not read its configuration, a Docker daemon that does not answer, a scheduled container that is gone, an outcome that could not be recorded, a worker that was killed. One record per unit, whose occurrence is how the run failed: a unit that keeps failing the same way is delivered once and its link follows the latest such run, and one that fails in another way, or again after a run cleared the alert, is delivered again. Link `/history?job=<run id>`. A run the system stopped or that was cancelled, and one that did no work (status 4, a Docker pass that found a manual update holding the lock), raises none and clears none | None: a failure is always raised | The next run of that unit that completes or that exits with status 3, or, for a resync, the health check that finds its pool gone |
 
 Later sources follow the same shape: a root process that already knows the
 outcome calls `alerts.Raise` or `alerts.Resolve`, or a unit drop-in runs
@@ -246,8 +249,7 @@ What the sources cannot tell, or do not report, as built:
   check has its own warning.
 - **A timer run's alert does not say why**: the end hook knows how the run
   ended, not what the worker printed. The alert links to the run in the
-  history, where its output is. A resync's run alert outlives a pool that is
-  removed, until it is dismissed.
+  history, where its output is.
 - **A worker tells its end hook what is left to report** through its exit
   status: 3 when every failure it met raised its own alert, 4 when the run
   did no work, 1 otherwise. A resync that fails exits with 3 once the pool's

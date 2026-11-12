@@ -1526,8 +1526,7 @@ work (below). Its minor findings are among the open items.
    does not parse, a delete of a schedule with no choice logs "could not
    clear"; a hand-edited invalid `minSeverity` or `dockerUpdates` in the
    stored file makes a schedule's choice fail (409, naming the settings page
-   as the repair) until a page save repairs it; the schedule dialog gives no hint when a choice
-   has no effect; a user without sudo who signs in while an update waits
+   as the repair) until a page save repairs it; a user without sudo who signs in while an update waits
    loses that sign-in's notice; mark all seen lists
    and marks under separate locks (predates); `alerts.mark_seen` with
    explicit IDs is not filtered by the grid; a notice raised into a store full

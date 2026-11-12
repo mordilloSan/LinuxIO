@@ -75,7 +75,10 @@ filesystems, covering pools created after install.
 | `btrfs/resynced-<uuid>` | info | a resync finished and the pool is whole again, while the notification settings' *Pool resync* is *Also when a pool is whole again* (the default) | dismissed, or the next resync starts |
 
 Incomplete health data neither raises nor resolves; alerts of pools that no
-longer exist are dropped by the timer. Scrub start/cancel is on the banner;
+longer exist are dropped by the timer, the resync unit's run alert
+(`jobs/run-btrfs-resync-<uuid>`) among them. A condition that lasts is one
+occurrence however many health checks see it, so it is delivered once, and
+again only after it cleared and came back. Scrub start/cancel is on the banner;
 see [Devices](#devices-and-profiles).
 
 ## Missing disks
