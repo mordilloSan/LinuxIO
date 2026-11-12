@@ -254,6 +254,15 @@ export default function Composer({
     else onSend(blocks, display);
   };
 
+  // The gauge runs the agent's own /compact, as a prompt of its own.
+  const canCompact =
+    usage !== null &&
+    !disabled &&
+    !running &&
+    agentCommands.some((command) => command.name === "compact");
+  const compact = () =>
+    onSend(buildPrompt("/compact", []), { text: "/compact", attachments: [] });
+
   const addImages = async (files: File[]) => {
     const results = await Promise.allSettled(files.map(imageAttachment));
     setAttachError(null);

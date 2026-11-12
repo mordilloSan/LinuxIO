@@ -208,10 +208,12 @@ advertises the matching capability.
   the text field, and another divides the text field from the composer bar.
 - **Usage.** A context gauge in the composer bar shows the share of the
   context window used, from the latest `usage_update`; it is always there,
-  as an empty ring until the agent reports usage. Its tooltip gives the
-  tokens used and, when reported, the cost. Clicking it sends the agent's
-  `/compact` command as a prompt of its own; the click does nothing while a
-  turn runs or when the agent does not list `compact` in `availableCommands`.
+  as an empty ring until the agent reports usage, which Claude Code does
+  only once a reply starts, also in a chat loaded from history. Its tooltip
+  gives the tokens used and, when reported, the cost. Clicking it sends the
+  agent's `/compact` command as a prompt of its own; the click does nothing
+  before usage is reported, while a turn runs, or when the agent does not
+  list `compact` in `availableCommands`.
 - **Steering.** When the agent supports `_session/steering`, the composer stays
   enabled during a turn and Enter injects the message into the running turn.
   If the agent answers `promptRequired`, the text is sent as a normal prompt

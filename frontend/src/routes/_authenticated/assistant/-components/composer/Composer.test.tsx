@@ -616,7 +616,17 @@ describe("Composer", () => {
   it("keeps the context gauge inert when the agent has no /compact", async () => {
     const { onSend } = setup({ commands: [] });
     await userEvent.click(
-      screen.getByRole("button", { name: "Context usage not reported yet" }),
+      screen.getByRole("button", { name: "12k / 200k tokens (6%)" }),
+    );
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("keeps the context gauge inert until usage exists", async () => {
+    const { onSend } = setup();
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: "Context usage appears after the first reply",
+      }),
     );
     expect(onSend).not.toHaveBeenCalled();
   });

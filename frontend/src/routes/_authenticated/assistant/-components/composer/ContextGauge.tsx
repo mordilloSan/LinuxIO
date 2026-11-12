@@ -50,7 +50,7 @@ export default function ContextGauge({
       : 0;
   const summary = usage
     ? describe(usage, fraction)
-    : "Context usage not reported yet";
+    : "Context usage appears after the first reply";
   const text = onCompact ? `${summary} · Click to compact` : summary;
 
   return (

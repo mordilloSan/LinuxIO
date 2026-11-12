@@ -13,7 +13,9 @@ describe("ContextGauge", () => {
   it("shows an empty ring until usage exists", () => {
     render(<ContextGauge usage={null} />);
     expect(
-      screen.getByRole("button", { name: "Context usage not reported yet" }),
+      screen.getByRole("button", {
+        name: "Context usage appears after the first reply",
+      }),
     ).toHaveAttribute("aria-disabled", "true");
     expect(fill().getAttribute("stroke-dasharray")).toMatch(/^0\.00 /);
   });
