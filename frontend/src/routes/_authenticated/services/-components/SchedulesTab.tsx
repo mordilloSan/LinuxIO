@@ -570,6 +570,21 @@ function ScheduleDialog({
   const calendar = scheduleCalendar(timing);
   const [argumentText, setArgumentText] = useState(draft.arguments.join("\n"));
   const users = useQuery({ ...linuxio.accounts.list_users });
+  const settings = useQuery(linuxio.alerts.get_notifications);
+  // A finished run is a notice: choosing every run does nothing visible while
+  // the admin has notices off for the bell, email and webhook.
+  const alerts =
+    settings.isPending || settings.error || settings.data?.settingsUnreadable
+      ? undefined
+      : settings.data;
+  const everyRun =
+    value.notify === "every_run" ||
+    (value.notify === "" && alerts?.report.scheduled_scripts === "every_run");
+  const noticesOff =
+    alerts !== undefined &&
+    !alerts.levels.info.browser &&
+    !alerts.levels.info.email &&
+    !alerts.levels.info.webhook;
   const set = <K extends keyof Draft>(key: K, next: Draft[K]) =>
     setValue((current) => ({ ...current, [key]: next }));
   return (
@@ -723,6 +738,17 @@ function ScheduleDialog({
               </option>
             ))}
           </AppSelect>
+          {everyRun && noticesOff ? (
+            <AppTypography
+              color="text.secondary"
+              component="p"
+              variant="caption"
+            >
+              Finished runs are notices, and notices are switched off for the
+              bell, email and webhook. Tick Notices in the notification settings
+              to hear about them.
+            </AppTypography>
+          ) : null}
         </div>
       </AppDialogContent>
       <AppDialogActions>

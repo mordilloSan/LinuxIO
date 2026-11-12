@@ -14,6 +14,11 @@ const mocks = vi.hoisted(() => ({
   history: {} as { data?: unknown; error?: Error },
   historyListeners: new Set<() => void>(),
   updatePending: false,
+  notifications: {} as {
+    data?: unknown;
+    error?: Error;
+    isPending?: boolean;
+  },
   historyOptions: [] as Array<{
     queryKey: unknown[];
     refetchInterval?: number;
@@ -58,6 +63,23 @@ const status = {
 };
 
 let selectedStatus: typeof status = status;
+
+// The notification settings as the admin saved them: what each level sends
+// through, and what scripts report when a task follows the default.
+const channels = (on: boolean) => ({ browser: on, email: on, webhook: on });
+const notificationView = ({
+  info = channels(false),
+  scripts = "failures",
+  settingsUnreadable,
+}: {
+  info?: ReturnType<typeof channels>;
+  scripts?: string;
+  settingsUnreadable?: boolean;
+} = {}) => ({
+  levels: { info, warning: channels(true), error: channels(true) },
+  report: { scheduled_scripts: scripts },
+  ...(settingsUnreadable ? { settingsUnreadable } : {}),
+});
 
 const entry = (
   id: string,
@@ -118,6 +140,9 @@ vi.mock("@tanstack/react-query", async (importOriginal) => {
         },
         () => mocks.history,
       );
+      if (options.queryKey.includes("get_notifications")) {
+        return mocks.notifications;
+      }
       if (options.queryKey.includes("history")) {
         mocks.historyOptions.push(options);
         return history;
@@ -184,6 +209,7 @@ describe("SchedulesTab interactions", () => {
     mocks.historyOptions = [];
     mocks.historyListeners.clear();
     mocks.updatePending = false;
+    mocks.notifications = { data: notificationView({ info: channels(true) }) };
   });
 
   it("opens from null, selects root, and submits the exact create payload", async () => {
@@ -240,6 +266,80 @@ describe("SchedulesTab interactions", () => {
         options: expect.objectContaining({ name: "nightly", user: "root" }),
         notify: "every_run",
       },
+    });
+  });
+
+  describe("notice hint under Notify me", () => {
+    const hint =
+      "Finished runs are notices, and notices are switched off for the bell, email and webhook. Tick Notices in the notification settings to hear about them.";
+    const openDialog = async (choice?: string) => {
+      const { user } = render(<SchedulesTab {...props} />);
+      await user.click(screen.getByRole("button", { name: "Create task" }));
+      if (choice) {
+        await user.click(screen.getByLabelText("Notify me"));
+        await user.click(screen.getByRole("option", { name: choice }));
+      }
+    };
+
+    it("shows for every run while notices are off everywhere", async () => {
+      mocks.notifications = { data: notificationView() };
+      await openDialog("After every run");
+      expect(screen.getByText(hint)).toBeInTheDocument();
+    });
+
+    it("shows for the default when the default is every run and notices are off", async () => {
+      mocks.notifications = {
+        data: notificationView({ scripts: "every_run" }),
+      };
+      await openDialog();
+      expect(screen.getByText(hint)).toBeInTheDocument();
+    });
+
+    it.each(["browser", "email", "webhook"])(
+      "does not show when notices go to %s",
+      async (channel) => {
+        mocks.notifications = {
+          data: notificationView({
+            info: { ...channels(false), [channel]: true },
+          }),
+        };
+        await openDialog("After every run");
+        expect(screen.queryByText(hint)).not.toBeInTheDocument();
+      },
+    );
+
+    it("does not show for failures only", async () => {
+      mocks.notifications = {
+        data: notificationView({ scripts: "every_run" }),
+      };
+      await openDialog("Failures only");
+      expect(screen.queryByText(hint)).not.toBeInTheDocument();
+    });
+
+    it("does not show for the default when the default is failures", async () => {
+      mocks.notifications = { data: notificationView() };
+      await openDialog();
+      expect(screen.queryByText(hint)).not.toBeInTheDocument();
+    });
+
+    it("does not show while the settings are loading", async () => {
+      mocks.notifications = { isPending: true };
+      await openDialog("After every run");
+      expect(screen.queryByText(hint)).not.toBeInTheDocument();
+    });
+
+    it("does not show when the settings cannot be read", async () => {
+      mocks.notifications = { error: new Error("denied") };
+      await openDialog("After every run");
+      expect(screen.queryByText(hint)).not.toBeInTheDocument();
+    });
+
+    it("does not show when the settings file is unreadable", async () => {
+      mocks.notifications = {
+        data: notificationView({ settingsUnreadable: true }),
+      };
+      await openDialog("After every run");
+      expect(screen.queryByText(hint)).not.toBeInTheDocument();
     });
   });
 
