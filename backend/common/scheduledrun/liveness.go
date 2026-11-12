@@ -111,7 +111,7 @@ func (l Liveness) markInterrupted(ctx context.Context, record jobs.Record, reaso
 	// No report setting decides whether an interruption is raised, so none
 	// are read; its level then follows the levels grid like any other.
 	obs, ok := alertFor(kind, updated, nil)
-	if !ok && !kind.Alerts && reason == jobs.ReasonCrash {
+	if !ok && kind.worker() && reason == jobs.ReasonCrash {
 		// A worker unit's run that ended without its end hook: nothing else
 		// reports it. One a reboot cut short runs again with its timer.
 		obs, ok = runAlert(kind, updated, "ended without reporting its result", "The run ended without reporting its result."), true

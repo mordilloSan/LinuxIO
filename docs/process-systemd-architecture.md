@@ -165,7 +165,14 @@ ExecStopPost=-+/usr/local/bin/linuxio scheduled-run end --unit %n
   `/etc/systemd/system/linuxio-schedule-.service.d/` (a prefix directory, so
   every `linuxio-schedule-<id>.service` gets it),
   `linuxio-btrfs-snapshot.service.d/` and `linuxio-docker-update.service.d/`,
-  then reloads systemd. `linuxio-btrfs-resync@.service` carries the two lines
+  and in the drop-in directories of the distributions' automatic update
+  services (`apt-daily-upgrade.service.d/`, `dnf-automatic.service.d/`,
+  `dnf5-automatic.service.d/`, `mintupdate-automation-upgrade.service.d/`),
+  so a system update is recorded like LinuxIO's own timer runs; a host has
+  one of those services at most, and systemd ignores a drop-in of a unit that
+  does not exist. Then it reloads systemd. The uninstaller removes the
+  drop-in from the update services by its name, with the alert drop-in the
+  bridge writes beside it, and leaves an administrator's own drop-ins. `linuxio-btrfs-resync@.service` carries the two lines
   itself. A drop-in alone loads no unit: until a snapshot rule or the Docker
   update settings are saved, that unit stays `not-found`. Schedules saved
   before an update record their runs after it without being saved again.
@@ -470,7 +477,7 @@ follow the [Production Diagnostic Data Policy](./production-diagnostics.md).
 | Bridge entry point | `backend/bridge/cmd/lifecycle.go`, `cmd/yamux.go` |
 | Job host, client and their commands | `backend/bridge/internal/jobshost`, `backend/bridge/internal/jobsclient`, `backend/bridge/cmd/jobs_host.go` and `jobs_relay.go` (bridge → host relay) |
 | Job store | `backend/common/jobs`; records in `/var/lib/linuxio/jobs/<uid>/`, live progress in `/run/linuxio/jobs/<uid>/`, the host socket at `/run/linuxio/jobs/<uid>.sock` |
-| Scheduled runs | hooks in `packaging/systemd/linuxio-run-record.conf` (installed as `10-linuxio-run.conf` in three drop-in directories) and `linuxio-btrfs-resync@.service`; command `backend/cli/scheduled_run.go`; recording, output copy and liveness `backend/common/scheduledrun`; listing in the root host `backend/bridge/internal/jobshost/scheduled.go`; records, outputs and progress in `/var/lib/linuxio/jobs/scheduled/` and `/run/linuxio/jobs/scheduled/` |
+| Scheduled runs | hooks in `packaging/systemd/linuxio-run-record.conf` (installed as `10-linuxio-run.conf` in the drop-in directories of the three LinuxIO units and the four distribution update services) and `linuxio-btrfs-resync@.service`; command `backend/cli/scheduled_run.go`; recording, output copy and liveness `backend/common/scheduledrun`; listing in the root host `backend/bridge/internal/jobshost/scheduled.go`; records, outputs and progress in `/var/lib/linuxio/jobs/scheduled/` and `/run/linuxio/jobs/scheduled/` |
 | Indexer daemon and API | `backend/indexer/`, `backend/indexer/api/` |
 | Monitoring daemon and shared wire types | `backend/monitoring/`, `backend/monitoring/api/` |
 | Build | `Makefile` + `mk/go.mk` (`build-*`, `build-go-binaries`, `build-binaries`); output in `build/` |

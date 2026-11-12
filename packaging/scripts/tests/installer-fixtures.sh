@@ -380,7 +380,10 @@ run_record_dropin_fixtures() {
 
 		install_run_record_dropins "${fixture_dir}/system" >/dev/null ||
 			fail "installing the run-record drop-ins failed"
-		for dropin_dir in linuxio-schedule-.service.d linuxio-btrfs-snapshot.service.d linuxio-docker-update.service.d; do
+		local linuxio_dirs="linuxio-schedule-.service.d linuxio-btrfs-snapshot.service.d linuxio-docker-update.service.d"
+		# The distributions' automatic update services, hooked the same way.
+		local update_dirs="apt-daily-upgrade.service.d dnf-automatic.service.d dnf5-automatic.service.d mintupdate-automation-upgrade.service.d"
+		for dropin_dir in $linuxio_dirs $update_dirs; do
 			dropin_file="${fixture_dir}/system/${dropin_dir}/10-linuxio-run.conf"
 			[[ -f "$dropin_file" ]] || fail "missing ${dropin_dir}/10-linuxio-run.conf after install"
 			grep -Fqx '[Service]' "$dropin_file" || fail "${dropin_dir} drop-in has no [Service] section"
@@ -388,18 +391,27 @@ run_record_dropin_fixtures() {
 			grep -Fqx "$END_HOOK" "$dropin_file" || fail "${dropin_dir} drop-in lacks the end hook"
 			assert_eq "644" "$(stat -c %a "$dropin_file")" "${dropin_dir} drop-in mode"
 		done
-		assert_eq "3" "$(find "${fixture_dir}/system" -mindepth 1 -maxdepth 1 | wc -l)" "installed drop-in directories"
+		assert_eq "7" "$(find "${fixture_dir}/system" -mindepth 1 -maxdepth 1 | wc -l)" "installed drop-in directories"
 		if compgen -G "${fixture_dir}/system/*/*.new.*" >/dev/null; then
 			fail "drop-in install left a temporary file"
 		fi
 
-		# Uninstalling removes everything under linuxio*, drop-in directories included.
-		mkdir -p "${fixture_dir}/system/unrelated.service.d"
-		bash -c "$(grep -F 'rm -rf /etc/systemd/system/linuxio*' "$UNINSTALLER" | sed "s#/etc/systemd/system#${fixture_dir}/system#")"
-		for dropin_dir in linuxio-schedule-.service.d linuxio-btrfs-snapshot.service.d linuxio-docker-update.service.d; do
+		# Uninstalling removes everything under linuxio*, drop-in directories
+		# included, and LinuxIO's two drop-ins from the update services: the
+		# run record and the alert hook the bridge writes there. What an
+		# administrator put beside them stays.
+		mkdir -p "${fixture_dir}/system/unrelated.service.d" "${fixture_dir}/system/apt-daily.service.d"
+		: >"${fixture_dir}/system/unrelated.service.d/override.conf"
+		: >"${fixture_dir}/system/dnf-automatic.service.d/override.conf"
+		: >"${fixture_dir}/system/apt-daily-upgrade.service.d/linuxio-alert.conf"
+		: >"${fixture_dir}/system/apt-daily.service.d/linuxio-alert.conf"
+		bash -c "$(grep -E '^(rm -rf /etc/systemd/system/linuxio\*|rm -f /etc/systemd/system/\*\.service\.d/|rmdir --ignore-fail-on-non-empty /etc/systemd/system/)' "$UNINSTALLER" | sed "s#/etc/systemd/system#${fixture_dir}/system#g")"
+		for dropin_dir in $linuxio_dirs apt-daily-upgrade.service.d apt-daily.service.d dnf5-automatic.service.d mintupdate-automation-upgrade.service.d; do
 			[[ ! -e "${fixture_dir}/system/${dropin_dir}" ]] || fail "uninstall left ${dropin_dir}"
 		done
-		[[ -d "${fixture_dir}/system/unrelated.service.d" ]] || fail "uninstall removed a directory that is not LinuxIO's"
+		[[ ! -e "${fixture_dir}/system/dnf-automatic.service.d/10-linuxio-run.conf" ]] || fail "uninstall left the run-record drop-in beside an administrator's file"
+		[[ -f "${fixture_dir}/system/dnf-automatic.service.d/override.conf" ]] || fail "uninstall removed an administrator's drop-in of an update service"
+		[[ -f "${fixture_dir}/system/unrelated.service.d/override.conf" ]] || fail "uninstall removed a directory that is not LinuxIO's"
 		rm -rf "$fixture_dir"
 	)
 }

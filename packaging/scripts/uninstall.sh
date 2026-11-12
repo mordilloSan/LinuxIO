@@ -72,6 +72,10 @@ Show 2 "Removing systemd files..."
 rm -rf /etc/systemd/system/linuxio*
 rm -rf /lib/systemd/system/linuxio*
 rm -f /etc/systemd/system/*.wants/linuxio*
+# LinuxIO's drop-ins on the distribution's update services, whose directories
+# are not named linuxio*: left behind, their hooks would call a removed binary.
+rm -f /etc/systemd/system/*.service.d/10-linuxio-run.conf /etc/systemd/system/*.service.d/linuxio-alert.conf
+rmdir --ignore-fail-on-non-empty /etc/systemd/system/apt-daily-upgrade.service.d /etc/systemd/system/apt-daily.service.d /etc/systemd/system/dnf-automatic.service.d /etc/systemd/system/dnf5-automatic.service.d /etc/systemd/system/mintupdate-automation-upgrade.service.d 2>/dev/null || true
 rm -f /etc/libvirt/hooks/qemu.d/linuxio-bridge-netfilter
 Show 0 "Systemd files removed"
 

@@ -1,6 +1,7 @@
 // Package scheduledrun records the runs of work that systemd timers start:
-// user scripts, btrfs snapshots, pool resyncs and Docker updates. A hook on
-// each unit calls Begin when a run starts and End when it stops.
+// user scripts, btrfs snapshots, pool resyncs, Docker updates and the
+// distribution's automatic system updates. A hook on each unit calls Begin
+// when a run starts and End when it stops.
 package scheduledrun
 
 import (
@@ -10,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/jobs"
@@ -20,6 +22,7 @@ const (
 	RouteSnapshot     = "scheduled.btrfs_snapshot"
 	RouteResync       = "scheduled.btrfs_resync"
 	RouteDockerUpdate = "scheduled.docker_update"
+	RouteSystemUpdate = "scheduled.system_update"
 	// AlertSource is the source of the alerts a failed run raises.
 	AlertSource = "jobs"
 )
@@ -36,6 +39,17 @@ const (
 	scriptFallback     = "Scheduled task"
 	maxDefinitionBytes = 512 << 10
 )
+
+// systemUpdateUnits are the services the distributions run their automatic
+// updates in (APT, DNF 4 and 5, Linux Mint). They are not LinuxIO's units:
+// the installer hooks them with the run-record drop-in, and the package's
+// auto-update backends, which own these names, test them against this list.
+var systemUpdateUnits = []string{
+	"apt-daily-upgrade.service",
+	"dnf-automatic.service",
+	"dnf5-automatic.service",
+	"mintupdate-automation-upgrade.service",
+}
 
 // Kind describes the scheduled work a unit runs.
 type Kind struct {
@@ -55,6 +69,9 @@ func KindOf(unit, scheduleDir string) (Kind, bool) {
 		return Kind{Route: RouteSnapshot, Label: "Snapshots and replication", Link: "/storage/subvolumes?view=snapshots"}, true
 	case dockerUpdateUnit:
 		return Kind{Route: RouteDockerUpdate, Label: "Container updates", Link: "/docker/containers"}, true
+	}
+	if slices.Contains(systemUpdateUnits, unit) {
+		return Kind{Route: RouteSystemUpdate, Label: "System updates", Link: "/updates"}, true
 	}
 	if id, ok := instanceOf(unit, scriptUnitPrefix); ok {
 		return Kind{
@@ -129,4 +146,12 @@ func scriptLabel(scheduleDir, id string) string {
 		return name
 	}
 	return scriptFallback
+}
+
+// worker reports whether the unit runs one of LinuxIO's workers (snapshots,
+// resync, Docker updates), whose failed run the end hook reports with a run
+// alert unless the worker reported everything itself. A script has its own
+// alerts, and a system update its provider's.
+func (k Kind) worker() bool {
+	return k.Route == RouteSnapshot || k.Route == RouteResync || k.Route == RouteDockerUpdate
 }

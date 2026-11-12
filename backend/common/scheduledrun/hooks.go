@@ -107,7 +107,7 @@ func (h Hooks) End(ctx context.Context, unit, invocationID string, result Result
 			errs = append(errs, fmt.Errorf("raise alert: %w", alertErr))
 		}
 	}
-	if !kind.Alerts {
+	if kind.worker() {
 		if alertErr := h.reportWorkerRun(context.WithoutCancel(ctx), kind, record, result); alertErr != nil {
 			errs = append(errs, alertErr)
 		}

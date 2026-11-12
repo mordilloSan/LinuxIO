@@ -101,6 +101,7 @@ describe("scheduledRunLink targets", () => {
     "scheduled.btrfs_snapshot",
     "scheduled.btrfs_resync",
     "scheduled.docker_update",
+    "scheduled.system_update",
   ])("links %s to a route the app has", (type) => {
     for (const metadata of [{ identity: ["id-1"] }, {}]) {
       expect(routes).toContain(
@@ -111,6 +112,14 @@ describe("scheduledRunLink targets", () => {
 });
 
 describe("scheduledRunLink", () => {
+  it("opens the Updates page for a system update, which the bell and the history list like any scheduled run", () => {
+    const run = scheduledRun("scheduled.system_update", {
+      metadata: { label: "System updates" },
+    });
+    expect(isScheduledRun(run.type)).toBe(true);
+    expect(scheduledRunLink(run)).toEqual({ to: "/updates" });
+  });
+
   it("opens the schedule a script belongs to", () => {
     expect(
       scheduledRunLink(

@@ -16,6 +16,7 @@ import {
   signIn,
   signOut,
   signOutIfSignedIn,
+  stopAptRuns,
   trayJob,
   uniqueName,
   unitOf,
@@ -33,6 +34,8 @@ import {
 
 const SNAPSHOT = "scheduled.btrfs_snapshot";
 const DOCKER_UPDATE = "scheduled.docker_update";
+const SYSTEM_UPDATE = "scheduled.system_update";
+const SYSTEM_UPDATE_UNIT = "apt-daily-upgrade.service";
 const SNAPSHOT_UNIT = "linuxio-btrfs-snapshot.service";
 const DOCKER_UPDATE_UNIT = "linuxio-docker-update.service";
 const SCRIPT_DROPIN = "linuxio-schedule-.service.d";
@@ -377,6 +380,78 @@ test("the Docker update unit records its run", async ({ page }) => {
         { timeout: 30_000 },
       )
       .not.toBe("enabled");
+  }
+});
+
+// The distribution's own automatic update is hooked like LinuxIO's units, so
+// its runs show in the history. The unit's command is replaced for the test
+// by a runtime drop-in (a real run would install packages and take minutes);
+// the hooks are the installed ones.
+test("a system update records its run and shows in the history", async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  const loaded = await unitProperty(SYSTEM_UPDATE_UNIT, "LoadState");
+  test.skip(
+    loaded !== "loaded",
+    `${SYSTEM_UPDATE_UNIT} is ${loaded} in the VM`,
+  );
+  expect(
+    await vmSsh(
+      `test -f /etc/systemd/system/${SYSTEM_UPDATE_UNIT}.d/10-linuxio-run.conf && echo installed || true`,
+    ),
+    "the run-record drop-in",
+  ).toBe("installed\n");
+  await stopAptRuns();
+  const overrideDir = `/run/systemd/system/${SYSTEM_UPDATE_UNIT}.d`;
+  const override = `${overrideDir}/zz-e2e.conf`;
+  // ExecStart alone is reset: resetting ExecStartPre would drop the begin hook.
+  const stub = async (command: string) => {
+    await vmSsh(
+      `sudo mkdir -p ${overrideDir} && sudo tee ${override} >/dev/null && sudo systemctl daemon-reload`,
+      `[Service]\nExecStart=\nExecStart=${command}\n`,
+    );
+  };
+  /** The jobs alerts about run id, or a run alert of the unit, in the store. */
+  const jobsAlerts = async (id: string) =>
+    JSON.parse(
+      await vmSsh(
+        `sudo sh -c 'cat /var/lib/linuxio/alerts.json 2>/dev/null || echo "{}"' | jq -c '[(.alerts // [])[] | select(.source == "jobs" and (.key == "${id}" or .key == "run-system-update"))]'`,
+      ),
+    ) as unknown[];
+  try {
+    await stub("/bin/echo e2e upgraded nothing");
+    let before = await recordIds(SYSTEM_UPDATE);
+    await vmSsh(`sudo systemctl start ${SYSTEM_UPDATE_UNIT}`);
+    const run = await waitForNewRun(SYSTEM_UPDATE, before, "completed");
+    expect(run.executor).toMatchObject({
+      kind: "unit",
+      unit: SYSTEM_UPDATE_UNIT,
+    });
+    expect(run.metadata).toEqual({ label: "System updates" });
+    // Saved as the journal prints it: time, host and process before the text.
+    expect(await outputLines(run.id)).toContainEqual(
+      expect.stringMatching(/: e2e upgraded nothing$/),
+    );
+
+    await signIn(page);
+    await page.goto(`/history?job=${run.id}`);
+    await expect(
+      page.getByRole("row").filter({ hasText: "System updates" }).first(),
+    ).toBeVisible({ timeout: 30_000 });
+
+    // A failed run is recorded as failed and raises no jobs alert: the
+    // provider's own hook reports a failed automatic update.
+    await stub("/bin/false");
+    before = await recordIds(SYSTEM_UPDATE);
+    await vmSsh(`sudo systemctl start ${SYSTEM_UPDATE_UNIT} || true`);
+    const failed = await waitForNewRun(SYSTEM_UPDATE, before, "failed");
+    expect(failed.error?.message).toBe("exited with status 1");
+    expect(await jobsAlerts(failed.id), "jobs alerts").toEqual([]);
+  } finally {
+    await vmSsh(
+      `sudo rm -f ${override} && sudo systemctl daemon-reload && sudo systemctl reset-failed ${SYSTEM_UPDATE_UNIT} || true`,
+    );
   }
 });
 

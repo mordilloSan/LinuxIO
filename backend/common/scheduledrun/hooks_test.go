@@ -965,3 +965,33 @@ func TestStoppedWorkerRunChangesNoRunAlert(t *testing.T) {
 		t.Errorf("alerts = %+v %+v %+v, resolved = %v %v %v; want none", h.alerts, h2.alerts, h3.alerts, *resolved, *resolved2, *resolved3)
 	}
 }
+
+// The provider's automatic update is recorded like any run, but it is not one
+// of LinuxIO's workers: its own hook reports a failed run ("Automatic updates
+// failed"), so the end hook neither raises nor clears a run alert for it.
+func TestSystemUpdateRunIsRecordedWithoutARunAlert(t *testing.T) {
+	const unit = "apt-daily-upgrade.service"
+	for name, tt := range map[string]struct {
+		result Result
+		state  jobs.State
+	}{
+		"completed": {Result{"success", "exited", "0"}, jobs.StateCompleted},
+		"failed":    {Result{"exit-code", "exited", "100"}, jobs.StateFailed},
+	} {
+		h := newHooks(t)
+		resolved := resolving(h)
+		mustBegin(t, h, unit, testInvocation)
+		if record := mustGet(t, h, testRunID); record.Route != RouteSystemUpdate || record.State != jobs.StateRunning {
+			t.Fatalf("%s: running record = %s/%s, want %s running", name, record.Route, record.State, RouteSystemUpdate)
+		}
+		if err := h.End(t.Context(), unit, testInvocation, tt.result); err != nil {
+			t.Fatal(err)
+		}
+		if record := mustGet(t, h, testRunID); record.State != tt.state {
+			t.Errorf("%s: record = %s, want %s", name, record.State, tt.state)
+		}
+		if len(h.alerts) != 0 || len(*resolved) != 0 {
+			t.Errorf("%s: alerts = %+v, resolved = %v; want neither", name, h.alerts, *resolved)
+		}
+	}
+}

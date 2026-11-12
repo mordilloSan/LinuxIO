@@ -3,6 +3,8 @@ package autoupdate
 import (
 	"strings"
 	"testing"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 const aptAlertDropIn = "/etc/systemd/system/apt-daily-upgrade.service.d/linuxio-alert.conf"
@@ -143,5 +145,22 @@ func TestValidateOptionsRejectsPendingWithoutSupport(t *testing.T) {
 	support.NotifyAvailable = true
 	if err := validateOptions(opts, support); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// The installer hooks these services with the run-record drop-in, and the
+// run recorder names them itself so it does not import this package: a
+// service one of the backends runs its updates in must be known to it.
+func TestScheduledRunKnowsTheUpgradeServices(t *testing.T) {
+	_, host := newFakeAutoUpdateHost()
+	for _, service := range []string{
+		aptUpgradeService,
+		(&dnfBackend{host: host, generation: dnf4}).service(),
+		(&dnfBackend{host: host, generation: dnf5}).service(),
+		mintUpgradeService,
+	} {
+		if kind, ok := scheduledrun.KindOf(service, ""); !ok || kind.Route != scheduledrun.RouteSystemUpdate {
+			t.Errorf("KindOf(%q) = %+v, %v; want a system update", service, kind, ok)
+		}
 	}
 }

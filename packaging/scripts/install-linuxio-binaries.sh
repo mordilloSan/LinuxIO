@@ -129,12 +129,20 @@ systemd_units() {
 # Drop-in directories, relative to ${SYSTEMD_DIR}, that each receive
 # packaging/systemd/linuxio-run-record.conf as 10-linuxio-run.conf: it hooks a
 # unit so every run writes its job record. The first name ends in "-.service.d"
-# on purpose: systemd applies it to every unit named linuxio-schedule-*.
+# on purpose: systemd applies it to every unit named linuxio-schedule-*. The
+# last four are the distributions' automatic update services (APT, DNF 4 and
+# 5, Linux Mint), so a system update shows in the history; a host has one of
+# them at most, and systemd ignores a drop-in of a unit that does not exist.
+# uninstall.sh removes the drop-in from them by its name.
 run_record_dropin_dirs() {
 	printf '%s\n' \
 		linuxio-schedule-.service.d \
 		linuxio-btrfs-snapshot.service.d \
-		linuxio-docker-update.service.d
+		linuxio-docker-update.service.d \
+		apt-daily-upgrade.service.d \
+		dnf-automatic.service.d \
+		dnf5-automatic.service.d \
+		mintupdate-automation-upgrade.service.d
 }
 
 # Install the run-record drop-in under each directory of

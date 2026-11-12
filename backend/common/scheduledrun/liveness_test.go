@@ -237,3 +237,20 @@ func TestRunningAlertsForAWorkerRunThatEndedWithoutItsHook(t *testing.T) {
 		t.Errorf("alerts = %+v, want [%+v]", h.alerts, want)
 	}
 }
+
+// A system update found gone is marked, and reported by nothing here: its
+// provider's hook owns its alerts.
+func TestRunningDoesNotAlertForASystemUpdateThatEndedWithoutItsHook(t *testing.T) {
+	const unit = "apt-daily-upgrade.service"
+	h := newHooks(t)
+	mustBegin(t, h, unit, testInvocation)
+	if _, err := liveness(h, testBoot, func(context.Context, string, string) (bool, error) { return false, nil }).Running(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if record := mustGet(t, h, testRunID); record.State != jobs.StateInterrupted || record.Reason != jobs.ReasonCrash {
+		t.Fatalf("record = %s/%s, want interrupted/crash", record.State, record.Reason)
+	}
+	if len(h.alerts) != 0 {
+		t.Errorf("alerts = %+v, want none", h.alerts)
+	}
+}

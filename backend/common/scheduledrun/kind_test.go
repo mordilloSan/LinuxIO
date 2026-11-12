@@ -36,6 +36,10 @@ func TestKindOf(t *testing.T) {
 		{"linuxio-btrfs-snapshot.service", Kind{RouteSnapshot, "Snapshots and replication", "", "/storage/subvolumes?view=snapshots", false}},
 		{"linuxio-btrfs-resync@" + testPoolUUID + ".service", Kind{RouteResync, "Pool resync", testPoolUUID, "/storage?pool=" + testPoolUUID, false}},
 		{"linuxio-docker-update.service", Kind{RouteDockerUpdate, "Container updates", "", "/docker/containers", false}},
+		{"apt-daily-upgrade.service", Kind{RouteSystemUpdate, "System updates", "", "/updates", false}},
+		{"dnf-automatic.service", Kind{RouteSystemUpdate, "System updates", "", "/updates", false}},
+		{"dnf5-automatic.service", Kind{RouteSystemUpdate, "System updates", "", "/updates", false}},
+		{"mintupdate-automation-upgrade.service", Kind{RouteSystemUpdate, "System updates", "", "/updates", false}},
 	}
 	for _, tt := range tests {
 		got, ok := KindOf(tt.unit, t.TempDir())
@@ -45,6 +49,7 @@ func TestKindOf(t *testing.T) {
 	}
 	for _, unit := range []string{
 		"linuxio-btrfs-health.service",
+		"apt-daily.service",
 		"ssh.service",
 		"linuxio-schedule-not-a-uuid.service",
 		"linuxio-btrfs-resync@.service",

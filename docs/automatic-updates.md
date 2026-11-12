@@ -65,6 +65,19 @@ Disabling LinuxIO-managed automatic installation does not require disabling
 `apt-daily.timer`. APT may continue using that timer to refresh package metadata;
 `apt-daily-upgrade.timer` is the unit that performs unattended installation.
 
+Every automatic update is recorded in the job history as *System updates*,
+with its outcome, how long it ran and its output, whichever notify policy is
+stored and whether or not LinuxIO configured the schedule: the installer
+hooks the provider's upgrade service (`apt-daily-upgrade.service`,
+`dnf-automatic.service`, `dnf5-automatic.service` or
+`mintupdate-automation-upgrade.service`) with the same run-record drop-in
+LinuxIO's own timers use
+([Process and systemd architecture](./process-systemd-architecture.md)). A
+running update shows in the bell, without a cancel. The record raises no
+alert: a failed run is reported by the notify hook below, where a notify
+policy is stored; on a host with none (a stored `never`, or a schedule
+LinuxIO never configured) a failed run shows in the history only.
+
 The notify policy is chosen in the Notifications settings tab, beside the
 Docker update policy and the delivery channels, and stored as a drop-in:
 LinuxIO writes `/etc/systemd/system/<upgrade-service>.d/linuxio-alert.conf`
