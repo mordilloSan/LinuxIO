@@ -38,9 +38,8 @@ function CodeBlock({ children }: { children?: ReactNode }) {
     typeof codeProps?.children === "string" ? codeProps.children : null;
   // The fence's trailing newline is not code; it is re-appended as plain tail.
   const body = text?.replace(/\n$/, "") ?? null;
-  const lang = languageForFence(
-    /language-(\S+)/.exec(codeProps?.className ?? "")?.[1] ?? "",
-  );
+  const fence = /language-(\S+)/.exec(codeProps?.className ?? "")?.[1] ?? "";
+  const lang = languageForFence(fence);
 
   useEffect(() => {
     if (body === null || !lang || body.length > MAX_HIGHLIGHT_CHARS) return;
@@ -63,13 +62,12 @@ function CodeBlock({ children }: { children?: ReactNode }) {
       : null;
   return (
     <div className="assistant-code">
-      {/* The wrapper is what gets positioned, so the tooltip anchors to the
-          button and not to where the button would have sat in flow. */}
-      <div className="assistant-code__copy">
+      <div className="assistant-code__bar">
+        <span className="assistant-code__lang">{fence || "code"}</span>
         <AppActionIconButton
           ariaLabel="Copy code"
           icon="mdi:content-copy"
-          iconSize={16}
+          iconSize={14}
           label="Copy code"
           onClick={() => {
             const code = preRef.current?.textContent ?? "";

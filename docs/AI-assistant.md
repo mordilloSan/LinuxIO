@@ -111,7 +111,8 @@ surface: the default entrypoint is stable-only since SDK 2.0 and leaves out
 `session/fork`, which the side-question panel needs, and the two cannot be
 mixed. The client advertises only `auth.terminal` and declines the fs and
 terminal client methods, so the agent uses its own tools. Messages are plain
-text, images and file context. Permission cards show the agent's own options.
+text, images and file context. Permission cards show the agent's own options
+and say that nothing has changed yet.
 Stop sends `session/cancel`.
 
 ## Features
@@ -140,10 +141,32 @@ advertises the matching capability.
   a verb that cycles every 4 s (Thinking, Working, Reading, Checking,
   Pondering, Reviewing) and the elapsed time. It, and its timers, exist only
   while the turn runs.
-- **Grouped tool calls.** Two or more consecutive tool calls render as one
-  collapsed row, `N tool calls`, with a status dot (red if any failed, pulsing
-  while any is pending or running, green otherwise) and a chevron that opens
-  the individual calls. A lone tool call stays a plain row.
+- **Run log and change cards.** Consecutive tool calls are split by whether
+  they acted on the host. Steps that only looked (read, search, fetch, think,
+  and commands recognised as read-only) are lines in a log on a rail: a state
+  marker (green done, spinner while pending or running, red alert on failure),
+  the kind of step and the command or title. A log longer than five lines
+  shows the newest five behind a "Show N earlier steps" button. Steps that
+  acted (edit, delete, move, and any command not recognised as read-only) are
+  grouped in one card, titled "Running on this server" while one is in
+  progress, then "Changed on this server" when a file was edited, deleted or
+  moved, or "Ran on this server" for commands alone, with a failed count. The
+  card appears whether or not the agent asked first, so a change made under an
+  automatic mode is as visible as an approved one. Any line opens to the
+  call's input, output and diff. The call a permission card is asking about
+  is left out of the transcript until it is answered.
+- **Read-only commands.** `transcript/readOnlyCommand.ts` decides which
+  commands only read: a list of readers (`cat`, `ls`, `ss`, `df`, ...),
+  read-only subcommands (`systemctl status`, `docker ps`, `btrfs filesystem
+  usage`, ...) and commands that read unless a mutating flag is present
+  (`find -delete`, `sed -i`, `journalctl --vacuum-*`). Every segment of a
+  pipeline must read, and a redirection or command substitution makes the
+  whole command count as acting. This is presentation only and errs towards
+  "acting"; permissions stay with the agent.
+- **Reading column.** The transcript scrolls across the page, but its rows,
+  the permission card, the status line and the prompt share one centred
+  860 px column. The user's prompt is a bubble sized to its text on the
+  right; answers take the column.
 - **Side question.** When the agent advertises `session/fork`, typing
   `/btw <question>` in the composer opens a panel beside the chat (below it on
   narrow screens), also while a turn is running. It forks the
@@ -174,7 +197,9 @@ advertises the matching capability.
   once the turn ends.
 - **Markdown.** Agent replies render as Markdown with GitHub tables,
   strikethrough, task lists and autolinks, no raw HTML. Links open in a new tab
-  and code blocks have a Copy button. Fenced code is syntax-highlighted using
+  and each code block is one surface with a bar naming the fence language and
+  a Copy button. An answer shows a Copy answer button on hover or focus, which
+  copies its Markdown source. Fenced code is syntax-highlighted using
   the file editor's languages (blocks over 20,000 characters stay plain). User,
   thought and plan text stay plain.
 - **Diff view.** Tool calls that carry a diff show it as a line diff with the

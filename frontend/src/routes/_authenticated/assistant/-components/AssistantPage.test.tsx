@@ -342,10 +342,13 @@ describe("AssistantPage", () => {
       },
     });
     expect(await screen.findByText("list files")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /1 tool call/ }));
+    // The waiting call is shown by the permission card, not the transcript.
     expect(
-      screen.getByText("ls -la", { selector: ".assistant-tool__detail" }),
+      screen.getByText("ls -la", {
+        selector: ".assistant__permission-command",
+      }),
     ).toBeInTheDocument();
+    expect(document.querySelector(".assistant-tool")).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "Allow once" }));
     expect(resolve).toHaveBeenCalledWith({
       outcome: { outcome: "selected", optionId: "ok" },

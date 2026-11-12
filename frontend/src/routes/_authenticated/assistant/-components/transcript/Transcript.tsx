@@ -2,14 +2,16 @@ import type * as acp from "@agentclientprotocol/sdk/unstable";
 import { Icon } from "@iconify/react";
 import { type ReactNode, useRef, useState } from "react";
 
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
-import AppTypography from "@/components/ui/AppTypography";
+import { copyToClipboard } from "@/utils/clipboard";
 
 import type { Attachment } from "../attachments";
 import AttachmentChip from "../composer/AttachmentChip";
 import DiffView from "./DiffView";
 import MarkdownBlock from "./MarkdownBlock";
+import { isReadOnlyCommand } from "./readOnlyCommand";
 import {
   stringField,
   type ToolBlock,
@@ -90,8 +92,21 @@ function ToolOutput({ text }: { text: string }) {
   );
 }
 
-/** One tool call: what it does, then its input and output, like the IDE. */
-function ToolRow({ block }: { block: ToolBlock }) {
+const ACTING_KINDS = new Set(["edit", "delete", "move"]);
+
+/**
+ * Whether a tool call acted on the host, as opposed to looking at it. A
+ * command counts as acting unless it is recognisably read-only.
+ */
+const actsOnHost = (block: ToolBlock) => {
+  if (ACTING_KINDS.has(block.toolKind)) return true;
+  if (block.toolKind !== "execute") return false;
+  const command = stringField(block.rawInput, "command");
+  return command === null || !isReadOnlyCommand(command);
+};
+
+/** A tool call's input, output and diffs, shown once its line is opened. */
+function ToolDetail({ block }: { block: ToolBlock }) {
   const command = stringField(block.rawInput, "command");
   const hasInput =
     typeof block.rawInput === "object" &&
@@ -99,8 +114,6 @@ function ToolRow({ block }: { block: ToolBlock }) {
     Object.keys(block.rawInput).length > 0;
   const input =
     command ?? (hasInput ? JSON.stringify(block.rawInput, null, 2) : null);
-  const description = stringField(block.rawInput, "description");
-  const detail = description ?? (block.title !== command ? block.title : null);
   const diffs = block.content.flatMap((c) => (c.type === "diff" ? [c] : []));
   const text = block.content
     .map((c) =>
@@ -116,16 +129,7 @@ function ToolRow({ block }: { block: ToolBlock }) {
       ? JSON.stringify(block.rawOutput, null, 2)
       : "");
   return (
-    <div className="assistant-tool">
-      <StateMarker state={toolState(block.status)} />
-      <div className="assistant-tool__head">
-        <span className="assistant-tool__kind">
-          {KIND_LABEL[block.toolKind] ?? "Tool"}
-        </span>
-        {detail ? (
-          <span className="assistant-tool__detail">{detail}</span>
-        ) : null}
-      </div>
+    <div className="assistant-tool__detail-body">
       {input || output ? (
         <div className="assistant-tool__io">
           {input ? (
@@ -149,83 +153,139 @@ function ToolRow({ block }: { block: ToolBlock }) {
   );
 }
 
-/** A run of consecutive tool calls; the rows keep their block references. */
-function ToolGroupRow({ tools }: { tools: ToolBlock[] }) {
+/**
+ * One tool call as a log line: its state, what kind of step it was, and the
+ * command or title. The line opens to the input, output and diffs.
+ */
+function ToolLine({ block }: { block: ToolBlock }) {
   const [open, setOpen] = useState(false);
-  const headerRef = useRef<HTMLButtonElement>(null);
-  const failed = tools.filter((tool) => tool.status === "failed").length;
-  const state: ToolState =
-    failed > 0
-      ? "failed"
-      : tools.some((tool) => toolState(tool.status) === "active")
-        ? "active"
-        : "done";
+  const command = stringField(block.rawInput, "command");
+  const description = stringField(block.rawInput, "description");
+  const note =
+    description ?? (command && block.title !== command ? block.title : null);
   return (
-    <div className="assistant-tool-group">
+    <div className="assistant-tool">
       <AppButton
         aria-expanded={open}
-        className="assistant-tool-group__header"
+        className="assistant-tool__line"
         color="inherit"
         onClick={() => setOpen(!open)}
-        ref={headerRef}
       >
-        <StateMarker state={state} />
-        <AppTypography variant="caption">
-          {tools.length} {tools.length === 1 ? "tool call" : "tool calls"}
-        </AppTypography>
-        {failed > 0 ? (
-          <AppTypography color="error" variant="caption">
-            · {failed} failed
-          </AppTypography>
-        ) : null}
-        <Icon icon={open ? "mdi:chevron-up" : "mdi:chevron-down"} width={18} />
+        <StateMarker state={toolState(block.status)} />
+        <span className="assistant-tool__kind">
+          {KIND_LABEL[block.toolKind] ?? "Tool"}
+        </span>
+        {command ? (
+          <span className="assistant-tool__command">{command}</span>
+        ) : (
+          <span className="assistant-tool__detail">{block.title}</span>
+        )}
+        {note ? <span className="assistant-tool__detail">{note}</span> : null}
       </AppButton>
-      {open ? (
-        <>
-          <div className="assistant-tool-list">
-            {tools.map((tool) => (
-              <ToolRow key={tool.id} block={tool} />
-            ))}
-          </div>
-          <AppButton
-            className="assistant-tool-group__collapse"
-            color="inherit"
-            onClick={() => {
-              setOpen(false);
-              headerRef.current?.focus();
-            }}
-            size="small"
-          >
-            Collapse
-            <Icon icon="mdi:chevron-up" width={18} />
-          </AppButton>
-        </>
+      {open ? <ToolDetail block={block} /> : null}
+    </div>
+  );
+}
+
+// A long run of checks shows its newest lines; a button brings back the rest.
+const LOG_VISIBLE = 5;
+
+/** A run of consecutive steps that only looked at the host. */
+function CheckLog({ tools }: { tools: ToolBlock[] }) {
+  const [showAll, setShowAll] = useState(false);
+  const hidden = showAll ? 0 : Math.max(0, tools.length - LOG_VISIBLE);
+  return (
+    <div className="assistant-log">
+      {tools.length > LOG_VISIBLE ? (
+        <AppButton
+          aria-expanded={showAll}
+          className="assistant-log__more"
+          color="inherit"
+          onClick={() => setShowAll(!showAll)}
+          size="small"
+        >
+          {showAll
+            ? "Show fewer steps"
+            : `Show ${hidden} earlier ${hidden === 1 ? "step" : "steps"}`}
+        </AppButton>
       ) : null}
+      {tools.slice(hidden).map((tool) => (
+        <ToolLine key={tool.id} block={tool} />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * A run of consecutive steps that acted on the host, as one card, so what was
+ * done to the server never hides in the log, asked for or not.
+ */
+function ChangeCard({ tools }: { tools: ToolBlock[] }) {
+  const failed = tools.filter((tool) => tool.status === "failed").length;
+  const active = tools.some((tool) => toolState(tool.status) === "active");
+  const title = active
+    ? "Running on this server"
+    : tools.some((tool) => ACTING_KINDS.has(tool.toolKind))
+      ? "Changed on this server"
+      : "Ran on this server";
+  return (
+    <div
+      aria-label={title}
+      className={
+        active
+          ? "assistant-change assistant-change--active"
+          : "assistant-change"
+      }
+      role="group"
+    >
+      <div className="assistant-change__head">
+        <span>{title}</span>
+        {failed > 0 ? (
+          <span className="assistant-change__failed">{failed} failed</span>
+        ) : null}
+      </div>
+      <div className="assistant-change__rows">
+        {tools.map((tool) => (
+          <ToolLine key={tool.id} block={tool} />
+        ))}
+      </div>
     </div>
   );
 }
 
 type Row =
   | { key: string; block: TranscriptBlock }
-  | { key: string; tools: ToolBlock[] };
+  | { key: string; tools: ToolBlock[]; acting: boolean };
 
-/** Every run of consecutive tool blocks becomes one group keyed by the first call. */
-function groupRows(blocks: TranscriptBlock[]): Row[] {
+/**
+ * Consecutive tool blocks become runs: checks in a log, actions in a card,
+ * each keyed by its first call. The call waiting for an answer is left out;
+ * the permission card shows it.
+ */
+function groupRows(
+  blocks: TranscriptBlock[],
+  pendingToolCallId: string | null,
+): Row[] {
   const rows: Row[] = [];
   let run: ToolBlock[] = [];
+  let acting = false;
   const flush = () => {
     if (run.length > 0) {
-      rows.push({ key: `group:${run[0].toolCallId}`, tools: run });
+      rows.push({ key: `group:${run[0].toolCallId}`, tools: run, acting });
     }
     run = [];
   };
   for (const block of blocks) {
-    if (block.kind === "tool") {
-      run.push(block);
-    } else {
+    if (block.kind !== "tool") {
       flush();
       rows.push({ key: block.id, block });
+      continue;
     }
+    if (block.toolCallId === pendingToolCallId) continue;
+    const blockActs = actsOnHost(block);
+    if (blockActs !== acting) flush();
+    acting = blockActs;
+    run.push(block);
   }
   flush();
   return rows;
@@ -254,8 +314,20 @@ function UserBlock({
 
 function AgentBlock({ text }: { text: string }) {
   return (
-    <div className="assistant-block">
+    <div className="assistant-block assistant-block--agent">
       <MarkdownBlock text={text} />
+      <div className="assistant-block__actions">
+        <AppActionIconButton
+          ariaLabel="Copy answer"
+          icon="mdi:content-copy"
+          iconSize={14}
+          label="Copy answer"
+          onClick={() => {
+            copyToClipboard(text).catch(() => {});
+          }}
+          size="small"
+        />
+      </div>
     </div>
   );
 }
@@ -308,11 +380,14 @@ function TranscriptRow({ block }: { block: TranscriptBlock }) {
 export default function Transcript({
   blocks,
   sessionId,
+  pendingToolCallId = null,
   label = "Conversation",
   children,
 }: {
   blocks: TranscriptBlock[];
   sessionId?: string | null;
+  /** The tool call a permission card is asking about, if any. */
+  pendingToolCallId?: string | null;
   label?: string;
   /** Shown in place of the rows while the conversation is empty. */
   children?: ReactNode;
@@ -326,15 +401,22 @@ export default function Transcript({
       aria-label={label}
       ref={ref}
     >
-      {blocks.length === 0
-        ? children
-        : groupRows(blocks).map((row) =>
-            "tools" in row ? (
-              <ToolGroupRow key={row.key} tools={row.tools} />
-            ) : (
-              <TranscriptRow key={row.key} block={row.block} />
-            ),
-          )}
+      {/* The scroller spans the page; the column keeps lines readable. */}
+      <div className="assistant__transcript-column">
+        {blocks.length === 0
+          ? children
+          : groupRows(blocks, pendingToolCallId).map((row) =>
+              "tools" in row ? (
+                row.acting ? (
+                  <ChangeCard key={row.key} tools={row.tools} />
+                ) : (
+                  <CheckLog key={row.key} tools={row.tools} />
+                )
+              ) : (
+                <TranscriptRow key={row.key} block={row.block} />
+              ),
+            )}
+      </div>
     </div>
   );
 }

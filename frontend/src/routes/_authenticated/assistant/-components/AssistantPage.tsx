@@ -362,7 +362,13 @@ export default function AssistantPage({
             </AppAlert>
           ) : null}
 
-          <Transcript blocks={state.blocks} sessionId={state.sessionId}>
+          <Transcript
+            blocks={state.blocks}
+            pendingToolCallId={
+              state.pending?.request.toolCall.toolCallId ?? null
+            }
+            sessionId={state.sessionId}
+          >
             {state.status === "ready" ? (
               <div className="assistant__empty">
                 <Icon icon="mdi:robot-outline" width={48} />

@@ -228,8 +228,9 @@ version `go.mod` pins. `SKIP_ENSURE_GO=1` is accepted for compatibility.
 | `DEV_LOG_LINES` | `25` | Number of LinuxIO log lines shown by `make dev`. |
 
 `make dev` starts only the Vite development server and tails LinuxIO logs. The
-backend still runs through systemd; stop the Vite process using the PID and
-command printed by the target.
+backend still runs through systemd. `make dev-stop` stops Vite from any
+terminal, and every running `make dev` exits once Vite is gone; interrupting
+`make dev` stops Vite only when that run started it.
 
 ### Target-specific inputs
 
@@ -327,7 +328,7 @@ follows:
 - builds and development: `test`, `build`, `build-nocheck`, `fastbuild`,
   `build-vite`, `build-backend`, `build-bridge`, `build-auth`, `build-cli`,
   `build-docker-update`, `build-leak-profile`, `generate`, `dev-prep`, `dev`,
-  `clean`, `cloc`
+  `dev-stop`, `clean`, `cloc`
 - installation: `localinstall`, `reinstall`, `uninstall`
 - test VM: `vm-create`, `vm-install`, `vm-ssh`, `vm-reset`, `vm-destroy`,
   `vm-test-btrfs-integration`, `vm-test-filebrowser-root`, `test-vm-browser`

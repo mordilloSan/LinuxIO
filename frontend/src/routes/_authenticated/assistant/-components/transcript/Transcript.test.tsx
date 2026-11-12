@@ -5,15 +5,24 @@ import { describe, expect, it } from "vitest";
 import Transcript from "./Transcript";
 import type { TranscriptBlock } from "./transcript";
 
-const tool = (id: string, status = "completed"): TranscriptBlock => ({
+const run = (id: string, command: string, status: string): TranscriptBlock => ({
   kind: "tool",
   id: `b-${id}`,
   toolCallId: id,
-  title: `cmd ${id}`,
+  title: command,
   toolKind: "execute",
   status,
+  rawInput: { command },
   content: [],
 });
+
+/** A command that acts on the host. */
+const tool = (id: string, status = "completed") =>
+  run(id, `systemctl restart ${id}`, status);
+
+/** A command that only reads. */
+const check = (id: string, status = "completed") =>
+  run(id, `cat ${id}`, status);
 
 describe("Transcript", () => {
   it("renders fenced code in a pre and the surrounding text outside it", () => {
@@ -73,7 +82,7 @@ describe("Transcript", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders a diff view for edit tool calls once opened", async () => {
+  it("renders a diff view for an edit once its line is opened", async () => {
     const { container } = render(
       <Transcript
         blocks={[
@@ -92,7 +101,7 @@ describe("Transcript", () => {
       />,
     );
     expect(container.querySelector(".assistant-diff__add")).toBeNull();
-    await userEvent.click(screen.getByRole("button", { name: /1 tool call/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Edit file/ }));
     expect(container.querySelector(".assistant-diff__add")).toHaveTextContent(
       "+y",
     );
@@ -121,14 +130,16 @@ describe("Transcript", () => {
         ]}
       />,
     );
-    // A lone call is a closed group of one, like any other run.
-    expect(screen.queryByText("IN")).toBeNull();
-    await userEvent.click(screen.getByRole("button", { name: /1 tool call/ }));
+    // The line shows the step; its input and output wait behind it.
     expect(screen.getByText("Run")).toBeInTheDocument();
     expect(screen.getByText("List files")).toBeInTheDocument();
+    expect(screen.queryByText("IN")).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: /ls -la/ }));
     expect(screen.getByText("IN")).toBeInTheDocument();
     expect(screen.queryByText(/```/)).toBeNull();
-    expect(screen.getByText("ls -la")).toHaveClass("assistant-tool__in");
+    expect(
+      screen.getByText("ls -la", { selector: ".assistant-tool__in" }),
+    ).toBeInTheDocument();
     const out = screen.getByText(/line 0/);
     expect(out).toHaveClass("assistant-tool__out--clipped");
     await userEvent.click(
@@ -137,85 +148,126 @@ describe("Transcript", () => {
     expect(out).not.toHaveClass("assistant-tool__out--clipped");
   });
 
-  describe("grouped tool calls", () => {
-    it("collapses 3 consecutive tools into one closed row that opens on click", async () => {
-      render(<Transcript blocks={[tool("a"), tool("b"), tool("c")]} />);
-      expect(screen.getAllByText(/tool calls?$/)).toHaveLength(1);
-      expect(screen.queryByText("cmd a")).toBeNull();
-      await userEvent.click(screen.getByText("3 tool calls"));
+  it("copies an answer", async () => {
+    const user = userEvent.setup();
+    render(
+      <Transcript blocks={[{ kind: "agent", id: "1", text: "**hi**" }]} />,
+    );
+    await user.click(screen.getByRole("button", { name: "Copy answer" }));
+    expect(await navigator.clipboard.readText()).toBe("**hi**");
+  });
+
+  describe("tool runs", () => {
+    const read = (id: string, status = "completed") => check(id, status);
+
+    it("lists checks as log lines, with no card", () => {
+      render(<Transcript blocks={[read("a"), read("b"), read("c")]} />);
       for (const id of ["a", "b", "c"]) {
-        expect(screen.getByText(`cmd ${id}`)).toBeInTheDocument();
+        expect(screen.getByText(`cat ${id}`)).toBeInTheDocument();
       }
-      await userEvent.click(screen.getByRole("button", { name: "Collapse" }));
-      expect(screen.queryByText("cmd a")).toBeNull();
-      expect(
-        screen.getByRole("button", { name: /3 tool calls/ }),
-      ).toHaveFocus();
+      expect(screen.queryByRole("group")).toBeNull();
     });
 
-    it("shows a failed count and a failed dot when any tool failed", () => {
-      const { container } = render(
-        <Transcript blocks={[tool("a"), tool("b", "failed")]} />,
+    it("hides the older lines of a long log behind a button", async () => {
+      const ids = ["a", "b", "c", "d", "e", "f", "g"];
+      render(<Transcript blocks={ids.map((id) => read(id))} />);
+      expect(screen.queryByText("cat a")).toBeNull();
+      expect(screen.queryByText("cat b")).toBeNull();
+      expect(screen.getByText("cat g")).toBeInTheDocument();
+      await userEvent.click(
+        screen.getByRole("button", { name: "Show 2 earlier steps" }),
       );
-      expect(screen.getByText("· 1 failed")).toBeInTheDocument();
+      expect(screen.getByText("cat a")).toBeInTheDocument();
+    });
+
+    it("puts steps that acted on the host in one card", () => {
+      render(<Transcript blocks={[tool("a"), tool("b")]} />);
+      const card = screen.getByRole("group", { name: "Ran on this server" });
+      expect(within(card).getByText("systemctl restart a")).toBeInTheDocument();
+      expect(within(card).getByText("systemctl restart b")).toBeInTheDocument();
+    });
+
+    it("calls the card a change when a file was edited", () => {
+      render(
+        <Transcript
+          blocks={[
+            {
+              kind: "tool",
+              id: "e",
+              toolCallId: "e",
+              title: "Edit /etc/hosts",
+              toolKind: "edit",
+              status: "completed",
+              content: [],
+            },
+          ]}
+        />,
+      );
       expect(
-        container.querySelector(".assistant-tool-state--failed"),
-      ).not.toBeNull();
+        screen.getByRole("group", { name: "Changed on this server" }),
+      ).toBeInTheDocument();
+    });
+
+    it("says the card is running while a step is in progress", () => {
+      render(<Transcript blocks={[tool("a"), tool("b", "in_progress")]} />);
+      expect(
+        screen.getByRole("group", { name: "Running on this server" }),
+      ).toBeInTheDocument();
+    });
+
+    it("counts failed steps on the card and marks the line", () => {
+      render(<Transcript blocks={[tool("a"), tool("b", "failed")]} />);
+      expect(screen.getByText("1 failed")).toBeInTheDocument();
       expect(screen.getByRole("img", { name: "failed" })).toHaveAttribute(
         "title",
         "failed",
       );
     });
 
-    it("marks the group active while a tool is pending or in progress", () => {
-      const { container } = render(
-        <Transcript blocks={[tool("a"), tool("b", "in_progress")]} />,
-      );
+    it("keeps checks and actions apart, in order", () => {
+      render(<Transcript blocks={[read("a"), tool("b"), read("c")]} />);
+      const card = screen.getByRole("group", { name: "Ran on this server" });
+      expect(within(card).queryByText("cat a")).toBeNull();
+      expect(within(card).getByText("systemctl restart b")).toBeInTheDocument();
       expect(
-        container.querySelector(".assistant-tool-state--active"),
-      ).not.toBeNull();
+        card.compareDocumentPosition(screen.getByText("cat c")) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
     });
 
-    it("marks a finished group done", () => {
-      const { container } = render(
-        <Transcript blocks={[tool("a"), tool("b")]} />,
-      );
-      expect(
-        container.querySelector(".assistant-tool-state--done"),
-      ).not.toBeNull();
-    });
-
-    it("collapses a single tool into a group of one", async () => {
-      render(<Transcript blocks={[tool("a")]} />);
-      expect(screen.queryByText("cmd a")).toBeNull();
-      await userEvent.click(screen.getByText("1 tool call"));
-      expect(screen.getByText("cmd a")).toBeInTheDocument();
-    });
-
-    it("makes two groups when an agent block separates the tools", () => {
+    it("treats a command it cannot read as acting", () => {
       render(
         <Transcript
           blocks={[
-            tool("a"),
-            tool("b"),
-            { kind: "agent", id: "x", text: "between" },
-            tool("c"),
-            tool("d"),
+            {
+              kind: "tool",
+              id: "x",
+              toolCallId: "x",
+              title: "something",
+              toolKind: "execute",
+              status: "completed",
+              content: [],
+            },
           ]}
         />,
       );
-      expect(screen.getAllByText("2 tool calls")).toHaveLength(2);
-      expect(screen.getByText("between")).toBeInTheDocument();
+      expect(screen.getByRole("group")).toBeInTheDocument();
     });
 
-    it("keeps the open state when a tool joins the group", async () => {
-      const { rerender } = render(
-        <Transcript blocks={[tool("a"), tool("b")]} />,
+    it("leaves out the call a permission card is asking about", () => {
+      render(
+        <Transcript blocks={[tool("a", "pending")]} pendingToolCallId="a" />,
       );
-      await userEvent.click(screen.getByText("2 tool calls"));
-      rerender(<Transcript blocks={[tool("a"), tool("b"), tool("c")]} />);
-      expect(screen.getByText("3 tool calls")).toBeInTheDocument();
-      expect(screen.getByText("cmd c")).toBeInTheDocument();
+      expect(screen.queryByRole("group")).toBeNull();
+      expect(screen.queryByText("systemctl restart a")).toBeNull();
+    });
+
+    it("keeps a line open when another step joins the run", async () => {
+      const { rerender } = render(<Transcript blocks={[read("a")]} />);
+      await userEvent.click(screen.getByRole("button", { name: /cat a/ }));
+      rerender(<Transcript blocks={[read("a"), read("b")]} />);
+      expect(screen.getByText("IN")).toBeInTheDocument();
+      expect(screen.getByText("cat b")).toBeInTheDocument();
     });
   });
 });

@@ -89,6 +89,9 @@ export default function PermissionCard({
       <div className="assistant__permission-head">
         <Icon height={16} icon={copy.icon} width={16} />
         <span>{copy.question}</span>
+        <span className="assistant__permission-note">
+          Needs your approval. Nothing has changed yet.
+        </span>
       </div>
       {description ? (
         <div className="assistant__permission-description">{description}</div>

@@ -1,4 +1,6 @@
 .assistant {
+  /* The conversation, the permission card and the prompt share one column. */
+  --assistant-column: 860px;
   display: flex;
   flex-direction: column;
   gap: var(--app-space-8);
@@ -102,6 +104,18 @@
   padding: var(--app-space-12);
 }
 
+/* The scroller spans the page so its scrollbar sits at the edge; the rows
+   keep to a centred column, because full-width lines are too long to read. */
+.assistant__transcript-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-12);
+  width: 100%;
+  max-width: var(--assistant-column);
+  margin-inline: auto;
+}
+
 /* A new chat: nothing to read yet, so say so in the middle of the space. */
 .assistant__empty {
   flex: 1;
@@ -114,8 +128,7 @@
   color: var(--app-palette-primary-main);
 }
 
-/* Prompts, answers and tool calls all sit on the left and take the full
-   width, like the IDE panel; nothing reads as a chat bubble. */
+/* Answers and tool calls take the column; only the prompt is a bubble. */
 .assistant-block {
   overflow-wrap: anywhere;
 }
@@ -128,10 +141,14 @@
 /* A little extra air around each prompt, so it reads apart from the work and
    the answer around it. */
 .assistant-block--user {
+  /* Sized to what was asked and set to the right, apart from the answers. */
+  align-self: flex-end;
+  max-width: 80%;
   margin-block: var(--app-space-8);
   padding: var(--app-space-8) var(--app-space-12);
   border: 1px solid var(--app-palette-divider);
-  border-radius: var(--app-radius-md);
+  border-radius: var(--app-radius-card) var(--app-radius-card)
+    var(--app-radius-base) var(--app-radius-card);
   /* A shade off the page, not a filled chip. */
   background: var(--app-palette-action-hover);
 }
@@ -170,22 +187,49 @@
   font-size: calc(var(--app-font-size-body) * 0.92);
 }
 
-/* A code block hugs its longest line; the pre keeps room on the right for
-   the copy button that floats over it. */
+/* A code block is one surface: a bar naming the language with the copy
+   button in it, then the code. It hugs its longest line. */
 .assistant-code {
-  position: relative;
   width: fit-content;
+  min-width: min(240px, 100%);
   max-width: 100%;
+  margin: var(--app-space-8) 0;
+  border: 1px solid var(--app-palette-divider);
+  border-radius: var(--app-radius-md);
+  background: var(--app-palette-background-default);
+  overflow: hidden;
 }
 
-.assistant-code pre {
-  padding-right: calc(var(--app-space-12) + 28px);
+.assistant-code__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--app-space-8);
+  padding: var(--app-space-2) var(--app-space-4) var(--app-space-2)
+    var(--app-space-12);
+  border-bottom: 1px solid var(--app-palette-divider);
+  color: var(--app-palette-text-secondary);
+  font-size: calc(var(--app-font-size-body) * 0.85);
 }
 
-.assistant-code__copy {
-  position: absolute;
-  top: var(--app-space-12);
-  right: var(--app-space-4);
+.assistant-block .assistant-code pre {
+  margin: 0;
+  border-radius: 0;
+  background: none;
+}
+
+/* Copying an answer is offered once the pointer or the keyboard is on it. */
+.assistant-block__actions {
+  display: flex;
+  margin-top: var(--app-space-2);
+  opacity: 0;
+  transition: opacity var(--app-transition-duration-fast)
+    var(--app-easing-standard);
+}
+
+.assistant-block--agent:hover .assistant-block__actions,
+.assistant-block__actions:focus-within {
+  opacity: 1;
 }
 
 .assistant-markdown > :first-child {
@@ -320,38 +364,107 @@
   background: color-mix(in srgb, var(--app-palette-error-main), transparent 80%);
 }
 
-/* Tool calls read as a timeline, like the IDE: a marker on a rail, what the
-   tool does, then its input and output. */
-.assistant-tool-list {
+/* Steps that only looked at the host read as a log on a rail: state, kind
+   of step, then the command. A line opens to its input and output. */
+.assistant-log {
   display: flex;
   flex-direction: column;
-  gap: var(--app-space-16);
+  align-items: flex-start;
+  gap: var(--app-space-2);
+  padding-inline-start: var(--app-space-12);
+  border-inline-start: 2px solid var(--app-palette-divider);
+}
+
+.app-btn.assistant-log__more {
+  padding-inline: var(--app-space-4);
+  color: var(--app-palette-text-secondary);
+  font: inherit;
+  text-transform: none;
 }
 
 .assistant-tool {
-  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--app-space-6);
   min-width: 0;
-  padding-inline-start: var(--app-space-20);
+  max-width: 100%;
 }
 
-/* The rail runs from each marker down to the next one. */
-.assistant-tool:not(:last-child)::before {
-  position: absolute;
-  inset-inline-start: 3.5px;
-  top: calc(0.8em + 8px);
-  bottom: calc(-1 * var(--app-space-16));
-  width: 1px;
-  background: var(--app-palette-divider);
-  content: "";
+.assistant-tool:has(.assistant-tool__detail-body) {
+  align-self: stretch;
 }
 
-.assistant-tool > .assistant-tool-state {
-  position: absolute;
-  inset-inline-start: 0;
-  top: calc(0.8em - 4px);
+.assistant-tool .assistant-tool__line {
+  justify-content: flex-start;
+  align-items: baseline;
+  gap: var(--app-space-8);
+  max-width: 100%;
+  padding: var(--app-space-2) var(--app-space-4);
+  color: inherit;
+  font: inherit;
+  line-height: 1.6;
+  text-align: start;
+  text-transform: none;
+}
+
+.assistant-tool__line > .assistant-tool-state {
+  align-self: center;
+}
+
+.assistant-tool__command {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--app-font-mono);
+  font-size: calc(var(--app-font-size-body) * 0.92);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assistant-tool__detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-6);
+  min-width: 0;
+}
+
+/* Anything that acted on the host gets a card, so it never hides in the log. */
+.assistant-change {
+  border: 1px solid
+    color-mix(in srgb, var(--app-palette-success-main), transparent 50%);
+  border-radius: var(--app-radius-card);
+  background: var(--app-palette-background-paper);
+  overflow: hidden;
+}
+
+.assistant-change--active {
+  border-color: color-mix(
+    in srgb,
+    var(--app-palette-warning-main),
+    transparent 40%
+  );
+}
+
+.assistant-change__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--app-space-8);
+  padding: var(--app-space-8) var(--app-space-16);
+  border-bottom: 1px solid var(--app-palette-divider);
+  font-weight: 600;
+}
+
+.assistant-change__failed {
+  color: var(--app-palette-error-main);
+  font-weight: 400;
+}
+
+.assistant-change__rows {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--app-space-2);
+  padding: var(--app-space-6) var(--app-space-12);
 }
 
 /* Running spins, failed is an alert, done is a dot. */
@@ -374,14 +487,6 @@
 
 .assistant-tool-state--failed {
   color: var(--app-palette-error-main);
-}
-
-.assistant-tool__head {
-  display: flex;
-  align-items: baseline;
-  gap: var(--app-space-8);
-  min-width: 0;
-  line-height: 1.6;
 }
 
 .assistant-tool__kind {
@@ -462,46 +567,6 @@
   text-transform: none;
 }
 
-/* A collapsed group hugs its label; it only spans the column once opened,
-   because the rows inside need the room. */
-.assistant-tool-group {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--app-space-8);
-  align-self: flex-start;
-  max-width: 100%;
-}
-
-.assistant-tool-group:has(.assistant-tool-list) {
-  align-self: stretch;
-}
-
-.assistant-tool-group > .assistant-tool-list {
-  align-self: stretch;
-}
-
-.assistant-tool-group .assistant-tool-group__header,
-.app-btn.assistant-tool-group__collapse {
-  justify-content: flex-start;
-  gap: var(--app-space-8);
-  padding-inline: var(--app-space-4);
-  margin-inline-start: calc(-1 * var(--app-space-4));
-  color: var(--app-palette-text-secondary);
-  text-transform: none;
-  white-space: nowrap;
-}
-
-.app-btn.assistant-tool-group__collapse {
-  padding-inline-start: calc(var(--app-space-20) + var(--app-space-4));
-  font: inherit;
-}
-
-/* Captions in tool rows follow the chat font size, not the theme's fixed caption. */
-.assistant-tool-group__header .app-typo--caption {
-  font-size: calc(var(--app-font-size-body) * 0.92);
-}
-
 .assistant__composer {
   display: flex;
   gap: var(--app-space-8);
@@ -515,13 +580,16 @@
   flex-direction: column;
   gap: var(--app-space-8);
   width: 100%;
-  max-width: 768px;
+  max-width: var(--assistant-column);
   margin-inline: auto;
   /* Room for the focus ring, which sits outside the box. */
   padding: 3px;
 }
 
 .assistant__status {
+  width: 100%;
+  max-width: var(--assistant-column);
+  margin-inline: auto;
   display: flex;
   align-items: center;
   gap: var(--app-space-8);
@@ -983,18 +1051,30 @@
 /* The agent asking before it acts: a question, the exact command or diff,
    and the agent's choices as a numbered list. Same surface as the prompt. */
 .assistant__permission {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: var(--assistant-column);
+  margin-inline: auto;
   display: flex;
   flex-direction: column;
   gap: var(--app-space-8);
   padding: var(--app-space-12);
-  border: 1px solid var(--app-palette-divider);
+  /* The same card as a finished change, in the colour of a question. */
+  border: 1px solid
+    color-mix(in srgb, var(--app-palette-warning-main), transparent 40%);
   border-radius: var(--app-radius-card);
   background: var(--app-palette-background-paper);
   font-size: var(--app-font-size-body);
 }
 
+.assistant__permission-note {
+  color: var(--app-palette-text-secondary);
+  font-weight: 400;
+}
+
 .assistant__permission-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--app-space-8);
   font-weight: 600;
