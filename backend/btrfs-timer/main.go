@@ -1,6 +1,6 @@
-// Command linuxio-btrfs-timer runs the btrfs snapshot, health, boot-time
-// degraded mount and resync jobs that the systemd units and the auto-update
-// drop-in start.
+// Command linuxio-btrfs-timer runs the btrfs snapshot, replication, health,
+// boot-time degraded mount and resync jobs that the systemd units and the
+// auto-update drop-in start.
 package main
 
 import (
@@ -17,6 +17,7 @@ import (
 
 const usage = `Usage: linuxio-btrfs-timer snapshot run [--now RFC3339]
        linuxio-btrfs-timer snapshot pre-update
+       linuxio-btrfs-timer replicate run [--now RFC3339]
        linuxio-btrfs-timer health run
        linuxio-btrfs-timer degraded run
        linuxio-btrfs-timer resync <uuid>`
@@ -44,6 +45,8 @@ func runCLI(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	switch args[0] {
 	case "snapshot":
 		return runSnapshot(ctx, args[1:], stdout, stderr)
+	case "replicate":
+		return runReplicate(ctx, args[1:], stdout, stderr)
 	case "health":
 		return runHealth(ctx, args[1:], stderr)
 	case "degraded":

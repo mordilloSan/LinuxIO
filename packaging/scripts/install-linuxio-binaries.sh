@@ -139,6 +139,7 @@ run_record_dropin_dirs() {
 	printf '%s\n' \
 		linuxio-schedule-.service.d \
 		linuxio-btrfs-snapshot.service.d \
+		linuxio-btrfs-replicate.service.d \
 		linuxio-docker-update.service.d \
 		apt-daily-upgrade.service.d \
 		dnf-automatic.service.d \

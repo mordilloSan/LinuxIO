@@ -15,7 +15,9 @@ of replication. `btrfs-progs` is used only where the kernel has no interface:
 `mkfs.btrfs`, `btrfs receive`, and the commands a replication job runs on its
 target, which may be another host. There is no daemon. Everything is on
 demand or runs from `linuxio-btrfs-timer`, started by two systemd timers, a
-boot-time service and a resync service (see [Missing disks](#missing-disks)).
+boot-time service, a resync service (see [Missing disks](#missing-disks)) and
+the replication service each snapshot pass starts (see
+[Replication](#replication)).
 
 `make test-btrfs-integration` runs every one of these operations against the
 real kernel on loop devices, loses and returns disks of a mirror to check
@@ -246,11 +248,11 @@ starts `linuxio-btrfs-snapshot.service`, which runs
 `linuxio-btrfs-timer snapshot run`. The timer is enabled while at least one rule or
 replication job is enabled and disabled otherwise. **Run now** runs the
 snapshot and prune pass from the bridge; it does not replicate (each
-replication job has its own **Run now**). A timer pass in which a rule or a
-job failed exits with status 3 when each failure raised its own alert, and
-with 1 for a failure without one (rules or jobs that cannot be read, an
-outcome that could not be recorded); only the latter gets the run alert of
-the unit's end hook ([Alerts](./alerts.md#who-writes-with-no-session)).
+replication job has its own **Run now**). A timer pass in which a rule
+failed exits with status 3 when each failure raised its own alert, and
+with 1 for a failure without one (rules or jobs that cannot be read, a
+replication that could not be started); only the latter gets the run alert
+of the unit's end hook ([Alerts](./alerts.md#who-writes-with-no-session)).
 
 - A rule is due when its newest `timeline` snapshot is older than its period
   (5-minute tolerance for the hourly tick).
@@ -259,7 +261,10 @@ the unit's end hook ([Alerts](./alerts.md#who-writes-with-no-session)).
   the newest 3.
 - A failed snapshot or an unmounted filesystem raises an alert
   `btrfs/snapshot-<uuid8>-<path>`; a later good run resolves it.
-- Replication jobs run from the same invocation, after snapshots.
+- When a replication job is enabled, the pass ends by starting
+  `linuxio-btrfs-replicate.service` without waiting for it
+  ([Replication](#replication)), so a send that takes hours never holds up
+  the next hour's snapshots.
 
 ## Pre-update snapshots
 
@@ -422,8 +427,46 @@ mounted, and the job follows it by device id, never by device path. See
 ## Replication
 
 Jobs live in `/etc/linuxio/btrfs-replication.json`: a source subvolume, a
-target, and **Keep on target**. Jobs run from the hourly timer after
-snapshots and from the job's own **Run now**.
+target, and **Keep on target**. Jobs run after each hourly snapshot pass and
+from the job's own **Run now**.
+
+The hourly pass does not replicate itself. When a job is enabled it ends by
+asking systemd, over D-Bus (`StartUnit`, mode `replace`), to start
+`linuxio-btrfs-replicate.service`, a oneshot that runs
+`linuxio-btrfs-timer replicate run`, and exits without waiting for it: the
+call returns once the start job is queued, like `systemctl --no-block`. The
+replication therefore runs in a unit of its own, and a first send that takes
+hours no longer keeps the snapshot service busy and its hourly runs skipped.
+There is no second timer. While a replication still runs, the next pass's
+start finds the unit's start job running and is merged into it (systemd's
+`job_install()`: a start job is a superset of a start job, so it is a "late
+merge" into the running job, which is not run again). The hour's replication
+is thus skipped, not queued, and the running one carries on.
+
+- The bridge writes the unit beside the snapshot units whenever a rule or a
+  job is saved and some job is enabled. When none is, it removes the file,
+  except while a replication still runs in it: removing the file under a
+  running unit would drop its end hook at the reload that follows (a service
+  without its unit file loads as `not-found`, without its drop-ins), losing
+  the run's record and outcome, and stopping the unit would cut a send short.
+  The next save after that run removes it. Disabling every rule and job
+  also stops and disables the timer.
+- Before starting the unit, the snapshot pass writes its file when it is
+  missing or differs from what the build renders, and reloads systemd. That
+  is how an install upgraded from a release that replicated inside the
+  snapshot unit keeps replicating without a rule or job being saved: the new
+  binary runs under the snapshot unit the old bridge wrote, and no
+  replication unit exists yet. The installer adds the unit's run-record
+  drop-in on the same update.
+- The replication run's exit status follows the snapshot pass's: 3 when each
+  failure raised its job's alert, 1 for a failure without one (jobs that
+  cannot be read, an outcome that could not be recorded), which gets the run
+  alert of the unit's end hook. A run in which another run, such as one
+  started from the page, held every enabled job did no work: it exits with 4,
+  so its end hook changes no alert, and it raises no notice. Its summary line
+  counts the jobs that
+  replicated (sent or already up to date), those that sent, and the errors;
+  a job whose outcome could not be recorded still counts by what it did.
 
 - **Local** target: a btrfs subvolume path on a **different** filesystem.
 - **SSH** target: host, user, port and an absolute path on the remote.
@@ -487,6 +530,7 @@ btrfsmaintenance timers.
 | `/etc/linuxio/btrfs-replication/known_hosts` | root | Trusted target host keys |
 | `/etc/systemd/system/linuxio-btrfs-snapshot.service` | root | Runs `linuxio-btrfs-timer snapshot run` |
 | `/etc/systemd/system/linuxio-btrfs-snapshot.timer` | root | Hourly trigger |
+| `/etc/systemd/system/linuxio-btrfs-replicate.service` | root | Runs `linuxio-btrfs-timer replicate run`; written while a replication job is enabled |
 | `/etc/systemd/system/linuxio-btrfs-health.service` | root | Runs `linuxio-btrfs-timer health run` |
 | `/etc/systemd/system/linuxio-btrfs-health.timer` | root | Every ten minutes |
 | `/etc/systemd/system/linuxio-btrfs-degraded.service` | root | Runs `linuxio-btrfs-timer degraded run` at boot |

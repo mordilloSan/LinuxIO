@@ -484,6 +484,7 @@ func TestCompletedSnapshotUnitRaisesNothingHere(t *testing.T) {
 	// Their own sources report these runs.
 	for _, unit := range []string{
 		"linuxio-btrfs-snapshot.service",
+		"linuxio-btrfs-replicate.service",
 		"linuxio-docker-update.service",
 		"linuxio-btrfs-resync@" + testScheduleID + ".service",
 	} {
@@ -858,7 +859,8 @@ func TestFailedWorkerRunRaisesTheRunAlert(t *testing.T) {
 		occurrence       string
 	}{
 		{"linuxio-docker-update.service", "run-docker-update", "Container updates failed", Result{"exit-code", "exited", "1"}, "Exited with status 1.", "exited with status 1"},
-		{"linuxio-btrfs-snapshot.service", "run-btrfs-snapshot", "Snapshots and replication failed", Result{"oom-kill", "killed", "KILL"}, "Killed for using too much memory.", "killed for using too much memory"},
+		{"linuxio-btrfs-snapshot.service", "run-btrfs-snapshot", "Snapshots failed", Result{"oom-kill", "killed", "KILL"}, "Killed for using too much memory.", "killed for using too much memory"},
+		{"linuxio-btrfs-replicate.service", "run-btrfs-replicate", "Replication failed", Result{"exit-code", "exited", "1"}, "Exited with status 1.", "exited with status 1"},
 		{"linuxio-btrfs-resync@" + pool + ".service", "run-btrfs-resync-" + pool, "Pool resync failed", Result{"signal", "killed", "SEGV"}, "Killed by signal SEGV.", "killed by signal SEGV"},
 		{"linuxio-docker-update.service", "run-docker-update", "Container updates failed", Result{"timeout", "killed", "TERM"}, "Timed out.", "timed out"},
 	} {

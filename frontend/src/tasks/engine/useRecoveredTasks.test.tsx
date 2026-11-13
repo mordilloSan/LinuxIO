@@ -611,7 +611,7 @@ describe("useRecoveredTasks scheduled runs", () => {
     runtime.tasks.backgroundTasks.set([balance]);
     const snapshotRun = scheduledRun("scheduled.btrfs_snapshot", "running", {
       id: "snapshot-run",
-      metadata: { label: "Snapshots and replication" },
+      metadata: { label: "Snapshots" },
     });
 
     await emit("task.snapshot", script());
@@ -625,7 +625,7 @@ describe("useRecoveredTasks scheduled runs", () => {
       balance,
       expect.objectContaining({
         id: "snapshot-run",
-        label: "Snapshots and replication",
+        label: "Snapshots",
       }),
     ]);
   });

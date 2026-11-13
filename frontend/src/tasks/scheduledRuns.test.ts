@@ -36,6 +36,7 @@ describe("isScheduledRun", () => {
   it.each([
     "scheduled.script",
     "scheduled.btrfs_snapshot",
+    "scheduled.btrfs_replicate",
     "scheduled.btrfs_resync",
     "scheduled.docker_update",
   ])("is true for %s", (type) => {
@@ -51,12 +52,12 @@ describe("scheduledRunLabel", () => {
   it("adds the progress message to the label", () => {
     expect(
       scheduledRunLabel(
-        scheduledRun("scheduled.btrfs_snapshot", {
-          metadata: { label: "Snapshots and replication" },
+        scheduledRun("scheduled.btrfs_replicate", {
+          metadata: { label: "Replication" },
           progress: { message: "Replicating 2 of 5" },
         }),
       ),
-    ).toBe("Snapshots and replication: Replicating 2 of 5");
+    ).toBe("Replication: Replicating 2 of 5");
   });
 
   it("is the schedule's name while a script reports no progress", () => {
@@ -99,6 +100,7 @@ describe("scheduledRunLink targets", () => {
   it.each([
     "scheduled.script",
     "scheduled.btrfs_snapshot",
+    "scheduled.btrfs_replicate",
     "scheduled.btrfs_resync",
     "scheduled.docker_update",
     "scheduled.system_update",
@@ -144,10 +146,20 @@ describe("scheduledRunLink", () => {
     expect(
       scheduledRunLink(
         scheduledRun("scheduled.btrfs_snapshot", {
-          metadata: { label: "Snapshots and replication" },
+          metadata: { label: "Snapshots" },
         }),
       ),
     ).toEqual({ to: "/storage/subvolumes", search: { view: "snapshots" } });
+  });
+
+  it("opens the replication view for a replication run", () => {
+    expect(
+      scheduledRunLink(
+        scheduledRun("scheduled.btrfs_replicate", {
+          metadata: { label: "Replication" },
+        }),
+      ),
+    ).toEqual({ to: "/storage/subvolumes", search: { view: "replication" } });
   });
 
   it("opens the containers page for a Docker update", () => {

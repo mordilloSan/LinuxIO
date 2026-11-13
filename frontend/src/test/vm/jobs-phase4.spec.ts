@@ -37,6 +37,7 @@ const DOCKER_UPDATE = "scheduled.docker_update";
 const SYSTEM_UPDATE = "scheduled.system_update";
 const SYSTEM_UPDATE_UNIT = "apt-daily-upgrade.service";
 const SNAPSHOT_UNIT = "linuxio-btrfs-snapshot.service";
+const REPLICATE_UNIT = "linuxio-btrfs-replicate.service";
 const DOCKER_UPDATE_UNIT = "linuxio-docker-update.service";
 const SCRIPT_DROPIN = "linuxio-schedule-.service.d";
 /**
@@ -96,6 +97,7 @@ test("a drop-in alone creates no unit", async () => {
   for (const dir of [
     SCRIPT_DROPIN,
     `${SNAPSHOT_UNIT}.d`,
+    `${REPLICATE_UNIT}.d`,
     `${DOCKER_UPDATE_UNIT}.d`,
   ]) {
     expect(
@@ -333,7 +335,7 @@ test("the snapshot unit records its run", async ({ page }) => {
   await vmSsh(`sudo systemctl start ${SNAPSHOT_UNIT}`);
   const run = await waitForNewRun(SNAPSHOT, before, "completed");
   expect(run.executor).toMatchObject({ kind: "unit", unit: SNAPSHOT_UNIT });
-  expect(run.metadata).toEqual({ label: "Snapshots and replication" });
+  expect(run.metadata).toEqual({ label: "Snapshots" });
 });
 
 test("the Docker update unit records its run", async ({ page }) => {

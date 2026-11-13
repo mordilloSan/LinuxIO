@@ -112,7 +112,7 @@ test-assistant-agent-integration: ensure-go ## Run the opt-in real npm install a
 
 # The root btrfs and partition kernel tests, run on this host by
 # test-btrfs-integration and in the test VM by vm-test-btrfs-integration.
-BTRFS_INTEGRATION_RUN := ^Test(Btrfs(Degraded|Resume)?|Partition)Integration$$
+BTRFS_INTEGRATION_RUN := ^Test(Btrfs(Degraded|Resume|Replicate)?|Partition)Integration$$
 
 test-btrfs-integration: ensure-go ## Run the root-only btrfs and partition kernel tests on loop devices
 	@echo "🧪 Running btrfs and partition kernel integration tests on loop devices (needs sudo)..."

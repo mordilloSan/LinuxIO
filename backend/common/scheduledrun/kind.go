@@ -1,7 +1,7 @@
 // Package scheduledrun records the runs of work that systemd timers start:
-// user scripts, btrfs snapshots, pool resyncs, Docker updates and the
-// distribution's automatic system updates. A hook on each unit calls Begin
-// when a run starts and End when it stops.
+// user scripts, btrfs snapshots and replication, pool resyncs, Docker updates
+// and the distribution's automatic system updates. A hook on each unit calls
+// Begin when a run starts and End when it stops.
 package scheduledrun
 
 import (
@@ -20,6 +20,7 @@ import (
 const (
 	RouteScript       = "scheduled.script"
 	RouteSnapshot     = "scheduled.btrfs_snapshot"
+	RouteReplicate    = "scheduled.btrfs_replicate"
 	RouteResync       = "scheduled.btrfs_resync"
 	RouteDockerUpdate = "scheduled.docker_update"
 	RouteSystemUpdate = "scheduled.system_update"
@@ -33,6 +34,7 @@ const (
 const (
 	scriptUnitPrefix   = "linuxio-schedule-"
 	snapshotUnit       = "linuxio-btrfs-snapshot.service"
+	replicateUnit      = "linuxio-btrfs-replicate.service"
 	resyncUnitPrefix   = "linuxio-btrfs-resync@"
 	dockerUpdateUnit   = "linuxio-docker-update.service"
 	unitSuffix         = ".service"
@@ -66,7 +68,9 @@ type Kind struct {
 func KindOf(unit, scheduleDir string) (Kind, bool) {
 	switch unit {
 	case snapshotUnit:
-		return Kind{Route: RouteSnapshot, Label: "Snapshots and replication", Link: "/storage/subvolumes?view=snapshots"}, true
+		return Kind{Route: RouteSnapshot, Label: "Snapshots", Link: "/storage/subvolumes?view=snapshots"}, true
+	case replicateUnit:
+		return Kind{Route: RouteReplicate, Label: "Replication", Link: "/storage/subvolumes?view=replication"}, true
 	case dockerUpdateUnit:
 		return Kind{Route: RouteDockerUpdate, Label: "Container updates", Link: "/docker/containers"}, true
 	}
@@ -149,9 +153,9 @@ func scriptLabel(scheduleDir, id string) string {
 }
 
 // worker reports whether the unit runs one of LinuxIO's workers (snapshots,
-// resync, Docker updates), whose failed run the end hook reports with a run
+// replication, resync, Docker updates), whose failed run the end hook reports with a run
 // alert unless the worker reported everything itself. A script has its own
 // alerts, and a system update its provider's.
 func (k Kind) worker() bool {
-	return k.Route == RouteSnapshot || k.Route == RouteResync || k.Route == RouteDockerUpdate
+	return k.Route == RouteSnapshot || k.Route == RouteReplicate || k.Route == RouteResync || k.Route == RouteDockerUpdate
 }

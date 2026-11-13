@@ -414,7 +414,7 @@ func TestRunReplicationRecordsOutcome(t *testing.T) {
 	ctx := context.Background()
 	saveJobs(t, jobs)
 
-	_, errs := RunReplication(ctx, jobs, nil)
+	_, _, errs := RunReplication(ctx, jobs, nil)
 	if len(errs) != 1 || !strings.Contains(errs[0].Error(), jobs[0].ID+": boom") {
 		t.Fatalf("errs = %v", errs)
 	}
@@ -453,7 +453,7 @@ func TestRunReplicationRecordsOutcome(t *testing.T) {
 	}
 
 	delete(failing, jobs[0].ID)
-	if _, errs := RunReplication(ctx, jobs, nil); len(errs) != 0 {
+	if _, _, errs := RunReplication(ctx, jobs, nil); len(errs) != 0 {
 		t.Fatalf("second run errs = %v", errs)
 	}
 	if doc, _ = alerts.Load(); len(doc.Alerts) != 0 {
@@ -480,7 +480,7 @@ func TestRunReplicationReportsEachEnabledJob(t *testing.T) {
 	saveJobs(t, jobs)
 
 	var calls [][2]int
-	_, errs := RunReplication(context.Background(), jobs, func(done, total int) {
+	_, _, errs := RunReplication(context.Background(), jobs, func(done, total int) {
 		calls = append(calls, [2]int{done, total})
 	})
 	if len(errs) != 0 {
@@ -491,8 +491,9 @@ func TestRunReplicationReportsEachEnabledJob(t *testing.T) {
 	}
 }
 
-// Only a job that sent a snapshot counts: not one already up to date, and not
-// one that failed after its send, as a failed prune of the target does.
+// Only a job that sent a snapshot counts as sent: not one already up to date,
+// and not one that failed after its send, as a failed prune of the target
+// does. Both the sent and the up-to-date job count as replicated.
 func TestRunReplicationCountsWhatItSent(t *testing.T) {
 	useTempAlerts(t)
 	oldPath, oldReplicate := ReplicationPath, replicate
@@ -515,9 +516,9 @@ func TestRunReplicationCountsWhatItSent(t *testing.T) {
 	}
 	saveJobs(t, jobs)
 
-	sent, errs := RunReplication(context.Background(), jobs, nil)
-	if sent != 1 {
-		t.Fatalf("sent = %d, want 1", sent)
+	replicated, sent, errs := RunReplication(context.Background(), jobs, nil)
+	if replicated != 2 || sent != 1 {
+		t.Fatalf("replicated = %d, sent = %d; want 2, 1", replicated, sent)
 	}
 	if len(errs) != 1 || !strings.Contains(errs[0].Error(), jobs[2].ID+": prune: boom") {
 		t.Fatalf("errs = %v, want the failed job's", errs)
@@ -536,8 +537,8 @@ func TestRunReplicationSkipsAlreadyRunning(t *testing.T) {
 	jobs := []BtrfsReplicationJob{{ID: "aaaaaaaa-0000-4000-8000-000000000001", UUID: rootUUID, Path: "@home", Enabled: true}}
 	saveJobs(t, jobs)
 
-	if _, errs := RunReplication(context.Background(), jobs, nil); len(errs) != 0 {
-		t.Fatalf("errs = %v, want none", errs)
+	if replicated, sent, errs := RunReplication(context.Background(), jobs, nil); replicated != 0 || sent != 0 || len(errs) != 0 {
+		t.Fatalf("replicated = %d, sent = %d, errs = %v; want nothing", replicated, sent, errs)
 	}
 	stored, err := LoadJobs()
 	if err != nil {
@@ -554,6 +555,34 @@ func TestRunReplicationSkipsAlreadyRunning(t *testing.T) {
 	}
 	if stored, _ = LoadJobs(); stored[0].LastRun != nil || stored[0].LastError != nil {
 		t.Fatalf("stored = %+v, want untouched", stored[0])
+	}
+}
+
+// A job that sent its snapshot but whose outcome could not be recorded
+// counts as replicated and sent, beside the recording error, which no alert
+// reports.
+func TestRunReplicationCountsASendWhoseOutcomeWasNotRecorded(t *testing.T) {
+	useTempAlerts(t)
+	oldPath, oldReplicate := ReplicationPath, replicate
+	ReplicationPath = filepath.Join(t.TempDir(), "btrfs-replication.json")
+	t.Cleanup(func() { ReplicationPath, replicate = oldPath, oldReplicate })
+	snap := &BtrfsSnapshot{Path: ".snapshots/@home/2026-11-10T10:00:00Z-timeline"}
+	replicate = func(context.Context, BtrfsReplicationJob, func(int64)) (BtrfsReplicationResult, error) {
+		return BtrfsReplicationResult{Sent: snap}, nil
+	}
+	// A directory where the job file should be: the outcome cannot be read
+	// back to be recorded.
+	if err := os.Mkdir(ReplicationPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	jobs := []BtrfsReplicationJob{{ID: "aaaaaaaa-0000-4000-8000-000000000001", UUID: rootUUID, Path: "@home", Enabled: true}}
+
+	replicated, sent, errs := RunReplication(context.Background(), jobs, nil)
+	if replicated != 1 || sent != 1 {
+		t.Fatalf("replicated = %d, sent = %d; want 1, 1", replicated, sent)
+	}
+	if len(errs) != 1 || scheduledrun.AllReported(errs[0]) {
+		t.Fatalf("errs = %v, want one unreported recording error", errs)
 	}
 }
 

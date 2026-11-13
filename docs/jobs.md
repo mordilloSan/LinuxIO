@@ -495,15 +495,16 @@ needrestart).
 
 Work a systemd timer starts keeps its own unit. It is never handed to a job
 host, for three reasons: a script runs as a configured user with an arbitrary
-command; the snapshot, resync and Docker update units already worked and
-alerted on their own; and no verb starts a job from outside the browser. Each
+command; the snapshot, replication, resync and Docker update units work and
+alert on their own; and no verb starts a job from outside the browser. Each
 run instead writes its own record from two hooks on its unit
 (`backend/common/scheduledrun`, `backend/cli/scheduled_run.go`):
 
 | Record `route` | Unit | Label | Page |
 |---|---|---|---|
 | `scheduled.script` | `linuxio-schedule-<id>.service` | the schedule's name | `/services/schedules?schedule=<id>` |
-| `scheduled.btrfs_snapshot` | `linuxio-btrfs-snapshot.service` | Snapshots and replication | `/storage/subvolumes?view=snapshots` |
+| `scheduled.btrfs_snapshot` | `linuxio-btrfs-snapshot.service` | Snapshots | `/storage/subvolumes?view=snapshots` |
+| `scheduled.btrfs_replicate` | `linuxio-btrfs-replicate.service` (started by each snapshot pass with a job enabled) | Replication | `/storage/subvolumes?view=replication` |
 | `scheduled.btrfs_resync` | `linuxio-btrfs-resync@<uuid>.service` | Pool resync | `/storage?pool=<uuid>` |
 | `scheduled.docker_update` | `linuxio-docker-update.service` | Container updates | `/docker/containers` |
 | `scheduled.system_update` | `apt-daily-upgrade`, `dnf-automatic`, `dnf5-automatic` or `mintupdate-automation-upgrade.service` | System updates | `/updates` |
@@ -553,11 +554,12 @@ cancel that hits a timer's resync knows no invocation and marks the resync
 unit's running record. Either takes the mark back when the stop or the cancel
 fails.
 
-**Exit statuses.** A worker (snapshots, resync, Docker updates) that raised an
-alert of its own for every failure it met exits with status 3
+**Exit statuses.** A worker (snapshots, replication, resync, Docker updates)
+that raised an alert of its own for every failure it met exits with status 3
 (`scheduledrun.ExitReported`), and its end hook raises no second alert; one
 that did no work, such as a Docker pass that found a manual update holding the
-lock, exits with 4 (`ExitSkipped`) and changes no alert. Any other failed run
+lock or a replication run whose every job another run held, exits with 4
+(`ExitSkipped`) and changes no alert. Any other failed run
 of a worker gets one run alert per unit from its end hook. A system update's
 failure is reported by the provider's notify hook where it is installed, and
 otherwise by the end hook.

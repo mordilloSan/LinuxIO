@@ -33,7 +33,8 @@ func TestKindOf(t *testing.T) {
 		want Kind
 	}{
 		{"linuxio-schedule-" + testScheduleID + ".service", Kind{RouteScript, "Scheduled task", testScheduleID, "/services/schedules?schedule=" + testScheduleID, true}},
-		{"linuxio-btrfs-snapshot.service", Kind{RouteSnapshot, "Snapshots and replication", "", "/storage/subvolumes?view=snapshots", false}},
+		{"linuxio-btrfs-snapshot.service", Kind{RouteSnapshot, "Snapshots", "", "/storage/subvolumes?view=snapshots", false}},
+		{"linuxio-btrfs-replicate.service", Kind{RouteReplicate, "Replication", "", "/storage/subvolumes?view=replication", false}},
 		{"linuxio-btrfs-resync@" + testPoolUUID + ".service", Kind{RouteResync, "Pool resync", testPoolUUID, "/storage?pool=" + testPoolUUID, false}},
 		{"linuxio-docker-update.service", Kind{RouteDockerUpdate, "Container updates", "", "/docker/containers", false}},
 		{"apt-daily-upgrade.service", Kind{RouteSystemUpdate, "System updates", "", "/updates", false}},

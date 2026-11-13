@@ -788,12 +788,13 @@ runs it. Each run writes a record of its own from two hooks on its unit
 ([Process & Systemd Architecture](./process-systemd-architecture.md#scheduled-runs)):
 `/var/lib/linuxio/jobs/scheduled/<id>.json`, with a copy of its output beside
 it. The root job host reads those records, so the run shows in `tasks.list`
-and `tasks.events` while it runs. Five task types:
+and `tasks.events` while it runs. Six task types:
 
 | Type | Unit | `metadata.label` | `metadata.identity` |
 | ---| ---| ---| ---|
 | `scheduled.script` | `linuxio-schedule-<id>.service` | the schedule's name, `Scheduled task` when its definition cannot be read | `[<schedule id>]` |
-| `scheduled.btrfs_snapshot` | `linuxio-btrfs-snapshot.service` | `Snapshots and replication` | none |
+| `scheduled.btrfs_snapshot` | `linuxio-btrfs-snapshot.service` | `Snapshots` | none |
+| `scheduled.btrfs_replicate` | `linuxio-btrfs-replicate.service` | `Replication` | none |
 | `scheduled.btrfs_resync` | `linuxio-btrfs-resync@<uuid>.service` | `Pool resync` | `[<pool uuid>]` |
 | `scheduled.docker_update` | `linuxio-docker-update.service` | `Container updates` | none |
 | `scheduled.system_update` | the distribution's automatic update service: `apt-daily-upgrade.service`, `dnf-automatic.service`, `dnf5-automatic.service` or `mintupdate-automation-upgrade.service` | `System updates` | none |

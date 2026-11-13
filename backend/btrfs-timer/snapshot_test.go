@@ -27,23 +27,38 @@ func stubRunSnapshots(t *testing.T, report btrfs.RunReport) *[]btrfs.SnapshotKin
 		return report, nil
 	}
 	t.Cleanup(func() { runSnapshots, btrfs.RulesPath = old, oldPath })
-	stubRunReplication(t, 0, nil)
+	stubStartReplication(t, nil)
 	stubNotifications(t, "")
 	return &kinds
 }
 
-func stubRunReplication(t *testing.T, sent int, errs []error) *int {
+// stubStartReplication keeps the job file in a temp dir and counts the starts
+// of the replication unit, each returning err.
+func stubStartReplication(t *testing.T, err error) *int {
 	t.Helper()
-	old, oldPath := runReplication, btrfs.ReplicationPath
+	old, oldPath := startReplication, btrfs.ReplicationPath
 	btrfs.ReplicationPath = filepath.Join(t.TempDir(), "btrfs-replication.json")
-	var runs int
-	runReplication = func(context.Context, []btrfs.BtrfsReplicationJob, func(done, total int)) (int, []error) {
-		runs++
-		return sent, errs
+	var starts int
+	startReplication = func(context.Context) error {
+		starts++
+		return err
 	}
-	t.Cleanup(func() { runReplication, btrfs.ReplicationPath = old, oldPath })
-	return &runs
+	t.Cleanup(func() { startReplication, btrfs.ReplicationPath = old, oldPath })
+	return &starts
 }
+
+// saveJobs writes jobs to the job file.
+func saveJobs(t *testing.T, jobs ...btrfs.BtrfsReplicationJob) {
+	t.Helper()
+	if _, err := btrfs.UpdateJobs(t.Context(), func(j *[]btrfs.BtrfsReplicationJob) error {
+		*j = jobs
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+var testJob = btrfs.BtrfsReplicationJob{ID: "aaaaaaaa-0000-4000-8000-000000000001", UUID: "11111111-2222-4333-8444-555555555555", Path: "@home", Enabled: true}
 
 // stubNotifications keeps the notification settings and the alert store in a
 // temp dir, saves report as what snapshots report ("" keeps the defaults) and
@@ -67,23 +82,6 @@ func stubNotifications(t *testing.T, report string) *[]alerts.Observation {
 		}
 	}
 	return &raised
-}
-
-// stubFailedJob makes the replication pass send sent snapshots and fail one
-// job, recording its outcome as RunReplication does, which raises the job's
-// alert in the store. It returns that alert's ID.
-func stubFailedJob(t *testing.T, sent int) string {
-	t.Helper()
-	stubRunReplication(t, 0, nil) // keeps the job file in a temp dir
-	job := btrfs.BtrfsReplicationJob{ID: "aaaaaaaa-0000-4000-8000-000000000001", UUID: "11111111-2222-4333-8444-555555555555", Path: "@home", Enabled: true}
-	runReplication = func(ctx context.Context, _ []btrfs.BtrfsReplicationJob, _ func(done, total int)) (int, []error) {
-		err := errors.New("boom")
-		if recErr := btrfs.RecordReplicationOutcome(ctx, job, err); recErr != nil {
-			t.Error(recErr)
-		}
-		return sent, []error{scheduledrun.Reported(fmt.Errorf("%s: %w", job.ID, err))}
-	}
-	return alerts.ID(btrfs.AlertSource, "replication-"+job.ID)
 }
 
 // storedAlerts maps the ID of each alert in the store to its severity.
@@ -146,26 +144,50 @@ func TestRunSnapshotKindsAndExitCode(t *testing.T) {
 	}
 }
 
-func TestRunSnapshotReplicatesAfterTimelineOnly(t *testing.T) {
+// A timeline pass starts the replication unit when a job is enabled; the
+// pre-update pass never does.
+func TestRunSnapshotStartsReplicationAfterTimelineOnly(t *testing.T) {
 	stubRunSnapshots(t, btrfs.RunReport{})
-	runs := stubRunReplication(t, 0, nil)
-	if code := runSnapshot(context.Background(), []string{"pre-update"}, io.Discard, io.Discard); code != 0 || *runs != 0 {
-		t.Fatalf("pre-update = %d, replication runs %d; want 0, 0", code, *runs)
+	starts := stubStartReplication(t, nil)
+	var stdout strings.Builder
+	if code := runSnapshot(context.Background(), []string{"run"}, &stdout, io.Discard); code != 0 || *starts != 0 {
+		t.Fatalf("no jobs: run = %d, starts %d; want 0, 0", code, *starts)
 	}
-	if code := runSnapshot(context.Background(), []string{"run"}, io.Discard, io.Discard); code != 0 || *runs != 1 {
-		t.Fatalf("run = %d, replication runs %d; want 0, 1", code, *runs)
+	if !strings.Contains(stdout.String(), "replication_started=false") {
+		t.Fatalf("no jobs: stdout = %q", stdout.String())
+	}
+	disabled := testJob
+	disabled.Enabled = false
+	saveJobs(t, disabled)
+	if code := runSnapshot(context.Background(), []string{"run"}, io.Discard, io.Discard); code != 0 || *starts != 0 {
+		t.Fatalf("disabled job: run = %d, starts %d; want 0, 0", code, *starts)
 	}
 
-	// A job that failed raised its alert; a failure without one, such as an
-	// outcome that could not be recorded, leaves the pass unreported.
-	reported := scheduledrun.Reported(errors.New("job: boom"))
-	stubRunReplication(t, 0, []error{reported})
-	if code := runSnapshot(context.Background(), []string{"run"}, io.Discard, io.Discard); code != scheduledrun.ExitReported {
-		t.Fatalf("reported replication errors = %d, want %d", code, scheduledrun.ExitReported)
+	saveJobs(t, disabled, testJob)
+	if code := runSnapshot(context.Background(), []string{"pre-update"}, io.Discard, io.Discard); code != 0 || *starts != 0 {
+		t.Fatalf("pre-update = %d, starts %d; want 0, 0", code, *starts)
 	}
-	stubRunReplication(t, 0, []error{reported, errors.New("job: record outcome: disk full")})
-	if code := runSnapshot(context.Background(), []string{"run"}, io.Discard, io.Discard); code != 1 {
-		t.Fatalf("replication errors = %d, want 1", code)
+	stdout.Reset()
+	if code := runSnapshot(context.Background(), []string{"run"}, &stdout, io.Discard); code != 0 || *starts != 1 {
+		t.Fatalf("run = %d, starts %d; want 0, 1", code, *starts)
+	}
+	if !strings.Contains(stdout.String(), "replication_started=true") {
+		t.Fatalf("stdout = %q", stdout.String())
+	}
+}
+
+// A replication that could not be started raised no alert of its own, so the
+// pass exits 1 for the unit's run alert, even beside a failed rule.
+func TestRunSnapshotReportsAReplicationThatDidNotStart(t *testing.T) {
+	stubRunSnapshots(t, btrfs.RunReport{Errors: []string{"u/@: boom"}})
+	stubStartReplication(t, errors.New("start unit linuxio-btrfs-replicate.service: access denied"))
+	saveJobs(t, testJob)
+	var stderr strings.Builder
+	if code := runSnapshot(context.Background(), []string{"run"}, io.Discard, &stderr); code != 1 {
+		t.Fatalf("run = %d, want 1", code)
+	}
+	if !strings.Contains(stderr.String(), "start btrfs replication: start unit linuxio-btrfs-replicate.service: access denied") || !strings.Contains(stderr.String(), "u/@: boom") {
+		t.Fatalf("stderr = %q, want both failures", stderr.String())
 	}
 }
 
@@ -181,33 +203,26 @@ func stubReportProgress(t *testing.T) *[]string {
 	return &got
 }
 
-func TestSnapshotPassReportsItsPhases(t *testing.T) {
+func TestSnapshotPassReportsItsPhase(t *testing.T) {
 	stubRunSnapshots(t, btrfs.RunReport{})
-	stubRunReplication(t, 0, nil)
-	runReplication = func(_ context.Context, _ []btrfs.BtrfsReplicationJob, report func(done, total int)) (int, []error) {
-		report(0, 2)
-		report(1, 2)
-		return 0, nil
-	}
+	saveJobs(t, testJob)
 	got := stubReportProgress(t)
 
 	if code := runSnapshot(context.Background(), []string{"run"}, io.Discard, io.Discard); code != 0 {
 		t.Fatalf("run = %d, want 0", code)
 	}
-	want := []string{"-1 Taking snapshots", "-1 Replicating 1 of 2", "-1 Replicating 2 of 2"}
-	if !reflect.DeepEqual(*got, want) {
+	if want := []string{"-1 Taking snapshots"}; !reflect.DeepEqual(*got, want) {
 		t.Fatalf("reported %q, want %q", *got, want)
 	}
 }
 
 func TestSnapshotPassReportsAChange(t *testing.T) {
 	stubRunSnapshots(t, btrfs.RunReport{Taken: make([]btrfs.BtrfsSnapshot, 2)})
-	stubRunReplication(t, 1, nil)
 	notices := stubNotifications(t, alerts.ReportChanges)
 	if code := runSnapshot(context.Background(), []string{"run", "--now", "2026-11-10T10:00:00Z"}, io.Discard, io.Discard); code != 0 {
 		t.Fatalf("run = %d, want 0", code)
 	}
-	if want := []alerts.Observation{snapshotNotice("Snapshots: 2 taken, 1 sent", "2026-11-10T10:00:00Z")}; !reflect.DeepEqual(*notices, want) {
+	if want := []alerts.Observation{snapshotNotice("Snapshots: 2 taken", "2026-11-10T10:00:00Z")}; !reflect.DeepEqual(*notices, want) {
 		t.Fatalf("raised %+v, want %+v", *notices, want)
 	}
 
@@ -221,42 +236,24 @@ func TestSnapshotPassReportsAChange(t *testing.T) {
 	}
 }
 
-// A pass that partly failed counts what it took and sent; the failure raises
-// its own alert as before.
+// A pass that partly failed counts what it took; the failure raises its own
+// alert as before.
 func TestSnapshotPassReportsWhatWorkedBesideAFailure(t *testing.T) {
-	stubRunSnapshots(t, btrfs.RunReport{Taken: make([]btrfs.BtrfsSnapshot, 1)})
-	notices := stubNotifications(t, alerts.ReportChanges)
-	failed := stubFailedJob(t, 0)
-	var stderr strings.Builder
-	if code := runSnapshot(context.Background(), []string{"run", "--now", "2026-11-10T10:00:00Z"}, io.Discard, &stderr); code != scheduledrun.ExitReported {
-		t.Fatalf("run = %d, want %d", code, scheduledrun.ExitReported)
-	}
-	if !strings.Contains(stderr.String(), "boom") {
-		t.Fatalf("stderr = %q, want the failure", stderr.String())
-	}
-	if got := storedAlerts(t); got[failed] != alerts.SeverityError {
-		t.Fatalf("alerts = %v, want the failure alert %s", got, failed)
-	}
-	if want := []alerts.Observation{snapshotNotice("Snapshots: 1 taken, 0 sent", "2026-11-10T10:00:00Z")}; !reflect.DeepEqual(*notices, want) {
-		t.Fatalf("raised %+v, want %+v", *notices, want)
-	}
-
-	// A failed rule beside a snapshot another rule took.
 	stubRunSnapshots(t, btrfs.RunReport{Taken: make([]btrfs.BtrfsSnapshot, 1), Errors: []string{"u/@: boom"}})
-	notices = stubNotifications(t, alerts.ReportChanges)
-	stderr.Reset()
+	notices := stubNotifications(t, alerts.ReportChanges)
+	var stderr strings.Builder
 	if code := runSnapshot(context.Background(), []string{"run", "--now", "2026-11-10T11:00:00Z"}, io.Discard, &stderr); code != scheduledrun.ExitReported {
 		t.Fatalf("run = %d, want %d", code, scheduledrun.ExitReported)
 	}
 	if !strings.Contains(stderr.String(), "u/@: boom") {
 		t.Fatalf("stderr = %q, want the failed rule", stderr.String())
 	}
-	if want := []alerts.Observation{snapshotNotice("Snapshots: 1 taken, 0 sent", "2026-11-10T11:00:00Z")}; !reflect.DeepEqual(*notices, want) {
+	if want := []alerts.Observation{snapshotNotice("Snapshots: 1 taken", "2026-11-10T11:00:00Z")}; !reflect.DeepEqual(*notices, want) {
 		t.Fatalf("raised %+v, want %+v", *notices, want)
 	}
 }
 
-// A pass that failed and took and sent nothing raises no notice, even under
+// A pass that failed and took nothing raises no notice, even under
 // every_run: its failures have their own alerts.
 func TestSnapshotPassReportsNoNoticeBesideFailuresAlone(t *testing.T) {
 	stubRunSnapshots(t, btrfs.RunReport{Errors: []string{"u/@: boom"}})
@@ -308,19 +305,20 @@ func TestSnapshotPassReportsEveryRun(t *testing.T) {
 	}
 
 	// A pre-update pass is not the snapshot unit's run, and a stopped pass
-	// reports nothing.
+	// reports nothing and starts no replication.
 	*notices = nil
 	if code := runSnapshot(context.Background(), []string{"pre-update"}, io.Discard, io.Discard); code != 0 {
 		t.Fatalf("pre-update = %d, want 0", code)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	stubRunReplication(t, 0, []error{context.Canceled}) // as RunReplication stops
+	starts := stubStartReplication(t, nil)
+	saveJobs(t, testJob)
 	if code := runSnapshot(ctx, []string{"run"}, io.Discard, io.Discard); code != 1 {
 		t.Fatalf("stopped run = %d, want 1", code)
 	}
-	if len(*notices) != 0 {
-		t.Fatalf("raised %+v, want none", *notices)
+	if len(*notices) != 0 || *starts != 0 {
+		t.Fatalf("raised %+v, started %d; want none", *notices, *starts)
 	}
 }
 
@@ -328,15 +326,11 @@ func TestSnapshotPassReportsOnlyFailuresByDefault(t *testing.T) {
 	for _, report := range []string{"", alerts.ReportFailures} {
 		stubRunSnapshots(t, btrfs.RunReport{Taken: make([]btrfs.BtrfsSnapshot, 2)})
 		notices := stubNotifications(t, report)
-		failed := stubFailedJob(t, 1)
-		if code := runSnapshot(context.Background(), []string{"run"}, io.Discard, io.Discard); code != scheduledrun.ExitReported {
-			t.Fatalf("report %q: run = %d, want %d", report, code, scheduledrun.ExitReported)
+		if code := runSnapshot(context.Background(), []string{"run"}, io.Discard, io.Discard); code != 0 {
+			t.Fatalf("report %q: run = %d, want 0", report, code)
 		}
 		if len(*notices) != 0 {
 			t.Fatalf("report %q: raised %+v, want none", report, *notices)
-		}
-		if got := storedAlerts(t); got[failed] != alerts.SeverityError {
-			t.Fatalf("report %q: alerts = %v, want the failure alert %s", report, got, failed)
 		}
 	}
 }

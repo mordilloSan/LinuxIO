@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -22,14 +23,16 @@ type btrfsTimerOps struct {
 	daemonReload     func(context.Context) error
 	disableUnit      func(context.Context, string) error
 	enableUnit       func(context.Context, string) error
+	getActiveState   func(context.Context, string) (string, error)
 	getUnitFileState func(context.Context, string) (string, error)
 	startUnit        func(context.Context, string) error
 	stopUnit         func(context.Context, string) error
 }
 
 type btrfsTimerPaths struct {
-	unitPath  string
-	timerPath string
+	unitPath      string
+	timerPath     string
+	replicatePath string
 }
 
 var (
@@ -37,13 +40,15 @@ var (
 		daemonReload:     systemd.DaemonReload,
 		disableUnit:      systemd.DisableUnit,
 		enableUnit:       systemd.EnableUnit,
+		getActiveState:   systemd.GetActiveState,
 		getUnitFileState: systemd.GetUnitFileState,
 		startUnit:        systemd.StartUnit,
 		stopUnit:         systemd.StopUnit,
 	}
 	defaultBtrfsTimerPaths = btrfsTimerPaths{
-		unitPath:  filepath.Join(btrfs.SnapshotUnitDir, btrfs.SnapshotServiceName),
-		timerPath: filepath.Join(btrfs.SnapshotUnitDir, btrfs.SnapshotTimerName),
+		unitPath:      filepath.Join(btrfs.SnapshotUnitDir, btrfs.SnapshotServiceName),
+		timerPath:     filepath.Join(btrfs.SnapshotUnitDir, btrfs.SnapshotTimerName),
+		replicatePath: btrfs.ReplicateUnit().Path,
 	}
 	healthTimerOnce sync.Once
 )
@@ -77,7 +82,9 @@ func ensureBtrfsHealthTimer(ctx context.Context, ops btrfsTimerOps) error {
 }
 
 // syncBtrfsTimer writes the snapshot units and runs the timer only while
-// some rule or replication job is enabled: the timer's run does both.
+// some rule or replication job is enabled: each timer run takes the
+// snapshots, then starts the replication unit. That unit is written while a
+// job is enabled and removed once none is.
 func syncBtrfsTimer(ctx context.Context, ops btrfsTimerOps, paths btrfsTimerPaths, rules []btrfs.BtrfsSnapshotRule, jobs []btrfs.BtrfsReplicationJob) error {
 	if err := atomicfile.Write(paths.unitPath, btrfs.RenderUnit(), 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", paths.unitPath, err)
@@ -85,12 +92,19 @@ func syncBtrfsTimer(ctx context.Context, ops btrfsTimerOps, paths btrfsTimerPath
 	if err := atomicfile.Write(paths.timerPath, btrfs.RenderTimer(), 0o644); err != nil {
 		return fmt.Errorf("write %s: %w", paths.timerPath, err)
 	}
+	replicates := slices.ContainsFunc(jobs, func(j btrfs.BtrfsReplicationJob) bool { return j.Enabled })
+	if replicates {
+		if err := atomicfile.Write(paths.replicatePath, btrfs.RenderReplicateUnit(), 0o644); err != nil {
+			return fmt.Errorf("write %s: %w", paths.replicatePath, err)
+		}
+	} else if err := removeIdleReplicateUnit(ctx, ops, paths.replicatePath); err != nil {
+		return err
+	}
 	if err := ops.daemonReload(ctx); err != nil {
 		return fmt.Errorf("reload systemd: %w", err)
 	}
 	timer := btrfs.SnapshotTimerName
-	if slices.ContainsFunc(rules, func(r btrfs.BtrfsSnapshotRule) bool { return r.Enabled }) ||
-		slices.ContainsFunc(jobs, func(j btrfs.BtrfsReplicationJob) bool { return j.Enabled }) {
+	if replicates || slices.ContainsFunc(rules, func(r btrfs.BtrfsSnapshotRule) bool { return r.Enabled }) {
 		if err := ops.enableUnit(ctx, timer); err != nil {
 			return fmt.Errorf("enable %s: %w", timer, err)
 		}
@@ -104,6 +118,30 @@ func syncBtrfsTimer(ctx context.Context, ops btrfsTimerOps, paths btrfsTimerPath
 	}
 	if err := ops.disableUnit(ctx, timer); err != nil {
 		return fmt.Errorf("disable %s: %w", timer, err)
+	}
+	return nil
+}
+
+// removeIdleReplicateUnit removes the replication unit's file unless a
+// replication still runs in it. Removing the file under a running unit would
+// unload the unit's end hook at the reload that follows, losing the run's
+// record and outcome, and stopping the unit would cut a send short; the next
+// save of a rule or job removes the file once the run has ended.
+func removeIdleReplicateUnit(ctx context.Context, ops btrfsTimerOps, path string) error {
+	if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	unit := btrfs.ReplicateServiceName
+	state, err := ops.getActiveState(ctx, unit)
+	if err != nil {
+		return fmt.Errorf("read %s state: %w", unit, err)
+	}
+	if state != "inactive" && state != "failed" {
+		slog.Debug("kept the unit of a running btrfs replication", "unit", unit, "state", state)
+		return nil
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("remove %s: %w", path, err)
 	}
 	return nil
 }

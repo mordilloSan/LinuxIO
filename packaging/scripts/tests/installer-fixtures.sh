@@ -363,8 +363,9 @@ AUTH_MAX_CONNECTIONS="$(sed -n 's/^MaxConnections=//p' "${REPO_ROOT}/packaging/s
 printf '   \033[1;32m✓\033[0m %s\n' "auth socket leaves room for live sessions"
 
 # Scheduled units record their runs through two hook lines. The schedule units
-# are generated, so the lines reach them (and the two packaged units) through one
-# drop-in; linuxio-btrfs-resync@.service carries them itself.
+# are generated, so the lines reach them (and the snapshot, replication and
+# Docker update units) through one drop-in; linuxio-btrfs-resync@.service
+# carries them itself.
 BEGIN_HOOK='ExecStartPre=-+/usr/local/bin/linuxio scheduled-run begin --unit %n'
 END_HOOK='ExecStopPost=-+/usr/local/bin/linuxio scheduled-run end --unit %n'
 run_record_dropin_fixtures() {
@@ -380,7 +381,7 @@ run_record_dropin_fixtures() {
 
 		install_run_record_dropins "${fixture_dir}/system" >/dev/null ||
 			fail "installing the run-record drop-ins failed"
-		local linuxio_dirs="linuxio-schedule-.service.d linuxio-btrfs-snapshot.service.d linuxio-docker-update.service.d"
+		local linuxio_dirs="linuxio-schedule-.service.d linuxio-btrfs-snapshot.service.d linuxio-btrfs-replicate.service.d linuxio-docker-update.service.d"
 		# The distributions' automatic update services, hooked the same way.
 		local update_dirs="apt-daily-upgrade.service.d dnf-automatic.service.d dnf5-automatic.service.d mintupdate-automation-upgrade.service.d"
 		for dropin_dir in $linuxio_dirs $update_dirs; do
@@ -391,7 +392,7 @@ run_record_dropin_fixtures() {
 			grep -Fqx "$END_HOOK" "$dropin_file" || fail "${dropin_dir} drop-in lacks the end hook"
 			assert_eq "644" "$(stat -c %a "$dropin_file")" "${dropin_dir} drop-in mode"
 		done
-		assert_eq "7" "$(find "${fixture_dir}/system" -mindepth 1 -maxdepth 1 | wc -l)" "installed drop-in directories"
+		assert_eq "8" "$(find "${fixture_dir}/system" -mindepth 1 -maxdepth 1 | wc -l)" "installed drop-in directories"
 		if compgen -G "${fixture_dir}/system/*/*.new.*" >/dev/null; then
 			fail "drop-in install left a temporary file"
 		fi
@@ -459,7 +460,7 @@ needrestart_override_fixtures() {
 			printf '%s\n' "$shipped_entry" >"$one"
 			needrestart_override_valid "$one" || fail "the content check refuses the shipped line ${shipped_entry}"
 		done < <(grep '^\$nrconf' "$NEEDRESTART_CONF")
-		assert_eq "6" "$(grep -c '^\$nrconf' "$NEEDRESTART_CONF")" "shipped needrestart override entries"
+		assert_eq "7" "$(grep -c '^\$nrconf' "$NEEDRESTART_CONF")" "shipped needrestart override entries"
 		# Where Perl is present, the file must also compile under strict.
 		if command -v perl >/dev/null 2>&1; then
 			needrestart_override_loads "$NEEDRESTART_CONF" || fail "the shipped needrestart override does not compile under strict"
@@ -631,11 +632,11 @@ eval do { local(@ARGV, $/) = $fn; <> };
 die "Error parsing $fn: $@" if $@;
 my $rc = $nrconf{override_rc};
 die "override_rc lost the distribution's entries\n" unless 2 == grep { $_ eq qr(^dbus) || $_ eq qr(^user@\d+\.service) } keys %$rc;
-die "override_rc has " . scalar(keys %$rc) . " entries, want 8\n" unless 8 == keys %$rc;
+die "override_rc has " . scalar(keys %$rc) . " entries, want 9\n" unless 9 == keys %$rc;
 sub restarts { my $unit = shift; for my $re (sort keys %$rc) { return $rc->{$re} if $unit =~ /$re/ } 1 }
 my $id = "0b7c9a1e-5d2f-4c3b-9a8e-1f2e3d4c5b6a";
 for my $unit ("linuxio-jobs\@0.service", "linuxio-jobs\@1001.service", "linuxio-schedule-$id.service",
-	"linuxio-btrfs-snapshot.service", "linuxio-btrfs-resync\@$id.service", "linuxio-docker-update.service",
+	"linuxio-btrfs-snapshot.service", "linuxio-btrfs-replicate.service", "linuxio-btrfs-resync\@$id.service", "linuxio-docker-update.service",
 	"linuxio-updater-1794345333839000000.service") {
 	die "$unit would be restarted\n" if restarts($unit);
 }

@@ -29,7 +29,7 @@ LinuxIO uses **privilege separation** (the same shape Cockpit uses): split the s
 | `linuxio-bridge` | Go | `backend/bridge/` | logged-in user (root only if privileged); the job host as its uid | per login session; the job host per uid, started by a connection to its socket, idle exit | **yamux server**; executes reads and relays mutations to the job host; the job host runs mutations as jobs |
 | `linuxio-docker-update` | Go | `backend/docker-update/` | root, sandboxed | per scheduled update run | Docker update worker |
 | `linuxio-indexer` | Go | `backend/indexer/` | root, sandboxed | socket activated; exits when idle | Filesystem scanner, SQLite index, local HTTP/SSE API |
-| `linuxio-btrfs-timer` | Go | `backend/btrfs-timer/` | root | oneshot, started by systemd timers and the auto-update drop-in | Btrfs timeline/pre-update snapshots and the periodic health check |
+| `linuxio-btrfs-timer` | Go | `backend/btrfs-timer/` | root | oneshot, started by systemd timers, the snapshot pass and the auto-update drop-in | Btrfs timeline/pre-update snapshots, replication and the periodic health check |
 | `linuxio-monitoring` | Go | `backend/monitoring/` | root, sandboxed | long-running (no idle exit) | Metrics collector, SQLite history, local HTTP API on two Unix sockets |
 | `linuxio-claude-relay` | Go | `backend/claude-relay/` | logged-in user, never root | one per `claude` an Assistant chat starts | Runs the real `claude` for the ACP adapter and carries plugin pane requests to the bridge ([Assistant](./AI-assistant.md#plugin-panes)) |
 
@@ -53,7 +53,7 @@ the auth/bridge launch protocol.
 | `linuxio-claude-relay` | None | Claude Code's own arguments, with `LINUXIO_CLAUDE_BIN` naming the real CLI; started only by `claude-agent-acp` in an Assistant chat. Exits 2 without that variable. |
 | `linuxio-indexer` | `--help`, `-h`, `--version` | Managed daemon; private `--trigger-index` timer client and `--index-mode` scanner worker |
 | `linuxio-monitoring` | `help`/`-h`/`--help`, `version`/`-v`/`--version` | `run [--config PATH] [--verbose]`; used by `linuxio-monitoring.service` |
-| `linuxio-btrfs-timer` | `help`/`-h`/`--help` | `snapshot run [--now RFC3339]`, `snapshot pre-update`, `health run`; used by the btrfs snapshot and health units and the pre-update hook |
+| `linuxio-btrfs-timer` | `help`/`-h`/`--help` | `snapshot run [--now RFC3339]`, `snapshot pre-update`, `replicate run [--now RFC3339]`, `health run`; used by the btrfs snapshot, replication and health units and the pre-update hook |
 
 User lookup in the job host goes through `os/user`, which
 resolves SSSD/LDAP users only in a cgo build (the default native build); a
@@ -149,8 +149,9 @@ So the (uid-less) webserver can `connect()` to the root-owned auth socket purely
 
 The units systemd timers start record each run in a job store of their own
 ([Jobs](./jobs.md#scheduled-runs)): scheduled
-scripts (`linuxio-schedule-<id>.service`), btrfs snapshots and replication
-(`linuxio-btrfs-snapshot.service`), pool resyncs
+scripts (`linuxio-schedule-<id>.service`), btrfs snapshots
+(`linuxio-btrfs-snapshot.service`), btrfs replication
+(`linuxio-btrfs-replicate.service`, which the snapshot pass starts), pool resyncs
 (`linuxio-btrfs-resync@<uuid>.service`) and Docker updates
 (`linuxio-docker-update.service`). Two hooks do it:
 
@@ -166,7 +167,8 @@ ExecStopPost=-+/usr/local/bin/linuxio scheduled-run end --unit %n
   `packaging/systemd/linuxio-run-record.conf` to `10-linuxio-run.conf` in
   `/etc/systemd/system/linuxio-schedule-.service.d/` (a prefix directory, so
   every `linuxio-schedule-<id>.service` gets it),
-  `linuxio-btrfs-snapshot.service.d/` and `linuxio-docker-update.service.d/`,
+  `linuxio-btrfs-snapshot.service.d/`, `linuxio-btrfs-replicate.service.d/`
+  and `linuxio-docker-update.service.d/`,
   and in the drop-in directories of the distributions' automatic update
   services (`apt-daily-upgrade.service.d/`, `dnf-automatic.service.d/`,
   `dnf5-automatic.service.d/`, `mintupdate-automation-upgrade.service.d/`),
@@ -175,9 +177,11 @@ ExecStopPost=-+/usr/local/bin/linuxio scheduled-run end --unit %n
   does not exist. Then it reloads systemd. The uninstaller removes the
   drop-in from the update services by its name, with the alert drop-in the
   bridge writes beside it, and leaves an administrator's own drop-ins. `linuxio-btrfs-resync@.service` carries the two lines
-  itself. A drop-in alone loads no unit: until a snapshot rule or the Docker
-  update settings are saved, that unit stays `not-found`. Schedules saved
-  before an update record their runs after it without being saved again.
+  itself. A drop-in alone loads no unit: until a snapshot rule, a replication
+  job or the Docker update settings are saved, that unit stays `not-found`.
+  Schedules saved before an update record their runs after it without being
+  saved again, and so does the replication unit an upgraded install's first
+  snapshot pass writes ([Btrfs](./btrfs.md#replication)).
 - **`+` and `-`.** `+` runs the hook as root, outside the unit's `User=` and
   sandbox: a script runs as the user it was given, and the Docker update unit
   has `ProtectSystem=strict`. `-` makes systemd ignore a failed hook, a missing
@@ -345,8 +349,8 @@ verified and before it replaces any of them. Each of its lines adds one
 regular expression with the value 0 ("do not restart") to needrestart's
 `$nrconf{override_rc}` and keeps the distribution's entries:
 `linuxio-jobs@<uid>.service`, the timer-run units `linuxio-schedule-*`,
-`linuxio-btrfs-snapshot`, `linuxio-btrfs-resync@*` and
-`linuxio-docker-update`, and the updater's `linuxio-updater-*` unit.
+`linuxio-btrfs-snapshot`, `linuxio-btrfs-replicate`, `linuxio-btrfs-resync@*`
+and `linuxio-docker-update`, and the updater's `linuxio-updater-*` unit.
 needrestart then lists them under "Service restarts being deferred" instead of
 restarting them. The daemons the installer restarts itself (`linuxio-webserver`,
 `linuxio-monitoring`, `linuxio-indexer`, `linuxio-auth`) are not listed, and
@@ -480,7 +484,7 @@ follow the [Production Diagnostic Data Policy](./production-diagnostics.md).
 | Bridge entry point | `backend/bridge/cmd/lifecycle.go`, `cmd/yamux.go` |
 | Job host, client and their commands | `backend/bridge/internal/jobshost`, `backend/bridge/internal/jobsclient`, `backend/bridge/cmd/jobs_host.go` and `jobs_relay.go` (bridge → host relay) |
 | Job store | `backend/common/jobs`; records in `/var/lib/linuxio/jobs/<uid>/`, live progress in `/run/linuxio/jobs/<uid>/`, the host socket at `/run/linuxio/jobs/<uid>.sock` |
-| Scheduled runs | hooks in `packaging/systemd/linuxio-run-record.conf` (installed as `10-linuxio-run.conf` in the drop-in directories of the three LinuxIO units and the four distribution update services) and `linuxio-btrfs-resync@.service`; command `backend/cli/scheduled_run.go`; recording, output copy and liveness `backend/common/scheduledrun`; listing in the root host `backend/bridge/internal/jobshost/scheduled.go`; records, outputs and progress in `/var/lib/linuxio/jobs/scheduled/` and `/run/linuxio/jobs/scheduled/` |
+| Scheduled runs | hooks in `packaging/systemd/linuxio-run-record.conf` (installed as `10-linuxio-run.conf` in the drop-in directories of the four LinuxIO units and the four distribution update services) and `linuxio-btrfs-resync@.service`; command `backend/cli/scheduled_run.go`; recording, output copy and liveness `backend/common/scheduledrun`; listing in the root host `backend/bridge/internal/jobshost/scheduled.go`; records, outputs and progress in `/var/lib/linuxio/jobs/scheduled/` and `/run/linuxio/jobs/scheduled/` |
 | Indexer daemon and API | `backend/indexer/`, `backend/indexer/api/` |
 | Monitoring daemon and shared wire types | `backend/monitoring/`, `backend/monitoring/api/` |
 | Build | `Makefile` + `mk/go.mk` (`build-*`, `build-go-binaries`, `build-binaries`); output in `build/` |
