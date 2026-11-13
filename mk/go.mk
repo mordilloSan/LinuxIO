@@ -45,7 +45,7 @@ update-go-deps: ensure-go ## Update all Go dependencies (optional GO_MODULES=...
 	fi
 
 ##@ Development|yellow
-generate: ensure-go ensure-node setup ## Regenerate frontend API contracts
+generate: ensure-go ensure-node setup-frontend ## Regenerate frontend API contracts
 	@cd "$(backend_dir)" && $(GO_CMD_ENV) "$(GO_BIN)" run ./bridge/internal/apigen
 
 ##@ Build|yellow

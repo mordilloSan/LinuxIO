@@ -45,7 +45,7 @@ vm-test-filebrowser-root: ensure-go ## Run the root-only file browser ownership 
 	@"$(vm_script)" ssh "sudo ./filebrowser.test -test.run $$(printf %q '$(FILEBROWSER_ROOT_RUN)') -test.count=1 -test.v"
 	@"$(vm_script)" ssh "sudo ./filebrowser-services.test -test.run $$(printf %q '$(FILEBROWSER_ROOT_RUN)') -test.count=1 -test.v"
 
-test-vm-browser: ensure-node setup ## Run the Playwright specs in frontend/src/test/vm against the test VM
+test-vm-browser: ensure-node setup-frontend ## Run the Playwright specs in frontend/src/test/vm against the test VM
 	@set -e
 	@ip="$$("$(vm_script)" ip)"
 	@cd "$(frontend_dir)" && \

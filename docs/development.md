@@ -70,9 +70,28 @@ binary-version failure before making an incompatible packaging change.
 ```sh
 git clone https://github.com/mordilloSan/LinuxIO
 cd LinuxIO
+make setup
 make build
 make localinstall
 ```
+
+`make setup` installs Node through nvm, checks that Go is on PATH and prints the
+`go.mod` toolchain it resolves to (downloading it on first use), installs the
+pinned Go tools (golangci-lint, deadcode, modernize, govulncheck) and the
+frontend dependencies; `make test` and `make build` run it themselves.
+`make setup-frontend` installs only the frontend dependencies. Two things stay
+separate: `make setup-frontend-browser` downloads Playwright Chromium for the
+browser tests, and `make check-c-build-deps` names the missing C compiler,
+`libsystemd-dev` or `libpam-dev` packages without installing them.
+
+The webserver embeds `backend/webserver/web/frontend/`, which is gitignored and
+holds the Vite build. Without it no Go package that imports the webserver
+compiles, so `make dev-prep` creates empty placeholder files there when they
+are missing. The Go check targets (`golint`, `test-go`, `test-backend`,
+`check-backend`, `deadcode`, `test`) and `make dev` run it themselves. The
+build targets do not, so a release binary never embeds a placeholder beside a
+real Vite build; run `make dev-prep` or `make build-vite` before
+`make fastbuild` on a fresh checkout or after `make clean`.
 
 For frontend hot reload, start the backend through systemd and run `make dev`.
 Vite serves on port `3000` by default and proxies backend requests to port
@@ -340,11 +359,14 @@ Keep distro IDs explicit so the scanner can discover them.
 
 ## Target index
 
-`make help` is the concise target index. It groups the supported targets as
-follows:
+`make help` prints the common targets only (the `help_common` list in the
+`Makefile`); `make help-full` (or `make help FULL=1`) prints the full index.
+`make help --full` is not possible, because Make parses dashed words itself.
+The full index groups the supported targets as follows:
 
-- setup: `ensure-node`, `ensure-go`, `ensure-golint`, `ensure-modernize`,
-  `ensure-deadcode`, `ensure-govulncheck`, `setup`, `update-deps`, `update-go-deps`
+- setup: `setup`, `setup-frontend`, `ensure-node`, `ensure-go`,
+  `ensure-golint`, `ensure-modernize`, `ensure-deadcode`, `ensure-govulncheck`,
+  `update-deps`, `update-go-deps`
 - frontend checks: `lint`, `lint-only`, `tsc`, `tsc-only`, `test-frontend`,
   `test-frontend-only`, `lint-ci`, `tsc-ci`, `test-frontend-ci`,
   `check-frontend`, `setup-frontend-browser`, `test-frontend-browser`,

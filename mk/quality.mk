@@ -21,7 +21,7 @@ check-systemd: ## Validate LinuxIO systemd units
 	sed -Ei 's|^ExecStart=-?[^ ]+|ExecStart=/bin/true|' "$$tmp"/*.service; \
 	systemd-analyze verify --man=no "$$tmp"/linuxio*.service "$$tmp"/linuxio*.socket "$$tmp"/linuxio*.target "$$tmp"/linuxio*.timer
 
-golint: ensure-golint ensure-modernize ensure-govulncheck ## Run Go formatters + modernize + govulncheck + golangci-lint (backend)
+golint: ensure-golint ensure-modernize ensure-govulncheck dev-prep ## Run Go formatters + modernize + govulncheck + golangci-lint (backend)
 	@$(MAKE) --no-print-directory golint-only
 
 golint-only: ## Run backend formatting, modernization, vulnerability, and lint checks
@@ -48,13 +48,13 @@ golint-only: ## Run backend formatting, modernization, vulnerability, and lint c
 	@$(PRINTC) "$(COLOR_GREEN)✅ Go linting passed!$(COLOR_RESET)"
 
 # See scripts/lanes.sh for the lane layout and why it is scheduled this way.
-test: ensure-node ensure-go ensure-golint ensure-modernize ensure-govulncheck ensure-deadcode setup dev-prep test-installation-scripts check-docs ## Run lint + tsc + frontend tests + golint + backend tests + deadcode scan
+test: setup dev-prep test-installation-scripts check-docs ## Run lint + tsc + frontend tests + golint + backend tests + deadcode scan
 	@MAKE="$(MAKE)" "$(scripts_dir)/lanes.sh" test "$(test_timer_start)"
 
-check-frontend: ensure-node setup ## Run frontend lint + typecheck + unit tests
+check-frontend: ensure-node setup-frontend ## Run frontend lint + typecheck + unit tests
 	@MAKE="$(MAKE)" "$(scripts_dir)/lanes.sh" frontend
 
-check-backend: ensure-go ensure-golint ensure-modernize ensure-govulncheck ensure-deadcode ## Run backend lint + unit tests + deadcode scan
+check-backend: ensure-go ensure-golint ensure-modernize ensure-govulncheck ensure-deadcode dev-prep ## Run backend lint + unit tests + deadcode scan
 	@MAKE="$(MAKE)" "$(scripts_dir)/lanes.sh" backend
 
 # Backend test entry point for CI (`make test` runs the same pieces through
@@ -67,7 +67,7 @@ test-backend: $(GO_BUILD_PREREQ) test-auth test-auth-protocol test-auth-pam ## R
 
 # Go unit tests only. Narrow with GO_TEST_PKGS and GO_TEST_FLAGS, e.g.
 #   make test-go GO_TEST_PKGS=./bridge/handlers/filebrowser/... GO_TEST_FLAGS='-run TestExtract'
-test-go: $(GO_BUILD_PREREQ) ## Run Go unit tests only (GO_TEST_PKGS=./pkg/... GO_TEST_FLAGS='-run X' to narrow)
+test-go: $(GO_BUILD_PREREQ) dev-prep ## Run Go unit tests only (GO_TEST_PKGS=./pkg/... GO_TEST_FLAGS='-run X' to narrow)
 	@echo ""
 	@$(PRINTC) "$(COLOR_CYAN)🧪 Running Go unit tests with race detector (backend)...$(COLOR_RESET)"
 	@cd "$(backend_dir)" && \
@@ -138,7 +138,7 @@ test-filebrowser-root: ensure-go ## Run the root-only file browser ownership tes
 	    GOTOOLCHAIN="$(GO_TOOLCHAIN)" \
 	    "$(GO_BIN)" test ./bridge/handlers/filebrowser/... -run '$(FILEBROWSER_ROOT_RUN)' -count=1 -v
 
-deadcode: ensure-deadcode ## Report unreachable Go functions (informational)
+deadcode: ensure-deadcode dev-prep ## Report unreachable Go functions (informational)
 	@$(MAKE) --no-print-directory deadcode-only
 
 deadcode-only: ## Scan backend for dead code without tool setup

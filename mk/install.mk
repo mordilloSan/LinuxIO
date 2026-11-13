@@ -2,7 +2,7 @@
 # The dev-server supervisor lives in scripts/dev.sh, the LOC counter in scripts/loc.sh.
 
 ##@ Development|yellow
-dev: setup dev-prep ## Start frontend dev server (detached) + tail LinuxIO logs
+dev: setup-frontend dev-prep ## Start frontend dev server (detached) + tail LinuxIO logs
 	@echo ""
 	@echo "🚀 Starting development servers..."
 	@echo "   Backend must be running via: sudo systemctl start linuxio"

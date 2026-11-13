@@ -41,9 +41,11 @@ ensure-node: ## Install/activate Node @NODE@ via nvm
 	@bash -l "$(scripts_dir)/ensure-node.sh" "$(NODE_VERSION)" "$(nvm_version)" "$(NVM_DIR)"
 	@$(PRINTC) "$(COLOR_GREEN)✅ Node.js environment ready!$(COLOR_RESET)"
 
-ensure-go: ## Check that Go is on PATH (go.mod's version is fetched by Go itself)
+ensure-go: ## Check that Go is on PATH and resolve go.mod's Go @GO@ (fetched by Go itself)
 	@command -v "$(GO_BIN)" >/dev/null 2>&1 || { \
 	  $(PRINTC) "$(COLOR_RED)Go is not installed. Install it with linux-toolbox or from https://go.dev/dl/$(COLOR_RESET)"; exit 1; }
+	@version="$$($(GO_CMD_ENV) "$(GO_BIN)" env GOVERSION)" && \
+	  $(PRINTC) "$(COLOR_GREEN)✅ Go $$version ready ($(GO_BIN))$(COLOR_RESET)"
 
 ensure-golint: ensure-go ## Install golangci-lint (built with local Go @GO@)
 	@$(GO_CMD_ENV) "$(scripts_dir)/ensure-go-tool.sh" golangci-lint "$(golangci_lint)" "$(GOLANGCI_LINT_MODULE)" "$(GOLANGCI_LINT_VERSION)" $(go_tool_args)
@@ -56,3 +58,9 @@ ensure-modernize: ensure-go ## Install modernize (built with local Go @GO@)
 
 ensure-govulncheck: ensure-go ## Install govulncheck (built with local Go @GO@)
 	@$(GO_CMD_ENV) "$(scripts_dir)/ensure-go-tool.sh" govulncheck "$(govulncheck)" "$(GOVULNCHECK_MODULE)" "$(GOVULNCHECK_VERSION)" $(go_tool_args)
+
+# Everything a fresh checkout needs for make test and make build. Playwright
+# Chromium (setup-frontend-browser) is a large download only browser tests use,
+# and the C build packages are checked by check-c-build-deps, not installed.
+setup: ensure-node ensure-go ensure-golint ensure-deadcode ensure-modernize ensure-govulncheck setup-frontend ## Install Node, the Go tools and frontend dependencies
+	@$(PRINTC) "$(COLOR_GREEN)✅ Development toolchain ready!$(COLOR_RESET)"
