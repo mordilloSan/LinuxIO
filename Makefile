@@ -236,11 +236,20 @@ include $(mk_dir)/vm.mk
 ##@ Build|yellow
 ##@ Install / Uninstall|red
 ##@ Run / Clean|red
-help:
-	@awk -v blue='$(COLOR_BLUE)' -v cyan='$(COLOR_CYAN)' -v green='$(COLOR_GREEN)' \
+# `make help` lists only help_common; `make help-full` (or `make help FULL=1`)
+# lists every annotated target. `make --full` is not possible: Make parses
+# dashed words itself and rejects unknown ones.
+help_common := setup dev dev-stop generate lint tsc golint check-frontend check-backend test <target>-quiet build fastbuild localinstall reinstall uninstall clean help-overrides
+help_awk = awk -v blue='$(COLOR_BLUE)' -v cyan='$(COLOR_CYAN)' -v green='$(COLOR_GREEN)' \
 	  -v yellow='$(COLOR_YELLOW)' -v red='$(COLOR_RED)' -v reset='$(COLOR_RESET)' \
 	  -v go='$(GO_VERSION)' -v node='$(NODE_VERSION)' -v bin='$(bin_dir)' \
+	  -v common='$(help_common)' -v full='$(1)' \
 	  -f "$(scripts_dir)/help.awk" $(MAKEFILE_LIST)
+help:
+	@$(call help_awk,$(if $(FULL),1,))
+
+help-full:
+	@$(call help_awk,1)
 
 ##@ Run / Clean|red
 help-overrides: ## Show documented Make variables and overrides
@@ -255,7 +264,7 @@ $(quiet_aliases): ## Run a validation target with compact output and a saved ful
 
 # Every public target, in one place. File targets (the frontend install stamp,
 # placeholder assets, the auth frame tool) are deliberately not phony.
-.PHONY: default help help-overrides $(quiet_aliases)
+.PHONY: default help help-full help-overrides $(quiet_aliases)
 .PHONY: ensure-node ensure-go ensure-golint ensure-deadcode ensure-modernize ensure-govulncheck
 .PHONY: setup update-deps update-go-deps ci-frontend-deps
 .PHONY: lint lint-only lint-ci lint-ci-only tsc tsc-only tsc-ci golint golint-only

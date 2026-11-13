@@ -4,8 +4,13 @@
 #                               Go version, Node version and binary directory
 # Sections print in the order they are first declared (the root Makefile
 # declares the order); entries print in makefile order within their section.
-# Required -v: blue cyan green yellow red reset go node bin
-BEGIN { FS = "\n" }
+# Required -v: blue cyan green yellow red reset go node bin common full
+# Without full, only the targets named in the space-separated `common` list print.
+BEGIN {
+	FS = "\n"
+	n = split(common, names, " ")
+	for (i = 1; i <= n; i++) wanted[names[i]] = 1
+}
 FNR == 1 { section = "" }
 /^##@ / {
 	split(substr($0, 5), part, "|")
@@ -24,6 +29,8 @@ section != "" && /^[A-Za-z0-9_$()<>.-]+:[^#]*## / {
 	gsub("@GO@", go, text)
 	gsub("@NODE@", node, text)
 	gsub("@BIN@", bin, text)
+	total++
+	if (!full && !(name in wanted)) next
 	entries[section] = entries[section] sprintf("%s    make %-34s%s %s\n", hue(color[section]), name, reset, text)
 }
 function hue(name) {
@@ -32,7 +39,8 @@ function hue(name) {
 END {
 	printf "\n%s  Available commands:%s\n", blue, reset
 	for (i = 1; i <= count; i++) {
-		printf "\n%s  %s%s\n%s", cyan, order[i], reset, entries[order[i]]
+		if (entries[order[i]] != "") printf "\n%s  %s%s\n%s", cyan, order[i], reset, entries[order[i]]
 	}
+	if (!full) printf "\n%s  make help-full%s lists all %d targets\n", cyan, reset, total
 	printf "\n"
 }

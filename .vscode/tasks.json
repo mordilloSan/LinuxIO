@@ -17,6 +17,7 @@
         "reveal": "never",
         "panel": "dedicated",
         "clear": true,
+        "close": true,
         "showReuseMessage": false,
       }
     },
