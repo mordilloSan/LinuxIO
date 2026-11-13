@@ -39,15 +39,18 @@ What is left:
   tell a link the admin made on purpose (`~/Documents` pointing at another
   disk) from one a hostile program planted, so the file browser answers 403
   for a change through such a path and the admin must use the real path.
-  Options: keep it, offer the real path in the error, or run the change as the
-  user when the path is in folders the user owns.
+  - Decided 2026-11-13: the error names the folder the link points to, so the
+    admin knows where to go. Running the change as the user when the path is
+    in folders the user owns stays a later option; it would make links work.
 - [ ] **A trash restore goes where the user-editable `.trashinfo` says**
   (audit 132). `RestoreFromTrash`
   (`backend/bridge/handlers/filebrowser/services/trash.go`) reads the
   destination from `Path=`, which the user can edit, so an item an admin
   trashed from `/etc` can be sent to a different system folder. Checked.
-  - Fix: record the original location root-side when the item is trashed and
-    restore only to it, or ask before a restore into a system folder.
+  - Decided 2026-11-13: record the original location root-side when the item
+    is trashed and restore only to it. An item with no record, trashed by
+    another program such as a desktop file manager, asks before a restore into
+    a system folder.
 - [ ] **Compress reads through links.** An admin compressing a user's folder
   that holds a planted link pulls the link's target into the archive, which is
   created readable (`statWithSymlinkResolution` in
@@ -83,8 +86,8 @@ after a change that issues ioctls).
     all" and btrfs keeps "unless forced" on top. In the dialogs a disk from
     another pool stays disabled with its reason, and the label says what
     `force` erases.
-  - Still open: whether `force` should also refuse a member of a stopped md
-    array or an inactive LVM volume group. To check: btrfs-progs is believed
+  - Decided 2026-11-13: `force` also refuses a member of a stopped md array
+    or an inactive LVM volume group. To check: btrfs-progs is believed
     to overwrite an unmounted member with `-f`, so this is stricter than
     upstream on purpose; and the btrfs check never looks at active swap or
     `/etc/fstab`.
@@ -217,8 +220,9 @@ there.
 - [ ] **Live metrics redaction names each section by hand.**
   `redactLiveSections` in `backend/monitoring/internal/httpapi/server.go`. A
   section added to `backend/monitoring/api/live.go` and missed there is sent
-  to a listener that is not allowed it. Function checked; that the test covers
-  six of nine sections is reported, so check first whether three leak today.
+  to a listener that is not allowed it. Checked 2026-11-13: all nine sections
+  are redacted today, so nothing leaks; only the capture time and the uptime
+  go to every listener. That the test covers six of the nine is reported.
   - Add the test with the fix: for every member of `monitoringapi.Live`, a
     listener that is not permitted its plugin receives it empty. Walk the
     struct by reflection so a new member cannot be missed.
