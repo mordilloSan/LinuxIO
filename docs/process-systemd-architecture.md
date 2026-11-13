@@ -396,6 +396,7 @@ The webserver keeps its end of the socket it dialed; it is now wired straight to
 | Boundary | Mechanism | Guarantee |
 |----------|-----------|-----------|
 | Browser ↔ webserver | HTTP + session cookie, validated before WS upgrade | network-facing process is unprivileged + sandboxed |
+| Browser ↔ page scripts | `Content-Security-Policy` with `script-src 'self'` plus a SHA-256 of each inline script in the embedded `index.html`, computed at startup (`contentSecurityPolicy`); also `object-src 'none'`, `base-uri 'self'`, `frame-ancestors 'none'` | a script injected into the page does not run; only bundled files and the page's own boot script do. The Vite development server serves its own page and does not send this header |
 | Webserver ↔ auth socket | unix socket, `root:linuxio-bridge-socket 0660` | only the webserver's group may request a login |
 | Auth ↔ bridge | PAM authentication + root-side sudoers query + `fork`/privilege drop | bridge stays root only when sudoers permits the exact bridge command; otherwise it starts with the user's uid/gid |
 | Webserver ↔ bridge | inherited socket fd + yamux | webserver never gains the bridge's privileges; just relays bytes |
