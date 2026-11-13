@@ -658,7 +658,10 @@ export default function WorkMap({
         ) : null}
       </div>
       {/* Only what runs: the context and the model are in the picture. */}
-      <p className={`work-map__now ${ROW_TEXT}`} title={summary.now ?? undefined}>
+      <p
+        className={`work-map__now ${ROW_TEXT}`}
+        title={summary.now ?? undefined}
+      >
         {summary.now ?? "Nothing is running."}
       </p>
       {summary.rows.length === 0 ? (

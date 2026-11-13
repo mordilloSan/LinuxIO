@@ -281,15 +281,19 @@ advertises the matching capability.
     it (a minute a lap, and ten minutes), with `×N` when several run at once;
     a red badge counts what failed there since the last prompt, and each
     subagent still at work circles the Agents station.
-  - *Rows.* Under the picture one line says what is running and the context
-    use, over the latest sixteen rows, newest first: `new message`, each step
-    of the model (`opus 5.5 · step 2`, numbered per prompt), each tool call,
-    `answer ready`, and a change of model between prompts
-    (`fable 5.2 → opus 5.5`). A call is named in a few words: the agent's
-    description of a command (or the command's name), the last two parts of
-    a file's path, a web address's host, a subagent's description, a skill's
-    name. Finished calls in a row at one station fold into one row (`+2`)
-    with their times added.
+  - *Rows.* Under the picture one line says what is running (the context
+    and the model are left to the picture), over the latest sixteen rows,
+    newest first: `new message`, each step of the model (`opus 5.5 · step
+    2`, numbered per prompt), each tool call, `answer ready`, and a change
+    of model between prompts (`fable 5.2 → opus 5.5`). A call is named in a
+    few words: the agent's description of a command (or the command's name),
+    the last two parts of a file's path, a web address's host, a subagent's
+    description, a skill's name. Finished calls in a row at one station fold
+    into one row (`+2`) with their times added. Each row and the line above
+    them are one line, cut at the card's edge, with the time in a column at
+    the right, so a long label neither wraps nor moves the rows while the
+    work goes on. A row whose label is longer than 28 characters has a `▸`
+    that shows it whole and closes it again; one row is open at a time.
   - *What it knows.* A call is sorted by Claude Code's tool name when the
     adapter sends one (`_meta.claudeCode.toolName`) and by its ACP kind
     otherwise. A shell command goes to Network when any part of it is a
@@ -307,8 +311,11 @@ advertises the matching capability.
     last update it sent while pending (the model has finished writing its
     input by then) to its end, and a step from when the model was last
     handed something (the prompt, or its calls' results) to its first call
-    or the turn's end. A step carries the model that was set when its prompt
-    was sent.
+    or the turn's end. The answer's row shows how long the whole turn took,
+    the time under the answer in the transcript. What takes no time (a
+    message arriving, a change of model) shows `—` in the time column, and a
+    row whose time was not seen shows nothing there. A step carries the model
+    that was set when its prompt was sent.
   - *What it lacks beside the plugin.* Hooks stays quiet: the adapter drops
     Claude Code's hook events, so they never reach the browser. A subagent's
     own calls fly from the core, not from the Agents station; a call a hook
