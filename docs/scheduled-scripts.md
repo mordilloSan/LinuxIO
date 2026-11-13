@@ -135,7 +135,7 @@ starts as daily at 03:00 UTC.
   power cut.
 - Not covered by any test: a run that passes its timeout, catching up a missed
   run, and journal retention over several days. They are in the
-  [backlog](./TODO/backlog.md#8-needs-a-real-machine-or-a-measurement).
+  [backlog](./TODO/backlog.md#needs-a-real-machine-or-a-measurement).
 
 ## References
 

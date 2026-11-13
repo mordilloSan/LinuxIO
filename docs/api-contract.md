@@ -1339,7 +1339,7 @@ Rules:
    backend default for this reason.
 
 Where LinuxIO does not yet follow these rules is listed in
-[the backlog](./TODO/backlog.md), sections 5 and 9.
+[the backlog](./TODO/backlog.md#silent-misses-worth-a-guard).
 
 ## Verification
 

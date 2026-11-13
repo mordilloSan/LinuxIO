@@ -1,9 +1,14 @@
 # Backlog
 
 Every open item about the backend, the API, jobs, scheduled scripts and
-consistency is here, once. It replaces the reliability roadmap, the jobs
-follow-ups, the backend audit and the consistency backlog; their history is in
-git. What is built is described in [the docs](../README.md), not here.
+consistency is here, once. What is built is described in
+[the docs](../README.md), not here.
+
+An item belongs here only if someone could be harmed by it or would notice it.
+LinuxIO is server administration software that other people install, so a
+second local user and a session without sudo count. An observation with no
+consequence does not get an item; if it is likely to be raised again it gets
+one line under [Rejected](#rejected) with its reason.
 
 How to use it: take an item, fix it with a test, run the Make target
 `AGENTS.md` asks for, and delete the item. Add a new item in the section it
@@ -17,10 +22,10 @@ Each item says how sure we are:
 - **needs a host**: only a real machine can confirm it.
 
 The sections are in the order to work them. A number in brackets, such as
-(audit 134), is the item's number in the old backend audit, for looking it up
+(audit 132), is the item's number in the old backend audit, for looking it up
 in git.
 
-## 1. File browser: root follows links a user planted
+## File browser: root follows links a user planted
 
 When an admin uses the file browser, the work runs as root. A program running
 as that user can swap one of the user's folders for a symlink, and root would
@@ -33,10 +38,9 @@ What is left:
 - [ ] **Decide: an admin's own folder links are refused.** The rule cannot
   tell a link the admin made on purpose (`~/Documents` pointing at another
   disk) from one a hostile program planted, so the file browser answers 403
-  for a change through such a path and the admin must use the real path. Delete
-  already did this; every other change does now. Options: keep it, offer the
-  real path in the error, or run the change as the user when the path is in
-  folders the user owns.
+  for a change through such a path and the admin must use the real path.
+  Options: keep it, offer the real path in the error, or run the change as the
+  user when the path is in folders the user owns.
 - [ ] **A trash restore goes where the user-editable `.trashinfo` says**
   (audit 132). `RestoreFromTrash`
   (`backend/bridge/handlers/filebrowser/services/trash.go`) reads the
@@ -50,39 +54,67 @@ What is left:
   `services/archive_operations.go`). Reported.
 - [ ] **A root upload without an owner follows links** (`upload_owner.go`,
   `openUploadDir`). Reported.
-- [ ] **A real folder moved in mid-operation.** A user who can move a folder
-  into the tree while root works on it, or who puts their own folder at a name
-  between root's `mkdirat` and `openat`, has root act on that folder. No link
-  is followed. Reported.
-- [ ] **Filesystems without `RENAME_NOREPLACE`** (NFS, FUSE) fall back to a
-  check and a plain rename (`renameNoReplace` in `services/trash.go`, and the
-  compress publish). A swap there affects only the user's own files. Reported.
-- [ ] **The checks before an operation still go by path**
-  (`validateMoveDestination`, `CheckNotProtected` in the planners, the size
-  count). They decide names and sizes only; the change itself walks again
-  through handles. Reported.
-- [ ] **Root sessions.** Whether root can sign in to LinuxIO was not checked.
-  The link rule is switched off for one, but the trash list and purge paths
-  (`services/trash.go`, `openTrash` callers) still build their owner from the
-  process uid alone.
-- [ ] **A Compose stack saved by a sudo user got a folder owned by root.** The
-  stack folder was root's, mode `0700`, inside that user's home
-  (`backend/bridge/handlers/docker/background_operations.go`). Not verified.
-- [ ] **Nothing works below a folder link with an absolute target**
-  (audit 36). A link such as `/home/u/data -> /mnt/data` is refused by Go's
-  `os.Root` for any path that goes through it, and `iteminfo.ResolveSymlinksAt`
-  resolves only the last name. Checked in the Go 1.27.4 source; needs a host
-  to reproduce first.
-  - Fix: resolve the parent folders at the points where a path enters, and run
-    `CheckNotProtected` on the result. Large: 37 `fsroot.Open` call sites, and
-    a mistake here lets a path escape.
+- [ ] **Can root sign in?** Not checked. The link rule is switched off for a
+  root session, but the trash list and purge paths (`services/trash.go`,
+  `openTrash` callers) still build their owner from the process uid alone.
 
-## 2. Admin-only routes
+## Storage safety
+
+Each item here is data-safety work: it starts from what the kernel and
+btrfs-progs do, gets an independent review, and adds a root test on loop
+devices (`make test-btrfs-integration`, and `make vm-test-btrfs-integration`
+after a change that issues ioctls).
+
+- [ ] **"Is this disk in use?" is decided three ways.** `deviceInUse`
+  (`backend/bridge/handlers/storage/partitions.go`) checks busy devices,
+  mounted and unmounted btrfs pools and `/etc/fstab`. `checkBtrfsDeviceFree`
+  (`btrfs_device_operations.go`) and `checkMDDeviceFree` (`mdraid.go`) check
+  mountpoints, holders and signatures. With `force`, the btrfs check skips the
+  signature and does not look at unmounted pools, so a disk that belongs to an
+  unmounted pool can be taken. Checked.
+  - Decided 2026-11-13: `force` only means "ignore old data left on this
+    disk". It never takes a disk from an existing pool, mounted or not.
+  - Design, worked out 2026-11-13 and not built: do not try to tell leftover
+    btrfs data from a member of an unmounted pool. `force` never overwrites
+    btrfs; the way to reuse such a disk is to destroy its old pool, which
+    already works on an unmounted pool and names it. `force` keeps overwriting
+    other filesystems. Share one check for what all three agree on (in use,
+    member of any btrfs pool, in `/etc/fstab`); md keeps "no old filesystem at
+    all" and btrfs keeps "unless forced" on top. In the dialogs a disk from
+    another pool stays disabled with its reason, and the label says what
+    `force` erases.
+  - Still open: whether `force` should also refuse a member of a stopped md
+    array or an inactive LVM volume group. To check: btrfs-progs is believed
+    to overwrite an unmounted member with `-f`, so this is stricter than
+    upstream on purpose; and the btrfs check never looks at active swap or
+    `/etc/fstab`.
+- [ ] **"Initialize disk" does not check for md or LVM members.**
+  `InitializeDisk` (`partitions.go`) goes through `deviceInUse`, which knows
+  btrfs pools only, so a member of a stopped array or an inactive volume group
+  is wiped with the normal confirmation. Reported.
+- [ ] **Reading a pool can stop it from being destroyed.** The subvolume,
+  snapshot and settings reads are reported to mount a pool's top level under
+  `/run/linuxio/btrfs/`, after which `pool_destroy` refuses the pool. Not
+  re-read. Checked beside it: `storage.btrfs_list` raises alerts and turns on
+  the health timer (`ListBtrfsFilesystems` in
+  `backend/bridge/handlers/storage/btrfs_subvolumes.go`).
+- [ ] **A scrub starts over after a power cut.** It is checkpointed only by
+  its `Suspend` hook at an orderly stop
+  (`backend/bridge/handlers/storage/btrfs_device_operations.go`). Checked.
+- [ ] **No cancel for a device removal or a replace on the page.** The Devices
+  card cancels a running balance only
+  (`frontend/src/routes/_authenticated/storage/-components/btrfs/BtrfsDevicesCard.tsx`).
+  The backend can cancel a removal in the kernel. Whether the tray lists these
+  jobs with a cancel: not verified.
+- [ ] **A scrub might end by itself.** The kernel stops a scrub on any signal
+  to its thread, and nothing in `backend/common/btrfs` retries `EINTR`. An
+  inference; never observed. Needs a test.
+
+## What a user without sudo sees
 
 A route that changes the host is `Privileged()` or is a named exception, and a
-test now enforces it ([Privilege Pattern](../privilege_pattern.md)). What is
-left is on the pages: the server refuses, but some pages still offer the
-control to a user without sudo.
+test enforces it ([Privilege Pattern](../privilege_pattern.md)). What is left
+is on the pages: the server refuses, but some pages still offer the control.
 
 - [ ] **The Accounts page shows admin-only controls.** Creating, changing and
   deleting users and groups, and ending a session, are all privileged, and the
@@ -102,163 +134,68 @@ control to a user without sudo.
   `filebrowser.subfolders`
   (`frontend/src/routes/_authenticated/-dashboard/ProcessorGraph.tsx`). Not
   verified.
-- [ ] **`control.logoff` has no caller in the frontend.** It ends any login
-  session by ID, the same as `accounts.terminate_session`. Check the history
-  and remove one of the two.
-- [ ] **A caller can cut their own connection.** `systemd.stop_service` and
-  `systemd.restart_service` accept LinuxIO's own units, and the network routes
-  accept the interface that carries the session. No check was found in
-  `backend/bridge/handlers/systemd` on 2026-11-13. Reported.
-
-## 3. Storage safety
-
-Each item here is data-safety work: it starts from what the kernel and
-btrfs-progs do, gets an independent review, and adds a root test on loop
-devices (`make test-btrfs-integration`, and `make vm-test-btrfs-integration`
-after a change that issues ioctls).
-
-- [ ] **"Is this disk in use?" is decided three ways.** `deviceInUse`
-  (`backend/bridge/handlers/storage/partitions.go`) checks busy devices,
-  mounted and unmounted btrfs pools and `/etc/fstab`. `checkBtrfsDeviceFree`
-  (`btrfs_device_operations.go`) and `checkMDDeviceFree` (`mdraid.go`) check
-  mountpoints, holders and signatures. With `force`, the btrfs check skips the
-  signature and does not look at unmounted pools, so a disk that belongs to an
-  unmounted pool can be taken. Checked.
-  - Decided 2026-11-13: `force` only means "ignore old data left on this
-    disk". It never takes a disk from an existing pool, mounted or not. Use
-    one function for all three, and say in the dialog what `force` does.
-  - Design, worked out 2026-11-13 and not built: do not try to tell leftover
-    btrfs data from a member of an unmounted pool. `force` never overwrites
-    btrfs; the way to reuse such a disk is to destroy its old pool, which
-    already works on an unmounted pool and names it. `force` keeps overwriting
-    other filesystems. Share one check for what all three agree on (in use,
-    member of any btrfs pool, in `/etc/fstab`); md keeps "no old filesystem at
-    all" and btrfs keeps "unless forced" on top. In the dialogs a disk from
-    another pool stays disabled with its reason, and the label says what
-    `force` erases.
-  - Still open: whether `force` should also refuse a member of a stopped md
-    array or an inactive LVM volume group. To check: btrfs-progs is believed
-    to overwrite an unmounted member with `-f`, so this is stricter than
-    upstream on purpose; and the btrfs check never looks at active swap or
-    `/etc/fstab`.
-- [ ] **"Initialize disk" does not check for md or LVM members.**
-  `InitializeDisk` (`partitions.go`) goes through `deviceInUse`, which knows
-  btrfs pools only, so a member of a stopped array or an inactive volume group
-  is wiped with the normal confirmation. Reported.
-- [ ] **A D-Bus error can lose one replication run's record.** When the last
-  replication job is disabled while a send runs, the bridge keeps the unit
-  file only if systemd says the unit is active, and `systemd.GetActiveState`
-  (`backend/common/systemd/systemd.go`) answers "inactive" for any `GetUnit`
-  error, not only for a unit that is not loaded. The file is then removed
-  under the running unit and that run's record and outcome are lost; the send
-  itself carries on and the job's own state is kept
-  (`removeIdleReplicateUnit` in
-  `backend/bridge/handlers/storage/btrfs_timer.go`). Reported by the review;
-  not reproduced. Not verified either: a start that arrives while the end
-  hook still runs is believed to run a second, empty replication.
-- [ ] **A scrub starts over after a power cut.** It is checkpointed only by
-  its `Suspend` hook at an orderly stop
-  (`backend/bridge/handlers/storage/btrfs_device_operations.go`). Checked.
-- [ ] **No cancel for a device removal or a replace on the page.** The Devices
-  card cancels a running balance only
-  (`frontend/src/routes/_authenticated/storage/-components/btrfs/BtrfsDevicesCard.tsx`).
-  The backend can cancel a removal in the kernel. Whether the tray lists these
-  jobs with a cancel: not verified.
-- [ ] **Listing pools changes things.** `storage.btrfs_list` raises alerts and
-  turns on the health timer (`ListBtrfsFilesystems` in
-  `backend/bridge/handlers/storage/btrfs_subvolumes.go`). Checked. Reported and
-  not re-read: the subvolume, snapshot and settings reads mount a pool's top
-  level under `/run/linuxio/btrfs/`, after which `pool_destroy` refuses the
-  pool.
-- [ ] **A scrub might end by itself.** The kernel stops a scrub on any signal
-  to its thread, and nothing in `backend/common/btrfs` retries `EINTR`. An
-  inference; never observed. Needs a test.
-
-## 4. Other likely bugs
-
-- [ ] **Live metrics redaction names each section by hand.**
-  `redactLiveSections` in `backend/monitoring/internal/httpapi/server.go`. A
-  section added to `backend/monitoring/api/live.go` and missed there is sent
-  to a listener that is not allowed it. Function checked; that the test covers
-  six of nine sections is reported.
-  - Add the test with the fix: for every member of `monitoringapi.Live`, a
-    listener that is not permitted its plugin receives it empty. Walk the
-    struct by reflection so a new member cannot be missed.
-- [ ] **Upload chunk size above 16 MiB.** The setting allows 32
-  (`ValidChunkSizeMB` in `backend/bridge/internal/userconfig/rules.go`), but a
-  relay frame carries at most 16 MiB (`backend/common/ipc/relay/protocol.go`)
-  and the frontend sends a chunk as one frame. A setting of 17 to 32 should
-  fail. Constants checked; not reproduced.
-
-## 5. Rules written twice that disagree
-
-- [ ] **Docker address pools.** The server accepts any CIDR
-  (`backend/bridge/handlers/docker/daemon_config.go`); the settings form
-  accepts IPv4 only. Checked.
-- [ ] **`linuxio logs` matches template units by a name no instance has.**
-  `backend/cli/journal.go` lists `_SYSTEMD_UNIT=linuxio-auth@.service`,
-  `linuxio-jobs@.service` and `linuxio-btrfs-resync@.service`, but an instance
-  is named `linuxio-jobs@1000.service`, so those terms match nothing; the
-  lines are found through the program's log identifier instead. Inferred from
-  how journald matches fields; not run. Reported: the same five programs are
-  also listed in `backend/cli/version.go` and
-  `backend/webserver/appupdate/version.go`, which leaves out monitoring.
 - [ ] **A root-only setting answers 500, not 403.** `config.set` refuses its
   Docker mount-ordering fields for a session without sudo with a plain error
   (`requireDockerMountOrderingPrivilege` in
   `backend/bridge/handlers/config/config_operations.go`); it should wrap
   `ErrForbidden`. Reported.
+- [ ] **A user without sudo loses the sign-in notice during an update wait.**
+  The history answers empty and the notice takes the sign-in mark anyway
+  (`frontend/src/routes/_authenticated/-components/useAwayNotice.ts`).
+- [ ] **An admin can cut their own connection.** `systemd.stop_service` and
+  `systemd.restart_service` accept LinuxIO's own units, and the network routes
+  accept the interface that carries the session. No check was found in
+  `backend/bridge/handlers/systemd` on 2026-11-13. Reported.
+- [ ] **`control.logoff` has no caller in the frontend.** It ends any login
+  session by ID, the same as `accounts.terminate_session`. Check the history
+  and remove one of the two.
+
+## Visible bugs
+
+- [ ] **Upload chunk size above 16 MiB.** The setting allows 32
+  (`ValidChunkSizeMB` in `backend/bridge/internal/userconfig/rules.go`), but a
+  relay frame carries at most 16 MiB (`backend/common/ipc/relay/protocol.go`)
+  and the frontend sends a chunk as one frame. A setting of 17 to 32 should
+  fail. Constants checked; not reproduced. Beside it: the setting is
+  documented as "0 means default", but `userconfig/settings.go` writes 1 to a
+  new file, so the frontend default never applies.
+- [ ] **A Compose stack saved by a sudo user got a folder owned by root.** The
+  stack folder was root's, mode `0700`, inside that user's home
+  (`backend/bridge/handlers/docker/background_operations.go`). Not verified.
+- [ ] **Docker address pools.** The server accepts any CIDR
+  (`backend/bridge/handlers/docker/daemon_config.go`); the settings form
+  accepts IPv4 only. Checked.
 - [ ] **Container state and health colours.** Decided in five frontend files
   (`constants/statusColors.ts`, `utils/dockerContainer.ts`, the dashboard's
   `Docker.tsx` and two under `docker/-components`). Unhealthy is an error in
   one and a warning in another; dead is neutral or an error. Checked.
+- [ ] **Theme colour defaults.** `frontend/src/theme/variants.ts` repeats the
+  table in `backend/bridge/internal/userconfig/themecolors.go` and differs on
+  the code background. Checked.
 - [ ] **Indexer status words.** Plain strings in
   `backend/indexer/internal/daemon` and `backend/bridge/handlers/indexer`; the
   bridge tests for `indexing` and `failed`, which the daemon was not found
   sending. Checked.
-- [ ] **Theme colour defaults.** `frontend/src/theme/variants.ts` repeats the
-  table in `backend/bridge/internal/userconfig/themecolors.go` and differs on
-  the code background. Checked.
-- [ ] **Add the test that keeps allowed values true.** Every
-  `apischema.StringEnums` entry is built from the Go definition it describes,
-  or a test compares the two. Today only `CapabilityName`, `WireGuardHookKind`
-  and `ThemeColorKey` are. The others retype Go constants: dock tile colours,
-  navigation mode, theme, view mode, task state, storage mode, container
-  metrics status, network bridge handoff state, auto-update backend and
-  notify, VM image presets and firmware.
-
-## 6. Small jobs fixes
-
-- [ ] The job host's recorder writes progress files while it holds its mutex
-  (`backend/bridge/internal/jobshost/recorder.go`, `writeProgressLocked`).
-- [ ] `Store.Finish` on a record that is already finished rewrites the file
-  unchanged (`backend/common/jobs/store.go`, `mutate`).
-- [ ] Store reads check a file with `Lstat` and then open it, in two steps
-  (`backend/common/jobs/store.go`, `openRegularFile`). The folders belong to
-  root or to the uid itself.
-- [ ] A user's host records the owner's username from the bridge's hello
-  rather than its own account (`jobshost/host.go`, `recordOwner`).
-- [ ] A resend is compared byte for byte, so a client that reorders a
-  request's keys gets a 409; the browser resends identical bytes
-  (`jobshost/host.go`, `sameJSON`).
-- [ ] A schedule deleted while `notifications.json` does not parse logs "could
-  not clear the notification choice" even when it had none
-  (`backend/bridge/handlers/schedules/manager.go`, `forgetNotifyChoice`).
-- [ ] Saving only a schedule's notification choice skips the re-apply that
-  repairs an incomplete schedule; a second save repairs it. `changeLocked`
-  takes six positional parameters (same file).
-- [ ] "Mark all seen" lists the alerts and marks them under separate locks,
-  and `alerts.mark_seen` with explicit IDs is not filtered by the levels grid
-  (`backend/bridge/handlers/alerts/operations.go`, `markSeenForUID`).
-- [ ] Docker update alerts share one source, so a container named
-  `updated-<x>` shares its failure key with the "updated" notice of a
-  container named `<x>` (`backend/common/dockerupdate/alerts.go`).
-- [ ] On the notification settings page the *Scheduled scripts* help line is
-  not tied to its select for assistive technology, and the page's warnings use
+- [ ] **The version lists leave out monitoring.** The programs are listed by
+  hand in `backend/cli/version.go` and
+  `backend/webserver/appupdate/version.go`. Reported.
+- [ ] **Saving only a schedule's notification choice skips the repair.** The
+  re-apply that repairs an incomplete schedule does not run; a second save
+  repairs it (`backend/bridge/handlers/schedules/manager.go`).
+- [ ] **A deleted schedule logs a warning for nothing.** With an unreadable
+  `notifications.json` the delete logs "could not clear the notification
+  choice" even when the schedule had none (`forgetNotifyChoice`, same file).
+- [ ] **"Mark seen" ignores the levels grid.** `alerts.mark_seen` with explicit
+  IDs is not filtered by it, and "mark all seen" lists and marks under
+  separate locks (`backend/bridge/handlers/alerts/operations.go`,
+  `markSeenForUID`).
+- [ ] **Two containers can share one alert.** Docker update alerts share one
+  source, so a container named `updated-<x>` shares its failure key with the
+  "updated" notice of a container named `<x>`
+  (`backend/common/dockerupdate/alerts.go`).
+- [ ] **Notification settings and assistive technology.** The *Scheduled
+  scripts* help line is not tied to its select, and the page's warnings use
   `role="alert"`, which `AppAlert` always sets.
-- [ ] A user without sudo who signs in while an update waits loses that
-  sign-in's notice: the history answers empty and the notice takes the sign-in
-  mark anyway (`useAwayNotice.ts`).
 - [ ] **Release notes.** The release that ships jobs should state three
   behaviour changes: a stored Docker `never` no longer silences failures; an
   interruption by a shutdown is a warning, so "Errors only" no longer emails it
@@ -268,11 +205,57 @@ after a change that issues ioctls).
   ([Alerts](../alerts.md#notification-settings)). Release notes are not kept
   in the repository, so this cannot be checked here.
 
-## 7. Tests that are missing
+## Silent misses worth a guard
 
-- [ ] A relay speed test: a no-op mutation through the relay many times, with
-  a bound on the median. The jobs design asked for it. No baseline numbers
-  exist either for call latency, job start, alert listing or schedule status.
+Nothing fails today. Each of these is one kind of item named in several
+places, where leaving one out fails without an error. The rules are in
+[API Contract](../api-contract.md) (One Definition, Checked Rules). Reported
+unless it says checked. The scan that found them read the Go backend largely
+in full and 20 to 25 percent of the frontend, so more of the same is likely
+there.
+
+- [ ] **Live metrics redaction names each section by hand.**
+  `redactLiveSections` in `backend/monitoring/internal/httpapi/server.go`. A
+  section added to `backend/monitoring/api/live.go` and missed there is sent
+  to a listener that is not allowed it. Function checked; that the test covers
+  six of nine sections is reported, so check first whether three leak today.
+  - Add the test with the fix: for every member of `monitoringapi.Live`, a
+    listener that is not permitted its plugin receives it empty. Walk the
+    struct by reflection so a new member cannot be missed.
+- [ ] **The UI settings save payload.** `buildUIPayload` in
+  `frontend/src/contexts/ConfigProvider.tsx` names each setting, the payload
+  type is all-optional, and the save replaces everything, so a setting left
+  out is reset on every save. Checked.
+- [ ] **Every UI default is written to `ui.yaml` on the first save.**
+  `config.set_ui` starts from `DefaultUIPreferences()` and stores the whole
+  value, so a later change to a backend default never reaches that user. Only
+  view modes are stored as differences (`normalizeViewModesForDefault` in
+  `backend/bridge/internal/userconfig/validator.go`). Do the same for the
+  rest.
+- [ ] **btrfs profiles.** Five tables in `backend/common/btrfs` and three in
+  `btrfsShared.ts`. A profile missing from `MinDevices` returns 0, so any
+  device count passes validation. Checked to agree today.
+- [ ] **Storage and packages register routes from a second list.**
+  `storage/handlers.go` declares the route sets and
+  `storage/smart_test_operation.go` registers them; a set in one and not the
+  other is a route that answers "not found". Checked for storage.
+- [ ] **Docker daemon keys.** Seven keys in read, write and two change lists
+  in `docker/daemon_config.go`; a key missing from the change lists is saved
+  only when another key changes.
+- [ ] **System metrics.** About forty, each named in roughly ten places under
+  `backend/monitoring`. A metric left out of the averaging in
+  `internal/plugins/aggregate.go` is silent.
+- [ ] **Monitoring plugins.** Sixteen, with attributes spread over four files.
+  A plugin missing from the collection groups is dropped silently.
+- [ ] **Allowed values.** Every `apischema.StringEnums` entry is built from
+  the Go definition it describes, or a test compares the two. Today only
+  `CapabilityName`, `WireGuardHookKind` and `ThemeColorKey` are. The others
+  retype Go constants: dock tile colours, navigation mode, theme, view mode,
+  task state, storage mode, container metrics status, network bridge handoff
+  state, auto-update backend and notify, VM image presets and firmware.
+
+## Tests that are missing
+
 - [ ] The relay tests in `backend/bridge/cmd/jobs_relay_test.go` skip when run
   as root, and a privileged login skipping the host start has no hermetic test
   (`backend/auth/linuxio-auth-pam_test.c`).
@@ -280,9 +263,33 @@ after a change that issues ioctls).
   real update from a release that has job hosts, more than one waiting job, a
   user's host as the older host, `tasks.watch`, `tasks.cancel` and
   `tasks.output` during the wait, and uploads during it.
+- [ ] A relay speed test: a no-op mutation through the relay many times, with
+  a bound on the median. No baseline numbers exist either for call latency,
+  job start, alert listing or schedule status.
 
-## 8. Needs a real machine or a measurement
+## Needs a real machine or a measurement
 
+- [ ] **Seen once and not explained.** Try each in the test VM once, then fix
+  it or delete the line:
+  - A progress frame published between a stream's subscribe and its first
+    snapshot may be skipped (`backend/bridge/internal/bridgeipc/tasks.go`,
+    `subscribeWithReplayStatus`).
+  - An abort while the client waits for the stream mux after its job started
+    may not reach the server (`frontend/src/api/linuxio-core.ts`).
+  - After a failed first history load, a non-admin's notice observer refetches
+    on focus and ignores the result (`useAwayNotice.ts`).
+  - A session bridge logged `route failed: write frame: i/o deadline reached`
+    while a scheduled script ran.
+  - The journal field `LINUXIO_REASON` held the reason JSON-quoted
+    (`"reboot"`).
+- [ ] **Nothing works below a folder link with an absolute target**
+  (audit 36). A link such as `/home/u/data -> /mnt/data` is refused by Go's
+  `os.Root` for any path that goes through it, and `iteminfo.ResolveSymlinksAt`
+  resolves only the last name. Checked in the Go 1.27.4 source; needs a host
+  to reproduce first.
+  - Fix: resolve the parent folders at the points where a path enters, and run
+    `CheckNotProtected` on the result. Large: 37 `fsroot.Open` call sites, and
+    a mistake here lets a path escape.
 - [ ] **Scheduled scripts.** A run that passes its timeout, catching up a
   missed run (`Persistent=`), journal retention over several days, and a
   bridge restart during a run. See
@@ -297,6 +304,12 @@ after a change that issues ioctls).
   none of their text shows in the chat, the foreground one's tokens show
   when it ends, and the background one runs until its turn ends. See
   [AI Assistant](../AI-assistant.md) (Agents).
+- [ ] **What happens after a route cuts its own connection is not written
+  down.** The old roadmap's rule was: send it once; after reconnect, reboot
+  compares the boot identity, a network change reads back the interface, and
+  power-off reports "acknowledged" or "unknown", never success just because the
+  host went quiet. Whether the frontend does this was not checked. Check it,
+  then describe it in [API Contract](../api-contract.md).
 - [ ] **Hardlink reconcile runs one query per file** in one transaction
   (audit 57): `reconcileHardlinksAfterReindex` in
   `backend/indexer/internal/storage/hardlinks.go`. Measure first, then add up
@@ -308,114 +321,8 @@ after a change that issues ioctls).
   largest layout, so nothing is written out of bounds; what is left is to
   check on an NVIDIA machine that the bus id reads correctly, or to register
   `nvmlDeviceGetPciInfo_v3` by name.
-- [ ] **Seen once and not explained:**
-  - A progress frame published between a stream's subscribe and its first
-    snapshot may be skipped (`backend/bridge/internal/bridgeipc/tasks.go`,
-    `subscribeWithReplayStatus`).
-  - An abort while the client waits for the stream mux after its job started
-    may not reach the server (`frontend/src/api/linuxio-core.ts`).
-  - After a failed first history load, a non-admin's notice observer refetches
-    on focus and ignores the result (`useAwayNotice.ts`).
-  - A session bridge logged `route failed: write frame: i/o deadline reached`
-    while a scheduled script ran.
-  - The journal field `LINUXIO_REASON` held the reason JSON-quoted
-    (`"reboot"`).
-- [ ] **What happens after a route cuts its own connection is not written
-  down.** The old roadmap's rule was: send it once; after reconnect, reboot
-  compares the boot identity, a network change reads back the interface, and
-  power-off reports "acknowledged" or "unknown", never success just because the
-  host went quiet. Whether the frontend does this was not checked. Check it,
-  then describe it in [API Contract](../api-contract.md).
 
-## 9. One thing named in many places
-
-Nothing fails today. Fix one when a miss would be silent or the set keeps
-growing. A fixed set of three or four that the build already guards is not
-worth a table. Reported unless it says checked.
-
-Defaults that cannot be unset:
-
-- [ ] **Every UI default is written to `ui.yaml` on the first save.**
-  `config.set_ui` starts from `DefaultUIPreferences()` and stores the whole
-  value, so a later change to a backend default never reaches that user. Only
-  view modes are stored as differences (`normalizeViewModesForDefault` in
-  `backend/bridge/internal/userconfig/validator.go`). Do the same for the
-  rest.
-- [ ] **Upload chunk size.** Documented as "0 means default", but
-  `userconfig/settings.go` writes 1 to a new file, so the frontend fallback in
-  `frontend/src/hooks/useUploadChunkSize.ts` runs only after an explicit 0.
-  Backend checked.
-- [ ] **Fallbacks that cannot run.** Remove them: the primary and secondary
-  fallbacks in `frontend/src/theme/appTheme.ts` and `theme/colors.ts`, view
-  mode and storage mode in `hooks/useConfig.ts`, the dock gradient range in
-  `dockPalette.ts`, and the alternative field names probed in
-  `NetworkInterfaceEditor.tsx`, none of which the backend sends. Network
-  editor checked.
-- [ ] **Summary falls back from stats to a mirror of the same stats.**
-  `backend/monitoring/internal/domain/system/summary.go`.
-
-Backend sets:
-
-- [ ] **System metrics.** About forty, each named in roughly ten places under
-  `backend/monitoring`. A metric left out of the averaging in
-  `internal/plugins/aggregate.go` is silent.
-- [ ] **Monitoring plugins.** Sixteen, with attributes spread over four files.
-  A plugin missing from the collection groups is dropped silently.
-- [ ] **btrfs profiles.** Five tables in `backend/common/btrfs` and three in
-  `btrfsShared.ts`. A profile missing from `MinDevices` returns 0, so any
-  device count passes validation. Checked to agree today.
-- [ ] **Job settings.** Five fields in eight places across
-  `backend/bridge/internal/userconfig`, `backend/bridge/apischema/config.go`
-  and `backend/bridge/handlers/config`.
-- [ ] **Storage and packages register routes from a second list.**
-  `storage/handlers.go` declares the route sets and
-  `storage/smart_test_operation.go` registers them; a set in one and not the
-  other is a route that answers "not found". Checked for storage.
-- [ ] **Docker daemon keys.** Seven keys in read, write and two change lists
-  in `docker/daemon_config.go`; a key missing from the change lists is saved
-  only when another key changes.
-- [ ] **Smaller sets.** Indexer status fields, alert notification settings,
-  journal filters, archive formats, compose file names, UnitInfo properties,
-  GPU collector sources.
-
-Frontend sets:
-
-- [ ] **The UI settings save payload.** `buildUIPayload` in
-  `frontend/src/contexts/ConfigProvider.tsx` names each setting, the payload
-  type is all-optional, and the save replaces everything, so a setting left
-  out is reset on every save. Checked.
-- [ ] **Monitoring settings form.** Four durations in eight or more places in
-  `MonitoringSettingsSection.tsx`.
-- [ ] **Smaller sets.** Transfer kinds, palette roles, editor languages,
-  syslog priorities, Docker prune kinds, the accounts toast constant defined
-  in eight dialogs (checked), and view-mode surface ids typed in both a page
-  and its list.
-
-The same rule on both sides, in step today. Most become generated once the
-value is a named type or a response field:
-
-- [ ] Notification kinds, levels and report choices
-  (`backend/common/alerts/settings.go`).
-- [ ] btrfs compression algorithms (`backend/common/btrfs/settings.go`).
-- [ ] Filesystem label limits and minimum sizes
-  (`backend/common/btrfs/format.go` and the partition dialogs).
-- [ ] VM image presets, their disk minimums and the managed storage paths.
-- [ ] Scheduled-run kinds (`backend/common/scheduledrun/kind.go`,
-  `frontend/src/tasks/scheduledRuns.ts`).
-- [ ] Docker auto-update defaults.
-- [ ] The stream flags and opcodes of the binary protocol
-  (`backend/webserver/ws/ws.go`, `backend/common/ipc/relay/protocol.go`,
-  `frontend/src/api/StreamMultiplexer.ts`).
-- [ ] The Claude relay limits and environment names.
-- [ ] Installer and Go: the run-record drop-in units and the socket paths in
-  `packaging/systemd`.
-
-The frontend was sampled in the scan that found these, 20 to 25 percent of its
-files, so more of the same is likely there. Theme colours, host capabilities,
-UI section toggles, Docker scheduled-update options and WireGuard hook kinds
-already have one definition.
-
-## 10. Later, no plan yet
+## Later, no plan yet
 
 Do one of these only when something shows it is needed.
 
@@ -430,7 +337,52 @@ Do one of these only when something shows it is needed.
 
 ## Rejected
 
-Listed so they are not raised again.
+Listed once, with the reason, so they are not raised again.
+
+File browser, after the link fix:
+
+- A real folder (not a link) moved into the tree while root works on it, or
+  put at a name between root's `mkdirat` and `openat`: no link is followed and
+  root still acts at the place that was asked for.
+- Filesystems without `RENAME_NOREPLACE` (NFS, FUSE) fall back to a check and
+  a plain rename: a swap there affects only the user's own files.
+- The checks before an operation go by path: they decide names and sizes
+  only, and the change itself walks again through handles.
+
+Storage and jobs:
+
+- A D-Bus error can lose one replication run's record when the last job is
+  disabled during a send: it needs both at once, and it loses a record, not
+  data.
+- The job recorder writes progress files while it holds its mutex,
+  `Store.Finish` rewrites an already finished record unchanged, and store
+  reads `Lstat` and then open in two steps: no effect was seen, and the store
+  folders belong to root or to the uid itself.
+- A user's job host records the owner's username from the bridge's hello, and
+  a resend is compared byte for byte: both are the same user's own processes,
+  and the browser resends identical bytes.
+- `linuxio logs` lists template units by a name no instance has: the lines
+  are found through the program's log identifier.
+
+One thing named in many places, with no silent consequence. Convert one when
+touching its file:
+
+- Sets: job settings, the monitoring settings form, indexer status fields,
+  alert notification settings, journal filters, archive formats, compose file
+  names, UnitInfo properties, GPU collector sources, transfer kinds, palette
+  roles, editor languages, syslog priorities, Docker prune kinds, the accounts
+  toast constant, view-mode surface ids.
+- The same rule on both sides, in step today: notification kinds and levels,
+  btrfs compression algorithms, filesystem label limits and minimum sizes, VM
+  image presets, scheduled-run kinds, Docker auto-update defaults, the stream
+  flags and opcodes of the binary protocol, the Claude relay limits, the
+  run-record drop-in units and socket paths.
+- Fallbacks that cannot run (theme primary and secondary, view and storage
+  mode in `useConfig.ts`, the dock gradient range, the alternative field names
+  in `NetworkInterfaceEditor.tsx`) and the monitoring summary's fallback to a
+  mirror of the same stats: dead code, removed when the file is touched.
+
+From the backend audit of October 2026:
 
 - SHA-256 of the bridge binary on every login (audit 48): about 50 ms is not
   worth a cache keyed on inode metadata.

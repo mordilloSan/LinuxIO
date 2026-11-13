@@ -358,5 +358,5 @@ The trace found ten side issues. Checked against the code on 2026-11-13:
   WireGuard configs are written atomically; `useTaskAction` is gone. The count
   of session task routes no longer applies.
 - Still open, and now in the [backlog](./backlog.md): a caller can cut their
-  own connection (section 2), a scrub might end by itself on a signal, and
-  listing pools changes things (both section 3).
+  own connection, a scrub might end by itself on a signal, and reading a pool
+  can stop it from being destroyed.
