@@ -123,17 +123,97 @@ func TestMonitoringMaintenanceRoutesArePrivileged(t *testing.T) {
 	}
 }
 
-func TestRootOnlyStorageAndDockerRoutesArePrivileged(t *testing.T) {
-	for _, route := range []string{
-		"storage.create_lv", "storage.delete_lv", "storage.resize_lv",
-		"storage.mount_nfs", "storage.unmount_nfs", "storage.remount_nfs",
-		"storage.mount_cifs", "storage.unmount_cifs", "storage.remount_cifs",
-		"storage.unmount_filesystem", "storage.set_btrfs_maintenance", "storage.run_smart_test",
-		"docker.set_container_auto_update",
-	} {
-		if !mustRoute(t, route).Privileged {
-			t.Errorf("%s should be privileged", route)
+// unprivilegedChanges are the routes that can change something and stay open
+// to a session without sudo, each with the reason it needs no root. A route
+// that changes the host belongs here or declares Privileged(); see
+// docs/privilege_pattern.md.
+var unprivilegedChanges = map[string]string{
+	"assistant.add_marketplace":    "runs the session user's own claude CLI and writes under their home",
+	"assistant.install_plugin":     "runs the session user's own claude CLI and writes under their home",
+	"assistant.open":               "runs the session user's own claude CLI as that user",
+	"assistant.remove_marketplace": "runs the session user's own claude CLI and writes under their home",
+	"assistant.set_plugin_enabled": "runs the session user's own claude CLI and writes under their home",
+	"assistant.uninstall_plugin":   "runs the session user's own claude CLI and writes under their home",
+	"assistant.update_marketplace": "runs the session user's own claude CLI and writes under their home",
+
+	"config.set":    "the session user's own settings; the one root-only Docker field is refused in the handler",
+	"config.set_ui": "the session user's own interface settings",
+
+	"docker.check_container_update": "a read that asks the registry; not retried because it is slow",
+	"docker.check_updates":          "a read that asks the registry; not retried because it is slow",
+	"docker.get_icon":               "a read; fills the shared icon cache",
+	"docker.get_icon_uri":           "a read; fills the shared icon cache",
+	"docker.logs.follow":            "a read stream",
+	"docker.logs.follow_all":        "a read stream",
+
+	"filebrowser.archive":         "the session user's own files, as that user",
+	"filebrowser.chmod_batch":     "the session user's own files, as that user",
+	"filebrowser.compress":        "the session user's own files, as that user",
+	"filebrowser.copy_batch":      "the session user's own files, as that user",
+	"filebrowser.delete_batch":    "the session user's own files, as that user",
+	"filebrowser.download_stream": "a read of the session user's own files",
+	"filebrowser.extract":         "the session user's own files, as that user",
+	"filebrowser.move_batch":      "the session user's own files, as that user",
+	"filebrowser.resource_patch":  "the session user's own files, as that user",
+	"filebrowser.resource_post":   "the session user's own files, as that user",
+	"filebrowser.trash_batch":     "the session user's own files, as that user",
+	"filebrowser.trash_purge":     "the session user's own files, as that user",
+	"filebrowser.trash_restore":   "the session user's own files, as that user",
+	"filebrowser.upload":          "the session user's own files, as that user",
+	"filebrowser.upload_batch":    "the session user's own files, as that user",
+
+	"logs.general.follow": "a read stream of the journal the session user may read",
+	"logs.service.follow": "a read stream of the journal the session user may read",
+
+	"network.get_network_info":  "a read",
+	"system.get_health_summary": "a read",
+
+	"system.dismiss_failed_login_alert": "a dismissal kept in the session user's own settings",
+	"system.dismiss_unclean_shutdown":   "a dismissal kept in the session user's own settings",
+
+	"tasks.cancel": "the caller's own jobs",
+	"tasks.data":   "the caller's own jobs",
+	"tasks.events": "the caller's own jobs",
+	"tasks.watch":  "the caller's own jobs",
+
+	"terminal.open": "the session user's own shell",
+}
+
+// TestChangingRoutesArePrivilegedOrListed fails on a new route that can change
+// the host and declares neither guard: every Mutation, every duplex stream and
+// every Call that is not RetrySafe is Privileged or is in unprivilegedChanges.
+func TestChangingRoutesArePrivilegedOrListed(t *testing.T) {
+	seen := map[string]bool{}
+	for _, route := range handlers.Routes {
+		if route.Mode == bridgeipc.ModeCall && route.RetrySafe {
+			continue
 		}
+		_, listed := unprivilegedChanges[route.Route]
+		seen[route.Route] = true
+		switch {
+		case route.Privileged && listed:
+			t.Errorf("%s is privileged; remove it from unprivilegedChanges", route.Route)
+		case !route.Privileged && !listed:
+			t.Errorf("%s can change the host: declare apischema.Privileged() or add it to unprivilegedChanges with its reason", route.Route)
+		}
+	}
+	for route := range unprivilegedChanges {
+		if !seen[route] {
+			t.Errorf("unprivilegedChanges names %s, which is not a changing route any more", route)
+		}
+	}
+}
+
+func TestBrowserBoundRoutes(t *testing.T) {
+	var got []string
+	for _, route := range handlers.Routes {
+		if route.BrowserBound {
+			got = append(got, route.Route)
+		}
+	}
+	want := []string{"filebrowser.archive", "filebrowser.upload", "filebrowser.upload_batch"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("browser-bound routes = %v, want %v", got, want)
 	}
 }
 

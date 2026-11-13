@@ -9,7 +9,7 @@ import (
 )
 
 var api = apischema.Bindings(
-	apischema.MutationVoid("hostname.set_hostname", handleSetHostname),
+	apischema.MutationVoid("hostname.set_hostname", handleSetHostname, apischema.Privileged()),
 )
 
 var Routes = api.Routes()

@@ -21,7 +21,7 @@ import { iconSize } from "@/theme/constants";
 
 function NavbarUserDropdown() {
   const navigate = useNavigate();
-  const { user, signOut } = useAuth();
+  const { user, signOut, privileged } = useAuth();
   const { triggerReboot, triggerPowerOff } = usePowerAction();
 
   const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
@@ -109,14 +109,19 @@ function NavbarUserDropdown() {
 
           {user?.name ? <AppDivider /> : null}
 
-          <AppMenuItem onClick={() => openConfirm("reboot")}>
-            Reboot
-          </AppMenuItem>
-          <AppMenuItem onClick={() => openConfirm("poweroff")}>
-            Power Down
-          </AppMenuItem>
+          {/* control.reboot and control.power_off are admin-only routes. */}
+          {privileged ? (
+            <>
+              <AppMenuItem onClick={() => openConfirm("reboot")}>
+                Reboot
+              </AppMenuItem>
+              <AppMenuItem onClick={() => openConfirm("poweroff")}>
+                Power Down
+              </AppMenuItem>
 
-          <AppDivider />
+              <AppDivider />
+            </>
+          ) : null}
 
           <AppMenuItem onClick={handleSignOut}>Sign out</AppMenuItem>
         </AppMenu>

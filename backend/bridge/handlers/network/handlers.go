@@ -24,13 +24,13 @@ func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 		// NetworkManager owns an accepted configuration change. Applying it can
 		// sever this bridge, so transport loss is an expected ambiguous outcome and
 		// callers must not retry the mutation automatically.
-		apischema.MutationVoid("network.set_ipv4_manual", h.handleSetIPv4Manual),
-		apischema.MutationVoid("network.set_ipv4", h.handleSetIPv4),
-		apischema.MutationVoid("network.set_ipv6", h.handleSetIPv6),
-		apischema.MutationVoid("network.set_mtu", h.handleSetMTU),
-		apischema.MutationVoid("network.set_optional", h.handleSetOptional),
-		apischema.MutationVoid("network.enable_connection", h.handleEnableConnection),
-		apischema.MutationVoid("network.disable_connection", h.handleDisableConnection),
+		apischema.MutationVoid("network.set_ipv4_manual", h.handleSetIPv4Manual, apischema.Privileged()),
+		apischema.MutationVoid("network.set_ipv4", h.handleSetIPv4, apischema.Privileged()),
+		apischema.MutationVoid("network.set_ipv6", h.handleSetIPv6, apischema.Privileged()),
+		apischema.MutationVoid("network.set_mtu", h.handleSetMTU, apischema.Privileged()),
+		apischema.MutationVoid("network.set_optional", h.handleSetOptional, apischema.Privileged()),
+		apischema.MutationVoid("network.enable_connection", h.handleEnableConnection, apischema.Privileged()),
+		apischema.MutationVoid("network.disable_connection", h.handleDisableConnection, apischema.Privileged()),
 	)
 }
 

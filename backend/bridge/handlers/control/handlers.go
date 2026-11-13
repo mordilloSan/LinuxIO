@@ -12,9 +12,9 @@ var api = apischema.Bindings(
 	// These calls are accepted by the native control service before it can tear
 	// down this bridge. A lost response is therefore an expected, ambiguous
 	// transport outcome; callers must not retry it automatically.
-	apischema.MutationVoid("control.reboot", handleReboot),
-	apischema.MutationVoid("control.power_off", handlePowerOff),
-	apischema.MutationVoid("control.logoff", handleLogoff),
+	apischema.MutationVoid("control.reboot", handleReboot, apischema.Privileged()),
+	apischema.MutationVoid("control.power_off", handlePowerOff, apischema.Privileged()),
+	apischema.MutationVoid("control.logoff", handleLogoff, apischema.Privileged()),
 )
 
 var Routes = api.Routes()

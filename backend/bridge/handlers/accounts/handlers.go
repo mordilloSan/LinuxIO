@@ -12,7 +12,7 @@ var api = apischema.Bindings(
 	apischema.Call[apischema.NoRequest, []apischema.AccountUser]("accounts.list_users", apischema.RetrySafe()).Handle(handleListUsers),
 	apischema.Call[apischema.UsernameRequest, apischema.AccountUserDetails]("accounts.get_user_details", apischema.RetrySafe()).Handle(handleGetUserDetails),
 	apischema.Call[apischema.UsernameRequest, []apischema.AccountUserLogin]("accounts.list_user_logins", apischema.RetrySafe()).Handle(handleListUserLogins),
-	apischema.MutationVoid("accounts.terminate_session", handleTerminateSession),
+	apischema.MutationVoid("accounts.terminate_session", handleTerminateSession, apischema.Privileged()),
 	apischema.MutationVoid("accounts.create_user", CreateUser, apischema.Privileged()),
 	apischema.MutationVoid("accounts.delete_user", handleDeleteUser, apischema.Privileged()),
 	apischema.MutationVoid("accounts.modify_user", ModifyUser, apischema.Privileged()),

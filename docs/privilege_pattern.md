@@ -36,24 +36,24 @@ Docker is a fixed case. Access to the Docker socket is root-equivalent, so the d
 
 Read-only system inventory can usually remain unprivileged unless it exposes sensitive information.
 
-To list the candidates (bindings with neither guard). Routes that change the host only through polkit-gated D-Bus calls, such as hostname, datetime, login1, systemd and NetworkManager, also appear here. They are to be admin-only like the rest and are not declared yet:
+Routes that change the host through polkit-gated D-Bus calls (systemd, NetworkManager, hostname, timedated, login1) are privileged like the rest. polkit might let a user without sudo run some of them, but the answer would differ from host to host; LinuxIO gives one answer, a 403 before anything runs.
 
-```sh
-rg -n 'apischema\.(Call\[|DuplexRoute\[|Mutation(Void|Task)?\()' backend/bridge/handlers -g '!*_test.go' | rg -v 'Privileged\(\)|RetrySafe\(\)'
-```
+### What is enforced
 
-The command includes `DuplexRoute` because a stream can change the host as much as a mutation can: `container.open` starts a process inside a container.
+The dispatcher enforces a declared guard, and `TestChangingRoutesArePrivilegedOrListed` in `backend/bridge/apischema/schema_test.go` enforces that the guard is declared. It walks every route: each `Mutation`, each duplex stream and each `Call` that is not `RetrySafe()` must be `Privileged()` or be named in `unprivilegedChanges`, the list in that file, with the reason it needs no root. A stream counts because it can change the host as much as a mutation can: `container.open` starts a process inside a container. The test also fails on a listed route that became privileged or no longer exists, so the list stays true.
 
-### What is enforced today
+A new route that changes the host therefore fails the test until it declares the guard or is added to the list. What is on the list today:
 
-The dispatcher enforces a declared guard. Nothing enforces that a route which needs the guard declares it: `TestRootOnlyStorageAndDockerRoutesArePrivileged` and `TestMonitoringMaintenanceRoutesArePrivileged` in `backend/bridge/apischema/schema_test.go` check routes they name (thirteen in the first), and a route that is not named is not checked. Three routes fail without root and lack the guard:
+- the file browser's routes, which act on the session user's own files as that user;
+- the Assistant routes, which run the session user's own `claude` CLI and write only under that user's home ([Assistant](./AI-assistant.md#plugins));
+- `terminal.open`, the session user's own shell;
+- `tasks.cancel`, `tasks.watch`, `tasks.data` and `tasks.events`, the caller's own jobs;
+- `config.set`, `config.set_ui` and the two `system.dismiss_*` routes, which write the session user's own settings (`config.set` refuses its one root-only Docker field in the handler);
+- reads that are not `RetrySafe()`: the Docker update checks and icons, the log and download streams, `network.get_network_info` and `system.get_health_summary`.
 
-- `container.open` and `terminal.list_shells` (`backend/bridge/handlers/terminal/handlers.go`) reach the Docker socket to start processes in a container, which the Docker rule above covers.
-- `datetime.set_ntp_servers` (`backend/bridge/handlers/datetime/handlers.go`) writes under `/etc/systemd` or the chrony configuration. The other three datetime mutations go through timedated. They lack the guard too, as do the systemd, NetworkManager, hostname, reboot and power-off routes: today the host's polkit rules decide whether a user without sudo may run them.
+### In the frontend
 
-Declaring all of them, with a guard that fails on any changing route that is neither privileged nor a listed exception, is in [the backlog](./TODO/backlog.md#2-admin-only-routes).
-
-The Assistant plugin routes (`assistant.install_plugin`, `uninstall_plugin`, `set_plugin_enabled` and the three `*_marketplace` routes) appear in that list and are unprivileged on purpose: they run the session user's own `claude` CLI as that user and write only under that user's home. See [Assistant](./AI-assistant.md#plugins).
+The server's 403 is the gate; the page only avoids offering what will be refused. A control whose route is privileged is hidden for a session without sudo, read from `useAuth().privileged` or a route's `requiresPrivileged` access policy. The power menu, the dashboard's hostname and clock edits, the unit actions on the Services page and the network interface editor do this. The pages that do not yet are in [the backlog](./TODO/backlog.md#2-admin-only-routes).
 
 ## Testing
 

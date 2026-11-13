@@ -12,12 +12,12 @@ import (
 
 var api = apischema.Bindings(
 	apischema.Call[apischema.NoRequest, bool]("datetime.get_ntp_status", apischema.RetrySafe()).Handle(handleGetNTPStatus),
-	apischema.MutationVoid("datetime.set_ntp", handleSetNTP),
-	apischema.MutationVoid("datetime.set_server_time", handleSetServerTime),
+	apischema.MutationVoid("datetime.set_ntp", handleSetNTP, apischema.Privileged()),
+	apischema.MutationVoid("datetime.set_server_time", handleSetServerTime, apischema.Privileged()),
 	apischema.Call[apischema.NoRequest, string]("datetime.get_timezone", apischema.RetrySafe()).Handle(handleGetTimezone),
-	apischema.MutationVoid("datetime.set_timezone", handleSetTimezone),
+	apischema.MutationVoid("datetime.set_timezone", handleSetTimezone, apischema.Privileged()),
 	apischema.Call[apischema.NoRequest, []string]("datetime.get_ntp_servers", apischema.RetrySafe()).Handle(handleGetNTPServers),
-	apischema.MutationVoid("datetime.set_ntp_servers", handleSetNTPServers),
+	apischema.MutationVoid("datetime.set_ntp_servers", handleSetNTPServers, apischema.Privileged()),
 )
 
 var Routes = api.Routes()

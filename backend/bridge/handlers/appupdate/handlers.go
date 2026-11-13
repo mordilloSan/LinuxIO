@@ -15,7 +15,7 @@ func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 		apischema.Call[apischema.NoRequest, apischema.VersionResponse]("control.version", apischema.RetrySafe()).Handle(handleVersion),
 		apischema.MutationTask(routeAppUpdate, func(ctx context.Context, task *bridgeipc.Task, req apischema.AppUpdateRequest) (AppUpdateResult, error) {
 			return runAppUpdateTask(ctx, rt, task, req)
-		}, apischema.NoEndpoint(), apischema.Progress[AppUpdateProgressDetail](), apischema.Exclusive()),
+		}, apischema.Privileged(), apischema.NoEndpoint(), apischema.Progress[AppUpdateProgressDetail](), apischema.Exclusive()),
 	)
 }
 

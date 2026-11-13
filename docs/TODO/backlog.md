@@ -82,52 +82,32 @@ need the same treatment. All were re-read on 2026-11-13.
 
 ## 2. Admin-only routes
 
-Decided 2026-11-13: changing services, network, hostname, time, reboot and
-power-off is admin-only. A route that changes the host is `Privileged()` unless
-it is on a short list of named exceptions. Today nothing checks that, and
-[Privilege Pattern](../privilege_pattern.md) still describes these routes as
-undecided until this lands.
+A route that changes the host is `Privileged()` or is a named exception, and a
+test now enforces it ([Privilege Pattern](../privilege_pattern.md)). What is
+left is on the pages: the server refuses, but some pages still offer the
+control to a user without sudo.
 
-- [ ] **Declare these 25 routes `Privileged()`.** Listed by reading every
-  binding on 2026-11-13:
-  - `systemd.start_service`, `stop_service`, `restart_service`,
-    `reload_service`, `enable_service`, `disable_service`, `mask_service`,
-    `unmask_service`, `reset_failed_service`
-  - `network.enable_connection`, `disable_connection`, `set_ipv4`,
-    `set_ipv4_manual`, `set_ipv6`, `set_mtu`, `set_optional`
-  - `hostname.set_hostname`
-  - `datetime.set_ntp`, `set_ntp_servers`, `set_server_time`, `set_timezone`
-  - `control.reboot`, `control.power_off`
-  - `container.open`, `terminal.list_shells` (they start processes in a
-    container through the Docker socket)
-
-  After the change a user without sudo gets a 403 before anything runs, and
-  loses whatever the host's own rules (polkit) let them do today.
-- [ ] **Hide or disable those controls for a user without sudo.** The page
-  must not offer what the server will refuse. The same gap shows today: the
-  dashboard's CPU graph calls `monitoring.get_cpu_history` with no check, and
-  a non-sudo bridge logged `forbidden: privileged route` for it, for the
-  network and disk histories, and for `filebrowser.subfolders`
+- [ ] **The Accounts page shows admin-only controls.** Creating, changing and
+  deleting users and groups, and ending a session, are all privileged, and the
+  page is open to everyone with no check
+  (`frontend/src/routes/_authenticated/accounts`). Checked.
+- [ ] **The Docker pages show admin-only controls.** They need only the Docker
+  capability (`docker/route.tsx`), so a user without sudo who can reach Docker
+  sees start, stop, the container terminal and the rest, and gets a 403.
+  Whether such a user ever has the capability was not checked.
+- [ ] **The network editor is hidden, not read-only.** A user without sudo no
+  longer sees an interface's IP mode, DNS, MTU and autoconnect at all
+  (`NetworkInterfaceList.tsx`). A read-only view would be better. That gate
+  has no unit test.
+- [ ] **The dashboard calls privileged reads without a check.** A non-sudo
+  bridge logged `forbidden: privileged route` for
+  `monitoring.get_cpu_history`, the network and disk histories, and
+  `filebrowser.subfolders`
   (`frontend/src/routes/_authenticated/-dashboard/ProcessorGraph.tsx`). Not
   verified.
-- [ ] **Write down the exceptions.** These change something and stay open to
-  every user, each with its reason: the `filebrowser.*` writes (the user's own
-  files), the `assistant.*` routes (the user's own `claude`), `terminal.open`
-  (the user's own shell), `control.logoff`, and `tasks.cancel`, `tasks.watch`,
-  `tasks.data` and `tasks.events` (the user's own jobs).
-- [ ] **Decide these, then flag them or list them as exceptions.** Not
-  re-read: `config.set`, `config.set_ui`, `accounts.terminate_session`,
-  `system.dismiss_failed_login_alert`, `system.dismiss_unclean_shutdown`,
-  `docker.check_updates`, `docker.check_container_update`, `docker.get_icon`,
-  `docker.get_icon_uri`, `network.get_network_info`,
-  `system.get_health_summary`.
-- [ ] **Add the test that keeps it true.** Every `Mutation`, `MutationVoid`,
-  `MutationTask`, `DuplexRoute` and every `Call` without `RetrySafe()` is
-  `Privileged()` or is in the exceptions list with a reason. It replaces the
-  two tests that check routes by name in
-  `backend/bridge/apischema/schema_test.go`. The same walk over every binding
-  can check the inventory of `Resumable` and `BrowserBound` flags that the jobs
-  design asked for and nobody wrote.
+- [ ] **`control.logoff` has no caller in the frontend.** It ends any login
+  session by ID, the same as `accounts.terminate_session`. Check the history
+  and remove one of the two.
 - [ ] **A caller can cut their own connection.** `systemd.stop_service` and
   `systemd.restart_service` accept LinuxIO's own units, and the network routes
   accept the interface that carries the session. No check was found in
