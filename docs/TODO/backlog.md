@@ -23,51 +23,48 @@ in git.
 ## 1. File browser: root follows links a user planted
 
 When an admin uses the file browser, the work runs as root. A program running
-as an ordinary user can swap one of that user's folders for a symlink, and root
-then acts on the folder the link points to. Delete is already safe: it opens
-the folder with `openDirNoUserLinks` and removes through `removeAllAt`
-(`backend/bridge/handlers/filebrowser/services/handover.go`). The items below
-need the same treatment. All were re-read on 2026-11-13.
+as that user can swap one of the user's folders for a symlink, and root would
+then act on the folder the link points to. Create, delete, copy, move, rename,
+chmod, chown, compress, extract, a save with an owner and the destination
+folder of a trash restore are closed
+([Privilege Pattern](../privilege_pattern.md#root-acting-in-the-session-users-folders)).
+What is left:
 
-- [ ] **Copy, move, rename, chmod and chown follow a swapped link** (audit 134,
-  high). `services/file_operations.go` passes the full path of every entry to
-  `os.Root`, which follows relative symlinks in the folders on the way. With a
-  subfolder swapped for a link to `../../../../etc` mid-operation: a recursive
-  chown hands the matching names there to the uid the admin picked, a recursive
-  chmod sets their mode, a move across filesystems deletes them, and a copy
-  creates files there with the source's owner and mode, setuid included. These
-  run in the root job host. Checked.
-  - Fix: open the source and destination parents with `openDirNoUserLinks`,
-    then work through handles: `openat` with `O_NOFOLLOW` per level,
-    `fchownat`/`fchmod` on the entry, `renameat2`/`linkat` between folder
-    handles, `removeAllAt` for the source of a move and for the aside.
-  - After the fix: a normal operation is unchanged; one through a link the user
-    could have planted is refused with 403.
-- [ ] **Compress and extract have the same problem.** Compress creates its
-  output by path and then sets its mode; extract makes and opens the
-  destination by path, then keeps the entries inside it
-  (`services/archive_operations.go`). Reported 2026-11-13.
-- [ ] **A save with an owner follows links in the folder path** (audit 131).
-  An upload that sets `owner` (the Compose save) refuses a symlink at the final
-  name, but `openUploadDir` (`upload_owner.go`) opens the deepest existing
-  folder by path through `services.OpenNearestDir`, which follows links. A
-  user's process can replace `~/docker/web` with a link to another folder root
-  can write and redirect an admin's save there. The later same-file check
-  catches a swap made after the upload was prepared, not one made before.
-  Callers: `upload_operation.go` (`prepare`) and `upload_batch_operation.go`
-  (`ensurePrepared` and folder creation). These run in the root bridge.
-  Checked.
-  - Fix: for a save with an owner, refuse a symlink in any path component
-    whose parent folder the session user can write. Links in folders the user
-    cannot write (`/home -> /var/home`) keep working.
+- [ ] **Decide: an admin's own folder links are refused.** The rule cannot
+  tell a link the admin made on purpose (`~/Documents` pointing at another
+  disk) from one a hostile program planted, so the file browser answers 403
+  for a change through such a path and the admin must use the real path. Delete
+  already did this; every other change does now. Options: keep it, offer the
+  real path in the error, or run the change as the user when the path is in
+  folders the user owns.
 - [ ] **A trash restore goes where the user-editable `.trashinfo` says**
-  (audit 132). `RestoreFromTrash` (`services/trash.go`) reads the destination
-  from `Path=`, which the user can edit. So an item an admin trashed from
-  `/etc` can be sent to a different system folder. The destination folder is
-  also opened by path, so a planted link is followed there too. Runs in the
-  root job host. Checked.
+  (audit 132). `RestoreFromTrash`
+  (`backend/bridge/handlers/filebrowser/services/trash.go`) reads the
+  destination from `Path=`, which the user can edit, so an item an admin
+  trashed from `/etc` can be sent to a different system folder. Checked.
   - Fix: record the original location root-side when the item is trashed and
     restore only to it, or ask before a restore into a system folder.
+- [ ] **Compress reads through links.** An admin compressing a user's folder
+  that holds a planted link pulls the link's target into the archive, which is
+  created readable (`statWithSymlinkResolution` in
+  `services/archive_operations.go`). Reported.
+- [ ] **A root upload without an owner follows links** (`upload_owner.go`,
+  `openUploadDir`). Reported.
+- [ ] **A real folder moved in mid-operation.** A user who can move a folder
+  into the tree while root works on it, or who puts their own folder at a name
+  between root's `mkdirat` and `openat`, has root act on that folder. No link
+  is followed. Reported.
+- [ ] **Filesystems without `RENAME_NOREPLACE`** (NFS, FUSE) fall back to a
+  check and a plain rename (`renameNoReplace` in `services/trash.go`, and the
+  compress publish). A swap there affects only the user's own files. Reported.
+- [ ] **The checks before an operation still go by path**
+  (`validateMoveDestination`, `CheckNotProtected` in the planners, the size
+  count). They decide names and sizes only; the change itself walks again
+  through handles. Reported.
+- [ ] **Root sessions.** Whether root can sign in to LinuxIO was not checked.
+  The link rule is switched off for one, but the trash list and purge paths
+  (`services/trash.go`, `openTrash` callers) still build their owner from the
+  process uid alone.
 - [ ] **A Compose stack saved by a sudo user got a folder owned by root.** The
   stack folder was root's, mode `0700`, inside that user's home
   (`backend/bridge/handlers/docker/background_operations.go`). Not verified.
@@ -148,20 +145,17 @@ after a change that issues ioctls).
   `InitializeDisk` (`partitions.go`) goes through `deviceInUse`, which knows
   btrfs pools only, so a member of a stopped array or an inactive volume group
   is wiped with the normal confirmation. Reported.
-- [ ] **Replication blocks snapshots** (audit 33). Both run in the hourly
-  snapshot service (`replicateJobs` in `backend/btrfs-timer/snapshot.go`), so
-  during a first send that takes hours the timer's runs are skipped. Reported.
-  - Decided 2026-11-13: replication gets its own service, started when the
-    snapshot pass finishes. No second timer. systemd already skips a start
-    while the last send still runs.
-  - Comes with it: the units are rendered at run time (`RenderUnit`,
-    `RenderTimer` in `backend/common/btrfs/unit.go`, written by
-    `syncBtrfsTimer`), so an existing install gets the new unit on the next
-    rule or job save; the new unit needs its own run record
-    ([Jobs](../jobs.md#scheduled-runs)) and its place in the installer's
-    drop-in list.
-  - In the same code: the snapshot pass's summary can read
-    `replicated=0 sent=1` when recording a job's outcome fails after its send.
+- [ ] **A D-Bus error can lose one replication run's record.** When the last
+  replication job is disabled while a send runs, the bridge keeps the unit
+  file only if systemd says the unit is active, and `systemd.GetActiveState`
+  (`backend/common/systemd/systemd.go`) answers "inactive" for any `GetUnit`
+  error, not only for a unit that is not loaded. The file is then removed
+  under the running unit and that run's record and outcome are lost; the send
+  itself carries on and the job's own state is kept
+  (`removeIdleReplicateUnit` in
+  `backend/bridge/handlers/storage/btrfs_timer.go`). Reported by the review;
+  not reproduced. Not verified either: a start that arrives while the end
+  hook still runs is believed to run a second, empty replication.
 - [ ] **A scrub starts over after a power cut.** It is checkpointed only by
   its `Suspend` hook at an orderly stop
   (`backend/bridge/handlers/storage/btrfs_device_operations.go`). Checked.
@@ -195,32 +189,25 @@ after a change that issues ioctls).
   relay frame carries at most 16 MiB (`backend/common/ipc/relay/protocol.go`)
   and the frontend sends a chunk as one frame. A setting of 17 to 32 should
   fail. Constants checked; not reproduced.
-- [ ] **Bad settings answer 500, not 400.** The `apply_*.go` files in
-  `backend/bridge/handlers/config` return plain errors for bad values.
-  Reported.
-- [ ] **Icon cache folders lose their mode.**
-  `packaging/systemd/linuxio-tmpfiles.conf` creates them `1777`;
-  `backend/bridge/handlers/docker/icons.go` recreates them `0755` after a
-  cache clear, after which a non-root bridge probably cannot cache icons.
-  Reported; the effect is inferred.
 
 ## 5. Rules written twice that disagree
 
-- [ ] **VM names.** The server requires a leading letter or digit, at most 63
-  characters and no `..` (`backend/bridge/handlers/virt/validation.go`); the
-  create and edit dialogs under
-  `frontend/src/routes/_authenticated/vm/-components` accept any run of the
-  allowed characters. Server side checked.
 - [ ] **Docker address pools.** The server accepts any CIDR
   (`backend/bridge/handlers/docker/daemon_config.go`); the settings form
   accepts IPv4 only. Checked.
-- [ ] **`linuxio logs` unit list.** `backend/cli/journal.go` names the units by
-  hand and misses the jobs and btrfs units in `packaging/systemd`. Checked.
-  Reported: the same five programs are also listed in `backend/cli/version.go`
-  and `backend/webserver/appupdate/version.go`, which leaves out monitoring.
-- [ ] **Login error codes.** `backend/webserver/auth/auth.go` sends
-  `too_many_requests`; `frontend/src/api/webserver.ts` does not list it.
-  Checked.
+- [ ] **`linuxio logs` matches template units by a name no instance has.**
+  `backend/cli/journal.go` lists `_SYSTEMD_UNIT=linuxio-auth@.service`,
+  `linuxio-jobs@.service` and `linuxio-btrfs-resync@.service`, but an instance
+  is named `linuxio-jobs@1000.service`, so those terms match nothing; the
+  lines are found through the program's log identifier instead. Inferred from
+  how journald matches fields; not run. Reported: the same five programs are
+  also listed in `backend/cli/version.go` and
+  `backend/webserver/appupdate/version.go`, which leaves out monitoring.
+- [ ] **A root-only setting answers 500, not 403.** `config.set` refuses its
+  Docker mount-ordering fields for a session without sudo with a plain error
+  (`requireDockerMountOrderingPrivilege` in
+  `backend/bridge/handlers/config/config_operations.go`); it should wrap
+  `ErrForbidden`. Reported.
 - [ ] **Container state and health colours.** Decided in five frontend files
   (`constants/statusColors.ts`, `utils/dockerContainer.ts`, the dashboard's
   `Docker.tsx` and two under `docker/-components`). Unhealthy is an error in
@@ -242,8 +229,6 @@ after a change that issues ioctls).
 
 ## 6. Small jobs fixes
 
-- [ ] The scrub banner prints the percentage unrounded, such as
-  `18.986434994665448%` (`BtrfsHealthBanner.tsx`).
 - [ ] The job host's recorder writes progress files while it holds its mutex
   (`backend/bridge/internal/jobshost/recorder.go`, `writeProgressLocked`).
 - [ ] `Store.Finish` on a record that is already finished rewrites the file
@@ -268,8 +253,6 @@ after a change that issues ioctls).
 - [ ] Docker update alerts share one source, so a container named
   `updated-<x>` shares its failure key with the "updated" notice of a
   container named `<x>` (`backend/common/dockerupdate/alerts.go`).
-- [ ] A bare `\r` in an alert message is not normalised in the email body
-  (`backend/common/alerts/deliver.go`).
 - [ ] On the notification settings page the *Scheduled scripts* help line is
   not tied to its select for assistive technology, and the page's warnings use
   `role="alert"`, which `AppAlert` always sets.
