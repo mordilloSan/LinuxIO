@@ -305,7 +305,33 @@ export function formatMs(ms: number): string {
   return `${Math.floor(ms / 60_000)} min ${Math.round((ms % 60_000) / 1000)} s`;
 }
 
-const span = (from: number | undefined, to: number | undefined) =>
+const MARK = { switch: "◆", run: "●", ok: "·", err: "✕" } as const;
+/** The pane text tone of a row, by its status. */
+export const ROW_TONE = {
+  switch: "accent",
+  run: "accent",
+  ok: "dim",
+  err: "error",
+} as const;
+/** The classes of a row of the feed. */
+export const ROW_TEXT =
+  "assistant-pane-text assistant-pane-text--mono assistant-pane-text--small";
+// The feed's second column fits the longest station name.
+const COLUMN = Math.max(8, ...STATIONS.map((station) => station.label.length));
+
+/** A row of the feed: `· Files     disks/lsblk.go  +2  1.2 s`. */
+export function rowText(row: WorkRow): string {
+  const took =
+    row.status === "run"
+      ? "running"
+      : row.tookMs !== null && row.tookMs > 0
+        ? formatMs(row.tookMs)
+        : "";
+  return `${MARK[row.status]} ${stationLabel(row.station).padEnd(COLUMN)} ${row.label}${row.times > 1 ? `  +${row.times - 1}` : ""}${took === "" ? "" : `  ${took}`}`;
+}
+
+/** How long from one time to another, when both were seen. */
+export const span = (from: number | undefined, to: number | undefined) =>
   from === undefined || to === undefined ? null : Math.max(0, to - from);
 
 type Entry = WorkRow & {
@@ -346,6 +372,18 @@ function routeOf(entries: readonly Entry[]): WorkSummary["route"] {
 }
 
 /**
+ * Where the running turn starts: blocks after the last finished turn belong to
+ * it. Without a running turn there is none, and no call is still running.
+ */
+export const liveFrom = (
+  blocks: readonly TranscriptBlock[],
+  running: boolean,
+) =>
+  running
+    ? blocks.findLastIndex((block) => block.kind === "turn") + 1
+    : blocks.length;
+
+/**
  * `running` says a turn is live: only then is a call that has not ended
  * still running, and is the model at work whenever none of its calls is.
  */
@@ -365,10 +403,7 @@ export function summarize(
     ]),
   ) as Record<StationId, StationTally>;
   const entries: Entry[] = [];
-  // Blocks after the last finished turn belong to the one that is running.
-  const liveFrom = running
-    ? blocks.findLastIndex((block) => block.kind === "turn") + 1
-    : blocks.length;
+  const live = liveFrom(blocks, running);
   // A step of the model runs from when it was last handed something (a
   // prompt, or the results of its calls) to its first call or the turn's end.
   let step = 0;
@@ -450,9 +485,9 @@ export function summarize(
         const station = tally[id];
         const ended = toolEnded(block.status);
         const failed = block.status === "failed";
-        const live = !ended && index >= liveFrom;
+        const runs = !ended && index >= live;
         station.count++;
-        if (live) station.open++;
+        if (runs) station.open++;
         if (failed) station.faults++;
         if (block.startedAt !== undefined) station.seen.out++;
         if (block.endedAt !== undefined) {
@@ -464,10 +499,10 @@ export function summarize(
           id: block.id,
           station: id,
           label: labelOf(block),
-          status: live ? "run" : failed ? "err" : "ok",
+          status: runs ? "run" : failed ? "err" : "ok",
           times: 1,
           tookMs: span(block.startedAt, block.endedAt),
-          plain: !live && !failed,
+          plain: !runs && !failed,
           at: block.startedAt ?? block.endedAt,
         });
         break;

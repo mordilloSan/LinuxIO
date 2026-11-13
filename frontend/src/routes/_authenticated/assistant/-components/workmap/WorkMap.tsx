@@ -1,12 +1,14 @@
 import { type CSSProperties, type RefObject, useEffect, useRef } from "react";
 
+import AppButton from "@/components/ui/AppButton";
+
 import {
-  formatMs,
+  ROW_TEXT,
+  ROW_TONE,
+  rowText,
   STATIONS,
   type StationId,
-  stationLabel,
   type StationTally,
-  type WorkRow,
   type WorkSummary,
 } from "./workMap";
 
@@ -468,28 +470,6 @@ function Trail({ route }: { route: WorkSummary["route"] }) {
   });
 }
 
-const MARK = { switch: "◆", run: "●", ok: "·", err: "✕" } as const;
-const TONE = {
-  switch: "accent",
-  run: "accent",
-  ok: "dim",
-  err: "error",
-} as const;
-const TEXT =
-  "assistant-pane-text assistant-pane-text--mono assistant-pane-text--small";
-// The feed's second column fits the longest station name.
-const COLUMN = Math.max(8, ...STATIONS.map((station) => station.label.length));
-
-function rowText(row: WorkRow): string {
-  const took =
-    row.status === "run"
-      ? "running"
-      : row.tookMs !== null && row.tookMs > 0
-        ? formatMs(row.tookMs)
-        : "";
-  return `${MARK[row.status]} ${stationLabel(row.station).padEnd(COLUMN)} ${row.label}${row.times > 1 ? `  +${row.times - 1}` : ""}${took === "" ? "" : `  ${took}`}`;
-}
-
 /**
  * The chat's work as a map: the agent in the middle, a station for each kind
  * of work around it, and a pulse along a spoke for every call and its result.
@@ -502,6 +482,7 @@ export default function WorkMap({
   running,
   agentLabel,
   model,
+  onAgents,
 }: {
   summary: WorkSummary;
   usage: { used: number; size: number } | null;
@@ -510,6 +491,8 @@ export default function WorkMap({
   agentLabel: string;
   /** The name of the model the chat is set to, when the agent offers one. */
   model: string | null;
+  /** Shows the subagents; the agents station is a button while it is set. */
+  onAgents?: () => void;
 }) {
   const under = useRef<SVGGElement>(null);
   const over = useRef<SVGGElement>(null);
@@ -644,8 +627,26 @@ export default function WorkMap({
           )}
           <g ref={over} />
         </svg>
+        {/* The picture keeps its proportions, so a button laid over the
+            agents station in shares of the picture stays on it. */}
+        {onAgents ? (
+          <AppButton
+            aria-label="Show the agents"
+            className="work-map__station-button"
+            color="inherit"
+            onClick={onAgents}
+            style={{
+              left: `${n1(((agents.x - NODE - 6) / W) * 100)}%`,
+              top: `${n1(((agents.y - NODE - 6) / H) * 100)}%`,
+              width: `${n1(((2 * NODE + 12) / W) * 100)}%`,
+              // Down over its name and count too.
+              height: `${n1(((2 * NODE + 38) / H) * 100)}%`,
+            }}
+            title="Show the agents"
+          />
+        ) : null}
       </div>
-      <p className={`work-map__now ${TEXT}`}>
+      <p className={`work-map__now ${ROW_TEXT}`}>
         {summary.now ?? "Nothing is running."}
         {full === null ? "" : ` · context ${full}%`}
       </p>
@@ -657,7 +658,7 @@ export default function WorkMap({
         <ol className="work-map__feed">
           {summary.rows.map((row) => (
             <li
-              className={`${TEXT} assistant-pane-text--${TONE[row.status]}`}
+              className={`${ROW_TEXT} assistant-pane-text--${ROW_TONE[row.status]}`}
               key={row.id}
             >
               {rowText(row)}

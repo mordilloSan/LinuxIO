@@ -415,6 +415,30 @@
   font-size: 9px;
 }
 
+/* The agents station is a button laid over the picture (WorkMap.tsx). */
+.work-map .assistant-pane-picture {
+  position: relative;
+}
+
+.work-map .work-map__station-button {
+  position: absolute;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--app-radius-lg);
+  background: transparent;
+}
+
+.work-map .work-map__station-button:hover {
+  border-color: var(--wm-main);
+  background: transparent;
+}
+
+.work-map .work-map__station-button:focus-visible {
+  outline: 2px solid var(--wm-main);
+  outline-offset: 0;
+}
+
 /* ---- under the picture: what is running, then what happened ---- */
 
 .work-map__now,

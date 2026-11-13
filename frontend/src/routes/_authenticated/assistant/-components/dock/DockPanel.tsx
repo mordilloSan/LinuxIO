@@ -41,15 +41,19 @@ const clamp = (value: number, min: number, max: number) =>
  */
 export default function DockPanel({
   title,
+  heading = title,
   drawing,
   room,
   open,
   onOpenChange,
   running,
   drawClosed = true,
+  also,
   children,
 }: {
   title: string;
+  /** The card's name while it is open, when it is not the tab's. */
+  heading?: string;
   /** What is drawn: the tab's dot ripples each time this changes. */
   drawing: unknown;
   /** The width of the chat area the card floats in; null until measured. */
@@ -61,9 +65,26 @@ export default function DockPanel({
   running: boolean;
   /** false leaves the content out of the page while the card is closed. */
   drawClosed?: boolean;
+  /**
+   * A second tab under this one that opens the card on another view. While
+   * the card shows that view, this tab reads as closed and a click on it
+   * brings its own view back through `onOpenChange(true)`.
+   */
+  also?: {
+    label: string;
+    /** The card shows this tab's view. */
+    current: boolean;
+    /** Its dot pulses. */
+    running: boolean;
+    /** Its dot is grey. */
+    quiet: boolean;
+    /** Opens the card on this tab's view. */
+    onOpen: () => void;
+  };
   children: ReactNode;
 }) {
   const tabRef = useRef<HTMLButtonElement>(null);
+  const alsoRef = useRef<HTMLButtonElement>(null);
   const ringRef = useRef<HTMLSpanElement>(null);
   const glowRef = useRef<HTMLSpanElement>(null);
   const wasRunning = useRef(running);
@@ -163,20 +184,33 @@ export default function DockPanel({
     writePersistedState(WIDTH_KEY, resizeTo(next));
   };
 
+  const alsoShown = shown && also !== undefined && also.current;
+  const ownShown = shown && !alsoShown;
+
   return (
     <>
       <DockTab
         glowRef={glowRef}
         label={title}
-        onClick={() => onOpenChange(!shown)}
-        open={shown}
+        onClick={() => onOpenChange(!ownShown)}
+        open={ownShown}
         ref={tabRef}
         ringRef={ringRef}
         running={running}
       />
+      {also ? (
+        <DockTab
+          label={also.label}
+          onClick={() => (alsoShown ? onOpenChange(false) : also.onOpen())}
+          open={alsoShown}
+          quiet={also.quiet}
+          ref={alsoRef}
+          running={also.running}
+        />
+      ) : null}
       <aside
         aria-hidden={!shown}
-        aria-label={title}
+        aria-label={heading}
         className={[
           "assistant-dock-card",
           "assistant-pane-card",
@@ -213,15 +247,15 @@ export default function DockPanel({
             fontWeight={600}
             noWrap
           >
-            {title}
+            {heading}
           </AppTypography>
           <AppActionIconButton
-            ariaLabel={`Close ${title}`}
+            ariaLabel={`Close ${heading}`}
             icon="mdi:close"
             onClick={() => {
               onOpenChange(false);
-              // The card goes inert; its tab is where it went.
-              tabRef.current?.focus();
+              // The card goes inert; the tab of its view is where it went.
+              (alsoShown ? alsoRef : tabRef).current?.focus();
             }}
             size="small"
             tooltip={false}

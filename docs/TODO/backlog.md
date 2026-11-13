@@ -304,6 +304,12 @@ after a change that issues ioctls).
   missed run (`Persistent=`), journal retention over several days, and a
   bridge restart during a run. See
   [Scheduled Scripts](../scheduled-scripts.md#testing).
+- [ ] **Agents view against a live Claude chat.** The subagent nesting and
+  totals (`parentToolUseId`, `toolResponse.totalTokens`) are read from
+  the adapter's source (claude-agent-acp 0.102.0) and unit tests, not seen
+  in a running chat: start a chat that sends off a subagent and check the
+  `N agents` tab counts it, its calls sit under it, and its tokens show when
+  it ends. See [AI Assistant](../AI-assistant.md) (Agents).
 - [ ] **Hardlink reconcile runs one query per file** in one transaction
   (audit 57): `reconcileHardlinksAfterReindex` in
   `backend/indexer/internal/storage/hardlinks.go`. Measure first, then add up

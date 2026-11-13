@@ -16,6 +16,7 @@ export default function DockTab({
   icon,
   disabled = false,
   running = false,
+  quiet = false,
   ref,
   ringRef,
   glowRef,
@@ -28,6 +29,8 @@ export default function DockTab({
   disabled?: boolean;
   /** The dot pulses while the agent works. */
   running?: boolean;
+  /** The dot is grey: nothing it stands for is at work. */
+  quiet?: boolean;
   ref?: Ref<HTMLButtonElement>;
   ringRef?: Ref<HTMLSpanElement>;
   glowRef?: Ref<HTMLSpanElement>;
@@ -39,6 +42,7 @@ export default function DockTab({
         "assistant-dock-tab",
         open && "assistant-dock-tab--open",
         running && "assistant-dock-tab--running",
+        quiet && "assistant-dock-tab--quiet",
       ]
         .filter(Boolean)
         .join(" ")}

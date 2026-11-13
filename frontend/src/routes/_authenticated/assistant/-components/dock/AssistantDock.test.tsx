@@ -150,6 +150,60 @@ describe("AssistantDock", () => {
     expect(card("Activity")).not.toBeNull();
   });
 
+  it("counts the subagents at work on a tab that opens them", async () => {
+    const working = {
+      ...activity,
+      blocks: [
+        ...activity.blocks,
+        {
+          kind: "tool" as const,
+          id: "t1",
+          toolCallId: "a1",
+          title: "Check the disks",
+          toolKind: "think",
+          toolName: "Agent",
+          status: "in_progress",
+          content: [],
+          rawInput: { description: "Check the disks" },
+        },
+      ],
+    };
+    const { rerender } = render(
+      <AssistantDock {...props({ activity: working, running: true })} />,
+    );
+    expect(tab("1 agent")).toHaveAttribute("aria-expanded", "false");
+
+    await userEvent.click(tab("1 agent"));
+    expect(card("Agents")).toHaveTextContent("1 agent · 1 running");
+    expect(tab("1 agent")).toHaveAttribute("aria-expanded", "true");
+    // The card shows the agents, not the map.
+    expect(tab("Activity")).toHaveAttribute("aria-expanded", "false");
+
+    rerender(<AssistantDock {...props({ activity: working })} />);
+    expect(tab("0 agents")).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("moves between the map and the agents on one card", async () => {
+    render(<AssistantDock {...props({ activity })} />);
+    await userEvent.click(tab("Activity"));
+    await userEvent.click(tab("Show the agents"));
+    expect(card("Agents")).toHaveTextContent("No subagents in this chat yet.");
+    expect(card("Activity")).toBeNull();
+
+    // The chat's agent leads back to the map, and so does the map's tab.
+    await userEvent.click(screen.getByRole("button", { name: /Claude Code/ }));
+    expect(card("Activity")).toHaveTextContent("new message");
+    await userEvent.click(tab("0 agents"));
+    await userEvent.click(tab("Activity"));
+    expect(card("Activity")).not.toBeNull();
+
+    // Closing the agents returns focus to their tab.
+    await userEvent.click(tab("0 agents"));
+    await userEvent.click(screen.getByRole("button", { name: "Close Agents" }));
+    expect(card("Agents")).toBeNull();
+    expect(tab("0 agents")).toHaveFocus();
+  });
+
   it("offers no chats where the agent cannot list them", () => {
     render(<AssistantDock {...props({ canList: false })} />);
     expect(tab("Chats")).toBeDisabled();

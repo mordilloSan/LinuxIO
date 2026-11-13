@@ -317,6 +317,31 @@ advertises the matching capability.
     is drawn only while open, and the browser remembers that it was open and
     reopens it where it fits beside the chat. Opening it closes a plugin's
     pane and the reverse; an open side question hides both.
+- **Agents.** Under the Activity tab, a tab counts the subagents at work
+  (`0 agents`, `2 agents`); its dot is grey while none runs and pulses while
+  one does. It opens the activity card on its other view
+  (`-components/workmap/AgentMap.tsx`), which the map's Agents station opens
+  too. The view draws the chat's agent,
+  with its model and the tokens in its context, and the subagents it sent off
+  joined to it by lines: beside it on a wide card, under it on a narrow one,
+  and the subagents they sent off under them. Each subagent shows whether it
+  runs, failed or is done, its kind, how long it has run or took, and the
+  tokens it used. Choosing one shows its status, kind, model, time, tokens
+  and tool calls, the subagents it started, its calls as rows of the feed
+  (newest first), its prompt and what it handed back; choosing the chat's
+  agent goes back to the map. The tab of the view the card shows reads as
+  open, and the browser remembers the view.
+  - *What it knows.* A subagent is a call of Claude Code's `Agent` tool (or
+    the older `Task`). The adapter marks each call a subagent makes with the
+    call that started it (`_meta.claudeCode.parentToolUseId`). When a
+    subagent's call ends, it passes on the tool's response, whose
+    `totalTokens`, `totalToolUseCount` and `totalDurationMs` are the
+    subagent's own account. Without them the time is what LinuxIO saw and
+    the tool calls are the ones it counted. A loaded chat keeps the nesting
+    but not the account (the adapter strips the result's `<usage>` trailer),
+    so its tokens read "Not reported". A subagent sent to the background
+    hands back at once, so it counts as running while any call it made does.
+    An agent that sends no tool names has no subagents here.
 - **Delete.** When the agent advertises session deletion, each chat on the
   Chats card has a delete button behind a confirmation. Deleting the open
   chat starts a new one, and a running chat cannot be deleted.

@@ -27,6 +27,20 @@ export type ToolBlock = {
    */
   startedAt?: number;
   endedAt?: number;
+  /**
+   * The subagent call (its `toolCallId`) whose subagent made this call, when
+   * the agent says so. Claude Code's adapter does, as metadata.
+   */
+  parentId?: string;
+  /** What a finished subagent says it used, when the agent passes it on. */
+  totals?: SubagentTotals;
+};
+
+/** A subagent's own account of its run. */
+export type SubagentTotals = {
+  tokens: number;
+  toolUses: number;
+  durationMs: number;
 };
 
 export type TranscriptBlock =
@@ -64,9 +78,39 @@ export const stringField = (value: unknown, key: string) => {
   return typeof field === "string" && field.trim() ? field : null;
 };
 
+type Update = { _meta?: Record<string, unknown> | null };
+
 /** Claude Code's tool name, which its adapter sends as metadata. */
-const toolNameOf = (update: { _meta?: Record<string, unknown> | null }) =>
+const toolNameOf = (update: Update) =>
   stringField(update._meta?.claudeCode, "toolName") ?? undefined;
+
+/** The subagent call a call was made in, which the adapter sends as metadata. */
+const parentIdOf = (update: Update) =>
+  stringField(update._meta?.claudeCode, "parentToolUseId") ?? undefined;
+
+const numberField = (value: unknown, key: string) => {
+  if (typeof value !== "object" || value === null) return null;
+  const field = (value as Record<string, unknown>)[key];
+  return typeof field === "number" && Number.isFinite(field) ? field : null;
+};
+
+/**
+ * A finished subagent's totals. Claude Code's adapter passes the tool's whole
+ * response on when the call ends; a chat that is loaded does not carry it.
+ */
+function totalsOf(update: Update): SubagentTotals | undefined {
+  const meta = update._meta?.claudeCode;
+  const response =
+    typeof meta === "object" && meta !== null
+      ? (meta as Record<string, unknown>).toolResponse
+      : undefined;
+  const tokens = numberField(response, "totalTokens");
+  const toolUses = numberField(response, "totalToolUseCount");
+  const durationMs = numberField(response, "totalDurationMs");
+  return tokens === null || toolUses === null || durationMs === null
+    ? undefined
+    : { tokens, toolUses, durationMs };
+}
 
 let nextId = 0;
 const newId = () => `b${++nextId}`;
@@ -139,6 +183,8 @@ function newToolBlock(
     // A call first heard of when it had ended was not seen running.
     startedAt: toolEnded(status) ? undefined : now,
     endedAt: toolEnded(status) ? now : undefined,
+    parentId: parentIdOf(update),
+    totals: totalsOf(update),
   };
 }
 
@@ -190,6 +236,9 @@ export function applySessionUpdate(
             ? (now ?? current.startedAt)
             : current.startedAt,
         endedAt: current.endedAt ?? (toolEnded(status) ? now : undefined),
+        // A later update of a subagent's call can come without its parent.
+        parentId: parentIdOf(update) ?? current.parentId,
+        totals: totalsOf(update) ?? current.totals,
       };
       return [...blocks.slice(0, index), merged, ...blocks.slice(index + 1)];
     }

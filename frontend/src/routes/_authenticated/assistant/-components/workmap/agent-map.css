@@ -1,0 +1,237 @@
+/* The agents view of the activity card (AgentMap.tsx): the chat's agent and
+   the subagents it sent off, joined by lines like a tree. Under the card's
+   own width the subagents hang below the agent; on a wide card they stand
+   beside it. */
+
+.agent-map {
+  /* How far a list of subagents is set in, and where the joining lines
+     meet a node: at the middle of its first line. */
+  --agent-map-indent: var(--app-space-20);
+  --agent-map-stub: calc(var(--app-space-6) + 1px + 0.7em);
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-8);
+  min-width: 0;
+}
+
+.agent-map p,
+.agent-map h3,
+.agent-map h4 {
+  margin: 0;
+}
+
+.agent-map__tree {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-8);
+  min-width: 0;
+}
+
+.agent-map .agent-map__node {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: var(--app-space-2);
+  width: 100%;
+  min-width: 0;
+  padding: var(--app-space-6) var(--app-space-12);
+  border: 1px solid var(--app-palette-divider);
+  border-radius: var(--app-radius-md);
+  background: var(--app-palette-background-paper);
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.agent-map .agent-map__node:hover {
+  border-color: var(--app-palette-primary-main);
+}
+
+.agent-map .agent-map__node:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 2px;
+}
+
+.agent-map__node-head {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-8);
+  min-width: 0;
+}
+
+.agent-map__node-label,
+.agent-map__node-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-map__node-label {
+  font-weight: 600;
+}
+
+.agent-map__node-meta {
+  /* Under the label, clear of the dot. */
+  padding-left: calc(var(--app-space-8) * 2);
+  color: var(--app-palette-text-secondary);
+  font-size: 0.85em;
+}
+
+.agent-map__dot {
+  flex: 0 0 auto;
+  width: var(--app-space-8);
+  height: var(--app-space-8);
+  border-radius: var(--app-radius-pill);
+  background: var(--app-palette-text-disabled);
+}
+
+.agent-map__dot--run {
+  background: var(--app-palette-success-main);
+  animation: agent-map-pulse 1.1s ease-in-out infinite;
+}
+
+.agent-map__dot--err {
+  background: var(--app-palette-error-main);
+}
+
+@keyframes agent-map-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ---- the lines between an agent and the subagents it sent off ---- */
+
+.agent-map__children {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-8);
+  margin: 0;
+  padding: 0 0 0 var(--agent-map-indent);
+  list-style: none;
+}
+
+.agent-map__children > li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-8);
+  min-width: 0;
+}
+
+/* The rail down to a node, and on past it to the next one. */
+.agent-map__children > li::before {
+  content: "";
+  position: absolute;
+  top: calc(-1 * var(--app-space-8));
+  left: calc(var(--agent-map-indent) * -0.6);
+  height: calc(var(--app-space-8) + var(--agent-map-stub));
+  border-left: 1px solid var(--app-palette-divider);
+}
+
+.agent-map__children > li:not(:last-child)::before {
+  height: calc(100% + var(--app-space-8));
+}
+
+/* The stub from the rail to the node. */
+.agent-map__children > li::after {
+  content: "";
+  position: absolute;
+  top: var(--agent-map-stub);
+  left: calc(var(--agent-map-indent) * -0.6);
+  width: calc(var(--agent-map-indent) * 0.6);
+  border-top: 1px solid var(--app-palette-divider);
+}
+
+/* A wide card puts the subagents beside the agent: the first one's stub
+   reaches back to the agent, and the rail runs down from it. */
+@container (min-width: 520px) {
+  .agent-map__tree {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 0;
+  }
+
+  .agent-map .agent-map__tree > .agent-map__node--main {
+    flex: 0 0 40%;
+    width: auto;
+  }
+
+  .agent-map__tree > .agent-map__children {
+    --agent-map-indent: var(--app-space-32);
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .agent-map__tree > .agent-map__children > li:first-child::before {
+    top: var(--agent-map-stub);
+    height: calc(100% + var(--app-space-8) - var(--agent-map-stub));
+  }
+
+  .agent-map__tree > .agent-map__children > li:only-child::before {
+    display: none;
+  }
+
+  .agent-map__tree > .agent-map__children > li:first-child::after {
+    left: calc(-1 * var(--agent-map-indent));
+    width: var(--agent-map-indent);
+  }
+}
+
+/* ---- one subagent ---- */
+
+.agent-map .agent-map__back {
+  align-self: flex-start;
+}
+
+.agent-map__heading {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-8);
+  min-width: 0;
+}
+
+.agent-map__facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--app-space-2) var(--app-space-12);
+  margin: 0;
+}
+
+.agent-map__facts dt {
+  color: var(--app-palette-text-secondary);
+}
+
+.agent-map__facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.agent-map__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-4);
+  min-width: 0;
+}
+
+.agent-map__calls {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agent-map__prompt summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-map__dot--run {
+    animation: none;
+  }
+}

@@ -9,6 +9,8 @@ import {
 
 import PanePanel from "../pane/PanePanel";
 import type { TranscriptBlock } from "../transcript/transcript";
+import AgentMap from "../workmap/AgentMap";
+import { agentsOf, runningAgents } from "../workmap/agents";
 import WorkMap from "../workmap/WorkMap";
 import { summarize } from "../workmap/workMap";
 import ChatsCard from "./ChatsCard";
@@ -19,7 +21,13 @@ import DockTab from "./DockTab";
 import "./dock.css";
 
 const ACTIVITY_KEY = "linuxio.assistant.activityOpen";
+const VIEW_KEY = "linuxio.assistant.activityView";
 const isFlag = (value: unknown): value is boolean => typeof value === "boolean";
+
+/** The activity card draws the map, or the chat's agents. */
+type ActivityView = "map" | "agents";
+const isView = (value: unknown): value is ActivityView =>
+  value === "map" || value === "agents";
 
 /**
  * The tabs on the chat's left edge and the card each one opens: the previous
@@ -80,7 +88,23 @@ export default function AssistantDock({
     setMapOpen(open);
     writePersistedState(ACTIVITY_KEY, open);
   };
+  const [view, setView] = useState<ActivityView>(
+    () => readPersistedState(VIEW_KEY, isView) ?? "map",
+  );
+  const showView = (next: ActivityView) => {
+    setView(next);
+    writePersistedState(VIEW_KEY, next);
+  };
+  // Opening the activity card closes whatever else is open.
+  const openActivity = (next: ActivityView) => {
+    showView(next);
+    openMap(true);
+    setChats({ ...chats, open: false });
+    if (pane) setPaneChoice({ id: pane.id, open: false });
+  };
   const summary = activity ? summarize(activity.blocks, running) : null;
+  const agents = activity ? agentsOf(activity.blocks, running) : [];
+  const busyAgents = runningAgents(agents);
 
   useEffect(() => {
     const area = dockRef.current?.parentElement;
@@ -127,27 +151,45 @@ export default function AssistantDock({
       />
       {activity && summary ? (
         <DockPanel
+          also={{
+            label: `${busyAgents} ${busyAgents === 1 ? "agent" : "agents"}`,
+            current: view === "agents",
+            running: busyAgents > 0,
+            quiet: busyAgents === 0,
+            onOpen: () => openActivity("agents"),
+          }}
           // The map repeats the transcript, so it is only drawn while open.
           drawClosed={false}
           drawing={summary.total}
+          heading={view === "agents" ? "Agents" : "Activity"}
           onOpenChange={(open) => {
-            openMap(open);
-            if (!open) return;
-            setChats({ ...chats, open: false });
-            if (pane) setPaneChoice({ id: pane.id, open: false });
+            if (open) openActivity("map");
+            else openMap(false);
           }}
           open={chats.open ? false : mapOpen}
           room={room}
           running={running}
           title="Activity"
         >
-          <WorkMap
-            agentLabel={activity.agentLabel}
-            model={activity.model}
-            running={running}
-            summary={summary}
-            usage={activity.usage}
-          />
+          {view === "agents" ? (
+            <AgentMap
+              agentLabel={activity.agentLabel}
+              agents={agents}
+              model={activity.model}
+              onMain={() => showView("map")}
+              running={running}
+              usage={activity.usage}
+            />
+          ) : (
+            <WorkMap
+              agentLabel={activity.agentLabel}
+              model={activity.model}
+              onAgents={() => showView("agents")}
+              running={running}
+              summary={summary}
+              usage={activity.usage}
+            />
+          )}
         </DockPanel>
       ) : null}
       {pane ? (

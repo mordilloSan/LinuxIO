@@ -173,6 +173,66 @@ describe("applySessionUpdate", () => {
     expect(blocks[0]).toMatchObject({ toolName: "Bash", status: "completed" });
   });
 
+  it("keeps the subagent a call was made in, and what a subagent used", () => {
+    let blocks: TranscriptBlock[] = [];
+    blocks = applySessionUpdate(blocks, {
+      sessionUpdate: "tool_call",
+      toolCallId: "agent1",
+      title: "Check the disks",
+      kind: "think",
+      _meta: { claudeCode: { toolName: "Agent" } },
+    });
+    blocks = applySessionUpdate(blocks, {
+      sessionUpdate: "tool_call",
+      toolCallId: "c1",
+      title: "lsblk",
+      kind: "execute",
+      _meta: { claudeCode: { toolName: "Bash", parentToolUseId: "agent1" } },
+    });
+    // A later update of the child without its parent keeps it.
+    blocks = applySessionUpdate(blocks, {
+      sessionUpdate: "tool_call_update",
+      toolCallId: "c1",
+      status: "completed",
+      _meta: { claudeCode: { toolName: "Bash" } },
+    });
+    expect(blocks[1]).toMatchObject({ parentId: "agent1" });
+    expect(blocks[0]).toMatchObject({ parentId: undefined, totals: undefined });
+
+    // The response that ends the subagent's call carries its totals; one
+    // without all three numbers (a launch in the background) carries none.
+    blocks = applySessionUpdate(blocks, {
+      sessionUpdate: "tool_call_update",
+      toolCallId: "agent1",
+      _meta: {
+        claudeCode: {
+          toolName: "Agent",
+          toolResponse: {
+            status: "completed",
+            totalTokens: 73100,
+            totalToolUseCount: 5,
+            totalDurationMs: 78000,
+          },
+        },
+      },
+    });
+    blocks = applySessionUpdate(blocks, {
+      sessionUpdate: "tool_call_update",
+      toolCallId: "agent1",
+      status: "completed",
+      _meta: {
+        claudeCode: {
+          toolName: "Agent",
+          toolResponse: { status: "completed" },
+        },
+      },
+    });
+    expect(blocks[0]).toMatchObject({
+      status: "completed",
+      totals: { tokens: 73100, toolUses: 5, durationMs: 78000 },
+    });
+  });
+
   it("times a call only when it is told the time", () => {
     const call = (id: string): acp.SessionUpdate => ({
       sessionUpdate: "tool_call",
