@@ -38,7 +38,7 @@ marks a doc that covers none), or when a named path no longer exists.
 | [Process & Systemd Architecture](./process-systemd-architecture.md) | `packaging/systemd`, `backend/auth`, `backend/webserver`, `backend/bridge/cmd`, `backend/common/socketactivation` | LinuxIO processes and helpers, systemd socket activation, `linuxio.target`, the job hosts and who starts them, and privilege separation. |
 | [Filesystem Indexer](./indexer.md) | `backend/indexer`, `backend/bridge/handlers/indexer` | Architecture, operation, bridge and daemon APIs, configuration, recovery, and administration. |
 | [Monitoring Daemon](./monitoring.md) | `backend/monitoring`, `backend/bridge/handlers/monitoring` | Trust boundary and sockets, installed files, sampling semantics, HTTP API and plugin allowlists, configuration, capability, and troubleshooting. |
-| [Third-Party Notices](./THIRD_PARTY_NOTICES.md) | - | Attribution and license notices for incorporated indexer and monitoring code and dependencies. |
+| [Third-Party Notices](./THIRD_PARTY_NOTICES.md) | - | Attribution and license notices for incorporated indexer, monitoring and activity-map code and dependencies. |
 | [Production Diagnostic Data Policy](./production-diagnostics.md) | `backend/common/logging`, `backend/common/debugserver` | Credentials and permitted correlation identifiers in journald, tracebacks, pprof, support artifacts, and core-dump controls. |
 | [Server Yamux Protocol](./server-yamux-protocol.md) | `backend/webserver/ws`, `backend/webserver/bridge`, `backend/common/ipc`, `frontend/src/api/StreamMultiplexer.ts` | Lower-level WebSocket/yamux byte relay and mux framing. |
 

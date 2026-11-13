@@ -18,7 +18,12 @@ import {
   writePersistedState,
 } from "@/utils/persistedState";
 
-import { assistantStore, chatPane, useAssistantState } from "./assistant-store";
+import {
+  assistantStore,
+  chatPane,
+  modelName,
+  useAssistantState,
+} from "./assistant-store";
 import { buildPrompt } from "./attachments";
 import Composer from "./composer/Composer";
 import AssistantDock from "./dock/AssistantDock";
@@ -178,8 +183,8 @@ export default function AssistantPage({
     );
   }
 
-  // New chat is the page's one action. The previous chats and a plugin's pane
-  // are tabs on the chat's edge (dock/AssistantDock), and the text size is in
+  // New chat is the page's one action. The previous chats, the activity map
+  // and a plugin's pane are tabs on the chat's edge (dock/AssistantDock), and the text size is in
   // the composer's menu.
   const actions = (
     <HeaderActions
@@ -428,6 +433,17 @@ export default function AssistantPage({
             usage={state.usage}
           />
           <AssistantDock
+            // A side question takes the space beside the chat while it is open.
+            activity={
+              sideShown
+                ? null
+                : {
+                    blocks: state.blocks,
+                    usage: state.usage,
+                    agentLabel: agentLabel ?? "",
+                    model: modelName(state.configOptions) ?? null,
+                  }
+            }
             busy={loadingOrRunning}
             canDelete={state.canDeleteSession}
             canList={state.canListSessions}

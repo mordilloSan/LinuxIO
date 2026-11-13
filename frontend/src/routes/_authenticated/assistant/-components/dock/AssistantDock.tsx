@@ -2,21 +2,33 @@ import type * as acp from "@agentclientprotocol/sdk/unstable";
 import { useEffect, useRef, useState } from "react";
 
 import type { PaneView } from "@/api/acp";
+import {
+  readPersistedState,
+  writePersistedState,
+} from "@/utils/persistedState";
 
 import PanePanel from "../pane/PanePanel";
+import type { TranscriptBlock } from "../transcript/transcript";
+import WorkMap from "../workmap/WorkMap";
+import { summarize } from "../workmap/workMap";
 import ChatsCard from "./ChatsCard";
 import { DOCK_INSET, DOCK_TABS } from "./dockLayout";
+import DockPanel from "./DockPanel";
 import DockTab from "./DockTab";
 
 import "./dock.css";
 
+const ACTIVITY_KEY = "linuxio.assistant.activityOpen";
+const isFlag = (value: unknown): value is boolean => typeof value === "boolean";
+
 /**
  * The tabs on the chat's left edge and the card each one opens: the previous
- * chats, and a plugin's pane while there is one. One card is open at a time,
- * so the two never run past the bottom of a short window.
+ * chats, the activity map, and a plugin's pane while there is one. One card
+ * is open at a time, so they never run past the bottom of a short window.
  */
 export default function AssistantDock({
   pane,
+  activity,
   running,
   sessions,
   currentId,
@@ -28,6 +40,14 @@ export default function AssistantDock({
   onDelete,
 }: {
   pane: PaneView | null;
+  /** What the activity map draws; null leaves the map and its tab out. */
+  activity: {
+    blocks: readonly TranscriptBlock[];
+    usage: { used: number; size: number } | null;
+    agentLabel: string;
+    /** The model the chat is set to, when the agent names one. */
+    model: string | null;
+  } | null;
   running: boolean;
   sessions: acp.SessionInfo[];
   currentId: string | null;
@@ -51,6 +71,16 @@ export default function AssistantDock({
     open: boolean;
   } | null>(null);
   const paneOpen = pane && paneChoice?.id === pane.id ? paneChoice.open : null;
+  // The map opens on request. The browser remembers that it was open, and a
+  // remembered map (null) comes back only where it fits beside the chat.
+  const [mapOpen, setMapOpen] = useState<boolean | null>(() =>
+    readPersistedState(ACTIVITY_KEY, isFlag) ? null : false,
+  );
+  const openMap = (open: boolean) => {
+    setMapOpen(open);
+    writePersistedState(ACTIVITY_KEY, open);
+  };
+  const summary = activity ? summarize(activity.blocks, running) : null;
 
   useEffect(() => {
     const area = dockRef.current?.parentElement;
@@ -95,13 +125,43 @@ export default function AssistantDock({
         open={chats.open}
         sessions={sessions}
       />
+      {activity && summary ? (
+        <DockPanel
+          // The map repeats the transcript, so it is only drawn while open.
+          drawClosed={false}
+          drawing={summary.total}
+          onOpenChange={(open) => {
+            openMap(open);
+            if (!open) return;
+            setChats({ ...chats, open: false });
+            if (pane) setPaneChoice({ id: pane.id, open: false });
+          }}
+          open={chats.open ? false : mapOpen}
+          room={room}
+          running={running}
+          title="Activity"
+        >
+          <WorkMap
+            agentLabel={activity.agentLabel}
+            model={activity.model}
+            running={running}
+            summary={summary}
+            usage={activity.usage}
+          />
+        </DockPanel>
+      ) : null}
       {pane ? (
         <PanePanel
           onOpenChange={(open) => {
             setPaneChoice({ id: pane.id, open });
-            if (open) setChats({ ...chats, open: false });
+            if (!open) return;
+            setChats({ ...chats, open: false });
+            if (activity) openMap(false);
           }}
-          open={chats.open ? false : paneOpen}
+          // A pane left to follow the room stays closed under an open map.
+          open={
+            chats.open || (activity && mapOpen !== false) ? false : paneOpen
+          }
           pane={pane}
           room={room}
           running={running}

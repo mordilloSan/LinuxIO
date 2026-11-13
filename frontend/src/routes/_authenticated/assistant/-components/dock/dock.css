@@ -106,7 +106,7 @@
   }
 }
 
-/* Lit from PanePanel.tsx when a turn ends while the card is closed. */
+/* Lit from DockPanel.tsx when a turn ends while the card is closed. */
 .assistant-dock-tab__glow {
   position: absolute;
   inset: 0;
@@ -140,7 +140,7 @@
 }
 
 /* Closed, the card slides toward its tab and leaves the page to the chat. It
-   stays mounted so closing can be animated; PanePanel and ChatsCard also mark
+   stays mounted so closing can be animated; DockPanel and ChatsCard also mark
    it inert. */
 .assistant-dock-card--closed {
   opacity: 0;

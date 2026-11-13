@@ -251,8 +251,72 @@ advertises the matching capability.
   Today, Yesterday and Earlier by when they were last used. The open chat is
   marked, and clicking another loads it. The tab is disabled when the agent
   cannot list sessions. The tabs stay in place while a card is open, and one
-  card is open at a time (the chats or a [plugin pane](#plugin-panes)), so
-  two cards never run past the bottom of a short window.
+  card is open at a time (the chats, the activity map or a
+  [plugin pane](#plugin-panes)), so two cards never run past the bottom of a
+  short window.
+- **Activity map.** The Activity tab, under Chats, opens a card that draws
+  where the chat's work went. It is LinuxIO's own (`-components/workmap`),
+  computed from the transcript and `usage_update` the page already holds: it
+  asks the agent for nothing, needs no plugin, and works for any agent that
+  reports tool calls. Its look, wording and motion are those of the
+  [lot-map](https://github.com/alexeyw/lot-map) plugin by Aleksei Volodin,
+  used under its MIT licence ([Third-Party Notices](THIRD_PARTY_NOTICES.md)),
+  so it reads the same as that plugin's pane, but it is drawn in the page:
+  nothing in it restarts when something happens, where a plugin pane's
+  picture is replaced whole on every redraw.
+
+  - *Picture.* The agent's name is in the middle with the model the chat is
+    set to and a ring for how full the context window is (grey, the accent
+    from 70%, red from 90%). Ten stations stand around it: You, Model,
+    Memory, Files, Shell, Network, Browser, Agents, Skills, Hooks, each with
+    a count. A spoke thickens and takes colour with use. A line traces the
+    route through the last seven stations the work went to; a leg stays 40 s
+    and fades over 20 s. The core breathes, faster while a turn runs.
+  - *Motion.* A call that starts sends a pulse out along its spoke with a
+    ripple where it lands; a call that ends sends one back, red if it
+    failed. A prompt comes in from You as a hollow pulse, and an answer goes
+    out with a wide ring from the core. A station is lit for 3.2 s after
+    something happened at it (6 s in red after a failure). While one of its
+    calls runs it keeps a ring spreading from it and two clock hands around
+    it (a minute a lap, and ten minutes), with `×N` when several run at once;
+    a red badge counts what failed there since the last prompt, and each
+    subagent still at work circles the Agents station.
+  - *Rows.* Under the picture one line says what is running and the context
+    use, over the latest sixteen rows, newest first: `new message`, each step
+    of the model (`opus 5.5 · step 2`, numbered per prompt), each tool call,
+    `answer ready`, and a change of model between prompts
+    (`fable 5.2 → opus 5.5`). A call is named in a few words: the agent's
+    description of a command (or the command's name), the last two parts of
+    a file's path, a web address's host, a subagent's description, a skill's
+    name. Finished calls in a row at one station fold into one row (`+2`)
+    with their times added.
+  - *What it knows.* A call is sorted by Claude Code's tool name when the
+    adapter sends one (`_meta.claudeCode.toolName`) and by its ACP kind
+    otherwise. A shell command goes to Network when any part of it is a
+    network command (`curl`, `ssh`, `gh`…), to Files when every part is a
+    file command (`cat`, `rg`, `ls`…), and to Shell otherwise; a file under
+    `.claude/projects/*/memory/` goes to Memory; an MCP tool goes by its
+    server (the browser servers to Browser, `terminal` to Shell, a server
+    named for memory to Memory, any other to Network). A call starts a new
+    step of the model when the model said nothing just before it and no
+    earlier call of the turn was still open; between its calls the model is
+    shown at work on its next step.
+  - *Times.* Only what LinuxIO saw happen is timed and animated; a chat that
+    was loaded has its work counted and nothing else. The agent says when a
+    call ends but not when it starts to run, so a call is timed from the
+    last update it sent while pending (the model has finished writing its
+    input by then) to its end, and a step from when the model was last
+    handed something (the prompt, or its calls' results) to its first call
+    or the turn's end. A step carries the model that was set when its prompt
+    was sent.
+  - *What it lacks beside the plugin.* Hooks stays quiet: the adapter drops
+    Claude Code's hook events, so they never reach the browser. A subagent's
+    own calls fly from the core, not from the Agents station; a call a hook
+    refused is an ordinary failure; and compaction is not a step.
+  - *Card.* It shares the plugin pane's box, blending, width and resizing,
+    is drawn only while open, and the browser remembers that it was open and
+    reopens it where it fits beside the chat. Opening it closes a plugin's
+    pane and the reverse; an open side question hides both.
 - **Delete.** When the agent advertises session deletion, each chat on the
   Chats card has a delete button behind a confirmation. Deleting the open
   chat starts a new one, and a running chat cannot be deleted.

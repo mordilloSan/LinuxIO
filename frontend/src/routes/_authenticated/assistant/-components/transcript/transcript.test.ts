@@ -153,4 +153,93 @@ describe("applySessionUpdate", () => {
       expect(applySessionUpdate(input, update)).toBe(input);
     }
   });
+
+  it("keeps the agent's own tool name beside the kind", () => {
+    let blocks: TranscriptBlock[] = [];
+    blocks = applySessionUpdate(blocks, {
+      sessionUpdate: "tool_call",
+      toolCallId: "c1",
+      title: "Run tests",
+      kind: "execute",
+      _meta: { claudeCode: { toolName: "Bash" } },
+    });
+    expect(blocks[0]).toMatchObject({ toolName: "Bash" });
+    // A later update without the name does not lose it.
+    blocks = applySessionUpdate(blocks, {
+      sessionUpdate: "tool_call_update",
+      toolCallId: "c1",
+      status: "completed",
+    });
+    expect(blocks[0]).toMatchObject({ toolName: "Bash", status: "completed" });
+  });
+
+  it("times a call only when it is told the time", () => {
+    const call = (id: string): acp.SessionUpdate => ({
+      sessionUpdate: "tool_call",
+      toolCallId: id,
+      title: id,
+    });
+    const done = (id: string): acp.SessionUpdate => ({
+      sessionUpdate: "tool_call_update",
+      toolCallId: id,
+      status: "completed",
+    });
+    let blocks = applySessionUpdate([], call("c1"), 1000);
+    blocks = applySessionUpdate(blocks, done("c1"), 1250);
+    expect(blocks[0]).toMatchObject({ startedAt: 1000, endedAt: 1250 });
+    // A later update does not move the end.
+    blocks = applySessionUpdate(blocks, done("c1"), 9999);
+    expect(blocks[0]).toMatchObject({ endedAt: 1250 });
+
+    // The start is the last the call was heard of while pending: the model
+    // was still writing its input before that.
+    let refined = applySessionUpdate([], call("c3"), 1000);
+    refined = applySessionUpdate(
+      refined,
+      { sessionUpdate: "tool_call_update", toolCallId: "c3", title: "c3 -a" },
+      1400,
+    );
+    refined = applySessionUpdate(refined, done("c3"), 1500);
+    expect(refined[0]).toMatchObject({ startedAt: 1400, endedAt: 1500 });
+
+    const loaded = applySessionUpdate(
+      applySessionUpdate([], call("c2")),
+      done("c2"),
+    );
+    expect(loaded[0]).toMatchObject({
+      startedAt: undefined,
+      endedAt: undefined,
+    });
+  });
+
+  it("marks the call that begins a new step of the model", () => {
+    const call = (id: string): acp.SessionUpdate => ({
+      sessionUpdate: "tool_call",
+      toolCallId: id,
+      title: id,
+    });
+    const done = (id: string): acp.SessionUpdate => ({
+      sessionUpdate: "tool_call_update",
+      toolCallId: id,
+      status: "completed",
+    });
+    const updates: acp.SessionUpdate[] = [
+      { sessionUpdate: "agent_thought_chunk", content: text("Hm") },
+      // After the model spoke: part of the step its words began.
+      call("c1"),
+      // While c1 is open: beside it, in the same step.
+      call("c2"),
+      done("c1"),
+      done("c2"),
+      // Everything is back and the model said nothing: a new step.
+      call("c3"),
+    ];
+    const blocks = updates.reduce<TranscriptBlock[]>(
+      (acc, update) => applySessionUpdate(acc, update),
+      appendUserMessage([], "go", []),
+    );
+    expect(
+      blocks.flatMap((b) => (b.kind === "tool" ? [b.opensStep] : [])),
+    ).toEqual([false, false, true]);
+  });
 });

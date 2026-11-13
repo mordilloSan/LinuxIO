@@ -288,6 +288,25 @@ test("chats with a fake ACP agent and approves a permission", async ({
     page.getByText("You asked: how full is the disk?"),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
+
+  // The activity map follows the turn: both calls went to the shell, and the
+  // one still waiting keeps a ring spreading from its station.
+  const activityTab = page.getByRole("button", {
+    name: "Activity",
+    exact: true,
+  });
+  await activityTab.click();
+  await expect(
+    page.getByRole("img", { name: /^Activity map\..*Shell 2/ }),
+  ).toBeVisible();
+  const beat = page.locator(".work-map__beat");
+  await expect(beat).toHaveCount(1);
+  expect(
+    await beat.evaluate((ring) => ring.getAnimations().length),
+  ).toBeGreaterThan(0);
+  await activityTab.click();
+  await expect(page.getByRole("img", { name: /^Activity map/ })).toHaveCount(0);
+
   await page.getByRole("button", { name: "Allow once" }).click();
   await expect(page.getByText(/Disk is 40% full/)).toBeVisible();
   await expect(page.getByRole("table")).toBeVisible();

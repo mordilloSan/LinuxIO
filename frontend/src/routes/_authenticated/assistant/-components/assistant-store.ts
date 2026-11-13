@@ -17,6 +17,7 @@ import {
 } from "@/api/acp";
 
 import type { Attachment } from "./attachments";
+import { currentName, withoutDefault } from "./composer/selectOption";
 import {
   appendTurnEnd,
   appendUserMessage,
@@ -85,6 +86,16 @@ export interface AssistantState {
    * process; `chatPane` picks the open chat's.
    */
   panes: PaneView[];
+}
+
+/** The name of the model a chat is set to, when its agent offers a choice. */
+export function modelName(
+  options: readonly acp.SessionConfigOption[],
+): string | undefined {
+  const model = options.find((option) => option.category === "model");
+  return model?.type === "select"
+    ? (currentName(withoutDefault(model)) ?? undefined)
+    : undefined;
 }
 
 /** What the user's message looks like in the transcript. */
@@ -190,16 +201,24 @@ function flushUpdates() {
     }),
     {},
   );
+  // Only what arrives while a turn runs is timed; loaded history is not.
+  const now = state.status === "running" ? Date.now() : undefined;
   setState({
     ...patch,
     ...(updates.length > 0 && {
-      blocks: updates.reduce(applySessionUpdate, state.blocks),
+      blocks: updates.reduce(
+        (blocks, update) => applySessionUpdate(blocks, update, now),
+        state.blocks,
+      ),
     }),
     ...(side &&
       sideUpdates.length > 0 && {
         side: {
           ...side,
-          blocks: sideUpdates.reduce(applySessionUpdate, side.blocks),
+          blocks: sideUpdates.reduce(
+            (blocks, update) => applySessionUpdate(blocks, update),
+            side.blocks,
+          ),
         },
       }),
   });
@@ -412,11 +431,13 @@ async function runTurn(
       flushUpdates();
       if (response) {
         // The footer under the answer: how long the turn took and its tokens.
+        const endedAt = Date.now();
         setState({
           blocks: appendTurnEnd(
             state.blocks,
-            Date.now() - startedAt,
+            endedAt - startedAt,
             response.usage ?? null,
+            endedAt,
           ),
         });
       }
@@ -572,13 +593,15 @@ export const assistantStore = {
     const conn = connection;
     const sessionId = state.sessionId;
     if (!conn || !sessionId || state.status !== "ready") return;
+    const now = Date.now();
     setState({
       status: "running",
-      turnStartedAt: Date.now(),
+      turnStartedAt: now,
       blocks: appendUserMessage(
         state.blocks,
         display.text,
         display.attachments,
+        { at: now, model: modelName(state.configOptions) },
       ),
       error: null,
     });
@@ -594,6 +617,7 @@ export const assistantStore = {
         state.blocks,
         display.text,
         display.attachments,
+        { at: Date.now(), model: modelName(state.configOptions) },
       ),
     });
     const attempt = currentAttempt;

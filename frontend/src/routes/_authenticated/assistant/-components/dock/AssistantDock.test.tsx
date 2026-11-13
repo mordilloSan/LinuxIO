@@ -1,5 +1,5 @@
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PaneView } from "@/api/acp";
 import { render, screen } from "@/test/render";
@@ -19,7 +19,26 @@ const pane: PaneView = {
   },
 };
 
+const activity = {
+  agentLabel: "Claude Code",
+  model: null,
+  usage: null,
+  blocks: [
+    {
+      kind: "user" as const,
+      id: "u1",
+      text: "Check the disks",
+      attachments: [],
+    },
+  ],
+};
+
+beforeEach(() => {
+  window.localStorage.clear();
+});
+
 const props = (over: Partial<Parameters<typeof AssistantDock>[0]> = {}) => ({
+  activity: null,
   busy: false,
   canDelete: true,
   canList: true,
@@ -83,6 +102,52 @@ describe("AssistantDock", () => {
     rerender(<AssistantDock {...props({ pane })} />);
     expect(card("Chats")).not.toBeNull();
     expect(card("Work map")).toBeNull();
+  });
+
+  it("keeps the activity map behind its tab until it is clicked", async () => {
+    render(<AssistantDock {...props({ activity })} />);
+    expect(card("Activity")).toBeNull();
+
+    await userEvent.click(tab("Activity"));
+    expect(card("Activity")).toHaveTextContent("new message");
+    expect(tab("Activity")).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("has no activity tab without something to draw", () => {
+    render(<AssistantDock {...props()} />);
+    expect(screen.queryByRole("button", { name: "Activity" })).toBeNull();
+  });
+
+  it("opens the map in place of a plugin's pane, and the pane in its place", async () => {
+    render(<AssistantDock {...props({ activity, pane })} />);
+    expect(card("Work map")).not.toBeNull();
+
+    await userEvent.click(tab("Activity"));
+    expect(card("Activity")).not.toBeNull();
+    expect(card("Work map")).toBeNull();
+
+    await userEvent.click(tab("Work map"));
+    expect(card("Work map")).not.toBeNull();
+    expect(card("Activity")).toBeNull();
+  });
+
+  it("hides the map while the chats are open and brings it back", async () => {
+    render(<AssistantDock {...props({ activity })} />);
+    await userEvent.click(tab("Activity"));
+    await userEvent.click(tab("Chats"));
+    expect(card("Activity")).toBeNull();
+
+    await userEvent.click(tab("Chats"));
+    expect(card("Activity")).not.toBeNull();
+  });
+
+  it("remembers that the map was open", async () => {
+    const { unmount } = render(<AssistantDock {...props({ activity })} />);
+    await userEvent.click(tab("Activity"));
+    unmount();
+
+    render(<AssistantDock {...props({ activity })} />);
+    expect(card("Activity")).not.toBeNull();
   });
 
   it("offers no chats where the agent cannot list them", () => {
