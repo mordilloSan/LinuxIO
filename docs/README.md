@@ -21,7 +21,7 @@ marks a doc that covers none), or when a named path no longer exists.
 
 | Doc | Code | Use |
 |-----|------|-----|
-| [Development targets and overrides](./development.md) | `Makefile`, `mk`, `scripts`, `packaging/vm` | Repository setup, checks, builds, the test VM, and configurable Make inputs. |
+| [Development targets and overrides](./development.md) | `Makefile`, `mk`, `scripts`, `packaging/vm`, `.vscode` | Repository setup, checks, builds, the test VM, and configurable Make inputs. |
 
 ## API And Bridge
 

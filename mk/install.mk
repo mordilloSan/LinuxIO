@@ -19,6 +19,22 @@ dev-stop: ## Stop the Vite dev server; every running make dev then exits
 	fi
 	@rm -f "$(VITE_DEV_PID)" "$(VITE_DEV_LOG)"
 
+dev-status-install: ## Install the VS Code dev-server status bar extension (symlink)
+	@version="$$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$(dev_status_dir)/package.json")"; \
+	test -n "$$version" || { echo "❌ No version in $(dev_status_dir)/package.json"; exit 1; }; \
+	mkdir -p "$(VSCODE_EXTENSIONS_DIR)"; \
+	find "$(VSCODE_EXTENSIONS_DIR)" -maxdepth 1 -type l -name 'linuxio.linuxio-dev-status-*' -delete; \
+	ln -s "$(dev_status_dir)" "$(VSCODE_EXTENSIONS_DIR)/linuxio.linuxio-dev-status-$$version"; \
+	echo "✅ Installed into $(VSCODE_EXTENSIONS_DIR); run 'Developer: Reload Window' in VS Code"
+
+dev-status-uninstall: ## Remove the VS Code dev-server status bar extension
+	@if [ -n "$$(find "$(VSCODE_EXTENSIONS_DIR)" -maxdepth 1 -type l -name 'linuxio.linuxio-dev-status-*' 2>/dev/null)" ]; then \
+		find "$(VSCODE_EXTENSIONS_DIR)" -maxdepth 1 -type l -name 'linuxio.linuxio-dev-status-*' -delete; \
+		echo "✅ Removed from $(VSCODE_EXTENSIONS_DIR); run 'Developer: Reload Window' in VS Code"; \
+	else \
+		echo "  Not installed in $(VSCODE_EXTENSIONS_DIR)"; \
+	fi
+
 ##@ Install / Uninstall|red
 localinstall: ## Install from local build
 	@echo ""

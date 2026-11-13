@@ -68,6 +68,9 @@ VITE_DEV_PORT ?= 3000
 DEV_LOG_LINES ?= 25
 VITE_DEV_LOG  ?= $(frontend_dir)/.vite-dev.log
 VITE_DEV_PID  ?= $(frontend_dir)/.vite-dev.pid
+# VS Code extensions directory for dev-status-install: the remote server's when present.
+VSCODE_EXTENSIONS_DIR ?= $(if $(wildcard $(HOME)/.vscode-server/extensions),$(HOME)/.vscode-server/extensions,$(HOME)/.vscode/extensions)
+dev_status_dir := $(CURDIR)/.vscode/dev-status
 VERBOSE      ?= true
 nvm_version := $(if $(NVM_VERSION),$(NVM_VERSION),0.40.2)
 NVM_VERSION  ?= $(nvm_version)
@@ -261,7 +264,7 @@ $(quiet_aliases): ## Run a validation target with compact output and a saved ful
 .PHONY: test-backend test-go test-auth test-auth-protocol test-auth-pam
 .PHONY: test-installation-scripts test-indexer-systemd-integration test-updater test-docker-update-integration test-assistant-agent-integration test-btrfs-integration
 .PHONY: deadcode deadcode-only analyze analyze-auth bundle-metrics compiler-coverage check-c-build-deps
-.PHONY: dev-prep dev dev-stop generate
+.PHONY: dev-prep dev dev-stop dev-status-install dev-status-uninstall generate
 .PHONY: build build-nocheck fastbuild build-vite build-backend build-bridge build-cli build-docker-update build-indexer build-monitoring build-btrfs-timer build-claude-relay build-auth build-leak-profile build-go-binaries build-binaries print-binaries print-bin-dir
 .PHONY: localinstall reinstall uninstall clean cloc
 .PHONY: vm-create vm-install vm-ssh vm-reset vm-destroy vm-test-btrfs-integration vm-test-filebrowser-root test-vm-browser

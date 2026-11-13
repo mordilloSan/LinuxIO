@@ -14,10 +14,10 @@
         "instanceLimit": 1
       },
       "presentation": {
-        "reveal": "always",
+        "reveal": "never",
         "panel": "dedicated",
         "clear": true,
-        "showReuseMessage": false
+        "showReuseMessage": false,
       }
     },
     {

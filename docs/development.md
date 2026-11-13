@@ -231,11 +231,36 @@ version `go.mod` pins. `SKIP_ENSURE_GO=1` is accepted for compatibility.
 | --- | --- | --- |
 | `VITE_DEV_PORT` | `3000` | Vite development server port (`1`–`65535`). |
 | `DEV_LOG_LINES` | `25` | Number of LinuxIO log lines shown by `make dev`. |
+| `VSCODE_EXTENSIONS_DIR` | `~/.vscode-server/extensions` if present, else `~/.vscode/extensions` | Where `make dev-status-install` and `make dev-status-uninstall` manage the status bar extension symlink. |
 
 `make dev` starts only the Vite development server and tails LinuxIO logs. The
 backend still runs through systemd. `make dev-stop` stops Vite from any
 terminal, and every running `make dev` exits once Vite is gone; interrupting
 `make dev` stops Vite only when that run started it.
+
+### VS Code integration
+
+`.vscode/tasks.json` defines `make dev` and `make dev-stop` as tasks. `make dev`
+runs in its own terminal that is never revealed automatically (`reveal:
+"never"`), so the log tail stays available without taking over the panel, and
+that closes when `make dev` exits, for example after `make dev-stop`.
+
+`.vscode/dev-status/` is an optional workspace extension that adds a status bar
+dot: green while the Vite pid in `frontend/.vite-dev.pid` is alive, grey
+otherwise. Hovering it shows links to start or stop the dev server (by running
+the two tasks) and to show the `make dev` terminal. It only activates in a
+checkout that has `scripts/dev.sh`. Install it once on the machine that runs the
+VS Code server, then run `Developer: Reload Window`:
+
+```sh
+make dev-status-install     # symlink the extension into the extensions directory
+make dev-status-uninstall   # remove the symlink
+```
+
+Both targets only touch the `linuxio.linuxio-dev-status-*` symlink, so the
+extension always runs from the checkout. Install is safe to repeat. The target
+directory is `VSCODE_EXTENSIONS_DIR`, which defaults to
+`~/.vscode-server/extensions` when it exists and `~/.vscode/extensions` otherwise.
 
 ### Target-specific inputs
 
@@ -333,7 +358,7 @@ follows:
 - builds and development: `test`, `build`, `build-nocheck`, `fastbuild`,
   `build-vite`, `build-backend`, `build-bridge`, `build-auth`, `build-cli`,
   `build-docker-update`, `build-leak-profile`, `generate`, `dev-prep`, `dev`,
-  `dev-stop`, `clean`, `cloc`
+  `dev-stop`, `dev-status-install`, `dev-status-uninstall`, `clean`, `cloc`
 - installation: `localinstall`, `reinstall`, `uninstall`
 - test VM: `vm-create`, `vm-install`, `vm-ssh`, `vm-reset`, `vm-destroy`,
   `vm-test-btrfs-integration`, `vm-test-filebrowser-root`, `test-vm-browser`
