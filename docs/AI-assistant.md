@@ -378,7 +378,7 @@ advertises the matching capability.
   - the last thing it said, cut to three lines, while it works;
   - everything it was told, did, said and reported, in the order it
     happened: *Prompt*, closed, in grey; *Tool calls (N)*, open, oldest
-    first; *Messages (N)*, closed, in grey; *Report*, in grey. A subagent
+    first; *Messages (N)*, closed, in grey; *Report*, open, in grey. A subagent
     that was messaged again reads *Prompt 1*, its calls, *Report 1*, *Prompt
     2*, its calls, *Report 2*. A call is the tool (`Read`, `Bash`,
     `Web Fetch`, `Search tools`, an MCP tool's name), what it worked on in

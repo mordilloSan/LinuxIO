@@ -516,7 +516,7 @@ test("shows a subagent the agent reports as a session of its own", async ({
   ).toBeVisible();
   await expect(agents.getByText("Finished · Explore")).toBeVisible();
   await expect(agents.getByText("Tool calls (1)")).toBeVisible();
-  await expect(agents.getByRole("heading", { name: "Report" })).toBeVisible();
+  await expect(agents.getByText("Report", { exact: true })).toBeVisible();
   await expect(agents.getByText("The root disk is 40% full.")).toBeVisible();
 
   // The map counts the subagent and the call it made.

@@ -155,7 +155,9 @@ describe("AgentMap", () => {
       "/docs/audit/filebrowser.md · 120 ms",
     );
     expect(bash).toHaveTextContent("BashRun the testsfailed");
-    expect(screen.getByRole("heading", { name: "Report" })).toBeInTheDocument();
+    expect(screen.getByText("Report").closest("details")).toHaveAttribute(
+      "open",
+    );
     expect(screen.getByText("fixed").tagName).toBe("STRONG");
     // It ended: nothing to stop.
     expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
@@ -186,9 +188,7 @@ describe("AgentMap", () => {
     ]);
     await open(/Re-check filebrowser/);
     const order = [
-      ...document.querySelectorAll(
-        ".agent-map--detail summary, .agent-map--detail h4",
-      ),
+      ...document.querySelectorAll(".agent-map--detail summary"),
     ].map((node) => node.textContent);
     expect(order).toEqual([
       "Prompt 1",

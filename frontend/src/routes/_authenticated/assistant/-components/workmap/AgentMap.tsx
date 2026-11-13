@@ -122,14 +122,12 @@ function Part({ part }: { part: AgentPart }) {
       );
     case "report":
       return (
-        <section className="agent-map__section">
-          <AppTypography component="h4" fontWeight={600} variant="body2">
-            {numbered("Report", part.number)}
-          </AppTypography>
+        <details className="agent-map__fold" open>
+          <summary>{numbered("Report", part.number)}</summary>
           <div className="agent-map__quiet">
             <MarkdownBlock text={part.text} />
           </div>
-        </section>
+        </details>
       );
   }
 }
