@@ -10,19 +10,36 @@ export const getUsageColor = (
   return "primary";
 };
 
-export const getContainerStatusColor = (state: string): string => {
+export type ContainerTone = "success" | "warning" | "error";
+
+/**
+ * The one meaning of a container's state or health, for every Docker page, the
+ * home dashboard card and the volume chips. Accepts Docker's `State` and
+ * health words and the display states of `getContainerDisplayState`, in any
+ * case.
+ *
+ * - success: running, healthy. Up and serving.
+ * - warning: unhealthy, paused, restarting, starting, created, removing,
+ *   partially running and anything unrecognised. Up or on its way, but not
+ *   something to rely on yet.
+ * - error: exited, stopped, dead. Not running, and not coming back by itself.
+ */
+export const getContainerTone = (state: string): ContainerTone => {
   switch (state.toLowerCase()) {
     case "healthy":
     case "running":
-      return SEMANTIC_STATUS_COLORS.success;
+      return "success";
     case "stopped":
     case "exited":
     case "dead":
-      return SEMANTIC_STATUS_COLORS.error;
+      return "error";
     default:
-      return SEMANTIC_STATUS_COLORS.warning;
+      return "warning";
   }
 };
+
+export const getContainerStatusColor = (state: string): string =>
+  SEMANTIC_STATUS_COLORS[getContainerTone(state)];
 
 export const getComposeStatusColor = (status: string): string => {
   switch (status) {

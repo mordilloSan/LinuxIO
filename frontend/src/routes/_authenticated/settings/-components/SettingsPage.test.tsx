@@ -170,6 +170,25 @@ describe("SettingsPage tab param", () => {
     );
   });
 
+  it.each(["indexer", "monitoring", "notifications", "power"] as const)(
+    "never opens the %s section, which reads admin-only routes, for a session without sudo",
+    (tab) => {
+      mocks.search = { tab };
+
+      render(<SettingsPage />, {
+        capabilities: { tunedAvailable: true },
+      });
+
+      expect(
+        screen.queryByRole("tab", { name: new RegExp(`^${tab}$`, "i") }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole("tab", { name: "General" })).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+    },
+  );
+
   it("writes the selected tab to the URL, and drops the param for General", async () => {
     mocks.search = { tab: "theme" };
 

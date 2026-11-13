@@ -4,6 +4,7 @@ import type { RowData } from "@tanstack/react-table";
 import {
   useCallback,
   useMemo,
+  useState,
   type CSSProperties,
   type ReactNode,
 } from "react";
@@ -17,6 +18,7 @@ import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableDndOptions } from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
+import AppConfirmDialog from "@/components/ui/AppConfirmDialog";
 import AppTypography from "@/components/ui/AppTypography";
 import { DetailRow } from "@/components/ui/InfoRow";
 import { getServiceStatusColor } from "@/constants/statusColors";
@@ -221,6 +223,12 @@ export function UnitStatusRows({
   );
 }
 
+/** Units that make up LinuxIO itself: linuxio.target and the linuxio-* units. */
+export const isLinuxioUnit = (unitName: string) =>
+  unitName === "linuxio.target" || unitName.startsWith("linuxio-");
+
+type GuardedVerb = "stop" | "restart" | "disable" | "mask";
+
 export const UnitCardActions = ({
   unitName,
   activeState,
@@ -256,6 +264,31 @@ export const UnitCardActions = ({
     linuxio.systemd.unmask_service.useMutation(actionConfig("unmasked"));
   const { mutate: resetFailedService, isPending: isResettingFailed } =
     linuxio.systemd.reset_failed_service.useMutation(actionConfig("reset"));
+
+  // Stop, Restart, Disable and Mask on a LinuxIO unit can end this session or
+  // take part of LinuxIO down, so they ask first; everything else acts at once.
+  const [guardedVerb, setGuardedVerb] = useState<GuardedVerb | null>(null);
+  const guardedActions: Record<GuardedVerb, () => void> = {
+    stop: () => stopService({ serviceName: unitName }),
+    restart: () => restartService({ serviceName: unitName }),
+    disable: () => disableService({ serviceName: unitName }),
+    mask: () => maskService({ serviceName: unitName }),
+  };
+  const runGuarded = (verb: GuardedVerb) => {
+    if (isLinuxioUnit(unitName)) {
+      setGuardedVerb(verb);
+    } else {
+      guardedActions[verb]();
+    }
+  };
+  const confirmGuarded = () => {
+    if (guardedVerb) guardedActions[guardedVerb]();
+    setGuardedVerb(null);
+  };
+
+  const verbLabel = guardedVerb
+    ? `${guardedVerb[0].toUpperCase()}${guardedVerb.slice(1)}`
+    : "";
 
   const isActive = activeState === "active";
   const isFailed = activeState === "failed";
@@ -294,7 +327,7 @@ export const UnitCardActions = ({
           iconSize={16}
           label="Stop"
           loading={isStopping}
-          onClick={() => stopService({ serviceName: unitName })}
+          onClick={() => runGuarded("stop")}
         />
       ) : (
         <AppActionIconButton
@@ -315,7 +348,7 @@ export const UnitCardActions = ({
         iconSize={16}
         label="Restart (stop then start)"
         loading={isRestarting}
-        onClick={() => restartService({ serviceName: unitName })}
+        onClick={() => runGuarded("restart")}
       />
       <AppActionIconButton
         ariaLabel={`Reload ${unitName}`}
@@ -334,7 +367,7 @@ export const UnitCardActions = ({
           iconSize={16}
           label="Disable autostart at boot"
           loading={isDisabling}
-          onClick={() => disableService({ serviceName: unitName })}
+          onClick={() => runGuarded("disable")}
         />
       ) : (
         <AppActionIconButton
@@ -367,7 +400,7 @@ export const UnitCardActions = ({
           iconSize={16}
           label="Mask to completely prevent the unit from starting"
           loading={isMasking}
-          onClick={() => maskService({ serviceName: unitName })}
+          onClick={() => runGuarded("mask")}
         />
       )}
       {isFailed && (
@@ -382,6 +415,15 @@ export const UnitCardActions = ({
           onClick={() => resetFailedService({ serviceName: unitName })}
         />
       )}
+      <AppConfirmDialog
+        confirmText={verbLabel}
+        destructive
+        message={`${unitName} is part of LinuxIO. Running ${verbLabel.toLowerCase()} on it can end this session or stop part of LinuxIO until it is started again from a shell (systemctl start linuxio.target).`}
+        onClose={() => setGuardedVerb(null)}
+        onConfirm={confirmGuarded}
+        open={guardedVerb !== null}
+        title={`${verbLabel} ${unitName}?`}
+      />
     </div>
   );
 };

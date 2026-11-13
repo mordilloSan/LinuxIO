@@ -7,6 +7,7 @@ import {
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import { DetailRow } from "@/components/ui/InfoRow";
+import { getContainerTone } from "@/constants/statusColors";
 
 import {
   formatDockerValue,
@@ -68,7 +69,7 @@ export const VolumeDetailsContent = ({ volume }: { volume: DockerVolume }) => (
               split
             >
               <Chip
-                color={container.State === "running" ? "success" : "default"}
+                color={getContainerTone(container.State)}
                 label={container.State || "unknown"}
                 size="xsmall"
                 variant="soft"

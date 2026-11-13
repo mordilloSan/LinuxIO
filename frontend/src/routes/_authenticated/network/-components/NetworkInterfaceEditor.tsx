@@ -4,6 +4,7 @@ import { linuxio, type NetworkInterface as BaseNI } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
+import AppConfirmDialog from "@/components/ui/AppConfirmDialog";
 import AppGrid from "@/components/ui/AppGrid";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
@@ -14,8 +15,10 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { CARD_PADDING_LG, GAP_MD, GAP_SM } from "@/theme/constants";
 
 import {
+  getBrowserHostname,
   getNetworkStateColor,
   getNetworkStateSummary,
+  mayCarryBrowserSession,
 } from "./networkInterfaceState";
 
 const NETWORK_TOAST_META = {
@@ -166,6 +169,15 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
   // servers alongside DHCP.
   const dnsOptions = iface.dns_options;
 
+  // A change that may cut the connection this browser is using waits here for
+  // the admin to confirm; the page warns and then does it.
+  const [pendingRisk, setPendingRisk] = useState<{
+    action: () => void;
+    confirmText: string;
+    message: string;
+    title: string;
+  } | null>(null);
+
   const [storedSession, setStoredSession] = useState<EditorSession>(() =>
     createEditorSession(iface, expanded),
   );
@@ -250,10 +262,27 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
   const toggling = isEnabling || isDisabling;
   const isConnected = iface.state === 100;
   const isConnecting = iface.state >= 40 && iface.state <= 90;
+  const confirmIfSessionAtRisk = (
+    risk: { confirmText: string; message: string; title: string },
+    action: () => void,
+  ) => {
+    if (mayCarryBrowserSession(iface, getBrowserHostname())) {
+      setPendingRisk({ ...risk, action });
+    } else {
+      action();
+    }
+  };
   const handleConnectionToggle = () => {
     if (toggling) return;
     if (isConnected || isConnecting) {
-      disableConnection({ iface: iface.name });
+      confirmIfSessionAtRisk(
+        {
+          confirmText: "Disable",
+          message: `This browser may be reaching LinuxIO through ${iface.name}. Disabling the connection can drop this session. To undo it, log in at the machine's console and enable ${iface.name} again.`,
+          title: `Disable ${iface.name}?`,
+        },
+        () => disableConnection({ iface: iface.name }),
+      );
     } else {
       enableConnection({ iface: iface.name });
     }
@@ -314,12 +343,14 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
     }
     const search = splitList(editForm.search).join(",");
 
+    let applyIPv4: () => void;
     if (mode === "auto") {
-      setIPv4({
-        iface: iface.name,
-        method: "dhcp",
-        ...(dnsOptions ? { dns: dnsServers.join(","), search } : {}),
-      });
+      applyIPv4 = () =>
+        setIPv4({
+          iface: iface.name,
+          method: "dhcp",
+          ...(dnsOptions ? { dns: dnsServers.join(","), search } : {}),
+        });
     } else {
       const ipv4 = editForm.ipv4.trim();
       const gateway = editForm.gateway.trim();
@@ -346,17 +377,28 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
         return;
       }
 
-      setIPv4Manual({
-        iface: iface.name,
-        address: ipv4,
-        gateway,
-        dns: dnsServers.join(","),
-        ...(dnsOptions ? { search } : {}),
-      });
+      applyIPv4 = () =>
+        setIPv4Manual({
+          iface: iface.name,
+          address: ipv4,
+          gateway,
+          dns: dnsServers.join(","),
+          ...(dnsOptions ? { search } : {}),
+        });
     }
-    if (mtuChanged) {
-      setMTU({ iface: iface.name, mtu });
-    }
+    confirmIfSessionAtRisk(
+      {
+        confirmText: "Apply",
+        message: `This browser may be reaching LinuxIO through ${iface.name}. Applying new IP settings can drop this session. To undo it, log in at the machine's console and set ${iface.name} back to its previous address or to DHCP.`,
+        title: `Apply IP settings to ${iface.name}?`,
+      },
+      () => {
+        applyIPv4();
+        if (mtuChanged) {
+          setMTU({ iface: iface.name, mtu });
+        }
+      },
+    );
   };
   if (!expanded) return null;
 
@@ -655,6 +697,18 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
             {saving ? "Saving…" : "Apply Configuration"}
           </AppButton>
         </div>
+        <AppConfirmDialog
+          confirmText={pendingRisk?.confirmText}
+          destructive
+          message={pendingRisk?.message ?? ""}
+          onClose={() => setPendingRisk(null)}
+          onConfirm={() => {
+            pendingRisk?.action();
+            setPendingRisk(null);
+          }}
+          open={pendingRisk !== null}
+          title={pendingRisk?.title ?? ""}
+        />
       </FrostedCard>
     </AppGrid>
   );

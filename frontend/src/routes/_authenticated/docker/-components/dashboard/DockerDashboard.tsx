@@ -17,9 +17,10 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
 import InfoRow from "@/components/ui/InfoRow";
 import SectionHeader from "@/components/ui/SectionHeader";
+import { getContainerTone } from "@/constants/statusColors";
 import { type SectionPage, useSectionToggles } from "@/hooks/useSectionToggles";
 import { DASHBOARD_CARD_SPACING } from "@/theme/constants";
-import { getContainerName } from "@/utils/dockerContainer";
+import { getContainerName, getDisplayState } from "@/utils/dockerContainer";
 import { formatFileSize } from "@/utils/formatters";
 
 import DockerResourceListCard from "../cards/DockerResourceListCard";
@@ -59,17 +60,15 @@ const StateChip = ({
       />
     );
   }
-  if (status.toLowerCase().includes("unhealthy"))
-    return (
-      <Chip color="warning" label="Unhealthy" size="small" variant="soft" />
-    );
-  if (status.toLowerCase().includes("healthy"))
-    return <Chip color="success" label="Healthy" size="small" variant="soft" />;
-  if (state === "running")
-    return <Chip color="success" label="Running" size="small" variant="soft" />;
-  if (state === "exited" || state === "dead")
-    return <Chip color="error" label="Stopped" size="small" variant="soft" />;
-  return <Chip label={state} size="small" variant="soft" />;
+  const displayState = getDisplayState(state, status);
+  return (
+    <Chip
+      color={getContainerTone(displayState)}
+      label={displayState}
+      size="small"
+      variant="soft"
+    />
+  );
 };
 
 const RESOURCE_TABLE_MAX_HEIGHT = 201;

@@ -10,6 +10,7 @@ import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
+import { getContainerTone } from "@/constants/statusColors";
 import useAuth from "@/hooks/useAuth";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useScopedToast } from "@/hooks/useScopedToast";
@@ -24,6 +25,8 @@ const TerminalDialog = lazy(() => import("@/components/docker/TerminalDialog"));
 const CONTAINERS_REFETCH_MS = 5000;
 const COLLECTIONS_REFETCH_MS = 30_000;
 
+const containerColor = (state: string) =>
+  `var(--app-palette-${getContainerTone(state)}-main)`;
 const cleanName = (name: string) => name.replace(/^\//, "");
 const getStatusLabel = (status: string, state: string): string => {
   const health = status.match(/\((\w+)\)/)?.[1];
@@ -156,22 +159,6 @@ const DockerContainers = () => {
     id: string;
     name: string;
   } | null>(null);
-  const resolveStateColor = useCallback((state: string) => {
-    switch (state) {
-      case "running":
-      case "healthy":
-        return "var(--app-palette-success-main)";
-      case "exited":
-      case "unhealthy":
-        return "var(--app-palette-error-main)";
-      case "paused":
-        return "var(--app-palette-warning-main)";
-      case "restarting":
-        return "var(--app-palette-info-main)";
-      default:
-        return "var(--app-palette-text-disabled)";
-    }
-  }, []);
   const { mutateAsync: startContainer } =
     linuxio.docker.start_container.useMutation();
   const { mutateAsync: stopContainer } =
@@ -281,7 +268,7 @@ const DockerContainers = () => {
         }}
       >
         {containers.map((c) => {
-          const statusColor = resolveStateColor(c.statusLabel);
+          const statusColor = containerColor(c.statusLabel);
           const pendingAction = pendingActions.get(c.id);
           const progressLabel = pendingAction
             ? ACTION_PROGRESS_LABEL[pendingAction]
@@ -354,7 +341,7 @@ const DockerContainers = () => {
                   </div>
                 )}
                 <StatusDot
-                  color={resolveStateColor(c.state)}
+                  color={containerColor(c.state)}
                   size={8}
                   style={{
                     position: "absolute",

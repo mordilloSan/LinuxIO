@@ -49,11 +49,9 @@ export function mergeIndexerProgress(
   item: ActiveIndexer,
   progress: IndexerProgress,
 ): ActiveIndexer {
-  const normalizedStatus = progress.status?.toLowerCase();
-  const statusPhase =
-    normalizedStatus === "running" || normalizedStatus === "indexing"
-      ? "indexing"
-      : undefined;
+  // The daemon's work events say "running" (backend/indexer/api: StatusRunning),
+  // never "indexing"; "indexing" is the phase the bridge gives a running frame.
+  const statusPhase = progress.status === "running" ? "indexing" : undefined;
   const phase = progress.phase ?? progress.state ?? statusPhase ?? item.phase;
   const hasPhaseUpdate =
     progress.phase !== undefined ||

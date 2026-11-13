@@ -447,6 +447,17 @@ linuxio verbose enable|disable|status   # toggle debug logging for webserver, in
 linuxio version [--self]    # versions of CLI + each installed component
 ```
 
+The Services page warns before it cuts LinuxIO off. Stop, Restart, Disable and
+Mask on `linuxio.target` or a `linuxio-*` unit ask for confirmation first
+(Start, Enable, Unmask and Reload do not), saying that this can end the session
+or stop part of LinuxIO until `systemctl start linuxio.target` is run from a
+shell. The network interface card does the same before disabling a connection
+or applying IP settings on an interface the browser may be reaching LinuxIO
+through: one that is connected with an IPv4 address and whose address matches
+`window.location.hostname`, or, when the hostname is a name or an IPv6 literal
+the interface list cannot be matched against, any such interface. A loopback
+hostname never warns. Both warn and then allow; nothing is refused.
+
 Settings drives the same switch through two privileged bridge routes:
 `logging.get_debug` (none → `{ enabled }`) and `logging.set_debug`
 (`{ enabled }` → `{ enabled }`). Both live in `backend/bridge/handlers/config`;
