@@ -57,7 +57,7 @@ func TestRaiseSameOccurrenceIsSilent(t *testing.T) {
 	ctx := context.Background()
 	_ = Raise(ctx, obs("a"))
 	_ = Dismiss(ctx, "test/a")
-	_ = MarkSeen(ctx, "1000", nil)
+	_ = MarkSeen(ctx, "1000", nil, nil)
 	if err := Raise(ctx, obs("a")); err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestRaiseNewOccurrenceRestoresAndUnsees(t *testing.T) {
 	ctx := context.Background()
 	_ = Raise(ctx, obs("a"))
 	_ = Dismiss(ctx, "test/a")
-	_ = MarkSeen(ctx, "1000", nil)
+	_ = MarkSeen(ctx, "1000", nil, nil)
 	o := obs("a")
 	o.OccurrenceID = "occ-2"
 	o.Severity = SeverityError
@@ -258,7 +258,7 @@ func TestMarkSeenSubset(t *testing.T) {
 	ctx := context.Background()
 	_ = Raise(ctx, obs("a"))
 	_ = Raise(ctx, obs("b"))
-	if err := MarkSeen(ctx, "1000", []string{"test/a"}); err != nil {
+	if err := MarkSeen(ctx, "1000", []string{"test/a"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	doc, _ := Load()

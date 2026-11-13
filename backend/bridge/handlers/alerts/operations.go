@@ -23,17 +23,11 @@ func listForUID(uid uint32) (apischema.AlertList, error) {
 	if err != nil {
 		return apischema.AlertList{}, err
 	}
-	settings, err := store.LoadNotifications()
-	if err != nil {
-		// Hiding alerts over a broken settings file would hide failures too.
-		// Debug: the bell polls this, and alerts.get_notifications warns.
-		slog.Debug("notification settings unreadable, listing every level", "error", err)
-		settings = store.DefaultNotifications()
-	}
+	settings := bellSettings()
 	key := uidKey(uid)
 	out := apischema.AlertList{Alerts: []apischema.Alert{}}
 	for _, a := range doc.Alerts {
-		if a.DismissedAt != nil || !settings.ChannelsFor(a.Severity).Browser {
+		if !shownInBell(settings, a) {
 			continue
 		}
 		seen := a.Seen[key] >= a.OccurrenceCount
@@ -50,21 +44,31 @@ func listForUID(uid uint32) (apischema.AlertList, error) {
 	return out, nil
 }
 
-// markSeenForUID marks ids seen for uid or, when ids is nil, every alert the
-// list shows: one its level keeps out of the browser stays unseen, to count
-// once the level is shown again.
-func markSeenForUID(ctx context.Context, uid uint32, ids []string) (apischema.AlertList, error) {
-	if ids == nil {
-		list, err := listForUID(uid)
-		if err != nil {
-			return apischema.AlertList{}, err
-		}
-		ids = make([]string, 0, len(list.Alerts))
-		for _, a := range list.Alerts {
-			ids = append(ids, a.ID)
-		}
+// bellSettings are the settings the list follows. Settings that do not parse
+// list every level: hiding alerts over a broken file would hide failures too.
+// Debug: the bell polls this, and alerts.get_notifications warns.
+func bellSettings() store.NotificationSettings {
+	settings, err := store.LoadNotifications()
+	if err != nil {
+		slog.Debug("notification settings unreadable, listing every level", "error", err)
+		return store.DefaultNotifications()
 	}
-	if err := store.MarkSeen(ctx, uidKey(uid), ids); err != nil {
+	return settings
+}
+
+// shownInBell reports whether the list shows a: not dismissed, and its level
+// reaches the browser.
+func shownInBell(settings store.NotificationSettings, a store.Alert) bool {
+	return a.DismissedAt == nil && settings.ChannelsFor(a.Severity).Browser
+}
+
+// markSeenForUID marks ids seen for uid or, when ids is nil, every alert, but
+// only those the list shows, chosen under the store's lock: one its level
+// keeps out of the browser stays unseen, to count once the level is shown
+// again, whether or not ids names it.
+func markSeenForUID(ctx context.Context, uid uint32, ids []string) (apischema.AlertList, error) {
+	settings := bellSettings()
+	if err := store.MarkSeen(ctx, uidKey(uid), ids, func(a store.Alert) bool { return shownInBell(settings, a) }); err != nil {
 		return apischema.AlertList{}, err
 	}
 	return listForUID(uid)

@@ -18,15 +18,23 @@ const (
 	dockerCheckAlertSource = "docker-update-check"
 	dockerUpdateAlertLink  = "/docker/containers"
 	// dockerUpdatePassAlertKey is the key of the every_run pass notice
-	// ("nothing to update", "N waiting"). It shares the source with the per-container alerts, whose keys
-	// are the container name itself or it behind "updated-" or "available-",
-	// and every key the store accepts is also a valid container name. A short
-	// word such as "run" would let a container of that name have its failure
-	// replaced by the notice, so the key is a name no one gives a container.
+	// ("nothing to update", "N waiting"). It shares the source with the
+	// per-container alerts, whose keys are a kind word and the container name
+	// behind a dash: "failed-", "updated-" or "available-". Every key the
+	// store accepts is also a valid container name, so a name cannot be told
+	// apart from a kind word; the kind word always comes first, so no name
+	// moves a container's key onto another kind's or onto this one, whose
+	// first word, "linuxio", is none of the three.
 	dockerUpdatePassAlertKey = "linuxio-update-pass"
+
+	dockerUpdateFailedKeyPrefix    = "failed-"
+	dockerUpdateUpdatedKeyPrefix   = "updated-"
+	dockerUpdateAvailableKeyPrefix = "available-"
 )
 
 // dockerUpdateAlertKey is the container name; alerts normalises it into a key.
+// Under dockerUpdateAlertSource it follows a kind prefix (the failed-check
+// warnings have a source of their own and use it as it is).
 func dockerUpdateAlertKey(containerName string) string {
 	if containerName == "" {
 		return "unknown"
@@ -42,7 +50,7 @@ func raiseDockerUpdateAlert(ctx context.Context, containerName string, err error
 	sum := sha256.Sum256([]byte(err.Error()))
 	obs := alerts.Observation{
 		Source:       dockerUpdateAlertSource,
-		Key:          dockerUpdateAlertKey(name),
+		Key:          dockerUpdateFailedKeyPrefix + dockerUpdateAlertKey(name),
 		Severity:     alerts.SeverityError,
 		Title:        "Docker update failed: " + name,
 		Message:      err.Error(),
@@ -64,7 +72,7 @@ func raiseDockerUpdatedAlert(ctx context.Context, alertReport, containerName, ol
 	name := strings.TrimPrefix(containerName, "/")
 	obs := alerts.Observation{
 		Source:       dockerUpdateAlertSource,
-		Key:          "updated-" + dockerUpdateAlertKey(name),
+		Key:          dockerUpdateUpdatedKeyPrefix + dockerUpdateAlertKey(name),
 		Severity:     alerts.SeverityInfo,
 		Title:        "Docker container updated: " + name,
 		Message:      "Image " + shortImageID(oldImage) + " was replaced by " + shortImageID(newImage) + ".",
@@ -105,7 +113,7 @@ func raiseDockerPassAlert(ctx context.Context, now time.Time, waiting int) {
 func syncAvailableAlerts(ctx context.Context, statuses []ImageUpdateStatus, wanted bool) {
 	for _, status := range statuses {
 		name := strings.TrimPrefix(status.ContainerName, "/")
-		key := "available-" + dockerUpdateAlertKey(name)
+		key := dockerUpdateAvailableKeyPrefix + dockerUpdateAlertKey(name)
 		if !wanted || status.CheckState != DockerUpdateCheckStateAvailable {
 			if err := alerts.Resolve(ctx, dockerUpdateAlertSource, key); err != nil {
 				slog.Debug("failed to clear Docker update available alert", "component", "docker", "container", name, "error", err)
@@ -186,7 +194,7 @@ func shortImageID(id string) string {
 // logged, never returned.
 func resolveDockerUpdateAlert(ctx context.Context, containerName string) {
 	name := strings.TrimPrefix(containerName, "/")
-	for _, key := range []string{dockerUpdateAlertKey(name), "available-" + dockerUpdateAlertKey(name)} {
+	for _, key := range []string{dockerUpdateFailedKeyPrefix + dockerUpdateAlertKey(name), dockerUpdateAvailableKeyPrefix + dockerUpdateAlertKey(name)} {
 		if err := alerts.Resolve(ctx, dockerUpdateAlertSource, key); err != nil {
 			slog.Debug("failed to clear Docker update alert", "component", "docker", "container", name, "error", err)
 		}

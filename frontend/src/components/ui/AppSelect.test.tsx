@@ -40,6 +40,21 @@ describe("AppSelect accessibility", () => {
     expect(screen.getByRole("combobox")).toHaveAccessibleName("History range");
   });
 
+  it("forwards aria-describedby to the interactive trigger", () => {
+    render(
+      <>
+        <AppSelect aria-describedby="help" label="Report" value="one">
+          <option value="one">One</option>
+        </AppSelect>
+        <p id="help">Why this matters.</p>
+      </>,
+    );
+
+    expect(screen.getByRole("combobox")).toHaveAccessibleDescription(
+      "Why this matters.",
+    );
+  });
+
   it("lists options inside an optgroup under a group heading", () => {
     render(
       <AppSelect value="b">

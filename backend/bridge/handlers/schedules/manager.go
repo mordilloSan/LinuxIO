@@ -150,7 +150,8 @@ func (m manager) create(ctx context.Context, req apischema.ScheduleCreateRequest
 // update replaces the options of a schedule and, when req names one that
 // differs from the stored one, its notification choice. A change of only the
 // choice leaves the definition and units alone, so it also works while the
-// script runs.
+// script runs, unless they are incomplete: then it re-applies them, as a save
+// of the same options does, and the choice is stored with that.
 func (m manager) update(ctx context.Context, req apischema.ScheduleUpdateRequest) error {
 	if req.Notify != nil {
 		if err := validateNotify(*req.Notify); err != nil {
@@ -174,11 +175,34 @@ func (m manager) update(ctx context.Context, req apischema.ScheduleUpdateRequest
 				notify = nil
 			}
 		}
-		if notify != nil && sameOptions(req.Options, def.Options) {
+		if notify != nil && sameOptions(req.Options, def.Options) && m.installed(ctx, def) {
 			return m.host.setNotifyChoice(ctx, req.ID, *notify)
 		}
 		return m.changeLocked(ctx, req.ID, &req.Options, notify, nil, false)
 	})
+}
+
+// installed reports whether the units and script on disk are those of def and,
+// for an enabled def, its timer is active: what apply leaves behind.
+func (m manager) installed(ctx context.Context, def apischema.ScheduleDefinition) bool {
+	_, account, err := normalizeOptions(ctx, def.Options, m.host)
+	if err != nil {
+		return false
+	}
+	for path, want := range map[string][]byte{
+		filepath.Join(m.store.unitDir, serviceName(def.ID)): m.store.renderService(def, account),
+		filepath.Join(m.store.unitDir, timerName(def.ID)):   renderTimer(def),
+		m.store.scriptPath(def):                             []byte(def.Options.Script),
+	} {
+		if got, readErr := os.ReadFile(path); readErr != nil || !bytes.Equal(got, want) {
+			return false
+		}
+	}
+	if !def.Enabled {
+		return true
+	}
+	timer, err := m.host.inspect(ctx, timerName(def.ID))
+	return err == nil && active(timer)
 }
 
 // A choice left behind names no schedule and is harmless, so the two
@@ -195,8 +219,14 @@ func (m manager) takeBackNotifyChoice(ctx context.Context, id string) {
 // forgetNotifyChoice clears the choice of a deleted schedule, when it has one.
 func (m manager) forgetNotifyChoice(ctx context.Context, id string) {
 	choices, err := m.host.notifyChoices()
-	if _, ok := choices[id]; ok && err == nil {
+	if err == nil {
+		if _, ok := choices[id]; !ok {
+			return
+		}
 		err = m.host.setNotifyChoice(ctx, id, "")
+	} else if !alerts.NotificationsMayName(id) {
+		// Settings that do not parse hold no choice for a schedule they do not name.
+		return
 	}
 	if err != nil {
 		slog.Warn("could not clear the notification choice of a deleted scheduled task", "schedule", id, "error", err)

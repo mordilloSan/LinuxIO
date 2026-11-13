@@ -3,6 +3,8 @@ package indexer
 import (
 	"context"
 	"strings"
+
+	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
 // Status is the daemon status shape exposed by the indexer /status endpoint.
@@ -32,6 +34,6 @@ func FetchStatus(ctx context.Context) (Status, error) {
 		ActivePath: raw.ActivePath, Warning: raw.Warning,
 	}
 	status.Status = strings.ToLower(strings.TrimSpace(status.Status))
-	status.Running = status.Status == "running" || status.Status == "indexing"
+	status.Running = status.Status == indexerapi.StatusRunning
 	return status, nil
 }

@@ -216,6 +216,42 @@ describe("DockerDaemonSettingsSection", () => {
     expect(mocks.save).not.toHaveBeenCalled();
   });
 
+  it("accepts an IPv6 address pool the daemon accepts", async () => {
+    const { user } = renderSection();
+
+    await user.type(screen.getByLabelText("Base"), "fd00::/48");
+    await user.type(screen.getByLabelText("Network size"), "64");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(mocks.save).toHaveBeenCalledWith({
+        ...config,
+        address_pool_base: "fd00::/48",
+        address_pool_size: 64,
+      }),
+    );
+    expect(screen.queryByText(/Use a CIDR/)).not.toBeInTheDocument();
+  });
+
+  it("bounds an IPv6 address pool size by 128 and rejects a bad base", async () => {
+    const { user } = renderSection();
+
+    await user.type(screen.getByLabelText("Base"), "fd00::/48");
+    await user.type(screen.getByLabelText("Network size"), "129");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(
+      await screen.findByText("Use a prefix between 48 and 128."),
+    ).toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText("Base"));
+    await user.type(screen.getByLabelText("Base"), "999.1.1.1/16");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(
+      await screen.findByText("Use a CIDR like 172.20.0.0/16 or fd00::/48."),
+    ).toBeInTheDocument();
+    expect(mocks.save).not.toHaveBeenCalled();
+  });
+
   it("disables editing without a privileged session", () => {
     renderSection(false);
 

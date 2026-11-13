@@ -52,7 +52,7 @@ func (d *daemon) handleIndex(ctx context.Context, w http.ResponseWriter, r *http
 
 		start := time.Now()
 		sendSSEEvent(stream, api.EventStarted, api.WorkStartedEvent{
-			Status:      "running",
+			Status:      api.StatusRunning,
 			Operation:   "index",
 			OperationID: operationID,
 			Path:        "/",
@@ -89,7 +89,7 @@ func (d *daemon) handleIndex(ctx context.Context, w http.ResponseWriter, r *http
 		}
 
 		complete := api.WorkCompleteEvent{
-			Status:      "complete",
+			Status:      api.StatusComplete,
 			Operation:   "index",
 			OperationID: operationID,
 			Path:        "/",
@@ -103,7 +103,7 @@ func (d *daemon) handleIndex(ctx context.Context, w http.ResponseWriter, r *http
 		}
 		sendSSEEvent(stream, api.EventComplete, complete)
 	})
-	writeJSONStatus(w, http.StatusAccepted, api.OperationResponse{Status: "running", Path: "/", OperationID: operationID})
+	writeJSONStatus(w, http.StatusAccepted, api.OperationResponse{Status: api.StatusRunning, Path: "/", OperationID: operationID})
 }
 
 func (d *daemon) handleReindex(ctx context.Context, w http.ResponseWriter, r *http.Request) {
@@ -138,7 +138,7 @@ func (d *daemon) handleReindex(ctx context.Context, w http.ResponseWriter, r *ht
 		defer d.unlockIndex()
 		defer d.endWorkStream(stream)
 		sendSSEEvent(stream, api.EventStarted, api.WorkStartedEvent{
-			Status:      "running",
+			Status:      api.StatusRunning,
 			Operation:   "reindex",
 			OperationID: operationID,
 			Path:        normalizedPath,
@@ -146,7 +146,7 @@ func (d *daemon) handleReindex(ctx context.Context, w http.ResponseWriter, r *ht
 		d.reindexPathWithProgress(ctx, operationID, normalizedPath, stream)
 	})
 
-	writeJSONStatus(w, http.StatusAccepted, api.OperationResponse{Status: "running", Path: normalizedPath, OperationID: operationID})
+	writeJSONStatus(w, http.StatusAccepted, api.OperationResponse{Status: api.StatusRunning, Path: normalizedPath, OperationID: operationID})
 }
 
 func (d *daemon) handleAdd(w http.ResponseWriter, r *http.Request) {
@@ -176,7 +176,7 @@ func (d *daemon) handleAdd(w http.ResponseWriter, r *http.Request) {
 	}
 	cfg := d.settings.config()
 	if indexing.IsPathExcludedFromIndex("/", configfile.EffectiveExcludePaths(cfg), cfg.IncludeNetworkMounts, relPath) {
-		writeJSON(w, api.OperationResponse{Status: "ok"})
+		writeJSON(w, api.OperationResponse{Status: api.StatusOK})
 		return
 	}
 	if !d.tryLockIndex() {
@@ -206,7 +206,7 @@ func (d *daemon) handleAdd(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("upsert failed: %v", err), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, api.OperationResponse{Status: "ok"})
+	writeJSON(w, api.OperationResponse{Status: api.StatusOK})
 }
 
 func (d *daemon) handleDelete(w http.ResponseWriter, r *http.Request) {
@@ -248,5 +248,5 @@ func (d *daemon) handleDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("delete failed: %v", err), http.StatusInternalServerError)
 		return
 	}
-	writeJSON(w, api.OperationResponse{Status: "ok"})
+	writeJSON(w, api.OperationResponse{Status: api.StatusOK})
 }

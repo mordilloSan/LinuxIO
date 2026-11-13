@@ -376,7 +376,7 @@ func TestEndReportsEveryRunWhenAsked(t *testing.T) {
 	h.Settings = reportingScripts(alerts.ReportEveryRun, nil)
 	h.Alert = alerts.Raise
 	completeRun(t, h, testInvocation, time.Minute)
-	if err := alerts.MarkSeen(t.Context(), "1000", nil); err != nil {
+	if err := alerts.MarkSeen(t.Context(), "1000", nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	doc, err := alerts.Load()

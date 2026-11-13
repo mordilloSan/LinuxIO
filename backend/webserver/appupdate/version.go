@@ -130,58 +130,51 @@ func fetchLatestRelease(ctx context.Context) (version string, releaseURL string)
 	return release.TagName, release.HTMLURL
 }
 
-type componentVersionProbe struct {
-	component string
-	binary    string
-	args      []string
-}
-
 func getComponentVersions(parent context.Context) map[string]string {
 	if parent == nil {
 		return map[string]string{}
 	}
 
-	components := make(map[string]string, 5)
-	if ver.Version != "" {
-		components["LinuxIO Web Server"] = ver.Version
-	}
-
-	probes := []componentVersionProbe{
-		{component: "LinuxIO Bridge", binary: "linuxio-bridge", args: []string{"version"}},
-		{component: "LinuxIO Auth", binary: "linuxio-auth", args: []string{"version"}},
-		{component: "LinuxIO Indexer", binary: "linuxio-indexer", args: []string{"--version"}},
-		{component: "LinuxIO CLI", binary: "linuxio", args: []string{"version", "--self"}},
-	}
+	components := make(map[string]string, len(ver.Components))
 
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 
-	for _, probe := range probes {
+	for _, probe := range ver.Components {
+		// The webserver reports its own compiled-in version.
+		if probe.Binary == "linuxio-webserver" {
+			if ver.Version != "" {
+				mu.Lock()
+				components[probe.Name] = ver.Version
+				mu.Unlock()
+			}
+			continue
+		}
 		wg.Go(func() {
 			ctx, cancel := context.WithTimeout(parent, componentVersionCommandTimeout)
 			defer cancel()
 
-			binaryPath := filepath.Join(ver.BinDir, probe.binary)
-			output, err := runComponentVersionCommand(ctx, binaryPath, probe.args...)
+			binaryPath := filepath.Join(ver.BinDir, probe.Binary)
+			output, err := runComponentVersionCommand(ctx, binaryPath, probe.Args...)
 			if err != nil {
 				slog.Debug("failed to run component version command",
-					"component", probe.component,
+					"component", probe.Name,
 					"path", binaryPath,
-					"args", strings.Join(probe.args, " "),
+					"args", strings.Join(probe.Args, " "),
 					"error", err)
 				return
 			}
 
-			version, ok := parseComponentVersionOutput(probe.component, output)
+			version, ok := parseComponentVersionOutput(probe.Name, output)
 			if !ok {
 				slog.Debug("failed to parse component version output",
-					"component", probe.component,
+					"component", probe.Name,
 					"output", strings.TrimSpace(string(output)))
 				return
 			}
 
 			mu.Lock()
-			components[probe.component] = version
+			components[probe.Name] = version
 			mu.Unlock()
 		})
 	}

@@ -8,7 +8,18 @@ import (
 
 	"github.com/goccy/go-yaml"
 	"github.com/stretchr/testify/require"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
+
+func TestValidChunkSizeMBFitsOneRelayFrame(t *testing.T) {
+	require.Equal(t, relay.MaxRelayPayloadSize, MaxChunkSizeMB<<20)
+	require.True(t, ValidChunkSizeMB(0))
+	require.True(t, ValidChunkSizeMB(1))
+	require.True(t, ValidChunkSizeMB(MaxChunkSizeMB))
+	require.False(t, ValidChunkSizeMB(MaxChunkSizeMB+1))
+	require.False(t, ValidChunkSizeMB(-1))
+}
 
 func TestParseDockerFolders(t *testing.T) {
 	folders, err := ParseDockerFolders([]string{" /srv/docker/ ", "/mnt/stacks"})

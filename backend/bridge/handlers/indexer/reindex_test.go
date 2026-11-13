@@ -486,7 +486,7 @@ func newScopedReattachServer(t *testing.T, streamRequests *atomic.Int32) *httpte
 			mustWrite(t, w, "event:complete\ndata:{\"status\":\"complete\",\"operation\":\"reindex\",\"operation_id\":\"reindex-1\",\"path\":\"/docs\",\"files_indexed\":3}\n\n")
 		case r.Method == http.MethodGet && r.URL.Path == "/status":
 			w.Header().Set("Content-Type", "application/json")
-			mustWrite(t, w, `{"status":"indexing","active_operation":"reindex","active_operation_id":"reindex-1","active_path":"/docs","num_files":2}`)
+			mustWrite(t, w, `{"status":"running","active_operation":"reindex","active_operation_id":"reindex-1","active_path":"/docs","num_files":2}`)
 		default:
 			t.Errorf("unexpected request: %s %s", r.Method, r.URL.String())
 			w.WriteHeader(http.StatusNotFound)
@@ -565,7 +565,7 @@ func TestStreamIndexerAttach_CompleteFlow(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("stream") != "true" {
 			w.Header().Set("Content-Type", "application/json")
-			mustWrite(t, w, `{"status":"indexing","active_operation":"index","active_operation_id":"attach-1","active_path":"/"}`)
+			mustWrite(t, w, `{"status":"running","active_operation":"index","active_operation_id":"attach-1","active_path":"/"}`)
 			return
 		}
 		w.Header().Set("Content-Type", "text/event-stream")

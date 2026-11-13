@@ -81,8 +81,13 @@ func validateSectionName(name string) error {
 	return nil
 }
 
-// ValidChunkSizeMB reports whether v is 0 (default) or 1-32 MiB.
-func ValidChunkSizeMB(v int) bool { return v == 0 || (v >= 1 && v <= 32) }
+// MaxChunkSizeMB is the largest upload chunk the setting allows. The frontend
+// sends a chunk as one relay frame, and a frame carries at most 16 MiB.
+const MaxChunkSizeMB = 16
+
+// ValidChunkSizeMB reports whether v is 0 (the frontend default) or
+// 1-MaxChunkSizeMB MiB.
+func ValidChunkSizeMB(v int) bool { return v == 0 || (v >= 1 && v <= MaxChunkSizeMB) }
 
 // ValidTerminalFontSize reports whether v is within the supported range.
 func ValidTerminalFontSize(v int) bool { return v >= 10 && v <= 28 }

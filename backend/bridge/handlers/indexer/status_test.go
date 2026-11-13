@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
 func TestFetchStatusReadsDaemonCounters(t *testing.T) {
@@ -17,7 +19,7 @@ func TestFetchStatusReadsDaemonCounters(t *testing.T) {
 			t.Fatalf("path = %s, want /status", req.URL.Path)
 		}
 		return jsonResponse(http.StatusOK, `{
-			"status": "indexing",
+			"status": "running",
 			"num_dirs": 12,
 			"num_files": 345,
 			"total_size": 4096,
@@ -30,14 +32,35 @@ func TestFetchStatusReadsDaemonCounters(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FetchStatus: %v", err)
 	}
-	if !status.Running || status.Status != "indexing" {
-		t.Fatalf("status running=%v status=%q, want running indexing", status.Running, status.Status)
+	if !status.Running || status.Status != "running" {
+		t.Fatalf("status running=%v status=%q, want running", status.Running, status.Status)
 	}
 	if status.NumFiles != 345 || status.NumDirs != 12 {
 		t.Fatalf("unexpected counts: %#v", status)
 	}
 	if status.DatabaseSize != 1048576 {
 		t.Fatalf("unexpected storage counters: %#v", status)
+	}
+}
+
+func TestFetchStatusRunningFollowsTheDaemonWords(t *testing.T) {
+	for status, running := range map[string]bool{
+		indexerapi.StatusRunning:       true,
+		indexerapi.StatusIdle:          false,
+		indexerapi.StatusUninitialized: false,
+	} {
+		t.Run(status, func(t *testing.T) {
+			withTestIndexerClient(t, func(*http.Request) (*http.Response, error) {
+				return jsonResponse(http.StatusOK, `{"status": "`+status+`"}`, nil), nil
+			})
+			got, err := FetchStatus(context.Background())
+			if err != nil {
+				t.Fatalf("FetchStatus: %v", err)
+			}
+			if got.Running != running || got.Status != status {
+				t.Fatalf("running=%v status=%q, want running=%v status=%q", got.Running, got.Status, running, status)
+			}
+		})
 	}
 }
 

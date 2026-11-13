@@ -40,6 +40,31 @@ const toRequest = (draft: DockerDaemonConfig): DockerDaemonConfig => ({
   address_pool_base: draft.address_pool_base.trim(),
 });
 
+const isIPv4 = (address: string): boolean =>
+  /^(0|[1-9]\d{0,2})(\.(0|[1-9]\d{0,2})){3}$/.test(address) &&
+  address.split(".").every((octet) => Number(octet) <= 255);
+
+// A bare IPv6 address is a valid host between brackets, so the URL parser
+// checks it for us.
+const isIPv6 = (address: string): boolean => {
+  if (!address.includes(":")) return false;
+  try {
+    return new URL(`http://[${address}]`).hostname !== "";
+  } catch {
+    return false;
+  }
+};
+
+// The prefix length and address size (32 or 128) of an IPv4 or IPv6 CIDR, as
+// the daemon config accepts, or null when the text is not one.
+const parseCidr = (cidr: string): { prefix: number; bits: number } | null => {
+  const parts = cidr.split("/");
+  if (parts.length !== 2 || !/^\d{1,3}$/.test(parts[1])) return null;
+  const bits = isIPv4(parts[0]) ? 32 : isIPv6(parts[0]) ? 128 : 0;
+  const prefix = Number(parts[1]);
+  return bits > 0 && prefix <= bits ? { prefix, bits } : null;
+};
+
 interface DraftErrors {
   data_root?: string;
   log_max_size?: string;
@@ -64,14 +89,14 @@ const validateDraft = (draft: DockerDaemonConfig): DraftErrors => {
   }
   const base = draft.address_pool_base.trim();
   if (base) {
-    const prefix = Number(base.split("/")[1]);
-    if (!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(base)) {
-      errors.address_pool_base = "Use a CIDR like 172.20.0.0/16.";
+    const cidr = parseCidr(base);
+    if (!cidr) {
+      errors.address_pool_base = "Use a CIDR like 172.20.0.0/16 or fd00::/48.";
     } else if (
-      draft.address_pool_size < prefix ||
-      draft.address_pool_size > 32
+      draft.address_pool_size < cidr.prefix ||
+      draft.address_pool_size > cidr.bits
     ) {
-      errors.address_pool_size = `Use a prefix between ${prefix} and 32.`;
+      errors.address_pool_size = `Use a prefix between ${cidr.prefix} and ${cidr.bits}.`;
     }
   }
   return errors;

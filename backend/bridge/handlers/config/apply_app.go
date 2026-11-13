@@ -14,7 +14,7 @@ func applyAppSettingsUpdate(app *userconfig.PersistedAppSettings, payload *apisc
 		return nil
 	}
 	if !userconfig.ValidChunkSizeMB(*payload.ChunkSizeMB) {
-		return fmt.Errorf("%w: chunkSizeMB must be 0 (default) or between 1 and 32", bridgeipc.ErrInvalidArgs)
+		return fmt.Errorf("%w: chunkSizeMB must be 0 (default) or between 1 and %d", bridgeipc.ErrInvalidArgs, userconfig.MaxChunkSizeMB)
 	}
 	app.ChunkSizeMB = *payload.ChunkSizeMB
 	return nil

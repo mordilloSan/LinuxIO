@@ -171,6 +171,7 @@ const caption = (text: string, id?: string) => (
  * change; the others are part of the draft and save with Save.
  */
 const ReportCard = ({ edit, value }: DraftProps) => {
+  const helpIdPrefix = useId();
   const { data: auto, isPending: autoPending } = useQuery(
     linuxio.updates.get_auto_updates,
   );
@@ -222,6 +223,7 @@ const ReportCard = ({ edit, value }: DraftProps) => {
         {reportKinds.map(({ kind, label, choices, help }) => (
           <div key={kind}>
             <AppSelect
+              aria-describedby={help ? `${helpIdPrefix}-${kind}` : undefined}
               fullWidth
               label={label}
               onChange={(event) =>
@@ -237,7 +239,7 @@ const ReportCard = ({ edit, value }: DraftProps) => {
                 </option>
               ))}
             </AppSelect>
-            {help ? caption(help) : null}
+            {help ? caption(help, `${helpIdPrefix}-${kind}`) : null}
           </div>
         ))}
       </div>
@@ -557,7 +559,7 @@ const NotificationSettingsSection = () => {
     >
       {header}
       {data.settingsUnreadable ? (
-        <AppAlert severity="warning">
+        <AppAlert role="note" severity="warning">
           The stored notification settings could not be read. Saving replaces
           them.
         </AppAlert>

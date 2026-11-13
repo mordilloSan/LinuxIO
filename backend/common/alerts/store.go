@@ -299,8 +299,10 @@ func Dismiss(ctx context.Context, id string) error {
 }
 
 // MarkSeen records that uid has seen the current occurrence of each id, or of
-// every alert when ids is nil.
-func MarkSeen(ctx context.Context, uid string, ids []string) error {
+// every alert when ids is nil. Only the alerts keep accepts are marked (all
+// when keep is nil), judged under the same lock that records the mark, so the
+// alerts judged are the ones marked.
+func MarkSeen(ctx context.Context, uid string, ids []string, keep func(Alert) bool) error {
 	want := map[string]bool{}
 	for _, id := range ids {
 		want[id] = true
@@ -308,7 +310,7 @@ func MarkSeen(ctx context.Context, uid string, ids []string) error {
 	return update(ctx, func(doc *Document) error {
 		for i := range doc.Alerts {
 			a := &doc.Alerts[i]
-			if ids != nil && !want[a.ID] {
+			if (ids != nil && !want[a.ID]) || (keep != nil && !keep(*a)) {
 				continue
 			}
 			if a.Seen == nil {

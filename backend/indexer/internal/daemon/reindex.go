@@ -40,7 +40,7 @@ func (d *daemon) reindexPathWithProgress(ctx context.Context, operationID, relat
 			sendSSEError(sender, fmt.Sprintf("failed to delete stale entries: %v", deleteErr))
 			return
 		}
-		sendSSEEvent(sender, api.EventComplete, api.WorkCompleteEvent{Status: "complete", Operation: "reindex", OperationID: operationID, Path: relativePath, DurationMs: time.Since(start).Milliseconds()})
+		sendSSEEvent(sender, api.EventComplete, api.WorkCompleteEvent{Status: api.StatusComplete, Operation: "reindex", OperationID: operationID, Path: relativePath, DurationMs: time.Since(start).Milliseconds()})
 		return
 	}
 	d.reindexExistingPath(ctx, operationID, relativePath, sender, start, cfg, indexID)
@@ -86,7 +86,7 @@ func (d *daemon) reindexExistingPath(ctx context.Context, operationID, relativeP
 	slog.Info("reindex complete", "path", relativePath, "duration", duration)
 
 	sendSSEEvent(sender, api.EventComplete, api.WorkCompleteEvent{
-		Status:       "complete",
+		Status:       api.StatusComplete,
 		Operation:    "reindex",
 		OperationID:  operationID,
 		Path:         relativePath,

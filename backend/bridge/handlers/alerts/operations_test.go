@@ -41,7 +41,7 @@ func TestListFiltersDismissedAndComputesSeenPerUID(t *testing.T) {
 	_ = store.Raise(ctx, store.Observation{Source: "s", Key: "b", Severity: "error", Title: "B", OccurrenceID: "1"})
 	_ = store.Raise(ctx, store.Observation{Source: "s", Key: "c", Severity: "info", Title: "C", OccurrenceID: "1"})
 	_ = store.Dismiss(ctx, "s/c")
-	_ = store.MarkSeen(ctx, "1000", []string{"s/a"})
+	_ = store.MarkSeen(ctx, "1000", []string{"s/a"}, nil)
 
 	list, err := listForUID(1000)
 	if err != nil {
@@ -664,4 +664,27 @@ func TestRefusedSaveLeavesAnUnreadableFileInPlace(t *testing.T) {
 		}
 		requireKept(t, notificationsFile(), content)
 	})
+}
+
+func TestMarkSeenWithIDsLeavesHiddenAlertsUnseen(t *testing.T) {
+	useTempStore(t)
+	storeSettings(t, func(n *store.NotificationSettings) { n.Levels[store.SeverityInfo] = store.Channels{} })
+	raise(t, "notice", store.SeverityInfo)
+	raise(t, "alert", store.SeverityError)
+	if _, err := markSeenForUID(t.Context(), 1000, []string{"s/notice", "s/alert"}); err != nil {
+		t.Fatal(err)
+	}
+	storeSettings(t, func(n *store.NotificationSettings) { n.Levels[store.SeverityInfo] = store.Channels{Browser: true} })
+	list, err := listForUID(1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if list.Unseen != 1 {
+		t.Fatalf("unseen = %d, want the notice its level kept out", list.Unseen)
+	}
+	for _, a := range list.Alerts {
+		if a.Seen != (a.ID == "s/alert") {
+			t.Errorf("%s seen = %v", a.ID, a.Seen)
+		}
+	}
 }

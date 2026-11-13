@@ -447,6 +447,9 @@ different owners and failure consequences:
 | `config.set_ui` | `ConfigUISetPayload -> ConfigSetResult` | Full UI snapshot replacement; omitted fields resolve to backend defaults. |
 
 `AppConfig.appSettings` contains only `showHiddenFiles` and `chunkSizeMB`.
+`chunkSizeMB` is the upload chunk size, 1 to 16 MiB (a relay frame carries at
+most 16 MiB and an upload chunk is one frame); a new file starts at 1, and 0 is
+accepted and means the frontend default, also 1 MiB.
 Docker, job, and dismissal fields remain on `AppConfig`. Among the dismissals,
 `historySeenAt` (on `Dismissals` and on `ConfigDismissalsPayload`) is when the
 user last saw a loaded job history, as an RFC 3339 time: `config.set` refuses

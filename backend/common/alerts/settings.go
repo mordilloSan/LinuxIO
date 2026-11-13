@@ -1,6 +1,7 @@
 package alerts
 
 import (
+	"bytes"
 	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
@@ -99,6 +100,18 @@ var reportChoices = map[string][]string{
 func ReportOffered(kind, report string) bool { return slices.Contains(reportChoices[kind], report) }
 
 func notificationsPath() string { return filepath.Join(filepath.Dir(Path), "notifications.json") }
+
+// NotificationsMayName reports whether the stored notification settings could
+// hold a setting under key: false only when the file is missing or does not
+// contain key at all. A caller that cannot parse the settings uses it to tell
+// whether there is anything to clear.
+func NotificationsMayName(key string) bool {
+	data, err := os.ReadFile(notificationsPath())
+	if errors.Is(err, fs.ErrNotExist) {
+		return false
+	}
+	return err != nil || bytes.Contains(data, []byte(key))
+}
 
 var (
 	// ErrUnparsableSettings is a settings file that is there but does not parse.

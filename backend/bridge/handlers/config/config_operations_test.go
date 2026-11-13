@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 )
 
@@ -21,11 +22,13 @@ func TestRequireDockerMountOrderingPrivilege(t *testing.T) {
 	err := requireDockerMountOrderingPrivilege(cfg, &apischema.ConfigSetPayload{
 		Docker: &apischema.ConfigDockerPayload{Folders: []string{"/opt/docker"}},
 	}, false)
+	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
 	require.ErrorContains(t, err, "privileged session")
 
 	err = requireDockerMountOrderingPrivilege(cfg, &apischema.ConfigSetPayload{
 		Docker: &apischema.ConfigDockerPayload{RequireMountsForFolders: &enabled},
 	}, false)
+	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
 	require.ErrorContains(t, err, "privileged session")
 
 	require.NoError(t, requireDockerMountOrderingPrivilege(cfg, &apischema.ConfigSetPayload{

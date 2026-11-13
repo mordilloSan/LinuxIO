@@ -40,7 +40,7 @@ func TestRaiseAndResolveDockerUpdateAlert(t *testing.T) {
 		t.Fatalf("store = %+v err = %v", doc, err)
 	}
 	a := doc.Alerts[0]
-	if a.ID != "docker-update/nextcloud_app" || a.Severity != alerts.SeverityError || a.Link != dockerUpdateAlertLink {
+	if a.ID != "docker-update/failed-nextcloud_app" || a.Severity != alerts.SeverityError || a.Link != dockerUpdateAlertLink {
 		t.Fatalf("alert = %+v", a)
 	}
 	// Same error again is silent; a different error is a new occurrence.
@@ -107,7 +107,7 @@ func TestDockerFailureIsAlwaysReported(t *testing.T) {
 			saveNotify(t, n)
 			raiseDockerUpdateAlert(t.Context(), "/web", errors.New("pull failed"))
 			doc, err := alerts.Load()
-			if err != nil || len(doc.Alerts) != 1 || doc.Alerts[0].ID != "docker-update/web" || doc.Alerts[0].Severity != alerts.SeverityError {
+			if err != nil || len(doc.Alerts) != 1 || doc.Alerts[0].ID != "docker-update/failed-web" || doc.Alerts[0].Severity != alerts.SeverityError {
 				t.Fatalf("alerts = %+v err = %v, want the docker-update/web error", doc.Alerts, err)
 			}
 		})
@@ -303,9 +303,9 @@ func TestDockerEveryRunReportsAnUpdatePassThatReplacedNothing(t *testing.T) {
 // The pass notice shares its source with every container's alerts: no
 // container's failure, updated or available record may land on its key.
 func TestDockerPassNoticeKeyDiffersFromContainerKeys(t *testing.T) {
-	names := []string{"run", "updated-run", "pass"}
+	names := []string{"run", "updated-run", "pass", dockerUpdatePassAlertKey}
 	for _, name := range names {
-		for _, key := range []string{dockerUpdateAlertKey(name), "updated-" + dockerUpdateAlertKey(name), "available-" + dockerUpdateAlertKey(name)} {
+		for _, key := range []string{dockerUpdateFailedKeyPrefix + dockerUpdateAlertKey(name), dockerUpdateUpdatedKeyPrefix + dockerUpdateAlertKey(name), dockerUpdateAvailableKeyPrefix + dockerUpdateAlertKey(name)} {
 			if key == dockerUpdatePassAlertKey {
 				t.Fatalf("container %q has the pass notice's key %q", name, key)
 			}
@@ -330,9 +330,34 @@ func TestDockerPassNoticeKeyDiffersFromContainerKeys(t *testing.T) {
 		t.Fatalf("alerts = %v, want the three failures and the notice", alertIDs(t))
 	}
 	for _, name := range names {
-		if a := byID["docker-update/"+name]; a.Severity != alerts.SeverityError || a.Title != "Docker update failed: "+name {
+		if a := byID["docker-update/failed-"+name]; a.Severity != alerts.SeverityError || a.Title != "Docker update failed: "+name {
 			t.Fatalf("failure of %q = %+v, want it kept beside the notice", name, a)
 		}
+	}
+}
+
+// Containers named like another kind's key stay separate: "updated-x" failing
+// is not the "updated" notice of "x".
+func TestContainerKeysNeverCollide(t *testing.T) {
+	names := []string{"x", "updated-x", "available-x", "failed-x", "updated-updated-x", dockerUpdatePassAlertKey}
+	seen := map[string]string{}
+	for _, name := range names {
+		for _, key := range []string{dockerUpdateFailedKeyPrefix + name, dockerUpdateUpdatedKeyPrefix + name, dockerUpdateAvailableKeyPrefix + name} {
+			if other, ok := seen[key]; ok {
+				t.Errorf("key %q is both %s and %q", key, other, name)
+			}
+			seen[key] = name
+		}
+	}
+	if _, ok := seen[dockerUpdatePassAlertKey]; ok {
+		t.Errorf("a container has the pass notice's key")
+	}
+
+	useTempAlertStore(t)
+	raiseDockerUpdatedAlert(t.Context(), alerts.ReportChanges, "/x", "sha256:old", "sha256:new")
+	raiseDockerUpdateAlert(t.Context(), "/updated-x", errors.New("pull failed"))
+	if ids := alertIDs(t); len(ids) != 2 {
+		t.Fatalf("alerts = %v, want the notice of x and the failure of updated-x", ids)
 	}
 }
 
@@ -407,7 +432,7 @@ func TestSyncCheckAlertsFollowsTheCheckError(t *testing.T) {
 
 	statuses[0].CheckState, statuses[0].Err = DockerUpdateCheckStateCurrent, ""
 	syncCheckAlerts(ctx, statuses)
-	if ids := alertIDs(t); len(ids) != 1 || ids[0] != "docker-update/web" {
+	if ids := alertIDs(t); len(ids) != 1 || ids[0] != "docker-update/failed-web" {
 		t.Fatalf("after a successful check: %v, want only the update failure", ids)
 	}
 
@@ -415,7 +440,7 @@ func TestSyncCheckAlertsFollowsTheCheckError(t *testing.T) {
 	statuses[0].CheckState, statuses[0].Err = DockerUpdateCheckStateError, "registry unreachable"
 	syncCheckAlerts(ctx, statuses)
 	syncCheckAlerts(ctx, statuses[1:])
-	if ids := alertIDs(t); len(ids) != 1 || ids[0] != "docker-update/web" {
+	if ids := alertIDs(t); len(ids) != 1 || ids[0] != "docker-update/failed-web" {
 		t.Fatalf("after the container left the check: %v", ids)
 	}
 
@@ -440,7 +465,7 @@ func TestScheduledUpdateErrorIsReported(t *testing.T) {
 	if !scheduledrun.AllReported(err) || !errors.Is(err, cause) {
 		t.Fatalf("err = %v, want the cause, marked reported", err)
 	}
-	if ids := alertIDs(t); len(ids) != 1 || ids[0] != "docker-update/web" {
+	if ids := alertIDs(t); len(ids) != 1 || ids[0] != "docker-update/failed-web" {
 		t.Fatalf("alerts = %v, want the container's", ids)
 	}
 	if scheduledrun.AllReported(errors.Join(err, errors.New("a scheduled container is gone"))) {

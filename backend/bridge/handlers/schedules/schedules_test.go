@@ -600,6 +600,34 @@ func TestUpdateOfOnlyTheNotifyChoiceLeavesTheUnitAlone(t *testing.T) {
 	}
 }
 
+func TestUpdateOfOnlyTheNotifyChoiceRepairsAnIncompleteSchedule(t *testing.T) {
+	m, _ := testManager(t)
+	ctx := t.Context()
+	created, err := m.create(ctx, apischema.ScheduleCreateRequest{Options: testOptions()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := created.Definition.ID
+	enabled := true
+	if err := m.change(ctx, id, nil, &enabled, false); err != nil {
+		t.Fatal(err)
+	}
+	service := filepath.Join(m.store.unitDir, serviceName(id))
+	if err := os.Remove(service); err != nil {
+		t.Fatal(err)
+	}
+	choice := alerts.ReportEveryRun
+	if err := m.update(ctx, apischema.ScheduleUpdateRequest{ID: id, Options: created.Definition.Options, Notify: &choice}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(service); err != nil {
+		t.Errorf("the first save did not repair the unit: %v", err)
+	}
+	if got := storedChoices(t)[id]; got != choice {
+		t.Errorf("stored choice = %q, want %q", got, choice)
+	}
+}
+
 func TestUpdateWithoutNotifyKeepsTheChoice(t *testing.T) {
 	m, native := testManager(t)
 	ctx := t.Context()
@@ -897,15 +925,17 @@ var unparsableSettings = []byte(`{"scripts": `)
 
 // breakSettings replaces the notification settings with a file that does not
 // parse, and checks when the test ends that nothing wrote over it and that
-// all it logged are warnings with the error. It returns what is logged.
-func breakSettings(t *testing.T) *bytes.Buffer {
+// all it logged are warnings with the error. The file names the schedules in
+// named, as the choices it lost would. It returns what is logged.
+func breakSettings(t *testing.T, named ...string) *bytes.Buffer {
 	t.Helper()
-	if err := os.WriteFile(settingsFile(), unparsableSettings, 0o600); err != nil {
+	broken := append(slices.Clone(unparsableSettings), strings.Join(named, ",")...)
+	if err := os.WriteFile(settingsFile(), broken, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	logs := captureLogs(t)
 	t.Cleanup(func() {
-		if data, err := os.ReadFile(settingsFile()); err != nil || !bytes.Equal(data, unparsableSettings) {
+		if data, err := os.ReadFile(settingsFile()); err != nil || !bytes.Equal(data, broken) {
 			t.Errorf("settings file = %q %v, want it untouched", data, err)
 		}
 		for line := range strings.Lines(logs.String()) {
@@ -1023,7 +1053,7 @@ func TestUnreadableNotifySettingsDoNotStopADelete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	logs := breakSettings(t)
+	logs := breakSettings(t, created.Definition.ID)
 	if deleteErr := m.change(ctx, created.Definition.ID, nil, nil, true); deleteErr != nil {
 		t.Fatalf("delete = %v, want it to carry on", deleteErr)
 	}
@@ -1031,6 +1061,22 @@ func TestUnreadableNotifySettingsDoNotStopADelete(t *testing.T) {
 		t.Fatalf("definition still exists: %v", defErr)
 	}
 	requireOneWarning(t, logs, "could not clear the notification choice of a deleted scheduled task")
+}
+
+func TestUnreadableNotifySettingsDoNotWarnForATaskWithNoChoice(t *testing.T) {
+	m, _ := testManager(t)
+	ctx := t.Context()
+	plain, err := m.create(ctx, apischema.ScheduleCreateRequest{Options: testOptions()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	logs := breakSettings(t)
+	if deleteErr := m.change(ctx, plain.Definition.ID, nil, nil, true); deleteErr != nil {
+		t.Fatalf("delete = %v, want it to carry on", deleteErr)
+	}
+	if logs.Len() != 0 {
+		t.Errorf("logs = %q, want none: the task had no choice to clear", logs.String())
+	}
 }
 
 func TestFailedCreateLeavesNoNotifyChoice(t *testing.T) {

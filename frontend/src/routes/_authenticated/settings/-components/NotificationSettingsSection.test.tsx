@@ -208,6 +208,20 @@ describe("NotificationSettingsSection", () => {
     expect(screen.queryByLabelText("Send alerts")).toBeNull();
   });
 
+  it("ties the Scheduled scripts help line to its select", async () => {
+    render(<NotificationSettingsSection />);
+
+    const select = await screen.findByRole("combobox", {
+      name: "Scheduled scripts",
+    });
+    expect(select).toHaveAccessibleDescription(
+      "A task can choose differently in its own dialog.",
+    );
+    expect(
+      screen.getByRole("combobox", { name: "Docker updates" }),
+    ).not.toHaveAttribute("aria-describedby");
+  });
+
   it("offers each kind of work exactly its own reports", async () => {
     const user = userEvent.setup();
     render(<NotificationSettingsSection />);
@@ -607,6 +621,8 @@ describe("NotificationSettingsSection", () => {
         "The stored notification settings could not be read. Saving replaces them.",
       ),
     ).toBeInTheDocument();
+    // On the page from the start, so a note, not an announced alert.
+    expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByLabelText("Password")).toHaveAttribute(
       "placeholder",
       "",

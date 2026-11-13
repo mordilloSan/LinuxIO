@@ -63,7 +63,8 @@ type DockAccentGradient struct {
 // are in UIPreferences and persisted separately.
 type PersistedAppSettings struct {
 	ShowHiddenFiles bool `json:"showHiddenFiles" yaml:"showHiddenFiles"`
-	// ChunkSizeMB is the file-transfer chunk size in MiB (1–32). 0 = use default (1 MiB).
+	// ChunkSizeMB is the file-transfer chunk size in MiB (1–MaxChunkSizeMB). A new
+	// file starts at 1; 0 is accepted and means the frontend default (also 1 MiB).
 	ChunkSizeMB int `json:"chunkSizeMB" yaml:"chunkSizeMB"`
 }
 

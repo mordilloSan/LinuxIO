@@ -40,9 +40,9 @@ const (
 	streamWriteQueueSize = 16
 	relayReadBufferSize  = 32 * 1024
 
-	// Largest inbound frame: one 32 MiB upload chunk (userconfig ValidChunkSizeMB)
+	// Largest inbound frame: one 16 MiB upload chunk (userconfig MaxChunkSizeMB)
 	// plus stream header. Larger frames close the socket.
-	maxReadMessageSize = 33 << 20
+	maxReadMessageSize = 17 << 20
 )
 
 // Stream flags for WebSocket binary protocol

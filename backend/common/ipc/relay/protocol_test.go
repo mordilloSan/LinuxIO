@@ -50,7 +50,7 @@ func (r *boundedReader) Read(p []byte) (int, error) {
 func TestReadRelayFrameProgressiveDoesNotAllocateDeclaredPayload(t *testing.T) {
 	header := make([]byte, relayFrameHeaderSize)
 	header[0] = OpStreamOpen
-	binary.BigEndian.PutUint32(header[5:9], maxRelayPayloadSize)
+	binary.BigEndian.PutUint32(header[5:9], MaxRelayPayloadSize)
 	r := &boundedReader{data: header}
 	if _, err := ReadRelayFrameProgressive(r); err == nil {
 		t.Fatal("ReadRelayFrameProgressive() error = nil, want truncated payload error")
@@ -124,7 +124,7 @@ func TestReadRelayFrameHeaderLeavesPayloadForStreaming(t *testing.T) {
 func TestReadRelayFrameHeaderRejectsOversizePayload(t *testing.T) {
 	var raw [relayFrameHeaderSize]byte
 	raw[0] = OpStreamData
-	binary.BigEndian.PutUint32(raw[5:9], maxRelayPayloadSize+1)
+	binary.BigEndian.PutUint32(raw[5:9], MaxRelayPayloadSize+1)
 
 	if _, err := ReadRelayFrameHeader(bytes.NewReader(raw[:])); err == nil {
 		t.Fatal("ReadRelayFrameHeader() error = nil, want oversize payload error")
@@ -132,7 +132,7 @@ func TestReadRelayFrameHeaderRejectsOversizePayload(t *testing.T) {
 }
 
 func TestReadRelayFramePayloadRejectsOversizeHeader(t *testing.T) {
-	header := StreamFrameHeader{Opcode: OpStreamData, PayloadLength: maxRelayPayloadSize + 1}
+	header := StreamFrameHeader{Opcode: OpStreamData, PayloadLength: MaxRelayPayloadSize + 1}
 	if _, err := ReadRelayFramePayload(bytes.NewReader(nil), header); err == nil {
 		t.Fatal("ReadRelayFramePayload() error = nil, want oversize payload error")
 	}
@@ -152,7 +152,7 @@ func TestWriteRelayFrameRejectsOversizePayload(t *testing.T) {
 	err := WriteRelayFrame(io.Discard, &StreamFrame{
 		Opcode:   OpStreamData,
 		StreamID: 1,
-		Payload:  bytes.Repeat([]byte("x"), maxRelayPayloadSize+1),
+		Payload:  bytes.Repeat([]byte("x"), MaxRelayPayloadSize+1),
 	})
 	if err == nil {
 		t.Fatal("WriteRelayFrame() error = nil, want oversize payload error")
@@ -164,7 +164,7 @@ func TestWriteRelayFrameRejectsOversizePayload(t *testing.T) {
 
 func TestWriteProgressRejectsOversizePayload(t *testing.T) {
 	err := WriteProgress(io.Discard, 1, map[string]string{
-		"data": strings.Repeat("x", maxRelayPayloadSize),
+		"data": strings.Repeat("x", MaxRelayPayloadSize),
 	})
 	if err == nil {
 		t.Fatal("WriteProgress() error = nil, want oversize payload error")
@@ -177,7 +177,7 @@ func TestWriteProgressRejectsOversizePayload(t *testing.T) {
 func TestWriteResultFrameRejectsOversizePayload(t *testing.T) {
 	err := WriteResultFrame(io.Discard, 1, &ResultFrame{
 		Status: "error",
-		Error:  strings.Repeat("x", maxRelayPayloadSize),
+		Error:  strings.Repeat("x", MaxRelayPayloadSize),
 	})
 	if err == nil {
 		t.Fatal("WriteResultFrame() error = nil, want oversize payload error")

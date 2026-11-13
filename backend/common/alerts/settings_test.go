@@ -489,3 +489,16 @@ func TestNotificationsOrDefaults(t *testing.T) {
 		t.Errorf("logs = %q, want one warning with the error and nothing of the file", line)
 	}
 }
+
+func TestNotificationsMayName(t *testing.T) {
+	useTempStore(t)
+	if NotificationsMayName("abc") {
+		t.Error("a missing file may name nothing")
+	}
+	if err := os.WriteFile(notificationsPath(), []byte(`{"scripts": {"abc": "failures"`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !NotificationsMayName("abc") || NotificationsMayName("other") {
+		t.Error("an unparsable file may name only what it contains")
+	}
+}
