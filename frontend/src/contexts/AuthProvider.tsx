@@ -31,6 +31,7 @@ import {
   type AuthState,
   type AuthUser,
 } from "@/contexts/AuthContext";
+import { clearBootThemeHint } from "@/theme/bootThemeHint";
 import { clearFreshSignIn, markFreshSignIn } from "@/utils/freshSignIn";
 import { redirectToSignIn } from "@/utils/navigation";
 import { setSigninNotice } from "@/utils/signinNotice";
@@ -217,6 +218,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         /* ignore */
       }
+      clearBootThemeHint();
       clearFreshSignIn();
       if (broadcast) {
         try {

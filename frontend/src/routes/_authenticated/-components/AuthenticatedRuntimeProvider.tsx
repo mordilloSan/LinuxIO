@@ -1,4 +1,4 @@
-import { type PropsWithChildren, useMemo } from "react";
+import { type PropsWithChildren, useEffect, useMemo } from "react";
 
 import { ANONYMOUS_USER_ID } from "@/api/user-scope";
 import { AppUpdateProvider } from "@/contexts/AppUpdateProvider";
@@ -10,6 +10,7 @@ import { ToastProvider } from "@/contexts/ToastProvider";
 import { useConfigValue } from "@/hooks/useConfig";
 import { BackgroundTasksProvider } from "@/tasks/BackgroundTasksProvider";
 import buildAppTheme, { AppThemeProvider } from "@/theme";
+import { writeBootThemeHint } from "@/theme/bootThemeHint";
 
 import { SidebarProvider } from "./sidebar/SidebarProvider";
 
@@ -24,6 +25,12 @@ function AuthedThemeShell({ children }: PropsWithChildren) {
     () => buildAppTheme(themeName, primaryColorName, themeColors),
     [themeName, primaryColorName, themeColors],
   );
+
+  // Only the signed-in theme is remembered for the next first paint; the
+  // sign-in page has its own fixed theme and must not overwrite it.
+  useEffect(() => {
+    writeBootThemeHint(appTheme);
+  }, [appTheme]);
 
   return <AppThemeProvider value={appTheme}>{children}</AppThemeProvider>;
 }

@@ -989,6 +989,20 @@ One wiring detail worth knowing: `PageLoader` renders `div.page-loader`, and
 page loader remains. Authenticated pages inherit this through `MainLayout`; a new
 *top-level* terminal route would need to render `BootstrapLoaderReady` itself.
 
+The HTML splash is painted before the app knows the user's settings, so the
+inline script in `index.html` takes its colours from a first-paint hint:
+`linuxio.bootTheme` in local storage, holding the colour scheme and the
+background, text and primary colours. `AuthedThemeShell` writes it whenever the
+signed-in theme changes (`theme/bootThemeHint.ts`), and sign-out clears it. The
+sign-in page is always dark and neither reads nor writes it. Only the inline
+script reads the hint: it accepts a `light` or `dark` scheme and plain hex,
+`rgb()` or `hsl()` colours, replaces anything else with that scheme's default,
+and without a hint follows the browser's `prefers-color-scheme`. The hint is
+per browser, so after a theme change made in another browser the first paint
+is wrong once, until `config.get_ui` answers and the hint is rewritten. The
+webserver's script policy needs no change when this script is edited: it hashes
+the inline scripts of the embedded page at startup.
+
 ## Preloading And Code Splitting
 
 One application-wide policy, set once in `router/router.tsx`:

@@ -528,8 +528,10 @@ replacement. A missing or invalid UI file is written as `{}`. The bridge
 expands that sentinel, or any valid sparse UI document, over backend defaults
 when serving `config.get_ui`; it does not rewrite the sentinel merely because
 it was read. On the first preference change, the frontend sends one complete
-effective snapshot to `config.set_ui`. There is no session-storage
-configuration copy or local-storage theme cache. Concurrent UI replacements
+effective snapshot to `config.set_ui`. There is no browser copy of the
+configuration. The only theme state in the browser is the first-paint hint
+([TanStack Router](./tanstack-router.md)), which the app writes and never reads
+back. Concurrent UI replacements
 are serialized but not field-merged; the last complete snapshot committed
 wins.
 
