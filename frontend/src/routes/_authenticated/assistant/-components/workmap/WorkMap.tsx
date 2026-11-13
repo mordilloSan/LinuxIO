@@ -343,6 +343,7 @@ function Station({
       className={[
         "work-map__station",
         station.id === "memory" && "work-map__station--memory",
+        station.id === "agents" && "work-map__station--agents",
         tally.count > 0 && "work-map__station--counted",
         running && "work-map__station--running",
       ]

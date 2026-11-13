@@ -424,14 +424,34 @@
   position: absolute;
   min-width: 0;
   padding: 0;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: var(--app-radius-lg);
   background: transparent;
 }
 
 .work-map .work-map__station-button:hover {
-  border-color: var(--wm-main);
   background: transparent;
+}
+
+/* Pointing at the button lights the station itself: the circle fills with
+   the accent and its glyph and name brighten. */
+.work-map .assistant-pane-picture:has(.work-map__station-button:hover)
+  .work-map__station--agents
+  .work-map__node {
+  fill: color-mix(in srgb, var(--wm-main) 28%, var(--wm-raised));
+  stroke: var(--wm-main);
+}
+
+.work-map .assistant-pane-picture:has(.work-map__station-button:hover)
+  .work-map__station--agents
+  .work-map__glyph {
+  stroke: var(--wm-hot);
+}
+
+.work-map .assistant-pane-picture:has(.work-map__station-button:hover)
+  .work-map__station--agents
+  .work-map__label {
+  fill: var(--wm-bone);
 }
 
 .work-map .work-map__station-button:focus-visible {
