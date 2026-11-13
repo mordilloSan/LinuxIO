@@ -130,8 +130,24 @@ after a change that issues ioctls).
   - Decided 2026-11-13: `force` only means "ignore old data left on this
     disk". It never takes a disk from an existing pool, mounted or not. Use
     one function for all three, and say in the dialog what `force` does.
-  - Still to settle in the design: how to tell leftover data from a member of
-    a pool that is only unmounted. Start from what `deviceInUse` does.
+  - Design, worked out 2026-11-13 and not built: do not try to tell leftover
+    btrfs data from a member of an unmounted pool. `force` never overwrites
+    btrfs; the way to reuse such a disk is to destroy its old pool, which
+    already works on an unmounted pool and names it. `force` keeps overwriting
+    other filesystems. Share one check for what all three agree on (in use,
+    member of any btrfs pool, in `/etc/fstab`); md keeps "no old filesystem at
+    all" and btrfs keeps "unless forced" on top. In the dialogs a disk from
+    another pool stays disabled with its reason, and the label says what
+    `force` erases.
+  - Still open: whether `force` should also refuse a member of a stopped md
+    array or an inactive LVM volume group. To check: btrfs-progs is believed
+    to overwrite an unmounted member with `-f`, so this is stricter than
+    upstream on purpose; and the btrfs check never looks at active swap or
+    `/etc/fstab`.
+- [ ] **"Initialize disk" does not check for md or LVM members.**
+  `InitializeDisk` (`partitions.go`) goes through `deviceInUse`, which knows
+  btrfs pools only, so a member of a stopped array or an inactive volume group
+  is wiped with the normal confirmation. Reported.
 - [ ] **Replication blocks snapshots** (audit 33). Both run in the hourly
   snapshot service (`replicateJobs` in `backend/btrfs-timer/snapshot.go`), so
   during a first send that takes hours the timer's runs are skipped. Reported.
