@@ -261,13 +261,38 @@ describe("AgentMap", () => {
       vi.fn(),
       onStop,
     );
-    await open(/Re-check filebrowser/);
+    // Its row, not the stop button beside it.
+    await open(/^Re-check filebrowser/);
     // What it said last stands under its name while it works.
     expect(screen.getAllByText("Reading the audit.")).toHaveLength(2);
     // The tokens of one that still runs are not missing yet.
     expect(screen.queryByText(/tokens not reported/)).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "Stop" }));
     expect(onStop).toHaveBeenCalledExactlyOnceWith("a1");
+  });
+
+  it("stops a running subagent from the list, beside its row", async () => {
+    const onStop = vi.fn();
+    draw(
+      [
+        run({ state: "running", status: "run", canStop: true }),
+        run({ id: "a2", label: "Write docs" }),
+        // The agent takes no stop for this one.
+        run({ id: "a3", label: "Wait", state: "running", status: "run" }),
+      ],
+      vi.fn(),
+      onStop,
+    );
+    const stops = screen.getAllByRole("button", { name: /^Stop / });
+    expect(stops).toHaveLength(1);
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: "Stop Re-check filebrowser audit items",
+      }),
+    );
+    expect(onStop).toHaveBeenCalledExactlyOnceWith("a1");
+    // Stopping it does not open it.
+    expect(screen.queryByRole("button", { name: "All agents" })).toBeNull();
   });
 
   it("opens the subagents a subagent started", async () => {

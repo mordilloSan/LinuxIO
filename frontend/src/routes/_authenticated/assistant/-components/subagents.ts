@@ -97,6 +97,13 @@ function runsAfter(
     : runs;
 }
 
+/** The blocks after an update, with a message it added put in order. */
+export const withMessage = (
+  before: readonly TranscriptBlock[],
+  after: TranscriptBlock[],
+  subagents: readonly Subagent[],
+) => (after.length > before.length ? reportsInOrder(after, subagents) : after);
+
 /** A field of a patch: left out keeps the value, `null` clears it. */
 const patched = <T>(next: T | null | undefined, held: T | null) =>
   next === undefined ? held : next;
@@ -157,7 +164,11 @@ export function applySubagentUpdate(
       ? { ...child, configOptions: update.configOptions }
       : {
           ...child,
-          blocks: applySessionUpdate(child.blocks, update, now, sessionId),
+          blocks: withMessage(
+            child.blocks,
+            applySessionUpdate(child.blocks, update, now, sessionId),
+            list,
+          ),
         };
   if (
     next.blocks === child.blocks &&
@@ -165,6 +176,37 @@ export function applySubagentUpdate(
   )
     return list as Subagent[];
   return [...list.slice(0, index), next, ...list.slice(index + 1)];
+}
+
+/**
+ * Puts a subagent's reports behind the message they answer, in the blocks of
+ * the session that sent it, where that message was just added at the end. A
+ * chat that is loaded replays a subagent's whole transcript at the message
+ * that launched it, so what it reported for a later message stands before
+ * that message; live, the reports come after it and nothing moves.
+ */
+export function reportsInOrder(
+  blocks: TranscriptBlock[],
+  subagents: readonly Subagent[],
+): TranscriptBlock[] {
+  const sent = blocks[blocks.length - 1];
+  if (sent?.kind !== "message" || !sent.outgoing) return blocks;
+  const child = subagents.find(
+    (entry) => entry.sessionId === sent.recipientSessionId,
+  );
+  const got =
+    child?.blocks.findIndex(
+      (b) => b.kind === "message" && b.messageId === sent.messageId,
+    ) ?? -1;
+  if (!child || got < 0) return blocks;
+  // What the subagent sent after it got the message.
+  const later = sentIn(child.blocks.slice(got + 1));
+  const isLater = (b: TranscriptBlock) =>
+    b.kind === "message" && !b.outgoing && later.has(b.messageId);
+  const reports = blocks.filter(isLater);
+  return reports.length === 0
+    ? blocks
+    : [...blocks.filter((b) => !isLater(b)), ...reports];
 }
 
 /** The ids of the messages a session sent, from its blocks. */

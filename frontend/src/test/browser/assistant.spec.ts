@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
 import { expect, type Page, test } from "@playwright/test";
 
 const DATA = 0x04;
@@ -525,4 +528,222 @@ test("shows a subagent the agent reports as a session of its own", async ({
   await expect(
     page.getByRole("img", { name: /^Activity map\..*Agents 1/ }),
   ).toBeVisible();
+});
+
+type TraceEntry = { mark?: string; sessionId?: string; update?: unknown };
+
+test("replays a recorded chat with subagents, stops one and loads the chat again", async ({
+  page,
+}) => {
+  // A real chat with Claude Code's adapter, recorded with `subagents`
+  // declared: every update it sent, and the same chat being loaded.
+  const trace = JSON.parse(
+    readFileSync(
+      path.resolve(process.cwd(), "src/test/assistantSubagentTrace.json"),
+      "utf8",
+    ),
+  ) as { live: TraceEntry[]; load: TraceEntry[] };
+  const received: AcpMessage[] = [];
+  let at = 0;
+  let promptId: number | undefined;
+  let saved = false;
+  // Sends the recording on from where it stands: to the end of the turn,
+  // which answers the prompt, or to where the client stopped a subagent.
+  const play = ({ send, notify }: FakeAgent) => {
+    while (at < trace.live.length) {
+      const entry = trace.live[at++];
+      if (entry.mark === "answered") {
+        send({
+          jsonrpc: "2.0",
+          id: promptId,
+          result: { stopReason: "end_turn" },
+        });
+        return;
+      }
+      if (entry.mark?.startsWith("cancel:")) return;
+      if (entry.sessionId) notify(entry.sessionId, entry.update);
+    }
+  };
+  await serveAgent(page, (request, agent) => {
+    received.push(request);
+    const { send, notify } = agent;
+    switch (request.method) {
+      case "initialize":
+        send({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: {
+            protocolVersion: 1,
+            agentCapabilities: {
+              loadSession: true,
+              sessionCapabilities: { list: {} },
+            },
+            authMethods: [],
+          },
+        });
+        break;
+      case "session/list":
+        send({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: {
+            sessions: saved ? [{ sessionId: "chat", cwd: "/home/alice" }] : [],
+          },
+        });
+        break;
+      case "session/new":
+        send({ jsonrpc: "2.0", id: request.id, result: { sessionId: "chat" } });
+        break;
+      case "session/prompt":
+        saved = true;
+        promptId = request.id;
+        play(agent);
+        break;
+      case "session/cancel":
+        // The adapter stops that subagent and the turn goes on to its end.
+        if (request.params?.sessionId === "sleeper") play(agent);
+        break;
+      case "session/load": {
+        const loaded = trace.load.findIndex((entry) => entry.mark === "loaded");
+        const replay = (entries: TraceEntry[]) =>
+          entries.forEach((entry) => {
+            if (entry.sessionId) notify(entry.sessionId, entry.update);
+          });
+        replay(trace.load.slice(0, loaded));
+        send({ jsonrpc: "2.0", id: request.id, result: {} });
+        replay(trace.load.slice(loaded + 1));
+        break;
+      }
+    }
+  });
+
+  // Each message row as its head and the commands under it.
+  const rows = () =>
+    page
+      .locator(".assistant-message")
+      .evaluateAll((messages) =>
+        messages.map((message) => [
+          message.querySelector(".assistant-message__head")?.textContent,
+          ...[...message.querySelectorAll(".assistant-tool")].map(
+            (tool) =>
+              tool.querySelector(
+                ".assistant-tool__what, .assistant-tool__command",
+              )?.textContent,
+          ),
+        ]),
+      );
+  const agentsCard = page.getByRole("complementary", { name: "Agents" });
+  const parts = () =>
+    agentsCard
+      .locator(".agent-map--detail summary, .agent-map--detail h4")
+      .allTextContents();
+
+  await page.goto("/assistant");
+  const input = page.getByLabel("Message");
+  await expect(input).toBeEnabled();
+
+  // The first turn: two subagents at once, one of them starting its own,
+  // and a second message to the first.
+  await input.fill("first");
+  await page.keyboard.press("Enter");
+  await expect(page.getByText(/When I asked, it said/)).toBeVisible();
+  await expect(input).toBeEnabled();
+  const live = [
+    [
+      "Sent toReader A",
+      "Read a.txt",
+      "Count lines in a.txt",
+      "/srv/work/out-a.txt",
+    ],
+    // Reader B's own calls, then the subagent it started with its call.
+    ["Sent toReader B", "Read b.txt", "Count lines in b.txt", "Read c.txt"],
+    ["Sent toNested C", "Read c.txt"],
+    ["Reader Areported"],
+    // It answered the second message from what it knew: no calls.
+    ["Sent toReader A"],
+    ["Reader Breported"],
+    ["Reader Areported"],
+  ];
+  expect(await rows()).toEqual(live);
+  await expect(page.getByRole("button", { name: "0 agents" })).toBeVisible();
+
+  // The second turn starts a subagent that is still at work.
+  await input.fill("second");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button", { name: "1 agent" })).toBeVisible();
+  await page.getByRole("button", { name: "Sleeper" }).click();
+  await expect(
+    agentsCard.getByRole("heading", { name: "Sleeper" }),
+  ).toBeVisible();
+  await expect(
+    agentsCard.getByText(/^Running · general-purpose/),
+  ).toBeVisible();
+
+  // Stop reaches the agent as a cancel of that subagent alone, and the
+  // state the agent sends back is what the card then shows.
+  await agentsCard.getByRole("button", { name: "Stop" }).click();
+  await expect(
+    agentsCard.getByText(/^Stopped · general-purpose/),
+  ).toBeVisible();
+  expect(
+    received
+      .filter((message) => message.method === "session/cancel")
+      .map((message) => message.params?.sessionId),
+  ).toEqual(["sleeper"]);
+  await expect(agentsCard.getByRole("button", { name: "Stop" })).toHaveCount(0);
+  await expect(
+    page.getByText(/The Sleeper subagent didn't report/),
+  ).toBeVisible();
+  await expect(input).toBeEnabled();
+
+  // A subagent that was messaged again, in the order it happened.
+  await agentsCard.getByRole("button", { name: "All agents" }).click();
+  await agentsCard.getByRole("button", { name: /Reader A/ }).click();
+  const readerA = [
+    "Prompt 1",
+    "Tool calls (3)",
+    "Report 1",
+    "Prompt 2",
+    "Messages (1)",
+    "Report 2",
+  ];
+  expect(await parts()).toEqual(readerA);
+  await expect(
+    agentsCard.getByText("Finished · general-purpose · Sonnet 5.5"),
+  ).toBeVisible();
+
+  // The map: four subagents, and their calls at Files and Shell.
+  await agentsCard.getByRole("button", { name: "All agents" }).click();
+  await agentsCard.getByRole("button", { name: /Claude Code/ }).click();
+  await expect(
+    page.getByRole("img", { name: /^Activity map\..*Agents 4/ }),
+  ).toBeVisible();
+
+  // Loading the chat again brings all of it back, from the agent's replay.
+  await page.reload();
+  await expect(input).toBeEnabled();
+  await expect(
+    page.getByText(/The Sleeper subagent didn't report/),
+  ).toBeVisible();
+  expect(await rows()).toEqual([
+    live[0],
+    ["Reader Areported"],
+    live[1],
+    live[2],
+    ["Reader Breported"],
+    ["Sent toReader A"],
+    ["Reader Areported"],
+    [
+      "Sent toSleeper",
+      "Sleep for 40 seconds",
+      "Sleep for 40 seconds in background",
+      expect.any(String),
+    ],
+  ]);
+  // Nothing of a loaded chat runs, whatever its replay left open.
+  await expect(page.locator(".assistant-tool-state--active")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "0 agents" })).toBeVisible();
+  await page.getByRole("button", { name: "Reader A" }).first().click();
+  expect(await parts()).toEqual(readerA);
+  await expect(agentsCard.getByText(/tokens not reported/)).toBeVisible();
 });

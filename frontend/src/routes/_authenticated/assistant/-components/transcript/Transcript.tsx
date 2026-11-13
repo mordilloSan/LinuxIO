@@ -8,7 +8,7 @@ import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import type { Attachment } from "../attachments";
 import AttachmentChip from "../composer/AttachmentChip";
 import { fmtTokens } from "../composer/ContextGauge";
-import { sentIn, type Subagent, workFor } from "../subagents";
+import { isActive, sentIn, type Subagent, workFor } from "../subagents";
 import DiffView from "./DiffView";
 import MarkdownBlock from "./MarkdownBlock";
 import { isReadOnlyCommand } from "./readOnlyCommand";
@@ -16,6 +16,7 @@ import {
   type MessageBlock,
   stringField,
   type ToolBlock,
+  toolEnded,
   type TranscriptBlock,
   type TurnBlock,
 } from "./transcript";
@@ -536,17 +537,27 @@ function MessageRow({
   }
   // Its calls, and the messages to the subagents it started in turn.
   const work = child
-    ? workFor(child, message.messageId, sent).filter(
-        (block) =>
-          block.kind === "tool" ||
-          (block.kind === "message" &&
-            block.outgoing &&
-            subagents.some(
-              (entry) =>
-                entry.sessionId === block.recipientSessionId &&
-                entry.parentSessionId === child.sessionId,
-            )),
-      )
+    ? workFor(child, message.messageId, sent)
+        .filter(
+          (block) =>
+            block.kind === "tool" ||
+            (block.kind === "message" &&
+              block.outgoing &&
+              subagents.some(
+                (entry) =>
+                  entry.sessionId === block.recipientSessionId &&
+                  entry.parentSessionId === child.sessionId,
+              )),
+        )
+        // A call with no end on record is not running once its subagent is
+        // not: a loaded chat can leave one out.
+        .map((block) =>
+          block.kind === "tool" &&
+          !toolEnded(block.status) &&
+          !isActive(child.state)
+            ? { ...block, status: "completed" }
+            : block,
+        )
     : [];
   return (
     <div className="assistant-message">

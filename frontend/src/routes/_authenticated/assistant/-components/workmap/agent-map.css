@@ -49,6 +49,18 @@
   text-align: left;
 }
 
+/* A subagent and, while it runs, the button that stops it beside it. */
+.agent-map__row {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-4);
+  min-width: 0;
+}
+
+.agent-map__row > .agent-map__node {
+  flex: 1;
+}
+
 .agent-map .agent-map__node:hover {
   border-color: var(--app-palette-primary-main);
 }

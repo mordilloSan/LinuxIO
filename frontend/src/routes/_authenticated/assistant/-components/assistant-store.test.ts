@@ -1860,6 +1860,53 @@ describe("assistantStore subagents", () => {
     });
   });
 
+  it("drops a request the agent withdraws, shown or waiting", async () => {
+    const { update, handlers } = await connect();
+    update("s-old", announce("a"));
+    update("s-old", announce("b"));
+    const ask = (sessionId: string, id: string) => {
+      const withdrawn = new AbortController();
+      const answer = handlers().onPermission(
+        {
+          sessionId,
+          toolCall: { toolCallId: id, title: id },
+          options: [{ optionId: "yes", name: "Allow", kind: "allow_once" }],
+        },
+        withdrawn.signal,
+      );
+      return { answer, withdraw: () => withdrawn.abort() };
+    };
+    const first = ask("a", "t1");
+    const second = ask("a", "t2");
+    const third = ask("b", "t3");
+    const shown = () =>
+      assistantStore.getState().pending?.request.toolCall.toolCallId;
+    const waiting = () =>
+      assistantStore
+        .getState()
+        .waiting.map((entry) => entry.request.toolCall.toolCallId);
+    expect([shown(), waiting()]).toEqual(["t1", ["t2", "t3"]]);
+
+    // The user says no to the first; Claude Code stops that subagent and
+    // takes back what else it asked. Its card must not come up.
+    assistantStore.answerPermission(null);
+    second.withdraw();
+    await expect(second.answer).resolves.toEqual({
+      outcome: { outcome: "cancelled" },
+    });
+    expect([shown(), waiting()]).toEqual(["t3", []]);
+
+    // Taking back the one that is shown brings up the next, here none.
+    third.withdraw();
+    await expect(third.answer).resolves.toEqual({
+      outcome: { outcome: "cancelled" },
+    });
+    expect([shown(), waiting()]).toEqual([undefined, []]);
+    // One that was answered already is not there to drop.
+    first.withdraw();
+    expect([shown(), waiting()]).toEqual([undefined, []]);
+  });
+
   it("stop answers every open request cancelled", async () => {
     const { conn, update, ask } = await connect();
     void send("go");

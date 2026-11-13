@@ -267,13 +267,19 @@ describe("agentsOf", () => {
       ["a", announce("b")],
       ...pair("p2", "a", "b", "Do b"),
       ["b", call("c1", "Grep", { pattern: "x" })],
+      // What the one it started reports to it is not a prompt of its own.
+      ...pair("h2", "b", "a", "b is done"),
       ["chat", announce("c")],
       ...pair("p3", "chat", "c", "Do c"),
     ]);
     const agents = agentsOf(chat, subagents, true);
     expect(agents.map((agent) => agent.id)).toEqual(["a", "c"]);
     expect(agents[0].agents).toMatchObject([
-      { id: "b", startedBy: "Agent a", parts: [{}, { kind: "calls" }] },
+      {
+        id: "b",
+        startedBy: "Agent a",
+        parts: [{ kind: "prompt" }, { kind: "calls" }, { kind: "report" }],
+      },
     ]);
     // What it told the one it started is that one's prompt, not its own.
     expect(agents[0].parts.map((part) => part.kind)).toEqual(["prompt"]);

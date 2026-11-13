@@ -1,6 +1,7 @@
 import { Icon } from "@iconify/react";
 import { useEffect, useRef, useState } from "react";
 
+import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 
@@ -251,17 +252,28 @@ export default function AgentMap({
     <ol className="agent-map__children">
       {list.map((agent) => (
         <li key={agent.id}>
-          <Node
-            label={agent.label}
-            meta={metaOf(agent)}
-            nodeRef={(node) => {
-              if (node) nodes.current.set(agent.id, node);
-              else nodes.current.delete(agent.id);
-            }}
-            onClick={() => onChoose(agent.id)}
-            status={agent.status}
-            title="Show what this agent did"
-          />
+          <div className="agent-map__row">
+            <Node
+              label={agent.label}
+              meta={metaOf(agent)}
+              nodeRef={(node) => {
+                if (node) nodes.current.set(agent.id, node);
+                else nodes.current.delete(agent.id);
+              }}
+              onClick={() => onChoose(agent.id)}
+              status={agent.status}
+              title="Show what this agent did"
+            />
+            {agent.canStop ? (
+              <AppActionIconButton
+                ariaLabel={`Stop ${agent.label}`}
+                icon="mdi:stop"
+                iconSize={18}
+                label={`Stop ${agent.label}`}
+                onClick={() => onStop(agent.id)}
+              />
+            ) : null}
+          </div>
           {agent.agents.length > 0 ? tree(agent.agents) : null}
         </li>
       ))}

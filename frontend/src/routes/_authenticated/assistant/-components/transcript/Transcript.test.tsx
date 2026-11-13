@@ -453,6 +453,26 @@ describe("Transcript", () => {
       expect(rows()).toEqual([["Sent toOS info"]]);
     });
 
+    it("shows a call with no end on record as running only while its subagent runs", () => {
+      const running: Sent[] = [
+        ["chat", announce("a", { title: "OS info" })],
+        ...pair("p1", "chat", "a", "Go"),
+        ["a", call("c1", "Bash", { command: "cat /etc/hostname" }, "pending")],
+      ];
+      const { unmount } = render(
+        <Transcript
+          blocks={chatOf(running).chat.blocks}
+          subagents={chatOf(running).subagents}
+        />,
+      );
+      expect(screen.getByRole("img", { name: "running" })).toBeInTheDocument();
+      unmount();
+      // A loaded chat can leave a call's end out; its subagent has ended.
+      draw([...running, ["chat", stateOf("a", FINISHED)]]);
+      expect(screen.queryByRole("img", { name: "running" })).toBeNull();
+      expect(rows()).toEqual([["Sent toOS info", "cat /etc/hostname"]]);
+    });
+
     it("draws a launch a permission request showed once, as its message", () => {
       const { chat, subagents } = chatOf(
         [

@@ -108,25 +108,11 @@ test enforces it; the Accounts, Docker, network, dashboard and file browser
 pages offer a session without sudo only what the server allows
 ([Privilege Pattern](../privilege_pattern.md)). What is left:
 
-- [ ] **Settings may still call privileged reads without a check.** The
-  dashboard, the history cards and the file browser no longer do. Not checked:
-  whether the Settings sections that read `alerts.get_notifications`,
-  `indexer.get_config`, `logging.get_debug`, `monitoring.get_config` and
-  `power.get_status` are all hidden for a session without sudo
-  (`frontend/src/routes/_authenticated/settings`). Two reads that run on a
-  click were left: the failed-logins dialog and a run's saved output.
 - [ ] **The file browser search is hidden without sudo.** `filebrowser.search`
   is privileged, so the search field is gone for such a session.
   - Decided 2026-11-13: a user without sudo may search the folders they can
     read. The index covers the whole host, so the results must be filtered to
     those before they leave the bridge.
-- [ ] **An admin can cut their own connection.** `systemd.stop_service` and
-  `systemd.restart_service` accept LinuxIO's own units, and the network routes
-  accept the interface that carries the session. No check was found in
-  `backend/bridge/handlers/systemd` on 2026-11-13. Reported.
-  - Decided 2026-11-13: warn and allow. The page says what will happen
-    before it stops one of LinuxIO's own services or takes down the interface
-    the session runs on, and then does it.
 
 ## Visible bugs
 
@@ -138,15 +124,6 @@ pages offer a session without sudo only what the server allows
   `backend/bridge/handlers/filebrowser/services/handover.go`). A parent that
   is root's, such as a `~/docker` made earlier without the hand-over, would
   explain it. If it happens again, check who owns the nearest existing parent.
-- [ ] **Container state and health colours.** Decided in five frontend files
-  (`constants/statusColors.ts`, `utils/dockerContainer.ts`, the dashboard's
-  `Docker.tsx` and two under `docker/-components`). Unhealthy is an error in
-  one and a warning in another; dead is neutral or an error. Checked.
-- [ ] **The tray still knows an indexer word the daemon never sends.**
-  `frontend/src/tasks/indexerProgress.ts` treats a status of `indexing` as
-  running; the daemon sends `uninitialized`, `running` and `idle`
-  (`backend/indexer/api`). Whether that file is reached by the daemon's status
-  was not checked. Reported.
 - [ ] **Release notes.** The release that ships jobs should state three
   behaviour changes: a stored Docker `never` no longer silences failures; an
   interruption by a shutdown is a warning, so "Errors only" no longer emails it
@@ -165,46 +142,13 @@ unless it says checked. The scan that found them read the Go backend largely
 in full and 20 to 25 percent of the frontend, so more of the same is likely
 there.
 
-- [ ] **Live metrics redaction names each section by hand.**
-  `redactLiveSections` in `backend/monitoring/internal/httpapi/server.go`. A
-  section added to `backend/monitoring/api/live.go` and missed there is sent
-  to a listener that is not allowed it. Checked 2026-11-13: all nine sections
-  are redacted today, so nothing leaks; only the capture time and the uptime
-  go to every listener. That the test covers six of the nine is reported.
-  - Add the test with the fix: for every member of `monitoringapi.Live`, a
-    listener that is not permitted its plugin receives it empty. Walk the
-    struct by reflection so a new member cannot be missed.
-- [ ] **The UI settings save payload.** `buildUIPayload` in
-  `frontend/src/contexts/ConfigProvider.tsx` names each setting, the payload
-  type is all-optional, and the save replaces everything, so a setting left
-  out is reset on every save. Checked.
-- [ ] **Every UI default is written to `ui.yaml` on the first save.**
-  `config.set_ui` starts from `DefaultUIPreferences()` and stores the whole
-  value, so a later change to a backend default never reaches that user. Only
-  view modes are stored as differences (`normalizeViewModesForDefault` in
-  `backend/bridge/internal/userconfig/validator.go`). Do the same for the
-  rest.
 - [ ] **btrfs profiles.** Five tables in `backend/common/btrfs` and three in
   `btrfsShared.ts`. A profile missing from `MinDevices` returns 0, so any
   device count passes validation. Checked to agree today.
-- [ ] **Storage and packages register routes from a second list.**
+- [ ] **Storage registers its routes from a second list.**
   `storage/handlers.go` declares the route sets and
   `storage/smart_test_operation.go` registers them; a set in one and not the
-  other is a route that answers "not found". Checked for storage.
-- [ ] **Docker daemon keys.** Seven keys in read, write and two change lists
-  in `docker/daemon_config.go`; a key missing from the change lists is saved
-  only when another key changes.
-- [ ] **System metrics.** About forty, each named in roughly ten places under
-  `backend/monitoring`. A metric left out of the averaging in
-  `internal/plugins/aggregate.go` is silent.
-- [ ] **Monitoring plugins.** Sixteen, with attributes spread over four files.
-  A plugin missing from the collection groups is dropped silently.
-- [ ] **Allowed values.** Every `apischema.StringEnums` entry is built from
-  the Go definition it describes, or a test compares the two. Today only
-  `CapabilityName`, `WireGuardHookKind` and `ThemeColorKey` are. The others
-  retype Go constants: dock tile colours, navigation mode, theme, view mode,
-  task state, storage mode, container metrics status, network bridge handoff
-  state, auto-update backend and notify, VM image presets and firmware.
+  other is a route that answers "not found". Checked.
 
 ## Tests that are missing
 
@@ -249,18 +193,10 @@ there.
   missed run (`Persistent=`), journal retention over several days, and a
   bridge restart during a run. See
   [Scheduled Scripts](../scheduled-scripts.md#testing).
-- [ ] **Subagent sessions against a live Claude chat.** Seen live on
-  2026-11-13 (claude-agent-acp 0.102.0): two subagents started at once, one
-  in the background, their calls under the messages to them, their reports,
-  a `SendMessage` to a finished one, and the Agents view of a subagent that
-  ran twice. Still read only from the adapter's source, unit tests and the
-  scripted browser chat: a subagent that starts a subagent, a permission
-  request from a subagent, the stop of one subagent, and a chat that is
-  loaded again. Run a chat with those and compare with
-  [AI Assistant](../AI-assistant.md#subagent-sessions). Settle on the way:
-  whether stopping the whole chat stops its background subagents, and
-  whether a subagent Claude Code moves to the background by itself gets its
-  launch note as a report. Correct the doc where the chat differs.
+- [ ] **Subagent sessions: one case no chat has shown.** Whether a
+  subagent Claude Code moves to the background by itself gets its launch
+  note as a report. See
+  [AI Assistant](../AI-assistant.md#subagent-sessions).
 - [ ] **What happens after a route cuts its own connection is not written
   down.** The old roadmap's rule was: send it once; after reconnect, reboot
   compares the boot identity, a network change reads back the interface, and

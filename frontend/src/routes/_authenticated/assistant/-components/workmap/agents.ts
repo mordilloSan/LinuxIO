@@ -235,11 +235,13 @@ type Step =
  * What a subagent did, from its own blocks. A report it handed back is a
  * message of its own to its parent; one that handed nothing back answered
  * with its last text, which the parent got as `<prompt id>:reply` and the
- * subagent has no copy of.
+ * subagent has no copy of. A message it got from a subagent it started
+ * (`below`) is that one's report, not a prompt.
  */
 function partsOf(
   child: Subagent,
   parentBlocks: readonly TranscriptBlock[],
+  below: ReadonlySet<string | null>,
 ): AgentPart[] {
   const live = isActive(child.state);
   const own = new Set(
@@ -270,6 +272,7 @@ function partsOf(
   let promptId: string | null = null;
   for (const block of child.blocks) {
     if (block.kind === "message") {
+      if (below.has(block.senderSessionId)) continue;
       if (!block.outgoing) {
         if (promptId !== null) reply(promptId);
         promptId = block.messageId;
@@ -360,7 +363,15 @@ function startedIn(
                 sum + (span(run.startedAt, run.endedAt ?? undefined) ?? 0),
               0,
             ),
-      parts: partsOf(child, blocks),
+      parts: partsOf(
+        child,
+        blocks,
+        new Set(
+          subagents
+            .filter((entry) => entry.parentSessionId === child.sessionId)
+            .map((entry) => entry.sessionId),
+        ),
+      ),
       agents: startedIn(child.sessionId, child.blocks, subagents, label, () =>
         isActive(child.state),
       ),

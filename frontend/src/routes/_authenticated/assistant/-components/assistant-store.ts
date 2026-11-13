@@ -18,7 +18,12 @@ import {
 
 import type { Attachment } from "./attachments";
 import { currentName, withoutDefault } from "./composer/selectOption";
-import { applySubagentUpdate, disconnected, type Subagent } from "./subagents";
+import {
+  applySubagentUpdate,
+  disconnected,
+  type Subagent,
+  withMessage,
+} from "./subagents";
 import {
   appendTurnEnd,
   appendUserMessage,
@@ -225,7 +230,11 @@ function flushUpdates() {
       continue;
     }
     patch = { ...patch, ...statePatch(update, { ...state, ...patch }) };
-    blocks = applySessionUpdate(blocks, update, now, sessionId);
+    blocks = withMessage(
+      blocks,
+      applySessionUpdate(blocks, update, now, sessionId),
+      subagents,
+    );
   }
   if (blocks !== state.blocks) patch.blocks = blocks;
   if (subagents !== state.subagents) patch.subagents = subagents;
@@ -470,6 +479,23 @@ async function runTurn(
 
 const cancelled = { outcome: { outcome: "cancelled" } } as const;
 
+/**
+ * Drops a request the agent took back: its card goes, and the next one that
+ * waits comes up. One that was answered already is not there to drop.
+ */
+function withdraw(entry: PendingPermission) {
+  entry.resolve(cancelled);
+  const side = state.side;
+  if (side?.pending === entry) {
+    setState({ side: { ...side, pending: null } });
+  } else if (state.pending === entry) {
+    const [next = null, ...waiting] = state.waiting;
+    setState({ pending: next, waiting });
+  } else if (state.waiting.includes(entry)) {
+    setState({ waiting: state.waiting.filter((other) => other !== entry) });
+  }
+}
+
 /** Answers every open request of the chat and its subagents `cancelled`. */
 function cancelPermissions() {
   state.pending?.resolve(cancelled);
@@ -547,15 +573,20 @@ export const assistantStore = {
         onUpdate: (notification) => {
           if (isCurrent()) queueUpdate(notification);
         },
-        onPermission: (request) =>
+        onPermission: (request, withdrawn) =>
           new Promise<acp.RequestPermissionResponse>((resolve) => {
-            if (!isCurrent()) {
+            if (!isCurrent() || withdrawn?.aborted) {
               resolve({ outcome: { outcome: "cancelled" } });
               return;
             }
             // The subagent that asks may have been announced a moment ago.
             flushUpdates();
             const pending = { request, resolve };
+            // Declining one request can make Claude Code stop the subagent
+            // that asked and take back what else it asked.
+            withdrawn?.addEventListener("abort", () => withdraw(pending), {
+              once: true,
+            });
             if (state.side && request.sessionId === state.side.sessionId) {
               state.side.pending?.resolve(cancelled);
               setState({ side: { ...state.side, pending, open: true } });

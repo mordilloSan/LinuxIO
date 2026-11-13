@@ -116,7 +116,11 @@ plain text, images and file context. Permission cards show the agent's own
 options and say that nothing has changed yet. Requests queue: the chat's and
 its subagents' wait in one list, the oldest is the one shown and has the
 keyboard, and a new one answers none of the others. A subagent's card says
-`Asked by` with its title.
+`Asked by` with its title. A request the agent takes back
+(`$/cancel_request`, which aborts the request's signal) is dropped, shown or
+waiting, and the next one comes up: Claude Code takes back what a subagent
+still asks when it stops that subagent, which it does when the user says No
+to a request of a subagent in the foreground.
 Stop sends `session/cancel` and answers every open request `cancelled`, as the
 agent's exit does.
 
@@ -373,10 +377,11 @@ advertises the matching capability.
     the agent says; which agent started it; its time and `tokens not
     reported` once it has ended; its working directory when that is not the
     one of what started it;
-  - a **Stop** button while it runs and the agent takes a stop for it. It
-    sends `session/cancel` with the subagent's session id and answers that
-    subagent's open permission requests `cancelled`; the state the agent
-    sends next (`stopped`) is the confirmation. Only that subagent stops;
+  - a **Stop** button while it runs and the agent takes a stop for it,
+    which is also beside its row in the list. It sends `session/cancel`
+    with the subagent's session id and answers that subagent's open
+    permission requests `cancelled`; the state the agent sends next
+    (`stopped`) is the confirmation. Only that subagent stops;
   - the last thing it said, cut to three lines, while it works;
   - everything it was told, did, said and reported, in the order it
     happened: *Prompt*, closed, in grey; *Tool calls (N)*, open, oldest
@@ -412,7 +417,9 @@ advertises the matching capability.
   - *Reports.* A report is the subagent's own message to its parent. One
     that handed nothing back answered with its last text, which the parent
     got as a reply; that reply is then its report, and the same text is not
-    listed a second time under Messages.
+    listed a second time under Messages. What a subagent gets from one it
+    started is that one's report, shown on that one's card, and not a prompt
+    of its own.
   - *A loaded chat* has each subagent's prompts, calls, messages and
     reports, and how it ended. One that still runs in the agent's process
     can be stopped.
@@ -480,14 +487,19 @@ replays none of it in a loaded chat. The types are `SubagentUpdate`,
 
 The form is unstable, so a new adapter pin can change it. What follows was
 read from the source of `claude-agent-acp` 0.102.0 (`dist/acp-agent.js`,
-`native-subagents.js`, `subagent-replay.js`) and holds in LinuxIO's unit
-tests and its scripted browser chat. A chat with the real adapter on
-2026-11-13 showed the announcements, the prompt and report as messages in
-both sessions, a subagent's calls on its own session, its model, a
-background subagent's report, and a `SendMessage` to a finished subagent
-running it again in the same session. What no live chat has shown yet is in
-the [backlog](TODO/backlog.md). Read this section against the new source
-when the pin moves.
+`native-subagents.js`, `subagent-replay.js`) and checked against a chat
+with the real adapter, recorded on 2026-11-13 with every update it sent:
+two subagents started at once, one of them in the background and starting
+one of its own, a `SendMessage` to a finished one, a subagent stopped with
+`session/cancel`, and the same chat loaded again. The recording is
+`frontend/src/test/assistantSubagentTrace.json`, with paths and session ids
+replaced. A unit test replays it through the store
+(`-components/subagentTrace.test.ts`) and the browser spec through the page
+(`test/browser/assistant.spec.ts`), so a new pin is checked by recording the
+chat again. The recording ran in the `auto` mode and asked nothing; a
+permission request from a subagent was seen in a chat set to Manual on the
+same day, with two subagents asking at once. What is still open is in the
+[backlog](TODO/backlog.md).
 
 What the adapter sends:
 
@@ -521,7 +533,14 @@ What the adapter sends:
   message that launched it; its end state after the whole transcript; and,
   after the load response, what it is now, with `cancel` only if it still
   runs in this process. A subagent with no recorded end is `idle` with no
-  stop reason.
+  stop reason. Two things in the replay differ from the live chat. A
+  subagent's whole transcript comes at its launch, later prompts and reports
+  included, so the parent gets the report for a second message before its
+  own copy of that message. And a call can come without its end: the
+  recording has one, a call that was open when its subagent started a
+  subagent of its own.
+- **On `session/cancel` of a subagent**, nothing in reply; the subagent goes
+  `idle` with `cancelled`, and the parent's turn runs on to its end.
 
 How LinuxIO keeps it (`-components/subagents.ts`, `assistant-store.ts`):
 
@@ -539,6 +558,12 @@ How LinuxIO keeps it (`-components/subagents.ts`, `assistant-store.ts`):
   again. The calls a subagent made for a message are its tool blocks from
   its copy of that message to the next message it got.
 - Runs are timed only while the chat's turn runs, like the chat's calls.
+- When a session gets its copy of a message it sent a subagent, the reports
+  that subagent made after getting it are put behind it (`reportsInOrder`),
+  so a loaded chat reads message, then report, as the live one did.
+- A subagent's call with no end on record counts as running only while the
+  subagent does; after that it reads as done, in the transcript, the map
+  and the Agents view.
 
 What the form does not give:
 
@@ -547,10 +572,11 @@ What the form does not give:
   subagent reads `tokens not reported`. That needs a change upstream.
 - **Whether a subagent was sent to the background.** The launch call is not
   sent, so there is no `background` label; its state says whether it runs.
-- **What a stop of the whole chat does to background subagents.** The
-  adapter's comments disagree, and upstream has it open
-  (agent-client-protocol#2308). The Stop button of the Agents view stops
-  one.
+- **A stop of the whole chat that stops every subagent.** With this form
+  declared the adapter makes the interrupt spare background subagents
+  (agent-client-protocol#2308), and a live chat showed one going on. That
+  is kept, as Claude Code's own apps do it: the chat's Stop ends the turn,
+  and a subagent that goes on is stopped by its own Stop button.
 
 ## Plugins
 
