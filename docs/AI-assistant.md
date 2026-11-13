@@ -335,12 +335,15 @@ advertises the matching capability.
     a closed *Messages (N)* in grey;
   - its prompt, closed, in grey;
   - *Tool calls (N)*, open, oldest first: the tool (`Read`, `Bash`,
-    `Web Fetch`, `Search tools`, an MCP tool's name), what it worked on (a
-    file's name, a command's description or the command, the address, the
-    pattern or query, in code type where it is code) and a note: the lines a
-    read asked for (`lines 421-465`), where a search looked, `running` or
-    `failed`. The whole path or command and the time are the row's tooltip;
-  - the subagents it started, and what its call handed back, in grey.
+    `Web Fetch`, `Search tools`, an MCP tool's name), what it worked on in
+    grey (a file's name, a command's description or the command, the
+    address, the pattern or query; in blue code type where it is code) and a
+    note: the lines a read asked for (`lines 421-465`), where a search
+    looked, `running` or `failed`. The whole path or command and the time
+    are the row's tooltip;
+  - the subagents it started, and its result in grey: the report it handed
+    back through Claude Code's `SubagentHandback` tool (`message`), which is
+    not listed as a call, else what its call handed back.
 
   The tab of the view the card shows reads as open, and the browser
   remembers the view.
@@ -352,18 +355,22 @@ advertises the matching capability.
     and its thinking out: without that they would read in the chat as the
     agent's own reply. When a subagent's call ends, the adapter passes on
     the tool's response, whose `totalTokens` and `totalDurationMs` are the
-    subagent's own account; without them the time is what LinuxIO saw. A
-    loaded chat keeps the nesting but has neither the account (the adapter
-    strips the result's `<usage>` trailer) nor what the subagent said (the
-    adapter leaves subagent text out of a replay).
+    subagent's own account; without them the time is what LinuxIO saw.
+  - *A loaded chat* has none of a subagent's own work: no calls, no
+    messages, no hand-back and no account. The adapter replays a subagent's
+    history (`<session>/subagents/agent-<id>.jsonl`) only to a client that
+    declares its native subagent support, which LinuxIO does not yet; see
+    [Native subagents](TODO/assistant-native-subagents.md). What is left is
+    the launch call: its prompt, kind and model, and what it handed back,
+    which for a subagent in the foreground is its report.
   - *Background.* A subagent sent to the background hands back at once
     with a note that it was sent off, which is not shown as its result, and
     with no account. The call may ask for it (`run_in_background`) or Claude
     Code may decide it alone, so a subagent also counts as sent there when
     the response's `status` is `async_launched` (live) or, in a loaded chat,
     when what its call handed back starts with that note (`Async agent
-    launched`). The adapter tells a client like
-    LinuxIO nothing of its end, but holds the turn that started it open
+    launched`). Its report comes only from its hand-back. The adapter tells
+    a client like LinuxIO nothing of its end, but holds the turn that started it open
     until it ends, so it counts as running while that turn runs. Its time
     is then from its start to the end of the last call it made, and its
     tokens are not reported. The model a subagent ran on reaches LinuxIO

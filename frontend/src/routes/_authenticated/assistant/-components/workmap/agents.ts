@@ -47,7 +47,11 @@ export interface AgentRun {
   prompt: string | null;
   /** What it said, one entry per message, oldest first. */
   said: string[];
-  /** What its call handed back; a subagent in the background hands back nothing of its work. */
+  /**
+   * Its final report: what it handed back through `SubagentHandback`, else
+   * what its call handed back, which for one in the background is only the
+   * note that it was sent off and is left out.
+   */
   result: string | null;
   status: RunStatus;
   /** When it was seen to start (ms since epoch); null in a loaded chat. */
@@ -63,6 +67,8 @@ export interface AgentRun {
 }
 
 const SUBAGENT_TOOLS = new Set(["Agent", "Task"]);
+// The tool a subagent hands its final report back with, as `message`.
+const HANDBACK_TOOL = "SubagentHandback";
 
 /** Whether a call starts a subagent. */
 export const isSubagentCall = (block: ToolBlock) =>
@@ -278,6 +284,13 @@ export function agentsOf(
     }
     if (!parent) return;
     ended(parent, block.endedAt);
+    // A subagent hands its final report back through a call of its own; the
+    // report is its result, which its launch call does not carry when it ran
+    // in the background.
+    if (block.toolName === HANDBACK_TOOL) {
+      parent.result = stringField(block.rawInput, "message") ?? parent.result;
+      return;
+    }
     parent.calls.push({
       id: block.id,
       ...describeCall(block),

@@ -219,6 +219,39 @@ describe("agentsOf", () => {
     });
   });
 
+  it("takes a subagent's report from its hand-back, not its launch note", () => {
+    const [agent] = agentsOf(
+      [
+        subagent("a1", {
+          launched: true,
+          content: [
+            {
+              type: "content",
+              content: {
+                type: "text",
+                text: "Async agent launched successfully.",
+              },
+            },
+          ],
+        }),
+        tool({
+          parentId: "a1",
+          toolName: "Bash",
+          rawInput: { command: "sleep 30", description: "Wait" },
+        }),
+        tool({
+          parentId: "a1",
+          toolName: "SubagentHandback",
+          rawInput: { message: "Agent 3 done." },
+        }),
+      ],
+      false,
+    );
+    expect(agent.result).toBe("Agent 3 done.");
+    // The hand-back is the report, not one of its calls.
+    expect(agent.calls.map((call) => call.tool)).toEqual(["Bash"]);
+  });
+
   it("keeps what a subagent said, message by message", () => {
     const [agent] = agentsOf(
       [

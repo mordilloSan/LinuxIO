@@ -233,7 +233,7 @@ export default function AgentMap({
         <details className="agent-map__fold" open>
           <summary>Tool calls ({chosen.calls.length})</summary>
           {chosen.calls.length === 0 ? (
-            <p className="assistant-pane-text assistant-pane-text--dim">
+            <p className="agent-map__quiet">
               {chosen.status === "run" ? "Nothing yet." : "No calls seen."}
             </p>
           ) : (

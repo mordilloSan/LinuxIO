@@ -294,16 +294,15 @@ there.
   missed run (`Persistent=`), journal retention over several days, and a
   bridge restart during a run. See
   [Scheduled Scripts](../scheduled-scripts.md#testing).
-- [ ] **Agents view against a live Claude chat.** The subagent nesting,
-  totals and text (`parentToolUseId`, `toolResponse.totalTokens`, the
-  tagged message chunks) and how a background subagent's turn stays open
-  are read from the adapter's source (claude-agent-acp 0.102.0) and unit
-  tests, not seen in a running chat. Start a chat that sends off one
-  subagent in the foreground and one in the background, and check: the
-  `N agents` tab counts them, their calls and messages sit under them and
-  none of their text shows in the chat, the foreground one's tokens show
-  when it ends, and the background one runs until its turn ends. See
-  [AI Assistant](../AI-assistant.md) (Agents).
+- [ ] **Agents view against a live Claude chat.** Seen live on 2026-11-13:
+  a background subagent's calls and its `SubagentHandback` arrive tagged
+  with its call. Still read only from the adapter's source
+  (claude-agent-acp 0.102.0) and unit tests: a foreground subagent's tokens
+  (`toolResponse.totalTokens`) when it ends, its text kept out of the chat
+  and under *Messages*, and a background subagent running until its turn
+  ends. Check them in a chat that sends off one subagent in the foreground
+  and one in the background. See [AI Assistant](../AI-assistant.md)
+  (Agents).
 - [ ] **What happens after a route cuts its own connection is not written
   down.** The old roadmap's rule was: send it once; after reconnect, reboot
   compares the boot identity, a network change reads back the interface, and
