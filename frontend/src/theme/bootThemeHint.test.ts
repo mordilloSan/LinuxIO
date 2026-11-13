@@ -12,7 +12,10 @@ import {
 } from "@/theme/bootThemeHint";
 
 const indexHtml = readFileSync(path.join(process.cwd(), "index.html"), "utf8");
-const bootScript = /<script>([\s\S]*?)<\/script>/.exec(indexHtml)?.[1] ?? "";
+const bootScript =
+  new DOMParser()
+    .parseFromString(indexHtml, "text/html")
+    .querySelector("script:not([src])")?.textContent ?? "";
 
 const BOOT_VARIABLES = [
   "--app-color-scheme",
