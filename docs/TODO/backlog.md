@@ -83,6 +83,25 @@ after a change that issues ioctls).
   ([Alerts](../alerts.md#notification-settings)). Release notes are not kept
   in the repository, so this cannot be checked here.
 
+- [ ] **"Open the real folder" opens behind a dialog.** After a refusal in
+  the Trash or Permissions dialog the dialog stays open, so the file browser
+  moves to the real folder behind it and the admin has to close the dialog to
+  see it (`TrashDialog.tsx`, the permissions dialog in
+  `frontend/src/routes/_authenticated/filebrowser`). Close the dialog when the
+  action is clicked. Checked.
+- [ ] **A refusal past the fifth failure gets no button.** A batch toast lists
+  the first five failures (`describeBatchFailures` in
+  `frontend/src/tasks/batchFailures.ts`) and the action is found in that text,
+  so a link refusal further down the list offers no "Open the real folder";
+  an upload toast shows only its first failure, with the same limit. Look for
+  the refusal in the whole `failed` list. Checked.
+- [ ] **Toast links are never shown.** Many toasts carry a link in `meta`
+  (`FILES_TOAST_META` "Open files", `useScopedToast`, the `toast` option of
+  `useCallMutation`, task definitions' `route`), but `ToastProvider.tsx`
+  mounts a plain sonner `Toaster` and nothing reads `meta`, so none of those
+  links appears. Render them, or remove `meta` everywhere. Checked
+  2026-11-13.
+
 ## Tests that are missing
 
 - [ ] No browser test signs in as a user without sudo. The pages gated for
@@ -95,6 +114,10 @@ after a change that issues ioctls).
   real update from a release that has job hosts, more than one waiting job, a
   user's host as the older host, `tasks.watch`, `tasks.cancel` and
   `tasks.output` during the wait, and uploads during it.
+- [ ] The "Open the real folder" action was never clicked in a browser: unit
+  tests cover it (`frontend/src/utils/linkRefusal.test.ts` and the tests of
+  the hooks that use it). A browser test needs a link refusal from a root
+  bridge, so it belongs in the test VM.
 - [ ] A relay speed test: a no-op mutation through the relay many times, with
   a bound on the median. No baseline numbers exist either for call latency,
   job start, alert listing or schedule status.
@@ -186,6 +209,12 @@ File browser, after the link fix:
 - A trash record written for a disk whose device number changes when it is
   mounted again no longer matches its item: the restore asks first, as for an
   item another program trashed.
+- A cancelled upload whose folder was swapped for a link meanwhile leaves its
+  hidden `.…linuxio-upload-….part` buffer behind: removing it by path could
+  remove another file, and the leftover sits in the user's own folder.
+- The size estimate of a compress for the session user does not count what a
+  link points to, so the progress bar can reach 100% a little early: counting
+  it would mean following the link the estimate exists to avoid.
 
 Without sudo:
 

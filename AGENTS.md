@@ -59,7 +59,7 @@
 - The code is the truth. When a doc and the code disagree, say so and fix the doc in the same change instead of following the doc.
 - A behaviour change updates the docs that cover it in the same change.
 - Write a new doc in `docs/` when a change adds a subsystem, a host integration, a protocol or file format, or a decision the code cannot explain by itself, and no existing doc covers it; when one does, extend that doc instead. A doc states what the system does and why, not how the change was reached. Plans, phases and open work go in `docs/TODO` and move up when they land.
-- An open item (a bug, a gap, a missing test, a host check) goes in `docs/TODO/backlog.md`, once, in the section it belongs to, and is deleted when it is fixed. A file of its own in `docs/TODO` is only for a plan that is not built yet; do not start a second list.
+- An open item (a bug, a gap, a missing test, a host check) goes in `docs/TODO/backlog.md`, once, in the section it belongs to, and is deleted when it is fixed. Every limitation or side effect named when work is handed over goes there too, as an open item or under Rejected with its reason, so the next person finds it without the conversation. A file of its own in `docs/TODO` is only for a plan that is not built yet; do not start a second list.
 - Adding, removing or renaming a doc, or moving the code it covers, updates its row in `docs/README.md` in the same change; `make check-docs` fails otherwise.
 - A rule learned during a session that applies to anyone working on LinuxIO becomes one line in this file, with its reasoning in the doc that covers the area. Do not leave it only in agent memory.
 
