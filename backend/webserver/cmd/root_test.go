@@ -54,8 +54,10 @@ func TestSocketIdleWatcherWaitsForReleasedSessionGrace(t *testing.T) {
 	activity.touch()
 	done := startSocketIdleExitWatcher(ctx, srv, sm, activity, grace, 5*time.Millisecond)
 	time.Sleep(15 * time.Millisecond)
-	sm.DeleteSession(sessID, sessions.ReasonLogout)
+	// Taken before the delete: the grace runs from the delete itself, so a
+	// time read after it would make the watcher look up to that much early.
 	released := time.Now()
+	sm.DeleteSession(sessID, sessions.ReasonLogout)
 	select {
 	case <-shutdown:
 		t.Fatal("watcher exited before the released session grace elapsed")
