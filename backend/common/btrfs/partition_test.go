@@ -686,6 +686,13 @@ func TestPartitionNumber(t *testing.T) {
 	if _, err := PartitionNumber("/dev/nvme0n1"); err == nil {
 		t.Fatal("a whole disk has no partition number")
 	}
+	// 2^32+1 cut to an int32 would be partition 1.
+	if err := os.WriteFile(filepath.Join(sysBlockDir, "nvme0n1p1", "partition"), []byte("4294967297\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := PartitionNumber("/dev/nvme0n1p1"); err == nil {
+		t.Fatalf("an out-of-range partition number read as %d", n)
+	}
 }
 
 func TestConcurrentCreatePartitionsKeepBoth(t *testing.T) {

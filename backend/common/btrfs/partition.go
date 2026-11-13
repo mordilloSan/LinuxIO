@@ -282,13 +282,15 @@ func kernelPartitions(device string) ([]kernelPartition, error) {
 }
 
 // PartitionNumber reads the kernel's number of partition part: 3 for
-// /dev/sdb3.
+// /dev/sdb3. BLKPG takes it as an int32, so a larger number is an error
+// rather than another partition's.
 func PartitionNumber(part string) (int, error) {
 	b, err := os.ReadFile(filepath.Join(sysBlockDir, filepath.Base(part), "partition"))
 	if err != nil {
 		return 0, err
 	}
-	return strconv.Atoi(strings.TrimSpace(string(b)))
+	n, err := strconv.ParseInt(strings.TrimSpace(string(b)), 10, 32)
+	return int(n), err
 }
 
 // sysNumber reads the number in a sysfs attribute file.
