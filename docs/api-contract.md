@@ -1377,8 +1377,8 @@ Guards in place for these rules, each a test that fails on the missed place:
 - Route sets: `packages` lists its binding sets once (`bindingSets`) and both
   `Routes` and `RegisterHandlers` read it.
 
-Where LinuxIO does not yet follow these rules is listed in
-[the backlog](./TODO/backlog.md#silent-misses-worth-a-guard).
+A place found later that does not follow these rules goes in
+[the backlog](./TODO/backlog.md).
 
 ## Verification
 

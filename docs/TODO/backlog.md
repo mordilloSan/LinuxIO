@@ -30,36 +30,39 @@ in git.
 When an admin uses the file browser, the work runs as root. A program running
 as that user can swap one of the user's folders for a symlink, and root would
 then act on the folder the link points to. Create, delete, copy, move, rename,
-chmod, chown, compress, extract, a save with an owner and the destination
-folder of a trash restore are closed
+chmod, chown, compress, extract, uploads and trash restore are closed, and a
+refusal names the folder the link points to
 ([Privilege Pattern](../privilege_pattern.md#root-acting-in-the-session-users-folders)).
 What is left:
 
-- [ ] **Decide: an admin's own folder links are refused.** The rule cannot
-  tell a link the admin made on purpose (`~/Documents` pointing at another
-  disk) from one a hostile program planted, so the file browser answers 403
-  for a change through such a path and the admin must use the real path.
-  - Decided 2026-11-13: the error names the folder the link points to, so the
-    admin knows where to go. Running the change as the user when the path is
-    in folders the user owns stays a later option; it would make links work.
-- [ ] **A trash restore goes where the user-editable `.trashinfo` says**
-  (audit 132). `RestoreFromTrash`
-  (`backend/bridge/handlers/filebrowser/services/trash.go`) reads the
-  destination from `Path=`, which the user can edit, so an item an admin
-  trashed from `/etc` can be sent to a different system folder. Checked.
-  - Decided 2026-11-13: record the original location root-side when the item
-    is trashed and restore only to it. An item with no record, trashed by
-    another program such as a desktop file manager, asks before a restore into
-    a system folder.
-- [ ] **Compress reads through links.** An admin compressing a user's folder
-  that holds a planted link pulls the link's target into the archive, which is
-  created readable (`statWithSymlinkResolution` in
-  `services/archive_operations.go`). Reported.
-- [ ] **A root upload without an owner follows links** (`upload_owner.go`,
-  `openUploadDir`). Reported.
-- [ ] **Can root sign in?** Not checked. The link rule is switched off for a
-  root session, but the trash list and purge paths (`services/trash.go`,
-  `openTrash` callers) still build their owner from the process uid alone.
+- [ ] **The link rule trusts every folder that is not the session user's.**
+  Root follows a link in a folder that is neither the session user's nor
+  group- or world-writable (`userCouldPlant` in
+  `backend/bridge/handlers/filebrowser/services/handover.go`). That includes
+  another local user's folder, such as `/home/v`: a link that user planted
+  there is followed while an admin compresses, uploads or restores inside it,
+  and a compress puts what it points to into an archive. Decide whether to
+  trust only folders owned by root. Reported by the review of 2026-11-13.
+- [ ] **An upload still reads its target's attributes by path.**
+  `loadUploadAttributes`, the batch existence check, `verifyExpectedVersion`
+  and `cleanupPartial` (`upload_operation.go`, `upload_batch_operation.go`) go
+  by path after the folder was checked. A folder swapped for a link and back
+  in between makes root give the uploaded file another file's owner and mode,
+  setuid included. The content is the admin's own. Reported.
+- [ ] **The compress size estimate follows planted links.** `ComputeArchiveSize`
+  (`services/archive_operations.go`, called from `size_estimate.go`) walks its
+  sources by path with no owner, so a planted link to `/` makes root walk the
+  whole host and report its size. Reported.
+- [ ] **A restore confirmation is not tied to one item.** When several
+  restores into system folders are confirmed in one request, a swapped `Path=`
+  can send one item to a destination confirmed for another (`checkSystem` in
+  `services/trash.go`). The item must still be one the user could not write.
+  Reported.
+- [ ] **A trash record can be lost.** A purge that runs while an item is being
+  trashed prunes its record, the records of a trash on an unmounted disk are
+  pruned, and temp files left by a crash count toward the cap and are never
+  removed (`services/trash_records.go`). Each case falls back to asking before
+  a restore into a system folder. Reported.
 
 ## Storage safety
 
@@ -68,35 +71,27 @@ btrfs-progs do, gets an independent review, and adds a root test on loop
 devices (`make test-btrfs-integration`, and `make vm-test-btrfs-integration`
 after a change that issues ioctls).
 
-- [ ] **Format and Delete can still destroy a member partition without
-  naming it.** On the Disks page, Format with **Overwrite existing data**
-  erases a partition that belongs to a stopped md array, an inactive LVM
-  volume group or another set, and Delete drops it from the table; neither
-  says what it belongs to (`FormatPartition`, `DeletePartition` in
-  `backend/bridge/handlers/storage/partitions.go`). Initialize disk names and
-  confirms such members; these two should do the same. Checked by the review
-  of 2026-11-13.
-- [ ] **The disk check runs before the disk lock.** Every operation checks
-  one inventory read and then writes, and only Format checks "not busy" again
-  under the lock. `wipeDeviceEdges` opens the device without `O_EXCL` before
-  the add ioctl (`backend/common/btrfs/devices.go`), so a device claimed in
-  that window gets its edges zeroed. md and LVM membership is read from the
-  udev database, so a signature udev has not probed is not seen. Reported;
-  the window is short and was there before.
-- [ ] **Reading a pool can stop it from being destroyed.** The subvolume,
-  snapshot and settings reads are reported to mount a pool's top level under
-  `/run/linuxio/btrfs/`, after which `pool_destroy` refuses the pool. Not
-  re-read. Checked beside it: `storage.btrfs_list` raises alerts and turns on
-  the health timer (`ListBtrfsFilesystems` in
-  `backend/bridge/handlers/storage/btrfs_subvolumes.go`).
+- [ ] **Membership is checked before the disk lock and not again.** The
+  zeroing before a forced add, an Initialize and a new partition now opens the
+  device exclusively, so a device claimed in the meantime is refused. Left:
+  Format and Delete confirm a member on the inventory read before the lock;
+  `writeTable` reopens the disk without `O_EXCL` to write the GPT after its
+  exclusive wipe; `WipeDevice` and `WipePoolSuperblocks`
+  (`backend/common/btrfs/pool.go`) open without it; and md and LVM membership
+  comes from the udev database, so a signature udev has not probed is not
+  seen. Reported; each window is short.
+- [ ] **A replace cancel sent in its first moments can be lost.**
+  `cancelReplace` (`backend/common/btrfs/devices.go`) is sent once and its
+  error dropped, so a cancel before the kernel has claimed the pool does
+  nothing and the replace runs to the end; `RemoveDevice` sends its cancel
+  again until it is taken. The source disk is safe either way. Reported.
+- [ ] **Destroying a pool mounted at a protected path answers 500.** The
+  refusal in `poolMountpoints`
+  (`backend/bridge/handlers/storage/btrfs_pool.go`) wraps no status, so it is
+  not a 409. Reported.
 - [ ] **A scrub starts over after a power cut.** It is checkpointed only by
   its `Suspend` hook at an orderly stop
   (`backend/bridge/handlers/storage/btrfs_device_operations.go`). Checked.
-- [ ] **No cancel for a device removal or a replace on the page.** The Devices
-  card cancels a running balance only
-  (`frontend/src/routes/_authenticated/storage/-components/btrfs/BtrfsDevicesCard.tsx`).
-  The backend can cancel a removal in the kernel. Whether the tray lists these
-  jobs with a cancel: not verified.
 - [ ] **A scrub might end by itself.** The kernel stops a scrub on any signal
   to its thread, and nothing in `backend/common/btrfs` retries `EINTR`. An
   inference; never observed. Needs a test.
@@ -113,6 +108,13 @@ pages offer a session without sudo only what the server allows
   - Decided 2026-11-13: a user without sudo may search the folders they can
     read. The index covers the whole host, so the results must be filtered to
     those before they leave the bridge.
+  - Not built, checked 2026-11-13: a bridge without sudo cannot reach the
+    indexer. Its socket is root's, mode `0600`
+    (`packaging/systemd/linuxio-indexer.socket`), and the daemon also requires
+    a root peer (`backend/indexer/internal/daemon/middleware.go`). Opening the
+    socket to every local user is ruled out. What is left is a root component
+    already behind the login, the root job host or `linuxio-auth`, running the
+    search for the session and filtering by what that user may list.
 
 ## Visible bugs
 
@@ -132,23 +134,6 @@ pages offer a session without sudo only what the server allows
   SMTP password and keeps the old file as `notifications.json.unreadable`
   ([Alerts](../alerts.md#notification-settings)). Release notes are not kept
   in the repository, so this cannot be checked here.
-
-## Silent misses worth a guard
-
-Nothing fails today. Each of these is one kind of item named in several
-places, where leaving one out fails without an error. The rules are in
-[API Contract](../api-contract.md) (One Definition, Checked Rules). Reported
-unless it says checked. The scan that found them read the Go backend largely
-in full and 20 to 25 percent of the frontend, so more of the same is likely
-there.
-
-- [ ] **btrfs profiles.** Five tables in `backend/common/btrfs` and three in
-  `btrfsShared.ts`. A profile missing from `MinDevices` returns 0, so any
-  device count passes validation. Checked to agree today.
-- [ ] **Storage registers its routes from a second list.**
-  `storage/handlers.go` declares the route sets and
-  `storage/smart_test_operation.go` registers them; a set in one and not the
-  other is a route that answers "not found". Checked.
 
 ## Tests that are missing
 
@@ -219,6 +204,9 @@ there.
 
 Do one of these only when something shows it is needed.
 
+- Run a file browser change as the session user when the path is inside
+  folders that user owns, so the user's own folder links work instead of being
+  refused with the folder they point to.
 - Pick up a package update again after the job host dies, by asking
   PackageKit.
 - Pick up a SMART test again from the drive's own state.
