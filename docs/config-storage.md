@@ -79,8 +79,14 @@ artifact. A core update that encounters a document corrupted after startup also
 fails without quarantining or rewriting it; quarantine is a boot-only recovery
 operation.
 
-An invalid UI document is replaced with `{}` and expanded over backend UI
-defaults when read. Core and UI updates remain independent: they have separate
+`ui.yaml` holds only what differs from the backend UI defaults: a save writes
+a field, and a theme colour key, only when its value is not the default (an
+all-default save writes `{}`), and a read lays the file over the defaults. A
+default the backend changes later therefore reaches every user who has not
+chosen a value of their own. A file written before this rule holds every field
+and keeps holding them, so those users keep the defaults of the day they
+saved until their next save, which prunes the file. An invalid UI document is
+replaced with `{}` and expanded over backend UI defaults when read. Core and UI updates remain independent: they have separate
 locks, snapshots, validation, and atomic whole-file replacement.
 
 ## Defaults

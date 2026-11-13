@@ -16,14 +16,6 @@ const (
 // and StringEnums publishes it as the WireGuardHookKind union.
 var WireGuardHookKinds = []WireGuardHookKind{WireGuardPreUp, WireGuardPostUp, WireGuardPreDown, WireGuardPostDown}
 
-func wireGuardHookKindNames() []string {
-	names := make([]string, len(WireGuardHookKinds))
-	for i, kind := range WireGuardHookKinds {
-		names[i] = string(kind)
-	}
-	return names
-}
-
 // WireGuardHooks holds wg-quick hook command lines by kind.
 type WireGuardHooks map[WireGuardHookKind][]string
 

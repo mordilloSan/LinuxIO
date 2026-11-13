@@ -126,16 +126,6 @@ const (
 	DockTileColorsVibrant = "vibrant"
 )
 
-// isValidDockTileColors reports whether s is a valid stored dock palette.
-func isValidDockTileColors(s string) bool {
-	switch s {
-	case DockTileColorsAccent, DockTileColorsMono, DockTileColorsNeutral, DockTileColorsVibrant:
-		return true
-	default:
-		return false
-	}
-}
-
 // ValidateDockAccentGradient returns validation errors for a dock gradient.
 func ValidateDockAccentGradient(value DockAccentGradient) []string {
 	var errs []string

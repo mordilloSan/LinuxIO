@@ -100,16 +100,16 @@ func validateUIPreferences(cfg *UIPreferences) []string {
 		return []string{"UI preferences are nil"}
 	}
 	var errs []string
-	if cfg.Theme != ThemeLight && cfg.Theme != ThemeDark {
+	if !slices.Contains(Themes, cfg.Theme) {
 		errs = append(errs, "theme must be LIGHT or DARK")
 	}
 	if !isValidCSSColor(string(cfg.PrimaryColor)) {
 		errs = append(errs, "primaryColor must be a valid CSS color")
 	}
-	if cfg.NavigationMode != NavigationModeSidebar && cfg.NavigationMode != NavigationModeDock {
+	if !slices.Contains(NavigationModes, cfg.NavigationMode) {
 		errs = append(errs, "navigationMode must be sidebar or dock")
 	}
-	if cfg.DockTileColors == "" || !isValidDockTileColors(cfg.DockTileColors) {
+	if !slices.Contains(DockTileColorModes, cfg.DockTileColors) {
 		errs = append(errs, "dockTileColors must be accent, mono, neutral or vibrant")
 	}
 	if cfg.DockAccentGradient == nil {
@@ -162,7 +162,7 @@ func validateViewModes(viewModes map[string]string) []string {
 		if strings.TrimSpace(key) == "" {
 			errs = append(errs, "viewModes keys cannot be empty")
 		}
-		if mode != ViewModeCard && mode != ViewModeTable {
+		if !slices.Contains(ViewModes, mode) {
 			errs = append(errs, fmt.Sprintf("viewModes.%s must be card or table", key))
 		}
 	}

@@ -304,3 +304,20 @@ func TestLiveSampleKeysAreIndependentFromCollector(t *testing.T) {
 		seen[key] = endpoint
 	}
 }
+
+// A plugin that is in no collection group is never collected for a live
+// request, and one in two groups is collected twice. The groups together must
+// be the catalogue, and every plugin a batch reads from Snapshot must be in it.
+func TestCollectionGroupsCoverEveryPluginOnce(t *testing.T) {
+	var grouped []string
+	grouped = append(grouped, baseSystemPluginNames...)
+	grouped = append(grouped, plugins.Containers)
+	grouped = append(grouped, processPluginNames...)
+	grouped = append(grouped, standalonePluginNames...)
+	assert.ElementsMatch(t, plugins.Names(), grouped)
+
+	snapshot := plugins.Snapshot(&systemmodel.CombinedData{})
+	for _, plugin := range append([]string{plugins.Containers}, baseSystemPluginNames...) {
+		assert.Contains(t, snapshot, plugin, "the system batch reads %s from Snapshot", plugin)
+	}
+}

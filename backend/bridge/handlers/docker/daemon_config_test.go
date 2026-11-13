@@ -3,8 +3,10 @@ package docker
 import (
 	"context"
 	"encoding/json/v2"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -158,4 +160,35 @@ func TestDaemonConfigFromMapReadsStringAndNumericLogOpts(t *testing.T) {
 	require.Equal(t, "5m", cfg.LogMaxSize)
 	require.Equal(t, "2", cfg.LogMaxFile)
 	require.True(t, cfg.UserlandProxy, "absent userland-proxy means dockerd's default of true")
+}
+
+// The form writes each key it edits, reads it back, and the table says how a
+// change to it takes effect. A key added to one and not the others fails here.
+func TestDaemonKeysAreTheKeysTheFormEdits(t *testing.T) {
+	cfg := apischema.DockerDaemonConfig{
+		AddressPoolBase: "172.20.0.0/16",
+		AddressPoolSize: 24,
+		DataRoot:        "/srv/docker",
+		ImageStore:      "containerd",
+		LiveRestore:     true,
+		LogMaxFile:      "3",
+		LogMaxSize:      "10m",
+		StorageDriver:   "overlayfs",
+		UserlandProxy:   false,
+	}
+	written := applyDaemonConfig(map[string]any{}, cfg)
+
+	var names []string
+	for _, key := range daemonKeys {
+		names = append(names, key.name)
+	}
+	require.ElementsMatch(t, slices.Collect(maps.Keys(written)), names)
+	require.Equal(t, cfg, daemonConfigFromMap(written))
+
+	for _, key := range daemonKeys {
+		without := maps.Clone(written)
+		delete(without, key.name)
+		require.NotEqual(t, cfg, daemonConfigFromMap(without), "reading ignores %s", key.name)
+		require.True(t, daemonKeysChanged(without, written, key.effect), "%s has no effect", key.name)
+	}
 }

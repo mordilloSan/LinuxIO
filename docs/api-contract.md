@@ -444,7 +444,7 @@ different owners and failure consequences:
 | `config.get` | `void -> AppConfig` | Retry-safe read of bridge-owned functional settings. |
 | `config.set` | `ConfigSetPayload -> ConfigSetResult` | Partial update of functional settings. |
 | `config.get_ui` | `void -> UIConfig` | Retry-safe read of effective UI preferences, including backend-owned defaults. |
-| `config.set_ui` | `ConfigUISetPayload -> ConfigSetResult` | Full UI snapshot replacement; omitted fields resolve to backend defaults. |
+| `config.set_ui` | `ConfigUISetPayload -> ConfigSetResult` | Full UI snapshot replacement; omitted fields resolve to backend defaults. `ui.yaml` stores only the differences from them. |
 
 `AppConfig.appSettings` contains only `showHiddenFiles` and `chunkSizeMB`.
 `chunkSizeMB` is the upload chunk size, 1 to 16 MiB (a relay frame carries at
@@ -1340,6 +1340,42 @@ Rules:
    there, or saved back by the next `config.set_ui`, replaces the derivation
    for good. `codeInsetBackground` and `panePictureBackground` have no
    backend default for this reason.
+
+Guards in place for these rules, each a test that fails on the missed place:
+
+- Live metrics redaction: `TestRedactLiveSectionsCoversEveryLiveMember`
+  (`backend/monitoring/internal/httpapi`) walks every member of
+  `monitoringapi.Live` and fails on one that is neither emptied for a listener
+  without its plugin nor on the short list of members every listener may see.
+- The UI settings save: `buildUIPayload` returns a payload typed
+  `Required<...>`, so a setting left out does not compile, and a type test in
+  `ConfigProvider.test.tsx` fails on a `UIConfig` field with no payload field.
+- `ui.yaml` stores differences from `DefaultUIPreferences()`; the writer walks
+  `UIPreferences` by reflection (`sparseUIDocument`), so a new field is stored
+  without being named, and a test fails on a field the write-read round trip
+  loses.
+- Docker daemon keys: `daemonKeys` in
+  `backend/bridge/handlers/docker/daemon_config.go` is the one list with how
+  each key takes effect; a test fails when the form writes or reads a key the
+  list lacks.
+- System metrics (`backend/monitoring/internal/plugins/guard_test.go`): every
+  `Stats` field reaches a plugin payload, and averaging samples that are alike
+  returns the sample, so a metric left out of the averaging or of the read-back
+  into `Stats` fails. Not guarded: the mapping of `Stats` onto `Live`
+  (`internal/live`), which carries a different subset by design.
+- Monitoring plugins: `TestPluginTablesAgree` (the names, history and live-only
+  lists, and what `Snapshot` projects), `TestAverageAveragesEveryPluginNotListedAsLastSampleWins`
+  and `TestCollectionGroupsCoverEveryPluginOnce` (`internal/app`, the groups
+  `CurrentPlugins` collects). The response kind in `httpapi/plugin.go` is not
+  guarded.
+- Allowed values: `StringEnums` entries come from the lists and constants they
+  describe (the UI choices from `userconfig.Themes`, `NavigationModes`,
+  `DockTileColorModes` and `ViewModes`, which the Parse functions and
+  validators also read). The four defined in handlers that import `apischema`
+  (`AutoUpdateBackend`, `AutoUpdateNotify`, `VMImagePresetID`, `VMFirmware`)
+  are compared by a test beside their definition.
+- Route sets: `packages` lists its binding sets once (`bindingSets`) and both
+  `Routes` and `RegisterHandlers` read it.
 
 Where LinuxIO does not yet follow these rules is listed in
 [the backlog](./TODO/backlog.md#silent-misses-worth-a-guard).

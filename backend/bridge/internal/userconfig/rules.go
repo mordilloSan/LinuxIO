@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -15,28 +16,38 @@ const (
 	ViewModeTable = "table"
 )
 
+// The accepted values of each UI choice. The Parse functions, the validators
+// and apischema.StringEnums (the generated TypeScript unions) all read these
+// lists, so a value added to one is added everywhere.
+var (
+	Themes             = []PersistedTheme{ThemeLight, ThemeDark}
+	NavigationModes    = []string{NavigationModeSidebar, NavigationModeDock}
+	DockTileColorModes = []string{DockTileColorsAccent, DockTileColorsMono, DockTileColorsNeutral, DockTileColorsVibrant}
+	ViewModes          = []string{ViewModeCard, ViewModeTable}
+)
+
 // ParseTheme normalizes s and reports whether it is LIGHT or DARK.
 func ParseTheme(s string) (PersistedTheme, bool) {
 	theme := PersistedTheme(strings.ToUpper(strings.TrimSpace(s)))
-	return theme, theme == ThemeLight || theme == ThemeDark
+	return theme, slices.Contains(Themes, theme)
 }
 
 // ParseNavigationMode normalizes s and reports whether it is a known mode.
 func ParseNavigationMode(s string) (string, bool) {
 	mode := strings.ToLower(strings.TrimSpace(s))
-	return mode, mode == NavigationModeSidebar || mode == NavigationModeDock
+	return mode, slices.Contains(NavigationModes, mode)
 }
 
 // ParseDockTileColors normalizes s and reports whether it is a known palette.
 func ParseDockTileColors(s string) (string, bool) {
 	mode := strings.ToLower(strings.TrimSpace(s))
-	return mode, isValidDockTileColors(mode)
+	return mode, slices.Contains(DockTileColorModes, mode)
 }
 
 // ParseViewMode normalizes s and reports whether it is card or table.
 func ParseViewMode(s string) (string, bool) {
 	mode := strings.ToLower(strings.TrimSpace(s))
-	return mode, mode == ViewModeCard || mode == ViewModeTable
+	return mode, slices.Contains(ViewModes, mode)
 }
 
 // Bounds on UIPreferences.CollapsedSections. The frontend names the pages and

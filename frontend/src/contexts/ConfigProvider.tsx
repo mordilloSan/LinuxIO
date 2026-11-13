@@ -102,11 +102,18 @@ function hasUIPatch(patch: ConfigPatch): boolean {
 }
 
 /**
+ * Every setting config.set_ui stores except themeColors, which is omitted
+ * while unset. The save replaces the stored settings, so each one named here
+ * must be sent: leaving one out of buildUIPayload is a compile error.
+ */
+type UIPayloadSettings = Required<Omit<ConfigUISetPayload, "themeColors">>;
+
+/**
  * Full replacement payload for config.set_ui from the cached UI snapshot.
  * Absent optional values (themeColors) are omitted, never sent as undefined.
  */
 function buildUIPayload(ui: UIConfig): ConfigUISetPayload {
-  const payload: ConfigUISetPayload = {
+  const payload: UIPayloadSettings & ConfigUISetPayload = {
     theme: ui.theme,
     primaryColor: ui.primaryColor,
     sidebarCollapsed: ui.sidebarCollapsed,

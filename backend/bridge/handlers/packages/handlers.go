@@ -18,14 +18,19 @@ var api = apischema.Bindings(
 	apischema.Call[apischema.NoRequest, []apischema.UpdateHistoryRow]("updates.get_update_history", apischema.RetrySafe()).Handle(handleGetUpdateHistory),
 )
 
-var Routes = apischema.CombineRoutes(api.Routes(), packageUpdateRoutes, capabilityInstallRoutes)
+var Routes = func() []apischema.RouteSpec {
+	var groups [][]apischema.RouteSpec
+	for _, set := range bindingSets(runtime.Runtime{}) {
+		groups = append(groups, set.Routes())
+	}
+	return apischema.CombineRoutes(groups...)
+}()
 
 // RegisterHandlers registers package + update handlers with the IPC router.
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	RegisterTaskRoutes(router)
-	RegisterCapabilityTaskRoutes(rt, router)
-
-	api.Register(router)
+	for _, set := range bindingSets(rt) {
+		set.Register(router)
+	}
 }
 
 func handleGetUpdatesBasic(ctx context.Context, _ apischema.NoRequest) ([]apischema.Update, error) {

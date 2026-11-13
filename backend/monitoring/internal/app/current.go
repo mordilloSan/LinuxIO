@@ -36,6 +36,13 @@ var processPluginNames = []string{
 	plugins.ContainerTelemetry,
 }
 
+// standalonePluginNames are collected one by one, outside both batches above.
+var standalonePluginNames = []string{
+	plugins.Connections,
+	plugins.IRQ,
+	plugins.Smart,
+}
+
 const (
 	liveSystemSummaryEndpoint = "system_summary"
 	liveAllEndpoint           = "live_all"
@@ -261,8 +268,8 @@ func (a *App) collectCurrentProcessBatch(ctx context.Context, batch *currentPlug
 }
 
 func (a *App) collectCurrentStandaloneBatch(ctx context.Context, batch *currentPluginBatch) {
-	groups := make([]func(), 0, 3)
-	for _, plugin := range []string{plugins.Connections, plugins.IRQ, plugins.Smart} {
+	groups := make([]func(), 0, len(standalonePluginNames))
+	for _, plugin := range standalonePluginNames {
 		if !batch.requested[plugin] {
 			continue
 		}

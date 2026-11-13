@@ -82,10 +82,23 @@ type PathRequest struct {
 	Path string `json:"path"`
 }
 
+// enumNames returns the values of a string type as plain strings.
+func enumNames[T ~string](values ...T) []string {
+	names := make([]string, len(values))
+	for i, value := range values {
+		names[i] = string(value)
+	}
+	return names
+}
+
 // StringEnums gives the generator the values of each named string type it
-// renders as a literal union. CapabilityName is added by handlers/capabilities
-// from its registry when that package is loaded, because this package cannot
-// import it.
+// renders as a literal union. An entry takes its values from the Go definition
+// they describe, where this package can import it: the UI choices from the
+// lists in userconfig, the rest from their constants. CapabilityName is added
+// by handlers/capabilities from its registry when that package is loaded.
+// AutoUpdateBackend, AutoUpdateNotify, VMImagePresetID and VMFirmware are
+// defined in the handlers, which import this package, so their entries are
+// retyped here and a test beside each definition compares the two.
 var StringEnums = map[string][]string{
 	"AutoUpdateFrequency":           {"hourly", "daily", "weekly"},
 	"AutoUpdateScope":               {"security", "updates", "all"},
@@ -95,26 +108,26 @@ var StringEnums = map[string][]string{
 	"DockerContainerAutoUpdateMode": {"update", "check_only"},
 	"DockerUpdateNotify":            {"never", "on_failure", "on_change"},
 	"DockerUpdateCheckState":        {"current", "available", "uncheckable", "error"},
-	"ContainerMetricsStatus":        {"available", "stale", "unavailable", "not_running"},
-	"ConfigStorageMode":             {"home", "fallback", "memory"},
+	"ContainerMetricsStatus":        enumNames(ContainerMetricsStatusAvailable, ContainerMetricsStatusStale, ContainerMetricsStatusUnavailable, ContainerMetricsStatusNotRunning),
+	"ConfigStorageMode":             enumNames(userconfig.StorageModeHome, userconfig.StorageModeFallback, userconfig.StorageModeMemory),
 	"FileUploadOwner":               {"session"},
-	"TaskState":                     {"queued", "running", "completed", "failed", "canceled", "interrupted"},
+	"TaskState":                     enumNames(bridgeipc.TaskStateQueued, bridgeipc.TaskStateRunning, bridgeipc.TaskStateCompleted, bridgeipc.TaskStateFailed, bridgeipc.TaskStateCanceled, bridgeipc.TaskStateInterrupted),
 	"MonitoringHistoryResolution":   monitoringapi.HistoryResolutions(),
 	// SensorReadingKind is defined by the shared monitoring API; keeping its
 	// generator metadata here preserves the public literal union.
 	"SensorReadingKind":         {"number", "boolean"},
-	"TableCardViewMode":         {"card", "table"},
+	"TableCardViewMode":         userconfig.ViewModes,
 	"ThemeColorKey":             userconfig.ThemeColorKeys(),
-	"Theme":                     {"LIGHT", "DARK"},
-	"NavigationMode":            {"sidebar", "dock"},
-	"DockTileColors":            {"accent", "mono", "neutral", "vibrant"},
+	"Theme":                     enumNames(userconfig.Themes...),
+	"NavigationMode":            userconfig.NavigationModes,
+	"DockTileColors":            userconfig.DockTileColorModes,
 	"ValidationIssueType":       {"error", "warning"},
 	"VMImagePresetID":           {"home-assistant-os", "debian-server", "ubuntu-server", "fedora-cloud"},
 	"VMSourceType":              {"iso", "imagePreset", "import"},
 	"VMFirmware":                {"bios", "uefi"},
 	"VMCPUMode":                 {"host-passthrough", "host-model", "default", "custom"},
-	"NetworkBridgeHandoffState": {"applying", "awaiting_confirmation", "confirmed", "reverted", "unknown"},
-	"WireGuardHookKind":         wireGuardHookKindNames(),
+	"NetworkBridgeHandoffState": enumNames(NetworkBridgeHandoffApplying, NetworkBridgeHandoffAwaitingConfirmation, NetworkBridgeHandoffConfirmed, NetworkBridgeHandoffReverted, NetworkBridgeHandoffUnknown),
+	"WireGuardHookKind":         enumNames(WireGuardHookKinds...),
 }
 
 var ExtraTypes = []TypeSpec{

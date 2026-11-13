@@ -131,6 +131,38 @@ func (c ThemeColors) MarshalYAML() (any, error) {
 	return document, nil
 }
 
+// sparseThemeColors returns the colours of each scheme that differ from the
+// defaults, in the order of themeColorDefs, so a default the backend changes
+// later still reaches a user who set other colours. A colour that is unset
+// resolves to its default on the next read, as the document does for any
+// omitted key, so it is not written. It returns nothing when no colour
+// differs.
+func sparseThemeColors(colors, defaults *ThemeColorsByMode) yaml.MapSlice {
+	if colors == nil {
+		return nil
+	}
+	var document yaml.MapSlice
+	for _, scheme := range []struct {
+		name             string
+		colors, defaults ThemeColors
+	}{
+		{"light", colors.Light, defaults.Light},
+		{"dark", colors.Dark, defaults.Dark},
+	} {
+		var changed yaml.MapSlice
+		for _, def := range themeColorDefs {
+			color, set := scheme.colors[def.Key]
+			if want, hasDefault := scheme.defaults[def.Key]; set && (!hasDefault || color != want) {
+				changed = append(changed, yaml.MapItem{Key: def.Key, Value: string(color)})
+			}
+		}
+		if len(changed) > 0 {
+			document = append(document, yaml.MapItem{Key: scheme.name, Value: changed})
+		}
+	}
+	return document
+}
+
 // NewThemeColors builds the overrides for one mode from values keyed by theme
 // colour key; nil entries are unset and keys that are not theme colours are
 // ignored. It returns nil when nothing is set and an error naming

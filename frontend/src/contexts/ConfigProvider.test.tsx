@@ -1,9 +1,9 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { screen, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
-import type { AppConfig, UIConfig } from "@/api";
+import type { AppConfig, ConfigUISetPayload, UIConfig } from "@/api";
 import { AuthContext } from "@/contexts/AuthContext";
 
 const apiMocks = vi.hoisted(() => ({
@@ -329,6 +329,15 @@ function renderProvider({
 }
 
 describe("ConfigProvider", () => {
+  it("has a save field for every UI setting", () => {
+    // The save replaces the stored settings, so a UIConfig field missing from
+    // ConfigUISetPayload would be reset on every save. Typecheck fails on it;
+    // viewModeDefault is derived from the view modes and never saved.
+    expectTypeOf<
+      Exclude<keyof UIConfig, keyof ConfigUISetPayload | "viewModeDefault">
+    >().toEqualTypeOf<never>();
+  });
+
   it("loads both authoritative bridge files without a client cache", async () => {
     renderProvider();
 
