@@ -1,11 +1,18 @@
 /**
- * The subagents of a chat, read from the transcript the page already holds:
- * each subagent call, the calls its subagent made, what it said, and what it
- * says it used. Claude Code's adapter names the subagent call each call and
- * message of a subagent belongs to; an agent that does not shows its
- * subagents without them.
+ * The subagents of a chat, for the Agents view. An agent that reports its
+ * subagents as sessions (subagents.ts) gives each one's own calls, messages,
+ * prompts and reports; a subagent call that reaches the chat as a plain tool
+ * call is shown from the call alone.
  */
+import { currentName } from "../composer/selectOption";
 import {
+  isActive,
+  sentIn,
+  type Subagent,
+  type SubagentState,
+} from "../subagents";
+import {
+  type MessageBlock,
   stringField,
   type ToolBlock,
   toolEnded,
@@ -32,71 +39,50 @@ export interface AgentCall {
   tookMs: number | null;
 }
 
+/**
+ * One stretch of what a subagent did, in the order it happened. A subagent
+ * that was messaged again has a second prompt, more calls and a second
+ * report, so prompts and reports are numbered when there are several.
+ */
+export type AgentPart =
+  | { kind: "prompt"; id: string; number: number | null; text: string }
+  | { kind: "calls"; id: string; calls: AgentCall[] }
+  | { kind: "messages"; id: string; texts: string[] }
+  | { kind: "report"; id: string; number: number | null; text: string };
+
 export interface AgentRun {
-  /** The subagent call's `toolCallId`. */
+  /** The subagent's session id, or its call's `toolCallId` without one. */
   id: string;
   label: string;
-  /** The kind of subagent, e.g. `Explore`, when the call names one. */
+  /** The kind of subagent, e.g. `Explore`. */
   type: string | null;
-  /** The model it was asked to run on, when the call names one. */
+  /** The model it ran on, once its first response named it. */
   model: string | null;
-  /** It was sent to the background, so its call handed back at once. */
-  background: boolean;
   /** The subagent that started it; null for the chat's agent. */
   startedBy: string | null;
-  prompt: string | null;
-  /** What it said, one entry per message, oldest first. */
-  said: string[];
-  /**
-   * Its final report: what it handed back through `SubagentHandback`, else
-   * what its call handed back, which for one in the background is only the
-   * note that it was sent off and is left out.
-   */
-  result: string | null;
+  /** How its latest run stands. */
+  state: SubagentState;
   status: RunStatus;
-  /** When it was seen to start (ms since epoch); null in a loaded chat. */
-  startedAt: number | null;
-  /** How long it took: its own account, else what was seen. */
-  tookMs: number | null;
-  /** Its own account of the tokens it used; only a live chat has it. */
-  tokens: number | null;
-  /** The calls it made, oldest first, without the subagents it started. */
-  calls: AgentCall[];
+  /** Why it failed, when the agent says. */
+  error: string | null;
+  /** Its working directory, when it is not the one of what started it. */
+  cwd: string | null;
+  /** It runs and the agent takes a stop for it. */
+  canStop: boolean;
+  /** When the run that is going now was seen to start (ms since epoch). */
+  runningSince: number | null;
+  /** How long its finished runs took together; null when none was seen. */
+  ranMs: number | null;
+  /** Everything it was told, did, said and reported, oldest first. */
+  parts: AgentPart[];
   /** The subagents it started, oldest first. */
   agents: AgentRun[];
 }
 
 const SUBAGENT_TOOLS = new Set(["Agent", "Task"]);
-// The tool a subagent hands its final report back with, as `message`.
-const HANDBACK_TOOL = "SubagentHandback";
-
 /** Whether a call starts a subagent. */
 export const isSubagentCall = (block: ToolBlock) =>
   block.toolName !== undefined && SUBAGENT_TOOLS.has(block.toolName);
-
-const numberOf = (value: unknown, key: string) => {
-  if (typeof value !== "object" || value === null) return null;
-  const field = (value as Record<string, unknown>)[key];
-  return typeof field === "number" && Number.isFinite(field) ? field : null;
-};
-
-// The note Claude Code hands back for a subagent it sent to the background.
-// It is for the model, not for people, and it is all a loaded chat has to
-// tell such a subagent by when the call did not ask for the background.
-const LAUNCH_NOTE = /^Async agent launched\b/;
-
-/**
- * Whether a subagent call sent its subagent to the background: the call
- * asked for it, its response says so, or it handed back the launch note.
- */
-function sentToBackground(block: ToolBlock, result: string | null) {
-  const input = block.rawInput as { run_in_background?: unknown } | undefined;
-  return (
-    input?.run_in_background === true ||
-    block.launched === true ||
-    (result !== null && LAUNCH_NOTE.test(result))
-  );
-}
 
 /** The text a call handed back, once it has ended. */
 function resultOf(block: ToolBlock): string | null {
@@ -134,6 +120,12 @@ const KIND_NAMES: Record<string, string> = {
   read: "Read",
   search: "Search",
   think: "Think",
+};
+
+const numberOf = (value: unknown, key: string) => {
+  if (typeof value !== "object" || value === null) return null;
+  const field = (value as Record<string, unknown>)[key];
+  return typeof field === "number" && Number.isFinite(field) ? field : null;
 };
 
 const baseName = (path: string) =>
@@ -220,105 +212,251 @@ export function describeCall(
   return plain(tool, described ?? (block.title === name ? "" : block.title));
 }
 
+const statusOf = (state: SubagentState): RunStatus =>
+  isActive(state) ? "run" : state === "failed" ? "err" : "ok";
+
+const callOf = (block: ToolBlock, live: boolean): AgentCall => ({
+  id: block.id,
+  ...describeCall(block),
+  status:
+    !toolEnded(block.status) && live
+      ? "run"
+      : block.status === "failed"
+        ? "err"
+        : "ok",
+  tookMs: span(block.startedAt, block.endedAt),
+});
+
+type Step =
+  | { kind: "prompt" | "report" | "message"; id: string; text: string }
+  | { kind: "call"; id: string; call: AgentCall };
+
 /**
- * The chat's subagents, oldest first, each with the subagents it started.
- * `running` says a turn is live: only then is a call that has not ended
- * still running.
+ * What a subagent did, from its own blocks. A report it handed back is a
+ * message of its own to its parent; one that handed nothing back answered
+ * with its last text, which the parent got as `<prompt id>:reply` and the
+ * subagent has no copy of.
  */
-export function agentsOf(
-  blocks: readonly TranscriptBlock[],
-  running: boolean,
-): AgentRun[] {
-  const live = liveFrom(blocks, running);
-  const byCall = new Map<string, AgentRun>();
-  // When anything the subagent did was last seen to end.
-  const lastEnd = new Map<AgentRun, number>();
-  const ended = (agent: AgentRun, at: number | undefined) => {
-    if (at !== undefined)
-      lastEnd.set(agent, Math.max(lastEnd.get(agent) ?? at, at));
+function partsOf(
+  child: Subagent,
+  parentBlocks: readonly TranscriptBlock[],
+): AgentPart[] {
+  const live = isActive(child.state);
+  const own = new Set(
+    child.blocks.flatMap((b) => (b.kind === "message" ? [b.messageId] : [])),
+  );
+  const replies = parentBlocks.filter(
+    (b): b is MessageBlock =>
+      b.kind === "message" &&
+      !b.outgoing &&
+      b.senderSessionId === child.sessionId &&
+      !own.has(b.messageId),
+  );
+  const steps: Step[] = [];
+  // The reply to a prompt closes what the subagent did for it. Its text is
+  // the subagent's last message, which is then not shown twice.
+  const reply = (promptId: string | null) => {
+    const index = replies.findIndex(
+      (b) => promptId === null || b.messageId.startsWith(`${promptId}:`),
+    );
+    if (index < 0) return;
+    const [block] = replies.splice(index, 1);
+    const last = steps[steps.length - 1];
+    if (last?.kind === "message" && last.text === block.text.trim()) {
+      steps.pop();
+    }
+    steps.push({ kind: "report", id: block.id, text: block.text });
   };
-  const top: AgentRun[] = [];
+  let promptId: string | null = null;
+  for (const block of child.blocks) {
+    if (block.kind === "message") {
+      if (!block.outgoing) {
+        if (promptId !== null) reply(promptId);
+        promptId = block.messageId;
+        steps.push({ kind: "prompt", id: block.id, text: block.text });
+      } else if (block.recipientSessionId === child.parentSessionId) {
+        steps.push({ kind: "report", id: block.id, text: block.text });
+      }
+    } else if (block.kind === "tool") {
+      // A subagent it started is drawn under it, not among its calls.
+      if (!isSubagentCall(block)) {
+        steps.push({ kind: "call", id: block.id, call: callOf(block, live) });
+      }
+    } else if (block.kind === "agent" && block.text.trim() !== "") {
+      steps.push({ kind: "message", id: block.id, text: block.text.trim() });
+    }
+  }
+  if (promptId !== null) reply(promptId);
+  while (replies.length > 0) reply(null);
+
+  const count = (kind: Step["kind"]) =>
+    steps.filter((step) => step.kind === kind).length;
+  const numbered = { prompt: count("prompt") > 1, report: count("report") > 1 };
+  const seen = { prompt: 0, report: 0 };
+  const parts: AgentPart[] = [];
+  for (const step of steps) {
+    const last = parts[parts.length - 1];
+    if (step.kind === "call") {
+      if (last?.kind === "calls") last.calls.push(step.call);
+      else parts.push({ kind: "calls", id: step.id, calls: [step.call] });
+    } else if (step.kind === "message") {
+      if (last?.kind === "messages") last.texts.push(step.text);
+      else parts.push({ kind: "messages", id: step.id, texts: [step.text] });
+    } else {
+      const number = numbered[step.kind] ? ++seen[step.kind] : null;
+      parts.push({ kind: step.kind, id: step.id, number, text: step.text });
+    }
+  }
+  return parts;
+}
+
+/** The value a subagent's own option is set to, by the option's id. */
+function optionOf(child: Subagent, id: string): string | null {
+  const option = child.configOptions.find((entry) => entry.id === id);
+  return option?.type === "select" ? currentName(option) : null;
+}
+
+/**
+ * The subagents a session started, oldest first, each with the ones it
+ * started. `blocks` are that session's, and `live` says whether a call of
+ * its that has not ended is still running.
+ */
+function startedIn(
+  sessionId: string | null,
+  blocks: readonly TranscriptBlock[],
+  subagents: readonly Subagent[],
+  startedBy: string | null,
+  live: (index: number) => boolean,
+): AgentRun[] {
+  const children = subagents.filter(
+    (child) => child.parentSessionId === sessionId,
+  );
+  const prompts = sentIn(blocks);
+  const placed = new Set<Subagent>();
+  const runs: AgentRun[] = [];
+
+  const fromChild = (child: Subagent) => {
+    placed.add(child);
+    const label = child.title ?? child.description ?? "subagent";
+    const open = child.runs.find((run) => run.endedAt === null);
+    const closed = child.runs.filter((run) => run.endedAt !== null);
+    runs.push({
+      id: child.sessionId,
+      label,
+      type: optionOf(child, "agent") ?? child.description ?? child.title,
+      model: optionOf(child, "model"),
+      startedBy,
+      state: child.state,
+      status: statusOf(child.state),
+      error: child.error,
+      cwd: child.cwd,
+      canStop: child.canCancel && isActive(child.state),
+      runningSince: open?.startedAt ?? null,
+      ranMs:
+        closed.length === 0
+          ? null
+          : closed.reduce(
+              (sum, run) =>
+                sum + (span(run.startedAt, run.endedAt ?? undefined) ?? 0),
+              0,
+            ),
+      parts: partsOf(child, blocks),
+      agents: startedIn(child.sessionId, child.blocks, subagents, label, () =>
+        isActive(child.state),
+      ),
+    });
+  };
+
+  // A subagent call that is still shown as a call has no session: all there
+  // is to know of its subagent is on the call.
+  const fromCall = (block: ToolBlock, runsNow: boolean) => {
+    const input = block.rawInput;
+    const prompt = stringField(input, "prompt");
+    const result = resultOf(block);
+    const state: SubagentState = runsNow
+      ? "running"
+      : block.status === "failed"
+        ? "failed"
+        : toolEnded(block.status)
+          ? "finished"
+          : "ended";
+    const parts: AgentPart[] = [];
+    if (prompt) {
+      parts.push({
+        kind: "prompt",
+        id: `${block.id}:prompt`,
+        number: null,
+        text: prompt,
+      });
+    }
+    if (result) {
+      parts.push({
+        kind: "report",
+        id: `${block.id}:report`,
+        number: null,
+        text: result,
+      });
+    }
+    runs.push({
+      id: block.toolCallId,
+      label: labelOf(block),
+      type: stringField(input, "subagent_type"),
+      model: stringField(input, "model"),
+      startedBy,
+      state,
+      status: statusOf(state),
+      error: null,
+      cwd: null,
+      canStop: false,
+      runningSince: runsNow ? (block.startedAt ?? null) : null,
+      ranMs: span(block.startedAt, block.endedAt),
+      parts,
+      agents: [],
+    });
+  };
 
   blocks.forEach((block, index) => {
-    if (block.kind !== "tool") return;
-    const inTurn = index >= live;
-    const failed = block.status === "failed";
-    const parent =
-      block.parentId === undefined ? undefined : byCall.get(block.parentId);
-    if (isSubagentCall(block)) {
-      const input = block.rawInput;
-      const result = resultOf(block);
-      const background = sentToBackground(block, result);
-      // A subagent in the background hands back at once. Claude Code keeps
-      // the turn that started it open until it ends and says nothing else of
-      // its end, so it runs while that turn does.
-      const runs = background
-        ? inTurn && !failed
-        : inTurn && !toolEnded(block.status);
-      const agent: AgentRun = {
-        id: block.toolCallId,
-        label: labelOf(block),
-        type: stringField(input, "subagent_type"),
-        model: stringField(input, "model"),
-        background,
-        startedBy: parent?.label ?? null,
-        prompt: stringField(input, "prompt"),
-        said: (block.said ?? [])
-          .map((message) => message.text.trim())
-          .filter((text) => text !== ""),
-        // Its call's answer only says that it was sent off.
-        result: background ? null : result,
-        status: runs ? "run" : failed ? "err" : "ok",
-        startedAt: block.startedAt ?? null,
-        tookMs:
-          block.totals?.durationMs ??
-          (background ? null : span(block.startedAt, block.endedAt)),
-        tokens: block.totals?.tokens ?? null,
-        calls: [],
-        agents: [],
-      };
-      ended(agent, block.endedAt);
-      byCall.set(block.toolCallId, agent);
-      (parent?.agents ?? top).push(agent);
+    if (block.kind === "message" && block.outgoing) {
+      const child = children.find(
+        (entry) => entry.sessionId === block.recipientSessionId,
+      );
+      if (child && !placed.has(child)) fromChild(child);
       return;
     }
-    if (!parent) return;
-    ended(parent, block.endedAt);
-    // A subagent hands its final report back through a call of its own; the
-    // report is its result, which its launch call does not carry when it ran
-    // in the background.
-    if (block.toolName === HANDBACK_TOOL) {
-      parent.result = stringField(block.rawInput, "message") ?? parent.result;
-      return;
-    }
-    parent.calls.push({
-      id: block.id,
-      ...describeCall(block),
-      status:
-        !toolEnded(block.status) && inTurn ? "run" : failed ? "err" : "ok",
-      tookMs: span(block.startedAt, block.endedAt),
-    });
-  });
-
-  const settle = (agent: AgentRun) => {
-    agent.agents.forEach((child) => {
-      settle(child);
-      ended(agent, lastEnd.get(child));
-    });
+    // A call whose id is a prompt's was shown by a permission request, and
+    // its subagent is announced too.
     if (
-      agent.calls.some((call) => call.status === "run") ||
-      agent.agents.some((child) => child.status === "run")
+      block.kind === "tool" &&
+      isSubagentCall(block) &&
+      !prompts.has(block.toolCallId)
     ) {
-      agent.status = "run";
+      fromCall(block, !toolEnded(block.status) && live(index));
     }
-    // Without its own account, a subagent in the background took until the
-    // last thing it did ended.
-    if (agent.tookMs === null && agent.background && agent.status !== "run") {
-      agent.tookMs = span(agent.startedAt ?? undefined, lastEnd.get(agent));
-    }
-  };
-  top.forEach(settle);
-  return top;
+  });
+  children.forEach((child) => {
+    if (!placed.has(child)) fromChild(child);
+  });
+  return runs;
+}
+
+/**
+ * The chat's subagents, oldest first, each with the subagents it started.
+ * `running` says a turn is live: only then is a subagent call that has not
+ * ended still running.
+ */
+export function agentsOf(
+  chat: { sessionId: string | null; blocks: readonly TranscriptBlock[] },
+  subagents: readonly Subagent[],
+  running: boolean,
+): AgentRun[] {
+  const live = liveFrom(chat.blocks, running);
+  return startedIn(
+    chat.sessionId,
+    chat.blocks,
+    subagents,
+    null,
+    (index) => index >= live,
+  );
 }
 
 /** Every subagent, the ones they started included. */

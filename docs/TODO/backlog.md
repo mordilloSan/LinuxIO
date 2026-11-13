@@ -104,37 +104,24 @@ after a change that issues ioctls).
 ## What a user without sudo sees
 
 A route that changes the host is `Privileged()` or is a named exception, and a
-test enforces it ([Privilege Pattern](../privilege_pattern.md)). What is left
-is on the pages: the server refuses, but some pages still offer the control.
+test enforces it; the Accounts, Docker, network, dashboard and file browser
+pages offer a session without sudo only what the server allows
+([Privilege Pattern](../privilege_pattern.md)). What is left:
 
-- [ ] **The Accounts page shows admin-only controls.** Creating, changing and
-  deleting users and groups, and ending a session, are all privileged, and the
-  page is open to everyone with no check
-  (`frontend/src/routes/_authenticated/accounts`). Checked.
-- [ ] **The Docker pages show admin-only controls.** They need only the Docker
-  capability (`docker/route.tsx`), so a user without sudo who can reach Docker
-  sees start, stop, the container terminal and the rest, and gets a 403.
-  Whether such a user ever has the capability was not checked.
-- [ ] **The network editor is hidden, not read-only.** A user without sudo no
-  longer sees an interface's IP mode, DNS, MTU and autoconnect at all
-  (`NetworkInterfaceList.tsx`). A read-only view would be better. That gate
-  has no unit test.
-- [ ] **The dashboard calls privileged reads without a check.** A non-sudo
-  bridge logged `forbidden: privileged route` for
-  `monitoring.get_cpu_history`, the network and disk histories, and
-  `filebrowser.subfolders`
-  (`frontend/src/routes/_authenticated/-dashboard/ProcessorGraph.tsx`). Not
-  verified.
-- [ ] **A user without sudo loses the sign-in notice during an update wait.**
-  The history answers empty and the notice takes the sign-in mark anyway
-  (`frontend/src/routes/_authenticated/-components/useAwayNotice.ts`).
+- [ ] **Settings may still call privileged reads without a check.** The
+  dashboard, the history cards and the file browser no longer do. Not checked:
+  whether the Settings sections that read `alerts.get_notifications`,
+  `indexer.get_config`, `logging.get_debug`, `monitoring.get_config` and
+  `power.get_status` are all hidden for a session without sudo
+  (`frontend/src/routes/_authenticated/settings`). Two reads that run on a
+  click were left: the failed-logins dialog and a run's saved output.
+- [ ] **The file browser search is hidden without sudo.** `filebrowser.search`
+  is privileged, so the search field is gone for such a session. Decide
+  whether a user may search the folders they can read.
 - [ ] **An admin can cut their own connection.** `systemd.stop_service` and
   `systemd.restart_service` accept LinuxIO's own units, and the network routes
   accept the interface that carries the session. No check was found in
   `backend/bridge/handlers/systemd` on 2026-11-13. Reported.
-- [ ] **`control.logoff` has no caller in the frontend.** It ends any login
-  session by ID, the same as `accounts.terminate_session`. Check the history
-  and remove one of the two.
 
 ## Visible bugs
 
@@ -216,6 +203,9 @@ there.
 
 ## Tests that are missing
 
+- [ ] No browser test signs in as a user without sudo. The pages gated for
+  such a session are covered by unit tests only, and the test VM has one
+  account, with sudo.
 - [ ] The relay tests in `backend/bridge/cmd/jobs_relay_test.go` skip when run
   as root, and a privileged login skipping the host start has no hermetic test
   (`backend/auth/linuxio-auth-pam_test.c`).
@@ -254,15 +244,18 @@ there.
   missed run (`Persistent=`), journal retention over several days, and a
   bridge restart during a run. See
   [Scheduled Scripts](../scheduled-scripts.md#testing).
-- [ ] **Agents view against a live Claude chat.** Seen live on 2026-11-13:
-  a background subagent's calls and its `SubagentHandback` arrive tagged
-  with its call. Still read only from the adapter's source
-  (claude-agent-acp 0.102.0) and unit tests: a foreground subagent's tokens
-  (`toolResponse.totalTokens`) when it ends, its text kept out of the chat
-  and under *Messages*, and a background subagent running until its turn
-  ends. Check them in a chat that sends off one subagent in the foreground
-  and one in the background. See [AI Assistant](../AI-assistant.md)
-  (Agents).
+- [ ] **Subagent sessions against a live Claude chat.** The Assistant takes
+  Claude Code's subagents as sessions of their own, built from the adapter's
+  source (claude-agent-acp 0.102.0), unit tests and a scripted browser chat;
+  no chat with the real adapter has been seen yet. Run one with a subagent in
+  the foreground, one in the background, one that starts a subagent, a
+  `SendMessage` to a finished one, a permission request from a subagent, a
+  stop of one subagent and a reload, and compare the chat rows, the Activity
+  list and the Agents view with
+  [AI Assistant](../AI-assistant.md#subagent-sessions). Settle on the way:
+  whether stopping the whole chat stops its background subagents, and
+  whether a subagent Claude Code moves to the background by itself gets its
+  launch note as a report. Correct the doc where the chat differs.
 - [ ] **What happens after a route cuts its own connection is not written
   down.** The old roadmap's rule was: send it once; after reconnect, reboot
   compares the boot identity, a network change reads back the interface, and

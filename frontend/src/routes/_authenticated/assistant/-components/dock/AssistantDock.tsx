@@ -1,5 +1,11 @@
 import type * as acp from "@agentclientprotocol/sdk/unstable";
-import { useEffect, useRef, useState } from "react";
+import {
+  type Ref,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from "react";
 
 import type { PaneView } from "@/api/acp";
 import {
@@ -8,6 +14,7 @@ import {
 } from "@/utils/persistedState";
 
 import PanePanel from "../pane/PanePanel";
+import type { Subagent } from "../subagents";
 import type { TranscriptBlock } from "../transcript/transcript";
 import AgentMap from "../workmap/AgentMap";
 import { agentsOf, runningAgents } from "../workmap/agents";
@@ -29,12 +36,19 @@ type ActivityView = "map" | "agents";
 const isView = (value: unknown): value is ActivityView =>
   value === "map" || value === "agents";
 
+/** What the page can ask of the dock. */
+export interface AssistantDockHandle {
+  /** Opens the Agents view on one subagent, by its session id. */
+  showAgent(id: string): void;
+}
+
 /**
  * The tabs on the chat's left edge and the card each one opens: the previous
  * chats, the activity map, and a plugin's pane while there is one. One card
  * is open at a time, so they never run past the bottom of a short window.
  */
 export default function AssistantDock({
+  ref,
   pane,
   activity,
   running,
@@ -46,11 +60,15 @@ export default function AssistantDock({
   busy,
   onSelect,
   onDelete,
+  onStopAgent,
 }: {
+  ref?: Ref<AssistantDockHandle>;
   pane: PaneView | null;
   /** What the activity map draws; null leaves the map and its tab out. */
   activity: {
+    sessionId: string | null;
     blocks: readonly TranscriptBlock[];
+    subagents: readonly Subagent[];
     usage: { used: number; size: number } | null;
     agentLabel: string;
     /** The model the chat is set to, when the agent names one. */
@@ -65,6 +83,8 @@ export default function AssistantDock({
   busy: boolean;
   onSelect: (sessionId: string) => void;
   onDelete: (chat: { sessionId: string; label: string }) => void;
+  /** Stops one subagent, by its session id. */
+  onStopAgent: (id: string) => void;
 }) {
   const dockRef = useRef<HTMLDivElement>(null);
   const chatsTabRef = useRef<HTMLButtonElement>(null);
@@ -102,8 +122,20 @@ export default function AssistantDock({
     setChats({ ...chats, open: false });
     if (pane) setPaneChoice({ id: pane.id, open: false });
   };
-  const summary = activity ? summarize(activity.blocks, running) : null;
-  const agents = activity ? agentsOf(activity.blocks, running) : [];
+  // The subagent the Agents view is open on; null shows them all.
+  const [agentId, setAgentId] = useState<string | null>(null);
+  useImperativeHandle(ref, () => ({
+    showAgent(id) {
+      setAgentId(id);
+      openActivity("agents");
+    },
+  }));
+  const summary = activity
+    ? summarize(activity.blocks, running, activity.subagents)
+    : null;
+  const agents = activity
+    ? agentsOf(activity, activity.subagents, running)
+    : [];
   const busyAgents = runningAgents(agents);
 
   useEffect(() => {
@@ -175,8 +207,11 @@ export default function AssistantDock({
             <AgentMap
               agentLabel={activity.agentLabel}
               agents={agents}
+              chosenId={agentId}
               model={activity.model}
+              onChoose={setAgentId}
               onMain={() => showView("map")}
+              onStop={onStopAgent}
               running={running}
               usage={activity.usage}
             />

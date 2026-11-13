@@ -27,33 +27,27 @@ export type ToolBlock = {
    */
   startedAt?: number;
   endedAt?: number;
-  /**
-   * The subagent call (its `toolCallId`) whose subagent made this call, when
-   * the agent says so. Claude Code's adapter does, as metadata.
-   */
-  parentId?: string;
-  /** What a finished subagent says it used, when the agent passes it on. */
-  totals?: SubagentTotals;
-  /**
-   * The call's response says it sent a subagent to the background, which
-   * Claude Code also does by itself, without the call asking for it.
-   */
-  launched?: boolean;
-  /**
-   * What the subagent this call started said, one entry per message, oldest
-   * first. It is kept here, not in the chat: it is not the agent's reply.
-   */
-  said?: SubagentMessage[];
 };
 
-/** One message of a subagent; `id` is the agent's message id, if it sends one. */
-export type SubagentMessage = { id: string | null; text: string };
-
-/** A subagent's own account of its run. */
-export type SubagentTotals = {
-  tokens: number;
-  toolUses: number;
-  durationMs: number;
+/**
+ * A message between two sessions: what an agent sent a subagent, or what a
+ * subagent reported. Each session has its own copy, under the same
+ * `messageId`.
+ */
+export type MessageBlock = {
+  kind: "message";
+  id: string;
+  messageId: string;
+  /** The session that sent it, and the one it was sent to, when named. */
+  senderSessionId: string | null;
+  recipientSessionId: string | null;
+  text: string;
+  /** The session these blocks belong to sent it. */
+  outgoing: boolean;
+  /** It began a new step of the model, as a call does. */
+  opensStep?: boolean;
+  /** When it was seen (ms since epoch), if it arrived while a turn ran. */
+  at?: number;
 };
 
 export type TranscriptBlock =
@@ -70,6 +64,7 @@ export type TranscriptBlock =
   | { kind: "agent"; id: string; text: string }
   | { kind: "thought"; id: string; text: string }
   | ToolBlock
+  | MessageBlock
   | { kind: "plan"; id: string; entries: acp.PlanEntry[] }
   | TurnBlock;
 
@@ -96,44 +91,6 @@ type Update = { _meta?: Record<string, unknown> | null };
 /** Claude Code's tool name, which its adapter sends as metadata. */
 const toolNameOf = (update: Update) =>
   stringField(update._meta?.claudeCode, "toolName") ?? undefined;
-
-/** The subagent call a call was made in, which the adapter sends as metadata. */
-const parentIdOf = (update: Update) =>
-  stringField(update._meta?.claudeCode, "parentToolUseId") ?? undefined;
-
-const numberField = (value: unknown, key: string) => {
-  if (typeof value !== "object" || value === null) return null;
-  const field = (value as Record<string, unknown>)[key];
-  return typeof field === "number" && Number.isFinite(field) ? field : null;
-};
-
-/**
- * The tool's whole response, which Claude Code's adapter passes on when a
- * call ends; a chat that is loaded does not carry it.
- */
-function responseOf(update: Update): unknown {
-  const meta = update._meta?.claudeCode;
-  return typeof meta === "object" && meta !== null
-    ? (meta as Record<string, unknown>).toolResponse
-    : undefined;
-}
-
-/** Whether the response says the subagent was sent to the background. */
-const launchedOf = (update: Update) =>
-  stringField(responseOf(update), "status") === "async_launched"
-    ? true
-    : undefined;
-
-/** A finished subagent's totals, from its response. */
-function totalsOf(update: Update): SubagentTotals | undefined {
-  const response = responseOf(update);
-  const tokens = numberField(response, "totalTokens");
-  const toolUses = numberField(response, "totalToolUseCount");
-  const durationMs = numberField(response, "totalDurationMs");
-  return tokens === null || toolUses === null || durationMs === null
-    ? undefined
-    : { tokens, toolUses, durationMs };
-}
 
 let nextId = 0;
 const newId = () => `b${++nextId}`;
@@ -206,39 +163,56 @@ function newToolBlock(
     // A call first heard of when it had ended was not seen running.
     startedAt: toolEnded(status) ? undefined : now,
     endedAt: toolEnded(status) ? now : undefined,
-    parentId: parentIdOf(update),
-    totals: totalsOf(update),
-    launched: launchedOf(update),
   };
 }
 
 /**
- * Text a subagent said, onto the call that started it. A chunk of a message
- * continues it; one with another message id starts the next. Text whose call
- * is not in the transcript is left out: it never belongs to the chat.
+ * A session message, which is an upsert by `messageId`: a field that is left
+ * out keeps its value and `null` clears it. `sessionId` is the session the
+ * blocks belong to, which tells a message it sent from one it got.
  */
-function appendSubagentText(
+function applyMessage(
   blocks: readonly TranscriptBlock[],
-  parentId: string,
-  messageId: string | null,
-  text: string,
+  update: acp.SessionMessage,
+  now: number | undefined,
+  sessionId: string | undefined,
 ): TranscriptBlock[] {
   const index = blocks.findIndex(
-    (b) => b.kind === "tool" && b.toolCallId === parentId,
+    (b) => b.kind === "message" && b.messageId === update.messageId,
   );
-  if (index < 0) return blocks as TranscriptBlock[];
-  const call = blocks[index] as ToolBlock;
-  const said = call.said ?? [];
-  const last = said[said.length - 1];
-  const next =
-    last && last.id === messageId
-      ? [...said.slice(0, -1), { ...last, text: last.text + text }]
-      : [...said, { id: messageId, text }];
-  return [
-    ...blocks.slice(0, index),
-    { ...call, said: next },
-    ...blocks.slice(index + 1),
-  ];
+  const current = index < 0 ? null : (blocks[index] as MessageBlock);
+  const senderSessionId =
+    update.senderSessionId === undefined
+      ? (current?.senderSessionId ?? null)
+      : update.senderSessionId;
+  const outgoing = sessionId !== undefined && senderSessionId === sessionId;
+  const last = blocks[blocks.length - 1];
+  const block: MessageBlock = {
+    kind: "message",
+    id: current?.id ?? newId(),
+    messageId: update.messageId,
+    senderSessionId,
+    recipientSessionId:
+      update.recipientSessionId === undefined
+        ? (current?.recipientSessionId ?? null)
+        : update.recipientSessionId,
+    text:
+      update.content === undefined
+        ? (current?.text ?? "")
+        : (update.content ?? []).map(contentText).join("\n\n"),
+    outgoing,
+    // Messages sent one after the other are of one step: the model started
+    // several subagents at once.
+    opensStep: current
+      ? current.opensStep
+      : outgoing &&
+        !(last?.kind === "message" && last.outgoing) &&
+        opensStep(blocks),
+    at: current ? current.at : now,
+  };
+  return index < 0
+    ? [...blocks, block]
+    : [...blocks.slice(0, index), block, ...blocks.slice(index + 1)];
 }
 
 export function appendTurnEnd(
@@ -252,33 +226,15 @@ export function appendTurnEnd(
 
 /**
  * `now` is the time of an update that arrives while a turn runs; without it
- * (a chat's history being loaded) nothing is timed.
+ * (a chat's history being loaded) nothing is timed. `sessionId` is the session
+ * the blocks belong to.
  */
 export function applySessionUpdate(
   blocks: readonly TranscriptBlock[],
   update: acp.SessionUpdate,
   now?: number,
+  sessionId?: string,
 ): TranscriptBlock[] {
-  // What a subagent says or is told is not the chat's. Claude Code's adapter
-  // streams it like the agent's own text, marked with the call that started
-  // the subagent: its text goes to that call, and its prompt and thinking stay
-  // out (the call carries the prompt).
-  const subagent =
-    update.sessionUpdate === "user_message_chunk" ||
-    update.sessionUpdate === "agent_message_chunk" ||
-    update.sessionUpdate === "agent_thought_chunk"
-      ? parentIdOf(update)
-      : undefined;
-  if (subagent !== undefined) {
-    return update.sessionUpdate === "agent_message_chunk"
-      ? appendSubagentText(
-          blocks,
-          subagent,
-          update.messageId ?? null,
-          contentText(update.content),
-        )
-      : (blocks as TranscriptBlock[]);
-  }
   switch (update.sessionUpdate) {
     case "user_message_chunk":
       return appendChunk(blocks, "user", contentText(update.content));
@@ -309,13 +265,11 @@ export function applySessionUpdate(
             ? (now ?? current.startedAt)
             : current.startedAt,
         endedAt: current.endedAt ?? (toolEnded(status) ? now : undefined),
-        // A later update of a subagent's call can come without its parent.
-        parentId: parentIdOf(update) ?? current.parentId,
-        totals: totalsOf(update) ?? current.totals,
-        launched: launchedOf(update) ?? current.launched,
       };
       return [...blocks.slice(0, index), merged, ...blocks.slice(index + 1)];
     }
+    case "session_message":
+      return applyMessage(blocks, update, now, sessionId);
     case "plan": {
       const index = blocks.findIndex((b) => b.kind === "plan");
       const plan = {

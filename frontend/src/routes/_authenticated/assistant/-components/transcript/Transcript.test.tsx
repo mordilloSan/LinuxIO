@@ -1,6 +1,17 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+import {
+  announce,
+  call,
+  chatOf,
+  FINISHED,
+  pair,
+  says,
+  type Sent,
+  stateOf,
+} from "@/test/assistantSubagentFixture";
 
 import Transcript from "./Transcript";
 import type { TranscriptBlock } from "./transcript";
@@ -328,6 +339,148 @@ describe("Transcript", () => {
       rerender(<Transcript blocks={[read("a"), read("b")]} />);
       expect(screen.getByText("IN")).toBeInTheDocument();
       expect(screen.getByText("cat b")).toBeInTheDocument();
+    });
+  });
+
+  describe("subagents", () => {
+    // Two subagents at once, each with a call; the first is messaged again.
+    const sent: Sent[] = [
+      ["chat", announce("a", { title: "OS info" })],
+      ...pair("p1", "chat", "a", "Read the OS release"),
+      ["chat", announce("b", { title: "Host info" })],
+      ...pair("p2", "chat", "b", "Read the hostname"),
+      ["a", says("Reading it now.")],
+      ["a", call("c1", "Bash", { command: "cat /etc/os-release" })],
+      ["b", call("c2", "Bash", { command: "cat /etc/hostname" })],
+      ...pair("h1", "a", "chat", "It is **Debian**."),
+      ["chat", stateOf("a", FINISHED)],
+      ...pair("p3", "chat", "a", "Run uptime"),
+      ["a", call("c3", "Bash", { command: "uptime" })],
+      ...pair("h3", "a", "chat", "Up 3 days."),
+    ];
+    const draw = (list: Sent[] = sent, pendingToolCallId?: string) => {
+      const { chat, subagents } = chatOf(list);
+      const onAgent = vi.fn();
+      render(
+        <Transcript
+          blocks={chat.blocks}
+          onAgent={onAgent}
+          pendingToolCallId={pendingToolCallId}
+          subagents={subagents}
+        />,
+      );
+      return onAgent;
+    };
+    /** The message rows, each as its head and the commands under it. */
+    const rows = () =>
+      [...document.querySelectorAll<HTMLElement>(".assistant-message")].map(
+        (row) => [
+          row.querySelector(".assistant-message__head")?.textContent,
+          ...[...row.querySelectorAll(".assistant-tool__command")].map(
+            (command) => command.textContent,
+          ),
+        ],
+      );
+
+    it("shows what was sent to a subagent with its calls under it, and what it reported", () => {
+      draw();
+      expect(rows()).toEqual([
+        ["Sent toOS info", "cat /etc/os-release"],
+        ["Sent toHost info", "cat /etc/hostname"],
+        ["OS inforeported"],
+        // The calls after a second message stand under that message.
+        ["Sent toOS info", "uptime"],
+        ["OS inforeported"],
+      ]);
+      // A report is the subagent's words, as Markdown.
+      expect(screen.getByText("Debian").tagName).toBe("STRONG");
+      // What it said while it worked stays in the Agents view.
+      expect(screen.queryByText("Reading it now.")).toBeNull();
+    });
+
+    it("keeps the prompt closed until it is asked for", async () => {
+      draw(sent.slice(0, 3));
+      const prompt = screen.getByText("Read the OS release", {
+        exact: false,
+      });
+      expect(prompt.closest("details")).not.toHaveAttribute("open");
+      await userEvent.click(screen.getByText("Prompt"));
+      expect(prompt.closest("details")).toHaveAttribute("open");
+    });
+
+    it("opens a subagent from its name", async () => {
+      const onAgent = draw();
+      const [sentTo] = screen.getAllByRole("button", { name: "OS info" });
+      await userEvent.click(sentTo);
+      expect(onAgent).toHaveBeenCalledExactlyOnceWith("a");
+      await userEvent.click(screen.getByRole("button", { name: "Host info" }));
+      expect(onAgent).toHaveBeenLastCalledWith("b");
+    });
+
+    it("shows a subagent's own subagent one level deeper", () => {
+      draw([
+        ["chat", announce("a", { title: "Outer" })],
+        ...pair("p1", "chat", "a", "Do it"),
+        ["a", call("c1", "Bash", { command: "ls /srv" })],
+        ["a", announce("b", { title: "Inner" })],
+        ...pair("p2", "a", "b", "Do part of it"),
+        ["b", call("c2", "Bash", { command: "ls /srv/data" })],
+        // What the inner one hands the outer one is not the chat's.
+        ...pair("h2", "b", "a", "Part done."),
+        ...pair("h1", "a", "chat", "All done."),
+      ]);
+      expect(rows()).toEqual([
+        ["Sent toOuter", "ls /srv", "ls /srv/data"],
+        ["Sent toInner", "ls /srv/data"],
+        ["Outerreported"],
+      ]);
+      const [outer] = document.querySelectorAll(".assistant-message");
+      expect(
+        outer.querySelector(".assistant-message__work .assistant-message"),
+      ).not.toBeNull();
+      expect(screen.queryByText("Part done.")).toBeNull();
+    });
+
+    it("leaves a subagent's call out while the permission card asks about it", () => {
+      draw(
+        [
+          ["chat", announce("a", { title: "OS info" })],
+          ...pair("p1", "chat", "a", "Go"),
+          ["a", call("c1", "Bash", { command: "rm -rf /tmp/x" }, "pending")],
+        ],
+        "c1",
+      );
+      expect(rows()).toEqual([["Sent toOS info"]]);
+    });
+
+    it("draws a launch a permission request showed once, as its message", () => {
+      const { chat, subagents } = chatOf(
+        [
+          ["chat", announce("a", { title: "OS info" })],
+          ...pair("p1", "chat", "a", "Go"),
+        ],
+        [
+          {
+            kind: "tool",
+            id: "t1",
+            toolCallId: "p1",
+            title: "Agent: OS info",
+            toolKind: "think",
+            toolName: "Agent",
+            status: "completed",
+            content: [],
+          },
+        ],
+      );
+      render(<Transcript blocks={chat.blocks} subagents={subagents} />);
+      expect(screen.queryByText("Agent: OS info")).toBeNull();
+      expect(rows()).toEqual([["Sent toOS info"]]);
+    });
+
+    it("names no one for a message whose subagent it does not know", () => {
+      const { chat } = chatOf(pair("p1", "chat", "gone", "Go"));
+      render(<Transcript blocks={chat.blocks} />);
+      expect(rows()).toEqual([["Sent toa subagent"]]);
     });
   });
 });

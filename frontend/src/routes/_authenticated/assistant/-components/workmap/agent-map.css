@@ -197,6 +197,12 @@
   min-width: 0;
 }
 
+/* Stopping a subagent that runs: at the far end of its name. */
+.agent-map .agent-map__stop {
+  flex-shrink: 0;
+  margin-inline-start: auto;
+}
+
 /* Under the name: status, kind, model; who started it; time and tokens. */
 .agent-map__about {
   display: flex;

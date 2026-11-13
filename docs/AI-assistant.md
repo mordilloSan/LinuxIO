@@ -109,11 +109,16 @@ transport over the LinuxIO duplex stream, a connection helper and the login
 probe). Every import comes from the `/unstable` entrypoint, the full ACP v1
 surface: the default entrypoint is stable-only since SDK 2.0 and leaves out
 `session/fork`, which the side-question panel needs, and the two cannot be
-mixed. The client advertises only `auth.terminal` and declines the fs and
-terminal client methods, so the agent uses its own tools. Messages are plain
-text, images and file context. Permission cards show the agent's own options
-and say that nothing has changed yet.
-Stop sends `session/cancel`.
+mixed. The client advertises `auth.terminal`, boolean config options and
+`subagents` (see [Subagent sessions](#subagent-sessions)), and declines the fs
+and terminal client methods, so the agent uses its own tools. Messages are
+plain text, images and file context. Permission cards show the agent's own
+options and say that nothing has changed yet. Requests queue: the chat's and
+its subagents' wait in one list, the oldest is the one shown and has the
+keyboard, and a new one answers none of the others. A subagent's card says
+`Asked by` with its title.
+Stop sends `session/cancel` and answers every open request `cancelled`, as the
+agent's exit does.
 
 When the agent advertises `sessionCapabilities.systemPrompt`, every
 `session/new`, `session/load`, `session/fork` and `session/resume` carries a
@@ -173,6 +178,17 @@ advertises the matching capability.
   call with a diff shows the diff alone, without the raw input that repeats
   it. The call a permission card is asking about
   is left out of the transcript until it is answered.
+- **Messages to subagents.** Where the agent starts a subagent or messages
+  one again, the transcript has a row `→ Sent to <title>` with the prompt
+  closed under it, in place of the `Agent` or `SendMessage` call, which the
+  agent does not send. The calls the subagent made for that message stand
+  under the row, one step in on a rail, in the same logs and cards as the
+  chat's own, and appear there as they run; the calls after a second message
+  stand under the second row. A subagent that the subagent started shows the
+  same way one level deeper. What a subagent said and thought stays out of
+  the chat: it is in the Agents view. Its report is a row `← <title>
+  reported` with the text as Markdown. The title opens the Agents view on
+  that subagent. A message whose subagent is not known reads `a subagent`.
 - **Read-only commands.** `transcript/readOnlyCommand.ts` decides which
   commands only read: a list of readers (`cat`, `ls`, `ss`, `df`, ...),
   read-only subcommands (`systemctl status`, `docker ps`, `btrfs filesystem
@@ -201,7 +217,9 @@ advertises the matching capability.
   permission requests appear inside the panel. Close hides the panel and
   keeps the side chat so a later `/btw` reopens it; delete discards it and, when the
   agent advertises `session/close`, closes the side session. Starting a new
-  chat, loading another one or disconnecting discards it as well.
+  chat, loading another one or disconnecting discards it as well. Subagents
+  the side chat starts are left out: nothing they send is shown, and a
+  permission request of theirs is answered `cancelled`.
 - **Images.** Paste or drop an image into the composer when the agent accepts
   image prompts. Thumbnails with a remove button appear above the text, and
   the image blocks are sent before the text.
@@ -288,7 +306,7 @@ advertises the matching capability.
     of model between prompts (`fable 5.2 → opus 5.5`). A call is named in a
     few words: the agent's description of a command (or the command's name),
     the last two parts of a file's path, a web address's host, a subagent's
-    description, a skill's name. Finished calls in a row at one station fold
+    title, a skill's name. Finished calls in a row at one station fold
     into one row (`+2`) with their times added. Each row and the line above
     them are one line, cut at the card's edge, with the time in a column at
     the right, so a long label neither wraps nor moves the rows while the
@@ -305,6 +323,19 @@ advertises the matching capability.
     step of the model when the model said nothing just before it and no
     earlier call of the turn was still open; between its calls the model is
     shown at work on its next step.
+  - *Subagents.* Each subagent is one row at Agents, under its title,
+    running until its state says otherwise, with the time of all its runs;
+    the station counts the subagents, not the messages to them. A subagent's
+    calls count at their own stations and give rows like the chat's. They
+    open no step: the steps are those of the chat's model only. A message
+    the agent sends a subagent is the model's doing and opens a step, as a
+    call does; messages sent one after the other (several subagents started
+    at once) are one step, and a report handed back is what the next step
+    starts from. The rows are in the order they were seen, so the calls of
+    two subagents at work together mix. In a chat that was loaded nothing
+    carries a time, and a subagent's rows follow the message that started
+    them. While a subagent runs the model counts as waiting for it, so no
+    step of its own is shown going.
   - *Times.* Only what LinuxIO saw happen is timed and animated; a chat that
     was loaded has its work counted and nothing else. The agent says when a
     call ends but not when it starts to run, so a call is timed from the
@@ -331,59 +362,70 @@ advertises the matching capability.
   too. The view draws the chat's agent, with its model and the tokens in its
   context, and the subagents it sent off joined to it by lines: beside it on
   a wide card, under it on a narrow one, and the subagents they sent off
-  under them. Each subagent shows whether it runs, failed or finished, its
-  kind, `background` if it was sent there, how long it has run or took, and
-  the tokens it used. Choosing the chat's agent goes back to the map;
-  choosing a subagent shows, under its name:
-  - its status, kind, the model its call asked for and `background`; which
-    agent started it; its time and tokens (`tokens not reported` when the
-    adapter did not pass them on);
-  - the last thing it said, cut to three lines, with all its messages under
-    a closed *Messages (N)* in grey;
-  - its prompt, closed, in grey;
-  - *Tool calls (N)*, open, oldest first: the tool (`Read`, `Bash`,
+  under them. Each subagent shows how it stands when it is not simply
+  finished (`running`, `waiting for you`, `stopped`, `failed`, `ended`,
+  `disconnected`), its kind, and how long it has run or took. Choosing the
+  chat's agent goes back to the map; choosing a subagent, here or by its
+  title in the transcript, shows under its name:
+  - how it stands, its kind and the model it ran on; why it failed, when
+    the agent says; which agent started it; its time and `tokens not
+    reported` once it has ended; its working directory when that is not the
+    one of what started it;
+  - a **Stop** button while it runs and the agent takes a stop for it. It
+    sends `session/cancel` with the subagent's session id and answers that
+    subagent's open permission requests `cancelled`; the state the agent
+    sends next (`stopped`) is the confirmation. Only that subagent stops;
+  - the last thing it said, cut to three lines, while it works;
+  - everything it was told, did, said and reported, in the order it
+    happened: *Prompt*, closed, in grey; *Tool calls (N)*, open, oldest
+    first; *Messages (N)*, closed, in grey; *Report*, in grey. A subagent
+    that was messaged again reads *Prompt 1*, its calls, *Report 1*, *Prompt
+    2*, its calls, *Report 2*. A call is the tool (`Read`, `Bash`,
     `Web Fetch`, `Search tools`, an MCP tool's name), what it worked on in
     grey (a file's name, a command's description or the command, the
     address, the pattern or query; in blue code type where it is code) and a
     note: the lines a read asked for (`lines 421-465`), where a search
     looked, `running` or `failed`. The whole path or command and the time
     are the row's tooltip;
-  - the subagents it started, and its result in grey: the report it handed
-    back through Claude Code's `SubagentHandback` tool (`message`), which is
-    not listed as a call, else what its call handed back.
+  - the subagents it started.
 
   The tab of the view the card shows reads as open, and the browser
   remembers the view.
-  - *What it knows.* A subagent is a call of Claude Code's `Agent` tool (or
-    the older `Task`). The adapter marks each call a subagent makes, and
-    each chunk of text it says or is told, with the call that started it
-    (`_meta.claudeCode.parentToolUseId`). The transcript keeps a subagent's
-    text on that call, one entry per message id, and leaves its prompt echo
-    and its thinking out: without that they would read in the chat as the
-    agent's own reply. When a subagent's call ends, the adapter passes on
-    the tool's response, whose `totalTokens` and `totalDurationMs` are the
-    subagent's own account; without them the time is what LinuxIO saw.
-  - *A loaded chat* has none of a subagent's own work: no calls, no
-    messages, no hand-back and no account. The adapter replays a subagent's
-    history (`<session>/subagents/agent-<id>.jsonl`) only to a client that
-    declares its native subagent support, which LinuxIO does not yet; see
-    [Native subagents](TODO/assistant-native-subagents.md). What is left is
-    the launch call: its prompt, kind and model, and what it handed back,
-    which for a subagent in the foreground is its report.
-  - *Background.* A subagent sent to the background hands back at once
-    with a note that it was sent off, which is not shown as its result, and
-    with no account. The call may ask for it (`run_in_background`) or Claude
-    Code may decide it alone, so a subagent also counts as sent there when
-    the response's `status` is `async_launched` (live) or, in a loaded chat,
-    when what its call handed back starts with that note (`Async agent
-    launched`). Its report comes only from its hand-back. The adapter tells
-    a client like LinuxIO nothing of its end, but holds the turn that started it open
-    until it ends, so it counts as running while that turn runs. Its time
-    is then from its start to the end of the last call it made, and its
-    tokens are not reported. The model a subagent ran on reaches LinuxIO
-    only when its call names one; one that inherits the chat's model shows
-    none.
-  - An agent that sends no tool names has no subagents here.
+  - *What it knows.* All of it comes from the subagent's own session; see
+    [Subagent sessions](#subagent-sessions). The label is the session's
+    title. The kind is its `agent` option, else its description, else the
+    title, and is left out where it only repeats the label. The model is its
+    `model` option, which the agent sends once the subagent's first response
+    names it.
+  - *How it stands* follows the session's state: `running`;
+    `requires_action` is waiting for you; `idle` with `end_turn` is
+    finished, with `cancelled` stopped, with `error` failed; `idle` with any
+    other stop reason or none is ended; `unknown`, or no state at all, is
+    disconnected. The state is that of its latest run: a subagent that is
+    messaged again runs again in the same session.
+  - *Time.* Each run is timed from when LinuxIO saw it start to when it saw
+    it end, and the time shown is the sum of the runs, not the time between
+    the first start and the last end. The agent gives no time or tokens of
+    its own for a subagent, so a chat that was loaded shows no time.
+  - *Reports.* A report is the subagent's own message to its parent. One
+    that handed nothing back answered with its last text, which the parent
+    got as a reply; that reply is then its report, and the same text is not
+    listed a second time under Messages.
+  - *A loaded chat* has each subagent's prompts, calls, messages and
+    reports, and how it ended. One that still runs in the agent's process
+    can be stopped.
+  - *When the agent stops*, the subagents stay to be read like the chat:
+    whatever ran is disconnected and none can be stopped.
+  - *A subagent call that reaches the chat as a tool call* (`Agent`, or the
+    older `Task`) is shown from the call alone: label, kind, model and
+    prompt from its input, status, report and time from the call, with no
+    calls or messages. The adapter sends one for a launch whose subagent it
+    never announced. A launch that a permission request showed stays a tool
+    call while its subagent is announced too; the prompt then has the call's
+    id, and the call is drawn nowhere: not in the transcript, the map or
+    this view.
+  - An agent that reports no subagent sessions and sends no tool names has
+    no subagents here.
 - **Delete.** When the agent advertises session deletion, each chat on the
   Chats card has a delete button behind a confirmation. Deleting the open
   chat starts a new one, and a running chat cannot be deleted.
@@ -423,6 +465,86 @@ advertises the matching capability.
   the choice is kept in the browser.
 - **Titles.** A `session_info_update` title renames the chat on the Chats
   card; untitled chats show their session id.
+
+## Subagent sessions
+
+Claude Code's adapter supports ACP's unstable subagent sessions (its "RFD
+form"): a client that declares `clientCapabilities.subagents` gets each
+subagent as a session of its own. LinuxIO declares it (`connection.ts`); the
+other agents ignore it. Without it the adapter sends a subagent's work as
+tool calls of the main chat tagged `_meta.claudeCode.parentToolUseId`, and
+replays none of it in a loaded chat. The types are `SubagentUpdate`,
+`StateUpdate` and `SessionMessage` in `@agentclientprotocol/sdk/unstable`.
+
+The form is unstable, so a new adapter pin can change it. What follows was
+read from the source of `claude-agent-acp` 0.102.0 (`dist/acp-agent.js`,
+`native-subagents.js`, `subagent-replay.js`) and holds in LinuxIO's unit
+tests and its scripted browser chat; it has not been seen in a chat with the
+real adapter yet ([backlog](TODO/backlog.md)). Read it against the new source
+when the pin moves.
+
+What the adapter sends:
+
+- **`subagent_update`** on the session that started the subagent, with the
+  subagent's own session id. A subagent that starts one is the parent of
+  that one. The first carries `title`, `description` (the subagent type
+  when it differs from the title), `cwd` when it differs from the parent's,
+  `capabilities: {cancel: {}}` and `state: running`. Later ones carry only
+  what changed; a field left out is unchanged and `null` clears it.
+- **The subagent's work** (calls, text, thinking) as ordinary
+  `session/update` notifications on its session id. They keep the
+  `parentToolUseId` tag, which LinuxIO does not read.
+- **`config_option_update` on the subagent's session**: read-only `mode`,
+  `model`, `effort` and `agent`. A subagent cannot be prompted or
+  configured; the one thing a client may do is cancel it.
+- **`session_message`**, an upsert by `messageId`, for what goes between
+  sessions. The launch prompt, a `SendMessage` that reached the subagent and
+  the report from `SubagentHandback` each come twice, once in each session,
+  under one id. A launch that ends without a hand-back gives the parent
+  alone a `<launch id>:reply`.
+- **No tool call** for the `Agent`/`Task` launch, for a `SendMessage` that
+  reached an announced subagent, or for `SubagentHandback`. The exceptions
+  are a launch whose subagent was never announced, a launch a permission
+  request showed, a hand-back that failed, and a `SendMessage` that reached
+  no announced subagent.
+- **Permission requests** of a subagent under its session id. An open one
+  holds the parent's turn, so one that nobody answers leaves the chat
+  waiting. Several can be open at once, one per subagent that asks.
+- **On `session/load`**, each subagent's announcement (as `running`, with
+  no capabilities), its model and its own transcript, right after the
+  message that launched it; its end state after the whole transcript; and,
+  after the load response, what it is now, with `cancel` only if it still
+  runs in this process. A subagent with no recorded end is `idle` with no
+  stop reason.
+
+How LinuxIO keeps it (`-components/subagents.ts`, `assistant-store.ts`):
+
+- The open chat's subagents are a list in the store, each with its title,
+  parent, state, working directory, options, blocks and runs. They are
+  cleared with the chat: a new chat, another chat, a delete.
+- Updates are applied in the order they came, not session by session: a
+  subagent can be announced on another subagent's session in the same batch.
+  An update for a session that is neither the chat's, the side question's
+  nor a known subagent's is dropped.
+- A subagent's options and commands stay its own and never replace the
+  chat's.
+- A session message is one transcript block per `messageId` in its session
+  (`MessageBlock` in `transcript/transcript.ts`), merged when the id comes
+  again. The calls a subagent made for a message are its tool blocks from
+  its copy of that message to the next message it got.
+- Runs are timed only while the chat's turn runs, like the chat's calls.
+
+What the form does not give:
+
+- **Tokens and time per subagent.** `usage_update` is for the main session
+  only and the schema's `IdleStateUpdate.usage` is never filled, so every
+  subagent reads `tokens not reported`. That needs a change upstream.
+- **Whether a subagent was sent to the background.** The launch call is not
+  sent, so there is no `background` label; its state says whether it runs.
+- **What a stop of the whole chat does to background subagents.** The
+  adapter's comments disagree, and upstream has it open
+  (agent-client-protocol#2308). The Stop button of the Agents view stops
+  one.
 
 ## Plugins
 

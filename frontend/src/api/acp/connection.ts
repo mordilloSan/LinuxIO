@@ -184,9 +184,12 @@ export async function connectAssistant(
       protocolVersion: acp.PROTOCOL_VERSION,
       // Boolean options (Fast mode) arrive as real toggles instead of an
       // "On"/"Off" select once the agent knows the client can show them.
+      // With `subagents`, an agent that has them sends each one as a session
+      // of its own (the store keeps them); the others ignore it.
       clientCapabilities: {
         auth: { terminal: true },
         session: { configOptions: { boolean: {} } },
+        subagents: {},
       },
     });
     return { cwd, init };

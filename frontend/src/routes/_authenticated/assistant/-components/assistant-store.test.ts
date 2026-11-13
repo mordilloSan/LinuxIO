@@ -14,6 +14,14 @@ import {
   panePushedRoster,
   paneRenderAnswer,
 } from "@/test/assistantPaneFixture";
+import {
+  announce,
+  call,
+  FINISHED,
+  message,
+  says,
+  stateOf,
+} from "@/test/assistantSubagentFixture";
 
 import { assistantStore, chatPane } from "./assistant-store";
 
@@ -1340,7 +1348,7 @@ describe("assistantStore", () => {
       expect(assistantStore.getState().pending).toBeNull();
     });
 
-    it("cancels a main permission that a newer main request replaces", async () => {
+    it("keeps a main permission open when a newer main request comes", async () => {
       const { handlers } = await connectWithFork();
       const request = (id: string) =>
         handlers().onPermission({
@@ -1349,13 +1357,23 @@ describe("assistantStore", () => {
           options: [],
         });
       const first = request("one");
-      void request("two");
+      const second = request("two");
+      // The older one is still the one shown; the newer one waits.
+      expect(assistantStore.getState().pending?.request.toolCall.title).toBe(
+        "one",
+      );
+      assistantStore.answerPermission("yes");
       await expect(first).resolves.toEqual({
-        outcome: { outcome: "cancelled" },
+        outcome: { outcome: "selected", optionId: "yes" },
       });
       expect(assistantStore.getState().pending?.request.toolCall.title).toBe(
         "two",
       );
+      assistantStore.answerPermission(null);
+      await expect(second).resolves.toEqual({
+        outcome: { outcome: "cancelled" },
+      });
+      expect(assistantStore.getState().pending).toBeNull();
     });
 
     it("keeps main and side statuses independent, and stop cancels only main", async () => {
@@ -1595,6 +1613,322 @@ describe("assistantStore", () => {
       expect(assistantStore.getState().side).toBeNull();
       expect(conn.closeSession).toHaveBeenCalledWith("s-side");
     });
+  });
+});
+
+describe("assistantStore subagents", () => {
+  const connect = async (overrides: Partial<AssistantConnection> = {}) => {
+    const fake = fakeConnection(overrides);
+    assistantStore._setConnector(fake.connector);
+    await assistantStore.connect("claude");
+    const update = (sessionId: string, value: acp.SessionUpdate) =>
+      fake.handlers().onUpdate({ sessionId, update: value });
+    const ask = (sessionId: string, id: string) =>
+      fake.handlers().onPermission({
+        sessionId,
+        toolCall: { toolCallId: id, title: id },
+        options: [{ optionId: "yes", name: "Allow", kind: "allow_once" }],
+      });
+    return { ...fake, update, ask };
+  };
+  const subagents = () => assistantStore.getState().subagents;
+
+  it("keeps each subagent's updates in its own session, in the order they came", async () => {
+    const { update } = await connect();
+    // One batch: the chat announces a subagent, which announces one of its
+    // own before anything else of the chat arrives.
+    update("s-old", announce("a"));
+    update("s-old", message("p1", "s-old", "a", "Check the disks"));
+    update("a", message("p1", "s-old", "a", "Check the disks"));
+    update("a", announce("b"));
+    update("b", call("c1", "Bash", { command: "lsblk" }));
+    update("a", {
+      ...says("Looking."),
+      _meta: { claudeCode: { parentToolUseId: "p1" } },
+    });
+    update("s-old", says("Started it."));
+    // A session nobody announced is another chat's late replay.
+    update("stray", says("Lost"));
+    assistantStore._flush();
+
+    expect(assistantStore.getState().blocks).toMatchObject([
+      { kind: "message", messageId: "p1", outgoing: true },
+      { kind: "agent", text: "Started it." },
+    ]);
+    expect(subagents()).toMatchObject([
+      {
+        sessionId: "a",
+        parentSessionId: "s-old",
+        state: "running",
+        canCancel: true,
+        blocks: [
+          { kind: "message", messageId: "p1", outgoing: false },
+          // The tag of its launch stays on its text; it is still its own.
+          { kind: "agent", text: "Looking." },
+        ],
+      },
+      {
+        sessionId: "b",
+        parentSessionId: "a",
+        blocks: [{ kind: "tool", toolCallId: "c1" }],
+      },
+    ]);
+  });
+
+  it("keeps a subagent's options and commands off the chat", async () => {
+    const options = [selectOption("a")];
+    const { update } = await connect({
+      loadSession: vi.fn(async (sessionId: string) => ({
+        sessionId,
+        modes: null,
+        configOptions: options,
+      })),
+    });
+    update("s-old", announce("a"));
+    const own: acp.SessionConfigOption = {
+      id: "model",
+      name: "Model",
+      category: "model",
+      type: "select",
+      currentValue: "haiku",
+      options: [{ value: "haiku", name: "Haiku 5.5" }],
+    };
+    update("a", {
+      sessionUpdate: "config_option_update",
+      configOptions: [own],
+    });
+    update("a", {
+      sessionUpdate: "available_commands_update",
+      availableCommands: [{ name: "x", description: "x" }],
+    });
+    assistantStore._flush();
+    expect(assistantStore.getState()).toMatchObject({
+      configOptions: options,
+      commands: [],
+    });
+    expect(subagents()[0].configOptions).toEqual([own]);
+  });
+
+  it("times a subagent's runs only while a turn runs", async () => {
+    let finishTurn!: () => void;
+    const { update } = await connect({
+      prompt: vi.fn(
+        () =>
+          new Promise<{ stopReason: "end_turn" }>((resolve) => {
+            finishTurn = () => resolve({ stopReason: "end_turn" });
+          }),
+      ),
+    });
+    const sending = send("go");
+    update("s-old", announce("a"));
+    assistantStore._flush();
+    update("s-old", stateOf("a", FINISHED));
+    finishTurn();
+    await sending;
+    const [run, ...rest] = subagents()[0].runs;
+    expect(rest).toEqual([]);
+    expect(run.endedAt).toBeGreaterThanOrEqual(run.startedAt);
+  });
+
+  it("takes a loaded chat's subagents as they are replayed, then their end and their stop", async () => {
+    const { update, handlers } = await connect({
+      listSessions: vi.fn(async () => [
+        { sessionId: "s-old", cwd: "/home/alice" },
+        { sessionId: "s-two", cwd: "/home/alice" },
+      ]),
+      loadSession: vi.fn(async (sessionId: string) => {
+        if (sessionId === "s-two") {
+          const replay = (id: string, value: acp.SessionUpdate) =>
+            handlers().onUpdate({ sessionId: id, update: value });
+          // During the replay every subagent is announced running, with no
+          // capabilities; its real state follows its transcript.
+          replay("s-two", announce("a", { capabilities: undefined }));
+          replay("a", message("p1", "s-two", "a", "Check the disks"));
+          replay("a", call("c1", "Bash", { command: "lsblk" }));
+          replay("s-two", stateOf("a", { state: "idle" }));
+        }
+        return { sessionId, modes: null, configOptions: [] };
+      }),
+    });
+    await assistantStore.selectSession("s-two");
+    expect(subagents()).toMatchObject([
+      {
+        sessionId: "a",
+        // An end nobody recorded has no stop reason.
+        state: "ended",
+        canCancel: false,
+        runs: [],
+        blocks: [{ kind: "message" }, { kind: "tool", startedAt: undefined }],
+      },
+    ]);
+    // After the load response: what it is now, and whether it can be stopped.
+    update("s-two", {
+      sessionUpdate: "subagent_update",
+      sessionId: "a",
+      capabilities: { cancel: {} },
+      state: { state: "running" },
+    });
+    assistantStore._flush();
+    expect(subagents()[0]).toMatchObject({
+      state: "running",
+      canCancel: true,
+      runs: [],
+    });
+  });
+
+  it("clears the subagents with the chat", async () => {
+    const { update } = await connect({
+      listSessions: vi.fn(async () => [
+        { sessionId: "s-old", cwd: "/home/alice" },
+        { sessionId: "s-two", cwd: "/home/alice" },
+      ]),
+    });
+    update("s-old", announce("a"));
+    assistantStore._flush();
+    expect(subagents()).toHaveLength(1);
+    await assistantStore.selectSession("s-two");
+    expect(subagents()).toEqual([]);
+
+    update("s-two", announce("b"));
+    assistantStore._flush();
+    expect(subagents()).toHaveLength(1);
+    await assistantStore.newSession();
+    expect(subagents()).toEqual([]);
+    // What the old chat's subagent still sends is nobody's now.
+    update("b", says("Late"));
+    assistantStore._flush();
+    expect(subagents()).toEqual([]);
+  });
+
+  it("leaves a side question's subagents out", async () => {
+    const { update, ask } = await connect({ canFork: true });
+    await assistantStore.openSide();
+    update("s-side", announce("x"));
+    update("x", says("Side work"));
+    assistantStore._flush();
+    expect(subagents()).toEqual([]);
+    expect(assistantStore.getState().side?.blocks).toEqual([]);
+    // Nobody could answer what it asks.
+    await expect(ask("x", "t1")).resolves.toEqual({
+      outcome: { outcome: "cancelled" },
+    });
+  });
+
+  it("shows a subagent's permission request and answers it, announced a moment ago or not", async () => {
+    const { update, ask } = await connect();
+    // The announcement still waits for its frame when the request comes.
+    update("s-old", announce("a"));
+    const answer = ask("a", "t1");
+    expect(assistantStore.getState().pending?.request.sessionId).toBe("a");
+    assistantStore.answerPermission("yes");
+    await expect(answer).resolves.toEqual({
+      outcome: { outcome: "selected", optionId: "yes" },
+    });
+    expect(assistantStore.getState().pending).toBeNull();
+  });
+
+  it("lets two subagents ask at once: each request is answered by the user", async () => {
+    const { update, ask } = await connect();
+    update("s-old", announce("a"));
+    update("s-old", announce("b"));
+    const first = ask("a", "t1");
+    const second = ask("b", "t2");
+    const third = ask("s-old", "t3");
+    expect(assistantStore.getState()).toMatchObject({
+      pending: { request: { sessionId: "a" } },
+      waiting: [
+        { request: { sessionId: "b" } },
+        { request: { sessionId: "s-old" } },
+      ],
+    });
+    assistantStore.answerPermission("yes");
+    await expect(first).resolves.toEqual({
+      outcome: { outcome: "selected", optionId: "yes" },
+    });
+    expect(assistantStore.getState().pending?.request.sessionId).toBe("b");
+    assistantStore.answerPermission("yes");
+    await expect(second).resolves.toEqual({
+      outcome: { outcome: "selected", optionId: "yes" },
+    });
+    assistantStore.answerPermission("yes");
+    await expect(third).resolves.toEqual({
+      outcome: { outcome: "selected", optionId: "yes" },
+    });
+    expect(assistantStore.getState()).toMatchObject({
+      pending: null,
+      waiting: [],
+    });
+  });
+
+  it("stop answers every open request cancelled", async () => {
+    const { conn, update, ask } = await connect();
+    void send("go");
+    update("s-old", announce("a"));
+    const answers = [ask("a", "t1"), ask("s-old", "t2"), ask("a", "t3")];
+    assistantStore.stop();
+    for (const answer of answers) {
+      await expect(answer).resolves.toEqual({
+        outcome: { outcome: "cancelled" },
+      });
+    }
+    expect(assistantStore.getState()).toMatchObject({
+      pending: null,
+      waiting: [],
+    });
+    expect(conn.cancel).toHaveBeenCalledWith("s-old");
+  });
+
+  it("stops one subagent: its session is cancelled and its requests answered", async () => {
+    const { conn, update, ask } = await connect();
+    update("s-old", announce("a"));
+    update("s-old", announce("b"));
+    update("s-old", announce("c", { capabilities: null }));
+    const fromA = ask("a", "t1");
+    const fromB = ask("b", "t2");
+    const alsoA = ask("a", "t3");
+
+    assistantStore.stopSubagent("a");
+    expect(conn.cancel).toHaveBeenCalledExactlyOnceWith("a");
+    await expect(fromA).resolves.toEqual({ outcome: { outcome: "cancelled" } });
+    await expect(alsoA).resolves.toEqual({ outcome: { outcome: "cancelled" } });
+    // The other subagent's request is now the one shown.
+    expect(assistantStore.getState()).toMatchObject({
+      pending: { request: { sessionId: "b" } },
+      waiting: [],
+    });
+    assistantStore.answerPermission("yes");
+    await expect(fromB).resolves.toMatchObject({
+      outcome: { outcome: "selected" },
+    });
+
+    // One the agent takes no stop for, and one it never announced.
+    assistantStore.stopSubagent("c");
+    assistantStore.stopSubagent("nobody");
+    expect(conn.cancel).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the subagents to read when the agent exits, none of them running", async () => {
+    const { update, ask, handlers } = await connect();
+    void send("go");
+    update("s-old", announce("a"));
+    update("s-old", announce("b"));
+    update("s-old", stateOf("b", FINISHED));
+    const answer = ask("a", "t1");
+    void ask("b", "t2");
+    handlers().onExit({ code: 1, stderr: "" });
+    await expect(answer).resolves.toEqual({
+      outcome: { outcome: "cancelled" },
+    });
+    expect(assistantStore.getState()).toMatchObject({
+      status: "stopped",
+      pending: null,
+      waiting: [],
+      subagents: [
+        { sessionId: "a", state: "disconnected", canCancel: false },
+        { sessionId: "b", state: "finished", canCancel: false },
+      ],
+    });
+    expect(subagents()[0].runs[0].endedAt).not.toBeNull();
   });
 });
 

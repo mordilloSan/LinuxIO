@@ -18,6 +18,7 @@ import {
 
 import type { Attachment } from "./attachments";
 import { currentName, withoutDefault } from "./composer/selectOption";
+import { applySubagentUpdate, disconnected, type Subagent } from "./subagents";
 import {
   appendTurnEnd,
   appendUserMessage,
@@ -55,7 +56,15 @@ export interface AssistantState {
   blocks: TranscriptBlock[];
   sessions: acp.SessionInfo[];
   sessionId: string | null;
+  /**
+   * The request the chat shows: its own, or one of a subagent's, whichever
+   * came first.
+   */
   pending: PendingPermission | null;
+  /** The requests that came while another was open, oldest first. */
+  waiting: PendingPermission[];
+  /** The open chat's subagents, in the order they were announced. */
+  subagents: Subagent[];
   error: string | null;
   exit: AssistantExit | null;
   authStatus: AuthStatus | null;
@@ -113,6 +122,7 @@ const sessionReset = (): Partial<AssistantState> => ({
   usage: null,
   queuedPrompt: null,
   side: null,
+  subagents: [],
 });
 
 const initialState = (): AssistantState => ({
@@ -122,6 +132,8 @@ const initialState = (): AssistantState => ({
   sessions: [],
   sessionId: null,
   pending: null,
+  waiting: [],
+  subagents: [],
   error: null,
   exit: null,
   authStatus: null,
@@ -188,40 +200,39 @@ function flushUpdates() {
   if (pendingUpdates.length === 0) return;
   const batch = pendingUpdates;
   pendingUpdates = [];
-  const forSession = (id: string | undefined) =>
-    batch.filter((n) => n.sessionId === id).map((n) => n.update);
-  const updates = forSession(state.sessionId ?? undefined);
-  const side = state.side;
-  const sideUpdates = side ? forSession(side.sessionId) : [];
-  if (updates.length === 0 && sideUpdates.length === 0) return;
-  const patch = updates.reduce<Partial<AssistantState>>(
-    (acc, update) => ({
-      ...acc,
-      ...statePatch(update, { ...state, ...acc }),
-    }),
-    {},
-  );
   // Only what arrives while a turn runs is timed; loaded history is not.
   const now = state.status === "running" ? Date.now() : undefined;
-  setState({
-    ...patch,
-    ...(updates.length > 0 && {
-      blocks: updates.reduce(
-        (blocks, update) => applySessionUpdate(blocks, update, now),
-        state.blocks,
-      ),
-    }),
-    ...(side &&
-      sideUpdates.length > 0 && {
-        side: {
-          ...side,
-          blocks: sideUpdates.reduce(
-            (blocks, update) => applySessionUpdate(blocks, update),
-            side.blocks,
-          ),
-        },
-      }),
-  });
+  const side = state.side;
+  let patch: Partial<AssistantState> = {};
+  let blocks = state.blocks;
+  let sideBlocks = side?.blocks ?? [];
+  let subagents = state.subagents;
+  // In the order they came: a subagent is announced on the session that
+  // started it, which can be another subagent of the same batch.
+  for (const { sessionId, update } of batch) {
+    if (side && sessionId === side.sessionId) {
+      // A side question's subagents are left out, with all they send.
+      sideBlocks = applySessionUpdate(sideBlocks, update);
+      continue;
+    }
+    const own = sessionId === state.sessionId;
+    // A late replay for another chat is dropped.
+    if (!own && !subagents.some((child) => child.sessionId === sessionId)) {
+      continue;
+    }
+    if (!own || update.sessionUpdate === "subagent_update") {
+      subagents = applySubagentUpdate(subagents, sessionId, update, now);
+      continue;
+    }
+    patch = { ...patch, ...statePatch(update, { ...state, ...patch }) };
+    blocks = applySessionUpdate(blocks, update, now, sessionId);
+  }
+  if (blocks !== state.blocks) patch.blocks = blocks;
+  if (subagents !== state.subagents) patch.subagents = subagents;
+  if (side && sideBlocks !== side.blocks) {
+    patch.side = { ...side, blocks: sideBlocks };
+  }
+  if (Object.keys(patch).length > 0) setState(patch);
 }
 
 // Updates that describe the chat rather than add to the transcript.
@@ -459,6 +470,12 @@ async function runTurn(
 
 const cancelled = { outcome: { outcome: "cancelled" } } as const;
 
+/** Answers every open request of the chat and its subagents `cancelled`. */
+function cancelPermissions() {
+  state.pending?.resolve(cancelled);
+  state.waiting.forEach((waiting) => waiting.resolve(cancelled));
+}
+
 // Best effort: the panel does not wait for the agent, and errors are dropped.
 async function releaseSide(conn: AssistantConnection, sessionId: string) {
   try {
@@ -536,13 +553,25 @@ export const assistantStore = {
               resolve({ outcome: { outcome: "cancelled" } });
               return;
             }
+            // The subagent that asks may have been announced a moment ago.
+            flushUpdates();
             const pending = { request, resolve };
             if (state.side && request.sessionId === state.side.sessionId) {
               state.side.pending?.resolve(cancelled);
               setState({ side: { ...state.side, pending, open: true } });
-            } else if (request.sessionId === state.sessionId) {
-              state.pending?.resolve(cancelled);
-              setState({ pending });
+            } else if (
+              request.sessionId === state.sessionId ||
+              state.subagents.some(
+                (child) => child.sessionId === request.sessionId,
+              )
+            ) {
+              // Subagents ask at the same time: a new request waits its turn
+              // and answers none of the others.
+              setState(
+                state.pending
+                  ? { waiting: [...state.waiting, pending] }
+                  : { pending },
+              );
             } else {
               // A discarded side, a fork not yet registered, or another chat.
               resolve(cancelled);
@@ -558,13 +587,16 @@ export const assistantStore = {
           sideEpoch++;
           forking = false;
           panes.reset();
-          state.pending?.resolve(cancelled);
+          cancelPermissions();
           state.side?.pending?.resolve(cancelled);
           setState({
             sideOpening: false,
             status: "stopped",
             exit,
             pending: null,
+            waiting: [],
+            // They stay to be read, like the chat: none of them runs now.
+            subagents: disconnected(state.subagents),
             side: null,
             turnStartedAt: null,
             error: null,
@@ -699,10 +731,9 @@ export const assistantStore = {
 
   stop() {
     stopEpoch++;
-    const pending = state.pending;
-    if (pending) {
-      pending.resolve({ outcome: { outcome: "cancelled" } });
-      setState({ pending: null });
+    if (state.pending) {
+      cancelPermissions();
+      setState({ pending: null, waiting: [] });
     }
     if (state.queuedPrompt) setState({ queuedPrompt: null });
     if (connection && state.sessionId) {
@@ -718,7 +749,26 @@ export const assistantStore = {
         ? { outcome: { outcome: "cancelled" } }
         : { outcome: { outcome: "selected", optionId } },
     );
-    setState({ pending: null });
+    const [next = null, ...waiting] = state.waiting;
+    setState({ pending: next, waiting });
+  },
+
+  /** Stops one subagent's work; its next state says that it stopped. */
+  stopSubagent(sessionId: string) {
+    const conn = connection;
+    const child = state.subagents.find((sub) => sub.sessionId === sessionId);
+    if (!conn || !child?.canCancel) return;
+    // A cancelled session's open requests are answered `cancelled`.
+    const open = [state.pending, ...state.waiting].flatMap((entry) =>
+      entry ? [entry] : [],
+    );
+    const [next = null, ...waiting] = open.filter((entry) => {
+      if (entry.request.sessionId !== sessionId) return true;
+      entry.resolve(cancelled);
+      return false;
+    });
+    if (open.length > 0) setState({ pending: next, waiting });
+    void conn.cancel(sessionId);
   },
 
   /** Opens the side panel (forking the chat if needed); `initialText` is sent as its first question. */
@@ -905,7 +955,7 @@ export const assistantStore = {
     currentAttempt++;
     pendingUpdates = [];
     flushUpdates();
-    state.pending?.resolve(cancelled);
+    cancelPermissions();
     void dropSide();
     connection?.close();
     connection = null;

@@ -1,4 +1,16 @@
+import type * as acp from "@agentclientprotocol/sdk/unstable";
 import { describe, expect, it } from "vitest";
+
+import {
+  announce,
+  call,
+  chatOf as chatFrom,
+  FINISHED as done,
+  pair,
+  says,
+  type Sent,
+  stateOf as state,
+} from "@/test/assistantSubagentFixture";
 
 import type { ToolBlock, TranscriptBlock } from "../transcript/transcript";
 import {
@@ -22,7 +34,7 @@ const tool = (over: Partial<ToolBlock> = {}): ToolBlock => ({
   ...over,
 });
 
-const subagent = (id: string, over: Partial<ToolBlock> = {}) =>
+const subagentCall = (id: string, over: Partial<ToolBlock> = {}) =>
   tool({
     toolCallId: id,
     toolName: "Agent",
@@ -31,6 +43,7 @@ const subagent = (id: string, over: Partial<ToolBlock> = {}) =>
       description: `Agent ${id}`,
       prompt: `Do ${id}`,
       subagent_type: "Explore",
+      model: "haiku",
     },
     ...over,
   });
@@ -42,237 +55,288 @@ const user: TranscriptBlock = {
   attachments: [],
 };
 
+const text = (t: string): acp.ContentBlock => ({ type: "text", text: t });
+
+/** A chat that began with the user's message. */
+const chatOf = (sent: Sent[], blocks: TranscriptBlock[] = [user]) =>
+  chatFrom(sent, blocks);
+
 describe("agentsOf", () => {
-  it("puts each subagent's calls under it and leaves the agent's own out", () => {
-    const [agent] = agentsOf(
+  it("builds a subagent from its session: what it was told, did and reported", () => {
+    const { chat, subagents } = chatOf([
+      ["chat", announce("a", { description: "Explore", cwd: "/srv" }), 1000],
+      ...pair("p1", "chat", "a", "Check the disks", 1000),
       [
-        user,
-        tool({ toolName: "Read", rawInput: { file_path: "/etc/fstab" } }),
-        subagent("a1", {
-          content: [
-            { type: "content", content: { type: "text", text: "All good." } },
+        "a",
+        {
+          sessionUpdate: "config_option_update",
+          configOptions: [
+            {
+              id: "model",
+              name: "Model",
+              category: "model",
+              type: "select",
+              currentValue: "claude-haiku",
+              options: [{ value: "claude-haiku", name: "Haiku 5.5" }],
+            },
+            {
+              id: "agent",
+              name: "Agent",
+              type: "select",
+              currentValue: "disk-checker",
+              options: [{ value: "disk-checker", name: "disk-checker" }],
+            },
           ],
-          startedAt: 1000,
-          endedAt: 79_000,
-        }),
-        tool({
-          parentId: "a1",
-          toolName: "Bash",
-          rawInput: { command: "lsblk", description: "List disks" },
-          startedAt: 2000,
-          endedAt: 2500,
-        }),
-        tool({
-          parentId: "a1",
-          toolName: "Read",
-          rawInput: { file_path: "/etc/mdadm/mdadm.conf" },
-          status: "failed",
-        }),
+        },
       ],
-      false,
-    );
+      ["a", says("Looking at the disks.")],
+      [
+        "a",
+        call("c1", "Bash", { command: "lsblk", description: "List disks" }),
+      ],
+      ["a", call("c2", "Read", { file_path: "/etc/mdadm.conf" }, "failed")],
+      ...pair("h1", "a", "chat", "All good.", 79_000),
+      ["chat", state("a", done), 79_000],
+    ]);
+    const [agent, ...rest] = agentsOf(chat, subagents, false);
+    expect(rest).toEqual([]);
     expect(agent).toMatchObject({
-      id: "a1",
-      label: "Agent a1",
-      type: "Explore",
-      prompt: "Do a1",
-      result: "All good.",
-      status: "ok",
-      tookMs: 78_000,
-      tokens: null,
-      background: false,
+      id: "a",
+      label: "Agent a",
+      // The agent option says more than the description does.
+      type: "disk-checker",
+      model: "Haiku 5.5",
       startedBy: null,
+      state: "finished",
+      status: "ok",
+      error: null,
+      cwd: "/srv",
+      canStop: false,
+      runningSince: null,
+      ranMs: 78_000,
     });
-    expect(agent.calls).toMatchObject([
+    expect(agent.parts).toMatchObject([
+      { kind: "prompt", number: null, text: "Check the disks" },
+      { kind: "messages", texts: ["Looking at the disks."] },
       {
-        tool: "Bash",
-        detail: "List disks",
-        code: false,
-        full: "lsblk",
-        status: "ok",
-        tookMs: 500,
+        kind: "calls",
+        calls: [
+          { tool: "Bash", detail: "List disks", full: "lsblk", status: "ok" },
+          { tool: "Read", detail: "mdadm.conf", status: "err" },
+        ],
       },
-      {
-        tool: "Read",
-        detail: "mdadm.conf",
-        code: true,
-        full: "/etc/mdadm/mdadm.conf",
-        status: "err",
-      },
+      { kind: "report", number: null, text: "All good." },
     ]);
   });
 
-  it("prefers what the subagent says it used to what was seen", () => {
-    const [agent] = agentsOf(
-      [
-        subagent("a1", {
-          startedAt: 1000,
-          endedAt: 2000,
-          totals: { tokens: 73_100, toolUses: 9, durationMs: 78_000 },
-        }),
-      ],
+  it("falls back for the type to the description, then to the title", () => {
+    const types = (over: Partial<acp.SubagentUpdate>) => {
+      const { chat, subagents } = chatOf([["chat", announce("a", over)]]);
+      return agentsOf(chat, subagents, false)[0].type;
+    };
+    expect(types({ description: "Explore" })).toBe("Explore");
+    expect(types({})).toBe("Agent a");
+  });
+
+  it.each([
+    [{ state: "running" }, "running", "run", true],
+    [{ state: "requires_action" }, "waiting", "run", true],
+    [done, "finished", "ok", false],
+    [{ state: "idle", stopReason: "cancelled" }, "stopped", "ok", false],
+    [
+      {
+        state: "idle",
+        stopReason: "error",
+        error: { code: 1, message: "Boom" },
+      },
+      "failed",
+      "err",
       false,
-    );
-    expect(agent).toMatchObject({ tokens: 73_100, tookMs: 78_000 });
+    ],
+    [{ state: "idle" }, "ended", "ok", false],
+    [{ state: "unknown" }, "disconnected", "ok", false],
+  ] as [acp.StateUpdate, string, string, boolean][])(
+    "shows the state %o as %s",
+    (value, expected, status, canStop) => {
+      const { chat, subagents } = chatOf([
+        ["chat", announce("a"), 1000],
+        ["chat", state("a", value), 2000],
+      ]);
+      const agents = agentsOf(chat, subagents, true);
+      expect(agents[0]).toMatchObject({ state: expected, status, canStop });
+      expect(runningAgents(agents)).toBe(status === "run" ? 1 : 0);
+    },
+  );
+
+  it("says why a subagent failed, and cannot stop one without the capability", () => {
+    const { chat, subagents } = chatOf([
+      ["chat", announce("a", { capabilities: null }), 1000],
+      ["chat", announce("b"), 1000],
+      [
+        "chat",
+        state("b", {
+          state: "idle",
+          stopReason: "error",
+          error: { code: 1, message: "Out of credit" },
+        }),
+        2000,
+      ],
+    ]);
+    const [a, b] = agentsOf(chat, subagents, true);
+    expect(a).toMatchObject({ state: "running", canStop: false });
+    expect(b).toMatchObject({ state: "failed", error: "Out of credit" });
+  });
+
+  it("shows a subagent that was messaged again in order, with the time of both runs", () => {
+    const { chat, subagents } = chatOf([
+      ["chat", announce("a"), 1000],
+      ...pair("p1", "chat", "a", "Read the OS release", 1000),
+      ["a", call("c1", "Read", { file_path: "/etc/os-release" })],
+      ...pair("h1", "a", "chat", "It is Debian.", 3000),
+      ["chat", state("a", done), 3000],
+      // A SendMessage to it: it runs again in the same session.
+      ["chat", state("a", { state: "running" }), 5000],
+      ...pair("p2", "chat", "a", "Run uptime", 5000),
+      ["a", call("c2", "Bash", { command: "uptime" })],
+      ...pair("h2", "a", "chat", "Up 3 days.", 5400),
+      ["chat", state("a", done), 5400],
+    ]);
+    const [agent] = agentsOf(chat, subagents, false);
+    expect(agent.parts).toMatchObject([
+      { kind: "prompt", number: 1, text: "Read the OS release" },
+      { kind: "calls", calls: [{ tool: "Read" }] },
+      { kind: "report", number: 1, text: "It is Debian." },
+      { kind: "prompt", number: 2, text: "Run uptime" },
+      { kind: "calls", calls: [{ tool: "Bash" }] },
+      { kind: "report", number: 2, text: "Up 3 days." },
+    ]);
+    // The first run and the second, not the time between them.
+    expect(agent).toMatchObject({ state: "finished", ranMs: 2400 });
+
+    // While the second run goes, the status is that run's.
+    const { chat: live, subagents: running } = chatOf([
+      ["chat", announce("a"), 1000],
+      ["chat", state("a", done), 3000],
+      ["chat", state("a", { state: "running" }), 5000],
+    ]);
+    expect(agentsOf(live, running, true)[0]).toMatchObject({
+      state: "running",
+      ranMs: 2000,
+      runningSince: 5000,
+    });
+  });
+
+  it("takes the parent's reply for the report of a subagent that handed nothing back", () => {
+    const { chat, subagents } = chatOf([
+      ["chat", announce("a")],
+      ...pair("p1", "chat", "a", "Check the disks"),
+      ["a", call("c1", "Bash", { command: "lsblk" })],
+      ["a", says("Looking.")],
+      ["a", call("c2", "Bash", { command: "df" })],
+      // Its answer is its own last text; only the parent gets the reply.
+      ["a", says("All good.")],
+      [
+        "chat",
+        {
+          sessionUpdate: "session_message",
+          messageId: "p1:reply",
+          senderSessionId: "a",
+          recipientSessionId: "chat",
+          content: [text("All good.")],
+        },
+      ],
+      ["chat", state("a", done)],
+    ]);
+    const [agent] = agentsOf(chat, subagents, false);
+    expect(agent.parts.map((part) => part.kind)).toEqual([
+      "prompt",
+      "calls",
+      "messages",
+      "calls",
+      "report",
+    ]);
+    expect(agent.parts.at(-1)).toMatchObject({ text: "All good." });
+    // A chat that was loaded saw none of it happen.
+    expect(agent).toMatchObject({ ranMs: null, runningSince: null });
   });
 
   it("nests the subagents a subagent started", () => {
-    const agents = agentsOf(
-      [
-        subagent("a1"),
-        subagent("a2", { parentId: "a1" }),
-        tool({ parentId: "a2", toolName: "Grep" }),
-        subagent("a3"),
-      ],
-      false,
-    );
-    expect(agents.map((agent) => agent.id)).toEqual(["a1", "a3"]);
-    expect(agents[0].agents.map((agent) => agent.id)).toEqual(["a2"]);
-    expect(agents[0].calls).toEqual([]);
-    expect(agents[0].agents[0]).toMatchObject({ startedBy: "Agent a1" });
-    expect(agents[0].agents[0].calls).toHaveLength(1);
-    expect(allAgents(agents).map((agent) => agent.id)).toEqual([
-      "a1",
-      "a2",
-      "a3",
+    const { chat, subagents } = chatOf([
+      ["chat", announce("a")],
+      ...pair("p1", "chat", "a", "Do a"),
+      ["a", announce("b")],
+      ...pair("p2", "a", "b", "Do b"),
+      ["b", call("c1", "Grep", { pattern: "x" })],
+      ["chat", announce("c")],
+      ...pair("p3", "chat", "c", "Do c"),
     ]);
+    const agents = agentsOf(chat, subagents, true);
+    expect(agents.map((agent) => agent.id)).toEqual(["a", "c"]);
+    expect(agents[0].agents).toMatchObject([
+      { id: "b", startedBy: "Agent a", parts: [{}, { kind: "calls" }] },
+    ]);
+    // What it told the one it started is that one's prompt, not its own.
+    expect(agents[0].parts.map((part) => part.kind)).toEqual(["prompt"]);
+    expect(allAgents(agents).map((agent) => agent.id)).toEqual(["a", "b", "c"]);
   });
 
-  it("runs a subagent only while a turn does", () => {
-    const blocks = [
-      user,
-      subagent("a1", { status: "in_progress", startedAt: 1000 }),
-    ];
-    expect(agentsOf(blocks, true)[0].status).toBe("run");
-    expect(runningAgents(agentsOf(blocks, true))).toBe(1);
-    // A chat that was loaded has nothing running.
-    expect(agentsOf(blocks, false)[0].status).toBe("ok");
-  });
-
-  it("keeps a subagent that handed back running while its calls run", () => {
-    const agents = agentsOf(
-      [
-        user,
-        subagent("a1"),
-        tool({ parentId: "a1", toolName: "Bash", status: "in_progress" }),
-      ],
-      true,
-    );
-    expect(agents[0].status).toBe("run");
-  });
-
-  it("runs a subagent in the background while the turn that started it does", () => {
-    const launched = subagent("a1", {
-      rawInput: { description: "Split replication", run_in_background: true },
-      content: [
-        {
-          type: "content",
-          content: { type: "text", text: "Async agent launched." },
-        },
-      ],
-      startedAt: 1000,
-      endedAt: 1200,
-    });
+  it("shows a subagent call that reaches the chat from the call alone", () => {
     const blocks: TranscriptBlock[] = [
       user,
-      launched,
-      tool({
-        parentId: "a1",
-        toolName: "Grep",
-        startedAt: 2000,
-        endedAt: 9000,
+      tool({ toolName: "Read", rawInput: { file_path: "/etc/fstab" } }),
+      subagentCall("a1", {
+        content: [
+          { type: "content", content: { type: "text", text: "All good." } },
+        ],
+        startedAt: 1000,
+        endedAt: 79_000,
       }),
+      subagentCall("a2", { status: "failed" }),
+      subagentCall("a3", { status: "in_progress", startedAt: 2000 }),
     ];
-    // Its call handed back at once, but the turn is held open for it.
-    expect(agentsOf(blocks, true)[0]).toMatchObject({
-      background: true,
-      status: "run",
-      tookMs: null,
-      result: null,
-    });
-    // Once the turn ends it took until the last thing it did ended.
-    expect(agentsOf(blocks, false)[0]).toMatchObject({
+    const chat = { sessionId: "chat", blocks };
+    const [done1, failed, open] = agentsOf(chat, [], true);
+    expect(done1).toMatchObject({
+      id: "a1",
+      label: "Agent a1",
+      type: "Explore",
+      model: "haiku",
+      state: "finished",
       status: "ok",
-      tookMs: 8000,
+      canStop: false,
+      ranMs: 78_000,
+      parts: [
+        { kind: "prompt", text: "Do a1" },
+        { kind: "report", text: "All good." },
+      ],
+      agents: [],
+    });
+    expect(failed).toMatchObject({ state: "failed", status: "err" });
+    expect(open).toMatchObject({ state: "running", runningSince: 2000 });
+    // A chat that was loaded has nothing running.
+    expect(agentsOf(chat, [], false)[2]).toMatchObject({
+      state: "ended",
+      status: "ok",
     });
   });
 
-  it("knows a subagent Claude Code sent to the background by itself", () => {
-    const note = (text: string): Partial<ToolBlock> => ({
-      content: [{ type: "content", content: { type: "text", text } }],
-    });
-    const [live, loaded, done] = agentsOf(
-      [
-        // Live: the response says so.
-        subagent("a1", { launched: true }),
-        // Loaded: only the note it handed back does.
-        subagent("a2", note("Async agent launched successfully. agentId: x")),
-        subagent("a3", note("Async work is done.")),
-      ],
-      false,
+  it("draws one subagent for a launch a permission request showed", () => {
+    // The call stays a tool call of the chat, and its subagent is announced
+    // too: the prompt has the call's id.
+    const { chat, subagents } = chatOf(
+      [["chat", announce("a")], ...pair("a1", "chat", "a", "Do a1")],
+      [user, subagentCall("a1")],
     );
-    expect(live).toMatchObject({ background: true, result: null });
-    expect(loaded).toMatchObject({ background: true, result: null });
-    expect(done).toMatchObject({
-      background: false,
-      result: "Async work is done.",
-    });
-  });
-
-  it("takes a subagent's report from its hand-back, not its launch note", () => {
-    const [agent] = agentsOf(
-      [
-        subagent("a1", {
-          launched: true,
-          content: [
-            {
-              type: "content",
-              content: {
-                type: "text",
-                text: "Async agent launched successfully.",
-              },
-            },
-          ],
-        }),
-        tool({
-          parentId: "a1",
-          toolName: "Bash",
-          rawInput: { command: "sleep 30", description: "Wait" },
-        }),
-        tool({
-          parentId: "a1",
-          toolName: "SubagentHandback",
-          rawInput: { message: "Agent 3 done." },
-        }),
-      ],
-      false,
-    );
-    expect(agent.result).toBe("Agent 3 done.");
-    // The hand-back is the report, not one of its calls.
-    expect(agent.calls.map((call) => call.tool)).toEqual(["Bash"]);
-  });
-
-  it("keeps what a subagent said, message by message", () => {
-    const [agent] = agentsOf(
-      [
-        subagent("a1", {
-          said: [
-            { id: "m1", text: "Reading the docs." },
-            { id: "m2", text: "  " },
-            { id: "m3", text: "Waiting for the test run to finish.\n" },
-          ],
-        }),
-      ],
-      false,
-    );
-    expect(agent.said).toEqual([
-      "Reading the docs.",
-      "Waiting for the test run to finish.",
-    ]);
+    const agents = agentsOf(chat, subagents, true);
+    expect(agents.map((agent) => agent.id)).toEqual(["a"]);
   });
 
   it("finds no subagents for an agent that names no tools", () => {
-    expect(agentsOf([user, tool({ toolKind: "think" })], false)).toEqual([]);
+    const chat = {
+      sessionId: "chat",
+      blocks: [user, tool({ toolKind: "think" })],
+    };
+    expect(agentsOf(chat, [], false)).toEqual([]);
   });
 });
 

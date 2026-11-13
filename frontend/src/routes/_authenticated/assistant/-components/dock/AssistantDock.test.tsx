@@ -1,10 +1,19 @@
 import userEvent from "@testing-library/user-event";
+import { act, createRef } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PaneView } from "@/api/acp";
+import {
+  announce,
+  call,
+  chatOf,
+  FINISHED,
+  pair,
+  stateOf,
+} from "@/test/assistantSubagentFixture";
 import { render, screen } from "@/test/render";
 
-import AssistantDock from "./AssistantDock";
+import AssistantDock, { type AssistantDockHandle } from "./AssistantDock";
 
 const pane: PaneView = {
   conn: 1,
@@ -23,6 +32,8 @@ const activity = {
   agentLabel: "Claude Code",
   model: null,
   usage: null,
+  sessionId: "chat",
+  subagents: [],
   blocks: [
     {
       kind: "user" as const,
@@ -46,6 +57,7 @@ const props = (over: Partial<Parameters<typeof AssistantDock>[0]> = {}) => ({
   currentId: "s1",
   onDelete: vi.fn(),
   onSelect: vi.fn(),
+  onStopAgent: vi.fn(),
   pane: null,
   running: false,
   sessions: [{ sessionId: "s1", cwd: "/", title: "Full health check" }],
@@ -151,25 +163,19 @@ describe("AssistantDock", () => {
   });
 
   it("counts the subagents at work on a tab that opens them", async () => {
-    const working = {
-      ...activity,
-      blocks: [
-        ...activity.blocks,
-        {
-          kind: "tool" as const,
-          id: "t1",
-          toolCallId: "a1",
-          title: "Check the disks",
-          toolKind: "think",
-          toolName: "Agent",
-          status: "in_progress",
-          content: [],
-          rawInput: { description: "Check the disks" },
-        },
+    const { chat, subagents } = chatOf(
+      [
+        ["chat", announce("a", { title: "Check the disks" })],
+        ...pair("p1", "chat", "a", "Check them"),
+        ["a", call("c1", "Bash", { command: "lsblk" }, "pending")],
       ],
-    };
+      [activity.blocks[0]],
+    );
+    const working = { ...activity, ...chat };
     const { rerender } = render(
-      <AssistantDock {...props({ activity: working, running: true })} />,
+      <AssistantDock
+        {...props({ activity: { ...working, subagents }, running: true })}
+      />,
     );
     expect(tab("1 agent")).toHaveAttribute("aria-expanded", "false");
 
@@ -179,8 +185,55 @@ describe("AssistantDock", () => {
     // The card shows the agents, not the map.
     expect(tab("Activity")).toHaveAttribute("aria-expanded", "false");
 
-    rerender(<AssistantDock {...props({ activity: working })} />);
+    // Its state says when it is done, not the turn.
+    const done = chatOf([
+      ["chat", announce("a", { title: "Check the disks" })],
+      ["chat", stateOf("a", FINISHED)],
+    ]).subagents;
+    rerender(
+      <AssistantDock
+        {...props({
+          activity: { ...working, subagents: done },
+          running: true,
+        })}
+      />,
+    );
     expect(tab("0 agents")).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("opens the agents on one subagent when asked, and stops it from there", async () => {
+    const { chat, subagents } = chatOf(
+      [
+        ["chat", announce("a", { title: "Check the disks" })],
+        ...pair("p1", "chat", "a", "Check them"),
+        ["a", call("c1", "Bash", { command: "lsblk" }, "pending")],
+      ],
+      [activity.blocks[0]],
+    );
+    const ref = createRef<AssistantDockHandle>();
+    const onStopAgent = vi.fn();
+    render(
+      <AssistantDock
+        {...props({
+          activity: { ...activity, ...chat, subagents },
+          onStopAgent,
+          running: true,
+        })}
+        ref={ref}
+      />,
+    );
+    expect(card("Agents")).toBeNull();
+
+    // What a click on its name in the chat asks for.
+    act(() => ref.current?.showAgent("a"));
+    expect(card("Agents")).not.toBeNull();
+    expect(
+      screen.getByRole("heading", { name: "Check the disks" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Tool calls (1)")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Stop" }));
+    expect(onStopAgent).toHaveBeenCalledExactlyOnceWith("a");
   });
 
   it("moves between the map and the agents on one card", async () => {

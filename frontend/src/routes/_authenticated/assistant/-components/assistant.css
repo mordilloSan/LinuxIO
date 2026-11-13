@@ -382,6 +382,52 @@
   background: color-mix(in srgb, var(--app-palette-error-main), transparent 80%);
 }
 
+/* A message between the agent and a subagent: who it went to or came from,
+   then the prompt, closed, or the report. The calls a subagent made for a
+   message stand under it, one step in, on a rail of their own. */
+.assistant-message {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-6);
+  min-width: 0;
+}
+
+.assistant-message__head {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-6);
+  min-width: 0;
+  color: var(--app-palette-text-secondary);
+}
+
+.assistant-message__head > svg {
+  flex-shrink: 0;
+}
+
+.assistant-message .assistant-message__agent {
+  min-width: 0;
+  padding: 0 var(--app-space-4);
+  color: var(--app-palette-text-primary);
+  font: inherit;
+  font-weight: 600;
+  text-align: start;
+  text-transform: none;
+}
+
+.assistant-message__report {
+  padding-inline-start: var(--app-space-24);
+}
+
+.assistant-message__work {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-8);
+  min-width: 0;
+  margin-inline-start: var(--app-space-8);
+  padding-inline-start: var(--app-space-12);
+  border-inline-start: 2px solid var(--app-palette-divider);
+}
+
 /* Steps that only looked at the host read as a log on a rail: state, kind
    of step, then the command. A line opens to its input and output. */
 .assistant-log {

@@ -173,145 +173,172 @@ describe("applySessionUpdate", () => {
     expect(blocks[0]).toMatchObject({ toolName: "Bash", status: "completed" });
   });
 
-  it("keeps the subagent a call was made in, and what a subagent used", () => {
-    let blocks: TranscriptBlock[] = [];
-    blocks = applySessionUpdate(blocks, {
-      sessionUpdate: "tool_call",
-      toolCallId: "agent1",
-      title: "Check the disks",
-      kind: "think",
-      _meta: { claudeCode: { toolName: "Agent" } },
-    });
-    blocks = applySessionUpdate(blocks, {
-      sessionUpdate: "tool_call",
-      toolCallId: "c1",
-      title: "lsblk",
-      kind: "execute",
-      _meta: { claudeCode: { toolName: "Bash", parentToolUseId: "agent1" } },
-    });
-    // A later update of the child without its parent keeps it.
-    blocks = applySessionUpdate(blocks, {
-      sessionUpdate: "tool_call_update",
-      toolCallId: "c1",
-      status: "completed",
-      _meta: { claudeCode: { toolName: "Bash" } },
-    });
-    expect(blocks[1]).toMatchObject({ parentId: "agent1" });
-    expect(blocks[0]).toMatchObject({ parentId: undefined, totals: undefined });
-
-    // The response that ends the subagent's call carries its totals; one
-    // without all three numbers (a launch in the background) carries none.
-    blocks = applySessionUpdate(blocks, {
-      sessionUpdate: "tool_call_update",
-      toolCallId: "agent1",
-      _meta: {
-        claudeCode: {
-          toolName: "Agent",
-          toolResponse: {
-            status: "completed",
-            totalTokens: 73100,
-            totalToolUseCount: 5,
-            totalDurationMs: 78000,
-          },
-        },
-      },
-    });
-    blocks = applySessionUpdate(blocks, {
-      sessionUpdate: "tool_call_update",
-      toolCallId: "agent1",
-      status: "completed",
-      _meta: {
-        claudeCode: {
-          toolName: "Agent",
-          toolResponse: { status: "completed" },
-        },
-      },
-    });
-    expect(blocks[0]).toMatchObject({
-      status: "completed",
-      totals: { tokens: 73100, toolUses: 5, durationMs: 78000 },
-      launched: undefined,
-    });
-
-    // A response that says the subagent went to the background marks it.
-    blocks = applySessionUpdate(blocks, {
-      sessionUpdate: "tool_call",
-      toolCallId: "agent2",
-      title: "Wait",
-      _meta: {
-        claudeCode: {
-          toolName: "Agent",
-          toolResponse: { status: "async_launched", agentId: "x" },
-        },
-      },
-    });
-    expect(blocks[2]).toMatchObject({ launched: true, totals: undefined });
-  });
-
-  it("keeps what a subagent says and is told out of the chat", () => {
+  it("keeps text and thinking that carry the tag of a subagent call", () => {
+    // Claude Code's adapter leaves `parentToolUseId` on what a subagent's
+    // session sends. The blocks are that session's own, so nothing is routed
+    // by the tag.
     const meta = { claudeCode: { parentToolUseId: "agent1" } };
-    let blocks: TranscriptBlock[] = [];
-    blocks = applySessionUpdate(blocks, {
-      sessionUpdate: "tool_call",
-      toolCallId: "agent1",
-      title: "Split replication",
-      _meta: { claudeCode: { toolName: "Agent" } },
-    });
     const updates: acp.SessionUpdate[] = [
       {
-        sessionUpdate: "user_message_chunk",
-        content: {
-          type: "text",
-          text: "Split replication into its own service",
-        },
-        _meta: meta,
-      },
-      {
         sessionUpdate: "agent_thought_chunk",
-        content: { type: "text", text: "Hmm." },
+        content: text("Hmm."),
         _meta: meta,
       },
       {
         sessionUpdate: "agent_message_chunk",
         messageId: "m1",
-        content: { type: "text", text: "Reading " },
+        content: text("Reading the docs."),
         _meta: meta,
       },
       {
-        sessionUpdate: "agent_message_chunk",
-        messageId: "m1",
-        content: { type: "text", text: "the docs." },
-        _meta: meta,
-      },
-      {
-        sessionUpdate: "agent_message_chunk",
-        messageId: "m2",
-        content: { type: "text", text: "Waiting for the test run to finish." },
-        _meta: meta,
-      },
-      // Text of a subagent whose call the page never saw goes nowhere.
-      {
-        sessionUpdate: "agent_message_chunk",
-        content: { type: "text", text: "Lost" },
-        _meta: { claudeCode: { parentToolUseId: "unknown" } },
+        sessionUpdate: "tool_call",
+        toolCallId: "c1",
+        title: "lsblk",
+        kind: "execute",
+        _meta: { claudeCode: { toolName: "Bash", parentToolUseId: "agent1" } },
       },
     ];
-    for (const update of updates) blocks = applySessionUpdate(blocks, update);
-    expect(blocks).toHaveLength(1);
-    expect(blocks[0]).toMatchObject({
-      kind: "tool",
-      said: [
-        { id: "m1", text: "Reading the docs." },
-        { id: "m2", text: "Waiting for the test run to finish." },
-      ],
+    const blocks = updates.reduce<TranscriptBlock[]>(
+      (acc, update) => applySessionUpdate(acc, update),
+      [],
+    );
+    expect(blocks).toMatchObject([
+      { kind: "thought", text: "Hmm." },
+      { kind: "agent", text: "Reading the docs." },
+      { kind: "tool", toolCallId: "c1", toolName: "Bash" },
+    ]);
+  });
+
+  it("keeps a session message in one block per id", () => {
+    const prompt: acp.SessionUpdate = {
+      sessionUpdate: "session_message",
+      messageId: "agent1",
+      senderSessionId: "chat",
+      recipientSessionId: "child",
+      recipientMessageId: "agent1",
+      content: [text("Check the disks")],
+    };
+    let blocks = applySessionUpdate([], prompt, 1000, "chat");
+    expect(blocks).toMatchObject([
+      {
+        kind: "message",
+        messageId: "agent1",
+        senderSessionId: "chat",
+        recipientSessionId: "child",
+        text: "Check the disks",
+        outgoing: true,
+        at: 1000,
+      },
+    ]);
+    // The same message in the session that got it is not one it sent.
+    expect(applySessionUpdate([], prompt, 1000, "child")[0]).toMatchObject({
+      outgoing: false,
     });
 
-    // The agent's own text still goes to the chat.
-    blocks = applySessionUpdate(blocks, {
-      sessionUpdate: "agent_message_chunk",
-      content: { type: "text", text: "Started it." },
+    // The id again merges: what is left out stays, `null` clears.
+    const { id } = blocks[0];
+    blocks = applySessionUpdate(
+      blocks,
+      {
+        sessionUpdate: "session_message",
+        messageId: "agent1",
+        recipientSessionId: null,
+      },
+      2000,
+      "chat",
+    );
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toMatchObject({
+      id,
+      senderSessionId: "chat",
+      recipientSessionId: null,
+      text: "Check the disks",
+      outgoing: true,
+      at: 1000,
     });
-    expect(blocks[1]).toMatchObject({ kind: "agent", text: "Started it." });
+    blocks = applySessionUpdate(
+      blocks,
+      {
+        sessionUpdate: "session_message",
+        messageId: "agent1",
+        content: [text("Check"), text("every disk")],
+      },
+      undefined,
+      "chat",
+    );
+    expect(blocks[0]).toMatchObject({ text: "Check\n\nevery disk" });
+    blocks = applySessionUpdate(
+      blocks,
+      { sessionUpdate: "session_message", messageId: "agent1", content: null },
+      undefined,
+      "chat",
+    );
+    expect(blocks[0]).toMatchObject({ text: "" });
+
+    // A report the session got, and a reply with an id of its own.
+    blocks = applySessionUpdate(
+      blocks,
+      {
+        sessionUpdate: "session_message",
+        messageId: "agent1:reply",
+        senderSessionId: "child",
+        recipientSessionId: "chat",
+        content: [text("All good.")],
+      },
+      undefined,
+      "chat",
+    );
+    expect(blocks).toHaveLength(2);
+    expect(blocks[1]).toMatchObject({ outgoing: false, text: "All good." });
+  });
+
+  it("marks the message that begins a new step of the model", () => {
+    const message = (
+      messageId: string,
+      from: string,
+      to: string,
+    ): acp.SessionUpdate => ({
+      sessionUpdate: "session_message",
+      messageId,
+      senderSessionId: from,
+      recipientSessionId: to,
+      content: [text(messageId)],
+    });
+    const updates: acp.SessionUpdate[] = [
+      // Nothing came before it: a new step.
+      message("p1", "chat", "a"),
+      // Right after it: the model started both at once.
+      message("p2", "chat", "b"),
+      // A report is handed to the model; it begins nothing.
+      message("r1", "a", "chat"),
+      // After the report: the next step.
+      message("p3", "chat", "a"),
+      message("r3", "a", "chat"),
+      // While a call is open: beside it, in the step the call began.
+      { sessionUpdate: "tool_call", toolCallId: "c1", title: "c1" },
+      message("p4", "chat", "b"),
+    ];
+    const blocks = updates.reduce<TranscriptBlock[]>(
+      (acc, update) => applySessionUpdate(acc, update, undefined, "chat"),
+      appendUserMessage([], "go", []),
+    );
+    expect(
+      blocks.flatMap((b) =>
+        b.kind === "message" ? [[b.messageId, b.opensStep]] : [],
+      ),
+    ).toEqual([
+      ["p1", true],
+      ["p2", false],
+      ["r1", false],
+      ["p3", true],
+      ["r3", false],
+      ["p4", false],
+    ]);
+    // A call right after a sent message is the model's next step: a
+    // subagent sent to the background hands back at once.
+    expect(blocks.findLast((b) => b.kind === "tool")).toMatchObject({
+      opensStep: true,
+    });
   });
 
   it("times a call only when it is told the time", () => {

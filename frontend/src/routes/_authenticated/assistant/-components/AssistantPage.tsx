@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { type CSSProperties, useEffect, useState } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 
 import { type AssistantChatDefaults, useStreamMux } from "@/api";
 import { ASSISTANT_AGENTS, type AssistantAgentId } from "@/api/acp/agents";
@@ -27,7 +27,7 @@ import {
 } from "./assistant-store";
 import { buildPrompt } from "./attachments";
 import Composer from "./composer/Composer";
-import AssistantDock from "./dock/AssistantDock";
+import AssistantDock, { type AssistantDockHandle } from "./dock/AssistantDock";
 import PluginsDialog from "./plugins/PluginsDialog";
 import SidePanel, { SidePanelOpening } from "./session/SidePanel";
 import StatusLine from "./session/StatusLine";
@@ -62,6 +62,7 @@ export default function AssistantPage({
   const navigate = useNavigate();
   const agentEntry = ASSISTANT_AGENTS.find((entry) => entry.id === agent);
   const agentLabel = agentEntry?.label ?? agent;
+  const dockRef = useRef<AssistantDockHandle>(null);
   const [pluginsOpen, setPluginsOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{
     sessionId: string;
@@ -363,10 +364,12 @@ export default function AssistantPage({
           >
             <Transcript
               blocks={state.blocks}
+              onAgent={(id) => dockRef.current?.showAgent(id)}
               pendingToolCallId={
                 state.pending?.request.toolCall.toolCallId ?? null
               }
               sessionId={state.sessionId}
+              subagents={state.subagents}
             >
               {!ready ? (
                 <WidgetLoader label="Checking what is installed" />
@@ -390,6 +393,13 @@ export default function AssistantPage({
 
           {state.pending ? (
             <PermissionCard
+              // A subagent asks under its own name.
+              asker={
+                state.subagents.find(
+                  (child) =>
+                    child.sessionId === state.pending?.request.sessionId,
+                )?.title ?? null
+              }
               key={state.pending.request.toolCall.toolCallId}
               request={state.pending.request}
               onAnswer={(optionId) => assistantStore.answerPermission(optionId)}
@@ -434,7 +444,9 @@ export default function AssistantPage({
               sideShown
                 ? null
                 : {
+                    sessionId: state.sessionId,
                     blocks: state.blocks,
+                    subagents: state.subagents,
                     usage: state.usage,
                     agentLabel: agentLabel ?? "",
                     model: modelName(state.configOptions) ?? null,
@@ -449,7 +461,9 @@ export default function AssistantPage({
             onSelect={(sessionId) =>
               void assistantStore.selectSession(sessionId)
             }
+            onStopAgent={(id) => assistantStore.stopSubagent(id)}
             pane={pane}
+            ref={dockRef}
             running={status === "running"}
             sessions={state.sessions}
           />

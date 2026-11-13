@@ -104,6 +104,8 @@ describe("connectAssistant", () => {
       clientCapabilities: {
         auth: { terminal: true },
         session: { configOptions: { boolean: {} } },
+        // An agent that has subagents then sends each one as a session.
+        subagents: {},
       },
     });
   });

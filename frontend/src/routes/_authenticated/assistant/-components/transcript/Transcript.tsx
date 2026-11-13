@@ -8,10 +8,12 @@ import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import type { Attachment } from "../attachments";
 import AttachmentChip from "../composer/AttachmentChip";
 import { fmtTokens } from "../composer/ContextGauge";
+import { sentIn, type Subagent, workFor } from "../subagents";
 import DiffView from "./DiffView";
 import MarkdownBlock from "./MarkdownBlock";
 import { isReadOnlyCommand } from "./readOnlyCommand";
 import {
+  type MessageBlock,
   stringField,
   type ToolBlock,
   type TranscriptBlock,
@@ -241,6 +243,8 @@ function ToolLine({ block }: { block: ToolBlock }) {
   );
 }
 
+const NO_SUBAGENTS: readonly Subagent[] = [];
+
 // A long run of checks shows its newest lines; a button brings back the rest.
 const LOG_VISIBLE = 5;
 
@@ -312,16 +316,20 @@ function ChangeCard({ tools }: { tools: ToolBlock[] }) {
 type Row =
   | { key: string; block: TranscriptBlock }
   | { key: string; tools: ToolBlock[]; acting: boolean }
-  | { key: string; turn: TurnBlock };
+  | { key: string; turn: TurnBlock }
+  | { key: string; message: MessageBlock };
 
 /**
  * Consecutive tool blocks become runs: checks in a log, actions in a card,
  * each keyed by its first call. The call waiting for an answer is left out;
- * the permission card shows it. A turn that ran in this page ends in a footer.
+ * the permission card shows it. So is a subagent call with the id of a
+ * message the session sent (`sent`): the message stands for it. A turn that
+ * ran in this page ends in a footer.
  */
 function groupRows(
-  blocks: TranscriptBlock[],
+  blocks: readonly TranscriptBlock[],
   pendingToolCallId: string | null,
+  sent: ReadonlySet<string>,
 ): Row[] {
   const rows: Row[] = [];
   let run: ToolBlock[] = [];
@@ -338,12 +346,18 @@ function groupRows(
       rows.push({ key: block.id, turn: block });
       continue;
     }
+    if (block.kind === "message") {
+      flush();
+      rows.push({ key: block.id, message: block });
+      continue;
+    }
     if (block.kind !== "tool") {
       flush();
       rows.push({ key: block.id, block });
       continue;
     }
     if (block.toolCallId === pendingToolCallId) continue;
+    if (sent.has(block.toolCallId)) continue;
     const blockActs = actsOnHost(block);
     if (blockActs !== acting) flush();
     acting = blockActs;
@@ -464,10 +478,135 @@ function TranscriptRow({ block }: { block: TranscriptBlock }) {
   }
 }
 
+/** What the rows of a session and of its subagents are drawn with. */
+type Scope = {
+  subagents: readonly Subagent[];
+  pendingToolCallId: string | null;
+  onAgent?: (sessionId: string) => void;
+};
+
+/**
+ * A message between an agent and a subagent. One the session sent reads
+ * "Sent to" with the prompt closed, and the calls the subagent made for it
+ * stand under it as they run; what the subagent said stays in the Agents
+ * view. One it got is the subagent's report.
+ */
+function MessageRow({
+  message,
+  sent,
+  scope,
+}: {
+  message: MessageBlock;
+  /** The ids of the messages the session sent. */
+  sent: ReadonlySet<string>;
+  scope: Scope;
+}) {
+  const { subagents, onAgent } = scope;
+  const other = message.outgoing
+    ? message.recipientSessionId
+    : message.senderSessionId;
+  const child = subagents.find((entry) => entry.sessionId === other) ?? null;
+  const name = child ? (
+    <AppButton
+      className="assistant-message__agent"
+      color="inherit"
+      onClick={() => onAgent?.(child.sessionId)}
+      title="Show what this agent did"
+    >
+      {child.title ?? child.description ?? "subagent"}
+    </AppButton>
+  ) : (
+    <span>a subagent</span>
+  );
+  if (!message.outgoing) {
+    return (
+      <div className="assistant-message">
+        <div className="assistant-message__head">
+          <Icon aria-hidden icon="mdi:arrow-left-thin" width={16} />
+          {name}
+          <span>reported</span>
+        </div>
+        {message.text ? (
+          <div className="assistant-block assistant-message__report">
+            <MarkdownBlock text={message.text} />
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+  // Its calls, and the messages to the subagents it started in turn.
+  const work = child
+    ? workFor(child, message.messageId, sent).filter(
+        (block) =>
+          block.kind === "tool" ||
+          (block.kind === "message" &&
+            block.outgoing &&
+            subagents.some(
+              (entry) =>
+                entry.sessionId === block.recipientSessionId &&
+                entry.parentSessionId === child.sessionId,
+            )),
+      )
+    : [];
+  return (
+    <div className="assistant-message">
+      <div className="assistant-message__head">
+        <Icon aria-hidden icon="mdi:arrow-right-thin" width={16} />
+        <span>Sent to</span>
+        {name}
+      </div>
+      {message.text ? (
+        <details className="assistant-block assistant-block--thought">
+          <summary>Prompt</summary>
+          {message.text}
+        </details>
+      ) : null}
+      {child && work.length > 0 ? (
+        <div className="assistant-message__work">
+          <Rows blocks={work} scope={scope} sent={sentIn(child.blocks)} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function Rows({
+  blocks,
+  sent,
+  scope,
+}: {
+  blocks: readonly TranscriptBlock[];
+  sent: ReadonlySet<string>;
+  scope: Scope;
+}) {
+  return groupRows(blocks, scope.pendingToolCallId, sent).map((row) =>
+    "tools" in row ? (
+      row.acting ? (
+        <ChangeCard key={row.key} tools={row.tools} />
+      ) : (
+        <CheckLog key={row.key} tools={row.tools} />
+      )
+    ) : "turn" in row ? (
+      <TurnFooter key={row.key} turn={row.turn} />
+    ) : "message" in row ? (
+      <MessageRow
+        key={row.key}
+        message={row.message}
+        scope={scope}
+        sent={sent}
+      />
+    ) : (
+      <TranscriptRow key={row.key} block={row.block} />
+    ),
+  );
+}
+
 export default function Transcript({
   blocks,
   sessionId,
   pendingToolCallId = null,
+  subagents = NO_SUBAGENTS,
+  onAgent,
   label = "Conversation",
   children,
 }: {
@@ -475,6 +614,10 @@ export default function Transcript({
   sessionId?: string | null;
   /** The tool call a permission card is asking about, if any. */
   pendingToolCallId?: string | null;
+  /** The chat's subagents, whose calls stand under the messages to them. */
+  subagents?: readonly Subagent[];
+  /** Shows one subagent, by its session id. */
+  onAgent?: (sessionId: string) => void;
   label?: string;
   /** Shown in place of the rows while the conversation is empty. */
   children?: ReactNode;
@@ -490,21 +633,15 @@ export default function Transcript({
     >
       {/* The scroller spans the page; the column keeps lines readable. */}
       <div className="assistant__transcript-column">
-        {blocks.length === 0
-          ? children
-          : groupRows(blocks, pendingToolCallId).map((row) =>
-              "tools" in row ? (
-                row.acting ? (
-                  <ChangeCard key={row.key} tools={row.tools} />
-                ) : (
-                  <CheckLog key={row.key} tools={row.tools} />
-                )
-              ) : "turn" in row ? (
-                <TurnFooter key={row.key} turn={row.turn} />
-              ) : (
-                <TranscriptRow key={row.key} block={row.block} />
-              ),
-            )}
+        {blocks.length === 0 ? (
+          children
+        ) : (
+          <Rows
+            blocks={blocks}
+            scope={{ subagents, pendingToolCallId, onAgent }}
+            sent={sentIn(blocks)}
+          />
+        )}
       </div>
     </div>
   );

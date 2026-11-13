@@ -4,8 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 
+import type { SubagentState } from "../subagents";
 import MarkdownBlock from "../transcript/MarkdownBlock";
 import {
+  type AgentCall,
+  type AgentPart,
   type AgentRun,
   allAgents,
   formatElapsed,
@@ -18,10 +21,14 @@ import { formatMs } from "./workMap";
 import "../pane/pane.css";
 import "./agent-map.css";
 
-const STATUS_TEXT: Record<RunStatus, string> = {
-  run: "Running",
-  ok: "Finished",
-  err: "Failed",
+const STATE_TEXT: Record<SubagentState, string> = {
+  running: "Running",
+  waiting: "Waiting for you",
+  finished: "Finished",
+  stopped: "Stopped",
+  failed: "Failed",
+  ended: "Ended",
+  disconnected: "Disconnected",
 };
 
 /** The time now, ticking each second while `ticking` holds. */
@@ -35,14 +42,96 @@ function useNow(ticking: boolean) {
   return now;
 }
 
-/** How long a subagent has run, or took; null when that was not seen. */
+/**
+ * How long a subagent has run, or took, all its runs together; null when
+ * none was seen.
+ */
 function timeOf(agent: AgentRun, now: number): string | null {
-  if (agent.status === "run") {
-    return agent.startedAt === null
-      ? null
-      : formatElapsed(now - agent.startedAt);
+  if (agent.runningSince !== null) {
+    return formatElapsed((agent.ranMs ?? 0) + now - agent.runningSince);
   }
-  return agent.tookMs === null ? null : formatMs(agent.tookMs);
+  return agent.ranMs === null ? null : formatMs(agent.ranMs);
+}
+
+function Calls({ calls }: { calls: AgentCall[] }) {
+  return (
+    <ol className="agent-map__calls">
+      {calls.map((call) => {
+        const note =
+          call.status === "run"
+            ? "running"
+            : call.status === "err"
+              ? "failed"
+              : call.note && `(${call.note})`;
+        return (
+          <li
+            className={`agent-map__call agent-map__call--${call.status}`}
+            key={call.id}
+            title={[
+              call.full,
+              call.tookMs === null ? null : formatMs(call.tookMs),
+            ]
+              .filter((part) => part)
+              .join(" · ")}
+          >
+            <span className="agent-map__call-tool">{call.tool}</span>
+            <span
+              className={`agent-map__call-detail${call.code ? " agent-map__call-detail--code" : ""}`}
+            >
+              {call.detail}
+            </span>
+            {note ? <span className="agent-map__call-note">{note}</span> : null}
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+const numbered = (name: string, number: number | null) =>
+  number === null ? name : `${name} ${number}`;
+
+/** One stretch of what a subagent did: a prompt, calls, messages, a report. */
+function Part({ part }: { part: AgentPart }) {
+  switch (part.kind) {
+    case "prompt":
+      return (
+        <details className="agent-map__fold">
+          <summary>{numbered("Prompt", part.number)}</summary>
+          <p className="assistant-pane-text agent-map__quiet">{part.text}</p>
+        </details>
+      );
+    case "calls":
+      return (
+        <details className="agent-map__fold" open>
+          <summary>Tool calls ({part.calls.length})</summary>
+          <Calls calls={part.calls} />
+        </details>
+      );
+    case "messages":
+      return (
+        <details className="agent-map__fold">
+          <summary>Messages ({part.texts.length})</summary>
+          <div className="agent-map__quiet">
+            {part.texts.map((text, index) => (
+              // Messages are only ever added at the end.
+              <MarkdownBlock key={index} text={text} />
+            ))}
+          </div>
+        </details>
+      );
+    case "report":
+      return (
+        <section className="agent-map__section">
+          <AppTypography component="h4" fontWeight={600} variant="body2">
+            {numbered("Report", part.number)}
+          </AppTypography>
+          <div className="agent-map__quiet">
+            <MarkdownBlock text={part.text} />
+          </div>
+        </section>
+      );
+  }
 }
 
 function Dot({ status }: { status: RunStatus }) {
@@ -93,7 +182,7 @@ const plural = (count: number, one: string) =>
 /**
  * The chat's agents: the one the chat talks to, with the subagents it sent
  * off beside it and the ones they sent off under them. A subagent opens to
- * what it was asked, what it did and what it handed back.
+ * everything it was asked, did, said and reported, in the order it happened.
  */
 export default function AgentMap({
   agents,
@@ -101,6 +190,9 @@ export default function AgentMap({
   model,
   usage,
   running,
+  chosenId,
+  onChoose,
+  onStop,
   onMain,
 }: {
   agents: AgentRun[];
@@ -110,12 +202,16 @@ export default function AgentMap({
   usage: { used: number; size: number } | null;
   /** A turn is running. */
   running: boolean;
+  /** The subagent that is open; null shows them all. */
+  chosenId: string | null;
+  onChoose: (id: string | null) => void;
+  /** Stops a subagent that runs and can be stopped. */
+  onStop: (id: string) => void;
   /** Shows the activity map, where the main agent's work is drawn. */
   onMain: () => void;
 }) {
   const busy = runningAgents(agents);
   const now = useNow(busy > 0);
-  const [chosenId, setChosenId] = useState<string | null>(null);
   const everyone = allAgents(agents);
   // A chat switched under an open subagent goes back to the list.
   const chosen = everyone.find((agent) => agent.id === chosenId) ?? null;
@@ -136,23 +232,19 @@ export default function AgentMap({
     if (id !== null) nodes.current.get(id)?.focus();
   }, [shownId]);
 
-  const choose = (id: string) => setChosenId(id);
   const back = () => {
     returnTo.current = chosen?.id ?? null;
-    setChosenId(null);
+    onChoose(null);
   };
 
+  // A subagent named by its role alone says it once.
+  const typeOf = (agent: AgentRun) =>
+    agent.type === agent.label ? null : agent.type;
   const metaOf = (agent: AgentRun) =>
     [
-      agent.status === "run"
-        ? "running"
-        : agent.status === "err"
-          ? "failed"
-          : null,
-      agent.type,
-      agent.background ? "background" : null,
+      agent.state === "finished" ? null : STATE_TEXT[agent.state].toLowerCase(),
+      typeOf(agent),
       timeOf(agent, now),
-      agent.tokens === null ? null : `${formatTokens(agent.tokens)} tokens`,
     ]
       .filter((part) => part !== null)
       .join(" · ");
@@ -168,7 +260,7 @@ export default function AgentMap({
               if (node) nodes.current.set(agent.id, node);
               else nodes.current.delete(agent.id);
             }}
-            onClick={() => choose(agent.id)}
+            onClick={() => onChoose(agent.id)}
             status={agent.status}
             title="Show what this agent did"
           />
@@ -180,13 +272,14 @@ export default function AgentMap({
 
   if (chosen) {
     const time = timeOf(chosen, now);
-    const tokens =
-      chosen.tokens !== null
-        ? `${formatTokens(chosen.tokens)} tokens`
-        : chosen.status === "run"
-          ? null
-          : "tokens not reported";
-    const latest = chosen.said.at(-1) ?? null;
+    // No agent says what a subagent used.
+    const tokens = chosen.status === "run" ? null : "tokens not reported";
+    // What it said last, while it works; all of it is under Messages.
+    const last = chosen.parts.at(-1);
+    const latest =
+      chosen.status === "run" && last?.kind === "messages"
+        ? (last.texts.at(-1) ?? null)
+        : null;
     return (
       <div className="agent-map agent-map--detail">
         <AppButton
@@ -204,100 +297,49 @@ export default function AgentMap({
           <AppTypography component="h3" fontWeight={600}>
             {chosen.label}
           </AppTypography>
+          {chosen.canStop ? (
+            <AppButton
+              className="agent-map__stop"
+              keepTextOnMobile
+              onClick={() => onStop(chosen.id)}
+              size="small"
+              startIcon={<Icon icon="mdi:stop" width={16} />}
+            >
+              Stop
+            </AppButton>
+          ) : null}
         </div>
         <div className="agent-map__about assistant-pane-text--secondary">
           <p>
-            {[
-              STATUS_TEXT[chosen.status],
-              chosen.type,
-              chosen.model,
-              chosen.background ? "background" : null,
-            ]
+            {[STATE_TEXT[chosen.state], typeOf(chosen), chosen.model]
               .filter((part) => part !== null)
               .join(" · ")}
           </p>
+          {chosen.error ? <p>{chosen.error}</p> : null}
           <p>Started by {chosen.startedBy ?? "the main agent"}</p>
           {time || tokens ? (
             <p>{[time, tokens].filter((part) => part !== null).join(" · ")}</p>
           ) : null}
+          {chosen.cwd ? (
+            <p>
+              In <code>{chosen.cwd}</code>
+            </p>
+          ) : null}
         </div>
         {latest ? <p className="agent-map__latest">{latest}</p> : null}
-        {chosen.prompt ? (
-          <details className="agent-map__fold">
-            <summary>Prompt</summary>
-            <p className="assistant-pane-text agent-map__quiet">
-              {chosen.prompt}
-            </p>
-          </details>
-        ) : null}
-        <details className="agent-map__fold" open>
-          <summary>Tool calls ({chosen.calls.length})</summary>
-          {chosen.calls.length === 0 ? (
-            <p className="agent-map__quiet">
-              {chosen.status === "run" ? "Nothing yet." : "No calls seen."}
-            </p>
-          ) : (
-            <ol className="agent-map__calls">
-              {chosen.calls.map((call) => {
-                const note =
-                  call.status === "run"
-                    ? "running"
-                    : call.status === "err"
-                      ? "failed"
-                      : call.note && `(${call.note})`;
-                return (
-                  <li
-                    className={`agent-map__call agent-map__call--${call.status}`}
-                    key={call.id}
-                    title={[
-                      call.full,
-                      call.tookMs === null ? null : formatMs(call.tookMs),
-                    ]
-                      .filter((part) => part)
-                      .join(" · ")}
-                  >
-                    <span className="agent-map__call-tool">{call.tool}</span>
-                    <span
-                      className={`agent-map__call-detail${call.code ? " agent-map__call-detail--code" : ""}`}
-                    >
-                      {call.detail}
-                    </span>
-                    {note ? (
-                      <span className="agent-map__call-note">{note}</span>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ol>
-          )}
-        </details>
-        {chosen.said.length > 0 ? (
-          <details className="agent-map__fold">
-            <summary>Messages ({chosen.said.length})</summary>
-            <div className="agent-map__quiet">
-              {chosen.said.map((text, index) => (
-                // Messages are only ever added at the end.
-                <MarkdownBlock key={index} text={text} />
-              ))}
-            </div>
-          </details>
-        ) : null}
+        {chosen.parts.length === 0 ? (
+          <p className="agent-map__quiet">
+            {chosen.status === "run" ? "Nothing yet." : "Nothing seen."}
+          </p>
+        ) : (
+          chosen.parts.map((part) => <Part key={part.id} part={part} />)
+        )}
         {chosen.agents.length > 0 ? (
           <section className="agent-map__section">
             <AppTypography component="h4" fontWeight={600} variant="body2">
               Subagents
             </AppTypography>
             {tree(chosen.agents)}
-          </section>
-        ) : null}
-        {chosen.result ? (
-          <section className="agent-map__section">
-            <AppTypography component="h4" fontWeight={600} variant="body2">
-              Result
-            </AppTypography>
-            <div className="agent-map__quiet">
-              <MarkdownBlock text={chosen.result} />
-            </div>
           </section>
         ) : null}
       </div>

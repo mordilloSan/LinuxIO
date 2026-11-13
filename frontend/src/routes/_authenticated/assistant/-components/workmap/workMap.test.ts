@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
 
+import {
+  announce,
+  call,
+  chatOf,
+  FINISHED,
+  finish,
+  pair,
+  says,
+  type Sent,
+  stateOf,
+} from "@/test/assistantSubagentFixture";
+
 import type { ToolBlock, TranscriptBlock } from "../transcript/transcript";
 import {
   formatMs,
@@ -378,6 +390,215 @@ describe("summarize", () => {
       { kind: "user", id: "u2", text: "Again", attachments: [] },
     ];
     expect(summarize(blocks, true).tally.shell.open).toBe(0);
+  });
+
+  describe("with subagents", () => {
+    const user: TranscriptBlock = {
+      kind: "user",
+      id: "u1",
+      text: "Look at this host",
+      attachments: [],
+      at: 1000,
+      model: "Opus 5.5",
+    };
+    // Two subagents started at once, each with a call; then the first one is
+    // messaged again, works and reports again.
+    const sent = (at: (ms: number) => number | undefined): Sent[] => [
+      ["chat", announce("a"), at(1500)],
+      ...pair("p1", "chat", "a", "Read the OS release", at(1500)),
+      ["chat", announce("b"), at(1510)],
+      ...pair("p2", "chat", "b", "Read the hostname", at(1510)),
+      [
+        "a",
+        call("c1", "Read", { file_path: "/etc/os-release" }, "pending"),
+        at(2000),
+      ],
+      [
+        "b",
+        call("c2", "Read", { file_path: "/etc/hostname" }, "pending"),
+        at(2100),
+      ],
+      ["a", finish("c1"), at(2200)],
+      ["b", finish("c2"), at(2400)],
+      ...pair("h1", "a", "chat", "Debian.", at(3000)),
+      ["chat", stateOf("a", FINISHED), at(3000)],
+      ...pair("h2", "b", "chat", "host1.", at(3100)),
+      ["chat", stateOf("b", FINISHED), at(3100)],
+      ["chat", stateOf("a", { state: "running" }), at(4000)],
+      ...pair("p3", "chat", "a", "Run uptime", at(4000)),
+      [
+        "a",
+        call(
+          "c3",
+          "Bash",
+          { command: "uptime", description: "Show uptime" },
+          "pending",
+        ),
+        at(4100),
+      ],
+      ["a", finish("c3"), at(4200)],
+      ...pair("h3", "a", "chat", "Up 3 days.", at(4300)),
+      ["chat", stateOf("a", FINISHED), at(4300)],
+      ["chat", says("Done.")],
+    ];
+    const turnEnd: TranscriptBlock = {
+      kind: "turn",
+      id: "e1",
+      durationMs: 4000,
+      usage: null,
+      at: 5000,
+    };
+    const rowsOf = (rows: WorkRow[]) =>
+      rows.map((row) => [row.station, row.label, row.status, row.times]);
+
+    it("counts a subagent's calls at their stations, and no model step for them", () => {
+      const { chat, subagents } = chatOf(
+        sent((ms) => ms),
+        [user],
+      );
+      const { rows, tally } = summarize(
+        [...chat.blocks, turnEnd],
+        false,
+        subagents,
+      );
+      expect(rowsOf(rows)).toEqual([
+        ["you", "answer ready", "ok", 1],
+        ["model", "opus 5.5 · step 3", "ok", 1],
+        ["shell", "Show uptime", "ok", 1],
+        // The second message to a subagent is the model's doing: a step.
+        ["model", "opus 5.5 · step 2", "ok", 1],
+        // Both subagents' reads, in the order they were seen.
+        ["files", "etc/hostname", "ok", 2],
+        // One row for each subagent, not for each message to it.
+        ["agents", "Agent b", "ok", 2],
+        ["model", "opus 5.5 · step 1", "ok", 1],
+        ["you", "new message", "ok", 1],
+      ]);
+      expect(tally.files).toMatchObject({
+        count: 2,
+        seen: { out: 2, back: 2 },
+      });
+      expect(tally.shell.count).toBe(1);
+      // Three steps of the chat's model, however much its subagents did.
+      expect(tally.model.count).toBe(3);
+      // Two subagents, three runs seen: the first one ran twice.
+      expect(tally.agents).toMatchObject({
+        count: 2,
+        open: 0,
+        seen: { out: 3, back: 3 },
+      });
+      // A subagent's time is that of its runs, both of the first one's.
+      const agents = rows.find((row) => row.station === "agents");
+      expect(agents?.tookMs).toBe(1500 + 300 + 1590);
+      // The steps run from what the model was handed to what it did next.
+      expect(
+        rows.filter((row) => row.station === "model").map((row) => row.tookMs),
+      ).toEqual([700, 900, 500]);
+    });
+
+    it("puts a subagent's rows after the message that started them in a chat that was loaded", () => {
+      const { chat, subagents } = chatOf(
+        sent(() => undefined),
+        [{ ...user, at: undefined }],
+      );
+      const { rows, tally } = summarize(chat.blocks, false, subagents);
+      expect(rowsOf(rows)).toEqual([
+        ["model", "opus 5.5 · step 3", "ok", 1],
+        ["shell", "Show uptime", "ok", 1],
+        ["model", "opus 5.5 · step 2", "ok", 1],
+        ["files", "etc/hostname", "ok", 1],
+        ["agents", "Agent b", "ok", 1],
+        ["files", "etc/os-release", "ok", 1],
+        ["agents", "Agent a", "ok", 1],
+        ["model", "opus 5.5 · step 1", "ok", 1],
+        ["you", "new message", "ok", 1],
+      ]);
+      // Nothing was seen happening.
+      expect(tally.agents).toMatchObject({
+        count: 2,
+        seen: { out: 0, back: 0 },
+      });
+    });
+
+    it("says which subagents and which of their calls run", () => {
+      const { chat, subagents } = chatOf(sent((ms) => ms).slice(0, 8), [user]);
+      const { rows, tally, now } = summarize(chat.blocks, true, subagents);
+      expect(tally.agents).toMatchObject({ count: 2, open: 2 });
+      expect(tally.files).toMatchObject({ count: 2, open: 2 });
+      expect(rowsOf(rows).slice(0, 4)).toEqual([
+        ["files", "etc/hostname", "run", 1],
+        ["files", "etc/os-release", "run", 1],
+        ["agents", "Agent b", "run", 1],
+        ["agents", "Agent a", "run", 1],
+      ]);
+      expect(now).toBe("Files: etc/hostname and 3 more");
+      // The model waits for them: it has no step of its own going.
+      expect(
+        rows.some((row) => row.station === "model" && row.status === "run"),
+      ).toBe(false);
+    });
+
+    it("counts a failed subagent as a fault", () => {
+      const { chat, subagents } = chatOf(
+        [
+          ["chat", announce("a"), 1500],
+          ...pair("p1", "chat", "a", "Go", 1500),
+          [
+            "chat",
+            stateOf("a", {
+              state: "idle",
+              stopReason: "error",
+              error: { code: 1, message: "Boom" },
+            }),
+            2000,
+          ],
+        ],
+        [user],
+      );
+      const { rows, tally } = summarize(chat.blocks, true, subagents);
+      expect(tally.agents).toMatchObject({
+        faults: 1,
+        seen: { out: 1, back: 1, failed: 1 },
+      });
+      expect(rows.find((row) => row.station === "agents")?.status).toBe("err");
+    });
+
+    it("draws one subagent for a launch a permission request showed", () => {
+      const launch = tool({
+        toolCallId: "p1",
+        toolName: "Agent",
+        rawInput: { description: "Agent a" },
+      });
+      const { chat, subagents } = chatOf(
+        [["chat", announce("a")], ...pair("p1", "chat", "a", "Go")],
+        [user, launch],
+      );
+      const { rows, tally } = summarize(chat.blocks, false, subagents);
+      expect(tally.agents.count).toBe(1);
+      expect(rows.filter((row) => row.station === "agents")).toHaveLength(1);
+    });
+
+    it("still counts a subagent no message of the chat leads to", () => {
+      const { chat, subagents } = chatOf(
+        [
+          ["chat", announce("a")],
+          ["a", call("c1", "Read", { file_path: "/etc/fstab" })],
+        ],
+        [user],
+      );
+      const { tally } = summarize(chat.blocks, false, subagents);
+      expect(tally.agents.count).toBe(1);
+      expect(tally.files.count).toBe(1);
+    });
+
+    it("counts a subagent call that reaches the chat as before", () => {
+      const { tally, rows } = summarize(
+        [user, tool({ toolName: "Agent", rawInput: { description: "Split" } })],
+        false,
+      );
+      expect(tally.agents.count).toBe(1);
+      expect(rows[0]).toMatchObject({ station: "agents", label: "Split" });
+    });
   });
 
   it("keeps only the latest rows", () => {

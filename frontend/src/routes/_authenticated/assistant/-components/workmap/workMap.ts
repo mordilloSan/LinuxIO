@@ -8,6 +8,7 @@
  * (https://github.com/alexeyw/lot-map), used under the MIT licence recorded
  * in docs/THIRD_PARTY_NOTICES.md.
  */
+import { isActive, sentIn, type Subagent, workFor } from "../subagents";
 import {
   stringField,
   type ToolBlock,
@@ -348,6 +349,8 @@ type Entry = WorkRow & {
   plain: boolean;
   /** When it was seen happening, for the route. */
   at: number | undefined;
+  /** A subagent, or a call one made: not one of the chat's own blocks. */
+  sub?: boolean;
 };
 
 /** Finished calls in a row at one station read as one row, the newest. */
@@ -366,7 +369,26 @@ function fold(entries: readonly Entry[]): WorkRow[] {
     if (rows.length === ROWS) break;
     rows.push({ ...entry });
   }
-  return rows.map(({ plain: _plain, at: _at, ...row }) => row);
+  return rows.map(({ plain: _plain, at: _at, sub: _sub, ...row }) => row);
+}
+
+/**
+ * The entries in the order they were seen: what the subagents did goes
+ * among the chat's own entries by its time. The chat's own keep the order of
+ * its blocks, and an entry that carries no time (a chat that was loaded)
+ * stays where it stands, after the one before it.
+ */
+function inOrderSeen(entries: readonly Entry[]): Entry[] {
+  let before = 0;
+  let own = 0;
+  return entries
+    .map((entry) => {
+      before = entry.at ?? before;
+      if (!entry.sub) before = own = Math.max(own, before);
+      return { entry, at: before };
+    })
+    .sort((a, b) => a.at - b.at)
+    .map(({ entry }) => entry);
 }
 
 function routeOf(entries: readonly Entry[]): WorkSummary["route"] {
@@ -395,10 +417,13 @@ export const liveFrom = (
 /**
  * `running` says a turn is live: only then is a call that has not ended
  * still running, and is the model at work whenever none of its calls is.
+ * A subagent's calls count at their stations like the chat's own, and stand
+ * after the message that set them off; the steps are the chat's model's only.
  */
 export function summarize(
   blocks: readonly TranscriptBlock[],
   running: boolean,
+  subagents: readonly Subagent[] = [],
 ): WorkSummary {
   const tally = Object.fromEntries(
     STATIONS.map((station) => [
@@ -444,6 +469,94 @@ export function summarize(
     if (at !== undefined) tally.model.seen.back++;
   };
 
+  // A call, the chat's or a subagent's (`sub`); `runs` says it still runs.
+  const call = (block: ToolBlock, runs: boolean, sub = false) => {
+    const id = stationOf(block);
+    const station = tally[id];
+    const failed = block.status === "failed";
+    station.count++;
+    if (runs) station.open++;
+    if (failed) station.faults++;
+    if (block.startedAt !== undefined) station.seen.out++;
+    if (block.endedAt !== undefined) {
+      station.seen.back++;
+      if (failed) station.seen.failed++;
+    }
+    entries.push({
+      id: block.id,
+      station: id,
+      label: labelOf(block),
+      status: runs ? "run" : failed ? "err" : "ok",
+      times: 1,
+      tookMs: span(block.startedAt, block.endedAt),
+      plain: !runs && !failed,
+      at: block.startedAt ?? block.endedAt,
+      sub,
+    });
+  };
+
+  const drawn = new Set<Subagent>();
+  const subagent = (child: Subagent, at: number | undefined) => {
+    drawn.add(child);
+    const station = tally.agents;
+    const active = isActive(child.state);
+    const failed = child.state === "failed";
+    const closed = child.runs.filter((run) => run.endedAt !== null);
+    station.count++;
+    if (active) station.open++;
+    if (failed) station.faults++;
+    station.seen.out += child.runs.length;
+    station.seen.back += closed.length;
+    if (failed && closed.length > 0) station.seen.failed++;
+    entries.push({
+      id: child.sessionId,
+      station: "agents",
+      label: child.title ?? child.description ?? "subagent",
+      status: active ? "run" : failed ? "err" : "ok",
+      times: 1,
+      tookMs:
+        closed.length === 0
+          ? null
+          : closed.reduce(
+              (sum, run) =>
+                sum + (span(run.startedAt, run.endedAt ?? undefined) ?? 0),
+              0,
+            ),
+      plain: !active && !failed,
+      at: child.runs[0]?.startedAt ?? at,
+      sub: true,
+    });
+  };
+  // What a subagent did: its calls, and the subagents it started in turn.
+  const work = (child: Subagent, list: readonly TranscriptBlock[]) => {
+    const sent = sentIn(child.blocks);
+    const active = isActive(child.state);
+    for (const block of list) {
+      if (block.kind === "tool") {
+        // A subagent call with the id of a message was shown by a permission
+        // request: the subagent it started stands for it.
+        if (!sent.has(block.toolCallId)) {
+          call(block, !toolEnded(block.status) && active, true);
+        }
+      } else if (block.kind === "message" && block.outgoing) {
+        started(block.recipientSessionId, block.messageId, block.at, sent);
+      }
+    }
+  };
+  // A message a session sent: to a subagent, it sets that subagent's work off.
+  const started = (
+    recipient: string | null,
+    messageId: string,
+    at: number | undefined,
+    sent: ReadonlySet<string>,
+  ) => {
+    const child = subagents.find((entry) => entry.sessionId === recipient);
+    if (!child) return;
+    if (!drawn.has(child)) subagent(child, at);
+    work(child, workFor(child, messageId, sent));
+  };
+  const sent = sentIn(blocks);
+
   blocks.forEach((block, index) => {
     switch (block.kind) {
       case "user": {
@@ -488,34 +601,26 @@ export function summarize(
         break;
       }
       case "tool": {
+        if (sent.has(block.toolCallId)) break;
         if (block.opensStep && !open) openStep(`${block.id}:step`);
         closeStep(block.startedAt ?? block.endedAt);
-        const id = stationOf(block);
-        const station = tally[id];
-        const ended = toolEnded(block.status);
-        const failed = block.status === "failed";
-        const runs = !ended && index >= live;
-        station.count++;
-        if (runs) station.open++;
-        if (failed) station.faults++;
-        if (block.startedAt !== undefined) station.seen.out++;
+        call(block, !toolEnded(block.status) && index >= live);
         if (block.endedAt !== undefined) {
-          station.seen.back++;
-          if (failed) station.seen.failed++;
           handedAt = Math.max(handedAt ?? 0, block.endedAt);
         }
-        entries.push({
-          id: block.id,
-          station: id,
-          label: labelOf(block),
-          status: runs ? "run" : failed ? "err" : "ok",
-          times: 1,
-          tookMs: span(block.startedAt, block.endedAt),
-          plain: !runs && !failed,
-          at: block.startedAt ?? block.endedAt,
-        });
         break;
       }
+      case "message":
+        if (block.outgoing) {
+          // Sending it is the model's doing, as a call is.
+          if (block.opensStep && !open) openStep(`${block.id}:step`);
+          closeStep(block.at);
+          started(block.recipientSessionId, block.messageId, block.at, sent);
+        } else if (block.at !== undefined) {
+          // A report is handed to the model, like the result of a call.
+          handedAt = Math.max(handedAt ?? 0, block.at);
+        }
+        break;
       case "turn":
         closeStep(block.at);
         if (block.at !== undefined) tally.you.seen.out++;
@@ -534,6 +639,13 @@ export function summarize(
     }
   });
 
+  // A subagent no message of the chat leads to still counts, with its work.
+  for (const child of subagents) {
+    if (drawn.has(child)) continue;
+    subagent(child, undefined);
+    work(child, child.blocks);
+  }
+
   if (running) {
     const waiting = STATIONS.some(({ id }) => tally[id].open > 0);
     // With every call back and nothing said yet, the model has its next step.
@@ -546,15 +658,16 @@ export function summarize(
     }
   }
 
-  const going = entries.filter((entry) => entry.status === "run");
+  const seen = inOrderSeen(entries);
+  const going = seen.filter((entry) => entry.status === "run");
   const top = going[going.length - 1];
   return {
     tally,
-    rows: fold(entries),
+    rows: fold(seen),
     now: top
       ? `${LABEL[top.station]}: ${top.label}${going.length > 1 ? ` and ${going.length - 1} more` : ""}`
       : null,
-    route: routeOf(entries),
+    route: routeOf(seen),
     total:
       entries.length +
       STATIONS.reduce((sum, { id }) => sum + tally[id].seen.back, 0),
