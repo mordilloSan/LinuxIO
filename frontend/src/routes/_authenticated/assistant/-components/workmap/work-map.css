@@ -473,6 +473,55 @@
   list-style: none;
 }
 
+/* One line each, cut at the card's edge, so nothing wraps and moves the rows
+   about while the work goes on. */
+.work-map .work-map__now {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.work-map__row {
+  display: flex;
+  gap: 1ch;
+  align-items: baseline;
+}
+
+.work-map__row-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.work-map__row-text--whole {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* The time keeps a column at the right; `running` sets its least width, a
+   longer time widens its own row. */
+.work-map__row-time {
+  flex: none;
+  min-width: 7ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.work-map .work-map__row-open {
+  flex: none;
+  min-width: 0;
+  padding: 0 0.25ch;
+  font: inherit;
+  line-height: inherit;
+}
+
+.work-map .work-map__row-open:focus-visible {
+  outline: 2px solid var(--wm-main);
+  outline-offset: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .work-map__leg,
   .work-map__leg-line--head,

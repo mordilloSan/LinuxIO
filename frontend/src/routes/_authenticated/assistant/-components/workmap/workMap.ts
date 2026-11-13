@@ -94,7 +94,10 @@ export interface WorkRow {
   status: "run" | "ok" | "err" | "switch";
   /** How many finished calls in a row at one station the row stands for. */
   times: number;
-  /** How long it took, where that was seen happening. */
+  /**
+   * How long it took, where that was seen happening; 0 for a moment, such as
+   * a message arriving, which takes no time.
+   */
   tookMs: number | null;
 }
 
@@ -318,16 +321,22 @@ export const ROW_TEXT =
   "assistant-pane-text assistant-pane-text--mono assistant-pane-text--small";
 // The feed's second column fits the longest station name.
 const COLUMN = Math.max(8, ...STATIONS.map((station) => station.label.length));
+/** A label longer than this may not fit the card, so its row can be opened. */
+export const LONG_LABEL = 28;
 
-/** A row of the feed: `· Files     disks/lsblk.go  +2  1.2 s`. */
-export function rowText(row: WorkRow): string {
-  const took =
-    row.status === "run"
-      ? "running"
-      : row.tookMs !== null && row.tookMs > 0
-        ? formatMs(row.tookMs)
-        : "";
-  return `${MARK[row.status]} ${stationLabel(row.station).padEnd(COLUMN)} ${row.label}${row.times > 1 ? `  +${row.times - 1}` : ""}${took === "" ? "" : `  ${took}`}`;
+/** A row of the feed without its time: `· Files    disks/lsblk.go  +2`. */
+export function rowLine(row: WorkRow): string {
+  return `${MARK[row.status]} ${stationLabel(row.station).padEnd(COLUMN)} ${row.label}${row.times > 1 ? `  +${row.times - 1}` : ""}`;
+}
+
+/**
+ * The time column of a row: `running`, how long it took, `—` for a moment,
+ * and nothing where its time was not seen.
+ */
+export function rowTime(row: WorkRow): string {
+  if (row.status === "run") return "running";
+  if (row.tookMs === null) return "";
+  return row.tookMs > 0 ? formatMs(row.tookMs) : "—";
 }
 
 /** How long from one time to another, when both were seen. */
@@ -450,7 +459,7 @@ export function summarize(
           label: "new message",
           status: "ok",
           times: 1,
-          tookMs: null,
+          tookMs: 0,
           plain: true,
           at: block.at,
         });
@@ -462,7 +471,7 @@ export function summarize(
             label: `${model} → ${next}`,
             status: "switch",
             times: 1,
-            tookMs: null,
+            tookMs: 0,
             plain: false,
             at: block.at,
           });
@@ -516,7 +525,8 @@ export function summarize(
           label: "answer ready",
           status: "ok",
           times: 1,
-          tookMs: null,
+          // The whole turn, from the prompt being sent, as under the answer.
+          tookMs: block.at === undefined ? null : block.durationMs,
           plain: false,
           at: block.at,
         });

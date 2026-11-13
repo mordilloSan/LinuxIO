@@ -4,9 +4,12 @@ import type { ToolBlock, TranscriptBlock } from "../transcript/transcript";
 import {
   formatMs,
   labelOf,
+  rowLine,
+  rowTime,
   shellStation,
   stationOf,
   summarize,
+  type WorkRow,
 } from "./workMap";
 
 let next = 0;
@@ -153,6 +156,31 @@ describe("formatMs", () => {
   });
 });
 
+describe("rowLine and rowTime", () => {
+  const row = (over: Partial<WorkRow> = {}): WorkRow => ({
+    id: "r1",
+    station: "files",
+    label: "disks/lsblk.go",
+    status: "ok",
+    times: 1,
+    tookMs: 1200,
+    ...over,
+  });
+
+  it("writes the row's words apart from its time", () => {
+    expect(rowLine(row({ times: 3 }))).toBe("· Files    disks/lsblk.go  +2");
+    expect(rowTime(row())).toBe("1.2 s");
+  });
+
+  it.each([
+    ["running", row({ status: "run", tookMs: null }), "running"],
+    ["a moment", row({ tookMs: 0 }), "—"],
+    ["a time not seen", row({ tookMs: null }), ""],
+  ])("gives %s its time", (_name, given, time) => {
+    expect(rowTime(given)).toBe(time);
+  });
+});
+
 describe("summarize", () => {
   // One turn seen happening: a prompt, a step with two calls side by side, a
   // step with a call that failed, and the answer.
@@ -219,7 +247,8 @@ describe("summarize", () => {
         row.tookMs,
       ]),
     ).toEqual([
-      ["you", "answer ready", "ok", 1, null],
+      // The whole turn, from the prompt being sent.
+      ["you", "answer ready", "ok", 1, 8000],
       // From the failed call's return to the end of the turn.
       ["model", "opus 5.5 · step 3", "ok", 1, 3800],
       ["network", "Fetch docs", "err", 1, 200],
@@ -229,7 +258,8 @@ describe("summarize", () => {
       ["shell", "Query SMART", "ok", 2, 590],
       // From the prompt to the first call.
       ["model", "opus 5.5 · step 1", "ok", 1, 2000],
-      ["you", "new message", "ok", 1, null],
+      // A message arriving takes no time.
+      ["you", "new message", "ok", 1, 0],
     ]);
   });
 
@@ -251,7 +281,16 @@ describe("summarize", () => {
       endedAt: undefined,
     })) as TranscriptBlock[];
     const { rows, route, tally } = summarize(loaded, false);
-    expect(rows.every((row) => row.tookMs === null)).toBe(true);
+    // Only the message, which takes no time, has one.
+    expect(rows.map((row) => row.tookMs)).toEqual([
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      0,
+    ]);
     expect(route).toEqual([]);
     expect(tally.shell).toMatchObject({
       count: 2,

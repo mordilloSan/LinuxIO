@@ -1,3 +1,4 @@
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { render, screen, within } from "@/test/render";
@@ -46,8 +47,14 @@ const draw = (over: Partial<Parameters<typeof WorkMap>[0]> = {}) =>
     />,
   );
 
+// Each row as its words and its time.
 const lines = () =>
-  screen.getAllByRole("listitem").map((row) => row.textContent);
+  screen
+    .getAllByRole("listitem")
+    .map((row) => [
+      row.querySelector(".work-map__row-text")?.textContent,
+      row.querySelector(".work-map__row-time")?.textContent,
+    ]);
 
 describe("WorkMap", () => {
   it("names the picture by where the work went", () => {
@@ -75,27 +82,81 @@ describe("WorkMap", () => {
     expect(within(picture).getByText("CLAUDE")).toBeInTheDocument();
     expect(within(picture).getByText("opus 5.5")).toBeInTheDocument();
     expect(within(picture).getByText("45%")).toBeInTheDocument();
-    expect(
-      screen.getByText("Nothing is running. · context 45%"),
-    ).toBeInTheDocument();
+    // The line under it says only what runs.
+    expect(screen.getByText("Nothing is running.")).toBeInTheDocument();
   });
 
-  it("leaves the context out until the agent reports it", () => {
-    draw();
-    expect(screen.queryByText(/context/)).toBeNull();
-    expect(screen.getByText("Nothing is running.")).toBeInTheDocument();
+  it("draws no context ring until the agent reports the context", () => {
+    const { container } = draw();
+    expect(container.querySelector(".work-map__gauge")).toBeNull();
   });
 
   it("lists what happened, newest first, with how long it took", () => {
     draw();
     expect(lines()).toEqual([
-      "✕ Shell    Restart nginx  1.4 s",
+      ["✕ Shell    Restart nginx", "1.4 s"],
       // From the first call's return to the second call.
-      "· Model    step 2  887 ms",
-      "· Files    Read fstab  113 ms",
-      "· Model    step 1",
-      "· You      new message",
+      ["· Model    step 2", "887 ms"],
+      ["· Files    Read fstab", "113 ms"],
+      // The prompt was not seen, so the step was not timed.
+      ["· Model    step 1", ""],
+      // A message arriving takes no time.
+      ["· You      new message", "—"],
     ]);
+  });
+
+  it("shows how long the whole turn took on the answer's row", () => {
+    const turn = [
+      ...blocks,
+      { kind: "turn", id: "e1", durationMs: 8000, usage: null, at: 9000 },
+    ] as TranscriptBlock[];
+    draw({ summary: summarize(turn, false) });
+    expect(lines()[0]).toEqual(["· You      answer ready", "8.0 s"]);
+  });
+
+  it("opens a row with a long label to read it whole, one at a time", async () => {
+    const long = (id: string, title: string) =>
+      ({
+        ...blocks[1],
+        id,
+        toolCallId: id,
+        title,
+      }) as TranscriptBlock;
+    draw({
+      summary: summarize(
+        [
+          blocks[0],
+          long("t1", "Read /etc/systemd/system/linuxio.service"),
+          blocks[2],
+          long("t3", "Read /etc/systemd/system/linuxio-bridge.socket"),
+        ],
+        false,
+      ),
+    });
+    // The short row has nothing to open.
+    const open = screen.getAllByRole("button", { name: "Show the whole row" });
+    expect(open).toHaveLength(2);
+    const [newer, older] = open;
+    const whole = () =>
+      [...document.querySelectorAll(".work-map__row-text--whole")].map(
+        (text) => text.textContent,
+      );
+    expect(whole()).toEqual([]);
+
+    await userEvent.click(older);
+    expect(older).toHaveAttribute("aria-expanded", "true");
+    expect(whole()).toEqual([
+      "· Files    Read /etc/systemd/system/linuxio.service",
+    ]);
+
+    await userEvent.click(newer);
+    expect(older).toHaveAttribute("aria-expanded", "false");
+    expect(whole()).toEqual([
+      "· Files    Read /etc/systemd/system/linuxio-bridge.socket",
+    ]);
+
+    await userEvent.click(newer);
+    expect(whole()).toEqual([]);
   });
 
   it("says what is running", () => {
@@ -105,7 +166,7 @@ describe("WorkMap", () => {
     ] as TranscriptBlock[];
     draw({ running: true, summary: summarize(open, true) });
     expect(screen.getByText("Files: Read fstab")).toBeInTheDocument();
-    expect(lines()[0]).toBe("● Files    Read fstab  running");
+    expect(lines()[0]).toEqual(["● Files    Read fstab", "running"]);
   });
 
   it("says so when nothing has happened", () => {
