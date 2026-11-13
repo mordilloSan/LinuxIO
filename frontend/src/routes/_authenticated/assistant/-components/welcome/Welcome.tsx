@@ -13,11 +13,9 @@ import "./welcome.css";
  * one click away.
  */
 export default function Welcome({
-  agentLabel,
   alerts,
   onAsk,
 }: {
-  agentLabel: string;
   alerts: Alert[];
   onAsk: (prompt: string) => void;
 }) {
@@ -34,11 +32,7 @@ export default function Welcome({
             {alertCount} {alertCount === 1 ? "thing" : "things"} worth a look on
             this server
           </AppTypography>
-        ) : (
-          <AppTypography color="text.secondary">
-            Ask {agentLabel} anything about this host.
-          </AppTypography>
-        )}
+        ) : null}
         <AppTypography
           className="assistant-welcome__title"
           component="h1"

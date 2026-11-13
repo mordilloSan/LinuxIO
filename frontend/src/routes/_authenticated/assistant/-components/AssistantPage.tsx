@@ -376,7 +376,6 @@ export default function AssistantPage({
               ) : null}
               {state.status === "ready" ? (
                 <Welcome
-                  agentLabel={agentLabel ?? ""}
                   alerts={alerts}
                   onAsk={(prompt) =>
                     void assistantStore.send(buildPrompt(prompt, []), {

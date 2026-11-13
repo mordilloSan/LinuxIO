@@ -20,19 +20,17 @@ const alert = (over: Partial<Alert>): Alert => ({
 });
 
 describe("Welcome", () => {
-  it("introduces the agent when nothing needs a look", () => {
-    render(<Welcome agentLabel="Claude Code" alerts={[]} onAsk={vi.fn()} />);
+  it("shows no alert line when nothing needs a look", () => {
+    render(<Welcome alerts={[]} onAsk={vi.fn()} />);
     expect(
       screen.getByRole("heading", { name: "What should we look at?" }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText("Ask Claude Code anything about this host."),
-    ).toBeInTheDocument();
+    expect(screen.queryByText(/worth a look/)).toBeNull();
   });
 
   it("says how many alerts are worth a look", () => {
     const { rerender } = render(
-      <Welcome agentLabel="Claude Code" alerts={[alert({})]} onAsk={vi.fn()} />,
+      <Welcome alerts={[alert({})]} onAsk={vi.fn()} />,
     );
     expect(
       screen.getByText("1 thing worth a look on this server"),
@@ -40,7 +38,6 @@ describe("Welcome", () => {
 
     rerender(
       <Welcome
-        agentLabel="Claude Code"
         alerts={[alert({}), alert({ id: "a2", title: "Disk almost full" })]}
         onAsk={vi.fn()}
       />,
@@ -52,7 +49,7 @@ describe("Welcome", () => {
 
   it("asks the card's prompt when a card is clicked", async () => {
     const onAsk = vi.fn();
-    render(<Welcome agentLabel="Claude Code" alerts={[]} onAsk={onAsk} />);
+    render(<Welcome alerts={[]} onAsk={onAsk} />);
     await userEvent.click(
       screen.getByRole("button", { name: /Find failed services/ }),
     );

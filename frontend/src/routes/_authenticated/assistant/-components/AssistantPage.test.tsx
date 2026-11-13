@@ -307,9 +307,6 @@ describe("AssistantPage", () => {
     expect(
       await screen.findByRole("heading", { name: "What should we look at?" }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText("Ask Claude Code anything about this host."),
-    ).toBeInTheDocument();
     setState({
       blocks: [{ kind: "user", id: "1", text: "hi", attachments: [] }],
     });
