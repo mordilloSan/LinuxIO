@@ -444,6 +444,30 @@ describe("connectAssistant", () => {
     );
   });
 
+  it("tells the handler when the agent withdraws a permission request", async () => {
+    const agent = fakeAgent({ initialize: () => ({ protocolVersion: 1 }) });
+    const signals: AbortSignal[] = [];
+    const h = {
+      ...handlers(),
+      // Never answered: the user has not chosen yet.
+      onPermission: vi.fn((_request: unknown, signal?: AbortSignal) => {
+        if (signal) signals.push(signal);
+        return new Promise<never>(() => {});
+      }),
+    };
+    await connectAssistant("claude", h, agent.open);
+    agent.feed(
+      '{"jsonrpc":"2.0","id":98,"method":"session/request_permission","params":{"sessionId":"s1","toolCall":{"toolCallId":"t1","title":"Run ls"},"options":[]}}\n',
+    );
+    await vi.waitFor(() => expect(signals).toHaveLength(1));
+    expect(signals[0].aborted).toBe(false);
+    // Claude Code stopped the work that asked: the request is gone.
+    agent.feed(
+      '{"jsonrpc":"2.0","method":"$/cancel_request","params":{"requestId":98}}\n',
+    );
+    await vi.waitFor(() => expect(signals[0].aborted).toBe(true));
+  });
+
   it("opens without panes unless a pane handler is given", async () => {
     const agent = fakeAgent({ initialize: () => ({ protocolVersion: 1 }) });
     const open = vi.fn(agent.open);

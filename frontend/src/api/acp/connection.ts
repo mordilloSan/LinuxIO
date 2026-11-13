@@ -47,8 +47,14 @@ const LINUXIO_SYSTEM_PROMPT: acp.SystemPrompt = {
 
 export interface AssistantHandlers {
   onUpdate(notification: acp.SessionNotification): void;
+  /**
+   * `withdrawn` aborts when the agent takes the request back, which is not an
+   * answer: Claude Code does when it stops the work that asked. The agent no
+   * longer waits then, and drops whatever is answered.
+   */
   onPermission(
     request: acp.RequestPermissionRequest,
+    withdrawn?: AbortSignal,
   ): Promise<acp.RequestPermissionResponse>;
   onAuthStatus?(status: AuthStatus): void;
   onExit(exit: AssistantExit | null): void;
@@ -168,7 +174,7 @@ export async function connectAssistant(
   const connection = acp
     .client({ name: "linuxio" })
     .onRequest(acp.methods.client.session.requestPermission, (ctx) =>
-      handlers.onPermission(ctx.params),
+      handlers.onPermission(ctx.params, ctx.signal),
     )
     .onNotification(acp.methods.client.session.update, (ctx) => {
       handlers.onUpdate(ctx.params);
