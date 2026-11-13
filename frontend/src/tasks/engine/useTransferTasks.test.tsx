@@ -22,6 +22,12 @@ const toastMocks = vi.hoisted(() => ({
   info: vi.fn(),
   success: vi.fn(),
 }));
+const routerMocks = vi.hoisted(() => ({ navigate: vi.fn() }));
+
+vi.mock("@tanstack/react-router", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tanstack/react-router")>()),
+  useNavigate: () => routerMocks.navigate,
+}));
 
 vi.mock("@/api", async () => {
   const actual = await vi.importActual<typeof import("@/api")>("@/api");
@@ -139,6 +145,44 @@ describe("useTransferTasks batch results", () => {
     );
     expect(toastMocks.success).not.toHaveBeenCalled();
     expect(onComplete).toHaveBeenCalledOnce();
+  });
+
+  it("offers the real folder when a copy is refused for a link", async () => {
+    const { hook, streamOptions } = setupTransfer();
+    const refusal =
+      "forbidden: /dst/docs is a link to /mnt/data/docs. Open that folder to make this change";
+
+    await act(async () => {
+      await hook.result.current.startCopy({
+        sources: ["/src/a.txt"],
+        destination: "/dst/docs",
+      });
+    });
+    act(() => {
+      streamOptions[0]?.onSuccess?.({
+        total: 1,
+        succeeded: 0,
+        failed: [{ path: "/src/a.txt", error: refusal }],
+      });
+    });
+
+    expect(toastMocks.error).toHaveBeenCalledWith(
+      "Copied a.txt with 1 failure",
+      {
+        action: expect.objectContaining({ label: "Open the real folder" }),
+        description: `a.txt: ${refusal}`,
+        duration: 10_000,
+      },
+    );
+    const { action } = toastMocks.error.mock.calls[0][1] as {
+      action: { onClick: (event: unknown) => void };
+    };
+    action.onClick({});
+    expect(routerMocks.navigate).toHaveBeenCalledWith({
+      to: "/filebrowser/$",
+      params: { _splat: "mnt/data/docs" },
+      search: {},
+    });
   });
 
   it("sends keepBoth with the copy and move requests", async () => {

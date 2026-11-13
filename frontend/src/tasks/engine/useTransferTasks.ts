@@ -1,3 +1,4 @@
+import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 
@@ -24,6 +25,7 @@ import type {
   ExtractionStartOptions,
   TransferItem,
 } from "@/tasks/types";
+import { toastFileError } from "@/utils/linkRefusal";
 import { joinPath } from "@/utils/path";
 
 import type { BackgroundTaskRuntime } from "./useBackgroundTaskRuntime";
@@ -203,6 +205,7 @@ function progressLabel(
  */
 export function useTransferTasks(runtime: BackgroundTaskRuntime) {
   const { set: setTransfers, read: readTasks } = runtime.tasks.transfers;
+  const navigate = useNavigate();
   const activeTransferIdsRef = useRef<Set<string>>(new Set());
 
   // Progress frames arrive far faster than the UI needs to repaint (a fast
@@ -315,7 +318,9 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
         // Copy/move report per-item failures in the result; archives have none.
         const failed = batchFailures(result);
         if (failed.length > 0) {
-          toast.error(
+          toastFileError(
+            toast,
+            navigate,
             `${descriptor.done} ${labelBase} with ${failed.length} failure${failed.length === 1 ? "" : "s"}`,
             { description: describeBatchFailures(failed) },
           );
@@ -328,7 +333,9 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
         if (abortController.signal.aborted) {
           return;
         }
-        toast.error(
+        toastFileError(
+          toast,
+          navigate,
           error instanceof Error
             ? error.message
             : `${capitalize(descriptor.noun)} failed`,
@@ -373,7 +380,9 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
       task = await startTask();
     } catch (error) {
       pendingLocalTaskKeysRef.current.delete(pendingKey);
-      toast.error(
+      toastFileError(
+        toast,
+        navigate,
         error instanceof Error
           ? error.message
           : `Failed to start ${descriptor.noun}`,

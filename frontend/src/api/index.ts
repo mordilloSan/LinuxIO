@@ -14,6 +14,7 @@
 // === JSON API (generated type-safe endpoints) ===
 export { default as linuxio } from "./generated/client";
 export {
+  actionErrorMessage,
   CACHE_TTL_MS,
   invalidateOperationQueries,
   useCallMutation,

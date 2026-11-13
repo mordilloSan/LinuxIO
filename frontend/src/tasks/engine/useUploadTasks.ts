@@ -1,3 +1,4 @@
+import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 
 import {
@@ -15,6 +16,7 @@ import {
 import * as TaskTypes from "@/tasks/taskTypes";
 import { taskIdentityKey } from "@/tasks/taskUtils";
 import type { Upload } from "@/tasks/types";
+import { toastFileError } from "@/utils/linkRefusal";
 
 import type { BackgroundTaskRuntime } from "./useBackgroundTaskRuntime";
 
@@ -38,6 +40,7 @@ export function useUploadTasks(
   getChunkSize: () => number,
 ) {
   const { set: setUploads, read: readTasks } = runtime.tasks.uploads;
+  const navigate = useNavigate();
   const {
     activeFileTransferTaskIdsRef,
     pendingLocalTaskKeysRef,
@@ -446,7 +449,9 @@ export function useUploadTasks(
 
       if (failures.length > 0) {
         const first = failures[0];
-        toast.error(
+        toastFileError(
+          toast,
+          navigate,
           `Failed to upload ${failures.length} item${failures.length === 1 ? "" : "s"}: ${first.message}`,
         );
       }

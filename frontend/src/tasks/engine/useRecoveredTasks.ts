@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import {
   type Dispatch,
   type SetStateAction,
@@ -93,12 +94,13 @@ export function useRecoveredTasks(
   const { status: streamMuxStatus } = useStreamMux();
   const { run: runStreamResult } = useStreamResult();
   const { refreshCapabilities } = useAuth();
+  const navigate = useNavigate();
 
   // Per-type feedback (which terminal states toast, and how) lives in the
   // terminalTaskFeedback registry; this hook only reports outcomes to it.
   const feedbackDeps = useMemo(
-    () => ({ refreshCapabilities }),
-    [refreshCapabilities],
+    () => ({ navigate, refreshCapabilities }),
+    [navigate, refreshCapabilities],
   );
   const {
     tasks,

@@ -14,6 +14,7 @@ const { LinuxIOError } = await import("@/api");
 const {
   TASK_TYPE_DOCKER_UPDATE,
   TASK_TYPE_DOCKER_COMPOSE,
+  TASK_TYPE_FILE_DELETE_BATCH,
   TASK_TYPE_PACKAGE_UPDATE,
   TASK_TYPE_STORAGE_BTRFS_BALANCE,
   TASK_TYPE_STORAGE_BTRFS_SCRUB,
@@ -30,7 +31,10 @@ const {
   terminalSnapshotOutcome,
 } = await import("./terminalTaskFeedback");
 
-const deps = { refreshCapabilities: vi.fn(async () => undefined) };
+const deps = {
+  navigate: vi.fn(async () => undefined),
+  refreshCapabilities: vi.fn(async () => undefined),
+};
 
 function task(
   id: string,
@@ -278,6 +282,24 @@ describe("terminalTaskFeedback", () => {
       GENERIC_TASK_FEEDBACK,
     );
     expect(toastMocks.error).toHaveBeenCalledWith("disk full");
+  });
+
+  it("offers the real folder when the generic fallback reports a refused link", () => {
+    const refusal =
+      "forbidden: /home/a/docs is a link to /mnt/data/docs. Open that folder to make this change";
+    emitTerminalTaskFeedback(
+      task("delete-1", TASK_TYPE_FILE_DELETE_BATCH),
+      failed(refusal),
+      deps,
+      GENERIC_TASK_FEEDBACK,
+    );
+
+    expect(toastMocks.error).toHaveBeenCalledWith(
+      refusal,
+      expect.objectContaining({
+        action: expect.objectContaining({ label: "Open the real folder" }),
+      }),
+    );
   });
 
   it("emits nothing for unregistered types without an explicit entry", () => {

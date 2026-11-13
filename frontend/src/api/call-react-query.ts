@@ -144,6 +144,17 @@ const isUpdatePendingError = (error: unknown) =>
   Number(error.code) === 409 &&
   error.message.startsWith(UPDATE_PENDING_PREFIX);
 
+/**
+ * The text an action's error toast shows: the server's message, or fallback
+ * when it has none. The refusal of an update that waits reads as a sentence.
+ */
+export const actionErrorMessage = (error: unknown, fallback: string) =>
+  isUpdatePendingError(error)
+    ? (error as LinuxIOError).message
+        .slice(UPDATE_PENDING_PREFIX.length)
+        .trimStart()
+    : getMutationErrorMessage(error, fallback);
+
 /** Run a migrated Call as a TanStack mutation. */
 export function useCallMutation<R extends CallRoute>(
   endpoint: CallTarget<R>,
@@ -211,11 +222,7 @@ export function useActionMutation<TResult, TRequest = unknown>(
       if (typeof error === "function") {
         error(err, variables);
       } else if (error !== undefined) {
-        // The refusal of an update that waits reads as a sentence.
-        const message = isUpdatePendingError(err)
-          ? err.message.slice(UPDATE_PENDING_PREFIX.length).trimStart()
-          : getMutationErrorMessage(err, error);
-        toast.error(message, toastOpts);
+        toast.error(actionErrorMessage(err, error), toastOpts);
       }
       options?.onError?.(err, variables, onMutateResult, context);
     },

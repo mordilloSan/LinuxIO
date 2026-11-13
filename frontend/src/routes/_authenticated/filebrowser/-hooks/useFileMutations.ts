@@ -1,6 +1,8 @@
+import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
 
 import {
+  actionErrorMessage,
   type ActionSourceDestinationRequest,
   call,
   type CountProgress,
@@ -15,6 +17,7 @@ import {
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { describeBatchFailures } from "@/tasks/batchFailures";
 import { useBackgroundTaskActions } from "@/tasks/useBackgroundTaskActions";
+import { toastFileError } from "@/utils/linkRefusal";
 import {
   baseName,
   joinPath,
@@ -82,6 +85,7 @@ export const useFileMutations = ({
   const [permissionsProgress, setPermissionsProgress] =
     useState<TaskProgress<CountProgress> | null>(null);
   const toast = useScopedToast(FILES_TOAST_META);
+  const navigate = useNavigate();
   const { startCompression, startExtraction, startCopy, startMove } =
     useBackgroundTaskActions();
 
@@ -92,8 +96,12 @@ export const useFileMutations = ({
       invalidateListing();
       toast.success("File created successfully");
     },
-    error: "Failed to create file",
-    toast: FILES_TOAST_META,
+    error: (error) =>
+      toastFileError(
+        toast,
+        navigate,
+        actionErrorMessage(error, "Failed to create file"),
+      ),
   });
 
   const createFile = useCallback(
@@ -113,8 +121,12 @@ export const useFileMutations = ({
       invalidateListing();
       toast.success("Folder created successfully");
     },
-    error: "Failed to create folder",
-    toast: FILES_TOAST_META,
+    error: (error) =>
+      toastFileError(
+        toast,
+        navigate,
+        actionErrorMessage(error, "Failed to create folder"),
+      ),
   });
 
   const createFolder = useCallback(
@@ -140,7 +152,9 @@ export const useFileMutations = ({
     const failed = result?.failed ?? [];
     if (failed.length > 0) {
       const count = `${failed.length} item${failed.length === 1 ? "" : "s"}`;
-      toast.error(
+      toastFileError(
+        toast,
+        navigate,
         verb === "trash"
           ? `Failed to move ${count} to Trash`
           : `Failed to delete ${count}`,
@@ -168,7 +182,11 @@ export const useFileMutations = ({
     },
     error: (error) => {
       setDeleteProgress(null);
-      toast.error(getMutationErrorMessage(error, "Failed to delete items"));
+      toastFileError(
+        toast,
+        navigate,
+        getMutationErrorMessage(error, "Failed to delete items"),
+      );
     },
   });
 
@@ -192,7 +210,9 @@ export const useFileMutations = ({
     },
     error: (error) => {
       setTrashProgress(null);
-      toast.error(
+      toastFileError(
+        toast,
+        navigate,
         getMutationErrorMessage(error, "Failed to move items to Trash"),
       );
     },
@@ -237,13 +257,15 @@ export const useFileMutations = ({
         });
       } catch (error) {
         // Note: errors are also handled by BackgroundTasksContext
-        toast.error(
+        toastFileError(
+          toast,
+          navigate,
           getMutationErrorMessage(error, "Failed to extract archive"),
         );
         throw error;
       }
     },
-    [invalidateListing, startExtraction, toast],
+    [invalidateListing, navigate, startExtraction, toast],
   );
 
   // One batch task changes permissions of the whole selection; the bridge
@@ -257,7 +279,9 @@ export const useFileMutations = ({
       invalidateListing();
       const failed = result?.failed ?? [];
       if (failed.length > 0) {
-        toast.error(
+        toastFileError(
+          toast,
+          navigate,
           `Failed to change permissions on ${failed.length} of ${result?.total ?? failed.length} items`,
           { description: describeBatchFailures(failed) },
         );
@@ -267,7 +291,9 @@ export const useFileMutations = ({
     },
     error: (error) => {
       setPermissionsProgress(null);
-      toast.error(
+      toastFileError(
+        toast,
+        navigate,
         getMutationErrorMessage(error, "Failed to change permissions"),
       );
     },
@@ -305,7 +331,11 @@ export const useFileMutations = ({
     },
     error: (error) => {
       setRenameProgress(null);
-      toast.error(getMutationErrorMessage(error, "Failed to rename item"));
+      toastFileError(
+        toast,
+        navigate,
+        getMutationErrorMessage(error, "Failed to rename item"),
+      );
     },
   });
   // TanStack Query mutation result objects are recreated on renders. Keep the
@@ -428,12 +458,16 @@ export const useFileMutations = ({
         });
       } catch (error) {
         if (error !== CONFLICT_PROMPT_CANCELLED) {
-          toast.error(getMutationErrorMessage(error, "Failed to copy items"));
+          toastFileError(
+            toast,
+            navigate,
+            getMutationErrorMessage(error, "Failed to copy items"),
+          );
         }
         throw error;
       }
     },
-    [invalidateListing, resolvePasteCollisions, startCopy, toast],
+    [invalidateListing, navigate, resolvePasteCollisions, startCopy, toast],
   );
 
   const moveItems = useCallback(
@@ -460,12 +494,16 @@ export const useFileMutations = ({
         });
       } catch (error) {
         if (error !== CONFLICT_PROMPT_CANCELLED) {
-          toast.error(getMutationErrorMessage(error, "Failed to move items"));
+          toastFileError(
+            toast,
+            navigate,
+            getMutationErrorMessage(error, "Failed to move items"),
+          );
         }
         throw error;
       }
     },
-    [invalidateListing, resolvePasteCollisions, startMove, toast],
+    [invalidateListing, navigate, resolvePasteCollisions, startMove, toast],
   );
 
   return {

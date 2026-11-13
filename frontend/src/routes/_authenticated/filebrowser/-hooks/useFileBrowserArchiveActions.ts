@@ -1,7 +1,9 @@
+import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useMemo, useRef, useState } from "react";
 
 import type { FileExtractRequest } from "@/api";
 import { useScopedToast } from "@/hooks/useScopedToast";
+import { toastFileError } from "@/utils/linkRefusal";
 import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
 import { splitName, stripNumericSuffix } from "../-fileUpload";
@@ -51,6 +53,7 @@ export const useFileBrowserArchiveActions = ({
     params: { _splat: "" },
     to: "/filebrowser/$",
   });
+  const navigate = useNavigate();
   const { joinPath } = useFilePathUtilities();
   const [compressFormatDialog, setCompressFormatDialog] =
     useState<CompressFormatDialogState | null>(null);
@@ -144,7 +147,7 @@ export const useFileBrowserArchiveActions = ({
                 error instanceof Error && error.message
                   ? error.message
                   : "Failed to create archive";
-              toast.error(message);
+              toastFileError(toast, navigate, message);
             }
           }
         })(),
@@ -153,7 +156,14 @@ export const useFileBrowserArchiveActions = ({
         },
       );
     },
-    [compressFormatDialog, compressItems, getUniqueName, normalizedPath, toast],
+    [
+      compressFormatDialog,
+      compressItems,
+      getUniqueName,
+      navigate,
+      normalizedPath,
+      toast,
+    ],
   );
 
   const handleExtractSelection = useCallback(async () => {
