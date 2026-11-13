@@ -26,7 +26,6 @@ localinstall: ## Install from local build
 	@sudo "$(packaging_scripts_dir)/localinstall.sh" --build-dir "$(bin_dir)"
 
 reinstall: fastbuild localinstall ## Fastbuild + install (no uninstall)
-	@echo ""
 	@echo "LinuxIO reinstalled successfully!"
 	@echo "  WARNING: Quick & dirty build - no tests executed!"
 
