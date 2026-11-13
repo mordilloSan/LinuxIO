@@ -10,12 +10,15 @@ const MODE_ICONS: Record<string, string> = {
   default: "mdi:hand-back-right-outline",
   acceptEdits: "mdi:code-tags",
   plan: "mdi:script-text-outline",
-  bypassPermissions: "mdi:lightning-bolt-outline",
+  auto: "mdi:lightning-bolt-outline",
 };
 
 const modeIcon = (id: string) => MODE_ICONS[id] ?? "mdi:tune";
 
-/** The current mode as a dim button; opens upward into a list of every mode. */
+/**
+ * The current mode as a dim button; opens upward into a list of the modes.
+ * `bypassPermissions` is never offered: Auto covers it.
+ */
 export default function ModeMenu({
   modes,
   disabled,
@@ -59,27 +62,31 @@ export default function ModeMenu({
         <div className="assistant__menu-header" role="presentation">
           Modes
         </div>
-        {modes.availableModes.map((mode) => (
-          <AppMenuItem
-            endAdornment={
-              mode.id === modes.currentModeId ? <Icon icon="mdi:check" /> : null
-            }
-            key={mode.id}
-            onClick={() => {
-              setAnchor(null);
-              onSetMode(mode.id);
-            }}
-            selected={mode.id === modes.currentModeId}
-            startAdornment={<Icon icon={modeIcon(mode.id)} />}
-          >
-            <span className="assistant__mode-name">{mode.name}</span>
-            {mode.description ? (
-              <span className="assistant__mode-description">
-                {mode.description}
-              </span>
-            ) : null}
-          </AppMenuItem>
-        ))}
+        {modes.availableModes
+          .filter((mode) => mode.id !== "bypassPermissions")
+          .map((mode) => (
+            <AppMenuItem
+              endAdornment={
+                mode.id === modes.currentModeId ? (
+                  <Icon icon="mdi:check" />
+                ) : null
+              }
+              key={mode.id}
+              onClick={() => {
+                setAnchor(null);
+                onSetMode(mode.id);
+              }}
+              selected={mode.id === modes.currentModeId}
+              startAdornment={<Icon icon={modeIcon(mode.id)} />}
+            >
+              <span className="assistant__mode-name">{mode.name}</span>
+              {mode.description ? (
+                <span className="assistant__mode-description">
+                  {mode.description}
+                </span>
+              ) : null}
+            </AppMenuItem>
+          ))}
       </AppMenu>
     </>
   );

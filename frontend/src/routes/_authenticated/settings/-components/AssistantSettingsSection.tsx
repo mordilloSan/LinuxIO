@@ -345,10 +345,10 @@ export default function AssistantSettingsSection() {
             />
             <DefaultSelect
               choices={
-                chatOptions.modes?.availableModes.map(({ id, name }) => ({
-                  value: id,
-                  name,
-                })) ?? selectChoices(chatOptions.configOptions, "mode")
+                chatOptions.modes?.availableModes
+                  .filter(({ id }) => id !== "bypassPermissions")
+                  .map(({ id, name }) => ({ value: id, name })) ??
+                selectChoices(chatOptions.configOptions, "mode")
               }
               label="Permissions"
               onChange={(value) => saveDefault("mode", value)}

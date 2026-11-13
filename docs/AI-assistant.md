@@ -348,9 +348,8 @@ advertises the matching capability.
 - **Auto-scroll.** The transcript follows new content while it is scrolled to
   the bottom and pauses when the user scrolls up.
 - **Shortcuts.** Enter sends, Shift+Enter inserts a newline, Escape stops a
-  running turn, Shift+Tab cycles the mode (never into `bypassPermissions`,
-  which is chosen from the mode menu), Ctrl/Cmd+Shift+O starts a new chat. The
-  header tooltips show them.
+  running turn, Shift+Tab cycles the mode, Ctrl/Cmd+Shift+O starts a new chat.
+  The header tooltips show them.
 - **Text size.** The transcript and composer use the app body size, and code
   uses a smaller monospace size. The chat starts at the terminal's font size;
   the Text size row at the foot of the composer's `+` menu changes it, and
