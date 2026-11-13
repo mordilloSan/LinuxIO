@@ -45,6 +45,7 @@ func newOwnedUpload(t *testing.T, target string, size int, newOwner sessionOwner
 		expectedSize:      int64(size),
 		overwrite:         overwrite,
 		newOwner:          newOwner,
+		linkRule:          newOwner.asOwner(),
 		private:           private,
 	}
 }
@@ -477,8 +478,8 @@ func TestUploadHandsNewEntriesToSessionUserAsRoot(t *testing.T) {
 // An upload with an owner, the Compose save, reaches its folder, and makes
 // any missing one, without following a link in a folder the session user can
 // write: a process of theirs could have replaced ~/docker/web with a link to
-// another folder root can write. An upload without one acts as the user's own
-// save and follows the user's link.
+// another folder root can write. On a bridge that is not root an upload acts
+// as the user's own save and follows the user's link.
 func TestOwnedUploadNeverGoesThroughALinkTheUserCouldPlant(t *testing.T) {
 	home, victim := t.TempDir(), t.TempDir()
 	plant(t, victim, filepath.Join(home, "docker"))
@@ -487,13 +488,57 @@ func TestOwnedUploadNeverGoesThroughALinkTheUserCouldPlant(t *testing.T) {
 	for _, target := range []string{filepath.Join(home, "docker", "compose.yml"), filepath.Join(home, "docker", "web", "compose.yml")} {
 		err := newOwnedUpload(t, target, 3, selfOwner(), false, false).prepare(root)
 		require.ErrorIs(t, err, bridgeipc.ErrForbidden, target)
-		_, err = openUploadDir(root, fsroot.ToRel(filepath.Dir(target)), selfOwner())
+		_, err = openUploadDir(root, fsroot.ToRel(filepath.Dir(target)), selfOwner().asOwner(), selfOwner())
 		require.ErrorIs(t, err, bridgeipc.ErrForbidden, target)
 		require.Empty(t, dirEntries(t, victim))
 	}
 
 	uploadThroughHandles(t, newOwnedUpload(t, filepath.Join(home, "docker", "compose.yml"), 3, sessionOwner{}, false, false), "abc")
 	require.FileExists(t, filepath.Join(victim, "compose.yml"))
+}
+
+// An upload without an owner, a plain upload or an editor save, on a root
+// bridge reaches its folder under the same rule: a process of the session
+// user could have replaced ~/docs with a link. A save writes through a link
+// at the file only where that user cannot have planted it, and the refusal
+// names where the link points.
+func TestUploadWithoutOwnerNeverGoesThroughALinkTheUserCouldPlant(t *testing.T) {
+	home, victim := t.TempDir(), t.TempDir()
+	secret := filepath.Join(victim, "secret.txt")
+	require.NoError(t, os.WriteFile(secret, []byte("secret"), 0o600))
+	docs := filepath.Join(home, "docs")
+	plant(t, victim, docs)
+	plant(t, secret, filepath.Join(home, "notes.txt"))
+	root := openTestRoot(t)
+	session := selfOwner().asOwner()
+
+	for _, target := range []string{filepath.Join(docs, "new.txt"), filepath.Join(docs, "sub", "new.txt"), filepath.Join(home, "notes.txt")} {
+		transfer := newOwnedUpload(t, target, 3, sessionOwner{}, false, true)
+		transfer.linkRule = session
+		err := transfer.prepare(root)
+		require.ErrorIs(t, err, bridgeipc.ErrForbidden, target)
+		require.ErrorContains(t, err, " is a link to ", target)
+	}
+	transfer := newOwnedUpload(t, filepath.Join(docs, "new.txt"), 3, sessionOwner{}, false, false)
+	transfer.linkRule = session
+	require.ErrorContains(t, transfer.prepare(root), docs+" is a link to "+victim+". Open that folder to make this change")
+
+	batch, batchSession := newOwnedBatchUpload(t, apischema.FileUploadBatchRequest{
+		Destination: home,
+		Files:       []apischema.FileUploadBatchEntry{{Path: "docs/new.txt", Size: "3"}},
+		Directories: []string{"docs/made"},
+	}, sessionOwner{})
+	batch.linkRule = session
+	batch.prepareDirectories(batchSession.root)
+	require.Len(t, batch.failures, 1)
+	require.ErrorIs(t, batch.ensurePrepared(batchSession), bridgeipc.ErrForbidden)
+
+	entries := dirEntries(t, victim)
+	require.Len(t, entries, 1)
+	require.Equal(t, "secret.txt", entries[0].Name())
+	content, err := os.ReadFile(secret)
+	require.NoError(t, err)
+	require.Equal(t, "secret", string(content))
 }
 
 // A link the session user cannot have planted, one in a folder only root can
@@ -521,6 +566,13 @@ func TestOwnedUploadFollowsOnlyALinkInARootFolderAsRoot(t *testing.T) {
 
 	uploadThroughStream(t, apischema.FileUploadRequest{TargetPath: filepath.Join(base, "alias", "stack", "compose.yml"), Owner: uploadOwnerSession}, "abc", session)
 	require.FileExists(t, filepath.Join(actual, "stack", "compose.yml"))
+
+	// An upload without owner is reached for the session user the same way.
+	plain := newOwnedUpload(t, filepath.Join(home, "docker", "plain.txt"), 3, sessionOwner{}, false, false)
+	plain.linkRule = session.asOwner()
+	require.ErrorIs(t, plain.prepare(root), bridgeipc.ErrForbidden)
+	uploadThroughStream(t, apischema.FileUploadRequest{TargetPath: filepath.Join(base, "alias", "plain.txt")}, "abc", session)
+	require.FileExists(t, filepath.Join(actual, "plain.txt"))
 }
 
 func dirEntries(t *testing.T, dir string) []os.DirEntry {

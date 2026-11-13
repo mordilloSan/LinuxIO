@@ -75,15 +75,6 @@ func actingFor(session sessionOwner) services.Owner {
 	return session.asOwner()
 }
 
-// linkRuleFor is the owner an upload's folders are reached for: the upload's
-// owner, except root, whom no link rule applies to (see actingFor).
-func linkRuleFor(owner sessionOwner) services.Owner {
-	if owner.uid == 0 {
-		return services.Owner{}
-	}
-	return owner.asOwner()
-}
-
 // handsOverIn reports whether an entry created in a folder goes to owner
 // (see services.HandsOverIn).
 func handsOverIn(folder os.FileInfo, owner sessionOwner) bool {
@@ -99,11 +90,14 @@ func isSetgid(folder os.FileInfo) bool {
 // missing folders on the way. It walks down from the deepest folder that
 // already exists through open handles, so the folders it creates are made and
 // handed over relative to the handle of their parent, never by path. Folders
-// that already exist are only opened. An upload with an owner reaches that
-// folder without following a link the session user could have planted (see
-// services.OpenNearestDirNoUserLinks), so its save cannot be sent elsewhere.
-func openUploadDir(root *fsroot.FSRoot, dirRel string, owner sessionOwner) (*os.File, error) {
-	dir, missing, err := services.OpenNearestDirNoUserLinks(root, dirRel, linkRuleFor(owner))
+// that already exist are only opened. A root bridge reaches that folder for
+// linkRule, the session user it acts for (see actingFor), whether or not the
+// upload sets an owner, without following a link that user could have
+// planted (see services.OpenNearestDirNoUserLinks), so its save cannot be
+// sent elsewhere. New folders go to owner, which is set only when the upload
+// asked for it.
+func openUploadDir(root *fsroot.FSRoot, dirRel string, linkRule services.Owner, owner sessionOwner) (*os.File, error) {
+	dir, missing, err := services.OpenNearestDirNoUserLinks(root, dirRel, linkRule)
 	if err != nil {
 		return nil, err
 	}

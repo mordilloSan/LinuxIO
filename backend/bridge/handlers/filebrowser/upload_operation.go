@@ -39,9 +39,10 @@ type uploadTransferTask struct {
 	expectedSize    int64
 	expectedVersion string
 	overwrite       bool
-	newOwner        sessionOwner // set when a root bridge hands what this upload creates to the session user
-	private         bool         // a new file is owner-only (0600)
-	refuseSymlink   bool         // the request set owner: a symlink at the target is refused, never followed
+	newOwner        sessionOwner   // set when a root bridge hands what this upload creates to the session user
+	linkRule        services.Owner // the session user a root bridge acts for: no link they could plant is followed (see actingFor)
+	private         bool           // a new file is owner-only (0600)
+	refuseSymlink   bool           // the request set owner: a symlink at the target is refused, never followed
 
 	// finalRel, tempRel, attrs, folderInfo, bufferInfo and fileOwner are
 	// guarded by mu.
@@ -187,6 +188,7 @@ func runUploadTask(ctx context.Context, task *bridgeipc.Task, req apischema.File
 		expectedVersion: expectedVersion,
 		overwrite:       overwrite,
 		newOwner:        newOwner,
+		linkRule:        actingFor(session),
 		private:         req.Private != nil && *req.Private,
 		refuseSymlink:   req.Owner != "",
 	}
@@ -245,6 +247,19 @@ func (t *uploadTransferTask) attach(stream net.Conn, req bridgeipc.TaskDataAttac
 		})
 }
 
+// resolveTarget returns the path a save without owner writes to when a
+// symlink sits at path: as the user's own programs resolve it on a bridge
+// that is not root, and, for the session user a root bridge acts for, only
+// through a link that user cannot have planted (see
+// services.ResolveNoUserLinks).
+func (t *uploadTransferTask) resolveTarget(root *fsroot.FSRoot, path string) (string, error) {
+	if !t.linkRule.Set {
+		resolved, _, err := iteminfo.ResolveSymlinksAt(t.ctx, root, path)
+		return resolved, err
+	}
+	return services.ResolveNoUserLinks(root, path, t.linkRule)
+}
+
 func (t *uploadTransferTask) prepare(root *fsroot.FSRoot) error {
 	t.mu.Lock()
 	if t.tempRel != "" {
@@ -257,12 +272,19 @@ func (t *uploadTransferTask) prepare(root *fsroot.FSRoot) error {
 	// Without owner (editor saves, plain uploads) write through a symlink so
 	// the atomic rename replaces the target, not the link (dotfile repos,
 	// sites-enabled); a dangling link is replaced as-is. With owner the link
-	// is refused below instead.
+	// is refused below instead. A root bridge acting for the session user
+	// follows such a link only where that user cannot have planted it.
 	if !t.refuseSymlink {
-		if resolvedPath, _, err := iteminfo.ResolveSymlinksAt(t.ctx, root, realPath); err == nil {
+		resolvedPath, err := t.resolveTarget(root, realPath)
+		switch {
+		case err == nil:
 			realPath = resolvedPath
-		} else if ctxErr := t.ctx.Err(); ctxErr != nil {
-			return ctxErr
+		case errors.Is(err, bridgeipc.ErrForbidden):
+			return err
+		default:
+			if ctxErr := t.ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
 		}
 	}
 	realRel := fsroot.ToRel(realPath)
@@ -276,7 +298,7 @@ func (t *uploadTransferTask) prepare(root *fsroot.FSRoot) error {
 			return err
 		}
 	}
-	dir, err := openUploadDir(root, filepath.Dir(realRel), t.newOwner)
+	dir, err := openUploadDir(root, filepath.Dir(realRel), t.linkRule, t.newOwner)
 	if err != nil {
 		return fmt.Errorf("create parent dir: %w", err)
 	}

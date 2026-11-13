@@ -130,6 +130,19 @@ func entryFollowingNoUserLinks(root *fsroot.FSRoot, path string, owner Owner) (e
 	}
 }
 
+// ResolveNoUserLinks returns the real path of the entry at path, following a
+// symlink at path, for a root bridge acting for owner: as
+// entryFollowingNoUserLinks reaches it, so a link the session user could have
+// planted, on the way or at the entry, is refused.
+func ResolveNoUserLinks(root *fsroot.FSRoot, path string, owner Owner) (string, error) {
+	at, err := entryFollowingNoUserLinks(root, path, owner)
+	if err != nil {
+		return "", err
+	}
+	defer at.dir.Close()
+	return filepath.Join(at.dir.Name(), at.name), nil
+}
+
 // openEntry opens the folder path sits in as openDirNoUserLinks does and
 // returns it with path's name in it ("." for /).
 func openEntry(root *fsroot.FSRoot, path string, owner Owner) (entry, error) {
@@ -265,10 +278,9 @@ func linkTarget(dir *os.File, name string) (string, bool) {
 // or everyone may write it. It returns the folder target resolves from, dir
 // for a relative target and / for an absolute one, and takes over dir.
 func followLink(dir *os.File, name, target string, owner Owner) (*os.File, error) {
-	var st unix.Stat_t
-	err := unix.Fstat(int(dir.Fd()), &st)
-	if err == nil && (st.Uid == owner.UID || st.Mode&0o022 != 0) {
-		err = fmt.Errorf("%w: %s is a link in a folder you can write", bridgeipc.ErrForbidden, filepath.Join(dir.Name(), name))
+	plantable, err := userCouldPlant(dir, owner)
+	if err == nil && plantable {
+		err = plantedLinkError(dir, name, target)
 	}
 	if err != nil || filepath.IsAbs(target) {
 		_ = dir.Close()
@@ -280,6 +292,36 @@ func followLink(dir *os.File, name, target string, owner Owner) (*os.File, error
 		return os.Open("/")
 	}
 	return dir, nil
+}
+
+// userCouldPlant reports whether the session user could have put an entry
+// in dir, as fstat sees its handle: dir is theirs, or a group or everyone may
+// write it (a group the user may be in).
+func userCouldPlant(dir *os.File, owner Owner) (bool, error) {
+	var st unix.Stat_t
+	if err := unix.Fstat(int(dir.Fd()), &st); err != nil {
+		return false, &fs.PathError{Op: "fstat", Path: dir.Name(), Err: err}
+	}
+	return st.Uid == owner.UID || st.Mode&0o022 != 0, nil
+}
+
+// plantedLinkError refuses the symlink name in dir, which points at target,
+// because the session user could have planted it. It names the folder the
+// link points to, which readlink tells that user anyway, so whoever meant the
+// link knows which path to use instead.
+func plantedLinkError(dir *os.File, name, target string) error {
+	return fmt.Errorf("%w: %s is a link to %s. Open that folder to make this change",
+		bridgeipc.ErrForbidden, filepath.Join(dir.Name(), name), linkDestination(dir, target))
+}
+
+// linkDestination is target, read from a symlink in dir, as an absolute
+// path: a relative target resolves against dir, whose name is its real path
+// when it was reached one name at a time from /.
+func linkDestination(dir *os.File, target string) string {
+	if filepath.IsAbs(target) {
+		return filepath.Clean(target)
+	}
+	return filepath.Join(dir.Name(), target)
 }
 
 // handOverDir hands the folder MkdirAt just made to owner, with perm less

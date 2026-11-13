@@ -93,7 +93,7 @@ func runArchiveTask(ctx context.Context, task *bridgeipc.Task, store *userconfig
 		transfer.mu.Unlock()
 		transfer.reportProgress("compressing")
 	})
-	err = createArchive(req.Format, tempFile, tempPath, callbacks, archiveCompressionWorkers(settings), paths)
+	err = createArchive(req.Format, tempFile, tempPath, callbacks, archiveCompressionWorkers(settings), services.ArchiveSources{}, paths)
 	if closeErr := tempFile.Close(); err == nil && closeErr != nil {
 		err = fmt.Errorf("close temp archive: %w", closeErr)
 	}

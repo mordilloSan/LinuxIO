@@ -32,14 +32,15 @@ func archiveExtension(format string) (string, error) {
 	}
 }
 
-// createArchive writes an archive of paths to out, the open file at outPath,
-// which the archive leaves out should it lie inside one of paths.
-func createArchive(format string, out *os.File, outPath string, opts *services.OperationCallbacks, compressionWorkers int, paths []string) error {
+// createArchive writes an archive of paths, read as sources says, to out, the
+// open file at outPath, which the archive leaves out should it lie inside one
+// of paths.
+func createArchive(format string, out *os.File, outPath string, opts *services.OperationCallbacks, compressionWorkers int, sources services.ArchiveSources, paths []string) error {
 	switch format {
 	case "zip":
-		return services.CreateZip(out, opts, outPath, paths...)
+		return services.CreateZip(out, opts, outPath, sources, paths...)
 	case "tar.gz":
-		return services.CreateTarGz(out, opts, outPath, compressionWorkers, paths...)
+		return services.CreateTarGz(out, opts, outPath, sources, compressionWorkers, paths...)
 	default:
 		return services.ErrUnsupportedFormat
 	}
@@ -216,7 +217,8 @@ func runCompressTask(ctx context.Context, task *bridgeipc.Task, store *userconfi
 		return FileCompressResult{}, fmt.Errorf("open filesystem root: %w", err)
 	}
 	defer root.Close()
-	target, err := prepareArchiveTarget(root, targetPath, actingFor(session))
+	owner := actingFor(session)
+	target, err := prepareArchiveTarget(root, targetPath, owner)
 	if err != nil {
 		if errors.Is(err, errArchiveDestinationIsDir) {
 			return FileCompressResult{}, fmt.Errorf("%w: destination is a directory", bridgeipc.ErrInvalidArgs)
@@ -230,7 +232,13 @@ func runCompressTask(ctx context.Context, task *bridgeipc.Task, store *userconfi
 
 	writeTaskPhaseProgress(task, 0, "preparing")
 	opts := newTaskPhaseCallbacks(ctx, task, store, size, "compressing")
-	err = createArchive(req.Format, target.temp, target.tempPath, opts, archiveCompressionWorkers(settings), req.Paths)
+	// A link the session user could have planted is left out and reported,
+	// so root never copies what it points at into the archive.
+	var skipped []FileBatchItemFailure
+	sources := services.ArchiveSources{Owner: owner, Skipped: func(path string, err error) {
+		skipped = append(skipped, FileBatchItemFailure{Path: path, Error: err.Error()})
+	}}
+	err = createArchive(req.Format, target.temp, target.tempPath, opts, archiveCompressionWorkers(settings), sources, req.Paths)
 	if errors.Is(err, services.ErrAborted) {
 		slog.Debug("compress aborted, cleaning up", "path", targetPath)
 		target.discard()
@@ -250,8 +258,11 @@ func runCompressTask(ctx context.Context, task *bridgeipc.Task, store *userconfi
 	}
 	addToIndexerDetached("archive_create", targetPath)
 
-	slog.Info("compress complete", "path", targetPath, "count", len(req.Paths), "size", archiveSize, "format", req.Format)
-	return FileCompressResult{Path: targetPath, Size: archiveSize, Format: req.Format}, nil
+	slog.Info("compress complete", "path", targetPath, "count", len(req.Paths), "size", archiveSize, "format", req.Format, "left_out", len(skipped))
+	if skipped == nil {
+		skipped = []FileBatchItemFailure{}
+	}
+	return FileCompressResult{Path: targetPath, Size: archiveSize, Format: req.Format, Failed: skipped}, nil
 }
 
 func runExtractTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.FileExtractRequest, session sessionOwner) (FileExtractResult, error) {

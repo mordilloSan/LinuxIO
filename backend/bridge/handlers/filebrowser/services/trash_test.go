@@ -114,7 +114,7 @@ func TestListRestoreAndPurgeTrash(t *testing.T) {
 
 	// Restore recreates the missing parent folder and drops the info file.
 	require.NoError(t, os.RemoveAll(docs))
-	restored, err := RestoreFromTrash(t.Context(), byName["report.txt"].Path, home, testTrashUID, testTrashUID, false)
+	restored, err := RestoreFromTrash(t.Context(), byName["report.txt"].Path, home, testTrashUID, testTrashUID, false, nil)
 	require.NoError(t, err)
 	assert.Equal(t, report, restored)
 	content, err := os.ReadFile(report)
@@ -126,7 +126,7 @@ func TestListRestoreAndPurgeTrash(t *testing.T) {
 	_, err = MoveToTrash(t.Context(), createTestFile(t, docs, "other.txt", []byte("x")), home, testTrashUID, testTrashUID, false)
 	require.NoError(t, err)
 	createTestFile(t, docs, "other.txt", []byte("newer"))
-	_, err = RestoreFromTrash(t.Context(), filepath.Join(home, ".local/share/Trash/files/other.txt"), home, testTrashUID, testTrashUID, false)
+	_, err = RestoreFromTrash(t.Context(), filepath.Join(home, ".local/share/Trash/files/other.txt"), home, testTrashUID, testTrashUID, false, nil)
 	require.ErrorContains(t, err, "already exists")
 
 	removed, err := PurgeFromTrash(t.Context(), byName["photos"].Path, home, testTrashUID, nil)
@@ -145,7 +145,7 @@ func TestTrashRefusesPathsOutsideTheTrash(t *testing.T) {
 	home := t.TempDir()
 	outside := createTestFile(t, home, "keep.txt", []byte("keep"))
 
-	_, err := RestoreFromTrash(t.Context(), outside, home, testTrashUID, testTrashUID, false)
+	_, err := RestoreFromTrash(t.Context(), outside, home, testTrashUID, testTrashUID, false, nil)
 	require.ErrorContains(t, err, "not in the trash")
 	_, err = PurgeFromTrash(t.Context(), outside, home, testTrashUID, nil)
 	require.ErrorContains(t, err, "not in the trash")
@@ -256,7 +256,7 @@ func TestRestoreHandsNewParentsToTheSessionUser(t *testing.T) {
 	createTestFile(t, createTestDir(t, trash, "files"), "notes.txt", []byte("notes"))
 	writeTestTrashInfo(t, trash, "notes.txt", notes)
 
-	restored, err := RestoreFromTrash(t.Context(), filepath.Join(trash, "files", "notes.txt"), home, os.Getuid(), os.Getgid(), true)
+	restored, err := RestoreFromTrash(t.Context(), filepath.Join(trash, "files", "notes.txt"), home, os.Getuid(), os.Getgid(), true, nil)
 	require.NoError(t, err)
 	assert.Equal(t, notes, restored)
 	requireMode(t, filepath.Join(home, "a"), 0o755)
@@ -361,7 +361,7 @@ func TestRestoreNeverFollowsASymlinkedTrashFolderAsRoot(t *testing.T) {
 		plantTrashLink(t, victim, filepath.Join(trash, "files"))
 		writeTestTrashInfo(t, trash, "secret", filepath.Join(home, "secret"))
 
-		_, err := RestoreFromTrash(t.Context(), filepath.Join(trash, "files", "secret"), home, rootTestUID, rootTestGID, true)
+		_, err := RestoreFromTrash(t.Context(), filepath.Join(trash, "files", "secret"), home, rootTestUID, rootTestGID, true, nil)
 		require.Error(t, err)
 		assert.FileExists(t, secret)
 		assert.NoFileExists(t, filepath.Join(home, "secret"))
@@ -374,7 +374,7 @@ func TestRestoreNeverFollowsASymlinkedTrashFolderAsRoot(t *testing.T) {
 		plantTrashLink(t, victim, filepath.Join(trash, "info"))
 		writeTestTrashInfo(t, trash, "notes.txt", filepath.Join(home, "notes.txt"))
 
-		_, err := RestoreFromTrash(t.Context(), filepath.Join(trash, "files", "notes.txt"), home, rootTestUID, rootTestGID, true)
+		_, err := RestoreFromTrash(t.Context(), filepath.Join(trash, "files", "notes.txt"), home, rootTestUID, rootTestGID, true, nil)
 		require.Error(t, err)
 		assert.FileExists(t, filepath.Join(victim, "notes.txt.trashinfo"))
 		assert.FileExists(t, filepath.Join(trash, "files", "notes.txt"))
@@ -456,7 +456,7 @@ func TestRestoreNeverGoesThroughALinkTheUserCouldPlant(t *testing.T) {
 	plantTrashLink(t, f.victim, f.docs)
 
 	for _, item := range []string{trashed, trashedNested} {
-		_, err = RestoreFromTrash(t.Context(), item, f.home, os.Getuid(), os.Getgid(), true)
+		_, err = RestoreFromTrash(t.Context(), item, f.home, os.Getuid(), os.Getgid(), true, nil)
 		require.ErrorIs(t, err, bridgeipc.ErrForbidden, item)
 		f.requireVictimUntouched(t)
 		assert.FileExists(t, item)
@@ -496,7 +496,7 @@ func TestUnprivilegedTrashFollowsTheUsersOwnLinks(t *testing.T) {
 	items, err := ListTrash(t.Context(), home, testTrashUID)
 	require.NoError(t, err)
 	require.Len(t, items, 1)
-	restored, err := RestoreFromTrash(t.Context(), items[0].Path, home, testTrashUID, testTrashUID, false)
+	restored, err := RestoreFromTrash(t.Context(), items[0].Path, home, testTrashUID, testTrashUID, false, nil)
 	require.NoError(t, err)
 	assert.Equal(t, notes, restored)
 }

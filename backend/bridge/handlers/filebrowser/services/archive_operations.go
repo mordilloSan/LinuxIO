@@ -16,6 +16,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	zip "github.com/klauspost/compress/zip"
 	gzip "github.com/klauspost/pgzip"
@@ -213,8 +214,9 @@ func computeTarGzExtractSize(root *fsroot.FSRoot, archivePath string) (int64, er
 // out mode PermFile. The caller creates out, through a handle on its folder,
 // and closes and publishes it, or removes it after an error.
 // skipPath allows excluding the archive itself if it lives inside the source tree.
+// sources says how the files are read (see ArchiveSources).
 // opts is optional - pass nil if callbacks are not needed.
-func CreateZip(out *os.File, opts *OperationCallbacks, skipPath string, filenames ...string) error {
+func CreateZip(out *os.File, opts *OperationCallbacks, skipPath string, sources ArchiveSources, filenames ...string) error {
 	root, err := fsroot.Open()
 	if err != nil {
 		return err
@@ -228,12 +230,17 @@ func CreateZip(out *os.File, opts *OperationCallbacks, skipPath string, filename
 	}
 
 	zipWriter := zip.NewWriter(out)
+	reader, err := newArchiveReader(root, out, nil, zipWriter, opts, sources)
+	if err != nil {
+		closeWithLog("zip writer", zipWriter)
+		return err
+	}
 	for _, fname := range filenames {
 		if opts.IsCancelled() {
 			closeWithLog("zip writer", zipWriter)
 			return ErrAborted
 		}
-		if addErr := addFile(root, fname, nil, zipWriter, false, opts, skipPath); addErr != nil {
+		if addErr := reader.add(fname, skipPath); addErr != nil {
 			closeWithLog("zip writer", zipWriter)
 			if errors.Is(addErr, ErrAborted) {
 				return addErr
@@ -253,8 +260,9 @@ func CreateZip(out *os.File, opts *OperationCallbacks, skipPath string, filename
 // gives out mode PermFile. The caller creates out, through a handle on its
 // folder, and closes and publishes it, or removes it after an error.
 // skipPath allows excluding the archive itself if it lives inside the source tree.
+// sources says how the files are read (see ArchiveSources).
 // opts is optional - pass nil if callbacks are not needed.
-func CreateTarGz(out *os.File, opts *OperationCallbacks, skipPath string, compressionWorkers int, filenames ...string) error {
+func CreateTarGz(out *os.File, opts *OperationCallbacks, skipPath string, sources ArchiveSources, compressionWorkers int, filenames ...string) error {
 	root, err := fsroot.Open()
 	if err != nil {
 		return err
@@ -271,11 +279,17 @@ func CreateTarGz(out *os.File, opts *OperationCallbacks, skipPath string, compre
 	if compressionWorkers <= 0 {
 		compressionWorkers = runtime.GOMAXPROCS(0)
 	}
-	if err := gzWriter.SetConcurrency(1<<20, compressionWorkers); err != nil {
+	if err = gzWriter.SetConcurrency(1<<20, compressionWorkers); err != nil {
 		closeWithLog("gzip writer", gzWriter)
 		return err
 	}
 	tarWriter := tar.NewWriter(gzWriter)
+	reader, err := newArchiveReader(root, out, tarWriter, nil, opts, sources)
+	if err != nil {
+		closeWithLog("tar writer", tarWriter)
+		closeWithLog("gzip writer", gzWriter)
+		return err
+	}
 
 	for _, fname := range filenames {
 		if opts.IsCancelled() {
@@ -283,7 +297,7 @@ func CreateTarGz(out *os.File, opts *OperationCallbacks, skipPath string, compre
 			closeWithLog("gzip writer", gzWriter)
 			return ErrAborted
 		}
-		if addErr := addFile(root, fname, tarWriter, nil, false, opts, skipPath); addErr != nil {
+		if addErr := reader.add(fname, skipPath); addErr != nil {
 			closeWithLog("tar writer", tarWriter)
 			closeWithLog("gzip writer", gzWriter)
 			if errors.Is(addErr, ErrAborted) {
@@ -765,18 +779,23 @@ func addArchiveDirectoryEntry(entry fs.DirEntry, relArchivePath string, tarWrite
 	if err != nil {
 		return err
 	}
+	return writeArchiveDirectoryHeader(relArchivePath, entryInfo.ModTime(), tarWriter, zipWriter)
+}
 
+// writeArchiveDirectoryHeader writes the entry of a folder, modified at
+// modTime, as relArchivePath.
+func writeArchiveDirectoryHeader(relArchivePath string, modTime time.Time, tarWriter *tar.Writer, zipWriter *zip.Writer) error {
 	if tarWriter != nil {
 		header := &tar.Header{
 			Name:     relArchivePath + "/",
 			Mode:     int64(PermDir),
 			Typeflag: tar.TypeDir,
-			ModTime:  entryInfo.ModTime(),
+			ModTime:  modTime,
 		}
 		return tarWriter.WriteHeader(header)
 	}
 	if zipWriter != nil {
-		header := &zip.FileHeader{Name: relArchivePath + "/", Modified: entryInfo.ModTime()}
+		header := &zip.FileHeader{Name: relArchivePath + "/", Modified: modTime}
 		header.SetMode(fs.ModeDir | PermDir)
 		_, err := zipWriter.CreateHeader(header)
 		return err
@@ -812,7 +831,11 @@ func addSingleFile(root *fsroot.FSRoot, realPath, archivePath string, zipWriter 
 	if info.IsDir() {
 		return nil
 	}
+	return writeArchiveFile(file, info, archivePath, zipWriter, tarWriter, opts)
+}
 
+// writeArchiveFile writes file, open and described by info, as archivePath.
+func writeArchiveFile(file *os.File, info os.FileInfo, archivePath string, zipWriter *zip.Writer, tarWriter *tar.Writer, opts *OperationCallbacks) error {
 	if tarWriter != nil {
 		header, err := tar.FileInfoHeader(info, "")
 		if err != nil {

@@ -97,6 +97,35 @@ describe("TrashDialog", () => {
     });
   });
 
+  it("names the destination before restoring an unrecorded item into a system folder", async () => {
+    const foreign = {
+      confirmRestore: true,
+      deletedAt: "",
+      isDir: false,
+      name: "app.conf",
+      originalPath: "/etc/app.d/app.conf",
+      path: "/home/alice/.local/share/Trash/files/app.conf",
+      size: 12,
+    };
+    mocks.entries = [...entries, foreign];
+    const { user } = render(<TrashDialog onClose={vi.fn()} open />);
+
+    await screen.findByRole("list");
+    await user.click(screen.getByRole("checkbox", { name: "Select app.conf" }));
+    await user.click(screen.getByRole("button", { name: "Restore 1" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Restore to a system folder",
+    });
+    expect(dialog).toHaveTextContent("Restore to /etc/app.d/app.conf?");
+    expect(mocks.restore).not.toHaveBeenCalled();
+
+    await user.click(within(dialog).getByRole("button", { name: "Restore" }));
+    expect(mocks.restore).toHaveBeenCalledWith({
+      confirmedDestinations: [foreign.originalPath],
+      paths: [foreign.path],
+    });
+  });
+
   it("reports per-item failures of a restore", async () => {
     render(<TrashDialog onClose={vi.fn()} open />);
     await screen.findByRole("list");

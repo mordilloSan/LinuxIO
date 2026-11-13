@@ -47,9 +47,10 @@ type uploadBatchTransferTask struct {
 	directories   []string
 	total         int64
 	overwrite     bool
-	newOwner      sessionOwner // set when a root bridge hands what this upload creates to the session user
-	private       bool         // new files are owner-only (0600)
-	refuseSymlink bool         // the request set owner: a symlink at a file's target is refused, not replaced
+	newOwner      sessionOwner   // set when a root bridge hands what this upload creates to the session user
+	linkRule      services.Owner // the session user a root bridge acts for: no link they could plant is followed (see actingFor)
+	private       bool           // new files are owner-only (0600)
+	refuseSymlink bool           // the request set owner: a symlink at a file's target is refused, not replaced
 
 	// The fields below are guarded by mu. bytes (stream bytes consumed across
 	// the whole batch) lives in the lifecycle.
@@ -198,6 +199,7 @@ func runUploadBatchTask(ctx context.Context, task *bridgeipc.Task, req apischema
 		total:         total,
 		overwrite:     req.Overwrite != nil && *req.Overwrite,
 		newOwner:      newOwner,
+		linkRule:      actingFor(session),
 		private:       req.Private != nil && *req.Private,
 		refuseSymlink: req.Owner != "",
 	}
@@ -253,7 +255,7 @@ func (t *uploadBatchTransferTask) prepareDirectories(root *fsroot.FSRoot) {
 
 	for _, rel := range t.directories {
 		absPath := filepath.Join(t.destination, rel)
-		dir, err := openUploadDir(root, fsroot.ToRel(absPath), t.newOwner)
+		dir, err := openUploadDir(root, fsroot.ToRel(absPath), t.linkRule, t.newOwner)
 		if err != nil {
 			slog.Debug("batch upload directory failed", "path", absPath, "error", err)
 			t.recordFailure(rel, fmt.Sprintf("create directory: %v", err))
@@ -371,7 +373,7 @@ func (t *uploadBatchTransferTask) ensurePrepared(session *uploadBatchSession) er
 		return err
 	}
 	attrs.modTime = current.modTime
-	dir, err := openUploadDir(session.root, filepath.Dir(finalRel), t.newOwner)
+	dir, err := openUploadDir(session.root, filepath.Dir(finalRel), t.linkRule, t.newOwner)
 	if err != nil {
 		return fmt.Errorf("create parent dir: %w", err)
 	}

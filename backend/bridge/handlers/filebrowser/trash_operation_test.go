@@ -82,7 +82,7 @@ func TestTrashRestoreRefusesACraftedPathAsRoot(t *testing.T) {
 	} {
 		item := userTrashItem(t, home, "evil.conf", original, trashTestUID)
 
-		_, err := services.RestoreFromTrash(t.Context(), item, home, trashTestUID, trashTestGID, true)
+		_, err := services.RestoreFromTrash(t.Context(), item, home, trashTestUID, trashTestGID, true, nil)
 		require.ErrorIs(t, err, bridgeipc.ErrForbidden, original)
 		require.FileExists(t, item)
 	}
@@ -103,7 +103,7 @@ func TestTrashRestoreIntoASystemFolderAsRoot(t *testing.T) {
 	trashed, err := services.MoveToTrash(t.Context(), original, home, trashTestUID, trashTestGID, true)
 	require.NoError(t, err)
 	requireOwner(t, trashed, 0, 0)
-	restored, err := services.RestoreFromTrash(t.Context(), trashed, home, trashTestUID, trashTestGID, true)
+	restored, err := services.RestoreFromTrash(t.Context(), trashed, home, trashTestUID, trashTestGID, true, nil)
 	require.NoError(t, err)
 	require.Equal(t, original, restored)
 	requireOwnerAndMode(t, original, 0, 0, 0o644)
@@ -116,7 +116,7 @@ func TestTrashRestoreIntoASystemFolderAsRoot(t *testing.T) {
 	require.NoError(t, os.Remove(trashed))
 	require.NoError(t, os.WriteFile(trashed, []byte("user"), 0o644))
 	require.NoError(t, os.Chown(trashed, trashTestUID, trashTestGID))
-	_, err = services.RestoreFromTrash(t.Context(), trashed, home, trashTestUID, trashTestGID, true)
+	_, err = services.RestoreFromTrash(t.Context(), trashed, home, trashTestUID, trashTestGID, true, nil)
 	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
 	require.FileExists(t, trashed)
 	requireNoEntries(t, conf)
@@ -151,7 +151,7 @@ func TestTrashHandsNewEntriesToSessionUserAsRoot(t *testing.T) {
 	requireOwnerAndMode(t, filepath.Join(trash, "info", "notes.txt.trashinfo"), trashTestUID, trashTestGID, 0o600)
 
 	require.NoError(t, os.Remove(docs))
-	restored, err := services.RestoreFromTrash(t.Context(), trashed, home, trashTestUID, trashTestGID, true)
+	restored, err := services.RestoreFromTrash(t.Context(), trashed, home, trashTestUID, trashTestGID, true, nil)
 	require.NoError(t, err)
 	require.Equal(t, notes, restored)
 	requireOwnerAndMode(t, docs, trashTestUID, trashTestGID, 0o755)
@@ -175,14 +175,14 @@ func TestTrashRefusesAFolderAnotherUserOwnsAsRoot(t *testing.T) {
 	files := filepath.Dir(item)
 	require.NoError(t, os.Chown(files, 23456, 23457))
 
-	_, err := services.RestoreFromTrash(t.Context(), item, home, trashTestUID, trashTestGID, true)
+	_, err := services.RestoreFromTrash(t.Context(), item, home, trashTestUID, trashTestGID, true, nil)
 	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
 	require.FileExists(t, item)
 
 	// The trash folder itself counts too, as .Trash/<uid> in a shared .Trash.
 	require.NoError(t, os.Chown(files, trashTestUID, trashTestGID))
 	require.NoError(t, os.Chown(filepath.Dir(files), 23456, 23457))
-	_, err = services.RestoreFromTrash(t.Context(), item, home, trashTestUID, trashTestGID, true)
+	_, err = services.RestoreFromTrash(t.Context(), item, home, trashTestUID, trashTestGID, true, nil)
 	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
 	require.FileExists(t, item)
 
@@ -197,7 +197,9 @@ func TestTrashRefusesAFolderAnotherUserOwnsAsRoot(t *testing.T) {
 
 // An item the session user neither owns nor can write cannot carry content a
 // process of theirs put there, so it goes back into a folder they do not own,
-// as a www-data file into /var/www does; one they can write is refused.
+// as a www-data file into /var/www does; one they can write is refused. The
+// bridge has no record of trashing either, so the destination must be
+// confirmed.
 func TestTrashRestoreTakesAnItemTheUserCouldNotWriteAsRoot(t *testing.T) {
 	base, home := trashTestHome(t)
 	www := filepath.Join(base, "var", "www")
@@ -205,14 +207,17 @@ func TestTrashRestoreTakesAnItemTheUserCouldNotWriteAsRoot(t *testing.T) {
 	const wwwData = 33
 
 	item := userTrashItem(t, home, "index.html", filepath.Join(www, "index.html"), wwwData)
-	restored, err := services.RestoreFromTrash(t.Context(), item, home, trashTestUID, trashTestGID, true)
+	_, err := services.RestoreFromTrash(t.Context(), item, home, trashTestUID, trashTestGID, true, nil)
+	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
+	require.FileExists(t, item)
+	restored, err := services.RestoreFromTrash(t.Context(), item, home, trashTestUID, trashTestGID, true, []string{filepath.Join(www, "index.html")})
 	require.NoError(t, err)
 	require.Equal(t, filepath.Join(www, "index.html"), restored)
 	requireOwnerAndMode(t, restored, wwwData, wwwData, 0o644)
 
 	shared := userTrashItem(t, home, "shared.html", filepath.Join(www, "shared.html"), wwwData)
 	require.NoError(t, os.Chmod(shared, 0o664))
-	_, err = services.RestoreFromTrash(t.Context(), shared, home, trashTestUID, trashTestGID, true)
+	_, err = services.RestoreFromTrash(t.Context(), shared, home, trashTestUID, trashTestGID, true, nil)
 	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
 	require.FileExists(t, shared)
 	require.NoFileExists(t, filepath.Join(www, "shared.html"))
@@ -254,7 +259,7 @@ func TestTrashHandsAPerFilesystemTrashToSessionUserAsRoot(t *testing.T) {
 	requireOwnerAndMode(t, filepath.Join(trash, "info", "report.txt.trashinfo"), trashTestUID, trashTestGID, 0o600)
 	requireOwner(t, trashed, 0, 0)
 
-	restored, err := services.RestoreFromTrash(t.Context(), trashed, home, trashTestUID, trashTestGID, true)
+	restored, err := services.RestoreFromTrash(t.Context(), trashed, home, trashTestUID, trashTestGID, true, nil)
 	require.NoError(t, err)
 	require.Equal(t, report, restored)
 	requireOwnerAndMode(t, report, 0, 0, 0o644)

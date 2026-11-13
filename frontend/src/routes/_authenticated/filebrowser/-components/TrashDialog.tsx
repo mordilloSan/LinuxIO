@@ -40,7 +40,9 @@ const itemCount = (count: number) => `${count} item${count === 1 ? "" : "s"}`;
 const TrashDialog = ({ open, onClose }: TrashDialogProps) => {
   const toast = useScopedToast(FILES_TOAST_META);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
-  const [confirm, setConfirm] = useState<"selected" | "all" | null>(null);
+  const [confirm, setConfirm] = useState<"selected" | "all" | "restore" | null>(
+    null,
+  );
   const [progress, setProgress] = useState<TaskProgress<CountProgress> | null>(
     null,
   );
@@ -59,6 +61,15 @@ const TrashDialog = ({ open, onClose }: TrashDialogProps) => {
     entries.length > 0 && selectedPaths.length === entries.length;
   const purgePaths =
     confirm === "all" ? entries.map((entry) => entry.path) : selectedPaths;
+  // Items another program trashed carry no record of where they came from,
+  // so a restore into a folder the user does not own names its destination
+  // and asks first; the server refuses it unconfirmed.
+  const restoreDestinations = entries
+    .filter(
+      (entry) =>
+        selected.has(entry.path) && entry.confirmRestore && entry.originalPath,
+    )
+    .map((entry) => entry.originalPath);
 
   const report = (
     result: FileBatchResult | undefined,
@@ -112,8 +123,19 @@ const TrashDialog = ({ open, onClose }: TrashDialogProps) => {
     setSelected(new Set(checked ? entries.map((entry) => entry.path) : []));
 
   const restoreSelected = () => {
+    if (restoreDestinations.length > 0) {
+      setConfirm("restore");
+      return;
+    }
     setProgress(null);
     restore.mutate({ paths: selectedPaths });
+  };
+  const confirmRestore = () => {
+    setProgress(null);
+    restore.mutate({
+      paths: selectedPaths,
+      confirmedDestinations: restoreDestinations,
+    });
   };
   const confirmPurge = () => {
     setProgress(null);
@@ -259,9 +281,20 @@ const TrashDialog = ({ open, onClose }: TrashDialogProps) => {
         }
         onClose={() => setConfirm(null)}
         onConfirm={confirmPurge}
-        open={confirm !== null}
+        open={confirm === "selected" || confirm === "all"}
         progress={progress}
         title={confirm === "all" ? "Empty trash" : "Delete permanently"}
+      />
+      <AppConfirmDialog
+        confirmText="Restore"
+        isPending={restore.isPending}
+        message={`Restore to ${restoreDestinations.join(", ")}? Another program moved ${restoreDestinations.length === 1 ? "this item" : "these items"} to the Trash, so LinuxIO cannot vouch for where ${restoreDestinations.length === 1 ? "it" : "they"} came from.`}
+        onClose={() => setConfirm(null)}
+        onConfirm={confirmRestore}
+        open={confirm === "restore"}
+        pendingText="Restoring…"
+        progress={progress}
+        title="Restore to a system folder"
       />
     </>
   );

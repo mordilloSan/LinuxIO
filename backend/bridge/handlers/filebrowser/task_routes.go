@@ -65,9 +65,11 @@ func fileTaskBindings(store *userconfig.UserStore, owner sessionOwner) apischema
 		apischema.MutationTask("filebrowser.trash_batch", func(ctx context.Context, task *bridgeipc.Task, req apischema.BatchPathRequest) (FileBatchResult, error) {
 			return runTrashBatchTask(ctx, task, store, req, owner)
 		}, apischema.Progress[CountProgress](), apischema.WithTaskMetadata(pathBatchMetadata)),
-		apischema.MutationTask("filebrowser.trash_restore", func(ctx context.Context, task *bridgeipc.Task, req apischema.BatchPathRequest) (FileBatchResult, error) {
+		apischema.MutationTask("filebrowser.trash_restore", func(ctx context.Context, task *bridgeipc.Task, req apischema.TrashRestoreRequest) (FileBatchResult, error) {
 			return runTrashRestoreTask(ctx, task, store, req, owner)
-		}, apischema.Progress[CountProgress](), apischema.WithTaskMetadata(pathBatchMetadata)),
+		}, apischema.Progress[CountProgress](), apischema.WithTaskMetadata(func(req apischema.TrashRestoreRequest) bridgeipc.TaskMetadata {
+			return pathBatchMetadata(apischema.BatchPathRequest{Paths: req.Paths})
+		})),
 		apischema.MutationTask("filebrowser.trash_purge", func(ctx context.Context, task *bridgeipc.Task, req apischema.BatchPathRequest) (FileBatchResult, error) {
 			return runTrashPurgeTask(ctx, task, store, req, owner)
 		}, apischema.Progress[CountProgress](), apischema.WithTaskMetadata(pathBatchMetadata)),

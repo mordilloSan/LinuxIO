@@ -41,7 +41,7 @@ func createZipFile(t *testing.T, path string, opts *OperationCallbacks, skipPath
 	out, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600)
 	require.NoError(t, err)
 	defer out.Close()
-	return CreateZip(out, opts, skipPath, filenames...)
+	return CreateZip(out, opts, skipPath, ArchiveSources{}, filenames...)
 }
 
 // createTarGzFile is createZipFile for a tar.gz.
@@ -50,7 +50,7 @@ func createTarGzFile(t *testing.T, path string, opts *OperationCallbacks, skipPa
 	out, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600)
 	require.NoError(t, err)
 	defer out.Close()
-	return CreateTarGz(out, opts, skipPath, workers, filenames...)
+	return CreateTarGz(out, opts, skipPath, ArchiveSources{}, workers, filenames...)
 }
 
 func TestComputeArchiveSize(t *testing.T) {
@@ -575,4 +575,107 @@ func TestExtractAbortRemovesItsDestination(t *testing.T) {
 	err := ExtractArchive(t.Context(), archive, dest, Owner{}, &OperationCallbacks{Cancel: func() bool { return true }}, 0)
 	require.ErrorIs(t, err, ErrAborted)
 	assert.NoDirExists(t, dest)
+}
+
+// archiveContents returns the entries of the zip or tar.gz at path, a folder
+// with an empty content and a trailing slash.
+func archiveContents(t *testing.T, path string) map[string]string {
+	t.Helper()
+	contents := map[string]string{}
+	if strings.HasSuffix(path, ".zip") {
+		zr, err := zip.OpenReader(path)
+		require.NoError(t, err)
+		defer zr.Close()
+		for _, f := range zr.File {
+			r, err := f.Open()
+			require.NoError(t, err)
+			data, err := io.ReadAll(r)
+			require.NoError(t, err)
+			_ = r.Close()
+			contents[f.Name] = string(data)
+		}
+		return contents
+	}
+	file, err := os.Open(path)
+	require.NoError(t, err)
+	defer file.Close()
+	gr, err := gzip.NewReader(file)
+	require.NoError(t, err)
+	tr := tar.NewReader(gr)
+	for {
+		header, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			return contents
+		}
+		require.NoError(t, err)
+		data, err := io.ReadAll(tr)
+		require.NoError(t, err)
+		contents[header.Name] = string(data)
+	}
+}
+
+// A compress for the session user on a root bridge reads its sources through
+// handles: a link in a folder that user can write is left out of the archive
+// and reported, never followed, so root does not copy what it points at into
+// an archive the user can read. A source named through such a link is
+// refused. A bridge that is not root acts as the user and follows their links.
+func TestCompressNeverReadsThroughALinkTheUserCouldPlant(t *testing.T) {
+	f := newPlantedLinkFixture(t)
+	createTestFile(t, createTestDir(t, f.home, "sub"), "mine.txt", []byte("mine"))
+	plantTrashLink(t, f.notes, filepath.Join(f.home, "notes-link"))
+	out := t.TempDir()
+
+	for _, name := range []string{"home.zip", "home.tar.gz"} {
+		t.Run(name, func(t *testing.T) {
+			var skipped []string
+			sources := ArchiveSources{Owner: f.session, Skipped: func(path string, err error) {
+				require.ErrorContains(t, err, "left out: a link to "+f.victim)
+				skipped = append(skipped, path)
+			}}
+			archive := filepath.Join(out, name)
+			create := func(sources ArchiveSources, paths ...string) error {
+				file, err := os.OpenFile(archive, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600)
+				require.NoError(t, err)
+				defer file.Close()
+				if strings.HasSuffix(name, ".zip") {
+					return CreateZip(file, nil, "", sources, paths...)
+				}
+				return CreateTarGz(file, nil, "", sources, 1, paths...)
+			}
+			base := filepath.Base(f.home)
+
+			require.NoError(t, create(sources, f.home))
+			assert.Equal(t, map[string]string{base + "/sub/": "", base + "/sub/mine.txt": "mine"}, archiveContents(t, archive))
+			assert.Equal(t, []string{f.docs, filepath.Join(f.home, "notes-link")}, skipped)
+
+			err := create(sources, filepath.Join(f.docs, "notes.txt"))
+			require.ErrorIs(t, err, bridgeipc.ErrForbidden)
+			require.ErrorContains(t, err, f.docs+" is a link to "+f.victim)
+
+			require.NoError(t, create(ArchiveSources{}, f.home))
+			assert.Equal(t, "secret", archiveContents(t, archive)[base+"/notes-link"])
+			f.requireVictimUntouched(t)
+		})
+	}
+}
+
+// A link the session user cannot have planted, in a folder only root can
+// write, is still followed into the archive on a root bridge.
+func TestCompressFollowsALinkInARootFolderAsRoot(t *testing.T) {
+	home := rootSessionHome(t)
+	system := createTestDir(t, filepath.Dir(home), "system")
+	createTestFile(t, system, "app.conf", []byte("conf"))
+	plantTrashLink(t, filepath.Join(system, "app.conf"), filepath.Join(system, "current.conf"))
+	archive := filepath.Join(t.TempDir(), "system.zip")
+	file, err := os.OpenFile(archive, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600)
+	require.NoError(t, err)
+	defer file.Close()
+	var skipped []string
+	sources := ArchiveSources{Owner: Owner{UID: rootTestUID, GID: rootTestGID, Set: true}, Skipped: func(path string, _ error) {
+		skipped = append(skipped, path)
+	}}
+
+	require.NoError(t, CreateZip(file, nil, "", sources, system))
+	assert.Equal(t, map[string]string{"system/app.conf": "conf", "system/current.conf": "conf"}, archiveContents(t, archive))
+	assert.Empty(t, skipped)
 }

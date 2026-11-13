@@ -38,7 +38,7 @@ vi.mock("@/api", async (importOriginal) => {
     linuxio: {
       filebrowser: {
         exists_batch: { route: "filebrowser.exists_batch" },
-        chmod_batch: jobEndpoint(),
+        chmod_batch: jobEndpoint("chmod"),
         delete_batch: jobEndpoint("delete"),
         trash_batch: jobEndpoint("trash"),
         resource_patch: jobEndpoint(),
@@ -144,6 +144,17 @@ describe("useFileMutations", () => {
         expect(mocks.toast.success).not.toHaveBeenCalled();
       },
     );
+
+    it("names failed items when a permissions change partly fails", () => {
+      renderHook(() => useFileMutations({ normalizedPath: "/srv/projects" }));
+
+      mocks.taskOptions.chmod.success?.(failedResult);
+
+      expect(mocks.toast.error).toHaveBeenCalledWith(
+        "Failed to change permissions on 1 of 2 items",
+        { description: "a.txt: permission denied" },
+      );
+    });
 
     it("toasts success when the trash task has no failures", () => {
       renderHook(() => useFileMutations({ normalizedPath: "/srv/projects" }));

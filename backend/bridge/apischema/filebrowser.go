@@ -111,6 +111,20 @@ type TrashEntry struct {
 	DeletedAt    string `json:"deletedAt"`    // RFC 3339; empty when unknown
 	IsDir        bool   `json:"isDir"`
 	Size         int64  `json:"size"`
+	// ConfirmRestore is set when LinuxIO has no record of moving the item to
+	// the trash (another program did) and restoring it to OriginalPath goes
+	// into a folder the session user does not own: filebrowser.trash_restore
+	// then needs OriginalPath in ConfirmedDestinations.
+	ConfirmRestore bool `json:"confirmRestore"`
+}
+
+// TrashRestoreRequest restores trashed items. ConfirmedDestinations are the
+// original paths the user confirmed restoring into a folder they do not own
+// for items LinuxIO has no record of trashing (see TrashEntry.ConfirmRestore);
+// such a restore without its destination here is refused.
+type TrashRestoreRequest struct {
+	Paths                 []string `json:"paths"`
+	ConfirmedDestinations []string `json:"confirmedDestinations,omitzero"`
 }
 
 type TrashListResponse struct {

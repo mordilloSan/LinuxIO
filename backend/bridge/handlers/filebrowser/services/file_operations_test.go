@@ -769,6 +769,8 @@ func TestTransferNeverGoesThroughALinkTheUserCouldPlant(t *testing.T) {
 					err = CopyFileWithCallbacks(t.Context(), move.src, move.dst, false, f.session, nil)
 				}
 				require.ErrorIs(t, err, bridgeipc.ErrForbidden, "%s -> %s", move.src, move.dst)
+				// The refusal names the folder the link points to.
+				require.ErrorContains(t, err, f.docs+" is a link to "+f.victim+". Open that folder to make this change")
 				f.requireVictimUntouched(t)
 				assert.NoFileExists(t, filepath.Join(f.home, "taken.txt"))
 				assert.Equal(t, "mine", readString(t, mine))

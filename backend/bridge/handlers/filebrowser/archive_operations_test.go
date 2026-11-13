@@ -32,7 +32,7 @@ func TestCompressNeverGoesThroughALinkTheUserCouldPlant(t *testing.T) {
 	target, err := prepareArchiveTarget(root, filepath.Join(home, "docs", "out.zip"), services.Owner{})
 	require.NoError(t, err)
 	defer target.close()
-	require.NoError(t, createArchive("zip", target.temp, target.tempPath, nil, 1, []string{src}))
+	require.NoError(t, createArchive("zip", target.temp, target.tempPath, nil, 1, services.ArchiveSources{}, []string{src}))
 	size, err := target.finish()
 	require.NoError(t, err)
 	require.Positive(t, size)

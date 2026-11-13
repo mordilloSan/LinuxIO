@@ -259,6 +259,7 @@ export const useFileMutations = ({
       if (failed.length > 0) {
         toast.error(
           `Failed to change permissions on ${failed.length} of ${result?.total ?? failed.length} items`,
+          { description: describeBatchFailures(failed) },
         );
         return;
       }

@@ -33,6 +33,7 @@ func newOwnedBatchUpload(t *testing.T, req apischema.FileUploadBatchRequest, new
 		total:             total,
 		overwrite:         req.Overwrite != nil && *req.Overwrite,
 		newOwner:          newOwner,
+		linkRule:          newOwner.asOwner(),
 		private:           req.Private != nil && *req.Private,
 	}
 	session := &uploadBatchSession{root: openTestRoot(t)}

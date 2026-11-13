@@ -107,8 +107,13 @@ func MoveToTrash(ctx context.Context, absPath, home string, uid, gid int, chownN
 		return "", fmt.Errorf("trash %s: write info: %w", absPath, writeErr)
 	}
 
+	// Acting for the session user, a root bridge also records where the item
+	// came from where only root can write (see trash_records.go).
+	item := recordTrashedAt(ctx, root, home, owner, src, base, absPath, trash)
+
 	if err := renameNoReplace(src, base, filesDir, name); err != nil {
 		removeTrashInfo(infoDir, name)
+		dropTrashRecord(uid, item)
 		if errors.Is(err, syscall.EXDEV) {
 			return "", fmt.Errorf("trash %s: cannot move to trash across filesystems: %w", absPath, err)
 		}
@@ -380,6 +385,10 @@ type TrashItem struct {
 	DeletedAt    time.Time
 	IsDir        bool
 	Size         int64
+	// ConfirmRestore is set when no record vouches for OriginalPath (see
+	// trash_records.go) and restoring there goes into a folder the session
+	// user does not own: RestoreFromTrash then needs it confirmed.
+	ConfirmRestore bool
 }
 
 // ListTrash returns everything in the user's trash directories, newest first.
@@ -407,7 +416,7 @@ func ListTrash(ctx context.Context, home string, uid int) ([]TrashItem, error) {
 			}
 			continue
 		}
-		err = listTrashItems(root, trash, files, info, &items)
+		err = listTrashItems(root, trash, files, info, owner, &items)
 		_ = files.Close()
 		_ = info.Close()
 		if err != nil {
@@ -424,8 +433,10 @@ func ListTrash(ctx context.Context, home string, uid int) ([]TrashItem, error) {
 }
 
 // listTrashItems appends what trash's files folder holds, as fstatat sees it
-// there, with what each one's .trashinfo in info records.
-func listTrashItems(root *fsroot.FSRoot, trash string, files, info *os.File, items *[]TrashItem) error {
+// there, with where each one came from: for a root bridge acting for owner
+// the record of the move, when there is one, otherwise what its .trashinfo
+// in info records.
+func listTrashItems(root *fsroot.FSRoot, trash string, files, info *os.File, owner Owner, items *[]TrashItem) error {
 	names, err := files.Readdirnames(-1)
 	if err != nil {
 		return err
@@ -439,6 +450,13 @@ func listTrashItems(root *fsroot.FSRoot, trash string, files, info *os.File, ite
 		}
 		original, deletedAt := readTrashInfo(root, trash, info, name)
 		item := TrashItem{Path: filepath.Join(trash, "files", name), Name: name, OriginalPath: original, DeletedAt: deletedAt, IsDir: st.Mode&unix.S_IFMT == unix.S_IFDIR}
+		if owner.Set {
+			if record, ok := trashRecordOf(int(owner.UID), &st, trash); ok {
+				item.OriginalPath = record.Path
+			} else if original != "" && !userCouldWrite(&st, owner) {
+				item.ConfirmRestore = restoreNeedsConfirmation(root, original, owner)
+			}
+		}
 		if st.Mode&unix.S_IFMT == unix.S_IFREG {
 			item.Size = st.Size
 		}
@@ -454,8 +472,11 @@ func listTrashItems(root *fsroot.FSRoot, trash string, files, info *os.File, ite
 // bridge acting for that user (chownNew) neither vouches for what goes into a
 // folder that user does not own: only an item the user could not have written
 // (see userCouldWrite) is restored there, checked again inside that folder
-// before it gets its name.
-func RestoreFromTrash(ctx context.Context, trashedPath, home string, uid, gid int, chownNew bool) (string, error) {
+// before it gets its name. Such a bridge restores an item it trashed itself
+// to where its record says (see trash_records.go), whatever Path= says, and
+// an item without a record, trashed by another program, into such a folder
+// only when confirmed lists that destination.
+func RestoreFromTrash(ctx context.Context, trashedPath, home string, uid, gid int, chownNew bool, confirmed []string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -476,7 +497,11 @@ func RestoreFromTrash(ctx context.Context, trashedPath, home string, uid, gid in
 	}
 	defer files.Close()
 	defer info.Close()
-	original, _ := readTrashInfo(root, trash, info, name)
+	var item unix.Stat_t
+	if err = unix.Fstatat(int(files.Fd()), name, &item, unix.AT_SYMLINK_NOFOLLOW); err != nil {
+		return "", fmt.Errorf("restore %s: %w", name, &fs.PathError{Op: "fstatat", Path: name, Err: err})
+	}
+	original, recorded := restoreDestination(root, trash, info, name, &item, owner)
 	if original == "" {
 		return "", fmt.Errorf("restore %s: its original location is not recorded", name)
 	}
@@ -485,11 +510,16 @@ func RestoreFromTrash(ctx context.Context, trashedPath, home string, uid, gid in
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return "", fmt.Errorf("restore %s: %w", name, err)
 	}
-	var item unix.Stat_t
-	if err = unix.Fstatat(int(files.Fd()), name, &item, unix.AT_SYMLINK_NOFOLLOW); err != nil {
-		return "", fmt.Errorf("restore %s: %w", name, &fs.PathError{Op: "fstatat", Path: name, Err: err})
-	}
 	userWritten := userCouldWrite(&item, owner)
+	// Into a folder the session user does not own an item without a record
+	// goes only where the request confirmed.
+	checkSystem := func(dir *os.File) (bool, error) {
+		system, checkErr := intoSystemFolder(dir, filepath.Dir(original), owner, userWritten)
+		if checkErr == nil && system && !recorded && !slices.Contains(confirmed, original) {
+			checkErr = fmt.Errorf("%w: LinuxIO has no record of moving %s to the trash; confirm restoring it to %s", bridgeipc.ErrForbidden, name, original)
+		}
+		return system, checkErr
+	}
 
 	// The nearest existing folder is checked before anything is made in it,
 	// the destination again once it is open. It is reached without following
@@ -499,7 +529,7 @@ func RestoreFromTrash(ctx context.Context, trashedPath, home string, uid, gid in
 	if err != nil {
 		return "", fmt.Errorf("restore %s: %w", name, err)
 	}
-	if _, err = intoSystemFolder(dir, dirPath, owner, userWritten); err != nil {
+	if _, err = checkSystem(dir); err != nil {
 		dir.Close()
 		return "", fmt.Errorf("restore %s: %w", name, err)
 	}
@@ -507,7 +537,7 @@ func RestoreFromTrash(ctx context.Context, trashedPath, home string, uid, gid in
 		return "", fmt.Errorf("restore %s: %w", name, err)
 	}
 	defer dir.Close()
-	system, err := intoSystemFolder(dir, dirPath, owner, userWritten)
+	system, err := checkSystem(dir)
 	if err == nil && system {
 		err = restoreIntoSystemFolder(files, name, item, dir, filepath.Base(original), owner)
 	} else if err == nil {
@@ -517,7 +547,35 @@ func RestoreFromTrash(ctx context.Context, trashedPath, home string, uid, gid in
 		return "", fmt.Errorf("restore %s: %w", name, err)
 	}
 	removeTrashInfo(info, name)
+	dropTrashRecord(uid, &item)
 	return original, nil
+}
+
+// restoreDestination returns where the trashed item name, which st
+// describes, goes back to and whether a record says so: for a root bridge
+// acting for owner the record of the move, when there is one, otherwise the
+// Path= of its .trashinfo in info.
+func restoreDestination(root *fsroot.FSRoot, trash string, info *os.File, name string, st *unix.Stat_t, owner Owner) (string, bool) {
+	if owner.Set {
+		if record, ok := trashRecordOf(int(owner.UID), st, trash); ok {
+			return record.Path, true
+		}
+	}
+	original, _ := readTrashInfo(root, trash, info, name)
+	return original, false
+}
+
+// restoreNeedsConfirmation reports whether a restore to original, which no
+// record vouches for, goes into a folder the session user does not own, as
+// the restore judges the nearest folder of original that exists.
+func restoreNeedsConfirmation(root *fsroot.FSRoot, original string, owner Owner) bool {
+	dir, _, err := OpenNearestDirNoUserLinks(root, filepath.Dir(original), owner)
+	if err != nil {
+		return false // the restore will say why
+	}
+	defer dir.Close()
+	system, err := intoSystemFolder(dir, filepath.Dir(original), owner, false)
+	return err == nil && system
 }
 
 // userCouldWrite reports whether the session user could have made or written
@@ -657,6 +715,8 @@ func PurgeFromTrash(ctx context.Context, trashedPath, home string, uid int, prog
 	}
 	defer files.Close()
 	defer info.Close()
+	var item unix.Stat_t
+	statErr := unix.Fstatat(int(files.Fd()), name, &item, unix.AT_SYMLINK_NOFOLLOW)
 	var removed int64
 	err = removeAllAt(ctx, files, name, func() {
 		removed++
@@ -668,6 +728,9 @@ func PurgeFromTrash(ctx context.Context, trashedPath, home string, uid int, prog
 		return removed, fmt.Errorf("purge %s: %w", name, err)
 	}
 	removeTrashInfo(info, name)
+	if statErr == nil {
+		dropTrashRecord(uid, &item)
+	}
 	return removed, nil
 }
 
