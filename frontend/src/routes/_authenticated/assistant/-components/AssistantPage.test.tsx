@@ -94,7 +94,9 @@ describe("AssistantPage", () => {
 
   it("does not start the agent before the capability scan lands", () => {
     render(<AssistantPage agent="claude" />);
-    expect(screen.getByText(/checking what is installed/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("status", { name: "Checking what is installed" }),
+    ).toBeInTheDocument();
     expect(connectSpy).not.toHaveBeenCalled();
   });
 
@@ -438,7 +440,9 @@ describe("AssistantPage", () => {
   it("names the agent by its label while starting", async () => {
     render(<AssistantPage agent="claude" />);
     setState({ status: "connecting" });
-    expect(await screen.findByText(/Starting Claude Code/)).toBeInTheDocument();
+    expect(
+      await screen.findByRole("status", { name: "Starting Claude Code" }),
+    ).toBeInTheDocument();
   });
 
   it("sends the composer text and disables it while running", async () => {

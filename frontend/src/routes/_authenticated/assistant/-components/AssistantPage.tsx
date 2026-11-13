@@ -3,6 +3,7 @@ import { type CSSProperties, useEffect, useState } from "react";
 
 import { type AssistantChatDefaults, useStreamMux } from "@/api";
 import { ASSISTANT_AGENTS, type AssistantAgentId } from "@/api/acp/agents";
+import WidgetLoader from "@/components/loaders/WidgetLoader";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
@@ -282,16 +283,6 @@ export default function AssistantPage({
         className={`assistant__body${sideShown ? " assistant__body--split" : ""}`}
       >
         <section className="assistant__main">
-          {!ready ? (
-            <AppTypography color="text.secondary">
-              Checking what is installed…
-            </AppTypography>
-          ) : null}
-          {state.status === "connecting" ? (
-            <AppTypography color="text.secondary">
-              Starting {agentLabel}…
-            </AppTypography>
-          ) : null}
           {state.status === "auth_required" ? (
             <AppAlert severity="warning">
               <div>The agent needs you to log in.</div>
@@ -377,6 +368,12 @@ export default function AssistantPage({
               }
               sessionId={state.sessionId}
             >
+              {!ready ? (
+                <WidgetLoader label="Checking what is installed" />
+              ) : null}
+              {state.status === "connecting" ? (
+                <WidgetLoader label={`Starting ${agentLabel ?? "the agent"}`} />
+              ) : null}
               {state.status === "ready" ? (
                 <Welcome
                   agentLabel={agentLabel ?? ""}
