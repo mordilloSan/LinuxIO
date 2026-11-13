@@ -161,6 +161,8 @@ Each cached icon is downloaded once and re-checked upstream after 7 days. When t
 
 Clearing the icon cache removes the remote-icon caches, including miss markers, and keeps the `user/` directory.
 
+The cache directories are created mode `1777` (world-writable with the sticky bit, as `linuxio-tmpfiles.conf` does); the bridge sets that mode explicitly on a directory it creates, such as after a clear, so the umask cannot change it.
+
 ## Backend Methods
 
 The Docker bridge exposes these icon methods:

@@ -1,10 +1,11 @@
 package config
 
 import (
-	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 )
 
@@ -16,7 +17,7 @@ func applyJobSettingsUpdate(jobs *userconfig.PersistedJobSettings, payload *apis
 	applyOptionalInt(&next.ArchiveCompressionWorkers, payload.ArchiveCompressionWorkers)
 	applyOptionalInt(&next.ArchiveExtractWorkers, payload.ArchiveExtractWorkers)
 	if errs := userconfig.ValidateJobSettings(next); len(errs) > 0 {
-		return errors.New(strings.Join(errs, "; "))
+		return fmt.Errorf("%w: %s", bridgeipc.ErrInvalidArgs, strings.Join(errs, "; "))
 	}
 	*jobs = next
 	return nil

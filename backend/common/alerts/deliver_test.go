@@ -213,6 +213,20 @@ func TestSendEmail(t *testing.T) {
 	}
 }
 
+func TestSendEmailBodyUsesCRLFLineEndings(t *testing.T) {
+	port, msg := fakeSMTP(t)
+	n := NotificationSettings{SMTPHost: "127.0.0.1", SMTPPort: port, EmailFrom: "nas@example.com", EmailTo: []string{"me@example.com"}}
+	a := TestAlert()
+	a.Message = "one\ntwo\r\nthree\rfour"
+	if err := Send(context.Background(), n, Channels{Email: true}, a); err != nil {
+		t.Fatal(err)
+	}
+	got := <-msg
+	if !strings.Contains(got, "\r\n\r\none\r\ntwo\r\nthree\r\nfour\r\n\r\nSeverity:") {
+		t.Fatalf("message =\n%q", got)
+	}
+}
+
 func TestSendEmailEnvelopeUsesBareAddresses(t *testing.T) {
 	port, msg := fakeSMTP(t)
 	n := NotificationSettings{SMTPHost: "127.0.0.1", SMTPPort: port, EmailFrom: "LinuxIO <alerts@example.com>", EmailTo: []string{"Me <me@example.com>"}}

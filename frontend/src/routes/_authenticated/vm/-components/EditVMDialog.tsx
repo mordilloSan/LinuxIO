@@ -24,7 +24,12 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { down } from "@/theme/breakpoints";
 
-import { VM_OS_OPTIONS, VM_TOAST } from "./vmShared";
+import {
+  VM_NAME_HELP,
+  VM_OS_OPTIONS,
+  VM_TOAST,
+  isValidVMName,
+} from "./vmShared";
 
 const vmMachinesRouteApi = getRouteApi("/_authenticated/vm/machines");
 
@@ -103,7 +108,7 @@ function EditVMForm({
   const parsedVCPUs = Number.parseInt(vcpus, 10);
   const parsedMemoryMB = Number.parseInt(memoryMB, 10);
   const parsedDiskGB = Number.parseInt(diskGB, 10);
-  const nameValid = /^[A-Za-z0-9_.-]+$/.test(name);
+  const nameValid = isValidVMName(name);
   // vm.diskGB counts only LinuxIO-managed disks, the ones the bridge resizes.
   const diskResizable = vm.diskGB > 0;
   const diskValid = !diskResizable || parsedDiskGB >= vm.diskGB;
@@ -143,7 +148,7 @@ function EditVMForm({
             autoFocus
             error={!nameValid}
             fullWidth
-            helperText="Letters, numbers, dash, underscore, and dot"
+            helperText={VM_NAME_HELP}
             id="vm-edit-name"
             label="Name"
             onChange={(event) => setName(event.target.value)}

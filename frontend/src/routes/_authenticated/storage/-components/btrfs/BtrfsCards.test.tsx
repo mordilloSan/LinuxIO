@@ -182,12 +182,12 @@ describe("BtrfsHealthBanner", () => {
             uncorrectableErrors: 0,
             correctedErrors: 0,
             bytesScrubbed: 1,
-            percent: 42,
+            percent: 18.986434994665448,
           },
         }}
       />,
     );
-    expect(screen.getByText("Checking for errors · 42%")).toBeInTheDocument();
+    expect(screen.getByText("Checking for errors · 19.0%")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Stop check" })).toBeEnabled();
   });
 });

@@ -22,7 +22,8 @@ func TestApplyThemeColorOverridesBuildsPerModeColors(t *testing.T) {
 	err = applyThemeColorOverrides(&ui, &apischema.ConfigThemeColorsByModePayload{
 		Light: apischema.ConfigThemeColorsPayload{"codeText": new("nope")},
 	})
-	require.EqualError(t, err, "invalid themeColors.light.codeText")
+	require.ErrorIs(t, err, bridgeipc.ErrInvalidArgs)
+	require.ErrorContains(t, err, "invalid themeColors.light.codeText")
 
 	// The decoder takes any map key, so an unknown colour is refused here.
 	err = applyThemeColorOverrides(&ui, &apischema.ConfigThemeColorsByModePayload{
@@ -68,7 +69,8 @@ func TestThemeColorsDecodeFromTheWire(t *testing.T) {
 	_, err = apply(`{"themeColors":{"sepia":{"chartRx":"#123456"}}}`)
 	require.Error(t, err)
 	_, err = apply(`{"themeColors":{"dark":{"chartRx":""}}}`)
-	require.EqualError(t, err, "invalid themeColors.dark.chartRx")
+	require.ErrorIs(t, err, bridgeipc.ErrInvalidArgs)
+	require.ErrorContains(t, err, "invalid themeColors.dark.chartRx")
 }
 
 func TestThemeColorsToAPIKeepsEveryColor(t *testing.T) {
@@ -92,16 +94,57 @@ func TestApplyDockerSettingsUpdateValidatesFolders(t *testing.T) {
 	require.Equal(t, []userconfig.AbsolutePath{"/opt/a", "/opt/b"}, docker.Folders)
 
 	err := applyDockerSettingsUpdate(&docker, &apischema.ConfigDockerPayload{Folders: []string{"/"}})
-	require.EqualError(t, err, "docker folder cannot be root")
+	require.ErrorIs(t, err, bridgeipc.ErrInvalidArgs)
+	require.ErrorContains(t, err, "docker folder cannot be root")
 	require.Equal(t, []userconfig.AbsolutePath{"/opt/a", "/opt/b"}, docker.Folders)
 }
 
 func TestApplyJobSettingsUpdateRejectsInvalidValuesWithoutPartialApply(t *testing.T) {
 	jobs := userconfig.DefaultJobSettings()
 	err := applyJobSettingsUpdate(&jobs, &apischema.ConfigJobSettingsPayload{ProgressMinIntervalMs: new(10), ArchiveExtractWorkers: new(-1)})
-	require.EqualError(t, err, "jobs.archiveExtractWorkers must be >= 0")
+	require.ErrorIs(t, err, bridgeipc.ErrInvalidArgs)
+	require.ErrorContains(t, err, "jobs.archiveExtractWorkers must be >= 0")
 	require.Equal(t, userconfig.DefaultJobSettings(), jobs)
 
 	require.NoError(t, applyJobSettingsUpdate(&jobs, &apischema.ConfigJobSettingsPayload{ProgressMinIntervalMs: new(10)}))
 	require.Equal(t, 10, jobs.ProgressMinIntervalMs)
+}
+
+func TestApplyRejectsBadValuesAsInvalidArgs(t *testing.T) {
+	bad := func(s string) *string { return &s }
+	cases := map[string]func() error{
+		"theme": func() error {
+			ui := userconfig.DefaultUIPreferences()
+			return applyUISettingsUpdate(&ui, &apischema.ConfigUISetPayload{Theme: bad("PURPLE")})
+		},
+		"primaryColor": func() error {
+			ui := userconfig.DefaultUIPreferences()
+			return applyUISettingsUpdate(&ui, &apischema.ConfigUISetPayload{PrimaryColor: bad("nope")})
+		},
+		"navigationMode": func() error {
+			ui := userconfig.DefaultUIPreferences()
+			return applyUISettingsUpdate(&ui, &apischema.ConfigUISetPayload{NavigationMode: bad("tabs")})
+		},
+		"dockTileColors": func() error {
+			ui := userconfig.DefaultUIPreferences()
+			return applyUISettingsUpdate(&ui, &apischema.ConfigUISetPayload{DockTileColors: bad("rainbow")})
+		},
+		"dockAccentGradient": func() error {
+			ui := userconfig.DefaultUIPreferences()
+			return applyUISettingsUpdate(&ui, &apischema.ConfigUISetPayload{DockAccentGradient: &apischema.ConfigDockAccentGradient{StartColor: bad("nope")}})
+		},
+		"terminalFontSize": func() error {
+			ui := userconfig.DefaultUIPreferences()
+			return applyUISettingsUpdate(&ui, &apischema.ConfigUISetPayload{TerminalFontSize: new(99)})
+		},
+		"chunkSizeMB": func() error {
+			app := userconfig.PersistedAppSettings{}
+			return applyAppSettingsUpdate(&app, &apischema.ConfigAppSettingsPayload{ChunkSizeMB: new(99)})
+		},
+	}
+	for name, run := range cases {
+		t.Run(name, func(t *testing.T) {
+			require.ErrorIs(t, run(), bridgeipc.ErrInvalidArgs)
+		})
+	}
 }

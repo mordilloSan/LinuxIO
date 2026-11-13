@@ -107,7 +107,14 @@ type IconInfo struct {
 	Cached     bool     `json:"cached"`
 }
 
-// initIconCache ensures the icon cache directories exist
+// iconCacheDirMode is the mode linuxio-tmpfiles.conf gives every icon cache
+// directory: world-writable with the sticky bit, so each user's bridge can
+// cache icons and delete only its own files.
+const iconCacheDirMode = os.ModeSticky | 0o777
+
+// initIconCache ensures the icon cache directories exist. A directory created
+// here gets iconCacheDirMode set explicitly, since the umask masks the mode
+// passed to Mkdir; one that already exists keeps its mode.
 func initIconCache() error {
 	dirs := []string{
 		iconCacheDir,
@@ -118,12 +125,25 @@ func initIconCache() error {
 	}
 
 	for _, dir := range dirs {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := ensureIconCacheDir(dir); err != nil {
 			return fmt.Errorf("failed to create icon cache directory %s: %w", dir, err)
 		}
 	}
 
 	return nil
+}
+
+func ensureIconCacheDir(dir string) error {
+	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+		return err
+	}
+	if err := os.Mkdir(dir, iconCacheDirMode); err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return nil
+		}
+		return err
+	}
+	return os.Chmod(dir, iconCacheDirMode)
 }
 
 // parseIconIdentifier determines the type and value of an icon identifier.

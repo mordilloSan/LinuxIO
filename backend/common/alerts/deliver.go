@@ -103,6 +103,14 @@ func oneLine(s string) string {
 	return strings.Join(strings.Fields(s), " ")
 }
 
+// crlf gives s the CRLF line endings an SMTP body needs. A CRLF pair stays one
+// line break, and a lone CR or LF becomes one.
+func crlf(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	return strings.ReplaceAll(s, "\n", "\r\n")
+}
+
 // dialSMTP connects to the server, with implicit TLS on port 465 and
 // otherwise STARTTLS when offered, and logs in when a username is set. A
 // password is never sent without TLS.
@@ -170,7 +178,7 @@ func sendEmail(ctx context.Context, n NotificationSettings, a Alert) error {
 	}
 	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n%s\r\n\r\nSeverity: %s\r\nSource: %s\r\nHost: %s\r\n",
 		n.EmailFrom, strings.Join(n.EmailTo, ", "), oneLine(fmt.Sprintf("[LinuxIO %s] %s", hostname(), a.Title)),
-		a.LastOccurrence.Format(time.RFC1123Z), strings.ReplaceAll(a.Message, "\n", "\r\n"), a.Severity, a.Source, hostname())
+		a.LastOccurrence.Format(time.RFC1123Z), crlf(a.Message), a.Severity, a.Source, hostname())
 	if _, err = w.Write([]byte(msg)); err != nil {
 		return err
 	}

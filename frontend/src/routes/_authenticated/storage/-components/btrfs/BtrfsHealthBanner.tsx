@@ -14,7 +14,7 @@ import FrostedCard from "@/components/cards/FrostedCard";
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
 import { TASK_TYPE_STORAGE_BTRFS_SCRUB } from "@/tasks/taskTypes";
-import { formatDate } from "@/utils/formatters";
+import { formatDate, formatPercent } from "@/utils/formatters";
 
 import BtrfsAddDeviceDialog from "./BtrfsAddDeviceDialog";
 import { deviceErrorCount } from "./BtrfsDevicesCard";
@@ -36,7 +36,7 @@ const scrubSummary = (scrub: BtrfsScrubStatus) => {
     case "none":
       return "Never checked for errors";
     case "running":
-      return `Checking for errors · ${scrub.percent}%`;
+      return `Checking for errors · ${formatPercent(scrub.percent)}`;
     default:
       return `Last check: ${formatDate(scrub.finishedAt)}, ${scrub.errorCount} errors${
         scrub.uncorrectableErrors > 0

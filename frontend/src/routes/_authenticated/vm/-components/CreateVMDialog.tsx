@@ -41,10 +41,12 @@ import {
   DEFAULT_MANAGED_ISO_PATH,
   DEFAULT_MANAGED_ROOT_PATH,
   IMAGE_PRESETS,
+  VM_NAME_HELP,
   VM_TOAST,
   folderFromISOPathText,
   isISOPath,
   isImportDiskPath,
+  isValidVMName,
   parentDirectory,
 } from "./vmShared";
 
@@ -288,7 +290,7 @@ export default function CreateVMDialog({
     (preset) => preset.imagePresetId === imagePresetId,
   );
   const minimumDiskGB = activeImagePreset?.minDiskGB ?? 1;
-  const nameValid = /^[A-Za-z0-9_.-]+$/.test(name);
+  const nameValid = isValidVMName(name);
   const cloudInitUsernameValid = /^[a-z_][a-z0-9_-]{0,31}$/.test(
     cloudInitUsername,
   );
@@ -588,7 +590,7 @@ export default function CreateVMDialog({
               autoFocus
               error={name.length > 0 && !nameValid}
               fullWidth
-              helperText="Letters, numbers, dash, underscore, and dot"
+              helperText={VM_NAME_HELP}
               id="vm-create-name"
               label="Name"
               onChange={(event) => setName(event.target.value)}

@@ -9,6 +9,16 @@ export type VMAction =
   | "suspend"
   | "resume";
 
+const VM_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,62}$/;
+
+/** The bridge's VM name rule (virt/validation.go), shared by both dialogs. */
+export const VM_NAME_HELP =
+  "1-63 letters, numbers, dots, dashes, or underscores; start with a letter or number; no consecutive dots";
+
+export function isValidVMName(name: string): boolean {
+  return VM_NAME_PATTERN.test(name) && !name.includes("..");
+}
+
 export const VM_TOAST = { label: "Open VMs", to: "/vm" } as const;
 
 export const IMAGE_PRESETS = [

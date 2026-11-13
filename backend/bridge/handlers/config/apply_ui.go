@@ -21,14 +21,14 @@ func applyUISettingsUpdate(ui *userconfig.UIPreferences, payload *apischema.Conf
 	if payload.Theme != nil {
 		theme, ok := userconfig.ParseTheme(*payload.Theme)
 		if !ok {
-			return errors.New("invalid theme value (LIGHT|DARK)")
+			return fmt.Errorf("%w: invalid theme value (LIGHT|DARK)", bridgeipc.ErrInvalidArgs)
 		}
 		ui.Theme = theme
 	}
 	if payload.PrimaryColor != nil {
 		color, ok := userconfig.ParseCSSColor(*payload.PrimaryColor)
 		if !ok {
-			return errors.New("invalid primaryColor")
+			return fmt.Errorf("%w: invalid primaryColor", bridgeipc.ErrInvalidArgs)
 		}
 		ui.PrimaryColor = color
 	}
@@ -38,14 +38,14 @@ func applyUISettingsUpdate(ui *userconfig.UIPreferences, payload *apischema.Conf
 	if payload.NavigationMode != nil {
 		mode, ok := userconfig.ParseNavigationMode(*payload.NavigationMode)
 		if !ok {
-			return errors.New("invalid navigationMode value (sidebar|dock)")
+			return fmt.Errorf("%w: invalid navigationMode value (sidebar|dock)", bridgeipc.ErrInvalidArgs)
 		}
 		ui.NavigationMode = mode
 	}
 	if payload.DockTileColors != nil {
 		mode, ok := userconfig.ParseDockTileColors(*payload.DockTileColors)
 		if !ok {
-			return errors.New("invalid dockTileColors value (accent|mono|neutral|vibrant)")
+			return fmt.Errorf("%w: invalid dockTileColors value (accent|mono|neutral|vibrant)", bridgeipc.ErrInvalidArgs)
 		}
 		ui.DockTileColors = mode
 	}
@@ -73,7 +73,7 @@ func applyDockAccentGradientSetting(ui *userconfig.UIPreferences, payload *apisc
 		RangeEnd:   payload.RangeEnd,
 	}
 	if errs := userconfig.ValidateDockAccentGradient(gradient); len(errs) > 0 {
-		return fmt.Errorf("invalid dockAccentGradient: %s", strings.Join(errs, "; "))
+		return fmt.Errorf("%w: invalid dockAccentGradient: %s", bridgeipc.ErrInvalidArgs, strings.Join(errs, "; "))
 	}
 	ui.DockAccentGradient = &gradient
 	return nil
@@ -117,7 +117,11 @@ func buildThemeColors(payload apischema.ConfigThemeColorsPayload, mode string) (
 		}
 		values[string(key)] = payload[key]
 	}
-	return userconfig.NewThemeColors(values, mode)
+	colors, err := userconfig.NewThemeColors(values, mode)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
+	}
+	return colors, nil
 }
 
 // applyCollapsedSections replaces the whole per-page map. Names are trimmed,
@@ -205,7 +209,7 @@ func applyTerminalFontSizeSetting(ui *userconfig.UIPreferences, fontSize *int) e
 		return nil
 	}
 	if !userconfig.ValidTerminalFontSize(*fontSize) {
-		return errors.New("terminalFontSize must be between 10 and 28")
+		return fmt.Errorf("%w: terminalFontSize must be between 10 and 28", bridgeipc.ErrInvalidArgs)
 	}
 	ui.TerminalFontSize = *fontSize
 	return nil
