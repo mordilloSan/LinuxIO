@@ -288,9 +288,10 @@ func partialMoveUpdate(root *fsroot.FSRoot, item batchTransferItem) (batchIndexe
 
 // runCopyBatchTask copies many sources into one destination directory as a single
 // task, sharing one progress callback so the UI shows one aggregate bar.
-func runCopyBatchTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.BatchTransferRequest) (FileBatchResult, error) {
+func runCopyBatchTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.BatchTransferRequest, session sessionOwner) (FileBatchResult, error) {
+	owner := actingFor(session)
 	return runBatchTransferTask(ctx, task, store, req, "copy", "copying", func(item batchTransferItem, opts *services.OperationCallbacks, overwrite bool) error {
-		return services.CopyFileWithCallbacks(item.source, item.dest, overwrite, opts)
+		return services.CopyFileWithCallbacks(ctx, item.source, item.dest, overwrite, owner, opts)
 	}, func(ctx context.Context, update batchIndexerUpdate) error {
 		return addCopiedPathToIndexer(ctx, update.dest, update.info, update.replaced)
 	})
@@ -298,9 +299,10 @@ func runCopyBatchTask(ctx context.Context, task *bridgeipc.Task, store *userconf
 
 // runMoveBatchTask moves many sources into one destination directory as a single
 // task, sharing one progress callback for an aggregate bar.
-func runMoveBatchTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.BatchTransferRequest) (FileBatchResult, error) {
+func runMoveBatchTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.BatchTransferRequest, session sessionOwner) (FileBatchResult, error) {
+	owner := actingFor(session)
 	return runBatchTransferTask(ctx, task, store, req, "move", "moving", func(item batchTransferItem, opts *services.OperationCallbacks, overwrite bool) error {
-		return services.MoveFileWithCallbacks(item.source, item.dest, overwrite, opts, moveFileOptions(item.size))
+		return services.MoveFileWithCallbacks(ctx, item.source, item.dest, overwrite, owner, opts, moveFileOptions(item.size))
 	}, func(ctx context.Context, update batchIndexerUpdate) error {
 		if update.partial {
 			return errors.Join(requestIndexerReindex(ctx, update.source), requestIndexerReindex(ctx, update.dest))
@@ -399,10 +401,7 @@ func runDeleteBatchTask(ctx context.Context, task *bridgeipc.Task, store *userco
 	if len(req.Paths) == 0 {
 		return FileBatchResult{}, fmt.Errorf("%w: no paths provided", bridgeipc.ErrInvalidArgs)
 	}
-	var owner services.Owner
-	if os.Geteuid() == 0 {
-		owner = session.asOwner()
-	}
+	owner := actingFor(session)
 
 	task.ReportProgress(CountProgress{Phase: "preparing", Indeterminate: true})
 	items, grandTotal, failures := planDeleteBatch(ctx, req.Paths)
@@ -557,20 +556,20 @@ func resolveChmodOwnership(owner, group string) (*batchOwnership, error) {
 }
 
 // chmodBatchItem applies the mode, and the ownership when requested, to one
-// path.
-func chmodBatchItem(ctx context.Context, path string, mode os.FileMode, ownership *batchOwnership, recursive bool, reporter *chmodBatchReporter) error {
-	if err := services.ChangePermissionsCtx(ctx, path, mode, recursive, reporter.phase("chmod")); err != nil {
+// path, acting for owner (see actingFor).
+func chmodBatchItem(ctx context.Context, path string, mode os.FileMode, ownership *batchOwnership, recursive bool, owner services.Owner, reporter *chmodBatchReporter) error {
+	if err := services.ChangePermissionsCtx(ctx, path, mode, recursive, owner, reporter.phase("chmod")); err != nil {
 		return err
 	}
 	if ownership == nil {
 		return nil
 	}
-	return services.ChangeOwnershipCtx(ctx, path, ownership.uid, ownership.gid, recursive, reporter.phase("chown"))
+	return services.ChangeOwnershipCtx(ctx, path, ownership.uid, ownership.gid, recursive, owner, reporter.phase("chown"))
 }
 
 // runChmodBatchTask changes permissions (and optionally ownership) of many
 // paths as a single task, reporting a running processed-entry count.
-func runChmodBatchTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.FileChmodBatchRequest) (FileBatchResult, error) {
+func runChmodBatchTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.FileChmodBatchRequest, session sessionOwner) (FileBatchResult, error) {
 	paths, mode, owner, group, recursive, err := parseChmodBatchRequest(req)
 	if err != nil {
 		return FileBatchResult{}, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
@@ -598,7 +597,7 @@ func runChmodBatchTask(ctx context.Context, task *bridgeipc.Task, store *usercon
 			return FileBatchResult{}, context.Canceled
 		}
 		path := fsroot.CleanAbsPath(raw)
-		if err := chmodBatchItem(ctx, path, mode, ownership, recursive, reporter); err != nil {
+		if err := chmodBatchItem(ctx, path, mode, ownership, recursive, actingFor(session), reporter); err != nil {
 			if errors.Is(err, context.Canceled) {
 				return FileBatchResult{}, context.Canceled
 			}

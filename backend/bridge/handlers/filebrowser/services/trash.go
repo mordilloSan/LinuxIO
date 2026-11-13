@@ -492,9 +492,10 @@ func RestoreFromTrash(ctx context.Context, trashedPath, home string, uid, gid in
 	userWritten := userCouldWrite(&item, owner)
 
 	// The nearest existing folder is checked before anything is made in it,
-	// the destination again once it is open.
+	// the destination again once it is open. It is reached without following
+	// a link the session user could have planted on the way.
 	dirPath := filepath.Dir(original)
-	dir, missing, err := OpenNearestDir(root, relPath(dirPath))
+	dir, missing, err := OpenNearestDirNoUserLinks(root, dirPath, owner)
 	if err != nil {
 		return "", fmt.Errorf("restore %s: %w", name, err)
 	}

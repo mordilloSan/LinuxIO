@@ -46,7 +46,9 @@ func resolveTrashUser(owner sessionOwner) (trashUser, error) {
 	}
 	u.home = account.HomeDir
 	u.uid, u.gid = int(owner.uid), int(owner.gid)
-	u.chownNew = os.Geteuid() == 0
+	// A root session is no less trusted than the bridge: no hand-over and
+	// no link rule (see actingFor).
+	u.chownNew = os.Geteuid() == 0 && owner.uid != 0
 	return u, nil
 }
 

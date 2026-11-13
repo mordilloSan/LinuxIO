@@ -34,12 +34,12 @@ func transferResult[T any](value any, err error) (T, error) {
 func fileTaskBindings(store *userconfig.UserStore, owner sessionOwner) apischema.BindingSet {
 	return apischema.Bindings(
 		apischema.MutationTask("filebrowser.compress", func(ctx context.Context, task *bridgeipc.Task, req apischema.FileCompressRequest) (FileCompressResult, error) {
-			return runCompressTask(ctx, task, store, req)
+			return runCompressTask(ctx, task, store, req, owner)
 		}, apischema.Progress[FileProgress](), apischema.WithTaskMetadata(func(req apischema.FileCompressRequest) bridgeipc.TaskMetadata {
 			return bridgeipc.TaskMetadata{Identity: []string{req.TargetPath}, Label: req.TargetPath, Path: req.TargetPath}
 		})),
 		apischema.MutationTask("filebrowser.extract", func(ctx context.Context, task *bridgeipc.Task, req apischema.FileExtractRequest) (FileExtractResult, error) {
-			return runExtractTask(ctx, task, store, req)
+			return runExtractTask(ctx, task, store, req, owner)
 		}, apischema.Progress[FileProgress](), apischema.WithTaskMetadata(func(req apischema.FileExtractRequest) bridgeipc.TaskMetadata {
 			identity := []string{req.ArchivePath}
 			if req.Destination != nil {
@@ -48,12 +48,12 @@ func fileTaskBindings(store *userconfig.UserStore, owner sessionOwner) apischema
 			return bridgeipc.TaskMetadata{Identity: identity, Label: req.ArchivePath, Path: req.ArchivePath}
 		})),
 		apischema.MutationTask("filebrowser.copy_batch", func(ctx context.Context, task *bridgeipc.Task, req apischema.BatchTransferRequest) (FileBatchResult, error) {
-			return runCopyBatchTask(ctx, task, store, req)
+			return runCopyBatchTask(ctx, task, store, req, owner)
 		}, apischema.Progress[FileProgress](), apischema.WithTaskMetadata(func(req apischema.BatchTransferRequest) bridgeipc.TaskMetadata {
 			return bridgeipc.TaskMetadata{Identity: append(append([]string{}, req.Sources...), req.Destination), Label: batchTaskLabel(req.Sources), Path: req.Destination}
 		})),
 		apischema.MutationTask("filebrowser.move_batch", func(ctx context.Context, task *bridgeipc.Task, req apischema.BatchTransferRequest) (FileBatchResult, error) {
-			return runMoveBatchTask(ctx, task, store, req)
+			return runMoveBatchTask(ctx, task, store, req, owner)
 		}, apischema.Progress[FileProgress](), apischema.WithTaskMetadata(func(req apischema.BatchTransferRequest) bridgeipc.TaskMetadata {
 			return bridgeipc.TaskMetadata{Identity: append(append([]string{}, req.Sources...), req.Destination), Label: batchTaskLabel(req.Sources), Path: req.Destination}
 		})),
@@ -112,7 +112,7 @@ func fileTaskBindings(store *userconfig.UserStore, owner sessionOwner) apischema
 			return bridgeipc.TaskMetadata{Identity: append([]string{req.Format}, req.Paths...), Label: batchTaskLabel(req.Paths)}
 		}), apischema.BrowserBound()),
 		apischema.MutationTask("filebrowser.chmod_batch", func(ctx context.Context, task *bridgeipc.Task, req apischema.FileChmodBatchRequest) (FileBatchResult, error) {
-			return runChmodBatchTask(ctx, task, store, req)
+			return runChmodBatchTask(ctx, task, store, req, owner)
 		}, apischema.Progress[CountProgress](), apischema.WithTaskMetadata(func(req apischema.FileChmodBatchRequest) bridgeipc.TaskMetadata {
 			return bridgeipc.TaskMetadata{Identity: append([]string{req.Mode, req.Owner, req.Group}, req.Paths...), Label: batchTaskLabel(req.Paths)}
 		})),

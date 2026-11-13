@@ -27,7 +27,7 @@ func TestMoveFileWithCallbacksUsesKnownSizeForRename(t *testing.T) {
 	dstPath := filepath.Join(tmpDir, "destination-known-size.txt")
 
 	var reported []int64
-	err := MoveFileWithCallbacks(srcFile, dstPath, false, &OperationCallbacks{
+	err := MoveFileWithCallbacks(t.Context(), srcFile, dstPath, false, Owner{}, &OperationCallbacks{
 		Progress: func(n int64) {
 			reported = append(reported, n)
 		},
@@ -43,7 +43,7 @@ func TestMoveFileWithCallbacks(t *testing.T) {
 		srcFile := createTestFile(t, tmpDir, "source.txt", []byte("content"))
 		dstPath := filepath.Join(tmpDir, "destination.txt")
 
-		err := MoveFileWithCallbacks(srcFile, dstPath, false, nil, MoveFileOptions{})
+		err := MoveFileWithCallbacks(t.Context(), srcFile, dstPath, false, Owner{}, nil, MoveFileOptions{})
 		require.NoError(t, err)
 
 		_, err = os.Stat(srcFile)
@@ -59,7 +59,7 @@ func TestMoveFileWithCallbacks(t *testing.T) {
 		destDir := createTestDir(t, tmpDir, "subdir")
 		dstPath := filepath.Join(destDir, "file.txt")
 
-		err := MoveFileWithCallbacks(srcFile, dstPath, false, nil, MoveFileOptions{})
+		err := MoveFileWithCallbacks(t.Context(), srcFile, dstPath, false, Owner{}, nil, MoveFileOptions{})
 		require.NoError(t, err)
 
 		content, err := os.ReadFile(dstPath)
@@ -71,7 +71,7 @@ func TestMoveFileWithCallbacks(t *testing.T) {
 		srcPath := filepath.Join(tmpDir, "nonexistent.txt")
 		dstPath := filepath.Join(tmpDir, "dest.txt")
 
-		err := MoveFileWithCallbacks(srcPath, dstPath, false, nil, MoveFileOptions{})
+		err := MoveFileWithCallbacks(t.Context(), srcPath, dstPath, false, Owner{}, nil, MoveFileOptions{})
 		require.Error(t, err, "should error when source doesn't exist")
 	})
 
@@ -79,7 +79,7 @@ func TestMoveFileWithCallbacks(t *testing.T) {
 		srcFile := createTestFile(t, tmpDir, "src.txt", []byte("new"))
 		dstFile := createTestFile(t, tmpDir, "dst.txt", []byte("old"))
 
-		err := MoveFileWithCallbacks(srcFile, dstFile, true, nil, MoveFileOptions{})
+		err := MoveFileWithCallbacks(t.Context(), srcFile, dstFile, true, Owner{}, nil, MoveFileOptions{})
 		require.NoError(t, err)
 
 		content, err := os.ReadFile(dstFile)
@@ -94,9 +94,11 @@ var transferKinds = []struct {
 	sourceKept bool
 }{
 	{"move", func(src, dst string, overwrite bool, opts *OperationCallbacks) error {
-		return MoveFileWithCallbacks(src, dst, overwrite, opts, MoveFileOptions{})
+		return MoveFileWithCallbacks(context.Background(), src, dst, overwrite, Owner{}, opts, MoveFileOptions{})
 	}, false},
-	{"copy", CopyFileWithCallbacks, true},
+	{"copy", func(src, dst string, overwrite bool, opts *OperationCallbacks) error {
+		return CopyFileWithCallbacks(context.Background(), src, dst, overwrite, Owner{}, opts)
+	}, true},
 }
 
 func TestTransferMergesIntoExistingDirectory(t *testing.T) {
@@ -165,7 +167,7 @@ func TestCopyRemovesPartialDestinationOnFailure(t *testing.T) {
 	dest := filepath.Join(tmpDir, "dest")
 
 	progressed := false
-	err := CopyFileWithCallbacks(src, dest, false, &OperationCallbacks{
+	err := CopyFileWithCallbacks(t.Context(), src, dest, false, Owner{}, &OperationCallbacks{
 		Progress: func(int64) { progressed = true },
 		Cancel:   func() bool { return progressed },
 	})
@@ -186,7 +188,7 @@ func TestMoveAcrossFilesystemsRemovesEachSourceAfterItsCopy(t *testing.T) {
 	dest := filepath.Join(other, "moved")
 
 	// Cancel as soon as the first file (in directory order) has left the source.
-	err := MoveFileWithCallbacks(src, dest, false, &OperationCallbacks{
+	err := MoveFileWithCallbacks(t.Context(), src, dest, false, Owner{}, &OperationCallbacks{
 		Cancel: func() bool { return len(dirNames(t, src)) < 2 },
 	}, MoveFileOptions{})
 	require.ErrorIs(t, err, ErrAborted)
@@ -199,7 +201,7 @@ func TestMoveAcrossFilesystemsRemovesEachSourceAfterItsCopy(t *testing.T) {
 	assert.Equal(t, contents[movedNames[0]], readString(t, filepath.Join(dest, movedNames[0])))
 	assert.Equal(t, contents[leftNames[0]], readString(t, filepath.Join(src, leftNames[0])))
 
-	require.NoError(t, MoveFileWithCallbacks(src, dest, true, nil, MoveFileOptions{}))
+	require.NoError(t, MoveFileWithCallbacks(t.Context(), src, dest, true, Owner{}, nil, MoveFileOptions{}))
 	assert.ElementsMatch(t, []string{"a.txt", "b.txt"}, dirNames(t, dest))
 	_, err = os.Lstat(src)
 	require.ErrorIs(t, err, fs.ErrNotExist, "the emptied source folder is removed")
@@ -216,15 +218,21 @@ func dirNames(t *testing.T, dir string) []string {
 	return names
 }
 
+// entryAt opens the folder path sits in, closed when the test ends.
+func entryAt(t *testing.T, path string) entry {
+	t.Helper()
+	dir, err := os.Open(filepath.Dir(path))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = dir.Close() })
+	return entry{dir: dir, name: filepath.Base(path), path: path}
+}
+
 func TestPrepareDestinationRestoresReplacedEntryOnFailure(t *testing.T) {
 	tmpDir := t.TempDir()
 	createTestFile(t, tmpDir, "src.txt", []byte("new"))
 	dst := createTestFile(t, tmpDir, "dst.txt", []byte("old"))
-	root, err := fsroot.Open()
-	require.NoError(t, err)
-	defer root.Close()
 
-	finish, err := prepareDestination(root, dst, true, false)
+	finish, err := prepareDestination(t.Context(), entryAt(t, dst), true, false)
 	require.NoError(t, err)
 	_, err = os.Lstat(dst)
 	require.ErrorIs(t, err, fs.ErrNotExist, "destination is moved aside for the transfer")
@@ -232,7 +240,7 @@ func TestPrepareDestinationRestoresReplacedEntryOnFailure(t *testing.T) {
 	finish(errors.New("transfer failed"))
 	assert.Equal(t, "old", readString(t, dst), "failed transfer restores the replaced file")
 
-	finish, err = prepareDestination(root, dst, true, false)
+	finish, err = prepareDestination(t.Context(), entryAt(t, dst), true, false)
 	require.NoError(t, err)
 	finish(nil)
 	entries, err := os.ReadDir(tmpDir)
@@ -241,10 +249,6 @@ func TestPrepareDestinationRestoresReplacedEntryOnFailure(t *testing.T) {
 }
 
 func TestPrepareDestinationRemovesPartialOnlyForCopies(t *testing.T) {
-	root, err := fsroot.Open()
-	require.NoError(t, err)
-	defer root.Close()
-
 	for _, tc := range []struct {
 		name          string
 		removePartial bool
@@ -255,7 +259,7 @@ func TestPrepareDestinationRemovesPartialOnlyForCopies(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dst := filepath.Join(t.TempDir(), "dst")
-			finish, err := prepareDestination(root, dst, false, tc.removePartial)
+			finish, err := prepareDestination(t.Context(), entryAt(t, dst), false, tc.removePartial)
 			require.NoError(t, err)
 			createTestFile(t, filepath.Dir(dst), "dst", []byte("partial"))
 
@@ -308,7 +312,7 @@ func TestCopyFileWithCallbacks(t *testing.T) {
 		srcFile := createTestFile(t, tmpDir, "source.txt", []byte("original"))
 		destPath := filepath.Join(tmpDir, "copy.txt")
 
-		err := CopyFileWithCallbacks(srcFile, destPath, false, nil)
+		err := CopyFileWithCallbacks(t.Context(), srcFile, destPath, false, Owner{}, nil)
 		require.NoError(t, err)
 
 		// Source should still exist
@@ -326,7 +330,7 @@ func TestCopyFileWithCallbacks(t *testing.T) {
 		destDir := createTestDir(t, tmpDir, "subdir")
 		destPath := filepath.Join(destDir, "file.txt")
 
-		err := CopyFileWithCallbacks(srcFile, destPath, false, nil)
+		err := CopyFileWithCallbacks(t.Context(), srcFile, destPath, false, Owner{}, nil)
 		require.NoError(t, err)
 
 		content, err := os.ReadFile(destPath)
@@ -338,7 +342,7 @@ func TestCopyFileWithCallbacks(t *testing.T) {
 		srcPath := filepath.Join(tmpDir, "nonexistent.txt")
 		destPath := filepath.Join(tmpDir, "dest.txt")
 
-		err := CopyFileWithCallbacks(srcPath, destPath, false, nil)
+		err := CopyFileWithCallbacks(t.Context(), srcPath, destPath, false, Owner{}, nil)
 		require.Error(t, err)
 	})
 
@@ -350,7 +354,7 @@ func TestCopyFileWithCallbacks(t *testing.T) {
 		srcFile := createTestFile(t, tmpDir, "large.bin", largContent)
 		destPath := filepath.Join(tmpDir, "large_copy.bin")
 
-		err := CopyFileWithCallbacks(srcFile, destPath, false, nil)
+		err := CopyFileWithCallbacks(t.Context(), srcFile, destPath, false, Owner{}, nil)
 		require.NoError(t, err)
 
 		content, err := os.ReadFile(destPath)
@@ -362,7 +366,7 @@ func TestCopyFileWithCallbacks(t *testing.T) {
 		srcFile := createTestFile(t, tmpDir, "src.txt", []byte("new"))
 		dstFile := createTestFile(t, tmpDir, "dst.txt", []byte("old"))
 
-		err := CopyFileWithCallbacks(srcFile, dstFile, false, nil)
+		err := CopyFileWithCallbacks(t.Context(), srcFile, dstFile, false, Owner{}, nil)
 		require.Error(t, err, "should error when destination exists and overwrite is false")
 	})
 }
@@ -381,7 +385,7 @@ func TestCopyFileWithCallbacksPreservesSymlinks(t *testing.T) {
 
 	destDir := filepath.Join(tmpDir, "dest")
 	var progressed int64
-	err := CopyFileWithCallbacks(srcDir, destDir, false, &OperationCallbacks{
+	err := CopyFileWithCallbacks(t.Context(), srcDir, destDir, false, Owner{}, &OperationCallbacks{
 		Progress: func(n int64) {
 			progressed += n
 		},
@@ -409,7 +413,7 @@ func TestCopyFileWithCallbacksPreservesTopLevelSymlink(t *testing.T) {
 	createSymlinkOrSkip(t, "target.txt", srcLink)
 	destLink := filepath.Join(tmpDir, "dest-link")
 
-	err := CopyFileWithCallbacks(srcLink, destLink, false, nil)
+	err := CopyFileWithCallbacks(t.Context(), srcLink, destLink, false, Owner{}, nil)
 	require.NoError(t, err)
 
 	assertSymlinkTarget(t, destLink, "target.txt")
@@ -421,7 +425,7 @@ func TestCopyFileWithCallbacksRejectsSymlinkOntoOwnTarget(t *testing.T) {
 	srcLink := filepath.Join(tmpDir, "source-link")
 	createSymlinkOrSkip(t, "target.txt", srcLink)
 
-	err := CopyFileWithCallbacks(srcLink, targetPath, true, nil)
+	err := CopyFileWithCallbacks(t.Context(), srcLink, targetPath, true, Owner{}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot copy symlink")
 
@@ -438,7 +442,7 @@ func TestCopyFileWithCallbacksRejectsFifo(t *testing.T) {
 		t.Skipf("mkfifo not supported: %v", err)
 	}
 
-	err := CopyFileWithCallbacks(srcFIFO, filepath.Join(tmpDir, "dest-fifo"), false, nil)
+	err := CopyFileWithCallbacks(t.Context(), srcFIFO, filepath.Join(tmpDir, "dest-fifo"), false, Owner{}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot copy non-regular file")
 }
@@ -454,7 +458,7 @@ func TestCopyFileWithCallbacksSkipsNestedFifo(t *testing.T) {
 
 	destDir := filepath.Join(tmpDir, "dest")
 	// Must not block opening the FIFO and must not fail the rest of the copy.
-	require.NoError(t, CopyFileWithCallbacks(srcDir, destDir, false, nil))
+	require.NoError(t, CopyFileWithCallbacks(t.Context(), srcDir, destDir, false, Owner{}, nil))
 
 	_, err := os.Lstat(filepath.Join(destDir, "source-fifo"))
 	assert.True(t, os.IsNotExist(err), "fifo should be skipped, not recreated")
@@ -470,7 +474,7 @@ func TestCopyFileWithCallbacksRejectsTopLevelFifo(t *testing.T) {
 		t.Skipf("mkfifo not supported: %v", err)
 	}
 
-	err := CopyFileWithCallbacks(srcFIFO, filepath.Join(tmpDir, "dest-fifo"), false, nil)
+	err := CopyFileWithCallbacks(t.Context(), srcFIFO, filepath.Join(tmpDir, "dest-fifo"), false, Owner{}, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "cannot copy non-regular file")
 }
@@ -508,7 +512,7 @@ func TestMoveFileWithCallbacksSkipsSizeWalkWithoutKnownSize(t *testing.T) {
 	createTestFile(t, srcDir, "a.txt", []byte("content"))
 
 	var reported []int64
-	err := MoveFileWithCallbacks(srcDir, filepath.Join(tmpDir, "dst"), false, &OperationCallbacks{
+	err := MoveFileWithCallbacks(t.Context(), srcDir, filepath.Join(tmpDir, "dst"), false, Owner{}, &OperationCallbacks{
 		Progress: func(n int64) { reported = append(reported, n) },
 	}, MoveFileOptions{})
 	require.NoError(t, err)
@@ -523,7 +527,7 @@ func TestChangePermissionsCtxRecursiveDoesNotFollowSymlinks(t *testing.T) {
 	inside := createTestFile(t, treeDir, "inside.txt", []byte("x"))
 	createSymlinkOrSkip(t, outside, filepath.Join(treeDir, "link"))
 
-	require.NoError(t, ChangePermissionsCtx(context.Background(), treeDir, 0o700, true, nil))
+	require.NoError(t, ChangePermissionsCtx(context.Background(), treeDir, 0o700, true, Owner{}, nil))
 
 	assert.Equal(t, os.FileMode(0o600), statMode(t, outside), "link target must keep its mode")
 	assert.Equal(t, os.FileMode(0o700), statMode(t, inside))
@@ -543,10 +547,10 @@ func TestRecursivePermissionAndOwnershipReportFailedEntries(t *testing.T) {
 		_ = os.Chmod(locked, 0o755)
 	})
 
-	err := ChangeOwnershipCtx(context.Background(), treeDir, os.Getuid(), os.Getgid(), true, nil)
+	err := ChangeOwnershipCtx(context.Background(), treeDir, os.Getuid(), os.Getgid(), true, Owner{}, nil)
 	require.ErrorContains(t, err, "1 entries failed")
 
-	err = ChangePermissionsCtx(context.Background(), treeDir, 0o000, true, nil)
+	err = ChangePermissionsCtx(context.Background(), treeDir, 0o000, true, Owner{}, nil)
 	require.ErrorContains(t, err, "1 entries failed")
 }
 
@@ -716,6 +720,218 @@ func TestDeleteFollowsOnlyALinkInARootFolderAsRoot(t *testing.T) {
 	assert.NoFileExists(t, notes)
 }
 
+// plantedLinkFixture is a session user's home with docs, a link the user's
+// process put in place of a folder, pointing at victim, a folder of someone
+// else's with notes.txt in it.
+type plantedLinkFixture struct {
+	home, victim, notes, docs string
+	session                   Owner
+}
+
+func newPlantedLinkFixture(t *testing.T) plantedLinkFixture {
+	t.Helper()
+	f := plantedLinkFixture{home: t.TempDir(), victim: t.TempDir()}
+	f.notes = createTestFile(t, f.victim, "notes.txt", []byte("secret"))
+	require.NoError(t, os.Chmod(f.notes, 0o640))
+	f.docs = filepath.Join(f.home, "docs")
+	plantTrashLink(t, f.victim, f.docs)
+	f.session = Owner{UID: uint32(os.Getuid()), GID: uint32(os.Getgid()), Set: true}
+	return f
+}
+
+// requireVictimUntouched checks that nothing was made in, moved out of or
+// changed in the victim folder.
+func (f plantedLinkFixture) requireVictimUntouched(t *testing.T) {
+	t.Helper()
+	assert.Equal(t, []string{"notes.txt"}, dirNames(t, f.victim))
+	assert.Equal(t, "secret", readString(t, f.notes))
+	assert.Equal(t, os.FileMode(0o640), statMode(t, f.notes))
+}
+
+// On a root bridge a copy, move or rename reaches neither its source nor its
+// destination through a link in a folder the session user can write, where a
+// process of theirs could have swapped a folder for a link after the request
+// was checked. A bridge that is not root acts as the user and follows it.
+func TestTransferNeverGoesThroughALinkTheUserCouldPlant(t *testing.T) {
+	for _, tc := range transferKinds {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newPlantedLinkFixture(t)
+			mine := createTestFile(t, f.home, "mine.txt", []byte("mine"))
+
+			for _, move := range []struct{ src, dst string }{
+				{filepath.Join(f.docs, "notes.txt"), filepath.Join(f.home, "taken.txt")},
+				{mine, filepath.Join(f.docs, "planted.txt")},
+			} {
+				var err error
+				if tc.name == "move" {
+					err = MoveFileWithCallbacks(t.Context(), move.src, move.dst, false, f.session, nil, MoveFileOptions{})
+				} else {
+					err = CopyFileWithCallbacks(t.Context(), move.src, move.dst, false, f.session, nil)
+				}
+				require.ErrorIs(t, err, bridgeipc.ErrForbidden, "%s -> %s", move.src, move.dst)
+				f.requireVictimUntouched(t)
+				assert.NoFileExists(t, filepath.Join(f.home, "taken.txt"))
+				assert.Equal(t, "mine", readString(t, mine))
+			}
+
+			require.NoError(t, tc.transfer(filepath.Join(f.docs, "notes.txt"), filepath.Join(f.home, "taken.txt"), false, nil))
+			assert.Equal(t, "secret", readString(t, filepath.Join(f.home, "taken.txt")))
+		})
+	}
+}
+
+// A destination folder swapped for a link while a merge writes into it must
+// not send the rest of the merge into the link's target: every entry is
+// written through the handle of the folder that was opened.
+func TestTransferNeverFollowsALinkSwappedInMidMerge(t *testing.T) {
+	for _, tc := range transferKinds {
+		t.Run(tc.name, func(t *testing.T) {
+			tmp := t.TempDir()
+			src := createTestDir(t, tmp, "src")
+			srcSub := createTestDir(t, src, "sub")
+			createTestFile(t, srcSub, "a.txt", []byte("a"))
+			createTestFile(t, srcSub, "b.txt", []byte("b"))
+			dst := createTestDir(t, tmp, "dst")
+			dstSub := createTestDir(t, dst, "sub")
+			victim := createTestDir(t, tmp, "victim")
+			createTestFile(t, victim, "kept.txt", []byte("kept"))
+
+			swapped := false
+			opts := &OperationCallbacks{Progress: func(int64) {
+				if swapped {
+					return
+				}
+				swapped = true
+				require.NoError(t, os.Rename(dstSub, filepath.Join(tmp, "moved")))
+				require.NoError(t, os.Symlink("../victim", dstSub))
+			}}
+			// A rename moves no bytes, so the move goes across filesystems.
+			if tc.name == "move" {
+				src = filepath.Join(otherFilesystemDir(t), "src")
+				require.NoError(t, os.MkdirAll(filepath.Join(src, "sub"), 0o755))
+				createTestFile(t, filepath.Join(src, "sub"), "a.txt", []byte("a"))
+				createTestFile(t, filepath.Join(src, "sub"), "b.txt", []byte("b"))
+			}
+
+			require.NoError(t, tc.transfer(src, dst, true, opts))
+			require.True(t, swapped)
+			assert.Equal(t, []string{"kept.txt"}, dirNames(t, victim))
+			assert.ElementsMatch(t, []string{"a.txt", "b.txt"}, dirNames(t, filepath.Join(tmp, "moved")))
+		})
+	}
+}
+
+// chmod and chown, recursive or not, reach their item without following a
+// link in a folder the session user can write, and chmod follows a link at
+// the item only where that user cannot have planted it.
+func TestChangeModeAndOwnerNeverGoThroughALinkTheUserCouldPlant(t *testing.T) {
+	f := newPlantedLinkFixture(t)
+	finalLink := filepath.Join(f.home, "notes-link")
+	plantTrashLink(t, f.notes, finalLink)
+
+	for _, path := range []string{filepath.Join(f.docs, "notes.txt"), f.docs + "/.", finalLink} {
+		err := ChangePermissionsCtx(t.Context(), path, 0o777, true, f.session, nil)
+		require.ErrorIs(t, err, bridgeipc.ErrForbidden, path)
+		f.requireVictimUntouched(t)
+	}
+	err := ChangeOwnershipCtx(t.Context(), filepath.Join(f.docs, "notes.txt"), os.Getuid(), os.Getgid(), false, f.session, nil)
+	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
+
+	// chown changes a link itself, so a link at the item is not refused.
+	require.NoError(t, ChangeOwnershipCtx(t.Context(), finalLink, os.Getuid(), os.Getgid(), false, f.session, nil))
+
+	// A bridge that is not root acts as the user and follows their links.
+	require.NoError(t, ChangePermissionsCtx(t.Context(), finalLink, 0o600, false, Owner{}, nil))
+	assert.Equal(t, os.FileMode(0o600), statMode(t, f.notes))
+}
+
+// A folder swapped for a link while a recursive chmod walks the tree must not
+// send the walk into the link's target: each folder is read through the
+// handle its own change used.
+func TestChangePermissionsNeverFollowsALinkSwappedInMidWalk(t *testing.T) {
+	tmp := t.TempDir()
+	tree := createTestDir(t, tmp, "tree")
+	sub := createTestDir(t, tree, "sub")
+	createTestFile(t, sub, "a.txt", []byte("a"))
+	victim := createTestDir(t, tmp, "victim")
+	kept := createTestFile(t, victim, "kept.txt", []byte("kept"))
+	require.NoError(t, os.Chmod(kept, 0o640))
+	victimMode := statMode(t, victim)
+
+	for _, swapAt := range []int64{1, 2} {
+		swapped := false
+		err := ChangePermissionsCtx(t.Context(), tree, 0o750, true, Owner{}, func(processed int64) {
+			if processed != swapAt || swapped {
+				return
+			}
+			swapped = true
+			require.NoError(t, os.Rename(sub, filepath.Join(tmp, "moved")))
+			require.NoError(t, os.Symlink("../victim", sub))
+		})
+		require.NoError(t, err)
+		require.True(t, swapped)
+		assert.Equal(t, os.FileMode(0o640), statMode(t, kept), "swapped at entry %d", swapAt)
+		assert.Equal(t, victimMode, statMode(t, victim), "swapped at entry %d", swapAt)
+		require.NoError(t, os.Remove(sub))
+		require.NoError(t, os.Rename(filepath.Join(tmp, "moved"), sub))
+	}
+}
+
+// A copy that finds one of the folders it writes into under its source, put
+// there meanwhile, stops instead of copying its own output without end.
+func TestCopyRefusesAFolderItWritesInto(t *testing.T) {
+	src := createTestDir(t, t.TempDir(), "src")
+	srcDir, err := entryAt(t, src).openDir()
+	require.NoError(t, err)
+	defer srcDir.Close()
+	require.ErrorContains(t, newCopyState(t.Context(), false).enter(srcDir, srcDir, src), "into itself")
+}
+
+// The links a root bridge still follows are those the session user cannot
+// have planted: in a folder that is not theirs and that no group or everyone
+// may write, such as /home -> /var/home. Copy, move, chmod, chown and extract
+// follow those, and refuse one in a folder of the user's.
+func TestFileOperationsFollowOnlyALinkInARootFolderAsRoot(t *testing.T) {
+	home := rootSessionHome(t)
+	base := filepath.Dir(home)
+	actual := createTestDir(t, base, "real")
+	plantTrashLink(t, actual, filepath.Join(base, "alias"))
+	plantTrashLink(t, actual, filepath.Join(home, "docs"))
+	alias, docs := filepath.Join(base, "alias"), filepath.Join(home, "docs")
+	session := Owner{UID: rootTestUID, GID: rootTestGID, Set: true}
+	notes := createTestFile(t, actual, "notes.txt", []byte("notes"))
+
+	require.NoError(t, CopyFileWithCallbacks(t.Context(), filepath.Join(alias, "notes.txt"), filepath.Join(alias, "copy.txt"), false, session, nil))
+	assert.Equal(t, "notes", readString(t, filepath.Join(actual, "copy.txt")))
+	require.NoError(t, MoveFileWithCallbacks(t.Context(), filepath.Join(alias, "copy.txt"), filepath.Join(base, "moved.txt"), false, session, nil, MoveFileOptions{}))
+	assert.NoFileExists(t, filepath.Join(actual, "copy.txt"))
+	assert.FileExists(t, filepath.Join(base, "moved.txt"))
+	require.NoError(t, ChangePermissionsCtx(t.Context(), filepath.Join(alias, "notes.txt"), 0o600, false, session, nil))
+	assert.Equal(t, os.FileMode(0o600), statMode(t, notes))
+	require.NoError(t, ChangeOwnershipCtx(t.Context(), filepath.Join(alias, "notes.txt"), rootTestUID, rootTestGID, false, session, nil))
+	assert.Equal(t, uint32(rootTestUID), statSys(t, notes).Uid)
+	// chmod follows a link at the item in a root folder too.
+	require.NoError(t, ChangePermissionsCtx(t.Context(), alias, 0o700, false, session, nil))
+	assert.Equal(t, os.FileMode(0o700), statMode(t, actual).Perm())
+
+	archive := filepath.Join(base, "notes.zip")
+	require.NoError(t, createZipFile(t, archive, nil, archive, notes))
+	require.NoError(t, ExtractArchive(t.Context(), archive, filepath.Join(alias, "out"), session, nil, 0))
+	assert.FileExists(t, filepath.Join(actual, "out", "notes.txt"))
+
+	err := CopyFileWithCallbacks(t.Context(), filepath.Join(docs, "notes.txt"), filepath.Join(base, "taken.txt"), false, session, nil)
+	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
+	err = MoveFileWithCallbacks(t.Context(), filepath.Join(docs, "notes.txt"), filepath.Join(base, "taken.txt"), false, session, nil, MoveFileOptions{})
+	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
+	err = ChangeOwnershipCtx(t.Context(), filepath.Join(docs, "notes.txt"), 0, 0, false, session, nil)
+	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
+	err = ExtractArchive(t.Context(), archive, filepath.Join(docs, "out2"), session, nil, 0)
+	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
+	assert.NoFileExists(t, filepath.Join(base, "taken.txt"))
+	assert.NoDirExists(t, filepath.Join(actual, "out2"))
+	assert.Equal(t, uint32(rootTestUID), statSys(t, notes).Uid)
+}
+
 func TestCountEntries(t *testing.T) {
 	t.Run("empty_directory_counts_itself", func(t *testing.T) {
 		tmpDir := t.TempDir()
@@ -768,7 +984,7 @@ func TestCopyFileWithCallbacksPreservesModeAndTimes(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chmod(roDir, 0o755) })
 
 	destDir := filepath.Join(tmpDir, "dest")
-	require.NoError(t, CopyFileWithCallbacks(srcDir, destDir, false, nil))
+	require.NoError(t, CopyFileWithCallbacks(t.Context(), srcDir, destDir, false, Owner{}, nil))
 	t.Cleanup(func() { _ = os.Chmod(filepath.Join(destDir, "readonly"), 0o755) })
 
 	assert.Equal(t, os.FileMode(0o750), statMode(t, filepath.Join(destDir, "run.sh")))
@@ -793,7 +1009,7 @@ func TestCopyFileWithCallbacksPreservesHardlinks(t *testing.T) {
 
 	destDir := filepath.Join(tmpDir, "dest")
 	var progressed int64
-	require.NoError(t, CopyFileWithCallbacks(srcDir, destDir, false, &OperationCallbacks{
+	require.NoError(t, CopyFileWithCallbacks(t.Context(), srcDir, destDir, false, Owner{}, &OperationCallbacks{
 		Progress: func(n int64) { progressed += n },
 	}))
 
@@ -819,7 +1035,7 @@ func TestCopyFileWithCallbacksPreservesXattrs(t *testing.T) {
 	require.NoError(t, unix.Setxattr(srcDir, "user.linuxio", []byte("dir-value"), 0))
 
 	destDir := filepath.Join(tmpDir, "dest")
-	require.NoError(t, CopyFileWithCallbacks(srcDir, destDir, false, nil))
+	require.NoError(t, CopyFileWithCallbacks(t.Context(), srcDir, destDir, false, Owner{}, nil))
 
 	assert.Equal(t, "file-value", readXattr(t, filepath.Join(destDir, "tagged.txt"), "user.linuxio"))
 	assert.Equal(t, "dir-value", readXattr(t, destDir, "user.linuxio"))
@@ -836,7 +1052,7 @@ func TestCopyFileWithCallbacksSkipsSpecialFiles(t *testing.T) {
 	t.Cleanup(func() { _ = listener.Close() })
 
 	destDir := filepath.Join(tmpDir, "dest")
-	require.NoError(t, CopyFileWithCallbacks(srcDir, destDir, false, nil))
+	require.NoError(t, CopyFileWithCallbacks(t.Context(), srcDir, destDir, false, Owner{}, nil))
 
 	content, err := os.ReadFile(filepath.Join(destDir, "data.txt"))
 	require.NoError(t, err)
@@ -858,7 +1074,7 @@ func TestCopyFileWithCallbacksPreservesOwnershipAsRoot(t *testing.T) {
 	require.NoError(t, os.Lchown(srcDir, 12345, 12346))
 
 	destDir := filepath.Join(tmpDir, "dest")
-	require.NoError(t, CopyFileWithCallbacks(srcDir, destDir, false, nil))
+	require.NoError(t, CopyFileWithCallbacks(t.Context(), srcDir, destDir, false, Owner{}, nil))
 
 	for _, name := range []string{"", "owned.txt", "owned-link"} {
 		st := statSys(t, filepath.Join(destDir, name))
@@ -930,23 +1146,29 @@ func TestEnsureFreeSpace(t *testing.T) {
 	assert.Contains(t, err.Error(), "needed")
 }
 
-func TestMoveWithoutReplaceRefusesAnAppearedDestination(t *testing.T) {
-	tmpDir := t.TempDir()
-	src := createTestFile(t, tmpDir, "src.txt", []byte("src"))
-	dst := createTestFile(t, tmpDir, "dst.txt", []byte("dst"))
-	root, err := fsroot.Open()
-	require.NoError(t, err)
-	defer root.Close()
-	info, err := os.Lstat(src)
-	require.NoError(t, err)
+func TestRenameMoveRefusesAnAppearedDestination(t *testing.T) {
+	for _, kind := range []string{"file", "folder"} {
+		t.Run(kind, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			src, dst := filepath.Join(tmpDir, "src"), filepath.Join(tmpDir, "dst")
+			if kind == "file" {
+				createTestFile(t, tmpDir, "src", []byte("src"))
+			} else {
+				createTestDir(t, tmpDir, "src")
+			}
+			createTestDir(t, tmpDir, "dst")
 
-	require.ErrorIs(t, moveWithoutReplace(root, src, dst, info), fs.ErrExist)
-	assert.Equal(t, "src", readString(t, src))
-	assert.Equal(t, "dst", readString(t, dst), "rename(2) would have replaced this")
+			moved, err := tryRenameMove(entryAt(t, src), entryAt(t, dst), nil, MoveFileOptions{})
+			require.ErrorIs(t, err, fs.ErrExist, "rename(2) would have replaced an empty folder")
+			assert.False(t, moved)
+			assert.DirExists(t, dst)
 
-	fresh := filepath.Join(tmpDir, "fresh.txt")
-	require.NoError(t, moveWithoutReplace(root, src, fresh, info))
-	assert.Equal(t, "src", readString(t, fresh))
-	_, err = os.Lstat(src)
-	require.ErrorIs(t, err, fs.ErrNotExist)
+			fresh := filepath.Join(tmpDir, "fresh")
+			moved, err = tryRenameMove(entryAt(t, src), entryAt(t, fresh), nil, MoveFileOptions{})
+			require.NoError(t, err)
+			assert.True(t, moved)
+			_, err = os.Lstat(src)
+			require.ErrorIs(t, err, fs.ErrNotExist)
+		})
+	}
 }

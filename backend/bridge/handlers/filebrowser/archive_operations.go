@@ -2,6 +2,7 @@ package filebrowser
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -10,7 +11,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
@@ -30,12 +32,14 @@ func archiveExtension(format string) (string, error) {
 	}
 }
 
-func createArchive(format, targetPath string, opts *services.OperationCallbacks, compressionWorkers int, paths []string) error {
+// createArchive writes an archive of paths to out, the open file at outPath,
+// which the archive leaves out should it lie inside one of paths.
+func createArchive(format string, out *os.File, outPath string, opts *services.OperationCallbacks, compressionWorkers int, paths []string) error {
 	switch format {
 	case "zip":
-		return services.CreateZip(targetPath, opts, targetPath, paths...)
+		return services.CreateZip(out, opts, outPath, paths...)
 	case "tar.gz":
-		return services.CreateTarGz(targetPath, opts, targetPath, compressionWorkers, paths...)
+		return services.CreateTarGz(out, opts, outPath, compressionWorkers, paths...)
 	default:
 		return services.ErrUnsupportedFormat
 	}
@@ -75,47 +79,90 @@ func normalizeArchiveTargetPath(destination, extension string) string {
 
 var errArchiveDestinationIsDir = errors.New("destination is a directory")
 
-func prepareArchiveTarget(root *fsroot.FSRoot, targetPath string) (targetRel, tempRel, tempPath string, err error) {
-	targetRel = fsroot.ToRel(targetPath)
-	if info, statErr := root.Root.Stat(targetRel); statErr == nil {
-		if info.IsDir() {
-			return "", "", "", errArchiveDestinationIsDir
-		}
-	}
+// archiveTarget is where a compress writes: the open folder the archive
+// lands in and the temp file in it the archive is written to before it
+// takes its name. Both are made and used through that folder's handle,
+// never by path.
+type archiveTarget struct {
+	dir      *os.File
+	name     string
+	temp     *os.File
+	tempName string
+	tempPath string
+}
 
-	if mkdirErr := root.Root.MkdirAll(fsroot.ToRel(filepath.Dir(targetPath)), services.PermDir); mkdirErr != nil {
-		return "", "", "", fmt.Errorf("create parent dir: %w", mkdirErr)
-	}
-	tempFile, tempRel, err := root.CreateTemp(fsroot.ToRel(filepath.Dir(targetPath)), "."+filepath.Base(targetPath)+".linuxio-compress-*.part")
+// prepareArchiveTarget opens the folder targetPath sits in, making missing
+// folders on the way, and creates the temp archive in it. On a root bridge
+// acting for owner the folder is reached without following a link the
+// session user could have planted (see services.OpenNearestDirNoUserLinks).
+func prepareArchiveTarget(root *fsroot.FSRoot, targetPath string, owner services.Owner) (*archiveTarget, error) {
+	dir, missing, err := services.OpenNearestDirNoUserLinks(root, filepath.Dir(targetPath), owner)
 	if err != nil {
-		return "", "", "", fmt.Errorf("create temp archive: %w", err)
+		return nil, fmt.Errorf("open parent dir: %w", err)
 	}
-	if closeErr := tempFile.Close(); closeErr != nil {
-		removeWithDebug(root, tempRel, targetPath)
-		return "", "", "", fmt.Errorf("close temp archive: %w", closeErr)
+	// New folders stay the bridge's, as the archive does.
+	if dir, err = services.MkdirAllAt(dir, missing, services.PermDir, services.Owner{}); err != nil {
+		return nil, fmt.Errorf("create parent dir: %w", err)
 	}
-	tempPath = filepath.Clean("/" + tempRel)
-	return targetRel, tempRel, tempPath, nil
+	target := &archiveTarget{dir: dir, name: filepath.Base(targetPath)}
+	var st unix.Stat_t
+	if unix.Fstatat(int(dir.Fd()), target.name, &st, 0) == nil && st.Mode&unix.S_IFMT == unix.S_IFDIR {
+		_ = dir.Close()
+		return nil, errArchiveDestinationIsDir
+	}
+	target.tempName = "." + target.name + ".linuxio-compress-" + rand.Text() + ".part"
+	target.tempPath = filepath.Join(filepath.Dir(targetPath), target.tempName)
+	fd, err := unix.Openat(int(dir.Fd()), target.tempName, unix.O_RDWR|unix.O_CREAT|unix.O_EXCL|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0o600)
+	if err != nil {
+		_ = dir.Close()
+		return nil, fmt.Errorf("create temp archive: %w", &fs.PathError{Op: "create", Path: target.tempPath, Err: err})
+	}
+	target.temp = os.NewFile(uintptr(fd), target.tempPath)
+	return target, nil
 }
 
-// publishArchive moves the finished temp archive to its name without ever
+// finish closes the finished temp archive and gives it its name without ever
 // replacing a file that appeared there meanwhile: link then unlink, with a
-// plain rename only on filesystems that have no hard links.
-func publishArchive(root *fsroot.FSRoot, tempRel, targetRel string) error {
-	err := root.Root.Link(tempRel, targetRel)
+// plain rename only on filesystems that have no hard links. It returns the
+// archive's size.
+func (t *archiveTarget) finish() (int64, error) {
+	info, err := t.temp.Stat()
+	if closeErr := t.temp.Close(); err == nil {
+		err = closeErr
+	}
+	t.temp = nil
+	if err != nil {
+		return 0, err
+	}
+	dirFd := int(t.dir.Fd())
+	err = unix.Linkat(dirFd, t.tempName, dirFd, t.name, 0)
 	if err == nil {
-		return root.Root.Remove(tempRel)
+		err = unix.Unlinkat(dirFd, t.tempName, 0)
+	} else if errors.Is(err, unix.EPERM) || errors.Is(err, unix.EOPNOTSUPP) {
+		err = unix.Renameat(dirFd, t.tempName, dirFd, t.name)
 	}
-	if errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EOPNOTSUPP) {
-		return root.Root.Rename(tempRel, targetRel)
+	if err != nil {
+		return 0, &os.LinkError{Op: "publish", Old: t.tempPath, New: filepath.Join(filepath.Dir(t.tempPath), t.name), Err: err}
 	}
-	return err
+	return info.Size(), nil
 }
 
-func removeWithDebug(root *fsroot.FSRoot, targetRel, targetPath string) {
-	if err := root.Root.Remove(targetRel); err != nil && !errors.Is(err, os.ErrNotExist) {
-		slog.Debug("failed to remove failed archive", "path", targetPath, "error", err)
+// discard drops the temp archive, through the folder's handle.
+func (t *archiveTarget) discard() {
+	if t.temp != nil {
+		_ = t.temp.Close()
+		t.temp = nil
 	}
+	if err := unix.Unlinkat(int(t.dir.Fd()), t.tempName, 0); err != nil && !errors.Is(err, unix.ENOENT) {
+		slog.Debug("failed to remove failed archive", "path", t.tempPath, "error", err)
+	}
+}
+
+func (t *archiveTarget) close() {
+	if t.temp != nil {
+		_ = t.temp.Close()
+	}
+	_ = t.dir.Close()
 }
 
 func parseExtractRequest(req apischema.FileExtractRequest) (string, string, error) {
@@ -152,7 +199,7 @@ func defaultExtractDestination(archivePath string) string {
 	return filepath.Join(baseDir, baseName)
 }
 
-func runCompressTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.FileCompressRequest) (FileCompressResult, error) {
+func runCompressTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.FileCompressRequest, session sessionOwner) (FileCompressResult, error) {
 	if req.Format == "" || req.TargetPath == "" || len(req.Paths) == 0 {
 		return FileCompressResult{}, fmt.Errorf("%w: missing format, destination, or paths", bridgeipc.ErrInvalidArgs)
 	}
@@ -169,48 +216,45 @@ func runCompressTask(ctx context.Context, task *bridgeipc.Task, store *userconfi
 		return FileCompressResult{}, fmt.Errorf("open filesystem root: %w", err)
 	}
 	defer root.Close()
-	targetRel, tempRel, tempPath, err := prepareArchiveTarget(root, targetPath)
+	target, err := prepareArchiveTarget(root, targetPath, actingFor(session))
 	if err != nil {
 		if errors.Is(err, errArchiveDestinationIsDir) {
 			return FileCompressResult{}, fmt.Errorf("%w: destination is a directory", bridgeipc.ErrInvalidArgs)
 		}
 		return FileCompressResult{}, fmt.Errorf("prepare archive target: %w", err)
 	}
+	defer target.close()
 
 	size := &sizeEstimate{}
 	defer estimateArchiveSizeAsync(ctx, req.Paths, size)()
 
 	writeTaskPhaseProgress(task, 0, "preparing")
 	opts := newTaskPhaseCallbacks(ctx, task, store, size, "compressing")
-	err = createArchive(req.Format, tempPath, opts, archiveCompressionWorkers(settings), req.Paths)
+	err = createArchive(req.Format, target.temp, target.tempPath, opts, archiveCompressionWorkers(settings), req.Paths)
 	if errors.Is(err, services.ErrAborted) {
 		slog.Debug("compress aborted, cleaning up", "path", targetPath)
-		removeWithDebug(root, tempRel, tempPath)
+		target.discard()
 		return FileCompressResult{}, abortErr(ctx)
 	}
 	if err != nil {
-		removeWithDebug(root, tempRel, tempPath)
+		target.discard()
 		return FileCompressResult{}, fmt.Errorf("compression failed: %w", err)
 	}
-	if err := publishArchive(root, tempRel, targetRel); err != nil {
-		removeWithDebug(root, tempRel, tempPath)
+	archiveSize, err := target.finish()
+	if err != nil {
+		target.discard()
 		if errors.Is(err, fs.ErrExist) {
 			return FileCompressResult{}, fmt.Errorf("%w: an archive with that name already exists", bridgeipc.ErrConflict)
 		}
 		return FileCompressResult{}, fmt.Errorf("finalize archive: %w", err)
 	}
-
-	var archiveSize int64
-	if info, err := root.Root.Stat(targetRel); err == nil {
-		archiveSize = info.Size()
-		addToIndexerDetached("archive_create", targetPath)
-	}
+	addToIndexerDetached("archive_create", targetPath)
 
 	slog.Info("compress complete", "path", targetPath, "count", len(req.Paths), "size", archiveSize, "format", req.Format)
 	return FileCompressResult{Path: targetPath, Size: archiveSize, Format: req.Format}, nil
 }
 
-func runExtractTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.FileExtractRequest) (FileExtractResult, error) {
+func runExtractTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.FileExtractRequest, session sessionOwner) (FileExtractResult, error) {
 	archivePath, destination, err := parseExtractRequest(req)
 	if err != nil {
 		return FileExtractResult{}, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
@@ -238,13 +282,10 @@ func runExtractTask(ctx context.Context, task *bridgeipc.Task, store *userconfig
 	}
 	writeTaskPhaseProgress(task, totalSize, "preparing")
 	opts := newTaskPhaseCallbacks(ctx, task, store, knownSize(totalSize), "extracting")
-	err = services.ExtractArchive(archivePath, destination, opts, archiveExtractWorkers(settings))
+	// An aborted extract removes the destination it made itself.
+	err = services.ExtractArchive(ctx, archivePath, destination, actingFor(session), opts, archiveExtractWorkers(settings))
 	if errors.Is(err, services.ErrAborted) {
-		slog.Debug("extract aborted, cleaning up", "path", destination)
-		// The destination was created by this task, so it is ours to drop.
-		if removeErr := root.Root.RemoveAll(fsroot.ToRel(destination)); removeErr != nil {
-			slog.Debug("failed to clean up extraction directory", "path", destination, "error", removeErr)
-		}
+		slog.Debug("extract aborted", "path", destination)
 		return FileExtractResult{}, abortErr(ctx)
 	}
 	if err != nil {

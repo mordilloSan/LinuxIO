@@ -473,3 +473,59 @@ func TestUploadHandsNewEntriesToSessionUserAsRoot(t *testing.T) {
 	requireOwner(t, filepath.Join(home, "plain"), 0, uint32(os.Getegid()))
 	requireOwnerAndMode(t, plain, 0, uint32(os.Getegid()), 0o664)
 }
+
+// An upload with an owner, the Compose save, reaches its folder, and makes
+// any missing one, without following a link in a folder the session user can
+// write: a process of theirs could have replaced ~/docker/web with a link to
+// another folder root can write. An upload without one acts as the user's own
+// save and follows the user's link.
+func TestOwnedUploadNeverGoesThroughALinkTheUserCouldPlant(t *testing.T) {
+	home, victim := t.TempDir(), t.TempDir()
+	plant(t, victim, filepath.Join(home, "docker"))
+	root := openTestRoot(t)
+
+	for _, target := range []string{filepath.Join(home, "docker", "compose.yml"), filepath.Join(home, "docker", "web", "compose.yml")} {
+		err := newOwnedUpload(t, target, 3, selfOwner(), false, false).prepare(root)
+		require.ErrorIs(t, err, bridgeipc.ErrForbidden, target)
+		_, err = openUploadDir(root, fsroot.ToRel(filepath.Dir(target)), selfOwner())
+		require.ErrorIs(t, err, bridgeipc.ErrForbidden, target)
+		require.Empty(t, dirEntries(t, victim))
+	}
+
+	uploadThroughHandles(t, newOwnedUpload(t, filepath.Join(home, "docker", "compose.yml"), 3, sessionOwner{}, false, false), "abc")
+	require.FileExists(t, filepath.Join(victim, "compose.yml"))
+}
+
+// A link the session user cannot have planted, one in a folder only root can
+// write such as /home -> /var/home, still takes an owned upload; one in a
+// folder of theirs does not.
+func TestOwnedUploadFollowsOnlyALinkInARootFolderAsRoot(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("handing entries to another user needs root")
+	}
+	const uid, gid = 12345, 12346
+	session := sessionOwner{uid: uid, gid: gid, set: true}
+	base := t.TempDir()
+	home := filepath.Join(base, "home")
+	require.NoError(t, os.Mkdir(home, 0o750))
+	require.NoError(t, os.Chown(home, uid, gid))
+	actual := filepath.Join(base, "real")
+	require.NoError(t, os.Mkdir(actual, 0o755))
+	plant(t, actual, filepath.Join(base, "alias"))
+	plant(t, actual, filepath.Join(home, "docker"))
+	root := openTestRoot(t)
+
+	err := newOwnedUpload(t, filepath.Join(home, "docker", "compose.yml"), 3, session, false, false).prepare(root)
+	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
+	require.Empty(t, dirEntries(t, actual))
+
+	uploadThroughStream(t, apischema.FileUploadRequest{TargetPath: filepath.Join(base, "alias", "stack", "compose.yml"), Owner: uploadOwnerSession}, "abc", session)
+	require.FileExists(t, filepath.Join(actual, "stack", "compose.yml"))
+}
+
+func dirEntries(t *testing.T, dir string) []os.DirEntry {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	return entries
+}

@@ -62,6 +62,28 @@ func (o sessionOwner) asOwner() services.Owner {
 	return services.Owner{UID: o.uid, GID: o.gid, Set: o.set}
 }
 
+// actingFor is whom a bridge acts for when it changes the session user's
+// files: that user on a root bridge, which then never follows a link that
+// user could have planted on the way (see services.OpenNearestDirNoUserLinks);
+// nobody on a bridge that is not root, which already acts as that user, and
+// nobody for a root session, whose user is no less trusted than the bridge
+// and would otherwise be refused system links such as /bin -> usr/bin.
+func actingFor(session sessionOwner) services.Owner {
+	if os.Geteuid() != 0 || session.uid == 0 {
+		return services.Owner{}
+	}
+	return session.asOwner()
+}
+
+// linkRuleFor is the owner an upload's folders are reached for: the upload's
+// owner, except root, whom no link rule applies to (see actingFor).
+func linkRuleFor(owner sessionOwner) services.Owner {
+	if owner.uid == 0 {
+		return services.Owner{}
+	}
+	return owner.asOwner()
+}
+
 // handsOverIn reports whether an entry created in a folder goes to owner
 // (see services.HandsOverIn).
 func handsOverIn(folder os.FileInfo, owner sessionOwner) bool {
@@ -77,9 +99,11 @@ func isSetgid(folder os.FileInfo) bool {
 // missing folders on the way. It walks down from the deepest folder that
 // already exists through open handles, so the folders it creates are made and
 // handed over relative to the handle of their parent, never by path. Folders
-// that already exist are only opened.
+// that already exist are only opened. An upload with an owner reaches that
+// folder without following a link the session user could have planted (see
+// services.OpenNearestDirNoUserLinks), so its save cannot be sent elsewhere.
 func openUploadDir(root *fsroot.FSRoot, dirRel string, owner sessionOwner) (*os.File, error) {
-	dir, missing, err := services.OpenNearestDir(root, dirRel)
+	dir, missing, err := services.OpenNearestDirNoUserLinks(root, dirRel, linkRuleFor(owner))
 	if err != nil {
 		return nil, err
 	}

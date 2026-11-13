@@ -66,6 +66,85 @@ func OpenNearestDir(root *fsroot.FSRoot, dirRel string) (*os.File, []string, err
 	return dir, missing, nil
 }
 
+// OpenNearestDirNoUserLinks is OpenNearestDir for a bridge acting for owner:
+// each folder is reached as openDirNoUserLinks reaches it, so on a root
+// bridge a symlink in a folder the session user can write is refused, not
+// followed, while one such as /home -> /var/home still is. Without owner set
+// it is OpenNearestDir.
+func OpenNearestDirNoUserLinks(root *fsroot.FSRoot, path string, owner Owner) (*os.File, []string, error) {
+	path = fsroot.CleanAbsPath(path)
+	if !owner.Set {
+		return OpenNearestDir(root, relPath(path))
+	}
+	var missing []string
+	for existing := path; ; existing = filepath.Dir(existing) {
+		dir, err := openDirNoUserLinks(root, existing, owner)
+		if err == nil {
+			slices.Reverse(missing)
+			return dir, missing, nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) || existing == "/" {
+			return nil, nil, err
+		}
+		missing = append(missing, filepath.Base(existing))
+	}
+}
+
+// entryFollowingNoUserLinks returns the folder the entry at path resolves
+// into, open, and the entry's name in it, following a symlink at path as
+// chmod(1) does. On a root bridge acting for owner the folders are reached
+// as openDirNoUserLinks reaches them and a symlink at the entry is followed
+// under the same rule; without owner set path resolves as the user's own
+// programs would resolve it.
+func entryFollowingNoUserLinks(root *fsroot.FSRoot, path string, owner Owner) (entry, error) {
+	path = fsroot.CleanAbsPath(path)
+	if !owner.Set {
+		if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
+			if path, err = filepath.EvalSymlinks(path); err != nil {
+				return entry{}, err
+			}
+		}
+		return openEntry(root, path, owner)
+	}
+	for hops := 0; ; hops++ {
+		at, err := openEntry(root, path, owner)
+		if err != nil {
+			return entry{}, err
+		}
+		target, isLink := linkTarget(at.dir, at.name)
+		if !isLink {
+			return at, nil
+		}
+		if hops == maxLinkHops {
+			_ = at.dir.Close()
+			return entry{}, &fs.PathError{Op: "open", Path: path, Err: unix.ELOOP}
+		}
+		dir, err := followLink(at.dir, at.name, target, owner)
+		if err != nil {
+			return entry{}, err
+		}
+		// dir is reached one name at a time from /, so its name is its
+		// real path and a relative target resolves against it.
+		path = filepath.Join(dir.Name(), target)
+		_ = dir.Close()
+	}
+}
+
+// openEntry opens the folder path sits in as openDirNoUserLinks does and
+// returns it with path's name in it ("." for /).
+func openEntry(root *fsroot.FSRoot, path string, owner Owner) (entry, error) {
+	path = fsroot.CleanAbsPath(path)
+	dir, err := openDirNoUserLinks(root, filepath.Dir(path), owner)
+	if err != nil {
+		return entry{}, err
+	}
+	name := filepath.Base(path)
+	if path == "/" {
+		name = "."
+	}
+	return entry{dir: dir, name: name, path: path}, nil
+}
+
 // MkdirAllAt makes names below dir, each inside the one before, through
 // MkdirAt and returns the last one open, so every folder is made and handed
 // over relative to the handle of its parent, never by path. It closes dir.

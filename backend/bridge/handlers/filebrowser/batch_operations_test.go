@@ -125,7 +125,7 @@ func TestRunCopyBatchTaskReportsPerItemFailures(t *testing.T) {
 	file := seedFile(t, filepath.Join(src, "a.txt"), "a")
 	req := apischema.BatchTransferRequest{Sources: []string{file, filepath.Join(src, "missing.txt")}, Destination: dest}
 
-	result, err := runCopyBatchTask(context.Background(), newBatchTask(t, "filebrowser.copy_batch", req), nil, req)
+	result, err := runCopyBatchTask(context.Background(), newBatchTask(t, "filebrowser.copy_batch", req), nil, req, sessionOwner{})
 	detachedIndexerUpdates.Wait()
 	if err != nil {
 		t.Fatalf("runCopyBatchTask: %v", err)
@@ -148,7 +148,7 @@ func TestRunMoveBatchTaskKeepsBoth(t *testing.T) {
 	seedFile(t, filepath.Join(dest, "a.txt"), "old")
 	req := apischema.BatchTransferRequest{Sources: []string{file}, Destination: dest, KeepBoth: []string{file}}
 
-	result, err := runMoveBatchTask(context.Background(), newBatchTask(t, "filebrowser.move_batch", req), nil, req)
+	result, err := runMoveBatchTask(context.Background(), newBatchTask(t, "filebrowser.move_batch", req), nil, req, sessionOwner{})
 	detachedIndexerUpdates.Wait()
 	if err != nil || result.Succeeded != 1 || len(result.Failed) != 0 {
 		t.Fatalf("result = %+v, err %v", result, err)
@@ -207,7 +207,7 @@ func TestRunMoveBatchTaskReindexesMergeStoppedBySpecialFile(t *testing.T) {
 	overwrite := true
 	req := apischema.BatchTransferRequest{Sources: []string{srcTree}, Destination: dest, Overwrite: &overwrite}
 
-	result, err := runMoveBatchTask(context.Background(), newBatchTask(t, "filebrowser.move_batch", req), nil, req)
+	result, err := runMoveBatchTask(context.Background(), newBatchTask(t, "filebrowser.move_batch", req), nil, req, sessionOwner{})
 	detachedIndexerUpdates.Wait()
 	if err != nil || result.Succeeded != 0 || len(result.Failed) != 1 {
 		t.Fatalf("result = %+v, err %v", result, err)

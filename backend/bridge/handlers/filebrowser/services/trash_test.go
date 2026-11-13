@@ -438,6 +438,31 @@ func TestMoveToTrashNeverTrashesThroughALinkTheUserCouldPlant(t *testing.T) {
 	require.ErrorContains(t, err, "system folder")
 }
 
+// On a root bridge a restore reaches the folder it puts the item back in, or
+// the nearest one that exists, without following a link in a folder the
+// session user can write, swapped in after the item was trashed.
+func TestRestoreNeverGoesThroughALinkTheUserCouldPlant(t *testing.T) {
+	f := newPlantedLinkFixture(t)
+	require.NoError(t, os.Remove(f.docs))
+	docs := createTestDir(t, f.home, "docs")
+	report := createTestFile(t, docs, "report.txt", []byte("report"))
+	sub := createTestDir(t, docs, "sub")
+	nested := createTestFile(t, sub, "nested.txt", []byte("nested"))
+	trashed, err := MoveToTrash(t.Context(), report, f.home, os.Getuid(), os.Getgid(), false)
+	require.NoError(t, err)
+	trashedNested, err := MoveToTrash(t.Context(), nested, f.home, os.Getuid(), os.Getgid(), false)
+	require.NoError(t, err)
+	require.NoError(t, os.RemoveAll(docs))
+	plantTrashLink(t, f.victim, f.docs)
+
+	for _, item := range []string{trashed, trashedNested} {
+		_, err = RestoreFromTrash(t.Context(), item, f.home, os.Getuid(), os.Getgid(), true)
+		require.ErrorIs(t, err, bridgeipc.ErrForbidden, item)
+		f.requireVictimUntouched(t)
+		assert.FileExists(t, item)
+	}
+}
+
 // A link the session user cannot have planted, one in a folder only root can
 // write such as /home -> /var/home, is still followed on a root bridge.
 func TestMoveToTrashFollowsALinkInARootFolderAsRoot(t *testing.T) {
