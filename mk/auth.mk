@@ -118,7 +118,6 @@ $(auth_frametool_bin): $(backend_auth_dir)/linuxio-auth-frametool.c $(backend_au
 	@$(auth_test_env) "$(scripts_dir)/test-auth.sh" frametool "$(backend_auth_dir)" "$@"
 
 test-auth-protocol: $(auth_frametool_bin) $(GO_BUILD_PREREQ) ## Run cross-language (C<->Go) auth protocol frame tests
-	@echo ""
 	@$(PRINTC) "$(COLOR_CYAN)🧪 Running cross-language auth protocol tests...$(COLOR_RESET)"
 	@set -euo pipefail; \
 	cd "$(backend_dir)" && LINUXIO_AUTH_FRAMETOOL="$(auth_frametool_bin)" $(GO_CMD_ENV) \
