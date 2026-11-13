@@ -172,6 +172,18 @@ function readConfigValue(
   return ui[key as keyof UIConfig];
 }
 
+// Written after a confirmed UI save so the other tabs of this browser reload
+// their settings. The value only has to change; nothing reads it.
+const UI_CONFIG_SAVED_KEY = "linuxio.uiConfigSaved";
+
+function announceUIConfigSaved(): void {
+  try {
+    window.localStorage.setItem(UI_CONFIG_SAVED_KEY, String(Date.now()));
+  } catch {
+    // Without storage the other tabs keep their settings until refreshed.
+  }
+}
+
 interface SaveOperation {
   bridge?: ConfigPatch;
   ui?: ConfigUISetPayload;
@@ -232,6 +244,9 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
               : Promise.resolve(),
             operation.ui ? setUIRemote(operation.ui) : Promise.resolve(),
           ]);
+          if (operation.ui && results[1].status === "fulfilled") {
+            announceUIConfigSaved();
+          }
           if (!activeQueueRef.current) return;
           if (results.some((result) => result.status === "rejected")) return;
           operation.onSaved?.();
@@ -310,6 +325,32 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
     };
   }, [isMuxOpen, queryClient, bridgeKey, uiKey, sessionExpired]);
 
+  // Another tab of this browser saved UI settings: reload them from the
+  // bridge. The reload joins the save queue, so it runs after this tab's own
+  // pending saves and the cache ends up matching what the bridge holds.
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== UI_CONFIG_SAVED_KEY || event.newValue === null) return;
+      saveTailRef.current = saveTailRef.current.then(async () => {
+        if (!activeQueueRef.current || !canSaveRef.current) return;
+        try {
+          await queryClient.query({
+            ...linuxio.config.get_ui,
+            queryKey: uiKey,
+            staleTime: CACHE_TTL_MS.NONE,
+          });
+        } catch (error) {
+          const code = error instanceof LinuxIOError ? error.code : 500;
+          if (code === 401 || code === 403) sessionExpired();
+          // Otherwise this tab keeps the settings it already shows; a change
+          // made here mid-reload cancels the reload on purpose.
+        }
+      });
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [queryClient, uiKey, sessionExpired]);
+
   const save = useCallback(
     (patch: ConfigPatch, nextUI: UIConfig, onSaved?: () => void) => {
       const wantsBridge = hasImportantPatch(patch);
@@ -347,7 +388,11 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
 
       const uiPart = pickUISettings(patch.appSettings);
       const nextUI: UIConfig = hasValues(uiPart) ? { ...ui, ...uiPart } : ui;
-      if (nextUI !== ui) queryClient.setQueryData(uiKey, nextUI);
+      if (nextUI !== ui) {
+        // A reload answering after this change would overwrite it.
+        void queryClient.cancelQueries({ exact: true, queryKey: uiKey });
+        queryClient.setQueryData(uiKey, nextUI);
+      }
 
       if (
         hasValues(pickImportantAppSettings(patch.appSettings ?? {})) ||

@@ -655,6 +655,166 @@ describe("ConfigProvider", () => {
     await waitFor(() => expect(onSavedSpy).toHaveBeenCalledTimes(1));
   });
 
+  describe("tabs of the same browser", () => {
+    const savedKey = "linuxio.uiConfigSaved";
+    const otherTabSaved = (init: Partial<StorageEventInit> = {}) =>
+      act(async () => {
+        window.dispatchEvent(
+          new StorageEvent("storage", {
+            key: savedKey,
+            newValue: "1",
+            ...init,
+          }),
+        );
+      });
+
+    it("tells the other tabs once a UI save is confirmed", async () => {
+      let confirmSave: (() => void) | undefined;
+      apiMocks.setUIRemote.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            confirmSave = resolve;
+          }),
+      );
+      renderProvider();
+
+      await screen.findByTestId("loaded");
+      await act(async () => {
+        screen.getByRole("button", { name: "set theme" }).click();
+      });
+      await waitFor(() => expect(apiMocks.setUIRemote).toHaveBeenCalled());
+      expect(window.localStorage.getItem(savedKey)).toBeNull();
+
+      await act(async () => confirmSave?.());
+      await waitFor(() =>
+        expect(window.localStorage.getItem(savedKey)).not.toBeNull(),
+      );
+    });
+
+    it("stays silent when the UI save fails or nothing UI was saved", async () => {
+      apiMocks.setUIRemote.mockRejectedValueOnce(new Error("offline"));
+      renderProvider();
+
+      await screen.findByTestId("loaded");
+      await act(async () => {
+        screen.getByRole("button", { name: "set theme" }).click();
+        screen.getByRole("button", { name: "set chunk four" }).click();
+      });
+      await waitFor(() => expect(apiMocks.setConfigRemote).toHaveBeenCalled());
+      await act(async () => {});
+
+      expect(window.localStorage.getItem(savedKey)).toBeNull();
+    });
+
+    it("reloads the UI settings another tab saved", async () => {
+      const uiQueryFn = vi
+        .fn<() => Promise<UIConfig>>()
+        .mockResolvedValueOnce(remoteUI())
+        .mockResolvedValue(remoteUI({ theme: "DARK" }));
+      renderProvider({ uiQueryFn });
+
+      await waitFor(() =>
+        expect(screen.getByTestId("theme")).toHaveTextContent("LIGHT"),
+      );
+      await otherTabSaved();
+
+      await waitFor(() =>
+        expect(screen.getByTestId("theme")).toHaveTextContent("DARK"),
+      );
+      expect(uiQueryFn).toHaveBeenCalledTimes(2);
+      // A reload is not a save: it must not be announced back.
+      expect(apiMocks.setUIRemote).not.toHaveBeenCalled();
+      expect(window.localStorage.getItem(savedKey)).toBeNull();
+    });
+
+    it("ignores other storage keys and the key's removal", async () => {
+      const uiQueryFn = vi
+        .fn<() => Promise<UIConfig>>()
+        .mockResolvedValue(remoteUI());
+      renderProvider({ uiQueryFn });
+
+      await screen.findByTestId("loaded");
+      await otherTabSaved({ key: "linuxio.bootTheme" });
+      await otherTabSaved({ newValue: null });
+      await act(async () => {});
+
+      expect(uiQueryFn).toHaveBeenCalledTimes(1);
+    });
+
+    it("reloads only after this tab's pending save", async () => {
+      let confirmSave: (() => void) | undefined;
+      apiMocks.setUIRemote.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            confirmSave = resolve;
+          }),
+      );
+      const uiQueryFn = vi
+        .fn<() => Promise<UIConfig>>()
+        .mockResolvedValueOnce(remoteUI())
+        .mockResolvedValue(remoteUI({ theme: "DARK" }));
+      renderProvider({ uiQueryFn });
+
+      await screen.findByTestId("loaded");
+      await act(async () => {
+        screen.getByRole("button", { name: "set theme" }).click();
+      });
+      await waitFor(() => expect(apiMocks.setUIRemote).toHaveBeenCalled());
+      await otherTabSaved();
+      await act(async () => {});
+      expect(uiQueryFn).toHaveBeenCalledTimes(1);
+
+      await act(async () => confirmSave?.());
+      await waitFor(() => expect(uiQueryFn).toHaveBeenCalledTimes(2));
+    });
+
+    it("keeps a change made here while the reload is in flight", async () => {
+      let answerReload: ((ui: UIConfig) => void) | undefined;
+      const uiQueryFn = vi
+        .fn<() => Promise<UIConfig>>()
+        .mockResolvedValueOnce(remoteUI())
+        .mockImplementationOnce(
+          () =>
+            new Promise<UIConfig>((resolve) => {
+              answerReload = resolve;
+            }),
+        );
+      renderProvider({ uiQueryFn });
+
+      await screen.findByTestId("loaded");
+      await otherTabSaved();
+      await waitFor(() => expect(uiQueryFn).toHaveBeenCalledTimes(2));
+      await act(async () => {
+        screen.getByRole("button", { name: "set theme" }).click();
+      });
+      await act(async () =>
+        answerReload?.(remoteUI({ primaryColor: "#000000" })),
+      );
+
+      await waitFor(() =>
+        expect(apiMocks.setUIRemote).toHaveBeenCalledWith(
+          expect.objectContaining({ theme: "DARK" }),
+        ),
+      );
+      expect(screen.getByTestId("theme")).toHaveTextContent("DARK");
+    });
+
+    it("signs out when the reload finds the session gone", async () => {
+      const sessionExpired = vi.fn();
+      const uiQueryFn = vi
+        .fn<() => Promise<UIConfig>>()
+        .mockResolvedValueOnce(remoteUI())
+        .mockRejectedValue(new LinuxIOError("expired", 401));
+      renderProvider({ uiQueryFn, sessionExpired });
+
+      await screen.findByTestId("loaded");
+      await otherTabSaved();
+
+      await waitFor(() => expect(sessionExpired).toHaveBeenCalledTimes(1));
+      expect(screen.getByTestId("theme")).toHaveTextContent("LIGHT");
+    });
+  });
+
   it("signs out and does not render children on auth failures", async () => {
     const sessionExpired = vi.fn();
 

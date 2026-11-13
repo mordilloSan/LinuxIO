@@ -535,6 +535,17 @@ back. Concurrent UI replacements
 are serialized but not field-merged; the last complete snapshot committed
 wins.
 
+Tabs of one browser follow each other's UI saves. After `config.set_ui` is
+confirmed, `ConfigProvider` writes a timestamp to `linuxio.uiConfigSaved` in
+local storage; the other tabs receive the browser's `storage` event and reload
+`config.get_ui` from the bridge. The key is only a signal and carries no
+settings. The reload joins that tab's save queue, so it runs after the tab's
+own pending saves, and a change made in the tab while the reload is in flight
+cancels the reload, so the change is saved and announced in turn. A reload is
+never announced. Other browsers and devices are not notified and show a saved
+change after their next load. Functional settings (`config.get`) are not
+reloaded this way.
+
 At bridge startup a core document
 that fails to decode or validate is renamed to
 `config.yaml.broken-<UTC timestamp>` and replaced with defaults; an
