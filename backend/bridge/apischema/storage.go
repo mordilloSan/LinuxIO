@@ -50,9 +50,26 @@ type StorageBlockDevice struct {
 	// at <path>", "Active swap" or "Used by <holder path>", in that priority.
 	Busy    string `json:"busy,omitzero"`
 	InFstab bool   `json:"inFstab,omitzero"`
+	// Member is the btrfs pool, md array, LVM volume group or other set the
+	// device's signature makes it part of, mounted, running or active or not.
+	Member *StorageMember `json:"member,omitzero"`
 	// FreeRegions, for a GPT disk, lists every free gap of at least 1 MiB in
 	// disk order.
 	FreeRegions []StorageRegion `json:"freeRegions,omitzero"`
+}
+
+// StorageMember is what a device's member signature says it belongs to.
+type StorageMember struct {
+	// Kind is btrfs (a pool), md (an array), lvm (a volume group) or other:
+	// any other signature that names itself a member, such as zfs_member,
+	// whose Name is that signature.
+	Kind string `json:"kind"`
+	// Name is the pool label, the array name (host:name) or the volume
+	// group; empty when the signature or udev does not say.
+	Name string `json:"name,omitzero"`
+	// UUID is the pool's filesystem UUID, the array UUID or the physical
+	// volume UUID.
+	UUID string `json:"uuid,omitzero"`
 }
 
 // StorageRegion is a free byte range of a disk.
@@ -390,6 +407,24 @@ type PartitionMountRequest struct {
 
 type BlockDeviceRequest struct {
 	Device string `json:"device"`
+}
+
+// DiskInitializeRequest replaces everything on a disk with an empty GPT. A
+// disk or partition of it that is a member of an md array or an LVM volume
+// group is wiped only when ConfirmMembers lists every such member exactly
+// as the inventory reports it, which is what the confirmation showed.
+type DiskInitializeRequest struct {
+	Device         string                `json:"device"`
+	ConfirmMembers []DiskMemberConfirmed `json:"confirmMembers,omitzero"`
+}
+
+// DiskMemberConfirmed is one member signature the user agreed to erase.
+type DiskMemberConfirmed struct {
+	// Device is the disk or partition that carries the signature.
+	Device string `json:"device"`
+	// Kind and UUID are its StorageMember's.
+	Kind string `json:"kind"`
+	UUID string `json:"uuid"`
 }
 
 type VolumeGroupLogicalVolumeRequest struct {

@@ -117,6 +117,7 @@ func TestReadBlockDevicesTree(t *testing.T) {
 	h.part("sda", "sda2", "8:2", 2, 1002048, 100000)
 	h.udev("8:1", "ID_FS_TYPE=ext4")
 	h.add("", "sdb", "8:16", 1000000, nil)
+	h.udev("8:16", "ID_FS_TYPE=linux_raid_member", "ID_FS_UUID_ENC=a1", "ID_FS_LABEL_ENC=host:0")
 	h.relate("sdb", "holders", "md0")
 	h.add("", "md0", "9:0", 900000, map[string]string{"md/level": "raid1"})
 	h.relate("md0", "slaves", "sda3")
@@ -125,7 +126,7 @@ func TestReadBlockDevicesTree(t *testing.T) {
 	h.relate("dm-0", "slaves", "md0")
 	h.add("", "nvme0n1", "259:0", 4000000, map[string]string{"queue/logical_block_size": "512"})
 	h.part("nvme0n1", "nvme0n1p2", "259:2", 2, 2048, 3000000)
-	h.udev("259:2", "ID_FS_TYPE=btrfs")
+	h.udev("259:2", "ID_FS_TYPE=btrfs", "ID_FS_UUID_ENC=f1", "ID_FS_LABEL_ENC=root")
 	h.add("", "loop0", "7:0", 100, nil)
 	h.add("", "ram0", "1:0", 100, nil)
 	h.add("", "sr0", "11:0", 0, nil)
@@ -166,7 +167,7 @@ func TestReadBlockDevicesTree(t *testing.T) {
 		"/dev/sda":            {"sda", "sda", "disk", "", "", 0, 0, 2000000 * 512, []string{}, []string{}},
 		"/dev/sda1":           {"sda1", "sda1", "part", "ext4", "Mounted at /data", 1, 2048 * 512, 1000000 * 512, []string{"/data"}, []string{"/dev/sda"}},
 		"/dev/sda2":           {"sda2", "sda2", "part", "", "Active swap", 2, 1002048 * 512, 100000 * 512, []string{}, []string{"/dev/sda"}},
-		"/dev/sdb":            {"sdb", "sdb", "disk", "", "Used by /dev/md0", 0, 0, 1000000 * 512, []string{}, []string{}},
+		"/dev/sdb":            {"sdb", "sdb", "disk", "linux_raid_member", "Used by /dev/md0", 0, 0, 1000000 * 512, []string{}, []string{}},
 		"/dev/md0":            {"md0", "md0", "raid1", "", "", 0, 0, 900000 * 512, []string{}, []string{"/dev/sda3", "/dev/sdb"}},
 		"/dev/mapper/vg-root": {"vg-root", "dm-0", "lvm", "", "", 0, 0, 800000 * 512, []string{}, []string{"/dev/md0"}},
 		"/dev/sr0":            {"sr0", "sr0", "rom", "", "", 0, 0, 0, []string{}, []string{}},
@@ -177,6 +178,16 @@ func TestReadBlockDevicesTree(t *testing.T) {
 		have := summary{d.Name, d.KernelName, d.Type, d.FSType, d.Busy, d.PartNumber, d.StartBytes, d.SizeBytes, d.Mountpoints, d.Parents}
 		if !reflect.DeepEqual(have, want) {
 			t.Errorf("%s:\n have %+v\n want %+v", path, have, want)
+		}
+	}
+	// Membership comes from the signature, whether or not anything holds it.
+	for path, want := range map[string]*apischema.StorageMember{
+		"/dev/sdb":       {Kind: "md", Name: "host:0", UUID: "a1"},
+		"/dev/nvme0n1p2": {Kind: "btrfs", Name: "root", UUID: "f1"},
+		"/dev/sda1":      nil,
+	} {
+		if have := got[path].Member; !reflect.DeepEqual(have, want) {
+			t.Errorf("%s: member %+v, want %+v", path, have, want)
 		}
 	}
 }

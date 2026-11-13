@@ -12,6 +12,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
 )
 
 func writeSysfs(t *testing.T, dir string, files map[string]string) {
@@ -52,13 +53,17 @@ func fakeMD(t *testing.T, extra map[string]string) string {
 func stubMdadm(t *testing.T, devices []apischema.StorageBlockDevice) *[][]string {
 	t.Helper()
 	var calls [][]string
-	origCmd, origDevs := mdadmCommand, mdBlockDevices
-	t.Cleanup(func() { mdadmCommand, mdBlockDevices = origCmd, origDevs })
+	origCmd, origDevs, origFss, origOffline := mdadmCommand, storageBlockDevices, btrfsFilesystems, offlinePools
+	t.Cleanup(func() {
+		mdadmCommand, storageBlockDevices, btrfsFilesystems, offlinePools = origCmd, origDevs, origFss, origOffline
+	})
 	mdadmCommand = func(_ context.Context, args ...string) error {
 		calls = append(calls, args)
 		return nil
 	}
-	mdBlockDevices = func(context.Context) ([]apischema.StorageBlockDevice, error) { return devices, nil }
+	storageBlockDevices = func(context.Context) ([]apischema.StorageBlockDevice, error) { return devices, nil }
+	btrfsFilesystems = func(context.Context) ([]btrfs.BtrfsFilesystem, error) { return nil, nil }
+	offlinePools = func(context.Context) ([]btrfs.BtrfsOfflinePool, error) { return nil, nil }
 	return &calls
 }
 
@@ -175,27 +180,31 @@ func TestMDMemberRemove(t *testing.T) {
 }
 
 func TestCheckMDDeviceFree(t *testing.T) {
-	devices := []apischema.StorageBlockDevice{
-		{Path: "/dev/sdz", Type: "disk"},
-		{Path: "/dev/sdm", Type: "disk", Mountpoints: []string{"/mnt"}},
-		{Path: "/dev/sdp", Type: "disk"},
-		{Path: "/dev/sdp1", Type: "part", Parents: []string{"/dev/sdp"}},
-		{Path: "/dev/sdx", Type: "disk", FSType: "ext4"},
-		{Path: "/dev/sr0", Type: "rom"},
-	}
+	inv := memberInventory()
+	inv.devices = append(inv.devices,
+		apischema.StorageBlockDevice{Path: "/dev/sdz", Type: "disk"},
+		apischema.StorageBlockDevice{Path: "/dev/sr0", Type: "rom"},
+	)
 	for _, tc := range []struct {
 		device  string
 		wantErr error
 		text    string
 	}{
 		{"/dev/sdz", nil, ""},
-		{"/dev/sdm", bridgeipc.ErrConflict, "mounted"},
-		{"/dev/sdp", bridgeipc.ErrConflict, "partitions"},
-		{"/dev/sdx", bridgeipc.ErrConflict, "ext4 signature; wipe it first"},
+		{"/dev/sdb", nil, ""},
+		{"/dev/sdd", bridgeipc.ErrConflict, "Mounted at /srv"},
+		{"/dev/sde", bridgeipc.ErrConflict, "Active swap"},
+		{"/dev/sdf", bridgeipc.ErrConflict, "partitions"},
+		{"/dev/sdg", bridgeipc.ErrConflict, "In /etc/fstab"},
+		{"/dev/sdc", bridgeipc.ErrConflict, "ext4 signature; wipe it first"},
+		{"/dev/sdh", bridgeipc.ErrConflict, "Member of btrfs pool old"},
+		{"/dev/sdk", bridgeipc.ErrConflict, "Member of btrfs pool k1"},
+		{"/dev/sdl", bridgeipc.ErrConflict, "Member of md array host:data"},
+		{"/dev/sdm", bridgeipc.ErrConflict, "Member of LVM volume group vg0"},
 		{"/dev/nope", bridgeipc.ErrNotFound, ""},
 		{"/dev/sr0", bridgeipc.ErrInvalidArgs, ""},
 	} {
-		err := checkMDDeviceFree(devices, tc.device)
+		err := checkMDDeviceFree(inv, tc.device)
 		if !errors.Is(err, tc.wantErr) || (tc.wantErr == nil) != (err == nil) || (tc.text != "" && !strings.Contains(err.Error(), tc.text)) {
 			t.Errorf("%s: err = %v, want %v %q", tc.device, err, tc.wantErr, tc.text)
 		}

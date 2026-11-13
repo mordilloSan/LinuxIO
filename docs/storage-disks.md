@@ -54,10 +54,13 @@ between them. Its actions are for administrators.
 | Partition | **Format**: filesystem and label; **Overwrite existing data** when it already has one | the partition is unused |
 | Partition with a filesystem, not mounted | **Mount**: mount point, **Mount at boot** | not busy, and not a btrfs pool member (pools mount from the pool view) |
 | Partition (GPT disk) | **Delete**: the confirmation names the partition, its size and its filesystem | the partition is unused |
-| Disk | **Initialize disk**: an empty GPT replaces any table; the confirmation lists every partition that will be lost | the disk and all its partitions are unused and the disk is writable |
+| Disk | **Initialize disk**: an empty GPT replaces any table; the confirmation lists every partition that will be lost and names each member of an md array or LVM volume group it erases | the disk and all its partitions are unused and the disk is writable |
 
 A disabled action's tooltip gives the reason, such as "Mounted at /srv",
-"Used by /dev/md127", "In /etc/fstab" or "Member of btrfs pool tank". The
+"Used by /dev/md127", "In /etc/fstab" or "Member of btrfs pool tank". A
+partition whose signature makes it a member of a stopped md array or an
+inactive volume group shows it under **Used by**, such as "Member of md array
+host:data", without blocking anything. The
 filesystems are ext4, xfs and btrfs on one device; multi-disk pools come from
 the pool flow. A type whose `mkfs` is missing is listed as unavailable with a
 link to install it (see [Filesystem tools](./capabilities.md#filesystem-tools)).
@@ -94,7 +97,27 @@ Format, Delete and Initialize refuse on all four, with the reason as a 409.
 Mount refuses on the first three, and on the fourth only with **Mount at
 boot**, so a partition already in fstab can still be mounted for now. Create
 needs a GPT disk that is not itself in use; its other partitions may be.
-Create, Format, Delete and Initialize refuse a read-only disk.
+Create, Format, Delete and Initialize refuse a read-only disk. Format
+overwrites any other signature only with **Overwrite existing data**.
+
+These four are the check every operation that writes a device shares
+(`deviceInUse` in `device_free.go`). md RAID add and replace also refuse a
+device with partitions, holders or any signature at all, naming a member of
+a btrfs pool, md array or volume group and how to free it; btrfs pools add
+their own rule (see [Which disks a pool may take](./btrfs.md#which-disks-a-pool-may-take)).
+
+Nothing holds a member of a stopped md array or an inactive LVM volume
+group, so rules 1 and 2 do not see it. **Initialize disk** is the deliberate
+way to erase one: its confirmation names every such member on the disk and
+its partitions, and the request lists them (`confirmMembers`: device, kind
+and UUID, as the inventory reported them). The bridge refuses with a 409
+when a member it finds is not confirmed, or a confirmed one is gone, so a
+disk that changed after the dialog opened is never wiped on the old
+confirmation. The same holds for any other signature that names itself a
+member (one ending in `_member`, such as `zfs_member`). A member of a btrfs
+pool stays refused by rule 3; its pool is destroyed instead. A btrfs
+signature that belongs to no pool the bridge can read cannot be destroyed as
+a pool, so it is named and confirmed like the rest.
 
 The kernel backs these checks, so a stale inventory cannot cause a
 destructive write:
@@ -162,8 +185,15 @@ with no subprocess:
   filesystems with an anonymous device such as btrfs, by source.
 - `/proc/swaps` and `/etc/fstab` for the in-use rule and the `inFstab` flag.
 
-Each device also reports `busy` (mounted, active swap, or used by a holder)
-and, for GPT disks, `freeRegions`.
+Each device also reports `busy` (mounted, active swap, or used by a holder),
+`member` and, for GPT disks, `freeRegions`. `member` is what the device's
+signature makes it part of, whether that is mounted, running or active or
+not: `btrfs` with the pool label and filesystem UUID, `md` with the array
+name (`host:name`) and UUID, or `lvm` with the physical volume UUID and the
+volume group, which udev knows only from LVM's own rule once the group is
+complete (`LVM_VG_NAME_COMPLETE`). It comes from the udev database like the
+filesystem type, so it needs no privilege and also names the members of a
+mounted multi-device pool that no mount lists.
 
 The inventory also carries `bootEntries`: the firmware's Boot#### load
 options whose device path names a GPT partition, read from

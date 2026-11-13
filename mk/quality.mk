@@ -111,8 +111,11 @@ test-assistant-agent-integration: ensure-go ## Run the opt-in real npm install a
 	  "$(GO_BIN)" test ./bridge/handlers/packages -run '^TestAssistantAgentIntegration$$' -count=1 -v -timeout 10m
 
 # The root btrfs and partition kernel tests, run on this host by
-# test-btrfs-integration and in the test VM by vm-test-btrfs-integration.
-BTRFS_INTEGRATION_RUN := ^Test(Btrfs(Degraded|Resume|Replicate)?|Partition)Integration$$
+# test-btrfs-integration and in the test VM by vm-test-btrfs-integration:
+# common/btrfs, and the bridge storage rules that decide which disks a pool
+# may take (TestBtrfsMemberIntegration).
+BTRFS_INTEGRATION_RUN := ^Test(Btrfs(Degraded|Resume|Replicate|Member)?|Partition)Integration$$
+BTRFS_INTEGRATION_PKGS := ./common/btrfs ./bridge/handlers/storage
 
 test-btrfs-integration: ensure-go ## Run the root-only btrfs and partition kernel tests on loop devices
 	@echo "🧪 Running btrfs and partition kernel integration tests on loop devices (needs sudo)..."
@@ -121,7 +124,7 @@ test-btrfs-integration: ensure-go ## Run the root-only btrfs and partition kerne
 	    PATH="$$(dirname "$(GO_BIN)"):$${PATH}" \
 	    GOTOOLCHAIN="$(GO_TOOLCHAIN)" \
 	    LINUXIO_RUN_BTRFS_INTEGRATION=1 \
-	    "$(GO_BIN)" test ./common/btrfs -run '$(BTRFS_INTEGRATION_RUN)' -count=1 -v -timeout 20m
+	    "$(GO_BIN)" test $(BTRFS_INTEGRATION_PKGS) -run '$(BTRFS_INTEGRATION_RUN)' -count=1 -v -timeout 20m
 
 # The file browser tests that hand entries to other users or groups, which only
 # root can do; without root they skip or cover less.

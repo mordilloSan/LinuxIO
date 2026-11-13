@@ -373,7 +373,7 @@ func TestCallsGiveUpOnALockedDisk(t *testing.T) {
 	if !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), "another operation is running on /dev/sdb") {
 		t.Fatalf("delete: err = %v, want a conflict naming the disk", err)
 	}
-	_, err = InitializeDisk(ctx, apischema.BlockDeviceRequest{Device: "/dev/sdb"})
+	_, err = InitializeDisk(ctx, apischema.DiskInitializeRequest{Device: "/dev/sdb"})
 	if !errors.Is(err, bridgeipc.ErrConflict) {
 		t.Fatalf("initialize: err = %v, want a conflict", err)
 	}
@@ -467,7 +467,7 @@ func TestMountPartitionBusyIsAConflict(t *testing.T) {
 
 func TestInitializeDisk(t *testing.T) {
 	ctx := context.Background()
-	sdb := apischema.BlockDeviceRequest{Device: "/dev/sdb"}
+	sdb := apischema.DiskInitializeRequest{Device: "/dev/sdb"}
 
 	env := stubPartitions(t, "")
 	env.devices[2].Busy = "Mounted at /srv"
@@ -481,5 +481,69 @@ func TestInitializeDisk(t *testing.T) {
 	}
 	if want := []string{"lock /dev/sdb", "initialize /dev/sdb", "unlock /dev/sdb"}; !slices.Equal(env.calls, want) {
 		t.Errorf("calls = %q, want %q", env.calls, want)
+	}
+}
+
+// TestInitializeDiskConfirmsMembers covers a disk whose partitions belong to
+// a stopped md array and an inactive LVM volume group: nothing holds them,
+// so only the confirmation stands between them and the wipe.
+func TestInitializeDiskConfirmsMembers(t *testing.T) {
+	ctx := context.Background()
+	md := apischema.DiskMemberConfirmed{Device: "/dev/sdb1", Kind: "md", UUID: "a1"}
+	lvm := apischema.DiskMemberConfirmed{Device: "/dev/sdb2", Kind: "lvm", UUID: "pv2"}
+	members := func(env *partitionEnv) {
+		env.devices[1].FSType, env.devices[1].UUID, env.devices[1].Label = "linux_raid_member", "a1", "host:data"
+		env.devices[2].FSType, env.devices[2].UUID = "LVM2_member", "pv2"
+	}
+	for _, c := range []struct {
+		name    string
+		confirm []apischema.DiskMemberConfirmed
+		want    string
+	}{
+		{"no confirmation", nil, "Member of md array host:data; confirm erasing it"},
+		{"one of two", []apischema.DiskMemberConfirmed{md}, "Member of an LVM volume group (physical volume pv2)"},
+		{"another array", []apischema.DiskMemberConfirmed{{Device: "/dev/sdb1", Kind: "md", UUID: "b9"}, lvm}, "Member of md array host:data"},
+		{"a member that is gone", []apischema.DiskMemberConfirmed{md, lvm, {Device: "/dev/sdb3", Kind: "md", UUID: "c3"}}, "no longer the md member"},
+	} {
+		env := stubPartitions(t, "")
+		members(env)
+		_, err := InitializeDisk(ctx, apischema.DiskInitializeRequest{Device: "/dev/sdb", ConfirmMembers: c.confirm})
+		if !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), c.want) || len(env.calls) != 0 {
+			t.Errorf("%s: err = %v, calls = %q, want a conflict naming %q and no write", c.name, err, env.calls, c.want)
+		}
+	}
+
+	env := stubPartitions(t, "")
+	members(env)
+	if _, err := InitializeDisk(ctx, apischema.DiskInitializeRequest{Device: "/dev/sdb", ConfirmMembers: []apischema.DiskMemberConfirmed{lvm, md}}); err != nil {
+		t.Fatalf("both confirmed: %v", err)
+	}
+	if want := []string{"lock /dev/sdb", "initialize /dev/sdb", "unlock /dev/sdb"}; !slices.Equal(env.calls, want) {
+		t.Errorf("calls = %q, want %q", env.calls, want)
+	}
+
+	// A btrfs signature that belongs to no pool the bridge can read cannot be
+	// destroyed as a pool, so it is erased only when named, like the rest.
+	stray := apischema.DiskMemberConfirmed{Device: "/dev/sdb1", Kind: "btrfs", UUID: "s1"}
+	for _, confirm := range [][]apischema.DiskMemberConfirmed{nil, {stray}} {
+		env = stubPartitions(t, "")
+		env.devices[1].FSType, env.devices[1].UUID = "btrfs", "s1"
+		_, strayErr := InitializeDisk(ctx, apischema.DiskInitializeRequest{Device: "/dev/sdb", ConfirmMembers: confirm})
+		if confirm == nil && (!errors.Is(strayErr, bridgeipc.ErrConflict) || !strings.Contains(strayErr.Error(), "Member of btrfs pool s1; confirm erasing it") || len(env.calls) != 0) {
+			t.Errorf("stray btrfs signature, not confirmed: err = %v, calls = %q", strayErr, env.calls)
+		}
+		if confirm != nil && strayErr != nil {
+			t.Errorf("stray btrfs signature, confirmed: %v", strayErr)
+		}
+	}
+
+	// A btrfs pool member stays refused, confirmed or not.
+	env = stubPartitions(t, "")
+	env.devices[1].FSType, env.devices[1].UUID = "btrfs", "p1"
+	env.offline = []btrfs.BtrfsOfflinePool{{UUID: "p1", Label: "old", Devices: []string{"/dev/sdb1"}}}
+	confirm := []apischema.DiskMemberConfirmed{{Device: "/dev/sdb1", Kind: "btrfs", UUID: "p1"}}
+	_, err := InitializeDisk(ctx, apischema.DiskInitializeRequest{Device: "/dev/sdb", ConfirmMembers: confirm})
+	if !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), "Member of btrfs pool old; destroy the pool") || len(env.calls) != 0 {
+		t.Errorf("btrfs member: err = %v, calls = %q", err, env.calls)
 	}
 }

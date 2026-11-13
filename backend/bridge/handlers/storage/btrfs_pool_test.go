@@ -24,8 +24,15 @@ func TestCheckPoolCreate(t *testing.T) {
 		{Path: "/dev/nvme0n1", Type: "disk", FreeBytes: 888 << 30, Mountpoints: []string{}},
 		{Path: "/dev/nvme0n1p1", Type: "part", FreeBytes: 1 << 30, Parents: []string{"/dev/nvme0n1"}, Mountpoints: []string{"/boot/efi"}},
 		{Path: "/dev/nvme1n1", Type: "disk", Mountpoints: []string{}},
+		{Path: "/dev/sdh", Type: "disk", FSType: "btrfs", UUID: "o1", Label: "old", Mountpoints: []string{}},
+		{Path: "/dev/sdl", Type: "disk", FSType: "linux_raid_member", UUID: "a1", Mountpoints: []string{}},
+		{Path: "/dev/sdn", Type: "disk", FreeBytes: 8 << 30, InFstab: true, Mountpoints: []string{}},
 	}
-	filesystems := []btrfs.BtrfsFilesystem{{UUID: testBtrfsUUID, Devices: []btrfs.BtrfsDevice{{ID: 1, Path: "/dev/sde"}}}}
+	inv := partitionInventory{
+		devices: devices,
+		fss:     []btrfs.BtrfsFilesystem{{UUID: testBtrfsUUID, Devices: []btrfs.BtrfsDevice{{ID: 1, Path: "/dev/sde"}}}},
+		offline: []btrfs.BtrfsOfflinePool{{UUID: "o1", Label: "old", Devices: []string{"/dev/sdh"}}},
+	}
 	fstab := map[string]fstabEntry{"/srv": {source: "UUID=x", fstype: "ext4"}}
 	ok := apischema.BtrfsPoolCreateRequest{Label: "tank", Mountpoint: "/mnt/tank", DataProfile: "raid1", MetadataProfile: "raid1", Devices: []string{"/dev/sdb", "/dev/sdc"}}
 	with := func(edit func(*apischema.BtrfsPoolCreateRequest)) apischema.BtrfsPoolCreateRequest {
@@ -61,8 +68,11 @@ func TestCheckPoolCreate(t *testing.T) {
 		{"duplicate device", with(func(r *apischema.BtrfsPoolCreateRequest) { r.Devices[1] = "/dev/sdb" }), "listed twice"},
 		{"too few for raid1", with(func(r *apischema.BtrfsPoolCreateRequest) { r.Devices = []string{"/dev/sdb"} }), "needs at least 2 devices"},
 		{"raid5", with(func(r *apischema.BtrfsPoolCreateRequest) { r.DataProfile = "raid5" }), "not supported"},
-		{"signature without force", with(func(r *apischema.BtrfsPoolCreateRequest) { r.Devices[1] = "/dev/sdd" }), "ext4 signature"},
-		{"mounted member", with(func(r *apischema.BtrfsPoolCreateRequest) { r.Devices[1], r.Force = "/dev/sde", true }), "is mounted"},
+		{"signature without force", with(func(r *apischema.BtrfsPoolCreateRequest) { r.Devices[1] = "/dev/sdd" }), "has an existing ext4 filesystem; turn on force"},
+		{"mounted member", with(func(r *apischema.BtrfsPoolCreateRequest) { r.Devices[1], r.Force = "/dev/sde", true }), "Mounted at /data"},
+		{"force and an unmounted pool's member", with(func(r *apischema.BtrfsPoolCreateRequest) { r.Devices[1], r.Force = "/dev/sdh", true }), "Member of btrfs pool old; destroy the pool"},
+		{"force and a stopped array's member", with(func(r *apischema.BtrfsPoolCreateRequest) { r.Devices[1], r.Force = "/dev/sdl", true }), "Member of md array a1"},
+		{"free space on a disk in fstab", with(func(r *apischema.BtrfsPoolCreateRequest) { r.FreeSpace = []string{"/dev/sdn"} }), "In /etc/fstab"},
 		{"relative mountpoint", with(func(r *apischema.BtrfsPoolCreateRequest) { r.Mountpoint = "mnt/tank" }), "invalid mountpoint"},
 		{"unclean mountpoint", with(func(r *apischema.BtrfsPoolCreateRequest) { r.Mountpoint = "/mnt/../etc" }), "invalid mountpoint"},
 		{"system mountpoint", with(func(r *apischema.BtrfsPoolCreateRequest) { r.Mountpoint = "/var" }), "system directory"},
@@ -71,7 +81,7 @@ func TestCheckPoolCreate(t *testing.T) {
 		{"mountpoint in use", with(func(r *apischema.BtrfsPoolCreateRequest) { r.Mountpoint = "/data" }), "in use by /dev/sde"},
 	}
 	for _, c := range cases {
-		err := checkPoolCreate(c.req, devices, filesystems, fstab)
+		err := checkPoolCreate(c.req, inv, fstab)
 		if c.wantErr == "" && err != nil {
 			t.Errorf("%s: err = %v", c.name, err)
 		}
@@ -126,11 +136,11 @@ type poolCreateEnv struct {
 
 func stubPoolCreate(t *testing.T) *poolCreateEnv {
 	t.Helper()
-	origDevices, origFss, origLock, origDelete := storageBlockDevices, btrfsFilesystems, lockDisk, deletePartition
+	origDevices, origFss, origOffline, origLock, origDelete := storageBlockDevices, btrfsFilesystems, offlinePools, lockDisk, deletePartition
 	origPartDisk, origAdd, origCreate, origMount := partitionDisk, addPartition, createBtrfsPool, mountBtrfsPool
 	origWipe, origNumber, origUnmount, origFstab, origFind := wipePoolSuperblocks, partitionNumber, unmountPool, addPoolFstab, findBtrfsFilesystem
 	t.Cleanup(func() {
-		storageBlockDevices, btrfsFilesystems, lockDisk, deletePartition = origDevices, origFss, origLock, origDelete
+		storageBlockDevices, btrfsFilesystems, offlinePools, lockDisk, deletePartition = origDevices, origFss, origOffline, origLock, origDelete
 		partitionDisk, addPartition, createBtrfsPool, mountBtrfsPool = origPartDisk, origAdd, origCreate, origMount
 		wipePoolSuperblocks, partitionNumber, unmountPool, addPoolFstab, findBtrfsFilesystem = origWipe, origNumber, origUnmount, origFstab, origFind
 	})
@@ -152,6 +162,7 @@ func stubPoolCreate(t *testing.T) *poolCreateEnv {
 		}, nil
 	}
 	btrfsFilesystems = func(context.Context) ([]btrfs.BtrfsFilesystem, error) { return nil, nil }
+	offlinePools = func(context.Context) ([]btrfs.BtrfsOfflinePool, error) { return nil, nil }
 	lockDisk = func(_ context.Context, disk string) (func(), error) {
 		_ = step("lock %s", disk)
 		return func() { _ = step("unlock %s", disk) }, nil

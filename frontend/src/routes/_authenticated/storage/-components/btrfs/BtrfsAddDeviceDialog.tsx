@@ -14,6 +14,8 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";
 import { formatFileSize } from "@/utils/formatters";
 
+import { FORCE_LABEL, poolDeviceChoices } from "../storageMember";
+
 interface BtrfsAddDeviceDialogProps {
   confirmLabel: string;
   /** Paths of this filesystem's own devices, which are never offered. */
@@ -23,7 +25,7 @@ interface BtrfsAddDeviceDialogProps {
   onClose: () => void;
   onConfirm: (device: string, force: boolean) => void;
   title: string;
-  /** Lets the user pick devices that already carry a filesystem signature. */
+  /** Lets the user pick devices that already carry an old filesystem. */
   withForce?: boolean;
 }
 
@@ -42,16 +44,17 @@ const BtrfsAddDeviceDialog = ({
   const [device, setDevice] = useState("");
   const [force, setForce] = useState(false);
 
-  const all = data?.devices ?? [];
-  const partitioned = new Set(all.flatMap((entry) => entry.parents));
-  const free = all.filter(
-    (entry) =>
-      entry.mountpoints.length === 0 &&
-      !filesystemDevices.includes(entry.path) &&
-      !partitioned.has(entry.path) &&
-      (entry.fsType === "" || force),
+  // A device of another pool, array or volume group is listed disabled with
+  // its reason, force or not.
+  const choices = poolDeviceChoices(
+    data?.devices ?? [],
+    filesystemDevices,
+    force,
   );
-  const selected = free.some((entry) => entry.path === device) ? device : "";
+  const free = choices.filter(({ reason }) => reason === null);
+  const selected = free.some((entry) => entry.device.path === device)
+    ? device
+    : "";
 
   return (
     <GeneralDialog fullWidth maxWidth="sm" onClose={onClose} open>
@@ -66,12 +69,17 @@ const BtrfsAddDeviceDialog = ({
           <option value="">
             {free.length === 0 ? "No free devices" : "Select a device"}
           </option>
-          {free.map((entry) => (
-            <option key={entry.path} value={entry.path}>
+          {choices.map(({ device: entry, reason }) => (
+            <option
+              disabled={reason !== null}
+              key={entry.path}
+              value={entry.path}
+            >
               {[
                 entry.path,
                 formatFileSize(entry.sizeBytes),
                 entry.model || entry.fsType,
+                reason,
               ]
                 .filter(Boolean)
                 .join(" · ")}
@@ -86,7 +94,7 @@ const BtrfsAddDeviceDialog = ({
                 onChange={(_, checked) => setForce(checked)}
               />
             }
-            label="Force (wipe existing filesystem signature)"
+            label={FORCE_LABEL}
           />
         )}
       </AppDialogContent>

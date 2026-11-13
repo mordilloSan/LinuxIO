@@ -25,6 +25,7 @@ import {
 import { useActiveTaskRecovery } from "@/tasks/useActiveTaskRecovery";
 import { formatFileSize } from "@/utils/formatters";
 
+import { describeMember } from "../storageMember";
 import {
   CreatePartitionDialog,
   FormatPartitionDialog,
@@ -170,6 +171,15 @@ const PartitionsTab = ({ driveName }: { driveName: string }) => {
   const working = running || isDeleting || isMounting || isInitializing;
   const gpt = disk.ptType === "gpt";
   const blocker = initializeBlocker(disk, rows, btrfs, offline);
+  // Members of an md array, an LVM volume group or another set: nothing holds
+  // them once the array is stopped or the group inactive, so the confirmation
+  // names them and the request confirms exactly these. A member of a btrfs
+  // pool the bridge knows blocks instead (initializeBlocker); a btrfs
+  // signature that belongs to no readable pool is named like the rest.
+  const members = [
+    disk,
+    ...rows.flatMap((row) => (row.kind === "partition" ? [row.device] : [])),
+  ].flatMap(({ path, member }) => (member ? [{ path, member }] : []));
 
   const columns: AppVirtualTableColumnDef<LayoutRow>[] = [
     {
@@ -211,7 +221,11 @@ const PartitionsTab = ({ driveName }: { driveName: string }) => {
       cell: ({ row: { original } }) =>
         original.kind === "free"
           ? ""
-          : original.device.mountpoints.join(", ") || original.reason || "",
+          : original.device.mountpoints.join(", ") ||
+            original.reason ||
+            (original.device.member
+              ? `Member of ${describeMember(original.device.member)}`
+              : ""),
     },
     {
       id: "actions",
@@ -414,10 +428,29 @@ const PartitionsTab = ({ driveName }: { driveName: string }) => {
                 )
                 .join(", ")}`
             : ""
-        }.`}
+        }.${
+          members.length > 0
+            ? ` This also erases ${members
+                .map(
+                  ({ path, member }) =>
+                    `${path}, a member of ${describeMember(member)}`,
+                )
+                .join("; ")}.`
+            : ""
+        }`}
         onClose={closeDialog}
         onConfirm={() =>
-          initializeDisk({ device: disk.path }, { onSuccess: closeDialog })
+          initializeDisk(
+            {
+              device: disk.path,
+              confirmMembers: members.map(({ path, member }) => ({
+                device: path,
+                kind: member.kind,
+                uuid: member.uuid ?? "",
+              })),
+            },
+            { onSuccess: closeDialog },
+          )
         }
         open={dialog?.kind === "initialize"}
         pendingText="Initializing..."

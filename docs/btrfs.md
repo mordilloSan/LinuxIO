@@ -21,8 +21,10 @@ the replication service each snapshot pass starts (see
 
 `make test-btrfs-integration` runs every one of these operations against the
 real kernel on loop devices, loses and returns disks of a mirror to check
-the missing-disk handling, and exercises
-[partition management](./storage-disks.md#partition-management); it needs
+the missing-disk handling, exercises
+[partition management](./storage-disks.md#partition-management), and checks
+that **Force** never takes a disk of an unmounted pool
+(`TestBtrfsMemberIntegration` in `backend/bridge/handlers/storage`); it needs
 sudo.
 
 Parsing command output is avoided because `btrfs-progs` prints JSON for only a
@@ -294,8 +296,9 @@ and metadata profiles chosen from `single`, `dup`, `raid0`, `raid1`,
 `raid1c3`, `raid1c4` and `raid10` (`raid5` and `raid6` are refused),
 registers the disks with the kernel, mounts the pool and records it in
 `/etc/fstab` as `UUID=<uuid> <mountpoint> btrfs defaults,noatime,nofail 0 0`.
-A disk with partitions, holders or a mount is refused; a foreign filesystem
-signature needs **Force**. The mount point must be an unused, empty path
+Which disks it may take is decided as for every device operation (see
+[Which disks a pool may take](#which-disks-a-pool-may-take)). The mount point
+must be an unused, empty path
 outside the system directories. The dialog estimates the usable data space
 for the chosen profile and disks, allocated the way btrfs does, so mixed disk
 sizes are counted right; metadata overhead is not included. Metadata (the
@@ -346,7 +349,67 @@ fstab are also mounted degraded at boot; see [Missing disks](#missing-disks).
 
 **Destroy pool** unmounts every mount of the pool, removes its fstab entries
 and zeroes the btrfs superblock magic on each disk; everything on the pool is
-lost. A pool holding `/`, `/boot` or another protected mount is refused.
+lost. A pool holding `/`, `/boot` or another protected mount is refused. An
+unmounted pool is destroyed the same way from its superblocks, with the disks
+that are present when some are missing, which is how a disk of an old pool is
+freed for a new one.
+
+### Which disks a pool may take
+
+Create pool, Add device and Replace device refuse a device that is:
+
+1. mounted, an active swap, or held (LVM, md, dm-crypt, multipath);
+2. a member of a btrfs pool, mounted or not, by the kernel's list of mounted
+   pools and the superblocks of unmounted ones;
+3. named in `/etc/fstab`;
+4. partitioned, or the parent of another device;
+5. a member of a btrfs pool, an md array, an LVM volume group or any other
+   set by its own signature (`btrfs`, `linux_raid_member`, `LVM2_member`, and
+   every other signature that ends in `_member`, such as `zfs_member` or a
+   firmware RAID's `isw_raid_member`), whether the pool is mounted, the array
+   running or the volume group active or not.
+
+The first three are the check every device operation shares with the
+[Disks page](./storage-disks.md#safety) and md RAID. Any other filesystem
+signature needs **Force**, which erases it: the bridge zeroes the device's
+first and last 2 MiB before the add, and `mkfs.btrfs -f` does the same for a
+create. Replace has no **Force**: its target must be blank.
+
+**Force** never covers rule 5. LinuxIO does not try to tell a disk with
+leftover btrfs data from a member of an unmounted pool: both are freed with
+**Destroy** on the unmounted pool the overview lists. A member of a stopped
+md array or an inactive volume group is freed with `mdadm` or `vgreduce` and
+`pvremove`, or erased with **Initialize disk** on the Disks page, whose
+confirmation names it. The 409 says what the disk belongs to and how to free
+it, such as "Member of btrfs pool old; destroy the pool, or remove the device
+from it, first". The dialogs list such a disk disabled with that reason,
+whether **Force** is on or not; the reason comes from the `member` field of
+the block-device inventory (see
+[Inventory](./storage-disks.md#inventory)). A btrfs signature on a disk
+whose superblock the bridge cannot read lists no pool to destroy; such a disk
+is freed with **Initialize disk**, or **Format** on a partition, on the Disks
+page.
+
+This is stricter than upstream on purpose:
+
+- `mkfs.btrfs -f` and `btrfs device add -f` skip only the existing-signature
+  probe (`check_overwrite` in `test_status_for_mkfs`, `mkfs/common.c`;
+  `cmd_device_add` passes `-f` to `test_dev_for_mkfs`, `cmds/device.c`). The
+  mount check that remains (`check_mounted_where`, `common/open-utils.c`)
+  scans the other members of the device's filesystem and reports it mounted
+  only when one of them is, so a member of an unmounted pool is overwritten.
+  The exclusive open refuses only a device something holds, which a stopped
+  md array or an inactive volume group does not.
+- `mdadm --create` warns about an md superblock or a filesystem it finds
+  (`check_raid`, `check_ext2` in `Create.c`) and asks to continue, which
+  `--run` skips. `mdadm --add` writes its superblock over whatever the device
+  carries; only a device from the same array is considered for a re-add
+  (`Manage.c`).
+- `pvcreate` refuses a physical volume of a volume group without `-ff`, and
+  then asks unless `-y` is given (`_pvcreate_check_used`,
+  `tools/toollib.c`); it skips md components when it scans devices. Any other
+  signature it wipes after asking, or with `-f` without asking (`_blkid_wipe`,
+  `lib/device/dev-type.c`).
 
 Apart from `mkfs.btrfs`, pools use no command: disks are registered with the
 `BTRFS_IOC_SCAN_DEV` ioctl, mounted with `mount(2)`, partitioned by writing
@@ -357,9 +420,9 @@ primary superblock at 64 KiB.
 
 | Action | Behaviour |
 |---|---|
-| Add device | Free devices only. A device with partitions or holders is refused even with **Force**; Force wipes a foreign filesystem signature. |
+| Add device | Free devices only (see [Which disks a pool may take](#which-disks-a-pool-may-take)). **Force** erases an old filesystem, never a disk of another pool, md array or volume group. |
 | Remove device | Refused below the minimum device count of the current profiles, and refused when the current profiles cannot be determined. |
-| Replace device | Replaces one member with a free device. A bigger replacement disk is grown into automatically. |
+| Replace device | Replaces one member with a free, blank device. A bigger replacement disk is grown into automatically. |
 | Grow | Resizes a device to its whole disk when the filesystem uses less of it, for example after a replace done by hand. |
 | Rename | Sets the filesystem label from the pool details. |
 | Balance / convert | Profiles `single`, `dup`, `raid0`, `raid1`, `raid1c3`, `raid1c4`, `raid10`. `raid5` and `raid6` are refused. Converting metadata converts system chunks with it. Metadata weaker than the resulting data profile is converted too, to the same default as Create pool, unless nothing stronger fits on the present devices. The outcome is verified against the resulting allocation. |

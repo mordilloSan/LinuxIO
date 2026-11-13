@@ -23,6 +23,7 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { formatFileSize } from "@/utils/formatters";
 
+import { FORCE_LABEL, poolDeviceChoices } from "../storageMember";
 import {
   METADATA_HINT,
   metadataProfiles,
@@ -67,12 +68,11 @@ const BtrfsCreatePoolDialog = ({
 
   const all = data?.devices ?? [];
   const partitioned = new Set(all.flatMap((entry) => entry.parents));
-  const free = all.filter(
-    (entry) =>
-      entry.mountpoints.length === 0 &&
-      !pooledDevices.includes(entry.path) &&
-      !partitioned.has(entry.path) &&
-      (entry.fsType === "" || force),
+  // A disk of another pool, array or volume group is listed disabled with
+  // its reason, force or not.
+  const choices = poolDeviceChoices(all, pooledDevices, force);
+  const free = choices.flatMap(({ device, reason }) =>
+    reason === null ? [device] : [],
   );
   // Unpartitioned space on a disk whose partitions are in use becomes a new
   // partition; a disk with no partitions is offered whole above instead.
@@ -179,16 +179,17 @@ const BtrfsCreatePoolDialog = ({
           </AppTypography>
           <div>
             <AppTypography variant="subtitle2">Disks</AppTypography>
-            {free.length === 0 && spaces.length === 0 && (
+            {choices.length === 0 && spaces.length === 0 && (
               <AppTypography color="text.secondary" variant="body2">
                 No free disks or free space
               </AppTypography>
             )}
-            {free.map((entry) => (
+            {choices.map(({ device: entry, reason }) => (
               <AppFormControlLabel
                 control={
                   <AppCheckbox
                     checked={devices.includes(entry.path)}
+                    disabled={reason !== null}
                     onChange={(_, checked) => toggle(entry.path, checked)}
                   />
                 }
@@ -197,6 +198,7 @@ const BtrfsCreatePoolDialog = ({
                   entry.path,
                   formatFileSize(entry.sizeBytes),
                   entry.model || entry.fsType,
+                  reason,
                 ]
                   .filter(Boolean)
                   .join(" · ")}
@@ -228,7 +230,7 @@ const BtrfsCreatePoolDialog = ({
                 onChange={(_, checked) => setForce(checked)}
               />
             }
-            label="Force (wipe existing filesystem signatures)"
+            label={FORCE_LABEL}
           />
           {free.length > 0 && (
             <AppFormControlLabel

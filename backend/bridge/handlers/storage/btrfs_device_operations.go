@@ -72,40 +72,31 @@ func btrfsDeviceBindings() apischema.BindingSet {
 }
 
 // ensureBtrfsDeviceFree refuses a device that is not free to join a btrfs
-// filesystem; force only allows overwriting an existing signature.
+// filesystem; force only allows erasing an old filesystem left on it.
 func ensureBtrfsDeviceFree(ctx context.Context, device string, force bool) error {
-	devices, err := ListBlockDevices(ctx)
+	inv, err := loadPartitionInventory(ctx)
 	if err != nil {
 		return err
 	}
-	filesystems, err := btrfs.ListFilesystems(ctx)
-	if err != nil {
-		return err
-	}
-	return checkBtrfsDeviceFree(devices, filesystems, device, force)
+	return checkBtrfsDeviceFree(inv, device, force)
 }
 
-func checkBtrfsDeviceFree(devices []apischema.StorageBlockDevice, filesystems []btrfs.BtrfsFilesystem, device string, force bool) error {
-	i := slices.IndexFunc(devices, func(d apischema.StorageBlockDevice) bool { return d.Path == device })
-	if i < 0 {
-		return fmt.Errorf("block device %s not found", device)
+// checkBtrfsDeviceFree refuses what deviceInUse refuses and a device with
+// partitions or holders. A filesystem signature needs force, and force never
+// erases a member of a btrfs pool, md array or LVM volume group, mounted,
+// running or active or not: the old pool is destroyed first. This is
+// stricter than mkfs.btrfs -f and btrfs device add -f, which overwrite an
+// unmounted member (see docs/btrfs.md).
+func checkBtrfsDeviceFree(inv partitionInventory, device string, force bool) error {
+	d, err := inv.wholeDeviceFree(device)
+	if err != nil {
+		return err
 	}
-	d := devices[i]
-	if len(d.Mountpoints) > 0 {
-		return fmt.Errorf("device %s is mounted at %s", device, d.Mountpoints[0])
-	}
-	// Writing to a disk whose partitions or holders (LVM, dm-crypt) are in
-	// use destroys them, and force would not stop btrfs from doing it.
-	if slices.ContainsFunc(devices, func(c apischema.StorageBlockDevice) bool { return slices.Contains(c.Parents, device) }) {
-		return fmt.Errorf("device %s has partitions or holders", device)
-	}
-	for _, fs := range filesystems {
-		if slices.ContainsFunc(fs.Devices, func(b btrfs.BtrfsDevice) bool { return b.Path == device }) {
-			return fmt.Errorf("device %s already belongs to btrfs filesystem %s", device, fs.UUID)
-		}
+	if m := memberOf(d); m != nil {
+		return memberConflict(device, *m)
 	}
 	if d.FSType != "" && !force {
-		return fmt.Errorf("device %s has a %s signature; force to overwrite it", device, d.FSType)
+		return fmt.Errorf("%w: %s has an existing %s filesystem; turn on force to erase it", bridgeipc.ErrConflict, device, d.FSType)
 	}
 	return nil
 }

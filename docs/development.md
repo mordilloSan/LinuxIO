@@ -143,7 +143,8 @@ make vm-destroy       # delete the domain and its volumes; the cache stays
   installs Docker's Compose plugin, creates a btrfs pool on `vdb` and `vdc`
   and reboots the VM, so run `vm-reset` and `vm-install` before reusing it
   for other checks.
-- `vm-test-btrfs-integration` builds the `common/btrfs` test binary on the host,
+- `vm-test-btrfs-integration` builds the `common/btrfs` and
+  `bridge/handlers/storage` test binaries on the host,
   prints the VM's kernel version and runs the same tests as
   `test-btrfs-integration`, as root in the VM.
 - `vm-test-filebrowser-root` does the same for the file browser's root-only

@@ -570,8 +570,7 @@ const linuxio = {
     create_lv: defineMutation("storage", "create_lv", { kind: "object" }),
     delete_lv: defineMutation("storage", "delete_lv", { kind: "object" }),
     disk_initialize: defineMutation("storage", "disk_initialize", {
-      kind: "field",
-      field: "device",
+      kind: "object",
     }),
     get_btrfs_maintenance: defineCall("storage.get_btrfs_maintenance"),
     get_drive_info: defineCall("storage.get_drive_info"),

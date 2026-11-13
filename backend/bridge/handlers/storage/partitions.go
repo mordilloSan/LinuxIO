@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -154,33 +153,6 @@ func (inv partitionInventory) writablePartition(path string) (part, disk apische
 		return part, disk, fmt.Errorf("%w: %s is read-only", bridgeipc.ErrConflict, disk.Path)
 	}
 	return part, disk, nil
-}
-
-// deviceInUse refuses dev when it is mounted, an active swap or held (Busy),
-// a member of a btrfs filesystem mounted or not, or named in /etc/fstab. A
-// mount just for now (forMount without persist) ignores /etc/fstab, so a
-// partition listed there can still be mounted.
-func deviceInUse(dev apischema.StorageBlockDevice, fss []btrfs.BtrfsFilesystem, offline []btrfs.BtrfsOfflinePool, forMount, persist bool) error {
-	inUse := func(reason string) error {
-		return fmt.Errorf("%w: %s: %s", bridgeipc.ErrConflict, dev.Path, reason)
-	}
-	if dev.Busy != "" {
-		return inUse(dev.Busy)
-	}
-	for _, fs := range fss {
-		if slices.ContainsFunc(fs.Devices, func(b btrfs.BtrfsDevice) bool { return b.Path == dev.Path }) {
-			return inUse("Member of btrfs pool " + cmp.Or(fs.Label, fs.UUID))
-		}
-	}
-	for _, pool := range offline {
-		if slices.Contains(pool.Devices, dev.Path) {
-			return inUse("Member of btrfs pool " + cmp.Or(pool.Label, pool.UUID))
-		}
-	}
-	if dev.InFstab && (!forMount || persist) {
-		return inUse("In /etc/fstab")
-	}
-	return nil
 }
 
 // lockDiskForCall is lockDisk for a call, which gives up after callLockWait
@@ -460,9 +432,48 @@ func MountPartition(ctx context.Context, req apischema.PartitionMountRequest) (a
 	return mountResult(req.Mountpoint, ""), nil
 }
 
+// checkInitialize refuses to initialize disk while it or a partition of it is
+// in use, or carries a member signature that confirmed does not list
+// exactly. It returns the members the initialize erases. A member of a btrfs
+// pool the bridge knows, mounted or not, never gets this far: deviceInUse
+// refuses it. A btrfs signature that reaches the confirmation belongs to no
+// pool the bridge can read, so it cannot be destroyed as one and is erased
+// only when named.
+func (inv partitionInventory) checkInitialize(disk string, confirmed []apischema.DiskMemberConfirmed) ([]apischema.DiskMemberConfirmed, error) {
+	var members []apischema.DiskMemberConfirmed
+	for _, d := range inv.devices {
+		if d.Path != disk && (d.Type != "part" || !slices.Contains(d.Parents, disk)) {
+			continue
+		}
+		if err := deviceInUse(d, inv.fss, inv.offline, false, false); err != nil {
+			return nil, err
+		}
+		m := memberOf(d)
+		if m == nil {
+			continue
+		}
+		member := apischema.DiskMemberConfirmed{Device: d.Path, Kind: m.Kind, UUID: m.UUID}
+		if !slices.Contains(confirmed, member) {
+			return nil, fmt.Errorf("%w: %s: Member of %s; confirm erasing it to initialize %s", bridgeipc.ErrConflict, d.Path, describeMember(*m), disk)
+		}
+		members = append(members, member)
+	}
+	// A confirmation of a member that is gone means the disk changed since
+	// the user looked at it.
+	for _, c := range confirmed {
+		if !slices.Contains(members, c) {
+			return nil, fmt.Errorf("%w: %s is no longer the %s member that was confirmed; review the disk again", bridgeipc.ErrConflict, c.Device, c.Kind)
+		}
+	}
+	return members, nil
+}
+
 // InitializeDisk replaces everything on a disk, which with every partition
-// on it must be unused, with an empty GPT.
-func InitializeDisk(ctx context.Context, req apischema.BlockDeviceRequest) (apischema.SuccessResponse, error) {
+// on it must be unused, with an empty GPT. A member of an md array or an LVM
+// volume group on it, which nothing holds once the array is stopped or the
+// group inactive, is erased only when the request confirms exactly the
+// members found; a member of a btrfs pool is refused like any device in use.
+func InitializeDisk(ctx context.Context, req apischema.DiskInitializeRequest) (apischema.SuccessResponse, error) {
 	inv, err := loadPartitionInventory(ctx)
 	if err != nil {
 		return apischema.SuccessResponse{}, err
@@ -471,12 +482,9 @@ func InitializeDisk(ctx context.Context, req apischema.BlockDeviceRequest) (apis
 	if err != nil {
 		return apischema.SuccessResponse{}, err
 	}
-	for _, d := range inv.devices {
-		if d.Path == disk.Path || (d.Type == "part" && slices.Contains(d.Parents, disk.Path)) {
-			if err = deviceInUse(d, inv.fss, inv.offline, false, false); err != nil {
-				return apischema.SuccessResponse{}, err
-			}
-		}
+	members, err := inv.checkInitialize(disk.Path, req.ConfirmMembers)
+	if err != nil {
+		return apischema.SuccessResponse{}, err
 	}
 	unlock, err := lockDiskForCall(ctx, disk.Path)
 	if err != nil {
@@ -486,6 +494,6 @@ func InitializeDisk(ctx context.Context, req apischema.BlockDeviceRequest) (apis
 	if err = initializeDisk(ctx, disk.Path); err != nil {
 		return apischema.SuccessResponse{}, conflictIfBusy(fmt.Errorf("initialize %s: %w", disk.Path, err))
 	}
-	slog.Info("initialized disk", "device", disk.Path)
+	slog.Info("initialized disk", "device", disk.Path, "erasedMembers", len(members))
 	return apischema.SuccessResponse{Success: true}, nil
 }

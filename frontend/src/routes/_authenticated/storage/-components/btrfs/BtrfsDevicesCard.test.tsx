@@ -396,7 +396,7 @@ describe("BtrfsDevicesCard actions", () => {
     const dialog = await screen.findByRole("dialog");
     await user.click(
       within(dialog).getByRole("checkbox", {
-        name: "Force (wipe existing filesystem signature)",
+        name: /^Force: erase an old filesystem/,
       }),
     );
     await user.click(within(dialog).getByRole("combobox", { name: "Device" }));
@@ -404,6 +404,52 @@ describe("BtrfsDevicesCard actions", () => {
     expect(
       await screen.findByRole("option", { name: /\/dev\/sdy/ }),
     ).toBeInTheDocument();
+  });
+
+  it("keeps a disk of another pool, array or volume group disabled with its reason, force or not", async () => {
+    const user = userEvent.setup();
+    mocks.topology.mockResolvedValue(
+      topology([
+        blockDevice({}),
+        blockDevice({
+          path: "/dev/sdh",
+          name: "sdh",
+          fsType: "btrfs",
+          member: { kind: "btrfs", name: "old", uuid: "o1" },
+        }),
+        blockDevice({
+          path: "/dev/sdl",
+          name: "sdl",
+          fsType: "linux_raid_member",
+          member: { kind: "md", name: "host:data", uuid: "a1" },
+        }),
+        blockDevice({
+          path: "/dev/sdm",
+          name: "sdm",
+          fsType: "LVM2_member",
+          member: { kind: "lvm", name: "vg0", uuid: "pv1" },
+        }),
+        blockDevice({ path: "/dev/sdv", name: "sdv", busy: "Active swap" }),
+      ]),
+    );
+    render(<BtrfsDevicesCard filesystem={filesystem(1)} />);
+
+    await user.click(screen.getByRole("button", { name: "Add device" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: /^Force: erase/ }),
+    );
+    await user.click(within(dialog).getByRole("combobox", { name: "Device" }));
+    for (const reason of [
+      "/dev/sdh · 50 GB · Spare · Member of btrfs pool old",
+      "/dev/sdl · 50 GB · Spare · Member of md array host:data",
+      "/dev/sdm · 50 GB · Spare · Member of LVM volume group vg0",
+      "/dev/sdv · 50 GB · Spare · Active swap",
+    ]) {
+      expect(
+        await screen.findByRole("option", { name: reason }),
+      ).toHaveAttribute("aria-disabled", "true");
+    }
   });
 
   it("confirms before removing a device", async () => {

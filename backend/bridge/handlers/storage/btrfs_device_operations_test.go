@@ -20,37 +20,108 @@ import (
 
 const testBtrfsUUID = "9a2b4c6d-1e3f-4a5b-8c7d-9e0f1a2b3c4d"
 
-func TestCheckBtrfsDeviceFree(t *testing.T) {
-	devices := []apischema.StorageBlockDevice{
-		{Path: "/dev/sdb", Type: "disk", Mountpoints: []string{}},
-		{Path: "/dev/sdc", Type: "disk", FSType: "ext4", Mountpoints: []string{}},
-		{Path: "/dev/sdd", Type: "disk", FSType: "ext4", Mountpoints: []string{"/srv"}},
-		{Path: "/dev/sde", Type: "disk", FSType: "btrfs", Mountpoints: []string{}},
-		{Path: "/dev/sdf", Type: "disk", Mountpoints: []string{}},
-		{Path: "/dev/sdf1", Type: "part", Mountpoints: []string{}, Parents: []string{"/dev/sdf"}},
+// memberInventory is a host with free, used and member disks for the free
+// checks: sdh and sdi are members of the unmounted pool "old", sdj of a
+// mounted pool that no mount names, sdk has a btrfs signature no pool
+// listing knows, sdl and sdm belong to a stopped md array and an inactive
+// volume group.
+func memberInventory() partitionInventory {
+	disk := func(path, fsType string, edit ...func(*apischema.StorageBlockDevice)) apischema.StorageBlockDevice {
+		d := apischema.StorageBlockDevice{Path: path, Type: "disk", FSType: fsType, Mountpoints: []string{}, Parents: []string{}}
+		for _, e := range edit {
+			e(&d)
+		}
+		return d
 	}
-	filesystems := []btrfs.BtrfsFilesystem{{UUID: testBtrfsUUID, Devices: []btrfs.BtrfsDevice{{ID: 1, Path: "/dev/sde"}}}}
+	return partitionInventory{
+		devices: []apischema.StorageBlockDevice{
+			disk("/dev/sdb", ""),
+			disk("/dev/sdc", "ext4"),
+			disk("/dev/sdd", "ext4", func(d *apischema.StorageBlockDevice) { d.Mountpoints, d.Busy = []string{"/srv"}, "Mounted at /srv" }),
+			disk("/dev/sde", "swap", func(d *apischema.StorageBlockDevice) { d.Busy = "Active swap" }),
+			disk("/dev/sdf", ""),
+			{Path: "/dev/sdf1", Type: "part", Mountpoints: []string{}, Parents: []string{"/dev/sdf"}},
+			disk("/dev/sdg", "ext4", func(d *apischema.StorageBlockDevice) { d.InFstab = true }),
+			disk("/dev/sdh", "btrfs", func(d *apischema.StorageBlockDevice) { d.UUID, d.Label = "o1", "old" }),
+			disk("/dev/sdi", "btrfs", func(d *apischema.StorageBlockDevice) { d.UUID, d.Label = "o1", "old" }),
+			disk("/dev/sdj", "btrfs", func(d *apischema.StorageBlockDevice) { d.UUID, d.Label = testBtrfsUUID, "tank" }),
+			disk("/dev/sdk", "btrfs", func(d *apischema.StorageBlockDevice) { d.UUID = "k1" }),
+			disk("/dev/sdl", "linux_raid_member", func(d *apischema.StorageBlockDevice) { d.UUID, d.Label = "a1", "host:data" }),
+			disk("/dev/sdm", "LVM2_member", func(d *apischema.StorageBlockDevice) {
+				d.UUID, d.Member = "pv1", &apischema.StorageMember{Kind: "lvm", Name: "vg0", UUID: "pv1"}
+			}),
+		},
+		fss:     []btrfs.BtrfsFilesystem{{UUID: testBtrfsUUID, Label: "tank", Devices: []btrfs.BtrfsDevice{{ID: 1, Path: "/dev/sdx"}, {ID: 2, Path: "/dev/sdj"}}}},
+		offline: []btrfs.BtrfsOfflinePool{{UUID: "o1", Label: "old", NumDevices: 2, Devices: []string{"/dev/sdh", "/dev/sdi"}}},
+	}
+}
+
+func TestCheckBtrfsDeviceFree(t *testing.T) {
+	inv := memberInventory()
 	cases := []struct {
 		device  string
 		force   bool
-		wantErr string
+		wantErr error
+		text    string
 	}{
-		{"/dev/sdb", false, ""},
-		{"/dev/sdc", true, ""},
-		{"/dev/sdc", false, "has a ext4 signature"},
-		{"/dev/sdd", true, "is mounted"},
-		{"/dev/sde", true, "already belongs to btrfs filesystem"},
-		{"/dev/sdf", true, "has partitions or holders"},
-		{"/dev/nope", true, "not found"},
+		{"/dev/sdb", false, nil, ""},
+		{"/dev/sdc", true, nil, ""}, // force erases an old filesystem
+		{"/dev/sdc", false, bridgeipc.ErrConflict, "has an existing ext4 filesystem; turn on force to erase it"},
+		{"/dev/sdd", true, bridgeipc.ErrConflict, "Mounted at /srv"},
+		{"/dev/sde", true, bridgeipc.ErrConflict, "Active swap"},
+		{"/dev/sdf", true, bridgeipc.ErrConflict, "has partitions or holders"},
+		{"/dev/sdg", true, bridgeipc.ErrConflict, "In /etc/fstab"},
+		{"/dev/sdh", true, bridgeipc.ErrConflict, "Member of btrfs pool old; destroy the pool"},
+		{"/dev/sdi", false, bridgeipc.ErrConflict, "Member of btrfs pool old"},
+		{"/dev/sdj", true, bridgeipc.ErrConflict, "Member of btrfs pool tank"},
+		{"/dev/sdk", true, bridgeipc.ErrConflict, "Member of btrfs pool k1"},
+		{"/dev/sdl", true, bridgeipc.ErrConflict, "Member of md array host:data; remove it from the array"},
+		{"/dev/sdm", true, bridgeipc.ErrConflict, "Member of LVM volume group vg0; remove it from the volume group"},
+		{"/dev/nope", true, bridgeipc.ErrNotFound, ""},
 	}
 	for _, c := range cases {
-		err := checkBtrfsDeviceFree(devices, filesystems, c.device, c.force)
-		if c.wantErr == "" && err != nil {
-			t.Errorf("%s force=%v: err = %v", c.device, c.force, err)
+		err := checkBtrfsDeviceFree(inv, c.device, c.force)
+		if !errors.Is(err, c.wantErr) || (c.wantErr == nil) != (err == nil) || (c.text != "" && !strings.Contains(err.Error(), c.text)) {
+			t.Errorf("%s force=%v: err = %v, want %v %q", c.device, c.force, err, c.wantErr, c.text)
 		}
-		if c.wantErr != "" && (err == nil || !strings.Contains(err.Error(), c.wantErr)) {
-			t.Errorf("%s force=%v: err = %v, want %q", c.device, c.force, err, c.wantErr)
+	}
+}
+
+func TestDescribeMember(t *testing.T) {
+	for m, want := range map[apischema.StorageMember]string{
+		{Kind: "btrfs", Name: "tank", UUID: "u"}: "btrfs pool tank",
+		{Kind: "btrfs", UUID: "u"}:               "btrfs pool u",
+		{Kind: "md", Name: "host:0", UUID: "u"}:  "md array host:0",
+		{Kind: "md"}:                             "an md array",
+		{Kind: "lvm", Name: "vg0", UUID: "u"}:    "LVM volume group vg0",
+		{Kind: "lvm", UUID: "u"}:                 "an LVM volume group (physical volume u)",
+		{Kind: "lvm"}:                            "an LVM volume group",
+	} {
+		if got := describeMember(m); got != want {
+			t.Errorf("%+v: %q, want %q", m, got, want)
 		}
+	}
+	if m := signatureMember("LVM2_member", "pv", "", map[string]string{"LVM_VG_NAME_COMPLETE": "vg0"}); m == nil || *m != (apischema.StorageMember{Kind: "lvm", Name: "vg0", UUID: "pv"}) {
+		t.Errorf("lvm member = %+v", m)
+	}
+	// Any other signature that names itself a member is one too, so force
+	// cannot erase a ZFS or firmware RAID disk as an old filesystem.
+	for _, fsType := range []string{"zfs_member", "isw_raid_member"} {
+		m := signatureMember(fsType, "z1", "", nil)
+		if m == nil || *m != (apischema.StorageMember{Kind: "other", Name: fsType, UUID: "z1"}) {
+			t.Errorf("%s member = %+v", fsType, m)
+			continue
+		}
+		if got, want := describeMember(*m), "another storage set ("+fsType+")"; got != want {
+			t.Errorf("%s: %q, want %q", fsType, got, want)
+		}
+		inv := partitionInventory{devices: []apischema.StorageBlockDevice{{Path: "/dev/sdz", Type: "disk", FSType: fsType, UUID: "z1", Mountpoints: []string{}}}}
+		if err := checkBtrfsDeviceFree(inv, "/dev/sdz", true); !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), "Member of another storage set ("+fsType+")") {
+			t.Errorf("%s with force: err = %v, want a member conflict", fsType, err)
+		}
+	}
+	if m := signatureMember("ext4", "u", "l", nil); m != nil {
+		t.Errorf("ext4 member = %+v, want none", m)
 	}
 }
 

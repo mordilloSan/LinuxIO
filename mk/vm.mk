@@ -29,8 +29,11 @@ vm-test-btrfs-integration: ensure-go ## Run the root btrfs and partition kernel 
 	@set -e
 	@mkdir -p "$(cache_dir)/vm"
 	@cd "$(backend_dir)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" CGO_ENABLED=0 "$(GO_BIN)" test -c -o "$(cache_dir)/vm/btrfs.test" ./common/btrfs
+	@cd "$(backend_dir)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" CGO_ENABLED=0 "$(GO_BIN)" test -c -o "$(cache_dir)/vm/storage.test" ./bridge/handlers/storage
 	@"$(vm_script)" ssh 'cat > btrfs.test && chmod +x btrfs.test' < "$(cache_dir)/vm/btrfs.test"
+	@"$(vm_script)" ssh 'cat > storage.test && chmod +x storage.test' < "$(cache_dir)/vm/storage.test"
 	@"$(vm_script)" ssh "echo \"VM kernel: \$$(uname -r)\" && sudo env LINUXIO_RUN_BTRFS_INTEGRATION=1 ./btrfs.test -test.run $$(printf %q '$(BTRFS_INTEGRATION_RUN)') -test.count=1 -test.v -test.timeout=20m"
+	@"$(vm_script)" ssh "sudo env LINUXIO_RUN_BTRFS_INTEGRATION=1 ./storage.test -test.run $$(printf %q '$(BTRFS_INTEGRATION_RUN)') -test.count=1 -test.v -test.timeout=20m"
 
 vm-test-filebrowser-root: ensure-go ## Run the root-only file browser ownership tests in the test VM
 	@set -e

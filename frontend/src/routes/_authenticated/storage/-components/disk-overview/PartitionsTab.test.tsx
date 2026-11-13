@@ -466,7 +466,46 @@ describe("PartitionsTab", () => {
     expect(dialog).toHaveTextContent(/\/dev\/sda2 \(1 GB\)/);
     await u.click(within(dialog).getByRole("button", { name: "Initialize" }));
     expect(mocks.mutations["storage.disk_initialize"]).toHaveBeenCalledWith(
-      { device: "/dev/sda" },
+      { device: "/dev/sda", confirmMembers: [] },
+      expect.anything(),
+    );
+  });
+
+  it("names md and LVM members in the Initialize confirmation and confirms exactly those", async () => {
+    const u = user();
+    mocks.topology.mockResolvedValue(
+      topology([
+        sda(),
+        part(1, 1, {
+          fsType: "linux_raid_member",
+          member: { kind: "md", name: "host:data", uuid: "a1" },
+        }),
+        part(2, 1024, {
+          fsType: "LVM2_member",
+          member: { kind: "lvm", uuid: "pv2" },
+        }),
+      ]),
+    );
+    render(<PartitionsTab driveName="sda" />, options);
+
+    // A stopped array's member is shown, and does not block Initialize.
+    expect(
+      await screen.findByText("Member of md array host:data"),
+    ).toBeInTheDocument();
+    await u.click(screen.getByRole("button", { name: "Initialize disk" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent(
+      "This also erases /dev/sda1, a member of md array host:data; /dev/sda2, a member of an LVM volume group (physical volume pv2).",
+    );
+    await u.click(within(dialog).getByRole("button", { name: "Initialize" }));
+    expect(mocks.mutations["storage.disk_initialize"]).toHaveBeenCalledWith(
+      {
+        device: "/dev/sda",
+        confirmMembers: [
+          { device: "/dev/sda1", kind: "md", uuid: "a1" },
+          { device: "/dev/sda2", kind: "lvm", uuid: "pv2" },
+        ],
+      },
       expect.anything(),
     );
   });

@@ -1170,6 +1170,17 @@ export interface DirectoryValidationResult {
   valid: boolean;
 }
 
+export interface DiskInitializeRequest {
+  device: string;
+  confirmMembers?: DiskMemberConfirmed[];
+}
+
+export interface DiskMemberConfirmed {
+  device: string;
+  kind: string;
+  uuid: string;
+}
+
 export interface DiskPowerData {
   currentState: number;
   estimatedW: number;
@@ -2977,7 +2988,14 @@ export interface StorageBlockDevice {
   partType?: string;
   busy?: string;
   inFstab?: boolean;
+  member?: StorageMember;
   freeRegions?: StorageRegion[];
+}
+
+export interface StorageMember {
+  kind: string;
+  name?: string;
+  uuid?: string;
 }
 
 export interface StorageMount {
@@ -4674,8 +4692,8 @@ export interface LinuxIOSchema {
       result: SuccessResponse;
     };
     disk_initialize: {
-      input: [device: string];
-      request: BlockDeviceRequest;
+      input: [request: DiskInitializeRequest];
+      request: DiskInitializeRequest;
       result: SuccessResponse;
     };
     get_btrfs_maintenance: {
