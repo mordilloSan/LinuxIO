@@ -9,9 +9,6 @@ Plans for things that are not built yet each have their own document:
 - [Memory overflow: swap, zswap and zram from Settings](./memory-overflow.md)
 - [Package-managed installation](./packaging.md)
 
-The [mutation map](./mutation-map.md) traces every route that changes the
-host. It is input to the memory plan, and its tables are from before jobs.
-
 ## Dependency maintenance
 
 - [x] Added the scoped `@vitejs/plugin-react` → `oxc-transform-react` npm

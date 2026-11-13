@@ -27,42 +27,19 @@ in git.
 
 ## File browser: root follows links a user planted
 
-When an admin uses the file browser, the work runs as root. A program running
-as that user can swap one of the user's folders for a symlink, and root would
-then act on the folder the link points to. Create, delete, copy, move, rename,
-chmod, chown, compress, extract, uploads and trash restore are closed, and a
-refusal names the folder the link points to
+When an admin uses the file browser, the work runs as root, and root follows
+a link only in a folder root owns
 ([Privilege Pattern](../privilege_pattern.md#root-acting-in-the-session-users-folders)).
 What is left:
 
-- [ ] **The link rule trusts every folder that is not the session user's.**
-  Root follows a link in a folder that is neither the session user's nor
-  group- or world-writable (`userCouldPlant` in
-  `backend/bridge/handlers/filebrowser/services/handover.go`). That includes
-  another local user's folder, such as `/home/v`: a link that user planted
-  there is followed while an admin compresses, uploads or restores inside it,
-  and a compress puts what it points to into an archive. Decide whether to
-  trust only folders owned by root. Reported by the review of 2026-11-13.
-- [ ] **An upload still reads its target's attributes by path.**
-  `loadUploadAttributes`, the batch existence check, `verifyExpectedVersion`
-  and `cleanupPartial` (`upload_operation.go`, `upload_batch_operation.go`) go
-  by path after the folder was checked. A folder swapped for a link and back
-  in between makes root give the uploaded file another file's owner and mode,
-  setuid included. The content is the admin's own. Reported.
-- [ ] **The compress size estimate follows planted links.** `ComputeArchiveSize`
-  (`services/archive_operations.go`, called from `size_estimate.go`) walks its
-  sources by path with no owner, so a planted link to `/` makes root walk the
-  whole host and report its size. Reported.
-- [ ] **A restore confirmation is not tied to one item.** When several
-  restores into system folders are confirmed in one request, a swapped `Path=`
-  can send one item to a destination confirmed for another (`checkSystem` in
-  `services/trash.go`). The item must still be one the user could not write.
-  Reported.
-- [ ] **A trash record can be lost.** A purge that runs while an item is being
-  trashed prunes its record, the records of a trash on an unmounted disk are
-  pruned, and temp files left by a crash count toward the cap and are never
-  removed (`services/trash_records.go`). Each case falls back to asking before
-  a restore into a system folder. Reported.
+- [ ] **Extract opens the archive by path.** `runExtractTask`
+  (`backend/bridge/handlers/filebrowser/archive_operations.go`) and
+  `ExtractArchive` (`services/archive_operations.go`) stat and open the
+  archive through `root.Root`, with or without an owner, so the link rule does
+  not apply to it. A local user who links `backup.zip` in their folder to an
+  archive only root can read gets its content when an admin extracts it
+  there. Reach the archive with `entryFollowingNoUserLinks` and read it
+  through that handle. Reported by the review of 2026-11-13.
 
 ## Storage safety
 
@@ -80,41 +57,12 @@ after a change that issues ioctls).
   (`backend/common/btrfs/pool.go`) open without it; and md and LVM membership
   comes from the udev database, so a signature udev has not probed is not
   seen. Reported; each window is short.
-- [ ] **A replace cancel sent in its first moments can be lost.**
-  `cancelReplace` (`backend/common/btrfs/devices.go`) is sent once and its
-  error dropped, so a cancel before the kernel has claimed the pool does
-  nothing and the replace runs to the end; `RemoveDevice` sends its cancel
-  again until it is taken. The source disk is safe either way. Reported.
-- [ ] **Destroying a pool mounted at a protected path answers 500.** The
-  refusal in `poolMountpoints`
-  (`backend/bridge/handlers/storage/btrfs_pool.go`) wraps no status, so it is
-  not a 409. Reported.
 - [ ] **A scrub starts over after a power cut.** It is checkpointed only by
   its `Suspend` hook at an orderly stop
   (`backend/bridge/handlers/storage/btrfs_device_operations.go`). Checked.
 - [ ] **A scrub might end by itself.** The kernel stops a scrub on any signal
   to its thread, and nothing in `backend/common/btrfs` retries `EINTR`. An
   inference; never observed. Needs a test.
-
-## What a user without sudo sees
-
-A route that changes the host is `Privileged()` or is a named exception, and a
-test enforces it; the Accounts, Docker, network, dashboard and file browser
-pages offer a session without sudo only what the server allows
-([Privilege Pattern](../privilege_pattern.md)). What is left:
-
-- [ ] **The file browser search is hidden without sudo.** `filebrowser.search`
-  is privileged, so the search field is gone for such a session.
-  - Decided 2026-11-13: a user without sudo may search the folders they can
-    read. The index covers the whole host, so the results must be filtered to
-    those before they leave the bridge.
-  - Not built, checked 2026-11-13: a bridge without sudo cannot reach the
-    indexer. Its socket is root's, mode `0600`
-    (`packaging/systemd/linuxio-indexer.socket`), and the daemon also requires
-    a root peer (`backend/indexer/internal/daemon/middleware.go`). Opening the
-    socket to every local user is ruled out. What is left is a root component
-    already behind the login, the root job host or `linuxio-auth`, running the
-    search for the session and filtering by what that user may list.
 
 ## Visible bugs
 
@@ -206,15 +154,14 @@ Do one of these only when something shows it is needed.
 
 - Run a file browser change as the session user when the path is inside
   folders that user owns, so the user's own folder links work instead of being
-  refused with the folder they point to.
+  refused with the folder they point to. The refusal offers to open that
+  folder, so this is a convenience only.
 - Pick up a package update again after the job host dies, by asking
   PackageKit.
 - Pick up a SMART test again from the drive's own state.
 - More alert sources and other ways to deliver them: see "Not in this slice"
   in [Alerts](../alerts.md).
 - What jobs do not do: see "Not built" in [Jobs](../jobs.md#not-built).
-- Bring the [mutation map](./mutation-map.md) up to date. Its route tables are
-  from before jobs.
 
 ## Rejected
 
@@ -227,8 +174,27 @@ File browser, after the link fix:
   root still acts at the place that was asked for.
 - Filesystems without `RENAME_NOREPLACE` (NFS, FUSE) fall back to a check and
   a plain rename: a swap there affects only the user's own files.
+- The "Open the real folder" action reads its destination from the wording
+  of the refusal, so a folder name crafted to contain that wording can make
+  the button and the text disagree. It gains nothing: whoever plants a link
+  already chooses where it points, the button only opens a folder, and the
+  server checks that read again.
 - The checks before an operation go by path: they decide names and sizes
-  only, and the change itself walks again through handles.
+  only, and the change itself walks again through handles. The same holds for
+  an upload's "already exists" and editor version checks: the commit links
+  without replacing unless overwrite was asked, in the folder it opened.
+- A trash record written for a disk whose device number changes when it is
+  mounted again no longer matches its item: the restore asks first, as for an
+  item another program trashed.
+
+Without sudo:
+
+- File browser search for a session without sudo. Decided 2026-11-13: search
+  stays admin-only. The index covers the whole host and only root can reach
+  it (`packaging/systemd/linuxio-indexer.socket`,
+  `backend/indexer/internal/daemon/middleware.go`), so it would need a root
+  component that filters every result by what the user may list, and a
+  mistake there leaks file names.
 
 Storage and jobs:
 

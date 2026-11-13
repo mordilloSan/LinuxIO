@@ -186,8 +186,8 @@ Fedora, exposes zram writeback, or touches swap partitions on the storage page.
   covering each banner state, the disabled rows, the Capabilities link, the
   TuneD read-only slider and the confirm dialog.
 - Docs: a new memory document under docs for the behaviour, the capability in
-  `docs/capabilities.md`, the routes in `docs/privilege_pattern.md`'s table,
-  and the mutations in the [mutation map](./mutation-map.md).
+  `docs/capabilities.md`, and the routes in `docs/privilege_pattern.md`'s
+  table.
 - Finish with `make generate` and `make test-quiet`; the section test also
   needs `make test-frontend-browser-quiet` for the confirm dialog focus.
 
@@ -221,7 +221,7 @@ Phase 2
 - [ ] `memory.set_swappiness` with the TuneD guard
 - [ ] `memory.drain_swap` with the room check
 - [ ] Confirm dialog, Apply flow with toasts, slider editable
-- [ ] Root integration test in the VM; the memory document; mutation map rows
+- [ ] Root integration test in the VM; the memory document
 
 Phase 3
 
