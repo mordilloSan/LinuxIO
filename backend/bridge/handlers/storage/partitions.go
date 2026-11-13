@@ -59,8 +59,6 @@ func formatProgress(report func(step string, pct float64)) func(float64) {
 // behind a long mkfs. A var so tests can shorten it.
 var callLockWait = 5 * time.Second
 
-var partitionRoutes = partitionBindings().Routes()
-
 func partitionBindings() apischema.BindingSet {
 	return apischema.Bindings(
 		apischema.MutationTask("storage.partition_create", runPartitionCreateTask, apischema.Privileged(), apischema.Progress[BtrfsOpProgress](), apischema.WithTaskMetadata(func(req apischema.PartitionCreateRequest) bridgeipc.TaskMetadata {
@@ -318,7 +316,9 @@ func CreatePartition(ctx context.Context, req apischema.PartitionCreateRequest, 
 }
 
 // FormatPartition makes a filesystem on an unused partition, reporting the
-// steps; a partition with a filesystem signature needs Overwrite.
+// steps; a partition with a filesystem signature needs Overwrite, and one
+// that is a member of an md array, an LVM volume group or another set also
+// needs the request to confirm that member.
 func FormatPartition(ctx context.Context, req apischema.PartitionFormatRequest, report func(step string, pct float64)) error {
 	inv, err := loadPartitionInventory(ctx)
 	if err != nil {
@@ -340,6 +340,9 @@ func FormatPartition(ctx context.Context, req apischema.PartitionFormatRequest, 
 	if part.FSType != "" && !req.Overwrite {
 		return fmt.Errorf("%w: %s has a %s signature; overwrite it to format", bridgeipc.ErrConflict, part.Path, part.FSType)
 	}
+	if _, err = confirmedMembers([]apischema.StorageBlockDevice{part}, req.ConfirmMembers, "erasing it to format "+part.Path); err != nil {
+		return err
+	}
 	unlock, err := lockDisk(ctx, disk.Path)
 	if err != nil {
 		return err
@@ -359,8 +362,9 @@ func FormatPartition(ctx context.Context, req apischema.PartitionFormatRequest, 
 }
 
 // DeletePartition removes an unused partition from its disk's GPT, leaving
-// its data in place.
-func DeletePartition(ctx context.Context, req apischema.BlockDeviceRequest) (apischema.SuccessResponse, error) {
+// its data in place. A member of an md array, an LVM volume group or another
+// set is deleted only when the request confirms it.
+func DeletePartition(ctx context.Context, req apischema.PartitionDeleteRequest) (apischema.SuccessResponse, error) {
 	inv, err := loadPartitionInventory(ctx)
 	if err != nil {
 		return apischema.SuccessResponse{}, err
@@ -373,6 +377,9 @@ func DeletePartition(ctx context.Context, req apischema.BlockDeviceRequest) (api
 		return apischema.SuccessResponse{}, fmt.Errorf("%w: %s is not on a GPT disk; only GPT partitions can be deleted", bridgeipc.ErrInvalidArgs, part.Path)
 	}
 	if err = deviceInUse(part, inv.fss, inv.offline, false, false); err != nil {
+		return apischema.SuccessResponse{}, err
+	}
+	if _, err = confirmedMembers([]apischema.StorageBlockDevice{part}, req.ConfirmMembers, "deleting it"); err != nil {
 		return apischema.SuccessResponse{}, err
 	}
 	unlock, err := lockDiskForCall(ctx, disk.Path)
@@ -432,15 +439,42 @@ func MountPartition(ctx context.Context, req apischema.PartitionMountRequest) (a
 	return mountResult(req.Mountpoint, ""), nil
 }
 
+// confirmedMembers returns the member signatures among devs, which are
+// already known not to be in use, refusing when confirmed does not list
+// exactly those: a member nobody confirmed, or a confirmation of a member
+// that is gone, which means the device changed since the user looked at it.
+// what says what the confirmation is for, such as "erasing it to format
+// /dev/sdb1". Nothing holds a member of a stopped md array or an inactive
+// LVM volume group, so deviceInUse lets it through; a member of a btrfs pool
+// the bridge knows, mounted or not, never gets this far. A btrfs signature
+// that reaches the confirmation belongs to no pool the bridge can read, so
+// it cannot be destroyed as one and is erased only when named.
+func confirmedMembers(devs []apischema.StorageBlockDevice, confirmed []apischema.DiskMemberConfirmed, what string) ([]apischema.DiskMemberConfirmed, error) {
+	var members []apischema.DiskMemberConfirmed
+	for _, d := range devs {
+		m := memberOf(d)
+		if m == nil {
+			continue
+		}
+		member := apischema.DiskMemberConfirmed{Device: d.Path, Kind: m.Kind, UUID: m.UUID}
+		if !slices.Contains(confirmed, member) {
+			return nil, fmt.Errorf("%w: %s: Member of %s; confirm %s", bridgeipc.ErrConflict, d.Path, describeMember(*m), what)
+		}
+		members = append(members, member)
+	}
+	for _, c := range confirmed {
+		if !slices.Contains(members, c) {
+			return nil, fmt.Errorf("%w: %s is no longer the %s member that was confirmed; review the disk again", bridgeipc.ErrConflict, c.Device, c.Kind)
+		}
+	}
+	return members, nil
+}
+
 // checkInitialize refuses to initialize disk while it or a partition of it is
 // in use, or carries a member signature that confirmed does not list
-// exactly. It returns the members the initialize erases. A member of a btrfs
-// pool the bridge knows, mounted or not, never gets this far: deviceInUse
-// refuses it. A btrfs signature that reaches the confirmation belongs to no
-// pool the bridge can read, so it cannot be destroyed as one and is erased
-// only when named.
+// exactly. It returns the members the initialize erases.
 func (inv partitionInventory) checkInitialize(disk string, confirmed []apischema.DiskMemberConfirmed) ([]apischema.DiskMemberConfirmed, error) {
-	var members []apischema.DiskMemberConfirmed
+	var devs []apischema.StorageBlockDevice
 	for _, d := range inv.devices {
 		if d.Path != disk && (d.Type != "part" || !slices.Contains(d.Parents, disk)) {
 			continue
@@ -448,24 +482,9 @@ func (inv partitionInventory) checkInitialize(disk string, confirmed []apischema
 		if err := deviceInUse(d, inv.fss, inv.offline, false, false); err != nil {
 			return nil, err
 		}
-		m := memberOf(d)
-		if m == nil {
-			continue
-		}
-		member := apischema.DiskMemberConfirmed{Device: d.Path, Kind: m.Kind, UUID: m.UUID}
-		if !slices.Contains(confirmed, member) {
-			return nil, fmt.Errorf("%w: %s: Member of %s; confirm erasing it to initialize %s", bridgeipc.ErrConflict, d.Path, describeMember(*m), disk)
-		}
-		members = append(members, member)
+		devs = append(devs, d)
 	}
-	// A confirmation of a member that is gone means the disk changed since
-	// the user looked at it.
-	for _, c := range confirmed {
-		if !slices.Contains(members, c) {
-			return nil, fmt.Errorf("%w: %s is no longer the %s member that was confirmed; review the disk again", bridgeipc.ErrConflict, c.Device, c.Kind)
-		}
-	}
-	return members, nil
+	return confirmedMembers(devs, confirmed, "erasing it to initialize "+disk)
 }
 
 // InitializeDisk replaces everything on a disk, which with every partition

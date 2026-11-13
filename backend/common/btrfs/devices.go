@@ -14,27 +14,42 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// AllowedProfiles are the block-group profiles LinuxIO converts to; raid5
-// and raid6 are deliberately absent.
-var AllowedProfiles = []string{"single", "dup", "raid0", "raid1", "raid1c3", "raid1c4", "raid10"}
+// profileSpec is what LinuxIO knows of one block-group profile.
+type profileSpec struct {
+	flag       uint64 // its block-group flag bit; bgSingle, which no chunk carries, for single
+	minDevices int    // fewest present devices it needs; 0 where LinuxIO does not judge it (raid5, raid6)
+	copies     int    // copies kept of each block; 0 where it depends on the device count (raid5, raid6)
+	rank       int    // order by disk failures survived, then by copies kept
+	allowed    bool   // LinuxIO creates and converts to it; raid5 and raid6 never
+}
+
+// profiles is every profile the kernel reports. The allowed ones are mirrored
+// by BTRFS_PROFILES in the frontend's btrfsShared.ts, whose test reads this
+// table: keep each entry on one line with its field names.
+var profiles = map[string]profileSpec{
+	"single":  {flag: bgSingle, minDevices: 1, copies: 1, rank: 0, allowed: true},
+	"dup":     {flag: bgDup, minDevices: 1, copies: 2, rank: 1, allowed: true},
+	"raid0":   {flag: bgRaid0, minDevices: 2, copies: 1, rank: 0, allowed: true},
+	"raid1":   {flag: bgRaid1, minDevices: 2, copies: 2, rank: 2, allowed: true},
+	"raid1c3": {flag: bgRaid1c3, minDevices: 3, copies: 3, rank: 3, allowed: true},
+	"raid1c4": {flag: bgRaid1c4, minDevices: 4, copies: 4, rank: 4, allowed: true},
+	"raid10":  {flag: bgRaid10, minDevices: 4, copies: 2, rank: 2, allowed: true},
+	"raid5":   {flag: bgRaid5, rank: 2},
+	"raid6":   {flag: bgRaid6, rank: 3},
+}
 
 // progressInterval is how often blocking operations report; a variable so
 // tests can poll quickly.
 var progressInterval = 2 * time.Second
 
-// MinDevices returns how many devices profile needs, or 0 when unknown.
-func MinDevices(profile string) int {
-	switch profile {
-	case "single", "dup":
-		return 1
-	case "raid0", "raid1":
-		return 2
-	case "raid1c3":
-		return 3
-	case "raid1c4", "raid10":
-		return 4
+// MinDevices returns how many devices profile needs, and an error for a
+// profile whose minimum LinuxIO does not know, so that an unknown profile
+// never passes a device-count check.
+func MinDevices(profile string) (int, error) {
+	if n := profiles[profile].minDevices; n > 0 {
+		return n, nil
 	}
-	return 0
+	return 0, fmt.Errorf("cannot determine minimum devices for profile %s", profile)
 }
 
 // ValidateProfiles checks requested data and metadata profiles against the
@@ -47,10 +62,14 @@ func ValidateProfiles(data, meta *string, deviceCount int) error {
 		if strings.EqualFold(*p, "raid5") || strings.EqualFold(*p, "raid6") {
 			return errors.New("raid5 and raid6 are not supported")
 		}
-		if !slices.Contains(AllowedProfiles, *p) {
+		if !profiles[*p].allowed {
 			return fmt.Errorf("unsupported profile %s", *p)
 		}
-		if n := MinDevices(*p); deviceCount < n {
+		n, err := MinDevices(*p)
+		if err != nil {
+			return err
+		}
+		if deviceCount < n {
 			return fmt.Errorf("profile %s needs at least %d devices", *p, n)
 		}
 	}
@@ -105,25 +124,41 @@ func deviceName(args *volArgs, device string) error {
 const edgeWipeBytes = 2 << 20
 
 // wipeDeviceEdges zeroes the first and last edgeWipeBytes of device; a var
-// so tests can stub it.
+// so tests can stub it. It opens device exclusively, which the kernel
+// refuses with EBUSY while it is mounted, an active swap or held (LVM, md,
+// dm-crypt), or for a whole disk while one of its partitions is: the checks
+// before it ran on an inventory read, and a device claimed since must not
+// be zeroed. The claim ends when the file is closed, before any caller's
+// next step, such as the add ioctl's own exclusive open.
 var wipeDeviceEdges = func(device string) error {
 	size, err := blockDeviceSize(device)
 	if err != nil {
 		return err
 	}
-	f, err := os.OpenFile(device, os.O_RDWR, 0)
+	f, err := os.OpenFile(device, os.O_RDWR|os.O_EXCL, 0)
+	if errors.Is(err, unix.EBUSY) {
+		return fmt.Errorf("%s is in use: %w", device, unix.EBUSY)
+	}
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 	n := min(size, edgeWipeBytes)
 	zeros := make([]byte, n)
 	for _, off := range []uint64{0, size - n} {
-		if _, err := f.WriteAt(zeros, int64(off)); err != nil {
-			return fmt.Errorf("wipe %s: %w", device, err)
+		if _, err = f.WriteAt(zeros, int64(off)); err != nil {
+			break
 		}
 	}
-	return f.Sync()
+	if err == nil {
+		err = f.Sync()
+	}
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return fmt.Errorf("wipe %s: %w", device, err)
+	}
+	return nil
 }
 
 // AddDevice adds device to the filesystem; force first wipes the
@@ -229,9 +264,9 @@ func checkRemovable(fs BtrfsFilesystem, id int) error {
 		}
 	}
 	for _, a := range fs.Allocation {
-		n := MinDevices(a.Profile)
-		if n == 0 && a.Profile != "" {
-			return fmt.Errorf("cannot determine minimum devices for profile %s", a.Profile)
+		n, err := MinDevices(a.Profile)
+		if err != nil {
+			return err
 		}
 		if remaining < n {
 			return fmt.Errorf("cannot remove device %d: %s profile %s needs at least %d devices", id, a.Kind, a.Profile, n)
@@ -492,12 +527,12 @@ func Balance(ctx context.Context, uuid string, opts BalanceOptions, report func(
 	if opts.DataProfile != nil {
 		args.Flags |= balanceData
 		args.Data.Flags |= convert
-		args.Data.Target = profileFlags[*opts.DataProfile]
+		args.Data.Target = profiles[*opts.DataProfile].flag
 	}
 	if opts.MetadataProfile != nil {
 		args.Flags |= balanceMetadata | balanceSystem
 		args.Meta.Flags |= convert
-		args.Meta.Target = profileFlags[*opts.MetadataProfile]
+		args.Meta.Target = profiles[*opts.MetadataProfile].flag
 		args.Sys = args.Meta
 	}
 	if opts.DataUsageMax != nil {

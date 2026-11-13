@@ -25,7 +25,7 @@ import {
 import { useActiveTaskRecovery } from "@/tasks/useActiveTaskRecovery";
 import { formatFileSize } from "@/utils/formatters";
 
-import { describeMember } from "../storageMember";
+import { describeMember, memberConfirmations } from "../storageMember";
 import {
   CreatePartitionDialog,
   FormatPartitionDialog,
@@ -172,14 +172,18 @@ const PartitionsTab = ({ driveName }: { driveName: string }) => {
   const gpt = disk.ptType === "gpt";
   const blocker = initializeBlocker(disk, rows, btrfs, offline);
   // Members of an md array, an LVM volume group or another set: nothing holds
-  // them once the array is stopped or the group inactive, so the confirmation
-  // names them and the request confirms exactly these. A member of a btrfs
-  // pool the bridge knows blocks instead (initializeBlocker); a btrfs
-  // signature that belongs to no readable pool is named like the rest.
-  const members = [
+  // them once the array is stopped or the group inactive, so the
+  // confirmations of Initialize, Format and Delete name them and the request
+  // confirms exactly these. A member of a btrfs pool the bridge knows blocks
+  // instead (initializeBlocker, a row's reason); a btrfs signature that
+  // belongs to no readable pool is named like the rest.
+  const initialized = [
     disk,
     ...rows.flatMap((row) => (row.kind === "partition" ? [row.device] : [])),
-  ].flatMap(({ path, member }) => (member ? [{ path, member }] : []));
+  ];
+  const members = initialized.flatMap(({ path, member }) =>
+    member ? [{ path, member }] : [],
+  );
 
   const columns: AppVirtualTableColumnDef<LayoutRow>[] = [
     {
@@ -378,7 +382,13 @@ const PartitionsTab = ({ driveName }: { driveName: string }) => {
           isPending={format.isPending}
           onClose={closeDialog}
           onConfirm={(request) =>
-            format.mutate(request, { onSuccess: closeDialog })
+            format.mutate(
+              {
+                ...request,
+                confirmMembers: memberConfirmations([dialog.device]),
+              },
+              { onSuccess: closeDialog },
+            )
           }
           step={step}
         />
@@ -399,14 +409,21 @@ const PartitionsTab = ({ driveName }: { driveName: string }) => {
         isPending={isDeleting}
         message={
           dialog?.kind === "delete"
-            ? `Delete ${dialog.device.path} (${describe(dialog.device)})? Everything on it is lost.`
+            ? `Delete ${dialog.device.path} (${describe(dialog.device)})? Everything on it is lost.${
+                dialog.device.member
+                  ? ` It is a member of ${describeMember(dialog.device.member)}, which loses it.`
+                  : ""
+              }`
             : ""
         }
         onClose={closeDialog}
         onConfirm={() => {
           if (dialog?.kind !== "delete") return;
           deletePartition(
-            { device: dialog.device.path },
+            {
+              device: dialog.device.path,
+              confirmMembers: memberConfirmations([dialog.device]),
+            },
             { onSuccess: closeDialog },
           );
         }}
@@ -443,11 +460,7 @@ const PartitionsTab = ({ driveName }: { driveName: string }) => {
           initializeDisk(
             {
               device: disk.path,
-              confirmMembers: members.map(({ path, member }) => ({
-                device: path,
-                kind: member.kind,
-                uuid: member.uuid ?? "",
-              })),
+              confirmMembers: memberConfirmations(initialized),
             },
             { onSuccess: closeDialog },
           )

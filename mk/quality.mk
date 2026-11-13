@@ -113,8 +113,8 @@ test-assistant-agent-integration: ensure-go ## Run the opt-in real npm install a
 # The root btrfs and partition kernel tests, run on this host by
 # test-btrfs-integration and in the test VM by vm-test-btrfs-integration:
 # common/btrfs, and the bridge storage rules that decide which disks a pool
-# may take (TestBtrfsMemberIntegration).
-BTRFS_INTEGRATION_RUN := ^Test(Btrfs(Degraded|Resume|Replicate|Member)?|Partition)Integration$$
+# may take (TestBtrfsMemberIntegration) and destroy (TestBtrfsDestroyIntegration).
+BTRFS_INTEGRATION_RUN := ^Test(Btrfs(Degraded|Resume|Replicate|Member|AddWipe|Destroy)?|Partition)Integration$$
 BTRFS_INTEGRATION_PKGS := ./common/btrfs ./bridge/handlers/storage
 
 test-btrfs-integration: ensure-go ## Run the root-only btrfs and partition kernel tests on loop devices

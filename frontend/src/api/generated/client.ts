@@ -281,8 +281,7 @@ const linuxio = {
       field: "paths",
     }),
     trash_restore: defineMutation("filebrowser", "trash_restore", {
-      kind: "field",
-      field: "paths",
+      kind: "object",
     }),
     upload: defineMutation("filebrowser", "upload", { kind: "object" }),
     upload_batch: defineMutation("filebrowser", "upload_batch", {
@@ -600,8 +599,7 @@ const linuxio = {
       kind: "object",
     }),
     partition_delete: defineMutation("storage", "partition_delete", {
-      kind: "field",
-      field: "device",
+      kind: "object",
     }),
     partition_format: defineMutation("storage", "partition_format", {
       kind: "object",

@@ -391,12 +391,15 @@ type PartitionCreateRequest struct {
 }
 
 // PartitionFormatRequest formats an unused partition; Overwrite is required
-// when it already holds a filesystem or other data.
+// when it already holds a filesystem or other data. A partition that is a
+// member of an md array, an LVM volume group or another set is formatted
+// only when ConfirmMembers names it exactly as the inventory reports it.
 type PartitionFormatRequest struct {
-	Device    string `json:"device"`
-	FSType    string `json:"fsType"`
-	Label     string `json:"label"`
-	Overwrite bool   `json:"overwrite"`
+	Device         string                `json:"device"`
+	FSType         string                `json:"fsType"`
+	Label          string                `json:"label"`
+	Overwrite      bool                  `json:"overwrite"`
+	ConfirmMembers []DiskMemberConfirmed `json:"confirmMembers,omitzero"`
 }
 
 type PartitionMountRequest struct {
@@ -405,8 +408,12 @@ type PartitionMountRequest struct {
 	Persist    bool   `json:"persist"`
 }
 
-type BlockDeviceRequest struct {
-	Device string `json:"device"`
+// PartitionDeleteRequest drops an unused partition from its disk's GPT. A
+// member of an md array, an LVM volume group or another set is deleted only
+// when ConfirmMembers names it exactly as the inventory reports it.
+type PartitionDeleteRequest struct {
+	Device         string                `json:"device"`
+	ConfirmMembers []DiskMemberConfirmed `json:"confirmMembers,omitzero"`
 }
 
 // DiskInitializeRequest replaces everything on a disk with an empty GPT. A
@@ -418,7 +425,8 @@ type DiskInitializeRequest struct {
 	ConfirmMembers []DiskMemberConfirmed `json:"confirmMembers,omitzero"`
 }
 
-// DiskMemberConfirmed is one member signature the user agreed to erase.
+// DiskMemberConfirmed is one member signature the user agreed to erase, by
+// initialize, format or delete.
 type DiskMemberConfirmed struct {
 	// Device is the disk or partition that carries the signature.
 	Device string `json:"device"`

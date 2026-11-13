@@ -1,10 +1,58 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import {
+  BTRFS_PROFILES,
   metadataProfiles,
   recommendedMetadata,
   usableBytes,
 } from "./btrfsShared";
+
+// Vitest runs from frontend/.
+const PROFILES_GO = join(process.cwd(), "../backend/common/btrfs/devices.go");
+
+/** The allowed entries of the Go `profiles` table, as BTRFS_PROFILES has them. */
+function backendProfiles() {
+  const source = readFileSync(PROFILES_GO, "utf8");
+  const table = source.match(
+    /^var profiles = map\[string\]profileSpec\{\n([\s\S]*?)^\}/m,
+  );
+  if (!table) throw new Error(`no profiles table in ${PROFILES_GO}`);
+  const allowed: Record<
+    string,
+    { minDevices: number; copies: number; rank: number }
+  > = {};
+  let entries = 0;
+  for (const line of table[1].split("\n")) {
+    const entry = line.match(/^\t"(\w+)":\s*\{(.*)\},$/);
+    if (!entry) continue;
+    entries++;
+    const fields = Object.fromEntries(
+      entry[2].split(",").map((field) => {
+        const [key, value] = field.split(":").map((part) => part.trim());
+        return [key, value];
+      }),
+    );
+    if (fields.allowed !== "true") continue;
+    allowed[entry[1]] = {
+      minDevices: Number(fields.minDevices ?? 0),
+      copies: Number(fields.copies ?? 0),
+      rank: Number(fields.rank ?? 0),
+    };
+  }
+  return { allowed, entries };
+}
+
+describe("profile table", () => {
+  it("has the allowed profiles of the Go table, with the same values", () => {
+    const { allowed, entries } = backendProfiles();
+    // raid5 and raid6 are listed in Go but never allowed.
+    expect(entries).toBeGreaterThan(Object.keys(allowed).length);
+    expect(BTRFS_PROFILES).toEqual(allowed);
+  });
+});
 
 const T = 1000 ** 4;
 // The greedy fill is stepped, so results are exact to within a step.

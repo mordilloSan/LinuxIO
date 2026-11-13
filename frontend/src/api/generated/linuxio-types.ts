@@ -338,10 +338,6 @@ export interface BatchUploadProgress {
   filesTotal: number;
 }
 
-export interface BlockDeviceRequest {
-  device: string;
-}
-
 export interface BootIDRequest {
   bootId: string;
 }
@@ -1567,6 +1563,7 @@ export interface FileCompressResult {
   path: string;
   size: number;
   format: string;
+  failed: FileBatchItemFailure[];
 }
 
 export interface FileExtractRequest {
@@ -2533,6 +2530,11 @@ export interface PartitionCreateRequest {
   mount?: PartitionMountOptions;
 }
 
+export interface PartitionDeleteRequest {
+  device: string;
+  confirmMembers?: DiskMemberConfirmed[];
+}
+
 export interface PartitionFormatOptions {
   fsType: string;
   label: string;
@@ -2543,6 +2545,7 @@ export interface PartitionFormatRequest {
   fsType: string;
   label: string;
   overwrite: boolean;
+  confirmMembers?: DiskMemberConfirmed[];
 }
 
 export interface PartitionMountOptions {
@@ -3262,10 +3265,16 @@ export interface TrashEntry {
   deletedAt: string;
   isDir: boolean;
   size: number;
+  confirmRestore: boolean;
 }
 
 export interface TrashListResponse {
   entries: TrashEntry[];
+}
+
+export interface TrashRestoreRequest {
+  paths: string[];
+  confirmedDestinations?: string[];
 }
 
 export interface TunedProfile {
@@ -4186,8 +4195,8 @@ export interface LinuxIOSchema {
       progress: TaskProgress<CountProgress>;
     };
     trash_restore: {
-      input: [paths: string[]];
-      request: BatchPathRequest;
+      input: [request: TrashRestoreRequest];
+      request: TrashRestoreRequest;
       result: FileBatchResult;
       progress: TaskProgress<CountProgress>;
     };
@@ -4756,8 +4765,8 @@ export interface LinuxIOSchema {
       progress: TaskProgress<BtrfsOpProgress>;
     };
     partition_delete: {
-      input: [device: string];
-      request: BlockDeviceRequest;
+      input: [request: PartitionDeleteRequest];
+      request: PartitionDeleteRequest;
       result: SuccessResponse;
     };
     partition_format: {

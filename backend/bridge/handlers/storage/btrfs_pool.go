@@ -168,7 +168,8 @@ func partitionLocked(ctx context.Context, disk string, partition func(context.Co
 	part, err := partition(ctx, disk)
 	if err != nil {
 		unlock()
-		return "", nil, err
+		// A disk something claimed since the check is a conflict, not a fault.
+		return "", nil, conflictIfBusy(err)
 	}
 	return part, unlock, nil
 }
@@ -313,11 +314,15 @@ func poolDevicesForDestroy(ctx context.Context, uuid string) ([]string, error) {
 
 // poolMountpoints returns the filesystem's distinct mountpoints deepest
 // first, so nested mounts unmount before their parents, refusing a pool
-// that holds a protected system mount.
+// that holds a protected system mount. LinuxIO's own top-level mount of the
+// pool (btrfs.TopLevel, under /run/linuxio/btrfs), which a subvolume,
+// snapshot or settings read leaves behind, is unmounted with the rest:
+// otherwise reading a pool would keep it from being destroyed.
 func poolMountpoints(fs btrfs.BtrfsFilesystem) ([]string, error) {
+	helper := filepath.Join(btrfs.TopLevelDir, fs.UUID)
 	var mountpoints []string
 	for _, m := range fs.Mountpoints {
-		if isProtectedMount(m.Mountpoint) {
+		if isProtectedMount(m.Mountpoint) && (fs.UUID == "" || m.Mountpoint != helper) {
 			return nil, fmt.Errorf("refusing to destroy a pool mounted at %s", m.Mountpoint)
 		}
 		if !slices.Contains(mountpoints, m.Mountpoint) {

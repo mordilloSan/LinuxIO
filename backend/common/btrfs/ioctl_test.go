@@ -109,8 +109,8 @@ func TestProfileAndKindNames(t *testing.T) {
 			t.Errorf("%#x: %s/%s, want %s/%s", flags, kindName(flags), profileName(flags), want[0], want[1])
 		}
 	}
-	for name, bit := range profileFlags {
-		if name != "single" && profileName(bgData|bit) != name {
+	for name, p := range profiles {
+		if name != "single" && profileName(bgData|p.flag) != name {
 			t.Errorf("%s round trip failed", name)
 		}
 	}

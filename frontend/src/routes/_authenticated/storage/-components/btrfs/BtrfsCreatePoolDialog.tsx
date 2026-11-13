@@ -27,7 +27,7 @@ import { FORCE_LABEL, poolDeviceChoices } from "../storageMember";
 import {
   METADATA_HINT,
   metadataProfiles,
-  PROFILE_MIN_DEVICES,
+  profilesFor,
   recommendedMetadata,
   usableBytes,
 } from "./btrfsShared";
@@ -86,9 +86,7 @@ const BtrfsCreatePoolDialog = ({
     spaces.some((entry) => entry.path === path),
   );
   const count = devices.length + freeSpace.length;
-  const profiles = Object.keys(PROFILE_MIN_DEVICES).filter(
-    (profile) => PROFILE_MIN_DEVICES[profile] <= Math.max(count, 1),
-  );
+  const profiles = profilesFor(Math.max(count, 1));
   // A profile the disks or the data profile no longer allow falls back to the
   // default.
   const dataValue = profiles.includes(dataProfile)

@@ -28,6 +28,8 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { formatFileSize } from "@/utils/formatters";
 
+import { describeMember } from "../storageMember";
+
 const MiB = 1024 ** 2;
 const UNITS = { MiB, GiB: 1024 * MiB, TiB: 1024 ** 2 * MiB } as const;
 type Unit = keyof typeof UNITS;
@@ -386,10 +388,16 @@ export const FormatPartitionDialog = ({
             }
             label="Overwrite existing data"
           />
-          {device.fsType && (
+          {device.member ? (
             <AppAlert severity="warning">
-              {`${device.path} holds a ${device.fsType} filesystem. Formatting erases it.`}
+              {`${device.path} is a member of ${describeMember(device.member)}. Formatting erases it, and ${describeMember(device.member)} loses it.`}
             </AppAlert>
+          ) : (
+            device.fsType && (
+              <AppAlert severity="warning">
+                {`${device.path} holds a ${device.fsType} filesystem. Formatting erases it.`}
+              </AppAlert>
+            )
           )}
           {isPending && <Progress step={step} />}
           {error && <AppAlert severity="error">{error}</AppAlert>}

@@ -137,15 +137,10 @@ const (
 	bgGlobalRsv = 1 << 49 // BTRFS_SPACE_INFO_GLOBAL_RSV
 )
 
-var profileFlags = map[string]uint64{
-	"single": bgSingle, "dup": bgDup, "raid0": bgRaid0, "raid1": bgRaid1,
-	"raid1c3": bgRaid1c3, "raid1c4": bgRaid1c4, "raid10": bgRaid10, "raid5": bgRaid5, "raid6": bgRaid6,
-}
-
 // profileName names the profile bits of block-group flags; no bit is single.
 func profileName(flags uint64) string {
-	for name, bit := range profileFlags {
-		if bit != bgSingle && flags&bit != 0 {
+	for name, p := range profiles {
+		if p.flag != bgSingle && flags&p.flag != 0 {
 			return name
 		}
 	}

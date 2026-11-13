@@ -365,6 +365,84 @@ describe("BtrfsDevicesCard actions", () => {
     expect(mocks.cancelTask).not.toHaveBeenCalled();
   });
 
+  const deviceJob = (
+    id: string,
+    type: "remove" | "replace",
+    uuid: string,
+    deviceId: number,
+  ) => ({
+    id,
+    metadata: { identity: [uuid, String(deviceId)] },
+    state: "running",
+    type: `storage.btrfs_device_${type}`,
+  });
+
+  it.each([
+    {
+      op: "remove" as const,
+      title: "Stop removing device",
+      confirm: "Stop removal",
+      says: "Stop removing /dev/sdb? It stays in the pool with less data on it",
+    },
+    {
+      op: "replace" as const,
+      title: "Stop replacing device",
+      confirm: "Stop replace",
+      says: "Stop replacing /dev/sdb? It stays in the pool as it was, and the copy made so far on the new disk is discarded",
+    },
+  ])(
+    "cancels a running $op through its job after saying what is left",
+    async ({ op, title, confirm, says }) => {
+      const user = userEvent.setup();
+      mocks.pending.add(`btrfs_device_${op}`);
+      mocks.tasks.mockReturnValue([
+        deviceJob("other-fs", op, "uuid-2", 2),
+        balanceJob("balance", "uuid-1"),
+        deviceJob("mine", op, "uuid-1", 2),
+      ]);
+      render(<BtrfsDevicesCard filesystem={filesystem(2)} />);
+
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+      const dialog = await screen.findByRole("dialog", { name: title });
+      expect(dialog).toHaveTextContent(says);
+      expect(mocks.cancelTask).not.toHaveBeenCalled();
+      await user.click(within(dialog).getByRole("button", { name: confirm }));
+
+      await waitFor(() =>
+        expect(mocks.cancelTask).toHaveBeenCalledWith({ taskId: "mine" }),
+      );
+      expect(mocks.cancelTask).toHaveBeenCalledTimes(1);
+      expect(
+        mocks.mutations["storage.btrfs_balance_cancel"],
+      ).not.toHaveBeenCalled();
+      expect(
+        screen.getByRole("button", { name: "Cancelling…" }),
+      ).toBeDisabled();
+    },
+  );
+
+  it("keeps a removal running when its cancel is not confirmed", async () => {
+    const user = userEvent.setup();
+    mocks.pending.add("btrfs_device_remove");
+    mocks.tasks.mockReturnValue([deviceJob("mine", "remove", "uuid-1", 1)]);
+    render(<BtrfsDevicesCard filesystem={filesystem(2)} />);
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Stop removing device",
+    });
+    expect(dialog).toHaveTextContent("Stop removing /dev/sda?");
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Stop removing device" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(mocks.cancelTask).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
+  });
+
   it("adds a free device", async () => {
     const user = userEvent.setup();
     render(<BtrfsDevicesCard filesystem={filesystem(1)} />);

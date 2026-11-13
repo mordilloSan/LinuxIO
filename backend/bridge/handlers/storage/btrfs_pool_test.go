@@ -287,6 +287,29 @@ func TestPoolMountpointsDeepestFirst(t *testing.T) {
 	}
 }
 
+// TestPoolMountpointsTakeLinuxIOsTopLevelMount covers a pool whose top level
+// a subvolume, snapshot or settings read mounted under /run/linuxio/btrfs:
+// destroy unmounts that mount with the rest, while a mount of the pool at any
+// other protected path, another pool's top-level mount included, stays
+// refused.
+func TestPoolMountpointsTakeLinuxIOsTopLevelMount(t *testing.T) {
+	helper := filepath.Join(btrfs.TopLevelDir, "u1")
+	fs := btrfs.BtrfsFilesystem{UUID: "u1", Mountpoints: []btrfs.Mount{{Mountpoint: "/mnt/tank"}, {Mountpoint: helper, SubvolID: 5}}}
+	got, err := poolMountpoints(fs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{helper, "/mnt/tank"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for _, protected := range []string{"/run/media/tank", "/boot", filepath.Join(btrfs.TopLevelDir, "u2"), btrfs.TopLevelDir, helper + "/linuxio-snapshots"} {
+		fs.Mountpoints = []btrfs.Mount{{Mountpoint: helper, SubvolID: 5}, {Mountpoint: protected}}
+		if _, err = poolMountpoints(fs); err == nil || !strings.Contains(err.Error(), protected) {
+			t.Errorf("%s: err = %v, want a refusal naming it", protected, err)
+		}
+	}
+}
+
 func TestFstabMountpointFor(t *testing.T) {
 	entries := map[string]fstabEntry{
 		"/mnt/tank/media": {source: "UUID=pool"},

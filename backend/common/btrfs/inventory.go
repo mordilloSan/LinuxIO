@@ -171,23 +171,13 @@ func fillFilesystem(fs *BtrfsFilesystem) {
 
 // profileRatio is how many raw bytes one logical byte of a profile takes.
 func profileRatio(profile string, devices int) float64 {
-	switch profile {
-	case "dup", "raid1", "raid10":
-		return 2
-	case "raid1c3":
-		return 3
-	case "raid1c4":
-		return 4
-	case "raid5":
-		if devices > 1 {
-			return float64(devices) / float64(devices-1)
-		}
-	case "raid6":
-		if devices > 2 {
-			return float64(devices) / float64(devices-2)
-		}
+	switch {
+	case profile == "raid5" && devices > 1:
+		return float64(devices) / float64(devices-1)
+	case profile == "raid6" && devices > 2:
+		return float64(devices) / float64(devices-2)
 	}
-	return 1
+	return float64(max(profiles[profile].copies, 1))
 }
 
 // listDevices reads every device slot of the filesystem with its error

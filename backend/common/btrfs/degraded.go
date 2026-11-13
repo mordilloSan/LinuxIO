@@ -408,33 +408,26 @@ func markUnopened(uuid string, devices []BtrfsDevice) {
 	}
 }
 
-// profileRank orders profiles by the disk failures they survive, then by
-// copies kept.
-var profileRank = map[string]int{
-	"single": 0, "raid0": 0, "dup": 1, "raid1": 2, "raid10": 2, "raid5": 2,
-	"raid1c3": 3, "raid6": 3, "raid1c4": 4,
-}
-
 // convertTargets returns, for data and for metadata (system chunks follow
 // metadata), the most redundant profile present when chunks of another
 // profile sit beside it, as chunks allocated while too few disks were
 // present do; nil when a kind has one profile.
 func convertTargets(allocation []BtrfsAllocation) (data, meta *string) {
-	profiles := map[string][]string{}
+	present := map[string][]string{}
 	for _, a := range allocation {
 		kind := a.Kind
 		if kind == "system" {
 			kind = "metadata"
 		}
-		if !slices.Contains(profiles[kind], a.Profile) {
-			profiles[kind] = append(profiles[kind], a.Profile)
+		if !slices.Contains(present[kind], a.Profile) {
+			present[kind] = append(present[kind], a.Profile)
 		}
 	}
 	target := func(kind string) *string {
-		if len(profiles[kind]) < 2 {
+		if len(present[kind]) < 2 {
 			return nil
 		}
-		best := slices.MaxFunc(profiles[kind], func(a, b string) int { return profileRank[a] - profileRank[b] })
+		best := slices.MaxFunc(present[kind], func(a, b string) int { return profiles[a].rank - profiles[b].rank })
 		return &best
 	}
 	return target("data"), target("metadata")

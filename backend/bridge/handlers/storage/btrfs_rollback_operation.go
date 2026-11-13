@@ -28,8 +28,6 @@ func (p BtrfsRollbackProgress) ProgressEnvelope() bridgeipc.TaskProgress {
 	return bridgeipc.TaskProgress{Percentage: &pct, Phase: "rollback", Message: p.Message, Detail: p}
 }
 
-var btrfsRollbackRoutes = btrfsRollbackBindings().Routes()
-
 func btrfsRollbackBindings() apischema.BindingSet {
 	return apischema.Bindings(
 		apischema.MutationTask("storage.btrfs_snapshot_rollback", runBtrfsRollbackTask, apischema.Privileged(), apischema.Progress[BtrfsRollbackProgress](), apischema.WithTaskMetadata(func(req apischema.BtrfsSnapshotRequest) bridgeipc.TaskMetadata {

@@ -321,7 +321,7 @@ func TestFormatPartition(t *testing.T) {
 
 func TestDeletePartition(t *testing.T) {
 	ctx := context.Background()
-	sdb1 := apischema.BlockDeviceRequest{Device: "/dev/sdb1"}
+	sdb1 := apischema.PartitionDeleteRequest{Device: "/dev/sdb1"}
 
 	env := stubPartitions(t, "")
 	if _, err := DeletePartition(ctx, sdb1); err != nil {
@@ -369,7 +369,7 @@ func TestCallsGiveUpOnALockedDisk(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	_, err := DeletePartition(ctx, apischema.BlockDeviceRequest{Device: "/dev/sdb1"})
+	_, err := DeletePartition(ctx, apischema.PartitionDeleteRequest{Device: "/dev/sdb1"})
 	if !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), "another operation is running on /dev/sdb") {
 		t.Fatalf("delete: err = %v, want a conflict naming the disk", err)
 	}
@@ -384,7 +384,7 @@ func TestCallsGiveUpOnALockedDisk(t *testing.T) {
 	// A request that ended on its own keeps its own error.
 	ended, end := context.WithCancel(context.Background())
 	end()
-	if _, err = DeletePartition(ended, apischema.BlockDeviceRequest{Device: "/dev/sdb1"}); !errors.Is(err, context.Canceled) || errors.Is(err, bridgeipc.ErrConflict) {
+	if _, err = DeletePartition(ended, apischema.PartitionDeleteRequest{Device: "/dev/sdb1"}); !errors.Is(err, context.Canceled) || errors.Is(err, bridgeipc.ErrConflict) {
 		t.Fatalf("canceled request: err = %v, want context.Canceled unchanged", err)
 	}
 }
@@ -546,4 +546,113 @@ func TestInitializeDiskConfirmsMembers(t *testing.T) {
 	if !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), "Member of btrfs pool old; destroy the pool") || len(env.calls) != 0 {
 		t.Errorf("btrfs member: err = %v, calls = %q", err, env.calls)
 	}
+}
+
+// memberAction is Format or Delete of /dev/sdb1 with a confirmation, the
+// calls it makes when it goes through and what its refusal asks for.
+type memberAction struct {
+	name   string
+	run    func(confirm []apischema.DiskMemberConfirmed) error
+	writes []string
+	what   string
+}
+
+// memberCase is a member signature put on /dev/sdb1 and how it is named.
+type memberCase struct {
+	name   string
+	set    func(*apischema.StorageBlockDevice)
+	member apischema.DiskMemberConfirmed
+	names  string
+}
+
+// TestFormatAndDeleteConfirmMembers covers Format and Delete of a partition
+// that belongs to a stopped md array or an inactive LVM volume group, which
+// nothing holds: the request must confirm exactly that member, and a member
+// of a btrfs pool the bridge knows stays refused, confirmed or not.
+func TestFormatAndDeleteConfirmMembers(t *testing.T) {
+	ctx := context.Background()
+	actions := []memberAction{
+		{
+			name: "format",
+			run: func(confirm []apischema.DiskMemberConfirmed) error {
+				return FormatPartition(ctx, apischema.PartitionFormatRequest{Device: "/dev/sdb1", FSType: "ext4", Overwrite: true, ConfirmMembers: confirm}, func(string, float64) {})
+			},
+			writes: []string{"lock /dev/sdb", "check /dev/sdb1", `format /dev/sdb1 ext4 "" overwrite=true`, "unlock /dev/sdb"},
+			what:   "confirm erasing it to format /dev/sdb1",
+		},
+		{
+			name: "delete",
+			run: func(confirm []apischema.DiskMemberConfirmed) error {
+				_, err := DeletePartition(ctx, apischema.PartitionDeleteRequest{Device: "/dev/sdb1", ConfirmMembers: confirm})
+				return err
+			},
+			writes: []string{"lock /dev/sdb", "delete /dev/sdb 1", "unlock /dev/sdb"},
+			what:   "confirm deleting it",
+		},
+	}
+	members := []memberCase{
+		{"md", func(d *apischema.StorageBlockDevice) {
+			d.FSType, d.UUID, d.Label = "linux_raid_member", "a1", "host:data"
+		}, apischema.DiskMemberConfirmed{Device: "/dev/sdb1", Kind: "md", UUID: "a1"}, "Member of md array host:data"},
+		{"lvm", func(d *apischema.StorageBlockDevice) {
+			d.FSType, d.UUID = "LVM2_member", "pv1"
+		}, apischema.DiskMemberConfirmed{Device: "/dev/sdb1", Kind: "lvm", UUID: "pv1"}, "Member of an LVM volume group (physical volume pv1)"},
+	}
+	for _, a := range actions {
+		for _, m := range members {
+			checkMemberConfirmation(t, a, m)
+		}
+		t.Run(a.name+" a confirmation of a device that is no member", func(t *testing.T) {
+			env := stubPartitions(t, "")
+			err := a.run([]apischema.DiskMemberConfirmed{{Device: "/dev/sdb1", Kind: "md", UUID: "a1"}})
+			if !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), "no longer the md member") || len(env.calls) != 0 {
+				t.Fatalf("err = %v, calls = %q", err, env.calls)
+			}
+		})
+		t.Run(a.name+" btrfs pool member", func(t *testing.T) {
+			env := stubPartitions(t, "")
+			env.devices[1].FSType, env.devices[1].UUID = "btrfs", "p1"
+			env.offline = []btrfs.BtrfsOfflinePool{{UUID: "p1", Label: "old", Devices: []string{"/dev/sdb1"}}}
+			err := a.run([]apischema.DiskMemberConfirmed{{Device: "/dev/sdb1", Kind: "btrfs", UUID: "p1"}})
+			if !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), "Member of btrfs pool old; destroy the pool") || len(env.calls) != 0 {
+				t.Fatalf("err = %v, calls = %q", err, env.calls)
+			}
+		})
+	}
+}
+
+// checkMemberConfirmation runs a on /dev/sdb1 carrying m: refused with
+// nothing written without the confirmation, with another member's, or with
+// one more than it finds, and carried out with exactly m's.
+func checkMemberConfirmation(t *testing.T, a memberAction, m memberCase) {
+	wrong := m.member
+	wrong.UUID = "other"
+	for _, c := range []struct {
+		name    string
+		confirm []apischema.DiskMemberConfirmed
+		want    string
+	}{
+		{"no confirmation", nil, m.names + "; " + a.what},
+		{"another member", []apischema.DiskMemberConfirmed{wrong}, m.names + "; " + a.what},
+		{"another device too", []apischema.DiskMemberConfirmed{m.member, {Device: "/dev/sdb2", Kind: "md", UUID: "a1"}}, "/dev/sdb2 is no longer the md member"},
+	} {
+		t.Run(a.name+" "+m.name+" "+c.name, func(t *testing.T) {
+			env := stubPartitions(t, "")
+			m.set(&env.devices[1])
+			err := a.run(c.confirm)
+			if !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), c.want) || len(env.calls) != 0 {
+				t.Fatalf("err = %v, calls = %q, want a conflict naming %q and nothing written", err, env.calls, c.want)
+			}
+		})
+	}
+	t.Run(a.name+" "+m.name+" confirmed", func(t *testing.T) {
+		env := stubPartitions(t, "")
+		m.set(&env.devices[1])
+		if err := a.run([]apischema.DiskMemberConfirmed{m.member}); err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(env.calls, a.writes) {
+			t.Fatalf("calls = %q, want %q", env.calls, a.writes)
+		}
+	})
 }

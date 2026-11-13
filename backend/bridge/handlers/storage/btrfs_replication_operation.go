@@ -12,8 +12,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
 )
 
-var btrfsReplicationRoutes = btrfsReplicationBindings().Routes()
-
 func btrfsReplicationBindings() apischema.BindingSet {
 	return apischema.Bindings(
 		apischema.MutationTask("storage.btrfs_replication_run", runBtrfsReplicationTask, apischema.Privileged(), apischema.Progress[BtrfsOpProgress](), apischema.WithTaskMetadata(func(req apischema.BtrfsJobIDRequest) bridgeipc.TaskMetadata {

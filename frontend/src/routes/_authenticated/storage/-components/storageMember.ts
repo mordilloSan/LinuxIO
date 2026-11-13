@@ -1,4 +1,8 @@
-import type { StorageBlockDevice, StorageMember } from "@/api";
+import type {
+  DiskMemberConfirmed,
+  StorageBlockDevice,
+  StorageMember,
+} from "@/api";
 
 /**
  * What a member signature says a device belongs to, such as "btrfs pool
@@ -15,6 +19,21 @@ export const describeMember = ({ kind, name, uuid }: StorageMember) => {
     ? `an LVM volume group (physical volume ${uuid})`
     : "an LVM volume group";
 };
+
+/**
+ * The member signatures among `devices` that an Initialize, Format or Delete
+ * erases, as the request confirms them: the bridge refuses unless they are
+ * exactly the members it finds, so a device that changed since the dialog
+ * opened is never erased on the old confirmation.
+ */
+export const memberConfirmations = (
+  devices: StorageBlockDevice[],
+): DiskMemberConfirmed[] =>
+  devices.flatMap(({ path, member }) =>
+    member
+      ? [{ device: path, kind: member.kind, uuid: member.uuid ?? "" }]
+      : [],
+  );
 
 /**
  * Why a device cannot join a btrfs pool, or null: in use, in /etc/fstab, or

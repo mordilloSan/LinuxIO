@@ -22,10 +22,12 @@ the replication service each snapshot pass starts (see
 `make test-btrfs-integration` runs every one of these operations against the
 real kernel on loop devices, loses and returns disks of a mirror to check
 the missing-disk handling, exercises
-[partition management](./storage-disks.md#partition-management), and checks
+[partition management](./storage-disks.md#partition-management), checks
 that **Force** never takes a disk of an unmounted pool
-(`TestBtrfsMemberIntegration` in `backend/bridge/handlers/storage`); it needs
-sudo.
+(`TestBtrfsMemberIntegration` in `backend/bridge/handlers/storage`) nor
+zeroes a disk mounted or held after the checks (`TestBtrfsAddWipeIntegration`),
+and that a pool whose top level a read mounted can be destroyed
+(`TestBtrfsDestroyIntegration`); it needs sudo.
 
 Parsing command output is avoided because `btrfs-progs` prints JSON for only a
 few commands, and no Go btrfs library covers balance, scrub and devices. A new
@@ -163,7 +165,7 @@ scrub once it is fixed repairs what it missed.
 Subvolume and snapshot operations need the filesystem's top level
 (`subvolid=5`). On first use LinuxIO mounts it at `/run/linuxio/btrfs/<uuid>`,
 an ordinary host mount, skipped when a user `subvolid=5` mount exists, and
-leaves it mounted until reboot.
+leaves it mounted until reboot, or until **Destroy pool** unmounts it.
 
 ## Subvolumes
 
@@ -349,7 +351,10 @@ fstab are also mounted degraded at boot; see [Missing disks](#missing-disks).
 
 **Destroy pool** unmounts every mount of the pool, removes its fstab entries
 and zeroes the btrfs superblock magic on each disk; everything on the pool is
-lost. A pool holding `/`, `/boot` or another protected mount is refused. An
+lost. A pool holding `/`, `/boot` or another protected mount is refused;
+LinuxIO's own top-level mount under `/run/linuxio/btrfs/<uuid>` (see
+[Top-level access](#top-level-access)), left by any subvolume, snapshot or
+settings read, is not one: it is unmounted with the rest. An
 unmounted pool is destroyed the same way from its superblocks, with the disks
 that are present when some are missing, which is how a disk of an old pool is
 freed for a new one.
@@ -375,12 +380,28 @@ signature needs **Force**, which erases it: the bridge zeroes the device's
 first and last 2 MiB before the add, and `mkfs.btrfs -f` does the same for a
 create. Replace has no **Force**: its target must be blank.
 
+The checks read an inventory, so the bridge opens the device with `O_EXCL`
+to zero it; the kernel refuses that (`EBUSY`, a 409) while the device is
+mounted, an active swap, held by LVM, md or dm-crypt, or, for a whole disk,
+while one of its partitions is. The claim ends when the file is closed,
+before `BTRFS_IOC_ADD_DEV`, which claims the device exclusively itself
+(`btrfs_init_new_device` in `fs/btrfs/volumes.c` opens it with
+`BLK_OPEN_WRITE` and the filesystem as holder; `bd_may_claim` in
+`block/bdev.c` grants a claim only while the device has no other holder, and
+`bdev_release` gives up a file's claim when it is closed). The other writers
+open the same way: the trim before a format or a pool create
+(`discardDevice`), the busy check before a format or a mount and the
+Initialize (`CheckNotBusy`), and the edges of a new GPT or partition, which
+go through the same wipe. `mkfs` repeats its own exclusive open. The target
+of a replace is written only by the kernel, which claims it exclusively the
+same way (`btrfs_init_dev_replace_tgtdev` in `fs/btrfs/dev-replace.c`).
+
 **Force** never covers rule 5. LinuxIO does not try to tell a disk with
 leftover btrfs data from a member of an unmounted pool: both are freed with
 **Destroy** on the unmounted pool the overview lists. A member of a stopped
 md array or an inactive volume group is freed with `mdadm` or `vgreduce` and
-`pvremove`, or erased with **Initialize disk** on the Disks page, whose
-confirmation names it. The 409 says what the disk belongs to and how to free
+`pvremove`, or erased with **Initialize disk**, or **Format** or **Delete**
+on a partition, on the Disks page, whose confirmations name it. The 409 says what the disk belongs to and how to free
 it, such as "Member of btrfs pool old; destroy the pool, or remove the device
 from it, first". The dialogs list such a disk disabled with that reason,
 whether **Force** is on or not; the reason comes from the `member` field of
@@ -421,7 +442,7 @@ primary superblock at 64 KiB.
 | Action | Behaviour |
 |---|---|
 | Add device | Free devices only (see [Which disks a pool may take](#which-disks-a-pool-may-take)). **Force** erases an old filesystem, never a disk of another pool, md array or volume group. |
-| Remove device | Refused below the minimum device count of the current profiles, and refused when the current profiles cannot be determined. |
+| Remove device | Refused below the minimum device count of the current profiles, and refused when the current profiles cannot be determined or have no minimum LinuxIO knows (`raid5`, `raid6`). |
 | Replace device | Replaces one member with a free, blank device. A bigger replacement disk is grown into automatically. |
 | Grow | Resizes a device to its whole disk when the filesystem uses less of it, for example after a replace done by hand. |
 | Rename | Sets the filesystem label from the pool details. |
@@ -442,7 +463,15 @@ aborts them. A refusal the kernel answers with a positive code, such as 8
 ### Cancel
 
 Cancel asks the kernel to stop, and the job ends `canceled` when its handler
-has returned. A cancelled job is never resumed.
+has returned. A cancelled job is never resumed. The pool's Disks card offers
+**Cancel** while a balance, a removal or a replace of that pool runs, and
+re-attaches each after a reload; the tray cancels any of them too. The card
+cancels through the job (`tasks.cancel`), so the record gets
+`cancel_requested` and a shutdown right after does not resume it; only a
+balance with no running job, such as one started elsewhere, falls back to
+`storage.btrfs_balance_cancel`. A removal or a replace is canceled only
+after a confirmation that names the device and says what the cancel leaves,
+as below.
 
 - **Balance**: `BALANCE_CTL cancel`. The kernel deletes the balance item, so
   the work done stays but the rest is dropped.

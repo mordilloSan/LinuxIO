@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"log/slog"
 	"reflect"
 	"slices"
@@ -41,9 +42,21 @@ func TestValidateProfilesNeedsDevices(t *testing.T) {
 	if err := ValidateProfiles(new("raid1"), new("raid1c3"), 3); err != nil {
 		t.Fatalf("raid1/raid1c3 on 3 devices: err = %v", err)
 	}
-	for p, want := range map[string]int{"single": 1, "dup": 1, "raid0": 2, "raid1": 2, "raid1c3": 3, "raid1c4": 4, "raid10": 4, "raid5": 0} {
-		if got := MinDevices(p); got != want {
-			t.Errorf("MinDevices(%s) = %d, want %d", p, got, want)
+	for p, want := range map[string]int{"single": 1, "dup": 1, "raid0": 2, "raid1": 2, "raid1c3": 3, "raid1c4": 4, "raid10": 4} {
+		if got, err := MinDevices(p); got != want || err != nil {
+			t.Errorf("MinDevices(%s) = %d, %v, want %d", p, got, err, want)
+		}
+	}
+	// Fail closed: a profile without a known minimum is an error, never 0,
+	// which any device count would pass.
+	for _, p := range []string{"raid5", "raid6", "raid7", ""} {
+		if got, err := MinDevices(p); err == nil {
+			t.Errorf("MinDevices(%q) = %d, want an error", p, got)
+		}
+	}
+	for name, p := range profiles {
+		if p.allowed && (p.minDevices == 0 || p.copies == 0) {
+			t.Errorf("allowed profile %s has no minimum device count or copies", name)
 		}
 	}
 }
@@ -289,6 +302,16 @@ func TestAddDeviceWipesOnlyWithForce(t *testing.T) {
 	}
 	if err := AddDevice(context.Background(), rootUUID, "/dev/sdd", false); err == nil || err.Error() != "btrfs filesystem "+rootUUID+" not found" {
 		t.Fatalf("add to unknown fs: err = %v", err)
+	}
+
+	// A device claimed since the check is refused by the exclusive open
+	// before the wipe, and never reaches the add.
+	wipeDeviceEdges = func(device string) error { return fmt.Errorf("%s is in use: %w", device, unix.EBUSY) }
+	if err := AddDevice(context.Background(), dataUUID, "/dev/sdf", true); !errors.Is(err, unix.EBUSY) {
+		t.Fatalf("busy device: err = %v, want EBUSY", err)
+	}
+	if calls := k.Calls(); len(calls) != 2 {
+		t.Fatalf("busy device reached the kernel: calls = %v", calls)
 	}
 }
 

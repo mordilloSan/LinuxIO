@@ -51,16 +51,17 @@ between them. Its actions are for administrators.
 | Row | Action | Enabled when |
 |---|---|---|
 | Free region (GPT disk) | **Create partition**: size, the whole region by default; optionally a filesystem and label, and with them **Mount after formatting** (mount point, **Mount at boot**) | always |
-| Partition | **Format**: filesystem and label; **Overwrite existing data** when it already has one | the partition is unused |
+| Partition | **Format**: filesystem and label; **Overwrite existing data** when it already has one; the dialog names a member of an md array, LVM volume group or other set it erases | the partition is unused |
 | Partition with a filesystem, not mounted | **Mount**: mount point, **Mount at boot** | not busy, and not a btrfs pool member (pools mount from the pool view) |
-| Partition (GPT disk) | **Delete**: the confirmation names the partition, its size and its filesystem | the partition is unused |
+| Partition (GPT disk) | **Delete**: the confirmation names the partition, its size and its filesystem, and the md array, LVM volume group or other set it is a member of | the partition is unused |
 | Disk | **Initialize disk**: an empty GPT replaces any table; the confirmation lists every partition that will be lost and names each member of an md array or LVM volume group it erases | the disk and all its partitions are unused and the disk is writable |
 
 A disabled action's tooltip gives the reason, such as "Mounted at /srv",
 "Used by /dev/md127", "In /etc/fstab" or "Member of btrfs pool tank". A
 partition whose signature makes it a member of a stopped md array or an
 inactive volume group shows it under **Used by**, such as "Member of md array
-host:data", without blocking anything. The
+host:data", without blocking anything; Format, Delete and Initialize name it
+in their confirmation (see [Safety](#safety)). The
 filesystems are ext4, xfs and btrfs on one device; multi-disk pools come from
 the pool flow. A type whose `mkfs` is missing is listed as unavailable with a
 link to install it (see [Filesystem tools](./capabilities.md#filesystem-tools)).
@@ -107,13 +108,17 @@ a btrfs pool, md array or volume group and how to free it; btrfs pools add
 their own rule (see [Which disks a pool may take](./btrfs.md#which-disks-a-pool-may-take)).
 
 Nothing holds a member of a stopped md array or an inactive LVM volume
-group, so rules 1 and 2 do not see it. **Initialize disk** is the deliberate
-way to erase one: its confirmation names every such member on the disk and
-its partitions, and the request lists them (`confirmMembers`: device, kind
+group, so rules 1 and 2 do not see it. **Format** (with **Overwrite existing
+data**), **Delete** and **Initialize disk** are the deliberate ways to
+destroy one, so each names it before acting: Format and Delete the
+partition's own membership, Initialize every such member on the disk and its
+partitions. The request lists what was named (`confirmMembers`: device, kind
 and UUID, as the inventory reported them). The bridge refuses with a 409
-when a member it finds is not confirmed, or a confirmed one is gone, so a
-disk that changed after the dialog opened is never wiped on the old
-confirmation. The same holds for any other signature that names itself a
+when a member it finds is not confirmed, such as "/dev/sdb1: Member of md
+array host:data; confirm erasing it to format /dev/sdb1", or a confirmed one
+is gone, so a device that changed after the dialog opened is never destroyed
+on the old confirmation. Delete leaves the data in place, but the set loses
+the member all the same. The same holds for any other signature that names itself a
 member (one ending in `_member`, such as `zfs_member`). A member of a btrfs
 pool stays refused by rule 3; its pool is destroyed instead. A btrfs
 signature that belongs to no pool the bridge can read cannot be destroyed as

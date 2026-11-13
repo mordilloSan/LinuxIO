@@ -73,13 +73,24 @@ var api = apischema.Bindings(
 	apischema.Call[apischema.NoRequest, apischema.StorageTopologyInventory]("storage.get_topology", apischema.RetrySafe()).Handle(handleGetTopology),
 )
 
-var Routes = apischema.CombineRoutes(api.Routes(), smartTestRoutes, btrfsRollbackRoutes, btrfsDeviceRoutes, btrfsReplicationRoutes, partitionRoutes)
+// routes is every storage route set: Routes declares and RegisterHandlers
+// registers these same ones, so no contract route is left answering "not
+// found".
+var routes = []apischema.BindingSet{api, smartTestBindings(), btrfsRollbackBindings(), btrfsDeviceBindings(), btrfsReplicationBindings(), partitionBindings()}
+
+var Routes = func() []apischema.RouteSpec {
+	var specs []apischema.RouteSpec
+	for _, set := range routes {
+		specs = append(specs, set.Routes()...)
+	}
+	return specs
+}()
 
 // RegisterHandlers registers all storage handlers with the global registry
-func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	RegisterTaskRoutes(router)
-
-	api.Register(router)
+func RegisterHandlers(_ runtime.Runtime, router *bridgeipc.Router) {
+	for _, set := range routes {
+		set.Register(router)
+	}
 }
 
 func handleMDList(_ context.Context, _ apischema.NoRequest) ([]apischema.MDArray, error) {

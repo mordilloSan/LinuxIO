@@ -37,22 +37,12 @@ type SmartTestResult struct {
 	Duration *int64 `json:"duration"`
 }
 
-var smartTestRoutes = smartTestBindings().Routes()
-
 func smartTestBindings() apischema.BindingSet {
 	return apischema.Bindings(
 		apischema.MutationTask("storage.run_smart_test", runSmartTestTask, apischema.Privileged(), apischema.Progress[SmartTestProgress](), apischema.WithTaskMetadata(func(req apischema.DeviceTestTypeRequest) bridgeipc.TaskMetadata {
 			return bridgeipc.TaskMetadata{Identity: []string{req.Device, req.TestType}, Label: "Running SMART self-test", Device: req.Device, TestType: req.TestType}
 		})),
 	)
-}
-
-func RegisterTaskRoutes(router *bridgeipc.Router) {
-	smartTestBindings().Register(router)
-	btrfsRollbackBindings().Register(router)
-	btrfsDeviceBindings().Register(router)
-	btrfsReplicationBindings().Register(router)
-	partitionBindings().Register(router)
 }
 
 // pollInterval picks how often to poll smartctl based on test type. Short tests

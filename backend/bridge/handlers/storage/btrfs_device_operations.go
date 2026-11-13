@@ -31,8 +31,6 @@ func (p BtrfsOpProgress) ProgressEnvelope() bridgeipc.TaskProgress {
 	return bridgeipc.TaskProgress{Percentage: &pct, Phase: p.Op, Message: p.Message, Detail: p}
 }
 
-var btrfsDeviceRoutes = btrfsDeviceBindings().Routes()
-
 // Seams for tests: the btrfs calls the resume hooks and the scrub cancel make.
 var (
 	btrfsPauseBalance         = btrfs.PauseBalance
@@ -386,7 +384,9 @@ func AddBtrfsDevice(ctx context.Context, req apischema.BtrfsDeviceAddRequest) (b
 		return btrfs.BtrfsFilesystem{}, err
 	}
 	if err := btrfs.AddDevice(ctx, req.UUID, req.Device, req.Force); err != nil {
-		return btrfs.BtrfsFilesystem{}, fmt.Errorf("add btrfs device %s to %s: %w", req.Device, req.UUID, err)
+		// EBUSY: the device was mounted or claimed after the check, which the
+		// exclusive open before the wipe, or the kernel's own, refused.
+		return btrfs.BtrfsFilesystem{}, conflictIfBusy(fmt.Errorf("add btrfs device %s to %s: %w", req.Device, req.UUID, err))
 	}
 	slog.Info("btrfs device added", "uuid", req.UUID, "device", req.Device, "force", req.Force)
 	return btrfs.FindFilesystem(ctx, req.UUID)

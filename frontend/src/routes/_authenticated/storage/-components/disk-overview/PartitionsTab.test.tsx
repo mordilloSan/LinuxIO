@@ -343,6 +343,7 @@ describe("PartitionsTab", () => {
       fsType: "ext4",
       label: "",
       overwrite: true,
+      confirmMembers: [],
     });
   });
 
@@ -446,7 +447,66 @@ describe("PartitionsTab", () => {
     expect(dialog).toHaveTextContent(/\/dev\/sda2 \(1 GB, ext4\)/);
     await u.click(within(dialog).getByRole("button", { name: "Delete" }));
     expect(mocks.mutations["storage.partition_delete"]).toHaveBeenCalledWith(
-      { device: "/dev/sda2" },
+      { device: "/dev/sda2", confirmMembers: [] },
+      expect.anything(),
+    );
+  });
+
+  it("names an md member in the Format confirmation and confirms it", async () => {
+    const u = user();
+    mocks.topology.mockResolvedValue(
+      topology([
+        sda(),
+        part(1, 1, {
+          fsType: "linux_raid_member",
+          member: { kind: "md", name: "host:data", uuid: "a1" },
+        }),
+      ]),
+    );
+    render(<PartitionsTab driveName="sda" />, options);
+
+    await u.click(await screen.findByRole("button", { name: "Format" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Format /dev/sda1",
+    });
+    expect(dialog).toHaveTextContent(
+      "/dev/sda1 is a member of md array host:data. Formatting erases it, and md array host:data loses it.",
+    );
+    await u.click(within(dialog).getByLabelText("Overwrite existing data"));
+    await u.click(within(dialog).getByRole("button", { name: "Format" }));
+    expect(mocks.submit).toHaveBeenCalledWith("partition_format", {
+      device: "/dev/sda1",
+      fsType: "ext4",
+      label: "",
+      overwrite: true,
+      confirmMembers: [{ device: "/dev/sda1", kind: "md", uuid: "a1" }],
+    });
+  });
+
+  it("names an LVM member in the Delete confirmation and confirms it", async () => {
+    const u = user();
+    mocks.topology.mockResolvedValue(
+      topology([
+        sda(),
+        part(1, 1, {
+          fsType: "LVM2_member",
+          member: { kind: "lvm", uuid: "pv1" },
+        }),
+      ]),
+    );
+    render(<PartitionsTab driveName="sda" />, options);
+
+    await u.click(await screen.findByRole("button", { name: "Delete" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent(
+      "It is a member of an LVM volume group (physical volume pv1), which loses it.",
+    );
+    await u.click(within(dialog).getByRole("button", { name: "Delete" }));
+    expect(mocks.mutations["storage.partition_delete"]).toHaveBeenCalledWith(
+      {
+        device: "/dev/sda1",
+        confirmMembers: [{ device: "/dev/sda1", kind: "lvm", uuid: "pv1" }],
+      },
       expect.anything(),
     );
   });

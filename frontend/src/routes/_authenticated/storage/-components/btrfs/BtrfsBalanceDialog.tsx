@@ -15,7 +15,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import {
   METADATA_HINT,
   metadataProfiles,
-  PROFILE_MIN_DEVICES,
+  profilesFor,
   recommendedMetadata,
 } from "./btrfsShared";
 
@@ -39,9 +39,7 @@ const BtrfsBalanceDialog = ({
   const [metadataProfile, setMetadataProfile] = useState(KEEP_CURRENT);
 
   const present = filesystem.devices.filter((device) => !device.missing).length;
-  const available = Object.keys(PROFILE_MIN_DEVICES).filter(
-    (profile) => PROFILE_MIN_DEVICES[profile] <= present,
-  );
+  const available = profilesFor(present);
   const currentProfile = (kind: string) =>
     filesystem.allocation.find((entry) => entry.kind === kind)?.profile;
   const data = dataProfile || currentProfile("data");
