@@ -1,0 +1,23 @@
+#cloud-config
+# First boot of the disposable test VM (packaging/vm/linuxio-vm.sh create).
+# The script fills in the @...@ values and serves this file, meta-data and
+# install-dependencies.sh from @SEED_URL@ for the first boot only.
+hostname: linuxio-e2e
+users:
+  - name: linuxio-e2e
+    shell: /bin/bash
+    groups: [sudo]
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    lock_passwd: false
+    hashed_passwd: '@PASSWORD_HASH@'
+    ssh_authorized_keys:
+      - '@SSH_KEY@'
+ssh_pwauth: false
+package_update: true
+packages:
+  - docker.io
+  - btrfs-progs
+runcmd:
+  # Unattended apt runs stall the reboot and power-cut checks.
+  - systemctl disable --now apt-daily.timer apt-daily-upgrade.timer
+  - curl -fsS -o /root/install-dependencies.sh @SEED_URL@install-dependencies.sh && bash /root/install-dependencies.sh

@@ -7,8 +7,8 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
-// handleBridgeArgs handles informational and invalid CLI invocations. A real
-// bridge process is normally exec'd by the auth daemon without arguments.
+// handleBridgeArgs handles informational and invalid CLI invocations. A bridge is exec'd by the auth daemon without arguments, and
+// systemd starts the job host without arguments too.
 func handleBridgeArgs(args []string) (bool, int) {
 	if len(args) <= 1 {
 		return false, 0

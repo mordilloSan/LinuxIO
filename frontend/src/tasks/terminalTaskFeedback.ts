@@ -1,3 +1,4 @@
+import type { UseNavigateResult } from "@tanstack/react-router";
 import { toast } from "sonner";
 
 import {
@@ -8,6 +9,7 @@ import {
   LinuxIOError,
   type TaskSnapshot,
 } from "@/api";
+import { toastFileError } from "@/utils/linkRefusal";
 
 import * as TaskTypes from "./taskTypes";
 import { requestString } from "./taskUtils";
@@ -40,6 +42,8 @@ type TerminalTaskOutcome =
   | { kind: "canceled"; error: unknown };
 
 interface TerminalFeedbackDeps {
+  /** Lets a failure toast offer to open the folder a refused link points to. */
+  navigate: UseNavigateResult<string>;
   refreshCapabilities: () => Promise<unknown>;
 }
 
@@ -202,6 +206,10 @@ export const TERMINAL_TASK_FEEDBACK: Record<string, TerminalFeedbackEntry> = {
   // Page-owned: DiskOverview fires its own scoped toast for SMART tests, so
   // the global handler stays silent for every terminal state.
   [TaskTypes.TASK_TYPE_STORAGE_SMART_TEST]: {},
+  // Page-owned the same way: BtrfsDevicesCard toasts the balance outcome.
+  [TaskTypes.TASK_TYPE_STORAGE_BTRFS_BALANCE]: {},
+  // And BtrfsHealthBanner toasts the scrub outcome.
+  [TaskTypes.TASK_TYPE_STORAGE_BTRFS_SCRUB]: {},
 };
 
 /**
@@ -211,8 +219,14 @@ export const TERMINAL_TASK_FEEDBACK: Record<string, TerminalFeedbackEntry> = {
  * asked for it, so only genuine failures toast.
  */
 export const GENERIC_TASK_FEEDBACK: TerminalFeedbackEntry = {
-  onFailed: (_task, error) => {
-    toast.error(getMutationErrorMessage(error, "Task failed"));
+  // File tasks picked up after a reload (delete, trash, permissions) fail
+  // here, so a refused link gets its "Open the real folder" action.
+  onFailed: (_task, error, deps) => {
+    toastFileError(
+      toast,
+      deps.navigate,
+      getMutationErrorMessage(error, "Task failed"),
+    );
   },
 };
 
@@ -263,6 +277,14 @@ export function terminalSnapshotOutcome(
       return {
         kind: task.state,
         error: new LinuxIOError(task.error?.message ?? "", task.error?.code),
+      };
+    case "interrupted":
+      return {
+        kind: "failed",
+        error: new LinuxIOError(
+          task.error?.message || "interrupted",
+          task.error?.code,
+        ),
       };
     default:
       return null;

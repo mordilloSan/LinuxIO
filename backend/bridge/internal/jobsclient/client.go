@@ -1,0 +1,229 @@
+// Package jobsclient connects to the caller's own job host: the bridge's side
+// of a host connection. systemd holds each host's socket, and a connection starts a
+// host that is down; root starts that socket unit first, and linuxio-auth
+// starts a user's at login.
+package jobsclient
+
+import (
+	"cmp"
+	"context"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"net"
+	"os"
+	"sync"
+	"syscall"
+	"time"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
+	"github.com/mordilloSan/LinuxIO/backend/common/jobs"
+	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
+)
+
+// ErrUpdatePending is the job host refusing this client's protocol: one of
+// the two runs a binary from before an update.
+var ErrUpdatePending = errors.New("update_pending")
+
+const hostPoll = 50 * time.Millisecond
+
+// Seams for tests.
+var (
+	hostWait  = 5 * time.Second
+	startUnit = systemd.StartUnit
+	isRoot    = func() bool { return os.Geteuid() == 0 }
+	protocol  = jobs.Protocol
+)
+
+// Client is one connection to a job host, acting for the session of its hello.
+type Client struct {
+	session  *relay.YamuxSession
+	protocol int
+}
+
+// Connect connects to uid's job host at hostSocket and introduces hello,
+// whose SessionRef the host uses as the connection's session ID. As root it
+// starts the host's socket unit first; a user cannot start a system unit, so
+// linuxio-auth starts theirs at login.
+func Connect(ctx context.Context, uid uint32, hello bridgeipc.HelloSession, hostSocket string) (*Client, error) {
+	if hello.SessionRef == "" {
+		return nil, errors.New("job host hello needs a session ref")
+	}
+	if err := startHostSocket(ctx, uid); err != nil {
+		return nil, err
+	}
+	conn, err := dialHost(ctx, hostSocket)
+	if err != nil {
+		return nil, err
+	}
+	sess, err := relay.NewYamuxClient(conn)
+	if err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("start job host session: %w", err)
+	}
+	c := &Client{session: sess}
+	data, err := c.Call(ctx, bridgeipc.HelloRoute, bridgeipc.Hello{Protocol: protocol, Session: hello})
+	if taskErr, ok := errors.AsType[*bridgeipc.Error](err); ok && taskErr.Code == 426 {
+		err = ErrUpdatePending
+	}
+	var answer bridgeipc.Hello
+	if err == nil {
+		if err = json.Unmarshal(data, &answer); err != nil {
+			err = fmt.Errorf("decode job host hello: %w", err)
+		}
+	}
+	if err != nil {
+		_ = sess.Close()
+		return nil, err
+	}
+	c.protocol = answer.Protocol
+	return c, nil
+}
+
+// startHostSocket starts uid's host socket unit as root; a listening one is a
+// no-op. StartUnit only queues the start, so the caller dials with retries.
+func startHostSocket(ctx context.Context, uid uint32) error {
+	if !isRoot() {
+		return nil
+	}
+	if err := startUnit(ctx, socketUnitName(uid)); err != nil {
+		return fmt.Errorf("start job host socket: %w", err)
+	}
+	return nil
+}
+
+// socketUnitName is the systemd socket unit of uid's job host.
+func socketUnitName(uid uint32) string {
+	return fmt.Sprintf("linuxio-jobs@%d.socket", uid)
+}
+
+// HostSocketPath is uid's job host socket, which systemd holds.
+func HostSocketPath(uid uint32) string {
+	return fmt.Sprintf("/run/linuxio/jobs/%d.sock", uid)
+}
+
+// dialHost connects to hostSocket, retrying for hostWait while its socket
+// unit starts: the socket is missing or not listening yet.
+func dialHost(ctx context.Context, hostSocket string) (net.Conn, error) {
+	var dialer net.Dialer
+	deadline := time.Now().Add(hostWait)
+	for {
+		conn, err := dialer.DialContext(ctx, "unix", hostSocket)
+		if err == nil {
+			return conn, nil
+		}
+		starting := errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ECONNREFUSED)
+		if !starting || time.Now().After(deadline) {
+			return nil, fmt.Errorf("dial job host: %w", err)
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(hostPoll):
+		}
+	}
+}
+
+// Protocol is the jobs protocol the host answered the hello with.
+func (c *Client) Protocol() int {
+	return c.protocol
+}
+
+// Open opens a stream to the host and sends raw as its open frame payload.
+func (c *Client) Open(ctx context.Context, raw []byte) (net.Conn, error) {
+	stream, err := c.session.Open(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("open job host stream: %w", err)
+	}
+	if err := relay.WriteRelayFrame(stream, &relay.StreamFrame{Opcode: relay.OpStreamOpen, Payload: raw}); err != nil {
+		_ = stream.Close()
+		return nil, fmt.Errorf("send stream open: %w", err)
+	}
+	return stream, nil
+}
+
+// Relay copies relay frames between from and to, both ways, until either
+// side closes or fails or ctx ends, then closes both. A close or abort frame
+// passes through like any other, so the host still sees a detach or a cancel.
+func (c *Client) Relay(ctx context.Context, from, to net.Conn) error {
+	errs := make(chan error, 2)
+	pipe := func(dst, src net.Conn) {
+		for {
+			frame, err := relay.ReadRelayFrame(src)
+			if err == nil {
+				err = relay.WriteRelayFrame(dst, frame)
+			}
+			if err != nil {
+				errs <- err
+				return
+			}
+		}
+	}
+	closeBoth := func() {
+		_ = from.Close()
+		_ = to.Close()
+	}
+	stop := context.AfterFunc(ctx, closeBoth)
+	defer stop()
+	var pipes sync.WaitGroup
+	pipes.Go(func() { pipe(to, from) })
+	pipes.Go(func() { pipe(from, to) })
+	err := <-errs
+	closeBoth()
+	pipes.Wait()
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if errors.Is(err, io.EOF) {
+		return nil
+	}
+	return err
+}
+
+// Done is closed when the connection to the host ends.
+func (c *Client) Done() <-chan struct{} {
+	return c.session.CloseChan()
+}
+
+func (c *Client) Close() error {
+	return c.session.Close()
+}
+
+// Call opens route with request and returns the data of its result, or its
+// error result as a *bridgeipc.Error.
+func (c *Client) Call(ctx context.Context, route string, request any) (jsontext.Value, error) {
+	body, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("encode %s request: %w", route, err)
+	}
+	raw, err := json.Marshal(relay.StreamOpenEnvelope{Route: route, Request: body})
+	if err != nil {
+		return nil, fmt.Errorf("encode %s open: %w", route, err)
+	}
+	stream, err := c.Open(ctx, raw)
+	if err != nil {
+		return nil, err
+	}
+	defer stream.Close()
+	stop := context.AfterFunc(ctx, func() { _ = stream.SetReadDeadline(time.Now()) })
+	defer stop()
+	frame, err := relay.ReadRelayFrame(stream)
+	if err == nil && frame.Opcode != relay.OpStreamResult {
+		err = fmt.Errorf("unexpected frame 0x%02x", frame.Opcode)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read %s result: %w", route, cmp.Or(ctx.Err(), err))
+	}
+	var result relay.ResultFrame
+	if err := json.Unmarshal(frame.Payload, &result); err != nil {
+		return nil, fmt.Errorf("decode %s result: %w", route, err)
+	}
+	if result.Status != "ok" {
+		return nil, bridgeipc.NewError(result.Error, result.Code)
+	}
+	return result.Data, nil
+}

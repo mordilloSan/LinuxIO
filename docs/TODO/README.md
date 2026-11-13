@@ -1,10 +1,13 @@
 # TODO
 
-Each active plan has its own document:
+Open work is in one list: the [backlog](./backlog.md). It covers the backend,
+the API, jobs, scheduled scripts and consistency.
 
-- [API reliability, recovery, and notifications](./api-reliability-roadmap.md)
+Plans for things that are not built yet each have their own document:
+
 - [Frontend test coverage](./e2e-testing.md)
-- [Backend audit checklist](./backend-audit.md)
+- [Memory overflow: swap, zswap and zram from Settings](./memory-overflow.md)
+- [Package-managed installation](./packaging.md)
 
 ## Dependency maintenance
 
@@ -14,7 +17,5 @@ Each active plan has its own document:
 - [ ] Remove that override once the plugin's published peer-dependency range
   supports the selected compiler version ([upstream issue](https://github.com/vitejs/vite-plugin-react/issues/1437)).
   Refresh the lockfile and verify a fresh install with
-  `make setup '.SHELLFLAGS=-ec'`, then run `make ci-frontend-deps` and
+  `make setup-frontend '.SHELLFLAGS=-ec'`, then run `make ci-frontend-deps` and
   `make check-frontend-quiet` before closing this item.
-
-Other plans: [package-managed installation](./packaging.md) and [scheduled scripts](./scheduled-execution.md).

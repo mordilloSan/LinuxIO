@@ -2,12 +2,7 @@ import { Icon } from "@iconify/react";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import {
-  type AccountUser,
-  linuxio,
-  type ModifyUserRequest,
-  useCallMutation,
-} from "@/api";
+import { type AccountUser, linuxio, type ModifyUserRequest } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
 import AppButton from "@/components/ui/AppButton";
@@ -66,17 +61,15 @@ const EditUserDialog = ({
   const shellsList = Array.isArray(shells) ? shells : [];
   const groupsList = Array.isArray(groups) ? groups : [];
 
-  const { mutate: modifyUser, isPending } = useCallMutation(
-    linuxio.accounts.modify_user,
-    {
+  const { mutate: modifyUser, isPending } =
+    linuxio.accounts.modify_user.useMutation({
       success: () => {
         toast.success(`User "${user.username}" updated successfully`);
         onClose();
       },
       error: "Failed to update user",
       toast: ACCOUNTS_TOAST_META,
-    },
-  );
+    });
 
   const handleSubmit = () => {
     const request: ModifyUserRequest = {

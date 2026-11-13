@@ -6,6 +6,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
@@ -15,26 +16,22 @@ import (
 )
 
 func TestRoutesAreUniqueAndComplete(t *testing.T) {
+	modeOfKind := map[apischema.Kind]bridgeipc.Mode{
+		apischema.KindHandler:  bridgeipc.ModeCall,
+		apischema.KindDuplex:   bridgeipc.ModeDuplex,
+		apischema.KindMutation: bridgeipc.ModeMutation,
+	}
 	seen := make(map[string]apischema.RouteSpec, len(handlers.Routes))
 	for _, route := range handlers.Routes {
 		if route.Route == "" {
 			t.Fatal("empty route")
 		}
-		if route.Mode != bridgeipc.ModeCall &&
-			route.Mode != bridgeipc.ModeTask &&
-			route.Mode != bridgeipc.ModeDuplex {
-			t.Fatalf("%s has invalid mode %q", route.Route, route.Mode)
-		}
-		if route.Kind != apischema.KindHandler &&
-			route.Kind != apischema.KindTaskRunner &&
-			route.Kind != apischema.KindDuplex {
+		mode, ok := modeOfKind[route.Kind]
+		if !ok {
 			t.Fatalf("%s has invalid kind %q", route.Route, route.Kind)
 		}
-		if route.Kind == apischema.KindDuplex && route.Mode != bridgeipc.ModeDuplex {
-			t.Fatalf("%s is duplex kind but has mode %q", route.Route, route.Mode)
-		}
-		if route.Kind == apischema.KindTaskRunner && route.Mode != bridgeipc.ModeTask {
-			t.Fatalf("%s is task-runner kind but has mode %q", route.Route, route.Mode)
+		if route.Mode != mode {
+			t.Fatalf("%s is %s kind but has mode %q, want %q", route.Route, route.Kind, route.Mode, mode)
 		}
 		if _, exists := seen[route.Route]; exists {
 			t.Fatalf("duplicate route %s", route.Route)
@@ -83,128 +80,11 @@ func mustRoute(t *testing.T, name string) apischema.RouteSpec {
 	return apischema.RouteSpec{}
 }
 
-func TestAllTaskRoutesUseTaskRunner(t *testing.T) {
-	modes := map[bridgeipc.Mode]int{}
-
-	for _, route := range handlers.Routes {
-		modes[route.Mode]++
-		if route.Mode == bridgeipc.ModeTask && route.Kind != apischema.KindTaskRunner {
-			t.Errorf("%s is task kind %q, want task_runner", route.Route, route.Kind)
-		}
-	}
-	if got, want := modes[bridgeipc.ModeCall], 288; got != want {
-		t.Errorf("call route count = %d, want %d", got, want)
-	}
-	if got, want := modes[bridgeipc.ModeTask], 32; got != want {
-		t.Errorf("task route count = %d, want %d", got, want)
-	}
-	if got, want := modes[bridgeipc.ModeDuplex], 12; got != want {
-		t.Errorf("duplex route count = %d, want %d", got, want)
-	}
-}
-
-func TestTaskRoutesDeclareAuditedLifetime(t *testing.T) {
-	sessionCount := 0
-	durableCount := 0
-	for _, route := range handlers.Routes {
-		if route.Mode != bridgeipc.ModeTask {
-			continue
-		}
-		switch route.TaskLifetime {
-		case bridgeipc.TaskLifetimeSession:
-			sessionCount++
-			if route.Identity != nil {
-				t.Errorf("session task %s unexpectedly has a stable identity", route.Route)
-			}
-		case bridgeipc.TaskLifetimeDurable:
-			durableCount++
-			if route.Route != "docker.update_container" {
-				t.Errorf("unexpected durable task route %s", route.Route)
-			}
-			if route.Identity == nil {
-				t.Errorf("durable task %s has no stable identity", route.Route)
-			}
-		default:
-			t.Errorf("%s task lifetime = %q", route.Route, route.TaskLifetime)
-		}
-	}
-	if sessionCount != 31 || durableCount != 1 {
-		t.Fatalf("task lifetime counts = session %d, durable %d; want 31 and 1", sessionCount, durableCount)
-	}
-}
-
-func TestTaskLifetimeOptionsRejectInvalidRoutes(t *testing.T) {
-	tests := map[string]func(){
-		"missing task lifetime": func() {
-			_ = apischema.TaskRunner[apischema.NoRequest, apischema.SuccessResponse]("test.missing_lifetime")
-		},
-		"call lifetime": func() {
-			_ = apischema.Call[apischema.NoRequest, apischema.SuccessResponse]("test.call_lifetime", apischema.SessionTask())
-		},
-		"duplex lifetime": func() {
-			_ = apischema.DuplexRoute[apischema.NoRequest, apischema.NoResponse]("test.duplex_lifetime", apischema.SessionTask())
-		},
-		"stable identity on session task": func() {
-			_ = apischema.TaskRunner[apischema.NoRequest, apischema.SuccessResponse](
-				"test.session_identity",
-				apischema.SessionTask(),
-				apischema.WithTaskIdentity(func(apischema.NoRequest) (bridgeipc.TaskIdentity, error) {
-					return bridgeipc.TaskIdentity{ID: "id", Fingerprint: "fingerprint"}, nil
-				}),
-			)
-		},
-	}
-
-	for name, build := range tests {
-		t.Run(name, func(t *testing.T) {
-			defer func() {
-				if recover() == nil {
-					t.Fatal("invalid task lifetime declaration was accepted")
-				}
-			}()
-			build()
-		})
-	}
-}
-
-func TestTaskLifetimeOptionsDeclareExpectedLifetime(t *testing.T) {
-	tests := []struct {
-		name string
-		want bridgeipc.TaskLifetime
-		opt  apischema.RouteSpecOption
-	}{
-		{name: "session", want: bridgeipc.TaskLifetimeSession, opt: apischema.SessionTask()},
-		{name: "durable", want: bridgeipc.TaskLifetimeDurable, opt: apischema.DurableTask()},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			binding := apischema.TaskRunner[apischema.NoRequest, apischema.SuccessResponse]("test."+tc.name+"_lifetime", tc.opt).Run(
-				func(context.Context, *bridgeipc.Task, apischema.NoRequest) (apischema.SuccessResponse, error) {
-					return apischema.SuccessResponse{}, nil
-				},
-				bridgeipc.TaskDefault,
-			)
-			if binding.Route.TaskLifetime != tc.want {
-				t.Fatalf("task lifetime = %q, want %q", binding.Route.TaskLifetime, tc.want)
-			}
-		})
-	}
-}
-
 func TestRetrySafeRoutesAreExplicitCalls(t *testing.T) {
-	count := 0
 	for _, route := range handlers.Routes {
-		if !route.RetrySafe {
-			continue
-		}
-		count++
-		if route.Mode != bridgeipc.ModeCall || !route.Endpoint() {
+		if route.RetrySafe && (route.Mode != bridgeipc.ModeCall || !route.Endpoint()) {
 			t.Errorf("%s is retry-safe but is not a public Call", route.Route)
 		}
-	}
-	if count != 114 {
-		t.Fatalf("retry-safe Call count = %d, want 114", count)
 	}
 	for _, route := range []string{"schedules.list", "schedules.get", "config.get", "config.get_ui", "docker.inspect_container", "system.get_cpu_info", "monitoring.get_live", "monitoring.get_processes", "monitoring.get_programs", "storage.get_topology", "tasks.get", "virt.preflight", "virt.templates", "network.get_bridge_options", "network.get_bridge_handoff", "network.confirm_bridge_handoff", "network.revert_bridge_handoff"} {
 		if !mustRoute(t, route).RetrySafe {
@@ -243,27 +123,107 @@ func TestMonitoringMaintenanceRoutesArePrivileged(t *testing.T) {
 	}
 }
 
-func TestRootOnlyStorageAndDockerRoutesArePrivileged(t *testing.T) {
-	for _, route := range []string{
-		"storage.create_lv", "storage.delete_lv", "storage.resize_lv",
-		"storage.mount_nfs", "storage.unmount_nfs", "storage.remount_nfs",
-		"storage.mount_cifs", "storage.unmount_cifs", "storage.remount_cifs",
-		"storage.unmount_filesystem", "storage.set_btrfs_maintenance", "storage.run_smart_test",
-		"docker.set_container_auto_update",
-	} {
-		if !mustRoute(t, route).Privileged {
-			t.Errorf("%s should be privileged", route)
+// unprivilegedChanges are the routes that can change something and stay open
+// to a session without sudo, each with the reason it needs no root. A route
+// that changes the host belongs here or declares Privileged(); see
+// docs/privilege_pattern.md.
+var unprivilegedChanges = map[string]string{
+	"assistant.add_marketplace":    "runs the session user's own claude CLI and writes under their home",
+	"assistant.install_plugin":     "runs the session user's own claude CLI and writes under their home",
+	"assistant.open":               "runs the session user's own claude CLI as that user",
+	"assistant.remove_marketplace": "runs the session user's own claude CLI and writes under their home",
+	"assistant.set_plugin_enabled": "runs the session user's own claude CLI and writes under their home",
+	"assistant.uninstall_plugin":   "runs the session user's own claude CLI and writes under their home",
+	"assistant.update_marketplace": "runs the session user's own claude CLI and writes under their home",
+
+	"config.set":    "the session user's own settings; the one root-only Docker field is refused in the handler",
+	"config.set_ui": "the session user's own interface settings",
+
+	"docker.check_container_update": "a read that asks the registry; not retried because it is slow",
+	"docker.check_updates":          "a read that asks the registry; not retried because it is slow",
+	"docker.get_icon":               "a read; fills the shared icon cache",
+	"docker.get_icon_uri":           "a read; fills the shared icon cache",
+	"docker.logs.follow":            "a read stream",
+	"docker.logs.follow_all":        "a read stream",
+
+	"filebrowser.archive":         "the session user's own files, as that user",
+	"filebrowser.chmod_batch":     "the session user's own files, as that user",
+	"filebrowser.compress":        "the session user's own files, as that user",
+	"filebrowser.copy_batch":      "the session user's own files, as that user",
+	"filebrowser.delete_batch":    "the session user's own files, as that user",
+	"filebrowser.download_stream": "a read of the session user's own files",
+	"filebrowser.extract":         "the session user's own files, as that user",
+	"filebrowser.move_batch":      "the session user's own files, as that user",
+	"filebrowser.resource_patch":  "the session user's own files, as that user",
+	"filebrowser.resource_post":   "the session user's own files, as that user",
+	"filebrowser.trash_batch":     "the session user's own files, as that user",
+	"filebrowser.trash_purge":     "the session user's own files, as that user",
+	"filebrowser.trash_restore":   "the session user's own files, as that user",
+	"filebrowser.upload":          "the session user's own files, as that user",
+	"filebrowser.upload_batch":    "the session user's own files, as that user",
+
+	"logs.general.follow": "a read stream of the journal the session user may read",
+	"logs.service.follow": "a read stream of the journal the session user may read",
+
+	"network.get_network_info":  "a read",
+	"system.get_health_summary": "a read",
+
+	"system.dismiss_failed_login_alert": "a dismissal kept in the session user's own settings",
+	"system.dismiss_unclean_shutdown":   "a dismissal kept in the session user's own settings",
+
+	"tasks.cancel": "the caller's own jobs",
+	"tasks.data":   "the caller's own jobs",
+	"tasks.events": "the caller's own jobs",
+	"tasks.watch":  "the caller's own jobs",
+
+	"terminal.open": "the session user's own shell",
+}
+
+// TestChangingRoutesArePrivilegedOrListed fails on a new route that can change
+// the host and declares neither guard: every Mutation, every duplex stream and
+// every Call that is not RetrySafe is Privileged or is in unprivilegedChanges.
+func TestChangingRoutesArePrivilegedOrListed(t *testing.T) {
+	seen := map[string]bool{}
+	for _, route := range handlers.Routes {
+		if route.Mode == bridgeipc.ModeCall && route.RetrySafe {
+			continue
 		}
+		_, listed := unprivilegedChanges[route.Route]
+		seen[route.Route] = true
+		switch {
+		case route.Privileged && listed:
+			t.Errorf("%s is privileged; remove it from unprivilegedChanges", route.Route)
+		case !route.Privileged && !listed:
+			t.Errorf("%s can change the host: declare apischema.Privileged() or add it to unprivilegedChanges with its reason", route.Route)
+		}
+	}
+	for route := range unprivilegedChanges {
+		if !seen[route] {
+			t.Errorf("unprivilegedChanges names %s, which is not a changing route any more", route)
+		}
+	}
+}
+
+func TestBrowserBoundRoutes(t *testing.T) {
+	var got []string
+	for _, route := range handlers.Routes {
+		if route.BrowserBound {
+			got = append(got, route.Route)
+		}
+	}
+	want := []string{"filebrowser.archive", "filebrowser.upload", "filebrowser.upload_batch"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("browser-bound routes = %v, want %v", got, want)
 	}
 }
 
 func TestRetrySafeRejectsNonCallRoutes(t *testing.T) {
 	for name, build := range map[string]func(){
-		"task": func() {
-			_ = apischema.TaskRunner[apischema.NoRequest, apischema.SuccessResponse]("test.retry_task", apischema.RetrySafe())
-		},
 		"duplex": func() {
 			_ = apischema.DuplexRoute[apischema.NoRequest, apischema.NoResponse]("test.retry_duplex", apischema.RetrySafe())
+		},
+		"mutation": func() {
+			_ = apischema.MutationVoid("test.retry_mutation", func(context.Context, apischema.NoRequest) error { return nil }, apischema.RetrySafe())
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -274,21 +234,6 @@ func TestRetrySafeRejectsNonCallRoutes(t *testing.T) {
 			}()
 			build()
 		})
-	}
-}
-
-func TestTaskRoutesDeclareTerminalResultsAndProgress(t *testing.T) {
-	taskSnapshotType := reflect.TypeFor[apischema.TaskSnapshot]()
-	for _, route := range handlers.Routes {
-		if route.Mode != bridgeipc.ModeTask {
-			continue
-		}
-		if route.Result.GoType == taskSnapshotType || route.Result.Void() {
-			t.Errorf("%s has placeholder terminal result %v", route.Route, route.Result.GoType)
-		}
-		if route.Progress.GoType == nil {
-			t.Errorf("%s reports progress but has no progress contract", route.Route)
-		}
 	}
 }
 
@@ -306,7 +251,7 @@ func TestRequestDecoderDecodesRouteContracts(t *testing.T) {
 		{
 			name:  "object request",
 			route: "docker.update_container",
-			raw:   `{"containerId":"web","runId":"00000000-0000-4000-8000-000000000001"}`,
+			raw:   `{"containerId":"web"}`,
 		},
 		{
 			name:  "optional request",
@@ -452,27 +397,157 @@ func TestDockerComposeDeclaresTerminalAndProgressContracts(t *testing.T) {
 	}
 }
 
-func TestWithTaskProgressRejectsCallRoutes(t *testing.T) {
+func TestProgressRejectsCallRoutes(t *testing.T) {
 	defer func() {
 		if recover() == nil {
 			t.Fatal("Call() accepted a task progress contract")
 		}
 	}()
-	_ = apischema.Call[apischema.NoRequest, apischema.NoResponse](
-		"test.progress_call",
-		apischema.WithTaskProgress[apischema.VMCreateProgress](),
-	)
+	_ = apischema.Call[apischema.NoRequest, apischema.NoResponse]("test.progress_call", apischema.Progress[apischema.VMCreateProgress]())
 }
 
-func TestTaskMetadataBuildersAreAllowlistedTaskRoutes(t *testing.T) {
+func TestBrowserBoundRejectsNonMutationRoutes(t *testing.T) {
+	for name, build := range map[string]func(){
+		"call": func() {
+			_ = apischema.Call[apischema.NoRequest, apischema.NoResponse]("test.browser_call", apischema.BrowserBound())
+		},
+		"duplex": func() {
+			_ = apischema.DuplexRoute[apischema.NoRequest, apischema.NoResponse]("test.browser_duplex", apischema.BrowserBound())
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			defer func() {
+				if recover() == nil {
+					t.Fatal("non-Mutation route accepted BrowserBound")
+				}
+			}()
+			build()
+		})
+	}
+}
+
+type poolRequest struct {
+	UUID string `json:"uuid"`
+}
+
+func (r poolRequest) Target() []string { return []string{r.UUID} }
+
+func TestMutationInfersTypesAndDetectsTarget(t *testing.T) {
+	targeted := apischema.Mutation("test.targeted", func(context.Context, poolRequest) (apischema.SuccessResponse, error) {
+		return apischema.SuccessResponse{}, nil
+	}, apischema.Progress[apischema.VMCreateProgress](), apischema.BrowserBound())
+	untargeted := apischema.Mutation("test.untargeted", func(context.Context, apischema.NoRequest) (apischema.SuccessResponse, error) {
+		return apischema.SuccessResponse{}, nil
+	})
+
+	spec := targeted.Route
+	if spec.Kind != apischema.KindMutation || spec.Mode != bridgeipc.ModeMutation {
+		t.Fatalf("kind = %q, mode = %q; want mutation", spec.Kind, spec.Mode)
+	}
+	if spec.Request.GoType != reflect.TypeFor[poolRequest]() || spec.Result.GoType != reflect.TypeFor[apischema.SuccessResponse]() {
+		t.Fatalf("request = %v, result = %v; want the handler's types", spec.Request.GoType, spec.Result.GoType)
+	}
+	if spec.Progress.GoType != reflect.TypeFor[apischema.VMCreateProgress]() || !spec.BrowserBound {
+		t.Fatalf("progress = %v, browser bound = %t; want the declared options", spec.Progress.GoType, spec.BrowserBound)
+	}
+	if !spec.Targeted {
+		t.Fatal("a request type with Target() did not mark the route targeted")
+	}
+	if untargeted.Route.Targeted {
+		t.Fatal("a request type without Target() marked the route targeted")
+	}
+
+	set := apischema.Bindings(targeted, untargeted)
+	set.Register(bridgeipc.NewRouter(bridgeipc.NewTaskService()))
+	if got := len(set.Routes()); got != 2 {
+		t.Fatalf("binding set routes = %d, want 2", got)
+	}
+}
+
+// The resumable set is pinned: a route resumes after a shutdown only when
+// its operation is known to survive one.
+func TestResumableRoutes(t *testing.T) {
+	var got []string
+	for _, route := range handlers.Routes {
+		if route.Resumable {
+			got = append(got, route.Route)
+		}
+	}
+	slices.Sort(got)
+	want := []string{"storage.btrfs_balance", "storage.btrfs_device_remove", "storage.btrfs_device_replace", "storage.btrfs_scrub_start"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("resumable routes = %v, want %v", got, want)
+	}
+}
+
+func TestResumablePanicsWithoutPrivileged(t *testing.T) {
+	run := func(context.Context, poolRequest) error { return nil }
+	hooks := apischema.ResumeHooks[poolRequest, apischema.NoResponse]{
+		Suspend: func(context.Context, poolRequest, jsontext.Value) (jsontext.Value, error) { return nil, nil },
+		Resume: func(context.Context, poolRequest, jsontext.Value) (apischema.NoResponse, error) {
+			return apischema.NoResponse{}, nil
+		},
+	}
+
+	resumable := apischema.MutationVoid("test.resumable", run, apischema.Privileged()).Resumable(hooks)
+	if !resumable.Route.Resumable {
+		t.Fatal("Resumable() did not mark the route resumable")
+	}
+	apischema.Bindings(resumable).Register(bridgeipc.NewRouter(bridgeipc.NewTaskService()))
+
+	defer func() {
+		if recover() == nil {
+			t.Fatal("Resumable() accepted a route without Privileged()")
+		}
+	}()
+	_ = apischema.MutationVoid("test.unprivileged_resumable", run).Resumable(hooks)
+}
+
+type passwordRequest struct {
+	User     string `json:"user"`
+	Password string `json:"password" secret:"true"`
+}
+
+// A Mutation records its request without the members tagged secret, so it
+// cannot resume from that record.
+func TestRedactedMutationRecordsItsRequestWithoutTheSecret(t *testing.T) {
+	binding := apischema.MutationVoid("test.redacted", func(context.Context, passwordRequest) error { return nil }, apischema.Privileged())
+	router := bridgeipc.NewRouter(bridgeipc.NewTaskService())
+	apischema.Bindings(binding).Register(router)
+	route, _ := router.Route("test.redacted")
+	if got := string(route.RecordedRequest(jsontext.Value(`{"user":"bob","password":"hunter2"}`))); got != `{"user":"bob"}` {
+		t.Fatalf("recorded request = %s, want it without the password", got)
+	}
+
+	defer func() {
+		if recover() == nil {
+			t.Fatal("Resumable() accepted a route that redacts its request")
+		}
+	}()
+	_ = binding.Resumable(apischema.ResumeHooks[passwordRequest, apischema.NoResponse]{
+		Suspend: func(context.Context, passwordRequest, jsontext.Value) (jsontext.Value, error) { return nil, nil },
+		Resume: func(context.Context, passwordRequest, jsontext.Value) (apischema.NoResponse, error) {
+			return apischema.NoResponse{}, nil
+		},
+	})
+}
+
+func TestMutationVoidRequiresNoResponse(t *testing.T) {
+	binding := apischema.MutationVoid("test.void_mutation", func(context.Context, poolRequest) error { return nil })
+	if !binding.Route.Result.Void() {
+		t.Fatalf("MutationVoid result = %v, want NoResponse", binding.Route.Result.GoType)
+	}
+}
+
+func TestTaskMetadataBuildersAreAllowlisted(t *testing.T) {
 	want := map[string]bool{
 		"filebrowser.compress": true, "filebrowser.extract": true, "filebrowser.copy_batch": true,
 		"filebrowser.move_batch": true, "filebrowser.delete_batch": true, "filebrowser.trash_batch": true,
 		"filebrowser.trash_restore": true, "filebrowser.trash_purge": true, "filebrowser.index": true,
 		"filebrowser.upload": true, "filebrowser.upload_batch": true,
 		"filebrowser.archive": true, "filebrowser.chmod_batch": true, "docker.compose": true,
-		"docker.update_container": true, "docker.apply_daemon_storage": true,
-		"packages.update": true, "storage.run_smart_test": true, "system.install_capability": true,
+		"docker.apply_daemon_storage": true,
+		"packages.update":             true, "storage.run_smart_test": true, "system.install_capability": true,
 		"storage.btrfs_snapshot_rollback": true, "storage.btrfs_device_remove": true, "storage.btrfs_device_replace": true,
 		"storage.btrfs_balance": true, "storage.btrfs_scrub_start": true, "storage.btrfs_replication_run": true,
 		"storage.btrfs_pool_create": true, "storage.partition_create": true, "storage.partition_format": true,
@@ -484,27 +559,10 @@ func TestTaskMetadataBuildersAreAllowlistedTaskRoutes(t *testing.T) {
 		if !want[route.Route] {
 			t.Fatalf("%s unexpectedly declares public task metadata", route.Route)
 		}
-		if route.Kind != apischema.KindTaskRunner || route.Mode != bridgeipc.ModeTask {
-			t.Fatalf("%s metadata is not a task route", route.Route)
-		}
 		delete(want, route.Route)
 	}
 	if len(want) != 0 {
 		t.Fatalf("missing metadata builders: %v", want)
-	}
-}
-
-func TestTaskRunnerErasesOnlyAtBridgeBoundary(t *testing.T) {
-	route := apischema.TaskRunner[apischema.UsernameRequest, apischema.SuccessNameResponse]("test.runner", apischema.SessionTask())
-	binding := route.Run(func(_ context.Context, _ *bridgeipc.Task, req apischema.UsernameRequest) (apischema.SuccessNameResponse, error) {
-		return apischema.SuccessNameResponse{Success: true, Name: req.Username}, nil
-	}, bridgeipc.TaskDefault)
-	got, err := binding.Runner(context.Background(), &bridgeipc.Task{}, apischema.UsernameRequest{Username: "ada"})
-	if err != nil {
-		t.Fatalf("Runner() error = %v", err)
-	}
-	if got != (apischema.SuccessNameResponse{Success: true, Name: "ada"}) {
-		t.Fatalf("Runner() result = %#v", got)
 	}
 }
 

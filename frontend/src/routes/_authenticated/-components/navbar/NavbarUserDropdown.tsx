@@ -2,7 +2,7 @@ import { Icon } from "@iconify/react";
 import { useNavigate } from "@tanstack/react-router";
 import { memo, useState, type MouseEvent } from "react";
 
-import { linuxio, useCallMutation } from "@/api";
+import { linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
 import {
@@ -21,7 +21,7 @@ import { iconSize } from "@/theme/constants";
 
 function NavbarUserDropdown() {
   const navigate = useNavigate();
-  const { user, signOut } = useAuth();
+  const { user, signOut, privileged } = useAuth();
   const { triggerReboot, triggerPowerOff } = usePowerAction();
 
   const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
@@ -30,13 +30,13 @@ function NavbarUserDropdown() {
 
   // Power actions: the server may die before responding, so errors are
   // expected and only logged.
-  const { mutate: reboot } = useCallMutation(linuxio.control.reboot, {
+  const { mutate: reboot } = linuxio.control.reboot.useMutation({
     error: (error) => {
       console.warn("Reboot error (may be expected):", error);
     },
   });
 
-  const { mutate: powerOff } = useCallMutation(linuxio.control.power_off, {
+  const { mutate: powerOff } = linuxio.control.power_off.useMutation({
     error: (error) => {
       console.warn("Power off error (may be expected):", error);
     },
@@ -109,14 +109,19 @@ function NavbarUserDropdown() {
 
           {user?.name ? <AppDivider /> : null}
 
-          <AppMenuItem onClick={() => openConfirm("reboot")}>
-            Reboot
-          </AppMenuItem>
-          <AppMenuItem onClick={() => openConfirm("poweroff")}>
-            Power Down
-          </AppMenuItem>
+          {/* control.reboot and control.power_off are admin-only routes. */}
+          {privileged ? (
+            <>
+              <AppMenuItem onClick={() => openConfirm("reboot")}>
+                Reboot
+              </AppMenuItem>
+              <AppMenuItem onClick={() => openConfirm("poweroff")}>
+                Power Down
+              </AppMenuItem>
 
-          <AppDivider />
+              <AppDivider />
+            </>
+          ) : null}
 
           <AppMenuItem onClick={handleSignOut}>Sign out</AppMenuItem>
         </AppMenu>

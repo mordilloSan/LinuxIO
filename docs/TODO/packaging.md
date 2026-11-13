@@ -176,6 +176,12 @@ Use this common layout:
       runtime-generated drop-ins.
 - [ ] Treat `/etc/linuxio`, `/etc/pam.d/linuxio`, and other administrator
       configuration as preserved package configuration.
+- [ ] Carry the needrestart override that the script installer installs
+      today (`packaging/etc/needrestart/conf.d/linuxio.conf` as
+      `/etc/needrestart/conf.d/linuxio.conf`, only where `/etc/needrestart`
+      exists): a package update runs through dpkg, after which Ubuntu's
+      needrestart would restart the job hosts and their jobs
+      ([Jobs](../jobs.md#updates)).
 - [ ] Keep `/var/lib/linuxio` across package removal.
 - [ ] Install licenses using each distribution's native locations:
   - DEB: `/usr/share/doc/linuxio/copyright` and third-party notices.

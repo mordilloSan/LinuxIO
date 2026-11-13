@@ -3,14 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import {
-  linuxio,
-  type DockerDaemonConfig,
-  type DockerDaemonConfigSetResult,
-  type DockerDaemonStorageProgress,
-  type TaskProgress,
-  useCallMutation,
-} from "@/api";
+import { linuxio, type DockerDaemonConfig } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import PathPickerField from "@/components/pathpicker/PathPickerField";
 import {
@@ -47,6 +40,31 @@ const toRequest = (draft: DockerDaemonConfig): DockerDaemonConfig => ({
   address_pool_base: draft.address_pool_base.trim(),
 });
 
+const isIPv4 = (address: string): boolean =>
+  /^(0|[1-9]\d{0,2})(\.(0|[1-9]\d{0,2})){3}$/.test(address) &&
+  address.split(".").every((octet) => Number(octet) <= 255);
+
+// A bare IPv6 address is a valid host between brackets, so the URL parser
+// checks it for us.
+const isIPv6 = (address: string): boolean => {
+  if (!address.includes(":")) return false;
+  try {
+    return new URL(`http://[${address}]`).hostname !== "";
+  } catch {
+    return false;
+  }
+};
+
+// The prefix length and address size (32 or 128) of an IPv4 or IPv6 CIDR, as
+// the daemon config accepts, or null when the text is not one.
+const parseCidr = (cidr: string): { prefix: number; bits: number } | null => {
+  const parts = cidr.split("/");
+  if (parts.length !== 2 || !/^\d{1,3}$/.test(parts[1])) return null;
+  const bits = isIPv4(parts[0]) ? 32 : isIPv6(parts[0]) ? 128 : 0;
+  const prefix = Number(parts[1]);
+  return bits > 0 && prefix <= bits ? { prefix, bits } : null;
+};
+
 interface DraftErrors {
   data_root?: string;
   log_max_size?: string;
@@ -71,14 +89,14 @@ const validateDraft = (draft: DockerDaemonConfig): DraftErrors => {
   }
   const base = draft.address_pool_base.trim();
   if (base) {
-    const prefix = Number(base.split("/")[1]);
-    if (!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(base)) {
-      errors.address_pool_base = "Use a CIDR like 172.20.0.0/16.";
+    const cidr = parseCidr(base);
+    if (!cidr) {
+      errors.address_pool_base = "Use a CIDR like 172.20.0.0/16 or fd00::/48.";
     } else if (
-      draft.address_pool_size < prefix ||
-      draft.address_pool_size > 32
+      draft.address_pool_size < cidr.prefix ||
+      draft.address_pool_size > cidr.bits
     ) {
-      errors.address_pool_size = `Use a prefix between ${prefix} and 32.`;
+      errors.address_pool_size = `Use a prefix between ${cidr.prefix} and ${cidr.bits}.`;
     }
   }
   return errors;
@@ -102,7 +120,7 @@ const DockerDaemonSettingsSection = () => {
     reset,
   } = useSettingsDraft<DockerDaemonConfig, DraftErrors>(config ?? null);
 
-  const saveMutation = useCallMutation(linuxio.docker.set_daemon_config, {
+  const saveMutation = linuxio.docker.set_daemon_config.useMutation({
     success: (result) => {
       queryClient.setQueryData(
         linuxio.docker.get_daemon_config.queryKey,
@@ -118,7 +136,7 @@ const DockerDaemonSettingsSection = () => {
     },
     error: "Failed to save Docker daemon settings",
   });
-  const restartMutation = useCallMutation(linuxio.systemd.restart_service, {
+  const restartMutation = linuxio.systemd.restart_service.useMutation({
     success: () => {
       setRestartRequired(false);
       toast.success("Docker restarted.");
@@ -127,32 +145,27 @@ const DockerDaemonSettingsSection = () => {
   });
   const [confirmStorage, setConfirmStorage] = useState(false);
   const [storageStep, setStorageStep] = useState<string | null>(null);
-  const storageMutation =
-    linuxio.docker.apply_daemon_storage.useTaskStreamAction<
-      DockerDaemonConfigSetResult,
-      TaskProgress<DockerDaemonStorageProgress>
-    >({
-      closeMessage: "Docker storage change stream closed unexpectedly",
-      onProgress: (progress) => setStorageStep(progress.message ?? null),
-      success: (result) => {
-        queryClient.setQueryData(
-          linuxio.docker.get_daemon_config.queryKey,
-          result.config,
-        );
-        reset();
-        setRestartRequired(false);
-        toast.success(
-          "Docker restarted on the new storage. Deploy your stacks again.",
-        );
+  const storageMutation = linuxio.docker.apply_daemon_storage.useMutation({
+    onProgress: (progress) => setStorageStep(progress.message ?? null),
+    success: (result) => {
+      queryClient.setQueryData(
+        linuxio.docker.get_daemon_config.queryKey,
+        result.config,
+      );
+      reset();
+      setRestartRequired(false);
+      toast.success(
+        "Docker restarted on the new storage. Deploy your stacks again.",
+      );
+    },
+    error: "Failed to change Docker storage",
+    options: {
+      onSettled: () => {
+        setStorageStep(null);
+        setConfirmStorage(false);
       },
-      error: "Failed to change Docker storage",
-      options: {
-        onSettled: () => {
-          setStorageStep(null);
-          setConfirmStorage(false);
-        },
-      },
-    });
+    },
+  });
   const busy =
     saveMutation.isPending ||
     restartMutation.isPending ||
@@ -164,7 +177,7 @@ const DockerDaemonSettingsSection = () => {
     const nextErrors = validateDraft(draft);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
-    // Storage only changes with Docker stopped, which needs the user's go-ahead.
+    // Storage only changes with every container stopped and Docker restarted, which needs the user's go-ahead.
     if (
       trimDataRoot(draft.data_root) !== config.data_root ||
       draft.image_store !== config.image_store ||
@@ -422,10 +435,10 @@ const DockerDaemonSettingsSection = () => {
 
       <ConfirmDialog
         cancelText="Cancel"
-        confirmText="Stop Docker and apply"
+        confirmText="Change storage"
         destructive
         isPending={storageMutation.isPending}
-        message="Every running container stops, then Docker stops, switches to the new storage and starts again. Anything in the old location is kept but hidden. Deploy your stacks again afterwards."
+        message="Every running container stops and Docker restarts on the new storage. Anything on the old storage is kept but hidden, so deploy your stacks again afterwards. If you reach LinuxIO or other apps through a reverse proxy, tunnel or VPN running in Docker, that access stops until its stack is deployed again, so make sure you can reach this server another way first."
         onClose={() => {
           if (!storageMutation.isPending) setConfirmStorage(false);
         }}
@@ -433,9 +446,9 @@ const DockerDaemonSettingsSection = () => {
           if (draft) storageMutation.mutate(toRequest(draft));
         }}
         open={confirmStorage}
-        pendingText="Applying…"
+        pendingText="Changing storage…"
         progress={storageStep ? { message: storageStep } : null}
-        title="Stop Docker to change storage?"
+        title="Stop all containers to change Docker storage?"
       />
 
       <SettingsSaveFooter

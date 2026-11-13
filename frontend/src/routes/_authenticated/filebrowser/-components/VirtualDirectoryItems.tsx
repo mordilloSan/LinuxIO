@@ -14,9 +14,9 @@ import type { SubfolderData } from "@/api";
 import { useGridColumnCount } from "@/hooks/useGridColumnCount";
 import { stripTrailingSlash } from "@/utils/path";
 
+import type { FileItem, ViewMode } from "../-types";
 import { DirectoryItem, SectionHeader } from "./DirectoryRows";
 import SelectionBox from "./SelectionBox";
-import type { FileItem, ViewMode } from "../-types";
 
 const CARD_MIN_WIDTH = 260;
 const CARD_GAP = 12;

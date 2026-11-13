@@ -35,7 +35,7 @@ func installNodeForUser(ctx context.Context, task *bridgeipc.Task, user session.
 	}
 
 	reportProgress(task, stageResolve, fmt.Sprintf("Downloading nvm install script from %s", nvmInstallScriptURL), pctResolve)
-	script, err := fetchInstallScript(ctx, nvmInstallScriptURL)
+	script, err := fetchInstallFile(ctx, nvmInstallScriptURL)
 	if err != nil {
 		return fmt.Errorf("download nvm install script: %w", err)
 	}

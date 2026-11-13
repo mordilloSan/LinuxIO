@@ -21,7 +21,6 @@ import {
   type AccountUserLogin,
   type AccountUserProcess,
   linuxio,
-  useCallMutation,
 } from "@/api";
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
@@ -39,6 +38,7 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { DetailRow } from "@/components/ui/InfoRow";
+import useAuth from "@/hooks/useAuth";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { SEMANTIC_STATUS_COLORS } from "@/theme/colors";
 
@@ -451,6 +451,7 @@ export const UserDetailsPanel = ({ user, onClose }: UserDetailsPanelProps) => {
 };
 
 export const UserActivityCard = ({ username }: { username: string }) => {
+  const { privileged } = useAuth();
   const prefersReducedMotion = useMediaQuery(
     "(prefers-reduced-motion: reduce)",
   );
@@ -493,14 +494,13 @@ export const UserActivityCard = ({ username }: { username: string }) => {
   const loginRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const dismissedAlertRef = useRef("");
   const [flashingLoginKey, setFlashingLoginKey] = useState("");
-  const { mutate: dismissFailedLoginAlert } = useCallMutation(
-    linuxio.system.dismiss_failed_login_alert,
-  );
+  const { mutate: dismissFailedLoginAlert } =
+    linuxio.system.dismiss_failed_login_alert.useMutation();
   const [pendingKillSession, setPendingKillSession] =
     useState<AccountActiveSession | null>(null);
   const [killError, setKillError] = useState<string>("");
   const { mutate: terminateSession, isPending: terminateIsPending } =
-    useCallMutation(linuxio.accounts.terminate_session, {
+    linuxio.accounts.terminate_session.useMutation({
       success: () => {
         setPendingKillSession(null);
         setKillError("");
@@ -616,7 +616,7 @@ export const UserActivityCard = ({ username }: { username: string }) => {
                       </AppTypography>
                     ) : null}
                   </div>
-                  {session.pid || session.sessionId ? (
+                  {privileged && (session.pid || session.sessionId) ? (
                     <AppActionIconButton
                       ariaLabel={`Terminate session ${session.terminal}`}
                       className="account-session-kill"

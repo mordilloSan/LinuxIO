@@ -1,4 +1,4 @@
-import * as acp from "@agentclientprotocol/sdk";
+import * as acp from "@agentclientprotocol/sdk/unstable";
 
 import { bindStreamHandlers } from "../stream-helpers";
 import type { Stream } from "../StreamMultiplexer";
@@ -12,11 +12,34 @@ export interface AssistantExit {
   stderr: string;
 }
 
+/**
+ * A `{"linuxio":"pane",…}` line from the bridge: a Claude Code process behind
+ * the agent opened (`event: "open"`) or closed (`event: "close"`) its pane
+ * connection, or sent a `message` on it. `conn` numbers the connection.
+ */
+export interface PaneLine {
+  conn: number;
+  event?: string;
+  message?: unknown;
+}
+
+/** A `ui_*` control request for Claude Code, without its envelope. */
+export type PaneRequest = { subtype: string } & Record<string, unknown>;
+
+/** Sends one pane request on connection `conn`; `id` comes back on its answer. */
+export type PaneSend = (conn: number, id: string, request: PaneRequest) => void;
+
 interface AcpTransport {
   stream: acp.Stream;
   ready: Promise<AssistantReady>;
   exit: Promise<AssistantExit | null>;
+  sendPane: PaneSend;
   close(): void;
+}
+
+interface AcpTransportOptions {
+  /** Receives the bridge's pane lines; without it they are dropped. */
+  onPane?: (line: PaneLine) => void;
 }
 
 // Go marshals the bridge's lines with sorted keys, so "linuxio" is not first.
@@ -24,10 +47,13 @@ const BRIDGE_LINE_MARKER = '"linuxio":';
 
 /**
  * Turns a LinuxIO duplex stream into the ND-JSON web-stream pair the ACP SDK
- * consumes. The bridge's own `{"linuxio":…}` ready and exit lines are
+ * consumes. The bridge's own `{"linuxio":…}` ready, exit and pane lines are
  * intercepted here; every other line goes to the SDK untouched.
  */
-export function createAcpTransport(stream: Stream): AcpTransport {
+export function createAcpTransport(
+  stream: Stream,
+  { onPane }: AcpTransportOptions = {},
+): AcpTransport {
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
 
@@ -52,6 +78,7 @@ export function createAcpTransport(stream: Stream): AcpTransport {
       cwd?: string;
       code?: number;
       stderr?: string;
+      conn?: unknown;
     };
     try {
       parsed = JSON.parse(line);
@@ -71,6 +98,17 @@ export function createAcpTransport(stream: Stream): AcpTransport {
     } else if (parsed.linuxio === "exit") {
       exitSeen = true;
       resolveExit({ code: parsed.code ?? -1, stderr: parsed.stderr ?? "" });
+    } else if (
+      parsed.linuxio === "pane" &&
+      Number.isSafeInteger(parsed.conn) &&
+      onPane
+    ) {
+      // A pane is never the reason the chat fails.
+      try {
+        onPane(parsed as PaneLine);
+      } catch {
+        // The pane client hides its pane on its own errors.
+      }
     }
     return true;
   };
@@ -140,6 +178,17 @@ export function createAcpTransport(stream: Stream): AcpTransport {
     stream: acp.ndJsonStream(writable, readable),
     ready,
     exit,
+    // One whole line per write, like the SDK's, so the bridge never sees a
+    // pane line inside an agent line. The bridge expects these keys in this
+    // order.
+    sendPane: (conn, id, request) => {
+      if (closed) return;
+      stream.write(
+        encoder.encode(
+          `${JSON.stringify({ linuxio: "pane", conn, id, request })}\n`,
+        ),
+      );
+    },
     close: () => {
       stream.close();
       finish();

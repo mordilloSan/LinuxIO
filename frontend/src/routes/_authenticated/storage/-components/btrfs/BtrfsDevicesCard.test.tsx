@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,7 +8,6 @@ import type {
   StorageTopologyInventory,
 } from "@/api";
 import { render } from "@/test/render";
-import type { TaskStreamActionMockConfig } from "@/test/taskStreamAction";
 
 import BtrfsDevicesCard from "./BtrfsDevicesCard";
 import BtrfsHealthBanner from "./BtrfsHealthBanner";
@@ -21,34 +20,50 @@ const mocks = vi.hoisted(() => ({
   mutations: {} as Record<string, ReturnType<typeof vi.fn> | undefined>,
   pending: new Set<string>(),
   submit: vi.fn(),
+  tasks: vi.fn(),
+  cancelTask: vi.fn(),
   topology: vi.fn(),
 }));
 
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
-  const { createTaskStreamActionMock } =
-    await import("@/test/taskStreamAction");
-  const task = (name: string) => ({
-    useTaskStreamAction: (config?: TaskStreamActionMockConfig) => ({
+  const { createMutationJobMock } = await import("@/test/mutationJob");
+  const { mockMutationHooks } = await import("@/test/mutationHooks");
+  const useCallMutation = (endpoint: { route: string }) => ({
+    isPending: false,
+    mutate: (mocks.mutations[endpoint.route] ??= vi.fn()),
+  });
+  const jobs = new Set([
+    "btrfs_balance",
+    "btrfs_device_remove",
+    "btrfs_device_replace",
+    "btrfs_scrub_start",
+  ]);
+  // The long operations are jobs; the rest answer from the call mock.
+  const useMutation = (endpoint: { route: string }, config: never) => {
+    const call = useCallMutation(endpoint);
+    const [, name] = endpoint.route.split(".");
+    if (!jobs.has(name)) return call;
+    return {
       isPending: mocks.pending.has(name),
-      ...createTaskStreamActionMock(
+      ...createMutationJobMock(
         {
-          openStream: () => ({}),
-          runStream: () => Promise.resolve(undefined),
-          submit: (request) => mocks.submit(name, request),
+          follow: () => Promise.resolve(undefined),
+          start: (request) => mocks.submit(name, request),
         },
         config,
       ),
-    }),
-  });
-  return {
+    };
+  };
+  const mocked = {
     ...actual,
-    call: (route: string) =>
-      route === "tasks.list" ? Promise.resolve([]) : Promise.reject(),
-    useCallMutation: (endpoint: { route: string }) => ({
-      isPending: false,
-      mutate: (mocks.mutations[endpoint.route] ??= vi.fn()),
-    }),
+    call: (route: string, args: unknown) =>
+      route === "tasks.list"
+        ? Promise.resolve(mocks.tasks())
+        : route === "tasks.cancel"
+          ? mocks.cancelTask(args)
+          : Promise.reject(),
+    useCallMutation,
     linuxio: {
       ...actual.linuxio,
       storage: {
@@ -57,12 +72,12 @@ vi.mock("@/api", async (importOriginal) => {
           queryKey: ["test-get-topology"],
           queryFn: () => mocks.topology(),
         },
-        btrfs_balance: task("btrfs_balance"),
-        btrfs_device_remove: task("btrfs_device_remove"),
-        btrfs_device_replace: task("btrfs_device_replace"),
-        btrfs_scrub_start: task("btrfs_scrub_start"),
       },
     },
+  };
+  return {
+    ...mocked,
+    linuxio: mockMutationHooks(mocked.linuxio, useMutation),
   };
 });
 
@@ -135,6 +150,8 @@ beforeEach(() => {
   mocks.mutations = {};
   mocks.pending.clear();
   mocks.submit.mockResolvedValue({ id: "task-1" });
+  mocks.tasks.mockReturnValue([]);
+  mocks.cancelTask.mockResolvedValue(undefined);
   mocks.topology.mockResolvedValue(
     topology([
       blockDevice({}),
@@ -271,7 +288,6 @@ describe("BtrfsDevicesCard actions", () => {
   });
 
   it("shows progress and locks the actions while a balance runs", async () => {
-    const user = userEvent.setup();
     mocks.pending.add("btrfs_balance");
     render(<BtrfsDevicesCard filesystem={filesystem(2)} />);
 
@@ -285,10 +301,146 @@ describe("BtrfsDevicesCard actions", () => {
         expect(button).toBeDisabled();
       }
     }
+  });
+
+  const balanceJob = (id: string, uuid: string, state = "running") => ({
+    id,
+    metadata: { identity: [uuid] },
+    state,
+    type: "storage.btrfs_balance",
+  });
+
+  it("cancels the running balance through its job", async () => {
+    const user = userEvent.setup();
+    mocks.pending.add("btrfs_balance");
+    mocks.tasks.mockReturnValue([
+      balanceJob("other-fs", "uuid-2"),
+      balanceJob("queued", "uuid-1", "queued"),
+      balanceJob("mine", "uuid-1"),
+    ]);
+    render(<BtrfsDevicesCard filesystem={filesystem(2)} />);
+
     await user.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(route("btrfs_balance_cancel")).toHaveBeenCalledWith({
-      uuid: "uuid-1",
+
+    await waitFor(() =>
+      expect(mocks.cancelTask).toHaveBeenCalledWith({ taskId: "mine" }),
+    );
+    expect(mocks.cancelTask).toHaveBeenCalledTimes(1);
+    expect(
+      mocks.mutations["storage.btrfs_balance_cancel"],
+    ).not.toHaveBeenCalled();
+    // The balance stops once the kernel finishes the chunk in hand.
+    expect(screen.getByRole("button", { name: "Cancelling…" })).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: "Cancel" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers the cancel again when the request fails", async () => {
+    const user = userEvent.setup();
+    mocks.pending.add("btrfs_balance");
+    mocks.tasks.mockReturnValue([balanceJob("mine", "uuid-1")]);
+    mocks.cancelTask.mockRejectedValueOnce(new Error("bridge offline"));
+    render(<BtrfsDevicesCard filesystem={filesystem(2)} />);
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => expect(mocks.cancelTask).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole("button", { name: "Cancel" })).toBeEnabled();
+  });
+
+  it("cancels in the kernel when the balance has no running job", async () => {
+    const user = userEvent.setup();
+    mocks.pending.add("btrfs_balance");
+    mocks.tasks.mockReturnValue([balanceJob("other-fs", "uuid-2")]);
+    render(<BtrfsDevicesCard filesystem={filesystem(2)} />);
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() =>
+      expect(route("btrfs_balance_cancel")).toHaveBeenCalledWith({
+        uuid: "uuid-1",
+      }),
+    );
+    expect(mocks.cancelTask).not.toHaveBeenCalled();
+  });
+
+  const deviceJob = (
+    id: string,
+    type: "remove" | "replace",
+    uuid: string,
+    deviceId: number,
+  ) => ({
+    id,
+    metadata: { identity: [uuid, String(deviceId)] },
+    state: "running",
+    type: `storage.btrfs_device_${type}`,
+  });
+
+  it.each([
+    {
+      op: "remove" as const,
+      title: "Stop removing device",
+      confirm: "Stop removal",
+      says: "Stop removing /dev/sdb? It stays in the pool with less data on it",
+    },
+    {
+      op: "replace" as const,
+      title: "Stop replacing device",
+      confirm: "Stop replace",
+      says: "Stop replacing /dev/sdb? It stays in the pool as it was, and the copy made so far on the new disk is discarded",
+    },
+  ])(
+    "cancels a running $op through its job after saying what is left",
+    async ({ op, title, confirm, says }) => {
+      const user = userEvent.setup();
+      mocks.pending.add(`btrfs_device_${op}`);
+      mocks.tasks.mockReturnValue([
+        deviceJob("other-fs", op, "uuid-2", 2),
+        balanceJob("balance", "uuid-1"),
+        deviceJob("mine", op, "uuid-1", 2),
+      ]);
+      render(<BtrfsDevicesCard filesystem={filesystem(2)} />);
+
+      await user.click(screen.getByRole("button", { name: "Cancel" }));
+      const dialog = await screen.findByRole("dialog", { name: title });
+      expect(dialog).toHaveTextContent(says);
+      expect(mocks.cancelTask).not.toHaveBeenCalled();
+      await user.click(within(dialog).getByRole("button", { name: confirm }));
+
+      await waitFor(() =>
+        expect(mocks.cancelTask).toHaveBeenCalledWith({ taskId: "mine" }),
+      );
+      expect(mocks.cancelTask).toHaveBeenCalledTimes(1);
+      expect(
+        mocks.mutations["storage.btrfs_balance_cancel"],
+      ).not.toHaveBeenCalled();
+      expect(
+        screen.getByRole("button", { name: "Cancelling…" }),
+      ).toBeDisabled();
+    },
+  );
+
+  it("keeps a removal running when its cancel is not confirmed", async () => {
+    const user = userEvent.setup();
+    mocks.pending.add("btrfs_device_remove");
+    mocks.tasks.mockReturnValue([deviceJob("mine", "remove", "uuid-1", 1)]);
+    render(<BtrfsDevicesCard filesystem={filesystem(2)} />);
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Stop removing device",
     });
+    expect(dialog).toHaveTextContent("Stop removing /dev/sda?");
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Stop removing device" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(mocks.cancelTask).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
   });
 
   it("adds a free device", async () => {
@@ -322,7 +474,7 @@ describe("BtrfsDevicesCard actions", () => {
     const dialog = await screen.findByRole("dialog");
     await user.click(
       within(dialog).getByRole("checkbox", {
-        name: "Force (wipe existing filesystem signature)",
+        name: /^Force: erase an old filesystem/,
       }),
     );
     await user.click(within(dialog).getByRole("combobox", { name: "Device" }));
@@ -330,6 +482,52 @@ describe("BtrfsDevicesCard actions", () => {
     expect(
       await screen.findByRole("option", { name: /\/dev\/sdy/ }),
     ).toBeInTheDocument();
+  });
+
+  it("keeps a disk of another pool, array or volume group disabled with its reason, force or not", async () => {
+    const user = userEvent.setup();
+    mocks.topology.mockResolvedValue(
+      topology([
+        blockDevice({}),
+        blockDevice({
+          path: "/dev/sdh",
+          name: "sdh",
+          fsType: "btrfs",
+          member: { kind: "btrfs", name: "old", uuid: "o1" },
+        }),
+        blockDevice({
+          path: "/dev/sdl",
+          name: "sdl",
+          fsType: "linux_raid_member",
+          member: { kind: "md", name: "host:data", uuid: "a1" },
+        }),
+        blockDevice({
+          path: "/dev/sdm",
+          name: "sdm",
+          fsType: "LVM2_member",
+          member: { kind: "lvm", name: "vg0", uuid: "pv1" },
+        }),
+        blockDevice({ path: "/dev/sdv", name: "sdv", busy: "Active swap" }),
+      ]),
+    );
+    render(<BtrfsDevicesCard filesystem={filesystem(1)} />);
+
+    await user.click(screen.getByRole("button", { name: "Add device" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(
+      within(dialog).getByRole("checkbox", { name: /^Force: erase/ }),
+    );
+    await user.click(within(dialog).getByRole("combobox", { name: "Device" }));
+    for (const reason of [
+      "/dev/sdh · 50 GB · Spare · Member of btrfs pool old",
+      "/dev/sdl · 50 GB · Spare · Member of md array host:data",
+      "/dev/sdm · 50 GB · Spare · Member of LVM volume group vg0",
+      "/dev/sdv · 50 GB · Spare · Active swap",
+    ]) {
+      expect(
+        await screen.findByRole("option", { name: reason }),
+      ).toHaveAttribute("aria-disabled", "true");
+    }
   });
 
   it("confirms before removing a device", async () => {
@@ -387,10 +585,85 @@ describe("BtrfsDevicesCard actions", () => {
     expect(
       screen.queryByRole("button", { name: "Check for errors" }),
     ).not.toBeInTheDocument();
+    // No scrub job (the timer started it): the kernel cancel stops it.
     await user.click(screen.getByRole("button", { name: "Stop check" }));
-    expect(route("btrfs_scrub_cancel")).toHaveBeenCalledWith({
-      uuid: "uuid-1",
+    await waitFor(() =>
+      expect(route("btrfs_scrub_cancel")).toHaveBeenCalledWith({
+        uuid: "uuid-1",
+      }),
+    );
+    expect(mocks.cancelTask).not.toHaveBeenCalled();
+  });
+
+  it("stops a running scrub through its job", async () => {
+    const user = userEvent.setup();
+    const scrubJob = (id: string, uuid: string, state = "running") => ({
+      id,
+      metadata: { identity: [uuid, "scrub"] },
+      state,
+      type: "storage.btrfs_scrub_start",
     });
+    mocks.tasks.mockReturnValue([
+      scrubJob("other-fs", "uuid-2"),
+      scrubJob("queued", "uuid-1", "queued"),
+      scrubJob("mine", "uuid-1"),
+    ]);
+    const running = filesystem(1);
+    running.scrub.status = "running";
+    render(<BtrfsHealthBanner filesystem={running} />);
+
+    await user.click(screen.getByRole("button", { name: "Stop check" }));
+
+    await waitFor(() =>
+      expect(mocks.cancelTask).toHaveBeenCalledWith({ taskId: "mine" }),
+    );
+    expect(mocks.cancelTask).toHaveBeenCalledTimes(1);
+    expect(route("btrfs_scrub_cancel")).not.toHaveBeenCalled();
+    // The scrub stops when its job's handler returns.
+    expect(screen.getByRole("button", { name: "Stopping…" })).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: "Stop check" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("offers Stop check again when the request fails, and for the next scrub", async () => {
+    const user = userEvent.setup();
+    mocks.tasks.mockReturnValue([
+      {
+        id: "mine",
+        metadata: { identity: ["uuid-1", "scrub"] },
+        state: "running",
+        type: "storage.btrfs_scrub_start",
+      },
+    ]);
+    mocks.cancelTask.mockRejectedValueOnce(new Error("bridge offline"));
+    const running = filesystem(1);
+    running.scrub = {
+      ...running.scrub,
+      startedAt: "2026-11-09T10:00:00Z",
+      status: "running",
+    };
+    const view = render(<BtrfsHealthBanner filesystem={running} />);
+
+    await user.click(screen.getByRole("button", { name: "Stop check" }));
+    await waitFor(() => expect(mocks.cancelTask).toHaveBeenCalledTimes(1));
+    expect(
+      await screen.findByRole("button", { name: "Stop check" }),
+    ).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "Stop check" }));
+    expect(
+      await screen.findByRole("button", { name: "Stopping…" }),
+    ).toBeDisabled();
+    // A later scrub is a new one to stop.
+    const next = filesystem(1);
+    next.scrub = {
+      ...next.scrub,
+      startedAt: "2026-11-09T12:00:00Z",
+      status: "running",
+    };
+    view.rerender(<BtrfsHealthBanner filesystem={next} />);
+    expect(screen.getByRole("button", { name: "Stop check" })).toBeEnabled();
   });
 
   it("offers to grow a device whose disk is bigger than the filesystem's view", async () => {

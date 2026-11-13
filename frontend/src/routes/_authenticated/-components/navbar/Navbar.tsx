@@ -5,7 +5,6 @@ import AppIconButton from "@/components/ui/AppIconButton";
 import { HeaderActionSlotHost } from "@/contexts/HeaderActionSlotProvider";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { up } from "@/theme/breakpoints";
-import { shadowSm } from "@/theme/constants";
 import { iconSize } from "@/theme/constants";
 
 import NavbarUserDropdown from "./NavbarUserDropdown";
@@ -25,12 +24,7 @@ const Navbar = ({ dockMode, onDrawerToggle }: NavbarProps) => {
   const isDesktop = useMediaQuery(up("md"));
 
   return (
-    <header
-      className="app-navbar"
-      style={{
-        boxShadow: shadowSm,
-      }}
-    >
+    <header className="app-navbar">
       <div className="app-navbar__inner">
         {!isDesktop && onDrawerToggle && (
           <AppIconButton

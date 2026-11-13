@@ -3,8 +3,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getRouteApi, useParams } from "@tanstack/react-router";
 import { useState, type CSSProperties, type SyntheticEvent } from "react";
 
-import { getMutationErrorMessage, linuxio, useCallMutation } from "@/api";
-import type { VirtualMachine, VMFirmware, VMUpdateRequest } from "@/api";
+import { getMutationErrorMessage, linuxio } from "@/api";
+import type {
+  VirtualMachine,
+  VMCPUMode,
+  VMFirmware,
+  VMUpdateRequest,
+} from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
@@ -19,7 +24,12 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { down } from "@/theme/breakpoints";
 
-import { VM_OS_OPTIONS, VM_TOAST } from "./vmShared";
+import {
+  VM_NAME_HELP,
+  VM_OS_OPTIONS,
+  VM_TOAST,
+  isValidVMName,
+} from "./vmShared";
 
 const vmMachinesRouteApi = getRouteApi("/_authenticated/vm/machines");
 
@@ -50,6 +60,8 @@ function EditVMForm({
   const [memoryMB, setMemoryMB] = useState(String(vm.memoryMB));
   const [diskGB, setDiskGB] = useState(String(vm.diskGB));
   const [firmware, setFirmware] = useState<VMFirmware>(vm.firmware ?? "bios");
+  const currentCPUMode = vm.cpuMode ?? "default";
+  const [cpuMode, setCPUMode] = useState<VMCPUMode>(currentCPUMode);
   const [network, setNetwork] = useState(currentNetwork);
   const currentOS = vm.os ?? "";
   const [os, setOS] = useState(currentOS);
@@ -58,7 +70,7 @@ function EditVMForm({
     (candidate) => candidate.type === "bridge",
   );
 
-  const updateMutation = useCallMutation(linuxio.virt.update, {
+  const updateMutation = linuxio.virt.update.useMutation({
     // Invalidating virt.get would refetch a renamed VM under its old name
     // while that route is still mounted, so the cache takes the result.
     invalidates: () => [],
@@ -96,7 +108,7 @@ function EditVMForm({
   const parsedVCPUs = Number.parseInt(vcpus, 10);
   const parsedMemoryMB = Number.parseInt(memoryMB, 10);
   const parsedDiskGB = Number.parseInt(diskGB, 10);
-  const nameValid = /^[A-Za-z0-9_.-]+$/.test(name);
+  const nameValid = isValidVMName(name);
   // vm.diskGB counts only LinuxIO-managed disks, the ones the bridge resizes.
   const diskResizable = vm.diskGB > 0;
   const diskValid = !diskResizable || parsedDiskGB >= vm.diskGB;
@@ -121,6 +133,7 @@ function EditVMForm({
     if (diskResizable && parsedDiskGB !== vm.diskGB) {
       request.diskGB = parsedDiskGB;
     }
+    if (cpuMode !== currentCPUMode) request.cpuMode = cpuMode;
     if (network !== currentNetwork) request.network = network;
     if (os !== currentOS) request.os = os;
     updateMutation.mutate(request);
@@ -135,7 +148,7 @@ function EditVMForm({
             autoFocus
             error={!nameValid}
             fullWidth
-            helperText="Letters, numbers, dash, underscore, and dot"
+            helperText={VM_NAME_HELP}
             id="vm-edit-name"
             label="Name"
             onChange={(event) => setName(event.target.value)}
@@ -183,6 +196,21 @@ function EditVMForm({
           >
             <option value="uefi">UEFI</option>
             <option value="bios">BIOS (legacy)</option>
+          </AppSelect>
+          <AppSelect
+            fullWidth
+            label="CPU model"
+            onChange={(event) => setCPUMode(event.target.value as VMCPUMode)}
+            value={cpuMode}
+          >
+            <option value="host-passthrough">Host passthrough (fastest)</option>
+            <option value="host-model">Host model</option>
+            {currentCPUMode === "default" ? (
+              <option value="default">Hypervisor default (slow)</option>
+            ) : null}
+            {currentCPUMode === "custom" ? (
+              <option value="custom">Custom</option>
+            ) : null}
           </AppSelect>
           <AppSelect
             fullWidth

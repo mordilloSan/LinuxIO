@@ -51,7 +51,10 @@ quiet_targets := \
 	test-indexer-systemd-integration \
 	test-updater \
 	test-docker-update-integration \
+	test-assistant-agent-integration \
 	test-btrfs-integration \
+	vm-test-btrfs-integration \
+	test-vm-browser \
 	analyze \
 	bundle-metrics \
 	compiler-coverage \
@@ -65,6 +68,9 @@ VITE_DEV_PORT ?= 3000
 DEV_LOG_LINES ?= 25
 VITE_DEV_LOG  ?= $(frontend_dir)/.vite-dev.log
 VITE_DEV_PID  ?= $(frontend_dir)/.vite-dev.pid
+# VS Code extensions directory for dev-status-install: the remote server's when present.
+VSCODE_EXTENSIONS_DIR ?= $(if $(wildcard $(HOME)/.vscode-server/extensions),$(HOME)/.vscode-server/extensions,$(HOME)/.vscode/extensions)
+dev_status_dir := $(CURDIR)/.vscode/dev-status
 VERBOSE      ?= true
 nvm_version := $(if $(NVM_VERSION),$(NVM_VERSION),0.40.2)
 NVM_VERSION  ?= $(nvm_version)
@@ -73,7 +79,7 @@ GOARCH       ?=
 GOAMD64      ?= v3
 # Host architecture, used to decide amd64-only build tags for a native build.
 GOARCH_HOST  ?= $(shell go env GOARCH 2>/dev/null || echo amd64)
-GO_TOOLCHAIN ?= auto
+GO_TOOLCHAIN ?= go$(go_version)
 SKIP_ENSURE_GO ?= 0
 
 # --- Go project root autodetection ---
@@ -95,6 +101,10 @@ endif
 # Toolchain versions (sourced from repo files)
 go_version := $(if $(GO_VERSION),$(GO_VERSION),$(shell awk '/^go / {print $$2; exit}' "$(backend_dir)/go.mod"))
 GO_VERSION ?= $(go_version)
+# GOTOOLCHAIN needs a full release (go1.27.3); a bare 1.27 is rejected by Go.
+ifneq ($(words $(subst ., ,$(go_version))),3)
+$(error GO_VERSION must be a full release like 1.27.3, got '$(go_version)')
+endif
 node_version := $(if $(NODE_VERSION),$(NODE_VERSION),$(shell python3 -c "import json, pathlib; data=json.loads(pathlib.Path('$(frontend_dir)/package.json').read_text()); print((data.get('engines') or {}).get('node',''))" 2>/dev/null))
 NODE_VERSION ?= $(node_version)
 CC ?= cc
@@ -214,21 +224,32 @@ include $(mk_dir)/frontend.mk
 include $(mk_dir)/auth.mk
 include $(mk_dir)/quality.mk
 include $(mk_dir)/install.mk
+include $(mk_dir)/vm.mk
 
 # ---- help -------------------------------------------------------------------
 # Generated from the `##` annotations in this file and mk/*.mk by
 # scripts/help.awk. The section order is declared here.
 ##@ Toolchain setup|green
 ##@ Quality checks|green
+##@ Test VM|yellow
 ##@ Development|yellow
 ##@ Build|yellow
 ##@ Install / Uninstall|red
 ##@ Run / Clean|red
-help:
-	@awk -v blue='$(COLOR_BLUE)' -v cyan='$(COLOR_CYAN)' -v green='$(COLOR_GREEN)' \
+# `make help` lists only help_common; `make help-full` (or `make help FULL=1`)
+# lists every annotated target. `make --full` is not possible: Make parses
+# dashed words itself and rejects unknown ones.
+help_common := setup dev dev-stop generate lint tsc golint check-frontend check-backend test <target>-quiet build fastbuild localinstall reinstall uninstall clean help-overrides
+help_awk = awk -v blue='$(COLOR_BLUE)' -v cyan='$(COLOR_CYAN)' -v green='$(COLOR_GREEN)' \
 	  -v yellow='$(COLOR_YELLOW)' -v red='$(COLOR_RED)' -v reset='$(COLOR_RESET)' \
 	  -v go='$(GO_VERSION)' -v node='$(NODE_VERSION)' -v bin='$(bin_dir)' \
+	  -v common='$(help_common)' -v full='$(1)' \
 	  -f "$(scripts_dir)/help.awk" $(MAKEFILE_LIST)
+help:
+	@$(call help_awk,$(if $(FULL),1,))
+
+help-full:
+	@$(call help_awk,1)
 
 ##@ Run / Clean|red
 help-overrides: ## Show documented Make variables and overrides
@@ -243,15 +264,16 @@ $(quiet_aliases): ## Run a validation target with compact output and a saved ful
 
 # Every public target, in one place. File targets (the frontend install stamp,
 # placeholder assets, the auth frame tool) are deliberately not phony.
-.PHONY: default help help-overrides $(quiet_aliases)
+.PHONY: default help help-full help-overrides $(quiet_aliases)
 .PHONY: ensure-node ensure-go ensure-golint ensure-deadcode ensure-modernize ensure-govulncheck
-.PHONY: setup update-deps update-go-deps ci-frontend-deps
+.PHONY: setup setup-frontend update-deps update-go-deps ci-frontend-deps
 .PHONY: lint lint-only lint-ci lint-ci-only tsc tsc-only tsc-ci golint golint-only
 .PHONY: test check-actions check-docs check-systemd check-frontend check-backend
 .PHONY: test-frontend test-frontend-only test-frontend-ci setup-frontend-browser test-frontend-browser update-frontend-screenshots
 .PHONY: test-backend test-go test-auth test-auth-protocol test-auth-pam
-.PHONY: test-installation-scripts test-indexer-systemd-integration test-updater test-docker-update-integration test-btrfs-integration
+.PHONY: test-installation-scripts test-indexer-systemd-integration test-updater test-docker-update-integration test-assistant-agent-integration test-btrfs-integration
 .PHONY: deadcode deadcode-only analyze analyze-auth bundle-metrics compiler-coverage check-c-build-deps
-.PHONY: dev-prep dev generate
-.PHONY: build build-nocheck fastbuild build-vite build-backend build-bridge build-cli build-docker-update build-indexer build-monitoring build-btrfs-timer build-auth build-leak-profile build-go-binaries build-binaries print-binaries print-bin-dir
+.PHONY: dev-prep dev dev-stop dev-status-install dev-status-uninstall generate
+.PHONY: build build-nocheck fastbuild build-vite build-backend build-bridge build-cli build-docker-update build-indexer build-monitoring build-btrfs-timer build-claude-relay build-auth build-leak-profile build-go-binaries build-binaries print-binaries print-bin-dir
 .PHONY: localinstall reinstall uninstall clean cloc
+.PHONY: vm-create vm-install vm-ssh vm-reset vm-destroy vm-test-btrfs-integration vm-test-filebrowser-root test-vm-browser

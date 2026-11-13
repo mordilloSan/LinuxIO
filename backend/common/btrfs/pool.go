@@ -23,7 +23,10 @@ const (
 	superOffset   = 65536 // BTRFS_SUPER_INFO_OFFSET: the primary superblock
 	superSize     = 4096  // BTRFS_SUPER_INFO_SIZE
 	superMagic    = 0x4D5F53665248425F
-	labelSize     = 256 // BTRFS_LABEL_SIZE, including the terminating NUL
+	// superMagicTemporary ("!BHRfS_M") is what mkfs.btrfs writes until its
+	// last step; blkid and the kernel ignore it.
+	superMagicTemporary = 0x4D5F536652484221
+	labelSize           = 256 // BTRFS_LABEL_SIZE, including the terminating NUL
 
 	// Field offsets in struct btrfs_super_block.
 	superFSID       = 32
@@ -155,8 +158,10 @@ func ValidateLabel(label string) error {
 // CreatePool formats devices as one btrfs filesystem with the given data
 // and metadata profiles, registers them with the kernel and returns the new
 // filesystem's UUID. Callers check that the devices are free; force
-// overwrites foreign signatures.
-func CreatePool(ctx context.Context, label, data, meta string, devices []string, force bool) (string, error) {
+// overwrites foreign signatures. progress, if not nil, follows the trim
+// before mkfs (see trim). Once mkfs.btrfs ran, an error comes with the UUID
+// too, so the caller can wipe what it wrote (see WipePoolSuperblocks).
+func CreatePool(ctx context.Context, label, data, meta string, devices []string, force bool, progress func(pct float64)) (string, error) {
 	if err := ValidateLabel(label); err != nil {
 		return "", err
 	}
@@ -166,13 +171,16 @@ func CreatePool(ctx context.Context, label, data, meta string, devices []string,
 	if err := ValidateProfiles(&data, &meta, len(devices)); err != nil {
 		return "", err
 	}
+	if err := trim(ctx, devices, progress); err != nil {
+		return "", err
+	}
 	uuid := newUUID()
-	args := []string{"-L", label, "-U", uuid, "-d", data, "-m", meta}
+	args := []string{"-L", label, "-U", uuid, "-d", data, "-m", meta, "-K"}
 	if force {
 		args = append(args, "-f")
 	}
 	if _, err := runCommand(ctx, "mkfs.btrfs", append(args, devices...)...); err != nil {
-		return "", err
+		return uuid, err
 	}
 	for _, d := range devices {
 		if err := RegisterDevice(d); err != nil {
@@ -244,6 +252,60 @@ func WipeDevice(device string) error {
 	return nil
 }
 
+// superblockOffsets lists the superblock copies of a device of size bytes:
+// 64 KiB, 64 MiB and 256 GiB, each one that fits.
+func superblockOffsets(size uint64) []int64 {
+	var offsets []int64
+	for _, off := range []int64{superOffset, 64 << 20, 256 << 30} {
+		if uint64(off)+superSize <= size {
+			offsets = append(offsets, off)
+		}
+	}
+	return offsets
+}
+
+// WipePoolSuperblocks undoes a pool create on device: it zeroes the magic of
+// every superblock copy whose fsid is uuid, real or the temporary one a
+// failed mkfs.btrfs leaves, then unregisters the device. Copies of any other
+// filesystem are left alone. It reports whether it wiped any.
+func WipePoolSuperblocks(device, uuid string) (bool, error) {
+	f, err := os.OpenFile(device, os.O_RDWR, 0)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	size, err := f.Seek(0, io.SeekEnd)
+	if err != nil {
+		return false, fmt.Errorf("size of %s: %w", device, err)
+	}
+	wiped := false
+	sb := make([]byte, superSize)
+	for _, off := range superblockOffsets(uint64(size)) {
+		if _, err = f.ReadAt(sb, off); err != nil {
+			return wiped, fmt.Errorf("read superblock of %s at %d: %w", device, off, err)
+		}
+		magic := binary.LittleEndian.Uint64(sb[superMagicAt:])
+		if magic != superMagic && magic != superMagicTemporary || formatUUID(sb[superFSID:superFSID+16]) != uuid {
+			continue
+		}
+		if _, err = f.WriteAt(make([]byte, 8), off+superMagicAt); err != nil {
+			return wiped, fmt.Errorf("wipe %s: %w", device, err)
+		}
+		wiped = true
+	}
+	if !wiped {
+		return false, nil
+	}
+	if err = f.Sync(); err != nil {
+		return true, fmt.Errorf("wipe %s: %w", device, err)
+	}
+	// ENOENT: the kernel never registered the device, nothing to forget.
+	if err = controlIoctl(iocForgetDev, device); err != nil && !errors.Is(err, unix.ENOENT) {
+		return true, fmt.Errorf("forget %s: %w", device, err)
+	}
+	return true, nil
+}
+
 // BtrfsOfflinePool is an unmounted btrfs filesystem assembled from the
 // superblocks of its present devices.
 type BtrfsOfflinePool struct {
@@ -255,6 +317,9 @@ type BtrfsOfflinePool struct {
 	// Mountpoint is where /etc/fstab mounts the filesystem; the caller that
 	// knows fstab fills it.
 	Mountpoint string `json:"mountpoint"`
+	// Missing counts the members absent; a device replace's target, which
+	// the kernel scans as devid 0, is no member.
+	Missing int `json:"missing"`
 	// devids and generations hold each of Devices' superblock devid and
 	// generation.
 	devids, generations []uint64
@@ -295,6 +360,9 @@ func FindOfflinePools(ctx context.Context, candidates []string) ([]BtrfsOfflineP
 		pools[i].Devices = append(pools[i].Devices, device)
 		pools[i].devids = append(pools[i].devids, sb.DevID)
 		pools[i].generations = append(pools[i].generations, sb.Generation)
+	}
+	for i := range pools {
+		pools[i].Missing = missingDisks(pools[i])
 	}
 	return pools, nil
 }

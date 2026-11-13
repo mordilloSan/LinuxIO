@@ -237,7 +237,6 @@ func fetchIndexerStatus(ctx context.Context) (indexerStatusSnapshot, error) {
 	}, nil
 }
 
-//nolint:gocognit // Recovery keeps callback and terminal-state handling in one lifecycle.
 func recoverEndedStatusStream(ctx context.Context, cb IndexerCallbacks, expected *indexerStreamExpectation, attempt int) (bool, error) {
 	status, err := fetchIndexerStatus(ctx)
 	if err != nil {
@@ -269,13 +268,6 @@ func recoverEndedStatusStream(ctx context.Context, cb IndexerCallbacks, expected
 		case <-ctx.Done():
 			return false, reportIndexerAbort(cb)
 		}
-	}
-
-	if status.Status == "error" || status.Status == "failed" {
-		if callbackErr := callOnError(cb, "indexer failed", 500); callbackErr != nil {
-			return false, fmt.Errorf("on error callback: %w", callbackErr)
-		}
-		return false, fmt.Errorf("indexer failed")
 	}
 
 	if cb.OnResult != nil {
@@ -450,7 +442,7 @@ func normalizeIndexerProgress(progress *IndexerProgress) {
 		progress.Phase = progress.State
 	}
 	switch strings.ToLower(progress.Phase) {
-	case "running", "started":
+	case indexerapi.StatusRunning, indexerapi.EventStarted:
 		progress.Phase = "indexing"
 	case "scanning":
 		progress.Phase = "scan"

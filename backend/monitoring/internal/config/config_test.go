@@ -182,6 +182,25 @@ func TestSaveRoundTripsHistoryIntervals(t *testing.T) {
 	}
 }
 
+// A setting that must be greater than zero falls back to its default; one that
+// accepts zero keeps what it was given.
+func TestDurationsWithDefaults(t *testing.T) {
+	got := Durations{DiskUsageCache: -time.Second, HistoryRetention: -time.Second}.WithDefaults()
+	want := Durations{
+		CollectorInterval:    DefaultCollectorInterval,
+		SmartRefreshInterval: DefaultSmartRefreshInterval,
+		DiskUsageCache:       -time.Second,
+		HistoryRetention:     DefaultHistoryRetention,
+	}
+	if got != want {
+		t.Fatalf("WithDefaults = %+v, want %+v", got, want)
+	}
+	set := Durations{CollectorInterval: 1, SmartRefreshInterval: 2, DiskUsageCache: 3, HistoryRetention: 4}
+	if got := set.WithDefaults(); got != set {
+		t.Fatalf("WithDefaults changed set values: %+v", got)
+	}
+}
+
 func TestIntervalDefaults(t *testing.T) {
 	if DefaultCollectorInterval != time.Minute || DefaultSmartRefreshInterval != time.Hour {
 		t.Fatalf("collector=%v smart=%v", DefaultCollectorInterval, DefaultSmartRefreshInterval)

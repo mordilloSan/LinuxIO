@@ -1,5 +1,5 @@
-import { useLocation } from "@tanstack/react-router";
-import { useMemo, useSyncExternalStore } from "react";
+import { useLocation, useNavigate } from "@tanstack/react-router";
+import { useMemo, useRef, useSyncExternalStore } from "react";
 
 import {
   openTerminalLoginStream,
@@ -18,6 +18,8 @@ import { useAppTheme } from "@/theme";
 import { alpha } from "@/theme/colorUtils";
 import { cardBorderRadius, shadowSm } from "@/theme/constants";
 
+import { typedCommandFromState, typedCommandInput } from "./typedCommand";
+
 import "@xterm/xterm/css/xterm.css";
 import "@/components/terminal/terminal-tokens.css";
 import "@fontsource/jetbrains-mono/400.css";
@@ -33,6 +35,9 @@ declare module "@tanstack/react-router" {
   // state, not the URL: a crafted link must not choose the agent's arguments.
   interface HistoryState {
     terminalLogin?: TerminalLogin;
+    // Set by the Assistant's "Open in terminal": a command to type, never to
+    // run. History state for the same reason: a link must not choose it.
+    terminalCommand?: string;
   }
 }
 
@@ -50,6 +55,11 @@ function terminalLoginFromState(value: unknown): TerminalLogin | null {
 
 const MIN_FONT = 10;
 const MAX_FONT = 28;
+
+// Whether the shell had bracketed paste on when the page was last left. A
+// reattached shell sits at its prompt and prints nothing, so the new xterm
+// cannot learn it from the output.
+let shellTakesPastes = false;
 
 const TERMINAL_FONT = "JetBrains Mono";
 const TERMINAL_FONT_STACK = `"${TERMINAL_FONT}", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`;
@@ -137,8 +147,15 @@ const TerminalXTerm = () => {
   const theme = useAppTheme();
 
   const { isOpen, getStream } = useStreamMux();
+  const navigate = useNavigate();
+  const locationState = useLocation().state;
   // Set when the Assistant sends the user here to log an agent in.
-  const login = terminalLoginFromState(useLocation().state.terminalLogin);
+  const login = terminalLoginFromState(locationState.terminalLogin);
+  // A command the Assistant asks to have typed; a login PTY is not a shell.
+  const command = login
+    ? null
+    : typedCommandFromState(locationState.terminalCommand);
+  const pendingCommand = useRef<string | null>(null);
   // The shell PTY persists server-side across page visits: never close it on
   // unmount, only detach the handlers (reattach happens via getStream). A login
   // PTY is separate and ends when the user leaves the page.
@@ -184,15 +201,37 @@ const TerminalXTerm = () => {
     onReady: (terminal) => {
       if (!isOpen) return;
 
+      const existing = login ? null : getStream("terminal.open");
+      const pasteKnown = existing !== null && shellTakesPastes;
+      // Types the Assistant's command once that cannot run it: one line at
+      // once, several lines when the shell takes them as a single paste.
+      const typePending = () => {
+        const pending = pendingCommand.current;
+        if (pending === null) return;
+        const input = typedCommandInput(
+          pending,
+          pasteKnown || terminal.modes.bracketedPasteMode,
+        );
+        if (input === null) return;
+        pendingCommand.current = null;
+        // As if typed: xterm passes it on to the PTY like any keystroke.
+        terminal.input(input);
+        terminal.focus();
+      };
+
       // Reattach to the persistent PTY stream when one exists (page revisit),
       // otherwise open a fresh one. A login runs beside the shell, never in it.
       const opened = openStream({
         open: () =>
           login
             ? openTerminalLoginStream(terminal.cols, terminal.rows, login)
-            : (getStream("terminal.open") ??
-              openTerminalStream(terminal.cols, terminal.rows)),
-        onData: writeData,
+            : (existing ?? openTerminalStream(terminal.cols, terminal.rows)),
+        onData: (data) => {
+          writeData(data);
+          // After xterm has parsed the output, which may be the prompt that
+          // turns bracketed paste on.
+          if (pendingCommand.current !== null) terminal.write("", typePending);
+        },
         onClose: login
           ? () =>
               terminal.write(
@@ -200,14 +239,35 @@ const TerminalXTerm = () => {
               )
           : undefined,
       });
+      let notice: number | undefined;
       if (opened) {
         streamRef.current?.resize(terminal.cols, terminal.rows);
+        if (command) {
+          pendingCommand.current = command;
+          // Typed once: a reload or the back button must not type it again.
+          void navigate({
+            to: ".",
+            replace: true,
+            state: (previous) => ({ ...previous, terminalCommand: undefined }),
+          });
+        }
+        typePending();
+        notice = window.setTimeout(() => {
+          if (pendingCommand.current === null) return;
+          terminal.write(
+            "\r\n[The command from the Assistant has several lines. It is typed, not run, once the shell shows a prompt that takes a paste.]\r\n",
+          );
+        }, 1500);
       }
 
       return () => {
+        window.clearTimeout(notice);
         // The shell persists for reconnection; only a login PTY is closed.
         if (login) closeStream();
-        else detachStream();
+        else {
+          shellTakesPastes = terminal.modes.bracketedPasteMode;
+          detachStream();
+        }
       };
     },
     sessionKey: `${isOpen ? "open" : "closed"}:${login ? `${login.agent}:${login.args.join(" ")}` : ""}`,

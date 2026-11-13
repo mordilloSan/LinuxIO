@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { linuxio, useCallMutation } from "@/api";
+import { linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
 import {
@@ -42,7 +42,7 @@ const SetHostnameDialog = ({ open, current, onClose }: Props) => {
     setStoredSession({ open, source: current, value: current });
   }
 
-  const { mutate, isPending } = useCallMutation(linuxio.hostname.set_hostname, {
+  const { mutate, isPending } = linuxio.hostname.set_hostname.useMutation({
     success: () => {
       toast.success("Hostname updated successfully");
       onClose();

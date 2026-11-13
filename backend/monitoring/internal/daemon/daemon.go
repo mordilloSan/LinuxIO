@@ -44,16 +44,13 @@ func historyString(cfg config.Config) string {
 	return cfg.HistoryString()
 }
 
-func runOptions(cfg config.Config, source string) app.ReloadOptions {
-	return app.ReloadOptions{
-		CollectorInterval:    cfg.Collector.Interval.Duration(),
-		SmartRefreshInterval: cfg.Collector.SmartRefreshInterval.Duration(),
-		DiskUsageCache:       cfg.Collector.DiskUsageCache.Duration(),
-		HistoryRetention:     cfg.History.Retention.Duration(),
-		History:              historyString(cfg),
-		HistoryIntervals:     cfg.HistoryIntervalDurations(),
-		ConfigSource:         source,
-		ConfigVersion:        cfg.Version,
+func runtimeSettings(cfg config.Config, source string) app.Settings {
+	return app.Settings{
+		Durations:        cfg.Durations(),
+		History:          historyString(cfg),
+		HistoryIntervals: cfg.HistoryIntervalDurations(),
+		ConfigSource:     source,
+		ConfigVersion:    cfg.Version,
 	}
 }
 
@@ -77,20 +74,12 @@ func Run(ctx context.Context, configPath string) error {
 	if err != nil {
 		return fmt.Errorf("create agent: %w", err)
 	}
-	reload := runOptions(cfg, source)
 	executor := NewCommandExecutor(a, configPath)
 	return a.StartContext(ctx, app.RunOptions{
-		Listeners:            Listeners(cfg),
-		CollectorInterval:    reload.CollectorInterval,
-		SmartRefreshInterval: reload.SmartRefreshInterval,
-		DiskUsageCache:       reload.DiskUsageCache,
-		HistoryRetention:     reload.HistoryRetention,
-		History:              reload.History,
-		HistoryIntervals:     reload.HistoryIntervals,
-		ConfigPath:           configPath,
-		ConfigSource:         source,
-		ConfigVersion:        cfg.Version,
-		CommandExecutor:      executor,
-		ReloadConfig:         executor.reloadFromFile,
+		Settings:        runtimeSettings(cfg, source),
+		Listeners:       Listeners(cfg),
+		ConfigPath:      configPath,
+		CommandExecutor: executor,
+		ReloadConfig:    executor.reloadFromFile,
 	})
 }

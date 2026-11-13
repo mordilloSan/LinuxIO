@@ -62,6 +62,13 @@ const SCHEDULE_KEYS = [
   endpointQueryPrefix("schedules.get"),
 ];
 
+// A plugin or marketplace change moves a plugin between the installed list
+// and the catalogue search.
+const ASSISTANT_PLUGIN_KEYS = [
+  endpointQueryPrefix("assistant.list_plugins"),
+  endpointQueryPrefix("assistant.search_plugins"),
+];
+
 // The datetime handler prefix covers get_timezone/get_ntp_status/get_ntp_servers.
 const DATETIME_KEYS: QueryKey[] = [
   handlerQueryPrefix("datetime"),
@@ -101,7 +108,7 @@ const NETWORK_BRIDGE_KEYS = [
  * stale, keyed by route.
  *
  * Consumed from direct and Task lifecycles:
- * - `useCallMutation`/`useTaskAction`/`useTaskStreamAction` use the
+ * - `useCallMutation` and `.useMutation` use the
  *   entry as the default `invalidates` for operations started and awaited
  *   locally.
  * - `useRecoveredTasks` applies the entry when a task reaches a terminal state
@@ -206,7 +213,8 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
 
   "schedules.create": SCHEDULE_KEYS,
   "schedules.update": SCHEDULE_KEYS,
-  "schedules.delete": SCHEDULE_KEYS,
+  // Deleting a schedule resolves its "finished" notice.
+  "schedules.delete": [...SCHEDULE_KEYS, endpointQueryPrefix("alerts.list")],
   "schedules.enable": SCHEDULE_KEYS,
   "schedules.disable": SCHEDULE_KEYS,
   "schedules.run_now": SCHEDULE_KEYS,
@@ -216,7 +224,11 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "alerts.mark_seen": [],
   "alerts.mark_all_seen": [],
   "alerts.dismiss": [],
-  "alerts.set_notifications": [endpointQueryPrefix("alerts.get_notifications")],
+  // The levels grid decides which notices the bell lists and counts.
+  "alerts.set_notifications": [
+    endpointQueryPrefix("alerts.get_notifications"),
+    endpointQueryPrefix("alerts.list"),
+  ],
   "alerts.test_notifications": [],
 
   "network.set_ipv4": [
@@ -252,6 +264,13 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
   "system.dismiss_failed_login_alert": [
     endpointQueryPrefix("system.get_health_summary"),
   ],
+
+  "assistant.install_plugin": ASSISTANT_PLUGIN_KEYS,
+  "assistant.uninstall_plugin": ASSISTANT_PLUGIN_KEYS,
+  "assistant.set_plugin_enabled": ASSISTANT_PLUGIN_KEYS,
+  "assistant.add_marketplace": ASSISTANT_PLUGIN_KEYS,
+  "assistant.remove_marketplace": ASSISTANT_PLUGIN_KEYS,
+  "assistant.update_marketplace": ASSISTANT_PLUGIN_KEYS,
 
   "datetime.set_timezone": DATETIME_KEYS,
   "datetime.set_ntp": DATETIME_KEYS,

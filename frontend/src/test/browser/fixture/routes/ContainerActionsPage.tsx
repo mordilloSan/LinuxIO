@@ -18,8 +18,23 @@ import {
 } from "@/api";
 import SortableCard from "@/components/cards/SortableCard";
 import AppButton from "@/components/ui/AppButton";
+import { AuthContext, type AuthContextType } from "@/contexts/AuthContext";
 import ContainerCard from "@/routes/_authenticated/docker/-components/cards/ContainerCard";
 import ContainerResourceDetails from "@/routes/_authenticated/docker/-components/containers/ContainerResourceDetails";
+
+const auth: AuthContextType = {
+  isAuthenticated: true,
+  isInitialized: true,
+  method: "session",
+  privileged: true,
+  refreshCapabilities: async () => {
+    throw new Error("not used in fixture");
+  },
+  sessionExpired: () => {},
+  signIn: async () => {},
+  signOut: async () => {},
+  user: { id: "container-fixture", name: "Container Fixture" },
+};
 
 const container: ContainerInfo = {
   Created: 1_788_428_800,
@@ -151,36 +166,38 @@ export default function ContainerActionsPage() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <main style={{ padding: "var(--app-space-24)" }}>
-        <h1>Container lifecycle fixture</h1>
-        {selected ? (
-          <ContainerResourceDetails
-            container={container}
-            onClose={() => setSelected(false)}
-          />
-        ) : (
-          <>
-            <AppButton onClick={() => setSelected(true)} variant="contained">
-              Open container details
-            </AppButton>
-            <DndContext
-              onDragCancel={() => setDragging(false)}
-              onDragEnd={() => setDragging(false)}
-              onDragStart={() => setDragging(true)}
-              sensors={sensors}
-            >
-              <SortableContext items={[container.Id]}>
-                <SortableCard editMode={dragging} id={container.Id}>
-                  <ContainerCard
-                    containerId={container.Id}
-                    onSelect={() => setSelected(true)}
-                  />
-                </SortableCard>
-              </SortableContext>
-            </DndContext>
-          </>
-        )}
-      </main>
+      <AuthContext.Provider value={auth}>
+        <main style={{ padding: "var(--app-space-24)" }}>
+          <h1>Container lifecycle fixture</h1>
+          {selected ? (
+            <ContainerResourceDetails
+              container={container}
+              onClose={() => setSelected(false)}
+            />
+          ) : (
+            <>
+              <AppButton onClick={() => setSelected(true)} variant="contained">
+                Open container details
+              </AppButton>
+              <DndContext
+                onDragCancel={() => setDragging(false)}
+                onDragEnd={() => setDragging(false)}
+                onDragStart={() => setDragging(true)}
+                sensors={sensors}
+              >
+                <SortableContext items={[container.Id]}>
+                  <SortableCard editMode={dragging} id={container.Id}>
+                    <ContainerCard
+                      containerId={container.Id}
+                      onSelect={() => setSelected(true)}
+                    />
+                  </SortableCard>
+                </SortableContext>
+              </DndContext>
+            </>
+          )}
+        </main>
+      </AuthContext.Provider>
     </QueryClientProvider>
   );
 }

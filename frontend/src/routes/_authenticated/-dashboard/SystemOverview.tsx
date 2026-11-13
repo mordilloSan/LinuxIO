@@ -3,6 +3,7 @@ import { useState } from "react";
 
 import { CACHE_TTL_MS, type HostInfo, linuxio } from "@/api";
 import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
+import useAuth from "@/hooks/useAuth";
 import { getDistroIcon } from "@/icons/distro";
 import DashboardCard from "@/routes/_authenticated/-dashboard/DashboardCard";
 
@@ -55,6 +56,8 @@ const OverviewStats = () => {
       ],
     });
 
+  // Setting the hostname or the clock is an admin-only route.
+  const { privileged } = useAuth();
   const [hostnameDialogOpen, setHostnameDialogOpen] = useState(false);
   const [dateTimeDialogOpen, setDateTimeDialogOpen] = useState(false);
 
@@ -62,12 +65,12 @@ const OverviewStats = () => {
     {
       label: "Date / Time",
       value: serverTime ? formatServerTime(serverTime) : "---",
-      onEdit: () => setDateTimeDialogOpen(true),
+      onEdit: privileged ? () => setDateTimeDialogOpen(true) : undefined,
     },
     {
       label: "Hostname",
       value: hostInfo?.hostname ?? "---",
-      onEdit: () => setHostnameDialogOpen(true),
+      onEdit: privileged ? () => setHostnameDialogOpen(true) : undefined,
     },
     {
       label: "Platform",

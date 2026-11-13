@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
 func TestShowVersionFailedProbesAreIndentedAndHaveDeadline(t *testing.T) {
@@ -33,8 +35,11 @@ func TestShowVersionFailedProbesAreIndentedAndHaveDeadline(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, c := range versionProbes {
-		want := "\n  " + c.binary + ": not found or error\n"
+	for _, c := range version.Components {
+		if c.Binary == "linuxio" {
+			continue
+		}
+		want := "\n  " + c.Binary + ": not found or error\n"
 		if !strings.Contains(string(out), want) {
 			t.Errorf("output missing %q:\n%s", want, out)
 		}

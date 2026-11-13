@@ -13,23 +13,23 @@ import (
 // output, `"removed"`, and in add_interface's case the generated *private key* —
 // onto routes whose generated TypeScript is `void`. Every consumer discards the
 // result (`success: (_result: void, variables) => ...`), so the payloads were
-// unreachable by design and, for Task routes, sat in the Task snapshot for
-// DefaultTerminalTaskTTL where tasks.get/tasks.list could read them back.
+// unreachable by design and, for routes run as tasks, sat in the task snapshot
+// for DefaultTerminalTaskTTL where tasks.get/tasks.list could read them back.
 var api = apischema.Bindings(
-	apischema.Call[apischema.NoRequest, []apischema.WireGuardInterface]("wireguard.list_interfaces", apischema.RetrySafe()).Handle(handleListInterfaces),
-	apischema.Call[apischema.WireGuardAddInterfaceRequest, apischema.NoResponse]("wireguard.add_interface").HandleVoid(handleAddInterface),
-	apischema.Call[apischema.WireGuardUpdateInterfaceRequest, apischema.NoResponse]("wireguard.update_interface").HandleVoid(UpdateInterface),
-	apischema.Call[apischema.NameRequest, apischema.NoResponse]("wireguard.remove_interface").HandleVoid(handleRemoveInterface),
-	apischema.Call[apischema.InterfaceNameRequest, []apischema.Peer]("wireguard.list_peers", apischema.RetrySafe()).Handle(handleListPeers),
-	apischema.Call[apischema.WireGuardAddPeerRequest, apischema.NoResponse]("wireguard.add_peer").HandleVoid(handleAddPeer),
-	apischema.Call[apischema.WireGuardUpdatePeerRequest, apischema.NoResponse]("wireguard.update_peer").HandleVoid(UpdatePeer),
-	apischema.Call[apischema.WireGuardPeerRequest, apischema.NoResponse]("wireguard.remove_peer").HandleVoid(RemovePeer),
-	apischema.Call[apischema.WireGuardPeerRequest, apischema.QRCodeResponse]("wireguard.peer_qrcode", apischema.RetrySafe()).Handle(PeerQRCode),
-	apischema.Call[apischema.WireGuardPeerRequest, apischema.PeerConfigDownload]("wireguard.peer_config_download", apischema.RetrySafe()).Handle(PeerConfigDownload),
-	apischema.Call[apischema.NameRequest, apischema.NoResponse]("wireguard.up_interface").HandleVoid(handleUpInterface),
-	apischema.Call[apischema.NameRequest, apischema.NoResponse]("wireguard.down_interface").HandleVoid(handleDownInterface),
-	apischema.Call[apischema.NameRequest, apischema.NoResponse]("wireguard.enable_interface").HandleVoid(handleEnableInterface),
-	apischema.Call[apischema.NameRequest, apischema.NoResponse]("wireguard.disable_interface").HandleVoid(handleDisableInterface),
+	apischema.Call[apischema.NoRequest, []apischema.WireGuardInterface]("wireguard.list_interfaces", apischema.RetrySafe(), apischema.Privileged()).Handle(handleListInterfaces),
+	apischema.MutationVoid("wireguard.add_interface", handleAddInterface, apischema.Privileged()),
+	apischema.MutationVoid("wireguard.update_interface", UpdateInterface, apischema.Privileged()),
+	apischema.MutationVoid("wireguard.remove_interface", handleRemoveInterface, apischema.Privileged()),
+	apischema.Call[apischema.InterfaceNameRequest, []apischema.Peer]("wireguard.list_peers", apischema.RetrySafe(), apischema.Privileged()).Handle(handleListPeers),
+	apischema.MutationVoid("wireguard.add_peer", handleAddPeer, apischema.Privileged()),
+	apischema.MutationVoid("wireguard.update_peer", UpdatePeer, apischema.Privileged()),
+	apischema.MutationVoid("wireguard.remove_peer", RemovePeer, apischema.Privileged()),
+	apischema.Call[apischema.WireGuardPeerRequest, apischema.QRCodeResponse]("wireguard.peer_qrcode", apischema.RetrySafe(), apischema.Privileged()).Handle(PeerQRCode),
+	apischema.Call[apischema.WireGuardPeerRequest, apischema.PeerConfigDownload]("wireguard.peer_config_download", apischema.RetrySafe(), apischema.Privileged()).Handle(PeerConfigDownload),
+	apischema.MutationVoid("wireguard.up_interface", handleUpInterface, apischema.Privileged()),
+	apischema.MutationVoid("wireguard.down_interface", handleDownInterface, apischema.Privileged()),
+	apischema.MutationVoid("wireguard.enable_interface", handleEnableInterface, apischema.Privileged()),
+	apischema.MutationVoid("wireguard.disable_interface", handleDisableInterface, apischema.Privileged()),
 )
 
 var Routes = api.Routes()

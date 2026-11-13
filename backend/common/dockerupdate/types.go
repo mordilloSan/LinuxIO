@@ -1,8 +1,8 @@
 // Package dockerupdate is the Docker image-update engine: update checks, the
 // standalone and Compose replacement flows, the scheduled runner and its
-// systemd timer, the durable worker entry point and the files they persist.
-// It is shared by the bridge (which launches and observes the worker) and the
-// root-sandboxed linuxio-docker-update binary (which runs it), so it imports
+// systemd timer, and the files they persist. It is shared by the bridge (whose
+// docker.update_container job calls UpdateContainerWait) and the root-sandboxed
+// linuxio-docker-update binary (which runs the scheduled pass), so it imports
 // only common packages. The bridge re-exports the wire types below from
 // bridge/apischema as aliases; the generated frontend contract names them by
 // their Go type name, so renaming one is a contract change.
@@ -18,16 +18,25 @@ const (
 	DockerUpdateCheckStateError       DockerUpdateCheckState = "error"
 )
 
-type DockerContainerAutoUpdateOptions struct {
+// DockerContainerAutoUpdateSettings is every saved scheduled-update option.
+// It is embedded in the wire type below and in the on-disk document, so a new
+// saved option is one field here.
+type DockerContainerAutoUpdateSettings struct {
 	Cleanup        bool                          `json:"cleanup"`
 	ContainerNames []string                      `json:"container_names"`
-	Enabled        bool                          `json:"enabled"`
 	IncludeStopped bool                          `json:"include_stopped"`
 	Mode           DockerContainerAutoUpdateMode `json:"mode"`
 	ReviveStopped  bool                          `json:"revive_stopped"`
 	Time           string                        `json:"time"`
 	UpdateAll      bool                          `json:"update_all"`
 	UpdateStopped  bool                          `json:"update_stopped"`
+}
+
+// DockerContainerAutoUpdateOptions adds Enabled, which reports whether the
+// systemd timer is on and is never saved.
+type DockerContainerAutoUpdateOptions struct {
+	DockerContainerAutoUpdateSettings
+	Enabled bool `json:"enabled"`
 }
 
 type DockerContainerAutoUpdateTarget struct {
@@ -50,14 +59,14 @@ type DockerContainerAutoUpdateState struct {
 	TimerEnabled          bool                              `json:"timer_enabled"`
 }
 
-// DockerContainerUpdateRequest identifies one durable native Docker update.
-// RunID is allocated by the client before the request so a retry after bridge
-// loss can reclaim the same persisted operation instead of starting another
-// mutation.
+// DockerContainerUpdateRequest names the container one update replaces.
 type DockerContainerUpdateRequest struct {
 	ContainerID string `json:"containerId"`
-	RunID       string `json:"runId"`
 }
+
+// Target makes the container the job's target, so a second update of the
+// same container is refused while one runs.
+func (r DockerContainerUpdateRequest) Target() []string { return []string{r.ContainerID} }
 
 type DockerUpdateCheckResult struct {
 	Checked     int `json:"checked"`

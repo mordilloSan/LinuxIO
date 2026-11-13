@@ -1,4 +1,4 @@
-import type { FileExtractRequest, Stream } from "@/api";
+import type { FileExtractRequest, FileUploadOwner, Stream } from "@/api";
 
 // A copy/move operates on a whole selection in one batch task. `destination` is
 // the target directory; each source keeps its basename.
@@ -99,7 +99,20 @@ export interface Move extends ByteTrackedTaskItem<"move"> {
   source: string;
 }
 
+/** A page in the app, with its search parameters. */
+export interface BackgroundTaskLink {
+  to: string;
+  search?: Record<string, string>;
+}
+
 export interface BackgroundTask extends TrackedTaskItem<"task"> {
+  /**
+   * The job's cancel was requested, here or elsewhere. It keeps running
+   * until its handler returns, so the row stays until the job ends.
+   */
+  cancelRequested?: boolean;
+  /** A scheduled run: no cancel here; the row opens this page. */
+  link?: BackgroundTaskLink;
   taskType: string;
   processed?: number;
 }
@@ -144,6 +157,8 @@ export interface BackgroundTaskActions {
     overwrite?: boolean,
     // Manifest-relative paths that land under a unique "name (copy)".
     keepBoth?: string[],
+    // "session" hands what the upload creates to the session user.
+    owner?: FileUploadOwner,
   ) => Promise<{
     uploaded: number;
     failures: { path: string; message: string }[];

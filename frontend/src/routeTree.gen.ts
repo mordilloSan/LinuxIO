@@ -16,6 +16,7 @@ import { Route as AuthenticatedAccountsRouteRouteImport } from './routes/_authen
 import { Route as AuthenticatedAssistantRouteRouteImport } from './routes/_authenticated/assistant/route'
 import { Route as AuthenticatedDockerRouteRouteImport } from './routes/_authenticated/docker/route'
 import { Route as AuthenticatedHardwareRouteRouteImport } from './routes/_authenticated/hardware/route'
+import { Route as AuthenticatedHistoryRouteRouteImport } from './routes/_authenticated/history/route'
 import { Route as AuthenticatedLogsRouteRouteImport } from './routes/_authenticated/logs/route'
 import { Route as AuthenticatedNetworkRouteRouteImport } from './routes/_authenticated/network/route'
 import { Route as AuthenticatedServicesRouteRouteImport } from './routes/_authenticated/services/route'
@@ -95,6 +96,12 @@ const AuthenticatedHardwareRouteRoute =
   AuthenticatedHardwareRouteRouteImport.update({
     id: '/hardware',
     path: '/hardware',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedHistoryRouteRoute =
+  AuthenticatedHistoryRouteRouteImport.update({
+    id: '/history',
+    path: '/history',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
 const AuthenticatedLogsRouteRoute = AuthenticatedLogsRouteRouteImport.update({
@@ -349,6 +356,7 @@ export interface FileRoutesByFullPath {
   '/assistant': typeof AuthenticatedAssistantRouteRoute
   '/docker': typeof AuthenticatedDockerRouteRouteWithChildren
   '/hardware': typeof AuthenticatedHardwareRouteRoute
+  '/history': typeof AuthenticatedHistoryRouteRoute
   '/logs': typeof AuthenticatedLogsRouteRoute
   '/network': typeof AuthenticatedNetworkRouteRouteWithChildren
   '/services': typeof AuthenticatedServicesRouteRouteWithChildren
@@ -396,6 +404,7 @@ export interface FileRoutesByTo {
   '/sign-in': typeof SignInRouteRoute
   '/assistant': typeof AuthenticatedAssistantRouteRoute
   '/hardware': typeof AuthenticatedHardwareRouteRoute
+  '/history': typeof AuthenticatedHistoryRouteRoute
   '/logs': typeof AuthenticatedLogsRouteRoute
   '/settings': typeof AuthenticatedSettingsRouteRoute
   '/terminal': typeof AuthenticatedTerminalRouteRoute
@@ -442,6 +451,7 @@ export interface FileRoutesById {
   '/_authenticated/assistant': typeof AuthenticatedAssistantRouteRoute
   '/_authenticated/docker': typeof AuthenticatedDockerRouteRouteWithChildren
   '/_authenticated/hardware': typeof AuthenticatedHardwareRouteRoute
+  '/_authenticated/history': typeof AuthenticatedHistoryRouteRoute
   '/_authenticated/logs': typeof AuthenticatedLogsRouteRoute
   '/_authenticated/network': typeof AuthenticatedNetworkRouteRouteWithChildren
   '/_authenticated/services': typeof AuthenticatedServicesRouteRouteWithChildren
@@ -495,6 +505,7 @@ export interface FileRouteTypes {
     | '/assistant'
     | '/docker'
     | '/hardware'
+    | '/history'
     | '/logs'
     | '/network'
     | '/services'
@@ -542,6 +553,7 @@ export interface FileRouteTypes {
     | '/sign-in'
     | '/assistant'
     | '/hardware'
+    | '/history'
     | '/logs'
     | '/settings'
     | '/terminal'
@@ -587,6 +599,7 @@ export interface FileRouteTypes {
     | '/_authenticated/assistant'
     | '/_authenticated/docker'
     | '/_authenticated/hardware'
+    | '/_authenticated/history'
     | '/_authenticated/logs'
     | '/_authenticated/network'
     | '/_authenticated/services'
@@ -686,6 +699,13 @@ declare module '@tanstack/react-router' {
       path: '/hardware'
       fullPath: '/hardware'
       preLoaderRoute: typeof AuthenticatedHardwareRouteRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/history': {
+      id: '/_authenticated/history'
+      path: '/history'
+      fullPath: '/history'
+      preLoaderRoute: typeof AuthenticatedHistoryRouteRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/logs': {
@@ -1150,6 +1170,7 @@ interface AuthenticatedRouteChildren {
   AuthenticatedAssistantRouteRoute: typeof AuthenticatedAssistantRouteRoute
   AuthenticatedDockerRouteRoute: typeof AuthenticatedDockerRouteRouteWithChildren
   AuthenticatedHardwareRouteRoute: typeof AuthenticatedHardwareRouteRoute
+  AuthenticatedHistoryRouteRoute: typeof AuthenticatedHistoryRouteRoute
   AuthenticatedLogsRouteRoute: typeof AuthenticatedLogsRouteRoute
   AuthenticatedNetworkRouteRoute: typeof AuthenticatedNetworkRouteRouteWithChildren
   AuthenticatedServicesRouteRoute: typeof AuthenticatedServicesRouteRouteWithChildren
@@ -1167,6 +1188,7 @@ const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedAssistantRouteRoute: AuthenticatedAssistantRouteRoute,
   AuthenticatedDockerRouteRoute: AuthenticatedDockerRouteRouteWithChildren,
   AuthenticatedHardwareRouteRoute: AuthenticatedHardwareRouteRoute,
+  AuthenticatedHistoryRouteRoute: AuthenticatedHistoryRouteRoute,
   AuthenticatedLogsRouteRoute: AuthenticatedLogsRouteRoute,
   AuthenticatedNetworkRouteRoute: AuthenticatedNetworkRouteRouteWithChildren,
   AuthenticatedServicesRouteRoute: AuthenticatedServicesRouteRouteWithChildren,

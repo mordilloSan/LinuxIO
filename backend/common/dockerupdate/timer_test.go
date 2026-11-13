@@ -11,6 +11,7 @@ import (
 
 	"github.com/moby/moby/api/types/container"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
@@ -20,12 +21,12 @@ func TestApplyContainerAutoUpdateEnablesNativeTimerAndWritesFiles(t *testing.T) 
 	opts := DockerContainerAutoUpdateOptions{
 		Cleanup:        true,
 		ContainerNames: []string{"app.service", "redis"},
-		Enabled:        true,
 		IncludeStopped: true,
 		Mode:           "check_only",
 		ReviveStopped:  true,
 		Time:           "06:15",
 		UpdateStopped:  true,
+		Enabled:        true,
 	}
 
 	if err := applyContainerAutoUpdate(context.Background(), store, ops.ops(), opts); err != nil {
@@ -39,7 +40,7 @@ func TestApplyContainerAutoUpdateEnablesNativeTimerAndWritesFiles(t *testing.T) 
 	if document.Version != dockerUpdateConfigVersion || document.Mode != "check_only" || !document.Cleanup || !document.IncludeStopped || !document.UpdateStopped || !document.ReviveStopped || !reflect.DeepEqual(document.ContainerNames, []string{"app.service", "redis"}) {
 		t.Fatalf("config = %+v", document)
 	}
-	if timer := readTestFile(t, store.timerPath); !strings.Contains(timer, "OnCalendar=*-*-* 06:15:00") || !strings.Contains(timer, "Unit="+dockerUpdateUnitName) {
+	if timer := readTestFile(t, store.timerPath); !strings.Contains(timer, "OnCalendar=*-*-* 06:15:00") || !strings.Contains(timer, "RandomizedDelaySec=1m\n") || !strings.Contains(timer, "Unit="+dockerUpdateUnitName) {
 		t.Fatalf("timer file did not render schedule:\n%s", timer)
 	}
 	unit := readTestFile(t, store.unitPath)
@@ -60,9 +61,9 @@ func TestApplyContainerAutoUpdateDisablesNativeTimer(t *testing.T) {
 	store := testAutoUpdateStore(t)
 	ops := newRecordingContainerUpdateOps()
 	opts := DockerContainerAutoUpdateOptions{
-		Enabled: false,
 		Mode:    "update",
 		Time:    "04:00",
+		Enabled: false,
 	}
 
 	if err := applyContainerAutoUpdate(context.Background(), store, ops.ops(), opts); err != nil {
@@ -237,5 +238,16 @@ func TestRenderDockerUpdateUnitDerivesFromWorkerUnit(t *testing.T) {
 		if !strings.Contains(unit, want) {
 			t.Errorf("unit file is missing %q:\n%s", want, unit)
 		}
+	}
+	// The scheduled run hooks live in the packaged drop-in
+	// (linuxio-run-record.conf), never in the rendered unit.
+	if strings.Contains(unit, "scheduled-run") {
+		t.Errorf("rendered unit carries a run hook:\n%s", unit)
+	}
+}
+
+func TestScheduledRunKnowsTheDockerUpdateUnit(t *testing.T) {
+	if kind, ok := scheduledrun.KindOf(dockerUpdateUnitName, ""); !ok || kind.Route != scheduledrun.RouteDockerUpdate {
+		t.Errorf("KindOf(%q) = %+v, %v", dockerUpdateUnitName, kind, ok)
 	}
 }

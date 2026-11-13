@@ -25,9 +25,9 @@ const (
 	OpStreamAbort    byte = 0x86 // Abort operation: client requests cancellation
 )
 
-// maxRelayPayloadSize is the maximum allowed payload for a single relay frame.
+// MaxRelayPayloadSize is the maximum allowed payload for a single relay frame.
 // Matches the cap enforced by ReadRelayFrame (16 MiB).
-const maxRelayPayloadSize = 16 * 1024 * 1024
+const MaxRelayPayloadSize = 16 * 1024 * 1024
 const relayFrameHeaderSize = 9
 const firstFrameReadChunkSize = 32 * 1024
 
@@ -51,7 +51,7 @@ type StreamFrameHeader struct {
 // It enforces the protocol-level maximum payload size for a single relay frame.
 func checkPayloadSize(payload []byte) (int, error) {
 	payloadLen := len(payload)
-	if payloadLen > maxRelayPayloadSize {
+	if payloadLen > MaxRelayPayloadSize {
 		return 0, fmt.Errorf("write frame: payload too large (%d bytes)", payloadLen)
 	}
 	return payloadLen, nil
@@ -98,7 +98,7 @@ func ReadRelayFrameHeader(r io.Reader) (StreamFrameHeader, error) {
 		StreamID:      binary.BigEndian.Uint32(raw[1:5]),
 		PayloadLength: binary.BigEndian.Uint32(raw[5:9]),
 	}
-	if header.PayloadLength > maxRelayPayloadSize {
+	if header.PayloadLength > MaxRelayPayloadSize {
 		return StreamFrameHeader{}, fmt.Errorf("payload too large: %d bytes", header.PayloadLength)
 	}
 	return header, nil
@@ -107,7 +107,7 @@ func ReadRelayFrameHeader(r io.Reader) (StreamFrameHeader, error) {
 // ReadRelayFramePayload reads the payload described by a previously validated
 // header and returns the complete frame.
 func ReadRelayFramePayload(r io.Reader, header StreamFrameHeader) (*StreamFrame, error) {
-	if header.PayloadLength > maxRelayPayloadSize {
+	if header.PayloadLength > MaxRelayPayloadSize {
 		return nil, fmt.Errorf("payload too large: %d bytes", header.PayloadLength)
 	}
 	f := &StreamFrame{Opcode: header.Opcode, StreamID: header.StreamID}
@@ -159,6 +159,8 @@ func ReadRelayFrameProgressive(r io.Reader) (*StreamFrame, error) {
 type StreamOpenEnvelope struct {
 	Route   string         `json:"route"`
 	Request jsontext.Value `json:"request"`
+	// ID is the client-chosen job ID of a Mutation route.
+	ID string `json:"id,omitzero"`
 }
 
 // ParseStreamOpenPayload parses the payload of an OpStreamOpen frame.

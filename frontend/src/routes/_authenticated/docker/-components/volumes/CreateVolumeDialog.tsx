@@ -1,6 +1,6 @@
 import { useState, type SyntheticEvent } from "react";
 
-import { linuxio, useCallMutation } from "@/api";
+import { linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
 import {
@@ -43,17 +43,15 @@ export const CreateVolumeDialog = ({
   const nameTaken = existingNames.includes(trimmedName);
   const nameInvalid =
     trimmedName !== "" && !DOCKER_RESOURCE_NAME.test(trimmedName);
-  const { mutate: createVolume, isPending } = useCallMutation(
-    linuxio.docker.create_volume,
-    {
+  const { mutate: createVolume, isPending } =
+    linuxio.docker.create_volume.useMutation({
       success: () => {
         toast.success(`Volume "${trimmedName}" created`);
         closeDialog();
       },
       error: "Failed to create volume",
       toast: DOCKER_TOAST_META,
-    },
-  );
+    });
 
   const closeDialog = () => {
     setName("");

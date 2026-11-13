@@ -144,8 +144,12 @@ func validateOptions(options AutoUpdateOptions, support AutoUpdateOptionSupport)
 	if !slices.Contains(support.RebootPolicies, options.RebootPolicy) {
 		return fmt.Errorf("reboot policy %q is not supported by this update backend", options.RebootPolicy)
 	}
+	// "never" is offered by no backend but still saved: an older page sends it.
 	if options.Notify != "" && options.Notify != AutoUpdateNotifyNever && !slices.Contains(support.NotifyPolicies, options.Notify) {
 		return fmt.Errorf("notify policy %q is not supported by this update backend", options.Notify)
+	}
+	if options.NotifyAvailable && !support.NotifyAvailable {
+		return fmt.Errorf("pending update notifications are not supported by this update backend")
 	}
 	if options.DownloadOnly && !support.DownloadOnly {
 		return fmt.Errorf("download-only mode is not supported by this update backend")

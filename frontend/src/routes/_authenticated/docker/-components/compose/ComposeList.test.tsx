@@ -102,6 +102,7 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 
 vi.mock("../shared/DockerUpdateOperationProvider", () => ({
   useDockerUpdateOperation: () => ({
+    canUpdate: true,
     isUpdating: () => false,
     startUpdate: mocks.startUpdate,
     updating: false,
@@ -127,7 +128,7 @@ describe("ComposeList expanded-container mutation feedback", () => {
   it("keeps action progress scoped to each expanded container", async () => {
     const restarting = createDeferred<void>();
     mocks.startUpdate.mockReset();
-    vi.spyOn(core, "request").mockImplementation(
+    vi.spyOn(core, "mutationRequest").mockImplementation(
       (_handler, command, request) => {
         const containerId = (request as { containerId?: string }).containerId;
         if (command === "restart_container" && containerId === beta.Id) {
@@ -144,6 +145,7 @@ describe("ComposeList expanded-container mutation feedback", () => {
         onStop={noopName}
         projects={[project]}
       />,
+      { auth: { privileged: true } },
     );
 
     await user.click(screen.getByRole("button", { name: "Expand row" }));
@@ -251,5 +253,33 @@ describe("ComposeList expanded-container mutation feedback", () => {
     expect(
       screen.queryByRole("button", { name: "Expand row" }),
     ).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [false, ["Edit", "Restart", "Stop", "Delete"]],
+    [true, ["View"]],
+  ] as const)("offers a stack's actions (readOnly: %s)", (readOnly, labels) => {
+    render(
+      <ComposeList
+        onDelete={noopProject}
+        onEdit={noopName}
+        onRestart={noopName}
+        onStart={noopName}
+        onStop={noopName}
+        projects={[project]}
+        readOnly={readOnly}
+        viewMode="card"
+      />,
+      { auth: { privileged: !readOnly } },
+    );
+
+    for (const name of ["Edit", "View", "Start", "Restart", "Stop", "Delete"]) {
+      const button = screen.queryByRole("button", { name });
+      if ((labels as readonly string[]).includes(name)) {
+        expect(button).toBeInTheDocument();
+      } else {
+        expect(button).not.toBeInTheDocument();
+      }
+    }
   });
 });

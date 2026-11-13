@@ -134,6 +134,7 @@ export const topologyLive = (timestamp = Date.now()): MonitoringLive => ({
     swap_free_bytes: 0,
     zfs_arc_bytes: 0,
     docker_used_bytes: 0,
+    vm_used_bytes: 0,
   },
   disks: {},
   disk_io: {

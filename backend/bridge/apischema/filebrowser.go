@@ -111,6 +111,21 @@ type TrashEntry struct {
 	DeletedAt    string `json:"deletedAt"`    // RFC 3339; empty when unknown
 	IsDir        bool   `json:"isDir"`
 	Size         int64  `json:"size"`
+	// ConfirmRestore is set when LinuxIO has no record of moving the item to
+	// the trash (another program did) and restoring it to OriginalPath goes
+	// into a folder the session user does not own: filebrowser.trash_restore
+	// then needs OriginalPath in ConfirmedDestinations.
+	ConfirmRestore bool `json:"confirmRestore"`
+}
+
+// TrashRestoreRequest restores trashed items. ConfirmedDestinations holds,
+// by the item's path in Paths, the original path the user confirmed restoring
+// it to, for items LinuxIO has no record of trashing whose restore goes into
+// a folder the user does not own (see TrashEntry.ConfirmRestore); such a
+// restore without its own destination here is refused.
+type TrashRestoreRequest struct {
+	Paths                 []string          `json:"paths"`
+	ConfirmedDestinations map[string]string `json:"confirmedDestinations,omitzero"`
 }
 
 type TrashListResponse struct {
@@ -168,11 +183,27 @@ type FileSearchRequest struct {
 	BasePath *string `json:"basePath,omitzero"`
 }
 
+// FileUploadOwner names who the entries an upload creates belong to. The only
+// value is "session": the bridge takes the ids from the authenticated
+// session, never from the request.
+type FileUploadOwner string
+
 type FileUploadRequest struct {
 	TargetPath      string  `json:"targetPath"`
 	Size            string  `json:"size"`
 	Overwrite       *bool   `json:"overwrite,omitzero"`
 	ExpectedVersion *string `json:"expectedVersion,omitzero"`
+	// Owner "session" makes a root bridge hand the new file (0644), and the
+	// folders the upload creates (0755), to the session user, but only inside
+	// a folder that user already owns; in a setgid folder they keep the
+	// inherited group. Unset, a root bridge keeps them root-owned. An
+	// overwritten file always keeps its owner and mode. Set, a symbolic link
+	// at the target is refused (409) instead of written through, as an
+	// upload without owner does.
+	Owner FileUploadOwner `json:"owner,omitempty"`
+	// Private creates a new file readable only by its owner (0600), for files
+	// such as a Compose .env that may hold secrets.
+	Private *bool `json:"private,omitzero"`
 }
 
 // FileUploadBatchEntry is one file in a batch upload manifest. Path is
@@ -202,4 +233,8 @@ type FileUploadBatchRequest struct {
 	// KeepBoth lists manifest paths that land under a unique name when their
 	// destination already exists, instead of being skipped or replaced.
 	KeepBoth []string `json:"keepBoth,omitempty"`
+	// Owner and Private apply to every file and folder the batch creates,
+	// as they do for FileUploadRequest.
+	Owner   FileUploadOwner `json:"owner,omitempty"`
+	Private *bool           `json:"private,omitzero"`
 }

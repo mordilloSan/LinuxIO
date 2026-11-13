@@ -1,0 +1,1918 @@
+package jobshost
+
+import (
+	"context"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
+	"errors"
+	"fmt"
+	"math"
+	"net"
+	"os"
+	"path/filepath"
+	"slices"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
+	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
+	"github.com/mordilloSan/LinuxIO/backend/common/jobs"
+	"github.com/mordilloSan/LinuxIO/backend/common/peercred"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
+)
+
+const (
+	jobA = "00000000-0000-4000-8000-00000000000a"
+	jobB = "00000000-0000-4000-8000-00000000000b"
+	jobC = "00000000-0000-4000-8000-00000000000c"
+	jobD = "00000000-0000-4000-8000-00000000000d"
+	jobE = "00000000-0000-4000-8000-00000000000e"
+
+	ioTimeout = 5 * time.Second
+)
+
+// testHost serves a router whose "test.job" mutation waits for an outcome on
+// release: nil completes it with {"ok":true}, an error fails it.
+type testHost struct {
+	t        *testing.T
+	cfg      Config
+	host     *Host
+	release  chan error
+	runs     atomic.Int32
+	notified chan string
+	cancel   context.CancelFunc
+	served   chan error
+
+	mu     sync.Mutex
+	alerts []alerts.Observation
+
+	waitOnce sync.Once
+	serveErr error
+}
+
+func newTestHost(t *testing.T, configure func(*Config)) *testHost {
+	t.Helper()
+	dir := t.TempDir()
+	tasks := bridgeipc.NewTaskService()
+	th := &testHost{
+		t:        t,
+		release:  make(chan error),
+		notified: make(chan string, 8),
+		served:   make(chan error, 1),
+	}
+	router := bridgeipc.NewRouter(tasks)
+	router.Mutation("test.job", th.run)
+	th.cfg = Config{
+		UID:        uint32(os.Getuid()),
+		GID:        uint32(os.Getgid()),
+		Username:   "alice",
+		SocketPath: filepath.Join(dir, "host.sock"),
+		Store:      jobs.NewStore(filepath.Join(dir, "state"), filepath.Join(dir, "run")),
+		Router:     router,
+		Tasks:      tasks,
+		IdleExit:   time.Hour,
+		MaxRunning: 256,
+		Notify: func(state string) error {
+			th.notified <- state
+			return nil
+		},
+		Alert: func(_ context.Context, obs alerts.Observation) error {
+			th.mu.Lock()
+			defer th.mu.Unlock()
+			th.alerts = append(th.alerts, obs)
+			return nil
+		},
+		ResolveAlert: func(_ context.Context, source, key string) error {
+			th.mu.Lock()
+			defer th.mu.Unlock()
+			th.alerts = slices.DeleteFunc(th.alerts, func(obs alerts.Observation) bool { return obs.Source == source && obs.Key == key })
+			return nil
+		},
+		Now: time.Now,
+	}
+	if configure != nil {
+		configure(&th.cfg)
+	}
+	th.host = newHost(th.cfg)
+	return th
+}
+
+func (th *testHost) run(ctx context.Context, _ *bridgeipc.Task, _ any) (any, error) {
+	th.runs.Add(1)
+	select {
+	case err := <-th.release:
+		if err != nil {
+			return nil, err
+		}
+		return map[string]bool{"ok": true}, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func (th *testHost) start() {
+	th.t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	th.cancel = cancel
+	go func() { th.served <- th.host.serve(ctx) }()
+	th.t.Cleanup(func() { _ = th.stop() })
+	th.waitNotify("READY=1")
+}
+
+// stop cancels Serve, as SIGTERM does, and returns its result.
+func (th *testHost) stop() error {
+	th.cancel()
+	return th.wait()
+}
+
+func (th *testHost) wait() error {
+	th.waitOnce.Do(func() {
+		select {
+		case th.serveErr = <-th.served:
+		case <-time.After(ioTimeout):
+			th.serveErr = errors.New("Serve did not return")
+		}
+	})
+	return th.serveErr
+}
+
+func (th *testHost) waitNotify(want string) {
+	th.t.Helper()
+	select {
+	case got := <-th.notified:
+		if got != want {
+			th.t.Fatalf("notify = %q, want %q", got, want)
+		}
+	case <-time.After(ioTimeout):
+		th.t.Fatalf("no %q notification", want)
+	}
+}
+
+func (th *testHost) observed() []alerts.Observation {
+	th.mu.Lock()
+	defer th.mu.Unlock()
+	return slices.Clone(th.alerts)
+}
+
+func (th *testHost) record(id string) jobs.Record {
+	th.t.Helper()
+	record, err := th.cfg.Store.Get(context.Background(), id)
+	if err != nil {
+		th.t.Fatalf("Store.Get(%s): %v", id, err)
+	}
+	return record
+}
+
+func (th *testHost) dial() *relay.YamuxSession {
+	th.t.Helper()
+	conn, err := net.Dial("unix", th.cfg.SocketPath)
+	if err != nil {
+		th.t.Fatalf("dial host: %v", err)
+	}
+	sess, err := relay.NewYamuxClient(conn)
+	if err != nil {
+		th.t.Fatalf("NewYamuxClient: %v", err)
+	}
+	th.t.Cleanup(func() { _ = sess.Close() })
+	return sess
+}
+
+// connect dials and says hello as a bridge claiming another uid.
+func (th *testHost) connect() *relay.YamuxSession {
+	th.t.Helper()
+	sess := th.dial()
+	result := hello(th.t, sess, jobs.Protocol)
+	var answer bridgeipc.Hello
+	if result.Status != "ok" || json.Unmarshal(result.Data, &answer) != nil || answer.Protocol != jobs.Protocol {
+		th.t.Fatalf("hello result = %#v, want ok with protocol %d", result, jobs.Protocol)
+	}
+	return sess
+}
+
+// startJob opens a mutation stream and returns it after the task snapshot.
+func (th *testHost) startJob(sess *relay.YamuxSession, route, id string) net.Conn {
+	th.t.Helper()
+	stream := openStream(th.t, sess, route, struct{}{}, id)
+	if snapshot := readSnapshot(th.t, stream); snapshot.ID != id {
+		th.t.Fatalf("snapshot id = %q, want %q", snapshot.ID, id)
+	}
+	return stream
+}
+
+func hello(t *testing.T, sess *relay.YamuxSession, protocol int) relay.ResultFrame {
+	t.Helper()
+	stream := openStream(t, sess, bridgeipc.HelloRoute, bridgeipc.Hello{
+		Protocol: protocol,
+		Session:  bridgeipc.HelloSession{Username: "alice", UID: 4242, GID: 4243, Privileged: true, SessionRef: "ref-1"},
+	}, "")
+	defer stream.Close()
+	return readResult(t, stream)
+}
+
+func openStream(t *testing.T, sess *relay.YamuxSession, route string, request any, id string) net.Conn {
+	t.Helper()
+	stream, err := sess.Open(context.Background())
+	if err != nil {
+		t.Fatalf("open stream: %v", err)
+	}
+	t.Cleanup(func() { _ = stream.Close() })
+	raw, err := json.Marshal(request)
+	if err != nil {
+		t.Fatalf("json.Marshal(request): %v", err)
+	}
+	payload, err := json.Marshal(relay.StreamOpenEnvelope{Route: route, Request: raw, ID: id})
+	if err != nil {
+		t.Fatalf("json.Marshal(open): %v", err)
+	}
+	if err := relay.WriteRelayFrame(stream, &relay.StreamFrame{Opcode: relay.OpStreamOpen, Payload: payload}); err != nil {
+		t.Fatalf("write stream open: %v", err)
+	}
+	return stream
+}
+
+func readFrame(t *testing.T, conn net.Conn, want byte) []byte {
+	t.Helper()
+	_ = conn.SetReadDeadline(time.Now().Add(ioTimeout))
+	frame, err := relay.ReadRelayFrame(conn)
+	if err != nil {
+		t.Fatalf("ReadRelayFrame: %v", err)
+	}
+	if frame.Opcode != want {
+		t.Fatalf("opcode = 0x%02x, want 0x%02x (payload %s)", frame.Opcode, want, frame.Payload)
+	}
+	return frame.Payload
+}
+
+func readSnapshot(t *testing.T, conn net.Conn) bridgeipc.TaskSnapshot {
+	t.Helper()
+	var event struct {
+		Type bridgeipc.TaskEventType `json:"type"`
+		Task bridgeipc.TaskSnapshot  `json:"task"`
+	}
+	if err := json.Unmarshal(readFrame(t, conn, relay.OpStreamProgress), &event); err != nil {
+		t.Fatalf("json.Unmarshal(snapshot): %v", err)
+	}
+	if event.Type != bridgeipc.TaskEventSnapshot {
+		t.Fatalf("first frame type = %q, want %q", event.Type, bridgeipc.TaskEventSnapshot)
+	}
+	return event.Task
+}
+
+func readResult(t *testing.T, conn net.Conn) relay.ResultFrame {
+	t.Helper()
+	var result relay.ResultFrame
+	if err := json.Unmarshal(readFrame(t, conn, relay.OpStreamResult), &result); err != nil {
+		t.Fatalf("json.Unmarshal(result): %v", err)
+	}
+	readFrame(t, conn, relay.OpStreamClose)
+	return result
+}
+
+func compact(t *testing.T, value jsontext.Value) string {
+	t.Helper()
+	value = value.Clone()
+	if err := value.Compact(); err != nil {
+		t.Fatalf("compact %s: %v", value, err)
+	}
+	return string(value)
+}
+
+func waitFor(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(ioTimeout)
+	for !cond() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for %s", what)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+// asUserHost makes a host a user's, uid 1000, with its peers that uid, so a
+// user-host test holds when it runs as root.
+func asUserHost(c *Config) {
+	c.UID, c.GID = 1000, 1000
+	c.Peer = func(*net.UnixConn) (peercred.Cred, error) { return peercred.Cred{UID: 1000}, nil }
+}
+
+func TestHostServesMutationOverYamuxAndRecords(t *testing.T) {
+	th := newTestHost(t, asUserHost)
+	th.start()
+	sess := th.connect()
+	if bridges, _ := th.host.counts(); bridges != 1 {
+		t.Fatalf("bridges after hello = %d, want 1", bridges)
+	}
+
+	quick := th.startJob(sess, "test.job", jobA)
+	record := th.record(jobA)
+	pidStart, err := jobs.ProcessStart(int32(os.Getpid()))
+	if err != nil {
+		t.Fatalf("ProcessStart: %v", err)
+	}
+	boot, err := jobs.BootID()
+	if err != nil {
+		t.Fatalf("BootID: %v", err)
+	}
+	wantExecutor := jobs.Executor{Kind: "host", PID: int32(os.Getpid()), PIDStart: pidStart, BootID: boot}
+	if record.State != jobs.StateRunning || record.Route != "test.job" || record.Executor != wantExecutor ||
+		record.Protocol != jobs.Protocol || compact(t, record.Request) != `{}` {
+		t.Fatalf("running record = %#v, want a running host record of the request", record)
+	}
+	// A user host records its own uid, never the one the hello claims.
+	if record.Owner != (jobs.Owner{UID: th.cfg.UID, GID: th.cfg.GID, Username: "alice"}) {
+		t.Fatalf("record owner = %#v, want uid %d and gid %d from the host", record.Owner, th.cfg.UID, th.cfg.GID)
+	}
+	if _, running := th.host.counts(); running != 1 {
+		t.Fatalf("running = %d, want 1", running)
+	}
+
+	th.release <- nil
+	if result := readResult(t, quick); result.Status != "ok" || string(result.Data) != `{"ok":true}` {
+		t.Fatalf("result = %#v, want ok with {\"ok\":true}", result)
+	}
+	if _, err := th.cfg.Store.Get(context.Background(), jobA); !errors.Is(err, jobs.ErrNotFound) {
+		t.Fatalf("Store.Get(job under 1 s) error = %v, want ErrNotFound", err)
+	}
+
+	slow := th.startJob(sess, "test.job", jobB)
+	time.Sleep(jobs.TransientMaxDuration + 100*time.Millisecond)
+	th.release <- nil
+	readResult(t, slow)
+	record = th.record(jobB)
+	if record.State != jobs.StateCompleted || compact(t, record.Result) != `{"ok":true}` || record.FinishedAt.IsZero() {
+		t.Fatalf("finished record = %#v, want completed with the result", record)
+	}
+	if _, running := th.host.counts(); running != 0 {
+		t.Fatalf("running after both jobs = %d, want 0", running)
+	}
+}
+
+func TestHostRejectsWrongPeerUID(t *testing.T) {
+	var asked atomic.Int32
+	th := newTestHost(t, func(cfg *Config) {
+		cfg.Peer = func(*net.UnixConn) (peercred.Cred, error) {
+			asked.Add(1)
+			return peercred.Cred{UID: cfg.UID + 1}, nil
+		}
+	})
+	th.start()
+
+	conn, err := net.Dial("unix", th.cfg.SocketPath)
+	if err != nil {
+		t.Fatalf("dial host: %v", err)
+	}
+	defer conn.Close()
+	// Nothing is written: the host must close without waiting for a hello.
+	_ = conn.SetReadDeadline(time.Now().Add(ioTimeout))
+	if n, err := conn.Read(make([]byte, 1)); n != 0 || err == nil || errors.Is(err, os.ErrDeadlineExceeded) {
+		t.Fatalf("read from refused connection = %d, %v; want it closed", n, err)
+	}
+	if asked.Load() != 1 {
+		t.Fatalf("peer credentials read %d times, want 1", asked.Load())
+	}
+	if bridges, _ := th.host.counts(); bridges != 0 {
+		t.Fatalf("bridges = %d, want 0", bridges)
+	}
+}
+
+func TestHostRejectsProtocolMismatch(t *testing.T) {
+	th := newTestHost(t, nil)
+	th.start()
+	sess := th.dial()
+
+	if result := hello(t, sess, jobs.Protocol+1); result.Status != "error" || result.Code != 426 || result.Error != "unsupported jobs protocol" {
+		t.Fatalf("hello result = %#v, want 426 unsupported jobs protocol", result)
+	}
+	select {
+	case <-sess.CloseChan():
+	case <-time.After(ioTimeout):
+		t.Fatal("session still open after a protocol mismatch")
+	}
+	if bridges, _ := th.host.counts(); bridges != 0 {
+		t.Fatalf("bridges = %d, want 0", bridges)
+	}
+}
+
+func TestHostIdleExitAfterGrace(t *testing.T) {
+	base := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
+	var offset atomic.Int64
+	th := newTestHost(t, func(cfg *Config) {
+		cfg.IdleExit = time.Minute
+		cfg.Now = func() time.Time { return base.Add(time.Duration(offset.Load())) }
+	})
+	th.start()
+	sess := th.connect()
+
+	offset.Add(int64(2 * time.Minute))
+	time.Sleep(1500 * time.Millisecond)
+	select {
+	case err := <-th.served:
+		t.Fatalf("Serve returned %v with a bridge connected", err)
+	default:
+	}
+
+	_ = sess.Close()
+	waitFor(t, "the bridge to disconnect", func() bool {
+		bridges, _ := th.host.counts()
+		return bridges == 0
+	})
+	offset.Add(int64(2 * time.Minute))
+	th.waitNotify("STOPPING=1")
+	if err := th.wait(); err != nil {
+		t.Fatalf("Serve after idle exit = %v, want nil", err)
+	}
+	if _, err := os.Stat(th.cfg.SocketPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("socket after idle exit: %v, want it removed", err)
+	}
+}
+
+func TestHostSIGTERMMarksRunningJobsInterrupted(t *testing.T) {
+	suspended := make(chan jsontext.Value, 2)
+	th := newTestHost(t, nil)
+	th.cfg.Tasks.RegisterRoutes(th.cfg.Router)
+	th.cfg.Router.Mutation("test.progress", func(ctx context.Context, _ *bridgeipc.Task, _ any) (any, error) {
+		bridgeipc.ReportProgress(ctx, bridgeipc.TaskProgress{Message: "started"})
+		<-ctx.Done()
+		return nil, ctx.Err()
+	})
+	th.cfg.Router.Mutation("test.resumable", th.run, bridgeipc.WithResume(
+		func(_ context.Context, record jsontext.Value) (jsontext.Value, error) {
+			suspended <- record
+			return jsontext.Value(`{"offset":7}`), nil
+		},
+		func(context.Context, jsontext.Value) (any, error) { return nil, nil },
+	))
+	th.start()
+	sess := th.connect()
+
+	streams := map[string]net.Conn{
+		jobA: th.startJob(sess, "test.job", jobA),
+		jobB: th.startJob(sess, "test.resumable", jobB),
+	}
+	// A watch from another tab also reads the end before the host exits; the
+	// job's replayed progress shows it is attached.
+	streams[jobD] = th.startJob(sess, "test.progress", jobD)
+	readFrame(t, streams[jobD], relay.OpStreamProgress)
+	watch := openStream(t, sess, "tasks.watch", map[string]string{"taskId": jobD}, "")
+	readFrame(t, watch, relay.OpStreamProgress)
+
+	th.cancel() // SIGTERM
+	for id, stream := range streams {
+		readInterrupted(t, id, stream)
+	}
+	readInterrupted(t, jobD+" watch", watch)
+	if err := th.wait(); err != nil {
+		t.Fatalf("Serve after SIGTERM = %v, want nil", err)
+	}
+	for id, checkpoint := range map[string]string{jobA: "", jobB: `{"offset":7}`, jobD: ""} {
+		record := th.record(id)
+		if record.State != jobs.StateInterrupted || record.Reason != jobs.ReasonShutdown || record.FinishedAt.IsZero() {
+			t.Fatalf("record %s = %s/%s, want interrupted/shutdown", id, record.State, record.Reason)
+		}
+		if got := string(record.Checkpoint); checkpoint != "" {
+			got = compact(t, record.Checkpoint)
+			if got != checkpoint {
+				t.Fatalf("record %s checkpoint = %s, want %s", id, got, checkpoint)
+			}
+		} else if got != "" {
+			t.Fatalf("record %s checkpoint = %s, want none", id, got)
+		}
+		if task, ok := th.cfg.Tasks.Get(id); !ok || task.Snapshot().State != bridgeipc.TaskStateInterrupted {
+			t.Fatalf("task %s was not interrupted", id)
+		}
+	}
+	if len(suspended) != 1 {
+		t.Fatalf("Suspend called %d times, want once", len(suspended))
+	}
+	var record jobs.Record
+	if err := json.Unmarshal(<-suspended, &record); err != nil || record.ID != jobB || !record.Resumable {
+		t.Fatalf("Suspend record = %#v, %v; want the resumable record of %s", record, err, jobB)
+	}
+}
+
+// readInterrupted reads the end of the stream of a job its host interrupted:
+// the interruption, not a user cancel. It then closes the stream as the
+// bridge does.
+func readInterrupted(t *testing.T, id string, stream net.Conn) {
+	t.Helper()
+	if result := readResult(t, stream); result.Status != "error" || result.Code != 409 || result.Error != "job was interrupted" {
+		t.Fatalf("job %s stream result = %#v, want 409 job was interrupted", id, result)
+	}
+	_ = stream.Close()
+}
+
+// readResultAndClose reads the result of a job stream and closes the stream as
+// the bridge does, so a host stop that follows does not wait for its close.
+func readResultAndClose(t *testing.T, stream net.Conn) relay.ResultFrame {
+	t.Helper()
+	result := readResult(t, stream)
+	_ = stream.Close()
+	return result
+}
+
+// A Suspend hook that stops the handler, as a paused balance returns an error,
+// leaves the job interrupted with its checkpoint, not failed.
+func TestSuspendThatStopsTheHandlerKeepsCheckpoint(t *testing.T) {
+	stop := make(chan struct{})
+	th := newTestHost(t, nil)
+	th.cfg.Router.Mutation("test.resumable",
+		func(context.Context, *bridgeipc.Task, any) (any, error) {
+			<-stop
+			return nil, errors.New("paused")
+		},
+		bridgeipc.WithResume(
+			func(context.Context, jsontext.Value) (jsontext.Value, error) {
+				close(stop)
+				// The job's own Finish writes its record before the hook returns.
+				task, _ := th.cfg.Tasks.Get(jobA)
+				<-task.Done()
+				return jsontext.Value(`{"at":5}`), nil
+			},
+			func(context.Context, jsontext.Value) (any, error) { return nil, nil },
+		))
+	th.start()
+	stream := th.startJob(th.connect(), "test.resumable", jobA)
+
+	th.cancel() // SIGTERM
+	readInterrupted(t, jobA, stream)
+	if err := th.wait(); err != nil {
+		t.Fatalf("Serve after SIGTERM = %v, want nil", err)
+	}
+	record := th.record(jobA)
+	if record.State != jobs.StateInterrupted || record.Reason != jobs.ReasonShutdown || compact(t, record.Checkpoint) != `{"at":5}` {
+		t.Fatalf("record = %s/%s with checkpoint %s, want interrupted/shutdown with {\"at\":5}", record.State, record.Reason, record.Checkpoint)
+	}
+	if task, ok := th.cfg.Tasks.Get(jobA); !ok || task.Snapshot().State != bridgeipc.TaskStateInterrupted {
+		t.Fatal("task was not interrupted")
+	}
+	if got := th.observed(); len(got) != 1 || got[0].Title != "test.resumable was interrupted" {
+		t.Fatalf("alerts = %#v, want one interrupted alert", got)
+	}
+}
+
+// A job that completes while its Suspend hook runs keeps its outcome.
+func TestJobThatCompletesDuringSuspendStaysCompleted(t *testing.T) {
+	th := newTestHost(t, func(c *Config) {
+		// Started an hour ago, so its completed record is kept, not dropped as transient.
+		c.Now = func() time.Time { return time.Now().Add(-time.Hour) }
+	})
+	th.cfg.Router.Mutation("test.resumable", th.run, bridgeipc.WithResume(
+		func(context.Context, jsontext.Value) (jsontext.Value, error) {
+			th.release <- nil
+			task, _ := th.cfg.Tasks.Get(jobA)
+			<-task.Done()
+			return jsontext.Value(`{"at":5}`), nil
+		},
+		func(context.Context, jsontext.Value) (any, error) { return nil, nil },
+	))
+	th.start()
+	stream := th.startJob(th.connect(), "test.resumable", jobA)
+
+	th.cancel() // SIGTERM
+	if result := readResult(t, stream); result.Status != "ok" {
+		t.Fatalf("job stream result = %#v, want ok", result)
+	}
+	_ = stream.Close()
+	if err := th.wait(); err != nil {
+		t.Fatalf("Serve after SIGTERM = %v, want nil", err)
+	}
+	if record := th.record(jobA); record.State != jobs.StateCompleted || record.Reason != jobs.ReasonNone || len(record.Checkpoint) != 0 {
+		t.Fatalf("record = %s/%s with checkpoint %s, want completed", record.State, record.Reason, record.Checkpoint)
+	}
+	if got := th.observed(); len(got) != 0 {
+		t.Fatalf("alerts = %#v, want none", got)
+	}
+}
+
+// A job its owner canceled is not interrupted by a shutdown that overlaps its
+// cleanup: its handler ends it canceled.
+func TestCanceledJobDuringShutdownEndsCanceled(t *testing.T) {
+	suspended := make(chan struct{}, 1)
+	th := newTestHost(t, nil)
+	th.cfg.Tasks.RegisterRoutes(th.cfg.Router)
+	th.cfg.Router.Mutation("test.resumable",
+		func(ctx context.Context, _ *bridgeipc.Task, _ any) (any, error) {
+			<-ctx.Done()
+			time.Sleep(100 * time.Millisecond) // its cleanup, while the host stops
+			return nil, ctx.Err()
+		},
+		bridgeipc.WithResume(
+			func(context.Context, jsontext.Value) (jsontext.Value, error) {
+				suspended <- struct{}{}
+				return nil, nil
+			},
+			func(context.Context, jsontext.Value) (any, error) { return nil, nil },
+		))
+	th.start()
+	sess := th.connect()
+	stream := th.startJob(sess, "test.resumable", jobA)
+	cancel := openStream(t, sess, "tasks.cancel", map[string]string{"taskId": jobA}, "")
+	if result := readResult(t, cancel); result.Status != "ok" {
+		t.Fatalf("tasks.cancel = %#v, want ok", result)
+	}
+
+	th.cancel() // SIGTERM
+	if result := readResult(t, stream); result.Status != "error" || result.Code != 499 {
+		t.Fatalf("job stream result = %#v, want 499 canceled", result)
+	}
+	_ = stream.Close()
+	if err := th.wait(); err != nil {
+		t.Fatalf("Serve after SIGTERM = %v, want nil", err)
+	}
+	if record := th.record(jobA); record.State != jobs.StateCanceled || record.Reason != jobs.ReasonNone {
+		t.Fatalf("record = %s/%s, want canceled", record.State, record.Reason)
+	}
+	if task, ok := th.cfg.Tasks.Get(jobA); !ok || task.Snapshot().State != bridgeipc.TaskStateCanceled {
+		t.Fatal("task did not end canceled")
+	}
+	if len(suspended) != 0 {
+		t.Fatal("a canceled job was suspended")
+	}
+	if got := th.observed(); len(got) != 0 {
+		t.Fatalf("alerts = %#v, want none", got)
+	}
+}
+
+// A cancel is recorded before the handler is told to stop, so a shutdown or
+// reboot before the handler returns sees the owner's request.
+func TestCancelRecordsRequestBeforeHandlerReturns(t *testing.T) {
+	th := newTestHost(t, nil)
+	th.cfg.Tasks.RegisterRoutes(th.cfg.Router)
+	requested := make(chan bool, 1)
+	th.cfg.Router.Mutation("test.cancel", func(ctx context.Context, task *bridgeipc.Task, _ any) (any, error) {
+		<-ctx.Done()
+		record, err := th.cfg.Store.Get(context.Background(), task.ID())
+		requested <- err == nil && record.CancelRequested
+		return nil, ctx.Err()
+	})
+	th.start()
+	sess := th.connect()
+	stream := th.startJob(sess, "test.cancel", jobA)
+
+	cancel := openStream(t, sess, "tasks.cancel", map[string]string{"taskId": jobA}, "")
+	if result := readResult(t, cancel); result.Status != "ok" {
+		t.Fatalf("tasks.cancel = %#v, want ok", result)
+	}
+	select {
+	case ok := <-requested:
+		if !ok {
+			t.Fatal("the handler's record has no cancel request once its context ended")
+		}
+	case <-time.After(ioTimeout):
+		t.Fatal("the handler did not see its context end")
+	}
+	if result := readResult(t, stream); result.Status != "error" || result.Code != 499 {
+		t.Fatalf("job stream result = %#v, want 499 canceled", result)
+	}
+	if record := th.record(jobA); record.State != jobs.StateCanceled || !record.CancelRequested {
+		t.Fatalf("record = %s with cancel_requested %t, want canceled with the request", record.State, record.CancelRequested)
+	}
+}
+
+func TestHostReconcilesCrashedRecordsAtStart(t *testing.T) {
+	th := newTestHost(t, nil)
+	now := time.Now().UTC()
+	pidStart, err := jobs.ProcessStart(int32(os.Getpid()))
+	if err != nil {
+		t.Fatalf("ProcessStart: %v", err)
+	}
+	running := func(id string, executor jobs.Executor) jobs.Record {
+		return jobs.Record{
+			ID: id, Route: "test.job", Owner: jobs.Owner{UID: th.cfg.UID, Username: "alice"},
+			State: jobs.StateRunning, CreatedAt: now, StartedAt: now, Request: jsontext.Value(`{}`),
+			Executor: executor, Protocol: jobs.Protocol,
+		}
+	}
+	expired := running(jobC, jobs.Executor{Kind: "host"})
+	expired.State, expired.CreatedAt, expired.FinishedAt = jobs.StateCompleted, now.Add(-40*24*time.Hour), now.Add(-31*24*time.Hour)
+	for _, record := range []jobs.Record{
+		running(jobA, jobs.Executor{Kind: "host", PID: math.MaxInt32, PIDStart: 1}),
+		running(jobB, jobs.Executor{Kind: "host", PID: int32(os.Getpid()), PIDStart: pidStart}),
+		expired,
+	} {
+		if err := th.cfg.Store.Create(context.Background(), record); err != nil {
+			t.Fatalf("Store.Create(%s): %v", record.ID, err)
+		}
+	}
+
+	th.start()
+	if record := th.record(jobA); record.State != jobs.StateInterrupted || record.Reason != jobs.ReasonCrash {
+		t.Fatalf("crashed record = %s/%s, want interrupted/crash", record.State, record.Reason)
+	}
+	if record := th.record(jobB); record.State != jobs.StateRunning {
+		t.Fatalf("record of a live executor = %s, want running", record.State)
+	}
+	if _, err := th.cfg.Store.Get(context.Background(), jobC); !errors.Is(err, jobs.ErrNotFound) {
+		t.Fatalf("expired record: %v, want pruned", err)
+	}
+	got := th.observed()
+	if len(got) != 1 || got[0].Key != jobA || got[0].Title != "test.job was interrupted" {
+		t.Fatalf("alerts = %#v, want one interrupted alert for %s", got, jobA)
+	}
+}
+
+// addResumableRoute registers "test.resumable", whose Resume hook sends the
+// job's ID on resumed and completes.
+func addResumableRoute(c *Config, resumed chan<- string) {
+	c.Router.Mutation("test.resumable",
+		func(context.Context, *bridgeipc.Task, any) (any, error) { return nil, nil },
+		bridgeipc.WithResume(
+			func(context.Context, jsontext.Value) (jsontext.Value, error) { return nil, nil },
+			func(_ context.Context, raw jsontext.Value) (any, error) {
+				var record jobs.Record
+				if err := json.Unmarshal(raw, &record); err != nil {
+					return nil, err
+				}
+				resumed <- record.ID
+				return map[string]bool{"ok": true}, nil
+			}))
+}
+
+// earlierBootRecord is a resumable job record an hour old, so a resumed run is
+// not dropped as transient, whose last host ran in an earlier boot.
+func earlierBootRecord(id, route string, state jobs.State) jobs.Record {
+	started := time.Now().UTC().Add(-time.Hour)
+	r := jobs.Record{
+		ID: id, Route: route, Owner: jobs.Owner{UID: 1000, GID: 1001, Username: "alice"},
+		State: state, CreatedAt: started, StartedAt: started, Request: jsontext.Value(`{}`),
+		Executor:  jobs.Executor{Kind: "host", PID: math.MaxInt32, PIDStart: 1, BootID: "an-earlier-boot"},
+		Resumable: true, Protocol: jobs.Protocol,
+	}
+	if state == jobs.StateInterrupted {
+		r.Reason, r.FinishedAt = jobs.ReasonShutdown, started
+	}
+	return r
+}
+
+func TestUserHostMarksAnEarlierBootsJobWithoutResumingIt(t *testing.T) {
+	resumed := make(chan string, 1)
+	th := newTestHost(t, func(c *Config) {
+		asUserHost(c)
+		addResumableRoute(c, resumed)
+	})
+	if err := th.cfg.Store.Create(context.Background(), earlierBootRecord(jobA, "test.resumable", jobs.StateRunning)); err != nil {
+		t.Fatalf("Store.Create: %v", err)
+	}
+
+	th.start()
+	if r := th.record(jobA); r.State != jobs.StateInterrupted || r.Reason != jobs.ReasonReboot {
+		t.Fatalf("record = %s/%s, want interrupted/reboot", r.State, r.Reason)
+	}
+	select {
+	case id := <-resumed:
+		t.Fatalf("a user host resumed %s; only the root host resumes", id)
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestRootHostAlertsAndKeepsAJobItCannotResume(t *testing.T) {
+	th := newTestHost(t, func(c *Config) { c.UID = 0 })
+	boot, err := jobs.BootID()
+	if err != nil {
+		t.Fatalf("BootID: %v", err)
+	}
+	// Its route is gone after an update, so the resume fails.
+	if err := th.cfg.Store.Create(context.Background(), earlierBootRecord(jobA, "test.gone", jobs.StateInterrupted)); err != nil {
+		t.Fatalf("Store.Create: %v", err)
+	}
+
+	th.start()
+	waitFor(t, "the failed resume alert", func() bool { return len(th.observed()) == 1 })
+	if got := th.observed(); got[0].Key != jobA || got[0].Title != "test.gone was interrupted" {
+		t.Fatalf("alert = %#v, want one for %s", got[0], jobA)
+	}
+	// Stamped as this boot's, so a later host start does not retry it.
+	if r := th.record(jobA); r.State != jobs.StateInterrupted || r.Executor.BootID != boot {
+		t.Fatalf("record = %s with boot %q, want interrupted and stamped with %q", r.State, r.Executor.BootID, boot)
+	}
+}
+
+func TestRootHostResumesOnlyTheJobsAnEarlierBootInterrupted(t *testing.T) {
+	resumed := make(chan string, 4)
+	actedFor := make(chan session.User, 4)
+	th := newTestHost(t, func(c *Config) {
+		c.UID = 0
+		addResumableRoute(c, resumed)
+		router := c.Router
+		c.Handlers = func(sess *session.Session) (*bridgeipc.Router, error) {
+			actedFor <- sess.User
+			return router, nil
+		}
+	})
+	boot, err := jobs.BootID()
+	if err != nil {
+		t.Fatalf("BootID: %v", err)
+	}
+	thisBoot := earlierBootRecord(jobC, "test.resumable", jobs.StateInterrupted)
+	thisBoot.Executor.BootID = boot
+	notResumable := earlierBootRecord(jobD, "test.job", jobs.StateRunning)
+	notResumable.Resumable = false
+	for _, r := range []jobs.Record{
+		// A power loss left it running: marked reboot, then resumed.
+		earlierBootRecord(jobA, "test.resumable", jobs.StateRunning),
+		// An orderly shutdown of the earlier boot interrupted it: resumed.
+		earlierBootRecord(jobB, "test.resumable", jobs.StateInterrupted),
+		// Stopped or crashed in this boot: stays interrupted.
+		thisBoot,
+		// Not resumable: marked reboot and alerted.
+		notResumable,
+	} {
+		if err := th.cfg.Store.Create(context.Background(), r); err != nil {
+			t.Fatalf("Store.Create(%s): %v", r.ID, err)
+		}
+	}
+
+	th.start()
+	if got := receiveIDs(t, resumed, 2); !slices.Equal(got, []string{jobA, jobB}) {
+		t.Fatalf("resumed %v, want %s and %s", got, jobA, jobB)
+	}
+	waitFor(t, "the resumed jobs to complete", func() bool {
+		return th.record(jobA).State == jobs.StateCompleted && th.record(jobB).State == jobs.StateCompleted
+	})
+	// The resumed task is the host's for permission checks; the record keeps
+	// naming the user who started the job.
+	if task, ok := th.cfg.Tasks.Get(jobA); !ok || task.Owner().UID != 0 || task.Owner().Username != "alice" {
+		t.Fatalf("resumed task owner = %#v (found %v), want alice as uid 0", task.Owner(), ok)
+	}
+	if r := th.record(jobA); r.Owner != (jobs.Owner{UID: 1000, GID: 1001, Username: "alice"}) {
+		t.Fatalf("resumed record owner = %#v, want alice as uid 1000", r.Owner)
+	}
+	// The resume runs with handlers acting for the job's user.
+	for range 2 {
+		if user := <-actedFor; user != (session.User{Username: "alice", UID: 1000, GID: 1001}) {
+			t.Fatalf("resume acted for %#v, want alice as uid 1000 gid 1001", user)
+		}
+	}
+	select {
+	case id := <-resumed:
+		t.Fatalf("also resumed %s", id)
+	default:
+	}
+	if r := th.record(jobC); r.State != jobs.StateInterrupted || r.Reason != jobs.ReasonShutdown {
+		t.Fatalf("job interrupted in this boot = %s/%s, want interrupted/shutdown", r.State, r.Reason)
+	}
+	if r := th.record(jobD); r.State != jobs.StateInterrupted || r.Reason != jobs.ReasonReboot {
+		t.Fatalf("job a reboot interrupted = %s/%s, want interrupted/reboot", r.State, r.Reason)
+	}
+	if got := th.observed(); len(got) != 1 || got[0].Key != jobD {
+		t.Fatalf("alerts = %#v, want one for %s", got, jobD)
+	}
+}
+
+// Only a job the last shutdown, reboot or power loss interrupted is resumed,
+// and once: every other interrupted record stops being resumable.
+func TestResumeOnlyWhatTheLastShutdownInterrupted(t *testing.T) {
+	resumed := make(chan string, 5)
+	th := newTestHost(t, func(c *Config) {
+		c.UID = 0
+		addResumableRoute(c, resumed)
+	})
+	boot, err := jobs.BootID()
+	if err != nil {
+		t.Fatalf("BootID: %v", err)
+	}
+	interrupted := func(id string, edit func(*jobs.Record)) jobs.Record {
+		r := earlierBootRecord(id, "test.resumable", jobs.StateInterrupted)
+		edit(&r)
+		return r
+	}
+	for _, r := range []jobs.Record{
+		interrupted(jobA, func(*jobs.Record) {}),
+		interrupted(jobB, func(r *jobs.Record) { r.Reason = jobs.ReasonReboot }),
+		interrupted(jobC, func(r *jobs.Record) { r.Reason = jobs.ReasonCrash }),
+		interrupted(jobD, func(r *jobs.Record) { r.CancelRequested = true }),
+		interrupted(jobE, func(r *jobs.Record) { r.Executor.BootID = boot }),
+	} {
+		if err := th.cfg.Store.Create(context.Background(), r); err != nil {
+			t.Fatalf("Store.Create(%s): %v", r.ID, err)
+		}
+	}
+
+	th.start()
+	if got := receiveIDs(t, resumed, 2); !slices.Equal(got, []string{jobA, jobB}) {
+		t.Fatalf("resumed %v, want %s and %s", got, jobA, jobB)
+	}
+	waitFor(t, "the resumed jobs to complete", func() bool {
+		return th.record(jobA).State == jobs.StateCompleted && th.record(jobB).State == jobs.StateCompleted
+	})
+	select {
+	case id := <-resumed:
+		t.Fatalf("also resumed %s", id)
+	default:
+	}
+	for _, id := range []string{jobC, jobD, jobE} {
+		if r := th.record(id); r.State != jobs.StateInterrupted || r.Resumable {
+			t.Fatalf("record %s = %s, resumable %t; want interrupted and no longer resumable", id, r.State, r.Resumable)
+		}
+	}
+}
+
+// A shutdown alerts on the resumable job it interrupts; when the next boot
+// resumes the job and it completes, that alert is cleared.
+func TestResumedJobThatCompletesClearsItsInterruptedAlert(t *testing.T) {
+	first := newTestHost(t, func(c *Config) {
+		c.UID = 0
+		c.Peer = func(*net.UnixConn) (peercred.Cred, error) { return peercred.Cred{UID: 0}, nil }
+	})
+	first.cfg.Router.Mutation("test.resumable", first.run, bridgeipc.WithResume(
+		func(context.Context, jsontext.Value) (jsontext.Value, error) { return jsontext.Value(`{"at":5}`), nil },
+		func(context.Context, jsontext.Value) (any, error) { return nil, nil },
+	))
+	first.start()
+	stream := first.startJob(first.connect(), "test.resumable", jobA)
+
+	first.cancel() // SIGTERM
+	readInterrupted(t, jobA, stream)
+	if err := first.wait(); err != nil {
+		t.Fatalf("Serve after SIGTERM = %v, want nil", err)
+	}
+	if got := first.observed(); len(got) != 1 || got[0].Key != jobA || got[0].Title != "test.resumable was interrupted" {
+		t.Fatalf("alerts after shutdown = %#v, want one interrupted alert for %s", got, jobA)
+	}
+	// The record is now an earlier boot's.
+	if _, err := first.cfg.Store.Update(context.Background(), jobA, func(r *jobs.Record) error {
+		r.Executor.BootID = "an-earlier-boot"
+		return nil
+	}); err != nil {
+		t.Fatalf("Store.Update: %v", err)
+	}
+
+	resumed := make(chan string, 1)
+	next := newTestHost(t, func(c *Config) {
+		c.UID = 0
+		c.Store, c.Alert, c.ResolveAlert = first.cfg.Store, first.cfg.Alert, first.cfg.ResolveAlert
+		addResumableRoute(c, resumed)
+	})
+	next.start()
+	if got := receiveIDs(t, resumed, 1); !slices.Equal(got, []string{jobA}) {
+		t.Fatalf("resumed %v, want %s", got, jobA)
+	}
+	waitFor(t, "the interrupted alert to clear", func() bool { return len(first.observed()) == 0 })
+}
+
+// receiveIDs reads n job IDs from ch and returns them sorted.
+func receiveIDs(t *testing.T, ch <-chan string, n int) []string {
+	t.Helper()
+	var ids []string
+	for range n {
+		select {
+		case id := <-ch:
+			ids = append(ids, id)
+		case <-time.After(ioTimeout):
+			t.Fatalf("received %v, want %d job IDs", ids, n)
+		}
+	}
+	slices.Sort(ids)
+	return ids
+}
+
+func TestHostServesOnTheSocketSystemdPassedAndLeavesIt(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "passed.sock")
+	ln, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	// A socket systemd passes is not unlinked when the host closes its copy.
+	ln.SetUnlinkOnClose(false)
+	th := newTestHost(t, func(c *Config) {
+		c.Listener = ln
+		c.SocketPath = path
+	})
+	th.start()
+	_ = th.connect().Close()
+	if err := th.stop(); err != nil {
+		t.Fatalf("Serve = %v, want nil", err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("passed socket after the host stopped: %v, want it left for systemd", err)
+	}
+}
+
+func TestHostRefusesAbove256Running(t *testing.T) {
+	th := newTestHost(t, func(cfg *Config) { cfg.MaxRunning = 2 })
+	th.start()
+	sess := th.connect()
+
+	th.startJob(sess, "test.job", jobA)
+	th.startJob(sess, "test.job", jobB)
+	refused := openStream(t, sess, "test.job", struct{}{}, jobC)
+	if result := readResult(t, refused); result.Status != "error" || result.Code != 409 || result.Error != "too many running jobs" {
+		t.Fatalf("result above the cap = %#v, want 409 too many running jobs", result)
+	}
+	if _, ok := th.cfg.Tasks.Get(jobC); ok {
+		t.Fatal("a job above the cap was started")
+	}
+	// A resend of a running job attaches to it; it starts nothing.
+	th.startJob(sess, "test.job", jobA)
+
+	th.release <- nil
+	waitFor(t, "a job to finish", func() bool {
+		_, running := th.host.counts()
+		return running == 1
+	})
+	th.startJob(sess, "test.job", jobC)
+}
+
+func TestHostRaisesAlertForFailedAndInterruptedJobs(t *testing.T) {
+	th := newTestHost(t, nil)
+	th.start()
+	sess := th.connect()
+
+	completed := th.startJob(sess, "test.job", jobA)
+	th.release <- nil
+	readResultAndClose(t, completed)
+
+	failed := th.startJob(sess, "test.job", jobB)
+	th.release <- errors.New("boom")
+	if result := readResultAndClose(t, failed); result.Status != "error" || result.Error != "boom" {
+		t.Fatalf("failed result = %#v, want error boom", result)
+	}
+
+	interrupted := th.startJob(sess, "test.job", jobC)
+	th.cancel() // SIGTERM; the host waits for the client to close the stream
+	readInterrupted(t, jobC, interrupted)
+	if err := th.wait(); err != nil {
+		t.Fatalf("Serve after SIGTERM = %v, want nil", err)
+	}
+
+	want := []alerts.Observation{
+		{Source: "jobs", Key: jobB, Severity: alerts.SeverityError, Title: "test.job failed", Message: "boom", Link: "/history?job=" + jobB},
+		{Source: "jobs", Key: jobC, Severity: alerts.SeverityWarning, Title: "test.job was interrupted", Message: "The job host stopped before the job finished (shutdown).", Link: "/history?job=" + jobC},
+	}
+	if got := th.observed(); !slices.Equal(got, want) {
+		t.Fatalf("alerts = %#v, want %#v", got, want)
+	}
+}
+
+// labeledRoute registers route, which runs as test.job does, with a task
+// label.
+func labeledRoute(th *testHost, route, label string) {
+	th.cfg.Router.Mutation(route, th.run, bridgeipc.WithTaskMetadata(func(any) bridgeipc.TaskMetadata {
+		return bridgeipc.TaskMetadata{Label: label}
+	}))
+}
+
+// reportingJobs is the settings in which jobs started in the browser report
+// report.
+func reportingJobs(report string) func() alerts.NotificationSettings {
+	return func() alerts.NotificationSettings {
+		n := alerts.DefaultNotifications()
+		n.Report[alerts.KindBrowserJobs] = report
+		return n
+	}
+}
+
+func TestFailedJobAlertNamesTheJob(t *testing.T) {
+	th := newTestHost(t, nil)
+	labeledRoute(th, "test.labeled", "Scrubbing btrfs filesystem")
+	th.start()
+	sess := th.connect()
+
+	labeled := th.startJob(sess, "test.labeled", jobA)
+	th.release <- errors.New("boom")
+	readResultAndClose(t, labeled)
+	plain := th.startJob(sess, "test.job", jobB)
+	th.release <- errors.New("bang")
+	readResultAndClose(t, plain)
+
+	waitFor(t, "both failure alerts", func() bool { return len(th.observed()) == 2 })
+	want := []alerts.Observation{
+		{Source: "jobs", Key: jobA, Severity: alerts.SeverityError, Title: "Scrubbing btrfs filesystem failed", Message: "boom", Link: "/history?job=" + jobA},
+		{Source: "jobs", Key: jobB, Severity: alerts.SeverityError, Title: "test.job failed", Message: "bang", Link: "/history?job=" + jobB},
+	}
+	if got := th.observed(); !slices.Equal(got, want) {
+		t.Fatalf("alerts = %#v, want %#v", got, want)
+	}
+}
+
+// A job cut short by a shutdown or a reboot is a warning; one whose host died
+// or that could not be resumed is a failure in effect, an alert.
+func TestInterruptedJobLevelFollowsItsReason(t *testing.T) {
+	t.Run("by a shutdown", func(t *testing.T) {
+		th := newTestHost(t, nil)
+		labeledRoute(th, "test.labeled", "Scrubbing btrfs filesystem")
+		th.start()
+		stream := th.startJob(th.connect(), "test.labeled", jobA)
+		th.cancel() // SIGTERM
+		readInterrupted(t, jobA, stream)
+		if err := th.wait(); err != nil {
+			t.Fatalf("Serve after SIGTERM = %v, want nil", err)
+		}
+		want := []alerts.Observation{{
+			Source: "jobs", Key: jobA, Severity: alerts.SeverityWarning, Title: "Scrubbing btrfs filesystem was interrupted",
+			Message: "The job host stopped before the job finished (shutdown).", Link: "/history?job=" + jobA,
+		}}
+		if got := th.observed(); !slices.Equal(got, want) {
+			t.Fatalf("alerts = %#v, want %#v", got, want)
+		}
+	})
+	t.Run("by a host crash", func(t *testing.T) {
+		th := newTestHost(t, nil)
+		now := time.Now().UTC()
+		if err := th.cfg.Store.Create(context.Background(), jobs.Record{
+			ID: jobA, Route: "test.job", Owner: jobs.Owner{UID: th.cfg.UID, Username: "alice"},
+			State: jobs.StateRunning, CreatedAt: now, StartedAt: now, Request: jsontext.Value(`{}`),
+			Metadata: jsontext.Value(`{"label":"Scrubbing btrfs filesystem"}`),
+			Executor: jobs.Executor{Kind: "host", PID: math.MaxInt32, PIDStart: 1}, Protocol: jobs.Protocol,
+		}); err != nil {
+			t.Fatalf("Store.Create: %v", err)
+		}
+		th.start()
+		want := []alerts.Observation{{
+			Source: "jobs", Key: jobA, Severity: alerts.SeverityError, Title: "Scrubbing btrfs filesystem was interrupted",
+			Message: "The job host stopped before the job finished (crash).", Link: "/history?job=" + jobA,
+		}}
+		if got := th.observed(); !slices.Equal(got, want) {
+			t.Fatalf("alerts = %#v, want %#v", got, want)
+		}
+	})
+	t.Run("by a reboot", func(t *testing.T) {
+		// A user host resumes nothing, so it raises the interruption.
+		th := newTestHost(t, asUserHost)
+		if err := th.cfg.Store.Create(context.Background(), earlierBootRecord(jobA, "test.job", jobs.StateRunning)); err != nil {
+			t.Fatalf("Store.Create: %v", err)
+		}
+		th.start()
+		want := []alerts.Observation{{
+			Source: "jobs", Key: jobA, Severity: alerts.SeverityWarning, Title: "test.job was interrupted",
+			Message: "The job host stopped before the job finished (reboot).", Link: "/history?job=" + jobA,
+		}}
+		if got := th.observed(); !slices.Equal(got, want) {
+			t.Fatalf("alerts = %#v, want %#v", got, want)
+		}
+	})
+	t.Run("and not resumed", func(t *testing.T) {
+		th := newTestHost(t, func(c *Config) { c.UID = 0 })
+		if err := th.cfg.Store.Create(context.Background(), earlierBootRecord(jobA, "test.gone", jobs.StateInterrupted)); err != nil {
+			t.Fatalf("Store.Create: %v", err)
+		}
+		th.start()
+		waitFor(t, "the failed resume alert", func() bool { return len(th.observed()) == 1 })
+		if got := th.observed(); got[0].Severity != alerts.SeverityError || got[0].Title != "test.gone was interrupted" {
+			t.Fatalf("alert = %#v, want an interrupted alert", got[0])
+		}
+	})
+}
+
+func TestLongJobThatFinishesIsANotice(t *testing.T) {
+	notice := alerts.Observation{
+		Source: "jobs", Key: jobA, Severity: alerts.SeverityInfo, Title: "Scrubbing btrfs filesystem finished",
+		Message: "It ran for 5 min.", Link: "/history?job=" + jobA,
+	}
+	t.Run("raised when a long job completes", func(t *testing.T) {
+		th := newTestHost(t, func(c *Config) {
+			// The record starts five minutes before the store stamps its end.
+			c.Now = func() time.Time { return time.Now().Add(-5 * time.Minute) }
+			c.Notifications = reportingJobs(alerts.ReportLongJobs)
+		})
+		labeledRoute(th, "test.labeled", "Scrubbing btrfs filesystem")
+		th.start()
+		stream := th.startJob(th.connect(), "test.labeled", jobA)
+		th.release <- nil
+		if result := readResultAndClose(t, stream); result.Status != "ok" {
+			t.Fatalf("result = %#v, want ok", result)
+		}
+		if err := th.stop(); err != nil {
+			t.Fatalf("Serve = %v, want nil", err)
+		}
+		if record := th.record(jobA); record.State != jobs.StateCompleted {
+			t.Fatalf("record = %s, want completed", record.State)
+		}
+		if got := th.observed(); !slices.Equal(got, []alerts.Observation{notice}) {
+			t.Fatalf("alerts = %#v, want %#v", got, notice)
+		}
+	})
+
+	// The boundary, decided on records with exact start and end times.
+	started := time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name   string
+		report string
+		ran    time.Duration
+		want   []alerts.Observation
+	}{
+		{"five minutes", alerts.ReportLongJobs, 5 * time.Minute, []alerts.Observation{notice}},
+		{"a second less", alerts.ReportLongJobs, 4*time.Minute + 59*time.Second, nil},
+		{"failures only", alerts.ReportFailures, 5 * time.Minute, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			th := newTestHost(t, func(c *Config) { c.Notifications = reportingJobs(tc.report) })
+			th.host.alertLongJob(context.Background(), jobs.Record{
+				ID: jobA, Route: "test.labeled", State: jobs.StateCompleted,
+				StartedAt: started, FinishedAt: started.Add(tc.ran),
+				Metadata: jsontext.Value(`{"label":"Scrubbing btrfs filesystem"}`),
+			})
+			if got := th.observed(); !slices.Equal(got, tc.want) {
+				t.Fatalf("alerts = %#v, want %#v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCanceledJobReportsNothing(t *testing.T) {
+	th := newTestHost(t, func(c *Config) {
+		c.Now = func() time.Time { return time.Now().Add(-time.Hour) } // it ran long
+		c.Notifications = reportingJobs(alerts.ReportLongJobs)
+	})
+	th.cfg.Tasks.RegisterRoutes(th.cfg.Router)
+	th.start()
+	sess := th.connect()
+	stream := th.startJob(sess, "test.job", jobA)
+
+	cancel := openStream(t, sess, "tasks.cancel", map[string]string{"taskId": jobA}, "")
+	if result := readResult(t, cancel); result.Status != "ok" {
+		t.Fatalf("tasks.cancel = %#v, want ok", result)
+	}
+	if result := readResultAndClose(t, stream); result.Status != "error" || result.Code != 499 {
+		t.Fatalf("job stream result = %#v, want 499 canceled", result)
+	}
+	if err := th.stop(); err != nil {
+		t.Fatalf("Serve = %v, want nil", err)
+	}
+	if record := th.record(jobA); record.State != jobs.StateCanceled {
+		t.Fatalf("record = %s, want canceled", record.State)
+	}
+	if got := th.observed(); len(got) != 0 {
+		t.Fatalf("alerts = %#v, want none", got)
+	}
+}
+
+// TestJobNameForAlerts shows the failure title of every file browser route
+// that runs as a job, with the label its binding gives (task_routes.go,
+// handlers.go), so a title that reads badly shows here.
+func TestJobNameForAlerts(t *testing.T) {
+	for _, tc := range []struct{ route, metadata, title string }{
+		{"filebrowser.compress", `{"label":"/srv/photos.zip"}`, "Compress: /srv/photos.zip failed"},
+		{"filebrowser.extract", `{"label":"/srv/backup.tar.gz"}`, "Extract: /srv/backup.tar.gz failed"},
+		{"filebrowser.copy_batch", `{"label":"12 items"}`, "Copy: 12 items failed"},
+		{"filebrowser.move_batch", `{"label":"12 items"}`, "Move: 12 items failed"},
+		{"filebrowser.delete_batch", `{"label":"notes.txt"}`, "Delete: notes.txt failed"},
+		{"filebrowser.trash_batch", `{"label":"report.pdf"}`, "Move to Trash: report.pdf failed"},
+		{"filebrowser.trash_restore", `{"label":"2 items"}`, "Restore from Trash: 2 items failed"},
+		{"filebrowser.trash_purge", `{"label":"2 items"}`, "Delete from Trash: 2 items failed"},
+		{"filebrowser.index", `{"label":"/srv/data"}`, "Index: /srv/data failed"},
+		{"filebrowser.index", `{}`, "filebrowser.index failed"}, // the whole index has no path
+		{"filebrowser.upload", `{"label":"/srv/iso/debian.iso"}`, "Upload: /srv/iso/debian.iso failed"},
+		{"filebrowser.upload_batch", `{"label":"/srv/uploads"}`, "Upload: /srv/uploads failed"},
+		{"filebrowser.archive", `{"label":"12 items"}`, "Archive: 12 items failed"},
+		{"filebrowser.chmod_batch", `{"label":"3 items"}`, "Change permissions: 3 items failed"}, // also owner and group
+		{"filebrowser.resource_post", "", "filebrowser.resource_post failed"},                    // no task label
+		{"filebrowser.resource_patch", "", "filebrowser.resource_patch failed"},                  // no task label
+		{"filebrowser.copy", `{"label":"12 items","action":"copy"}`, "Copy: 12 items failed"},
+		{"storage.btrfs_scrub", `{"label":"Scrubbing btrfs filesystem"}`, "Scrubbing btrfs filesystem failed"},
+		{"test.job", "", "test.job failed"},
+		{"test.job", `{"label":""}`, "test.job failed"},
+		{"test.job", `{"label":`, "test.job failed"},
+	} {
+		record := jobs.Record{ID: jobA, Route: tc.route, Metadata: jsontext.Value(tc.metadata)}
+		if got := jobName(record) + " failed"; got != tc.title {
+			t.Errorf("title of %s with %s = %q, want %q", tc.route, tc.metadata, got, tc.title)
+		}
+	}
+}
+
+// claim creates a queued durable task without the router, so a test drives
+// the recorder directly.
+func claim(t *testing.T, th *testHost, id string) *bridgeipc.Task {
+	t.Helper()
+	task, _, err := th.cfg.Tasks.ClaimForOwnerWithIdentity("test.job", nil,
+		bridgeipc.TaskOwner{SessionID: "s", Username: "alice", UID: th.cfg.UID},
+		bridgeipc.TaskLifetimeDurable, bridgeipc.TaskIdentity{ID: id, Fingerprint: "f"})
+	if err != nil {
+		t.Fatalf("ClaimForOwnerWithIdentity: %v", err)
+	}
+	return task
+}
+
+func progress(percentage int) bridgeipc.TaskProgress {
+	return bridgeipc.TaskProgress{Percentage: &percentage}
+}
+
+func (th *testHost) progressFile(id string) string {
+	th.t.Helper()
+	data, err := th.cfg.Store.ReadProgress(id)
+	if errors.Is(err, jobs.ErrNotFound) {
+		return ""
+	}
+	if err != nil {
+		th.t.Fatalf("ReadProgress(%s): %v", id, err)
+	}
+	return string(data)
+}
+
+func TestRecorderTreatsATerminalSnapshotAtStartedAsFinal(t *testing.T) {
+	th := newTestHost(t, nil)
+	task := claim(t, th, jobA)
+	task.Cancel() // canceled while queued, before the recorder saw it
+
+	th.host.rec.Started(task, jsontext.Value(`{}`))
+	if record := th.record(jobA); record.State != jobs.StateCanceled || record.FinishedAt.IsZero() {
+		t.Fatalf("record = %s finished %v, want canceled and finished", record.State, record.FinishedAt)
+	}
+	if _, running := th.host.counts(); running != 0 {
+		t.Fatalf("running = %d, want 0", running)
+	}
+	th.host.rec.Finished(task)
+	if record := th.record(jobA); record.State != jobs.StateCanceled {
+		t.Fatalf("record after Finished = %s, want canceled", record.State)
+	}
+}
+
+func TestRecorderIgnoresProgressAfterFinished(t *testing.T) {
+	th := newTestHost(t, nil)
+	task := claim(t, th, jobA)
+	th.host.rec.Started(task, jsontext.Value(`{}`))
+	task.Cancel()
+	th.host.rec.Finished(task)
+
+	th.host.rec.Progress(task, progress(90))
+	time.Sleep(2 * progressInterval)
+	if got := th.progressFile(jobA); got != "" {
+		t.Fatalf("progress after Finished = %s, want none", got)
+	}
+	if record := th.record(jobA); record.State != jobs.StateCanceled {
+		t.Fatalf("record = %s, want canceled", record.State)
+	}
+}
+
+func TestRecorderCoalescesProgressWrites(t *testing.T) {
+	th := newTestHost(t, nil)
+	task := claim(t, th, jobA)
+	th.host.rec.Started(task, jsontext.Value(`{}`))
+
+	th.host.rec.Progress(task, progress(10))
+	if got := th.progressFile(jobA); got != `{"percentage":10}` {
+		t.Fatalf("first progress = %s, want written at once", got)
+	}
+	th.host.rec.Progress(task, progress(20))
+	th.host.rec.Progress(task, progress(30))
+	if got := th.progressFile(jobA); got != `{"percentage":10}` {
+		t.Fatalf("progress within the interval = %s, want the first value kept", got)
+	}
+	waitFor(t, "the coalesced progress", func() bool { return th.progressFile(jobA) == `{"percentage":30}` })
+
+	th.host.rec.Progress(task, progress(40))
+	task.Cancel()
+	th.host.rec.Finished(task)
+	if got := th.progressFile(jobA); got != `{"percentage":40}` {
+		t.Fatalf("progress after Finished = %s, want the last value flushed", got)
+	}
+}
+
+func TestRecorderStopFlushesAndCancelsProgressTimers(t *testing.T) {
+	th := newTestHost(t, nil)
+	task := claim(t, th, jobA)
+	th.host.rec.Started(task, jsontext.Value(`{}`))
+	th.host.rec.Progress(task, progress(10))
+	th.host.rec.Progress(task, progress(20)) // waits for a timer
+
+	th.host.rec.stop() // the host shut down
+	if got := th.progressFile(jobA); got != `{"percentage":20}` {
+		t.Fatalf("progress after stop = %s, want the pending value written", got)
+	}
+	th.host.rec.Progress(task, progress(30))
+	time.Sleep(2 * progressInterval)
+	if got := th.progressFile(jobA); got != `{"percentage":20}` {
+		t.Fatalf("progress after stop = %s, want no timed write", got)
+	}
+	task.Cancel()
+	th.host.rec.Finished(task)
+	if got := th.progressFile(jobA); got != `{"percentage":30}` {
+		t.Fatalf("progress after Finished = %s, want the last value flushed", got)
+	}
+}
+
+func TestHostAnswersAResendOfAStoredJobFromItsRecord(t *testing.T) {
+	th := newTestHost(t, nil)
+	now := time.Now().UTC()
+	stored := func(id string, state jobs.State, result string, jobErr *jobs.Error) jobs.Record {
+		record := jobs.Record{
+			ID: id, Route: "test.job", Owner: jobs.Owner{UID: th.cfg.UID, Username: "alice"},
+			State: state, CreatedAt: now.Add(-2 * time.Second), StartedAt: now.Add(-2 * time.Second), FinishedAt: now,
+			Request: jsontext.Value(`{ }`), Error: jobErr, Executor: jobs.Executor{Kind: "host"}, Protocol: jobs.Protocol,
+		}
+		if result != "" {
+			record.Result = jsontext.Value(result)
+		}
+		return record
+	}
+	for _, record := range []jobs.Record{
+		stored(jobA, jobs.StateCompleted, `{"ok":true}`, nil),
+		stored(jobB, jobs.StateFailed, "", &jobs.Error{Code: 422, Message: "boom"}),
+		stored(jobC, jobs.StateInterrupted, "", nil),
+	} {
+		if err := th.cfg.Store.Create(context.Background(), record); err != nil {
+			t.Fatalf("Store.Create(%s): %v", record.ID, err)
+		}
+	}
+	th.start()
+	sess := th.connect()
+
+	for _, tc := range []struct {
+		id    string
+		state bridgeipc.TaskState
+		want  relay.ResultFrame
+	}{
+		{jobA, bridgeipc.TaskStateCompleted, relay.ResultFrame{Status: "ok", Data: jsontext.Value(`{"ok":true}`)}},
+		{jobB, bridgeipc.TaskStateFailed, relay.ResultFrame{Status: "error", Error: "boom", Code: 422}},
+		{jobC, bridgeipc.TaskStateInterrupted, relay.ResultFrame{Status: "error", Error: "job was interrupted", Code: 409}},
+	} {
+		stream := openStream(t, sess, "test.job", struct{}{}, tc.id)
+		snapshot := readSnapshot(t, stream)
+		if snapshot.ID != tc.id || snapshot.Type != "test.job" || snapshot.State != tc.state ||
+			snapshot.Owner.Username != "alice" || snapshot.FinishedAt == nil {
+			t.Fatalf("snapshot of %s = %#v, want the stored %s job", tc.id, snapshot, tc.state)
+		}
+		result := readResult(t, stream)
+		if len(result.Data) > 0 {
+			result.Data = jsontext.Value(compact(t, result.Data))
+		}
+		if result.Status != tc.want.Status || result.Error != tc.want.Error || result.Code != tc.want.Code || string(result.Data) != string(tc.want.Data) {
+			t.Fatalf("result of %s = %#v, want %#v", tc.id, result, tc.want)
+		}
+	}
+	if runs := th.runs.Load(); runs != 0 {
+		t.Fatalf("handler ran %d times for resends of stored jobs, want 0", runs)
+	}
+	if _, running := th.host.counts(); running != 0 {
+		t.Fatalf("running = %d, want 0", running)
+	}
+}
+
+func TestHostRefusesAResendOfAStoredJobWithAnotherRequest(t *testing.T) {
+	th := newTestHost(t, nil)
+	now := time.Now().UTC()
+	if err := th.cfg.Store.Create(context.Background(), jobs.Record{
+		ID: jobA, Route: "test.job", Owner: jobs.Owner{UID: th.cfg.UID, Username: "alice"},
+		State: jobs.StateCompleted, CreatedAt: now, StartedAt: now, FinishedAt: now,
+		Request: jsontext.Value(`{"pool":"tank"}`), Executor: jobs.Executor{Kind: "host"}, Protocol: jobs.Protocol,
+	}); err != nil {
+		t.Fatalf("Store.Create: %v", err)
+	}
+	th.start()
+	sess := th.connect()
+
+	stream := openStream(t, sess, "test.job", struct{}{}, jobA)
+	if result := readResult(t, stream); result.Status != "error" || result.Code != 409 || result.Error != "job id was used for another request" {
+		t.Fatalf("result = %#v, want 409 job id was used for another request", result)
+	}
+	if runs := th.runs.Load(); runs != 0 {
+		t.Fatalf("handler ran %d times, want 0", runs)
+	}
+}
+
+type secretRequest struct {
+	User     string `json:"user"`
+	Password string `json:"password"`
+}
+
+// A route with secrets records its request without them, and a resend that
+// carries them still matches the record.
+func TestHostRecordsARedactedRequestAndMatchesItsResend(t *testing.T) {
+	th := newTestHost(t, nil)
+	th.cfg.Router.Mutation("test.secret", th.run,
+		bridgeipc.WithRequestDecoder(bridgeipc.JSONRequestDecoder[secretRequest]()),
+		bridgeipc.WithSecrets("password"))
+	th.start()
+	sess := th.connect()
+	request := secretRequest{User: "bob", Password: "hunter2"}
+	const redacted = `{"user":"bob"}`
+
+	running := openStream(t, sess, "test.secret", request, jobA)
+	readSnapshot(t, running)
+	if got := compact(t, th.record(jobA).Request); got != redacted {
+		t.Fatalf("recorded request = %s, want %s", got, redacted)
+	}
+	th.release <- nil
+	readResult(t, running)
+
+	now := time.Now().UTC()
+	if err := th.cfg.Store.Create(context.Background(), jobs.Record{
+		ID: jobB, Route: "test.secret", Owner: jobs.Owner{UID: th.cfg.UID, Username: "alice"},
+		State: jobs.StateCompleted, CreatedAt: now, StartedAt: now, FinishedAt: now, Result: jsontext.Value(`{"ok":true}`),
+		Request: jsontext.Value(redacted), Executor: jobs.Executor{Kind: "host"}, Protocol: jobs.Protocol,
+	}); err != nil {
+		t.Fatalf("Store.Create: %v", err)
+	}
+	resend := openStream(t, sess, "test.secret", request, jobB)
+	if snapshot := readSnapshot(t, resend); snapshot.State != bridgeipc.TaskStateCompleted {
+		t.Fatalf("resend snapshot state = %q, want the stored completed job", snapshot.State)
+	}
+	if result := readResult(t, resend); result.Status != "ok" {
+		t.Fatalf("resend result = %#v, want ok", result)
+	}
+	if runs := th.runs.Load(); runs != 1 {
+		t.Fatalf("handler ran %d times, want 1: the resend is answered from the record", runs)
+	}
+}
+
+func TestRootHostRecordsTheClaimedOwnerUID(t *testing.T) {
+	th := newTestHost(t, func(cfg *Config) {
+		cfg.UID = 0
+		cfg.Peer = func(*net.UnixConn) (peercred.Cred, error) { return peercred.Cred{UID: 0}, nil }
+	})
+	th.start()
+	sess := th.connect() // alice, claiming uid 4242
+
+	th.startJob(sess, "test.job", jobA)
+	if record := th.record(jobA); record.Owner != (jobs.Owner{UID: 4242, GID: 4243, Username: "alice"}) {
+		t.Fatalf("record owner = %#v, want alice as uid 4242 gid 4243", record.Owner)
+	}
+	// Permission checks keep the host uid: the task is root's, so every
+	// admin's connection sees it.
+	task, ok := th.cfg.Tasks.Get(jobA)
+	if !ok || task.Owner().UID != 0 {
+		t.Fatalf("task owner uid = %d (found %v), want 0", task.Owner().UID, ok)
+	}
+
+	_ = sess.Close()
+	waitFor(t, "the claim to be released", func() bool {
+		th.host.mu.Lock()
+		defer th.host.mu.Unlock()
+		return len(th.host.owners) == 0
+	})
+	th.release <- nil
+}
+
+func TestRootHostRunsEachConnectionsJobsAsItsUser(t *testing.T) {
+	th := newTestHost(t, func(c *Config) {
+		c.UID = 0
+		c.Peer = func(*net.UnixConn) (peercred.Cred, error) { return peercred.Cred{UID: 0}, nil }
+		tasks := c.Tasks
+		c.Handlers = func(sess *session.Session) (*bridgeipc.Router, error) {
+			router := bridgeipc.NewRouter(tasks)
+			router.Mutation("test.job", func(context.Context, *bridgeipc.Task, any) (any, error) { return sess, nil })
+			return router, nil
+		}
+	})
+	th.start()
+
+	result := readResult(t, th.startJob(th.connect(), "test.job", jobA))
+	var got session.Session
+	if result.Status != "ok" || json.Unmarshal(result.Data, &got) != nil {
+		t.Fatalf("result = %#v, want ok with the session the handlers act for", result)
+	}
+	if got.User != (session.User{Username: "alice", UID: 4242, GID: 4243}) || !got.Privileged || got.SessionID != "ref-1" {
+		t.Fatalf("handlers acted for %#v, want the hello's privileged alice, uid 4242 gid 4243", got)
+	}
+}
+
+func TestRootHostRefusesABridgeItCannotActFor(t *testing.T) {
+	th := newTestHost(t, func(c *Config) {
+		c.UID = 0
+		c.Peer = func(*net.UnixConn) (peercred.Cred, error) { return peercred.Cred{UID: 0}, nil }
+		c.Handlers = func(*session.Session) (*bridgeipc.Router, error) { return nil, errors.New("no config store") }
+	})
+	th.start()
+	sess := th.dial()
+
+	if result := hello(t, sess, jobs.Protocol); result.Status != "error" || result.Code != 500 {
+		t.Fatalf("hello result = %#v, want 500", result)
+	}
+	select {
+	case <-sess.CloseChan():
+	case <-time.After(ioTimeout):
+		t.Fatal("session still open after a refused hello")
+	}
+	if bridges, _ := th.host.counts(); bridges != 0 {
+		t.Fatalf("bridges = %d, want 0", bridges)
+	}
+}
+
+// serveOneStream serves one stream opening route test.job with id, under ctx,
+// and returns its result.
+func serveOneStream(t *testing.T, th *testHost, ctx context.Context, id string) relay.ResultFrame {
+	t.Helper()
+	server, client := net.Pipe()
+	defer client.Close()
+	served := make(chan struct{})
+	go func() {
+		defer close(served)
+		defer server.Close()
+		th.host.serveStream(ctx, server, &session.Session{SessionID: "s", User: session.User{Username: "alice", UID: th.cfg.UID}}, th.cfg.Router)
+	}()
+	payload, err := json.Marshal(relay.StreamOpenEnvelope{Route: "test.job", Request: jsontext.Value(`{}`), ID: id})
+	if err != nil {
+		t.Fatalf("json.Marshal(open): %v", err)
+	}
+	if err := relay.WriteRelayFrame(client, &relay.StreamFrame{Opcode: relay.OpStreamOpen, Payload: payload}); err != nil {
+		t.Fatalf("write stream open: %v", err)
+	}
+	result := readResult(t, client)
+	_ = client.Close()
+	<-served
+	return result
+}
+
+func TestStoppingHostRefusesANewJobButAnInvalidIDFirst(t *testing.T) {
+	th := newTestHost(t, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // SIGTERM
+
+	if result := serveOneStream(t, th, ctx, jobA); result.Status != "error" || result.Code != 503 || result.Error != "job host is stopping" {
+		t.Fatalf("new job on a stopping host = %#v, want 503 job host is stopping", result)
+	}
+	if result := serveOneStream(t, th, ctx, "not-a-job-id"); result.Status != "error" || result.Code != 400 {
+		t.Fatalf("invalid job id on a stopping host = %#v, want 400", result)
+	}
+	if runs := th.runs.Load(); runs != 0 {
+		t.Fatalf("handler ran %d times, want 0", runs)
+	}
+}
+
+func TestClosingHostDropsANewBridge(t *testing.T) {
+	th := newTestHost(t, nil)
+	th.start()
+	th.host.mu.Lock()
+	th.host.closing = true
+	th.host.mu.Unlock()
+
+	body, err := json.Marshal(bridgeipc.Hello{Protocol: jobs.Protocol})
+	if err != nil {
+		t.Fatalf("json.Marshal(hello): %v", err)
+	}
+	payload, err := json.Marshal(relay.StreamOpenEnvelope{Route: bridgeipc.HelloRoute, Request: body})
+	if err != nil {
+		t.Fatalf("json.Marshal(open): %v", err)
+	}
+	sess := th.dial()
+	// The hello may or may not get out before the host closes the session.
+	if stream, err := sess.Open(context.Background()); err == nil {
+		defer stream.Close()
+		_ = relay.WriteRelayFrame(stream, &relay.StreamFrame{Opcode: relay.OpStreamOpen, Payload: payload})
+	}
+	select {
+	case <-sess.CloseChan():
+	case <-time.After(ioTimeout):
+		t.Fatal("session still open on a closing host")
+	}
+	if bridges, _ := th.host.counts(); bridges != 0 {
+		t.Fatalf("bridges = %d, want 0", bridges)
+	}
+}
+
+func TestHostInterruptsAJobAdmittedAsItStops(t *testing.T) {
+	th := newTestHost(t, nil)
+	th.start()
+	sess := th.connect()
+	// The shutdown has listed the jobs it interrupts; this one passed
+	// admission just before the host's context ended.
+	th.host.rec.interruptAll()
+
+	stream := openStream(t, sess, "test.job", struct{}{}, jobA)
+	readSnapshot(t, stream)
+	if result := readResult(t, stream); result.Status != "error" || result.Code != 409 {
+		t.Fatalf("result = %#v, want 409 interrupted", result)
+	}
+	if r := th.record(jobA); r.State != jobs.StateInterrupted || r.Reason != jobs.ReasonShutdown {
+		t.Fatalf("record = %s/%s, want interrupted/shutdown", r.State, r.Reason)
+	}
+	if runs := th.runs.Load(); runs != 0 {
+		t.Fatalf("handler ran %d times, want 0", runs)
+	}
+}
+
+func TestHostMarksARunningRecordWithNoTaskInterruptedOnAResend(t *testing.T) {
+	th := newTestHost(t, nil)
+	th.start()
+	// Left running after the host start, by a finish that failed to write.
+	now := time.Now().UTC()
+	if err := th.cfg.Store.Create(context.Background(), jobs.Record{
+		ID: jobA, Route: "test.job", Owner: jobs.Owner{UID: th.cfg.UID, Username: "alice"},
+		State: jobs.StateRunning, CreatedAt: now, StartedAt: now,
+		Request: jsontext.Value(`{}`), Executor: th.host.executor, Protocol: jobs.Protocol,
+	}); err != nil {
+		t.Fatalf("Store.Create: %v", err)
+	}
+
+	stream := openStream(t, th.connect(), "test.job", struct{}{}, jobA)
+	if snapshot := readSnapshot(t, stream); snapshot.State != bridgeipc.TaskStateInterrupted {
+		t.Fatalf("snapshot state = %s, want interrupted", snapshot.State)
+	}
+	if result := readResult(t, stream); result.Status != "error" || result.Code != 409 {
+		t.Fatalf("result = %#v, want 409 interrupted", result)
+	}
+	if r := th.record(jobA); r.State != jobs.StateInterrupted || r.Reason != jobs.ReasonCrash {
+		t.Fatalf("record = %s/%s, want interrupted/crash", r.State, r.Reason)
+	}
+	if runs := th.runs.Load(); runs != 0 {
+		t.Fatalf("handler ran %d times, want 0", runs)
+	}
+}
+
+func TestHostPrunesItsStoreDaily(t *testing.T) {
+	base := time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
+	var offset atomic.Int64
+	th := newTestHost(t, func(cfg *Config) {
+		cfg.Now = func() time.Time { return base.Add(time.Duration(offset.Load())) }
+	})
+	// A week old at the host start, so that prune keeps it.
+	finished := base.Add(-7 * 24 * time.Hour)
+	if err := th.cfg.Store.Create(context.Background(), jobs.Record{
+		ID: jobA, Route: "test.job", Owner: jobs.Owner{UID: th.cfg.UID, Username: "alice"},
+		State: jobs.StateCompleted, CreatedAt: finished, StartedAt: finished, FinishedAt: finished,
+		Request: jsontext.Value(`{}`), Executor: jobs.Executor{Kind: "host"}, Protocol: jobs.Protocol,
+	}); err != nil {
+		t.Fatalf("Store.Create: %v", err)
+	}
+	th.start()
+	th.connect() // keeps the host from its idle exit
+	th.record(jobA)
+
+	offset.Add(int64(24*24*time.Hour + time.Hour))
+	waitFor(t, "the expired record to be pruned", func() bool {
+		_, err := th.cfg.Store.Get(context.Background(), jobA)
+		return errors.Is(err, jobs.ErrNotFound)
+	})
+}
+
+func TestHostAnswersTasksOfAStoredJobFromItsRecord(t *testing.T) {
+	th := newTestHost(t, nil)
+	th.cfg.Tasks.RegisterRoutes(th.cfg.Router)
+	now := time.Now().UTC()
+	if err := th.cfg.Store.Create(context.Background(), jobs.Record{
+		ID: jobA, Route: "test.job", Owner: jobs.Owner{UID: th.cfg.UID, Username: "alice"},
+		State: jobs.StateFailed, CreatedAt: now, StartedAt: now, FinishedAt: now, Error: &jobs.Error{Code: 500, Message: "boom"},
+		Request: jsontext.Value(`{}`), Executor: jobs.Executor{Kind: "host"}, Protocol: jobs.Protocol,
+	}); err != nil {
+		t.Fatalf("Store.Create: %v", err)
+	}
+	th.start()
+	sess := th.connect()
+
+	get := openStream(t, sess, "tasks.get", map[string]string{"taskId": jobA}, "")
+	var snapshot bridgeipc.TaskSnapshot
+	if result := readResult(t, get); result.Status != "ok" || json.Unmarshal(result.Data, &snapshot) != nil ||
+		snapshot.State != bridgeipc.TaskStateFailed || snapshot.Error == nil || snapshot.Error.Message != "boom" {
+		t.Fatalf("tasks.get = %#v, want the stored failure", result)
+	}
+	watch := openStream(t, sess, "tasks.watch", map[string]string{"taskId": jobA}, "")
+	if watched := readSnapshot(t, watch); watched.State != bridgeipc.TaskStateFailed {
+		t.Fatalf("watch snapshot state = %s, want failed", watched.State)
+	}
+	if result := readResult(t, watch); result.Status != "error" || result.Error != "boom" {
+		t.Fatalf("watch result = %#v, want the stored failure", result)
+	}
+	cancel := openStream(t, sess, "tasks.cancel", map[string]string{"taskId": jobA}, "")
+	if result := readResult(t, cancel); result.Status != "ok" || json.Unmarshal(result.Data, &snapshot) != nil || snapshot.State != bridgeipc.TaskStateFailed {
+		t.Fatalf("tasks.cancel of an ended job = %#v, want its failed snapshot", result)
+	}
+	unknown := openStream(t, sess, "tasks.get", map[string]string{"taskId": jobB}, "")
+	if result := readResult(t, unknown); result.Code != 404 {
+		t.Fatalf("tasks.get of an unknown job = %#v, want 404", result)
+	}
+
+	// A record a host left running with no task here is marked lost; one a
+	// host never ran, such as a network handoff, is not this host's job.
+	for id, executor := range map[string]jobs.Executor{jobC: th.host.executor, jobD: {Kind: "netplan", Unit: "/io/netplan"}} {
+		if err := th.cfg.Store.Create(context.Background(), jobs.Record{
+			ID: id, Route: "test.job", Owner: jobs.Owner{UID: th.cfg.UID, Username: "alice"},
+			State: jobs.StateRunning, CreatedAt: now, StartedAt: now,
+			Request: jsontext.Value(`{}`), Executor: executor, Protocol: jobs.Protocol,
+		}); err != nil {
+			t.Fatalf("Store.Create(%s): %v", id, err)
+		}
+	}
+	lost := openStream(t, sess, "tasks.get", map[string]string{"taskId": jobC}, "")
+	if result := readResult(t, lost); result.Status != "ok" || json.Unmarshal(result.Data, &snapshot) != nil || snapshot.State != bridgeipc.TaskStateInterrupted {
+		t.Fatalf("tasks.get of a lost job = %#v, want interrupted", result)
+	}
+	if r := th.record(jobC); r.State != jobs.StateInterrupted || r.Reason != jobs.ReasonCrash {
+		t.Fatalf("lost record = %s/%s, want interrupted/crash", r.State, r.Reason)
+	}
+	// Its outcome is unknown, so it is an alert like any crash, raised once.
+	_ = readResult(t, openStream(t, sess, "tasks.get", map[string]string{"taskId": jobC}, ""))
+	lostAlerts := slices.DeleteFunc(th.observed(), func(obs alerts.Observation) bool { return obs.Key != jobC })
+	if len(lostAlerts) != 1 || lostAlerts[0].Severity != alerts.SeverityError || lostAlerts[0].Title != "test.job was interrupted" ||
+		lostAlerts[0].Message != "Its result was not recorded, so it is not known whether it finished." {
+		t.Fatalf("alerts for the lost job = %+v, want one error", lostAlerts)
+	}
+	handoff := openStream(t, sess, "tasks.get", map[string]string{"taskId": jobD}, "")
+	if result := readResult(t, handoff); result.Code != 404 {
+		t.Fatalf("tasks.get of a record no host ran = %#v, want 404", result)
+	}
+	if r := th.record(jobD); r.State != jobs.StateRunning {
+		t.Fatalf("record no host ran = %s, want it left running", r.State)
+	}
+}
+
+func TestRecordKeepsTheTasksPublicMetadata(t *testing.T) {
+	th := newTestHost(t, nil)
+	th.cfg.Router.Mutation("test.labeled", th.run,
+		bridgeipc.WithTaskMetadata(func(any) bridgeipc.TaskMetadata {
+			return bridgeipc.TaskMetadata{Label: "Scrubbing btrfs filesystem", Identity: []string{"pool-1"}}
+		}))
+	th.start()
+	sess := th.connect()
+
+	labeled := th.startJob(sess, "test.labeled", jobA)
+	plain := th.startJob(sess, "test.job", jobB)
+	time.Sleep(jobs.TransientMaxDuration + 100*time.Millisecond)
+	// Either job may take either release.
+	th.release <- nil
+	th.release <- nil
+	readResult(t, labeled)
+	readResult(t, plain)
+
+	// The identity is the record's target; the metadata does not repeat it.
+	record := th.record(jobA)
+	var metadata bridgeipc.TaskMetadata
+	if err := json.Unmarshal(record.Metadata, &metadata); err != nil {
+		t.Fatalf("json.Unmarshal(record metadata %q): %v", record.Metadata, err)
+	}
+	if metadata.Label != "Scrubbing btrfs filesystem" || metadata.Identity != nil {
+		t.Fatalf("record metadata = %#v, want the label and no identity", metadata)
+	}
+	if !slices.Equal(record.Target, []string{"pool-1"}) {
+		t.Fatalf("record target = %v, want [pool-1]", record.Target)
+	}
+	if snapshot := snapshotFromRecord(record); snapshot.Metadata == nil || !slices.Equal(snapshot.Metadata.Identity, []string{"pool-1"}) {
+		t.Fatalf("snapshot metadata = %+v, want the identity [pool-1] from the target", snapshot.Metadata)
+	}
+	if got := th.record(jobB).Metadata; len(got) != 0 {
+		t.Fatalf("metadata of a route without a builder = %s, want none", got)
+	}
+}
+
+func TestRecordOfABatchOfManyPathsKeepsItsTarget(t *testing.T) {
+	paths := make([]string, 20000)
+	for i := range paths {
+		paths[i] = fmt.Sprintf("/srv/data/batch/some/folder/file-%05d.bin", i)
+	}
+	th := newTestHost(t, nil)
+	th.cfg.Router.Mutation("test.batch", th.run,
+		bridgeipc.WithTaskMetadata(func(any) bridgeipc.TaskMetadata {
+			return bridgeipc.TaskMetadata{Label: "20000 items", Action: "copy", Identity: paths}
+		}))
+	th.start()
+	sess := th.connect()
+
+	stream := th.startJob(sess, "test.batch", jobA)
+	time.Sleep(jobs.TransientMaxDuration + 100*time.Millisecond)
+	th.release <- nil
+	readResult(t, stream)
+
+	record := th.record(jobA)
+	if !slices.Equal(record.Target, paths) {
+		t.Fatalf("record target holds %d paths, want the %d of the batch", len(record.Target), len(paths))
+	}
+	snapshot := snapshotFromRecord(record)
+	if snapshot.Metadata == nil || snapshot.Metadata.Label != "20000 items" || !slices.Equal(snapshot.Metadata.Identity, record.Target) {
+		t.Fatalf("snapshot metadata = %+v, want the label and the target as its identity", snapshot.Metadata)
+	}
+}
+
+func TestTasksGetOfAnEndedHostJobCarriesItsIdentityAndResult(t *testing.T) {
+	th := newTestHost(t, nil)
+	th.cfg.Tasks.RegisterRoutes(th.cfg.Router)
+	now := time.Now().UTC()
+	createRuns(t, th.cfg.Store, jobs.Record{
+		ID: jobA, Route: "test.job", Owner: jobs.Owner{UID: th.cfg.UID, Username: "alice"},
+		State: jobs.StateCompleted, CreatedAt: now, StartedAt: now, FinishedAt: now,
+		Target: []string{"/srv/a", "/srv/b"}, Metadata: jsontext.Value(`{"label":"2 items","action":"delete"}`),
+		Result:  jsontext.Value(`{"ok":true}`),
+		Request: jsontext.Value(`{}`), Executor: jobs.Executor{Kind: "host"}, Protocol: jobs.Protocol,
+	})
+	th.start()
+
+	snapshot := decodeSnapshot(t, callTasks(t, th.connect(), "tasks.get", jobA))
+	if snapshot.Metadata == nil || snapshot.Metadata.Label != "2 items" || !slices.Equal(snapshot.Metadata.Identity, []string{"/srv/a", "/srv/b"}) {
+		t.Fatalf("tasks.get metadata = %+v, want the label and the target as its identity", snapshot.Metadata)
+	}
+	if result, err := json.Marshal(snapshot.Result); err != nil || string(result) != `{"ok":true}` {
+		t.Fatalf("tasks.get result = %s (%v), want the stored result", result, err)
+	}
+}
+
+func TestHostStatusCountsRunningJobs(t *testing.T) {
+	th := newTestHost(t, nil)
+	th.cfg.Tasks.RegisterRoutes(th.cfg.Router)
+	th.start()
+	sess := th.connect()
+	status := func() string {
+		t.Helper()
+		result := readResult(t, openStream(t, sess, "tasks.host", struct{}{}, ""))
+		if result.Status != "ok" {
+			t.Fatalf("tasks.host = %#v, want ok", result)
+		}
+		return compact(t, result.Data)
+	}
+
+	if got := status(); got != `{"update_pending":false,"running":0}` {
+		t.Fatalf("tasks.host of an idle host = %s, want nothing running", got)
+	}
+	first := th.startJob(sess, "test.job", jobA)
+	second := th.startJob(sess, "test.job", jobB)
+	// The host is of this build, so no update waits and it lists no jobs.
+	if got := status(); got != `{"update_pending":false,"running":2}` {
+		t.Fatalf("tasks.host with two jobs running = %s, want 2 running and no jobs listed", got)
+	}
+	// Either job may take either release.
+	th.release <- nil
+	th.release <- nil
+	readResult(t, first)
+	readResult(t, second)
+}

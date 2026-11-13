@@ -12,6 +12,7 @@ interface LoginResponse {
 type LoginErrorCode =
   | "invalid_request"
   | "session_creation_failed"
+  | "too_many_requests"
   | "authentication_failed"
   | "password_expired"
   | "access_denied"
@@ -49,6 +50,8 @@ const loginErrorMessage = (
       return "The sign-in request was invalid. Refresh the page and try again.";
     case "session_creation_failed":
       return "LinuxIO could not prepare your session. Please try again.";
+    case "too_many_requests":
+      return "Too many sign-in attempts at once. Wait a moment and try again.";
     case "authentication_failed":
       return "Incorrect username or password.";
     case "password_expired":

@@ -1,9 +1,9 @@
 import { LinuxIOError } from "./errors";
 import linuxio from "./generated/client";
-import type { TaskSnapshot } from "./generated/linuxio-types";
+import type { FileUploadOwner, TaskSnapshot } from "./generated/linuxio-types";
 import { openTaskDataStream } from "./linuxio";
 import { streamWriteChunks, waitForStreamResult } from "./stream-helpers";
-import { isTerminalTaskState, terminalSnapshotOrThrow } from "./tasks";
+import { isTerminalTaskState } from "./tasks";
 
 export interface UploadContentOptions {
   chunkSize?: number;
@@ -18,6 +18,16 @@ export interface UploadContentOptions {
   overwrite?: boolean;
   /** Content version returned when the file was opened for editing. */
   expectedVersion?: string;
+  /**
+   * `"session"` makes a root bridge hand a new file, and the folders the save
+   * creates, to the session user (inside a folder that user already owns).
+   * Unset, a root bridge keeps them root-owned. An overwritten file always
+   * keeps its owner. Set, a symbolic link at the target is refused (409)
+   * instead of written through.
+   */
+  owner?: FileUploadOwner;
+  /** Create a new file readable only by its owner (0600). */
+  private?: boolean;
   signal?: AbortSignal;
 }
 
@@ -32,13 +42,15 @@ export async function uploadContent(
   data: Uint8Array,
   options: UploadContentOptions = {},
 ): Promise<void> {
-  const task = await linuxio.filebrowser.upload({
+  const task = await linuxio.filebrowser.upload.start({
     targetPath,
     size: String(data.length),
     overwrite: options.overwrite,
     ...(options.expectedVersion
       ? { expectedVersion: options.expectedVersion }
       : {}),
+    ...(options.owner ? { owner: options.owner } : {}),
+    ...(options.private ? { private: true } : {}),
   });
   options.onTaskStart?.(task);
 
@@ -47,8 +59,11 @@ export async function uploadContent(
   // snapshot. Throw the structured error here: attaching a data stream to a
   // dead Task would misreport it as a 404 "transfer task not ready".
   if (isTerminalTaskState(task.state)) {
-    terminalSnapshotOrThrow(task);
-    return;
+    if (task.state === "completed") return;
+    throw new LinuxIOError(
+      task.error?.message ?? "Task failed",
+      task.error?.code,
+    );
   }
 
   const stream = openTaskDataStream(task.id, 0);

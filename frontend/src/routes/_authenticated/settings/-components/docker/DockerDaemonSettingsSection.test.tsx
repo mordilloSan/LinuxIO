@@ -14,47 +14,38 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@iconify/react", () => ({ Icon: () => <span /> }));
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
-  type StorageOptions = {
-    success?: (result: unknown) => void;
-    options?: { onSettled?: () => void };
-  };
+  const { mockMutationHooks } = await import("@/test/mutationHooks");
+  const useCallMutation = (
+    endpoint: { route: string },
+    options: {
+      success?: (result: unknown) => void;
+      options?: { onSettled?: () => void };
+    },
+  ) => ({
+    isPending: false,
+    mutate: (request: Record<string, unknown>) => {
+      if (endpoint.route === "docker.apply_daemon_storage") {
+        mocks.applyStorage(request);
+        options.success?.({ config: request, restart_required: false });
+        options.options?.onSettled?.();
+      }
+      if (endpoint.route === "docker.set_daemon_config") {
+        mocks.save(request);
+        options.success?.({
+          config: request,
+          restart_required: mocks.restartRequired,
+        });
+      }
+      if (endpoint.route === "systemd.restart_service") {
+        mocks.restart(request);
+        options.success?.(undefined);
+      }
+    },
+  });
   return {
     ...actual,
-    linuxio: {
-      ...actual.linuxio,
-      docker: {
-        ...actual.linuxio.docker,
-        apply_daemon_storage: {
-          useTaskStreamAction: (options: StorageOptions) => ({
-            isPending: false,
-            mutate: (request: Record<string, unknown>) => {
-              mocks.applyStorage(request);
-              options.success?.({ config: request, restart_required: false });
-              options.options?.onSettled?.();
-            },
-          }),
-        },
-      },
-    },
-    useCallMutation: (
-      endpoint: { route: string },
-      options: { success?: (result: unknown) => void },
-    ) => ({
-      isPending: false,
-      mutate: (request: Record<string, unknown>) => {
-        if (endpoint.route === "docker.set_daemon_config") {
-          mocks.save(request);
-          options.success?.({
-            config: request,
-            restart_required: mocks.restartRequired,
-          });
-        }
-        if (endpoint.route === "systemd.restart_service") {
-          mocks.restart(request);
-          options.success?.(undefined);
-        }
-      },
-    }),
+    linuxio: mockMutationHooks(actual.linuxio, useCallMutation),
+    useCallMutation,
   };
 });
 
@@ -154,12 +145,11 @@ describe("DockerDaemonSettingsSection", () => {
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     expect(
-      await screen.findByText("Stop Docker to change storage?"),
+      await screen.findByText("Stop all containers to change Docker storage?"),
     ).toBeInTheDocument();
+    expect(screen.getByText(/reverse proxy/)).toBeInTheDocument();
     expect(mocks.applyStorage).not.toHaveBeenCalled();
-    await user.click(
-      screen.getByRole("button", { name: "Stop Docker and apply" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Change storage" }));
 
     expect(mocks.applyStorage).toHaveBeenCalledWith({
       ...config,
@@ -170,7 +160,7 @@ describe("DockerDaemonSettingsSection", () => {
     expect(mocks.save).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(
-        screen.queryByText("Stop Docker to change storage?"),
+        screen.queryByText("Stop all containers to change Docker storage?"),
       ).not.toBeInTheDocument(),
     );
   });
@@ -222,6 +212,42 @@ describe("DockerDaemonSettingsSection", () => {
 
     expect(
       await screen.findByText("Use a prefix between 16 and 32."),
+    ).toBeInTheDocument();
+    expect(mocks.save).not.toHaveBeenCalled();
+  });
+
+  it("accepts an IPv6 address pool the daemon accepts", async () => {
+    const { user } = renderSection();
+
+    await user.type(screen.getByLabelText("Base"), "fd00::/48");
+    await user.type(screen.getByLabelText("Network size"), "64");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(mocks.save).toHaveBeenCalledWith({
+        ...config,
+        address_pool_base: "fd00::/48",
+        address_pool_size: 64,
+      }),
+    );
+    expect(screen.queryByText(/Use a CIDR/)).not.toBeInTheDocument();
+  });
+
+  it("bounds an IPv6 address pool size by 128 and rejects a bad base", async () => {
+    const { user } = renderSection();
+
+    await user.type(screen.getByLabelText("Base"), "fd00::/48");
+    await user.type(screen.getByLabelText("Network size"), "129");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(
+      await screen.findByText("Use a prefix between 48 and 128."),
+    ).toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText("Base"));
+    await user.type(screen.getByLabelText("Base"), "999.1.1.1/16");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(
+      await screen.findByText("Use a CIDR like 172.20.0.0/16 or fd00::/48."),
     ).toBeInTheDocument();
     expect(mocks.save).not.toHaveBeenCalled();
   });

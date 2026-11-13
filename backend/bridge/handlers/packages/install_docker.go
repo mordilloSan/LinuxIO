@@ -33,7 +33,12 @@ func installCapabilityComponent(ctx context.Context, task *bridgeipc.Task, user 
 		return installDockerEngine(ctx, task)
 	case nodeComponent:
 		return installNodeForUser(ctx, task, user)
+	case claudeCodeComponent:
+		return installClaudeCodeRepository(ctx, task)
 	default:
+		if id, ok := assistantAgentID(component); ok {
+			return installAssistantAgent(ctx, task, user, id)
+		}
 		return fmt.Errorf("unknown optional component %q", component)
 	}
 }
@@ -49,7 +54,7 @@ func installDockerEngine(ctx context.Context, task *bridgeipc.Task) error {
 	}
 
 	reportProgress(task, stageResolve, fmt.Sprintf("Downloading Docker install script from %s", dockerInstallScriptURL), pctResolve)
-	script, err := fetchInstallScript(ctx, dockerInstallScriptURL)
+	script, err := fetchInstallFile(ctx, dockerInstallScriptURL)
 	if err != nil {
 		return fmt.Errorf("download docker install script: %w", err)
 	}
@@ -80,7 +85,9 @@ func installDockerEngine(ctx context.Context, task *bridgeipc.Task) error {
 	return nil
 }
 
-func fetchInstallScript(ctx context.Context, url string) ([]byte, error) {
+// fetchInstallFile downloads a small installer input (a script or a signing
+// key), bounded in time and size.
+func fetchInstallFile(ctx context.Context, url string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, installScriptFetchTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -101,10 +108,10 @@ func fetchInstallScript(ctx context.Context, url string) ([]byte, error) {
 		return nil, err
 	}
 	if len(script) > installScriptMaxBytes {
-		return nil, fmt.Errorf("script exceeds %d bytes", installScriptMaxBytes)
+		return nil, fmt.Errorf("response exceeds %d bytes", installScriptMaxBytes)
 	}
 	if len(script) == 0 {
-		return nil, fmt.Errorf("script is empty")
+		return nil, fmt.Errorf("response is empty")
 	}
 	return script, nil
 }

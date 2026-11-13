@@ -15,32 +15,37 @@ import (
 )
 
 type Stats struct {
-	Cpu            float64             `json:"cpu_percent"`
-	MaxCpu         float64             `json:"max_cpu_percent,omitzero"`
-	Mem            float64             `json:"memory_gb"`
-	MaxMem         float64             `json:"max_memory_gb,omitzero"`
-	MemUsed        float64             `json:"memory_used_gb"`
-	MemPct         float64             `json:"memory_percent"`
-	MemBuffCache   float64             `json:"memory_buffer_cache_gb"`
-	MemZfsArc      float64             `json:"memory_zfs_arc_gb,omitzero"` // ZFS ARC memory
-	Swap           float64             `json:"swap_gb,omitzero"`
-	SwapUsed       float64             `json:"swap_used_gb,omitzero"`
-	SwapPct        float64             `json:"memory_swap_percent,omitzero"`
-	MemAvailable   float64             `json:"memory_available_gb,omitzero"`
-	MemCached      float64             `json:"memory_cached_gb,omitzero"`
-	MemBuffers     float64             `json:"memory_buffers_gb,omitzero"`
-	DiskTotal      float64             `json:"disk_total_gb"`
-	DiskUsed       float64             `json:"disk_used_gb"`
-	DiskPct        float64             `json:"disk_percent"`
-	DiskReadPs     float64             `json:"disk_read_mb_per_second,omitzero"`
-	DiskWritePs    float64             `json:"disk_write_mb_per_second,omitzero"`
-	MaxDiskReadPs  float64             `json:"max_disk_read_mb_per_second,omitzero"`
-	MaxDiskWritePs float64             `json:"max_disk_write_mb_per_second,omitzero"`
-	Temperatures   map[string]float64  `json:"temperatures,omitempty"`
-	ExtraFs        map[string]*FsStats `json:"extra_filesystems,omitempty"`
-	GPUData        map[string]GPUData  `json:"gpus,omitempty"`
-	Bandwidth      [2]uint64           `json:"bandwidth_bytes_per_second,omitzero"`     // [sent bytes, recv bytes]
-	MaxBandwidth   [2]uint64           `json:"max_bandwidth_bytes_per_second,omitzero"` // [sent bytes, recv bytes]
+	Cpu            float64            `json:"cpu_percent"`
+	MaxCpu         float64            `json:"max_cpu_percent,omitzero"`
+	Mem            float64            `json:"memory_gb"`
+	MaxMem         float64            `json:"max_memory_gb,omitzero"`
+	MemUsed        float64            `json:"memory_used_gb"`
+	MemPct         float64            `json:"memory_percent"`
+	MemBuffCache   float64            `json:"memory_buffer_cache_gb"`
+	MemZfsArc      float64            `json:"memory_zfs_arc_gb,omitzero"` // ZFS ARC memory
+	MemDocker      float64            `json:"memory_docker_gb,omitzero"`  // Docker containers, page cache excluded
+	MemVMs         float64            `json:"memory_vm_gb,omitzero"`      // libvirt VMs, page cache excluded
+	Swap           float64            `json:"swap_gb,omitzero"`
+	SwapUsed       float64            `json:"swap_used_gb,omitzero"`
+	SwapPct        float64            `json:"memory_swap_percent,omitzero"`
+	MemAvailable   float64            `json:"memory_available_gb,omitzero"`
+	MemCached      float64            `json:"memory_cached_gb,omitzero"`
+	MemBuffers     float64            `json:"memory_buffers_gb,omitzero"`
+	DiskTotal      float64            `json:"disk_total_gb"`
+	DiskUsed       float64            `json:"disk_used_gb"`
+	DiskPct        float64            `json:"disk_percent"`
+	DiskReadPs     float64            `json:"disk_read_mb_per_second,omitzero"`
+	DiskWritePs    float64            `json:"disk_write_mb_per_second,omitzero"`
+	MaxDiskReadPs  float64            `json:"max_disk_read_mb_per_second,omitzero"`
+	MaxDiskWritePs float64            `json:"max_disk_write_mb_per_second,omitzero"`
+	Temperatures   map[string]float64 `json:"temperatures,omitempty"`
+	// SensorReadings holds each primary `sensors -j` reading by adapter and
+	// label; only the collector tick fills it, for the sensors history.
+	SensorReadings map[string]map[string]float64 `json:"sensor_readings,omitempty"`
+	ExtraFs        map[string]*FsStats           `json:"extra_filesystems,omitempty"`
+	GPUData        map[string]GPUData            `json:"gpus,omitempty"`
+	Bandwidth      [2]uint64                     `json:"bandwidth_bytes_per_second,omitzero"`     // [sent bytes, recv bytes]
+	MaxBandwidth   [2]uint64                     `json:"max_bandwidth_bytes_per_second,omitzero"` // [sent bytes, recv bytes]
 	// TODO: remove other load fields in future release in favor of load avg array
 	LoadAvg           [3]float64           `json:"load_average,omitempty"`
 	Battery           [2]uint16            `json:"battery,omitzero"`                      // [percent, charge state, current]

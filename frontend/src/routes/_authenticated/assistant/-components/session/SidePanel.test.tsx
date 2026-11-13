@@ -4,8 +4,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { render } from "@/test/render";
 
-import SidePanel from "./SidePanel";
 import { assistantStore, type SideSession } from "../assistant-store";
+import SidePanel from "./SidePanel";
 
 const side = (patch: Partial<SideSession> = {}): SideSession => ({
   sessionId: "side1",

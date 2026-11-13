@@ -55,14 +55,17 @@ func TestUpdateInterfaceHooksChangeRestarts(t *testing.T) {
 	env, _, _ := setupTwoPeers(t)
 	env.wgQuick = nil
 
-	updateInterface(t, apischema.WireGuardUpdateInterfaceRequest{PreUp: []string{" echo a ", "", "echo b"}, PostUp: []string{}})
+	updateInterface(t, apischema.WireGuardUpdateInterfaceRequest{Hooks: apischema.WireGuardHooks{
+		apischema.WireGuardPreUp:  {" echo a ", "", "echo b"},
+		apischema.WireGuardPostUp: {},
+	}})
 
 	if len(env.wgQuick) != 2 || env.wgQuick[0].action != "down" || env.wgQuick[1].action != "up" {
 		t.Fatalf("wg-quick calls = %v", env.wgQuick)
 	}
 	cfg, _ := ParseWireGuardConfig(configPath("wgtest"))
-	if !slices.Equal(cfg.PreUp, []string{"echo a", "echo b"}) || len(cfg.PostUp) != 0 || len(cfg.PostDown) == 0 {
-		t.Fatalf("hooks = %+v", cfg)
+	if !slices.Equal(cfg.Hooks[apischema.WireGuardPreUp], []string{"echo a", "echo b"}) || len(cfg.Hooks[apischema.WireGuardPostUp]) != 0 || len(cfg.Hooks[apischema.WireGuardPostDown]) == 0 {
+		t.Fatalf("hooks = %v", cfg.Hooks)
 	}
 }
 

@@ -39,13 +39,35 @@ var (
 	storageDriverPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 )
 
-// dockerd only re-reads these keys on SIGHUP; every other key edited here
-// (log-opts, default-address-pools, userland-proxy) needs a daemon restart.
-var daemonReloadableKeys = map[string]bool{"live-restore": true}
+// daemonKeyEffect says how a change to a daemon.json key takes effect.
+type daemonKeyEffect int
 
-// daemonStorageKeys only change through applyDaemonStorage, which stops Docker
-// around the switch. features carries containerd-snapshotter, the image store.
-var daemonStorageKeys = []string{"data-root", "features", "storage-driver"}
+const (
+	// daemonKeyStorage keys only change through applyDaemonStorage, which stops
+	// Docker around the switch. features carries containerd-snapshotter, the
+	// image store.
+	daemonKeyStorage daemonKeyEffect = iota
+	// daemonKeyReload keys are re-read by dockerd on SIGHUP.
+	daemonKeyReload
+	// daemonKeyRestart keys need a daemon restart.
+	daemonKeyRestart
+)
+
+// daemonKeys lists every daemon.json key the form reads and writes, with what a
+// change to it takes effect through. A key missing here is never reloaded or
+// restarted for; TestDaemonKeysAreTheKeysTheFormEdits fails on it.
+var daemonKeys = []struct {
+	name   string
+	effect daemonKeyEffect
+}{
+	{"data-root", daemonKeyStorage},
+	{"features", daemonKeyStorage},
+	{"storage-driver", daemonKeyStorage},
+	{"live-restore", daemonKeyReload},
+	{"log-opts", daemonKeyRestart},
+	{"default-address-pools", daemonKeyRestart},
+	{"userland-proxy", daemonKeyRestart},
+}
 
 // dockerd names overlay and the plain-copy driver differently per image store
 // and fails to start on the other store's name.
@@ -75,13 +97,11 @@ func setDaemonConfig(ctx context.Context, path string, req apischema.DockerDaemo
 		return apischema.DockerDaemonConfigSetResult{}, err
 	}
 	after := applyDaemonConfig(cloneMap(before), req)
-	for _, key := range daemonStorageKeys {
-		if !jsonEqual(before[key], after[key]) {
-			return apischema.DockerDaemonConfigSetResult{}, fmt.Errorf("%w: data root and storage driver changes must go through docker.apply_daemon_storage", bridgeipc.ErrInvalidArgs)
-		}
+	if daemonKeysChanged(before, after, daemonKeyStorage) {
+		return apischema.DockerDaemonConfigSetResult{}, fmt.Errorf("%w: data root and storage driver changes must go through docker.apply_daemon_storage", bridgeipc.ErrInvalidArgs)
 	}
 
-	reload, restart := daemonConfigChanges(before, after)
+	reload, restart := daemonKeysChanged(before, after, daemonKeyReload), daemonKeysChanged(before, after, daemonKeyRestart)
 	if reload || restart {
 		if err := writeDaemonConfigFile(path, after); err != nil {
 			return apischema.DockerDaemonConfigSetResult{}, err
@@ -199,20 +219,15 @@ func applyDaemonConfig(raw map[string]any, cfg apischema.DockerDaemonConfig) map
 	return raw
 }
 
-// daemonConfigChanges reports whether any reloadable key changed and whether
-// any key that needs a daemon restart changed.
-func daemonConfigChanges(before, after map[string]any) (reload, restart bool) {
-	for key := range daemonReloadableKeys {
-		if !jsonEqual(before[key], after[key]) {
-			reload = true
+// daemonKeysChanged reports whether any key with the given effect differs
+// between before and after.
+func daemonKeysChanged(before, after map[string]any, effect daemonKeyEffect) bool {
+	for _, key := range daemonKeys {
+		if key.effect == effect && !jsonEqual(before[key.name], after[key.name]) {
+			return true
 		}
 	}
-	for _, key := range []string{"log-opts", "default-address-pools", "userland-proxy"} {
-		if !jsonEqual(before[key], after[key]) {
-			restart = true
-		}
-	}
-	return reload, restart
+	return false
 }
 
 func validateDaemonConfig(cfg apischema.DockerDaemonConfig) error {

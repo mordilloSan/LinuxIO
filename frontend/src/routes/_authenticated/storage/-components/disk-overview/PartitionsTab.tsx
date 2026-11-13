@@ -3,12 +3,9 @@ import { useState } from "react";
 
 import {
   linuxio,
-  useCallMutation,
   getMutationErrorMessage,
   type BtrfsOpProgress,
   type StorageBlockDevice,
-  type SuccessPathResponse,
-  type SuccessResponse,
   type TaskProgress,
 } from "@/api";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
@@ -28,6 +25,7 @@ import {
 import { useActiveTaskRecovery } from "@/tasks/useActiveTaskRecovery";
 import { formatFileSize } from "@/utils/formatters";
 
+import { describeMember, memberConfirmations } from "../storageMember";
 import {
   CreatePartitionDialog,
   FormatPartitionDialog,
@@ -75,7 +73,7 @@ const PartitionsTab = ({ driveName }: { driveName: string }) => {
     enabled: poolsEnabled,
   });
   const [dialog, setDialog] = useState<PartitionDialog | null>(null);
-  const [step, setStep] = useState<string | null>(null);
+  const [step, setStep] = useState<BtrfsOpProgress | null>(null);
   // The last create or format failure, shown in its dialog; the bridge's
   // message says what to change, e.g. to tick Overwrite.
   const [error, setError] = useState<string | null>(null);
@@ -95,11 +93,11 @@ const PartitionsTab = ({ driveName }: { driveName: string }) => {
   );
   const rows = disk ? diskLayout(disk, devices, btrfs, offline) : [];
 
-  // Tasks, not calls: mkfs trims the whole partition first, which can take
-  // minutes on a large SSD.
+  // Tasks, not calls: the bridge trims the whole partition before mkfs,
+  // which can take minutes on a large SSD.
   const taskConfig = (success: string, failure: string) => ({
     onProgress: (progress: TaskProgress<BtrfsOpProgress>) =>
-      setStep(progress.detail?.message ?? null),
+      setStep(progress.detail ?? null),
     success,
     error: failure,
     options: {
@@ -108,26 +106,27 @@ const PartitionsTab = ({ driveName }: { driveName: string }) => {
       onSettled: () => setStep(null),
     },
   });
-  const create = linuxio.storage.partition_create.useTaskStreamAction<
-    SuccessPathResponse,
-    TaskProgress<BtrfsOpProgress>
-  >(taskConfig("Partition created", "Failed to create partition"));
-  const format = linuxio.storage.partition_format.useTaskStreamAction<
-    SuccessResponse,
-    TaskProgress<BtrfsOpProgress>
-  >(taskConfig("Partition formatted", "Failed to format partition"));
-  const { mutate: deletePartition, isPending: isDeleting } = useCallMutation(
-    linuxio.storage.partition_delete,
-    { success: "Partition deleted", error: "Failed to delete partition" },
+  const create = linuxio.storage.partition_create.useMutation(
+    taskConfig("Partition created", "Failed to create partition"),
   );
-  const { mutate: mountPartition, isPending: isMounting } = useCallMutation(
-    linuxio.storage.partition_mount,
-    { success: "Filesystem mounted", error: "Failed to mount filesystem" },
+  const format = linuxio.storage.partition_format.useMutation(
+    taskConfig("Partition formatted", "Failed to format partition"),
   );
-  const { mutate: initializeDisk, isPending: isInitializing } = useCallMutation(
-    linuxio.storage.disk_initialize,
-    { success: "Disk initialized", error: "Failed to initialize disk" },
-  );
+  const { mutate: deletePartition, isPending: isDeleting } =
+    linuxio.storage.partition_delete.useMutation({
+      success: "Partition deleted",
+      error: "Failed to delete partition",
+    });
+  const { mutate: mountPartition, isPending: isMounting } =
+    linuxio.storage.partition_mount.useMutation({
+      success: "Filesystem mounted",
+      error: "Failed to mount filesystem",
+    });
+  const { mutate: initializeDisk, isPending: isInitializing } =
+    linuxio.storage.disk_initialize.useMutation({
+      success: "Disk initialized",
+      error: "Failed to initialize disk",
+    });
 
   // After a reload, adopt a running create or format of this disk so its
   // progress and completion toast come back.
@@ -136,7 +135,7 @@ const PartitionsTab = ({ driveName }: { driveName: string }) => {
     scanKey: disk?.path ?? null,
     match: (task) => task.metadata?.device === disk?.path,
     onRecover: (task) =>
-      create.watch(task, {
+      create.watch(task.id, {
         device: task.metadata?.device ?? "",
         startBytes: 0,
         sizeBytes: 0,
@@ -151,7 +150,7 @@ const PartitionsTab = ({ driveName }: { driveName: string }) => {
           row.kind === "partition" && row.device.path === task.metadata?.device,
       ),
     onRecover: (task) =>
-      format.watch(task, {
+      format.watch(task.id, {
         device: task.metadata?.device ?? "",
         fsType: "",
         label: "",
@@ -172,6 +171,19 @@ const PartitionsTab = ({ driveName }: { driveName: string }) => {
   const working = running || isDeleting || isMounting || isInitializing;
   const gpt = disk.ptType === "gpt";
   const blocker = initializeBlocker(disk, rows, btrfs, offline);
+  // Members of an md array, an LVM volume group or another set: nothing holds
+  // them once the array is stopped or the group inactive, so the
+  // confirmations of Initialize, Format and Delete name them and the request
+  // confirms exactly these. A member of a btrfs pool the bridge knows blocks
+  // instead (initializeBlocker, a row's reason); a btrfs signature that
+  // belongs to no readable pool is named like the rest.
+  const initialized = [
+    disk,
+    ...rows.flatMap((row) => (row.kind === "partition" ? [row.device] : [])),
+  ];
+  const members = initialized.flatMap(({ path, member }) =>
+    member ? [{ path, member }] : [],
+  );
 
   const columns: AppVirtualTableColumnDef<LayoutRow>[] = [
     {
@@ -213,7 +225,11 @@ const PartitionsTab = ({ driveName }: { driveName: string }) => {
       cell: ({ row: { original } }) =>
         original.kind === "free"
           ? ""
-          : original.device.mountpoints.join(", ") || original.reason || "",
+          : original.device.mountpoints.join(", ") ||
+            original.reason ||
+            (original.device.member
+              ? `Member of ${describeMember(original.device.member)}`
+              : ""),
     },
     {
       id: "actions",
@@ -322,9 +338,13 @@ const PartitionsTab = ({ driveName }: { driveName: string }) => {
       </div>
       {running && !dialog && (
         <div role="status">
-          <AppLinearProgress aria-label="Working" />
+          <AppLinearProgress
+            aria-label="Working"
+            value={step?.percent}
+            variant={step?.percent ? "determinate" : "indeterminate"}
+          />
           <AppTypography color="text.secondary" variant="caption">
-            {step ?? "Working..."}
+            {step?.message ?? "Working..."}
           </AppTypography>
         </div>
       )}
@@ -362,7 +382,13 @@ const PartitionsTab = ({ driveName }: { driveName: string }) => {
           isPending={format.isPending}
           onClose={closeDialog}
           onConfirm={(request) =>
-            format.mutate(request, { onSuccess: closeDialog })
+            format.mutate(
+              {
+                ...request,
+                confirmMembers: memberConfirmations([dialog.device]),
+              },
+              { onSuccess: closeDialog },
+            )
           }
           step={step}
         />
@@ -383,14 +409,21 @@ const PartitionsTab = ({ driveName }: { driveName: string }) => {
         isPending={isDeleting}
         message={
           dialog?.kind === "delete"
-            ? `Delete ${dialog.device.path} (${describe(dialog.device)})? Everything on it is lost.`
+            ? `Delete ${dialog.device.path} (${describe(dialog.device)})? Everything on it is lost.${
+                dialog.device.member
+                  ? ` It is a member of ${describeMember(dialog.device.member)}, which loses it.`
+                  : ""
+              }`
             : ""
         }
         onClose={closeDialog}
         onConfirm={() => {
           if (dialog?.kind !== "delete") return;
           deletePartition(
-            { device: dialog.device.path },
+            {
+              device: dialog.device.path,
+              confirmMembers: memberConfirmations([dialog.device]),
+            },
             { onSuccess: closeDialog },
           );
         }}
@@ -412,10 +445,25 @@ const PartitionsTab = ({ driveName }: { driveName: string }) => {
                 )
                 .join(", ")}`
             : ""
-        }.`}
+        }.${
+          members.length > 0
+            ? ` This also erases ${members
+                .map(
+                  ({ path, member }) =>
+                    `${path}, a member of ${describeMember(member)}`,
+                )
+                .join("; ")}.`
+            : ""
+        }`}
         onClose={closeDialog}
         onConfirm={() =>
-          initializeDisk({ device: disk.path }, { onSuccess: closeDialog })
+          initializeDisk(
+            {
+              device: disk.path,
+              confirmMembers: memberConfirmations(initialized),
+            },
+            { onSuccess: closeDialog },
+          )
         }
         open={dialog?.kind === "initialize"}
         pendingText="Initializing..."

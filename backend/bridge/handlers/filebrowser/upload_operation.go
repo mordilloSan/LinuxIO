@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/iteminfo"
@@ -27,17 +29,7 @@ type uploadAttributes struct {
 	uid         int
 	gid         int
 	hasExisting bool
-	owner       uploadOwner // applied to new files when the bridge runs as root
-	modTime     time.Time   // zero keeps the write time
-}
-
-// uploadOwner is the session user new uploads belong to. A root bridge would
-// otherwise leave root-owned files the user cannot touch from an unprivileged
-// session; an unprivileged bridge already writes as that user.
-type uploadOwner struct {
-	uid uint32
-	gid uint32
-	set bool
+	modTime     time.Time // zero keeps the write time
 }
 
 type uploadTransferTask struct {
@@ -46,13 +38,20 @@ type uploadTransferTask struct {
 	path            string
 	expectedSize    int64
 	expectedVersion string
-	owner           uploadOwner
 	overwrite       bool
+	newOwner        sessionOwner   // set when a root bridge hands what this upload creates to the session user
+	linkRule        services.Owner // the session user a root bridge acts for: no link they could plant is followed (see actingFor)
+	private         bool           // a new file is owner-only (0600)
+	refuseSymlink   bool           // the request set owner: a symlink at the target is refused, never followed
 
-	// finalRel, tempRel and attrs are guarded by mu.
-	finalRel string
-	tempRel  string
-	attrs    uploadAttributes
+	// finalRel, tempRel, attrs, folderInfo, bufferID and fileOwner are
+	// guarded by mu.
+	finalRel   string
+	tempRel    string
+	attrs      uploadAttributes
+	folderInfo os.FileInfo    // the folder prepare put the buffer in; the commit must find this folder
+	bufferID   uploadBufferID // the buffer prepare created; every reopen must find this file
+	fileOwner  sessionOwner   // newOwner when the buffer's folder is already theirs
 }
 
 var errUploadVersionConflict = errors.New("file changed since it was opened")
@@ -76,12 +75,34 @@ func parseUploadRequest(req apischema.FileUploadRequest) (string, int64, bool, s
 	return req.TargetPath, expectedSize, req.Overwrite != nil && *req.Overwrite, expectedVersion, nil
 }
 
-func loadUploadAttributes(root *fsroot.FSRoot, realRel string) (uploadAttributes, error) {
-	existingStat, err := root.Root.Stat(realRel)
+// refuseFolderTarget refuses an upload onto a folder, or onto a link to one,
+// before any missing folder is made. It goes by path and decides nothing
+// else: the owner and mode come from uploadAttributesAt.
+func refuseFolderTarget(root *fsroot.FSRoot, realRel string) error {
+	if info, err := root.Root.Stat(realRel); err == nil && info.IsDir() {
+		return fmt.Errorf("destination is a directory")
+	}
+	return nil
+}
+
+// uploadAttributesAt reads the owner and mode of the file the commit
+// replaces: the entry name in dir itself, through the handle of the folder
+// the commit works in, so a folder swapped for a link after it was opened
+// lends no other file's owner or mode. The commit's renameat replaces a
+// symlink there, not its target, so the target lends none either (a setuid
+// bit included).
+func uploadAttributesAt(dir *os.File, name string) (uploadAttributes, error) {
+	fd, err := unix.Openat(int(dir.Fd()), name, unix.O_PATH|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return uploadAttributes{}, nil
 	}
-	if existingStat.IsDir() {
+	entry := os.NewFile(uintptr(fd), name)
+	defer entry.Close()
+	existingStat, err := entry.Stat()
+	switch {
+	case err != nil, existingStat.Mode()&os.ModeSymlink != 0:
+		return uploadAttributes{}, nil
+	case existingStat.IsDir():
 		return uploadAttributes{}, fmt.Errorf("destination is a directory")
 	}
 
@@ -94,65 +115,77 @@ func loadUploadAttributes(root *fsroot.FSRoot, realRel string) (uploadAttributes
 	return attrs, nil
 }
 
-// restoreUploadedFile settles ownership, mode and time on the upload buffer
-// before it is committed, so the target mode never lags behind the content.
-// Ownership goes first because a chown clears setuid and setgid bits.
-func restoreUploadedFile(root *fsroot.FSRoot, rel string, attrs uploadAttributes) error {
-	if attrs.hasExisting {
-		// Only root may hand files to other users or groups; an unprivileged
-		// session keeps its own ownership, as cp -p does (see chownLike).
-		if err := root.Root.Chown(rel, attrs.uid, attrs.gid); err != nil && !errors.Is(err, os.ErrPermission) {
-			return fmt.Errorf("restore upload ownership: %w", err)
-		}
-		if err := root.Root.Chmod(rel, attrs.mode); err != nil {
-			return fmt.Errorf("restore upload permissions: %w", err)
-		}
-	} else {
-		if attrs.owner.set && os.Geteuid() == 0 {
-			if err := root.Root.Chown(rel, int(attrs.owner.uid), int(attrs.owner.gid)); err != nil {
-				return fmt.Errorf("hand upload to session user: %w", err)
-			}
-		}
-		if err := root.Root.Chmod(rel, services.PermFile); err != nil {
-			return fmt.Errorf("set upload permissions: %w", err)
-		}
+// removeUploadBuffer removes the buffer at tempRel through the handle of its
+// folder, and only while that is still the folder the buffer was created in,
+// so a folder swapped for a link names no other file to remove.
+func removeUploadBuffer(root *fsroot.FSRoot, tempRel string, folder os.FileInfo) error {
+	dir, err := openUploadFolder(root, filepath.Dir(tempRel), folder)
+	if err != nil {
+		return err
 	}
-	if !attrs.modTime.IsZero() {
-		if err := root.Root.Chtimes(rel, attrs.modTime, attrs.modTime); err != nil {
-			slog.Debug("failed to apply uploaded file modified time", "path", rel, "error", err)
-		}
+	defer dir.Close()
+	if err = unix.Unlinkat(int(dir.Fd()), filepath.Base(tempRel), 0); err != nil {
+		return &fs.PathError{Op: "unlinkat", Path: tempRel, Err: err}
 	}
 	return nil
 }
 
-// commitUploadBuffer moves the finished buffer into place. Without overwrite
-// it links instead of renaming, so a file that appeared since the upload
-// started is never replaced.
-func commitUploadBuffer(root *fsroot.FSRoot, tempRel, finalRel string, overwrite bool) error {
-	if overwrite {
-		return root.Root.Rename(tempRel, finalRel)
+// refuseSymlinkTarget refuses an upload that sets owner when name in dir is a
+// symbolic link. Such an upload writes into a user's folder on their behalf,
+// where any process running as the user can plant .env -> /etc/environment,
+// so it never writes through a link there. fstatat on the open folder sees the
+// entry the commit's renameat would replace, so no path walk can be raced.
+func refuseSymlinkTarget(dir *os.File, name string) error {
+	var st unix.Stat_t
+	if unix.Fstatat(int(dir.Fd()), name, &st, unix.AT_SYMLINK_NOFOLLOW) == nil && st.Mode&unix.S_IFMT == unix.S_IFLNK {
+		return fmt.Errorf("%w: %s is a symbolic link; replace it with a regular file", bridgeipc.ErrConflict, name)
 	}
-	if err := root.Root.Link(tempRel, finalRel); err != nil {
-		if errors.Is(err, fs.ErrExist) {
-			return err
+	return nil
+}
+
+// commitUploadBuffer moves the finished buffer tempName to finalName. Both
+// live in dir and every step works on that one handle, so a folder swapped
+// for a symlink between two path resolutions cannot send the buffer anywhere
+// else. Without overwrite it links instead of renaming, so a file that
+// appeared since the upload started is never replaced.
+func commitUploadBuffer(dir *os.File, tempName, finalName string, overwrite bool) error {
+	fd := int(dir.Fd())
+	if overwrite {
+		return renameInDir(fd, tempName, finalName)
+	}
+	if err := unix.Linkat(fd, tempName, fd, finalName, 0); err != nil {
+		if errors.Is(err, unix.EEXIST) {
+			return &os.LinkError{Op: "linkat", Old: tempName, New: finalName, Err: err}
 		}
 		// No hard links here (FAT, SMB, some FUSE): fall back to the old
 		// stat-then-rename rather than refusing every upload on that mount.
-		if _, statErr := root.Root.Lstat(finalRel); statErr == nil {
+		var st unix.Stat_t
+		if unix.Fstatat(fd, finalName, &st, unix.AT_SYMLINK_NOFOLLOW) == nil {
 			return fs.ErrExist
 		}
-		return root.Root.Rename(tempRel, finalRel)
+		return renameInDir(fd, tempName, finalName)
 	}
-	if err := root.Root.Remove(tempRel); err != nil {
-		slog.Warn("failed to remove committed upload buffer", "path", tempRel, "error", err)
+	if err := unix.Unlinkat(fd, tempName, 0); err != nil {
+		slog.Warn("failed to remove committed upload buffer", "path", filepath.Join(dir.Name(), tempName), "error", err)
 	}
 	return nil
 }
 
-func runUploadTask(ctx context.Context, task *bridgeipc.Task, req apischema.FileUploadRequest, owner uploadOwner) (any, error) {
+func renameInDir(fd int, oldName, newName string) error {
+	if err := unix.Renameat(fd, oldName, fd, newName); err != nil {
+		return &os.LinkError{Op: "renameat", Old: oldName, New: newName, Err: err}
+	}
+	return nil
+}
+
+func runUploadTask(ctx context.Context, task *bridgeipc.Task, req apischema.FileUploadRequest, session sessionOwner) (any, error) {
 	path, expectedSize, overwrite, expectedVersion, err := parseUploadRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
+	}
+	newOwner, err := uploadNewOwner(req.Owner, session, os.Geteuid())
+	if err != nil {
+		return nil, err
 	}
 	if expectedVersion != "" && expectedSize >= services.MaxTextFileBytes {
 		return nil, fmt.Errorf("%w: editor save exceeds the maximum text file size", bridgeipc.ErrInvalidArgs)
@@ -179,8 +212,11 @@ func runUploadTask(ctx context.Context, task *bridgeipc.Task, req apischema.File
 		path:            filepath.Clean(path),
 		expectedSize:    expectedSize,
 		expectedVersion: expectedVersion,
-		owner:           owner,
 		overwrite:       overwrite,
+		newOwner:        newOwner,
+		linkRule:        actingFor(session),
+		private:         req.Private != nil && *req.Private,
+		refuseSymlink:   req.Owner != "",
 	}
 	transfer.transferLifecycle = newTransferLifecycle(task, transfer.cleanupPartial, transfer.reportProgress)
 	defer registerTransfer(task.ID(), transfer)()
@@ -205,13 +241,16 @@ func (t *uploadTransferTask) attach(stream net.Conn, req bridgeipc.TaskDataAttac
 	err = t.prepare(root)
 	if err != nil {
 		code := 500
-		if errors.Is(err, errUploadVersionConflict) {
+		if errors.Is(err, errUploadVersionConflict) || errors.Is(err, bridgeipc.ErrConflict) {
 			code = 409
 		}
 		return t.fail(stream, err.Error(), code, err)
 	}
 
-	file, err := root.Root.OpenFile(t.tempRel, os.O_RDWR, services.PermFile)
+	t.mu.Lock()
+	tempRel, bufferID := t.tempRel, t.bufferID
+	t.mu.Unlock()
+	file, err := openUploadBuffer(root, tempRel, bufferID)
 	if err != nil {
 		return t.fail(stream, fmt.Sprintf("cannot open upload buffer: %v", err), 500, err)
 	}
@@ -234,6 +273,43 @@ func (t *uploadTransferTask) attach(stream net.Conn, req bridgeipc.TaskDataAttac
 		})
 }
 
+// resolveTarget returns the path a save without owner writes to when a
+// symlink sits at path: as the user's own programs resolve it on a bridge
+// that is not root, and, for the session user a root bridge acts for, only
+// through a link that user cannot have planted (see
+// services.ResolveNoUserLinks).
+func (t *uploadTransferTask) resolveTarget(root *fsroot.FSRoot, path string) (string, error) {
+	if !t.linkRule.Set {
+		resolved, _, err := iteminfo.ResolveSymlinksAt(t.ctx, root, path)
+		return resolved, err
+	}
+	return services.ResolveNoUserLinks(root, path, t.linkRule)
+}
+
+// targetPath returns the path the upload writes to. Without owner (editor
+// saves, plain uploads) it writes through a symlink so the atomic rename
+// replaces the target, not the link (dotfile repos, sites-enabled); a
+// dangling link is replaced as-is. With owner the link is refused in prepare
+// instead. A root bridge acting for the session user follows such a link only
+// where that user cannot have planted it.
+func (t *uploadTransferTask) targetPath(root *fsroot.FSRoot) (string, error) {
+	realPath := filepath.Clean(t.path)
+	if t.refuseSymlink {
+		return realPath, nil
+	}
+	resolvedPath, err := t.resolveTarget(root, realPath)
+	switch {
+	case err == nil:
+		return resolvedPath, nil
+	case errors.Is(err, bridgeipc.ErrForbidden):
+		return "", err
+	}
+	if ctxErr := t.ctx.Err(); ctxErr != nil {
+		return "", ctxErr
+	}
+	return realPath, nil
+}
+
 func (t *uploadTransferTask) prepare(root *fsroot.FSRoot) error {
 	t.mu.Lock()
 	if t.tempRel != "" {
@@ -242,45 +318,74 @@ func (t *uploadTransferTask) prepare(root *fsroot.FSRoot) error {
 	}
 	t.mu.Unlock()
 
-	realPath := filepath.Clean(t.path)
-	// Write through a symlink so the atomic rename replaces the target, not the
-	// link (dotfile repos, sites-enabled). A dangling link is replaced as-is.
-	if resolvedPath, _, err := iteminfo.ResolveSymlinksAt(t.ctx, root, realPath); err == nil {
-		realPath = resolvedPath
-	} else if ctxErr := t.ctx.Err(); ctxErr != nil {
-		return ctxErr
-	}
-	realRel := fsroot.ToRel(realPath)
-	attrs, err := loadUploadAttributes(root, realRel)
+	realPath, err := t.targetPath(root)
 	if err != nil {
 		return err
 	}
-	attrs.owner = t.owner
-	versionErr := t.verifyExpectedVersion(root, realPath)
-	if versionErr != nil {
-		return versionErr
+	realRel := fsroot.ToRel(realPath)
+	if err = refuseFolderTarget(root, realRel); err != nil {
+		return err
 	}
-	err = root.Root.MkdirAll(fsroot.ToRel(filepath.Dir(realPath)), services.PermDir)
+	// Without owner the version is checked before any missing folder is made.
+	if !t.refuseSymlink {
+		if err = t.verifyExpectedVersion(root, realPath); err != nil {
+			return err
+		}
+	}
+	dir, err := openUploadDir(root, filepath.Dir(realRel), t.linkRule, t.newOwner)
 	if err != nil {
 		return fmt.Errorf("create parent dir: %w", err)
 	}
+	defer dir.Close()
+	// With owner the link is refused first, so its target is never read.
+	if t.refuseSymlink {
+		if err = refuseSymlinkTarget(dir, filepath.Base(realRel)); err != nil {
+			return err
+		}
+		if err = t.verifyExpectedVersion(root, realPath); err != nil {
+			return err
+		}
+	}
+	attrs, err := uploadAttributesAt(dir, filepath.Base(realRel))
+	if err != nil {
+		return err
+	}
+	folderInfo, err := dir.Stat()
+	if err != nil {
+		return fmt.Errorf("stat parent dir: %w", err)
+	}
 
 	partName := "." + filepath.Base(realRel) + ".linuxio-upload-" + t.task.ID() + ".part"
-	tempRel := filepath.Join(filepath.Dir(realRel), partName)
-	file, err := root.Root.OpenFile(tempRel, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600) // owner-only until restoreUploadedFile applies the target mode
+	bufferID, err := createUploadBuffer(dir, partName)
 	if err != nil {
 		return fmt.Errorf("create upload buffer: %w", err)
-	}
-	if err := file.Close(); err != nil {
-		return fmt.Errorf("close upload buffer: %w", err)
 	}
 
 	t.mu.Lock()
 	t.finalRel = realRel
-	t.tempRel = tempRel
+	t.tempRel = filepath.Join(filepath.Dir(realRel), partName)
 	t.attrs = attrs
+	t.folderInfo = folderInfo
+	t.bufferID = bufferID
+	if handsOverIn(folderInfo, t.newOwner) {
+		t.fileOwner = t.newOwner
+	}
 	t.mu.Unlock()
 	return nil
+}
+
+// newUploadFileMode is the mode a file an upload creates gets: owner-only
+// when the request asked for a private file, 0644 when it is handed to the
+// session user, otherwise the file browser's create mode.
+func newUploadFileMode(private, handedOver bool) os.FileMode {
+	switch {
+	case private:
+		return privateUploadMode
+	case handedOver:
+		return handedFileMode
+	default:
+		return services.PermFile
+	}
 }
 
 func (t *uploadTransferTask) verifyExpectedVersion(root *fsroot.FSRoot, path string) error {
@@ -364,19 +469,26 @@ func (t *uploadTransferTask) commit(root *fsroot.FSRoot, file *os.File, path, te
 		}
 		return 500, err
 	}
+	t.mu.Lock()
+	attrs, fileOwner, folderInfo := t.attrs, t.fileOwner, t.folderInfo
+	t.mu.Unlock()
+	// Open the folder before the buffer is handed over, so a swapped folder
+	// leaves it the bridge's.
+	dir, err := openUploadFolder(root, filepath.Dir(tempRel), folderInfo)
+	if err != nil {
+		return 500, fmt.Errorf("finalize upload: %w", err)
+	}
+	defer dir.Close()
+	if err := settleUploadBuffer(file, attrs, fileOwner, newUploadFileMode(t.private, fileOwner.set), isSetgid(folderInfo)); err != nil {
+		return 500, err
+	}
 	if err := file.Sync(); err != nil {
 		return 500, fmt.Errorf("sync upload: %w", err)
 	}
 	if err := file.Close(); err != nil {
 		return 500, fmt.Errorf("close upload: %w", err)
 	}
-	t.mu.Lock()
-	attrs := t.attrs
-	t.mu.Unlock()
-	if err := restoreUploadedFile(root, tempRel, attrs); err != nil {
-		return 500, err
-	}
-	if err := commitUploadBuffer(root, tempRel, finalRel, t.overwrite); err != nil {
+	if err := commitUploadBuffer(dir, filepath.Base(tempRel), filepath.Base(finalRel), t.overwrite); err != nil {
 		if errors.Is(err, fs.ErrExist) {
 			return 409, fmt.Errorf("destination already exists: %w", err)
 		}
@@ -407,7 +519,7 @@ func (t *uploadTransferTask) reportProgress(phase string) {
 
 func (t *uploadTransferTask) cleanupPartial() {
 	t.mu.Lock()
-	tempRel := t.tempRel
+	tempRel, folderInfo := t.tempRel, t.folderInfo
 	t.mu.Unlock()
 	if tempRel == "" {
 		return
@@ -419,7 +531,7 @@ func (t *uploadTransferTask) cleanupPartial() {
 		return
 	}
 	defer root.Close()
-	if err := root.Root.Remove(tempRel); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := removeUploadBuffer(root, tempRel, folderInfo); err != nil && !errors.Is(err, os.ErrNotExist) {
 		slog.Debug("failed to remove partial upload", "path", t.path, "partial", tempRel, "error", err)
 	}
 }

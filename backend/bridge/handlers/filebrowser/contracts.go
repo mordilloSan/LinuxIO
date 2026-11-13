@@ -1,9 +1,10 @@
 package filebrowser
 
 type FileCompressResult struct {
-	Path   string `json:"path"`
-	Size   int64  `json:"size"`
-	Format string `json:"format"`
+	Path   string                 `json:"path"`
+	Size   int64                  `json:"size"`
+	Format string                 `json:"format"`
+	Failed []FileBatchItemFailure `json:"failed"` // links left out of the archive, see services.ArchiveSources
 }
 
 type FileExtractResult struct {

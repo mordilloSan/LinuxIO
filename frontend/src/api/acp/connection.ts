@@ -1,4 +1,4 @@
-import * as acp from "@agentclientprotocol/sdk";
+import * as acp from "@agentclientprotocol/sdk/unstable";
 
 import { openChannel } from "../linuxio";
 import type { Stream } from "../StreamMultiplexer";
@@ -7,7 +7,13 @@ import {
   type AssistantAgentId,
   isAssistantAgentId,
 } from "./agents";
-import { type AssistantExit, createAcpTransport } from "./transport";
+import { withTimeout } from "./timeout";
+import {
+  type AssistantExit,
+  createAcpTransport,
+  type PaneLine,
+  type PaneSend,
+} from "./transport";
 
 export { ASSISTANT_AGENTS, type AssistantAgentId, isAssistantAgentId };
 
@@ -19,14 +25,51 @@ export interface AuthStatus {
   account?: { email?: string; organization?: string; plan?: string };
 }
 
+/**
+ * Appended to the agent's own instructions when it advertises
+ * `sessionCapabilities.systemPrompt`. The transcript offers "Open in
+ * terminal" only on a fence tagged as shell, so an untagged command can
+ * only be copied.
+ */
+const LINUXIO_SYSTEM_PROMPT: acp.SystemPrompt = {
+  mode: "append",
+  content: [
+    {
+      type: "text",
+      text: [
+        "You are running inside the LinuxIO web interface, which shows your answers as Markdown.",
+        'When you give the user a shell command to run themselves, put it in a fenced code block tagged `bash`. LinuxIO adds an "Open in terminal" button to those blocks, which types the block into the user\'s terminal for them to run.',
+        "Keep such a block to the commands alone: no prompt characters such as `$`, and no output. Put command output, logs and file contents in a separate block with their own language tag, or none.",
+      ].join("\n\n"),
+    },
+  ],
+};
+
 export interface AssistantHandlers {
   onUpdate(notification: acp.SessionNotification): void;
+  /**
+   * `withdrawn` aborts when the agent takes the request back, which is not an
+   * answer: Claude Code does when it stops the work that asked. The agent no
+   * longer waits then, and drops whatever is answered.
+   */
   onPermission(
     request: acp.RequestPermissionRequest,
+    withdrawn?: AbortSignal,
   ): Promise<acp.RequestPermissionResponse>;
   onAuthStatus?(status: AuthStatus): void;
   onExit(exit: AssistantExit | null): void;
+  /**
+   * Plugin pane lines from Claude Code; `send` answers on the same stream.
+   * Only a handler that sets this opens the stream with panes on.
+   */
+  onPane?: (line: PaneLine, send: PaneSend) => void;
 }
+
+/** Opens the agent's duplex stream; `panes` asks the bridge to carry plugin panes. */
+export type AssistantOpen = (
+  agent: AssistantAgentId,
+  options: { panes: boolean },
+) => Stream | null;
 
 export interface SessionOpenResult {
   sessionId: string;
@@ -84,6 +127,14 @@ export interface AssistantConnection {
 
 const AUTH_REQUIRED_CODE = -32000;
 
+/**
+ * How long an agent gets to start and answer `initialize`. The bridge runs
+ * an agent that is already installed and never downloads one, so a healthy
+ * start takes a second or two; past this the caller is told instead of left
+ * waiting.
+ */
+export const AGENT_START_TIMEOUT_MS = 30_000;
+
 export function isAuthRequiredError(error: unknown): boolean {
   return (
     typeof error === "object" &&
@@ -99,19 +150,23 @@ const parseAuthStatus = (params: unknown): { authStatus: AuthStatus } =>
 const newestFirst = (a: acp.SessionInfo, b: acp.SessionInfo) =>
   (b.updatedAt ?? "").localeCompare(a.updatedAt ?? "");
 
-const defaultOpen = (agent: AssistantAgentId): Stream | null =>
-  openChannel("assistant.open", { agent });
+const defaultOpen: AssistantOpen = (agent, { panes }) =>
+  openChannel("assistant.open", panes ? { agent, panes } : { agent });
 
 export async function connectAssistant(
   agent: AssistantAgentId,
   handlers: AssistantHandlers,
-  open: (agent: AssistantAgentId) => Stream | null = defaultOpen,
+  open: AssistantOpen = defaultOpen,
 ): Promise<AssistantConnection> {
-  const stream = open(agent);
+  const { onPane } = handlers;
+  const stream = open(agent, { panes: Boolean(onPane) });
   if (!stream) {
     throw new Error("Not connected to the server");
   }
-  const transport = createAcpTransport(stream);
+  const transport = createAcpTransport(
+    stream,
+    onPane ? { onPane: (line) => onPane(line, transport.sendPane) } : {},
+  );
   void transport.exit.then((exit) => {
     handlers.onExit(exit);
   });
@@ -119,7 +174,7 @@ export async function connectAssistant(
   const connection = acp
     .client({ name: "linuxio" })
     .onRequest(acp.methods.client.session.requestPermission, (ctx) =>
-      handlers.onPermission(ctx.params),
+      handlers.onPermission(ctx.params, ctx.signal),
     )
     .onNotification(acp.methods.client.session.update, (ctx) => {
       handlers.onUpdate(ctx.params);
@@ -129,19 +184,30 @@ export async function connectAssistant(
     })
     .connect(transport.stream);
 
-  let cwd: string;
-  let init: acp.InitializeResponse;
-  try {
-    ({ cwd } = await transport.ready);
-    init = await connection.agent.request(acp.methods.agent.initialize, {
+  const handshake = async () => {
+    const { cwd } = await transport.ready;
+    const init = await connection.agent.request(acp.methods.agent.initialize, {
       protocolVersion: acp.PROTOCOL_VERSION,
       // Boolean options (Fast mode) arrive as real toggles instead of an
       // "On"/"Off" select once the agent knows the client can show them.
+      // With `subagents`, an agent that has them sends each one as a session
+      // of its own (the store keeps them); the others ignore it.
       clientCapabilities: {
         auth: { terminal: true },
         session: { configOptions: { boolean: {} } },
+        subagents: {},
       },
     });
+    return { cwd, init };
+  };
+  let cwd: string;
+  let init: acp.InitializeResponse;
+  try {
+    ({ cwd, init } = await withTimeout(
+      handshake(),
+      AGENT_START_TIMEOUT_MS,
+      `The agent did not start within ${AGENT_START_TIMEOUT_MS / 1000} seconds`,
+    ));
   } catch (error) {
     connection.close();
     transport.close();
@@ -153,6 +219,18 @@ export async function connectAssistant(
   const canListSessions = Boolean(caps.sessionCapabilities?.list);
   const canClose = Boolean(caps.sessionCapabilities?.close);
   const canResume = Boolean(caps.sessionCapabilities?.resume);
+  // Sent with every request that starts or reopens a session: an agent
+  // rebuilds its instructions each time, so a reopened chat would lose them.
+  const sessionSetup: Pick<
+    acp.NewSessionRequest,
+    "cwd" | "mcpServers" | "systemPrompt"
+  > = {
+    cwd,
+    mcpServers: [],
+    ...(caps.sessionCapabilities?.systemPrompt
+      ? { systemPrompt: LINUXIO_SYSTEM_PROMPT }
+      : {}),
+  };
 
   return {
     agent,
@@ -181,7 +259,7 @@ export async function connectAssistant(
     async loadSession(sessionId) {
       const result = await connection.agent.request(
         acp.methods.agent.session.load,
-        { sessionId, cwd, mcpServers: [] },
+        { sessionId, ...sessionSetup },
       );
       return {
         sessionId,
@@ -192,7 +270,7 @@ export async function connectAssistant(
     async newSession() {
       const result = await connection.agent.request(
         acp.methods.agent.session.new,
-        { cwd, mcpServers: [] },
+        { ...sessionSetup },
       );
       return {
         sessionId: result.sessionId,
@@ -236,7 +314,7 @@ export async function connectAssistant(
     async forkSession(sessionId) {
       const result = await connection.agent.request(
         acp.methods.agent.session.fork,
-        { sessionId, cwd, mcpServers: [] },
+        { sessionId, ...sessionSetup },
       );
       const forked = {
         sessionId: result.sessionId,
@@ -246,7 +324,7 @@ export async function connectAssistant(
       if (!canResume) return forked;
       const resumed = await connection.agent.request(
         acp.methods.agent.session.resume,
-        { sessionId: forked.sessionId, cwd, mcpServers: [] },
+        { sessionId: forked.sessionId, ...sessionSetup },
       );
       return {
         sessionId: forked.sessionId,

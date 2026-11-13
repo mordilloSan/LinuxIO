@@ -37,12 +37,9 @@ mocks.networkInterface = networkInterface;
 const wireguardInterface: WireGuardInterface = {
   address: "10.0.0.1/24",
   dns: [],
+  hooks: { PreUp: [], PostUp: [], PreDown: [], PostDown: [] },
   host: "",
   mtu: 0,
-  postDown: [],
-  postUp: [],
-  preDown: [],
-  preUp: [],
   isConnected: "Active",
   isEnabled: true,
   name: "wg0",

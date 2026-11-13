@@ -4,7 +4,22 @@ import { describe, expect, it } from "vitest";
 import "@/icons/icons";
 import "@/icons/shell";
 
-import { VM_OS_OPTIONS, vmOSIcon, vmOSLabel } from "./vmShared";
+import { VM_OS_OPTIONS, isValidVMName, vmOSIcon, vmOSLabel } from "./vmShared";
+
+describe("isValidVMName", () => {
+  it("applies the bridge rule", () => {
+    expect(isValidVMName("web-1_a.b")).toBe(true);
+    expect(isValidVMName("1")).toBe(true);
+    expect(isValidVMName("a".repeat(63))).toBe(true);
+    expect(isValidVMName("a".repeat(64))).toBe(false);
+    expect(isValidVMName("")).toBe(false);
+    expect(isValidVMName(".hidden")).toBe(false);
+    expect(isValidVMName("-dash")).toBe(false);
+    expect(isValidVMName("_under")).toBe(false);
+    expect(isValidVMName("a..b")).toBe(false);
+    expect(isValidVMName("a b")).toBe(false);
+  });
+});
 
 describe("vmOSIcon", () => {
   it("maps OS ids to logos and falls back sensibly", () => {

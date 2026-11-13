@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -15,32 +16,89 @@ const (
 	ViewModeTable = "table"
 )
 
+// The accepted values of each UI choice. The Parse functions, the validators
+// and apischema.StringEnums (the generated TypeScript unions) all read these
+// lists, so a value added to one is added everywhere.
+var (
+	Themes             = []PersistedTheme{ThemeLight, ThemeDark}
+	NavigationModes    = []string{NavigationModeSidebar, NavigationModeDock}
+	DockTileColorModes = []string{DockTileColorsAccent, DockTileColorsMono, DockTileColorsNeutral, DockTileColorsVibrant}
+	ViewModes          = []string{ViewModeCard, ViewModeTable}
+)
+
 // ParseTheme normalizes s and reports whether it is LIGHT or DARK.
 func ParseTheme(s string) (PersistedTheme, bool) {
 	theme := PersistedTheme(strings.ToUpper(strings.TrimSpace(s)))
-	return theme, theme == ThemeLight || theme == ThemeDark
+	return theme, slices.Contains(Themes, theme)
 }
 
 // ParseNavigationMode normalizes s and reports whether it is a known mode.
 func ParseNavigationMode(s string) (string, bool) {
 	mode := strings.ToLower(strings.TrimSpace(s))
-	return mode, mode == NavigationModeSidebar || mode == NavigationModeDock
+	return mode, slices.Contains(NavigationModes, mode)
 }
 
 // ParseDockTileColors normalizes s and reports whether it is a known palette.
 func ParseDockTileColors(s string) (string, bool) {
 	mode := strings.ToLower(strings.TrimSpace(s))
-	return mode, isValidDockTileColors(mode)
+	return mode, slices.Contains(DockTileColorModes, mode)
 }
 
 // ParseViewMode normalizes s and reports whether it is card or table.
 func ParseViewMode(s string) (string, bool) {
 	mode := strings.ToLower(strings.TrimSpace(s))
-	return mode, mode == ViewModeCard || mode == ViewModeTable
+	return mode, slices.Contains(ViewModes, mode)
 }
 
-// ValidChunkSizeMB reports whether v is 0 (default) or 1-32 MiB.
-func ValidChunkSizeMB(v int) bool { return v == 0 || (v >= 1 && v <= 32) }
+// Bounds on UIPreferences.CollapsedSections. The frontend names the pages and
+// sections and the backend stores them without reading them, so these only
+// cap what one user can make it store.
+const (
+	maxCollapsedSectionPages    = 64
+	maxCollapsedSectionsPerPage = 32
+	maxSectionNameBytes         = 64
+)
+
+// ValidateCollapsedSections reports the first page or section name that is
+// blank or too long, or the first count over its bound. Counts are checked
+// before names, so an oversized value costs no more than its bound to reject.
+func ValidateCollapsedSections(collapsed map[string][]string) error {
+	if len(collapsed) > maxCollapsedSectionPages {
+		return fmt.Errorf("collapsedSections holds %d pages, more than %d", len(collapsed), maxCollapsedSectionPages)
+	}
+	for page, sections := range collapsed {
+		if err := validateSectionName(page); err != nil {
+			return fmt.Errorf("collapsedSections page: %w", err)
+		}
+		if len(sections) > maxCollapsedSectionsPerPage {
+			return fmt.Errorf("collapsedSections.%s holds %d sections, more than %d", page, len(sections), maxCollapsedSectionsPerPage)
+		}
+		for _, section := range sections {
+			if err := validateSectionName(section); err != nil {
+				return fmt.Errorf("collapsedSections.%s: %w", page, err)
+			}
+		}
+	}
+	return nil
+}
+
+func validateSectionName(name string) error {
+	if strings.TrimSpace(name) == "" {
+		return errors.New("name cannot be empty")
+	}
+	if len(name) > maxSectionNameBytes {
+		return fmt.Errorf("name is longer than %d bytes", maxSectionNameBytes)
+	}
+	return nil
+}
+
+// MaxChunkSizeMB is the largest upload chunk the setting allows. The frontend
+// sends a chunk as one relay frame, and a frame carries at most 16 MiB.
+const MaxChunkSizeMB = 16
+
+// ValidChunkSizeMB reports whether v is 0 (the frontend default) or
+// 1-MaxChunkSizeMB MiB.
+func ValidChunkSizeMB(v int) bool { return v == 0 || (v >= 1 && v <= MaxChunkSizeMB) }
 
 // ValidTerminalFontSize reports whether v is within the supported range.
 func ValidTerminalFontSize(v int) bool { return v >= 10 && v <= 28 }

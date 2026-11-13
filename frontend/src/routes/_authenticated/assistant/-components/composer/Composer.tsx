@@ -1,10 +1,11 @@
-import type * as acp from "@agentclientprotocol/sdk";
+import type * as acp from "@agentclientprotocol/sdk/unstable";
 import { Icon } from "@iconify/react";
 import {
   type ChangeEvent,
   type ClipboardEvent,
   type DragEvent,
   type KeyboardEvent,
+  type ReactNode,
   useLayoutEffect,
   useRef,
   useState,
@@ -19,10 +20,6 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 
-import AttachmentChip from "./AttachmentChip";
-import ConfigControls from "./ConfigControls";
-import ContextGauge from "./ContextGauge";
-import ModeMenu from "./ModeMenu";
 import type { AssistantState, MessageDisplay } from "../assistant-store";
 import {
   type Attachment,
@@ -32,6 +29,10 @@ import {
   isLongPaste,
   textAttachment,
 } from "../attachments";
+import AttachmentChip from "./AttachmentChip";
+import ConfigControls from "./ConfigControls";
+import ContextGauge from "./ContextGauge";
+import ModeMenu from "./ModeMenu";
 
 export interface ComposerProps {
   disabled: boolean;
@@ -46,6 +47,10 @@ export interface ComposerProps {
   connecting: boolean;
   usage: AssistantState["usage"];
   onBtw: (text: string) => void;
+  /** Opens the plugin manager; absent when the agent's plugins cannot be managed. */
+  onPlugins?: () => void;
+  /** Rows the page adds under the attach menu's own, e.g. the text size. */
+  menuExtra?: ReactNode;
   onSetConfigOption: (configId: string, value: string | boolean) => void;
   onSetMode: (modeId: string) => void;
   onSend: (blocks: acp.ContentBlock[], display: MessageDisplay) => void;
@@ -55,6 +60,7 @@ export interface ComposerProps {
 
 const SLASH_PREFIX = /^\/(\S*)$/;
 const BTW = /^\/btw(?:\s+([\s\S]*))?$/;
+const PLUGINS = /^\/plugins$/;
 const MAX_LINES = 10;
 
 // Handled by the composer itself, never sent to the agent.
@@ -62,6 +68,12 @@ const BTW_COMMAND: acp.AvailableCommand = {
   name: "btw",
   description: "Ask a side question without touching this chat",
   input: { hint: "<question>" },
+};
+
+// Opens LinuxIO's own plugin manager; the agent's /plugin needs a terminal.
+const PLUGINS_COMMAND: acp.AvailableCommand = {
+  name: "plugins",
+  description: "Install, enable or disable plugins",
 };
 
 // Grows the textarea with its content, up to 10 lines or 40% of the viewport.
@@ -127,6 +139,8 @@ export default function Composer({
   connecting,
   usage,
   onBtw,
+  onPlugins,
+  menuExtra,
   onSetConfigOption,
   onSetMode,
   onSend,
@@ -150,9 +164,14 @@ export default function Composer({
   const inputRef = useRef<HTMLInputElement | HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const ownCommands = onPlugins
+    ? [BTW_COMMAND, PLUGINS_COMMAND]
+    : [BTW_COMMAND];
   const commands = [
-    BTW_COMMAND,
-    ...agentCommands.filter((command) => command.name !== BTW_COMMAND.name),
+    ...ownCommands,
+    ...agentCommands.filter(
+      (command) => !ownCommands.some((own) => own.name === command.name),
+    ),
   ];
   // Attachments need a send that can actually happen.
   const locked = disabled || (running && !canSteer);
@@ -203,6 +222,11 @@ export default function Composer({
       inputRef.current?.focus();
       return;
     }
+    if (onPlugins && command.name === PLUGINS_COMMAND.name) {
+      setDraft("");
+      onPlugins();
+      return;
+    }
     setDraft(`/${command.name} `);
     inputRef.current?.focus();
   };
@@ -213,6 +237,11 @@ export default function Composer({
     const btw = BTW.exec(text);
     if (btw) {
       runBtw(btw[1] ?? "");
+      return;
+    }
+    if (onPlugins && PLUGINS.test(text)) {
+      setDraft("");
+      onPlugins();
       return;
     }
     // A turn the agent cannot steer takes nothing but /btw until it ends.
@@ -228,6 +257,15 @@ export default function Composer({
     if (running) onSteer(blocks, display);
     else onSend(blocks, display);
   };
+
+  // The gauge runs the agent's own /compact, as a prompt of its own.
+  const canCompact =
+    usage !== null &&
+    !disabled &&
+    !running &&
+    agentCommands.some((command) => command.name === "compact");
+  const compact = () =>
+    onSend(buildPrompt("/compact", []), { text: "/compact", attachments: [] });
 
   const addImages = async (files: File[]) => {
     const results = await Promise.allSettled(files.map(imageAttachment));
@@ -331,17 +369,6 @@ export default function Composer({
 
   return (
     <div className="assistant__composer-stack">
-      {attachments.length > 0 ? (
-        <div className="assistant__attachments">
-          {attachments.map((attachment) => (
-            <AttachmentChip
-              attachment={attachment}
-              key={attachment.id}
-              onRemove={() => remove(attachment)}
-            />
-          ))}
-        </div>
-      ) : null}
       {pickerOpen ? (
         <PathPickerField
           includeFiles
@@ -361,22 +388,35 @@ export default function Composer({
           onPaste={onPaste}
           ref={setAnchor}
         >
-          <AppTextField
-            aria-keyshortcuts="Shift+Tab"
-            aria-label="Message"
-            disabled={disabled}
-            fullWidth
-            size="small"
-            helperText={hint}
-            multiline
-            onChange={(event) => changeDraft(event.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder="Ask about this server"
-            ref={inputRef}
-            rows={1}
-            value={draft}
-            variant="standard"
-          />
+          {attachments.length > 0 ? (
+            <div className="assistant__attachments">
+              {attachments.map((attachment) => (
+                <AttachmentChip
+                  attachment={attachment}
+                  key={attachment.id}
+                  onRemove={() => remove(attachment)}
+                />
+              ))}
+            </div>
+          ) : null}
+          <div className="assistant__composer-input">
+            <AppTextField
+              aria-keyshortcuts="Shift+Tab"
+              aria-label="Message"
+              disabled={disabled}
+              fullWidth
+              size="small"
+              helperText={hint}
+              multiline
+              onChange={(event) => changeDraft(event.target.value)}
+              onKeyDown={onKeyDown}
+              placeholder="Ask about this server"
+              ref={inputRef}
+              rows={1}
+              value={draft}
+              variant="standard"
+            />
+          </div>
           <div className="assistant__composer-bar">
             <div className="assistant__bar-group">
               <AppActionIconButton
@@ -405,24 +445,27 @@ export default function Composer({
                   }
                 }}
               />
-              <ContextGauge usage={usage} />
+              <ContextGauge
+                onCompact={canCompact ? compact : undefined}
+                usage={usage}
+              />
             </div>
             <div className="assistant__bar-group assistant__bar-group--config">
               <ConfigControls
                 disabled={connecting}
                 onChange={onSetConfigOption}
                 widthAnchor={anchor}
-                // The agent may list the mode both as a config option and in `modes`.
-                options={
-                  modes
-                    ? configOptions.filter(
-                        (option) => option.category !== "mode",
-                      )
-                    : configOptions
-                }
+                // The agent may list the mode both as a config option and in
+                // `modes`. The "agent" option swaps the main-thread persona
+                // for a subagent definition, which is not a choice to offer here.
+                options={configOptions.filter(
+                  (option) =>
+                    option.id !== "agent" &&
+                    !(modes && option.category === "mode"),
+                )}
               />
             </div>
-            <div className="assistant__bar-group">
+            <div className="assistant__bar-group assistant__bar-group--send">
               {modes?.availableModes.length ? (
                 <ModeMenu
                   disabled={connecting}
@@ -481,6 +524,7 @@ export default function Composer({
         >
           Attach file…
         </AppMenuItem>
+        {menuExtra}
       </AppMenu>
       <AppMenu
         anchorEl={commandsAnchor ?? anchor}

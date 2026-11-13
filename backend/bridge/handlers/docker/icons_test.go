@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -275,6 +276,30 @@ func TestRefuseLocalDial(t *testing.T) {
 	for _, address := range []string{"93.184.216.34:443", "192.168.1.10:80", "[2606:4700::1]:443"} {
 		if err := refuseLocalDial("tcp", address, nil); err != nil {
 			t.Errorf("refuseLocalDial(%q) = %v, want nil", address, err)
+		}
+	}
+}
+
+func TestClearIconCacheRecreatesDirsWithTmpfilesMode(t *testing.T) {
+	withTempIconCacheDirs(t)
+	oldUmask := syscall.Umask(0o022)
+	t.Cleanup(func() { syscall.Umask(oldUmask) })
+
+	if err := initIconCache(); err != nil {
+		t.Fatalf("initIconCache() error = %v", err)
+	}
+	if err := ClearIconCache(t.Context()); err != nil {
+		t.Fatalf("ClearIconCache() error = %v", err)
+	}
+
+	// linuxio-tmpfiles.conf creates every icon directory 1777.
+	for _, dir := range []string{iconCacheDir, dashboardIconsCacheDir, simpleIconsCacheDir, urlCacheDir, userIconsDir} {
+		info, err := os.Stat(dir)
+		if err != nil {
+			t.Fatalf("Stat(%s) error = %v", dir, err)
+		}
+		if got := info.Mode() & (os.ModePerm | os.ModeSticky); got != os.ModeSticky|0o777 {
+			t.Errorf("%s mode = %v, want sticky 0777", dir, got)
 		}
 	}
 }

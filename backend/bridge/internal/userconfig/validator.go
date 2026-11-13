@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/goccy/go-yaml"
@@ -98,16 +100,16 @@ func validateUIPreferences(cfg *UIPreferences) []string {
 		return []string{"UI preferences are nil"}
 	}
 	var errs []string
-	if cfg.Theme != ThemeLight && cfg.Theme != ThemeDark {
+	if !slices.Contains(Themes, cfg.Theme) {
 		errs = append(errs, "theme must be LIGHT or DARK")
 	}
 	if !isValidCSSColor(string(cfg.PrimaryColor)) {
 		errs = append(errs, "primaryColor must be a valid CSS color")
 	}
-	if cfg.NavigationMode != NavigationModeSidebar && cfg.NavigationMode != NavigationModeDock {
+	if !slices.Contains(NavigationModes, cfg.NavigationMode) {
 		errs = append(errs, "navigationMode must be sidebar or dock")
 	}
-	if cfg.DockTileColors == "" || !isValidDockTileColors(cfg.DockTileColors) {
+	if !slices.Contains(DockTileColorModes, cfg.DockTileColors) {
 		errs = append(errs, "dockTileColors must be accent, mono, neutral or vibrant")
 	}
 	if cfg.DockAccentGradient == nil {
@@ -115,11 +117,10 @@ func validateUIPreferences(cfg *UIPreferences) []string {
 	} else {
 		errs = append(errs, ValidateDockAccentGradient(*cfg.DockAccentGradient)...)
 	}
-	if cfg.DockerDashboardSections == nil {
-		errs = append(errs, "dockerDashboardSections is required")
-	}
-	if cfg.HardwareSections == nil {
-		errs = append(errs, "hardwareSections is required")
+	if cfg.CollapsedSections == nil {
+		errs = append(errs, "collapsedSections is required")
+	} else if err := ValidateCollapsedSections(cfg.CollapsedSections); err != nil {
+		errs = append(errs, err.Error())
 	}
 	if cfg.HiddenCards == nil {
 		errs = append(errs, "hiddenCards is required")
@@ -140,16 +141,15 @@ func validateUIPreferences(cfg *UIPreferences) []string {
 
 func validateThemeColors(cfg *UIPreferences) []string {
 	var errs []string
-	for modeName, colors := range map[string]*ThemeColors{
+	for modeName, colors := range map[string]ThemeColors{
 		"light": cfg.themeColorsValue(ThemeLight),
 		"dark":  cfg.themeColorsValue(ThemeDark),
 	} {
-		if colors == nil {
-			continue
-		}
-		for _, slot := range themeColorSlots(colors) {
-			if color := *slot.Value; color != nil && *color != "" && !isValidCSSColor(string(*color)) {
-				errs = append(errs, fmt.Sprintf("themeColors.%s.%s must be a valid CSS color", modeName, slot.Key))
+		for _, key := range slices.Sorted(maps.Keys(colors)) {
+			if !IsThemeColorKey(key) {
+				errs = append(errs, fmt.Sprintf("themeColors.%s.%s is not a theme color", modeName, key))
+			} else if color := colors[key]; color != "" && !isValidCSSColor(string(color)) {
+				errs = append(errs, fmt.Sprintf("themeColors.%s.%s must be a valid CSS color", modeName, key))
 			}
 		}
 	}
@@ -162,7 +162,7 @@ func validateViewModes(viewModes map[string]string) []string {
 		if strings.TrimSpace(key) == "" {
 			errs = append(errs, "viewModes keys cannot be empty")
 		}
-		if mode != ViewModeCard && mode != ViewModeTable {
+		if !slices.Contains(ViewModes, mode) {
 			errs = append(errs, fmt.Sprintf("viewModes.%s must be card or table", key))
 		}
 	}
@@ -187,7 +187,7 @@ func validateSettings(cfg *Settings) []string {
 	return errs
 }
 
-func (p *UIPreferences) themeColorsValue(mode PersistedTheme) *ThemeColors {
+func (p *UIPreferences) themeColorsValue(mode PersistedTheme) ThemeColors {
 	if p == nil || p.ThemeColors == nil {
 		return nil
 	}

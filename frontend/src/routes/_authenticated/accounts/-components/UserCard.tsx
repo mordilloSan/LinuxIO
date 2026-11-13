@@ -18,6 +18,7 @@ import AppButton from "@/components/ui/AppButton";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
+import useAuth from "@/hooks/useAuth";
 import { CARD_PADDING_LG, CARD_PADDING_MD, GAP_SM } from "@/theme/constants";
 
 function formatLastLogin(
@@ -212,6 +213,7 @@ const UserCard = ({
   onToggleLock,
   pendingLockAction,
 }: UserCardProps) => {
+  const { privileged } = useAuth();
   const isCurrentUser = user.username === currentUsername;
   const isProtected = user.username === "root" || isCurrentUser;
   const lockLabel = user.isLocked ? "Unlock" : "Lock";
@@ -370,32 +372,36 @@ const UserCard = ({
             flexShrink: 0,
           }}
         >
-          <AppActionIconButton
-            disabled={user.username === "root"}
-            icon="mdi:pencil"
-            iconSize={14}
-            label="Edit"
-            onClick={onEdit}
-          />
-          <AppActionIconButton
-            icon="mdi:form-textbox-password"
-            iconSize={14}
-            label="Change Password"
-            onClick={onChangePassword}
-          />
-          <AppActionIconButton
-            ariaLabel={
-              pendingLockAction
-                ? `${pendingLockAction === "lock" ? "Locking" : "Unlocking"} ${user.username}`
-                : `${lockLabel} ${user.username}`
-            }
-            disabled={isProtected || Boolean(pendingLockAction)}
-            icon={user.isLocked ? "mdi:lock-open" : "mdi:lock"}
-            iconSize={14}
-            label={lockLabel}
-            loading={Boolean(pendingLockAction)}
-            onClick={onToggleLock}
-          />
+          {privileged && (
+            <>
+              <AppActionIconButton
+                disabled={user.username === "root"}
+                icon="mdi:pencil"
+                iconSize={14}
+                label="Edit"
+                onClick={onEdit}
+              />
+              <AppActionIconButton
+                icon="mdi:form-textbox-password"
+                iconSize={14}
+                label="Change Password"
+                onClick={onChangePassword}
+              />
+              <AppActionIconButton
+                ariaLabel={
+                  pendingLockAction
+                    ? `${pendingLockAction === "lock" ? "Locking" : "Unlocking"} ${user.username}`
+                    : `${lockLabel} ${user.username}`
+                }
+                disabled={isProtected || Boolean(pendingLockAction)}
+                icon={user.isLocked ? "mdi:lock-open" : "mdi:lock"}
+                iconSize={14}
+                label={lockLabel}
+                loading={Boolean(pendingLockAction)}
+                onClick={onToggleLock}
+              />
+            </>
+          )}
           <StatusDot
             color={statusColor}
             size={8}

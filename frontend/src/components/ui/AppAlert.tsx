@@ -26,6 +26,11 @@ export const AppAlertTitle = ({ children }: { children: ReactNode }) => (
   <div className="app-alert__title">{children}</div>
 );
 
+/**
+ * An alert is announced by screen readers when it appears: `role="alert"`. One
+ * that is on the page from the start and does not change is not news; pass
+ * `role="note"` for it, which reads in place and is not announced.
+ */
 const AppAlert = ({
   ref,
   severity = "info",

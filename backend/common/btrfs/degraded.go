@@ -18,6 +18,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
 	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
@@ -28,6 +29,13 @@ import (
 // disks, then mount degraded, but only when the disks present hold the
 // pool's newest state. Once every disk is back, Resync repairs what the
 // returned disk missed, which btrfs leaves to a scrub.
+//
+// udev also holds back a complete pool cut by a power loss mid-replace: the
+// replace target is scanned as devid 0 and BTRFS_IOC_DEVICES_READY counts it
+// against the superblock's num_devices (super.c btrfs_control_ioctl,
+// volumes.c device_list_add). The kernel resumes the replace at mount
+// (dev-replace.c btrfs_resume_dev_replace_async), so the boot check mounts
+// that pool as fstab says.
 
 // PoolStatePath records, per filesystem UUID, the newest generation LinuxIO
 // saw the pool mounted at and whether it ran with a disk missing since its
@@ -218,19 +226,62 @@ func bootMounts(uuid string) []fstabMount {
 // missing. Mounting such a set would write a second history that the other
 // disks contradict.
 func degradedMountBlocker(pool BtrfsOfflinePool, state poolState) string {
+	if stale := staleDisks(pool); stale != "" {
+		return stale
+	}
+	tookWrites := func(id uint64) bool { return !slices.Contains(pool.devids, id) }
+	if slices.Max(pool.generations) < state.Generation || state.Degraded && slices.ContainsFunc(state.Present, tookWrites) {
+		return "the present disks missed writes, so the newest data is on a missing disk"
+	}
+	return ""
+}
+
+// staleDisks names the present disks that missed writes, or returns "": a
+// disk that missed writes carries an older generation than the disks that
+// got them.
+func staleDisks(pool BtrfsOfflinePool) string {
 	newest := slices.Max(pool.generations)
 	var stale []string
 	for i, g := range pool.generations {
 		if g < newest {
-			stale = append(stale, pool.Devices[i])
+			name := pool.Devices[i]
+			if pool.devids[i] == replaceTargetDevID {
+				name = "the replace target " + name
+			}
+			stale = append(stale, name)
 		}
 	}
-	if len(stale) > 0 {
-		return strings.Join(stale, ", ") + " missed writes the other present disks have"
+	if len(stale) == 0 {
+		return ""
 	}
-	tookWrites := func(id uint64) bool { return !slices.Contains(pool.devids, id) }
-	if newest < state.Generation || state.Degraded && slices.ContainsFunc(state.Present, tookWrites) {
-		return "the present disks missed writes, so the newest data is on a missing disk"
+	return strings.Join(stale, ", ") + " missed writes the other present disks have"
+}
+
+// replaceTargetDevID is the devid a device replace gives its target until it
+// finishes (BTRFS_DEV_REPLACE_DEVID); the target is no member.
+const replaceTargetDevID = 0
+
+// missingDisks counts the members pool lacks; a replace target is no member.
+func missingDisks(pool BtrfsOfflinePool) int {
+	missing := pool.NumDevices - len(pool.Devices)
+	for _, id := range pool.devids {
+		if id == replaceTargetDevID {
+			missing++
+		}
+	}
+	return missing
+}
+
+// refusal says why the boot check leaves pool, held back by udev, unmounted,
+// or returns "": for a pool missing disks, degradedMountBlocker's objection;
+// for one held back only by a replace target, a disk that missed writes.
+// The health run asks too, so the offline alert says the same either way.
+func refusal(pool BtrfsOfflinePool, state poolState) string {
+	switch {
+	case missingDisks(pool) > 0:
+		return degradedMountBlocker(pool, state)
+	case slices.Contains(pool.devids, replaceTargetDevID):
+		return staleDisks(pool)
 	}
 	return ""
 }
@@ -240,32 +291,35 @@ type fstabPool struct {
 	mounts []fstabMount
 }
 
-// incompleteFstabPools returns the unmounted pools that /etc/fstab mounts at
-// boot and that are missing disks, with their fstab entries.
-func incompleteFstabPools(ctx context.Context) ([]fstabPool, error) {
+// heldFstabPools returns the unmounted pools that /etc/fstab mounts at boot
+// and that udev holds back, with their fstab entries: those missing disks,
+// and those with a replace target.
+func heldFstabPools(ctx context.Context) ([]fstabPool, error) {
 	pools, err := FindOfflinePools(ctx, BlockDevices())
 	if err != nil {
 		return nil, err
 	}
-	var incomplete []fstabPool
+	var held []fstabPool
 	for _, p := range pools {
-		if mounts := bootMounts(p.UUID); len(mounts) > 0 && len(p.Devices) < p.NumDevices {
-			incomplete = append(incomplete, fstabPool{p, mounts})
+		if mounts := bootMounts(p.UUID); len(mounts) > 0 && (missingDisks(p) > 0 || slices.Contains(p.devids, replaceTargetDevID)) {
+			held = append(held, fstabPool{p, mounts})
 		}
 	}
-	return incomplete, nil
+	return held, nil
 }
 
 // MountDegradedPools is the boot-time last resort for the pools /etc/fstab
-// mounts that are missing disks. It waits up to grace for the disks, then
-// mounts each such pool degraded at each of its fstab mountpoints with that
-// entry's options, unless degradedMountBlocker objects; that pool stays
-// unmounted and its offline alert says why. The kernel itself refuses a pool
-// missing more disks than its profiles survive.
+// mounts that udev holds back. It waits up to grace for the disks, then
+// mounts each such pool at each of its fstab mountpoints with that entry's
+// options: degraded when it is missing disks, unless degradedMountBlocker
+// objects, and as it is when only a replace target holds it back, unless a
+// disk missed writes. A pool it objects to stays unmounted and its offline
+// alert says why. The kernel itself refuses a pool missing more disks than
+// its profiles survive.
 func MountDegradedPools(ctx context.Context, grace time.Duration) error {
 	deadline := time.Now().Add(grace)
 	for {
-		pools, err := incompleteFstabPools(ctx)
+		pools, err := heldFstabPools(ctx)
 		if err != nil {
 			return err
 		}
@@ -273,7 +327,7 @@ func MountDegradedPools(ctx context.Context, grace time.Duration) error {
 			return nil
 		}
 		if !time.Now().Before(deadline) {
-			return mountDegraded(ctx, pools)
+			return mountHeld(ctx, pools)
 		}
 		select {
 		case <-ctx.Done():
@@ -283,14 +337,18 @@ func MountDegradedPools(ctx context.Context, grace time.Duration) error {
 	}
 }
 
-func mountDegraded(ctx context.Context, pools []fstabPool) error {
+func mountHeld(ctx context.Context, pools []fstabPool) error {
 	states, err := loadPoolStates()
 	if err != nil {
 		return err
 	}
 	var errs []error
 	for _, p := range pools {
-		if reason := degradedMountBlocker(p.pool, states[p.pool.UUID]); reason != "" {
+		// A pool missing a disk mounts degraded even mid-replace: without
+		// degraded the kernel refuses a replace whose source is missing
+		// (dev-replace.c btrfs_init_dev_replace).
+		missing := missingDisks(p.pool)
+		if reason := refusal(p.pool, states[p.pool.UUID]); reason != "" {
 			slog.Warn("btrfs pool left unmounted", "uuid", p.pool.UUID, "reason", reason)
 			RaiseOfflineAlert(ctx, p.pool, reason)
 			continue
@@ -302,12 +360,16 @@ func mountDegraded(ctx context.Context, pools []fstabPool) error {
 			if slices.ContainsFunc(failed, func(f string) bool { return strings.HasPrefix(m.mountpoint, f+"/") }) {
 				continue
 			}
-			if err := MountOfflinePool(ctx, p.pool, m.mountpoint, m.options, true); err != nil {
+			if err := MountOfflinePool(ctx, p.pool, m.mountpoint, m.options, missing > 0); err != nil {
 				failed = append(failed, m.mountpoint)
-				errs = append(errs, fmt.Errorf("mount btrfs pool %s degraded at %s: %w", p.pool.UUID, m.mountpoint, err))
+				errs = append(errs, fmt.Errorf("mount btrfs pool %s at %s (degraded: %t): %w", p.pool.UUID, m.mountpoint, missing > 0, err))
 				continue
 			}
-			slog.Info("btrfs pool mounted degraded", "uuid", p.pool.UUID, "mountpoint", m.mountpoint, "missing", p.pool.NumDevices-len(p.pool.Devices))
+			if missing > 0 {
+				slog.Info("btrfs pool mounted degraded", "uuid", p.pool.UUID, "mountpoint", m.mountpoint, "missing", missing)
+			} else {
+				slog.Info("btrfs pool mounted to continue a device replace", "uuid", p.pool.UUID, "mountpoint", m.mountpoint)
+			}
 		}
 		// Say so now, not at the first health run: delivery and the bell
 		// pick it up at once.
@@ -346,33 +408,26 @@ func markUnopened(uuid string, devices []BtrfsDevice) {
 	}
 }
 
-// profileRank orders profiles by the disk failures they survive, then by
-// copies kept.
-var profileRank = map[string]int{
-	"single": 0, "raid0": 0, "dup": 1, "raid1": 2, "raid10": 2, "raid5": 2,
-	"raid1c3": 3, "raid6": 3, "raid1c4": 4,
-}
-
 // convertTargets returns, for data and for metadata (system chunks follow
 // metadata), the most redundant profile present when chunks of another
 // profile sit beside it, as chunks allocated while too few disks were
 // present do; nil when a kind has one profile.
 func convertTargets(allocation []BtrfsAllocation) (data, meta *string) {
-	profiles := map[string][]string{}
+	present := map[string][]string{}
 	for _, a := range allocation {
 		kind := a.Kind
 		if kind == "system" {
 			kind = "metadata"
 		}
-		if !slices.Contains(profiles[kind], a.Profile) {
-			profiles[kind] = append(profiles[kind], a.Profile)
+		if !slices.Contains(present[kind], a.Profile) {
+			present[kind] = append(present[kind], a.Profile)
 		}
 	}
 	target := func(kind string) *string {
-		if len(profiles[kind]) < 2 {
+		if len(present[kind]) < 2 {
 			return nil
 		}
-		best := slices.MaxFunc(profiles[kind], func(a, b string) int { return profileRank[a] - profileRank[b] })
+		best := slices.MaxFunc(present[kind], func(a, b string) int { return profiles[a].rank - profiles[b].rank })
 		return &best
 	}
 	return target("data"), target("metadata")
@@ -387,8 +442,11 @@ func convertTargets(allocation []BtrfsAllocation) (data, meta *string) {
 // degraded mark is cleared once both are done; a scrub that found
 // uncorrectable errors is reported by the scrub alert and not run again. A
 // failure is recorded so the health run gives up after maxResyncAttempts.
-func Resync(ctx context.Context, uuid string) error {
-	err := resync(ctx, uuid)
+// report, when not nil, is given the scrub's percentage as it advances. A
+// failure the pool's alerts report, refreshed here, is marked
+// scheduledrun.Reported; one that left them as they were is not.
+func Resync(ctx context.Context, uuid string, report func(percent float64)) error {
+	err := resync(ctx, uuid, report)
 	// A disk that drops out starts a new episode, not a failed resync.
 	if err != nil && ctx.Err() == nil && !errors.Is(err, errDiskMissing) {
 		if recErr := updatePoolStates(ctx, func(s map[string]poolState) {
@@ -400,26 +458,30 @@ func Resync(ctx context.Context, uuid string) error {
 			return errors.Join(err, recErr)
 		}
 	}
-	refreshResyncAlerts(ctx, uuid, err == nil)
+	if refreshResyncAlerts(ctx, uuid, err == nil) {
+		return scheduledrun.Reported(err)
+	}
 	return err
 }
 
 // refreshResyncAlerts updates the pool's alerts when a resync ends rather
-// than at the next health run, and on success says the pool is whole again.
-func refreshResyncAlerts(ctx context.Context, uuid string, resynced bool) {
+// than at the next health run, and on success says the pool is whole again
+// unless the notification settings report resync failures only. It reports
+// whether the pool's health was known and its alerts were brought up to date.
+func refreshResyncAlerts(ctx context.Context, uuid string, resynced bool) bool {
 	fs, err := FindFilesystem(ctx, uuid)
 	if err != nil {
 		slog.Warn("failed to refresh btrfs alerts after resync", "uuid", uuid, "error", err)
-		return
+		return false
 	}
 	states, err := loadPoolStates()
 	if err != nil {
 		slog.Warn("failed to refresh btrfs alerts after resync", "uuid", uuid, "error", err)
-		return
+		return false
 	}
 	RaiseAlerts(ctx, fs)
 	raiseResyncAlert(ctx, fs, states[uuid])
-	if resynced {
+	if resynced && alerts.NotificationsOrDefaults().ReportFor(alerts.KindResync) == alerts.ReportChanges {
 		raise(ctx, alerts.Observation{
 			Key: "resynced-" + uuid, Severity: alerts.SeverityInfo,
 			Title:   "Pool " + poolName(fs.Label, uuid) + " is whole again",
@@ -427,12 +489,13 @@ func refreshResyncAlerts(ctx context.Context, uuid string, resynced bool) {
 			Link:    "/storage?pool=" + uuid, OccurrenceID: strconv.FormatInt(time.Now().Unix(), 10),
 		})
 	}
+	return fs.HealthKnown
 }
 
 // errDiskMissing stops a resync while the pool lacks a disk.
 var errDiskMissing = errors.New("a disk is missing")
 
-func resync(ctx context.Context, uuid string) error {
+func resync(ctx context.Context, uuid string, report func(percent float64)) error {
 	fs, err := FindFilesystem(ctx, uuid)
 	if err != nil {
 		return err
@@ -449,7 +512,7 @@ func resync(ctx context.Context, uuid string) error {
 		return err
 	}
 	if !states[uuid].Scrubbed {
-		if err := resyncScrub(ctx, uuid); err != nil {
+		if err := resyncScrub(ctx, uuid, report); err != nil {
 			return err
 		}
 	}
@@ -471,8 +534,12 @@ func resync(ctx context.Context, uuid string) error {
 
 // resyncScrub scrubs the whole pool and notes that it did, so a retry after
 // a failed convert skips it.
-func resyncScrub(ctx context.Context, uuid string) error {
-	status, err := Scrub(ctx, uuid, func(BtrfsScrubStatus) {})
+func resyncScrub(ctx context.Context, uuid string, report func(percent float64)) error {
+	status, err := Scrub(ctx, uuid, func(s BtrfsScrubStatus) {
+		if report != nil {
+			report(s.Percent)
+		}
+	})
 	if err != nil {
 		return err
 	}

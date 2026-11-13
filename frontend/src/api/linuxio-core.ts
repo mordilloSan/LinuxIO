@@ -6,11 +6,13 @@
  */
 
 import { isConnectionLossError, LinuxIOError } from "./errors";
+import type { TaskSnapshot } from "./generated/linuxio-types";
 import { waitForStreamResult } from "./stream-helpers";
 import {
   encodeString,
   getStreamMux,
   initStreamMux,
+  type ProgressFrame,
   STREAM_MULTIPLEXER_CONFIG,
   waitForStreamMux,
 } from "./StreamMultiplexer";
@@ -44,6 +46,15 @@ function outcomeUnknownError(): LinuxIOError {
 
 function isConnectionClosedError(error: unknown): boolean {
   return error instanceof LinuxIOError && error.code === "connection_closed";
+}
+
+/** The stream-open envelope; `id` is the client-chosen job id of a mutation. */
+export function streamOpenPayload(
+  route: string,
+  request: unknown = {},
+  id?: string,
+): Uint8Array {
+  return encodeString(JSON.stringify({ route, request: request ?? {}, id }));
 }
 
 /**
@@ -152,12 +163,7 @@ async function executeRequestAttempt<T>(
   throwIfAborted(callerSignal);
   const startedAt = Date.now();
   const route = `${handler}.${command}`;
-  const payload = encodeString(
-    JSON.stringify({
-      route,
-      request: request ?? {},
-    }),
-  );
+  const payload = streamOpenPayload(route, request);
 
   const mux = await ensureRequestMuxReady(timeoutMs, callerSignal);
   throwIfAborted(callerSignal);
@@ -259,4 +265,158 @@ export async function request<T = unknown>(
     throw lastError;
   }
   throw new LinuxIOError("Request timeout", "timeout");
+}
+
+export interface MutationHandlers<TProgress> {
+  onSnapshot?(snapshot: TaskSnapshot): void;
+  onProgress?(progress: TProgress): void;
+  signal?: AbortSignal;
+  /** On abort: "abort" (default) cancels the job, "close" detaches from it. */
+  closeOnAbort?: "abort" | "close";
+}
+
+function isTaskSnapshotFrame(
+  frame: unknown,
+): frame is { type: "task.snapshot"; task: TaskSnapshot } {
+  return (
+    typeof frame === "object" &&
+    frame !== null &&
+    (frame as { type?: unknown }).type === "task.snapshot"
+  );
+}
+
+function isMutationStreamLoss(error: unknown): boolean {
+  return (
+    error instanceof LinuxIOError &&
+    (error.code === "connection_closed" ||
+      error.code === "connection_unavailable")
+  );
+}
+
+/**
+ * Run a mutation on one stream with no client deadline. The envelope carries a
+ * client-chosen job id, so a connection lost before the job's snapshot resends
+ * the same envelope once, and one lost after it reattaches through
+ * tasks.watch once. A further loss leaves the outcome unknown. Aborting
+ * `signal` aborts the stream, which cancels the job, or with `closeOnAbort:
+ * "close"` closes it, which leaves the job running.
+ */
+export function mutationRequest<TResult, TProgress = ProgressFrame>(
+  handler: string,
+  command: string,
+  request: unknown,
+  handlers: MutationHandlers<TProgress> = {},
+): Promise<TResult> {
+  const route = `${handler}.${command}`;
+  const id = crypto.randomUUID();
+  return followMutation<TResult, TProgress>(
+    id,
+    { route, payload: streamOpenPayload(route, request, id) },
+    handlers,
+  );
+}
+
+/** Adopt a running mutation job: report its snapshot, then follow it. */
+export async function watchMutation<TResult, TProgress = ProgressFrame>(
+  taskId: string,
+  handlers: MutationHandlers<TProgress> = {},
+): Promise<TResult> {
+  const snapshot = await request<TaskSnapshot>(
+    "tasks",
+    "get",
+    { taskId },
+    { retryPolicy: "connection_loss", signal: handlers.signal },
+  );
+  handlers.onSnapshot?.(snapshot);
+  return followMutation<TResult, TProgress>(taskId, null, handlers);
+}
+
+async function followMutation<TResult, TProgress>(
+  id: string,
+  start: { route: string; payload: Uint8Array } | null,
+  handlers: MutationHandlers<TProgress>,
+): Promise<TResult> {
+  let started = start === null;
+  let sent = false;
+  let resent = false;
+  let reattached = false;
+  for (;;) {
+    try {
+      // Waiting for the transport is bounded; the job itself is not.
+      const mux = await ensureRequestMuxReady(
+        STREAM_MULTIPLEXER_CONFIG.defaultRequestTimeoutMs,
+        handlers.signal,
+      );
+      const stream =
+        start && !started
+          ? mux.openStream(start.route, start.payload)
+          : mux.openStream(
+              "tasks.watch",
+              streamOpenPayload("tasks.watch", { taskId: id }),
+            );
+      if (!stream) throw connectionUnavailableError();
+      sent = true;
+      return await waitForStreamResult<TResult, unknown>(stream, {
+        closeMessage: "Connection closed before the mutation finished",
+        onProgress: (frame) => {
+          if (isTaskSnapshotFrame(frame)) {
+            // A watch of a stored job starts with its snapshot too: report one.
+            if (!started) handlers.onSnapshot?.(frame.task);
+            started = true;
+          } else {
+            handlers.onProgress?.(frame as TProgress);
+          }
+        },
+        signal: handlers.signal,
+        closeOnAbort: handlers.closeOnAbort,
+      });
+    } catch (error) {
+      if (!isMutationStreamLoss(error)) throw error;
+      if (started ? reattached : resent) {
+        throw sent ? outcomeUnknownError() : error;
+      }
+      if (started) reattached = true;
+      else resent = true;
+    }
+  }
+}
+
+/**
+ * Start a mutation job and resolve with its first snapshot, then detach: the
+ * job runs on, and the caller follows it with tasks.watch. A connection lost
+ * before the snapshot resends the same envelope once, which attaches to the
+ * job if it started.
+ */
+export async function startJob(
+  handler: string,
+  command: string,
+  request: unknown,
+): Promise<TaskSnapshot> {
+  const route = `${handler}.${command}`;
+  const payload = streamOpenPayload(route, request, crypto.randomUUID());
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      const mux = await ensureRequestMuxReady(
+        STREAM_MULTIPLEXER_CONFIG.defaultRequestTimeoutMs,
+      );
+      const stream = mux.openStream(route, payload);
+      if (!stream) throw connectionUnavailableError();
+      return await new Promise<TaskSnapshot>((resolve, reject) => {
+        let started = false;
+        waitForStreamResult<TaskSnapshot>(stream, {
+          closeMessage: "Connection closed before the job started",
+          onProgress: (frame) => {
+            if (started || !isTaskSnapshotFrame(frame)) return;
+            started = true;
+            resolve(frame.task);
+            stream.close();
+          },
+        }).then(resolve, reject);
+      });
+    } catch (error) {
+      if (!isMutationStreamLoss(error) || attempt >= MAX_REQUEST_ATTEMPTS) {
+        throw error;
+      }
+    }
+  }
 }

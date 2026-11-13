@@ -24,19 +24,22 @@ vi.mock("@/tasks/useIsIndexing", () => ({
 }));
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
+  const { mockMutationHooks } = await import("@/test/mutationHooks");
+  const useCallMutation = (endpoint: { route: string }) => ({
+    isPending: false,
+    mutateAsync: async (request: Record<string, unknown>) => {
+      if (endpoint.route === "indexer.set_config") {
+        mocks.setConfig(request);
+        return { config: { ...mocks.config, ...request } };
+      }
+      mocks.setTimer(request);
+      return { interval: request.interval };
+    },
+  });
   return {
     ...actual,
-    useCallMutation: (endpoint: { route: string }) => ({
-      isPending: false,
-      mutateAsync: async (request: Record<string, unknown>) => {
-        if (endpoint.route === "indexer.set_config") {
-          mocks.setConfig(request);
-          return { config: { ...mocks.config, ...request } };
-        }
-        mocks.setTimer(request);
-        return { interval: request.interval };
-      },
-    }),
+    linuxio: mockMutationHooks(actual.linuxio, useCallMutation),
+    useCallMutation,
   };
 });
 

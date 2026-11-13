@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import type {
+  BtrfsOpProgress,
   PartitionCreateRequest,
   PartitionFormatRequest,
   PartitionMountRequest,
@@ -26,6 +27,8 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useCapability } from "@/hooks/useCapabilities";
 import { formatFileSize } from "@/utils/formatters";
+
+import { describeMember } from "../storageMember";
 
 const MiB = 1024 ** 2;
 const UNITS = { MiB, GiB: 1024 * MiB, TiB: 1024 ** 2 * MiB } as const;
@@ -67,11 +70,15 @@ const stack = {
   gap: "var(--app-space-12)",
 } as const;
 
-const Progress = ({ step }: { step?: string | null }) => (
+const Progress = ({ step }: { step?: BtrfsOpProgress | null }) => (
   <div role="status">
-    <AppLinearProgress aria-label="Working" />
+    <AppLinearProgress
+      aria-label="Working"
+      value={step?.percent}
+      variant={step?.percent ? "determinate" : "indeterminate"}
+    />
     <AppTypography color="text.secondary" variant="caption">
-      {step ?? "Starting..."}
+      {step?.message ?? "Starting..."}
     </AppTypography>
   </div>
 );
@@ -195,8 +202,8 @@ interface DialogProps {
   isPending: boolean;
   /** Why the last attempt failed, so the form can be corrected and resent. */
   error?: string | null;
-  /** The step a running task is on. */
-  step?: string | null;
+  /** The step a running task is on, with its percent done while it trims. */
+  step?: BtrfsOpProgress | null;
   onClose: () => void;
 }
 
@@ -381,10 +388,16 @@ export const FormatPartitionDialog = ({
             }
             label="Overwrite existing data"
           />
-          {device.fsType && (
+          {device.member ? (
             <AppAlert severity="warning">
-              {`${device.path} holds a ${device.fsType} filesystem. Formatting erases it.`}
+              {`${device.path} is a member of ${describeMember(device.member)}. Formatting erases it, and ${describeMember(device.member)} loses it.`}
             </AppAlert>
+          ) : (
+            device.fsType && (
+              <AppAlert severity="warning">
+                {`${device.path} holds a ${device.fsType} filesystem. Formatting erases it.`}
+              </AppAlert>
+            )
           )}
           {isPending && <Progress step={step} />}
           {error && <AppAlert severity="error">{error}</AppAlert>}

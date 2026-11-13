@@ -1,4 +1,7 @@
-import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
+import { expect, type Page, test } from "@playwright/test";
 
 const DATA = 0x04;
 const BRIDGE_DATA = 0x81;
@@ -29,29 +32,23 @@ type AcpMessage = {
 
 const PERMISSION_REQUEST_ID = 500;
 
-const modelOption = (currentValue: string) => ({
-  id: "model",
-  name: "Model",
-  type: "select",
-  category: "model",
-  currentValue,
-  options: [
-    { value: "sonnet", name: "Sonnet" },
-    { value: "opus", name: "Opus" },
-  ],
-});
+type FakeAgent = {
+  send(message: unknown): void;
+  notify(sessionId: string, update: unknown): void;
+};
 
-test("chats with a fake ACP agent and approves a permission", async ({
-  page,
-}) => {
-  const received: AcpMessage[] = [];
+/**
+ * A fake ACP agent behind the page's WebSocket: it opens the assistant's
+ * stream, and hands `onRequest` each message the page sends on it.
+ */
+async function serveAgent(
+  page: Page,
+  onRequest: (request: AcpMessage, agent: FakeAgent) => void,
+) {
   await page.routeWebSocket("**/ws", (socket) => {
     // StrictMode may open more than once; always answer on the latest stream.
     let streamId: number | undefined;
     let buffer = "";
-    let pendingPromptId: number | undefined;
-    // Like the Claude adapter: a fork is not live until it is resumed.
-    const registered = new Set<string>();
     const send = (message: unknown) => {
       if (streamId !== undefined) {
         socket.send(dataFrame(streamId, `${JSON.stringify(message)}\n`));
@@ -88,172 +85,194 @@ test("chats with a fake ACP agent and approves a permission", async ({
         const line = buffer.slice(0, nl);
         buffer = buffer.slice(nl + 1);
         nl = buffer.indexOf("\n");
-        if (!line) continue;
-        const request = JSON.parse(line) as AcpMessage;
-        received.push(request);
-        switch (request.method) {
-          case "initialize":
-            send({
-              jsonrpc: "2.0",
-              id: request.id,
-              result: {
-                protocolVersion: 1,
-                agentCapabilities: {
-                  loadSession: true,
-                  sessionCapabilities: {
-                    list: {},
-                    fork: {},
-                    resume: {},
-                    close: {},
-                    delete: {},
-                  },
-                },
-                authMethods: [],
-              },
-            });
-            break;
-          case "session/list":
-            send({ jsonrpc: "2.0", id: request.id, result: { sessions: [] } });
-            break;
-          case "session/new":
-            registered.add("s1");
-            send({
-              jsonrpc: "2.0",
-              id: request.id,
-              result: {
-                sessionId: "s1",
-                configOptions: [modelOption("sonnet")],
-                modes: {
-                  currentModeId: "default",
-                  availableModes: [
-                    { id: "default", name: "Default" },
-                    { id: "plan", name: "Plan" },
-                  ],
-                },
-              },
-            });
-            break;
-          case "session/fork":
-            // Returns a new id without registering it.
-            send({
-              jsonrpc: "2.0",
-              id: request.id,
-              result: { sessionId: "s2" },
-            });
-            break;
-          case "session/resume":
-          case "session/load":
-            registered.add(request.params?.sessionId ?? "");
-            send({ jsonrpc: "2.0", id: request.id, result: {} });
-            break;
-          case "session/close":
-          case "session/delete":
-          case "session/set_mode":
-            send({ jsonrpc: "2.0", id: request.id, result: {} });
-            break;
-          case "session/set_config_option":
-            send({
-              jsonrpc: "2.0",
-              id: request.id,
-              result: {
-                configOptions: [modelOption(request.params?.value ?? "")],
-              },
-            });
-            break;
-          case "session/prompt": {
-            const asked = request.params?.prompt?.[0]?.text ?? "";
-            const promptSession = request.params?.sessionId ?? "";
-            if (!registered.has(promptSession)) {
-              send({
-                jsonrpc: "2.0",
-                id: request.id,
-                error: { code: -32603, message: "Session not found" },
-              });
-              break;
-            }
-            if (promptSession !== "s1") {
-              notify(promptSession, {
-                sessionUpdate: "agent_message_chunk",
-                content: { type: "text", text: `Side answer: ${asked}` },
-              });
-              send({
-                jsonrpc: "2.0",
-                id: request.id,
-                result: { stopReason: "end_turn" },
-              });
-              break;
-            }
-            notify("s1", {
-              sessionUpdate: "agent_message_chunk",
-              content: {
-                type: "text",
-                text: `You asked: ${asked}\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n`,
-              },
-            });
-            notify("s1", {
-              sessionUpdate: "tool_call",
-              toolCallId: "t1",
-              title: "df -h",
-              kind: "execute",
-              status: "pending",
-            });
-            notify("s1", {
-              sessionUpdate: "tool_call",
-              toolCallId: "t2",
-              title: "uptime",
-              kind: "execute",
-              status: "completed",
-            });
-            send({
-              jsonrpc: "2.0",
-              id: PERMISSION_REQUEST_ID,
-              method: "session/request_permission",
-              params: {
-                sessionId: "s1",
-                toolCall: { toolCallId: "t1", title: "df -h" },
-                options: [
-                  { optionId: "allow", name: "Allow once", kind: "allow_once" },
-                  { optionId: "reject", name: "Reject", kind: "reject_once" },
-                ],
-              },
-            });
-            // The prompt result is sent after the permission answer arrives.
-            pendingPromptId = request.id;
-            break;
-          }
-          default:
-            if (request.id === PERMISSION_REQUEST_ID) {
-              const allowed = request.result?.outcome?.optionId === "allow";
-              notify("s1", {
-                sessionUpdate: "tool_call_update",
-                toolCallId: "t1",
-                status: allowed ? "completed" : "failed",
-                content: [
-                  {
-                    type: "content",
-                    content: {
-                      type: "text",
-                      text: "/dev/sda1  50G  20G  30G  40% /",
-                    },
-                  },
-                ],
-              });
-              notify("s1", {
-                sessionUpdate: "agent_message_chunk",
-                content: {
-                  type: "text",
-                  text: allowed ? " Disk is 40% full." : " I did not run it.",
-                },
-              });
-              send({
-                jsonrpc: "2.0",
-                id: pendingPromptId,
-                result: { stopReason: "end_turn" },
-              });
-            }
-        }
+        if (line) onRequest(JSON.parse(line) as AcpMessage, { send, notify });
       }
     });
+  });
+}
+
+const modelOption = (currentValue: string) => ({
+  id: "model",
+  name: "Model",
+  type: "select",
+  category: "model",
+  currentValue,
+  options: [
+    { value: "sonnet", name: "Sonnet" },
+    { value: "opus", name: "Opus" },
+  ],
+});
+
+test("chats with a fake ACP agent and approves a permission", async ({
+  page,
+}) => {
+  const received: AcpMessage[] = [];
+  let pendingPromptId: number | undefined;
+  // Like the Claude adapter: a fork is not live until it is resumed.
+  const registered = new Set<string>();
+  await serveAgent(page, (request, { send, notify }) => {
+    received.push(request);
+    switch (request.method) {
+      case "initialize":
+        send({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: {
+            protocolVersion: 1,
+            agentCapabilities: {
+              loadSession: true,
+              sessionCapabilities: {
+                list: {},
+                fork: {},
+                resume: {},
+                close: {},
+                delete: {},
+              },
+            },
+            authMethods: [],
+          },
+        });
+        break;
+      case "session/list":
+        send({ jsonrpc: "2.0", id: request.id, result: { sessions: [] } });
+        break;
+      case "session/new":
+        registered.add("s1");
+        send({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: {
+            sessionId: "s1",
+            configOptions: [modelOption("sonnet")],
+            modes: {
+              currentModeId: "default",
+              availableModes: [
+                { id: "default", name: "Default" },
+                { id: "plan", name: "Plan" },
+              ],
+            },
+          },
+        });
+        break;
+      case "session/fork":
+        // Returns a new id without registering it.
+        send({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: { sessionId: "s2" },
+        });
+        break;
+      case "session/resume":
+      case "session/load":
+        registered.add(request.params?.sessionId ?? "");
+        send({ jsonrpc: "2.0", id: request.id, result: {} });
+        break;
+      case "session/close":
+      case "session/delete":
+      case "session/set_mode":
+        send({ jsonrpc: "2.0", id: request.id, result: {} });
+        break;
+      case "session/set_config_option":
+        send({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: {
+            configOptions: [modelOption(request.params?.value ?? "")],
+          },
+        });
+        break;
+      case "session/prompt": {
+        const asked = request.params?.prompt?.[0]?.text ?? "";
+        const promptSession = request.params?.sessionId ?? "";
+        if (!registered.has(promptSession)) {
+          send({
+            jsonrpc: "2.0",
+            id: request.id,
+            error: { code: -32603, message: "Session not found" },
+          });
+          break;
+        }
+        if (promptSession !== "s1") {
+          notify(promptSession, {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: `Side answer: ${asked}` },
+          });
+          send({
+            jsonrpc: "2.0",
+            id: request.id,
+            result: { stopReason: "end_turn" },
+          });
+          break;
+        }
+        notify("s1", {
+          sessionUpdate: "agent_message_chunk",
+          content: {
+            type: "text",
+            text: `You asked: ${asked}\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n`,
+          },
+        });
+        notify("s1", {
+          sessionUpdate: "tool_call",
+          toolCallId: "t1",
+          title: "df -h",
+          kind: "execute",
+          status: "pending",
+        });
+        notify("s1", {
+          sessionUpdate: "tool_call",
+          toolCallId: "t2",
+          title: "uptime",
+          kind: "execute",
+          status: "completed",
+        });
+        send({
+          jsonrpc: "2.0",
+          id: PERMISSION_REQUEST_ID,
+          method: "session/request_permission",
+          params: {
+            sessionId: "s1",
+            toolCall: { toolCallId: "t1", title: "df -h" },
+            options: [
+              { optionId: "allow", name: "Allow once", kind: "allow_once" },
+              { optionId: "reject", name: "Reject", kind: "reject_once" },
+            ],
+          },
+        });
+        // The prompt result is sent after the permission answer arrives.
+        pendingPromptId = request.id;
+        break;
+      }
+      default:
+        if (request.id === PERMISSION_REQUEST_ID) {
+          const allowed = request.result?.outcome?.optionId === "allow";
+          notify("s1", {
+            sessionUpdate: "tool_call_update",
+            toolCallId: "t1",
+            status: allowed ? "completed" : "failed",
+            content: [
+              {
+                type: "content",
+                content: {
+                  type: "text",
+                  text: "/dev/sda1  50G  20G  30G  40% /",
+                },
+              },
+            ],
+          });
+          notify("s1", {
+            sessionUpdate: "agent_message_chunk",
+            content: {
+              type: "text",
+              text: allowed ? " Disk is 40% full." : " I did not run it.",
+            },
+          });
+          send({
+            jsonrpc: "2.0",
+            id: pendingPromptId,
+            result: { stopReason: "end_turn" },
+          });
+        }
+    }
   });
 
   await page.goto("/assistant");
@@ -288,6 +307,25 @@ test("chats with a fake ACP agent and approves a permission", async ({
     page.getByText("You asked: how full is the disk?"),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Stop" })).toBeVisible();
+
+  // The activity map follows the turn: both calls went to the shell, and the
+  // one still waiting keeps a ring spreading from its station.
+  const activityTab = page.getByRole("button", {
+    name: "Activity",
+    exact: true,
+  });
+  await activityTab.click();
+  await expect(
+    page.getByRole("img", { name: /^Activity map\..*Shell 2/ }),
+  ).toBeVisible();
+  const beat = page.locator(".work-map__beat");
+  await expect(beat).toHaveCount(1);
+  expect(
+    await beat.evaluate((ring) => ring.getAnimations().length),
+  ).toBeGreaterThan(0);
+  await activityTab.click();
+  await expect(page.getByRole("img", { name: /^Activity map/ })).toHaveCount(0);
+
   await page.getByRole("button", { name: "Allow once" }).click();
   await expect(page.getByText(/Disk is 40% full/)).toBeVisible();
   await expect(page.getByRole("table")).toBeVisible();
@@ -295,14 +333,13 @@ test("chats with a fake ACP agent and approves a permission", async ({
   await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
   await expect(input).toBeEnabled();
 
-  await expect(page.getByText("2 tool calls")).toBeVisible();
-  await page.getByText("2 tool calls").click();
-  await expect(page.getByText("uptime")).toBeVisible();
-  await expect(page.getByRole("img", { name: "done" })).toHaveCount(3);
-  // Each call shows its output under OUT once the group is open.
+  // Both commands stand on one card; a line opens to what the command put out.
+  const ran = page.getByRole("group", { name: "Ran on this server" });
+  await expect(ran.getByText("uptime")).toBeVisible();
+  await ran.getByRole("button", { name: /df -h/ }).click();
   await expect(page.getByText("/dev/sda1  50G  20G  30G  40% /")).toBeVisible();
-  await page.getByRole("button", { name: "Collapse" }).click();
-  await expect(page.getByText("uptime")).toBeHidden();
+  await ran.getByRole("button", { name: /df -h/ }).click();
+  await expect(page.getByText("/dev/sda1  50G  20G  30G  40% /")).toBeHidden();
 
   // A side question forks the chat; the fork must be resumed before it answers.
   await page.getByLabel("Message", { exact: true }).fill("/btw is it healthy?");
@@ -318,4 +355,395 @@ test("chats with a fake ACP agent and approves a permission", async ({
   expect(methods.indexOf("session/resume")).toBeGreaterThan(
     methods.indexOf("session/fork"),
   );
+});
+
+test("shows a subagent the agent reports as a session of its own", async ({
+  page,
+}) => {
+  const received: AcpMessage[] = [];
+  let promptId: number | undefined;
+  const prompt = {
+    sessionUpdate: "session_message",
+    messageId: "launch1",
+    senderSessionId: "s1",
+    recipientSessionId: "child1",
+    content: [{ type: "text", text: "Check how full the disks are" }],
+  };
+  await serveAgent(page, (request, { send, notify }) => {
+    received.push(request);
+    switch (request.method) {
+      case "initialize":
+        send({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: {
+            protocolVersion: 1,
+            agentCapabilities: {
+              loadSession: true,
+              sessionCapabilities: { list: {} },
+            },
+            authMethods: [],
+          },
+        });
+        break;
+      case "session/list":
+        send({ jsonrpc: "2.0", id: request.id, result: { sessions: [] } });
+        break;
+      case "session/new":
+        send({ jsonrpc: "2.0", id: request.id, result: { sessionId: "s1" } });
+        break;
+      case "session/prompt":
+        promptId = request.id;
+        // The launch call is not sent: the subagent is announced on the
+        // chat's session, with the prompt as a message in both sessions.
+        notify("s1", {
+          sessionUpdate: "subagent_update",
+          sessionId: "child1",
+          title: "Disk check",
+          description: "Explore",
+          capabilities: { cancel: {} },
+          state: { state: "running" },
+        });
+        notify("s1", prompt);
+        notify("child1", prompt);
+        // Its own work comes on its own session id.
+        notify("child1", {
+          sessionUpdate: "tool_call",
+          toolCallId: "t1",
+          title: "df -h",
+          kind: "execute",
+          status: "pending",
+          rawInput: { command: "df -h" },
+          _meta: {
+            claudeCode: { toolName: "Bash", parentToolUseId: "launch1" },
+          },
+        });
+        notify("s1", {
+          sessionUpdate: "subagent_update",
+          sessionId: "child1",
+          state: { state: "requires_action" },
+        });
+        send({
+          jsonrpc: "2.0",
+          id: PERMISSION_REQUEST_ID,
+          method: "session/request_permission",
+          params: {
+            sessionId: "child1",
+            toolCall: {
+              toolCallId: "t1",
+              title: "df -h",
+              kind: "execute",
+              rawInput: { command: "df -h" },
+            },
+            options: [
+              { optionId: "allow", name: "Allow once", kind: "allow_once" },
+              { optionId: "reject", name: "Reject", kind: "reject_once" },
+            ],
+          },
+        });
+        break;
+      default:
+        if (request.id !== PERMISSION_REQUEST_ID) break;
+        notify("s1", {
+          sessionUpdate: "subagent_update",
+          sessionId: "child1",
+          state: { state: "running" },
+        });
+        notify("child1", {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "t1",
+          status: "completed",
+        });
+        for (const sessionId of ["child1", "s1"]) {
+          notify(sessionId, {
+            sessionUpdate: "session_message",
+            messageId: "handback1",
+            senderSessionId: "child1",
+            recipientSessionId: "s1",
+            content: [{ type: "text", text: "The root disk is 40% full." }],
+          });
+        }
+        notify("s1", {
+          sessionUpdate: "subagent_update",
+          sessionId: "child1",
+          state: { state: "idle", stopReason: "end_turn" },
+        });
+        notify("s1", {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: "Nothing to worry about." },
+        });
+        send({
+          jsonrpc: "2.0",
+          id: promptId,
+          result: { stopReason: "end_turn" },
+        });
+    }
+  });
+
+  await page.goto("/assistant");
+  const input = page.getByLabel("Message");
+  await expect(input).toBeEnabled();
+  // The page says that it takes subagents as sessions.
+  expect(
+    received.find((message) => message.method === "initialize")?.params,
+  ).toMatchObject({ clientCapabilities: { subagents: {} } });
+
+  await input.fill("check the disks");
+  await page.keyboard.press("Enter");
+
+  // The chat shows the message to the subagent, and the subagent's request
+  // under its name. Its call waits in the card, not under the message.
+  const sentTo = page.locator(".assistant-message").first();
+  await expect(sentTo).toContainText("Sent to");
+  await expect(sentTo).toContainText("Disk check");
+  await expect(page.getByText("Asked by Disk check.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "1 agent" })).toBeVisible();
+  await expect(sentTo.locator(".assistant-tool")).toHaveCount(0);
+
+  // The answer goes to the subagent's request, which lets the turn finish.
+  await page.getByRole("button", { name: "Allow once" }).click();
+  await expect(page.getByText("Nothing to worry about.")).toBeVisible();
+  expect(
+    received.find((message) => message.id === PERMISSION_REQUEST_ID)?.result,
+  ).toMatchObject({ outcome: { optionId: "allow" } });
+  await expect(sentTo.locator(".assistant-tool")).toHaveCount(1);
+  await expect(sentTo).toContainText("df -h");
+  await expect(page.getByText("The root disk is 40% full.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "0 agents" })).toBeVisible();
+
+  // Its name opens the Agents view on it: the prompt, its call, its report.
+  await sentTo.getByRole("button", { name: "Disk check" }).click();
+  const agents = page.getByRole("complementary", { name: "Agents" });
+  await expect(
+    agents.getByRole("heading", { name: "Disk check" }),
+  ).toBeVisible();
+  await expect(agents.getByText("Finished · Explore")).toBeVisible();
+  await expect(agents.getByText("Tool calls (1)")).toBeVisible();
+  await expect(agents.getByText("Report", { exact: true })).toBeVisible();
+  await expect(agents.getByText("The root disk is 40% full.")).toBeVisible();
+
+  // The map counts the subagent and the call it made.
+  await agents.getByRole("button", { name: "All agents" }).click();
+  await agents.getByRole("button", { name: /Claude/ }).click();
+  await expect(
+    page.getByRole("img", { name: /^Activity map\..*Agents 1/ }),
+  ).toBeVisible();
+});
+
+type TraceEntry = { mark?: string; sessionId?: string; update?: unknown };
+
+test("replays a recorded chat with subagents, stops one and loads the chat again", async ({
+  page,
+}) => {
+  // A real chat with Claude Code's adapter, recorded with `subagents`
+  // declared: every update it sent, and the same chat being loaded.
+  const trace = JSON.parse(
+    readFileSync(
+      path.resolve(process.cwd(), "src/test/assistantSubagentTrace.json"),
+      "utf8",
+    ),
+  ) as { live: TraceEntry[]; load: TraceEntry[] };
+  const received: AcpMessage[] = [];
+  let at = 0;
+  let promptId: number | undefined;
+  let saved = false;
+  // Sends the recording on from where it stands: to the end of the turn,
+  // which answers the prompt, or to where the client stopped a subagent.
+  const play = ({ send, notify }: FakeAgent) => {
+    while (at < trace.live.length) {
+      const entry = trace.live[at++];
+      if (entry.mark === "answered") {
+        send({
+          jsonrpc: "2.0",
+          id: promptId,
+          result: { stopReason: "end_turn" },
+        });
+        return;
+      }
+      if (entry.mark?.startsWith("cancel:")) return;
+      if (entry.sessionId) notify(entry.sessionId, entry.update);
+    }
+  };
+  await serveAgent(page, (request, agent) => {
+    received.push(request);
+    const { send, notify } = agent;
+    switch (request.method) {
+      case "initialize":
+        send({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: {
+            protocolVersion: 1,
+            agentCapabilities: {
+              loadSession: true,
+              sessionCapabilities: { list: {} },
+            },
+            authMethods: [],
+          },
+        });
+        break;
+      case "session/list":
+        send({
+          jsonrpc: "2.0",
+          id: request.id,
+          result: {
+            sessions: saved ? [{ sessionId: "chat", cwd: "/home/alice" }] : [],
+          },
+        });
+        break;
+      case "session/new":
+        send({ jsonrpc: "2.0", id: request.id, result: { sessionId: "chat" } });
+        break;
+      case "session/prompt":
+        saved = true;
+        promptId = request.id;
+        play(agent);
+        break;
+      case "session/cancel":
+        // The adapter stops that subagent and the turn goes on to its end.
+        if (request.params?.sessionId === "sleeper") play(agent);
+        break;
+      case "session/load": {
+        const loaded = trace.load.findIndex((entry) => entry.mark === "loaded");
+        const replay = (entries: TraceEntry[]) =>
+          entries.forEach((entry) => {
+            if (entry.sessionId) notify(entry.sessionId, entry.update);
+          });
+        replay(trace.load.slice(0, loaded));
+        send({ jsonrpc: "2.0", id: request.id, result: {} });
+        replay(trace.load.slice(loaded + 1));
+        break;
+      }
+    }
+  });
+
+  // Each message row as its head and the commands under it.
+  const rows = () =>
+    page
+      .locator(".assistant-message")
+      .evaluateAll((messages) =>
+        messages.map((message) => [
+          message.querySelector(".assistant-message__head")?.textContent,
+          ...[...message.querySelectorAll(".assistant-tool")].map(
+            (tool) =>
+              tool.querySelector(
+                ".assistant-tool__what, .assistant-tool__command",
+              )?.textContent,
+          ),
+        ]),
+      );
+  const agentsCard = page.getByRole("complementary", { name: "Agents" });
+  const parts = () =>
+    agentsCard
+      .locator(".agent-map--detail summary, .agent-map--detail h4")
+      .allTextContents();
+
+  await page.goto("/assistant");
+  const input = page.getByLabel("Message");
+  await expect(input).toBeEnabled();
+
+  // The first turn: two subagents at once, one of them starting its own,
+  // and a second message to the first.
+  await input.fill("first");
+  await page.keyboard.press("Enter");
+  await expect(page.getByText(/When I asked, it said/)).toBeVisible();
+  await expect(input).toBeEnabled();
+  const live = [
+    [
+      "Sent toReader A",
+      "Read a.txt",
+      "Count lines in a.txt",
+      "/srv/work/out-a.txt",
+    ],
+    // Reader B's own calls, then the subagent it started with its call.
+    ["Sent toReader B", "Read b.txt", "Count lines in b.txt", "Read c.txt"],
+    ["Sent toNested C", "Read c.txt"],
+    ["Reader Areported"],
+    // It answered the second message from what it knew: no calls.
+    ["Sent toReader A"],
+    ["Reader Breported"],
+    ["Reader Areported"],
+  ];
+  expect(await rows()).toEqual(live);
+  await expect(page.getByRole("button", { name: "0 agents" })).toBeVisible();
+
+  // The second turn starts a subagent that is still at work.
+  await input.fill("second");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button", { name: "1 agent" })).toBeVisible();
+  await page.getByRole("button", { name: "Sleeper" }).click();
+  await expect(
+    agentsCard.getByRole("heading", { name: "Sleeper" }),
+  ).toBeVisible();
+  await expect(
+    agentsCard.getByText(/^Running · general-purpose/),
+  ).toBeVisible();
+
+  // Stop reaches the agent as a cancel of that subagent alone, and the
+  // state the agent sends back is what the card then shows.
+  await agentsCard.getByRole("button", { name: "Stop" }).click();
+  await expect(
+    agentsCard.getByText(/^Stopped · general-purpose/),
+  ).toBeVisible();
+  expect(
+    received
+      .filter((message) => message.method === "session/cancel")
+      .map((message) => message.params?.sessionId),
+  ).toEqual(["sleeper"]);
+  await expect(agentsCard.getByRole("button", { name: "Stop" })).toHaveCount(0);
+  await expect(
+    page.getByText(/The Sleeper subagent didn't report/),
+  ).toBeVisible();
+  await expect(input).toBeEnabled();
+
+  // A subagent that was messaged again, in the order it happened.
+  await agentsCard.getByRole("button", { name: "All agents" }).click();
+  await agentsCard.getByRole("button", { name: /Reader A/ }).click();
+  const readerA = [
+    "Prompt 1",
+    "Tool calls (3)",
+    "Report 1",
+    "Prompt 2",
+    "Messages (1)",
+    "Report 2",
+  ];
+  expect(await parts()).toEqual(readerA);
+  await expect(
+    agentsCard.getByText("Finished · general-purpose · Sonnet 5.5"),
+  ).toBeVisible();
+
+  // The map: four subagents, and their calls at Files and Shell.
+  await agentsCard.getByRole("button", { name: "All agents" }).click();
+  await agentsCard.getByRole("button", { name: /Claude Code/ }).click();
+  await expect(
+    page.getByRole("img", { name: /^Activity map\..*Agents 4/ }),
+  ).toBeVisible();
+
+  // Loading the chat again brings all of it back, from the agent's replay.
+  await page.reload();
+  await expect(input).toBeEnabled();
+  await expect(
+    page.getByText(/The Sleeper subagent didn't report/),
+  ).toBeVisible();
+  expect(await rows()).toEqual([
+    live[0],
+    ["Reader Areported"],
+    live[1],
+    live[2],
+    ["Reader Breported"],
+    ["Sent toReader A"],
+    ["Reader Areported"],
+    [
+      "Sent toSleeper",
+      "Sleep for 40 seconds",
+      "Sleep for 40 seconds in background",
+      expect.any(String),
+    ],
+  ]);
+  // Nothing of a loaded chat runs, whatever its replay left open.
+  await expect(page.locator(".assistant-tool-state--active")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "0 agents" })).toBeVisible();
+  await page.getByRole("button", { name: "Reader A" }).first().click();
+  expect(await parts()).toEqual(readerA);
+  await expect(agentsCard.getByText(/tokens not reported/)).toBeVisible();
 });

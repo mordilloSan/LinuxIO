@@ -1,8 +1,11 @@
+import { Icon } from "@iconify/react";
 import {
   type ComponentProps,
   type ReactElement,
   type ReactNode,
+  createContext,
   isValidElement,
+  use,
   useEffect,
   useRef,
   useState,
@@ -11,7 +14,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { languageForFence } from "@/components/editor/languageNames";
-import AppActionIconButton from "@/components/ui/AppActionIconButton";
+import AppButton from "@/components/ui/AppButton";
 import { copyToClipboard } from "@/utils/clipboard";
 
 import type { HighlightSpan } from "./highlight";
@@ -23,7 +26,20 @@ const MAX_HIGHLIGHT_CHARS = 20_000;
 // chunk. Module scope because React Compiler skips components with import().
 const loadHighlight = () => import("./highlight");
 
+// Fences whose body is a command for a shell, not its output.
+const SHELL_FENCES = new Set(["bash", "sh", "shell", "zsh"]);
+
+/**
+ * Set by a page that can hand a command to the terminal: shell blocks under
+ * it get an "Open in terminal" button. Without it (a plugin pane, a side
+ * question) code can only be copied.
+ */
+export const OpenInTerminalContext = createContext<
+  ((command: string) => void) | null
+>(null);
+
 function CodeBlock({ children }: { children?: ReactNode }) {
+  const openInTerminal = use(OpenInTerminalContext);
   const preRef = useRef<HTMLPreElement>(null);
   const [highlighted, setHighlighted] = useState<{
     spans: HighlightSpan[];
@@ -38,9 +54,8 @@ function CodeBlock({ children }: { children?: ReactNode }) {
     typeof codeProps?.children === "string" ? codeProps.children : null;
   // The fence's trailing newline is not code; it is re-appended as plain tail.
   const body = text?.replace(/\n$/, "") ?? null;
-  const lang = languageForFence(
-    /language-(\S+)/.exec(codeProps?.className ?? "")?.[1] ?? "",
-  );
+  const fence = /language-(\S+)/.exec(codeProps?.className ?? "")?.[1] ?? "";
+  const lang = languageForFence(fence);
 
   useEffect(() => {
     if (body === null || !lang || body.length > MAX_HIGHLIGHT_CHARS) return;
@@ -63,20 +78,31 @@ function CodeBlock({ children }: { children?: ReactNode }) {
       : null;
   return (
     <div className="assistant-code">
-      {/* The wrapper is what gets positioned, so the tooltip anchors to the
-          button and not to where the button would have sat in flow. */}
-      <div className="assistant-code__copy">
-        <AppActionIconButton
-          ariaLabel="Copy code"
-          icon="mdi:content-copy"
-          iconSize={16}
-          label="Copy code"
-          onClick={() => {
-            const code = preRef.current?.textContent ?? "";
-            copyToClipboard(code.replace(/\n$/, "")).catch(() => {});
-          }}
-          size="small"
-        />
+      <div className="assistant-code__bar">
+        <span className="assistant-code__lang">{fence || "code"}</span>
+        <div className="assistant-code__actions">
+          <AppButton
+            aria-label="Copy code"
+            color="inherit"
+            onClick={() => {
+              const code = preRef.current?.textContent ?? "";
+              copyToClipboard(code.replace(/\n$/, "")).catch(() => {});
+            }}
+            size="small"
+            startIcon={<Icon icon="mdi:content-copy" width={14} />}
+          >
+            Copy
+          </AppButton>
+          {openInTerminal && body && SHELL_FENCES.has(fence) ? (
+            <AppButton
+              onClick={() => openInTerminal(body)}
+              size="small"
+              startIcon={<Icon icon="mdi:console" width={14} />}
+            >
+              Open in terminal
+            </AppButton>
+          ) : null}
+        </div>
       </div>
       <pre ref={preRef}>
         {shown && text !== null ? (

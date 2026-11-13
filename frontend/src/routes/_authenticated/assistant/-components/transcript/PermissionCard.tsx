@@ -1,4 +1,4 @@
-import type * as acp from "@agentclientprotocol/sdk";
+import type * as acp from "@agentclientprotocol/sdk/unstable";
 import { Icon } from "@iconify/react";
 import { type KeyboardEvent, useEffect, useRef } from "react";
 
@@ -29,9 +29,12 @@ const OPTION_SELECTOR = "[data-permission-option]";
  */
 export default function PermissionCard({
   request,
+  asker = null,
   onAnswer,
 }: {
   request: acp.RequestPermissionRequest;
+  /** The subagent that asks, by its title; null for the chat's own agent. */
+  asker?: string | null;
   onAnswer: (optionId: string | null) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -89,6 +92,12 @@ export default function PermissionCard({
       <div className="assistant__permission-head">
         <Icon height={16} icon={copy.icon} width={16} />
         <span>{copy.question}</span>
+        {asker ? (
+          <span className="assistant__permission-note">Asked by {asker}.</span>
+        ) : null}
+        <span className="assistant__permission-note">
+          Needs your approval. Nothing has changed yet.
+        </span>
       </div>
       {description ? (
         <div className="assistant__permission-description">{description}</div>

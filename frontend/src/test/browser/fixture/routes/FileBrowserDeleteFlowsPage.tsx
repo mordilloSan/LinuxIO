@@ -3,6 +3,7 @@ import { useState, type MouseEvent } from "react";
 
 import { linuxio } from "@/api";
 import AppButton from "@/components/ui/AppButton";
+import { AuthContext, type AuthContextType } from "@/contexts/AuthContext";
 import ContextMenu from "@/routes/_authenticated/filebrowser/-components/ContextMenu";
 import DirectoryListing from "@/routes/_authenticated/filebrowser/-components/DirectoryListing";
 import {
@@ -180,10 +181,26 @@ function DeleteFlowsFixture() {
   );
 }
 
+const auth: AuthContextType = {
+  isAuthenticated: true,
+  isInitialized: true,
+  method: "session",
+  privileged: true,
+  refreshCapabilities: async () => {
+    throw new Error("not used in fixture");
+  },
+  sessionExpired: () => {},
+  signIn: async () => {},
+  signOut: async () => {},
+  user: { id: "delete-flows-fixture", name: "Delete Flows Fixture" },
+};
+
 export default function FileBrowserDeleteFlowsPage() {
   return (
     <QueryClientProvider client={queryClient}>
-      <DeleteFlowsFixture />
+      <AuthContext.Provider value={auth}>
+        <DeleteFlowsFixture />
+      </AuthContext.Provider>
     </QueryClientProvider>
   );
 }

@@ -1,5 +1,6 @@
 import { screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it, vi } from "vitest";
 
 import { render } from "@/test/render";
 
@@ -9,15 +10,36 @@ const fill = () =>
   document.querySelector<SVGCircleElement>(".assistant__gauge-fill")!;
 
 describe("ContextGauge", () => {
-  it("renders nothing until usage exists", () => {
+  it("shows an empty ring until usage exists", () => {
     render(<ContextGauge usage={null} />);
-    expect(screen.queryByRole("img")).toBeNull();
+    expect(
+      screen.getByRole("button", {
+        name: "Context usage appears after the first reply",
+      }),
+    ).toHaveAttribute("aria-disabled", "true");
+    expect(fill().getAttribute("stroke-dasharray")).toMatch(/^0\.00 /);
+  });
+
+  it("compacts on click", async () => {
+    const onCompact = vi.fn();
+    render(
+      <ContextGauge
+        onCompact={onCompact}
+        usage={{ used: 12000, size: 200000, cost: null }}
+      />,
+    );
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: "12k / 200k tokens (6%) · Click to compact",
+      }),
+    );
+    expect(onCompact).toHaveBeenCalledOnce();
   });
 
   it("draws the used fraction and labels it", () => {
     render(<ContextGauge usage={{ used: 12000, size: 200000, cost: null }} />);
     expect(
-      screen.getByRole("img", { name: "12k / 200k tokens (6%)" }),
+      screen.getByRole("button", { name: "12k / 200k tokens (6%)" }),
     ).toBeInTheDocument();
     const [dash, circumference] = fill()
       .getAttribute("stroke-dasharray")!
@@ -36,7 +58,7 @@ describe("ContextGauge", () => {
         }}
       />,
     );
-    expect(screen.getByRole("img").getAttribute("aria-label")).toMatch(
+    expect(screen.getByRole("button").getAttribute("aria-label")).toMatch(
       /^12\.3k \/ 200k tokens \(6%\) · .*0\.42/,
     );
   });
@@ -48,7 +70,7 @@ describe("ContextGauge", () => {
       .split(" ")
       .map(Number);
     expect(dash).toBe(circumference);
-    expect(screen.getByRole("img").getAttribute("aria-label")).toContain(
+    expect(screen.getByRole("button").getAttribute("aria-label")).toContain(
       "(100%)",
     );
   });
@@ -59,6 +81,8 @@ describe("ContextGauge", () => {
     [190000, "error"],
   ])("colours %i of 200000 tokens as %s", (used, level) => {
     render(<ContextGauge usage={{ used, size: 200000, cost: null }} />);
-    expect(screen.getByRole("img")).toHaveClass(`assistant__gauge--${level}`);
+    expect(document.querySelector(".assistant__gauge")).toHaveClass(
+      `assistant__gauge--${level}`,
+    );
   });
 });

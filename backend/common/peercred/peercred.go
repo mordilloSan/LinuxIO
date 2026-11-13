@@ -14,6 +14,7 @@ type contextKey struct{}
 type Cred struct {
 	UID uint32
 	GID uint32
+	PID int32
 }
 
 // ConnContext is an http.Server.ConnContext hook. It attaches the peer
@@ -23,7 +24,7 @@ func ConnContext(ctx context.Context, c net.Conn) context.Context {
 	if !ok {
 		return ctx
 	}
-	cred, err := read(uc)
+	cred, err := Read(uc)
 	if err != nil {
 		return ctx
 	}
@@ -49,7 +50,8 @@ func WithCredForTest(ctx context.Context, uid uint32) context.Context {
 	return context.WithValue(ctx, contextKey{}, Cred{UID: uid})
 }
 
-func read(conn *net.UnixConn) (Cred, error) {
+// Read returns the SO_PEERCRED credentials of the peer of a unix connection.
+func Read(conn *net.UnixConn) (Cred, error) {
 	raw, err := conn.SyscallConn()
 	if err != nil {
 		return Cred{}, err
@@ -64,5 +66,5 @@ func read(conn *net.UnixConn) (Cred, error) {
 	if sockErr != nil {
 		return Cred{}, sockErr
 	}
-	return Cred{UID: ucred.Uid, GID: ucred.Gid}, nil
+	return Cred{UID: ucred.Uid, GID: ucred.Gid, PID: ucred.Pid}, nil
 }

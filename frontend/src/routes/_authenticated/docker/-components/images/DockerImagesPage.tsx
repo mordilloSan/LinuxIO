@@ -1,5 +1,5 @@
-import ImageList from "./ImageList";
 import DockerResourcePage from "../shared/DockerResourcePage";
+import ImageList from "./ImageList";
 
 const IMAGE_PRUNE_OPTIONS = {
   buildCache: false,

@@ -169,14 +169,93 @@ export interface AppUpdateRequest {
   version?: string;
 }
 
+export interface AssistantAgentRequest {
+  agent: string;
+}
+
+export interface AssistantAvailablePlugin {
+  id: string;
+  name: string;
+  description: string;
+  marketplace: string;
+  installCount: number;
+}
+
 export interface AssistantChatDefaults {
   model: string;
   effort: string;
   mode: string;
 }
 
+export interface AssistantMarketplace {
+  name: string;
+  source: string;
+}
+
+export interface AssistantMarketplaceAddRequest {
+  agent: string;
+  source: string;
+}
+
+export interface AssistantMarketplaceRequest {
+  agent: string;
+  name: string;
+}
+
 export interface AssistantOpenRequest {
   agent: string;
+  panes?: boolean;
+}
+
+export interface AssistantPlugin {
+  id: string;
+  name: string;
+  marketplace: string;
+  version: string;
+  scope: string;
+  enabled: boolean;
+}
+
+export interface AssistantPluginCommand {
+  command: string;
+  sha256: string;
+}
+
+export interface AssistantPluginEnabledRequest {
+  agent: string;
+  plugin: string;
+  enabled: boolean;
+}
+
+export interface AssistantPluginInstallRequest {
+  agent: string;
+  plugin: string;
+  acceptCommand?: string;
+}
+
+export interface AssistantPluginInstallResult {
+  installed: boolean;
+  command?: AssistantPluginCommand;
+}
+
+export interface AssistantPluginList {
+  plugins: AssistantPlugin[];
+  marketplaces: AssistantMarketplace[];
+}
+
+export interface AssistantPluginRequest {
+  agent: string;
+  plugin: string;
+}
+
+export interface AssistantPluginSearchRequest {
+  agent: string;
+  query: string;
+}
+
+export interface AssistantPluginSearchResult {
+  plugins: AssistantAvailablePlugin[];
+  total: number;
 }
 
 export interface AssistantSettings {
@@ -199,6 +278,7 @@ export interface AutoUpdateOptionSupport {
   exclude_packages: boolean;
   extra_origins: boolean;
   frequencies: AutoUpdateFrequency[];
+  notify_available: boolean;
   notify_policies: AutoUpdateNotify[];
   reboot_policies: AutoUpdateRebootPolicy[];
   scopes: AutoUpdateScope[];
@@ -211,6 +291,7 @@ export interface AutoUpdateOptions {
   extra_origins: string[];
   frequency: AutoUpdateFrequency;
   notify: AutoUpdateNotify;
+  notify_available: boolean;
   reboot_policy: AutoUpdateRebootPolicy;
   scope: AutoUpdateScope;
 }
@@ -255,10 +336,6 @@ export interface BatchUploadProgress {
   phase?: string;
   filesDone: number;
   filesTotal: number;
-}
-
-export interface BlockDeviceRequest {
-  device: string;
 }
 
 export interface BootIDRequest {
@@ -383,6 +460,7 @@ export interface BtrfsOfflinePool {
   devices: string[];
   totalBytes: number;
   mountpoint: string;
+  missing: number;
 }
 
 export interface BtrfsOpProgress {
@@ -610,53 +688,44 @@ export interface CPUInfoResponse {
   vendorId: string;
 }
 
-export interface CapabilitiesResponse {
-  docker_available: boolean;
-  docker_updates_available: boolean;
-  monitoring_available: boolean;
-  lm_sensors_available: boolean;
-  memory_inventory_available: boolean;
-  smartmontools_available: boolean;
-  packagekit_available: boolean;
-  nfs_client_available: boolean;
-  nfs_server_available: boolean;
-  samba_server_available: boolean;
-  samba_client_available: boolean;
-  rsync_available: boolean;
-  tuned_available: boolean;
-  avahi_available: boolean;
-  wireguard_available: boolean;
-  libvirt_available: boolean;
-  node_available: boolean;
-  btrfs_maintenance_available: boolean;
-  btrfs_available: boolean;
-  e2fsprogs_available: boolean;
-  xfsprogs_available: boolean;
-  docker_error?: string;
-  docker_updates_error?: string;
-  monitoring_error?: string;
-  lm_sensors_error?: string;
-  memory_inventory_error?: string;
-  smartmontools_error?: string;
-  packagekit_error?: string;
-  nfs_client_error?: string;
-  nfs_server_error?: string;
-  samba_server_error?: string;
-  samba_client_error?: string;
-  rsync_error?: string;
-  tuned_error?: string;
-  avahi_error?: string;
-  wireguard_error?: string;
-  libvirt_error?: string;
-  node_error?: string;
-  btrfs_maintenance_error?: string;
-  btrfs_error?: string;
-  e2fsprogs_error?: string;
-  xfsprogs_error?: string;
-}
+export type CapabilitiesResponse = Partial<
+  Record<CapabilityName, CapabilityStatus>
+>;
+
+export type CapabilityName =
+  | "docker"
+  | "docker_updates"
+  | "monitoring"
+  | "lm_sensors"
+  | "memory_inventory"
+  | "smartmontools"
+  | "packagekit"
+  | "nfs_client"
+  | "nfs_server"
+  | "samba_server"
+  | "samba_client"
+  | "rsync"
+  | "node"
+  | "claude_code"
+  | "assistant_claude"
+  | "assistant_gemini"
+  | "assistant_codex"
+  | "tuned"
+  | "avahi"
+  | "wireguard"
+  | "libvirt"
+  | "btrfs_maintenance"
+  | "btrfs"
+  | "e2fsprogs"
+  | "xfsprogs";
 
 export interface CapabilityRequest {
   capability: string;
+}
+
+export interface CapabilityStatus {
+  available: boolean;
+  error?: string;
 }
 
 export interface ChangePasswordRequest {
@@ -734,6 +803,7 @@ export interface ConfigAssistantPayload {
 export interface ConfigDismissalsPayload {
   uncleanShutdownBootId?: string;
   failedLoginAlertId?: string;
+  historySeenAt?: string;
 }
 
 export interface ConfigDockAccentGradient {
@@ -743,26 +813,9 @@ export interface ConfigDockAccentGradient {
   rangeEnd: number;
 }
 
-export interface ConfigDockerDashboardSections {
-  overview: boolean;
-  monitoring: boolean;
-  daemon: boolean;
-  resources: boolean;
-}
-
 export interface ConfigDockerPayload {
   folders?: string[];
   requireMountsForFolders?: boolean;
-}
-
-export interface ConfigHardwareSections {
-  overview: boolean;
-  hardware: boolean;
-  sensors: boolean;
-  systemInfo: boolean;
-  gpu: boolean;
-  pciDevices: boolean;
-  memoryModules: boolean;
 }
 
 export interface ConfigJobSettingsPayload {
@@ -793,26 +846,7 @@ export interface ConfigThemeColorsByModePayload {
   dark?: ConfigThemeColorsPayload;
 }
 
-export interface ConfigThemeColorsPayload {
-  backgroundDefault?: string;
-  backgroundPaper?: string;
-  headerBackground?: string;
-  footerBackground?: string;
-  sidebarBackground?: string;
-  cardBackground?: string;
-  dialogBorder?: string;
-  dialogGlow?: string;
-  dialogBackdrop?: string;
-  codeBackground?: string;
-  codeText?: string;
-  chartRx?: string;
-  chartTx?: string;
-  chartNeutral?: string;
-  fileBrowserSurface?: string;
-  fileBrowserChrome?: string;
-  fileBrowserBreadcrumbBackground?: string;
-  fileBrowserBreadcrumbText?: string;
-}
+export type ConfigThemeColorsPayload = Partial<Record<ThemeColorKey, string>>;
 
 export interface ConfigUISetPayload {
   theme?: string;
@@ -823,8 +857,7 @@ export interface ConfigUISetPayload {
   dockTileColors?: string;
   dockAccentGradient?: ConfigDockAccentGradient;
   hiddenCards?: string[];
-  dockerDashboardSections?: ConfigDockerDashboardSections;
-  hardwareSections?: ConfigHardwareSections;
+  collapsedSections?: Record<string, string[]>;
   viewModes?: Record<string, string>;
   layoutOrders?: Record<string, string[]>;
   terminalFontSize?: number;
@@ -1133,6 +1166,17 @@ export interface DirectoryValidationResult {
   valid: boolean;
 }
 
+export interface DiskInitializeRequest {
+  device: string;
+  confirmMembers?: DiskMemberConfirmed[];
+}
+
+export interface DiskMemberConfirmed {
+  device: string;
+  kind: string;
+  uuid: string;
+}
+
 export interface DiskPowerData {
   currentState: number;
   estimatedW: number;
@@ -1148,6 +1192,7 @@ export interface DiskPowerState {
 export interface Dismissals {
   failedLoginAlertId?: string;
   uncleanShutdownBootId?: string;
+  historySeenAt?: string;
 }
 
 export type DockTileColors = "accent" | "mono" | "neutral" | "vibrant";
@@ -1163,13 +1208,13 @@ export type DockerContainerAutoUpdateMode = "update" | "check_only";
 export interface DockerContainerAutoUpdateOptions {
   cleanup: boolean;
   container_names: string[];
-  enabled: boolean;
   include_stopped: boolean;
   mode: DockerContainerAutoUpdateMode;
   revive_stopped: boolean;
   time: string;
   update_all: boolean;
   update_stopped: boolean;
+  enabled: boolean;
 }
 
 export interface DockerContainerAutoUpdateState {
@@ -1199,7 +1244,6 @@ export interface DockerContainerUpdateProgress {
 
 export interface DockerContainerUpdateRequest {
   containerId: string;
-  runId: string;
 }
 
 export interface DockerContainerUpdateResult {
@@ -1417,6 +1461,8 @@ export type DockerUpdateCheckState =
   | "uncheckable"
   | "error";
 
+export type DockerUpdateNotify = "never" | "on_failure" | "on_change";
+
 export interface DockerVolume {
   ClusterVolume?: Record<string, unknown>;
   Containers?: DockerVolumeContainer[];
@@ -1447,6 +1493,15 @@ export interface DockerVolumeCreateRequest {
 export interface DockerVolumeUsageData {
   RefCount: number;
   Size: number;
+}
+
+export interface EFIBootEntry {
+  id: string;
+  label: string;
+  partUUID: string;
+  active: boolean;
+  current: boolean;
+  order: number;
 }
 
 export interface EnabledRequest {
@@ -1508,6 +1563,7 @@ export interface FileCompressResult {
   path: string;
   size: number;
   format: string;
+  failed: FileBatchItemFailure[];
 }
 
 export interface FileExtractRequest {
@@ -1549,6 +1605,8 @@ export interface FileUploadBatchRequest {
   directories?: string[];
   overwrite?: boolean;
   keepBoth?: string[];
+  owner?: FileUploadOwner;
+  private?: boolean;
 }
 
 export interface FileUploadBatchResult {
@@ -1559,11 +1617,15 @@ export interface FileUploadBatchResult {
   size: number;
 }
 
+export type FileUploadOwner = "session";
+
 export interface FileUploadRequest {
   targetPath: string;
   size: string;
   overwrite?: boolean;
   expectedVersion?: string;
+  owner?: FileUploadOwner;
+  private?: boolean;
 }
 
 export interface FileUploadResult {
@@ -1843,6 +1905,7 @@ export interface LiveContainer {
   name: string;
   cpu_percent: number;
   memory_bytes: number;
+  memory_limit_bytes?: number;
   rx_bytes_per_sec: number;
   tx_bytes_per_sec: number;
   block_read_bytes_per_sec?: number;
@@ -1920,6 +1983,7 @@ export interface LiveMemory {
   swap_free_bytes: number;
   zfs_arc_bytes: number;
   docker_used_bytes: number;
+  vm_used_bytes: number;
 }
 
 export interface LiveSmart {
@@ -2152,6 +2216,7 @@ export interface MonitoringMemoryHistoryPoint {
   cached_gb?: number;
   buffers_gb?: number;
   docker_used_gb?: number;
+  vm_used_gb?: number;
 }
 
 export interface MonitoringNetworkHistoryPoint {
@@ -2175,6 +2240,11 @@ export interface MonitoringProcessesResponse {
 export interface MonitoringProgramsResponse {
   captured_at_ms: number;
   items: Program[];
+}
+
+export interface MonitoringSensorHistoryPoint {
+  captured_at_ms: number;
+  readings: Record<string, Record<string, number>>;
 }
 
 export interface MonitoringSmartRefreshResult {
@@ -2387,10 +2457,20 @@ export interface NetworkInterface {
   type: string;
 }
 
+export interface NotificationChannels {
+  browser: boolean;
+  email: boolean;
+  webhook: boolean;
+}
+
 export interface NotificationSettings {
+  dockerUpdates: DockerUpdateNotify;
+  dockerUpdatesAvailable: boolean;
   emailFrom: string;
   emailTo: string[];
+  levels?: Record<string, NotificationChannels>;
   minSeverity: string;
+  report?: Record<string, string>;
   smtpHost: string;
   smtpPassword?: string;
   smtpPort: number;
@@ -2399,9 +2479,14 @@ export interface NotificationSettings {
 }
 
 export interface NotificationSettingsView {
+  dockerUpdates: DockerUpdateNotify;
+  dockerUpdatesAvailable: boolean;
   emailFrom: string;
   emailTo: string[];
+  levels: Record<string, NotificationChannels>;
   minSeverity: string;
+  report: Record<string, string>;
+  settingsUnreadable?: boolean;
   smtpHost: string;
   smtpPasswordSet: boolean;
   smtpPort: number;
@@ -2445,6 +2530,11 @@ export interface PartitionCreateRequest {
   mount?: PartitionMountOptions;
 }
 
+export interface PartitionDeleteRequest {
+  device: string;
+  confirmMembers?: DiskMemberConfirmed[];
+}
+
 export interface PartitionFormatOptions {
   fsType: string;
   label: string;
@@ -2455,6 +2545,7 @@ export interface PartitionFormatRequest {
   fsType: string;
   label: string;
   overwrite: boolean;
+  confirmMembers?: DiskMemberConfirmed[];
 }
 
 export interface PartitionMountOptions {
@@ -2637,6 +2728,7 @@ export interface SambaShare {
 
 export interface ScheduleCreateRequest {
   options: ScheduleOptions;
+  notify?: string;
 }
 
 export interface ScheduleDefinition {
@@ -2663,6 +2755,7 @@ export interface ScheduleOptions {
 
 export interface ScheduleStatus {
   definition: ScheduleDefinition;
+  notify: string;
   unit_name: string;
   active_state: string;
   result: string;
@@ -2683,6 +2776,7 @@ export interface ScheduleStopRequest {
 export interface ScheduleUpdateRequest {
   id: string;
   options: ScheduleOptions;
+  notify?: string;
 }
 
 export interface SchedulesListResult {
@@ -2746,14 +2840,11 @@ export interface Service {
 export interface ServiceLogsFollowRequest {
   serviceName: string;
   lines?: string;
+  invocationId?: string;
 }
 
 export interface ServiceNameRequest {
   serviceName: string;
-}
-
-export interface SessionIDRequest {
-  sessionID: string;
 }
 
 export interface ShareNFSRequest {
@@ -2859,13 +2950,13 @@ export interface Socket {
   active_state: string;
   description?: string;
   inactive_enter_timestamp: number;
-  listen: string[];
   load_state: string;
-  n_accepted: number;
-  n_connections: number;
   name: string;
   sub_state: string;
   unit_file_state: string;
+  listen: string[];
+  n_accepted: number;
+  n_connections: number;
 }
 
 export interface StackNameRequest {
@@ -2893,9 +2984,17 @@ export interface StorageBlockDevice {
   label?: string;
   partUUID?: string;
   partLabel?: string;
+  partType?: string;
   busy?: string;
   inFstab?: boolean;
+  member?: StorageMember;
   freeRegions?: StorageRegion[];
+}
+
+export interface StorageMember {
+  kind: string;
+  name?: string;
+  uuid?: string;
 }
 
 export interface StorageMount {
@@ -2919,6 +3018,7 @@ export interface StorageRegion {
 export interface StorageTopologyInventory {
   devices: StorageBlockDevice[];
   mounts: StorageMount[];
+  bootEntries?: EFIBootEntry[];
 }
 
 export interface StorageWarningResult {
@@ -2966,8 +3066,6 @@ export interface SystemHealthSummary {
   runningServicesCount: number;
   uncleanShutdown: boolean;
   uncleanShutdownBootId?: string;
-  updatesAvailable: number;
-  upToDate: boolean;
 }
 
 export interface SystemInfo {
@@ -3008,6 +3106,30 @@ export interface TaskEvent {
   type: string;
 }
 
+export interface TaskHistory {
+  entries: TaskHistoryEntry[];
+  more: boolean;
+}
+
+export interface TaskHistoryEntry {
+  task: TaskSnapshot;
+  reason?: string;
+  unit?: string;
+  output?: boolean;
+}
+
+export interface TaskHistoryRequest {
+  before?: string;
+  limit?: number;
+  unit?: string;
+}
+
+export interface TaskHostStatus {
+  update_pending: boolean;
+  running: number;
+  jobs?: TaskSnapshot[];
+}
+
 export interface TaskIDRequest {
   taskId: string;
 }
@@ -3028,6 +3150,18 @@ export interface TaskMetadata {
   testType?: string;
 }
 
+export interface TaskOutput {
+  content: string;
+  offset: number;
+  size: number;
+}
+
+export interface TaskOutputRequest {
+  taskId: string;
+  offset?: number;
+  limit?: number;
+}
+
 export interface TaskOwner {
   username?: string;
   uid?: number;
@@ -3041,6 +3175,7 @@ export interface TaskProgress<TDetail = unknown> {
 }
 
 export interface TaskSnapshot {
+  cancel_requested?: boolean;
   created_at: string;
   error?: TaskError;
   finished_at?: string;
@@ -3060,7 +3195,8 @@ export type TaskState =
   | "running"
   | "completed"
   | "failed"
-  | "canceled";
+  | "canceled"
+  | "interrupted";
 
 export interface TerminalOpenRequest {
   cols: number;
@@ -3082,18 +3218,40 @@ export interface TextFile {
 
 export type Theme = "LIGHT" | "DARK";
 
+export type ThemeColorKey =
+  | "backgroundDefault"
+  | "backgroundPaper"
+  | "headerBackground"
+  | "footerBackground"
+  | "sidebarBackground"
+  | "cardBackground"
+  | "dialogBorder"
+  | "dialogGlow"
+  | "dialogBackdrop"
+  | "codeBackground"
+  | "codeText"
+  | "codeInsetBackground"
+  | "panePictureBackground"
+  | "chartRx"
+  | "chartTx"
+  | "chartNeutral"
+  | "fileBrowserSurface"
+  | "fileBrowserChrome"
+  | "fileBrowserBreadcrumbBackground"
+  | "fileBrowserBreadcrumbText";
+
 export interface Timer {
   active_enter_timestamp: number;
   active_state: string;
   description?: string;
   inactive_enter_timestamp: number;
-  last_trigger_usec: number;
   load_state: string;
   name: string;
-  next_elapse_usec: number;
   sub_state: string;
-  unit: string;
   unit_file_state: string;
+  last_trigger_usec: number;
+  next_elapse_usec: number;
+  unit: string;
 }
 
 export interface TimezoneRequest {
@@ -3107,10 +3265,16 @@ export interface TrashEntry {
   deletedAt: string;
   isDir: boolean;
   size: number;
+  confirmRestore: boolean;
 }
 
 export interface TrashListResponse {
   entries: TrashEntry[];
+}
+
+export interface TrashRestoreRequest {
+  paths: string[];
+  confirmedDestinations?: Record<string, string>;
 }
 
 export interface TunedProfile {
@@ -3121,10 +3285,9 @@ export interface TunedProfile {
 }
 
 export interface UIConfig {
+  collapsedSections: Record<string, string[]>;
   dockAccentGradient: ConfigDockAccentGradient;
   dockTileColors: DockTileColors;
-  dockerDashboardSections: ConfigDockerDashboardSections;
-  hardwareSections: ConfigHardwareSections;
   hiddenCards: string[];
   layoutOrders: Record<string, string[]>;
   navigationMode: NavigationMode;
@@ -3209,6 +3372,12 @@ export interface VMAutostartRequest {
   name: string;
   autostart: boolean;
 }
+
+export type VMCPUMode =
+  | "host-passthrough"
+  | "host-model"
+  | "default"
+  | "custom";
 
 export interface VMCreateProgress {
   phase: string;
@@ -3381,6 +3550,7 @@ export interface VMUpdateRequest {
   memoryMB: number;
   diskGB?: number;
   firmware: VMFirmware;
+  cpuMode?: VMCPUMode;
   network?: string;
   os?: string;
 }
@@ -3424,6 +3594,7 @@ export interface VirtualMachine {
   diskGB: number;
   autostart: boolean;
   firmware?: VMFirmware;
+  cpuMode?: VMCPUMode;
   hasGraphics: boolean;
   os?: string;
   ownedDisks: string[];
@@ -3463,9 +3634,14 @@ export interface WireGuardAddPeerRequest {
   name?: string;
 }
 
+export type WireGuardHookKind = "PreUp" | "PostUp" | "PreDown" | "PostDown";
+
+export type WireGuardHooks = Partial<Record<WireGuardHookKind, string[]>>;
+
 export interface WireGuardInterface {
   address: string;
   dns: string[];
+  hooks: WireGuardHooks;
   host: string;
   isConnected: string;
   isEnabled: boolean;
@@ -3473,10 +3649,6 @@ export interface WireGuardInterface {
   name: string;
   peerCount: number;
   port: number;
-  postDown: string[];
-  postUp: string[];
-  preDown: string[];
-  preUp: string[];
 }
 
 export interface WireGuardPeerRequest {
@@ -3490,10 +3662,7 @@ export interface WireGuardUpdateInterfaceRequest {
   dns?: string[];
   mtu?: number;
   listenPort?: number;
-  preUp?: string[];
-  postUp?: string[];
-  preDown?: string[];
-  postDown?: string[];
+  hooks?: WireGuardHooks;
 }
 
 export interface WireGuardUpdatePeerRequest {
@@ -3603,6 +3772,49 @@ export interface LinuxIOSchema {
     test_notifications: { input: []; request: void; result: SuccessResponse };
   };
 
+  assistant: {
+    add_marketplace: {
+      input: [request: AssistantMarketplaceAddRequest];
+      request: AssistantMarketplaceAddRequest;
+      result: void;
+    };
+    install_plugin: {
+      input: [request: AssistantPluginInstallRequest];
+      request: AssistantPluginInstallRequest;
+      result: AssistantPluginInstallResult;
+    };
+    list_plugins: {
+      input: [agent: string];
+      request: AssistantAgentRequest;
+      result: AssistantPluginList;
+    };
+    remove_marketplace: {
+      input: [request: AssistantMarketplaceRequest];
+      request: AssistantMarketplaceRequest;
+      result: void;
+    };
+    search_plugins: {
+      input: [request: AssistantPluginSearchRequest];
+      request: AssistantPluginSearchRequest;
+      result: AssistantPluginSearchResult;
+    };
+    set_plugin_enabled: {
+      input: [request: AssistantPluginEnabledRequest];
+      request: AssistantPluginEnabledRequest;
+      result: void;
+    };
+    uninstall_plugin: {
+      input: [request: AssistantPluginRequest];
+      request: AssistantPluginRequest;
+      result: void;
+    };
+    update_marketplace: {
+      input: [request: AssistantMarketplaceRequest];
+      request: AssistantMarketplaceRequest;
+      result: void;
+    };
+  };
+
   config: {
     get: { input: []; request: void; result: AppConfig };
     get_ui: { input: []; request: void; result: UIConfig };
@@ -3619,11 +3831,6 @@ export interface LinuxIOSchema {
   };
 
   control: {
-    logoff: {
-      input: [sessionID: string];
-      request: SessionIDRequest;
-      result: void;
-    };
     power_off: { input: []; request: void; result: void };
     reboot: { input: []; request: void; result: void };
     version: { input: []; request: void; result: VersionResponse };
@@ -3857,7 +4064,7 @@ export interface LinuxIOSchema {
       result: void;
     };
     update_container: {
-      input: [request: DockerContainerUpdateRequest];
+      input: [containerId: string];
       request: DockerContainerUpdateRequest;
       result: DockerContainerUpdateResult;
       progress: TaskProgress<DockerContainerUpdateProgress>;
@@ -3988,8 +4195,8 @@ export interface LinuxIOSchema {
       progress: TaskProgress<CountProgress>;
     };
     trash_restore: {
-      input: [paths: string[]];
-      request: BatchPathRequest;
+      input: [request: TrashRestoreRequest];
+      request: TrashRestoreRequest;
       result: FileBatchResult;
       progress: TaskProgress<CountProgress>;
     };
@@ -4095,6 +4302,11 @@ export interface LinuxIOSchema {
       input: [];
       request: void;
       result: MonitoringProgramsResponse;
+    };
+    get_sensor_history: {
+      input: [request: MonitoringHistoryRequest];
+      request: MonitoringHistoryRequest;
+      result: MonitoringSensorHistoryPoint[];
     };
     get_status: { input: []; request: void; result: MonitoringStatus };
     maintain_database: {
@@ -4206,7 +4418,7 @@ export interface LinuxIOSchema {
 
   schedules: {
     create: {
-      input: [options: ScheduleOptions];
+      input: [request: ScheduleCreateRequest];
       request: ScheduleCreateRequest;
       result: ScheduleStatus;
     };
@@ -4480,8 +4692,8 @@ export interface LinuxIOSchema {
       result: SuccessResponse;
     };
     disk_initialize: {
-      input: [device: string];
-      request: BlockDeviceRequest;
+      input: [request: DiskInitializeRequest];
+      request: DiskInitializeRequest;
       result: SuccessResponse;
     };
     get_btrfs_maintenance: {
@@ -4553,8 +4765,8 @@ export interface LinuxIOSchema {
       progress: TaskProgress<BtrfsOpProgress>;
     };
     partition_delete: {
-      input: [device: string];
-      request: BlockDeviceRequest;
+      input: [request: PartitionDeleteRequest];
+      request: PartitionDeleteRequest;
       result: SuccessResponse;
     };
     partition_format: {
@@ -4721,10 +4933,21 @@ export interface LinuxIOSchema {
       request: TaskIDRequest;
       result: TaskSnapshot;
     };
+    history: {
+      input: [request: TaskHistoryRequest];
+      request: TaskHistoryRequest;
+      result: TaskHistory;
+    };
+    host: { input: []; request: void; result: TaskHostStatus };
     list: {
       input: [request: TaskListRequest];
       request: TaskListRequest;
       result: TaskSnapshot[];
+    };
+    output: {
+      input: [request: TaskOutputRequest];
+      request: TaskOutputRequest;
+      result: TaskOutput;
     };
   };
 
@@ -4891,11 +5114,6 @@ export interface LinuxIOSchema {
 
 /** Type-only contracts for migrated Call routes. */
 export interface LinuxIOCallSchema {
-  "accounts.change_password": { request: ChangePasswordRequest; result: void };
-  "accounts.create_group": { request: CreateGroupRequest; result: void };
-  "accounts.create_user": { request: CreateUserRequest; result: void };
-  "accounts.delete_group": { request: GroupNameRequest; result: void };
-  "accounts.delete_user": { request: UsernameRequest; result: void };
   "accounts.get_user_details": {
     request: UsernameRequest;
     result: AccountUserDetails;
@@ -4907,95 +5125,30 @@ export interface LinuxIOCallSchema {
     result: AccountUserLogin[];
   };
   "accounts.list_users": { request: void; result: AccountUser[] };
-  "accounts.lock_user": { request: UsernameRequest; result: void };
-  "accounts.modify_group_members": {
-    request: ModifyGroupMembersRequest;
-    result: void;
-  };
-  "accounts.modify_user": { request: ModifyUserRequest; result: void };
-  "accounts.terminate_session": {
-    request: TerminateSessionRequest;
-    result: void;
-  };
-  "accounts.unlock_user": { request: UsernameRequest; result: void };
-  "alerts.dismiss": { request: AlertDismissRequest; result: AlertList };
   "alerts.get_notifications": {
     request: void;
     result: NotificationSettingsView;
   };
   "alerts.list": { request: void; result: AlertList };
-  "alerts.mark_all_seen": { request: void; result: AlertList };
-  "alerts.mark_seen": { request: AlertIDsRequest; result: AlertList };
-  "alerts.set_notifications": {
-    request: NotificationSettings;
-    result: NotificationSettingsView;
+  "assistant.list_plugins": {
+    request: AssistantAgentRequest;
+    result: AssistantPluginList;
   };
-  "alerts.test_notifications": { request: void; result: SuccessResponse };
+  "assistant.search_plugins": {
+    request: AssistantPluginSearchRequest;
+    result: AssistantPluginSearchResult;
+  };
   "config.get": { request: void; result: AppConfig };
   "config.get_ui": { request: void; result: UIConfig };
-  "config.set": { request: ConfigSetPayload; result: ConfigSetResult };
-  "config.set_ui": { request: ConfigUISetPayload; result: ConfigSetResult };
-  "control.logoff": { request: SessionIDRequest; result: void };
-  "control.power_off": { request: void; result: void };
-  "control.reboot": { request: void; result: void };
   "control.version": { request: void; result: VersionResponse };
   "datetime.get_ntp_servers": { request: void; result: string[] };
   "datetime.get_ntp_status": { request: void; result: boolean };
   "datetime.get_timezone": { request: void; result: string };
-  "datetime.set_ntp": { request: EnabledRequest; result: void };
-  "datetime.set_ntp_servers": { request: NTPServersRequest; result: void };
-  "datetime.set_server_time": { request: ISOTimeRequest; result: void };
-  "datetime.set_timezone": { request: TimezoneRequest; result: void };
   "docker.check_container_update": {
     request: ContainerIDRequest;
     result: DockerUpdateCheckResult;
   };
   "docker.check_updates": { request: void; result: DockerUpdateCheckResult };
-  "docker.clear_icon_cache": { request: void; result: MessageResponse };
-  "docker.compose_down": {
-    request: ProjectNameRequest;
-    result: ComposeActionResult;
-  };
-  "docker.compose_restart": {
-    request: ProjectNameRequest;
-    result: ComposeActionResult;
-  };
-  "docker.compose_stop": {
-    request: ProjectNameRequest;
-    result: ComposeActionResult;
-  };
-  "docker.compose_up": {
-    request: ProjectNameRequest;
-    result: ComposeActionResult;
-  };
-  "docker.connect_network": {
-    request: DockerNetworkConnectRequest;
-    result: void;
-  };
-  "docker.create_container": {
-    request: ContainerCreateRequest;
-    result: ContainerConfigurationResult;
-  };
-  "docker.create_network": {
-    request: DockerNetworkCreateRequest;
-    result: void;
-  };
-  "docker.create_volume": { request: DockerVolumeCreateRequest; result: void };
-  "docker.delete_image": { request: ImageIDRequest; result: void };
-  "docker.delete_network": { request: IDRequest; result: void };
-  "docker.delete_stack": {
-    request: DeleteStackRequest;
-    result: DeleteStackResult;
-  };
-  "docker.delete_volume": { request: NameRequest; result: void };
-  "docker.disconnect_network": {
-    request: DockerNetworkDisconnectRequest;
-    result: void;
-  };
-  "docker.edit_container": {
-    request: ContainerEditRequest;
-    result: ContainerConfigurationResult;
-  };
   "docker.get_compose_file_path": {
     request: StackNameRequest;
     result: ComposeFilePathResponse;
@@ -5027,38 +5180,11 @@ export interface LinuxIOCallSchema {
     request: ContainerIDRequest;
     result: ContainerInspectInfo;
   };
-  "docker.kill_container": { request: ContainerIDRequest; result: void };
   "docker.list_compose_projects": { request: void; result: ComposeProject[] };
   "docker.list_containers": { request: void; result: ContainerInfo[] };
   "docker.list_images": { request: void; result: DockerImage[] };
   "docker.list_networks": { request: void; result: DockerNetwork[] };
   "docker.list_volumes": { request: void; result: DockerVolume[] };
-  "docker.pause_container": { request: ContainerIDRequest; result: void };
-  "docker.remove_container": { request: ContainerRemoveRequest; result: void };
-  "docker.restart_container": { request: ContainerIDRequest; result: void };
-  "docker.set_container_auto_update": {
-    request: DockerContainerAutoUpdateOptions;
-    result: DockerContainerAutoUpdateState;
-  };
-  "docker.set_daemon_config": {
-    request: DockerDaemonConfig;
-    result: DockerDaemonConfigSetResult;
-  };
-  "docker.start_all_stopped": {
-    request: void;
-    result: DockerStartedFailedResponse;
-  };
-  "docker.start_container": { request: ContainerIDRequest; result: void };
-  "docker.stop_all_running": {
-    request: void;
-    result: DockerStoppedFailedResponse;
-  };
-  "docker.stop_container": { request: ContainerIDRequest; result: void };
-  "docker.system_prune": {
-    request: DockerSystemPruneRequest;
-    result: DockerSystemPruneResponse;
-  };
-  "docker.unpause_container": { request: ContainerIDRequest; result: void };
   "docker.validate_compose": {
     request: ValidateComposeRequest;
     result: ValidateComposeResponse;
@@ -5081,10 +5207,6 @@ export interface LinuxIOCallSchema {
     result: DirectoryListing;
   };
   "filebrowser.read_text": { request: PathRequest; result: TextFile };
-  "filebrowser.resource_post": {
-    request: FileResourcePostRequest;
-    result: void;
-  };
   "filebrowser.resource_stat": {
     request: PathRequest;
     result: ResourceStatData;
@@ -5096,17 +5218,8 @@ export interface LinuxIOCallSchema {
   };
   "filebrowser.trash_list": { request: void; result: TrashListResponse };
   "filebrowser.users_groups": { request: void; result: UsersGroupsResponse };
-  "hostname.set_hostname": { request: HostnameRequest; result: void };
   "indexer.get_config": { request: void; result: IndexerConfig };
   "indexer.get_status": { request: void; result: IndexerDaemonStatus };
-  "indexer.set_config": {
-    request: IndexerConfigPatch;
-    result: IndexerConfigSetResult;
-  };
-  "indexer.set_timer_interval": {
-    request: IntervalRequest;
-    result: IndexerTimerSetResult;
-  };
   "logging.get_debug": { request: void; result: LoggingDebugState };
   "logging.set_debug": {
     request: LoggingDebugRequest;
@@ -5154,30 +5267,15 @@ export interface LinuxIOCallSchema {
     request: void;
     result: MonitoringProgramsResponse;
   };
+  "monitoring.get_sensor_history": {
+    request: MonitoringHistoryRequest;
+    result: MonitoringSensorHistoryPoint[];
+  };
   "monitoring.get_status": { request: void; result: MonitoringStatus };
-  "monitoring.maintain_database": {
-    request: void;
-    result: MonitoringDatabaseResult;
-  };
-  "monitoring.refresh_smart": {
-    request: void;
-    result: MonitoringSmartRefreshResult;
-  };
-  "monitoring.restart": { request: void; result: void };
-  "monitoring.set_config": {
-    request: MonitoringConfigPatch;
-    result: MonitoringConfigSetResult;
-  };
   "network.confirm_bridge_handoff": {
     request: NetworkBridgeHandoffOperationRequest;
     result: NetworkBridgeHandoffStatus;
   };
-  "network.create_bridge": {
-    request: NetworkBridgeCreateRequest;
-    result: NetworkBridgeCreateResult;
-  };
-  "network.disable_connection": { request: InterfaceRequest; result: void };
-  "network.enable_connection": { request: InterfaceRequest; result: void };
   "network.get_bridge_handoff": {
     request: NetworkBridgeHandoffOperationRequest;
     result: NetworkBridgeHandoffStatus;
@@ -5188,178 +5286,33 @@ export interface LinuxIOCallSchema {
     request: NetworkBridgeHandoffOperationRequest;
     result: NetworkBridgeHandoffStatus;
   };
-  "network.set_ipv4": { request: IPv4DHCPRequest; result: void };
-  "network.set_ipv4_manual": { request: IPv4ManualRequest; result: void };
-  "network.set_ipv6": { request: InterfaceMethodRequest; result: void };
-  "network.set_mtu": { request: InterfaceMTURequest; result: void };
-  "network.set_optional": { request: InterfaceOptionalRequest; result: void };
   "network.start_bridge_handoff": {
     request: NetworkBridgeHandoffRequest;
     result: NetworkBridgeHandoffStatus;
   };
-  "power.disable": { request: void; result: PowerStatus };
   "power.get_status": { request: void; result: PowerStatus };
-  "power.set_profile": { request: ProfileRequest; result: PowerStatus };
-  "power.start": { request: void; result: PowerStatus };
-  "schedules.create": {
-    request: ScheduleCreateRequest;
-    result: ScheduleStatus;
-  };
-  "schedules.delete": { request: ScheduleIDRequest; result: void };
-  "schedules.disable": { request: ScheduleIDRequest; result: void };
-  "schedules.enable": { request: ScheduleIDRequest; result: void };
   "schedules.get": { request: ScheduleIDRequest; result: ScheduleStatus };
   "schedules.list": { request: void; result: SchedulesListResult };
-  "schedules.run_now": { request: ScheduleIDRequest; result: void };
-  "schedules.stop": { request: ScheduleStopRequest; result: void };
-  "schedules.update": {
-    request: ScheduleUpdateRequest;
-    result: ScheduleStatus;
-  };
-  "shares.create_nfs_share": {
-    request: ShareNFSRequest;
-    result: SuccessPathResponse;
-  };
-  "shares.create_samba_share": {
-    request: ShareSambaRequest;
-    result: SuccessNameResponse;
-  };
-  "shares.delete_nfs_share": { request: PathRequest; result: SuccessResponse };
-  "shares.delete_samba_share": {
-    request: NameRequest;
-    result: SuccessResponse;
-  };
   "shares.get_rsync": { request: void; result: RsyncStatus };
   "shares.get_rsync_ssh": { request: RsyncSSHRequest; result: RsyncSSHStatus };
   "shares.list_nfs_shares": { request: void; result: NFSExport[] };
   "shares.list_samba_shares": { request: void; result: SambaShare[] };
-  "shares.save_rsync": { request: RsyncSaveRequest; result: RsyncStatus };
-  "shares.stop_rsync": { request: void; result: RsyncStatus };
-  "shares.update_nfs_share": {
-    request: ShareNFSRequest;
-    result: SuccessPathResponse;
-  };
-  "shares.update_samba_share": {
-    request: ShareUpdateSambaRequest;
-    result: SuccessNameResponse;
-  };
-  "storage.btrfs_balance_cancel": {
-    request: UUIDRequest;
-    result: SuccessResponse;
-  };
-  "storage.btrfs_device_add": {
-    request: BtrfsDeviceAddRequest;
-    result: BtrfsFilesystem;
-  };
-  "storage.btrfs_device_grow": {
-    request: BtrfsDeviceRequest;
-    result: BtrfsFilesystem;
-  };
   "storage.btrfs_list": { request: void; result: BtrfsFilesystem[] };
-  "storage.btrfs_pool_destroy": {
-    request: UUIDRequest;
-    result: SuccessResponse;
-  };
-  "storage.btrfs_pool_mount": {
-    request: BtrfsPoolMountRequest;
-    result: BtrfsFilesystem;
-  };
   "storage.btrfs_pools_offline": { request: void; result: BtrfsOfflinePool[] };
-  "storage.btrfs_qgroup_limit": {
-    request: BtrfsQgroupLimitRequest;
-    result: BtrfsSubvolume;
-  };
-  "storage.btrfs_replication_job_delete": {
-    request: BtrfsJobIDRequest;
-    result: BtrfsReplicationJob[];
-  };
-  "storage.btrfs_replication_job_set": {
-    request: BtrfsReplicationJobRequest;
-    result: BtrfsReplicationJob[];
-  };
   "storage.btrfs_replication_jobs": {
     request: void;
     result: BtrfsReplicationJob[];
   };
   "storage.btrfs_replication_ssh_key": { request: void; result: BtrfsSSHKey };
-  "storage.btrfs_replication_ssh_trust": {
-    request: BtrfsSSHTrustRequest;
-    result: BtrfsSSHTrust;
-  };
-  "storage.btrfs_scrub_cancel": {
-    request: UUIDRequest;
-    result: SuccessResponse;
-  };
-  "storage.btrfs_set_compression": {
-    request: BtrfsCompressionRequest;
-    result: BtrfsSettings;
-  };
-  "storage.btrfs_set_label": {
-    request: BtrfsLabelRequest;
-    result: BtrfsFilesystem;
-  };
-  "storage.btrfs_set_quotas": {
-    request: BtrfsQuotaRequest;
-    result: BtrfsSettings;
-  };
   "storage.btrfs_settings": { request: UUIDRequest; result: BtrfsSettings };
-  "storage.btrfs_snapshot_create": {
-    request: BtrfsSubvolumeRequest;
-    result: BtrfsSnapshot;
-  };
-  "storage.btrfs_snapshot_delete": {
-    request: BtrfsSnapshotRequest;
-    result: SuccessResponse;
-  };
-  "storage.btrfs_snapshot_rule_delete": {
-    request: BtrfsSubvolumeRequest;
-    result: BtrfsSnapshotRules;
-  };
-  "storage.btrfs_snapshot_rule_set": {
-    request: BtrfsSnapshotRuleRequest;
-    result: BtrfsSnapshotRules;
-  };
   "storage.btrfs_snapshot_rules": { request: void; result: BtrfsSnapshotRules };
-  "storage.btrfs_snapshot_run_now": { request: void; result: RunReport };
   "storage.btrfs_snapshots": {
     request: BtrfsSnapshotsRequest;
     result: BtrfsSnapshot[];
   };
-  "storage.btrfs_subvolume_create": {
-    request: BtrfsSubvolumeRequest;
-    result: BtrfsSubvolume;
-  };
-  "storage.btrfs_subvolume_delete": {
-    request: BtrfsSubvolumeRequest;
-    result: SuccessResponse;
-  };
-  "storage.btrfs_subvolume_set_compression": {
-    request: BtrfsSubvolumeCompressionRequest;
-    result: BtrfsSubvolume;
-  };
-  "storage.btrfs_subvolume_set_default": {
-    request: BtrfsSubvolumeRequest;
-    result: SuccessResponse;
-  };
-  "storage.btrfs_subvolume_set_readonly": {
-    request: BtrfsSubvolumeReadOnlyRequest;
-    result: BtrfsSubvolume;
-  };
   "storage.btrfs_subvolumes": {
     request: UUIDRequest;
     result: BtrfsSubvolume[];
-  };
-  "storage.create_lv": {
-    request: CreateLogicalVolumeRequest;
-    result: SuccessPathResponse;
-  };
-  "storage.delete_lv": {
-    request: VolumeGroupLogicalVolumeRequest;
-    result: SuccessResponse;
-  };
-  "storage.disk_initialize": {
-    request: BlockDeviceRequest;
-    result: SuccessResponse;
   };
   "storage.get_btrfs_maintenance": {
     request: void;
@@ -5375,66 +5328,6 @@ export interface LinuxIOCallSchema {
   "storage.list_pvs": { request: void; result: PhysicalVolume[] };
   "storage.list_vgs": { request: void; result: VolumeGroup[] };
   "storage.md_list": { request: void; result: MDArray[] };
-  "storage.md_member_add": { request: MDMemberAddRequest; result: MDArray };
-  "storage.md_member_fail": { request: MDMemberRequest; result: MDArray };
-  "storage.md_member_remove": { request: MDMemberRequest; result: MDArray };
-  "storage.md_member_replace": {
-    request: MDMemberReplaceRequest;
-    result: MDArray;
-  };
-  "storage.md_sync_action": { request: MDSyncActionRequest; result: MDArray };
-  "storage.mount_cifs": {
-    request: CIFSMountRequest;
-    result: StorageMountResult;
-  };
-  "storage.mount_nfs": {
-    request: ServerExportMountOptionsPersistRequest;
-    result: StorageMountResult;
-  };
-  "storage.partition_delete": {
-    request: BlockDeviceRequest;
-    result: SuccessResponse;
-  };
-  "storage.partition_mount": {
-    request: PartitionMountRequest;
-    result: StorageMountResult;
-  };
-  "storage.remount_cifs": {
-    request: MountpointOptionsUpdateFstabRequest;
-    result: StorageMountResult;
-  };
-  "storage.remount_nfs": {
-    request: MountpointOptionsUpdateFstabRequest;
-    result: StorageMountResult;
-  };
-  "storage.resize_lv": {
-    request: ResizeLogicalVolumeRequest;
-    result: SuccessResponse;
-  };
-  "storage.set_btrfs_maintenance": {
-    request: BtrfsMaintenanceRequest;
-    result: BtrfsMaintenanceSchedule;
-  };
-  "storage.unmount_cifs": {
-    request: MountpointRemoveFstabRequest;
-    result: StorageWarningResult;
-  };
-  "storage.unmount_filesystem": {
-    request: MountpointRemoveFstabRequest;
-    result: StorageMountResult;
-  };
-  "storage.unmount_nfs": {
-    request: MountpointRemoveFstabRequest;
-    result: StorageWarningResult;
-  };
-  "system.dismiss_failed_login_alert": {
-    request: AlertIDRequest;
-    result: MessageResponse;
-  };
-  "system.dismiss_unclean_shutdown": {
-    request: BootIDRequest;
-    result: MessageResponse;
-  };
   "system.get_capabilities": { request: void; result: CapabilitiesResponse };
   "system.get_cpu_info": { request: void; result: CPUInfoResponse };
   "system.get_gpu_info": { request: void; result: GpuDevice[] };
@@ -5450,62 +5343,28 @@ export interface LinuxIOCallSchema {
     request: FailedLoginEventsRequest;
     result: AccountUserLogin[];
   };
-  "systemd.disable_service": { request: ServiceNameRequest; result: void };
-  "systemd.enable_service": { request: ServiceNameRequest; result: void };
   "systemd.get_unit_info": { request: UnitNameRequest; result: UnitInfo };
   "systemd.list_services": { request: void; result: Service[] };
   "systemd.list_sockets": { request: void; result: Socket[] };
   "systemd.list_timers": { request: void; result: Timer[] };
-  "systemd.mask_service": { request: ServiceNameRequest; result: void };
-  "systemd.reload_service": { request: ServiceNameRequest; result: void };
-  "systemd.reset_failed_service": { request: ServiceNameRequest; result: void };
-  "systemd.restart_service": { request: ServiceNameRequest; result: void };
-  "systemd.start_service": { request: ServiceNameRequest; result: void };
-  "systemd.stop_service": { request: ServiceNameRequest; result: void };
-  "systemd.unmask_service": { request: ServiceNameRequest; result: void };
   "tasks.cancel": { request: TaskIDRequest; result: TaskSnapshot };
   "tasks.get": { request: TaskIDRequest; result: TaskSnapshot };
+  "tasks.history": { request: TaskHistoryRequest; result: TaskHistory };
+  "tasks.host": { request: void; result: TaskHostStatus };
   "tasks.list": { request: TaskListRequest; result: TaskSnapshot[] };
+  "tasks.output": { request: TaskOutputRequest; result: TaskOutput };
   "terminal.list_shells": { request: ContainerIDRequest; result: string[] };
-  "updates.apply_offline_updates": {
-    request: void;
-    result: OfflineUpdatesResponse;
-  };
   "updates.get_auto_updates": { request: void; result: AutoUpdateState };
   "updates.get_update_detail": { request: PackageIDRequest; result: Update };
   "updates.get_update_history": { request: void; result: UpdateHistoryRow[] };
   "updates.get_updates_basic": { request: void; result: Update[] };
-  "updates.refresh_cache": { request: void; result: SuccessResponse };
-  "updates.set_auto_updates": {
-    request: AutoUpdateOptions;
-    result: AutoUpdateState;
-  };
-  "virt.delete": { request: VMDeleteRequest; result: VMDeleteResult };
-  "virt.force_off": { request: NameRequest; result: void };
   "virt.get": { request: NameRequest; result: VirtualMachine };
   "virt.list": { request: void; result: VirtualMachine[] };
   "virt.networks": { request: void; result: VMNetwork[] };
   "virt.pools": { request: void; result: VMStoragePool[] };
   "virt.preflight": { request: VMPreflightRequest; result: VMPreflight };
-  "virt.reboot": { request: NameRequest; result: void };
-  "virt.resume": { request: NameRequest; result: void };
-  "virt.set_autostart": { request: VMAutostartRequest; result: VirtualMachine };
-  "virt.shutdown": { request: NameRequest; result: void };
-  "virt.start": { request: NameRequest; result: void };
-  "virt.suspend": { request: NameRequest; result: void };
-  "virt.template_delete": { request: VMTemplateRequest; result: void };
   "virt.templates": { request: void; result: VMTemplateLibrary };
-  "virt.unused_disk_delete": { request: PathRequest; result: void };
   "virt.unused_disks": { request: void; result: VMUnusedDisk[] };
-  "virt.update": { request: VMUpdateRequest; result: VirtualMachine };
-  "wireguard.add_interface": {
-    request: WireGuardAddInterfaceRequest;
-    result: void;
-  };
-  "wireguard.add_peer": { request: WireGuardAddPeerRequest; result: void };
-  "wireguard.disable_interface": { request: NameRequest; result: void };
-  "wireguard.down_interface": { request: NameRequest; result: void };
-  "wireguard.enable_interface": { request: NameRequest; result: void };
   "wireguard.list_interfaces": { request: void; result: WireGuardInterface[] };
   "wireguard.list_peers": { request: InterfaceNameRequest; result: Peer[] };
   "wireguard.peer_config_download": {
@@ -5515,17 +5374,6 @@ export interface LinuxIOCallSchema {
   "wireguard.peer_qrcode": {
     request: WireGuardPeerRequest;
     result: QRCodeResponse;
-  };
-  "wireguard.remove_interface": { request: NameRequest; result: void };
-  "wireguard.remove_peer": { request: WireGuardPeerRequest; result: void };
-  "wireguard.up_interface": { request: NameRequest; result: void };
-  "wireguard.update_interface": {
-    request: WireGuardUpdateInterfaceRequest;
-    result: void;
-  };
-  "wireguard.update_peer": {
-    request: WireGuardUpdatePeerRequest;
-    result: void;
   };
 }
 

@@ -27,6 +27,9 @@ interface ComposeStackCardProps {
   onEdit?: (projectName: string, configPath: string) => void;
   isLoading?: boolean;
   onOpen?: () => void;
+  /** For a session without sudo: the compose file can be viewed, but running,
+   * stopping and deleting the stack are admin-only. */
+  readOnly?: boolean;
   selected?: boolean;
 }
 
@@ -66,6 +69,7 @@ function areComposeStackCardPropsEqual(
     previous.onStart !== next.onStart ||
     previous.onStop !== next.onStop ||
     previous.onOpen !== next.onOpen ||
+    previous.readOnly !== next.readOnly ||
     previous.selected !== next.selected
   ) {
     return false;
@@ -101,6 +105,7 @@ const ComposeStackCard = ({
   onEdit,
   isLoading = false,
   onOpen,
+  readOnly = false,
   selected = false,
 }: ComposeStackCardProps) => {
   const totalContainers = Object.values(project.services).reduce(
@@ -270,45 +275,48 @@ const ComposeStackCard = ({
             {onEdit && project.config_files.length > 0 && (
               <AppActionIconButton
                 disabled={isLoading}
-                icon="mdi:pencil"
+                icon={readOnly ? "mdi:eye-outline" : "mdi:pencil"}
                 iconSize={20}
-                label="Edit"
+                label={readOnly ? "View" : "Edit"}
                 onClick={() => onEdit(project.name, project.config_files[0])}
               />
             )}
-            {isRunning ? (
-              <>
+            {!readOnly &&
+              (isRunning ? (
+                <>
+                  <AppActionIconButton
+                    disabled={isLoading}
+                    icon="mdi:restart"
+                    iconSize={20}
+                    label="Restart"
+                    onClick={() => onRestart(project.name)}
+                  />
+                  <AppActionIconButton
+                    disabled={isLoading}
+                    icon="mdi:stop"
+                    iconSize={20}
+                    label="Stop"
+                    onClick={() => onStop(project.name)}
+                  />
+                </>
+              ) : (
                 <AppActionIconButton
                   disabled={isLoading}
-                  icon="mdi:restart"
+                  icon="mdi:play"
                   iconSize={20}
-                  label="Restart"
-                  onClick={() => onRestart(project.name)}
+                  label="Start"
+                  onClick={() => onStart(project.name)}
                 />
-                <AppActionIconButton
-                  disabled={isLoading}
-                  icon="mdi:stop"
-                  iconSize={20}
-                  label="Stop"
-                  onClick={() => onStop(project.name)}
-                />
-              </>
-            ) : (
+              ))}
+            {!readOnly && (
               <AppActionIconButton
                 disabled={isLoading}
-                icon="mdi:play"
+                icon="mdi:delete"
                 iconSize={20}
-                label="Start"
-                onClick={() => onStart(project.name)}
+                label="Delete"
+                onClick={() => onDelete(project)}
               />
             )}
-            <AppActionIconButton
-              disabled={isLoading}
-              icon="mdi:delete"
-              iconSize={20}
-              label="Delete"
-              onClick={() => onDelete(project)}
-            />
           </>
         </div>
       </div>

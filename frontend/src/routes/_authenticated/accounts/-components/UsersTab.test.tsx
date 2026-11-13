@@ -63,8 +63,13 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
   };
 });
 
+const authState = vi.hoisted(() => ({ privileged: true }));
+
 vi.mock("@/hooks/useAuth", () => ({
-  default: () => ({ user: { name: "admin" } }),
+  default: () => ({
+    privileged: authState.privileged,
+    user: { name: "admin" },
+  }),
 }));
 
 vi.mock("./CreateUserDialog", () => ({ default: () => null }));
@@ -89,6 +94,7 @@ function deferred<T>() {
 
 describe("UsersTab mutation feedback", () => {
   afterEach(() => {
+    authState.privileged = true;
     vi.restoreAllMocks();
   });
 
@@ -96,17 +102,20 @@ describe("UsersTab mutation feedback", () => {
     const lockAlice = deferred<void>();
     const unlockBob = deferred<void>();
 
-    vi.spyOn(core, "request").mockImplementation((_host, command, request) => {
-      const username = (request as { username?: string } | undefined)?.username;
-      if (command === "lock_user" && username === "alice") {
-        return lockAlice.promise;
-      }
-      if (command === "unlock_user" && username === "bob") {
-        return unlockBob.promise;
-      }
+    vi.spyOn(core, "mutationRequest").mockImplementation(
+      (_host, command, request) => {
+        const username = (request as { username?: string } | undefined)
+          ?.username;
+        if (command === "lock_user" && username === "alice") {
+          return lockAlice.promise;
+        }
+        if (command === "unlock_user" && username === "bob") {
+          return unlockBob.promise;
+        }
 
-      return Promise.resolve(undefined);
-    });
+        return Promise.resolve(undefined);
+      },
+    );
 
     const view = render(<UsersTab viewMode="table" />);
 
@@ -164,4 +173,38 @@ describe("UsersTab mutation feedback", () => {
       ).not.toBeInTheDocument();
     });
   });
+
+  it.each(["table", "card"] as const)(
+    "offers no user changes in the %s view without sudo",
+    (viewMode) => {
+      authState.privileged = false;
+
+      render(<UsersTab viewMode={viewMode} />);
+
+      expect(screen.getAllByText("alice").length).toBeGreaterThan(0);
+      for (const name of [
+        "Edit",
+        "Change Password",
+        "Lock alice",
+        "Unlock bob",
+      ]) {
+        expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+      }
+    },
+  );
+
+  it.each(["table", "card"] as const)(
+    "offers user changes in the %s view with sudo",
+    (viewMode) => {
+      render(<UsersTab viewMode={viewMode} />);
+
+      expect(screen.getAllByRole("button", { name: "Edit" })).toHaveLength(2);
+      expect(
+        screen.getAllByRole("button", { name: "Change Password" }),
+      ).toHaveLength(2);
+      expect(
+        screen.getByRole("button", { name: "Lock alice" }),
+      ).toBeInTheDocument();
+    },
+  );
 });

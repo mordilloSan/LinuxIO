@@ -76,8 +76,10 @@ func stubPartitions(t *testing.T, fstab string) *partitionEnv {
 		record("create %s %d %d", device, start, size)
 		return "/dev/sdb3", nil
 	}
-	formatDevice = func(_ context.Context, device, fsType, label string, overwrite bool) (string, error) {
+	formatDevice = func(_ context.Context, device, fsType, label string, overwrite bool, progress func(float64)) (string, error) {
 		record("format %s %s %q overwrite=%t", device, fsType, label, overwrite)
+		progress(50) // halfway through the trim
+		progress(100)
 		return "new-uuid", env.formatErr
 	}
 	mountDevice = func(source, target, fsType string, flags uintptr, data string) error {
@@ -181,7 +183,7 @@ func TestCreatePartitionValidatesBeforeWriting(t *testing.T) {
 			if c.edit != nil {
 				c.edit(env.devices)
 			}
-			_, err := CreatePartition(context.Background(), c.req, func(string) {})
+			_, err := CreatePartition(context.Background(), c.req, func(string, float64) {})
 			if !errors.Is(err, c.want) {
 				t.Fatalf("err = %v, want %v", err, c.want)
 			}
@@ -200,11 +202,11 @@ func TestCreatePartitionFormatsAndMounts(t *testing.T) {
 		Device: "/dev/sdb", StartBytes: 1 << 30, SizeBytes: 512 << 20,
 		Format: &apischema.PartitionFormatOptions{FSType: "ext4", Label: "data"},
 		Mount:  &apischema.PartitionMountOptions{Mountpoint: mp, Persist: true},
-	}, func(step string) { steps = append(steps, step) })
+	}, func(step string, _ float64) { steps = append(steps, step) })
 	if err != nil || part != "/dev/sdb3" {
 		t.Fatalf("part = %q, err = %v", part, err)
 	}
-	wantSteps := []string{"Partitioning", "Formatting: SSDs are trimmed first, which can take a few minutes", "Mounting at " + mp}
+	wantSteps := []string{"Partitioning", "Trimming before formatting: 50% complete", "Formatting", "Mounting at " + mp}
 	if !slices.Equal(steps, wantSteps) {
 		t.Errorf("steps = %q, want %q", steps, wantSteps)
 	}
@@ -231,7 +233,7 @@ func TestCreatePartitionRawAndFailedSteps(t *testing.T) {
 	env := stubPartitions(t, "")
 	var steps []string
 	req := apischema.PartitionCreateRequest{Device: "/dev/sdb", StartBytes: 1 << 30, SizeBytes: 1 << 30}
-	if _, err := CreatePartition(context.Background(), req, func(step string) { steps = append(steps, step) }); err != nil {
+	if _, err := CreatePartition(context.Background(), req, func(step string, _ float64) { steps = append(steps, step) }); err != nil {
 		t.Fatal(err)
 	}
 	if want := []string{"lock /dev/sdb", "create /dev/sdb 1073741824 1073741824", "unlock /dev/sdb"}; !slices.Equal(env.calls, want) {
@@ -244,7 +246,7 @@ func TestCreatePartitionRawAndFailedSteps(t *testing.T) {
 	env = stubPartitions(t, "")
 	env.formatErr = errors.New("mkfs.xfs -m uuid=new-uuid: boom")
 	req.Format = &apischema.PartitionFormatOptions{FSType: "xfs"}
-	_, err := CreatePartition(context.Background(), req, func(string) {})
+	_, err := CreatePartition(context.Background(), req, func(string, float64) {})
 	if err == nil || !strings.Contains(err.Error(), "partition /dev/sdb3 was created but not formatted") {
 		t.Fatalf("err = %v", err)
 	}
@@ -257,7 +259,7 @@ func TestCreatePartitionRawAndFailedSteps(t *testing.T) {
 	fstabPath = filepath.Join(t.TempDir(), "missing")
 	mp := t.TempDir()
 	req.Mount = &apischema.PartitionMountOptions{Mountpoint: mp, Persist: true}
-	_, err = CreatePartition(context.Background(), req, func(string) {})
+	_, err = CreatePartition(context.Background(), req, func(string, float64) {})
 	if want := "/dev/sdb3 is mounted at " + mp + " but could not be added to /etc/fstab"; err == nil || !strings.HasPrefix(err.Error(), want) {
 		t.Fatalf("err = %v, want it to start with %q", err, want)
 	}
@@ -289,7 +291,7 @@ func TestFormatPartition(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			env := stubPartitions(t, "")
 			c.edit(env)
-			if err := FormatPartition(ctx, c.req, func(string) {}); !errors.Is(err, c.want) {
+			if err := FormatPartition(ctx, c.req, func(string, float64) {}); !errors.Is(err, c.want) {
 				t.Fatalf("err = %v, want %v", err, c.want)
 			}
 			if !slices.Equal(env.calls, c.calls) {
@@ -302,7 +304,7 @@ func TestFormatPartition(t *testing.T) {
 		env := stubPartitions(t, "")
 		env.devices[1].SizeBytes = 300 << 20 // exactly the xfs minimum
 		var steps []string
-		if err := FormatPartition(ctx, format("/dev/sdb1", true), func(step string) { steps = append(steps, step) }); err != nil {
+		if err := FormatPartition(ctx, format("/dev/sdb1", true), func(step string, _ float64) { steps = append(steps, step) }); err != nil {
 			t.Fatal(err)
 		}
 		// The O_EXCL check runs under the lock, right before mkfs, never before
@@ -311,7 +313,7 @@ func TestFormatPartition(t *testing.T) {
 		if !slices.Equal(env.calls, want) {
 			t.Errorf("calls = %q, want %q", env.calls, want)
 		}
-		if !slices.Equal(steps, []string{"Formatting: SSDs are trimmed first, which can take a few minutes"}) {
+		if !slices.Equal(steps, []string{"Trimming before formatting: 50% complete", "Formatting"}) {
 			t.Errorf("steps = %q", steps)
 		}
 	})
@@ -319,7 +321,7 @@ func TestFormatPartition(t *testing.T) {
 
 func TestDeletePartition(t *testing.T) {
 	ctx := context.Background()
-	sdb1 := apischema.BlockDeviceRequest{Device: "/dev/sdb1"}
+	sdb1 := apischema.PartitionDeleteRequest{Device: "/dev/sdb1"}
 
 	env := stubPartitions(t, "")
 	if _, err := DeletePartition(ctx, sdb1); err != nil {
@@ -367,11 +369,11 @@ func TestCallsGiveUpOnALockedDisk(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	_, err := DeletePartition(ctx, apischema.BlockDeviceRequest{Device: "/dev/sdb1"})
+	_, err := DeletePartition(ctx, apischema.PartitionDeleteRequest{Device: "/dev/sdb1"})
 	if !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), "another operation is running on /dev/sdb") {
 		t.Fatalf("delete: err = %v, want a conflict naming the disk", err)
 	}
-	_, err = InitializeDisk(ctx, apischema.BlockDeviceRequest{Device: "/dev/sdb"})
+	_, err = InitializeDisk(ctx, apischema.DiskInitializeRequest{Device: "/dev/sdb"})
 	if !errors.Is(err, bridgeipc.ErrConflict) {
 		t.Fatalf("initialize: err = %v, want a conflict", err)
 	}
@@ -382,7 +384,7 @@ func TestCallsGiveUpOnALockedDisk(t *testing.T) {
 	// A request that ended on its own keeps its own error.
 	ended, end := context.WithCancel(context.Background())
 	end()
-	if _, err = DeletePartition(ended, apischema.BlockDeviceRequest{Device: "/dev/sdb1"}); !errors.Is(err, context.Canceled) || errors.Is(err, bridgeipc.ErrConflict) {
+	if _, err = DeletePartition(ended, apischema.PartitionDeleteRequest{Device: "/dev/sdb1"}); !errors.Is(err, context.Canceled) || errors.Is(err, bridgeipc.ErrConflict) {
 		t.Fatalf("canceled request: err = %v, want context.Canceled unchanged", err)
 	}
 }
@@ -465,7 +467,7 @@ func TestMountPartitionBusyIsAConflict(t *testing.T) {
 
 func TestInitializeDisk(t *testing.T) {
 	ctx := context.Background()
-	sdb := apischema.BlockDeviceRequest{Device: "/dev/sdb"}
+	sdb := apischema.DiskInitializeRequest{Device: "/dev/sdb"}
 
 	env := stubPartitions(t, "")
 	env.devices[2].Busy = "Mounted at /srv"
@@ -480,4 +482,177 @@ func TestInitializeDisk(t *testing.T) {
 	if want := []string{"lock /dev/sdb", "initialize /dev/sdb", "unlock /dev/sdb"}; !slices.Equal(env.calls, want) {
 		t.Errorf("calls = %q, want %q", env.calls, want)
 	}
+}
+
+// TestInitializeDiskConfirmsMembers covers a disk whose partitions belong to
+// a stopped md array and an inactive LVM volume group: nothing holds them,
+// so only the confirmation stands between them and the wipe.
+func TestInitializeDiskConfirmsMembers(t *testing.T) {
+	ctx := context.Background()
+	md := apischema.DiskMemberConfirmed{Device: "/dev/sdb1", Kind: "md", UUID: "a1"}
+	lvm := apischema.DiskMemberConfirmed{Device: "/dev/sdb2", Kind: "lvm", UUID: "pv2"}
+	members := func(env *partitionEnv) {
+		env.devices[1].FSType, env.devices[1].UUID, env.devices[1].Label = "linux_raid_member", "a1", "host:data"
+		env.devices[2].FSType, env.devices[2].UUID = "LVM2_member", "pv2"
+	}
+	for _, c := range []struct {
+		name    string
+		confirm []apischema.DiskMemberConfirmed
+		want    string
+	}{
+		{"no confirmation", nil, "Member of md array host:data; confirm erasing it"},
+		{"one of two", []apischema.DiskMemberConfirmed{md}, "Member of an LVM volume group (physical volume pv2)"},
+		{"another array", []apischema.DiskMemberConfirmed{{Device: "/dev/sdb1", Kind: "md", UUID: "b9"}, lvm}, "Member of md array host:data"},
+		{"a member that is gone", []apischema.DiskMemberConfirmed{md, lvm, {Device: "/dev/sdb3", Kind: "md", UUID: "c3"}}, "no longer the md member"},
+	} {
+		env := stubPartitions(t, "")
+		members(env)
+		_, err := InitializeDisk(ctx, apischema.DiskInitializeRequest{Device: "/dev/sdb", ConfirmMembers: c.confirm})
+		if !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), c.want) || len(env.calls) != 0 {
+			t.Errorf("%s: err = %v, calls = %q, want a conflict naming %q and no write", c.name, err, env.calls, c.want)
+		}
+	}
+
+	env := stubPartitions(t, "")
+	members(env)
+	if _, err := InitializeDisk(ctx, apischema.DiskInitializeRequest{Device: "/dev/sdb", ConfirmMembers: []apischema.DiskMemberConfirmed{lvm, md}}); err != nil {
+		t.Fatalf("both confirmed: %v", err)
+	}
+	if want := []string{"lock /dev/sdb", "initialize /dev/sdb", "unlock /dev/sdb"}; !slices.Equal(env.calls, want) {
+		t.Errorf("calls = %q, want %q", env.calls, want)
+	}
+
+	// A btrfs signature that belongs to no pool the bridge can read cannot be
+	// destroyed as a pool, so it is erased only when named, like the rest.
+	stray := apischema.DiskMemberConfirmed{Device: "/dev/sdb1", Kind: "btrfs", UUID: "s1"}
+	for _, confirm := range [][]apischema.DiskMemberConfirmed{nil, {stray}} {
+		env = stubPartitions(t, "")
+		env.devices[1].FSType, env.devices[1].UUID = "btrfs", "s1"
+		_, strayErr := InitializeDisk(ctx, apischema.DiskInitializeRequest{Device: "/dev/sdb", ConfirmMembers: confirm})
+		if confirm == nil && (!errors.Is(strayErr, bridgeipc.ErrConflict) || !strings.Contains(strayErr.Error(), "Member of btrfs pool s1; confirm erasing it") || len(env.calls) != 0) {
+			t.Errorf("stray btrfs signature, not confirmed: err = %v, calls = %q", strayErr, env.calls)
+		}
+		if confirm != nil && strayErr != nil {
+			t.Errorf("stray btrfs signature, confirmed: %v", strayErr)
+		}
+	}
+
+	// A btrfs pool member stays refused, confirmed or not.
+	env = stubPartitions(t, "")
+	env.devices[1].FSType, env.devices[1].UUID = "btrfs", "p1"
+	env.offline = []btrfs.BtrfsOfflinePool{{UUID: "p1", Label: "old", Devices: []string{"/dev/sdb1"}}}
+	confirm := []apischema.DiskMemberConfirmed{{Device: "/dev/sdb1", Kind: "btrfs", UUID: "p1"}}
+	_, err := InitializeDisk(ctx, apischema.DiskInitializeRequest{Device: "/dev/sdb", ConfirmMembers: confirm})
+	if !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), "Member of btrfs pool old; destroy the pool") || len(env.calls) != 0 {
+		t.Errorf("btrfs member: err = %v, calls = %q", err, env.calls)
+	}
+}
+
+// memberAction is Format or Delete of /dev/sdb1 with a confirmation, the
+// calls it makes when it goes through and what its refusal asks for.
+type memberAction struct {
+	name   string
+	run    func(confirm []apischema.DiskMemberConfirmed) error
+	writes []string
+	what   string
+}
+
+// memberCase is a member signature put on /dev/sdb1 and how it is named.
+type memberCase struct {
+	name   string
+	set    func(*apischema.StorageBlockDevice)
+	member apischema.DiskMemberConfirmed
+	names  string
+}
+
+// TestFormatAndDeleteConfirmMembers covers Format and Delete of a partition
+// that belongs to a stopped md array or an inactive LVM volume group, which
+// nothing holds: the request must confirm exactly that member, and a member
+// of a btrfs pool the bridge knows stays refused, confirmed or not.
+func TestFormatAndDeleteConfirmMembers(t *testing.T) {
+	ctx := context.Background()
+	actions := []memberAction{
+		{
+			name: "format",
+			run: func(confirm []apischema.DiskMemberConfirmed) error {
+				return FormatPartition(ctx, apischema.PartitionFormatRequest{Device: "/dev/sdb1", FSType: "ext4", Overwrite: true, ConfirmMembers: confirm}, func(string, float64) {})
+			},
+			writes: []string{"lock /dev/sdb", "check /dev/sdb1", `format /dev/sdb1 ext4 "" overwrite=true`, "unlock /dev/sdb"},
+			what:   "confirm erasing it to format /dev/sdb1",
+		},
+		{
+			name: "delete",
+			run: func(confirm []apischema.DiskMemberConfirmed) error {
+				_, err := DeletePartition(ctx, apischema.PartitionDeleteRequest{Device: "/dev/sdb1", ConfirmMembers: confirm})
+				return err
+			},
+			writes: []string{"lock /dev/sdb", "delete /dev/sdb 1", "unlock /dev/sdb"},
+			what:   "confirm deleting it",
+		},
+	}
+	members := []memberCase{
+		{"md", func(d *apischema.StorageBlockDevice) {
+			d.FSType, d.UUID, d.Label = "linux_raid_member", "a1", "host:data"
+		}, apischema.DiskMemberConfirmed{Device: "/dev/sdb1", Kind: "md", UUID: "a1"}, "Member of md array host:data"},
+		{"lvm", func(d *apischema.StorageBlockDevice) {
+			d.FSType, d.UUID = "LVM2_member", "pv1"
+		}, apischema.DiskMemberConfirmed{Device: "/dev/sdb1", Kind: "lvm", UUID: "pv1"}, "Member of an LVM volume group (physical volume pv1)"},
+	}
+	for _, a := range actions {
+		for _, m := range members {
+			checkMemberConfirmation(t, a, m)
+		}
+		t.Run(a.name+" a confirmation of a device that is no member", func(t *testing.T) {
+			env := stubPartitions(t, "")
+			err := a.run([]apischema.DiskMemberConfirmed{{Device: "/dev/sdb1", Kind: "md", UUID: "a1"}})
+			if !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), "no longer the md member") || len(env.calls) != 0 {
+				t.Fatalf("err = %v, calls = %q", err, env.calls)
+			}
+		})
+		t.Run(a.name+" btrfs pool member", func(t *testing.T) {
+			env := stubPartitions(t, "")
+			env.devices[1].FSType, env.devices[1].UUID = "btrfs", "p1"
+			env.offline = []btrfs.BtrfsOfflinePool{{UUID: "p1", Label: "old", Devices: []string{"/dev/sdb1"}}}
+			err := a.run([]apischema.DiskMemberConfirmed{{Device: "/dev/sdb1", Kind: "btrfs", UUID: "p1"}})
+			if !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), "Member of btrfs pool old; destroy the pool") || len(env.calls) != 0 {
+				t.Fatalf("err = %v, calls = %q", err, env.calls)
+			}
+		})
+	}
+}
+
+// checkMemberConfirmation runs a on /dev/sdb1 carrying m: refused with
+// nothing written without the confirmation, with another member's, or with
+// one more than it finds, and carried out with exactly m's.
+func checkMemberConfirmation(t *testing.T, a memberAction, m memberCase) {
+	wrong := m.member
+	wrong.UUID = "other"
+	for _, c := range []struct {
+		name    string
+		confirm []apischema.DiskMemberConfirmed
+		want    string
+	}{
+		{"no confirmation", nil, m.names + "; " + a.what},
+		{"another member", []apischema.DiskMemberConfirmed{wrong}, m.names + "; " + a.what},
+		{"another device too", []apischema.DiskMemberConfirmed{m.member, {Device: "/dev/sdb2", Kind: "md", UUID: "a1"}}, "/dev/sdb2 is no longer the md member"},
+	} {
+		t.Run(a.name+" "+m.name+" "+c.name, func(t *testing.T) {
+			env := stubPartitions(t, "")
+			m.set(&env.devices[1])
+			err := a.run(c.confirm)
+			if !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), c.want) || len(env.calls) != 0 {
+				t.Fatalf("err = %v, calls = %q, want a conflict naming %q and nothing written", err, env.calls, c.want)
+			}
+		})
+	}
+	t.Run(a.name+" "+m.name+" confirmed", func(t *testing.T) {
+		env := stubPartitions(t, "")
+		m.set(&env.devices[1])
+		if err := a.run([]apischema.DiskMemberConfirmed{m.member}); err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(env.calls, a.writes) {
+			t.Fatalf("calls = %q, want %q", env.calls, a.writes)
+		}
+	})
 }

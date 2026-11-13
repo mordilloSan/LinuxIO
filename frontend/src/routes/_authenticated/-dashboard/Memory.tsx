@@ -42,8 +42,8 @@ const MemoryStats = () => {
           value: formatFileSize(memory.docker_used_bytes ?? 0, 2),
         },
         {
-          label: "ZFS ARC",
-          value: formatFileSize(memory.zfs_arc_bytes ?? 0, 2),
+          label: "VMs",
+          value: formatFileSize(memory.vm_used_bytes ?? 0, 2),
         },
       ]}
     />

@@ -3,7 +3,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { useCallback, useMemo, useState } from "react";
 
-import { linuxio, useCallMutation } from "@/api";
+import { linuxio } from "@/api";
 import ResourceDetailsLayout from "@/components/cards/ResourceDetailsLayout";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
@@ -24,17 +24,18 @@ import {
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTypography from "@/components/ui/AppTypography";
+import useAuth from "@/hooks/useAuth";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useBackgroundTaskActions } from "@/tasks/useBackgroundTaskActions";
 import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
 import { ensureTrailingSlash } from "@/utils/path";
 
-import { CreateVolumeDialog } from "./CreateVolumeDialog";
-import { VolumeDetailsContent } from "./VolumeDetailsContent";
-import { formatReferenceCount, formatVolumeSize } from "./volumeFormat";
 import { useFocusedResourceParam } from "../../-hooks/useFocusedResourceParam";
 import VolumeCard from "../cards/VolumeCard";
 import BatchDeleteDialog from "../shared/BatchDeleteDialog";
+import { CreateVolumeDialog } from "./CreateVolumeDialog";
+import { VolumeDetailsContent } from "./VolumeDetailsContent";
+import { formatReferenceCount, formatVolumeSize } from "./volumeFormat";
 
 const dockerRouteApi = getRouteApi("/_authenticated/docker/volumes");
 
@@ -64,6 +65,8 @@ const VolumeList = ({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [backupDialogOpen, setBackupDialogOpen] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  // docker.delete_volume is admin-only; browsing and the backup are reads.
+  const { privileged } = useAuth();
 
   // Ensure volumes is an array (handle null/undefined from API)
   const volumesList = rawVolumes;
@@ -106,9 +109,8 @@ const VolumeList = ({
   );
 
   // Configless: this is a batch flow — the dialog owns aggregation and toasts.
-  const { mutateAsync: deleteVolume } = useCallMutation(
-    linuxio.docker.delete_volume,
-  );
+  const { mutateAsync: deleteVolume } =
+    linuxio.docker.delete_volume.useMutation();
   const handleDeleteSuccess = () => {
     updateFocusedVolume(null);
   };
@@ -275,14 +277,16 @@ const VolumeList = ({
                       tooltip={false}
                     />
                   ) : (
-                    <AppActionIconButton
-                      ariaLabel={`Delete volume ${focusedVolume.Name}`}
-                      color="var(--app-palette-error-main)"
-                      icon="mdi:delete"
-                      iconSize={18}
-                      label="Delete volume"
-                      onClick={() => setDeleteDialogOpen(true)}
-                    />
+                    privileged && (
+                      <AppActionIconButton
+                        ariaLabel={`Delete volume ${focusedVolume.Name}`}
+                        color="var(--app-palette-error-main)"
+                        icon="mdi:delete"
+                        iconSize={18}
+                        label="Delete volume"
+                        onClick={() => setDeleteDialogOpen(true)}
+                      />
+                    )
                   )}
                 </div>
               }
@@ -372,13 +376,15 @@ const VolumeList = ({
         >
           Download backup
         </AppMenuItem>
-        <AppMenuItem
-          danger
-          onClick={() => chooseVolumeAction("delete")}
-          startAdornment={<Icon icon="mdi:delete" width={18} />}
-        >
-          Delete volume
-        </AppMenuItem>
+        {privileged && (
+          <AppMenuItem
+            danger
+            onClick={() => chooseVolumeAction("delete")}
+            startAdornment={<Icon icon="mdi:delete" width={18} />}
+          >
+            Delete volume
+          </AppMenuItem>
+        )}
       </AppMenu>
 
       <GeneralDialog

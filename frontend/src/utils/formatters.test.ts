@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   formatDate,
+  formatDuration,
   formatFileSize,
   formatPercent,
   formatSystemdUsec,
@@ -54,5 +55,18 @@ describe("formatters", () => {
     expect(formatSystemdUsec(1_700_000_000_000_000)).toBe(
       new Date(1_700_000_000_000).toLocaleString(),
     );
+  });
+
+  it("formats a duration in whole seconds", () => {
+    expect(formatDuration(0)).toBe("0s");
+    expect(formatDuration(45)).toBe("45s");
+    expect(formatDuration(59.6)).toBe("1m");
+    expect(formatDuration(125)).toBe("2m 5s");
+    expect(formatDuration(119.6)).toBe("2m");
+    expect(formatDuration(3600)).toBe("1h");
+    expect(formatDuration(3780)).toBe("1h 3m");
+    expect(formatDuration(-1)).toBeNull();
+    expect(formatDuration(Number.NaN)).toBeNull();
+    expect(formatDuration(Number.POSITIVE_INFINITY)).toBeNull();
   });
 });

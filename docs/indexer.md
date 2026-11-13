@@ -239,7 +239,9 @@ case** toggle uses the compatible `case:exact` modifier for case-sensitive
 substring matching.
 
 `filebrowser.index` maps daemon SSE events into normal LinuxIO Task progress and
-results. If it finds an already-running matching daemon operation, it attaches
+results. The bridge gives every progress frame a `phase` (`running` and
+`started` become `indexing`, `scanning` becomes `scan`), and the task tray reads
+the frame's `status` only for the daemon's own word `running`. If it finds an already-running matching daemon operation, it attaches
 instead of starting another scan. Task observation and recovery use the common
 `tasks.*` routes.
 

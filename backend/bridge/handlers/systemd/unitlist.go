@@ -13,14 +13,41 @@ import (
 
 const maxConcurrentUnitPropertyFetches = 16
 
+// UnitStatus holds the properties the service, timer and socket lists share.
+// ListUnits and ListUnitFiles report the states and fetchUnitProperties reads
+// the rest. A field added here also needs a member in apischema.UnitSummary
+// and a copy in unitSummaryToAPI; the tests in unitlist_test.go and
+// contracts_test.go fail until it has them.
+type UnitStatus struct {
+	Name                   string `json:"name"`
+	Description            string `json:"description"`
+	LoadState              string `json:"load_state"`
+	ActiveState            string `json:"active_state"`
+	SubState               string `json:"sub_state"`
+	UnitFileState          string `json:"unit_file_state"`
+	ActiveEnterTimestamp   uint64 `json:"active_enter_timestamp"`
+	InactiveEnterTimestamp uint64 `json:"inactive_enter_timestamp"`
+}
+
+// fetchUnitProperties reads the shared properties ListUnits does not report
+// from the unit's D-Bus object, keeping the listed value of any it cannot read.
+func (s *UnitStatus) fetchUnitProperties(session dbusclient.SystemSession, unit dbusclient.BusObject) {
+	if state, ok := getStringProperty(session, unit, dbusclient.SystemdUnitIface, "UnitFileState"); ok {
+		s.UnitFileState = state
+	}
+	if ts, ok := getUint64Property(session, unit, dbusclient.SystemdUnitIface, "ActiveEnterTimestamp"); ok {
+		s.ActiveEnterTimestamp = ts
+	}
+	if ts, ok := getUint64Property(session, unit, dbusclient.SystemdUnitIface, "InactiveEnterTimestamp"); ok {
+		s.InactiveEnterTimestamp = ts
+	}
+}
+
+// listedUnit is a unit as ListUnits and ListUnitFiles report it, with the
+// object path of a loaded unit.
 type listedUnit struct {
-	Name          string
-	Description   string
-	LoadState     string
-	ActiveState   string
-	SubState      string
-	UnitFileState string
-	Path          dbusclient.ObjectPath
+	UnitStatus
+	Path dbusclient.ObjectPath
 }
 
 type unitFileRecord struct {
@@ -90,8 +117,7 @@ func listUnitsBySuffix(
 			LoadState:     "not-loaded",
 			ActiveState:   "inactive",
 			SubState:      "dead",
-			UnitFileState: unitFile.State,
-		})
+			UnitFileState: unitFile.State})
 	}
 
 	sort.Slice(entries, func(i, j int) bool {

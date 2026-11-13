@@ -1,14 +1,18 @@
 import { Icon } from "@iconify/react";
 import { useState } from "react";
+import { toast } from "sonner";
 
 import {
+  call,
+  getMutationErrorMessage,
   linuxio,
-  useCallMutation,
   type BtrfsDevice,
   type BtrfsFilesystem,
   type BtrfsOpProgress,
   type TaskProgress,
+  type TaskSnapshot,
 } from "@/api";
+import type { RouteName } from "@/api/generated/route-metadata";
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -18,6 +22,7 @@ import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
 import AppCardContent from "@/components/ui/AppCardContent";
 import AppChip from "@/components/ui/AppChip";
+import AppConfirmDialog from "@/components/ui/AppConfirmDialog";
 import {
   AppDialogActions,
   AppDialogContent,
@@ -43,6 +48,34 @@ type DeviceDialog =
 
 const deviceName = ({ id, path }: BtrfsDevice) => path || `device ${id}`;
 
+// The device jobs, named [uuid, device id] by their task metadata.
+const TASK_TYPE_DEVICE_REMOVE: RouteName = "storage.btrfs_device_remove";
+const TASK_TYPE_DEVICE_REPLACE: RouteName = "storage.btrfs_device_replace";
+
+type DeviceOp = "remove" | "replace";
+
+// What a cancel leaves behind, said before the job is canceled. The kernel
+// stops a removal between chunks and keeps the device a member; it stops a
+// replace by destroying the target and keeping the source (docs/btrfs.md,
+// Cancel).
+const CANCEL_PROMPT: Record<
+  DeviceOp,
+  { title: string; confirm: string; message: (device: string) => string }
+> = {
+  remove: {
+    title: "Stop removing device",
+    confirm: "Stop removal",
+    message: (device) =>
+      `Stop removing ${device}? It stays in the pool with less data on it: what was already moved off stays on the other devices, so removing it again continues where this one stopped. A kernel older than 5.14 cannot stop a removal, which then runs to the end.`,
+  },
+  replace: {
+    title: "Stop replacing device",
+    confirm: "Stop replace",
+    message: (device) =>
+      `Stop replacing ${device}? It stays in the pool as it was, and the copy made so far on the new disk is discarded: that disk leaves the pool and can be used again. Replacing it again starts the copy from the beginning. A replace already in its last step finishes anyway.`,
+  },
+};
+
 export const deviceErrorCount = ({ errors }: BtrfsDevice) =>
   errors.write +
   errors.read +
@@ -55,54 +88,146 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
   const [dialog, setDialog] = useState<DeviceDialog | null>(null);
   const [progress, setProgress] = useState<BtrfsOpProgress | null>(null);
 
-  const { mutate: addDevice, isPending: isAdding } = useCallMutation(
-    linuxio.storage.btrfs_device_add,
-    {
+  const { mutate: addDevice, isPending: isAdding } =
+    linuxio.storage.btrfs_device_add.useMutation({
       success: "Device added",
       error: "Failed to add device",
       toast: BTRFS_POOL_TOAST_META,
-    },
-  );
-  const { mutate: cancelBalance } = useCallMutation(
-    linuxio.storage.btrfs_balance_cancel,
-    { error: "Failed to cancel balance", toast: BTRFS_POOL_TOAST_META },
-  );
-  const { mutate: growDevice, isPending: isGrowing } = useCallMutation(
-    linuxio.storage.btrfs_device_grow,
-    {
+    });
+  // A canceled job runs on until the kernel stops at the next chunk.
+  const [canceling, setCanceling] = useState(false);
+  const [cancelPrompt, setCancelPrompt] = useState<{
+    op: DeviceOp;
+    taskId: string;
+    device: string;
+  } | null>(null);
+  const { mutate: cancelBalance } =
+    linuxio.storage.btrfs_balance_cancel.useMutation({
+      error: "Failed to cancel balance",
+      toast: BTRFS_POOL_TOAST_META,
+      options: { onError: () => setCanceling(false) },
+    });
+  // This pool's running job of type: a pool runs one balance, removal or
+  // replace at a time.
+  const findJob = async (type: string) => {
+    const jobs = await call("tasks.list", { status: "active" }).catch(() => []);
+    return jobs.find(
+      (task) =>
+        task.type === type &&
+        task.state === "running" &&
+        task.metadata?.identity?.[0] === uuid,
+    );
+  };
+  // Canceled through the job, so the record gets cancel_requested and a
+  // shutdown right after does not resume it.
+  const cancelJob = async (taskId: string, failure: string) => {
+    setCanceling(true);
+    try {
+      await call("tasks.cancel", { taskId });
+    } catch (error) {
+      setCanceling(false);
+      toast.error(getMutationErrorMessage(error, failure), {
+        meta: BTRFS_POOL_TOAST_META,
+      });
+    }
+  };
+  // Only a balance without a running job falls back to the kernel cancel.
+  const cancelBalanceJob = async () => {
+    setCanceling(true);
+    const job = await findJob(TASK_TYPE_STORAGE_BTRFS_BALANCE);
+    if (!job) {
+      cancelBalance({ uuid });
+      return;
+    }
+    await cancelJob(job.id, "Failed to cancel balance");
+  };
+  // A removal or replace is canceled only through its job, after a
+  // confirmation that names the device and says what the cancel leaves.
+  const promptDeviceCancel = async (op: DeviceOp) => {
+    const job = await findJob(
+      op === "remove" ? TASK_TYPE_DEVICE_REMOVE : TASK_TYPE_DEVICE_REPLACE,
+    );
+    if (!job) {
+      toast.error(
+        `No running ${op === "remove" ? "removal" : "replace"} of this pool to cancel`,
+        { meta: BTRFS_POOL_TOAST_META },
+      );
+      return;
+    }
+    const id = Number(job.metadata?.identity?.[1]);
+    const device = filesystem.devices.find((entry) => entry.id === id);
+    setCancelPrompt({
+      op,
+      taskId: job.id,
+      device: device ? deviceName(device) : `device ${id}`,
+    });
+  };
+  const { mutate: growDevice, isPending: isGrowing } =
+    linuxio.storage.btrfs_device_grow.useMutation({
       success: "Device grown to its disk size",
       error: "Failed to grow device",
       toast: BTRFS_POOL_TOAST_META,
-    },
-  );
+    });
   const taskConfig = (success: string, error: string) => ({
     onProgress: (taskProgress: TaskProgress<BtrfsOpProgress>) =>
       setProgress(taskProgress.detail ?? null),
     success,
     error,
     toast: BTRFS_POOL_TOAST_META,
-    options: { onSettled: () => setProgress(null) },
+    options: {
+      onSettled: () => {
+        setProgress(null);
+        setCanceling(false);
+        setCancelPrompt(null); // nothing left to cancel
+      },
+    },
   });
-  const removeDevice = linuxio.storage.btrfs_device_remove.useTaskStreamAction<
-    BtrfsFilesystem,
-    TaskProgress<BtrfsOpProgress>
-  >(taskConfig("Device removed", "Failed to remove device"));
-  const replaceDevice =
-    linuxio.storage.btrfs_device_replace.useTaskStreamAction<
-      BtrfsFilesystem,
-      TaskProgress<BtrfsOpProgress>
-    >(taskConfig("Device replaced", "Failed to replace device"));
-  const balance = linuxio.storage.btrfs_balance.useTaskStreamAction<
-    BtrfsFilesystem,
-    TaskProgress<BtrfsOpProgress>
-  >(taskConfig("Balance finished", "Failed to balance filesystem"));
+  const removeDevice = linuxio.storage.btrfs_device_remove.useMutation(
+    taskConfig("Device removed", "Failed to remove device"),
+  );
+  const replaceDevice = linuxio.storage.btrfs_device_replace.useMutation(
+    taskConfig("Device replaced", "Failed to replace device"),
+  );
+  const balance = linuxio.storage.btrfs_balance.useMutation(
+    taskConfig("Balance finished", "Failed to balance filesystem"),
+  );
 
-  // Balance is the long task, so it is the only one re-attached after a reload.
+  // The long jobs are re-attached after a reload, with their cancel.
+  const ofThisPool = (task: TaskSnapshot) =>
+    task.metadata?.identity?.[0] === uuid;
   useActiveTaskRecovery({
     type: TASK_TYPE_STORAGE_BTRFS_BALANCE,
     scanKey: uuid,
-    match: (task) => task.metadata?.identity?.[0] === uuid,
-    onRecover: (task) => balance.watch(task, { uuid }),
+    match: ofThisPool,
+    onRecover: (task) => {
+      setCanceling(task.cancel_requested === true);
+      balance.watch(task.id, { uuid });
+    },
+  });
+  useActiveTaskRecovery({
+    type: TASK_TYPE_DEVICE_REMOVE,
+    scanKey: uuid,
+    match: ofThisPool,
+    onRecover: (task) => {
+      setCanceling(task.cancel_requested === true);
+      removeDevice.watch(task.id, {
+        uuid,
+        deviceId: Number(task.metadata?.identity?.[1]),
+      });
+    },
+  });
+  useActiveTaskRecovery({
+    type: TASK_TYPE_DEVICE_REPLACE,
+    scanKey: uuid,
+    match: ofThisPool,
+    onRecover: (task) => {
+      setCanceling(task.cancel_requested === true);
+      replaceDevice.watch(task.id, {
+        uuid,
+        deviceId: Number(task.metadata?.identity?.[1]),
+        newDevice: "",
+      });
+    },
   });
 
   const pending =
@@ -263,15 +388,20 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
             <AppTypography variant="body2">
               {progress?.message ?? "Working..."}
             </AppTypography>
-            {balance.isPending && (
-              <AppButton
-                onClick={() => cancelBalance({ uuid })}
-                size="small"
-                variant="outlined"
-              >
-                Cancel
-              </AppButton>
-            )}
+            <AppButton
+              disabled={canceling}
+              onClick={() =>
+                void (balance.isPending
+                  ? cancelBalanceJob()
+                  : promptDeviceCancel(
+                      removeDevice.isPending ? "remove" : "replace",
+                    ))
+              }
+              size="small"
+              variant="outlined"
+            >
+              {canceling ? "Cancelling…" : "Cancel"}
+            </AppButton>
           </div>
         )}
         <AppVirtualTable
@@ -328,6 +458,26 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
           }
         />
       )}
+      <AppConfirmDialog
+        confirmText={cancelPrompt ? CANCEL_PROMPT[cancelPrompt.op].confirm : ""}
+        destructive
+        message={
+          cancelPrompt
+            ? CANCEL_PROMPT[cancelPrompt.op].message(cancelPrompt.device)
+            : ""
+        }
+        onClose={() => setCancelPrompt(null)}
+        onConfirm={() => {
+          if (!cancelPrompt) return;
+          setCancelPrompt(null);
+          void cancelJob(
+            cancelPrompt.taskId,
+            `Failed to cancel the ${cancelPrompt.op === "remove" ? "removal" : "replace"}`,
+          );
+        }}
+        open={cancelPrompt !== null}
+        title={cancelPrompt ? CANCEL_PROMPT[cancelPrompt.op].title : ""}
+      />
       <GeneralDialog
         fullWidth
         maxWidth="sm"

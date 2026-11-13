@@ -3,8 +3,13 @@ import { useEffect } from "react";
 
 import { closeStreamMux, initStreamMux } from "@/api";
 import type { ConfigContextType } from "@/api";
+import {
+  capabilitiesQueryKey,
+  wireFromCapabilityState,
+} from "@/api/capabilities";
 import { uiConfigQueryKey } from "@/api/config-query";
 import { ANONYMOUS_USER_ID } from "@/api/user-scope";
+import { AuthContext, type AuthContextType } from "@/contexts/AuthContext";
 import { ConfigContext } from "@/contexts/ConfigContext";
 import AssistantPage from "@/routes/_authenticated/assistant/-components/AssistantPage";
 
@@ -17,12 +22,24 @@ const queryClient = new QueryClient({
 queryClient.setQueryData(uiConfigQueryKey(ANONYMOUS_USER_ID), {
   terminalFontSize: 14,
 });
+// The page starts the agent only once what it needs is installed.
+queryClient.setQueryData(
+  capabilitiesQueryKey(ANONYMOUS_USER_ID),
+  wireFromCapabilityState({
+    claudeCodeAvailable: true,
+    assistantClaudeAvailable: true,
+  }),
+);
 
 const stubConfig = {
   isLoaded: true,
   setKey: () => {},
   updateConfig: () => {},
 } as unknown as ConfigContextType;
+
+// The welcome screen reads the host's alerts, which only a privileged session
+// may list; this one is not, so it shows the standing prompts.
+const stubAuth = { privileged: false } as unknown as AuthContextType;
 
 export default function AssistantFixture() {
   useEffect(() => {
@@ -31,14 +48,16 @@ export default function AssistantFixture() {
   }, []);
   return (
     <QueryClientProvider client={queryClient}>
-      <ConfigContext value={stubConfig}>
-        <main style={{ padding: "var(--app-space-24)", height: "100dvh" }}>
-          <AssistantPage
-            agent="claude"
-            chatDefaults={{ model: "opus", effort: "high", mode: "plan" }}
-          />
-        </main>
-      </ConfigContext>
+      <AuthContext value={stubAuth}>
+        <ConfigContext value={stubConfig}>
+          <main style={{ padding: "var(--app-space-24)", height: "100dvh" }}>
+            <AssistantPage
+              agent="claude"
+              chatDefaults={{ model: "opus", effort: "high", mode: "plan" }}
+            />
+          </main>
+        </ConfigContext>
+      </AuthContext>
     </QueryClientProvider>
   );
 }

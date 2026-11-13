@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
 
 const (
@@ -47,9 +49,7 @@ func UpdateInterface(ctx context.Context, req apischema.WireGuardUpdateInterface
 		return err
 	}
 
-	serverChanged := cfg.ListenPort != old.ListenPort || cfg.MTU != old.MTU ||
-		!slices.Equal(cfg.PreUp, old.PreUp) || !slices.Equal(cfg.PostUp, old.PostUp) ||
-		!slices.Equal(cfg.PreDown, old.PreDown) || !slices.Equal(cfg.PostDown, old.PostDown)
+	serverChanged := cfg.ListenPort != old.ListenPort || cfg.MTU != old.MTU || hooksChanged(cfg.Hooks, old.Hooks)
 	restart := serverChanged && isInterfaceUpFunc(req.Name)
 
 	if restart {
@@ -108,20 +108,40 @@ func applyInterfaceUpdate(cfg *WireGuardConfig, req apischema.WireGuardUpdateInt
 	return applyInterfaceHooks(cfg, req)
 }
 
+// hooksChanged reports whether any wg-quick hook list differs between hooks
+// and old.
+func hooksChanged(hooks, old apischema.WireGuardHooks) bool {
+	for _, kind := range apischema.WireGuardHookKinds {
+		if !slices.Equal(hooks[kind], old[kind]) {
+			return true
+		}
+	}
+	return false
+}
+
+// applyInterfaceHooks replaces each hook kind the request carries: an absent
+// or null kind is unchanged, an empty list removes the kind, and blank lines
+// are dropped. It gives cfg a new map, so a cfg copied from the old config
+// never changes the old config's hooks.
 func applyInterfaceHooks(cfg *WireGuardConfig, req apischema.WireGuardUpdateInterfaceRequest) error {
-	for _, hook := range []struct {
-		target *[]string
-		lines  []string
-	}{{&cfg.PreUp, req.PreUp}, {&cfg.PostUp, req.PostUp}, {&cfg.PreDown, req.PreDown}, {&cfg.PostDown, req.PostDown}} {
-		if hook.lines == nil {
+	for _, kind := range slices.Sorted(maps.Keys(req.Hooks)) {
+		if !slices.Contains(apischema.WireGuardHookKinds, kind) {
+			return fmt.Errorf("%w: unknown hook kind %q", bridgeipc.ErrInvalidArgs, kind)
+		}
+	}
+	hooks := make(apischema.WireGuardHooks, len(apischema.WireGuardHookKinds))
+	for _, kind := range apischema.WireGuardHookKinds {
+		hooks[kind] = cfg.Hooks[kind]
+		if req.Hooks[kind] == nil {
 			continue
 		}
-		lines, err := cleanLines(hook.lines)
+		lines, err := cleanLines(req.Hooks[kind])
 		if err != nil {
 			return err
 		}
-		*hook.target = lines
+		hooks[kind] = lines
 	}
+	cfg.Hooks = hooks
 	return nil
 }
 

@@ -90,16 +90,17 @@ func validSeverity(s string) bool {
 // normalize makes obs storable so no caller has to: the key is mapped onto
 // the identifier alphabet and title and message are cut to their limits.
 func (o Observation) normalize() Observation {
-	o.Key = normalizeKey(o.Key)
+	o.Key = NormalizeKey(o.Key)
 	o.Title = truncate(strings.ToValidUTF8(o.Title, "\uFFFD"), maxTitleLen)
 	o.Message = truncate(strings.ToValidUTF8(o.Message, "\uFFFD"), MaxMessageLen)
 	return o
 }
 
-// normalizeKey lower-cases key, maps characters outside [a-z0-9._-] to '-',
-// makes it start with [a-z0-9] and cuts it to 64 characters. An empty key
-// stays empty and fails validation.
-func normalizeKey(key string) string {
+// NormalizeKey is the key an observation with key is stored under: it
+// lower-cases key, maps characters outside [a-z0-9._-] to '-', makes it start
+// with [a-z0-9] and cuts it to 64 characters. An empty key stays empty and
+// fails validation.
+func NormalizeKey(key string) string {
 	if key == "" {
 		return ""
 	}
@@ -197,7 +198,7 @@ func write(doc Document) error {
 }
 
 // Raise records an observation. The same occurrence id only refreshes
-// last_observed_at; a new one is a material change, which is also delivered
+// last_observed_at and the link; a new one is a material change, which is also delivered
 // to the configured notification channels after the store is written. The key,
 // title and message are normalised here (see Observation.normalize).
 func Raise(ctx context.Context, obs Observation) error {
@@ -215,7 +216,12 @@ func Raise(ctx context.Context, obs Observation) error {
 				continue
 			}
 			if obs.OccurrenceID != "" && a.OccurrenceID == obs.OccurrenceID {
+				// The link follows the latest observation of the occurrence;
+				// one without a link keeps the stored link.
 				a.LastObservedAt = t
+				if obs.Link != "" {
+					a.Link = obs.Link
+				}
 				return nil
 			}
 			a.Severity, a.Title, a.Message, a.Link = obs.Severity, obs.Title, obs.Message, obs.Link
@@ -245,20 +251,28 @@ func Raise(ctx context.Context, obs Observation) error {
 	return err
 }
 
-// evictIndex picks the oldest dismissed alert, else the oldest alert. The
-// slice is sorted newest-first, so both are found from the end.
+// evictIndex picks the oldest dismissed alert, else the oldest alert of the
+// lowest severity present: a full store drops its notices, then its warnings,
+// before any error. The slice is sorted newest-first, so both are found from
+// the end.
 func evictIndex(alerts []Alert) int {
 	for i, alert := range slices.Backward(alerts) {
 		if alert.DismissedAt != nil {
 			return i
 		}
 	}
-	return len(alerts) - 1
+	evict := len(alerts) - 1
+	for i, alert := range slices.Backward(alerts) {
+		if severityRank[alert.Severity] < severityRank[alerts[evict].Severity] {
+			evict = i
+		}
+	}
+	return evict
 }
 
 // Resolve removes the record, finding it by the key as Raise normalises it. Resolving an absent alert is not an error.
 func Resolve(ctx context.Context, source, key string) error {
-	id := ID(source, normalizeKey(key))
+	id := ID(source, NormalizeKey(key))
 	return update(ctx, func(doc *Document) error {
 		kept := doc.Alerts[:0]
 		for _, a := range doc.Alerts {
@@ -285,8 +299,10 @@ func Dismiss(ctx context.Context, id string) error {
 }
 
 // MarkSeen records that uid has seen the current occurrence of each id, or of
-// every alert when ids is nil.
-func MarkSeen(ctx context.Context, uid string, ids []string) error {
+// every alert when ids is nil. Only the alerts keep accepts are marked (all
+// when keep is nil), judged under the same lock that records the mark, so the
+// alerts judged are the ones marked.
+func MarkSeen(ctx context.Context, uid string, ids []string, keep func(Alert) bool) error {
 	want := map[string]bool{}
 	for _, id := range ids {
 		want[id] = true
@@ -294,7 +310,7 @@ func MarkSeen(ctx context.Context, uid string, ids []string) error {
 	return update(ctx, func(doc *Document) error {
 		for i := range doc.Alerts {
 			a := &doc.Alerts[i]
-			if ids != nil && !want[a.ID] {
+			if (ids != nil && !want[a.ID]) || (keep != nil && !keep(*a)) {
 				continue
 			}
 			if a.Seen == nil {

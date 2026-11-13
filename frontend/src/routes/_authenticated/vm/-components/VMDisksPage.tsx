@@ -5,7 +5,6 @@ import {
   CACHE_TTL_MS,
   getMutationErrorMessage,
   linuxio,
-  useCallMutation,
   type VirtualMachine,
   type VMStoragePool,
   type VMUnusedDisk,
@@ -177,7 +176,7 @@ const VMDisksPage = () => {
     });
   const toast = useScopedToast(VM_TOAST);
   const [deleting, setDeleting] = useState<VMUnusedDisk | null>(null);
-  const remove = useCallMutation(linuxio.virt.unused_disk_delete, {
+  const remove = linuxio.virt.unused_disk_delete.useMutation({
     success: (_, request) => {
       toast.success(`Deleted ${request.path}`);
       setDeleting(null);

@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { render, screen, waitFor, within } from "@/test/render";
 
-import NetworkList from "./NetworkList";
 import VolumeList from "../volumes/VolumeList";
+import NetworkList from "./NetworkList";
 
 const mocks = vi.hoisted(() => ({
   containers: [] as unknown[],
@@ -48,13 +48,16 @@ vi.mock("@tanstack/react-router", async (importOriginal) => {
 
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
+  const { mockMutationHooks } = await import("@/test/mutationHooks");
+  const useCallMutation = () => ({
+    isPending: false,
+    mutate: mocks.mutate,
+    mutateAsync: mocks.mutateAsync,
+  });
   return {
     ...actual,
-    useCallMutation: () => ({
-      isPending: false,
-      mutate: mocks.mutate,
-      mutateAsync: mocks.mutateAsync,
-    }),
+    useCallMutation,
+    linuxio: mockMutationHooks(actual.linuxio, useCallMutation),
   };
 });
 
@@ -102,7 +105,9 @@ describe("Docker network and volume focused details", () => {
         Scope: "local",
       },
     ];
-    const { rerender, user } = render(<NetworkList viewMode="card" />);
+    const { rerender, user } = render(<NetworkList viewMode="card" />, {
+      auth: { privileged: true },
+    });
 
     await user.click(
       screen.getByRole("button", {
@@ -129,7 +134,9 @@ describe("Docker network and volume focused details", () => {
         Scope: "local",
       },
     ];
-    const { rerender, user } = render(<VolumeList viewMode="card" />);
+    const { rerender, user } = render(<VolumeList viewMode="card" />, {
+      auth: { privileged: true },
+    });
 
     await user.click(
       screen.getByRole("button", {
@@ -355,7 +362,9 @@ describe("Docker network and volume focused details", () => {
         Status: "Exited",
       },
     ];
-    const { user } = render(<NetworkList viewMode="card" />);
+    const { user } = render(<NetworkList viewMode="card" />, {
+      auth: { privileged: true },
+    });
 
     await user.click(screen.getByRole("button", { name: "Connect container" }));
     const connectDialog = screen.getByRole("dialog", {
@@ -426,5 +435,79 @@ describe("Docker network and volume focused details", () => {
     expect(
       screen.getByText("Docker default networks cannot be deleted."),
     ).toBeInTheDocument();
+  });
+
+  it("shows a network without its admin-only actions without sudo", () => {
+    mocks.search = { network: "network-id" };
+    mocks.data = [
+      {
+        Attachable: true,
+        ConfigOnly: false,
+        Containers: {
+          attached: { EndpointID: "endpoint", Name: "attached" },
+        },
+        Driver: "bridge",
+        EnableIPv4: true,
+        EnableIPv6: false,
+        Id: "network-id",
+        Ingress: false,
+        Internal: false,
+        IPAM: { Config: [], Driver: "default" },
+        Labels: {},
+        Name: "app-net",
+        Options: {},
+        Protected: false,
+        Scope: "local",
+      },
+    ];
+    mocks.containers = [
+      { Id: "attached", Names: ["/attached"], State: "running", Status: "Up" },
+      {
+        Id: "candidate",
+        Names: ["/candidate"],
+        State: "exited",
+        Status: "Exited",
+      },
+    ];
+    render(<NetworkList viewMode="card" />, { auth: { privileged: false } });
+
+    expect(screen.getAllByText("attached").length).toBeGreaterThan(0);
+    for (const name of [
+      "Delete network app-net",
+      "Connect container",
+      "Disconnect container attached",
+    ]) {
+      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+    }
+  });
+
+  it("offers a volume's backup but not its deletion without sudo", async () => {
+    mocks.search = { volume: "example-volume" };
+    mocks.data = [
+      {
+        Driver: "local",
+        Labels: {},
+        Mountpoint: "/var/lib/docker/volumes/example-volume/_data",
+        MountpointAccessible: true,
+        Name: "example-volume",
+        Options: {},
+        Scope: "local",
+      },
+    ];
+    const { user } = render(<VolumeList viewMode="card" />, {
+      auth: { privileged: false },
+    });
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Actions for volume example-volume",
+      }),
+    );
+    expect(
+      screen.getByRole("menuitem", { name: "Download backup" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "Delete volume" }),
+    ).not.toBeInTheDocument();
   });
 });

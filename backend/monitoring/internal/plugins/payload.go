@@ -21,6 +21,8 @@ type MemData struct {
 	MemPct       float64 `json:"memory_percent"`
 	MemBuffCache float64 `json:"memory_buffer_cache_gb"`
 	MemZfsArc    float64 `json:"memory_zfs_arc_gb,omitzero"`
+	MemDocker    float64 `json:"memory_docker_gb,omitzero"`
+	MemVMs       float64 `json:"memory_vm_gb,omitzero"`
 	MemSwapTotal float64 `json:"memory_swap_total_gb"`
 	MemSwapUsed  float64 `json:"memory_swap_used_gb"`
 	MemSwapPct   float64 `json:"memory_swap_percent"`
@@ -65,6 +67,9 @@ type NetworkData struct {
 
 type SensorsData struct {
 	Temperatures map[string]float64 `json:"temperatures,omitempty"`
+	// Readings is every primary `sensors -j` reading, keyed by adapter and
+	// then by the label the live payload shows.
+	Readings map[string]map[string]float64 `json:"readings,omitempty"`
 }
 
 type containerSnapshotRecord struct {
@@ -98,6 +103,8 @@ func Snapshot(data *systemmodel.CombinedData) map[string]any {
 			MemPct:       stats.MemPct,
 			MemBuffCache: stats.MemBuffCache,
 			MemZfsArc:    stats.MemZfsArc,
+			MemDocker:    stats.MemDocker,
+			MemVMs:       stats.MemVMs,
 			MemSwapTotal: stats.Swap,
 			MemSwapUsed:  stats.SwapUsed,
 			MemSwapPct:   stats.SwapPct,
@@ -135,7 +142,7 @@ func Snapshot(data *systemmodel.CombinedData) map[string]any {
 			NetworkInterfaces: stats.NetworkInterfaces,
 		},
 		GPU:                nonNilMap(stats.GPUData),
-		Sensors:            SensorsData{Temperatures: stats.Temperatures},
+		Sensors:            SensorsData{Temperatures: stats.Temperatures, Readings: stats.SensorReadings},
 		Containers:         containerSnapshotRecords(data.Containers),
 		ContainerTelemetry: nonNilSlice(data.ContainerTelemetry),
 		Connections:        nonNilPointer(data.Connections),

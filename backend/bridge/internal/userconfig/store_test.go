@@ -412,3 +412,42 @@ func TestUserStoresSerializeConcurrentCoreUpdates(t *testing.T) {
 	require.False(t, loaded.AppSettings.ShowHiddenFiles)
 	require.Equal(t, 8, loaded.AppSettings.ChunkSizeMB)
 }
+
+func TestUserStoreSnapshotsSeeAnotherProcessWrites(t *testing.T) {
+	base := t.TempDir()
+	bridge, err := openDiskUserStore("miguel", base, base, normalFileOwnership(), StorageModeHome)
+	require.NoError(t, err)
+	host, err := openDiskUserStore("miguel", base, base, normalFileOwnership(), StorageModeHome)
+	require.NoError(t, err)
+
+	_, err = host.Update(context.Background(), func(value *Settings) error {
+		value.AppSettings.ChunkSizeMB = 8
+		return nil
+	})
+	require.NoError(t, err)
+	ui := DefaultUIPreferences()
+	ui.Theme = ThemeLight
+	_, err = host.ReplaceUI(context.Background(), ui)
+	require.NoError(t, err)
+
+	core, err := bridge.Snapshot(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 8, core.AppSettings.ChunkSizeMB)
+	gotUI, err := bridge.UISnapshot(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, ThemeLight, gotUI.Theme)
+
+	// A file that no longer parses keeps the last good snapshot, and so does
+	// one replaced by a symlink, which is never followed.
+	require.NoError(t, os.WriteFile(bridge.Path(), []byte("{not yaml"), 0o600))
+	core, err = bridge.Snapshot(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, 8, core.AppSettings.ChunkSizeMB)
+	other := filepath.Join(t.TempDir(), "ui.yaml")
+	require.NoError(t, writeUIConfig(other, DefaultUIPreferences()))
+	require.NoError(t, os.Remove(bridge.UIPath()))
+	require.NoError(t, os.Symlink(other, bridge.UIPath()))
+	gotUI, err = bridge.UISnapshot(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, ThemeLight, gotUI.Theme)
+}

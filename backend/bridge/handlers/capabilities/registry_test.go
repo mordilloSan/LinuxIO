@@ -5,21 +5,20 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/acpagents"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/acpagents/acpagentstest"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
-// TestCapabilityRegistryCoversWireFields ensures every *_available field on
-// session.CapabilitiesAvailable (embedded in the wire response) has a matching
-// capabilityRegistry entry (and vice versa).
-// Without this check, adding a wire field but forgetting the registry entry
-// would silently leave the field at its zero value, and adding a registry entry
-// without the matching wire field would panic at runtime via setCapabilityField.
-func TestCapabilityRegistryCoversWireFields(t *testing.T) {
-	wireNames := wireAvailableFields(t)
-
+// TestCapabilityRegistryEntriesAreValid checks what the response and the
+// generated contract rely on: every entry has a unique, non-empty name, which
+// keys its status on the wire, and exactly one detector.
+func TestCapabilityRegistryEntriesAreValid(t *testing.T) {
 	registryNames := make(map[string]bool, len(capabilityRegistry))
 	for _, spec := range capabilityRegistry {
 		if spec.Name == "" {
@@ -36,40 +35,18 @@ func TestCapabilityRegistryCoversWireFields(t *testing.T) {
 		}
 		registryNames[spec.Name] = true
 	}
-
-	for name := range wireNames {
-		if !registryNames[name] {
-			t.Errorf("wire field %q_available has no registry entry", name)
-		}
-	}
-	for name := range registryNames {
-		if !wireNames[name] {
-			t.Errorf("registry entry %q has no matching wire field %q_available", name, name)
-		}
-	}
 }
 
-// wireAvailableFields returns the set of wire prefixes derived from JSON tags
-// shaped `<prefix>_available` on session.CapabilitiesAvailable.
-func wireAvailableFields(t *testing.T) map[string]bool {
-	t.Helper()
-	return availableTagsOf(reflect.TypeFor[session.CapabilitiesAvailable]())
-}
-
-// availableTagsOf returns the set of wire prefixes derived from JSON tags shaped
-// `<prefix>_available` on the given struct type.
-func availableTagsOf(typ reflect.Type) map[string]bool {
-	names := make(map[string]bool)
-	for field := range typ.Fields() {
-		tag := field.Tag.Get("json")
-		tag, _, _ = strings.Cut(tag, ",")
-		prefix, ok := strings.CutSuffix(tag, "_available")
-		if !ok {
-			continue
-		}
-		names[prefix] = true
+// TestCapabilityNamesArePublished checks that the generated CapabilityName
+// union is the registry's names, in registry order.
+func TestCapabilityNamesArePublished(t *testing.T) {
+	want := make([]string, 0, len(capabilityRegistry))
+	for _, spec := range capabilityRegistry {
+		want = append(want, spec.Name)
 	}
-	return names
+	if got := apischema.StringEnums["CapabilityName"]; !slices.Equal(got, want) {
+		t.Fatalf("StringEnums[CapabilityName] = %q, want the registry names %q", got, want)
+	}
 }
 
 func TestMonitoringCapabilityIsNotInstallable(t *testing.T) {
@@ -171,5 +148,71 @@ func TestLMSensorsInstallPostInstallCommand(t *testing.T) {
 	}
 	if got, want := spec.Install.PostInstall.Args, []string{"--auto"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("post-install args = %v, want %v", got, want)
+	}
+}
+
+func TestClaudeCodeCapabilityInstallsAnthropicsPackage(t *testing.T) {
+	spec, ok := CapabilitySpecByName("claude_code")
+	if !ok {
+		t.Fatal("claude_code capability not registered")
+	}
+	if spec.Install == nil || spec.Install.OptionalComponent != "claude_code" ||
+		spec.Install.PackageDebian != "claude-code" || spec.Install.PackageRHEL != "claude-code" {
+		t.Fatalf("claude_code must add Anthropic's repository and install claude-code, got %+v", spec.Install)
+	}
+	if spec.Detect != nil || spec.DetectAsUser == nil {
+		t.Fatal("claude_code must detect through the session user's login shell, like the agent that runs it")
+	}
+	available, message := spec.DetectAsUser(context.Background(), session.User{Username: "linuxio-no-such-user"})
+	if available || message == "" {
+		t.Fatalf("expected unavailable with a reason for an unknown user, got available=%v message=%q", available, message)
+	}
+}
+
+func TestAssistantAgentCapabilitiesCoverTheCatalogue(t *testing.T) {
+	for _, id := range acpagents.IDs() {
+		name := AssistantAgentPrefix + id
+		spec, ok := CapabilitySpecByName(name)
+		if !ok {
+			t.Errorf("agent %q has no %s capability", id, name)
+			continue
+		}
+		if spec.Install == nil || spec.Install.OptionalComponent != name ||
+			spec.Install.PackageDebian != "" || spec.Install.PackageRHEL != "" {
+			t.Errorf("%s must install only its own component, got %+v", name, spec.Install)
+		}
+		if spec.Detect != nil || spec.DetectAsUser == nil {
+			t.Errorf("%s must detect the session user's own install", name)
+		}
+	}
+}
+
+func TestAssistantAgentCapabilityReportsTheInstalledVersion(t *testing.T) {
+	agent, ok := acpagents.Lookup("claude")
+	if !ok {
+		t.Fatal("claude agent missing from the catalogue")
+	}
+	spec, ok := CapabilitySpecByName("assistant_claude")
+	if !ok {
+		t.Fatal("assistant_claude capability not registered")
+	}
+	home := t.TempDir()
+	orig := agentHome
+	agentHome = func(string) (string, error) { return home, nil }
+	t.Cleanup(func() { agentHome = orig })
+	user := session.User{Username: "alice"}
+
+	if available, message := spec.DetectAsUser(context.Background(), user); available || !strings.Contains(message, "is not installed") {
+		t.Fatalf("nothing installed: got available=%v message=%q", available, message)
+	}
+
+	acpagentstest.Install(t, home, "claude", agent, "0.0.1", "#!/bin/sh\n")
+	if available, message := spec.DetectAsUser(context.Background(), user); available || !strings.Contains(message, "0.0.1 is installed, LinuxIO needs "+agent.Version) {
+		t.Fatalf("other version installed: got available=%v message=%q", available, message)
+	}
+
+	acpagentstest.Install(t, home, "claude", agent, agent.Version, "#!/bin/sh\n")
+	if available, message := spec.DetectAsUser(context.Background(), user); !available || message != "" {
+		t.Fatalf("pinned version installed: got available=%v message=%q", available, message)
 	}
 }

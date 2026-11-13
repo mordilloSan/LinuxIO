@@ -48,6 +48,8 @@ func Average(plugin string, items []string) (string, error) {
 			stats.MemPct = item.MemPct
 			stats.MemBuffCache = item.MemBuffCache
 			stats.MemZfsArc = item.MemZfsArc
+			stats.MemDocker = item.MemDocker
+			stats.MemVMs = item.MemVMs
 			stats.Swap = item.MemSwapTotal
 			stats.SwapUsed = item.MemSwapUsed
 			stats.SwapPct = item.MemSwapPct
@@ -145,6 +147,7 @@ func Average(plugin string, items []string) (string, error) {
 				return err
 			}
 			stats.Temperatures = item.Temperatures
+			stats.SensorReadings = item.Readings
 			return nil
 		}, func(stats systemmodel.Stats) any {
 			return Snapshot(&systemmodel.CombinedData{Stats: stats})[Sensors]
@@ -213,6 +216,8 @@ func averageSystemStatsJSON(items []string) (*systemmodel.Stats, error) {
 		sum.MemPct += temp.MemPct
 		sum.MemBuffCache += temp.MemBuffCache
 		sum.MemZfsArc += temp.MemZfsArc
+		sum.MemDocker += temp.MemDocker
+		sum.MemVMs += temp.MemVMs
 		sum.Swap += temp.Swap
 		sum.SwapUsed += temp.SwapUsed
 		sum.SwapPct += temp.SwapPct
@@ -265,6 +270,7 @@ func averageSystemStatsJSON(items []string) (*systemmodel.Stats, error) {
 		sum.MaxDiskWritePs = max(sum.MaxDiskWritePs, temp.MaxDiskWritePs, temp.DiskWritePs)
 		accumulateNetworkInterfaces(sum, temp, &seen)
 		accumulateTemperatures(sum, temp, &seen)
+		accumulateSensorReadings(sum, temp, &seen)
 		accumulateFilesystems(sum, temp, &seen)
 		accumulateGPUs(sum, temp, &seen)
 	}
@@ -276,6 +282,7 @@ func averageSystemStatsJSON(items []string) (*systemmodel.Stats, error) {
 	sum.Battery[0] = uint16(batterySum / int(count))
 	averageNetworkInterfaces(sum, &seen)
 	averageTemperatures(sum, &seen)
+	averageSensorReadings(sum, &seen)
 	averageFilesystems(sum, &seen)
 	averageGPUs(sum, &seen)
 	if len(cpuCoresSums) > 0 {
@@ -306,6 +313,8 @@ func averageScalarStats(sum *systemmodel.Stats, count float64) {
 	sum.MemPct = units.TwoDecimals(sum.MemPct / count)
 	sum.MemBuffCache = units.TwoDecimals(sum.MemBuffCache / count)
 	sum.MemZfsArc = units.TwoDecimals(sum.MemZfsArc / count)
+	sum.MemDocker = units.TwoDecimals(sum.MemDocker / count)
+	sum.MemVMs = units.TwoDecimals(sum.MemVMs / count)
 	sum.Swap = units.TwoDecimals(sum.Swap / count)
 	sum.SwapUsed = units.TwoDecimals(sum.SwapUsed / count)
 	sum.SwapPct = units.TwoDecimals(sum.SwapPct / count)
@@ -333,7 +342,7 @@ func averageScalarStats(sum *systemmodel.Stats, count float64) {
 // present in only some samples is averaged over those samples alone.
 type keySamples struct {
 	net, temp, fs, gpu map[string]float64
-	engines            map[[2]string]float64
+	engines, sensors   map[[2]string]float64
 }
 
 // bump increments the counter for key, allocating the map on first use.
@@ -386,6 +395,31 @@ func accumulateTemperatures(sum, sample *systemmodel.Stats, seen *keySamples) {
 func averageTemperatures(sum *systemmodel.Stats, seen *keySamples) {
 	for key, value := range sum.Temperatures {
 		sum.Temperatures[key] = units.TwoDecimals(value / seen.temp[key])
+	}
+}
+
+// accumulateSensorReadings sums each adapter's readings; like temperatures, a
+// reading present in only some samples averages over those samples alone.
+func accumulateSensorReadings(sum, sample *systemmodel.Stats, seen *keySamples) {
+	for adapter, readings := range sample.SensorReadings {
+		if sum.SensorReadings == nil {
+			sum.SensorReadings = map[string]map[string]float64{}
+		}
+		if sum.SensorReadings[adapter] == nil {
+			sum.SensorReadings[adapter] = make(map[string]float64, len(readings))
+		}
+		for label, value := range readings {
+			sum.SensorReadings[adapter][label] += value
+			bump(&seen.sensors, [2]string{adapter, label})
+		}
+	}
+}
+
+func averageSensorReadings(sum *systemmodel.Stats, seen *keySamples) {
+	for adapter, readings := range sum.SensorReadings {
+		for label, value := range readings {
+			readings[label] = units.TwoDecimals(value / seen.sensors[[2]string{adapter, label}])
+		}
 	}
 }
 

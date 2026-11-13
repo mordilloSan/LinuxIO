@@ -16,6 +16,7 @@ import (
 // Tree ids, item types and flags from btrfs_tree.h.
 const (
 	rootTreeObjectID    = 1
+	devTreeObjectID     = 4
 	fsTreeObjectID      = 5
 	rootTreeDirObjectID = 6
 	quotaTreeObjectID   = 8
@@ -26,6 +27,7 @@ const (
 	rootItemKey     = 132
 	rootBackrefKey  = 144
 	qgroupStatusKey = 240
+	devReplaceKey   = 250
 	qgroupInfoKey   = 242
 	qgroupLimitKey  = 244
 

@@ -8,7 +8,7 @@ frontend_placeholder_files := \
 	$(backend_frontend_dir)/assets/index-mock.js
 
 ##@ Toolchain setup|green
-setup: $(frontend_install_stamp) ## Install frontend dependencies (npm i)
+setup-frontend: $(frontend_install_stamp) ## Install frontend dependencies (npm i)
 	@:
 
 $(frontend_install_stamp): $(frontend_dir)/package.json $(frontend_dir)/package-lock.json
@@ -23,7 +23,7 @@ update-deps: ensure-node ## Choose frontend upgrades, then install, audit and fi
 	@echo "📦 Select frontend dependency upgrades"
 	@"$(scripts_dir)/update-deps.sh" "$(frontend_dir)"
 
-# CI installs are immutable and linting is read-only. Keep `setup`/`lint` as
+# CI installs are immutable and linting is read-only. Keep `setup-frontend`/`lint` as
 # the developer workflow: those targets intentionally use npm install and
 # auto-fixing lint tools so local changes can be repaired in place.
 ci-frontend-deps: ## Install frontend dependencies from the lockfile (npm ci)
@@ -32,7 +32,7 @@ ci-frontend-deps: ## Install frontend dependencies from the lockfile (npm ci)
 	@cd "$(frontend_dir)" && npm ci --no-audit --no-fund
 
 ##@ Quality checks|green
-lint: ensure-node setup ## Run OXLint + Oxfmt (frontend)
+lint: ensure-node setup-frontend ## Run OXLint + Oxfmt (frontend)
 	@$(MAKE) --no-print-directory lint-only
 
 lint-only: ## Run frontend lint without setup prerequisites
@@ -46,7 +46,7 @@ lint-ci: ci-frontend-deps ## Install locked frontend deps and run read-only lint
 lint-ci-only:
 	@"$(scripts_dir)/lint-frontend.sh" check "$(frontend_dir)"
 
-tsc: ensure-node setup ## Type-check with TypeScript (frontend)
+tsc: ensure-node setup-frontend ## Type-check with TypeScript (frontend)
 	@$(MAKE) --no-print-directory tsc-only
 
 tsc-only: ## Run TypeScript checks without setup prerequisites
@@ -56,7 +56,7 @@ tsc-only: ## Run TypeScript checks without setup prerequisites
 tsc-ci: ci-frontend-deps ## Install locked frontend deps and run TypeScript checks
 	@$(MAKE) --no-print-directory tsc-only
 
-test-frontend: ensure-node setup ## Run frontend unit tests only
+test-frontend: ensure-node setup-frontend ## Run frontend unit tests only
 	@$(MAKE) --no-print-directory test-frontend-only
 
 test-frontend-only: ## Run frontend unit tests without setup prerequisites
@@ -66,12 +66,12 @@ test-frontend-only: ## Run frontend unit tests without setup prerequisites
 test-frontend-ci: ci-frontend-deps ## Install locked frontend deps and run frontend tests
 	@$(MAKE) --no-print-directory test-frontend-only
 
-setup-frontend-browser: ensure-node setup ## Install Playwright Chromium
+setup-frontend-browser: ensure-node setup-frontend ## Install Playwright Chromium
 	@echo "🌐 Installing Playwright Chromium..."
 	@cd "$(frontend_dir)" && ./node_modules/.bin/playwright install chromium
 	@echo "✅ Playwright Chromium installed!"
 
-test-frontend-browser: ensure-node setup ## Build frontend + run router browser tests
+test-frontend-browser: ensure-node setup-frontend ## Build frontend + run router browser tests
 	@set -e
 	@echo "🏗️  Building the production frontend for chunk-boundary checks..."
 	@cd "$(frontend_dir)" && ./node_modules/.bin/vite build --config config/vite.config.ts --configLoader native
@@ -79,12 +79,12 @@ test-frontend-browser: ensure-node setup ## Build frontend + run router browser 
 	@cd "$(frontend_dir)" && ./node_modules/.bin/playwright test --config config/playwright.config.ts $(PLAYWRIGHT_ARGS)
 	@echo "✅ Frontend browser tests passed!"
 
-# Rewrites the screenshot baselines src/test/browser/styling-gallery.spec.ts
-# compares against. Run after a deliberate visual change, then review the PNG
+# Rewrites the screenshot baselines the styling gallery and dialog specs
+# compare against. Run after a deliberate visual change, then review the PNG
 # diff in git; the gallery does not need the production build.
-update-frontend-screenshots: ensure-node setup ## Rewrite the browser screenshot baselines
+update-frontend-screenshots: ensure-node setup-frontend ## Rewrite the browser screenshot baselines
 	@echo "📸 Rewriting frontend screenshot baselines..."
-	@cd "$(frontend_dir)" && ./node_modules/.bin/playwright test --config config/playwright.config.ts --update-snapshots=all src/test/browser/styling-gallery.spec.ts
+	@cd "$(frontend_dir)" && ./node_modules/.bin/playwright test --config config/playwright.config.ts --update-snapshots=all src/test/browser/styling-gallery.spec.ts src/test/browser/dialog-styling.spec.ts
 	@echo "✅ Screenshot baselines updated!"
 
 bundle-metrics: ## Report frontend bundle sizes after a Vite build (informational)
@@ -92,7 +92,7 @@ bundle-metrics: ## Report frontend bundle sizes after a Vite build (informationa
 	@echo "📊 Reporting frontend bundle metrics..."
 	@cd "$(frontend_dir)" && npm run bundle:metrics
 
-analyze: ensure-node setup ## Build frontend with bundle analysis enabled
+analyze: ensure-node setup-frontend ## Build frontend with bundle analysis enabled
 	@echo ""
 	@echo "🔬 Building frontend bundle analysis..."
 	@cd "$(frontend_dir)" && npm run analyze && echo "✅ Frontend analysis built successfully!"

@@ -1,24 +1,24 @@
 import { useState } from "react";
 
-import {
-  linuxio,
-  type NetworkInterface as BaseNI,
-  useCallMutation,
-} from "@/api";
+import { linuxio, type NetworkInterface as BaseNI } from "@/api";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppButton from "@/components/ui/AppButton";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
+import AppConfirmDialog from "@/components/ui/AppConfirmDialog";
 import AppGrid from "@/components/ui/AppGrid";
 import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
+import useAuth from "@/hooks/useAuth";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { CARD_PADDING_LG, GAP_MD, GAP_SM } from "@/theme/constants";
 
 import {
+  getBrowserHostname,
   getNetworkStateColor,
   getNetworkStateSummary,
+  mayCarryBrowserSession,
 } from "./networkInterfaceState";
 
 const NETWORK_TOAST_META = {
@@ -140,7 +140,27 @@ const isCurrentSession = (
   session.ifaceName === iface.name &&
   session.sourceIpv4Method === iface.ipv4_method;
 
+const DetailRows = ({ rows }: { rows: string[][] }) =>
+  rows.map(([label, value]) => (
+    <div
+      key={label}
+      style={{
+        display: "flex",
+        gap: GAP_SM,
+        justifyContent: "space-between",
+      }}
+    >
+      <AppTypography color="text.secondary" variant="body2">
+        {label}
+      </AppTypography>
+      <AppTypography noWrap variant="body2">
+        {value}
+      </AppTypography>
+    </div>
+  ));
+
 const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
+  const { privileged } = useAuth();
   const toast = useScopedToast(NETWORK_TOAST_META);
 
   const defaultGateway = getGatewayV4(iface);
@@ -148,6 +168,15 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
   // Null when the config backend cannot set search domains or keep static DNS
   // servers alongside DHCP.
   const dnsOptions = iface.dns_options;
+
+  // A change that may cut the connection this browser is using waits here for
+  // the admin to confirm; the page warns and then does it.
+  const [pendingRisk, setPendingRisk] = useState<{
+    action: () => void;
+    confirmText: string;
+    message: string;
+    title: string;
+  } | null>(null);
 
   const [storedSession, setStoredSession] = useState<EditorSession>(() =>
     createEditorSession(iface, expanded),
@@ -187,19 +216,17 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
   };
 
   // Mutations
-  const { mutate: setIPv4, isPending: isSettingIPv4 } = useCallMutation(
-    linuxio.network.set_ipv4,
-    {
+  const { mutate: setIPv4, isPending: isSettingIPv4 } =
+    linuxio.network.set_ipv4.useMutation({
       success: () => {
         toast.success("Switched to DHCP mode");
         onClose();
       },
       error: "Failed to set DHCP configuration",
       toast: NETWORK_TOAST_META,
-    },
-  );
+    });
   const { mutate: setIPv4Manual, isPending: isSettingIPv4Manual } =
-    useCallMutation(linuxio.network.set_ipv4_manual, {
+    linuxio.network.set_ipv4_manual.useMutation({
       success: () => {
         toast.success("Manual configuration saved");
         onClose();
@@ -207,46 +234,55 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
       error: "Failed to save network configuration",
       toast: NETWORK_TOAST_META,
     });
-  const { mutate: enableConnection, isPending: isEnabling } = useCallMutation(
-    linuxio.network.enable_connection,
-    {
+  const { mutate: enableConnection, isPending: isEnabling } =
+    linuxio.network.enable_connection.useMutation({
       success: "Connection enabled",
       error: "Failed to enable connection",
       toast: NETWORK_TOAST_META,
-    },
-  );
-  const { mutate: disableConnection, isPending: isDisabling } = useCallMutation(
-    linuxio.network.disable_connection,
-    {
+    });
+  const { mutate: disableConnection, isPending: isDisabling } =
+    linuxio.network.disable_connection.useMutation({
       success: "Connection disabled",
       error: "Failed to disable connection",
       toast: NETWORK_TOAST_META,
-    },
-  );
-  const { mutate: setOptional, isPending: isSettingOptional } = useCallMutation(
-    linuxio.network.set_optional,
-    {
+    });
+  const { mutate: setOptional, isPending: isSettingOptional } =
+    linuxio.network.set_optional.useMutation({
       success: "Boot wait setting saved",
       error: "Failed to save boot wait setting",
       toast: NETWORK_TOAST_META,
-    },
-  );
-  const { mutate: setMTU, isPending: isSettingMTU } = useCallMutation(
-    linuxio.network.set_mtu,
-    {
+    });
+  const { mutate: setMTU, isPending: isSettingMTU } =
+    linuxio.network.set_mtu.useMutation({
       success: "MTU saved",
       error: "Failed to set MTU",
       toast: NETWORK_TOAST_META,
-    },
-  );
+    });
   const saving = isSettingIPv4 || isSettingIPv4Manual || isSettingMTU;
   const toggling = isEnabling || isDisabling;
   const isConnected = iface.state === 100;
   const isConnecting = iface.state >= 40 && iface.state <= 90;
+  const confirmIfSessionAtRisk = (
+    risk: { confirmText: string; message: string; title: string },
+    action: () => void,
+  ) => {
+    if (mayCarryBrowserSession(iface, getBrowserHostname())) {
+      setPendingRisk({ ...risk, action });
+    } else {
+      action();
+    }
+  };
   const handleConnectionToggle = () => {
     if (toggling) return;
     if (isConnected || isConnecting) {
-      disableConnection({ iface: iface.name });
+      confirmIfSessionAtRisk(
+        {
+          confirmText: "Disable",
+          message: `This browser may be reaching LinuxIO through ${iface.name}. Disabling the connection can drop this session. To undo it, log in at the machine's console and enable ${iface.name} again.`,
+          title: `Disable ${iface.name}?`,
+        },
+        () => disableConnection({ iface: iface.name }),
+      );
     } else {
       enableConnection({ iface: iface.name });
     }
@@ -307,12 +343,14 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
     }
     const search = splitList(editForm.search).join(",");
 
+    let applyIPv4: () => void;
     if (mode === "auto") {
-      setIPv4({
-        iface: iface.name,
-        method: "dhcp",
-        ...(dnsOptions ? { dns: dnsServers.join(","), search } : {}),
-      });
+      applyIPv4 = () =>
+        setIPv4({
+          iface: iface.name,
+          method: "dhcp",
+          ...(dnsOptions ? { dns: dnsServers.join(","), search } : {}),
+        });
     } else {
       const ipv4 = editForm.ipv4.trim();
       const gateway = editForm.gateway.trim();
@@ -339,17 +377,28 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
         return;
       }
 
-      setIPv4Manual({
-        iface: iface.name,
-        address: ipv4,
-        gateway,
-        dns: dnsServers.join(","),
-        ...(dnsOptions ? { search } : {}),
-      });
+      applyIPv4 = () =>
+        setIPv4Manual({
+          iface: iface.name,
+          address: ipv4,
+          gateway,
+          dns: dnsServers.join(","),
+          ...(dnsOptions ? { search } : {}),
+        });
     }
-    if (mtuChanged) {
-      setMTU({ iface: iface.name, mtu });
-    }
+    confirmIfSessionAtRisk(
+      {
+        confirmText: "Apply",
+        message: `This browser may be reaching LinuxIO through ${iface.name}. Applying new IP settings can drop this session. To undo it, log in at the machine's console and set ${iface.name} back to its previous address or to DHCP.`,
+        title: `Apply IP settings to ${iface.name}?`,
+      },
+      () => {
+        applyIPv4();
+        if (mtuChanged) {
+          setMTU({ iface: iface.name, mtu });
+        }
+      },
+    );
   };
   if (!expanded) return null;
 
@@ -380,18 +429,80 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
           ? "IPv4 disabled"
           : "IPv4 unknown";
 
+  const cardStyle = {
+    display: "flex",
+    flexDirection: "column",
+    gap: GAP_SM,
+    height: "100%",
+    padding: CARD_PADDING_LG,
+  } as const;
+  const title = (
+    <div
+      style={{
+        alignItems: "center",
+        display: "flex",
+        gap: GAP_SM,
+        minWidth: 0,
+      }}
+    >
+      <StatusDot
+        color={getNetworkStateColor(iface.state)}
+        size={8}
+        tooltip={getNetworkStateSummary(iface)}
+      />
+      <AppTypography fontWeight={600} noWrap variant="subtitle1">
+        {iface.name}
+      </AppTypography>
+    </div>
+  );
+  const macLine = (
+    <AppTypography color="text.secondary" noWrap variant="body2">
+      MAC: {iface.mac}
+    </AppTypography>
+  );
+
+  // Every route this card saves through is admin-only, so a session without
+  // sudo gets the same settings as text and nothing that can change them.
+  if (!privileged) {
+    const readOnlyDetails = [
+      [
+        "Connection",
+        isConnected ? "Enabled" : isConnecting ? "Connecting" : "Disabled",
+      ],
+      ["IPv4 method", methodLabel],
+      ...interfaceDetails,
+      ...(dnsOptions
+        ? [["Search domains", dnsOptions.search.join(", ") || "None"]]
+        : []),
+      ["MTU", String(iface.mtu)],
+      ...(iface.optional === undefined
+        ? []
+        : [["Optional at boot", iface.optional ? "Yes" : "No"]]),
+    ];
+    return (
+      <AppGrid size={{ xs: 12, sm: 6, md: 4 }}>
+        <FrostedCard accent style={cardStyle}>
+          <div>
+            {title}
+            {macLine}
+          </div>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: GAP_MD,
+            }}
+          >
+            <DetailRows rows={readOnlyDetails} />
+          </div>
+        </FrostedCard>
+      </AppGrid>
+    );
+  }
+
   return (
     <AppGrid size={{ xs: 12, sm: 6, md: 4 }}>
-      <FrostedCard
-        accent
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: GAP_SM,
-          height: "100%",
-          padding: CARD_PADDING_LG,
-        }}
-      >
+      <FrostedCard accent style={cardStyle}>
         <div>
           <div
             aria-busy={toggling || undefined}
@@ -402,23 +513,7 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
               justifyContent: "space-between",
             }}
           >
-            <div
-              style={{
-                alignItems: "center",
-                display: "flex",
-                gap: GAP_SM,
-                minWidth: 0,
-              }}
-            >
-              <StatusDot
-                color={getNetworkStateColor(iface.state)}
-                size={8}
-                tooltip={getNetworkStateSummary(iface)}
-              />
-              <AppTypography fontWeight={600} noWrap variant="subtitle1">
-                {iface.name}
-              </AppTypography>
-            </div>
+            {title}
             <div style={{ alignItems: "center", display: "flex", gap: GAP_SM }}>
               {toggling ? (
                 <AppCircularProgress
@@ -437,9 +532,7 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
               />
             </div>
           </div>
-          <AppTypography color="text.secondary" noWrap variant="body2">
-            MAC: {iface.mac}
-          </AppTypography>
+          {macLine}
         </div>
 
         <div
@@ -485,23 +578,7 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
                 ? "The interface obtains its address and gateway from DHCP."
                 : "The interface obtains its address, gateway, and DNS from DHCP."}
             </AppTypography>
-            {interfaceDetails.map(([label, value]) => (
-              <div
-                key={label}
-                style={{
-                  display: "flex",
-                  gap: GAP_SM,
-                  justifyContent: "space-between",
-                }}
-              >
-                <AppTypography color="text.secondary" variant="body2">
-                  {label}
-                </AppTypography>
-                <AppTypography noWrap variant="body2">
-                  {value}
-                </AppTypography>
-              </div>
-            ))}
+            <DetailRows rows={interfaceDetails} />
           </div>
         ) : null}
         <div
@@ -620,6 +697,18 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
             {saving ? "Saving…" : "Apply Configuration"}
           </AppButton>
         </div>
+        <AppConfirmDialog
+          confirmText={pendingRisk?.confirmText}
+          destructive
+          message={pendingRisk?.message ?? ""}
+          onClose={() => setPendingRisk(null)}
+          onConfirm={() => {
+            pendingRisk?.action();
+            setPendingRisk(null);
+          }}
+          open={pendingRisk !== null}
+          title={pendingRisk?.title ?? ""}
+        />
       </FrostedCard>
     </AppGrid>
   );

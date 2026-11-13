@@ -10,9 +10,9 @@ import (
 
 var api = apischema.Bindings(
 	apischema.Call[apischema.NoRequest, apischema.PowerStatus]("power.get_status", apischema.RetrySafe(), apischema.Privileged()).Handle(handleGetStatus),
-	apischema.Call[apischema.NoRequest, apischema.PowerStatus]("power.start", apischema.Privileged()).Handle(handleStart),
-	apischema.Call[apischema.ProfileRequest, apischema.PowerStatus]("power.set_profile", apischema.Privileged()).Handle(handleSetProfile),
-	apischema.Call[apischema.NoRequest, apischema.PowerStatus]("power.disable", apischema.Privileged()).Handle(handleDisable),
+	apischema.Mutation("power.start", handleStart, apischema.Privileged()),
+	apischema.Mutation("power.set_profile", handleSetProfile, apischema.Privileged()),
+	apischema.Mutation("power.disable", handleDisable, apischema.Privileged()),
 )
 
 var Routes = api.Routes()

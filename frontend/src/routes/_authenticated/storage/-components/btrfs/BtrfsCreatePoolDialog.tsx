@@ -1,7 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { linuxio, type BtrfsPoolCreateRequest } from "@/api";
+import {
+  linuxio,
+  type BtrfsOpProgress,
+  type BtrfsPoolCreateRequest,
+} from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
@@ -19,10 +23,11 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { formatFileSize } from "@/utils/formatters";
 
+import { FORCE_LABEL, poolDeviceChoices } from "../storageMember";
 import {
   METADATA_HINT,
   metadataProfiles,
-  PROFILE_MIN_DEVICES,
+  profilesFor,
   recommendedMetadata,
   usableBytes,
 } from "./btrfsShared";
@@ -30,7 +35,7 @@ import {
 interface BtrfsCreatePoolDialogProps {
   isPending?: boolean;
   /** The step a running create is on, shown while isPending. */
-  progress?: string | null;
+  progress?: BtrfsOpProgress | null;
   onClose: () => void;
   onConfirm: (request: BtrfsPoolCreateRequest) => void;
   /** Paths of disks in a mounted btrfs filesystem, which are never offered. */
@@ -63,12 +68,11 @@ const BtrfsCreatePoolDialog = ({
 
   const all = data?.devices ?? [];
   const partitioned = new Set(all.flatMap((entry) => entry.parents));
-  const free = all.filter(
-    (entry) =>
-      entry.mountpoints.length === 0 &&
-      !pooledDevices.includes(entry.path) &&
-      !partitioned.has(entry.path) &&
-      (entry.fsType === "" || force),
+  // A disk of another pool, array or volume group is listed disabled with
+  // its reason, force or not.
+  const choices = poolDeviceChoices(all, pooledDevices, force);
+  const free = choices.flatMap(({ device, reason }) =>
+    reason === null ? [device] : [],
   );
   // Unpartitioned space on a disk whose partitions are in use becomes a new
   // partition; a disk with no partitions is offered whole above instead.
@@ -82,9 +86,7 @@ const BtrfsCreatePoolDialog = ({
     spaces.some((entry) => entry.path === path),
   );
   const count = devices.length + freeSpace.length;
-  const profiles = Object.keys(PROFILE_MIN_DEVICES).filter(
-    (profile) => PROFILE_MIN_DEVICES[profile] <= Math.max(count, 1),
-  );
+  const profiles = profilesFor(Math.max(count, 1));
   // A profile the disks or the data profile no longer allow falls back to the
   // default.
   const dataValue = profiles.includes(dataProfile)
@@ -175,16 +177,17 @@ const BtrfsCreatePoolDialog = ({
           </AppTypography>
           <div>
             <AppTypography variant="subtitle2">Disks</AppTypography>
-            {free.length === 0 && spaces.length === 0 && (
+            {choices.length === 0 && spaces.length === 0 && (
               <AppTypography color="text.secondary" variant="body2">
                 No free disks or free space
               </AppTypography>
             )}
-            {free.map((entry) => (
+            {choices.map(({ device: entry, reason }) => (
               <AppFormControlLabel
                 control={
                   <AppCheckbox
                     checked={devices.includes(entry.path)}
+                    disabled={reason !== null}
                     onChange={(_, checked) => toggle(entry.path, checked)}
                   />
                 }
@@ -193,6 +196,7 @@ const BtrfsCreatePoolDialog = ({
                   entry.path,
                   formatFileSize(entry.sizeBytes),
                   entry.model || entry.fsType,
+                  reason,
                 ]
                   .filter(Boolean)
                   .join(" · ")}
@@ -224,7 +228,7 @@ const BtrfsCreatePoolDialog = ({
                 onChange={(_, checked) => setForce(checked)}
               />
             }
-            label="Force (wipe existing filesystem signatures)"
+            label={FORCE_LABEL}
           />
           {free.length > 0 && (
             <AppFormControlLabel
@@ -239,9 +243,13 @@ const BtrfsCreatePoolDialog = ({
           )}
           {isPending && (
             <div role="status">
-              <AppLinearProgress aria-label="Creating pool" />
+              <AppLinearProgress
+                aria-label="Creating pool"
+                value={progress?.percent}
+                variant={progress?.percent ? "determinate" : "indeterminate"}
+              />
               <AppTypography color="text.secondary" variant="caption">
-                {progress ?? "Starting..."}
+                {progress?.message ?? "Starting..."}
               </AppTypography>
             </div>
           )}

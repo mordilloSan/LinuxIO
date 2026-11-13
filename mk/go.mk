@@ -8,11 +8,12 @@ docker_update_binary := $(bin_dir)/linuxio-docker-update
 indexer_binary := $(bin_dir)/linuxio-indexer
 monitoring_binary := $(bin_dir)/linuxio-monitoring
 btrfs_timer_binary := $(bin_dir)/linuxio-btrfs-timer
+claude_relay_binary := $(bin_dir)/linuxio-claude-relay
 
 # The shipped-binary manifest. Every consumer (release workflow, installers'
 # fixture test) reads this list through `make print-binaries`; add a binary
 # here, give it a build target, and add it to build-go-binaries/build-binaries.
-shipped_binaries := linuxio linuxio-webserver linuxio-bridge linuxio-auth linuxio-docker-update linuxio-indexer linuxio-monitoring linuxio-btrfs-timer
+shipped_binaries := linuxio linuxio-webserver linuxio-bridge linuxio-auth linuxio-docker-update linuxio-indexer linuxio-monitoring linuxio-btrfs-timer linuxio-claude-relay
 
 # sha256_of FILE: hex digest of FILE, for use inside a recipe's shell.
 sha256_of = $$($(sha256_cmd) "$(1)" | awk '{ print $$1 }')
@@ -31,11 +32,20 @@ update-go-deps: ensure-go ## Update all Go dependencies (optional GO_MODULES=...
 	done; \
 	if [ "$${#modules[@]}" -eq 0 ]; then modules=(-u -t ./...); fi; \
 	cd "$(backend_dir)"; \
+	before="$$(cat go.mod)"; \
 	$(GO_CMD_ENV) "$(GO_BIN)" get "$${modules[@]}"; \
-	$(GO_CMD_ENV) "$(GO_BIN)" mod tidy
+	$(GO_CMD_ENV) "$(GO_BIN)" mod tidy; \
+	if [ "$$before" = "$$(cat go.mod)" ]; then \
+	  echo "No Go dependency changes in go.mod."; \
+	else \
+	  echo ""; \
+	  echo "📝 Suggested commit message:"; \
+	  echo ""; \
+	  "$(scripts_dir)/go-deps-commit-message.sh" <(printf '%s\n' "$$before") go.mod; \
+	fi
 
 ##@ Development|yellow
-generate: ensure-go ensure-node setup ## Regenerate frontend API contracts
+generate: ensure-go ensure-node setup-frontend ## Regenerate frontend API contracts
 	@cd "$(backend_dir)" && $(GO_CMD_ENV) "$(GO_BIN)" run ./bridge/internal/apigen
 
 ##@ Build|yellow
@@ -70,7 +80,7 @@ build-backend: $(GO_BUILD_PREREQ) ## Build Go backend binary
 
 # One generic recipe builds the other Go binaries; the target-specific
 # variables below describe each one.
-go_binary_targets := build-bridge build-cli build-docker-update build-btrfs-timer build-indexer build-monitoring
+go_binary_targets := build-bridge build-cli build-docker-update build-btrfs-timer build-claude-relay build-indexer build-monitoring
 
 build-bridge: go_binary_label := bridge
 build-bridge: go_binary_package := ./bridge
@@ -95,6 +105,12 @@ build-btrfs-timer: go_binary_package := ./btrfs-timer
 build-btrfs-timer: go_binary_output := $(btrfs_timer_binary)
 build-btrfs-timer: go_binary_ldflags := -s -w
 build-btrfs-timer: ## Build the btrfs snapshot/health timer worker
+
+build-claude-relay: go_binary_label := Claude Code pane relay
+build-claude-relay: go_binary_package := ./claude-relay
+build-claude-relay: go_binary_output := $(claude_relay_binary)
+build-claude-relay: go_binary_ldflags := -s -w
+build-claude-relay: ## Build the relay that carries Claude Code plugin panes to the Assistant
 
 build-indexer: go_binary_label := filesystem indexer
 build-indexer: go_binary_package := ./indexer
@@ -158,7 +174,7 @@ build-go-binaries: $(GO_BUILD_PREREQ) ## Build every Go binary (no C auth helper
 	@BRIDGE_HASH=$(call sha256_of,$(bridge_binary)); \
 	echo "   Hash: $$BRIDGE_HASH"; \
 	$(MAKE) --no-print-directory build-backend BRIDGE_SHA256=$$BRIDGE_HASH SKIP_ENSURE_GO=1
-	@$(MAKE) --no-print-directory build-cli build-docker-update build-indexer build-monitoring build-btrfs-timer SKIP_ENSURE_GO=1
+	@$(MAKE) --no-print-directory build-cli build-docker-update build-indexer build-monitoring build-btrfs-timer build-claude-relay SKIP_ENSURE_GO=1
 
 build-binaries: check-c-build-deps build-go-binaries build-auth ## Build every shipped binary into @BIN@
 

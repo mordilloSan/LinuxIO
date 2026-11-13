@@ -39,6 +39,7 @@ func aptSupport() AutoUpdateOptionSupport {
 		ExcludePackages: true,
 		ExtraOrigins:    true,
 		Frequencies:     []AutoUpdateFrequency{"hourly", "daily", "weekly"},
+		NotifyAvailable: true,
 		NotifyPolicies:  allNotifyPolicies,
 		RebootPolicies:  []AutoUpdateRebootPolicy{"never", "if_needed"},
 		Scopes:          []AutoUpdateScope{"security", "updates", "all"},
@@ -50,18 +51,21 @@ func (b *aptBackend) Read(ctx context.Context) (AutoUpdateState, error) {
 		return AutoUpdateState{}, err
 	}
 
+	support := aptSupport()
+	notify := readNotifyPolicy(b.host, aptUpgradeService, support.NotifyPolicies)
 	state := AutoUpdateState{
 		Backend:      b.Name(),
 		CanConfigure: b.installed(),
 		Options: AutoUpdateOptions{
 			Frequency:       AutoUpdateFrequency(readTimerFrequency(b.host, "apt-daily.timer")),
-			Notify:          readNotifyPolicy(b.host, aptUpgradeService),
+			Notify:          notify,
+			NotifyAvailable: readPendingEnabled(b.host, aptRefreshService),
 			Scope:           "security",
 			RebootPolicy:    "never",
 			ExcludePackages: []string{},
 			ExtraOrigins:    []string{},
 		},
-		Support:          aptSupport(),
+		Support:          support,
 		AvailableOrigins: b.availableOrigins(),
 	}
 	if !state.CanConfigure {
@@ -127,6 +131,9 @@ func (b *aptBackend) Apply(ctx context.Context, options AutoUpdateOptions) error
 	if err := writeNotifyDropIn(b.host, aptUpgradeService, "apt", options.Notify); err != nil {
 		return fmt.Errorf("configure update notifications: %w", err)
 	}
+	if err := writePendingDropIn(b.host, aptRefreshService, "apt", options.NotifyAvailable); err != nil {
+		return fmt.Errorf("configure pending update notifications: %w", err)
+	}
 	if err := b.host.daemonReload(ctx); err != nil {
 		return fmt.Errorf("reload systemd after configuring APT updates: %w", err)
 	}
@@ -182,6 +189,10 @@ APT::Periodic::Unattended-Upgrade "%s";
 
 func aptPeriodicValues(options AutoUpdateOptions) (string, string, string) {
 	if !options.Enabled {
+		if options.NotifyAvailable {
+			// Pending-update alerts need refreshed lists even when nothing installs.
+			return "1", "0", "0"
+		}
 		return "0", "0", "0"
 	}
 	interval := aptPeriodicInterval(options.Frequency)

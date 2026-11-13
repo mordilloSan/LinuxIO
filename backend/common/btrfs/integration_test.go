@@ -128,7 +128,7 @@ func TestBtrfsIntegration(t *testing.T) {
 		p.disks = append(p.disks, loopDevice(t, filepath.Join(dir, fmt.Sprintf("disk%d.img", i)), 2<<30))
 	}
 
-	uuid, err := CreatePool(p.ctx, "linuxio-it", "raid1", "raid1", p.disks[:2], true)
+	uuid, err := CreatePool(p.ctx, "linuxio-it", "raid1", "raid1", p.disks[:2], true, nil)
 	p.must("create pool", err)
 	p.uuid = uuid
 	p.must("mount pool", MountPool(p.ctx, p.disks[0], p.mnt, []string{"noatime"}, false))
@@ -229,16 +229,23 @@ func (p *itPool) devices() {
 	}
 	usage := 50
 	p.must("balance", Balance(p.ctx, p.uuid, BalanceOptions{DataUsageMax: &usage}, func(float64) {}))
+	start := time.Now()
 	p.must("replace", Replace(p.ctx, p.uuid, 2, p.disks[2], func(float64) {}))
 	_, err = ReplaceResult(p.ctx, p.uuid, 2, p.disks[2])
 	p.must("replace result", err)
+	// STATUS's time_started tells this replace's end from an earlier one's.
+	p.must("resume a replace finished since its start", ResumeReplace(p.ctx, p.uuid, 2, start, func(float64) {}))
+	err = ResumeReplace(p.ctx, p.uuid, 2, time.Now().Add(time.Minute), func(float64) {})
+	if want := "the replace of device 2 did not survive the interruption; start it again"; err == nil || err.Error() != want {
+		t.Fatalf("resume a replace finished before the job: %v, want %s", err, want)
+	}
 	p.must("add device", AddDevice(p.ctx, p.uuid, p.disks[1], true))
 	fs := p.filesystem()
 	i := slices.IndexFunc(fs.Devices, func(d BtrfsDevice) bool { return d.Path == p.disks[1] })
 	if len(fs.Devices) != 3 || i < 0 {
 		t.Fatalf("after add: %v", devicePaths(fs))
 	}
-	p.must("remove device", RemoveDevice(p.ctx, p.uuid, fs.Devices[i].ID))
+	p.must("remove device", RemoveDevice(p.ctx, p.uuid, fs.Devices[i].ID, func(float64) {}))
 	if got := devicePaths(p.filesystem()); !slices.Equal(got, []string{p.disks[0], p.disks[2]}) {
 		t.Fatalf("after remove: %v", got)
 	}
@@ -292,7 +299,7 @@ func (p *itPool) offline() {
 func (p *itPool) partitioned() {
 	part, err := PartitionDisk(p.ctx, p.disks[1])
 	p.must("partition", err)
-	_, err = CreatePool(p.ctx, "parted", "single", "dup", []string{part}, false)
+	_, err = CreatePool(p.ctx, "parted", "single", "dup", []string{part}, false, nil)
 	p.must("create on partition", err)
 	pools, err := FindOfflinePools(p.ctx, []string{part})
 	p.must("partitioned pool", err)
@@ -309,7 +316,7 @@ func (p *itPool) partitioned() {
 	if want := partitionPath(p.disks[1], 2); free != want {
 		p.t.Fatalf("added partition %s, want %s", free, want)
 	}
-	_, err = CreatePool(p.ctx, "freespace", "single", "dup", []string{free}, false)
+	_, err = CreatePool(p.ctx, "freespace", "single", "dup", []string{free}, false, nil)
 	p.must("create on free space", err)
 	pools, err = FindOfflinePools(p.ctx, []string{free})
 	p.must("free space pool", err)
@@ -382,6 +389,30 @@ func (d *itDisk) table(want ...kernelPartition) {
 	}
 }
 
+// trims checks that the trim Format runs before mkfs discards for real:
+// the loop device punches a hole in its file, so a block written to part
+// reads back as zeros, and the progress runs from 0 to 100.
+func (d *itDisk) trims(part string) {
+	d.t.Helper()
+	mark := bytes.Repeat([]byte{0xff}, 4096)
+	f, err := os.OpenFile(part, os.O_WRONLY, 0)
+	d.must("open "+part, err)
+	_, err = f.WriteAt(mark, 128<<20)
+	d.must("write "+part, err)
+	d.must("sync "+part, f.Sync())
+	d.must("close "+part, f.Close())
+	var pcts []float64
+	d.must("trim "+part, trim(d.ctx, []string{part}, func(pct float64) { pcts = append(pcts, pct) }))
+	f, err = os.Open(part)
+	d.must("open "+part, err)
+	defer f.Close()
+	_, err = f.ReadAt(mark, 128<<20)
+	d.must("read "+part, err)
+	if !bytes.Equal(mark, make([]byte, len(mark))) || !slices.Equal(pcts, []float64{0, 100}) {
+		d.t.Fatalf("trim of %s: block not discarded or progress %v", part, pcts)
+	}
+}
+
 // gptBytes reads the first and last 32 KiB of the disk, where the GPT lives.
 func (d *itDisk) gptBytes() []byte {
 	d.t.Helper()
@@ -426,9 +457,11 @@ func TestPartitionIntegration(t *testing.T) {
 	// The kernel and both GPT copies then list both partitions.
 	var p1, p2 string
 	d.locked(func() { p1 = d.create(first) })
+
+	d.locked(func() { d.trims(p1) })
 	d.locked(func() {
 		p2 = d.create(second)
-		_, err := Format(d.ctx, p1, "ext4", "it", false)
+		_, err := Format(d.ctx, p1, "ext4", "it", false, nil)
 		d.must("format "+p1, err)
 		d.must("mount "+p1, unix.Mount(p1, d.mnt, "ext4", 0, ""))
 		d.table(first, second)
@@ -485,7 +518,7 @@ func TestPartitionIntegration(t *testing.T) {
 		fsType = "xfs"
 	}
 	d.locked(func() {
-		_, err := Format(d.ctx, p2, fsType, "", false)
+		_, err := Format(d.ctx, p2, fsType, "", false, nil)
 		d.must("format "+p2, err)
 		d.must("mount "+p2, unix.Mount(p2, d.mnt, fsType, 0, ""))
 	})

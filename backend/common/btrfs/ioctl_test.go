@@ -1,8 +1,14 @@
 package btrfs
 
 import (
+	"errors"
+	"os"
+	"strconv"
+	"strings"
 	"testing"
 	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 // The request numbers below are the values strace prints for the kernel's
@@ -68,6 +74,29 @@ func TestKernelStructOffsets(t *testing.T) {
 	}
 }
 
+// The replace STATUS layout and states, from struct
+// btrfs_ioctl_dev_replace_status_params and BTRFS_IOCTL_DEV_REPLACE_STATE_*.
+func TestDevReplaceStatusMatchesKernel(t *testing.T) {
+	var status struct {
+		ReplaceState, Progress1000, TimeStarted, TimeStopped uint64
+		NumWriteErrors, NumUncorrectableReadErrors           uint64
+	}
+	for name, c := range map[string]struct{ got, want uintptr }{
+		"replace_state offset": {replaceStatusState, unsafe.Offsetof(status.ReplaceState)},
+		"progress_1000 offset": {replaceStatusPerMill, unsafe.Offsetof(status.Progress1000)},
+		"time_started offset":  {replaceStatusTimeStarted, unsafe.Offsetof(status.TimeStarted)},
+		"STATE_STARTED":        {replaceStateStarted, 1},
+		"STATE_FINISHED":       {replaceStateFinished, 2},
+		"STATE_CANCELED":       {replaceStateCanceled, 3},
+		"STATE_SUSPENDED":      {replaceStateSuspended, 4},
+		"RESULT_NOT_STARTED":   {replaceResultNotStarted, 1},
+	} {
+		if c.got != c.want {
+			t.Errorf("%s = %d, want %d", name, c.got, c.want)
+		}
+	}
+}
+
 func TestProfileAndKindNames(t *testing.T) {
 	cases := map[uint64][2]string{
 		bgData | bgRaid1:               {"data", "raid1"},
@@ -81,9 +110,57 @@ func TestProfileAndKindNames(t *testing.T) {
 			t.Errorf("%#x: %s/%s, want %s/%s", flags, kindName(flags), profileName(flags), want[0], want[1])
 		}
 	}
-	for name, bit := range profileFlags {
-		if name != "single" && profileName(bgData|bit) != name {
+	for name, p := range profiles {
+		if name != "single" && profileName(bgData|p.flag) != name {
 			t.Errorf("%s round trip failed", name)
 		}
+	}
+}
+
+// Since 6.19 any signal pending on the ioctl thread aborts a scrub or a
+// replace, so the long ioctls run with every signal blocked but the faults
+// a thread raises itself; SIGKILL and SIGSTOP cannot be blocked.
+func TestBlockingIoctlBlocksAsyncSignals(t *testing.T) {
+	stub := errors.New("stub ioctl")
+	var blocked uint64
+	var readErr error
+	old := fsIoctl
+	fsIoctl = func(string, uintptr, unsafe.Pointer) error {
+		status, err := os.ReadFile("/proc/thread-self/status")
+		if err != nil {
+			readErr = err
+			return stub
+		}
+		for line := range strings.Lines(string(status)) {
+			if mask, ok := strings.CutPrefix(line, "SigBlk:"); ok {
+				blocked, readErr = strconv.ParseUint(strings.TrimSpace(mask), 16, 64)
+			}
+		}
+		return stub
+	}
+	t.Cleanup(func() { fsIoctl = old })
+
+	if err := blockingIoctl("/data", iocScrub, nil); err != stub {
+		t.Fatalf("blockingIoctl = %v, want the ioctl's own error", err)
+	}
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	want := ^uint64(0)
+	for _, sig := range []unix.Signal{unix.SIGKILL, unix.SIGSTOP, unix.SIGSEGV, unix.SIGBUS, unix.SIGFPE, unix.SIGILL, unix.SIGTRAP, unix.SIGSYS} {
+		want &^= 1 << (sig - 1)
+	}
+	if blocked != want {
+		t.Fatalf("SigBlk = %016x, want %016x", blocked, want)
+	}
+}
+
+// The texts are btrfs_err_str's for enum btrfs_err_code.
+func TestKernelCodeMessages(t *testing.T) {
+	if msg := kernelCode(8).Error(); !strings.Contains(msg, "operation in progress") {
+		t.Errorf("kernelCode(8) = %q", msg)
+	}
+	if msg := kernelCode(99).Error(); msg != "kernel refused with code 99" {
+		t.Errorf("kernelCode(99) = %q", msg)
 	}
 }

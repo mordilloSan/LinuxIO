@@ -8,6 +8,7 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { up } from "@/theme/breakpoints";
 
 import AppUpdateBanner from "./app-update/AppUpdateBanner";
+import JobsUpdateBanner from "./app-update/JobsUpdateBanner";
 import { useAppUpdateInfo } from "./app-update/useAppUpdateInfo";
 import Footer from "./footer/Footer";
 import Navbar from "./navbar/Navbar";
@@ -15,6 +16,7 @@ import Sidebar from "./sidebar/Sidebar";
 import { useCloseMobileSidebarOnNavigate } from "./sidebar/useCloseMobileSidebarOnNavigate";
 import useSidebar from "./sidebar/useSidebar";
 import { useSidebarItems } from "./sidebar/useSidebarItems";
+import { useAwayNotice } from "./useAwayNotice";
 
 import "@/icons/icons";
 
@@ -29,6 +31,7 @@ const MainLayout = () => {
   const sidebarItems = useSidebarItems();
 
   useCloseMobileSidebarOnNavigate();
+  useAwayNotice();
 
   /*
    * The gap between the header and the first thing on the page. A routed tab
@@ -146,6 +149,15 @@ const MainLayout = () => {
               />
             </div>
           )}
+
+          <div
+            style={{
+              paddingLeft: pageInsetInline,
+              paddingRight: pageInsetInline,
+            }}
+          >
+            <JobsUpdateBanner />
+          </div>
 
           <div
             style={{

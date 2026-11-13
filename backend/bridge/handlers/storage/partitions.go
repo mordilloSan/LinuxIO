@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -30,33 +29,50 @@ var (
 	checkNotBusy        = btrfs.CheckNotBusy
 	mountDevice         = unix.Mount
 	lockDisk            = btrfs.LockDisk
+	partitionDisk       = btrfs.PartitionDisk
+	addPartition        = btrfs.AddPartition
+	createBtrfsPool     = btrfs.CreatePool
+	mountBtrfsPool      = btrfs.MountPool
+	mountOfflinePool    = btrfs.MountOfflinePool
+	wipePoolSuperblocks = btrfs.WipePoolSuperblocks
+	partitionNumber     = btrfs.PartitionNumber
+	unmountPool         = unix.Unmount
+	addPoolFstab        = addToFstab
+	findBtrfsFilesystem = btrfs.FindFilesystem
 )
 
-// formatStep is the progress step of every format: mkfs discards the whole
-// partition first, which is why create and format run as tasks.
-const formatStep = "Formatting: SSDs are trimmed first, which can take a few minutes"
+// formatProgress turns Format's trim progress into steps: the trim, with
+// its percent done, then the format. The trim takes minutes on a large SSD,
+// which is why create and format run as tasks.
+func formatProgress(report func(step string, pct float64)) func(float64) {
+	return func(pct float64) {
+		if pct < 100 {
+			report(fmt.Sprintf("Trimming before formatting: %.0f%% complete", pct), pct)
+			return
+		}
+		report("Formatting", 0)
+	}
+}
 
 // callLockWait bounds how long a call waits for the disk lock: 5 s covers
 // udevd's brief shared lock while it probes, without hanging the request
 // behind a long mkfs. A var so tests can shorten it.
 var callLockWait = 5 * time.Second
 
-var partitionRoutes = partitionBindings().Routes()
-
 func partitionBindings() apischema.BindingSet {
 	return apischema.Bindings(
-		apischema.TaskRunner[apischema.PartitionCreateRequest, apischema.SuccessPathResponse]("storage.partition_create", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[BtrfsOpProgress](), apischema.WithTaskMetadata(func(req apischema.PartitionCreateRequest) bridgeipc.TaskMetadata {
+		apischema.MutationTask("storage.partition_create", runPartitionCreateTask, apischema.Privileged(), apischema.Progress[BtrfsOpProgress](), apischema.WithTaskMetadata(func(req apischema.PartitionCreateRequest) bridgeipc.TaskMetadata {
 			return bridgeipc.TaskMetadata{Identity: []string{req.Device, "partition"}, Label: "Creating partition", Device: req.Device}
-		})).Run(runPartitionCreateTask, bridgeipc.TaskDefault),
-		apischema.TaskRunner[apischema.PartitionFormatRequest, apischema.SuccessResponse]("storage.partition_format", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[BtrfsOpProgress](), apischema.WithTaskMetadata(func(req apischema.PartitionFormatRequest) bridgeipc.TaskMetadata {
+		})),
+		apischema.MutationTask("storage.partition_format", runPartitionFormatTask, apischema.Privileged(), apischema.Progress[BtrfsOpProgress](), apischema.WithTaskMetadata(func(req apischema.PartitionFormatRequest) bridgeipc.TaskMetadata {
 			return bridgeipc.TaskMetadata{Identity: []string{req.Device, "format"}, Label: "Formatting partition", Device: req.Device}
-		})).Run(runPartitionFormatTask, bridgeipc.TaskDefault),
+		})),
 	)
 }
 
 func runPartitionCreateTask(ctx context.Context, task *bridgeipc.Task, req apischema.PartitionCreateRequest) (apischema.SuccessPathResponse, error) {
-	part, err := CreatePartition(ctx, req, func(step string) {
-		task.ReportProgress(BtrfsOpProgress{Op: "partition", Message: step})
+	part, err := CreatePartition(ctx, req, func(step string, pct float64) {
+		task.ReportProgress(BtrfsOpProgress{Op: "partition", Percent: pct, Message: step})
 	})
 	if err != nil {
 		return apischema.SuccessPathResponse{}, err
@@ -65,8 +81,8 @@ func runPartitionCreateTask(ctx context.Context, task *bridgeipc.Task, req apisc
 }
 
 func runPartitionFormatTask(ctx context.Context, task *bridgeipc.Task, req apischema.PartitionFormatRequest) (apischema.SuccessResponse, error) {
-	err := FormatPartition(ctx, req, func(step string) {
-		task.ReportProgress(BtrfsOpProgress{Op: "format", Message: step})
+	err := FormatPartition(ctx, req, func(step string, pct float64) {
+		task.ReportProgress(BtrfsOpProgress{Op: "format", Percent: pct, Message: step})
 	})
 	if err != nil {
 		return apischema.SuccessResponse{}, err
@@ -135,33 +151,6 @@ func (inv partitionInventory) writablePartition(path string) (part, disk apische
 		return part, disk, fmt.Errorf("%w: %s is read-only", bridgeipc.ErrConflict, disk.Path)
 	}
 	return part, disk, nil
-}
-
-// deviceInUse refuses dev when it is mounted, an active swap or held (Busy),
-// a member of a btrfs filesystem mounted or not, or named in /etc/fstab. A
-// mount just for now (forMount without persist) ignores /etc/fstab, so a
-// partition listed there can still be mounted.
-func deviceInUse(dev apischema.StorageBlockDevice, fss []btrfs.BtrfsFilesystem, offline []btrfs.BtrfsOfflinePool, forMount, persist bool) error {
-	inUse := func(reason string) error {
-		return fmt.Errorf("%w: %s: %s", bridgeipc.ErrConflict, dev.Path, reason)
-	}
-	if dev.Busy != "" {
-		return inUse(dev.Busy)
-	}
-	for _, fs := range fss {
-		if slices.ContainsFunc(fs.Devices, func(b btrfs.BtrfsDevice) bool { return b.Path == dev.Path }) {
-			return inUse("Member of btrfs pool " + cmp.Or(fs.Label, fs.UUID))
-		}
-	}
-	for _, pool := range offline {
-		if slices.Contains(pool.Devices, dev.Path) {
-			return inUse("Member of btrfs pool " + cmp.Or(pool.Label, pool.UUID))
-		}
-	}
-	if dev.InFstab && (!forMount || persist) {
-		return inUse("In /etc/fstab")
-	}
-	return nil
 }
 
 // lockDiskForCall is lockDisk for a call, which gives up after callLockWait
@@ -282,10 +271,10 @@ func checkPartitionCreate(req apischema.PartitionCreateRequest, inv partitionInv
 }
 
 // CreatePartition adds a partition in a free region of a GPT disk and, when
-// asked, formats and mounts it, reporting each step. It returns the new
-// partition's path. The disk stays locked against udev throughout, so its
-// partition nodes do not flap under mkfs.
-func CreatePartition(ctx context.Context, req apischema.PartitionCreateRequest, report func(step string)) (string, error) {
+// asked, formats and mounts it, reporting each step and, while it trims, the
+// percent done. It returns the new partition's path. The disk stays locked
+// against udev throughout, so its partition nodes do not flap under mkfs.
+func CreatePartition(ctx context.Context, req apischema.PartitionCreateRequest, report func(step string, pct float64)) (string, error) {
 	inv, err := loadPartitionInventory(ctx)
 	if err != nil {
 		return "", err
@@ -299,7 +288,7 @@ func CreatePartition(ctx context.Context, req apischema.PartitionCreateRequest, 
 		return "", err
 	}
 	defer unlock()
-	report("Partitioning")
+	report("Partitioning", 0)
 	part, err := createPartition(ctx, disk.Path, req.StartBytes, req.SizeBytes)
 	if err != nil {
 		return "", conflictIfBusy(fmt.Errorf("create partition on %s: %w", disk.Path, err))
@@ -307,14 +296,13 @@ func CreatePartition(ctx context.Context, req apischema.PartitionCreateRequest, 
 	var fsType, mountpoint string
 	if f := req.Format; f != nil {
 		fsType = f.FSType
-		report(formatStep)
-		uuid, formatErr := formatDevice(ctx, part, f.FSType, f.Label, false)
+		uuid, formatErr := formatDevice(ctx, part, f.FSType, f.Label, false, formatProgress(report))
 		if formatErr != nil {
 			return "", fmt.Errorf("partition %s was created but not formatted: %w", part, formatErr)
 		}
 		if m := req.Mount; m != nil {
 			mountpoint = m.Mountpoint
-			report("Mounting at " + m.Mountpoint)
+			report("Mounting at "+m.Mountpoint, 0)
 			if mountErr := mountFilesystem(part, f.FSType, m.Mountpoint); mountErr != nil {
 				return "", fmt.Errorf("partition %s was formatted but not mounted: %w", part, mountErr)
 			}
@@ -328,8 +316,10 @@ func CreatePartition(ctx context.Context, req apischema.PartitionCreateRequest, 
 }
 
 // FormatPartition makes a filesystem on an unused partition, reporting the
-// step; a partition with a filesystem signature needs Overwrite.
-func FormatPartition(ctx context.Context, req apischema.PartitionFormatRequest, report func(step string)) error {
+// steps; a partition with a filesystem signature needs Overwrite, and one
+// that is a member of an md array, an LVM volume group or another set also
+// needs the request to confirm that member.
+func FormatPartition(ctx context.Context, req apischema.PartitionFormatRequest, report func(step string, pct float64)) error {
 	inv, err := loadPartitionInventory(ctx)
 	if err != nil {
 		return err
@@ -350,6 +340,9 @@ func FormatPartition(ctx context.Context, req apischema.PartitionFormatRequest, 
 	if part.FSType != "" && !req.Overwrite {
 		return fmt.Errorf("%w: %s has a %s signature; overwrite it to format", bridgeipc.ErrConflict, part.Path, part.FSType)
 	}
+	if _, err = confirmedMembers([]apischema.StorageBlockDevice{part}, req.ConfirmMembers, "erasing it to format "+part.Path); err != nil {
+		return err
+	}
 	unlock, err := lockDisk(ctx, disk.Path)
 	if err != nil {
 		return err
@@ -360,8 +353,7 @@ func FormatPartition(ctx context.Context, req apischema.PartitionFormatRequest, 
 	if err = checkNotBusy(part.Path); err != nil {
 		return conflictIfBusy(err)
 	}
-	report(formatStep)
-	uuid, err := formatDevice(ctx, part.Path, req.FSType, req.Label, req.Overwrite)
+	uuid, err := formatDevice(ctx, part.Path, req.FSType, req.Label, req.Overwrite, formatProgress(report))
 	if err != nil {
 		return conflictIfBusy(fmt.Errorf("format %s: %w", part.Path, err))
 	}
@@ -370,8 +362,9 @@ func FormatPartition(ctx context.Context, req apischema.PartitionFormatRequest, 
 }
 
 // DeletePartition removes an unused partition from its disk's GPT, leaving
-// its data in place.
-func DeletePartition(ctx context.Context, req apischema.BlockDeviceRequest) (apischema.SuccessResponse, error) {
+// its data in place. A member of an md array, an LVM volume group or another
+// set is deleted only when the request confirms it.
+func DeletePartition(ctx context.Context, req apischema.PartitionDeleteRequest) (apischema.SuccessResponse, error) {
 	inv, err := loadPartitionInventory(ctx)
 	if err != nil {
 		return apischema.SuccessResponse{}, err
@@ -384,6 +377,9 @@ func DeletePartition(ctx context.Context, req apischema.BlockDeviceRequest) (api
 		return apischema.SuccessResponse{}, fmt.Errorf("%w: %s is not on a GPT disk; only GPT partitions can be deleted", bridgeipc.ErrInvalidArgs, part.Path)
 	}
 	if err = deviceInUse(part, inv.fss, inv.offline, false, false); err != nil {
+		return apischema.SuccessResponse{}, err
+	}
+	if _, err = confirmedMembers([]apischema.StorageBlockDevice{part}, req.ConfirmMembers, "deleting it"); err != nil {
 		return apischema.SuccessResponse{}, err
 	}
 	unlock, err := lockDiskForCall(ctx, disk.Path)
@@ -443,9 +439,60 @@ func MountPartition(ctx context.Context, req apischema.PartitionMountRequest) (a
 	return mountResult(req.Mountpoint, ""), nil
 }
 
+// confirmedMembers returns the member signatures among devs, which are
+// already known not to be in use, refusing when confirmed does not list
+// exactly those: a member nobody confirmed, or a confirmation of a member
+// that is gone, which means the device changed since the user looked at it.
+// what says what the confirmation is for, such as "erasing it to format
+// /dev/sdb1". Nothing holds a member of a stopped md array or an inactive
+// LVM volume group, so deviceInUse lets it through; a member of a btrfs pool
+// the bridge knows, mounted or not, never gets this far. A btrfs signature
+// that reaches the confirmation belongs to no pool the bridge can read, so
+// it cannot be destroyed as one and is erased only when named.
+func confirmedMembers(devs []apischema.StorageBlockDevice, confirmed []apischema.DiskMemberConfirmed, what string) ([]apischema.DiskMemberConfirmed, error) {
+	var members []apischema.DiskMemberConfirmed
+	for _, d := range devs {
+		m := memberOf(d)
+		if m == nil {
+			continue
+		}
+		member := apischema.DiskMemberConfirmed{Device: d.Path, Kind: m.Kind, UUID: m.UUID}
+		if !slices.Contains(confirmed, member) {
+			return nil, fmt.Errorf("%w: %s: Member of %s; confirm %s", bridgeipc.ErrConflict, d.Path, describeMember(*m), what)
+		}
+		members = append(members, member)
+	}
+	for _, c := range confirmed {
+		if !slices.Contains(members, c) {
+			return nil, fmt.Errorf("%w: %s is no longer the %s member that was confirmed; review the disk again", bridgeipc.ErrConflict, c.Device, c.Kind)
+		}
+	}
+	return members, nil
+}
+
+// checkInitialize refuses to initialize disk while it or a partition of it is
+// in use, or carries a member signature that confirmed does not list
+// exactly. It returns the members the initialize erases.
+func (inv partitionInventory) checkInitialize(disk string, confirmed []apischema.DiskMemberConfirmed) ([]apischema.DiskMemberConfirmed, error) {
+	var devs []apischema.StorageBlockDevice
+	for _, d := range inv.devices {
+		if d.Path != disk && (d.Type != "part" || !slices.Contains(d.Parents, disk)) {
+			continue
+		}
+		if err := deviceInUse(d, inv.fss, inv.offline, false, false); err != nil {
+			return nil, err
+		}
+		devs = append(devs, d)
+	}
+	return confirmedMembers(devs, confirmed, "erasing it to initialize "+disk)
+}
+
 // InitializeDisk replaces everything on a disk, which with every partition
-// on it must be unused, with an empty GPT.
-func InitializeDisk(ctx context.Context, req apischema.BlockDeviceRequest) (apischema.SuccessResponse, error) {
+// on it must be unused, with an empty GPT. A member of an md array or an LVM
+// volume group on it, which nothing holds once the array is stopped or the
+// group inactive, is erased only when the request confirms exactly the
+// members found; a member of a btrfs pool is refused like any device in use.
+func InitializeDisk(ctx context.Context, req apischema.DiskInitializeRequest) (apischema.SuccessResponse, error) {
 	inv, err := loadPartitionInventory(ctx)
 	if err != nil {
 		return apischema.SuccessResponse{}, err
@@ -454,12 +501,9 @@ func InitializeDisk(ctx context.Context, req apischema.BlockDeviceRequest) (apis
 	if err != nil {
 		return apischema.SuccessResponse{}, err
 	}
-	for _, d := range inv.devices {
-		if d.Path == disk.Path || (d.Type == "part" && slices.Contains(d.Parents, disk.Path)) {
-			if err = deviceInUse(d, inv.fss, inv.offline, false, false); err != nil {
-				return apischema.SuccessResponse{}, err
-			}
-		}
+	members, err := inv.checkInitialize(disk.Path, req.ConfirmMembers)
+	if err != nil {
+		return apischema.SuccessResponse{}, err
 	}
 	unlock, err := lockDiskForCall(ctx, disk.Path)
 	if err != nil {
@@ -469,6 +513,6 @@ func InitializeDisk(ctx context.Context, req apischema.BlockDeviceRequest) (apis
 	if err = initializeDisk(ctx, disk.Path); err != nil {
 		return apischema.SuccessResponse{}, conflictIfBusy(fmt.Errorf("initialize %s: %w", disk.Path, err))
 	}
-	slog.Info("initialized disk", "device", disk.Path)
+	slog.Info("initialized disk", "device", disk.Path, "erasedMembers", len(members))
 	return apischema.SuccessResponse{Success: true}, nil
 }

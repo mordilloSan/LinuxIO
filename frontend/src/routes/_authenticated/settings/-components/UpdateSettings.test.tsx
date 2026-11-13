@@ -25,6 +25,7 @@ const fullSupport: AutoUpdateState["support"] = {
   exclude_packages: true,
   extra_origins: true,
   frequencies: ["hourly", "daily", "weekly"],
+  notify_available: true,
   notify_policies: ["never", "on_failure", "on_change", "always"],
   reboot_policies: ["never", "if_needed"],
   scopes: ["security", "updates", "all"],
@@ -44,6 +45,7 @@ const autoUpdateState = (
     extra_origins: [],
     frequency: "daily",
     notify: "on_change",
+    notify_available: false,
     reboot_policy: "if_needed",
     scope: "all",
     ...overrides,
@@ -186,27 +188,8 @@ describe("UpdateSettings", () => {
     }
   });
 
-  it("offers the notification policy when the backend supports it", () => {
+  it("leaves notification policies to the Notifications tab", () => {
     render(<UpdateSettings state={settingsState(aptState(), [])} />);
-
-    expect(screen.getByLabelText("Notifications")).toHaveTextContent(
-      "When packages are installed",
-    );
-  });
-
-  it("hides the notification policy when unsupported", () => {
-    render(
-      <UpdateSettings
-        state={settingsState(
-          autoUpdateState(
-            "apt-unattended",
-            { notify: "never" },
-            { support: { ...fullSupport, notify_policies: [] } },
-          ),
-          [],
-        )}
-      />,
-    );
 
     expect(screen.queryByLabelText("Notifications")).toBeNull();
   });
@@ -224,6 +207,7 @@ describe("UpdateSettings", () => {
                 exclude_packages: true,
                 extra_origins: false,
                 frequencies: ["hourly", "daily", "weekly"],
+                notify_available: false,
                 notify_policies: [],
                 reboot_policies: ["never"],
                 scopes: ["security", "all"],

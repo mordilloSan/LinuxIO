@@ -103,6 +103,7 @@ if [ "$production_status" -eq 0 ]; then
 		-e '^common/logguard/' \
 		-e '^common/peercred/peercred\.go:[0-9]+:[0-9]+: unreachable func: WithCredForTest$' \
 		-e '^bridge/internal/acpagents/acpagents\.go:[0-9]+:[0-9]+: unreachable func: Override$' \
+		-e '^bridge/internal/acpagents/acpagentstest/' \
 		-e '^common/dockerupdate/journal\.go:[0-9]+:[0-9]+: unreachable func: NewJournal$' \
 		-e '^monitoring/internal/store/storetest/sample\.go:[0-9]+:[0-9]+: unreachable func: SampleCombinedData$' || true)"
 fi

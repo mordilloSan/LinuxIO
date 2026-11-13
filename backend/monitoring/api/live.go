@@ -38,17 +38,20 @@ type LiveCPUBreakdown struct {
 }
 
 type LiveMemory struct {
-	TotalBytes      uint64 `json:"total_bytes"`
-	UsedBytes       uint64 `json:"used_bytes"`
-	AvailableBytes  uint64 `json:"available_bytes"`
-	FreeBytes       uint64 `json:"free_bytes"`
-	CachedBytes     uint64 `json:"cached_bytes"`
-	BuffersBytes    uint64 `json:"buffers_bytes"`
-	SharedBytes     uint64 `json:"shared_bytes"`
-	SwapTotalBytes  uint64 `json:"swap_total_bytes"`
-	SwapFreeBytes   uint64 `json:"swap_free_bytes"`
-	ZFSArcBytes     uint64 `json:"zfs_arc_bytes"`
+	TotalBytes     uint64 `json:"total_bytes"`
+	UsedBytes      uint64 `json:"used_bytes"`
+	AvailableBytes uint64 `json:"available_bytes"`
+	FreeBytes      uint64 `json:"free_bytes"`
+	CachedBytes    uint64 `json:"cached_bytes"`
+	BuffersBytes   uint64 `json:"buffers_bytes"`
+	SharedBytes    uint64 `json:"shared_bytes"`
+	SwapTotalBytes uint64 `json:"swap_total_bytes"`
+	SwapFreeBytes  uint64 `json:"swap_free_bytes"`
+	ZFSArcBytes    uint64 `json:"zfs_arc_bytes"`
+	// DockerUsedBytes and VMUsedBytes are the parts of UsedBytes that Docker
+	// containers and libvirt VMs hold, page cache excluded.
 	DockerUsedBytes uint64 `json:"docker_used_bytes"`
+	VMUsedBytes     uint64 `json:"vm_used_bytes"`
 }
 
 type LiveDiskRates struct {
@@ -181,6 +184,7 @@ type LiveContainer struct {
 	Name                  string   `json:"name"`
 	CPUPercent            float64  `json:"cpu_percent"`
 	MemoryBytes           uint64   `json:"memory_bytes"`
+	MemoryLimitBytes      *uint64  `json:"memory_limit_bytes,omitzero"`
 	RxBytesPerSec         float64  `json:"rx_bytes_per_sec"`
 	TxBytesPerSec         float64  `json:"tx_bytes_per_sec"`
 	BlockReadBytesPerSec  *float64 `json:"block_read_bytes_per_sec,omitzero"`

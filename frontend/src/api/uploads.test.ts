@@ -12,7 +12,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/api/generated/client", () => ({
-  default: { filebrowser: { upload: mocks.upload } },
+  default: { filebrowser: { upload: { start: mocks.upload } } },
 }));
 
 vi.mock("@/api/linuxio", () => ({
@@ -92,5 +92,22 @@ describe("uploadContent", () => {
     });
     expect(mocks.openTaskDataStream).toHaveBeenCalledWith("task-1", 0);
     expect(mocks.streamWriteChunks).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks for the session owner and a private file only when told to", async () => {
+    mocks.upload.mockResolvedValue(snapshot({ state: "completed" }));
+
+    await uploadContent("/home/alice/stack/.env", new Uint8Array(4), {
+      owner: "session",
+      private: true,
+    });
+
+    expect(mocks.upload).toHaveBeenCalledWith({
+      targetPath: "/home/alice/stack/.env",
+      size: "4",
+      overwrite: undefined,
+      owner: "session",
+      private: true,
+    });
   });
 });

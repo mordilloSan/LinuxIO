@@ -4,16 +4,19 @@ import type { ContainerInfo, ContainerPort } from "@/api";
 export const getContainerName = (container: ContainerInfo) =>
   container.Names?.[0]?.replace(/^\//, "") || container.Id.slice(0, 12);
 
-/** Health-aware display state understood by `getContainerStatusColor`. */
-export const getContainerDisplayState = (container: ContainerInfo) => {
-  const status = container.Status.toLowerCase();
-  if (status.includes("unhealthy")) return "Unhealthy";
-  if (status.includes("healthy")) return "Healthy";
-  if (container.State === "running") return "Running";
-  if (container.State === "exited") return "Stopped";
-  if (container.State === "dead") return "Dead";
-  return container.State || "Unknown";
+/** Health-aware display state understood by `getContainerTone`. */
+export const getDisplayState = (state: string, status: string) => {
+  const lowered = status.toLowerCase();
+  if (lowered.includes("unhealthy")) return "Unhealthy";
+  if (lowered.includes("healthy")) return "Healthy";
+  if (state === "running") return "Running";
+  if (state === "exited") return "Stopped";
+  if (state === "dead") return "Dead";
+  return state || "Unknown";
 };
+
+export const getContainerDisplayState = (container: ContainerInfo) =>
+  getDisplayState(container.State, container.Status);
 
 /** Ports with duplicate host/IP bindings collapsed, sorted by private port. */
 export const getDedupedPorts = (container: ContainerInfo): ContainerPort[] => {

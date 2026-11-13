@@ -1,6 +1,7 @@
 import { Icon } from "@iconify/react";
 import { useState } from "react";
 
+import { useStreamMux } from "@/api";
 import type { AppUpdateInfo } from "@/api/webserver";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAlert from "@/components/ui/AppAlert";
@@ -14,8 +15,10 @@ import {
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppLinkButton from "@/components/ui/AppLinkButton";
 import { useAppUpdateInProgress, useAppUpdater } from "@/hooks/useAppUpdater";
+import useAuth from "@/hooks/useAuth";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { up } from "@/theme/breakpoints";
+import { setSigninNotice } from "@/utils/signinNotice";
 
 import AppUpdateDialog from "./AppUpdateDialog";
 
@@ -40,6 +43,16 @@ const AppUpdateBanner = ({ updateInfo, onDismiss }: AppUpdateBannerProps) => {
     targetVersion,
   } = useAppUpdater();
   const isUpdating = useAppUpdateInProgress();
+  const { signOut } = useAuth();
+  // The restart after an update drops the session. The only way out is a
+  // full sign-out, so the browser loads the new bundle instead of reusing
+  // the one already running.
+  const sessionLost = useStreamMux().status === "error";
+
+  const signInAgain = () => {
+    setSigninNotice("updated");
+    void signOut();
+  };
 
   const handleUpdate = () => {
     setConfirmOpen(true);
@@ -51,18 +64,9 @@ const AppUpdateBanner = ({ updateInfo, onDismiss }: AppUpdateBannerProps) => {
   };
 
   const handleCloseDialog = () => {
-    if (!isUpdating) resetUpdate();
-  };
-
-  const handleContinue = () => {
-    // Clear update info and reload to login page
-    try {
-      sessionStorage.removeItem("update_info");
-      sessionStorage.setItem("update_info_checked", "1");
-    } catch {
-      // Storage may be unavailable; the reload still completes the update flow.
-    }
-    window.location.reload();
+    if (isUpdating) return;
+    if (sessionLost) signInAgain();
+    else resetUpdate();
   };
 
   if (!updateInfo.available) {
@@ -84,7 +88,7 @@ const AppUpdateBanner = ({ updateInfo, onDismiss }: AppUpdateBannerProps) => {
             {updateInfo.latest_version}?
           </AppDialogContentText>
           <AppDialogContentText>
-            The service will restart automatically.
+            The service will restart and you will need to sign in again.
           </AppDialogContentText>
         </AppDialogContent>
         <AppDialogActions>
@@ -96,8 +100,9 @@ const AppUpdateBanner = ({ updateInfo, onDismiss }: AppUpdateBannerProps) => {
       </GeneralDialog>
       <AppUpdateDialog
         canClose={!isUpdating && !updateSuccess}
+        closeLabel={sessionLost ? "Sign in again" : "Close"}
         onClose={handleCloseDialog}
-        onContinue={handleContinue}
+        onContinue={signInAgain}
         open={phase !== "idle"}
         output={output}
         progress={progress}

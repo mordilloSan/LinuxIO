@@ -2,7 +2,7 @@ import { Icon } from "@iconify/react";
 import { useNavigate } from "@tanstack/react-router";
 import { lazy, Suspense, useState } from "react";
 
-import { linuxio, type ContainerInfo, useCallMutation } from "@/api";
+import { linuxio, type ContainerInfo } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppButton from "@/components/ui/AppButton";
@@ -15,10 +15,11 @@ import {
 } from "@/components/ui/AppDialog";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTypography from "@/components/ui/AppTypography";
+import useAuth from "@/hooks/useAuth";
 
-import { getComposeProject } from "./containerStacks";
 import { DOCKER_TOAST_META } from "../shared/dockerToast";
 import { useDockerUpdateOperation } from "../shared/DockerUpdateOperationProvider";
+import { getComposeProject } from "./containerStacks";
 
 interface ContainerActionsProps {
   actionPending?: boolean;
@@ -46,6 +47,9 @@ interface SecondaryAction {
   label: string;
   loading?: boolean;
   onClick: () => void;
+  /** A read, so offered to a session without sudo too; every other action
+   * calls an admin-only route. */
+  read?: boolean;
 }
 
 const ContainerActions = ({
@@ -63,55 +67,49 @@ const ContainerActions = ({
   const [editOpen, setEditOpen] = useState(false);
   const [forceRemove, setForceRemove] = useState(false);
   const navigate = useNavigate();
-  const { isUpdating, startUpdate, updating } = useDockerUpdateOperation();
+  const { privileged } = useAuth();
+  const { canUpdate, isUpdating, startUpdate, updating } =
+    useDockerUpdateOperation();
 
-  const { mutate: startContainer, isPending: isStartPending } = useCallMutation(
-    linuxio.docker.start_container,
-    {
+  const { mutate: startContainer, isPending: isStartPending } =
+    linuxio.docker.start_container.useMutation({
       success: `Container ${name} started`,
       error: `Failed to start ${name}`,
       toast: DOCKER_TOAST_META,
-    },
-  );
-  const { mutate: stopContainer, isPending: isStopPending } = useCallMutation(
-    linuxio.docker.stop_container,
-    {
+    });
+  const { mutate: stopContainer, isPending: isStopPending } =
+    linuxio.docker.stop_container.useMutation({
       success: `Container ${name} stopped`,
       error: `Failed to stop ${name}`,
       toast: DOCKER_TOAST_META,
-    },
-  );
+    });
   const { mutate: restartContainer, isPending: isRestartPending } =
-    useCallMutation(linuxio.docker.restart_container, {
+    linuxio.docker.restart_container.useMutation({
       success: `Container ${name} restarted`,
       error: `Failed to restart ${name}`,
       toast: DOCKER_TOAST_META,
     });
-  const { mutate: pauseContainer, isPending: isPausePending } = useCallMutation(
-    linuxio.docker.pause_container,
-    {
+  const { mutate: pauseContainer, isPending: isPausePending } =
+    linuxio.docker.pause_container.useMutation({
       success: `Container ${name} paused`,
       error: `Failed to pause ${name}`,
       toast: DOCKER_TOAST_META,
-    },
-  );
+    });
   const { mutate: unpauseContainer, isPending: isUnpausePending } =
-    useCallMutation(linuxio.docker.unpause_container, {
+    linuxio.docker.unpause_container.useMutation({
       success: `Container ${name} resumed`,
       error: `Failed to resume ${name}`,
       toast: DOCKER_TOAST_META,
     });
-  const { mutate: killContainer, isPending: isKillPending } = useCallMutation(
-    linuxio.docker.kill_container,
-    {
+  const { mutate: killContainer, isPending: isKillPending } =
+    linuxio.docker.kill_container.useMutation({
       success: `Container ${name} killed`,
       error: `Failed to kill ${name}`,
       toast: DOCKER_TOAST_META,
       options: { onSuccess: () => setConfirmation(null) },
-    },
-  );
+    });
   const { mutate: removeContainer, isPending: isRemovePending } =
-    useCallMutation(linuxio.docker.remove_container, {
+    linuxio.docker.remove_container.useMutation({
       success: `Container ${name} removed`,
       error: `Failed to remove ${name}`,
       toast: DOCKER_TOAST_META,
@@ -216,7 +214,7 @@ const ContainerActions = ({
           {
             // The card offers it from its update-available badge instead.
             detailsOnly: true,
-            disabled: isUpdatePending,
+            disabled: !canUpdate || isUpdatePending,
             icon: "mdi:update",
             label: isUpdatePending ? "Updating" : "Update",
             loading: isUpdatePending,
@@ -228,6 +226,7 @@ const ContainerActions = ({
       icon: "mdi:file-document-outline",
       label: "Logs",
       onClick: onOpenLogs,
+      read: true,
     },
     {
       disabled: container.State !== "running",
@@ -241,6 +240,7 @@ const ContainerActions = ({
             icon: "mdi:open-in-new",
             label: "Open App",
             onClick: () => window.open(container.url, "_blank", "noopener"),
+            read: true,
           },
         ]
       : []),
@@ -267,10 +267,13 @@ const ContainerActions = ({
   ];
   const iconStrip = mode === "card" || mode === "full";
   const buttonSize = mode === "card" ? 24 : undefined;
+  const allowedActions = privileged
+    ? secondaryActions
+    : secondaryActions.filter((action) => action.read);
   const visibleActions =
     mode === "card"
-      ? secondaryActions.filter((action) => !action.detailsOnly)
-      : secondaryActions;
+      ? allowedActions.filter((action) => !action.detailsOnly)
+      : allowedActions;
 
   const closeMenu = () => setMenuAnchor(null);
   const chooseAction = (action: SecondaryAction) => {
@@ -300,7 +303,7 @@ const ContainerActions = ({
           marginRight: mode === "card" ? -8 : undefined,
         }}
       >
-        {mode !== "menu" && (
+        {privileged && mode !== "menu" && (
           <AppActionIconButton
             ariaLabel={iconStrip ? `${primary.label} ${name}` : undefined}
             buttonHeight={buttonSize}
@@ -355,7 +358,7 @@ const ContainerActions = ({
         onClose={closeMenu}
         open={Boolean(menuAnchor)}
       >
-        {mode === "menu" && (
+        {privileged && mode === "menu" && (
           <AppMenuItem
             disabled={busy || primary.disabled}
             onClick={() => chooseAction(primary)}
@@ -364,7 +367,7 @@ const ContainerActions = ({
             {primary.label}
           </AppMenuItem>
         )}
-        {secondaryActions.map((action) => (
+        {allowedActions.map((action) => (
           <AppMenuItem
             danger={action.danger}
             disabled={busy || action.disabled}

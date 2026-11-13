@@ -3,10 +3,13 @@ package bridgeipc
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
+	"github.com/mordilloSan/LinuxIO/backend/common/jobs"
 )
 
 type taskIDRequest struct {
@@ -17,9 +20,109 @@ type taskListRequest struct {
 	Status string `json:"status,omitempty"`
 }
 
+// TaskEventsRequest is the tasks.events request. IDs are jobs the caller saw
+// running: once the stream is subscribed it sends the snapshot of each that
+// has ended, so a job that ended while the caller was away is seen ending. A
+// bridge names them when it reopens its job host's stream; at most
+// maxTaskEventIDs are looked up.
+type TaskEventsRequest struct {
+	IDs []string `json:"ids,omitzero"`
+}
+
+const maxTaskEventIDs = 256
+
+// TaskHistoryRequest is the tasks.history request. Before is the cursor of a
+// page: the end time of the last record of the page before, since a page never
+// splits records that ended at the same instant.
+type TaskHistoryRequest struct {
+	Before *time.Time `json:"before,omitzero"`
+	Limit  int        `json:"limit,omitzero"`
+	Unit   string     `json:"unit,omitzero"` // only the runs of this systemd unit
+}
+
+// TaskHistoryEntry is one ended job or scheduled run.
+type TaskHistoryEntry struct {
+	Task   TaskSnapshot `json:"task"`
+	Reason string       `json:"reason,omitzero"` // shutdown, reboot or crash for an interrupted job
+	Unit   string       `json:"unit,omitzero"`   // the unit of a scheduled run
+	Output bool         `json:"output,omitzero"` // a saved output exists
+}
+
+// TaskHistory is a page of ended jobs, newest first. More says that older
+// ones remain.
+type TaskHistory struct {
+	Entries []TaskHistoryEntry `json:"entries"`
+	More    bool               `json:"more"`
+}
+
+// TaskOutputRequest is the tasks.output request: Limit bytes of the saved
+// output of a scheduled run from Offset, or the last Limit bytes without one.
+// A Limit of 0 means jobs.DefaultOutputChunk; one above jobs.MaxOutputChunk is
+// capped.
+type TaskOutputRequest struct {
+	TaskID string `json:"taskId"`
+	Offset *int64 `json:"offset,omitzero"` // absent: the end of the output
+	Limit  int    `json:"limit,omitzero"`
+}
+
+// TaskOutput is a chunk of a saved output. A chunk starts on a character
+// boundary; one whose requested end falls inside a character ends in U+FFFD,
+// which a viewer avoids by ending each earlier chunk at the Offset the next
+// chunk reports.
+type TaskOutput struct {
+	Content string `json:"content"` // valid UTF-8; invalid bytes are replaced
+	Offset  int64  `json:"offset"`  // where Content starts in the output
+	Size    int64  `json:"size"`
+}
+
+// TaskHostStatus is the tasks.host answer: whether a LinuxIO update waits for
+// the job host, which is of an older build until its jobs end, and for which
+// of them.
+type TaskHostStatus struct {
+	UpdatePending bool           `json:"update_pending"` // the job host is of an older build
+	Running       int            `json:"running"`        // jobs it still runs
+	Jobs          []TaskSnapshot `json:"jobs,omitzero"`  // those jobs, only while an update waits
+}
+
 type taskDataRequest struct {
 	TaskID string `json:"taskId"`
 	Offset string `json:"offset,omitempty"`
+}
+
+// RemoteTasks serves the tasks.* routes for the jobs of a bridge's job host,
+// whose IDs are UUIDs, as the bridge's own registry serves its tasks.
+type RemoteTasks interface {
+	Get(ctx context.Context, id string) (TaskSnapshot, error)
+	Cancel(ctx context.Context, id string) (TaskSnapshot, error)
+	Watch(ctx context.Context, stream net.Conn, id string) error
+	List(ctx context.Context) ([]TaskSnapshot, error)
+	History(ctx context.Context, req TaskHistoryRequest) (TaskHistory, error)
+	Output(ctx context.Context, req TaskOutputRequest) (TaskOutput, error)
+	Status(ctx context.Context) (TaskHostStatus, error)
+	Events(ctx context.Context, stream net.Conn) error
+}
+
+// SetRemote sends tasks.* requests for job IDs this service does not know to
+// rt, and merges its jobs into tasks.list and tasks.events.
+func (r *TaskService) SetRemote(rt RemoteTasks) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.remote = rt
+}
+
+func (r *TaskService) getRemote() RemoteTasks {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.remote
+}
+
+// remoteFor returns the remote that owns id, a job ID this service has no
+// task for, or nil.
+func (r *TaskService) remoteFor(id string) RemoteTasks {
+	if jobs.ValidateID(id) != nil {
+		return nil
+	}
+	return r.getRemote()
 }
 
 // RegisterRoutes installs the Task control Calls and Channels on the router
@@ -29,10 +132,13 @@ func (r *TaskService) RegisterRoutes(router *Router) {
 	routes := []Route{
 		{Name: "tasks.get", Mode: ModeCall, Call: r.handleTaskGet, Decode: JSONRequestDecoder[taskIDRequest]()},
 		{Name: "tasks.list", Mode: ModeCall, Call: r.handleTaskList, Decode: JSONRequestDecoder[taskListRequest]()},
+		{Name: "tasks.history", Mode: ModeCall, Call: r.handleTaskHistory, Decode: JSONRequestDecoder[TaskHistoryRequest]()},
+		{Name: "tasks.output", Mode: ModeCall, Call: r.handleTaskOutput, Decode: JSONRequestDecoder[TaskOutputRequest](), Privileged: true},
+		{Name: "tasks.host", Mode: ModeCall, Call: r.handleTaskHost, Decode: JSONRequestDecoder[struct{}]()},
 		{Name: "tasks.cancel", Mode: ModeCall, Call: r.handleTaskCancel, Decode: JSONRequestDecoder[taskIDRequest]()},
 		{Name: "tasks.watch", Mode: ModeDuplex, Duplex: r.handleTaskWatch, Decode: JSONRequestDecoder[taskIDRequest]()},
 		{Name: "tasks.data", Mode: ModeDuplex, Duplex: r.handleTaskData, Decode: JSONRequestDecoder[taskDataRequest]()},
-		{Name: "tasks.events", Mode: ModeDuplex, Duplex: r.handleTaskEvents, Decode: JSONRequestDecoder[struct{}]()},
+		{Name: "tasks.events", Mode: ModeDuplex, Duplex: r.handleTaskEvents, Decode: JSONRequestDecoder[TaskEventsRequest]()},
 	}
 	for _, route := range routes {
 		router.registerTaskServiceRoute(r, route)
@@ -52,6 +158,9 @@ func (r *TaskService) handleTaskGet(ctx context.Context, req Request) (any, erro
 		return nil, err
 	}
 	if !ok {
+		if remote := r.remoteFor(payload.TaskID); remote != nil {
+			return remote.Get(ctx, payload.TaskID)
+		}
 		return nil, NewError(fmt.Sprintf("task not found: %s", payload.TaskID), 404)
 	}
 	return task.Snapshot(), nil
@@ -71,10 +180,86 @@ func (r *TaskService) handleTaskList(ctx context.Context, req Request) (any, err
 	} else {
 		snapshots = r.ListForOwner(req.Owner)
 	}
+	if remote := r.getRemote(); remote != nil {
+		remoteSnapshots, err := remote.List(ctx)
+		if err != nil {
+			slog.Warn("job host tasks unavailable for tasks list", "error", err)
+		}
+		for _, snapshot := range remoteSnapshots {
+			if payload.Status != "active" || !snapshot.State.Terminal() {
+				snapshots = append(snapshots, snapshot)
+			}
+		}
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	return snapshots, nil
+}
+
+// handleTaskHistory lists the ended jobs of the job host, which keeps them;
+// the bridge's own tasks end with the bridge. Without a host there are none.
+func (r *TaskService) handleTaskHistory(ctx context.Context, req Request) (any, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	payload, ok := req.DecodedValue.(TaskHistoryRequest)
+	if !ok {
+		return nil, fmt.Errorf("%w: invalid tasks history request", ErrInvalidArgs)
+	}
+	if payload.Limit < 0 {
+		return nil, fmt.Errorf("%w: history limit must not be negative", ErrInvalidArgs)
+	}
+	remote := r.getRemote()
+	if remote == nil {
+		return TaskHistory{Entries: []TaskHistoryEntry{}}, nil
+	}
+	history, err := remote.History(ctx, payload)
+	if err != nil {
+		return nil, err
+	}
+	if history.Entries == nil {
+		history.Entries = []TaskHistoryEntry{}
+	}
+	return history, nil
+}
+
+// handleTaskOutput reads a chunk of the saved output of a scheduled run, which
+// only the root job host keeps; the bridge's own tasks save none. The route is
+// privileged: the router refuses an unprivileged session before this runs.
+func (r *TaskService) handleTaskOutput(ctx context.Context, req Request) (any, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	payload, ok := req.DecodedValue.(TaskOutputRequest)
+	switch {
+	case !ok:
+		return nil, fmt.Errorf("%w: invalid tasks output request", ErrInvalidArgs)
+	case payload.TaskID == "":
+		return nil, fmt.Errorf("%w: missing task id", ErrInvalidArgs)
+	case payload.Offset != nil && *payload.Offset < 0:
+		return nil, fmt.Errorf("%w: output offset must not be negative", ErrInvalidArgs)
+	case payload.Limit < 0:
+		return nil, fmt.Errorf("%w: output limit must not be negative", ErrInvalidArgs)
+	}
+	remote := r.remoteFor(payload.TaskID)
+	if remote == nil {
+		return nil, fmt.Errorf("%w: task %s has no saved output", ErrNotFound, payload.TaskID)
+	}
+	return remote.Output(ctx, payload)
+}
+
+// handleTaskHost says whether a LinuxIO update waits for the job host, and for
+// how many of its jobs. Without a host nothing waits.
+func (r *TaskService) handleTaskHost(ctx context.Context, _ Request) (any, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	remote := r.getRemote()
+	if remote == nil {
+		return TaskHostStatus{}, nil
+	}
+	return remote.Status(ctx)
 }
 
 func (r *TaskService) handleTaskCancel(ctx context.Context, req Request) (any, error) {
@@ -90,19 +275,25 @@ func (r *TaskService) handleTaskCancel(ctx context.Context, req Request) (any, e
 		return nil, err
 	}
 	if !ok {
+		if remote := r.remoteFor(payload.TaskID); remote != nil {
+			return remote.Cancel(ctx, payload.TaskID)
+		}
 		return nil, NewError(fmt.Sprintf("task not found: %s", payload.TaskID), 404)
 	}
 	task.Cancel()
 	return task.Snapshot(), nil
 }
 
-func (r *TaskService) handleTaskWatch(_ context.Context, stream net.Conn, req Request) error {
+func (r *TaskService) handleTaskWatch(ctx context.Context, stream net.Conn, req Request) error {
 	payload, ok := req.DecodedValue.(taskIDRequest)
 	if !ok || payload.TaskID == "" {
 		return relay.WriteResultErrorAndClose(stream, 0, "missing task id", 400)
 	}
 	task, ok := r.GetForOwner(payload.TaskID, req.Owner)
 	if !ok {
+		if remote := r.remoteFor(payload.TaskID); remote != nil {
+			return remote.Watch(ctx, stream, payload.TaskID)
+		}
 		return relay.WriteResultErrorAndClose(stream, 0, fmt.Sprintf("task not found: %s", payload.TaskID), 404)
 	}
 	return WatchTaskStream(stream, task)
@@ -124,15 +315,49 @@ func (r *TaskService) handleTaskData(ctx context.Context, stream net.Conn, req R
 	return r.AttachData(ctx, task, stream, TaskDataAttachRequest{Offset: offset})
 }
 
-func (r *TaskService) handleTaskEvents(_ context.Context, stream net.Conn, req Request) error {
+// lockedConn serialises the frames two writers put on one stream: the relay
+// helpers write each frame with a single Write.
+type lockedConn struct {
+	net.Conn
+	mu sync.Mutex
+}
+
+func (c *lockedConn) Write(p []byte) (int, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Conn.Write(p)
+}
+
+func (r *TaskService) handleTaskEvents(ctx context.Context, conn net.Conn, req Request) error {
 	events, unsubscribe := r.Subscribe(128)
 	defer unsubscribe()
 
+	stream := &lockedConn{Conn: conn}
 	done := make(chan struct{})
-	go monitorDetach(stream, done)
+	go monitorDetach(conn, done)
 
 	if !r.writeInitialTaskSnapshots(stream, req.Owner) {
 		return nil
+	}
+	payload, _ := req.DecodedValue.(TaskEventsRequest)
+	if !r.writeEndedSnapshots(ctx, stream, req.Owner, payload.IDs[:min(len(payload.IDs), maxTaskEventIDs)]) {
+		return nil
+	}
+	if remote := r.getRemote(); remote != nil {
+		remoteCtx, cancel := context.WithCancel(ctx)
+		var merged sync.WaitGroup
+		defer func() {
+			cancel()
+			interruptTaskStreamWrite(stream)
+			merged.Wait()
+		}()
+		merged.Go(func() {
+			// The remote follows host reconnects itself; it ends with the
+			// client stream, and a host that goes away never ends the local share.
+			if err := remote.Events(remoteCtx, stream); err != nil {
+				slog.Debug("job host task events ended", "error", err)
+			}
+		})
 	}
 
 	const interval = time.Second
@@ -162,7 +387,30 @@ func (r *TaskService) handleTaskEvents(_ context.Context, stream net.Conn, req R
 
 func (r *TaskService) writeInitialTaskSnapshots(stream net.Conn, owner TaskOwner) bool {
 	for _, snapshot := range r.ListActiveForOwner(owner) {
-		if !writeTaskEvent(stream, TaskEvent{Type: TaskEventSnapshot, Task: snapshot}) {
+		if !WriteTaskEvent(stream, TaskEvent{Type: TaskEventSnapshot, Task: snapshot}) {
+			return false
+		}
+	}
+	return true
+}
+
+// writeEndedSnapshots writes the snapshot of each job in ids that has ended,
+// held here or by the remote; a running one is among the initial snapshots.
+func (r *TaskService) writeEndedSnapshots(ctx context.Context, stream net.Conn, owner TaskOwner, ids []string) bool {
+	for _, id := range ids {
+		var snapshot TaskSnapshot
+		if task, ok := r.GetForOwner(id, owner); ok {
+			snapshot = task.Snapshot()
+		} else if remote := r.remoteFor(id); remote != nil {
+			var err error
+			if snapshot, err = remote.Get(ctx, id); err != nil {
+				continue
+			}
+		}
+		if !snapshot.State.Terminal() {
+			continue
+		}
+		if !WriteTaskEvent(stream, TaskEvent{Type: TaskEventSnapshot, Task: snapshot}) {
 			return false
 		}
 	}
@@ -174,7 +422,7 @@ func flushPendingTaskEvents(stream net.Conn, pending map[string]TaskEvent, lastS
 		if sentAt := lastSent[id]; !sentAt.IsZero() && now.Sub(sentAt) < interval {
 			continue
 		}
-		if !writeTaskEvent(stream, event) {
+		if !WriteTaskEvent(stream, event) {
 			return false
 		}
 		lastSent[id] = now
@@ -191,7 +439,9 @@ func (r *TaskService) writeSubscribedTaskEvent(stream net.Conn, event TaskEvent,
 	switch event.Type {
 	case TaskEventProgress:
 		return writeThrottledTaskProgress(stream, event, pending, lastSent, interval, now)
-	case TaskEventResult, TaskEventError, TaskEventCanceled:
+	case TaskEventResult, TaskEventError, TaskEventCanceled, TaskEventSnapshot:
+		// Each carries the task's newest state, which a progress event the
+		// throttle held back would undo.
 		delete(pending, event.Task.ID)
 		return writeTrackedTaskEvent(stream, event, lastSent, now)
 	default:
@@ -208,14 +458,26 @@ func writeThrottledTaskProgress(stream net.Conn, event TaskEvent, pending map[st
 }
 
 func writeTrackedTaskEvent(stream net.Conn, event TaskEvent, lastSent map[string]time.Time, now time.Time) bool {
-	if !writeTaskEvent(stream, event) {
+	if !WriteTaskEvent(stream, event) {
 		return false
 	}
 	lastSent[event.Task.ID] = now
 	return true
 }
 
+// WatchTaskStream streams task's progress and then its result or error until
+// the task ends or the client detaches (close) or cancels it (abort).
 func WatchTaskStream(stream net.Conn, task *Task) error {
+	return watchTaskStream(stream, task, false)
+}
+
+// WatchTaskStreamWithSnapshot writes one task.snapshot event first, then
+// behaves as WatchTaskStream.
+func WatchTaskStreamWithSnapshot(stream net.Conn, task *Task) error {
+	return watchTaskStream(stream, task, true)
+}
+
+func watchTaskStream(stream net.Conn, task *Task, withSnapshot bool) error {
 	detachCh := make(chan struct{})
 	go monitorTaskClient(stream, task, detachCh)
 
@@ -227,6 +489,9 @@ func WatchTaskStream(stream net.Conn, task *Task) error {
 	defer unsubscribe()
 
 	snapshot := task.Snapshot()
+	if withSnapshot && !WriteTaskEvent(stream, TaskEvent{Type: TaskEventSnapshot, Task: snapshot}) {
+		return nil
+	}
 	if !writeWatchReplay(stream, replay, lagged) {
 		return nil
 	}
@@ -341,7 +606,10 @@ func monitorDetach(stream net.Conn, done chan<- struct{}) {
 	}
 }
 
-func writeTaskEvent(stream net.Conn, event TaskEvent) bool {
+// WriteTaskEvent writes event as one frame of a tasks.events stream and
+// reports whether it was written. A RemoteTasks's Events writes through it:
+// one Write per event keeps its frames whole on the stream it shares.
+func WriteTaskEvent(stream net.Conn, event TaskEvent) bool {
 	return relay.WriteProgress(stream, 0, event) == nil
 }
 
@@ -367,7 +635,7 @@ func writeTerminalTaskSnapshot(stream net.Conn, snapshot TaskSnapshot) bool {
 	case TaskStateCompleted:
 		_ = relay.WriteResultOKAndClose(stream, 0, snapshot.Result)
 		return true
-	case TaskStateFailed, TaskStateCanceled:
+	case TaskStateFailed, TaskStateCanceled, TaskStateInterrupted:
 		err := snapshot.Error
 		if err == nil {
 			err = NewError("task failed", 500)

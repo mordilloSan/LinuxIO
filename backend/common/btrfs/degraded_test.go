@@ -16,6 +16,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 // stubStatePaths points every file the degraded mount and resync read or
@@ -333,8 +334,10 @@ func TestMountDegradedPoolsLeavesStalePoolsToAPerson(t *testing.T) {
 func TestMountDegradedPoolsWaitsForLateDisks(t *testing.T) {
 	stubPoolGeneration(t, dataUUID, 0)
 	calls := stubMountCalls(t)
-	member := Superblock{UUID: dataUUID, NumDevices: 2, Generation: 90}
-	supers := map[string]Superblock{"sdb": member, "sdc": {}}
+	member := func(devid uint64) Superblock {
+		return Superblock{UUID: dataUUID, DevID: devid, NumDevices: 2, Generation: 90}
+	}
+	supers := map[string]Superblock{"sdb": member(1), "sdc": {}}
 	stubDisks(t, supers)
 	writeFstab(t, "UUID="+dataUUID+" /srv/data btrfs defaults 0 0\n")
 	old := readSuperblock
@@ -342,7 +345,7 @@ func TestMountDegradedPoolsWaitsForLateDisks(t *testing.T) {
 	readSuperblock = func(device string) (Superblock, error) {
 		if device == "/dev/sdb" {
 			if polls++; polls == 2 {
-				supers["sdc"] = member // the slow disk shows up on the second look
+				supers["sdc"] = member(2) // the slow disk shows up on the second look
 			}
 		}
 		return old(device)
@@ -353,6 +356,91 @@ func TestMountDegradedPoolsWaitsForLateDisks(t *testing.T) {
 	}
 	if len(*calls) != 0 || polls != 2 {
 		t.Fatalf("calls = %v after %d polls; the complete pool is systemd's to mount", *calls, polls)
+	}
+}
+
+// A power cut mid-replace leaves the target, devid 0, scanned next to every
+// member, and udev never calls the pool ready: DEVICES_READY counts the
+// target against the superblock's num_devices. The boot check mounts it as
+// fstab says, so the kernel continues the replace, unless a member missed
+// writes. A pool also missing a member mounts degraded, as without the
+// replace.
+func TestMountDegradedPoolsMountsAPoolMidReplace(t *testing.T) {
+	disk := func(devid, gen uint64) Superblock {
+		return Superblock{UUID: dataUUID, Label: "data", DevID: devid, NumDevices: 2, Generation: gen}
+	}
+	for _, tc := range []struct {
+		name   string
+		supers map[string]Superblock
+		want   []string // calls, with MNT for the mountpoint
+		alert  string
+	}{
+		{
+			"every member and the target", map[string]Superblock{"sdb": disk(1, 90), "sdc": disk(2, 90), "sdd": disk(0, 90)},
+			[]string{"register /dev/sdb", "register /dev/sdc", "register /dev/sdd", "mount /dev/sdb MNT subvol=@data"}, "",
+		},
+		{
+			"a member missed writes", map[string]Superblock{"sdb": disk(1, 80), "sdc": disk(2, 90), "sdd": disk(0, 90)},
+			nil, "did not mount the pool because /dev/sdb missed writes the other present disks have",
+		},
+		{
+			"the target missed writes", map[string]Superblock{"sdb": disk(1, 90), "sdc": disk(2, 90), "sdd": disk(0, 80)},
+			nil, "did not mount the pool because the replace target /dev/sdd missed writes the other present disks have",
+		},
+		{
+			"a member is missing too", map[string]Superblock{"sdb": disk(1, 90), "sdd": disk(0, 90)},
+			[]string{"register /dev/sdb", "register /dev/sdd", "mount /dev/sdb MNT subvol=@data,degraded"}, "",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			stubPoolGeneration(t, dataUUID, 91, "/dev/sdb", "/dev/sdc")
+			calls := stubMountCalls(t)
+			stubDisks(t, tc.supers)
+			mnt := filepath.Join(t.TempDir(), "data")
+			writeFstab(t, "UUID="+dataUUID+" "+mnt+" btrfs defaults,nofail,subvol=@data 0 0\n")
+
+			if err := MountDegradedPools(context.Background(), 0); err != nil {
+				t.Fatal(err)
+			}
+			var want []string
+			for _, c := range tc.want {
+				want = append(want, strings.ReplaceAll(c, "MNT", mnt))
+			}
+			if !reflect.DeepEqual(*calls, want) {
+				t.Fatalf("calls = %v, want %v", *calls, want)
+			}
+			wantRefusal(t, tc.alert)
+		})
+	}
+}
+
+// wantRefusal checks that the boot check raised only an error alert saying
+// want, or none for "", and that a health run raises the same on its own:
+// an alert keeps the message of its first raise while its occurrence holds,
+// so whichever runs first must say why.
+func wantRefusal(t *testing.T, want string) {
+	t.Helper()
+	check := func(after string) {
+		t.Helper()
+		doc, err := alerts.Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		// A refusal is an error, as it is for a pool missing a disk.
+		if want == "" && len(doc.Alerts) != 0 || want != "" && (len(doc.Alerts) != 1 || !strings.Contains(doc.Alerts[0].Message, want) || doc.Alerts[0].Severity != alerts.SeverityError) {
+			t.Fatalf("alerts after %s = %+v, want %q", after, doc.Alerts, want)
+		}
+	}
+	check("the boot check")
+	if want == "" {
+		return
+	}
+	stubAlerts(t)
+	for _, after := range []string{"a health run alone", "a second health run"} {
+		if _, err := CheckHealth(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		check(after)
 	}
 }
 
@@ -373,7 +461,7 @@ func TestResyncScrubsThenConvertsSoftly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Resync(ctx, dataUUID); err != nil {
+	if err := Resync(ctx, dataUUID, nil); err != nil {
 		t.Fatal(err)
 	}
 	if balanced.Flags != balanceData || balanced.Data.Flags != balanceArgsConvert|balanceArgsSoft || balanced.Data.Target != bgRaid1 {
@@ -391,11 +479,116 @@ func TestResyncScrubsThenConvertsSoftly(t *testing.T) {
 	}
 }
 
+// storeResyncReport stores what a pool resync reports, as the settings page
+// would.
+func storeResyncReport(t *testing.T, report string) {
+	t.Helper()
+	if _, err := alerts.UpdateNotifications(t.Context(), func(n *alerts.NotificationSettings) error {
+		n.Report[alerts.KindResync] = report
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A pool that is whole again is reported under changes, the default, and not
+// under failures; either way the resync alert is resolved.
+func TestWholeAgainFollowsTheSetting(t *testing.T) {
+	for _, tc := range []struct {
+		report string
+		whole  bool
+	}{
+		{alerts.ReportChanges, true},
+		{alerts.ReportFailures, false},
+	} {
+		t.Run(tc.report, func(t *testing.T) {
+			stubKernel(t, raid1Kernel())
+			ctx := t.Context()
+			storeResyncReport(t, tc.report)
+			if err := updatePoolStates(ctx, func(s map[string]poolState) { s[dataUUID] = poolState{Generation: 9, Degraded: true} }); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := Resync(ctx, dataUUID, nil); err != nil {
+				t.Fatal(err)
+			}
+			got := alertKeys(t)
+			if severity, raised := got["resynced-"+dataUUID]; raised != tc.whole || raised && severity != alerts.SeverityInfo {
+				t.Fatalf("alerts = %v, want the resynced notice %v", got, tc.whole)
+			}
+			if _, raised := got["resync-"+dataUUID]; raised {
+				t.Fatalf("alerts = %v, want the resync alert resolved", got)
+			}
+		})
+	}
+}
+
+// A resync that fails its last attempt raises the same alert under failures as
+// under changes, and no resynced notice.
+func TestFailedResyncIgnoresTheSetting(t *testing.T) {
+	changes := failedResyncAlerts(t, alerts.ReportChanges)
+	failures := failedResyncAlerts(t, alerts.ReportFailures)
+	if !reflect.DeepEqual(failures, changes) {
+		t.Fatalf("failures raised %+v, changes raised %+v; want the same", failures, changes)
+	}
+}
+
+// failedResyncAlerts fails the last resync attempt of a pool under report and
+// returns the alerts it leaves, without their timestamps.
+func failedResyncAlerts(t *testing.T, report string) []alerts.Alert {
+	t.Helper()
+	k := raid1Kernel()
+	k.scrub = func(uint64) (scrubProgress, error) { return scrubProgress{}, unix.ECANCELED }
+	stubKernel(t, k)
+	ctx := t.Context()
+	storeResyncReport(t, report)
+	if err := updatePoolStates(ctx, func(s map[string]poolState) {
+		s[dataUUID] = poolState{Generation: 9, Degraded: true, ResyncFailures: maxResyncAttempts - 1}
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	err := Resync(ctx, dataUUID, nil)
+	if err == nil {
+		t.Fatalf("%s: Resync succeeded, want the canceled scrub to fail it", report)
+	}
+	// The pool's alert reports it, so the unit needs no run alert.
+	if !scheduledrun.AllReported(err) {
+		t.Fatalf("%s: the failure the resync alert reports is not marked reported: %v", report, err)
+	}
+	if got := alertKeys(t); got["resync-"+dataUUID] != alerts.SeverityError || got["resynced-"+dataUUID] != "" {
+		t.Fatalf("%s: alerts = %v, want the failed resync alert and no resynced notice", report, got)
+	}
+	doc, err := alerts.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var raised []alerts.Alert
+	for _, a := range doc.Alerts {
+		raised = append(raised, alerts.Alert{ID: a.ID, Severity: a.Severity, Title: a.Title, Message: a.Message, Link: a.Link})
+	}
+	return raised
+}
+
+// A resync of a pool that is not there fails with no alert of the pool to
+// report it: the unit's run alert has to.
+func TestResyncOfAnUnknownPoolIsNotReported(t *testing.T) {
+	stubKernel(t, raid1Kernel())
+	useTempAlerts(t)
+	err := Resync(t.Context(), "0a1b2c3d-1111-2222-3333-444455556666", nil)
+	if err == nil || scheduledrun.AllReported(err) {
+		t.Fatalf("Resync = %v, reported %v; want a failure that is not marked reported", err, scheduledrun.AllReported(err))
+	}
+	if got := alertKeys(t); len(got) != 0 {
+		t.Fatalf("alerts = %v, want none", got)
+	}
+}
+
 func TestResyncRefusesWhileADiskIsMissing(t *testing.T) {
 	k := raid1Kernel()
 	k.devices[2].path = ""
 	stubKernel(t, k)
-	if err := Resync(context.Background(), dataUUID); !errors.Is(err, errDiskMissing) {
+	if err := Resync(context.Background(), dataUUID, nil); !errors.Is(err, errDiskMissing) {
 		t.Fatalf("Resync = %v, want a missing disk", err)
 	}
 	if states, _ := loadPoolStates(); states[dataUUID].ResyncFailures != 0 {
@@ -412,7 +605,7 @@ func TestResyncDoesNotTrustACanceledScrub(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := Resync(ctx, dataUUID); err == nil || !strings.Contains(err.Error(), "canceled before it checked every copy") {
+	if err := Resync(ctx, dataUUID, nil); err == nil || !strings.Contains(err.Error(), "canceled before it checked every copy") {
 		t.Fatalf("Resync = %v", err)
 	}
 	states, _ := loadPoolStates()

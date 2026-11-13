@@ -8,7 +8,6 @@ import {
   type IndexerConfigPatch,
   type IndexerDaemonStatus,
   linuxio,
-  useCallMutation,
 } from "@/api";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import {
@@ -121,10 +120,10 @@ const IndexerSettingsSection = () => {
     staleTime: CACHE_TTL_MS.FIVE_SECONDS,
   };
   const timerQuery = useQuery(timerQueryOptions);
-  const setConfigMutation = useCallMutation(linuxio.indexer.set_config, {
+  const setConfigMutation = linuxio.indexer.set_config.useMutation({
     error: "Failed to save indexer settings",
   });
-  const setTimerMutation = useCallMutation(linuxio.indexer.set_timer_interval, {
+  const setTimerMutation = linuxio.indexer.set_timer_interval.useMutation({
     error: "Failed to save indexer timer",
     invalidates: [timerQueryOptions.queryKey],
   });

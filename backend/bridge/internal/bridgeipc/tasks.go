@@ -2,6 +2,7 @@ package bridgeipc
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -22,6 +23,10 @@ const (
 	TaskStateCompleted TaskState = "completed"
 	TaskStateFailed    TaskState = "failed"
 	TaskStateCanceled  TaskState = "canceled"
+	// TaskStateInterrupted is a job its host stopped before it finished: a
+	// live Task reaches it through Interrupt, a stored record when its host
+	// shut down or crashed.
+	TaskStateInterrupted TaskState = "interrupted"
 )
 
 // TaskLifetime selects the owner scope and shutdown behavior for a Task.
@@ -75,18 +80,21 @@ func (o TaskOwner) MatchesDurable(other TaskOwner) bool {
 }
 
 type TaskSnapshot struct {
-	ID         string        `json:"id"`
-	Type       string        `json:"type"`
-	Metadata   *TaskMetadata `json:"metadata,omitzero"`
-	Owner      TaskOwner     `json:"owner"`
-	State      TaskState     `json:"state"`
-	Progress   *TaskProgress `json:"progress,omitzero"`
-	Result     any           `json:"result,omitzero"`
-	Error      *Error        `json:"error,omitzero"`
-	CreatedAt  time.Time     `json:"created_at"`
-	StartedAt  *time.Time    `json:"started_at,omitzero"`
-	UpdatedAt  time.Time     `json:"updated_at"`
-	FinishedAt *time.Time    `json:"finished_at,omitzero"`
+	ID       string        `json:"id"`
+	Type     string        `json:"type"`
+	Metadata *TaskMetadata `json:"metadata,omitzero"`
+	Owner    TaskOwner     `json:"owner"`
+	State    TaskState     `json:"state"`
+	// CancelRequested is set once the owner cancels a running task, which
+	// stays running until its handler returns.
+	CancelRequested bool          `json:"cancel_requested,omitzero"`
+	Progress        *TaskProgress `json:"progress,omitzero"`
+	Result          any           `json:"result,omitzero"`
+	Error           *Error        `json:"error,omitzero"`
+	CreatedAt       time.Time     `json:"created_at"`
+	StartedAt       *time.Time    `json:"started_at,omitzero"`
+	UpdatedAt       time.Time     `json:"updated_at"`
+	FinishedAt      *time.Time    `json:"finished_at,omitzero"`
 }
 
 // TaskProgress is the common snapshot-retained progress envelope. Generic Task
@@ -152,15 +160,13 @@ type TaskEvent struct {
 type TaskRunner func(ctx context.Context, task *Task, request any) (any, error)
 type TaskDataAttacher func(ctx context.Context, task *Task, stream net.Conn, request any) error
 
-// TaskIdentity is a route-defined, stable identity for a durable Task. The
-// fingerprint proves that replaying the same ID refers to the same sanitized
-// request without retaining the raw request in public or persistent state.
+// TaskIdentity is the stable identity of a Mutation's task: its job ID. The
+// fingerprint proves that replaying the same ID refers to the same request
+// without retaining the raw request in public or persistent state.
 type TaskIdentity struct {
 	ID          string
 	Fingerprint string
 }
-
-type TaskIdentityBuilder func(request any) (TaskIdentity, error)
 
 var ErrTaskIdentityConflict = errors.New("task identity conflict")
 
@@ -168,14 +174,36 @@ type TaskDataAttachRequest struct {
 	Offset *string `json:"offset,omitzero"`
 }
 
+// Recorder persists Mutation tasks: Started before the task runs, Progress
+// after each stored progress, Finished once the task is terminal.
+// Progress is called outside the task lock, so it may run concurrently with
+// or after Finished; an implementation must ignore it once the record is
+// terminal. Started may see an already-terminal snapshot (a queued task
+// canceled before it started) and must treat that state as final.
+// CancelRequested is called when Cancel stops a running task, before its
+// context is canceled; never for Interrupt or a queued task.
+type Recorder interface {
+	Started(task *Task, raw jsontext.Value)
+	Progress(task *Task, p TaskProgress)
+	Finished(task *Task)
+	CancelRequested(task *Task)
+}
+
 type TaskService struct {
 	mu            sync.RWMutex
+	recorder      Recorder
+	remote        RemoteTasks
 	dataAttachers map[string]TaskDataAttacher
 	tasks         map[string]*Task
 	subscribers   map[chan TaskEvent]*eventSubscriber
 	nextID        uint64
 	cleanupStop   chan struct{}
 	cleanupOnce   sync.Once
+
+	// admitMu guards the counts of running tasks that admission checks.
+	admitMu       sync.Mutex
+	activeByRoute map[string]int
+	activeTargets map[string]int
 }
 
 type Task struct {
@@ -205,9 +233,16 @@ type Task struct {
 	updatedAt        time.Time
 	finishedAt       *time.Time
 	cancel           context.CancelFunc
-	done             chan struct{}
-	doneOnce         sync.Once
-	subscribers      map[chan TaskEvent]*eventSubscriber
+	// interrupted makes the cancellation end the task interrupted, not canceled.
+	interrupted bool
+	// cancelRequested is set once the owner cancels the running task.
+	cancelRequested bool
+	// publishMu orders the cancel-request snapshot before the terminal event.
+	publishMu   sync.Mutex
+	done        chan struct{}
+	doneOnce    sync.Once
+	subscribers map[chan TaskEvent]*eventSubscriber
+	recorder    Recorder
 }
 
 var DefaultTaskService = NewTaskService()
@@ -244,9 +279,33 @@ func NewTaskService() *TaskService {
 		tasks:         make(map[string]*Task),
 		subscribers:   make(map[chan TaskEvent]*eventSubscriber),
 		cleanupStop:   make(chan struct{}),
+		activeByRoute: make(map[string]int),
+		activeTargets: make(map[string]int),
 	}
 	r.startCleanupLoop(DefaultTerminalTaskTTL, DefaultTerminalTaskSweepPeriod)
 	return r
+}
+
+// SetRecorder sets the recorder of the Mutation tasks started from now on.
+func (r *TaskService) SetRecorder(rec Recorder) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.recorder = rec
+}
+
+// recordStarted gives task the service's recorder, if any, and records it
+// before it starts.
+func (r *TaskService) recordStarted(task *Task, raw jsontext.Value) {
+	r.mu.RLock()
+	rec := r.recorder
+	r.mu.RUnlock()
+	if rec == nil {
+		return
+	}
+	task.mu.Lock()
+	task.recorder = rec
+	task.mu.Unlock()
+	rec.Started(task, raw)
 }
 
 // RegisterTaskDataAttacher registers a data attacher for the given task type.
@@ -465,27 +524,39 @@ func ownersMatch(lifetime TaskLifetime, taskOwner, requester TaskOwner) bool {
 func (j *Task) Snapshot() TaskSnapshot {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
-	return TaskSnapshot{
-		ID:         j.id,
-		Type:       j.typ,
-		Metadata:   cloneTaskMetadata(j.metadata),
-		Owner:      j.owner,
-		State:      j.state,
-		Progress:   j.progress,
-		Result:     j.result,
-		Error:      j.err,
-		CreatedAt:  j.createdAt,
-		StartedAt:  cloneTimePtr(j.startedAt),
-		UpdatedAt:  j.updatedAt,
-		FinishedAt: cloneTimePtr(j.finishedAt),
-	}
+	return j.snapshotLocked()
 }
 
 // Cancel requests cancellation of the task. If the task is queued, it is marked
-// canceled immediately; if running, the context is canceled and the task will
-// transition to canceled when it detects the cancellation.
-func (j *Task) Cancel() {
+// canceled immediately; if running, the request is recorded and announced in
+// a snapshot event, the context is canceled, and the task turns canceled when
+// its handler returns.
+func (j *Task) Cancel() { j.stop(false) }
+
+// Interrupt stops the task because its job host is shutting down. It is
+// Cancel, except that the task ends interrupted (409) instead of canceled.
+func (j *Task) Interrupt() { j.stop(true) }
+
+// BeginInterrupt marks the task interrupted without stopping it, so a handler
+// that a Suspend hook stops ends interrupted, not failed.
+func (j *Task) BeginInterrupt() {
 	j.mu.Lock()
+	j.interrupted = true
+	j.mu.Unlock()
+}
+
+// Interrupted reports whether the task's job host is interrupting it.
+func (j *Task) Interrupted() bool {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	return j.interrupted
+}
+
+func (j *Task) stop(interrupt bool) {
+	j.mu.Lock()
+	if interrupt {
+		j.interrupted = true
+	}
 	if j.state == TaskStateQueued {
 		// Queue cancellation and Start contend on this same lock. Once this
 		// transition wins, Start observes a terminal state and cannot run the
@@ -496,10 +567,41 @@ func (j *Task) Cancel() {
 		j.publishTerminal(event)
 		return
 	}
+	rec, running := j.recorder, j.state == TaskStateRunning
+	var requested *TaskEvent
+	if running && !interrupt && !j.cancelRequested {
+		j.cancelRequested = true
+		j.updatedAt = time.Now().UTC()
+		requested = &TaskEvent{Type: TaskEventSnapshot, Task: j.snapshotLocked()}
+	}
 	j.mu.Unlock()
+	// Recorded first, so a shutdown or reboot before the handler returns
+	// neither suspends nor resumes a job its owner canceled.
+	if running && !interrupt && rec != nil {
+		rec.CancelRequested(j)
+	}
+	if requested != nil {
+		j.announceCancelRequest(*requested)
+	}
 	// A running task owns its runner; cancellation is delivered through its
 	// context and the runner's normal terminal path publishes the event.
 	j.cancel()
+}
+
+// announceCancelRequest tells task lists that the owner canceled the running
+// task, whose handler may take a while to stop; a watch stream carries only
+// progress and the outcome. A task that ended meanwhile has sent its terminal
+// event, which a running snapshot must not follow.
+func (j *Task) announceCancelRequest(event TaskEvent) {
+	if j.registry == nil {
+		return
+	}
+	j.publishMu.Lock()
+	defer j.publishMu.Unlock()
+	if j.IsTerminal() {
+		return
+	}
+	j.registry.broadcast(event)
 }
 
 // CancelTasksForSession cancels all non-terminal tasks belonging to the given session.
@@ -583,9 +685,15 @@ func (j *Task) ReportProgress(detail ProgressDetail) {
 		Task:     j.snapshotLocked(),
 		Progress: progress,
 	}
-	j.appendProgressLogLocked(event)
+	j.publishProgressLocked(event)
+	rec := j.recorder
 	j.mu.Unlock()
-	j.broadcast(event)
+	if rec != nil {
+		rec.Progress(j, progress)
+	}
+	if j.registry != nil {
+		j.registry.broadcast(event)
+	}
 }
 
 // ReportData emits transient stream data to direct task subscribers only. Data
@@ -611,15 +719,20 @@ func (j *Task) ReportTransientProgress(progress any) {
 		Progress:  progress,
 		transient: true,
 	}
-	j.appendProgressLogLocked(event)
+	j.publishProgressLocked(event)
 	j.mu.Unlock()
-	j.broadcastLocal(event)
 }
 
-func (j *Task) appendProgressLogLocked(event TaskEvent) {
+// publishProgressLocked logs event for replay and sends it to the direct
+// subscribers under the same lock, so a subscriber gets it exactly once:
+// in its replay or live.
+func (j *Task) publishProgressLocked(event TaskEvent) {
 	j.progressLog = append(j.progressLog, event)
 	j.progressLogBytes += taskDataProgressBytes(event.Progress)
 	j.trimProgressLogLocked()
+	for _, subscriber := range j.subscribers {
+		subscriber.send(event, "task")
+	}
 }
 
 func taskDataProgressBytes(progress any) int {
@@ -696,29 +809,37 @@ func (j *Task) run(ctx context.Context, runner TaskRunner, request any) {
 	// Every field is set explicitly rather than inherited. A task context is
 	// rooted at context.Background (see ClaimForOwnerWithIdentity), and a queued task is
 	// promoted by whichever goroutine finished the task ahead of it, so an
-	// inherited label set would name the wrong session. The routeRunner timeout
-	// goroutine picks these up from here.
+	// inherited label set would name the wrong session. The runner's own
+	// goroutines pick these up from here.
 	ctx = goroutinelabel.WithSession(ctx, j.owner.SessionID, j.owner.UID,
 		"component", "task",
 		"task_id", j.id,
 		"task_type", j.typ,
 	)
+	ctx = context.WithValue(ctx, taskContextKey{}, j)
 
 	result, err := runner(ctx, j, request)
 	if err != nil {
 		// A failed task is logged here and nowhere else: runners return
 		// errors instead of logging them.
 		msg, level := "task failed", failureLevel(err)
-		if errors.Is(err, context.Canceled) {
+		interrupted := j.Interrupted()
+		// A stopped handler may report how it stopped, such as a killed
+		// subprocess, instead of the context's error.
+		canceled := errors.Is(err, context.Canceled) || ctx.Err() != nil
+		switch {
+		case interrupted:
+			msg, level = "task interrupted", slog.LevelInfo
+		case canceled:
 			msg, level = "task canceled", slog.LevelInfo
 		}
 		slog.Log(ctx, level, msg, "task_id", j.id, "task_type", j.typ, "user", j.owner.Username, "error", err)
-		if errors.Is(err, context.DeadlineExceeded) {
+		if errors.Is(err, context.DeadlineExceeded) && !interrupted {
 			j.markFailed(NewError("operation timed out", 504))
 			return
 		}
-		if errors.Is(err, context.Canceled) {
-			j.markCanceled()
+		if interrupted || canceled {
+			j.markCanceled() // ends interrupted after Interrupt
 			return
 		}
 		if taskErr, ok := errors.AsType[*Error](err); ok {
@@ -736,8 +857,19 @@ func (j *Task) run(ctx context.Context, runner TaskRunner, request any) {
 // subscribers. Call exactly once per task, after j.mu has been released — the
 // lock split is required by the Start/Cancel race, the tail is not.
 func (j *Task) publishTerminal(event TaskEvent) {
+	j.mu.RLock()
+	rec := j.recorder
+	j.mu.RUnlock()
+	// Only Done waiters and direct subscribers are ordered after
+	// Recorder.Finished; a watcher that reads the terminal snapshot meanwhile
+	// may send its terminal frame before the record is finished.
+	if rec != nil {
+		rec.Finished(j)
+	}
 	j.signalDone()
+	j.publishMu.Lock()
 	j.broadcast(event)
+	j.publishMu.Unlock()
 	j.closeSubscribers()
 }
 
@@ -786,16 +918,20 @@ func (j *Task) markCanceled() {
 	j.publishTerminal(event)
 }
 
-// markCanceledLocked records cancellation while j.mu is held. The caller is
-// responsible for signaling and broadcasting after releasing the lock.
+// markCanceledLocked records cancellation, or the interruption Interrupt
+// asked for, while j.mu is held. The caller is responsible for signaling and
+// broadcasting after releasing the lock.
 func (j *Task) markCanceledLocked(now time.Time) TaskEvent {
-	taskErr := NewError("operation aborted", 499)
-	j.state = TaskStateCanceled
+	eventType, state, taskErr := TaskEventCanceled, TaskStateCanceled, NewError("operation aborted", 499)
+	if j.interrupted {
+		eventType, state, taskErr = TaskEventError, TaskStateInterrupted, NewError("job was interrupted", 409)
+	}
+	j.state = state
 	j.request = nil
 	j.err = taskErr
 	j.updatedAt = now
 	j.finishedAt = &now
-	return TaskEvent{Type: TaskEventCanceled, Task: j.snapshotLocked(), Error: taskErr}
+	return TaskEvent{Type: eventType, Task: j.snapshotLocked(), Error: taskErr}
 }
 
 func cloneTaskMetadata(metadata *TaskMetadata) *TaskMetadata {
@@ -918,23 +1054,34 @@ func isTaskDataProgress(progress any) bool {
 }
 
 func (j *Task) isTerminalLocked() bool {
-	return j.state == TaskStateCompleted || j.state == TaskStateFailed || j.state == TaskStateCanceled
+	return j.state.Terminal()
+}
+
+// Terminal reports whether s is a final state.
+func (s TaskState) Terminal() bool {
+	switch s {
+	case TaskStateCompleted, TaskStateFailed, TaskStateCanceled, TaskStateInterrupted:
+		return true
+	default:
+		return false
+	}
 }
 
 func (j *Task) snapshotLocked() TaskSnapshot {
 	return TaskSnapshot{
-		ID:         j.id,
-		Type:       j.typ,
-		Metadata:   cloneTaskMetadata(j.metadata),
-		Owner:      j.owner,
-		State:      j.state,
-		Progress:   j.progress,
-		Result:     j.result,
-		Error:      j.err,
-		CreatedAt:  j.createdAt,
-		StartedAt:  cloneTimePtr(j.startedAt),
-		UpdatedAt:  j.updatedAt,
-		FinishedAt: cloneTimePtr(j.finishedAt),
+		ID:              j.id,
+		Type:            j.typ,
+		Metadata:        cloneTaskMetadata(j.metadata),
+		Owner:           j.owner,
+		State:           j.state,
+		CancelRequested: j.cancelRequested,
+		Progress:        j.progress,
+		Result:          j.result,
+		Error:           j.err,
+		CreatedAt:       j.createdAt,
+		StartedAt:       cloneTimePtr(j.startedAt),
+		UpdatedAt:       j.updatedAt,
+		FinishedAt:      cloneTimePtr(j.finishedAt),
 	}
 }
 
@@ -952,7 +1099,7 @@ func (r *TaskService) SweepTerminalOlderThan(cutoff time.Time) int {
 		if snapshot.FinishedAt == nil {
 			continue
 		}
-		if snapshot.State != TaskStateCompleted && snapshot.State != TaskStateFailed && snapshot.State != TaskStateCanceled {
+		if !snapshot.State.Terminal() {
 			continue
 		}
 		if snapshot.FinishedAt.Before(cutoff) {

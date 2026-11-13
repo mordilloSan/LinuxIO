@@ -18,9 +18,11 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/acpagents"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/streamrelay"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/usercmd"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 )
 
 const (
@@ -30,6 +32,10 @@ const (
 
 // signalGroup is a seam so tests can assert that no signal is sent after exit.
 var signalGroup = syscall.Kill
+
+// agentHome resolves the home directory agents are installed under. It is a
+// seam so tests can install a fake agent outside the real home.
+var agentHome = userconfig.Homedir
 
 // tailBuffer keeps the last stderrTailSize bytes written to it.
 type tailBuffer struct {
@@ -80,17 +86,30 @@ func HandleAssistantSession(ctx context.Context, rt runtime.Runtime, stream net.
 		streamrelay.WriteClose(stream)
 		return fmt.Errorf("assistant: %w", err)
 	}
-	binary, err := usercmd.LookPathIn(userPath, agent.Command)
+	agentsHome, err := agentHome(sess.User.Username)
 	if err != nil {
 		streamrelay.WriteClose(stream)
-		return fmt.Errorf("assistant: %s: %w", req.Agent, err)
+		return fmt.Errorf("assistant: %w", err)
 	}
-	cmd, err := usercmd.Command(ctx, sess.User, binary, agent.Args...)
+	// Starting an agent never installs or updates it: a missing or outdated
+	// install is refused here and fixed from the Capability Manager.
+	launch, err := acpagents.Launch(req.Agent, agentsHome, userPath)
+	if err != nil {
+		streamrelay.WriteClose(stream)
+		return fmt.Errorf("assistant: %w: %w", bridgeipc.ErrConflict, err)
+	}
+	cmd, err := usercmd.Command(ctx, sess.User, launch.Path, launch.Args...)
 	if err != nil {
 		streamrelay.WriteClose(stream)
 		return fmt.Errorf("assistant: %w", err)
 	}
 	cmd.Env = append(cmd.Env, "PATH="+userPath)
+	cmd.Env = append(cmd.Env, launch.Env...)
+	panes := openPanes(stream, req, agent, sess.User)
+	defer panes.close()
+	if panes != nil {
+		cmd.Env = append(cmd.Env, panes.agentEnv(agent.CLIEnv, launch.CLI)...)
+	}
 	home := cmd.Dir
 
 	stdin, err := cmd.StdinPipe()
@@ -130,20 +149,30 @@ func HandleAssistantSession(ctx context.Context, rt runtime.Runtime, stream net.
 		}
 	}()
 
+	var agentIn io.Writer = stdin
+	pumpOut := func() error { return streamrelay.PumpToStream(stream, stdout, 0) }
+	if panes != nil {
+		panes.serve()
+		agentIn = panes.splitter(stdin)
+		pumpOut = func() error { return panes.pumpAgentOutput(stdout) }
+	}
+
 	var wg sync.WaitGroup
 	wg.Go(func() {
-		_ = streamrelay.PumpFromStream(stream, stdin, nil)
+		_ = streamrelay.PumpFromStream(stream, agentIn, nil)
 		r.terminate()
 	})
 
 	// The exit line and close frame follow the agent's exit, so a stdout
 	// EOF must not write a close frame here.
-	if err := streamrelay.PumpToStream(stream, stdout, 0); errors.Is(err, streamrelay.ErrStreamWrite) {
+	if err := pumpOut(); errors.Is(err, streamrelay.ErrStreamWrite) {
 		r.terminate()
 		_, _ = io.Copy(io.Discard, stdout)
 	}
 	code := exitCode(cmd.Wait())
 	close(r.done)
+	// Every pane line goes out before the exit line.
+	panes.close()
 
 	// The stderr tail can end mid-rune, so invalid UTF-8 must not drop the exit line.
 	exit, marshalErr := json.Marshal(map[string]any{"linuxio": "exit", "code": code, "stderr": stderr.String()}, jsontext.AllowInvalidUTF8(true))

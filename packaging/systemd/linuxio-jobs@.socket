@@ -1,0 +1,16 @@
+[Unit]
+Description=LinuxIO job host socket for uid %i
+Documentation=https://github.com/mordilloSan/LinuxIO
+# linuxio-auth starts it at a user's login, root tools start uid 0's. A
+# connection starts linuxio-jobs@%i.service whenever the host is down, so a
+# host that crashed or went idle comes back on the next one. Deliberately not
+# PartOf=linuxio.target: updates must not stop it.
+
+[Socket]
+ListenStream=/run/linuxio/jobs/%i.sock
+# The bridge binary recognizes the job host by this name; it takes no
+# arguments.
+FileDescriptorName=linuxio-jobs
+SocketUser=%i
+SocketMode=0600
+Accept=no

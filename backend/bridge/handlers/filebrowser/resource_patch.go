@@ -84,17 +84,17 @@ func validatePatchDestination(root *fsroot.FSRoot, req resourcePatchRequest) err
 
 // executeResourcePatch renames: copying and moving selections go through the
 // batch tasks, which carry conflict handling and progress.
-func executeResourcePatch(req resourcePatchRequest, opts *services.OperationCallbacks, size computedTransferSize) error {
+func executeResourcePatch(ctx context.Context, req resourcePatchRequest, owner services.Owner, opts *services.OperationCallbacks, size computedTransferSize) error {
 	switch req.action {
 	case "rename", "move":
-		return services.MoveFileWithCallbacks(req.realSrc, req.realDest, false, opts, moveFileOptions(size))
+		return services.MoveFileWithCallbacks(ctx, req.realSrc, req.realDest, false, owner, opts, moveFileOptions(size))
 	default:
 		return fmt.Errorf("%w: unsupported action: %s", bridgeipc.ErrInvalidArgs, req.action)
 	}
 }
 
 // resourcePatchWithProgress performs patch operations with progress feedback.
-func resourcePatchWithProgress(ctx context.Context, req apischema.ActionSourceDestinationRequest, task *bridgeipc.Task) (apischema.MessageResponse, error) {
+func resourcePatchWithProgress(ctx context.Context, req apischema.ActionSourceDestinationRequest, task *bridgeipc.Task, session sessionOwner) (apischema.MessageResponse, error) {
 	patchReq, err := parseResourcePatchRequest(req)
 	if err != nil {
 		return apischema.MessageResponse{}, err
@@ -135,7 +135,7 @@ func resourcePatchWithProgress(ctx context.Context, req apischema.ActionSourceDe
 	})
 
 	opts := newTaskPhaseCallbacks(ctx, task, nil, size.estimate(), "moving")
-	if err := executeResourcePatch(patchReq, opts, size); err != nil {
+	if err := executeResourcePatch(ctx, patchReq, actingFor(session), opts, size); err != nil {
 		return apischema.MessageResponse{}, fsError(patchReq.action, err)
 	}
 

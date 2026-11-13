@@ -48,29 +48,31 @@ vi.mock("@/api", async () => {
     await vi.importActual<typeof import("@/api/capabilities")>(
       "@/api/capabilities",
     );
+  const { mockMutationHooks } = await import("@/test/mutationHooks");
+  const useCallMutation = (endpoint: { route: string }) => {
+    if (endpoint.route.endsWith("set_container_auto_update")) {
+      return { mutateAsync: mocks.mutateAsync };
+    }
+    throw new Error(`Unexpected mutation route: ${endpoint.route}`);
+  };
   return {
     ...actual,
     emptyCapabilityState,
-    linuxio: {
-      ...actual.linuxio,
-      docker: {
-        ...actual.linuxio.docker,
-        get_container_auto_update: {
-          ...actual.linuxio.docker.get_container_auto_update,
-          queryKey: ["docker.get_container_auto_update"],
-          queryFn: async () => mocks.cacheState,
-        },
-        set_container_auto_update: {
-          ...actual.linuxio.docker.set_container_auto_update,
+    linuxio: mockMutationHooks(
+      {
+        ...actual.linuxio,
+        docker: {
+          ...actual.linuxio.docker,
+          get_container_auto_update: {
+            ...actual.linuxio.docker.get_container_auto_update,
+            queryKey: ["docker.get_container_auto_update"],
+            queryFn: async () => mocks.cacheState,
+          },
         },
       },
-    },
-    useCallMutation: (endpoint: { route: string }) => {
-      if (endpoint.route.endsWith("set_container_auto_update")) {
-        return { mutateAsync: mocks.mutateAsync };
-      }
-      throw new Error(`Unexpected mutation route: ${endpoint.route}`);
-    },
+      useCallMutation,
+    ),
+    useCallMutation,
   };
 });
 

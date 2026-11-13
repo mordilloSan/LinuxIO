@@ -16,36 +16,50 @@
             scheme: "dark",
             bg: "#1B2635",
             text: "rgba(255, 255, 255, 0.95)",
-            primary: "#407AD6",
+            primary: "#407ad6",
           };
           var LIGHT = {
             scheme: "light",
             bg: "#F7F9FC",
-            text: "rgba(0, 0, 0, 0.87)",
-            primary: "#376FD0",
+            text: "rgba(15, 15, 15, 0.95)",
+            primary: "#376fd0",
           };
-			var t;
-			if (location.pathname === "/sign-in") {
-				t = DARK;
-			} else {
-				t =
-					window.matchMedia &&
-					window.matchMedia("(prefers-color-scheme: light)").matches
-						? LIGHT
-						: DARK;
-			}
+          // Only plain colours pass: a stored value never reaches the page
+          // as a url() or as anything that could carry a second declaration.
+          var COLOR = /^(#[0-9a-f]{3,8}|(rgb|hsl)a?\([0-9a-z\s.,%\/+-]+\))$/i;
+          var pick = function (value, fallback) {
+            return typeof value === "string" && COLOR.test(value)
+              ? value
+              : fallback;
+          };
+          var t = DARK;
+          if (location.pathname !== "/sign-in") {
+            var hint = null;
+            try {
+              hint = JSON.parse(
+                localStorage.getItem("linuxio.bootTheme") || "null"
+              );
+            } catch (e) {}
+            if (hint && (hint.scheme === "light" || hint.scheme === "dark")) {
+              var base = hint.scheme === "light" ? LIGHT : DARK;
+              t = {
+                scheme: base.scheme,
+                bg: pick(hint.bg, base.bg),
+                text: pick(hint.text, base.text),
+                primary: pick(hint.primary, base.primary),
+              };
+            } else if (
+              window.matchMedia &&
+              window.matchMedia("(prefers-color-scheme: light)").matches
+            ) {
+              t = LIGHT;
+            }
+          }
           var s = document.documentElement.style;
           s.setProperty("--app-color-scheme", t.scheme);
           s.setProperty("--app-palette-background-default", t.bg);
           s.setProperty("--app-palette-text-primary", t.text);
-          s.setProperty(
-            "--app-palette-primary-main",
-            typeof t.primary === "string" && t.primary.length > 0
-              ? t.primary
-              : t.scheme === "light"
-                ? LIGHT.primary
-                : DARK.primary
-          );
+          s.setProperty("--app-palette-primary-main", t.primary);
         } catch (e) {}
       })();
     </script>

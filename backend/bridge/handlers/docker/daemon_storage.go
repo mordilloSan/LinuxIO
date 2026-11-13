@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
-	"slices"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
@@ -18,9 +17,9 @@ const dockerDataRootDropInPath = "/etc/systemd/system/docker.service.d/linuxio-d
 
 var (
 	systemdActiveState       = systemd.GetActiveState
-	systemdStopUnit          = systemd.StopUnit
-	systemdStartUnit         = systemd.StartUnit
+	systemdInvocationID      = systemd.GetInvocationID
 	systemdResetFailedUnit   = systemd.ResetFailedUnit
+	systemdRestartUnit       = systemd.RestartUnit
 	stopAllRunningContainers = StopAllRunning
 	dockerUnitPollInterval   = time.Second
 	dockerUnitWaitTimeout    = 3 * time.Minute
@@ -33,9 +32,12 @@ func runApplyDaemonStorageTask(ctx context.Context, task *bridgeipc.Task, req ap
 	return applyDaemonStorage(ctx, report, dockerDaemonConfigPath, dockerDataRootDropInPath, req)
 }
 
-// applyDaemonStorage saves the whole form with Docker fully stopped. Running
-// containers are stopped first because live restore would otherwise keep them
-// running, unseen by a daemon that now reads another data root or driver.
+// applyDaemonStorage stops the running containers, writes the files while
+// Docker still runs and hands one restart to systemd. dockerd reads the files
+// only at start, and systemd finishes the restart even if this job dies, so
+// Docker cannot be left down. Containers are stopped first because live restore
+// would otherwise keep them running, unseen by a daemon that now reads another
+// data root or driver.
 func applyDaemonStorage(ctx context.Context, report func(phase, message string), path, dropInPath string, req apischema.DockerDaemonConfig) (apischema.DockerDaemonConfigSetResult, error) {
 	if err := validateDaemonConfig(req); err != nil {
 		return apischema.DockerDaemonConfigSetResult{}, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
@@ -46,11 +48,10 @@ func applyDaemonStorage(ctx context.Context, report func(phase, message string),
 	}
 	after := applyDaemonConfig(cloneMap(before), req)
 
-	socketActive, err := stopDocker(ctx, report)
-	if err != nil {
+	if err = stopRunningContainers(ctx, report); err != nil {
 		return apischema.DockerDaemonConfigSetResult{}, err
 	}
-	// Docker is down: a cancelled caller must not leave it that way.
+	// The containers are down: a cancel must not stop the switch half-written.
 	ctx = context.WithoutCancel(ctx)
 
 	// The drop-in goes first so dockerd never starts on the bare mountpoint
@@ -63,7 +64,7 @@ func applyDaemonStorage(ctx context.Context, report func(phase, message string),
 	if err = writeDaemonConfigFile(path, after); err != nil {
 		return apischema.DockerDaemonConfigSetResult{}, err
 	}
-	if err = startDocker(ctx, report, socketActive); err != nil {
+	if err = restartDocker(ctx, report); err != nil {
 		return apischema.DockerDaemonConfigSetResult{}, err
 	}
 
@@ -72,61 +73,46 @@ func applyDaemonStorage(ctx context.Context, report func(phase, message string),
 	return apischema.DockerDaemonConfigSetResult{Config: cfg}, nil
 }
 
-// stopDocker stops every running container, then docker.socket and
-// docker.service, and reports whether the socket was active. Nothing is
-// stopped when a container refuses to, so the caller can leave the config.
-func stopDocker(ctx context.Context, report func(phase, message string)) (bool, error) {
-	serviceState, err := systemdActiveState(ctx, "docker.service")
+// stopRunningContainers stops every running container and changes nothing
+// when one refuses to, so the caller can leave the config.
+func stopRunningContainers(ctx context.Context, report func(phase, message string)) error {
+	state, err := systemdActiveState(ctx, "docker.service")
 	if err != nil {
-		return false, err
-	}
-	socketState, err := systemdActiveState(ctx, "docker.socket")
-	if err != nil {
-		return false, err
-	}
-	// A daemon that is down (possibly failed on a bad config) has nothing to
-	// stop, which keeps this route usable for reverting a broken switch.
-	if serviceState == "active" {
-		report("stop", "Stopping running containers")
-		var stopped apischema.DockerStoppedFailedResponse
-		if stopped, err = stopAllRunningContainers(ctx); err != nil {
-			return false, fmt.Errorf("stop running containers: %w", err)
-		}
-		if stopped.Failed > 0 {
-			return false, fmt.Errorf("%d containers did not stop, storage left unchanged", stopped.Failed)
-		}
-	}
-
-	report("stop", "Stopping Docker")
-	socketActive := socketState == "active"
-	// The socket goes first so a client cannot re-activate the old daemon.
-	if socketActive {
-		if err = systemdStopUnit(ctx, "docker.socket"); err != nil {
-			return false, err
-		}
-	}
-	if err = systemdStopUnit(ctx, "docker.service"); err != nil {
-		return false, err
-	}
-	_, err = waitForDockerUnit(ctx, "inactive", "failed")
-	return socketActive, err
-}
-
-func startDocker(ctx context.Context, report func(phase, message string), socketActive bool) error {
-	report("start", "Starting Docker")
-	// Clears a failed state so the wait below only sees this start's outcome.
-	if err := systemdResetFailedUnit(ctx, "docker.service"); err != nil {
-		slog.Debug("docker.service had no failed state to reset", "component", "docker", "error", err)
-	}
-	if socketActive {
-		if err := systemdStartUnit(ctx, "docker.socket"); err != nil {
-			return err
-		}
-	}
-	if err := systemdStartUnit(ctx, "docker.service"); err != nil {
 		return err
 	}
-	state, err := waitForDockerUnit(ctx, "active", "failed")
+	// A daemon that is down (possibly failed on a bad config) has no containers
+	// to stop, which keeps this route usable for reverting a broken switch.
+	if state != "active" {
+		return nil
+	}
+	report("stop", "Stopping running containers")
+	stopped, err := stopAllRunningContainers(ctx)
+	if err != nil {
+		return fmt.Errorf("stop running containers: %w", err)
+	}
+	if stopped.Failed > 0 {
+		return fmt.Errorf("%d containers did not stop, storage left unchanged", stopped.Failed)
+	}
+	return nil
+}
+
+// restartDocker queues one systemd restart, which also starts a Docker that is
+// stopped or failed, and waits for the new run. docker.socket stays up, so a
+// client that connects meanwhile waits for the new daemon.
+func restartDocker(ctx context.Context, report func(phase, message string)) error {
+	report("restart", "Restarting Docker")
+	oldInvocation, err := systemdInvocationID(ctx, "docker.service")
+	if err != nil {
+		return err
+	}
+	// Clears a failed state so the wait below only sees this restart's outcome.
+	if err = systemdResetFailedUnit(ctx, "docker.service"); err != nil {
+		slog.Debug("docker.service had no failed state to reset", "component", "docker", "error", err)
+	}
+	if err = systemdRestartUnit(ctx, "docker.service"); err != nil {
+		return err
+	}
+	state, err := waitForDockerRestart(ctx, oldInvocation)
 	if err != nil {
 		return err
 	}
@@ -136,22 +122,33 @@ func startDocker(ctx context.Context, report func(phase, message string), socket
 	return nil
 }
 
-// waitForDockerUnit polls docker.service until it reaches one of states;
-// systemd runs start and stop jobs asynchronously.
-func waitForDockerUnit(ctx context.Context, states ...string) (string, error) {
+// waitForDockerRestart polls docker.service until it has failed, or is active
+// on a different invocation than oldInvocation: ActiveState alone still reads
+// active before the queued restart job has run. The wait is bounded by
+// dockerUnitWaitTimeout.
+func waitForDockerRestart(ctx context.Context, oldInvocation string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, dockerUnitWaitTimeout)
 	defer cancel()
 	for {
 		state, err := systemdActiveState(ctx, "docker.service")
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("wait for docker.service restart: %w", err)
 		}
-		if slices.Contains(states, state) {
+		switch state {
+		case "failed":
 			return state, nil
+		case "active":
+			invocation, err := systemdInvocationID(ctx, "docker.service")
+			if err != nil {
+				return "", fmt.Errorf("wait for docker.service restart: %w", err)
+			}
+			if invocation != oldInvocation {
+				return state, nil
+			}
 		}
 		select {
 		case <-ctx.Done():
-			return "", fmt.Errorf("wait for docker.service, still %s: %w", state, ctx.Err())
+			return "", fmt.Errorf("wait for docker.service restart, still %s: %w", state, ctx.Err())
 		case <-time.After(dockerUnitPollInterval):
 		}
 	}

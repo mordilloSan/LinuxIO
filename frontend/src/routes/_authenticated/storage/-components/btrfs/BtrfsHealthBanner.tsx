@@ -1,19 +1,20 @@
 import { Icon } from "@iconify/react";
 import { useState, type CSSProperties } from "react";
+import { toast } from "sonner";
 
 import {
+  call,
+  getMutationErrorMessage,
   linuxio,
-  useCallMutation,
   type BtrfsFilesystem,
-  type BtrfsOpProgress,
   type BtrfsScrubStatus,
-  type TaskProgress,
 } from "@/api";
 import { STATUS_COLOR } from "@/components/cards/EntityCardKit";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
-import { formatDate } from "@/utils/formatters";
+import { TASK_TYPE_STORAGE_BTRFS_SCRUB } from "@/tasks/taskTypes";
+import { formatDate, formatPercent } from "@/utils/formatters";
 
 import BtrfsAddDeviceDialog from "./BtrfsAddDeviceDialog";
 import { deviceErrorCount } from "./BtrfsDevicesCard";
@@ -35,7 +36,7 @@ const scrubSummary = (scrub: BtrfsScrubStatus) => {
     case "none":
       return "Never checked for errors";
     case "running":
-      return `Checking for errors · ${scrub.percent}%`;
+      return `Checking for errors · ${formatPercent(scrub.percent)}`;
     default:
       return `Last check: ${formatDate(scrub.finishedAt)}, ${scrub.errorCount} errors${
         scrub.uncorrectableErrors > 0
@@ -106,6 +107,11 @@ const BtrfsHealthBanner = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
     : `The filesystem${mountpoint ? ` at ${mountpoint}` : ""}`;
   const health = healthOf(filesystem, name);
   const scrubRunning = filesystem.scrub.status === "running";
+  // The scrub being stopped, named by its start: it runs on until its job's
+  // handler returns, and a later scrub is another one to stop.
+  const scrubRun = filesystem.scrub.startedAt ?? "";
+  const [stoppingScrub, setStoppingScrub] = useState<string | null>(null);
+  const stopping = scrubRunning && stoppingScrub === scrubRun;
   const missing = filesystem.devices.find((d) => d.missing);
 
   const taskConfig = (success: string, error: string) => ({
@@ -113,22 +119,46 @@ const BtrfsHealthBanner = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
     error,
     toast: BTRFS_POOL_TOAST_META,
   });
-  const scrub = linuxio.storage.btrfs_scrub_start.useTaskStreamAction<
-    BtrfsFilesystem,
-    TaskProgress<BtrfsOpProgress>
-  >(taskConfig("Check finished", "Failed to check filesystem"));
-  const replace = linuxio.storage.btrfs_device_replace.useTaskStreamAction<
-    BtrfsFilesystem,
-    TaskProgress<BtrfsOpProgress>
-  >(taskConfig("Device replaced", "Failed to replace device"));
-  const reclaim = linuxio.storage.btrfs_balance.useTaskStreamAction<
-    BtrfsFilesystem,
-    TaskProgress<BtrfsOpProgress>
-  >(taskConfig("Space reclaimed", "Failed to reclaim space"));
-  const { mutate: cancelScrub } = useCallMutation(
-    linuxio.storage.btrfs_scrub_cancel,
-    { error: "Failed to stop the check", toast: BTRFS_POOL_TOAST_META },
+  const scrub = linuxio.storage.btrfs_scrub_start.useMutation(
+    taskConfig("Check finished", "Failed to check filesystem"),
   );
+  const replace = linuxio.storage.btrfs_device_replace.useMutation(
+    taskConfig("Device replaced", "Failed to replace device"),
+  );
+  const reclaim = linuxio.storage.btrfs_balance.useMutation(
+    taskConfig("Space reclaimed", "Failed to reclaim space"),
+  );
+  const { mutate: cancelScrub } =
+    linuxio.storage.btrfs_scrub_cancel.useMutation({
+      error: "Failed to stop the check",
+      toast: BTRFS_POOL_TOAST_META,
+      options: { onError: () => setStoppingScrub(null) },
+    });
+  // A scrub with a job is canceled through the job, so the record gets
+  // cancel_requested and a shutdown right after does not resume it. Only a
+  // scrub without a running job (the timer's) falls back to the kernel cancel.
+  const stopCheck = async () => {
+    setStoppingScrub(scrubRun);
+    const jobs = await call("tasks.list", { status: "active" }).catch(() => []);
+    const job = jobs.find(
+      (task) =>
+        task.type === TASK_TYPE_STORAGE_BTRFS_SCRUB &&
+        task.state === "running" &&
+        task.metadata?.identity?.[0] === uuid,
+    );
+    if (!job) {
+      cancelScrub({ uuid });
+      return;
+    }
+    try {
+      await call("tasks.cancel", { taskId: job.id });
+    } catch (error) {
+      setStoppingScrub(null);
+      toast.error(getMutationErrorMessage(error, "Failed to stop the check"), {
+        meta: BTRFS_POOL_TOAST_META,
+      });
+    }
+  };
 
   return (
     <FrostedCard style={bannerStyle}>
@@ -169,11 +199,12 @@ const BtrfsHealthBanner = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
       )}
       {scrubRunning ? (
         <AppButton
-          onClick={() => cancelScrub({ uuid })}
+          disabled={stopping}
+          onClick={() => void stopCheck()}
           size="small"
           variant="outlined"
         >
-          Stop check
+          {stopping ? "Stopping…" : "Stop check"}
         </AppButton>
       ) : (
         <AppButton

@@ -176,7 +176,7 @@ func checkHostFilesystem(t *testing.T, fs BtrfsFilesystem) {
 	}
 	kinds := map[string]bool{}
 	for _, a := range fs.Allocation {
-		if MinDevices(a.Profile) == 0 && a.Profile != "raid5" && a.Profile != "raid6" {
+		if _, known := profiles[a.Profile]; !known {
 			t.Fatalf("%s: unknown profile in %+v", fs.UUID, a)
 		}
 		kinds[a.Kind] = true

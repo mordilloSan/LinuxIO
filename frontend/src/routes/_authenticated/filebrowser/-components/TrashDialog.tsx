@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 
 import {
@@ -23,10 +24,11 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { describeBatchFailures } from "@/tasks/batchFailures";
 import { formatDate, formatFileSize } from "@/utils/formatters";
+import { toastFileError } from "@/utils/linkRefusal";
 import { parentPath } from "@/utils/path";
 
-import FileIcon from "./FileIcon";
 import { FILES_TOAST_META } from "../-hooks/useFileMutations";
+import FileIcon from "./FileIcon";
 
 import "./TrashDialog.css";
 
@@ -39,8 +41,11 @@ const itemCount = (count: number) => `${count} item${count === 1 ? "" : "s"}`;
 
 const TrashDialog = ({ open, onClose }: TrashDialogProps) => {
   const toast = useScopedToast(FILES_TOAST_META);
+  const navigate = useNavigate();
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
-  const [confirm, setConfirm] = useState<"selected" | "all" | null>(null);
+  const [confirm, setConfirm] = useState<"selected" | "all" | "restore" | null>(
+    null,
+  );
   const [progress, setProgress] = useState<TaskProgress<CountProgress> | null>(
     null,
   );
@@ -59,6 +64,16 @@ const TrashDialog = ({ open, onClose }: TrashDialogProps) => {
     entries.length > 0 && selectedPaths.length === entries.length;
   const purgePaths =
     confirm === "all" ? entries.map((entry) => entry.path) : selectedPaths;
+  // Items another program trashed carry no record of where they came from,
+  // so a restore into a folder the user does not own names its destination
+  // and asks first; the server refuses it unconfirmed.
+  const restoreConfirmations = entries.filter(
+    (entry) =>
+      selected.has(entry.path) && entry.confirmRestore && entry.originalPath,
+  );
+  const restoreDestinations = restoreConfirmations.map(
+    (entry) => entry.originalPath,
+  );
 
   const report = (
     result: FileBatchResult | undefined,
@@ -70,9 +85,12 @@ const TrashDialog = ({ open, onClose }: TrashDialogProps) => {
     setConfirm(null);
     const failed = result?.failed ?? [];
     if (failed.length > 0) {
-      toast.error(`Failed to ${action} ${itemCount(failed.length)}`, {
-        description: describeBatchFailures(failed),
-      });
+      toastFileError(
+        toast,
+        navigate,
+        `Failed to ${action} ${itemCount(failed.length)}`,
+        { description: describeBatchFailures(failed) },
+      );
       return;
     }
     toast.success(`${done} ${itemCount(result?.succeeded ?? 0)}`);
@@ -80,17 +98,15 @@ const TrashDialog = ({ open, onClose }: TrashDialogProps) => {
   const reportError = (err: unknown, fallback: string) => {
     setProgress(null);
     setConfirm(null);
-    toast.error(getMutationErrorMessage(err, fallback));
+    toastFileError(toast, navigate, getMutationErrorMessage(err, fallback));
   };
 
-  const restore = linuxio.filebrowser.trash_restore.useTaskStreamAction({
-    closeMessage: "Restore task stream closed before completion",
+  const restore = linuxio.filebrowser.trash_restore.useMutation({
     onProgress: setProgress,
     success: (result) => report(result, "Restored", "restore"),
     error: (err) => reportError(err, "Failed to restore items"),
   });
-  const purge = linuxio.filebrowser.trash_purge.useTaskStreamAction({
-    closeMessage: "Delete task stream closed before completion",
+  const purge = linuxio.filebrowser.trash_purge.useMutation({
     onProgress: setProgress,
     success: (result) => report(result, "Deleted", "delete"),
     error: (err) => reportError(err, "Failed to delete items"),
@@ -114,8 +130,22 @@ const TrashDialog = ({ open, onClose }: TrashDialogProps) => {
     setSelected(new Set(checked ? entries.map((entry) => entry.path) : []));
 
   const restoreSelected = () => {
+    if (restoreDestinations.length > 0) {
+      setConfirm("restore");
+      return;
+    }
     setProgress(null);
     restore.mutate({ paths: selectedPaths });
+  };
+  const confirmRestore = () => {
+    setProgress(null);
+    restore.mutate({
+      paths: selectedPaths,
+      // Each destination is confirmed for its own item only.
+      confirmedDestinations: Object.fromEntries(
+        restoreConfirmations.map((entry) => [entry.path, entry.originalPath]),
+      ),
+    });
   };
   const confirmPurge = () => {
     setProgress(null);
@@ -261,9 +291,20 @@ const TrashDialog = ({ open, onClose }: TrashDialogProps) => {
         }
         onClose={() => setConfirm(null)}
         onConfirm={confirmPurge}
-        open={confirm !== null}
+        open={confirm === "selected" || confirm === "all"}
         progress={progress}
         title={confirm === "all" ? "Empty trash" : "Delete permanently"}
+      />
+      <AppConfirmDialog
+        confirmText="Restore"
+        isPending={restore.isPending}
+        message={`Restore to ${restoreDestinations.join(", ")}? Another program moved ${restoreDestinations.length === 1 ? "this item" : "these items"} to the Trash, so LinuxIO cannot vouch for where ${restoreDestinations.length === 1 ? "it" : "they"} came from.`}
+        onClose={() => setConfirm(null)}
+        onConfirm={confirmRestore}
+        open={confirm === "restore"}
+        pendingText="Restoring…"
+        progress={progress}
+        title="Restore to a system folder"
       />
     </>
   );

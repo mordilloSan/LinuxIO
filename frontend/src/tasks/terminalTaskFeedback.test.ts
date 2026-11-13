@@ -14,7 +14,10 @@ const { LinuxIOError } = await import("@/api");
 const {
   TASK_TYPE_DOCKER_UPDATE,
   TASK_TYPE_DOCKER_COMPOSE,
+  TASK_TYPE_FILE_DELETE_BATCH,
   TASK_TYPE_PACKAGE_UPDATE,
+  TASK_TYPE_STORAGE_BTRFS_BALANCE,
+  TASK_TYPE_STORAGE_BTRFS_SCRUB,
   TASK_TYPE_STORAGE_SMART_TEST,
   TASK_TYPE_SYSTEM_INSTALL_CAPABILITY,
 } = await import("./taskTypes");
@@ -28,7 +31,10 @@ const {
   terminalSnapshotOutcome,
 } = await import("./terminalTaskFeedback");
 
-const deps = { refreshCapabilities: vi.fn(async () => undefined) };
+const deps = {
+  navigate: vi.fn(async () => undefined),
+  refreshCapabilities: vi.fn(async () => undefined),
+};
 
 function task(
   id: string,
@@ -244,6 +250,26 @@ describe("terminalTaskFeedback", () => {
     expect(toastMocks.error).not.toHaveBeenCalled();
   });
 
+  it("keeps balances silent — BtrfsDevicesCard toasts the outcome", () => {
+    emitTerminalTaskFeedback(
+      task("balance-failed", TASK_TYPE_STORAGE_BTRFS_BALANCE),
+      failed("no space"),
+      deps,
+    );
+
+    expect(toastMocks.error).not.toHaveBeenCalled();
+  });
+
+  it("keeps scrubs silent — BtrfsHealthBanner toasts the outcome", () => {
+    emitTerminalTaskFeedback(
+      task("scrub-failed", TASK_TYPE_STORAGE_BTRFS_SCRUB),
+      failed("device gone"),
+      deps,
+    );
+
+    expect(toastMocks.error).not.toHaveBeenCalled();
+  });
+
   it("only toasts genuine failures through the generic fallback", () => {
     const compose = task("compose-1", TASK_TYPE_DOCKER_COMPOSE);
     emitTerminalTaskFeedback(compose, canceled, deps, GENERIC_TASK_FEEDBACK);
@@ -256,6 +282,24 @@ describe("terminalTaskFeedback", () => {
       GENERIC_TASK_FEEDBACK,
     );
     expect(toastMocks.error).toHaveBeenCalledWith("disk full");
+  });
+
+  it("offers the real folder when the generic fallback reports a refused link", () => {
+    const refusal =
+      "forbidden: /home/a/docs is a link to /mnt/data/docs. Open that folder to make this change";
+    emitTerminalTaskFeedback(
+      task("delete-1", TASK_TYPE_FILE_DELETE_BATCH),
+      failed(refusal),
+      deps,
+      GENERIC_TASK_FEEDBACK,
+    );
+
+    expect(toastMocks.error).toHaveBeenCalledWith(
+      refusal,
+      expect.objectContaining({
+        action: expect.objectContaining({ label: "Open the real folder" }),
+      }),
+    );
   });
 
   it("emits nothing for unregistered types without an explicit entry", () => {
@@ -303,6 +347,15 @@ describe("terminalTaskFeedback", () => {
       error: { message: "operation aborted", code: 499 },
     });
     expect(cancel?.kind).toBe("canceled");
+
+    const interrupted = terminalSnapshotOutcome({
+      ...base,
+      state: "interrupted",
+    });
+    expect(interrupted?.kind).toBe("failed");
+    expect(
+      interrupted && "error" in interrupted && interrupted.error,
+    ).toMatchObject({ message: "interrupted" });
 
     expect(
       terminalSnapshotOutcome({ ...base, state: "completed", result: 1 }),

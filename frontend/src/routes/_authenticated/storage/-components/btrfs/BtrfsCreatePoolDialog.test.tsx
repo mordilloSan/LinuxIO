@@ -237,7 +237,33 @@ describe("BtrfsCreatePoolDialog", () => {
     await user.click(screen.getByRole("checkbox", { name: /Force/ }));
     expect(
       screen.getByRole("checkbox", { name: /\/dev\/sdd · 100 GB · ext4/ }),
-    ).toBeInTheDocument();
+    ).toBeEnabled();
+  });
+
+  it("keeps a disk of an unmounted pool disabled with its reason, force or not", async () => {
+    const user = userEvent.setup();
+    mocks.topology.mockResolvedValue({
+      ...topology,
+      devices: [
+        ...topology.devices,
+        device("/dev/sdh", {
+          fsType: "btrfs",
+          member: { kind: "btrfs", name: "old", uuid: "o1" },
+        }),
+      ],
+    });
+    render(
+      <BtrfsCreatePoolDialog
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+        pooledDevices={[]}
+      />,
+    );
+
+    const name = "/dev/sdh · 100 GB · btrfs · Member of btrfs pool old";
+    expect(await screen.findByRole("checkbox", { name })).toBeDisabled();
+    await user.click(screen.getByRole("checkbox", { name: /Force/ }));
+    expect(screen.getByRole("checkbox", { name })).toBeDisabled();
   });
 
   it("shows the step a running create is on and holds the buttons", async () => {
@@ -247,12 +273,19 @@ describe("BtrfsCreatePoolDialog", () => {
         onClose={vi.fn()}
         onConfirm={vi.fn()}
         pooledDevices={[]}
-        progress="Formatting: SSDs are trimmed first, which can take a few minutes"
+        progress={{
+          op: "create",
+          percent: 42,
+          message: "Trimming before formatting: 42% complete",
+        }}
       />,
     );
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "Formatting: SSDs are trimmed first",
+      "Trimming before formatting: 42% complete",
     );
+    expect(
+      screen.getByRole("progressbar", { name: "Creating pool" }),
+    ).toHaveAttribute("aria-valuenow", "42");
     expect(screen.getByRole("button", { name: "Creating..." })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
   });

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as core from "@/api/linuxio-core";
 import { render, screen } from "@/test/render";
 
+import { DockerUpdateOperationProvider } from "../shared/DockerUpdateOperationProvider";
 import ContainerActions from "./ContainerActions";
 
 const callbacks = { onOpenLogs: vi.fn(), onOpenTerminal: vi.fn() };
@@ -15,7 +16,9 @@ describe("ContainerActions", () => {
   });
 
   it("guards actions by state and confirms SIGKILL", async () => {
-    const request = vi.spyOn(core, "request").mockResolvedValue(undefined);
+    const request = vi
+      .spyOn(core, "mutationRequest")
+      .mockResolvedValue(undefined);
     const { user } = render(
       <ContainerActions
         container={{ Id: "running-id", State: "running" }}
@@ -23,6 +26,7 @@ describe("ContainerActions", () => {
         name="example"
         {...callbacks}
       />,
+      { auth: { privileged: true } },
     );
 
     expect(screen.getByRole("button", { name: "Stop example" })).toBeEnabled();
@@ -44,12 +48,17 @@ describe("ContainerActions", () => {
       "docker",
       "kill_container",
       { containerId: "running-id" },
-      { retryPolicy: "none" },
+      {
+        onProgress: expect.any(Function),
+        onSnapshot: expect.any(Function),
+      },
     );
   });
 
   it("requires explicit force for an active removal", async () => {
-    const request = vi.spyOn(core, "request").mockResolvedValue(undefined);
+    const request = vi
+      .spyOn(core, "mutationRequest")
+      .mockResolvedValue(undefined);
     const { user } = render(
       <ContainerActions
         container={{ Id: "running-id", State: "running" }}
@@ -57,6 +66,7 @@ describe("ContainerActions", () => {
         name="example"
         {...callbacks}
       />,
+      { auth: { privileged: true } },
     );
 
     await user.click(screen.getByRole("button", { name: "Remove example" }));
@@ -75,7 +85,10 @@ describe("ContainerActions", () => {
       "docker",
       "remove_container",
       { containerId: "running-id", force: true },
-      { retryPolicy: "none" },
+      {
+        onProgress: expect.any(Function),
+        onSnapshot: expect.any(Function),
+      },
     );
   });
 
@@ -85,7 +98,9 @@ describe("ContainerActions", () => {
   ] as const)(
     "offers %s containers the %s action",
     async (state, label, route) => {
-      const request = vi.spyOn(core, "request").mockResolvedValue(undefined);
+      const request = vi
+        .spyOn(core, "mutationRequest")
+        .mockResolvedValue(undefined);
       const { user } = render(
         <ContainerActions
           container={{ Id: "container-id", State: state }}
@@ -93,6 +108,7 @@ describe("ContainerActions", () => {
           name="example"
           {...callbacks}
         />,
+        { auth: { privileged: true } },
       );
 
       await user.click(
@@ -103,13 +119,18 @@ describe("ContainerActions", () => {
         "docker",
         route,
         { containerId: "container-id" },
-        { retryPolicy: "none" },
+        {
+          onProgress: expect.any(Function),
+          onSnapshot: expect.any(Function),
+        },
       );
     },
   );
 
   it("offers only valid stopped-container lifecycle actions", async () => {
-    const request = vi.spyOn(core, "request").mockResolvedValue(undefined);
+    const request = vi
+      .spyOn(core, "mutationRequest")
+      .mockResolvedValue(undefined);
     const { user } = render(
       <ContainerActions
         container={{ Id: "stopped-id", State: "exited" }}
@@ -117,6 +138,7 @@ describe("ContainerActions", () => {
         name="stopped"
         {...callbacks}
       />,
+      { auth: { privileged: true } },
     );
 
     expect(screen.getByRole("button", { name: "Start stopped" })).toBeEnabled();
@@ -137,7 +159,10 @@ describe("ContainerActions", () => {
       "docker",
       "remove_container",
       { containerId: "stopped-id", force: false },
-      { retryPolicy: "none" },
+      {
+        onProgress: expect.any(Function),
+        onSnapshot: expect.any(Function),
+      },
     );
   });
 
@@ -153,6 +178,7 @@ describe("ContainerActions", () => {
         name="example"
         {...callbacks}
       />,
+      { auth: { privileged: true } },
     );
 
     expect(
@@ -169,6 +195,7 @@ describe("ContainerActions", () => {
         name="example"
         {...callbacks}
       />,
+      { auth: { privileged: true } },
     );
 
     expect(
@@ -176,6 +203,73 @@ describe("ContainerActions", () => {
     ).toBeVisible();
     expect(screen.queryByRole("button", { name: /^Edit/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /^Update/ })).toBeNull();
+  });
+
+  it("offers Update in full mode to a session with sudo", () => {
+    render(
+      <DockerUpdateOperationProvider>
+        <ContainerActions
+          container={{
+            Id: "running-id",
+            State: "running",
+            updateAvailable: true,
+          }}
+          mode="full"
+          name="example"
+          {...callbacks}
+        />
+      </DockerUpdateOperationProvider>,
+      { auth: { privileged: true } },
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Update example" }),
+    ).toBeEnabled();
+  });
+
+  it("offers only logs and the app link without sudo", async () => {
+    const container = {
+      Id: "running-id",
+      Labels: { "com.docker.compose.project": "example-stack" },
+      State: "running",
+      updateAvailable: true,
+      url: "http://example.test",
+    };
+    const { unmount } = render(
+      <DockerUpdateOperationProvider>
+        <ContainerActions
+          container={container}
+          mode="full"
+          name="example"
+          {...callbacks}
+        />
+      </DockerUpdateOperationProvider>,
+      { auth: { privileged: false } },
+    );
+
+    expect(
+      screen
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual(["Logs example", "Open App example"]);
+    unmount();
+
+    const { user } = render(
+      <ContainerActions
+        container={container}
+        mode="menu"
+        name="example"
+        {...callbacks}
+      />,
+      { auth: { privileged: false } },
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Actions for example" }),
+    );
+
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual(["Logs", "Open App"]);
   });
 
   it("shows every action as an icon in full mode", () => {
@@ -186,6 +280,7 @@ describe("ContainerActions", () => {
         name="example"
         {...callbacks}
       />,
+      { auth: { privileged: true } },
     );
 
     expect(

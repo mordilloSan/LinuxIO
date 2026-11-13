@@ -30,8 +30,8 @@ func TestStartContextCreatesDatabaseAndServesAPI(t *testing.T) {
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- a.StartContext(ctx, RunOptions{
-			Listeners:         []ListenerOptions{{Name: "metrics", Address: "127.0.0.1:0", APIs: []string{"metrics"}, Plugins: []string{"cpu"}}},
 			CollectorInterval: 5 * time.Minute,
+			Listeners:         []ListenerOptions{{Name: "metrics", Address: "127.0.0.1:0", APIs: []string{"metrics"}, Plugins: []string{"cpu"}}},
 		})
 	}()
 
@@ -82,8 +82,8 @@ func TestStartContextUnixSocket(t *testing.T) {
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- a.StartContext(ctx, RunOptions{
-			Listeners:         []ListenerOptions{{Name: "metrics", Address: "unix:" + socketPath, APIs: []string{"metrics"}}},
 			CollectorInterval: 5 * time.Minute,
+			Listeners:         []ListenerOptions{{Name: "metrics", Address: "unix:" + socketPath, APIs: []string{"metrics"}}},
 		})
 	}()
 
@@ -134,9 +134,8 @@ func TestStartContextDisabledHTTP(t *testing.T) {
 	}()
 
 	// The collector still persists snapshots without the HTTP server. The last
-	// collected timestamp is recorded after the first snapshot is written, so
-	// waiting for it means the initial collection is done and the event loop
-	// is up.
+	// collected timestamp is recorded once the first snapshot is written, while
+	// maintenance may still run; a cancel then is a clean shutdown as well.
 	require.Eventually(t, func() bool {
 		_, ok := a.LastCollected()
 		return ok
@@ -220,8 +219,7 @@ func TestHistoryIntervalsReachTheStoreAndConfigMeta(t *testing.T) {
 		errCh <- a.StartContext(ctx, RunOptions{
 			CollectorInterval: 5 * time.Minute,
 			History:           "cpu,mem",
-			HistoryIntervals:  map[string]time.Duration{"mem": 10 * time.Minute},
-		})
+			HistoryIntervals:  map[string]time.Duration{"mem": 10 * time.Minute}})
 	}()
 	require.Eventually(t, func() bool {
 		_, ok := a.LastCollected()
@@ -241,14 +239,14 @@ func TestHistoryIntervalsReachTheStoreAndConfigMeta(t *testing.T) {
 	assert.Len(t, cpu, 3)
 	assert.Len(t, mem, 2)
 
-	err = a.ReloadRuntime(ReloadOptions{
+	err = a.ReloadRuntime(Settings{
 		CollectorInterval: 5 * time.Minute,
 		History:           "cpu,mem",
 		HistoryIntervals:  map[string]time.Duration{"mem": 7 * time.Minute},
 	})
 	require.Error(t, err, "reload must reject an interval that is not a multiple of the tick")
 
-	require.NoError(t, a.ReloadRuntime(ReloadOptions{
+	require.NoError(t, a.ReloadRuntime(Settings{
 		CollectorInterval: 5 * time.Minute,
 		History:           "cpu,mem",
 	}))

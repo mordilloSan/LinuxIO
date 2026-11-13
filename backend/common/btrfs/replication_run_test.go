@@ -16,6 +16,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 const replPayload = "btrfs-send-stream-0123456789"
@@ -413,9 +414,14 @@ func TestRunReplicationRecordsOutcome(t *testing.T) {
 	ctx := context.Background()
 	saveJobs(t, jobs)
 
-	errs := RunReplication(ctx, jobs)
+	_, _, errs := RunReplication(ctx, jobs, nil)
 	if len(errs) != 1 || !strings.Contains(errs[0].Error(), jobs[0].ID+": boom") {
 		t.Fatalf("errs = %v", errs)
+	}
+	// The job's alert reports the failure, so the timer's pass needs no run
+	// alert for it.
+	if got := alertKeys(t); got["replication-"+jobs[0].ID] != alerts.SeverityError || !scheduledrun.AllReported(errs[0]) {
+		t.Fatalf("alerts = %v, err reported %v; want the job's alert and the error marked", got, scheduledrun.AllReported(errs[0]))
 	}
 	if want := []string{jobs[0].ID, jobs[1].ID}; !reflect.DeepEqual(ran, want) {
 		t.Fatalf("ran %v, want %v", ran, want)
@@ -447,7 +453,7 @@ func TestRunReplicationRecordsOutcome(t *testing.T) {
 	}
 
 	delete(failing, jobs[0].ID)
-	if errs := RunReplication(ctx, jobs); len(errs) != 0 {
+	if _, _, errs := RunReplication(ctx, jobs, nil); len(errs) != 0 {
 		t.Fatalf("second run errs = %v", errs)
 	}
 	if doc, _ = alerts.Load(); len(doc.Alerts) != 0 {
@@ -455,6 +461,67 @@ func TestRunReplicationRecordsOutcome(t *testing.T) {
 	}
 	if stored, _ = LoadJobs(); stored[0].LastError != nil {
 		t.Fatalf("LastError not cleared: %+v", stored[0])
+	}
+}
+
+func TestRunReplicationReportsEachEnabledJob(t *testing.T) {
+	useTempAlerts(t)
+	oldPath, oldReplicate := ReplicationPath, replicate
+	ReplicationPath = filepath.Join(t.TempDir(), "btrfs-replication.json")
+	t.Cleanup(func() { ReplicationPath, replicate = oldPath, oldReplicate })
+	replicate = func(context.Context, BtrfsReplicationJob, func(int64)) (BtrfsReplicationResult, error) {
+		return BtrfsReplicationResult{}, nil
+	}
+	jobs := []BtrfsReplicationJob{
+		{ID: "aaaaaaaa-0000-4000-8000-000000000001", UUID: rootUUID, Path: "@home", Enabled: true},
+		{ID: "aaaaaaaa-0000-4000-8000-000000000003", UUID: rootUUID, Path: "data", Enabled: false},
+		{ID: "aaaaaaaa-0000-4000-8000-000000000002", UUID: rootUUID, Path: "@", Enabled: true},
+	}
+	saveJobs(t, jobs)
+
+	var calls [][2]int
+	_, _, errs := RunReplication(context.Background(), jobs, func(done, total int) {
+		calls = append(calls, [2]int{done, total})
+	})
+	if len(errs) != 0 {
+		t.Fatalf("errs = %v", errs)
+	}
+	if want := [][2]int{{0, 2}, {1, 2}}; !reflect.DeepEqual(calls, want) {
+		t.Fatalf("report calls = %v, want %v", calls, want)
+	}
+}
+
+// Only a job that sent a snapshot counts as sent: not one already up to date,
+// and not one that failed after its send, as a failed prune of the target
+// does. Both the sent and the up-to-date job count as replicated.
+func TestRunReplicationCountsWhatItSent(t *testing.T) {
+	useTempAlerts(t)
+	oldPath, oldReplicate := ReplicationPath, replicate
+	ReplicationPath = filepath.Join(t.TempDir(), "btrfs-replication.json")
+	t.Cleanup(func() { ReplicationPath, replicate = oldPath, oldReplicate })
+	jobs := []BtrfsReplicationJob{
+		{ID: "aaaaaaaa-0000-4000-8000-000000000001", UUID: rootUUID, Path: "@home", Enabled: true},
+		{ID: "aaaaaaaa-0000-4000-8000-000000000002", UUID: rootUUID, Path: "@", Enabled: true},
+		{ID: "aaaaaaaa-0000-4000-8000-000000000003", UUID: rootUUID, Path: "data", Enabled: true},
+	}
+	snap := &BtrfsSnapshot{Path: ".snapshots/@home/2026-11-10T10:00:00Z-timeline"}
+	replicate = func(_ context.Context, job BtrfsReplicationJob, _ func(int64)) (BtrfsReplicationResult, error) {
+		switch job.ID {
+		case jobs[0].ID:
+			return BtrfsReplicationResult{Sent: snap, Bytes: 4096}, nil
+		case jobs[1].ID:
+			return BtrfsReplicationResult{UpToDate: true}, nil
+		}
+		return BtrfsReplicationResult{Sent: snap}, errors.New("prune: boom")
+	}
+	saveJobs(t, jobs)
+
+	replicated, sent, errs := RunReplication(context.Background(), jobs, nil)
+	if replicated != 2 || sent != 1 {
+		t.Fatalf("replicated = %d, sent = %d; want 2, 1", replicated, sent)
+	}
+	if len(errs) != 1 || !strings.Contains(errs[0].Error(), jobs[2].ID+": prune: boom") {
+		t.Fatalf("errs = %v, want the failed job's", errs)
 	}
 }
 
@@ -470,8 +537,8 @@ func TestRunReplicationSkipsAlreadyRunning(t *testing.T) {
 	jobs := []BtrfsReplicationJob{{ID: "aaaaaaaa-0000-4000-8000-000000000001", UUID: rootUUID, Path: "@home", Enabled: true}}
 	saveJobs(t, jobs)
 
-	if errs := RunReplication(context.Background(), jobs); len(errs) != 0 {
-		t.Fatalf("errs = %v, want none", errs)
+	if replicated, sent, errs := RunReplication(context.Background(), jobs, nil); replicated != 0 || sent != 0 || len(errs) != 0 {
+		t.Fatalf("replicated = %d, sent = %d, errs = %v; want nothing", replicated, sent, errs)
 	}
 	stored, err := LoadJobs()
 	if err != nil {
@@ -488,6 +555,34 @@ func TestRunReplicationSkipsAlreadyRunning(t *testing.T) {
 	}
 	if stored, _ = LoadJobs(); stored[0].LastRun != nil || stored[0].LastError != nil {
 		t.Fatalf("stored = %+v, want untouched", stored[0])
+	}
+}
+
+// A job that sent its snapshot but whose outcome could not be recorded
+// counts as replicated and sent, beside the recording error, which no alert
+// reports.
+func TestRunReplicationCountsASendWhoseOutcomeWasNotRecorded(t *testing.T) {
+	useTempAlerts(t)
+	oldPath, oldReplicate := ReplicationPath, replicate
+	ReplicationPath = filepath.Join(t.TempDir(), "btrfs-replication.json")
+	t.Cleanup(func() { ReplicationPath, replicate = oldPath, oldReplicate })
+	snap := &BtrfsSnapshot{Path: ".snapshots/@home/2026-11-10T10:00:00Z-timeline"}
+	replicate = func(context.Context, BtrfsReplicationJob, func(int64)) (BtrfsReplicationResult, error) {
+		return BtrfsReplicationResult{Sent: snap}, nil
+	}
+	// A directory where the job file should be: the outcome cannot be read
+	// back to be recorded.
+	if err := os.Mkdir(ReplicationPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	jobs := []BtrfsReplicationJob{{ID: "aaaaaaaa-0000-4000-8000-000000000001", UUID: rootUUID, Path: "@home", Enabled: true}}
+
+	replicated, sent, errs := RunReplication(context.Background(), jobs, nil)
+	if replicated != 1 || sent != 1 {
+		t.Fatalf("replicated = %d, sent = %d; want 1, 1", replicated, sent)
+	}
+	if len(errs) != 1 || scheduledrun.AllReported(errs[0]) {
+		t.Fatalf("errs = %v, want one unreported recording error", errs)
 	}
 }
 

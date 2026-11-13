@@ -1,8 +1,10 @@
 import { Icon } from "@iconify/react";
 import {
   useEffect,
+  useEffectEvent,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
   type ReactNode,
 } from "react";
@@ -13,6 +15,7 @@ import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppPopover from "@/components/ui/AppPopover";
 import AppRouterLinkButton from "@/components/ui/AppRouterLinkButton";
 import AppTooltip from "@/components/ui/AppTooltip";
+import type { BackgroundTaskLink } from "@/tasks/types";
 import { useBackgroundTaskActions } from "@/tasks/useBackgroundTaskActions";
 import {
   useBackgroundTask,
@@ -20,7 +23,13 @@ import {
   useBackgroundTasks,
 } from "@/tasks/useBackgroundTaskState";
 import { iconSize as iconSizes } from "@/theme/constants";
+import { formatDuration } from "@/utils/formatters";
 
+import {
+  type NotificationsPanelRequest,
+  notificationsPanelRequest,
+  subscribeNotificationsPanel,
+} from "./notificationsPanel";
 import { useAlerts } from "./useAlerts";
 
 const PEEK_DURATION_MS = 3000;
@@ -61,16 +70,6 @@ const formatSpeed = (speed?: number) => {
         ? value.toFixed(1)
         : value.toFixed(2);
   return `${formatted} ${units[unitIndex]}`;
-};
-
-const formatTimeRemaining = (seconds: number) => {
-  if (seconds < 0 || !isFinite(seconds)) return null;
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = Math.round(seconds % 60);
-  if (hours > 0) return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
-  return secs > 0 ? `${minutes}m ${secs}s` : `${minutes}m`;
 };
 
 const getTransferTitle = (type: string) => {
@@ -128,9 +127,13 @@ const tileStyle = (color: string) =>
 
 interface TransferLike {
   bytes?: unknown;
+  /** The job runs on until its handler returns, so its row stays. */
+  cancelRequested?: boolean;
   id: string;
   indeterminate?: boolean;
   label?: string;
+  /** A scheduled run: no cancel here; the row opens this page. */
+  link?: BackgroundTaskLink;
   progress: number;
   speed?: unknown;
   total?: unknown;
@@ -141,6 +144,7 @@ interface TransferItemProps {
   getTransferIcon: (type: string) => { icon: ReactNode; color: string };
   onCancel: (transfer: TransferLike) => void;
   onIndexerClick: () => void;
+  onLinkClick: () => void;
   id: string;
 }
 
@@ -149,19 +153,22 @@ function TransferItem({
   getTransferIcon,
   onCancel,
   onIndexerClick,
+  onLinkClick,
 }: TransferItemProps) {
   const transfer: TransferLike | null | undefined = useBackgroundTask(id);
   if (!transfer) return null;
   const isIndexer = transfer.type === "indexer";
+  const link = transfer.link;
   const visuals = getTransferIcon(transfer.type);
   const label = transfer.label
     ? removePercentage(transfer.label)
     : getTransferTitle(transfer.type);
 
   const isIndeterminate = transfer.indeterminate === true;
-  const statusText = isIndeterminate
-    ? "In progress"
-    : `${Math.round(transfer.progress)}%`;
+  const cancelRequested = transfer.cancelRequested === true;
+  let statusText = `${Math.round(transfer.progress)}%`;
+  if (cancelRequested) statusText = "Cancelling…";
+  else if (isIndeterminate) statusText = "In progress";
   const speedText =
     typeof transfer.speed === "number" ? formatSpeed(transfer.speed) : null;
 
@@ -175,7 +182,7 @@ function TransferItem({
   ) {
     const remainingBytes = transfer.total - transfer.bytes;
     const secondsRemaining = remainingBytes / transfer.speed;
-    timeRemainingText = formatTimeRemaining(secondsRemaining);
+    timeRemainingText = formatDuration(secondsRemaining);
   }
 
   /* The row header already carries the status, so the caption under the bar is
@@ -185,6 +192,35 @@ function TransferItem({
   if (timeRemainingText) rateParts.push(timeRemainingText);
   const rateText = rateParts.join(" \u2022 ");
   const detailText = [statusText, ...rateParts].join(" \u2022 ");
+
+  /* A scheduled run's cancel is refused by the bridge, so its row links to
+     the page that owns the run where other rows offer a cancel. */
+  let action: ReactNode = null;
+  if (link) {
+    action = (
+      <AppRouterLinkButton
+        aria-label={`Open ${label}`}
+        className="app-navbar-notifications__link"
+        onClick={onLinkClick}
+        search={link.search}
+        size="small"
+        to={link.to}
+      >
+        Open
+      </AppRouterLinkButton>
+    );
+  } else if (!isIndexer) {
+    action = (
+      <AppIconButton
+        aria-label="Cancel task"
+        disabled={cancelRequested}
+        onClick={() => onCancel(transfer)}
+        size="small"
+      >
+        <Icon height={22} icon="mdi:close" width={22} />
+      </AppIconButton>
+    );
+  }
 
   return (
     <li
@@ -228,15 +264,7 @@ function TransferItem({
           ) : null}
         </div>
       </div>
-      {!isIndexer ? (
-        <AppIconButton
-          aria-label="Cancel task"
-          onClick={() => onCancel(transfer)}
-          size="small"
-        >
-          <Icon height={22} icon="mdi:close" width={22} />
-        </AppIconButton>
-      ) : null}
+      {action}
     </li>
   );
 }
@@ -320,7 +348,8 @@ function TransferPeek({
 // --- Main component ---
 
 export function NotificationsBell() {
-  const ref = useRef<HTMLButtonElement>(null);
+  // Held in state so a request from elsewhere can anchor the tray on it.
+  const [trigger, setTrigger] = useState<HTMLButtonElement | null>(null);
   const iconSize = iconSizes.md;
 
   // Full dropdown state (user-clicked)
@@ -331,6 +360,40 @@ export function NotificationsBell() {
   // Peek state (auto-triggered)
   const [peekOpen, setPeekOpen] = useState(false);
   const peekTimerRef = useRef<number>(0);
+
+  // A request from elsewhere (openNotificationsPanel) opens the tray as the
+  // trigger does, with the clock read at the request. Marking the alerts seen
+  // is left to the requester's handler: render cannot do it.
+  const panelRequest = useSyncExternalStore(
+    subscribeNotificationsPanel,
+    notificationsPanelRequest,
+  );
+  const [answeredRequest, setAnsweredRequest] = useState(panelRequest);
+  const [openedByRequest, setOpenedByRequest] =
+    useState<NotificationsPanelRequest | null>(null);
+  if (panelRequest !== answeredRequest) {
+    setAnsweredRequest(panelRequest);
+    if (panelRequest && trigger) {
+      setPeekOpen(false);
+      setNow(panelRequest.at);
+      setAnchorEl(trigger);
+      setOpenedByRequest(panelRequest);
+    }
+  }
+
+  // Focus follows a request to the trigger beside the tray, where a click
+  // leaves it. Blurring first lets a toaster that returns focus when it loses
+  // it (sonner, whose Show asked) do so before the trigger takes it: a focus
+  // move made in a blur handler would otherwise win over this one.
+  const focusTrigger = useEffectEvent(() => {
+    const active = document.activeElement;
+    if (!trigger || active === trigger) return;
+    if (active instanceof HTMLElement) active.blur();
+    trigger.focus();
+  });
+  useEffect(() => {
+    if (openedByRequest) focusTrigger();
+  }, [openedByRequest]);
 
   const { alerts, unseen, markAllSeen, dismiss } = useAlerts();
 
@@ -418,7 +481,7 @@ export function NotificationsBell() {
     setPeekOpen(false);
     setNow(Date.now());
     if (!anchorEl && unseen > 0) markAllSeen();
-    setAnchorEl((current) => (current ? null : ref.current));
+    setAnchorEl((current) => (current ? null : trigger));
   };
 
   const handleClose = () => setAnchorEl(null);
@@ -429,7 +492,7 @@ export function NotificationsBell() {
     setPeekOpen(false);
     setNow(Date.now());
     if (unseen > 0) markAllSeen();
-    setAnchorEl(ref.current);
+    setAnchorEl(trigger);
   };
 
   const handleCancel = (transfer: TransferLike) => {
@@ -548,7 +611,7 @@ export function NotificationsBell() {
             className="app-navbar-notifications__trigger"
             color="primary"
             onClick={handleOpen}
-            ref={ref}
+            ref={setTrigger}
             size="small"
           >
             {/* Filled only when the bell has something to report, so an idle
@@ -615,6 +678,7 @@ export function NotificationsBell() {
                     key={`transfer-${transfer.id}`}
                     onCancel={handleCancel}
                     onIndexerClick={openIndexerDialog}
+                    onLinkClick={handleClose}
                     id={transfer.id}
                   />
                 ))}
@@ -730,6 +794,16 @@ export function NotificationsBell() {
                 })}
               </ul>
             )}
+
+            <div className="app-navbar-notifications__footer">
+              <AppRouterLinkButton
+                onClick={handleClose}
+                size="small"
+                to="/history"
+              >
+                History
+              </AppRouterLinkButton>
+            </div>
           </div>
         </AppPopover>
       </div>

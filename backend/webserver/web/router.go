@@ -1,12 +1,15 @@
 package web
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"io"
 	"io/fs"
 	"log/slog"
 	"mime"
 	"net/http"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -30,7 +33,7 @@ func BuildRouter(cfg Config, sm *sessions.Manager) http.Handler {
 	handler = http.NewCrossOriginProtection().Handler(handler)
 	handler = LoggerMiddleware(handler)
 	handler = RecoveryMiddleware(handler)
-	handler = securityHeadersMiddleware(handler)
+	handler = securityHeadersMiddleware(handler, contentSecurityPolicy(cfg.UI))
 
 	// Register API routes (auth, etc.)
 	if cfg.RegisterRoutes != nil {
@@ -53,16 +56,43 @@ func BuildRouter(cfg Config, sm *sessions.Manager) http.Handler {
 	return handler
 }
 
-// securityHeadersMiddleware forbids framing the UI and sniffing content types.
-func securityHeadersMiddleware(next http.Handler) http.Handler {
+// securityHeadersMiddleware forbids framing the UI and sniffing content types,
+// and sends the page's script policy.
+func securityHeadersMiddleware(next http.Handler, csp string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("X-Frame-Options", "DENY")
-		h.Set("Content-Security-Policy", "frame-ancestors 'none'")
+		h.Set("Content-Security-Policy", csp)
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		next.ServeHTTP(w, r)
 	})
+}
+
+// inlineScriptRE matches each script element of the embedded page; the first
+// group is its attributes and the second its body.
+var inlineScriptRE = regexp.MustCompile(`(?is)<script([^>]*)>(.*?)</script>`)
+
+// contentSecurityPolicy lets the browser run only same-origin script files and
+// the inline scripts shipped in index.html. Hashing the embedded page keeps
+// the policy in step with the page without a hand-maintained hash.
+func contentSecurityPolicy(ui fs.FS) string {
+	policy := "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; script-src 'self'"
+	if ui == nil {
+		return policy
+	}
+	page, err := fs.ReadFile(ui, "index.html")
+	if err != nil {
+		return policy
+	}
+	for _, script := range inlineScriptRE.FindAllSubmatch(page, -1) {
+		if strings.Contains(strings.ToLower(string(script[1])), "src=") {
+			continue
+		}
+		sum := sha256.Sum256(script[2])
+		policy += " 'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'"
+	}
+	return policy
 }
 
 // mountProductionSPA serves the embedded frontend with SPA fallback.

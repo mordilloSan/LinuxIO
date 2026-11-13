@@ -10,6 +10,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"golang.org/x/sys/unix"
 
@@ -23,17 +24,15 @@ import (
 var btrfsPoolFstabOptions = []string{"defaults", "noatime", "nofail"}
 
 // CreateBtrfsPool validates the request, formats the member devices, mounts the
-// new pool and records it in /etc/fstab, reporting each step.
-func CreateBtrfsPool(ctx context.Context, req apischema.BtrfsPoolCreateRequest, report func(step string)) (btrfs.BtrfsFilesystem, error) {
-	devices, err := ListBlockDevices(ctx)
+// new pool and records it in /etc/fstab, reporting each step and, while it
+// trims, the percent done. A failure before the pool is in fstab undoes what
+// the call made (see poolCreateUndo).
+func CreateBtrfsPool(ctx context.Context, req apischema.BtrfsPoolCreateRequest, report func(step string, pct float64)) (_ btrfs.BtrfsFilesystem, err error) {
+	inv, err := loadPartitionInventory(ctx)
 	if err != nil {
 		return btrfs.BtrfsFilesystem{}, err
 	}
-	filesystems, err := btrfs.ListFilesystems(ctx)
-	if err != nil {
-		return btrfs.BtrfsFilesystem{}, err
-	}
-	if err = checkPoolCreate(req, devices, filesystems, getFstabEntries()); err != nil {
+	if err = checkPoolCreate(req, inv, getFstabEntries()); err != nil {
 		return btrfs.BtrfsFilesystem{}, err
 	}
 	// Mounting over files would hide them.
@@ -41,45 +40,121 @@ func CreateBtrfsPool(ctx context.Context, req apischema.BtrfsPoolCreateRequest, 
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("mountpoint %s is not empty", req.Mountpoint)
 	}
 	slog.Debug("creating btrfs pool", "label", req.Label, "devices", req.Devices, "freeSpace", req.FreeSpace, "data", req.DataProfile, "metadata", req.MetadataProfile, "mountpoint", req.Mountpoint, "force", req.Force, "partition", req.Partition)
-	members := slices.Clone(req.Devices)
+	made := &poolCreateUndo{members: slices.Clone(req.Devices)}
+	defer func() { err = made.finish(ctx, req.Label, err) }()
 	if req.Partition || len(req.FreeSpace) > 0 {
-		report("Partitioning disks")
+		report("Partitioning disks", 0)
 	}
 	if req.Partition {
-		members = make([]string, 0, len(req.Devices))
+		made.members = make([]string, 0, len(req.Devices))
 		for _, d := range req.Devices {
-			part, unlock, partErr := partitionLocked(ctx, d, btrfs.PartitionDisk)
+			part, unlock, partErr := partitionLocked(ctx, d, partitionDisk)
 			if partErr != nil {
 				return btrfs.BtrfsFilesystem{}, fmt.Errorf("partition %s for btrfs pool: %w", d, partErr)
 			}
-			defer unlock()
-			members = append(members, part)
+			made.record(d, part, unlock)
 		}
 	}
 	for _, d := range req.FreeSpace {
-		part, unlock, partErr := partitionLocked(ctx, d, btrfs.AddPartition)
+		part, unlock, partErr := partitionLocked(ctx, d, addPartition)
 		if partErr != nil {
 			return btrfs.BtrfsFilesystem{}, fmt.Errorf("add partition on %s for btrfs pool: %w", d, partErr)
 		}
-		defer unlock()
-		members = append(members, part)
+		made.record(d, part, unlock)
 	}
-	// mkfs.btrfs first discards every member, which on large SSDs takes
-	// minutes; that is why this runs as a task rather than a bounded call.
-	report("Formatting: SSDs are trimmed first, which can take a few minutes")
-	uuid, err := btrfs.CreatePool(ctx, req.Label, req.DataProfile, req.MetadataProfile, members, req.Force)
+	made.uuid, err = createBtrfsPool(ctx, req.Label, req.DataProfile, req.MetadataProfile, made.members, req.Force, formatProgress(report))
 	if err != nil {
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("create btrfs pool %q: %w", req.Label, err)
 	}
-	report("Mounting at " + req.Mountpoint)
-	if err := btrfs.MountPool(ctx, members[0], req.Mountpoint, btrfsPoolFstabOptions, false); err != nil {
-		return btrfs.BtrfsFilesystem{}, fmt.Errorf("pool %s was created but not mounted: %w", uuid, err)
+	report("Mounting at "+req.Mountpoint, 0)
+	if err = mountBtrfsPool(ctx, made.members[0], req.Mountpoint, btrfsPoolFstabOptions, false); err != nil {
+		return btrfs.BtrfsFilesystem{}, fmt.Errorf("mount btrfs pool %s: %w", made.uuid, err)
 	}
-	if err := addToFstab("UUID="+uuid, req.Mountpoint, "btrfs", btrfsPoolFstabOptions); err != nil {
-		return btrfs.BtrfsFilesystem{}, fmt.Errorf("pool %s is mounted but could not be added to /etc/fstab: %w", uuid, err)
+	made.mounted = req.Mountpoint
+	if err = addPoolFstab("UUID="+made.uuid, req.Mountpoint, "btrfs", btrfsPoolFstabOptions); err != nil {
+		return btrfs.BtrfsFilesystem{}, fmt.Errorf("add btrfs pool %s to /etc/fstab: %w", made.uuid, err)
 	}
-	slog.Info("created btrfs pool", "uuid", uuid, "mountpoint", req.Mountpoint)
-	return btrfs.FindFilesystem(ctx, uuid)
+	made.committed = true
+	slog.Info("created btrfs pool", "uuid", made.uuid, "mountpoint", req.Mountpoint)
+	return findBtrfsFilesystem(ctx, made.uuid)
+}
+
+// poolCreateUndo is what a CreateBtrfsPool call made, so that a failure
+// before the pool is in fstab can undo it while the disk locks are held.
+type poolCreateUndo struct {
+	members   []string
+	unlocks   []func()
+	created   []createdPartition // in the order made
+	uuid      string             // set once mkfs.btrfs ran
+	mounted   string             // the mountpoint, once the call mounted the pool
+	committed bool               // the pool is in fstab: it is kept whatever fails after
+}
+
+// createdPartition is a partition CreateBtrfsPool made on disk.
+type createdPartition struct{ disk, part string }
+
+// record notes part, made on disk, as a member the undo deletes and
+// unlock as the release of disk's lock.
+func (u *poolCreateUndo) record(disk, part string, unlock func()) {
+	u.members = append(u.members, part)
+	u.created = append(u.created, createdPartition{disk, part})
+	u.unlocks = append(u.unlocks, unlock)
+}
+
+// finish undoes the create when it failed with err before the pool reached
+// fstab, joining any undo error to err, then releases the disk locks.
+func (u *poolCreateUndo) finish(ctx context.Context, label string, err error) error {
+	if err != nil && !u.committed && (u.uuid != "" || len(u.created) > 0) {
+		// The undo runs to the end even when the job was canceled.
+		undoCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Minute)
+		undoErr := u.undo(undoCtx)
+		cancel()
+		if undoErr != nil {
+			err = errors.Join(err, fmt.Errorf("undo btrfs pool create: %w", undoErr))
+		} else {
+			slog.Info("rolled back failed btrfs pool create", "label", label, "uuid", u.uuid, "partitions", len(u.created))
+		}
+	}
+	for _, unlock := range slices.Backward(u.unlocks) {
+		unlock()
+	}
+	return err
+}
+
+// undo unmounts the pool if the call mounted it, zeroes the superblocks
+// mkfs.btrfs wrote with the pool's UUID on the members, then deletes the
+// partitions the call made, newest first. Nothing is touched while the pool
+// stays mounted, and a partition whose wipe failed is kept: its superblock
+// offsets are relative to the partition.
+func (u *poolCreateUndo) undo(ctx context.Context) error {
+	if u.mounted != "" {
+		if err := unmountPool(u.mounted, 0); err != nil {
+			return fmt.Errorf("unmount %s: %w", u.mounted, err)
+		}
+	}
+	var errs []error
+	kept := map[string]bool{}
+	if u.uuid != "" {
+		for _, m := range u.members {
+			if _, err := wipePoolSuperblocks(m, u.uuid); err != nil {
+				errs = append(errs, fmt.Errorf("wipe %s: %w", m, err))
+				kept[m] = true
+			}
+		}
+	}
+	for _, c := range slices.Backward(u.created) {
+		if kept[c.part] {
+			continue
+		}
+		number, err := partitionNumber(c.part)
+		if err == nil {
+			err = deletePartition(ctx, c.disk, number)
+		}
+		if err != nil {
+			errs = append(errs, fmt.Errorf("delete %s: %w", c.part, err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // partitionLocked locks disk against udev, then partitions it. The caller
@@ -93,15 +168,17 @@ func partitionLocked(ctx context.Context, disk string, partition func(context.Co
 	part, err := partition(ctx, disk)
 	if err != nil {
 		unlock()
-		return "", nil, err
+		// A disk something claimed since the check is a conflict, not a fault.
+		return "", nil, conflictIfBusy(err)
 	}
 	return part, unlock, nil
 }
 
 // checkPoolCreate validates a create request against the host: label,
 // profiles for the device count, every device free (or, for FreeSpace, a
-// disk with room for a partition), and an unused mountpoint outside the system directories.
-func checkPoolCreate(req apischema.BtrfsPoolCreateRequest, devices []apischema.StorageBlockDevice, filesystems []btrfs.BtrfsFilesystem, fstab map[string]fstabEntry) error {
+// disk not in use with room for a partition), and an unused mountpoint
+// outside the system directories.
+func checkPoolCreate(req apischema.BtrfsPoolCreateRequest, inv partitionInventory, fstab map[string]fstabEntry) error {
 	if err := btrfs.ValidateLabel(req.Label); err != nil {
 		return err
 	}
@@ -112,7 +189,7 @@ func checkPoolCreate(req apischema.BtrfsPoolCreateRequest, devices []apischema.S
 		if slices.Contains(req.Devices[:i], d) {
 			return fmt.Errorf("device %s listed twice", d)
 		}
-		if err := checkBtrfsDeviceFree(devices, filesystems, d, req.Force); err != nil {
+		if err := checkBtrfsDeviceFree(inv, d, req.Force); err != nil {
 			return err
 		}
 	}
@@ -120,19 +197,24 @@ func checkPoolCreate(req apischema.BtrfsPoolCreateRequest, devices []apischema.S
 		if slices.Contains(req.FreeSpace[:i], d) || slices.Contains(req.Devices, d) {
 			return fmt.Errorf("device %s listed twice", d)
 		}
-		j := slices.IndexFunc(devices, func(b apischema.StorageBlockDevice) bool { return b.Path == d })
-		if j < 0 {
-			return fmt.Errorf("block device %s not found", d)
+		disk, err := inv.device(d)
+		if err != nil {
+			return err
 		}
-		if devices[j].Type != "disk" || devices[j].FreeBytes == 0 {
-			return fmt.Errorf("device %s has no free space for a partition", d)
+		if disk.Type != "disk" || disk.FreeBytes == 0 {
+			return fmt.Errorf("%w: device %s has no free space for a partition", bridgeipc.ErrInvalidArgs, d)
+		}
+		// As for Create partition: the disk's other partitions may be in
+		// use, the disk itself not.
+		if err = deviceInUse(disk, inv.fss, inv.offline, false, false); err != nil {
+			return err
 		}
 	}
 	data, meta := req.DataProfile, req.MetadataProfile
 	if err := btrfs.ValidateProfiles(&data, &meta, len(req.Devices)+len(req.FreeSpace)); err != nil {
 		return err
 	}
-	return checkPoolMountpoint(req.Mountpoint, devices, fstab)
+	return checkPoolMountpoint(req.Mountpoint, inv.devices, fstab)
 }
 
 func checkPoolMountpoint(mountpoint string, devices []apischema.StorageBlockDevice, fstab map[string]fstabEntry) error {
@@ -232,12 +314,16 @@ func poolDevicesForDestroy(ctx context.Context, uuid string) ([]string, error) {
 
 // poolMountpoints returns the filesystem's distinct mountpoints deepest
 // first, so nested mounts unmount before their parents, refusing a pool
-// that holds a protected system mount.
+// that holds a protected system mount. LinuxIO's own top-level mount of the
+// pool (btrfs.TopLevel, under /run/linuxio/btrfs), which a subvolume,
+// snapshot or settings read leaves behind, is unmounted with the rest:
+// otherwise reading a pool would keep it from being destroyed.
 func poolMountpoints(fs btrfs.BtrfsFilesystem) ([]string, error) {
+	helper := filepath.Join(btrfs.TopLevelDir, fs.UUID)
 	var mountpoints []string
 	for _, m := range fs.Mountpoints {
-		if isProtectedMount(m.Mountpoint) {
-			return nil, fmt.Errorf("refusing to destroy a pool mounted at %s", m.Mountpoint)
+		if isProtectedMount(m.Mountpoint) && (fs.UUID == "" || m.Mountpoint != helper) {
+			return nil, fmt.Errorf("%w: refusing to destroy a pool mounted at %s", bridgeipc.ErrConflict, m.Mountpoint)
 		}
 		if !slices.Contains(mountpoints, m.Mountpoint) {
 			mountpoints = append(mountpoints, m.Mountpoint)
@@ -254,8 +340,8 @@ func MountBtrfsPool(ctx context.Context, req apischema.BtrfsPoolMountRequest) (b
 	if err != nil {
 		return btrfs.BtrfsFilesystem{}, err
 	}
-	if len(pool.Devices) < pool.NumDevices && !req.Degraded {
-		return btrfs.BtrfsFilesystem{}, fmt.Errorf("pool %s is missing %d of %d devices; mount it degraded to use it anyway", pool.UUID, pool.NumDevices-len(pool.Devices), pool.NumDevices)
+	if pool.Missing > 0 && !req.Degraded {
+		return btrfs.BtrfsFilesystem{}, fmt.Errorf("%w: pool %s is missing %d of %d devices; mount it degraded to use it anyway", bridgeipc.ErrConflict, pool.UUID, pool.Missing, pool.NumDevices)
 	}
 	mountpoint := pool.Mountpoint
 	persist := mountpoint == ""
@@ -273,7 +359,7 @@ func MountBtrfsPool(ctx context.Context, req apischema.BtrfsPoolMountRequest) (b
 		// subvol=, compress= and the like decide what the mount shows.
 		options = strings.Split(getFstabEntries()[mountpoint].options, ",")
 	}
-	if err := btrfs.MountOfflinePool(ctx, pool, mountpoint, options, req.Degraded); err != nil {
+	if err := mountOfflinePool(ctx, pool, mountpoint, options, req.Degraded); err != nil {
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("mount btrfs pool %s at %s: %w", pool.UUID, mountpoint, err)
 	}
 	if persist {
@@ -327,13 +413,13 @@ func SetBtrfsLabel(ctx context.Context, req apischema.BtrfsLabelRequest) (btrfs.
 }
 
 func findOfflinePool(ctx context.Context, uuid string) (btrfs.BtrfsOfflinePool, error) {
-	pools, err := ListOfflinePools(ctx)
+	pools, err := offlinePools(ctx)
 	if err != nil {
 		return btrfs.BtrfsOfflinePool{}, err
 	}
 	i := slices.IndexFunc(pools, func(p btrfs.BtrfsOfflinePool) bool { return p.UUID == uuid })
 	if i < 0 {
-		return btrfs.BtrfsOfflinePool{}, fmt.Errorf("unmounted btrfs filesystem %s not found", uuid)
+		return btrfs.BtrfsOfflinePool{}, fmt.Errorf("%w: unmounted btrfs filesystem %s", bridgeipc.ErrNotFound, uuid)
 	}
 	return pools[i], nil
 }

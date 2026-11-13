@@ -1,3 +1,4 @@
+import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 
 import {
@@ -5,6 +6,7 @@ import {
   bindStreamHandlers,
   type FileUploadBatchRequest,
   type FileUploadBatchResult,
+  type FileUploadOwner,
   isConnected,
   type TaskSnapshot,
   linuxio,
@@ -14,6 +16,7 @@ import {
 import * as TaskTypes from "@/tasks/taskTypes";
 import { taskIdentityKey } from "@/tasks/taskUtils";
 import type { Upload } from "@/tasks/types";
+import { toastFileError } from "@/utils/linkRefusal";
 
 import type { BackgroundTaskRuntime } from "./useBackgroundTaskRuntime";
 
@@ -37,6 +40,7 @@ export function useUploadTasks(
   getChunkSize: () => number,
 ) {
   const { set: setUploads, read: readTasks } = runtime.tasks.uploads;
+  const navigate = useNavigate();
   const {
     activeFileTransferTaskIdsRef,
     pendingLocalTaskKeysRef,
@@ -74,6 +78,7 @@ export function useUploadTasks(
     destination: string,
     overwrite: boolean,
     keepBoth: string[],
+    owner: FileUploadOwner | undefined,
     uploadId: string,
     onProgress: (progress: BatchUploadProgress) => void,
     abortSignal: AbortSignal,
@@ -102,6 +107,7 @@ export function useUploadTasks(
       ...(directories.length ? { directories } : {}),
       ...(overwrite ? { overwrite: true } : {}),
       ...(keepBoth.length ? { keepBoth } : {}),
+      ...(owner ? { owner } : {}),
     };
 
     const pendingUploadKey = taskIdentityKey(
@@ -126,7 +132,7 @@ export function useUploadTasks(
 
     let task: TaskSnapshot;
     try {
-      task = await linuxio.filebrowser.upload_batch(request);
+      task = await linuxio.filebrowser.upload_batch.start(request);
     } catch (error) {
       pendingLocalTaskKeysRef.current.delete(pendingUploadKey);
       return {
@@ -319,6 +325,9 @@ export function useUploadTasks(
     // Manifest-relative paths that land under a unique "name (copy)" when
     // their destination exists.
     keepBoth?: string[],
+    // "session" makes a root bridge hand the new files and folders to the
+    // session user, inside folders that user already owns.
+    owner?: FileUploadOwner,
   ) => {
     if (!entries.length) {
       return { uploaded: 0, failures: [] };
@@ -411,6 +420,7 @@ export function useUploadTasks(
         targetPath,
         overwrite ?? false,
         keepBoth ?? [],
+        owner,
         uploadId,
         onProgress,
         abortController.signal,
@@ -439,7 +449,9 @@ export function useUploadTasks(
 
       if (failures.length > 0) {
         const first = failures[0];
-        toast.error(
+        toastFileError(
+          toast,
+          navigate,
           `Failed to upload ${failures.length} item${failures.length === 1 ? "" : "s"}: ${first.message}`,
         );
       }

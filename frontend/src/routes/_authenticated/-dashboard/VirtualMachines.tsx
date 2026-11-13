@@ -12,7 +12,6 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import DashboardCard from "@/routes/_authenticated/-dashboard/DashboardCard";
 import { up } from "@/theme/breakpoints";
 
-import DashboardStatRows from "./DashboardStatRows";
 import {
   ACTION_PROGRESS_LABEL,
   useVMLifecycle,
@@ -26,6 +25,7 @@ import {
   vmIPAddresses,
   vmOSIcon,
 } from "../vm/-components/vmShared";
+import DashboardStatRows from "./DashboardStatRows";
 
 const VMS_REFETCH_MS = 5000;
 

@@ -1,4 +1,4 @@
-import type * as acp from "@agentclientprotocol/sdk";
+import type * as acp from "@agentclientprotocol/sdk/unstable";
 import { fireEvent, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -59,6 +59,20 @@ describe("PermissionCard", () => {
     expect(
       within(card).getByRole("button", { name: "Yes" }),
     ).toBeInTheDocument();
+  });
+
+  it("says which subagent asks, and nothing for the chat's own agent", () => {
+    const request = {
+      sessionId: "a",
+      options,
+      toolCall: { toolCallId: "t1", kind: "execute" as const, title: "ls" },
+    };
+    const { rerender } = render(
+      <PermissionCard asker="OS info" onAnswer={vi.fn()} request={request} />,
+    );
+    expect(screen.getByText("Asked by OS info.")).toBeInTheDocument();
+    rerender(<PermissionCard onAnswer={vi.fn()} request={request} />);
+    expect(screen.queryByText(/Asked by/)).toBeNull();
   });
 
   it("puts focus on the first choice so the keyboard answers at once", () => {

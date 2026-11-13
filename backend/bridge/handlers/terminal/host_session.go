@@ -11,13 +11,20 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/acpagents"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/streamrelay"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/usercmd"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
+	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 // ptyBufSize keeps terminal output frames small so bursts stay interactive.
 const ptyBufSize = 4096
+
+// agentHome resolves the home directory agents are installed under. It is a
+// seam so tests can install a fake agent outside the real home.
+var agentHome = userconfig.Homedir
 
 // HandleTerminalSession handles a yamux stream dedicated to terminal I/O.
 // This bypasses result/progress JSON encoding after the JSON request envelope opens the stream.
@@ -27,15 +34,17 @@ func HandleTerminalSession(ctx context.Context, rt runtime.Runtime, stream net.C
 
 	cols, rows := initialSize(req.Cols, req.Rows)
 
-	loginAgent, err := lookupLoginAgent(stream, req.Agent)
-	if err != nil {
-		return err
-	}
-
 	shellPath := usercmd.LoginShell()
 	argv := []string{shellPath, "-i", "-l"}
+	var agentEnv []string
 	if req.Agent != "" {
-		argv = usercmd.LoginShellArgv(loginAgent.Command, loginAgent.Args, req.Args)
+		launch, err := resolveLoginAgent(ctx, sess.User, req.Agent)
+		if err != nil {
+			streamrelay.WriteClose(stream)
+			return err
+		}
+		argv = usercmd.LoginShellArgv(launch.Path, launch.Args, req.Args)
+		agentEnv = launch.Env
 	}
 	cmd, err := usercmd.Command(ctx, sess.User, argv[0], argv[1:]...)
 	if err != nil {
@@ -52,6 +61,7 @@ func HandleTerminalSession(ctx context.Context, rt runtime.Runtime, stream net.C
 		// CLI login flows print the URL and prompt for a code instead of
 		// trying to open a browser on the server.
 		cmd.Env = append(cmd.Env, "NO_BROWSER=1")
+		cmd.Env = append(cmd.Env, agentEnv...)
 	}
 	// usercmd already starts a new session and drops privileges when the
 	// bridge runs as root; the PTY must also become the controlling terminal.
@@ -109,18 +119,26 @@ func initialSize(reqCols, reqRows int) (cols, rows int) {
 	return cols, rows
 }
 
-// lookupLoginAgent resolves the requested agent id; an empty id means the
-// plain login shell. An unknown id closes the stream and returns an error.
-func lookupLoginAgent(stream net.Conn, id string) (acpagents.Agent, error) {
-	if id == "" {
-		return acpagents.Agent{}, nil
+// resolveLoginAgent resolves the installed agent whose login flow the PTY
+// runs. Like the assistant relay it never installs anything: an agent that is
+// unknown, not installed or missing its CLI is an error.
+func resolveLoginAgent(ctx context.Context, user session.User, id string) (acpagents.Command, error) {
+	if _, ok := acpagents.Lookup(id); !ok {
+		return acpagents.Command{}, fmt.Errorf("terminal: unknown agent %q", id)
 	}
-	agent, ok := acpagents.Lookup(id)
-	if !ok {
-		streamrelay.WriteClose(stream)
-		return acpagents.Agent{}, fmt.Errorf("terminal: unknown agent %q", id)
+	userPath, err := usercmd.Path(ctx, user)
+	if err != nil {
+		return acpagents.Command{}, fmt.Errorf("terminal: %w", err)
 	}
-	return agent, nil
+	home, err := agentHome(user.Username)
+	if err != nil {
+		return acpagents.Command{}, fmt.Errorf("terminal: %w", err)
+	}
+	launch, err := acpagents.Launch(id, home, userPath)
+	if err != nil {
+		return acpagents.Command{}, fmt.Errorf("terminal: %w: %w", bridgeipc.ErrConflict, err)
+	}
+	return launch, nil
 }
 
 func safeUint16(val int) uint16 {

@@ -9,7 +9,7 @@ import { act, render, screen } from "@/test/render";
 
 import ComposeOperationDialog from "./ComposeOperationDialog";
 
-interface TaskStreamConfig {
+interface ComposeMutationConfig {
   onProgress?: (message: TaskProgress<ComposeTaskMessage>) => void;
   success?: (message: ComposeTaskResult) => void;
 }
@@ -20,7 +20,7 @@ interface RecoveryConfig {
 
 const mocks = vi.hoisted(() => ({
   watch: vi.fn(),
-  taskConfig: null as TaskStreamConfig | null,
+  taskConfig: null as ComposeMutationConfig | null,
   mutate: vi.fn(),
   recoveryConfig: null as RecoveryConfig | null,
   toastError: vi.fn(),
@@ -41,7 +41,7 @@ vi.mock("@/api", async (importOriginal) => {
         ...actual.linuxio.docker,
         compose: {
           ...actual.linuxio.docker.compose,
-          useTaskStreamAction: (config: TaskStreamConfig) => {
+          useMutation: (config: ComposeMutationConfig) => {
             mocks.taskConfig = config;
             return { watch: mocks.watch, mutate: mocks.mutate };
           },

@@ -9,9 +9,12 @@ const mocks = vi.hoisted(() => ({ mutate: vi.fn() }));
 
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
+  const { mockMutationHooks } = await import("@/test/mutationHooks");
+  const useCallMutation = () => ({ mutate: mocks.mutate, isPending: false });
   return {
     ...actual,
-    useCallMutation: () => ({ mutate: mocks.mutate, isPending: false }),
+    linuxio: mockMutationHooks(actual.linuxio, useCallMutation),
+    useCallMutation,
   };
 });
 

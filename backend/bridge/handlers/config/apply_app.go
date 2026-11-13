@@ -1,9 +1,10 @@
 package config
 
 import (
-	"errors"
+	"fmt"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 )
 
@@ -13,7 +14,7 @@ func applyAppSettingsUpdate(app *userconfig.PersistedAppSettings, payload *apisc
 		return nil
 	}
 	if !userconfig.ValidChunkSizeMB(*payload.ChunkSizeMB) {
-		return errors.New("chunkSizeMB must be 0 (default) or between 1 and 32")
+		return fmt.Errorf("%w: chunkSizeMB must be 0 (default) or between 1 and %d", bridgeipc.ErrInvalidArgs, userconfig.MaxChunkSizeMB)
 	}
 	app.ChunkSizeMB = *payload.ChunkSizeMB
 	return nil

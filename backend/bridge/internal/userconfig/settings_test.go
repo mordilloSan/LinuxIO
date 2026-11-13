@@ -3,6 +3,7 @@ package userconfig
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/goccy/go-yaml"
@@ -218,9 +219,11 @@ func TestUISemanticFailureResetsWholeDocument(t *testing.T) {
 
 func TestUIStrictContentFailuresResetWholeDocument(t *testing.T) {
 	tests := map[string]string{
-		"empty document":      "# comments only\n",
-		"typed theme failure": "theme: PURPLE\n",
-		"multiple documents":  "{}\n---\n{}\n",
+		"empty document":          "# comments only\n",
+		"typed theme failure":     "theme: PURPLE\n",
+		"multiple documents":      "{}\n---\n{}\n",
+		"removed section toggles": "theme: LIGHT\nhardwareSections:\n  sensors: false\n",
+		"blank section name":      "collapsedSections:\n  hardware: ['']\n",
 	}
 	for name, contents := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -240,7 +243,7 @@ func TestUIStrictContentFailuresResetWholeDocument(t *testing.T) {
 func TestSparseUIConfigLoadsWithBackendDefaults(t *testing.T) {
 	path := filepath.Join(t.TempDir(), uiCfgFileName)
 	raw := []byte("theme: LIGHT\n" +
-		"dockerDashboardSections:\n  overview: false\n" +
+		"collapsedSections:\n  docker.dashboard: [overview]\n" +
 		"dockAccentGradient:\n  startColor: '#123456'\n")
 	require.NoError(t, os.WriteFile(path, raw, filePerm))
 
@@ -253,9 +256,7 @@ func TestSparseUIConfigLoadsWithBackendDefaults(t *testing.T) {
 	require.Equal(t, DockTileColorsAccent, loaded.DockTileColors)
 	require.Equal(t, 0, loaded.DockAccentGradient.RangeStart)
 	require.Equal(t, 100, loaded.DockAccentGradient.RangeEnd)
-	require.False(t, loaded.DockerDashboardSections.Overview)
-	require.True(t, loaded.DockerDashboardSections.Monitoring)
-	require.True(t, loaded.HardwareSections.Overview)
+	require.Equal(t, map[string][]string{"docker.dashboard": {"overview"}}, loaded.CollapsedSections)
 	require.Equal(t, 16, loaded.TerminalFontSize)
 	require.Empty(t, loaded.ViewModes)
 	require.Empty(t, loaded.LayoutOrders)
@@ -345,12 +346,64 @@ func TestValidateConfigDockerFoldersIsStructuralOnly(t *testing.T) {
 	}
 }
 
-func TestUIPreferencesMarshalWritesCompleteSnapshot(t *testing.T) {
-	path := filepath.Join(t.TempDir(), uiCfgFileName)
+// nonDefaultUI changes every UIPreferences field from its default.
+func nonDefaultUI() UIPreferences {
 	ui := DefaultUIPreferences()
-	require.NoError(t, writeUIConfig(path, ui))
+	ui.Theme = ThemeLight
+	ui.PrimaryColor = "#123456"
+	ui.ThemeColors.Dark["codeText"] = "#111111"
+	ui.ThemeColors.Light["codeInsetBackground"] = "#222222"
+	ui.SidebarCollapsed = true
+	ui.NavigationMode = NavigationModeDock
+	ui.DockTileColors = DockTileColorsMono
+	ui.DockAccentGradient = &DockAccentGradient{StartColor: "#333333", RangeStart: 10, RangeEnd: 90}
+	ui.HiddenCards = []string{"cpu"}
+	ui.CollapsedSections = map[string][]string{"hardware": {"sensors"}}
+	ui.ViewModes = map[string]string{"docker.stacks": ViewModeTable}
+	ui.LayoutOrders = map[string][]string{"dashboard": {"memory", "cpu"}}
+	ui.TerminalFontSize = 20
+	return ui
+}
 
-	reloaded, err := readUIConfigStrict(path)
+// The saved file holds only what differs from the defaults, and reading it
+// over the defaults gives the same preferences back.
+func TestUIPreferencesAreStoredAsDifferencesFromTheDefaults(t *testing.T) {
+	path := filepath.Join(t.TempDir(), uiCfgFileName)
+
+	require.NoError(t, writeUIConfig(path, DefaultUIPreferences()))
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, "{}\n", string(raw))
+	reloaded, err := readUI(path)
+	require.NoError(t, err)
+	require.Equal(t, DefaultUIPreferences(), *reloaded)
+
+	ui := DefaultUIPreferences()
+	ui.Theme = ThemeLight
+	ui.ThemeColors.Dark["codeText"] = "#111111"
+	require.NoError(t, writeUIConfig(path, ui))
+	raw, err = os.ReadFile(path)
+	require.NoError(t, err)
+	require.Equal(t, "theme: LIGHT\nthemeColors:\n  dark:\n    codeText: \"#111111\"\n", string(raw))
+	reloaded, err = readUI(path)
+	require.NoError(t, err)
+	require.Equal(t, ui, *reloaded)
+}
+
+// Every field is written when it differs: a field added to UIPreferences that
+// the writer dropped would fail here. The first test keeps this one honest by
+// requiring nonDefaultUI to change every field.
+func TestEveryUIPreferenceSurvivesAWriteAndRead(t *testing.T) {
+	defaults, changed := reflect.ValueOf(DefaultUIPreferences()), reflect.ValueOf(nonDefaultUI())
+	for i := range defaults.NumField() {
+		name := defaults.Type().Field(i).Name
+		require.False(t, reflect.DeepEqual(defaults.Field(i).Interface(), changed.Field(i).Interface()), "nonDefaultUI leaves %s at its default", name)
+	}
+
+	path := filepath.Join(t.TempDir(), uiCfgFileName)
+	ui := nonDefaultUI()
+	require.NoError(t, writeUIConfig(path, ui))
+	reloaded, err := readUI(path)
 	require.NoError(t, err)
 	require.Equal(t, ui, *reloaded)
 }

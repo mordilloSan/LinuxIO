@@ -1,4 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import {
   type Dispatch,
   type SetStateAction,
@@ -6,6 +7,7 @@ import {
   useEffect,
   useMemo,
 } from "react";
+import { toast } from "sonner";
 
 import {
   bindStreamHandlers,
@@ -28,6 +30,12 @@ import {
   indexerResultFromFrame,
   mergeIndexerProgress,
 } from "@/tasks/indexerProgress";
+import {
+  applyScheduledRunEvent,
+  isScheduledRun,
+  withoutScheduledRuns,
+} from "@/tasks/scheduledRuns";
+import { fileTaskText } from "@/tasks/taskTitles";
 import * as TaskTypes from "@/tasks/taskTypes";
 import {
   taskIdentityKey,
@@ -86,12 +94,13 @@ export function useRecoveredTasks(
   const { status: streamMuxStatus } = useStreamMux();
   const { run: runStreamResult } = useStreamResult();
   const { refreshCapabilities } = useAuth();
+  const navigate = useNavigate();
 
   // Per-type feedback (which terminal states toast, and how) lives in the
   // terminalTaskFeedback registry; this hook only reports outcomes to it.
   const feedbackDeps = useMemo(
-    () => ({ refreshCapabilities }),
-    [refreshCapabilities],
+    () => ({ navigate, refreshCapabilities }),
+    [navigate, refreshCapabilities],
   );
   const {
     tasks,
@@ -99,6 +108,7 @@ export function useRecoveredTasks(
     activeBackgroundTaskIdsRef,
     activeFileTransferTaskIdsRef,
     recoveringTaskIdsRef,
+    locallyCanceledTaskIdsRef,
     pendingLocalTaskKeysRef,
     streamRefsRef,
   } = runtime;
@@ -188,25 +198,17 @@ export function useRecoveredTasks(
             return phase === "waiting_for_client"
               ? "Archive download waiting"
               : `Preparing archive${percentage !== undefined ? ` (${percentage}%)` : ""}`;
-          case TaskTypes.TASK_TYPE_FILE_CHMOD_BATCH: {
-            const processed = data?.processed ?? 0;
-            return `${data?.phase === "chown" ? "Changing ownership" : "Changing permissions"}: ${processed} item${processed === 1 ? "" : "s"}`;
-          }
-          case TaskTypes.TASK_TYPE_FILE_DELETE_BATCH: {
-            const processed = data?.processed ?? 0;
-            return `Deleting ${processed} item${processed === 1 ? "" : "s"}`;
-          }
-          case TaskTypes.TASK_TYPE_FILE_TRASH_BATCH: {
-            const processed = data?.processed ?? 0;
-            return `Moving ${processed} item${processed === 1 ? "" : "s"} to Trash`;
-          }
-          case TaskTypes.TASK_TYPE_FILE_TRASH_RESTORE: {
-            const processed = data?.processed ?? 0;
-            return `Restoring ${processed} item${processed === 1 ? "" : "s"} from Trash`;
-          }
+          case TaskTypes.TASK_TYPE_FILE_CHMOD_BATCH:
+          case TaskTypes.TASK_TYPE_FILE_DELETE_BATCH:
+          case TaskTypes.TASK_TYPE_FILE_TRASH_BATCH:
+          case TaskTypes.TASK_TYPE_FILE_TRASH_RESTORE:
           case TaskTypes.TASK_TYPE_FILE_TRASH_PURGE: {
             const processed = data?.processed ?? 0;
-            return `Deleting ${processed} item${processed === 1 ? "" : "s"} from Trash`;
+            return fileTaskText(
+              task.type,
+              `${processed} item${processed === 1 ? "" : "s"}`,
+              data?.phase,
+            );
           }
           case TaskTypes.TASK_TYPE_DOCKER_COMPOSE:
             return (
@@ -223,6 +225,10 @@ export function useRecoveredTasks(
                 : (message ?? "Updating packages");
           case TaskTypes.TASK_TYPE_STORAGE_SMART_TEST:
             return message ?? "Running SMART self-test";
+          case TaskTypes.TASK_TYPE_STORAGE_BTRFS_BALANCE:
+            return `Balancing btrfs filesystem${percentage !== undefined ? ` (${percentage}%)` : ""}`;
+          case TaskTypes.TASK_TYPE_STORAGE_BTRFS_SCRUB:
+            return `Scrubbing btrfs filesystem${percentage !== undefined ? ` (${percentage}%)` : ""}`;
           case TaskTypes.TASK_TYPE_SYSTEM_INSTALL_CAPABILITY: {
             const cap = requestString(metadata, "capability") ?? "capability";
             return message ?? `Installing ${cap}`;
@@ -342,6 +348,8 @@ export function useRecoveredTasks(
         case TaskTypes.TASK_TYPE_DOCKER_UPDATE:
         case TaskTypes.TASK_TYPE_PACKAGE_UPDATE:
         case TaskTypes.TASK_TYPE_STORAGE_SMART_TEST:
+        case TaskTypes.TASK_TYPE_STORAGE_BTRFS_BALANCE:
+        case TaskTypes.TASK_TYPE_STORAGE_BTRFS_SCRUB:
         case TaskTypes.TASK_TYPE_SYSTEM_INSTALL_CAPABILITY:
         case TaskTypes.TASK_TYPE_FILE_UPLOAD:
         case TaskTypes.TASK_TYPE_FILE_UPLOAD_BATCH:
@@ -375,6 +383,7 @@ export function useRecoveredTasks(
               label: genericLabel(task.progress),
               indeterminate: initialMeta.indeterminate,
               processed: initialMeta.processed,
+              cancelRequested: task.cancel_requested === true,
               abortController,
             },
           ]);
@@ -422,10 +431,16 @@ export function useRecoveredTasks(
             },
             onError: (error) => {
               if (abortController.signal.aborted) return;
-              // Only the navbar cancel aborts the controller above; a cancel
-              // from an owning page or another session arrives here as an
-              // ordinary 499 stream error and must be classified so the
-              // registry can tell it apart from a failure.
+              // The tray's own cancel is reported here, once the job has
+              // ended. A cancel from an owning page or another session is
+              // classified so the registry can tell it apart from a failure.
+              if (
+                locallyCanceledTaskIdsRef.current.has(task.id) &&
+                isTaskCancellationError(error)
+              ) {
+                toast.info("Task cancelled");
+                return;
+              }
               emitTerminalTaskFeedback(
                 feedbackTask,
                 {
@@ -436,7 +451,10 @@ export function useRecoveredTasks(
                 feedbackEntry,
               );
             },
-            onFinally: () => removeBackgroundTask(task.id),
+            onFinally: () => {
+              locallyCanceledTaskIdsRef.current.delete(task.id);
+              removeBackgroundTask(task.id);
+            },
           });
           break;
         }
@@ -455,6 +473,7 @@ export function useRecoveredTasks(
       activeBackgroundTaskIdsRef,
       activeFileTransferTaskIdsRef,
       activeIndexerIdsRef,
+      locallyCanceledTaskIdsRef,
       pendingLocalTaskKeysRef,
       recoveringTaskIdsRef,
       streamRefsRef,
@@ -475,6 +494,22 @@ export function useRecoveredTasks(
     let cleanupEvents: (() => void) | undefined;
     let eventStream: Stream | null = null;
 
+    // No watch ends a scheduled row: only this events stream does, and a run
+    // that ends while none is open tells nobody. So the rows go when a new
+    // stream opens (its opening snapshots bring back the runs still going)
+    // and when one ends on its own (nothing reopens it until the mux status
+    // changes).
+    const dropScheduledRuns = () => {
+      if (
+        tasks.backgroundTasks
+          .read()
+          .some((item) => isScheduledRun(item.taskType))
+      ) {
+        setBackgroundTasks(withoutScheduledRuns);
+      }
+    };
+    dropScheduledRuns();
+
     eventStream = openTaskEventsStream();
     if (eventStream) {
       cleanupEvents = bindStreamHandlers<TaskEvent>(eventStream, {
@@ -482,8 +517,31 @@ export function useRecoveredTasks(
           if (!event?.task || cancelled) return;
           const task = event.task;
 
+          // A systemd timer runs a scheduled run, and the bridge refuses to
+          // watch or cancel it: these events alone keep its row, and its own
+          // page (and, for a failed script, its alert) reports how it ended.
+          if (isScheduledRun(task.type)) {
+            setBackgroundTasks((prev) => applyScheduledRunEvent(prev, task));
+            return;
+          }
+
           // 1) Attach progress trackers to tasks that don't have a local handler.
           watchRecoveredTask(task);
+
+          // A cancel requested from a page or another session marks the row
+          // the task already has; it stays until the job ends.
+          if (task.cancel_requested && !isTerminalTaskState(task.state)) {
+            const item = tasks.get(task.id);
+            if (item?.type === "task" && !item.cancelRequested) {
+              setBackgroundTasks((prev) =>
+                prev.map((entry) =>
+                  entry.id === task.id
+                    ? { ...entry, cancelRequested: true }
+                    : entry,
+                ),
+              );
+            }
+          }
 
           // 2) On terminal events, always invalidate mapped query caches. A
           //    local handler may already have done the same, but a duplicate
@@ -518,6 +576,7 @@ export function useRecoveredTasks(
         onClose: () => {
           if (!cancelled) {
             console.debug("Task events stream closed");
+            dropScheduledRuns();
           }
         },
       });
@@ -530,5 +589,12 @@ export function useRecoveredTasks(
       cleanupEvents?.();
       eventStream?.close();
     };
-  }, [watchRecoveredTask, feedbackDeps, queryClient, streamMuxStatus]);
+  }, [
+    watchRecoveredTask,
+    feedbackDeps,
+    queryClient,
+    streamMuxStatus,
+    tasks,
+    setBackgroundTasks,
+  ]);
 }

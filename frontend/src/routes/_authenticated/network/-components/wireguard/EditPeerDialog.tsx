@@ -4,7 +4,6 @@ import {
   getMutationErrorMessage,
   linuxio,
   type Peer,
-  useCallMutation,
   type WireGuardUpdatePeerRequest,
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -87,7 +86,7 @@ const EditPeerDialog = ({
   );
   const [error, setError] = useState<string | null>(null);
 
-  const updatePeer = useCallMutation(linuxio.wireguard.update_peer, {
+  const updatePeer = linuxio.wireguard.update_peer.useMutation({
     success: () => {
       toast.success(`Peer '${peer.name}' updated`);
       onClose();

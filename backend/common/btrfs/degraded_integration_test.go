@@ -200,7 +200,7 @@ func TestBtrfsDegradedIntegration(t *testing.T) {
 	t.Cleanup(func() { _ = unix.Unmount(m.target, 0) })
 	m.a = newLoopDisk(t, filepath.Join(dir, "a.img"), 2<<30)
 	m.b = newLoopDisk(t, filepath.Join(dir, "b.img"), 2<<30)
-	uuid, err := CreatePool(m.ctx, "linuxio-degraded", "raid1", "raid1", []string{m.a.dev, m.b.dev}, true)
+	uuid, err := CreatePool(m.ctx, "linuxio-degraded", "raid1", "raid1", []string{m.a.dev, m.b.dev}, true, nil)
 	m.must("create pool", err)
 	m.uuid = uuid
 	writeFstab(t, fmt.Sprintf("UUID=%s %s btrfs %s 0 0\n", uuid, m.target, strings.Join(m.options, ",")))
@@ -289,7 +289,7 @@ func (m *itMirror) resyncRepairsTheReturnedDisk() {
 		t.Fatalf("complete pool: state %+v", m.state())
 	}
 
-	m.must("resync", Resync(m.ctx, m.uuid))
+	m.must("resync", Resync(m.ctx, m.uuid, nil))
 	if scrub, ok := loadScrubRecord(m.uuid); !ok || scrub.CorrectedErrors == 0 || scrub.UncorrectableErrors != 0 {
 		t.Fatalf("resync scrub = %+v; want stale copies corrected", scrub)
 	}

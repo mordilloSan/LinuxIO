@@ -6,7 +6,6 @@ import type { BtrfsFilesystem, StorageBlockDevice } from "@/api";
 import { LinuxIOError } from "@/api/errors";
 import { renderWithTanStackRouter as render } from "@/test/render";
 import { storageBlock } from "@/test/storageTopologyFixture";
-import type { TaskStreamActionMockConfig } from "@/test/taskStreamAction";
 
 import PartitionsTab from "./PartitionsTab";
 
@@ -23,33 +22,35 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
-  const { createTaskStreamActionMock } =
-    await import("@/test/taskStreamAction");
-  const task = (name: string) => ({
-    useTaskStreamAction: (config?: TaskStreamActionMockConfig) => ({
-      isPending: false,
-      ...createTaskStreamActionMock(
-        {
-          openStream: () => ({}),
-          runStream: () => Promise.resolve(undefined),
-          submit: (request) => mocks.submit(name, request),
-        },
-        // The real hook toasts a string `error`; the double only takes a function.
-        config && {
-          ...config,
-          error: typeof config.error === "function" ? config.error : undefined,
-        },
-      ),
-    }),
+  const { createMutationJobMock } = await import("@/test/mutationJob");
+  const { mockMutationHooks } = await import("@/test/mutationHooks");
+  const useCallMutation = (endpoint: { route: string }) => ({
+    isPending: false,
+    mutate: (mocks.mutations[endpoint.route] ??= vi.fn()),
   });
-  return {
+  // Create and format are jobs; the rest answer from the call mock.
+  const useMutation = (endpoint: { route: string }, config: never) => {
+    const call = useCallMutation(endpoint);
+    const [, name] = endpoint.route.split(".");
+    if (name !== "partition_create" && name !== "partition_format") {
+      return call;
+    }
+    return {
+      isPending: false,
+      ...createMutationJobMock(
+        {
+          follow: () => Promise.resolve(undefined),
+          start: (request) => mocks.submit(name, request),
+        },
+        config,
+      ),
+    };
+  };
+  const mocked = {
     ...actual,
     call: (route: string) =>
       route === "tasks.list" ? Promise.resolve([]) : Promise.reject(),
-    useCallMutation: (endpoint: { route: string }) => ({
-      isPending: false,
-      mutate: (mocks.mutations[endpoint.route] ??= vi.fn()),
-    }),
+    useCallMutation,
     linuxio: {
       ...actual.linuxio,
       storage: {
@@ -66,10 +67,12 @@ vi.mock("@/api", async (importOriginal) => {
           queryKey: ["test-get-topology"],
           queryFn: () => mocks.topology(),
         },
-        partition_create: task("partition_create"),
-        partition_format: task("partition_format"),
       },
     },
+  };
+  return {
+    ...mocked,
+    linuxio: mockMutationHooks(mocked.linuxio, useMutation),
   };
 });
 
@@ -340,6 +343,7 @@ describe("PartitionsTab", () => {
       fsType: "ext4",
       label: "",
       overwrite: true,
+      confirmMembers: [],
     });
   });
 
@@ -443,7 +447,66 @@ describe("PartitionsTab", () => {
     expect(dialog).toHaveTextContent(/\/dev\/sda2 \(1 GB, ext4\)/);
     await u.click(within(dialog).getByRole("button", { name: "Delete" }));
     expect(mocks.mutations["storage.partition_delete"]).toHaveBeenCalledWith(
-      { device: "/dev/sda2" },
+      { device: "/dev/sda2", confirmMembers: [] },
+      expect.anything(),
+    );
+  });
+
+  it("names an md member in the Format confirmation and confirms it", async () => {
+    const u = user();
+    mocks.topology.mockResolvedValue(
+      topology([
+        sda(),
+        part(1, 1, {
+          fsType: "linux_raid_member",
+          member: { kind: "md", name: "host:data", uuid: "a1" },
+        }),
+      ]),
+    );
+    render(<PartitionsTab driveName="sda" />, options);
+
+    await u.click(await screen.findByRole("button", { name: "Format" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Format /dev/sda1",
+    });
+    expect(dialog).toHaveTextContent(
+      "/dev/sda1 is a member of md array host:data. Formatting erases it, and md array host:data loses it.",
+    );
+    await u.click(within(dialog).getByLabelText("Overwrite existing data"));
+    await u.click(within(dialog).getByRole("button", { name: "Format" }));
+    expect(mocks.submit).toHaveBeenCalledWith("partition_format", {
+      device: "/dev/sda1",
+      fsType: "ext4",
+      label: "",
+      overwrite: true,
+      confirmMembers: [{ device: "/dev/sda1", kind: "md", uuid: "a1" }],
+    });
+  });
+
+  it("names an LVM member in the Delete confirmation and confirms it", async () => {
+    const u = user();
+    mocks.topology.mockResolvedValue(
+      topology([
+        sda(),
+        part(1, 1, {
+          fsType: "LVM2_member",
+          member: { kind: "lvm", uuid: "pv1" },
+        }),
+      ]),
+    );
+    render(<PartitionsTab driveName="sda" />, options);
+
+    await u.click(await screen.findByRole("button", { name: "Delete" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent(
+      "It is a member of an LVM volume group (physical volume pv1), which loses it.",
+    );
+    await u.click(within(dialog).getByRole("button", { name: "Delete" }));
+    expect(mocks.mutations["storage.partition_delete"]).toHaveBeenCalledWith(
+      {
+        device: "/dev/sda1",
+        confirmMembers: [{ device: "/dev/sda1", kind: "lvm", uuid: "pv1" }],
+      },
       expect.anything(),
     );
   });
@@ -463,7 +526,46 @@ describe("PartitionsTab", () => {
     expect(dialog).toHaveTextContent(/\/dev\/sda2 \(1 GB\)/);
     await u.click(within(dialog).getByRole("button", { name: "Initialize" }));
     expect(mocks.mutations["storage.disk_initialize"]).toHaveBeenCalledWith(
-      { device: "/dev/sda" },
+      { device: "/dev/sda", confirmMembers: [] },
+      expect.anything(),
+    );
+  });
+
+  it("names md and LVM members in the Initialize confirmation and confirms exactly those", async () => {
+    const u = user();
+    mocks.topology.mockResolvedValue(
+      topology([
+        sda(),
+        part(1, 1, {
+          fsType: "linux_raid_member",
+          member: { kind: "md", name: "host:data", uuid: "a1" },
+        }),
+        part(2, 1024, {
+          fsType: "LVM2_member",
+          member: { kind: "lvm", uuid: "pv2" },
+        }),
+      ]),
+    );
+    render(<PartitionsTab driveName="sda" />, options);
+
+    // A stopped array's member is shown, and does not block Initialize.
+    expect(
+      await screen.findByText("Member of md array host:data"),
+    ).toBeInTheDocument();
+    await u.click(screen.getByRole("button", { name: "Initialize disk" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent(
+      "This also erases /dev/sda1, a member of md array host:data; /dev/sda2, a member of an LVM volume group (physical volume pv2).",
+    );
+    await u.click(within(dialog).getByRole("button", { name: "Initialize" }));
+    expect(mocks.mutations["storage.disk_initialize"]).toHaveBeenCalledWith(
+      {
+        device: "/dev/sda",
+        confirmMembers: [
+          { device: "/dev/sda1", kind: "md", uuid: "a1" },
+          { device: "/dev/sda2", kind: "lvm", uuid: "pv2" },
+        ],
+      },
       expect.anything(),
     );
   });

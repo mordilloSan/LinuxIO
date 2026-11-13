@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
 	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
@@ -146,7 +147,7 @@ func TestCreatedResourceNotificationsUseTypeSpecificOperations(t *testing.T) {
 		defer root.Close()
 		requests := recordIndexerRequests(t)
 		path := filepath.Join(dir, "created-dir")
-		if _, err := createDirectoryResource(t.Context(), root, resourcePostRequest{cleanPath: path, relPath: "created-dir", isDir: true}); err != nil {
+		if _, err := createDirectoryResource(t.Context(), root, resourcePostRequest{cleanPath: path, relPath: "created-dir", isDir: true}, services.Owner{}); err != nil {
 			t.Fatalf("createDirectoryResource: %v", err)
 		}
 		assertIndexerRequests(t, *requests, []recordedIndexerRequest{{
@@ -165,7 +166,7 @@ func TestCreatedResourceNotificationsUseTypeSpecificOperations(t *testing.T) {
 		defer root.Close()
 		requests := recordIndexerRequests(t)
 		path := filepath.Join(dir, "created.txt")
-		if _, err := createFileResource(t.Context(), root, resourcePostRequest{cleanPath: path, relPath: "created.txt"}); err != nil {
+		if _, err := createFileResource(t.Context(), root, resourcePostRequest{cleanPath: path, relPath: "created.txt"}, services.Owner{}); err != nil {
 			t.Fatalf("createFileResource: %v", err)
 		}
 		assertIndexerRequests(t, *requests, []recordedIndexerRequest{{

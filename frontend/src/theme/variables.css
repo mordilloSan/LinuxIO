@@ -27,6 +27,7 @@
   --app-z-sidebar: 1200;
   --app-z-dialog: 1300;
   --app-z-tooltip: 1500;
+  --app-z-toast: 1600;
   /* Shared chrome for lightweight floating surfaces. Keep dock labels,
      tooltips, and popovers visually aligned without imposing tooltip-sized
      typography or padding on richer panel content. */

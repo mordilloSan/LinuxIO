@@ -1,12 +1,32 @@
 # Storage disks
 
 Storage → Disks (`/storage`) lists the physical drives with their SMART
-details and, under **Storage space**, how they are used: disks → pool →
-volumes for btrfs pools, disks → array or device → volumes for RAID, LVM
-and dm-crypt, disk → volumes for plain partitions, and server → volumes for
-network shares. Drives with nothing on them are listed under **Disks without
-volumes**. A drive used in more than one way, such as an EFI partition beside
-a RAID member, appears once in each place.
+details and, under **Storage space**, how they are used, as one graph in
+three columns: every drive once on the left; what the drives build in the
+middle (btrfs pools, md arrays, LVM and dm-crypt devices, the EFI boot set,
+network servers); and every mounted volume on the right. An edge runs from a
+drive to each thing one of its partitions feeds, labelled with the partition
+suffix ("p2", or "1" on `sda1`); a whole disk used as a member has no label.
+A mapped device on another mapped device (LVM on LUKS) is drawn once, as the
+mounted device, with the layers in its caption. A drive with nothing on it
+says **Nothing on it**; partitions nothing mounts or builds on are listed on
+the drive's card.
+
+Edges into the same node share a lane in the gap before it, so a four-drive
+array reads as one trunk with four branches. Node positions come from fixed
+card heights, never from measuring the page; only the container width is
+observed. Below 780px the columns stack as a list and the edges go.
+
+### EFI boot
+
+Two or more partitions with the EFI System Partition type GUID are drawn as
+one **EFI boot** node fed by their drives, with the mounted copy's edge live
+and the spare copies' edges plain. Its chips say how many of the firmware's
+Boot#### entries point at one of the copies ("4 boot entries") and whether
+every copy has one ("All bootable", "1 without entry", or "No firmware
+entries" on a BIOS host or in a container); the caption names the mounted
+copy. The node claims nothing about the copies' contents: checking that
+would mean mounting them. A single ESP draws as a plain partition → volume.
 
 ## Partitions
 
@@ -31,13 +51,17 @@ between them. Its actions are for administrators.
 | Row | Action | Enabled when |
 |---|---|---|
 | Free region (GPT disk) | **Create partition**: size, the whole region by default; optionally a filesystem and label, and with them **Mount after formatting** (mount point, **Mount at boot**) | always |
-| Partition | **Format**: filesystem and label; **Overwrite existing data** when it already has one | the partition is unused |
+| Partition | **Format**: filesystem and label; **Overwrite existing data** when it already has one; the dialog names a member of an md array, LVM volume group or other set it erases | the partition is unused |
 | Partition with a filesystem, not mounted | **Mount**: mount point, **Mount at boot** | not busy, and not a btrfs pool member (pools mount from the pool view) |
-| Partition (GPT disk) | **Delete**: the confirmation names the partition, its size and its filesystem | the partition is unused |
-| Disk | **Initialize disk**: an empty GPT replaces any table; the confirmation lists every partition that will be lost | the disk and all its partitions are unused and the disk is writable |
+| Partition (GPT disk) | **Delete**: the confirmation names the partition, its size and its filesystem, and the md array, LVM volume group or other set it is a member of | the partition is unused |
+| Disk | **Initialize disk**: an empty GPT replaces any table; the confirmation lists every partition that will be lost and names each member of an md array or LVM volume group it erases | the disk and all its partitions are unused and the disk is writable |
 
 A disabled action's tooltip gives the reason, such as "Mounted at /srv",
-"Used by /dev/md127", "In /etc/fstab" or "Member of btrfs pool tank". The
+"Used by /dev/md127", "In /etc/fstab" or "Member of btrfs pool tank". A
+partition whose signature makes it a member of a stopped md array or an
+inactive volume group shows it under **Used by**, such as "Member of md array
+host:data", without blocking anything; Format, Delete and Initialize name it
+in their confirmation (see [Safety](#safety)). The
 filesystems are ext4, xfs and btrfs on one device; multi-disk pools come from
 the pool flow. A type whose `mkfs` is missing is listed as unavailable with a
 link to install it (see [Filesystem tools](./capabilities.md#filesystem-tools)).
@@ -51,9 +75,13 @@ replaces the MBR with a GPT.
 
 **Unmount** of a local filesystem offers **Also remove from /etc/fstab**, so a
 partition mounted at boot can be released and deleted. Create and Format run
-as tasks with steps (Partitioning, Formatting, Mounting), because `mkfs`
-discards the whole partition first, which can take minutes on a large SSD.
-Delete, Mount and Initialize are calls.
+as tasks with steps (Partitioning, Trimming, Formatting, Mounting), because
+discarding the whole partition can take minutes on a large SSD. The bridge
+runs that trim itself, as 1 GiB `BLKDISCARD` calls on an exclusive open, so
+the Trimming step shows its percent done, then runs `mkfs` with its
+no-discard flag (`-E nodiscard`, `-K`). Pool creation trims its members the
+same way. A device without discard support skips the step. Delete, Mount and
+Initialize are calls.
 
 ### Safety
 
@@ -70,7 +98,31 @@ Format, Delete and Initialize refuse on all four, with the reason as a 409.
 Mount refuses on the first three, and on the fourth only with **Mount at
 boot**, so a partition already in fstab can still be mounted for now. Create
 needs a GPT disk that is not itself in use; its other partitions may be.
-Create, Format, Delete and Initialize refuse a read-only disk.
+Create, Format, Delete and Initialize refuse a read-only disk. Format
+overwrites any other signature only with **Overwrite existing data**.
+
+These four are the check every operation that writes a device shares
+(`deviceInUse` in `device_free.go`). md RAID add and replace also refuse a
+device with partitions, holders or any signature at all, naming a member of
+a btrfs pool, md array or volume group and how to free it; btrfs pools add
+their own rule (see [Which disks a pool may take](./btrfs.md#which-disks-a-pool-may-take)).
+
+Nothing holds a member of a stopped md array or an inactive LVM volume
+group, so rules 1 and 2 do not see it. **Format** (with **Overwrite existing
+data**), **Delete** and **Initialize disk** are the deliberate ways to
+destroy one, so each names it before acting: Format and Delete the
+partition's own membership, Initialize every such member on the disk and its
+partitions. The request lists what was named (`confirmMembers`: device, kind
+and UUID, as the inventory reported them). The bridge refuses with a 409
+when a member it finds is not confirmed, such as "/dev/sdb1: Member of md
+array host:data; confirm erasing it to format /dev/sdb1", or a confirmed one
+is gone, so a device that changed after the dialog opened is never destroyed
+on the old confirmation. Delete leaves the data in place, but the set loses
+the member all the same. The same holds for any other signature that names itself a
+member (one ending in `_member`, such as `zfs_member`). A member of a btrfs
+pool stays refused by rule 3; its pool is destroyed instead. A btrfs
+signature that belongs to no pool the bridge can read cannot be destroyed as
+a pool, so it is named and confirmed like the rest.
 
 The kernel backs these checks, so a stale inventory cannot cause a
 destructive write:
@@ -132,13 +184,31 @@ with no subprocess:
 - `/sys/class/block` for devices, sizes, partition numbers and start offsets,
   parents (`slaves/`), holders and the transport.
 - `/run/udev/data/b<major>:<minor>` for filesystem type, UUID and label,
-  partition table type, PARTUUID, PARTLABEL, model and serial.
+  partition table type, PARTUUID, PARTLABEL, partition type (`partType`:
+  the GPT type GUID, lowercase), model and serial.
 - `/proc/self/mountinfo` for mount points, matched by `major:minor` or, for
   filesystems with an anonymous device such as btrfs, by source.
 - `/proc/swaps` and `/etc/fstab` for the in-use rule and the `inFstab` flag.
 
-Each device also reports `busy` (mounted, active swap, or used by a holder)
-and, for GPT disks, `freeRegions`.
+Each device also reports `busy` (mounted, active swap, or used by a holder),
+`member` and, for GPT disks, `freeRegions`. `member` is what the device's
+signature makes it part of, whether that is mounted, running or active or
+not: `btrfs` with the pool label and filesystem UUID, `md` with the array
+name (`host:name`) and UUID, or `lvm` with the physical volume UUID and the
+volume group, which udev knows only from LVM's own rule once the group is
+complete (`LVM_VG_NAME_COMPLETE`). It comes from the udev database like the
+filesystem type, so it needs no privilege and also names the members of a
+mounted multi-device pool that no mount lists.
+
+The inventory also carries `bootEntries`: the firmware's Boot#### load
+options whose device path names a GPT partition, read from
+`/sys/firmware/efi/efivars` (world-readable; each file starts with a 4-byte
+attribute word, then the `EFI_LOAD_OPTION`: attributes, path length, a
+UTF-16 description and the device path, whose Hard Drive node carries the
+partition GUID in mixed-endian order). Each entry has its id, label,
+`partUUID`, whether it is active, whether it is the current boot, and its
+position in `BootOrder` (-1 when unlisted). A BIOS host, a container or a
+malformed entry yields none; nothing fails the inventory.
 
 systemd does not promise the udev database format: udev(7) says only that
 libudev provides access to it. A device udev has not probed yet (a brief window
@@ -154,12 +224,18 @@ invalidate the inventory through the central operation invalidation map.
 ## Live activity
 
 `monitoring.get_live` supplies each drive's read and write rate, shown on the
-drive's row in Storage space. Lines leaving a drive carry layered grain
-streams, reads flowing towards the volumes and writes back, through the
-shared `AppTopologyEdge`. Grain speed is decorative, not a throughput scale.
-Lines into partitions nothing uses stay still, and a pool or array's lines to
-its volumes carry no flow, since the rates belong to whole drives. Rates and
-grains disappear when a monitoring poll fails; a sampler that keeps
-answering with an old sample is not detected. **Pause animation** freezes
-the grains in place, and reduced motion removes the animation while keeping
-the numbers.
+drive's row in Storage space. Every edge into something mounted or running
+streams through the shared `AppTopologyEdge`: a dashed read stream towards
+the volume in the chart rx colour and, while anything writes, a thinner
+write stream back in the tx colour. Four tiers set the pace and brightness
+from the larger of the two rates: idle (0 B/s: slow and faint, no write
+stream), light (under 10 MB/s), medium (under 100 MB/s) and busy. A drive's
+edges carry its own rates; a pool or array's edge to its volume carries the
+sum of its members'. Edges into spare EFI copies, unmounted pools and
+partitions nothing uses are plain lines. When a monitoring poll fails the
+rates disappear and every live edge drops to idle, not to still; a sampler
+that keeps answering with an old sample is not detected. **Pause animation**
+freezes the streams in place, and reduced motion removes the animation while
+keeping the lines and the numbers. The Docker topology draws its edges with
+the same component: live for running containers, with the container's rx
+and tx rates.

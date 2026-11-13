@@ -1,3 +1,4 @@
+import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 
@@ -11,6 +12,7 @@ import {
 } from "@/api";
 import { useStreamResult } from "@/hooks/useStreamResult";
 import { batchFailures, describeBatchFailures } from "@/tasks/batchFailures";
+import { extractionLabelBase, fileTaskText } from "@/tasks/taskTitles";
 import * as TaskTypes from "@/tasks/taskTypes";
 import {
   createProgressSpeedCalculator,
@@ -23,6 +25,7 @@ import type {
   ExtractionStartOptions,
   TransferItem,
 } from "@/tasks/types";
+import { toastFileError } from "@/utils/linkRefusal";
 import { joinPath } from "@/utils/path";
 
 import type { BackgroundTaskRuntime } from "./useBackgroundTaskRuntime";
@@ -63,9 +66,8 @@ function batchLabelBase(sources: string[]): string {
  */
 interface TransferDescriptor {
   kind: TransferKind;
+  /** Progress labels are `${fileTaskText(taskType, labelBase)} (n%)`. */
   taskType: string;
-  /** "Compressing" — progress labels are `${active} ${labelBase} (n%)`. */
-  active: string;
   /** "Created" — success toasts are `${done} ${labelBase}`. */
   done: string;
   /** "compression" — start/stream/failure/cancel copy derives from this. */
@@ -93,7 +95,6 @@ const DESCRIPTORS: Record<TransferKind, TransferDescriptor> = {
   compression: {
     kind: "compression",
     taskType: TaskTypes.TASK_TYPE_FILE_COMPRESS,
-    active: "Compressing",
     done: "Created",
     noun: "compression",
     usesLabelAllocator: true,
@@ -114,7 +115,6 @@ const DESCRIPTORS: Record<TransferKind, TransferDescriptor> = {
   extraction: {
     kind: "extraction",
     taskType: TaskTypes.TASK_TYPE_FILE_EXTRACT,
-    active: "Extracting",
     done: "Extracted",
     noun: "extraction",
     usesLabelAllocator: true,
@@ -134,7 +134,6 @@ const DESCRIPTORS: Record<TransferKind, TransferDescriptor> = {
   copy: {
     kind: "copy",
     taskType: TaskTypes.TASK_TYPE_FILE_COPY_BATCH,
-    active: "Copying",
     done: "Copied",
     noun: "copy",
     usesLabelAllocator: false,
@@ -154,7 +153,6 @@ const DESCRIPTORS: Record<TransferKind, TransferDescriptor> = {
   move: {
     kind: "move",
     taskType: TaskTypes.TASK_TYPE_FILE_MOVE_BATCH,
-    active: "Moving",
     done: "Moved",
     noun: "move",
     usesLabelAllocator: false,
@@ -196,13 +194,7 @@ function progressLabel(
   labelBase: string,
   pct: number,
 ): string {
-  return `${descriptor.active} ${labelBase} (${pct}%)`;
-}
-
-// Extraction navbar entries drop the archive extension.
-function extractionLabelBase(archivePath: string): string {
-  const raw = basename(archivePath, "archive");
-  return raw.replace(/\.(tar\.gz|tgz|zip)$/i, "") || raw;
+  return `${fileTaskText(descriptor.taskType, labelBase)} (${pct}%)`;
 }
 
 /**
@@ -213,6 +205,7 @@ function extractionLabelBase(archivePath: string): string {
  */
 export function useTransferTasks(runtime: BackgroundTaskRuntime) {
   const { set: setTransfers, read: readTasks } = runtime.tasks.transfers;
+  const navigate = useNavigate();
   const activeTransferIdsRef = useRef<Set<string>>(new Set());
 
   // Progress frames arrive far faster than the UI needs to repaint (a fast
@@ -325,7 +318,9 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
         // Copy/move report per-item failures in the result; archives have none.
         const failed = batchFailures(result);
         if (failed.length > 0) {
-          toast.error(
+          toastFileError(
+            toast,
+            navigate,
             `${descriptor.done} ${labelBase} with ${failed.length} failure${failed.length === 1 ? "" : "s"}`,
             { description: describeBatchFailures(failed) },
           );
@@ -338,7 +333,9 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
         if (abortController.signal.aborted) {
           return;
         }
-        toast.error(
+        toastFileError(
+          toast,
+          navigate,
           error instanceof Error
             ? error.message
             : `${capitalize(descriptor.noun)} failed`,
@@ -383,7 +380,9 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
       task = await startTask();
     } catch (error) {
       pendingLocalTaskKeysRef.current.delete(pendingKey);
-      toast.error(
+      toastFileError(
+        toast,
+        navigate,
         error instanceof Error
           ? error.message
           : `Failed to start ${descriptor.noun}`,
@@ -508,7 +507,7 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
     return startTransfer(
       "compression",
       [request.targetPath],
-      () => linuxio.filebrowser.compress(request),
+      () => linuxio.filebrowser.compress.start(request),
       archiveName || "archive.zip",
       (labelBase) => ({
         type: "compression",
@@ -532,7 +531,7 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
     return startTransfer(
       "extraction",
       identity,
-      () => linuxio.filebrowser.extract({ archivePath, destination }),
+      () => linuxio.filebrowser.extract.start({ archivePath, destination }),
       extractionLabelBase(archivePath),
       () => ({
         type: "extraction",
@@ -557,7 +556,7 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
       "copy",
       [...sources, destination],
       () =>
-        linuxio.filebrowser.copy_batch({
+        linuxio.filebrowser.copy_batch.start({
           sources,
           destination,
           overwrite,
@@ -583,7 +582,7 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
       "move",
       [...sources, destination],
       () =>
-        linuxio.filebrowser.move_batch({
+        linuxio.filebrowser.move_batch.start({
           sources,
           destination,
           overwrite,

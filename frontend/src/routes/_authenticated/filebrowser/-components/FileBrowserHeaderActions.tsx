@@ -8,14 +8,15 @@ import AppMobileActionsMenu from "@/components/ui/AppMobileActionsMenu";
 import AppPopover from "@/components/ui/AppPopover";
 import HeaderActions from "@/components/ui/HeaderActions";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
+import useAuth from "@/hooks/useAuth";
 import { useHeaderActionSlot } from "@/hooks/useHeaderActionSlot";
 import { useBackgroundTaskActions } from "@/tasks/useBackgroundTaskActions";
 import { useIsIndexing } from "@/tasks/useIsIndexing";
 import { iconSize } from "@/theme/constants";
 
+import type { ViewMode } from "../-types";
 import FileBrowserSearch from "./FileBrowserSearch";
 import TrashDialog from "./TrashDialog";
-import type { ViewMode } from "../-types";
 
 interface FileBrowserHeaderActionsProps {
   isMobile: boolean;
@@ -50,6 +51,8 @@ const FileBrowserHeaderActions = memo(function FileBrowserHeaderActions({
   const mobileSearchRef = useRef<HTMLDivElement | null>(null);
   const { startIndexer, openIndexerDialog } = useBackgroundTaskActions();
   const isIndexing = useIsIndexing();
+  // Indexing and search run through privileged routes.
+  const { privileged } = useAuth();
 
   const handleIndexer = useCallback(() => {
     setActionsAnchorEl(null);
@@ -94,15 +97,17 @@ const FileBrowserHeaderActions = memo(function FileBrowserHeaderActions({
           onToggleHiddenFiles();
         }}
       />
-      <AppActionIconButton
-        ariaLabel="Index filesystem"
-        disabled={isIndexing}
-        icon="mdi:sync"
-        iconSize={20}
-        label={isIndexing ? "Indexing..." : "Index filesystem"}
-        loading={isIndexing}
-        onClick={handleIndexer}
-      />
+      {privileged ? (
+        <AppActionIconButton
+          ariaLabel="Index filesystem"
+          disabled={isIndexing}
+          icon="mdi:sync"
+          iconSize={20}
+          label={isIndexing ? "Indexing..." : "Index filesystem"}
+          loading={isIndexing}
+          onClick={handleIndexer}
+        />
+      ) : null}
       <AppActionIconButton
         ariaLabel="Trash"
         icon="mdi:trash-can-outline"
@@ -164,17 +169,19 @@ const FileBrowserHeaderActions = memo(function FileBrowserHeaderActions({
         onClose={closeActionsMenu}
         open={Boolean(actionsAnchorEl)}
       >
-        <AppIconButton
-          aria-label="Search"
-          color={searchQuery ? "primary" : "default"}
-          onClick={() => {
-            setMobileSearchAnchorEl(actionsAnchorEl);
-            setActionsAnchorEl(null);
-          }}
-          size="small"
-        >
-          <Icon height={20} icon="mdi:magnify" width={20} />
-        </AppIconButton>
+        {privileged ? (
+          <AppIconButton
+            aria-label="Search"
+            color={searchQuery ? "primary" : "default"}
+            onClick={() => {
+              setMobileSearchAnchorEl(actionsAnchorEl);
+              setActionsAnchorEl(null);
+            }}
+            size="small"
+          >
+            <Icon height={20} icon="mdi:magnify" width={20} />
+          </AppIconButton>
+        ) : null}
         <HeaderActions
           options={optionActions(closeActionsMenu)}
           view={viewAction(closeActionsMenu)}

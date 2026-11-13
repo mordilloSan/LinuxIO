@@ -2,7 +2,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { useCallback, useMemo, useState } from "react";
 
-import { type DockerImage, linuxio, useCallMutation } from "@/api";
+import { type DockerImage, linuxio } from "@/api";
 import ResourceDetailsLayout from "@/components/cards/ResourceDetailsLayout";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { useReorderableSurface } from "@/components/reorder/useReorderableSurface";
@@ -20,6 +20,7 @@ import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
+import useAuth from "@/hooks/useAuth";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
 
@@ -135,6 +136,8 @@ const ImageList = ({
   const images = rawImages;
   const [search, setSearch] = useState("");
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  // docker.delete_image is admin-only.
+  const { privileged } = useAuth();
 
   // Create image handler
   const handleCreateImage = useCallback(() => {
@@ -217,9 +220,8 @@ const ImageList = ({
     [navigate, surface.editMode],
   );
   // Configless: this is a batch flow — the dialog owns aggregation and toasts.
-  const { mutateAsync: deleteImage } = useCallMutation(
-    linuxio.docker.delete_image,
-  );
+  const { mutateAsync: deleteImage } =
+    linuxio.docker.delete_image.useMutation();
   const handleDeleteSuccess = () => {
     clearFocusedImage();
   };
@@ -383,14 +385,16 @@ const ImageList = ({
             <DockerImageCard
               image={focusedImage}
               actions={
-                <AppActionIconButton
-                  ariaLabel={`Delete image ${focusedImage.repo}`}
-                  color="var(--app-palette-error-main)"
-                  icon="mdi:delete"
-                  iconSize={18}
-                  label="Delete image"
-                  onClick={() => setDeleteDialogOpen(true)}
-                />
+                privileged && (
+                  <AppActionIconButton
+                    ariaLabel={`Delete image ${focusedImage.repo}`}
+                    color="var(--app-palette-error-main)"
+                    icon="mdi:delete"
+                    iconSize={18}
+                    label="Delete image"
+                    onClick={() => setDeleteDialogOpen(true)}
+                  />
+                )
               }
               selected
             />

@@ -9,9 +9,53 @@ import (
 	"testing"
 	"time"
 
+	"github.com/containerd/errdefs"
 	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/image"
 	"github.com/moby/moby/client"
+	digest "github.com/opencontainers/go-digest"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
 )
+
+func TestRegistryLookupCacheReusesOnlySuccessfulLookups(t *testing.T) {
+	const imageRef = "lscr.io/linuxserver/speedtest-tracker:latest"
+	localDigest := digest.FromString("local")
+	remoteDigest := digest.FromString("remote")
+	calls := 0
+	fake := &fakeImageUpdateCheckClient{
+		images: map[string]client.ImageInspectResult{
+			"image-id": {InspectResponse: image.InspectResponse{
+				RepoDigests: []string{"lscr.io/linuxserver/speedtest-tracker@" + localDigest.String()},
+			}},
+		},
+		distributionHook: func(context.Context, string, client.DistributionInspectOptions) (client.DistributionInspectResult, error) {
+			calls++
+			if calls == 1 {
+				return client.DistributionInspectResult{}, errdefs.ErrNotFound
+			}
+			return distributionInspectResult(remoteDigest), nil
+		},
+	}
+	registry := newRegistryLookupCache(fake)
+
+	statuses, _, err := checkContainerImageUpdates(t.Context(), registry, []containerImageUpdateTarget{{
+		ContainerID: "container-id", ContainerName: "speedtest-tracker", ImageID: "image-id", ImageRef: imageRef,
+	}}, time.Now())
+	if err != nil || len(statuses) != 1 || statuses[0].Err == "" {
+		t.Fatalf("check pass = %+v, %v; want one failed lookup", statuses, err)
+	}
+	// The update pass asks again after a failed check, then reuses the success.
+	for range 2 {
+		observation, err := inspectImageUpdate(t.Context(), registry, "image-id", imageRef)
+		if err != nil || observation.err != nil || observation.remoteDigest != remoteDigest.String() {
+			t.Fatalf("update pass observation = %+v, %v", observation, err)
+		}
+	}
+	if calls != 2 {
+		t.Fatalf("registry lookups = %d, want 2", calls)
+	}
+}
 
 func TestAcquireDockerUpdateLockAtExcludesConcurrentUpdate(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "docker-update.lock")
@@ -33,13 +77,47 @@ func TestAcquireDockerUpdateLockAtExcludesConcurrentUpdate(t *testing.T) {
 	release()
 }
 
+// A job's update (lock wait 0) queues behind the holder until its context
+// ends, while a bounded wait still gives up.
+func TestAcquireDockerUpdateLockAtZeroWaitBlocksUntilContextEnds(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "docker-update.lock")
+	release, err := acquireDockerUpdateLockAt(context.Background(), path, time.Second, time.Millisecond)
+	if err != nil {
+		t.Fatalf("first lock: %v", err)
+	}
+	defer release()
+
+	if _, err := acquireDockerUpdateLockAt(context.Background(), path, 20*time.Millisecond, time.Millisecond); err == nil || !strings.Contains(err.Error(), "already in progress") {
+		t.Fatalf("bounded wait error = %v, want already in progress", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, err := acquireDockerUpdateLockAt(ctx, path, 0, time.Millisecond)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		t.Fatalf("zero wait returned %v while the lock is held, want it to block", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("zero wait error = %v, want context.Canceled", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("zero wait did not return after the context was canceled")
+	}
+}
+
 func TestRunScheduledPassChecksAllRunningContainersWithoutSelection(t *testing.T) {
 	checkErr := errors.New("check failed")
 	var checked []container.Summary
 	updateCalled := false
-	err := runScheduledPass(context.Background(), DockerContainerAutoUpdateOptions{
-		Mode: "check_only",
-	}, scheduledPassOperations{
+	err := runScheduledPass(context.Background(), DockerContainerAutoUpdateOptions{Mode: "check_only"}, alerts.NotificationSettings{}, scheduledPassOperations{
 		list: func(context.Context) ([]container.Summary, error) {
 			return []container.Summary{
 				{ID: "web-id", Names: []string{"/web"}, State: container.StateRunning},
@@ -47,15 +125,15 @@ func TestRunScheduledPassChecksAllRunningContainersWithoutSelection(t *testing.T
 				{ID: "dead-id", Names: []string{"/dead"}, State: container.StateDead},
 			}, nil
 		},
-		check: func(_ context.Context, summaries []container.Summary) error {
+		check: func(_ context.Context, summaries []container.Summary) (DockerUpdateCheckResult, error) {
 			checked = summaries
-			return checkErr
+			return DockerUpdateCheckResult{}, checkErr
 		},
-		update: func(context.Context, []container.Summary, []container.Summary, DockerContainerAutoUpdateOptions) error {
+		update: func(context.Context, []container.Summary, []container.Summary, DockerContainerAutoUpdateOptions, func(string)) (int, error) {
 			updateCalled = true
-			return nil
+			return 0, nil
 		},
-	})
+	}, nil)
 	if !errors.Is(err, checkErr) {
 		t.Fatalf("runScheduledPass error = %v", err)
 	}
@@ -66,10 +144,7 @@ func TestRunScheduledPassChecksAllRunningContainersWithoutSelection(t *testing.T
 
 func TestRunScheduledPassCanCheckStoppedContainers(t *testing.T) {
 	var checked []container.Summary
-	err := runScheduledPass(context.Background(), DockerContainerAutoUpdateOptions{
-		IncludeStopped: true,
-		Mode:           "check_only",
-	}, scheduledPassOperations{
+	err := runScheduledPass(context.Background(), DockerContainerAutoUpdateOptions{IncludeStopped: true, Mode: "check_only"}, alerts.NotificationSettings{}, scheduledPassOperations{
 		list: func(context.Context) ([]container.Summary, error) {
 			return []container.Summary{
 				{ID: "web-id", Names: []string{"/web"}, State: container.StateRunning},
@@ -77,14 +152,14 @@ func TestRunScheduledPassCanCheckStoppedContainers(t *testing.T) {
 				{ID: "dead-id", Names: []string{"/dead"}, State: container.StateDead},
 			}, nil
 		},
-		check: func(_ context.Context, summaries []container.Summary) error {
+		check: func(_ context.Context, summaries []container.Summary) (DockerUpdateCheckResult, error) {
 			checked = summaries
-			return nil
+			return DockerUpdateCheckResult{}, nil
 		},
-		update: func(context.Context, []container.Summary, []container.Summary, DockerContainerAutoUpdateOptions) error {
-			return errors.New("unexpected update")
+		update: func(context.Context, []container.Summary, []container.Summary, DockerContainerAutoUpdateOptions, func(string)) (int, error) {
+			return 0, errors.New("unexpected update")
 		},
-	})
+	}, nil)
 	if err != nil {
 		t.Fatalf("runScheduledPass: %v", err)
 	}
@@ -98,26 +173,25 @@ func TestRunScheduledPassDispatchesUpdateCleanupOption(t *testing.T) {
 	err := runScheduledPass(context.Background(), DockerContainerAutoUpdateOptions{
 		Mode:           "update",
 		Cleanup:        true,
-		ContainerNames: []string{"web", "missing"},
-	}, scheduledPassOperations{
+		ContainerNames: []string{"web", "missing"}}, alerts.NotificationSettings{}, scheduledPassOperations{
 		list: func(context.Context) ([]container.Summary, error) {
 			return []container.Summary{
 				{ID: "web-id", Names: []string{"/web"}, State: container.StateRunning},
 				{ID: "stopped-id", Names: []string{"/stopped"}, State: container.StateExited},
 			}, nil
 		},
-		check: func(_ context.Context, summaries []container.Summary) error {
+		check: func(_ context.Context, summaries []container.Summary) (DockerUpdateCheckResult, error) {
 			if len(summaries) != 1 || summaries[0].ID != "web-id" {
 				t.Fatalf("checked summaries = %#v", summaries)
 			}
-			return nil
+			return DockerUpdateCheckResult{}, nil
 		},
-		update: func(_ context.Context, summaries, all []container.Summary, opts DockerContainerAutoUpdateOptions) error {
+		update: func(_ context.Context, summaries, all []container.Summary, opts DockerContainerAutoUpdateOptions, _ func(string)) (int, error) {
 			called = len(summaries) == 1 && summaries[0].ID == "web-id" &&
 				len(all) == 2 && all[0].ID == "web-id" && opts.Cleanup
-			return nil
+			return 0, nil
 		},
-	})
+	}, nil)
 	if err == nil || !strings.Contains(err.Error(), "missing") || !called {
 		t.Fatalf("runScheduledPass = %v, called %v", err, called)
 	}
@@ -126,10 +200,7 @@ func TestRunScheduledPassDispatchesUpdateCleanupOption(t *testing.T) {
 func TestRunScheduledPassUpdateAllSkipsIneligibleContainers(t *testing.T) {
 	compose := map[string]string{"com.docker.compose.project": "p", "com.docker.compose.service": "s"}
 	var updated []string
-	err := runScheduledPass(context.Background(), DockerContainerAutoUpdateOptions{
-		Mode:      "update",
-		UpdateAll: true,
-	}, scheduledPassOperations{
+	err := runScheduledPass(context.Background(), DockerContainerAutoUpdateOptions{Mode: "update", UpdateAll: true}, alerts.NotificationSettings{}, scheduledPassOperations{
 		list: func(context.Context) ([]container.Summary, error) {
 			return []container.Summary{
 				{ID: "web-id", Names: []string{"/web"}, State: container.StateRunning},
@@ -138,14 +209,16 @@ func TestRunScheduledPassUpdateAllSkipsIneligibleContainers(t *testing.T) {
 				{ID: "rep2", Names: []string{"/p-s-2"}, State: container.StateRunning, Labels: compose},
 			}, nil
 		},
-		check: func(context.Context, []container.Summary) error { return nil },
-		update: func(_ context.Context, summaries, _ []container.Summary, _ DockerContainerAutoUpdateOptions) error {
+		check: func(context.Context, []container.Summary) (DockerUpdateCheckResult, error) {
+			return DockerUpdateCheckResult{}, nil
+		},
+		update: func(_ context.Context, summaries, _ []container.Summary, _ DockerContainerAutoUpdateOptions, _ func(string)) (int, error) {
 			for _, summary := range summaries {
 				updated = append(updated, summary.ID)
 			}
-			return nil
+			return 0, nil
 		},
-	})
+	}, nil)
 	if err != nil || !slices.Equal(updated, []string{"web-id"}) {
 		t.Fatalf("runScheduledPass = %v, updated %v", err, updated)
 	}
@@ -153,6 +226,7 @@ func TestRunScheduledPassUpdateAllSkipsIneligibleContainers(t *testing.T) {
 
 func TestScheduledComposeGroupsContinueAfterIndependentFailures(t *testing.T) {
 	withTempUpdateStatusPath(t)
+	useTempAlertStore(t)
 	state := newScheduledUpdateState(context.Background(), nil)
 	calls := 0
 	composeErr := errors.New("compose failed")
@@ -202,6 +276,7 @@ func TestScheduledComposeCandidatesBatchByProject(t *testing.T) {
 
 func TestScheduledComposeGroupErrorRecordsEveryCandidate(t *testing.T) {
 	withTempUpdateStatusPath(t)
+	useTempAlertStore(t)
 	state := newScheduledUpdateState(context.Background(), nil)
 	composeErr := errors.New("compose failed")
 	state.composeUpdate = func(context.Context, ComposeTarget, []string, ComposeLineEmitter) error {
@@ -258,5 +333,33 @@ func TestCleanupUnusedUpdateImagesDeduplicatesAndSkipsInUseImages(t *testing.T) 
 	}
 	if len(fake.removed) != 1 || fake.removed[0] != "sha256:old" {
 		t.Fatalf("removed images = %v", fake.removed)
+	}
+}
+
+func TestScheduledPassReportsItsSteps(t *testing.T) {
+	var messages []string
+	err := runScheduledPass(context.Background(), DockerContainerAutoUpdateOptions{Mode: "update", ContainerNames: []string{"web", "db"}}, alerts.NotificationSettings{}, scheduledPassOperations{
+		list: func(context.Context) ([]container.Summary, error) {
+			return []container.Summary{
+				{ID: "web-id", Names: []string{"/web"}, State: container.StateRunning},
+				{ID: "db-id", Names: []string{"/db"}, State: container.StateRunning},
+			}, nil
+		},
+		check: func(context.Context, []container.Summary) (DockerUpdateCheckResult, error) {
+			return DockerUpdateCheckResult{}, nil
+		},
+		update: func(_ context.Context, summaries, _ []container.Summary, _ DockerContainerAutoUpdateOptions, announce func(string)) (int, error) {
+			for _, summary := range summaries {
+				announce(PrimaryContainerName(summary))
+			}
+			return 0, nil
+		},
+	}, func(message string) { messages = append(messages, message) })
+	if err != nil {
+		t.Fatalf("runScheduledPass: %v", err)
+	}
+	want := []string{"Checking for updates", "Updating web", "Updating db"}
+	if !slices.Equal(messages, want) {
+		t.Fatalf("messages = %q, want %q", messages, want)
 	}
 }

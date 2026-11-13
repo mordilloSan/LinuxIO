@@ -13,8 +13,6 @@ import {
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import { useLatestRef } from "@/hooks/useLatestRef";
 
-import EmptyState from "./EmptyState";
-import VirtualDirectoryItems from "./VirtualDirectoryItems";
 import { useFileListKeyboardNavigation } from "../-hooks/useFileListKeyboardNavigation";
 import { useFileMarqueeSelection } from "../-hooks/useFileMarqueeSelection";
 import { useFileSubfolders } from "../-hooks/useFileSubfolders";
@@ -30,6 +28,8 @@ import type {
   SortOrder,
   ViewMode,
 } from "../-types";
+import EmptyState from "./EmptyState";
+import VirtualDirectoryItems from "./VirtualDirectoryItems";
 
 interface DirectoryListingProps {
   cutPaths: Set<string>;

@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { type CreateGroupRequest, linuxio, useCallMutation } from "@/api";
+import { type CreateGroupRequest, linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
 import {
@@ -26,17 +26,15 @@ const CreateGroupDialog = ({ open, onClose }: CreateGroupDialogProps) => {
   const [name, setName] = useState("");
   const [gid, setGid] = useState("");
 
-  const { mutate: createGroup, isPending } = useCallMutation(
-    linuxio.accounts.create_group,
-    {
+  const { mutate: createGroup, isPending } =
+    linuxio.accounts.create_group.useMutation({
       success: () => {
         toast.success(`Group "${name}" created successfully`);
         handleClose();
       },
       error: "Failed to create group",
       toast: ACCOUNTS_TOAST_META,
-    },
-  );
+    });
 
   const handleClose = () => {
     setName("");

@@ -14,7 +14,11 @@ import type {
   StreamRouteName,
   TaskSnapshot,
 } from "./generated/linuxio-types";
-import { request as bridgeRequest } from "./linuxio-core";
+import {
+  request as bridgeRequest,
+  startJob,
+  streamOpenPayload,
+} from "./linuxio-core";
 import {
   encodeString,
   getStreamMux,
@@ -39,15 +43,6 @@ function openMuxStream(
     return null;
   }
   return mux.openStream(type, initialPayload, options);
-}
-
-function streamOpenPayload(route: string, request: unknown = {}): Uint8Array {
-  return encodeString(
-    JSON.stringify({
-      route,
-      request: request ?? {},
-    }),
-  );
 }
 
 /**
@@ -149,11 +144,7 @@ class TaskDataStream implements Stream {
   private async start(route: string): Promise<void> {
     try {
       const [handler, command] = routeParts(route);
-      const snapshot = await bridgeRequest<TaskSnapshot>(
-        handler,
-        command,
-        this.request,
-      );
+      const snapshot = await startJob(handler, command, this.request);
       if (this.closed) {
         if (this.cancelOnClose) {
           void this.cancelTask(snapshot.id);

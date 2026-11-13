@@ -1,4 +1,4 @@
-import type * as acp from "@agentclientprotocol/sdk";
+import type * as acp from "@agentclientprotocol/sdk/unstable";
 import { useSyncExternalStore } from "react";
 
 import type { AssistantChatDefaults } from "@/api";
@@ -8,13 +8,24 @@ import {
   type AssistantExit,
   type AuthStatus,
   connectAssistant,
+  createPaneClient,
   isAuthRequiredError,
+  type PaneClient,
+  type PaneView,
   type SessionOpenResult,
   textBlock,
 } from "@/api/acp";
 
 import type { Attachment } from "./attachments";
+import { currentName, withoutDefault } from "./composer/selectOption";
 import {
+  applySubagentUpdate,
+  disconnected,
+  type Subagent,
+  withMessage,
+} from "./subagents";
+import {
+  appendTurnEnd,
   appendUserMessage,
   applySessionUpdate,
   type TranscriptBlock,
@@ -50,7 +61,15 @@ export interface AssistantState {
   blocks: TranscriptBlock[];
   sessions: acp.SessionInfo[];
   sessionId: string | null;
+  /**
+   * The request the chat shows: its own, or one of a subagent's, whichever
+   * came first.
+   */
   pending: PendingPermission | null;
+  /** The requests that came while another was open, oldest first. */
+  waiting: PendingPermission[];
+  /** The open chat's subagents, in the order they were announced. */
+  subagents: Subagent[];
   error: string | null;
   exit: AssistantExit | null;
   authStatus: AuthStatus | null;
@@ -76,6 +95,21 @@ export interface AssistantState {
   /** When the running main turn started (ms since epoch); null while idle. */
   turnStartedAt: number | null;
   side: SideSession | null;
+  /**
+   * Plugin panes of every Claude Code process behind this connection, one per
+   * process; `chatPane` picks the open chat's.
+   */
+  panes: PaneView[];
+}
+
+/** The name of the model a chat is set to, when its agent offers a choice. */
+export function modelName(
+  options: readonly acp.SessionConfigOption[],
+): string | undefined {
+  const model = options.find((option) => option.category === "model");
+  return model?.type === "select"
+    ? (currentName(withoutDefault(model)) ?? undefined)
+    : undefined;
 }
 
 /** What the user's message looks like in the transcript. */
@@ -93,6 +127,7 @@ const sessionReset = (): Partial<AssistantState> => ({
   usage: null,
   queuedPrompt: null,
   side: null,
+  subagents: [],
 });
 
 const initialState = (): AssistantState => ({
@@ -102,6 +137,8 @@ const initialState = (): AssistantState => ({
   sessions: [],
   sessionId: null,
   pending: null,
+  waiting: [],
+  subagents: [],
   error: null,
   exit: null,
   authStatus: null,
@@ -120,10 +157,13 @@ const initialState = (): AssistantState => ({
   queuedPrompt: null,
   turnStartedAt: null,
   side: null,
+  panes: [],
 });
 
 let state = initialState();
 let connection: AssistantConnection | null = null;
+// Lives as long as the stream of the current connect(); reset with it.
+let paneClient: PaneClient | null = null;
 let connector: typeof connectAssistant = connectAssistant;
 // Bumped by every connect() and disconnect(); handlers of a superseded
 // connection compare against it and go quiet (a closed transport still emits
@@ -165,32 +205,43 @@ function flushUpdates() {
   if (pendingUpdates.length === 0) return;
   const batch = pendingUpdates;
   pendingUpdates = [];
-  const forSession = (id: string | undefined) =>
-    batch.filter((n) => n.sessionId === id).map((n) => n.update);
-  const updates = forSession(state.sessionId ?? undefined);
+  // Only what arrives while a turn runs is timed; loaded history is not.
+  const now = state.status === "running" ? Date.now() : undefined;
   const side = state.side;
-  const sideUpdates = side ? forSession(side.sessionId) : [];
-  if (updates.length === 0 && sideUpdates.length === 0) return;
-  const patch = updates.reduce<Partial<AssistantState>>(
-    (acc, update) => ({
-      ...acc,
-      ...statePatch(update, { ...state, ...acc }),
-    }),
-    {},
-  );
-  setState({
-    ...patch,
-    ...(updates.length > 0 && {
-      blocks: updates.reduce(applySessionUpdate, state.blocks),
-    }),
-    ...(side &&
-      sideUpdates.length > 0 && {
-        side: {
-          ...side,
-          blocks: sideUpdates.reduce(applySessionUpdate, side.blocks),
-        },
-      }),
-  });
+  let patch: Partial<AssistantState> = {};
+  let blocks = state.blocks;
+  let sideBlocks = side?.blocks ?? [];
+  let subagents = state.subagents;
+  // In the order they came: a subagent is announced on the session that
+  // started it, which can be another subagent of the same batch.
+  for (const { sessionId, update } of batch) {
+    if (side && sessionId === side.sessionId) {
+      // A side question's subagents are left out, with all they send.
+      sideBlocks = applySessionUpdate(sideBlocks, update);
+      continue;
+    }
+    const own = sessionId === state.sessionId;
+    // A late replay for another chat is dropped.
+    if (!own && !subagents.some((child) => child.sessionId === sessionId)) {
+      continue;
+    }
+    if (!own || update.sessionUpdate === "subagent_update") {
+      subagents = applySubagentUpdate(subagents, sessionId, update, now);
+      continue;
+    }
+    patch = { ...patch, ...statePatch(update, { ...state, ...patch }) };
+    blocks = withMessage(
+      blocks,
+      applySessionUpdate(blocks, update, now, sessionId),
+      subagents,
+    );
+  }
+  if (blocks !== state.blocks) patch.blocks = blocks;
+  if (subagents !== state.subagents) patch.subagents = subagents;
+  if (side && sideBlocks !== side.blocks) {
+    patch.side = { ...side, blocks: sideBlocks };
+  }
+  if (Object.keys(patch).length > 0) setState(patch);
 }
 
 // Updates that describe the chat rather than add to the transcript.
@@ -379,8 +430,11 @@ async function runTurn(
 ) {
   const attempt = currentAttempt;
   const isCurrent = () => attempt === currentAttempt;
+  // Callers set turnStartedAt before the turn; it is cleared when it ends.
+  const startedAt = state.turnStartedAt ?? Date.now();
+  let response: acp.PromptResponse | null = null;
   try {
-    await conn.prompt(sessionId, blocks);
+    response = await conn.prompt(sessionId, blocks);
   } catch (error) {
     if (!isCurrent()) return;
     if (isAuthRequiredError(error)) {
@@ -395,6 +449,18 @@ async function runTurn(
   } finally {
     if (isCurrent()) {
       flushUpdates();
+      if (response) {
+        // The footer under the answer: how long the turn took and its tokens.
+        const endedAt = Date.now();
+        setState({
+          blocks: appendTurnEnd(
+            state.blocks,
+            endedAt - startedAt,
+            response.usage ?? null,
+            endedAt,
+          ),
+        });
+      }
       const queued = state.queuedPrompt;
       // getState(): TS narrows `state.status` after the guards in the callers.
       if (assistantStore.getState().status === "running") {
@@ -412,6 +478,29 @@ async function runTurn(
 }
 
 const cancelled = { outcome: { outcome: "cancelled" } } as const;
+
+/**
+ * Drops a request the agent took back: its card goes, and the next one that
+ * waits comes up. One that was answered already is not there to drop.
+ */
+function withdraw(entry: PendingPermission) {
+  entry.resolve(cancelled);
+  const side = state.side;
+  if (side?.pending === entry) {
+    setState({ side: { ...side, pending: null } });
+  } else if (state.pending === entry) {
+    const [next = null, ...waiting] = state.waiting;
+    setState({ pending: next, waiting });
+  } else if (state.waiting.includes(entry)) {
+    setState({ waiting: state.waiting.filter((other) => other !== entry) });
+  }
+}
+
+/** Answers every open request of the chat and its subagents `cancelled`. */
+function cancelPermissions() {
+  state.pending?.resolve(cancelled);
+  state.waiting.forEach((waiting) => waiting.resolve(cancelled));
+}
 
 // Best effort: the panel does not wait for the agent, and errors are dropped.
 async function releaseSide(conn: AssistantConnection, sessionId: string) {
@@ -469,25 +558,51 @@ export const assistantStore = {
     const attempt = currentAttempt;
     const isCurrent = () => attempt === currentAttempt;
     setState({ agent, status: "connecting" });
+    const panes = createPaneClient({
+      onChange: (views) => {
+        if (isCurrent()) setState({ panes: views });
+      },
+    });
+    paneClient = panes;
     let conn: AssistantConnection | undefined;
     try {
       conn = await connector(agent, {
+        onPane: (line, send) => {
+          if (isCurrent()) panes.receive(line, send);
+        },
         onUpdate: (notification) => {
           if (isCurrent()) queueUpdate(notification);
         },
-        onPermission: (request) =>
+        onPermission: (request, withdrawn) =>
           new Promise<acp.RequestPermissionResponse>((resolve) => {
-            if (!isCurrent()) {
+            if (!isCurrent() || withdrawn?.aborted) {
               resolve({ outcome: { outcome: "cancelled" } });
               return;
             }
+            // The subagent that asks may have been announced a moment ago.
+            flushUpdates();
             const pending = { request, resolve };
+            // Declining one request can make Claude Code stop the subagent
+            // that asked and take back what else it asked.
+            withdrawn?.addEventListener("abort", () => withdraw(pending), {
+              once: true,
+            });
             if (state.side && request.sessionId === state.side.sessionId) {
               state.side.pending?.resolve(cancelled);
               setState({ side: { ...state.side, pending, open: true } });
-            } else if (request.sessionId === state.sessionId) {
-              state.pending?.resolve(cancelled);
-              setState({ pending });
+            } else if (
+              request.sessionId === state.sessionId ||
+              state.subagents.some(
+                (child) => child.sessionId === request.sessionId,
+              )
+            ) {
+              // Subagents ask at the same time: a new request waits its turn
+              // and answers none of the others.
+              setState(
+                state.pending
+                  ? { waiting: [...state.waiting, pending] }
+                  : { pending },
+              );
             } else {
               // A discarded side, a fork not yet registered, or another chat.
               resolve(cancelled);
@@ -502,16 +617,21 @@ export const assistantStore = {
           connection = null;
           sideEpoch++;
           forking = false;
-          state.pending?.resolve(cancelled);
+          panes.reset();
+          cancelPermissions();
           state.side?.pending?.resolve(cancelled);
           setState({
             sideOpening: false,
             status: "stopped",
             exit,
             pending: null,
+            waiting: [],
+            // They stay to be read, like the chat: none of them runs now.
+            subagents: disconnected(state.subagents),
             side: null,
             turnStartedAt: null,
             error: null,
+            panes: [],
           });
         },
       });
@@ -526,8 +646,9 @@ export const assistantStore = {
       if (!isCurrent()) return;
       conn?.close();
       connection = null;
+      panes.reset();
       if (state.status === "stopped") return;
-      setState({ status: "error", error: errorMessage(error) });
+      setState({ status: "error", error: errorMessage(error), panes: [] });
     }
   },
 
@@ -535,13 +656,15 @@ export const assistantStore = {
     const conn = connection;
     const sessionId = state.sessionId;
     if (!conn || !sessionId || state.status !== "ready") return;
+    const now = Date.now();
     setState({
       status: "running",
-      turnStartedAt: Date.now(),
+      turnStartedAt: now,
       blocks: appendUserMessage(
         state.blocks,
         display.text,
         display.attachments,
+        { at: now, model: modelName(state.configOptions) },
       ),
       error: null,
     });
@@ -557,6 +680,7 @@ export const assistantStore = {
         state.blocks,
         display.text,
         display.attachments,
+        { at: Date.now(), model: modelName(state.configOptions) },
       ),
     });
     const attempt = currentAttempt;
@@ -638,10 +762,9 @@ export const assistantStore = {
 
   stop() {
     stopEpoch++;
-    const pending = state.pending;
-    if (pending) {
-      pending.resolve({ outcome: { outcome: "cancelled" } });
-      setState({ pending: null });
+    if (state.pending) {
+      cancelPermissions();
+      setState({ pending: null, waiting: [] });
     }
     if (state.queuedPrompt) setState({ queuedPrompt: null });
     if (connection && state.sessionId) {
@@ -657,7 +780,26 @@ export const assistantStore = {
         ? { outcome: { outcome: "cancelled" } }
         : { outcome: { outcome: "selected", optionId } },
     );
-    setState({ pending: null });
+    const [next = null, ...waiting] = state.waiting;
+    setState({ pending: next, waiting });
+  },
+
+  /** Stops one subagent's work; its next state says that it stopped. */
+  stopSubagent(sessionId: string) {
+    const conn = connection;
+    const child = state.subagents.find((sub) => sub.sessionId === sessionId);
+    if (!conn || !child?.canCancel) return;
+    // A cancelled session's open requests are answered `cancelled`.
+    const open = [state.pending, ...state.waiting].flatMap((entry) =>
+      entry ? [entry] : [],
+    );
+    const [next = null, ...waiting] = open.filter((entry) => {
+      if (entry.request.sessionId !== sessionId) return true;
+      entry.resolve(cancelled);
+      return false;
+    });
+    if (open.length > 0) setState({ pending: next, waiting });
+    void conn.cancel(sessionId);
   },
 
   /** Opens the side panel (forking the chat if needed); `initialText` is sent as its first question. */
@@ -844,10 +986,12 @@ export const assistantStore = {
     currentAttempt++;
     pendingUpdates = [];
     flushUpdates();
-    state.pending?.resolve(cancelled);
+    cancelPermissions();
     void dropSide();
     connection?.close();
     connection = null;
+    paneClient?.reset();
+    paneClient = null;
     state = initialState();
     listeners.forEach((listener) => listener());
   },
@@ -864,6 +1008,18 @@ export const assistantStore = {
     flushUpdates();
   },
 };
+
+/**
+ * The open chat's plugin pane: Claude Code's session id is the chat's ACP
+ * session id. A chat resumed twice has two processes; the newest one wins.
+ */
+export function chatPane({
+  panes,
+  sessionId,
+}: Pick<AssistantState, "panes" | "sessionId">): PaneView | null {
+  if (!sessionId) return null;
+  return panes.findLast((pane) => pane.sessionId === sessionId) ?? null;
+}
 
 export function useAssistantState(): AssistantState {
   return useSyncExternalStore(

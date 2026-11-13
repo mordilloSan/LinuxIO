@@ -1,5 +1,4 @@
 import { GREY_TOKENS as grey } from "@/theme/colors";
-import { alpha } from "@/theme/colorUtils";
 
 const customBlue = {
   50: "#e9f0fb",
@@ -14,6 +13,9 @@ const customBlue = {
   900: "#2052c2",
 };
 
+// These colours repeat themeColorDefs in
+// backend/bridge/internal/userconfig/themecolors.go, which is what the bridge
+// sends and a saved reset resolves to; variants.test.ts compares the two.
 const defaultVariant: VariantType = {
   name: "LIGHT",
   card: {
@@ -25,7 +27,7 @@ const defaultVariant: VariantType = {
     backdrop: "#000000",
   },
   codeBlock: {
-    background: alpha("#000000", 0.02),
+    background: "#F5F5F5",
     color: "#333333",
   },
   chart: {
@@ -51,7 +53,7 @@ const defaultVariant: VariantType = {
     },
     background: {
       default: "#F7F9FC",
-      paper: "#FFF",
+      paper: "#FFFFFF",
     },
     text: {
       primary: "rgba(15, 15, 15, 0.95)",
@@ -98,7 +100,7 @@ const darkVariant: VariantType = {
     backdrop: "#000000",
   },
   codeBlock: {
-    background: alpha("#000000", 0.3),
+    background: "#1E1E1E",
     color: "#D4D4D4",
   },
   chart: {

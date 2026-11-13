@@ -1,10 +1,11 @@
 const SIGNIN_NOTICE_KEY = "signin_notice";
 
-export type SigninNotice = "expired";
+export type SigninNotice = "expired" | "updated";
 
 /** User-facing copy for each one-shot sign-in notice. */
 export const SIGNIN_NOTICE_MESSAGES: Record<SigninNotice, string> = {
   expired: "Your session expired. Please sign in again.",
+  updated: "LinuxIO was updated. Please sign in again.",
 };
 
 /**
@@ -24,7 +25,7 @@ export function setSigninNotice(notice: SigninNotice): void {
 export function readSigninNotice(): SigninNotice | null {
   try {
     const value = sessionStorage.getItem(SIGNIN_NOTICE_KEY);
-    return value === "expired" ? value : null;
+    return value === "expired" || value === "updated" ? value : null;
   } catch {
     return null;
   }

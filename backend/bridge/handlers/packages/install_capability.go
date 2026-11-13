@@ -90,8 +90,6 @@ const (
 	detectRetryInterval  = 300 * time.Millisecond
 )
 
-var capabilityInstallRoutes = capabilityInstallBindings(runtime.Runtime{}).Routes()
-
 var (
 	capabilityDistroFamily      = detectDistroFamily
 	capabilityInstallPackage    = InstallByNameWithProgress
@@ -110,17 +108,10 @@ func capabilityInstallBindings(rt runtime.Runtime) apischema.BindingSet {
 		return runInstallCapabilityTask(ctx, task, user, req)
 	}
 	return apischema.Bindings(
-		apischema.TaskRunner[apischema.CapabilityRequest, apischema.InstallCapabilityResult]("system.install_capability", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[InstallCapabilityProgress](), apischema.WithTaskMetadata(func(req apischema.CapabilityRequest) bridgeipc.TaskMetadata {
+		apischema.MutationTask("system.install_capability", run, apischema.Privileged(), apischema.Progress[InstallCapabilityProgress](), apischema.WithTaskMetadata(func(req apischema.CapabilityRequest) bridgeipc.TaskMetadata {
 			return bridgeipc.TaskMetadata{Identity: []string{req.Capability}, Label: "Installing " + req.Capability, Capability: req.Capability}
-		})).Run(run, bridgeipc.TaskExclusive),
+		}), apischema.Exclusive()),
 	)
-}
-
-// RegisterCapabilityTaskRoutes attaches the install_capability runner. It
-// streams per-stage progress events to the UI and is registered alongside
-// the other packages-package task runners from handlers.go.
-func RegisterCapabilityTaskRoutes(rt runtime.Runtime, router *bridgeipc.Router) {
-	capabilityInstallBindings(rt).Register(router)
 }
 
 func runInstallCapabilityTask(ctx context.Context, task *bridgeipc.Task, user session.User, req apischema.CapabilityRequest) (apischema.InstallCapabilityResult, error) {

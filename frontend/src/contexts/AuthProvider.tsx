@@ -25,11 +25,14 @@ import {
 } from "@/api";
 import { cacheUserId } from "@/api/user-scope";
 import { login, logout } from "@/api/webserver";
+import { isAppUpdateInProgress } from "@/contexts/appUpdateInProgress";
 import {
   AuthContext,
   type AuthState,
   type AuthUser,
 } from "@/contexts/AuthContext";
+import { clearBootThemeHint } from "@/theme/bootThemeHint";
+import { clearFreshSignIn, markFreshSignIn } from "@/utils/freshSignIn";
 import { redirectToSignIn } from "@/utils/navigation";
 import { setSigninNotice } from "@/utils/signinNotice";
 
@@ -215,6 +218,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         /* ignore */
       }
+      clearBootThemeHint();
+      clearFreshSignIn();
       if (broadcast) {
         try {
           localStorage.setItem(broadcast, String(Date.now()));
@@ -297,6 +302,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else if (status === "error") {
           // "error" status means close code 1008 (session expired/invalid)
           // or WebSocket connection failed (session cookie invalid)
+          // A self-update restarts the webserver, which drops every session.
+          // The update dialog owns that exit so its output stays readable.
+          if (isAppUpdateInProgress()) return;
           console.log("[AuthContext] Session invalid or expired");
           sessionExpired();
         } else if (status === "closed") {
@@ -335,6 +343,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         console.error("Failed to store user info:", error);
       }
+
+      // The shell says once what happened while the user was away; a page
+      // reload in the same session is no fresh sign-in.
+      markFreshSignIn();
 
       const user: AuthUser = { id: username, name: username };
       authGeneration.current += 1;

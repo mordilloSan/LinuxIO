@@ -115,14 +115,15 @@ func TestBuildCapabilitiesResponseDetectsCapabilitiesConcurrently(t *testing.T) 
 		if completed.err != nil {
 			t.Fatalf("buildCapabilitiesResponse error = %v", completed.err)
 		}
-		if !completed.response.DockerAvailable {
-			t.Error("docker capability reported unavailable")
+		if docker := completed.response["docker"]; !docker.Available || docker.Error != nil {
+			t.Errorf("docker status = %+v, want available without error", docker)
 		}
-		if completed.response.DockerUpdatesAvailable {
+		dockerUpdates := completed.response["docker_updates"]
+		if dockerUpdates.Available {
 			t.Error("docker_updates capability reported available")
 		}
-		if completed.response.DockerUpdatesError == nil || *completed.response.DockerUpdatesError != "not installed" {
-			t.Errorf("docker_updates error = %v, want %q", completed.response.DockerUpdatesError, "not installed")
+		if dockerUpdates.Error == nil || *dockerUpdates.Error != "not installed" {
+			t.Errorf("docker_updates error = %v, want %q", dockerUpdates.Error, "not installed")
 		}
 	case <-time.After(time.Second):
 		t.Fatal("capability detections did not complete after release")
@@ -161,40 +162,64 @@ func assertCapabilityTimingEvent(t *testing.T, logs string, fields ...string) {
 	}
 }
 
-// TestSetCapabilityFieldRoundTrips spot-checks setCapabilityField for every
-// registry entry: a unique error string written for one capability must round
-// trip back through JSON serialization, and no other capability's error
-// field must be touched.
-func TestSetCapabilityFieldRoundTrips(t *testing.T) {
-	for _, spec := range capabilityRegistry {
-		t.Run(spec.Name, func(t *testing.T) {
-			var out apischema.CapabilitiesResponse
-			marker := "marker-for-" + spec.Name
-			setCapabilityField(&out, spec.Name, true, marker)
+// TestBuildCapabilitiesResponseReportsEveryCapability runs every registry name
+// through a stub detector and checks the JSON response: each name keys exactly
+// its own status, an unavailable capability carries its detection message as
+// error, and an available one has no error member.
+func TestBuildCapabilitiesResponseReportsEveryCapability(t *testing.T) {
+	originalRegistry := capabilityRegistry
+	t.Cleanup(func() {
+		capabilityRegistry = originalRegistry
+	})
 
-			data, err := json.Marshal(out)
-			if err != nil {
-				t.Fatalf("marshal: %v", err)
-			}
-			assertTopLevelCapabilityJSON(t, data, spec.Name, marker)
+	stubs := make([]CapabilitySpec, 0, len(originalRegistry))
+	for index, spec := range originalRegistry {
+		available := index%2 == 0
+		message := ""
+		if !available {
+			message = "marker-for-" + spec.Name
+		}
+		stubs = append(stubs, CapabilitySpec{
+			Name: spec.Name,
+			Detect: func(context.Context) (bool, string) {
+				return available, message
+			},
 		})
 	}
-}
+	capabilityRegistry = stubs
 
-func assertTopLevelCapabilityJSON(t *testing.T, data []byte, name, marker string) {
-	t.Helper()
-
-	var payload map[string]any
+	response, err := buildCapabilitiesResponse(context.Background(), session.User{})
+	if err != nil {
+		t.Fatalf("buildCapabilitiesResponse error = %v", err)
+	}
+	data, err := json.Marshal(response)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	var payload map[string]map[string]any
 	if err := json.Unmarshal(data, &payload); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	available, ok := payload[name+"_available"].(bool)
-	if !ok || !available {
-		t.Errorf("expected top-level %s_available=true in %s", name, data)
+	if len(payload) != len(stubs) {
+		t.Errorf("response has %d capabilities, want %d: %s", len(payload), len(stubs), data)
 	}
-	errValue, ok := payload[name+"_error"].(string)
-	if !ok || errValue != marker {
-		t.Errorf("expected top-level %s_error=%q in %s", name, marker, data)
+	for index, spec := range stubs {
+		status, ok := payload[spec.Name]
+		if !ok {
+			t.Errorf("response has no %q: %s", spec.Name, data)
+			continue
+		}
+		wantAvailable := index%2 == 0
+		if status["available"] != wantAvailable {
+			t.Errorf("%s available = %v, want %v", spec.Name, status["available"], wantAvailable)
+		}
+		errValue, hasError := status["error"]
+		switch {
+		case wantAvailable && hasError:
+			t.Errorf("%s error = %v, want no error member", spec.Name, errValue)
+		case !wantAvailable && errValue != "marker-for-"+spec.Name:
+			t.Errorf("%s error = %v, want %q", spec.Name, errValue, "marker-for-"+spec.Name)
+		}
 	}
 }
 
@@ -220,7 +245,7 @@ func TestBuildCapabilitiesResponsePassesTheSessionUserToDetectAsUser(t *testing.
 	if seen != want {
 		t.Fatalf("DetectAsUser saw %+v, want %+v", seen, want)
 	}
-	if !response.NodeAvailable {
+	if !response["node"].Available {
 		t.Fatal("node must be reported available when DetectAsUser says so")
 	}
 }

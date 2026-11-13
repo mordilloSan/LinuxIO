@@ -12,20 +12,25 @@ var api = apischema.Bindings(
 	apischema.Call[apischema.NoRequest, []apischema.Update]("updates.get_updates_basic", apischema.RetrySafe()).Handle(handleGetUpdatesBasic),
 	apischema.Call[apischema.PackageIDRequest, apischema.Update]("updates.get_update_detail", apischema.RetrySafe()).Handle(handleGetUpdateDetail),
 	apischema.Call[apischema.NoRequest, apischema.AutoUpdateState]("updates.get_auto_updates", apischema.RetrySafe()).Handle(handleGetAutoUpdates),
-	apischema.Call[apischema.AutoUpdateOptions, apischema.AutoUpdateState]("updates.set_auto_updates").Handle(handleSetAutoUpdates),
-	apischema.Call[apischema.NoRequest, apischema.OfflineUpdatesResponse]("updates.apply_offline_updates").Handle(handleApplyOfflineUpdates),
-	apischema.Call[apischema.NoRequest, apischema.SuccessResponse]("updates.refresh_cache").Handle(handleRefreshUpdateCache),
+	apischema.Mutation("updates.set_auto_updates", handleSetAutoUpdates, apischema.Privileged()),
+	apischema.Mutation("updates.apply_offline_updates", handleApplyOfflineUpdates, apischema.Privileged()),
+	apischema.Mutation("updates.refresh_cache", handleRefreshUpdateCache, apischema.Privileged()),
 	apischema.Call[apischema.NoRequest, []apischema.UpdateHistoryRow]("updates.get_update_history", apischema.RetrySafe()).Handle(handleGetUpdateHistory),
 )
 
-var Routes = apischema.CombineRoutes(api.Routes(), packageUpdateRoutes, capabilityInstallRoutes)
+var Routes = func() []apischema.RouteSpec {
+	var groups [][]apischema.RouteSpec
+	for _, set := range bindingSets(runtime.Runtime{}) {
+		groups = append(groups, set.Routes())
+	}
+	return apischema.CombineRoutes(groups...)
+}()
 
 // RegisterHandlers registers package + update handlers with the IPC router.
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	RegisterTaskRoutes(router)
-	RegisterCapabilityTaskRoutes(rt, router)
-
-	api.Register(router)
+	for _, set := range bindingSets(rt) {
+		set.Register(router)
+	}
 }
 
 func handleGetUpdatesBasic(ctx context.Context, _ apischema.NoRequest) ([]apischema.Update, error) {

@@ -4,6 +4,15 @@ import type { CountProgress, TaskProgress } from "@/api";
 import type { FileEditorHandle } from "@/components/editor/FileEditor";
 import AppUnsavedChangesDialog from "@/components/ui/AppUnsavedChangesDialog";
 
+import type { DroppedEntry } from "../-fileUpload";
+import type { EditorSaveConflict } from "../-hooks/useFileBrowserEditorActions";
+import type {
+  ConflictDecision,
+  ConflictPrompt,
+} from "../-hooks/useFileConflicts";
+import type { PermissionsDialogState } from "../-hooks/useFileDialogs";
+import type { UploadSummary } from "../-hooks/useFileUpload";
+import type { FileResource, ResourceStatData, ViewMode } from "../-types";
 import CompressFormatDialog from "./CompressFormatDialog";
 import ContextMenu from "./ContextMenu";
 import {
@@ -18,15 +27,6 @@ import {
 } from "./FileBrowserPanels";
 import InputDialog from "./InputDialog";
 import PermissionsDialog from "./PermissionsDialog";
-import type { DroppedEntry } from "../-fileUpload";
-import type { EditorSaveConflict } from "../-hooks/useFileBrowserEditorActions";
-import type {
-  ConflictDecision,
-  ConflictPrompt,
-} from "../-hooks/useFileConflicts";
-import type { PermissionsDialogState } from "../-hooks/useFileDialogs";
-import type { UploadSummary } from "../-hooks/useFileUpload";
-import type { FileResource, ResourceStatData, ViewMode } from "../-types";
 
 interface CompressFormatDialogState {
   baseName: string;
@@ -138,10 +138,12 @@ export interface FileBrowserUploadDialogProps {
   onChangeInput: (event: ChangeEvent<HTMLInputElement>) => void;
   onClearSelection: () => void;
   onClose: () => void;
+  onOwnUploadsChange: (ownUploads: boolean) => void;
   onPickFiles: () => void;
   onPickFolder: () => void;
   onStart: () => Promise<void> | void;
   open: boolean;
+  ownUploads: boolean;
   summary: UploadSummary;
 }
 
@@ -303,10 +305,12 @@ const FileBrowserDialogs = ({
         onChangeUploadInput={upload.onChangeInput}
         onClearUploadSelection={upload.onClearSelection}
         onClose={upload.onClose}
+        onOwnUploadsChange={upload.onOwnUploadsChange}
         onPickFiles={upload.onPickFiles}
         onPickFolder={upload.onPickFolder}
         onStartUpload={upload.onStart}
         open={upload.open}
+        ownUploads={upload.ownUploads}
         uploadEntries={upload.entries}
         uploadSummary={upload.summary}
       />

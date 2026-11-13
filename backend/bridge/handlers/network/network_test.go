@@ -17,16 +17,18 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network/internal/hostbridge"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/network/internal/ifconfig"
 	bridgeruntime "github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
+	"github.com/mordilloSan/LinuxIO/backend/common/jobs"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
 type fakeBridgeHandoffService struct {
 	uid       uint32
+	username  string
 	operation string
 }
 
-func (f *fakeBridgeHandoffService) Start(_ context.Context, uid uint32, req apischema.NetworkBridgeHandoffRequest) (apischema.NetworkBridgeHandoffStatus, error) {
-	f.uid = uid
+func (f *fakeBridgeHandoffService) Start(_ context.Context, owner jobs.Owner, req apischema.NetworkBridgeHandoffRequest) (apischema.NetworkBridgeHandoffStatus, error) {
+	f.uid, f.username = owner.UID, owner.Username
 	f.operation = req.OperationID
 	return apischema.NetworkBridgeHandoffStatus{OperationID: req.OperationID, State: apischema.NetworkBridgeHandoffApplying}, nil
 }
@@ -67,7 +69,7 @@ func TestValidateHandoffStartRequiresConsoleAcknowledgement(t *testing.T) {
 func TestNetworkHandlersPassSessionUIDToHandoffAdapter(t *testing.T) {
 	fake := &fakeBridgeHandoffService{}
 	h := networkHandlers{
-		rt:      bridgeruntime.Runtime{Session: &session.Session{User: session.User{UID: 1007}}},
+		rt:      bridgeruntime.Runtime{Session: &session.Session{User: session.User{UID: 1007, Username: "admin"}}},
 		handoff: validatingBridgeHandoffService{inner: fake},
 	}
 	req := apischema.NetworkBridgeHandoffRequest{
@@ -79,8 +81,8 @@ func TestNetworkHandlersPassSessionUIDToHandoffAdapter(t *testing.T) {
 	if _, err := h.handleStartBridgeHandoff(context.Background(), req); err != nil {
 		t.Fatalf("start handoff: %v", err)
 	}
-	if fake.uid != 1007 || fake.operation != req.OperationID {
-		t.Fatalf("adapter received uid=%d operation=%q", fake.uid, fake.operation)
+	if fake.uid != 1007 || fake.username != "admin" || fake.operation != req.OperationID {
+		t.Fatalf("adapter received uid=%d username=%q operation=%q", fake.uid, fake.username, fake.operation)
 	}
 }
 

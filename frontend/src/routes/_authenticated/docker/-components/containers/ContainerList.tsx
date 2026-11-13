@@ -30,6 +30,8 @@ import {
   TRANSITION_DURATION_STANDARD_MS,
 } from "@/theme/constants";
 
+import { useFocusedResourceParam } from "../../-hooks/useFocusedResourceParam";
+import ContainerCard from "../cards/ContainerCard";
 import { ContainerHistoryCards } from "./ContainerHistoryCards";
 import ContainerResourceDetails from "./ContainerResourceDetails";
 import {
@@ -46,8 +48,6 @@ import {
   type ContainerTableRow,
 } from "./containerStacks";
 import ContainerTable from "./ContainerTable";
-import { useFocusedResourceParam } from "../../-hooks/useFocusedResourceParam";
-import ContainerCard from "../cards/ContainerCard";
 
 // Card mode only needs identity/display fields in this parent.  Keeping the
 // volatile metrics out of the selected result means a metrics-only poll can

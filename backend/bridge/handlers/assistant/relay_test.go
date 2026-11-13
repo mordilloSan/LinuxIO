@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json/v2"
 	"net"
-	"os"
 	"os/user"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"syscall"
 	"testing"
@@ -17,6 +17,8 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/acpagents"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/acpagents/acpagentstest"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
@@ -42,11 +44,25 @@ func testRuntime(t *testing.T) (runtime.Runtime, string) {
 	}}, home
 }
 
-func fakeAgent(t *testing.T, script string) {
+// fakeAgent installs script as the agent "fake" under a temporary home and
+// points the relay's agent lookup at it. extra adjusts the catalogue entry.
+func fakeAgent(t *testing.T, script string, extra ...func(*acpagents.Agent)) {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "agent.sh")
-	require.NoError(t, os.WriteFile(path, []byte(script), 0o700))
-	t.Cleanup(acpagents.Override("fake", acpagents.Agent{Command: path}))
+	agent := acpagents.Agent{Package: "fake-agent", Version: "1.0.0", Bin: "fake-agent"}
+	for _, adjust := range extra {
+		adjust(&agent)
+	}
+	t.Cleanup(acpagents.Override("fake", agent))
+	home := t.TempDir()
+	acpagentstest.Install(t, home, "fake", agent, agent.Version, script)
+	useAgentHome(t, home)
+}
+
+func useAgentHome(t *testing.T, home string) {
+	t.Helper()
+	orig := agentHome
+	agentHome = func(string) (string, error) { return home, nil }
+	t.Cleanup(func() { agentHome = orig })
 }
 
 func readData(t *testing.T, conn net.Conn) *ipc.StreamFrame {
@@ -198,4 +214,45 @@ func TestHandleAssistantSessionRejectsUnknownAgent(t *testing.T) {
 	frame := readData(t, client)
 	require.Equal(t, ipc.OpStreamClose, frame.Opcode)
 	require.Error(t, <-done)
+}
+
+func TestHandleAssistantSessionRefusesAnAgentThatIsNotInstalled(t *testing.T) {
+	rt, _ := testRuntime(t)
+	t.Cleanup(acpagents.Override("fake", acpagents.Agent{Package: "fake-agent", Version: "1.0.0", Bin: "fake-agent"}))
+	useAgentHome(t, t.TempDir())
+
+	client, server := net.Pipe()
+	defer client.Close()
+	done := make(chan error, 1)
+	go func() {
+		done <- HandleAssistantSession(context.Background(), rt, server, apischema.AssistantOpenRequest{Agent: "fake"})
+	}()
+	frame := readData(t, client)
+	require.Equal(t, ipc.OpStreamClose, frame.Opcode)
+	err := <-done
+	require.ErrorIs(t, err, bridgeipc.ErrConflict)
+	require.ErrorContains(t, err, "fake-agent is not installed")
+}
+
+func TestHandleAssistantSessionPointsTheAgentAtTheInstalledCLI(t *testing.T) {
+	rt, _ := testRuntime(t)
+	// sh is on every login-shell PATH, so it stands in for the agent's CLI.
+	fakeAgent(t, "#!/bin/sh\nprintf '%s\\n' \"$FAKE_CLI_EXECUTABLE\"\n", func(agent *acpagents.Agent) {
+		agent.CLI = "sh"
+		agent.CLIEnv = "FAKE_CLI_EXECUTABLE"
+	})
+
+	client, server := net.Pipe()
+	defer client.Close()
+	done := make(chan error, 1)
+	go func() {
+		done <- HandleAssistantSession(context.Background(), rt, server, apischema.AssistantOpenRequest{Agent: "fake"})
+	}()
+	readData(t, client) // ready
+	printed := strings.TrimSpace(string(readData(t, client).Payload))
+	require.True(t, filepath.IsAbs(printed), "CLI path %q", printed)
+	require.Equal(t, "sh", filepath.Base(printed))
+	readData(t, client) // exit
+	readData(t, client) // close
+	require.NoError(t, <-done)
 }

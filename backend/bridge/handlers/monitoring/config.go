@@ -42,12 +42,8 @@ func decodeConfig(data jsontext.Value) (apischema.MonitoringConfig, error) {
 	return cfg, nil
 }
 
+// patchIsEmpty compares with the zero patch, so a setting added to the patch
+// type counts without being named here.
 func patchIsEmpty(patch apischema.MonitoringConfigPatch) bool {
-	return patch.CollectorInterval == nil &&
-		patch.SmartRefreshInterval == nil &&
-		patch.DiskUsageCache == nil &&
-		patch.History == nil &&
-		patch.HistoryIntervals == nil &&
-		patch.HistoryRetention == nil &&
-		patch.Listeners == nil
+	return patch == apischema.MonitoringConfigPatch{}
 }

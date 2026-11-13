@@ -2,12 +2,7 @@ import { useQueryClient, useSuspenseQueries } from "@tanstack/react-query";
 import { getRouteApi, Outlet, useParams } from "@tanstack/react-router";
 import { lazy, Suspense, useCallback, useState } from "react";
 
-import {
-  getMutationErrorMessage,
-  linuxio,
-  useCallMutation,
-  type VirtualMachine,
-} from "@/api";
+import { getMutationErrorMessage, linuxio, type VirtualMachine } from "@/api";
 import ResourceDetailsLayout from "@/components/cards/ResourceDetailsLayout";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import { useReorderableSurface } from "@/components/reorder/useReorderableSurface";
@@ -92,7 +87,7 @@ const VMMachinesLayout = () => {
   const liveDeleteTarget =
     vms.find((vm) => vm.name === deleteTargetName) ?? null;
 
-  const deleteMutation = useCallMutation(linuxio.virt.delete, {
+  const deleteMutation = linuxio.virt.delete.useMutation({
     // Disks kept by a delete show up on the Disks tab.
     invalidates: [
       linuxio.virt.list.queryKey,

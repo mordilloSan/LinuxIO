@@ -1,10 +1,11 @@
 import { useState, type ComponentType } from "react";
 
-import { linuxio, useCallMutation } from "@/api";
+import { linuxio } from "@/api";
 import { RoutedTabActions } from "@/components/tabbar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import HeaderActions from "@/components/ui/HeaderActions";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
+import useAuth from "@/hooks/useAuth";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useViewMode } from "@/hooks/useViewMode";
 
@@ -32,24 +33,25 @@ const DockerResourcePage = ({
   viewModeKey,
 }: DockerResourcePageProps) => {
   const toast = useScopedToast(DOCKER_TOAST_META);
+  // Creating a resource and pruning are admin-only.
+  const { privileged } = useAuth();
   const [view, setView] = useViewMode(viewModeKey);
   const [pruneDialogOpen, setPruneDialogOpen] = useState(false);
   const [createHandler, setCreateHandler] = useState<(() => void) | null>(null);
-  const { mutate: systemPrune, isPending: isPruning } = useCallMutation(
-    linuxio.docker.system_prune,
-    {
+  const { mutate: systemPrune, isPending: isPruning } =
+    linuxio.docker.system_prune.useMutation({
       success: () => {
         toast.success("Docker prune completed");
         setPruneDialogOpen(false);
       },
       error: "Prune failed",
       toast: DOCKER_TOAST_META,
-    },
-  );
+    });
 
   const actions = (
     <HeaderActions
       create={
+        privileged &&
         createHandler && (
           <AppActionIconButton
             ariaLabel={`Add ${label}`}
@@ -61,15 +63,17 @@ const DockerResourcePage = ({
         )
       }
       maintenance={
-        <AppActionIconButton
-          ariaLabel="Prune All"
-          disabled={isPruning}
-          icon="mdi:broom"
-          iconSize={20}
-          label="Prune All"
-          loading={isPruning}
-          onClick={() => setPruneDialogOpen(true)}
-        />
+        privileged && (
+          <AppActionIconButton
+            ariaLabel="Prune All"
+            disabled={isPruning}
+            icon="mdi:broom"
+            iconSize={20}
+            label="Prune All"
+            loading={isPruning}
+            onClick={() => setPruneDialogOpen(true)}
+          />
+        )
       }
       view={
         <ViewModeToggle

@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { BtrfsRollbackResult, BtrfsSnapshot, BtrfsSubvolume } from "@/api";
 import { render } from "@/test/render";
-import type { TaskStreamActionMockConfig } from "@/test/taskStreamAction";
 
 import BtrfsSnapshotsCard from "./BtrfsSnapshotsCard";
 
@@ -36,47 +35,53 @@ vi.mock("@/hooks/usePowerAction", () => ({
 
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
-  const { createTaskStreamActionMock } =
-    await import("@/test/taskStreamAction");
+  const { createMutationJobMock } = await import("@/test/mutationJob");
+  const { mockMutationHooks } = await import("@/test/mutationHooks");
+  const useCallMutation = (endpoint: { route: string }) => ({
+    isPending: false,
+    mutate: (mocks.mutations[endpoint.route] ??= vi.fn()),
+  });
+  // Rollback is a job; the rest answer from the call mock.
+  const useMutation = (endpoint: { route: string }, config: never) => {
+    const call = useCallMutation(endpoint);
+    if (endpoint.route !== "storage.btrfs_snapshot_rollback") return call;
+    return {
+      isPending: false,
+      ...createMutationJobMock(
+        {
+          follow: () => Promise.resolve(mocks.rollbackResult),
+          start: mocks.submit,
+        },
+        config,
+      ),
+    };
+  };
   return {
     ...actual,
     call: (route: string) =>
       route === "tasks.list" ? Promise.resolve([]) : Promise.reject(),
-    useCallMutation: (endpoint: { route: string }) => ({
-      isPending: false,
-      mutate: (mocks.mutations[endpoint.route] ??= vi.fn()),
-    }),
-    linuxio: {
-      ...actual.linuxio,
-      storage: {
-        ...actual.linuxio.storage,
-        btrfs_snapshots: (request: { uuid: string }) => ({
-          queryKey: ["test-btrfs-snapshots", request.uuid],
-          queryFn: () => mocks.snapshots(request),
-        }),
-        btrfs_subvolumes: (request: { uuid: string }) => ({
-          queryKey: ["test-btrfs-subvolumes", request.uuid],
-          queryFn: () => mocks.subvolumes(request),
-        }),
-        btrfs_snapshot_rules: {
-          queryKey: ["test-btrfs-snapshot-rules"],
-          queryFn: () => Promise.resolve({ rules: [], timerEnabled: false }),
-        },
-        btrfs_snapshot_rollback: {
-          useTaskStreamAction: (config?: TaskStreamActionMockConfig) => ({
-            isPending: false,
-            ...createTaskStreamActionMock(
-              {
-                openStream: () => ({}),
-                runStream: () => Promise.resolve(mocks.rollbackResult),
-                submit: mocks.submit,
-              },
-              config,
-            ),
+    useCallMutation,
+    linuxio: mockMutationHooks(
+      {
+        ...actual.linuxio,
+        storage: {
+          ...actual.linuxio.storage,
+          btrfs_snapshots: (request: { uuid: string }) => ({
+            queryKey: ["test-btrfs-snapshots", request.uuid],
+            queryFn: () => mocks.snapshots(request),
           }),
+          btrfs_subvolumes: (request: { uuid: string }) => ({
+            queryKey: ["test-btrfs-subvolumes", request.uuid],
+            queryFn: () => mocks.subvolumes(request),
+          }),
+          btrfs_snapshot_rules: {
+            queryKey: ["test-btrfs-snapshot-rules"],
+            queryFn: () => Promise.resolve({ rules: [], timerEnabled: false }),
+          },
         },
       },
-    },
+      useMutation,
+    ),
   };
 });
 

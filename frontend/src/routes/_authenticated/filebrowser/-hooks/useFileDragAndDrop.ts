@@ -4,10 +4,10 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import type { BackgroundTaskActions } from "@/tasks/types";
 import { joinPath } from "@/utils/path";
 
-import type { ResolveCollisionsFn } from "./useFileConflicts";
 import { INTERNAL_DRAG_TYPE } from "../-dragTypes";
 import { extractDroppedEntries } from "../-fileUpload";
 import type { FileResource } from "../-types";
+import type { ResolveCollisionsFn } from "./useFileConflicts";
 
 // Drags started inside the browser (moving items between folders) are not
 // uploads: they carry the internal type next to whatever else the browser adds.

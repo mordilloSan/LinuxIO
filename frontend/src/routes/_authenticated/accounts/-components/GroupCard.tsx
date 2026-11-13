@@ -9,6 +9,7 @@ import {
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
 import AppTypography from "@/components/ui/AppTypography";
+import useAuth from "@/hooks/useAuth";
 import { CARD_PADDING_MD, GAP_SM } from "@/theme/constants";
 
 interface GroupCardProps {
@@ -18,6 +19,7 @@ interface GroupCardProps {
 }
 
 const GroupCard = ({ group, onEditMembers, onDelete }: GroupCardProps) => {
+  const { privileged } = useAuth();
   const isRoot = group.name === "root";
   const isProtected = isRoot || group.isSystem;
 
@@ -124,23 +126,25 @@ const GroupCard = ({ group, onEditMembers, onDelete }: GroupCardProps) => {
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
-          <AppActionIconButton
-            disabled={isRoot}
-            icon="mdi:pencil"
-            iconSize={18}
-            label="Edit Members"
-            onClick={onEditMembers}
-          />
-          <AppActionIconButton
-            color={isProtected ? undefined : "var(--app-palette-error-main)"}
-            disabled={isProtected}
-            icon="mdi:delete"
-            iconSize={18}
-            label={isProtected ? "Cannot delete" : "Delete Group"}
-            onClick={onDelete}
-          />
-        </div>
+        {privileged && (
+          <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+            <AppActionIconButton
+              disabled={isRoot}
+              icon="mdi:pencil"
+              iconSize={18}
+              label="Edit Members"
+              onClick={onEditMembers}
+            />
+            <AppActionIconButton
+              color={isProtected ? undefined : "var(--app-palette-error-main)"}
+              disabled={isProtected}
+              icon="mdi:delete"
+              iconSize={18}
+              label={isProtected ? "Cannot delete" : "Delete Group"}
+              onClick={onDelete}
+            />
+          </div>
+        )}
       </div>
 
       {/* Summary rows */}

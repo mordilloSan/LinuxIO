@@ -27,30 +27,23 @@ func cloneUIPreferences(in *UIPreferences) *UIPreferences {
 	out := *in
 	out.HiddenCards = slices.Clone(in.HiddenCards)
 	out.ViewModes = maps.Clone(in.ViewModes)
-	out.LayoutOrders = cloneLayoutOrders(in.LayoutOrders)
+	out.CollapsedSections = cloneNameLists(in.CollapsedSections)
+	out.LayoutOrders = cloneNameLists(in.LayoutOrders)
 	out.ThemeColors = cloneThemeColorsByMode(in.ThemeColors)
 	if in.DockAccentGradient != nil {
 		gradient := *in.DockAccentGradient
 		out.DockAccentGradient = &gradient
 	}
-	if in.DockerDashboardSections != nil {
-		sections := *in.DockerDashboardSections
-		out.DockerDashboardSections = &sections
-	}
-	if in.HardwareSections != nil {
-		sections := *in.HardwareSections
-		out.HardwareSections = &sections
-	}
 	return &out
 }
 
-func cloneLayoutOrders(in map[string][]string) map[string][]string {
+func cloneNameLists(in map[string][]string) map[string][]string {
 	if in == nil {
 		return nil
 	}
 	out := make(map[string][]string, len(in))
-	for surface, order := range in {
-		out[surface] = slices.Clone(order)
+	for key, names := range in {
+		out[key] = slices.Clone(names)
 	}
 	return out
 }
@@ -66,27 +59,7 @@ func cloneThemeColorsByMode(in *ThemeColorsByMode) *ThemeColorsByMode {
 		return nil
 	}
 	return &ThemeColorsByMode{
-		Light: cloneThemeColors(in.Light),
-		Dark:  cloneThemeColors(in.Dark),
+		Light: maps.Clone(in.Light),
+		Dark:  maps.Clone(in.Dark),
 	}
-}
-
-func cloneThemeColors(in *ThemeColors) *ThemeColors {
-	if in == nil {
-		return nil
-	}
-	out := *in
-	src := themeColorSlots(in)
-	for i, slot := range themeColorSlots(&out) {
-		*slot.Value = cloneCSSColor(*src[i].Value)
-	}
-	return &out
-}
-
-func cloneCSSColor(in *CSSColor) *CSSColor {
-	if in == nil {
-		return nil
-	}
-	out := *in
-	return &out
 }

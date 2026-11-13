@@ -45,7 +45,7 @@ func FetchCPUHistory(ctx context.Context, req apischema.MonitoringHistoryRequest
 }
 
 func FetchMemoryHistory(ctx context.Context, req apischema.MonitoringHistoryRequest) ([]apischema.MonitoringMemoryHistoryPoint, error) {
-	points, err := fetchHistory(ctx, monitoringapi.PluginMem, req, func(item monitoringapi.HistoryItem, stats monitoringapi.MemHistoryStats) apischema.MonitoringMemoryHistoryPoint {
+	return fetchHistory(ctx, monitoringapi.PluginMem, req, func(item monitoringapi.HistoryItem, stats monitoringapi.MemHistoryStats) apischema.MonitoringMemoryHistoryPoint {
 		return apischema.MonitoringMemoryHistoryPoint{
 			CapturedAtMs:  item.CapturedAt,
 			TotalGB:       stats.TotalGB,
@@ -55,49 +55,16 @@ func FetchMemoryHistory(ctx context.Context, req apischema.MonitoringHistoryRequ
 			ZFSArcGB:      stats.ZFSArcGB,
 			CachedGB:      stats.CachedGB,
 			BuffersGB:     stats.BuffersGB,
+			DockerUsedGB:  stats.DockerGB,
+			VMUsedGB:      stats.VMGB,
 		}
 	})
-	if err != nil {
-		return nil, err
-	}
-	mergeDockerMemHistory(ctx, req, points)
-	return points, nil
 }
 
-type dockerMemHistoryPoint struct {
-	capturedAtMs int64
-	usedGB       float64
-}
-
-// mergeDockerMemHistory annotates memory points with the summed container
-// memory captured nearest to each point, so the memory chart can carve a
-// Docker layer out of "used". Best-effort: the containers plugin may have
-// history disabled, so failures just leave DockerUsedGB zero.
-func mergeDockerMemHistory(ctx context.Context, req apischema.MonitoringHistoryRequest, points []apischema.MonitoringMemoryHistoryPoint) {
-	if len(points) == 0 {
-		return
-	}
-	docker, err := fetchHistory(ctx, monitoringapi.PluginContainers, req, func(item monitoringapi.HistoryItem, records []monitoringapi.ContainerHistoryRecord) dockerMemHistoryPoint {
-		var memMB float64
-		for _, record := range records {
-			memMB += record.MemMB
-		}
-		return dockerMemHistoryPoint{capturedAtMs: item.CapturedAt, usedGB: memMB / 1024}
+func FetchSensorHistory(ctx context.Context, req apischema.MonitoringHistoryRequest) ([]apischema.MonitoringSensorHistoryPoint, error) {
+	return fetchHistory(ctx, monitoringapi.PluginSensors, req, func(item monitoringapi.HistoryItem, stats monitoringapi.SensorsHistoryStats) apischema.MonitoringSensorHistoryPoint {
+		return apischema.MonitoringSensorHistoryPoint{CapturedAtMs: item.CapturedAt, Readings: stats.Readings}
 	})
-	if err != nil || len(docker) == 0 {
-		return
-	}
-
-	dockerTimes := make([]int64, len(docker))
-	for i, point := range docker {
-		dockerTimes[i] = point.capturedAtMs
-	}
-	nearest := nearestTimeMatcher(dockerTimes, resolutionStepMs(req.Resolution))
-	for i := range points {
-		if j := nearest(points[i].CapturedAtMs); j >= 0 {
-			points[i].DockerUsedGB = docker[j].usedGB
-		}
-	}
 }
 
 // nearestTimeMatcher returns a lookup over an ascending series of capture

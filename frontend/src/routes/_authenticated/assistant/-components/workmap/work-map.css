@@ -1,0 +1,544 @@
+/* The activity map, drawn on one of the dock's cards (dock/dock.css). The
+   picture is in its own units and scales with the card. Its palette, shapes
+   and motion are lot-map's (see workMap.ts), so it reads the same as that
+   plugin's pane: it sits in the box a plugin's picture sits in and blends
+   with it the same way (pane/pane.css). What flies along the spokes is played
+   from WorkMap.tsx. */
+
+.work-map {
+  --wm-ground: #0a0c11;
+  --wm-raised: #12151c;
+  --wm-line: #272c36;
+  --wm-spoke: #1a1e27;
+  --wm-bone: #ebe6dc;
+  --wm-ash: #9ba1ab;
+  --wm-dim: #6b7280;
+  --wm-accent: #e1ac6e;
+  --wm-accent-hot: #f0c595;
+  --wm-red: #e8654f;
+  --wm-mem: #62c7ba;
+  --wm-mem-hot: #a5e6dc;
+  --wm-trail: #ebe6dd;
+  /* The colour of the work at a station; memory has its own. */
+  --wm-main: var(--wm-accent);
+  --wm-hot: var(--wm-accent-hot);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+:root[data-app-color-scheme="light"] .work-map {
+  --wm-ground: #f5f2ea;
+  --wm-raised: #ffffff;
+  --wm-line: #cfc9bc;
+  --wm-spoke: #e3ded2;
+  --wm-bone: #1f2228;
+  --wm-ash: #5f6570;
+  --wm-dim: #8b909a;
+  --wm-accent: #b8762a;
+  --wm-accent-hot: #8f560f;
+  --wm-red: #c5402b;
+  --wm-mem: #1c8c81;
+  --wm-mem-hot: #136a62;
+  --wm-trail: #9c978b;
+}
+
+.work-map__station--memory,
+.work-map__tone--memory {
+  --wm-main: var(--wm-mem);
+  --wm-hot: var(--wm-mem-hot);
+}
+
+.work-map__picture text {
+  font-family: "SF Mono", ui-monospace, Menlo, monospace;
+  text-anchor: middle;
+}
+
+.work-map__ground {
+  fill: var(--wm-ground);
+}
+
+.work-map__contour {
+  fill: none;
+  stroke: var(--wm-line);
+  stroke-width: 0.7;
+  stroke-dasharray: 2 5;
+  opacity: 0.45;
+}
+
+.work-map__spoke {
+  stroke: var(--wm-spoke);
+  stroke-linecap: round;
+}
+
+.work-map__spoke--worn {
+  stroke: var(--wm-accent);
+}
+
+.work-map__spoke--memory {
+  stroke: var(--wm-mem);
+}
+
+/* ---- the route between stations ---- */
+
+.work-map__leg {
+  opacity: var(--wm-leg);
+  animation: work-map-leg-fade 20s linear 40s forwards;
+}
+
+@keyframes work-map-leg-fade {
+  to {
+    opacity: 0;
+  }
+}
+
+.work-map__leg-line {
+  fill: none;
+  stroke: var(--wm-trail);
+  stroke-width: 1.1;
+  stroke-linecap: round;
+  stroke-dasharray: 1 1;
+}
+
+.work-map__leg-line--head {
+  stroke-width: 1.5;
+  animation: work-map-leg-draw 0.5s linear backwards;
+}
+
+@keyframes work-map-leg-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+}
+
+.work-map__leg-end {
+  fill: var(--wm-trail);
+  opacity: 0.85;
+  animation: work-map-leg-end 0.15s linear 0.4s backwards;
+}
+
+@keyframes work-map-leg-end {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ---- what flies: made and removed by WorkMap.tsx ---- */
+
+.work-map__tone--main {
+  color: var(--wm-main);
+}
+
+.work-map__tone--hot {
+  color: var(--wm-hot);
+}
+
+.work-map__tone--ash {
+  color: var(--wm-ash);
+}
+
+.work-map__tone--red {
+  color: var(--wm-red);
+}
+
+.work-map__tone--bone {
+  color: var(--wm-bone);
+}
+
+.work-map__pulse,
+.work-map__ripple,
+.work-map__beam {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.work-map__pulse {
+  fill: currentColor;
+}
+
+.work-map__pulse--hollow {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+}
+
+.work-map__ripple {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.2;
+  transform-box: fill-box;
+  transform-origin: center;
+  vector-effect: non-scaling-stroke;
+}
+
+.work-map__ripple--done {
+  stroke-width: 1.6;
+}
+
+.work-map__beam {
+  stroke: currentColor;
+  stroke-width: 1.4;
+}
+
+.work-map__beam--dashed {
+  stroke-dasharray: 3 4;
+}
+
+/* ---- a station ---- */
+
+/* The glow under a node and the ring on it are lit from WorkMap.tsx for a
+   while after something happened, and stay lit while a call runs. */
+.work-map__glow {
+  fill: var(--wm-main);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.work-map__lit {
+  fill: none;
+  stroke: var(--wm-main);
+  stroke-width: 1.2;
+  opacity: 0;
+}
+
+/* A running call outranks the cooling of the one before it. */
+.work-map__station--running .work-map__glow {
+  opacity: 0.16 !important;
+}
+
+.work-map__station--running .work-map__lit {
+  opacity: 1 !important;
+}
+
+.work-map__node {
+  fill: var(--wm-raised);
+  stroke: var(--wm-line);
+  stroke-width: 1.2;
+}
+
+.work-map__glyph {
+  fill: none;
+  stroke: var(--wm-ash);
+  stroke-width: 1.25;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.work-map__station--memory.work-map__station--counted .work-map__glyph {
+  stroke: var(--wm-mem);
+}
+
+.work-map__station--running .work-map__glyph {
+  stroke: var(--wm-hot);
+}
+
+/* The words stand on a rim of the ground's own colour, so a line that passes
+   behind them never strikes them through. */
+.work-map__label,
+.work-map__count {
+  paint-order: stroke;
+  stroke: var(--wm-ground);
+  stroke-width: 3.5;
+  stroke-linejoin: round;
+}
+
+.work-map__label {
+  fill: var(--wm-ash);
+  font-size: 11.5px;
+}
+
+.work-map__station--running .work-map__label {
+  fill: var(--wm-bone);
+}
+
+.work-map__count {
+  fill: var(--wm-dim);
+  font-size: 9.5px;
+}
+
+.work-map__beat {
+  fill: none;
+  stroke: var(--wm-main);
+  stroke-width: 1.3;
+  pointer-events: none;
+  transform-box: fill-box;
+  transform-origin: center;
+  vector-effect: non-scaling-stroke;
+  animation: work-map-beat 1.4s linear infinite;
+}
+
+@keyframes work-map-beat {
+  from {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(1.68);
+  }
+}
+
+.work-map__hand {
+  fill: none;
+  stroke: var(--wm-hot);
+  stroke-dasharray: 1 1;
+  stroke-dashoffset: 1;
+  pointer-events: none;
+}
+
+.work-map__hand--minute {
+  stroke-width: 2.2;
+  animation: work-map-hand 60s linear infinite;
+}
+
+.work-map__hand--ten {
+  stroke-width: 1.2;
+  animation: work-map-hand 600s linear forwards;
+}
+
+@keyframes work-map-hand {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.work-map__badge {
+  fill: var(--wm-raised);
+  stroke: var(--wm-main);
+  stroke-width: 1;
+}
+
+.work-map__badge-text {
+  fill: var(--wm-hot);
+  font-size: 8.5px;
+}
+
+.work-map__fault {
+  fill: var(--wm-red);
+}
+
+.work-map__fault-text {
+  fill: var(--wm-ground);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.work-map__crew {
+  fill: var(--wm-accent-hot);
+  transform-box: view-box;
+  animation: work-map-crew 7s linear infinite;
+}
+
+@keyframes work-map-crew {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---- the core ---- */
+
+/* The core breathes at rest and quickens while something runs. */
+.work-map__breath {
+  fill: var(--wm-accent);
+  opacity: 0.05;
+  pointer-events: none;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: work-map-breath 4.8s linear infinite;
+}
+
+.work-map__picture--live .work-map__breath {
+  animation: work-map-breath-live 1.6s linear infinite;
+}
+
+@keyframes work-map-breath {
+  50% {
+    opacity: 0.12;
+    transform: scale(1.233);
+  }
+}
+
+@keyframes work-map-breath-live {
+  50% {
+    opacity: 0.24;
+    transform: scale(1.233);
+  }
+}
+
+.work-map__core {
+  fill: var(--wm-raised);
+  stroke: var(--wm-line);
+  stroke-width: 1.3;
+}
+
+.work-map__picture--live .work-map__core {
+  stroke: var(--wm-accent);
+}
+
+.work-map__gauge-track,
+.work-map__gauge {
+  fill: none;
+  stroke-width: 2.2;
+}
+
+.work-map__gauge-track {
+  stroke: var(--wm-line);
+  opacity: 0.7;
+}
+
+.work-map__gauge {
+  stroke: var(--wm-ash);
+}
+
+.work-map__gauge--high {
+  stroke: var(--wm-accent);
+}
+
+.work-map__gauge--full {
+  stroke: var(--wm-red);
+}
+
+.work-map__percent {
+  fill: var(--wm-dim);
+  font-size: 8px;
+}
+
+.work-map__name {
+  fill: var(--wm-bone);
+  font-size: calc(var(--wm-name-size) * 1px);
+  letter-spacing: 0.147em;
+}
+
+.work-map__model {
+  fill: var(--wm-ash);
+  font-size: 9px;
+}
+
+/* The agents station is a button laid over the picture (WorkMap.tsx). */
+.work-map .assistant-pane-picture {
+  position: relative;
+}
+
+.work-map .work-map__station-button {
+  position: absolute;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--app-radius-lg);
+  background: transparent;
+}
+
+.work-map .work-map__station-button:hover {
+  background: transparent;
+}
+
+/* Pointing at the button lights the station itself: the circle fills with
+   the accent and its glyph and name brighten. */
+.work-map .assistant-pane-picture:has(.work-map__station-button:hover)
+  .work-map__station--agents
+  .work-map__node {
+  fill: color-mix(in srgb, var(--wm-main) 28%, var(--wm-raised));
+  stroke: var(--wm-main);
+}
+
+.work-map .assistant-pane-picture:has(.work-map__station-button:hover)
+  .work-map__station--agents
+  .work-map__glyph {
+  stroke: var(--wm-hot);
+}
+
+.work-map .assistant-pane-picture:has(.work-map__station-button:hover)
+  .work-map__station--agents
+  .work-map__label {
+  fill: var(--wm-bone);
+}
+
+.work-map .work-map__station-button:focus-visible {
+  outline: 2px solid var(--wm-main);
+  outline-offset: 0;
+}
+
+/* ---- under the picture: what is running, then what happened ---- */
+
+.work-map__now,
+.work-map__feed {
+  margin: 0;
+}
+
+.work-map__feed {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  list-style: none;
+}
+
+/* One line each, cut at the card's edge, so nothing wraps and moves the rows
+   about while the work goes on. */
+.work-map .work-map__now {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.work-map__row {
+  display: flex;
+  gap: 1ch;
+  align-items: baseline;
+}
+
+.work-map__row-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+.work-map__row-text--whole {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* The time keeps a column at the right; `running` sets its least width, a
+   longer time widens its own row. */
+.work-map__row-time {
+  flex: none;
+  min-width: 7ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.work-map .work-map__row-open {
+  flex: none;
+  min-width: 0;
+  padding: 0 0.25ch;
+  font: inherit;
+  line-height: inherit;
+}
+
+.work-map .work-map__row-open:focus-visible {
+  outline: 2px solid var(--wm-main);
+  outline-offset: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .work-map__leg,
+  .work-map__leg-line--head,
+  .work-map__leg-end,
+  .work-map__beat,
+  .work-map__hand,
+  .work-map__crew,
+  .work-map__breath,
+  .work-map__picture--live .work-map__breath {
+    animation: none;
+  }
+
+  .work-map__beat {
+    opacity: 0.6;
+  }
+
+  .work-map__hand {
+    stroke-dashoffset: 0;
+  }
+}

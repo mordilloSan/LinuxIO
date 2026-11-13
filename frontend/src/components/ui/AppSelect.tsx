@@ -100,6 +100,7 @@ const AppSelect = ({
   onChange,
   disabled,
   placement = "auto",
+  "aria-describedby": ariaDescribedBy,
   "aria-label": ariaLabel,
 }: AppSelectProps) => {
   const [open, setOpen] = useState(false);
@@ -247,6 +248,7 @@ const AppSelect = ({
       <div className="app-select__control" ref={containerRef}>
         <div
           aria-controls={open ? dropdownId : undefined}
+          aria-describedby={ariaDescribedBy}
           aria-disabled={disabled || undefined}
           aria-expanded={open}
           aria-haspopup="listbox"
@@ -300,6 +302,7 @@ const AppSelect = ({
                     </li>
                   ) : null}
                   <li
+                    aria-disabled={opt.disabled || undefined}
                     aria-selected={opt.value === currentValue}
                     className={[
                       "app-select__option",

@@ -4,6 +4,8 @@ import (
 	"context"
 	"slices"
 	"testing"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 func TestListInterfacesReportsHeaderAndHooks(t *testing.T) {
@@ -12,7 +14,7 @@ func TestListInterfacesReportsHeaderAndHooks(t *testing.T) {
 	cfg.Host = "vpn.example.org"
 	cfg.DNS = []string{"9.9.9.9"}
 	cfg.MTU = 1400
-	cfg.PreUp = []string{"echo pre"}
+	cfg.Hooks[apischema.WireGuardPreUp] = []string{"echo pre"}
 	if err := WriteWireGuardConfig(configPath("wgtest"), cfg); err != nil {
 		t.Fatalf("WriteWireGuardConfig returned error: %v", err)
 	}
@@ -28,7 +30,11 @@ func TestListInterfacesReportsHeaderAndHooks(t *testing.T) {
 	if iface.Host != "vpn.example.org" || !slices.Equal(iface.DNS, []string{"9.9.9.9"}) || iface.MTU != 1400 {
 		t.Fatalf("interface = %+v", iface)
 	}
-	if !slices.Equal(iface.PreUp, []string{"echo pre"}) || len(iface.PostUp) != len(cfg.PostUp) || len(iface.PostDown) != len(cfg.PostDown) || iface.PreDown == nil {
-		t.Fatalf("hooks = %+v", iface)
+	if hooksChanged(iface.Hooks, cfg.Hooks) {
+		t.Fatalf("hooks = %v, want %v", iface.Hooks, cfg.Hooks)
+	}
+	// Every kind is present, as [] when unused, so the client never sees null.
+	if lines, ok := iface.Hooks[apischema.WireGuardPreDown]; !ok || lines == nil {
+		t.Fatalf("PreDown = %#v, want an empty list", lines)
 	}
 }

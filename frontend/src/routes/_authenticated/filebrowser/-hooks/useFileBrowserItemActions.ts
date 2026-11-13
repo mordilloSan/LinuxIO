@@ -11,12 +11,12 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import type { BackgroundTaskActions } from "@/tasks/types";
 import { ensureTrailingSlash, isDirectoryPath } from "@/utils/path";
 
+import { isImageFile, validateFileName } from "../-fileUtils";
+import type { FileItem, FileResource } from "../-types";
 import type { DeleteMode, DialogsSlice } from "./useFileDialogs";
 import type { EditorSlice } from "./useFileEditor";
 import { useFilePathUtilities } from "./useFilePathUtilities";
 import type { ViewSlice } from "./useFileViewState";
-import { isImageFile, validateFileName } from "../-fileUtils";
-import type { FileItem, FileResource } from "../-types";
 
 const NEW_FOLDER_NAME = "New folder";
 

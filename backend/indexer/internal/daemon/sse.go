@@ -121,7 +121,7 @@ func (b *workStreamBroadcaster) SendEvent(event string, data any) error {
 
 func (b *workStreamBroadcaster) SendError(msg string) error {
 	return b.SendEvent(api.EventError, api.WorkErrorEvent{
-		Status:      "error",
+		Status:      api.StatusError,
 		Operation:   b.operation,
 		OperationID: b.operationID,
 		Path:        b.path,
@@ -219,7 +219,7 @@ func (d *daemon) attachStatusSSEIfActive(w http.ResponseWriter, r *http.Request)
 	defer broadcaster.unsubscribe(subscriberID)
 
 	if !sendSSEEvent(sse, api.EventStarted, api.WorkStartedEvent{
-		Status:      "running",
+		Status:      api.StatusRunning,
 		Operation:   broadcaster.Operation(),
 		OperationID: broadcaster.OperationID(),
 		Path:        broadcaster.Path(),

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 // AlertSource is the alerts source of every btrfs health alert.
@@ -35,6 +36,14 @@ func raise(ctx context.Context, obs alerts.Observation) {
 func resolve(ctx context.Context, key string) {
 	if err := alerts.Resolve(ctx, AlertSource, key); err != nil {
 		slog.Warn("failed to resolve btrfs alert", "key", key, "error", err)
+	}
+}
+
+// resolveRunAlert resolves the run alert key of a pool's resync unit, which
+// the scheduled run hooks raise under their own source.
+func resolveRunAlert(ctx context.Context, key string) {
+	if err := alerts.Resolve(ctx, scheduledrun.AlertSource, key); err != nil {
+		slog.Warn("failed to resolve resync run alert", "key", key, "error", err)
 	}
 }
 
@@ -72,7 +81,8 @@ func RaiseAlerts(ctx context.Context, fs BtrfsFilesystem) {
 			Key: "space-" + fs.UUID, Severity: alerts.SeverityWarning,
 			Title:   name + " is nearly out of metadata space",
 			Message: "Metadata is over 90% full and less than 1 GiB is unallocated, so writes will start failing. Balance data chunks to reclaim space.",
-			Link:    link,
+			// One occurrence while it lasts: every health check sees it again.
+			Link: link, OccurrenceID: "low",
 		})
 	} else {
 		resolve(ctx, "space-"+fs.UUID)
@@ -109,24 +119,34 @@ func healthObservation(fs BtrfsFilesystem, name, occurrence string) alerts.Obser
 }
 
 // RaiseOfflineAlert flags an unmounted pool: an error when disks are
-// missing, a warning when it is merely unmounted. blocked is why the boot
-// check did not mount it degraded, if it did not.
+// missing or the boot check refused it, a warning when it is merely
+// unmounted. blocked is why the boot check did not mount it, if it did not;
+// a changed reason is a new occurrence, so it replaces the message raised
+// earlier.
 func RaiseOfflineAlert(ctx context.Context, pool BtrfsOfflinePool, blocked string) {
 	name := poolName(pool.Label, pool.UUID)
-	missing := pool.NumDevices - len(pool.Devices)
+	missing := missingDisks(pool)
 	obs := alerts.Observation{
 		Key: "offline-" + pool.UUID, Severity: alerts.SeverityWarning,
 		Title:   "Pool " + name + " is not mounted",
 		Message: "The pool is complete but not mounted. Mount it from the Storage overview.",
 		Link:    "/storage", OccurrenceID: strconv.Itoa(missing),
 	}
-	if missing > 0 {
+	switch {
+	case missing > 0:
 		obs.Severity = alerts.SeverityError
 		obs.Title = fmt.Sprintf("Pool %s is missing %d of %d disks", name, missing, pool.NumDevices)
 		obs.Message = "The pool is not mounted because disks are missing. Reconnect them, or mount it degraded and replace the missing disk."
 		if blocked != "" {
 			obs.Message = "LinuxIO did not mount the pool degraded because " + blocked + ". Reconnect the missing disks; mount it degraded only if they are gone for good."
 		}
+	case blocked != "":
+		obs.Severity = alerts.SeverityError
+		obs.Message = "LinuxIO did not mount the pool because " + blocked + ". Check the disks before you mount the pool from the Storage overview."
+	}
+	if blocked != "" {
+		sum := sha256.Sum256([]byte(blocked))
+		obs.OccurrenceID += "/" + hex.EncodeToString(sum[:4])
 	}
 	raise(ctx, obs)
 }
@@ -158,7 +178,8 @@ func raiseResyncAlert(ctx context.Context, fs BtrfsFilesystem, state poolState) 
 		Key: key, Severity: alerts.SeverityWarning,
 		Title:   "Pool " + name + " is resyncing a returned disk",
 		Message: "A disk that missed writes while the pool ran without it is back. LinuxIO scrubs the pool to rewrite its stale copies, then restores redundancy to data written without it.",
-		Link:    "/storage?pool=" + fs.UUID,
+		// One occurrence while it lasts: every health check sees it again.
+		Link: "/storage?pool=" + fs.UUID, OccurrenceID: "resyncing",
 	})
 	return fs.Scrub.Status != "running"
 }
@@ -194,8 +215,8 @@ func CheckHealth(ctx context.Context) ([]string, error) {
 	}
 	for _, pool := range pools {
 		blocked := ""
-		if len(pool.Devices) < pool.NumDevices && len(bootMounts(pool.UUID)) > 0 {
-			blocked = degradedMountBlocker(pool, states[pool.UUID])
+		if len(bootMounts(pool.UUID)) > 0 {
+			blocked = refusal(pool, states[pool.UUID])
 		}
 		RaiseOfflineAlert(ctx, pool, blocked)
 		live[pool.UUID] = true
@@ -205,7 +226,8 @@ func CheckHealth(ctx context.Context) ([]string, error) {
 }
 
 // resolveStale resolves the alerts of filesystems that are neither mounted
-// nor found on any disk, such as destroyed pools.
+// nor found on any disk, such as destroyed pools, and the run alert of their
+// resync unit, which no later run of that unit will clear.
 func resolveStale(ctx context.Context, live map[string]bool) {
 	doc, err := alerts.Load()
 	if err != nil {
@@ -213,13 +235,20 @@ func resolveStale(ctx context.Context, live map[string]bool) {
 		return
 	}
 	for _, a := range doc.Alerts {
-		kind, uuid, ok := strings.Cut(a.Key, "-")
-		if a.Source != AlertSource || !ok || live[uuid] {
-			continue
-		}
-		for _, k := range alertKinds {
-			if kind == k {
-				resolve(ctx, a.Key)
+		switch a.Source {
+		case AlertSource:
+			kind, uuid, ok := strings.Cut(a.Key, "-")
+			if !ok || live[uuid] {
+				continue
+			}
+			for _, k := range alertKinds {
+				if kind == k {
+					resolve(ctx, a.Key)
+				}
+			}
+		case scheduledrun.AlertSource:
+			if uuid, ok := scheduledrun.ResyncRunAlertPool(a.Key); ok && !live[uuid] {
+				resolveRunAlert(ctx, a.Key)
 			}
 		}
 	}

@@ -11,6 +11,7 @@ import (
 	"github.com/shirou/gopsutil/v4/disk"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
 )
 
@@ -228,7 +229,7 @@ func SetBtrfsMaintenance(ctx context.Context, req apischema.BtrfsMaintenanceRequ
 	if err != nil {
 		return apischema.BtrfsMaintenanceSchedule{}, err
 	}
-	if err := os.WriteFile(path, []byte(updated), mode); err != nil {
+	if err := atomicfile.Write(path, []byte(updated), mode); err != nil {
 		return apischema.BtrfsMaintenanceSchedule{}, fmt.Errorf("write btrfsmaintenance config: %w", err)
 	}
 	if err := systemd.StartUnit(ctx, btrfsMaintenanceRefreshUnit); err != nil {

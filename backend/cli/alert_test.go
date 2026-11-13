@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -149,5 +150,87 @@ func TestRunAlertAutoUpdateAptEndToEnd(t *testing.T) {
 	doc, _ = alerts.Load()
 	if doc.Alerts[0].OccurrenceCount != 1 {
 		t.Fatalf("count = %d", doc.Alerts[0].OccurrenceCount)
+	}
+}
+
+func TestAlwaysWithoutPackageListSaysItRan(t *testing.T) {
+	dir := t.TempDir()
+	oldLog, oldReboot, oldEnv := aptUnattendedLogPath, rebootRequiredPath, lookupEnv
+	aptUnattendedLogPath = filepath.Join(dir, "unattended-upgrades.log")
+	rebootRequiredPath = filepath.Join(dir, "reboot-required")
+	lookupEnv = func(k string) string {
+		return map[string]string{"SERVICE_RESULT": "success", "INVOCATION_ID": "inv-1"}[k]
+	}
+	t.Cleanup(func() { aptUnattendedLogPath, rebootRequiredPath, lookupEnv = oldLog, oldReboot, oldEnv })
+	if err := os.WriteFile(aptUnattendedLogPath, []byte("2026-10-08 06:00:00,000 INFO Starting unattended upgrades script\n2026-10-08 06:00:01,000 INFO No packages found that can be upgraded unattended and no pending auto-removals\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	for provider, want := range map[string]string{
+		"dnf":  "Automatic updates ran",
+		"mint": "Automatic updates ran",
+		// unattended-upgrades' log says what a run installed.
+		"apt": "Automatic updates found nothing to install",
+	} {
+		t.Run(provider, func(t *testing.T) {
+			useTempAlertStore(t)
+			if code := runAlert(t.Context(), []string{"auto-update", "--provider", provider, "--policy", "always"}); code != 0 {
+				t.Fatalf("exit %d", code)
+			}
+			doc, err := alerts.Load()
+			if err != nil || len(doc.Alerts) != 1 {
+				t.Fatalf("store = %+v err = %v", doc.Alerts, err)
+			}
+			if a := doc.Alerts[0]; a.ID != "auto-update/run" || a.Title != want || a.Severity != alerts.SeverityInfo {
+				t.Fatalf("alert = %+v, want info %q", a, want)
+			}
+		})
+	}
+}
+
+func TestRunAlertPendingUpdatesRaisesThenResolves(t *testing.T) {
+	useTempAlertStore(t)
+	output := "NOTE: This is only a simulation!\nInst zlib1g [1:1.3] (1:1.3.1 Ubuntu:resolute [amd64])\nConf zlib1g (1:1.3.1 Ubuntu:resolute [amd64])\nInst curl [8.5] (8.6 Ubuntu:resolute-security [amd64])\n"
+	old := pendingExecCommand
+	pendingExecCommand = func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "printf", "%s", output)
+	}
+	t.Cleanup(func() { pendingExecCommand = old })
+
+	if code := runAlert(context.Background(), []string{"pending-updates", "--provider", "apt"}); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	doc, _ := alerts.Load()
+	if len(doc.Alerts) != 1 || doc.Alerts[0].ID != "auto-update/pending" || doc.Alerts[0].Title != "2 system updates available" || doc.Alerts[0].Message != "curl zlib1g" {
+		t.Fatalf("store = %+v", doc.Alerts)
+	}
+	first := doc.Alerts[0].OccurrenceID
+	// The same set again is not a new occurrence.
+	_ = runAlert(context.Background(), []string{"pending-updates", "--provider", "apt"})
+	doc, _ = alerts.Load()
+	if doc.Alerts[0].OccurrenceCount != 1 || doc.Alerts[0].OccurrenceID != first {
+		t.Fatalf("repeat = %+v", doc.Alerts[0])
+	}
+
+	output = "NOTE: This is only a simulation!\n"
+	_ = runAlert(context.Background(), []string{"pending-updates", "--provider", "apt"})
+	doc, _ = alerts.Load()
+	if len(doc.Alerts) != 0 {
+		t.Fatalf("nothing pending kept %+v", doc.Alerts)
+	}
+}
+
+func TestRunAlertPendingUpdatesReportsAptFailure(t *testing.T) {
+	useTempAlertStore(t)
+	old := pendingExecCommand
+	pendingExecCommand = func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
+		return exec.CommandContext(ctx, "sh", "-c", "echo 'E: Could not open lock' >&2; exit 100")
+	}
+	t.Cleanup(func() { pendingExecCommand = old })
+	if code := runAlert(context.Background(), []string{"pending-updates", "--provider", "apt"}); code != 1 {
+		t.Fatalf("exit %d, want 1", code)
+	}
+	if code := runAlert(context.Background(), []string{"pending-updates", "--provider", "dnf"}); code != 1 {
+		t.Fatalf("dnf exit %d, want 1", code)
 	}
 }

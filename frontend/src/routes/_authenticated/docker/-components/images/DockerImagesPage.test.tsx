@@ -10,16 +10,11 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
+  const { mockMutationHooks } = await import("@/test/mutationHooks");
+  const useMutation = () => ({ mutate: mocks.systemPrune, isPending: false });
   return {
     ...actual,
-    useCallMutation: () => ({ mutate: mocks.systemPrune, isPending: false }),
-    linuxio: {
-      ...actual.linuxio,
-      docker: {
-        ...actual.linuxio.docker,
-        system_prune: { route: "docker.system_prune" },
-      },
-    },
+    linuxio: mockMutationHooks(actual.linuxio, useMutation),
   };
 });
 
@@ -33,7 +28,9 @@ describe("DockerImagesPage", () => {
   });
 
   it("offers the dashboard prune action for unused Docker resources", async () => {
-    const { user } = render(<DockerImagesPage />);
+    const { user } = render(<DockerImagesPage />, {
+      auth: { privileged: true },
+    });
 
     await user.click(screen.getByRole("button", { name: "Prune All" }));
     // The dialog fades in from opacity 0; wait for the first animation
@@ -55,5 +52,14 @@ describe("DockerImagesPage", () => {
       networks: false,
       volumes: false,
     });
+  });
+
+  it("offers no prune action without sudo", () => {
+    render(<DockerImagesPage />, { auth: { privileged: false } });
+
+    expect(screen.getByText("Image list")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Prune All" }),
+    ).not.toBeInTheDocument();
   });
 });

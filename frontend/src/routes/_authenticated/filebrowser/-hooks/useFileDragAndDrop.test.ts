@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { ResolveCollisionsFn } from "./useFileConflicts";
 import { INTERNAL_DRAG_TYPE } from "../-dragTypes";
 import type { DroppedEntry } from "../-fileUpload";
 import type { FileResource } from "../-types";
+import type { ResolveCollisionsFn } from "./useFileConflicts";
 
 const droppedEntriesMocks = vi.hoisted(() => ({
   extract: vi.fn(),

@@ -2,12 +2,7 @@ import { Icon } from "@iconify/react";
 import { useSuspenseQueries, useSuspenseQuery } from "@tanstack/react-query";
 import { lazy, Suspense, useCallback, useState, type MouseEvent } from "react";
 
-import {
-  type ContainerInfo,
-  getMutationErrorMessage,
-  linuxio,
-  useCallMutation,
-} from "@/api";
+import { type ContainerInfo, getMutationErrorMessage, linuxio } from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppDivider from "@/components/ui/AppDivider";
@@ -15,6 +10,8 @@ import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
+import { getContainerTone } from "@/constants/statusColors";
+import useAuth from "@/hooks/useAuth";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import DashboardCard from "@/routes/_authenticated/-dashboard/DashboardCard";
@@ -28,6 +25,8 @@ const TerminalDialog = lazy(() => import("@/components/docker/TerminalDialog"));
 const CONTAINERS_REFETCH_MS = 5000;
 const COLLECTIONS_REFETCH_MS = 30_000;
 
+const containerColor = (state: string) =>
+  `var(--app-palette-${getContainerTone(state)}-main)`;
 const cleanName = (name: string) => name.replace(/^\//, "");
 const getStatusLabel = (status: string, state: string): string => {
   const health = status.match(/\((\w+)\)/)?.[1];
@@ -141,6 +140,8 @@ const DockerStats = () => {
 const DockerContainers = () => {
   const toast = useScopedToast({ label: "Open Docker", to: "/docker" });
   const isSmallUp = useMediaQuery(up("sm"));
+  // Container actions and the terminal are admin-only routes; logs are a read.
+  const { privileged } = useAuth();
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const [menuContainer, setMenuContainer] = useState<{
     id: string;
@@ -158,34 +159,14 @@ const DockerContainers = () => {
     id: string;
     name: string;
   } | null>(null);
-  const resolveStateColor = useCallback((state: string) => {
-    switch (state) {
-      case "running":
-      case "healthy":
-        return "var(--app-palette-success-main)";
-      case "exited":
-      case "unhealthy":
-        return "var(--app-palette-error-main)";
-      case "paused":
-        return "var(--app-palette-warning-main)";
-      case "restarting":
-        return "var(--app-palette-info-main)";
-      default:
-        return "var(--app-palette-text-disabled)";
-    }
-  }, []);
-  const { mutateAsync: startContainer } = useCallMutation(
-    linuxio.docker.start_container,
-  );
-  const { mutateAsync: stopContainer } = useCallMutation(
-    linuxio.docker.stop_container,
-  );
-  const { mutateAsync: restartContainer } = useCallMutation(
-    linuxio.docker.restart_container,
-  );
-  const { mutateAsync: removeContainer } = useCallMutation(
-    linuxio.docker.remove_container,
-  );
+  const { mutateAsync: startContainer } =
+    linuxio.docker.start_container.useMutation();
+  const { mutateAsync: stopContainer } =
+    linuxio.docker.stop_container.useMutation();
+  const { mutateAsync: restartContainer } =
+    linuxio.docker.restart_container.useMutation();
+  const { mutateAsync: removeContainer } =
+    linuxio.docker.remove_container.useMutation();
   const handleContextMenu = useCallback(
     (e: MouseEvent<HTMLElement>, id: string, name: string, state: string) => {
       e.preventDefault();
@@ -287,7 +268,7 @@ const DockerContainers = () => {
         }}
       >
         {containers.map((c) => {
-          const statusColor = resolveStateColor(c.statusLabel);
+          const statusColor = containerColor(c.statusLabel);
           const pendingAction = pendingActions.get(c.id);
           const progressLabel = pendingAction
             ? ACTION_PROGRESS_LABEL[pendingAction]
@@ -360,7 +341,7 @@ const DockerContainers = () => {
                   </div>
                 )}
                 <StatusDot
-                  color={resolveStateColor(c.state)}
+                  color={containerColor(c.state)}
                   size={8}
                   style={{
                     position: "absolute",
@@ -380,7 +361,7 @@ const DockerContainers = () => {
           onClose={handleMenuClose}
           open={menuOpen}
         >
-          {menuContainer?.state !== "running" && (
+          {privileged && menuContainer?.state !== "running" && (
             <AppMenuItem
               onClick={() => handleAction("start")}
               startAdornment={<Icon icon="mdi:play" width={18} />}
@@ -388,7 +369,7 @@ const DockerContainers = () => {
               Start
             </AppMenuItem>
           )}
-          {menuContainer?.state === "running" && (
+          {privileged && menuContainer?.state === "running" && (
             <AppMenuItem
               onClick={() => handleAction("stop")}
               startAdornment={<Icon icon="mdi:stop" width={18} />}
@@ -396,13 +377,15 @@ const DockerContainers = () => {
               Stop
             </AppMenuItem>
           )}
-          <AppMenuItem
-            onClick={() => handleAction("restart")}
-            startAdornment={<Icon icon="mdi:restart" width={18} />}
-          >
-            Restart
-          </AppMenuItem>
-          {menuContainer?.state !== "running" && (
+          {privileged && (
+            <AppMenuItem
+              onClick={() => handleAction("restart")}
+              startAdornment={<Icon icon="mdi:restart" width={18} />}
+            >
+              Restart
+            </AppMenuItem>
+          )}
+          {privileged && menuContainer?.state !== "running" && (
             <AppMenuItem
               onClick={() => handleAction("remove")}
               startAdornment={<Icon icon="mdi:delete-outline" width={18} />}
@@ -410,7 +393,7 @@ const DockerContainers = () => {
               Remove
             </AppMenuItem>
           )}
-          <AppDivider />
+          {privileged && <AppDivider />}
           <AppMenuItem
             onClick={() => {
               if (menuContainer) {
@@ -427,22 +410,24 @@ const DockerContainers = () => {
           >
             Logs
           </AppMenuItem>
-          <AppMenuItem
-            onClick={() => {
-              if (menuContainer) {
-                setDialogContainer({
-                  id: menuContainer.id,
-                  name: menuContainer.name,
-                });
-                setHasLoadedTerminalDialog(true);
-                setTerminalOpen(true);
-              }
-              handleMenuClose();
-            }}
-            startAdornment={<Icon icon="mdi:console" width={18} />}
-          >
-            Terminal
-          </AppMenuItem>
+          {privileged && (
+            <AppMenuItem
+              onClick={() => {
+                if (menuContainer) {
+                  setDialogContainer({
+                    id: menuContainer.id,
+                    name: menuContainer.name,
+                  });
+                  setHasLoadedTerminalDialog(true);
+                  setTerminalOpen(true);
+                }
+                handleMenuClose();
+              }}
+              startAdornment={<Icon icon="mdi:console" width={18} />}
+            >
+              Terminal
+            </AppMenuItem>
+          )}
         </AppMenu>
       </div>
       {dialogContainer && (

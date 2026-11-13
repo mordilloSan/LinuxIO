@@ -4,13 +4,16 @@ import { RoutedTabActions } from "@/components/tabbar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import HeaderActions from "@/components/ui/HeaderActions";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
+import useAuth from "@/hooks/useAuth";
 import { useViewMode } from "@/hooks/useViewMode";
 
-import ComposeStacksPage from "./ComposeStacksPage";
 import { useDockerUpdateCheck } from "../../-hooks/useDockerUpdateCheck";
+import ComposeStacksPage from "./ComposeStacksPage";
 
 const DockerComposePage = () => {
   const { button: checkUpdatesButton } = useDockerUpdateCheck();
+  // Creating a stack ends in running it, which is admin-only.
+  const { privileged } = useAuth();
   const [stacksView, setStacksView] = useViewMode("docker.stacks");
   const [createStackHandler, setCreateStackHandler] = useState<
     (() => void) | null
@@ -22,6 +25,7 @@ const DockerComposePage = () => {
   const actions = (
     <HeaderActions
       create={
+        privileged &&
         createStackHandler && (
           <AppActionIconButton
             ariaLabel="Create Stack"

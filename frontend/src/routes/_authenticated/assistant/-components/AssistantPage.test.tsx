@@ -46,11 +46,16 @@ describe("AssistantPage", () => {
   it("starts at the terminal font size and lets the user resize the chat", async () => {
     window.localStorage.removeItem("linuxio.assistant.fontSize");
     const { container } = render(<AssistantPage agent="claude" />);
+    setState({ status: "ready", sessionId: "s" });
     const root = container.querySelector<HTMLElement>(".assistant")!;
     expect(root.style.getPropertyValue("--app-font-size-body")).toBe("16px");
 
+    // The size lives in the composer's menu, not in the page header.
     await userEvent.click(
-      screen.getByRole("button", { name: /increase font size/i }),
+      await screen.findByRole("button", { name: "Attach" }),
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: /increase font size/i }),
     );
     expect(root.style.getPropertyValue("--app-font-size-body")).toBe("17px");
     expect(window.localStorage.getItem("linuxio.assistant.fontSize")).toBe(
@@ -60,11 +65,42 @@ describe("AssistantPage", () => {
   });
 
   it("connects to the configured agent on mount", () => {
-    render(<AssistantPage agent="claude" />);
+    render(<AssistantPage agent="claude" />, {
+      capabilities: {
+        claudeCodeAvailable: true,
+        assistantClaudeAvailable: true,
+      },
+    });
     expect(connectSpy).toHaveBeenCalledWith("claude");
   });
 
-  it("lists previous chats in a dropdown from the history icon and loads one", async () => {
+  it("says what to install instead of starting an agent that is not ready", () => {
+    render(<AssistantPage agent="claude" />, {
+      capabilities: {
+        claudeCodeAvailable: false,
+        assistantClaudeAvailable: true,
+      },
+    });
+    expect(
+      screen.getByText(/Claude Code is not installed/),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open Capabilities" }));
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      to: "/settings",
+      search: { tab: "capabilities" },
+    });
+    expect(connectSpy).not.toHaveBeenCalled();
+  });
+
+  it("does not start the agent before the capability scan lands", () => {
+    render(<AssistantPage agent="claude" />);
+    expect(
+      screen.getByRole("status", { name: "Checking what is installed" }),
+    ).toBeInTheDocument();
+    expect(connectSpy).not.toHaveBeenCalled();
+  });
+
+  it("lists previous chats on a card from the Chats tab and loads one", async () => {
     const selectSession = vi
       .spyOn(assistantStore, "selectSession")
       .mockResolvedValue();
@@ -79,16 +115,13 @@ describe("AssistantPage", () => {
         { sessionId: "s1", cwd: "/h", title: "Initial greeting" },
       ],
     });
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Previous chats" }),
-    );
-    const menu = await screen.findByRole("menu", { name: "Previous chats" });
-    expect(menu).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: "Chats" }));
+    const card = await screen.findByRole("complementary", { name: "Chats" });
     expect(
-      screen.getByRole("menuitem", { name: "Working session" }),
-    ).toHaveClass("app-menu__item--selected");
+      within(card).getByRole("button", { name: /^Working session/ }),
+    ).toHaveAttribute("aria-current", "true");
     await userEvent.click(
-      screen.getByRole("menuitem", { name: "Initial greeting" }),
+      within(card).getByRole("button", { name: /^Initial greeting/ }),
     );
     expect(selectSession).toHaveBeenCalledWith("s1");
   });
@@ -116,7 +149,7 @@ describe("AssistantPage", () => {
         sessions,
       });
       await userEvent.click(
-        await screen.findByRole("button", { name: "Previous chats" }),
+        await screen.findByRole("button", { name: "Chats" }),
       );
       await userEvent.click(
         await screen.findByRole("button", {
@@ -125,7 +158,6 @@ describe("AssistantPage", () => {
       );
       expect(selectSession).not.toHaveBeenCalled();
       expect(deleteSession).not.toHaveBeenCalled();
-      expect(screen.queryByRole("menu", { name: "Previous chats" })).toBeNull();
       await userEvent.click(
         await screen.findByRole("button", { name: "Delete chat" }),
       );
@@ -145,7 +177,7 @@ describe("AssistantPage", () => {
         sessions,
       });
       await userEvent.click(
-        await screen.findByRole("button", { name: "Previous chats" }),
+        await screen.findByRole("button", { name: "Chats" }),
       );
       await userEvent.click(
         await screen.findByRole("button", { name: "Delete Working session" }),
@@ -165,9 +197,9 @@ describe("AssistantPage", () => {
         sessions,
       });
       await userEvent.click(
-        await screen.findByRole("button", { name: "Previous chats" }),
+        await screen.findByRole("button", { name: "Chats" }),
       );
-      await screen.findByRole("menu", { name: "Previous chats" });
+      await screen.findByRole("complementary", { name: "Chats" });
       expect(screen.queryByRole("button", { name: /^Delete / })).toBeNull();
     });
 
@@ -181,7 +213,7 @@ describe("AssistantPage", () => {
         sessions,
       });
       await userEvent.click(
-        await screen.findByRole("button", { name: "Previous chats" }),
+        await screen.findByRole("button", { name: "Chats" }),
       );
       expect(
         await screen.findByRole("button", { name: "Delete Working session" }),
@@ -210,12 +242,12 @@ describe("AssistantPage", () => {
     setState({ status: "ready", sessionId: "s", canListSessions: true });
     const actions = document.querySelector<HTMLElement>(".assistant__actions");
     expect(actions).not.toBeNull();
+    // New chat is the page's one action; chats and panes are on the dock.
     expect(
-      await within(actions!).findByRole("button", { name: "Previous chats" }),
-    ).toBeInTheDocument();
-    expect(
-      within(actions!).getByRole("button", { name: "New chat" }),
-    ).toBeInTheDocument();
+      (await within(actions!).findAllByRole("button")).map((button) =>
+        button.getAttribute("aria-label"),
+      ),
+    ).toEqual(["New chat"]);
     expect(
       within(screen.getByTestId("header-host")).queryAllByRole("button"),
     ).toHaveLength(0);
@@ -232,7 +264,7 @@ describe("AssistantPage", () => {
         cost: { amount: 0.42, currency: "USD" },
       },
     });
-    const gauge = await screen.findByRole("img", {
+    const gauge = await screen.findByRole("button", {
       name: /12\.3k \/ 200k tokens/,
     });
     expect(gauge.getAttribute("aria-label")).toMatch(/0\.42/);
@@ -251,11 +283,9 @@ describe("AssistantPage", () => {
     expect(
       await screen.findByRole("button", { name: "New chat" }),
     ).toBeDisabled();
-    await userEvent.click(
-      screen.getByRole("button", { name: "Previous chats" }),
-    );
+    await userEvent.click(screen.getByRole("button", { name: "Chats" }));
     expect(
-      await screen.findByRole("menuitem", { name: "Working session" }),
+      await screen.findByRole("button", { name: /^Working session/ }),
     ).toBeDisabled();
   });
 
@@ -271,18 +301,51 @@ describe("AssistantPage", () => {
     expect(newSession).toHaveBeenCalled();
   });
 
-  it("shows an empty state for a new chat until the first block arrives", async () => {
+  it("welcomes a new chat until the first block arrives", async () => {
     render(<AssistantPage agent="claude" />);
     setState({ status: "ready", sessionId: "s", blocks: [] });
-    expect(await screen.findByText("New chat")).toBeInTheDocument();
     expect(
-      screen.getByText("Ask Claude Code anything about this host."),
+      await screen.findByRole("heading", { name: "What should we look at?" }),
     ).toBeInTheDocument();
     setState({
       blocks: [{ kind: "user", id: "1", text: "hi", attachments: [] }],
     });
     expect(await screen.findByText("hi")).toBeInTheDocument();
-    expect(screen.queryByText("New chat")).toBeNull();
+    expect(screen.queryByRole("heading")).toBeNull();
+  });
+
+  it("sends a welcome card's prompt as the first message", async () => {
+    const send = vi.spyOn(assistantStore, "send").mockResolvedValue();
+    render(<AssistantPage agent="claude" />);
+    setState({ status: "ready", sessionId: "s", blocks: [] });
+    await userEvent.click(
+      await screen.findByRole("button", { name: /^Find failed services/ }),
+    );
+    expect(send).toHaveBeenCalledTimes(1);
+    const [blocks, display] = send.mock.calls[0];
+    expect(blocks).toEqual([{ type: "text", text: display.text }]);
+    expect(display).toEqual({
+      text: expect.stringMatching(/systemd units that have failed/),
+      attachments: [],
+    });
+  });
+
+  it("hands a shell command from an answer to the terminal, typed not run", async () => {
+    render(<AssistantPage agent="claude" />);
+    setState({
+      status: "ready",
+      sessionId: "s",
+      blocks: [
+        { kind: "agent", id: "1", text: "```bash\nsudo virsh list --all\n```" },
+      ],
+    });
+    await userEvent.click(
+      await screen.findByRole("button", { name: "Open in terminal" }),
+    );
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      to: "/terminal",
+      state: { terminalCommand: "sudo virsh list --all" },
+    });
   });
 
   it("renders transcript blocks, a permission card, and answers it", async () => {
@@ -313,10 +376,13 @@ describe("AssistantPage", () => {
       },
     });
     expect(await screen.findByText("list files")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: /1 tool call/ }));
+    // The waiting call is shown by the permission card, not the transcript.
     expect(
-      screen.getByText("ls -la", { selector: ".assistant-tool__detail" }),
+      screen.getByText("ls -la", {
+        selector: ".assistant__permission-command",
+      }),
     ).toBeInTheDocument();
+    expect(document.querySelector(".assistant-tool")).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "Allow once" }));
     expect(resolve).toHaveBeenCalledWith({
       outcome: { outcome: "selected", optionId: "ok" },
@@ -371,7 +437,9 @@ describe("AssistantPage", () => {
   it("names the agent by its label while starting", async () => {
     render(<AssistantPage agent="claude" />);
     setState({ status: "connecting" });
-    expect(await screen.findByText(/Starting Claude Code/)).toBeInTheDocument();
+    expect(
+      await screen.findByRole("status", { name: "Starting Claude Code" }),
+    ).toBeInTheDocument();
   });
 
   it("sends the composer text and disables it while running", async () => {
@@ -426,9 +494,7 @@ describe("AssistantPage", () => {
         { sessionId: "s1", cwd: "/h", title: "Initial greeting" },
       ],
     });
-    await userEvent.click(
-      await screen.findByRole("button", { name: "Previous chats" }),
-    );
+    await userEvent.click(await screen.findByRole("button", { name: "Chats" }));
     await userEvent.click(
       await screen.findByRole("button", { name: "Delete Initial greeting" }),
     );

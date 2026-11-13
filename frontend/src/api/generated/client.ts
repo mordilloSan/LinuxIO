@@ -2,82 +2,178 @@
 
 import { defineCall, defineCallWithRequest } from "../call-react-query";
 import type { TypedAPI } from "../endpoint-types";
-import { createTaskEndpoint } from "../task-react-query";
+import { defineMutation } from "../mutation-react-query";
 
 const linuxio = {
   accounts: {
-    change_password: defineCallWithRequest("accounts.change_password"),
-    create_group: defineCallWithRequest("accounts.create_group"),
-    create_user: defineCallWithRequest("accounts.create_user"),
-    delete_group: defineCallWithRequest("accounts.delete_group"),
-    delete_user: defineCallWithRequest("accounts.delete_user"),
+    change_password: defineMutation("accounts", "change_password", {
+      kind: "object",
+    }),
+    create_group: defineMutation("accounts", "create_group", {
+      kind: "object",
+    }),
+    create_user: defineMutation("accounts", "create_user", { kind: "object" }),
+    delete_group: defineMutation("accounts", "delete_group", {
+      kind: "field",
+      field: "groupName",
+    }),
+    delete_user: defineMutation("accounts", "delete_user", {
+      kind: "field",
+      field: "username",
+    }),
     get_user_details: defineCallWithRequest("accounts.get_user_details"),
     list_groups: defineCall("accounts.list_groups"),
     list_shells: defineCall("accounts.list_shells"),
     list_user_logins: defineCallWithRequest("accounts.list_user_logins"),
     list_users: defineCall("accounts.list_users"),
-    lock_user: defineCallWithRequest("accounts.lock_user"),
-    modify_group_members: defineCallWithRequest(
-      "accounts.modify_group_members",
-    ),
-    modify_user: defineCallWithRequest("accounts.modify_user"),
-    terminate_session: defineCallWithRequest("accounts.terminate_session"),
-    unlock_user: defineCallWithRequest("accounts.unlock_user"),
+    lock_user: defineMutation("accounts", "lock_user", {
+      kind: "field",
+      field: "username",
+    }),
+    modify_group_members: defineMutation("accounts", "modify_group_members", {
+      kind: "object",
+    }),
+    modify_user: defineMutation("accounts", "modify_user", { kind: "object" }),
+    terminate_session: defineMutation("accounts", "terminate_session", {
+      kind: "object",
+    }),
+    unlock_user: defineMutation("accounts", "unlock_user", {
+      kind: "field",
+      field: "username",
+    }),
   },
   alerts: {
-    dismiss: defineCallWithRequest("alerts.dismiss"),
+    dismiss: defineMutation("alerts", "dismiss", {
+      kind: "field",
+      field: "id",
+    }),
     get_notifications: defineCall("alerts.get_notifications"),
     list: defineCall("alerts.list"),
-    mark_all_seen: defineCall("alerts.mark_all_seen"),
-    mark_seen: defineCallWithRequest("alerts.mark_seen"),
-    set_notifications: defineCallWithRequest("alerts.set_notifications"),
-    test_notifications: defineCall("alerts.test_notifications"),
+    mark_all_seen: defineMutation("alerts", "mark_all_seen", { kind: "none" }),
+    mark_seen: defineMutation("alerts", "mark_seen", {
+      kind: "field",
+      field: "ids",
+    }),
+    set_notifications: defineMutation("alerts", "set_notifications", {
+      kind: "object",
+    }),
+    test_notifications: defineMutation("alerts", "test_notifications", {
+      kind: "none",
+    }),
+  },
+  assistant: {
+    add_marketplace: defineMutation("assistant", "add_marketplace", {
+      kind: "object",
+    }),
+    install_plugin: defineMutation("assistant", "install_plugin", {
+      kind: "object",
+    }),
+    list_plugins: defineCallWithRequest("assistant.list_plugins"),
+    remove_marketplace: defineMutation("assistant", "remove_marketplace", {
+      kind: "object",
+    }),
+    search_plugins: defineCallWithRequest("assistant.search_plugins"),
+    set_plugin_enabled: defineMutation("assistant", "set_plugin_enabled", {
+      kind: "object",
+    }),
+    uninstall_plugin: defineMutation("assistant", "uninstall_plugin", {
+      kind: "object",
+    }),
+    update_marketplace: defineMutation("assistant", "update_marketplace", {
+      kind: "object",
+    }),
   },
   config: {
     get: defineCall("config.get"),
     get_ui: defineCall("config.get_ui"),
-    set: defineCallWithRequest("config.set"),
-    set_ui: defineCallWithRequest("config.set_ui"),
+    set: defineMutation("config", "set", { kind: "object" }),
+    set_ui: defineMutation("config", "set_ui", { kind: "object" }),
   },
   control: {
-    logoff: defineCallWithRequest("control.logoff"),
-    power_off: defineCall("control.power_off"),
-    reboot: defineCall("control.reboot"),
+    power_off: defineMutation("control", "power_off", { kind: "none" }),
+    reboot: defineMutation("control", "reboot", { kind: "none" }),
     version: defineCall("control.version"),
   },
   datetime: {
     get_ntp_servers: defineCall("datetime.get_ntp_servers"),
     get_ntp_status: defineCall("datetime.get_ntp_status"),
     get_timezone: defineCall("datetime.get_timezone"),
-    set_ntp: defineCallWithRequest("datetime.set_ntp"),
-    set_ntp_servers: defineCallWithRequest("datetime.set_ntp_servers"),
-    set_server_time: defineCallWithRequest("datetime.set_server_time"),
-    set_timezone: defineCallWithRequest("datetime.set_timezone"),
+    set_ntp: defineMutation("datetime", "set_ntp", {
+      kind: "field",
+      field: "enabled",
+    }),
+    set_ntp_servers: defineMutation("datetime", "set_ntp_servers", {
+      kind: "field",
+      field: "servers",
+    }),
+    set_server_time: defineMutation("datetime", "set_server_time", {
+      kind: "field",
+      field: "isoTime",
+    }),
+    set_timezone: defineMutation("datetime", "set_timezone", {
+      kind: "field",
+      field: "timezone",
+    }),
   },
   docker: {
-    apply_daemon_storage: createTaskEndpoint("docker", "apply_daemon_storage", {
+    apply_daemon_storage: defineMutation("docker", "apply_daemon_storage", {
       kind: "object",
     }),
     check_container_update: defineCallWithRequest(
       "docker.check_container_update",
     ),
     check_updates: defineCall("docker.check_updates"),
-    clear_icon_cache: defineCall("docker.clear_icon_cache"),
-    compose: createTaskEndpoint("docker", "compose", { kind: "object" }),
-    compose_down: defineCallWithRequest("docker.compose_down"),
-    compose_restart: defineCallWithRequest("docker.compose_restart"),
-    compose_stop: defineCallWithRequest("docker.compose_stop"),
-    compose_up: defineCallWithRequest("docker.compose_up"),
-    connect_network: defineCallWithRequest("docker.connect_network"),
-    create_container: defineCallWithRequest("docker.create_container"),
-    create_network: defineCallWithRequest("docker.create_network"),
-    create_volume: defineCallWithRequest("docker.create_volume"),
-    delete_image: defineCallWithRequest("docker.delete_image"),
-    delete_network: defineCallWithRequest("docker.delete_network"),
-    delete_stack: defineCallWithRequest("docker.delete_stack"),
-    delete_volume: defineCallWithRequest("docker.delete_volume"),
-    disconnect_network: defineCallWithRequest("docker.disconnect_network"),
-    edit_container: defineCallWithRequest("docker.edit_container"),
+    clear_icon_cache: defineMutation("docker", "clear_icon_cache", {
+      kind: "none",
+    }),
+    compose: defineMutation("docker", "compose", { kind: "object" }),
+    compose_down: defineMutation("docker", "compose_down", {
+      kind: "field",
+      field: "projectName",
+    }),
+    compose_restart: defineMutation("docker", "compose_restart", {
+      kind: "field",
+      field: "projectName",
+    }),
+    compose_stop: defineMutation("docker", "compose_stop", {
+      kind: "field",
+      field: "projectName",
+    }),
+    compose_up: defineMutation("docker", "compose_up", {
+      kind: "field",
+      field: "projectName",
+    }),
+    connect_network: defineMutation("docker", "connect_network", {
+      kind: "object",
+    }),
+    create_container: defineMutation("docker", "create_container", {
+      kind: "object",
+    }),
+    create_network: defineMutation("docker", "create_network", {
+      kind: "object",
+    }),
+    create_volume: defineMutation("docker", "create_volume", {
+      kind: "object",
+    }),
+    delete_image: defineMutation("docker", "delete_image", {
+      kind: "field",
+      field: "imageId",
+    }),
+    delete_network: defineMutation("docker", "delete_network", {
+      kind: "field",
+      field: "id",
+    }),
+    delete_stack: defineMutation("docker", "delete_stack", { kind: "object" }),
+    delete_volume: defineMutation("docker", "delete_volume", {
+      kind: "field",
+      field: "name",
+    }),
+    disconnect_network: defineMutation("docker", "disconnect_network", {
+      kind: "object",
+    }),
+    edit_container: defineMutation("docker", "edit_container", {
+      kind: "object",
+    }),
     get_compose_file_path: defineCallWithRequest(
       "docker.get_compose_file_path",
     ),
@@ -90,27 +186,56 @@ const linuxio = {
     get_icon_info: defineCallWithRequest("docker.get_icon_info"),
     get_icon_uri: defineCallWithRequest("docker.get_icon_uri"),
     inspect_container: defineCallWithRequest("docker.inspect_container"),
-    kill_container: defineCallWithRequest("docker.kill_container"),
+    kill_container: defineMutation("docker", "kill_container", {
+      kind: "field",
+      field: "containerId",
+    }),
     list_compose_projects: defineCall("docker.list_compose_projects"),
     list_containers: defineCall("docker.list_containers"),
     list_images: defineCall("docker.list_images"),
     list_networks: defineCall("docker.list_networks"),
     list_volumes: defineCall("docker.list_volumes"),
-    pause_container: defineCallWithRequest("docker.pause_container"),
-    remove_container: defineCallWithRequest("docker.remove_container"),
-    restart_container: defineCallWithRequest("docker.restart_container"),
-    set_container_auto_update: defineCallWithRequest(
-      "docker.set_container_auto_update",
-    ),
-    set_daemon_config: defineCallWithRequest("docker.set_daemon_config"),
-    start_all_stopped: defineCall("docker.start_all_stopped"),
-    start_container: defineCallWithRequest("docker.start_container"),
-    stop_all_running: defineCall("docker.stop_all_running"),
-    stop_container: defineCallWithRequest("docker.stop_container"),
-    system_prune: defineCallWithRequest("docker.system_prune"),
-    unpause_container: defineCallWithRequest("docker.unpause_container"),
-    update_container: createTaskEndpoint("docker", "update_container", {
+    pause_container: defineMutation("docker", "pause_container", {
+      kind: "field",
+      field: "containerId",
+    }),
+    remove_container: defineMutation("docker", "remove_container", {
       kind: "object",
+    }),
+    restart_container: defineMutation("docker", "restart_container", {
+      kind: "field",
+      field: "containerId",
+    }),
+    set_container_auto_update: defineMutation(
+      "docker",
+      "set_container_auto_update",
+      { kind: "object" },
+    ),
+    set_daemon_config: defineMutation("docker", "set_daemon_config", {
+      kind: "object",
+    }),
+    start_all_stopped: defineMutation("docker", "start_all_stopped", {
+      kind: "none",
+    }),
+    start_container: defineMutation("docker", "start_container", {
+      kind: "field",
+      field: "containerId",
+    }),
+    stop_all_running: defineMutation("docker", "stop_all_running", {
+      kind: "none",
+    }),
+    stop_container: defineMutation("docker", "stop_container", {
+      kind: "field",
+      field: "containerId",
+    }),
+    system_prune: defineMutation("docker", "system_prune", { kind: "object" }),
+    unpause_container: defineMutation("docker", "unpause_container", {
+      kind: "field",
+      field: "containerId",
+    }),
+    update_container: defineMutation("docker", "update_container", {
+      kind: "field",
+      field: "containerId",
     }),
     validate_compose: defineCallWithRequest("docker.validate_compose"),
     validate_stack_directory: defineCallWithRequest(
@@ -118,62 +243,66 @@ const linuxio = {
     ),
   },
   filebrowser: {
-    archive: createTaskEndpoint("filebrowser", "archive", { kind: "object" }),
-    chmod_batch: createTaskEndpoint("filebrowser", "chmod_batch", {
+    archive: defineMutation("filebrowser", "archive", { kind: "object" }),
+    chmod_batch: defineMutation("filebrowser", "chmod_batch", {
       kind: "object",
     }),
-    compress: createTaskEndpoint("filebrowser", "compress", { kind: "object" }),
-    copy_batch: createTaskEndpoint("filebrowser", "copy_batch", {
-      kind: "object",
-    }),
-    delete_batch: createTaskEndpoint("filebrowser", "delete_batch", {
+    compress: defineMutation("filebrowser", "compress", { kind: "object" }),
+    copy_batch: defineMutation("filebrowser", "copy_batch", { kind: "object" }),
+    delete_batch: defineMutation("filebrowser", "delete_batch", {
       kind: "field",
       field: "paths",
     }),
     dir_size: defineCallWithRequest("filebrowser.dir_size"),
     directory_children: defineCallWithRequest("filebrowser.directory_children"),
     exists_batch: defineCallWithRequest("filebrowser.exists_batch"),
-    extract: createTaskEndpoint("filebrowser", "extract", { kind: "object" }),
-    index: createTaskEndpoint("filebrowser", "index", { kind: "object" }),
+    extract: defineMutation("filebrowser", "extract", { kind: "object" }),
+    index: defineMutation("filebrowser", "index", { kind: "object" }),
     list_directory: defineCallWithRequest("filebrowser.list_directory"),
-    move_batch: createTaskEndpoint("filebrowser", "move_batch", {
-      kind: "object",
-    }),
+    move_batch: defineMutation("filebrowser", "move_batch", { kind: "object" }),
     read_text: defineCallWithRequest("filebrowser.read_text"),
-    resource_patch: createTaskEndpoint("filebrowser", "resource_patch", {
+    resource_patch: defineMutation("filebrowser", "resource_patch", {
       kind: "object",
     }),
-    resource_post: defineCallWithRequest("filebrowser.resource_post"),
+    resource_post: defineMutation("filebrowser", "resource_post", {
+      kind: "field",
+      field: "path",
+    }),
     resource_stat: defineCallWithRequest("filebrowser.resource_stat"),
     search: defineCallWithRequest("filebrowser.search"),
     subfolders: defineCallWithRequest("filebrowser.subfolders"),
-    trash_batch: createTaskEndpoint("filebrowser", "trash_batch", {
+    trash_batch: defineMutation("filebrowser", "trash_batch", {
       kind: "field",
       field: "paths",
     }),
     trash_list: defineCall("filebrowser.trash_list"),
-    trash_purge: createTaskEndpoint("filebrowser", "trash_purge", {
+    trash_purge: defineMutation("filebrowser", "trash_purge", {
       kind: "field",
       field: "paths",
     }),
-    trash_restore: createTaskEndpoint("filebrowser", "trash_restore", {
-      kind: "field",
-      field: "paths",
+    trash_restore: defineMutation("filebrowser", "trash_restore", {
+      kind: "object",
     }),
-    upload: createTaskEndpoint("filebrowser", "upload", { kind: "object" }),
-    upload_batch: createTaskEndpoint("filebrowser", "upload_batch", {
+    upload: defineMutation("filebrowser", "upload", { kind: "object" }),
+    upload_batch: defineMutation("filebrowser", "upload_batch", {
       kind: "object",
     }),
     users_groups: defineCall("filebrowser.users_groups"),
   },
   hostname: {
-    set_hostname: defineCallWithRequest("hostname.set_hostname"),
+    set_hostname: defineMutation("hostname", "set_hostname", {
+      kind: "field",
+      field: "hostname",
+    }),
   },
   indexer: {
     get_config: defineCall("indexer.get_config"),
     get_status: defineCall("indexer.get_status"),
-    set_config: defineCallWithRequest("indexer.set_config"),
-    set_timer_interval: defineCallWithRequest("indexer.set_timer_interval"),
+    set_config: defineMutation("indexer", "set_config", { kind: "object" }),
+    set_timer_interval: defineMutation("indexer", "set_timer_interval", {
+      kind: "field",
+      field: "interval",
+    }),
   },
   logging: {
     get_debug: defineCall("logging.get_debug"),
@@ -198,158 +327,246 @@ const linuxio = {
     ),
     get_processes: defineCall("monitoring.get_processes"),
     get_programs: defineCall("monitoring.get_programs"),
+    get_sensor_history: defineCallWithRequest("monitoring.get_sensor_history"),
     get_status: defineCall("monitoring.get_status"),
-    maintain_database: defineCall("monitoring.maintain_database"),
-    refresh_smart: defineCall("monitoring.refresh_smart"),
-    restart: defineCall("monitoring.restart"),
-    set_config: defineCallWithRequest("monitoring.set_config"),
+    maintain_database: defineMutation("monitoring", "maintain_database", {
+      kind: "none",
+    }),
+    refresh_smart: defineMutation("monitoring", "refresh_smart", {
+      kind: "none",
+    }),
+    restart: defineMutation("monitoring", "restart", { kind: "none" }),
+    set_config: defineMutation("monitoring", "set_config", { kind: "object" }),
   },
   network: {
     confirm_bridge_handoff: defineCallWithRequest(
       "network.confirm_bridge_handoff",
     ),
-    create_bridge: defineCallWithRequest("network.create_bridge"),
-    disable_connection: defineCallWithRequest("network.disable_connection"),
-    enable_connection: defineCallWithRequest("network.enable_connection"),
+    create_bridge: defineMutation("network", "create_bridge", {
+      kind: "object",
+    }),
+    disable_connection: defineMutation("network", "disable_connection", {
+      kind: "field",
+      field: "iface",
+    }),
+    enable_connection: defineMutation("network", "enable_connection", {
+      kind: "field",
+      field: "iface",
+    }),
     get_bridge_handoff: defineCallWithRequest("network.get_bridge_handoff"),
     get_bridge_options: defineCall("network.get_bridge_options"),
     get_network_info: defineCall("network.get_network_info"),
     revert_bridge_handoff: defineCallWithRequest(
       "network.revert_bridge_handoff",
     ),
-    set_ipv4: defineCallWithRequest("network.set_ipv4"),
-    set_ipv4_manual: defineCallWithRequest("network.set_ipv4_manual"),
-    set_ipv6: defineCallWithRequest("network.set_ipv6"),
-    set_mtu: defineCallWithRequest("network.set_mtu"),
-    set_optional: defineCallWithRequest("network.set_optional"),
+    set_ipv4: defineMutation("network", "set_ipv4", { kind: "object" }),
+    set_ipv4_manual: defineMutation("network", "set_ipv4_manual", {
+      kind: "object",
+    }),
+    set_ipv6: defineMutation("network", "set_ipv6", { kind: "object" }),
+    set_mtu: defineMutation("network", "set_mtu", { kind: "object" }),
+    set_optional: defineMutation("network", "set_optional", { kind: "object" }),
     start_bridge_handoff: defineCallWithRequest("network.start_bridge_handoff"),
   },
   packages: {
-    update: createTaskEndpoint("packages", "update", {
+    update: defineMutation("packages", "update", {
       kind: "field",
       field: "packageIds",
     }),
   },
   power: {
-    disable: defineCall("power.disable"),
+    disable: defineMutation("power", "disable", { kind: "none" }),
     get_status: defineCall("power.get_status"),
-    set_profile: defineCallWithRequest("power.set_profile"),
-    start: defineCall("power.start"),
+    set_profile: defineMutation("power", "set_profile", {
+      kind: "field",
+      field: "profile",
+    }),
+    start: defineMutation("power", "start", { kind: "none" }),
   },
   schedules: {
-    create: defineCallWithRequest("schedules.create"),
-    delete: defineCallWithRequest("schedules.delete"),
-    disable: defineCallWithRequest("schedules.disable"),
-    enable: defineCallWithRequest("schedules.enable"),
+    create: defineMutation("schedules", "create", { kind: "object" }),
+    delete: defineMutation("schedules", "delete", {
+      kind: "field",
+      field: "id",
+    }),
+    disable: defineMutation("schedules", "disable", {
+      kind: "field",
+      field: "id",
+    }),
+    enable: defineMutation("schedules", "enable", {
+      kind: "field",
+      field: "id",
+    }),
     get: defineCallWithRequest("schedules.get"),
     list: defineCall("schedules.list"),
-    run_now: defineCallWithRequest("schedules.run_now"),
-    stop: defineCallWithRequest("schedules.stop"),
-    update: defineCallWithRequest("schedules.update"),
+    run_now: defineMutation("schedules", "run_now", {
+      kind: "field",
+      field: "id",
+    }),
+    stop: defineMutation("schedules", "stop", { kind: "object" }),
+    update: defineMutation("schedules", "update", { kind: "object" }),
   },
   shares: {
-    create_nfs_share: defineCallWithRequest("shares.create_nfs_share"),
-    create_samba_share: defineCallWithRequest("shares.create_samba_share"),
-    delete_nfs_share: defineCallWithRequest("shares.delete_nfs_share"),
-    delete_samba_share: defineCallWithRequest("shares.delete_samba_share"),
+    create_nfs_share: defineMutation("shares", "create_nfs_share", {
+      kind: "object",
+    }),
+    create_samba_share: defineMutation("shares", "create_samba_share", {
+      kind: "object",
+    }),
+    delete_nfs_share: defineMutation("shares", "delete_nfs_share", {
+      kind: "field",
+      field: "path",
+    }),
+    delete_samba_share: defineMutation("shares", "delete_samba_share", {
+      kind: "field",
+      field: "name",
+    }),
     get_rsync: defineCall("shares.get_rsync"),
     get_rsync_ssh: defineCallWithRequest("shares.get_rsync_ssh"),
     list_nfs_shares: defineCall("shares.list_nfs_shares"),
     list_samba_shares: defineCall("shares.list_samba_shares"),
-    save_rsync: defineCallWithRequest("shares.save_rsync"),
-    stop_rsync: defineCall("shares.stop_rsync"),
-    update_nfs_share: defineCallWithRequest("shares.update_nfs_share"),
-    update_samba_share: defineCallWithRequest("shares.update_samba_share"),
+    save_rsync: defineMutation("shares", "save_rsync", { kind: "object" }),
+    stop_rsync: defineMutation("shares", "stop_rsync", { kind: "none" }),
+    update_nfs_share: defineMutation("shares", "update_nfs_share", {
+      kind: "object",
+    }),
+    update_samba_share: defineMutation("shares", "update_samba_share", {
+      kind: "object",
+    }),
   },
   storage: {
-    btrfs_balance: createTaskEndpoint("storage", "btrfs_balance", {
+    btrfs_balance: defineMutation("storage", "btrfs_balance", {
       kind: "object",
     }),
-    btrfs_balance_cancel: defineCallWithRequest("storage.btrfs_balance_cancel"),
-    btrfs_device_add: defineCallWithRequest("storage.btrfs_device_add"),
-    btrfs_device_grow: defineCallWithRequest("storage.btrfs_device_grow"),
-    btrfs_device_remove: createTaskEndpoint("storage", "btrfs_device_remove", {
-      kind: "object",
-    }),
-    btrfs_device_replace: createTaskEndpoint(
-      "storage",
-      "btrfs_device_replace",
-      { kind: "object" },
-    ),
-    btrfs_list: defineCall("storage.btrfs_list"),
-    btrfs_pool_create: createTaskEndpoint("storage", "btrfs_pool_create", {
-      kind: "object",
-    }),
-    btrfs_pool_destroy: defineCallWithRequest("storage.btrfs_pool_destroy"),
-    btrfs_pool_mount: defineCallWithRequest("storage.btrfs_pool_mount"),
-    btrfs_pools_offline: defineCall("storage.btrfs_pools_offline"),
-    btrfs_qgroup_limit: defineCallWithRequest("storage.btrfs_qgroup_limit"),
-    btrfs_replication_job_delete: defineCallWithRequest(
-      "storage.btrfs_replication_job_delete",
-    ),
-    btrfs_replication_job_set: defineCallWithRequest(
-      "storage.btrfs_replication_job_set",
-    ),
-    btrfs_replication_jobs: defineCall("storage.btrfs_replication_jobs"),
-    btrfs_replication_run: createTaskEndpoint(
-      "storage",
-      "btrfs_replication_run",
-      { kind: "field", field: "id" },
-    ),
-    btrfs_replication_ssh_key: defineCall("storage.btrfs_replication_ssh_key"),
-    btrfs_replication_ssh_trust: defineCallWithRequest(
-      "storage.btrfs_replication_ssh_trust",
-    ),
-    btrfs_scrub_cancel: defineCallWithRequest("storage.btrfs_scrub_cancel"),
-    btrfs_scrub_start: createTaskEndpoint("storage", "btrfs_scrub_start", {
+    btrfs_balance_cancel: defineMutation("storage", "btrfs_balance_cancel", {
       kind: "field",
       field: "uuid",
     }),
-    btrfs_set_compression: defineCallWithRequest(
-      "storage.btrfs_set_compression",
+    btrfs_device_add: defineMutation("storage", "btrfs_device_add", {
+      kind: "object",
+    }),
+    btrfs_device_grow: defineMutation("storage", "btrfs_device_grow", {
+      kind: "object",
+    }),
+    btrfs_device_remove: defineMutation("storage", "btrfs_device_remove", {
+      kind: "object",
+    }),
+    btrfs_device_replace: defineMutation("storage", "btrfs_device_replace", {
+      kind: "object",
+    }),
+    btrfs_list: defineCall("storage.btrfs_list"),
+    btrfs_pool_create: defineMutation("storage", "btrfs_pool_create", {
+      kind: "object",
+    }),
+    btrfs_pool_destroy: defineMutation("storage", "btrfs_pool_destroy", {
+      kind: "field",
+      field: "uuid",
+    }),
+    btrfs_pool_mount: defineMutation("storage", "btrfs_pool_mount", {
+      kind: "object",
+    }),
+    btrfs_pools_offline: defineCall("storage.btrfs_pools_offline"),
+    btrfs_qgroup_limit: defineMutation("storage", "btrfs_qgroup_limit", {
+      kind: "object",
+    }),
+    btrfs_replication_job_delete: defineMutation(
+      "storage",
+      "btrfs_replication_job_delete",
+      { kind: "field", field: "id" },
     ),
-    btrfs_set_label: defineCallWithRequest("storage.btrfs_set_label"),
-    btrfs_set_quotas: defineCallWithRequest("storage.btrfs_set_quotas"),
+    btrfs_replication_job_set: defineMutation(
+      "storage",
+      "btrfs_replication_job_set",
+      { kind: "field", field: "job" },
+    ),
+    btrfs_replication_jobs: defineCall("storage.btrfs_replication_jobs"),
+    btrfs_replication_run: defineMutation("storage", "btrfs_replication_run", {
+      kind: "field",
+      field: "id",
+    }),
+    btrfs_replication_ssh_key: defineCall("storage.btrfs_replication_ssh_key"),
+    btrfs_replication_ssh_trust: defineMutation(
+      "storage",
+      "btrfs_replication_ssh_trust",
+      { kind: "object" },
+    ),
+    btrfs_scrub_cancel: defineMutation("storage", "btrfs_scrub_cancel", {
+      kind: "field",
+      field: "uuid",
+    }),
+    btrfs_scrub_start: defineMutation("storage", "btrfs_scrub_start", {
+      kind: "field",
+      field: "uuid",
+    }),
+    btrfs_set_compression: defineMutation("storage", "btrfs_set_compression", {
+      kind: "object",
+    }),
+    btrfs_set_label: defineMutation("storage", "btrfs_set_label", {
+      kind: "object",
+    }),
+    btrfs_set_quotas: defineMutation("storage", "btrfs_set_quotas", {
+      kind: "object",
+    }),
     btrfs_settings: defineCallWithRequest("storage.btrfs_settings"),
-    btrfs_snapshot_create: defineCallWithRequest(
-      "storage.btrfs_snapshot_create",
-    ),
-    btrfs_snapshot_delete: defineCallWithRequest(
-      "storage.btrfs_snapshot_delete",
-    ),
-    btrfs_snapshot_rollback: createTaskEndpoint(
+    btrfs_snapshot_create: defineMutation("storage", "btrfs_snapshot_create", {
+      kind: "object",
+    }),
+    btrfs_snapshot_delete: defineMutation("storage", "btrfs_snapshot_delete", {
+      kind: "object",
+    }),
+    btrfs_snapshot_rollback: defineMutation(
       "storage",
       "btrfs_snapshot_rollback",
       { kind: "object" },
     ),
-    btrfs_snapshot_rule_delete: defineCallWithRequest(
-      "storage.btrfs_snapshot_rule_delete",
+    btrfs_snapshot_rule_delete: defineMutation(
+      "storage",
+      "btrfs_snapshot_rule_delete",
+      { kind: "object" },
     ),
-    btrfs_snapshot_rule_set: defineCallWithRequest(
-      "storage.btrfs_snapshot_rule_set",
+    btrfs_snapshot_rule_set: defineMutation(
+      "storage",
+      "btrfs_snapshot_rule_set",
+      { kind: "field", field: "rule" },
     ),
     btrfs_snapshot_rules: defineCall("storage.btrfs_snapshot_rules"),
-    btrfs_snapshot_run_now: defineCall("storage.btrfs_snapshot_run_now"),
+    btrfs_snapshot_run_now: defineMutation(
+      "storage",
+      "btrfs_snapshot_run_now",
+      { kind: "none" },
+    ),
     btrfs_snapshots: defineCallWithRequest("storage.btrfs_snapshots"),
-    btrfs_subvolume_create: defineCallWithRequest(
-      "storage.btrfs_subvolume_create",
+    btrfs_subvolume_create: defineMutation(
+      "storage",
+      "btrfs_subvolume_create",
+      { kind: "object" },
     ),
-    btrfs_subvolume_delete: defineCallWithRequest(
-      "storage.btrfs_subvolume_delete",
+    btrfs_subvolume_delete: defineMutation(
+      "storage",
+      "btrfs_subvolume_delete",
+      { kind: "object" },
     ),
-    btrfs_subvolume_set_compression: defineCallWithRequest(
-      "storage.btrfs_subvolume_set_compression",
+    btrfs_subvolume_set_compression: defineMutation(
+      "storage",
+      "btrfs_subvolume_set_compression",
+      { kind: "object" },
     ),
-    btrfs_subvolume_set_default: defineCallWithRequest(
-      "storage.btrfs_subvolume_set_default",
+    btrfs_subvolume_set_default: defineMutation(
+      "storage",
+      "btrfs_subvolume_set_default",
+      { kind: "object" },
     ),
-    btrfs_subvolume_set_readonly: defineCallWithRequest(
-      "storage.btrfs_subvolume_set_readonly",
+    btrfs_subvolume_set_readonly: defineMutation(
+      "storage",
+      "btrfs_subvolume_set_readonly",
+      { kind: "object" },
     ),
     btrfs_subvolumes: defineCallWithRequest("storage.btrfs_subvolumes"),
-    create_lv: defineCallWithRequest("storage.create_lv"),
-    delete_lv: defineCallWithRequest("storage.delete_lv"),
-    disk_initialize: defineCallWithRequest("storage.disk_initialize"),
+    create_lv: defineMutation("storage", "create_lv", { kind: "object" }),
+    delete_lv: defineMutation("storage", "delete_lv", { kind: "object" }),
+    disk_initialize: defineMutation("storage", "disk_initialize", {
+      kind: "object",
+    }),
     get_btrfs_maintenance: defineCall("storage.get_btrfs_maintenance"),
     get_drive_info: defineCall("storage.get_drive_info"),
     get_topology: defineCall("storage.get_topology"),
@@ -361,40 +578,60 @@ const linuxio = {
     list_pvs: defineCall("storage.list_pvs"),
     list_vgs: defineCall("storage.list_vgs"),
     md_list: defineCall("storage.md_list"),
-    md_member_add: defineCallWithRequest("storage.md_member_add"),
-    md_member_fail: defineCallWithRequest("storage.md_member_fail"),
-    md_member_remove: defineCallWithRequest("storage.md_member_remove"),
-    md_member_replace: defineCallWithRequest("storage.md_member_replace"),
-    md_sync_action: defineCallWithRequest("storage.md_sync_action"),
-    mount_cifs: defineCallWithRequest("storage.mount_cifs"),
-    mount_nfs: defineCallWithRequest("storage.mount_nfs"),
-    partition_create: createTaskEndpoint("storage", "partition_create", {
+    md_member_add: defineMutation("storage", "md_member_add", {
       kind: "object",
     }),
-    partition_delete: defineCallWithRequest("storage.partition_delete"),
-    partition_format: createTaskEndpoint("storage", "partition_format", {
+    md_member_fail: defineMutation("storage", "md_member_fail", {
       kind: "object",
     }),
-    partition_mount: defineCallWithRequest("storage.partition_mount"),
-    remount_cifs: defineCallWithRequest("storage.remount_cifs"),
-    remount_nfs: defineCallWithRequest("storage.remount_nfs"),
-    resize_lv: defineCallWithRequest("storage.resize_lv"),
-    run_smart_test: createTaskEndpoint("storage", "run_smart_test", {
+    md_member_remove: defineMutation("storage", "md_member_remove", {
       kind: "object",
     }),
-    set_btrfs_maintenance: defineCallWithRequest(
-      "storage.set_btrfs_maintenance",
-    ),
-    unmount_cifs: defineCallWithRequest("storage.unmount_cifs"),
-    unmount_filesystem: defineCallWithRequest("storage.unmount_filesystem"),
-    unmount_nfs: defineCallWithRequest("storage.unmount_nfs"),
+    md_member_replace: defineMutation("storage", "md_member_replace", {
+      kind: "object",
+    }),
+    md_sync_action: defineMutation("storage", "md_sync_action", {
+      kind: "object",
+    }),
+    mount_cifs: defineMutation("storage", "mount_cifs", { kind: "object" }),
+    mount_nfs: defineMutation("storage", "mount_nfs", { kind: "object" }),
+    partition_create: defineMutation("storage", "partition_create", {
+      kind: "object",
+    }),
+    partition_delete: defineMutation("storage", "partition_delete", {
+      kind: "object",
+    }),
+    partition_format: defineMutation("storage", "partition_format", {
+      kind: "object",
+    }),
+    partition_mount: defineMutation("storage", "partition_mount", {
+      kind: "object",
+    }),
+    remount_cifs: defineMutation("storage", "remount_cifs", { kind: "object" }),
+    remount_nfs: defineMutation("storage", "remount_nfs", { kind: "object" }),
+    resize_lv: defineMutation("storage", "resize_lv", { kind: "object" }),
+    run_smart_test: defineMutation("storage", "run_smart_test", {
+      kind: "object",
+    }),
+    set_btrfs_maintenance: defineMutation("storage", "set_btrfs_maintenance", {
+      kind: "object",
+    }),
+    unmount_cifs: defineMutation("storage", "unmount_cifs", { kind: "object" }),
+    unmount_filesystem: defineMutation("storage", "unmount_filesystem", {
+      kind: "object",
+    }),
+    unmount_nfs: defineMutation("storage", "unmount_nfs", { kind: "object" }),
   },
   system: {
-    dismiss_failed_login_alert: defineCallWithRequest(
-      "system.dismiss_failed_login_alert",
+    dismiss_failed_login_alert: defineMutation(
+      "system",
+      "dismiss_failed_login_alert",
+      { kind: "field", field: "alertId" },
     ),
-    dismiss_unclean_shutdown: defineCallWithRequest(
-      "system.dismiss_unclean_shutdown",
+    dismiss_unclean_shutdown: defineMutation(
+      "system",
+      "dismiss_unclean_shutdown",
+      { kind: "field", field: "bootId" },
     ),
     get_capabilities: defineCall("system.get_capabilities"),
     get_cpu_info: defineCall("system.get_cpu_info"),
@@ -407,7 +644,7 @@ const linuxio = {
     get_server_time: defineCall("system.get_server_time"),
     get_system_info: defineCall("system.get_system_info"),
     get_timezones: defineCall("system.get_timezones"),
-    install_capability: createTaskEndpoint("system", "install_capability", {
+    install_capability: defineMutation("system", "install_capability", {
       kind: "field",
       field: "capability",
     }),
@@ -416,79 +653,146 @@ const linuxio = {
     ),
   },
   systemd: {
-    disable_service: defineCallWithRequest("systemd.disable_service"),
-    enable_service: defineCallWithRequest("systemd.enable_service"),
+    disable_service: defineMutation("systemd", "disable_service", {
+      kind: "field",
+      field: "serviceName",
+    }),
+    enable_service: defineMutation("systemd", "enable_service", {
+      kind: "field",
+      field: "serviceName",
+    }),
     get_unit_info: defineCallWithRequest("systemd.get_unit_info"),
     list_services: defineCall("systemd.list_services"),
     list_sockets: defineCall("systemd.list_sockets"),
     list_timers: defineCall("systemd.list_timers"),
-    mask_service: defineCallWithRequest("systemd.mask_service"),
-    reload_service: defineCallWithRequest("systemd.reload_service"),
-    reset_failed_service: defineCallWithRequest("systemd.reset_failed_service"),
-    restart_service: defineCallWithRequest("systemd.restart_service"),
-    start_service: defineCallWithRequest("systemd.start_service"),
-    stop_service: defineCallWithRequest("systemd.stop_service"),
-    unmask_service: defineCallWithRequest("systemd.unmask_service"),
+    mask_service: defineMutation("systemd", "mask_service", {
+      kind: "field",
+      field: "serviceName",
+    }),
+    reload_service: defineMutation("systemd", "reload_service", {
+      kind: "field",
+      field: "serviceName",
+    }),
+    reset_failed_service: defineMutation("systemd", "reset_failed_service", {
+      kind: "field",
+      field: "serviceName",
+    }),
+    restart_service: defineMutation("systemd", "restart_service", {
+      kind: "field",
+      field: "serviceName",
+    }),
+    start_service: defineMutation("systemd", "start_service", {
+      kind: "field",
+      field: "serviceName",
+    }),
+    stop_service: defineMutation("systemd", "stop_service", {
+      kind: "field",
+      field: "serviceName",
+    }),
+    unmask_service: defineMutation("systemd", "unmask_service", {
+      kind: "field",
+      field: "serviceName",
+    }),
   },
   tasks: {
     cancel: defineCallWithRequest("tasks.cancel"),
     get: defineCallWithRequest("tasks.get"),
+    history: defineCallWithRequest("tasks.history"),
+    host: defineCall("tasks.host"),
     list: defineCallWithRequest("tasks.list"),
+    output: defineCallWithRequest("tasks.output"),
   },
   terminal: {
     list_shells: defineCallWithRequest("terminal.list_shells"),
   },
   updates: {
-    apply_offline_updates: defineCall("updates.apply_offline_updates"),
+    apply_offline_updates: defineMutation("updates", "apply_offline_updates", {
+      kind: "none",
+    }),
     get_auto_updates: defineCall("updates.get_auto_updates"),
     get_update_detail: defineCallWithRequest("updates.get_update_detail"),
     get_update_history: defineCall("updates.get_update_history"),
     get_updates_basic: defineCall("updates.get_updates_basic"),
-    refresh_cache: defineCall("updates.refresh_cache"),
-    set_auto_updates: defineCallWithRequest("updates.set_auto_updates"),
+    refresh_cache: defineMutation("updates", "refresh_cache", { kind: "none" }),
+    set_auto_updates: defineMutation("updates", "set_auto_updates", {
+      kind: "object",
+    }),
   },
   virt: {
-    create: createTaskEndpoint("virt", "create", { kind: "object" }),
-    delete: defineCallWithRequest("virt.delete"),
-    force_off: defineCallWithRequest("virt.force_off"),
+    create: defineMutation("virt", "create", { kind: "object" }),
+    delete: defineMutation("virt", "delete", { kind: "object" }),
+    force_off: defineMutation("virt", "force_off", {
+      kind: "field",
+      field: "name",
+    }),
     get: defineCallWithRequest("virt.get"),
     list: defineCall("virt.list"),
     networks: defineCall("virt.networks"),
     pools: defineCall("virt.pools"),
     preflight: defineCallWithRequest("virt.preflight"),
-    reboot: defineCallWithRequest("virt.reboot"),
-    resume: defineCallWithRequest("virt.resume"),
-    set_autostart: defineCallWithRequest("virt.set_autostart"),
-    shutdown: defineCallWithRequest("virt.shutdown"),
-    start: defineCallWithRequest("virt.start"),
-    suspend: defineCallWithRequest("virt.suspend"),
-    template_delete: defineCallWithRequest("virt.template_delete"),
-    template_download: createTaskEndpoint("virt", "template_download", {
+    reboot: defineMutation("virt", "reboot", { kind: "field", field: "name" }),
+    resume: defineMutation("virt", "resume", { kind: "field", field: "name" }),
+    set_autostart: defineMutation("virt", "set_autostart", { kind: "object" }),
+    shutdown: defineMutation("virt", "shutdown", {
+      kind: "field",
+      field: "name",
+    }),
+    start: defineMutation("virt", "start", { kind: "field", field: "name" }),
+    suspend: defineMutation("virt", "suspend", {
+      kind: "field",
+      field: "name",
+    }),
+    template_delete: defineMutation("virt", "template_delete", {
+      kind: "object",
+    }),
+    template_download: defineMutation("virt", "template_download", {
       kind: "field",
       field: "imagePresetId",
     }),
     templates: defineCall("virt.templates"),
-    unused_disk_delete: defineCallWithRequest("virt.unused_disk_delete"),
+    unused_disk_delete: defineMutation("virt", "unused_disk_delete", {
+      kind: "field",
+      field: "path",
+    }),
     unused_disks: defineCall("virt.unused_disks"),
-    update: defineCallWithRequest("virt.update"),
+    update: defineMutation("virt", "update", { kind: "object" }),
   },
   wireguard: {
-    add_interface: defineCallWithRequest("wireguard.add_interface"),
-    add_peer: defineCallWithRequest("wireguard.add_peer"),
-    disable_interface: defineCallWithRequest("wireguard.disable_interface"),
-    down_interface: defineCallWithRequest("wireguard.down_interface"),
-    enable_interface: defineCallWithRequest("wireguard.enable_interface"),
+    add_interface: defineMutation("wireguard", "add_interface", {
+      kind: "object",
+    }),
+    add_peer: defineMutation("wireguard", "add_peer", { kind: "object" }),
+    disable_interface: defineMutation("wireguard", "disable_interface", {
+      kind: "field",
+      field: "name",
+    }),
+    down_interface: defineMutation("wireguard", "down_interface", {
+      kind: "field",
+      field: "name",
+    }),
+    enable_interface: defineMutation("wireguard", "enable_interface", {
+      kind: "field",
+      field: "name",
+    }),
     list_interfaces: defineCall("wireguard.list_interfaces"),
     list_peers: defineCallWithRequest("wireguard.list_peers"),
     peer_config_download: defineCallWithRequest(
       "wireguard.peer_config_download",
     ),
     peer_qrcode: defineCallWithRequest("wireguard.peer_qrcode"),
-    remove_interface: defineCallWithRequest("wireguard.remove_interface"),
-    remove_peer: defineCallWithRequest("wireguard.remove_peer"),
-    up_interface: defineCallWithRequest("wireguard.up_interface"),
-    update_interface: defineCallWithRequest("wireguard.update_interface"),
-    update_peer: defineCallWithRequest("wireguard.update_peer"),
+    remove_interface: defineMutation("wireguard", "remove_interface", {
+      kind: "field",
+      field: "name",
+    }),
+    remove_peer: defineMutation("wireguard", "remove_peer", { kind: "object" }),
+    up_interface: defineMutation("wireguard", "up_interface", {
+      kind: "field",
+      field: "name",
+    }),
+    update_interface: defineMutation("wireguard", "update_interface", {
+      kind: "object",
+    }),
+    update_peer: defineMutation("wireguard", "update_peer", { kind: "object" }),
   },
 } as TypedAPI;
 

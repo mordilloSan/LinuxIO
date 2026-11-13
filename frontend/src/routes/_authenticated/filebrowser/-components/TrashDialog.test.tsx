@@ -6,6 +6,7 @@ import TrashDialog from "./TrashDialog";
 
 const mocks = vi.hoisted(() => ({
   entries: [] as unknown[],
+  navigate: vi.fn(),
   purge: vi.fn(),
   restore: vi.fn(),
   restoreOptions: {} as { success?: (result: unknown) => void },
@@ -23,13 +24,13 @@ vi.mock("@/api", async (importOriginal) => {
           queryKey: ["linuxio", "filebrowser", "trash_list"],
         },
         trash_purge: {
-          useTaskStreamAction: () => ({
+          useMutation: () => ({
             isPending: false,
             mutate: mocks.purge,
           }),
         },
         trash_restore: {
-          useTaskStreamAction: (options: typeof mocks.restoreOptions) => {
+          useMutation: (options: typeof mocks.restoreOptions) => {
             mocks.restoreOptions = options;
             return { isPending: false, mutate: mocks.restore };
           },
@@ -38,6 +39,11 @@ vi.mock("@/api", async (importOriginal) => {
     },
   };
 });
+
+vi.mock("@tanstack/react-router", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tanstack/react-router")>()),
+  useNavigate: () => mocks.navigate,
+}));
 
 vi.mock("@/hooks/useScopedToast", () => ({
   useScopedToast: () => mocks.toast,
@@ -97,6 +103,35 @@ describe("TrashDialog", () => {
     });
   });
 
+  it("names the destination before restoring an unrecorded item into a system folder", async () => {
+    const foreign = {
+      confirmRestore: true,
+      deletedAt: "",
+      isDir: false,
+      name: "app.conf",
+      originalPath: "/etc/app.d/app.conf",
+      path: "/home/alice/.local/share/Trash/files/app.conf",
+      size: 12,
+    };
+    mocks.entries = [...entries, foreign];
+    const { user } = render(<TrashDialog onClose={vi.fn()} open />);
+
+    await screen.findByRole("list");
+    await user.click(screen.getByRole("checkbox", { name: "Select app.conf" }));
+    await user.click(screen.getByRole("button", { name: "Restore 1" }));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Restore to a system folder",
+    });
+    expect(dialog).toHaveTextContent("Restore to /etc/app.d/app.conf?");
+    expect(mocks.restore).not.toHaveBeenCalled();
+
+    await user.click(within(dialog).getByRole("button", { name: "Restore" }));
+    expect(mocks.restore).toHaveBeenCalledWith({
+      confirmedDestinations: { [foreign.path]: foreign.originalPath },
+      paths: [foreign.path],
+    });
+  });
+
   it("reports per-item failures of a restore", async () => {
     render(<TrashDialog onClose={vi.fn()} open />);
     await screen.findByRole("list");
@@ -109,6 +144,34 @@ describe("TrashDialog", () => {
 
     expect(mocks.toast.error).toHaveBeenCalledWith("Failed to restore 1 item", {
       description: "report.pdf: exists",
+    });
+  });
+
+  it("offers the real folder when a restore is refused for a link", async () => {
+    render(<TrashDialog onClose={vi.fn()} open />);
+    await screen.findByRole("list");
+    const refusal =
+      "forbidden: /home/alice/docs is a link to /mnt/data/docs. Open that folder to make this change";
+
+    mocks.restoreOptions.success?.({
+      failed: [{ error: refusal, path: "/x/report.pdf" }],
+      succeeded: 0,
+      total: 1,
+    });
+
+    expect(mocks.toast.error).toHaveBeenCalledWith("Failed to restore 1 item", {
+      action: expect.objectContaining({ label: "Open the real folder" }),
+      description: `report.pdf: ${refusal}`,
+      duration: 10_000,
+    });
+    const { action } = mocks.toast.error.mock.calls[0][1] as {
+      action: { onClick: (event: unknown) => void };
+    };
+    action.onClick({});
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      to: "/filebrowser/$",
+      params: { _splat: "mnt/data/docs" },
+      search: {},
     });
   });
 

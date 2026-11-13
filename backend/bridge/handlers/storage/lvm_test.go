@@ -25,6 +25,16 @@ func TestListLogicalVolumesReturnsCommandError(t *testing.T) {
 	}
 }
 
+func TestListLVMExitFiveReturnsError(t *testing.T) {
+	// lvm2 exits 5 (ECMD_FAILED) for lock and permission failures, not just "no objects".
+	exitErr := exec.Command("sh", "-c", "exit 5").Run()
+	stubLVMCommand(t, func(context.Context, string, ...string) ([]byte, error) { return nil, exitErr })
+
+	if _, err := ListVolumeGroups(t.Context()); !errors.Is(err, exitErr) {
+		t.Fatalf("err = %v, want %v", err, exitErr)
+	}
+}
+
 func TestListLVMAbsentToolReturnsEmptyList(t *testing.T) {
 	stubLVMCommand(t, func(context.Context, string, ...string) ([]byte, error) { return nil, exec.ErrNotFound })
 

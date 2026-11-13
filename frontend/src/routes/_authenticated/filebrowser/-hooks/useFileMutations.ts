@@ -1,6 +1,8 @@
+import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
 
 import {
+  actionErrorMessage,
   type ActionSourceDestinationRequest,
   call,
   type CountProgress,
@@ -11,11 +13,11 @@ import {
   getMutationErrorMessage,
   linuxio,
   type TaskProgress,
-  useCallMutation,
 } from "@/api";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { describeBatchFailures } from "@/tasks/batchFailures";
 import { useBackgroundTaskActions } from "@/tasks/useBackgroundTaskActions";
+import { toastFileError } from "@/utils/linkRefusal";
 import {
   baseName,
   joinPath,
@@ -83,22 +85,24 @@ export const useFileMutations = ({
   const [permissionsProgress, setPermissionsProgress] =
     useState<TaskProgress<CountProgress> | null>(null);
   const toast = useScopedToast(FILES_TOAST_META);
+  const navigate = useNavigate();
   const { startCompression, startExtraction, startCopy, startMove } =
     useBackgroundTaskActions();
 
   const invalidateListing = useListingInvalidation(normalizedPath);
 
-  const createFileMutation = useCallMutation(
-    linuxio.filebrowser.resource_post,
-    {
-      success: () => {
-        invalidateListing();
-        toast.success("File created successfully");
-      },
-      error: "Failed to create file",
-      toast: FILES_TOAST_META,
+  const createFileMutation = linuxio.filebrowser.resource_post.useMutation({
+    success: () => {
+      invalidateListing();
+      toast.success("File created successfully");
     },
-  );
+    error: (error) =>
+      toastFileError(
+        toast,
+        navigate,
+        actionErrorMessage(error, "Failed to create file"),
+      ),
+  });
 
   const createFile = useCallback(
     async (fileName: string) => {
@@ -112,17 +116,18 @@ export const useFileMutations = ({
     [createFileMutation, createPending, normalizedPath],
   );
 
-  const createFolderMutation = useCallMutation(
-    linuxio.filebrowser.resource_post,
-    {
-      success: () => {
-        invalidateListing();
-        toast.success("Folder created successfully");
-      },
-      error: "Failed to create folder",
-      toast: FILES_TOAST_META,
+  const createFolderMutation = linuxio.filebrowser.resource_post.useMutation({
+    success: () => {
+      invalidateListing();
+      toast.success("Folder created successfully");
     },
-  );
+    error: (error) =>
+      toastFileError(
+        toast,
+        navigate,
+        actionErrorMessage(error, "Failed to create folder"),
+      ),
+  });
 
   const createFolder = useCallback(
     async (folderName: string) => {
@@ -147,7 +152,9 @@ export const useFileMutations = ({
     const failed = result?.failed ?? [];
     if (failed.length > 0) {
       const count = `${failed.length} item${failed.length === 1 ? "" : "s"}`;
-      toast.error(
+      toastFileError(
+        toast,
+        navigate,
         verb === "trash"
           ? `Failed to move ${count} to Trash`
           : `Failed to delete ${count}`,
@@ -165,21 +172,23 @@ export const useFileMutations = ({
 
   // One batch task deletes the whole selection; the bridge loops server-side
   // and reports per-item failures in the result.
-  const deleteBatchAction =
-    linuxio.filebrowser.delete_batch.useTaskStreamAction({
-      closeMessage: "Delete task stream closed before completion",
-      // invalidateListing below is more precise than the manifest entry.
-      invalidates: [],
-      onProgress: setDeleteProgress,
-      success: (result) => {
-        setDeleteProgress(null);
-        reportRemoval(result, "delete");
-      },
-      error: (error) => {
-        setDeleteProgress(null);
-        toast.error(getMutationErrorMessage(error, "Failed to delete items"));
-      },
-    });
+  const deleteBatchAction = linuxio.filebrowser.delete_batch.useMutation({
+    // invalidateListing below is more precise than the manifest entry.
+    invalidates: [],
+    onProgress: setDeleteProgress,
+    success: (result) => {
+      setDeleteProgress(null);
+      reportRemoval(result, "delete");
+    },
+    error: (error) => {
+      setDeleteProgress(null);
+      toastFileError(
+        toast,
+        navigate,
+        getMutationErrorMessage(error, "Failed to delete items"),
+      );
+    },
+  });
 
   const deleteItems = useCallback(
     async (paths: string[]): Promise<FileBatchResult | undefined> => {
@@ -191,8 +200,7 @@ export const useFileMutations = ({
   );
 
   // Same shape as delete, but moves into the FreeDesktop trash.
-  const trashBatchAction = linuxio.filebrowser.trash_batch.useTaskStreamAction({
-    closeMessage: "Trash task stream closed before completion",
+  const trashBatchAction = linuxio.filebrowser.trash_batch.useMutation({
     // invalidateListing below is more precise than the manifest entry.
     invalidates: [],
     onProgress: setTrashProgress,
@@ -202,7 +210,9 @@ export const useFileMutations = ({
     },
     error: (error) => {
       setTrashProgress(null);
-      toast.error(
+      toastFileError(
+        toast,
+        navigate,
         getMutationErrorMessage(error, "Failed to move items to Trash"),
       );
     },
@@ -247,42 +257,47 @@ export const useFileMutations = ({
         });
       } catch (error) {
         // Note: errors are also handled by BackgroundTasksContext
-        toast.error(
+        toastFileError(
+          toast,
+          navigate,
           getMutationErrorMessage(error, "Failed to extract archive"),
         );
         throw error;
       }
     },
-    [invalidateListing, startExtraction, toast],
+    [invalidateListing, navigate, startExtraction, toast],
   );
 
   // One batch task changes permissions of the whole selection; the bridge
   // loops server-side and reports per-item failures in the result.
-  const changePermissionsAction =
-    linuxio.filebrowser.chmod_batch.useTaskStreamAction({
-      closeMessage: "Permissions task stream closed before completion",
-      // invalidateListing below is more precise than the manifest entry.
-      invalidates: [],
-      onProgress: setPermissionsProgress,
-      success: (result) => {
-        setPermissionsProgress(null);
-        invalidateListing();
-        const failed = result?.failed ?? [];
-        if (failed.length > 0) {
-          toast.error(
-            `Failed to change permissions on ${failed.length} of ${result?.total ?? failed.length} items`,
-          );
-          return;
-        }
-        toast.success("Permissions changed successfully");
-      },
-      error: (error) => {
-        setPermissionsProgress(null);
-        toast.error(
-          getMutationErrorMessage(error, "Failed to change permissions"),
+  const changePermissionsAction = linuxio.filebrowser.chmod_batch.useMutation({
+    // invalidateListing below is more precise than the manifest entry.
+    invalidates: [],
+    onProgress: setPermissionsProgress,
+    success: (result) => {
+      setPermissionsProgress(null);
+      invalidateListing();
+      const failed = result?.failed ?? [];
+      if (failed.length > 0) {
+        toastFileError(
+          toast,
+          navigate,
+          `Failed to change permissions on ${failed.length} of ${result?.total ?? failed.length} items`,
+          { description: describeBatchFailures(failed) },
         );
-      },
-    });
+        return;
+      }
+      toast.success("Permissions changed successfully");
+    },
+    error: (error) => {
+      setPermissionsProgress(null);
+      toastFileError(
+        toast,
+        navigate,
+        getMutationErrorMessage(error, "Failed to change permissions"),
+      );
+    },
+  });
 
   const changePermissions = useCallback(
     async ({ paths, mode, recursive, owner, group }: ChmodPayload) => {
@@ -307,21 +322,22 @@ export const useFileMutations = ({
 
   // Renames are usually an atomic rename(2), but the backend falls back to
   // copy+delete and reports byte progress; surface it for that slow path.
-  const renameMutation = linuxio.filebrowser.resource_patch.useTaskStreamAction(
-    {
-      closeMessage: "Rename task stream closed before completion",
-      onProgress: setRenameProgress,
-      success: () => {
-        setRenameProgress(null);
-        invalidateListing();
-        toast.success("Item renamed successfully");
-      },
-      error: (error) => {
-        setRenameProgress(null);
-        toast.error(getMutationErrorMessage(error, "Failed to rename item"));
-      },
+  const renameMutation = linuxio.filebrowser.resource_patch.useMutation({
+    onProgress: setRenameProgress,
+    success: () => {
+      setRenameProgress(null);
+      invalidateListing();
+      toast.success("Item renamed successfully");
     },
-  );
+    error: (error) => {
+      setRenameProgress(null);
+      toastFileError(
+        toast,
+        navigate,
+        getMutationErrorMessage(error, "Failed to rename item"),
+      );
+    },
+  });
   // TanStack Query mutation result objects are recreated on renders. Keep the
   // callback dependency scoped to the stable mutation function so unrelated
   // parent updates (for example, selection changes) do not invalidate every
@@ -442,12 +458,16 @@ export const useFileMutations = ({
         });
       } catch (error) {
         if (error !== CONFLICT_PROMPT_CANCELLED) {
-          toast.error(getMutationErrorMessage(error, "Failed to copy items"));
+          toastFileError(
+            toast,
+            navigate,
+            getMutationErrorMessage(error, "Failed to copy items"),
+          );
         }
         throw error;
       }
     },
-    [invalidateListing, resolvePasteCollisions, startCopy, toast],
+    [invalidateListing, navigate, resolvePasteCollisions, startCopy, toast],
   );
 
   const moveItems = useCallback(
@@ -474,12 +494,16 @@ export const useFileMutations = ({
         });
       } catch (error) {
         if (error !== CONFLICT_PROMPT_CANCELLED) {
-          toast.error(getMutationErrorMessage(error, "Failed to move items"));
+          toastFileError(
+            toast,
+            navigate,
+            getMutationErrorMessage(error, "Failed to move items"),
+          );
         }
         throw error;
       }
     },
-    [invalidateListing, resolvePasteCollisions, startMove, toast],
+    [invalidateListing, navigate, resolvePasteCollisions, startMove, toast],
   );
 
   return {

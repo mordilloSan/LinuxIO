@@ -138,7 +138,7 @@ export function useDownloadTasks(runtime: BackgroundTaskRuntime) {
     let pendingKeyHeld = true;
 
     try {
-      const activeDownloadTask = await linuxio.filebrowser.archive({
+      const activeDownloadTask = await linuxio.filebrowser.archive.start({
         format: "zip",
         paths,
       });

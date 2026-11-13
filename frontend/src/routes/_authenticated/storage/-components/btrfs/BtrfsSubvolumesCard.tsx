@@ -4,10 +4,9 @@ import { useState } from "react";
 
 import {
   linuxio,
-  useCallMutation,
   type BtrfsFilesystem,
   type BtrfsSubvolume,
-  type CallRequest,
+  type BtrfsSubvolumeRequest,
 } from "@/api";
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
@@ -44,7 +43,7 @@ import {
 
 const GIB = 1024 ** 3;
 
-type SubvolumeRequest = CallRequest<"storage.btrfs_subvolume_delete">;
+type SubvolumeRequest = BtrfsSubvolumeRequest;
 
 /** The subvolumes of a filesystem: where they are, how big, what uses them and how they are snapshotted. */
 const BtrfsSubvolumesCard = ({
@@ -76,59 +75,48 @@ const BtrfsSubvolumesCard = ({
   const [compressing, setCompressing] = useState<BtrfsSubvolume | null>(null);
   const [algorithm, setAlgorithm] = useState("none");
 
-  const { mutate: createSubvolume, isPending: isCreating } = useCallMutation(
-    linuxio.storage.btrfs_subvolume_create,
-    {
+  const { mutate: createSubvolume, isPending: isCreating } =
+    linuxio.storage.btrfs_subvolume_create.useMutation({
       success: "Subvolume created",
       error: "Failed to create subvolume",
       toast: BTRFS_TOAST_META,
-    },
-  );
-  const { mutate: deleteSubvolume, isPending: isDeleting } = useCallMutation(
-    linuxio.storage.btrfs_subvolume_delete,
-    {
+    });
+  const { mutate: deleteSubvolume, isPending: isDeleting } =
+    linuxio.storage.btrfs_subvolume_delete.useMutation({
       success: "Subvolume deleted",
       error: "Failed to delete subvolume",
       toast: BTRFS_TOAST_META,
-    },
-  );
-  const { mutate: setReadOnly } = useCallMutation(
-    linuxio.storage.btrfs_subvolume_set_readonly,
-    { error: "Failed to change read-only state", toast: BTRFS_TOAST_META },
-  );
-  const { mutate: setDefault } = useCallMutation(
-    linuxio.storage.btrfs_subvolume_set_default,
-    {
+    });
+  const { mutate: setReadOnly } =
+    linuxio.storage.btrfs_subvolume_set_readonly.useMutation({
+      error: "Failed to change read-only state",
+      toast: BTRFS_TOAST_META,
+    });
+  const { mutate: setDefault } =
+    linuxio.storage.btrfs_subvolume_set_default.useMutation({
       success: "Default subvolume updated",
       error: "Failed to set default subvolume",
       toast: BTRFS_TOAST_META,
-    },
-  );
+    });
 
-  const { mutate: takeSnapshot } = useCallMutation(
-    linuxio.storage.btrfs_snapshot_create,
-    {
+  const { mutate: takeSnapshot } =
+    linuxio.storage.btrfs_snapshot_create.useMutation({
       success: "Snapshot created",
       error: "Failed to create snapshot",
       toast: BTRFS_TOAST_META,
-    },
-  );
-  const { mutate: setLimit, isPending: isLimiting } = useCallMutation(
-    linuxio.storage.btrfs_qgroup_limit,
-    {
+    });
+  const { mutate: setLimit, isPending: isLimiting } =
+    linuxio.storage.btrfs_qgroup_limit.useMutation({
       success: "Size limit updated",
       error: "Failed to update size limit",
       toast: BTRFS_TOAST_META,
-    },
-  );
-  const { mutate: setCompression, isPending: isCompressing } = useCallMutation(
-    linuxio.storage.btrfs_subvolume_set_compression,
-    {
+    });
+  const { mutate: setCompression, isPending: isCompressing } =
+    linuxio.storage.btrfs_subvolume_set_compression.useMutation({
       success: "Compression updated",
       error: "Failed to update compression",
       toast: BTRFS_TOAST_META,
-    },
-  );
+    });
 
   const subvolumes = data.filter(
     (subvolume) =>

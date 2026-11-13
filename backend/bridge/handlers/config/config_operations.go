@@ -7,6 +7,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 )
 
@@ -72,10 +73,10 @@ func requireDockerMountOrderingPrivilege(cfg *userconfig.Settings, payload *apis
 		return nil
 	}
 	if payload.Docker.RequireMountsForFolders != nil {
-		return fmt.Errorf("docker.requireMountsForFolders requires a privileged session")
+		return fmt.Errorf("%w: docker.requireMountsForFolders requires a privileged session", bridgeipc.ErrForbidden)
 	}
 	if payload.Docker.Folders != nil && cfg.Docker.RequireMountsForFolders {
-		return fmt.Errorf("docker.folders requires a privileged session when docker.requireMountsForFolders is enabled")
+		return fmt.Errorf("%w: docker.folders requires a privileged session when docker.requireMountsForFolders is enabled", bridgeipc.ErrForbidden)
 	}
 	return nil
 }

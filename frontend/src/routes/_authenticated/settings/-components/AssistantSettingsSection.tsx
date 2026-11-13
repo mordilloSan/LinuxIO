@@ -1,4 +1,4 @@
-import type * as acp from "@agentclientprotocol/sdk";
+import type * as acp from "@agentclientprotocol/sdk/unstable";
 import { useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -20,6 +20,8 @@ import {
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppSelect from "@/components/ui/AppSelect";
+import { useAssistantRequirements } from "@/hooks/useAssistantRequirements";
+import useAuth from "@/hooks/useAuth";
 import { useAssistantSettings, useConfig } from "@/hooks/useConfig";
 
 interface Choice {
@@ -86,21 +88,25 @@ export default function AssistantSettingsSection() {
     key: string;
     probe: AssistantProbe;
   } | null>(null);
+  // The agent is only started once everything it needs is installed: starting
+  // it never installs anything, so there is nothing to wait for otherwise.
+  const { ready, missing } = useAssistantRequirements(agent);
+  const { refreshCapabilities } = useAuth();
   const probeKey = `${agent}:${attempt}`;
   // A result belongs to the agent/attempt it was fetched for; anything else is
   // stale and the probe counts as still running.
   const probe = result?.key === probeKey ? result.probe : null;
-  const probing = agent !== "" && probe === null;
+  const probing = ready && probe === null;
   const runProbe = () => setAttempt((count) => count + 1);
 
   useEffect(() => {
-    if (!agent) return;
+    if (!agent || !ready) return;
     const controller = new AbortController();
     void probeAssistant(agent, undefined, controller.signal).then((next) => {
       if (!controller.signal.aborted) setResult({ key: probeKey, probe: next });
     });
     return () => controller.abort();
-  }, [agent, probeKey]);
+  }, [agent, ready, probeKey]);
 
   const openLogin = (args: readonly string[] | undefined) => {
     if (!agent) return;
@@ -143,13 +149,15 @@ export default function AssistantSettingsSection() {
   const chatOptions = probe?.chatOptions;
 
   const loggedIn = probe?.status === "logged_in";
-  const statusLabel = probing
-    ? "Checking login…"
-    : loggedIn
-      ? "Logged in"
-      : probe?.status === "auth_required"
-        ? "Not logged in"
-        : "Unreachable";
+  const statusLabel = !ready
+    ? "Checking what is installed…"
+    : probing
+      ? "Checking login…"
+      : loggedIn
+        ? "Logged in"
+        : probe?.status === "auth_required"
+          ? "Not logged in"
+          : "Unreachable";
   const statusColor = loggedIn
     ? "var(--app-palette-success-main)"
     : probe?.status === "auth_required"
@@ -160,8 +168,10 @@ export default function AssistantSettingsSection() {
 
   return (
     <SettingsSectionShell
-      onRefresh={runProbe}
-      refreshAriaLabel="Check login again"
+      onRefresh={ready ? runProbe : () => void refreshCapabilities()}
+      refreshAriaLabel={
+        ready ? "Check login again" : "Check what is installed again"
+      }
       refreshDisabled={!agent}
       refreshing={probing}
       subtitle="Coding agent used by the assistant"
@@ -192,7 +202,37 @@ export default function AssistantSettingsSection() {
         </AppSelect>
       </SectionCard>
 
-      {agent ? (
+      {agent && missing.length > 0 ? (
+        <SectionCard
+          icon="mdi:package-variant-closed"
+          subtitle="Install these before the agent can start"
+          title="Not installed yet"
+        >
+          <AppAlert
+            action={
+              <AppButton
+                onClick={() =>
+                  void navigate({
+                    to: "/settings",
+                    search: { tab: "capabilities" },
+                  })
+                }
+              >
+                Open Capabilities
+              </AppButton>
+            }
+            severity="warning"
+          >
+            {missing.map((item) => (
+              <div key={item.key}>
+                <strong>{item.label}:</strong> {item.reason}
+              </div>
+            ))}
+          </AppAlert>
+        </SectionCard>
+      ) : null}
+
+      {agent && missing.length === 0 ? (
         <SectionCard
           icon="mdi:account-key-outline"
           subtitle="Login state reported by the agent"
@@ -305,10 +345,10 @@ export default function AssistantSettingsSection() {
             />
             <DefaultSelect
               choices={
-                chatOptions.modes?.availableModes.map(({ id, name }) => ({
-                  value: id,
-                  name,
-                })) ?? selectChoices(chatOptions.configOptions, "mode")
+                chatOptions.modes?.availableModes
+                  .filter(({ id }) => id !== "bypassPermissions")
+                  .map(({ id, name }) => ({ value: id, name })) ??
+                selectChoices(chatOptions.configOptions, "mode")
               }
               label="Permissions"
               onChange={(value) => saveDefault("mode", value)}

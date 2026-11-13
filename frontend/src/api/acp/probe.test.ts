@@ -8,6 +8,7 @@ import type {
 } from "./connection";
 import {
   authenticateAssistant,
+  CHAT_OPEN_TIMEOUT_MS,
   logoutAssistant,
   probeAssistant,
 } from "./probe";
@@ -106,6 +107,13 @@ describe("probeAssistant", () => {
     expect(conn.close).toHaveBeenCalledTimes(1);
   });
 
+  it("opens the agent without plugin panes", async () => {
+    const { connect } = fakeConnect({}, { kind: "account", label: "Max" });
+    await probeAssistant("claude", connect);
+    const handlers = vi.mocked(connect).mock.calls[0][1];
+    expect(handlers.onPane).toBeUndefined();
+  });
+
   it("keeps a pushed login when no chat opens", async () => {
     const { connect } = fakeConnect(
       {
@@ -157,6 +165,33 @@ describe("probeAssistant", () => {
       status: "logged_in",
       authStatus: null,
       chatOptions: { configOptions: [], modes: null },
+    });
+    expect(conn.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports unknown, with the reason, when a chat never opens", async () => {
+    const { conn, connect } = fakeConnect({
+      newSession: vi.fn(() => new Promise<SessionOpenResult>(() => {})),
+    });
+    const pending = probeAssistant("gemini", connect);
+    await vi.advanceTimersByTimeAsync(2000 + CHAT_OPEN_TIMEOUT_MS);
+    expect(await pending).toMatchObject({
+      status: "unknown",
+      error: "The agent did not open a chat within 30 seconds",
+    });
+    expect(conn.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a pushed login when a chat never opens", async () => {
+    const { conn, connect } = fakeConnect(
+      { newSession: vi.fn(() => new Promise<SessionOpenResult>(() => {})) },
+      { kind: "account", label: "Claude Max" },
+    );
+    const pending = probeAssistant("claude", connect);
+    await vi.advanceTimersByTimeAsync(CHAT_OPEN_TIMEOUT_MS);
+    expect(await pending).toMatchObject({
+      status: "logged_in",
+      chatOptions: null,
     });
     expect(conn.close).toHaveBeenCalledTimes(1);
   });

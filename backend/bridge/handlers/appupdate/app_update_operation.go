@@ -94,7 +94,8 @@ func resolveAppUpdateVersion(ctx context.Context, req appUpdateRequest) (string,
 func executeAppUpdate(ctx context.Context, rt runtime.Runtime, task *bridgeipc.Task, runID, version string) (AppUpdateResult, error) {
 	slog.Debug("app update task starting", "component", "control", "subsystem", "app_update", "route", routeAppUpdate, "run_id", runID, "version", version, "user", rt.Username())
 
-	ownerUID := task.Owner().UID
+	// The user the handlers act for: in the root job host a task's own uid is root.
+	ownerUID := rt.Session.User.UID
 	startedAt := time.Now().Unix()
 	relay := &taskOutputWriter{task: task}
 	if err := writeStatusFile(runID, ownerUID, updatestatus.StatusRunning, nil, "", startedAt, 0); err != nil {

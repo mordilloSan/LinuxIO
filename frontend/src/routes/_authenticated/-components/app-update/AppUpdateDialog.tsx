@@ -16,6 +16,7 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 
 interface AppUpdateDialogProps {
   canClose: boolean;
+  closeLabel?: string;
   onClose?: () => void;
   onContinue?: () => void;
   open: boolean;
@@ -33,6 +34,7 @@ const AppUpdateDialog = ({
   output,
   onClose,
   canClose,
+  closeLabel = "Close",
   updateComplete = false,
   updateSuccess = false,
   onContinue,
@@ -40,7 +42,9 @@ const AppUpdateDialog = ({
 }: AppUpdateDialogProps) => {
   const outputId = useId();
   const outputEndRef = useRef<HTMLDivElement>(null);
-  const [outputExpanded, setOutputExpanded] = useState(false);
+  const [outputToggled, setOutputToggled] = useState<boolean | null>(null);
+  // A finished update opens its output so it can be read before leaving.
+  const outputExpanded = outputToggled ?? updateComplete;
   const prefersReducedMotion = useMediaQuery(
     "(prefers-reduced-motion: reduce)",
   );
@@ -100,11 +104,11 @@ const AppUpdateDialog = ({
                   {updateSuccess ? (
                     targetVersion ? (
                       <>
-                        LinuxIO has been updated to {targetVersion}. Click
-                        Continue to log in.
+                        LinuxIO has been updated to {targetVersion}. The service
+                        restarted, so you need to sign in again.
                       </>
                     ) : (
-                      "LinuxIO has been updated. Click Continue to log in."
+                      "LinuxIO has been updated. The service restarted, so you need to sign in again."
                     )
                   ) : (
                     "The update could not be completed. Please check the output below for details."
@@ -164,7 +168,7 @@ const AppUpdateDialog = ({
                 aria-expanded={outputExpanded}
                 color="inherit"
                 fullWidth
-                onClick={() => setOutputExpanded((expanded) => !expanded)}
+                onClick={() => setOutputToggled(!outputExpanded)}
                 style={{
                   width: "100%",
                   display: "flex",
@@ -237,12 +241,12 @@ const AppUpdateDialog = ({
       <AppDialogActions>
         {updateComplete && updateSuccess && onContinue && (
           <AppButton color="success" onClick={onContinue} variant="contained">
-            Continue to Login
+            Sign in again
           </AppButton>
         )}
         {updateComplete && !updateSuccess && (
           <AppButton onClick={onClose} variant="contained">
-            Close
+            {closeLabel}
           </AppButton>
         )}
         {!updateComplete && canClose && (

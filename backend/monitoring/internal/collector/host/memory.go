@@ -123,6 +123,10 @@ func (m *Manager) updateMemoryStats(ctx context.Context, systemStats *systemmode
 	systemStats.MemPct = units.TwoDecimals(v.UsedPercent)
 	systemStats.MemoryBytes.Used = v.Used
 	systemStats.MemoryBytes.ZFSArc = arcBytes
+	docker, vms := cgroupHeldBytes(cgroupRoot)
+	systemStats.MemoryBytes.Docker, systemStats.MemoryBytes.VMs = docker, vms
+	systemStats.MemDocker = units.BytesToGigabytes(docker)
+	systemStats.MemVMs = units.BytesToGigabytes(vms)
 	return nil
 }
 

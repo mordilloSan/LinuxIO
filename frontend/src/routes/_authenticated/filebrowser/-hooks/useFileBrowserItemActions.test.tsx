@@ -4,11 +4,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { act, createTestQueryClient, renderHook } from "@/test/render";
 
+import type { FileItem } from "../-types";
 import { useFileBrowserItemActions } from "./useFileBrowserItemActions";
 import type { DialogsSlice } from "./useFileDialogs";
 import type { EditorSlice } from "./useFileEditor";
 import type { ViewSlice } from "./useFileViewState";
-import type { FileItem } from "../-types";
 
 const toastMocks = vi.hoisted(() => ({
   error: vi.fn(),

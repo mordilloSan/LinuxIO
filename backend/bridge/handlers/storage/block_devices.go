@@ -33,7 +33,7 @@ func GetTopology(ctx context.Context) (apischema.StorageTopologyInventory, error
 			ReadOnly: slices.Contains(partition.Opts, "ro"),
 		})
 	}
-	return apischema.StorageTopologyInventory{Devices: devices, Mounts: mounts}, nil
+	return apischema.StorageTopologyInventory{Devices: devices, Mounts: mounts, BootEntries: readBootEntries(efiVarsRoot)}, nil
 }
 
 // blockDevice is a native inventory entry plus the drive-only fields that are
@@ -112,13 +112,17 @@ func busyReason(d blockDevice, swaps []string) string {
 	return ""
 }
 
+// inventoryLoops lists loop devices too. Only the root integration test,
+// whose disks are loop devices, sets it.
+var inventoryLoops = false
+
 // readBlockDevice describes one /sys/class/block entry; false for devices that
 // are not storage inventory: loop images, RAM disks and hidden multipath
 // paths. Empty drives stay, as in lsblk.
 func readBlockDevice(kname string) (blockDevice, bool) {
 	devno := readSysString(kname, "dev")
 	major, _, _ := strings.Cut(devno, ":")
-	if strings.HasPrefix(kname, "loop") || devno == "" || major == "1" || readSysString(kname, "hidden") == "1" {
+	if (strings.HasPrefix(kname, "loop") && !inventoryLoops) || devno == "" || major == "1" || readSysString(kname, "hidden") == "1" {
 		return blockDevice{}, false
 	}
 	sectors, err := readSysUint(kname, "size")
@@ -184,15 +188,18 @@ func blockType(kname string) string {
 	return "disk"
 }
 
-// applyUdev fills what udev knows: filesystem, partition entry, and for whole
+// applyUdev fills what udev knows: filesystem and what its signature makes
+// the device a member of, partition entry, and for whole
 // devices (lsblk shows them nowhere else) model, serial and vendor.
 func (d *blockDevice) applyUdev(props map[string]string) {
 	kname := d.KernelName
 	d.FSType = props["ID_FS_TYPE"]
 	d.UUID = decodeUdevEnc(props["ID_FS_UUID_ENC"])
 	d.Label = decodeUdevEnc(props["ID_FS_LABEL_ENC"])
+	d.Member = signatureMember(d.FSType, d.UUID, d.Label, props)
 	d.PTType = firstProp(props, "ID_PART_TABLE_TYPE", "ID_PART_ENTRY_SCHEME")
 	d.PartUUID = props["ID_PART_ENTRY_UUID"]
+	d.PartType = strings.ToLower(props["ID_PART_ENTRY_TYPE"])
 	d.PartLabel = decodeUdevEnc(props["ID_PART_ENTRY_NAME"])
 	d.Transport = blockTransport(kname)
 	if d.Type == "part" {

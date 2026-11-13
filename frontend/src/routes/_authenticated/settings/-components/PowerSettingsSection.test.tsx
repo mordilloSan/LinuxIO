@@ -44,20 +44,27 @@ vi.mock("@tanstack/react-query", () => ({
   useQuery: () => ({ data: status, isPending: false, error: null }),
   useQueryClient: () => ({ setQueryData }),
 }));
-vi.mock("@/api", () => ({
-  linuxio: {
-    power: {
-      get_status: { queryKey: ["power"] },
-      start: { route: "power.start" },
-      disable: { route: "power.disable" },
-      set_profile: { route: "power.set_profile" },
-    },
-  },
-  useCallMutation: (endpoint: { route: string }) => ({
+vi.mock("@/api", async () => {
+  const { mockMutationHooks } = await import("@/test/mutationHooks");
+  const useCallMutation = (endpoint: { route: string }) => ({
     isPending: pending[endpoint.route],
     mutate: vi.fn(),
-  }),
-}));
+  });
+  return {
+    linuxio: mockMutationHooks(
+      {
+        power: {
+          get_status: { queryKey: ["power"] },
+          start: { route: "power.start" },
+          disable: { route: "power.disable" },
+          set_profile: { route: "power.set_profile" },
+        },
+      },
+      useCallMutation,
+    ),
+    useCallMutation,
+  };
+});
 vi.mock("@/components/ui/AppActionIconButton", () => ({
   default: (props: {
     ariaLabel: string;

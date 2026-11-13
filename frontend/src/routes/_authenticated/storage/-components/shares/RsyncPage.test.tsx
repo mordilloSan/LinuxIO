@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { linuxio, type RsyncStatus } from "@/api";
+import * as core from "@/api/linuxio-core";
 import {
   createTestQueryClient,
   fireEvent,
@@ -56,7 +57,13 @@ function renderPage(available = true, status: RsyncStatus = stoppedStatus) {
 }
 
 describe("rsync backup setup", () => {
-  beforeEach(() => mocks.call.mockReset());
+  beforeEach(() => {
+    mocks.call.mockReset();
+    vi.spyOn(core, "mutationRequest").mockImplementation(
+      (handler, command, request) =>
+        mocks.call(`${handler}.${command}`, request),
+    );
+  });
 
   it("offers installation while rsync is absent", async () => {
     renderPage(false);
@@ -103,7 +110,7 @@ describe("rsync backup setup", () => {
     expect(screen.getByLabelText(/Backup password/)).toHaveValue("");
     fireEvent.click(screen.getByRole("button", { name: "Stop and disable" }));
     await waitFor(() =>
-      expect(mocks.call).toHaveBeenCalledWith("shares.stop_rsync", undefined),
+      expect(mocks.call).toHaveBeenCalledWith("shares.stop_rsync", {}),
     );
   });
   it("defaults to SSH port 22 and checks a custom port while the module is stopped", async () => {

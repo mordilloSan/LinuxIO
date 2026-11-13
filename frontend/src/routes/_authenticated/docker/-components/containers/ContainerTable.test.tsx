@@ -6,6 +6,7 @@ import * as core from "@/api/linuxio-core";
 import type { AppVirtualTableDndOptions } from "@/components/tables/AppVirtualTable";
 import { act, render, screen, waitFor, within } from "@/test/render";
 
+import { DockerUpdateOperationProvider } from "../shared/DockerUpdateOperationProvider";
 import type { ContainerTableRow } from "./containerStacks";
 import ContainerTable from "./ContainerTable";
 
@@ -97,8 +98,13 @@ function container(
   };
 }
 
-function renderTable(containers: ContainerInfo[]) {
-  return render(<ContainerTable containers={containers} />);
+function renderTable(
+  containers: ContainerInfo[],
+  { privileged = true }: { privileged?: boolean } = {},
+) {
+  return render(<ContainerTable containers={containers} />, {
+    auth: { privileged },
+  });
 }
 
 function rowNamed(name: string) {
@@ -184,6 +190,50 @@ describe("ContainerTable mutation feedback", () => {
     expect(rescan).not.toHaveTextContent("Up to date");
   });
 
+  it.each([true, false])(
+    "offers the Update chip only with sudo (privileged: %s)",
+    (privileged) => {
+      media.compact = false;
+      render(
+        <DockerUpdateOperationProvider>
+          <ContainerTable
+            containers={[
+              container("alpha-id", "alpha", "running", {
+                updateAvailable: true,
+              }),
+            ]}
+          />
+        </DockerUpdateOperationProvider>,
+        { auth: { privileged } },
+      );
+
+      const row = rowNamed("alpha");
+      if (privileged) {
+        expect(
+          within(row).getByRole("button", { name: "Update" }),
+        ).toBeEnabled();
+      } else {
+        expect(within(row).getByText("Available")).toBeInTheDocument();
+        expect(
+          within(row).queryByRole("button", { name: "Update" }),
+        ).toBeNull();
+      }
+    },
+  );
+
+  it("shows only the read actions on a row without sudo", () => {
+    media.compact = false;
+    renderTable([container("alpha-id", "alpha", "running")], {
+      privileged: false,
+    });
+
+    const row = rowNamed("alpha");
+    expect(within(row).queryByRole("button", { name: "Stop" })).toBeNull();
+    expect(
+      within(row).getByRole("button", { name: "Actions for alpha" }),
+    ).toBeInTheDocument();
+  });
+
   it.each([
     ["Start", "start_container", "exited", "Starting"],
     ["Stop", "stop_container", "running", "Stopping"],
@@ -195,7 +245,7 @@ describe("ContainerTable mutation feedback", () => {
       media.compact = false;
       const deferred = createDeferred<void>();
       const request = vi
-        .spyOn(core, "request")
+        .spyOn(core, "mutationRequest")
         .mockImplementation((_handler, calledCommand) =>
           calledCommand === command ? deferred.promise : Promise.resolve(),
         );
@@ -243,7 +293,10 @@ describe("ContainerTable mutation feedback", () => {
         label === "Remove"
           ? { containerId: "alpha-id", force: false }
           : { containerId: "alpha-id" },
-        { retryPolicy: "none" },
+        {
+          onProgress: expect.any(Function),
+          onSnapshot: expect.any(Function),
+        },
       );
 
       await act(async () => {
@@ -372,7 +425,7 @@ describe("ContainerTable mutation feedback", () => {
   it("keeps a compact row spinner after its action menu closes", async () => {
     media.compact = true;
     const deferred = createDeferred<void>();
-    vi.spyOn(core, "request").mockImplementation((_handler, command) =>
+    vi.spyOn(core, "mutationRequest").mockImplementation((_handler, command) =>
       command === "start_container" ? deferred.promise : Promise.resolve(),
     );
     const { user } = renderTable([

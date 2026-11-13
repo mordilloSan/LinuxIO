@@ -3,9 +3,12 @@ package config
 import (
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 )
 
@@ -18,14 +21,14 @@ func applyUISettingsUpdate(ui *userconfig.UIPreferences, payload *apischema.Conf
 	if payload.Theme != nil {
 		theme, ok := userconfig.ParseTheme(*payload.Theme)
 		if !ok {
-			return errors.New("invalid theme value (LIGHT|DARK)")
+			return fmt.Errorf("%w: invalid theme value (LIGHT|DARK)", bridgeipc.ErrInvalidArgs)
 		}
 		ui.Theme = theme
 	}
 	if payload.PrimaryColor != nil {
 		color, ok := userconfig.ParseCSSColor(*payload.PrimaryColor)
 		if !ok {
-			return errors.New("invalid primaryColor")
+			return fmt.Errorf("%w: invalid primaryColor", bridgeipc.ErrInvalidArgs)
 		}
 		ui.PrimaryColor = color
 	}
@@ -35,14 +38,14 @@ func applyUISettingsUpdate(ui *userconfig.UIPreferences, payload *apischema.Conf
 	if payload.NavigationMode != nil {
 		mode, ok := userconfig.ParseNavigationMode(*payload.NavigationMode)
 		if !ok {
-			return errors.New("invalid navigationMode value (sidebar|dock)")
+			return fmt.Errorf("%w: invalid navigationMode value (sidebar|dock)", bridgeipc.ErrInvalidArgs)
 		}
 		ui.NavigationMode = mode
 	}
 	if payload.DockTileColors != nil {
 		mode, ok := userconfig.ParseDockTileColors(*payload.DockTileColors)
 		if !ok {
-			return errors.New("invalid dockTileColors value (accent|mono|neutral|vibrant)")
+			return fmt.Errorf("%w: invalid dockTileColors value (accent|mono|neutral|vibrant)", bridgeipc.ErrInvalidArgs)
 		}
 		ui.DockTileColors = mode
 	}
@@ -51,8 +54,9 @@ func applyUISettingsUpdate(ui *userconfig.UIPreferences, payload *apischema.Conf
 	}
 	applyOptionalBool(&ui.SidebarCollapsed, payload.SidebarCollapsed)
 	applyOptionalStringSlice(&ui.HiddenCards, payload.HiddenCards)
-	applyOptionalDockerDashboardSections(ui, payload.DockerDashboardSections)
-	applyOptionalHardwareSections(ui, payload.HardwareSections)
+	if err := applyCollapsedSections(ui, payload.CollapsedSections); err != nil {
+		return err
+	}
 	applyViewModes(ui, payload.ViewModes)
 	applyLayoutOrders(ui, payload.LayoutOrders)
 	return applyTerminalFontSizeSetting(ui, payload.TerminalFontSize)
@@ -69,7 +73,7 @@ func applyDockAccentGradientSetting(ui *userconfig.UIPreferences, payload *apisc
 		RangeEnd:   payload.RangeEnd,
 	}
 	if errs := userconfig.ValidateDockAccentGradient(gradient); len(errs) > 0 {
-		return fmt.Errorf("invalid dockAccentGradient: %s", strings.Join(errs, "; "))
+		return fmt.Errorf("%w: invalid dockAccentGradient: %s", bridgeipc.ErrInvalidArgs, strings.Join(errs, "; "))
 	}
 	ui.DockAccentGradient = &gradient
 	return nil
@@ -102,44 +106,54 @@ func applyThemeColorOverrides(ui *userconfig.UIPreferences, payload *apischema.C
 	return nil
 }
 
-// buildThemeColors maps the API payload fields to theme colour keys; the key
-// table, validation and field assignment live in internal/userconfig.
-func buildThemeColors(payload *apischema.ConfigThemeColorsPayload, mode string) (*userconfig.ThemeColors, error) {
-	if payload == nil {
-		return nil, nil
+// buildThemeColors hands the API payload to internal/userconfig, which owns
+// the key table and validation. The payload is a map, so the request decoder
+// no longer refuses a key that is not a theme colour; this does.
+func buildThemeColors(payload apischema.ConfigThemeColorsPayload, mode string) (userconfig.ThemeColors, error) {
+	values := make(map[string]*string, len(payload))
+	for _, key := range slices.Sorted(maps.Keys(payload)) {
+		if !userconfig.IsThemeColorKey(string(key)) {
+			return nil, fmt.Errorf("%w: unknown themeColors.%s.%s", bridgeipc.ErrInvalidArgs, mode, key)
+		}
+		values[string(key)] = payload[key]
 	}
-	return userconfig.NewThemeColors(map[string]*string{
-		"backgroundDefault":               payload.BackgroundDefault,
-		"backgroundPaper":                 payload.BackgroundPaper,
-		"headerBackground":                payload.HeaderBackground,
-		"footerBackground":                payload.FooterBackground,
-		"sidebarBackground":               payload.SidebarBackground,
-		"cardBackground":                  payload.CardBackground,
-		"dialogBorder":                    payload.DialogBorder,
-		"dialogGlow":                      payload.DialogGlow,
-		"dialogBackdrop":                  payload.DialogBackdrop,
-		"codeBackground":                  payload.CodeBackground,
-		"codeText":                        payload.CodeText,
-		"chartRx":                         payload.ChartRx,
-		"chartTx":                         payload.ChartTx,
-		"chartNeutral":                    payload.ChartNeutral,
-		"fileBrowserSurface":              payload.FileBrowserSurface,
-		"fileBrowserChrome":               payload.FileBrowserChrome,
-		"fileBrowserBreadcrumbBackground": payload.FileBrowserBreadcrumbBackground,
-		"fileBrowserBreadcrumbText":       payload.FileBrowserBreadcrumbText,
-	}, mode)
+	colors, err := userconfig.NewThemeColors(values, mode)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
+	}
+	return colors, nil
 }
 
-func applyOptionalDockerDashboardSections(ui *userconfig.UIPreferences, sections *apischema.ConfigDockerDashboardSections) {
-	if sections != nil {
-		ui.DockerDashboardSections = &userconfig.DockerDashboardSections{Overview: sections.Overview, Monitoring: sections.Monitoring, Daemon: sections.Daemon, Resources: sections.Resources}
+// applyCollapsedSections replaces the whole per-page map. Names are trimmed,
+// and blank names, repeats and pages with nothing collapsed are dropped: an
+// absent page already means every section is expanded. Each page's names are
+// stored sorted, since only membership matters. A map over the bounds in
+// internal/userconfig is refused.
+func applyCollapsedSections(ui *userconfig.UIPreferences, collapsed map[string][]string) error {
+	if collapsed == nil {
+		return nil
 	}
-}
-
-func applyOptionalHardwareSections(ui *userconfig.UIPreferences, sections *apischema.ConfigHardwareSections) {
-	if sections != nil {
-		ui.HardwareSections = &userconfig.HardwareSections{Overview: sections.Overview, Hardware: sections.Hardware, Sensors: sections.Sensors, SystemInfo: sections.SystemInfo, GPU: sections.GPU, PCIDevices: sections.PCIDevices, MemoryModules: sections.MemoryModules}
+	normalized := make(map[string][]string, len(collapsed))
+	for page, sections := range collapsed {
+		page = strings.TrimSpace(page)
+		if page == "" {
+			continue
+		}
+		for _, section := range sections {
+			if section = strings.TrimSpace(section); section != "" {
+				normalized[page] = append(normalized[page], section)
+			}
+		}
 	}
+	for page, sections := range normalized {
+		slices.Sort(sections)
+		normalized[page] = slices.Compact(sections)
+	}
+	if err := userconfig.ValidateCollapsedSections(normalized); err != nil {
+		return fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
+	}
+	ui.CollapsedSections = normalized
+	return nil
 }
 
 // applyViewModes replaces the whole map, silently dropping blank keys and
@@ -195,7 +209,7 @@ func applyTerminalFontSizeSetting(ui *userconfig.UIPreferences, fontSize *int) e
 		return nil
 	}
 	if !userconfig.ValidTerminalFontSize(*fontSize) {
-		return errors.New("terminalFontSize must be between 10 and 28")
+		return fmt.Errorf("%w: terminalFontSize must be between 10 and 28", bridgeipc.ErrInvalidArgs)
 	}
 	ui.TerminalFontSize = *fontSize
 	return nil

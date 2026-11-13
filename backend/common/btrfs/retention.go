@@ -9,6 +9,25 @@ import (
 // keepNewestPerKind is how many pre-update and pre-rollback snapshots survive.
 const keepNewestPerKind = 3
 
+// keepBucket is one retention bucket: how many distinct buckets to keep and
+// the key that groups snapshot times into them.
+type keepBucket struct {
+	n   int
+	key func(time.Time) string
+}
+
+// buckets lists every BtrfsKeep count with its bucket key. ValidateRule and
+// Prune both read the counts from here, so a field missing from this list
+// fails TestKeepBucketsCoverEveryField.
+func (k BtrfsKeep) buckets() []keepBucket {
+	return []keepBucket{
+		{k.Hourly, func(t time.Time) string { return t.Truncate(time.Hour).Format(time.RFC3339) }},
+		{k.Daily, func(t time.Time) string { return t.Format(time.DateOnly) }},
+		{k.Weekly, func(t time.Time) string { y, w := t.ISOWeek(); return fmt.Sprintf("%d-W%02d", y, w) }},
+		{k.Monthly, func(t time.Time) string { return t.Format("2006-01") }},
+	}
+}
+
 // Prune returns the snapshots to delete, oldest first. Timeline snapshots are
 // kept per hour/day/week/month bucket (the newest of each of the most recent
 // N distinct buckets) and survive if any bucket keeps them. Pre-update and
@@ -35,15 +54,7 @@ func Prune(snaps []BtrfsSnapshot, keep BtrfsKeep) []BtrfsSnapshot {
 	}
 
 	survives := make([]bool, len(timeline))
-	for _, b := range []struct {
-		n   int
-		key func(time.Time) string
-	}{
-		{keep.Hourly, func(t time.Time) string { return t.Truncate(time.Hour).Format(time.RFC3339) }},
-		{keep.Daily, func(t time.Time) string { return t.Format(time.DateOnly) }},
-		{keep.Weekly, func(t time.Time) string { y, w := t.ISOWeek(); return fmt.Sprintf("%d-W%02d", y, w) }},
-		{keep.Monthly, func(t time.Time) string { return t.Format("2006-01") }},
-	} {
+	for _, b := range keep.buckets() {
 		seen := map[string]bool{}
 		for i, s := range timeline {
 			if len(seen) >= b.n {

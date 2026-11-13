@@ -24,6 +24,11 @@ func run(args []string, stdin *os.File) int {
 	if handled, exitCode := handleBridgeArgs(args); handled {
 		return exitCode
 	}
+	// systemd starts the job host with no arguments; a host unit started
+	// without its socket, masked or failed, says what is missing.
+	if jobsHostActivated() || os.Getenv("STATE_DIRECTORY") != "" {
+		return runJobsHost(os.Stderr)
+	}
 
 	direct, err := isDirectBridgeInvocation(stdin)
 	if err != nil {

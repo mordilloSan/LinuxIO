@@ -8,16 +8,11 @@ const mocks = vi.hoisted(() => ({ systemPrune: vi.fn() }));
 
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
+  const { mockMutationHooks } = await import("@/test/mutationHooks");
+  const useMutation = () => ({ mutate: mocks.systemPrune, isPending: false });
   return {
     ...actual,
-    useCallMutation: () => ({ mutate: mocks.systemPrune, isPending: false }),
-    linuxio: {
-      ...actual.linuxio,
-      docker: {
-        ...actual.linuxio.docker,
-        system_prune: { route: "docker.system_prune" },
-      },
-    },
+    linuxio: mockMutationHooks(actual.linuxio, useMutation),
   };
 });
 
@@ -27,7 +22,9 @@ describe("DockerNetworksPage", () => {
   beforeEach(() => mocks.systemPrune.mockReset());
 
   it("prunes only unused networks by default", async () => {
-    const { user } = render(<DockerNetworksPage />);
+    const { user } = render(<DockerNetworksPage />, {
+      auth: { privileged: true },
+    });
     await user.click(screen.getByRole("button", { name: "Prune All" }));
     expect(
       screen.getByRole("button", { name: "Prune Selected (1)" }),

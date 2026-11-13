@@ -20,7 +20,7 @@ const (
 	FS                 = "fs"
 	Network            = monitoringapi.PluginNetwork
 	GPU                = "gpu"
-	Sensors            = "sensors"
+	Sensors            = monitoringapi.PluginSensors
 	Containers         = monitoringapi.PluginContainers
 	ContainerTelemetry = monitoringapi.PluginContainerTelemetry
 	Processes          = "processes"
@@ -55,6 +55,7 @@ var defaultHistory = []string{
 	Swap,
 	DiskIO,
 	Network,
+	Sensors,
 	Containers,
 	ContainerTelemetry,
 }

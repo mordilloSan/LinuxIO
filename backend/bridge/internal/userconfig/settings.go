@@ -24,67 +24,11 @@ func DefaultUIPreferences() UIPreferences {
 		DockTileColors:     DockTileColorsAccent,
 		DockAccentGradient: &DockAccentGradient{RangeStart: 0, RangeEnd: 100},
 		HiddenCards:        []string{},
-		DockerDashboardSections: &DockerDashboardSections{
-			Overview: true, Monitoring: true, Daemon: true, Resources: true,
-		},
-		HardwareSections: &HardwareSections{
-			Overview: true, Hardware: true, Sensors: true, SystemInfo: true,
-			GPU: true, PCIDevices: true, MemoryModules: true,
-		},
-		ViewModes:        map[string]string{},
-		LayoutOrders:     map[string][]string{},
-		TerminalFontSize: 16,
+		CollapsedSections:  map[string][]string{},
+		ViewModes:          map[string]string{},
+		LayoutOrders:       map[string][]string{},
+		TerminalFontSize:   16,
 	}
-}
-
-func defaultThemeColors() *ThemeColorsByMode {
-	return &ThemeColorsByMode{
-		Light: &ThemeColors{
-			BackgroundDefault:               cssColor("#F7F9FC"),
-			BackgroundPaper:                 cssColor("#FFFFFF"),
-			HeaderBackground:                cssColor("#F7F9FC"),
-			FooterBackground:                cssColor("#F7F9FC"),
-			SidebarBackground:               cssColor("#F7F9FC"),
-			CardBackground:                  cssColor("#FFFFFF"),
-			DialogBorder:                    cssColor("#FFFFFF"),
-			DialogGlow:                      cssColor("#FFFFFF"),
-			DialogBackdrop:                  cssColor("#000000"),
-			CodeBackground:                  cssColor("#F5F5F5"),
-			CodeText:                        cssColor("#333333"),
-			ChartRx:                         cssColor("#8884D8"),
-			ChartTx:                         cssColor("#82CA9D"),
-			ChartNeutral:                    cssColor("#808080"),
-			FileBrowserSurface:              cssColor("#FFFFFF"),
-			FileBrowserChrome:               cssColor("#253137"),
-			FileBrowserBreadcrumbBackground: cssColor("#D0D4D8"),
-			FileBrowserBreadcrumbText:       cssColor("#5A5A5A"),
-		},
-		Dark: &ThemeColors{
-			BackgroundDefault:               cssColor("#1B2635"),
-			BackgroundPaper:                 cssColor("#233044"),
-			HeaderBackground:                cssColor("#1B2635"),
-			FooterBackground:                cssColor("#1B2635"),
-			SidebarBackground:               cssColor("#1B2635"),
-			CardBackground:                  cssColor("#11192A"),
-			DialogBorder:                    cssColor("#FFFFFF"),
-			DialogGlow:                      cssColor("#FFFFFF"),
-			DialogBackdrop:                  cssColor("#000000"),
-			CodeBackground:                  cssColor("#1E1E1E"),
-			CodeText:                        cssColor("#D4D4D4"),
-			ChartRx:                         cssColor("#8884D8"),
-			ChartTx:                         cssColor("#82CA9D"),
-			ChartNeutral:                    cssColor("#808080"),
-			FileBrowserSurface:              cssColor("#20292F"),
-			FileBrowserChrome:               cssColor("#253137"),
-			FileBrowserBreadcrumbBackground: cssColor("#283136"),
-			FileBrowserBreadcrumbText:       cssColor("#FFFFFF"),
-		},
-	}
-}
-
-func cssColor(value string) *CSSColor {
-	color := CSSColor(value)
-	return &color
 }
 
 // defaultDocker returns Docker defaults based on the chosen base directory.

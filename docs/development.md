@@ -2,7 +2,7 @@
 
 The repository Makefile is the supported entry point for setup, checks, tests,
 builds, and packaging. `Makefile` owns the public variables, validation and
-`.PHONY`; targets live in `mk/{toolchain,go,frontend,auth,quality,install}.mk`
+`.PHONY`; targets live in `mk/{toolchain,go,frontend,auth,quality,install,vm}.mk`
 and the longer shell programs behind them in `scripts/`. Prefer focused targets
 when working on one area:
 
@@ -30,8 +30,8 @@ use the corresponding Make target.
 
 ## Prerequisites
 
-- Go 1.27 or newer
-- Node.js 24 or newer
+- Go 1.21 or newer on PATH (Go fetches the exact version `go.mod` pins)
+- Node.js 26 or newer
 - GNU Make
 
 For Debian/Ubuntu, install the development libraries and optional analysis/test
@@ -70,9 +70,28 @@ binary-version failure before making an incompatible packaging change.
 ```sh
 git clone https://github.com/mordilloSan/LinuxIO
 cd LinuxIO
+make setup
 make build
 make localinstall
 ```
+
+`make setup` installs Node through nvm, checks that Go is on PATH and prints the
+`go.mod` toolchain it resolves to (downloading it on first use), installs the
+pinned Go tools (golangci-lint, deadcode, modernize, govulncheck) and the
+frontend dependencies; `make test` and `make build` run it themselves.
+`make setup-frontend` installs only the frontend dependencies. Two things stay
+separate: `make setup-frontend-browser` downloads Playwright Chromium for the
+browser tests, and `make check-c-build-deps` names the missing C compiler,
+`libsystemd-dev` or `libpam-dev` packages without installing them.
+
+The webserver embeds `backend/webserver/web/frontend/`, which is gitignored and
+holds the Vite build. Without it no Go package that imports the webserver
+compiles, so `make dev-prep` creates empty placeholder files there when they
+are missing. The Go check targets (`golint`, `test-go`, `test-backend`,
+`check-backend`, `deadcode`, `test`) and `make dev` run it themselves. The
+build targets do not, so a release binary never embeds a placeholder beside a
+real Vite build; run `make dev-prep` or `make build-vite` before
+`make fastbuild` on a fresh checkout or after `make clean`.
 
 For frontend hot reload, start the backend through systemd and run `make dev`.
 Vite serves on port `3000` by default and proxies backend requests to port
@@ -87,6 +106,68 @@ and installer tests consume. `make localinstall` runs
 `packaging/scripts/localinstall.sh`, a wrapper for
 `install-linuxio-binaries.sh --local --build-dir build/`. Only
 `common/version.Version` is stamped into binaries at link time.
+
+## Test VM
+
+`mk/vm.mk` drives a disposable Ubuntu 26.04 VM for checks that need root, a
+real kernel, systemd or Docker. `packaging/vm/linuxio-vm.sh` does the work on
+`qemu:///system`, so it needs `virsh`, membership in the `libvirt` group, the
+`default` NAT network (`192.168.122.1`), `curl`, `openssl` and `python3`, but no
+`sudo`. It touches only the domain `linuxio-e2e` and its `linuxio-e2e-*`
+volumes in the `default` pool. Its state (the cloud image cache, the SSH key
+and the login) lives in `~/.cache/linuxio-vm`.
+
+While it runs, the VM takes about 4 GiB of RAM and 4 vCPU. Its disks are
+sparse qcow2 files: a 25 GiB system disk and four 8 GiB data disks
+(`vdb`–`vde`) for storage tests.
+
+`VM_RELEASE=noble` on a `vm-*` target selects a second VM on Ubuntu 24.04
+(kernel 6.8): the domain `linuxio-e2e-noble`, its `linuxio-e2e-noble-*`
+volumes and `~/.cache/linuxio-vm-noble`, beside the first one. It is there for
+`make vm-test-btrfs-integration VM_RELEASE=noble`, the root btrfs tests on a
+kernel before 6.19, where a signal does not abort a scrub or a replace. The
+test program is built without cgo, so it runs on the older glibc. LinuxIO
+itself is not installed or tested in that VM.
+
+```sh
+make vm-create        # download and check the image, first boot, snapshot "clean"
+make vm-install       # make build-nocheck, then install this build in the VM
+make vm-ssh CMD='systemctl is-active linuxio.target'
+make test-vm-browser  # Playwright specs in frontend/src/test/vm
+make vm-test-btrfs-integration
+make vm-reset         # revert every disk to "clean" and stop the VM
+make vm-destroy       # delete the domain and its volumes; the cache stays
+```
+
+- `vm-create` downloads the cloud image (checked against the release's
+  `SHA256SUMS`), and boots it once with `packaging/vm/user-data.yaml.in`.
+  cloud-init reads its seed over HTTP from a server on
+  `192.168.122.1:8399` that runs only during that boot. It creates the user
+  `linuxio-e2e` with passwordless sudo and installs `docker.io`,
+  `btrfs-progs` and the LinuxIO dependencies. The VM is then shut down and
+  snapshotted as `clean`, without LinuxIO.
+- Every target that needs the VM starts it if it is stopped. `vm-reset` leaves
+  it stopped, without LinuxIO; run `vm-install` again after a reset.
+- `make vm-ssh` without `CMD` opens a shell. The user can `sudo` without a
+  password. Make expands `$` in `CMD`, so write `$$`.
+- `test-vm-browser` signs in at `https://<vm-ip>:8090` as `linuxio-e2e`, with
+  the password in `~/.cache/linuxio-vm/password`. `PLAYWRIGHT_ARGS` applies.
+  Run each jobs spec file on its own fresh VM (`login.spec.ts` plus one
+  file): the specs leave their schedules behind, and the Schedules table
+  renders only the rows near what is visible, so a later file does not find
+  its own row among an earlier file's.
+  The specs reach the VM through `linuxio-vm.sh`: `ssh`, and for host events
+  `reboot` (an orderly ACPI reboot) and `power-cut` (`virsh destroy`, then
+  `start`), each of which waits for the next boot. `jobs-phase2.spec.ts`
+  installs Docker's Compose plugin, creates a btrfs pool on `vdb` and `vdc`
+  and reboots the VM, so run `vm-reset` and `vm-install` before reusing it
+  for other checks.
+- `vm-test-btrfs-integration` builds the `common/btrfs` and
+  `bridge/handlers/storage` test binaries on the host,
+  prints the VM's kernel version and runs the same tests as
+  `test-btrfs-integration`, as root in the VM.
+- `vm-test-filebrowser-root` does the same for the file browser's root-only
+  ownership tests (`test-filebrowser-root`).
 
 ## Overrides
 
@@ -104,7 +185,6 @@ details; the uppercase aliases below are kept for CI and existing scripts.
 | `CACHE_DIR` | `$(REPO_ROOT)/.cache` | Make caches, logs, and analysis artifacts. |
 | `BIN_DIR` | `$(REPO_ROOT)/build` | Built binary output directory. |
 | `GO_TOOLS_DIR` | `$(HOME)/.go` | Installed Go tool binaries. |
-| `GO_TOOLCHAIN_VERSIONS_DIR` | `$(HOME)/.go-versions` | Managed Go installations. |
 | `NVM_DIR` | `$(HOME)/.nvm` | Node Version Manager installation. |
 | `VITE_DEV_LOG` | `$(FRONTEND_DIR)/.vite-dev.log` | Vite log file. |
 | `VITE_DEV_PID` | `$(FRONTEND_DIR)/.vite-dev.pid` | Vite PID file. |
@@ -117,14 +197,14 @@ an intentional user-local tool directory.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `GO_VERSION` | `go.mod` version | Go version installed by `ensure-go`. |
+| `GO_VERSION` | `go.mod` version | Go version used for builds; Go fetches it when the installed one differs. |
 | `NODE_VERSION` | `frontend/package.json` engine | Node version installed by `ensure-node`. |
 | `NVM_VERSION` | `0.40.2` | NVM installer release. |
 | `GOOS` | `linux` | Go target operating system; LinuxIO validates this as `linux`. |
 | `GOARCH` | Host architecture | Go target architecture (`amd64` or `arm64`). |
 | `GOAMD64` | `v3` | amd64 microarchitecture level. |
-| `GO_TOOLCHAIN` | `auto` | Go toolchain selection mode. |
-| `GO_BIN` | Managed Go binary | Go executable; useful for CodeQL or system-Go integration. |
+| `GO_TOOLCHAIN` | `go$(GO_VERSION)` | `GOTOOLCHAIN` passed to every Go command. |
+| `GO_BIN` | `go` on PATH | Go executable; useful for CodeQL integration. |
 | `CC` | `cc` | C compiler for the authentication helper. |
 | `sha256_cmd` | `sha256sum` | SHA-256 command; use `shasum -a 256` where required by a host. |
 | `setsid_cmd` | `setsid` | Session launcher used to terminate complete validation process groups. |
@@ -138,8 +218,10 @@ an intentional user-local tool directory.
 | `GOVULNCHECK_VERSION` | `latest` | govulncheck version installed by Make. |
 | `GOLANGCI_LINT_OPTS` | `--modules-download-mode=mod` | Additional golangci-lint options. |
 
-`SKIP_ENSURE_GO=1` skips managed Go installation and uses `GO_BIN` or the
-system `go`. `CODEQL_ACTION_GO_BINARY` is honored automatically when present.
+Go is not installed by Make: any Go 1.21 or newer on PATH works (linux-toolbox
+installs it to `/usr/local/go`), and `GOTOOLCHAIN` makes Go download the exact
+version `go.mod` pins. `SKIP_ENSURE_GO=1` is accepted for compatibility.
+`CODEQL_ACTION_GO_BINARY` is honored automatically when present.
 
 ### Test, analysis, and build behavior
 
@@ -168,10 +250,36 @@ system `go`. `CODEQL_ACTION_GO_BINARY` is honored automatically when present.
 | --- | --- | --- |
 | `VITE_DEV_PORT` | `3000` | Vite development server port (`1`–`65535`). |
 | `DEV_LOG_LINES` | `25` | Number of LinuxIO log lines shown by `make dev`. |
+| `VSCODE_EXTENSIONS_DIR` | `~/.vscode-server/extensions` if present, else `~/.vscode/extensions` | Where `make dev-status-install` and `make dev-status-uninstall` manage the status bar extension symlink. |
 
 `make dev` starts only the Vite development server and tails LinuxIO logs. The
-backend still runs through systemd; stop the Vite process using the PID and
-command printed by the target.
+backend still runs through systemd. `make dev-stop` stops Vite from any
+terminal, and every running `make dev` exits once Vite is gone; interrupting
+`make dev` stops Vite only when that run started it.
+
+### VS Code integration
+
+`.vscode/tasks.json` defines `make dev` and `make dev-stop` as tasks. `make dev`
+runs in its own terminal that is never revealed automatically (`reveal:
+"never"`), so the log tail stays available without taking over the panel, and
+that closes when `make dev` exits, for example after `make dev-stop`.
+
+`.vscode/dev-status/` is an optional workspace extension that adds a status bar
+dot: green while the Vite pid in `frontend/.vite-dev.pid` is alive, grey
+otherwise. Hovering it shows links to start or stop the dev server (by running
+the two tasks) and to show the `make dev` terminal. It only activates in a
+checkout that has `scripts/dev.sh`. Install it once on the machine that runs the
+VS Code server, then run `Developer: Reload Window`:
+
+```sh
+make dev-status-install     # symlink the extension into the extensions directory
+make dev-status-uninstall   # remove the symlink
+```
+
+Both targets only touch the `linuxio.linuxio-dev-status-*` symlink, so the
+extension always runs from the checkout. Install is safe to repeat. The target
+directory is `VSCODE_EXTENSIONS_DIR`, which defaults to
+`~/.vscode-server/extensions` when it exists and `~/.vscode/extensions` otherwise.
 
 ### Target-specific inputs
 
@@ -219,6 +327,12 @@ any remaining vulnerabilities. A clean audit skips fixes. Audit fixes
 can also update dependencies outside the selection. Selecting nothing skips
 installation and audit fixes; Go dependencies are not updated by this target.
 
+After a successful update the target prints a suggested Conventional Commits
+message built from the `package.json` changes: `chore(deps): update dependency
+<name> to v<version>` for one package, or a `chore(deps): update N frontend
+dependencies` subject with one line per package for several. It never creates
+the commit.
+
 Run `make update-go-deps` to update all Go dependencies, including test
 dependencies, with `go get -u -t ./...`, followed by `go mod tidy`.
 To update specific modules instead, pass explicit versions or `@latest`:
@@ -228,6 +342,12 @@ make update-go-deps GO_MODULES='golang.org/x/net@latest golang.org/x/sys@latest'
 ```
 
 Required transitive dependencies may also change.
+
+When `go.mod` changes, the target prints a suggested commit message in the
+same shape as `make update-deps`: `chore(deps): update module <path> to
+<version>` for one direct module, or a `chore(deps): update N Go dependencies`
+subject with one line per direct module, Go version or toolchain change.
+Indirect-only changes give `chore(deps): update indirect Go modules`.
 
 ## Distro and WireGuard icons
 
@@ -239,11 +359,14 @@ Keep distro IDs explicit so the scanner can discover them.
 
 ## Target index
 
-`make help` is the concise target index. It groups the supported targets as
-follows:
+`make help` prints the common targets only (the `help_common` list in the
+`Makefile`); `make help-full` (or `make help FULL=1`) prints the full index.
+`make help --full` is not possible, because Make parses dashed words itself.
+The full index groups the supported targets as follows:
 
-- setup: `ensure-node`, `ensure-go`, `ensure-golint`, `ensure-modernize`,
-  `ensure-deadcode`, `ensure-govulncheck`, `setup`, `update-deps`, `update-go-deps`
+- setup: `setup`, `setup-frontend`, `ensure-node`, `ensure-go`,
+  `ensure-golint`, `ensure-modernize`, `ensure-deadcode`, `ensure-govulncheck`,
+  `update-deps`, `update-go-deps`
 - frontend checks: `lint`, `lint-only`, `tsc`, `tsc-only`, `test-frontend`,
   `test-frontend-only`, `lint-ci`, `tsc-ci`, `test-frontend-ci`,
   `check-frontend`, `setup-frontend-browser`, `test-frontend-browser`,
@@ -251,14 +374,18 @@ follows:
 - backend checks: `golint`, `golint-only`, `test-backend`, `test-go`, `deadcode`,
   `deadcode-only`, `check-backend`, `test-auth`, `test-auth-protocol`,
   `test-auth-pam`, `test-updater`, `test-docker-update-integration`,
-  `check-c-build-deps`
+  `test-assistant-agent-integration`,
+  `test-filebrowser-root`, `check-c-build-deps`
 - analysis: `bundle-metrics`, `compiler-coverage`, `analyze`, `analyze-auth`
 - builds and development: `test`, `build`, `build-nocheck`, `fastbuild`,
   `build-vite`, `build-backend`, `build-bridge`, `build-auth`, `build-cli`,
   `build-docker-update`, `build-leak-profile`, `generate`, `dev-prep`, `dev`,
-  `clean`, `cloc`
+  `dev-stop`, `dev-status-install`, `dev-status-uninstall`, `clean`, `cloc`
 - installation: `localinstall`, `reinstall`, `uninstall`
-- documentation: `help-overrides`
+- test VM: `vm-create`, `vm-install`, `vm-ssh`, `vm-reset`, `vm-destroy`,
+  `vm-test-btrfs-integration`, `vm-test-filebrowser-root`, `test-vm-browser`
+- documentation: `help-overrides`, `check-docs` (the docs index in
+  `docs/README.md`, and the paths and links docs name)
 
 For release-helper smoke coverage, run `make test-release-automation`.
 

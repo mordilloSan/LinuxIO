@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ContainerInfo } from "@/api";
 import { render, screen } from "@/test/render";
 
+import { DockerUpdateOperationProvider } from "../shared/DockerUpdateOperationProvider";
 import ContainerCard from "./ContainerCard";
 
 const container: ContainerInfo = {
@@ -39,16 +40,6 @@ vi.mock("@/api", async () => {
 
   return {
     ...actual,
-    linuxio: {
-      ...actual.linuxio,
-      docker: {
-        ...actual.linuxio.docker,
-        update_container: {
-          ...actual.linuxio.docker.update_container,
-          useTaskAction: noOpAction,
-        },
-      },
-    },
     useCallMutation: noOpAction,
   };
 });
@@ -85,9 +76,7 @@ describe("ContainerCard", () => {
       />,
     );
 
-    expect(
-      screen.getByRole("button", { name: "Update available for example" }),
-    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Update available/)).toBeInTheDocument();
 
     container.updateAvailable = false;
     rerender(
@@ -103,9 +92,12 @@ describe("ContainerCard", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("offers the update from the update-available badge", async () => {
+  it("offers the update from the update-available badge with sudo", async () => {
     const { user } = render(
-      <ContainerCard containerId={container.Id} selected={false} />,
+      <DockerUpdateOperationProvider>
+        <ContainerCard containerId={container.Id} selected={false} />
+      </DockerUpdateOperationProvider>,
+      { auth: { privileged: true } },
     );
 
     expect(screen.queryByRole("button", { name: "Update example" })).toBeNull();
@@ -114,6 +106,23 @@ describe("ContainerCard", () => {
     );
 
     expect(screen.getByRole("menuitem", { name: "Update" })).toBeEnabled();
+  });
+
+  it("shows the update-available badge read-only without sudo", () => {
+    render(
+      <DockerUpdateOperationProvider>
+        <ContainerCard containerId={container.Id} selected={false} />
+      </DockerUpdateOperationProvider>,
+      { auth: { privileged: false } },
+    );
+
+    expect(
+      screen.getByRole("img", { name: "Update available" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Update available for example" }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Stop|^Start/ })).toBeNull();
   });
 
   it.each([

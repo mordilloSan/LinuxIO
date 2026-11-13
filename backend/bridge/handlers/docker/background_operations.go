@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -52,35 +53,47 @@ type ComposeTaskResult struct {
 // runs the Compose-managed container updates.
 type ComposeProgress = dockerupdate.ComposeProgress
 
+const dockerUpdateRoute = "docker.update_container"
+
+// updateContainer is the update engine; tests replace it.
+var updateContainer = dockerupdate.UpdateContainerWait
+
 var dockerTaskRoutes = dockerTaskBindings(runtime.Runtime{}).Routes()
 
 func dockerTaskBindings(rt runtime.Runtime) apischema.BindingSet {
 	return apischema.Bindings(
-		apischema.TaskRunner[apischema.DockerContainerUpdateRequest, apischema.DockerContainerUpdateResult](
-			dockerUpdateRoute,
-			apischema.DurableTask(),
-			apischema.WithTaskProgress[apischema.DockerContainerUpdateProgress](),
-			apischema.WithTaskIdentity(dockerUpdateTaskIdentity),
-			apischema.WithTaskMetadata(func(req apischema.DockerContainerUpdateRequest) bridgeipc.TaskMetadata {
-				return bridgeipc.TaskMetadata{Identity: []string{req.ContainerID}, Label: "Docker container update"}
-			}),
-		).Run(runDockerUpdateTask, bridgeipc.TaskDefault),
-		apischema.TaskRunner[apischema.DockerDaemonConfig, apischema.DockerDaemonConfigSetResult]("docker.apply_daemon_storage", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[apischema.DockerDaemonStorageProgress](), apischema.WithTaskMetadata(func(apischema.DockerDaemonConfig) bridgeipc.TaskMetadata {
+		apischema.Mutation(dockerUpdateRoute, handleUpdateContainer, apischema.Privileged(), apischema.Progress[apischema.DockerContainerUpdateProgress]()),
+		apischema.MutationTask("docker.apply_daemon_storage", runApplyDaemonStorageTask, apischema.Privileged(), apischema.Progress[apischema.DockerDaemonStorageProgress](), apischema.WithTaskMetadata(func(apischema.DockerDaemonConfig) bridgeipc.TaskMetadata {
 			return bridgeipc.TaskMetadata{Label: "Docker storage change"}
-		})).Run(runApplyDaemonStorageTask, bridgeipc.TaskExclusive),
-		apischema.TaskRunner[apischema.DockerComposeRequest, ComposeTaskResult]("docker.compose", apischema.SessionTask(), apischema.WithTaskProgress[ComposeTaskMessage](), apischema.WithTaskMetadata(func(req apischema.DockerComposeRequest) bridgeipc.TaskMetadata {
+		}), apischema.Exclusive()),
+		apischema.MutationTask("docker.compose", func(ctx context.Context, task *bridgeipc.Task, req apischema.DockerComposeRequest) (ComposeTaskResult, error) {
+			return runDockerComposeTask(ctx, task, rt.Username(), rt.Store, req)
+		}, apischema.Privileged(), apischema.Progress[ComposeTaskMessage](), apischema.WithTaskMetadata(func(req apischema.DockerComposeRequest) bridgeipc.TaskMetadata {
 			return bridgeipc.TaskMetadata{Identity: []string{req.ProjectName}, Label: "Docker compose " + req.Action, Action: req.Action, ProjectName: req.ProjectName}
-		})).Run(
-			func(ctx context.Context, task *bridgeipc.Task, req apischema.DockerComposeRequest) (ComposeTaskResult, error) {
-				return runDockerComposeTask(ctx, task, rt.Username(), rt.Store, req)
-			},
-			bridgeipc.TaskDefault,
-		),
+		})),
 	)
 }
 
 func RegisterTaskRoutes(router *bridgeipc.Router, rt runtime.Runtime) {
 	dockerTaskBindings(rt).Register(router)
+}
+
+func handleUpdateContainer(ctx context.Context, req apischema.DockerContainerUpdateRequest) (apischema.DockerContainerUpdateResult, error) {
+	if err := dockerupdate.ValidateTarget(req.ContainerID); err != nil {
+		return apischema.DockerContainerUpdateResult{}, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
+	}
+	// A job queues behind another update: lock wait 0 waits until ctx ends.
+	result, err := updateContainer(ctx, req.ContainerID, 0, func(phase, message string) {
+		bridgeipc.ReportProgress(ctx, apischema.DockerContainerUpdateProgress{Phase: phase, Message: message}.ProgressEnvelope())
+	})
+	if err != nil {
+		return apischema.DockerContainerUpdateResult{}, err
+	}
+	if result.Updated {
+		slog.Info("updated Docker container", "component", "docker", "subsystem", "update",
+			"container", result.ContainerName, "old_image", result.PreviousImageID, "new_image", result.NewImageID)
+	}
+	return result, nil
 }
 
 func runDockerComposeTask(ctx context.Context, task *bridgeipc.Task, username string, store *userconfig.UserStore, req apischema.DockerComposeRequest) (ComposeTaskResult, error) {

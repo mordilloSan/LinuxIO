@@ -66,7 +66,7 @@ type Options struct {
 	HistoryRetention time.Duration
 }
 
-func OpenStore(dataDir string, options ...Options) (*Store, error) {
+func OpenStore(ctx context.Context, dataDir string, options ...Options) (*Store, error) {
 	dbPath := filepath.Join(dataDir, "metrics.db")
 	historyPlugins := plugins.DefaultHistory()
 	retention := config.DefaultHistoryRetention
@@ -77,7 +77,7 @@ func OpenStore(dataDir string, options ...Options) (*Store, error) {
 		}
 	}
 
-	store, err := openStoreDB(dbPath, historyPlugins, retention)
+	store, err := openStoreDB(ctx, dbPath, historyPlugins, retention)
 	if err == nil {
 		if len(options) > 0 {
 			store.SetHistoryEvery(options[0].HistoryEvery)
@@ -92,7 +92,7 @@ func OpenStore(dataDir string, options ...Options) (*Store, error) {
 	if _, moveErr := moveAsideStoreFiles(dbPath, "corrupt"); moveErr != nil {
 		return nil, fmt.Errorf("open metrics.db failed: %w; move aside failed: %w", err, moveErr)
 	}
-	store, err = openStoreDB(dbPath, historyPlugins, retention)
+	store, err = openStoreDB(ctx, dbPath, historyPlugins, retention)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +102,7 @@ func OpenStore(dataDir string, options ...Options) (*Store, error) {
 	return store, nil
 }
 
-func openStoreDB(dbPath string, historyPlugins []string, retention time.Duration) (*Store, error) {
+func openStoreDB(ctx context.Context, dbPath string, historyPlugins []string, retention time.Duration) (*Store, error) {
 	// The pragmas live in the DSN so every connection the pool opens gets them.
 	// The path is URI-escaped (keeping '/' literal) so '?', '#' or '%' in the
 	// directory name are not misparsed as DSN syntax.
@@ -120,7 +120,7 @@ func openStoreDB(dbPath string, historyPlugins []string, retention time.Duration
 		historyPlugins:   historyPluginSet(historyPlugins),
 		historyRetention: retention,
 	}
-	if err := store.init(); err != nil {
+	if err := store.init(ctx); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -183,36 +183,36 @@ func moveAsideStoreFiles(dbPath, reason string) ([]string, error) {
 	return moved, nil
 }
 
-func (s *Store) init() error {
+func (s *Store) init(ctx context.Context) error {
 	var version int
-	if err := s.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
+	if err := s.db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
 		return err
 	}
 	switch version {
 	case 0:
-		return createSchema(s.db)
+		return createSchema(ctx, s.db)
 	case 4, 5, 6:
-		return s.migrateToV7(version)
+		return s.migrateToV7(ctx, version)
 	case storeSchemaVersion:
-		return createSchema(s.db)
+		return createSchema(ctx, s.db)
 	default:
 		return fmt.Errorf("unsupported store schema version %d", version)
 	}
 }
 
-func (s *Store) migrateToV7(version int) error {
-	tx, err := s.db.Begin()
+func (s *Store) migrateToV7(ctx context.Context, version int) error {
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer rollbackTx(tx, "migrate schema")
 
 	if version < 6 {
-		if err = dropLegacySnapshotTables(tx); err != nil {
+		if err = dropLegacySnapshotTables(ctx, tx); err != nil {
 			return err
 		}
 	}
-	if err = deleteLegacyRollupRows(tx); err != nil {
+	if err = deleteLegacyRollupRows(ctx, tx); err != nil {
 		return err
 	}
 	if err = tx.Commit(); err != nil {
@@ -222,11 +222,11 @@ func (s *Store) migrateToV7(version int) error {
 	// Remove the old payload bytes from both the WAL and the main database
 	// before marking the schema upgrade complete.
 	for _, statement := range []string{"PRAGMA wal_checkpoint(TRUNCATE)", "VACUUM", "PRAGMA wal_checkpoint(TRUNCATE)"} {
-		if _, err = s.db.Exec(statement); err != nil {
+		if _, err = s.db.ExecContext(ctx, statement); err != nil {
 			return err
 		}
 	}
-	return createSchema(s.db)
+	return createSchema(ctx, s.db)
 }
 
 // rollbackTx is deferred right after Begin; it is a no-op once Commit succeeded.
@@ -236,30 +236,30 @@ func rollbackTx(tx *sql.Tx, operation string) {
 	}
 }
 
-func dropLegacySnapshotTables(tx *sql.Tx) error {
+func dropLegacySnapshotTables(ctx context.Context, tx *sql.Tx) error {
 	for _, plugin := range plugins.Names() {
-		if _, err := tx.Exec("DROP TABLE IF EXISTS " + plugin + "_current"); err != nil {
+		if _, err := tx.ExecContext(ctx, "DROP TABLE IF EXISTS "+plugin+"_current"); err != nil {
 			return err
 		}
 	}
 	for _, plugin := range []string{plugins.Processes, plugins.Programs} {
-		if _, err := tx.Exec("DROP TABLE IF EXISTS " + pluginHistoryTable(plugin)); err != nil {
+		if _, err := tx.ExecContext(ctx, "DROP TABLE IF EXISTS "+pluginHistoryTable(plugin)); err != nil {
 			return err
 		}
 	}
-	_, err := tx.Exec("DROP TABLE IF EXISTS meta")
+	_, err := tx.ExecContext(ctx, "DROP TABLE IF EXISTS meta")
 	return err
 }
 
-func deleteLegacyRollupRows(tx *sql.Tx) error {
+func deleteLegacyRollupRows(ctx context.Context, tx *sql.Tx) error {
 	for _, plugin := range plugins.HistoryCapable() {
 		table := pluginHistoryTable(plugin)
 		var exists int
-		if err := tx.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&exists); err != nil {
+		if err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?", table).Scan(&exists); err != nil {
 			return err
 		}
 		if exists > 0 {
-			if _, err := tx.Exec("DELETE FROM "+table+" WHERE resolution <> ?", resolution1m); err != nil {
+			if _, err := tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE resolution <> ?", resolution1m); err != nil {
 				return err
 			}
 		}
@@ -268,10 +268,10 @@ func deleteLegacyRollupRows(tx *sql.Tx) error {
 }
 
 type schemaExecer interface {
-	Exec(query string, args ...any) (sql.Result, error)
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
-func createSchema(db schemaExecer) error {
+func createSchema(ctx context.Context, db schemaExecer) error {
 	statements := make([]string, 0, len(plugins.HistoryCapable())*2+1)
 	for _, plugin := range plugins.HistoryCapable() {
 		statements = append(statements,
@@ -288,7 +288,7 @@ func createSchema(db schemaExecer) error {
 	statements = append(statements, fmt.Sprintf("PRAGMA user_version = %d", storeSchemaVersion))
 
 	for _, stmt := range statements {
-		if _, err := db.Exec(stmt); err != nil {
+		if _, err := db.ExecContext(ctx, stmt); err != nil {
 			return err
 		}
 	}
@@ -306,12 +306,12 @@ func (s *Store) Path() string {
 	return s.path
 }
 
-func (s *Store) IntegrityCheck() error {
-	return checkDBIntegrity(s.db)
+func (s *Store) IntegrityCheck(ctx context.Context) error {
+	return checkDBIntegrity(ctx, s.db)
 }
 
-func checkDBIntegrity(db *sql.DB) error {
-	rows, err := db.Query("PRAGMA quick_check")
+func checkDBIntegrity(ctx context.Context, db *sql.DB) error {
+	rows, err := db.QueryContext(ctx, "PRAGMA quick_check")
 	if err != nil {
 		return err
 	}
@@ -342,7 +342,7 @@ func checkDBIntegrity(db *sql.DB) error {
 	return nil
 }
 
-func (s *Store) WriteSnapshot(capturedAt int64, data *systemmodel.CombinedData) error {
+func (s *Store) WriteSnapshot(ctx context.Context, capturedAt int64, data *systemmodel.CombinedData) error {
 	if data == nil {
 		return errors.New("snapshot data is nil")
 	}
@@ -351,7 +351,7 @@ func (s *Store) WriteSnapshot(capturedAt int64, data *systemmodel.CombinedData) 
 		return nil
 	}
 
-	tx, err := s.db.Begin()
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -370,7 +370,7 @@ func (s *Store) WriteSnapshot(capturedAt int64, data *systemmodel.CombinedData) 
 		if marshalErr != nil {
 			return marshalErr
 		}
-		if err = insertPluginHistory(tx, plugin, resolution1m, capturedAt, raw); err != nil {
+		if err = insertPluginHistory(ctx, tx, plugin, resolution1m, capturedAt, raw); err != nil {
 			return err
 		}
 	}
@@ -380,19 +380,19 @@ func (s *Store) WriteSnapshot(capturedAt int64, data *systemmodel.CombinedData) 
 	return nil
 }
 
-func insertPluginHistory(tx *sql.Tx, plugin, resolution string, capturedAt int64, raw string) error {
-	_, err := tx.Exec(fmt.Sprintf(`
+func insertPluginHistory(ctx context.Context, tx *sql.Tx, plugin, resolution string, capturedAt int64, raw string) error {
+	_, err := tx.ExecContext(ctx, fmt.Sprintf(`
 		INSERT OR REPLACE INTO %s (resolution, captured_at, stats_json)
 		VALUES (?, ?, ?)
 	`, pluginHistoryTable(plugin)), resolution, capturedAt, raw)
 	return err
 }
 
-func (s *Store) WriteSmartDevices(capturedAt int64, items map[string]smartmodel.SmartData) error {
+func (s *Store) WriteSmartDevices(ctx context.Context, capturedAt int64, items map[string]smartmodel.SmartData) error {
 	if !s.HistoryEnabled(plugins.Smart) {
 		return nil
 	}
-	tx, err := s.db.Begin()
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -415,7 +415,7 @@ func (s *Store) WriteSmartDevices(capturedAt int64, items map[string]smartmodel.
 	if err != nil {
 		return err
 	}
-	if err = insertPluginHistory(tx, plugins.Smart, resolution1m, capturedAt, raw); err != nil {
+	if err = insertPluginHistory(ctx, tx, plugins.Smart, resolution1m, capturedAt, raw); err != nil {
 		return err
 	}
 

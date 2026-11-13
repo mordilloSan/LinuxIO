@@ -113,7 +113,7 @@ type GroupNameRequest struct {
 
 type ChangePasswordRequest struct {
 	Username string `json:"username"`
-	Password string `json:"password"`
+	Password string `json:"password" secret:"true"`
 }
 
 type TerminateSessionRequest struct {
@@ -123,7 +123,7 @@ type TerminateSessionRequest struct {
 
 type CreateUserRequest struct {
 	Username   string   `json:"username"`
-	Password   string   `json:"password"`
+	Password   string   `json:"password" secret:"true"`
 	FullName   *string  `json:"fullName,omitzero"`
 	HomeDir    *string  `json:"homeDir,omitzero"`
 	Shell      *string  `json:"shell,omitzero"`

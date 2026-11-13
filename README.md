@@ -104,9 +104,10 @@ hostname, `<hostname>.local`, and the host's current IP addresses. The same
 certificate is reused across restarts, reboots, and updates until it enters its
 30-day renewal window.
 
-The installer places eight binaries in `/usr/local/bin`: `linuxio`,
+The installer places nine binaries in `/usr/local/bin`: `linuxio`,
 `linuxio-webserver`, `linuxio-bridge`, `linuxio-auth`, `linuxio-docker-update`,
-`linuxio-indexer`, `linuxio-monitoring`, and `linuxio-btrfs-timer`. From a
+`linuxio-indexer`, `linuxio-monitoring`, `linuxio-btrfs-timer`, and
+`linuxio-claude-relay`. From a
 checkout, `make localinstall` runs the same installer with `--local` against the
 binaries in `build/`.
 
@@ -230,6 +231,7 @@ listed in [docs/THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md) and install
 - [Arcane](https://github.com/getarcaneapp/arcane) - UI and interaction inspiration
 - [FileBrowser Quantum](https://github.com/gtsteffaniak/filebrowser) - File-management UX and visual inspiration, and the foundation for LinuxIO's filesystem indexer
 - [Beszel](https://github.com/henrygd/beszel) - Server monitoring inspiration
+- [lot-map](https://github.com/alexeyw/lot-map) by Aleksei Volodin - The design of the Assistant's activity map
 - [Unraid](https://unraid.net/) - Product and homelab management inspiration
 - Many other open source and self-hosted projects that shaped LinuxIO's direction
 

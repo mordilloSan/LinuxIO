@@ -2,11 +2,15 @@ import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { HeaderActionsProps } from "@/components/ui/HeaderActions";
-import { render, screen } from "@/test/render";
+import { render as renderWithApp, screen } from "@/test/render";
 
 import FileBrowserHeader from "./FileBrowserHeader";
 
 const headerActionsRender = vi.hoisted(() => vi.fn());
+
+// Search and indexing are for a session with sudo; see the test without it.
+const render: typeof renderWithApp = (ui, options) =>
+  renderWithApp(ui, { auth: { privileged: true }, ...options });
 
 vi.mock("./IndexerDialog", () => ({ default: () => null }));
 vi.mock("@/components/ui/HeaderActions", () => ({
@@ -110,6 +114,20 @@ describe("FileBrowserHeader", () => {
     expect(screen.getByRole("button", { name: "Trash" })).toBeVisible();
   });
 
+  it("offers neither search nor indexing to a session without sudo", () => {
+    headerActionsRender.mockClear();
+    renderWithApp(
+      <FileBrowserHeader {...defaultProps} showQuickSave={false} />,
+      { auth: { privileged: false } },
+    );
+
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Index filesystem" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Trash" })).toBeVisible();
+  });
+
   it("uses the shared view mode toggle", async () => {
     const onSwitchView = vi.fn();
     const { user } = render(
@@ -204,12 +222,13 @@ describe("FileBrowserHeader", () => {
     );
 
     // Mirrors .tab-selector in tab-selector.css — the search must sit at the
-    // same screen-centered spot here as on tab routes.
-    expect(container.querySelector(".file-browser-header")).toHaveStyle({
-      display: "grid",
-      gridTemplateColumns:
-        "minmax(0, 1fr) clamp(140px, 40vw, 400px) minmax(0, 1fr)",
-    });
+    // same screen-centered spot here as on tab routes. Read from the inline
+    // style: the computed value has clamp() resolved to a pixel width.
+    const header = container.querySelector<HTMLElement>(".file-browser-header");
+    expect(header).toHaveStyle({ display: "grid" });
+    expect(header?.style.gridTemplateColumns).toBe(
+      "minmax(0px, 1fr) clamp(140px, 40vw, 400px) minmax(0px, 1fr)",
+    );
     expect(
       screen.getByRole("textbox", { name: "Search files and folders..." }),
     ).toBeVisible();

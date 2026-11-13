@@ -28,10 +28,10 @@ configuration.
 
 | Provider | Frequency | Scope | Download only | Reboot policy | Exclusions | Notify |
 |---|---|---|---|---|---|---|
-| Ubuntu/Debian APT | Hourly, daily, weekly | Security, updates, all | Yes | Never, if needed | Yes | Never, on failure, on change, always |
-| Linux Mint | Hourly, daily, weekly | Security, all enabled repositories | No | Never | Yes | Never, on failure, on change, always |
-| DNF4 | Hourly, daily, weekly | Security, all enabled repositories | Yes | Never; if needed/always when supported by the installed version | Yes | Never, on failure, on change, always |
-| DNF5 | Hourly, daily, weekly | Security, all enabled repositories | Yes | Never, if needed, always | Yes | Never, on failure, on change, always |
+| Ubuntu/Debian APT | Hourly, daily, weekly | Security, updates, all | Yes | Never, if needed | Yes | On failure, on change, always |
+| Linux Mint | Hourly, daily, weekly | Security, all enabled repositories | No | Never | Yes | On failure, always |
+| DNF4 | Hourly, daily, weekly | Security, all enabled repositories | Yes | Never; if needed/always when supported by the installed version | Yes | On failure, always |
+| DNF5 | Hourly, daily, weekly | Security, all enabled repositories | Yes | Never, if needed, always | Yes | On failure, always |
 
 On Ubuntu and Debian, scopes only cover distribution archives (the widest
 APT scope is security, updates, and backports). Third-party repositories such
@@ -65,7 +65,33 @@ Disabling LinuxIO-managed automatic installation does not require disabling
 `apt-daily.timer`. APT may continue using that timer to refresh package metadata;
 `apt-daily-upgrade.timer` is the unit that performs unattended installation.
 
-When notifications are enabled, LinuxIO writes
-`/etc/systemd/system/<upgrade-service>.d/linuxio-alert.conf` with an
-`ExecStopPost=` that runs `linuxio alert auto-update` after each run. The
-drop-in is removed when the policy is `never`. See [Alerts](./alerts.md).
+Every automatic update is recorded in the job history as *System updates*,
+with its outcome, how long it ran and its output, whichever notify policy is
+stored and whether or not LinuxIO configured the schedule: the installer
+hooks the provider's upgrade service (`apt-daily-upgrade.service`,
+`dnf-automatic.service`, `dnf5-automatic.service` or
+`mintupdate-automation-upgrade.service`) with the same run-record drop-in
+LinuxIO's own timers use
+([Process and systemd architecture](./process-systemd-architecture.md)). A
+running update shows in the bell, without a cancel. The record raises no
+alert of its own, with one exception: on a host where the notify hook below
+is not installed (no policy was ever saved, or an older build stored
+`never`), the same hook raises *Automatic updates failed* for a failed run,
+so a failed automatic update is reported on every host.
+
+The notify policy is chosen in the Notifications settings tab, beside the
+Docker update policy and the delivery channels, and stored as a drop-in:
+LinuxIO writes `/etc/systemd/system/<upgrade-service>.d/linuxio-alert.conf`
+with an `ExecStopPost=` that runs `linuxio alert auto-update` after each run.
+The drop-in is removed when the policy is `never`, which no provider offers
+any more and only a page of an older build still sends; a host without the
+drop-in reads as "failures only", which is what it runs as. The first save
+of any automatic-update option on such a host therefore writes the drop-in
+with `on_failure`, which also adds its pre-update snapshot line (it does
+something only where a snapshot rule asks for a snapshot before updates). Mint
+and DNF report only the service result, so they offer no "on change". On APT, "tell me when
+system updates are waiting" writes the same drop-in name under
+`apt-daily.service.d`, running `linuxio alert pending-updates` after each
+package-list refresh, and keeps `APT::Periodic::Update-Package-Lists` at `1`
+even while automatic installation is off, so the lists stay fresh. See
+[Alerts](./alerts.md).

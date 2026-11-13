@@ -33,11 +33,11 @@ func (d *daemon) handleStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (d *daemon) newStatusResponse(running bool) api.StatusResponse {
-	resp := api.StatusResponse{Status: "uninitialized"}
+	resp := api.StatusResponse{Status: api.StatusUninitialized}
 	if !running {
 		return resp
 	}
-	resp.Status = "running"
+	resp.Status = api.StatusRunning
 	if active := d.getWorkStreamBroadcaster(); active != nil {
 		resp.ActiveOperation = active.Operation()
 		resp.ActiveOperationID = active.OperationID()
@@ -57,8 +57,8 @@ func (d *daemon) populateLatestIndexStatus(ctx context.Context, resp *api.Status
 	resp.NumDirs = latest.NumDirs
 	resp.NumFiles = latest.NumFiles
 	resp.TotalSize = latest.TotalSize
-	if resp.Status != "running" {
-		resp.Status = "idle"
+	if resp.Status != api.StatusRunning {
+		resp.Status = api.StatusIdle
 	}
 	resp.LastIndexed = latest.LastIndexed.Format(time.RFC3339)
 	return nil

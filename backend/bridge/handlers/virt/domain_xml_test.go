@@ -52,6 +52,7 @@ func TestBuildDomainXML(t *testing.T) {
 		"<name>test-vm</name>",
 		"<memory unit=\"MiB\">2048</memory>",
 		"<vcpu>2</vcpu>",
+		"<cpu mode=\"host-passthrough\"></cpu>",
 		"firmware=\"efi\"",
 		"<loader stateless=\"no\"></loader>",
 		"<feature enabled=\"no\" name=\"secure-boot\"></feature>",

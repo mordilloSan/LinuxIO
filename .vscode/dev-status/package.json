@@ -1,0 +1,35 @@
+{
+  "name": "linuxio-dev-status",
+  "displayName": "LinuxIO dev status",
+  "description": "Status bar indicator for the LinuxIO Vite dev server (make dev).",
+  "version": "1.0.0",
+  "publisher": "linuxio",
+  "private": true,
+  "license": "GPL-3.0-or-later",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "extensionKind": [
+    "workspace"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "linuxioDevStatus.start",
+        "title": "LinuxIO: Start dev server"
+      },
+      {
+        "command": "linuxioDevStatus.stop",
+        "title": "LinuxIO: Stop dev server"
+      },
+      {
+        "command": "linuxioDevStatus.logs",
+        "title": "LinuxIO: Show dev server logs"
+      }
+    ]
+  }
+}

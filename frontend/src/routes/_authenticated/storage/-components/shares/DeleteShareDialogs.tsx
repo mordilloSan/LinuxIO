@@ -1,9 +1,4 @@
-import {
-  linuxio,
-  type NFSExport,
-  type SambaShare,
-  useCallMutation,
-} from "@/api";
+import { linuxio, type NFSExport, type SambaShare } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
@@ -37,9 +32,8 @@ export const DeleteNFSShareDialog = ({
   onSuccess,
 }: DeleteNFSShareDialogProps) => {
   const toast = useScopedToast(SHARES_TOAST_META);
-  const { mutate: deleteShare, isPending } = useCallMutation(
-    linuxio.shares.delete_nfs_share,
-    {
+  const { mutate: deleteShare, isPending } =
+    linuxio.shares.delete_nfs_share.useMutation({
       success: () => {
         toast.success(`Removed NFS export for ${share?.path}`);
         onSuccess();
@@ -47,8 +41,7 @@ export const DeleteNFSShareDialog = ({
       },
       error: "Failed to remove NFS export",
       toast: SHARES_TOAST_META,
-    },
-  );
+    });
 
   return (
     <GeneralDialog
@@ -113,9 +106,8 @@ export const DeleteSambaShareDialog = ({
   onSuccess,
 }: DeleteSambaShareDialogProps) => {
   const toast = useScopedToast(SHARES_TOAST_META);
-  const { mutate: deleteShare, isPending } = useCallMutation(
-    linuxio.shares.delete_samba_share,
-    {
+  const { mutate: deleteShare, isPending } =
+    linuxio.shares.delete_samba_share.useMutation({
       success: () => {
         toast.success(`Removed Samba share "${share?.name}"`);
         onSuccess();
@@ -123,8 +115,7 @@ export const DeleteSambaShareDialog = ({
       },
       error: "Failed to remove Samba share",
       toast: SHARES_TOAST_META,
-    },
-  );
+    });
 
   return (
     <GeneralDialog

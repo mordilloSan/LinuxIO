@@ -1,6 +1,7 @@
 package apischema
 
-type Service struct {
+// UnitSummary holds the properties the service, timer and socket lists share.
+type UnitSummary struct {
 	ActiveEnterTimestamp   int64   `json:"active_enter_timestamp"`
 	ActiveState            string  `json:"active_state"`
 	Description            *string `json:"description,omitzero"`
@@ -9,6 +10,10 @@ type Service struct {
 	Name                   string  `json:"name"`
 	SubState               string  `json:"sub_state"`
 	UnitFileState          string  `json:"unit_file_state"`
+}
+
+type Service struct {
+	UnitSummary
 }
 
 type UnitInfo struct {
@@ -41,31 +46,17 @@ type UnitInfo struct {
 }
 
 type Timer struct {
-	ActiveEnterTimestamp   int64   `json:"active_enter_timestamp"`
-	ActiveState            string  `json:"active_state"`
-	Description            *string `json:"description,omitzero"`
-	InactiveEnterTimestamp int64   `json:"inactive_enter_timestamp"`
-	LastTriggerUSec        int64   `json:"last_trigger_usec"`
-	LoadState              string  `json:"load_state"`
-	Name                   string  `json:"name"`
-	NextElapseUSec         int64   `json:"next_elapse_usec"`
-	SubState               string  `json:"sub_state"`
-	Unit                   string  `json:"unit"`
-	UnitFileState          string  `json:"unit_file_state"`
+	UnitSummary
+	LastTriggerUSec int64  `json:"last_trigger_usec"`
+	NextElapseUSec  int64  `json:"next_elapse_usec"`
+	Unit            string `json:"unit"`
 }
 
 type Socket struct {
-	ActiveEnterTimestamp   int64    `json:"active_enter_timestamp"`
-	ActiveState            string   `json:"active_state"`
-	Description            *string  `json:"description,omitzero"`
-	InactiveEnterTimestamp int64    `json:"inactive_enter_timestamp"`
-	Listen                 []string `json:"listen"`
-	LoadState              string   `json:"load_state"`
-	NAccepted              int      `json:"n_accepted"`
-	NConnections           int      `json:"n_connections"`
-	Name                   string   `json:"name"`
-	SubState               string   `json:"sub_state"`
-	UnitFileState          string   `json:"unit_file_state"`
+	UnitSummary
+	Listen       []string `json:"listen"`
+	NAccepted    int      `json:"n_accepted"`
+	NConnections int      `json:"n_connections"`
 }
 
 type ServiceNameRequest struct {

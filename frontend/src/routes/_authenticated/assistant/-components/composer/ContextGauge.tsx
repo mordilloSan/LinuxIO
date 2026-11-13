@@ -1,3 +1,4 @@
+import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 
 import type { AssistantState } from "../assistant-store";
@@ -5,7 +6,7 @@ import type { AssistantState } from "../assistant-store";
 const RADIUS = 6;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
-const fmtTokens = (n: number) =>
+export const fmtTokens = (n: number) =>
   n >= 1000 ? `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k` : String(n);
 
 function fmtCost({ amount, currency }: { amount: number; currency: string }) {
@@ -23,27 +24,49 @@ function fmtCost({ amount, currency }: { amount: number; currency: string }) {
 const level = (fraction: number) =>
   fraction > 0.9 ? "error" : fraction >= 0.7 ? "warning" : "primary";
 
-/** A small ring showing how much of the context window the chat has used. */
+function describe(
+  usage: NonNullable<AssistantState["usage"]>,
+  fraction: number,
+) {
+  const summary = `${fmtTokens(usage.used)} / ${fmtTokens(usage.size)} tokens (${Math.round(fraction * 100)}%)`;
+  return usage.cost ? `${summary} · ${fmtCost(usage.cost)}` : summary;
+}
+
+/**
+ * A small ring showing how much of the context window the chat has used.
+ * Clicking it compacts the conversation when `onCompact` is given.
+ */
 export default function ContextGauge({
   usage,
+  onCompact,
 }: {
   usage: AssistantState["usage"];
+  /** Absent while compacting is not possible; the ring then only reports. */
+  onCompact?: () => void;
 }) {
-  if (!usage) return null;
   const fraction =
-    usage.size > 0 ? Math.min(Math.max(usage.used / usage.size, 0), 1) : 0;
-  const summary = `${fmtTokens(usage.used)} / ${fmtTokens(usage.size)} tokens (${Math.round(fraction * 100)}%)`;
-  const text = usage.cost ? `${summary} · ${fmtCost(usage.cost)}` : summary;
+    usage && usage.size > 0
+      ? Math.min(Math.max(usage.used / usage.size, 0), 1)
+      : 0;
+  const summary = usage
+    ? describe(usage, fraction)
+    : "Context usage appears after the first reply";
+  const text = onCompact ? `${summary} · Click to compact` : summary;
 
   return (
     <AppTooltip title={text}>
-      {/* Focusable so the numbers open for keyboard users too. */}
-      <span className="assistant__gauge-wrap app-focus-ring" tabIndex={0}>
+      {/* Never natively disabled, so the numbers stay reachable by keyboard. */}
+      <AppIconButton
+        aria-disabled={!onCompact}
+        aria-label={text}
+        className="assistant__gauge-button"
+        onClick={() => onCompact?.()}
+        size="small"
+      >
         <svg
-          aria-label={text}
+          aria-hidden
           className={`assistant__gauge assistant__gauge--${level(fraction)}`}
           height={16}
-          role="img"
           viewBox="0 0 16 16"
           width={16}
         >
@@ -67,7 +90,7 @@ export default function ContextGauge({
             transform="rotate(-90 8 8)"
           />
         </svg>
-      </span>
+      </AppIconButton>
     </AppTooltip>
   );
 }

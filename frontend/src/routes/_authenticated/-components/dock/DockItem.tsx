@@ -2,9 +2,9 @@ import { Icon } from "@iconify/react";
 import { Link } from "@tanstack/react-router";
 import { memo } from "react";
 
-import DockTile from "./DockTile";
 import type { SidebarItem } from "../sidebar/types";
 import { useSortableNavItem } from "../sidebar/useSortableNavItem";
+import DockTile from "./DockTile";
 
 type DockItemProps = SidebarItem & {
   disabled?: boolean;

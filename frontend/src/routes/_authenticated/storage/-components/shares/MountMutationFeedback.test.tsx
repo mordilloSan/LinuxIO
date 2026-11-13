@@ -104,7 +104,12 @@ describe("mount mutation feedback", () => {
     ];
     const queryClient = createTestQueryClient();
     queryClient.setQueryData(linuxio.storage.list_nfs_mounts.queryKey, mounts);
-    vi.spyOn(core, "request").mockImplementation(
+    vi.spyOn(core, "request").mockImplementation((_handler, command) =>
+      command === "list_nfs_mounts"
+        ? Promise.resolve(mounts)
+        : Promise.resolve(),
+    );
+    vi.spyOn(core, "mutationRequest").mockImplementation(
       (_handler, command, request) => {
         const mountpoint = (request as { mountpoint?: string } | undefined)
           ?.mountpoint;
@@ -113,9 +118,6 @@ describe("mount mutation feedback", () => {
         }
         if (command === "unmount_nfs" && mountpoint === "/mnt/beta") {
           return unmounting.promise;
-        }
-        if (command === "list_nfs_mounts") {
-          return Promise.resolve(mounts);
         }
         return Promise.resolve();
       },
@@ -197,8 +199,13 @@ describe("mount mutation feedback", () => {
     ];
     const queryClient = createTestQueryClient();
     queryClient.setQueryData(linuxio.storage.list_cifs_mounts.queryKey, mounts);
+    vi.spyOn(core, "request").mockImplementation((_handler, command) =>
+      command === "list_cifs_mounts"
+        ? Promise.resolve(mounts)
+        : Promise.resolve(),
+    );
     const request = vi
-      .spyOn(core, "request")
+      .spyOn(core, "mutationRequest")
       .mockImplementation((_handler, command, request) => {
         const mountpoint = (request as { mountpoint?: string } | undefined)
           ?.mountpoint;
@@ -207,9 +214,6 @@ describe("mount mutation feedback", () => {
         }
         if (command === "unmount_cifs" && mountpoint === "/mnt/share-b") {
           return unmounting.promise;
-        }
-        if (command === "list_cifs_mounts") {
-          return Promise.resolve(mounts);
         }
         return Promise.resolve();
       });
@@ -235,7 +239,10 @@ describe("mount mutation feedback", () => {
       "storage",
       "mount_cifs",
       expect.objectContaining({ mountpoint: "/mnt/share-a" }),
-      { retryPolicy: "none" },
+      {
+        onProgress: expect.any(Function),
+        onSnapshot: expect.any(Function),
+      },
     );
 
     expect(

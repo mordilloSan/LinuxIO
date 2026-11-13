@@ -8,28 +8,38 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
 )
 
-var api = apischema.Bindings(
-	apischema.DuplexRoute[apischema.PathRequest, apischema.NoResponse](routeDownloadStream, apischema.NoEndpoint()).Duplex(streamFileDownload),
-	apischema.Call[apischema.PathRequest, apischema.DirectoryListing]("filebrowser.list_directory", apischema.RetrySafe()).Handle(handleListDirectory),
-	apischema.Call[apischema.DirectoryChildrenRequest, apischema.DirectoryChildren]("filebrowser.directory_children", apischema.RetrySafe()).Handle(handleDirectoryChildren),
-	apischema.Call[apischema.PathRequest, apischema.TextFile]("filebrowser.read_text", apischema.RetrySafe()).Handle(handleReadText),
-	apischema.Call[apischema.PathRequest, *apischema.ResourceStatData]("filebrowser.resource_stat", apischema.RetrySafe()).Handle(handleResourceStat),
-	apischema.Call[apischema.BatchPathRequest, apischema.ExistsBatchResponse]("filebrowser.exists_batch", apischema.RetrySafe()).Handle(handleExistsBatch),
-	apischema.Call[apischema.FileResourcePostRequest, apischema.NoResponse]("filebrowser.resource_post").HandleVoid(handleResourcePost),
-	apischema.TaskRunner[apischema.ActionSourceDestinationRequest, apischema.MessageResponse]("filebrowser.resource_patch", apischema.SessionTask(), apischema.WithTaskProgress[FileProgress]()).Run(handleResourcePatch, bridgeipc.TaskDefault),
-	apischema.Call[apischema.PathRequest, apischema.DirectorySizeData]("filebrowser.dir_size", apischema.RetrySafe(), apischema.Privileged()).Handle(handleDirSize),
-	apischema.Call[apischema.PathRequest, apischema.SubfoldersResponse]("filebrowser.subfolders", apischema.RetrySafe(), apischema.Privileged()).Handle(handleSubfolders),
-	apischema.Call[apischema.FileSearchRequest, apischema.SearchResponse]("filebrowser.search", apischema.RetrySafe(), apischema.Privileged()).Handle(handleSearch),
-	apischema.Call[apischema.NoRequest, apischema.UsersGroupsResponse]("filebrowser.users_groups", apischema.RetrySafe()).Handle(handleUsersGroups),
-)
+// routeBindings declares the file browser's routes that are not tasks of
+// their own. Rename acts for the session user (see actingFor), which only
+// these bindings know.
+func routeBindings(owner sessionOwner) apischema.BindingSet {
+	return apischema.Bindings(
+		apischema.DuplexRoute[apischema.PathRequest, apischema.NoResponse](routeDownloadStream, apischema.NoEndpoint()).Duplex(streamFileDownload),
+		apischema.Call[apischema.PathRequest, apischema.DirectoryListing]("filebrowser.list_directory", apischema.RetrySafe()).Handle(handleListDirectory),
+		apischema.Call[apischema.DirectoryChildrenRequest, apischema.DirectoryChildren]("filebrowser.directory_children", apischema.RetrySafe()).Handle(handleDirectoryChildren),
+		apischema.Call[apischema.PathRequest, apischema.TextFile]("filebrowser.read_text", apischema.RetrySafe()).Handle(handleReadText),
+		apischema.Call[apischema.PathRequest, *apischema.ResourceStatData]("filebrowser.resource_stat", apischema.RetrySafe()).Handle(handleResourceStat),
+		apischema.Call[apischema.BatchPathRequest, apischema.ExistsBatchResponse]("filebrowser.exists_batch", apischema.RetrySafe()).Handle(handleExistsBatch),
+		apischema.MutationVoid("filebrowser.resource_post", func(ctx context.Context, req apischema.FileResourcePostRequest) error {
+			_, err := resourcePost(ctx, req, actingFor(owner))
+			return err
+		}),
+		apischema.MutationTask("filebrowser.resource_patch", func(ctx context.Context, task *bridgeipc.Task, req apischema.ActionSourceDestinationRequest) (apischema.MessageResponse, error) {
+			return resourcePatchWithProgress(ctx, req, task, owner)
+		}, apischema.Progress[FileProgress]()),
+		apischema.Call[apischema.PathRequest, apischema.DirectorySizeData]("filebrowser.dir_size", apischema.RetrySafe(), apischema.Privileged()).Handle(handleDirSize),
+		apischema.Call[apischema.PathRequest, apischema.SubfoldersResponse]("filebrowser.subfolders", apischema.RetrySafe(), apischema.Privileged()).Handle(handleSubfolders),
+		apischema.Call[apischema.FileSearchRequest, apischema.SearchResponse]("filebrowser.search", apischema.RetrySafe(), apischema.Privileged()).Handle(handleSearch),
+		apischema.Call[apischema.NoRequest, apischema.UsersGroupsResponse]("filebrowser.users_groups", apischema.RetrySafe()).Handle(handleUsersGroups),
+	)
+}
 
-var Routes = apischema.CombineRoutes(api.Routes(), fileTaskRoutes)
+var Routes = apischema.CombineRoutes(routeBindings(sessionOwner{}).Routes(), fileTaskRoutes)
 
 // RegisterHandlers registers all filebrowser handlers with the global registry
 func RegisterHandlers(rt runtime.Runtime, router *bridgeipc.Router) {
-	RegisterTaskRoutes(router, rt.Store, uploadOwner{uid: rt.Session.User.UID, gid: rt.Session.User.GID, set: true})
-
-	api.Register(router)
+	owner := sessionOwner{uid: rt.Session.User.UID, gid: rt.Session.User.GID, set: true}
+	RegisterTaskRoutes(router, rt.Store, owner)
+	routeBindings(owner).Register(router)
 }
 
 func handleListDirectory(ctx context.Context, req apischema.PathRequest) (apischema.DirectoryListing, error) {
@@ -50,15 +60,6 @@ func handleResourceStat(ctx context.Context, req apischema.PathRequest) (*apisch
 
 func handleExistsBatch(ctx context.Context, req apischema.BatchPathRequest) (apischema.ExistsBatchResponse, error) {
 	return existsBatch(ctx, req)
-}
-
-func handleResourcePost(ctx context.Context, req apischema.FileResourcePostRequest) error {
-	_, err := resourcePost(ctx, req)
-	return err
-}
-
-func handleResourcePatch(ctx context.Context, task *bridgeipc.Task, req apischema.ActionSourceDestinationRequest) (apischema.MessageResponse, error) {
-	return resourcePatchWithProgress(ctx, req, task)
 }
 
 func handleDirSize(ctx context.Context, req apischema.PathRequest) (apischema.DirectorySizeData, error) {

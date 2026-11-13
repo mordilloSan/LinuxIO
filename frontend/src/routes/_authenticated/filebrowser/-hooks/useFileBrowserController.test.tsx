@@ -3,9 +3,9 @@ import { act, renderHook } from "@testing-library/react";
 import type { MouseEvent, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { FileItem, FileResource } from "../-types";
 import { createFileBrowserListingQueryOptions } from "./fileBrowserListingQueryOptions";
 import { useFileBrowserController } from "./useFileBrowserController";
-import type { FileItem, FileResource } from "../-types";
 
 const mocks = vi.hoisted(() => ({
   archiveActions: {
@@ -160,11 +160,13 @@ const mocks = vi.hoisted(() => ({
       closeDialog: vi.fn(),
       mergeEntries: vi.fn(),
       openDialog: vi.fn(),
+      setOwnUploads: vi.fn(),
       setProcessing: vi.fn(),
     },
     fileInputRef: { current: null },
     folderInputRef: { current: null },
     isUploadProcessing: false,
+    ownUploads: false,
     uploadDialogOpen: false,
     uploadEntries: [],
     uploadSummary: {

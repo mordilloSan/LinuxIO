@@ -31,6 +31,7 @@ func TestConfigConversionsPreservePersistedJSONShapes(t *testing.T) {
 		Dismissals: &userconfig.PersistedDismissals{
 			UncleanShutdownBootID: "boot-id",
 			FailedLoginAlertID:    "login-id",
+			HistorySeenAt:         "2026-11-10T09:30:00.123Z",
 		},
 	}
 	ui := userconfig.UIPreferences{
@@ -45,16 +46,13 @@ func TestConfigConversionsPreservePersistedJSONShapes(t *testing.T) {
 			"dashboard":         {"system", "docker"},
 			"docker.containers": {"alpha", "beta"},
 		},
-		DockerDashboardSections: &userconfig.DockerDashboardSections{
-			Overview: true, Daemon: false, Resources: true,
-		},
-		HardwareSections: &userconfig.HardwareSections{
-			Overview: true, Hardware: false, Sensors: true, SystemInfo: false,
-			GPU: true, PCIDevices: false, MemoryModules: true,
+		CollapsedSections: map[string][]string{
+			"docker.dashboard": {"daemon"},
+			"hardware":         {"hardware", "systemInfo"},
 		},
 		ThemeColors: &userconfig.ThemeColorsByMode{
-			Light: &userconfig.ThemeColors{BackgroundDefault: &light},
-			Dark:  &userconfig.ThemeColors{CodeText: &dark},
+			Light: userconfig.ThemeColors{"backgroundDefault": light},
+			Dark:  userconfig.ThemeColors{"codeText": dark, "codeInsetBackground": dark, "panePictureBackground": dark},
 		},
 		ViewModes:        map[string]string{"docker": "table", "storage": "card"},
 		TerminalFontSize: 18,

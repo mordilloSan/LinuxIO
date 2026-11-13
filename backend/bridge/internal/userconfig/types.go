@@ -22,19 +22,21 @@ type Settings struct {
 // UIPreferences holds effective backend-owned UI preferences. The on-disk
 // empty-document sentinel is represented separately from this runtime value.
 type UIPreferences struct {
-	Theme                   PersistedTheme           `json:"theme" yaml:"theme"`
-	PrimaryColor            CSSColor                 `json:"primaryColor" yaml:"primaryColor"`
-	ThemeColors             *ThemeColorsByMode       `json:"themeColors,omitzero" yaml:"themeColors,omitempty"`
-	SidebarCollapsed        bool                     `json:"sidebarCollapsed" yaml:"sidebarCollapsed"`
-	NavigationMode          string                   `json:"navigationMode" yaml:"navigationMode"`
-	DockTileColors          string                   `json:"dockTileColors" yaml:"dockTileColors"`
-	DockAccentGradient      *DockAccentGradient      `json:"dockAccentGradient" yaml:"dockAccentGradient"`
-	HiddenCards             []string                 `json:"hiddenCards" yaml:"hiddenCards"`
-	DockerDashboardSections *DockerDashboardSections `json:"dockerDashboardSections" yaml:"dockerDashboardSections"`
-	HardwareSections        *HardwareSections        `json:"hardwareSections" yaml:"hardwareSections"`
-	ViewModes               map[string]string        `json:"viewModes" yaml:"viewModes"`
-	LayoutOrders            map[string][]string      `json:"layoutOrders" yaml:"layoutOrders"`
-	TerminalFontSize        int                      `json:"terminalFontSize" yaml:"terminalFontSize"`
+	Theme              PersistedTheme      `json:"theme" yaml:"theme"`
+	PrimaryColor       CSSColor            `json:"primaryColor" yaml:"primaryColor"`
+	ThemeColors        *ThemeColorsByMode  `json:"themeColors,omitzero" yaml:"themeColors,omitempty"`
+	SidebarCollapsed   bool                `json:"sidebarCollapsed" yaml:"sidebarCollapsed"`
+	NavigationMode     string              `json:"navigationMode" yaml:"navigationMode"`
+	DockTileColors     string              `json:"dockTileColors" yaml:"dockTileColors"`
+	DockAccentGradient *DockAccentGradient `json:"dockAccentGradient" yaml:"dockAccentGradient"`
+	HiddenCards        []string            `json:"hiddenCards" yaml:"hiddenCards"`
+	// CollapsedSections lists, per page, the sections the user collapsed. The
+	// frontend names both and the backend never reads them: a page or section
+	// that is absent is expanded, so a new section starts open for everyone.
+	CollapsedSections map[string][]string `json:"collapsedSections" yaml:"collapsedSections"`
+	ViewModes         map[string]string   `json:"viewModes" yaml:"viewModes"`
+	LayoutOrders      map[string][]string `json:"layoutOrders" yaml:"layoutOrders"`
+	TerminalFontSize  int                 `json:"terminalFontSize" yaml:"terminalFontSize"`
 }
 
 // PersistedDismissals records per-user acknowledgements of one-shot health signals.
@@ -43,53 +45,9 @@ type UIPreferences struct {
 type PersistedDismissals struct {
 	UncleanShutdownBootID string `json:"uncleanShutdownBootId,omitempty" yaml:"uncleanShutdownBootId,omitempty"`
 	FailedLoginAlertID    string `json:"failedLoginAlertId,omitempty" yaml:"failedLoginAlertId,omitempty"`
-}
-
-// DockerDashboardSections holds the collapsed state of each Docker dashboard section
-type DockerDashboardSections struct {
-	Overview   bool `json:"overview" yaml:"overview"`
-	Monitoring bool `json:"monitoring" yaml:"monitoring"`
-	Daemon     bool `json:"daemon" yaml:"daemon"`
-	Resources  bool `json:"resources" yaml:"resources"`
-}
-
-// HardwareSections holds the visibility state of each hardware dashboard section
-type HardwareSections struct {
-	Overview      bool `json:"overview" yaml:"overview"`
-	Hardware      bool `json:"hardware" yaml:"hardware"`
-	Sensors       bool `json:"sensors" yaml:"sensors"`
-	SystemInfo    bool `json:"systemInfo" yaml:"systemInfo"`
-	GPU           bool `json:"gpu" yaml:"gpu"`
-	PCIDevices    bool `json:"pciDevices" yaml:"pciDevices"`
-	MemoryModules bool `json:"memoryModules" yaml:"memoryModules"`
-}
-
-// ThemeColorsByMode holds separate color overrides for light and dark mode
-type ThemeColorsByMode struct {
-	Light *ThemeColors `json:"light,omitzero" yaml:"light,omitempty"`
-	Dark  *ThemeColors `json:"dark,omitzero" yaml:"dark,omitempty"`
-}
-
-// ThemeColors holds optional per-field color overrides for the UI theme
-type ThemeColors struct {
-	BackgroundDefault               *CSSColor `json:"backgroundDefault,omitzero" yaml:"backgroundDefault,omitempty"`
-	BackgroundPaper                 *CSSColor `json:"backgroundPaper,omitzero" yaml:"backgroundPaper,omitempty"`
-	HeaderBackground                *CSSColor `json:"headerBackground,omitzero" yaml:"headerBackground,omitempty"`
-	FooterBackground                *CSSColor `json:"footerBackground,omitzero" yaml:"footerBackground,omitempty"`
-	SidebarBackground               *CSSColor `json:"sidebarBackground,omitzero" yaml:"sidebarBackground,omitempty"`
-	CardBackground                  *CSSColor `json:"cardBackground,omitzero" yaml:"cardBackground,omitempty"`
-	DialogBorder                    *CSSColor `json:"dialogBorder,omitzero" yaml:"dialogBorder,omitempty"`
-	DialogGlow                      *CSSColor `json:"dialogGlow,omitzero" yaml:"dialogGlow,omitempty"`
-	DialogBackdrop                  *CSSColor `json:"dialogBackdrop,omitzero" yaml:"dialogBackdrop,omitempty"`
-	CodeBackground                  *CSSColor `json:"codeBackground,omitzero" yaml:"codeBackground,omitempty"`
-	CodeText                        *CSSColor `json:"codeText,omitzero" yaml:"codeText,omitempty"`
-	ChartRx                         *CSSColor `json:"chartRx,omitzero" yaml:"chartRx,omitempty"`
-	ChartTx                         *CSSColor `json:"chartTx,omitzero" yaml:"chartTx,omitempty"`
-	ChartNeutral                    *CSSColor `json:"chartNeutral,omitzero" yaml:"chartNeutral,omitempty"`
-	FileBrowserSurface              *CSSColor `json:"fileBrowserSurface,omitzero" yaml:"fileBrowserSurface,omitempty"`
-	FileBrowserChrome               *CSSColor `json:"fileBrowserChrome,omitzero" yaml:"fileBrowserChrome,omitempty"`
-	FileBrowserBreadcrumbBackground *CSSColor `json:"fileBrowserBreadcrumbBackground,omitzero" yaml:"fileBrowserBreadcrumbBackground,omitempty"`
-	FileBrowserBreadcrumbText       *CSSColor `json:"fileBrowserBreadcrumbText,omitzero" yaml:"fileBrowserBreadcrumbText,omitempty"`
+	// HistorySeenAt is when the user last opened the job history (RFC 3339).
+	// The sign-in notice counts only the jobs that ended after it.
+	HistorySeenAt string `json:"historySeenAt,omitempty" yaml:"historySeenAt,omitempty"`
 }
 
 // DockAccentGradient controls the generated accent palette used by dock tiles.
@@ -105,7 +63,8 @@ type DockAccentGradient struct {
 // are in UIPreferences and persisted separately.
 type PersistedAppSettings struct {
 	ShowHiddenFiles bool `json:"showHiddenFiles" yaml:"showHiddenFiles"`
-	// ChunkSizeMB is the file-transfer chunk size in MiB (1–32). 0 = use default (1 MiB).
+	// ChunkSizeMB is the file-transfer chunk size in MiB (1–MaxChunkSizeMB). A new
+	// file starts at 1; 0 is accepted and means the frontend default (also 1 MiB).
 	ChunkSizeMB int `json:"chunkSizeMB" yaml:"chunkSizeMB"`
 }
 
@@ -166,16 +125,6 @@ const (
 	// nothing to the theme.
 	DockTileColorsVibrant = "vibrant"
 )
-
-// isValidDockTileColors reports whether s is a valid stored dock palette.
-func isValidDockTileColors(s string) bool {
-	switch s {
-	case DockTileColorsAccent, DockTileColorsMono, DockTileColorsNeutral, DockTileColorsVibrant:
-		return true
-	default:
-		return false
-	}
-}
 
 // ValidateDockAccentGradient returns validation errors for a dock gradient.
 func ValidateDockAccentGradient(value DockAccentGradient) []string {

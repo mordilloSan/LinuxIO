@@ -79,15 +79,13 @@ const seededClient = (container?: ContainerInspectInfo) => {
 
 describe("ContainerFormDialog", () => {
   it("creates from the shared form without starting by default", async () => {
+    vi.spyOn(core, "request").mockImplementation(async (_handler, action) => {
+      if (action === "list_networks") return networks;
+      return [];
+    });
     const request = vi
-      .spyOn(core, "request")
-      .mockImplementation(async (_handler, action) => {
-        if (action === "create_container") {
-          return { containerId: "created-id", name: "web" };
-        }
-        if (action === "list_networks") return networks;
-        return [];
-      });
+      .spyOn(core, "mutationRequest")
+      .mockResolvedValue({ containerId: "created-id", name: "web" });
     const onClose = vi.fn();
     const { user } = render(
       <ContainerFormDialog mode="create" onClose={onClose} open />,
@@ -123,7 +121,10 @@ describe("ContainerFormDialog", () => {
           }),
           start: false,
         },
-        { retryPolicy: "none" },
+        {
+          onProgress: expect.any(Function),
+          onSnapshot: expect.any(Function),
+        },
       ),
     );
     expect(onClose).toHaveBeenCalledOnce();

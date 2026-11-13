@@ -3,6 +3,7 @@ package btrfs
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unsafe"
@@ -32,12 +33,17 @@ type fakeKernel struct {
 	spaces     []spaceInfo
 	fail       map[uintptr]error
 	calls      []string
+	trees      fakeTrees // what tree searches find, such as the replace item
 
 	balance         func(*balanceArgs) error
 	balanceProgress func() (balanceArgs, error)
 	scrub           func(id uint64) (scrubProgress, error)
 	replaceStart    func(*devReplaceArgs) error
 	replaceStatus   func() (state, perMill uint64)
+	replaceStarted  uint64                 // STATUS time_started, seconds since the epoch
+	replaceCancel   func() (result uint64) // nil: every cancel is taken
+	remove          func(id uint64) error
+	removing        atomic.Bool // the remove hook has started
 
 	cancelled  chan struct{} // closed on the first cancel of any operation
 	cancelOnce sync.Once
@@ -57,11 +63,13 @@ func (k *fakeKernel) Calls() []string {
 
 func (k *fakeKernel) cancel() { k.cancelOnce.Do(func() { close(k.cancelled) }) }
 
-func (k *fakeKernel) ioctl(_ string, req uintptr, arg unsafe.Pointer) error {
+func (k *fakeKernel) ioctl(path string, req uintptr, arg unsafe.Pointer) error {
 	if err, ok := k.fail[req]; ok {
 		return err
 	}
 	switch req {
+	case iocTreeSearchV2:
+		return k.trees.ioctl(path, req, arg)
 	case iocFSInfo:
 		a := (*fsInfoArgs)(arg)
 		requested := a.Flags
@@ -81,7 +89,9 @@ func (k *fakeKernel) ioctl(_ string, req uintptr, arg unsafe.Pointer) error {
 		}
 		a.Path = [1024]byte{}
 		copy(a.Path[:], d.path)
+		k.mu.Lock() // a remove hook moves data off a device while it is polled
 		a.TotalBytes, a.BytesUsed = d.total, d.used
+		k.mu.Unlock()
 	case iocGetDevStats:
 		a := (*devStatsArgs)(arg)
 		d, ok := k.devices[a.DevID]
@@ -123,11 +133,15 @@ func (k *fakeKernel) mutate(req uintptr, arg unsafe.Pointer) error {
 		k.log("SET_FSLABEL %s", k.label)
 	case iocScrub:
 		a := (*scrubArgs)(arg)
-		if a.Start != 0 || a.End != ^uint64(0) {
+		if a.End != ^uint64(0) {
 			// The real kernel scrubs nothing outside the range and still succeeds.
-			return fmt.Errorf("scrub range %d-%d does not cover device %d", a.Start, a.End, a.DevID)
+			return fmt.Errorf("scrub range %d-%d does not reach the end of device %d", a.Start, a.End, a.DevID)
 		}
-		k.log("SCRUB %d", a.DevID)
+		if a.Start != 0 {
+			k.log("SCRUB %d from %d", a.DevID, a.Start)
+		} else {
+			k.log("SCRUB %d", a.DevID)
+		}
 		if k.scrub != nil {
 			p, err := k.scrub(a.DevID)
 			a.Progress = p
@@ -145,7 +159,19 @@ func (k *fakeKernel) mutate(req uintptr, arg unsafe.Pointer) error {
 		k.log("RESIZE %s", cstring((*volArgs)(arg).Name[:]))
 	case iocRmDevV2:
 		a := (*volArgsV2)(arg)
+		if a.Flags == 0 && cstring(a.Name[:]) == "cancel" {
+			k.log("RM_DEV cancel")
+			if !k.removing.Load() {
+				return unix.ENOTCONN // no removal holds the pool
+			}
+			k.cancel()
+			return unix.ECANCELED
+		}
 		k.log("RM_DEV %d flags=%d", getU64(a.Name[:], 0), a.Flags)
+		if k.remove != nil {
+			k.removing.Store(true)
+			return k.remove(getU64(a.Name[:], 0))
+		}
 	case iocBalanceV2:
 		a := (*balanceArgs)(arg)
 		k.log("BALANCE flags=%d", a.Flags)
@@ -177,8 +203,14 @@ func (k *fakeKernel) replace(a *devReplaceArgs) error {
 		state, perMill := k.replaceStatus()
 		putU64(a.Params[:], replaceStatusState, state)
 		putU64(a.Params[:], replaceStatusPerMill, perMill)
+		putU64(a.Params[:], replaceStatusTimeStarted, k.replaceStarted)
 	case replaceCmdCancel:
 		k.log("REPLACE_CANCEL")
+		if k.replaceCancel != nil {
+			if a.Result = k.replaceCancel(); a.Result != 0 {
+				return nil
+			}
+		}
 		k.cancel()
 	}
 	return nil
@@ -208,8 +240,12 @@ func stubKernel(t *testing.T, k *fakeKernel) {
 	t.Helper()
 	stubMounts(t, []Mount{{Mountpoint: "/data", UUID: dataUUID, SubvolID: 5}})
 	stubStatePaths(t, t.TempDir())
-	oldIoctl, oldSize, oldInterval, oldProgs := fsIoctl, blockDeviceSize, progressInterval, progsScrubDir
+	oldIoctl, oldCtl, oldSize, oldInterval, oldProgs := fsIoctl, balanceCtl, blockDeviceSize, progressInterval, progsScrubDir
 	fsIoctl = k.ioctl
+	balanceCtl = func(mnt string, cmd uintptr) error {
+		arg := int32(cmd)
+		return k.ioctl(mnt, iocBalanceCtl, unsafe.Pointer(&arg))
+	}
 	blockDeviceSize = func(device string) (uint64, error) {
 		for _, d := range k.devices {
 			if d.path == device {
@@ -221,6 +257,6 @@ func stubKernel(t *testing.T, k *fakeKernel) {
 	progressInterval = time.Millisecond
 	progsScrubDir = t.TempDir()
 	t.Cleanup(func() {
-		fsIoctl, blockDeviceSize, progressInterval, progsScrubDir = oldIoctl, oldSize, oldInterval, oldProgs
+		fsIoctl, balanceCtl, blockDeviceSize, progressInterval, progsScrubDir = oldIoctl, oldCtl, oldSize, oldInterval, oldProgs
 	})
 }

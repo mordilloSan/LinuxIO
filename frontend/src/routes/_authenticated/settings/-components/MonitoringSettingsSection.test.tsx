@@ -9,16 +9,19 @@ const mocks = vi.hoisted(() => ({ setConfig: vi.fn() }));
 vi.mock("@iconify/react", () => ({ Icon: () => <span /> }));
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
+  const { mockMutationHooks } = await import("@/test/mutationHooks");
+  const useCallMutation = (endpoint: { route: string }) => ({
+    isPending: false,
+    mutate: (request: Record<string, unknown>) => {
+      if (endpoint.route === "monitoring.set_config") {
+        mocks.setConfig(request);
+      }
+    },
+  });
   return {
     ...actual,
-    useCallMutation: (endpoint: { route: string }) => ({
-      isPending: false,
-      mutate: (request: Record<string, unknown>) => {
-        if (endpoint.route === "monitoring.set_config") {
-          mocks.setConfig(request);
-        }
-      },
-    }),
+    linuxio: mockMutationHooks(actual.linuxio, useCallMutation),
+    useCallMutation,
   };
 });
 

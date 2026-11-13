@@ -1,5 +1,5 @@
-import NetworkList from "./NetworkList";
 import DockerResourcePage from "../shared/DockerResourcePage";
+import NetworkList from "./NetworkList";
 
 const NETWORK_PRUNE_OPTIONS = {
   buildCache: false,

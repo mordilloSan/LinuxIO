@@ -153,7 +153,7 @@ debuglevel = 2
 	if err != nil {
 		t.Fatalf("Read: %v", err)
 	}
-	if state.Options.Notify != AutoUpdateNotifyOnFailure || len(state.Support.NotifyPolicies) != 4 {
+	if state.Options.Notify != AutoUpdateNotifyOnFailure || len(state.Support.NotifyPolicies) != 2 {
 		t.Fatalf("DNF notify state = %q, support %v", state.Options.Notify, state.Support.NotifyPolicies)
 	}
 

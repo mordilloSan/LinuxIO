@@ -84,6 +84,8 @@ func TestGetComponentVersionsAllSuccess(t *testing.T) { //nolint:gocognit
 			return []byte("LinuxIO Auth v3.4.5\n"), nil
 		case "linuxio-indexer":
 			return []byte("LinuxIO Indexer v5.6.7\n"), nil
+		case "linuxio-monitoring":
+			return []byte("LinuxIO Monitoring v6.7.8\n"), nil
 		case "linuxio":
 			return []byte("LinuxIO CLI v4.5.6\n"), nil
 		default:
@@ -98,6 +100,7 @@ func TestGetComponentVersionsAllSuccess(t *testing.T) { //nolint:gocognit
 		"LinuxIO Bridge":     "v2.3.4",
 		"LinuxIO Auth":       "v3.4.5",
 		"LinuxIO Indexer":    "v5.6.7",
+		"LinuxIO Monitoring": "v6.7.8",
 		"LinuxIO CLI":        "v4.5.6",
 	}
 	assertVersionMap(t, got, want)
@@ -136,6 +139,7 @@ func TestGetComponentVersionsAllSuccess(t *testing.T) { //nolint:gocognit
 		{name: "linuxio-auth", args: []string{"version"}},
 		{name: "linuxio-bridge", args: []string{"version"}},
 		{name: "linuxio-indexer", args: []string{"--version"}},
+		{name: "linuxio-monitoring", args: []string{"--version"}},
 	}
 	if !slices.EqualFunc(gotCalls, wantCalls, func(a, b probeCall) bool {
 		return a.name == b.name && slices.Equal(a.args, b.args)
@@ -226,6 +230,8 @@ func TestVersionHandlerReturnsVersionsAndUsesSelfProbe(t *testing.T) {
 			return []byte("LinuxIO Auth v3.4.5\n"), nil
 		case "linuxio-indexer":
 			return []byte("LinuxIO Indexer v5.6.7\n"), nil
+		case "linuxio-monitoring":
+			return []byte("LinuxIO Monitoring v6.7.8\n"), nil
 		case "linuxio":
 			return []byte("LinuxIO CLI v4.5.6\n"), nil
 		default:
@@ -251,6 +257,7 @@ func TestVersionHandlerReturnsVersionsAndUsesSelfProbe(t *testing.T) {
 		"LinuxIO Bridge":     "v2.3.4",
 		"LinuxIO Auth":       "v3.4.5",
 		"LinuxIO Indexer":    "v5.6.7",
+		"LinuxIO Monitoring": "v6.7.8",
 		"LinuxIO CLI":        "v4.5.6",
 	}
 	assertVersionMap(t, got, want)
@@ -314,8 +321,8 @@ func TestVersionHandlerCachesProbesWithinTTL(t *testing.T) {
 			t.Fatalf("expected status 200, got %d", rec.Code)
 		}
 	}
-	if got := probes.Load(); got != 4 {
-		t.Fatalf("expected 4 probes for two calls inside the TTL, got %d", got)
+	if got := probes.Load(); got != 5 {
+		t.Fatalf("expected 5 probes for two calls inside the TTL, got %d", got)
 	}
 }
 

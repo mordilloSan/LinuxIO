@@ -3,9 +3,9 @@ import { memo, type DragEvent, type MouseEvent } from "react";
 import type { SubfolderData } from "@/api";
 import AppTypography from "@/components/ui/AppTypography";
 
+import type { FileItem, ViewMode } from "../-types";
 import FileCard from "./FileCard";
 import FileListRow from "./FileListRow";
-import type { FileItem, ViewMode } from "../-types";
 
 interface DirectoryItemProps {
   disableHover: boolean;

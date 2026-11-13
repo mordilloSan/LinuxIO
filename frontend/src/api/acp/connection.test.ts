@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { Stream } from "../StreamMultiplexer";
-import { connectAssistant, isAuthRequiredError, textBlock } from "./connection";
+import {
+  AGENT_START_TIMEOUT_MS,
+  type AssistantHandlers,
+  connectAssistant,
+  isAuthRequiredError,
+  textBlock,
+} from "./connection";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -98,6 +104,8 @@ describe("connectAssistant", () => {
       clientCapabilities: {
         auth: { terminal: true },
         session: { configOptions: { boolean: {} } },
+        // An agent that has subagents then sends each one as a session.
+        subagents: {},
       },
     });
   });
@@ -215,6 +223,52 @@ describe("connectAssistant", () => {
       sessionId: "s9",
       modes,
       configOptions,
+    });
+  });
+
+  it("appends the LinuxIO instructions for an agent that takes a system prompt", async () => {
+    const agent = fakeAgent({
+      initialize: () => ({
+        protocolVersion: 1,
+        agentCapabilities: {
+          sessionCapabilities: { fork: {}, resume: {}, systemPrompt: {} },
+        },
+      }),
+      "session/new": () => ({ sessionId: "s1" }),
+      "session/load": () => ({}),
+      "session/fork": () => ({ sessionId: "s2" }),
+      "session/resume": () => ({}),
+    });
+    const conn = await connectAssistant("claude", handlers(), agent.open);
+    await conn.newSession();
+    await conn.loadSession("s1");
+    await conn.forkSession("s1");
+    for (const method of [
+      "session/new",
+      "session/load",
+      "session/fork",
+      "session/resume",
+    ]) {
+      const params = agent.sent.find((m) => m.method === method)?.params as {
+        systemPrompt?: { mode: string; content: { text: string }[] };
+      };
+      expect(params.systemPrompt?.mode, method).toBe("append");
+      expect(params.systemPrompt?.content[0].text, method).toContain(
+        "tagged `bash`",
+      );
+    }
+  });
+
+  it("sends no system prompt to an agent that does not advertise it", async () => {
+    const agent = fakeAgent({
+      initialize: () => ({ protocolVersion: 1 }),
+      "session/new": () => ({ sessionId: "s1" }),
+    });
+    const conn = await connectAssistant("claude", handlers(), agent.open);
+    await conn.newSession();
+    expect(agent.sent.find((m) => m.method === "session/new")?.params).toEqual({
+      cwd: "/home/alice",
+      mcpServers: [],
     });
   });
 
@@ -390,6 +444,58 @@ describe("connectAssistant", () => {
     );
   });
 
+  it("tells the handler when the agent withdraws a permission request", async () => {
+    const agent = fakeAgent({ initialize: () => ({ protocolVersion: 1 }) });
+    const signals: AbortSignal[] = [];
+    const h = {
+      ...handlers(),
+      // Never answered: the user has not chosen yet.
+      onPermission: vi.fn((_request: unknown, signal?: AbortSignal) => {
+        if (signal) signals.push(signal);
+        return new Promise<never>(() => {});
+      }),
+    };
+    await connectAssistant("claude", h, agent.open);
+    agent.feed(
+      '{"jsonrpc":"2.0","id":98,"method":"session/request_permission","params":{"sessionId":"s1","toolCall":{"toolCallId":"t1","title":"Run ls"},"options":[]}}\n',
+    );
+    await vi.waitFor(() => expect(signals).toHaveLength(1));
+    expect(signals[0].aborted).toBe(false);
+    // Claude Code stopped the work that asked: the request is gone.
+    agent.feed(
+      '{"jsonrpc":"2.0","method":"$/cancel_request","params":{"requestId":98}}\n',
+    );
+    await vi.waitFor(() => expect(signals[0].aborted).toBe(true));
+  });
+
+  it("opens without panes unless a pane handler is given", async () => {
+    const agent = fakeAgent({ initialize: () => ({ protocolVersion: 1 }) });
+    const open = vi.fn(agent.open);
+    await connectAssistant("claude", handlers(), open);
+    expect(open).toHaveBeenCalledWith("claude", { panes: false });
+  });
+
+  it("opens with panes for a pane handler and lets it answer on the stream", async () => {
+    const agent = fakeAgent({ initialize: () => ({ protocolVersion: 1 }) });
+    const open = vi.fn(agent.open);
+    const onPane = vi.fn<NonNullable<AssistantHandlers["onPane"]>>();
+    await connectAssistant("claude", { ...handlers(), onPane }, open);
+    expect(open).toHaveBeenCalledWith("claude", { panes: true });
+    agent.feed('{"conn":4,"event":"open","linuxio":"pane"}\n');
+    expect(onPane).toHaveBeenCalledWith(
+      { conn: 4, event: "open", linuxio: "pane" },
+      expect.any(Function),
+    );
+    const send = onPane.mock.calls[0][1];
+    send(4, "p1", { subtype: "ui_panes", client_id: "linuxio-x" });
+    expect(agent.sent.at(-1)).toEqual({
+      linuxio: "pane",
+      conn: 4,
+      id: "p1",
+      request: { subtype: "ui_panes", client_id: "linuxio-x" },
+    });
+  });
+
   it("reports the exit line through onExit", async () => {
     const agent = fakeAgent({ initialize: () => ({ protocolVersion: 1 }) });
     const h = handlers();
@@ -419,5 +525,45 @@ describe("connectAssistant", () => {
       /closed before the agent was ready/,
     );
     expect(closeSpy).toHaveBeenCalled();
+  });
+
+  it("gives up and closes the stream when the agent never answers initialize", async () => {
+    vi.useFakeTimers();
+    try {
+      const agent = fakeAgent({});
+      // The bridge reports ready, then the agent stays silent.
+      agent.stream.write = () => {};
+      const closeSpy = vi.spyOn(agent.stream, "close");
+      const outcome = connectAssistant("claude", handlers(), agent.open).then(
+        () => "connected",
+        (error: Error) => error.message,
+      );
+      await vi.advanceTimersByTimeAsync(AGENT_START_TIMEOUT_MS - 1);
+      expect(closeSpy).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await outcome).toBe("The agent did not start within 30 seconds");
+      expect(closeSpy).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("gives up when the bridge never reports the agent as started", async () => {
+    vi.useFakeTimers();
+    try {
+      const agent = fakeAgent({});
+      const outcome = connectAssistant(
+        "claude",
+        handlers(),
+        () => agent.stream,
+      ).then(
+        () => "connected",
+        (error: Error) => error.message,
+      );
+      await vi.advanceTimersByTimeAsync(AGENT_START_TIMEOUT_MS);
+      expect(await outcome).toBe("The agent did not start within 30 seconds");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

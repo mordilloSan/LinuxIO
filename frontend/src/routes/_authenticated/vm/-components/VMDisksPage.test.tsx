@@ -25,28 +25,33 @@ vi.mock("@tanstack/react-virtual", async () =>
 
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
+  const { mockMutationHooks } = await import("@/test/mutationHooks");
+  const useCallMutation = () => ({ mutate: mocks.remove, isPending: false });
   return {
     ...actual,
-    useCallMutation: () => ({ mutate: mocks.remove, isPending: false }),
-    linuxio: {
-      ...actual.linuxio,
-      virt: {
-        ...actual.linuxio.virt,
-        unused_disks: {
-          queryKey: ["test-unused-disks"],
-          queryFn: () => mocks.list(),
+    useCallMutation,
+    linuxio: mockMutationHooks(
+      {
+        ...actual.linuxio,
+        virt: {
+          ...actual.linuxio.virt,
+          unused_disks: {
+            queryKey: ["test-unused-disks"],
+            queryFn: () => mocks.list(),
+          },
+          pools: { queryKey: ["test-pools"], queryFn: () => mocks.pools() },
+          list: { queryKey: ["test-vms"], queryFn: () => mocks.vms() },
         },
-        pools: { queryKey: ["test-pools"], queryFn: () => mocks.pools() },
-        list: { queryKey: ["test-vms"], queryFn: () => mocks.vms() },
-      },
-      system: {
-        ...actual.linuxio.system,
-        get_host_info: {
-          queryKey: ["test-host"],
-          queryFn: () => Promise.resolve({ hostname: "TNAS" }),
+        system: {
+          ...actual.linuxio.system,
+          get_host_info: {
+            queryKey: ["test-host"],
+            queryFn: () => Promise.resolve({ hostname: "TNAS" }),
+          },
         },
       },
-    },
+      useCallMutation,
+    ),
   };
 });
 

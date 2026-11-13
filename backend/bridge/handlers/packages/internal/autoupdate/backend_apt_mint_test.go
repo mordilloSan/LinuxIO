@@ -193,7 +193,7 @@ func TestAptApplyUsesOwnedFilesAndKeepsDailyTimerEnabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Read: %v", err)
 	}
-	if state.Options.Notify != AutoUpdateNotifyOnFailure || len(state.Support.NotifyPolicies) != 4 {
+	if state.Options.Notify != AutoUpdateNotifyOnFailure || len(state.Support.NotifyPolicies) != 3 {
 		t.Fatalf("APT notify state = %q, support %v", state.Options.Notify, state.Support.NotifyPolicies)
 	}
 	if _, ok := fake.files[aptPeriodicPath]; !ok {
@@ -419,7 +419,7 @@ func TestMintApplyPreservesNativeConfigurationAndEnablesLast(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Read: %v", err)
 	}
-	if state.Options.Notify != AutoUpdateNotifyOnFailure || len(state.Support.NotifyPolicies) != 4 {
+	if state.Options.Notify != AutoUpdateNotifyOnFailure || len(state.Support.NotifyPolicies) != 2 {
 		t.Fatalf("Mint notify state = %q, support %v", state.Options.Notify, state.Support.NotifyPolicies)
 	}
 	options := string(fake.files[mintOptionsPath])

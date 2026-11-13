@@ -21,10 +21,17 @@ readonly SYSTEMD_DIR="/etc/systemd/system"
 readonly PAM_DIR="/etc/pam.d"
 readonly CONFIG_DIR="/etc/linuxio"
 readonly DATA_DIR="/var/lib/linuxio"
+readonly NEEDRESTART_DIR="/etc/needrestart"
 # In-app updates run with the installed bridge's writable-path allowlist.
 # Keep mandatory release files under paths supported since v0.27.0.
 readonly DOC_DIR="/usr/share/linuxio/doc"
-readonly STAGING="/tmp/linuxio-install-$$"
+# Downloads and copies are staged in a directory no other user can predict or
+# write to (mktemp -d: a random name, mode 0700); the EXIT trap removes it.
+STAGING="$(mktemp -d /tmp/linuxio-install.XXXXXXXXXX)" || {
+	echo "Cannot create a staging directory under /tmp" >&2
+	exit 1
+}
+readonly STAGING
 readonly INDEXER_TIMER_UNIT_NAME="linuxio-indexer-index.timer"
 readonly BTRFS_HEALTH_TIMER_UNIT_NAME="linuxio-btrfs-health.timer"
 readonly BTRFS_DEGRADED_UNIT_NAME="linuxio-btrfs-degraded.service"
@@ -42,7 +49,10 @@ NOTICES_SRC="${STAGING}/THIRD_PARTY_NOTICES.md"
 # and systemd packaging assets. This lets a maintainer repair an installer or
 # service-definition bug for an already-published release without rebuilding
 # or republishing its binaries. Current-main assets must remain compatible
-# with supported historical binaries.
+# with supported historical binaries. The needrestart override is fetched the
+# same way; it is Perl that needrestart runs as root and SHA256SUMS does not
+# cover it, so it is installed only when its content has the shipped form
+# (needrestart_override_valid).
 readonly CURRENT_MAIN_PACKAGING_BASE="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/packaging"
 
 release_architecture_supported() {
@@ -84,7 +94,8 @@ binary_names() {
 		linuxio-docker-update \
 		linuxio-indexer \
 		linuxio-monitoring \
-		linuxio-btrfs-timer
+		linuxio-btrfs-timer \
+		linuxio-claude-relay
 }
 
 release_download_assets() {
@@ -92,8 +103,8 @@ release_download_assets() {
 	printf '%s\n' LICENSE THIRD_PARTY_NOTICES.md SHA256SUMS
 }
 
-# Must equal the units in packaging/systemd (linuxio-tmpfiles.conf is not a
-# unit); tests/installer-fixtures.sh enforces it.
+# Must equal the units in packaging/systemd (linuxio-tmpfiles.conf and
+# linuxio-run-record.conf are not units); tests/installer-fixtures.sh enforces it.
 systemd_units() {
 	printf '%s\n' \
 		linuxio.target \
@@ -111,7 +122,49 @@ systemd_units() {
 		linuxio-btrfs-health.timer \
 		linuxio-btrfs-degraded.service \
 		linuxio-btrfs-resync@.service \
+		linuxio-jobs@.service \
+		linuxio-jobs@.socket \
 		linuxio-monitoring.service
+}
+
+# Drop-in directories, relative to ${SYSTEMD_DIR}, that each receive
+# packaging/systemd/linuxio-run-record.conf as 10-linuxio-run.conf: it hooks a
+# unit so every run writes its job record. The first name ends in "-.service.d"
+# on purpose: systemd applies it to every unit named linuxio-schedule-*. The
+# last four are the distributions' automatic update services (APT, DNF 4 and
+# 5, Linux Mint), so a system update shows in the history; a host has one of
+# them at most, and systemd ignores a drop-in of a unit that does not exist.
+# uninstall.sh removes the drop-in from them by its name.
+run_record_dropin_dirs() {
+	printf '%s\n' \
+		linuxio-schedule-.service.d \
+		linuxio-btrfs-snapshot.service.d \
+		linuxio-btrfs-replicate.service.d \
+		linuxio-docker-update.service.d \
+		apt-daily-upgrade.service.d \
+		dnf-automatic.service.d \
+		dnf5-automatic.service.d \
+		mintupdate-automation-upgrade.service.d
+}
+
+# Install the run-record drop-in under each directory of
+# run_record_dropin_dirs inside $1 (owner $2, when given).
+install_run_record_dropins() {
+	local systemd_dir="$1"
+	local owner="${2:-}"
+	local staged="${STAGING}/linuxio-run-record.conf"
+	local dir
+
+	Show 2 "Fetching linuxio-run-record.conf..."
+	if ! fetch_packaging_asset "systemd/linuxio-run-record.conf" "$staged"; then
+		Show 1 "Failed to fetch linuxio-run-record.conf"
+	fi
+	while IFS= read -r dir; do
+		if ! atomic_replace_file "$staged" "${systemd_dir}/${dir}/10-linuxio-run.conf" 0644 "$owner"; then
+			Show 1 "Failed to install ${dir}/10-linuxio-run.conf"
+		fi
+		Show 0 "Installed ${dir}/10-linuxio-run.conf"
+	done < <(run_record_dropin_dirs)
 }
 
 # Administrator-owned configuration, relative to ${CONFIG_DIR}: created when
@@ -224,8 +277,6 @@ trap cleanup EXIT INT TERM
 download_binaries() {
 	local version="$1"
 	local base_url
-
-	mkdir -p "$STAGING"
 
 	if [[ -n "$version" ]]; then
 		base_url="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${version}"
@@ -343,7 +394,6 @@ install_license_files() {
 
 install_config_files() {
 	Show 2 "Installing configuration files..."
-	mkdir -p "$STAGING"
 
 	if [[ ! -d "$CONFIG_DIR" ]]; then
 		mkdir -p "$CONFIG_DIR"
@@ -416,6 +466,89 @@ install_avahi_service() {
 	fi
 
 	return 0
+}
+
+# The needrestart override is Perl that needrestart evaluates as root on every
+# apt run, and a release install fetches it from main without a checksum. A
+# file needrestart cannot load stops all its restarts, and a pattern that is
+# too wide exempts more than LinuxIO's work, so accept a file only in the form
+# the shipped one has: printable ASCII; blank lines and comments; at least one
+# line that sets an override_rc entry to 0 whose pattern is, token by token,
+# what the six shipped patterns use. That is "^linuxio-", lowercase words
+# joined by "-", then at most one "@" or "-" followed by "\d+" or ".+", then
+# "\.service$". A pattern for an always-on daemon (linuxio-webserver,
+# linuxio-monitoring, linuxio-indexer, linuxio-auth), which the installer
+# restarts itself, is refused. Where Perl is present, the file must also
+# compile under strict, as needrestart loads it (needrestart_override_loads).
+needrestart_override_valid() {
+	local file="$1" line words entries=0
+	local word='[abcdefghijklmnopqrstuvwxyz]+'
+	# shellcheck disable=SC2016 # a literal Perl variable, not a shell expansion
+	local entry='^\$nrconf\{override_rc\}->\{qr\(\^linuxio-('"$word"'(-'"$word"')*)((@|-)(\\d\+|\.\+))?\\\.service\$\)\} = 0;$'
+
+	if LC_ALL=C grep -qa '[^[:print:][:blank:]]' "$file"; then
+		return 1
+	fi
+	while IFS= read -r line || [[ -n "$line" ]]; do
+		if [[ $line =~ $entry ]]; then
+			words="${BASH_REMATCH[1]}"
+			case "$words" in
+			webserver | webserver-* | monitoring | monitoring-* | indexer | indexer-* | auth | auth-*) return 1 ;;
+			esac
+			entries=$((entries + 1))
+		elif [[ ! $line =~ ^[[:blank:]]*(#.*)?$ ]]; then
+			return 1
+		fi
+	done <"$file"
+	((entries > 0)) || return 1
+	if command -v perl >/dev/null 2>&1; then
+		needrestart_override_loads "$file" || return 1
+	fi
+}
+
+# Whether Perl compiles file $1 under strict with %nrconf declared, as
+# needrestart's configuration evaluates it. perl -c compiles without running
+# the file's statements; needrestart_override_valid lets no BEGIN block or
+# other code through to it.
+needrestart_override_loads() {
+	# shellcheck disable=SC2016 # Perl source, not a shell expansion
+	{ printf '%s\n' 'use strict; our %nrconf;' && cat "$1"; } | perl -c - >/dev/null 2>&1
+}
+
+# On Ubuntu, apt runs needrestart after every dpkg run, and it restarts each
+# service still running a replaced binary: the job hosts an update leaves
+# running would lose their jobs. Install the override that exempts them (and
+# the timer-run work) into $1/conf.d, owner $2 when given, only where
+# needrestart's directory $1 exists: a system without needrestart gets nothing.
+# Never fatal, and a file that fails needrestart_override_valid leaves any
+# installed override as it is. An in-app update runs this installer in a unit
+# whose writable paths come from the bridge installed before the update; one
+# without /etc/needrestart/conf.d among them (every build before this file
+# existed) leaves it read-only.
+install_needrestart_override() {
+	local needrestart_dir="$1"
+	local owner="${2:-}"
+	local staged="${STAGING}/needrestart-linuxio.conf"
+	local dest="${needrestart_dir}/conf.d/linuxio.conf"
+
+	if [[ ! -d "$needrestart_dir" ]]; then
+		Show 2 "needrestart not installed — no override needed"
+		return 0
+	fi
+	Show 2 "Installing needrestart override..."
+	if ! fetch_packaging_asset "etc/needrestart/conf.d/linuxio.conf" "$staged"; then
+		Show 3 "Failed to fetch the needrestart override — apt runs may restart running jobs"
+		return 0
+	fi
+	if ! needrestart_override_valid "$staged"; then
+		Show 3 "The needrestart override was not installed: the fetched file is not what LinuxIO ships"
+		return 0
+	fi
+	if ! atomic_replace_file "$staged" "$dest" 0644 "$owner"; then
+		Show 3 "Could not write ${dest}, so needrestart may restart running LinuxIO work after an update; running this installer from a terminal installs it (the usual cause is an in-app update started by an older LinuxIO, which cannot write there)"
+		return 0
+	fi
+	Show 0 "Installed ${dest}"
 }
 
 # ---------- Systemd Functions ----------
@@ -609,6 +742,7 @@ install_systemd_files() {
 		fi
 		Show 0 "Installed ${file}"
 	done
+	install_run_record_dropins "$SYSTEMD_DIR" root:root
 
 	if ! SELECTED_PORT=$(find_available_port "$existing_port"); then
 		Show 1 "No available LinuxIO port in supported range ${LINUXIO_PORT_MIN}-${LINUXIO_PORT_MAX}"
@@ -659,6 +793,22 @@ install_systemd_files() {
 		systemd-tmpfiles --create /usr/lib/tmpfiles.d/linuxio.conf 2>/dev/null || true
 		Show 0 "tmpfiles.d configuration installed"
 	fi
+	# Pre-release builds started job hosts through a world-connectable
+	# launcher socket; linuxio-auth starts them at login now. Retire it.
+	if [[ -e "${SYSTEMD_DIR}/linuxio-jobs-launcher.socket" ]]; then
+		systemctl disable --now linuxio-jobs-launcher.socket >/dev/null 2>&1 || true
+		rm -f "${SYSTEMD_DIR}/linuxio-jobs-launcher.socket" "${SYSTEMD_DIR}/linuxio-jobs-launcher@.service"
+	fi
+	# The boot reconcile moved into the job host, which marks its own
+	# interrupted jobs when it starts. Retire its unit.
+	if [[ -e "${SYSTEMD_DIR}/linuxio-jobs-reconcile.service" ]]; then
+		systemctl disable --now linuxio-jobs-reconcile.service >/dev/null 2>&1 || true
+		rm -f "${SYSTEMD_DIR}/linuxio-jobs-reconcile.service"
+	fi
+	# The job store replaced the durable-operations store; drop its orphaned data.
+	if [[ -d "${DATA_DIR}/durable-operations" ]]; then
+		rm -rf "${DATA_DIR}/durable-operations"
+	fi
 
 	# libvirt hook: lets bridged VM traffic through Docker's FORWARD DROP policy
 	Show 2 "Installing libvirt bridge hook..."
@@ -698,6 +848,15 @@ enable_services() {
 		Show 0 "Enabled linuxio-monitoring.service"
 	else
 		Show 3 "Failed to enable linuxio-monitoring.service"
+	fi
+	# Outside linuxio.target so that updates never stop a running job. The
+	# root host starts at boot to mark, alert and resume the jobs a reboot
+	# interrupted; a user's host starts through the socket linuxio-auth
+	# starts at their login.
+	if systemctl enable linuxio-jobs@0.service >/dev/null 2>&1; then
+		Show 0 "Enabled linuxio-jobs@0.service"
+	else
+		Show 3 "Failed to enable linuxio-jobs@0.service"
 	fi
 	# Pools created later get the timer when an admin lists btrfs filesystems.
 	if lsblk -nro FSTYPE 2>/dev/null | grep -qx btrfs; then
@@ -909,7 +1068,7 @@ main() {
 		Show 2 "Target version: ${BOLD}${version:-latest}${COLOUR_RESET}"
 	fi
 
-	# Step 1-3: Binaries
+	# Step 1-2: Binaries, fetched and verified
 	if [[ $skip_binaries -eq 0 ]]; then
 		if [[ $LOCAL_INSTALL -eq 1 ]]; then
 			Header "Steps 1-2 — Verify Local Build"
@@ -925,7 +1084,17 @@ main() {
 				Show 1 "Checksum verification failed"
 			fi
 		fi
+	else
+		Header "Steps 1-3 — Skipping binary installation"
+	fi
 
+	# After the release assets are verified, so that a failed verification
+	# installs nothing, and before any binary is replaced, so that an apt run
+	# during the install already finds it.
+	install_needrestart_override "$NEEDRESTART_DIR" root:root
+
+	# Step 3: Release files
+	if [[ $skip_binaries -eq 0 ]]; then
 		Header "Step 3/5 — Install Release Files"
 		if ! install_license_files; then
 			Show 1 "License file installation failed"
@@ -933,8 +1102,6 @@ main() {
 		if ! install_binaries; then
 			Show 1 "Binary installation failed"
 		fi
-	else
-		Header "Steps 1-3 — Skipping binary installation"
 	fi
 
 	# Step 4: Configuration
@@ -1017,13 +1184,14 @@ Options:
   -h, --help        Show this help message
 
 What gets installed:
-  - Binaries:     /usr/local/bin/linuxio, linuxio-webserver, linuxio-bridge, linuxio-auth, linuxio-docker-update, linuxio-indexer, linuxio-monitoring, linuxio-btrfs-timer
+  - Binaries:     /usr/local/bin/linuxio, linuxio-webserver, linuxio-bridge, linuxio-auth, linuxio-docker-update, linuxio-indexer, linuxio-monitoring, linuxio-btrfs-timer, linuxio-claude-relay
   - Systemd:      /etc/systemd/system/linuxio*
   - Tmpfiles:     /usr/lib/tmpfiles.d/linuxio.conf (creates ${DATA_DIR} and ${DATA_DIR}/icons)
   - PAM:          /etc/pam.d/linuxio
   - Config:       /etc/linuxio/indexer/config.yaml, /etc/linuxio/monitoring/config.yaml, /etc/linuxio/disallowed-users (created if missing, never overwritten)
   - Licenses:     ${DOC_DIR}/
   - Avahi mDNS:   /etc/avahi/services/linuxio.service (advertises <hostname>.local)
+  - needrestart:  ${NEEDRESTART_DIR}/conf.d/linuxio.conf (when needrestart is installed; keeps it from restarting running jobs)
 
 Examples:
   $(basename "$0")                 # Install latest release

@@ -23,7 +23,6 @@ var (
 	// mdSysfsRoot and mdadmCommand are seams for tests.
 	mdSysfsRoot       = "/sys"
 	mdadmCommand      = runMdadm
-	mdBlockDevices    = ListBlockDevices
 	mdArrayNamePolicy = regexp.MustCompile(`^(md[0-9]+|md_d[0-9]+)$`)
 )
 
@@ -170,21 +169,23 @@ func mdMemberDir(a apischema.MDArray, member string) (apischema.MDMember, string
 
 func mdInSync(m apischema.MDMember) bool { return slices.Contains(m.State, "in_sync") }
 
-// checkMDDeviceFree rejects a device that is in use or carries a signature.
-func checkMDDeviceFree(devices []apischema.StorageBlockDevice, device string) error {
-	i := slices.IndexFunc(devices, func(d apischema.StorageBlockDevice) bool { return d.Path == device })
-	if i < 0 {
-		return fmt.Errorf("%w: block device %s", bridgeipc.ErrNotFound, device)
+// checkMDDeviceFree refuses what deviceInUse refuses, a device with
+// partitions or holders, and any signature at all: md has no force, and a
+// member of another array, a volume group or a btrfs pool is named with how
+// to free it.
+func checkMDDeviceFree(inv partitionInventory, device string) error {
+	d, err := inv.device(device)
+	if err != nil {
+		return err
 	}
-	d := devices[i]
 	if d.Type != "disk" && d.Type != "part" {
 		return fmt.Errorf("%w: device %s is a %s, not a disk or partition", bridgeipc.ErrInvalidArgs, device, d.Type)
 	}
-	if len(d.Mountpoints) > 0 {
-		return fmt.Errorf("%w: device %s is mounted at %s", bridgeipc.ErrConflict, device, d.Mountpoints[0])
+	if _, err = inv.wholeDeviceFree(device); err != nil {
+		return err
 	}
-	if slices.ContainsFunc(devices, func(c apischema.StorageBlockDevice) bool { return slices.Contains(c.Parents, device) }) {
-		return fmt.Errorf("%w: device %s has partitions or holders", bridgeipc.ErrConflict, device)
+	if m := memberOf(d); m != nil {
+		return memberConflict(device, *m)
 	}
 	if d.FSType != "" {
 		return fmt.Errorf("%w: device %s has a %s signature; wipe it first", bridgeipc.ErrConflict, device, d.FSType)
@@ -193,11 +194,11 @@ func checkMDDeviceFree(devices []apischema.StorageBlockDevice, device string) er
 }
 
 func mdDeviceFree(ctx context.Context, device string) error {
-	devices, err := mdBlockDevices(ctx)
+	inv, err := loadPartitionInventory(ctx)
 	if err != nil {
 		return err
 	}
-	return checkMDDeviceFree(devices, device)
+	return checkMDDeviceFree(inv, device)
 }
 
 // checkMDFailAllowed refuses to fail an in_sync member the level cannot lose.

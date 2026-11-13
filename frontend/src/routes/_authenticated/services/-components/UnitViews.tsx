@@ -4,12 +4,13 @@ import type { RowData } from "@tanstack/react-table";
 import {
   useCallback,
   useMemo,
+  useState,
   type CSSProperties,
   type ReactNode,
 } from "react";
 
 import type { UnitInfo } from "@/api";
-import { linuxio, useCallMutation } from "@/api";
+import { linuxio } from "@/api";
 import ResourceDetailsLayout from "@/components/cards/ResourceDetailsLayout";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
 import type { ReorderableSurface } from "@/components/reorder/useReorderableSurface";
@@ -17,6 +18,7 @@ import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableDndOptions } from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
+import AppConfirmDialog from "@/components/ui/AppConfirmDialog";
 import AppTypography from "@/components/ui/AppTypography";
 import { DetailRow } from "@/components/ui/InfoRow";
 import { getServiceStatusColor } from "@/constants/statusColors";
@@ -221,6 +223,12 @@ export function UnitStatusRows({
   );
 }
 
+/** Units that make up LinuxIO itself: linuxio.target and the linuxio-* units. */
+export const isLinuxioUnit = (unitName: string) =>
+  unitName === "linuxio.target" || unitName.startsWith("linuxio-");
+
+type GuardedVerb = "stop" | "restart" | "disable" | "mask";
+
 export const UnitCardActions = ({
   unitName,
   activeState,
@@ -238,43 +246,49 @@ export const UnitCardActions = ({
     toast: SERVICES_TOAST_META,
   });
 
-  const { mutate: startService, isPending: isStarting } = useCallMutation(
-    linuxio.systemd.start_service,
-    actionConfig("started"),
-  );
-  const { mutate: stopService, isPending: isStopping } = useCallMutation(
-    linuxio.systemd.stop_service,
-    actionConfig("stopped"),
-  );
-  const { mutate: restartService, isPending: isRestarting } = useCallMutation(
-    linuxio.systemd.restart_service,
-    actionConfig("restarted"),
-  );
-  const { mutate: reloadService, isPending: isReloading } = useCallMutation(
-    linuxio.systemd.reload_service,
-    actionConfig("reloaded"),
-  );
-  const { mutate: enableService, isPending: isEnabling } = useCallMutation(
-    linuxio.systemd.enable_service,
-    actionConfig("enabled"),
-  );
-  const { mutate: disableService, isPending: isDisabling } = useCallMutation(
-    linuxio.systemd.disable_service,
-    actionConfig("disabled"),
-  );
-  const { mutate: maskService, isPending: isMasking } = useCallMutation(
-    linuxio.systemd.mask_service,
-    actionConfig("masked"),
-  );
-  const { mutate: unmaskService, isPending: isUnmasking } = useCallMutation(
-    linuxio.systemd.unmask_service,
-    actionConfig("unmasked"),
-  );
+  const { mutate: startService, isPending: isStarting } =
+    linuxio.systemd.start_service.useMutation(actionConfig("started"));
+  const { mutate: stopService, isPending: isStopping } =
+    linuxio.systemd.stop_service.useMutation(actionConfig("stopped"));
+  const { mutate: restartService, isPending: isRestarting } =
+    linuxio.systemd.restart_service.useMutation(actionConfig("restarted"));
+  const { mutate: reloadService, isPending: isReloading } =
+    linuxio.systemd.reload_service.useMutation(actionConfig("reloaded"));
+  const { mutate: enableService, isPending: isEnabling } =
+    linuxio.systemd.enable_service.useMutation(actionConfig("enabled"));
+  const { mutate: disableService, isPending: isDisabling } =
+    linuxio.systemd.disable_service.useMutation(actionConfig("disabled"));
+  const { mutate: maskService, isPending: isMasking } =
+    linuxio.systemd.mask_service.useMutation(actionConfig("masked"));
+  const { mutate: unmaskService, isPending: isUnmasking } =
+    linuxio.systemd.unmask_service.useMutation(actionConfig("unmasked"));
   const { mutate: resetFailedService, isPending: isResettingFailed } =
-    useCallMutation(
-      linuxio.systemd.reset_failed_service,
-      actionConfig("reset"),
-    );
+    linuxio.systemd.reset_failed_service.useMutation(actionConfig("reset"));
+
+  // Stop, Restart, Disable and Mask on a LinuxIO unit can end this session or
+  // take part of LinuxIO down, so they ask first; everything else acts at once.
+  const [guardedVerb, setGuardedVerb] = useState<GuardedVerb | null>(null);
+  const guardedActions: Record<GuardedVerb, () => void> = {
+    stop: () => stopService({ serviceName: unitName }),
+    restart: () => restartService({ serviceName: unitName }),
+    disable: () => disableService({ serviceName: unitName }),
+    mask: () => maskService({ serviceName: unitName }),
+  };
+  const runGuarded = (verb: GuardedVerb) => {
+    if (isLinuxioUnit(unitName)) {
+      setGuardedVerb(verb);
+    } else {
+      guardedActions[verb]();
+    }
+  };
+  const confirmGuarded = () => {
+    if (guardedVerb) guardedActions[guardedVerb]();
+    setGuardedVerb(null);
+  };
+
+  const verbLabel = guardedVerb
+    ? `${guardedVerb[0].toUpperCase()}${guardedVerb.slice(1)}`
+    : "";
 
   const isActive = activeState === "active";
   const isFailed = activeState === "failed";
@@ -313,7 +327,7 @@ export const UnitCardActions = ({
           iconSize={16}
           label="Stop"
           loading={isStopping}
-          onClick={() => stopService({ serviceName: unitName })}
+          onClick={() => runGuarded("stop")}
         />
       ) : (
         <AppActionIconButton
@@ -334,7 +348,7 @@ export const UnitCardActions = ({
         iconSize={16}
         label="Restart (stop then start)"
         loading={isRestarting}
-        onClick={() => restartService({ serviceName: unitName })}
+        onClick={() => runGuarded("restart")}
       />
       <AppActionIconButton
         ariaLabel={`Reload ${unitName}`}
@@ -353,7 +367,7 @@ export const UnitCardActions = ({
           iconSize={16}
           label="Disable autostart at boot"
           loading={isDisabling}
-          onClick={() => disableService({ serviceName: unitName })}
+          onClick={() => runGuarded("disable")}
         />
       ) : (
         <AppActionIconButton
@@ -386,7 +400,7 @@ export const UnitCardActions = ({
           iconSize={16}
           label="Mask to completely prevent the unit from starting"
           loading={isMasking}
-          onClick={() => maskService({ serviceName: unitName })}
+          onClick={() => runGuarded("mask")}
         />
       )}
       {isFailed && (
@@ -401,6 +415,15 @@ export const UnitCardActions = ({
           onClick={() => resetFailedService({ serviceName: unitName })}
         />
       )}
+      <AppConfirmDialog
+        confirmText={verbLabel}
+        destructive
+        message={`${unitName} is part of LinuxIO. Running ${verbLabel.toLowerCase()} on it can end this session or stop part of LinuxIO until it is started again from a shell (systemctl start linuxio.target).`}
+        onClose={() => setGuardedVerb(null)}
+        onConfirm={confirmGuarded}
+        open={guardedVerb !== null}
+        title={`${verbLabel} ${unitName}?`}
+      />
     </div>
   );
 };

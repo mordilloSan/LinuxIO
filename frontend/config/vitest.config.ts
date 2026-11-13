@@ -26,7 +26,7 @@ export default defineConfig({
   },
   root: frontendRoot,
   test: {
-    exclude: ["src/test/browser/**", "node_modules/**"],
+    exclude: ["src/test/browser/**", "src/test/vm/**", "node_modules/**"],
     pool: "vmThreads",
     // vmThreads is the fastest pool but retains memory per VM context and
     // defaults to one worker per core. Left unbounded a full run peaked at

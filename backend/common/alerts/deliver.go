@@ -22,34 +22,32 @@ import (
 // deliveryTimeout bounds one delivery to every channel.
 const deliveryTimeout = 15 * time.Second
 
-// notify delivers a new or changed alert to the configured channels.
-// Failures are logged: the alert itself is already recorded.
+// notify delivers a new or changed alert to the channels its level is sent
+// to. Failures are logged: the alert itself is already recorded.
 func notify(ctx context.Context, a Alert) {
 	n, err := LoadNotifications()
 	if err != nil {
 		slog.Warn("alert delivery settings unreadable", "error", err)
 		return
 	}
-	if !n.wants(a.Severity) {
-		return
-	}
-	if err := Send(ctx, n, a); err != nil {
+	if err := Send(ctx, n, n.ChannelsFor(a.Severity), a); err != nil {
 		slog.Warn("alert delivery failed", "alert", a.ID, "error", err)
 	}
 }
 
-// Send delivers a to every configured channel, bounded by deliveryTimeout
-// even when ctx is already cancelled, and joins their errors.
-func Send(ctx context.Context, n NotificationSettings, a Alert) error {
+// Send delivers a to each channel in c that n configures, bounded by
+// deliveryTimeout even when ctx is already cancelled, and joins their errors.
+// The browser is not a channel Send delivers to: the alert list shows it.
+func Send(ctx context.Context, n NotificationSettings, c Channels, a Alert) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), deliveryTimeout)
 	defer cancel()
 	var errs []error
-	if n.WebhookURL != "" {
+	if c.Webhook && n.WebhookURL != "" {
 		if err := postWebhook(ctx, n.WebhookURL, a); err != nil {
 			errs = append(errs, fmt.Errorf("webhook: %w", err))
 		}
 	}
-	if n.SMTPHost != "" && len(n.EmailTo) > 0 {
+	if c.Email && n.SMTPHost != "" && len(n.EmailTo) > 0 {
 		if err := sendEmail(ctx, n, a); err != nil {
 			errs = append(errs, fmt.Errorf("email: %w", err))
 		}
@@ -66,7 +64,9 @@ func hostname() string {
 }
 
 // postWebhook posts the alert as JSON; text and content repeat it as one
-// line for Slack- and Discord-style receivers.
+// line for Slack- and Discord-style receivers. Its errors name the host only:
+// the path or query of such a URL carries its token, and the errors reach the
+// journal and the test notification's answer.
 func postWebhook(ctx context.Context, target string, a Alert) error {
 	line := fmt.Sprintf("[%s] %s: %s", hostname(), strings.ToUpper(a.Severity), a.Title)
 	body, err := json.Marshal(map[string]string{
@@ -79,20 +79,21 @@ func postWebhook(ctx context.Context, target string, a Alert) error {
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
 	if err != nil {
-		return err
+		// A *url.Error from parsing quotes the whole URL.
+		return errors.New("invalid webhook URL")
 	}
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		// *url.Error text embeds the full URL, which carries the webhook secret.
+		// *url.Error text embeds the full URL; what it wraps names no path.
 		if urlErr, ok := errors.AsType[*url.Error](err); ok {
-			return urlErr.Err
+			err = urlErr.Err
 		}
-		return err
+		return fmt.Errorf("post to %s: %w", req.URL.Host, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("%s answered %s", req.URL.Redacted(), resp.Status)
+		return fmt.Errorf("%s answered %s", req.URL.Host, resp.Status)
 	}
 	return nil
 }
@@ -100,6 +101,14 @@ func postWebhook(ctx context.Context, target string, a Alert) error {
 // oneLine keeps a header value on one line, so alert text cannot add headers.
 func oneLine(s string) string {
 	return strings.Join(strings.Fields(s), " ")
+}
+
+// crlf gives s the CRLF line endings an SMTP body needs. A CRLF pair stays one
+// line break, and a lone CR or LF becomes one.
+func crlf(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	return strings.ReplaceAll(s, "\n", "\r\n")
 }
 
 // dialSMTP connects to the server, with implicit TLS on port 465 and
@@ -169,7 +178,7 @@ func sendEmail(ctx context.Context, n NotificationSettings, a Alert) error {
 	}
 	msg := fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n%s\r\n\r\nSeverity: %s\r\nSource: %s\r\nHost: %s\r\n",
 		n.EmailFrom, strings.Join(n.EmailTo, ", "), oneLine(fmt.Sprintf("[LinuxIO %s] %s", hostname(), a.Title)),
-		a.LastOccurrence.Format(time.RFC1123Z), strings.ReplaceAll(a.Message, "\n", "\r\n"), a.Severity, a.Source, hostname())
+		a.LastOccurrence.Format(time.RFC1123Z), crlf(a.Message), a.Severity, a.Source, hostname())
 	if _, err = w.Write([]byte(msg)); err != nil {
 		return err
 	}

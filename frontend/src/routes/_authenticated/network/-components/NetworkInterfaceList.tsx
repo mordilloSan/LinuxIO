@@ -349,6 +349,7 @@ const NetworkInterfaceList = () => {
             ease: EASING_STANDARD,
           }}
         >
+          {/* Read-only without sudo: every route it saves through is admin-only. */}
           <NetworkInterfaceConfigurationCards
             name={selectedIface.name}
             onClose={handleClose}

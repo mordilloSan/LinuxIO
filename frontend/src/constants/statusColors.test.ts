@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   getContainerStatusColor,
+  getContainerTone,
   SEMANTIC_STATUS_COLORS,
 } from "./statusColors";
 
@@ -31,4 +32,21 @@ describe("getContainerStatusColor", () => {
       ).toBe(SEMANTIC_STATUS_COLORS[color]);
     },
   );
+});
+
+describe("getContainerTone", () => {
+  it.each([
+    ["running", "success"],
+    ["healthy", "success"],
+    ["Unhealthy", "warning"],
+    ["restarting", "warning"],
+    ["paused", "warning"],
+    ["created", "warning"],
+    ["Partially running", "warning"],
+    ["exited", "error"],
+    ["Stopped", "error"],
+    ["Dead", "error"],
+  ] as const)("reads %s as %s", (state, tone) => {
+    expect(getContainerTone(state)).toBe(tone);
+  });
 });

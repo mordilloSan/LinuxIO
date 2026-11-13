@@ -12,10 +12,10 @@ import {
   HistoryCardShell,
   rangeById,
   RangeSelect,
+  useHistoryAccess,
   useHistoryTimestampFormatter,
 } from "@/components/charts/HistoryCard";
 import type { HistoryRangeId } from "@/components/charts/historyRanges";
-import { useCapability } from "@/hooks/useCapabilities";
 import { formatThroughput } from "@/utils/formatters";
 
 /**
@@ -69,7 +69,7 @@ const NetworkTrafficHistoryLive = ({
 }) => {
   const range = rangeById(rangeId);
   const formatTimestamp = useHistoryTimestampFormatter(range);
-  const { isEnabled, reason } = useCapability("monitoringAvailable");
+  const { isEnabled, reason } = useHistoryAccess();
   const { data, isLoading, error } = useQuery({
     ...linuxio.monitoring.get_network_history(historyRequest(range)),
     enabled: isEnabled,

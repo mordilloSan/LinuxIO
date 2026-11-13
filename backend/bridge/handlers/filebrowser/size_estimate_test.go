@@ -93,12 +93,12 @@ func TestComputeArchiveSizeHonorsCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	if _, err := services.ComputeArchiveSize(ctx, []string{dir}); err == nil {
+	if _, err := services.ComputeArchiveSize(ctx, []string{dir}, services.Owner{}); err == nil {
 		t.Fatal("cancelled walk returned no error")
 	}
 	// The handler wrapper turns any failure into "total unknown" so a cancelled
 	// or failed estimate degrades the progress bar, never the archive.
-	if total := computeArchiveSize(ctx, []string{dir}); total != 0 {
+	if total := computeArchiveSize(ctx, []string{dir}, services.Owner{}); total != 0 {
 		t.Fatalf("computeArchiveSize = %d, want 0 after cancellation", total)
 	}
 }

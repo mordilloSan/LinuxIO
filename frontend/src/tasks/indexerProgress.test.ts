@@ -58,6 +58,19 @@ describe("indexer progress", () => {
     expect(next.label).toBe("Checkpointing database");
   });
 
+  it("reads the daemon's running status as the indexing phase", () => {
+    const next = mergeIndexerProgress(activeIndexer(), { status: "running" });
+
+    expect(next.phase).toBe("indexing");
+    expect(next.state).toBe("running");
+  });
+
+  it("does not take a status the daemon never sends for a phase", () => {
+    const next = mergeIndexerProgress(activeIndexer(), { status: "indexing" });
+
+    expect(next.phase).toBe("connecting");
+  });
+
   it("maps the complete event into the indexer summary", () => {
     expect(
       indexerResultFromFrame("/", {

@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 
-import { linuxio, useCallMutation } from "@/api";
+import { linuxio } from "@/api";
 import type { VirtualMachine } from "@/api";
 import AppDivider from "@/components/ui/AppDivider";
 import AppSwitch from "@/components/ui/AppSwitch";
@@ -54,7 +54,7 @@ const emptyText = (text: string) => (
  * renders here in the parent layout's outlet.
  */
 export default function VMDetailsPanel({ vm }: { vm: VirtualMachine }) {
-  const autostartMutation = useCallMutation(linuxio.virt.set_autostart, {
+  const autostartMutation = linuxio.virt.set_autostart.useMutation({
     success: "Autostart updated",
     error: "Failed to change autostart",
     toast: VM_TOAST,

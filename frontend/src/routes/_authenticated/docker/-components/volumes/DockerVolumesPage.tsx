@@ -1,5 +1,5 @@
-import VolumeList from "./VolumeList";
 import DockerResourcePage from "../shared/DockerResourcePage";
+import VolumeList from "./VolumeList";
 
 const VOLUME_PRUNE_OPTIONS = {
   buildCache: false,

@@ -83,32 +83,116 @@ type Listener struct {
 	Plugins []string `yaml:"plugins,omitempty" json:"plugins,omitempty"`
 }
 
-// View is the flat JSON shape served by config.get and accepted by config.set.
-type View struct {
-	Version              int               `json:"version"`
-	CollectorInterval    string            `json:"collector_interval"`
-	SmartRefreshInterval string            `json:"smart_refresh_interval"`
-	DiskUsageCache       string            `json:"disk_usage_cache"`
-	HistoryRetention     string            `json:"history_retention"`
-	History              string            `json:"history"`
-	HistoryIntervals     map[string]string `json:"history_intervals"`
-	Listeners            []Listener        `json:"listeners"`
+// Durations holds the duration settings as plain durations, the form the app
+// runs with.
+type Durations struct {
+	CollectorInterval    time.Duration
+	SmartRefreshInterval time.Duration
+	DiskUsageCache       time.Duration
+	HistoryRetention     time.Duration
+}
+
+// DurationSetting describes one duration setting to the code that handles
+// every duration alike: Default, Validate, View, config.set, Config.Durations
+// and Durations.WithDefaults.
+type DurationSetting struct {
+	// Path names the setting in the config file and in validation errors.
+	Path string
+	// Field, Runtime, View and Patch return the setting's member in the config
+	// file, in Durations, in the config.get result and in the config.set
+	// parameters, where nil means the patch leaves it alone.
+	Field   func(*Config) *Duration
+	Runtime func(*Durations) *time.Duration
+	View    func(*monitoringapi.MonitoringConfig) *string
+	Patch   func(*monitoringapi.MonitoringConfigPatch) *string
+	Default time.Duration
+	// AllowZero accepts zero; otherwise the setting must be greater than zero.
+	// A setting is never negative.
+	AllowZero bool
+}
+
+// DurationSettings lists every duration setting in the order validation checks
+// them and config.set reports their errors. A new one needs its field in
+// Collector or History, a row here, its members in Durations,
+// MonitoringConfig and MonitoringConfigPatch, and the step that applies it in
+// the app.
+var DurationSettings = []DurationSetting{
+	{
+		Path:    "collector.interval",
+		Field:   func(c *Config) *Duration { return &c.Collector.Interval },
+		Runtime: func(d *Durations) *time.Duration { return &d.CollectorInterval },
+		View:    func(v *monitoringapi.MonitoringConfig) *string { return &v.CollectorInterval },
+		Patch:   func(p *monitoringapi.MonitoringConfigPatch) *string { return p.CollectorInterval },
+		Default: DefaultCollectorInterval,
+	},
+	{
+		Path:    "collector.smart_refresh_interval",
+		Field:   func(c *Config) *Duration { return &c.Collector.SmartRefreshInterval },
+		Runtime: func(d *Durations) *time.Duration { return &d.SmartRefreshInterval },
+		View:    func(v *monitoringapi.MonitoringConfig) *string { return &v.SmartRefreshInterval },
+		Patch:   func(p *monitoringapi.MonitoringConfigPatch) *string { return p.SmartRefreshInterval },
+		Default: DefaultSmartRefreshInterval,
+	},
+	{
+		Path:      "collector.disk_usage_cache",
+		Field:     func(c *Config) *Duration { return &c.Collector.DiskUsageCache },
+		Runtime:   func(d *Durations) *time.Duration { return &d.DiskUsageCache },
+		View:      func(v *monitoringapi.MonitoringConfig) *string { return &v.DiskUsageCache },
+		Patch:     func(p *monitoringapi.MonitoringConfigPatch) *string { return p.DiskUsageCache },
+		Default:   DefaultDiskUsageCache,
+		AllowZero: true,
+	},
+	{
+		Path:    "history.retention",
+		Field:   func(c *Config) *Duration { return &c.History.Retention },
+		Runtime: func(d *Durations) *time.Duration { return &d.HistoryRetention },
+		View:    func(v *monitoringapi.MonitoringConfig) *string { return &v.HistoryRetention },
+		Patch:   func(p *monitoringapi.MonitoringConfigPatch) *string { return p.HistoryRetention },
+		Default: DefaultHistoryRetention,
+	},
+}
+
+func (s DurationSetting) validate(cfg *Config) error {
+	value := s.Field(cfg).Duration()
+	switch {
+	case s.AllowZero && value < 0:
+		return fmt.Errorf("%s must not be negative", s.Path)
+	case !s.AllowZero && value <= 0:
+		return fmt.Errorf("%s must be greater than zero", s.Path)
+	}
+	return nil
 }
 
 func Default() Config {
-	return Config{
-		Version: CurrentVersion,
-		Collector: Collector{
-			Interval:             Duration(DefaultCollectorInterval),
-			SmartRefreshInterval: Duration(DefaultSmartRefreshInterval),
-			DiskUsageCache:       Duration(DefaultDiskUsageCache),
-		},
-		History: History{
-			Retention: Duration(DefaultHistoryRetention),
-			Plugins:   plugins.DefaultHistory(),
-		},
+	cfg := Config{
+		Version:   CurrentVersion,
+		History:   History{Plugins: plugins.DefaultHistory()},
 		Listeners: []Listener{},
 	}
+	for _, setting := range DurationSettings {
+		*setting.Field(&cfg) = Duration(setting.Default)
+	}
+	return cfg
+}
+
+// Durations returns the duration settings as the app runs with them.
+func (c Config) Durations() Durations {
+	var d Durations
+	for _, setting := range DurationSettings {
+		*setting.Runtime(&d) = setting.Field(&c).Duration()
+	}
+	return d
+}
+
+// WithDefaults replaces each setting that must be greater than zero but is not
+// with its default.
+func (d Durations) WithDefaults() Durations {
+	for _, setting := range DurationSettings {
+		if value := setting.Runtime(&d); !setting.AllowZero && *value <= 0 {
+			*value = setting.Default
+		}
+	}
+	return d
 }
 
 func (c Config) HistoryString() string { return strings.Join(c.History.Plugins, ",") }
@@ -122,25 +206,26 @@ func (c Config) HistoryIntervalDurations() map[string]time.Duration {
 	return out
 }
 
-func (c Config) View() View {
-	listeners := c.Listeners
-	if listeners == nil {
-		listeners = []Listener{}
+// View returns the flat shape served by config.get and returned by config.set.
+func (c Config) View() monitoringapi.MonitoringConfig {
+	listeners := make([]monitoringapi.MonitoringListener, 0, len(c.Listeners))
+	for _, listener := range c.Listeners {
+		listeners = append(listeners, monitoringapi.MonitoringListener{Address: listener.Address, Name: listener.Name, Plugins: listener.Plugins})
 	}
 	intervals := make(map[string]string, len(c.History.Intervals))
 	for plugin, interval := range c.History.Intervals {
 		intervals[plugin] = interval.Duration().String()
 	}
-	return View{
-		Version:              c.Version,
-		CollectorInterval:    c.Collector.Interval.Duration().String(),
-		SmartRefreshInterval: c.Collector.SmartRefreshInterval.Duration().String(),
-		DiskUsageCache:       c.Collector.DiskUsageCache.Duration().String(),
-		HistoryRetention:     c.History.Retention.Duration().String(),
-		History:              c.HistoryString(),
-		HistoryIntervals:     intervals,
-		Listeners:            listeners,
+	view := monitoringapi.MonitoringConfig{
+		History:          c.HistoryString(),
+		HistoryIntervals: intervals,
+		Listeners:        listeners,
+		Version:          c.Version,
 	}
+	for _, setting := range DurationSettings {
+		*setting.View(&view) = setting.Field(&c).Duration().String()
+	}
+	return view
 }
 
 // Load reads a strict YAML config. An absent file yields Default() and false.
@@ -235,17 +320,10 @@ func Validate(cfg Config) error {
 	if cfg.Version != CurrentVersion {
 		return fmt.Errorf("unsupported config version %d", cfg.Version)
 	}
-	if cfg.Collector.Interval.Duration() <= 0 {
-		return errors.New("collector.interval must be greater than zero")
-	}
-	if cfg.Collector.SmartRefreshInterval.Duration() <= 0 {
-		return errors.New("collector.smart_refresh_interval must be greater than zero")
-	}
-	if cfg.Collector.DiskUsageCache.Duration() < 0 {
-		return errors.New("collector.disk_usage_cache must not be negative")
-	}
-	if cfg.History.Retention.Duration() <= 0 {
-		return errors.New("history.retention must be greater than zero")
+	for _, setting := range DurationSettings {
+		if err := setting.validate(&cfg); err != nil {
+			return err
+		}
 	}
 	if _, err := plugins.ParseHistory(cfg.HistoryString()); err != nil {
 		return fmt.Errorf("history.plugins: %w", err)

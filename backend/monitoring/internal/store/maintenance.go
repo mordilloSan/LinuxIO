@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -8,8 +9,8 @@ import (
 )
 
 // RunMaintenance removes full-resolution history after its retention window.
-func (s *Store) RunMaintenance(now time.Time) error {
-	tx, err := s.db.Begin()
+func (s *Store) RunMaintenance(ctx context.Context, now time.Time) error {
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -17,7 +18,7 @@ func (s *Store) RunMaintenance(now time.Time) error {
 
 	for _, plugin := range plugins.HistoryCapable() {
 		table := pluginHistoryTable(plugin)
-		if _, err = tx.Exec(fmt.Sprintf(`
+		if _, err = tx.ExecContext(ctx, fmt.Sprintf(`
 			DELETE FROM %s
 			WHERE resolution = ? AND captured_at < ?
 		`, table), resolution1m, now.Add(-s.historyRetentionDuration()).UnixMilli()); err != nil {

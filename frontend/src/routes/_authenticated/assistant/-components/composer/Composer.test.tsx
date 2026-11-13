@@ -481,6 +481,24 @@ describe("Composer", () => {
     expect(onSetConfigOption).toHaveBeenCalledWith("think", true);
   });
 
+  it("hides the agent persona option", () => {
+    setup({
+      configOptions: [
+        {
+          id: "agent",
+          name: "Agent",
+          type: "select",
+          currentValue: "default",
+          options: [
+            { value: "default", name: "Default" },
+            { value: "web-fetch", name: "web-fetch" },
+          ],
+        },
+      ],
+    });
+    expect(screen.queryAllByRole("combobox")).toHaveLength(0);
+  });
+
   it("changes the mode and hides a duplicate mode option", async () => {
     const { onSetMode } = setup({
       configOptions: [{ ...modelOption, id: "mode", category: "mode" }],
@@ -580,11 +598,40 @@ describe("Composer", () => {
     expect(screen.getByRole("button", { name: "Stop" })).toBeEnabled();
   });
 
-  it("shows the context gauge once usage exists", () => {
-    setup({ usage: { used: 12000, size: 200000, cost: null } });
-    expect(
-      screen.getByRole("img", { name: "12k / 200k tokens (6%)" }),
-    ).toBeInTheDocument();
+  it("compacts the conversation from the context gauge", async () => {
+    const { onSend } = setup({
+      usage: { used: 12000, size: 200000, cost: null },
+    });
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: "12k / 200k tokens (6%) · Click to compact",
+      }),
+    );
+    expect(onSend).toHaveBeenCalledWith([{ type: "text", text: "/compact" }], {
+      text: "/compact",
+      attachments: [],
+    });
+  });
+
+  it("keeps the context gauge inert when the agent has no /compact", async () => {
+    const { onSend } = setup({
+      commands: [],
+      usage: { used: 12000, size: 200000, cost: null },
+    });
+    await userEvent.click(
+      screen.getByRole("button", { name: "12k / 200k tokens (6%)" }),
+    );
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
+  it("keeps the context gauge inert until usage exists", async () => {
+    const { onSend } = setup();
+    await userEvent.click(
+      screen.getByRole("button", {
+        name: "Context usage appears after the first reply",
+      }),
+    );
+    expect(onSend).not.toHaveBeenCalled();
   });
 
   describe("/btw", () => {
@@ -651,6 +698,62 @@ describe("Composer", () => {
         screen.getByText("This agent cannot open side questions"),
       ).toBeInTheDocument();
       expect(onBtw).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("/plugins", () => {
+    it("is offered only when the agent's plugins can be managed", async () => {
+      const { unmount } = setup();
+      await userEvent.type(screen.getByLabelText("Message"), "/");
+      await screen.findByRole("menuitem", { name: "/btw" });
+      expect(
+        screen.queryByRole("menuitem", { name: "/plugins" }),
+      ).not.toBeInTheDocument();
+      unmount();
+
+      setup({ onPlugins: vi.fn() });
+      await userEvent.type(screen.getByLabelText("Message"), "/");
+      const items = await screen.findAllByRole("menuitem");
+      expect(items[1]).toHaveTextContent("/plugins");
+    });
+
+    it("opens the plugin manager instead of sending the text", async () => {
+      const onPlugins = vi.fn();
+      const { onSend } = setup({ onPlugins });
+      const input = screen.getByLabelText("Message");
+      await userEvent.type(input, "/plugins{Enter}");
+      expect(onPlugins).toHaveBeenCalledTimes(1);
+      expect(onSend).not.toHaveBeenCalled();
+      expect(input).toHaveValue("");
+    });
+
+    it("opens the plugin manager when clicked in the menu", async () => {
+      const onPlugins = vi.fn();
+      setup({ onPlugins });
+      await userEvent.type(screen.getByLabelText("Message"), "/");
+      await userEvent.click(
+        await screen.findByRole("menuitem", { name: "/plugins" }),
+      );
+      expect(onPlugins).toHaveBeenCalledTimes(1);
+      expect(screen.getByLabelText("Message")).toHaveValue("");
+    });
+
+    it("replaces an agent command of the same name", async () => {
+      setup({
+        onPlugins: vi.fn(),
+        commands: [{ name: "plugins", description: "Agent's own" }],
+      });
+      await userEvent.type(screen.getByLabelText("Message"), "/");
+      expect(
+        await screen.findAllByRole("menuitem", { name: "/plugins" }),
+      ).toHaveLength(1);
+    });
+
+    it("sends /plugins to an agent whose plugins LinuxIO does not manage", async () => {
+      const { onSend } = setup();
+      await userEvent.type(screen.getByLabelText("Message"), "/plugins x");
+      await userEvent.keyboard("{Enter}");
+      expect(onSend).toHaveBeenCalledTimes(1);
     });
   });
 

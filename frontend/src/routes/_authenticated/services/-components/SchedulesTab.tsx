@@ -4,14 +4,17 @@ import { useState } from "react";
 
 import {
   linuxio,
-  useCallMutation,
+  openChannel,
   type ScheduleOptions,
   type ScheduleStatus,
+  type TaskHistoryEntry,
 } from "@/api";
+import UnitLogsCard from "@/components/cards/UnitLogsCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import PathPickerField from "@/components/pathpicker/PathPickerField";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
+import SavedOutput from "@/components/tasks/SavedOutput";
 import AppButton from "@/components/ui/AppButton";
 import AppCheckbox from "@/components/ui/AppCheckbox";
 import {
@@ -25,6 +28,9 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
+import { useJobHostStatus } from "@/routes/_authenticated/-components/app-update/useJobHostStatus";
+import { taskEndedAt, taskOutcome, taskRunTime } from "@/tasks/taskTitles";
+import { formatDate } from "@/utils/formatters";
 
 import {
   frequencies,
@@ -35,7 +41,11 @@ import {
   type ScheduleTiming,
 } from "./scheduleTiming";
 
-type Draft = ScheduleOptions & { id?: string; enabled: boolean };
+type Draft = ScheduleOptions & {
+  id?: string;
+  enabled: boolean;
+  notify: string;
+};
 const initialDraft: Draft = {
   name: "",
   script: "#!/usr/bin/env bash\nset -euo pipefail\n",
@@ -47,6 +57,13 @@ const initialDraft: Draft = {
   timeout_seconds: 300,
   working_directory: "",
   enabled: false,
+  notify: "",
+};
+// What a task reports; "" follows the line for scheduled scripts.
+const notifyChoices = {
+  "": "Use the default",
+  failures: "Failures only",
+  every_run: "After every run",
 };
 const toastMeta = {
   label: "Scheduled tasks",
@@ -95,29 +112,28 @@ export default function SchedulesTab({
   const [draft, setDraft] = useState<Draft | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ScheduleStatus | null>(null);
   const toast = useScopedToast(toastMeta);
-  const { mutate: enable } = useCallMutation(linuxio.schedules.enable, {
+  const { mutate: enable } = linuxio.schedules.enable.useMutation({
     success: () => toast.success("Task enabled"),
     error: "Failed to enable task",
     toast: toastMeta,
   });
-  const { mutate: disable } = useCallMutation(linuxio.schedules.disable, {
+  const { mutate: disable } = linuxio.schedules.disable.useMutation({
     success: () => toast.success("Task disabled"),
     error: "Failed to disable task",
     toast: toastMeta,
   });
-  const { mutate: runNow } = useCallMutation(linuxio.schedules.run_now, {
+  const { mutate: runNow } = linuxio.schedules.run_now.useMutation({
     success: () => toast.success("Task queued"),
     error: "Failed to queue task",
     toast: toastMeta,
   });
-  const { mutate: stop } = useCallMutation(linuxio.schedules.stop, {
+  const { mutate: stop } = linuxio.schedules.stop.useMutation({
     success: () => toast.success("Stop requested"),
     error: "Failed to stop task",
     toast: toastMeta,
   });
-  const { mutate: remove, isPending: deleting } = useCallMutation(
-    linuxio.schedules.delete,
-    {
+  const { mutate: remove, isPending: deleting } =
+    linuxio.schedules.delete.useMutation({
       success: () => {
         toast.success("Task deleted");
         setDeleteTarget(null);
@@ -125,35 +141,31 @@ export default function SchedulesTab({
       },
       error: "Failed to delete task",
       toast: toastMeta,
-    },
-  );
-  const { mutate: create, isPending: creating } = useCallMutation(
-    linuxio.schedules.create,
-    {
+    });
+  const { mutate: create, isPending: creating } =
+    linuxio.schedules.create.useMutation({
       success: () => {
         toast.success("Task created");
         setDraft(null);
       },
       error: "Failed to create task",
       toast: toastMeta,
-    },
-  );
-  const { mutate: update, isPending: updating } = useCallMutation(
-    linuxio.schedules.update,
-    {
+    });
+  const { mutate: update, isPending: updating } =
+    linuxio.schedules.update.useMutation({
       success: () => {
         toast.success("Task updated");
         setDraft(null);
       },
       error: "Failed to update task",
       toast: toastMeta,
-    },
-  );
+    });
   const edit = (status: ScheduleStatus) =>
     setDraft({
       ...status.definition.options,
       id: status.definition.id,
       enabled: status.definition.enabled,
+      notify: status.notify,
     });
 
   return (
@@ -246,11 +258,21 @@ export default function SchedulesTab({
           draft={draft}
           busy={creating || updating}
           onClose={() => setDraft(null)}
-          onSave={(value) =>
-            value.id
-              ? update({ id: value.id, options: createOptions(value) })
-              : create({ options: createOptions(value) })
-          }
+          onSave={(value) => {
+            // An unchanged choice is left out: the request keeps what is
+            // stored, and writes no notification settings.
+            const notify =
+              value.notify === draft.notify ? {} : { notify: value.notify };
+            if (value.id) {
+              update({
+                id: value.id,
+                options: createOptions(value),
+                ...notify,
+              });
+            } else {
+              create({ options: createOptions(value), ...notify });
+            }
+          }}
         />
       )}
       <GeneralDialog
@@ -386,38 +408,146 @@ function Details({
   onLatestLogs?: () => void;
 }) {
   return (
+    // At most half the page, scrolling inside, so the table keeps the rest
+    // while the live output and the past runs are shown.
     <div
       style={{
         display: "flex",
-        gap: 8,
-        alignItems: "center",
-        flexWrap: "wrap",
+        flexDirection: "column",
+        gap: "var(--app-space-12)",
+        maxHeight: "50%",
+        overflowY: "auto",
       }}
     >
-      <AppTypography>
-        {status.result || status.active_state} · next{" "}
-        {status.next_run_at ?? "—"} · last {status.last_run_at ?? "—"}
-        {status.error ? ` · ${status.error}` : ""}
-      </AppTypography>
-      {canStop(status) && (
-        <AppButton onClick={onStop} size="small">
-          Stop
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          alignItems: "center",
+          flexWrap: "wrap",
+        }}
+      >
+        <AppTypography>
+          {status.result || status.active_state} · next{" "}
+          {status.next_run_at ?? "—"} · last {status.last_run_at ?? "—"}
+          {status.error ? ` · ${status.error}` : ""}
+        </AppTypography>
+        {canStop(status) && (
+          <AppButton onClick={onStop} size="small">
+            Stop
+          </AppButton>
+        )}
+        <AppButton onClick={onLogs} size="small">
+          Logs
         </AppButton>
-      )}
-      <AppButton onClick={onLogs} size="small">
-        Logs
-      </AppButton>
-      {onLatestLogs && (
-        <AppButton onClick={onLatestLogs} size="small">
-          Latest run logs
+        {onLatestLogs && (
+          <AppButton onClick={onLatestLogs} size="small">
+            Latest run logs
+          </AppButton>
+        )}
+        <AppButton onClick={onEdit} size="small">
+          Edit
         </AppButton>
+        <AppButton onClick={onClose} size="small">
+          Close
+        </AppButton>
+      </div>
+      {status.invocation_id && (
+        // The card fills its parent's height, so the parent needs one; it
+        // keeps it while the details scroll.
+        <div style={{ flexShrink: 0, height: 320 }}>
+          {/* Keyed on the run so a new invocation restarts the stream. */}
+          <UnitLogsCard
+            key={status.invocation_id}
+            createStream={(tail) =>
+              openChannel("logs.service.follow", {
+                serviceName: status.unit_name,
+                invocationId: status.invocation_id,
+                lines: tail,
+              })
+            }
+            title="Output of the latest run"
+            unitName={status.unit_name}
+          />
+        </div>
       )}
-      <AppButton onClick={onEdit} size="small">
-        Edit
-      </AppButton>
-      <AppButton onClick={onClose} size="small">
-        Close
-      </AppButton>
+      {/* Keyed on the schedule so another one starts with no run chosen. */}
+      <PastRuns key={status.definition.id} unit={status.unit_name} />
+    </div>
+  );
+}
+
+const runLabel = (entry: TaskHistoryEntry) =>
+  [
+    formatDate(taskEndedAt(entry.task)),
+    taskOutcome(entry),
+    taskRunTime(entry.task),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+// A unit keeps at most 50 runs, so one page of the history is the whole list.
+function PastRuns({ unit }: { unit: string }) {
+  const { updatePending } = useJobHostStatus();
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const query = useQuery({
+    ...linuxio.tasks.history({ unit }),
+    refetchInterval: 5000,
+    // The card shows its own error; a toast would come with every poll.
+    meta: { silent: true },
+  });
+  const entries = query.data?.entries;
+  const selectedEntry = entries?.find((entry) => entry.task.id === selectedId);
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "var(--app-space-12)",
+      }}
+    >
+      <AppTypography variant="h6">Past runs</AppTypography>
+      {query.error && (
+        <AppTypography color="error">{query.error.message}</AppTypography>
+      )}
+      {entries?.length === 0 && (
+        <AppTypography color="text.secondary">
+          {updatePending
+            ? "History is unavailable until the LinuxIO update finishes."
+            : "This task has not run yet."}
+        </AppTypography>
+      )}
+      {entries && entries.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {entries.map((entry) => (
+            <AppButton
+              aria-pressed={entry.task.id === selectedEntry?.task.id}
+              key={entry.task.id}
+              onClick={() =>
+                setSelectedId(
+                  entry.task.id === selectedId ? null : entry.task.id,
+                )
+              }
+              size="small"
+            >
+              {runLabel(entry)}
+            </AppButton>
+          ))}
+        </div>
+      )}
+      {selectedEntry?.task.error?.message && (
+        <AppTypography color="error">
+          {selectedEntry.task.error.message}
+        </AppTypography>
+      )}
+      {selectedEntry?.output && (
+        // Keyed on the run so another one starts from its own end.
+        <SavedOutput
+          key={selectedEntry.task.id}
+          taskId={selectedEntry.task.id}
+        />
+      )}
     </div>
   );
 }
@@ -440,6 +570,21 @@ function ScheduleDialog({
   const calendar = scheduleCalendar(timing);
   const [argumentText, setArgumentText] = useState(draft.arguments.join("\n"));
   const users = useQuery({ ...linuxio.accounts.list_users });
+  const settings = useQuery(linuxio.alerts.get_notifications);
+  // A finished run is a notice: choosing every run does nothing visible while
+  // the admin has notices off for the bell, email and webhook.
+  const alerts =
+    settings.isPending || settings.error || settings.data?.settingsUnreadable
+      ? undefined
+      : settings.data;
+  const everyRun =
+    value.notify === "every_run" ||
+    (value.notify === "" && alerts?.report.scheduled_scripts === "every_run");
+  const noticesOff =
+    alerts !== undefined &&
+    !alerts.levels.info.browser &&
+    !alerts.levels.info.email &&
+    !alerts.levels.info.webhook;
   const set = <K extends keyof Draft>(key: K, next: Draft[K]) =>
     setValue((current) => ({ ...current, [key]: next }));
   return (
@@ -582,6 +727,28 @@ function ScheduleDialog({
             }
             label="Run after a missed activation"
           />
+          <AppSelect
+            label="Notify me"
+            value={value.notify}
+            onChange={(e) => set("notify", e.target.value)}
+          >
+            {Object.entries(notifyChoices).map(([choice, label]) => (
+              <option key={choice} value={choice}>
+                {label}
+              </option>
+            ))}
+          </AppSelect>
+          {everyRun && noticesOff ? (
+            <AppTypography
+              color="text.secondary"
+              component="p"
+              variant="caption"
+            >
+              Finished runs are notices, and notices are switched off for the
+              bell, email and webhook. Tick Notices in the notification settings
+              to hear about them.
+            </AppTypography>
+          ) : null}
         </div>
       </AppDialogContent>
       <AppDialogActions>
@@ -597,11 +764,21 @@ function ScheduleDialog({
             !calendar.trim() ||
             value.timeout_seconds < 1
           }
+          // A field left as it opened sends the stored value, which its
+          // control may render differently ("daily" opens as 00:00, empty
+          // arguments are dropped): saving only the choice changes no option.
           onClick={() =>
             onSave({
               ...value,
-              on_calendar: calendar,
-              arguments: argumentText.split("\n").filter((line) => line !== ""),
+              on_calendar:
+                calendar ===
+                scheduleCalendar(parseScheduleTiming(draft.on_calendar))
+                  ? draft.on_calendar
+                  : calendar,
+              arguments:
+                argumentText === draft.arguments.join("\n")
+                  ? draft.arguments
+                  : argumentText.split("\n").filter((line) => line !== ""),
             })
           }
           variant="contained"

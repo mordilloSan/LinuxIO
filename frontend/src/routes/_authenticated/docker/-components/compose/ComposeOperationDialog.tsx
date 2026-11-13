@@ -22,9 +22,9 @@ import { useScopedToast } from "@/hooks/useScopedToast";
 import { TASK_TYPE_DOCKER_COMPOSE } from "@/tasks/taskTypes";
 import { useActiveTaskRecovery } from "@/tasks/useActiveTaskRecovery";
 
+import { DOCKER_TOAST_META } from "../shared/dockerToast";
 import { type ComposeTask, mergeTask } from "./composeProgress";
 import DockerComposeProgress from "./DockerComposeProgress";
-import { DOCKER_TOAST_META } from "../shared/dockerToast";
 
 import "../shared/compose-operation-dialog.css";
 
@@ -94,8 +94,7 @@ const ComposeOperationDialog = ({
   }, [open]);
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  const composeOperation = linuxio.docker.compose.useTaskStreamAction({
-    closeMessage: "Compose operation stream closed unexpectedly",
+  const composeOperation = linuxio.docker.compose.useMutation({
     closeOnAbort: "close",
     error: (streamError) => {
       if (streamError.name === "AbortError") return;
@@ -137,7 +136,6 @@ const ComposeOperationDialog = ({
           break;
       }
     },
-    openErrorMessage: "Failed to watch compose operation",
     signal: () => abortRef.current?.signal,
     success: (msg) => {
       if (msg?.type === "complete" && startedRef.current) {
@@ -168,7 +166,7 @@ const ComposeOperationDialog = ({
     },
     onRecover: (task) =>
       beginRun(() =>
-        composeOperation.watch(task, { action, projectName, composePath }),
+        composeOperation.watch(task.id, { action, projectName, composePath }),
       ),
     onMiss: () =>
       beginRun(() =>

@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { linuxio, useCallMutation } from "@/api";
+import { linuxio } from "@/api";
 
 import { type VMAction, VM_TOAST } from "./vmShared";
 
@@ -47,28 +47,22 @@ export function useVMLifecycle(
     VMAction,
     { mutateAsync: (request: { name: string }) => Promise<unknown> }
   > = {
-    start: useCallMutation(
-      linuxio.virt.start,
+    start: linuxio.virt.start.useMutation(
       actionConfig("VM started", "Failed to start VM"),
     ),
-    shutdown: useCallMutation(
-      linuxio.virt.shutdown,
+    shutdown: linuxio.virt.shutdown.useMutation(
       actionConfig("VM shutdown requested", "Failed to shutdown VM"),
     ),
-    reboot: useCallMutation(
-      linuxio.virt.reboot,
+    reboot: linuxio.virt.reboot.useMutation(
       actionConfig("VM reboot requested", "Failed to reboot VM"),
     ),
-    force_off: useCallMutation(
-      linuxio.virt.force_off,
+    force_off: linuxio.virt.force_off.useMutation(
       actionConfig("VM powered off", "Failed to force off VM"),
     ),
-    suspend: useCallMutation(
-      linuxio.virt.suspend,
+    suspend: linuxio.virt.suspend.useMutation(
       actionConfig("VM suspended", "Failed to suspend VM"),
     ),
-    resume: useCallMutation(
-      linuxio.virt.resume,
+    resume: linuxio.virt.resume.useMutation(
       actionConfig("VM resumed", "Failed to resume VM"),
     ),
   };

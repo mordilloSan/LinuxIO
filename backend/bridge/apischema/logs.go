@@ -3,6 +3,9 @@ package apischema
 type ServiceLogsFollowRequest struct {
 	ServiceName string  `json:"serviceName"`
 	Lines       *string `json:"lines,omitzero"`
+	// InvocationID limits the stream to one systemd invocation of the unit (32
+	// lowercase hex characters). Blank means the unit's whole journal.
+	InvocationID *string `json:"invocationId,omitzero"`
 }
 
 type GeneralLogsFollowRequest struct {

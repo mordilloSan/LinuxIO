@@ -20,7 +20,7 @@ func TestBuildMapsSample(t *testing.T) {
 			CpuCoresUsage: systemmodel.Uint8Slice{10, 15},
 			LoadAvg:       [3]float64{1, 2, 3},
 			Counters: systemmodel.Counters{
-				MemoryBytes: systemmodel.MemoryBytes{Total: 16 << 30, Used: 8 << 30, ZFSArc: 1 << 30},
+				MemoryBytes: systemmodel.MemoryBytes{Total: 16 << 30, Used: 8 << 30, ZFSArc: 1 << 30, Docker: 256 << 20, VMs: 2 << 30},
 				DiskDevices: map[string]systemmodel.DiskDeviceRates{
 					"sda":     {ReadBytesPerSec: 100, WriteBytesPerSec: 50, ReadOpsPerSec: 1, WriteOpsPerSec: 2},
 					"nvme0n1": {ReadBytesPerSec: 300, WriteBytesPerSec: 0},
@@ -33,7 +33,7 @@ func TestBuildMapsSample(t *testing.T) {
 		},
 		Info: systemmodel.Info{Uptime: 4242},
 		Containers: []*containermodel.Stats{
-			{Id: "abc123def456", Name: "web", Cpu: 25, Mem: 512, Bandwidth: [2]uint64{7, 9}},
+			{Id: "abc123def456", Name: "web", Cpu: 25, Mem: 512, Bandwidth: [2]uint64{7, 9}, MemLimitBytes: 1 << 30},
 		},
 	}
 	telemetry := []containermodel.Telemetry{{ID: "abc123def456", DiskReadBytesPerSecond: 11, DiskWriteBytesPerSecond: 13}}
@@ -46,7 +46,8 @@ func TestBuildMapsSample(t *testing.T) {
 	if live.CPU.Percent != 12.5 || live.CPU.Breakdown.Idle != 90 || len(live.CPU.PerCorePercent) != 2 || live.CPU.PerCorePercent[1] != 15 {
 		t.Fatalf("cpu = %+v", live.CPU)
 	}
-	if live.Memory.TotalBytes != 16<<30 || live.Memory.ZFSArcBytes != 1<<30 || live.Memory.DockerUsedBytes != 512<<20 {
+	// Docker memory is the cgroup figure, not the sum of the containers' 512 MiB.
+	if live.Memory.TotalBytes != 16<<30 || live.Memory.ZFSArcBytes != 1<<30 || live.Memory.DockerUsedBytes != 256<<20 || live.Memory.VMUsedBytes != 2<<30 {
 		t.Fatalf("memory = %+v", live.Memory)
 	}
 	if live.DiskIO.ReadBytesPerSec != 400 || live.Disks["sda"].WriteOpsPerSec != 2 {
@@ -67,10 +68,17 @@ func TestBuildMapsSample(t *testing.T) {
 	if ctr.BlockReadBytesPerSec == nil || *ctr.BlockReadBytesPerSec != 11 || *ctr.BlockWriteBytesPerSec != 13 {
 		t.Fatalf("telemetry not attached: %+v", ctr)
 	}
+	if ctr.MemoryLimitBytes == nil || *ctr.MemoryLimitBytes != 1<<30 {
+		t.Fatalf("MemoryLimitBytes = %v, want 1 GiB", ctr.MemoryLimitBytes)
+	}
 
+	data.Containers[0].MemLimitBytes = 16 << 30 // Docker reports host RAM when unlimited.
 	stale := Build(data, at, 4, telemetry, at.Add(-10*time.Minute), 3*time.Minute)
 	if stale.Containers.Items[0].BlockReadBytesPerSec != nil {
 		t.Fatal("stale telemetry must leave block rates nil")
+	}
+	if stale.Containers.Items[0].MemoryLimitBytes != nil {
+		t.Fatal("a limit equal to host RAM must be reported as no limit")
 	}
 }
 

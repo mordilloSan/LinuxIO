@@ -94,19 +94,27 @@ func TestCreatePoolFormatsAndRegisters(t *testing.T) {
 	}
 	calls := stubExec(t)
 	ioctls := stubControlIoctl(t, nil)
+	oldSize, oldDiscard := blockDeviceSize, discardDevice
+	t.Cleanup(func() { blockDeviceSize, discardDevice = oldSize, oldDiscard })
+	blockDeviceSize = func(string) (uint64, error) { return 1 << 30, nil }
+	discardDevice = func(_ context.Context, device string, size uint64, advance func(uint64)) error {
+		*ioctls = append(*ioctls, "discard "+device)
+		advance(size)
+		return nil
+	}
 
-	uuid, err := CreatePool(context.Background(), "tank", "raid1", "raid1", []string{"/dev/sdb", "/dev/sdc"}, true)
+	uuid, err := CreatePool(context.Background(), "tank", "raid1", "raid1", []string{"/dev/sdb", "/dev/sdc"}, true, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(*calls) != 1 {
 		t.Fatalf("calls = %v", *calls)
 	}
-	want := []string{"-L", "tank", "-U", uuid, "-d", "raid1", "-m", "raid1", "-f", "/dev/sdb", "/dev/sdc"}
+	want := []string{"-L", "tank", "-U", uuid, "-d", "raid1", "-m", "raid1", "-K", "-f", "/dev/sdb", "/dev/sdc"}
 	if got := (*calls)[0][1:]; !reflect.DeepEqual(got, want) {
 		t.Fatalf("mkfs args = %v, want %v", got, want)
 	}
-	if !reflect.DeepEqual(*ioctls, []string{"scan /dev/sdb", "scan /dev/sdc"}) {
+	if !reflect.DeepEqual(*ioctls, []string{"discard /dev/sdb", "discard /dev/sdc", "scan /dev/sdb", "scan /dev/sdc"}) {
 		t.Fatalf("ioctls = %v", *ioctls)
 	}
 }
@@ -115,19 +123,19 @@ func TestCreatePoolRefusesBeforeFormatting(t *testing.T) {
 	calls := stubExec(t)
 	cases := map[string]func() error{
 		"too few devices": func() error {
-			_, err := CreatePool(context.Background(), "tank", "raid1", "raid1", []string{"/dev/sdb"}, false)
+			_, err := CreatePool(context.Background(), "tank", "raid1", "raid1", []string{"/dev/sdb"}, false, nil)
 			return err
 		},
 		"raid5": func() error {
-			_, err := CreatePool(context.Background(), "tank", "raid5", "raid1", []string{"/dev/sdb", "/dev/sdc", "/dev/sdd"}, false)
+			_, err := CreatePool(context.Background(), "tank", "raid5", "raid1", []string{"/dev/sdb", "/dev/sdc", "/dev/sdd"}, false, nil)
 			return err
 		},
 		"bad label": func() error {
-			_, err := CreatePool(context.Background(), "a/b", "single", "dup", []string{"/dev/sdb"}, false)
+			_, err := CreatePool(context.Background(), "a/b", "single", "dup", []string{"/dev/sdb"}, false, nil)
 			return err
 		},
 		"no devices": func() error {
-			_, err := CreatePool(context.Background(), "tank", "single", "dup", nil, false)
+			_, err := CreatePool(context.Background(), "tank", "single", "dup", nil, false, nil)
 			return err
 		},
 	}
@@ -202,27 +210,92 @@ func TestWipeDevice(t *testing.T) {
 	}
 }
 
+func TestSuperblockOffsetsSkipsBeyondDevice(t *testing.T) {
+	if got, want := superblockOffsets(100<<20), []int64{65536, 67108864}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+func TestWipePoolSuperblocksOnlyTouchesItsOwnFSID(t *testing.T) {
+	ioctls := stubControlIoctl(t, unix.ENOENT)
+	ours, theirs := [16]byte{0xa}, [16]byte{0xb}
+	image := filepath.Join(t.TempDir(), "disk")
+	f, err := os.Create(image)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err = f.Truncate(257 << 30); err != nil { // sparse: three superblocks' worth on disk
+		t.Fatal(err)
+	}
+	// A failed mkfs leaves the temporary magic; a pool of another fsid owns the last copy.
+	temporary := superblock(ours, "tank", 1, 1, 0)
+	binary.LittleEndian.PutUint64(temporary[superMagicAt:], superMagicTemporary)
+	for off, sb := range map[int64][]byte{superOffset: superblock(ours, "tank", 1, 1, 0), 64 << 20: temporary, 256 << 30: superblock(theirs, "other", 1, 1, 0)} {
+		if _, err = f.WriteAt(sb, off); err != nil {
+			t.Fatal(err)
+		}
+	}
+	magic := func(off int64) uint64 {
+		b := make([]byte, 8)
+		if _, readErr := f.ReadAt(b, off+superMagicAt); readErr != nil {
+			t.Fatal(readErr)
+		}
+		return binary.LittleEndian.Uint64(b)
+	}
+
+	wiped, err := WipePoolSuperblocks(image, formatUUID(ours[:]))
+	if err != nil || !wiped {
+		t.Fatalf("wiped = %t, err = %v", wiped, err)
+	}
+	if got := []uint64{magic(superOffset), magic(64 << 20), magic(256 << 30)}; !reflect.DeepEqual(got, []uint64{0, 0, superMagic}) {
+		t.Fatalf("magics = %#x, want only the other fsid's left", got)
+	}
+	label := make([]byte, 4)
+	if _, err = f.ReadAt(label, superOffset+superLabel); err != nil || string(label) != "tank" {
+		t.Fatalf("more than the magic was overwritten: %q %v", label, err)
+	}
+	if !reflect.DeepEqual(*ioctls, []string{"forget " + image}) {
+		t.Fatalf("ioctls = %v", *ioctls)
+	}
+
+	if wiped, err = WipePoolSuperblocks(image, formatUUID(ours[:])); err != nil || wiped {
+		t.Fatalf("second call: wiped = %t, err = %v", wiped, err)
+	}
+	if len(*ioctls) != 1 {
+		t.Fatalf("forgot a device it did not wipe: %v", *ioctls)
+	}
+}
+
 func TestFindOfflinePools(t *testing.T) {
 	stubMounts(t, []Mount{{Mountpoint: "/data", UUID: "mounted-uuid", SubvolID: 5}})
 	old := readSuperblock
 	readSuperblock = func(device string) (Superblock, error) {
 		switch device {
 		case "/dev/sdb":
-			return Superblock{UUID: "pool-uuid", Label: "tank", NumDevices: 3, TotalBytes: 300, Generation: 8}, nil
+			return Superblock{UUID: "pool-uuid", Label: "tank", DevID: 1, NumDevices: 3, TotalBytes: 300, Generation: 8}, nil
 		case "/dev/sdc":
-			return Superblock{UUID: "pool-uuid", Label: "tank", NumDevices: 3, TotalBytes: 300, Generation: 9}, nil
+			return Superblock{UUID: "pool-uuid", Label: "tank", DevID: 3, NumDevices: 3, TotalBytes: 300, Generation: 9}, nil
 		case "/dev/sdd":
 			return Superblock{UUID: "mounted-uuid", Label: "data", NumDevices: 1}, nil
+		// A replace target is scanned but is no member: cold misses a disk.
+		case "/dev/sdf":
+			return Superblock{UUID: "cold-uuid", Label: "cold", DevID: 1, NumDevices: 2, Generation: 4}, nil
+		case "/dev/sdg":
+			return Superblock{UUID: "cold-uuid", Label: "cold", DevID: replaceTargetDevID, NumDevices: 2, Generation: 4}, nil
 		}
 		return Superblock{}, errNotBtrfs
 	}
 	t.Cleanup(func() { readSuperblock = old })
 
-	pools, err := FindOfflinePools(context.Background(), []string{"/dev/sdb", "/dev/sdd", "/dev/sde", "/dev/sdc"})
+	pools, err := FindOfflinePools(context.Background(), []string{"/dev/sdb", "/dev/sdd", "/dev/sde", "/dev/sdc", "/dev/sdf", "/dev/sdg"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []BtrfsOfflinePool{{UUID: "pool-uuid", Label: "tank", NumDevices: 3, Devices: []string{"/dev/sdb", "/dev/sdc"}, TotalBytes: 300, devids: []uint64{0, 0}, generations: []uint64{8, 9}}}
+	want := []BtrfsOfflinePool{
+		{UUID: "pool-uuid", Label: "tank", NumDevices: 3, Devices: []string{"/dev/sdb", "/dev/sdc"}, TotalBytes: 300, Missing: 1, devids: []uint64{1, 3}, generations: []uint64{8, 9}},
+		{UUID: "cold-uuid", Label: "cold", NumDevices: 2, Devices: []string{"/dev/sdf", "/dev/sdg"}, Missing: 1, devids: []uint64{1, replaceTargetDevID}, generations: []uint64{4, 4}},
+	}
 	if !reflect.DeepEqual(pools, want) {
 		t.Fatalf("got %+v, want %+v", pools, want)
 	}

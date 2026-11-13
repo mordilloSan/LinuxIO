@@ -65,13 +65,13 @@ const InterfaceClients = ({ params }: InterfaceDetailsProps) => {
     peerIdentities?.find((peer) => peer.id === peerId)?.name ?? peerId;
 
   // Mutations
-  const deletePeer = useCallMutation(linuxio.wireguard.remove_peer, {
+  const deletePeer = linuxio.wireguard.remove_peer.useMutation({
     success: (_result, variables) =>
       toast.success(`WireGuard Peer '${peerLabel(variables.peerId)}' deleted`),
     error: "Failed to delete peer",
     toast: WIREGUARD_TOAST_META,
   });
-  const updatePeer = useCallMutation(linuxio.wireguard.update_peer, {
+  const updatePeer = linuxio.wireguard.update_peer.useMutation({
     success: (_result, variables) =>
       toast.success(
         `Peer '${peerLabel(variables.peerId)}' ${variables.enabled ? "enabled" : "disabled"}`,

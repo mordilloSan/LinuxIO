@@ -2,12 +2,15 @@ package filebrowser
 
 import (
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"io/fs"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -15,6 +18,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	ipc "github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
 )
 
 func TestUploadTaskRejectsChangedExpectedVersion(t *testing.T) {
@@ -66,6 +70,117 @@ func TestUploadTaskSavesThroughSymlink(t *testing.T) {
 	require.NoError(t, err)
 	require.NotZero(t, info.Mode()&os.ModeSymlink, "saving must write through the link, not replace it")
 	content, err := os.ReadFile(target)
+	require.NoError(t, err)
+	require.Equal(t, "new", string(content))
+}
+
+// startOwnedUpload runs a filebrowser.upload task that sets owner, as the
+// Compose editor's save does, and attaches its data stream.
+func startOwnedUpload(t *testing.T, target, content string, overwrite bool) (net.Conn, <-chan ipc.ResultFrame) {
+	t.Helper()
+	req := apischema.FileUploadRequest{TargetPath: target, Size: strconv.Itoa(len(content)), Overwrite: &overwrite, Owner: uploadOwnerSession}
+	task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+	require.NoError(t, err)
+	task.Start(func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
+		return runUploadTask(ctx, j, req, selfOwner())
+	})
+	conn, results, _ := attachUploadBatchStream(t, task, "")
+	return conn, results
+}
+
+// An upload that sets owner writes into the user's folder on their behalf, so
+// it never follows a symlink at the target: any process running as the user
+// may plant ~/stack/.env -> /etc/environment, and a root bridge would write
+// that file for them.
+func TestOwnedUploadRefusesASymlinkAtTheTarget(t *testing.T) {
+	victim := seedVictim(t)
+	env := filepath.Join(t.TempDir(), ".env")
+	require.NoError(t, os.Symlink(victim, env))
+
+	_, results := startOwnedUpload(t, env, "new", true)
+
+	result := waitResult(t, results)
+	require.Equal(t, "error", result.Status)
+	require.Equal(t, 409, result.Code)
+	require.Contains(t, result.Error, ".env is a symbolic link; replace it with a regular file")
+	requireVictimUntouched(t, victim)
+	info, err := os.Lstat(env)
+	require.NoError(t, err)
+	require.NotZero(t, info.Mode()&os.ModeSymlink, "the link is left alone")
+}
+
+// The symlink is refused before the version check, so the bridge never reads
+// the link's target and the user is told about the link, not a stale version.
+func TestOwnedUploadRefusesASymlinkBeforeCheckingTheVersion(t *testing.T) {
+	victim := seedVictim(t)
+	env := filepath.Join(t.TempDir(), ".env")
+	require.NoError(t, os.Symlink(victim, env))
+	transfer := newOwnedUpload(t, env, 3, selfOwner(), true, true)
+	transfer.refuseSymlink = true
+	transfer.expectedVersion = "loaded-before-the-link"
+
+	err := transfer.prepare(openTestRoot(t))
+	require.ErrorIs(t, err, bridgeipc.ErrConflict)
+	require.NotErrorIs(t, err, errUploadVersionConflict)
+	require.ErrorContains(t, err, ".env is a symbolic link")
+	requireVictimUntouched(t, victim)
+}
+
+// Uploads without owner keep checking the version before any folder is made,
+// so an editor save into a folder deleted since it was opened recreates none.
+func TestUploadEditorSaveToADeletedFolderCreatesNoFolders(t *testing.T) {
+	gone := filepath.Join(t.TempDir(), "gone")
+	transfer := newOwnedUpload(t, filepath.Join(gone, "sub", "note.txt"), 3, sessionOwner{}, false, true)
+	transfer.expectedVersion = "opened-before-the-delete"
+
+	require.Error(t, transfer.prepare(openTestRoot(t)))
+	require.NoDirExists(t, gone)
+}
+
+// A new .env is saved without overwrite. A dangling link there passes the
+// existence check up front (it follows the link), so prepare must refuse it.
+func TestOwnedUploadWithoutOverwriteRefusesADanglingSymlink(t *testing.T) {
+	stack := t.TempDir()
+	missing := filepath.Join(t.TempDir(), "environment")
+	env := filepath.Join(stack, ".env")
+	require.NoError(t, os.Symlink(missing, env))
+
+	_, results := startOwnedUpload(t, env, "new", false)
+
+	result := waitResult(t, results)
+	require.Equal(t, "error", result.Status)
+	require.Equal(t, 409, result.Code)
+	require.Contains(t, result.Error, ".env is a symbolic link; replace it with a regular file")
+	_, err := os.Lstat(missing)
+	require.ErrorIs(t, err, fs.ErrNotExist)
+	target, err := os.Readlink(env)
+	require.NoError(t, err)
+	require.Equal(t, missing, target, "the link is left alone")
+	entries, err := os.ReadDir(stack)
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "no upload buffer is left behind")
+}
+
+// A symlink swapped in after prepare is not followed either: the commit's
+// renameat replaces the link itself.
+func TestOwnedUploadReplacesASymlinkSwappedInAfterPrepare(t *testing.T) {
+	victim := seedVictim(t)
+	env := filepath.Join(t.TempDir(), ".env")
+	require.NoError(t, os.WriteFile(env, []byte("old"), 0o600))
+
+	conn, results := startOwnedUpload(t, env, "new", true)
+	writeData(t, conn, []byte("new")) // returns once attach has prepared and reads frames
+	require.NoError(t, os.Remove(env))
+	require.NoError(t, os.Symlink(victim, env))
+	writeClose(t, conn)
+
+	result := waitResult(t, results)
+	require.Equalf(t, "ok", result.Status, "upload answered %+v", result)
+	requireVictimUntouched(t, victim)
+	info, err := os.Lstat(env)
+	require.NoError(t, err)
+	require.True(t, info.Mode().IsRegular(), "the link itself is replaced")
+	content, err := os.ReadFile(env)
 	require.NoError(t, err)
 	require.Equal(t, "new", string(content))
 }
@@ -197,7 +312,7 @@ func TestUploadTaskRejectsExistingDestinationWithoutOverwrite(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 	task.Start(func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
-		return runUploadTask(ctx, j, req, uploadOwner{})
+		return runUploadTask(ctx, j, req, sessionOwner{})
 	})
 
 	snapshot := waitTaskDone(t, task)
@@ -209,6 +324,21 @@ func TestUploadTaskRejectsExistingDestinationWithoutOverwrite(t *testing.T) {
 	}
 	if got, readErr := os.ReadFile(target); readErr != nil || string(got) != "old" {
 		t.Fatalf("existing file was touched: %q, err %v", got, readErr)
+	}
+
+	// The browser opens tasks.data after a start that still read running:
+	// the attach answers with the refusal, not with a timeout.
+	server, client := net.Pipe()
+	defer client.Close()
+	go func() {
+		defer server.Close()
+		_ = attachFileTransferData(context.Background(), task, server, bridgeipc.TaskDataAttachRequest{})
+	}()
+	_ = client.SetReadDeadline(time.Now().Add(5 * time.Second))
+	frame, err := ipc.ReadRelayFrame(client)
+	var result ipc.ResultFrame
+	if err != nil || json.Unmarshal(frame.Payload, &result) != nil || result.Code != 409 {
+		t.Fatalf("attach answer = %+v (%s), %v; want the 409 refusal", result, frame.Payload, err)
 	}
 }
 
@@ -227,13 +357,13 @@ func TestUploadTaskOverwriteAcceptsExistingDestination(t *testing.T) {
 		t.Fatalf("create task: %v", err)
 	}
 	task.Start(func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
-		return runUploadTask(ctx, j, req, uploadOwner{})
+		return runUploadTask(ctx, j, req, sessionOwner{})
 	})
 
 	// The task must get past the conflict check and park waiting for a client
 	// stream; cancel it to finish the test.
 	waitForTransfer := func() bool {
-		_, ok := waitForFileTransferTask(context.Background(), task.ID())
+		_, ok := waitForFileTransferTask(context.Background(), task)
 		return ok
 	}
 	if !waitForTransfer() {

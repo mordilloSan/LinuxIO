@@ -2,7 +2,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
 import { useCallback, useMemo, useState, type SyntheticEvent } from "react";
 
-import { linuxio, useCallMutation } from "@/api";
+import { linuxio } from "@/api";
 import ResourceDetailsLayout from "@/components/cards/ResourceDetailsLayout";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ReorderableCardGrid from "@/components/reorder/ReorderableCardGrid";
@@ -25,20 +25,21 @@ import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import useAuth from "@/hooks/useAuth";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
 import { getContainerName } from "@/utils/dockerContainer";
 
+import { useFocusedResourceParam } from "../../-hooks/useFocusedResourceParam";
+import DockerNetworkCard from "../cards/DockerNetworkCard";
+import BatchDeleteDialog from "../shared/BatchDeleteDialog";
+import { DOCKER_TOAST_META } from "../shared/dockerToast";
 import { CreateNetworkDialog } from "./CreateNetworkDialog";
 import {
   NetworkDetailsContent,
   type ConnectedContainerRow,
 } from "./NetworkDetailsContent";
-import { useFocusedResourceParam } from "../../-hooks/useFocusedResourceParam";
-import DockerNetworkCard from "../cards/DockerNetworkCard";
-import BatchDeleteDialog from "../shared/BatchDeleteDialog";
-import { DOCKER_TOAST_META } from "../shared/dockerToast";
 
 interface NetworkListProps {
   onMountCreateHandler?: (handler: () => void) => void;
@@ -73,6 +74,8 @@ const NetworkList = ({
   const [search, setSearch] = useState("");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  // Deleting, connecting and disconnecting are admin-only.
+  const { privileged } = useAuth();
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
   const [connectContainerId, setConnectContainerId] = useState("");
   const [aliases, setAliases] = useState("");
@@ -125,12 +128,10 @@ const NetworkList = ({
   useRegisterCreateHandler(onMountCreateHandler, handleCreateNetwork);
 
   // Configless: this is a batch flow — the dialog owns aggregation and toasts.
-  const { mutateAsync: deleteNetwork } = useCallMutation(
-    linuxio.docker.delete_network,
-  );
-  const { mutate: connectNetwork, isPending: isConnecting } = useCallMutation(
-    linuxio.docker.connect_network,
-    {
+  const { mutateAsync: deleteNetwork } =
+    linuxio.docker.delete_network.useMutation();
+  const { mutate: connectNetwork, isPending: isConnecting } =
+    linuxio.docker.connect_network.useMutation({
       success: () => {
         toast.success("Container connected to network");
         setConnectDialogOpen(false);
@@ -138,10 +139,9 @@ const NetworkList = ({
       },
       error: "Failed to connect container",
       toast: DOCKER_TOAST_META,
-    },
-  );
+    });
   const { mutate: disconnectNetwork, isPending: isDisconnecting } =
-    useCallMutation(linuxio.docker.disconnect_network, {
+    linuxio.docker.disconnect_network.useMutation({
       success: () => {
         toast.success("Container disconnected from network");
         setDisconnectTarget(null);
@@ -366,7 +366,7 @@ const NetworkList = ({
           summary={
             <DockerNetworkCard
               actions={
-                focusedNetwork.Protected ? undefined : (
+                focusedNetwork.Protected || !privileged ? undefined : (
                   <AppActionIconButton
                     ariaLabel={`Delete network ${focusedNetwork.Name}`}
                     color="var(--app-palette-error-main)"
@@ -386,8 +386,8 @@ const NetworkList = ({
           <NetworkDetailsContent
             connectDisabled={unattachedContainers.length === 0}
             network={focusedNetwork}
-            onConnect={openConnectDialog}
-            onDisconnect={setDisconnectTarget}
+            onConnect={privileged ? openConnectDialog : undefined}
+            onDisconnect={privileged ? setDisconnectTarget : undefined}
           />
         </ResourceDetailsLayout>
       ) : viewMode === "card" ? (

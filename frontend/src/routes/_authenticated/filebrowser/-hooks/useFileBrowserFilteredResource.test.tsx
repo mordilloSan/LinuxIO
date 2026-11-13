@@ -3,10 +3,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SearchResult } from "@/api";
 import { renderHook } from "@/test/render";
 
-import { useFileBrowserFilteredResource } from "./useFileBrowserFilteredResource";
 import type { FileResource } from "../-types";
+import { useFileBrowserFilteredResource } from "./useFileBrowserFilteredResource";
 
 const useFileSearchMock = vi.hoisted(() => vi.fn());
+const authState = vi.hoisted(() => ({ privileged: true }));
+
+vi.mock("@/hooks/useAuth", () => ({
+  default: () => ({ privileged: authState.privileged }),
+}));
 
 vi.mock("./useFileSearch", () => ({
   isSearchableQuery: (query: string) => Array.from(query.trim()).length >= 3,
@@ -52,7 +57,24 @@ function renderFiltered(params: {
 
 describe("useFileBrowserFilteredResource", () => {
   beforeEach(() => {
+    authState.privileged = true;
     mockSearch();
+  });
+
+  it("does not search without sudo and keeps the listing", () => {
+    authState.privileged = false;
+    const { result } = renderFiltered({
+      resource: directoryResource,
+      searchQuery: "Alpha",
+    });
+
+    expect(useFileSearchMock).toHaveBeenLastCalledWith({
+      basePath: "/",
+      caseSensitive: false,
+      enabled: false,
+      query: "Alpha",
+    });
+    expect(result.current.filteredResource).toBe(directoryResource);
   });
 
   it("returns the resource unchanged when the query is blank", () => {

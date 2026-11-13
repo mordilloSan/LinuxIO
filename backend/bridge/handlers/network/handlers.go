@@ -8,6 +8,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/runtime"
+	"github.com/mordilloSan/LinuxIO/backend/common/jobs"
 )
 
 func routeBindings(rt runtime.Runtime) apischema.BindingSet {
@@ -15,7 +16,7 @@ func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 	return apischema.Bindings(
 		apischema.Call[apischema.NoRequest, []apischema.NetworkInterface]("network.get_network_info").Handle(h.handleGetNetworkInfo),
 		apischema.Call[apischema.NoRequest, apischema.NetworkBridgeOptions]("network.get_bridge_options", apischema.RetrySafe(), apischema.Privileged()).Handle(h.handleGetBridgeOptions),
-		apischema.Call[apischema.NetworkBridgeCreateRequest, apischema.NetworkBridgeCreateResult]("network.create_bridge", apischema.Privileged()).Handle(h.handleCreateBridge),
+		apischema.Mutation("network.create_bridge", h.handleCreateBridge, apischema.Privileged()),
 		apischema.Call[apischema.NetworkBridgeHandoffRequest, apischema.NetworkBridgeHandoffStatus]("network.start_bridge_handoff", apischema.Privileged()).Handle(h.handleStartBridgeHandoff),
 		apischema.Call[apischema.NetworkBridgeHandoffOperationRequest, apischema.NetworkBridgeHandoffStatus]("network.get_bridge_handoff", apischema.RetrySafe(), apischema.Privileged()).Handle(h.handleGetBridgeHandoff),
 		apischema.Call[apischema.NetworkBridgeHandoffOperationRequest, apischema.NetworkBridgeHandoffStatus]("network.confirm_bridge_handoff", apischema.RetrySafe(), apischema.Privileged()).Handle(h.handleConfirmBridgeHandoff),
@@ -23,13 +24,13 @@ func routeBindings(rt runtime.Runtime) apischema.BindingSet {
 		// NetworkManager owns an accepted configuration change. Applying it can
 		// sever this bridge, so transport loss is an expected ambiguous outcome and
 		// callers must not retry the mutation automatically.
-		apischema.Call[apischema.IPv4ManualRequest, apischema.NoResponse]("network.set_ipv4_manual").HandleVoid(h.handleSetIPv4Manual),
-		apischema.Call[apischema.IPv4DHCPRequest, apischema.NoResponse]("network.set_ipv4").HandleVoid(h.handleSetIPv4),
-		apischema.Call[apischema.InterfaceMethodRequest, apischema.NoResponse]("network.set_ipv6").HandleVoid(h.handleSetIPv6),
-		apischema.Call[apischema.InterfaceMTURequest, apischema.NoResponse]("network.set_mtu").HandleVoid(h.handleSetMTU),
-		apischema.Call[apischema.InterfaceOptionalRequest, apischema.NoResponse]("network.set_optional").HandleVoid(h.handleSetOptional),
-		apischema.Call[apischema.InterfaceRequest, apischema.NoResponse]("network.enable_connection").HandleVoid(h.handleEnableConnection),
-		apischema.Call[apischema.InterfaceRequest, apischema.NoResponse]("network.disable_connection").HandleVoid(h.handleDisableConnection),
+		apischema.MutationVoid("network.set_ipv4_manual", h.handleSetIPv4Manual, apischema.Privileged()),
+		apischema.MutationVoid("network.set_ipv4", h.handleSetIPv4, apischema.Privileged()),
+		apischema.MutationVoid("network.set_ipv6", h.handleSetIPv6, apischema.Privileged()),
+		apischema.MutationVoid("network.set_mtu", h.handleSetMTU, apischema.Privileged()),
+		apischema.MutationVoid("network.set_optional", h.handleSetOptional, apischema.Privileged()),
+		apischema.MutationVoid("network.enable_connection", h.handleEnableConnection, apischema.Privileged()),
+		apischema.MutationVoid("network.disable_connection", h.handleDisableConnection, apischema.Privileged()),
 	)
 }
 
@@ -52,26 +53,26 @@ func (h networkHandlers) handleCreateBridge(ctx context.Context, req apischema.N
 }
 
 func (h networkHandlers) handleStartBridgeHandoff(ctx context.Context, req apischema.NetworkBridgeHandoffRequest) (apischema.NetworkBridgeHandoffStatus, error) {
-	return h.handoff.Start(ctx, h.handleOwnerUID(), req)
+	return h.handoff.Start(ctx, h.handleOwner(), req)
 }
 
 func (h networkHandlers) handleGetBridgeHandoff(ctx context.Context, req apischema.NetworkBridgeHandoffOperationRequest) (apischema.NetworkBridgeHandoffStatus, error) {
-	return h.handoff.Status(ctx, h.handleOwnerUID(), req.OperationID)
+	return h.handoff.Status(ctx, h.handleOwner().UID, req.OperationID)
 }
 
 func (h networkHandlers) handleConfirmBridgeHandoff(ctx context.Context, req apischema.NetworkBridgeHandoffOperationRequest) (apischema.NetworkBridgeHandoffStatus, error) {
-	return h.handoff.Confirm(ctx, h.handleOwnerUID(), req.OperationID)
+	return h.handoff.Confirm(ctx, h.handleOwner().UID, req.OperationID)
 }
 
 func (h networkHandlers) handleRevertBridgeHandoff(ctx context.Context, req apischema.NetworkBridgeHandoffOperationRequest) (apischema.NetworkBridgeHandoffStatus, error) {
-	return h.handoff.Revert(ctx, h.handleOwnerUID(), req.OperationID)
+	return h.handoff.Revert(ctx, h.handleOwner().UID, req.OperationID)
 }
 
-func (h networkHandlers) handleOwnerUID() uint32 {
+func (h networkHandlers) handleOwner() jobs.Owner {
 	if h.rt.Session == nil {
-		return 0
+		return jobs.Owner{}
 	}
-	return h.rt.Session.User.UID
+	return jobs.Owner{UID: h.rt.Session.User.UID, Username: h.rt.Session.User.Username}
 }
 
 func (h networkHandlers) handleSetIPv4Manual(ctx context.Context, req apischema.IPv4ManualRequest) error {

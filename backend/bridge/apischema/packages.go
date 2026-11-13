@@ -13,6 +13,7 @@ type AutoUpdateOptions struct {
 	ExtraOrigins    []string               `json:"extra_origins"`
 	Frequency       AutoUpdateFrequency    `json:"frequency"`
 	Notify          AutoUpdateNotify       `json:"notify"`
+	NotifyAvailable bool                   `json:"notify_available"`
 	RebootPolicy    AutoUpdateRebootPolicy `json:"reboot_policy"`
 	Scope           AutoUpdateScope        `json:"scope"`
 }
@@ -22,6 +23,7 @@ type AutoUpdateOptionSupport struct {
 	ExcludePackages bool                     `json:"exclude_packages"`
 	ExtraOrigins    bool                     `json:"extra_origins"`
 	Frequencies     []AutoUpdateFrequency    `json:"frequencies"`
+	NotifyAvailable bool                     `json:"notify_available"`
 	NotifyPolicies  []AutoUpdateNotify       `json:"notify_policies"`
 	RebootPolicies  []AutoUpdateRebootPolicy `json:"reboot_policies"`
 	Scopes          []AutoUpdateScope        `json:"scopes"`

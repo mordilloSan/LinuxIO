@@ -38,7 +38,8 @@ describe("DockerImageCard", () => {
 
     const fullId = screen.getByText(image.id);
     expect(screen.getByText("Full ID:")).toHaveStyle("font-weight: 700");
-    expect(fullId).toHaveStyle("font-family: var(--app-font-mono)");
+    // The inline style keeps the variable; the computed value is the font list.
+    expect(fullId.style.fontFamily).toBe("var(--app-font-mono)");
     expect(fullId).toHaveClass("app-typo--caption");
     expect(fullId.parentElement).toHaveClass("app-typo--nowrap");
     expect(screen.queryByText(/^ID:/)).toBeNull();

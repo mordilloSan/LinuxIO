@@ -244,6 +244,7 @@ func containerMetricsFromSnapshot(
 		BlockWriteBytesPerSecond:     sample.BlockWriteBytesPerSecond,
 		CapturedAtMs:                 &capturedAtMs,
 		CPUPercent:                   &cpuPercent,
+		MemoryLimitBytes:             sample.MemoryLimitBytes,
 		MemoryUsageBytes:             &memoryUsageBytes,
 		NetworkReceiveBytesPerSecond: &networkReceiveBytesPerSecond,
 		NetworkSendBytesPerSecond:    &networkSendBytesPerSecond,

@@ -70,4 +70,25 @@ describe("ModeMenu", () => {
     expect(onSetMode).toHaveBeenCalledWith("default");
     expect(screen.queryByRole("menu", { name: "Modes" })).toBeNull();
   });
+
+  it("never offers bypassPermissions", async () => {
+    render(
+      <ModeMenu
+        disabled={false}
+        modes={{
+          currentModeId: "auto",
+          availableModes: [
+            { id: "auto", name: "Auto" },
+            { id: "bypassPermissions", name: "Bypass permissions" },
+          ],
+        }}
+        onSetMode={vi.fn()}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Mode: Auto" }));
+    const menu = await screen.findByRole("menu", { name: "Modes" });
+    const items = within(menu).getAllByRole("menuitem");
+    expect(items).toHaveLength(1);
+    expect(items[0]).toHaveTextContent("Auto");
+  });
 });

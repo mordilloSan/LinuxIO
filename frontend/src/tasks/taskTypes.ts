@@ -4,7 +4,9 @@ import type { ROUTE_MODES, RouteName } from "@/api/generated/route-metadata";
 // task route that started it, so a renamed or removed route fails to compile.
 
 type TaskRoute = {
-  [R in RouteName]: (typeof ROUTE_MODES)[R] extends "task" ? R : never;
+  [R in RouteName]: (typeof ROUTE_MODES)[R] extends "task" | "mutation"
+    ? R
+    : never;
 }[RouteName];
 
 const taskType = <R extends TaskRoute>(route: R): R => route;
@@ -36,6 +38,9 @@ export const TASK_TYPE_STORAGE_BTRFS_REPLICATION = taskType(
 );
 export const TASK_TYPE_STORAGE_BTRFS_BALANCE = taskType(
   "storage.btrfs_balance",
+);
+export const TASK_TYPE_STORAGE_BTRFS_SCRUB = taskType(
+  "storage.btrfs_scrub_start",
 );
 export const TASK_TYPE_STORAGE_PARTITION_CREATE = taskType(
   "storage.partition_create",

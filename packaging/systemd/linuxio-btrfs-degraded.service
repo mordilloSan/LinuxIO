@@ -1,9 +1,11 @@
 [Unit]
-Description=Mount LinuxIO btrfs pools that are missing disks
+Description=Mount LinuxIO btrfs pools that are missing disks or held back by a device replace
 Documentation=https://github.com/mordilloSan/LinuxIO
-# systemd never mounts a btrfs pool with a disk missing. After a grace
-# period for slow disks, this mounts such fstab pools degraded when the disks
-# present hold the newest data, before the services that use them start.
+# systemd never mounts a btrfs pool with a disk missing, nor one whose
+# device replace a power cut interrupted. After a grace period for slow
+# disks, this mounts such fstab pools when the disks present hold the newest
+# data, degraded when a disk is missing, before the services that use them
+# start; the kernel then continues the replace.
 After=local-fs.target
 Before=docker.service containerd.service smbd.service smb.service nfs-server.service libvirtd.service
 

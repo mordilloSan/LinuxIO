@@ -13,18 +13,12 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
 )
 
-var packageUpdateRoutes = packageUpdateBindings().Routes()
-
 func packageUpdateBindings() apischema.BindingSet {
 	return apischema.Bindings(
-		apischema.TaskRunner[apischema.PackageUpdateRequest, PackageUpdateResult]("packages.update", apischema.SessionTask(), apischema.WithTaskProgress[PkgUpdateProgress](), apischema.WithTaskMetadata(func(req apischema.PackageUpdateRequest) bridgeipc.TaskMetadata {
+		apischema.MutationTask("packages.update", runPackageUpdateTask, apischema.Privileged(), apischema.Progress[PkgUpdateProgress](), apischema.WithTaskMetadata(func(req apischema.PackageUpdateRequest) bridgeipc.TaskMetadata {
 			return bridgeipc.TaskMetadata{Identity: append([]string{}, req.PackageIDs...), Label: "Updating packages", PackageIDs: append([]string{}, req.PackageIDs...)}
-		})).Run(runPackageUpdateTask, bridgeipc.TaskExclusive),
+		}), apischema.Exclusive()),
 	)
-}
-
-func RegisterTaskRoutes(router *bridgeipc.Router) {
-	packageUpdateBindings().Register(router)
 }
 
 // PkgUpdateProgress represents progress for package update operations.

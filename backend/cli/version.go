@@ -14,14 +14,6 @@ var versionExecCommand = exec.CommandContext
 
 const versionProbeTimeout = 5 * time.Second
 
-var versionProbes = []struct{ binary, flag string }{
-	{"linuxio-webserver", "version"},
-	{"linuxio-bridge", "version"},
-	{"linuxio-auth", "version"},
-	{"linuxio-indexer", "--version"},
-	{"linuxio-monitoring", "--version"},
-}
-
 func cliVersionLine() string {
 	return fmt.Sprintf("LinuxIO CLI %s", version.Version)
 }
@@ -34,18 +26,21 @@ func showVersion(ctx context.Context, args []string) {
 
 	fmt.Printf("\033[1mLinuxIO CLI - Manage LinuxIO services\033[0m\n")
 	fmt.Println("\nInstalled components:")
-	fmt.Printf("  %s\n", cliVersionLine())
 
-	for _, c := range versionProbes {
-		fmt.Printf("  %s\n", probeVersion(ctx, c.binary, c.flag))
+	for _, c := range version.Components {
+		if c.Binary == "linuxio" {
+			fmt.Printf("  %s\n", cliVersionLine())
+			continue
+		}
+		fmt.Printf("  %s\n", probeVersion(ctx, c.Binary, c.Args...))
 	}
 }
 
 // probeVersion returns the first version line of binary, or a failure line if it is missing, fails or hangs.
-func probeVersion(parent context.Context, binary, flag string) string {
+func probeVersion(parent context.Context, binary string, args ...string) string {
 	ctx, cancel := context.WithTimeout(parent, versionProbeTimeout)
 	defer cancel()
-	cmd := versionExecCommand(ctx, binary, flag)
+	cmd := versionExecCommand(ctx, binary, args...)
 	cmd.WaitDelay = time.Second // do not hang on a pipe inherited by a child
 	out, err := cmd.CombinedOutput()
 	if err != nil {

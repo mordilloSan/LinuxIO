@@ -30,7 +30,7 @@ func mintSupport() AutoUpdateOptionSupport {
 		DownloadOnly:    false,
 		ExcludePackages: true,
 		Frequencies:     []AutoUpdateFrequency{"hourly", "daily", "weekly"},
-		NotifyPolicies:  allNotifyPolicies,
+		NotifyPolicies:  resultOnlyNotifyPolicies,
 		RebootPolicies:  []AutoUpdateRebootPolicy{"never"},
 		Scopes:          []AutoUpdateScope{"security", "all"},
 	}
@@ -40,17 +40,19 @@ func (b *mintBackend) Read(ctx context.Context) (AutoUpdateState, error) {
 	if err := ctx.Err(); err != nil {
 		return AutoUpdateState{}, err
 	}
+	support := mintSupport()
+	notify := readNotifyPolicy(b.host, mintUpgradeService, support.NotifyPolicies)
 	state := AutoUpdateState{
 		Backend:      b.Name(),
 		CanConfigure: b.installed(),
 		Options: AutoUpdateOptions{
 			Frequency:       AutoUpdateFrequency(readTimerFrequency(b.host, mintTimer)),
-			Notify:          readNotifyPolicy(b.host, mintUpgradeService),
+			Notify:          notify,
 			Scope:           "all",
 			RebootPolicy:    "never",
 			ExcludePackages: []string{},
 		},
-		Support: mintSupport(),
+		Support: support,
 	}
 	if !state.CanConfigure {
 		state.Notes = []string{"Linux Mint Update Manager automation is not installed"}

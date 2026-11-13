@@ -1,4 +1,4 @@
-import type * as acp from "@agentclientprotocol/sdk";
+import type * as acp from "@agentclientprotocol/sdk/unstable";
 
 import AppSelect from "@/components/ui/AppSelect";
 import AppSwitch from "@/components/ui/AppSwitch";

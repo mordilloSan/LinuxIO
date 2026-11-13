@@ -26,6 +26,9 @@ type Stats struct {
 	Cpu       float64   `json:"cpu_percent"`
 	Mem       float64   `json:"memory_mb"`
 	Bandwidth [2]uint64 `json:"bandwidth_bytes,omitempty,omitzero"` // [sent bytes, recv bytes]
+	// MemLimitBytes is Docker's effective memory limit, which is host RAM for
+	// a container without one.
+	MemLimitBytes uint64 `json:"-"`
 
 	Health DockerHealth `json:"-"`
 	Status string       `json:"-"`

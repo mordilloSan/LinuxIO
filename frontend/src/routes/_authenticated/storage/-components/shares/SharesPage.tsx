@@ -15,7 +15,6 @@ import {
   type NFSClient,
   type NFSExport,
   type SambaShare,
-  useCallMutation,
 } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import PathPickerField from "@/components/pathpicker/PathPickerField";
@@ -51,6 +50,7 @@ import { useViewMode } from "@/hooks/useViewMode";
 import FolderShareCard from "@/routes/_authenticated/storage/-components/shares/FolderShareCard";
 import { CARD_GRID_SIZE_DENSE, GAP_LG, GAP_XL } from "@/theme/constants";
 
+import { defaultRule } from "../btrfs/btrfsShared";
 import {
   DeleteNFSShareDialog,
   DeleteSambaShareDialog,
@@ -60,7 +60,6 @@ import PoolFolderFields, {
   sharePools,
   type PoolFolder,
 } from "./PoolFolderFields";
-import { defaultRule } from "../btrfs/btrfsShared";
 
 type ShareGroup = {
   id: string;
@@ -527,18 +526,16 @@ const FolderShareDialog = ({
     ? `${poolMount ?? ""}/${folder.name}`
     : path;
 
-  const subvolumeCreate = useCallMutation(
-    linuxio.storage.btrfs_subvolume_create,
-  );
-  const quotasSet = useCallMutation(linuxio.storage.btrfs_set_quotas);
-  const limitSet = useCallMutation(linuxio.storage.btrfs_qgroup_limit);
-  const ruleSet = useCallMutation(linuxio.storage.btrfs_snapshot_rule_set);
-  const sambaCreate = useCallMutation(linuxio.shares.create_samba_share);
-  const sambaUpdate = useCallMutation(linuxio.shares.update_samba_share);
-  const sambaDelete = useCallMutation(linuxio.shares.delete_samba_share);
-  const nfsCreate = useCallMutation(linuxio.shares.create_nfs_share);
-  const nfsUpdate = useCallMutation(linuxio.shares.update_nfs_share);
-  const nfsDelete = useCallMutation(linuxio.shares.delete_nfs_share);
+  const subvolumeCreate = linuxio.storage.btrfs_subvolume_create.useMutation();
+  const quotasSet = linuxio.storage.btrfs_set_quotas.useMutation();
+  const limitSet = linuxio.storage.btrfs_qgroup_limit.useMutation();
+  const ruleSet = linuxio.storage.btrfs_snapshot_rule_set.useMutation();
+  const sambaCreate = linuxio.shares.create_samba_share.useMutation();
+  const sambaUpdate = linuxio.shares.update_samba_share.useMutation();
+  const sambaDelete = linuxio.shares.delete_samba_share.useMutation();
+  const nfsCreate = linuxio.shares.create_nfs_share.useMutation();
+  const nfsUpdate = linuxio.shares.update_nfs_share.useMutation();
+  const nfsDelete = linuxio.shares.delete_nfs_share.useMutation();
 
   const isPending =
     subvolumeCreate.isPending ||

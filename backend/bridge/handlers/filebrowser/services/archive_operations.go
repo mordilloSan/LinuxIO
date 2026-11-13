@@ -16,10 +16,12 @@ import (
 	"sync"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	zip "github.com/klauspost/compress/zip"
 	gzip "github.com/klauspost/pgzip"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sys/unix"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 )
@@ -30,19 +32,18 @@ func closeWithLog(name string, closer io.Closer) {
 	}
 }
 
-func removeWithLog(root *fsroot.FSRoot, path string) {
-	if err := root.Root.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		slog.Debug("failed to remove archive path", "component", "filebrowser", "subsystem", "archive", "path", path, "error", err)
-	}
-}
-
 // ComputeArchiveSize calculates the estimated size of files/directories for
 // archiving. getdents reports names and types but not sizes, so this costs one
 // stat per file: measured at roughly 6-12µs per file against a warm page cache
 // on local storage, and far worse cold or over a network mount. That makes it
 // unbounded on a large tree, so callers must keep it off the critical path and
 // use ctx to abandon a walk whose result is no longer wanted.
-func ComputeArchiveSize(ctx context.Context, fileList []string) (int64, error) {
+//
+// owner is the session user a root bridge compresses for (see
+// ArchiveSources): the walk then reaches and reads its sources as the archive
+// does, so a link that user planted does not send root to measure another
+// tree.
+func ComputeArchiveSize(ctx context.Context, fileList []string, owner Owner) (int64, error) {
 	root, err := fsroot.Open()
 	if err != nil {
 		return 0, err
@@ -55,6 +56,14 @@ func ComputeArchiveSize(ctx context.Context, fileList []string) (int64, error) {
 			return 0, err
 		}
 		realPath := fsroot.CleanAbsPath(fname)
+		if owner.Set {
+			sourceSize, sizeErr := estimateSourceSize(ctx, root, realPath, owner)
+			if sizeErr != nil {
+				return 0, sizeErr
+			}
+			estimatedSize += sourceSize
+			continue
+		}
 		stat, resolvedPath, err := statWithSymlinkResolution(root, realPath)
 		if err != nil {
 			return 0, err
@@ -214,51 +223,39 @@ func computeTarGzExtractSize(root *fsroot.FSRoot, archivePath string) (int64, er
 	return total, nil
 }
 
-// CreateZip creates a zip archive from the provided file list.
+// CreateZip writes a zip archive of the provided file list to out and gives
+// out mode PermFile. The caller creates out, through a handle on its folder,
+// and closes and publishes it, or removes it after an error.
 // skipPath allows excluding the archive itself if it lives inside the source tree.
+// sources says how the files are read (see ArchiveSources).
 // opts is optional - pass nil if callbacks are not needed.
-func CreateZip(tmpDirPath string, opts *OperationCallbacks, skipPath string, filenames ...string) error {
+func CreateZip(out *os.File, opts *OperationCallbacks, skipPath string, sources ArchiveSources, filenames ...string) error {
 	root, err := fsroot.Open()
 	if err != nil {
 		return err
 	}
 	defer root.Close()
 
-	tmpDirPath = fsroot.CleanAbsPath(tmpDirPath)
 	skipPath = fsroot.CleanAbsPath(skipPath)
 
-	// Check for cancellation before creating file
 	if opts.IsCancelled() {
 		return ErrAborted
 	}
 
-	file, err := root.Root.OpenFile(relPath(tmpDirPath), os.O_RDWR|os.O_CREATE|os.O_TRUNC, PermFile)
+	zipWriter := zip.NewWriter(out)
+	reader, err := newArchiveReader(root, out, nil, zipWriter, opts, sources)
 	if err != nil {
+		closeWithLog("zip writer", zipWriter)
 		return err
 	}
-	fileOpen := true
-	defer func() {
-		if fileOpen {
-			closeWithLog("zip output file", file)
-		}
-	}()
-
-	zipWriter := zip.NewWriter(file)
-
 	for _, fname := range filenames {
 		if opts.IsCancelled() {
 			closeWithLog("zip writer", zipWriter)
-			closeWithLog("zip output file", file)
-			fileOpen = false
-			removeWithLog(root, relPath(tmpDirPath))
 			return ErrAborted
 		}
-		if addErr := addFile(root, fname, nil, zipWriter, false, opts, skipPath); addErr != nil {
+		if addErr := reader.add(fname, skipPath); addErr != nil {
 			closeWithLog("zip writer", zipWriter)
-			closeWithLog("zip output file", file)
-			fileOpen = false
 			if errors.Is(addErr, ErrAborted) {
-				removeWithLog(root, relPath(tmpDirPath))
 				return addErr
 			}
 			return fmt.Errorf("add %s to zip: %w", fname, addErr)
@@ -269,79 +266,61 @@ func CreateZip(tmpDirPath string, opts *OperationCallbacks, skipPath string, fil
 	if err := zipWriter.Close(); err != nil {
 		return err
 	}
-
-	// Then close and sync the file before returning
-	if err := file.Close(); err != nil {
-		return err
-	}
-	fileOpen = false
-
-	// Set file permissions after closing
-	return root.Root.Chmod(relPath(tmpDirPath), PermFile)
+	return out.Chmod(PermFile)
 }
 
-// CreateTarGz creates a tar.gz archive from the provided file list.
+// CreateTarGz writes a tar.gz archive of the provided file list to out and
+// gives out mode PermFile. The caller creates out, through a handle on its
+// folder, and closes and publishes it, or removes it after an error.
 // skipPath allows excluding the archive itself if it lives inside the source tree.
+// sources says how the files are read (see ArchiveSources).
 // opts is optional - pass nil if callbacks are not needed.
-func CreateTarGz(tmpDirPath string, opts *OperationCallbacks, skipPath string, compressionWorkers int, filenames ...string) error {
+func CreateTarGz(out *os.File, opts *OperationCallbacks, skipPath string, sources ArchiveSources, compressionWorkers int, filenames ...string) error {
 	root, err := fsroot.Open()
 	if err != nil {
 		return err
 	}
 	defer root.Close()
 
-	tmpDirPath = fsroot.CleanAbsPath(tmpDirPath)
 	skipPath = fsroot.CleanAbsPath(skipPath)
 
-	// Check for cancellation before creating file
 	if opts.IsCancelled() {
 		return ErrAborted
 	}
 
-	file, err := root.Root.OpenFile(relPath(tmpDirPath), os.O_RDWR|os.O_CREATE|os.O_TRUNC, PermFile)
-	if err != nil {
-		return err
-	}
-	fileOpen := true
-	defer func() {
-		if fileOpen {
-			closeWithLog("tar.gz output file", file)
-		}
-	}()
-
-	gzWriter := gzip.NewWriter(file)
+	gzWriter := gzip.NewWriter(out)
 	if compressionWorkers <= 0 {
 		compressionWorkers = runtime.GOMAXPROCS(0)
 	}
-	if err := gzWriter.SetConcurrency(1<<20, compressionWorkers); err != nil {
+	if err = gzWriter.SetConcurrency(1<<20, compressionWorkers); err != nil {
 		closeWithLog("gzip writer", gzWriter)
 		return err
 	}
 	tarWriter := tar.NewWriter(gzWriter)
+	reader, err := newArchiveReader(root, out, tarWriter, nil, opts, sources)
+	if err != nil {
+		closeWithLog("tar writer", tarWriter)
+		closeWithLog("gzip writer", gzWriter)
+		return err
+	}
 
 	for _, fname := range filenames {
 		if opts.IsCancelled() {
 			closeWithLog("tar writer", tarWriter)
 			closeWithLog("gzip writer", gzWriter)
-			closeWithLog("tar.gz output file", file)
-			fileOpen = false
-			removeWithLog(root, relPath(tmpDirPath))
 			return ErrAborted
 		}
-		if addErr := addFile(root, fname, tarWriter, nil, false, opts, skipPath); addErr != nil {
+		if addErr := reader.add(fname, skipPath); addErr != nil {
 			closeWithLog("tar writer", tarWriter)
 			closeWithLog("gzip writer", gzWriter)
-			closeWithLog("tar.gz output file", file)
-			fileOpen = false
 			if errors.Is(addErr, ErrAborted) {
-				removeWithLog(root, relPath(tmpDirPath))
 				return addErr
 			}
 			return fmt.Errorf("add %s to tar.gz: %w", fname, addErr)
 		}
 	}
 
-	// Close writers in order: tar -> gzip -> file
+	// Close writers in order: tar -> gzip; the caller closes out.
 	if err := tarWriter.Close(); err != nil {
 		closeWithLog("gzip writer", gzWriter)
 		return err
@@ -349,18 +328,19 @@ func CreateTarGz(tmpDirPath string, opts *OperationCallbacks, skipPath string, c
 	if err := gzWriter.Close(); err != nil {
 		return err
 	}
-	if err := file.Close(); err != nil {
-		return err
-	}
-	fileOpen = false
-
-	// Set file permissions after closing
-	return root.Root.Chmod(relPath(tmpDirPath), PermFile)
+	return out.Chmod(PermFile)
 }
 
-// ExtractArchive extracts supported archive types (zip, tar.gz, tgz) into the destination directory.
-// opts is optional - pass nil if callbacks are not needed.
-func ExtractArchive(archivePath, destination string, opts *OperationCallbacks, extractWorkers int) error {
+// ExtractArchive extracts supported archive types (zip, tar.gz, tgz) into the
+// destination directory, which it creates. owner is the session user a root
+// bridge extracts for: the folder the destination is made in, and any
+// missing folder above it, is reached without following a link that user
+// could have planted (see OpenNearestDirNoUserLinks), and the destination is
+// made and opened through that folder's handle. An aborted extract removes
+// the destination the same way.
+// opts is optional - pass nil if callbacks are not needed; cancellation comes
+// through it, and ctx outlives it only to remove an aborted destination.
+func ExtractArchive(ctx context.Context, archivePath, destination string, owner Owner, opts *OperationCallbacks, extractWorkers int) error {
 	root, err := fsroot.Open()
 	if err != nil {
 		return err
@@ -370,38 +350,63 @@ func ExtractArchive(archivePath, destination string, opts *OperationCallbacks, e
 	archivePath = fsroot.CleanAbsPath(archivePath)
 	destination = fsroot.CleanAbsPath(destination)
 
+	parent, missing, err := OpenNearestDirNoUserLinks(root, filepath.Dir(destination), owner)
+	if err != nil {
+		return err
+	}
+	// Missing folders stay the bridge's, as the extracted entries do.
+	if parent, err = MkdirAllAt(parent, missing, PermDir, Owner{}); err != nil {
+		return err
+	}
+	defer parent.Close()
+
 	// The destination is created fresh: extracting into an existing folder
 	// would merge into it and truncate same-named files unasked.
-	if err := root.Root.MkdirAll(relPath(filepath.Dir(destination)), PermDir); err != nil {
+	dest, err := makeExtractDestination(parent, filepath.Base(destination), destination)
+	if err != nil {
 		return err
-	}
-	if err := root.Root.Mkdir(relPath(destination), PermDir); err != nil {
-		if errors.Is(err, fs.ErrExist) {
-			return fmt.Errorf("destination %s already exists", destination)
-		}
-		return err
-	}
-	if err := root.Root.Chmod(relPath(destination), PermDir); err != nil {
-		return err
-	}
-	// Entries are written through a root scoped to the destination, so the
-	// kernel-level checks reject both ".." escapes and pre-existing symlinks
-	// that point outside it.
-	dest, destErr := root.Root.OpenRoot(relPath(destination))
-	if destErr != nil {
-		return destErr
 	}
 	defer dest.Close()
 
 	lowerName := strings.ToLower(archivePath)
 	switch {
 	case strings.HasSuffix(lowerName, ".zip"):
-		return extractZip(root, dest, archivePath, destination, opts, extractWorkers)
+		err = extractZip(root, dest, archivePath, destination, opts, extractWorkers)
 	case strings.HasSuffix(lowerName, ".tar.gz"), strings.HasSuffix(lowerName, ".tgz"):
-		return extractTarGz(root, dest, archivePath, destination, opts)
+		err = extractTarGz(root, dest, archivePath, destination, opts)
 	default:
-		return ErrUnsupportedFormat
+		err = ErrUnsupportedFormat
 	}
+	if errors.Is(err, ErrAborted) {
+		// The destination was created by this extract, so it is ours to drop.
+		if removeErr := removeAllAt(context.WithoutCancel(ctx), parent, filepath.Base(destination), func() {}); removeErr != nil {
+			slog.Debug("failed to clean up extraction directory", "component", "filebrowser", "subsystem", "archive", "path", destination, "error", removeErr)
+		}
+	}
+	return err
+}
+
+// makeExtractDestination makes name in parent and returns a root scoped to
+// it. Entries are written through that root, so the kernel-level checks
+// reject both ".." escapes and symlinks that point outside it. The root is
+// opened from the handle of the folder made here, through /proc/self/fd,
+// never by its path, which a process that can write parent could redirect.
+func makeExtractDestination(parent *os.File, name, path string) (*os.Root, error) {
+	if err := unix.Mkdirat(int(parent.Fd()), name, uint32(PermDir)); err != nil {
+		if errors.Is(err, unix.EEXIST) {
+			return nil, fmt.Errorf("destination %s already exists", path)
+		}
+		return nil, &fs.PathError{Op: "mkdir", Path: path, Err: err}
+	}
+	dir, err := openDirAt(parent, name)
+	if err != nil {
+		return nil, err
+	}
+	defer dir.Close()
+	if err := dir.Chmod(PermDir); err != nil {
+		return nil, err
+	}
+	return os.OpenRoot(procPath(dir))
 }
 
 func extractZip(root *fsroot.FSRoot, dest *os.Root, archivePath, destination string, opts *OperationCallbacks, extractWorkers int) error {
@@ -787,18 +792,23 @@ func addArchiveDirectoryEntry(entry fs.DirEntry, relArchivePath string, tarWrite
 	if err != nil {
 		return err
 	}
+	return writeArchiveDirectoryHeader(relArchivePath, entryInfo.ModTime(), tarWriter, zipWriter)
+}
 
+// writeArchiveDirectoryHeader writes the entry of a folder, modified at
+// modTime, as relArchivePath.
+func writeArchiveDirectoryHeader(relArchivePath string, modTime time.Time, tarWriter *tar.Writer, zipWriter *zip.Writer) error {
 	if tarWriter != nil {
 		header := &tar.Header{
 			Name:     relArchivePath + "/",
 			Mode:     int64(PermDir),
 			Typeflag: tar.TypeDir,
-			ModTime:  entryInfo.ModTime(),
+			ModTime:  modTime,
 		}
 		return tarWriter.WriteHeader(header)
 	}
 	if zipWriter != nil {
-		header := &zip.FileHeader{Name: relArchivePath + "/", Modified: entryInfo.ModTime()}
+		header := &zip.FileHeader{Name: relArchivePath + "/", Modified: modTime}
 		header.SetMode(fs.ModeDir | PermDir)
 		_, err := zipWriter.CreateHeader(header)
 		return err
@@ -834,7 +844,11 @@ func addSingleFile(root *fsroot.FSRoot, realPath, archivePath string, zipWriter 
 	if info.IsDir() {
 		return nil
 	}
+	return writeArchiveFile(file, info, archivePath, zipWriter, tarWriter, opts)
+}
 
+// writeArchiveFile writes file, open and described by info, as archivePath.
+func writeArchiveFile(file *os.File, info os.FileInfo, archivePath string, zipWriter *zip.Writer, tarWriter *tar.Writer, opts *OperationCallbacks) error {
 	if tarWriter != nil {
 		header, err := tar.FileInfoHeader(info, "")
 		if err != nil {

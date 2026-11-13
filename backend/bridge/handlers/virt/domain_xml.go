@@ -118,7 +118,9 @@ func buildDomain(req apischema.VMCreateRequest, storage createdVMStorage, firmwa
 		Memory:        &libvirtxml.DomainMemory{Value: uint(req.MemoryMB), Unit: "MiB"},
 		CurrentMemory: &libvirtxml.DomainCurrentMemory{Value: uint(req.MemoryMB), Unit: "MiB"},
 		VCPU:          &libvirtxml.DomainVCPU{Value: uint(req.VCPUs)},
-		OS:            osConfig,
+		// QEMU's default qemu64 model lacks x86-64-v2, which RHEL 9 needs.
+		CPU: &libvirtxml.DomainCPU{Mode: string(vmCPUModeHostPassthrough)},
+		OS:  osConfig,
 		Features: &libvirtxml.DomainFeatureList{
 			ACPI: &libvirtxml.DomainFeature{},
 			APIC: &libvirtxml.DomainFeatureAPIC{},
@@ -196,6 +198,26 @@ func domainFirmware(osConfig *libvirtxml.DomainOS) apischema.VMFirmware {
 	return vmFirmwareBIOS
 }
 
+const (
+	vmCPUModeHostPassthrough apischema.VMCPUMode = "host-passthrough"
+	vmCPUModeHostModel       apischema.VMCPUMode = "host-model"
+	vmCPUModeDefault         apischema.VMCPUMode = "default"
+	vmCPUModeCustom          apischema.VMCPUMode = "custom"
+)
+
+func domainCPUMode(cpu *libvirtxml.DomainCPU) apischema.VMCPUMode {
+	switch {
+	case cpu == nil:
+		return vmCPUModeDefault
+	case cpu.Mode == string(vmCPUModeHostPassthrough), cpu.Mode == string(vmCPUModeHostModel):
+		return apischema.VMCPUMode(cpu.Mode)
+	case (cpu.Mode == "" || cpu.Mode == "custom") && (cpu.Model == nil || cpu.Model.Value == ""):
+		// A <cpu> holding only topology or NUMA leaves the model to QEMU.
+		return vmCPUModeDefault
+	}
+	return vmCPUModeCustom
+}
+
 func buildVolumeXML(name string, diskGB int) (string, error) {
 	if diskGB <= 0 {
 		return "", badRequestf("diskGB must be greater than 0")
@@ -237,6 +259,7 @@ func parseVirtualMachine(dom libvirt.Domain, xmlDoc string, state string, autost
 		State:     state,
 		Autostart: autostart,
 		Firmware:  domainFirmware(parsed.OS),
+		CPUMode:   domainCPUMode(parsed.CPU),
 		OS:        domainOS(meta, parsed.Metadata),
 	}
 	if vm.Name == "" {

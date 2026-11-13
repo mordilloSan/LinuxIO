@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os/exec"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -262,6 +263,70 @@ func TestUpdateVMSetsOS(t *testing.T) {
 	req.OS = "Not An ID"
 	if _, err := UpdateVM(context.Background(), req); err == nil {
 		t.Fatal("UpdateVM accepted an invalid OS id")
+	}
+}
+
+func TestUpdateVMSetsCPUMode(t *testing.T) {
+	const custom = `<cpu mode="custom" match="exact" check="partial"><model fallback="allow">Skylake-Client</model><vendor>Intel</vendor><topology sockets="1" dies="1" cores="2" threads="1"></topology><feature policy="disable" name="hypervisor"></feature></cpu>`
+	withCPU := func(cpu string) string {
+		return strings.Replace(strings.ReplaceAll(deleteTestDomainXML(), "delete-me", "cpu"), "<vcpu>1</vcpu>", "<vcpu>1</vcpu>"+cpu, 1)
+	}
+	for _, tc := range []struct {
+		name, cpu, wantCPU string
+		mode, wantMode     apischema.VMCPUMode
+	}{
+		{name: "default to passthrough", mode: vmCPUModeHostPassthrough, wantMode: vmCPUModeHostPassthrough, wantCPU: `<cpu mode="host-passthrough"></cpu>`},
+		{
+			name: "custom to host-model keeps topology and features", cpu: custom,
+			mode: vmCPUModeHostModel, wantMode: vmCPUModeHostModel,
+			wantCPU: `<cpu mode="host-model"><topology sockets="1" dies="1" cores="2" threads="1"></topology><feature policy="disable" name="hypervisor"></feature></cpu>`,
+		},
+		{
+			name: "passthrough to host-model drops migratable", cpu: `<cpu mode="host-passthrough" check="none" migratable="on"></cpu>`,
+			mode: vmCPUModeHostModel, wantMode: vmCPUModeHostModel, wantCPU: `<cpu mode="host-model"></cpu>`,
+		},
+		{name: "empty keeps custom", cpu: custom, wantMode: vmCPUModeCustom, wantCPU: custom},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := editTestVM(t, "cpu", withCPU(tc.cpu))
+			req := editRequest("cpu")
+			req.CPUMode = tc.mode
+
+			vm, err := UpdateVM(context.Background(), req)
+			if err != nil {
+				t.Fatalf("UpdateVM: %v", err)
+			}
+			got, want := parsedDomain(t, fake.domainXML["cpu"]).CPU, parsedDomain(t, withCPU(tc.wantCPU)).CPU
+			if vm.CPUMode != tc.wantMode || !reflect.DeepEqual(got, want) {
+				t.Fatalf("vm.CPUMode = %q, want %q; xml:\n%s", vm.CPUMode, tc.wantMode, fake.domainXML["cpu"])
+			}
+		})
+	}
+
+	editTestVM(t, "cpu", withCPU(""))
+	for _, bad := range []apischema.VMCPUMode{vmCPUModeCustom, vmCPUModeDefault, "maximum"} {
+		req := editRequest("cpu")
+		req.CPUMode = bad
+		if _, err := UpdateVM(context.Background(), req); err == nil {
+			t.Fatalf("UpdateVM accepted cpuMode %q", bad)
+		}
+	}
+}
+
+func TestDomainCPUMode(t *testing.T) {
+	for xmlDoc, want := range map[string]apischema.VMCPUMode{
+		"": vmCPUModeDefault,
+		`<cpu><topology sockets="1" cores="2" threads="1"></topology></cpu>`:          vmCPUModeDefault,
+		`<cpu mode="custom" match="exact"><topology sockets="1"></topology></cpu>`:    vmCPUModeDefault,
+		`<cpu mode="host-passthrough" check="none" migratable="on"></cpu>`:            vmCPUModeHostPassthrough,
+		`<cpu mode="host-model" check="partial"></cpu>`:                               vmCPUModeHostModel,
+		`<cpu mode="custom" match="exact"><model fallback="allow">EPYC</model></cpu>`: vmCPUModeCustom,
+		`<cpu mode="maximum"></cpu>`:                                                  vmCPUModeCustom,
+	} {
+		domain := parsedDomain(t, `<domain type="kvm"><name>x</name>`+xmlDoc+`</domain>`)
+		if got := domainCPUMode(domain.CPU); got != want {
+			t.Errorf("domainCPUMode(%s) = %q, want %q", xmlDoc, got, want)
+		}
 	}
 }
 

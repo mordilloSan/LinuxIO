@@ -5,6 +5,7 @@ import {
   getNetworkStateColor,
   getNetworkStateLabel,
   getNetworkStateSummary,
+  mayCarryBrowserSession,
 } from "./networkInterfaceState";
 
 describe("network interface state", () => {
@@ -39,5 +40,34 @@ describe("network interface state", () => {
     expect(getNetworkStateSummary({ operstate: "down", state: 20 })).toBe(
       "Unavailable · carrier unknown · link down",
     );
+  });
+});
+
+describe("mayCarryBrowserSession", () => {
+  const eth = { ipv4: ["192.168.1.25/24"], state: 100 };
+
+  it("matches an IPv4 hostname against the interface addresses", () => {
+    expect(mayCarryBrowserSession(eth, "192.168.1.25")).toBe(true);
+    expect(mayCarryBrowserSession(eth, "10.0.0.9")).toBe(false);
+  });
+
+  it("treats a connected interface with an address as possibly the one for a name", () => {
+    expect(mayCarryBrowserSession(eth, "nas.lan")).toBe(true);
+    expect(mayCarryBrowserSession(eth, "[fe80::1]")).toBe(true);
+  });
+
+  it("is plainly not an interface that is down or has no address", () => {
+    expect(mayCarryBrowserSession({ ...eth, state: 30 }, "nas.lan")).toBe(
+      false,
+    );
+    expect(mayCarryBrowserSession({ ipv4: [], state: 100 }, "nas.lan")).toBe(
+      false,
+    );
+  });
+
+  it("never crosses an interface for a loopback hostname", () => {
+    expect(mayCarryBrowserSession(eth, "localhost")).toBe(false);
+    expect(mayCarryBrowserSession(eth, "127.0.0.1")).toBe(false);
+    expect(mayCarryBrowserSession(eth, "[::1]")).toBe(false);
   });
 });

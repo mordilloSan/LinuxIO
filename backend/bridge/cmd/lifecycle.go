@@ -40,19 +40,24 @@ func runBridge(clientConn net.Conn, rt runtime.Runtime, onReady func() bool) {
 	shutdownCh := make(chan string, 1)
 	sessionCtx, sessionCancel := context.WithCancel(context.Background())
 	router := handlers.RegisterAllHandlers(rt)
+	hostRelay := newJobsRelay(sessionCtx, rt.Session)
+	router.SetMutationForwarder(hostRelay)
+	router.TaskService().SetRemote(hostRelay)
 	startBridgeSignalHandler(shutdownCh)
 
 	done := startMainRequestLoop(sessionCtx, rt, router, clientConn, shutdownCh, onReady)
 	reason := <-shutdownCh
-	shutdownBridge(clientConn, router.TaskService(), rt.Session.SessionID, sessionCancel, done)
+	shutdownBridge(clientConn, router.TaskService(), hostRelay, rt.Session.SessionID, sessionCancel, done)
 	slog.Debug("shutdown initiated", "reason", reason, "user", rt.Session.User.Username, "session_ref", session.DiagnosticRef(rt.Session.SessionID))
 }
 
 // shutdownBridge cancels owned work before closing the transport that releases
 // the yamux accept loop, then gives that loop and its streams a bounded drain.
-func shutdownBridge(clientConn net.Conn, registry *bridgeipc.TaskService, sessionID string, sessionCancel context.CancelFunc, done <-chan struct{}) {
+func shutdownBridge(clientConn net.Conn, registry *bridgeipc.TaskService, hostRelay *jobsRelay, sessionID string, sessionCancel context.CancelFunc, done <-chan struct{}) {
 	sessionCancel()
 	registry.CancelTasksForSession(sessionID)
+	// Host jobs keep running; closing the host connection only detaches them.
+	hostRelay.Close()
 	// Closing the transport unblocks yamux Accept before waiting for the loop.
 	if err := clientConn.Close(); err != nil {
 		slog.Debug("client conn close", "error", err)

@@ -25,6 +25,17 @@ const (
 	EventComplete = "complete"
 	EventError    = "error"
 
+	// Words the daemon puts in a "status" field. /status reports
+	// uninitialized (no index yet), running (work in progress) or idle; an
+	// accepted operation answers running, and its work events running,
+	// complete or error; /add and /delete answer ok.
+	StatusUninitialized = "uninitialized"
+	StatusIdle          = "idle"
+	StatusRunning       = "running"
+	StatusComplete      = "complete"
+	StatusError         = "error"
+	StatusOK            = "ok"
+
 	MinSearchQueryRunes = 3
 )
 

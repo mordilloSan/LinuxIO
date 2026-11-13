@@ -21,6 +21,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
 	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 const (
@@ -335,17 +336,34 @@ func (t *tailBuffer) Write(p []byte) (int, error) {
 }
 
 // RunReplication replicates each enabled job and records its outcome,
-// returning one error per failed job. It stops early only when ctx is done.
-func RunReplication(ctx context.Context, jobs []BtrfsReplicationJob) []error {
-	var errs []error
+// returning how many jobs replicated (sent a snapshot or were already up to
+// date), how many of them sent one, and the errors: one per failed job,
+// marked scheduledrun.Reported since the job's alert reports it, and one per
+// outcome that could not be recorded, which no alert reports. A job whose
+// outcome could not be recorded still counts by what it did. A job skipped
+// because another run holds it counts in none. It stops early only when ctx
+// is done. report, when not nil, is called before each enabled job with the
+// number of enabled jobs already finished and the number of enabled jobs.
+func RunReplication(ctx context.Context, jobs []BtrfsReplicationJob, report func(done, total int)) (replicated, sent int, errs []error) {
+	total := 0
+	for _, job := range jobs {
+		if job.Enabled {
+			total++
+		}
+	}
+	done := 0
 	for _, job := range jobs {
 		if err := ctx.Err(); err != nil {
-			return append(errs, err)
+			return replicated, sent, append(errs, err)
 		}
 		if !job.Enabled {
 			continue
 		}
-		_, err := replicate(ctx, job, nil)
+		if report != nil {
+			report(done, total)
+		}
+		done++
+		result, err := replicate(ctx, job, nil)
 		if errors.Is(err, ErrAlreadyRunning) {
 			slog.Debug("skipped btrfs replication already running", "job", job.ID)
 			continue
@@ -354,10 +372,16 @@ func RunReplication(ctx context.Context, jobs []BtrfsReplicationJob) []error {
 			errs = append(errs, fmt.Errorf("%s: %w", job.ID, recErr))
 		}
 		if err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", job.ID, err))
+			// The job's alert, raised with its outcome, reports it.
+			errs = append(errs, scheduledrun.Reported(fmt.Errorf("%s: %w", job.ID, err)))
+			continue
+		}
+		replicated++
+		if result.Sent != nil {
+			sent++
 		}
 	}
-	return errs
+	return replicated, sent, errs
 }
 
 // ResolveJobAlert clears the alert of a replication job that was deleted or

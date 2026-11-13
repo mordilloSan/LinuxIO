@@ -108,7 +108,7 @@ func importViolation(pkg, dep string) string {
 			return ""
 		}
 		return "the bridge reaches the daemons only through their api packages"
-	case pkg == "cli" || pkg == "docker-update" || pkg == "btrfs-timer":
+	case pkg == "cli" || pkg == "docker-update" || pkg == "btrfs-timer" || pkg == "claude-relay":
 		if strings.HasPrefix(dep, "common/") {
 			return ""
 		}

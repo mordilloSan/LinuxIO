@@ -149,6 +149,7 @@ Description=Schedule LinuxIO native Docker updates
 
 [Timer]
 OnCalendar=*-*-* %s:00
+RandomizedDelaySec=1m
 Persistent=true
 Unit=%s
 

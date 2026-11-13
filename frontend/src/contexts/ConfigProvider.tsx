@@ -12,7 +12,6 @@ import {
   linuxio,
   LinuxIOError,
   type UIConfig,
-  useCallMutation,
   useStreamMux,
 } from "@/api";
 import type {
@@ -46,6 +45,13 @@ const cloneThemeColorsByMode = (
         dark: cloneThemeColors(colors.dark),
       }
     : undefined;
+
+const cloneNameLists = (
+  lists: Record<string, string[]>,
+): Record<string, string[]> =>
+  Object.fromEntries(
+    Object.entries(lists).map(([key, names]) => [key, [...names]]),
+  );
 
 function pickImportantAppSettings(
   appSettings: Partial<ConfigValueMap>,
@@ -96,11 +102,18 @@ function hasUIPatch(patch: ConfigPatch): boolean {
 }
 
 /**
+ * Every setting config.set_ui stores except themeColors, which is omitted
+ * while unset. The save replaces the stored settings, so each one named here
+ * must be sent: leaving one out of buildUIPayload is a compile error.
+ */
+type UIPayloadSettings = Required<Omit<ConfigUISetPayload, "themeColors">>;
+
+/**
  * Full replacement payload for config.set_ui from the cached UI snapshot.
  * Absent optional values (themeColors) are omitted, never sent as undefined.
  */
 function buildUIPayload(ui: UIConfig): ConfigUISetPayload {
-  const payload: ConfigUISetPayload = {
+  const payload: UIPayloadSettings & ConfigUISetPayload = {
     theme: ui.theme,
     primaryColor: ui.primaryColor,
     sidebarCollapsed: ui.sidebarCollapsed,
@@ -108,13 +121,10 @@ function buildUIPayload(ui: UIConfig): ConfigUISetPayload {
     dockTileColors: ui.dockTileColors,
     dockAccentGradient: { ...ui.dockAccentGradient },
     hiddenCards: [...ui.hiddenCards],
-    dockerDashboardSections: { ...ui.dockerDashboardSections },
-    hardwareSections: { ...ui.hardwareSections },
+    collapsedSections: cloneNameLists(ui.collapsedSections),
     viewModes: { ...pruneViewModes(ui.viewModes, ui.viewModeDefault) },
     terminalFontSize: ui.terminalFontSize,
-    layoutOrders: Object.fromEntries(
-      Object.entries(ui.layoutOrders).map(([key, order]) => [key, [...order]]),
-    ),
+    layoutOrders: cloneNameLists(ui.layoutOrders),
   };
   if (ui.themeColors) {
     payload.themeColors = cloneThemeColorsByMode(ui.themeColors);
@@ -169,6 +179,18 @@ function readConfigValue(
   return ui[key as keyof UIConfig];
 }
 
+// Written after a confirmed UI save so the other tabs of this browser reload
+// their settings. The value only has to change; nothing reads it.
+const UI_CONFIG_SAVED_KEY = "linuxio.uiConfigSaved";
+
+function announceUIConfigSaved(): void {
+  try {
+    window.localStorage.setItem(UI_CONFIG_SAVED_KEY, String(Date.now()));
+  } catch {
+    // Without storage the other tabs keep their settings until refreshed.
+  }
+}
+
 interface SaveOperation {
   bridge?: ConfigPatch;
   ui?: ConfigUISetPayload;
@@ -183,14 +205,14 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
   const canSaveRef = useRef(false);
   const warnedUnsavedRef = useRef(false);
   const { isOpen: isMuxOpen } = useStreamMux();
-  const { mutateAsync: setConfigRemote } = useCallMutation(linuxio.config.set, {
+  const { mutateAsync: setConfigRemote } = linuxio.config.set.useMutation({
     error: "Failed to save settings",
     invalidates: (_result, patch) =>
       patch.docker?.folders !== undefined
         ? [linuxio.docker.list_compose_projects.queryKey]
         : [],
   });
-  const { mutateAsync: setUIRemote } = useCallMutation(linuxio.config.set_ui, {
+  const { mutateAsync: setUIRemote } = linuxio.config.set_ui.useMutation({
     error: "Failed to save appearance settings",
     invalidates: [],
   });
@@ -229,6 +251,9 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
               : Promise.resolve(),
             operation.ui ? setUIRemote(operation.ui) : Promise.resolve(),
           ]);
+          if (operation.ui && results[1].status === "fulfilled") {
+            announceUIConfigSaved();
+          }
           if (!activeQueueRef.current) return;
           if (results.some((result) => result.status === "rejected")) return;
           operation.onSaved?.();
@@ -307,6 +332,32 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
     };
   }, [isMuxOpen, queryClient, bridgeKey, uiKey, sessionExpired]);
 
+  // Another tab of this browser saved UI settings: reload them from the
+  // bridge. The reload joins the save queue, so it runs after this tab's own
+  // pending saves and the cache ends up matching what the bridge holds.
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== UI_CONFIG_SAVED_KEY || event.newValue === null) return;
+      saveTailRef.current = saveTailRef.current.then(async () => {
+        if (!activeQueueRef.current || !canSaveRef.current) return;
+        try {
+          await queryClient.query({
+            ...linuxio.config.get_ui,
+            queryKey: uiKey,
+            staleTime: CACHE_TTL_MS.NONE,
+          });
+        } catch (error) {
+          const code = error instanceof LinuxIOError ? error.code : 500;
+          if (code === 401 || code === 403) sessionExpired();
+          // Otherwise this tab keeps the settings it already shows; a change
+          // made here mid-reload cancels the reload on purpose.
+        }
+      });
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, [queryClient, uiKey, sessionExpired]);
+
   const save = useCallback(
     (patch: ConfigPatch, nextUI: UIConfig, onSaved?: () => void) => {
       const wantsBridge = hasImportantPatch(patch);
@@ -344,7 +395,11 @@ export const ConfigProvider = ({ children }: ConfigProviderProps) => {
 
       const uiPart = pickUISettings(patch.appSettings);
       const nextUI: UIConfig = hasValues(uiPart) ? { ...ui, ...uiPart } : ui;
-      if (nextUI !== ui) queryClient.setQueryData(uiKey, nextUI);
+      if (nextUI !== ui) {
+        // A reload answering after this change would overwrite it.
+        void queryClient.cancelQueries({ exact: true, queryKey: uiKey });
+        queryClient.setQueryData(uiKey, nextUI);
+      }
 
       if (
         hasValues(pickImportantAppSettings(patch.appSettings ?? {})) ||

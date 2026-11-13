@@ -11,13 +11,24 @@ import (
 	"syscall"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/dockerupdate"
+	"github.com/mordilloSan/LinuxIO/backend/common/jobs"
 	"github.com/mordilloSan/LinuxIO/backend/common/logging"
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 // runUpdates keeps argument and dispatch behavior testable without contacting Docker.
 var runUpdates = dockerupdate.RunScheduled
-var runOperation = dockerupdate.RunDurable
 var configureLogging = logging.Configure
+
+// reportProgress writes the progress of the scheduled run this process belongs
+// to; tests swap it. A negative percentage means unknown.
+var reportProgress = func(int, string) {}
+
+// newReporter finds the scheduled run this process belongs to and returns its
+// progress writer; tests swap it.
+var newReporter = func() func(int, string) {
+	return scheduledrun.ReporterFromEnv(jobs.NewScheduledStore()).Report
+}
 
 func main() {
 	os.Exit(run(os.Args))
@@ -34,6 +45,8 @@ func runWorker(ctx context.Context, args []string, stdout, stderr io.Writer) int
 		fmt.Fprintf(stderr, "linuxio-docker-update: initialize logging: %v\n", err)
 		return 1
 	}
+	// After the logging setup, so the reporter logs through the configured logger.
+	reportProgress = newReporter()
 	return runCLI(ctx, args, stdout, stderr)
 }
 
@@ -49,19 +62,12 @@ func runCLI(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		if !ok {
 			return 2
 		}
-		if err := runUpdates(ctx, configPath); err != nil {
+		report := func(message string) { reportProgress(-1, message) }
+		if err := runUpdates(ctx, configPath, report); err != nil {
 			fmt.Fprintf(stderr, "linuxio-docker-update: run failed: %v\n", err)
-			return 1
-		}
-		return 0
-	case "run-operation":
-		operationID, ok := parseOperationArgs(args[2:], stderr)
-		if !ok {
-			return 2
-		}
-		if err := runOperation(ctx, operationID); err != nil {
-			fmt.Fprintf(stderr, "linuxio-docker-update: run-operation failed: %v\n", err)
-			return 1
+			// The end hook raises no run alert when every failure has its
+			// container's alert, and changes nothing for a skipped pass.
+			return scheduledrun.ExitStatus(err)
 		}
 		return 0
 	case "help", "-h", "--help":
@@ -72,31 +78,6 @@ func runCLI(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		writeUsage(stderr)
 		return 2
 	}
-}
-
-func parseOperationArgs(args []string, stderr io.Writer) (string, bool) {
-	operationID := ""
-	for i := 0; i < len(args); i++ {
-		if args[i] != "--id" {
-			fmt.Fprintf(stderr, "linuxio-docker-update: run-operation: unknown argument %q\n", args[i])
-			return "", false
-		}
-		if i+1 >= len(args) || strings.TrimSpace(args[i+1]) == "" {
-			fmt.Fprintln(stderr, "linuxio-docker-update: run-operation: --id requires an operation ID")
-			return "", false
-		}
-		if operationID != "" {
-			fmt.Fprintln(stderr, "linuxio-docker-update: run-operation: --id may only be provided once")
-			return "", false
-		}
-		operationID = strings.TrimSpace(args[i+1])
-		i++
-	}
-	if operationID == "" {
-		fmt.Fprintln(stderr, "linuxio-docker-update: run-operation: --id requires an operation ID")
-		return "", false
-	}
-	return operationID, true
 }
 
 func parseRunArgs(args []string, stderr io.Writer) (string, bool) {
@@ -118,7 +99,6 @@ func parseRunArgs(args []string, stderr io.Writer) (string, bool) {
 
 func writeUsage(w io.Writer) {
 	fmt.Fprintln(w, "Usage: linuxio-docker-update run [options]")
-	fmt.Fprintln(w, "       linuxio-docker-update run-operation --id OPERATION_ID")
 }
 
 func writeHelp(w io.Writer) {
@@ -128,10 +108,7 @@ func writeHelp(w io.Writer) {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Commands:")
 	fmt.Fprintln(w, "  run  Run one configured Docker update pass")
-	fmt.Fprintln(w, "  run-operation  Run one persisted Docker update operation")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Options for run:")
 	fmt.Fprintln(w, "  --config PATH  Use an alternate update configuration file")
-	fmt.Fprintln(w, "Options for run-operation:")
-	fmt.Fprintln(w, "  --id ID  Persisted operation identifier")
 }

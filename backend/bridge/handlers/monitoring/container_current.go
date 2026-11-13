@@ -17,6 +17,7 @@ type ContainerMetricSample struct {
 	ID                           string
 	CPUPercent                   float64
 	MemoryUsageBytes             uint64
+	MemoryLimitBytes             *uint64
 	NetworkSendBytesPerSecond    float64
 	NetworkReceiveBytesPerSecond float64
 	BlockReadBytesPerSecond      *float64
@@ -55,6 +56,7 @@ func FetchContainerMetricsSnapshot(ctx context.Context) (ContainerMetricsSnapsho
 			ID:                           item.ID,
 			CPUPercent:                   item.CPUPercent,
 			MemoryUsageBytes:             item.MemoryBytes,
+			MemoryLimitBytes:             item.MemoryLimitBytes,
 			NetworkSendBytesPerSecond:    item.TxBytesPerSec,
 			NetworkReceiveBytesPerSecond: item.RxBytesPerSec,
 			BlockReadBytesPerSecond:      item.BlockReadBytesPerSec,

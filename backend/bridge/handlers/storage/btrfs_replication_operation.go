@@ -12,15 +12,13 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
 )
 
-var btrfsReplicationRoutes = btrfsReplicationBindings().Routes()
-
 func btrfsReplicationBindings() apischema.BindingSet {
 	return apischema.Bindings(
-		apischema.TaskRunner[apischema.BtrfsJobIDRequest, btrfs.BtrfsReplicationResult]("storage.btrfs_replication_run", apischema.Privileged(), apischema.SessionTask(), apischema.WithTaskProgress[BtrfsOpProgress](), apischema.WithTaskMetadata(func(req apischema.BtrfsJobIDRequest) bridgeipc.TaskMetadata {
+		apischema.MutationTask("storage.btrfs_replication_run", runBtrfsReplicationTask, apischema.Privileged(), apischema.Progress[BtrfsOpProgress](), apischema.WithTaskMetadata(func(req apischema.BtrfsJobIDRequest) bridgeipc.TaskMetadata {
 			// The uuid is best effort: a missing job fails when the task runs.
 			job, _ := findBtrfsReplicationJob(req.ID)
 			return bridgeipc.TaskMetadata{Identity: []string{job.UUID, "replication", req.ID}, Label: "Replicating btrfs snapshots"}
-		})).Run(runBtrfsReplicationTask, bridgeipc.TaskDefault),
+		})),
 	)
 }
 

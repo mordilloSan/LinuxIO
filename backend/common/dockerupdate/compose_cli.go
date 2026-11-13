@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 )
 
 // ComposeProgress is a single structured progress event parsed from
@@ -244,8 +245,7 @@ func composePullAndUpServicesValidated(ctx context.Context, target ComposeTarget
 	if len(normalized) == 0 {
 		return fmt.Errorf("no compose services selected")
 	}
-	pullArgs := append([]string{"pull"}, normalized...)
-	if err := RunComposeProject(ctx, target, emitter, pullArgs...); err != nil {
+	if err := composePullServices(ctx, target, normalized, emitter); err != nil {
 		return fmt.Errorf("pull compose services %q: %w", normalized, err)
 	}
 	upArgs := append([]string{"up", "-d", "--no-deps"}, normalized...)
@@ -253,6 +253,31 @@ func composePullAndUpServicesValidated(ctx context.Context, target ComposeTarget
 		return fmt.Errorf("reconcile compose services %q: %w", normalized, err)
 	}
 	return nil
+}
+
+// composePullServices retries the pull with the registry backoff while its
+// output shows throttling or a transient network fault. Compose only exits 1,
+// so the output text is the only signal.
+func composePullServices(ctx context.Context, target ComposeTarget, services []string, emitter ComposeLineEmitter) error {
+	pullArgs := append([]string{"pull"}, services...)
+	for retry := 0; ; retry++ {
+		output := &ComposeMessageCollector{}
+		err := RunComposeProject(ctx, target, func(msgType, message string, progress *ComposeProgress) {
+			output.Emit(msgType, message, progress)
+			if emitter != nil {
+				emitter(msgType, message, progress)
+			}
+		}, pullArgs...)
+		if err == nil || ctx.Err() != nil || retry == registryRetries || !retryableRegistryMessage(output.String()) {
+			return err
+		}
+		if emitter != nil {
+			emitter("stderr", fmt.Sprintf("registry pull failed temporarily, retrying in %s", 5*time.Second<<retry), nil)
+		}
+		if err := waitRegistryBackoff(ctx, retry); err != nil {
+			return err
+		}
+	}
 }
 
 func validateComposeUpdateInputs(ctx context.Context, target ComposeTarget, emitter ComposeLineEmitter) error {

@@ -12,10 +12,10 @@ import {
   seedConfigCache,
 } from "@/test/render";
 
+import type { FileResource } from "../-types";
 import { useFilePathUtilities } from "./useFilePathUtilities";
 import { useFileSelection, useFileSelectionState } from "./useFileSelection";
 import { useFileViewState } from "./useFileViewState";
-import type { FileResource } from "../-types";
 
 const toastMocks = vi.hoisted(() => ({
   error: vi.fn(),

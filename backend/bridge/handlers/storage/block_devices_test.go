@@ -117,6 +117,7 @@ func TestReadBlockDevicesTree(t *testing.T) {
 	h.part("sda", "sda2", "8:2", 2, 1002048, 100000)
 	h.udev("8:1", "ID_FS_TYPE=ext4")
 	h.add("", "sdb", "8:16", 1000000, nil)
+	h.udev("8:16", "ID_FS_TYPE=linux_raid_member", "ID_FS_UUID_ENC=a1", "ID_FS_LABEL_ENC=host:0")
 	h.relate("sdb", "holders", "md0")
 	h.add("", "md0", "9:0", 900000, map[string]string{"md/level": "raid1"})
 	h.relate("md0", "slaves", "sda3")
@@ -125,7 +126,7 @@ func TestReadBlockDevicesTree(t *testing.T) {
 	h.relate("dm-0", "slaves", "md0")
 	h.add("", "nvme0n1", "259:0", 4000000, map[string]string{"queue/logical_block_size": "512"})
 	h.part("nvme0n1", "nvme0n1p2", "259:2", 2, 2048, 3000000)
-	h.udev("259:2", "ID_FS_TYPE=btrfs")
+	h.udev("259:2", "ID_FS_TYPE=btrfs", "ID_FS_UUID_ENC=f1", "ID_FS_LABEL_ENC=root")
 	h.add("", "loop0", "7:0", 100, nil)
 	h.add("", "ram0", "1:0", 100, nil)
 	h.add("", "sr0", "11:0", 0, nil)
@@ -166,7 +167,7 @@ func TestReadBlockDevicesTree(t *testing.T) {
 		"/dev/sda":            {"sda", "sda", "disk", "", "", 0, 0, 2000000 * 512, []string{}, []string{}},
 		"/dev/sda1":           {"sda1", "sda1", "part", "ext4", "Mounted at /data", 1, 2048 * 512, 1000000 * 512, []string{"/data"}, []string{"/dev/sda"}},
 		"/dev/sda2":           {"sda2", "sda2", "part", "", "Active swap", 2, 1002048 * 512, 100000 * 512, []string{}, []string{"/dev/sda"}},
-		"/dev/sdb":            {"sdb", "sdb", "disk", "", "Used by /dev/md0", 0, 0, 1000000 * 512, []string{}, []string{}},
+		"/dev/sdb":            {"sdb", "sdb", "disk", "linux_raid_member", "Used by /dev/md0", 0, 0, 1000000 * 512, []string{}, []string{}},
 		"/dev/md0":            {"md0", "md0", "raid1", "", "", 0, 0, 900000 * 512, []string{}, []string{"/dev/sda3", "/dev/sdb"}},
 		"/dev/mapper/vg-root": {"vg-root", "dm-0", "lvm", "", "", 0, 0, 800000 * 512, []string{}, []string{"/dev/md0"}},
 		"/dev/sr0":            {"sr0", "sr0", "rom", "", "", 0, 0, 0, []string{}, []string{}},
@@ -177,6 +178,16 @@ func TestReadBlockDevicesTree(t *testing.T) {
 		have := summary{d.Name, d.KernelName, d.Type, d.FSType, d.Busy, d.PartNumber, d.StartBytes, d.SizeBytes, d.Mountpoints, d.Parents}
 		if !reflect.DeepEqual(have, want) {
 			t.Errorf("%s:\n have %+v\n want %+v", path, have, want)
+		}
+	}
+	// Membership comes from the signature, whether or not anything holds it.
+	for path, want := range map[string]*apischema.StorageMember{
+		"/dev/sdb":       {Kind: "md", Name: "host:0", UUID: "a1"},
+		"/dev/nvme0n1p2": {Kind: "btrfs", Name: "root", UUID: "f1"},
+		"/dev/sda1":      nil,
+	} {
+		if have := got[path].Member; !reflect.DeepEqual(have, want) {
+			t.Errorf("%s: member %+v, want %+v", path, have, want)
 		}
 	}
 }
@@ -199,7 +210,7 @@ func TestUdevEncodedLabel(t *testing.T) {
 	h := fakeHost(t)
 	h.add("", "sda", "8:0", 2000, nil)
 	h.part("sda", "sda1", "8:1", 1, 2048, 1000)
-	h.udev("8:1", `ID_FS_LABEL_ENC=my\x20data`, "ID_FS_UUID_ENC=u-1", "ID_PART_ENTRY_UUID=p-1", "ID_PART_ENTRY_NAME=boot", "ID_PART_ENTRY_SCHEME=gpt")
+	h.udev("8:1", `ID_FS_LABEL_ENC=my\x20data`, "ID_FS_UUID_ENC=u-1", "ID_PART_ENTRY_UUID=p-1", "ID_PART_ENTRY_NAME=boot", "ID_PART_ENTRY_SCHEME=gpt", "ID_PART_ENTRY_TYPE=C12A7328-F81F-11D2-BA4B-00A0C93EC93B")
 	// Model: ID_MODEL_ENC, then ID_MODEL, then sysfs.
 	h.add("", "sdb", "8:16", 2000, map[string]string{"device/model": "sysfs model "})
 	h.udev("8:16", `ID_MODEL_ENC=Enc\x20Model\x20\x20`, "ID_MODEL=plain", "SCSI_IDENT_SERIAL=s1", "ID_SERIAL=s5", "ID_PART_TABLE_TYPE=gpt")
@@ -219,7 +230,7 @@ func TestUdevEncodedLabel(t *testing.T) {
 	}
 	got := byPath(devices)
 	p := got["/dev/sda1"]
-	if p.Label != "my data" || p.UUID != "u-1" || p.PartUUID != "p-1" || p.PartLabel != "boot" || p.PTType != "gpt" {
+	if p.Label != "my data" || p.UUID != "u-1" || p.PartUUID != "p-1" || p.PartLabel != "boot" || p.PTType != "gpt" || p.PartType != "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" {
 		t.Errorf("sda1 = %#v", p)
 	}
 	for path, want := range map[string][2]string{
@@ -444,6 +455,7 @@ type lsblkDevice struct {
 	Transport   string         `json:"tran"`
 	ReadOnly    bool           `json:"ro"`
 	PTType      string         `json:"pttype"`
+	PartType    string         `json:"parttype"`
 	Children    []lsblkDevice  `json:"children"`
 }
 
@@ -486,6 +498,8 @@ func collectLsblk(raw lsblkDevice, parent string, devices map[string]*apischema.
 			Type: raw.Type, SizeBytes: size, FSType: raw.FSType,
 			Model: strings.TrimSpace(raw.Model), Serial: strings.TrimSpace(raw.Serial),
 			Transport: raw.Transport, ReadOnly: raw.ReadOnly, PTType: raw.PTType,
+			// lsblk prints GUIDs lowercase already; ToLower only guards MBR "0x83" casing.
+			PartType:    strings.ToLower(raw.PartType),
 			Mountpoints: []string{}, Parents: []string{},
 		}
 		devices[raw.Path] = device
@@ -516,7 +530,7 @@ func TestNativeInventoryMatchesLsblk(t *testing.T) {
 	if _, err := os.Stat(udevDataRoot); err != nil {
 		t.Skip("no udev database")
 	}
-	out, err := exec.Command("lsblk", "--json", "--bytes", "--tree", "--output", "NAME,KNAME,PATH,TYPE,SIZE,FSTYPE,MOUNTPOINTS,MODEL,SERIAL,TRAN,RO,PTTYPE").Output()
+	out, err := exec.Command("lsblk", "--json", "--bytes", "--tree", "--output", "NAME,KNAME,PATH,TYPE,SIZE,FSTYPE,MOUNTPOINTS,MODEL,SERIAL,TRAN,RO,PTTYPE,PARTTYPE").Output()
 	if err != nil {
 		t.Skipf("lsblk failed: %v", err)
 	}
@@ -543,6 +557,11 @@ func TestNativeInventoryMatchesLsblk(t *testing.T) {
 			t.Errorf("%s: missing from the native inventory", path)
 		} else if !reflect.DeepEqual(pick(g), pick(w)) {
 			t.Errorf("%s differs:\n native %+v\n lsblk  %+v", path, pick(g), pick(w))
+		}
+	}
+	for path, w := range want {
+		if g, ok := got[path]; ok && w.PartType != "" && g.PartType != w.PartType {
+			t.Errorf("%s: PartType native %q, lsblk %q", path, g.PartType, w.PartType)
 		}
 	}
 	for path := range got {

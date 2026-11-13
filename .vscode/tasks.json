@@ -1,0 +1,40 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "make dev",
+      "type": "shell",
+      "command": "make dev",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "problemMatcher": [],
+      "runOptions": {
+        "instanceLimit": 1
+      },
+      "presentation": {
+        "reveal": "never",
+        "panel": "dedicated",
+        "clear": true,
+        "close": true,
+        "showReuseMessage": false,
+      }
+    },
+    {
+      "label": "make dev-stop",
+      "type": "shell",
+      "command": "make dev-stop",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared",
+        "close": true,
+        "showReuseMessage": false
+      }
+    }
+  ]
+}

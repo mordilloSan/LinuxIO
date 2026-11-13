@@ -1,20 +1,34 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, expectTypeOf, it } from "vitest";
 
 import {
   CAPABILITIES,
   CAPABILITY_KEYS,
+  type CapabilityWire,
   capabilityStateFromWire,
   emptyCapabilityState,
   parseCapabilityState,
   pickCapabilityState,
+  wireFromCapabilityState,
 } from "@/api/capabilities";
+import type { CapabilityName } from "@/api/generated/linuxio-types";
 
 describe("capabilities helpers", () => {
-  it("maps wire booleans into tri-state frontend capability state", () => {
+  it("names every backend capability exactly once", () => {
+    // Typecheck fails when the table and the backend registry's generated
+    // CapabilityName union differ in either direction.
+    expectTypeOf<CapabilityWire>().toEqualTypeOf<CapabilityName>();
+
+    const wires = CAPABILITIES.map((capability) => capability.wire);
+    const states = CAPABILITIES.map((capability) => capability.state);
+    expect(new Set(wires).size).toBe(wires.length);
+    expect(new Set(states).size).toBe(states.length);
+  });
+
+  it("maps wire statuses into tri-state frontend capability state", () => {
     const state = capabilityStateFromWire({
-      docker_available: true,
-      packagekit_available: false,
-      rsync_available: true,
+      docker: { available: true },
+      packagekit: { available: false, error: "PackageKit is not running" },
+      rsync: { available: true },
     });
 
     expect(state.dockerAvailable).toBe(true);
@@ -22,6 +36,19 @@ describe("capabilities helpers", () => {
     expect(state.rsyncAvailable).toBe(true);
     expect(state.libvirtAvailable).toBeNull();
     expect(state.wireguardAvailable).toBeNull();
+  });
+
+  it("seeds the wire shape from known state only", () => {
+    expect(
+      wireFromCapabilityState({
+        dockerAvailable: true,
+        rsyncAvailable: false,
+        libvirtAvailable: null,
+      }),
+    ).toEqual({
+      docker: { available: true },
+      rsync: { available: false },
+    });
   });
 
   it("defines libvirt as an installable routed capability", () => {

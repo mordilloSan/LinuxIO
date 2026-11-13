@@ -16,6 +16,7 @@ import { useReorderableTableDnd } from "@/components/tables/useReorderableTableD
 import AppTypography from "@/components/ui/AppTypography";
 import { DetailRow } from "@/components/ui/InfoRow";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
+import useAuth from "@/hooks/useAuth";
 import { useViewMode } from "@/hooks/useViewMode";
 
 import UnitInfoPanel from "./UnitInfoPanel";
@@ -84,6 +85,7 @@ function UnitKindTab<T extends UnitListItem>({
     refetchInterval: viewMode === "card" ? false : UNIT_LIST_REFETCH_MS,
   });
   const Noun = kind.noun.charAt(0).toUpperCase() + kind.noun.slice(1);
+  const { privileged } = useAuth();
 
   return (
     <UnitListTab
@@ -103,14 +105,19 @@ function UnitKindTab<T extends UnitListItem>({
           expanded={expanded}
           items={items}
           onExpand={onExpand}
-          renderActions={(item, info) => (
-            <UnitCardActions
-              activeState={item.active_state}
-              info={info}
-              unitFileState={item.unit_file_state}
-              unitName={item.name}
-            />
-          )}
+          // The systemd.*_service routes are admin-only.
+          renderActions={
+            privileged
+              ? (item, info) => (
+                  <UnitCardActions
+                    activeState={item.active_state}
+                    info={info}
+                    unitFileState={item.unit_file_state}
+                    unitName={item.name}
+                  />
+                )
+              : undefined
+          }
           renderBottomPanel={(item) => (
             <UnitLogsCard title={`${Noun} Logs`} unitName={item.name} />
           )}

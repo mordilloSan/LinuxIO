@@ -11,13 +11,13 @@ import {
   rangeById,
   RangeSelect,
   SynchronizedHistoryAreaChart,
+  useHistoryAccess,
   useHistoryTimestampFormatter,
   type HistoryCardProps,
   type HistoryLiveProps,
 } from "@/components/charts/HistoryCard";
 import AppSelect from "@/components/ui/AppSelect";
 import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
-import { useCapability } from "@/hooks/useCapabilities";
 import { formatThroughput } from "@/utils/formatters";
 import { formatGpuBytes, getGpuVendorLabel } from "@/utils/gpu";
 
@@ -284,7 +284,7 @@ const CPUHistoryLive = ({ rangeId }: HistoryLiveProps) => {
   const range = rangeById(rangeId);
   const request = historyRequest(range);
   const formatTimestamp = useHistoryTimestampFormatter(range);
-  const { isEnabled, reason } = useCapability("monitoringAvailable");
+  const { isEnabled, reason } = useHistoryAccess();
   const { data, isLoading, error } = useQuery({
     ...linuxio.monitoring.get_cpu_history({
       ...request,
@@ -360,7 +360,7 @@ const MemoryHistoryLive = ({ rangeId }: HistoryLiveProps) => {
   const range = rangeById(rangeId);
   const request = historyRequest(range);
   const formatTimestamp = useHistoryTimestampFormatter(range);
-  const { isEnabled, reason } = useCapability("monitoringAvailable");
+  const { isEnabled, reason } = useHistoryAccess();
   const { data, isLoading, error } = useQuery({
     ...linuxio.monitoring.get_memory_history({
       ...request,
@@ -372,12 +372,12 @@ const MemoryHistoryLive = ({ rangeId }: HistoryLiveProps) => {
   const message = historyCardMessage(data, isLoading, error, isEnabled, reason);
   const zfsColor = "var(--app-palette-success-main)";
   const dockerColor = "var(--app-chart-rx)";
-  const buffersColor = "var(--app-chart-tx)";
+  const vmColor = "var(--app-chart-tx)";
   const series = useMemo(() => {
     const points = data ?? [];
     const hasDocker = points.some((point) => (point.docker_used_gb ?? 0) > 0);
+    const hasVMs = points.some((point) => (point.vm_used_gb ?? 0) > 0);
     const hasZfs = points.some((point) => (point.zfs_arc_gb ?? 0) > 0);
-    const hasBuffers = points.some((point) => (point.buffers_gb ?? 0) > 0);
 
     const layer = (
       label: string,
@@ -396,11 +396,15 @@ const MemoryHistoryLive = ({ rangeId }: HistoryLiveProps) => {
       }),
     });
 
-    // Bottom-up bands; the agent already excludes cache and ZFS ARC from
-    // "used", and Docker containers are carved out of it here.
+    // Bottom-up bands. "Used" already leaves out the page cache and the ZFS
+    // ARC, and the agent measures Docker and VMs without their page cache,
+    // so System is the rest of used and ZFS stacks on top.
     const memorySeries = [
-      layer("Apps", "var(--app-palette-primary-main)", (point) =>
-        hasDocker ? point.used_gb - (point.docker_used_gb ?? 0) : point.used_gb,
+      layer(
+        "System",
+        "var(--app-palette-primary-main)",
+        (point) =>
+          point.used_gb - (point.docker_used_gb ?? 0) - (point.vm_used_gb ?? 0),
       ),
     ];
     if (hasDocker) {
@@ -408,18 +412,18 @@ const MemoryHistoryLive = ({ rangeId }: HistoryLiveProps) => {
         layer("Docker", dockerColor, (point) => point.docker_used_gb ?? 0),
       );
     }
+    if (hasVMs) {
+      memorySeries.push(
+        layer("VMs", vmColor, (point) => point.vm_used_gb ?? 0),
+      );
+    }
     if (hasZfs) {
       memorySeries.push(
         layer("ZFS ARC", zfsColor, (point) => point.zfs_arc_gb ?? 0),
       );
     }
-    if (hasBuffers) {
-      memorySeries.push(
-        layer("Buffers", buffersColor, (point) => point.buffers_gb ?? 0),
-      );
-    }
     return memorySeries;
-  }, [buffersColor, data, dockerColor, zfsColor]);
+  }, [data, dockerColor, vmColor, zfsColor]);
 
   return (
     <HistoryCardBody message={message}>
@@ -440,7 +444,7 @@ const DiskIOLive = ({ rangeId }: HistoryLiveProps) => {
   const range = rangeById(rangeId);
   const request = historyRequest(range);
   const formatTimestamp = useHistoryTimestampFormatter(range);
-  const { isEnabled, reason } = useCapability("monitoringAvailable");
+  const { isEnabled, reason } = useHistoryAccess();
   const { data, isLoading, error } = useQuery({
     ...linuxio.monitoring.get_diskio_history({
       ...request,
@@ -491,7 +495,7 @@ const NetworkHistoryLive = ({ rangeId }: HistoryLiveProps) => {
   const range = rangeById(rangeId);
   const request = historyRequest(range);
   const formatTimestamp = useHistoryTimestampFormatter(range);
-  const { isEnabled, reason } = useCapability("monitoringAvailable");
+  const { isEnabled, reason } = useHistoryAccess();
   const { data, isLoading, error } = useQuery({
     ...linuxio.monitoring.get_network_history({
       ...request,

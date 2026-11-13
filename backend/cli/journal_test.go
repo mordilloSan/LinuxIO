@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -180,5 +182,30 @@ func TestFormatJournalEntryOmitsHiddenLinuxIOFields(t *testing.T) {
 	}
 	if strings.Contains(got, "abc123") || strings.Contains(got, "component=") {
 		t.Fatalf("formatJournalEntry() = %q, unexpectedly included hidden fields", got)
+	}
+}
+
+// Every LinuxIO unit shipped in packaging/systemd must show up in the default
+// `linuxio logs` selection, so a new unit cannot be forgotten.
+func TestJournalTermsForAllCoverPackagedUnits(t *testing.T) {
+	const dir = "../../packaging/systemd"
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	terms := journalTermsForMode("all")
+	checked := 0
+	for _, entry := range entries {
+		name := entry.Name()
+		if !strings.HasPrefix(name, "linuxio") || !slices.Contains([]string{".service", ".socket", ".timer", ".target"}, filepath.Ext(name)) {
+			continue
+		}
+		checked++
+		if !slices.Contains(terms, "_SYSTEMD_UNIT="+name) {
+			t.Errorf("journalTermsForMode(all) is missing packaged unit %q", name)
+		}
+	}
+	if checked == 0 {
+		t.Fatalf("no unit files found in %s", dir)
 	}
 }

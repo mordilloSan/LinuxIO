@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { act, renderHook } from "@/test/render";
 
+import type { FileItem } from "../-types";
 import { useFileDialogs } from "./useFileDialogs";
 import { useFileUpload } from "./useFileUpload";
-import type { FileItem } from "../-types";
 
 describe("filebrowser state hooks", () => {
   it("tracks dialog state for create, delete, detail, and permissions flows", () => {
@@ -133,20 +133,25 @@ describe("filebrowser state hooks", () => {
       result.current.actions.mergeEntries([
         { isDirectory: true, relativePath: "stale" },
       ]);
+      result.current.actions.setOwnUploads(true);
     });
     act(() => result.current.actions.openDialog());
 
     expect(result.current.uploadDialogOpen).toBe(true);
     expect(result.current.uploadEntries).toEqual([]);
+    expect(result.current.ownUploads).toBe(false);
 
     act(() => {
       result.current.actions.mergeEntries([
         { isDirectory: true, relativePath: "stack" },
       ]);
+      result.current.actions.setOwnUploads(true);
     });
+    expect(result.current.ownUploads).toBe(true);
     act(() => result.current.actions.closeDialog());
 
     expect(result.current.uploadDialogOpen).toBe(false);
     expect(result.current.uploadEntries).toEqual([]);
+    expect(result.current.ownUploads).toBe(false);
   });
 });

@@ -4,7 +4,6 @@ import { useState } from "react";
 import {
   getMutationErrorMessage,
   linuxio,
-  useCallMutation,
   type VMCreateProgress,
   type VMTemplate,
 } from "@/api";
@@ -37,7 +36,7 @@ const VMImagesPage = () => {
   const toast = useScopedToast(VM_TOAST);
   const [progress, setProgress] = useState<VMCreateProgress | null>(null);
   const [deleting, setDeleting] = useState<VMTemplate | null>(null);
-  const download = linuxio.virt.template_download.useTaskStreamAction({
+  const download = linuxio.virt.template_download.useMutation({
     onProgress: (event) =>
       setProgress(
         event.detail ?? {
@@ -63,7 +62,7 @@ const VMImagesPage = () => {
         }),
     },
   });
-  const remove = useCallMutation(linuxio.virt.template_delete, {
+  const remove = linuxio.virt.template_delete.useMutation({
     success: () => {
       setDeleting(null);
       toast.success("Deleted saved template");

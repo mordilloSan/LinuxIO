@@ -47,24 +47,34 @@ func TestBuildInstallCommandArgsUsesExplicitWritablePaths(t *testing.T) {
 		t.Fatal("missing ReadWritePaths property")
 	}
 
-	legacyPaths := []string{
+	wantPaths := []string{
 		version.BinDir,
 		"/etc/linuxio",
 		"/etc/pam.d",
 		"/etc/systemd/system",
 		"-/etc/motd.d",
+		"-/etc/update-motd.d",
+		"-/etc/avahi/services",
+		"-/etc/needrestart/conf.d",
+		"/etc/libvirt/hooks/qemu.d",
 		"/usr/lib/tmpfiles.d",
 		"/usr/share/linuxio",
 		version.DataDir,
 	}
-	if got := strings.Fields(readWritePaths); !slices.Equal(got, legacyPaths) {
-		t.Fatalf("ReadWritePaths = %q, want legacy-compatible paths %q", got, legacyPaths)
+	if got := strings.Fields(readWritePaths); !slices.Equal(got, wantPaths) {
+		t.Fatalf("ReadWritePaths = %q, want %q", got, wantPaths)
 	}
 	if strings.Contains(" "+readWritePaths+" ", " /etc ") {
 		t.Fatalf("ReadWritePaths should use explicit subpaths, got %q", readWritePaths)
 	}
 	if strings.Contains(" "+readWritePaths+" ", " /etc/motd.d ") {
 		t.Fatalf("ReadWritePaths should mark /etc/motd.d optional, got %q", readWritePaths)
+	}
+	// Optional, so a host without needrestart is unaffected, and only its
+	// conf.d, so the updater cannot rewrite needrestart.conf.
+	if strings.Contains(" "+readWritePaths+" ", " /etc/needrestart/conf.d ") ||
+		strings.Contains(" "+readWritePaths+" ", "/etc/needrestart ") {
+		t.Fatalf("ReadWritePaths should name only an optional /etc/needrestart/conf.d, got %q", readWritePaths)
 	}
 	if strings.Contains(" "+readWritePaths+" ", " /etc/pam.d/linuxio ") {
 		t.Fatalf("ReadWritePaths should not require the PAM file to already exist, got %q", readWritePaths)

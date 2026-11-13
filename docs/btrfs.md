@@ -15,13 +15,31 @@ of replication. `btrfs-progs` is used only where the kernel has no interface:
 `mkfs.btrfs`, `btrfs receive`, and the commands a replication job runs on its
 target, which may be another host. There is no daemon. Everything is on
 demand or runs from `linuxio-btrfs-timer`, started by two systemd timers, a
-boot-time service and a resync service (see [Missing disks](#missing-disks)).
+boot-time service, a resync service (see [Missing disks](#missing-disks)) and
+the replication service each snapshot pass starts (see
+[Replication](#replication)).
 
 `make test-btrfs-integration` runs every one of these operations against the
 real kernel on loop devices, loses and returns disks of a mirror to check
-the missing-disk handling, and exercises
-[partition management](./storage-disks.md#partition-management); it needs
-sudo.
+the missing-disk handling, exercises
+[partition management](./storage-disks.md#partition-management), checks
+that **Force** never takes a disk of an unmounted pool
+(`TestBtrfsMemberIntegration` in `backend/bridge/handlers/storage`) nor
+zeroes a disk mounted or held after the checks (`TestBtrfsAddWipeIntegration`),
+and that a pool whose top level a read mounted can be destroyed
+(`TestBtrfsDestroyIntegration`); it needs sudo.
+
+Parsing command output is avoided because `btrfs-progs` prints JSON for only a
+few commands, and no Go btrfs library covers balance, scrub and devices. A new
+storage feature therefore starts from the ioctl or syscall, and each kernel
+struct is pinned by the request-number test in `ioctl_test.go`, because the
+request number encodes the struct size. A bug here can lose data, and the unit
+tests run against a fake kernel that has missed real ones. Work on degraded
+mounts, resync, replace or split brain therefore starts from what the kernel,
+`btrfs-progs`, mdadm and systemd do, gets an independent review, and adds a
+case to `make test-btrfs-integration`. Only that target, or
+`make vm-test-btrfs-integration` in the test VM, counts as kernel-level
+verification.
 
 ## Capability and privileges
 
@@ -58,12 +76,15 @@ filesystems, covering pools created after install.
 | `btrfs/health-<uuid>` | error | a device reports errors or is missing; "running without n of m disks" when degraded | the counters are zero and no device is missing |
 | `btrfs/scrub-<uuid>` | error | the last scrub found uncorrectable errors | a later scrub finishes clean |
 | `btrfs/space-<uuid>` | warning | metadata is over 90% full with less than 1 GiB unallocated | space is reclaimed |
-| `btrfs/offline-<uuid>` | error or warning | a pool is found on disk but not mounted (error when disks are missing; says why the boot check left it unmounted) | the pool is mounted |
+| `btrfs/offline-<uuid>` | error or warning | a pool is found on disk but not mounted (error when disks are missing or the boot check refused to mount it, and then says why) | the pool is mounted |
 | `btrfs/resync-<uuid>` | warning, error after three failed resyncs | a pool that ran with a disk missing has all its disks again and is being resynced | the resync finished |
-| `btrfs/resynced-<uuid>` | info | a resync finished and the pool is whole again | dismissed, or the next resync starts |
+| `btrfs/resynced-<uuid>` | info | a resync finished and the pool is whole again, while the notification settings' *Pool resync* is *Also when a pool is whole again* (the default) | dismissed, or the next resync starts |
 
 Incomplete health data neither raises nor resolves; alerts of pools that no
-longer exist are dropped by the timer. Scrub start/cancel is on the banner;
+longer exist are dropped by the timer, the resync unit's run alert
+(`jobs/run-btrfs-resync-<uuid>`) among them. A condition that lasts is one
+occurrence however many health checks see it, so it is delivered once, and
+again only after it cleared and came back. Scrub start/cancel is on the banner;
 see [Devices](#devices-and-profiles).
 
 ## Missing disks
@@ -99,6 +120,13 @@ check. The kernel itself refuses a pool missing more disks than its profiles
 survive. A mount that fails leaves the entries inside its mountpoint
 unmounted.
 
+udev also holds back a complete pool whose device replace a power loss cut,
+because the kernel's ready check counts the replace target as an extra disk;
+after the same 30 seconds the service mounts it with its fstab options and
+without `degraded`, unless its disks disagree on their generation, and the
+kernel continues the replace (a pool also missing a disk takes the degraded
+path above).
+
 The record lives in `/var/lib/linuxio/btrfs-pools.json`: every mount LinuxIO
 makes and every health run notes each pool's generation, and while a pool runs
 degraded, which disks take its writes. A disk that dies while the pool is
@@ -119,7 +147,12 @@ Only a scrub that finished counts: one canceled from the overview, or cut
 short by a crash (its record then reads as aborted), is run again. A failed
 resync is retried by the next health run, without scrubbing again once the
 scrub finished; after three failures the alert turns into an error with the
-last cause, and mounting the pool again (or a reboot) re-arms it.
+last cause, and mounting the pool again (or a reboot) re-arms it. Since these
+alerts report it, a resync that fails exits with status 3 once they were
+brought up to date, which tells the unit's end hook to raise no run alert of
+its own ([Alerts](./alerts.md#who-writes-with-no-session)); a resync that
+could not find its pool or read its state, or whose worker is killed, gets
+that run alert.
 Uncorrectable scrub errors go to the scrub alert. Files with copy-on-write
 disabled (`nodatacow`, common for VM images) have no checksums, so a scrub
 cannot tell their stale copies; replace a disk that returns to a pool holding
@@ -132,7 +165,7 @@ scrub once it is fixed repairs what it missed.
 Subvolume and snapshot operations need the filesystem's top level
 (`subvolid=5`). On first use LinuxIO mounts it at `/run/linuxio/btrfs/<uuid>`,
 an ordinary host mount, skipped when a user `subvolid=5` mount exists, and
-leaves it mounted until reboot.
+leaves it mounted until reboot, or until **Destroy pool** unmounts it.
 
 ## Subvolumes
 
@@ -219,7 +252,11 @@ starts `linuxio-btrfs-snapshot.service`, which runs
 `linuxio-btrfs-timer snapshot run`. The timer is enabled while at least one rule or
 replication job is enabled and disabled otherwise. **Run now** runs the
 snapshot and prune pass from the bridge; it does not replicate (each
-replication job has its own **Run now**).
+replication job has its own **Run now**). A timer pass in which a rule
+failed exits with status 3 when each failure raised its own alert, and
+with 1 for a failure without one (rules or jobs that cannot be read, a
+replication that could not be started); only the latter gets the run alert
+of the unit's end hook ([Alerts](./alerts.md#who-writes-with-no-session)).
 
 - A rule is due when its newest `timeline` snapshot is older than its period
   (5-minute tolerance for the hourly tick).
@@ -228,7 +265,10 @@ replication job has its own **Run now**).
   the newest 3.
 - A failed snapshot or an unmounted filesystem raises an alert
   `btrfs/snapshot-<uuid8>-<path>`; a later good run resolves it.
-- Replication jobs run from the same invocation, after snapshots.
+- When a replication job is enabled, the pass ends by starting
+  `linuxio-btrfs-replicate.service` without waiting for it
+  ([Replication](#replication)), so a send that takes hours never holds up
+  the next hour's snapshots.
 
 ## Pre-update snapshots
 
@@ -258,8 +298,9 @@ and metadata profiles chosen from `single`, `dup`, `raid0`, `raid1`,
 `raid1c3`, `raid1c4` and `raid10` (`raid5` and `raid6` are refused),
 registers the disks with the kernel, mounts the pool and records it in
 `/etc/fstab` as `UUID=<uuid> <mountpoint> btrfs defaults,noatime,nofail 0 0`.
-A disk with partitions, holders or a mount is refused; a foreign filesystem
-signature needs **Force**. The mount point must be an unused, empty path
+Which disks it may take is decided as for every device operation (see
+[Which disks a pool may take](#which-disks-a-pool-may-take)). The mount point
+must be an unused, empty path
 outside the system directories. The dialog estimates the usable data space
 for the chosen profile and disks, allocated the way btrfs does, so mixed disk
 sizes are counted right; metadata overhead is not included. Metadata (the
@@ -278,6 +319,19 @@ smaller still take a member's place. The table is written by the same code as
 page, where these partitions can be deleted once the pool is gone, or the
 disk initialized to be used whole again.
 
+A create that fails or is canceled before the pool is recorded in
+`/etc/fstab` is rolled back while the disks are still locked. The pool is
+unmounted if the create mounted it. Every superblock copy (64 KiB, 64 MiB and
+256 GiB into each member) that carries the new pool's UUID has its magic
+zeroed, including the temporary magic a failed `mkfs.btrfs` leaves; copies of
+any other filesystem are left alone. Then the partitions the create added are
+deleted, newest first. A partition whose superblocks could not be wiped is
+kept, and nothing is wiped while the pool cannot be unmounted; the error
+reports what was left. Once the pool is in fstab it is kept, whatever fails
+after. The rollback removes only what the create made: what was on a disk
+before, such as a filesystem overwritten with **Force** or the old contents
+of a disk given a new GPT, is not restored.
+
 A shared folder can be created on a pool from **Shares → Add Folder Share →
 New folder on a pool**: it creates a subvolume under the pool's top-level
 mount, optionally limits its size (turning quotas on) and adds the default
@@ -287,7 +341,9 @@ a permanent top-level mount are offered.
 `nofail` keeps a pool with a missing disk from blocking boot. Such a pool is
 not mounted, since btrfs refuses that without `degraded`, so the overview
 lists it from the disks' superblocks as an unmounted pool with its missing
-disk count. **Mount** mounts a complete pool and **Mount degraded** one with
+disk count. The backend computes that count (`missing`) and leaves out an
+interrupted device replace's target, which the kernel scans as devid 0 but is
+no member. **Mount** mounts a complete pool and **Mount degraded** one with
 missing disks, so its data stays reachable until the disk is replaced; both
 use the pool's fstab options, so `subvol=` and `compress=` apply. A pool
 without an fstab entry is mounted at `/mnt/<label>` and recorded. Pools in
@@ -295,7 +351,87 @@ fstab are also mounted degraded at boot; see [Missing disks](#missing-disks).
 
 **Destroy pool** unmounts every mount of the pool, removes its fstab entries
 and zeroes the btrfs superblock magic on each disk; everything on the pool is
-lost. A pool holding `/`, `/boot` or another protected mount is refused.
+lost. A pool holding `/`, `/boot` or another protected mount is refused
+(a 409);
+LinuxIO's own top-level mount under `/run/linuxio/btrfs/<uuid>` (see
+[Top-level access](#top-level-access)), left by any subvolume, snapshot or
+settings read, is not one: it is unmounted with the rest. An
+unmounted pool is destroyed the same way from its superblocks, with the disks
+that are present when some are missing, which is how a disk of an old pool is
+freed for a new one.
+
+### Which disks a pool may take
+
+Create pool, Add device and Replace device refuse a device that is:
+
+1. mounted, an active swap, or held (LVM, md, dm-crypt, multipath);
+2. a member of a btrfs pool, mounted or not, by the kernel's list of mounted
+   pools and the superblocks of unmounted ones;
+3. named in `/etc/fstab`;
+4. partitioned, or the parent of another device;
+5. a member of a btrfs pool, an md array, an LVM volume group or any other
+   set by its own signature (`btrfs`, `linux_raid_member`, `LVM2_member`, and
+   every other signature that ends in `_member`, such as `zfs_member` or a
+   firmware RAID's `isw_raid_member`), whether the pool is mounted, the array
+   running or the volume group active or not.
+
+The first three are the check every device operation shares with the
+[Disks page](./storage-disks.md#safety) and md RAID. Any other filesystem
+signature needs **Force**, which erases it: the bridge zeroes the device's
+first and last 2 MiB before the add, and `mkfs.btrfs -f` does the same for a
+create. Replace has no **Force**: its target must be blank.
+
+The checks read an inventory, so the bridge opens the device with `O_EXCL`
+to zero it; the kernel refuses that (`EBUSY`, a 409) while the device is
+mounted, an active swap, held by LVM, md or dm-crypt, or, for a whole disk,
+while one of its partitions is. The claim ends when the file is closed,
+before `BTRFS_IOC_ADD_DEV`, which claims the device exclusively itself
+(`btrfs_init_new_device` in `fs/btrfs/volumes.c` opens it with
+`BLK_OPEN_WRITE` and the filesystem as holder; `bd_may_claim` in
+`block/bdev.c` grants a claim only while the device has no other holder, and
+`bdev_release` gives up a file's claim when it is closed). The other writers
+open the same way: the trim before a format or a pool create
+(`discardDevice`), the busy check before a format or a mount and the
+Initialize (`CheckNotBusy`), and the edges of a new GPT or partition, which
+go through the same wipe. `mkfs` repeats its own exclusive open. The target
+of a replace is written only by the kernel, which claims it exclusively the
+same way (`btrfs_init_dev_replace_tgtdev` in `fs/btrfs/dev-replace.c`).
+
+**Force** never covers rule 5. LinuxIO does not try to tell a disk with
+leftover btrfs data from a member of an unmounted pool: both are freed with
+**Destroy** on the unmounted pool the overview lists. A member of a stopped
+md array or an inactive volume group is freed with `mdadm` or `vgreduce` and
+`pvremove`, or erased with **Initialize disk**, or **Format** or **Delete**
+on a partition, on the Disks page, whose confirmations name it. The 409 says what the disk belongs to and how to free
+it, such as "Member of btrfs pool old; destroy the pool, or remove the device
+from it, first". The dialogs list such a disk disabled with that reason,
+whether **Force** is on or not; the reason comes from the `member` field of
+the block-device inventory (see
+[Inventory](./storage-disks.md#inventory)). A btrfs signature on a disk
+whose superblock the bridge cannot read lists no pool to destroy; such a disk
+is freed with **Initialize disk**, or **Format** on a partition, on the Disks
+page.
+
+This is stricter than upstream on purpose:
+
+- `mkfs.btrfs -f` and `btrfs device add -f` skip only the existing-signature
+  probe (`check_overwrite` in `test_status_for_mkfs`, `mkfs/common.c`;
+  `cmd_device_add` passes `-f` to `test_dev_for_mkfs`, `cmds/device.c`). The
+  mount check that remains (`check_mounted_where`, `common/open-utils.c`)
+  scans the other members of the device's filesystem and reports it mounted
+  only when one of them is, so a member of an unmounted pool is overwritten.
+  The exclusive open refuses only a device something holds, which a stopped
+  md array or an inactive volume group does not.
+- `mdadm --create` warns about an md superblock or a filesystem it finds
+  (`check_raid`, `check_ext2` in `Create.c`) and asks to continue, which
+  `--run` skips. `mdadm --add` writes its superblock over whatever the device
+  carries; only a device from the same array is considered for a re-add
+  (`Manage.c`).
+- `pvcreate` refuses a physical volume of a volume group without `-ff`, and
+  then asks unless `-y` is given (`_pvcreate_check_used`,
+  `tools/toollib.c`); it skips md components when it scans devices. Any other
+  signature it wipes after asking, or with `-f` without asking (`_blkid_wipe`,
+  `lib/device/dev-type.c`).
 
 Apart from `mkfs.btrfs`, pools use no command: disks are registered with the
 `BTRFS_IOC_SCAN_DEV` ioctl, mounted with `mount(2)`, partitioned by writing
@@ -306,9 +442,9 @@ primary superblock at 64 KiB.
 
 | Action | Behaviour |
 |---|---|
-| Add device | Free devices only. A device with partitions or holders is refused even with **Force**; Force wipes a foreign filesystem signature. |
-| Remove device | Refused below the minimum device count of the current profiles, and refused when the current profiles cannot be determined. |
-| Replace device | Replaces one member with a free device. A bigger replacement disk is grown into automatically. |
+| Add device | Free devices only (see [Which disks a pool may take](#which-disks-a-pool-may-take)). **Force** erases an old filesystem, never a disk of another pool, md array or volume group. |
+| Remove device | Refused below the minimum device count of the current profiles, and refused when the current profiles cannot be determined or have no minimum LinuxIO knows (`raid5`, `raid6`). |
+| Replace device | Replaces one member with a free, blank device. A bigger replacement disk is grown into automatically. |
 | Grow | Resizes a device to its whole disk when the filesystem uses less of it, for example after a replace done by hand. |
 | Rename | Sets the filesystem label from the pool details. |
 | Balance / convert | Profiles `single`, `dup`, `raid0`, `raid1`, `raid1c3`, `raid1c4`, `raid10`. `raid5` and `raid6` are refused. Converting metadata converts system chunks with it. Metadata weaker than the resulting data profile is converted too, to the same default as Create pool, unless nothing stronger fits on the present devices. The outcome is verified against the resulting allocation. |
@@ -316,14 +452,115 @@ primary superblock at 64 KiB.
 | Scrub | Start and cancel. The last result is recorded in `/var/lib/linuxio/btrfs-scrub.json`; scrubs run by btrfsmaintenance are read from `/var/lib/btrfs/scrub.status.<uuid>`. |
 
 Remove, replace, balance and scrub are blocking kernel calls run inside the
-task, so progress comes from the kernel and cancelling the task cancels the
-operation. A balance or scrub started elsewhere is still shown as running.
+job, so progress comes from the kernel. A removal has no kernel progress: its
+percentage is the share of the device's allocation already moved off it, and
+a resumed removal starts again at 0 for what is left. A balance or scrub
+started elsewhere is still shown as running. The ioctls run on a locked thread with async signals
+blocked: since kernel 6.19 any signal aborts a scrub or a replace (and a replace
+aborted that way loses its target). A freeze, such as a suspend to RAM, still
+aborts them. A refusal the kernel answers with a positive code, such as 8
+("exclusive operation in progress"), fails the job.
+
+### Cancel
+
+Cancel asks the kernel to stop, and the job ends `canceled` when its handler
+has returned. A cancelled job is never resumed. The pool's Disks card offers
+**Cancel** while a balance, a removal or a replace of that pool runs, and
+re-attaches each after a reload; the tray cancels any of them too. The card
+cancels through the job (`tasks.cancel`), so the record gets
+`cancel_requested` and a shutdown right after does not resume it; only a
+balance with no running job, such as one started elsewhere, falls back to
+`storage.btrfs_balance_cancel`. A removal or a replace is canceled only
+after a confirmation that names the device and says what the cancel leaves,
+as below.
+
+- **Balance**: `BALANCE_CTL cancel`. The kernel deletes the balance item, so
+  the work done stays but the rest is dropped.
+- **Scrub**: `SCRUB_CANCEL`, refused while a device replace runs, because the
+  kernel would cancel the replace with it.
+- **Replace**: `DEV_REPLACE cancel`. The target is destroyed and the source
+  kept. It is sent again while the kernel answers, in the ioctl's result, that
+  no replace runs yet. A cancel that reaches a replace followed after a reboot in its last
+  step is too late: the new disk is installed and the job ends completed. A
+  replace the kernel says copies from another device is not this job's and is
+  left running.
+- **Remove**: `RM_DEV_V2` with the name `cancel`, which needs kernel 5.14; an
+  older kernel refuses it and the removal runs to the end. It is sent again
+  while the kernel answers that no removal runs yet. A cancelled removal leaves
+  the device a member, and the data already moved off it stays moved, so
+  removing it again continues where it stopped. A cancel that lands just as a
+  removal finishes can make the kernel cancel the next balance or removal at
+  its start (`chunk relocation canceled on start` in dmesg); start it again.
+
+### Shutdown and resume
+
+When the job host stops (a shutdown or `systemctl stop`), each of these jobs
+is suspended and recorded as interrupted with a checkpoint. After a shutdown or
+a power loss the root host resumes it once at the next boot. A job a crash
+interrupted, or a host stopped by hand, is not resumed at a later reboot; start
+it again. There is no manual resume.
+
+| Job | On stop | After the boot |
+|---|---|---|
+| Balance | Paused; the kernel keeps the item and continues it when the pool is mounted read-write | Follows the kernel's balance; resumes it if still paused; counts it finished if it is gone after a pause; runs it again (`soft` when converting) if it is gone and was never paused |
+| Scrub | Stopped, each device's progress stored | Starts again from each device's stored position, or from the start when none was read; the counters add up. Errors in the extent where it stopped count twice |
+| Replace | Cancelled with the job's context; the source is kept | Follows the replace the kernel continued at mount, and refuses one the kernel says copies from another device. A finished replace counts only if it began after the job did; otherwise start it again. A suspended one needs the pool remounted |
+| Remove | Cancelled as above; moved data stays moved | Issues the removal again, with its percentage counting what is left; refuses a degraded pool |
+
+A stop pauses a balance every time, so a paused balance holds the pool's
+exclusive operation after `systemctl stop linuxio-jobs@0` by hand: remove,
+replace and resize are refused until the pool is mounted again or the balance
+is resumed (`btrfs balance resume`); a host started again in the same boot
+does not resume it. A SIGKILL of the host cancels a balance in the kernel, so
+a crash loses it.
+
+A replace the power loss cut is continued by the kernel when the pool is
+mounted, and the job follows it by device id, never by device path. See
+[Missing disks](#missing-disks) for why such a pool is mounted at boot.
 
 ## Replication
 
 Jobs live in `/etc/linuxio/btrfs-replication.json`: a source subvolume, a
-target, and **Keep on target**. Jobs run from the hourly timer after
-snapshots and from the job's own **Run now**.
+target, and **Keep on target**. Jobs run after each hourly snapshot pass and
+from the job's own **Run now**.
+
+The hourly pass does not replicate itself. When a job is enabled it ends by
+asking systemd, over D-Bus (`StartUnit`, mode `replace`), to start
+`linuxio-btrfs-replicate.service`, a oneshot that runs
+`linuxio-btrfs-timer replicate run`, and exits without waiting for it: the
+call returns once the start job is queued, like `systemctl --no-block`. The
+replication therefore runs in a unit of its own, and a first send that takes
+hours no longer keeps the snapshot service busy and its hourly runs skipped.
+There is no second timer. While a replication still runs, the next pass's
+start finds the unit's start job running and is merged into it (systemd's
+`job_install()`: a start job is a superset of a start job, so it is a "late
+merge" into the running job, which is not run again). The hour's replication
+is thus skipped, not queued, and the running one carries on.
+
+- The bridge writes the unit beside the snapshot units whenever a rule or a
+  job is saved and some job is enabled. When none is, it removes the file,
+  except while a replication still runs in it: removing the file under a
+  running unit would drop its end hook at the reload that follows (a service
+  without its unit file loads as `not-found`, without its drop-ins), losing
+  the run's record and outcome, and stopping the unit would cut a send short.
+  The next save after that run removes it. Disabling every rule and job
+  also stops and disables the timer.
+- Before starting the unit, the snapshot pass writes its file when it is
+  missing or differs from what the build renders, and reloads systemd. That
+  is how an install upgraded from a release that replicated inside the
+  snapshot unit keeps replicating without a rule or job being saved: the new
+  binary runs under the snapshot unit the old bridge wrote, and no
+  replication unit exists yet. The installer adds the unit's run-record
+  drop-in on the same update.
+- The replication run's exit status follows the snapshot pass's: 3 when each
+  failure raised its job's alert, 1 for a failure without one (jobs that
+  cannot be read, an outcome that could not be recorded), which gets the run
+  alert of the unit's end hook. A run in which another run, such as one
+  started from the page, held every enabled job did no work: it exits with 4,
+  so its end hook changes no alert, and it raises no notice. Its summary line
+  counts the jobs that
+  replicated (sent or already up to date), those that sent, and the errors;
+  a job whose outcome could not be recorded still counts by what it did.
 
 - **Local** target: a btrfs subvolume path on a **different** filesystem.
 - **SSH** target: host, user, port and an absolute path on the remote.
@@ -387,6 +624,7 @@ btrfsmaintenance timers.
 | `/etc/linuxio/btrfs-replication/known_hosts` | root | Trusted target host keys |
 | `/etc/systemd/system/linuxio-btrfs-snapshot.service` | root | Runs `linuxio-btrfs-timer snapshot run` |
 | `/etc/systemd/system/linuxio-btrfs-snapshot.timer` | root | Hourly trigger |
+| `/etc/systemd/system/linuxio-btrfs-replicate.service` | root | Runs `linuxio-btrfs-timer replicate run`; written while a replication job is enabled |
 | `/etc/systemd/system/linuxio-btrfs-health.service` | root | Runs `linuxio-btrfs-timer health run` |
 | `/etc/systemd/system/linuxio-btrfs-health.timer` | root | Every ten minutes |
 | `/etc/systemd/system/linuxio-btrfs-degraded.service` | root | Runs `linuxio-btrfs-timer degraded run` at boot |

@@ -2,7 +2,7 @@ import { Icon } from "@iconify/react";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 
-import { linuxio, useCallMutation } from "@/api";
+import { linuxio } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppAlert from "@/components/ui/AppAlert";
@@ -150,26 +150,20 @@ const SetDateTimeDialog = ({ open, onClose }: Props) => {
     setManualTime(toDatetimeLocal(serverTime));
   }
 
-  const { mutateAsync: setTz } = useCallMutation(
-    linuxio.datetime.set_timezone,
-    {
-      error: "Failed to set timezone",
-      toast: DASHBOARD_TOAST_META,
-    },
-  );
-  const { mutateAsync: setNtp } = useCallMutation(linuxio.datetime.set_ntp, {
+  const { mutateAsync: setTz } = linuxio.datetime.set_timezone.useMutation({
+    error: "Failed to set timezone",
+    toast: DASHBOARD_TOAST_META,
+  });
+  const { mutateAsync: setNtp } = linuxio.datetime.set_ntp.useMutation({
     error: "Failed to update NTP",
     toast: DASHBOARD_TOAST_META,
   });
-  const { mutateAsync: setServers } = useCallMutation(
-    linuxio.datetime.set_ntp_servers,
-    {
+  const { mutateAsync: setServers } =
+    linuxio.datetime.set_ntp_servers.useMutation({
       error: "Failed to set NTP servers",
       toast: DASHBOARD_TOAST_META,
-    },
-  );
-  const { mutateAsync: setTime } = useCallMutation(
-    linuxio.datetime.set_server_time,
+    });
+  const { mutateAsync: setTime } = linuxio.datetime.set_server_time.useMutation(
     {
       error: "Failed to set server time",
       toast: DASHBOARD_TOAST_META,

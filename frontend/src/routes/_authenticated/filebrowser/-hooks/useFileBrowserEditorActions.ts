@@ -1,10 +1,12 @@
 import { useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
 
 import { linuxio, uploadContent } from "@/api";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { useUploadChunkSize } from "@/hooks/useUploadChunkSize";
 import { markTerminalFeedbackEmitted } from "@/tasks/terminalTaskFeedback";
+import { toastFileError } from "@/utils/linkRefusal";
 import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
 import type { EditorSlice } from "./useFileEditor";
@@ -32,6 +34,7 @@ export const useFileBrowserEditorActions = ({
     params: { _splat: "" },
     to: "/filebrowser/$",
   });
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const chunkSize = useUploadChunkSize();
 
@@ -90,7 +93,11 @@ export const useFileBrowserEditorActions = ({
             if (promptOnConflict && isSaveConflict(error)) {
               setSaveConflict({ content });
             } else {
-              toast.error(getErrorMessage(error, "Unable to save file"));
+              toastFileError(
+                toast,
+                navigate,
+                getErrorMessage(error, "Unable to save file"),
+              );
             }
             return false;
           }
@@ -100,7 +107,14 @@ export const useFileBrowserEditorActions = ({
         },
       );
     },
-    [actions, editingPath, invalidateEditedFile, saveContentViaStream, toast],
+    [
+      actions,
+      editingPath,
+      invalidateEditedFile,
+      navigate,
+      saveContentViaStream,
+      toast,
+    ],
   );
 
   const handleSaveContent = useCallback(

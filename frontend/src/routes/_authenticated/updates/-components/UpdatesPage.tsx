@@ -1,7 +1,7 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
-import { linuxio, useCallMutation } from "@/api";
+import { linuxio } from "@/api";
 import { RoutedTabActions } from "@/components/tabbar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
@@ -65,7 +65,7 @@ const AvailableUpdatesPage = () => {
     recoveryPending,
   } = usePackageUpdateController();
   const { mutate: refreshCache, isPending: isRefreshingCache } =
-    useCallMutation(linuxio.updates.refresh_cache, {
+    linuxio.updates.refresh_cache.useMutation({
       success: async () => {
         await refetch();
         toast.success("Update sources refreshed");

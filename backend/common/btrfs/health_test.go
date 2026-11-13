@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 func stubAlerts(t *testing.T) {
@@ -109,7 +110,7 @@ func TestCheckHealthFlagsOfflinePoolsAndDropsStaleAlerts(t *testing.T) {
 	sysBlockDir = dir
 	readSuperblock = func(device string) (Superblock, error) {
 		if device == "/dev/sdc" {
-			return Superblock{UUID: "cold-uuid", Label: "cold", NumDevices: 2}, nil
+			return Superblock{UUID: "cold-uuid", Label: "cold", DevID: 1, NumDevices: 2}, nil
 		}
 		return Superblock{}, errNotBtrfs
 	}
@@ -133,6 +134,48 @@ func TestCheckHealthFlagsOfflinePoolsAndDropsStaleAlerts(t *testing.T) {
 	slices.Sort(keys)
 	if want := []string{"offline-cold-uuid", "snapshot-gone-uuid"}; !reflect.DeepEqual(keys, want) || got["offline-cold-uuid"] != alerts.SeverityError {
 		t.Fatalf("alerts = %v, want %v", got, want)
+	}
+}
+
+// A removed pool never runs its resync unit again, so the health check clears
+// the unit's run alert as it clears the pool's own. A live pool's run alert
+// and the other run and job alerts stay.
+func TestCheckHealthDropsTheResyncRunAlertOfAGonePool(t *testing.T) {
+	stubKernel(t, raid1Kernel())
+	stubDisks(t, nil)
+	ctx := context.Background()
+	const gone = "0a1b2c3d-1111-2222-3333-444455556666"
+	const jobID = "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+	kept := []string{
+		"run-btrfs-resync-" + dataUUID,
+		"run-docker-update",
+		"run-btrfs-snapshot",
+		jobID,
+		"finished-" + jobID,
+	}
+	for _, key := range append([]string{"run-btrfs-resync-" + gone}, kept...) {
+		if err := alerts.Raise(ctx, alerts.Observation{Source: scheduledrun.AlertSource, Key: key, Severity: alerts.SeverityError, Title: "run failed"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, err := CheckHealth(ctx); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := alerts.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var keys []string
+	for _, a := range doc.Alerts {
+		if a.Source == scheduledrun.AlertSource {
+			keys = append(keys, a.Key)
+		}
+	}
+	slices.Sort(keys)
+	slices.Sort(kept)
+	if !reflect.DeepEqual(keys, kept) {
+		t.Fatalf("jobs alerts = %v, want %v", keys, kept)
 	}
 }
 
@@ -205,5 +248,121 @@ func TestHealthAlertSaysAPoolRunsWithoutADisk(t *testing.T) {
 	errors := BtrfsFilesystem{UUID: dataUUID, Devices: []BtrfsDevice{{ID: 1, Path: "/dev/sda", Errors: BtrfsDeviceErrors{Write: 3}}}}
 	if obs = healthObservation(errors, "data", "1:w3"); obs.Title != "Btrfs filesystem data needs attention" {
 		t.Fatalf("error alert = %q", obs.Title)
+	}
+}
+
+// A replace target is no member: a pool lacking a member while its replace
+// target is present misses 1 disk, not 0, in both the boot check's alert and
+// the health run's.
+func TestOfflineAlertCountsAReplaceTargetAsNoMember(t *testing.T) {
+	stubKernel(t, raid1Kernel())
+	stubDisks(t, map[string]Superblock{
+		"sdc": {UUID: "cold-uuid", Label: "cold", DevID: 1, NumDevices: 2},
+		"sdd": {UUID: "cold-uuid", Label: "cold", DevID: replaceTargetDevID, NumDevices: 2},
+	})
+	ctx := context.Background()
+	wantMissingOne := func(how string) {
+		t.Helper()
+		doc, err := alerts.Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, a := range doc.Alerts {
+			if a.Key == "offline-cold-uuid" {
+				if a.Title != "Pool cold is missing 1 of 2 disks" || a.Severity != alerts.SeverityError || a.OccurrenceID != "1" {
+					t.Fatalf("%s: offline alert = %q (%s, occurrence %q)", how, a.Title, a.Severity, a.OccurrenceID)
+				}
+				return
+			}
+		}
+		t.Fatalf("%s: no offline alert in %+v", how, doc.Alerts)
+	}
+
+	stubAlerts(t)
+	RaiseOfflineAlert(ctx, BtrfsOfflinePool{UUID: "cold-uuid", Label: "cold", NumDevices: 2, Devices: []string{"/dev/sdc", "/dev/sdd"}, devids: []uint64{1, replaceTargetDevID}}, "")
+	wantMissingOne("RaiseOfflineAlert")
+
+	stubAlerts(t)
+	if _, err := CheckHealth(ctx); err != nil {
+		t.Fatal(err)
+	}
+	wantMissingOne("CheckHealth")
+}
+
+// A refusal raises a new occurrence: the unblocked alert raised earlier for
+// the same missing count must not hide the reason.
+func TestCheckHealthShowsARefusalAfterTheUnblockedAlert(t *testing.T) {
+	stubStatePaths(t, t.TempDir())
+	stubKernel(t, raid1Kernel())
+	stubDisks(t, map[string]Superblock{
+		"sdc": {UUID: "cold-uuid", Label: "cold", DevID: 1, NumDevices: 1, Generation: 5},
+		"sdd": {UUID: "cold-uuid", Label: "cold", DevID: replaceTargetDevID, NumDevices: 1, Generation: 3},
+	})
+	ctx := context.Background()
+	RaiseOfflineAlert(ctx, BtrfsOfflinePool{UUID: "cold-uuid", Label: "cold", NumDevices: 1, Devices: []string{"/dev/sdc", "/dev/sdd"}, devids: []uint64{1, replaceTargetDevID}}, "")
+	writeFstab(t, "UUID=cold-uuid /srv/cold btrfs defaults 0 0\n")
+	if _, err := CheckHealth(ctx); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := alerts.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range doc.Alerts {
+		if a.Key == "offline-cold-uuid" {
+			if a.Severity != alerts.SeverityError || !strings.Contains(a.Message, "the replace target /dev/sdd missed writes") {
+				t.Fatalf("offline alert = %s: %q", a.Severity, a.Message)
+			}
+			return
+		}
+	}
+	t.Fatalf("no offline alert in %+v", doc.Alerts)
+}
+
+// A standing condition is one occurrence however many health checks see it,
+// so it is delivered once, and again only after it cleared and came back.
+func TestStandingWarningsAreOneOccurrence(t *testing.T) {
+	stubAlerts(t)
+	ctx := context.Background()
+	occurrences := func(key string) int {
+		t.Helper()
+		doc, err := alerts.Load()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, a := range doc.Alerts {
+			if a.Source == AlertSource && a.Key == key {
+				return a.OccurrenceCount
+			}
+		}
+		return 0
+	}
+
+	low := BtrfsFilesystem{UUID: dataUUID, Label: "data", HealthKnown: true, LowMetadataSpace: true, Scrub: BtrfsScrubStatus{Status: "none"}}
+	for range 3 {
+		RaiseAlerts(ctx, low)
+	}
+	if got := occurrences("space-" + dataUUID); got != 1 {
+		t.Fatalf("low space seen by three checks = %d occurrences, want 1", got)
+	}
+	low.LowMetadataSpace = false
+	RaiseAlerts(ctx, low)
+	low.LowMetadataSpace = true
+	RaiseAlerts(ctx, low)
+	if got := occurrences("space-" + dataUUID); got != 1 {
+		t.Fatalf("low space that cleared and came back = %d occurrences of a new record, want 1", got)
+	}
+
+	whole := BtrfsFilesystem{UUID: dataUUID, Label: "data", HealthKnown: true, Scrub: BtrfsScrubStatus{Status: "none"}}
+	for range 3 {
+		raiseResyncAlert(ctx, whole, poolState{Degraded: true})
+	}
+	if got := occurrences("resync-" + dataUUID); got != 1 {
+		t.Fatalf("resync warning seen by three checks = %d occurrences, want 1", got)
+	}
+	// Giving up is a new occurrence: it is delivered.
+	raiseResyncAlert(ctx, whole, poolState{Degraded: true, ResyncFailures: maxResyncAttempts, ResyncError: "boom"})
+	if got := occurrences("resync-" + dataUUID); got != 2 {
+		t.Fatalf("resync that gave up = %d occurrences, want 2", got)
 	}
 }

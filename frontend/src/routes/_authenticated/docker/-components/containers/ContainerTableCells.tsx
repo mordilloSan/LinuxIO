@@ -27,6 +27,8 @@ import {
 } from "@/utils/dockerContainer";
 import { formatFileSize } from "@/utils/formatters";
 
+import { DOCKER_TOAST_META } from "../shared/dockerToast";
+import { useDockerUpdateOperation } from "../shared/DockerUpdateOperationProvider";
 import ContainerActions from "./ContainerActions";
 import {
   formatStackSummary,
@@ -38,8 +40,6 @@ import {
   getVisibleEntries,
   isCollapsible,
 } from "./containerTableModel";
-import { DOCKER_TOAST_META } from "../shared/dockerToast";
-import { useDockerUpdateOperation } from "../shared/DockerUpdateOperationProvider";
 
 // Expanded-row state is shared with the cells via context rather than baked into
 // the column definitions. flexRender renders a cell function as a component, so
@@ -198,7 +198,8 @@ export const UpdateCell = memo(function UpdateCell({
   updateError,
 }: UpdateCellProps) {
   const toast = useScopedToast(DOCKER_TOAST_META);
-  const { isUpdating, startUpdate, updating } = useDockerUpdateOperation();
+  const { canUpdate, isUpdating, startUpdate, updating } =
+    useDockerUpdateOperation();
   const checkingUpdates = useContext(CheckingUpdatesContext);
   const updateStatus = getUpdateStatus({
     updateAvailable,
@@ -240,13 +241,18 @@ export const UpdateCell = memo(function UpdateCell({
   // state and the way to apply the update, and re-checking a container that
   // already has one pending buys nothing.
   if (updateAvailable === true) {
-    if (state !== "running") {
+    // Applying an update is admin-only.
+    if (state !== "running" || !canUpdate) {
       return (
         <Chip
           color="warning"
           label="Available"
           size="small"
-          title="Update available; stopped containers are handled by the scheduled update policy"
+          title={
+            state !== "running"
+              ? "Update available; stopped containers are handled by the scheduled update policy"
+              : "Update available"
+          }
           variant="soft"
         />
       );

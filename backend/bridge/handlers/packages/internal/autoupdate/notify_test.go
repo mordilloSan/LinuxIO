@@ -3,6 +3,8 @@ package autoupdate
 import (
 	"strings"
 	"testing"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 const aptAlertDropIn = "/etc/systemd/system/apt-daily-upgrade.service.d/linuxio-alert.conf"
@@ -17,7 +19,7 @@ func TestWriteNotifyDropInContent(t *testing.T) {
 	if got != want {
 		t.Fatalf("drop-in = %q, want %q", got, want)
 	}
-	if got := readNotifyPolicy(host, "apt-daily-upgrade.service"); got != AutoUpdateNotifyOnChange {
+	if got := readNotifyPolicy(host, "apt-daily-upgrade.service", allNotifyPolicies); got != AutoUpdateNotifyOnChange {
 		t.Fatalf("readNotifyPolicy = %q, want on_change", got)
 	}
 }
@@ -41,16 +43,40 @@ func TestReadNotifyPolicy(t *testing.T) {
 	fake, host := newFakeAutoUpdateHost()
 	svc := "dnf-automatic.service"
 	path := "/etc/systemd/system/dnf-automatic.service.d/linuxio-alert.conf"
-	if got := readNotifyPolicy(host, svc); got != AutoUpdateNotifyNever {
-		t.Fatalf("missing drop-in = %q", got)
+	// No drop-in runs as failures only: the run-record hook reports a failed
+	// update where the provider's hook is not installed.
+	if got := readNotifyPolicy(host, svc, allNotifyPolicies); got != AutoUpdateNotifyOnFailure {
+		t.Fatalf("missing drop-in = %q, want on_failure", got)
 	}
 	fake.files[path] = []byte("[Service]\nExecStopPost=/usr/local/bin/linuxio alert auto-update --provider dnf --policy always\n")
-	if got := readNotifyPolicy(host, svc); got != AutoUpdateNotifyAlways {
+	if got := readNotifyPolicy(host, svc, allNotifyPolicies); got != AutoUpdateNotifyAlways {
 		t.Fatalf("policy = %q", got)
 	}
 	fake.files[path] = []byte("[Service]\nExecStopPost=/usr/local/bin/linuxio alert auto-update --provider dnf --policy sometimes\n")
-	if got := readNotifyPolicy(host, svc); got != AutoUpdateNotifyNever {
-		t.Fatalf("invalid policy read as %q, want never", got)
+	if got := readNotifyPolicy(host, svc, allNotifyPolicies); got != AutoUpdateNotifyOnFailure {
+		t.Fatalf("invalid policy read as %q, want on_failure", got)
+	}
+}
+
+// Only on_change, which an older build offered where only the service result
+// is known, reads as on_failure. Any other stored policy a backend does not
+// offer reads as stored, so a save cannot quietly narrow it.
+func TestReadNotifyPolicyFallsBackOnlyForOnChange(t *testing.T) {
+	fake, host := newFakeAutoUpdateHost()
+	offered := []AutoUpdateNotify{AutoUpdateNotifyOnFailure}
+	for stored, want := range map[AutoUpdateNotify]AutoUpdateNotify{
+		AutoUpdateNotifyOnChange:  AutoUpdateNotifyOnFailure,
+		AutoUpdateNotifyAlways:    AutoUpdateNotifyAlways,
+		AutoUpdateNotifyOnFailure: AutoUpdateNotifyOnFailure,
+	} {
+		fake.files[aptAlertDropIn] = []byte("[Service]\nExecStopPost=/usr/local/bin/linuxio alert auto-update --provider apt --policy " + string(stored) + "\n")
+		if got := readNotifyPolicy(host, aptUpgradeService, offered); got != want {
+			t.Errorf("stored %q read as %q, want %q", stored, got, want)
+		}
+	}
+	delete(fake.files, aptAlertDropIn)
+	if got := readNotifyPolicy(host, aptUpgradeService, offered); got != AutoUpdateNotifyOnFailure {
+		t.Errorf("no drop-in read as %q, want on_failure", got)
 	}
 }
 
@@ -74,5 +100,77 @@ func TestValidateOptionsRejectsUnsupportedNotify(t *testing.T) {
 	}
 	if err := validateOptions(base, support); err != nil {
 		t.Fatalf("empty notify should be allowed without support: %v", err)
+	}
+}
+
+func TestWritePendingDropIn(t *testing.T) {
+	fake, host := newFakeAutoUpdateHost()
+	path := "/etc/systemd/system/apt-daily.service.d/linuxio-alert.conf"
+	if err := writePendingDropIn(host, aptRefreshService, "apt", true); err != nil {
+		t.Fatal(err)
+	}
+	want := "[Service]\nExecStopPost=/usr/local/bin/linuxio alert pending-updates --provider apt\n"
+	if got := string(fake.files[path]); got != want {
+		t.Fatalf("drop-in = %q, want %q", got, want)
+	}
+	if !readPendingEnabled(host, aptRefreshService) {
+		t.Fatal("readPendingEnabled = false after write")
+	}
+	if err := writePendingDropIn(host, aptRefreshService, "apt", false); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := fake.files[path]; ok || readPendingEnabled(host, aptRefreshService) {
+		t.Fatal("drop-in not removed")
+	}
+}
+
+func TestAptPeriodicRefreshesListsForPendingAlerts(t *testing.T) {
+	update, download, unattended := aptPeriodicValues(AutoUpdateOptions{Enabled: false, NotifyAvailable: true})
+	if update != "1" || download != "0" || unattended != "0" {
+		t.Fatalf("values = %s %s %s", update, download, unattended)
+	}
+	if update, _, _ := aptPeriodicValues(AutoUpdateOptions{Enabled: false}); update != "0" {
+		t.Fatalf("disabled without pending alerts refreshes lists: %s", update)
+	}
+}
+
+func TestValidateOptionsRejectsPendingWithoutSupport(t *testing.T) {
+	support := AutoUpdateOptionSupport{
+		Frequencies:    []AutoUpdateFrequency{"daily"},
+		Scopes:         []AutoUpdateScope{"all"},
+		RebootPolicies: []AutoUpdateRebootPolicy{"never"},
+	}
+	opts := AutoUpdateOptions{Frequency: "daily", Scope: "all", RebootPolicy: "never", NotifyAvailable: true}
+	if err := validateOptions(opts, support); err == nil || !strings.Contains(err.Error(), "pending") {
+		t.Fatalf("err = %v", err)
+	}
+	support.NotifyAvailable = true
+	if err := validateOptions(opts, support); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The installer hooks these services with the run-record drop-in, and the
+// run recorder names them itself so it does not import this package: a
+// service one of the backends runs its updates in must be known to it.
+func TestScheduledRunKnowsTheUpgradeServices(t *testing.T) {
+	_, host := newFakeAutoUpdateHost()
+	for _, service := range []string{
+		aptUpgradeService,
+		(&dnfBackend{host: host, generation: dnf4}).service(),
+		(&dnfBackend{host: host, generation: dnf5}).service(),
+		mintUpgradeService,
+	} {
+		if kind, ok := scheduledrun.KindOf(service, ""); !ok || kind.Route != scheduledrun.RouteSystemUpdate {
+			t.Errorf("KindOf(%q) = %+v, %v; want a system update", service, kind, ok)
+		}
+	}
+}
+
+// The run-record hook looks for this drop-in to know whether the provider's
+// hook reports a failed update.
+func TestNotifyDropInIsTheOneTheRunRecordHookLooksFor(t *testing.T) {
+	if got, want := notifyDropInPath(aptUpgradeService), scheduledrun.UpdateNotifyDropIn(aptUpgradeService); got != want {
+		t.Errorf("notifyDropInPath = %q, the run-record hook looks for %q", got, want)
 	}
 }

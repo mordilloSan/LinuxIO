@@ -59,12 +59,13 @@ func (e *sizeEstimate) get() (int64, bool) {
 // stalls the task in "preparing" for the walk's full cost. Progress reports
 // indeterminate until the estimate lands. The returned stop cancels and joins
 // the walk; callers defer it so the walk never outlives the task that owns it.
-func estimateArchiveSizeAsync(ctx context.Context, paths []string, size *sizeEstimate) (stop func()) {
+// owner is whom a root bridge compresses for (see services.ComputeArchiveSize).
+func estimateArchiveSizeAsync(ctx context.Context, paths []string, owner services.Owner, size *sizeEstimate) (stop func()) {
 	sizeCtx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		if total := computeArchiveSize(sizeCtx, paths); total > 0 {
+		if total := computeArchiveSize(sizeCtx, paths, owner); total > 0 {
 			size.set(total)
 		}
 	}()
@@ -78,8 +79,8 @@ func estimateArchiveSizeAsync(ctx context.Context, paths []string, size *sizeEst
 // when ctx cancels the walk. Callers treat 0 as "total unknown" and report
 // indeterminate progress, so a failed estimate degrades the progress bar rather
 // than the archive.
-func computeArchiveSize(ctx context.Context, paths []string) int64 {
-	totalSize, err := services.ComputeArchiveSize(ctx, paths)
+func computeArchiveSize(ctx context.Context, paths []string, owner services.Owner) int64 {
+	totalSize, err := services.ComputeArchiveSize(ctx, paths, owner)
 	if err != nil {
 		slog.Debug("failed to compute archive size", "error", err)
 		return 0

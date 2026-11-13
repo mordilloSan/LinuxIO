@@ -1,0 +1,325 @@
+/* The agents view of the activity card (AgentMap.tsx): the chat's agent and
+   the subagents it sent off, joined by lines like a tree. Under the card's
+   own width the subagents hang below the agent; on a wide card they stand
+   beside it. */
+
+.agent-map {
+  /* How far a list of subagents is set in, and where the joining lines
+     meet a node: at the middle of its first line. */
+  --agent-map-indent: var(--app-space-20);
+  --agent-map-stub: calc(var(--app-space-6) + 1px + 0.7em);
+  /* The size of every grey line: the facts under a subagent's name, what it
+     worked on, its prompt, messages and result. */
+  --agent-map-small: 0.9em;
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-8);
+  min-width: 0;
+}
+
+.agent-map p,
+.agent-map h3,
+.agent-map h4 {
+  margin: 0;
+}
+
+.agent-map__tree {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-8);
+  min-width: 0;
+}
+
+.agent-map .agent-map__node {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: var(--app-space-2);
+  width: 100%;
+  min-width: 0;
+  padding: var(--app-space-6) var(--app-space-12);
+  border: 1px solid var(--app-palette-divider);
+  border-radius: var(--app-radius-md);
+  background: var(--app-palette-background-paper);
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: 1.4;
+  text-align: left;
+}
+
+/* A subagent and, while it runs, the button that stops it beside it. */
+.agent-map__row {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-4);
+  min-width: 0;
+}
+
+.agent-map__row > .agent-map__node {
+  flex: 1;
+}
+
+.agent-map .agent-map__node:hover {
+  border-color: var(--app-palette-primary-main);
+}
+
+.agent-map .agent-map__node:focus-visible {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: 2px;
+}
+
+.agent-map__node-head {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-8);
+  min-width: 0;
+}
+
+.agent-map__node-label,
+.agent-map__node-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-map__node-label {
+  font-weight: 600;
+}
+
+.agent-map__node-meta {
+  /* Under the label, clear of the dot. */
+  padding-left: calc(var(--app-space-8) * 2);
+  color: var(--app-palette-text-secondary);
+  font-size: 0.85em;
+}
+
+.agent-map__dot {
+  flex: 0 0 auto;
+  width: var(--app-space-8);
+  height: var(--app-space-8);
+  border-radius: var(--app-radius-pill);
+  background: var(--app-palette-text-disabled);
+}
+
+.agent-map__dot--run {
+  background: var(--app-palette-success-main);
+  animation: agent-map-pulse 1.1s ease-in-out infinite;
+}
+
+.agent-map__dot--err {
+  background: var(--app-palette-error-main);
+}
+
+@keyframes agent-map-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ---- the lines between an agent and the subagents it sent off ---- */
+
+.agent-map__children {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-8);
+  margin: 0;
+  padding: 0 0 0 var(--agent-map-indent);
+  list-style: none;
+}
+
+.agent-map__children > li {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-8);
+  min-width: 0;
+}
+
+/* The rail down to a node, and on past it to the next one. */
+.agent-map__children > li::before {
+  content: "";
+  position: absolute;
+  top: calc(-1 * var(--app-space-8));
+  left: calc(var(--agent-map-indent) * -0.6);
+  height: calc(var(--app-space-8) + var(--agent-map-stub));
+  border-left: 1px solid var(--app-palette-divider);
+}
+
+.agent-map__children > li:not(:last-child)::before {
+  height: calc(100% + var(--app-space-8));
+}
+
+/* The stub from the rail to the node. */
+.agent-map__children > li::after {
+  content: "";
+  position: absolute;
+  top: var(--agent-map-stub);
+  left: calc(var(--agent-map-indent) * -0.6);
+  width: calc(var(--agent-map-indent) * 0.6);
+  border-top: 1px solid var(--app-palette-divider);
+}
+
+/* A wide card puts the subagents beside the agent: the first one's stub
+   reaches back to the agent, and the rail runs down from it. */
+@container (min-width: 520px) {
+  .agent-map__tree {
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 0;
+  }
+
+  .agent-map .agent-map__tree > .agent-map__node--main {
+    flex: 0 0 40%;
+    width: auto;
+  }
+
+  .agent-map__tree > .agent-map__children {
+    --agent-map-indent: var(--app-space-32);
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .agent-map__tree > .agent-map__children > li:first-child::before {
+    top: var(--agent-map-stub);
+    height: calc(100% + var(--app-space-8) - var(--agent-map-stub));
+  }
+
+  .agent-map__tree > .agent-map__children > li:only-child::before {
+    display: none;
+  }
+
+  .agent-map__tree > .agent-map__children > li:first-child::after {
+    left: calc(-1 * var(--agent-map-indent));
+    width: var(--agent-map-indent);
+  }
+}
+
+/* ---- one subagent ---- */
+
+.agent-map .agent-map__back {
+  align-self: flex-start;
+}
+
+.agent-map__heading {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-8);
+  min-width: 0;
+}
+
+/* Stopping a subagent that runs: at the far end of its name. */
+.agent-map .agent-map__stop {
+  flex-shrink: 0;
+  margin-inline-start: auto;
+}
+
+/* Under the name: status, kind, model; who started it; time and tokens. */
+.agent-map__about {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-2);
+  font-size: var(--agent-map-small);
+}
+
+/* What it said last, cut to a few lines; all of it is under Messages. */
+.agent-map__latest {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  white-space: pre-wrap;
+}
+
+.agent-map__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-4);
+  min-width: 0;
+}
+
+/* A <details> is laid out as a block: older browsers ignore flex on it. */
+.agent-map__fold {
+  min-width: 0;
+}
+
+/* Long text it was given or handed back: the prompt, its messages, its
+   result. It reads under the headings rather than beside them. */
+.agent-map__quiet,
+.agent-map__quiet .assistant-markdown,
+.agent-map__quiet .assistant-markdown strong,
+.agent-map__quiet .assistant-markdown :is(h1, h2, h3, h4, h5, h6) {
+  color: var(--app-palette-text-secondary);
+}
+
+.agent-map__quiet {
+  font-size: var(--agent-map-small);
+}
+
+.agent-map__fold > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.agent-map__fold[open] > summary {
+  margin-bottom: var(--app-space-4);
+}
+
+.agent-map__calls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* A call: the tool, what it worked on, and a note at the far end. */
+.agent-map__call {
+  display: flex;
+  align-items: baseline;
+  gap: var(--app-space-8);
+  min-width: 0;
+}
+
+.agent-map__call-tool {
+  flex: 0 0 auto;
+}
+
+.agent-map__call-detail {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--app-palette-text-secondary);
+  font-size: var(--agent-map-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-map__call-detail--code {
+  color: var(--app-palette-info-main);
+  font-family: var(--app-font-mono);
+  font-size: 0.85em;
+}
+
+.agent-map__call-note {
+  flex: 0 0 auto;
+  color: var(--app-palette-text-secondary);
+}
+
+.agent-map__call--run .agent-map__call-note {
+  color: var(--app-palette-primary-main);
+}
+
+.agent-map__call--err .agent-map__call-tool,
+.agent-map__call--err .agent-map__call-note {
+  color: var(--app-palette-error-main);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-map__dot--run {
+    animation: none;
+  }
+}

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 func TestRunHealth(t *testing.T) {
@@ -56,7 +57,7 @@ func TestRunDegradedAndResync(t *testing.T) {
 		return nil
 	}
 	var resynced []string
-	resyncPool = func(_ context.Context, uuid string) error {
+	resyncPool = func(_ context.Context, uuid string, _ func(float64)) error {
 		resynced = append(resynced, uuid)
 		return nil
 	}
@@ -72,9 +73,17 @@ func TestRunDegradedAndResync(t *testing.T) {
 	if code := runCLI(ctx, []string{"resync", "uuid-1"}, io.Discard, io.Discard); code != 0 || !reflect.DeepEqual(resynced, []string{"uuid-1"}) {
 		t.Fatalf("resync = %d, resynced %v", code, resynced)
 	}
-	resyncPool = func(context.Context, string) error { return errors.New("still missing a disk") }
+	resyncPool = func(context.Context, string, func(float64)) error { return errors.New("still missing a disk") }
 	if code := runCLI(ctx, []string{"resync", "uuid-1"}, io.Discard, io.Discard); code != 1 {
 		t.Fatalf("failed resync = %d, want 1", code)
+	}
+	// The pool's own alerts report a failed resync, so its unit's end hook
+	// raises no run alert.
+	resyncPool = func(context.Context, string, func(float64)) error {
+		return scheduledrun.Reported(errors.New("the scrub failed"))
+	}
+	if code := runCLI(ctx, []string{"resync", "uuid-1"}, io.Discard, io.Discard); code != scheduledrun.ExitReported {
+		t.Fatalf("reported failed resync = %d, want %d", code, scheduledrun.ExitReported)
 	}
 }
 
@@ -86,5 +95,22 @@ func TestRunCLIDispatch(t *testing.T) {
 	}
 	if code := runCLI(context.Background(), []string{"help"}, io.Discard, io.Discard); code != 0 {
 		t.Errorf("help = %d, want 0", code)
+	}
+}
+
+func TestResyncReportsTheScrubPercent(t *testing.T) {
+	oldResync := resyncPool
+	t.Cleanup(func() { resyncPool = oldResync })
+	resyncPool = func(_ context.Context, _ string, report func(float64)) error {
+		report(42.6)
+		return nil
+	}
+	got := stubReportProgress(t)
+
+	if code := runCLI(context.Background(), []string{"resync", "uuid-1"}, io.Discard, io.Discard); code != 0 {
+		t.Fatalf("resync = %d, want 0", code)
+	}
+	if want := []string{"42 Scrubbing"}; !reflect.DeepEqual(*got, want) {
+		t.Fatalf("reported %q, want %q", *got, want)
 	}
 }

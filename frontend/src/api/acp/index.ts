@@ -3,6 +3,7 @@ export {
   type AssistantAgentId,
   type AssistantConnection,
   type AssistantHandlers,
+  type AssistantOpen,
   type AuthStatus,
   connectAssistant,
   isAssistantAgentId,
@@ -11,4 +12,16 @@ export {
   type SteerOutcome,
   textBlock,
 } from "./connection";
-export type { AssistantExit, AssistantReady } from "./transport";
+export {
+  createPaneClient,
+  type PaneClient,
+  type PaneNode,
+  type PaneView,
+} from "./panes";
+export type {
+  AssistantExit,
+  AssistantReady,
+  PaneLine,
+  PaneRequest,
+  PaneSend,
+} from "./transport";

@@ -2,53 +2,112 @@ package docker
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
-// fakeDockerUnits stands in for systemd and the Docker API; startState is what
-// docker.service settles on after a start job.
+// fakeDockerUnits stands in for systemd and the Docker API. After a restart
+// request docker.service reports its old state and invocation for stalePolls
+// polls, then settles on restartState with a new invocation.
 type fakeDockerUnits struct {
-	states     map[string]string
-	startState string
-	stopFailed int
-	calls      []string
+	state        string
+	restartState string
+	stalePolls   int
+	stopFailed   int
+	restarted    bool
+	polls        int
+	runs         int
+	prevRuns     int
+	calls        []string
+	// onContainersStopped runs once the containers are stopped.
+	onContainersStopped func()
+	path                string
 }
 
-func stubDockerUnits(t *testing.T, service, startState string) *fakeDockerUnits {
+func (f *fakeDockerUnits) settled() bool { return f.restarted && f.polls > f.stalePolls }
+
+func (f *fakeDockerUnits) activeState(ctx context.Context, _ string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if f.restarted {
+		f.polls++
+	}
+	if f.settled() {
+		return f.restartState, nil
+	}
+	return f.state, nil
+}
+
+func (f *fakeDockerUnits) invocationID(ctx context.Context, _ string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if f.settled() {
+		return fmt.Sprint("run", f.runs), nil
+	}
+	return fmt.Sprint("run", f.prevRuns), nil
+}
+
+func (f *fakeDockerUnits) resetFailed(ctx context.Context, _ string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if _, err := os.Stat(f.path); err == nil {
+		f.calls = append(f.calls, "write daemon.json")
+	}
+	f.calls = append(f.calls, "reset-failed")
+	if f.state == "failed" {
+		f.state = "inactive"
+	}
+	return nil
+}
+
+func (f *fakeDockerUnits) restart(ctx context.Context, name string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	f.calls = append(f.calls, "restart "+name)
+	f.restarted = true
+	f.polls = 0
+	f.prevRuns = f.runs
+	f.runs++
+	return nil
+}
+
+func (f *fakeDockerUnits) stopContainers(context.Context) (apischema.DockerStoppedFailedResponse, error) {
+	f.calls = append(f.calls, "stop containers")
+	if f.onContainersStopped != nil {
+		f.onContainersStopped()
+	}
+	return apischema.DockerStoppedFailedResponse{Stopped: 2, Failed: f.stopFailed}, nil
+}
+
+func (f *fakeDockerUnits) daemonReload(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	f.calls = append(f.calls, "write drop-in")
+	return nil
+}
+
+func stubDockerUnits(t *testing.T, service, restartState string) *fakeDockerUnits {
 	t.Helper()
-	f := &fakeDockerUnits{states: map[string]string{"docker.service": service, "docker.socket": "active"}, startState: startState}
-	origState, origStop, origStart, origReset, origContainers, origReload, origPoll :=
-		systemdActiveState, systemdStopUnit, systemdStartUnit, systemdResetFailedUnit, stopAllRunningContainers, systemdDaemonReload, dockerUnitPollInterval
-	systemdActiveState = func(_ context.Context, name string) (string, error) { return f.states[name], nil }
-	systemdStopUnit = func(_ context.Context, name string) error {
-		f.calls = append(f.calls, "stop "+name)
-		f.states[name] = "inactive"
-		return nil
-	}
-	systemdStartUnit = func(_ context.Context, name string) error {
-		f.calls = append(f.calls, "start "+name)
-		f.states[name] = "active"
-		if name == "docker.service" {
-			f.states[name] = f.startState
-		}
-		return nil
-	}
-	systemdResetFailedUnit = func(context.Context, string) error { return nil }
-	stopAllRunningContainers = func(context.Context) (apischema.DockerStoppedFailedResponse, error) {
-		f.calls = append(f.calls, "stop containers")
-		return apischema.DockerStoppedFailedResponse{Stopped: 2, Failed: f.stopFailed}, nil
-	}
-	systemdDaemonReload = func(context.Context) error { return nil }
-	dockerUnitPollInterval = 0
+	f := &fakeDockerUnits{state: service, restartState: restartState}
+	origState, origInvocation, origReset, origRestart, origContainers, origReload, origPoll, origTimeout :=
+		systemdActiveState, systemdInvocationID, systemdResetFailedUnit, systemdRestartUnit, stopAllRunningContainers, systemdDaemonReload, dockerUnitPollInterval, dockerUnitWaitTimeout
+	systemdActiveState, systemdInvocationID, systemdResetFailedUnit, systemdRestartUnit = f.activeState, f.invocationID, f.resetFailed, f.restart
+	stopAllRunningContainers, systemdDaemonReload, dockerUnitPollInterval = f.stopContainers, f.daemonReload, 0
 	t.Cleanup(func() {
-		systemdActiveState, systemdStopUnit, systemdStartUnit, systemdResetFailedUnit, stopAllRunningContainers, systemdDaemonReload, dockerUnitPollInterval =
-			origState, origStop, origStart, origReset, origContainers, origReload, origPoll
+		systemdActiveState, systemdInvocationID, systemdResetFailedUnit, systemdRestartUnit, stopAllRunningContainers, systemdDaemonReload, dockerUnitPollInterval, dockerUnitWaitTimeout =
+			origState, origInvocation, origReset, origRestart, origContainers, origReload, origPoll, origTimeout
 	})
 	return f
 }
@@ -61,9 +120,10 @@ func storagePaths(t *testing.T) (string, string) {
 
 func noReport(string, string) {}
 
-func TestApplyDaemonStorageStopsDockerAroundTheSwitch(t *testing.T) {
+func TestApplyDaemonStorageRestartsDockerOnce(t *testing.T) {
 	units := stubDockerUnits(t, "active", "active")
 	path, dropIn := storagePaths(t)
+	units.path = path
 
 	result, err := applyDaemonStorage(context.Background(), noReport, path, dropIn, apischema.DockerDaemonConfig{
 		DataRoot: "/mnt/pool/docker/", ImageStore: "classic", StorageDriver: "overlay2", UserlandProxy: true,
@@ -71,7 +131,7 @@ func TestApplyDaemonStorageStopsDockerAroundTheSwitch(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "/mnt/pool/docker", result.Config.DataRoot)
 	require.False(t, result.RestartRequired)
-	require.Equal(t, []string{"stop containers", "stop docker.socket", "stop docker.service", "start docker.socket", "start docker.service"}, units.calls)
+	require.Equal(t, []string{"stop containers", "write drop-in", "write daemon.json", "reset-failed", "restart docker.service"}, units.calls)
 	require.Equal(t, map[string]any{
 		"data-root": "/mnt/pool/docker", "features": map[string]any{"containerd-snapshotter": false}, "storage-driver": "overlay2",
 	}, readJSON(t, path))
@@ -95,12 +155,58 @@ func TestApplyDaemonStorageLeavesConfigWhenContainersDoNotStop(t *testing.T) {
 	require.NoFileExists(t, path)
 }
 
-func TestApplyDaemonStorageRecoversFailedDaemonAndReportsFailedStart(t *testing.T) {
+func TestApplyDaemonStorageWaitsForANewInvocation(t *testing.T) {
+	units := stubDockerUnits(t, "active", "active")
+	units.stalePolls = 2
+	path, dropIn := storagePaths(t)
+
+	_, err := applyDaemonStorage(context.Background(), noReport, path, dropIn, apischema.DockerDaemonConfig{StorageDriver: "overlay2", UserlandProxy: true})
+	require.NoError(t, err)
+	require.Equal(t, 3, units.polls, "active on the old invocation does not end the wait")
+}
+
+func TestApplyDaemonStorageWaitIsBounded(t *testing.T) {
+	units := stubDockerUnits(t, "active", "active")
+	units.stalePolls = 1 << 30
+	dockerUnitWaitTimeout = 20 * time.Millisecond
+	dockerUnitPollInterval = time.Millisecond
+	path, dropIn := storagePaths(t)
+
+	_, err := applyDaemonStorage(context.Background(), noReport, path, dropIn, apischema.DockerDaemonConfig{StorageDriver: "overlay2", UserlandProxy: true})
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.ErrorContains(t, err, "wait for docker.service restart")
+}
+
+func TestApplyDaemonStorageReportsAFailedStart(t *testing.T) {
 	units := stubDockerUnits(t, "failed", "failed")
 	path, dropIn := storagePaths(t)
 
 	_, err := applyDaemonStorage(context.Background(), noReport, path, dropIn, apischema.DockerDaemonConfig{StorageDriver: "overlay2", UserlandProxy: true})
 	require.ErrorContains(t, err, "docker failed to start")
 	require.NotContains(t, units.calls, "stop containers", "a daemon that is down has no containers to stop")
+	require.Contains(t, units.calls, "restart docker.service", "the restart also starts a failed daemon")
 	require.Equal(t, map[string]any{"storage-driver": "overlay2"}, readJSON(t, path))
+}
+
+func TestApplyDaemonStorageFinishesAfterCancel(t *testing.T) {
+	units := stubDockerUnits(t, "active", "active")
+	path, dropIn := storagePaths(t)
+	units.path = path
+	ctx, cancel := context.WithCancel(context.Background())
+	units.onContainersStopped = cancel
+
+	_, err := applyDaemonStorage(ctx, noReport, path, dropIn, apischema.DockerDaemonConfig{DataRoot: "/mnt/pool/docker", UserlandProxy: true})
+	require.NoError(t, err)
+	require.Equal(t, []string{"stop containers", "write drop-in", "write daemon.json", "reset-failed", "restart docker.service"}, units.calls)
+	require.FileExists(t, dropIn)
+}
+
+func TestApplyDaemonStorageStartsAStoppedDocker(t *testing.T) {
+	units := stubDockerUnits(t, "inactive", "active")
+	path, dropIn := storagePaths(t)
+
+	_, err := applyDaemonStorage(context.Background(), noReport, path, dropIn, apischema.DockerDaemonConfig{StorageDriver: "overlay2", UserlandProxy: true})
+	require.NoError(t, err)
+	require.NotContains(t, units.calls, "stop containers")
+	require.Contains(t, units.calls, "restart docker.service")
 }

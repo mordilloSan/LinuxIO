@@ -41,7 +41,7 @@ func (e *commandExecutor) reloadFromFile() error {
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
-	return e.app.ReloadRuntime(runOptions(cfg, "loaded"))
+	return e.app.ReloadRuntime(runtimeSettings(cfg, "loaded"))
 }
 
 func (e *commandExecutor) ExecuteCommand(ctx context.Context, req monitoringapi.CommandRequest) httpapi.CommandResult {
@@ -74,7 +74,7 @@ func (e *commandExecutor) ExecuteCommand(ctx context.Context, req monitoringapi.
 		}
 		return commandOK(req, monitoringapi.MonitoringSmartRefreshResult{Refreshed: true}, false)
 	case monitoringapi.CommandDBCheck:
-		if err := e.app.CheckDatabase(); err != nil {
+		if err := e.app.CheckDatabase(ctx); err != nil {
 			return commandError(req, http.StatusInternalServerError, "db_check_failed", err.Error())
 		}
 		return commandOK(req, monitoringapi.MonitoringDatabaseResult{Path: e.app.StatusMeta().DBPath}, false)
@@ -134,12 +134,11 @@ func (e *commandExecutor) handleConfigSet(_ context.Context, req monitoringapi.C
 
 func applyConfigSetParams(cfg *config.Config, params monitoringapi.MonitoringConfigPatch) (bool, error) {
 	restartRequired := false
-	if err := errors.Join(
-		setDuration(&cfg.Collector.Interval, params.CollectorInterval),
-		setDuration(&cfg.Collector.SmartRefreshInterval, params.SmartRefreshInterval),
-		setDuration(&cfg.Collector.DiskUsageCache, params.DiskUsageCache),
-		setDuration(&cfg.History.Retention, params.HistoryRetention),
-	); err != nil {
+	durationErrs := make([]error, 0, len(config.DurationSettings))
+	for _, setting := range config.DurationSettings {
+		durationErrs = append(durationErrs, setDuration(setting.Field(cfg), setting.Patch(&params)))
+	}
+	if err := errors.Join(durationErrs...); err != nil {
 		return false, err
 	}
 	if params.History != nil {
@@ -190,7 +189,7 @@ func setDuration(target *config.Duration, raw *string) error {
 }
 
 func (e *commandExecutor) reloadRuntimeConfig(req monitoringapi.CommandRequest, cfg config.Config, source string) httpapi.CommandResult {
-	if err := e.app.ReloadRuntime(runOptions(cfg, source)); err != nil {
+	if err := e.app.ReloadRuntime(runtimeSettings(cfg, source)); err != nil {
 		return commandError(req, http.StatusBadRequest, "reload_failed", err.Error())
 	}
 	return commandOK(req, e.app.StatusMeta(), listenersRestartRequired(e.app.Listeners(), cfg))

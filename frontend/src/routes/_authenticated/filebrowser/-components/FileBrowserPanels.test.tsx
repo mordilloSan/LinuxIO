@@ -9,6 +9,7 @@ import {
   FileBrowserDeleteDialog,
   FileBrowserEditorDialog,
   FileBrowserSaveConflictDialog,
+  FileBrowserUploadDialog,
 } from "./FileBrowserPanels";
 
 vi.mock("./FileBrowserHeader", () => ({
@@ -163,6 +164,54 @@ describe("file browser editor dialogs", () => {
       "/srv/a.txt": "keep",
       "/srv/b.txt": "keep",
     });
+  });
+});
+
+describe("file browser upload dialog", () => {
+  const ownershipBox = "Make me the owner of new files and folders";
+  const renderUpload = (privileged: boolean, ownUploads = false) => {
+    const onOwnUploadsChange = vi.fn();
+    render(
+      <FileBrowserUploadDialog
+        fileInputRef={createRef<HTMLInputElement>()}
+        folderInputRef={createRef<HTMLInputElement>()}
+        isUploadProcessing={false}
+        normalizedPath="/home/alice"
+        onChangeUploadInput={vi.fn()}
+        onClearUploadSelection={vi.fn()}
+        onClose={vi.fn()}
+        onOwnUploadsChange={onOwnUploadsChange}
+        onPickFiles={vi.fn()}
+        onPickFolder={vi.fn()}
+        onStartUpload={vi.fn()}
+        open
+        ownUploads={ownUploads}
+        uploadEntries={[]}
+        uploadSummary={{ files: 0, folders: 0 }}
+      />,
+      { auth: { privileged } },
+    );
+    return onOwnUploadsChange;
+  };
+
+  it("offers ownership only to a privileged session, unticked", () => {
+    renderUpload(true);
+    expect(
+      screen.getByRole("checkbox", { name: ownershipBox }),
+    ).not.toBeChecked();
+  });
+
+  it("hides ownership from an unprivileged session", () => {
+    renderUpload(false);
+    expect(
+      screen.queryByRole("checkbox", { name: ownershipBox }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("reports the ownership choice", () => {
+    const onOwnUploadsChange = renderUpload(true);
+    fireEvent.click(screen.getByRole("checkbox", { name: ownershipBox }));
+    expect(onOwnUploadsChange).toHaveBeenCalledWith(true);
   });
 });
 

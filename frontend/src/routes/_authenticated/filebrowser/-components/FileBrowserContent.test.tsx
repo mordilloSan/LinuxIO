@@ -85,7 +85,9 @@ const contentProps: FileBrowserContentProps = {
 describe("FileBrowserContent render boundaries", () => {
   it("keeps the header stable for data-only renders and path navigation", () => {
     headerSearchRender.mockClear();
-    const { rerender } = render(<FileBrowserContent {...contentProps} />);
+    const { rerender } = render(<FileBrowserContent {...contentProps} />, {
+      auth: { privileged: true },
+    });
 
     expect(headerSearchRender).toHaveBeenCalledTimes(1);
 

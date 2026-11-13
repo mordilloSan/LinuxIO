@@ -1,5 +1,5 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { Suspense, useCallback, useState } from "react";
+import { Suspense, useState } from "react";
 
 import { linuxio, type MonitoringLive, type SensorGroup } from "@/api";
 import { isPrimarySensorReading } from "@/components/cards/sensorGroupHelpers";
@@ -17,7 +17,7 @@ import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import SectionHeader from "@/components/ui/SectionHeader";
 import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
-import { useConfigValue } from "@/hooks/useConfig";
+import { useSectionToggles } from "@/hooks/useSectionToggles";
 import HardwareTableCard from "@/routes/_authenticated/hardware/-components/HardwareTableCard";
 import { SensorEmptyCard } from "@/routes/_authenticated/hardware/-components/SensorEmptyCard";
 import SensorGroupCard from "@/routes/_authenticated/hardware/-components/SensorGroupCard";
@@ -34,6 +34,7 @@ import {
   NetworkHistoryCard,
 } from "./HardwareHistoryCards";
 import { hardwareStableQueryOptions } from "./hardwareQueryOptions";
+import { HARDWARE_SECTIONS } from "./hardwareSections";
 
 export const selectVisibleSensorGroupIdentities = (
   groups: SensorGroup[] | null | undefined,
@@ -255,36 +256,19 @@ const HardwarePage = () => {
     surface: "hardware.systemInfo",
   });
 
-  // ── section collapse state ──
-  const [sections, setHwSections] = useConfigValue("hardwareSections");
-  const toggleSection = useCallback(
-    (
-      key:
-        | "overview"
-        | "hardware"
-        | "gpu"
-        | "sensors"
-        | "systemInfo"
-        | "pciDevices"
-        | "memoryModules",
-    ) =>
-      setHwSections((prev) => {
-        return { ...prev, [key]: !prev[key] };
-      }),
-    [setHwSections],
-  );
+  const sections = useSectionToggles(HARDWARE_SECTIONS);
 
   return (
     <div>
       {/* ── System Information ──────────────────────────────────────────── */}
       <SectionHeader
         controlsId="hardware-system-info-panel"
-        expanded={sections.systemInfo}
-        onToggle={() => toggleSection("systemInfo")}
+        expanded={sections.isOpen("systemInfo")}
+        onToggle={() => sections.toggle("systemInfo")}
         title="System Information"
       />
       <div id="hardware-system-info-panel">
-        <AppCollapse in={sections.systemInfo} unmountOnExit>
+        <AppCollapse in={sections.isOpen("systemInfo")} unmountOnExit>
           <ReorderableCardGrid
             fillAvailable={false}
             getId={getSystemInfoCardId}
@@ -304,12 +288,12 @@ const HardwarePage = () => {
       {/* ── Hardware Cards ──────────────────────────────────────────────── */}
       <SectionHeader
         controlsId="hardware-hardware-panel"
-        expanded={sections.hardware}
-        onToggle={() => toggleSection("hardware")}
+        expanded={sections.isOpen("hardware")}
+        onToggle={() => sections.toggle("hardware")}
         title="Hardware"
       />
       <div id="hardware-hardware-panel">
-        <AppCollapse in={sections.hardware} unmountOnExit>
+        <AppCollapse in={sections.isOpen("hardware")} unmountOnExit>
           <HistoryHoverProvider>
             <AppGrid
               alignItems="stretch"
@@ -357,12 +341,12 @@ const HardwarePage = () => {
       {/* ── Sensor Readings ────────────────────────────────────────────── */}
       <SectionHeader
         controlsId="hardware-sensors-panel"
-        expanded={sections.sensors}
-        onToggle={() => toggleSection("sensors")}
+        expanded={sections.isOpen("sensors")}
+        onToggle={() => sections.toggle("sensors")}
         title="Sensors"
       />
       <div id="hardware-sensors-panel">
-        <AppCollapse in={sections.sensors} unmountOnExit>
+        <AppCollapse in={sections.isOpen("sensors")} unmountOnExit>
           <ErrorBoundary>
             <Suspense fallback={<WidgetLoader minHeight={180} />}>
               <SensorReadings />
@@ -374,12 +358,12 @@ const HardwarePage = () => {
       {/* ── Memory Modules ───────────────────────────────────────────────── */}
       <SectionHeader
         controlsId="hardware-memory-panel"
-        expanded={sections.memoryModules}
-        onToggle={() => toggleSection("memoryModules")}
+        expanded={sections.isOpen("memoryModules")}
+        onToggle={() => sections.toggle("memoryModules")}
         title="Memory"
       />
       <div id="hardware-memory-panel">
-        <AppCollapse in={sections.memoryModules} unmountOnExit>
+        <AppCollapse in={sections.isOpen("memoryModules")} unmountOnExit>
           <ErrorBoundary>
             <Suspense fallback={<WidgetLoader minHeight={280} />}>
               <MemoryModulesTable />
@@ -391,12 +375,12 @@ const HardwarePage = () => {
       {/* ── PCI Devices ──────────────────────────────────────────────────── */}
       <SectionHeader
         controlsId="hardware-pci-panel"
-        expanded={sections.pciDevices}
-        onToggle={() => toggleSection("pciDevices")}
+        expanded={sections.isOpen("pciDevices")}
+        onToggle={() => sections.toggle("pciDevices")}
         title="PCI Devices"
       />
       <div id="hardware-pci-panel">
-        <AppCollapse in={sections.pciDevices} unmountOnExit>
+        <AppCollapse in={sections.isOpen("pciDevices")} unmountOnExit>
           <ErrorBoundary>
             <Suspense fallback={<WidgetLoader minHeight={420} />}>
               <PciDevicesTable />

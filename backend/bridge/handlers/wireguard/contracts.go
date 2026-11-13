@@ -46,3 +46,13 @@ func nonNil(values []string) []string {
 	}
 	return values
 }
+
+// hooksToAPI lists every hook kind, so the response carries an empty list for
+// a kind the interface does not use.
+func hooksToAPI(hooks apischema.WireGuardHooks) apischema.WireGuardHooks {
+	result := make(apischema.WireGuardHooks, len(apischema.WireGuardHookKinds))
+	for _, kind := range apischema.WireGuardHookKinds {
+		result[kind] = nonNil(hooks[kind])
+	}
+	return result
+}

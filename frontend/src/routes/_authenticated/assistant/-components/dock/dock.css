@@ -1,0 +1,307 @@
+/* The chat's left edge: a column of tabs flush against it, each opening one
+   card beside it (the chats, a plugin's pane). The right edge belongs to the
+   transcript's scrollbar. The cards float in the margin, so the
+   conversation keeps its centred column. They join the floating-panel family
+   (the navbar's panels): same corner, same shadow with the lit top edge, over
+   a face the transcript shows through when a card overlaps it. */
+
+.assistant-dock {
+  /* dockLayout.ts mirrors these two for the code that sizes the cards. */
+  --assistant-dock-tab: var(--app-space-32);
+  --assistant-dock-gap: var(--app-space-8);
+  --assistant-dock-face: color-mix(
+    in srgb,
+    var(--app-palette-background-paper) 84%,
+    transparent
+  );
+  position: absolute;
+  top: var(--app-space-8);
+  /* Out through the page's own inline padding (MainLayout hands it down),
+     so the tabs touch the edge of the screen and not the chat's column. */
+  left: calc(-1 * var(--page-inset-inline, 0px));
+  bottom: var(--app-space-8);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-8);
+  width: var(--assistant-dock-tab);
+  /* Only the tabs and cards take the pointer; the chat stays reachable. */
+  pointer-events: none;
+}
+
+/* The tabs, cards' rows and welcome cards are shared buttons (AppButton),
+   which bring the focus ring and disabled state; the dock gives them shape. */
+.assistant-dock .assistant-dock-tab {
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: var(--app-space-8);
+  width: 100%;
+  min-width: 0;
+  padding: var(--app-space-12) 0;
+  /* Flush against the edge: no border or corners on that side. */
+  border: 1px solid var(--app-palette-divider);
+  border-left: 0;
+  border-radius: 0 var(--app-radius-lg) var(--app-radius-lg) 0;
+  background: var(--assistant-dock-face);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
+  backdrop-filter: blur(16px) saturate(1.3);
+  box-shadow: var(--app-floating-panel-shadow);
+  color: var(--app-palette-text-secondary);
+  font-size: calc(var(--app-font-size-body) * 0.92);
+  font-weight: 600;
+  line-height: 1.2;
+  pointer-events: auto;
+}
+
+.assistant-dock .assistant-dock-tab:hover:not(:disabled) {
+  border-color: var(--app-palette-primary-main);
+  background: var(--assistant-dock-face);
+  color: var(--app-palette-text-primary);
+}
+
+.assistant-dock .assistant-dock-tab--open,
+.assistant-dock .assistant-dock-tab--open:hover:not(:disabled) {
+  border-color: var(--app-palette-primary-main);
+  background: color-mix(
+    in srgb,
+    var(--app-palette-primary-main) 18%,
+    var(--app-palette-background-paper)
+  );
+  color: var(--app-palette-text-primary);
+}
+
+.assistant-dock-tab__label {
+  writing-mode: vertical-rl;
+  white-space: nowrap;
+}
+
+/* The dot says the pane is live: its ring ripples once per redraw, and the
+   dot pulses while the agent works. */
+.assistant-dock-tab__live {
+  position: relative;
+  flex: 0 0 auto;
+  width: var(--app-space-8);
+  height: var(--app-space-8);
+  border-radius: var(--app-radius-pill);
+  background: var(--app-palette-primary-main);
+}
+
+.assistant-dock-tab__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--app-radius-pill);
+  background: var(--app-palette-primary-main);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.assistant-dock-tab--running .assistant-dock-tab__live {
+  animation: assistant-dock-pulse 1.1s ease-in-out infinite;
+}
+
+.assistant-dock-tab--quiet .assistant-dock-tab__live {
+  background: var(--app-palette-text-disabled);
+}
+
+@keyframes assistant-dock-pulse {
+  50% {
+    opacity: 0.35;
+    transform: scale(0.75);
+  }
+}
+
+/* Lit from DockPanel.tsx when a turn ends while the card is closed. */
+.assistant-dock-tab__glow {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--app-palette-primary-main);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.assistant-dock-card {
+  position: absolute;
+  top: 0;
+  left: calc(100% + var(--assistant-dock-gap));
+  display: flex;
+  flex-direction: column;
+  max-height: 100%;
+  border: 1px solid var(--app-palette-divider);
+  border-radius: var(--app-floating-panel-radius);
+  background: var(--assistant-dock-face);
+  -webkit-backdrop-filter: blur(16px) saturate(1.3);
+  backdrop-filter: blur(16px) saturate(1.3);
+  box-shadow: var(--app-floating-panel-shadow);
+  pointer-events: auto;
+  transform-origin: top left;
+  transition:
+    opacity var(--app-transition-duration-standard)
+      var(--app-easing-decelerate),
+    transform var(--app-transition-duration-standard)
+      var(--app-easing-decelerate),
+    visibility 0s;
+}
+
+/* Closed, the card slides toward its tab and leaves the page to the chat. It
+   stays mounted so closing can be animated; DockPanel and ChatsCard also mark
+   it inert. */
+.assistant-dock-card--closed {
+  opacity: 0;
+  transform: translateX(calc(-1 * var(--app-space-24))) scale(0.96);
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--app-transition-duration-standard)
+      var(--app-easing-decelerate),
+    transform var(--app-transition-duration-standard)
+      var(--app-easing-decelerate),
+    visibility 0s linear var(--app-transition-duration-standard);
+}
+
+.assistant-dock-card__header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--app-space-8);
+  padding: var(--app-space-6) var(--app-space-6) var(--app-space-6)
+    var(--app-space-16);
+}
+
+.assistant-dock-card__title {
+  flex: 1;
+  min-width: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assistant-dock-card,
+  .assistant-dock-card--closed {
+    transition: none;
+  }
+
+  .assistant-dock-tab--running .assistant-dock-tab__live {
+    animation: none;
+  }
+}
+
+/* The chats card: a search field over a list that scrolls inside the card,
+   so the card is only as tall as its chats. */
+.assistant-chats {
+  width: 19rem;
+}
+
+.assistant-chats__search {
+  flex: 0 0 auto;
+  padding: 0 var(--app-space-12) var(--app-space-8);
+}
+
+.assistant-chats__list {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--app-space-8);
+  min-height: 0;
+  max-height: 22rem;
+  padding: 0 var(--app-space-8) var(--app-space-12);
+  overflow: auto;
+  font-size: var(--app-font-size-body);
+}
+
+.assistant-chats__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-2);
+}
+
+.assistant-chats__day {
+  margin: 0;
+  padding: var(--app-space-4) var(--app-space-8);
+  color: var(--app-palette-text-secondary);
+  font-size: calc(var(--app-font-size-body) * 0.85);
+  font-weight: 600;
+}
+
+.assistant-chats__row {
+  display: flex;
+  align-items: center;
+  border-radius: var(--app-radius-md);
+}
+
+.assistant-chats__row:hover,
+.assistant-chats__row:has([aria-current]) {
+  background: color-mix(
+    in srgb,
+    var(--app-palette-primary-main) 14%,
+    transparent
+  );
+}
+
+.assistant-chats .assistant-chats__open {
+  flex: 1;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: var(--app-space-8);
+  min-width: 0;
+  padding: var(--app-space-8);
+  border-radius: var(--app-radius-md);
+  color: var(--app-palette-text-primary);
+  font-size: inherit;
+  font-weight: 400;
+  line-height: inherit;
+  text-align: left;
+}
+
+/* The row carries the hover; the open chat stays readable during a turn. */
+.assistant-chats .assistant-chats__open:hover {
+  background: none;
+}
+
+.assistant-chats .assistant-chats__open[aria-current] {
+  color: var(--app-palette-text-primary);
+  font-weight: 600;
+  opacity: 1;
+}
+
+.assistant-chats__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assistant-chats__age {
+  flex: 0 0 auto;
+  color: var(--app-palette-text-secondary);
+  font-size: calc(var(--app-font-size-body) * 0.85);
+}
+
+/* Delete shows on the row under the pointer or holding the focus. */
+.assistant-chats__delete {
+  flex: 0 0 auto;
+  margin-right: var(--app-space-4);
+  opacity: 0;
+}
+
+.assistant-chats__row:hover .assistant-chats__delete,
+.assistant-chats__row:focus-within .assistant-chats__delete {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .assistant-chats__delete {
+    opacity: 1;
+  }
+}
+
+.assistant-chats__none {
+  padding: var(--app-space-8);
+}
+
+/* A card that arrives open fades in from its tab. */
+@starting-style {
+  .assistant-dock-card:not(.assistant-dock-card--closed) {
+    opacity: 0;
+    transform: translateX(calc(-1 * var(--app-space-24))) scale(0.96);
+  }
+}

@@ -72,16 +72,18 @@ func Build(data *systemmodel.CombinedData, capturedAt time.Time, threads int, te
 			Temperatures:   map[string]float64{},
 		},
 		Memory: monitoringapi.LiveMemory{
-			TotalBytes:     stats.MemoryBytes.Total,
-			UsedBytes:      stats.MemoryBytes.Used,
-			AvailableBytes: stats.MemoryBytes.Available,
-			FreeBytes:      stats.MemoryBytes.Free,
-			CachedBytes:    stats.MemoryBytes.Cached,
-			BuffersBytes:   stats.MemoryBytes.Buffers,
-			SharedBytes:    stats.MemoryBytes.Shared,
-			SwapTotalBytes: stats.MemoryBytes.SwapTotal,
-			SwapFreeBytes:  stats.MemoryBytes.SwapFree,
-			ZFSArcBytes:    stats.MemoryBytes.ZFSArc,
+			TotalBytes:      stats.MemoryBytes.Total,
+			UsedBytes:       stats.MemoryBytes.Used,
+			AvailableBytes:  stats.MemoryBytes.Available,
+			FreeBytes:       stats.MemoryBytes.Free,
+			CachedBytes:     stats.MemoryBytes.Cached,
+			BuffersBytes:    stats.MemoryBytes.Buffers,
+			SharedBytes:     stats.MemoryBytes.Shared,
+			SwapTotalBytes:  stats.MemoryBytes.SwapTotal,
+			SwapFreeBytes:   stats.MemoryBytes.SwapFree,
+			ZFSArcBytes:     stats.MemoryBytes.ZFSArc,
+			DockerUsedBytes: stats.MemoryBytes.Docker,
+			VMUsedBytes:     stats.MemoryBytes.VMs,
 		},
 		Disks:       map[string]monitoringapi.LiveDiskRates{},
 		Interfaces:  map[string]monitoringapi.LiveInterface{},
@@ -137,7 +139,6 @@ func Build(data *systemmodel.CombinedData, capturedAt time.Time, threads int, te
 			continue
 		}
 		memBytes := uint64(ctr.Mem * bytesPerMiB)
-		live.Memory.DockerUsedBytes += memBytes
 		item := monitoringapi.LiveContainer{
 			ID: ctr.Id, Name: ctr.Name,
 			CPUPercent:    ctr.Cpu * cpuMultiplier,
@@ -147,6 +148,10 @@ func Build(data *systemmodel.CombinedData, capturedAt time.Time, threads int, te
 		if rec, ok := blockRates[ctr.Id]; ok {
 			read, write := float64(rec.DiskReadBytesPerSecond), float64(rec.DiskWriteBytesPerSecond)
 			item.BlockReadBytesPerSec, item.BlockWriteBytesPerSec = &read, &write
+		}
+		// Docker reports host RAM as the limit of a container without one.
+		if limit := ctr.MemLimitBytes; limit > 0 && limit < stats.MemoryBytes.Total {
+			item.MemoryLimitBytes = &limit
 		}
 		live.Containers.Items = append(live.Containers.Items, item)
 	}

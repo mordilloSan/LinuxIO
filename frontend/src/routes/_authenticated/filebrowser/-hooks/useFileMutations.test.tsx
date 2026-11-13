@@ -7,6 +7,7 @@ import { useFileMutations } from "./useFileMutations";
 const mocks = vi.hoisted(() => ({
   mutateAsync: vi.fn().mockResolvedValue(undefined),
   invalidateListing: vi.fn(),
+  navigate: vi.fn(),
   toast: {
     error: vi.fn(),
     info: vi.fn(),
@@ -18,12 +19,19 @@ const mocks = vi.hoisted(() => ({
   startMove: vi.fn(),
   resolveCollisions: vi.fn(),
   call: vi.fn(),
-  taskOptions: {} as Record<string, { success?: (result: unknown) => void }>,
+  taskOptions: {} as Record<
+    string,
+    {
+      error?: (error: Error) => void;
+      success?: (result: unknown) => void;
+    }
+  >,
 }));
 
-function taskEndpoint(name?: string) {
+function jobEndpoint(name?: string) {
   return {
-    useTaskStreamAction: (options?: {
+    useMutation: (options?: {
+      error?: (error: Error) => void;
       success?: (result: unknown) => void;
     }) => {
       if (name && options) mocks.taskOptions[name] = options;
@@ -40,16 +48,22 @@ vi.mock("@/api", async (importOriginal) => {
     linuxio: {
       filebrowser: {
         exists_batch: { route: "filebrowser.exists_batch" },
-        chmod_batch: taskEndpoint(),
-        delete_batch: taskEndpoint("delete"),
-        trash_batch: taskEndpoint("trash"),
-        resource_patch: taskEndpoint(),
-        resource_post: {},
+        chmod_batch: jobEndpoint("chmod"),
+        delete_batch: jobEndpoint("delete"),
+        trash_batch: jobEndpoint("trash"),
+        resource_patch: jobEndpoint(),
+        resource_post: {
+          useMutation: () => ({ isPending: false, mutateAsync: vi.fn() }),
+        },
       },
     },
-    useCallMutation: () => ({ mutateAsync: vi.fn() }),
   };
 });
+
+vi.mock("@tanstack/react-router", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tanstack/react-router")>()),
+  useNavigate: () => mocks.navigate,
+}));
 
 vi.mock("./useListingInvalidation", () => ({
   useListingInvalidation: () => mocks.invalidateListing,
@@ -145,6 +159,69 @@ describe("useFileMutations", () => {
         expect(mocks.toast.success).not.toHaveBeenCalled();
       },
     );
+
+    it("names failed items when a permissions change partly fails", () => {
+      renderHook(() => useFileMutations({ normalizedPath: "/srv/projects" }));
+
+      mocks.taskOptions.chmod.success?.(failedResult);
+
+      expect(mocks.toast.error).toHaveBeenCalledWith(
+        "Failed to change permissions on 1 of 2 items",
+        { description: "a.txt: permission denied" },
+      );
+    });
+
+    it("offers the real folder when a failed item is a refused link", () => {
+      renderHook(() => useFileMutations({ normalizedPath: "/srv/projects" }));
+      const refusal =
+        "forbidden: /srv/projects/docs is a link to /mnt/data/docs. Open that folder to make this change";
+
+      mocks.taskOptions.delete.success?.({
+        failed: [
+          { error: "permission denied", path: "/srv/projects/a.txt" },
+          { error: refusal, path: "/srv/projects/docs" },
+        ],
+        succeeded: 0,
+        total: 2,
+      });
+
+      expect(mocks.toast.error).toHaveBeenCalledWith(
+        "Failed to delete 2 items",
+        {
+          action: expect.objectContaining({ label: "Open the real folder" }),
+          description: `a.txt: permission denied\ndocs: ${refusal}`,
+          duration: 10_000,
+        },
+      );
+      const { action } = mocks.toast.error.mock.calls[0][1] as {
+        action: { onClick: (event: unknown) => void };
+      };
+      action.onClick({});
+      expect(mocks.navigate).toHaveBeenCalledWith({
+        to: "/filebrowser/$",
+        params: { _splat: "mnt/data/docs" },
+        search: {},
+      });
+    });
+
+    it("offers the real folder when the whole task is refused for a link", () => {
+      renderHook(() => useFileMutations({ normalizedPath: "/srv/projects" }));
+      const refusal =
+        "forbidden: /srv/projects/docs is a link to /mnt/data/docs. Open that folder to make this change";
+
+      mocks.taskOptions.trash.error?.(new Error(refusal));
+      mocks.taskOptions.chmod.error?.(new Error("permission denied"));
+
+      expect(mocks.toast.error.mock.calls).toEqual([
+        [
+          refusal,
+          expect.objectContaining({
+            action: expect.objectContaining({ label: "Open the real folder" }),
+          }),
+        ],
+        ["permission denied"],
+      ]);
+    });
 
     it("toasts success when the trash task has no failures", () => {
       renderHook(() => useFileMutations({ normalizedPath: "/srv/projects" }));

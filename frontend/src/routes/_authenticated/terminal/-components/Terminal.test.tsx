@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { render } from "@/test/render";
+import { act, render } from "@/test/render";
 
 import Terminal from "./Terminal";
 
@@ -8,12 +8,15 @@ const mocks = vi.hoisted(() => {
   const fakeStream = () => ({
     close: vi.fn(),
     resize: vi.fn(),
+    write: vi.fn(),
+    onData: null as ((data: Uint8Array) => void) | null,
     status: "open",
   });
   return {
     fakeStream,
     existing: fakeStream(),
     location: { state: {} },
+    navigate: vi.fn(),
     getStream: vi.fn(),
     openTerminalStream: vi.fn(),
     openTerminalLoginStream: vi.fn(),
@@ -23,7 +26,11 @@ const mocks = vi.hoisted(() => {
       focus() {},
       clear() {},
       reset() {},
-      write() {},
+      write(_data: string, done?: () => void) {
+        done?.();
+      },
+      input: vi.fn(),
+      modes: { bracketedPasteMode: false },
     },
   };
 });
@@ -31,6 +38,7 @@ const mocks = vi.hoisted(() => {
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tanstack/react-router")>()),
   useLocation: () => mocks.location,
+  useNavigate: () => mocks.navigate,
 }));
 vi.mock("@/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api")>()),
@@ -63,6 +71,9 @@ vi.mock("@/hooks/useXtermStreamTerminal", async () => {
 
 beforeEach(() => {
   mocks.location = { state: {} };
+  mocks.navigate.mockReset();
+  mocks.terminal.modes.bracketedPasteMode = false;
+  mocks.terminal.input.mockReset();
   mocks.existing = mocks.fakeStream();
   mocks.getStream.mockReset().mockImplementation(() => mocks.existing);
   mocks.openTerminalStream
@@ -106,5 +117,60 @@ describe("Terminal login mode", () => {
     expect(mocks.openTerminalStream).not.toHaveBeenCalled();
     expect(mocks.openTerminalLoginStream).not.toHaveBeenCalled();
     expect(mocks.existing.resize).toHaveBeenCalledWith(80, 24);
+  });
+});
+
+describe("Terminal command from the Assistant", () => {
+  it("types a one-line command into the shell without running it", () => {
+    mocks.location = { state: { terminalCommand: "uptime\n" } };
+    render(<Terminal />);
+
+    expect(mocks.terminal.input).toHaveBeenCalledTimes(1);
+    expect(mocks.terminal.input).toHaveBeenCalledWith("uptime");
+  });
+
+  it("drops the command from history state so a reload does not type it again", () => {
+    mocks.location = { state: { terminalCommand: "uptime" } };
+    render(<Terminal />);
+
+    expect(mocks.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ replace: true }),
+    );
+  });
+
+  it("holds several lines until the shell takes a paste without running it", () => {
+    mocks.location = { state: { terminalCommand: "one\ntwo" } };
+    render(<Terminal />);
+    expect(mocks.terminal.input).not.toHaveBeenCalled();
+
+    // The shell prints its prompt and turns bracketed paste on.
+    mocks.terminal.modes.bracketedPasteMode = true;
+    act(() => mocks.existing.onData?.(new Uint8Array()));
+
+    expect(mocks.terminal.input).toHaveBeenCalledTimes(1);
+    expect(mocks.terminal.input).toHaveBeenCalledWith(
+      "\u001b[200~one\rtwo\u001b[201~",
+    );
+  });
+
+  it("types nothing into an agent login", () => {
+    const loginStream = mocks.fakeStream();
+    mocks.openTerminalLoginStream.mockReturnValue(loginStream);
+    mocks.location = {
+      state: {
+        terminalCommand: "uptime",
+        terminalLogin: { agent: "claude", args: [] },
+      },
+    };
+    render(<Terminal />);
+
+    expect(mocks.terminal.input).not.toHaveBeenCalled();
+  });
+
+  it("types nothing when there is no command", () => {
+    render(<Terminal />);
+
+    expect(mocks.terminal.input).not.toHaveBeenCalled();
+    expect(mocks.navigate).not.toHaveBeenCalled();
   });
 });

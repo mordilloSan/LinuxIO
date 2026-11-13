@@ -4,7 +4,6 @@ import { useState } from "react";
 
 import {
   linuxio,
-  useCallMutation,
   type BtrfsKeep,
   type BtrfsSnapshotRule,
   type BtrfsSubvolume,
@@ -89,25 +88,20 @@ const BtrfsSnapshotRulesCard = ({ uuid }: { uuid: string }) => {
   );
   const [draft, setDraft] = useState<BtrfsSnapshotRule | null>(null);
 
-  const { mutate: saveRule, isPending: isSaving } = useCallMutation(
-    linuxio.storage.btrfs_snapshot_rule_set,
-    {
+  const { mutate: saveRule, isPending: isSaving } =
+    linuxio.storage.btrfs_snapshot_rule_set.useMutation({
       success: "Snapshot rule saved",
       error: "Failed to save snapshot rule",
       toast: BTRFS_TOAST_META,
-    },
-  );
-  const { mutate: removeRule, isPending: isRemoving } = useCallMutation(
-    linuxio.storage.btrfs_snapshot_rule_delete,
-    {
+    });
+  const { mutate: removeRule, isPending: isRemoving } =
+    linuxio.storage.btrfs_snapshot_rule_delete.useMutation({
       success: "Snapshot rule removed",
       error: "Failed to remove snapshot rule",
       toast: BTRFS_TOAST_META,
-    },
-  );
-  const { mutate: runNow, isPending: isRunning } = useCallMutation(
-    linuxio.storage.btrfs_snapshot_run_now,
-    {
+    });
+  const { mutate: runNow, isPending: isRunning } =
+    linuxio.storage.btrfs_snapshot_run_now.useMutation({
       success: (report) => {
         toast.success(
           `Snapshots run: ${report.taken.length} taken, ${report.pruned.length} pruned`,
@@ -116,8 +110,7 @@ const BtrfsSnapshotRulesCard = ({ uuid }: { uuid: string }) => {
       },
       error: "Failed to run snapshots",
       toast: BTRFS_TOAST_META,
-    },
-  );
+    });
 
   const subvolumes = subvolumeData.filter(
     (subvolume) => !subvolume.isSnapshot && !isSystemSubvolume(subvolume.path),

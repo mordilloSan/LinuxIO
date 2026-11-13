@@ -13,9 +13,9 @@ import {
   seedCapabilityCache,
 } from "@/test/render";
 
+import { router } from "../../../../router/router";
 import SidebarNavList from "./SidebarNavList";
 import { useSidebarItems } from "./useSidebarItems";
-import { router } from "../../../../router/router";
 
 const linkProps = vi.hoisted(() => ({
   calls: [] as Array<{

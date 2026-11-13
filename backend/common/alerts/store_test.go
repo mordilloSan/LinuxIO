@@ -57,7 +57,7 @@ func TestRaiseSameOccurrenceIsSilent(t *testing.T) {
 	ctx := context.Background()
 	_ = Raise(ctx, obs("a"))
 	_ = Dismiss(ctx, "test/a")
-	_ = MarkSeen(ctx, "1000", nil)
+	_ = MarkSeen(ctx, "1000", nil, nil)
 	if err := Raise(ctx, obs("a")); err != nil {
 		t.Fatal(err)
 	}
@@ -66,6 +66,27 @@ func TestRaiseSameOccurrenceIsSilent(t *testing.T) {
 	if a.OccurrenceCount != 1 || a.DismissedAt == nil || a.Seen["1000"] != 1 {
 		t.Fatalf("unchanged observation mutated state: %+v", a)
 	}
+
+	// The link follows the latest observation, such as the latest failed run
+	// of a timer; that is no new occurrence.
+	again := obs("a")
+	again.Link = "/history?job=latest"
+	if err := Raise(ctx, again); err != nil {
+		t.Fatal(err)
+	}
+	doc, _ = Load()
+	if a = doc.Alerts[0]; a.Link != "/history?job=latest" || a.OccurrenceCount != 1 || a.DismissedAt == nil || a.Seen["1000"] != 1 {
+		t.Fatalf("re-observed with another link: %+v", a)
+	}
+	// An observation without a link keeps the stored one.
+	again.Link = ""
+	if err := Raise(ctx, again); err != nil {
+		t.Fatal(err)
+	}
+	doc, _ = Load()
+	if a = doc.Alerts[0]; a.Link != "/history?job=latest" {
+		t.Fatalf("re-observed without a link: %+v", a)
+	}
 }
 
 func TestRaiseNewOccurrenceRestoresAndUnsees(t *testing.T) {
@@ -73,7 +94,7 @@ func TestRaiseNewOccurrenceRestoresAndUnsees(t *testing.T) {
 	ctx := context.Background()
 	_ = Raise(ctx, obs("a"))
 	_ = Dismiss(ctx, "test/a")
-	_ = MarkSeen(ctx, "1000", nil)
+	_ = MarkSeen(ctx, "1000", nil, nil)
 	o := obs("a")
 	o.OccurrenceID = "occ-2"
 	o.Severity = SeverityError
@@ -150,12 +171,94 @@ func TestRaiseEvictsWhenStoreIsFull(t *testing.T) {
 	}
 }
 
+// writeFullStore stores maxAlerts undismissed alerts k0 (the oldest) to k199,
+// a minute apart, of the severity severity gives each.
+func writeFullStore(t *testing.T, severity func(i int) string) {
+	t.Helper()
+	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	doc := Document{Version: 1}
+	for i := range maxAlerts {
+		key := "k" + strconv.Itoa(i)
+		doc.Alerts = append(doc.Alerts, Alert{
+			ID: ID("test", key), Source: "test", Key: key, Severity: severity(i), Title: "Title",
+			OccurrenceCount: 1, LastOccurrence: base.Add(time.Duration(i) * time.Minute),
+		})
+	}
+	if err := write(doc); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// raiseEvicting raises a new error into the full store and returns the ID of
+// the alert that made room for it.
+func raiseEvicting(t *testing.T, key string) string {
+	t.Helper()
+	before, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := obs(key)
+	o.Severity = SeverityError
+	if err = Raise(context.Background(), o); err != nil {
+		t.Fatal(err)
+	}
+	after, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after.Alerts) != maxAlerts {
+		t.Fatalf("alerts = %d, want %d", len(after.Alerts), maxAlerts)
+	}
+	kept := map[string]bool{}
+	for _, a := range after.Alerts {
+		kept[a.ID] = true
+	}
+	for _, a := range before.Alerts {
+		if !kept[a.ID] {
+			return a.ID
+		}
+	}
+	t.Fatalf("raising %s evicted nothing", key)
+	return ""
+}
+
+func TestRaiseEvictsANoticeBeforeAnError(t *testing.T) {
+	useTempStore(t)
+	// An old notice and an old warning among errors, neither the oldest alert.
+	writeFullStore(t, func(i int) string {
+		switch i {
+		case 1:
+			return SeverityInfo
+		case 2:
+			return SeverityWarning
+		}
+		return SeverityError
+	})
+	for _, step := range []struct{ raise, evicted string }{
+		{"new1", ID("test", "k1")}, // the notice, though k0 is older
+		{"new2", ID("test", "k2")}, // then the warning
+		{"new3", ID("test", "k0")}, // then the oldest error
+	} {
+		if got := raiseEvicting(t, step.raise); got != step.evicted {
+			t.Fatalf("raising %s evicted %s, want %s", step.raise, got, step.evicted)
+		}
+	}
+}
+
+func TestRaiseEvictsTheOldestOfAStoreOfErrors(t *testing.T) {
+	useTempStore(t)
+	writeFullStore(t, func(int) string { return SeverityError })
+	if got, want := raiseEvicting(t, "new"), ID("test", "k0"); got != want {
+		t.Fatalf("evicted %s, want the oldest error %s", got, want)
+	}
+}
+
 func TestMarkSeenSubset(t *testing.T) {
 	useTempStore(t)
 	ctx := context.Background()
 	_ = Raise(ctx, obs("a"))
 	_ = Raise(ctx, obs("b"))
-	if err := MarkSeen(ctx, "1000", []string{"test/a"}); err != nil {
+	if err := MarkSeen(ctx, "1000", []string{"test/a"}, nil); err != nil {
 		t.Fatal(err)
 	}
 	doc, _ := Load()
@@ -206,8 +309,8 @@ func TestRaiseAndResolveNormalise(t *testing.T) {
 		t.Fatalf("not normalised: key=%q title=%d message=%d", a.Key, len(a.Title), len(a.Message))
 	}
 	for key, want := range map[string]string{"-x": "x-x", "_y": "x_y", strings.Repeat("a", 100): strings.Repeat("a", maxKeyLen)} {
-		if got := normalizeKey(key); got != want {
-			t.Errorf("normalizeKey(%q) = %q, want %q", key, got, want)
+		if got := NormalizeKey(key); got != want {
+			t.Errorf("NormalizeKey(%q) = %q, want %q", key, got, want)
 		}
 	}
 	if err := Resolve(ctx, "test", "Web App/1"); err != nil {

@@ -1,7 +1,10 @@
 package config
 
 import (
+	"fmt"
+
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 )
 
@@ -9,7 +12,7 @@ func applyDockerSettingsUpdate(docker *userconfig.Docker, payload *apischema.Con
 	if payload.Folders != nil {
 		folders, err := userconfig.ParseDockerFolders(payload.Folders)
 		if err != nil {
-			return err
+			return fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
 		}
 		docker.Folders = folders
 	}

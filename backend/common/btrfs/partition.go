@@ -281,6 +281,18 @@ func kernelPartitions(device string) ([]kernelPartition, error) {
 	return parts, nil
 }
 
+// PartitionNumber reads the kernel's number of partition part: 3 for
+// /dev/sdb3. BLKPG takes it as an int32, so a larger number is an error
+// rather than another partition's.
+func PartitionNumber(part string) (int, error) {
+	b, err := os.ReadFile(filepath.Join(sysBlockDir, filepath.Base(part), "partition"))
+	if err != nil {
+		return 0, err
+	}
+	n, err := strconv.ParseInt(strings.TrimSpace(string(b)), 10, 32)
+	return int(n), err
+}
+
 // sysNumber reads the number in a sysfs attribute file.
 func sysNumber(path string) (uint64, error) {
 	b, err := os.ReadFile(path)
@@ -350,7 +362,8 @@ func waitForNode(ctx context.Context, part string) (string, error) {
 
 // PartitionDisk replaces everything on device with a GPT holding one Linux
 // partition that leaves PartitionSlack free at the end, and returns the
-// partition once udev created its device node. Callers check device is free.
+// partition once udev created its device node; if it never does, the disk
+// is left with an empty GPT. Callers check device is free.
 func PartitionDisk(ctx context.Context, device string) (string, error) {
 	tableMu.Lock()
 	defer tableMu.Unlock()
@@ -371,7 +384,19 @@ func PartitionDisk(ctx context.Context, device string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return waitForNode(ctx, partitionPath(device, 1))
+	part, err := waitForNode(ctx, partitionPath(device, 1))
+	if err != nil {
+		// The caller never learns of the partition, so the disk keeps an empty table.
+		if dropErr := dropKernelPartition(context.WithoutCancel(ctx), device, 1); dropErr != nil {
+			return "", fmt.Errorf("%w; dropping partition 1 also failed: %w", err, dropErr)
+		}
+		layout.last = 0 // no partition
+		if undoErr := writeTable(device, layout); undoErr != nil {
+			return "", fmt.Errorf("%w; removing its table entry also failed: %w", err, undoErr)
+		}
+		return "", err
+	}
+	return part, nil
 }
 
 // checkWholeDisk refuses device when sysfs lists it as a partition, whose
@@ -644,7 +669,8 @@ func CreatePartition(ctx context.Context, device string, startBytes, sizeBytes u
 }
 
 // newPartition does the work of AddPartition and CreatePartition, whose
-// place picks the new partition's first and last LBA.
+// place picks the new partition's first and last LBA. A failure removes the
+// partition again.
 func newPartition(ctx context.Context, device string, place func(firstUsable, lastUsable uint64, used [][2]uint64, ss uint64) (first, last uint64, err error)) (string, error) {
 	tableMu.Lock()
 	defer tableMu.Unlock()
@@ -680,20 +706,27 @@ func newPartition(ctx context.Context, device string, place func(firstUsable, la
 	if err = writeEntry(f, ss, last, primary, backup, slot, entry); err != nil {
 		return "", err
 	}
+	clearEntry := func(err error) error {
+		if undoErr := writeEntry(f, ss, last, primary, backup, slot, make([]byte, gptEntrySize)); undoErr != nil {
+			return fmt.Errorf("%w; removing its table entry also failed: %w", err, undoErr)
+		}
+		return err
+	}
 	if err = addKernelPartition(device, slot+1, first*ss, (end-first+1)*ss); err != nil {
 		// A partition the kernel does not know is never listed, so its entry
 		// would keep the space taken where no one can delete it.
-		if undoErr := writeEntry(f, ss, last, primary, backup, slot, make([]byte, gptEntrySize)); undoErr != nil {
-			return "", fmt.Errorf("%w; removing its table entry also failed: %w", err, undoErr)
-		}
-		return "", err
+		return "", clearEntry(err)
 	}
 	part, err := waitForNode(ctx, partitionPath(device, slot+1))
-	if err != nil {
-		return "", err
+	if err == nil {
+		err = wipeDeviceEdges(part)
 	}
-	if err = wipeDeviceEdges(part); err != nil {
-		return "", err
+	if err != nil {
+		// The caller never learns of the partition, so nothing would delete it.
+		if dropErr := dropKernelPartition(context.WithoutCancel(ctx), device, slot+1); dropErr != nil {
+			return "", fmt.Errorf("%w; dropping partition %d also failed: %w", err, slot+1, dropErr)
+		}
+		return "", clearEntry(err)
 	}
 	return part, nil
 }

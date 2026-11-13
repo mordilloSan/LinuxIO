@@ -83,7 +83,8 @@ const ContainerCardBody = ({
   const [updateMenuAnchor, setUpdateMenuAnchor] = useState<HTMLElement | null>(
     null,
   );
-  const { isUpdating, startUpdate, updating } = useDockerUpdateOperation();
+  const { canUpdate, isUpdating, startUpdate, updating } =
+    useDockerUpdateOperation();
 
   // derived
   const name = useMemo(
@@ -121,7 +122,7 @@ const ContainerCardBody = ({
     memUsage === undefined
       ? metricsStatusLabel
       : memLimit === undefined
-        ? `Memory Usage: ${formatFileSize(memUsage)} (limit unavailable)`
+        ? `Memory Usage: ${formatFileSize(memUsage)} (no limit)`
         : `Memory Usage: ${formatFileSize(memUsage)} / ${formatFileSize(memLimit)}`;
   const metricsStatusAffordance =
     metricsStatus === "available" ? null : (
@@ -372,7 +373,7 @@ const ContainerCardBody = ({
                   }}
                 >
                   {container.updateAvailable &&
-                    (container.State === "running" ? (
+                    (container.State === "running" && canUpdate ? (
                       <>
                         <AppActionIconButton
                           ariaLabel={`Update available for ${name}`}
@@ -391,7 +392,9 @@ const ContainerCardBody = ({
                           open={Boolean(updateMenuAnchor)}
                         >
                           <AppMenuItem
-                            disabled={updating || isUpdating(container.Id)}
+                            disabled={
+                              !canUpdate || updating || isUpdating(container.Id)
+                            }
                             onClick={() => {
                               setUpdateMenuAnchor(null);
                               startUpdate(container.Id, name);

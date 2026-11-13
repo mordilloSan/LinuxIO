@@ -6,8 +6,8 @@ import { HomeFilledIcon } from "@/icons/svg";
 import { down } from "@/theme/breakpoints";
 import { isDirectoryPath } from "@/utils/path";
 
-import { getChromeSurfaceColor } from "./fileBrowserSurfaces";
 import { hasInternalDrag, readInternalDrag } from "../-internalDrag";
+import { getChromeSurfaceColor } from "./fileBrowserSurfaces";
 
 interface BreadcrumbItem {
   isLast: boolean;

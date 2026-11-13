@@ -25,7 +25,7 @@ const auth: AuthContextType = {
   user: { id: "rsync-fixture", name: "Rsync Fixture" },
 };
 queryClient.setQueryData(capabilitiesQueryKey(auth.user!.id), {
-  rsync_available: true,
+  rsync: { available: true },
 });
 
 export default function RsyncFixture() {

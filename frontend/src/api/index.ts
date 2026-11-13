@@ -3,8 +3,8 @@
  *
  * JSON API (generated, Go-owned request/response contracts):
  *   useQuery(linuxio.system.get_cpu_info)
- *   useCallMutation(linuxio.docker.start_container, { success, error })
- *   linuxio.docker.compose.useTaskStreamAction({ onProgress })
+ *   linuxio.docker.start_container.useMutation({ success, error })
+ *   linuxio.<handler>.<mutation>.useMutation({ onStart, onProgress })
  *
  * Streaming API (persistent/long-lived streams):
  *   const stream = openTerminalStream(cols, rows);
@@ -14,6 +14,7 @@
 // === JSON API (generated type-safe endpoints) ===
 export { default as linuxio } from "./generated/client";
 export {
+  actionErrorMessage,
   CACHE_TTL_MS,
   invalidateOperationQueries,
   useCallMutation,
@@ -24,10 +25,7 @@ export {
   type CallQueryOptions,
 } from "./call-react-query";
 export { call } from "./calls";
-export type {
-  TaskStreamActionConfig,
-  TaskStreamActionResult,
-} from "./task-react-query";
+export type { MutationConfig, MutationEndpoint } from "./mutation-react-query";
 export {
   ROUTE_MODES,
   getRouteMode,
@@ -36,9 +34,7 @@ export {
 export type { RouteMode } from "./generated/route-metadata";
 export {
   isTaskCancellationError,
-  isTaskSnapshot,
   isTerminalTaskState,
-  taskSnapshotResult,
   TASK_CANCELED_CODE,
 } from "./tasks";
 
@@ -118,10 +114,8 @@ export type { AssistantAgentId } from "./acp/agents";
 // === Capabilities (manifest, types, helpers) ===
 export type {
   CapabilityDef,
-  CapabilityErrorKey,
   CapabilityKey,
   CapabilityState,
-  CapabilityValueKey,
   CapabilityWire,
 } from "./capabilities";
 export {

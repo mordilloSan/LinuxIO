@@ -1,6 +1,8 @@
 package web
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -313,13 +315,42 @@ func TestBuildRouterSetsSecurityHeaders(t *testing.T) {
 		w := doGET(t, BuildRouter(Config{UI: fstest.MapFS{"index.html": {Data: []byte("x")}}}, sm), path)
 		for key, want := range map[string]string{
 			"X-Frame-Options":         "DENY",
-			"Content-Security-Policy": "frame-ancestors 'none'",
+			"Content-Security-Policy": "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; script-src 'self'",
 			"X-Content-Type-Options":  "nosniff",
 			"Referrer-Policy":         "strict-origin-when-cross-origin",
 		} {
 			if got := w.Header().Get(key); got != want {
 				t.Errorf("%s %s = %q, want %q", path, key, got, want)
 			}
+		}
+	}
+}
+
+func TestContentSecurityPolicyAllowsOnlyThePageInlineScripts(t *testing.T) {
+	page := `<html><head>
+<script>boot()</script>
+<script type="module" crossorigin src="/assets/index.js"></script>
+<SCRIPT nonce="x">
+second();
+</SCRIPT>
+</head></html>`
+	hash := func(body string) string {
+		sum := sha256.Sum256([]byte(body))
+		return "'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'"
+	}
+	want := "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; script-src 'self' " +
+		hash("boot()") + " " + hash("\nsecond();\n")
+
+	if got := contentSecurityPolicy(fstest.MapFS{"index.html": {Data: []byte(page)}}); got != want {
+		t.Errorf("policy = %q, want %q", got, want)
+	}
+}
+
+func TestContentSecurityPolicyWithoutPageAllowsNoInlineScript(t *testing.T) {
+	const want = "frame-ancestors 'none'; object-src 'none'; base-uri 'self'; script-src 'self'"
+	for name, ui := range map[string]fs.FS{"nil": nil, "empty": fstest.MapFS{}} {
+		if got := contentSecurityPolicy(ui); got != want {
+			t.Errorf("%s: policy = %q, want %q", name, got, want)
 		}
 	}
 }

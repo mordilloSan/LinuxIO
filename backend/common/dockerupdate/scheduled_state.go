@@ -9,6 +9,8 @@ import (
 
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 type scheduledUpdateCandidate = containerUpdateCandidate
@@ -16,8 +18,10 @@ type scheduledUpdateCandidate = containerUpdateCandidate
 type scheduledUpdateState struct {
 	ctx           context.Context
 	cli           *client.Client
+	registry      imageUpdateCheckClient
 	allContainers []container.Summary
 	dependencyCli ContainerClient
+	readiness     containerReadinessClient // inspects a replaced Compose container
 	dependencies  *standaloneDependencyIndex
 	dependencyErr error
 	dependencySet bool
@@ -27,20 +31,25 @@ type scheduledUpdateState struct {
 	updateStopped bool
 	reviveStopped bool
 	composeUpdate func(context.Context, ComposeTarget, []string, ComposeLineEmitter) error
+	announce      func(name string)
+	alertReport   string // the Docker updates' alerts.ReportFor
+	updated       int    // containers this pass replaced
 }
 
 func newScheduledUpdateState(ctx context.Context, cli *client.Client) *scheduledUpdateState {
 	return &scheduledUpdateState{
 		ctx:           ctx,
 		cli:           cli,
+		registry:      cli,
 		dependencyCli: cli,
+		readiness:     cli,
 		composeGroups: make(map[string]*scheduledComposeTarget),
 		composeUpdate: composePullAndUpServices,
 	}
 }
 
 func (s *scheduledUpdateState) prepare(summary container.Summary) error {
-	candidate, err := inspectScheduledUpdateCandidate(s.ctx, s.cli, summary)
+	candidate, err := inspectScheduledUpdateCandidate(s.ctx, s.cli, s.registry, summary)
 	if err != nil {
 		if ctxErr := s.ctx.Err(); ctxErr != nil {
 			return ctxErr
@@ -85,6 +94,7 @@ func (s *scheduledUpdateState) prepare(summary container.Summary) error {
 		s.recordCandidateError(candidate.inspect, err)
 		return nil
 	}
+	s.announceUpdate(strings.TrimPrefix(candidate.inspect.Name, "/"))
 	updated, err := updateStandaloneContainerWithDependenciesAndPolicy(
 		s.ctx,
 		s.cli,
@@ -96,6 +106,12 @@ func (s *scheduledUpdateState) prepare(summary container.Summary) error {
 		stoppedContainerUpdatePolicy{Allow: s.updateStopped, Revive: s.reviveStopped},
 	)
 	return s.recordStandaloneUpdateOutcome(candidate.inspect, updated, err)
+}
+
+func (s *scheduledUpdateState) announceUpdate(name string) {
+	if s.announce != nil {
+		s.announce(name)
+	}
 }
 
 func (s *scheduledUpdateState) prepareCandidateState(inspect container.InspectResponse) (bool, bool) {
@@ -153,6 +169,7 @@ func (s *scheduledUpdateState) recordStandaloneUpdateOutcome(
 	updateErr error,
 ) error {
 	if updated.Updated {
+		s.updated++
 		s.oldImageIDs = append(s.oldImageIDs, updated.PreviousImageID)
 		slog.Info("updated standalone Docker container",
 			"component", "docker",
@@ -160,6 +177,7 @@ func (s *scheduledUpdateState) recordStandaloneUpdateOutcome(
 			"container", updated.ContainerName,
 			"old_image", updated.PreviousImageID,
 			"new_image", updated.NewImageID)
+		raiseDockerUpdatedAlert(s.ctx, s.alertReport, updated.ContainerName, updated.PreviousImageID, updated.NewImageID)
 	}
 	if updateErr != nil {
 		if ctxErr := s.ctx.Err(); ctxErr != nil {
@@ -183,13 +201,14 @@ func (s *scheduledUpdateState) recordStandaloneUpdateOutcome(
 func inspectScheduledUpdateCandidate(
 	ctx context.Context,
 	cli *client.Client,
+	registry imageUpdateCheckClient,
 	summary container.Summary,
 ) (scheduledUpdateCandidate, error) {
 	inspectResult, err := cli.ContainerInspect(ctx, summary.ID, client.ContainerInspectOptions{})
 	if err != nil {
 		return scheduledUpdateCandidate{}, fmt.Errorf("inspect scheduled container %q: %w", PrimaryContainerName(summary), err)
 	}
-	return inspectContainerUpdateCandidate(ctx, cli, inspectResult.Container)
+	return inspectContainerUpdateCandidate(ctx, registry, inspectResult.Container)
 }
 
 func (s *scheduledUpdateState) recordCandidateError(inspect container.InspectResponse, err error) {
@@ -255,6 +274,7 @@ func (s *scheduledUpdateState) validateComposeGroup(group *scheduledComposeTarge
 }
 
 func (s *scheduledUpdateState) runComposeUpdate(group *scheduledComposeTarget) (bool, error) {
+	s.announceUpdate(group.target.Name)
 	collector := &ComposeMessageCollector{}
 	if err := s.composeUpdate(s.ctx, group.target, group.services, collector.Emit); err != nil {
 		if ctxErr := s.ctx.Err(); ctxErr != nil {
@@ -268,15 +288,23 @@ func (s *scheduledUpdateState) runComposeUpdate(group *scheduledComposeTarget) (
 }
 
 func (s *scheduledUpdateState) recordComposeGroupError(group *scheduledComposeTarget, err error) {
+	// Each container's alert reports the group's failure; what else went
+	// wrong while recording it, such as a status file that cannot be written,
+	// stays unmarked beside it.
 	for _, inspect := range group.before {
-		_ = scheduledUpdateError(s.ctx, inspect, err)
+		if recorded := scheduledUpdateError(s.ctx, inspect, err); !scheduledrun.AllReported(recorded) {
+			s.errs = append(s.errs, fmt.Errorf("record the failed update of %s: %w", strings.TrimPrefix(inspect.Name, "/"), unreportedPart(recorded)))
+		}
+	}
+	if len(group.before) > 0 {
+		err = scheduledrun.Reported(err)
 	}
 	s.errs = append(s.errs, err)
 }
 
 func (s *scheduledUpdateState) verifyComposeGroup(group *scheduledComposeTarget) error {
 	for _, before := range group.before {
-		after, err := verifyScheduledComposeContainer(s.ctx, s.cli, before)
+		after, err := verifyScheduledComposeContainer(s.ctx, s.readiness, before)
 		if err != nil {
 			if ctxErr := s.ctx.Err(); ctxErr != nil {
 				return ctxErr
@@ -288,6 +316,7 @@ func (s *scheduledUpdateState) verifyComposeGroup(group *scheduledComposeTarget)
 		if after.Image == before.Image {
 			continue
 		}
+		s.updated++
 		s.oldImageIDs = append(s.oldImageIDs, before.Image)
 		slog.Info("updated Compose Docker container",
 			"component", "docker",
@@ -296,13 +325,14 @@ func (s *scheduledUpdateState) verifyComposeGroup(group *scheduledComposeTarget)
 			"container", strings.TrimPrefix(before.Name, "/"),
 			"old_image", before.Image,
 			"new_image", after.Image)
+		raiseDockerUpdatedAlert(s.ctx, s.alertReport, before.Name, before.Image, after.Image)
 	}
 	return nil
 }
 
 func verifyScheduledComposeContainer(
 	ctx context.Context,
-	cli *client.Client,
+	cli containerReadinessClient,
 	before container.InspectResponse,
 ) (container.InspectResponse, error) {
 	name := strings.TrimPrefix(before.Name, "/")
@@ -311,4 +341,19 @@ func verifyScheduledComposeContainer(
 		return container.InspectResponse{}, fmt.Errorf("verify updated Compose container %q: %w", name, err)
 	}
 	return after, nil
+}
+
+// unreportedPart is what joined err holds besides its reported failures.
+func unreportedPart(err error) error {
+	joined, ok := err.(interface{ Unwrap() []error })
+	if !ok {
+		return err
+	}
+	var rest []error
+	for _, e := range joined.Unwrap() {
+		if !scheduledrun.AllReported(e) {
+			rest = append(rest, e)
+		}
+	}
+	return errors.Join(rest...)
 }

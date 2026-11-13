@@ -1,12 +1,14 @@
+import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { NetworkInterface } from "@/api";
 import { testNetworkInterface } from "@/test/networkInterface";
-import { render, screen } from "@/test/render";
+import { render as renderWithApp, screen, within } from "@/test/render";
 
 import NetworkInterfaceEditor from "./NetworkInterfaceEditor";
 
 const mocks = vi.hoisted(() => ({
+  hostname: "10.0.0.9",
   disableConnection: vi.fn(),
   enableConnection: vi.fn(),
   setIPv4: vi.fn(),
@@ -16,22 +18,25 @@ const mocks = vi.hoisted(() => ({
   useCallMutation: vi.fn(),
 }));
 
+// jsdom's location cannot be replaced, so the host the browser used is read
+// through this one function.
+vi.mock("./networkInterfaceState", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./networkInterfaceState")>()),
+  getBrowserHostname: () => mocks.hostname,
+}));
+
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
+  const { mockMutationHooks } = await import("@/test/mutationHooks");
 
   return {
     ...actual,
     useCallMutation: mocks.useCallMutation,
-    linuxio: {
-      ...actual.linuxio,
-      network: {
-        ...actual.linuxio.network,
-      },
-    },
+    linuxio: mockMutationHooks(actual.linuxio, mocks.useCallMutation),
   };
 });
 
-mocks.useCallMutation.mockImplementation((endpoint: { route: string }) => {
+const answerMutation = (endpoint: { route: string }) => {
   const mutate = endpoint.route.endsWith("disable_connection")
     ? mocks.disableConnection
     : endpoint.route.endsWith("enable_connection")
@@ -44,7 +49,9 @@ mocks.useCallMutation.mockImplementation((endpoint: { route: string }) => {
             ? mocks.setMTU
             : mocks.setIPv4;
   return { isPending: false, mutate };
-});
+};
+
+mocks.useCallMutation.mockImplementation(answerMutation);
 
 const manualInterface = (
   overrides: Partial<NetworkInterface> = {},
@@ -57,6 +64,10 @@ const manualInterface = (
     ...overrides,
   });
 
+// The editor's controls are for a session with sudo; see the read-only tests.
+const render = (ui: ReactElement) =>
+  renderWithApp(ui, { auth: { privileged: true } });
+
 const addressInput = () => screen.getByPlaceholderText("192.168.1.10/24");
 const gatewayInput = () => screen.getByPlaceholderText("192.168.1.1");
 const dnsInput = () => screen.getByPlaceholderText("8.8.8.8, 8.8.4.4");
@@ -64,6 +75,10 @@ const dnsInput = () => screen.getByPlaceholderText("8.8.8.8, 8.8.4.4");
 describe("NetworkInterfaceEditor", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // An earlier test may have left its own pending-state answer behind.
+    mocks.useCallMutation.mockImplementation(answerMutation);
+    // Not an address of the test interface, so nothing below warns by default.
+    mocks.hostname = "10.0.0.9";
   });
 
   it("opens a manual interface in manual mode with live defaults", () => {
@@ -352,4 +367,154 @@ describe("NetworkInterfaceEditor", () => {
       expect(expectedMutation).toHaveBeenCalledTimes(1);
     },
   );
+
+  describe("when the change may cut this session", () => {
+    const browseVia = (hostname: string) => {
+      mocks.hostname = hostname;
+    };
+
+    it("asks before disabling the interface the browser reaches LinuxIO through", async () => {
+      browseVia("192.168.1.25");
+      const { user } = render(
+        <NetworkInterfaceEditor
+          expanded
+          iface={manualInterface()}
+          onClose={vi.fn()}
+        />,
+      );
+
+      await user.click(screen.getByRole("checkbox"));
+      expect(mocks.disableConnection).not.toHaveBeenCalled();
+      expect(screen.getByText(/can drop this session/)).toBeInTheDocument();
+      expect(screen.getByText(/machine's console/)).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Disable" }));
+      expect(mocks.disableConnection).toHaveBeenCalledWith({ iface: "eth0" });
+    });
+
+    it("does nothing when the disable warning is cancelled", async () => {
+      browseVia("nas.lan");
+      const { user } = render(
+        <NetworkInterfaceEditor
+          expanded
+          iface={manualInterface()}
+          onClose={vi.fn()}
+        />,
+      );
+
+      await user.click(screen.getByRole("checkbox"));
+      await user.click(
+        within(screen.getByRole("dialog")).getByRole("button", {
+          name: "Cancel",
+        }),
+      );
+
+      expect(mocks.disableConnection).not.toHaveBeenCalled();
+    });
+
+    it("asks before applying IP settings, then applies them", async () => {
+      browseVia("192.168.1.25");
+      const { user } = render(
+        <NetworkInterfaceEditor
+          expanded
+          iface={manualInterface()}
+          onClose={vi.fn()}
+        />,
+      );
+
+      await user.clear(addressInput());
+      await user.type(addressInput(), "10.0.0.20/24");
+      await user.click(
+        screen.getByRole("button", { name: "Apply Configuration" }),
+      );
+      expect(mocks.setIPv4Manual).not.toHaveBeenCalled();
+      expect(screen.getByText(/Applying new IP settings/)).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Apply" }));
+      expect(mocks.setIPv4Manual).toHaveBeenCalledWith(
+        expect.objectContaining({ address: "10.0.0.20/24", iface: "eth0" }),
+      );
+    });
+
+    it("acts at once on an interface that is not the one in the address bar", async () => {
+      browseVia("10.0.0.9");
+      const { user } = render(
+        <NetworkInterfaceEditor
+          expanded
+          iface={manualInterface()}
+          onClose={vi.fn()}
+        />,
+      );
+
+      await user.click(screen.getByRole("checkbox"));
+
+      expect(mocks.disableConnection).toHaveBeenCalledWith({ iface: "eth0" });
+      expect(screen.queryByText(/can drop this session/)).toBeNull();
+    });
+
+    it("acts at once on an interface with no address", async () => {
+      browseVia("nas.lan");
+      const { user } = render(
+        <NetworkInterfaceEditor
+          expanded
+          iface={manualInterface({ ipv4: [] })}
+          onClose={vi.fn()}
+        />,
+      );
+
+      await user.click(screen.getByRole("checkbox"));
+
+      expect(mocks.disableConnection).toHaveBeenCalledWith({ iface: "eth0" });
+    });
+  });
+
+  it("shows a session without sudo the settings with nothing to change", () => {
+    renderWithApp(
+      <NetworkInterfaceEditor
+        expanded
+        iface={manualInterface({
+          dns_options: { ignore_dhcp: false, search: ["lan"] },
+          mtu: 9000,
+          optional: true,
+          state: 100,
+        })}
+        onClose={vi.fn()}
+      />,
+      { auth: { privileged: false } },
+    );
+
+    for (const [label, value] of [
+      ["Connection", "Enabled"],
+      ["IPv4 method", "Static IP"],
+      ["IPv4", "192.168.1.25/24"],
+      ["Gateway", "192.168.1.1"],
+      ["DNS", "1.1.1.1, 8.8.8.8"],
+      ["Search domains", "lan"],
+      ["MTU", "9000"],
+      ["Optional at boot", "Yes"],
+    ]) {
+      expect(screen.getByText(label).nextSibling).toHaveTextContent(value);
+    }
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByRole("spinbutton")).toBeNull();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(mocks.setIPv4).not.toHaveBeenCalled();
+  });
+
+  it("gives a session with sudo the editable form and its save", () => {
+    render(
+      <NetworkInterfaceEditor
+        expanded
+        iface={manualInterface()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(addressInput()).toBeEnabled();
+    expect(screen.getByRole("checkbox")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Apply Configuration" }),
+    ).toBeInTheDocument();
+  });
 });
