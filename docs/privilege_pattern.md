@@ -36,7 +36,7 @@ Docker is a fixed case. Access to the Docker socket is root-equivalent, so the d
 
 Read-only system inventory can usually remain unprivileged unless it exposes sensitive information.
 
-To list the candidates (bindings with neither guard; routes that mutate only through polkit-gated D-Bus calls such as hostname, datetime, login1, systemd and NetworkManager also appear here and are a separate decision):
+To list the candidates (bindings with neither guard). Routes that change the host only through polkit-gated D-Bus calls, such as hostname, datetime, login1, systemd and NetworkManager, also appear here. They are to be admin-only like the rest and are not declared yet:
 
 ```sh
 rg -n 'apischema\.(Call\[|DuplexRoute\[|Mutation(Void|Task)?\()' backend/bridge/handlers -g '!*_test.go' | rg -v 'Privileged\(\)|RetrySafe\(\)'
@@ -46,12 +46,12 @@ The command includes `DuplexRoute` because a stream can change the host as much 
 
 ### What is enforced today
 
-The dispatcher enforces a declared guard. Nothing enforces that a route which needs the guard declares it: `TestRootOnlyStorageAndDockerRoutesArePrivileged` and `TestMonitoringMaintenanceRoutesArePrivileged` in `backend/bridge/apischema/schema_test.go` check routes they name (thirteen in the first), and a route that is not named is not checked. Three routes are known to need the guard and lack it:
+The dispatcher enforces a declared guard. Nothing enforces that a route which needs the guard declares it: `TestRootOnlyStorageAndDockerRoutesArePrivileged` and `TestMonitoringMaintenanceRoutesArePrivileged` in `backend/bridge/apischema/schema_test.go` check routes they name (thirteen in the first), and a route that is not named is not checked. Three routes fail without root and lack the guard:
 
 - `container.open` and `terminal.list_shells` (`backend/bridge/handlers/terminal/handlers.go`) reach the Docker socket to start processes in a container, which the Docker rule above covers.
-- `datetime.set_ntp_servers` (`backend/bridge/handlers/datetime/handlers.go`) writes under `/etc/systemd` or the chrony configuration. The other three datetime mutations go through timedated and are part of the separate polkit decision.
+- `datetime.set_ntp_servers` (`backend/bridge/handlers/datetime/handlers.go`) writes under `/etc/systemd` or the chrony configuration. The other three datetime mutations go through timedated. They lack the guard too, as do the systemd, NetworkManager, hostname, reboot and power-off routes: today the host's polkit rules decide whether a user without sudo may run them.
 
-Closing this, with a guard that fails on any changing route that is neither privileged nor a listed exception, is in [the consistency backlog](./TODO/consistency-backlog.md).
+Declaring all of them, with a guard that fails on any changing route that is neither privileged nor a listed exception, is in [the backlog](./TODO/backlog.md#2-admin-only-routes).
 
 The Assistant plugin routes (`assistant.install_plugin`, `uninstall_plugin`, `set_plugin_enabled` and the three `*_marketplace` routes) appear in that list and are unprivileged on purpose: they run the session user's own `claude` CLI as that user and write only under that user's home. See [Assistant](./AI-assistant.md#plugins).
 

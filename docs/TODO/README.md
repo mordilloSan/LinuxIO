@@ -1,13 +1,16 @@
 # TODO
 
-Each active plan has its own document:
+Open work is in one list: the [backlog](./backlog.md). It covers the backend,
+the API, jobs, scheduled scripts and consistency.
 
-- [API reliability, recovery, and notifications](./api-reliability-roadmap.md)
-- [Jobs: follow-ups](./jobs-follow-ups.md)
+Plans for things that are not built yet each have their own document:
+
 - [Frontend test coverage](./e2e-testing.md)
-- [Backend audit checklist](./backend-audit.md)
 - [Memory overflow: swap, zswap and zram from Settings](./memory-overflow.md)
-- [Consistency backlog: one definition, checked rules](./consistency-backlog.md)
+- [Package-managed installation](./packaging.md)
+
+The [mutation map](./mutation-map.md) traces every route that changes the
+host. It is input to the memory plan, and its tables are from before jobs.
 
 ## Dependency maintenance
 
@@ -19,7 +22,3 @@ Each active plan has its own document:
   Refresh the lockfile and verify a fresh install with
   `make setup '.SHELLFLAGS=-ec'`, then run `make ci-frontend-deps` and
   `make check-frontend-quiet` before closing this item.
-
-Other plans: [package-managed installation](./packaging.md) and [scheduled scripts](./scheduled-execution.md).
-The [mutation map](./mutation-map.md), which traces every route that changes
-the host, is input to the memory plan.

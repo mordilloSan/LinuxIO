@@ -3,6 +3,12 @@
 Date: 2026-10-25. Input to the jobs design: work that must outlive the login
 session and the per-login bridge.
 
+This is a snapshot from before jobs. The Kind, Bridge dies and Class columns,
+and the two tables below, describe the per-login bridge that ran this work
+then. Today every route that changes the host runs as a job in a job host
+that outlives the login, except the three browser-bound ones: see
+[Jobs](../jobs.md). The other columns were not re-checked after that move.
+
 These are the API routes that change something on the host: 205 of the 332. Each route was
 traced from its registration to the code that does the work. The map comes from reading
 the code: nothing was run, and durations come from the code's own caps and
@@ -344,24 +350,13 @@ All nine return once systemd has queued the job, not when it finishes.
 
 ## Found on the way
 
-None of these are fixed. Items 1 to 3, 8 and 10 were confirmed in the code;
-item 7 is an inference that needs a test.
+The trace found ten side issues. Checked against the code on 2026-11-13:
 
-1. Cancelling `storage.btrfs_device_remove` does not stop the kernel. `RemoveDevice` uses its context only for the lookup and never issues a cancel. The task reads "canceled" while the disk keeps emptying, which contradicts `docs/btrfs.md`.
-2. Resolved (phase 3): `docker.apply_daemon_storage` writes the files while Docker runs and hands one restart to systemd, so a dead job cannot leave Docker down. It was: if the bridge died after Docker had stopped, Docker and every container stayed down.
-3. `storage.btrfs_pool_create` has no rollback. A failure or kill leaves disks partitioned or half-formatted.
-4. These 13 routes need root but are not declared `Privileged()`:
-   - `storage.create_lv`, `storage.delete_lv`, `storage.resize_lv`
-   - the three NFS and three CIFS mount routes
-   - `storage.unmount_filesystem`, `storage.set_btrfs_maintenance`, `storage.run_smart_test`
-   - `docker.set_container_auto_update`
-
-   A non-root login sees them and gets a permission error. The bridge runs as that user, so this is not a privilege escalation.
-5. `/etc/default/btrfsmaintenance` and the WireGuard configs are rewritten in place, not atomically.
-6. Nothing stops a caller from cutting their own connection. `systemd.stop_service` and `systemd.restart_service` accept LinuxIO's own units, and the network routes accept the NIC that carries the session.
-7. Scrub stops on any signal delivered to its ioctl thread, and `fsIoctl` does not retry `EINTR`. A Go process can receive process-wide signals on any thread, so a scrub could end `aborted` with nobody cancelling it. This has not been observed.
-8. `useTaskAction` has no callers left. It is the only path that still makes the third round trip (`tasks.get`).
-9. `docs/api-contract.md` says 24 task routes are session-bound; there are 29.
-10. Some reads change things:
-    - `storage.btrfs_list` enables the btrfs health timer and the degraded-boot service, and can send alert email or webhooks.
-    - The subvolume, snapshot and settings reads mount a pool's top level under `/run/linuxio/btrfs/` when it is not already mounted. From then on `pool_destroy` refuses the pool: `poolMountpoints` rejects protected mounts, as `TestPoolMountpointsDeepestFirst` pins.
+- Fixed since: a cancelled device removal now stops in the kernel; the Docker
+  storage switch cannot leave Docker down; a failed pool create undoes what it
+  made; the 13 root-only routes are `Privileged()`; `btrfsmaintenance` and the
+  WireGuard configs are written atomically; `useTaskAction` is gone. The count
+  of session task routes no longer applies.
+- Still open, and now in the [backlog](./backlog.md): a caller can cut their
+  own connection (section 2), a scrub might end by itself on a signal, and
+  listing pools changes things (both section 3).

@@ -31,7 +31,7 @@ than repeating them:
 | [Frontend Task State](./frontend-task-state-unification.md) | The tray's task cache and the upload and download engines |
 | [Development](./development.md#test-vm) | The test VM the host-event checks run in |
 
-Open work is in [Jobs: follow-ups](./TODO/jobs-follow-ups.md).
+Open work is in the [backlog](./TODO/backlog.md).
 
 ## Terms
 
