@@ -11,6 +11,7 @@ import {
   POOL_MOUNT,
   rig,
   SCRUB,
+  SCRUB_LABEL,
   scrubRunning,
   signIn,
   signOut,
@@ -32,6 +33,8 @@ const BALANCE = "storage.btrfs_balance";
 const REPLACE = "storage.btrfs_device_replace";
 const POOL_CREATE = "storage.btrfs_pool_create";
 const DOCKER_STORAGE = "docker.apply_daemon_storage";
+/** The job's label, which names it in its alerts. */
+const DOCKER_STORAGE_LABEL = "Docker storage change";
 /** A disk rate at which a canceled balance needs seconds to stop. */
 const CANCEL_CRAWL = 2 * MiB;
 
@@ -441,7 +444,7 @@ test("a scrub whose host crashed is not resumed by the next reboot", async ({
   expect(await scrubRunning()).toBe(false);
   expect(await alertOf(job.id)).toMatchObject({
     message: expect.stringContaining("(crash)"),
-    title: `${SCRUB} was interrupted`,
+    title: `${SCRUB_LABEL} was interrupted`,
   });
   const page2 = await page.context().newPage();
   await signIn(page2);
@@ -449,7 +452,7 @@ test("a scrub whose host crashed is not resumed by the next reboot", async ({
   await expect(
     tray
       .getByRole("listitem")
-      .filter({ hasText: `${SCRUB} was interrupted` })
+      .filter({ hasText: `${SCRUB_LABEL} was interrupted` })
       .filter({ hasText: "(crash)" })
       .first(),
   ).toBeVisible({ timeout: 30_000 });
@@ -576,14 +579,14 @@ test("killing the host mid Docker storage switch never leaves Docker stopped", a
     expect([oldRoot, dataRoot]).toContain(root);
     expect(await alertOf(job.id)).toMatchObject({
       message: expect.stringContaining("(crash)"),
-      title: `${DOCKER_STORAGE} was interrupted`,
+      title: `${DOCKER_STORAGE_LABEL} was interrupted`,
     });
     await page.reload();
     const tray = await openTray(page);
     await expect(
       tray
         .getByRole("listitem")
-        .filter({ hasText: `${DOCKER_STORAGE} was interrupted` })
+        .filter({ hasText: `${DOCKER_STORAGE_LABEL} was interrupted` })
         .first(),
     ).toBeVisible({ timeout: 30_000 });
   } finally {

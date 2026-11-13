@@ -155,12 +155,12 @@ test("needrestart leaves a job host that runs a replaced binary alone", async ({
     expect(await exe(daemon)).toBe(`${DAEMON_BINARY} (deleted)`);
 
     // The control: with the override moved away, needrestart would restart
-    // the job host. The override adds its six entries to the distribution's.
+    // the job host. The override adds its seven entries to the distribution's.
     const withOverride = await overrides();
     await vmSsh(`sudo mv ${OVERRIDE} ${OVERRIDE}.off`);
     try {
       expect(await overrides(), "override_rc without the override").toBe(
-        withOverride - 6,
+        withOverride - 7,
       );
       const control = await needrestart("l");
       expect(control.restart).toEqual(expect.arrayContaining([HOST, DAEMON]));

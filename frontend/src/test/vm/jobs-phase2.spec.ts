@@ -12,6 +12,7 @@ import {
   openTray,
   rig,
   SCRUB,
+  SCRUB_LABEL,
   signIn,
   signOut,
   signOutIfSignedIn,
@@ -372,7 +373,7 @@ test("stopping the root job host marks the job interrupted/shutdown with an aler
   await expect(
     tray
       .getByRole("listitem")
-      .filter({ hasText: `${SCRUB} was interrupted` })
+      .filter({ hasText: `${SCRUB_LABEL} was interrupted` })
       .filter({ hasText: "(shutdown)" })
       .first(),
   ).toBeVisible({ timeout: 30_000 });

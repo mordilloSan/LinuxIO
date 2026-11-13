@@ -319,6 +319,8 @@ export const trayJob = (tray: Locator, text: string | RegExp) =>
     });
 
 export const SCRUB = "storage.btrfs_scrub_start";
+/** The scrub job's label, which names it in its alerts. */
+export const SCRUB_LABEL = "Scrubbing btrfs filesystem";
 export const POOL_MOUNT = "/mnt/e2e";
 export const MiB = 1024 * 1024;
 
