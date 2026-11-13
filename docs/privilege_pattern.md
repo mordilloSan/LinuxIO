@@ -36,11 +36,22 @@ Docker is a fixed case. Access to the Docker socket is root-equivalent, so the d
 
 Read-only system inventory can usually remain unprivileged unless it exposes sensitive information.
 
-To list the candidates (mutations with neither guard; routes that mutate only through polkit-gated D-Bus calls such as hostname, datetime, login1, systemd and NetworkManager also appear here and are a separate decision):
+To list the candidates (bindings with neither guard; routes that mutate only through polkit-gated D-Bus calls such as hostname, datetime, login1, systemd and NetworkManager also appear here and are a separate decision):
 
 ```sh
-rg -n 'apischema\.(Call\[|Mutation(Void|Task)?\()' backend/bridge/handlers -g '!*_test.go' | rg -v 'Privileged\(\)|RetrySafe\(\)'
+rg -n 'apischema\.(Call\[|DuplexRoute\[|Mutation(Void|Task)?\()' backend/bridge/handlers -g '!*_test.go' | rg -v 'Privileged\(\)|RetrySafe\(\)'
 ```
+
+The command includes `DuplexRoute` because a stream can change the host as much as a mutation can: `container.open` starts a process inside a container.
+
+### What is enforced today
+
+The dispatcher enforces a declared guard. Nothing enforces that a route which needs the guard declares it: `TestRootOnlyStorageAndDockerRoutesArePrivileged` and `TestMonitoringMaintenanceRoutesArePrivileged` in `backend/bridge/apischema/schema_test.go` check routes they name (thirteen in the first), and a route that is not named is not checked. Three routes are known to need the guard and lack it:
+
+- `container.open` and `terminal.list_shells` (`backend/bridge/handlers/terminal/handlers.go`) reach the Docker socket to start processes in a container, which the Docker rule above covers.
+- `datetime.set_ntp_servers` (`backend/bridge/handlers/datetime/handlers.go`) writes under `/etc/systemd` or the chrony configuration. The other three datetime mutations go through timedated and are part of the separate polkit decision.
+
+Closing this, with a guard that fails on any changing route that is neither privileged nor a listed exception, is in [the consistency backlog](./TODO/consistency-backlog.md).
 
 The Assistant plugin routes (`assistant.install_plugin`, `uninstall_plugin`, `set_plugin_enabled` and the three `*_marketplace` routes) appear in that list and are unprivileged on purpose: they run the session user's own `claude` CLI as that user and write only under that user's home. See [Assistant](./AI-assistant.md#plugins).
 

@@ -7,6 +7,7 @@ Each active plan has its own document:
 - [Frontend test coverage](./e2e-testing.md)
 - [Backend audit checklist](./backend-audit.md)
 - [Memory overflow: swap, zswap and zram from Settings](./memory-overflow.md)
+- [Consistency backlog: one definition, checked rules](./consistency-backlog.md)
 
 ## Dependency maintenance
 

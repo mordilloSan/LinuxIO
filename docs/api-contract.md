@@ -1281,6 +1281,52 @@ rg "reflect\\.|fn\\.Call|ValueOf" backend/bridge/apischema/schema.go backend/bri
 
 Expected result: no legacy string transport helpers, no `DecodeJSONArg`, and no runtime reflection in `apischema`.
 
+### 7. One Definition, Checked Rules
+
+Goal: a fact is written once, and a rule is enforced by a test, not by this
+document.
+
+Each change to LinuxIO is made one feature at a time and is correct by
+itself. What goes wrong goes wrong between features: a third answer to a
+question two other places already answer, a list retyped beside the place
+that owns it, a default stored where the reader was meant to derive one.
+Review and unit tests do not catch these, because each copy is right when it
+is written. A test that fails the build is what catches them. LinuxIO has
+such guards for handler layout, context propagation, error and logging
+conventions, import boundaries, the generated types and the frontend styling
+boundary. The inconsistencies found so far were all in a rule with no guard,
+a rule whose guard covers only a hand-kept list, or a question no rule
+answered.
+
+Rules:
+
+1. A list of names, a limit, a default, a validation rule or a safety check
+   has one definition. A table that other code iterates
+   (`themeColorDefs` in `backend/bridge/internal/userconfig/themecolors.go`,
+   the capability registry in `backend/bridge/handlers/capabilities/registry.go`,
+   `apischema.WireGuardHookKinds`) is the usual shape.
+2. Values that reach the frontend cross through the generator. A named
+   string type listed in `apischema.StringEnums` becomes a TypeScript union;
+   the entry takes its values from the Go definition (as `ThemeColorKey`,
+   `CapabilityName` and `WireGuardHookKind` do), not from a second literal.
+   A plain `string` field whose valid values a handler checks is a candidate
+   for such a type. The frontend then cannot hold a different copy.
+3. A frontend form applies the rule the server applies. Where the rule
+   cannot be published as a type (a pattern, a numeric bound), the response
+   carries the value or the form defers to the server's refusal; it does not
+   keep its own looser or stricter version.
+4. A rule comes with its guard. A guard that works from a hand-kept list is
+   deny-by-default: it fails on anything not listed as an exception, so a new
+   item cannot pass by not being mentioned.
+5. A value derived while unset is not given a default by another layer.
+   `ui.yaml` is read over `DefaultUIPreferences()`, so a default written
+   there, or saved back by the next `config.set_ui`, replaces the derivation
+   for good. `codeInsetBackground` and `panePictureBackground` have no
+   backend default for this reason.
+
+Where LinuxIO does not yet follow these rules is listed in
+[the consistency backlog](./TODO/consistency-backlog.md).
+
 ## Verification
 
 For API contract work, run:
