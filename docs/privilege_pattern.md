@@ -59,7 +59,16 @@ Not covered: the files a compress reads, a root upload without `owner`, and wher
 
 ### In the frontend
 
-The server's 403 is the gate; the page only avoids offering what will be refused. A control whose route is privileged is hidden for a session without sudo, read from `useAuth().privileged` or a route's `requiresPrivileged` access policy. The power menu, the dashboard's hostname and clock edits, the unit actions on the Services page and the network interface editor do this. The pages that do not yet are in [the backlog](./TODO/backlog.md#what-a-user-without-sudo-sees).
+The server's 403 is the gate; the page only avoids offering what will be refused. A control whose route is privileged is hidden for a session without sudo, read from `useAuth().privileged` or a route's `requiresPrivileged` access policy, and a privileged read that a page mounted for such a session would make is not issued. What is gated today:
+
+- the power menu, the dashboard's hostname and clock edits, and the unit actions on the Services page;
+- the Accounts page: adding users and groups, editing, password, lock and unlock, group members and delete, and ending a session; the lists and each user's details and activity stay;
+- the network interface card, which shows the same settings (connection, IPv4 method, addresses, gateway, DNS, search domains, MTU, optional at boot) as text with no control and no save;
+- the Docker pages, the Docker components and the dashboard's Docker card: every container, image, network, volume and compose stack change, Start all, Stop all and Prune, the container terminal and updates; the lists, details, inspect views, logs and update checks stay, and a stack's compose file opens read-only. A user in the `docker` group reaches these pages without sudo, since the capability probe pings the Docker socket as the bridge's user;
+- monitoring history (`monitoring.get_*_history`): the live charts on the dashboard and the network page skip their backfill and fill from live samples, and the history cards on the Hardware, Network and Docker pages say the history needs a privileged session (`useHistoryAccess`, `useLiveSeries`);
+- the file browser's search, folder sizes and Index filesystem (`filebrowser.search`, `filebrowser.subfolders`, `filebrowser.dir_size`, `filebrowser.index`): the search field and the index action are hidden and sizes show as unknown.
+
+The pages that do not yet are in [the backlog](./TODO/backlog.md#what-a-user-without-sudo-sees).
 
 ## Testing
 

@@ -18,6 +18,8 @@ import {
 } from "@/components/charts/timeFormat";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
+import useAuth from "@/hooks/useAuth";
+import { useCapability } from "@/hooks/useCapabilities";
 import { useAppTheme } from "@/theme";
 import { cardHeight } from "@/theme/constants";
 
@@ -235,6 +237,26 @@ export interface HistoryCardProps {
 }
 
 export type HistoryLiveProps = Pick<HistoryCardProps, "rangeId">;
+
+/**
+ * Whether this session can read monitoring history. The agent must be running,
+ * and the history routes are privileged, so a session without sudo gets a
+ * reason instead of a request the server would refuse.
+ */
+export const useHistoryAccess = (): {
+  isEnabled: boolean;
+  reason: string | undefined;
+} => {
+  const { isEnabled, reason } = useCapability("monitoringAvailable");
+  const { privileged } = useAuth();
+  if (!privileged) {
+    return {
+      isEnabled: false,
+      reason: "Historical monitoring requires a privileged session.",
+    };
+  }
+  return { isEnabled, reason };
+};
 
 export const historyCardMessage = (
   points: readonly unknown[] | undefined,

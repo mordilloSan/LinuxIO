@@ -241,13 +241,18 @@ export const UpdateCell = memo(function UpdateCell({
   // state and the way to apply the update, and re-checking a container that
   // already has one pending buys nothing.
   if (updateAvailable === true) {
-    if (state !== "running") {
+    // Applying an update is admin-only.
+    if (state !== "running" || !canUpdate) {
       return (
         <Chip
           color="warning"
           label="Available"
           size="small"
-          title="Update available; stopped containers are handled by the scheduled update policy"
+          title={
+            state !== "running"
+              ? "Update available; stopped containers are handled by the scheduled update policy"
+              : "Update available"
+          }
           variant="soft"
         />
       );
@@ -255,7 +260,7 @@ export const UpdateCell = memo(function UpdateCell({
     return (
       <Chip
         color="warning"
-        disabled={!canUpdate || updating}
+        disabled={updating}
         label={
           isUpdatePending ? (
             <span

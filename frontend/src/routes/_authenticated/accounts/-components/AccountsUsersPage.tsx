@@ -5,6 +5,7 @@ import { RoutedTabActions } from "@/components/tabbar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import HeaderActions from "@/components/ui/HeaderActions";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
+import useAuth from "@/hooks/useAuth";
 import { useViewMode } from "@/hooks/useViewMode";
 
 import UsersTab from "./UsersTab";
@@ -12,6 +13,7 @@ import UsersTab from "./UsersTab";
 const accountsUsersRouteApi = getRouteApi("/_authenticated/accounts/");
 
 const AccountsUsersPage = () => {
+  const { privileged } = useAuth();
   const [createUserHandler, setCreateUserHandler] = useState<
     (() => void) | null
   >(null);
@@ -24,6 +26,7 @@ const AccountsUsersPage = () => {
   const actions = isUserDetailOpen ? null : (
     <HeaderActions
       create={
+        privileged &&
         createUserHandler && (
           <AppActionIconButton
             ariaLabel="Add User"

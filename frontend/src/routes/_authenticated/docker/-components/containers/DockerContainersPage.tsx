@@ -4,6 +4,7 @@ import { RoutedTabActions } from "@/components/tabbar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import HeaderActions from "@/components/ui/HeaderActions";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
+import useAuth from "@/hooks/useAuth";
 import { useViewMode } from "@/hooks/useViewMode";
 
 import { useDockerUpdateCheck } from "../../-hooks/useDockerUpdateCheck";
@@ -16,16 +17,20 @@ const DockerContainersPage = () => {
     useDockerUpdateCheck();
   const [containerView, setContainerView] = useViewMode("docker.containers");
   const [createOpen, setCreateOpen] = useState(false);
+  // docker.create_container is admin-only.
+  const { privileged } = useAuth();
   const actions = (
     <HeaderActions
       create={
-        <AppActionIconButton
-          ariaLabel="Create container"
-          icon="mdi:plus"
-          iconSize={20}
-          label="Create container"
-          onClick={() => setCreateOpen(true)}
-        />
+        privileged && (
+          <AppActionIconButton
+            ariaLabel="Create container"
+            icon="mdi:plus"
+            iconSize={20}
+            label="Create container"
+            onClick={() => setCreateOpen(true)}
+          />
+        )
       }
       refresh={checkUpdatesButton}
       view={

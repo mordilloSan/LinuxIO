@@ -474,7 +474,10 @@ says once what happened while the user was away:
   The time is the per-user `dismissals.historySeenAt`, stored when the history
   page has shown a loaded history with at least one entry; the bridge stores it
   in UTC and never later than its own clock. A user with no stored time hears
-  nothing at that sign-in, which stores the baseline.
+  nothing at that sign-in, which stores the baseline. While a LinuxIO update
+  waits for an older job host, the history answers without that host's jobs:
+  an empty history then keeps the sign-in mark, and the notice is decided once
+  `tasks.host` reports the wait over and the history has been asked again.
 
 ## Not in this slice
 

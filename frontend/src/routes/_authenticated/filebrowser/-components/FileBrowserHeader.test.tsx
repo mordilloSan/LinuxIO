@@ -2,11 +2,15 @@ import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { HeaderActionsProps } from "@/components/ui/HeaderActions";
-import { render, screen } from "@/test/render";
+import { render as renderWithApp, screen } from "@/test/render";
 
 import FileBrowserHeader from "./FileBrowserHeader";
 
 const headerActionsRender = vi.hoisted(() => vi.fn());
+
+// Search and indexing are for a session with sudo; see the test without it.
+const render: typeof renderWithApp = (ui, options) =>
+  renderWithApp(ui, { auth: { privileged: true }, ...options });
 
 vi.mock("./IndexerDialog", () => ({ default: () => null }));
 vi.mock("@/components/ui/HeaderActions", () => ({
@@ -107,6 +111,20 @@ describe("FileBrowserHeader", () => {
     expect(
       screen.getByRole("button", { name: "Index filesystem" }),
     ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Trash" })).toBeVisible();
+  });
+
+  it("offers neither search nor indexing to a session without sudo", () => {
+    headerActionsRender.mockClear();
+    renderWithApp(
+      <FileBrowserHeader {...defaultProps} showQuickSave={false} />,
+      { auth: { privileged: false } },
+    );
+
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Index filesystem" }),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Trash" })).toBeVisible();
   });
 

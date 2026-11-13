@@ -19,6 +19,7 @@ import {
   AppDialogContentText,
   AppDialogTitle,
 } from "@/components/ui/AppDialog";
+import useAuth from "@/hooks/useAuth";
 import { useDockerSettings } from "@/hooks/useConfig";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
@@ -66,6 +67,9 @@ const ComposeStacksPage = ({
   viewMode = "table",
 }: ComposeStacksPageProps) => {
   const toast = useScopedToast(DOCKER_TOAST_META);
+  // Running, stopping and deleting a stack are admin-only, and a save leads
+  // straight to running it, so a session without sudo only views the files.
+  const { privileged } = useAuth();
   const dockerSettings = useDockerSettings();
   const chunkSize = useUploadChunkSize();
 
@@ -516,6 +520,7 @@ const ComposeStacksPage = ({
           onStart={startProject}
           onStop={stopProject}
           projects={projects}
+          readOnly={!privileged}
           viewMode={viewMode}
         />
 
@@ -529,7 +534,7 @@ const ComposeStacksPage = ({
           onSave={handleSave}
           onValidate={handleValidate}
           open={editorOpen}
-          readOnly={false}
+          readOnly={!privileged}
           stackName={editingStackName}
         />
 

@@ -2844,10 +2844,6 @@ export interface ServiceNameRequest {
   serviceName: string;
 }
 
-export interface SessionIDRequest {
-  sessionID: string;
-}
-
 export interface ShareNFSRequest {
   path: string;
   clients: NFSClient[];
@@ -3826,11 +3822,6 @@ export interface LinuxIOSchema {
   };
 
   control: {
-    logoff: {
-      input: [sessionID: string];
-      request: SessionIDRequest;
-      result: void;
-    };
     power_off: { input: []; request: void; result: void };
     reboot: { input: []; request: void; result: void };
     version: { input: []; request: void; result: VersionResponse };

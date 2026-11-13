@@ -24,6 +24,7 @@ import {
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTypography from "@/components/ui/AppTypography";
+import useAuth from "@/hooks/useAuth";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useBackgroundTaskActions } from "@/tasks/useBackgroundTaskActions";
 import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
@@ -64,6 +65,8 @@ const VolumeList = ({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [backupDialogOpen, setBackupDialogOpen] = useState(false);
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  // docker.delete_volume is admin-only; browsing and the backup are reads.
+  const { privileged } = useAuth();
 
   // Ensure volumes is an array (handle null/undefined from API)
   const volumesList = rawVolumes;
@@ -274,14 +277,16 @@ const VolumeList = ({
                       tooltip={false}
                     />
                   ) : (
-                    <AppActionIconButton
-                      ariaLabel={`Delete volume ${focusedVolume.Name}`}
-                      color="var(--app-palette-error-main)"
-                      icon="mdi:delete"
-                      iconSize={18}
-                      label="Delete volume"
-                      onClick={() => setDeleteDialogOpen(true)}
-                    />
+                    privileged && (
+                      <AppActionIconButton
+                        ariaLabel={`Delete volume ${focusedVolume.Name}`}
+                        color="var(--app-palette-error-main)"
+                        icon="mdi:delete"
+                        iconSize={18}
+                        label="Delete volume"
+                        onClick={() => setDeleteDialogOpen(true)}
+                      />
+                    )
                   )}
                 </div>
               }
@@ -371,13 +376,15 @@ const VolumeList = ({
         >
           Download backup
         </AppMenuItem>
-        <AppMenuItem
-          danger
-          onClick={() => chooseVolumeAction("delete")}
-          startAdornment={<Icon icon="mdi:delete" width={18} />}
-        >
-          Delete volume
-        </AppMenuItem>
+        {privileged && (
+          <AppMenuItem
+            danger
+            onClick={() => chooseVolumeAction("delete")}
+            startAdornment={<Icon icon="mdi:delete" width={18} />}
+          >
+            Delete volume
+          </AppMenuItem>
+        )}
       </AppMenu>
 
       <GeneralDialog

@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/AppDialog";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTypography from "@/components/ui/AppTypography";
+import useAuth from "@/hooks/useAuth";
 
 import { DOCKER_TOAST_META } from "../shared/dockerToast";
 import { useDockerUpdateOperation } from "../shared/DockerUpdateOperationProvider";
@@ -46,6 +47,9 @@ interface SecondaryAction {
   label: string;
   loading?: boolean;
   onClick: () => void;
+  /** A read, so offered to a session without sudo too; every other action
+   * calls an admin-only route. */
+  read?: boolean;
 }
 
 const ContainerActions = ({
@@ -63,6 +67,7 @@ const ContainerActions = ({
   const [editOpen, setEditOpen] = useState(false);
   const [forceRemove, setForceRemove] = useState(false);
   const navigate = useNavigate();
+  const { privileged } = useAuth();
   const { canUpdate, isUpdating, startUpdate, updating } =
     useDockerUpdateOperation();
 
@@ -221,6 +226,7 @@ const ContainerActions = ({
       icon: "mdi:file-document-outline",
       label: "Logs",
       onClick: onOpenLogs,
+      read: true,
     },
     {
       disabled: container.State !== "running",
@@ -234,6 +240,7 @@ const ContainerActions = ({
             icon: "mdi:open-in-new",
             label: "Open App",
             onClick: () => window.open(container.url, "_blank", "noopener"),
+            read: true,
           },
         ]
       : []),
@@ -260,10 +267,13 @@ const ContainerActions = ({
   ];
   const iconStrip = mode === "card" || mode === "full";
   const buttonSize = mode === "card" ? 24 : undefined;
+  const allowedActions = privileged
+    ? secondaryActions
+    : secondaryActions.filter((action) => action.read);
   const visibleActions =
     mode === "card"
-      ? secondaryActions.filter((action) => !action.detailsOnly)
-      : secondaryActions;
+      ? allowedActions.filter((action) => !action.detailsOnly)
+      : allowedActions;
 
   const closeMenu = () => setMenuAnchor(null);
   const chooseAction = (action: SecondaryAction) => {
@@ -293,7 +303,7 @@ const ContainerActions = ({
           marginRight: mode === "card" ? -8 : undefined,
         }}
       >
-        {mode !== "menu" && (
+        {privileged && mode !== "menu" && (
           <AppActionIconButton
             ariaLabel={iconStrip ? `${primary.label} ${name}` : undefined}
             buttonHeight={buttonSize}
@@ -348,7 +358,7 @@ const ContainerActions = ({
         onClose={closeMenu}
         open={Boolean(menuAnchor)}
       >
-        {mode === "menu" && (
+        {privileged && mode === "menu" && (
           <AppMenuItem
             disabled={busy || primary.disabled}
             onClick={() => chooseAction(primary)}
@@ -357,7 +367,7 @@ const ContainerActions = ({
             {primary.label}
           </AppMenuItem>
         )}
-        {secondaryActions.map((action) => (
+        {allowedActions.map((action) => (
           <AppMenuItem
             danger={action.danger}
             disabled={busy || action.disabled}

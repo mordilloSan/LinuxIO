@@ -98,8 +98,13 @@ function container(
   };
 }
 
-function renderTable(containers: ContainerInfo[]) {
-  return render(<ContainerTable containers={containers} />);
+function renderTable(
+  containers: ContainerInfo[],
+  { privileged = true }: { privileged?: boolean } = {},
+) {
+  return render(<ContainerTable containers={containers} />, {
+    auth: { privileged },
+  });
 }
 
 function rowNamed(name: string) {
@@ -185,24 +190,48 @@ describe("ContainerTable mutation feedback", () => {
     expect(rescan).not.toHaveTextContent("Up to date");
   });
 
-  it("disables the Update chip for an unprivileged session", () => {
-    media.compact = false;
-    render(
-      <DockerUpdateOperationProvider>
-        <ContainerTable
-          containers={[
-            container("alpha-id", "alpha", "running", {
-              updateAvailable: true,
-            }),
-          ]}
-        />
-      </DockerUpdateOperationProvider>,
-      { auth: { privileged: false } },
-    );
+  it.each([true, false])(
+    "offers the Update chip only with sudo (privileged: %s)",
+    (privileged) => {
+      media.compact = false;
+      render(
+        <DockerUpdateOperationProvider>
+          <ContainerTable
+            containers={[
+              container("alpha-id", "alpha", "running", {
+                updateAvailable: true,
+              }),
+            ]}
+          />
+        </DockerUpdateOperationProvider>,
+        { auth: { privileged } },
+      );
 
+      const row = rowNamed("alpha");
+      if (privileged) {
+        expect(
+          within(row).getByRole("button", { name: "Update" }),
+        ).toBeEnabled();
+      } else {
+        expect(within(row).getByText("Available")).toBeInTheDocument();
+        expect(
+          within(row).queryByRole("button", { name: "Update" }),
+        ).toBeNull();
+      }
+    },
+  );
+
+  it("shows only the read actions on a row without sudo", () => {
+    media.compact = false;
+    renderTable([container("alpha-id", "alpha", "running")], {
+      privileged: false,
+    });
+
+    const row = rowNamed("alpha");
+    expect(within(row).queryByRole("button", { name: "Stop" })).toBeNull();
     expect(
-      within(rowNamed("alpha")).getByRole("button", { name: "Update" }),
-    ).toHaveAttribute("aria-disabled", "true");
+      within(row).getByRole("button", { name: "Actions for alpha" }),
+    ).toBeInTheDocument();
   });
 
   it.each([

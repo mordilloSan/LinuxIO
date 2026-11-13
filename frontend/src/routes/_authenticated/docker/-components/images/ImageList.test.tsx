@@ -61,7 +61,9 @@ describe("ImageList focused details", () => {
   });
 
   it("opens rich details on one click and closes only route focus", async () => {
-    const { rerender, user } = render(<ImageList viewMode="card" />);
+    const { rerender, user } = render(<ImageList viewMode="card" />, {
+      auth: { privileged: true },
+    });
 
     await user.click(
       screen.getByRole("button", {
@@ -86,5 +88,18 @@ describe("ImageList focused details", () => {
       screen.getByRole("button", { name: "Close image details" }),
     );
     expect(mocks.search.image).toBeUndefined();
+  });
+
+  it("shows the details without the delete action without sudo", async () => {
+    mocks.search = { image: "sha256:10a08318f473" };
+    render(<ImageList viewMode="card" />, { auth: { privileged: false } });
+
+    expect(
+      await screen.findByRole("button", { name: "Close image details" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("example/image@sha256:digest")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Delete image example/image" }),
+    ).not.toBeInTheDocument();
   });
 });

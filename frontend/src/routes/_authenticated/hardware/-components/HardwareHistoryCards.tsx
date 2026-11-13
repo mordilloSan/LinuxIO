@@ -11,13 +11,13 @@ import {
   rangeById,
   RangeSelect,
   SynchronizedHistoryAreaChart,
+  useHistoryAccess,
   useHistoryTimestampFormatter,
   type HistoryCardProps,
   type HistoryLiveProps,
 } from "@/components/charts/HistoryCard";
 import AppSelect from "@/components/ui/AppSelect";
 import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
-import { useCapability } from "@/hooks/useCapabilities";
 import { formatThroughput } from "@/utils/formatters";
 import { formatGpuBytes, getGpuVendorLabel } from "@/utils/gpu";
 
@@ -284,7 +284,7 @@ const CPUHistoryLive = ({ rangeId }: HistoryLiveProps) => {
   const range = rangeById(rangeId);
   const request = historyRequest(range);
   const formatTimestamp = useHistoryTimestampFormatter(range);
-  const { isEnabled, reason } = useCapability("monitoringAvailable");
+  const { isEnabled, reason } = useHistoryAccess();
   const { data, isLoading, error } = useQuery({
     ...linuxio.monitoring.get_cpu_history({
       ...request,
@@ -360,7 +360,7 @@ const MemoryHistoryLive = ({ rangeId }: HistoryLiveProps) => {
   const range = rangeById(rangeId);
   const request = historyRequest(range);
   const formatTimestamp = useHistoryTimestampFormatter(range);
-  const { isEnabled, reason } = useCapability("monitoringAvailable");
+  const { isEnabled, reason } = useHistoryAccess();
   const { data, isLoading, error } = useQuery({
     ...linuxio.monitoring.get_memory_history({
       ...request,
@@ -444,7 +444,7 @@ const DiskIOLive = ({ rangeId }: HistoryLiveProps) => {
   const range = rangeById(rangeId);
   const request = historyRequest(range);
   const formatTimestamp = useHistoryTimestampFormatter(range);
-  const { isEnabled, reason } = useCapability("monitoringAvailable");
+  const { isEnabled, reason } = useHistoryAccess();
   const { data, isLoading, error } = useQuery({
     ...linuxio.monitoring.get_diskio_history({
       ...request,
@@ -495,7 +495,7 @@ const NetworkHistoryLive = ({ rangeId }: HistoryLiveProps) => {
   const range = rangeById(rangeId);
   const request = historyRequest(range);
   const formatTimestamp = useHistoryTimestampFormatter(range);
-  const { isEnabled, reason } = useCapability("monitoringAvailable");
+  const { isEnabled, reason } = useHistoryAccess();
   const { data, isLoading, error } = useQuery({
     ...linuxio.monitoring.get_network_history({
       ...request,

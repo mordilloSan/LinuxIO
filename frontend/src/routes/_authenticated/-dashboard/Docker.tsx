@@ -10,6 +10,7 @@ import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
+import useAuth from "@/hooks/useAuth";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import DashboardCard from "@/routes/_authenticated/-dashboard/DashboardCard";
@@ -136,6 +137,8 @@ const DockerStats = () => {
 const DockerContainers = () => {
   const toast = useScopedToast({ label: "Open Docker", to: "/docker" });
   const isSmallUp = useMediaQuery(up("sm"));
+  // Container actions and the terminal are admin-only routes; logs are a read.
+  const { privileged } = useAuth();
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const [menuContainer, setMenuContainer] = useState<{
     id: string;
@@ -371,7 +374,7 @@ const DockerContainers = () => {
           onClose={handleMenuClose}
           open={menuOpen}
         >
-          {menuContainer?.state !== "running" && (
+          {privileged && menuContainer?.state !== "running" && (
             <AppMenuItem
               onClick={() => handleAction("start")}
               startAdornment={<Icon icon="mdi:play" width={18} />}
@@ -379,7 +382,7 @@ const DockerContainers = () => {
               Start
             </AppMenuItem>
           )}
-          {menuContainer?.state === "running" && (
+          {privileged && menuContainer?.state === "running" && (
             <AppMenuItem
               onClick={() => handleAction("stop")}
               startAdornment={<Icon icon="mdi:stop" width={18} />}
@@ -387,13 +390,15 @@ const DockerContainers = () => {
               Stop
             </AppMenuItem>
           )}
-          <AppMenuItem
-            onClick={() => handleAction("restart")}
-            startAdornment={<Icon icon="mdi:restart" width={18} />}
-          >
-            Restart
-          </AppMenuItem>
-          {menuContainer?.state !== "running" && (
+          {privileged && (
+            <AppMenuItem
+              onClick={() => handleAction("restart")}
+              startAdornment={<Icon icon="mdi:restart" width={18} />}
+            >
+              Restart
+            </AppMenuItem>
+          )}
+          {privileged && menuContainer?.state !== "running" && (
             <AppMenuItem
               onClick={() => handleAction("remove")}
               startAdornment={<Icon icon="mdi:delete-outline" width={18} />}
@@ -401,7 +406,7 @@ const DockerContainers = () => {
               Remove
             </AppMenuItem>
           )}
-          <AppDivider />
+          {privileged && <AppDivider />}
           <AppMenuItem
             onClick={() => {
               if (menuContainer) {
@@ -418,22 +423,24 @@ const DockerContainers = () => {
           >
             Logs
           </AppMenuItem>
-          <AppMenuItem
-            onClick={() => {
-              if (menuContainer) {
-                setDialogContainer({
-                  id: menuContainer.id,
-                  name: menuContainer.name,
-                });
-                setHasLoadedTerminalDialog(true);
-                setTerminalOpen(true);
-              }
-              handleMenuClose();
-            }}
-            startAdornment={<Icon icon="mdi:console" width={18} />}
-          >
-            Terminal
-          </AppMenuItem>
+          {privileged && (
+            <AppMenuItem
+              onClick={() => {
+                if (menuContainer) {
+                  setDialogContainer({
+                    id: menuContainer.id,
+                    name: menuContainer.name,
+                  });
+                  setHasLoadedTerminalDialog(true);
+                  setTerminalOpen(true);
+                }
+                handleMenuClose();
+              }}
+              startAdornment={<Icon icon="mdi:console" width={18} />}
+            >
+              Terminal
+            </AppMenuItem>
+          )}
         </AppMenu>
       </div>
       {dialogContainer && (

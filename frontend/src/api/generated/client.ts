@@ -90,10 +90,6 @@ const linuxio = {
     set_ui: defineMutation("config", "set_ui", { kind: "object" }),
   },
   control: {
-    logoff: defineMutation("control", "logoff", {
-      kind: "field",
-      field: "sessionID",
-    }),
     power_off: defineMutation("control", "power_off", { kind: "none" }),
     reboot: defineMutation("control", "reboot", { kind: "none" }),
     version: defineCall("control.version"),

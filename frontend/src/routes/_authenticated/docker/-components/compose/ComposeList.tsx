@@ -51,6 +51,8 @@ interface ComposeListProps {
   onStart: (projectName: string) => void;
   onStop: (projectName: string) => void;
   projects: ComposeProject[];
+  /** For a session without sudo: view compose files only. */
+  readOnly?: boolean;
   viewMode?: "table" | "card";
 }
 
@@ -111,6 +113,7 @@ const ComposeList = ({
   onDelete,
   onEdit,
   isLoading = false,
+  readOnly = false,
   viewMode = "table",
 }: ComposeListProps) => {
   const navigate = dockerRouteApi.useNavigate();
@@ -371,45 +374,49 @@ const ComposeList = ({
               {onEdit && project.config_files.length > 0 && (
                 <AppActionIconButton
                   disabled={isLoading}
-                  icon="mdi:pencil"
+                  icon={readOnly ? "mdi:eye-outline" : "mdi:pencil"}
                   iconSize={20}
-                  label="Edit"
+                  label={readOnly ? "View" : "Edit"}
                   onClick={() => onEdit(project.name, project.config_files[0])}
                 />
               )}
-              {project.status === "running" || project.status === "partial" ? (
-                <>
+              {!readOnly &&
+                (project.status === "running" ||
+                project.status === "partial" ? (
+                  <>
+                    <AppActionIconButton
+                      disabled={isLoading}
+                      icon="mdi:restart"
+                      iconSize={20}
+                      label="Restart"
+                      onClick={() => onRestart(project.name)}
+                    />
+                    <AppActionIconButton
+                      disabled={isLoading}
+                      icon="mdi:stop"
+                      iconSize={20}
+                      label="Stop"
+                      onClick={() => onStop(project.name)}
+                    />
+                  </>
+                ) : (
                   <AppActionIconButton
                     disabled={isLoading}
-                    icon="mdi:restart"
+                    icon="mdi:play"
                     iconSize={20}
-                    label="Restart"
-                    onClick={() => onRestart(project.name)}
+                    label="Start"
+                    onClick={() => onStart(project.name)}
                   />
-                  <AppActionIconButton
-                    disabled={isLoading}
-                    icon="mdi:stop"
-                    iconSize={20}
-                    label="Stop"
-                    onClick={() => onStop(project.name)}
-                  />
-                </>
-              ) : (
+                ))}
+              {!readOnly && (
                 <AppActionIconButton
                   disabled={isLoading}
-                  icon="mdi:play"
+                  icon="mdi:delete"
                   iconSize={20}
-                  label="Start"
-                  onClick={() => onStart(project.name)}
+                  label="Delete"
+                  onClick={() => onDelete(project)}
                 />
               )}
-              <AppActionIconButton
-                disabled={isLoading}
-                icon="mdi:delete"
-                iconSize={20}
-                label="Delete"
-                onClick={() => onDelete(project)}
-              />
             </div>
           );
         },
@@ -428,7 +435,16 @@ const ComposeList = ({
         },
       },
     ],
-    [isLoading, isSmallUp, onDelete, onEdit, onRestart, onStart, onStop],
+    [
+      isLoading,
+      isSmallUp,
+      onDelete,
+      onEdit,
+      onRestart,
+      onStart,
+      onStop,
+      readOnly,
+    ],
   );
 
   const expandedContainerColumns = useMemo<
@@ -721,6 +737,7 @@ const ComposeList = ({
               onStart={onStart}
               onStop={onStop}
               project={focusedProject}
+              readOnly={readOnly}
               selected
             />
           }
@@ -775,6 +792,7 @@ const ComposeList = ({
                     : () => updateFocusedProject(project.name)
                 }
                 project={project}
+                readOnly={readOnly}
               />
             )}
             size={CARD_GRID_SIZE_DENSE}

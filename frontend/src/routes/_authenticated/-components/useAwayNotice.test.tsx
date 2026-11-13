@@ -14,12 +14,14 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { type ReactNode, StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type {
-  Alert,
-  AlertList,
-  TaskHistory,
-  TaskHistoryEntry,
-  TaskSnapshot,
+import {
+  linuxio,
+  type Alert,
+  type AlertList,
+  type TaskHistory,
+  type TaskHistoryEntry,
+  type TaskHostStatus,
+  type TaskSnapshot,
 } from "@/api";
 import { bridgeConfigQueryKey } from "@/api/config-query";
 import { AuthContext } from "@/contexts/AuthContext";
@@ -108,12 +110,19 @@ const history = (entries: TaskHistoryEntry[]): TaskHistory => ({
 function answer({
   alerts = alertList(0),
   jobs = history([]),
+  host,
   failing,
-}: { alerts?: AlertList; failing?: string; jobs?: TaskHistory } = {}) {
+}: {
+  alerts?: AlertList;
+  failing?: string;
+  host?: TaskHostStatus;
+  jobs?: TaskHistory;
+} = {}) {
   mocks.call.mockImplementation(async (route: string) => {
     if (route === failing) throw new Error("bridge unavailable");
     if (route === "alerts.list") return alerts;
     if (route === "tasks.history") return jobs;
+    if (route === "tasks.host" && host) return host;
     throw new Error(`unexpected route ${route}`);
   });
 }
@@ -433,6 +442,65 @@ describe("useAwayNotice for another user", () => {
       dismissals: { historySeenAt: "2026-11-11T08:00:00.000Z" },
     });
     await settle();
+    expect(mocks.toast.warning).not.toHaveBeenCalled();
+  });
+
+  it("keeps the mark while an update waits, and tells them once the job host is back", async () => {
+    markFreshSignIn();
+    answer({
+      jobs: history([]),
+      host: { update_pending: true, running: 1 },
+    });
+
+    const { queryClient, updateConfig } = setup({
+      privileged: false,
+      historySeenAt: SEEN_AT,
+    });
+
+    await waitFor(() =>
+      expect(routesCalled()).toEqual(["tasks.history", "tasks.host"]),
+    );
+    await settle();
+    expect(hasFreshSignIn()).toBe(true);
+    expect(mocks.toast.warning).not.toHaveBeenCalled();
+
+    // The update banner's poll finds the older host gone.
+    answer({
+      jobs: history(ended),
+      host: { update_pending: false, running: 0 },
+    });
+    await act(() =>
+      queryClient.refetchQueries({ queryKey: linuxio.tasks.host.queryKey }),
+    );
+
+    await waitFor(() =>
+      expect(mocks.toast.warning).toHaveBeenCalledWith(
+        "While you were away: 2 of your jobs did not finish",
+        expect.anything(),
+      ),
+    );
+    expect(hasFreshSignIn()).toBe(false);
+    expect(routesCalled()).toEqual([
+      "tasks.history",
+      "tasks.host",
+      "tasks.host",
+      "tasks.history",
+    ]);
+    expect(updateConfig).not.toHaveBeenCalled();
+  });
+
+  it("takes the mark on an empty history when no update waits", async () => {
+    markFreshSignIn();
+    answer({
+      jobs: history([]),
+      host: { update_pending: false, running: 0 },
+    });
+
+    setup({ privileged: false, historySeenAt: SEEN_AT });
+
+    await waitFor(() => expect(hasFreshSignIn()).toBe(false));
+    await settle();
+    expect(routesCalled()).toEqual(["tasks.history", "tasks.host"]);
     expect(mocks.toast.warning).not.toHaveBeenCalled();
   });
 

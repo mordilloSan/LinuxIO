@@ -1,8 +1,9 @@
+import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { NetworkInterface } from "@/api";
 import { testNetworkInterface } from "@/test/networkInterface";
-import { render, screen } from "@/test/render";
+import { render as renderWithApp, screen } from "@/test/render";
 
 import NetworkInterfaceEditor from "./NetworkInterfaceEditor";
 
@@ -52,6 +53,10 @@ const manualInterface = (
     ipv4_method: "manual",
     ...overrides,
   });
+
+// The editor's controls are for a session with sudo; see the read-only tests.
+const render = (ui: ReactElement) =>
+  renderWithApp(ui, { auth: { privileged: true } });
 
 const addressInput = () => screen.getByPlaceholderText("192.168.1.10/24");
 const gatewayInput = () => screen.getByPlaceholderText("192.168.1.1");
@@ -348,4 +353,54 @@ describe("NetworkInterfaceEditor", () => {
       expect(expectedMutation).toHaveBeenCalledTimes(1);
     },
   );
+
+  it("shows a session without sudo the settings with nothing to change", () => {
+    renderWithApp(
+      <NetworkInterfaceEditor
+        expanded
+        iface={manualInterface({
+          dns_options: { ignore_dhcp: false, search: ["lan"] },
+          mtu: 9000,
+          optional: true,
+          state: 100,
+        })}
+        onClose={vi.fn()}
+      />,
+      { auth: { privileged: false } },
+    );
+
+    for (const [label, value] of [
+      ["Connection", "Enabled"],
+      ["IPv4 method", "Static IP"],
+      ["IPv4", "192.168.1.25/24"],
+      ["Gateway", "192.168.1.1"],
+      ["DNS", "1.1.1.1, 8.8.8.8"],
+      ["Search domains", "lan"],
+      ["MTU", "9000"],
+      ["Optional at boot", "Yes"],
+    ]) {
+      expect(screen.getByText(label).nextSibling).toHaveTextContent(value);
+    }
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByRole("spinbutton")).toBeNull();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(mocks.setIPv4).not.toHaveBeenCalled();
+  });
+
+  it("gives a session with sudo the editable form and its save", () => {
+    render(
+      <NetworkInterfaceEditor
+        expanded
+        iface={manualInterface()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(addressInput()).toBeEnabled();
+    expect(screen.getByRole("checkbox")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Apply Configuration" }),
+    ).toBeInTheDocument();
+  });
 });

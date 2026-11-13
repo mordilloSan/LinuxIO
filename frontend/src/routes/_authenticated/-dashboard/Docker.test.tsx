@@ -103,7 +103,7 @@ describe("dashboard Docker mutation feedback", () => {
         return Promise.resolve();
       },
     );
-    const { user } = render(<DockerInfo />);
+    const { user } = render(<DockerInfo />, { auth: { privileged: true } });
 
     fireEvent.contextMenu(screen.getByRole("group", { name: "alpha" }));
     await user.click(screen.getByRole("menuitem", { name: "Start" }));
@@ -160,7 +160,7 @@ describe("dashboard Docker mutation feedback", () => {
   });
 
   it("drops an open menu when a poll removes the container it targets", () => {
-    render(<DockerInfo />);
+    render(<DockerInfo />, { auth: { privileged: true } });
 
     fireEvent.contextMenu(screen.getByRole("group", { name: "alpha" }));
     expect(screen.getByRole("menu")).toBeInTheDocument();
@@ -172,5 +172,16 @@ describe("dashboard Docker mutation feedback", () => {
     expect(
       screen.queryByRole("group", { name: "alpha" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("offers only the container logs without sudo", () => {
+    render(<DockerInfo />, { auth: { privileged: false } });
+
+    fireEvent.contextMenu(screen.getByRole("group", { name: "alpha" }));
+
+    expect(screen.getByRole("menuitem", { name: "Logs" })).toBeInTheDocument();
+    for (const name of ["Start", "Stop", "Restart", "Remove", "Terminal"]) {
+      expect(screen.queryByRole("menuitem", { name })).not.toBeInTheDocument();
+    }
   });
 });

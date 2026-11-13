@@ -373,7 +373,7 @@ const ContainerCardBody = ({
                   }}
                 >
                   {container.updateAvailable &&
-                    (container.State === "running" ? (
+                    (container.State === "running" && canUpdate ? (
                       <>
                         <AppActionIconButton
                           ariaLabel={`Update available for ${name}`}

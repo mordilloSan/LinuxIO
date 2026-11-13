@@ -11,6 +11,7 @@ import {
   LIVE_BACKFILL_WINDOW_MS,
   LIVE_STALE_AFTER_MS,
 } from "@/constants/liveCharts";
+import useAuth from "@/hooks/useAuth";
 import { useCapability } from "@/hooks/useCapabilities";
 
 export interface LiveSeriesPoint {
@@ -24,7 +25,9 @@ export interface LiveSeriesPoint {
  * charts. Returns the persistent TimeSeries for `ids` (same order); buffers
  * with no usable data are seeded from linuxio-monitoring history via fetchHistory,
  * which receives the ready-made request and resolves backfill points per
- * series id. One fetch seeds all of a chart's series.
+ * series id. One fetch seeds all of a chart's series. The history routes are
+ * privileged, so a session without sudo skips the backfill and its charts
+ * start empty and fill from live samples.
  */
 export function useLiveSeries(
   ids: readonly string[],
@@ -33,6 +36,8 @@ export function useLiveSeries(
   ) => Promise<Record<string, LiveSeriesPoint[]>>,
 ): TimeSeries[] {
   const { isEnabled: monitoringEnabled } = useCapability("monitoringAvailable");
+  const { privileged } = useAuth();
+  const backfillEnabled = monitoringEnabled && privileged;
 
   // Keyed on content so callers can pass a fresh array literal every render.
   const idsKey = ids.join("\n");
@@ -44,7 +49,7 @@ export function useLiveSeries(
   const fetchHistoryEvent = useEffectEvent(fetchHistory);
 
   useEffect(() => {
-    if (!monitoringEnabled) return;
+    if (!backfillEnabled) return;
     const staleIds = idsKey
       .split("\n")
       .filter((id) => resetStaleLiveSeries(id, LIVE_STALE_AFTER_MS));
@@ -67,7 +72,7 @@ export function useLiveSeries(
     return () => {
       cancelled = true;
     };
-  }, [idsKey, monitoringEnabled]);
+  }, [backfillEnabled, idsKey]);
 
   return seriesList;
 }

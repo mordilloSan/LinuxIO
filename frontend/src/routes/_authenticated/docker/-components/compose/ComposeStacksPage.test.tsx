@@ -58,6 +58,7 @@ vi.mock("./ComposeEditorDialog", () => ({
     filePath,
     onSave,
     open,
+    readOnly,
   }: {
     filePath: string;
     onSave: (
@@ -67,9 +68,14 @@ vi.mock("./ComposeEditorDialog", () => ({
       envContent?: string,
     ) => Promise<boolean>;
     open: boolean;
+    readOnly: boolean;
   }) => (
     <>
-      {open ? <span>Editing {filePath}</span> : null}
+      {open ? (
+        <span>
+          {readOnly ? "Viewing" : "Editing"} {filePath}
+        </span>
+      ) : null}
       <button
         onClick={() =>
           void onSave("services: {}\n", "web", filePath, "KEY=1\n")
@@ -87,14 +93,16 @@ vi.mock("./ComposeEditorDialog", () => ({
 vi.mock("./ComposeList", () => ({
   default: ({
     onEdit,
+    readOnly,
   }: {
     onEdit: (projectName: string, configPath: string) => void;
+    readOnly: boolean;
   }) => (
     <button
       onClick={() => onEdit("web", "/home/alice/docker/web/docker-compose.yml")}
       type="button"
     >
-      Edit stack
+      {readOnly ? "View stack" : "Edit stack"}
     </button>
   ),
 }));
@@ -140,7 +148,9 @@ describe("ComposeStacksPage save", () => {
   });
 
   it("creates the compose file and a new .env as the session user, the .env private and never overwritten", async () => {
-    const { user } = render(<ComposeStacksPage />);
+    const { user } = render(<ComposeStacksPage />, {
+      auth: { privileged: true },
+    });
 
     await user.click(screen.getByRole("button", { name: "Save stack" }));
 
@@ -156,7 +166,9 @@ describe("ComposeStacksPage save", () => {
   });
 
   it("replaces an existing .env only at the version the editor loaded", async () => {
-    const { user } = render(<ComposeStacksPage />);
+    const { user } = render(<ComposeStacksPage />, {
+      auth: { privileged: true },
+    });
 
     await user.click(screen.getByRole("button", { name: "Set up stack" }));
     await screen.findByText(
@@ -175,7 +187,9 @@ describe("ComposeStacksPage save", () => {
   });
 
   it("saves an edited compose file at the version the editor loaded", async () => {
-    const { user } = render(<ComposeStacksPage />);
+    const { user } = render(<ComposeStacksPage />, {
+      auth: { privileged: true },
+    });
 
     await user.click(screen.getByRole("button", { name: "Edit stack" }));
     await screen.findByText(
@@ -191,5 +205,19 @@ describe("ComposeStacksPage save", () => {
       owner: "session",
     });
     expect(composeCall[2].overwrite).toBeFalsy();
+  });
+
+  it("opens a stack read-only without sudo", async () => {
+    const { user } = render(<ComposeStacksPage />, {
+      auth: { privileged: false },
+    });
+
+    await user.click(screen.getByRole("button", { name: "View stack" }));
+
+    expect(
+      await screen.findByText(
+        "Viewing /home/alice/docker/web/docker-compose.yml",
+      ),
+    ).toBeInTheDocument();
   });
 });

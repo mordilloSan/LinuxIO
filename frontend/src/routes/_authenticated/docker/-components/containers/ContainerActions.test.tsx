@@ -26,6 +26,7 @@ describe("ContainerActions", () => {
         name="example"
         {...callbacks}
       />,
+      { auth: { privileged: true } },
     );
 
     expect(screen.getByRole("button", { name: "Stop example" })).toBeEnabled();
@@ -65,6 +66,7 @@ describe("ContainerActions", () => {
         name="example"
         {...callbacks}
       />,
+      { auth: { privileged: true } },
     );
 
     await user.click(screen.getByRole("button", { name: "Remove example" }));
@@ -106,6 +108,7 @@ describe("ContainerActions", () => {
           name="example"
           {...callbacks}
         />,
+        { auth: { privileged: true } },
       );
 
       await user.click(
@@ -135,6 +138,7 @@ describe("ContainerActions", () => {
         name="stopped"
         {...callbacks}
       />,
+      { auth: { privileged: true } },
     );
 
     expect(screen.getByRole("button", { name: "Start stopped" })).toBeEnabled();
@@ -174,6 +178,7 @@ describe("ContainerActions", () => {
         name="example"
         {...callbacks}
       />,
+      { auth: { privileged: true } },
     );
 
     expect(
@@ -190,6 +195,7 @@ describe("ContainerActions", () => {
         name="example"
         {...callbacks}
       />,
+      { auth: { privileged: true } },
     );
 
     expect(
@@ -199,7 +205,7 @@ describe("ContainerActions", () => {
     expect(screen.queryByRole("button", { name: /^Update/ })).toBeNull();
   });
 
-  it("disables Update in full mode for an unprivileged session", () => {
+  it("offers Update in full mode to a session with sudo", () => {
     render(
       <DockerUpdateOperationProvider>
         <ContainerActions
@@ -213,12 +219,57 @@ describe("ContainerActions", () => {
           {...callbacks}
         />
       </DockerUpdateOperationProvider>,
-      { auth: { privileged: false } },
+      { auth: { privileged: true } },
     );
 
     expect(
       screen.getByRole("button", { name: "Update example" }),
-    ).toBeDisabled();
+    ).toBeEnabled();
+  });
+
+  it("offers only logs and the app link without sudo", async () => {
+    const container = {
+      Id: "running-id",
+      Labels: { "com.docker.compose.project": "example-stack" },
+      State: "running",
+      updateAvailable: true,
+      url: "http://example.test",
+    };
+    const { unmount } = render(
+      <DockerUpdateOperationProvider>
+        <ContainerActions
+          container={container}
+          mode="full"
+          name="example"
+          {...callbacks}
+        />
+      </DockerUpdateOperationProvider>,
+      { auth: { privileged: false } },
+    );
+
+    expect(
+      screen
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual(["Logs example", "Open App example"]);
+    unmount();
+
+    const { user } = render(
+      <ContainerActions
+        container={container}
+        mode="menu"
+        name="example"
+        {...callbacks}
+      />,
+      { auth: { privileged: false } },
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Actions for example" }),
+    );
+
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual(["Logs", "Open App"]);
   });
 
   it("shows every action as an icon in full mode", () => {
@@ -229,6 +280,7 @@ describe("ContainerActions", () => {
         name="example"
         {...callbacks}
       />,
+      { auth: { privileged: true } },
     );
 
     expect(

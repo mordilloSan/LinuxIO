@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 
 import { linuxio, type SubfolderData } from "@/api";
+import useAuth from "@/hooks/useAuth";
 
 import {
   getDirectorySizeError,
@@ -32,8 +33,10 @@ export const useFileSubfolders = (
 ): UseSubfoldersResult => {
   // Skip size calculation for system directories
   const shouldSkip = shouldSkipSizeCalculation(path);
+  // Sizes come from the root indexer through a privileged route.
+  const { privileged } = useAuth();
   const queryEnabled = shouldEnableDirectorySizeQuery(
-    enabled,
+    enabled && privileged,
     path,
     shouldSkip,
   );

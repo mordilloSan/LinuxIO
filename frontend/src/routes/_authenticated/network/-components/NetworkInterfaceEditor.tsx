@@ -9,6 +9,7 @@ import AppSwitch from "@/components/ui/AppSwitch";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import StatusDot from "@/components/ui/StatusDot";
+import useAuth from "@/hooks/useAuth";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { CARD_PADDING_LG, GAP_MD, GAP_SM } from "@/theme/constants";
 
@@ -136,7 +137,27 @@ const isCurrentSession = (
   session.ifaceName === iface.name &&
   session.sourceIpv4Method === iface.ipv4_method;
 
+const DetailRows = ({ rows }: { rows: string[][] }) =>
+  rows.map(([label, value]) => (
+    <div
+      key={label}
+      style={{
+        display: "flex",
+        gap: GAP_SM,
+        justifyContent: "space-between",
+      }}
+    >
+      <AppTypography color="text.secondary" variant="body2">
+        {label}
+      </AppTypography>
+      <AppTypography noWrap variant="body2">
+        {value}
+      </AppTypography>
+    </div>
+  ));
+
 const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
+  const { privileged } = useAuth();
   const toast = useScopedToast(NETWORK_TOAST_META);
 
   const defaultGateway = getGatewayV4(iface);
@@ -366,18 +387,80 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
           ? "IPv4 disabled"
           : "IPv4 unknown";
 
+  const cardStyle = {
+    display: "flex",
+    flexDirection: "column",
+    gap: GAP_SM,
+    height: "100%",
+    padding: CARD_PADDING_LG,
+  } as const;
+  const title = (
+    <div
+      style={{
+        alignItems: "center",
+        display: "flex",
+        gap: GAP_SM,
+        minWidth: 0,
+      }}
+    >
+      <StatusDot
+        color={getNetworkStateColor(iface.state)}
+        size={8}
+        tooltip={getNetworkStateSummary(iface)}
+      />
+      <AppTypography fontWeight={600} noWrap variant="subtitle1">
+        {iface.name}
+      </AppTypography>
+    </div>
+  );
+  const macLine = (
+    <AppTypography color="text.secondary" noWrap variant="body2">
+      MAC: {iface.mac}
+    </AppTypography>
+  );
+
+  // Every route this card saves through is admin-only, so a session without
+  // sudo gets the same settings as text and nothing that can change them.
+  if (!privileged) {
+    const readOnlyDetails = [
+      [
+        "Connection",
+        isConnected ? "Enabled" : isConnecting ? "Connecting" : "Disabled",
+      ],
+      ["IPv4 method", methodLabel],
+      ...interfaceDetails,
+      ...(dnsOptions
+        ? [["Search domains", dnsOptions.search.join(", ") || "None"]]
+        : []),
+      ["MTU", String(iface.mtu)],
+      ...(iface.optional === undefined
+        ? []
+        : [["Optional at boot", iface.optional ? "Yes" : "No"]]),
+    ];
+    return (
+      <AppGrid size={{ xs: 12, sm: 6, md: 4 }}>
+        <FrostedCard accent style={cardStyle}>
+          <div>
+            {title}
+            {macLine}
+          </div>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: GAP_MD,
+            }}
+          >
+            <DetailRows rows={readOnlyDetails} />
+          </div>
+        </FrostedCard>
+      </AppGrid>
+    );
+  }
+
   return (
     <AppGrid size={{ xs: 12, sm: 6, md: 4 }}>
-      <FrostedCard
-        accent
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: GAP_SM,
-          height: "100%",
-          padding: CARD_PADDING_LG,
-        }}
-      >
+      <FrostedCard accent style={cardStyle}>
         <div>
           <div
             aria-busy={toggling || undefined}
@@ -388,23 +471,7 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
               justifyContent: "space-between",
             }}
           >
-            <div
-              style={{
-                alignItems: "center",
-                display: "flex",
-                gap: GAP_SM,
-                minWidth: 0,
-              }}
-            >
-              <StatusDot
-                color={getNetworkStateColor(iface.state)}
-                size={8}
-                tooltip={getNetworkStateSummary(iface)}
-              />
-              <AppTypography fontWeight={600} noWrap variant="subtitle1">
-                {iface.name}
-              </AppTypography>
-            </div>
+            {title}
             <div style={{ alignItems: "center", display: "flex", gap: GAP_SM }}>
               {toggling ? (
                 <AppCircularProgress
@@ -423,9 +490,7 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
               />
             </div>
           </div>
-          <AppTypography color="text.secondary" noWrap variant="body2">
-            MAC: {iface.mac}
-          </AppTypography>
+          {macLine}
         </div>
 
         <div
@@ -471,23 +536,7 @@ const NetworkInterfaceEditor = ({ iface, expanded, onClose }: Props) => {
                 ? "The interface obtains its address and gateway from DHCP."
                 : "The interface obtains its address, gateway, and DNS from DHCP."}
             </AppTypography>
-            {interfaceDetails.map(([label, value]) => (
-              <div
-                key={label}
-                style={{
-                  display: "flex",
-                  gap: GAP_SM,
-                  justifyContent: "space-between",
-                }}
-              >
-                <AppTypography color="text.secondary" variant="body2">
-                  {label}
-                </AppTypography>
-                <AppTypography noWrap variant="body2">
-                  {value}
-                </AppTypography>
-              </div>
-            ))}
+            <DetailRows rows={interfaceDetails} />
           </div>
         ) : null}
         <div

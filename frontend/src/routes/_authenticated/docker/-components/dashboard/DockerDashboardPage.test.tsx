@@ -79,7 +79,9 @@ describe("DockerDashboardPage", () => {
   });
 
   it("blocks bulk container actions while the container list refetches", async () => {
-    const { rerender, user } = render(<DockerDashboardPage />);
+    const { rerender, user } = render(<DockerDashboardPage />, {
+      auth: { privileged: true },
+    });
 
     expect(screen.getByRole("button", { name: "Start All" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Stop All" })).toBeDisabled();
@@ -94,5 +96,15 @@ describe("DockerDashboardPage", () => {
     expect(mocks.stopContainer).toHaveBeenCalledWith({
       containerId: "running-id",
     });
+  });
+
+  it("shows no bulk or prune actions without sudo", () => {
+    mocks.queryState.isFetching = false;
+    render(<DockerDashboardPage />, { auth: { privileged: false } });
+
+    expect(screen.getByText("Docker dashboard")).toBeInTheDocument();
+    for (const name of ["Start All", "Stop All", "Prune All"]) {
+      expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+    }
   });
 });

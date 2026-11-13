@@ -19,7 +19,6 @@ import { useReorderableSurface } from "@/components/reorder/useReorderableSurfac
 import AppGrid from "@/components/ui/AppGrid";
 import AppTypography from "@/components/ui/AppTypography";
 import { OVERLAY_ROOT_SELECTOR } from "@/components/ui/overlay";
-import useAuth from "@/hooks/useAuth";
 import NetworkInterfaceCard from "@/routes/_authenticated/network/-components/NetworkInterfaceCard";
 import NetworkInterfaceEditor from "@/routes/_authenticated/network/-components/NetworkInterfaceEditor";
 import {
@@ -255,7 +254,6 @@ const NetworkInterfaceList = () => {
       typeof search.iface === "string" ? search.iface : undefined,
   });
   const navigate = networkRouteApi.useNavigate();
-  const { privileged } = useAuth();
 
   const { data: interfaces } = useSuspenseQuery({
     ...linuxio.network.get_network_info,
@@ -351,14 +349,12 @@ const NetworkInterfaceList = () => {
             ease: EASING_STANDARD,
           }}
         >
-          {/* Every route the editor saves through is admin-only. */}
-          {privileged ? (
-            <NetworkInterfaceConfigurationCards
-              name={selectedIface.name}
-              onClose={handleClose}
-              type={selectedIface.type}
-            />
-          ) : null}
+          {/* Read-only without sudo: every route it saves through is admin-only. */}
+          <NetworkInterfaceConfigurationCards
+            name={selectedIface.name}
+            onClose={handleClose}
+            type={selectedIface.type}
+          />
           <AppGrid size={{ xs: 12, sm: 6, md: 4 }}>
             <NetworkInterfaceStatsCard name={selectedIface.name} />
           </AppGrid>

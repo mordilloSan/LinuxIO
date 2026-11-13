@@ -13,6 +13,7 @@ import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import Chip from "@/components/ui/AppChip";
 import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppTypography from "@/components/ui/AppTypography";
+import useAuth from "@/hooks/useAuth";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import GroupCard from "@/routes/_authenticated/accounts/-components/GroupCard";
 import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
@@ -57,6 +58,7 @@ const GroupsTab = ({
   onMountCreateHandler,
   viewMode = "table",
 }: GroupsTabProps) => {
+  const { privileged } = useAuth();
   const { data: groups } = useSuspenseQuery({
     ...linuxio.accounts.list_groups,
     refetchInterval: 10000,
@@ -186,50 +188,55 @@ const GroupsTab = ({
         },
         meta: { align: "left" },
       },
-      {
-        id: "actions",
-        header: "Actions",
-        enableSorting: false,
-        cell: ({ row }) => {
-          const group = row.original;
-          return (
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: 2,
-              }}
-            >
-              <AppActionIconButton
-                disabled={group.name === "root"}
-                icon="mdi:pencil"
-                iconSize={20}
-                label="Edit Members"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleEditMembers(group);
-                }}
-              />
-              <AppActionIconButton
-                disabled={group.name === "root" || group.isSystem}
-                icon="mdi:delete"
-                iconSize={20}
-                label="Delete Group"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDelete(group);
-                }}
-              />
-            </div>
-          );
-        },
-        meta: {
-          align: "right",
-          width: "100px",
-        },
-      },
+      // Changing a group is privileged; without sudo the table is read-only.
+      ...(privileged
+        ? ([
+            {
+              id: "actions",
+              header: "Actions",
+              enableSorting: false,
+              cell: ({ row }) => {
+                const group = row.original;
+                return (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "flex-end",
+                      gap: 2,
+                    }}
+                  >
+                    <AppActionIconButton
+                      disabled={group.name === "root"}
+                      icon="mdi:pencil"
+                      iconSize={20}
+                      label="Edit Members"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEditMembers(group);
+                      }}
+                    />
+                    <AppActionIconButton
+                      disabled={group.name === "root" || group.isSystem}
+                      icon="mdi:delete"
+                      iconSize={20}
+                      label="Delete Group"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(group);
+                      }}
+                    />
+                  </div>
+                );
+              },
+              meta: {
+                align: "right",
+                width: "100px",
+              },
+            },
+          ] satisfies AppVirtualTableColumnDef<AccountGroup>[])
+        : []),
     ],
-    [handleDelete, handleEditMembers],
+    [handleDelete, handleEditMembers, privileged],
   );
 
   return (

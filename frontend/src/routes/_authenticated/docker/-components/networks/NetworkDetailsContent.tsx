@@ -106,28 +106,33 @@ export const NetworkDetailsContent = ({
 }: {
   connectDisabled: boolean;
   network: DockerNetwork;
-  onConnect: () => void;
-  onDisconnect: (container: ConnectedContainerRow) => void;
+  /** Omitted for a session without sudo: connecting is admin-only. */
+  onConnect?: () => void;
+  /** Omitted for a session without sudo: disconnecting is admin-only. */
+  onDisconnect?: (container: ConnectedContainerRow) => void;
 }) => {
-  const columns: AppVirtualTableColumnDef<ConnectedContainerRow>[] = [
-    ...connectedContainerColumns,
-    {
-      id: "actions",
-      header: "Actions",
-      enableSorting: false,
-      cell: ({ row }) => (
-        <AppActionIconButton
-          ariaLabel={`Disconnect container ${row.original.name}`}
-          color="var(--app-palette-error-main)"
-          icon="mdi:lan-disconnect"
-          iconSize={18}
-          label="Disconnect container"
-          onClick={() => onDisconnect(row.original)}
-        />
-      ),
-      meta: { align: "right", width: "80px" },
-    },
-  ];
+  const columns: AppVirtualTableColumnDef<ConnectedContainerRow>[] =
+    onDisconnect
+      ? [
+          ...connectedContainerColumns,
+          {
+            id: "actions",
+            header: "Actions",
+            enableSorting: false,
+            cell: ({ row }) => (
+              <AppActionIconButton
+                ariaLabel={`Disconnect container ${row.original.name}`}
+                color="var(--app-palette-error-main)"
+                icon="mdi:lan-disconnect"
+                iconSize={18}
+                label="Disconnect container"
+                onClick={() => onDisconnect(row.original)}
+              />
+            ),
+            meta: { align: "right", width: "80px" },
+          },
+        ]
+      : connectedContainerColumns;
   return (
     <div className="expand-panel">
       <div>
@@ -352,14 +357,16 @@ export const NetworkDetailsContent = ({
           <AppTypography gutterBottom variant="subtitle2">
             <b>Connected Containers:</b>
           </AppTypography>
-          <AppButton
-            disabled={connectDisabled}
-            onClick={onConnect}
-            size="small"
-            variant="outlined"
-          >
-            Connect container
-          </AppButton>
+          {onConnect && (
+            <AppButton
+              disabled={connectDisabled}
+              onClick={onConnect}
+              size="small"
+              variant="outlined"
+            >
+              Connect container
+            </AppButton>
+          )}
         </div>
         {Object.entries(network.Containers ?? {}).length ? (
           <AppVirtualTable

@@ -3,14 +3,28 @@ import { useState } from "react";
 
 import { linuxio, type DockerVolume } from "@/api";
 import { uiConfigQueryKey } from "@/api/config-query";
-import { ANONYMOUS_USER_ID } from "@/api/user-scope";
 import { RoutedTabActions, RoutedTabLayout } from "@/components/tabbar";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
+import { AuthContext, type AuthContextType } from "@/contexts/AuthContext";
 import { ConfigContext } from "@/contexts/ConfigContext";
 import VolumeList from "@/routes/_authenticated/docker/-components/volumes/VolumeList";
 import { BackgroundTasksActionsContext } from "@/tasks/BackgroundTasksActionsContext";
 
 import "@fontsource-variable/inter/wght.css";
+
+const auth: AuthContextType = {
+  isAuthenticated: true,
+  isInitialized: true,
+  method: "session",
+  privileged: true,
+  refreshCapabilities: async () => {
+    throw new Error("not used in fixture");
+  },
+  sessionExpired: () => {},
+  signIn: async () => {},
+  signOut: async () => {},
+  user: { id: "volumes-fixture", name: "Volumes Fixture" },
+};
 
 const volumes: DockerVolume[] = [
   {
@@ -41,7 +55,7 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false, staleTime: Infinity } },
 });
 queryClient.setQueryData(linuxio.docker.list_volumes.queryKey, volumes);
-queryClient.setQueryData(uiConfigQueryKey(ANONYMOUS_USER_ID), {
+queryClient.setQueryData(uiConfigQueryKey(auth.user!.id), {
   layoutOrders: {},
 });
 
@@ -68,35 +82,37 @@ export default function VolumesPage() {
   const [viewMode, setViewMode] = useState<"table" | "card">("table");
   return (
     <QueryClientProvider client={queryClient}>
-      <ConfigContext
-        value={{ isLoaded: true, setKey: () => {}, updateConfig: () => {} }}
-      >
-        <BackgroundTasksActionsContext value={actions}>
-          <main
-            style={{
-              boxSizing: "border-box",
-              display: "flex",
-              flexDirection: "column",
-              height: "100dvh",
-              minWidth: 0,
-              paddingInline: "var(--app-space-16)",
-            }}
-          >
-            <RoutedTabLayout
-              tabs={[{ label: "Volumes", to: "/docker/volumes" }]}
+      <AuthContext.Provider value={auth}>
+        <ConfigContext
+          value={{ isLoaded: true, setKey: () => {}, updateConfig: () => {} }}
+        >
+          <BackgroundTasksActionsContext value={actions}>
+            <main
+              style={{
+                boxSizing: "border-box",
+                display: "flex",
+                flexDirection: "column",
+                height: "100dvh",
+                minWidth: 0,
+                paddingInline: "var(--app-space-16)",
+              }}
             >
-              <RoutedTabActions>
-                <ViewModeToggle
-                  alternateMode="table"
-                  viewMode={viewMode}
-                  onViewModeChange={setViewMode}
-                />
-              </RoutedTabActions>
-              <VolumeList viewMode={viewMode} />
-            </RoutedTabLayout>
-          </main>
-        </BackgroundTasksActionsContext>
-      </ConfigContext>
+              <RoutedTabLayout
+                tabs={[{ label: "Volumes", to: "/docker/volumes" }]}
+              >
+                <RoutedTabActions>
+                  <ViewModeToggle
+                    alternateMode="table"
+                    viewMode={viewMode}
+                    onViewModeChange={setViewMode}
+                  />
+                </RoutedTabActions>
+                <VolumeList viewMode={viewMode} />
+              </RoutedTabLayout>
+            </main>
+          </BackgroundTasksActionsContext>
+        </ConfigContext>
+      </AuthContext.Provider>
     </QueryClientProvider>
   );
 }

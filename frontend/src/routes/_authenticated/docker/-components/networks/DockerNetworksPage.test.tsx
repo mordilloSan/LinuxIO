@@ -22,7 +22,9 @@ describe("DockerNetworksPage", () => {
   beforeEach(() => mocks.systemPrune.mockReset());
 
   it("prunes only unused networks by default", async () => {
-    const { user } = render(<DockerNetworksPage />);
+    const { user } = render(<DockerNetworksPage />, {
+      auth: { privileged: true },
+    });
     await user.click(screen.getByRole("button", { name: "Prune All" }));
     expect(
       screen.getByRole("button", { name: "Prune Selected (1)" }),

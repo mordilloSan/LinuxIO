@@ -38,6 +38,7 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { DetailRow } from "@/components/ui/InfoRow";
+import useAuth from "@/hooks/useAuth";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { SEMANTIC_STATUS_COLORS } from "@/theme/colors";
 
@@ -450,6 +451,7 @@ export const UserDetailsPanel = ({ user, onClose }: UserDetailsPanelProps) => {
 };
 
 export const UserActivityCard = ({ username }: { username: string }) => {
+  const { privileged } = useAuth();
   const prefersReducedMotion = useMediaQuery(
     "(prefers-reduced-motion: reduce)",
   );
@@ -614,7 +616,7 @@ export const UserActivityCard = ({ username }: { username: string }) => {
                       </AppTypography>
                     ) : null}
                   </div>
-                  {session.pid || session.sessionId ? (
+                  {privileged && (session.pid || session.sessionId) ? (
                     <AppActionIconButton
                       ariaLabel={`Terminate session ${session.terminal}`}
                       className="account-session-kill"

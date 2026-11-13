@@ -5,6 +5,7 @@ import { linuxio } from "@/api";
 import { RoutedTabActions } from "@/components/tabbar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import HeaderActions from "@/components/ui/HeaderActions";
+import useAuth from "@/hooks/useAuth";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { getContainerName } from "@/utils/dockerContainer";
 
@@ -16,6 +17,8 @@ import DockerDashboard from "./DockerDashboard";
 const DockerDashboardPage = () => {
   const toast = useScopedToast(DOCKER_TOAST_META);
   const { button: checkUpdatesButton } = useDockerUpdateCheck();
+  // Start all, stop all and prune are admin-only.
+  const { privileged } = useAuth();
   const [pruneDialogOpen, setPruneDialogOpen] = useState(false);
   const stopAllInFlightRef = useRef(false);
   const [stoppingContainerIds, setStoppingContainerIds] = useState<Set<string>>(
@@ -87,45 +90,49 @@ const DockerDashboardPage = () => {
   const actions = (
     <HeaderActions
       bulk={
-        <>
-          <AppActionIconButton
-            ariaLabel="Start All"
-            disabled={
-              containersFetching ||
-              isStartingAll ||
-              stoppedContainers.length === 0
-            }
-            icon="mdi:play"
-            iconSize={20}
-            label="Start All"
-            loading={isStartingAll}
-            onClick={() => startAllStopped()}
-          />
-          <AppActionIconButton
-            ariaLabel="Stop All"
-            disabled={
-              containersFetching ||
-              isStoppingAll ||
-              runningContainers.length === 0
-            }
-            icon="mdi:stop"
-            iconSize={20}
-            label="Stop All"
-            loading={isStoppingAll}
-            onClick={() => void handleStopAllRunning()}
-          />
-        </>
+        privileged && (
+          <>
+            <AppActionIconButton
+              ariaLabel="Start All"
+              disabled={
+                containersFetching ||
+                isStartingAll ||
+                stoppedContainers.length === 0
+              }
+              icon="mdi:play"
+              iconSize={20}
+              label="Start All"
+              loading={isStartingAll}
+              onClick={() => startAllStopped()}
+            />
+            <AppActionIconButton
+              ariaLabel="Stop All"
+              disabled={
+                containersFetching ||
+                isStoppingAll ||
+                runningContainers.length === 0
+              }
+              icon="mdi:stop"
+              iconSize={20}
+              label="Stop All"
+              loading={isStoppingAll}
+              onClick={() => void handleStopAllRunning()}
+            />
+          </>
+        )
       }
       maintenance={
-        <AppActionIconButton
-          ariaLabel="Prune All"
-          disabled={isPruning}
-          icon="mdi:broom"
-          iconSize={20}
-          label="Prune All"
-          loading={isPruning}
-          onClick={() => setPruneDialogOpen(true)}
-        />
+        privileged && (
+          <AppActionIconButton
+            ariaLabel="Prune All"
+            disabled={isPruning}
+            icon="mdi:broom"
+            iconSize={20}
+            label="Prune All"
+            loading={isPruning}
+            onClick={() => setPruneDialogOpen(true)}
+          />
+        )
       }
       refresh={checkUpdatesButton}
     />

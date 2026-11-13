@@ -19,7 +19,7 @@ waits, not measurements. To find a route's code, run
 
 | Kind | Runs in | What stops it |
 |---|---|---|
-| Call (173) | the bridge, on the request's context | The browser's 30 s timeout aborts the stream and cancels the context. Child processes get SIGKILL; a request already handed to systemd, Docker, libvirt or PackageKit still finishes there, and only the reply is lost. Also stopped by everything that stops a session task. |
+| Call (172) | the bridge, on the request's context | The browser's 30 s timeout aborts the stream and cancels the context. Child processes get SIGKILL; a request already handed to systemd, Docker, libvirt or PackageKit still finishes there, and only the reply is lost. Also stopped by everything that stops a session task. |
 | Session task (31) | the bridge | Logout. A LinuxIO update: it restarts `linuxio.target`, which stops every login's bridge. The 12 h session limit. A bridge crash. 15 min without activity: progress frames reaching an open tab count as activity, so the clock starts when the tab closes. `device_remove` reports no progress after it starts, so it times out even with the tab open. On shutdown the bridge waits at most 5 s, so cleanup after the cancel (removing a partial copy, cancelling a balance) often does not run. |
 | Durable task (1) | a systemd transient unit running a root worker | Only its own cancel. A later login by the same user reattaches. This is `docker.update_container`. |
 
@@ -221,7 +221,6 @@ Added by the partition feature on 2026-10-25, after the rest of the map was trac
 | control.app_update | task | installs a new LinuxIO, restarts it | installer in a transient unit, then restart of `linuxio.target` | long | half-done: the installer finishes, but the status write and the final restart run in the bridge | J |
 | control.reboot | call | reboots the host | logind | <1s | reply lost | S |
 | control.power_off | call | powers off the host | logind | <1s | reply lost | S |
-| control.logoff | call | ends a logind session | logind | <1s | reply lost | S |
 
 ## Indexer, monitoring, schedules, power
 

@@ -28,7 +28,9 @@ describe("DockerImagesPage", () => {
   });
 
   it("offers the dashboard prune action for unused Docker resources", async () => {
-    const { user } = render(<DockerImagesPage />);
+    const { user } = render(<DockerImagesPage />, {
+      auth: { privileged: true },
+    });
 
     await user.click(screen.getByRole("button", { name: "Prune All" }));
     // The dialog fades in from opacity 0; wait for the first animation
@@ -50,5 +52,14 @@ describe("DockerImagesPage", () => {
       networks: false,
       volumes: false,
     });
+  });
+
+  it("offers no prune action without sudo", () => {
+    render(<DockerImagesPage />, { auth: { privileged: false } });
+
+    expect(screen.getByText("Image list")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Prune All" }),
+    ).not.toBeInTheDocument();
   });
 });

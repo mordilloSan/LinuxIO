@@ -1,5 +1,7 @@
 import { useMemo } from "react";
 
+import useAuth from "@/hooks/useAuth";
+
 import type { FileResource } from "../-types";
 import { isSearchableQuery, useFileSearch } from "./useFileSearch";
 
@@ -14,7 +16,9 @@ export const useFileBrowserFilteredResource = ({
   resource,
   searchQuery,
 }: UseFileBrowserFilteredResourceParams) => {
-  const searchEnabled = isSearchableQuery(searchQuery);
+  // Search is a privileged route; without sudo the listing stays unfiltered.
+  const { privileged } = useAuth();
+  const searchEnabled = privileged && isSearchableQuery(searchQuery);
   const {
     results: searchResults,
     error: queryError,

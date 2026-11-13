@@ -4,6 +4,7 @@ import { memo, type ReactNode } from "react";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
+import useAuth from "@/hooks/useAuth";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { down } from "@/theme/breakpoints";
 
@@ -56,6 +57,8 @@ const FileBrowserHeader = ({
 }: FileBrowserHeaderProps) => {
   const isMobile = useMediaQuery(down("sm"));
   const isBrowsing = !showQuickSave;
+  // Search reads the root indexer through a privileged route.
+  const { privileged } = useAuth();
 
   return (
     <>
@@ -147,12 +150,14 @@ const FileBrowserHeader = ({
                   marginInline: isBrowsing ? 0 : 8,
                 }}
               >
-                <FileBrowserSearch
-                  caseSensitive={searchCaseSensitive}
-                  onCaseSensitiveChange={onSearchCaseSensitiveChange}
-                  onSearchChange={onSearchChange}
-                  searchQuery={searchQuery}
-                />
+                {privileged ? (
+                  <FileBrowserSearch
+                    caseSensitive={searchCaseSensitive}
+                    onCaseSensitiveChange={onSearchCaseSensitiveChange}
+                    onSearchChange={onSearchChange}
+                    searchQuery={searchQuery}
+                  />
+                ) : null}
               </div>
             ) : null}
           </>

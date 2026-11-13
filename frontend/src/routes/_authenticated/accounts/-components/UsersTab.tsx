@@ -68,7 +68,7 @@ const UsersTab = ({
   onMountCreateHandler,
   viewMode = "table",
 }: UsersTabProps) => {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, privileged } = useAuth();
   const listUsersQueryOptions = accountsRouteApi.useRouteContext({
     select: (context) => context.listUsersQueryOptions,
   });
@@ -339,69 +339,74 @@ const UsersTab = ({
           hideBelow: "xl",
         },
       },
-      {
-        id: "actions",
-        header: "Actions",
-        enableSorting: false,
-        cell: ({ row }) => {
-          const user = row.original;
-          const pendingLockAction = pendingLockActions.get(user.username);
-          const lockLabel = user.isLocked ? "Unlock" : "Lock";
-          return (
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: 2,
-              }}
-            >
-              <AppActionIconButton
-                disabled={user.username === "root"}
-                icon="mdi:pencil"
-                iconSize={20}
-                label="Edit"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleEditUser(user);
-                }}
-              />
-              <AppActionIconButton
-                icon="mdi:form-textbox-password"
-                iconSize={20}
-                label="Change Password"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleChangePassword(user);
-                }}
-              />
-              <AppActionIconButton
-                ariaLabel={
-                  pendingLockAction
-                    ? `${pendingLockAction === "lock" ? "Locking" : "Unlocking"} ${user.username}`
-                    : `${lockLabel} ${user.username}`
-                }
-                disabled={
-                  user.username === "root" ||
-                  user.username === currentUser?.name ||
-                  Boolean(pendingLockAction)
-                }
-                icon={user.isLocked ? "mdi:lock-open" : "mdi:lock"}
-                iconSize={20}
-                label={lockLabel}
-                loading={Boolean(pendingLockAction)}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleToggleLock(user);
-                }}
-              />
-            </div>
-          );
-        },
-        meta: {
-          align: "right",
-          width: "150px",
-        },
-      },
+      // Changing a user is privileged; without sudo the table is read-only.
+      ...(privileged
+        ? ([
+            {
+              id: "actions",
+              header: "Actions",
+              enableSorting: false,
+              cell: ({ row }) => {
+                const user = row.original;
+                const pendingLockAction = pendingLockActions.get(user.username);
+                const lockLabel = user.isLocked ? "Unlock" : "Lock";
+                return (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "flex-end",
+                      gap: 2,
+                    }}
+                  >
+                    <AppActionIconButton
+                      disabled={user.username === "root"}
+                      icon="mdi:pencil"
+                      iconSize={20}
+                      label="Edit"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEditUser(user);
+                      }}
+                    />
+                    <AppActionIconButton
+                      icon="mdi:form-textbox-password"
+                      iconSize={20}
+                      label="Change Password"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleChangePassword(user);
+                      }}
+                    />
+                    <AppActionIconButton
+                      ariaLabel={
+                        pendingLockAction
+                          ? `${pendingLockAction === "lock" ? "Locking" : "Unlocking"} ${user.username}`
+                          : `${lockLabel} ${user.username}`
+                      }
+                      disabled={
+                        user.username === "root" ||
+                        user.username === currentUser?.name ||
+                        Boolean(pendingLockAction)
+                      }
+                      icon={user.isLocked ? "mdi:lock-open" : "mdi:lock"}
+                      iconSize={20}
+                      label={lockLabel}
+                      loading={Boolean(pendingLockAction)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleLock(user);
+                      }}
+                    />
+                  </div>
+                );
+              },
+              meta: {
+                align: "right",
+                width: "150px",
+              },
+            },
+          ] satisfies AppVirtualTableColumnDef<AccountUser>[])
+        : []),
     ],
     [
       currentUser?.name,
@@ -409,6 +414,7 @@ const UsersTab = ({
       handleEditUser,
       handleToggleLock,
       pendingLockActions,
+      privileged,
     ],
   );
   return (

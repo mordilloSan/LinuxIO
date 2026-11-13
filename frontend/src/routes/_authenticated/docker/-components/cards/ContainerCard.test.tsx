@@ -76,9 +76,7 @@ describe("ContainerCard", () => {
       />,
     );
 
-    expect(
-      screen.getByRole("button", { name: "Update available for example" }),
-    ).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Update available/)).toBeInTheDocument();
 
     container.updateAvailable = false;
     rerender(
@@ -94,28 +92,38 @@ describe("ContainerCard", () => {
     ).not.toBeInTheDocument();
   });
 
-  it.each([true, false])(
-    "offers the update from the update-available badge (privileged: %s)",
-    async (privileged) => {
-      const { user } = render(
-        <DockerUpdateOperationProvider>
-          <ContainerCard containerId={container.Id} selected={false} />
-        </DockerUpdateOperationProvider>,
-        { auth: { privileged } },
-      );
+  it("offers the update from the update-available badge with sudo", async () => {
+    const { user } = render(
+      <DockerUpdateOperationProvider>
+        <ContainerCard containerId={container.Id} selected={false} />
+      </DockerUpdateOperationProvider>,
+      { auth: { privileged: true } },
+    );
 
-      expect(
-        screen.queryByRole("button", { name: "Update example" }),
-      ).toBeNull();
-      await user.click(
-        screen.getByRole("button", { name: "Update available for example" }),
-      );
+    expect(screen.queryByRole("button", { name: "Update example" })).toBeNull();
+    await user.click(
+      screen.getByRole("button", { name: "Update available for example" }),
+    );
 
-      const update = screen.getByRole("menuitem", { name: "Update" });
-      if (privileged) expect(update).toBeEnabled();
-      else expect(update).toBeDisabled();
-    },
-  );
+    expect(screen.getByRole("menuitem", { name: "Update" })).toBeEnabled();
+  });
+
+  it("shows the update-available badge read-only without sudo", () => {
+    render(
+      <DockerUpdateOperationProvider>
+        <ContainerCard containerId={container.Id} selected={false} />
+      </DockerUpdateOperationProvider>,
+      { auth: { privileged: false } },
+    );
+
+    expect(
+      screen.getByRole("img", { name: "Update available" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Update available for example" }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Stop|^Start/ })).toBeNull();
+  });
 
   it.each([
     ["stale", "Stale metrics"],

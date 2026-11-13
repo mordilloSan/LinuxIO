@@ -1,6 +1,7 @@
 import { useQueries } from "@tanstack/react-query";
 
 import { linuxio } from "@/api";
+import useAuth from "@/hooks/useAuth";
 import { stripTrailingSlash } from "@/utils/path";
 
 import type { MultiStatsItem } from "../-types";
@@ -24,9 +25,12 @@ export const useFileMultipleDirectoryDetails = (
   paths: string[],
   fileResourceMap: Record<string, { name: string; type: string; size: number }>,
 ): UseMultipleDirectoryDetailsResult => {
+  // Sizes come from the root indexer through a privileged route.
+  const { privileged } = useAuth();
   // Filter to only directories that should have size calculations
   const directoryPaths = paths.filter(
     (path) =>
+      privileged &&
       fileResourceMap[path]?.type === "directory" &&
       !shouldSkipSizeCalculation(path),
   );

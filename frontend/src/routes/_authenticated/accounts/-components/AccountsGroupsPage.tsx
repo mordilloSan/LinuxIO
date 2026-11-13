@@ -4,11 +4,13 @@ import { RoutedTabActions } from "@/components/tabbar";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import HeaderActions from "@/components/ui/HeaderActions";
 import ViewModeToggle from "@/components/ui/ViewModeToggle";
+import useAuth from "@/hooks/useAuth";
 import { useViewMode } from "@/hooks/useViewMode";
 
 import GroupsTab from "./GroupsTab";
 
 const AccountsGroupsPage = () => {
+  const { privileged } = useAuth();
   const [createGroupHandler, setCreateGroupHandler] = useState<
     (() => void) | null
   >(null);
@@ -17,6 +19,7 @@ const AccountsGroupsPage = () => {
   const actions = (
     <HeaderActions
       create={
+        privileged &&
         createGroupHandler && (
           <AppActionIconButton
             ariaLabel="Add Group"

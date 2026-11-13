@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { linuxio } from "@/api";
+import useAuth from "@/hooks/useAuth";
 import { stripTrailingSlash } from "@/utils/path";
 
 import {
@@ -34,8 +35,10 @@ export const useFileDirectorySize = (
 ): UseDirectorySizeResult => {
   // Skip size calculation for system directories
   const shouldSkip = shouldSkipSizeCalculation(path);
+  // Sizes come from the root indexer through a privileged route.
+  const { privileged } = useAuth();
   const queryEnabled = shouldEnableDirectorySizeQuery(
-    enabled,
+    enabled && privileged,
     path,
     shouldSkip,
   );

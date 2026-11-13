@@ -25,6 +25,7 @@ import AppHeaderSearch from "@/components/ui/AppHeaderSearch";
 import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
+import useAuth from "@/hooks/useAuth";
 import { useRegisterCreateHandler } from "@/hooks/useRegisterCreateHandler";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { CARD_GRID_SIZE_STANDARD } from "@/theme/constants";
@@ -73,6 +74,8 @@ const NetworkList = ({
   const [search, setSearch] = useState("");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  // Deleting, connecting and disconnecting are admin-only.
+  const { privileged } = useAuth();
   const [connectDialogOpen, setConnectDialogOpen] = useState(false);
   const [connectContainerId, setConnectContainerId] = useState("");
   const [aliases, setAliases] = useState("");
@@ -363,7 +366,7 @@ const NetworkList = ({
           summary={
             <DockerNetworkCard
               actions={
-                focusedNetwork.Protected ? undefined : (
+                focusedNetwork.Protected || !privileged ? undefined : (
                   <AppActionIconButton
                     ariaLabel={`Delete network ${focusedNetwork.Name}`}
                     color="var(--app-palette-error-main)"
@@ -383,8 +386,8 @@ const NetworkList = ({
           <NetworkDetailsContent
             connectDisabled={unattachedContainers.length === 0}
             network={focusedNetwork}
-            onConnect={openConnectDialog}
-            onDisconnect={setDisconnectTarget}
+            onConnect={privileged ? openConnectDialog : undefined}
+            onDisconnect={privileged ? setDisconnectTarget : undefined}
           />
         </ResourceDetailsLayout>
       ) : viewMode === "card" ? (

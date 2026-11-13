@@ -14,7 +14,6 @@ var api = apischema.Bindings(
 	// transport outcome; callers must not retry it automatically.
 	apischema.MutationVoid("control.reboot", handleReboot, apischema.Privileged()),
 	apischema.MutationVoid("control.power_off", handlePowerOff, apischema.Privileged()),
-	apischema.MutationVoid("control.logoff", handleLogoff, apischema.Privileged()),
 )
 
 var Routes = api.Routes()
@@ -30,8 +29,4 @@ func handleReboot(ctx context.Context, _ apischema.NoRequest) error {
 
 func handlePowerOff(ctx context.Context, _ apischema.NoRequest) error {
 	return PowerOff(ctx)
-}
-
-func handleLogoff(ctx context.Context, req apischema.SessionIDRequest) error {
-	return Logoff(ctx, req.SessionID)
 }

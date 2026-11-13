@@ -22,7 +22,9 @@ describe("DockerVolumesPage", () => {
   beforeEach(() => mocks.systemPrune.mockReset());
 
   it("prunes only unused volumes by default", async () => {
-    const { user } = render(<DockerVolumesPage />);
+    const { user } = render(<DockerVolumesPage />, {
+      auth: { privileged: true },
+    });
     await user.click(screen.getByRole("button", { name: "Prune All" }));
     expect(
       screen.getByRole("button", { name: "Prune Selected (1)" }),
