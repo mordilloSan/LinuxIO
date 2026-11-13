@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 
 import {
@@ -23,6 +24,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { describeBatchFailures } from "@/tasks/batchFailures";
 import { formatDate, formatFileSize } from "@/utils/formatters";
+import { toastFileError } from "@/utils/linkRefusal";
 import { parentPath } from "@/utils/path";
 
 import { FILES_TOAST_META } from "../-hooks/useFileMutations";
@@ -39,6 +41,7 @@ const itemCount = (count: number) => `${count} item${count === 1 ? "" : "s"}`;
 
 const TrashDialog = ({ open, onClose }: TrashDialogProps) => {
   const toast = useScopedToast(FILES_TOAST_META);
+  const navigate = useNavigate();
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [confirm, setConfirm] = useState<"selected" | "all" | "restore" | null>(
     null,
@@ -64,12 +67,13 @@ const TrashDialog = ({ open, onClose }: TrashDialogProps) => {
   // Items another program trashed carry no record of where they came from,
   // so a restore into a folder the user does not own names its destination
   // and asks first; the server refuses it unconfirmed.
-  const restoreDestinations = entries
-    .filter(
-      (entry) =>
-        selected.has(entry.path) && entry.confirmRestore && entry.originalPath,
-    )
-    .map((entry) => entry.originalPath);
+  const restoreConfirmations = entries.filter(
+    (entry) =>
+      selected.has(entry.path) && entry.confirmRestore && entry.originalPath,
+  );
+  const restoreDestinations = restoreConfirmations.map(
+    (entry) => entry.originalPath,
+  );
 
   const report = (
     result: FileBatchResult | undefined,
@@ -81,9 +85,12 @@ const TrashDialog = ({ open, onClose }: TrashDialogProps) => {
     setConfirm(null);
     const failed = result?.failed ?? [];
     if (failed.length > 0) {
-      toast.error(`Failed to ${action} ${itemCount(failed.length)}`, {
-        description: describeBatchFailures(failed),
-      });
+      toastFileError(
+        toast,
+        navigate,
+        `Failed to ${action} ${itemCount(failed.length)}`,
+        { description: describeBatchFailures(failed) },
+      );
       return;
     }
     toast.success(`${done} ${itemCount(result?.succeeded ?? 0)}`);
@@ -91,7 +98,7 @@ const TrashDialog = ({ open, onClose }: TrashDialogProps) => {
   const reportError = (err: unknown, fallback: string) => {
     setProgress(null);
     setConfirm(null);
-    toast.error(getMutationErrorMessage(err, fallback));
+    toastFileError(toast, navigate, getMutationErrorMessage(err, fallback));
   };
 
   const restore = linuxio.filebrowser.trash_restore.useMutation({
@@ -134,7 +141,10 @@ const TrashDialog = ({ open, onClose }: TrashDialogProps) => {
     setProgress(null);
     restore.mutate({
       paths: selectedPaths,
-      confirmedDestinations: restoreDestinations,
+      // Each destination is confirmed for its own item only.
+      confirmedDestinations: Object.fromEntries(
+        restoreConfirmations.map((entry) => [entry.path, entry.originalPath]),
+      ),
     });
   };
   const confirmPurge = () => {

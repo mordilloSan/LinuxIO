@@ -368,11 +368,9 @@ func (t *uploadBatchTransferTask) ensurePrepared(session *uploadBatchSession) er
 			return fmt.Errorf("destination already exists")
 		}
 	}
-	attrs, err := loadUploadAttributes(session.root, finalRel)
-	if err != nil {
+	if err := refuseFolderTarget(session.root, finalRel); err != nil {
 		return err
 	}
-	attrs.modTime = current.modTime
 	dir, err := openUploadDir(session.root, filepath.Dir(finalRel), t.linkRule, t.newOwner)
 	if err != nil {
 		return fmt.Errorf("create parent dir: %w", err)
@@ -383,6 +381,11 @@ func (t *uploadBatchTransferTask) ensurePrepared(session *uploadBatchSession) er
 			return err
 		}
 	}
+	attrs, err := uploadAttributesAt(dir, filepath.Base(finalRel))
+	if err != nil {
+		return err
+	}
+	attrs.modTime = current.modTime
 	folderInfo, err := dir.Stat()
 	if err != nil {
 		return fmt.Errorf("stat parent dir: %w", err)
@@ -519,13 +522,13 @@ func (t *uploadBatchTransferTask) recordFailure(path, message string) {
 
 func (t *uploadBatchTransferTask) cleanupCurrentTemp(root *fsroot.FSRoot) {
 	t.mu.Lock()
-	tempRel := t.tempRel
+	tempRel, folderInfo := t.tempRel, t.folderInfo
 	t.tempRel = ""
 	t.mu.Unlock()
 	if tempRel == "" {
 		return
 	}
-	if err := root.Root.Remove(tempRel); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := removeUploadBuffer(root, tempRel, folderInfo); err != nil && !errors.Is(err, os.ErrNotExist) {
 		slog.Debug("failed to remove partial batch upload", "partial", tempRel, "error", err)
 	}
 }
@@ -582,21 +585,11 @@ func (t *uploadBatchTransferTask) reportProgress(phase string) {
 // finalized stay in place — a cancelled batch keeps what it landed, matching
 // the best-effort semantics of the other batch tasks.
 func (t *uploadBatchTransferTask) cleanupPartial() {
-	t.mu.Lock()
-	tempRel := t.tempRel
-	t.tempRel = ""
-	t.mu.Unlock()
-	if tempRel == "" {
-		return
-	}
-
 	root, err := fsroot.Open()
 	if err != nil {
 		slog.Debug("failed to open root for partial batch upload cleanup", "error", err)
 		return
 	}
 	defer root.Close()
-	if err := root.Root.Remove(tempRel); err != nil && !errors.Is(err, os.ErrNotExist) {
-		slog.Debug("failed to remove partial batch upload", "partial", tempRel, "error", err)
-	}
+	t.cleanupCurrentTemp(root)
 }

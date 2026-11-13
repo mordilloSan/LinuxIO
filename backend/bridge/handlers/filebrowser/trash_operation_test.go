@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
@@ -263,4 +264,16 @@ func TestTrashHandsAPerFilesystemTrashToSessionUserAsRoot(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, report, restored)
 	requireOwnerAndMode(t, report, 0, 0, 0o644)
+}
+
+// A destination is confirmed for one item of the request: another item,
+// whose Path= the session user rewrote to that destination, gets none.
+func TestConfirmedRestoreIsPerItem(t *testing.T) {
+	req := apischema.TrashRestoreRequest{
+		Paths:                 []string{"/home/u/.local/share/Trash/files/a.conf", "/home/u/.local/share/Trash/files/b.conf"},
+		ConfirmedDestinations: map[string]string{"/home/u/.local/share/Trash/files/./a.conf": "/etc/app.d/../a.conf"},
+	}
+	require.Equal(t, []string{"/etc/a.conf"}, confirmedRestore(req, req.Paths[0]))
+	require.Nil(t, confirmedRestore(req, req.Paths[1]))
+	require.Nil(t, confirmedRestore(apischema.TrashRestoreRequest{Paths: req.Paths}, req.Paths[0]))
 }

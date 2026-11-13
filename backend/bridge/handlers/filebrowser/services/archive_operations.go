@@ -38,7 +38,12 @@ func closeWithLog(name string, closer io.Closer) {
 // on local storage, and far worse cold or over a network mount. That makes it
 // unbounded on a large tree, so callers must keep it off the critical path and
 // use ctx to abandon a walk whose result is no longer wanted.
-func ComputeArchiveSize(ctx context.Context, fileList []string) (int64, error) {
+//
+// owner is the session user a root bridge compresses for (see
+// ArchiveSources): the walk then reaches and reads its sources as the archive
+// does, so a link that user planted does not send root to measure another
+// tree.
+func ComputeArchiveSize(ctx context.Context, fileList []string, owner Owner) (int64, error) {
 	root, err := fsroot.Open()
 	if err != nil {
 		return 0, err
@@ -51,6 +56,14 @@ func ComputeArchiveSize(ctx context.Context, fileList []string) (int64, error) {
 			return 0, err
 		}
 		realPath := fsroot.CleanAbsPath(fname)
+		if owner.Set {
+			sourceSize, sizeErr := estimateSourceSize(ctx, root, realPath, owner)
+			if sizeErr != nil {
+				return 0, sizeErr
+			}
+			estimatedSize += sourceSize
+			continue
+		}
 		stat, resolvedPath, err := statWithSymlinkResolution(root, realPath)
 		if err != nil {
 			return 0, err

@@ -6,6 +6,7 @@ import TrashDialog from "./TrashDialog";
 
 const mocks = vi.hoisted(() => ({
   entries: [] as unknown[],
+  navigate: vi.fn(),
   purge: vi.fn(),
   restore: vi.fn(),
   restoreOptions: {} as { success?: (result: unknown) => void },
@@ -38,6 +39,11 @@ vi.mock("@/api", async (importOriginal) => {
     },
   };
 });
+
+vi.mock("@tanstack/react-router", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tanstack/react-router")>()),
+  useNavigate: () => mocks.navigate,
+}));
 
 vi.mock("@/hooks/useScopedToast", () => ({
   useScopedToast: () => mocks.toast,
@@ -121,7 +127,7 @@ describe("TrashDialog", () => {
 
     await user.click(within(dialog).getByRole("button", { name: "Restore" }));
     expect(mocks.restore).toHaveBeenCalledWith({
-      confirmedDestinations: [foreign.originalPath],
+      confirmedDestinations: { [foreign.path]: foreign.originalPath },
       paths: [foreign.path],
     });
   });
@@ -138,6 +144,34 @@ describe("TrashDialog", () => {
 
     expect(mocks.toast.error).toHaveBeenCalledWith("Failed to restore 1 item", {
       description: "report.pdf: exists",
+    });
+  });
+
+  it("offers the real folder when a restore is refused for a link", async () => {
+    render(<TrashDialog onClose={vi.fn()} open />);
+    await screen.findByRole("list");
+    const refusal =
+      "forbidden: /home/alice/docs is a link to /mnt/data/docs. Open that folder to make this change";
+
+    mocks.restoreOptions.success?.({
+      failed: [{ error: refusal, path: "/x/report.pdf" }],
+      succeeded: 0,
+      total: 1,
+    });
+
+    expect(mocks.toast.error).toHaveBeenCalledWith("Failed to restore 1 item", {
+      action: expect.objectContaining({ label: "Open the real folder" }),
+      description: `report.pdf: ${refusal}`,
+      duration: 10_000,
+    });
+    const { action } = mocks.toast.error.mock.calls[0][1] as {
+      action: { onClick: (event: unknown) => void };
+    };
+    action.onClick({});
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      to: "/filebrowser/$",
+      params: { _splat: "mnt/data/docs" },
+      search: {},
     });
   });
 

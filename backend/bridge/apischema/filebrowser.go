@@ -118,13 +118,14 @@ type TrashEntry struct {
 	ConfirmRestore bool `json:"confirmRestore"`
 }
 
-// TrashRestoreRequest restores trashed items. ConfirmedDestinations are the
-// original paths the user confirmed restoring into a folder they do not own
-// for items LinuxIO has no record of trashing (see TrashEntry.ConfirmRestore);
-// such a restore without its destination here is refused.
+// TrashRestoreRequest restores trashed items. ConfirmedDestinations holds,
+// by the item's path in Paths, the original path the user confirmed restoring
+// it to, for items LinuxIO has no record of trashing whose restore goes into
+// a folder the user does not own (see TrashEntry.ConfirmRestore); such a
+// restore without its own destination here is refused.
 type TrashRestoreRequest struct {
-	Paths                 []string `json:"paths"`
-	ConfirmedDestinations []string `json:"confirmedDestinations,omitzero"`
+	Paths                 []string          `json:"paths"`
+	ConfirmedDestinations map[string]string `json:"confirmedDestinations,omitzero"`
 }
 
 type TrashListResponse struct {

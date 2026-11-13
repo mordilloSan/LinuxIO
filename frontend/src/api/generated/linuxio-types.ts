@@ -3274,7 +3274,7 @@ export interface TrashListResponse {
 
 export interface TrashRestoreRequest {
   paths: string[];
-  confirmedDestinations?: string[];
+  confirmedDestinations?: Record<string, string>;
 }
 
 export interface TunedProfile {

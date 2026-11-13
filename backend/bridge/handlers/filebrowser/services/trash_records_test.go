@@ -1,13 +1,16 @@
 package services
 
 import (
+	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/unix"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
@@ -129,12 +132,61 @@ func TestTrashRecordsGoWithPurgeAndEmpty(t *testing.T) {
 	kept := trashItem("kept.conf")
 	require.Len(t, dirNames(t, records), 2)
 	require.NoError(t, os.Remove(emptied))
+	// A new record may be of an item still on its way into the trash.
+	PruneTrashRecords(t.Context(), home, uid)
+	require.Len(t, dirNames(t, records), 2)
+	ageTrashRecords(t, records)
 	PruneTrashRecords(t.Context(), home, uid)
 	require.Len(t, dirNames(t, records), 1)
 
 	restored, err := RestoreFromTrash(t.Context(), kept, home, uid, gid, true, nil)
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(system, "kept.conf"), restored)
+	requireEmptyDir(t, records)
+}
+
+// ageTrashRecords makes every file in records older than the grace a prune
+// gives a new one.
+func ageTrashRecords(t *testing.T, records string) {
+	t.Helper()
+	old := time.Now().Add(-2 * trashRecordGrace)
+	for _, name := range dirNames(t, records) {
+		require.NoError(t, os.Chtimes(filepath.Join(records, name), old, old))
+	}
+}
+
+// A prune drops what an interrupted write left behind once it is old, and
+// keeps the record of a trash that is missing because its disk is not
+// mounted, which comes back with the disk, until the user has no room for
+// another record. The record of a trash missing from a mounted filesystem
+// goes.
+func TestPruneTrashRecordsKeepsWhatMayComeBack(t *testing.T) {
+	_, uid, _ := otherSession()
+	records := useTestTrashRecords(t, uid)
+	require.NoError(t, os.MkdirAll(records, 0o700))
+	home := t.TempDir()
+	writeRecord := func(name, trash string) {
+		t.Helper()
+		data, err := json.Marshal(trashRecord{Path: "/srv/app.conf", Trash: trash, Type: unix.S_IFREG})
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(filepath.Join(records, name), data, 0o600))
+	}
+	// /proc is a mount point with no trash; the other folder is not mounted.
+	writeRecord("1-1.json", filepath.Join("/proc", ".Trash-"+strconv.Itoa(uid)))
+	writeRecord("1-2.json", filepath.Join(t.TempDir(), "unplugged", ".Trash", strconv.Itoa(uid)))
+	require.NoError(t, os.WriteFile(filepath.Join(records, ".linuxio-123"), nil, 0o600))
+	root, err := fsroot.Open()
+	require.NoError(t, err)
+	defer root.Close()
+
+	PruneTrashRecords(t.Context(), home, uid)
+	assert.Equal(t, []string{".linuxio-123", "1-1.json", "1-2.json"}, dirNames(t, records))
+
+	ageTrashRecords(t, records)
+	PruneTrashRecords(t.Context(), home, uid)
+	assert.Equal(t, []string{"1-2.json"}, dirNames(t, records))
+
+	pruneTrashRecords(t.Context(), root, home, uid, true)
 	requireEmptyDir(t, records)
 }
 

@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"golang.org/x/sys/unix"
 
@@ -31,7 +32,9 @@ import (
 // rename inside it does not change. Two users' records never share a folder.
 // A restore uses the record and ignores Path=; the record goes when the item
 // is restored or purged, and a purge also drops the records of items no
-// longer in the trash (emptied by another program, say).
+// longer in the trash (emptied by another program, say). A record is kept
+// while its item may still be on its way into the trash, and while the disk
+// its trash is on is not mounted.
 
 // trashRecordsDir holds the records, one folder per user. Tests point it
 // elsewhere.
@@ -46,6 +49,12 @@ const (
 	maxTrashRecordBytes = 16 << 10
 	trashRecordSuffix   = ".json"
 )
+
+// trashRecordGrace is how long a prune leaves a new record alone. The record
+// is written just before its item is renamed into the trash, so until then a
+// prune running beside it finds no item for it. A file an interrupted write
+// left behind is dropped once it is older.
+var trashRecordGrace = time.Minute
 
 var errTrashRecordsFull = errors.New("too many trash records")
 
@@ -121,7 +130,7 @@ func recordTrashed(ctx context.Context, root *fsroot.FSRoot, home string, uid in
 	}
 	n, err := countTrashRecords(dir)
 	if err == nil && n >= maxTrashRecords {
-		pruneTrashRecords(ctx, root, home, uid)
+		pruneTrashRecords(ctx, root, home, uid, true)
 		n, err = countTrashRecords(dir)
 	}
 	if err != nil {
@@ -208,10 +217,13 @@ func PruneTrashRecords(ctx context.Context, home string, uid int) {
 		return
 	}
 	defer root.Close()
-	pruneTrashRecords(ctx, root, home, uid)
+	pruneTrashRecords(ctx, root, home, uid, false)
 }
 
-func pruneTrashRecords(ctx context.Context, root *fsroot.FSRoot, home string, uid int) {
+// pruneTrashRecords is PruneTrashRecords; full is set when uid has no room
+// for another record, and then the records of trashes on disks that are not
+// mounted go too.
+func pruneTrashRecords(ctx context.Context, root *fsroot.FSRoot, home string, uid int, full bool) {
 	dir, err := trashRecordFolder(uid, false)
 	if err != nil {
 		return
@@ -221,18 +233,24 @@ func pruneTrashRecords(ctx context.Context, root *fsroot.FSRoot, home string, ui
 		slog.Debug("failed to read trash records", "component", "filebrowser", "subsystem", "trash", "path", dir, "error", err)
 		return
 	}
-	stale := staleTrashRecords{root: root, home: home, uid: uid, trashes: trashDirs(root, filepath.Clean(home), uid), held: map[string]map[string]bool{}}
+	stale := staleTrashRecords{
+		root: root, home: home, uid: uid, full: full,
+		trashes: trashDirs(root, filepath.Clean(home), uid), mounts: mountPoints(),
+		held: map[string]map[string]bool{},
+	}
+	settled := time.Now().Add(-trashRecordGrace)
 	removed := 0
 	for _, entry := range entries {
 		if ctx.Err() != nil {
 			return
 		}
 		name := entry.Name()
-		if !strings.HasSuffix(name, trashRecordSuffix) {
+		if info, infoErr := entry.Info(); infoErr != nil || info.ModTime().After(settled) {
 			continue
 		}
 		path := filepath.Join(dir, name)
-		if !stale.is(path, name) {
+		// Anything that is not a record is what an interrupted write left.
+		if strings.HasSuffix(name, trashRecordSuffix) && !stale.is(path, name) {
 			continue
 		}
 		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -252,17 +270,24 @@ type staleTrashRecords struct {
 	root    *fsroot.FSRoot
 	home    string
 	uid     int
+	full    bool                       // uid has no room for another record
 	trashes []string                   // uid's trashes that exist
+	mounts  []string                   // the mount points now
 	held    map[string]map[string]bool // trash -> record names of what it holds, nil when it cannot be read
 }
 
 // is reports whether the record at path, called name, is stale: unreadable,
 // naming a trash that no longer exists, or naming an item its trash no longer
-// holds. A record whose trash cannot be read is kept.
+// holds. A record whose trash cannot be read is kept, and so is one whose
+// trash is missing because its disk is not mounted, which comes back with the
+// disk, unless uid has no room for another record.
 func (s *staleTrashRecords) is(path, name string) bool {
 	record, err := readTrashRecord(path)
-	if err != nil || !slices.Contains(s.trashes, record.Trash) {
+	if err != nil {
 		return true
+	}
+	if !slices.Contains(s.trashes, record.Trash) {
+		return s.full || slices.Contains(s.mounts, trashMount(record.Trash))
 	}
 	held, seen := s.held[record.Trash]
 	if !seen {
@@ -270,6 +295,16 @@ func (s *staleTrashRecords) is(path, name string) bool {
 		s.held[record.Trash] = held
 	}
 	return held != nil && !held[name]
+}
+
+// trashMount returns the mount point a per-filesystem trash sits on, as
+// trashDirs lays them out: <mount>/.Trash/<uid> or <mount>/.Trash-<uid>.
+func trashMount(trash string) string {
+	dir := filepath.Dir(trash)
+	if filepath.Base(dir) == ".Trash" {
+		return filepath.Dir(dir)
+	}
+	return dir
 }
 
 // trashedRecordNames returns the record names of the items trash holds, or

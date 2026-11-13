@@ -2,6 +2,7 @@ package services
 
 import (
 	"archive/tar"
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -26,9 +27,9 @@ import (
 // is reached as openDirNoUserLinks reaches a folder and read through handles
 // without following a symlink, so a folder swapped for a link mid-walk is
 // never entered. A link inside a compressed folder is followed, as above,
-// only where that user cannot have planted it; one in a folder they can
-// write is left out and passed to Skipped, so root never copies what it
-// points at into an archive the user can read.
+// only where nobody but root can have planted it; one in any other folder
+// is left out and passed to Skipped, so root never copies what it points at
+// into an archive the user can read.
 type ArchiveSources struct {
 	Owner   Owner
 	Skipped func(path string, err error)
@@ -155,7 +156,7 @@ func (r *archiveReader) addRegular(dir *os.File, name, archivePath string) error
 
 // addLink adds what the symlink name in dir points at as a walk does, the
 // file's content for a link to a file and nothing for a link to a folder, but
-// only when the session user cannot have planted the link or any link it
+// only when nobody but root can have planted the link or any link it
 // leads through. Otherwise the link is left out and reported.
 func (r *archiveReader) addLink(dir *os.File, name, archivePath string) error {
 	path := filepath.Join(dir.Name(), name)
@@ -163,17 +164,17 @@ func (r *archiveReader) addLink(dir *os.File, name, archivePath string) error {
 	if !isLink {
 		return nil // replaced since it was seen
 	}
-	plantable, err := userCouldPlant(dir, r.sources.Owner)
+	planted, err := plantable(dir)
 	if err != nil {
 		return err
 	}
-	if plantable {
-		r.skip(path, fmt.Errorf("left out: a link to %s in a folder you can write", linkDestination(dir, target)))
+	if planted {
+		r.skip(path, fmt.Errorf("left out: a link to %s in a folder that is not root's alone", linkDestination(dir, target)))
 		return nil
 	}
 	at, err := entryFollowingNoUserLinks(r.root, path, r.sources.Owner)
 	if errors.Is(err, bridgeipc.ErrForbidden) {
-		r.skip(path, fmt.Errorf("left out: a link to %s that leads through a link in a folder you can write", linkDestination(dir, target)))
+		r.skip(path, fmt.Errorf("left out: a link to %s that leads through a link in a folder that is not root's alone", linkDestination(dir, target)))
 		return nil
 	}
 	if err != nil {
@@ -196,4 +197,68 @@ func (r *archiveReader) skip(path string, err error) {
 	if r.sources.Skipped != nil {
 		r.sources.Skipped(path, err)
 	}
+}
+
+// estimateSourceSize adds up the regular files at and below path for a root
+// bridge compressing for owner. It reaches path as archiveReader.add does and
+// walks through handles without following a symlink, so a planted link is
+// neither entered nor measured; a link the archive follows to a file is not
+// counted. An entry that is gone or cannot be read counts nothing.
+func estimateSourceSize(ctx context.Context, root *fsroot.FSRoot, path string, owner Owner) (int64, error) {
+	at, err := entryFollowingNoUserLinks(root, path, owner)
+	if err != nil {
+		return 0, err
+	}
+	defer at.dir.Close()
+	walk := sizeWalk{ctx: ctx}
+	if err = walk.add(at.dir, at.name); err != nil {
+		return 0, err
+	}
+	return walk.total, ctx.Err()
+}
+
+// sizeWalk adds up regular files through handles.
+type sizeWalk struct {
+	ctx   context.Context
+	total int64
+	seen  int
+}
+
+// add counts name in dir, and what it holds when it is a folder.
+func (w *sizeWalk) add(dir *os.File, name string) error {
+	w.seen++
+	if w.seen%sizeWalkCancelInterval == 0 {
+		if err := w.ctx.Err(); err != nil {
+			return err
+		}
+	}
+	var st unix.Stat_t
+	if unix.Fstatat(int(dir.Fd()), name, &st, unix.AT_SYMLINK_NOFOLLOW) != nil {
+		return nil
+	}
+	switch st.Mode & unix.S_IFMT {
+	case unix.S_IFREG:
+		w.total += st.Size
+	case unix.S_IFDIR:
+		return w.addChildren(dir, name)
+	}
+	return nil
+}
+
+func (w *sizeWalk) addChildren(parent *os.File, name string) error {
+	dir, err := openDirAt(parent, name)
+	if err != nil {
+		return nil
+	}
+	defer dir.Close()
+	names, err := dir.Readdirnames(-1)
+	if err != nil {
+		return nil
+	}
+	for _, child := range names {
+		if err := w.add(dir, child); err != nil {
+			return err
+		}
+	}
+	return nil
 }

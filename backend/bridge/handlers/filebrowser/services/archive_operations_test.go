@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
+	"context"
 	"errors"
 	"io"
 	"math"
@@ -58,7 +59,7 @@ func TestComputeArchiveSize(t *testing.T) {
 
 	t.Run("single_file", func(t *testing.T) {
 		filePath := createTestFile(t, tmpDir, "file1.txt", []byte("hello"))
-		size, err := ComputeArchiveSize(t.Context(), []string{filePath})
+		size, err := ComputeArchiveSize(t.Context(), []string{filePath}, Owner{})
 		require.NoError(t, err)
 		assert.Equal(t, int64(5), size, "single file size should be 5 bytes")
 	})
@@ -66,7 +67,7 @@ func TestComputeArchiveSize(t *testing.T) {
 	t.Run("multiple_files", func(t *testing.T) {
 		file1 := createTestFile(t, tmpDir, "file1.txt", []byte("hello"))
 		file2 := createTestFile(t, tmpDir, "file2.txt", []byte("world"))
-		size, err := ComputeArchiveSize(t.Context(), []string{file1, file2})
+		size, err := ComputeArchiveSize(t.Context(), []string{file1, file2}, Owner{})
 		require.NoError(t, err)
 		assert.Equal(t, int64(10), size, "two files should total 10 bytes")
 	})
@@ -76,7 +77,7 @@ func TestComputeArchiveSize(t *testing.T) {
 		createTestFile(t, subDir, "file1.txt", []byte("test"))
 		createTestFile(t, subDir, "file2.txt", []byte("data"))
 
-		size, err := ComputeArchiveSize(t.Context(), []string{subDir})
+		size, err := ComputeArchiveSize(t.Context(), []string{subDir}, Owner{})
 		require.NoError(t, err)
 		assert.Equal(t, int64(8), size, "directory with two 4-byte files should be 8 bytes")
 	})
@@ -87,19 +88,19 @@ func TestComputeArchiveSize(t *testing.T) {
 		createTestFile(t, dir1, "file1.txt", []byte("a"))
 		createTestFile(t, dir2, "file2.txt", []byte("bb"))
 
-		size, err := ComputeArchiveSize(t.Context(), []string{dir1})
+		size, err := ComputeArchiveSize(t.Context(), []string{dir1}, Owner{})
 		require.NoError(t, err)
 		assert.Equal(t, int64(3), size, "nested directories with 1+2 byte files should be 3 bytes")
 	})
 
 	t.Run("nonexistent_file", func(t *testing.T) {
-		_, err := ComputeArchiveSize(t.Context(), []string{filepath.Join(tmpDir, "nonexistent.txt")})
+		_, err := ComputeArchiveSize(t.Context(), []string{filepath.Join(tmpDir, "nonexistent.txt")}, Owner{})
 		require.Error(t, err, "should error on nonexistent file")
 	})
 
 	t.Run("empty_directory", func(t *testing.T) {
 		emptyDir := createTestDir(t, tmpDir, "empty")
-		size, err := ComputeArchiveSize(t.Context(), []string{emptyDir})
+		size, err := ComputeArchiveSize(t.Context(), []string{emptyDir}, Owner{})
 		require.NoError(t, err)
 		assert.Equal(t, int64(0), size, "empty directory should have 0 size")
 	})
@@ -109,7 +110,7 @@ func TestComputeArchiveSize(t *testing.T) {
 		dir1 := createTestDir(t, tmpDir, "dir1")
 		createTestFile(t, dir1, "file2.txt", []byte("defgh"))
 
-		size, err := ComputeArchiveSize(t.Context(), []string{file1, dir1})
+		size, err := ComputeArchiveSize(t.Context(), []string{file1, dir1}, Owner{})
 		require.NoError(t, err)
 		// File1 is 3 bytes, file2.txt is 5 bytes = 8 bytes total for content files
 		assert.GreaterOrEqual(t, size, int64(8), "should include both files (at least 8 bytes)")
@@ -327,7 +328,7 @@ func TestArchiveOperationsEdgeCases(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	t.Run("empty_file_list", func(t *testing.T) {
-		size, err := ComputeArchiveSize(t.Context(), []string{})
+		size, err := ComputeArchiveSize(t.Context(), []string{}, Owner{})
 		require.NoError(t, err)
 		assert.Equal(t, int64(0), size, "empty file list should have 0 size")
 	})
@@ -341,7 +342,7 @@ func TestArchiveOperationsEdgeCases(t *testing.T) {
 			t.Skip("symlinks not supported on this platform")
 		}
 
-		size, err := ComputeArchiveSize(t.Context(), []string{linkPath})
+		size, err := ComputeArchiveSize(t.Context(), []string{linkPath}, Owner{})
 		require.NoError(t, err)
 		assert.Equal(t, int64(7), size, "symlink should resolve to target size")
 	})
@@ -354,7 +355,7 @@ func TestArchiveOperationsEdgeCases(t *testing.T) {
 		}
 		largeFile := createTestFile(t, tmpDir, "large.bin", largeContent)
 
-		size, err := ComputeArchiveSize(t.Context(), []string{largeFile})
+		size, err := ComputeArchiveSize(t.Context(), []string{largeFile}, Owner{})
 		require.NoError(t, err)
 		assert.Equal(t, int64(10*1024*1024), size, "should correctly compute large file size")
 	})
@@ -657,6 +658,31 @@ func TestCompressNeverReadsThroughALinkTheUserCouldPlant(t *testing.T) {
 			f.requireVictimUntouched(t)
 		})
 	}
+}
+
+// The size estimate of a compress for the session user reads as the archive
+// does: a link in a folder that user can write is not measured, and a source
+// named through one is refused, so a planted link to / does not send root to
+// walk the host. A canceled walk is an error for an owner too.
+func TestComputeArchiveSizeNeverMeasuresThroughALinkTheUserCouldPlant(t *testing.T) {
+	f := newPlantedLinkFixture(t)
+	createTestFile(t, createTestDir(t, f.home, "sub"), "mine.txt", []byte("mine"))
+
+	size, err := ComputeArchiveSize(t.Context(), []string{f.home}, f.session)
+	require.NoError(t, err)
+	assert.Equal(t, int64(len("mine")), size)
+
+	_, err = ComputeArchiveSize(t.Context(), []string{filepath.Join(f.docs, "notes.txt")}, f.session)
+	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
+
+	size, err = ComputeArchiveSize(t.Context(), []string{filepath.Join(f.docs, "notes.txt")}, Owner{})
+	require.NoError(t, err)
+	assert.Equal(t, int64(len("secret")), size)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, err = ComputeArchiveSize(ctx, []string{f.home}, f.session)
+	require.ErrorIs(t, err, context.Canceled)
 }
 
 // A link the session user cannot have planted, in a folder only root can

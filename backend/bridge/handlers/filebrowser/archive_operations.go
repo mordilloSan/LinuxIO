@@ -228,7 +228,7 @@ func runCompressTask(ctx context.Context, task *bridgeipc.Task, store *userconfi
 	defer target.close()
 
 	size := &sizeEstimate{}
-	defer estimateArchiveSizeAsync(ctx, req.Paths, size)()
+	defer estimateArchiveSizeAsync(ctx, req.Paths, owner, size)()
 
 	writeTaskPhaseProgress(task, 0, "preparing")
 	opts := newTaskPhaseCallbacks(ctx, task, store, size, "compressing")

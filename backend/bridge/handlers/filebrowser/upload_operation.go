@@ -75,23 +75,34 @@ func parseUploadRequest(req apischema.FileUploadRequest) (string, int64, bool, s
 	return req.TargetPath, expectedSize, req.Overwrite != nil && *req.Overwrite, expectedVersion, nil
 }
 
-// loadUploadAttributes reads the owner and mode of the file the commit
-// replaces: the entry at realRel itself. The commit's renameat replaces a
-// symlink there, not its target, so the target lends no owner or mode (a
-// setuid bit included); a link to a folder still refuses like the folder.
-func loadUploadAttributes(root *fsroot.FSRoot, realRel string) (uploadAttributes, error) {
-	existingStat, err := root.Root.Lstat(realRel)
+// refuseFolderTarget refuses an upload onto a folder, or onto a link to one,
+// before any missing folder is made. It goes by path and decides nothing
+// else: the owner and mode come from uploadAttributesAt.
+func refuseFolderTarget(root *fsroot.FSRoot, realRel string) error {
+	if info, err := root.Root.Stat(realRel); err == nil && info.IsDir() {
+		return fmt.Errorf("destination is a directory")
+	}
+	return nil
+}
+
+// uploadAttributesAt reads the owner and mode of the file the commit
+// replaces: the entry name in dir itself, through the handle of the folder
+// the commit works in, so a folder swapped for a link after it was opened
+// lends no other file's owner or mode. The commit's renameat replaces a
+// symlink there, not its target, so the target lends none either (a setuid
+// bit included).
+func uploadAttributesAt(dir *os.File, name string) (uploadAttributes, error) {
+	fd, err := unix.Openat(int(dir.Fd()), name, unix.O_PATH|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return uploadAttributes{}, nil
 	}
-	if existingStat.Mode()&os.ModeSymlink != 0 {
-		target, err := root.Root.Stat(realRel)
-		if err != nil || !target.IsDir() {
-			return uploadAttributes{}, nil
-		}
-		existingStat = target // only to refuse the folder below
-	}
-	if existingStat.IsDir() {
+	entry := os.NewFile(uintptr(fd), name)
+	defer entry.Close()
+	existingStat, err := entry.Stat()
+	switch {
+	case err != nil, existingStat.Mode()&os.ModeSymlink != 0:
+		return uploadAttributes{}, nil
+	case existingStat.IsDir():
 		return uploadAttributes{}, fmt.Errorf("destination is a directory")
 	}
 
@@ -102,6 +113,21 @@ func loadUploadAttributes(root *fsroot.FSRoot, realRel string) (uploadAttributes
 		attrs.hasExisting = true
 	}
 	return attrs, nil
+}
+
+// removeUploadBuffer removes the buffer at tempRel through the handle of its
+// folder, and only while that is still the folder the buffer was created in,
+// so a folder swapped for a link names no other file to remove.
+func removeUploadBuffer(root *fsroot.FSRoot, tempRel string, folder os.FileInfo) error {
+	dir, err := openUploadFolder(root, filepath.Dir(tempRel), folder)
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+	if err = unix.Unlinkat(int(dir.Fd()), filepath.Base(tempRel), 0); err != nil {
+		return &fs.PathError{Op: "unlinkat", Path: tempRel, Err: err}
+	}
+	return nil
 }
 
 // refuseSymlinkTarget refuses an upload that sets owner when name in dir is a
@@ -260,6 +286,30 @@ func (t *uploadTransferTask) resolveTarget(root *fsroot.FSRoot, path string) (st
 	return services.ResolveNoUserLinks(root, path, t.linkRule)
 }
 
+// targetPath returns the path the upload writes to. Without owner (editor
+// saves, plain uploads) it writes through a symlink so the atomic rename
+// replaces the target, not the link (dotfile repos, sites-enabled); a
+// dangling link is replaced as-is. With owner the link is refused in prepare
+// instead. A root bridge acting for the session user follows such a link only
+// where that user cannot have planted it.
+func (t *uploadTransferTask) targetPath(root *fsroot.FSRoot) (string, error) {
+	realPath := filepath.Clean(t.path)
+	if t.refuseSymlink {
+		return realPath, nil
+	}
+	resolvedPath, err := t.resolveTarget(root, realPath)
+	switch {
+	case err == nil:
+		return resolvedPath, nil
+	case errors.Is(err, bridgeipc.ErrForbidden):
+		return "", err
+	}
+	if ctxErr := t.ctx.Err(); ctxErr != nil {
+		return "", ctxErr
+	}
+	return realPath, nil
+}
+
 func (t *uploadTransferTask) prepare(root *fsroot.FSRoot) error {
 	t.mu.Lock()
 	if t.tempRel != "" {
@@ -268,28 +318,12 @@ func (t *uploadTransferTask) prepare(root *fsroot.FSRoot) error {
 	}
 	t.mu.Unlock()
 
-	realPath := filepath.Clean(t.path)
-	// Without owner (editor saves, plain uploads) write through a symlink so
-	// the atomic rename replaces the target, not the link (dotfile repos,
-	// sites-enabled); a dangling link is replaced as-is. With owner the link
-	// is refused below instead. A root bridge acting for the session user
-	// follows such a link only where that user cannot have planted it.
-	if !t.refuseSymlink {
-		resolvedPath, err := t.resolveTarget(root, realPath)
-		switch {
-		case err == nil:
-			realPath = resolvedPath
-		case errors.Is(err, bridgeipc.ErrForbidden):
-			return err
-		default:
-			if ctxErr := t.ctx.Err(); ctxErr != nil {
-				return ctxErr
-			}
-		}
+	realPath, err := t.targetPath(root)
+	if err != nil {
+		return err
 	}
 	realRel := fsroot.ToRel(realPath)
-	attrs, err := loadUploadAttributes(root, realRel)
-	if err != nil {
+	if err = refuseFolderTarget(root, realRel); err != nil {
 		return err
 	}
 	// Without owner the version is checked before any missing folder is made.
@@ -311,6 +345,10 @@ func (t *uploadTransferTask) prepare(root *fsroot.FSRoot) error {
 		if err = t.verifyExpectedVersion(root, realPath); err != nil {
 			return err
 		}
+	}
+	attrs, err := uploadAttributesAt(dir, filepath.Base(realRel))
+	if err != nil {
+		return err
 	}
 	folderInfo, err := dir.Stat()
 	if err != nil {
@@ -481,7 +519,7 @@ func (t *uploadTransferTask) reportProgress(phase string) {
 
 func (t *uploadTransferTask) cleanupPartial() {
 	t.mu.Lock()
-	tempRel := t.tempRel
+	tempRel, folderInfo := t.tempRel, t.folderInfo
 	t.mu.Unlock()
 	if tempRel == "" {
 		return
@@ -493,7 +531,7 @@ func (t *uploadTransferTask) cleanupPartial() {
 		return
 	}
 	defer root.Close()
-	if err := root.Root.Remove(tempRel); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := removeUploadBuffer(root, tempRel, folderInfo); err != nil && !errors.Is(err, os.ErrNotExist) {
 		slog.Debug("failed to remove partial upload", "path", t.path, "partial", tempRel, "error", err)
 	}
 }

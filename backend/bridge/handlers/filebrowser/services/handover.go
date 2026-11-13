@@ -68,7 +68,7 @@ func OpenNearestDir(root *fsroot.FSRoot, dirRel string) (*os.File, []string, err
 
 // OpenNearestDirNoUserLinks is OpenNearestDir for a bridge acting for owner:
 // each folder is reached as openDirNoUserLinks reaches it, so on a root
-// bridge a symlink in a folder the session user can write is refused, not
+// bridge a symlink in a folder anyone but root can write is refused, not
 // followed, while one such as /home -> /var/home still is. Without owner set
 // it is OpenNearestDir.
 func OpenNearestDirNoUserLinks(root *fsroot.FSRoot, path string, owner Owner) (*os.File, []string, error) {
@@ -119,7 +119,7 @@ func entryFollowingNoUserLinks(root *fsroot.FSRoot, path string, owner Owner) (e
 			_ = at.dir.Close()
 			return entry{}, &fs.PathError{Op: "open", Path: path, Err: unix.ELOOP}
 		}
-		dir, err := followLink(at.dir, at.name, target, owner)
+		dir, err := followLink(at.dir, at.name, target)
 		if err != nil {
 			return entry{}, err
 		}
@@ -219,11 +219,13 @@ func openDirAt(parent *os.File, name string) (*os.File, error) {
 
 // openDirNoUserLinks opens the folder at path for a root bridge acting for
 // owner, walking from / one name at a time. A symlink is followed only where
-// the session user cannot have planted it: in a folder that is not theirs and
-// that no group or everyone may write (a group the user may be in). So
-// /home -> /var/home works, while a link a process of the user put in a
-// folder of theirs, say after a check ran on the path, is refused. Without
-// owner set, path is opened as it resolves.
+// nobody but root can have planted it: in a folder root owns that no group
+// or everyone may write. So /home -> /var/home works, while a link a process
+// of the session user put in a folder of theirs, say after a check ran on the
+// path, is refused, and so is one another local user or a service account
+// put in a folder of its own, which would send an admin working there
+// wherever that account chose. Without owner set, path is opened as it
+// resolves.
 func openDirNoUserLinks(root *fsroot.FSRoot, path string, owner Owner) (*os.File, error) {
 	if !owner.Set {
 		return root.Root.OpenFile(relPath(path), os.O_RDONLY|syscall.O_DIRECTORY, 0)
@@ -243,7 +245,7 @@ func openDirNoUserLinks(root *fsroot.FSRoot, path string, owner Owner) (*os.File
 		if err != nil && links < maxLinkHops {
 			if target, isLink := linkTarget(dir, name); isLink {
 				links++
-				if dir, err = followLink(dir, name, target, owner); err != nil {
+				if dir, err = followLink(dir, name, target); err != nil {
 					return nil, err
 				}
 				names = append(strings.Split(target, "/"), names...)
@@ -273,13 +275,13 @@ func linkTarget(dir *os.File, name string) (string, bool) {
 	return string(buf[:n]), true
 }
 
-// followLink checks that the session user cannot have put the symlink name
-// in dir, where target is what it points at: dir is not theirs and no group
-// or everyone may write it. It returns the folder target resolves from, dir
-// for a relative target and / for an absolute one, and takes over dir.
-func followLink(dir *os.File, name, target string, owner Owner) (*os.File, error) {
-	plantable, err := userCouldPlant(dir, owner)
-	if err == nil && plantable {
+// followLink checks that nobody but root can have put the symlink name in
+// dir, where target is what it points at (see plantable). It returns the
+// folder target resolves from, dir for a relative target and / for an
+// absolute one, and takes over dir.
+func followLink(dir *os.File, name, target string) (*os.File, error) {
+	planted, err := plantable(dir)
+	if err == nil && planted {
 		err = plantedLinkError(dir, name, target)
 	}
 	if err != nil || filepath.IsAbs(target) {
@@ -294,21 +296,24 @@ func followLink(dir *os.File, name, target string, owner Owner) (*os.File, error
 	return dir, nil
 }
 
-// userCouldPlant reports whether the session user could have put an entry
-// in dir, as fstat sees its handle: dir is theirs, or a group or everyone may
-// write it (a group the user may be in).
-func userCouldPlant(dir *os.File, owner Owner) (bool, error) {
+// plantable reports whether anyone but root could have put an entry in dir,
+// as fstat sees its handle: dir is not root's, or a group or everyone may
+// write it. The owner of a folder can put a link in it whatever its mode, so
+// only root's own folders vouch for the links they hold.
+func plantable(dir *os.File) (bool, error) {
 	var st unix.Stat_t
 	if err := unix.Fstat(int(dir.Fd()), &st); err != nil {
 		return false, &fs.PathError{Op: "fstat", Path: dir.Name(), Err: err}
 	}
-	return st.Uid == owner.UID || st.Mode&0o022 != 0, nil
+	return st.Uid != 0 || st.Mode&0o022 != 0, nil
 }
 
 // plantedLinkError refuses the symlink name in dir, which points at target,
-// because the session user could have planted it. It names the folder the
-// link points to, which readlink tells that user anyway, so whoever meant the
-// link knows which path to use instead.
+// because someone other than root could have planted it. It names what the
+// link points to, which readlink tells anyone who can list dir anyway, so
+// whoever meant the link knows which path to use instead. The page offers to
+// open that path: it finds it by the wording here (linkRefusal.ts, pinned by
+// a test).
 func plantedLinkError(dir *os.File, name, target string) error {
 	return fmt.Errorf("%w: %s is a link to %s. Open that folder to make this change",
 		bridgeipc.ErrForbidden, filepath.Join(dir.Name(), name), linkDestination(dir, target))

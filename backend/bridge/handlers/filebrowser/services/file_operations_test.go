@@ -720,6 +720,50 @@ func TestDeleteFollowsOnlyALinkInARootFolderAsRoot(t *testing.T) {
 	assert.NoFileExists(t, notes)
 }
 
+// A root bridge follows a link only in a folder root owns. One in another
+// account's folder, which that account could have planted for an admin
+// working there, is refused like one in the session user's own, and a
+// compress of that folder leaves it out. The name puts the test in the root
+// run too, where the folder is handed to a third account and a link in a
+// folder of root's is still followed.
+func TestALinkInAnotherAccountsFolderIsNotFollowedAsRoot(t *testing.T) {
+	session, _, _ := otherSession()
+	theirs, victim := t.TempDir(), t.TempDir()
+	createTestFile(t, victim, "notes.txt", []byte("secret"))
+	docs := filepath.Join(theirs, "docs")
+	plantTrashLink(t, victim, docs)
+	if os.Geteuid() == 0 {
+		require.NoError(t, os.Chown(theirs, int(session.UID)+1, int(session.GID)+1))
+	}
+	root, err := fsroot.Open()
+	require.NoError(t, err)
+	defer root.Close()
+
+	_, _, err = OpenNearestDirNoUserLinks(root, filepath.Join(docs, "sub"), session)
+	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
+	require.ErrorContains(t, err, docs+" is a link to "+victim+". Open that folder to make this change")
+
+	archive, err := os.OpenFile(filepath.Join(t.TempDir(), "theirs.zip"), os.O_RDWR|os.O_CREATE, 0o600)
+	require.NoError(t, err)
+	defer archive.Close()
+	var skipped []string
+	sources := ArchiveSources{Owner: session, Skipped: func(path string, _ error) { skipped = append(skipped, path) }}
+	require.NoError(t, CreateZip(archive, nil, "", sources, theirs))
+	assert.Equal(t, []string{docs}, skipped)
+	assert.Empty(t, archiveContents(t, archive.Name()))
+
+	if os.Geteuid() != 0 {
+		return
+	}
+	system := t.TempDir() // root's own
+	plantTrashLink(t, victim, filepath.Join(system, "docs"))
+	dir, missing, err := OpenNearestDirNoUserLinks(root, filepath.Join(system, "docs"), session)
+	require.NoError(t, err)
+	defer dir.Close()
+	assert.Empty(t, missing)
+	assert.Equal(t, []string{"notes.txt"}, dirNames(t, dir.Name()))
+}
+
 // plantedLinkFixture is a session user's home with docs, a link the user's
 // process put in place of a folder, pointing at victim, a folder of someone
 // else's with notes.txt in it.

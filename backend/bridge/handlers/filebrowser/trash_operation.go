@@ -163,15 +163,25 @@ func runTrashBatchTask(ctx context.Context, task *bridgeipc.Task, store *usercon
 
 // runTrashRestoreTask puts trashed items back where they came from. An item
 // a root bridge has no record of trashing goes into a folder the session user
-// does not own only when the request confirms that destination.
+// does not own only when the request confirms that destination for that
+// item: a destination confirmed for another item of the request does not
+// count.
 func runTrashRestoreTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.TrashRestoreRequest, owner sessionOwner) (FileBatchResult, error) {
-	confirmed := make([]string, 0, len(req.ConfirmedDestinations))
-	for _, destination := range req.ConfirmedDestinations {
-		confirmed = append(confirmed, fsroot.CleanAbsPath(destination))
-	}
 	return runTrashMoveTask(ctx, task, store, req.Paths, "trash_restore", "restoring", owner, func(ctx context.Context, path string, u trashUser) (string, error) {
-		return services.RestoreFromTrash(ctx, path, u.home, u.uid, u.gid, u.chownNew, confirmed)
+		return services.RestoreFromTrash(ctx, path, u.home, u.uid, u.gid, u.chownNew, confirmedRestore(req, path))
 	})
+}
+
+// confirmedRestore returns the destination the request confirmed for the
+// trashed item at path, if any.
+func confirmedRestore(req apischema.TrashRestoreRequest, path string) []string {
+	path = fsroot.CleanAbsPath(path)
+	for trashed, destination := range req.ConfirmedDestinations {
+		if fsroot.CleanAbsPath(trashed) == path {
+			return []string{fsroot.CleanAbsPath(destination)}
+		}
+	}
+	return nil
 }
 
 // runTrashPurgeTask deletes trashed items for good.
