@@ -3,6 +3,8 @@ import { useState } from "react";
 import {
   getMutationErrorMessage,
   linuxio,
+  type WireGuardHookKind,
+  type WireGuardHooks,
   type WireGuardInterface,
   type WireGuardUpdateInterfaceRequest,
 } from "@/api";
@@ -51,14 +53,15 @@ const isDnsList = (value: string) =>
 const parsePort = (value: string): number | null =>
   /^\d+$/.test(value.trim()) ? Number(value) : null;
 
-type HookKind = "preUp" | "postUp" | "preDown" | "postDown";
-const HOOK_LABELS: Record<HookKind, string> = {
-  preUp: "PreUp",
-  postUp: "PostUp",
-  preDown: "PreDown",
-  postDown: "PostDown",
-};
-const HOOK_KINDS = Object.keys(HOOK_LABELS) as HookKind[];
+// One field per wg-quick hook kind, in the order the config file lists them.
+// Keyed by the generated union, so typecheck fails when the backend adds or
+// drops a kind.
+const HOOK_KINDS = Object.keys({
+  PreUp: true,
+  PostUp: true,
+  PreDown: true,
+  PostDown: true,
+} satisfies Record<WireGuardHookKind, true>) as WireGuardHookKind[];
 
 interface EditInterfaceDialogProps {
   iface: WireGuardInterface;
@@ -76,12 +79,12 @@ const EditInterfaceDialog = ({
   const [dns, setDns] = useState(iface.dns.join(", "));
   const [mtu, setMtu] = useState(iface.mtu ? String(iface.mtu) : "");
   const [port, setPort] = useState(String(iface.port));
-  const [hooks, setHooks] = useState<Record<HookKind, string>>({
-    preUp: iface.preUp.join("\n"),
-    postUp: iface.postUp.join("\n"),
-    preDown: iface.preDown.join("\n"),
-    postDown: iface.postDown.join("\n"),
-  });
+  const [hooks, setHooks] = useState(
+    () =>
+      Object.fromEntries(
+        HOOK_KINDS.map((kind) => [kind, (iface.hooks[kind] ?? []).join("\n")]),
+      ) as Record<WireGuardHookKind, string>,
+  );
   const [error, setError] = useState<string | null>(null);
 
   const updateInterface = linuxio.wireguard.update_interface.useMutation({
@@ -115,10 +118,12 @@ const EditInterfaceDialog = ({
   if (portValue !== null && portValue !== iface.port) {
     request.listenPort = portValue;
   }
+  const hookChanges: WireGuardHooks = {};
   for (const kind of HOOK_KINDS) {
     const lines = splitLines(hooks[kind]);
-    if (!sameList(lines, iface[kind])) request[kind] = lines;
+    if (!sameList(lines, iface.hooks[kind] ?? [])) hookChanges[kind] = lines;
   }
+  if (Object.keys(hookChanges).length > 0) request.hooks = hookChanges;
   const hasChanges = Object.keys(request).length > 1;
   const busy = updateInterface.isPending;
 
@@ -202,7 +207,7 @@ const EditInterfaceDialog = ({
               fullWidth
               helperText="One command per line."
               key={kind}
-              label={HOOK_LABELS[kind]}
+              label={kind}
               multiline
               onChange={(e) =>
                 setHooks((current) => ({ ...current, [kind]: e.target.value }))

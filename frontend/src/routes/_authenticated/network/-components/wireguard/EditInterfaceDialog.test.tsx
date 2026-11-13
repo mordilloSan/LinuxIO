@@ -17,6 +17,15 @@ vi.mock("sonner", () => ({
 const wg0: WireGuardInterface = {
   address: "10.0.0.1/24",
   dns: ["1.1.1.1"],
+  hooks: {
+    PreUp: [],
+    PostUp: [
+      "sysctl -w net.ipv4.ip_forward=1",
+      "iptables -A FORWARD -i wg0 -j ACCEPT",
+    ],
+    PreDown: [],
+    PostDown: ["iptables -D FORWARD -i wg0 -j ACCEPT || true"],
+  },
   host: "",
   isConnected: "Active",
   isEnabled: true,
@@ -24,13 +33,6 @@ const wg0: WireGuardInterface = {
   name: "wg0",
   peerCount: 1,
   port: 51820,
-  postDown: ["iptables -D FORWARD -i wg0 -j ACCEPT || true"],
-  postUp: [
-    "sysctl -w net.ipv4.ip_forward=1",
-    "iptables -A FORWARD -i wg0 -j ACCEPT",
-  ],
-  preDown: [],
-  preUp: [],
 };
 
 function spyUpdates() {
@@ -94,8 +96,33 @@ describe("EditInterfaceDialog", () => {
     await waitFor(() => expect(updates).toHaveLength(1));
     expect(updates[0]).toEqual({
       name: "wg0",
-      preUp: ["echo one", "echo two"],
+      hooks: { PreUp: ["echo one", "echo two"] },
     });
+  });
+
+  it("shows each hook kind in file order and sends an empty list to remove one", async () => {
+    const updates = spyUpdates();
+    const view = render(
+      <EditInterfaceDialog iface={wg0} onClose={vi.fn()} open />,
+    );
+
+    const hookFields = screen.getAllByRole("textbox", {
+      name: /^(Pre|Post)(Up|Down)$/,
+    });
+    expect(hookFields).toEqual(
+      ["PreUp", "PostUp", "PreDown", "PostDown"].map((label) =>
+        screen.getByLabelText(label),
+      ),
+    );
+    expect(screen.getByLabelText("PostUp")).toHaveValue(
+      "sysctl -w net.ipv4.ip_forward=1\niptables -A FORWARD -i wg0 -j ACCEPT",
+    );
+
+    await view.user.clear(screen.getByLabelText("PostDown"));
+    await view.user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(updates).toHaveLength(1));
+    expect(updates[0]).toEqual({ name: "wg0", hooks: { PostDown: [] } });
   });
 
   it("blocks saving while the port or MTU is invalid", async () => {

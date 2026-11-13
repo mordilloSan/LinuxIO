@@ -55,11 +55,8 @@ func uiConfigToAPI(value userconfig.UIPreferences) apischema.UIConfig {
 	if value.DockAccentGradient == nil {
 		value.DockAccentGradient = defaults.DockAccentGradient
 	}
-	if value.DockerDashboardSections == nil {
-		value.DockerDashboardSections = defaults.DockerDashboardSections
-	}
-	if value.HardwareSections == nil {
-		value.HardwareSections = defaults.HardwareSections
+	if value.CollapsedSections == nil {
+		value.CollapsedSections = defaults.CollapsedSections
 	}
 	if value.HiddenCards == nil {
 		value.HiddenCards = defaults.HiddenCards
@@ -86,18 +83,17 @@ func uiConfigToAPI(value userconfig.UIPreferences) apischema.UIConfig {
 		value.TerminalFontSize = defaults.TerminalFontSize
 	}
 	result := apischema.UIConfig{
-		Theme:                   apischema.Theme(value.Theme),
-		PrimaryColor:            value.PrimaryColor.String(),
-		ThemeColors:             themeColorsToAPI(value.ThemeColors),
-		SidebarCollapsed:        value.SidebarCollapsed,
-		NavigationMode:          apischema.NavigationMode(value.NavigationMode),
-		DockTileColors:          apischema.DockTileColors(value.DockTileColors),
-		HiddenCards:             value.HiddenCards,
-		DockerDashboardSections: *dockerDashboardSectionsToAPI(value.DockerDashboardSections),
-		HardwareSections:        *hardwareSectionsToAPI(value.HardwareSections),
-		LayoutOrders:            value.LayoutOrders,
-		ViewModeDefault:         apischema.TableCardViewMode(userconfig.DefaultViewMode),
-		TerminalFontSize:        value.TerminalFontSize,
+		Theme:             apischema.Theme(value.Theme),
+		PrimaryColor:      value.PrimaryColor.String(),
+		ThemeColors:       themeColorsToAPI(value.ThemeColors),
+		SidebarCollapsed:  value.SidebarCollapsed,
+		NavigationMode:    apischema.NavigationMode(value.NavigationMode),
+		DockTileColors:    apischema.DockTileColors(value.DockTileColors),
+		HiddenCards:       value.HiddenCards,
+		CollapsedSections: value.CollapsedSections,
+		LayoutOrders:      value.LayoutOrders,
+		ViewModeDefault:   apischema.TableCardViewMode(userconfig.DefaultViewMode),
+		TerminalFontSize:  value.TerminalFontSize,
 	}
 	result.ViewModes = make(map[string]apischema.TableCardViewMode, len(value.ViewModes))
 	for key, mode := range value.ViewModes {
@@ -117,20 +113,6 @@ func absolutePathsToStrings(values []userconfig.AbsolutePath) []string {
 		result[i] = string(value)
 	}
 	return result
-}
-
-func dockerDashboardSectionsToAPI(value *userconfig.DockerDashboardSections) *apischema.ConfigDockerDashboardSections {
-	if value == nil {
-		return nil
-	}
-	return &apischema.ConfigDockerDashboardSections{Overview: value.Overview, Monitoring: value.Monitoring, Daemon: value.Daemon, Resources: value.Resources}
-}
-
-func hardwareSectionsToAPI(value *userconfig.HardwareSections) *apischema.ConfigHardwareSections {
-	if value == nil {
-		return nil
-	}
-	return &apischema.ConfigHardwareSections{Overview: value.Overview, Hardware: value.Hardware, Sensors: value.Sensors, SystemInfo: value.SystemInfo, GPU: value.GPU, PCIDevices: value.PCIDevices, MemoryModules: value.MemoryModules}
 }
 
 func themeColorsToAPI(value *userconfig.ThemeColorsByMode) *apischema.ConfigThemeColorsByModePayload {

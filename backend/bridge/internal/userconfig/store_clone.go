@@ -27,30 +27,23 @@ func cloneUIPreferences(in *UIPreferences) *UIPreferences {
 	out := *in
 	out.HiddenCards = slices.Clone(in.HiddenCards)
 	out.ViewModes = maps.Clone(in.ViewModes)
-	out.LayoutOrders = cloneLayoutOrders(in.LayoutOrders)
+	out.CollapsedSections = cloneNameLists(in.CollapsedSections)
+	out.LayoutOrders = cloneNameLists(in.LayoutOrders)
 	out.ThemeColors = cloneThemeColorsByMode(in.ThemeColors)
 	if in.DockAccentGradient != nil {
 		gradient := *in.DockAccentGradient
 		out.DockAccentGradient = &gradient
 	}
-	if in.DockerDashboardSections != nil {
-		sections := *in.DockerDashboardSections
-		out.DockerDashboardSections = &sections
-	}
-	if in.HardwareSections != nil {
-		sections := *in.HardwareSections
-		out.HardwareSections = &sections
-	}
 	return &out
 }
 
-func cloneLayoutOrders(in map[string][]string) map[string][]string {
+func cloneNameLists(in map[string][]string) map[string][]string {
 	if in == nil {
 		return nil
 	}
 	out := make(map[string][]string, len(in))
-	for surface, order := range in {
-		out[surface] = slices.Clone(order)
+	for key, names := range in {
+		out[key] = slices.Clone(names)
 	}
 	return out
 }

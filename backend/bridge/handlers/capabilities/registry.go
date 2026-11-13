@@ -3,6 +3,7 @@ package capabilities
 import (
 	"context"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/power"
 	nfsshares "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/shares"
@@ -19,7 +20,7 @@ import (
 // CapabilitySpec describes a single capability: how to detect it, how to
 // install it from the UI (if installable), and how to label it in logs.
 type CapabilitySpec struct {
-	Name    string // wire prefix, e.g. "avahi"
+	Name    string // wire key of its status, e.g. "avahi"
 	LogName string // human-friendly name for logs, e.g. "Avahi mDNS"
 	Detect  func(ctx context.Context) (bool, string)
 	// DetectAsUser replaces Detect for capabilities that depend on the session
@@ -338,6 +339,21 @@ var capabilityRegistry = []CapabilitySpec{
 		},
 		Install: &InstallSpec{PackageDebian: "xfsprogs", PackageRHEL: "xfsprogs"},
 	},
+}
+
+// The registry's names are the apischema.CapabilityName union of the
+// generated contract, so a capability is named once, in the registry. The
+// generator loads this package through the handler registry.
+func init() {
+	apischema.StringEnums["CapabilityName"] = capabilityNames()
+}
+
+func capabilityNames() []string {
+	names := make([]string, 0, len(capabilityRegistry))
+	for _, spec := range capabilityRegistry {
+		names = append(names, spec.Name)
+	}
+	return names
 }
 
 func CapabilitySpecByName(name string) (CapabilitySpec, bool) {

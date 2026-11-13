@@ -22,19 +22,21 @@ type Settings struct {
 // UIPreferences holds effective backend-owned UI preferences. The on-disk
 // empty-document sentinel is represented separately from this runtime value.
 type UIPreferences struct {
-	Theme                   PersistedTheme           `json:"theme" yaml:"theme"`
-	PrimaryColor            CSSColor                 `json:"primaryColor" yaml:"primaryColor"`
-	ThemeColors             *ThemeColorsByMode       `json:"themeColors,omitzero" yaml:"themeColors,omitempty"`
-	SidebarCollapsed        bool                     `json:"sidebarCollapsed" yaml:"sidebarCollapsed"`
-	NavigationMode          string                   `json:"navigationMode" yaml:"navigationMode"`
-	DockTileColors          string                   `json:"dockTileColors" yaml:"dockTileColors"`
-	DockAccentGradient      *DockAccentGradient      `json:"dockAccentGradient" yaml:"dockAccentGradient"`
-	HiddenCards             []string                 `json:"hiddenCards" yaml:"hiddenCards"`
-	DockerDashboardSections *DockerDashboardSections `json:"dockerDashboardSections" yaml:"dockerDashboardSections"`
-	HardwareSections        *HardwareSections        `json:"hardwareSections" yaml:"hardwareSections"`
-	ViewModes               map[string]string        `json:"viewModes" yaml:"viewModes"`
-	LayoutOrders            map[string][]string      `json:"layoutOrders" yaml:"layoutOrders"`
-	TerminalFontSize        int                      `json:"terminalFontSize" yaml:"terminalFontSize"`
+	Theme              PersistedTheme      `json:"theme" yaml:"theme"`
+	PrimaryColor       CSSColor            `json:"primaryColor" yaml:"primaryColor"`
+	ThemeColors        *ThemeColorsByMode  `json:"themeColors,omitzero" yaml:"themeColors,omitempty"`
+	SidebarCollapsed   bool                `json:"sidebarCollapsed" yaml:"sidebarCollapsed"`
+	NavigationMode     string              `json:"navigationMode" yaml:"navigationMode"`
+	DockTileColors     string              `json:"dockTileColors" yaml:"dockTileColors"`
+	DockAccentGradient *DockAccentGradient `json:"dockAccentGradient" yaml:"dockAccentGradient"`
+	HiddenCards        []string            `json:"hiddenCards" yaml:"hiddenCards"`
+	// CollapsedSections lists, per page, the sections the user collapsed. The
+	// frontend names both and the backend never reads them: a page or section
+	// that is absent is expanded, so a new section starts open for everyone.
+	CollapsedSections map[string][]string `json:"collapsedSections" yaml:"collapsedSections"`
+	ViewModes         map[string]string   `json:"viewModes" yaml:"viewModes"`
+	LayoutOrders      map[string][]string `json:"layoutOrders" yaml:"layoutOrders"`
+	TerminalFontSize  int                 `json:"terminalFontSize" yaml:"terminalFontSize"`
 }
 
 // PersistedDismissals records per-user acknowledgements of one-shot health signals.
@@ -46,25 +48,6 @@ type PersistedDismissals struct {
 	// HistorySeenAt is when the user last opened the job history (RFC 3339).
 	// The sign-in notice counts only the jobs that ended after it.
 	HistorySeenAt string `json:"historySeenAt,omitempty" yaml:"historySeenAt,omitempty"`
-}
-
-// DockerDashboardSections holds the collapsed state of each Docker dashboard section
-type DockerDashboardSections struct {
-	Overview   bool `json:"overview" yaml:"overview"`
-	Monitoring bool `json:"monitoring" yaml:"monitoring"`
-	Daemon     bool `json:"daemon" yaml:"daemon"`
-	Resources  bool `json:"resources" yaml:"resources"`
-}
-
-// HardwareSections holds the visibility state of each hardware dashboard section
-type HardwareSections struct {
-	Overview      bool `json:"overview" yaml:"overview"`
-	Hardware      bool `json:"hardware" yaml:"hardware"`
-	Sensors       bool `json:"sensors" yaml:"sensors"`
-	SystemInfo    bool `json:"systemInfo" yaml:"systemInfo"`
-	GPU           bool `json:"gpu" yaml:"gpu"`
-	PCIDevices    bool `json:"pciDevices" yaml:"pciDevices"`
-	MemoryModules bool `json:"memoryModules" yaml:"memoryModules"`
 }
 
 // DockAccentGradient controls the generated accent palette used by dock tiles.

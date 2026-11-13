@@ -1,7 +1,9 @@
 package userconfig
 
 import (
+	"fmt"
 	"maps"
+	"strings"
 	"testing"
 
 	"github.com/goccy/go-yaml"
@@ -124,4 +126,35 @@ func TestValidateThemeColorsNamesTheKey(t *testing.T) {
 func TestValidateJobSettingsReportsNegatives(t *testing.T) {
 	require.Empty(t, ValidateJobSettings(DefaultJobSettings()))
 	require.Equal(t, []string{"jobs.progressMinBytesMB must be >= 0"}, ValidateJobSettings(PersistedJobSettings{ProgressMinBytesMB: -1}))
+}
+
+func TestValidateCollapsedSectionsBounds(t *testing.T) {
+	atBound := map[string][]string{}
+	for page := range maxCollapsedSectionPages {
+		sections := make([]string, maxCollapsedSectionsPerPage)
+		for i := range sections {
+			sections[i] = fmt.Sprintf("%0*d", maxSectionNameBytes, i)
+		}
+		atBound[fmt.Sprintf("%0*d", maxSectionNameBytes, page)] = sections
+	}
+	require.NoError(t, ValidateCollapsedSections(atBound))
+	require.NoError(t, ValidateCollapsedSections(map[string][]string{}))
+
+	overPages := maps.Clone(atBound)
+	overPages["one-more"] = []string{"section"}
+	tooManySections := make([]string, maxCollapsedSectionsPerPage+1)
+	for i := range tooManySections {
+		tooManySections[i] = fmt.Sprint(i)
+	}
+	tooLong := strings.Repeat("x", maxSectionNameBytes+1)
+	for name, collapsed := range map[string]map[string][]string{
+		"pages":             overPages,
+		"sections":          {"hardware": tooManySections},
+		"long page name":    {tooLong: {"sensors"}},
+		"long section name": {"hardware": {tooLong}},
+		"blank page name":   {" ": {"sensors"}},
+		"blank section":     {"hardware": {""}},
+	} {
+		require.Error(t, ValidateCollapsedSections(collapsed), name)
+	}
 }

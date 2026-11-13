@@ -1,15 +1,20 @@
 /**
- * Single source of truth for system capabilities.
+ * Frontend presentation of system capabilities.
  *
- * Every capability lives in CAPABILITIES exactly once. Wire types, auth state
- * shape, reset helpers, and the capability-manager UI are all derived from it.
- * Adding a capability = adding one entry to this list.
+ * The capability names come from the backend registry as the generated
+ * `CapabilityName` union; CAPABILITIES gives each one its label, icon, auth
+ * state key, and Capability Manager text, and must name every capability
+ * exactly once (checked by typecheck and capabilities.test.ts). Auth state
+ * shape, reset helpers, and the capability-manager UI are derived from it.
  */
 
 import type { QueryKey } from "@tanstack/react-query";
 
 import linuxio from "./generated/client";
-import type { CapabilitiesResponse as GeneratedCapabilitiesResponse } from "./generated/linuxio-types";
+import type {
+  CapabilityName,
+  CapabilitiesResponse as GeneratedCapabilitiesResponse,
+} from "./generated/linuxio-types";
 import type { ToastMeta } from "./toast-meta";
 
 export interface CapabilityDef {
@@ -50,8 +55,8 @@ export interface CapabilityDef {
   route?: ToastMeta;
   /** camelCase field used in auth state (e.g. "dockerAvailable"). */
   state: string;
-  /** snake_case prefix used on the wire (e.g. "docker" -> "docker_available", "docker_error"). */
-  wire: string;
+  /** Backend capability name, the key of its status on the wire (e.g. "docker"). */
+  wire: CapabilityName;
 }
 
 export const CAPABILITIES = [
@@ -387,14 +392,6 @@ export const CAPABILITIES = [
 export type CapabilityWire = (typeof CAPABILITIES)[number]["wire"];
 export type CapabilityKey = (typeof CAPABILITIES)[number]["state"];
 export type CapabilitiesResponse = GeneratedCapabilitiesResponse;
-export type CapabilityValueKey = Extract<
-  keyof CapabilitiesResponse,
-  `${CapabilityWire}_available`
->;
-export type CapabilityErrorKey = Extract<
-  keyof CapabilitiesResponse,
-  `${CapabilityWire}_error`
->;
 
 /** Frontend state shape: one tri-state field per capability (`null` = unknown). */
 export type CapabilityState = Record<CapabilityKey, boolean | null>;
@@ -415,7 +412,7 @@ export const capabilityStateFromWire = (
 ): CapabilityState =>
   Object.fromEntries(
     CAPABILITIES.map((c) => {
-      const v = wire[`${c.wire}_available` as CapabilityValueKey];
+      const v = wire[c.wire]?.available;
       return [c.state, typeof v === "boolean" ? v : null];
     }),
   ) as CapabilityState;
@@ -448,7 +445,7 @@ export const wireFromCapabilityState = (
   Object.fromEntries(
     CAPABILITIES.flatMap((c) => {
       const value = state[c.state];
-      return typeof value === "boolean" ? [[`${c.wire}_available`, value]] : [];
+      return typeof value === "boolean" ? [[c.wire, { available: value }]] : [];
     }),
   );
 

@@ -137,10 +137,11 @@ func ValidateRule(r BtrfsSnapshotRule) error {
 	if r.Weekday < 0 || r.Weekday > 6 {
 		return fmt.Errorf("rule weekday %d must be between 0 and 6", r.Weekday)
 	}
-	if k := r.Keep; k.Hourly < 0 || k.Daily < 0 || k.Weekly < 0 || k.Monthly < 0 {
+	buckets := r.Keep.buckets()
+	if slices.ContainsFunc(buckets, func(b keepBucket) bool { return b.n < 0 }) {
 		return errors.New("keep counts must not be negative")
 	}
-	if k := r.Keep; r.Enabled && k.Hourly == 0 && k.Daily == 0 && k.Weekly == 0 && k.Monthly == 0 {
+	if r.Enabled && !slices.ContainsFunc(buckets, func(b keepBucket) bool { return b.n != 0 }) {
 		return errors.New("an enabled rule must keep at least one snapshot")
 	}
 	return nil

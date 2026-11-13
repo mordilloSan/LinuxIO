@@ -138,21 +138,7 @@ function remoteUI(overrides: Partial<TestUIConfig> = {}): TestUIConfig {
       rangeEnd: 100,
     },
     hiddenCards: [],
-    dockerDashboardSections: {
-      overview: true,
-      monitoring: true,
-      daemon: true,
-      resources: true,
-    },
-    hardwareSections: {
-      overview: true,
-      hardware: true,
-      sensors: true,
-      systemInfo: true,
-      gpu: true,
-      pciDevices: true,
-      memoryModules: true,
-    },
+    collapsedSections: { hardware: ["sensors"] },
     layoutOrders: { dashboard: ["overview"] },
     viewModes: {
       "docker.images": "table",
@@ -172,7 +158,7 @@ function Probe() {
   const [showHiddenFiles] = useConfigValue("showHiddenFiles");
   const [chunkSizeMB] = useConfigValue("chunkSizeMB");
   const [dockAccentGradient] = useConfigValue("dockAccentGradient");
-  const [dockerDashboardSections] = useConfigValue("dockerDashboardSections");
+  const [collapsedSections] = useConfigValue("collapsedSections");
   const [viewModes] = useConfigValue("viewModes");
   const docker = useDockerSettings();
   const assistant = useAssistantSettings();
@@ -188,8 +174,8 @@ function Probe() {
       </div>
       <div data-testid="assistant-agent">{assistant.agent}</div>
       <div data-testid="docker-folders">{docker.folders.join(",")}</div>
-      <div data-testid="docker-dashboard-sections">
-        {JSON.stringify(dockerDashboardSections)}
+      <div data-testid="collapsed-sections">
+        {JSON.stringify(collapsedSections)}
       </div>
       <div data-testid="view-modes">{JSON.stringify(viewModes)}</div>
       <button onClick={() => setKey("theme", "DARK")}>set theme</button>

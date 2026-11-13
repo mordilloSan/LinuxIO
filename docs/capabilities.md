@@ -8,33 +8,44 @@ features on it, and installs it from the UI.
 
 - A capability is a named, optional host dependency (a binary, package, or
   service) that some feature needs in order to work.
-- Each capability is declared **once per side** in a manifest:
-  - Backend: the `capabilityRegistry` in `backend/bridge/handlers/capabilities/registry.go`.
-  - Frontend: the `CAPABILITIES` array in `frontend/src/api/capabilities.ts`.
-- `system.get_capabilities` reports, for every capability, an `*_available`
-  boolean and an optional `*_error` string. It is a post-login UI hint, not
-  part of the login JSON or an authorization decision: once the authenticated
-  session mux opens, `AuthProvider` invokes the RPC asynchronously once for the
-  frontend authentication lifecycle and persists valid results for route/action
-  gating.
+- Each capability is named **once**, in the backend `capabilityRegistry` in
+  `backend/bridge/handlers/capabilities/registry.go`. The registry's names are
+  the generated `CapabilityName` union, and the frontend `CAPABILITIES` array
+  in `frontend/src/api/capabilities.ts` gives each of those names its label,
+  icon and auth-state key; typecheck fails when the two differ.
+- `system.get_capabilities` reports, for every capability, its status under its
+  name: an `available` boolean and an optional `error` string. It is a
+  post-login UI hint, not part of the login JSON or an authorization decision:
+  once the authenticated session mux opens, `AuthProvider` invokes the RPC
+  asynchronously once for the frontend authentication lifecycle and persists
+  valid results for route/action gating.
 - Installable capabilities expose an `Install` spec; `system.install_capability`
   installs the package and/or enables the service, then re-detects.
-- An anti-drift test keeps the backend registry and wire struct in lock-step.
 
 ## Wire Shape
 
-`system.get_capabilities` returns one pair of fields per capability:
+`system.get_capabilities` returns an object keyed by capability name:
 
 ```json
 {
-  "docker_available": true,
-  "wireguard_available": false,
-  "wireguard_error": "wg-quick not found (missing wireguard-tools dependency)"
+  "docker": { "available": true },
+  "wireguard": {
+    "available": false,
+    "error": "wg-quick not found (missing wireguard-tools dependency)"
+  }
 }
 ```
 
-- `<wire>_available` — `true` only when the dependency is present and usable.
-- `<wire>_error` — human-readable reason, present only when unavailable.
+- `available` — `true` only when the dependency is present and usable.
+- `error` — the reason detection gave, present only when it gave one.
+
+In Go the result is `apischema.CapabilitiesResponse`, a
+`map[CapabilityName]CapabilityStatus`; the generator renders it as
+`Partial<Record<CapabilityName, CapabilityStatus>>`. `apischema` cannot import
+the handler package that owns the registry, so
+`handlers/capabilities` adds the registry's names to `apischema.StringEnums`
+as `CapabilityName` when it is loaded; the generator loads it through the
+handler registry like every route family.
 
 The frontend collapses this into a tri-state per capability: `true` (available),
 `false` (unavailable), or `null` (unknown / not yet checked). On an authenticated
@@ -58,13 +69,12 @@ after an install; that is separate from the initial bootstrap refresh.
 | Symbol | File | Role |
 |--------|------|------|
 | `capabilityRegistry` | `handlers/capabilities/registry.go` | Source of truth: one `CapabilitySpec` per capability. |
-| `CapabilitySpec` | `handlers/capabilities/registry.go` | `Name` (wire prefix), `LogName`, `Detect`, optional `Install`. |
+| `CapabilitySpec` | `handlers/capabilities/registry.go` | `Name` (wire key), `LogName`, `Detect`, optional `Install`. |
 | `InstallSpec` | `handlers/capabilities/registry.go` | Package/service to install per distro family. |
-| `CapabilitiesAvailable` / `CapabilitiesError` | `common/session/session.go` | Shared wire/session capability fields. |
-| `setCapabilityField` | `handlers/capabilities/response.go` | Maps a wire name to its struct fields. |
-| `buildCapabilitiesResponse` | `handlers/capabilities/response.go` | Iterates the registry and fills the struct. |
+| `init` | `handlers/capabilities/registry.go` | Publishes the registry's names as the `CapabilityName` enum. |
+| `buildCapabilitiesResponse` | `handlers/capabilities/response.go` | Runs every detector and keys each status by its name. |
 | `CapabilitySpecByName` | `handlers/capabilities/registry.go` | Lookup used by the install runner. |
-| `CapabilitiesResponse` | `apischema/capabilities.go` | Exported API contract type (pointer errors), reflected into TypeScript. |
+| `CapabilitiesResponse`, `CapabilityName`, `CapabilityStatus` | `apischema/capabilities.go` | Exported API contract types, reflected into TypeScript. |
 | `runInstallCapabilityJob` | `handlers/packages/install_capability.go` | The `system.install_capability` runner. |
 
 ### Detection
@@ -94,18 +104,18 @@ inlined for a plain binary check:
 },
 ```
 
-### Anti-drift test
+### Tests
 
-`TestCapabilityRegistryCoversWireFields` (`registry_test.go`) asserts that
-every `<prefix>_available` field on `session.CapabilitiesAvailable` has a
-matching registry entry and vice versa. `TestSetCapabilityFieldRoundTrips`
-checks that `setCapabilityField` writes only the intended capability's fields.
-Forgetting any of the three touch points (struct field, registry entry, switch
-case) fails the build.
-
-> The exported `apischema.CapabilitiesResponse` embeds the shared session
-> structs. `make generate` + `make tsc-only` verify the field appears in the
-> generated frontend contract.
+`TestCapabilityRegistryEntriesAreValid` (`registry_test.go`) asserts that every
+registry name is non-empty and unique and that each entry sets exactly one
+detector; `TestCapabilityNamesArePublished` asserts that the `CapabilityName`
+enum is the registry's names. `TestBuildCapabilitiesResponseReportsEveryCapability`
+(`response_test.go`) runs every registry name through a stub detector and
+checks that each one keys its own status, with its error, in the JSON
+response. On the frontend, `capabilities.test.ts` asserts at typecheck that the
+`CAPABILITIES` names equal the generated `CapabilityName` union, so a
+capability added to the registry without a frontend entry, or the reverse,
+fails `make tsc-only` after `make generate`.
 
 ## Install Flow
 
@@ -154,8 +164,8 @@ PackageKit capability itself).
 
 | Symbol | File | Role |
 |--------|------|------|
-| `CAPABILITIES` | `api/capabilities.ts` | Source of truth: one `CapabilityDef` per capability. |
-| `CapabilitiesResponse`, `CapabilityKey`, … | `api/capabilities.ts` | Types derived from `CAPABILITIES`. |
+| `CAPABILITIES` | `api/capabilities.ts` | One `CapabilityDef` per `CapabilityName`: label, icon, auth-state key, manager text. |
+| `CapabilityKey`, `CapabilityState`, … | `api/capabilities.ts` | Types derived from `CAPABILITIES`. |
 | `capabilityStateFromWire` | `api/capabilities.ts` | Maps the wire response into tri-state auth state. |
 | `useCapability` | `hooks/useCapabilities.ts` | Per-capability `{ status, isEnabled, reason }`. |
 | `hasAccessPolicy` / `useAccessContext` | `hooks/useCapabilities.ts` | Evaluate a route's access policy. |
@@ -166,7 +176,7 @@ A `CapabilityDef` (see the interface in `api/capabilities.ts` for the full set):
 
 ```ts
 {
-  wire: "wireguard",          // snake_case wire prefix -> wireguard_available / wireguard_error
+  wire: "wireguard",          // CapabilityName: the registry name keying its status
   state: "wireguardAvailable",// camelCase key in auth state
   label: "WireGuard",
   description: "Create and manage WireGuard VPN interfaces",
@@ -179,8 +189,8 @@ A `CapabilityDef` (see the interface in `api/capabilities.ts` for the full set):
 }
 ```
 
-Adding the entry automatically: derives the wire/state types, adds the
-`<state>` field to auth state, and registers the row (with an Install button if
+Adding the entry automatically: derives the state types, adds the `<state>`
+field to auth state, and registers the row (with an Install button if
 `installable`) in the Capability Manager.
 
 ## rsync backups
@@ -360,18 +370,15 @@ Worked example: the `wireguard` capability.
 
 1. **Detect** — reuse a `CheckXAvailability` in the feature package, or inline
    `checkDependencyCommand` for a plain binary.
-2. **Backend struct** — add `XAvailable bool` and `XError *string` to
-   `session.CapabilitiesAvailable` / `session.CapabilitiesError`.
-3. **Backend registry** — add a `CapabilitySpec` (with `Install` if applicable)
-   to `capabilityRegistry`.
-4. **Backend switch** — add a `case "<wire>":` to `setCapabilityField`.
-5. **API contract** — run generation so the embedded
-   `apischema.CapabilitiesResponse` fields appear in TypeScript.
-6. **Frontend manifest** — add a `CapabilityDef` to `CAPABILITIES` in
-   `api/capabilities.ts`.
-7. **Gate** — add `requiredCapabilities: ["xAvailable"]` to the route, and/or
+2. **Backend registry** — add a `CapabilitySpec` (with `Install` if applicable)
+   to `capabilityRegistry`. Its `Name` is the capability's name everywhere:
+   the response key, the `CapabilityName` value and the install request.
+3. **Generate** — run `make generate`, which adds the name to the
+   `CapabilityName` union.
+4. **Frontend manifest** — add a `CapabilityDef` with that name as `wire` to
+   `CAPABILITIES` in `api/capabilities.ts`; typecheck fails until it exists.
+5. **Gate** — add `requiredCapabilities: ["xAvailable"]` to the route, and/or
    gate in-page with `useCapability`.
-8. **Generate** — run `make generate`.
 
 ## Verification
 

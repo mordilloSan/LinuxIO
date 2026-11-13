@@ -692,61 +692,44 @@ export interface CPUInfoResponse {
   vendorId: string;
 }
 
-export interface CapabilitiesResponse {
-  docker_available: boolean;
-  docker_updates_available: boolean;
-  monitoring_available: boolean;
-  lm_sensors_available: boolean;
-  memory_inventory_available: boolean;
-  smartmontools_available: boolean;
-  packagekit_available: boolean;
-  nfs_client_available: boolean;
-  nfs_server_available: boolean;
-  samba_server_available: boolean;
-  samba_client_available: boolean;
-  rsync_available: boolean;
-  tuned_available: boolean;
-  avahi_available: boolean;
-  wireguard_available: boolean;
-  libvirt_available: boolean;
-  node_available: boolean;
-  claude_code_available: boolean;
-  assistant_claude_available: boolean;
-  assistant_gemini_available: boolean;
-  assistant_codex_available: boolean;
-  btrfs_maintenance_available: boolean;
-  btrfs_available: boolean;
-  e2fsprogs_available: boolean;
-  xfsprogs_available: boolean;
-  docker_error?: string;
-  docker_updates_error?: string;
-  monitoring_error?: string;
-  lm_sensors_error?: string;
-  memory_inventory_error?: string;
-  smartmontools_error?: string;
-  packagekit_error?: string;
-  nfs_client_error?: string;
-  nfs_server_error?: string;
-  samba_server_error?: string;
-  samba_client_error?: string;
-  rsync_error?: string;
-  tuned_error?: string;
-  avahi_error?: string;
-  wireguard_error?: string;
-  libvirt_error?: string;
-  node_error?: string;
-  claude_code_error?: string;
-  assistant_claude_error?: string;
-  assistant_gemini_error?: string;
-  assistant_codex_error?: string;
-  btrfs_maintenance_error?: string;
-  btrfs_error?: string;
-  e2fsprogs_error?: string;
-  xfsprogs_error?: string;
-}
+export type CapabilitiesResponse = Partial<
+  Record<CapabilityName, CapabilityStatus>
+>;
+
+export type CapabilityName =
+  | "docker"
+  | "docker_updates"
+  | "monitoring"
+  | "lm_sensors"
+  | "memory_inventory"
+  | "smartmontools"
+  | "packagekit"
+  | "nfs_client"
+  | "nfs_server"
+  | "samba_server"
+  | "samba_client"
+  | "rsync"
+  | "node"
+  | "claude_code"
+  | "assistant_claude"
+  | "assistant_gemini"
+  | "assistant_codex"
+  | "tuned"
+  | "avahi"
+  | "wireguard"
+  | "libvirt"
+  | "btrfs_maintenance"
+  | "btrfs"
+  | "e2fsprogs"
+  | "xfsprogs";
 
 export interface CapabilityRequest {
   capability: string;
+}
+
+export interface CapabilityStatus {
+  available: boolean;
+  error?: string;
 }
 
 export interface ChangePasswordRequest {
@@ -834,26 +817,9 @@ export interface ConfigDockAccentGradient {
   rangeEnd: number;
 }
 
-export interface ConfigDockerDashboardSections {
-  overview: boolean;
-  monitoring: boolean;
-  daemon: boolean;
-  resources: boolean;
-}
-
 export interface ConfigDockerPayload {
   folders?: string[];
   requireMountsForFolders?: boolean;
-}
-
-export interface ConfigHardwareSections {
-  overview: boolean;
-  hardware: boolean;
-  sensors: boolean;
-  systemInfo: boolean;
-  gpu: boolean;
-  pciDevices: boolean;
-  memoryModules: boolean;
 }
 
 export interface ConfigJobSettingsPayload {
@@ -895,8 +861,7 @@ export interface ConfigUISetPayload {
   dockTileColors?: string;
   dockAccentGradient?: ConfigDockAccentGradient;
   hiddenCards?: string[];
-  dockerDashboardSections?: ConfigDockerDashboardSections;
-  hardwareSections?: ConfigHardwareSections;
+  collapsedSections?: Record<string, string[]>;
   viewModes?: Record<string, string>;
   layoutOrders?: Record<string, string[]>;
   terminalFontSize?: number;
@@ -1236,13 +1201,13 @@ export type DockerContainerAutoUpdateMode = "update" | "check_only";
 export interface DockerContainerAutoUpdateOptions {
   cleanup: boolean;
   container_names: string[];
-  enabled: boolean;
   include_stopped: boolean;
   mode: DockerContainerAutoUpdateMode;
   revive_stopped: boolean;
   time: string;
   update_all: boolean;
   update_stopped: boolean;
+  enabled: boolean;
 }
 
 export interface DockerContainerAutoUpdateState {
@@ -2975,13 +2940,13 @@ export interface Socket {
   active_state: string;
   description?: string;
   inactive_enter_timestamp: number;
-  listen: string[];
   load_state: string;
-  n_accepted: number;
-  n_connections: number;
   name: string;
   sub_state: string;
   unit_file_state: string;
+  listen: string[];
+  n_accepted: number;
+  n_connections: number;
 }
 
 export interface StackNameRequest {
@@ -3263,13 +3228,13 @@ export interface Timer {
   active_state: string;
   description?: string;
   inactive_enter_timestamp: number;
-  last_trigger_usec: number;
   load_state: string;
   name: string;
-  next_elapse_usec: number;
   sub_state: string;
-  unit: string;
   unit_file_state: string;
+  last_trigger_usec: number;
+  next_elapse_usec: number;
+  unit: string;
 }
 
 export interface TimezoneRequest {
@@ -3297,10 +3262,9 @@ export interface TunedProfile {
 }
 
 export interface UIConfig {
+  collapsedSections: Record<string, string[]>;
   dockAccentGradient: ConfigDockAccentGradient;
   dockTileColors: DockTileColors;
-  dockerDashboardSections: ConfigDockerDashboardSections;
-  hardwareSections: ConfigHardwareSections;
   hiddenCards: string[];
   layoutOrders: Record<string, string[]>;
   navigationMode: NavigationMode;
@@ -3647,9 +3611,14 @@ export interface WireGuardAddPeerRequest {
   name?: string;
 }
 
+export type WireGuardHookKind = "PreUp" | "PostUp" | "PreDown" | "PostDown";
+
+export type WireGuardHooks = Partial<Record<WireGuardHookKind, string[]>>;
+
 export interface WireGuardInterface {
   address: string;
   dns: string[];
+  hooks: WireGuardHooks;
   host: string;
   isConnected: string;
   isEnabled: boolean;
@@ -3657,10 +3626,6 @@ export interface WireGuardInterface {
   name: string;
   peerCount: number;
   port: number;
-  postDown: string[];
-  postUp: string[];
-  preDown: string[];
-  preUp: string[];
 }
 
 export interface WireGuardPeerRequest {
@@ -3674,10 +3639,7 @@ export interface WireGuardUpdateInterfaceRequest {
   dns?: string[];
   mtu?: number;
   listenPort?: number;
-  preUp?: string[];
-  postUp?: string[];
-  preDown?: string[];
-  postDown?: string[];
+  hooks?: WireGuardHooks;
 }
 
 export interface WireGuardUpdatePeerRequest {

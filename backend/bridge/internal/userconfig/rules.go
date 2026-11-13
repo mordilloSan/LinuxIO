@@ -39,6 +39,48 @@ func ParseViewMode(s string) (string, bool) {
 	return mode, mode == ViewModeCard || mode == ViewModeTable
 }
 
+// Bounds on UIPreferences.CollapsedSections. The frontend names the pages and
+// sections and the backend stores them without reading them, so these only
+// cap what one user can make it store.
+const (
+	maxCollapsedSectionPages    = 64
+	maxCollapsedSectionsPerPage = 32
+	maxSectionNameBytes         = 64
+)
+
+// ValidateCollapsedSections reports the first page or section name that is
+// blank or too long, or the first count over its bound. Counts are checked
+// before names, so an oversized value costs no more than its bound to reject.
+func ValidateCollapsedSections(collapsed map[string][]string) error {
+	if len(collapsed) > maxCollapsedSectionPages {
+		return fmt.Errorf("collapsedSections holds %d pages, more than %d", len(collapsed), maxCollapsedSectionPages)
+	}
+	for page, sections := range collapsed {
+		if err := validateSectionName(page); err != nil {
+			return fmt.Errorf("collapsedSections page: %w", err)
+		}
+		if len(sections) > maxCollapsedSectionsPerPage {
+			return fmt.Errorf("collapsedSections.%s holds %d sections, more than %d", page, len(sections), maxCollapsedSectionsPerPage)
+		}
+		for _, section := range sections {
+			if err := validateSectionName(section); err != nil {
+				return fmt.Errorf("collapsedSections.%s: %w", page, err)
+			}
+		}
+	}
+	return nil
+}
+
+func validateSectionName(name string) error {
+	if strings.TrimSpace(name) == "" {
+		return errors.New("name cannot be empty")
+	}
+	if len(name) > maxSectionNameBytes {
+		return fmt.Errorf("name is longer than %d bytes", maxSectionNameBytes)
+	}
+	return nil
+}
+
 // ValidChunkSizeMB reports whether v is 0 (default) or 1-32 MiB.
 func ValidChunkSizeMB(v int) bool { return v == 0 || (v >= 1 && v <= 32) }
 

@@ -165,10 +165,7 @@ func TestDockerEveryRunReportsAQuietPass(t *testing.T) {
 	useTempAlertStore(t)
 	pass := func(report string, uncheckable, updated int, updateErr error) {
 		t.Helper()
-		err := runScheduledPass(t.Context(), DockerContainerAutoUpdateOptions{
-			Mode:           "update",
-			ContainerNames: []string{"web"},
-		}, reportingDocker(report, false), scheduledPassOperations{
+		err := runScheduledPass(t.Context(), DockerContainerAutoUpdateOptions{Mode: "update", ContainerNames: []string{"web"}}, reportingDocker(report, false), scheduledPassOperations{
 			list: func(context.Context) ([]container.Summary, error) {
 				return []container.Summary{{ID: "web-id", Names: []string{"/web"}, State: container.StateRunning}}, nil
 			},
@@ -279,10 +276,7 @@ func TestDockerEveryRunReportsAnUpdatePassThatReplacedNothing(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			useTempAlertStore(t)
-			err := runScheduledPass(t.Context(), DockerContainerAutoUpdateOptions{
-				Mode:           "update",
-				ContainerNames: []string{"web"},
-			}, reportingDocker(alerts.ReportEveryRun, tc.available), scheduledPassOperations{
+			err := runScheduledPass(t.Context(), DockerContainerAutoUpdateOptions{Mode: "update", ContainerNames: []string{"web"}}, reportingDocker(alerts.ReportEveryRun, tc.available), scheduledPassOperations{
 				list: func(context.Context) ([]container.Summary, error) {
 					return []container.Summary{
 						{ID: "web-id", Names: []string{"/web"}, State: container.StateRunning},

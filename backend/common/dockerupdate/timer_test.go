@@ -21,12 +21,12 @@ func TestApplyContainerAutoUpdateEnablesNativeTimerAndWritesFiles(t *testing.T) 
 	opts := DockerContainerAutoUpdateOptions{
 		Cleanup:        true,
 		ContainerNames: []string{"app.service", "redis"},
-		Enabled:        true,
 		IncludeStopped: true,
 		Mode:           "check_only",
 		ReviveStopped:  true,
 		Time:           "06:15",
 		UpdateStopped:  true,
+		Enabled:        true,
 	}
 
 	if err := applyContainerAutoUpdate(context.Background(), store, ops.ops(), opts); err != nil {
@@ -61,9 +61,9 @@ func TestApplyContainerAutoUpdateDisablesNativeTimer(t *testing.T) {
 	store := testAutoUpdateStore(t)
 	ops := newRecordingContainerUpdateOps()
 	opts := DockerContainerAutoUpdateOptions{
-		Enabled: false,
 		Mode:    "update",
 		Time:    "04:00",
+		Enabled: false,
 	}
 
 	if err := applyContainerAutoUpdate(context.Background(), store, ops.ops(), opts); err != nil {

@@ -56,33 +56,25 @@ type ListenerOptions struct {
 	BestEffort bool
 }
 
+// Settings is the configuration the app runs with, given at start and again
+// on every reload.
+type Settings struct {
+	config.Durations
+	History          string
+	HistoryIntervals map[string]time.Duration // per-plugin history interval, a whole multiple of CollectorInterval
+	ConfigSource     string
+	ConfigVersion    int
+}
+
 type RunOptions struct {
-	Listeners            []ListenerOptions
-	CollectorInterval    time.Duration
-	SmartRefreshInterval time.Duration
-	DiskUsageCache       time.Duration
-	HistoryRetention     time.Duration
-	History              string
-	HistoryIntervals     map[string]time.Duration // per-plugin history interval, a whole multiple of CollectorInterval
-	ConfigPath           string
-	ConfigSource         string
-	ConfigVersion        int
-	CommandExecutor      httpapi.CommandExecutor
+	Settings
+	Listeners       []ListenerOptions
+	ConfigPath      string
+	CommandExecutor httpapi.CommandExecutor
 	// ReloadConfig runs on SIGHUP. The hook re-reads and applies the
 	// configuration itself (through ReloadRuntime) so the owner of the config
 	// file can serialise it with its other config mutations.
 	ReloadConfig func() error
-}
-
-type ReloadOptions struct {
-	CollectorInterval    time.Duration
-	SmartRefreshInterval time.Duration
-	DiskUsageCache       time.Duration
-	HistoryRetention     time.Duration
-	History              string
-	HistoryIntervals     map[string]time.Duration
-	ConfigSource         string
-	ConfigVersion        int
 }
 
 func (a *App) StartContext(ctx context.Context, opts RunOptions) error {
@@ -105,8 +97,7 @@ func (a *App) StartContext(ctx context.Context, opts RunOptions) error {
 	if err != nil {
 		return err
 	}
-	a.setRuntimeConfig(opts.CollectorInterval, opts.SmartRefreshInterval, opts.HistoryRetention, historyPlugins, opts.HistoryIntervals, opts.ConfigPath, opts.ConfigSource, opts.ConfigVersion)
-	a.applyDiskUsageCache(opts.DiskUsageCache)
+	a.setRuntimeConfig(opts.Settings, historyPlugins, opts.ConfigPath)
 
 	persistentStore, err := store.OpenStore(ctx, a.dataDir, store.Options{HistoryPlugins: historyPlugins, HistoryEvery: historyEvery, HistoryRetention: opts.HistoryRetention})
 	if err != nil {
@@ -189,12 +180,7 @@ func (a *App) validateAndNormalizeOpts(opts *RunOptions) error {
 	if a.store != nil {
 		return errors.New("agent already started")
 	}
-	if opts.CollectorInterval <= 0 {
-		opts.CollectorInterval = config.DefaultCollectorInterval
-	}
-	if opts.SmartRefreshInterval <= 0 {
-		opts.SmartRefreshInterval = config.DefaultSmartRefreshInterval
-	}
+	opts.Durations = opts.WithDefaults()
 	return nil
 }
 
@@ -309,28 +295,28 @@ func (a *App) handleSIGHUP(reloadFn func() error) {
 	}
 }
 
-func (a *App) ReloadRuntime(opts ReloadOptions) error {
+func (a *App) ReloadRuntime(settings Settings) error {
 	a.runtimeMu.RLock()
 	updates := a.intervalUpdates
 	a.runtimeMu.RUnlock()
-	interval, historyPlugins, err := a.reloadRuntime(opts, updates)
+	interval, historyPlugins, err := a.reloadRuntime(settings, updates)
 	if err != nil {
 		return err
 	}
 	slog.Info("config reloaded",
 		"interval", interval,
 		"history", historyPlugins,
-		"source", opts.ConfigSource,
-		"version", opts.ConfigVersion,
+		"source", settings.ConfigSource,
+		"version", settings.ConfigVersion,
 	)
 	return nil
 }
 
-func (a *App) reloadRuntime(opts ReloadOptions, updates chan time.Duration) (time.Duration, []string, error) {
+func (a *App) reloadRuntime(settings Settings, updates chan time.Duration) (time.Duration, []string, error) {
 	a.reloadMu.Lock()
 	defer a.reloadMu.Unlock()
 
-	interval, historyPlugins, err := a.applyReload(opts)
+	interval, historyPlugins, err := a.applyReload(settings)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -555,47 +541,33 @@ func (a *App) CollectorInterval() time.Duration {
 	return a.collectorInterval
 }
 
-func (a *App) setRuntimeConfig(interval, smartRefreshInterval, retention time.Duration, historyPlugins []string, historyIntervals map[string]time.Duration, configPath, configSource string, configVersion int) {
-	if interval <= 0 {
-		interval = config.DefaultCollectorInterval
-	}
-	if smartRefreshInterval <= 0 {
-		smartRefreshInterval = config.DefaultSmartRefreshInterval
-	}
-	if retention <= 0 {
-		retention = config.DefaultHistoryRetention
-	}
+// setRuntimeConfig hands each setting to the part of the app that uses it.
+// The settings have their defaults applied already.
+func (a *App) setRuntimeConfig(settings Settings, historyPlugins []string, configPath string) {
 	a.runtimeMu.Lock()
-	a.collectorInterval = interval
+	a.collectorInterval = settings.CollectorInterval
 	a.historyPlugins = append([]string(nil), historyPlugins...)
-	a.historyIntervals = maps.Clone(historyIntervals)
-	a.historyRetention = retention
+	a.historyIntervals = maps.Clone(settings.HistoryIntervals)
+	a.historyRetention = settings.HistoryRetention
 	if a.store != nil {
-		a.store.SetHistoryRetention(retention)
+		a.store.SetHistoryRetention(settings.HistoryRetention)
 	}
 	a.configPath = configPath
-	a.configSource = configSource
-	a.configVersion = configVersion
+	a.configSource = settings.ConfigSource
+	a.configVersion = settings.ConfigVersion
 	a.runtimeMu.Unlock()
 
-	a.setSmartRefreshInterval(smartRefreshInterval)
+	a.setSmartRefreshInterval(settings.SmartRefreshInterval)
+	a.applyDiskUsageCache(settings.DiskUsageCache)
 }
 
-func (a *App) applyReload(opts ReloadOptions) (time.Duration, []string, error) {
-	if opts.CollectorInterval <= 0 {
-		opts.CollectorInterval = config.DefaultCollectorInterval
-	}
-	if opts.SmartRefreshInterval <= 0 {
-		opts.SmartRefreshInterval = config.DefaultSmartRefreshInterval
-	}
-	if opts.HistoryRetention <= 0 {
-		opts.HistoryRetention = config.DefaultHistoryRetention
-	}
-	historyPlugins, err := plugins.ParseHistory(opts.History)
+func (a *App) applyReload(settings Settings) (time.Duration, []string, error) {
+	settings.Durations = settings.WithDefaults()
+	historyPlugins, err := plugins.ParseHistory(settings.History)
 	if err != nil {
 		return 0, nil, err
 	}
-	historyEvery, err := plugins.HistoryEvery(opts.HistoryIntervals, opts.CollectorInterval)
+	historyEvery, err := plugins.HistoryEvery(settings.HistoryIntervals, settings.CollectorInterval)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -606,9 +578,8 @@ func (a *App) applyReload(opts ReloadOptions) (time.Duration, []string, error) {
 	a.runtimeMu.RLock()
 	configPath := a.configPath
 	a.runtimeMu.RUnlock()
-	a.setRuntimeConfig(opts.CollectorInterval, opts.SmartRefreshInterval, opts.HistoryRetention, historyPlugins, opts.HistoryIntervals, configPath, opts.ConfigSource, opts.ConfigVersion)
-	a.applyDiskUsageCache(opts.DiskUsageCache)
-	return opts.CollectorInterval, historyPlugins, nil
+	a.setRuntimeConfig(settings, historyPlugins, configPath)
+	return settings.CollectorInterval, historyPlugins, nil
 }
 
 // applyDiskUsageCache takes the app mutex the collector holds while reading
@@ -620,9 +591,6 @@ func (a *App) applyDiskUsageCache(d time.Duration) {
 }
 
 func (a *App) setSmartRefreshInterval(interval time.Duration) {
-	if interval <= 0 {
-		interval = config.DefaultSmartRefreshInterval
-	}
 	a.Lock()
 	defer a.Unlock()
 	a.host.Details.SmartInterval = int64(interval)

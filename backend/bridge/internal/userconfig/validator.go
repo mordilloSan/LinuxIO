@@ -117,11 +117,10 @@ func validateUIPreferences(cfg *UIPreferences) []string {
 	} else {
 		errs = append(errs, ValidateDockAccentGradient(*cfg.DockAccentGradient)...)
 	}
-	if cfg.DockerDashboardSections == nil {
-		errs = append(errs, "dockerDashboardSections is required")
-	}
-	if cfg.HardwareSections == nil {
-		errs = append(errs, "hardwareSections is required")
+	if cfg.CollapsedSections == nil {
+		errs = append(errs, "collapsedSections is required")
+	} else if err := ValidateCollapsedSections(cfg.CollapsedSections); err != nil {
+		errs = append(errs, err.Error())
 	}
 	if cfg.HiddenCards == nil {
 		errs = append(errs, "hiddenCards is required")

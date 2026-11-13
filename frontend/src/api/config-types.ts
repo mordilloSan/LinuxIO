@@ -5,8 +5,6 @@ import type {
   AppSettings,
   AssistantSettings,
   ConfigDockAccentGradient,
-  ConfigDockerDashboardSections,
-  ConfigHardwareSections,
   ConfigThemeColorsByModePayload,
   Dismissals,
   DockTileColors,
@@ -27,8 +25,8 @@ export interface EffectiveUISettings {
   dockTileColors: DockTileColors;
   dockAccentGradient: ConfigDockAccentGradient;
   hiddenCards: string[];
-  dockerDashboardSections: ConfigDockerDashboardSections;
-  hardwareSections: ConfigHardwareSections;
+  /** Collapsed section names by page; see hooks/useSectionToggles. */
+  collapsedSections: Record<string, string[]>;
   viewModes: Record<string, TableCardViewMode>;
   viewModeDefault: TableCardViewMode;
   layoutOrders: Record<string, string[]>;

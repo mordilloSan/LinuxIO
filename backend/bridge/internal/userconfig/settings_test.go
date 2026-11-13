@@ -218,9 +218,11 @@ func TestUISemanticFailureResetsWholeDocument(t *testing.T) {
 
 func TestUIStrictContentFailuresResetWholeDocument(t *testing.T) {
 	tests := map[string]string{
-		"empty document":      "# comments only\n",
-		"typed theme failure": "theme: PURPLE\n",
-		"multiple documents":  "{}\n---\n{}\n",
+		"empty document":          "# comments only\n",
+		"typed theme failure":     "theme: PURPLE\n",
+		"multiple documents":      "{}\n---\n{}\n",
+		"removed section toggles": "theme: LIGHT\nhardwareSections:\n  sensors: false\n",
+		"blank section name":      "collapsedSections:\n  hardware: ['']\n",
 	}
 	for name, contents := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -240,7 +242,7 @@ func TestUIStrictContentFailuresResetWholeDocument(t *testing.T) {
 func TestSparseUIConfigLoadsWithBackendDefaults(t *testing.T) {
 	path := filepath.Join(t.TempDir(), uiCfgFileName)
 	raw := []byte("theme: LIGHT\n" +
-		"dockerDashboardSections:\n  overview: false\n" +
+		"collapsedSections:\n  docker.dashboard: [overview]\n" +
 		"dockAccentGradient:\n  startColor: '#123456'\n")
 	require.NoError(t, os.WriteFile(path, raw, filePerm))
 
@@ -253,9 +255,7 @@ func TestSparseUIConfigLoadsWithBackendDefaults(t *testing.T) {
 	require.Equal(t, DockTileColorsAccent, loaded.DockTileColors)
 	require.Equal(t, 0, loaded.DockAccentGradient.RangeStart)
 	require.Equal(t, 100, loaded.DockAccentGradient.RangeEnd)
-	require.False(t, loaded.DockerDashboardSections.Overview)
-	require.True(t, loaded.DockerDashboardSections.Monitoring)
-	require.True(t, loaded.HardwareSections.Overview)
+	require.Equal(t, map[string][]string{"docker.dashboard": {"overview"}}, loaded.CollapsedSections)
 	require.Equal(t, 16, loaded.TerminalFontSize)
 	require.Empty(t, loaded.ViewModes)
 	require.Empty(t, loaded.LayoutOrders)

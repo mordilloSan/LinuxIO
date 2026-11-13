@@ -29,6 +29,7 @@ func TestStartContextRootOnlyControlSocket(t *testing.T) {
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- a.StartContext(ctx, RunOptions{
+			CollectorInterval: 5 * time.Minute,
 			Listeners: []ListenerOptions{{
 				Name:     "control",
 				Address:  "unix:" + socketPath,
@@ -36,7 +37,6 @@ func TestStartContextRootOnlyControlSocket(t *testing.T) {
 				Mode:     0o600,
 				RootOnly: true,
 			}},
-			CollectorInterval: 5 * time.Minute,
 		})
 	}()
 

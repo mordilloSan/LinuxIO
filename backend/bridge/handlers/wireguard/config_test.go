@@ -6,30 +6,26 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
 func TestAddNATHooksAddsExpectedPostUpAndPostDown(t *testing.T) {
-	cfg := WireGuardConfig{
-		PostUp:   []string{"echo custom up"},
-		PostDown: []string{"echo custom down"},
-	}
+	cfg := WireGuardConfig{Hooks: apischema.WireGuardHooks{
+		apischema.WireGuardPostUp:   {"echo custom up"},
+		apischema.WireGuardPostDown: {"echo custom down"},
+	}}
 
 	if !addNATHooks(&cfg, "eth0", "10.7.0.1/24") {
 		t.Fatal("addNATHooks reported no change")
 	}
 
-	for _, hook := range natPostUpHooks("eth0", "10.7.0.1/24") {
-		if !slices.Contains(cfg.PostUp, hook) {
-			t.Fatalf("PostUp missing %q in %v", hook, cfg.PostUp)
-		}
+	assertNATHooks(t, cfg, "eth0", "10.7.0.1/24")
+	if !slices.Contains(cfg.Hooks[apischema.WireGuardPostUp], "echo custom up") || !slices.Contains(cfg.Hooks[apischema.WireGuardPostDown], "echo custom down") {
+		t.Fatalf("custom hooks were not preserved: %v", cfg.Hooks)
 	}
-	for _, hook := range natPostDownHooks("eth0", "10.7.0.1/24") {
-		if !slices.Contains(cfg.PostDown, hook) {
-			t.Fatalf("PostDown missing %q in %v", hook, cfg.PostDown)
-		}
-	}
-	if !slices.Contains(cfg.PostUp, "echo custom up") || !slices.Contains(cfg.PostDown, "echo custom down") {
-		t.Fatalf("custom hooks were not preserved: PostUp=%v PostDown=%v", cfg.PostUp, cfg.PostDown)
+	if len(cfg.Hooks[apischema.WireGuardPreUp]) != 0 || len(cfg.Hooks[apischema.WireGuardPreDown]) != 0 {
+		t.Fatalf("NAT rules belong in PostUp and PostDown only: %v", cfg.Hooks)
 	}
 	if addNATHooks(&cfg, "eth0", "10.7.0.1/24") {
 		t.Fatal("addNATHooks reported change on second call")
@@ -42,8 +38,10 @@ func TestWriteWireGuardConfigPersistsPostHooks(t *testing.T) {
 		PrivateKey: "server-private-key",
 		Address:    []string{"10.7.0.1/24"},
 		ListenPort: 51820,
-		PostUp:     natPostUpHooks("eth0", "10.7.0.1/24"),
-		PostDown:   natPostDownHooks("eth0", "10.7.0.1/24"),
+		Hooks: apischema.WireGuardHooks{
+			apischema.WireGuardPostUp:   natPostUpHooks("eth0", "10.7.0.1/24"),
+			apischema.WireGuardPostDown: natPostDownHooks("eth0", "10.7.0.1/24"),
+		},
 	}
 
 	if err := WriteWireGuardConfig(path, cfg); err != nil {
@@ -57,12 +55,7 @@ func TestWriteWireGuardConfigPersistsPostHooks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseWireGuardConfig returned error: %v", err)
 	}
-	if !slices.Equal(got.PostUp, cfg.PostUp) {
-		t.Fatalf("PostUp = %v, want %v", got.PostUp, cfg.PostUp)
-	}
-	if !slices.Equal(got.PostDown, cfg.PostDown) {
-		t.Fatalf("PostDown = %v, want %v", got.PostDown, cfg.PostDown)
-	}
+	assertNATHooks(t, got, "eth0", "10.7.0.1/24")
 }
 
 func TestReplacePeerSectionMatchesByPublicKey(t *testing.T) {
@@ -175,10 +168,12 @@ func TestWireGuardConfigRoundTripsAllHookKinds(t *testing.T) {
 	cfg := WireGuardConfig{
 		PrivateKey: "server-private-key",
 		Address:    []string{"10.7.0.1/24"},
-		PreUp:      []string{"echo pre up 1", "echo pre up 2"},
-		PostUp:     []string{"echo post up"},
-		PreDown:    []string{"echo pre down"},
-		PostDown:   []string{"echo post down 1", "echo post down 2"},
+		Hooks: apischema.WireGuardHooks{
+			apischema.WireGuardPreUp:    {"echo pre up 1", "echo pre up 2"},
+			apischema.WireGuardPostUp:   {"echo post up"},
+			apischema.WireGuardPreDown:  {"echo pre down"},
+			apischema.WireGuardPostDown: {"echo post down 1", "echo post down 2"},
+		},
 	}
 	if err := WriteWireGuardConfig(path, cfg); err != nil {
 		t.Fatalf("WriteWireGuardConfig returned error: %v", err)
@@ -187,8 +182,8 @@ func TestWireGuardConfigRoundTripsAllHookKinds(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseWireGuardConfig returned error: %v", err)
 	}
-	if !slices.Equal(got.PreUp, cfg.PreUp) || !slices.Equal(got.PostUp, cfg.PostUp) || !slices.Equal(got.PreDown, cfg.PreDown) || !slices.Equal(got.PostDown, cfg.PostDown) {
-		t.Fatalf("hooks = %+v", got)
+	if hooksChanged(got.Hooks, cfg.Hooks) {
+		t.Fatalf("hooks = %v, want %v", got.Hooks, cfg.Hooks)
 	}
 	raw, _ := os.ReadFile(path)
 	if strings.Index(string(raw), "PreUp") > strings.Index(string(raw), "PostUp") || strings.Index(string(raw), "PostUp") > strings.Index(string(raw), "PreDown") {
@@ -207,8 +202,8 @@ func TestWireGuardConfigKeepsSemicolonHooksInlineCommentsAndUnknownKeys(t *testi
 	if err != nil {
 		t.Fatalf("ParseWireGuardConfig returned error: %v", err)
 	}
-	if cfg.ListenPort != 51820 || !slices.Equal(cfg.PostUp, []string{hook}) {
-		t.Fatalf("parsed port=%d hooks=%v", cfg.ListenPort, cfg.PostUp)
+	if cfg.ListenPort != 51820 || !slices.Equal(cfg.Hooks[apischema.WireGuardPostUp], []string{hook}) {
+		t.Fatalf("parsed port=%d hooks=%v", cfg.ListenPort, cfg.Hooks)
 	}
 	if !slices.Contains(cfg.Extra, [2]string{"Table", "off"}) {
 		t.Fatalf("extra keys = %v, want Table=off", cfg.Extra)
@@ -226,7 +221,7 @@ func TestWireGuardConfigKeepsSemicolonHooksInlineCommentsAndUnknownKeys(t *testi
 		t.Fatalf("unknown key must survive a rewrite:\n%s", raw)
 	}
 	again, err := ParseWireGuardConfig(path)
-	if err != nil || again.ListenPort != 51820 || !slices.Equal(again.PostUp, cfg.PostUp) || !slices.Equal(again.Extra, cfg.Extra) {
+	if err != nil || again.ListenPort != 51820 || hooksChanged(again.Hooks, cfg.Hooks) || !slices.Equal(again.Extra, cfg.Extra) {
 		t.Fatalf("second parse: err=%v cfg=%+v", err, again)
 	}
 }

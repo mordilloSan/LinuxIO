@@ -1,9 +1,50 @@
 package btrfs
 
 import (
+	"reflect"
 	"testing"
 	"time"
 )
+
+// TestKeepBucketsCoverEveryField fails when an int field is added to
+// BtrfsKeep without its entry in BtrfsKeep.buckets, the one list that
+// ValidateRule and Prune read the counts from.
+func TestKeepBucketsCoverEveryField(t *testing.T) {
+	typ := reflect.TypeFor[BtrfsKeep]()
+	var fields []int
+	for i := range typ.NumField() {
+		if typ.Field(i).Type.Kind() == reflect.Int {
+			fields = append(fields, i)
+		}
+	}
+	if got := len(BtrfsKeep{}.buckets()); got != len(fields) {
+		t.Fatalf("buckets() has %d entries, BtrfsKeep has %d int fields", got, len(fields))
+	}
+
+	snap := snapAt(KindTimeline, time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC))
+	for _, i := range fields {
+		name := typ.Field(i).Name
+		only := func(n int) BtrfsKeep {
+			var keep BtrfsKeep
+			reflect.ValueOf(&keep).Elem().Field(i).SetInt(int64(n))
+			return keep
+		}
+		rule := BtrfsSnapshotRule{UUID: "u1", Path: "@home", Enabled: true, Every: EveryDaily}
+
+		rule.Keep = only(1)
+		if err := ValidateRule(rule); err != nil {
+			t.Errorf("only %s = 1: rejected: %v", name, err)
+		}
+		if del := Prune([]BtrfsSnapshot{snap}, rule.Keep); len(del) != 0 {
+			t.Errorf("only %s = 1: Prune deleted %v, want the snapshot kept", name, del)
+		}
+
+		rule.Keep = only(-1)
+		if err := ValidateRule(rule); err == nil || err.Error() != "keep counts must not be negative" {
+			t.Errorf("only %s = -1: got %v, want the negative-count error", name, err)
+		}
+	}
+}
 
 func snapAt(kind SnapshotKind, at time.Time) BtrfsSnapshot {
 	return BtrfsSnapshot{Source: "@home", Path: SnapshotPath("@home", at, kind), Kind: kind, CreatedAt: at}

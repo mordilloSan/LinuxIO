@@ -46,6 +46,13 @@ const cloneThemeColorsByMode = (
       }
     : undefined;
 
+const cloneNameLists = (
+  lists: Record<string, string[]>,
+): Record<string, string[]> =>
+  Object.fromEntries(
+    Object.entries(lists).map(([key, names]) => [key, [...names]]),
+  );
+
 function pickImportantAppSettings(
   appSettings: Partial<ConfigValueMap>,
 ): Partial<AppSettings> {
@@ -107,13 +114,10 @@ function buildUIPayload(ui: UIConfig): ConfigUISetPayload {
     dockTileColors: ui.dockTileColors,
     dockAccentGradient: { ...ui.dockAccentGradient },
     hiddenCards: [...ui.hiddenCards],
-    dockerDashboardSections: { ...ui.dockerDashboardSections },
-    hardwareSections: { ...ui.hardwareSections },
+    collapsedSections: cloneNameLists(ui.collapsedSections),
     viewModes: { ...pruneViewModes(ui.viewModes, ui.viewModeDefault) },
     terminalFontSize: ui.terminalFontSize,
-    layoutOrders: Object.fromEntries(
-      Object.entries(ui.layoutOrders).map(([key, order]) => [key, [...order]]),
-    ),
+    layoutOrders: cloneNameLists(ui.layoutOrders),
   };
   if (ui.themeColors) {
     payload.themeColors = cloneThemeColorsByMode(ui.themeColors);

@@ -5,23 +5,20 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/acpagents"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/acpagents/acpagentstest"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
-// TestCapabilityRegistryCoversWireFields ensures every *_available field on
-// session.CapabilitiesAvailable (embedded in the wire response) has a matching
-// capabilityRegistry entry (and vice versa).
-// Without this check, adding a wire field but forgetting the registry entry
-// would silently leave the field at its zero value, and adding a registry entry
-// without the matching wire field would panic at runtime via setCapabilityField.
-func TestCapabilityRegistryCoversWireFields(t *testing.T) {
-	wireNames := wireAvailableFields(t)
-
+// TestCapabilityRegistryEntriesAreValid checks what the response and the
+// generated contract rely on: every entry has a unique, non-empty name, which
+// keys its status on the wire, and exactly one detector.
+func TestCapabilityRegistryEntriesAreValid(t *testing.T) {
 	registryNames := make(map[string]bool, len(capabilityRegistry))
 	for _, spec := range capabilityRegistry {
 		if spec.Name == "" {
@@ -38,40 +35,18 @@ func TestCapabilityRegistryCoversWireFields(t *testing.T) {
 		}
 		registryNames[spec.Name] = true
 	}
-
-	for name := range wireNames {
-		if !registryNames[name] {
-			t.Errorf("wire field %q_available has no registry entry", name)
-		}
-	}
-	for name := range registryNames {
-		if !wireNames[name] {
-			t.Errorf("registry entry %q has no matching wire field %q_available", name, name)
-		}
-	}
 }
 
-// wireAvailableFields returns the set of wire prefixes derived from JSON tags
-// shaped `<prefix>_available` on session.CapabilitiesAvailable.
-func wireAvailableFields(t *testing.T) map[string]bool {
-	t.Helper()
-	return availableTagsOf(reflect.TypeFor[session.CapabilitiesAvailable]())
-}
-
-// availableTagsOf returns the set of wire prefixes derived from JSON tags shaped
-// `<prefix>_available` on the given struct type.
-func availableTagsOf(typ reflect.Type) map[string]bool {
-	names := make(map[string]bool)
-	for field := range typ.Fields() {
-		tag := field.Tag.Get("json")
-		tag, _, _ = strings.Cut(tag, ",")
-		prefix, ok := strings.CutSuffix(tag, "_available")
-		if !ok {
-			continue
-		}
-		names[prefix] = true
+// TestCapabilityNamesArePublished checks that the generated CapabilityName
+// union is the registry's names, in registry order.
+func TestCapabilityNamesArePublished(t *testing.T) {
+	want := make([]string, 0, len(capabilityRegistry))
+	for _, spec := range capabilityRegistry {
+		want = append(want, spec.Name)
 	}
-	return names
+	if got := apischema.StringEnums["CapabilityName"]; !slices.Equal(got, want) {
+		t.Fatalf("StringEnums[CapabilityName] = %q, want the registry names %q", got, want)
+	}
 }
 
 func TestMonitoringCapabilityIsNotInstallable(t *testing.T) {

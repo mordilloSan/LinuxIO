@@ -213,8 +213,8 @@ describe("AuthProvider", () => {
       ok: true,
     } as Response);
     apiMocks.getCapabilities.mockResolvedValue({
-      docker_available: true,
-      rsync_available: true,
+      docker: { available: true },
+      rsync: { available: true },
     });
 
     const { user } = renderAuthProvider();
@@ -243,7 +243,9 @@ describe("AuthProvider", () => {
       json: async () => ({ privileged: true, success: true }),
       ok: true,
     } as Response);
-    let resolveCapabilities!: (value: { docker_available: boolean }) => void;
+    let resolveCapabilities!: (value: {
+      docker: { available: boolean };
+    }) => void;
     apiMocks.getCapabilities.mockReturnValue(
       new Promise((resolve) => {
         resolveCapabilities = resolve;
@@ -259,7 +261,7 @@ describe("AuthProvider", () => {
     });
     expect(apiMocks.getCapabilities).toHaveBeenCalledTimes(1);
     await act(async () => {
-      resolveCapabilities({ docker_available: true });
+      resolveCapabilities({ docker: { available: true } });
       await Promise.resolve();
     });
     await waitFor(() =>
@@ -282,7 +284,9 @@ describe("AuthProvider", () => {
       json: async () => ({ privileged: true, success: true }),
       ok: true,
     } as Response);
-    let resolveCapabilities!: (value: { docker_available: boolean }) => void;
+    let resolveCapabilities!: (value: {
+      docker: { available: boolean };
+    }) => void;
     apiMocks.getCapabilities.mockReturnValue(
       new Promise((resolve) => {
         resolveCapabilities = resolve;
@@ -295,7 +299,7 @@ describe("AuthProvider", () => {
     act(() => statusListeners[0]("open"));
     await user.click(screen.getByRole("button", { name: "sign out" }));
     await act(async () => {
-      resolveCapabilities({ docker_available: true });
+      resolveCapabilities({ docker: { available: true } });
       await Promise.resolve();
     });
 
@@ -310,7 +314,9 @@ describe("AuthProvider", () => {
       json: async () => ({ privileged: true, success: true }),
       ok: true,
     } as Response);
-    let resolveCapabilities!: (value: { docker_available: boolean }) => void;
+    let resolveCapabilities!: (value: {
+      docker: { available: boolean };
+    }) => void;
     apiMocks.getCapabilities.mockReturnValue(
       new Promise((resolve) => {
         resolveCapabilities = resolve;
@@ -323,7 +329,7 @@ describe("AuthProvider", () => {
     expect(apiMocks.getCapabilities).toHaveBeenCalledTimes(1);
     await user.click(screen.getByRole("button", { name: "sign out" }));
     await act(async () => {
-      resolveCapabilities({ docker_available: true });
+      resolveCapabilities({ docker: { available: true } });
       await Promise.resolve();
     });
 
@@ -338,7 +344,9 @@ describe("AuthProvider", () => {
       json: async () => ({ privileged: true, success: true }),
       ok: true,
     } as Response);
-    let resolveCapabilities!: (value: { docker_available: boolean }) => void;
+    let resolveCapabilities!: (value: {
+      docker: { available: boolean };
+    }) => void;
     apiMocks.getCapabilities.mockReturnValue(
       new Promise((resolve) => {
         resolveCapabilities = resolve;
@@ -351,7 +359,7 @@ describe("AuthProvider", () => {
     expect(apiMocks.getCapabilities).toHaveBeenCalledTimes(1);
     unmount();
     await act(async () => {
-      resolveCapabilities({ docker_available: true });
+      resolveCapabilities({ docker: { available: true } });
       await Promise.resolve();
     });
     expect(localStorage.getItem("auth_capabilities")).toBeNull();
@@ -374,7 +382,7 @@ describe("AuthProvider", () => {
     } as Response);
     apiMocks.getCapabilities
       .mockRejectedValueOnce(new Error("scan failed"))
-      .mockResolvedValueOnce({ docker_available: true });
+      .mockResolvedValueOnce({ docker: { available: true } });
 
     const { user } = renderAuthProvider();
     await user.click(screen.getByRole("button", { name: "sign in" }));

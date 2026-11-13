@@ -59,12 +59,9 @@ function createDeferred<T>(): Deferred<T> {
 const wg0: WireGuardInterface = {
   address: "10.0.0.1/24",
   dns: [],
+  hooks: { PreUp: [], PostUp: [], PreDown: [], PostDown: [] },
   host: "",
   mtu: 0,
-  postDown: [],
-  postUp: [],
-  preDown: [],
-  preUp: [],
   isConnected: "Inactive",
   isEnabled: false,
   name: "wg0",

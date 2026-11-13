@@ -1,6 +1,10 @@
 package wireguard
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+)
 
 const (
 	configExt        = ".conf"
@@ -29,17 +33,16 @@ type PeerConfig struct {
 // [Interface]: they describe what exported client configs get and are never
 // wg-quick keys, since a DNS key there would change the server's resolver.
 type WireGuardConfig struct {
-	PrivateKey string       `json:"private_key"`
-	Address    []string     `json:"address"`
-	ListenPort int          `json:"listen_port"`
-	Host       string       `json:"host"`
-	DNS        []string     `json:"dns"`
-	MTU        int          `json:"mtu"`
-	PreUp      []string     `json:"pre_up"`
-	PostUp     []string     `json:"post_up"`
-	PreDown    []string     `json:"pre_down"`
-	PostDown   []string     `json:"post_down"`
-	Peers      []PeerConfig `json:"peers"`
+	PrivateKey string   `json:"private_key"`
+	Address    []string `json:"address"`
+	ListenPort int      `json:"listen_port"`
+	Host       string   `json:"host"`
+	DNS        []string `json:"dns"`
+	MTU        int      `json:"mtu"`
+	// Hooks holds the wg-quick hook lines by kind; apischema.WireGuardHookKinds
+	// is the list of kinds and their order in the file.
+	Hooks apischema.WireGuardHooks `json:"hooks"`
+	Peers []PeerConfig             `json:"peers"`
 	// Extra holds [Interface] keys LinuxIO does not model (Table, FwMark,
 	// SaveConfig, DNS, ...), in file order, so rewrites keep them.
 	Extra [][2]string `json:"-"`

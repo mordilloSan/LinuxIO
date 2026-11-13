@@ -454,9 +454,20 @@ a value that does not parse with 400 and keeps the stored one, stores a valid
 one in UTC with nanoseconds (trailing zeros trimmed) and never later than the
 bridge's clock, an empty value clears it, and a payload changes only the dismissals it names. The notice at
 sign-in reads it ([Alerts](./alerts.md#navbar)). `UIConfig` contains
-theme, navigation, section visibility, view-mode, layout-order, and related
+theme, navigation, collapsed-section, view-mode, layout-order, and related
 presentation fields. The frontend combines these responses into its internal
 effective configuration; that combined type is not a wire contract.
+
+`UIConfig.collapsedSections` maps a page key to the names of the sections
+collapsed on that page. The frontend owns both names: a page declares its
+sections as an `as const` tuple beside them (`SectionPage` in
+`frontend/src/hooks/useSectionToggles.ts`), which types every read and toggle,
+and the bridge stores the names without reading them. A section that is not
+listed is expanded, so adding a section, or a sectioned page, changes no Go
+and writes no default. `config.set_ui` trims the names and drops blank ones,
+repeats and pages with nothing collapsed; it refuses with 400 a map of more
+than 64 pages, a page with more than 32 sections, or a name longer than 64
+bytes, and `ui.yaml` is held to the same bounds.
 
 `UIConfig.themeColors` holds the colour overrides of each scheme as a map
 from `ThemeColorKey` to a CSS colour. The keys, their order in `ui.yaml` and
@@ -476,6 +487,24 @@ with 400 by the handler, because a map lets the request decoder accept any
 key. `ui.yaml` is read over the defaults: a key replaces that colour, a
 `null` key or scheme unsets it (the bridge itself never writes one), and an
 unknown key or scheme fails the strict decode.
+
+`system.get_capabilities` uses the same pattern: its result is a map from
+`CapabilityName` to `CapabilityStatus`. Its names live in the capability
+registry in `backend/bridge/handlers/capabilities`, which imports `apischema`
+and so cannot be imported by it; that package adds them to
+`apischema.StringEnums` when it is loaded, and the generator loads it through
+the handler registry. See [Capabilities](./capabilities.md#wire-shape).
+
+WireGuard interface hooks use it too: `WireGuardInterface.hooks` (from
+`wireguard.list_interfaces`) and `WireGuardUpdateInterfaceRequest.hooks` map a
+`WireGuardHookKind` to its command lines. The kinds are wg-quick's
+`[Interface]` keys, and `apischema.WireGuardHookKinds` is the one list of them
+in the order the config file holds them; the handler reads, writes, compares,
+applies and lists hooks by looping over it, and refers by name only to PostUp
+and PostDown, where it adds the NAT rules. The list response carries every
+kind, with `[]` for one the interface does not use. The update is partial: a
+kind that is absent or `null` is unchanged, an empty list removes that kind,
+blank lines are dropped, and a kind outside the list is refused with 400.
 
 This is an intentional change to the prior `config.get`/`config.set` shape.
 Keeping UI fields in those messages would preserve the ownership ambiguity and

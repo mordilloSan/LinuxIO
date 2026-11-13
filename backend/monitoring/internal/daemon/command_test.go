@@ -1,7 +1,6 @@
 package daemon
 
 import (
-	"bytes"
 	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
@@ -135,30 +134,15 @@ func TestExecuteCommandConfigGetReturnsFlatView(t *testing.T) {
 
 	encoded, err := json.Marshal(result.Response.Data)
 	require.NoError(t, err)
-	var view config.View
-	require.NoError(t, json.Unmarshal(encoded, &view))
+	var view monitoringapi.MonitoringConfig
+	require.NoError(t, json.Unmarshal(encoded, &view, json.RejectUnknownMembers(true)))
 	assert.Equal(t, config.CurrentVersion, view.Version)
 	assert.Equal(t, "1m0s", view.CollectorInterval)
 	assert.Equal(t, "1h0m0s", view.SmartRefreshInterval)
 	assert.Equal(t, "0s", view.DiskUsageCache)
 	assert.Equal(t, "720h0m0s", view.HistoryRetention)
 	assert.Equal(t, cfg.HistoryString(), view.History)
-	assert.Equal(t, cfg.Listeners, view.Listeners)
-}
-
-// The bridge decodes config.get into the shared wire type; any drift in
-// config.View's JSON shows up as an unknown or missing field here.
-func TestConfigViewMatchesTheSharedWireType(t *testing.T) {
-	cfg := config.Default()
-	cfg.Listeners = []config.Listener{{Name: "homepage", Address: "0.0.0.0:45876", Plugins: []string{"cpu"}}}
-	encoded, err := json.Marshal(cfg.View())
-	require.NoError(t, err)
-
-	var wire monitoringapi.MonitoringConfig
-	require.NoError(t, json.UnmarshalRead(bytes.NewReader(encoded), &wire, json.RejectUnknownMembers(true)))
-	reencoded, err := json.Marshal(wire)
-	require.NoError(t, err)
-	assert.JSONEq(t, string(encoded), string(reencoded))
+	assert.Equal(t, []monitoringapi.MonitoringListener{{Name: "homepage", Address: "0.0.0.0:45876"}}, view.Listeners)
 }
 
 func TestExecuteCommandListsCommands(t *testing.T) {

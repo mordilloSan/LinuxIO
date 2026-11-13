@@ -7,8 +7,6 @@ import {
   CAPABILITIES,
   type CapabilitiesResponse,
   capabilitiesQueryKey,
-  type CapabilityErrorKey,
-  type CapabilityValueKey,
   type InstallCapabilityOutput,
   type TaskSnapshot,
   linuxio,
@@ -218,8 +216,10 @@ const CapabilityManagerSection = () => {
         capabilitiesKey,
         (previous) => ({
           ...previous,
-          [`${variables.capability}_available`]: result.available,
-          [`${variables.capability}_error`]: result.error ?? "",
+          [variables.capability]: {
+            available: result.available,
+            error: result.error,
+          },
         }),
       );
       setLastChecked(new Date());
@@ -314,19 +314,18 @@ const CapabilityManagerSection = () => {
     }
   }, [installCapability, installRun]);
 
-  const packageKitAvailable = latest.packagekit_available ?? false;
-  const dockerAvailable = latest.docker_available ?? false;
+  const packageKitAvailable = latest.packagekit?.available ?? false;
+  const dockerAvailable = latest.docker?.available ?? false;
 
   const rows = useMemo(
     () =>
       CAPABILITIES.filter(
         (item) => !("visibleInManager" in item) || item.visibleInManager,
       ).map((item) => {
-        const valueKey = `${item.wire}_available` as CapabilityValueKey;
-        const errorKey = `${item.wire}_error` as CapabilityErrorKey;
-        const status = getCapabilityStatus(latest[valueKey]);
+        const scan = latest[item.wire];
+        const status = getCapabilityStatus(scan?.available);
         const detail =
-          latest[errorKey] ||
+          scan?.error ||
           (status === "available"
             ? item.readyText
             : getCapabilityReason(item.state, status));

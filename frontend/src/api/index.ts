@@ -113,10 +113,8 @@ export type { AssistantAgentId } from "./acp/agents";
 // === Capabilities (manifest, types, helpers) ===
 export type {
   CapabilityDef,
-  CapabilityErrorKey,
   CapabilityKey,
   CapabilityState,
-  CapabilityValueKey,
   CapabilityWire,
 } from "./capabilities";
 export {

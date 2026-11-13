@@ -46,12 +46,9 @@ func TestConfigConversionsPreservePersistedJSONShapes(t *testing.T) {
 			"dashboard":         {"system", "docker"},
 			"docker.containers": {"alpha", "beta"},
 		},
-		DockerDashboardSections: &userconfig.DockerDashboardSections{
-			Overview: true, Daemon: false, Resources: true,
-		},
-		HardwareSections: &userconfig.HardwareSections{
-			Overview: true, Hardware: false, Sensors: true, SystemInfo: false,
-			GPU: true, PCIDevices: false, MemoryModules: true,
+		CollapsedSections: map[string][]string{
+			"docker.dashboard": {"daemon"},
+			"hardware":         {"hardware", "systemInfo"},
 		},
 		ThemeColors: &userconfig.ThemeColorsByMode{
 			Light: userconfig.ThemeColors{"backgroundDefault": light},

@@ -50,20 +50,21 @@ type AppSettings struct {
 // UIConfig is the effective presentation-only configuration. Backend defaults
 // are included so the frontend has one authoritative default source.
 type UIConfig struct {
-	DockAccentGradient      ConfigDockAccentGradient        `json:"dockAccentGradient"`
-	DockTileColors          DockTileColors                  `json:"dockTileColors"`
-	DockerDashboardSections ConfigDockerDashboardSections   `json:"dockerDashboardSections"`
-	HardwareSections        ConfigHardwareSections          `json:"hardwareSections"`
-	HiddenCards             []string                        `json:"hiddenCards"`
-	LayoutOrders            map[string][]string             `json:"layoutOrders"`
-	NavigationMode          NavigationMode                  `json:"navigationMode"`
-	PrimaryColor            string                          `json:"primaryColor"`
-	SidebarCollapsed        bool                            `json:"sidebarCollapsed"`
-	TerminalFontSize        int                             `json:"terminalFontSize"`
-	Theme                   Theme                           `json:"theme"`
-	ThemeColors             *ConfigThemeColorsByModePayload `json:"themeColors,omitzero"`
-	ViewModes               map[string]TableCardViewMode    `json:"viewModes"`
-	ViewModeDefault         TableCardViewMode               `json:"viewModeDefault"`
+	// CollapsedSections lists the collapsed section names by page; the
+	// frontend owns both, and an absent page or section is expanded.
+	CollapsedSections  map[string][]string             `json:"collapsedSections"`
+	DockAccentGradient ConfigDockAccentGradient        `json:"dockAccentGradient"`
+	DockTileColors     DockTileColors                  `json:"dockTileColors"`
+	HiddenCards        []string                        `json:"hiddenCards"`
+	LayoutOrders       map[string][]string             `json:"layoutOrders"`
+	NavigationMode     NavigationMode                  `json:"navigationMode"`
+	PrimaryColor       string                          `json:"primaryColor"`
+	SidebarCollapsed   bool                            `json:"sidebarCollapsed"`
+	TerminalFontSize   int                             `json:"terminalFontSize"`
+	Theme              Theme                           `json:"theme"`
+	ThemeColors        *ConfigThemeColorsByModePayload `json:"themeColors,omitzero"`
+	ViewModes          map[string]TableCardViewMode    `json:"viewModes"`
+	ViewModeDefault    TableCardViewMode               `json:"viewModeDefault"`
 }
 
 type JobSettings struct {
@@ -103,19 +104,18 @@ type ConfigAppSettingsPayload struct {
 // ConfigUISetPayload replaces the user's UI preferences. A missing field
 // resets that preference to the backend default.
 type ConfigUISetPayload struct {
-	Theme                   *string                         `json:"theme,omitzero"`
-	PrimaryColor            *string                         `json:"primaryColor,omitzero"`
-	ThemeColors             *ConfigThemeColorsByModePayload `json:"themeColors,omitzero"`
-	SidebarCollapsed        *bool                           `json:"sidebarCollapsed,omitzero"`
-	NavigationMode          *string                         `json:"navigationMode,omitzero"`
-	DockTileColors          *string                         `json:"dockTileColors,omitzero"`
-	DockAccentGradient      *ConfigDockAccentGradient       `json:"dockAccentGradient,omitzero"`
-	HiddenCards             []string                        `json:"hiddenCards,omitempty"`
-	DockerDashboardSections *ConfigDockerDashboardSections  `json:"dockerDashboardSections,omitzero"`
-	HardwareSections        *ConfigHardwareSections         `json:"hardwareSections,omitzero"`
-	ViewModes               map[string]string               `json:"viewModes,omitempty"`
-	LayoutOrders            map[string][]string             `json:"layoutOrders,omitempty"`
-	TerminalFontSize        *int                            `json:"terminalFontSize,omitzero"`
+	Theme              *string                         `json:"theme,omitzero"`
+	PrimaryColor       *string                         `json:"primaryColor,omitzero"`
+	ThemeColors        *ConfigThemeColorsByModePayload `json:"themeColors,omitzero"`
+	SidebarCollapsed   *bool                           `json:"sidebarCollapsed,omitzero"`
+	NavigationMode     *string                         `json:"navigationMode,omitzero"`
+	DockTileColors     *string                         `json:"dockTileColors,omitzero"`
+	DockAccentGradient *ConfigDockAccentGradient       `json:"dockAccentGradient,omitzero"`
+	HiddenCards        []string                        `json:"hiddenCards,omitempty"`
+	CollapsedSections  map[string][]string             `json:"collapsedSections,omitempty"`
+	ViewModes          map[string]string               `json:"viewModes,omitempty"`
+	LayoutOrders       map[string][]string             `json:"layoutOrders,omitempty"`
+	TerminalFontSize   *int                            `json:"terminalFontSize,omitzero"`
 }
 
 type ConfigDockAccentGradient struct {
@@ -137,23 +137,6 @@ type ThemeColorKey string
 // ConfigThemeColorsPayload holds one scheme's colour overrides by key. A key
 // that is absent or null is unset.
 type ConfigThemeColorsPayload map[ThemeColorKey]*string
-
-type ConfigDockerDashboardSections struct {
-	Overview   bool `json:"overview"`
-	Monitoring bool `json:"monitoring"`
-	Daemon     bool `json:"daemon"`
-	Resources  bool `json:"resources"`
-}
-
-type ConfigHardwareSections struct {
-	Overview      bool `json:"overview"`
-	Hardware      bool `json:"hardware"`
-	Sensors       bool `json:"sensors"`
-	SystemInfo    bool `json:"systemInfo"`
-	GPU           bool `json:"gpu"`
-	PCIDevices    bool `json:"pciDevices"`
-	MemoryModules bool `json:"memoryModules"`
-}
 
 type ConfigDockerPayload struct {
 	Folders                 []string `json:"folders,omitempty"`

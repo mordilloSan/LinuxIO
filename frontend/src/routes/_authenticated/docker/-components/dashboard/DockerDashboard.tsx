@@ -1,7 +1,7 @@
 import { Icon } from "@iconify/react";
 import { useSuspenseQueries } from "@tanstack/react-query";
 import { getRouteApi } from "@tanstack/react-router";
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import { linuxio } from "@/api";
 import DockerIcon from "@/components/docker/DockerIcon";
@@ -17,7 +17,7 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppTypography from "@/components/ui/AppTypography";
 import InfoRow from "@/components/ui/InfoRow";
 import SectionHeader from "@/components/ui/SectionHeader";
-import { useConfigValue } from "@/hooks/useConfig";
+import { type SectionPage, useSectionToggles } from "@/hooks/useSectionToggles";
 import { DASHBOARD_CARD_SPACING } from "@/theme/constants";
 import { getContainerName } from "@/utils/dockerContainer";
 import { formatFileSize } from "@/utils/formatters";
@@ -77,6 +77,11 @@ const RESOURCE_TABLE_STYLE = { boxShadow: "none" } as const;
 const EMPTY_STOPPING_CONTAINER_IDS = new Set<string>();
 const dockerRouteApi = getRouteApi("/_authenticated/docker/");
 
+const DOCKER_DASHBOARD_SECTIONS = {
+  key: "docker.dashboard",
+  sections: ["overview", "monitoring", "daemon", "resources"],
+} as const satisfies SectionPage<string>;
+
 const getDockerResourceId = (resource: { Id: string }) => resource.Id;
 
 const getImageTagParts = (repoTags?: string[]) => {
@@ -131,20 +136,8 @@ const DockerDashboard = ({
   ) => {
     void navigate({ to });
   };
-  const [sections, setDockerDashboardSections] = useConfigValue(
-    "dockerDashboardSections",
-  );
+  const sections = useSectionToggles(DOCKER_DASHBOARD_SECTIONS);
   const [monitoringFilter, setMonitoringFilter] = useState("");
-  const setSection = useCallback(
-    (key: "overview" | "monitoring" | "daemon" | "resources") =>
-      setDockerDashboardSections((prev) => {
-        return {
-          ...prev,
-          [key]: !prev[key],
-        };
-      }),
-    [setDockerDashboardSections],
-  );
   const runningContainers = useMemo(
     () => containers.filter((c) => c.State === "running"),
     [containers],
@@ -442,12 +435,12 @@ const DockerDashboard = ({
       {/* ── Stat Cards ─────────────────────────────────────────────────────── */}
       <SectionHeader
         controlsId="docker-overview-panel"
-        expanded={sections.overview}
-        onToggle={() => setSection("overview")}
+        expanded={sections.isOpen("overview")}
+        onToggle={() => sections.toggle("overview")}
         title="Overview"
       />
       <div id="docker-overview-panel">
-        <AppCollapse in={sections.overview}>
+        <AppCollapse in={sections.isOpen("overview")}>
           <AppGrid
             container
             spacing={DASHBOARD_CARD_SPACING}
@@ -524,7 +517,7 @@ const DockerDashboard = ({
       {/* ── Container Monitoring ────────────────────────────────────────── */}
       <SectionHeader
         actions={
-          sections.monitoring ? (
+          sections.isOpen("monitoring") ? (
             <div style={{ width: 260 }}>
               <AppHeaderSearch
                 aria-label="Filter containers in monitoring charts"
@@ -536,25 +529,25 @@ const DockerDashboard = ({
           ) : undefined
         }
         controlsId="docker-monitoring-panel"
-        expanded={sections.monitoring}
-        onToggle={() => setSection("monitoring")}
+        expanded={sections.isOpen("monitoring")}
+        onToggle={() => sections.toggle("monitoring")}
         title="Monitoring"
       />
       <div id="docker-monitoring-panel">
-        <AppCollapse in={sections.monitoring} unmountOnExit>
+        <AppCollapse in={sections.isOpen("monitoring")} unmountOnExit>
           <DockerMonitoringSection filter={monitoringFilter} />
         </AppCollapse>
       </div>
 
       <SectionHeader
         controlsId="docker-daemon-panel"
-        expanded={sections.daemon}
-        onToggle={() => setSection("daemon")}
+        expanded={sections.isOpen("daemon")}
+        onToggle={() => sections.toggle("daemon")}
         title="Docker Daemon"
       />
       {/* ── Docker Daemon ───────────────────────────────────────────────────── */}
       <div id="docker-daemon-panel">
-        <AppCollapse in={sections.daemon}>
+        <AppCollapse in={sections.isOpen("daemon")}>
           <AppGrid
             container
             spacing={DASHBOARD_CARD_SPACING}
@@ -758,12 +751,12 @@ const DockerDashboard = ({
       {/* ── Resources ──────────────────────────────────────────────────────── */}
       <SectionHeader
         controlsId="docker-resources-panel"
-        expanded={sections.resources}
-        onToggle={() => setSection("resources")}
+        expanded={sections.isOpen("resources")}
+        onToggle={() => sections.toggle("resources")}
         title="Resources"
       />
       <div id="docker-resources-panel">
-        <AppCollapse in={sections.resources}>
+        <AppCollapse in={sections.isOpen("resources")}>
           <AppGrid container spacing={DASHBOARD_CARD_SPACING}>
             {/* Containers table */}
             <AppGrid

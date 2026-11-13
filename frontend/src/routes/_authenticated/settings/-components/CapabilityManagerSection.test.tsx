@@ -213,10 +213,10 @@ describe("CapabilityManagerSection", () => {
     // The initial refresh must echo the seeded scan, as a real scan would.
     mocks.refreshCapabilities.mockImplementation(() =>
       Promise.resolve({
-        docker_available: false,
-        lm_sensors_available: false,
-        packagekit_available: mocks.packageKitAvailable,
-        rsync_available: false,
+        docker: { available: false },
+        lm_sensors: { available: false },
+        packagekit: { available: mocks.packageKitAvailable },
+        rsync: { available: false },
       }),
     );
     mocks.taskConfig = null;
@@ -262,7 +262,7 @@ describe("CapabilityManagerSection", () => {
     expect(mocks.refreshCapabilities).toHaveBeenCalledTimes(2);
 
     await act(async () => {
-      resolveRefresh({ docker_available: true } as CapabilitiesResponse);
+      resolveRefresh({ docker: { available: true } });
     });
 
     await waitFor(() => {

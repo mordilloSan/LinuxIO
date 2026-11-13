@@ -47,10 +47,7 @@ func ListInterfaces(ctx context.Context) ([]apischema.WireGuardInterface, error)
 			Host:        cfg.Host,
 			DNS:         nonNil(cfg.DNS),
 			MTU:         cfg.MTU,
-			PreUp:       nonNil(cfg.PreUp),
-			PostUp:      nonNil(cfg.PostUp),
-			PreDown:     nonNil(cfg.PreDown),
-			PostDown:    nonNil(cfg.PostDown),
+			Hooks:       hooksToAPI(cfg.Hooks),
 		})
 	}
 	slog.Debug("listed WireGuard interfaces", "count", len(interfaces))

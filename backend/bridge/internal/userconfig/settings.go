@@ -24,16 +24,10 @@ func DefaultUIPreferences() UIPreferences {
 		DockTileColors:     DockTileColorsAccent,
 		DockAccentGradient: &DockAccentGradient{RangeStart: 0, RangeEnd: 100},
 		HiddenCards:        []string{},
-		DockerDashboardSections: &DockerDashboardSections{
-			Overview: true, Monitoring: true, Daemon: true, Resources: true,
-		},
-		HardwareSections: &HardwareSections{
-			Overview: true, Hardware: true, Sensors: true, SystemInfo: true,
-			GPU: true, PCIDevices: true, MemoryModules: true,
-		},
-		ViewModes:        map[string]string{},
-		LayoutOrders:     map[string][]string{},
-		TerminalFontSize: 16,
+		CollapsedSections:  map[string][]string{},
+		ViewModes:          map[string]string{},
+		LayoutOrders:       map[string][]string{},
+		TerminalFontSize:   16,
 	}
 }
 

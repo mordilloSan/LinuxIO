@@ -1,9 +1,5 @@
 import { ASSISTANT_AGENTS, type AssistantAgentId } from "@/api/acp/agents";
-import {
-  CAPABILITIES,
-  type CapabilityErrorKey,
-  type CapabilityKey,
-} from "@/api/capabilities";
+import { CAPABILITIES, type CapabilityKey } from "@/api/capabilities";
 import {
   useCapabilitiesResponse,
   useCapabilityState,
@@ -31,9 +27,7 @@ export function useAssistantRequirements(agent: AssistantAgentId | "" | null) {
   ).map((def) => ({
     key: def.state,
     label: def.label,
-    reason:
-      response[`${def.wire}_error` as CapabilityErrorKey] ??
-      def.reasonUnavailable,
+    reason: response[def.wire]?.error ?? def.reasonUnavailable,
   }));
   return {
     ready: Boolean(agent) && required.every((key) => state[key] === true),

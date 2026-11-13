@@ -12,6 +12,7 @@ import (
 
 	"gopkg.in/ini.v1"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 )
 
@@ -21,11 +22,15 @@ const (
 	metaKeyDNS       = "dns"
 )
 
-// interfaceKeys are the [Interface] keys the model carries; any other key is
-// kept verbatim in Extra so a rewrite never changes what wg-quick applies.
-var interfaceKeys = map[string]bool{
-	"PrivateKey": true, "Address": true, "ListenPort": true, "MTU": true,
-	"PreUp": true, "PostUp": true, "PreDown": true, "PostDown": true,
+// isInterfaceKey reports whether name is an [Interface] key the model carries;
+// any other key is kept verbatim in Extra so a rewrite never changes what
+// wg-quick applies.
+func isInterfaceKey(name string) bool {
+	switch name {
+	case "PrivateKey", "Address", "ListenPort", "MTU":
+		return true
+	}
+	return slices.Contains(apischema.WireGuardHookKinds, apischema.WireGuardHookKind(name))
 }
 
 // loadWGINI reads a WireGuard INI the way wg-quick does: a '#' ends a value
@@ -74,12 +79,12 @@ func ParseWireGuardConfig(path string) (WireGuardConfig, error) {
 	if mtu, parseErr := ifSec.Key("MTU").Int(); parseErr == nil {
 		cfg.MTU = mtu
 	}
-	cfg.PreUp = sectionValues(ifSec, "PreUp")
-	cfg.PostUp = sectionValues(ifSec, "PostUp")
-	cfg.PreDown = sectionValues(ifSec, "PreDown")
-	cfg.PostDown = sectionValues(ifSec, "PostDown")
+	cfg.Hooks = make(apischema.WireGuardHooks, len(apischema.WireGuardHookKinds))
+	for _, kind := range apischema.WireGuardHookKinds {
+		cfg.Hooks[kind] = sectionValues(ifSec, string(kind))
+	}
 	for _, key := range ifSec.Keys() {
-		if interfaceKeys[key.Name()] {
+		if isInterfaceKey(key.Name()) {
 			continue
 		}
 		for _, value := range key.ValueWithShadows() {
@@ -152,12 +157,9 @@ func WriteWireGuardConfig(path string, cfg WireGuardConfig) error {
 	setKeyIfPositive(ifSec, "ListenPort", cfg.ListenPort)
 	setKey(ifSec, "PrivateKey", cfg.PrivateKey)
 	setKeyIfPositive(ifSec, "MTU", cfg.MTU)
-	for _, kind := range []struct {
-		key   string
-		hooks []string
-	}{{"PreUp", cfg.PreUp}, {"PostUp", cfg.PostUp}, {"PreDown", cfg.PreDown}, {"PostDown", cfg.PostDown}} {
-		for _, hook := range kind.hooks {
-			setKeyIfNotEmpty(ifSec, kind.key, hook)
+	for _, kind := range apischema.WireGuardHookKinds {
+		for _, hook := range cfg.Hooks[kind] {
+			setKeyIfNotEmpty(ifSec, string(kind), hook)
 		}
 	}
 	for _, kv := range cfg.Extra {
@@ -197,18 +199,23 @@ func sectionValues(section *ini.Section, name string) []string {
 	return cleaned
 }
 
+// addNATHooks appends the forwarding and masquerade rules to PostUp and their
+// removal to PostDown, skipping lines already there, and reports whether it
+// added any.
 func addNATHooks(cfg *WireGuardConfig, egressNic, subnet string) bool {
-	changed := false
-	for _, hook := range natPostUpHooks(egressNic, subnet) {
-		if !slices.Contains(cfg.PostUp, hook) {
-			cfg.PostUp = append(cfg.PostUp, hook)
-			changed = true
-		}
+	if cfg.Hooks == nil {
+		cfg.Hooks = apischema.WireGuardHooks{}
 	}
-	for _, hook := range natPostDownHooks(egressNic, subnet) {
-		if !slices.Contains(cfg.PostDown, hook) {
-			cfg.PostDown = append(cfg.PostDown, hook)
-			changed = true
+	changed := false
+	for kind, lines := range map[apischema.WireGuardHookKind][]string{
+		apischema.WireGuardPostUp:   natPostUpHooks(egressNic, subnet),
+		apischema.WireGuardPostDown: natPostDownHooks(egressNic, subnet),
+	} {
+		for _, hook := range lines {
+			if !slices.Contains(cfg.Hooks[kind], hook) {
+				cfg.Hooks[kind] = append(cfg.Hooks[kind], hook)
+				changed = true
+			}
 		}
 	}
 	return changed

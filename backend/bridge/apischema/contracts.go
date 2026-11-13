@@ -82,6 +82,10 @@ type PathRequest struct {
 	Path string `json:"path"`
 }
 
+// StringEnums gives the generator the values of each named string type it
+// renders as a literal union. CapabilityName is added by handlers/capabilities
+// from its registry when that package is loaded, because this package cannot
+// import it.
 var StringEnums = map[string][]string{
 	"AutoUpdateFrequency":           {"hourly", "daily", "weekly"},
 	"AutoUpdateScope":               {"security", "updates", "all"},
@@ -110,6 +114,7 @@ var StringEnums = map[string][]string{
 	"VMFirmware":                {"bios", "uefi"},
 	"VMCPUMode":                 {"host-passthrough", "host-model", "default", "custom"},
 	"NetworkBridgeHandoffState": {"applying", "awaiting_confirmation", "confirmed", "reverted", "unknown"},
+	"WireGuardHookKind":         wireGuardHookKindNames(),
 }
 
 var ExtraTypes = []TypeSpec{

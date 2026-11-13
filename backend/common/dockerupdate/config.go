@@ -30,15 +30,8 @@ type containerAutoUpdateStore struct {
 }
 
 type dockerUpdateScheduleDocument struct {
-	Version        int                           `json:"version"`
-	Mode           DockerContainerAutoUpdateMode `json:"mode"`
-	Time           string                        `json:"time"`
-	Cleanup        bool                          `json:"cleanup"`
-	ContainerNames []string                      `json:"container_names"`
-	IncludeStopped bool                          `json:"include_stopped"`
-	UpdateAll      bool                          `json:"update_all"`
-	UpdateStopped  bool                          `json:"update_stopped"`
-	ReviveStopped  bool                          `json:"revive_stopped"`
+	Version int `json:"version"`
+	DockerContainerAutoUpdateSettings
 }
 
 var defaultContainerAutoUpdateStore = containerAutoUpdateStore{
@@ -57,16 +50,7 @@ func (s containerAutoUpdateStore) readOptions() (DockerContainerAutoUpdateOption
 		if document.Version != dockerUpdateConfigVersion {
 			return defaultContainerAutoUpdateOptions(), fmt.Errorf("unsupported Docker update config version %d", document.Version)
 		}
-		return normalizeContainerAutoUpdateOptions(DockerContainerAutoUpdateOptions{
-			Mode:           document.Mode,
-			Time:           document.Time,
-			Cleanup:        document.Cleanup,
-			ContainerNames: document.ContainerNames,
-			IncludeStopped: document.IncludeStopped,
-			UpdateAll:      document.UpdateAll,
-			UpdateStopped:  document.UpdateStopped,
-			ReviveStopped:  document.ReviveStopped,
-		})
+		return normalizeContainerAutoUpdateOptions(DockerContainerAutoUpdateOptions{DockerContainerAutoUpdateSettings: document.DockerContainerAutoUpdateSettings})
 	}
 	if !errors.Is(err, os.ErrNotExist) {
 		return defaultContainerAutoUpdateOptions(), fmt.Errorf("read %s: %w", s.configPath, err)
@@ -76,15 +60,8 @@ func (s containerAutoUpdateStore) readOptions() (DockerContainerAutoUpdateOption
 
 func (s containerAutoUpdateStore) writeOptions(opts DockerContainerAutoUpdateOptions) error {
 	document := dockerUpdateScheduleDocument{
-		Version:        dockerUpdateConfigVersion,
-		Mode:           opts.Mode,
-		Time:           opts.Time,
-		Cleanup:        opts.Cleanup,
-		ContainerNames: opts.ContainerNames,
-		IncludeStopped: opts.IncludeStopped,
-		UpdateAll:      opts.UpdateAll,
-		UpdateStopped:  opts.UpdateStopped,
-		ReviveStopped:  opts.ReviveStopped,
+		Version:                           dockerUpdateConfigVersion,
+		DockerContainerAutoUpdateSettings: opts.DockerContainerAutoUpdateSettings,
 	}
 	configBytes, err := json.Marshal(document, jsontext.WithIndent("  "), json.Deterministic(true))
 	if err != nil {
@@ -130,17 +107,11 @@ func normalizeContainerAutoUpdateOptions(opts DockerContainerAutoUpdateOptions) 
 	if opts.ReviveStopped && !opts.UpdateStopped {
 		return DockerContainerAutoUpdateOptions{}, errors.New("starting stopped containers after update requires stopped-container updates")
 	}
-	return DockerContainerAutoUpdateOptions{
-		Cleanup:        opts.Cleanup,
-		ContainerNames: normalizeContainerNames(opts.ContainerNames),
-		Enabled:        opts.Enabled,
-		IncludeStopped: opts.IncludeStopped,
-		Mode:           DockerContainerAutoUpdateMode(mode),
-		ReviveStopped:  opts.ReviveStopped,
-		Time:           timeOfDay,
-		UpdateAll:      opts.UpdateAll,
-		UpdateStopped:  opts.UpdateStopped,
-	}, nil
+	out := opts
+	out.ContainerNames = normalizeContainerNames(opts.ContainerNames)
+	out.Mode = DockerContainerAutoUpdateMode(mode)
+	out.Time = timeOfDay
+	return out, nil
 }
 
 func normalizeContainerNames(names []string) []string {

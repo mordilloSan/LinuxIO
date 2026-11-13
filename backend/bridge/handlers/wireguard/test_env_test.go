@@ -84,14 +84,15 @@ func newWireGuardTestEnv(t *testing.T) *wireGuardTestEnv {
 func assertNATHooks(t *testing.T, cfg WireGuardConfig, egressNic, subnet string) {
 	t.Helper()
 
+	postUp, postDown := cfg.Hooks[apischema.WireGuardPostUp], cfg.Hooks[apischema.WireGuardPostDown]
 	for _, hook := range natPostUpHooks(egressNic, subnet) {
-		if !slices.Contains(cfg.PostUp, hook) {
-			t.Fatalf("PostUp missing %q in %v", hook, cfg.PostUp)
+		if !slices.Contains(postUp, hook) {
+			t.Fatalf("PostUp missing %q in %v", hook, postUp)
 		}
 	}
 	for _, hook := range natPostDownHooks(egressNic, subnet) {
-		if !slices.Contains(cfg.PostDown, hook) {
-			t.Fatalf("PostDown missing %q in %v", hook, cfg.PostDown)
+		if !slices.Contains(postDown, hook) {
+			t.Fatalf("PostDown missing %q in %v", hook, postDown)
 		}
 	}
 }

@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { linuxio } from "@/api";
 import type { AccessPolicy } from "@/hooks/useCapabilities";
+import { createIsSectionOpen } from "@/hooks/useSectionToggles";
 import { CpuIcon } from "@/icons/svg";
 import { requireAccess } from "@/routes/-auth";
 import {
@@ -13,6 +14,7 @@ import {
 
 import HardwarePage from "./-components/HardwarePage";
 import { hardwareStableQueryOptions } from "./-components/hardwareQueryOptions";
+import { HARDWARE_SECTIONS } from "./-components/hardwareSections";
 
 const access = {
   requiredCapabilities: ["lmSensorsAvailable"],
@@ -23,21 +25,21 @@ export const Route = createFileRoute("/_authenticated/hardware")({
   loader: async ({ abortController, context, preload }) => {
     await loadRouteTransport(context, abortController.signal);
     const ui = await loadRouteUIConfig(context, abortController.signal);
-    const sections = ui.hardwareSections;
+    const isOpen = createIsSectionOpen(ui.collapsedSections, HARDWARE_SECTIONS);
 
     const queries: LoaderQueryOptions[] = [];
-    if (sections.sensors) queries.push(linuxio.monitoring.get_live);
-    if (sections.pciDevices)
+    if (isOpen("sensors")) queries.push(linuxio.monitoring.get_live);
+    if (isOpen("pciDevices"))
       queries.push({
         ...linuxio.system.get_pci_devices,
         ...hardwareStableQueryOptions,
       });
-    if (sections.memoryModules)
+    if (isOpen("memoryModules"))
       queries.push({
         ...linuxio.system.get_memory_modules,
         ...hardwareStableQueryOptions,
       });
-    if (sections.systemInfo) {
+    if (isOpen("systemInfo")) {
       queries.push(
         {
           ...linuxio.system.get_motherboard_info,

@@ -54,8 +54,9 @@ func applyUISettingsUpdate(ui *userconfig.UIPreferences, payload *apischema.Conf
 	}
 	applyOptionalBool(&ui.SidebarCollapsed, payload.SidebarCollapsed)
 	applyOptionalStringSlice(&ui.HiddenCards, payload.HiddenCards)
-	applyOptionalDockerDashboardSections(ui, payload.DockerDashboardSections)
-	applyOptionalHardwareSections(ui, payload.HardwareSections)
+	if err := applyCollapsedSections(ui, payload.CollapsedSections); err != nil {
+		return err
+	}
 	applyViewModes(ui, payload.ViewModes)
 	applyLayoutOrders(ui, payload.LayoutOrders)
 	return applyTerminalFontSizeSetting(ui, payload.TerminalFontSize)
@@ -119,16 +120,36 @@ func buildThemeColors(payload apischema.ConfigThemeColorsPayload, mode string) (
 	return userconfig.NewThemeColors(values, mode)
 }
 
-func applyOptionalDockerDashboardSections(ui *userconfig.UIPreferences, sections *apischema.ConfigDockerDashboardSections) {
-	if sections != nil {
-		ui.DockerDashboardSections = &userconfig.DockerDashboardSections{Overview: sections.Overview, Monitoring: sections.Monitoring, Daemon: sections.Daemon, Resources: sections.Resources}
+// applyCollapsedSections replaces the whole per-page map. Names are trimmed,
+// and blank names, repeats and pages with nothing collapsed are dropped: an
+// absent page already means every section is expanded. Each page's names are
+// stored sorted, since only membership matters. A map over the bounds in
+// internal/userconfig is refused.
+func applyCollapsedSections(ui *userconfig.UIPreferences, collapsed map[string][]string) error {
+	if collapsed == nil {
+		return nil
 	}
-}
-
-func applyOptionalHardwareSections(ui *userconfig.UIPreferences, sections *apischema.ConfigHardwareSections) {
-	if sections != nil {
-		ui.HardwareSections = &userconfig.HardwareSections{Overview: sections.Overview, Hardware: sections.Hardware, Sensors: sections.Sensors, SystemInfo: sections.SystemInfo, GPU: sections.GPU, PCIDevices: sections.PCIDevices, MemoryModules: sections.MemoryModules}
+	normalized := make(map[string][]string, len(collapsed))
+	for page, sections := range collapsed {
+		page = strings.TrimSpace(page)
+		if page == "" {
+			continue
+		}
+		for _, section := range sections {
+			if section = strings.TrimSpace(section); section != "" {
+				normalized[page] = append(normalized[page], section)
+			}
+		}
 	}
+	for page, sections := range normalized {
+		slices.Sort(sections)
+		normalized[page] = slices.Compact(sections)
+	}
+	if err := userconfig.ValidateCollapsedSections(normalized); err != nil {
+		return fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
+	}
+	ui.CollapsedSections = normalized
+	return nil
 }
 
 // applyViewModes replaces the whole map, silently dropping blank keys and
