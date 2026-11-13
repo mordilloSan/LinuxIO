@@ -40,6 +40,16 @@ What is left:
   archive only root can read gets its content when an admin extracts it
   there. Reach the archive with `entryFollowingNoUserLinks` and read it
   through that handle. Reported by the review of 2026-11-13.
+- [ ] **An upload buffer on a filesystem without file handles is matched by
+  inode number alone.** `uploadBufferID`
+  (`backend/bridge/handlers/filebrowser/upload_owner.go`) falls back to
+  device and inode when `name_to_handle_at` returns `EOPNOTSUPP` or
+  `EOVERFLOW`. Where such a filesystem reuses inode numbers, a process that
+  can write the folder can delete the buffer between chunks, create its own
+  file at the name, keep it open and receive the rest of the upload, which
+  root then commits as the target. Either keep the buffer open across chunks
+  instead of reopening it, or refuse to reopen there. Which filesystems users
+  upload to give no handles was not checked. Checked 2026-11-13.
 
 ## Storage safety
 

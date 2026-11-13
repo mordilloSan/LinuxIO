@@ -44,14 +44,14 @@ type uploadTransferTask struct {
 	private         bool           // a new file is owner-only (0600)
 	refuseSymlink   bool           // the request set owner: a symlink at the target is refused, never followed
 
-	// finalRel, tempRel, attrs, folderInfo, bufferInfo and fileOwner are
+	// finalRel, tempRel, attrs, folderInfo, bufferID and fileOwner are
 	// guarded by mu.
 	finalRel   string
 	tempRel    string
 	attrs      uploadAttributes
-	folderInfo os.FileInfo  // the folder prepare put the buffer in; the commit must find this folder
-	bufferInfo os.FileInfo  // the buffer prepare created; every reopen must find this file
-	fileOwner  sessionOwner // newOwner when the buffer's folder is already theirs
+	folderInfo os.FileInfo    // the folder prepare put the buffer in; the commit must find this folder
+	bufferID   uploadBufferID // the buffer prepare created; every reopen must find this file
+	fileOwner  sessionOwner   // newOwner when the buffer's folder is already theirs
 }
 
 var errUploadVersionConflict = errors.New("file changed since it was opened")
@@ -248,9 +248,9 @@ func (t *uploadTransferTask) attach(stream net.Conn, req bridgeipc.TaskDataAttac
 	}
 
 	t.mu.Lock()
-	tempRel, bufferInfo := t.tempRel, t.bufferInfo
+	tempRel, bufferID := t.tempRel, t.bufferID
 	t.mu.Unlock()
-	file, err := openUploadBuffer(root, tempRel, bufferInfo)
+	file, err := openUploadBuffer(root, tempRel, bufferID)
 	if err != nil {
 		return t.fail(stream, fmt.Sprintf("cannot open upload buffer: %v", err), 500, err)
 	}
@@ -356,7 +356,7 @@ func (t *uploadTransferTask) prepare(root *fsroot.FSRoot) error {
 	}
 
 	partName := "." + filepath.Base(realRel) + ".linuxio-upload-" + t.task.ID() + ".part"
-	bufferInfo, err := createUploadBuffer(dir, partName)
+	bufferID, err := createUploadBuffer(dir, partName)
 	if err != nil {
 		return fmt.Errorf("create upload buffer: %w", err)
 	}
@@ -366,7 +366,7 @@ func (t *uploadTransferTask) prepare(root *fsroot.FSRoot) error {
 	t.tempRel = filepath.Join(filepath.Dir(realRel), partName)
 	t.attrs = attrs
 	t.folderInfo = folderInfo
-	t.bufferInfo = bufferInfo
+	t.bufferID = bufferID
 	if handsOverIn(folderInfo, t.newOwner) {
 		t.fileOwner = t.newOwner
 	}

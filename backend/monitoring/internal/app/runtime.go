@@ -130,6 +130,12 @@ func (a *App) StartContext(ctx context.Context, opts RunOptions) error {
 	}()
 
 	if collectErr := a.collectAndPersist(runCtx, time.Now().UTC()); collectErr != nil {
+		// A stop during the first collection is a shutdown, as it is once the
+		// event loop runs, not a failure.
+		if ctx.Err() != nil {
+			slog.Debug("shutting down during the first collection", "error", collectErr)
+			return nil
+		}
 		return collectErr
 	}
 

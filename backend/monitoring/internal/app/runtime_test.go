@@ -134,9 +134,8 @@ func TestStartContextDisabledHTTP(t *testing.T) {
 	}()
 
 	// The collector still persists snapshots without the HTTP server. The last
-	// collected timestamp is recorded after the first snapshot is written, so
-	// waiting for it means the initial collection is done and the event loop
-	// is up.
+	// collected timestamp is recorded once the first snapshot is written, while
+	// maintenance may still run; a cancel then is a clean shutdown as well.
 	require.Eventually(t, func() bool {
 		_, ok := a.LastCollected()
 		return ok

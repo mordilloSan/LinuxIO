@@ -60,10 +60,10 @@ type uploadBatchTransferTask struct {
 	tempRel    string
 	finalRel   string
 	attrs      uploadAttributes
-	folderInfo os.FileInfo  // the folder the current buffer was created in; the commit must find this folder
-	bufferInfo os.FileInfo  // the current buffer as created; every reopen must find this file
-	fileOwner  sessionOwner // newOwner when the current buffer's folder is already theirs
-	curFailed  bool         // current file failed; its remaining bytes are discarded
+	folderInfo os.FileInfo    // the folder the current buffer was created in; the commit must find this folder
+	bufferID   uploadBufferID // the current buffer as created; every reopen must find this file
+	fileOwner  sessionOwner   // newOwner when the current buffer's folder is already theirs
+	curFailed  bool           // current file failed; its remaining bytes are discarded
 	succeeded  int
 	failures   []FileBatchItemFailure
 }
@@ -338,7 +338,7 @@ func (t *uploadBatchTransferTask) settle(session *uploadBatchSession) {
 		t.finalRel = ""
 		t.attrs = uploadAttributes{}
 		t.folderInfo = nil
-		t.bufferInfo = nil
+		t.bufferID = uploadBufferID{}
 		t.fileOwner = sessionOwner{}
 		t.curFailed = false
 		t.mu.Unlock()
@@ -392,7 +392,7 @@ func (t *uploadBatchTransferTask) ensurePrepared(session *uploadBatchSession) er
 	}
 
 	partName := fmt.Sprintf(".%s.linuxio-upload-%s-%d.part", filepath.Base(finalRel), t.task.ID(), index)
-	bufferInfo, err := createUploadBuffer(dir, partName)
+	bufferID, err := createUploadBuffer(dir, partName)
 	if err != nil {
 		return fmt.Errorf("create upload buffer: %w", err)
 	}
@@ -402,7 +402,7 @@ func (t *uploadBatchTransferTask) ensurePrepared(session *uploadBatchSession) er
 	t.tempRel = filepath.Join(filepath.Dir(finalRel), partName)
 	t.attrs = attrs
 	t.folderInfo = folderInfo
-	t.bufferInfo = bufferInfo
+	t.bufferID = bufferID
 	if handsOverIn(folderInfo, t.newOwner) {
 		t.fileOwner = t.newOwner
 	}
@@ -423,9 +423,9 @@ func (t *uploadBatchTransferTask) writeChunk(session *uploadBatchSession, chunk 
 			return err
 		}
 		t.mu.Lock()
-		tempRel, bufferInfo, at := t.tempRel, t.bufferInfo, t.fileBytes
+		tempRel, bufferID, at := t.tempRel, t.bufferID, t.fileBytes
 		t.mu.Unlock()
-		file, err := openUploadBuffer(session.root, tempRel, bufferInfo)
+		file, err := openUploadBuffer(session.root, tempRel, bufferID)
 		if err != nil {
 			return fmt.Errorf("cannot open upload buffer: %w", err)
 		}
@@ -474,12 +474,12 @@ func (t *uploadBatchTransferTask) finalizeCurrent(session *uploadBatchSession) e
 
 	t.mu.Lock()
 	tempRel, finalRel, attrs := t.tempRel, t.finalRel, t.attrs
-	folderInfo, bufferInfo, fileOwner := t.folderInfo, t.bufferInfo, t.fileOwner
+	folderInfo, bufferID, fileOwner := t.folderInfo, t.bufferID, t.fileOwner
 	overwrite := t.overwrite && !t.files[t.index].keepBoth
 	t.mu.Unlock()
 
 	if session.file == nil {
-		file, err := openUploadBuffer(session.root, tempRel, bufferInfo)
+		file, err := openUploadBuffer(session.root, tempRel, bufferID)
 		if err != nil {
 			return fmt.Errorf("cannot open upload buffer: %w", err)
 		}

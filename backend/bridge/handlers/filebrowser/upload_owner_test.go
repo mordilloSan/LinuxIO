@@ -56,7 +56,7 @@ func uploadThroughHandles(t *testing.T, transfer *uploadTransferTask, content st
 	t.Helper()
 	root := openTestRoot(t)
 	require.NoError(t, transfer.prepare(root))
-	file, err := openUploadBuffer(root, transfer.tempRel, transfer.bufferInfo)
+	file, err := openUploadBuffer(root, transfer.tempRel, transfer.bufferID)
 	require.NoError(t, err)
 	defer file.Close()
 	_, err = file.WriteString(content)
@@ -271,6 +271,27 @@ func TestUploadKeepsTheGroupOfASetgidFolder(t *testing.T) {
 	requireOwnerAndMode(t, compose, owner.uid, uint32(group), 0o644)
 }
 
+// ext4 gives a deleted file's inode number to the next file created, so a
+// reopened buffer must also have the file handle it was created with: the
+// same device and inode with another handle is a different file.
+func TestUploadBufferIDNeedsTheSameHandle(t *testing.T) {
+	file, err := os.Create(filepath.Join(t.TempDir(), "buffer"))
+	require.NoError(t, err)
+	defer file.Close()
+	created, err := uploadBufferIDOf(file)
+	require.NoError(t, err)
+	require.True(t, created.is(created))
+	require.False(t, created.is(uploadBufferID{}))
+	if created.handle == nil {
+		t.Skip("this filesystem gives no file handles")
+	}
+
+	reused := created
+	reused.handle = append([]byte(nil), created.handle...)
+	reused.handle[len(reused.handle)-1] ^= 1
+	require.False(t, created.is(reused))
+}
+
 // seedVictim is a file a swapped buffer name points at, standing in for
 // /etc/passwd.
 func seedVictim(t *testing.T) string {
@@ -323,13 +344,13 @@ func TestUploadBufferNameIsNeverFollowed(t *testing.T) {
 
 		require.NoError(t, os.Remove(buffer))
 		plant(t, victim, buffer)
-		_, err := openUploadBuffer(root, transfer.tempRel, transfer.bufferInfo)
+		_, err := openUploadBuffer(root, transfer.tempRel, transfer.bufferID)
 		require.ErrorIs(t, err, syscall.ELOOP)
 		requireVictimUntouched(t, victim)
 
 		require.NoError(t, os.Remove(buffer))
 		require.NoError(t, os.WriteFile(buffer, nil, 0o600))
-		_, err = openUploadBuffer(root, transfer.tempRel, transfer.bufferInfo)
+		_, err = openUploadBuffer(root, transfer.tempRel, transfer.bufferID)
 		require.ErrorIs(t, err, errUploadBufferReplaced)
 	})
 
@@ -344,7 +365,7 @@ func TestUploadBufferNameIsNeverFollowed(t *testing.T) {
 		transfer := newOwnedUpload(t, target, 3, owner, true, false)
 		root := openTestRoot(t)
 		require.NoError(t, transfer.prepare(root))
-		file, err := openUploadBuffer(root, transfer.tempRel, transfer.bufferInfo)
+		file, err := openUploadBuffer(root, transfer.tempRel, transfer.bufferID)
 		require.NoError(t, err)
 		defer file.Close()
 		_, err = file.WriteString("new")
@@ -377,7 +398,7 @@ func TestUploadCommitStaysInThePreparedFolder(t *testing.T) {
 		transfer := newOwnedUpload(t, env, 3, selfOwner(), true, true)
 		root := openTestRoot(t)
 		require.NoError(t, transfer.prepare(root))
-		file, err := openUploadBuffer(root, transfer.tempRel, transfer.bufferInfo)
+		file, err := openUploadBuffer(root, transfer.tempRel, transfer.bufferID)
 		require.NoError(t, err)
 		defer file.Close()
 		_, err = file.WriteString("new")

@@ -1,6 +1,7 @@
 package filebrowser
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -110,20 +111,52 @@ func handOver(f *os.File, owner sessionOwner, mode os.FileMode, inSetgidFolder b
 	return services.HandOver(f, owner.asOwner(), mode, inSetgidFolder)
 }
 
+// uploadBufferID is what a reopened buffer must match. Device and inode alone
+// do not identify it: ext4 gives a deleted file's inode number to the next
+// file created, so a buffer deleted and recreated by a process that can write
+// the folder would match. The kernel file handle also carries the inode's
+// generation, which a reused number does not keep. A filesystem that cannot
+// encode handles (handle nil) is matched on device and inode only.
+type uploadBufferID struct {
+	info       os.FileInfo
+	handleType int32
+	handle     []byte
+}
+
+func uploadBufferIDOf(f *os.File) (uploadBufferID, error) {
+	info, err := f.Stat()
+	if err != nil {
+		return uploadBufferID{}, err
+	}
+	id := uploadBufferID{info: info}
+	handle, _, err := unix.NameToHandleAt(int(f.Fd()), "", unix.AT_EMPTY_PATH)
+	switch {
+	case err == nil:
+		id.handleType, id.handle = handle.Type(), handle.Bytes()
+	case !errors.Is(err, unix.EOPNOTSUPP) && !errors.Is(err, unix.EOVERFLOW):
+		return uploadBufferID{}, &fs.PathError{Op: "name_to_handle_at", Path: f.Name(), Err: err}
+	}
+	return id, nil
+}
+
+func (id uploadBufferID) is(other uploadBufferID) bool {
+	return os.SameFile(id.info, other.info) && id.handleType == other.handleType && bytes.Equal(id.handle, other.handle)
+}
+
 // createUploadBuffer creates the buffer exclusively in dir, so a name planted
 // there beforehand, a symlink included, is refused rather than reused. It
-// returns the new file's info for openUploadBuffer to check against.
-func createUploadBuffer(dir *os.File, name string) (os.FileInfo, error) {
+// returns the new file's identity for openUploadBuffer to check against.
+func createUploadBuffer(dir *os.File, name string) (uploadBufferID, error) {
 	fd, err := unix.Openat(int(dir.Fd()), name, unix.O_RDWR|unix.O_CREAT|unix.O_EXCL|unix.O_NOFOLLOW|unix.O_CLOEXEC, uint32(privateUploadMode)) // owner-only until commit sets the target mode
 	if err != nil {
-		return nil, &fs.PathError{Op: "create", Path: name, Err: err}
+		return uploadBufferID{}, &fs.PathError{Op: "create", Path: name, Err: err}
 	}
 	file := os.NewFile(uintptr(fd), name)
-	info, err := file.Stat()
+	id, err := uploadBufferIDOf(file)
 	if closeErr := file.Close(); err == nil {
 		err = closeErr
 	}
-	return info, err
+	return id, err
 }
 
 // openUploadFolder opens dirRel, the folder an upload's buffer and target
@@ -149,7 +182,7 @@ func openUploadFolder(root *fsroot.FSRoot, dirRel string, want os.FileInfo) (*os
 // following a symlink at its name and only if it is still that same file, so
 // a buffer swapped by a process that can write the folder is refused instead
 // of written to or handed over.
-func openUploadBuffer(root *fsroot.FSRoot, tempRel string, created os.FileInfo) (*os.File, error) {
+func openUploadBuffer(root *fsroot.FSRoot, tempRel string, created uploadBufferID) (*os.File, error) {
 	dir, err := openUploadFolder(root, filepath.Dir(tempRel), nil)
 	if err != nil {
 		return nil, err
@@ -160,8 +193,8 @@ func openUploadBuffer(root *fsroot.FSRoot, tempRel string, created os.FileInfo) 
 		return nil, &fs.PathError{Op: "open", Path: tempRel, Err: err}
 	}
 	file := os.NewFile(uintptr(fd), tempRel)
-	info, err := file.Stat()
-	if err == nil && !os.SameFile(info, created) {
+	id, err := uploadBufferIDOf(file)
+	if err == nil && !id.is(created) {
 		err = errUploadBufferReplaced
 	}
 	if err != nil {
