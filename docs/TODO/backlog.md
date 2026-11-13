@@ -68,33 +68,21 @@ btrfs-progs do, gets an independent review, and adds a root test on loop
 devices (`make test-btrfs-integration`, and `make vm-test-btrfs-integration`
 after a change that issues ioctls).
 
-- [ ] **"Is this disk in use?" is decided three ways.** `deviceInUse`
-  (`backend/bridge/handlers/storage/partitions.go`) checks busy devices,
-  mounted and unmounted btrfs pools and `/etc/fstab`. `checkBtrfsDeviceFree`
-  (`btrfs_device_operations.go`) and `checkMDDeviceFree` (`mdraid.go`) check
-  mountpoints, holders and signatures. With `force`, the btrfs check skips the
-  signature and does not look at unmounted pools, so a disk that belongs to an
-  unmounted pool can be taken. Checked.
-  - Decided 2026-11-13: `force` only means "ignore old data left on this
-    disk". It never takes a disk from an existing pool, mounted or not.
-  - Design, worked out 2026-11-13 and not built: do not try to tell leftover
-    btrfs data from a member of an unmounted pool. `force` never overwrites
-    btrfs; the way to reuse such a disk is to destroy its old pool, which
-    already works on an unmounted pool and names it. `force` keeps overwriting
-    other filesystems. Share one check for what all three agree on (in use,
-    member of any btrfs pool, in `/etc/fstab`); md keeps "no old filesystem at
-    all" and btrfs keeps "unless forced" on top. In the dialogs a disk from
-    another pool stays disabled with its reason, and the label says what
-    `force` erases.
-  - Decided 2026-11-13: `force` also refuses a member of a stopped md array
-    or an inactive LVM volume group. To check: btrfs-progs is believed
-    to overwrite an unmounted member with `-f`, so this is stricter than
-    upstream on purpose; and the btrfs check never looks at active swap or
-    `/etc/fstab`.
-- [ ] **"Initialize disk" does not check for md or LVM members.**
-  `InitializeDisk` (`partitions.go`) goes through `deviceInUse`, which knows
-  btrfs pools only, so a member of a stopped array or an inactive volume group
-  is wiped with the normal confirmation. Reported.
+- [ ] **Format and Delete can still destroy a member partition without
+  naming it.** On the Disks page, Format with **Overwrite existing data**
+  erases a partition that belongs to a stopped md array, an inactive LVM
+  volume group or another set, and Delete drops it from the table; neither
+  says what it belongs to (`FormatPartition`, `DeletePartition` in
+  `backend/bridge/handlers/storage/partitions.go`). Initialize disk names and
+  confirms such members; these two should do the same. Checked by the review
+  of 2026-11-13.
+- [ ] **The disk check runs before the disk lock.** Every operation checks
+  one inventory read and then writes, and only Format checks "not busy" again
+  under the lock. `wipeDeviceEdges` opens the device without `O_EXCL` before
+  the add ioctl (`backend/common/btrfs/devices.go`), so a device claimed in
+  that window gets its edges zeroed. md and LVM membership is read from the
+  udev database, so a signature udev has not probed is not seen. Reported;
+  the window is short and was there before.
 - [ ] **Reading a pool can stop it from being destroyed.** The subvolume,
   snapshot and settings reads are reported to mount a pool's top level under
   `/run/linuxio/btrfs/`, after which `pool_destroy` refuses the pool. Not
@@ -137,11 +125,6 @@ is on the pages: the server refuses, but some pages still offer the control.
   `filebrowser.subfolders`
   (`frontend/src/routes/_authenticated/-dashboard/ProcessorGraph.tsx`). Not
   verified.
-- [ ] **A root-only setting answers 500, not 403.** `config.set` refuses its
-  Docker mount-ordering fields for a session without sudo with a plain error
-  (`requireDockerMountOrderingPrivilege` in
-  `backend/bridge/handlers/config/config_operations.go`); it should wrap
-  `ErrForbidden`. Reported.
 - [ ] **A user without sudo loses the sign-in notice during an update wait.**
   The history answers empty and the notice takes the sign-in mark anyway
   (`frontend/src/routes/_authenticated/-components/useAwayNotice.ts`).
@@ -155,50 +138,23 @@ is on the pages: the server refuses, but some pages still offer the control.
 
 ## Visible bugs
 
-- [ ] **Upload chunk size above 16 MiB.** The setting allows 32
-  (`ValidChunkSizeMB` in `backend/bridge/internal/userconfig/rules.go`), but a
-  relay frame carries at most 16 MiB (`backend/common/ipc/relay/protocol.go`)
-  and the frontend sends a chunk as one frame. A setting of 17 to 32 should
-  fail. Constants checked; not reproduced. Beside it: the setting is
-  documented as "0 means default", but `userconfig/settings.go` writes 1 to a
-  new file, so the frontend default never applies.
 - [ ] **A Compose stack saved by a sudo user got a folder owned by root.** The
-  stack folder was root's, mode `0700`, inside that user's home
-  (`backend/bridge/handlers/docker/background_operations.go`). Not verified.
-- [ ] **Docker address pools.** The server accepts any CIDR
-  (`backend/bridge/handlers/docker/daemon_config.go`); the settings form
-  accepts IPv4 only. Checked.
+  stack folder was root's, mode `0700`, inside that user's home. Not
+  reproduced. Read 2026-11-13: the save is a file browser upload with
+  `owner: "session"`, which hands a new folder to the user only when the
+  folder it is made in already belongs to them (`mkdirAt` in
+  `backend/bridge/handlers/filebrowser/services/handover.go`). A parent that
+  is root's, such as a `~/docker` made earlier without the hand-over, would
+  explain it. If it happens again, check who owns the nearest existing parent.
 - [ ] **Container state and health colours.** Decided in five frontend files
   (`constants/statusColors.ts`, `utils/dockerContainer.ts`, the dashboard's
   `Docker.tsx` and two under `docker/-components`). Unhealthy is an error in
   one and a warning in another; dead is neutral or an error. Checked.
-- [ ] **Theme colour defaults.** `frontend/src/theme/variants.ts` repeats the
-  table in `backend/bridge/internal/userconfig/themecolors.go` and differs on
-  the code background. Checked.
-- [ ] **Indexer status words.** Plain strings in
-  `backend/indexer/internal/daemon` and `backend/bridge/handlers/indexer`; the
-  bridge tests for `indexing` and `failed`, which the daemon was not found
-  sending. Checked.
-- [ ] **The version lists leave out monitoring.** The programs are listed by
-  hand in `backend/cli/version.go` and
-  `backend/webserver/appupdate/version.go`. Reported.
-- [ ] **Saving only a schedule's notification choice skips the repair.** The
-  re-apply that repairs an incomplete schedule does not run; a second save
-  repairs it (`backend/bridge/handlers/schedules/manager.go`).
-- [ ] **A deleted schedule logs a warning for nothing.** With an unreadable
-  `notifications.json` the delete logs "could not clear the notification
-  choice" even when the schedule had none (`forgetNotifyChoice`, same file).
-- [ ] **"Mark seen" ignores the levels grid.** `alerts.mark_seen` with explicit
-  IDs is not filtered by it, and "mark all seen" lists and marks under
-  separate locks (`backend/bridge/handlers/alerts/operations.go`,
-  `markSeenForUID`).
-- [ ] **Two containers can share one alert.** Docker update alerts share one
-  source, so a container named `updated-<x>` shares its failure key with the
-  "updated" notice of a container named `<x>`
-  (`backend/common/dockerupdate/alerts.go`).
-- [ ] **Notification settings and assistive technology.** The *Scheduled
-  scripts* help line is not tied to its select, and the page's warnings use
-  `role="alert"`, which `AppAlert` always sets.
+- [ ] **The tray still knows an indexer word the daemon never sends.**
+  `frontend/src/tasks/indexerProgress.ts` treats a status of `indexing` as
+  running; the daemon sends `uninitialized`, `running` and `idle`
+  (`backend/indexer/api`). Whether that file is reached by the daemon's status
+  was not checked. Reported.
 - [ ] **Release notes.** The release that ships jobs should state three
   behaviour changes: a stored Docker `never` no longer silences failures; an
   interruption by a shutdown is a warning, so "Errors only" no longer emails it
