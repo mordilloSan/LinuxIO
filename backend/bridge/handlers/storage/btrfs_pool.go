@@ -323,7 +323,7 @@ func poolMountpoints(fs btrfs.BtrfsFilesystem) ([]string, error) {
 	var mountpoints []string
 	for _, m := range fs.Mountpoints {
 		if isProtectedMount(m.Mountpoint) && (fs.UUID == "" || m.Mountpoint != helper) {
-			return nil, fmt.Errorf("refusing to destroy a pool mounted at %s", m.Mountpoint)
+			return nil, fmt.Errorf("%w: refusing to destroy a pool mounted at %s", bridgeipc.ErrConflict, m.Mountpoint)
 		}
 		if !slices.Contains(mountpoints, m.Mountpoint) {
 			mountpoints = append(mountpoints, m.Mountpoint)

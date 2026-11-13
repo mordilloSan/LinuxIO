@@ -89,6 +89,7 @@ func TestDevReplaceStatusMatchesKernel(t *testing.T) {
 		"STATE_FINISHED":       {replaceStateFinished, 2},
 		"STATE_CANCELED":       {replaceStateCanceled, 3},
 		"STATE_SUSPENDED":      {replaceStateSuspended, 4},
+		"RESULT_NOT_STARTED":   {replaceResultNotStarted, 1},
 	} {
 		if c.got != c.want {
 			t.Errorf("%s = %d, want %d", name, c.got, c.want)

@@ -40,7 +40,8 @@ type fakeKernel struct {
 	scrub           func(id uint64) (scrubProgress, error)
 	replaceStart    func(*devReplaceArgs) error
 	replaceStatus   func() (state, perMill uint64)
-	replaceStarted  uint64 // STATUS time_started, seconds since the epoch
+	replaceStarted  uint64                 // STATUS time_started, seconds since the epoch
+	replaceCancel   func() (result uint64) // nil: every cancel is taken
 	remove          func(id uint64) error
 	removing        atomic.Bool // the remove hook has started
 
@@ -205,6 +206,11 @@ func (k *fakeKernel) replace(a *devReplaceArgs) error {
 		putU64(a.Params[:], replaceStatusTimeStarted, k.replaceStarted)
 	case replaceCmdCancel:
 		k.log("REPLACE_CANCEL")
+		if k.replaceCancel != nil {
+			if a.Result = k.replaceCancel(); a.Result != 0 {
+				return nil
+			}
+		}
 		k.cancel()
 	}
 	return nil

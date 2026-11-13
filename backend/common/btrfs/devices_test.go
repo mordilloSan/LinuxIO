@@ -389,6 +389,48 @@ func TestReplaceCancelsWithContext(t *testing.T) {
 	}
 }
 
+// TestReplaceResendsALostCancel covers a cancel sent before the replace
+// claimed the pool: the kernel answers it without an error and with the
+// result "not started", so it is sent again until one is taken.
+func TestReplaceResendsALostCancel(t *testing.T) {
+	k := raid1Kernel()
+	ctx, cancel := context.WithCancel(context.Background())
+	lost, claimed := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	k.replaceStart = func(*devReplaceArgs) error {
+		cancel()
+		select { // the replace claims the pool only after a cancel was lost
+		case <-lost:
+		case <-time.After(10 * time.Second):
+			return errors.New("no cancel was sent")
+		}
+		close(claimed)
+		select {
+		case <-k.cancelled:
+			return unix.ECANCELED
+		case <-time.After(10 * time.Second):
+			return errors.New("no resent cancel landed")
+		}
+	}
+	k.replaceCancel = func() uint64 {
+		select {
+		case <-claimed:
+			return 0
+		default:
+			once.Do(func() { close(lost) })
+			return replaceResultNotStarted
+		}
+	}
+	stubKernel(t, k)
+	if err := Replace(ctx, dataUUID, 1, "/dev/sdd", func(float64) {}); err == nil || err.Error() != "replace of device 1 canceled" {
+		t.Fatalf("err = %v", err)
+	}
+	// Ticks may lose more cancels before the replace claims the pool.
+	if calls, want := slices.Compact(k.Calls()), []string{"REPLACE_START 1 /dev/sdd", "REPLACE_CANCEL"}; !reflect.DeepEqual(calls, want) {
+		t.Fatalf("calls = %v, want %v", calls, want)
+	}
+}
+
 func TestBalanceArgs(t *testing.T) {
 	cases := []struct {
 		name string

@@ -72,6 +72,7 @@ func TestBtrfsResumeIntegration(t *testing.T) {
 		{"scrubResume", (*itPool).scrubResume},
 		{"scrubKill", (*itPool).scrubKill},
 		{"replaceKill", (*itPool).replaceKill},
+		{"replaceCancelEarly", (*itPool).replaceCancelEarly},
 		{"replacePowerCut", (*itPool).replacePowerCut},
 	} {
 		if !t.Run(step.name, func(t *testing.T) {
@@ -658,6 +659,41 @@ func (p *itPool) replaceKill() {
 		p.t.Fatalf("before 6.19 the replace must finish and be accepted: state %d, device 2 %s, ResumeReplace %v", state, path, resumed)
 	}
 	p.scrubClean("the kill")
+	p.must("blank the disk", wipeDeviceEdges(p.disks[2]))
+}
+
+// replaceCancelEarly cancels a replace of device 2 before it started. A
+// cancel that finds no replace is answered without an error and with the
+// result "not started", so Replace must send it again once the replace
+// claimed the pool: the replace ends canceled, device 2 kept. The pool keeps
+// the data of the steps before, which is what the replace would copy.
+func (p *itPool) replaceCancelEarly() {
+	interval := progressInterval
+	progressInterval = 50 * time.Millisecond
+	defer func() { progressInterval = interval }()
+	canceled, err := cancelReplace(p.mnt)
+	p.must("cancel with no replace running", err)
+	if canceled {
+		p.t.Fatal("a cancel with no replace running was reported as taken")
+	}
+
+	ctx, cancel := context.WithCancel(p.ctx)
+	cancel()
+	start := time.Now()
+	err = Replace(ctx, p.uuid, 2, p.disks[2], func(float64) {})
+	p.t.Logf("a replace canceled before it started ended after %v: %v", time.Since(start), err)
+	if err == nil {
+		p.t.Fatal("the replace finished before a resent cancel landed; raise the fill size")
+	}
+	if want := "replace of device 2 canceled"; err.Error() != want {
+		p.t.Fatalf("replace: %v, want %s", err, want)
+	}
+	fs := p.filesystem()
+	i := slices.IndexFunc(fs.Devices, func(d BtrfsDevice) bool { return d.ID == 2 })
+	if state := p.replaceState(); state != replaceStateCanceled || i < 0 || fs.Devices[i].Path != p.disks[1] {
+		p.t.Fatalf("after the cancel: replace state %d, devices %v, want canceled and device 2 on %s", state, devicePaths(fs), p.disks[1])
+	}
+	p.scrubClean("the early cancel")
 	p.must("blank the disk", wipeDeviceEdges(p.disks[2]))
 }
 

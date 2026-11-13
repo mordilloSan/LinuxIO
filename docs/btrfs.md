@@ -351,7 +351,8 @@ fstab are also mounted degraded at boot; see [Missing disks](#missing-disks).
 
 **Destroy pool** unmounts every mount of the pool, removes its fstab entries
 and zeroes the btrfs superblock magic on each disk; everything on the pool is
-lost. A pool holding `/`, `/boot` or another protected mount is refused;
+lost. A pool holding `/`, `/boot` or another protected mount is refused
+(a 409);
 LinuxIO's own top-level mount under `/run/linuxio/btrfs/<uuid>` (see
 [Top-level access](#top-level-access)), left by any subvolume, snapshot or
 settings read, is not one: it is unmounted with the rest. An
@@ -478,7 +479,8 @@ as below.
 - **Scrub**: `SCRUB_CANCEL`, refused while a device replace runs, because the
   kernel would cancel the replace with it.
 - **Replace**: `DEV_REPLACE cancel`. The target is destroyed and the source
-  kept. A cancel that reaches a replace followed after a reboot in its last
+  kept. It is sent again while the kernel answers, in the ioctl's result, that
+  no replace runs yet. A cancel that reaches a replace followed after a reboot in its last
   step is too late: the new disk is installed and the job ends completed. A
   replace the kernel says copies from another device is not this job's and is
   left running.

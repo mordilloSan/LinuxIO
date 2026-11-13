@@ -280,11 +280,15 @@ const (
 	replaceStatusTimeStarted = 16 // seconds since the epoch, kept across a power loss
 )
 
+// replaceResultNotStarted is also what a cancel reports when it canceled
+// nothing.
+const replaceResultNotStarted = 1
+
 // replaceResults are the Result codes of a start command.
 var replaceResults = map[uint64]string{
-	1: "replace not started",
-	2: "a replace is already running",
-	3: "a scrub is running",
+	replaceResultNotStarted: "replace not started",
+	2:                       "a replace is already running",
+	3:                       "a scrub is running",
 }
 
 // cstring returns the NUL-terminated string at the start of b.

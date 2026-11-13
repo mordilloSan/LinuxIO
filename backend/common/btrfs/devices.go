@@ -204,21 +204,16 @@ func RemoveDevice(ctx context.Context, uuid string, id int, report func(float64)
 	done := make(chan error, 1)
 	go func() { done <- blockingIoctl(mnt, iocRmDevV2, unsafe.Pointer(&args)) }()
 	// A cancel sent before the removal claimed the pool is lost with
-	// ENOTCONN, so every tick sends it again until one is not.
-	lost := false
-	cancel := func() {
+	// ENOTCONN.
+	cancel := func() bool {
 		cancelErr := rmDevCancel(mnt)
-		lost = errors.Is(cancelErr, unix.ENOTCONN)
+		lost := errors.Is(cancelErr, unix.ENOTCONN)
 		if cancelErr != nil && !lost {
 			slog.Warn("btrfs device removal not canceled", "uuid", uuid, "device", id, "error", cancelErr)
 		}
+		return !lost
 	}
-	err = waitOp(ctx, done, cancel, func() (float64, bool) {
-		if lost {
-			cancel()
-		}
-		return removalPercent(mnt, id, held)
-	}, report)
+	err = waitOp(ctx, done, cancel, func() (float64, bool) { return removalPercent(mnt, id, held) }, report)
 	switch {
 	case errors.Is(err, unix.ECANCELED):
 		return fmt.Errorf("removal of device %d canceled", id)
@@ -298,19 +293,31 @@ func ResumeRemove(ctx context.Context, uuid string, id int, report func(float64)
 
 // waitOp waits for a blocking kernel operation running in another
 // goroutine, reporting its progress every interval and canceling it when
-// ctx ends; the operation's own error is returned.
-func waitOp(ctx context.Context, done <-chan error, cancel func(), poll func() (percent float64, running bool), report func(float64)) error {
+// ctx ends; the operation's own error is returned. cancel reports whether
+// the kernel took it: one sent before the operation claimed the pool is
+// lost, so it is sent again every interval until one is taken.
+func waitOp(ctx context.Context, done <-chan error, cancel func() (taken bool), poll func() (percent float64, running bool), report func(float64)) error {
 	ticker := time.NewTicker(progressInterval)
 	defer ticker.Stop()
 	ctxDone := ctx.Done()
+	lost := false
 	for {
 		select {
 		case err := <-done:
 			return err
 		case <-ctxDone:
-			ctxDone = nil // cancel once, then wait for the operation to return
-			cancel()
+			ctxDone = nil // then wait for the operation to return
+			lost = !cancel()
 		case <-ticker.C:
+			if lost {
+				// Not once the operation ended: the pool may be another's.
+				select {
+				case err := <-done:
+					return err
+				default:
+				}
+				lost = !cancel()
+			}
 			if pct, running := poll(); running {
 				report(pct)
 			}
@@ -354,7 +361,14 @@ func Replace(ctx context.Context, uuid string, id int, newDevice string, report 
 		}
 		done <- ioctlErr
 	}()
-	err = waitOp(ctx, done, func() { _ = cancelReplace(mnt) }, func() (float64, bool) {
+	cancel := func() bool {
+		canceled, cancelErr := cancelReplace(mnt)
+		if cancelErr != nil {
+			slog.Warn("btrfs replace not canceled", "uuid", uuid, "device", id, "error", cancelErr)
+		}
+		return canceled || cancelErr != nil
+	}
+	err = waitOp(ctx, done, cancel, func() (float64, bool) {
 		state, pct, _, statusErr := replaceStatusOf(mnt)
 		return pct, statusErr == nil && state == replaceStateStarted
 	}, report)
@@ -391,9 +405,16 @@ func replaceStatusOf(mnt string) (state uint64, pct float64, started time.Time, 
 	return getU64(p, replaceStatusState), float64(getU64(p, replaceStatusPerMill)) / 10, time.Unix(int64(getU64(p, replaceStatusTimeStarted)), 0), nil
 }
 
-func cancelReplace(mnt string) error {
+// cancelReplace cancels the pool's replace. The ioctl succeeds when there
+// is none to cancel, such as one that has not claimed the pool yet, and says
+// so in Result (dev-replace.c btrfs_dev_replace_cancel): canceled is then
+// false.
+func cancelReplace(mnt string) (canceled bool, err error) {
 	args := devReplaceArgs{Cmd: replaceCmdCancel}
-	return fsIoctl(mnt, iocDevReplace, unsafe.Pointer(&args))
+	if err = fsIoctl(mnt, iocDevReplace, unsafe.Pointer(&args)); err != nil {
+		return false, err
+	}
+	return args.Result != replaceResultNotStarted, nil
 }
 
 // replaceSource returns the id of the device the pool's replace copies from,
@@ -488,7 +509,7 @@ func CancelReplace(ctx context.Context, uuid string, id int) error {
 	if err = checkReplaceSource(mnt, uuid, id); err != nil {
 		return err
 	}
-	if err = cancelReplace(mnt); err != nil {
+	if _, err = cancelReplace(mnt); err != nil {
 		return fmt.Errorf("cancel replace: %w", err)
 	}
 	return nil
@@ -564,7 +585,11 @@ var (
 func runBalance(ctx context.Context, mnt string, args *balanceArgs, report func(float64)) error {
 	done := make(chan error, 1)
 	go func() { done <- blockingIoctl(mnt, iocBalanceV2, unsafe.Pointer(args)) }()
-	err := waitOp(ctx, done, func() { cancelRunningBalance(mnt) }, func() (float64, bool) {
+	cancel := func() bool {
+		cancelRunningBalance(mnt)
+		return true // sent once
+	}
+	err := waitOp(ctx, done, cancel, func() (float64, bool) {
 		state, pct, progressErr := balanceProgressOf(mnt)
 		return pct, progressErr == nil && state&balanceStateRunning != 0
 	}, report)

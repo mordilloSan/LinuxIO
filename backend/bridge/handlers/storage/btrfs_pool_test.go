@@ -274,7 +274,7 @@ func TestPoolMountpointsDeepestFirst(t *testing.T) {
 	fs := btrfs.BtrfsFilesystem{Mountpoints: []btrfs.Mount{
 		{Mountpoint: "/mnt/tank"}, {Mountpoint: "/mnt/tank/media"}, {Mountpoint: "/mnt/tank"}, {Mountpoint: "/run/linuxio/btrfs/x"},
 	}}
-	if _, err := poolMountpoints(fs); err == nil || !strings.Contains(err.Error(), "/run/linuxio/btrfs/x") {
+	if _, err := poolMountpoints(fs); !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), "/run/linuxio/btrfs/x") {
 		t.Fatalf("protected mount: err = %v", err)
 	}
 	fs.Mountpoints = fs.Mountpoints[:3]
