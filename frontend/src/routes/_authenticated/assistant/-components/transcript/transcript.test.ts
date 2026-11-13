@@ -370,6 +370,35 @@ describe("applySessionUpdate", () => {
     refined = applySessionUpdate(refined, done("c3"), 1500);
     expect(refined[0]).toMatchObject({ startedAt: 1400, endedAt: 1500 });
 
+    // An update that writes neither title nor input is not the model still
+    // writing: Claude Code's adapter sends one from its tool hook as a call
+    // ends, with the tool's response. The call started when it was last
+    // written, not then.
+    let hooked = applySessionUpdate([], call("c4"), 1000);
+    hooked = applySessionUpdate(
+      hooked,
+      {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "c4",
+        _meta: { claudeCode: { toolName: "Bash", toolResponse: {} } },
+      },
+      21_000,
+    );
+    hooked = applySessionUpdate(hooked, done("c4"), 21_010);
+    expect(hooked[0]).toMatchObject({ startedAt: 1000, endedAt: 21_010 });
+    // The input still arriving does move the start.
+    let streamed = applySessionUpdate([], call("c5"), 1000);
+    streamed = applySessionUpdate(
+      streamed,
+      {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "c5",
+        rawInput: { command: "sleep 20" },
+      },
+      1300,
+    );
+    expect(streamed[0]).toMatchObject({ startedAt: 1300 });
+
     const loaded = applySessionUpdate(
       applySessionUpdate([], call("c2")),
       done("c2"),

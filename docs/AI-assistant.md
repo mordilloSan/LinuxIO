@@ -339,10 +339,12 @@ advertises the matching capability.
   - *Times.* Only what LinuxIO saw happen is timed and animated; a chat that
     was loaded has its work counted and nothing else. The agent says when a
     call ends but not when it starts to run, so a call is timed from the
-    last update it sent while pending (the model has finished writing its
-    input by then) to its end, and a step from when the model was last
-    handed something (the prompt, or its calls' results) to its first call
-    or the turn's end. The answer's row shows how long the whole turn took,
+    last update that wrote its title or input while it was pending (the
+    model has finished writing its input by then) to its end. Claude Code's
+    adapter sends one more update as a call ends, with the tool's response
+    and no status; it writes neither, so it does not move the start. A step
+    is timed from when the model was last handed something (the prompt, or
+    its calls' results) to its first call or the turn's end. The answer's row shows how long the whole turn took,
     the time under the answer in the transcript. What takes no time (a
     message arriving, a change of model) shows `—` in the time column, and a
     row whose time was not seen shows nothing there. A step carries the model
@@ -479,8 +481,12 @@ replays none of it in a loaded chat. The types are `SubagentUpdate`,
 The form is unstable, so a new adapter pin can change it. What follows was
 read from the source of `claude-agent-acp` 0.102.0 (`dist/acp-agent.js`,
 `native-subagents.js`, `subagent-replay.js`) and holds in LinuxIO's unit
-tests and its scripted browser chat; it has not been seen in a chat with the
-real adapter yet ([backlog](TODO/backlog.md)). Read it against the new source
+tests and its scripted browser chat. A chat with the real adapter on
+2026-11-13 showed the announcements, the prompt and report as messages in
+both sessions, a subagent's calls on its own session, its model, a
+background subagent's report, and a `SendMessage` to a finished subagent
+running it again in the same session. What no live chat has shown yet is in
+the [backlog](TODO/backlog.md). Read this section against the new source
 when the pin moves.
 
 What the adapter sends:

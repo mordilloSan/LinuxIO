@@ -22,8 +22,8 @@ export type ToolBlock = {
   /**
    * When the call started and ended (ms since epoch), if it ran in this page.
    * The agent says when a call ends but not when it starts to run, so the
-   * start is the last time the call was heard of while still pending: the
-   * model had finished writing its input by then.
+   * start is the last time its title or input was written while it was still
+   * pending: the model had finished writing its input by then.
    */
   startedAt?: number;
   endedAt?: number;
@@ -260,8 +260,13 @@ export function applySessionUpdate(
         content: update.content ?? current.content,
         rawInput: update.rawInput ?? current.rawInput,
         rawOutput: update.rawOutput ?? current.rawOutput,
+        // Only an update that still writes the call moves its start. Claude
+        // Code's adapter also sends one as a call ends, with the tool's
+        // response and no status, which would put the start at the end.
         startedAt:
-          current.status === "pending" && status === "pending"
+          current.status === "pending" &&
+          status === "pending" &&
+          (update.title != null || update.rawInput !== undefined)
             ? (now ?? current.startedAt)
             : current.startedAt,
         endedAt: current.endedAt ?? (toolEnded(status) ? now : undefined),

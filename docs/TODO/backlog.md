@@ -116,12 +116,17 @@ pages offer a session without sudo only what the server allows
   (`frontend/src/routes/_authenticated/settings`). Two reads that run on a
   click were left: the failed-logins dialog and a run's saved output.
 - [ ] **The file browser search is hidden without sudo.** `filebrowser.search`
-  is privileged, so the search field is gone for such a session. Decide
-  whether a user may search the folders they can read.
+  is privileged, so the search field is gone for such a session.
+  - Decided 2026-11-13: a user without sudo may search the folders they can
+    read. The index covers the whole host, so the results must be filtered to
+    those before they leave the bridge.
 - [ ] **An admin can cut their own connection.** `systemd.stop_service` and
   `systemd.restart_service` accept LinuxIO's own units, and the network routes
   accept the interface that carries the session. No check was found in
   `backend/bridge/handlers/systemd` on 2026-11-13. Reported.
+  - Decided 2026-11-13: warn and allow. The page says what will happen
+    before it stops one of LinuxIO's own services or takes down the interface
+    the session runs on, and then does it.
 
 ## Visible bugs
 
@@ -244,14 +249,14 @@ there.
   missed run (`Persistent=`), journal retention over several days, and a
   bridge restart during a run. See
   [Scheduled Scripts](../scheduled-scripts.md#testing).
-- [ ] **Subagent sessions against a live Claude chat.** The Assistant takes
-  Claude Code's subagents as sessions of their own, built from the adapter's
-  source (claude-agent-acp 0.102.0), unit tests and a scripted browser chat;
-  no chat with the real adapter has been seen yet. Run one with a subagent in
-  the foreground, one in the background, one that starts a subagent, a
-  `SendMessage` to a finished one, a permission request from a subagent, a
-  stop of one subagent and a reload, and compare the chat rows, the Activity
-  list and the Agents view with
+- [ ] **Subagent sessions against a live Claude chat.** Seen live on
+  2026-11-13 (claude-agent-acp 0.102.0): two subagents started at once, one
+  in the background, their calls under the messages to them, their reports,
+  a `SendMessage` to a finished one, and the Agents view of a subagent that
+  ran twice. Still read only from the adapter's source, unit tests and the
+  scripted browser chat: a subagent that starts a subagent, a permission
+  request from a subagent, the stop of one subagent, and a chat that is
+  loaded again. Run a chat with those and compare with
   [AI Assistant](../AI-assistant.md#subagent-sessions). Settle on the way:
   whether stopping the whole chat stops its background subagents, and
   whether a subagent Claude Code moves to the background by itself gets its
