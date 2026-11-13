@@ -13,14 +13,14 @@ import {
   type RunStatus,
   runningAgents,
 } from "./agents";
-import { formatMs, ROW_TEXT, ROW_TONE, rowText } from "./workMap";
+import { formatMs } from "./workMap";
 
 import "../pane/pane.css";
 import "./agent-map.css";
 
 const STATUS_TEXT: Record<RunStatus, string> = {
   run: "Running",
-  ok: "Done",
+  ok: "Finished",
   err: "Failed",
 };
 
@@ -150,6 +150,7 @@ export default function AgentMap({
           ? "failed"
           : null,
       agent.type,
+      agent.background ? "background" : null,
       timeOf(agent, now),
       agent.tokens === null ? null : `${formatTokens(agent.tokens)} tokens`,
     ]
@@ -179,7 +180,13 @@ export default function AgentMap({
 
   if (chosen) {
     const time = timeOf(chosen, now);
-    const calls = chosen.calls.toReversed();
+    const tokens =
+      chosen.tokens !== null
+        ? `${formatTokens(chosen.tokens)} tokens`
+        : chosen.status === "run"
+          ? null
+          : "tokens not reported";
+    const latest = chosen.said.at(-1) ?? null;
     return (
       <div className="agent-map agent-map--detail">
         <AppButton
@@ -198,36 +205,83 @@ export default function AgentMap({
             {chosen.label}
           </AppTypography>
         </div>
-        <dl className="agent-map__facts">
-          <dt>Status</dt>
-          <dd>{STATUS_TEXT[chosen.status]}</dd>
-          {chosen.type ? (
-            <>
-              <dt>Type</dt>
-              <dd>{chosen.type}</dd>
-            </>
+        <div className="agent-map__about assistant-pane-text--secondary">
+          <p>
+            {[
+              STATUS_TEXT[chosen.status],
+              chosen.type,
+              chosen.model,
+              chosen.background ? "background" : null,
+            ]
+              .filter((part) => part !== null)
+              .join(" · ")}
+          </p>
+          <p>Started by {chosen.startedBy ?? "the main agent"}</p>
+          {time || tokens ? (
+            <p>{[time, tokens].filter((part) => part !== null).join(" · ")}</p>
           ) : null}
-          {chosen.model ? (
-            <>
-              <dt>Model</dt>
-              <dd>{chosen.model}</dd>
-            </>
-          ) : null}
-          {time ? (
-            <>
-              <dt>Time</dt>
-              <dd>{time}</dd>
-            </>
-          ) : null}
-          <dt>Tokens</dt>
-          <dd>
-            {chosen.tokens === null
-              ? "Not reported"
-              : formatTokens(chosen.tokens)}
-          </dd>
-          <dt>Tool calls</dt>
-          <dd>{chosen.toolUses}</dd>
-        </dl>
+        </div>
+        {latest ? <p className="agent-map__latest">{latest}</p> : null}
+        {chosen.prompt ? (
+          <details className="agent-map__fold">
+            <summary>Prompt</summary>
+            <p className="assistant-pane-text agent-map__quiet">
+              {chosen.prompt}
+            </p>
+          </details>
+        ) : null}
+        <details className="agent-map__fold" open>
+          <summary>Tool calls ({chosen.calls.length})</summary>
+          {chosen.calls.length === 0 ? (
+            <p className="assistant-pane-text assistant-pane-text--dim">
+              {chosen.status === "run" ? "Nothing yet." : "No calls seen."}
+            </p>
+          ) : (
+            <ol className="agent-map__calls">
+              {chosen.calls.map((call) => {
+                const note =
+                  call.status === "run"
+                    ? "running"
+                    : call.status === "err"
+                      ? "failed"
+                      : call.note && `(${call.note})`;
+                return (
+                  <li
+                    className={`agent-map__call agent-map__call--${call.status}`}
+                    key={call.id}
+                    title={[
+                      call.full,
+                      call.tookMs === null ? null : formatMs(call.tookMs),
+                    ]
+                      .filter((part) => part)
+                      .join(" · ")}
+                  >
+                    <span className="agent-map__call-tool">{call.tool}</span>
+                    <span
+                      className={`agent-map__call-detail${call.code ? " agent-map__call-detail--code" : ""}`}
+                    >
+                      {call.detail}
+                    </span>
+                    {note ? (
+                      <span className="agent-map__call-note">{note}</span>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </details>
+        {chosen.said.length > 0 ? (
+          <details className="agent-map__fold">
+            <summary>Messages ({chosen.said.length})</summary>
+            <div className="agent-map__quiet">
+              {chosen.said.map((text, index) => (
+                // Messages are only ever added at the end.
+                <MarkdownBlock key={index} text={text} />
+              ))}
+            </div>
+          </details>
+        ) : null}
         {chosen.agents.length > 0 ? (
           <section className="agent-map__section">
             <AppTypography component="h4" fontWeight={600} variant="body2">
@@ -236,39 +290,14 @@ export default function AgentMap({
             {tree(chosen.agents)}
           </section>
         ) : null}
-        <section className="agent-map__section">
-          <AppTypography component="h4" fontWeight={600} variant="body2">
-            Calls
-          </AppTypography>
-          {calls.length === 0 ? (
-            <p className="assistant-pane-text assistant-pane-text--dim">
-              {chosen.status === "run" ? "Nothing yet." : "No calls seen."}
-            </p>
-          ) : (
-            <ol className="agent-map__calls">
-              {calls.map((call) => (
-                <li
-                  className={`${ROW_TEXT} assistant-pane-text--${ROW_TONE[call.status]}`}
-                  key={call.id}
-                >
-                  {rowText(call)}
-                </li>
-              ))}
-            </ol>
-          )}
-        </section>
-        {chosen.prompt ? (
-          <details className="agent-map__section agent-map__prompt">
-            <summary>Prompt</summary>
-            <p className="assistant-pane-text">{chosen.prompt}</p>
-          </details>
-        ) : null}
         {chosen.result ? (
           <section className="agent-map__section">
             <AppTypography component="h4" fontWeight={600} variant="body2">
               Result
             </AppTypography>
-            <MarkdownBlock text={chosen.result} />
+            <div className="agent-map__quiet">
+              <MarkdownBlock text={chosen.result} />
+            </div>
           </section>
         ) : null}
       </div>

@@ -194,20 +194,22 @@
   min-width: 0;
 }
 
-.agent-map__facts {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: var(--app-space-2) var(--app-space-12);
-  margin: 0;
+/* Under the name: status, kind, model; who started it; time and tokens. */
+.agent-map__about {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-2);
+  font-size: 0.9em;
 }
 
-.agent-map__facts dt {
-  color: var(--app-palette-text-secondary);
-}
-
-.agent-map__facts dd {
-  margin: 0;
-  overflow-wrap: anywhere;
+/* What it said last, cut to a few lines; all of it is under Messages. */
+.agent-map__latest {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  white-space: pre-wrap;
 }
 
 .agent-map__section {
@@ -217,17 +219,77 @@
   min-width: 0;
 }
 
+/* A <details> is laid out as a block: older browsers ignore flex on it. */
+.agent-map__fold {
+  min-width: 0;
+}
+
+/* Long text it was given or handed back: the prompt, its messages, its
+   result. It reads under the headings rather than beside them. */
+.agent-map__quiet,
+.agent-map__quiet .assistant-markdown,
+.agent-map__quiet .assistant-markdown strong,
+.agent-map__quiet .assistant-markdown :is(h1, h2, h3, h4, h5, h6) {
+  color: var(--app-palette-text-secondary);
+}
+
+.agent-map__fold > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.agent-map__fold[open] > summary {
+  margin-bottom: var(--app-space-4);
+}
+
 .agent-map__calls {
   display: flex;
   flex-direction: column;
+  gap: var(--app-space-2);
   margin: 0;
-  padding: 0;
+  padding: 0 0 0 var(--app-space-16);
   list-style: none;
 }
 
-.agent-map__prompt summary {
-  cursor: pointer;
+/* A call: the tool, what it worked on, and a note at the far end. */
+.agent-map__call {
+  display: flex;
+  align-items: baseline;
+  gap: var(--app-space-8);
+  min-width: 0;
+}
+
+.agent-map__call-tool {
+  flex: 0 0 auto;
   font-weight: 600;
+}
+
+.agent-map__call-detail {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-map__call-detail--code {
+  color: var(--app-palette-info-main);
+  font-family: var(--app-font-mono);
+  font-size: 0.85em;
+}
+
+.agent-map__call-note {
+  flex: 0 0 auto;
+  color: var(--app-palette-text-secondary);
+}
+
+.agent-map__call--run .agent-map__call-note {
+  color: var(--app-palette-primary-main);
+}
+
+.agent-map__call--err .agent-map__call-tool,
+.agent-map__call--err .agent-map__call-note {
+  color: var(--app-palette-error-main);
 }
 
 @media (prefers-reduced-motion: reduce) {

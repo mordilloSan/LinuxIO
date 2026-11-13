@@ -190,7 +190,7 @@ export function shellStation(command: string | null): StationId {
     : "shell";
 }
 
-const pathOf = (input: unknown) =>
+export const pathOf = (input: unknown) =>
   stringField(input, "file_path") ??
   stringField(input, "notebook_path") ??
   stringField(input, "path");
@@ -200,7 +200,7 @@ const fileStation = (input: unknown): StationId => {
   return path !== null && MEMORY_PATH.test(path) ? "memory" : "files";
 };
 
-const mcpOf = (name: string) => {
+export const mcpOf = (name: string) => {
   const match = /^mcp__([^_].*?)__(.+)$/.exec(name);
   return match ? { server: match[1], tool: match[2] } : null;
 };
@@ -252,7 +252,7 @@ const hostOf = (url: string) => {
   }
 };
 
-const spaced = (name: string) => name.replace(/_+/g, " ");
+export const spaced = (name: string) => name.replace(/_+/g, " ");
 
 /** What a call is, in a few words: a name, never the whole input. */
 export function labelOf(block: ToolBlock): string {

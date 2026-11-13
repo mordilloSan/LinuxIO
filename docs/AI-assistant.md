@@ -321,27 +321,55 @@ advertises the matching capability.
   (`0 agents`, `2 agents`); its dot is grey while none runs and pulses while
   one does. It opens the activity card on its other view
   (`-components/workmap/AgentMap.tsx`), which the map's Agents station opens
-  too. The view draws the chat's agent,
-  with its model and the tokens in its context, and the subagents it sent off
-  joined to it by lines: beside it on a wide card, under it on a narrow one,
-  and the subagents they sent off under them. Each subagent shows whether it
-  runs, failed or is done, its kind, how long it has run or took, and the
-  tokens it used. Choosing one shows its status, kind, model, time, tokens
-  and tool calls, the subagents it started, its calls as rows of the feed
-  (newest first), its prompt and what it handed back; choosing the chat's
-  agent goes back to the map. The tab of the view the card shows reads as
-  open, and the browser remembers the view.
+  too. The view draws the chat's agent, with its model and the tokens in its
+  context, and the subagents it sent off joined to it by lines: beside it on
+  a wide card, under it on a narrow one, and the subagents they sent off
+  under them. Each subagent shows whether it runs, failed or finished, its
+  kind, `background` if it was sent there, how long it has run or took, and
+  the tokens it used. Choosing the chat's agent goes back to the map;
+  choosing a subagent shows, under its name:
+  - its status, kind, the model its call asked for and `background`; which
+    agent started it; its time and tokens (`tokens not reported` when the
+    adapter did not pass them on);
+  - the last thing it said, cut to three lines, with all its messages under
+    a closed *Messages (N)* in grey;
+  - its prompt, closed, in grey;
+  - *Tool calls (N)*, open, oldest first: the tool (`Read`, `Bash`,
+    `Web Fetch`, `Search tools`, an MCP tool's name), what it worked on (a
+    file's name, a command's description or the command, the address, the
+    pattern or query, in code type where it is code) and a note: the lines a
+    read asked for (`lines 421-465`), where a search looked, `running` or
+    `failed`. The whole path or command and the time are the row's tooltip;
+  - the subagents it started, and what its call handed back, in grey.
+
+  The tab of the view the card shows reads as open, and the browser
+  remembers the view.
   - *What it knows.* A subagent is a call of Claude Code's `Agent` tool (or
-    the older `Task`). The adapter marks each call a subagent makes with the
-    call that started it (`_meta.claudeCode.parentToolUseId`). When a
-    subagent's call ends, it passes on the tool's response, whose
-    `totalTokens`, `totalToolUseCount` and `totalDurationMs` are the
-    subagent's own account. Without them the time is what LinuxIO saw and
-    the tool calls are the ones it counted. A loaded chat keeps the nesting
-    but not the account (the adapter strips the result's `<usage>` trailer),
-    so its tokens read "Not reported". A subagent sent to the background
-    hands back at once, so it counts as running while any call it made does.
-    An agent that sends no tool names has no subagents here.
+    the older `Task`). The adapter marks each call a subagent makes, and
+    each chunk of text it says or is told, with the call that started it
+    (`_meta.claudeCode.parentToolUseId`). The transcript keeps a subagent's
+    text on that call, one entry per message id, and leaves its prompt echo
+    and its thinking out: without that they would read in the chat as the
+    agent's own reply. When a subagent's call ends, the adapter passes on
+    the tool's response, whose `totalTokens` and `totalDurationMs` are the
+    subagent's own account; without them the time is what LinuxIO saw. A
+    loaded chat keeps the nesting but has neither the account (the adapter
+    strips the result's `<usage>` trailer) nor what the subagent said (the
+    adapter leaves subagent text out of a replay).
+  - *Background.* A subagent sent to the background hands back at once
+    with a note that it was sent off, which is not shown as its result, and
+    with no account. The call may ask for it (`run_in_background`) or Claude
+    Code may decide it alone, so a subagent also counts as sent there when
+    the response's `status` is `async_launched` (live) or, in a loaded chat,
+    when what its call handed back starts with that note (`Async agent
+    launched`). The adapter tells a client like
+    LinuxIO nothing of its end, but holds the turn that started it open
+    until it ends, so it counts as running while that turn runs. Its time
+    is then from its start to the end of the last call it made, and its
+    tokens are not reported. The model a subagent ran on reaches LinuxIO
+    only when its call names one; one that inherits the chat's model shows
+    none.
+  - An agent that sends no tool names has no subagents here.
 - **Delete.** When the agent advertises session deletion, each chat on the
   Chats card has a delete button behind a confirmation. Deleting the open
   chat starts a new one, and a running chat cannot be deleted.

@@ -230,7 +230,88 @@ describe("applySessionUpdate", () => {
     expect(blocks[0]).toMatchObject({
       status: "completed",
       totals: { tokens: 73100, toolUses: 5, durationMs: 78000 },
+      launched: undefined,
     });
+
+    // A response that says the subagent went to the background marks it.
+    blocks = applySessionUpdate(blocks, {
+      sessionUpdate: "tool_call",
+      toolCallId: "agent2",
+      title: "Wait",
+      _meta: {
+        claudeCode: {
+          toolName: "Agent",
+          toolResponse: { status: "async_launched", agentId: "x" },
+        },
+      },
+    });
+    expect(blocks[2]).toMatchObject({ launched: true, totals: undefined });
+  });
+
+  it("keeps what a subagent says and is told out of the chat", () => {
+    const meta = { claudeCode: { parentToolUseId: "agent1" } };
+    let blocks: TranscriptBlock[] = [];
+    blocks = applySessionUpdate(blocks, {
+      sessionUpdate: "tool_call",
+      toolCallId: "agent1",
+      title: "Split replication",
+      _meta: { claudeCode: { toolName: "Agent" } },
+    });
+    const updates: acp.SessionUpdate[] = [
+      {
+        sessionUpdate: "user_message_chunk",
+        content: {
+          type: "text",
+          text: "Split replication into its own service",
+        },
+        _meta: meta,
+      },
+      {
+        sessionUpdate: "agent_thought_chunk",
+        content: { type: "text", text: "Hmm." },
+        _meta: meta,
+      },
+      {
+        sessionUpdate: "agent_message_chunk",
+        messageId: "m1",
+        content: { type: "text", text: "Reading " },
+        _meta: meta,
+      },
+      {
+        sessionUpdate: "agent_message_chunk",
+        messageId: "m1",
+        content: { type: "text", text: "the docs." },
+        _meta: meta,
+      },
+      {
+        sessionUpdate: "agent_message_chunk",
+        messageId: "m2",
+        content: { type: "text", text: "Waiting for the test run to finish." },
+        _meta: meta,
+      },
+      // Text of a subagent whose call the page never saw goes nowhere.
+      {
+        sessionUpdate: "agent_message_chunk",
+        content: { type: "text", text: "Lost" },
+        _meta: { claudeCode: { parentToolUseId: "unknown" } },
+      },
+    ];
+    for (const update of updates) blocks = applySessionUpdate(blocks, update);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toMatchObject({
+      kind: "tool",
+      said: [
+        { id: "m1", text: "Reading the docs." },
+        { id: "m2", text: "Waiting for the test run to finish." },
+      ],
+    });
+
+    // The agent's own text still goes to the chat.
+    blocks = applySessionUpdate(blocks, {
+      sessionUpdate: "agent_message_chunk",
+      content: { type: "text", text: "Started it." },
+    });
+    expect(blocks[1]).toMatchObject({ kind: "agent", text: "Started it." });
   });
 
   it("times a call only when it is told the time", () => {
