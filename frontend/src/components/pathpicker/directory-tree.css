@@ -6,12 +6,6 @@
   padding: 4px 0;
 }
 
-/* Inset so the ring survives the container's own scrollport clipping. */
-:root[data-tab-navigation] .directory-tree:focus-visible {
-  outline: 2px solid var(--app-palette-primary-main);
-  outline-offset: -2px;
-}
-
 .directory-tree__node {
   display: flex;
   align-items: center;
@@ -25,6 +19,19 @@
     color 150ms ease;
   user-select: none;
   font-size: 0.85rem;
+}
+
+.directory-tree__node:focus {
+  outline: none;
+}
+
+/* The ring shows after Tab, like everywhere else, and after any key used inside
+   the tree: a picker opened with the mouse is still walked with the arrows.
+   Inset so the ring survives the tree's own scrollport clipping. */
+:root[data-tab-navigation] .directory-tree__node:focus-visible,
+.directory-tree[data-keyboard] .directory-tree__node:focus {
+  outline: 2px solid var(--app-palette-primary-main);
+  outline-offset: -2px;
 }
 
 .directory-tree__node:hover {
@@ -67,11 +74,6 @@
   cursor: default;
 }
 
-:root[data-tab-navigation] .directory-tree__toggle:focus-visible {
-  outline: 1px solid currentColor;
-  outline-offset: 2px;
-}
-
 .directory-tree__chevron-spacer {
   display: block;
   width: 16px;
@@ -87,4 +89,16 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Why a folder could not be listed, after its name. A zero basis gives it only
+   the room the name leaves, so a narrow row cuts the reason before the name;
+   the full text is in its title. */
+.directory-tree__error {
+  flex: 1 1 0;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--app-palette-error-main);
 }

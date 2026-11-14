@@ -136,11 +136,21 @@ test("chooses Saturday at 7am and a working directory with shared dialog typogra
   await page.getByRole("option", { name: "Saturday", exact: true }).click();
   await dialog.getByLabel("Time", { exact: true }).fill("07:00");
   await expect(dialog.getByText(/Every Saturday at /)).toBeVisible();
-  await dialog
-    .getByRole("button", { name: "Browse working directory" })
-    .click();
-  await page.getByRole("button", { name: "Expand /", exact: true }).click();
-  await page.getByText("backups", { exact: true }).click();
+  // The picker is driven from the keyboard: focus moves into the tree, the
+  // arrows walk it, Enter chooses, and focus returns to the button.
+  const browse = dialog.getByRole("button", {
+    name: "Browse working directory",
+  });
+  await browse.click();
+  await expect(
+    page.getByRole("treeitem", { name: "/", exact: true }),
+  ).toBeFocused();
+  const backups = page.getByRole("treeitem", { name: "backups" });
+  await expect(backups).toBeVisible();
+  await page.keyboard.press("ArrowDown");
+  await expect(backups).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(browse).toBeFocused();
   await expect(
     dialog.getByLabel("Working directory", { exact: true }),
   ).toHaveValue("/backups/");

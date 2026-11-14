@@ -8,11 +8,13 @@ test.describe("file-browser read paths", () => {
     ).toBeVisible();
   });
 
-  test("expands from the names-only cache", async ({ page }) => {
+  test("opens the root from the names-only cache", async ({ page }) => {
     const listCache = page.getByTestId("list-directory-cache");
     const beforeExpansion = await listCache.textContent();
 
-    await page.getByRole("button", { name: "Expand /" }).click();
+    await expect(
+      page.getByRole("button", { name: "Collapse /" }),
+    ).toBeVisible();
     await expect(page.getByText("folder", { exact: true })).toBeVisible();
     await expect(page.getByText("note.txt", { exact: true })).toBeVisible();
     await expect(page.getByTestId("directory-children-cache")).toContainText(

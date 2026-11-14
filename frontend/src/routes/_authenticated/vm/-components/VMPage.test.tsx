@@ -1441,8 +1441,9 @@ describe("Virtual Machines page", () => {
     await user.click(
       within(dialog).getByRole("button", { name: /browse iso files/i }),
     );
-    await user.click(await screen.findByText(`${mocks.managedISOPath}/`));
+    // The tree opens on the ISO folder; browsing it puts it in the field.
     await screen.findByText("debian.iso");
+    await user.click(screen.getByText(`${mocks.managedISOPath}/`));
 
     const isoInput = within(dialog).getByLabelText(/iso path/i);
     expect(isoInput).toHaveValue(`${mocks.managedISOPath}/`);

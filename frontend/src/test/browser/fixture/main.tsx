@@ -48,6 +48,9 @@ const VolumesPage = lazy(() => import("./routes/VolumesPage"));
 const FileBrowserReadPathsPage = lazy(
   () => import("./routes/FileBrowserReadPathsPage"),
 );
+const PathPickerLargeFolderPage = lazy(
+  () => import("./routes/PathPickerLargeFolderPage"),
+);
 const FileBrowserDeleteFlowsPage = lazy(
   () => import("./routes/FileBrowserDeleteFlowsPage"),
 );
@@ -182,6 +185,11 @@ const assistantRoute = createRoute({
   component: AssistantFixturePage,
   getParentRoute: () => rootRoute,
   path: "assistant",
+});
+const pathPickerLargeFolderRoute = createRoute({
+  component: PathPickerLargeFolderPage,
+  getParentRoute: () => rootRoute,
+  path: "pathpicker/large-folder",
 });
 const fileBrowserReadPathsRoute = createRoute({
   component: FileBrowserReadPathsPage,
@@ -370,6 +378,7 @@ const routeTree = rootRoute.addChildren([
   assistantRoute,
   containerActionsRoute,
   fileBrowserReadPathsRoute,
+  pathPickerLargeFolderRoute,
   fileEditorHistoryRoute,
   fileBrowserDeleteFlowsRoute,
   fileBrowserTrashRoute,

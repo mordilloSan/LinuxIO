@@ -4,6 +4,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent,
   type ReactNode,
 } from "react";
 
@@ -60,37 +61,82 @@ const PathPickerField = ({
 }: PathPickerFieldProps) => {
   const generatedId = useId();
   const fieldId = id ?? generatedId;
+  const treeId = `${fieldId}-tree`;
   const anchorRef = useRef<HTMLDivElement>(null);
+  const paperRef = useRef<HTMLDivElement>(null);
+  // The control that opened the picker; focus returns to it on close.
+  const openerRef = useRef<HTMLElement | null>(null);
   const [anchorEl, setAnchorEl] = useState<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
 
-  const handleOpen = () => {
+  const openPicker = () => {
     if (disabled) return;
-    setAnchorEl(anchorRef.current);
+    const anchor = anchorRef.current;
+    const focused = document.activeElement;
+    openerRef.current =
+      focused instanceof HTMLElement && anchor?.contains(focused)
+        ? focused
+        : (anchor?.querySelector("input") ?? null);
+    setAnchorEl(anchor);
     setOpen(true);
   };
 
-  const handleClose = () => {
+  const closePicker = () => {
+    // Focus inside the tree would be lost when it unmounts. A click elsewhere
+    // still moves focus to what was clicked afterwards.
+    if (paperRef.current?.contains(document.activeElement)) {
+      openerRef.current?.focus();
+    }
     setOpen(false);
     onPickerClose?.();
   };
 
+  const togglePicker = () => {
+    if (open) {
+      closePicker();
+    } else {
+      openPicker();
+    }
+  };
+
   const handleTreeSelect = (path: string) => {
     onChange(path);
-    handleClose();
+    closePicker();
+  };
+
+  // The read-only field behaves like a select: these keys open it.
+  const handleFieldKeyDown = (event: KeyboardEvent) => {
+    if (event.key !== "Enter" && event.key !== " " && event.key !== "ArrowDown")
+      return;
+    event.preventDefault();
+    if (!open) openPicker();
+  };
+
+  // The popover sits at the end of the page, so Tab from the tree would leave
+  // the form. It closes the picker and puts focus back on the field instead.
+  const handlePopoverKeyDown = (event: KeyboardEvent) => {
+    if (event.key !== "Tab") return;
+    event.preventDefault();
+    closePicker();
   };
 
   return (
     <>
       <div className={className} ref={anchorRef} style={style}>
         <AppTextField
+          aria-controls={!editable && open ? treeId : undefined}
+          aria-expanded={editable ? undefined : open}
+          aria-haspopup={editable ? undefined : "tree"}
           disabled={disabled}
           endAdornment={
             editable ? (
               <AppIconButton
+                aria-controls={open ? treeId : undefined}
+                aria-expanded={open}
+                aria-haspopup="tree"
                 aria-label={browseLabel}
                 disabled={disabled}
-                onClick={handleOpen}
+                onClick={togglePicker}
                 size="small"
               >
                 <Icon icon="mdi:folder-search-outline" width={18} />
@@ -112,12 +158,14 @@ const PathPickerField = ({
           onChange={
             editable ? (event) => onChange(event.target.value) : undefined
           }
-          onClick={editable ? undefined : handleOpen}
+          onClick={editable ? undefined : togglePicker}
+          onKeyDown={editable ? undefined : handleFieldKeyDown}
           placeholder={
             placeholder ?? (editable ? undefined : "Click to select a folder")
           }
           readOnly={!editable}
           required={required}
+          role={editable ? undefined : "combobox"}
           shrinkLabel={!editable}
           size="small"
           style={editable ? undefined : { cursor: "pointer" }}
@@ -128,19 +176,27 @@ const PathPickerField = ({
         anchorEl={anchorEl}
         anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
         matchAnchorWidth
-        onClose={handleClose}
+        onClose={closePicker}
         open={open}
+        paperRef={paperRef}
         transformOrigin={{ vertical: "top", horizontal: "left" }}
       >
-        <DirectoryTree
-          fileFilter={fileFilter ? (node) => fileFilter(node.path) : undefined}
-          includeFiles={includeFiles}
-          onBrowsePathChange={onBrowsePathChange}
-          onSelect={handleTreeSelect}
-          rootPath={browsePath || "/"}
-          selectableTypes={selectableTypes}
-          selectedPath={value || browsePath || ""}
-        />
+        <div onKeyDown={handlePopoverKeyDown}>
+          <DirectoryTree
+            aria-label={browseLabel}
+            autoFocus
+            fileFilter={
+              fileFilter ? (node) => fileFilter(node.path) : undefined
+            }
+            id={treeId}
+            includeFiles={includeFiles}
+            onBrowsePathChange={onBrowsePathChange}
+            onSelect={handleTreeSelect}
+            rootPath={browsePath || "/"}
+            selectableTypes={selectableTypes}
+            selectedPath={value || browsePath || ""}
+          />
+        </div>
       </AppPopover>
     </>
   );
