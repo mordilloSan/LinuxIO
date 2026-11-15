@@ -215,6 +215,11 @@ if grep -Eq 'linuxio-webserver[ ,]+linuxio-bridge' "${REPO_ROOT}"/.github/workfl
 	fail "workflows must use make print-binaries instead of retyping the binary list"
 fi
 printf '   \033[1;32m✓\033[0m %s\n' "binary and unit lists match Makefile and packaging/systemd"
+# linuxio.target restarts must stop the web socket before starting the auth
+# socket: the auth socket's sd-chown helper otherwise holds the old :8090 fd.
+grep -Eq '^After=.*\blinuxio-auth\.socket\b' "${REPO_ROOT}/packaging/systemd/linuxio-webserver.socket" ||
+	fail "linuxio-webserver.socket must be ordered After=linuxio-auth.socket"
+printf '   \033[1;32m✓\033[0m %s\n' "web socket ordered after the auth socket"
 
 admin_config=$(bash -c "source '$installer'; admin_owned_config_files")
 for rel in disallowed-users indexer/config.yaml monitoring/config.yaml; do
