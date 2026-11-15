@@ -14,10 +14,11 @@ import (
 // fakeDevice is one member of a fakeKernel filesystem.
 type fakeDevice struct {
 	path        string
+	uuid        string // the device's own UUID; zero when empty
 	total, used uint64
 	physical    uint64
 	stats       [5]uint64
-	running     *scrubProgress // SCRUB_PROGRESS while a scrub runs
+	running     *scrubProgress // SCRUB_PROGRESS while a scrub runs; set with setRunning while one does
 	scrubResult scrubProgress  // what a SCRUB call returns
 }
 
@@ -37,7 +38,8 @@ type fakeKernel struct {
 
 	balance         func(*balanceArgs) error
 	balanceProgress func() (balanceArgs, error)
-	scrub           func(id uint64) (scrubProgress, error)
+	scrub           func(id, start uint64) (scrubProgress, error)
+	scrubCancel     func() error // nil: every SCRUB_CANCEL finds a scrub
 	replaceStart    func(*devReplaceArgs) error
 	replaceStatus   func() (state, perMill uint64)
 	replaceStarted  uint64                 // STATUS time_started, seconds since the epoch
@@ -62,6 +64,13 @@ func (k *fakeKernel) Calls() []string {
 }
 
 func (k *fakeKernel) cancel() { k.cancelOnce.Do(func() { close(k.cancelled) }) }
+
+// setRunning sets what SCRUB_PROGRESS reports for device id; nil is idle.
+func (k *fakeKernel) setRunning(id uint64, p *scrubProgress) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.devices[id].running = p
+}
 
 func (k *fakeKernel) ioctl(path string, req uintptr, arg unsafe.Pointer) error {
 	if err, ok := k.fail[req]; ok {
@@ -89,6 +98,9 @@ func (k *fakeKernel) ioctl(path string, req uintptr, arg unsafe.Pointer) error {
 		}
 		a.Path = [1024]byte{}
 		copy(a.Path[:], d.path)
+		if d.uuid != "" {
+			a.UUID = uuidBytes(d.uuid)
+		}
 		k.mu.Lock() // a remove hook moves data off a device while it is polled
 		a.TotalBytes, a.BytesUsed = d.total, d.used
 		k.mu.Unlock()
@@ -105,6 +117,8 @@ func (k *fakeKernel) ioctl(path string, req uintptr, arg unsafe.Pointer) error {
 		copy(a.Spaces[:], k.spaces)
 	case iocScrubProgress:
 		a := (*scrubArgs)(arg)
+		k.mu.Lock()
+		defer k.mu.Unlock()
 		d, ok := k.devices[a.DevID]
 		if !ok || d.running == nil {
 			return unix.ENOTCONN
@@ -132,26 +146,14 @@ func (k *fakeKernel) mutate(req uintptr, arg unsafe.Pointer) error {
 		k.label = cstring((*[labelSize]byte)(arg)[:])
 		k.log("SET_FSLABEL %s", k.label)
 	case iocScrub:
-		a := (*scrubArgs)(arg)
-		if a.End != ^uint64(0) {
-			// The real kernel scrubs nothing outside the range and still succeeds.
-			return fmt.Errorf("scrub range %d-%d does not reach the end of device %d", a.Start, a.End, a.DevID)
-		}
-		if a.Start != 0 {
-			k.log("SCRUB %d from %d", a.DevID, a.Start)
-		} else {
-			k.log("SCRUB %d", a.DevID)
-		}
-		if k.scrub != nil {
-			p, err := k.scrub(a.DevID)
-			a.Progress = p
-			return err
-		}
-		if d, ok := k.devices[a.DevID]; ok {
-			a.Progress = d.scrubResult
-		}
+		return k.scrubCall((*scrubArgs)(arg))
 	case iocScrubCancel:
 		k.log("SCRUB_CANCEL")
+		if k.scrubCancel != nil {
+			if err := k.scrubCancel(); err != nil {
+				return err
+			}
+		}
 		k.cancel()
 	case iocAddDev:
 		k.log("ADD_DEV %s", cstring((*volArgs)(arg).Name[:]))
@@ -185,6 +187,28 @@ func (k *fakeKernel) mutate(req uintptr, arg unsafe.Pointer) error {
 		return k.replace((*devReplaceArgs)(arg))
 	default:
 		return fmt.Errorf("unexpected ioctl %#x", req)
+	}
+	return nil
+}
+
+// scrubCall is one BTRFS_IOC_SCRUB call.
+func (k *fakeKernel) scrubCall(a *scrubArgs) error {
+	if a.End != ^uint64(0) {
+		// The real kernel scrubs nothing outside the range and still succeeds.
+		return fmt.Errorf("scrub range %d-%d does not reach the end of device %d", a.Start, a.End, a.DevID)
+	}
+	if a.Start != 0 {
+		k.log("SCRUB %d from %d", a.DevID, a.Start)
+	} else {
+		k.log("SCRUB %d", a.DevID)
+	}
+	if k.scrub != nil {
+		p, err := k.scrub(a.DevID, a.Start)
+		a.Progress = p
+		return err
+	}
+	if d, ok := k.devices[a.DevID]; ok {
+		a.Progress = d.scrubResult
 	}
 	return nil
 }

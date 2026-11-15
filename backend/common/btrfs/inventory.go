@@ -52,6 +52,9 @@ type BtrfsDevice struct {
 	// filesystem has not grown into it, as after replacing with a bigger disk.
 	PhysicalBytes uint64 `json:"physicalBytes"`
 	Growable      bool   `json:"growable"`
+	// UUID is the device's own UUID, which a scrub's saved progress is
+	// matched against.
+	UUID string `json:"-"`
 }
 
 type BtrfsDeviceErrors struct {
@@ -76,10 +79,15 @@ type BtrfsScrubStatus struct {
 
 // add accumulates one device's kernel counters.
 func (s *BtrfsScrubStatus) add(p scrubProgress) {
-	s.BytesScrubbed += p.DataBytesScrubbed + p.TreeBytesScrubbed
-	s.ErrorCount += p.ReadErrors + p.CsumErrors + p.VerifyErrors + p.SuperErrors
-	s.UncorrectableErrors += p.UncorrectableErrors
-	s.CorrectedErrors += p.CorrectedErrors
+	s.addCounters(countersOf(p))
+}
+
+// addCounters accumulates counters a scrub record kept.
+func (s *BtrfsScrubStatus) addCounters(c scrubCounters) {
+	s.BytesScrubbed += c.BytesScrubbed
+	s.ErrorCount += c.ErrorCount
+	s.UncorrectableErrors += c.UncorrectableErrors
+	s.CorrectedErrors += c.CorrectedErrors
 }
 
 // growSlack is how much larger than the filesystem's view a block device
@@ -196,7 +204,7 @@ func listDevices(mnt string, maxID uint64, warn func(string, error)) ([]BtrfsDev
 			known = false
 			continue
 		}
-		d := BtrfsDevice{ID: int(id), Path: cstring(info.Path[:]), SizeBytes: info.TotalBytes, UsedBytes: info.BytesUsed}
+		d := BtrfsDevice{ID: int(id), Path: cstring(info.Path[:]), SizeBytes: info.TotalBytes, UsedBytes: info.BytesUsed, UUID: formatUUID(info.UUID[:])}
 		d.Missing = d.Path == ""
 		if !d.Missing {
 			if size, err := blockDeviceSize(d.Path); err != nil {
@@ -246,41 +254,70 @@ func lowMetadataSpace(allocation []BtrfsAllocation, unallocated uint64) bool {
 }
 
 // scrubStatus reports a running scrub from the kernel's per-device
-// progress, else the last scrub on record.
+// progress, else the last scrub on record. A scrub on record still running
+// whose process lives is running too, between kernel calls or waiting for a
+// thaw, though the kernel reports nothing.
 func scrubStatus(mnt, uuid string, devices []BtrfsDevice, usedBytes uint64, warn func(string, error)) BtrfsScrubStatus {
-	live := BtrfsScrubStatus{Status: "running"}
-	running := false
+	progress := scrubProgressOf(mnt, devices, warn)
+	rec, have := loadScrubRecord(uuid)
+	ours := have && rec.live()
+	if len(progress) > 0 || ours {
+		return liveScrub(rec, ours, progress, usedBytes)
+	}
+	if last, ok := lastScrub(uuid, rec, have); ok {
+		// No device is scrubbing, so a record still saying "running" was cut
+		// short by a crash or power loss.
+		if last.Status == "running" {
+			last.Status = "aborted"
+		}
+		return last
+	}
+	return BtrfsScrubStatus{Status: "none"}
+}
+
+// scrubProgressOf reads the kernel's progress of each present device being
+// scrubbed.
+func scrubProgressOf(mnt string, devices []BtrfsDevice, warn func(string, error)) map[int]scrubProgress {
+	progress := map[int]scrubProgress{}
 	for _, d := range devices {
 		if d.Missing {
 			continue
 		}
-		args := scrubArgs{DevID: uint64(d.ID)}
-		err := fsIoctl(mnt, iocScrubProgress, unsafe.Pointer(&args))
+		p, running, err := deviceScrubProgress(mnt, d.ID)
 		switch {
-		case err == nil:
-			running = true
-			live.add(args.Progress)
-		case errors.Is(err, unix.ENOTCONN): // no scrub on this device
-		default:
+		case err != nil:
 			warn("scrub progress", err)
+		case running:
+			progress[d.ID] = p
 		}
 	}
-	if running {
-		if usedBytes > 0 {
-			live.Percent = min(100, float64(live.BytesScrubbed)*100/float64(usedBytes))
-		}
-		if rec, ok := loadScrubRecord(uuid); ok && rec.Status == "running" {
-			live.StartedAt = rec.StartedAt
-		}
-		return live
+	return progress
+}
+
+// liveScrub is a running scrub from the kernel's progress. When it is ours,
+// the running scrub on record of a live process, it adds what that counted
+// before: earlier kernel calls, the part before a resume, and the saved
+// counters of a device whose call the kernel does not report. A record
+// still running without a live process, as an older build's job host
+// writes, gives only the start, which the banner keys the scrub on.
+func liveScrub(rec scrubRecord, ours bool, progress map[int]scrubProgress, usedBytes uint64) BtrfsScrubStatus {
+	live := BtrfsScrubStatus{Status: "running"}
+	if rec.Status == "running" {
+		live.StartedAt = rec.StartedAt
 	}
-	if rec, ok := lastScrub(uuid); ok {
-		// No device is scrubbing, so a record still saying "running" was cut
-		// short by a crash or power loss.
-		if rec.Status == "running" {
-			rec.Status = "aborted"
+	if ours {
+		live = rec.BtrfsScrubStatus
+		for id, d := range rec.Devices {
+			if _, reported := progress[id]; !reported {
+				live.addCounters(d.scrubCounters)
+			}
 		}
-		return rec
 	}
-	return BtrfsScrubStatus{Status: "none"}
+	for _, p := range progress {
+		live.add(p)
+	}
+	if usedBytes > 0 {
+		live.Percent = min(100, float64(live.BytesScrubbed)*100/float64(usedBytes))
+	}
+	return live
 }

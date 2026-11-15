@@ -44,6 +44,8 @@ func TestIoctlNumbersMatchKernel(t *testing.T) {
 		"GET_DEV_STATS":    {iocGetDevStats, 0xC4089434},
 		"DEV_REPLACE":      {iocDevReplace, 0xCA289435},
 		"RM_DEV_V2":        {iocRmDevV2, 0x5000943A},
+		"FIFREEZE":         {iocFreeze, 0xC0045877},
+		"FITHAW":           {iocThaw, 0xC0045878},
 	} {
 		if c.got != c.want {
 			t.Errorf("%s = %#x, want %#x", name, c.got, c.want)

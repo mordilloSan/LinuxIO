@@ -509,7 +509,7 @@ primary superblock at 64 KiB.
 | Rename | Sets the filesystem label from the pool details. |
 | Balance / convert | Profiles `single`, `dup`, `raid0`, `raid1`, `raid1c3`, `raid1c4`, `raid10`. `raid5` and `raid6` are refused. Converting metadata converts system chunks with it. Metadata weaker than the resulting data profile is converted too, to the same default as Create pool, unless nothing stronger fits on the present devices. The outcome is verified against the resulting allocation. |
 | Reclaim space | A balance of data chunks at most 50% full, which turns slack into unallocated space. |
-| Scrub | Start and cancel. The last result is recorded in `/var/lib/linuxio/btrfs-scrub.json`; scrubs run by btrfsmaintenance are read from `/var/lib/btrfs/scrub.status.<uuid>`. |
+| Scrub | Start and cancel. The last result is recorded in `/var/lib/linuxio/btrfs-scrub.json`, with a running scrub's progress (see [Scrub progress](#scrub-progress)); scrubs run by btrfsmaintenance are read from `/var/lib/btrfs/scrub.status.<uuid>`. A scrub is refused while the kernel already scrubs the pool, for another scrub or a device replace, while LinuxIO's own scrub of it still runs, and when a device could not be read. |
 
 Remove, replace, balance and scrub are blocking kernel calls run inside the
 job, so progress comes from the kernel. A removal has no kernel progress: its
@@ -517,8 +517,9 @@ percentage is the share of the device's allocation already moved off it, and
 a resumed removal starts again at 0 for what is left. A balance or scrub
 started elsewhere is still shown as running. The ioctls run on a locked thread with async signals
 blocked: since kernel 6.19 any signal aborts a scrub or a replace (and a replace
-aborted that way loses its target). A freeze, such as a suspend to RAM, still
-aborts them. A refusal the kernel answers with a positive code, such as 8
+aborted that way loses its target). A freeze still interrupts them: a scrub
+continues by itself (see [Scrub progress](#scrub-progress)), a replace fails.
+A refusal the kernel answers with a positive code, such as 8
 ("exclusive operation in progress"), fails the job.
 
 ### Cancel
@@ -563,7 +564,7 @@ it again. There is no manual resume.
 | Job | On stop | After the boot |
 |---|---|---|
 | Balance | Paused; the kernel keeps the item and continues it when the pool is mounted read-write | Follows the kernel's balance; resumes it if still paused; counts it finished if it is gone after a pause; runs it again (`soft` when converting) if it is gone and was never paused |
-| Scrub | Stopped, each device's progress stored | Starts again from each device's stored position, or from the start when none was read; the counters add up. Errors in the extent where it stopped count twice |
+| Scrub | Stopped, each device's position stored in the checkpoint; the scrub record keeps its progress too | Continues from the progress the job saved in the scrub record, after a power loss too (see [Scrub progress](#scrub-progress)); without the job's own record from each device's stored position, or from the start when none was read. The counters add up. Errors in the dev extent where each device stopped count twice |
 | Replace | Cancelled with the job's context; the source is kept | Follows the replace the kernel continued at mount, and refuses one the kernel says copies from another device. A finished replace counts only if it began after the job did; otherwise start it again. A suspended one needs the pool remounted |
 | Remove | Cancelled as above; moved data stays moved | Issues the removal again, with its percentage counting what is left; refuses a degraded pool |
 
@@ -577,6 +578,129 @@ a crash loses it.
 A replace the power loss cut is continued by the kernel when the pool is
 mounted, and the job follows it by device id, never by device path. See
 [Missing disks](#missing-disks) for why such a pool is mounted at boot.
+
+### Scrub progress
+
+The kernel keeps no scrub state: each `BTRFS_IOC_SCRUB` call counts only
+itself, and returns, whatever its outcome, how far it got on its device
+(`last_physical`). btrfs-progs saves that per device every few seconds in
+`/var/lib/btrfs/scrub.status.<uuid>`, and `btrfs scrub resume` restarts each
+device that did not finish from it, adding the saved counters. LinuxIO keeps
+the same in its own record, `/var/lib/linuxio/btrfs-scrub.json`, and does not
+write btrfs-progs' file, so `btrfs scrub status` does not show LinuxIO's
+scrubs: the pool details do.
+
+- **What is saved.** Per pool: the scrub's start, outcome and counters, the
+  job ID of the scrub that writes it (empty for a pool resync's scrub), and
+  the process that writes it (pid, start time and boot).
+  Per device: its UUID, the highest `last_physical` the kernel reported in
+  this scrub, and whether it finished or aborted. The pool's counters hold
+  every kernel call that returned; the counters of a call still running stay
+  with its device until it returns, so the total is the pool's counters plus
+  the devices'. A scrub that ended keeps each device's UUID, offset and
+  whether it finished or aborted, but no counters per device. An older
+  LinuxIO reads only the pool's counters, which are the whole once a scrub
+  ended; when it writes the file, it drops every pool's saved progress, and a
+  resume then falls back to the Suspend checkpoint or to the start.
+- **When.** At the start, with what a resumed scrub carries; whenever a
+  device's kernel call returns; every minute while a device's position moved,
+  read with `BTRFS_IOC_SCRUB_PROGRESS`; and at the end, with what each call
+  returned. A power loss costs at most a minute of progress. Every write
+  reads and rewrites the whole file under `btrfs-scrub.json.lock`, by the job
+  host and `linuxio-btrfs-timer resync` alike, so two pools scrubbing at once
+  keep both entries; the file is replaced atomically and fsynced.
+- **Refusals.** A scrub, fresh or resumed, is refused before it writes
+  anything, so it cannot overwrite a running scrub's record:
+  - when the inventory could not read every device: it leaves such a device
+    out, so the scrub would skip it, a resume would drop its saved state, and
+    the outcome would read finished;
+  - as a conflict, while the kernel scrubs any device of the pool, a missing
+    one included, as btrfs-progs checks, or runs a device replace, during
+    which it refuses every scrub;
+  - as a conflict, while the scrub on record is still `running` and the
+    process that wrote it lives: between kernel calls, or while a call waits
+    for a thaw, the kernel reports no scrub. A record whose final save failed
+    therefore keeps refusing scrubs of that pool until that process exits,
+    for a job until the job host restarts.
+
+  A scrub that starts between those checks and its first call is refused by
+  the kernel on every device (`EINPROGRESS`): it fails as a conflict too and
+  puts back the record it replaced, unless the other scrub saved its own
+  meanwhile. One the kernel refused on some devices and ran on others also
+  fails as a conflict, and keeps its record, aborted, since it checked part of
+  the pool.
+- **Resume.** After a reboot the scrub job resumes from the record when the
+  record's job ID is its own and the scrub is still `running` (a power loss),
+  `canceled` (Suspend at a shutdown) or `aborted` (a device aborted, then
+  Suspend canceled the rest). Each device that had not finished
+  starts one byte below its saved offset; one that finished or aborted is
+  skipped, and an abort keeps the outcome aborted; a device the record does
+  not name, or names with another UUID because another disk took its device
+  ID, starts at 0; a missing device is skipped. The resumed scrub keeps the
+  first start and adds the counters so far to its own, so an uncorrectable
+  error found before the cut stays in the outcome and its `btrfs/scrub` alert
+  stays up. Its record is written before its first kernel call, so a second
+  cut early in the resume loses nothing. Without such a record (another job's,
+  one an older LinuxIO wrote, or none) the resume takes the Suspend
+  checkpoint's positions as before, carrying on the canceled or aborted scrub
+  on record only when an older LinuxIO wrote it (no job ID and no devices),
+  and without positions scrubs everything again. A record that
+  lags the checkpoint, because its last save failed, is still preferred: its
+  offsets and counters are from the same moment, so the part after them is
+  read and counted again rather than skipped uncounted.
+- **One byte back.** The kernel skips a dev extent only when it ends at or
+  before the start and scrubs any other one whole, so a start inside an
+  extent re-reads that extent. One byte below the saved offset also re-reads
+  the extent the offset ends: the kernel can report the end of an extent while
+  up to 8 MiB of its stripes are still queued, and on RAID5/6 it moves past a
+  parity stripe before it sees that the stripe's check was interrupted. The
+  cost is one dev extent (1 GiB at most) read again per device, and its
+  errors counted twice.
+- **Live percentage.** While a scrub runs, the pool details and the job's
+  progress add the record's counters to the kernel's live ones, so a resumed
+  scrub, or one whose call was issued again, continues from where it was
+  instead of near 0%. The pool details do so only while the process that
+  wrote a running record lives, so a record a crash left is never added to a
+  scrub btrfs-progs runs; while it lives the scrub reads as running even when
+  the kernel reports nothing, between calls or waiting for a thaw. A running
+  record without a live process, such as an older LinuxIO's job host still
+  scrubbing after an upgrade, gives only the scrub's start.
+- **A freeze.** Since kernel 6.19 a suspend to RAM or hibernation, a
+  filesystem freeze (`fsfreeze`) or a frozen cgroup ends a scrub call with
+  `EINTR` (`should_cancel_scrub`). While the job is not canceled the call is
+  issued again, from one byte below the `last_physical` it returned and never
+  below where it started, its counters added to the device's; the new call
+  waits in the kernel for the thaw (`mnt_want_write`). The kernel re-reads
+  the dev extent holding the start, so after three interrupted calls in a row
+  that did not get past their start the device ends aborted: without a limit,
+  freezes that keep coming, or a kernel that keeps interrupting, would have
+  the scrub issue calls forever. An `EINTR` once the job is canceled, or once
+  any of its calls was canceled (Suspend, the scrub cancel route), counts as
+  canceled, even in a scrub that already reads aborted. While the new call
+  waits for a thaw, `SCRUB_CANCEL` finds no scrub to cancel, so a canceled
+  scrub sends it again every two seconds until its calls return, and the
+  scrub that starts at the thaw is canceled at once. The kernel cancels per
+  filesystem, so this also cancels a scrub another tool starts on the pool in
+  that time. A filesystem left frozen through a shutdown holds the job host
+  until systemd's stop timeout, because the call waiting for the thaw cannot
+  be interrupted, not even by SIGKILL. When the scrub cancel route or
+  Suspend, which cancel the scrub from outside it, finds
+  nothing to cancel because every call waits for a thaw, it marks the
+  record of the scrub running in a live process instead (`cancelRequested`);
+  the scrub reads the mark every tick and at every save, so the cancel is
+  taken, reaches every call once it starts, and stops an interrupted call
+  from being issued again. When the kernel did cancel calls, the scrub
+  cancels the rest by itself and no record is marked, so a scrub starting
+  next cannot take the request. A scrub starting or resuming never takes over
+  a mark, its own record being told apart by boot, process and start, so a
+  cancel that had not taken effect before a power loss is forgotten and the
+  job resumes. A cancel accepted just as the last call returned leaves the
+  scrub finished, and a resync's run marked canceled. A record whose final
+  save failed accepts cancels that change nothing until the job host
+  restarts. A device replace is not issued again: its target is lost, and
+  the job fails.
+  Before 6.19 the kernel does not stop either for a freeze: `fsfreeze` waits
+  until it ends, and a suspend can fail to freeze the job host.
 
 ## Replication
 
@@ -689,7 +813,7 @@ btrfsmaintenance timers.
 | `/etc/systemd/system/linuxio-btrfs-health.timer` | root | Every ten minutes |
 | `/etc/systemd/system/linuxio-btrfs-degraded.service` | root | Runs `linuxio-btrfs-timer degraded run` at boot |
 | `/etc/systemd/system/linuxio-btrfs-resync@.service` | root | Runs `linuxio-btrfs-timer resync <uuid>` |
-| `/var/lib/linuxio/btrfs-scrub.json` | root | Last scrub LinuxIO ran per filesystem |
+| `/var/lib/linuxio/btrfs-scrub.json` | root | Last scrub LinuxIO ran per filesystem, and a running one's progress; written under `btrfs-scrub.json.lock` |
 | `/var/lib/linuxio/btrfs-pools.json` | root | Per pool: newest generation seen, and whether and on which disks it ran degraded |
 | `/etc/systemd/system/<upgrade-service>.d/linuxio-alert.conf` | root | Auto-update drop-in, including the pre-update snapshot line |
 | `/etc/fstab` | root | Pool entries LinuxIO creates; compression options of existing entries |

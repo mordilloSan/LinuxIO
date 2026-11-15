@@ -143,16 +143,74 @@ func TestScrubStartsRoundTrip(t *testing.T) {
 }
 
 func TestScrubBtrfsChecksTheStatus(t *testing.T) {
-	old := btrfsScrubFrom
-	t.Cleanup(func() { btrfsScrubFrom = old })
 	for status, want := range map[string]error{"finished": nil, "canceled": context.Canceled, "aborted": errors.New("any")} {
-		btrfsScrubFrom = func(context.Context, string, map[int]uint64, func(btrfs.BtrfsScrubStatus)) (btrfs.BtrfsScrubStatus, error) {
+		scrub := func(string, func(btrfs.BtrfsScrubStatus)) (btrfs.BtrfsScrubStatus, error) {
 			return btrfs.BtrfsScrubStatus{Status: status}, nil
 		}
-		_, err := scrubBtrfs(context.Background(), nil, testBtrfsUUID, nil)
+		_, err := scrubBtrfs(nil, testBtrfsUUID, scrub)
 		if (err == nil) != (want == nil) || errors.Is(want, context.Canceled) != errors.Is(err, context.Canceled) {
 			t.Fatalf("status %s: err = %v, want %v", status, err, want)
 		}
+	}
+	// A scrub the kernel already runs is a conflict, not a failure.
+	running := func(string, func(btrfs.BtrfsScrubStatus)) (btrfs.BtrfsScrubStatus, error) {
+		return btrfs.BtrfsScrubStatus{}, fmt.Errorf("scrub device 1: %w", btrfs.ErrScrubRunning)
+	}
+	if _, err := scrubBtrfs(nil, testBtrfsUUID, running); !errors.Is(err, bridgeipc.ErrConflict) || !errors.Is(err, btrfs.ErrScrubRunning) {
+		t.Fatalf("err = %v, want a conflict", err)
+	}
+}
+
+// The scrub job saves its progress under its job ID, and the resume after a
+// reboot asks for it under the same ID: from the record when that job saved
+// one, else from Suspend's checkpoint, which btrfs.ResumeScrub decides.
+func TestScrubJobRunsUnderItsJobID(t *testing.T) {
+	oldFrom, oldResume, oldFind := btrfsScrubFrom, btrfsResumeScrub, btrfsFindFilesystem
+	t.Cleanup(func() { btrfsScrubFrom, btrfsResumeScrub, btrfsFindFilesystem = oldFrom, oldResume, oldFind })
+	btrfsFindFilesystem = func(context.Context, string) (btrfs.BtrfsFilesystem, error) { return btrfs.BtrfsFilesystem{}, nil }
+	type call struct {
+		how, run string
+		starts   map[int]uint64
+	}
+	var calls []call
+	btrfsScrubFrom = func(_ context.Context, _, run string, _ func(btrfs.BtrfsScrubStatus)) (btrfs.BtrfsScrubStatus, error) {
+		calls = append(calls, call{"from", run, nil})
+		return btrfs.BtrfsScrubStatus{Status: "finished"}, nil
+	}
+	btrfsResumeScrub = func(_ context.Context, _, run string, starts map[int]uint64, _ func(btrfs.BtrfsScrubStatus)) (btrfs.BtrfsScrubStatus, error) {
+		calls = append(calls, call{"resume", run, starts})
+		return btrfs.BtrfsScrubStatus{Status: "finished"}, nil
+	}
+	req := apischema.UUIDRequest{UUID: testBtrfsUUID}
+	var ids []string
+	for _, run := range []func(ctx context.Context, task *bridgeipc.Task) error{
+		func(ctx context.Context, task *bridgeipc.Task) error {
+			_, err := runBtrfsScrubTask(ctx, task, req)
+			return err
+		},
+		// A power cut: no Suspend ran, so no checkpoint.
+		func(ctx context.Context, _ *bridgeipc.Task) error {
+			_, err := resumeBtrfsScrub(ctx, req, nil)
+			return err
+		},
+		// A shutdown: Suspend's checkpoint, which an older build may have
+		// left with a record of no job.
+		func(ctx context.Context, _ *bridgeipc.Task) error {
+			_, err := resumeBtrfsScrub(ctx, req, jsontext.Value(`{"remaining":{"2":7}}`))
+			return err
+		},
+	} {
+		inTask(t, false, func(ctx context.Context) {
+			task, _ := bridgeipc.TaskFromContext(ctx)
+			ids = append(ids, task.ID())
+			if err := run(ctx, task); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+	want := []call{{"from", ids[0], nil}, {"resume", ids[1], nil}, {"resume", ids[2], map[int]uint64{2: 7}}}
+	if !reflect.DeepEqual(calls, want) || ids[0] == "" {
+		t.Fatalf("calls = %+v, want %+v", calls, want)
 	}
 }
 
@@ -221,12 +279,12 @@ func TestBtrfsResumeHooks(t *testing.T) {
 		follow    replaceFollow
 	)
 	oldPause, oldResumeBalance, oldBalanceResult := btrfsPauseBalance, btrfsResumeBalance, btrfsBalanceResult
-	oldPositions, oldScrubCancel, oldScrubFrom := btrfsScrubPositions, btrfsScrubCancel, btrfsScrubFrom
+	oldPositions, oldScrubCancel, oldResumeScrub := btrfsScrubPositions, btrfsScrubCancel, btrfsResumeScrub
 	oldResumeReplace, oldCancelReplace := btrfsResumeReplace, btrfsCancelReplace
 	oldResumeRemove, oldFind := btrfsResumeRemove, btrfsFindFilesystem
 	t.Cleanup(func() {
 		btrfsPauseBalance, btrfsResumeBalance, btrfsBalanceResult = oldPause, oldResumeBalance, oldBalanceResult
-		btrfsScrubPositions, btrfsScrubCancel, btrfsScrubFrom = oldPositions, oldScrubCancel, oldScrubFrom
+		btrfsScrubPositions, btrfsScrubCancel, btrfsResumeScrub = oldPositions, oldScrubCancel, oldResumeScrub
 		btrfsResumeReplace, btrfsCancelReplace = oldResumeReplace, oldCancelReplace
 		btrfsResumeRemove, btrfsFindFilesystem = oldResumeRemove, oldFind
 	})
@@ -250,8 +308,8 @@ func TestBtrfsResumeHooks(t *testing.T) {
 		record("scrub-cancel")
 		return nil
 	}
-	btrfsScrubFrom = func(_ context.Context, _ string, starts map[int]uint64, _ func(btrfs.BtrfsScrubStatus)) (btrfs.BtrfsScrubStatus, error) {
-		record("scrub-from %v nil=%v", starts, starts == nil)
+	btrfsResumeScrub = func(_ context.Context, _, run string, starts map[int]uint64, _ func(btrfs.BtrfsScrubStatus)) (btrfs.BtrfsScrubStatus, error) {
+		record("resume-scrub %v nil=%v job=%v", starts, starts == nil, run != "")
 		return btrfs.BtrfsScrubStatus{Status: "finished"}, nil
 	}
 	btrfsResumeReplace = func(ctx context.Context, _ string, id int, _ time.Time, _ func(float64)) error {
@@ -302,12 +360,12 @@ func TestBtrfsResumeHooks(t *testing.T) {
 			name: "scrub with positions", positions: map[int]uint64{2: 7},
 			hooks:      hooksOf(uuid, suspendBtrfsScrub, resumeBtrfsScrub),
 			checkpoint: `{"remaining":{"2":7}}`,
-			calls:      []string{"scrub-positions", "scrub-cancel", "scrub-from map[2:7] nil=false", "find"},
+			calls:      []string{"scrub-positions", "scrub-cancel", "resume-scrub map[2:7] nil=false job=true", "find"},
 		},
 		{
 			name:  "scrub without positions rescans everything",
 			hooks: hooksOf(uuid, suspendBtrfsScrub, resumeBtrfsScrub),
-			calls: []string{"scrub-positions", "scrub-cancel", "scrub-from map[] nil=true", "find"},
+			calls: []string{"scrub-positions", "scrub-cancel", "resume-scrub map[] nil=true job=true", "find"},
 		},
 		{
 			name:  "replace followed to its end",
@@ -406,13 +464,13 @@ func TestBtrfsRemoveReportsProgress(t *testing.T) {
 func TestBtrfsResumeHookFailures(t *testing.T) {
 	cause := errors.New("device busy")
 	found := false
-	oldResumeRemove, oldScrubFrom, oldFind := btrfsResumeRemove, btrfsScrubFrom, btrfsFindFilesystem
+	oldResumeRemove, oldResumeScrub, oldFind := btrfsResumeRemove, btrfsResumeScrub, btrfsFindFilesystem
 	t.Cleanup(func() {
-		btrfsResumeRemove, btrfsScrubFrom, btrfsFindFilesystem = oldResumeRemove, oldScrubFrom, oldFind
+		btrfsResumeRemove, btrfsResumeScrub, btrfsFindFilesystem = oldResumeRemove, oldResumeScrub, oldFind
 	})
 	btrfsResumeRemove = func(context.Context, string, int, func(float64)) error { return cause }
 	// A device of the first part aborted, so the merged outcome is aborted.
-	btrfsScrubFrom = func(context.Context, string, map[int]uint64, func(btrfs.BtrfsScrubStatus)) (btrfs.BtrfsScrubStatus, error) {
+	btrfsResumeScrub = func(context.Context, string, string, map[int]uint64, func(btrfs.BtrfsScrubStatus)) (btrfs.BtrfsScrubStatus, error) {
 		return btrfs.BtrfsScrubStatus{Status: "aborted"}, nil
 	}
 	btrfsFindFilesystem = func(context.Context, string) (btrfs.BtrfsFilesystem, error) {

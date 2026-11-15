@@ -454,7 +454,7 @@ func TestResyncScrubsThenConvertsSoftly(t *testing.T) {
 		k.spaces = k.spaces[:len(k.spaces)-1]
 		return nil
 	}
-	k.scrub = func(uint64) (scrubProgress, error) { return scrubProgress{CorrectedErrors: 3}, nil }
+	k.scrub = func(_, _ uint64) (scrubProgress, error) { return scrubProgress{CorrectedErrors: 3}, nil }
 	stubKernel(t, k)
 	ctx := context.Background()
 	if err := updatePoolStates(ctx, func(s map[string]poolState) { s[dataUUID] = poolState{Generation: 9, Degraded: true} }); err != nil {
@@ -538,7 +538,7 @@ func TestFailedResyncIgnoresTheSetting(t *testing.T) {
 func failedResyncAlerts(t *testing.T, report string) []alerts.Alert {
 	t.Helper()
 	k := raid1Kernel()
-	k.scrub = func(uint64) (scrubProgress, error) { return scrubProgress{}, unix.ECANCELED }
+	k.scrub = func(_, _ uint64) (scrubProgress, error) { return scrubProgress{}, unix.ECANCELED }
 	stubKernel(t, k)
 	ctx := t.Context()
 	storeResyncReport(t, report)
@@ -598,7 +598,7 @@ func TestResyncRefusesWhileADiskIsMissing(t *testing.T) {
 
 func TestResyncDoesNotTrustACanceledScrub(t *testing.T) {
 	k := raid1Kernel()
-	k.scrub = func(uint64) (scrubProgress, error) { return scrubProgress{}, unix.ECANCELED }
+	k.scrub = func(_, _ uint64) (scrubProgress, error) { return scrubProgress{}, unix.ECANCELED }
 	stubKernel(t, k)
 	ctx := context.Background()
 	if err := updatePoolStates(ctx, func(s map[string]poolState) { s[dataUUID] = poolState{Generation: 9, Degraded: true} }); err != nil {

@@ -12,6 +12,7 @@ import {
   rig,
   SCRUB,
   SCRUB_LABEL,
+  scrubbedBytes,
   scrubRunning,
   signIn,
   signOut,
@@ -247,33 +248,33 @@ test("a balance canceled just before the host stops ends canceled and is not res
   }
 });
 
-test("a scrub cut by a power loss is scrubbed again in full at boot", async ({
-  page,
-}) => {
-  test.setTimeout(420_000);
-  const before = await jobIds();
-  const { uuid, job } = await startScrub(page, before, 4 * MiB);
-  await page.close();
-  // A job's first record write is not fsynced (docs/jobs.md, Store and
-  // records).
-  await vmSsh("sync");
-  expect(
-    await scrubRunning(),
-    "the scrub ended before the power cut: raise the data size",
-  ).toBe(true);
+/** LinuxIO's scrub record of a pool (docs/btrfs.md, Scrub progress). */
+interface ScrubRecord {
+  status: string;
+  startedAt: string;
+  bytesScrubbed: number;
+  run?: string;
+  devices?: Record<string, { offset: number; bytesScrubbed?: number }>;
+}
 
-  await rig(["power-cut"]);
-  const done = await waitForJob(SCRUB, before, "completed", {
-    timeout: 300_000,
-  });
-  expect(await loggedJobs("job marked interrupted")).toContainEqual({
-    id: job.id,
-    reason: "reboot",
-  });
-  expect((await loggedJobs("job resumed")).map((j) => j.id)).toContain(job.id);
-  // No Suspend ran, so no checkpoint: every device is scrubbed from 0.
-  expect(done.checkpoint).toBeUndefined();
-  const used = (
+const scrubRecord = async (uuid: string) =>
+  JSON.parse(
+    await vmSsh(
+      `sudo jq -c --arg u ${uuid} '.[$u] // null' /var/lib/linuxio/btrfs-scrub.json 2>/dev/null || echo null`,
+    ),
+  ) as ScrubRecord | null;
+
+/** What a scrub record counted: its status and each device's running call. */
+const recordedBytes = (rec: ScrubRecord) =>
+  rec.bytesScrubbed +
+  Object.values(rec.devices ?? {}).reduce(
+    (sum, d) => sum + (d.bytesScrubbed ?? 0),
+    0,
+  );
+
+/** The raw bytes in use, every copy of data and metadata: a full scrub's. */
+const usedBytes = async (uuid: string) =>
+  (
     await vmSsh(
       `cat /sys/fs/btrfs/${uuid}/allocation/data/disk_used /sys/fs/btrfs/${uuid}/allocation/metadata/disk_used`,
     )
@@ -281,9 +282,176 @@ test("a scrub cut by a power loss is scrubbed again in full at boot", async ({
     .split("\n")
     .filter(Boolean)
     .reduce((sum, n) => sum + Number(n), 0);
-  const { scrub } = done.result as { scrub: { bytesScrubbed: number } };
-  console.log(`full rescan: ${scrub.bytesScrubbed} of ${used} bytes in use`);
-  expect(scrub.bytesScrubbed).toBeGreaterThanOrEqual(0.99 * used);
+
+test("a scrub cut by a power loss continues from its saved progress at boot", async ({
+  page,
+}) => {
+  test.setTimeout(780_000);
+  const before = await jobIds();
+  try {
+    // 2 GiB more in 256 MiB chunks: what the job saved before the cut then
+    // outweighs the dev extent per disk the resume reads again (1 GiB at most).
+    const { uuid, job } = await startScrub(page, before, 4 * MiB, (pool) =>
+      vmSsh(
+        `echo ${256 * MiB} | sudo tee /sys/fs/btrfs/${pool}/allocation/data/chunk_size >/dev/null && ` +
+          `sudo rm -f ${POOL_MOUNT}/scrub.bin && head -c 2G /dev/urandom | sudo tee ${POOL_MOUNT}/scrub.bin >/dev/null && sync`,
+      ),
+    );
+    await page.close();
+    const used = await usedBytes(uuid);
+    // A whole scrub then takes about 200 s; the job saves every minute, so its
+    // second save holds more than half.
+    const rate = Math.max(4 * MiB, Math.ceil(used / 2 / 200));
+    await vmSsh(
+      `for f in /sys/fs/btrfs/${uuid}/devinfo/*/scrub_speed_max; do echo ${rate} | sudo tee $f >/dev/null; done`,
+    );
+    const cut: { saved?: ScrubRecord } = {};
+    await expect
+      .poll(
+        async () => {
+          const rec = await scrubRecord(uuid);
+          if (rec?.run !== job.id || rec.status !== "running") return false;
+          cut.saved = rec;
+          return recordedBytes(rec) >= 0.55 * used;
+        },
+        {
+          intervals: [2_000],
+          message: "the scrub saving more than half of its progress",
+          timeout: 420_000,
+        },
+      )
+      .toBe(true);
+    // A job's first record write is not fsynced (docs/jobs.md, Store and
+    // records); the scrub record's writes are.
+    await vmSsh("sync");
+    expect(
+      await scrubRunning(),
+      "the scrub ended before the power cut: lower its rate",
+    ).toBe(true);
+
+    await rig(["power-cut"]);
+    const done = await waitForJob(SCRUB, before, "completed", {
+      timeout: 300_000,
+    });
+    expect(done.id).toBe(job.id);
+    expect(await loggedJobs("job marked interrupted")).toContainEqual({
+      id: job.id,
+      reason: "reboot",
+    });
+    expect((await loggedJobs("job resumed")).map((j) => j.id)).toContain(
+      job.id,
+    );
+    // No Suspend ran, so no checkpoint: the job's own scrub record gave each
+    // disk's start.
+    expect(done.checkpoint).toBeUndefined();
+    const saved = cut.saved!;
+    const { scrub } = done.result as {
+      scrub: { bytesScrubbed: number; errorCount: number; startedAt: string };
+    };
+    // A save after the last poll only makes this an overestimate.
+    const own = scrub.bytesScrubbed - recordedBytes(saved);
+    console.log(
+      `${used} bytes in use; saved ${recordedBytes(saved)} before the cut, the resumed run read ${own}, ${scrub.bytesScrubbed} in all`,
+    );
+    expect(Date.parse(scrub.startedAt)).toBe(Date.parse(saved.startedAt));
+    expect(scrub.errorCount).toBe(0);
+    expect(scrub.bytesScrubbed).toBeGreaterThanOrEqual(0.99 * used);
+    expect(own, "the resumed run scrubbed the whole pool again").toBeLessThan(
+      used,
+    );
+  } finally {
+    // Later tests were sized for the pool without it.
+    await vmSsh(`sudo rm -f ${POOL_MOUNT}/scrub.bin && sync`);
+  }
+});
+
+/** How many kernel log lines of this boot match pattern. */
+const kernelLines = async (pattern: string) =>
+  (await kernelLog(pattern)).split("\n").filter(Boolean).length;
+
+/** A scrub call that ended interrupted (EINTR), and any scrub call started. */
+const INTERRUPTED = "scrub: not finished on devid [0-9]+ with status: -4";
+const STARTED = "scrub: started on devid";
+
+/**
+ * The job host's cgroup is frozen (`systemctl freeze`) while it scrubs. Since
+ * 6.19 the freeze ends each scrub call with EINTR, and the job issues it
+ * again after the thaw and finishes, which the kernel log shows. Before, the
+ * kernel does not interrupt the call and the freeze waits until the scrub
+ * ends, so there is nothing to check.
+ */
+test("a scrub in a frozen job host goes on by itself and finishes", async ({
+  page,
+}) => {
+  test.setTimeout(600_000);
+  const release = (await vmSsh("uname -r")).trim();
+  const [major, minor] = release.split(".").map(Number);
+  test.skip(
+    major < 6 || (major === 6 && minor < 19),
+    `kernel ${release}: before 6.19 a frozen cgroup does not interrupt a scrub call, and the freeze waits for the scrub to end`,
+  );
+  const unit = "linuxio-jobs@0.service";
+  const before = await jobIds();
+  const { uuid, job } = await startScrub(page, before, 16 * MiB);
+  await page.close();
+  const uncap = () =>
+    vmSsh(
+      `for f in /sys/fs/btrfs/${uuid}/devinfo/*/scrub_speed_max; do echo 0 | sudo tee $f >/dev/null; done`,
+    );
+  try {
+    await expect
+      .poll(scrubbedBytes, {
+        intervals: [1_000],
+        message: "the scrub reading 256 MiB",
+        timeout: 120_000,
+      })
+      .toBeGreaterThan(256 * MiB);
+    const interrupted = await kernelLines(INTERRUPTED);
+    const started = await kernelLines(STARTED);
+    try {
+      await vmSsh(`sudo systemctl freeze ${unit}`);
+      expect(
+        (await vmSsh(`systemctl show -P FreezerState ${unit}`)).trim(),
+      ).toBe("frozen");
+      await new Promise((resolve) => setTimeout(resolve, 20_000));
+    } finally {
+      // A freeze that failed half way must not hold the later tests.
+      await vmSsh(
+        `sudo systemctl thaw ${unit} || test "$(systemctl show -P FreezerState ${unit})" = running`,
+      );
+    }
+    const interruptedDuring = (await kernelLines(INTERRUPTED)) - interrupted;
+    expect(
+      interruptedDuring,
+      "the freeze interrupted no scrub call",
+    ).toBeGreaterThan(0);
+    // Each call is issued again after the thaw, behind a save of the record.
+    await expect
+      .poll(async () => (await kernelLines(STARTED)) - started, {
+        intervals: [1_000],
+        message: "the interrupted calls issued again",
+        timeout: 60_000,
+      })
+      .toBeGreaterThanOrEqual(interruptedDuring);
+    await uncap();
+    const done = await waitForJob(SCRUB, before, "completed", {
+      timeout: 300_000,
+    });
+    expect(done.id).toBe(job.id);
+    const used = await usedBytes(uuid);
+    const { scrub } = done.result as {
+      scrub: { status: string; bytesScrubbed: number; errorCount: number };
+    };
+    console.log(
+      `kernel ${release}: ${interruptedDuring} scrub calls ended with EINTR during the freeze; ` +
+        `${used} bytes in use, ${scrub.bytesScrubbed} scrubbed`,
+    );
+    expect(scrub.status).toBe("finished");
+    expect(scrub.errorCount).toBe(0);
+    expect(scrub.bytesScrubbed).toBeGreaterThanOrEqual(0.99 * used);
+  } finally {
+    await uncap();
+  }
 });
 
 test("a replace cut by a power loss is resumed by the kernel and followed to the end", async ({

@@ -13,6 +13,7 @@ func TestListFilesystemsReadsKernel(t *testing.T) {
 	k := raid1Kernel()
 	k.devices[2].stats = [5]uint64{5, 0, 0, 0, 1}
 	k.devices[2].physical = 200 << 30 // replaced by a bigger disk, not grown yet
+	k.devices[1].uuid, k.devices[2].uuid = devUUID(1), devUUID(2)
 	stubKernel(t, k)
 
 	got, err := ListFilesystems(context.Background())
@@ -21,8 +22,8 @@ func TestListFilesystemsReadsKernel(t *testing.T) {
 	}
 	fs := got[0]
 	wantDevices := []BtrfsDevice{
-		{ID: 1, Path: "/dev/sda1", SizeBytes: 100 << 30, UsedBytes: 51 << 30, PhysicalBytes: 100 << 30},
-		{ID: 2, Path: "/dev/sdb1", SizeBytes: 100 << 30, UsedBytes: 51 << 30, PhysicalBytes: 200 << 30, Growable: true, Errors: BtrfsDeviceErrors{Write: 5, Generation: 1}},
+		{ID: 1, Path: "/dev/sda1", SizeBytes: 100 << 30, UsedBytes: 51 << 30, PhysicalBytes: 100 << 30, UUID: devUUID(1)},
+		{ID: 2, Path: "/dev/sdb1", SizeBytes: 100 << 30, UsedBytes: 51 << 30, PhysicalBytes: 200 << 30, Growable: true, Errors: BtrfsDeviceErrors{Write: 5, Generation: 1}, UUID: devUUID(2)},
 	}
 	if fs.Label != "data" || !reflect.DeepEqual(fs.Devices, wantDevices) {
 		t.Fatalf("label=%q devices=%+v", fs.Label, fs.Devices)
@@ -112,10 +113,38 @@ func TestScrubStatusRunning(t *testing.T) {
 func TestScrubStatusInterruptedRecord(t *testing.T) {
 	stubKernel(t, raid1Kernel())
 	started := time.Now().Add(-time.Hour)
-	saveScrubRecord(dataUUID, BtrfsScrubStatus{Status: "running", StartedAt: &started})
+	saveScrubRecord(context.Background(), dataUUID, scrubRecord{Status: "running", StartedAt: &started})
 	got, err := ListFilesystems(context.Background())
 	if err != nil || len(got) != 1 || got[0].Scrub.Status != "aborted" {
 		t.Fatalf("got=%+v err=%v; want an aborted scrub", got, err)
+	}
+}
+
+// A running scrub on record is merged into the kernel's progress only while
+// the process that wrote it lives: a record a crash left, or an older
+// build's job host still scrubbing, gives only the start, which the banner
+// keys the scrub on. A live one is running even while the kernel reports
+// nothing, between calls or waiting for a thaw.
+func TestScrubStatusMergesOnlyALiveRecord(t *testing.T) {
+	k := raid1Kernel()
+	stubKernel(t, k)
+	started := time.Now().Add(-time.Hour)
+	stale := scrubRecord{Status: "running", StartedAt: &started, BytesScrubbed: 20 << 30, UncorrectableErrors: 3}
+	saveScrubRecord(context.Background(), dataUUID, stale)
+	k.setRunning(1, &scrubProgress{DataBytesScrubbed: 1 << 30})
+	fs, err := FindFilesystem(context.Background(), dataUUID)
+	if err != nil || fs.Scrub.Status != "running" || fs.Scrub.BytesScrubbed != 1<<30 || fs.Scrub.UncorrectableErrors != 0 || !fs.Scrub.StartedAt.Equal(started) {
+		t.Fatalf("scrub = %+v err=%v, want the kernel's progress and the record's start", fs.Scrub, err)
+	}
+	live := stale
+	live.writtenByThisProcess()
+	saveScrubRecord(context.Background(), dataUUID, live)
+	if fs, err = FindFilesystem(context.Background(), dataUUID); err != nil || fs.Scrub.BytesScrubbed != 21<<30 || fs.Scrub.UncorrectableErrors != 3 || !fs.Scrub.StartedAt.Equal(started) {
+		t.Fatalf("scrub = %+v err=%v, want the record's counters added", fs.Scrub, err)
+	}
+	k.setRunning(1, nil)
+	if fs, err = FindFilesystem(context.Background(), dataUUID); err != nil || fs.Scrub.Status != "running" || fs.Scrub.BytesScrubbed != 20<<30 {
+		t.Fatalf("scrub = %+v err=%v, want the record, still running", fs.Scrub, err)
 	}
 }
 
