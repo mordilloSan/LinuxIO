@@ -60,43 +60,13 @@ type uploadBatchTransferTask struct {
 	tempRel    string
 	finalRel   string
 	attrs      uploadAttributes
-	folderInfo os.FileInfo    // the folder the current buffer was created in; the commit must find this folder
-	bufferID   uploadBufferID // the current buffer as created; every reopen must find this file
-	fileOwner  sessionOwner   // newOwner when the current buffer's folder is already theirs
-	curFailed  bool           // current file failed; its remaining bytes are discarded
+	folderInfo os.FileInfo  // the folder the current buffer was created in; the commit must find this folder
+	buffer     *os.File     // the current file's buffer, held open until its commit or its cleanup closes it; only one is open at a time
+	fileOwner  sessionOwner // newOwner when the current buffer's folder is already theirs
+	curFailed  bool         // current file failed; its remaining bytes are discarded
+	ended      bool         // the cleanup ran: the batch failed or was cancelled, and no buffer may be made
 	succeeded  int
 	failures   []FileBatchItemFailure
-}
-
-// uploadBatchSession holds per-attach state: the filesystem root and the open
-// handle of the current file's temp buffer. Only one stream may be attached at
-// a time (guarded by beginAttach), so the session is never shared.
-type uploadBatchSession struct {
-	root *fsroot.FSRoot
-	file *os.File
-}
-
-func (s *uploadBatchSession) closeFile() {
-	if s.file != nil {
-		_ = s.file.Close()
-		s.file = nil
-	}
-}
-
-func (s *uploadBatchSession) syncAndCloseFile() error {
-	if s.file == nil {
-		return nil
-	}
-	file := s.file
-	s.file = nil
-	if err := file.Sync(); err != nil {
-		_ = file.Close()
-		return fmt.Errorf("sync upload: %w", err)
-	}
-	if err := file.Close(); err != nil {
-		return fmt.Errorf("close upload: %w", err)
-	}
-	return nil
 }
 
 // cleanManifestPath validates a client-supplied path relative to the batch
@@ -223,16 +193,13 @@ func (t *uploadBatchTransferTask) attach(stream net.Conn, req bridgeipc.TaskData
 	}
 	defer root.Close()
 
-	session := &uploadBatchSession{root: root}
-	defer session.closeFile()
-
 	t.prepareDirectories(root)
 	t.writeProgress(stream, "uploading")
 	gate := newTransferGate(uploadProgressAckIntervalBytes)
 	return t.receiveFrames(stream,
-		func(payload []byte) error { return t.consume(stream, session, payload, gate) },
+		func(payload []byte) error { return t.consume(stream, root, payload, gate) },
 		func() error {
-			t.settle(session)
+			t.settle(root)
 			if t.isComplete() {
 				return t.complete(stream)
 			}
@@ -246,7 +213,7 @@ func (t *uploadBatchTransferTask) attach(stream net.Conn, req bridgeipc.TaskData
 // are recorded and the batch continues.
 func (t *uploadBatchTransferTask) prepareDirectories(root *fsroot.FSRoot) {
 	t.mu.Lock()
-	if t.prepared {
+	if t.prepared || t.ended {
 		t.mu.Unlock()
 		return
 	}
@@ -270,9 +237,9 @@ func (t *uploadBatchTransferTask) prepareDirectories(root *fsroot.FSRoot) {
 
 // consume splits one stream payload on manifest boundaries: it may finish the
 // current file and start the next several times within a single frame.
-func (t *uploadBatchTransferTask) consume(stream net.Conn, session *uploadBatchSession, payload []byte, gate *progressThrottle) error {
+func (t *uploadBatchTransferTask) consume(stream net.Conn, root *fsroot.FSRoot, payload []byte, gate *progressThrottle) error {
 	for len(payload) > 0 {
-		t.settle(session)
+		t.settle(root)
 
 		t.mu.Lock()
 		if t.index >= len(t.files) {
@@ -283,8 +250,8 @@ func (t *uploadBatchTransferTask) consume(stream net.Conn, session *uploadBatchS
 		t.mu.Unlock()
 
 		n := min(int64(len(payload)), remaining)
-		if err := t.writeChunk(session, payload[:n]); err != nil {
-			t.failCurrent(session, err)
+		if err := t.writeChunk(root, payload[:n]); err != nil {
+			t.failCurrent(root, err)
 		}
 
 		t.mu.Lock()
@@ -293,7 +260,7 @@ func (t *uploadBatchTransferTask) consume(stream net.Conn, session *uploadBatchS
 		t.mu.Unlock()
 		payload = payload[n:]
 	}
-	t.settle(session)
+	t.settle(root)
 	signalActivity(t.activity)
 
 	t.mu.Lock()
@@ -308,7 +275,7 @@ func (t *uploadBatchTransferTask) consume(stream net.Conn, session *uploadBatchS
 // settle finalizes the current file while it is fully received, advancing to
 // the next manifest entry. Zero-size files pass through here without ever
 // seeing a data chunk.
-func (t *uploadBatchTransferTask) settle(session *uploadBatchSession) {
+func (t *uploadBatchTransferTask) settle(root *fsroot.FSRoot) {
 	for {
 		t.mu.Lock()
 		if t.index >= len(t.files) || t.fileBytes < t.files[t.index].size {
@@ -320,10 +287,10 @@ func (t *uploadBatchTransferTask) settle(session *uploadBatchSession) {
 		t.mu.Unlock()
 
 		if !failed {
-			if err := t.finalizeCurrent(session); err != nil {
+			if err := t.finalizeCurrent(root); err != nil {
 				slog.Debug("batch upload item failed", "path", current.absPath, "error", err)
 				t.recordFailure(current.relPath, err.Error())
-				t.cleanupCurrentTemp(session.root)
+				t.cleanupCurrentTemp(root)
 			} else {
 				t.mu.Lock()
 				t.succeeded++
@@ -338,79 +305,92 @@ func (t *uploadBatchTransferTask) settle(session *uploadBatchSession) {
 		t.finalRel = ""
 		t.attrs = uploadAttributes{}
 		t.folderInfo = nil
-		t.bufferID = uploadBufferID{}
 		t.fileOwner = sessionOwner{}
 		t.curFailed = false
 		t.mu.Unlock()
 	}
 }
 
-// ensurePrepared lazily creates the current file's temp buffer, exclusively
-// and through the handle of its folder (see createUploadBuffer), and captures
-// existing-file attributes. Idempotent across re-attaches: the temp survives a
-// dropped stream and is reused on resume.
-func (t *uploadBatchTransferTask) ensurePrepared(session *uploadBatchSession) error {
+// ensurePrepared returns the current file's buffer, creating it on first use
+// exclusively and through the handle of its folder (see createUploadBuffer),
+// and captures existing-file attributes. The task holds the buffer open until
+// the file is committed or dropped, so a dropped stream resumes into the same
+// open file.
+func (t *uploadBatchTransferTask) ensurePrepared(root *fsroot.FSRoot) (*os.File, error) {
 	t.mu.Lock()
-	if t.tempRel != "" {
+	if t.ended {
 		t.mu.Unlock()
-		return nil
+		return nil, errUploadEnded // before any folder or buffer is made
+	}
+	if t.tempRel != "" {
+		buffer := t.buffer
+		t.mu.Unlock()
+		if buffer == nil {
+			return nil, errUploadEnded
+		}
+		return buffer, nil
 	}
 	current := t.files[t.index]
 	index := t.index
 	t.mu.Unlock()
 
 	finalRel := fsroot.ToRel(current.absPath)
-	if _, statErr := session.root.Root.Stat(finalRel); statErr == nil {
+	if _, statErr := root.Root.Stat(finalRel); statErr == nil {
 		switch {
 		case current.keepBoth:
-			finalRel = fsroot.ToRel(generateUniquePath(current.absPath, false, session.root))
+			finalRel = fsroot.ToRel(generateUniquePath(current.absPath, false, root))
 		case !t.overwrite:
-			return fmt.Errorf("destination already exists")
+			return nil, fmt.Errorf("destination already exists")
 		}
 	}
-	if err := refuseFolderTarget(session.root, finalRel); err != nil {
-		return err
+	if err := refuseFolderTarget(root, finalRel); err != nil {
+		return nil, err
 	}
-	dir, err := openUploadDir(session.root, filepath.Dir(finalRel), t.linkRule, t.newOwner)
+	dir, err := openUploadDir(root, filepath.Dir(finalRel), t.linkRule, t.newOwner)
 	if err != nil {
-		return fmt.Errorf("create parent dir: %w", err)
+		return nil, fmt.Errorf("create parent dir: %w", err)
 	}
 	defer dir.Close()
 	if t.refuseSymlink {
 		if err = refuseSymlinkTarget(dir, filepath.Base(finalRel)); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	attrs, err := uploadAttributesAt(dir, filepath.Base(finalRel))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	attrs.modTime = current.modTime
 	folderInfo, err := dir.Stat()
 	if err != nil {
-		return fmt.Errorf("stat parent dir: %w", err)
+		return nil, fmt.Errorf("stat parent dir: %w", err)
 	}
 
 	partName := fmt.Sprintf(".%s.linuxio-upload-%s-%d.part", filepath.Base(finalRel), t.task.ID(), index)
-	bufferID, err := createUploadBuffer(dir, partName)
+	buffer, err := createUploadBuffer(dir, partName)
 	if err != nil {
-		return fmt.Errorf("create upload buffer: %w", err)
+		return nil, fmt.Errorf("create upload buffer: %w", err)
 	}
 
 	t.mu.Lock()
+	if t.ended {
+		t.mu.Unlock()
+		discardUploadBuffer(dir, partName, buffer)
+		return nil, errUploadEnded
+	}
 	t.finalRel = finalRel
 	t.tempRel = filepath.Join(filepath.Dir(finalRel), partName)
 	t.attrs = attrs
 	t.folderInfo = folderInfo
-	t.bufferID = bufferID
+	t.buffer = buffer
 	if handsOverIn(folderInfo, t.newOwner) {
 		t.fileOwner = t.newOwner
 	}
 	t.mu.Unlock()
-	return nil
+	return buffer, nil
 }
 
-func (t *uploadBatchTransferTask) writeChunk(session *uploadBatchSession, chunk []byte) error {
+func (t *uploadBatchTransferTask) writeChunk(root *fsroot.FSRoot, chunk []byte) error {
 	t.mu.Lock()
 	failed := t.curFailed
 	t.mu.Unlock()
@@ -418,25 +398,11 @@ func (t *uploadBatchTransferTask) writeChunk(session *uploadBatchSession, chunk 
 		return nil // discarding the remainder of a failed item
 	}
 
-	if session.file == nil {
-		if err := t.ensurePrepared(session); err != nil {
-			return err
-		}
-		t.mu.Lock()
-		tempRel, bufferID, at := t.tempRel, t.bufferID, t.fileBytes
-		t.mu.Unlock()
-		file, err := openUploadBuffer(session.root, tempRel, bufferID)
-		if err != nil {
-			return fmt.Errorf("cannot open upload buffer: %w", err)
-		}
-		if _, err := file.Seek(at, io.SeekStart); err != nil {
-			_ = file.Close()
-			return fmt.Errorf("cannot position upload buffer: %w", err)
-		}
-		session.file = file
+	buffer, err := t.ensurePrepared(root)
+	if err != nil {
+		return err
 	}
-
-	n, err := session.file.Write(chunk)
+	n, err := buffer.Write(chunk)
 	if err != nil {
 		return err
 	}
@@ -448,9 +414,7 @@ func (t *uploadBatchTransferTask) writeChunk(session *uploadBatchSession, chunk 
 
 // failCurrent marks the current file failed, records it, and drops its temp
 // buffer; the rest of its stream bytes will be discarded.
-func (t *uploadBatchTransferTask) failCurrent(session *uploadBatchSession, cause error) {
-	session.closeFile()
-
+func (t *uploadBatchTransferTask) failCurrent(root *fsroot.FSRoot, cause error) {
 	t.mu.Lock()
 	current := t.files[t.index]
 	t.curFailed = true
@@ -458,52 +422,60 @@ func (t *uploadBatchTransferTask) failCurrent(session *uploadBatchSession, cause
 
 	slog.Debug("batch upload item failed", "path", current.absPath, "error", cause)
 	t.recordFailure(current.relPath, cause.Error())
-	t.cleanupCurrentTemp(session.root)
+	t.cleanupCurrentTemp(root)
 }
 
 // finalizeCurrent settles the current buffer through its open handle, so a
 // name swapped under it is never touched, and commits it in the folder it was
-// created in.
-func (t *uploadBatchTransferTask) finalizeCurrent(session *uploadBatchSession) error {
+// created in. It takes the buffer from the task and closes it whatever
+// happens; the cleanup of a failed item only removes its name.
+func (t *uploadBatchTransferTask) finalizeCurrent(root *fsroot.FSRoot) error {
 	// Zero-size files never opened a buffer; create the (empty) temp now so
 	// every finalize is a rename of a fully-written buffer.
-	if err := t.ensurePrepared(session); err != nil {
+	if _, err := t.ensurePrepared(root); err != nil {
 		return err
 	}
-	defer session.closeFile() // a failed item must not leave its buffer for the next one
 
 	t.mu.Lock()
 	tempRel, finalRel, attrs := t.tempRel, t.finalRel, t.attrs
-	folderInfo, bufferID, fileOwner := t.folderInfo, t.bufferID, t.fileOwner
+	folderInfo, buffer, fileOwner := t.folderInfo, t.buffer, t.fileOwner
+	t.buffer = nil
 	overwrite := t.overwrite && !t.files[t.index].keepBoth
 	t.mu.Unlock()
-
-	if session.file == nil {
-		file, err := openUploadBuffer(session.root, tempRel, bufferID)
-		if err != nil {
-			return fmt.Errorf("cannot open upload buffer: %w", err)
-		}
-		session.file = file
+	if buffer == nil {
+		return errUploadEnded
 	}
-	// Open the folder before the buffer is handed over, so a swapped folder
-	// leaves it the bridge's.
-	dir, err := openUploadFolder(session.root, filepath.Dir(tempRel), folderInfo)
+	defer buffer.Close()
+
+	// Open the folder and check the buffer's name before the buffer is handed
+	// over, so a swapped folder or name leaves it the bridge's and private.
+	dir, err := openUploadFolder(root, filepath.Dir(tempRel), folderInfo)
 	if err != nil {
 		return fmt.Errorf("finalize upload: %w", err)
 	}
 	defer dir.Close()
-	if err := settleUploadBuffer(session.file, attrs, fileOwner, newUploadFileMode(t.private, fileOwner.set), isSetgid(folderInfo)); err != nil {
+	if err := checkUploadBuffer(dir, filepath.Base(tempRel), buffer); err != nil {
+		return fmt.Errorf("finalize upload: %w", err)
+	}
+	if err := settleUploadBuffer(buffer, attrs, fileOwner, newUploadFileMode(t.private, fileOwner.set), isSetgid(folderInfo)); err != nil {
 		return err
 	}
 	if !attrs.modTime.IsZero() {
 		// Through the open file (/proc/self/fd), not the buffer's name.
 		tv := unix.NsecToTimeval(attrs.modTime.UnixNano())
-		if err := unix.Futimes(int(session.file.Fd()), []unix.Timeval{tv, tv}); err != nil {
+		if err := unix.Futimes(int(buffer.Fd()), []unix.Timeval{tv, tv}); err != nil {
 			slog.Debug("failed to apply uploaded file modified time", "path", tempRel, "error", err)
 		}
 	}
-	if err := session.syncAndCloseFile(); err != nil {
-		return err
+	if err := buffer.Sync(); err != nil {
+		return fmt.Errorf("sync upload: %w", err)
+	}
+	// Again right before the commit, which goes by name.
+	if err := checkUploadBuffer(dir, filepath.Base(tempRel), buffer); err != nil {
+		return fmt.Errorf("finalize upload: %w", err)
+	}
+	if err := buffer.Close(); err != nil {
+		return fmt.Errorf("close upload: %w", err)
 	}
 	if err := commitUploadBuffer(dir, filepath.Base(tempRel), filepath.Base(finalRel), overwrite); err != nil {
 		if errors.Is(err, fs.ErrExist) {
@@ -520,11 +492,16 @@ func (t *uploadBatchTransferTask) recordFailure(path, message string) {
 	t.mu.Unlock()
 }
 
+// cleanupCurrentTemp closes the current file's buffer and removes it.
 func (t *uploadBatchTransferTask) cleanupCurrentTemp(root *fsroot.FSRoot) {
 	t.mu.Lock()
-	tempRel, folderInfo := t.tempRel, t.folderInfo
+	tempRel, folderInfo, buffer := t.tempRel, t.folderInfo, t.buffer
 	t.tempRel = ""
+	t.buffer = nil
 	t.mu.Unlock()
+	if buffer != nil {
+		_ = buffer.Close()
+	}
 	if tempRel == "" {
 		return
 	}
@@ -581,15 +558,31 @@ func (t *uploadBatchTransferTask) reportProgress(phase string) {
 	t.task.ReportProgress(t.progress(phase))
 }
 
-// cleanupPartial removes the current file's temp buffer. Files already
-// finalized stay in place — a cancelled batch keeps what it landed, matching
-// the best-effort semantics of the other batch tasks.
+// cleanupPartial runs once the batch failed or was cancelled: it closes the
+// current file's buffer and removes it. Files already finalized stay in
+// place — a cancelled batch keeps what it landed, matching the best-effort
+// semantics of the other batch tasks.
 func (t *uploadBatchTransferTask) cleanupPartial() {
+	t.mu.Lock()
+	tempRel, folderInfo, buffer := t.tempRel, t.folderInfo, t.buffer
+	t.tempRel = ""
+	t.buffer = nil
+	t.ended = true
+	t.mu.Unlock()
+	if buffer != nil {
+		_ = buffer.Close()
+	}
+	if tempRel == "" {
+		return
+	}
+
 	root, err := fsroot.Open()
 	if err != nil {
 		slog.Debug("failed to open root for partial batch upload cleanup", "error", err)
 		return
 	}
 	defer root.Close()
-	t.cleanupCurrentTemp(root)
+	if err := removeUploadBuffer(root, tempRel, folderInfo); err != nil && !errors.Is(err, os.ErrNotExist) {
+		slog.Debug("failed to remove partial batch upload", "partial", tempRel, "error", err)
+	}
 }

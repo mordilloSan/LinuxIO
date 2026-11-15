@@ -58,11 +58,9 @@ func TestUploadTaskSavesThroughSymlink(t *testing.T) {
 	transfer := &uploadTransferTask{transferLifecycle: &transferLifecycle{task: task}, ctx: context.Background(), path: link, expectedSize: 3, expectedVersion: opened.Version, overwrite: true}
 	require.NoError(t, transfer.prepare(root))
 
-	file, err := root.Root.OpenFile(transfer.tempRel, os.O_WRONLY, 0)
+	_, err = transfer.buffer.Write([]byte("new"))
 	require.NoError(t, err)
-	_, err = file.Write([]byte("new"))
-	require.NoError(t, err)
-	code, err := transfer.commit(root, file, link, transfer.tempRel, transfer.finalRel)
+	code, err := transfer.commit(root, link, transfer.tempRel, transfer.finalRel)
 	require.NoError(t, err)
 	require.Equal(t, 0, code)
 
@@ -200,11 +198,9 @@ func commitTestUpload(t *testing.T, target, content string, overwrite bool, muta
 		mutate(transfer)
 	}
 
-	file, err := root.Root.OpenFile(transfer.tempRel, os.O_WRONLY, 0)
+	_, err = transfer.buffer.WriteString(content)
 	require.NoError(t, err)
-	_, err = file.WriteString(content)
-	require.NoError(t, err)
-	return transfer.commit(root, file, target, transfer.tempRel, transfer.finalRel)
+	return transfer.commit(root, target, transfer.tempRel, transfer.finalRel)
 }
 
 func TestUploadTaskCommitKeepsRestrictiveTargetMode(t *testing.T) {

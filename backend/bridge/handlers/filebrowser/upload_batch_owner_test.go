@@ -2,6 +2,7 @@ package filebrowser
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,12 +15,13 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
 )
 
 // newOwnedBatchUpload builds the transfer runUploadBatchTask builds for req,
 // with newOwner already resolved from the request and the session, and the
-// per-attach session attach opens.
-func newOwnedBatchUpload(t *testing.T, req apischema.FileUploadBatchRequest, newOwner sessionOwner) (*uploadBatchTransferTask, *uploadBatchSession) {
+// filesystem root attach opens.
+func newOwnedBatchUpload(t *testing.T, req apischema.FileUploadBatchRequest, newOwner sessionOwner) (*uploadBatchTransferTask, *fsroot.FSRoot) {
 	t.Helper()
 	destination, files, directories, total, err := parseUploadBatchRequest(req)
 	require.NoError(t, err)
@@ -36,22 +38,25 @@ func newOwnedBatchUpload(t *testing.T, req apischema.FileUploadBatchRequest, new
 		linkRule:          newOwner.asOwner(),
 		private:           req.Private != nil && *req.Private,
 	}
-	session := &uploadBatchSession{root: openTestRoot(t)}
-	t.Cleanup(session.closeFile)
-	return transfer, session
+	t.Cleanup(func() {
+		if transfer.buffer != nil {
+			_ = transfer.buffer.Close()
+		}
+	})
+	return transfer, openTestRoot(t)
 }
 
 // batchThroughHandles drives what attach and consume run for the manifest:
 // the directories, then each file's buffer writes and commit in turn.
-func batchThroughHandles(t *testing.T, transfer *uploadBatchTransferTask, session *uploadBatchSession, contents ...string) {
+func batchThroughHandles(t *testing.T, transfer *uploadBatchTransferTask, root *fsroot.FSRoot, contents ...string) {
 	t.Helper()
-	transfer.prepareDirectories(session.root)
+	transfer.prepareDirectories(root)
 	for _, content := range contents {
 		if content != "" {
-			require.NoError(t, transfer.writeChunk(session, []byte(content)))
+			require.NoError(t, transfer.writeChunk(root, []byte(content)))
 		}
 		transfer.fileBytes = int64(len(content))
-		transfer.settle(session)
+		transfer.settle(root)
 	}
 	require.Empty(t, transfer.failures)
 }
@@ -100,19 +105,19 @@ func TestUploadBatchHandsNewEntriesOverWithHandOverModes(t *testing.T) {
 	require.NoError(t, os.Mkdir(home, 0o750))
 	owner := selfOwner()
 
-	transfer, session := newOwnedBatchUpload(t, apischema.FileUploadBatchRequest{
+	transfer, root := newOwnedBatchUpload(t, apischema.FileUploadBatchRequest{
 		Destination: home,
 		Files:       []apischema.FileUploadBatchEntry{{Path: "stack/sub/docker-compose.yml", Size: "4"}, {Path: "stack/empty.txt", Size: "0"}},
 		Directories: []string{"stack/data/cache"},
 	}, owner)
-	batchThroughHandles(t, transfer, session, "a: \n", "")
+	batchThroughHandles(t, transfer, root, "a: \n", "")
 	private := true
-	transfer, session = newOwnedBatchUpload(t, apischema.FileUploadBatchRequest{
+	transfer, root = newOwnedBatchUpload(t, apischema.FileUploadBatchRequest{
 		Destination: home,
 		Files:       []apischema.FileUploadBatchEntry{{Path: "stack/.env", Size: "4"}},
 		Private:     &private,
 	}, owner)
-	batchThroughHandles(t, transfer, session, "K=v\n")
+	batchThroughHandles(t, transfer, root, "K=v\n")
 
 	requireOwnerAndMode(t, home, owner.uid, owner.gid, 0o750)
 	for _, dir := range []string{"stack", "stack/sub", "stack/data", "stack/data/cache"} {
@@ -129,12 +134,12 @@ func TestUploadBatchDoesNotHandOverInAFolderTheUserDoesNotOwn(t *testing.T) {
 	base := t.TempDir()
 	other := sessionOwner{uid: uint32(os.Getuid()) + 1, gid: uint32(os.Getgid()) + 1, set: true}
 
-	transfer, session := newOwnedBatchUpload(t, apischema.FileUploadBatchRequest{
+	transfer, root := newOwnedBatchUpload(t, apischema.FileUploadBatchRequest{
 		Destination: base,
 		Files:       []apischema.FileUploadBatchEntry{{Path: "stack/docker-compose.yml", Size: "4"}},
 		Directories: []string{"data"},
 	}, other)
-	batchThroughHandles(t, transfer, session, "a: \n")
+	batchThroughHandles(t, transfer, root, "a: \n")
 
 	requireOwner(t, filepath.Join(base, "stack"), uint32(os.Geteuid()), uint32(os.Getegid()))
 	requireOwner(t, filepath.Join(base, "data"), uint32(os.Geteuid()), uint32(os.Getegid()))
@@ -175,43 +180,43 @@ func TestUploadBatchLeavesAFileAtTheBufferNameAlone(t *testing.T) {
 }
 
 // The batch keeps each buffer the way the single upload does: created
-// exclusively, reopened without following a symlink and only while it is the
-// same file, settled through the open handle, and committed in the folder it
-// was created in.
+// exclusively, held open and written and settled only through that handle,
+// and committed in the folder it was created in only while its name is still
+// that file.
 func TestUploadBatchBufferNameIsNeverFollowed(t *testing.T) {
-	composeBatch := func(t *testing.T, dest string, owner sessionOwner) (*uploadBatchTransferTask, *uploadBatchSession) {
-		private := true
+	composeBatch := func(t *testing.T, dest string, owner sessionOwner) (*uploadBatchTransferTask, *fsroot.FSRoot) {
 		return newOwnedBatchUpload(t, apischema.FileUploadBatchRequest{
 			Destination: dest,
 			Files:       []apischema.FileUploadBatchEntry{{Path: "docker-compose.yml", Size: "3"}},
-			Private:     &private,
 		}, owner)
 	}
 
 	t.Run("planted before the buffer is created", func(t *testing.T) {
 		victim := seedVictim(t)
 		dest := t.TempDir()
-		transfer, session := composeBatch(t, dest, selfOwner())
+		transfer, root := composeBatch(t, dest, selfOwner())
 		plant(t, victim, filepath.Join(dest, batchBufferName(transfer, "docker-compose.yml", 0)))
 
-		require.ErrorIs(t, transfer.writeChunk(session, []byte("new")), syscall.EEXIST)
+		require.ErrorIs(t, transfer.writeChunk(root, []byte("new")), syscall.EEXIST)
 		requireVictimUntouched(t, victim)
 	})
 
-	t.Run("swapped before a reopen", func(t *testing.T) {
+	t.Run("deleted and replaced between chunks", func(t *testing.T) {
 		victim := seedVictim(t)
-		transfer, session := composeBatch(t, t.TempDir(), selfOwner())
-		require.NoError(t, transfer.ensurePrepared(session))
+		dest := t.TempDir()
+		transfer, root := composeBatch(t, dest, selfOwner())
+		_, err := transfer.ensurePrepared(root)
+		require.NoError(t, err)
 		buffer := "/" + transfer.tempRel
 
 		require.NoError(t, os.Remove(buffer))
 		plant(t, victim, buffer)
-		require.ErrorIs(t, transfer.writeChunk(session, []byte("new")), syscall.ELOOP)
+		require.NoError(t, transfer.writeChunk(root, []byte("new")))
 		requireVictimUntouched(t, victim)
-
-		require.NoError(t, os.Remove(buffer))
-		require.NoError(t, os.WriteFile(buffer, nil, 0o600))
-		require.ErrorIs(t, transfer.writeChunk(session, []byte("new")), errUploadBufferReplaced)
+		transfer.fileBytes = 3
+		require.ErrorIs(t, transfer.finalizeCurrent(root), errUploadBufferReplaced)
+		requireVictimUntouched(t, victim)
+		require.NoFileExists(t, filepath.Join(dest, "docker-compose.yml"))
 	})
 
 	t.Run("swapped while the buffer is open", func(t *testing.T) {
@@ -222,18 +227,21 @@ func TestUploadBatchBufferNameIsNeverFollowed(t *testing.T) {
 			owner = sessionOwner{uid: 12345, gid: 12346, set: true}
 			require.NoError(t, os.Chown(dest, 12345, 12346))
 		}
-		transfer, session := composeBatch(t, dest, owner)
-		require.NoError(t, transfer.writeChunk(session, []byte("new")))
+		transfer, root := composeBatch(t, dest, owner)
+		require.NoError(t, transfer.writeChunk(root, []byte("new")))
 		transfer.fileBytes = 3
 
 		buffer := "/" + transfer.tempRel
 		moved := buffer + ".moved"
 		require.NoError(t, os.Rename(buffer, moved))
 		plant(t, victim, buffer)
-		require.NoError(t, transfer.finalizeCurrent(session))
+		require.ErrorIs(t, transfer.finalizeCurrent(root), errUploadBufferReplaced)
 
 		requireVictimUntouched(t, victim)
-		requireOwnerAndMode(t, moved, owner.uid, owner.gid, 0o600)
+		// Refused before it is handed over: the moved buffer keeps the
+		// bridge's owner and its private mode, not owner's and 0644.
+		requireOwnerAndMode(t, moved, uint32(os.Geteuid()), uint32(os.Getegid()), 0o600)
+		require.NoFileExists(t, filepath.Join(dest, "docker-compose.yml"), "the link at the buffer's name is not committed")
 	})
 
 	t.Run("a folder swapped before the commit is refused", func(t *testing.T) {
@@ -243,12 +251,12 @@ func TestUploadBatchBufferNameIsNeverFollowed(t *testing.T) {
 		require.NoError(t, os.Mkdir(prod, 0o755))
 		require.NoError(t, os.WriteFile(filepath.Join(prod, ".env"), []byte("secret"), 0o600))
 		overwrite := true
-		transfer, session := newOwnedBatchUpload(t, apischema.FileUploadBatchRequest{
+		transfer, root := newOwnedBatchUpload(t, apischema.FileUploadBatchRequest{
 			Destination: base,
 			Files:       []apischema.FileUploadBatchEntry{{Path: "stack/.env", Size: "3"}},
 			Overwrite:   &overwrite,
 		}, selfOwner())
-		require.NoError(t, transfer.writeChunk(session, []byte("new")))
+		require.NoError(t, transfer.writeChunk(root, []byte("new")))
 		transfer.fileBytes = 3
 
 		// Both names now resolve into prod, buffer included.
@@ -257,11 +265,151 @@ func TestUploadBatchBufferNameIsNeverFollowed(t *testing.T) {
 		require.NoError(t, os.Symlink("prod", stack))
 		require.NoError(t, os.Rename(filepath.Join(stack+".moved", partName), filepath.Join(prod, partName)))
 
-		require.ErrorIs(t, transfer.finalizeCurrent(session), errUploadFolderReplaced)
+		require.ErrorIs(t, transfer.finalizeCurrent(root), errUploadFolderReplaced)
 		content, err := os.ReadFile(filepath.Join(prod, ".env"))
 		require.NoError(t, err)
 		require.Equal(t, "secret", string(content))
 	})
+}
+
+// A batch holds the buffer of the file it is receiving and no other: the
+// commit of one file closes its buffer before the next file's is made, and
+// every chunk of a file goes to the buffer made for it.
+func TestUploadBatchHoldsOneBufferAtATime(t *testing.T) {
+	dest := t.TempDir()
+	transfer, root := newOwnedBatchUpload(t, apischema.FileUploadBatchRequest{
+		Destination: dest,
+		Files:       []apischema.FileUploadBatchEntry{{Path: "a.txt", Size: "3"}, {Path: "b.txt", Size: "3"}},
+	}, sessionOwner{})
+
+	require.NoError(t, transfer.writeChunk(root, []byte("abc")))
+	first := transfer.buffer
+	require.NotNil(t, first)
+	transfer.fileBytes = 3
+	transfer.settle(root)
+	require.Nil(t, transfer.buffer)
+	requireClosed(t, first)
+
+	require.NoError(t, transfer.writeChunk(root, []byte("de")))
+	second := transfer.buffer
+	require.NotNil(t, second)
+	require.NotEqual(t, first.Name(), second.Name())
+	require.NoError(t, transfer.writeChunk(root, []byte("f")))
+	require.Same(t, second, transfer.buffer)
+	transfer.fileBytes = 3
+	transfer.settle(root)
+	require.Nil(t, transfer.buffer)
+	requireClosed(t, second)
+
+	require.Empty(t, transfer.failures)
+	for name, want := range map[string]string{"a.txt": "abc", "b.txt": "def"} {
+		content, err := os.ReadFile(filepath.Join(dest, name))
+		require.NoError(t, err)
+		require.Equal(t, want, string(content))
+	}
+	require.Len(t, dirEntries(t, dest), 2, "no buffer is left behind")
+}
+
+// The cleanup of a failed item and of a failed or cancelled batch closes the
+// buffer the batch holds, and an attach still running after the cleanup
+// makes no new one.
+func TestUploadBatchClosesItsBuffer(t *testing.T) {
+	newBatch := func(t *testing.T) (*uploadBatchTransferTask, *fsroot.FSRoot, string) {
+		dest := t.TempDir()
+		transfer, root := newOwnedBatchUpload(t, apischema.FileUploadBatchRequest{
+			Destination: dest,
+			Files:       []apischema.FileUploadBatchEntry{{Path: "a.txt", Size: "3"}, {Path: "b.txt", Size: "3"}},
+		}, sessionOwner{})
+		return transfer, root, dest
+	}
+
+	t.Run("when an item fails", func(t *testing.T) {
+		transfer, root, dest := newBatch(t)
+		require.NoError(t, transfer.writeChunk(root, []byte("ab")))
+		held := transfer.buffer
+		transfer.failCurrent(root, errors.New("disk full"))
+
+		require.Nil(t, transfer.buffer)
+		requireClosed(t, held)
+		require.Empty(t, dirEntries(t, dest))
+		require.NoError(t, transfer.writeChunk(root, []byte("c")), "the rest of a failed item is discarded")
+		require.Nil(t, transfer.buffer)
+	})
+
+	t.Run("makes no folder or buffer once the batch ended", func(t *testing.T) {
+		dest := t.TempDir()
+		transfer, root := newOwnedBatchUpload(t, apischema.FileUploadBatchRequest{
+			Destination: dest,
+			Files:       []apischema.FileUploadBatchEntry{{Path: "sub/a.txt", Size: "3"}},
+			Directories: []string{"made"},
+		}, sessionOwner{})
+		transfer.cleanupPartial()
+
+		transfer.prepareDirectories(root)
+		_, err := transfer.ensurePrepared(root)
+		require.ErrorIs(t, err, errUploadEnded)
+		require.ErrorIs(t, transfer.writeChunk(root, []byte("abc")), errUploadEnded)
+		require.Nil(t, transfer.buffer)
+		require.Empty(t, dirEntries(t, dest))
+	})
+
+	t.Run("when the batch is cancelled", func(t *testing.T) {
+		transfer, root, dest := newBatch(t)
+		require.NoError(t, transfer.writeChunk(root, []byte("ab")))
+		held := transfer.buffer
+		transfer.cleanupPartial()
+
+		require.Nil(t, transfer.buffer)
+		requireClosed(t, held)
+		require.Empty(t, dirEntries(t, dest))
+		require.ErrorIs(t, transfer.writeChunk(root, []byte("c")), errUploadEnded)
+		require.Nil(t, transfer.buffer)
+		require.Empty(t, dirEntries(t, dest))
+	})
+}
+
+// As the single upload does, a batch writes every chunk of a file through the
+// buffer it holds, so a file put at the buffer's name between two attaches
+// receives none of it; that item fails and the rest of the batch, whose next
+// file gets a buffer of its own, lands.
+func TestUploadBatchBufferReplacedBetweenAttachesGetsNothing(t *testing.T) {
+	dest := t.TempDir()
+	req := apischema.FileUploadBatchRequest{
+		Destination: dest,
+		Files:       []apischema.FileUploadBatchEntry{{Path: "a.txt", Size: "6"}, {Path: "b.txt", Size: "3"}},
+	}
+	task := startUploadBatchTask(t, req)
+
+	conn, _, attachErr := attachUploadBatchStream(t, task, "")
+	writeData(t, conn, []byte("abc"))
+	_ = conn.Close()
+	waitDetached(t, attachErr)
+
+	buffer := filepath.Join(dest, fmt.Sprintf(".a.txt.linuxio-upload-%s-0.part", task.ID()))
+	require.NoError(t, os.Remove(buffer))
+	planted, err := os.OpenFile(buffer, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
+	require.NoError(t, err)
+	defer planted.Close()
+
+	conn, results, _ := attachUploadBatchStream(t, task, "3")
+	writeData(t, conn, []byte("defghi"))
+	writeClose(t, conn)
+	result := waitResult(t, results)
+	require.Equal(t, "ok", result.Status)
+	decoded := decodeUploadBatchResult(t, result)
+	require.Equal(t, 1, decoded.Succeeded)
+	require.Len(t, decoded.Failed, 1)
+	require.Equal(t, "a.txt", decoded.Failed[0].Path)
+	require.Contains(t, decoded.Failed[0].Error, errUploadBufferReplaced.Error())
+	waitTaskDone(t, task)
+
+	info, err := planted.Stat()
+	require.NoError(t, err)
+	require.Zero(t, info.Size(), "the planted file receives none of the upload")
+	require.NoFileExists(t, filepath.Join(dest, "a.txt"))
+	content, err := os.ReadFile(filepath.Join(dest, "b.txt"))
+	require.NoError(t, err)
+	require.Equal(t, "ghi", string(content))
 }
 
 // On a root bridge a session batch upload hands every entry it creates inside

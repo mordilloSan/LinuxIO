@@ -40,16 +40,6 @@ What is left:
   archive only root can read gets its content when an admin extracts it
   there. Reach the archive with `entryFollowingNoUserLinks` and read it
   through that handle. Reported by the review of 2026-11-13.
-- [ ] **An upload buffer on a filesystem without file handles is matched by
-  inode number alone.** `uploadBufferID`
-  (`backend/bridge/handlers/filebrowser/upload_owner.go`) falls back to
-  device and inode when `name_to_handle_at` returns `EOPNOTSUPP` or
-  `EOVERFLOW`. Where such a filesystem reuses inode numbers, a process that
-  can write the folder can delete the buffer between chunks, create its own
-  file at the name, keep it open and receive the rest of the upload, which
-  root then commits as the target. Either keep the buffer open across chunks
-  instead of reopening it, or refuse to reopen there. Which filesystems users
-  upload to give no handles was not checked. Checked 2026-11-13.
 
 ## Storage safety
 
@@ -193,6 +183,21 @@ File browser, after the link fix:
 - A trash record written for a disk whose device number changes when it is
   mounted again no longer matches its item: the restore asks first, as for an
   item another program trashed.
+- An upload's commit goes by name right after it checked that the name is
+  still the buffer it holds open (`checkUploadBuffer` in
+  `backend/bridge/handlers/filebrowser/upload_owner.go`), so a swap in between
+  commits the swapper's file and reports success: whoever can swap the name
+  can write the target themselves, and root never writes to that file or
+  changes its owner or mode. Linking from the open file would close it for a
+  new file only; an overwrite has no rename that takes an open file.
+- An upload waiting for its client to reconnect keeps its buffer open for up
+  to five minutes, so the disk it is on cannot be unmounted meanwhile, and a
+  buffer someone deleted fails the upload only at the commit: both end with
+  the upload, and reopening by name is what let another file take its place.
+- An overwriting upload gives the new file the owner and mode of what is at
+  the target's name, also when a user hard-linked another account's setuid
+  file there: that link needs `fs.protected_hardlinks=0`, which no supported
+  distribution ships, and on such a host the link alone already misleads.
 - A cancelled upload whose folder was swapped for a link meanwhile leaves its
   hidden `.…linuxio-upload-….part` buffer behind: removing it by path could
   remove another file, and the leftover sits in the user's own folder.
