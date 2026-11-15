@@ -1,3 +1,5 @@
+import { useRef } from "react";
+
 import { linuxio } from "@/api";
 import type {
   BtrfsRollbackProgress,
@@ -15,6 +17,7 @@ import {
 } from "@/components/ui/AppDialog";
 import AppLinearProgress from "@/components/ui/AppLinearProgress";
 import AppTypography from "@/components/ui/AppTypography";
+import type { SettlePowerAction } from "@/contexts/PowerActionContext";
 import usePowerAction from "@/hooks/usePowerAction";
 import { formatDate } from "@/utils/formatters";
 
@@ -36,14 +39,14 @@ const BtrfsRollbackDialog = ({
   onClose,
 }: BtrfsRollbackDialogProps) => {
   const { triggerReboot } = usePowerAction();
-  // The server may die before responding, so errors are expected and only logged.
+  // The server may die before it answers. The overlay decides what a lost
+  // connection means; a refusal takes it down and shows the reason.
+  const settlePowerAction = useRef<SettlePowerAction | undefined>(undefined);
   const { mutate: reboot } = linuxio.control.reboot.useMutation({
-    error: (error) => {
-      console.warn("Reboot error (may be expected):", error);
-    },
+    error: (error) => settlePowerAction.current?.(error),
   });
   const handleReboot = () => {
-    triggerReboot();
+    settlePowerAction.current = triggerReboot();
     reboot();
   };
 
