@@ -48,37 +48,54 @@ export function pathPastRefusedLink(
   };
 }
 
+/**
+ * Toast options plus `failures`: the full texts of a batch's failures, which
+ * the toast lists only in part. They are searched for a link refusal in place
+ * of the description and never reach sonner.
+ */
+export type FileErrorOpts = ToastOpts & { failures?: readonly string[] };
+
 interface ErrorToaster {
   error: (message: string, opts?: ToastOpts) => unknown;
 }
 
 /**
- * Raises an error toast for a file operation. When the message or its
- * description holds a link refusal, the toast offers to open the folder the
- * link points to. `onOpen` runs right before it navigates, for a caller whose
- * dialog would otherwise stay open over the folder it opens.
+ * Raises an error toast for a file operation. When the message, or the
+ * failures (the description when none are given), hold a link refusal, the
+ * toast offers to open the folder the link points to; the first refusal found
+ * counts. A refusal the toast does not already show is added to its
+ * description, so the user reads which link the action is about. `onOpen`
+ * runs right before it navigates, for a caller whose dialog would otherwise
+ * stay open over the folder it opens.
  */
 export function toastFileError(
   toast: ErrorToaster,
   navigate: UseNavigateResult<string>,
   message: string,
-  opts?: ToastOpts,
+  opts?: FileErrorOpts,
   onOpen?: () => void,
 ): void {
-  const description = opts?.description;
+  const { failures, ...toastOpts } = opts ?? {};
+  const description =
+    typeof toastOpts.description === "string" ? toastOpts.description : "";
+  const refusal = [
+    message,
+    ...(failures ?? (description ? [description] : [])),
+  ].find((text) => linkRefusalDestination(text) !== null);
   const destination =
-    linkRefusalDestination(message) ??
-    (typeof description === "string"
-      ? linkRefusalDestination(description)
-      : null);
-  if (destination === null) {
-    // Without options the call stays a one-argument one, as before.
-    if (opts) toast.error(message, opts);
+    refusal === undefined ? null : linkRefusalDestination(refusal);
+  if (refusal === undefined || destination === null) {
+    // Without a toast option the call stays a one-argument one.
+    if (Object.keys(toastOpts).length > 0) toast.error(message, toastOpts);
     else toast.error(message);
     return;
   }
+  const shown = message.includes(refusal) || description.includes(refusal);
   toast.error(message, {
-    ...opts,
+    ...toastOpts,
+    ...(shown
+      ? {}
+      : { description: description ? `${description}\n${refusal}` : refusal }),
     action: {
       label: "Open the real folder",
       onClick: () => {

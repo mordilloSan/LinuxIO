@@ -182,6 +182,111 @@ describe("toastFileError", () => {
     );
   });
 
+  it("offers it for a refusal only the full failure list holds", () => {
+    const { navigate, toast } = setup();
+    const failures = [
+      ...Array.from({ length: 5 }, (_, i) => `f${i}: permission denied`),
+      `f5: ${REFUSAL}`,
+    ];
+
+    toastFileError(toast, navigate, "Failed to delete 6 items", {
+      description: "f0: permission denied\nand 5 more",
+      failures,
+    });
+
+    const opts = toast.error.mock.calls[0][1];
+    expect(opts).not.toHaveProperty("failures");
+    expect(opts).toEqual(
+      expect.objectContaining({
+        action: expect.objectContaining({ label: "Open the real folder" }),
+        // The refusal that gives the action is shown, after the listed lines.
+        description: `f0: permission denied\nand 5 more\nf5: ${REFUSAL}`,
+      }),
+    );
+    clickAction(toast);
+    expect(navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ params: { _splat: "mnt/data/docs" } }),
+    );
+  });
+
+  it("offers it for an upload whose second failure is a refusal", () => {
+    const { navigate, toast } = setup();
+
+    // The upload toast names only the first failure.
+    toastFileError(
+      toast,
+      navigate,
+      "Failed to upload 2 items: permission denied",
+      { failures: ["permission denied", REFUSAL] },
+    );
+
+    expect(toast.error).toHaveBeenCalledWith(
+      "Failed to upload 2 items: permission denied",
+      expect.objectContaining({ description: REFUSAL }),
+    );
+    clickAction(toast);
+    expect(navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ params: { _splat: "mnt/data/docs" } }),
+    );
+  });
+
+  it("adds no text for a refusal the toast already shows", () => {
+    const { navigate, toast } = setup();
+
+    toastFileError(toast, navigate, `Failed to upload 1 item: ${REFUSAL}`, {
+      failures: [REFUSAL],
+    });
+    toastFileError(toast, navigate, "Failed to delete 1 item", {
+      description: `a: ${REFUSAL}`,
+      failures: [`a: ${REFUSAL}`],
+    });
+
+    expect(toast.error.mock.calls[0][1]).not.toHaveProperty("description");
+    expect(toast.error.mock.calls[1][1]).toEqual(
+      expect.objectContaining({ description: `a: ${REFUSAL}` }),
+    );
+  });
+
+  it("counts the first refusal of the failure list", () => {
+    const { navigate, toast } = setup();
+    const other =
+      "forbidden: /home/b is a link to /srv/b. Open that folder to make this change";
+
+    toastFileError(toast, navigate, "Failed to delete 2 items", {
+      failures: [REFUSAL, other],
+    });
+
+    clickAction(toast);
+    expect(navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ params: { _splat: "mnt/data/docs" } }),
+    );
+  });
+
+  it("offers no action when no failure is a refusal", () => {
+    const { navigate, toast } = setup();
+
+    toastFileError(toast, navigate, "Failed to delete 2 items", {
+      description: "a.txt: permission denied",
+      failures: ["permission denied", "no such file"],
+    });
+
+    expect(toast.error).toHaveBeenCalledWith("Failed to delete 2 items", {
+      description: "a.txt: permission denied",
+    });
+  });
+
+  it("stays a one-argument call when failures are the only option", () => {
+    const { navigate, toast } = setup();
+
+    toastFileError(toast, navigate, "Failed to upload 2 items: denied", {
+      failures: ["denied", "no such file"],
+    });
+
+    expect(toast.error).toHaveBeenCalledWith(
+      "Failed to upload 2 items: denied",
+    );
+  });
+
   it("opens the root for a link to it", () => {
     const { navigate, toast } = setup();
 

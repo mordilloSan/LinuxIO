@@ -11,7 +11,7 @@ import {
   openTaskWatchStream,
 } from "@/api";
 import { useStreamResult } from "@/hooks/useStreamResult";
-import { batchFailures, describeBatchFailures } from "@/tasks/batchFailures";
+import { batchFailureOpts, batchFailures } from "@/tasks/batchFailures";
 import { extractionLabelBase, fileTaskText } from "@/tasks/taskTitles";
 import * as TaskTypes from "@/tasks/taskTypes";
 import {
@@ -322,7 +322,7 @@ export function useTransferTasks(runtime: BackgroundTaskRuntime) {
             toast,
             navigate,
             `${descriptor.done} ${labelBase} with ${failed.length} failure${failed.length === 1 ? "" : "s"}`,
-            { description: describeBatchFailures(failed) },
+            batchFailureOpts(failed),
           );
         } else {
           toast.success(`${descriptor.done} ${labelBase}`);

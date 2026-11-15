@@ -22,7 +22,7 @@ import {
 import AppSkeleton from "@/components/ui/AppSkeleton";
 import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { describeBatchFailures } from "@/tasks/batchFailures";
+import { batchFailureOpts } from "@/tasks/batchFailures";
 import { formatDate, formatFileSize } from "@/utils/formatters";
 import { toastFileError } from "@/utils/linkRefusal";
 import { parentPath } from "@/utils/path";
@@ -97,7 +97,7 @@ const TrashDialog = ({ open, onClose }: TrashDialogProps) => {
         toast,
         navigate,
         `Failed to ${action} ${itemCount(failed.length)}`,
-        { description: describeBatchFailures(failed) },
+        batchFailureOpts(failed),
         closeForRealFolder,
       );
       return;

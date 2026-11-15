@@ -15,7 +15,7 @@ import {
   type TaskProgress,
 } from "@/api";
 import { useScopedToast } from "@/hooks/useScopedToast";
-import { describeBatchFailures } from "@/tasks/batchFailures";
+import { batchFailureOpts } from "@/tasks/batchFailures";
 import { useBackgroundTaskActions } from "@/tasks/useBackgroundTaskActions";
 import { toastFileError } from "@/utils/linkRefusal";
 import {
@@ -161,7 +161,7 @@ export const useFileMutations = ({
         verb === "trash"
           ? `Failed to move ${count} to Trash`
           : `Failed to delete ${count}`,
-        { description: describeBatchFailures(failed) },
+        batchFailureOpts(failed),
       );
       return;
     }
@@ -286,7 +286,7 @@ export const useFileMutations = ({
           toast,
           navigate,
           `Failed to change permissions on ${failed.length} of ${result?.total ?? failed.length} items`,
-          { description: describeBatchFailures(failed) },
+          batchFailureOpts(failed),
           onPermissionsLinkOpen,
         );
         return;
