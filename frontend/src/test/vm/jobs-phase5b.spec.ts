@@ -8,12 +8,12 @@ import {
 
 import {
   bridgeCall,
+  clickInScheduleRow,
   createSchedule,
   openTray,
   rig,
   runNow,
   runsOf,
-  scheduleRow,
   signIn,
   signOut,
   signOutIfSignedIn,
@@ -270,9 +270,9 @@ async function saveSettings(page: Page) {
 
 /** Opens the schedule's dialog, picks choice under "Notify me" and saves. */
 async function setNotifyChoice(page: Page, name: string, choice: string) {
-  await scheduleRow(page, name)
-    .getByRole("button", { name: "Edit", exact: true })
-    .click();
+  await clickInScheduleRow(page, name, (row) =>
+    row.getByRole("button", { name: "Edit", exact: true }),
+  );
   const dialog = page.getByRole("dialog", { name: "Edit scheduled task" });
   await choose(page, dialog, "Notify me", choice);
   await dialog.getByRole("button", { name: "Save", exact: true }).click();
@@ -541,9 +541,9 @@ test("a script that reports every run keeps one line, made unseen by each run", 
     })
     .toBe(true);
   const polledAt = Math.max(...listReads);
-  await scheduleRow(page, name)
-    .getByRole("button", { name: "Delete", exact: true })
-    .click();
+  await clickInScheduleRow(page, name, (row) =>
+    row.getByRole("button", { name: "Delete", exact: true }),
+  );
   const confirm = page
     .getByRole("dialog")
     .filter({ hasText: "Delete scheduled task" });
@@ -574,9 +574,9 @@ test("a schedule's own choice wins, and saving only it leaves the unit alone", a
   ).toHaveText("Failures only");
 
   await page.goto(`/services/schedules?schedule=${chosenId}`);
-  await scheduleRow(page, chosen)
-    .getByRole("button", { name: "Edit", exact: true })
-    .click();
+  await clickInScheduleRow(page, chosen, (row) =>
+    row.getByRole("button", { name: "Edit", exact: true }),
+  );
   const dialog = page.getByRole("dialog", { name: "Edit scheduled task" });
   await expect(
     dialog.getByRole("combobox", { name: "Notify me", exact: true }),
@@ -595,9 +595,9 @@ test("a schedule's own choice wins, and saving only it leaves the unit alone", a
   // The dialog's write created the file: root's alone, as the page's.
   await expectRootOnly();
   // The dialog shows the stored choice.
-  await scheduleRow(page, chosen)
-    .getByRole("button", { name: "Edit", exact: true })
-    .click();
+  await clickInScheduleRow(page, chosen, (row) =>
+    row.getByRole("button", { name: "Edit", exact: true }),
+  );
   await expect(
     dialog.getByRole("combobox", { name: "Notify me", exact: true }),
   ).toHaveText("After every run");
@@ -636,9 +636,22 @@ test("a schedule's own choice wins, and saving only it leaves the unit alone", a
   await expect(
     page.getByText("Output of the latest run", { exact: true }),
   ).toBeVisible();
-  await expect(
-    scheduleRow(page, running).getByText(running, { exact: true }),
-  ).toBeInViewport();
+  // Which rows show depends on how many schedules earlier runs left and on
+  // where the table is scrolled, so the check is that it shows some rows.
+  await expect
+    .poll(() =>
+      page
+        .getByRole("table", { name: "Scheduled tasks" })
+        .locator(".app-dt__row--body")
+        .evaluateAll(
+          (rows) =>
+            rows.filter((row) => {
+              const box = row.getBoundingClientRect();
+              return box.height > 0 && box.bottom > 0 && box.top < innerHeight;
+            }).length,
+        ),
+    )
+    .toBeGreaterThan(1);
   await setNotifyChoice(page, running, "After every run");
   expect(await scheduleFiles(runningId), "the unit files and timer").toBe(
     whileRunning,

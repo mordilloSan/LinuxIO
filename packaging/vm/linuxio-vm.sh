@@ -10,7 +10,7 @@
 # linuxio-e2e-noble-* volumes and ~/.cache/linuxio-vm-noble, beside the first.
 #
 # Usage: linuxio-vm.sh create | install BUILD_DIR | ssh [COMMAND] | ip | reboot |
-#        power-cut | throttle DISK BYTES_PER_SEC | reset | destroy
+#        power-cut | off-for SECONDS | throttle DISK BYTES_PER_SEC | reset | destroy
 set -euo pipefail
 
 case "${LINUXIO_VM_RELEASE:-resolute}" in
@@ -276,6 +276,21 @@ power_cut() {
 	wait_for_boot "$boot"
 }
 
+# An orderly shutdown, SECONDS with the domain off, then a boot: what a timer
+# does with the time that passed while the host was down.
+off_for() {
+	local seconds=${1:-}
+	[[ $seconds =~ ^[0-9]+$ ]] || die "usage: off-for SECONDS"
+	connect
+	local boot
+	boot="$(boot_id)"
+	v shutdown "$DOMAIN" >/dev/null
+	wait_for_shut_off 180
+	sleep "$seconds"
+	v start "$DOMAIN" >/dev/null
+	wait_for_boot "$boot"
+}
+
 # Caps a data disk's I/O in bytes per second (0 lifts the cap), in the
 # running domain and in its definition, so the cap outlasts a power cut. The
 # clean snapshot holds no cap, so a reset lifts it too.
@@ -321,8 +336,9 @@ ip)
 	;;
 reboot) reboot_vm ;;
 power-cut) power_cut ;;
+off-for) off_for "${2:-}" ;;
 throttle) throttle "${2:-}" "${3:-}" ;;
 reset) reset ;;
 destroy) destroy ;;
-*) die "usage: $(basename "$0") create | install BUILD_DIR | ssh [COMMAND] | ip | reboot | power-cut | throttle DISK BYTES_PER_SEC | reset | destroy" ;;
+*) die "usage: $(basename "$0") create | install BUILD_DIR | ssh [COMMAND] | ip | reboot | power-cut | off-for SECONDS | throttle DISK BYTES_PER_SEC | reset | destroy" ;;
 esac

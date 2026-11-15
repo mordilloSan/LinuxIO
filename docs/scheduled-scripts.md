@@ -133,8 +133,21 @@ starts as daily at 03:00 UTC.
 - `frontend/src/test/vm/jobs-phase4.spec.ts` runs in the test VM and covers the
   run records, the saved output, the alerts, stop, an orderly reboot and a
   power cut.
-- Not covered by any test: a run that passes its timeout, catching up a missed
-  run, and journal retention over several days. They are in the
+- `frontend/src/test/vm/jobs-phase4b.spec.ts` runs in the test VM too (the
+  Ubuntu 24.04 one included) and covers three things on a host:
+  - A run that passes its timeout (8 s): the record reads `failed` with
+    "timed out", the unit's `Result` is `timeout`, the script's child process is
+    gone, the output saved before the kill is kept and the alert is raised.
+  - Catching up a missed run: two daily schedules, due three minutes ahead, one
+    with "Run after a missed activation" and one without; the VM is shut down
+    in an orderly way and booted four minutes later (`linuxio-vm.sh off-for`).
+    The one that asked runs a few seconds after the boot, long after its time;
+    the other runs nothing.
+  - A restart during a run: the root job host (`linuxio-jobs@0`), then the
+    control plane (`linuxio restart`) and the session's bridge are restarted
+    while a script runs; the run stays `running` with the same systemd
+    invocation, ends `completed`, and its output has both lines.
+- Not covered by any test: journal retention over several days. It is in the
   [backlog](./TODO/backlog.md#needs-a-real-machine-or-a-measurement).
 
 ## References
