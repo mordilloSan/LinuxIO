@@ -56,6 +56,16 @@ func Connect(ctx context.Context, uid uint32, hello bridgeipc.HelloSession, host
 	if err := startHostSocket(ctx, uid); err != nil {
 		return nil, err
 	}
+	return Dial(ctx, hello, hostSocket)
+}
+
+// Dial connects to the job host listening at hostSocket and introduces hello,
+// without starting the host's socket unit as Connect does first. Tests that
+// run a host in-process use it to stay off systemd.
+func Dial(ctx context.Context, hello bridgeipc.HelloSession, hostSocket string) (*Client, error) {
+	if hello.SessionRef == "" {
+		return nil, errors.New("job host hello needs a session ref")
+	}
 	conn, err := dialHost(ctx, hostSocket)
 	if err != nil {
 		return nil, err

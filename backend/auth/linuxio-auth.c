@@ -75,6 +75,12 @@
 #ifndef LINUXIO_SYSTEMCTL
 #define LINUXIO_SYSTEMCTL "/usr/bin/systemctl"
 #endif
+// sudo answers the privileged-mode policy probe (see
+// user_can_run_bridge_as_root); the hermetic PAM suite points it at a stub so
+// it does not depend on the build host's sudoers.
+#ifndef LINUXIO_SUDO
+#define LINUXIO_SUDO "/usr/bin/sudo"
+#endif
 
 #ifndef AT_EMPTY_PATH
 #define AT_EMPTY_PATH 0x1000
@@ -1589,7 +1595,7 @@ static int build_sudo_policy_argv(const char *canonical_username,
 {
   if (!canonical_username || !*canonical_username || !argv || argv_cap < 10)
     return -1;
-  argv[0] = "/usr/bin/sudo";
+  argv[0] = LINUXIO_SUDO;
   argv[1] = "-n";
   argv[2] = "-l";
   argv[3] = "-U";

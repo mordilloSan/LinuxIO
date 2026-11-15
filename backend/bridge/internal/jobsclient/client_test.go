@@ -202,6 +202,29 @@ func TestClientConnectSendsHelloAndOpensMutation(t *testing.T) {
 	}
 }
 
+// Dial introduces the hello to a listening host and, unlike Connect, starts no
+// socket unit even as root.
+func TestClientDialStartsNoUnit(t *testing.T) {
+	uid := uint32(os.Getuid())
+	th := startHost(t, uid)
+	started := asRoot(t, true)
+
+	c, err := Dial(t.Context(), bridgeipc.HelloSession{Username: "alice", UID: uid, SessionRef: "ref-1"}, th.socket)
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	t.Cleanup(func() { _ = c.Close() })
+	if len(*started) != 0 {
+		t.Fatalf("started units = %v, want none", *started)
+	}
+	if c.Protocol() != jobs.Protocol {
+		t.Fatalf("Protocol() = %d, want %d", c.Protocol(), jobs.Protocol)
+	}
+	if _, err := Dial(t.Context(), bridgeipc.HelloSession{Username: "alice", UID: uid}, th.socket); err == nil {
+		t.Fatal("Dial without a session ref succeeded")
+	}
+}
+
 func TestClientConnectRetriesAStaleSocket(t *testing.T) {
 	uid := uint32(os.Getuid())
 	th := startHost(t, uid)

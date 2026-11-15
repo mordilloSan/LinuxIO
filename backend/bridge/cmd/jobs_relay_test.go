@@ -33,14 +33,22 @@ const (
 	hostJobFour  = "00000000-0000-4000-8000-0000000000f4"
 )
 
+// dialRelayTestHost connects to the in-process test host at hostSocket without
+// starting its socket unit, which jobsclient.Connect does as root through
+// systemd.
+func dialRelayTestHost(ctx context.Context, _ uint32, hello bridgeipc.HelloSession, hostSocket string) (*jobsclient.Client, error) {
+	return jobsclient.Dial(ctx, hello, hostSocket)
+}
+
 // relayTestSockets points the relay at hostSocket, and at an empty store
 // standing for its host's, for the rest of the test: no test reads the records
-// of this machine's job host.
+// of this machine's job host. The relay dials the host without starting a
+// socket unit, so the tests run as root too.
 func relayTestSockets(t *testing.T, hostSocket string) {
 	t.Helper()
-	if os.Geteuid() == 0 {
-		t.Skip("as root jobsclient.Connect starts the host's socket unit through systemd; that StartUnit seam is internal to jobsclient, whose tests cover the root path with it stubbed")
-	}
+	oldConnect := jobsConnect
+	jobsConnect = dialRelayTestHost
+	t.Cleanup(func() { jobsConnect = oldConnect })
 	oldHost := jobsHostSocket
 	jobsHostSocket = func(uint32) string { return hostSocket }
 	t.Cleanup(func() { jobsHostSocket = oldHost })
@@ -83,7 +91,7 @@ func gateRelayConnect(t *testing.T) (connecting <-chan struct{}, release chan<- 
 		}
 		select {
 		case <-gate:
-			return jobsclient.Connect(ctx, uid, hello, hostSocket)
+			return dialRelayTestHost(ctx, uid, hello, hostSocket)
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
@@ -147,7 +155,7 @@ func repeatTargetInMetadata(t *testing.T, store *jobs.Store, id, label string) {
 func startHostJob(t *testing.T, socket, id string) {
 	t.Helper()
 	uid := uint32(os.Getuid())
-	c, err := jobsclient.Connect(context.Background(), uid, bridgeipc.HelloSession{Username: "alice", UID: uid, SessionRef: "other-bridge"}, socket)
+	c, err := jobsclient.Dial(context.Background(), bridgeipc.HelloSession{Username: "alice", UID: uid, SessionRef: "other-bridge"}, socket)
 	if err != nil {
 		t.Fatalf("connect another bridge: %v", err)
 	}
@@ -615,7 +623,7 @@ func TestPrivilegedBridgeUsesRootHost(t *testing.T) {
 	}
 	jobsConnect = func(ctx context.Context, uid uint32, hello bridgeipc.HelloSession, hostSocket string) (*jobsclient.Client, error) {
 		connects <- connectArgs{uid: uid, hostSocket: hostSocket, hello: hello}
-		return jobsclient.Connect(ctx, uid, hello, hostSocket)
+		return dialRelayTestHost(ctx, uid, hello, hostSocket)
 	}
 
 	alice := &session.Session{SessionID: "alice-session", User: session.User{Username: "alice", UID: 1000}, Privileged: true}

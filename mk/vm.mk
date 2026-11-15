@@ -45,6 +45,18 @@ vm-test-filebrowser-root: ensure-go ## Run the root-only file browser ownership 
 	@"$(vm_script)" ssh "sudo ./filebrowser.test -test.run $$(printf %q '$(FILEBROWSER_ROOT_RUN)') -test.count=1 -test.v"
 	@"$(vm_script)" ssh "sudo ./filebrowser-services.test -test.run $$(printf %q '$(FILEBROWSER_ROOT_RUN)') -test.count=1 -test.v"
 
+# The bridge-to-job-host relay tests (backend/bridge/cmd/jobs_relay_test.go).
+# They serve a host in-process, so as root its owner and privileged rules are
+# those of the root host; the relay dials it without starting a socket unit.
+RELAY_ROOT_RUN := ^Test(Bridge(Forwards|Fails|Watch|Events|Reports)|PrivilegedBridgeUsesRootHost|Relay|UpdatePendingMessage)
+
+vm-test-relay-root: ensure-go ## Run the bridge-to-job-host relay tests as root in the test VM
+	@set -e
+	@mkdir -p "$(cache_dir)/vm"
+	@cd "$(backend_dir)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" "$(GO_BIN)" test -c -o "$(cache_dir)/vm/bridge-cmd.test" ./bridge/cmd
+	@"$(vm_script)" ssh 'cat > bridge-cmd.test && chmod +x bridge-cmd.test' < "$(cache_dir)/vm/bridge-cmd.test"
+	@"$(vm_script)" ssh "sudo ./bridge-cmd.test -test.run $$(printf %q '$(RELAY_ROOT_RUN)') -test.count=1 -test.v"
+
 test-vm-browser: ensure-node setup-frontend ## Run the Playwright specs in frontend/src/test/vm against the test VM
 	@set -e
 	@ip="$$("$(vm_script)" ip)"
