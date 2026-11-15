@@ -298,3 +298,47 @@ func fieldMap(fields []Field) map[string]string {
 	}
 	return out
 }
+
+type testReason string
+
+// testSecret is a named string that marshals itself, which the handler must
+// not bypass.
+type testSecret string
+
+func (testSecret) MarshalText() ([]byte, error) { return []byte("redacted"), nil }
+
+func TestHandlerWritesNamedStringTypesUnquoted(t *testing.T) {
+	sender := &mockSender{}
+	handler, err := NewHandler(Options{
+		Identifier:  "linuxio-jobs",
+		Level:       slog.LevelDebug,
+		FieldPrefix: "LINUXIO",
+		Sender:      sender,
+	})
+	if err != nil {
+		t.Fatalf("NewHandler: %v", err)
+	}
+
+	slog.New(handler).Info("job marked interrupted",
+		"reason", testReason("reboot"),
+		"payload", struct {
+			Reason testReason `json:"reason"`
+		}{Reason: "reboot"},
+		"labels", map[string]testReason{"a": "b"},
+		"secret", testSecret("hunter2"),
+	)
+
+	got := fieldMap(sender.fields)
+	if got["LINUXIO_REASON"] != "reboot" {
+		t.Fatalf("named string field = %q, want reboot", got["LINUXIO_REASON"])
+	}
+	if got["LINUXIO_PAYLOAD"] != `{"reason":"reboot"}` {
+		t.Fatalf("struct field = %q", got["LINUXIO_PAYLOAD"])
+	}
+	if got["LINUXIO_LABELS"] != `{"a":"b"}` {
+		t.Fatalf("map field = %q", got["LINUXIO_LABELS"])
+	}
+	if got["LINUXIO_SECRET"] != `"redacted"` {
+		t.Fatalf("self-marshaling string field = %q, want its own text", got["LINUXIO_SECRET"])
+	}
+}

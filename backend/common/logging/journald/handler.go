@@ -2,10 +2,12 @@ package journald
 
 import (
 	"context"
+	"encoding"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"log/slog"
+	"reflect"
 	"runtime"
 	"slices"
 	"strconv"
@@ -396,6 +398,16 @@ func encodeAnyValue(v any) (string, bool) {
 		return strconv.FormatFloat(float64(value), 'g', -1, 32), true
 	case float64:
 		return strconv.FormatFloat(value, 'g', -1, 64), true
+	}
+
+	// A named string type does not match case string above; JSON would quote
+	// it. One that marshals itself keeps the say over its text.
+	switch v.(type) {
+	case json.Marshaler, json.MarshalerTo, encoding.TextMarshaler:
+	default:
+		if rv := reflect.ValueOf(v); rv.Kind() == reflect.String {
+			return rv.String(), true
+		}
 	}
 
 	buf, err := json.Marshal(v)

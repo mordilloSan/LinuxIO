@@ -89,14 +89,14 @@ export async function jobRecord(id: string): Promise<JobRecord | undefined> {
 
 /**
  * The jobs the root job host logged message for in this boot, with the
- * reason it logged (the journal holds it JSON-quoted).
+ * reason it logged.
  */
 export async function loggedJobs(
   message: string,
 ): Promise<{ id: string; reason: string }[]> {
   const out = await vmSsh(
     `sudo journalctl -b -u linuxio-jobs@0.service -o json | jq -c --arg m '${message}' ` +
-      `'select(.MESSAGE == $m) | {id: .LINUXIO_JOB_ID, reason: ((.LINUXIO_REASON // "") | ltrimstr("\\"") | rtrimstr("\\""))}'`,
+      `'select(.MESSAGE == $m) | {id: .LINUXIO_JOB_ID, reason: (.LINUXIO_REASON // "")}'`,
   );
   return out
     .split("\n")
