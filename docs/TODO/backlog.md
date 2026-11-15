@@ -84,15 +84,6 @@ after a change that issues ioctls).
   `backend/bridge/handlers/filebrowser/services/handover.go`). A parent that
   is root's, such as a `~/docker` made earlier without the hand-over, would
   explain it. If it happens again, check who owns the nearest existing parent.
-- [ ] **Release notes.** The release that ships jobs should state three
-  behaviour changes: a stored Docker `never` no longer silences failures; an
-  interruption by a shutdown is a warning, so "Errors only" no longer emails it
-  unless *Warnings* is ticked for *Email*; and a save from the settings page
-  over an unreadable `notifications.json` drops every schedule's choice and the
-  SMTP password and keeps the old file as `notifications.json.unreadable`
-  ([Alerts](../alerts.md#notification-settings)). Release notes are not kept
-  in the repository, so this cannot be checked here.
-
 - [ ] **"Open the real folder" opens behind a dialog.** After a refusal in
   the Trash or Permissions dialog the dialog stays open, so the file browser
   moves to the real folder behind it and the admin has to close the dialog to
