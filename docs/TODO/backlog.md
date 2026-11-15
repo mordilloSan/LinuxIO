@@ -57,15 +57,18 @@ after a change that issues ioctls).
   (`backend/common/btrfs/pool.go`) open without it; and md and LVM membership
   comes from the udev database, so a signature udev has not probed is not
   seen. Reported; each window is short.
-- [ ] **A scrub starts over after a power cut.** It is checkpointed only by
-  its `Suspend` hook at an orderly stop
-  (`backend/bridge/handlers/storage/btrfs_device_operations.go`). Checked.
-- [ ] **A scrub might end by itself.** The kernel stops a scrub on any signal
-  to its thread, and nothing in `backend/common/btrfs` retries `EINTR`. An
-  inference; never observed. Needs a test.
 
 ## Visible bugs
 
+- [ ] **A browser page that closes is logged as a failed route.** With a
+  stream open (a live log or output follow), the session bridge logs
+  `route failed: write frame: i/o deadline reached` or `stream reset` at Error
+  a few ms after the page goes away. Reproduced in the test VM. Tell a client
+  that left from a failure in `Router.Dispatch`
+  (`backend/bridge/internal/bridgeipc/router.go`), for reads and writes on the
+  client's stream only: marking it in `relay.WriteRelayFrame` was tried and
+  taken out, because that also writes to the job host and a crashed host
+  would then be logged as a client leaving.
 - [ ] **A refusal past the fifth failure gets no button.** A batch toast lists
   the first five failures (`describeBatchFailures` in
   `frontend/src/tasks/batchFailures.ts`) and the action is found in that text,
@@ -75,24 +78,11 @@ after a change that issues ioctls).
 
 ## Tests that are missing
 
-- [ ] No browser test signs in as a user without sudo. The pages gated for
-  such a session are covered by unit tests only, and the test VM has one
-  account, with sudo.
-- [ ] The relay tests in `backend/bridge/cmd/jobs_relay_test.go` skip when run
-  as root, and a privileged login skipping the host start has no hermetic test
-  (`backend/auth/linuxio-auth-pam_test.c`).
-- [ ] Not run in the test VM (`frontend/src/test/vm/jobs-phase5a.spec.ts`): a
-  real update from a release that has job hosts, more than one waiting job, a
-  user's host as the older host, `tasks.watch`, `tasks.cancel` and
-  `tasks.output` during the wait, and uploads during it.
-- [ ] The "Open the real folder" action was never clicked in a browser: unit
-  tests cover it (`frontend/src/utils/linkRefusal.test.ts` and the tests of
-  the hooks that use it). A browser test needs a link refusal from a root
-  bridge, so it belongs in the test VM.
-- [ ] A toast's page link ("Open Docker" on a toast fired while the user is
-  on another page, `toastLinkOptions` in `frontend/src/api/toast-meta.ts`) was
-  never clicked in a browser: unit tests cover it, and the browser tests'
-  router is not registered for it, so no link appears there.
+- [ ] Not run in the test VM: an update that waits for jobs, started from the
+  in-app updater. `control.app_update` installs only a published release, and
+  no published release has a higher `jobs.Protocol` than v0.53.0, so
+  `frontend/src/test/vm/jobs-update.spec.ts` updates through the rig's
+  installer to a protocol-bumped build of the tree.
 - [ ] A relay speed test: a no-op mutation through the relay many times, with
   a bound on the median. No baseline numbers exist either for call latency,
   job start, alert listing or schedule status.
@@ -101,33 +91,22 @@ after a change that issues ioctls).
 
 - [ ] **Seen once and not explained.** Try each in the test VM once, then fix
   it or delete the line:
-  - A progress frame published between a stream's subscribe and its first
-    snapshot may be skipped (`backend/bridge/internal/bridgeipc/tasks.go`,
-    `subscribeWithReplayStatus`).
-  - An abort while the client waits for the stream mux after its job started
-    may not reach the server (`frontend/src/api/linuxio-core.ts`).
-  - After a failed first history load, a non-admin's notice observer refetches
-    on focus and ignores the result (`useAwayNotice.ts`).
-  - A session bridge logged `route failed: write frame: i/o deadline reached`
-    while a scheduled script ran.
+  - `TestBtrfsDegradedIntegration` failed once in six runs on the noble VM
+    (kernel 6.8) with "the refusal raised no alert explaining it", the boot
+    check's alert in `backend/common/btrfs/degraded.go`; the rerun passed.
 - [ ] **Nothing works below a folder link with an absolute target**
   (audit 36). A link such as `/home/u/data -> /mnt/data` is refused by Go's
   `os.Root` for any path that goes through it, and `iteminfo.ResolveSymlinksAt`
-  resolves only the last name. Checked in the Go 1.27.4 source; needs a host
-  to reproduce first.
+  resolves only the last name. Reproduced in the test VM on 2026-11-15, for a
+  root session and a session without sudo alike: the link itself lists, and
+  everything below it (list, stat, read, the Permissions dialog) fails with
+  "path escapes from parent"; a link with a relative target works.
   - Fix: resolve the parent folders at the points where a path enters, and run
     `CheckNotProtected` on the result. Large: 37 `fsroot.Open` call sites, and
     a mistake here lets a path escape.
-- [ ] **Scheduled scripts.** A run that passes its timeout, catching up a
-  missed run (`Persistent=`), journal retention over several days, and a
-  bridge restart during a run. See
+- [ ] **Scheduled scripts.** Journal retention over several days was never
+  checked on a host. See
   [Scheduled Scripts](../scheduled-scripts.md#testing).
-- [ ] **What happens after a route cuts its own connection is not written
-  down.** The old roadmap's rule was: send it once; after reconnect, reboot
-  compares the boot identity, a network change reads back the interface, and
-  power-off reports "acknowledged" or "unknown", never success just because the
-  host went quiet. Whether the frontend does this was not checked. Check it,
-  then describe it in [API Contract](../api-contract.md).
 - [ ] **Hardlink reconcile runs one query per file** in one transaction
   (audit 57): `reconcileHardlinksAfterReindex` in
   `backend/indexer/internal/storage/hardlinks.go`. Measure first, then add up
@@ -150,7 +129,15 @@ Do one of these only when something shows it is needed.
   folder, so this is a convenience only.
 - Pick up a package update again after the job host dies, by asking
   PackageKit.
+- Retry the web socket's start in `linuxio restart --full`.
+  `linuxio-webserver.socket` is ordered after `linuxio-auth.socket`, which
+  ended the "Address already in use" failures (0 of 50 restarts), but any
+  other unit that forks a helper in that window, such as a user's job host
+  socket at a login, can still hold the old listener for a moment.
 - Pick up a SMART test again from the drive's own state.
+- Continue the scrub of a pool resync after a power cut. It saves its progress
+  as a job's scrub does, but it is not a job, so nothing continues it and the
+  resync scrubs from the start again.
 - More alert sources and other ways to deliver them: see "Not in this slice"
   in [Alerts](../alerts.md).
 - What jobs do not do: see "Not built" in [Jobs](../jobs.md#not-built).
@@ -216,6 +203,32 @@ Without sudo:
 
 Storage and jobs:
 
+- A signal ending a scrub by itself: since kernel 6.19 a signal pending on
+  the calling thread does end `BTRFS_IOC_SCRUB` with `EINTR`, but
+  `blockingIoctl` (`backend/common/btrfs/ioctl.go`) issues it on a locked
+  thread that blocks every asynchronous signal, and the `signals` step of
+  `TestBtrfsResumeIntegration` scrubs to the end under a storm of them. A
+  freeze does interrupt one, and the scrub then issues its call again; a
+  replace a freeze ended is under "Not built" in
+  [Jobs](../jobs.md#not-built).
+- A scrub continued from its saved progress, or issued again after a freeze,
+  has limits that are kept on purpose; "Scrub progress" in
+  [Btrfs](../btrfs.md#scrub-progress) gives each with its reason. The dev
+  extent where a disk stopped is read and counted twice, and a power cut
+  loses up to a minute. `btrfs scrub status` does not show LinuxIO's scrubs.
+  A disk interrupted three times in a row before it moves is aborted. A scrub
+  is refused when a disk cannot be read, or while a record whose last save
+  failed still says "running". A job host that dies without a reboot is not
+  resumed, as for every job ([Jobs](../jobs.md)). No test suspends to RAM:
+  the test VM wakes at once from every suspend after its first, so one was
+  checked by hand on kernel 7.0 (the scrub was interrupted, issued again and
+  finished); a frozen cgroup and a frozen filesystem are tested.
+- After a reboot, power-off or network change the client compares no boot
+  identity and reads no plain network change back
+  ([API Contract](../api-contract.md#routes-that-cut-their-own-connection)):
+  the first needs a new route open before sign-in, and the page instead waits
+  to see the webserver go away and come back; only the bridge handoff, which
+  can lock an admin out, is verified.
 - A D-Bus error can lose one replication run's record when the last job is
   disabled during a send: it needs both at once, and it loses a record, not
   data.

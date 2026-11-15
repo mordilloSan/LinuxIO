@@ -415,6 +415,9 @@ treats each operation differently:
   then holds the pool's exclusive operation until the pool is mounted again
   or the balance is resumed by hand.
 - A scrub has no kernel state, so the checkpoint is each device's offset.
+  The scrub also saves each device's offset and counters in its own record
+  every minute under the job's ID, and `Resume` prefers that record, so a
+  scrub a power loss cut continues too.
 - The kernel tracks a replace in an item and continues it at mount by device
   ID, so `Resume` follows it and never starts one. Device paths are not stable
   across reboots, so a restart could write to whichever blank disk now has the
@@ -424,8 +427,9 @@ treats each operation differently:
 
 The long ioctls run on a locked OS thread with async signals blocked: since
 kernel 6.19 any pending signal aborts a scrub or a replace, and an aborted
-replace loses its target, so retrying is not an option. A freeze still aborts
-them.
+replace loses its target, so retrying is not an option. A freeze (a suspend,
+`fsfreeze`, a frozen cgroup) still interrupts them: the scrub issues its call
+again and continues, the replace fails.
 
 `docker.apply_daemon_storage` is not resumable but is written so that a dying
 job cannot leave Docker down: it writes `daemon.json` and the data-root drop-in
@@ -684,19 +688,21 @@ The record itself is the quickest evidence: as root,
 |---|---|---|---|
 | Go unit | `make test-go`, in `make check-backend-quiet` | `backend/common/jobs/store_test.go`, `backend/common/jobs/scheduled_test.go`, `backend/common/jobs/process_test.go` | Write policy, quick-job deletion, retention and prune, crash detection by pid and start time, history paging through equal end times, saved output chunks |
 | Go unit | same | `backend/bridge/internal/jobshost/host_test.go`, `backend/bridge/internal/jobshost/scheduled_test.go` | Peer uid and protocol refusal, idle exit, SIGTERM and `Suspend`, cancel during shutdown, reconcile and the resume rule (`TestResumeOnlyWhatTheLastShutdownInterrupted`), alerts and their levels, scheduled runs in `tasks.*`, slim history entries, `tasks.output` |
-| Go unit | same | `backend/bridge/cmd/jobs_relay_test.go`, `backend/bridge/cmd/jobs_host_test.go`, `backend/bridge/internal/jobsclient/client_test.go` | A bridge and a host over a socket: forwarding, host loss, reattach, events after a host restart, the update wait |
+| Go unit | same | `backend/bridge/cmd/jobs_relay_test.go`, `backend/bridge/cmd/jobs_host_test.go`, `backend/bridge/internal/jobsclient/client_test.go` | A bridge and a host over a socket: forwarding, host loss, reattach, events after a host restart, the update wait. The relay tests dial the in-process host with `jobsclient.Dial`, which starts no socket unit, so they also run as root |
 | Go unit | same | `backend/bridge/internal/bridgeipc/mutation_test.go`, `backend/bridge/handlers/redaction_test.go`, `backend/bridge/apischema/schema_test.go` | The stream, resend and abort, same-target refusal, option guards, secret tags, `TestRetrySafeRoutesAreExplicitCalls` |
 | Go unit | same | `backend/common/scheduledrun/*_test.go`, `backend/cli/scheduled_run_test.go` | The hooks' outcomes and order, liveness, output copy, exit statuses, unit kinds |
-| C | `make test-auth-pam`, in `make test-backend` | `backend/auth/linuxio-auth-pam_test.c` | The exact `systemctl` arguments of an unprivileged login, before the session opens; a failed, missing or hanging `systemctl` keeps the login |
+| C | `make test-auth-pam`, in `make test-backend` | `backend/auth/linuxio-auth-pam_test.c` | The exact `systemctl` arguments of an unprivileged login, before the session opens; a failed, missing or hanging `systemctl` keeps the login; a login the sudo probe admits (a stub `sudo`) is privileged and starts no host |
 | Installer | `make test-installation-scripts` | `packaging/scripts/tests/installer-fixtures.sh` | Unit fixtures, the run-record drop-ins, the needrestart override's content check and its six expressions |
 | Frontend unit | `make test-frontend`, in `make check-frontend-quiet` | `HistoryPage.test.tsx`, `SavedOutput.test.tsx`, `JobsUpdateBanner.test.tsx`, `useJobHostStatus.test.ts`, `useRefreshHistoryAfterUpdate.test.tsx`, `useAwayNotice.test.tsx`, `NotificationsBell.test.tsx`, `taskTitles.test.ts`, `scheduledRuns.test.ts`, `mutation-react-query.test.ts`, `call-react-query.test.ts` | Pages, banner and bell in jsdom, which has no layout; the client's resend and reattach; the `update_pending` toast |
 | Browser | `make test-frontend-browser-quiet` | `frontend/src/test/browser/history.spec.ts`, `frontend/src/test/browser/schedules.spec.ts`, `frontend/src/test/browser/background-tasks.spec.ts` | Real layout against the fixture: the history table has height, the Schedules table keeps its rows beside tall details, tray rendering |
-| Root kernel | `make test-btrfs-integration` (sudo, the user's to run); `make vm-test-btrfs-integration` in the VM | `backend/common/btrfs/integration_resume_test.go` (`TestBtrfsResumeIntegration`) | Kill and resume each btrfs operation on loop devices: signals, cancels, kills, a paused balance across a remount, a scrub from its offset, a replace across a simulated power cut |
+| Root, in the VM | `make vm-test-relay-root` | `backend/bridge/cmd/jobs_relay_test.go` | The relay tests as root: the in-process host is the root host, so its owner and privileged rules differ from a user host's |
+| Root kernel | `make test-btrfs-integration` (sudo, the user's to run); `make vm-test-btrfs-integration` in the VM | `backend/common/btrfs/integration_resume_test.go` (`TestBtrfsResumeIntegration`) | Kill and resume each btrfs operation on loop devices: signals, cancels, kills, a paused balance across a remount, a scrub from its offset, a scrub from its saved progress after a kill, a scrub across a filesystem freeze and its cancel there by its context and through `ScrubCancel`, a replace across a simulated power cut |
 | Test VM | `make vm-reset`, `make vm-install`, `make test-vm-browser` | `frontend/src/test/vm/jobs-phase2.spec.ts` | Reloads mid package update, Compose and copy; uploads; a scrub across logout; host stop, kill, reboot and power cut |
-| Test VM | same | `frontend/src/test/vm/jobs-phase3.spec.ts` | Balance, scrub and replace across stops, reboots and power cuts; a cancel or a crash before a reboot; pool create rollback; the Docker storage switch killed |
+| Test VM | same | `frontend/src/test/vm/jobs-phase3.spec.ts` | Balance, scrub and replace across stops, reboots and power cuts; a scrub across a frozen job host; a cancel or a crash before a reboot; pool create rollback; the Docker storage switch killed |
 | Test VM | same | `frontend/src/test/vm/jobs-phase4.spec.ts` | Scheduled runs: records, bell rows, saved output, stop, a broken hook, the snapshot, Docker and system update units, a power cut and an orderly reboot |
 | Test VM | same | `frontend/src/test/vm/jobs-phase5a.spec.ts`, `frontend/src/test/vm/jobs-needrestart.spec.ts` | History, past runs, the output viewer, a user without sudo, the update banner; needrestart deferring a job host |
 | Test VM | same | `frontend/src/test/vm/jobs-phase5b.spec.ts` | Notification settings, the grid at delivery and in the bell, a schedule's choice, an interruption as a warning, the notice at sign-in |
+| Test VM | same, with `LINUXIO_VM_UPDATE_BUILD` | `frontend/src/test/vm/jobs-update.spec.ts` | A real update from the published release v0.53.0 while two root jobs and a plain user's job run: the banner and `tasks.host`, `tasks.watch`, `tasks.cancel` and `tasks.output` during the wait, uploads, the update proceeding after the last job, the older host's records read by the new one |
 
 Run each VM spec file on a fresh install, with `login.spec.ts`
 ([Development](./development.md#test-vm)). The VM signs in as a sudo user, so
@@ -715,6 +721,21 @@ make vm-reset && make vm-install
 LINUXIO_VM_UPDATE_BUILD=<dir>/build make test-vm-browser PLAYWRIGHT_ARGS='login.spec.ts jobs-phase5a.spec.ts'
 ```
 
+`jobs-update.spec.ts` takes the same build. It downloads v0.53.0 (the first
+release with job hosts) into `.cache/vm-release/v0.53.0`, checks it against the
+release's `SHA256SUMS` and installs it with the rig's install, so it needs no
+`make vm-install` first, only `make vm-reset`. v0.53.0 has the same
+`jobs.Protocol` as the tree, so only the bumped build makes its hosts older.
+The file is one serial group sharing one update, skips as a whole without
+`LINUXIO_VM_UPDATE_BUILD`, needs `vdd` empty, and leaves the VM changed (the
+update build installed, an ext4 on `vdd`, a user without sudo, a schedule):
+run `make vm-reset` before the next file.
+
+```sh
+make vm-reset
+LINUXIO_VM_UPDATE_BUILD=<dir>/build make test-vm-browser PLAYWRIGHT_ARGS='jobs-update.spec.ts'
+```
+
 Covered at one level only:
 
 - Unit tests only: the email channel, DNF and Mint (no such VM), the Docker
@@ -722,14 +743,21 @@ Covered at one level only:
   check returns a missing disk), the 50-run and 30-day prune, the `409`s of
   `tasks.cancel` and `tasks.watch` for a scheduled run, a stale or failed stop,
   `Load older`, and the long-job notice.
-- The update wait was checked with a protocol-bumped build of the same tree,
-  not a real update from an older release; in the VM only `tasks.get` was seen
-  failing during the wait, and the browser-bound uploads during it were not
-  run.
+- The update wait was run in the VM as a real update from the published
+  release v0.53.0 to a protocol-bumped build of the same tree
+  (`jobs-update.spec.ts`), since no published release has a higher
+  `jobs.Protocol`. The updater's own path (`control.app_update`, which installs
+  a published release only, with `--defer-restart` and a restart of
+  `linuxio.target`) was not run, nor was `tasks.watch` streaming a running job
+  or a cancel taking effect during the wait: nothing can cancel those jobs.
 - The fsync of `begin` is read from the source; the power-cut checks run
   `sync` first, because a job's first record write is not fsynced.
 - An in-app update that installs the needrestart override is covered by the
   installer fixtures, not by a run.
+- A scrub across a frozen cgroup runs only in the test VM, on its kernel; the
+  root tests, which also run on the owner's machine, freeze the filesystem
+  with `FIFREEZE` instead. No test suspends to RAM: the test VM wakes at once
+  from every suspend after the first of a boot.
 
 ## Known limits
 
@@ -763,9 +791,9 @@ Covered at one level only:
 - A host killed after the Docker storage switch wrote its files but before it
   asked for the restart leaves Docker on its old settings; the job is marked
   interrupted and alerted, and applying again finishes the switch.
-- A resumed scrub counts errors in the extent where it stopped twice, and a
-  power loss rescans from the start, since a scrub is checkpointed only at a
-  stop.
+- A resumed scrub, or a scrub call issued again after a freeze, counts errors
+  in the dev extent where each device stopped twice, and a power loss loses up
+  to a minute of a scrub's progress.
 
 ## Not built
 
@@ -780,4 +808,5 @@ Covered at one level only:
 - Stdout and stderr apart in a scheduled run's output.
 - Alerts from a user's job host; that user hears of their jobs through the
   notice at sign-in.
-- Handling a freeze or suspend-to-RAM during a scrub or a replace.
+- Continuing a device replace that a freeze or suspend-to-RAM interrupted:
+  since kernel 6.19 it ends, and its target is lost.

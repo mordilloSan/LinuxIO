@@ -126,8 +126,10 @@ sparse qcow2 files: a 25 GiB system disk and four 8 GiB data disks
 volumes and `~/.cache/linuxio-vm-noble`, beside the first one. It is there for
 `make vm-test-btrfs-integration VM_RELEASE=noble`, the root btrfs tests on a
 kernel before 6.19, where a signal does not abort a scrub or a replace. The
-test program is built without cgo, so it runs on the older glibc. LinuxIO
-itself is not installed or tested in that VM.
+test program is built without cgo, so it runs on the older glibc. The browser
+specs run there too (`make vm-install VM_RELEASE=noble`, then
+`make test-vm-browser VM_RELEASE=noble PLAYWRIGHT_ARGS=...`): sign-in and the
+scheduled-script specs were run on it.
 
 ```sh
 make vm-create        # download and check the image, first boot, snapshot "clean"
@@ -152,22 +154,36 @@ make vm-destroy       # delete the domain and its volumes; the cache stays
   password. Make expands `$` in `CMD`, so write `$$`.
 - `test-vm-browser` signs in at `https://<vm-ip>:8090` as `linuxio-e2e`, with
   the password in `~/.cache/linuxio-vm/password`. `PLAYWRIGHT_ARGS` applies.
-  Run each jobs spec file on its own fresh VM (`login.spec.ts` plus one
-  file): the specs leave their schedules behind, and the Schedules table
-  renders only the rows near what is visible, so a later file does not find
-  its own row among an earlier file's.
+  The specs leave their schedules behind, and the Schedules table renders
+  only the rows near what is visible, in the order of the definition files
+  (by ID, so a new schedule lands anywhere). The helpers in `vm.ts`
+  (`createSchedule`, `runNow`, `clickInScheduleRow`) scroll the table to the
+  row, so leftover schedules do not hide a spec's own; a spec that reads
+  `scheduleRow` directly must do the same.
   The specs reach the VM through `linuxio-vm.sh`: `ssh`, and for host events
-  `reboot` (an orderly ACPI reboot) and `power-cut` (`virsh destroy`, then
-  `start`), each of which waits for the next boot. `jobs-phase2.spec.ts`
+  `reboot` (an orderly ACPI reboot), `power-cut` (`virsh destroy`, then
+  `start`) and `off-for SECONDS` (an orderly shutdown, the domain off for
+  that long, then a boot), each of which waits for the next boot. `jobs-phase2.spec.ts`
   installs Docker's Compose plugin, creates a btrfs pool on `vdb` and `vdc`
   and reboots the VM, so run `vm-reset` and `vm-install` before reusing it
   for other checks.
+  `ui-actions.spec.ts` is not a jobs spec: a session without sudo, the
+  "Open the real folder" action, a toast's page link on Docker, and the
+  navbar's Reboot and Power Down. It creates and removes a user without sudo
+  (`e2e-ui`), a folder `/srv/e2e-link` and two busybox containers, reboots the
+  VM and powers it off (the rig's `ssh` starts a domain that is shut off), and
+  leaves it running with the apt timers stopped until the next boot.
 - `vm-test-btrfs-integration` builds the `common/btrfs` and
   `bridge/handlers/storage` test binaries on the host,
   prints the VM's kernel version and runs the same tests as
   `test-btrfs-integration`, as root in the VM.
 - `vm-test-filebrowser-root` does the same for the file browser's root-only
   ownership tests (`test-filebrowser-root`).
+- `vm-test-relay-root` builds the `bridge/cmd` test binary on the host and
+  runs the bridge-to-job-host relay tests (`jobs_relay_test.go`) as root in the
+  VM. The tests serve a host in-process and the relay dials it without
+  starting its socket unit, which as root would call systemd, so they also run
+  as the invoking user; as root the in-process host is the root host.
 
 ## Overrides
 
@@ -383,7 +399,8 @@ The full index groups the supported targets as follows:
   `dev-stop`, `dev-status-install`, `dev-status-uninstall`, `clean`, `cloc`
 - installation: `localinstall`, `reinstall`, `uninstall`
 - test VM: `vm-create`, `vm-install`, `vm-ssh`, `vm-reset`, `vm-destroy`,
-  `vm-test-btrfs-integration`, `vm-test-filebrowser-root`, `test-vm-browser`
+  `vm-test-btrfs-integration`, `vm-test-filebrowser-root`, `vm-test-relay-root`,
+  `test-vm-browser`
 - documentation: `help-overrides`, `check-docs` (the docs index in
   `docs/README.md`, and the paths and links docs name)
 

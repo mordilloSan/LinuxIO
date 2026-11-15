@@ -364,7 +364,85 @@ snapshot the client reattaches with `tasks.watch {taskId: id}` instead. Each is
 tried once, so a resend that reached the job still reattaches once; a further
 loss rejects with `outcome_unknown` (`connection_unavailable` when no stream
 could be opened at all). Aborting the caller's signal aborts the stream, which
-cancels the job. A resend of an `id` with a different route or request is `409`.
+cancels the job. The abort frame never arrives while the transport is down or
+dead, so an abort of a job whose request was sent also sends `tasks.cancel
+{taskId: id}` in the background, without delaying or changing the caller's
+`AbortError`: it waits up to 30 s for the transport (retrying every second
+while it is unavailable or the outcome is unknown), sends once, and ignores
+the answer. `tasks.cancel` is idempotent: a job that already ended answers its
+snapshot, and a failure (`404` for a job the bridge no longer holds) is
+dropped. `closeOnAbort: "close"` sends none, and neither does an abort before
+the request was sent. A resend of an `id` with a different route or request is
+`409`.
+
+### Routes that cut their own connection
+
+A few routes end the connection that carries them: `control.reboot`,
+`control.power_off`, and a `network.*` change on the interface the browser
+reaches the host through. A Mutation is sent as described above: the client may
+resend the same envelope once before the snapshot and reattach with
+`tasks.watch` after it, and the job `id` keeps either from running the route
+twice. What the client then reports follows one classifier,
+`classifyRequestOutcome` in `frontend/src/api/errors.ts`, and never claims
+success because the host went quiet:
+
+| Class | Errors | Shown as |
+| ---| ---| ---|
+| not sent | `connection_unavailable` | A failure: the request did not run. |
+| failed | The host answered that it did not do it: a numeric 400 to 599 code, except those below. A handler's plain error is a 500 (logind denying a reboot, NetworkManager rejecting a setting); a refusal such as `update_pending` is a 409. | A failure with the host's reason (an `update_pending:` prefix is stripped). |
+| unknown | Nothing says whether the host acted: `outcome_unknown`, `timeout`, `connection_closed` and other non-numeric codes, the 409 `job was interrupted`, the 503 `job host is stopping` / `job host unavailable`, the 504, and codes outside 400 to 599. | An outcome that is not known. |
+
+The unknown answers are the ones a host that is going away gives for work that
+may have run: a reboot that logind accepted can come back as `job was
+interrupted` (409), `job host is stopping` / `job host unavailable` (503) or a
+504 when the job host or bridge is gone before the record completes. An
+ordinary 500 is a handler that ran and failed, so it is a failure, not unknown.
+
+- **Reboot.** `control.reboot` returns once logind accepts the request. The page
+  shows its overlay at once, as "requested". A request that did not run takes
+  the overlay down and shows an error toast; an unknown outcome leaves it up.
+  The page polls `/api/version` every second and redirects to sign-in only
+  when a poll failed (no answer, or an error status) and a later poll
+  answered: the old webserver is still answering while it shuts down, so an
+  answer before a failed poll does not count, and neither does a poll that only
+  ran out of its 10 s. The app's own connection closing does not allow the
+  redirect on its own, because the host stops the bridge before the webserver
+  exits. It matters only at the bound (90 s, `REBOOT_CONFIRM_TIMEOUT_MS`; a poll
+  still in flight at that moment decides first). If the connection closed but
+  no poll ever failed, the session is gone either way, so the page redirects to
+  sign-in once the webserver answers. If a poll failed, the wait for the
+  webserver is not bounded. If neither a poll failed nor the connection closed,
+  the overlay says the reboot could not be confirmed and offers to close, with
+  no redirect. The client does not compare a boot identity (a boot id from the
+  host), which would need a backend route, so a reboot is confirmed only by the
+  webserver going away and coming back.
+- **Power-off.** `control.power_off` starts as "requested". Only an answer from
+  the route turns the overlay into "The system is shutting down". An unknown
+  outcome, or 90 s without an answer (`POWER_OFF_ANSWER_TIMEOUT_MS`, for a host
+  that goes silent without closing the connection: the stream has no
+  heartbeat), turns it into "not confirmed", saying the system may be shutting
+  down, with a close button. A request that did not run takes the overlay down
+  and shows an error toast. Nothing can confirm a power-off afterwards, because
+  the host is gone.
+- **Both overlays.** Each answer is tied to the request that started the
+  overlay: a late answer of an earlier request is ignored. While an overlay is
+  up, `AuthProvider` leaves a session-expired report of the stream to it, as it
+  does during a self-update, because the host stops the bridge before the
+  webserver exits.
+- **Network changes.** The interface editor's DHCP, manual address, MTU, enable
+  and disable mutations show a warning, not an error, for an unknown outcome:
+  the host did not confirm the change, check the interface once connected
+  again. One toast id keeps the requests of one Apply from stacking it. Not
+  sent and failed changes keep the normal failure toast with the host's reason. The warning
+  appears when the browser sees the connection close or the host answers
+  with an unknown error; a host that goes silent without closing the
+  connection leaves the request pending. The client does not read the change
+  back. The interface data refetches when the connection returns, because the
+  shared request transport going unavailable and available again is what
+  TanStack Query treats as the browser going offline and online. Only the host
+  bridge handoff (`network.start_bridge_handoff`) is verified, through its own
+  status route, which keeps its own rule (`outcome_unknown`, timeout or 5xx keep
+  the operation; anything else clears it).
 
 ## Backend Handler Shapes
 
@@ -935,8 +1013,8 @@ count, without jobs, or with the store unreadable). The three `BrowserBound()` M
 in the bridge and are not affected, nor are Calls and Channels that do not go
 to the job host. There is no
 fallback for a job host of the same protocol built before these three routes:
-it answers them `route not found`, and the last release (v0.52.0) has no job
-host.
+it answers them `route not found`, and no release has one: v0.52.0 has no job
+host, and v0.53.0 already keeps these routes in the bridge.
 
 ### Task lifetime, ownership, and activity
 
@@ -995,7 +1073,10 @@ Task UI every route shape.
 Retained progress reaches both `tasks.events` and `tasks.watch` in this envelope.
 `tasks.events` is the owner-wide discovery/lifecycle view and coalesces
 progress; `tasks.watch` follows one Task, replays its bounded progress window,
-and supplies its terminal result. Explicit transient output on `tasks.watch`
+and supplies its terminal result. The watch registers its subscriber, copies
+the replay and takes its first snapshot under one lock, so a progress frame is
+either in the replay or arrives live, and a terminal snapshot means the replay
+holds every frame. Explicit transient output on `tasks.watch`
 and payload-specific `tasks.data` flow-control frames remain route protocols;
 they are not stored as Task progress or published on `tasks.events`.
 
