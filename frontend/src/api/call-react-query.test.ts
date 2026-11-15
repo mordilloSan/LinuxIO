@@ -5,7 +5,7 @@ import {
 } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
-import { describe, expect, expectTypeOf, it, vi } from "vitest";
+import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import {
   type ActionConfig,
@@ -20,6 +20,7 @@ import type { TaskSnapshot } from "@/api/generated/linuxio-types";
 import { getRouteMode } from "@/api/generated/route-metadata";
 import * as core from "@/api/linuxio-core";
 import { OPERATION_QUERY_INVALIDATIONS } from "@/api/operation-query-invalidations";
+import { registerToastLinkRouter } from "@/api/toast-meta";
 
 vi.mock("sonner", () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
@@ -151,7 +152,11 @@ function renderQueryHook<T>(useHook: () => T) {
   return { invalidateSpy, ...renderHook(useHook, { wrapper }) };
 }
 
+let releaseLinkRouter = () => {};
+
 describe("Call queries and mutations", () => {
+  afterEach(() => releaseLinkRouter());
+
   it("composes one descriptor per request with useQueries", async () => {
     const request = vi
       .spyOn(core, "request")
@@ -224,6 +229,63 @@ describe("Call queries and mutations", () => {
     const { result } = renderQueryHook(() =>
       useCallMutation(linuxio.docker.validate_compose, {
         error: "Validation failed",
+      }),
+    );
+
+    act(() => result.current.mutate({ content: "nope" }));
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(toast.error).toHaveBeenCalledWith("bad yaml", undefined);
+  });
+
+  it("offers the toast's page when the mutation ends on another page", async () => {
+    const { toast } = await import("sonner");
+    let pathname = "/docker";
+    const navigate = vi.fn();
+    releaseLinkRouter = registerToastLinkRouter({
+      navigate,
+      pathname: () => pathname,
+    });
+    // The user leaves the Docker page while the request runs.
+    vi.spyOn(core, "request").mockImplementation(async () => {
+      pathname = "/";
+      return { valid: true };
+    });
+    const { result } = renderQueryHook(() =>
+      useCallMutation(linuxio.docker.validate_compose, {
+        invalidates: [],
+        success: "Compose file is valid",
+        toast: { label: "Open Docker", to: "/docker" },
+      }),
+    );
+
+    act(() => result.current.mutate({ content: "services: {}" }));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(toast.success).toHaveBeenCalledWith("Compose file is valid", {
+      action: { label: "Open Docker", onClick: expect.any(Function) },
+      duration: 10_000,
+    });
+    const opts: unknown = vi.mocked(toast.success).mock.calls[0][1];
+    const { action } = opts as {
+      action: { onClick: (event: unknown) => void };
+    };
+    action.onClick({});
+    expect(navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "/docker" }),
+    );
+  });
+
+  it("adds no link to a mutation toast fired on the toast's own page", async () => {
+    const { toast } = await import("sonner");
+    releaseLinkRouter = registerToastLinkRouter({
+      navigate: vi.fn(),
+      pathname: () => "/docker/compose",
+    });
+    vi.spyOn(core, "request").mockRejectedValue(new LinuxIOError("bad yaml"));
+    const { result } = renderQueryHook(() =>
+      useCallMutation(linuxio.docker.validate_compose, {
+        error: "Validation failed",
+        toast: { label: "Open Docker", to: "/docker" },
       }),
     );
 

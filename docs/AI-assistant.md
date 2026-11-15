@@ -498,8 +498,9 @@ replaced. A unit test replays it through the store
 (`test/browser/assistant.spec.ts`), so a new pin is checked by recording the
 chat again. The recording ran in the `auto` mode and asked nothing; a
 permission request from a subagent was seen in a chat set to Manual on the
-same day, with two subagents asking at once. What is still open is in the
-[backlog](TODO/backlog.md).
+same day, with two subagents asking at once. No chat has shown whether a
+subagent Claude Code moves to the background by itself gets its launch note
+as a report.
 
 What the adapter sends:
 

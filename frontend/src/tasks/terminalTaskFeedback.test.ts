@@ -11,6 +11,7 @@ vi.mock("sonner", () => ({
 }));
 
 const { LinuxIOError } = await import("@/api");
+const { registerToastLinkRouter } = await import("@/api/toast-meta");
 const {
   TASK_TYPE_DOCKER_UPDATE,
   TASK_TYPE_DOCKER_COMPOSE,
@@ -36,6 +37,20 @@ const deps = {
   refreshCapabilities: vi.fn(async () => undefined),
 };
 
+let releaseLinkRouter = () => {};
+
+/** Puts the user on pathname as far as toast links can tell. */
+function onPage(pathname: string) {
+  const link = { navigate: vi.fn(), pathname: () => pathname };
+  releaseLinkRouter = registerToastLinkRouter(link);
+  return link;
+}
+
+function clickAction(opts: unknown) {
+  const { action } = opts as { action: { onClick: (event: unknown) => void } };
+  action.onClick({});
+}
+
 function task(
   id: string,
   type: string,
@@ -55,6 +70,7 @@ const canceled = {
 
 describe("terminalTaskFeedback", () => {
   afterEach(() => {
+    releaseLinkRouter();
     resetTerminalTaskFeedback();
     vi.clearAllMocks();
   });
@@ -145,7 +161,11 @@ describe("terminalTaskFeedback", () => {
   });
 
   it("records Docker update completion and failure feedback", () => {
-    const route = { label: "Open Docker", to: "/docker" };
+    const link = onPage("/");
+    const docker = {
+      action: { label: "Open Docker", onClick: expect.any(Function) },
+      duration: 10_000,
+    };
     emitTerminalTaskFeedback(
       task("docker-updated", TASK_TYPE_DOCKER_UPDATE),
       {
@@ -154,9 +174,7 @@ describe("terminalTaskFeedback", () => {
       },
       deps,
     );
-    expect(toastMocks.success).toHaveBeenCalledWith("homepage updated", {
-      meta: route,
-    });
+    expect(toastMocks.success).toHaveBeenCalledWith("homepage updated", docker);
 
     emitTerminalTaskFeedback(
       task("docker-current", TASK_TYPE_DOCKER_UPDATE),
@@ -168,7 +186,7 @@ describe("terminalTaskFeedback", () => {
     );
     expect(toastMocks.success).toHaveBeenCalledWith(
       "pihole is already up to date",
-      { meta: route },
+      docker,
     );
 
     emitTerminalTaskFeedback(
@@ -176,15 +194,43 @@ describe("terminalTaskFeedback", () => {
       failed("registry unavailable"),
       deps,
     );
-    expect(toastMocks.error).toHaveBeenCalledWith("registry unavailable", {
-      meta: route,
-    });
+    expect(toastMocks.error).toHaveBeenCalledWith(
+      "registry unavailable",
+      docker,
+    );
+
+    clickAction(toastMocks.error.mock.calls[0][1]);
+    expect(link.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "/docker" }),
+    );
+  });
+
+  it("offers no page link to a user already on that page", () => {
+    onPage("/docker/containers");
+
+    emitTerminalTaskFeedback(
+      task("docker-here", TASK_TYPE_DOCKER_UPDATE),
+      {
+        kind: "completed",
+        result: { containerName: "homepage", updated: true },
+      },
+      deps,
+    );
+
+    expect(toastMocks.success).toHaveBeenCalledWith(
+      "homepage updated",
+      undefined,
+    );
   });
 
   it("reports capability installs on every terminal state, cancel included", () => {
+    const link = onPage("/");
     const capability = (id: string) =>
       task(id, TASK_TYPE_SYSTEM_INSTALL_CAPABILITY, { capability: "libvirt" });
-    const route = { label: "Open VMs", to: "/vm" };
+    const vms = {
+      action: { label: "Open VMs", onClick: expect.any(Function) },
+      duration: 10_000,
+    };
 
     emitTerminalTaskFeedback(
       capability("cap-ok"),
@@ -194,7 +240,11 @@ describe("terminalTaskFeedback", () => {
     expect(deps.refreshCapabilities).toHaveBeenCalledOnce();
     expect(toastMocks.success).toHaveBeenCalledWith(
       "Virtual machines installed",
-      { meta: route },
+      vms,
+    );
+    clickAction(toastMocks.success.mock.calls[0][1]);
+    expect(link.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "/vm" }),
     );
 
     emitTerminalTaskFeedback(
@@ -211,8 +261,8 @@ describe("terminalTaskFeedback", () => {
     expect(toastMocks.warning).toHaveBeenCalledWith(
       "Virtual machines installed with warning",
       {
+        ...vms,
         description: "nss-mdns was not available; EPEL may be required",
-        meta: route,
       },
     );
 
@@ -223,21 +273,19 @@ describe("terminalTaskFeedback", () => {
     );
     expect(toastMocks.warning).toHaveBeenCalledWith(
       "Virtual machines installed but is still unavailable: no kvm",
-      { meta: route },
+      vms,
     );
 
     emitTerminalTaskFeedback(capability("cap-failed"), failed(""), deps);
     expect(toastMocks.error).toHaveBeenCalledWith(
       "Failed to install Virtual machines",
-      { meta: route },
+      vms,
     );
 
     // An install canceled elsewhere still stopped midway — deliberately an
     // error toast, unlike package updates.
     emitTerminalTaskFeedback(capability("cap-canceled"), canceled, deps);
-    expect(toastMocks.error).toHaveBeenCalledWith("operation aborted", {
-      meta: route,
-    });
+    expect(toastMocks.error).toHaveBeenCalledWith("operation aborted", vms);
   });
 
   it("keeps SMART tests silent — the owning page fires its own toast", () => {

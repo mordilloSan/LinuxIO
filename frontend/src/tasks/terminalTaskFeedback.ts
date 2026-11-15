@@ -9,6 +9,7 @@ import {
   LinuxIOError,
   type TaskSnapshot,
 } from "@/api";
+import { toastLinkOptions } from "@/api/toast-meta";
 import { toastFileError } from "@/utils/linkRefusal";
 
 import * as TaskTypes from "./taskTypes";
@@ -117,20 +118,19 @@ function capabilityPresentation(task: TerminalFeedbackTask) {
   const wire = requestString(task.metadata, "capability") ?? "capability";
   const def = CAPABILITIES.find((capability) => capability.wire === wire);
   const label = def?.label ?? wire;
-  // Surface an "Open …" action link on the notification for capabilities
-  // that have a dedicated page (omitted for ones that don't).
-  const opts = def && "route" in def ? { meta: def.route } : undefined;
-  return { label, opts };
+  // The capability's own page, if it has one, for the toast's "Open …" link.
+  const route = def && "route" in def ? def.route : undefined;
+  return { label, route };
 }
 
 const capabilityInstallError: NonNullable<TerminalFeedbackEntry["onFailed"]> = (
   task,
   error,
 ) => {
-  const { label, opts } = capabilityPresentation(task);
+  const { label, route } = capabilityPresentation(task);
   toast.error(
     getMutationErrorMessage(error, `Failed to install ${label}`),
-    opts,
+    toastLinkOptions(route),
   );
 };
 
@@ -141,9 +141,7 @@ const dockerUpdateError: NonNullable<TerminalFeedbackEntry["onFailed"]> = (
 ) => {
   toast.error(
     getMutationErrorMessage(error, "Docker container update failed"),
-    {
-      meta: DOCKER_TOAST_META,
-    },
+    toastLinkOptions(DOCKER_TOAST_META),
   );
 };
 
@@ -160,7 +158,7 @@ export const TERMINAL_TASK_FEEDBACK: Record<string, TerminalFeedbackEntry> = {
       const name = result?.containerName || "Container";
       toast.success(
         result?.updated ? `${name} updated` : `${name} is already up to date`,
-        { meta: DOCKER_TOAST_META },
+        toastLinkOptions(DOCKER_TOAST_META),
       );
     },
     onFailed: dockerUpdateError,
@@ -172,24 +170,24 @@ export const TERMINAL_TASK_FEEDBACK: Record<string, TerminalFeedbackEntry> = {
   // midway needs attention either way, and both paths have always done so.
   [TaskTypes.TASK_TYPE_SYSTEM_INSTALL_CAPABILITY]: {
     onCompleted: (task, result, deps) => {
-      const { label, opts } = capabilityPresentation(task);
+      const { label, route } = capabilityPresentation(task);
       // Any successful task result (available or not) refreshes app-wide state.
       void deps.refreshCapabilities();
       const install = result as InstallCapabilityResult | undefined;
       if (install?.available) {
         if (install.warning) {
-          toast.warning(`${label} installed with warning`, {
-            ...opts,
-            description: install.warning,
-          });
+          toast.warning(
+            `${label} installed with warning`,
+            toastLinkOptions(route, { description: install.warning }),
+          );
         } else {
-          toast.success(`${label} installed`, opts);
+          toast.success(`${label} installed`, toastLinkOptions(route));
         }
       } else {
         const reason = install?.error ? `: ${install.error}` : ".";
         toast.warning(
           `${label} installed but is still unavailable${reason}`,
-          opts,
+          toastLinkOptions(route),
         );
       }
     },

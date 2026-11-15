@@ -58,7 +58,7 @@ Two files in `frontend/src/router/`, plus the shared client in `api/`:
 
 | File | Role |
 |------|------|
-| `router/router.tsx` | Creates the singleton router, sets every global default, declares the two type augmentations. |
+| `router/router.tsx` | Creates the singleton router, sets every global default, declares the two type augmentations, and registers the router for toast links (`registerToastLinkRouter`, see [API Contract](./api-contract.md#toast-links)). |
 | `router/provider.tsx` | Injects live auth/capability context and keeps it fresh. |
 | `api/query-client.ts` | Creates QueryClient instances (`createQueryClient`) and owns the browser singleton `appQueryClient`. |
 

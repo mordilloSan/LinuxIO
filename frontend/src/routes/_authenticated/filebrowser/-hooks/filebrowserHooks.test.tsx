@@ -188,13 +188,7 @@ describe("useFileSelection", () => {
     expect(result.current.selection.cutPaths.size).toBe(0);
     expect(toastMocks.success).toHaveBeenCalledWith(
       "2 item(s) copied to clipboard",
-      expect.objectContaining({
-        meta: {
-          label: "Open files",
-          params: { _splat: "" },
-          to: "/filebrowser/$",
-        },
-      }),
+      {},
     );
   });
 
@@ -295,16 +289,7 @@ describe("useFileSelection", () => {
       await result.current.handlePaste();
     });
 
-    expect(toastMocks.error).toHaveBeenCalledWith(
-      "Nothing to paste",
-      expect.objectContaining({
-        meta: {
-          label: "Open files",
-          params: { _splat: "" },
-          to: "/filebrowser/$",
-        },
-      }),
-    );
+    expect(toastMocks.error).toHaveBeenCalledWith("Nothing to paste", {});
     expect(copyItems).not.toHaveBeenCalled();
     expect(moveItems).not.toHaveBeenCalled();
   });

@@ -14,7 +14,7 @@ import {
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 
-import type { ToastMeta } from "@/api";
+import { type ToastMeta, toastLinkOptions } from "@/api/toast-meta";
 import { copyToClipboard } from "@/utils/clipboard";
 import { isTabNavigationActive } from "@/utils/tabNavigation";
 
@@ -303,15 +303,9 @@ const AppTooltip = ({
 
     try {
       await copyToClipboard(copyText);
-      toast.success(
-        copySuccessMessage,
-        toastMeta ? { meta: toastMeta } : undefined,
-      );
+      toast.success(copySuccessMessage, toastLinkOptions(toastMeta));
     } catch {
-      toast.error(
-        copyErrorMessage,
-        toastMeta ? { meta: toastMeta } : undefined,
-      );
+      toast.error(copyErrorMessage, toastLinkOptions(toastMeta));
     }
   }
 

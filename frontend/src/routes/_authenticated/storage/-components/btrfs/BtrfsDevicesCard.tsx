@@ -13,6 +13,7 @@ import {
   type TaskSnapshot,
 } from "@/api";
 import type { RouteName } from "@/api/generated/route-metadata";
+import { toastLinkOptions } from "@/api/toast-meta";
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -126,9 +127,10 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
       await call("tasks.cancel", { taskId });
     } catch (error) {
       setCanceling(false);
-      toast.error(getMutationErrorMessage(error, failure), {
-        meta: BTRFS_POOL_TOAST_META,
-      });
+      toast.error(
+        getMutationErrorMessage(error, failure),
+        toastLinkOptions(BTRFS_POOL_TOAST_META),
+      );
     }
   };
   // Only a balance without a running job falls back to the kernel cancel.
@@ -150,7 +152,7 @@ const BtrfsDevicesCard = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
     if (!job) {
       toast.error(
         `No running ${op === "remove" ? "removal" : "replace"} of this pool to cancel`,
-        { meta: BTRFS_POOL_TOAST_META },
+        toastLinkOptions(BTRFS_POOL_TOAST_META),
       );
       return;
     }

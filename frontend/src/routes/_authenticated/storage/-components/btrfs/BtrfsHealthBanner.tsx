@@ -9,6 +9,7 @@ import {
   type BtrfsFilesystem,
   type BtrfsScrubStatus,
 } from "@/api";
+import { toastLinkOptions } from "@/api/toast-meta";
 import { STATUS_COLOR } from "@/components/cards/EntityCardKit";
 import FrostedCard from "@/components/cards/FrostedCard";
 import AppButton from "@/components/ui/AppButton";
@@ -154,9 +155,10 @@ const BtrfsHealthBanner = ({ filesystem }: { filesystem: BtrfsFilesystem }) => {
       await call("tasks.cancel", { taskId: job.id });
     } catch (error) {
       setStoppingScrub(null);
-      toast.error(getMutationErrorMessage(error, "Failed to stop the check"), {
-        meta: BTRFS_POOL_TOAST_META,
-      });
+      toast.error(
+        getMutationErrorMessage(error, "Failed to stop the check"),
+        toastLinkOptions(BTRFS_POOL_TOAST_META),
+      );
     }
   };
 

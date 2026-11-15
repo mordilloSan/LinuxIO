@@ -76,32 +76,12 @@ after a change that issues ioctls).
 
 ## Visible bugs
 
-- [ ] **A Compose stack saved by a sudo user got a folder owned by root.** The
-  stack folder was root's, mode `0700`, inside that user's home. Not
-  reproduced. Read 2026-11-13: the save is a file browser upload with
-  `owner: "session"`, which hands a new folder to the user only when the
-  folder it is made in already belongs to them (`mkdirAt` in
-  `backend/bridge/handlers/filebrowser/services/handover.go`). A parent that
-  is root's, such as a `~/docker` made earlier without the hand-over, would
-  explain it. If it happens again, check who owns the nearest existing parent.
-- [ ] **"Open the real folder" opens behind a dialog.** After a refusal in
-  the Trash or Permissions dialog the dialog stays open, so the file browser
-  moves to the real folder behind it and the admin has to close the dialog to
-  see it (`TrashDialog.tsx`, the permissions dialog in
-  `frontend/src/routes/_authenticated/filebrowser`). Close the dialog when the
-  action is clicked. Checked.
 - [ ] **A refusal past the fifth failure gets no button.** A batch toast lists
   the first five failures (`describeBatchFailures` in
   `frontend/src/tasks/batchFailures.ts`) and the action is found in that text,
   so a link refusal further down the list offers no "Open the real folder";
   an upload toast shows only its first failure, with the same limit. Look for
   the refusal in the whole `failed` list. Checked.
-- [ ] **Toast links are never shown.** Many toasts carry a link in `meta`
-  (`FILES_TOAST_META` "Open files", `useScopedToast`, the `toast` option of
-  `useCallMutation`, task definitions' `route`), but `ToastProvider.tsx`
-  mounts a plain sonner `Toaster` and nothing reads `meta`, so none of those
-  links appears. Render them, or remove `meta` everywhere. Checked
-  2026-11-13.
 
 ## Tests that are missing
 
@@ -119,6 +99,10 @@ after a change that issues ioctls).
   tests cover it (`frontend/src/utils/linkRefusal.test.ts` and the tests of
   the hooks that use it). A browser test needs a link refusal from a root
   bridge, so it belongs in the test VM.
+- [ ] A toast's page link ("Open Docker" on a toast fired while the user is
+  on another page, `toastLinkOptions` in `frontend/src/api/toast-meta.ts`) was
+  never clicked in a browser: unit tests cover it, and the browser tests'
+  router is not registered for it, so no link appears there.
 - [ ] A relay speed test: a no-op mutation through the relay many times, with
   a bound on the median. No baseline numbers exist either for call latency,
   job start, alert listing or schedule status.
@@ -136,8 +120,6 @@ after a change that issues ioctls).
     on focus and ignores the result (`useAwayNotice.ts`).
   - A session bridge logged `route failed: write frame: i/o deadline reached`
     while a scheduled script ran.
-  - The journal field `LINUXIO_REASON` held the reason JSON-quoted
-    (`"reboot"`).
 - [ ] **Nothing works below a folder link with an absolute target**
   (audit 36). A link such as `/home/u/data -> /mnt/data` is refused by Go's
   `os.Root` for any path that goes through it, and `iteminfo.ResolveSymlinksAt`
@@ -150,10 +132,6 @@ after a change that issues ioctls).
   missed run (`Persistent=`), journal retention over several days, and a
   bridge restart during a run. See
   [Scheduled Scripts](../scheduled-scripts.md#testing).
-- [ ] **Subagent sessions: one case no chat has shown.** Whether a
-  subagent Claude Code moves to the background by itself gets its launch
-  note as a report. See
-  [AI Assistant](../AI-assistant.md#subagent-sessions).
 - [ ] **What happens after a route cuts its own connection is not written
   down.** The old roadmap's rule was: send it once; after reconnect, reboot
   compares the boot identity, a network change reads back the interface, and
@@ -203,6 +181,11 @@ File browser, after the link fix:
   the button and the text disagree. It gains nothing: whoever plants a link
   already chooses where it points, the button only opens a folder, and the
   server checks that read again.
+- "Open the real folder" on an old toast closes the Trash or Permissions
+  dialog that is open when it is clicked, also one opened since for other
+  items or with an operation running: the click asks to leave for another
+  folder, the operation is a job that goes on, and telling the dialogs apart
+  would need an identity per dialog opening.
 - The checks before an operation go by path: they decide names and sizes
   only, and the change itself walks again through handles. The same holds for
   an upload's "already exists" and editor version checks: the commit links
