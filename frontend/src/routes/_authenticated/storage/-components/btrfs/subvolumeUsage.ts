@@ -1,6 +1,7 @@
 import type {
   BtrfsFilesystem,
   BtrfsSnapshotRule,
+  Mount,
   NFSExport,
   SambaShare,
 } from "@/api";
@@ -8,6 +9,71 @@ import type {
 import { TRANSIENT_TOP } from "./btrfsShared";
 
 const trimSlashes = (path: string) => path.replace(/^\/+|\/+$/g, "");
+
+/**
+ * A mount that lasts and shows a whole subvolume. LinuxIO's own top-level
+ * mounts go at reboot, and a bind mount shows a folder inside a subvolume:
+ * its subPath, the folder the mount shows, is not the subvolume's path.
+ */
+const showsSubvolume = (mount: Mount) =>
+  !mount.mountpoint.startsWith(TRANSIENT_TOP) &&
+  trimSlashes(mount.subPath ?? "") === trimSlashes(mount.subvol);
+
+/**
+ * The host folder a new subvolume is offered in: the pool's top-level mount,
+ * or else the mount of its shallowest mounted subvolume, a writable mount
+ * before a read-only one. Undefined when no lasting mount shows the pool.
+ */
+export const poolFolder = (fs: BtrfsFilesystem): string | undefined => {
+  let best: { mountpoint: string; rank: number } | undefined;
+  for (const mount of fs.mountpoints) {
+    if (!showsSubvolume(mount)) continue;
+    const root = trimSlashes(mount.subvol);
+    const depth = root === "" ? 0 : root.split("/").length;
+    // Nothing can be created through a read-only mount.
+    const rank = depth + (mount.options.includes("ro") ? 1000 : 0);
+    if (!best || rank < best.rank) {
+      best = { mountpoint: mount.mountpoint, rank };
+    }
+  }
+  return best?.mountpoint;
+};
+
+/**
+ * Why a subvolume cannot be made in this host folder, or undefined when
+ * nothing here says so: its path from the top level, the pool's part of the
+ * folder, may not hold a comma or a space either. Only the part below the
+ * pool's mount counts, so a mountpoint with a space is fine. The server has
+ * the last word (ValidateSubvolumePath on the real path).
+ */
+export const subvolumeFolderProblem = (
+  fs: BtrfsFilesystem,
+  folder: string,
+): string | undefined => {
+  let best: Mount | undefined;
+  for (const mount of fs.mountpoints) {
+    const at = mount.mountpoint;
+    const under = at === "/" || folder === at || folder.startsWith(`${at}/`);
+    if (under && (!best || at.length > best.mountpoint.length)) best = mount;
+  }
+  if (!best) return undefined;
+  const inPool = `${best.subPath ?? ""}/${folder.slice(best.mountpoint.length)}`;
+  return /[\s,]/.test(inPool)
+    ? "A folder with a space or a comma in its name cannot hold a subvolume"
+    : undefined;
+};
+
+/**
+ * Why a subvolume may not have this name, or undefined when it may: a comma
+ * or a space would break the subvol= mount option and fstab, and the server
+ * refuses them too (ValidateSubvolumePath).
+ */
+export const subvolumeNameProblem = (name: string): string | undefined => {
+  if (name.includes("/")) return "A name, not a path";
+  if (name === "." || name === "..") return "Not a usable name";
+  if (/[\s,]/.test(name)) return "No spaces or commas";
+  return undefined;
+};
 
 /**
  * Where the files of the subvolume at path appear on the host: under the
@@ -20,8 +86,7 @@ export const subvolumeHostPath = (
 ): string | undefined => {
   let best: { mountpoint: string; root: string } | undefined;
   for (const mount of fs.mountpoints) {
-    // A bind mount shows a folder inside a subvolume, not the subvolume.
-    if (mount.subPath || mount.mountpoint.startsWith(TRANSIENT_TOP)) continue;
+    if (!showsSubvolume(mount)) continue;
     const root = trimSlashes(mount.subvol);
     if (root !== "" && path !== root && !path.startsWith(`${root}/`)) continue;
     if (!best || root.length > best.root.length) {

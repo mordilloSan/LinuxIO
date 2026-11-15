@@ -19,8 +19,9 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/linksafe"
 )
 
 const (
@@ -58,7 +59,7 @@ func MoveToTrash(ctx context.Context, absPath, home string, uid, gid int, chownN
 	// The item is judged and moved through one handle on its folder, so a
 	// folder swapped on the path in between cannot put another in its place.
 	owner := Owner{UID: uint32(uid), GID: uint32(gid), Set: chownNew}
-	src, err := openDirNoUserLinks(root, filepath.Dir(absPath), owner)
+	src, err := linksafe.OpenDirNoUserLinks(root, filepath.Dir(absPath), owner)
 	if err != nil {
 		return "", fmt.Errorf("trash %s: %w", absPath, err)
 	}
@@ -260,7 +261,7 @@ func walkTrash(root *fsroot.FSRoot, trash, home string, owner Owner, create bool
 	if err != nil {
 		return nil, err
 	}
-	dir, err := openDirNoUserLinks(root, anchor, owner)
+	dir, err := linksafe.OpenDirNoUserLinks(root, anchor, owner)
 	if err != nil {
 		return nil, err
 	}
@@ -274,7 +275,7 @@ func walkTrash(root *fsroot.FSRoot, trash, home string, owner Owner, create bool
 		case create:
 			next, err = MkdirAt(dir, name, 0o700, owner)
 		default:
-			next, err = openDirAt(dir, name)
+			next, err = linksafe.OpenDirAt(dir, name)
 		}
 		_ = dir.Close()
 		if err != nil {
@@ -295,10 +296,10 @@ func openTrashSub(root *fsroot.FSRoot, dir *os.File, trash, sub string, owner Ow
 	case dir != nil && create:
 		f, err = MkdirAt(dir, sub, 0o700, owner)
 	case dir != nil:
-		f, err = openDirAt(dir, sub)
+		f, err = linksafe.OpenDirAt(dir, sub)
 	case create:
 		var missing []string
-		if f, missing, err = OpenNearestDir(root, relPath(filepath.Join(trash, sub))); err == nil {
+		if f, missing, err = linksafe.OpenNearestDir(root, relPath(filepath.Join(trash, sub))); err == nil {
 			f, err = MkdirAllAt(f, missing, 0o700, owner)
 		}
 	default:
@@ -525,7 +526,7 @@ func RestoreFromTrash(ctx context.Context, trashedPath, home string, uid, gid in
 	// the destination again once it is open. It is reached without following
 	// a link the session user could have planted on the way.
 	dirPath := filepath.Dir(original)
-	dir, missing, err := OpenNearestDirNoUserLinks(root, dirPath, owner)
+	dir, missing, err := linksafe.OpenNearestDirNoUserLinks(root, dirPath, owner)
 	if err != nil {
 		return "", fmt.Errorf("restore %s: %w", name, err)
 	}
@@ -569,7 +570,7 @@ func restoreDestination(root *fsroot.FSRoot, trash string, info *os.File, name s
 // record vouches for, goes into a folder the session user does not own, as
 // the restore judges the nearest folder of original that exists.
 func restoreNeedsConfirmation(root *fsroot.FSRoot, original string, owner Owner) bool {
-	dir, _, err := OpenNearestDirNoUserLinks(root, filepath.Dir(original), owner)
+	dir, _, err := linksafe.OpenNearestDirNoUserLinks(root, filepath.Dir(original), owner)
 	if err != nil {
 		return false // the restore will say why
 	}
@@ -651,7 +652,7 @@ func stageTrashItem(files *os.File, name string) (*os.File, error) {
 // Only a fresh one (the bridge's and empty, see IsFreshDir) that no group or
 // everyone may write is taken.
 func openFreshStage(files *os.File, stageName string) (*os.File, error) {
-	stage, err := openDirAt(files, stageName)
+	stage, err := linksafe.OpenDirAt(files, stageName)
 	if err != nil {
 		return nil, err
 	}
@@ -751,7 +752,7 @@ func removeAllAt(ctx context.Context, dir *os.File, name string, removed func())
 	if !errors.Is(err, unix.EISDIR) && !errors.Is(err, unix.EPERM) {
 		return unlinkErr
 	}
-	sub, err := openDirAt(dir, name)
+	sub, err := linksafe.OpenDirAt(dir, name)
 	if errors.Is(err, unix.ENOTDIR) || errors.Is(err, unix.ELOOP) {
 		return unlinkErr // not a folder, so the unlink failed for its own reason
 	}

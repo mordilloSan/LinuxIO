@@ -12,9 +12,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/indexer"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
 	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 

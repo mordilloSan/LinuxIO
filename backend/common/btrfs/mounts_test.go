@@ -153,3 +153,12 @@ func TestTopLevelRejectsBadUUID(t *testing.T) {
 		t.Fatalf("unexpected mounts: %v", *calls)
 	}
 }
+
+// A mount of a subvolume whose name has a space: the root field and the
+// subvol option are escaped alike, so SubPath and Subvol must still agree.
+func TestParseMountinfoUnescapesTheSubvolume(t *testing.T) {
+	got := parseMountinfo("97 44 0:40 /my\\040data /mnt/my rw - btrfs /dev/sdb1 rw,subvolid=260,subvol=/my\\040data\n", func(string) string { return dataUUID })
+	if len(got) != 1 || got[0].Subvol != "my data" || got[0].SubPath != got[0].Subvol {
+		t.Fatalf("parseMountinfo = %+v", got)
+	}
+}

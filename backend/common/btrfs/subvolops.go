@@ -1,10 +1,13 @@
 package btrfs
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
@@ -48,6 +51,7 @@ const (
 // xattr; tests replace them to record calls.
 var subvolOps = struct {
 	create      func(path string) error
+	createIn    func(dir *os.File, name string) error
 	snapshot    func(src, dst string, readOnly bool) error
 	destroy     func(path string) error
 	setDefault  func(top string, id int) error
@@ -55,7 +59,7 @@ var subvolOps = struct {
 	compression func(path, value string) error
 	quota       func(top string, enable bool) error
 	limit       func(path string, max *uint64) error
-}{createSubvolumeAt, snapshotSubvolumeTo, destroySubvolume, setDefaultSubvolumeID, setSubvolumeReadOnly, setCompressionProperty, quotaCtl, qgroupLimit}
+}{createSubvolumeAt, createSubvolumeIn, snapshotSubvolumeTo, destroySubvolume, setDefaultSubvolumeID, setSubvolumeReadOnly, setCompressionProperty, quotaCtl, qgroupLimit}
 
 // nameArgs fills a vol_args with the last element of path, the name the
 // ioctls take relative to the parent directory they are issued on.
@@ -84,6 +88,100 @@ func createSubvolumeAt(path string) error {
 		return fmt.Errorf("chmod %s: %w", path, err)
 	}
 	return nil
+}
+
+// errSubvolumeReplaced is a new subvolume that was no longer at its name
+// when createSubvolumeIn came back to set its mode.
+var errSubvolumeReplaced = errors.New("the new subvolume was moved or replaced before its mode was set")
+
+// newSubvolumeSlack is how far before the create a new subvolume's birth
+// time may lie: the kernel stamps it from a coarser clock than time.Now.
+const newSubvolumeSlack = 2 * time.Second
+
+// createSubvolumeIn creates an empty subvolume called name in the open
+// folder dir and chmods it 0755 as createSubvolumeAt does, through the
+// folder's handle and the new subvolume's own, never by path. The kernel
+// hands back no handle, so the subvolume is reopened by name, and whoever
+// can write dir can put another folder at that name first: the mode is set
+// only on what isNewSubvolume accepts.
+func createSubvolumeIn(dir *os.File, name string) error {
+	args, err := nameArgs(name)
+	if err != nil {
+		return err
+	}
+	// dir must outlive its descriptor's use below.
+	defer runtime.KeepAlive(dir)
+	dirFD := int(dir.Fd())
+	notBefore := time.Now().Add(-newSubvolumeSlack)
+	if err = ioctlFD(dirFD, iocSubvolCreate, unsafe.Pointer(&args)); err != nil {
+		return err
+	}
+	if err = setNewSubvolumeMode(dirFD, name, notBefore); err != nil {
+		return fmt.Errorf("the subvolume was created, but its mode was not set: %w", err)
+	}
+	return nil
+}
+
+// setNewSubvolumeMode chmods the subvolume just created at name in the
+// folder open at dirFD to 0755, when isNewSubvolume accepts what is there.
+func setNewSubvolumeMode(dirFD int, name string, notBefore time.Time) error {
+	fd, err := unix.Openat(dirFD, name, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return fmt.Errorf("open %s: %w", name, err)
+	}
+	defer unix.Close(fd)
+	var stx unix.Statx_t
+	if err = unix.Statx(fd, "", unix.AT_EMPTY_PATH, unix.STATX_BASIC_STATS|unix.STATX_BTIME, &stx); err != nil {
+		return fmt.Errorf("stat %s: %w", name, err)
+	}
+	if !isNewSubvolume(&stx, uint32(os.Geteuid()), notBefore) {
+		return errSubvolumeReplaced
+	}
+	if err = unix.Fchmod(fd, 0o755); err != nil {
+		return fmt.Errorf("chmod %s: %w", name, err)
+	}
+	return nil
+}
+
+// isNewSubvolume reports whether stx is a subvolume this process, running as
+// uid, created at notBefore or later: the root folder of a subvolume, owned
+// by uid and born since. Nobody else can make such a folder for uid, so one
+// swapped in at the new subvolume's name fails this.
+func isNewSubvolume(stx *unix.Statx_t, uid uint32, notBefore time.Time) bool {
+	if stx.Ino != firstFreeObjectID || stx.Uid != uid || stx.Mask&unix.STATX_BTIME == 0 {
+		return false
+	}
+	return !time.Unix(stx.Btime.Sec, int64(stx.Btime.Nsec)).Before(notBefore)
+}
+
+// locateFolder returns where the open folder dir is: the uuid of its btrfs
+// filesystem, the id of the subvolume holding it and its path inside that
+// subvolume, "" for the subvolume itself; a var so tests can fake the kernel.
+var locateFolder = func(dir *os.File) (fsUUID string, subvolID uint64, rel string, err error) {
+	defer runtime.KeepAlive(dir)
+	fd := int(dir.Fd())
+	var sfs unix.Statfs_t
+	if err = unix.Fstatfs(fd, &sfs); err != nil {
+		return "", 0, "", fmt.Errorf("statfs: %w", err)
+	}
+	if sfs.Type != unix.BTRFS_SUPER_MAGIC {
+		return "", 0, "", ErrNotOnFilesystem
+	}
+	var st unix.Stat_t
+	if err = unix.Fstat(fd, &st); err != nil {
+		return "", 0, "", fmt.Errorf("stat: %w", err)
+	}
+	var info fsInfoArgs
+	if err = ioctlFD(fd, iocFSInfo, unsafe.Pointer(&info)); err != nil {
+		return "", 0, "", fmt.Errorf("fs info: %w", err)
+	}
+	// A zero tree id looks the inode up in the subvolume of fd and returns
+	// that subvolume's id.
+	lookup := &inoLookupArgs{ObjectID: st.Ino}
+	if err = ioctlFD(fd, iocInoLookup, unsafe.Pointer(lookup)); err != nil {
+		return "", 0, "", fmt.Errorf("resolve inode %d: %w", st.Ino, err)
+	}
+	return formatUUID(info.FSID[:]), lookup.TreeID, strings.Trim(cstring(lookup.Name[:]), "/"), nil
 }
 
 func destroySubvolume(path string) error {

@@ -641,6 +641,12 @@ export interface BtrfsSubvolumeCompressionRequest {
   algorithm: string;
 }
 
+export interface BtrfsSubvolumeCreateInRequest {
+  uuid: string;
+  folder: string;
+  name: string;
+}
+
 export interface BtrfsSubvolumeReadOnlyRequest {
   uuid: string;
   path: string;
@@ -4654,6 +4660,11 @@ export interface LinuxIOSchema {
     btrfs_subvolume_create: {
       input: [request: BtrfsSubvolumeRequest];
       request: BtrfsSubvolumeRequest;
+      result: BtrfsSubvolume;
+    };
+    btrfs_subvolume_create_in: {
+      input: [request: BtrfsSubvolumeCreateInRequest];
+      request: BtrfsSubvolumeCreateInRequest;
       result: BtrfsSubvolume;
     };
     btrfs_subvolume_delete: {

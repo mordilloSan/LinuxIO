@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -10,6 +11,9 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/linksafe"
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
 )
 
@@ -58,6 +62,19 @@ func TestBtrfsDestroyIntegration(t *testing.T) {
 	})
 	_, err = btrfs.ListSubvolumes(ctx, uuid)
 	must("list subvolumes", err)
+
+	// The create-in-a-folder route, on the folder a subvolume mount shows:
+	// the path comes out from the top level, and a taken name is a conflict.
+	in := apischema.BtrfsSubvolumeCreateInRequest{UUID: uuid, Folder: data, Name: "nested"}
+	nested, err := CreateBtrfsSubvolumeIn(ctx, in, linksafe.Owner{})
+	must("create subvolume in a folder", err)
+	if nested.Path != "data/nested" {
+		t.Fatalf("subvolume in a folder = %+v, want data/nested", nested)
+	}
+	if _, err = CreateBtrfsSubvolumeIn(ctx, in, linksafe.Owner{}); !errors.Is(err, bridgeipc.ErrConflict) {
+		t.Fatalf("taken name: err = %v, want a conflict", err)
+	}
+	must("delete the nested subvolume", btrfs.DeleteSubvolume(ctx, uuid, "data/nested"))
 	mounted := func() []string {
 		t.Helper()
 		mounts, listErr := btrfs.ListMounts(ctx)

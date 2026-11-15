@@ -7,7 +7,7 @@ type ToastOpts = NonNullable<Parameters<typeof sonnerToast.error>[1]>;
 
 // The bridge refuses a change that would go through a symbolic link someone
 // other than root could have planted, and names where the link points
-// (plantedLinkError in backend/bridge/handlers/filebrowser/services/handover.go).
+// (plantedLinkError in backend/bridge/internal/linksafe/linksafe.go).
 // Errors carry only a message, so the destination is found by that wording;
 // linkRefusal.test.ts fails when the Go text stops matching.
 const LINK_REFUSAL =
@@ -23,6 +23,30 @@ const LINK_REFUSAL_TOAST_MS = 10_000;
  */
 export function linkRefusalDestination(text: string): string | null {
   return LINK_REFUSAL.exec(text)?.[1] ?? null;
+}
+
+const LINK_REFUSAL_PARTS =
+  /(?:^|: )(\/.*?) is a link to (\/.*?)\. Open that folder to make this change/;
+
+/**
+ * Where path leads once the link a refusal names is replaced by what it
+ * points to: the refused link is path itself or a folder on the way to it,
+ * and what lies below the link is kept. Null when the text holds no link
+ * refusal. `link` is the link as the server named it.
+ */
+export function pathPastRefusedLink(
+  path: string,
+  text: string,
+): { link: string; path: string } | null {
+  const match = LINK_REFUSAL_PARTS.exec(text);
+  if (!match) return null;
+  const [, link, destination] = match;
+  const below = path === link || path.startsWith(`${link}/`);
+  const rest = below ? path.slice(link.length) : "";
+  return {
+    link,
+    path: destination === "/" ? rest || "/" : `${destination}${rest}`,
+  };
 }
 
 interface ErrorToaster {

@@ -2,12 +2,16 @@ package btrfs
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"os"
 	"reflect"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 func readFixture(t *testing.T, name string) string {
@@ -76,6 +80,9 @@ func stubSubvolOps(t *testing.T, record func(args []string) error) {
 	old := subvolOps
 	t.Cleanup(func() { subvolOps = old })
 	subvolOps.create = func(p string) error { return record([]string{"subvolume", "create", p}) }
+	subvolOps.createIn = func(dir *os.File, name string) error {
+		return record([]string{"subvolume", "create", dir.Name() + "/" + name})
+	}
 	subvolOps.snapshot = func(src, dst string, ro bool) error {
 		if ro {
 			return record([]string{"subvolume", "snapshot", "-r", src, dst})
@@ -244,5 +251,142 @@ func TestSubvolumeMutationsRunBtrfs(t *testing.T) {
 	}
 	if !reflect.DeepEqual(*calls, want) {
 		t.Fatalf("calls = %v, want %v", *calls, want)
+	}
+}
+
+// stubLocateFolder places every folder on uuid, in subvolume id at rel, and
+// resolves subvolume ids to the paths of fixtureRows.
+func stubLocateFolder(t *testing.T, uuid string, id uint64, rel string) {
+	t.Helper()
+	oldLocate, oldPath := locateFolder, subvolumePathByID
+	locateFolder = func(*os.File) (string, uint64, string, error) { return uuid, id, rel, nil }
+	subvolumePathByID = func(_ string, id uint64) (string, error) {
+		if id == topLevelSubvolID {
+			return "", nil
+		}
+		for _, r := range fixtureRows() {
+			if uint64(r.ID) == id {
+				return r.Path, nil
+			}
+		}
+		return "", fmt.Errorf("subvolume %d not found", id)
+	}
+	t.Cleanup(func() { locateFolder, subvolumePathByID = oldLocate, oldPath })
+}
+
+func openTempDir(t *testing.T) *os.File {
+	t.Helper()
+	dir, err := os.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = dir.Close() })
+	return dir
+}
+
+func TestCreateSubvolumeInNamesItFromTheFolder(t *testing.T) {
+	stubMounts(t, subvolMounts)
+	calls := &[][]string{}
+	stubSubvolumes(t, append(fixtureRows(), subvolumeRow{ID: 310, ParentID: 257, Path: "@home/alice/photos"}), 256, calls)
+	stubLocateFolder(t, rootUUID, 257, "alice")
+	dir := openTempDir(t)
+
+	sv, err := CreateSubvolumeIn(context.Background(), rootUUID, dir, "photos")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sv.ID != 310 || sv.Path != "@home/alice/photos" {
+		t.Fatalf("subvolume = %+v", sv)
+	}
+	if want := [][]string{{"subvolume", "create", dir.Name() + "/photos"}}; !reflect.DeepEqual(*calls, want) {
+		t.Fatalf("calls = %v, want %v", *calls, want)
+	}
+}
+
+func TestCreateSubvolumeInAtTheTopLevel(t *testing.T) {
+	stubMounts(t, subvolMounts)
+	calls := stubSubvolumeBtrfs(t, 256)
+	stubLocateFolder(t, rootUUID, topLevelSubvolID, "")
+
+	sv, err := CreateSubvolumeIn(context.Background(), rootUUID, openTempDir(t), "data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sv.Path != "data" || len(*calls) != 1 {
+		t.Fatalf("subvolume = %+v, calls = %v", sv, *calls)
+	}
+}
+
+func TestCreateSubvolumeInSaysWhatExistsAndWhatWasCreated(t *testing.T) {
+	stubMounts(t, subvolMounts)
+	stubSubvolumeBtrfs(t, 256)
+	ctx := context.Background()
+	dir := openTempDir(t)
+	stubLocateFolder(t, rootUUID, 257, "alice")
+
+	// Created, but not in the listing the route reads it back from.
+	_, err := CreateSubvolumeIn(ctx, rootUUID, dir, "photos")
+	if err == nil || !strings.Contains(err.Error(), "was created, but reading it back failed") {
+		t.Errorf("read-back failure: err = %v", err)
+	}
+
+	subvolOps.createIn = func(*os.File, string) error { return unix.EEXIST }
+	if _, err = CreateSubvolumeIn(ctx, rootUUID, dir, "photos"); !errors.Is(err, unix.EEXIST) {
+		t.Errorf("existing name: err = %v, want EEXIST kept for the route to map", err)
+	}
+}
+
+func TestIsNewSubvolume(t *testing.T) {
+	start := time.Unix(1_800_000_000, 0)
+	born := func(at time.Time) unix.StatxTimestamp {
+		return unix.StatxTimestamp{Sec: at.Unix(), Nsec: uint32(at.Nanosecond())}
+	}
+	fresh := unix.Statx_t{Mask: unix.STATX_BTIME, Ino: firstFreeObjectID, Uid: 0, Btime: born(start.Add(time.Millisecond))}
+	if !isNewSubvolume(&fresh, 0, start) {
+		t.Fatal("the subvolume just created was refused")
+	}
+	for what, change := range map[string]func(*unix.Statx_t){
+		"a plain folder":                   func(s *unix.Statx_t) { s.Ino = 300 },
+		"another user's subvolume":         func(s *unix.Statx_t) { s.Uid = 1000 },
+		"a subvolume made before":          func(s *unix.Statx_t) { s.Btime = born(start.Add(-time.Hour)) },
+		"a filesystem without birth times": func(s *unix.Statx_t) { s.Mask = 0 },
+	} {
+		swapped := fresh
+		change(&swapped)
+		if isNewSubvolume(&swapped, 0, start) {
+			t.Errorf("%s was taken for the new subvolume", what)
+		}
+	}
+}
+
+func TestCreateSubvolumeInRefuses(t *testing.T) {
+	stubMounts(t, subvolMounts)
+	calls := stubSubvolumeBtrfs(t, 256)
+	ctx := context.Background()
+	dir := openTempDir(t)
+
+	stubLocateFolder(t, dataUUID, topLevelSubvolID, "")
+	if _, err := CreateSubvolumeIn(ctx, rootUUID, dir, "x"); !errors.Is(err, ErrNotOnFilesystem) {
+		t.Errorf("folder on another filesystem: err = %v, want ErrNotOnFilesystem", err)
+	}
+
+	stubLocateFolder(t, rootUUID, topLevelSubvolID, "linuxio-snapshots")
+	if _, err := CreateSubvolumeIn(ctx, rootUUID, dir, "x"); !errors.Is(err, ErrInvalidSubvolume) || !strings.Contains(err.Error(), "reserved for snapshots") {
+		t.Errorf("folder in the snapshot tree: err = %v", err)
+	}
+
+	stubLocateFolder(t, rootUUID, 256, "var/lib/docker/btrfs/subvolumes")
+	if _, err := CreateSubvolumeIn(ctx, rootUUID, dir, "abc"); !errors.Is(err, ErrInvalidSubvolume) {
+		t.Errorf("Docker's layer store: err = %v, want ErrInvalidSubvolume", err)
+	}
+
+	stubLocateFolder(t, rootUUID, 257, "alice")
+	for _, name := range []string{"", ".", "..", "a/b", "a b", "a,b", strings.Repeat("a", 256)} {
+		if _, err := CreateSubvolumeIn(ctx, rootUUID, dir, name); !errors.Is(err, ErrInvalidSubvolume) {
+			t.Errorf("name %q: err = %v, want ErrInvalidSubvolume", name, err)
+		}
+	}
+	if len(*calls) != 0 {
+		t.Fatalf("unexpected mutations: %v", *calls)
 	}
 }

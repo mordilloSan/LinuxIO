@@ -344,9 +344,16 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
     endpointQueryPrefix("monitoring.get_live"),
   ],
   "storage.run_smart_test": [endpointQueryPrefix("monitoring.get_live")],
+  // A new subvolume is a new folder, which the folder picker lists.
   "storage.btrfs_subvolume_create": [
     endpointQueryPrefix("storage.btrfs_subvolumes"),
     endpointQueryPrefix("storage.get_topology"),
+    ...FILEBROWSER_LISTING_KEYS,
+  ],
+  "storage.btrfs_subvolume_create_in": [
+    endpointQueryPrefix("storage.btrfs_subvolumes"),
+    endpointQueryPrefix("storage.get_topology"),
+    ...FILEBROWSER_LISTING_KEYS,
   ],
   "storage.btrfs_subvolume_delete": [
     endpointQueryPrefix("storage.btrfs_subvolumes"),

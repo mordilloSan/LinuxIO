@@ -12,9 +12,10 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/linksafe"
 )
 
 // A root bridge keeps what it creates root-owned (backend audit item 110). An
@@ -64,16 +65,12 @@ func (o sessionOwner) asOwner() services.Owner {
 }
 
 // actingFor is whom a bridge acts for when it changes the session user's
-// files: that user on a root bridge, which then never follows a link that
-// user could have planted on the way (see services.OpenNearestDirNoUserLinks);
-// nobody on a bridge that is not root, which already acts as that user, and
-// nobody for a root session, whose user is no less trusted than the bridge
-// and would otherwise be refused system links such as /bin -> usr/bin.
+// files (see linksafe.ActingFor).
 func actingFor(session sessionOwner) services.Owner {
-	if os.Geteuid() != 0 || session.uid == 0 {
+	if !session.set {
 		return services.Owner{}
 	}
-	return session.asOwner()
+	return linksafe.ActingFor(session.uid, session.gid)
 }
 
 // handsOverIn reports whether an entry created in a folder goes to owner
@@ -94,11 +91,11 @@ func isSetgid(folder os.FileInfo) bool {
 // that already exist are only opened. A root bridge reaches that folder for
 // linkRule, the session user it acts for (see actingFor), whether or not the
 // upload sets an owner, without following a link that user could have
-// planted (see services.OpenNearestDirNoUserLinks), so its save cannot be
+// planted (see linksafe.OpenNearestDirNoUserLinks), so its save cannot be
 // sent elsewhere. New folders go to owner, which is set only when the upload
 // asked for it.
 func openUploadDir(root *fsroot.FSRoot, dirRel string, linkRule services.Owner, owner sessionOwner) (*os.File, error) {
-	dir, missing, err := services.OpenNearestDirNoUserLinks(root, dirRel, linkRule)
+	dir, missing, err := linksafe.OpenNearestDirNoUserLinks(root, dirRel, linkRule)
 	if err != nil {
 		return nil, err
 	}

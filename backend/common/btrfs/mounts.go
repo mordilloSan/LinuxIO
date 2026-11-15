@@ -111,7 +111,8 @@ func parseMountinfo(text string, uuidOf func(string) string) []Mount {
 		for _, opt := range m.Options {
 			switch key, val, _ := strings.Cut(opt, "="); key {
 			case "subvol":
-				m.Subvol = strings.TrimPrefix(val, "/")
+				// Escaped like the root field, which SubPath is compared with.
+				m.Subvol = strings.TrimPrefix(unescapeMountinfo(val), "/")
 			case "subvolid":
 				m.SubvolID, _ = strconv.Atoi(val)
 			}

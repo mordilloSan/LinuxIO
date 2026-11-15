@@ -166,6 +166,7 @@ func (p *itPool) subvolumes() BtrfsSnapshot {
 		t.Fatalf("subvolume = %+v", share)
 	}
 	p.must("write", os.WriteFile(filepath.Join(p.mnt, "share", "file.txt"), []byte("hello"), 0o644))
+	p.createIn()
 	snap, err := CreateSnapshot(p.ctx, p.uuid, "share", KindManual, time.Now())
 	p.must("snapshot", err)
 	subvols, err := ListSubvolumes(p.ctx, p.uuid)
@@ -194,6 +195,49 @@ func (p *itPool) subvolumes() BtrfsSnapshot {
 	}
 	p.quotas()
 	return snap
+}
+
+// createIn creates a subvolume through the handle of a plain folder inside
+// share and of the top level, checks their paths and mode, refuses a folder
+// off the pool and a reserved name, and deletes them again so share can be
+// deleted later.
+func (p *itPool) createIn() {
+	t := p.t
+	top, err := os.Open(p.mnt)
+	p.must("open top level", err)
+	atTop, err := CreateSubvolumeIn(p.ctx, p.uuid, top, "at-top")
+	p.must("create subvolume at the top level", err)
+	if atTop.Path != "at-top" {
+		t.Fatalf("subvolume at the top level = %+v", atTop)
+	}
+	_, err = CreateSubvolumeIn(p.ctx, p.uuid, top, "linuxio-snapshots")
+	_ = top.Close()
+	if !errors.Is(err, ErrInvalidSubvolume) {
+		t.Fatalf("reserved name: err = %v, want ErrInvalidSubvolume", err)
+	}
+	p.must("delete subvolume at the top level", DeleteSubvolume(p.ctx, p.uuid, "at-top"))
+
+	inner := filepath.Join(p.mnt, "share", "inner")
+	p.must("make folder", os.Mkdir(inner, 0o755))
+	dir, err := os.Open(inner)
+	p.must("open folder", err)
+	nested, err := CreateSubvolumeIn(p.ctx, p.uuid, dir, "nested")
+	_ = dir.Close()
+	p.must("create subvolume in a folder", err)
+	if nested.Path != "share/inner/nested" {
+		t.Fatalf("subvolume in a folder = %+v", nested)
+	}
+	if info, statErr := os.Stat(filepath.Join(inner, "nested")); statErr != nil || info.Mode().Perm() != 0o755 {
+		t.Fatalf("new subvolume: %v, %v", info, statErr)
+	}
+	outside, err := os.Open(filepath.Dir(p.mnt))
+	p.must("open folder off the pool", err)
+	_, err = CreateSubvolumeIn(p.ctx, p.uuid, outside, "x")
+	_ = outside.Close()
+	if !errors.Is(err, ErrNotOnFilesystem) {
+		t.Fatalf("folder off the pool: err = %v, want ErrNotOnFilesystem", err)
+	}
+	p.must("delete nested subvolume", DeleteSubvolume(p.ctx, p.uuid, "share/inner/nested"))
 }
 
 func (p *itPool) quotas() {

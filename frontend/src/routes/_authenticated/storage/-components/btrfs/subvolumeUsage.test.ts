@@ -2,7 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import type { BtrfsFilesystem, Mount } from "@/api";
 
-import { consumers, subvolumeHostPath, subvolumeUses } from "./subvolumeUsage";
+import {
+  consumers,
+  poolFolder,
+  subvolumeFolderProblem,
+  subvolumeHostPath,
+  subvolumeNameProblem,
+  subvolumeUses,
+} from "./subvolumeUsage";
 
 const mount = (
   mountpoint: string,
@@ -15,6 +22,9 @@ const mount = (
   uuid: "uuid-1",
   subvolId: subvol === "" ? 5 : 300,
   options: [],
+  // As the backend reports it: the folder the mount shows, which for a
+  // subvolume mount is the subvolume itself.
+  subPath: subvol.replace(/^\/+/, ""),
   ...extra,
 });
 
@@ -54,6 +64,71 @@ describe("subvolumeHostPath", () => {
     expect(subvolumeHostPath(fs(mount("/mnt/pool", "/")), "data")).toBe(
       "/mnt/pool/data",
     );
+  });
+});
+
+describe("poolFolder", () => {
+  it("prefers the top-level mount, then the shallowest subvolume mount", () => {
+    expect(poolFolder(fs(mount("/home", "@home"), mount("/", "@")))).toBe(
+      "/home",
+    );
+    expect(
+      poolFolder(fs(mount("/mnt/media", "media/x"), mount("/mnt/pool", ""))),
+    ).toBe("/mnt/pool");
+    expect(
+      poolFolder(fs(mount("/mnt/deep", "a/b"), mount("/mnt/media", "media"))),
+    ).toBe("/mnt/media");
+  });
+
+  it("takes a writable mount before a read-only one", () => {
+    expect(
+      poolFolder(
+        fs(
+          mount("/mnt/pool-ro", "", { options: ["ro", "noatime"] }),
+          mount("/mnt/data", "data", { options: ["rw"] }),
+        ),
+      ),
+    ).toBe("/mnt/data");
+    expect(poolFolder(fs(mount("/mnt/pool-ro", "", { options: ["ro"] })))).toBe(
+      "/mnt/pool-ro",
+    );
+  });
+
+  it("skips LinuxIO's own top-level mounts and bind mounts", () => {
+    expect(
+      poolFolder(
+        fs(
+          mount("/run/linuxio/btrfs/uuid-1", ""),
+          mount("/srv/bind", "data", { subPath: "data/photos" }),
+        ),
+      ),
+    ).toBeUndefined();
+  });
+});
+
+describe("subvolumeFolderProblem", () => {
+  it("refuses a space or a comma below the pool's mount, not in the mountpoint", () => {
+    const pool = fs(mount("/mnt/my pool", ""), mount("/mnt/data", "data"));
+    expect(subvolumeFolderProblem(pool, "/mnt/my pool")).toBeUndefined();
+    expect(subvolumeFolderProblem(pool, "/mnt/my pool/media")).toBeUndefined();
+    expect(subvolumeFolderProblem(pool, "/mnt/data/My Documents")).toMatch(
+      /space or a comma/,
+    );
+    expect(subvolumeFolderProblem(pool, "/mnt/data/a,b/c")).toMatch(
+      /space or a comma/,
+    );
+    // Not on the pool as far as the page knows: the server decides.
+    expect(subvolumeFolderProblem(pool, "/srv/other dir")).toBeUndefined();
+  });
+});
+
+describe("subvolumeNameProblem", () => {
+  it("accepts a plain name and names what is wrong with the others", () => {
+    expect(subvolumeNameProblem("photos-2026")).toBeUndefined();
+    expect(subvolumeNameProblem("a/b")).toBe("A name, not a path");
+    expect(subvolumeNameProblem("..")).toBe("Not a usable name");
+    expect(subvolumeNameProblem("my photos")).toBe("No spaces or commas");
+    expect(subvolumeNameProblem("a,b")).toBe("No spaces or commas");
   });
 });
 

@@ -11,6 +11,7 @@ import {
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FrostedCard from "@/components/cards/FrostedCard";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
+import PathPickerField from "@/components/pathpicker/PathPickerField";
 import AppVirtualTable from "@/components/tables/AppVirtualTable";
 import type { AppVirtualTableColumnDef } from "@/components/tables/AppVirtualTable.types";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
@@ -32,12 +33,17 @@ import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import { useDockerSettings } from "@/hooks/useConfig";
 import { formatFileSize } from "@/utils/formatters";
+import { pathPastRefusedLink } from "@/utils/linkRefusal";
+import { joinPath } from "@/utils/path";
 
 import { BTRFS_TOAST_META, isSystemSubvolume } from "./btrfsShared";
 import {
   consumers,
+  poolFolder,
   snapshotRuleFor,
+  subvolumeFolderProblem,
   subvolumeHostPath,
+  subvolumeNameProblem,
   subvolumeUses,
 } from "./subvolumeUsage";
 
@@ -68,6 +74,14 @@ const BtrfsSubvolumesCard = ({
   const { folders: dockerFolders } = useDockerSettings();
   const [creating, setCreating] = useState(false);
   const [showSystem, setShowSystem] = useState(false);
+  // A new subvolume goes in a host folder on the pool, or, for a place no
+  // mount shows, at a path typed from the pool's top level.
+  const [byPath, setByPath] = useState(false);
+  const [folder, setFolder] = useState("");
+  // The link the server refused to go through, once the field holds the
+  // folder it leads to.
+  const [linkedFrom, setLinkedFrom] = useState<string | null>(null);
+  const [newName, setNewName] = useState("");
   const [newPath, setNewPath] = useState("");
   const [deleting, setDeleting] = useState<BtrfsSubvolume | null>(null);
   const [limiting, setLimiting] = useState<BtrfsSubvolume | null>(null);
@@ -77,6 +91,12 @@ const BtrfsSubvolumesCard = ({
 
   const { mutate: createSubvolume, isPending: isCreating } =
     linuxio.storage.btrfs_subvolume_create.useMutation({
+      success: "Subvolume created",
+      error: "Failed to create subvolume",
+      toast: BTRFS_TOAST_META,
+    });
+  const { mutate: createSubvolumeIn, isPending: isCreatingIn } =
+    linuxio.storage.btrfs_subvolume_create_in.useMutation({
       success: "Subvolume created",
       error: "Failed to create subvolume",
       toast: BTRFS_TOAST_META,
@@ -151,12 +171,53 @@ const BtrfsSubvolumesCard = ({
   );
   const rules = rulesData?.rules ?? [];
 
+  const openCreate = () => {
+    const start = poolFolder(filesystem);
+    setByPath(start === undefined);
+    setFolder(start ?? "");
+    setLinkedFrom(null);
+    setCreating(true);
+  };
+  const changeFolder = (path: string) => {
+    setFolder(path);
+    setLinkedFrom(null);
+  };
   const closeCreate = () => {
     setCreating(false);
+    setNewName("");
     setNewPath("");
   };
-  const handleCreate = () =>
-    createSubvolume({ uuid, path: newPath.trim() }, { onSuccess: closeCreate });
+  const name = newName.trim();
+  const nameProblem = subvolumeNameProblem(name);
+  const folderProblem = subvolumeFolderProblem(filesystem, folder.trim());
+  const createValid = byPath
+    ? newPath.trim() !== ""
+    : folder.trim() !== "" && name !== "" && !nameProblem && !folderProblem;
+  const handleCreate = () => {
+    if (byPath) {
+      createSubvolume(
+        { uuid, path: newPath.trim() },
+        { onSuccess: closeCreate },
+      );
+    } else {
+      const picked = folder.trim();
+      createSubvolumeIn(
+        { uuid, folder: picked, name },
+        {
+          onSuccess: closeCreate,
+          onError: (error: Error) => {
+            // The server does not go through a link another user could have
+            // made, and names where it points: offer the folder past it.
+            const past = pathPastRefusedLink(picked, error.message);
+            if (!past) return;
+            setFolder(past.path);
+            setLinkedFrom(past.link);
+          },
+        },
+      );
+    }
+  };
+  const isCreatingAny = isCreating || isCreatingIn;
   const handleDelete = () => {
     if (!deleting) return;
     deleteSubvolume(request(deleting), { onSuccess: () => setDeleting(null) });
@@ -367,11 +428,7 @@ const BtrfsSubvolumesCard = ({
                   label="Show system subvolumes"
                 />
               )}
-              <AppButton
-                onClick={() => setCreating(true)}
-                size="small"
-                variant="outlined"
-              >
+              <AppButton onClick={openCreate} size="small" variant="outlined">
                 Create subvolume
               </AppButton>
             </div>
@@ -406,26 +463,74 @@ const BtrfsSubvolumesCard = ({
       >
         <AppDialogTitle>Create subvolume</AppDialogTitle>
         <AppDialogContent>
-          <AppTextField
-            fullWidth
-            helperText="Relative to the top level of the filesystem"
-            label="Subvolume path"
-            onChange={(event) => setNewPath(event.target.value)}
-            placeholder="data/photos"
-            size="small"
-            value={newPath}
-          />
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "flex-start",
+              gap: "var(--app-space-4)",
+            }}
+          >
+            {byPath ? (
+              <AppTextField
+                fullWidth
+                helperText="Relative to the top level of the filesystem"
+                label="Subvolume path"
+                onChange={(event) => setNewPath(event.target.value)}
+                placeholder="data/photos"
+                size="small"
+                value={newPath}
+              />
+            ) : (
+              <>
+                <PathPickerField
+                  editable
+                  error={folderProblem !== undefined}
+                  helperText={
+                    folderProblem ??
+                    (linkedFrom
+                      ? `${linkedFrom} is a link, so this is now the folder it leads to. Check it, then create again.`
+                      : "A folder on this pool")
+                  }
+                  label="Folder"
+                  onChange={changeFolder}
+                  style={{ width: "100%" }}
+                  value={folder}
+                />
+                <AppTextField
+                  error={nameProblem !== undefined}
+                  fullWidth
+                  helperText={
+                    nameProblem ??
+                    (folder.trim() && name && !folderProblem
+                      ? `Creates ${joinPath(folder.trim(), name)}`
+                      : undefined)
+                  }
+                  label="Name"
+                  onChange={(event) => setNewName(event.target.value)}
+                  placeholder="photos"
+                  size="small"
+                  value={newName}
+                />
+              </>
+            )}
+            <AppButton onClick={() => setByPath(!byPath)} size="small">
+              {byPath
+                ? "Pick a folder instead"
+                : "Type a path inside the pool instead"}
+            </AppButton>
+          </div>
         </AppDialogContent>
         <AppDialogActions>
-          <AppButton disabled={isCreating} onClick={closeCreate}>
+          <AppButton disabled={isCreatingAny} onClick={closeCreate}>
             Cancel
           </AppButton>
           <AppButton
-            disabled={isCreating || newPath.trim() === ""}
+            disabled={isCreatingAny || !createValid}
             onClick={handleCreate}
             variant="contained"
           >
-            {isCreating ? "Creating..." : "Create"}
+            {isCreatingAny ? "Creating..." : "Create"}
           </AppButton>
         </AppDialogActions>
       </GeneralDialog>

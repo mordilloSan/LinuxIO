@@ -17,8 +17,9 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/linksafe"
 )
 
 func TestMoveFileWithCallbacksUsesKnownSizeForRename(t *testing.T) {
@@ -739,7 +740,7 @@ func TestALinkInAnotherAccountsFolderIsNotFollowedAsRoot(t *testing.T) {
 	require.NoError(t, err)
 	defer root.Close()
 
-	_, _, err = OpenNearestDirNoUserLinks(root, filepath.Join(docs, "sub"), session)
+	_, _, err = linksafe.OpenNearestDirNoUserLinks(root, filepath.Join(docs, "sub"), session)
 	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
 	require.ErrorContains(t, err, docs+" is a link to "+victim+". Open that folder to make this change")
 
@@ -757,7 +758,7 @@ func TestALinkInAnotherAccountsFolderIsNotFollowedAsRoot(t *testing.T) {
 	}
 	system := t.TempDir() // root's own
 	plantTrashLink(t, victim, filepath.Join(system, "docs"))
-	dir, missing, err := OpenNearestDirNoUserLinks(root, filepath.Join(system, "docs"), session)
+	dir, missing, err := linksafe.OpenNearestDirNoUserLinks(root, filepath.Join(system, "docs"), session)
 	require.NoError(t, err)
 	defer dir.Close()
 	assert.Empty(t, missing)

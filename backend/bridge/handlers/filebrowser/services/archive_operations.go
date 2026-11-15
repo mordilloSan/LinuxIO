@@ -23,7 +23,8 @@ import (
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sys/unix"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/linksafe"
 )
 
 func closeWithLog(name string, closer io.Closer) {
@@ -335,7 +336,7 @@ func CreateTarGz(out *os.File, opts *OperationCallbacks, skipPath string, source
 // destination directory, which it creates. owner is the session user a root
 // bridge extracts for: the folder the destination is made in, and any
 // missing folder above it, is reached without following a link that user
-// could have planted (see OpenNearestDirNoUserLinks), and the destination is
+// could have planted (see linksafe.OpenNearestDirNoUserLinks), and the destination is
 // made and opened through that folder's handle. An aborted extract removes
 // the destination the same way.
 // opts is optional - pass nil if callbacks are not needed; cancellation comes
@@ -350,7 +351,7 @@ func ExtractArchive(ctx context.Context, archivePath, destination string, owner 
 	archivePath = fsroot.CleanAbsPath(archivePath)
 	destination = fsroot.CleanAbsPath(destination)
 
-	parent, missing, err := OpenNearestDirNoUserLinks(root, filepath.Dir(destination), owner)
+	parent, missing, err := linksafe.OpenNearestDirNoUserLinks(root, filepath.Dir(destination), owner)
 	if err != nil {
 		return err
 	}
@@ -398,7 +399,7 @@ func makeExtractDestination(parent *os.File, name, path string) (*os.Root, error
 		}
 		return nil, &fs.PathError{Op: "mkdir", Path: path, Err: err}
 	}
-	dir, err := openDirAt(parent, name)
+	dir, err := linksafe.OpenDirAt(parent, name)
 	if err != nil {
 		return nil, err
 	}

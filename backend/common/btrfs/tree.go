@@ -201,14 +201,60 @@ func readRootTree(top string) (map[uint64]subvolumeRow, map[uint64]rootBackref, 
 			r := parseRootItem(data)
 			r.ID = int(h.ObjectID)
 			rows[h.ObjectID] = r
-		case h.Type == rootBackrefKey && len(data) >= 18:
-			nameLen := int(binary.LittleEndian.Uint16(data[16:]))
-			if 18+nameLen <= len(data) {
-				refs[h.ObjectID] = rootBackref{parent: h.Offset, dirid: binary.LittleEndian.Uint64(data), name: string(data[18 : 18+nameLen])}
+		case h.Type == rootBackrefKey:
+			if ref, ok := parseRootBackref(h, data); ok {
+				refs[h.ObjectID] = ref
 			}
 		}
 	})
 	return rows, refs, err
+}
+
+// parseRootBackref reads a root backref item; ok is false when it is cut short.
+func parseRootBackref(h searchHeader, data []byte) (rootBackref, bool) {
+	if len(data) < 18 {
+		return rootBackref{}, false
+	}
+	nameLen := int(binary.LittleEndian.Uint16(data[16:]))
+	if 18+nameLen > len(data) {
+		return rootBackref{}, false
+	}
+	return rootBackref{parent: h.Offset, dirid: binary.LittleEndian.Uint64(data), name: string(data[18 : 18+nameLen])}, true
+}
+
+// subvolumePathByID returns the path of subvolume id below the top level,
+// "" for the top level itself, from the backref of each subvolume on the
+// way up: one small search and one inode lookup per level, where
+// readSubvolumeTree resolves every subvolume. A var so tests can fake the
+// kernel.
+var subvolumePathByID = func(top string, id uint64) (string, error) {
+	var parts []string
+	for id != fsTreeObjectID {
+		var ref rootBackref
+		found := false
+		key := searchKey{
+			TreeID: rootTreeObjectID, MinObjectID: id, MaxObjectID: id,
+			MinType: rootBackrefKey, MaxType: rootBackrefKey, MaxOffset: ^uint64(0), MaxTransid: ^uint64(0),
+		}
+		err := treeSearch(top, key, func(h searchHeader, data []byte) {
+			if h.ObjectID == id && h.Type == rootBackrefKey && !found {
+				ref, found = parseRootBackref(h, data)
+			}
+		})
+		if err != nil {
+			return "", fmt.Errorf("find subvolume %d: %w", id, err)
+		}
+		if !found {
+			return "", fmt.Errorf("subvolume %d not found", id)
+		}
+		segment, err := backrefSegment(top, ref)
+		if err != nil {
+			return "", err
+		}
+		parts = append([]string{segment}, parts...)
+		id = ref.parent
+	}
+	return strings.Join(parts, "/"), nil
 }
 
 // subvolumePath resolves the path of subvolume id below the top level,
@@ -225,19 +271,29 @@ func subvolumePath(top string, id uint64, refs map[uint64]rootBackref, paths map
 	if !ok {
 		return "", false
 	}
-	dir, err := inoLookup(top, ref.parent, ref.dirid)
+	segment, err := backrefSegment(top, ref)
 	if err != nil {
 		slog.Warn("btrfs subvolume path", "id", id, "error", err)
 		return "", false
 	}
-	var parts []string
-	for _, s := range []string{parent, dir, ref.name} {
-		if s != "" {
-			parts = append(parts, s)
-		}
+	paths[id] = segment
+	if parent != "" {
+		paths[id] = parent + "/" + segment
 	}
-	paths[id] = strings.Join(parts, "/")
 	return paths[id], true
+}
+
+// backrefSegment returns where ref hangs below its parent subvolume: the
+// folder inside the parent, when it is not the parent's root, and the name.
+func backrefSegment(top string, ref rootBackref) (string, error) {
+	dir, err := inoLookup(top, ref.parent, ref.dirid)
+	if err != nil {
+		return "", err
+	}
+	if dir == "" {
+		return ref.name, nil
+	}
+	return dir + "/" + ref.name, nil
 }
 
 // parseRootItem reads the flags, uuids and creation time of a root item.

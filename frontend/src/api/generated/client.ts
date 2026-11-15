@@ -541,6 +541,11 @@ const linuxio = {
       "btrfs_subvolume_create",
       { kind: "object" },
     ),
+    btrfs_subvolume_create_in: defineMutation(
+      "storage",
+      "btrfs_subvolume_create_in",
+      { kind: "object" },
+    ),
     btrfs_subvolume_delete: defineMutation(
       "storage",
       "btrfs_subvolume_delete",

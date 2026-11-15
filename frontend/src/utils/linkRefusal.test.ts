@@ -3,12 +3,16 @@ import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { linkRefusalDestination, toastFileError } from "./linkRefusal";
+import {
+  linkRefusalDestination,
+  pathPastRefusedLink,
+  toastFileError,
+} from "./linkRefusal";
 
 // Vitest runs from frontend/.
 const HANDOVER_GO = join(
   process.cwd(),
-  "../backend/bridge/handlers/filebrowser/services/handover.go",
+  "../backend/bridge/internal/linksafe/linksafe.go",
 );
 
 /** The format string of the Go `plantedLinkError`. */
@@ -82,6 +86,43 @@ describe("linkRefusalDestination", () => {
         "x is a link to data/docs. Open that folder to make this change",
       ),
     ).toBeNull();
+  });
+});
+
+describe("pathPastRefusedLink", () => {
+  const refusal = (link: string, to: string) =>
+    `open folder x: forbidden: ${link} is a link to ${to}. Open that folder to make this change`;
+
+  it("swaps the link for what it points to and keeps what is below it", () => {
+    expect(
+      pathPastRefusedLink(
+        "/home/a/Documents",
+        refusal("/home/a/Documents", "/mnt/data/Documents"),
+      ),
+    ).toEqual({ link: "/home/a/Documents", path: "/mnt/data/Documents" });
+    expect(
+      pathPastRefusedLink(
+        "/home/a/Documents/photos/2026",
+        refusal("/home/a/Documents", "/mnt/data/Documents"),
+      ),
+    ).toEqual({
+      link: "/home/a/Documents",
+      path: "/mnt/data/Documents/photos/2026",
+    });
+    expect(
+      pathPastRefusedLink("/srv/root/pool", refusal("/srv/root", "/")),
+    ).toEqual({ link: "/srv/root", path: "/pool" });
+  });
+
+  it("gives the destination alone when the link is not on the path as typed", () => {
+    // /home is itself a link root made, so the server names the real path.
+    expect(
+      pathPastRefusedLink(
+        "/home/a/docs",
+        refusal("/var/home/a/docs", "/mnt/data/docs"),
+      ),
+    ).toEqual({ link: "/var/home/a/docs", path: "/mnt/data/docs" });
+    expect(pathPastRefusedLink("/home/a", "permission denied")).toBeNull();
   });
 });
 

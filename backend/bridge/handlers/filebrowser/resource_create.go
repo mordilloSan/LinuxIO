@@ -13,9 +13,10 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/linksafe"
 )
 
 type resourcePostRequest struct {
@@ -65,12 +66,12 @@ func ensureResourcePostType(root *fsroot.FSRoot, req resourcePostRequest) error 
 // nearestDirForCreate opens the deepest folder of a path to create in that
 // exists and returns the names below it that are missing. On a root bridge
 // acting for owner it is reached without following a link the session user
-// could have planted (see services.OpenNearestDirNoUserLinks).
+// could have planted (see linksafe.OpenNearestDirNoUserLinks).
 func nearestDirForCreate(root *fsroot.FSRoot, cleanPath, rel string, owner services.Owner) (*os.File, []string, error) {
 	if !owner.Set {
-		return services.OpenNearestDir(root, rel)
+		return linksafe.OpenNearestDir(root, rel)
 	}
-	return services.OpenNearestDirNoUserLinks(root, cleanPath, owner)
+	return linksafe.OpenNearestDirNoUserLinks(root, cleanPath, owner)
 }
 
 // createDirectoryResource makes the folder and any missing folder above it

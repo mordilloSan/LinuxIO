@@ -182,8 +182,32 @@ The Subvolumes view lists each subvolume with:
 - its snapshot count and automatic schedule.
 
 Each row can take a snapshot, set a size limit and compression, toggle
-read-only, become the default subvolume or be deleted; the card creates new
-ones. Nested subvolumes appear as their own rows. Subvolume paths may not
+read-only, become the default subvolume or be deleted. Nested subvolumes
+appear as their own rows.
+
+**Create subvolume** asks for a folder on the host and a name, and shows the
+host path it will create. The folder starts at the pool's top-level mount, or
+else at the mount of its shallowest mounted subvolume, and the folder picker
+browses the whole host. The bridge opens the folder as the file browser does,
+refusing a link another local user could have planted
+([Privilege Pattern](privilege_pattern.md#root-acting-in-the-session-users-folders)),
+checks through that handle that it is on this pool (`BTRFS_IOC_FS_INFO`),
+finds its path from the top level (`BTRFS_IOC_INO_LOOKUP` and the
+subvolume list), and creates the subvolume through the same handle, so the
+path checks below apply to where it really lands. A place inside Docker's
+layer store is refused, since the list leaves those out. The folder must
+exist, and a name already taken there is a conflict. The kernel hands back
+no handle to the new subvolume, so it is reopened by name to get mode 0755,
+and the mode is set only on a subvolume root that the bridge's user owns and
+that was born since the create began (`isNewSubvolume`): whoever can write
+the folder could otherwise put another folder at that name first. The dialog
+refuses a name with a space, a comma or a slash before sending, and a folder
+whose path below the pool's mount has a space or a comma. When the picked
+folder is, or lies below, a refused link, it puts the same folder reached
+through what the link points to in the field, to check and create again. A
+place no lasting mount shows, such as an unmounted subvolume, is reached
+instead by typing a path from the top level, the dialog's other mode, which
+it opens in when the pool has no such mount. Subvolume paths may not
 contain `,` or whitespace, which would break `subvol=` mount options and
 `/etc/fstab`. Deleting a leftover
 `.linuxio-rollback-*` subvolume (see [Rollback](#rollback)) is done here.

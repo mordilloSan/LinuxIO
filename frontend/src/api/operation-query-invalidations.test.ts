@@ -35,6 +35,7 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
       "remount_cifs",
       "unmount_filesystem",
       "btrfs_subvolume_create",
+      "btrfs_subvolume_create_in",
     ]) {
       expect(OPERATION_QUERY_INVALIDATIONS[`storage.${action}`]).toContainEqual(
         ["linuxio", "storage", "get_topology"],

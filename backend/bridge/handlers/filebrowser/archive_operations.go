@@ -15,9 +15,10 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/linksafe"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 )
 
@@ -95,9 +96,9 @@ type archiveTarget struct {
 // prepareArchiveTarget opens the folder targetPath sits in, making missing
 // folders on the way, and creates the temp archive in it. On a root bridge
 // acting for owner the folder is reached without following a link the
-// session user could have planted (see services.OpenNearestDirNoUserLinks).
+// session user could have planted (see linksafe.OpenNearestDirNoUserLinks).
 func prepareArchiveTarget(root *fsroot.FSRoot, targetPath string, owner services.Owner) (*archiveTarget, error) {
-	dir, missing, err := services.OpenNearestDirNoUserLinks(root, filepath.Dir(targetPath), owner)
+	dir, missing, err := linksafe.OpenNearestDirNoUserLinks(root, filepath.Dir(targetPath), owner)
 	if err != nil {
 		return nil, fmt.Errorf("open parent dir: %w", err)
 	}

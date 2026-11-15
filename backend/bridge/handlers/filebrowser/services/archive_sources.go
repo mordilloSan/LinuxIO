@@ -15,8 +15,9 @@ import (
 	zip "github.com/klauspost/compress/zip"
 	"golang.org/x/sys/unix"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/linksafe"
 )
 
 // ArchiveSources is how a compress reads the files it archives. Without
@@ -24,7 +25,7 @@ import (
 // to a file adds the file, a link to a folder is left out.
 //
 // Owner is the session user a root bridge compresses for. Then every source
-// is reached as openDirNoUserLinks reaches a folder and read through handles
+// is reached as linksafe.OpenDirNoUserLinks reaches a folder and read through handles
 // without following a symlink, so a folder swapped for a link mid-walk is
 // never entered. A link inside a compressed folder is followed, as above,
 // only where nobody but root can have planted it; one in any other folder
@@ -74,7 +75,7 @@ func (r *archiveReader) add(path, skipPath string) error {
 		return r.addEntry(at.dir, at.name, base)
 	}
 	// The folder named in the request gets no entry of its own, as in a walk.
-	dir, err := openDirAt(at.dir, at.name)
+	dir, err := linksafe.OpenDirAt(at.dir, at.name)
 	if err != nil {
 		return err
 	}
@@ -114,7 +115,7 @@ func (r *archiveReader) addEntry(dir *os.File, name, archivePath string) error {
 	}
 	switch st.Mode & unix.S_IFMT {
 	case unix.S_IFDIR:
-		sub, err := openDirAt(dir, name)
+		sub, err := linksafe.OpenDirAt(dir, name)
 		if err != nil {
 			return err
 		}
@@ -160,21 +161,21 @@ func (r *archiveReader) addRegular(dir *os.File, name, archivePath string) error
 // leads through. Otherwise the link is left out and reported.
 func (r *archiveReader) addLink(dir *os.File, name, archivePath string) error {
 	path := filepath.Join(dir.Name(), name)
-	target, isLink := linkTarget(dir, name)
+	target, isLink := linksafe.LinkTarget(dir, name)
 	if !isLink {
 		return nil // replaced since it was seen
 	}
-	planted, err := plantable(dir)
+	planted, err := linksafe.Plantable(dir)
 	if err != nil {
 		return err
 	}
 	if planted {
-		r.skip(path, fmt.Errorf("left out: a link to %s in a folder that is not root's alone", linkDestination(dir, target)))
+		r.skip(path, fmt.Errorf("left out: a link to %s in a folder that is not root's alone", linksafe.LinkDestination(dir, target)))
 		return nil
 	}
 	at, err := entryFollowingNoUserLinks(r.root, path, r.sources.Owner)
 	if errors.Is(err, bridgeipc.ErrForbidden) {
-		r.skip(path, fmt.Errorf("left out: a link to %s that leads through a link in a folder that is not root's alone", linkDestination(dir, target)))
+		r.skip(path, fmt.Errorf("left out: a link to %s that leads through a link in a folder that is not root's alone", linksafe.LinkDestination(dir, target)))
 		return nil
 	}
 	if err != nil {
@@ -246,7 +247,7 @@ func (w *sizeWalk) add(dir *os.File, name string) error {
 }
 
 func (w *sizeWalk) addChildren(parent *os.File, name string) error {
-	dir, err := openDirAt(parent, name)
+	dir, err := linksafe.OpenDirAt(parent, name)
 	if err != nil {
 		return nil
 	}

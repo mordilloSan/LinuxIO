@@ -227,6 +227,7 @@ export const ROUTE_MODES = {
   "storage.btrfs_snapshot_run_now": "mutation",
   "storage.btrfs_snapshots": "call",
   "storage.btrfs_subvolume_create": "mutation",
+  "storage.btrfs_subvolume_create_in": "mutation",
   "storage.btrfs_subvolume_delete": "mutation",
   "storage.btrfs_subvolume_set_compression": "mutation",
   "storage.btrfs_subvolume_set_default": "mutation",

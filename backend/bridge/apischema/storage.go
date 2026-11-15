@@ -236,6 +236,14 @@ type BtrfsSubvolumeRequest struct {
 	Path string `json:"path"`
 }
 
+// BtrfsSubvolumeCreateInRequest names a new subvolume by the host folder it
+// goes in, which must be on the filesystem UUID, and its name there.
+type BtrfsSubvolumeCreateInRequest struct {
+	UUID   string `json:"uuid"`
+	Folder string `json:"folder"`
+	Name   string `json:"name"`
+}
+
 type BtrfsSnapshotsRequest struct {
 	UUID string  `json:"uuid"`
 	Path *string `json:"path,omitzero"`

@@ -17,7 +17,8 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/linksafe"
 )
 
 var (
@@ -33,7 +34,7 @@ func relPath(p string) string {
 // session user's files, in folders a process of that user can rearrange while
 // the operation runs. So every operation here starts from handles on the
 // folders its paths sit in, opened without following a link that user could
-// have planted (see openDirNoUserLinks), and reaches everything below them one
+// have planted (see linksafe.OpenDirNoUserLinks), and reaches everything below them one
 // name at a time without following a symlink: a folder swapped for a link
 // meanwhile fails the operation instead of sending it into the link's target.
 
@@ -142,7 +143,7 @@ func CopyFileWithCallbacks(ctx context.Context, source, dest string, overwrite b
 }
 
 // transferPaths copies or moves src onto dst through handles on the folders
-// they sit in, opened for owner as openDirNoUserLinks opens them. A move
+// they sit in, opened for owner as linksafe.OpenDirNoUserLinks opens them. A move
 // judges its source with checkNotProtectedAt on the folder it then leaves.
 func transferPaths(root *fsroot.FSRoot, src, dst string, overwrite bool, owner Owner, opts *OperationCallbacks, state *copyState, moveOpts MoveFileOptions) error {
 	from, err := openEntry(root, src, owner)
@@ -218,7 +219,7 @@ func (s *copyState) linkTo(existing string, dst entry) error {
 	if err != nil {
 		return err
 	}
-	dir, err := openDirAt(s.dstBase, ".")
+	dir, err := linksafe.OpenDirAt(s.dstBase, ".")
 	if err != nil {
 		return err
 	}
@@ -226,7 +227,7 @@ func (s *copyState) linkTo(existing string, dst entry) error {
 		if name == "." {
 			continue
 		}
-		next, err := openDirAt(dir, name)
+		next, err := linksafe.OpenDirAt(dir, name)
 		_ = dir.Close()
 		if err != nil {
 			return err
@@ -807,7 +808,7 @@ type DeleteOptions struct {
 	Progress func(processed int64)
 	// Owner is the session user a root bridge deletes for. The item's folder
 	// is then reached without following a link that user could have planted
-	// (see openDirNoUserLinks). Unset, the path is opened as it resolves.
+	// (see linksafe.OpenDirNoUserLinks). Unset, the path is opened as it resolves.
 	Owner Owner
 }
 
@@ -859,7 +860,7 @@ func DeleteFilesWithProgress(ctx context.Context, absPath string, opts DeleteOpt
 	}
 	defer root.Close()
 
-	dir, err := openDirNoUserLinks(root, filepath.Dir(absPath), opts.Owner)
+	dir, err := linksafe.OpenDirNoUserLinks(root, filepath.Dir(absPath), opts.Owner)
 	if err != nil {
 		return 0, err
 	}
@@ -957,7 +958,7 @@ func ChangePermissionsCtx(ctx context.Context, path string, mode os.FileMode, re
 
 // ChangeOwnershipCtx changes ownership and reports processed entries when
 // requested. A symlink is changed itself, never followed; on a root bridge
-// acting for owner path's folder is reached as openDirNoUserLinks reaches it,
+// acting for owner path's folder is reached as linksafe.OpenDirNoUserLinks reaches it,
 // and the entries below a folder are changed through handles (see changeTree).
 func ChangeOwnershipCtx(ctx context.Context, path string, uid, gid int, recursive bool, owner Owner, cb func(processed int64)) error {
 	path = fsroot.CleanAbsPath(path)
