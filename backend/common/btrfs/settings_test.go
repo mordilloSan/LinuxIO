@@ -167,8 +167,8 @@ func TestQuotaAndPropertyCommands(t *testing.T) {
 	want := [][]string{
 		{"quota", "enable", "/mnt/top"},
 		{"quota", "disable", "/mnt/top"},
-		{"qgroup", "limit", "5000", "/mnt/top/@"},
-		{"qgroup", "limit", "none", "/mnt/top/@"},
+		{"qgroup", "limit", "5000", "0/256", "/mnt/top"},
+		{"qgroup", "limit", "none", "0/256", "/mnt/top"},
 		{"xattr", "/mnt/top/@", "btrfs.compression", "zstd"},
 		{"xattr", "/mnt/top/@", "btrfs.compression", ""},
 	}

@@ -162,7 +162,7 @@ func TestDeleteSnapshotDeletesAndIsIdempotent(t *testing.T) {
 
 	// The kernel reports ENOENT: already gone.
 	stubSnapshotTop(t)
-	subvolOps.destroy = func(string) error { return unix.ENOENT }
+	subvolOps.destroy = func(string, string) error { return unix.ENOENT }
 	if err := DeleteSnapshot(context.Background(), rootUUID, path); err != nil {
 		t.Fatalf("missing snapshot: err = %v", err)
 	}

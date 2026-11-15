@@ -35,10 +35,24 @@ func ListBtrfsFilesystems(ctx context.Context) ([]btrfs.BtrfsFilesystem, error) 
 func CreateBtrfsSubvolume(ctx context.Context, req apischema.BtrfsSubvolumeRequest) (btrfs.BtrfsSubvolume, error) {
 	sv, err := btrfs.CreateSubvolume(ctx, req.UUID, req.Path)
 	if err != nil {
-		return sv, fmt.Errorf("create btrfs subvolume %s in %s: %w", req.Path, req.UUID, err)
+		return sv, fmt.Errorf("create btrfs subvolume %s in %s: %w", req.Path, req.UUID, pathStatus(err))
 	}
 	slog.Info("btrfs subvolume created", "uuid", req.UUID, "path", req.Path)
 	return sv, nil
+}
+
+// pathStatus gives the error of an operation on a top-level path its client
+// status: a path that is or goes through a symbolic link is refused, and one
+// that leads onto another filesystem is not a path of this pool. Any other
+// error is returned as it is.
+func pathStatus(err error) error {
+	switch {
+	case errors.Is(err, btrfs.ErrLinkOnPath):
+		return fmt.Errorf("%w: %w", bridgeipc.ErrForbidden, err)
+	case errors.Is(err, btrfs.ErrNotOnFilesystem):
+		return fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
+	}
+	return err
 }
 
 func btrfsSubvolumeFolderBindings(linkRule linksafe.Owner) apischema.BindingSet {
@@ -91,7 +105,7 @@ func CreateBtrfsSubvolumeIn(ctx context.Context, req apischema.BtrfsSubvolumeCre
 // DeleteBtrfsSubvolume deletes a subvolume.
 func DeleteBtrfsSubvolume(ctx context.Context, req apischema.BtrfsSubvolumeRequest) error {
 	if err := btrfs.DeleteSubvolume(ctx, req.UUID, req.Path); err != nil {
-		return fmt.Errorf("delete btrfs subvolume %s in %s: %w", req.Path, req.UUID, err)
+		return fmt.Errorf("delete btrfs subvolume %s in %s: %w", req.Path, req.UUID, pathStatus(err))
 	}
 	slog.Info("btrfs subvolume deleted", "uuid", req.UUID, "path", req.Path)
 	return nil
@@ -101,7 +115,7 @@ func DeleteBtrfsSubvolume(ctx context.Context, req apischema.BtrfsSubvolumeReque
 func CreateBtrfsSnapshot(ctx context.Context, req apischema.BtrfsSubvolumeRequest) (btrfs.BtrfsSnapshot, error) {
 	snap, err := btrfs.CreateSnapshot(ctx, req.UUID, req.Path, btrfs.KindManual, time.Now())
 	if err != nil {
-		return snap, fmt.Errorf("create btrfs snapshot of %s in %s: %w", req.Path, req.UUID, err)
+		return snap, fmt.Errorf("create btrfs snapshot of %s in %s: %w", req.Path, req.UUID, pathStatus(err))
 	}
 	slog.Info("btrfs snapshot created", "uuid", req.UUID, "source", req.Path)
 	return snap, nil
@@ -110,7 +124,7 @@ func CreateBtrfsSnapshot(ctx context.Context, req apischema.BtrfsSubvolumeReques
 // DeleteBtrfsSnapshot deletes a snapshot.
 func DeleteBtrfsSnapshot(ctx context.Context, req apischema.BtrfsSnapshotRequest) error {
 	if err := btrfs.DeleteSnapshot(ctx, req.UUID, req.SnapshotPath); err != nil {
-		return fmt.Errorf("delete btrfs snapshot %s in %s: %w", req.SnapshotPath, req.UUID, err)
+		return fmt.Errorf("delete btrfs snapshot %s in %s: %w", req.SnapshotPath, req.UUID, pathStatus(err))
 	}
 	slog.Info("btrfs snapshot deleted", "uuid", req.UUID, "path", req.SnapshotPath)
 	return nil
@@ -120,7 +134,7 @@ func DeleteBtrfsSnapshot(ctx context.Context, req apischema.BtrfsSnapshotRequest
 func SetBtrfsSubvolumeReadOnly(ctx context.Context, req apischema.BtrfsSubvolumeReadOnlyRequest) (btrfs.BtrfsSubvolume, error) {
 	sv, err := btrfs.SetSubvolumeReadOnly(ctx, req.UUID, req.Path, req.ReadOnly)
 	if err != nil {
-		return sv, fmt.Errorf("set btrfs subvolume %s read-only=%t in %s: %w", req.Path, req.ReadOnly, req.UUID, err)
+		return sv, fmt.Errorf("set btrfs subvolume %s read-only=%t in %s: %w", req.Path, req.ReadOnly, req.UUID, pathStatus(err))
 	}
 	slog.Info("btrfs subvolume read-only changed", "uuid", req.UUID, "path", req.Path, "readOnly", req.ReadOnly)
 	return sv, nil

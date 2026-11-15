@@ -117,7 +117,7 @@ func ApplyBtrfsCompression(ctx context.Context, req apischema.BtrfsCompressionRe
 func SetBtrfsSubvolumeCompression(ctx context.Context, req apischema.BtrfsSubvolumeCompressionRequest) (btrfs.BtrfsSubvolume, error) {
 	sv, err := btrfs.SetSubvolumeCompression(ctx, req.UUID, req.Path, req.Algorithm)
 	if err != nil {
-		return sv, fmt.Errorf("set btrfs compression of subvolume %s in %s: %w", req.Path, req.UUID, err)
+		return sv, fmt.Errorf("set btrfs compression of subvolume %s in %s: %w", req.Path, req.UUID, pathStatus(err))
 	}
 	slog.Info("btrfs subvolume compression set", "uuid", req.UUID, "path", req.Path, "algorithm", req.Algorithm)
 	return sv, nil

@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -28,8 +26,9 @@ const (
 // cannot be remounted in place.
 var rebootMountpoints = []string{"/", "/usr", "/var", "/etc"}
 
-// renamePath is swapped by tests.
-var renamePath = os.Rename
+// renamePath renames a subvolume, both paths below the top-level mount top;
+// swapped by tests.
+var renamePath = renameBelow
 
 // RollbackStep is one step of a rollback. From and To are top-level-relative
 // subvolume paths, except remount, whose From is a mountpoint and To the
@@ -163,7 +162,7 @@ func ExecuteRollback(ctx context.Context, uuid string, plan RollbackPlan, report
 			return res, err
 		case step.Op == opRename && step.To == plan.Source:
 			// The new subvolume could not take source's name: put the old one back.
-			if backErr := renamePath(filepath.Join(top, plan.OldPath), filepath.Join(top, plan.Source)); backErr != nil {
+			if backErr := renamePath(top, plan.OldPath, plan.Source); backErr != nil {
 				return res, fmt.Errorf("rollback failed after renaming %s to %s: %w; renaming it back also failed: %w", plan.Source, plan.OldPath, err, backErr)
 			}
 			return res, fmt.Errorf("rollback failed after renaming %s to %s: %w; renamed it back, %s is unchanged and %s is left over", plan.Source, plan.OldPath, err, plan.Source, step.From)
@@ -195,12 +194,12 @@ func checkRollbackTargetsFree(top string, plan RollbackPlan) error {
 		}
 	}
 	for _, p := range paths {
-		_, err := os.Lstat(filepath.Join(top, p))
-		if err == nil {
-			return fmt.Errorf("rollback aborted: %s already exists", p)
-		}
-		if !errors.Is(err, fs.ErrNotExist) {
+		exists, err := existsBelow(top, p)
+		if err != nil {
 			return fmt.Errorf("rollback aborted: check %s: %w", p, err)
+		}
+		if exists {
+			return fmt.Errorf("rollback aborted: %s already exists", p)
 		}
 	}
 	return nil
@@ -213,10 +212,10 @@ func removeRestore(top, restore string) {
 	if restore == "" {
 		return
 	}
-	if _, err := os.Lstat(filepath.Join(top, restore)); err != nil {
+	if exists, err := existsBelow(top, restore); err != nil || !exists {
 		return
 	}
-	_ = subvolOps.destroy(filepath.Join(top, restore))
+	_ = subvolOps.destroy(top, restore)
 }
 
 // mountShows reports whether mountpoint now mounts the subvolume at source.
@@ -234,18 +233,18 @@ var errBusy = errors.New("mount is busy")
 func runRollbackStep(ctx context.Context, uuid, top string, step RollbackStep) error {
 	switch step.Op {
 	case opSnapshotRO:
-		if err := os.MkdirAll(filepath.Join(top, filepath.Dir(step.To)), 0o755); err != nil {
+		if err := mkdirAllBelow(top, filepath.Dir(step.To)); err != nil {
 			return fmt.Errorf("create snapshot directory for %q: %w", step.From, err)
 		}
-		if err := subvolOps.snapshot(filepath.Join(top, step.From), filepath.Join(top, step.To), true); err != nil {
+		if err := subvolOps.snapshot(top, step.From, step.To, true); err != nil {
 			return fmt.Errorf("snapshot subvolume %q: %w", step.From, err)
 		}
 	case opSnapshotRW:
-		if err := subvolOps.snapshot(filepath.Join(top, step.From), filepath.Join(top, step.To), false); err != nil {
+		if err := subvolOps.snapshot(top, step.From, step.To, false); err != nil {
 			return fmt.Errorf("copy %q to %q: %w", step.From, step.To, err)
 		}
 	case opRename:
-		if err := renamePath(filepath.Join(top, step.From), filepath.Join(top, step.To)); err != nil {
+		if err := renamePath(top, step.From, step.To); err != nil {
 			return fmt.Errorf("rename subvolume %q to %q: %w", step.From, step.To, err)
 		}
 	case opSetDefault:

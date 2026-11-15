@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -79,33 +80,43 @@ func stubSubvolOps(t *testing.T, record func(args []string) error) {
 	t.Helper()
 	old := subvolOps
 	t.Cleanup(func() { subvolOps = old })
-	subvolOps.create = func(p string) error { return record([]string{"subvolume", "create", p}) }
+	subvolOps.create = func(top, p string) error {
+		return record([]string{"subvolume", "create", filepath.Join(top, p)})
+	}
 	subvolOps.createIn = func(dir *os.File, name string) error {
 		return record([]string{"subvolume", "create", dir.Name() + "/" + name})
 	}
-	subvolOps.snapshot = func(src, dst string, ro bool) error {
+	subvolOps.snapshot = func(top, src, dst string, ro bool) error {
+		src, dst = filepath.Join(top, src), filepath.Join(top, dst)
 		if ro {
 			return record([]string{"subvolume", "snapshot", "-r", src, dst})
 		}
 		return record([]string{"subvolume", "snapshot", src, dst})
 	}
-	subvolOps.destroy = func(p string) error { return record([]string{"subvolume", "delete", p}) }
+	subvolOps.destroy = func(top, p string) error {
+		return record([]string{"subvolume", "delete", filepath.Join(top, p)})
+	}
 	subvolOps.setDefault = func(top string, id int) error {
 		return record([]string{"subvolume", "set-default", strconv.Itoa(id), top})
 	}
-	subvolOps.readOnly = func(p string, ro bool) error { return record([]string{"ro", p, strconv.FormatBool(ro)}) }
-	subvolOps.compression = func(p, v string) error { return record([]string{"xattr", p, "btrfs.compression", v}) }
+	subvolOps.readOnly = func(top, p string, ro bool) error {
+		return record([]string{"ro", filepath.Join(top, p), strconv.FormatBool(ro)})
+	}
+	subvolOps.compression = func(top, p, v string) error {
+		return record([]string{"xattr", filepath.Join(top, p), "btrfs.compression", v})
+	}
 	subvolOps.quota = func(top string, enable bool) error {
 		if enable {
 			return record([]string{"quota", "enable", top})
 		}
 		return record([]string{"quota", "disable", top})
 	}
-	subvolOps.limit = func(p string, max *uint64) error {
+	subvolOps.limit = func(top string, id int, max *uint64) error {
+		qgroup := "0/" + strconv.Itoa(id)
 		if max == nil {
-			return record([]string{"qgroup", "limit", "none", p})
+			return record([]string{"qgroup", "limit", "none", qgroup, top})
 		}
-		return record([]string{"qgroup", "limit", strconv.FormatUint(*max, 10), p})
+		return record([]string{"qgroup", "limit", strconv.FormatUint(*max, 10), qgroup, top})
 	}
 }
 

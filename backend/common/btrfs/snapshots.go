@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -112,10 +111,10 @@ func CreateSnapshot(ctx context.Context, uuid, source string, kind SnapshotKind,
 		return BtrfsSnapshot{}, err
 	}
 	dest := SnapshotPath(source, now, kind)
-	if err = os.MkdirAll(filepath.Join(top, SnapshotRoot, EscapeSource(source)), 0o755); err != nil {
+	if err = mkdirAllBelow(top, filepath.Join(SnapshotRoot, EscapeSource(source))); err != nil {
 		return BtrfsSnapshot{}, fmt.Errorf("create snapshot directory for %q: %w", source, err)
 	}
-	if err = subvolOps.snapshot(filepath.Join(top, source), filepath.Join(top, dest), true); err != nil {
+	if err = subvolOps.snapshot(top, source, dest, true); err != nil {
 		return BtrfsSnapshot{}, fmt.Errorf("snapshot subvolume %q: %w", source, err)
 	}
 	created, err := requireSubvolume(ctx, uuid, dest)

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -204,14 +203,15 @@ func CreateSubvolume(ctx context.Context, uuid, path string) (BtrfsSubvolume, er
 	if err != nil {
 		return BtrfsSubvolume{}, err
 	}
-	if err := subvolOps.create(filepath.Join(top, path)); err != nil {
+	if err := subvolOps.create(top, path); err != nil {
 		return BtrfsSubvolume{}, fmt.Errorf("create subvolume %q: %w", path, err)
 	}
 	return requireSubvolume(ctx, uuid, path)
 }
 
-// ErrNotOnFilesystem is a folder given to CreateSubvolumeIn that is not on
-// the filesystem it names.
+// ErrNotOnFilesystem is a folder that is not on the filesystem an operation
+// names: one given to CreateSubvolumeIn, or one a top-level path leads to
+// through another filesystem mounted inside the pool (see openBelow).
 var ErrNotOnFilesystem = errors.New("not on this btrfs filesystem")
 
 // ErrInvalidSubvolume is a name, or the path it makes in the folder given to
@@ -308,7 +308,7 @@ func deleteUnmounted(ctx context.Context, uuid, path string) error {
 	if err != nil {
 		return err
 	}
-	if err := subvolOps.destroy(filepath.Join(top, path)); err != nil {
+	if err := subvolOps.destroy(top, path); err != nil {
 		return fmt.Errorf("delete subvolume %q: %w", path, err)
 	}
 	return nil
@@ -326,7 +326,7 @@ func SetSubvolumeReadOnly(ctx context.Context, uuid, path string, ro bool) (Btrf
 	if err != nil {
 		return BtrfsSubvolume{}, err
 	}
-	if err := subvolOps.readOnly(filepath.Join(top, path), ro); err != nil {
+	if err := subvolOps.readOnly(top, path, ro); err != nil {
 		return BtrfsSubvolume{}, fmt.Errorf("set read-only on %q: %w", path, err)
 	}
 	return requireSubvolume(ctx, uuid, path)

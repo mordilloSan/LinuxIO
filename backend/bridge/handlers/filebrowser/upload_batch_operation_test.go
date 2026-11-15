@@ -81,7 +81,7 @@ func startUploadBatchTaskAs(t *testing.T, req apischema.FileUploadBatchRequest, 
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
-	task.Start(func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
+	startTransferTask(t, task, func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
 		return runUploadBatchTask(ctx, j, req, session)
 	})
 	return task
@@ -90,6 +90,27 @@ func startUploadBatchTaskAs(t *testing.T, req apischema.FileUploadBatchRequest, 
 // attachUploadBatchStream connects a client pipe to the task's data attacher
 // and drains server frames in the background. It returns the client conn, a
 // channel of received result frames, and a channel with the attacher's error.
+// startTransferTask starts run as task once no transfer of an earlier test is
+// still registered under its id. Every test makes a task service of its own,
+// so each hands out "task-1", and transfers are registered by id for the
+// whole package: one that just finished unregisters a moment after its test
+// returns, and a task that fails before it registers would be attached to
+// that leftover and answer with its error, not its own.
+func startTransferTask(t *testing.T, task *bridgeipc.Task, run func(context.Context, *bridgeipc.Task, any) (any, error)) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, stale := fileTransferTasks.Load(task.ID()); !stale {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("a transfer of an earlier test is still registered as %s", task.ID())
+		}
+		time.Sleep(time.Millisecond)
+	}
+	task.Start(run)
+}
+
 func attachUploadBatchStream(t *testing.T, task *bridgeipc.Task, offset string) (net.Conn, <-chan ipc.ResultFrame, <-chan error) {
 	t.Helper()
 	serverConn, clientConn := net.Pipe()

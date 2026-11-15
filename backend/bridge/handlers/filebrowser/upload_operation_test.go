@@ -81,7 +81,7 @@ func startOwnedUpload(t *testing.T, target, content string, overwrite bool) (net
 	req := apischema.FileUploadRequest{TargetPath: target, Size: strconv.Itoa(len(content)), Overwrite: &overwrite, Owner: uploadOwnerSession}
 	task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	require.NoError(t, err)
-	task.Start(func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
+	startTransferTask(t, task, func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
 		return runUploadTask(ctx, j, req, selfOwner())
 	})
 	conn, results, _ := attachUploadBatchStream(t, task, "")
@@ -311,7 +311,7 @@ func TestUploadTaskRejectsExistingDestinationWithoutOverwrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
-	task.Start(func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
+	startTransferTask(t, task, func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
 		return runUploadTask(ctx, j, req, sessionOwner{})
 	})
 
@@ -356,7 +356,7 @@ func TestUploadTaskOverwriteAcceptsExistingDestination(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
-	task.Start(func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
+	startTransferTask(t, task, func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
 		return runUploadTask(ctx, j, req, sessionOwner{})
 	})
 

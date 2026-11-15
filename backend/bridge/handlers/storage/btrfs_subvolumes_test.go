@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +14,21 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/linksafe"
 	"github.com/mordilloSan/LinuxIO/backend/common/btrfs"
 )
+
+func TestPathStatus(t *testing.T) {
+	link := fmt.Errorf("create subvolume %q: %w", "share/inbox/x", fmt.Errorf("%w: share/inbox", btrfs.ErrLinkOnPath))
+	if err := pathStatus(link); bridgeipc.StatusCode(err) != 403 || !errors.Is(err, btrfs.ErrLinkOnPath) {
+		t.Errorf("a path through a link: %v, status %d, want 403", err, bridgeipc.StatusCode(err))
+	}
+	other := fmt.Errorf("%w: home/alice", btrfs.ErrNotOnFilesystem)
+	if err := pathStatus(other); bridgeipc.StatusCode(err) != 400 {
+		t.Errorf("a path onto another filesystem: %v, status %d, want 400", err, bridgeipc.StatusCode(err))
+	}
+	plain := errors.New("no space left on device")
+	if err := pathStatus(plain); err != plain {
+		t.Errorf("another error was changed: %v", err)
+	}
+}
 
 func TestCreateBtrfsSubvolumeInRefuses(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "missing")

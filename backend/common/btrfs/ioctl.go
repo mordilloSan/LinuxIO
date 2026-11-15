@@ -333,8 +333,11 @@ var fsIoctl = func(mountpoint string, req uintptr, arg unsafe.Pointer) error {
 	return ioctlFD(fd, req, arg)
 }
 
-// ioctlFD issues one ioctl on fd, an open descriptor on the filesystem.
-func ioctlFD(fd int, req uintptr, arg unsafe.Pointer) error {
+// ioctlFD issues one ioctl on fd, an open descriptor on the filesystem; a
+// var so tests can fake the kernel.
+var ioctlFD = rawIoctl
+
+func rawIoctl(fd int, req uintptr, arg unsafe.Pointer) error {
 	r1, _, errno := unix.Syscall(unix.SYS_IOCTL, uintptr(fd), req, uintptr(arg))
 	if errno != 0 {
 		return errno

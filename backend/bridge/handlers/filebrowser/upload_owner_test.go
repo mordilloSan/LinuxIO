@@ -73,7 +73,7 @@ func uploadThroughStream(t *testing.T, req apischema.FileUploadRequest, content 
 	req.Size = strconv.Itoa(len(content))
 	task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	require.NoError(t, err)
-	task.Start(func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
+	startTransferTask(t, task, func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
 		return runUploadTask(ctx, j, req, session)
 	})
 	conn, results, _ := attachUploadBatchStream(t, task, "")

@@ -167,6 +167,31 @@ Subvolume and snapshot operations need the filesystem's top level
 an ordinary host mount, skipped when a user `subvolid=5` mount exists, and
 leaves it mounted until reboot, or until **Destroy pool** unmounts it.
 
+A path from the top level is acted on as root, and a folder on the way may
+be writable by another local user, who could make it a symbolic link: a
+subvolume typed as `shared/inbox/2026` would be created wherever `inbox`
+points, and a delete could hit a subvolume of the same name elsewhere. So
+create, delete, snapshot, read-only, compression, size limit, the folders
+made for snapshots, the renames and the free-name check of a rollback, and
+the snapshots a replication sends all reach their path from
+the top-level mount with `openat2` under `RESOLVE_BENEATH` and
+`RESOLVE_NO_SYMLINKS`, then work through that one handle (`openBelow` in
+`backend/common/btrfs/below.go`). A path that is or goes through a link is
+refused (`ErrLinkOnPath`); there is no reason for one on a subvolume path,
+and the real path works. Those flags do not stop at a mountpoint, and a
+user's own top-level mount can have another filesystem mounted on a folder
+below it, so the folder reached must also report the same fsid as the
+top-level mount (`onFilesystemOf`, `ErrNotOnFilesystem` otherwise):
+`RESOLVE_NO_XDEV` would refuse a subvolume of the pool mounted in place as
+well. The routes that act on one subvolume or snapshot answer 403 for a
+link and 400 for another filesystem; a rollback or a replication that meets
+either fails as a task, since it may be part-way through. A size limit goes by the
+subvolume's id on the top level, with no path at all, and compression is
+set only on a subvolume root, so a plain folder put at the name meanwhile
+takes neither. A rename never lands on a name that is taken
+(`RENAME_NOREPLACE`). The way to the top-level mount itself is root's and
+resolves as usual. `openat2` needs Linux 5.6.
+
 ## Subvolumes
 
 The Subvolumes view lists each subvolume with:
@@ -204,7 +229,18 @@ the folder could otherwise put another folder at that name first. The dialog
 refuses a name with a space, a comma or a slash before sending, and a folder
 whose path below the pool's mount has a space or a comma. When the picked
 folder is, or lies below, a refused link, it puts the same folder reached
-through what the link points to in the field, to check and create again. A
+through what the link points to in the field, to check and create again.
+
+The new subvolume is root's, mode 0755, as from the typed path and from
+`btrfs subvolume create` in a root shell; it is not handed to the folder's
+owner as the file browser hands over a new folder. Its path is checked as
+the folder stood when it was opened: a folder on the way renamed in the
+moment before the create gets the empty subvolume where it now is, and the
+route then says it was created but could not be read back. Nothing is
+undone when a step after the create fails, since deleting by name could
+delete what was moved to that name meanwhile: the error says the subvolume
+was created, a second try answers 409, and the table shows it at its next
+refetch. A
 place no lasting mount shows, such as an unmounted subvolume, is reached
 instead by typing a path from the top level, the dialog's other mode, which
 it opens in when the pool has no such mount. Subvolume paths may not

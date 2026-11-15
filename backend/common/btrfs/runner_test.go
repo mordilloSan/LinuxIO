@@ -257,11 +257,11 @@ func TestRunPruneContinuesPastUndeletableSnapshot(t *testing.T) {
 	}
 	stubRunnerBtrfs(t, top, rows)
 	destroy := subvolOps.destroy
-	subvolOps.destroy = func(p string) error {
-		if p == filepath.Join(top, snap(5*time.Hour)) {
+	subvolOps.destroy = func(top, p string) error {
+		if p == snap(5*time.Hour) {
 			return errors.New("busy")
 		}
-		return destroy(p)
+		return destroy(top, p)
 	}
 
 	rules := []BtrfsSnapshotRule{{UUID: rootUUID, Path: "@", Enabled: true, Every: EveryHourly, Keep: BtrfsKeep{Hourly: 1}}}

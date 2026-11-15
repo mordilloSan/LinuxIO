@@ -222,12 +222,12 @@ func replicateJob(ctx context.Context, job BtrfsReplicationJob, progress func(by
 	result := BtrfsReplicationResult{Sent: snap, Parent: ChooseParent(local, remote)}
 	parent := ""
 	if result.Parent != nil {
-		parent = filepath.Join(top, result.Parent.Path)
+		parent = result.Parent.Path
 	}
 	// A crash mid-receive leaves a hidden partial copy of this name that would
 	// fail the receive.
 	deletePartial(ctx, job, listed, path.Base(snap.Path))
-	if result.Bytes, err = sendReceive(ctx, job, filepath.Join(top, snap.Path), parent, progress); err != nil {
+	if result.Bytes, err = sendReceive(ctx, job, top, snap.Path, parent, progress); err != nil {
 		if removePartial(ctx, job, targetID, path.Base(snap.Path)) {
 			err = fmt.Errorf("%w (removed partial copy)", err)
 		}
@@ -256,10 +256,10 @@ func onTarget(remote []BtrfsSnapshot, snap BtrfsSnapshot) bool {
 }
 
 // sendReceive streams the kernel's send of snap, incremental from parent
-// when set, into a local or ssh `btrfs receive`, copying in this goroutine,
-// and returns the bytes sent. Receive has no kernel interface, so it stays a
-// btrfs-progs command.
-func sendReceive(ctx context.Context, job BtrfsReplicationJob, snap, parent string, progress func(int64)) (int64, error) {
+// when set, both paths below the top-level mount top, into a local or ssh
+// `btrfs receive`, copying in this goroutine, and returns the bytes sent.
+// Receive has no kernel interface, so it stays a btrfs-progs command.
+func sendReceive(ctx context.Context, job BtrfsReplicationJob, top, snap, parent string, progress func(int64)) (int64, error) {
 	recvName, recvArgs := "btrfs", []string{"receive", job.Target.Path}
 	if job.Target.Kind == TargetSSH {
 		recvName, recvArgs = "ssh", append(SSHArgs(job), "btrfs", "receive", hostcmd.ShellQuote(job.Target.Path))
@@ -287,7 +287,7 @@ func sendReceive(ctx context.Context, job BtrfsReplicationJob, snap, parent stri
 	}
 	sendDone := make(chan error, 1)
 	go func() {
-		sendErr := sendStream(snap, parent, w)
+		sendErr := sendStream(top, snap, parent, w)
 		_ = w.Close()
 		sendDone <- sendErr
 	}()

@@ -146,7 +146,7 @@ func TestBtrfsIntegration(t *testing.T) {
 
 	snap := p.subvolumes()
 	p.devices()
-	p.send(filepath.Join(p.mnt, snap.Path))
+	p.send(snap.Path)
 	p.must("delete snapshot", DeleteSnapshot(p.ctx, p.uuid, snap.Path))
 	p.must("delete subvolume", DeleteSubvolume(p.ctx, p.uuid, "share"))
 	if _, found, findErr := findSubvolume(p.ctx, p.uuid, "share"); findErr != nil || found {
@@ -238,6 +238,36 @@ func (p *itPool) createIn() {
 		t.Fatalf("folder off the pool: err = %v, want ErrNotOnFilesystem", err)
 	}
 	p.must("delete nested subvolume", DeleteSubvolume(p.ctx, p.uuid, "share/inner/nested"))
+
+	// A path through a link someone put in a folder of the pool is refused
+	// by the kernel's own resolution, and nothing appears where it points.
+	target := filepath.Join(filepath.Dir(p.mnt), "link-target")
+	p.must("make link target", os.Mkdir(target, 0o755))
+	link := filepath.Join(p.mnt, "share", "inbox")
+	p.must("plant link", os.Symlink(target, link))
+	if _, err = CreateSubvolume(p.ctx, p.uuid, "share/inbox/x"); !errors.Is(err, ErrLinkOnPath) {
+		t.Fatalf("create through a link: err = %v, want ErrLinkOnPath", err)
+	}
+	if err = subvolOps.destroy(p.mnt, "share/inbox/x"); !errors.Is(err, ErrLinkOnPath) {
+		t.Fatalf("delete through a link: err = %v, want ErrLinkOnPath", err)
+	}
+	if entries, readErr := os.ReadDir(target); readErr != nil || len(entries) != 0 {
+		t.Fatalf("link target holds %v (err %v), want nothing", entries, readErr)
+	}
+	p.must("remove link", os.Remove(link))
+
+	// Another filesystem mounted on a folder of the pool is not the pool: a
+	// path that leads onto it is refused, while subvolumes of the pool,
+	// which the same check passes every time above, are not.
+	other := filepath.Join(p.mnt, "share", "other")
+	p.must("make mountpoint", os.Mkdir(other, 0o755))
+	p.must("mount tmpfs in the pool", unix.Mount("tmpfs", other, "tmpfs", 0, ""))
+	_, err = CreateSubvolume(p.ctx, p.uuid, "share/other/x")
+	p.must("unmount tmpfs", unix.Unmount(other, 0))
+	if !errors.Is(err, ErrNotOnFilesystem) {
+		t.Fatalf("create on another filesystem: err = %v, want ErrNotOnFilesystem", err)
+	}
+	p.must("remove mountpoint", os.Remove(other))
 }
 
 func (p *itPool) quotas() {
@@ -300,7 +330,8 @@ func (p *itPool) devices() {
 	}
 }
 
-// send streams the snapshot at path through the kernel's send ioctl.
+// send streams the snapshot at path below the top level through the kernel's
+// send ioctl.
 func (p *itPool) send(path string) {
 	r, w, err := os.Pipe()
 	p.must("pipe", err)
@@ -309,7 +340,7 @@ func (p *itPool) send(path string) {
 		n, _ := io.Copy(io.Discard, r)
 		sent <- n
 	}()
-	sendErr := sendStream(path, "", w)
+	sendErr := sendStream(p.mnt, path, "", w)
 	_ = w.Close()
 	n := <-sent
 	_ = r.Close()
