@@ -297,7 +297,8 @@ advertises the matching capability.
   - *Motion.* A call that starts sends a pulse out along its spoke with a
     ripple where it lands; a call that ends sends one back, red if it
     failed. A prompt comes in from You as a hollow pulse, and an answer goes
-    out with a wide ring from the core. A station is lit for 3.2 s after
+    out with a wide ring from the core; a call at You (a question, the plan)
+    pulses as any call does. A station is lit for 3.2 s after
     something happened at it (6 s in red after a failure). While one of its
     calls runs it keeps a ring spreading from it and two clock hands around
     it (a minute a lap, and ten minutes), with `×N` when several run at once;
@@ -310,21 +311,54 @@ advertises the matching capability.
     of model between prompts (`fable 5.2 → opus 5.5`). A call is named in a
     few words: the agent's description of a command (or the command's name),
     the last two parts of a file's path, a web address's host, a subagent's
-    title, a skill's name. Finished calls in a row at one station fold
-    into one row (`+2`) with their times added. Each row and the line above
-    them are one line, cut at the card's edge, with the time in a column at
-    the right, so a long label neither wraps nor moves the rows while the
-    work goes on. A row whose label is longer than 28 characters has a `▸`
-    that shows it whole and closes it again; one row is open at a time.
+    title, a skill's name. Finished calls in a row at one station, by the
+    chat or by one subagent, fold into one row (`+2`) with their times
+    added. A call still running is not pushed out by newer rows: it stays
+    at the end of the list, in place of the oldest rows that no longer run,
+    for as long as it runs, so the list agrees with the station still at
+    work. Such calls take eight rows at most, and with more of them the
+    last says how many more still run, wherever they are (`+3`). Each row
+    and the line above them are one line, cut at the card's edge, with the
+    time in a column at the right, so a long label neither wraps nor moves
+    the rows while the work goes on. A row whose label is longer than 28
+    characters has a `▸` that shows it whole and closes it again; one row
+    is open at a time.
   - *What it knows.* A call is sorted by Claude Code's tool name when the
     adapter sends one (`_meta.claudeCode.toolName`) and by its ACP kind
-    otherwise. A shell command goes to Network when any part of it is a
-    network command (`curl`, `ssh`, `gh`…), to Files when every part is a
-    file command (`cat`, `rg`, `ls`…), and to Shell otherwise; a file under
-    `.claude/projects/*/memory/` goes to Memory; an MCP tool goes by its
-    server (the browser servers to Browser, `terminal` to Shell, a server
-    named for memory to Memory, any other to Network). A call starts a new
-    step of the model when the model said nothing just before it and no
+    otherwise. A shell command line (`workmap/shell.ts`) goes to Network
+    when any command it runs reaches out, to Files when every one is a file
+    command (`cat`, `rg`, `ls`…), and to Shell otherwise; `echo`, `cd` and
+    the like say nothing either way. A command reaches out by its name
+    (`curl`, `ssh`, `gh`, `kubectl`, `aws`…) or with its subcommand:
+    `git push`, `npm install`, `pip install`, `docker pull` and
+    `podman pull`, and the package managers' installs, updates and
+    refreshes (`apt`, `dnf`, `yum`, `zypper`, `pacman -S`, `apk`, `snap`,
+    `flatpak`). The command that counts is the one run behind `sudo`,
+    `env`, `timeout`, `nice`, `xargs`, `chroot`, `runuser` and the like,
+    after `do`, `then` or `!`, inside `$(…)` or a function's body, in the
+    line handed to `bash -c`, `su -c`, `eval` or `watch`, and by
+    `find -exec`. A `;` or `|` in quotes splits nothing, a comment is not
+    read, the text of a here-document is not run unless a shell reads it
+    (`cat <<EOF > f` and a commit message written with `"$(cat <<'EOF'`
+    are text, `sudo bash <<EOF` is read as commands), and only the first
+    8,000 characters of a line are read. A row with no description is
+    named by the first command that says something (`make` for
+    `cd /srv && make`).
+    A line of file commands that names `.claude/projects/*/memory/` goes to
+    Memory, as does a file under it; an MCP tool goes by its server
+    (`Claude_Browser` and `claude-in-chrome` to Browser, `terminal`
+    to Shell, a server named for memory to Memory, any other to Network),
+    and so does a call that lists or reads an MCP server's resources. A
+    cloud session linked to the user's computer reaches the browser as
+    `remote-devices` tools named `Claude_Browser__…`, which go to Browser;
+    its other tools go to Network. Claude Code's other tools go by what
+    they are for: the plan, the task list, a notification and review
+    findings to You; code intelligence (`LSP`) to Files; schedules,
+    routines and the list of agents to Agents; an artifact's checks,
+    comments and data, a design, a shared guide and a published plugin to
+    Network. Such a call is labelled with the tool's name, never with what
+    it was given. A tool the map does not know goes to Shell. A call starts
+    a new step of the model when the model said nothing just before it and no
     earlier call of the turn was still open; between its calls the model is
     shown at work on its next step.
   - *Subagents.* Each subagent is one row at Agents, under its title,
@@ -336,7 +370,8 @@ advertises the matching capability.
     call does; messages sent one after the other (several subagents started
     at once) are one step, and a report handed back is what the next step
     starts from. The rows are in the order they were seen, so the calls of
-    two subagents at work together mix. In a chat that was loaded nothing
+    two subagents at work together mix, but they never fold into one row,
+    nor into one of the chat's own. In a chat that was loaded nothing
     carries a time, and a subagent's rows follow the message that started
     them. While a subagent runs the model counts as waiting for it, so no
     step of its own is shown going.

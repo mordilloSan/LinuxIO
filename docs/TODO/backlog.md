@@ -247,6 +247,23 @@ touching its file:
   in `NetworkInterfaceEditor.tsx`) and the monitoring summary's fallback to a
   mirror of the same stats: dead code, removed when the file is touched.
 
+Assistant activity map:
+
+- With more than eight calls still running past the sixteen rows, the last
+  held row's `+N` counts the rest at any station, not only its own
+  (`fold` in `workmap/workMap.ts`), as lot-map does: the list has no more
+  rows to spend, and the picture shows each station's own `×N`.
+- The agents view names a browser call from a linked cloud session by its
+  real server, `remote-devices`, where the activity map files it under
+  Browser: the view shows what was called, the map where it went.
+- The shell reader (`workmap/shell.ts`) reads a call to a function defined
+  as `f() { … }` as a command of its own, so file work done through one
+  lands on Shell; it does not follow `su` fed a here-document or
+  `su --command=…`, and reads the first alternatives of a `case` pattern
+  with `|` as commands. Each is rare in what agents write, getting them
+  right needs a shell grammar rather than a reader, and the cost is one
+  row at the wrong station.
+
 From the backend audit of October 2026:
 
 - SHA-256 of the bridge binary on every login (audit 48): about 50 ms is not

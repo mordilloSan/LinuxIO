@@ -219,38 +219,40 @@ function useFlights(
       const { p, hub, rim } = LAYOUT[index];
       const before = was[station.id].seen;
       const now = tally[station.id].seen;
-      const out = Math.min(LANES, now.out - before.out);
-      const back = Math.min(LANES, now.back - before.back);
+      // At You a prompt comes in and an answer goes out; the station's calls
+      // (a question, the plan, a notification) play as any station's do.
+      const prompts = now.prompts - before.prompts;
+      const answers = now.answers - before.answers;
+      const said = Math.min(LANES, prompts);
+      const told = Math.min(LANES, answers);
+      const out = Math.min(LANES, now.out - before.out - answers);
+      const back = Math.min(LANES, now.back - before.back - prompts);
       const failed = now.failed - before.failed;
       const own = station.id === "memory" ? " work-map__tone--memory" : "";
       const main = `work-map__tone--main${own}`;
       const hot = `work-map__tone--hot${own}`;
 
-      if (station.id === "you") {
-        // A prompt comes in from the person; an answer goes out to them.
-        for (let j = 0; j < back; j++) {
-          const [a, b] = aside(hub, rim, lane(j, back));
-          beam(layer, hub, rim, main, true);
-          pulse(layer, b, a, hot, 3.8, true);
-          ripple(layer, CENTRE, HUB - 2, hot);
-        }
-        for (let j = 0; j < out; j++) {
-          beam(layer, hub, rim, main);
-          pulse(layer, hub, rim, hot, 3.8);
-          ripple(layer, p, NODE, hot);
-          play(
-            top,
-            "circle",
-            "work-map__ripple work-map__ripple--done work-map__tone--bone",
-            { cx: CX, cy: CY, r: CORE },
-            [
-              { opacity: 0.6, transform: "scale(1)" },
-              { opacity: 0, transform: `scale(${(CORE + 38) / CORE})` },
-            ],
-            { duration: DONE_MS },
-          );
-        }
-        return;
+      for (let j = 0; j < said; j++) {
+        const [a, b] = aside(hub, rim, lane(j, said));
+        beam(layer, hub, rim, main, true);
+        pulse(layer, b, a, hot, 3.8, true);
+        ripple(layer, CENTRE, HUB - 2, hot);
+      }
+      for (let j = 0; j < told; j++) {
+        beam(layer, hub, rim, main);
+        pulse(layer, hub, rim, hot, 3.8);
+        ripple(layer, p, NODE, hot);
+        play(
+          top,
+          "circle",
+          "work-map__ripple work-map__ripple--done work-map__tone--bone",
+          { cx: CX, cy: CY, r: CORE },
+          [
+            { opacity: 0.6, transform: "scale(1)" },
+            { opacity: 0, transform: `scale(${(CORE + 38) / CORE})` },
+          ],
+          { duration: DONE_MS },
+        );
       }
       for (let j = 0; j < out; j++) {
         const [a, b] = aside(hub, rim, lane(j, out));

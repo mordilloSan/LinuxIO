@@ -42,7 +42,8 @@ SOFTWARE.
 
 The activity map on the LinuxIO Assistant page is adapted from
 [lot-map](https://github.com/alexeyw/lot-map) by Aleksei Volodin: its
-stations, icons, palette, wording and motion are that plugin's. LinuxIO has
+stations, icons, palette, wording and motion, and the rules by which it sorts
+a call and a shell command line to a station, are that plugin's. LinuxIO has
 modified the adapted portions.
 
 MIT License

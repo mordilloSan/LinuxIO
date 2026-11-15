@@ -214,9 +214,10 @@ describe("a recorded chat with subagents", () => {
     });
     expect(byLabel.Sleeper).toMatchObject({ state: "stopped", canStop: false });
 
-    // The map: four subagents, their calls at their stations, and each call
-    // timed from when its input was written to its end.
-    expect(summary.tally.agents).toMatchObject({ count: 4, open: 0 });
+    // The map: four subagents and the wakeup the chat scheduled at Agents,
+    // their calls at their stations, and each call timed from when its input
+    // was written to its end.
+    expect(summary.tally.agents).toMatchObject({ count: 5, open: 0 });
     const took = Object.fromEntries(
       [...blocks, ...subagents.flatMap((child) => child.blocks)].flatMap(
         (block) =>
@@ -296,7 +297,7 @@ describe("a recorded chat with subagents", () => {
       model: "Sonnet 5.5",
       ranMs: null,
     });
-    expect(summary.tally.agents).toMatchObject({ count: 4, open: 0 });
+    expect(summary.tally.agents).toMatchObject({ count: 5, open: 0 });
     expect(summary.rows.some((row) => row.status === "run")).toBe(false);
   });
 });

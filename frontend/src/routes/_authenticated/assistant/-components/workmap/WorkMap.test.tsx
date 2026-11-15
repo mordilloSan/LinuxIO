@@ -1,5 +1,5 @@
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { render, screen, within } from "@/test/render";
 
@@ -207,5 +207,65 @@ describe("WorkMap", () => {
     expect(
       container.querySelectorAll(".work-map__leg-line--head"),
     ).toHaveLength(1);
+  });
+
+  describe("in motion", () => {
+    afterEach(() => {
+      Reflect.deleteProperty(Element.prototype, "animate");
+    });
+
+    it("plays an answer for an answer, and not for a call at You", () => {
+      // jsdom draws no animations: each one is taken as begun and never done.
+      Object.defineProperty(Element.prototype, "animate", {
+        configurable: true,
+        value: vi.fn(() => ({ finished: new Promise(() => {}), cancel() {} })),
+      });
+      const prompt: TranscriptBlock = {
+        kind: "user",
+        id: "u1",
+        text: "Plan the upgrade",
+        attachments: [],
+        at: 1000,
+      };
+      const plan: TranscriptBlock = {
+        kind: "tool",
+        id: "t1",
+        toolCallId: "c1",
+        toolName: "TodoWrite",
+        title: "Plan",
+        toolKind: "other",
+        status: "completed",
+        content: [],
+        startedAt: 2000,
+        endedAt: 2100,
+      };
+      const end: TranscriptBlock = {
+        kind: "turn",
+        id: "e1",
+        durationMs: 3000,
+        usage: null,
+        at: 4000,
+      };
+      const map = (summary: ReturnType<typeof summarize>) => (
+        <WorkMap
+          agentLabel="Claude Code"
+          model={null}
+          running
+          summary={summary}
+          usage={null}
+        />
+      );
+      const { container, rerender } = draw({
+        running: true,
+        summary: summarize([prompt], true),
+      });
+      const answers = () =>
+        container.querySelectorAll(".work-map__ripple--done").length;
+
+      rerender(map(summarize([prompt, plan], true)));
+      expect(answers()).toBe(0);
+      rerender(map(summarize([prompt, plan, end], false)));
+      expect(answers()).toBe(1);
+    });
   });
 });
