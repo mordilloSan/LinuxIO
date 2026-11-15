@@ -40,6 +40,8 @@ export const FILES_TOAST_META = {
 interface UseFileMutationsParams {
   normalizedPath: string;
   onDeleteSuccess?: () => void;
+  /** Closes the Permissions dialog when its toast opens a link's real folder. */
+  onPermissionsLinkOpen?: () => void;
   resolveCollisions?: ResolveCollisionsFn;
 }
 
@@ -70,6 +72,7 @@ interface RenamePayload {
 export const useFileMutations = ({
   normalizedPath,
   onDeleteSuccess,
+  onPermissionsLinkOpen,
   resolveCollisions,
 }: UseFileMutationsParams) => {
   const [createPending, setCreatePending] = useState<"file" | "folder" | null>(
@@ -284,6 +287,7 @@ export const useFileMutations = ({
           navigate,
           `Failed to change permissions on ${failed.length} of ${result?.total ?? failed.length} items`,
           { description: describeBatchFailures(failed) },
+          onPermissionsLinkOpen,
         );
         return;
       }
@@ -295,6 +299,8 @@ export const useFileMutations = ({
         toast,
         navigate,
         getMutationErrorMessage(error, "Failed to change permissions"),
+        undefined,
+        onPermissionsLinkOpen,
       );
     },
   });

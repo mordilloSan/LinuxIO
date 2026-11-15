@@ -75,6 +75,14 @@ const TrashDialog = ({ open, onClose }: TrashDialogProps) => {
     (entry) => entry.originalPath,
   );
 
+  // What a toast's "Open the real folder" closes the dialog with. Not
+  // handleClose: its busy check would read the render in which the failed
+  // operation was still pending, and refuse.
+  const closeForRealFolder = () => {
+    setSelected(new Set());
+    setConfirm(null);
+    onClose();
+  };
   const report = (
     result: FileBatchResult | undefined,
     done: "Restored" | "Deleted",
@@ -90,6 +98,7 @@ const TrashDialog = ({ open, onClose }: TrashDialogProps) => {
         navigate,
         `Failed to ${action} ${itemCount(failed.length)}`,
         { description: describeBatchFailures(failed) },
+        closeForRealFolder,
       );
       return;
     }
@@ -98,7 +107,13 @@ const TrashDialog = ({ open, onClose }: TrashDialogProps) => {
   const reportError = (err: unknown, fallback: string) => {
     setProgress(null);
     setConfirm(null);
-    toastFileError(toast, navigate, getMutationErrorMessage(err, fallback));
+    toastFileError(
+      toast,
+      navigate,
+      getMutationErrorMessage(err, fallback),
+      undefined,
+      closeForRealFolder,
+    );
   };
 
   const restore = linuxio.filebrowser.trash_restore.useMutation({

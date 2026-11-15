@@ -1,8 +1,7 @@
 import type { UseNavigateResult } from "@tanstack/react-router";
 import type { toast as sonnerToast } from "sonner";
 
-// As useScopedToast does: sonner's own options type, which the `meta`
-// augmentation in types/sonner.d.ts shadows by name.
+// Sonner's own options type, taken from its error toast.
 type ToastOpts = NonNullable<Parameters<typeof sonnerToast.error>[1]>;
 
 // The bridge refuses a change that would go through a symbolic link someone
@@ -56,13 +55,15 @@ interface ErrorToaster {
 /**
  * Raises an error toast for a file operation. When the message or its
  * description holds a link refusal, the toast offers to open the folder the
- * link points to.
+ * link points to. `onOpen` runs right before it navigates, for a caller whose
+ * dialog would otherwise stay open over the folder it opens.
  */
 export function toastFileError(
   toast: ErrorToaster,
   navigate: UseNavigateResult<string>,
   message: string,
   opts?: ToastOpts,
+  onOpen?: () => void,
 ): void {
   const description = opts?.description;
   const destination =
@@ -80,12 +81,14 @@ export function toastFileError(
     ...opts,
     action: {
       label: "Open the real folder",
-      onClick: () =>
+      onClick: () => {
+        onOpen?.();
         void navigate({
           to: "/filebrowser/$",
           params: { _splat: destination.split("/").filter(Boolean).join("/") },
           search: {},
-        }),
+        });
+      },
     },
     duration: LINK_REFUSAL_TOAST_MS,
   });

@@ -197,6 +197,40 @@ describe("toastFileError", () => {
     );
   });
 
+  it("runs onOpen before it navigates", () => {
+    const { navigate, toast } = setup();
+    const order: string[] = [];
+    const onOpen = vi.fn(() => order.push("open"));
+    navigate.mockImplementation(async () => {
+      order.push("navigate");
+    });
+
+    toastFileError(toast, navigate, REFUSAL, undefined, onOpen);
+    expect(onOpen).not.toHaveBeenCalled();
+    clickAction(toast);
+
+    expect(order).toEqual(["open", "navigate"]);
+  });
+
+  it("only navigates when no onOpen is given", () => {
+    const { navigate, toast } = setup();
+
+    toastFileError(toast, navigate, REFUSAL, { description: "docs" });
+    clickAction(toast);
+
+    expect(navigate).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not offer onOpen for any other error", () => {
+    const { navigate, toast } = setup();
+    const onOpen = vi.fn();
+
+    toastFileError(toast, navigate, "permission denied", undefined, onOpen);
+
+    expect(toast.error.mock.calls).toEqual([["permission denied"]]);
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
   it("leaves any other error as it was", () => {
     const { navigate, toast } = setup();
 

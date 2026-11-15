@@ -175,6 +175,28 @@ describe("TrashDialog", () => {
     });
   });
 
+  it("closes the dialog when it opens the real folder", async () => {
+    const onClose = vi.fn();
+    render(<TrashDialog onClose={onClose} open />);
+    await screen.findByRole("list");
+    const refusal =
+      "forbidden: /home/alice/docs is a link to /mnt/data/docs. Open that folder to make this change";
+
+    mocks.restoreOptions.success?.({
+      failed: [{ error: refusal, path: "/x/report.pdf" }],
+      succeeded: 0,
+      total: 1,
+    });
+    expect(onClose).not.toHaveBeenCalled();
+    const { action } = mocks.toast.error.mock.calls[0][1] as {
+      action: { onClick: (event: unknown) => void };
+    };
+    action.onClick({});
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(mocks.navigate).toHaveBeenCalledTimes(1);
+  });
+
   it("confirms before purging everything", async () => {
     const { user } = render(<TrashDialog onClose={vi.fn()} open />);
 

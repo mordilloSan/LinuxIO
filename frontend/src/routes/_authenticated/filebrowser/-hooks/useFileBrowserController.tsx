@@ -122,6 +122,7 @@ export function useFileBrowserController(
   } = useFileMutations({
     normalizedPath,
     onDeleteSuccess: selectionActions.clear,
+    onPermissionsLinkOpen: dialogs.actions.closePermissions,
     resolveCollisions,
   });
   const detailTargetCount = detailTarget?.length ?? 0;

@@ -204,6 +204,32 @@ describe("useFileMutations", () => {
       });
     });
 
+    it("closes the permissions dialog when it opens the real folder", () => {
+      const onPermissionsLinkOpen = vi.fn();
+      renderHook(() =>
+        useFileMutations({
+          normalizedPath: "/srv/projects",
+          onPermissionsLinkOpen,
+        }),
+      );
+      const refusal =
+        "forbidden: /srv/projects/docs is a link to /mnt/data/docs. Open that folder to make this change";
+
+      mocks.taskOptions.chmod.success?.({
+        failed: [{ error: refusal, path: "/srv/projects/docs" }],
+        succeeded: 0,
+        total: 1,
+      });
+      expect(onPermissionsLinkOpen).not.toHaveBeenCalled();
+      const { action } = mocks.toast.error.mock.calls[0][1] as {
+        action: { onClick: (event: unknown) => void };
+      };
+      action.onClick({});
+
+      expect(onPermissionsLinkOpen).toHaveBeenCalledTimes(1);
+      expect(mocks.navigate).toHaveBeenCalledTimes(1);
+    });
+
     it("offers the real folder when the whole task is refused for a link", () => {
       renderHook(() => useFileMutations({ normalizedPath: "/srv/projects" }));
       const refusal =
