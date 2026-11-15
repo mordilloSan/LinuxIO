@@ -9,6 +9,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -601,7 +602,7 @@ func TestSlowTaskSubscriberStillReceivesTerminalEvent(t *testing.T) {
 		t.Fatalf("startTestTask returned error: %v", err)
 	}
 
-	events, _, _, unsubscribe := task.subscribeWithReplayStatus(1)
+	events, _, _, _, unsubscribe := task.subscribeWithSnapshot(1)
 	defer unsubscribe()
 	close(block)
 
@@ -622,7 +623,7 @@ func TestReportDataDoesNotReachTaskServiceEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateForOwner returned error: %v", err)
 	}
-	taskEvents, _, _, taskUnsubscribe := task.subscribeWithReplayStatus(8)
+	taskEvents, _, _, _, taskUnsubscribe := task.subscribeWithSnapshot(8)
 	defer taskUnsubscribe()
 
 	task.ReportData("line\n")
@@ -651,7 +652,7 @@ func TestTransientProgressDoesNotReachTaskServiceEvents(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateForOwner returned error: %v", err)
 	}
-	taskEvents, _, _, taskUnsubscribe := task.subscribeWithReplayStatus(8)
+	taskEvents, _, _, _, taskUnsubscribe := task.subscribeWithSnapshot(8)
 	defer taskUnsubscribe()
 
 	task.ReportTransientProgress(map[string]any{"type": "stdout", "message": "creating container"})
@@ -1161,5 +1162,62 @@ func assertNoTaskEvent(t *testing.T, events <-chan TaskEvent, taskID string, eve
 				t.Fatalf("unexpected event %q for task %s", eventType, taskID)
 			}
 		}
+	}
+}
+
+// A frame published after a watch subscribed but before its first snapshot,
+// by a task that then finishes, must still reach the client: the live channel
+// holds it and the terminal snapshot must not end the watch before it is
+// written.
+func TestWatchTaskStreamDeliversFramesPublishedBeforeFirstSnapshot(t *testing.T) {
+	registry := NewTaskService()
+	release := make(chan struct{})
+	task, err := startTestTask(registry, "test.attach.window", nil, TaskOwner{}, func(ctx context.Context, task *Task, _ any) (any, error) {
+		<-release
+		task.ReportData("late\n")
+		return map[string]any{"ok": true}, nil
+	})
+	if err != nil {
+		t.Fatalf("startTestTask returned error: %v", err)
+	}
+	var once sync.Once
+	finished := func(got *Task) {
+		if got != task {
+			return
+		}
+		once.Do(func() {
+			close(release)
+			select {
+			case <-task.Done():
+			case <-time.After(5 * time.Second):
+			}
+		})
+	}
+	afterWatchSubscribe.Store(&finished)
+	t.Cleanup(func() { afterWatchSubscribe.Store(nil) })
+
+	server, client := net.Pipe()
+	defer client.Close()
+	errCh := make(chan error, 1)
+	go func() {
+		defer server.Close()
+		errCh <- WatchTaskStream(server, task)
+	}()
+
+	if got := readProgressData(t, client); got != "late\n" {
+		t.Fatalf("progress = %q, want the frame published before the snapshot", got)
+	}
+	frame, err := relay.ReadRelayFrame(client)
+	if err != nil {
+		t.Fatalf("ReadRelayFrame(result): %v", err)
+	}
+	if frame.Opcode != relay.OpStreamResult {
+		t.Fatalf("opcode = 0x%02x, want OpStreamResult", frame.Opcode)
+	}
+	if _, err := relay.ReadRelayFrame(client); err != nil {
+		t.Fatalf("ReadRelayFrame(close): %v", err)
+	}
+	if err := <-errCh; err != nil {
+		t.Fatalf("WatchTaskStream returned error: %v", err)
 	}
 }

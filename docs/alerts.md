@@ -478,6 +478,10 @@ says once what happened while the user was away:
   waits for an older job host, the history answers without that host's jobs:
   an empty history then keeps the sign-in mark, and the notice is decided once
   `tasks.host` reports the wait over and the history has been asked again.
+  A history that fails to load takes the mark and says nothing; once it has
+  failed, or answered with jobs, nothing asks for it again from here (focus,
+  reconnect, an invalidation of every `tasks.history` query), since a later
+  answer is no longer news. An empty answer stays on for the update wait.
 
 ## Not in this slice
 

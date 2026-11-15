@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/ipc/relay"
@@ -477,6 +478,11 @@ func WatchTaskStreamWithSnapshot(stream net.Conn, task *Task) error {
 	return watchTaskStream(stream, task, true)
 }
 
+// afterWatchSubscribe lets a test run between a watch's subscribe and its
+// first write. It receives the watched task, so a test acts on its own only;
+// production pays one atomic load.
+var afterWatchSubscribe atomic.Pointer[func(*Task)]
+
 func watchTaskStream(stream net.Conn, task *Task, withSnapshot bool) error {
 	detachCh := make(chan struct{})
 	go monitorTaskClient(stream, task, detachCh)
@@ -485,10 +491,12 @@ func watchTaskStream(stream net.Conn, task *Task, withSnapshot bool) error {
 	// window. Matching the live channel prevents a subscriber that watches
 	// before backlog emission from dropping a burst that would otherwise fit
 	// when it watches afterwards.
-	events, replay, lagged, unsubscribe := task.subscribeWithReplayStatus(DefaultTaskProgressReplayLimit)
+	events, replay, lagged, snapshot, unsubscribe := task.subscribeWithSnapshot(DefaultTaskProgressReplayLimit)
 	defer unsubscribe()
+	if hook := afterWatchSubscribe.Load(); hook != nil {
+		(*hook)(task)
+	}
 
-	snapshot := task.Snapshot()
 	if withSnapshot && !WriteTaskEvent(stream, TaskEvent{Type: TaskEventSnapshot, Task: snapshot}) {
 		return nil
 	}

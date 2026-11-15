@@ -774,14 +774,19 @@ func (j *Task) trimProgressLogLocked() {
 // events for replay, and an unsubscribe function. The replay contains up to
 // DefaultTaskProgressReplayLimit recent progress events.
 func (j *Task) SubscribeWithReplay(buffer int) (<-chan TaskEvent, []TaskEvent, func()) {
-	ch, replay, _, unsubscribe := j.subscribeWithReplayStatus(buffer)
+	ch, replay, _, _, unsubscribe := j.subscribeWithSnapshot(buffer)
 	return ch, replay, unsubscribe
 }
 
-// subscribeWithReplayStatus additionally reports when the bounded live-event
-// channel has overflowed. Watch streams use this to fail explicitly so a
-// cursor-aware client can reconnect instead of silently accepting a gap.
-func (j *Task) subscribeWithReplayStatus(buffer int) (<-chan TaskEvent, []TaskEvent, <-chan struct{}, func()) {
+// subscribeWithSnapshot is SubscribeWithReplay that also reports when the
+// bounded live-event channel has overflowed, which watch streams use to fail
+// explicitly so a cursor-aware client can reconnect instead of silently
+// accepting a gap, and returns the task's snapshot, taken under the
+// lock that registers the subscriber. A terminal snapshot then means every
+// progress event is in the replay, and a running one means the rest arrive
+// live; a snapshot taken after the unlock could be terminal while the live
+// channel still held frames published in between.
+func (j *Task) subscribeWithSnapshot(buffer int) (<-chan TaskEvent, []TaskEvent, <-chan struct{}, TaskSnapshot, func()) {
 	if buffer <= 0 {
 		buffer = 8
 	}
@@ -792,6 +797,7 @@ func (j *Task) subscribeWithReplayStatus(buffer int) (<-chan TaskEvent, []TaskEv
 	j.replaySubscribed = true
 	j.trimProgressLogLocked()
 	j.subscribers[ch] = subscriber
+	snapshot := j.snapshotLocked()
 	j.mu.Unlock()
 
 	unsubscribe := func() {
@@ -802,7 +808,7 @@ func (j *Task) subscribeWithReplayStatus(buffer int) (<-chan TaskEvent, []TaskEv
 		}
 		j.mu.Unlock()
 	}
-	return ch, replay, subscriber.lagged, unsubscribe
+	return ch, replay, subscriber.lagged, snapshot, unsubscribe
 }
 
 func (j *Task) run(ctx context.Context, runner TaskRunner, request any) {
