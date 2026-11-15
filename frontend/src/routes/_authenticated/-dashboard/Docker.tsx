@@ -138,7 +138,9 @@ const DockerStats = () => {
 };
 
 const DockerContainers = () => {
-  const toast = useScopedToast({ label: "Open Docker", to: "/docker" });
+  // The Dashboard's own page: these toasts fire here, so they offer a link
+  // back only to a user who has left the Dashboard.
+  const toast = useScopedToast({ label: "Open dashboard", to: "/" });
   const isSmallUp = useMediaQuery(up("sm"));
   // Container actions and the terminal are admin-only routes; logs are a read.
   const { privileged } = useAuth();
