@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -421,6 +422,69 @@ func TestBridgeForwardsMutationToHost(t *testing.T) {
 	snapshot, err := jr.Get(context.Background(), relayTestJobID)
 	if err != nil || snapshot.ID != relayTestJobID || snapshot.State != bridgeipc.TaskStateCompleted {
 		t.Fatalf("remote Get = %+v, %v; want the completed job", snapshot, err)
+	}
+}
+
+// relaySpeedRounds is how many no-op mutations TestRelayRoundTripSpeed times.
+const relaySpeedRounds = 300
+
+// relaySpeedMedianBound bounds the median round trip of a no-op mutation
+// through the relay. The median observed on a developer machine over five runs
+// was 0.52 to 0.61 ms with the race detector (make test-go) and 0.22 to
+// 0.29 ms without it; the bound is about 80 times the first, well over the 20
+// times that keeps a loaded machine from tripping it, and still under the
+// 250 ms of a polling or sleeping step, which any call that waited would pay.
+// It is a bound, not a baseline.
+const relaySpeedMedianBound = 50 * time.Millisecond
+
+// TestRelayRoundTripSpeed sends a no-op mutation through the relay to the
+// in-process host relaySpeedRounds times, each as a job of its own, and fails
+// when the median of the round trips (dispatch to the result frame) exceeds
+// relaySpeedMedianBound. The median, not the mean or the maximum, so that one
+// slow call on a loaded machine does not fail the run; the median, p95 and
+// maximum are logged to read a slow run from.
+func TestRelayRoundTripSpeed(t *testing.T) {
+	socket := filepath.Join(t.TempDir(), "host.sock")
+	startRelayTestHost(t, socket, false)
+	relayTestSockets(t, socket)
+	router, jr, sess := newRelayTestBridge(t)
+	waitRelay(t, jr, func(err error) bool { return err == nil })
+
+	roundTrip := func(id string) time.Duration {
+		start := time.Now()
+		client := dispatchMutation(t, router, sess, id)
+		for {
+			frame, err := relay.ReadRelayFrame(client)
+			if err != nil {
+				t.Fatalf("ReadRelayFrame of %s: %v", id, err)
+			}
+			if frame.Opcode == relay.OpStreamResult {
+				elapsed := time.Since(start)
+				var result relay.ResultFrame
+				if err := json.Unmarshal(frame.Payload, &result); err != nil || result.Status != "ok" {
+					t.Fatalf("result of %s = %+v (%v), want ok", id, result, err)
+				}
+				_ = client.Close()
+				return elapsed
+			}
+		}
+	}
+
+	// A few unmeasured calls first: the connection, the goroutines and the
+	// caches are warm in a bridge that has run a while.
+	for i := range 10 {
+		roundTrip(fmt.Sprintf("00000000-0000-4000-8000-%012x", 0x5000+i))
+	}
+	times := make([]time.Duration, relaySpeedRounds)
+	for i := range times {
+		times[i] = roundTrip(fmt.Sprintf("00000000-0000-4000-8000-%012x", 0x6000+i))
+	}
+	slices.Sort(times)
+	median, p95, maxTime := times[len(times)/2], times[len(times)*95/100], times[len(times)-1]
+	t.Logf("%d no-op mutations through the relay: median %v, p95 %v, max %v (bound on the median %v)",
+		len(times), median, p95, maxTime, relaySpeedMedianBound)
+	if median > relaySpeedMedianBound {
+		t.Fatalf("median round trip %v exceeds %v", median, relaySpeedMedianBound)
 	}
 }
 

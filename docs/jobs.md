@@ -689,6 +689,7 @@ The record itself is the quickest evidence: as root,
 | Go unit | `make test-go`, in `make check-backend-quiet` | `backend/common/jobs/store_test.go`, `backend/common/jobs/scheduled_test.go`, `backend/common/jobs/process_test.go` | Write policy, quick-job deletion, retention and prune, crash detection by pid and start time, history paging through equal end times, saved output chunks |
 | Go unit | same | `backend/bridge/internal/jobshost/host_test.go`, `backend/bridge/internal/jobshost/scheduled_test.go` | Peer uid and protocol refusal, idle exit, SIGTERM and `Suspend`, cancel during shutdown, reconcile and the resume rule (`TestResumeOnlyWhatTheLastShutdownInterrupted`), alerts and their levels, scheduled runs in `tasks.*`, slim history entries, `tasks.output` |
 | Go unit | same | `backend/bridge/cmd/jobs_relay_test.go`, `backend/bridge/cmd/jobs_host_test.go`, `backend/bridge/internal/jobsclient/client_test.go` | A bridge and a host over a socket: forwarding, host loss, reattach, events after a host restart, the update wait. The relay tests dial the in-process host with `jobsclient.Dial`, which starts no socket unit, so they also run as root |
+| Go unit | same | `backend/bridge/cmd/jobs_relay_test.go` (`TestRelayRoundTripSpeed`) | A speed bound: 300 no-op mutations through the relay to the in-process host, each timed from dispatch to its result frame; fails when the median exceeds 50 ms (observed 0.5 to 0.6 ms with the race detector, 0.2 to 0.3 ms without). It logs the median, p95 and maximum, and runs as root too (`make vm-test-relay-root` matches it through `Relay`) |
 | Go unit | same | `backend/bridge/internal/bridgeipc/mutation_test.go`, `backend/bridge/handlers/redaction_test.go`, `backend/bridge/apischema/schema_test.go` | The stream, resend and abort, same-target refusal, option guards, secret tags, `TestRetrySafeRoutesAreExplicitCalls` |
 | Go unit | same | `backend/common/scheduledrun/*_test.go`, `backend/cli/scheduled_run_test.go` | The hooks' outcomes and order, liveness, output copy, exit statuses, unit kinds |
 | C | `make test-auth-pam`, in `make test-backend` | `backend/auth/linuxio-auth-pam_test.c` | The exact `systemctl` arguments of an unprivileged login, before the session opens; a failed, missing or hanging `systemctl` keeps the login; a login the sudo probe admits (a stub `sudo`) is privileged and starts no host |
@@ -735,6 +736,37 @@ run `make vm-reset` before the next file.
 make vm-reset
 LINUXIO_VM_UPDATE_BUILD=<dir>/build make test-vm-browser PLAYWRIGHT_ARGS='jobs-update.spec.ts'
 ```
+
+### Baseline timings
+
+Measured on 2026-11-15 in the test VM (Ubuntu 26.04.1, kernel
+7.0.0-38-generic, 4 CPUs, 3.8 GiB memory) right after `make vm-reset` and
+`make vm-install`, signed in as the sudo test user, so the calls go through
+the root bridge and its job host. A temporary Playwright spec (not kept) opened
+one WebSocket to the webserver, as the app does, sent each call on a stream of
+its own one after another (5 unmeasured calls first) and timed it with
+`performance.now()` in Chromium, whose resolution here is 0.1 ms: from sending
+the open frame to the first frame back and to the result frame. The times
+include the webserver and the browser's WebSocket.
+
+| What | Route | Calls | Median to first frame | Median to result | p95 to result |
+|---|---|---|---|---|---|
+| Cheap read | `system.get_server_time` | 200 | 0.3 ms | 0.3 ms | 0.5 ms |
+| Cheap read | `config.get` | 200 | 0.3 ms | 0.3 ms | 0.4 ms |
+| Job start (cheapest privileged mutation, runs in the root host) | `alerts.mark_all_seen` | 50 | 1.0 ms | 8.3 ms | 9.5 ms |
+| Alert listing (the bell) | `alerts.list` | 100 | 0.4 ms | 0.4 ms | 0.7 ms |
+| Schedule status, no schedules | `schedules.list` | 50 | 0.3 ms | 0.4 ms | 0.5 ms |
+| Schedule status, 25 schedules | `schedules.list` | 50 | 32.4 ms | 32.5 ms | 38.9 ms |
+
+The first frame of a mutation is the host's snapshot of the new job, so "to
+first frame" is the job start; the rest of its time is the route (here a
+write of the alert store). `schedules.list` reads the unit properties of each
+schedule from systemd, about 1.3 ms more per schedule. The 25 schedules were
+created through `schedules.create` on a calendar of 2099 and never ran.
+
+These are one VM's numbers on one day, a baseline to compare a later
+measurement against and not a limit: the only bound a test enforces is the
+relay's (`TestRelayRoundTripSpeed`).
 
 Covered at one level only:
 
