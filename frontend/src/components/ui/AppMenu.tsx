@@ -11,6 +11,7 @@ import {
 
 import type { AppPopoverOrigin } from "./AppPopover";
 import AppPopover from "./AppPopover";
+
 import "./app-menu.css";
 
 export interface AppMenuProps {

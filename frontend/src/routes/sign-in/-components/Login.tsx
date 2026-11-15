@@ -10,7 +10,6 @@ import AppAlert from "@/components/ui/AppAlert";
 import AppButton from "@/components/ui/AppButton";
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppTextField from "@/components/ui/AppTextField";
-import "./login.css";
 import useAuth from "@/hooks/useAuth";
 import {
   clearSigninNotice,
@@ -18,6 +17,8 @@ import {
   SIGNIN_NOTICE_MESSAGES,
   type SigninNotice,
 } from "@/utils/signinNotice";
+
+import "./login.css";
 
 const fieldStyle = {
   "--lf-bg":

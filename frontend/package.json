@@ -76,7 +76,6 @@
     "@typescript/native": "npm:typescript@^7.0.2",
     "@vitejs/plugin-react": "^6.3.0",
     "@vitest/coverage-v8": "^5.1.0",
-    "eslint-plugin-import-x": "^4.18.1",
     "eslint-plugin-react-you-might-not-need-an-effect": "^1.2.0",
     "jsdom": "^31.0.1",
     "oxc-transform-react": "^0.156.0",
@@ -91,15 +90,11 @@
     "web-vitals": "^6.2.3"
   },
   "overrides": {
+    "@typescript-eslint/typescript-estree": {
+      "minimatch": "^11.0.1"
+    },
     "@vitejs/plugin-react": {
       "oxc-transform-react": "$oxc-transform-react"
-    },
-    "solid-js": {
-      "seroval": "^1.6.8",
-      "seroval-plugins": "^1.6.8"
     }
-  },
-  "allowScripts": {
-    "unrs-resolver@1.12.2": true
   }
 }

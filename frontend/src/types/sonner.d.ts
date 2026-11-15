@@ -1,5 +1,4 @@
 import "sonner";
-
 import type { ToastMeta } from "@/api";
 
 declare module "sonner" {

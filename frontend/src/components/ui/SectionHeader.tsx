@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 import AppButton from "@/components/ui/AppButton";
 import AppTypography from "@/components/ui/AppTypography";
+
 import "./section-header.css";
 
 interface SectionHeaderProps {
