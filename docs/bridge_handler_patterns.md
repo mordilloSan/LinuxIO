@@ -167,7 +167,7 @@ func(context.Context) ([]gopsnet.InterfaceStat, error)
 
 ## Logging
 
-Request lifecycle logging is centralized in `backend/bridge/internal/bridgeipc`. The router logs the route, mode, user, outcome, duration, and error at debug level.
+Request lifecycle logging is centralized in `backend/bridge/internal/bridgeipc`. `Router.Dispatch` logs one line per route with the route, user, duration and error: `route completed` at Debug, `route canceled` (the error is `context.Canceled`) at Info, and `route failed` at Warn for a 4xx and at Error otherwise.
 
 Handler adapters do not log. Route operation functions do not emit `"... requested"` logs either; they validate typed request fields and call domain functions.
 

@@ -173,6 +173,25 @@ func TestWriteErrorUsesBridgeCode(t *testing.T) {
 	}
 }
 
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("i/o deadline reached") }
+
+func TestWriteErrorUnlessCanceledIgnoresAFailedCloseOfACanceledStream(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := WriteErrorUnlessCanceled(ctx, failingWriter{}, 0, errors.New("write frame: i/o deadline reached")); err != nil {
+		t.Fatalf("WriteErrorUnlessCanceled = %v, want nil: the client left", err)
+	}
+}
+
+func TestWriteErrorUnlessCanceledStillReturnsTheErrorOfALiveRoute(t *testing.T) {
+	cause := errors.New("journalctl failed")
+	if err := WriteErrorUnlessCanceled(context.Background(), failingWriter{}, 0, cause); !errors.Is(err, cause) {
+		t.Fatalf("WriteErrorUnlessCanceled = %v, want %v", err, cause)
+	}
+}
+
 func TestWriteErrorUnlessCanceledJustClosesCanceledStreams(t *testing.T) {
 	var buf bytes.Buffer
 	if err := WriteErrorUnlessCanceled(context.Background(), &buf, 0, context.Canceled); err != nil {

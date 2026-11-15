@@ -60,22 +60,6 @@ after a change that issues ioctls).
 
 ## Visible bugs
 
-- [ ] **A browser page that closes is logged as a failed route.** With a
-  stream open (a live log or output follow), the session bridge logs
-  `route failed: write frame: i/o deadline reached` or `stream reset` at Error
-  a few ms after the page goes away. Reproduced in the test VM. Tell a client
-  that left from a failure in `Router.Dispatch`
-  (`backend/bridge/internal/bridgeipc/router.go`), for reads and writes on the
-  client's stream only: marking it in `relay.WriteRelayFrame` was tried and
-  taken out, because that also writes to the job host and a crashed host
-  would then be logged as a client leaving.
-- [ ] **A refusal past the fifth failure gets no button.** A batch toast lists
-  the first five failures (`describeBatchFailures` in
-  `frontend/src/tasks/batchFailures.ts`) and the action is found in that text,
-  so a link refusal further down the list offers no "Open the real folder";
-  an upload toast shows only its first failure, with the same limit. Look for
-  the refusal in the whole `failed` list. Checked.
-
 ## Tests that are missing
 
 - [ ] Not run in the test VM: an update that waits for jobs, started from the
@@ -83,14 +67,13 @@ after a change that issues ioctls).
   no published release has a higher `jobs.Protocol` than v0.53.0, so
   `frontend/src/test/vm/jobs-update.spec.ts` updates through the rig's
   installer to a protocol-bumped build of the tree.
-- [ ] A relay speed test: a no-op mutation through the relay many times, with
-  a bound on the median. No baseline numbers exist either for call latency,
-  job start, alert listing or schedule status.
 
 ## Needs a real machine or a measurement
 
 - [ ] **Seen once and not explained.** Try each in the test VM once, then fix
   it or delete the line:
+  - About one call in 300 through the relay takes near 250 ms where the
+    median is under 1 ms (`TestRelayRoundTripSpeed` logs its maximum).
   - `TestBtrfsDegradedIntegration` failed once in six runs on the noble VM
     (kernel 6.8) with "the refusal raised no alert explaining it", the boot
     check's alert in `backend/common/btrfs/degraded.go`; the rerun passed.
