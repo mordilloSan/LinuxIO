@@ -35,13 +35,10 @@ interface UseFileBrowserItemActionsParams {
   changePermissions: (
     payload: ChangePermissionsPayload,
   ) => Promise<FileBatchResult>;
-  permissionsPending?: boolean;
   createFile: (fileName: string) => Promise<void>;
   createFolder: (folderName: string) => Promise<void>;
   deleteItems: (paths: string[]) => Promise<FileBatchResult | undefined>;
-  deletePending?: boolean;
   trashItems: (paths: string[]) => Promise<FileBatchResult | undefined>;
-  trashPending?: boolean;
   dialogs: DialogsSlice;
   editor: EditorSlice;
   handleOpenDirectory: (path: string) => void;
@@ -56,13 +53,10 @@ interface UseFileBrowserItemActionsParams {
 
 export const useFileBrowserItemActions = ({
   changePermissions,
-  permissionsPending = false,
   createFile,
   createFolder,
   deleteItems,
-  deletePending = false,
   trashItems,
-  trashPending = false,
   dialogs,
   editor,
   handleOpenDirectory,
@@ -89,6 +83,11 @@ export const useFileBrowserItemActions = ({
   const { clearSearch, closeContextMenu } = view.actions;
   const { joinPath, getParentPath } = useFilePathUtilities();
   const resourceItemsRef = useLatestRef(resource?.items);
+  // A dialog that closes fades out with the handlers it had, so a second
+  // click on its button meanwhile would start its job again. Confirming
+  // reads whether the dialog is still open from here instead.
+  const deleteOpenRef = useLatestRef(dialogs.deleteDialog);
+  const permissionsOpenRef = useLatestRef(dialogs.permissionsDialogOpen);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
 
   const downloadPaths = useCallback(
@@ -169,16 +168,6 @@ export const useFileBrowserItemActions = ({
 
   const handleChangePermissions = useCallback(async () => {
     closeContextMenu();
-    // One permission change at a time, as for a delete: its dialog can be
-    // closed while the job runs, and one opened again for other items would
-    // show that job's progress as theirs, so it waits for the job to end.
-    if (permissionsPending) {
-      toast.info("A permission change is still running", {
-        description:
-          "Try again once it ends. The task tray shows its progress.",
-      });
-      return;
-    }
     if (selectedPaths.size === 0) return;
     const selectedPathList = Array.from(selectedPaths);
     const selectedPath = selectedPathList[0];
@@ -208,14 +197,7 @@ export const useFileBrowserItemActions = ({
       console.error("Failed to fetch file stat:", error);
       toast.error("Failed to fetch file permissions");
     }
-  }, [
-    dialogActions,
-    closeContextMenu,
-    permissionsPending,
-    selectedItems,
-    selectedPaths,
-    toast,
-  ]);
+  }, [dialogActions, closeContextMenu, selectedItems, selectedPaths, toast]);
 
   const handleStartInlineRename = useCallback(() => {
     closeContextMenu();
@@ -281,21 +263,6 @@ export const useFileBrowserItemActions = ({
   const requestDelete = useCallback(
     (mode: DeleteMode) => {
       closeContextMenu();
-      // One move to Trash and one permanent delete at a time. The confirm can
-      // be closed while its job runs; one opened again for other items would
-      // show that job's progress as theirs, so it waits for the job to end.
-      if (mode === "trash" ? trashPending : deletePending) {
-        toast.info(
-          mode === "trash"
-            ? "A move to Trash is still running"
-            : "A permanent delete is still running",
-          {
-            description:
-              "Try again once it ends. The task tray shows its progress.",
-          },
-        );
-        return;
-      }
       const paths = Array.from(selectedPaths);
       if (paths.length > 0) {
         dialogActions.requestDelete(paths, mode);
@@ -303,14 +270,7 @@ export const useFileBrowserItemActions = ({
         toast.error("No items selected");
       }
     },
-    [
-      dialogActions,
-      closeContextMenu,
-      deletePending,
-      selectedPaths,
-      toast,
-      trashPending,
-    ],
+    [dialogActions, closeContextMenu, selectedPaths, toast],
   );
 
   const handleDelete = useCallback(
@@ -322,33 +282,24 @@ export const useFileBrowserItemActions = ({
     [requestDelete],
   );
 
-  const handleConfirmDelete = useCallback(async () => {
-    if (!pendingDeletePaths.length) {
-      return;
-    }
-    if (deleteMode === "trash" ? trashPending : deletePending) return;
-    try {
-      const result = await (deleteMode === "trash" ? trashItems : deleteItems)(
-        pendingDeletePaths,
-      );
-      // The mutation refreshes the listing and names per-item failures in a
-      // toast, so the dialog is done once a result came back. It may have
-      // been closed while the job ran and opened again for other items,
-      // which stay open.
-      if (result) {
-        dialogActions.closeDeleteFor(pendingDeletePaths);
-      }
-    } catch {
-      // The mutation owns error feedback; retain the dialog for retry.
-    }
+  // The confirm closes as its job starts, as in a desktop file manager: the
+  // task tray shows the job's progress and can cancel it, and the mutation
+  // reports its result, so another delete can be started while it runs.
+  const handleConfirmDelete = useCallback(() => {
+    if (!pendingDeletePaths.length || !deleteOpenRef.current) return;
+    dialogActions.closeDelete();
+    (deleteMode === "trash" ? trashItems : deleteItems)(
+      pendingDeletePaths,
+    ).catch(() => {
+      // The mutation reports the error.
+    });
   }, [
     deleteItems,
     deleteMode,
-    deletePending,
+    deleteOpenRef,
     dialogActions,
     pendingDeletePaths,
     trashItems,
-    trashPending,
   ]);
 
   const handleCloseDeleteDialog = useCallback(() => {
@@ -376,33 +327,23 @@ export const useFileBrowserItemActions = ({
     dialogActions.closePermissions();
   }, [dialogActions]);
 
+  // As for a delete, the dialog closes as the change starts; its toast
+  // offers "Try again" for the items that failed.
   const handleConfirmPermissions = useCallback(
-    async (
-      mode: string,
-      recursive: boolean,
-      owner?: string,
-      group?: string,
-    ) => {
-      if (!permissionsDialog) return;
-      if (permissionsPending) return;
-      try {
-        const result = await changePermissions({
-          paths: permissionsDialog.paths,
-          mode,
-          recursive,
-          owner,
-          group,
-        });
-        // The dialog may have been closed while the job ran; one opened since
-        // for other items stays open.
-        if (result.failed.length === 0) {
-          dialogActions.closePermissionsFor(permissionsDialog.paths);
-        }
-      } catch {
-        // Errors are surfaced via toast in the mutation.
-      }
+    (mode: string, recursive: boolean, owner?: string, group?: string) => {
+      if (!permissionsDialog || !permissionsOpenRef.current) return;
+      dialogActions.closePermissions();
+      changePermissions({
+        paths: permissionsDialog.paths,
+        mode,
+        recursive,
+        owner,
+        group,
+      }).catch(() => {
+        // The mutation reports the error.
+      });
     },
-    [changePermissions, dialogActions, permissionsDialog, permissionsPending],
+    [changePermissions, dialogActions, permissionsDialog, permissionsOpenRef],
   );
 
   const handleEditFile = useCallback(

@@ -9,6 +9,7 @@ import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
 import { allowContextMenuProps } from "@/utils/contextMenu";
 
+import type { TrashDragItem } from "../-internalDrag";
 import type {
   FileItem,
   FileResource,
@@ -42,6 +43,8 @@ interface FileBrowserChromeProps {
   onSortChange: (field: SortField) => void;
   onSwitchView: () => void;
   onToggleHiddenFiles: () => void;
+  /** Items dragged onto the header's Trash button move to the Trash. */
+  onTrashItems?: (paths: string[]) => Promise<unknown>;
   searchQuery: string;
   searchCaseSensitive: boolean;
   showHiddenFiles: boolean;
@@ -67,6 +70,7 @@ interface FileBrowserListingProps {
   onDropItems: (paths: string[], destinationDir: string, copy: boolean) => void;
   onNavigateUp: () => void;
   onOpenDirectory: (path: string) => void;
+  onRestoreItems?: (items: TrashDragItem[], destinationDir: string) => void;
   onSelectedPathsChange: (paths: Set<string>) => void;
   onStartRename: () => void;
   renamingPath: string | null;
@@ -126,6 +130,7 @@ const FileBrowserContent = ({
           onSearchChange={chrome.onSearchChange}
           onSwitchView={chrome.onSwitchView}
           onToggleHiddenFiles={chrome.onToggleHiddenFiles}
+          onTrashItems={chrome.onTrashItems}
           searchQuery={chrome.searchQuery}
           searchCaseSensitive={chrome.searchCaseSensitive}
           showHiddenFiles={chrome.showHiddenFiles}
@@ -190,6 +195,7 @@ const FileBrowserContent = ({
                 onDropItems={listing.onDropItems}
                 onNavigateUp={listing.onNavigateUp}
                 onOpenDirectory={listing.onOpenDirectory}
+                onRestoreItems={listing.onRestoreItems}
                 onSelectedPathsChange={listing.onSelectedPathsChange}
                 onStartRename={listing.onStartRename}
                 renamingPath={listing.renamingPath}

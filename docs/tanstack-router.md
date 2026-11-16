@@ -529,6 +529,7 @@ loader: (loaderArgs) =>
 Splat — `filebrowser/$.tsx`, the one loader that passes per-call query options:
 
 ```ts
+loaderDeps: ({ search }) => ({ trash: search.trash === true }),
 context: ({ params }) => {
   const path = params._splat ? `/${params._splat}` : "/";
   return {
@@ -539,11 +540,17 @@ context: ({ params }) => {
 loader: (loaderArgs) => {
   return loadRouteQueries(
     loaderArgs,
-    [loaderArgs.context.fileBrowserListingQueryOptions],
+    loaderArgs.deps.trash
+      ? []
+      : [loaderArgs.context.fileBrowserListingQueryOptions],
     LOADER_FRESHNESS.BACKGROUND,
   );
 },
 ```
+
+With `?trash=true` the page shows the Trash ([Trash](./trash.md#the-trash-view))
+instead of the folder in the path, which it keeps as the folder to return to;
+the loader lists no folder then, and the Trash reads its own list.
 
 `createFileBrowserListingQueryOptions` gives the loader and observer the exact
 same path, query function, key, and two-second `staleTime`. That short grace
@@ -603,7 +610,7 @@ inherits its ancestor's.
 | `/docker/images` | `docker/images.tsx` | `loadRouteQueries` ×1 | — | `image` | — |
 | `/docker/networks` | `docker/networks.tsx` | `loadRouteQueries` ×1 | — | `network` | — |
 | `/docker/volumes` | `docker/volumes.tsx` | `loadRouteQueries` ×1 | — | `volume` | — |
-| `/filebrowser/$` | `filebrowser/$.tsx` | `BACKGROUND` ×1 | *params* | `enabled`, `redirect`, `tail` | — |
+| `/filebrowser/$` | `filebrowser/$.tsx` | `BACKGROUND` ×1 +cond | *params*, `trash` | `edit`, `enabled`, `redirect`, `tail`, `trash` | — |
 | `/hardware` | `hardware/route.tsx` | transport + deferred ×7 +cond | — | — | `requireAccess` lmSensors |
 | `/logs` | `logs/route.tsx` | `loadRouteTransport` | — | `unit`, `invocationId` | — |
 | `/network` | `network/route.tsx` | — | — | — | — |

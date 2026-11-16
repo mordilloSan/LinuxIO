@@ -114,6 +114,7 @@ const mocks = vi.hoisted(() => ({
     extractArchive: vi.fn(),
     moveItems: vi.fn(),
     renameItem: vi.fn(),
+    trashItems: vi.fn(),
   },
   navigation: {
     handleOpenDirectory: vi.fn(),
@@ -341,7 +342,7 @@ function applyDefaultHookReturns() {
   mocks.useFileViewState.mockReturnValue(mocks.viewState);
 }
 
-function setup() {
+function setup(options?: Parameters<typeof useFileBrowserController>[1]) {
   const queryClient = new QueryClient({
     defaultOptions: {
       mutations: { retry: false },
@@ -359,6 +360,7 @@ function setup() {
     () =>
       useFileBrowserController(
         createFileBrowserListingQueryOptions("/srv/projects"),
+        options,
       ),
     { wrapper },
   );
@@ -500,6 +502,11 @@ describe("useFileBrowserController", () => {
     ]);
     expect(mocks.selectionState.actions.clear).not.toHaveBeenCalled();
 
+    // "Try again" on a permission change's failure toast opens the dialog.
+    expect(mutationArgs.onPermissionsRetry).toBe(
+      mocks.dialogs.actions.openPermissions,
+    );
+
     act(() => {
       void dragArgs.onUploadComplete();
     });
@@ -509,6 +516,27 @@ describe("useFileBrowserController", () => {
 
     // Both flows share the one useListingInvalidation callback.
     expect(mocks.invalidateListing).toHaveBeenCalledTimes(2);
+  });
+
+  it("hands items dragged out of the Trash to the page's restore, and drops on the Trash button to a move to Trash", () => {
+    const onRestoreItems = vi.fn();
+    const { result } = setup({ onRestoreItems });
+
+    // A folder row, the folder shown and a breadcrumb all restore there.
+    expect(result.current.contentProps.listing.onRestoreItems).toBe(
+      onRestoreItems,
+    );
+    expect(mocks.useFileDragAndDrop.mock.calls[0]?.[0]).toMatchObject({
+      onRestoreItems,
+    });
+    expect(result.current.contentProps.chrome.onTrashItems).toBe(
+      mocks.mutations.trashItems,
+    );
+    // The question about a disk without a trash deletes through the page's
+    // permanent delete, which reports its own result.
+    expect(result.current.dialogsProps.deleteDialog.onDeleteForGood).toBe(
+      mocks.mutations.deleteItems,
+    );
   });
 
   it("goes up to the parent folder and does nothing at the root", () => {

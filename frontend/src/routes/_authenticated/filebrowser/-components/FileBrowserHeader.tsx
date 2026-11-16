@@ -30,6 +30,8 @@ interface FileBrowserHeaderProps {
   onSearchChange?: (value: string) => void;
   onSwitchView: () => void;
   onToggleHiddenFiles: () => void;
+  /** Items dragged onto the Trash button move to the Trash. */
+  onTrashItems?: (paths: string[]) => Promise<unknown>;
   searchQuery?: string;
   searchCaseSensitive?: boolean;
   showHiddenFiles: boolean;
@@ -41,6 +43,7 @@ const FileBrowserHeader = ({
   showQuickSave = false,
   onSwitchView,
   onToggleHiddenFiles,
+  onTrashItems,
   onSaveFile,
   onCloseEditor,
   isSaving = false,
@@ -204,6 +207,7 @@ const FileBrowserHeader = ({
               onSearchCaseSensitiveChange={onSearchCaseSensitiveChange}
               onSwitchView={onSwitchView}
               onToggleHiddenFiles={onToggleHiddenFiles}
+              onTrashItems={onTrashItems}
               searchQuery={isMobile ? searchQuery : ""}
               searchCaseSensitive={searchCaseSensitive}
               showHiddenFiles={showHiddenFiles}

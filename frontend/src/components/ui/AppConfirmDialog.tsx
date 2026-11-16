@@ -32,6 +32,8 @@ interface AppConfirmDialogProps {
    * whose write takes a moment leaves this off and stays held.
    */
   closeWhilePending?: boolean;
+  /** Called once the dialog has faded out after closing. */
+  onExited?: () => void;
   pendingText?: string;
   progress?: TaskProgress<ConfirmProgressDetail> | null;
   title: string;
@@ -48,6 +50,7 @@ const AppConfirmDialog = ({
   onConfirm,
   isPending = false,
   closeWhilePending = false,
+  onExited,
   pendingText = "Deleting…",
   progress,
 }: AppConfirmDialogProps) => {
@@ -90,6 +93,7 @@ const AppConfirmDialog = ({
       maxWidth="xs"
       onClose={held ? undefined : onClose}
       open={open}
+      slotProps={onExited ? { transition: { onExited } } : undefined}
     >
       <form
         className="app-dialog-form"

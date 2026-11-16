@@ -1,6 +1,5 @@
 import { memo, type ChangeEvent, type RefObject } from "react";
 
-import type { CountProgress, TaskProgress } from "@/api";
 import type { FileEditorHandle } from "@/components/editor/FileEditor";
 import AppUnsavedChangesDialog from "@/components/ui/AppUnsavedChangesDialog";
 
@@ -26,6 +25,7 @@ import {
   type MultiItemsStats,
 } from "./FileBrowserPanels";
 import InputDialog from "./InputDialog";
+import NoTrashPrompt from "./NoTrashPrompt";
 import PermissionsDialog from "./PermissionsDialog";
 
 interface CompressFormatDialogState {
@@ -124,9 +124,7 @@ interface FileBrowserPermissionsDialogProps {
     owner?: string,
     group?: string,
   ) => Promise<void> | void;
-  isPending?: boolean;
   open: boolean;
-  progress?: TaskProgress<CountProgress> | null;
 }
 
 export interface FileBrowserUploadDialogProps {
@@ -164,7 +162,10 @@ interface FileBrowserDialogsProps {
   conflict: FileBrowserConflictDialogProps;
   contextMenu: FileBrowserContextMenuProps;
   create: FileBrowserCreateDialogsProps;
-  deleteDialog: FileBrowserDeleteDialogProps;
+  deleteDialog: FileBrowserDeleteDialogProps & {
+    /** Deletes for good the items a move to Trash could not take. */
+    onDeleteForGood: (paths: string[]) => Promise<unknown>;
+  };
   details: FileBrowserDetailsDialogsProps;
   editor: FileBrowserEditorDialogsProps;
   permissions: FileBrowserPermissionsDialogProps;
@@ -271,28 +272,30 @@ const FileBrowserDialogs = ({
       />
 
       <FileBrowserDeleteDialog
-        isPending={deleteDialog.isPending}
         mode={deleteDialog.mode}
         onClose={deleteDialog.onClose}
         onConfirm={deleteDialog.onConfirm}
         open={deleteDialog.open}
         pendingDeletePaths={deleteDialog.pendingDeletePaths}
-        progress={deleteDialog.progress}
       />
 
+      <NoTrashPrompt onDelete={deleteDialog.onDeleteForGood} />
+
+      {/* Keyed by its items: "Try again" in a toast can open the dialog for
+          other items while it is open, and its settings start over then. */}
       {permissions.dialog && (
         <PermissionsDialog
           currentMode={permissions.dialog.mode}
           group={permissions.dialog.group}
           isDirectory={permissions.dialog.isDirectory}
+          key={permissions.dialog.paths.join("\0")}
           onClose={permissions.onClose}
           onConfirm={permissions.onConfirm}
           onExited={permissions.onExited}
           open={permissions.open}
           owner={permissions.dialog.owner}
           pathLabel={permissions.dialog.pathLabel}
-          isPending={permissions.isPending}
-          progress={permissions.progress}
+          recursive={permissions.dialog.recursive}
           selectionCount={permissions.dialog.selectionCount}
         />
       )}

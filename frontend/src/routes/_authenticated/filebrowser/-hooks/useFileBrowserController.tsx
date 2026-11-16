@@ -3,6 +3,7 @@ import { useCallback, useMemo, type MouseEvent } from "react";
 import { useBackgroundTaskActions } from "@/tasks/useBackgroundTaskActions";
 import { parentPath, stripTrailingSlash } from "@/utils/path";
 
+import type { TrashDragItem } from "../-internalDrag";
 import type { FileBrowserListingQueryOptions } from "./fileBrowserListingQueryOptions";
 import { useFileBrowserArchiveActions } from "./useFileBrowserArchiveActions";
 import { useFileBrowserClipboardShortcuts } from "./useFileBrowserClipboardShortcuts";
@@ -23,8 +24,18 @@ import { useFileUpload } from "./useFileUpload";
 import { useFileViewState } from "./useFileViewState";
 import { useListingInvalidation } from "./useListingInvalidation";
 
+interface FileBrowserControllerOptions {
+  /**
+   * Restores items dragged out of the Trash into a folder: a row's, a
+   * breadcrumb's, or the one shown. The page owns it, since the Trash shares
+   * its restore jobs and their questions.
+   */
+  onRestoreItems?: (items: TrashDragItem[], destinationDir: string) => void;
+}
+
 export function useFileBrowserController(
   listingQueryOptions: FileBrowserListingQueryOptions,
+  { onRestoreItems }: FileBrowserControllerOptions = {},
 ) {
   // View slice: state plus a stable semantic-action API
   const view = useFileViewState();
@@ -104,16 +115,10 @@ export function useFileBrowserController(
     createPending,
     createFolder,
     deleteItems,
-    deletePending,
-    deleteProgress,
     trashItems,
-    trashPending,
-    trashProgress,
     compressItems,
     extractArchive,
     changePermissions,
-    permissionsPending,
-    permissionsProgress,
     copyItems,
     moveItems,
     renameItem,
@@ -123,6 +128,7 @@ export function useFileBrowserController(
     normalizedPath,
     onDeleteSuccess: selectionActions.deselect,
     onPermissionsLinkOpen: dialogs.actions.closePermissions,
+    onPermissionsRetry: dialogs.actions.openPermissions,
     resolveCollisions,
   });
   const detailTargetCount = detailTarget?.length ?? 0;
@@ -193,13 +199,10 @@ export function useFileBrowserController(
     renamingPath,
   } = useFileBrowserItemActions({
     changePermissions,
-    permissionsPending,
     createFile,
     createFolder,
     deleteItems,
-    deletePending,
     trashItems,
-    trashPending,
     dialogs,
     editor,
     handleOpenDirectory,
@@ -299,6 +302,7 @@ export function useFileBrowserController(
     normalizedPath,
     resource,
     editingPath,
+    onRestoreItems,
     resolveCollisions,
     startUpload,
     onUploadComplete: invalidateListing,
@@ -486,19 +490,16 @@ export function useFileBrowserController(
     () => ({
       onClose: handleCloseDeleteDialog,
       onConfirm: handleConfirmDelete,
+      // What the question about a disk without a trash deletes for good.
+      onDeleteForGood: deleteItems,
       mode: deleteMode,
       open: deleteDialog,
-      isPending: deleteMode === "trash" ? trashPending : deletePending,
       pendingDeletePaths,
-      progress: deleteMode === "trash" ? trashProgress : deleteProgress,
     }),
     [
       deleteDialog,
+      deleteItems,
       deleteMode,
-      deletePending,
-      deleteProgress,
-      trashPending,
-      trashProgress,
       handleCloseDeleteDialog,
       handleConfirmDelete,
       pendingDeletePaths,
@@ -512,8 +513,6 @@ export function useFileBrowserController(
       onConfirm: handleConfirmPermissions,
       onExited: dialogs.actions.clearPermissions,
       open: permissionsDialogOpen,
-      isPending: permissionsPending,
-      progress: permissionsProgress,
     }),
     [
       handleClosePermissionsDialog,
@@ -521,8 +520,6 @@ export function useFileBrowserController(
       dialogs.actions.clearPermissions,
       permissionsDialog,
       permissionsDialogOpen,
-      permissionsPending,
-      permissionsProgress,
     ],
   );
 
@@ -616,6 +613,7 @@ export function useFileBrowserController(
       onSortChange: viewActions.changeSort,
       onSwitchView: viewActions.switchView,
       onToggleHiddenFiles: viewActions.toggleHiddenFiles,
+      onTrashItems: trashItems,
       searchQuery,
       searchCaseSensitive,
       showHiddenFiles,
@@ -632,6 +630,7 @@ export function useFileBrowserController(
       searchQuery,
       showHiddenFiles,
       sortOrder,
+      trashItems,
       viewActions,
       viewMode,
     ],
@@ -659,6 +658,7 @@ export function useFileBrowserController(
       onDropItems: handleDropItems,
       onNavigateUp: handleNavigateUp,
       onOpenDirectory: handleOpenDirectory,
+      onRestoreItems,
       onSelectedPathsChange: selectionActions.select,
       onStartRename: handleStartInlineRename,
       renamePendingPath: renamePending ? renamingPath : null,
@@ -682,6 +682,7 @@ export function useFileBrowserController(
       handleNavigateUp,
       handleOpenDirectory,
       handleStartInlineRename,
+      onRestoreItems,
       renamingPath,
       renamePending,
       renameProgress,

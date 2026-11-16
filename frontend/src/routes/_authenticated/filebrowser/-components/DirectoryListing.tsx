@@ -18,8 +18,11 @@ import { useFileMarqueeSelection } from "../-hooks/useFileMarqueeSelection";
 import { useFileSubfolders } from "../-hooks/useFileSubfolders";
 import {
   hasInternalDrag,
+  hasTrashDrag,
   readInternalDrag,
+  readTrashDrag,
   setInternalDrag,
+  type TrashDragItem,
 } from "../-internalDrag";
 import type {
   FileItem,
@@ -42,6 +45,8 @@ interface DirectoryListingProps {
   onDropItems: (paths: string[], destinationDir: string, copy: boolean) => void;
   onNavigateUp: () => void;
   onOpenDirectory: (path: string) => void;
+  /** Items dragged out of the Trash onto a folder are restored into it. */
+  onRestoreItems?: (items: TrashDragItem[], destinationDir: string) => void;
   onSelectedPathsChange: (paths: Set<string>) => void;
   onStartRename: () => void;
   renamingPath: string | null;
@@ -65,6 +70,7 @@ const DirectoryListing = ({
   onDownloadFile,
   onDropItems,
   onNavigateUp,
+  onRestoreItems,
   selectedPaths,
   cutPaths,
   onSelectedPathsChange,
@@ -330,18 +336,28 @@ const DirectoryListing = ({
     [focusItemByPath, onSelectedPathsChange, selectedPathsRef],
   );
 
-  const handleFolderDragOver = useCallback((event: DragEvent, path: string) => {
-    // A folder cannot be dropped into itself.
-    if (
-      !hasInternalDrag(event.dataTransfer) ||
-      draggedPathsRef.current.includes(path)
-    ) {
-      return;
-    }
-    event.preventDefault();
-    event.dataTransfer.dropEffect = event.ctrlKey ? "copy" : "move";
-    setDropTargetPath(path);
-  }, []);
+  const handleFolderDragOver = useCallback(
+    (event: DragEvent, path: string) => {
+      // Items dragged out of the Trash are restored into the folder.
+      if (onRestoreItems && hasTrashDrag(event.dataTransfer)) {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        setDropTargetPath(path);
+        return;
+      }
+      // A folder cannot be dropped into itself.
+      if (
+        !hasInternalDrag(event.dataTransfer) ||
+        draggedPathsRef.current.includes(path)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      event.dataTransfer.dropEffect = event.ctrlKey ? "copy" : "move";
+      setDropTargetPath(path);
+    },
+    [onRestoreItems],
+  );
 
   const handleFolderDragLeave = useCallback(
     (event: DragEvent, path: string) => {
@@ -355,6 +371,14 @@ const DirectoryListing = ({
 
   const handleFolderDrop = useCallback(
     (event: DragEvent, path: string) => {
+      if (onRestoreItems && hasTrashDrag(event.dataTransfer)) {
+        event.preventDefault();
+        event.stopPropagation();
+        setDropTargetPath(null);
+        const items = readTrashDrag(event.dataTransfer);
+        if (items.length > 0) onRestoreItems(items, path);
+        return;
+      }
       if (!hasInternalDrag(event.dataTransfer)) return;
       // The page's upload drop handler must never see an internal drag.
       event.preventDefault();
@@ -364,7 +388,7 @@ const DirectoryListing = ({
       if (paths.length === 0 || paths.includes(path)) return;
       onDropItems(paths, path, event.ctrlKey);
     },
-    [onDropItems],
+    [onDropItems, onRestoreItems],
   );
 
   const handleFolderClick = useCallback(

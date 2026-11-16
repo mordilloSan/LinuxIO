@@ -101,7 +101,7 @@ const DetailSection = ({
   </section>
 );
 
-const DetailRow = ({
+export const DetailRow = ({
   label,
   mono = false,
   value,

@@ -50,6 +50,18 @@ What is left:
   archive only root can read gets its content when an admin extracts it
   there. Reach the archive with `entryFollowingNoUserLinks` and read it
   through that handle. Reported by the review of 2026-11-13.
+- [ ] **A replace deletes whatever is at the name it set aside.**
+  `prepareDestination` (`services/file_operations.go`), which a copy, a move
+  and a trash restore with overwrite use, renames the entry it replaces to
+  `<name>.linuxio-replaced-<ns>` and, once the transfer is done, removes that
+  name with `removeAllAt` without checking it is still the entry it set
+  aside; a failed transfer likewise removes whatever is at the target name.
+  In a folder the session user can write, a process of theirs can rename a
+  folder root or another user owns to that name in between (a same-folder
+  rename of a folder needs no write on it), and root deletes its whole tree.
+  Keep the device and inode of the entry set aside and remove only that
+  entry, checked on the handle `removeAllAt` opens. Reported by the review of
+  2026-11-16.
 
 ## Storage safety
 
@@ -342,8 +354,8 @@ File browser, after the link fix:
   the button and the text disagree. It gains nothing: whoever plants a link
   already chooses where it points, the button only opens a folder, and the
   server checks that read again.
-- "Open the real folder" on an old toast closes the Trash or Permissions
-  dialog that is open when it is clicked, also one opened since for other
+- "Open the real folder" on an old toast closes the Permissions dialog that
+  is open when it is clicked, also one opened since for other
   items or with an operation running: the click asks to leave for another
   folder, the operation is a job that goes on, and telling the dialogs apart
   would need an identity per dialog opening.

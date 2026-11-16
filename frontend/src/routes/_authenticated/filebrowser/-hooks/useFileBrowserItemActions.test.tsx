@@ -73,10 +73,8 @@ function dialogsSlice(overrides: Partial<DialogsSlice> = {}): DialogsSlice {
       clearPermissions: vi.fn(),
       closeCreateFile: vi.fn(),
       closeDelete: vi.fn(),
-      closeDeleteFor: vi.fn(),
       closeDetails: vi.fn(),
       closePermissions: vi.fn(),
-      closePermissionsFor: vi.fn(),
       openCreateFile: vi.fn(),
       openPermissions: vi.fn(),
       requestDelete: vi.fn(),
@@ -392,77 +390,91 @@ describe("useFileBrowserItemActions", () => {
       expect(params.dialogs.actions.requestDelete).not.toHaveBeenCalled();
     });
 
-    it("waits for a running job of the same kind before asking again", () => {
+    it("moves to the trash in trash mode and closes the dialog as it starts", () => {
       const { result, params } = setup({
-        selectedPaths: new Set(["/srv/projects/b"]),
-        trashPending: true,
-      });
-
-      act(() => result.current.handleDelete());
-      expect(params.dialogs.actions.requestDelete).not.toHaveBeenCalled();
-      expect(toastMocks.info).toHaveBeenCalledWith(
-        "A move to Trash is still running",
-        expect.objectContaining({
-          description:
-            "Try again once it ends. The task tray shows its progress.",
+        dialogs: dialogsSlice({
+          deleteDialog: true,
+          pendingDeletePaths: ["/srv/projects/a"],
         }),
-      );
-
-      // A permanent delete is a job of its own kind and is asked for.
-      act(() => result.current.handleDeletePermanently());
-      expect(params.dialogs.actions.requestDelete).toHaveBeenCalledWith(
-        ["/srv/projects/b"],
-        "permanent",
-      );
-    });
-
-    it("moves to the trash in trash mode and closes the dialog", async () => {
-      const pendingDeletePaths = ["/srv/projects/a"];
-      const { result, params } = setup({
-        dialogs: dialogsSlice({ pendingDeletePaths }),
+        // The job runs on; the dialog does not wait for it.
+        trashItems: vi.fn(() => new Promise<never>(() => {})),
       });
 
-      await act(async () => result.current.handleConfirmDelete());
+      act(() => result.current.handleConfirmDelete());
 
       expect(params.trashItems).toHaveBeenCalledWith(["/srv/projects/a"]);
       expect(params.deleteItems).not.toHaveBeenCalled();
-      // Closed by the request that started the job, not whatever is open.
-      expect(params.dialogs.actions.closeDeleteFor).toHaveBeenCalledTimes(1);
-      expect(
-        vi.mocked(params.dialogs.actions.closeDeleteFor).mock.calls[0][0],
-      ).toBe(pendingDeletePaths);
-      expect(params.dialogs.actions.closeDelete).not.toHaveBeenCalled();
+      expect(params.dialogs.actions.closeDelete).toHaveBeenCalledTimes(1);
     });
 
-    it("deletes permanently in permanent mode and closes the dialog", async () => {
+    it("deletes permanently in permanent mode and closes the dialog as it starts", () => {
       const { result, params } = setup({
+        deleteItems: vi.fn(() => new Promise<never>(() => {})),
         dialogs: dialogsSlice({
+          deleteDialog: true,
           deleteMode: "permanent",
           pendingDeletePaths: ["/srv/projects/a"],
         }),
       });
 
-      await act(async () => result.current.handleConfirmDelete());
+      act(() => result.current.handleConfirmDelete());
 
       expect(params.deleteItems).toHaveBeenCalledWith(["/srv/projects/a"]);
       expect(params.trashItems).not.toHaveBeenCalled();
-      expect(params.dialogs.actions.closeDeleteFor).toHaveBeenCalledTimes(1);
+      expect(params.dialogs.actions.closeDelete).toHaveBeenCalledTimes(1);
     });
 
-    it("leaves a confirm opened for other items open when an earlier job ends", async () => {
-      let finishTrash!: (result: typeof successfulBatchResult) => void;
-      const trashItems = vi.fn(
-        () =>
-          new Promise<typeof successfulBatchResult>((resolve) => {
-            finishTrash = resolve;
-          }),
-      );
+    it("starts another delete of either kind while earlier ones run", () => {
+      const running = () => new Promise<never>(() => {});
+      const trashItems = vi.fn(running);
+      const deleteItems = vi.fn(running);
       let selectedPaths = new Set(["/srv/projects/a"]);
       const { result, rerender } = renderHook(
         () => {
           const dialogs = useFileDialogs();
           const actions = useFileBrowserItemActions(
-            makeParams({ dialogs, selectedPaths, trashItems }),
+            makeParams({ deleteItems, dialogs, selectedPaths, trashItems }),
+          );
+          return { actions, dialogs };
+        },
+        { wrapper },
+      );
+      const startDelete = (paths: string[], permanent = false) => {
+        selectedPaths = new Set(paths);
+        rerender();
+        act(() =>
+          permanent
+            ? result.current.actions.handleDeletePermanently()
+            : result.current.actions.handleDelete(),
+        );
+        expect(result.current.dialogs.deleteDialog).toBe(true);
+        act(() => result.current.actions.handleConfirmDelete());
+        expect(result.current.dialogs.deleteDialog).toBe(false);
+      };
+
+      startDelete(["/srv/projects/a"]);
+      startDelete(["/srv/projects/b"]);
+      startDelete(["/srv/projects/c"], true);
+
+      expect(trashItems.mock.calls).toEqual([
+        [["/srv/projects/a"]],
+        [["/srv/projects/b"]],
+      ]);
+      expect(deleteItems.mock.calls).toEqual([[["/srv/projects/c"]]]);
+      expect(toastMocks.info).not.toHaveBeenCalled();
+    });
+
+    it("does not start the job again from a confirm that is closing", () => {
+      const trashItems = vi.fn(() => new Promise<never>(() => {}));
+      const { result } = renderHook(
+        () => {
+          const dialogs = useFileDialogs();
+          const actions = useFileBrowserItemActions(
+            makeParams({
+              dialogs,
+              selectedPaths: new Set(["/srv/projects/a"]),
+              trashItems,
+            }),
           );
           return { actions, dialogs };
         },
@@ -470,59 +482,32 @@ describe("useFileBrowserItemActions", () => {
       );
 
       act(() => result.current.actions.handleDelete());
-      let confirmed!: Promise<void>;
-      act(() => {
-        confirmed = result.current.actions.handleConfirmDelete();
-      });
-      expect(trashItems).toHaveBeenCalledWith(["/srv/projects/a"]);
+      // The confirm fades out with the handler it had when it was clicked.
+      const { handleConfirmDelete } = result.current.actions;
+      act(() => handleConfirmDelete());
+      act(() => handleConfirmDelete());
 
-      // Closed while its job runs, then opened again for other items.
-      act(() => result.current.actions.handleCloseDeleteDialog());
-      selectedPaths = new Set(["/srv/projects/b"]);
-      rerender();
-      act(() => result.current.actions.handleDeletePermanently());
-
-      await act(async () => {
-        finishTrash(successfulBatchResult);
-        await confirmed;
-      });
-
-      expect(result.current.dialogs.deleteDialog).toBe(true);
-      expect(result.current.dialogs.deleteMode).toBe("permanent");
-      expect(result.current.dialogs.pendingDeletePaths).toEqual([
-        "/srv/projects/b",
-      ]);
+      expect(trashItems).toHaveBeenCalledTimes(1);
     });
 
-    it("closes the dialog on a partial result but retains it after a throw", async () => {
-      const failedResult = {
-        failed: [{ error: "denied", path: "/srv/projects/a" }],
-        succeeded: 0,
-        total: 1,
-      };
-      const failed = setup({
-        trashItems: vi.fn().mockRejectedValue(new Error("delete failed")),
-        dialogs: dialogsSlice({ pendingDeletePaths: ["/srv/projects/a"] }),
+    it("closes the dialog whatever the job's outcome, which the mutation reports", async () => {
+      const dialogs = dialogsSlice({
+        deleteDialog: true,
+        pendingDeletePaths: ["/srv/projects/a"],
       });
-      const partial = setup({
-        trashItems: vi.fn().mockResolvedValue(failedResult),
-        dialogs: dialogsSlice({ pendingDeletePaths: ["/srv/projects/a"] }),
+      const failed = setup({
+        dialogs,
+        trashItems: vi.fn().mockRejectedValue(new Error("delete failed")),
       });
 
       await act(async () => failed.result.current.handleConfirmDelete());
-      await act(async () => partial.result.current.handleConfirmDelete());
 
-      expect(
-        failed.params.dialogs.actions.closeDeleteFor,
-      ).not.toHaveBeenCalled();
-      expect(
-        partial.params.dialogs.actions.closeDeleteFor,
-      ).toHaveBeenCalledTimes(1);
+      expect(dialogs.actions.closeDelete).toHaveBeenCalledTimes(1);
     });
 
     it("ignores confirmation when there are no pending paths", async () => {
       const { result, params } = setup({
-        dialogs: dialogsSlice({ pendingDeletePaths: [] }),
+        dialogs: dialogsSlice({ deleteDialog: true, pendingDeletePaths: [] }),
       });
 
       await act(async () => result.current.handleConfirmDelete());
@@ -762,31 +747,11 @@ describe("useFileBrowserItemActions", () => {
       expect(params.dialogs.actions.openPermissions).not.toHaveBeenCalled();
     });
 
-    it("waits for a running permission change before asking again", async () => {
-      const { result, params } = setup({
-        permissionsPending: true,
-        selectedItems: [fileItem("b.txt")],
-        selectedPaths: new Set(["/srv/projects/b.txt"]),
-      });
-
-      await act(async () => {
-        await result.current.handleChangePermissions();
-      });
-
-      expect(statMock).not.toHaveBeenCalled();
-      expect(params.dialogs.actions.openPermissions).not.toHaveBeenCalled();
-      expect(toastMocks.info).toHaveBeenCalledWith(
-        "A permission change is still running",
-        expect.objectContaining({
-          description:
-            "Try again once it ends. The task tray shows its progress.",
-        }),
-      );
-    });
-
-    it("applies permissions to the whole selection in one call", async () => {
+    it("applies permissions to the whole selection in one call and closes as it starts", () => {
       const paths = ["/srv/projects/a", "/srv/projects/b"];
       const { result, params } = setup({
+        // The job runs on; the dialog does not wait for it.
+        changePermissions: vi.fn(() => new Promise<never>(() => {})),
         dialogs: dialogsSlice({
           permissionsDialog: {
             isDirectory: false,
@@ -795,17 +760,13 @@ describe("useFileBrowserItemActions", () => {
             paths,
             selectionCount: 2,
           },
+          permissionsDialogOpen: true,
         }),
       });
 
-      await act(async () => {
-        await result.current.handleConfirmPermissions(
-          "0600",
-          true,
-          "me",
-          "grp",
-        );
-      });
+      act(() =>
+        result.current.handleConfirmPermissions("0600", true, "me", "grp"),
+      );
 
       expect(params.changePermissions).toHaveBeenCalledTimes(1);
       expect(params.changePermissions).toHaveBeenCalledWith({
@@ -815,24 +776,54 @@ describe("useFileBrowserItemActions", () => {
         paths: ["/srv/projects/a", "/srv/projects/b"],
         recursive: true,
       });
-      // Closed by the request that started the job, not whatever is open.
-      expect(params.dialogs.actions.closePermissionsFor).toHaveBeenCalledTimes(
-        1,
-      );
-      expect(
-        vi.mocked(params.dialogs.actions.closePermissionsFor).mock.calls[0][0],
-      ).toBe(paths);
-      expect(params.dialogs.actions.closePermissions).not.toHaveBeenCalled();
+      expect(params.dialogs.actions.closePermissions).toHaveBeenCalledTimes(1);
     });
 
-    it("leaves a permissions dialog opened for other items open when an earlier change ends", async () => {
-      let finishChange!: (result: typeof successfulBatchResult) => void;
+    it("starts another permission change while an earlier one runs", async () => {
+      statMock.mockResolvedValue({ group: "staff", mode: "0644", owner: "me" });
       const changePermissions = vi.fn(
-        () =>
-          new Promise<typeof successfulBatchResult>((resolve) => {
-            finishChange = resolve;
-          }),
+        (_request: { paths: string[] }) => new Promise<never>(() => {}),
       );
+      let selectedPaths = new Set(["/srv/projects/a.txt"]);
+      const { result, rerender } = renderHook(
+        () => {
+          const dialogs = useFileDialogs();
+          const actions = useFileBrowserItemActions(
+            makeParams({
+              changePermissions,
+              dialogs,
+              selectedItems: [],
+              selectedPaths,
+            }),
+          );
+          return { actions, dialogs };
+        },
+        { wrapper },
+      );
+      const startChange = async (path: string) => {
+        selectedPaths = new Set([path]);
+        rerender();
+        await act(async () => {
+          await result.current.actions.handleChangePermissions();
+        });
+        expect(result.current.dialogs.permissionsDialogOpen).toBe(true);
+        act(() =>
+          result.current.actions.handleConfirmPermissions("0600", false),
+        );
+        expect(result.current.dialogs.permissionsDialogOpen).toBe(false);
+      };
+
+      await startChange("/srv/projects/a.txt");
+      await startChange("/srv/projects/b.txt");
+
+      expect(
+        changePermissions.mock.calls.map(([request]) => request.paths),
+      ).toEqual([["/srv/projects/a.txt"], ["/srv/projects/b.txt"]]);
+      expect(toastMocks.info).not.toHaveBeenCalled();
+    });
+
+    it("does not start the change again from a dialog that is closing", () => {
+      const changePermissions = vi.fn(() => new Promise<never>(() => {}));
       const { result } = renderHook(
         () => {
           const dialogs = useFileDialogs();
@@ -843,93 +834,55 @@ describe("useFileBrowserItemActions", () => {
         },
         { wrapper },
       );
-      const request = (paths: string[]) => ({
-        isDirectory: false,
-        mode: "0644",
-        pathLabel: paths[0],
-        paths,
-        selectionCount: 1,
-      });
 
       act(() =>
-        result.current.dialogs.actions.openPermissions(
-          request(["/srv/projects/a"]),
-        ),
+        result.current.dialogs.actions.openPermissions({
+          isDirectory: false,
+          mode: "0644",
+          pathLabel: "/srv/projects/a",
+          paths: ["/srv/projects/a"],
+          selectionCount: 1,
+        }),
       );
-      let applied!: Promise<void>;
-      act(() => {
-        applied = result.current.actions.handleConfirmPermissions(
-          "0600",
-          false,
-        );
-      });
+      // The dialog fades out with the handler it had when Apply was clicked.
+      const { handleConfirmPermissions } = result.current.actions;
+      act(() => handleConfirmPermissions("0600", false));
+      act(() => handleConfirmPermissions("0600", false));
+
       expect(changePermissions).toHaveBeenCalledTimes(1);
-
-      // Closed while its job runs; a dialog for other items is open when it
-      // ends.
-      act(() => result.current.actions.handleClosePermissionsDialog());
-      act(() =>
-        result.current.dialogs.actions.openPermissions(
-          request(["/srv/projects/b"]),
-        ),
-      );
-      await act(async () => {
-        finishChange(successfulBatchResult);
-        await applied;
-      });
-
-      expect(result.current.dialogs.permissionsDialogOpen).toBe(true);
-      expect(result.current.dialogs.permissionsDialog?.paths).toEqual([
-        "/srv/projects/b",
-      ]);
     });
 
-    it("retains permissions after failure or a partial result", async () => {
-      const permissionsDialog = {
-        isDirectory: false,
-        mode: "0644",
-        pathLabel: "one item",
-        paths: ["/srv/projects/a"],
-        selectionCount: 1,
-      };
+    it("closes the dialog whatever the change's outcome, which the mutation reports", async () => {
+      const dialogs = dialogsSlice({
+        permissionsDialog: {
+          isDirectory: false,
+          mode: "0644",
+          pathLabel: "one item",
+          paths: ["/srv/projects/a"],
+          selectionCount: 1,
+        },
+        permissionsDialogOpen: true,
+      });
       const failed = setup({
         changePermissions: vi
           .fn()
           .mockRejectedValue(new Error("permissions failed")),
-        dialogs: dialogsSlice({ permissionsDialog }),
-      });
-      const partial = setup({
-        changePermissions: vi.fn().mockResolvedValue({
-          failed: [{ error: "denied", path: "/srv/projects/a" }],
-          succeeded: 0,
-          total: 1,
-        }),
-        dialogs: dialogsSlice({ permissionsDialog }),
+        dialogs,
       });
 
       await act(async () =>
         failed.result.current.handleConfirmPermissions("0600", false),
       );
-      await act(async () =>
-        partial.result.current.handleConfirmPermissions("0600", false),
-      );
 
-      expect(
-        failed.params.dialogs.actions.closePermissionsFor,
-      ).not.toHaveBeenCalled();
-      expect(
-        partial.params.dialogs.actions.closePermissionsFor,
-      ).not.toHaveBeenCalled();
+      expect(dialogs.actions.closePermissions).toHaveBeenCalledTimes(1);
     });
 
-    it("ignores a permissions confirmation with no open dialog", async () => {
+    it("ignores a permissions confirmation with no open dialog", () => {
       const { result, params } = setup({
         dialogs: dialogsSlice({ permissionsDialog: null }),
       });
 
-      await act(async () => {
-        await result.current.handleConfirmPermissions("0600", false);
-      });
+      act(() => result.current.handleConfirmPermissions("0600", false));
 
       expect(params.changePermissions).not.toHaveBeenCalled();
     });

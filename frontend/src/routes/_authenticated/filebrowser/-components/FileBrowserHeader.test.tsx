@@ -2,11 +2,18 @@ import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { HeaderActionsProps } from "@/components/ui/HeaderActions";
-import { render as renderWithApp, screen } from "@/test/render";
+import { fireEvent, render as renderWithApp, screen } from "@/test/render";
 
+import { INTERNAL_DRAG_TYPE } from "../-dragTypes";
 import FileBrowserHeader from "./FileBrowserHeader";
 
 const headerActionsRender = vi.hoisted(() => vi.fn());
+const navigate = vi.hoisted(() => vi.fn());
+
+vi.mock("@tanstack/react-router", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@tanstack/react-router")>()),
+  useNavigate: () => navigate,
+}));
 
 // Search and indexing are for a session with sudo; see the test without it.
 const render: typeof renderWithApp = (ui, options) =>
@@ -112,6 +119,32 @@ describe("FileBrowserHeader", () => {
       screen.getByRole("button", { name: "Index filesystem" }),
     ).toBeVisible();
     expect(screen.getByRole("button", { name: "Trash" })).toBeVisible();
+  });
+
+  it("opens the Trash as a place, and moves items dropped on it there", async () => {
+    const onTrashItems = vi.fn().mockResolvedValue(undefined);
+    const { user } = render(
+      <FileBrowserHeader
+        {...defaultProps}
+        onTrashItems={onTrashItems}
+        showQuickSave={false}
+      />,
+    );
+    const trash = screen.getByRole("button", { name: "Trash" });
+
+    await user.click(trash);
+    expect(navigate).toHaveBeenCalledWith({ search: { trash: true }, to: "." });
+
+    const dataTransfer = {
+      dropEffect: "none",
+      getData: (type: string) =>
+        type === INTERNAL_DRAG_TYPE ? JSON.stringify(["/srv/a.txt"]) : "",
+      types: [INTERNAL_DRAG_TYPE],
+    };
+    fireEvent.dragOver(trash, { dataTransfer });
+    expect(dataTransfer.dropEffect).toBe("move");
+    fireEvent.drop(trash, { dataTransfer });
+    expect(onTrashItems).toHaveBeenCalledWith(["/srv/a.txt"]);
   });
 
   it("offers neither search nor indexing to a session without sudo", () => {

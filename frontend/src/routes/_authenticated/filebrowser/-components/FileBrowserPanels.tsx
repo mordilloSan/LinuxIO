@@ -7,7 +7,6 @@ import {
   type RefObject,
 } from "react";
 
-import type { CountProgress, TaskProgress } from "@/api";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
 import type { FileEditorHandle } from "@/components/editor/FileEditor";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
@@ -280,26 +279,22 @@ export const FileBrowserSaveConflictDialog = ({
 );
 
 export interface FileBrowserDeleteDialogProps {
-  isPending?: boolean;
   mode: DeleteMode;
   onClose: () => void;
   onConfirm: () => void;
   open: boolean;
   pendingDeletePaths: string[];
-  progress?: TaskProgress<CountProgress> | null;
 }
 
-// Moving to the trash asks as well: the dialog doubles as the progress
-// surface, and its wording is what tells the two modes apart. Either is a
-// job, so the dialog can be closed while it runs and the task tray keeps it.
+// Moving to the trash asks as well: the wording is what tells the two modes
+// apart. Either is a job: confirming closes the dialog and starts it, and the
+// task tray shows its progress and can cancel it.
 export const FileBrowserDeleteDialog = ({
-  isPending,
   mode,
   onClose,
   onConfirm,
   open,
   pendingDeletePaths,
-  progress,
 }: FileBrowserDeleteDialogProps) => {
   const isTrash = mode === "trash";
   const count = pendingDeletePaths.length;
@@ -316,10 +311,8 @@ export const FileBrowserDeleteDialog = ({
         : `${names.slice(0, 2).join(", ")} and ${names.length - 2} more`;
   return (
     <AppConfirmDialog
-      closeWhilePending
       confirmText={isTrash ? "Move to Trash" : "Delete"}
       destructive={!isTrash}
-      isPending={isPending}
       message={
         isTrash
           ? `Move ${subject} to Trash?`
@@ -328,8 +321,6 @@ export const FileBrowserDeleteDialog = ({
       onClose={onClose}
       onConfirm={onConfirm}
       open={open}
-      pendingText={isTrash ? "Moving…" : undefined}
-      progress={progress}
       title={isTrash ? "Move to Trash" : "Delete permanently"}
     />
   );

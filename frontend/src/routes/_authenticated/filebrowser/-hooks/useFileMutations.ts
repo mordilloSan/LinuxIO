@@ -1,11 +1,10 @@
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouter } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
 
 import {
   actionErrorMessage,
   type ActionSourceDestinationRequest,
   call,
-  type CountProgress,
   type FileBatchResult,
   type FileChmodBatchRequest,
   type FileExtractRequest,
@@ -15,6 +14,7 @@ import {
   linuxio,
   type TaskProgress,
 } from "@/api";
+import { endpointQueryPrefix } from "@/api/query-keys";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { batchFailureOpts } from "@/tasks/batchFailures";
 import { markTerminalFeedbackEmitted } from "@/tasks/terminalTaskFeedback";
@@ -22,15 +22,18 @@ import { useBackgroundTaskActions } from "@/tasks/useBackgroundTaskActions";
 import { toastFileError } from "@/utils/linkRefusal";
 import {
   baseName,
+  isDirectoryPath,
   joinPath,
   parentPath,
   stripTrailingSlash,
 } from "@/utils/path";
 
+import { askToDeleteForGood } from "./noTrashPrompts";
 import {
   CONFLICT_PROMPT_CANCELLED,
   type ResolveCollisionsFn,
 } from "./useFileConflicts";
+import type { PermissionsDialogState } from "./useFileDialogs";
 import { useListingInvalidation } from "./useListingInvalidation";
 
 export const FILES_TOAST_META = {
@@ -39,12 +42,21 @@ export const FILES_TOAST_META = {
   to: "/filebrowser/$",
 } as const;
 
+/** Every read of the Trash's list, which a move to Trash changes. */
+const TRASH_LIST_KEY = endpointQueryPrefix("filebrowser.trash_list");
+
 interface UseFileMutationsParams {
   normalizedPath: string;
-  /** Called with a delete's or a move to Trash's paths when the job ends. */
+  /**
+   * Called with a delete's or a move to Trash's paths when the job starts
+   * and again when it ends: they leave the selection. At the start, so that
+   * a second Delete does not send items a running job is already removing.
+   */
   onDeleteSuccess?: (paths: string[]) => void;
   /** Closes the Permissions dialog when its toast opens a link's real folder. */
   onPermissionsLinkOpen?: () => void;
+  /** Opens the Permissions dialog, for "Try again" after a partial failure. */
+  onPermissionsRetry?: (dialog: PermissionsDialogState) => void;
   resolveCollisions?: ResolveCollisionsFn;
 }
 
@@ -76,6 +88,7 @@ export const useFileMutations = ({
   normalizedPath,
   onDeleteSuccess,
   onPermissionsLinkOpen,
+  onPermissionsRetry,
   resolveCollisions,
 }: UseFileMutationsParams) => {
   const [createPending, setCreatePending] = useState<"file" | "folder" | null>(
@@ -84,14 +97,9 @@ export const useFileMutations = ({
   const [renamePending, setRenamePending] = useState(false);
   const [renameProgress, setRenameProgress] =
     useState<TaskProgress<FileProgress> | null>(null);
-  const [deleteProgress, setDeleteProgress] =
-    useState<TaskProgress<CountProgress> | null>(null);
-  const [trashProgress, setTrashProgress] =
-    useState<TaskProgress<CountProgress> | null>(null);
-  const [permissionsProgress, setPermissionsProgress] =
-    useState<TaskProgress<CountProgress> | null>(null);
   const toast = useScopedToast(FILES_TOAST_META);
   const navigate = useNavigate();
+  const router = useRouter();
   const { startCompression, startExtraction, startCopy, startMove } =
     useBackgroundTaskActions();
 
@@ -147,10 +155,10 @@ export const useFileMutations = ({
     [createFolderMutation, createPending, normalizedPath],
   );
 
-  // The listing changed even when some items failed, so refresh it and close
-  // the dialog either way; failures are named in the error toast. Only the
-  // job's own paths leave the selection: its confirm may have been closed
-  // while it ran and other items selected since.
+  // The listing changed even when some items failed, so refresh it either
+  // way; failures are named in the error toast. Only the job's own paths
+  // leave the selection: other items may have been selected, and other jobs
+  // started, while it ran.
   const reportRemoval = (
     result: FileBatchResult | undefined,
     verb: "delete" | "trash",
@@ -158,7 +166,18 @@ export const useFileMutations = ({
   ) => {
     invalidateListing();
     onDeleteSuccess?.(paths);
-    const failed = result?.failed ?? [];
+    const allFailed = result?.failed ?? [];
+    // An item whose disk cannot hold a trash is not a failure to report: the
+    // user is asked once, for this job, whether to delete those for good
+    // (NoTrashPrompt), and they stay where they are until then.
+    const noTrash =
+      verb === "trash"
+        ? allFailed.filter((item) => item.reason === "no_trash")
+        : [];
+    const failed = noTrash.length
+      ? allFailed.filter((item) => item.reason !== "no_trash")
+      : allFailed;
+    askToDeleteForGood(noTrash.map((item) => item.path));
     if (failed.length > 0) {
       const count = `${failed.length} item${failed.length === 1 ? "" : "s"}`;
       toastFileError(
@@ -172,6 +191,8 @@ export const useFileMutations = ({
       return;
     }
     const moved = result?.succeeded ?? 0;
+    // Only the question is left to show when nothing went to the Trash.
+    if (noTrash.length > 0 && moved === 0) return;
     toast.success(
       verb === "trash"
         ? `Moved ${moved} item${moved === 1 ? "" : "s"} to Trash`
@@ -180,21 +201,18 @@ export const useFileMutations = ({
   };
 
   // One batch task deletes the whole selection; the bridge loops server-side
-  // and reports per-item failures in the result. Its confirm can be closed
-  // while it runs, and its result is reported here either way, so the task
-  // tray, which lists the job and can cancel it, does not report it as well.
-  // A cancel is not a failure: the tray that cancelled it says so.
+  // and reports per-item failures in the result. Its confirm closes as it
+  // starts, and any number of these jobs can run at once: each one's result
+  // is reported here with its own request, so the task tray, which shows its
+  // progress and can cancel it, does not report it as well. A cancel is not
+  // a failure: the tray that cancelled it says so.
   const deleteBatchAction = linuxio.filebrowser.delete_batch.useMutation({
     // invalidateListing below is more precise than the manifest entry.
     invalidates: [],
     onStart: (task) => void markTerminalFeedbackEmitted(task.id),
-    onProgress: setDeleteProgress,
-    success: (result, request) => {
-      setDeleteProgress(null);
-      reportRemoval(result, "delete", request.paths);
-    },
+    success: (result, request) =>
+      reportRemoval(result, "delete", request.paths),
     error: (error, request) => {
-      setDeleteProgress(null);
       // A cancelled job has removed some of its items already: the listing
       // is read again and none of them stays selected.
       if (isTaskCancellationError(error)) {
@@ -210,27 +228,26 @@ export const useFileMutations = ({
     },
   });
 
+  // The mutation object is new on every render; its mutateAsync is not, so
+  // the callbacks below keep their identity for the listing and header.
+  const { mutateAsync: startDelete } = deleteBatchAction;
   const deleteItems = useCallback(
     async (paths: string[]): Promise<FileBatchResult | undefined> => {
-      if (!paths.length || deleteBatchAction.isPending) return;
-      setDeleteProgress(null);
-      return deleteBatchAction.mutateAsync({ paths });
+      if (!paths.length) return;
+      onDeleteSuccess?.(paths);
+      return startDelete({ paths });
     },
-    [deleteBatchAction],
+    [startDelete, onDeleteSuccess],
   );
 
   // Same shape as delete, but moves into the FreeDesktop trash.
   const trashBatchAction = linuxio.filebrowser.trash_batch.useMutation({
-    // invalidateListing below is more precise than the manifest entry.
-    invalidates: [],
+    // invalidateListing below is more precise than the manifest entry for
+    // the folder; the Trash's own list is read again as well.
+    invalidates: [TRASH_LIST_KEY],
     onStart: (task) => void markTerminalFeedbackEmitted(task.id),
-    onProgress: setTrashProgress,
-    success: (result, request) => {
-      setTrashProgress(null);
-      reportRemoval(result, "trash", request.paths);
-    },
+    success: (result, request) => reportRemoval(result, "trash", request.paths),
     error: (error, request) => {
-      setTrashProgress(null);
       if (isTaskCancellationError(error)) {
         invalidateListing();
         onDeleteSuccess?.(request.paths);
@@ -244,13 +261,14 @@ export const useFileMutations = ({
     },
   });
 
+  const { mutateAsync: startTrash } = trashBatchAction;
   const trashItems = useCallback(
     async (paths: string[]): Promise<FileBatchResult | undefined> => {
-      if (!paths.length || trashBatchAction.isPending) return;
-      setTrashProgress(null);
-      return trashBatchAction.mutateAsync({ paths });
+      if (!paths.length) return;
+      onDeleteSuccess?.(paths);
+      return startTrash({ paths });
     },
-    [trashBatchAction],
+    [startTrash, onDeleteSuccess],
   );
 
   const compressItems = useCallback(
@@ -294,18 +312,49 @@ export const useFileMutations = ({
     [invalidateListing, navigate, startExtraction, toast],
   );
 
+  // "Try again" on a partial failure's toast opens the Permissions dialog for
+  // the failed items with the settings the change was made with. The dialog
+  // lives in the file browser page, so it is offered only while that page
+  // shows. A failure through a refused link offers its real folder instead
+  // (toastFileError).
+  const retryPermissionsOption = (
+    request: FileChmodBatchRequest,
+    paths: string[],
+  ) => {
+    const { pathname } = router.state.location;
+    const onFileBrowser =
+      pathname === "/filebrowser" || pathname.startsWith("/filebrowser/");
+    if (!onPermissionsRetry || !onFileBrowser) return {};
+    const reopen = () =>
+      onPermissionsRetry({
+        group: request.group || undefined,
+        // A recursive change was made on a folder, and a folder's path ends
+        // in a slash: either offers "Apply recursively" again.
+        isDirectory: Boolean(request.recursive) || paths.some(isDirectoryPath),
+        mode: request.mode,
+        owner: request.owner || undefined,
+        pathLabel: paths.length > 1 ? `${paths.length} items` : paths[0],
+        paths,
+        recursive: Boolean(request.recursive),
+        selectionCount: paths.length,
+      });
+    // A toast with a button stays long enough to be clicked.
+    return {
+      action: { label: "Try again", onClick: reopen },
+      duration: 10_000,
+    };
+  };
+
   // One batch task changes permissions of the whole selection; the bridge
   // loops server-side and reports per-item failures in the result. As for a
-  // delete, its dialog can be closed while it runs and the result is reported
-  // here, so the task tray does not report it as well, and a cancel from the
-  // tray is not a failure.
+  // delete, its dialog closes as it starts, several can run at once, and each
+  // result is reported here with its own request, so the task tray does not
+  // report it as well, and a cancel from the tray is not a failure.
   const changePermissionsAction = linuxio.filebrowser.chmod_batch.useMutation({
     // invalidateListing below is more precise than the manifest entry.
     invalidates: [],
     onStart: (task) => void markTerminalFeedbackEmitted(task.id),
-    onProgress: setPermissionsProgress,
-    success: (result) => {
-      setPermissionsProgress(null);
+    success: (result, request) => {
       invalidateListing();
       const failed = result?.failed ?? [];
       if (failed.length > 0) {
@@ -313,7 +362,13 @@ export const useFileMutations = ({
           toast,
           navigate,
           `Failed to change permissions on ${failed.length} of ${result?.total ?? failed.length} items`,
-          batchFailureOpts(failed),
+          {
+            ...batchFailureOpts(failed),
+            ...retryPermissionsOption(
+              request,
+              failed.map((item) => item.path),
+            ),
+          },
           onPermissionsLinkOpen,
         );
         return;
@@ -321,7 +376,6 @@ export const useFileMutations = ({
       toast.success("Permissions changed successfully");
     },
     error: (error) => {
-      setPermissionsProgress(null);
       if (isTaskCancellationError(error)) return;
       toastFileError(
         toast,
@@ -348,7 +402,6 @@ export const useFileMutations = ({
         group: group || "",
         recursive: recursive || undefined,
       };
-      setPermissionsProgress(null);
       return changePermissionsAction.mutateAsync(request);
     },
     [changePermissionsAction],
@@ -545,16 +598,10 @@ export const useFileMutations = ({
     createPending,
     createFolder,
     deleteItems,
-    deletePending: deleteBatchAction.isPending,
-    deleteProgress,
     trashItems,
-    trashPending: trashBatchAction.isPending,
-    trashProgress,
     compressItems,
     extractArchive,
     changePermissions,
-    permissionsPending: changePermissionsAction.isPending,
-    permissionsProgress,
     copyItems,
     moveItems,
     renameItem,

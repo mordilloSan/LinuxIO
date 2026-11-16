@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { INTERNAL_DRAG_TYPE } from "../-dragTypes";
+import { INTERNAL_DRAG_TYPE, TRASH_DRAG_TYPE } from "../-dragTypes";
 import type { DroppedEntry } from "../-fileUpload";
 import type { FileResource } from "../-types";
 import type { ResolveCollisionsFn } from "./useFileConflicts";
@@ -91,6 +91,46 @@ describe("useFileDragAndDrop", () => {
 
     act(() => result.current.handleDragOver(event));
     expect(event.dataTransfer.dropEffect).toBe("copy");
+  });
+
+  it("restores items dragged out of the Trash into the folder shown", async () => {
+    const onRestoreItems = vi.fn();
+    const startUpload = vi.fn();
+    const items = [
+      { name: "report.pdf", path: "/home/a/.local/share/Trash/files/r.pdf" },
+    ];
+    const { result } = renderHook(() =>
+      useFileDragAndDrop({
+        normalizedPath: "/srv/target",
+        onRestoreItems,
+        onUploadComplete: vi.fn(),
+        resolveCollisions: passthroughCollisions(),
+        resource: directory,
+        startUpload,
+      }),
+    );
+    const event = dragEvent({
+      dataTransfer: {
+        dropEffect: "none",
+        getData: (type: string) =>
+          type === TRASH_DRAG_TYPE ? JSON.stringify(items) : "",
+        types: [TRASH_DRAG_TYPE],
+      },
+    });
+
+    act(() => result.current.handleDragOver(event));
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(event.dataTransfer.dropEffect).toBe("move");
+    // Not an upload: the upload overlay stays hidden.
+    expect(result.current.isDragOver).toBe(false);
+
+    const extractCalls = droppedEntriesMocks.extract.mock.calls.length;
+    await act(async () => {
+      await result.current.handleDrop(event);
+    });
+    expect(onRestoreItems).toHaveBeenCalledWith(items, "/srv/target");
+    expect(droppedEntriesMocks.extract).toHaveBeenCalledTimes(extractCalls);
+    expect(startUpload).not.toHaveBeenCalled();
   });
 
   it("ignores drag events while editing or outside directories", () => {

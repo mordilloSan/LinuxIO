@@ -1,9 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LinuxIOError, TASK_CANCELED_CODE } from "@/api";
 import { markTerminalFeedbackEmitted } from "@/tasks/terminalTaskFeedback";
 import { act, renderHook } from "@/test/render";
 
+import { nextNoTrashPrompt, settleNoTrashPrompt } from "./noTrashPrompts";
 import { useFileMutations } from "./useFileMutations";
 
 const mocks = vi.hoisted(() => ({
@@ -21,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   startMove: vi.fn(),
   resolveCollisions: vi.fn(),
   call: vi.fn(),
+  router: { state: { location: { pathname: "/filebrowser/srv/projects" } } },
   taskOptions: {} as Record<
     string,
     {
@@ -67,6 +69,7 @@ vi.mock("@/api", async (importOriginal) => {
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tanstack/react-router")>()),
   useNavigate: () => mocks.navigate,
+  useRouter: () => mocks.router,
 }));
 
 vi.mock("./useListingInvalidation", () => ({
@@ -93,6 +96,7 @@ vi.mock("./useFileConflicts", () => ({
 describe("useFileMutations", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.router.state.location.pathname = "/filebrowser/srv/projects";
   });
 
   it("keeps renameItem stable across unrelated rerenders and still renames", async () => {
@@ -176,6 +180,118 @@ describe("useFileMutations", () => {
         "Failed to change permissions on 1 of 2 items",
         { description: "a.txt: permission denied" },
       );
+    });
+
+    describe("Try again after a partial permission change", () => {
+      const chmodRequest = {
+        group: "staff",
+        mode: "750",
+        owner: "alice",
+        paths: [
+          "/srv/projects/a.txt",
+          "/srv/projects/docs/",
+          "/srv/projects/b.txt",
+        ],
+        recursive: true,
+      };
+      const partlyFailed = {
+        failed: [
+          { error: "permission denied", path: "/srv/projects/a.txt" },
+          { error: "permission denied", path: "/srv/projects/docs/" },
+        ],
+        succeeded: 1,
+        total: 3,
+      };
+
+      it("opens the dialog again for the failed items with the same settings", () => {
+        const onPermissionsRetry = vi.fn();
+        renderHook(() =>
+          useFileMutations({
+            normalizedPath: "/srv/projects",
+            onPermissionsRetry,
+          }),
+        );
+
+        mocks.taskOptions.chmod.success?.(partlyFailed, chmodRequest);
+
+        expect(mocks.toast.error).toHaveBeenCalledWith(
+          "Failed to change permissions on 2 of 3 items",
+          {
+            action: expect.objectContaining({ label: "Try again" }),
+            description: "a.txt: permission denied\ndocs: permission denied",
+            duration: 10_000,
+          },
+        );
+        expect(onPermissionsRetry).not.toHaveBeenCalled();
+        const { action } = mocks.toast.error.mock.calls[0][1] as {
+          action: { onClick: (event: unknown) => void };
+        };
+        action.onClick({});
+
+        expect(onPermissionsRetry).toHaveBeenCalledWith({
+          group: "staff",
+          isDirectory: true,
+          mode: "750",
+          owner: "alice",
+          pathLabel: "2 items",
+          paths: ["/srv/projects/a.txt", "/srv/projects/docs/"],
+          recursive: true,
+          selectionCount: 2,
+        });
+      });
+
+      it("names the one failed item and keeps a change that was not recursive", () => {
+        const onPermissionsRetry = vi.fn();
+        renderHook(() =>
+          useFileMutations({
+            normalizedPath: "/srv/projects",
+            onPermissionsRetry,
+          }),
+        );
+        const request = {
+          group: "",
+          mode: "644",
+          owner: "",
+          paths: ["/srv/projects/a.txt", "/srv/projects/b.txt"],
+        };
+
+        mocks.taskOptions.chmod.success?.(failedResult, request);
+        const { action } = mocks.toast.error.mock.calls[0][1] as {
+          action: { onClick: (event: unknown) => void };
+        };
+        action.onClick({});
+
+        expect(onPermissionsRetry).toHaveBeenCalledWith({
+          group: undefined,
+          isDirectory: false,
+          mode: "644",
+          owner: undefined,
+          pathLabel: "/srv/projects/a.txt",
+          paths: ["/srv/projects/a.txt"],
+          recursive: false,
+          selectionCount: 1,
+        });
+      });
+
+      it("is not offered away from the file browser, where the dialog is not", () => {
+        mocks.router.state.location.pathname = "/dashboard";
+        const onPermissionsRetry = vi.fn();
+        renderHook(() =>
+          useFileMutations({
+            normalizedPath: "/srv/projects",
+            onPermissionsRetry,
+          }),
+        );
+
+        mocks.taskOptions.chmod.success?.(partlyFailed, chmodRequest);
+
+        expect(mocks.toast.error).toHaveBeenCalledWith(
+          "Failed to change permissions on 2 of 3 items",
+          {
+            description: "a.txt: permission denied\ndocs: permission denied",
+          },
+        );
+      });
     });
 
     it("offers the real folder when a failed item is a refused link", () => {
@@ -311,6 +427,117 @@ describe("useFileMutations", () => {
       expect(mocks.invalidateListing).toHaveBeenCalledTimes(1);
       expect(mocks.toast.success).toHaveBeenCalledWith(
         "Moved 2 items to Trash",
+      );
+    });
+  });
+
+  describe("items whose disk cannot hold a trash", () => {
+    const A = "/mnt/usb/a.txt";
+    const B = "/mnt/usb/b.txt";
+    const C = "/mnt/usb/c.txt";
+
+    afterEach(() => {
+      for (let next = nextNoTrashPrompt(); next; next = nextNoTrashPrompt()) {
+        settleNoTrashPrompt(next.id);
+      }
+    });
+
+    it("asks once about them instead of listing them as failures", () => {
+      renderHook(() => useFileMutations({ normalizedPath: "/mnt/usb" }));
+
+      mocks.taskOptions.trash.success?.(
+        {
+          failed: [
+            { error: "no trash on this disk", path: A, reason: "no_trash" },
+            { error: "permission denied", path: B },
+            { error: "no trash on this disk", path: C, reason: "no_trash" },
+          ],
+          succeeded: 1,
+          total: 4,
+        },
+        { paths: [A, B, C, "/mnt/usb/d.txt"] },
+      );
+
+      expect(nextNoTrashPrompt()?.paths).toEqual([A, C]);
+      // Only the other failure is in the toast.
+      expect(mocks.toast.error).toHaveBeenCalledTimes(1);
+      expect(mocks.toast.error).toHaveBeenCalledWith(
+        "Failed to move 1 item to Trash",
+        { description: "b.txt: permission denied" },
+      );
+    });
+
+    it("reports the items that did move and asks about the rest", () => {
+      renderHook(() => useFileMutations({ normalizedPath: "/mnt/usb" }));
+
+      mocks.taskOptions.trash.success?.(
+        {
+          failed: [{ error: "no trash", path: A, reason: "no_trash" }],
+          succeeded: 2,
+          total: 3,
+        },
+        { paths: [A, B, C] },
+      );
+
+      expect(nextNoTrashPrompt()?.paths).toEqual([A]);
+      expect(mocks.toast.error).not.toHaveBeenCalled();
+      expect(mocks.toast.success).toHaveBeenCalledWith(
+        "Moved 2 items to Trash",
+      );
+      // Nothing is deleted without the answer.
+      expect(mocks.mutateAsync).not.toHaveBeenCalled();
+    });
+
+    it("leaves the question as the only report when nothing moved", () => {
+      renderHook(() => useFileMutations({ normalizedPath: "/mnt/usb" }));
+
+      mocks.taskOptions.trash.success?.(
+        {
+          failed: [{ error: "no trash", path: A, reason: "no_trash" }],
+          succeeded: 0,
+          total: 1,
+        },
+        { paths: [A] },
+      );
+
+      expect(nextNoTrashPrompt()?.paths).toEqual([A]);
+      expect(mocks.toast.error).not.toHaveBeenCalled();
+      expect(mocks.toast.success).not.toHaveBeenCalled();
+    });
+
+    it("asks about each of two jobs", () => {
+      renderHook(() => useFileMutations({ normalizedPath: "/mnt/usb" }));
+      const noTrash = (path: string) => ({
+        failed: [{ error: "no trash", path, reason: "no_trash" as const }],
+        succeeded: 0,
+        total: 1,
+      });
+
+      mocks.taskOptions.trash.success?.(noTrash(A), { paths: [A] });
+      mocks.taskOptions.trash.success?.(noTrash(B), { paths: [B] });
+
+      const first = nextNoTrashPrompt();
+      expect(first?.paths).toEqual([A]);
+      settleNoTrashPrompt(first?.id ?? 0);
+      expect(nextNoTrashPrompt()?.paths).toEqual([B]);
+    });
+
+    it("never asks about a permanent delete", () => {
+      renderHook(() => useFileMutations({ normalizedPath: "/mnt/usb" }));
+
+      mocks.taskOptions.delete.success?.(
+        {
+          failed: [{ error: "no trash", path: A, reason: "no_trash" }],
+          succeeded: 0,
+          total: 1,
+        },
+        { paths: [A] },
+      );
+
+      expect(nextNoTrashPrompt()).toBeNull();
+      expect(mocks.toast.error).toHaveBeenCalledWith(
+        "Failed to delete 1 item",
+        { description: "a.txt: no trash" },
       );
     });
   });

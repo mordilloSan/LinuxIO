@@ -66,7 +66,7 @@ describe("PermissionsDialog", () => {
     expect(ownerRead).not.toBeChecked();
   });
 
-  it("shows the job's progress and can be closed while it runs", async () => {
+  it("hands the settings to the page on Apply and shows no progress of its own", async () => {
     const onClose = vi.fn();
     const onConfirm = vi.fn();
     const { user } = render(
@@ -74,33 +74,28 @@ describe("PermissionsDialog", () => {
         currentMode="0755"
         group="root"
         isDirectory
-        isPending
         onClose={onClose}
         onConfirm={onConfirm}
         open
         owner="root"
         pathLabel="/srv/data"
-        progress={{ phase: "chmod" }}
         selectionCount={1}
       />,
     );
 
-    expect(screen.getByRole("status")).toHaveTextContent("chmod");
-    expect(screen.getByRole("dialog")).toHaveAttribute("aria-busy", "true");
-    // The controls that would start a second change stay held.
-    expect(screen.getByRole("button", { name: "Applying…" })).toBeDisabled();
-    expect(screen.getByRole("checkbox", { name: "Owner read" })).toBeDisabled();
-    expect(
+    await user.click(
       screen.getByRole("checkbox", {
         name: "Apply recursively to all files and subdirectories",
       }),
-    ).toBeDisabled();
+    );
+    // The page closes the dialog as the change starts; the task tray shows
+    // its progress and can cancel it.
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+    expect(onConfirm).toHaveBeenCalledWith("755", true, "root", "root");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog")).not.toHaveAttribute("aria-busy");
 
-    // The job runs on and the task tray keeps it, so every way out works.
-    expect(
-      screen.queryByRole("button", { name: "Cancel" }),
-    ).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Close" }));
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onClose).toHaveBeenCalledTimes(1);
     await user.keyboard("{Escape}");
     expect(onClose).toHaveBeenCalledTimes(2);
@@ -108,6 +103,38 @@ describe("PermissionsDialog", () => {
     expect(backdrop).not.toBeNull();
     fireEvent.click(backdrop as Element);
     expect(onClose).toHaveBeenCalledTimes(3);
-    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it("opens with the settings it is given, as Try again does", () => {
+    render(
+      <PermissionsDialog
+        currentMode="700"
+        group="staff"
+        isDirectory
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+        open
+        owner="alice"
+        pathLabel="2 items"
+        recursive
+        selectionCount={2}
+      />,
+    );
+
+    expect(screen.getByRole("checkbox", { name: "Owner write" })).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: "Group read" }),
+    ).not.toBeChecked();
+    expect(
+      screen.getByRole("checkbox", {
+        name: "Apply recursively to all files and subdirectories",
+      }),
+    ).toBeChecked();
+    expect(screen.getByRole("combobox", { name: "Owner" })).toHaveValue(
+      "alice",
+    );
+    expect(screen.getByRole("combobox", { name: "Group" })).toHaveValue(
+      "staff",
+    );
   });
 });

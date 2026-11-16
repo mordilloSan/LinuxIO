@@ -664,7 +664,17 @@ keys, messages and settings are in
   takes:
   - **Closing.** Close, Escape and the backdrop work; the controls that would
     start a second job stay held. `AppConfirmDialog` takes
-    `closeWhilePending` for a confirm whose action is such a job.
+    `closeWhilePending` for a confirm whose action is such a job. A dialog
+    may instead close as its job starts, as the file browser's do, and then
+    holds nothing, so any number of jobs of a kind can run at once. A closing
+    dialog fades out with the handlers it had, so its confirm handler acts
+    only while the dialog is still open: a second click during the fade does
+    not start the job again.
+  - **Each job reports itself.** One `useMutation` can follow several jobs:
+    each `mutate` builds its own TanStack mutation, and the hook's `success`
+    and `error` run once for each job with that job's request. `isPending`,
+    and callbacks passed to `mutate` itself, follow only the latest job, so
+    they neither hold a dialog nor report a job.
   - **A tray row.** The tray lists a job only when its type is in
     `useRecoveredTasks` (`frontend/src/tasks/engine/useRecoveredTasks.ts`),
     which also gives the row its text. A job type that is not there has no
@@ -678,7 +688,9 @@ keys, messages and settings are in
     A Mutation's `error` text is not toasted for a cancel
     (`mutation-react-query.ts`), and a page with an error handler of its own checks
     `isTaskCancellationError`. A cancelled delete or move to Trash has
-    removed some of its items, so it deselects them as a finished one does.
+    removed some of its items, so it reads the listing again and deselects
+    them as a finished one does; a cancelled restore or purge from the Trash
+    reads its lists again.
   - **The end of a job leaves later work alone.** Its completion does not
     close or clear a dialog the user has since closed and opened again for
     something else, nor a selection made since: a delete or a move to Trash
@@ -691,11 +703,22 @@ keys, messages and settings are in
 
   The dialogs that work this way: the Memory overflow dialog; the Docker
   storage confirm in Settings, whose section shows the running step in a note
-  once the confirm is closed; and in the file browser the delete confirm, the
-  Trash dialog, the Permissions dialog and the upload dialog. The upload
-  dialog is held while it checks the destination and asks about conflicts,
-  which need it, and can be closed once the upload runs; an upload has its
-  own tray row, and a dialog opened again can start another upload beside it.
+  once the confirm is closed; and the file browser's upload dialog, which is
+  held while it checks the destination and asks about conflicts, which need
+  it, and can be closed once the upload runs; an upload has its own tray row,
+  and a dialog opened again can start another upload beside it. The file
+  browser's delete confirm, Permissions dialog and the Trash's confirms,
+  properties and Restore to… dialogs close as their job starts, as in Windows
+  Explorer, and the Trash's Restore, Delete permanently and Empty Trash take
+  the job's items out of its selection as it starts
+  ([Trash](./trash.md#the-trash-view)); any number of these jobs can run at
+  once, each with its own tray row and its own result toast. A question a job
+  raises when it ends (delete for good what has no trash, what to do with a
+  restored name that is taken) is the page's, not a dialog held for the job. A
+  permission change that fails for some items offers **Try again** in its
+  toast while the file browser shows: it opens the Permissions dialog for
+  those items with the mode, owner, group and recursive setting the change
+  was made with.
 - **History page** (`/history`, open to every signed-in user and not in the
   sidebar; `frontend/src/routes/_authenticated/history`). It reads
   `tasks.history` and lists ended jobs and scheduled runs, newest first: when
@@ -905,14 +928,10 @@ Covered at one level only:
 - A resumed scrub, or a scrub call issued again after a freeze, counts errors
   in the dev extent where each device stopped twice, and a power loss loses up
   to a minute of a scrub's progress.
-- The file browser page runs one move to Trash, one permanent delete and one
-  permission change at a time. Delete, Shift+Delete or Permissions for a kind
-  that is running says so in a toast instead of asking, since the dialog
-  would show the running job as its own, and the Trash dialog holds its
-  actions while its restore or purge runs. The page knows only the jobs it
-  started since it was opened: after leaving the file browser and coming
-  back, a job that still runs no longer holds these, and a second one can
-  start beside it.
+- **Try again** on a permission change's failure toast opens the dialog of
+  the file browser page that started the change, so once the user has left
+  that page, as by leaving the file browser and coming back while the change
+  ran, it does nothing.
 
 ## Not built
 

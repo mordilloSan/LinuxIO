@@ -75,58 +75,6 @@ describe("filebrowser state hooks", () => {
     expect(result.current.pendingDeletePaths).toEqual([]);
   });
 
-  it("closes the delete dialog for a job only while it is that job's request", () => {
-    const { result } = renderHook(() => useFileDialogs());
-    const first = ["/tmp/old.txt"];
-    const second = ["/tmp/other.txt"];
-
-    // A confirm closed while its job runs and opened again for other items
-    // stays open when the first job ends, also for the same items.
-    act(() => result.current.actions.requestDelete(first, "trash"));
-    act(() => result.current.actions.closeDelete());
-    act(() => result.current.actions.requestDelete(second, "permanent"));
-    act(() => result.current.actions.closeDeleteFor(first));
-    expect(result.current.deleteDialog).toBe(true);
-    expect(result.current.pendingDeletePaths).toBe(second);
-
-    act(() => result.current.actions.closeDelete());
-    act(() => result.current.actions.requestDelete(["/tmp/old.txt"], "trash"));
-    act(() => result.current.actions.closeDeleteFor(first));
-    expect(result.current.deleteDialog).toBe(true);
-
-    // The confirm that started the job closes when it ends.
-    act(() => result.current.actions.requestDelete(second, "permanent"));
-    act(() => result.current.actions.closeDeleteFor(second));
-    expect(result.current.deleteDialog).toBe(false);
-    expect(result.current.pendingDeletePaths).toEqual([]);
-  });
-
-  it("closes the permissions dialog for a job only while it is that job's request", () => {
-    const { result } = renderHook(() => useFileDialogs());
-    const request = (paths: string[]) => ({
-      isDirectory: false,
-      mode: "0644",
-      pathLabel: paths[0],
-      paths,
-      selectionCount: paths.length,
-    });
-    const first = ["/tmp/old.txt"];
-    const second = ["/tmp/other.txt"];
-
-    // Closed while its job runs and opened again for other items: the first
-    // job's end leaves it open.
-    act(() => result.current.actions.openPermissions(request(first)));
-    act(() => result.current.actions.closePermissions());
-    act(() => result.current.actions.openPermissions(request(second)));
-    act(() => result.current.actions.closePermissionsFor(first));
-    expect(result.current.permissionsDialogOpen).toBe(true);
-    expect(result.current.permissionsDialog?.paths).toBe(second);
-
-    // The dialog that started the job closes when it ends.
-    act(() => result.current.actions.closePermissionsFor(second));
-    expect(result.current.permissionsDialogOpen).toBe(false);
-  });
-
   it("remembers the requested delete mode", () => {
     const { result } = renderHook(() => useFileDialogs());
 

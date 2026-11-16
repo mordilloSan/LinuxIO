@@ -54,7 +54,7 @@ const PathPickerLargeFolderPage = lazy(
 const FileBrowserDeleteFlowsPage = lazy(
   () => import("./routes/FileBrowserDeleteFlowsPage"),
 );
-const TrashDialogPage = lazy(() => import("./routes/TrashDialogPage"));
+const TrashPlacePage = lazy(() => import("./routes/TrashPlacePage"));
 const FileEditorHistoryPage = lazy(
   () => import("./routes/FileEditorHistoryPage"),
 );
@@ -207,7 +207,7 @@ const fileBrowserDeleteFlowsRoute = createRoute({
   path: "filebrowser/delete-flows",
 });
 const fileBrowserTrashRoute = createRoute({
-  component: TrashDialogPage,
+  component: TrashPlacePage,
   getParentRoute: () => rootRoute,
   path: "filebrowser/trash",
 });

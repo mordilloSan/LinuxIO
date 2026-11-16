@@ -17,7 +17,11 @@ export const Route = createFileRoute("/_authenticated/filebrowser/$")({
     ...optionalBoolean(search, "enabled"),
     ...optionalString(search, "redirect"),
     ...optionalNumber(search, "tail"),
+    // The Trash, opened from the folder in the path. A search parameter
+    // rather than a path segment, which would hide a folder named "trash".
+    ...optionalBoolean(search, "trash"),
   }),
+  loaderDeps: ({ search }) => ({ trash: search.trash === true }),
   context: ({ params }) => {
     const path = params._splat ? `/${params._splat}` : "/";
     return {
@@ -26,9 +30,13 @@ export const Route = createFileRoute("/_authenticated/filebrowser/$")({
     };
   },
   loader: (loaderArgs) => {
+    // The Trash reads its own list and shows its own loading and error; the
+    // folder it was opened from is not listed while it shows.
     return loadRouteQueries(
       loaderArgs,
-      [loaderArgs.context.fileBrowserListingQueryOptions],
+      loaderArgs.deps.trash
+        ? []
+        : [loaderArgs.context.fileBrowserListingQueryOptions],
       LOADER_FRESHNESS.BACKGROUND,
     );
   },
