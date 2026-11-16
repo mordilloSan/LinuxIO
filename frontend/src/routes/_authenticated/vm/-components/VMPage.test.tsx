@@ -1019,9 +1019,10 @@ describe("Virtual Machines page", () => {
 
     await renderVMPage();
 
+    // The machines tab no longer carries the host preflight card.
     expect(
-      screen.getByText(/default storage pool is missing/i),
-    ).toBeInTheDocument();
+      screen.queryByText(/default storage pool is missing/i),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: /create vm/i })).toBeEnabled();
   });
 

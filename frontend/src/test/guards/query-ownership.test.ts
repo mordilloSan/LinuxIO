@@ -215,7 +215,7 @@ describe("targeted route query ownership", () => {
     const childObserverCounts = [
       ["vm/-components/VMDashboardPage.tsx", 2],
       ["vm/-components/VMImagesPage.tsx", 1],
-      ["vm/-components/VMMachinesLayout.tsx", 2],
+      ["vm/-components/VMMachinesLayout.tsx", 1],
       ["vm/-components/VMNetworksPage.tsx", 1],
     ] as const;
 
