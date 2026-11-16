@@ -134,6 +134,11 @@ func (dm *Manager) GetStats(ctx context.Context, cacheTimeMs uint16) ([]*contain
 			continue
 		}
 
+		if !containerHasStats(&ctr) {
+			slog.Debug("skipping container that is not running", "name", name, "state", string(ctr.State))
+			continue
+		}
+
 		dm.validIds[id] = struct{}{}
 		// Created timestamps do not change on restart, so retain status-based
 		// restart detection.
@@ -244,6 +249,16 @@ func (dm *Manager) GetContainerIdentities(ctx context.Context) ([]containermodel
 		})
 	}
 	return identities, nil
+}
+
+// containerHasStats reports whether a listed container can answer a stats
+// request. The list also returns a container Docker is restarting, which has
+// no process between two runs: its request fails, is retried and fails again
+// on every cycle. A paused container keeps its cgroup and is sampled, and so
+// is one whose state the runtime does not report.
+func containerHasStats(ctr *mobycontainer.Summary) bool {
+	state := strings.TrimSpace(string(ctr.State))
+	return state == "" || strings.EqualFold(state, "running") || strings.EqualFold(state, "paused")
 }
 
 func containerName(ctr *mobycontainer.Summary) string {

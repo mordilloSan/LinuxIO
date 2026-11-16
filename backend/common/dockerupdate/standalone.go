@@ -605,7 +605,9 @@ func standaloneBackupName(containerID string) string {
 }
 
 // WaitForContainerReady polls the container until it is running and, when it
-// has a health check, healthy.
+// has a health check, healthy. It gives up after containerReadyTimeout, naming
+// the last state it read, and sooner when Docker's restart policy has
+// restarted the container containerRestartLimit times since the first read.
 func WaitForContainerReady(
 	ctx context.Context,
 	cli containerReadinessClient,
@@ -633,15 +635,34 @@ func waitForContainerReadyWithTiming(
 
 	ticker := time.NewTicker(poll)
 	defer ticker.Stop()
+	lastState := "not read"
+	// A Compose container that was not recreated keeps its earlier count, so
+	// restarts are counted from the first read.
+	firstRestarts := -1
 	for {
 		inspectResult, err := cli.ContainerInspect(readyCtx, containerID, client.ContainerInspectOptions{})
 		if err != nil {
+			// Only the wait's own end is reported as one; a daemon that
+			// failed at the same moment keeps its error.
+			if ended := readyCtx.Err(); ended != nil && errors.Is(err, ended) {
+				return container.InspectResponse{}, readinessWaitEnded(ctx, timeout, lastState)
+			}
 			return container.InspectResponse{}, err
 		}
-		ready, terminal, err := containerReady(inspectResult.Container)
+		inspect := inspectResult.Container
+		lastState = describeContainerState(inspect)
+		if firstRestarts < 0 {
+			firstRestarts = inspect.RestartCount
+		}
+		// Checked before readiness: a container without a health check is
+		// running, and so would pass, between two crashes.
+		if restarts := inspect.RestartCount - firstRestarts; restarts >= containerRestartLimit {
+			return container.InspectResponse{}, fmt.Errorf("container keeps restarting: %d restarts while waiting, last state %s", restarts, lastState)
+		}
+		ready, terminal, err := containerReady(inspect)
 		switch {
 		case ready:
-			return inspectResult.Container, nil
+			return inspect, nil
 		case terminal:
 			if err == nil {
 				err = errors.New("container is not ready")
@@ -653,10 +674,57 @@ func waitForContainerReadyWithTiming(
 
 		select {
 		case <-readyCtx.Done():
-			return container.InspectResponse{}, readyCtx.Err()
+			return container.InspectResponse{}, readinessWaitEnded(ctx, timeout, lastState)
 		case <-ticker.C:
 		}
 	}
+}
+
+// readinessWaitEnded is the error of a wait that ended without a verdict. The
+// caller's own cancellation or deadline is returned as it is. The wait's
+// timeout names the last state read, which is the only clue to why the
+// container never became ready, and does not wrap context.DeadlineExceeded:
+// the bridge task runner answers that error with "operation timed out" alone,
+// and the state would never reach the person who started the update.
+func readinessWaitEnded(ctx context.Context, timeout time.Duration, lastState string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return fmt.Errorf("container was not ready after %s, last state %s", timeout, lastState)
+}
+
+// describeContainerState puts what an inspection says about a container that
+// is not ready into one phrase: its status, how its last run ended when Docker
+// is restarting it, how often Docker restarted it and what its health check
+// reports.
+func describeContainerState(inspect container.InspectResponse) string {
+	state := inspect.State
+	if state == nil {
+		return "unavailable"
+	}
+	var details []string
+	// Only a container between two runs has an exit code that says anything:
+	// one that never ran and one that runs again both report 0.
+	if state.Restarting || strings.EqualFold(string(state.Status), "restarting") {
+		details = append(details, fmt.Sprintf("exit code %d", state.ExitCode))
+	}
+	if state.OOMKilled {
+		details = append(details, "out of memory")
+	}
+	if inspect.RestartCount > 0 {
+		details = append(details, fmt.Sprintf("restart count %d", inspect.RestartCount))
+	}
+	if state.Health != nil {
+		details = append(details, fmt.Sprintf("health %q", state.Health.Status))
+	}
+	if state.Error != "" {
+		details = append(details, fmt.Sprintf("error %q", state.Error))
+	}
+	description := fmt.Sprintf("%q", state.Status)
+	if len(details) > 0 {
+		description += " (" + strings.Join(details, ", ") + ")"
+	}
+	return description
 }
 
 func containerReady(inspect container.InspectResponse) (ready bool, terminal bool, err error) {

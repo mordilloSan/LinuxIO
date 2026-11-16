@@ -183,7 +183,11 @@ container listing, one-shot stats, version, host info and health inspection.
 The daemon retains its per-key CPU and network baselines, memory-cache
 subtraction, exclusion patterns and request deadlines. Docker 25 and newer
 and Podman use at most five concurrent stats requests; older Docker versions
-retain the batch behavior required by their one-shot stats endpoint.
+retain the batch behavior required by their one-shot stats endpoint. The
+stats pass samples the listed containers that are running or paused and skips
+the rest with a debug line: the list also returns a container Docker is
+restarting, which has no process between two runs, and asking for its stats
+logged an error on every cycle of a restart loop.
 
 ## HTTP API
 

@@ -14,11 +14,17 @@ import (
 )
 
 const (
-	dockerUpdateLockPath      = "/run/linuxio-docker-update.lock"
-	dockerUpdateLockWait      = 10 * time.Second
-	dockerUpdateLockPoll      = 250 * time.Millisecond
-	containerReadyTimeout     = 90 * time.Second
-	containerReadyPoll        = 500 * time.Millisecond
+	dockerUpdateLockPath  = "/run/linuxio-docker-update.lock"
+	dockerUpdateLockWait  = 10 * time.Second
+	dockerUpdateLockPoll  = 250 * time.Millisecond
+	containerReadyTimeout = 90 * time.Second
+	containerReadyPoll    = 500 * time.Millisecond
+	// containerRestartLimit is how many restarts by Docker's restart policy
+	// end the readiness wait. Docker retries a failing container after a
+	// delay that starts at 100 ms and doubles up to a minute, so a container
+	// that fails as it starts reaches the limit within seconds, and waiting
+	// out the timeout would only watch the same failure more slowly.
+	containerRestartLimit     = 3
 	standaloneRollbackTimeout = 30 * time.Second
 )
 

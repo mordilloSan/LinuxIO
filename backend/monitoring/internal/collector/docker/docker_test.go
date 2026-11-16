@@ -256,6 +256,33 @@ func TestStatsPipelineExcludesContainers(t *testing.T) {
 	assert.Equal(t, 1, statsCalls)
 }
 
+func TestStatsPipelineSkipsContainersThatAreNotRunning(t *testing.T) {
+	var statsCalls atomic.Int32
+	fixtureData := readFixture(t, "container.json")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1.51/containers/json":
+			fmt.Fprint(w, `[{"Id":"0000000000010001","Names":["/up"],"State":"running"},{"Id":"0000000000020002","Names":["/looping"],"State":"restarting"},{"Id":"0000000000030003","Names":["/frozen"],"State":"paused"}]`)
+		case "/v1.51/containers/0000000000010001/stats", "/v1.51/containers/0000000000030003/stats":
+			statsCalls.Add(1)
+			_, _ = w.Write(fixtureData)
+		default:
+			unexpectedRequest(t, w, r)
+		}
+	}))
+	defer server.Close()
+	dm := testManager(t, server, false)
+	dm.goodDockerVersion, dm.dockerVersionChecked = true, true
+	stats, err := dm.GetStats(context.Background(), defaultCacheTimeMs)
+	require.NoError(t, err)
+	names := make([]string, 0, len(stats))
+	for _, stat := range stats {
+		names = append(names, stat.Name)
+	}
+	assert.ElementsMatch(t, []string{"up", "frozen"}, names)
+	assert.EqualValues(t, 2, statsCalls.Load())
+}
+
 func TestStatsErrorIsRetriedAndDoesNotBreakCollection(t *testing.T) {
 	var statsCalls int
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

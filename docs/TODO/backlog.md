@@ -60,6 +60,37 @@ after a change that issues ioctls).
 
 ## Visible bugs
 
+Docker updates (`backend/common/dockerupdate`):
+
+- [ ] **A failed Compose update is not rolled back.** A standalone container
+  whose replacement does not become ready gets its original container back
+  (`rollbackAndClearStandalone`). A Compose service is updated by
+  `docker compose pull` and `up` (`updateComposeContainerWithRunner` in
+  `apply.go`), which removes the old container, so when the new one fails the
+  readiness wait the update is reported as failed and the service stays on the
+  new image, in a restart loop if that is how it fails. The old image is still
+  on the host, untagged, until it is pruned. A rollback would have to put the
+  tag back on that image and run `up` again, and it cannot do that for a
+  service with `pull_policy: always`, an image pinned by digest or a `build:`
+  section. Until then the way back is to pin the previous tag in the compose
+  file and bring the stack up. Checked.
+- [ ] **A container without a health check counts as ready the moment it
+  runs.** `containerReady` (`standalone.go`) accepts a running container with
+  no health check on the first read, so one that crashes a few seconds after
+  starting passes the wait, the backup of a standalone container is dropped,
+  and the restart loop begins after the update was reported as done. The
+  three-restart limit only catches a loop that starts before a read sees the
+  container running. A short settle time for containers without a health
+  check would close it. Checked.
+- [ ] **Three restarts fail an update even when the container would have
+  settled.** The readiness wait stops at `containerRestartLimit` restarts
+  counted from its first read and does not look again, so a container that
+  crashes three times while something it needs comes up, and would then run,
+  is reported as failed: a standalone container is rolled back to the old
+  image, and a Compose service is reported as failed although it may be
+  running on the new one (the next scheduled run then finds it stable).
+  Chosen over waiting the full 90 seconds on every restart loop. Checked.
+
 ## Tests that are missing
 
 - [ ] Not run in the test VM: an update that waits for jobs, started from the

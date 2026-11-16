@@ -206,6 +206,128 @@ func TestWaitForContainerReadyRetriesCreatedThenRunningHealthy(t *testing.T) {
 	}
 }
 
+func TestWaitForContainerReadyTimeoutNamesLastState(t *testing.T) {
+	starting := container.InspectResponse{
+		ID:           "replacement",
+		RestartCount: 1,
+		State:        &container.State{Status: "running", Running: true, Health: &container.Health{Status: "starting"}},
+	}
+	client := readinessClientFunc(func(context.Context) (container.InspectResponse, error) { return starting, nil })
+	_, err := waitForContainerReadyWithTiming(context.Background(), client, "replacement", 20*time.Millisecond, time.Millisecond)
+	// The bridge task runner replaces a deadline error with "operation timed
+	// out", which would hide the state from the person who started the update.
+	if err == nil || errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error = %v, want a timeout that is not a context deadline error", err)
+	}
+	for _, want := range []string{"not ready after 20ms", `last state "running" (restart count 1, health "starting")`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error = %q, want it to contain %q", err, want)
+		}
+	}
+}
+
+func TestWaitForContainerReadyTimeoutDuringInspectNamesLastState(t *testing.T) {
+	calls := 0
+	client := readinessClientFunc(func(ctx context.Context) (container.InspectResponse, error) {
+		calls++
+		if calls == 1 {
+			return container.InspectResponse{State: &container.State{Status: "created"}}, nil
+		}
+		<-ctx.Done()
+		return container.InspectResponse{}, ctx.Err()
+	})
+	_, err := waitForContainerReadyWithTiming(context.Background(), client, "replacement", 20*time.Millisecond, time.Millisecond)
+	if err == nil || !strings.Contains(err.Error(), `not ready after 20ms, last state "created"`) || strings.Contains(err.Error(), "exit code") {
+		t.Fatalf("error = %v, want a timeout naming the created state without an exit code", err)
+	}
+}
+
+func TestWaitForContainerReadyKeepsDaemonErrorAtTimeout(t *testing.T) {
+	daemonDown := errors.New("cannot connect to the Docker daemon")
+	client := readinessClientFunc(func(ctx context.Context) (container.InspectResponse, error) {
+		<-ctx.Done()
+		return container.InspectResponse{}, daemonDown
+	})
+	_, err := waitForContainerReadyWithTiming(context.Background(), client, "replacement", 20*time.Millisecond, time.Millisecond)
+	if !errors.Is(err, daemonDown) {
+		t.Fatalf("error = %v, want the daemon's error kept", err)
+	}
+}
+
+func TestWaitForContainerReadyReturnsCallerCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	client := readinessClientFunc(func(context.Context) (container.InspectResponse, error) {
+		cancel()
+		return container.InspectResponse{State: &container.State{Status: "created"}}, nil
+	})
+	_, err := waitForContainerReadyWithTiming(ctx, client, "replacement", time.Minute, time.Millisecond)
+	if !errors.Is(err, context.Canceled) || strings.Contains(err.Error(), "not ready after") {
+		t.Fatalf("error = %v, want the caller's cancellation alone", err)
+	}
+}
+
+func TestWaitForContainerReadyStopsWhenContainerKeepsRestarting(t *testing.T) {
+	restarting := func(restarts int) container.InspectResponse {
+		return container.InspectResponse{
+			ID:           "replacement",
+			RestartCount: restarts,
+			State:        &container.State{Status: "restarting", Running: true, Restarting: true, ExitCode: 127},
+		}
+	}
+	client := &sequenceReadinessClient{results: []container.InspectResponse{
+		{ID: "replacement", State: &container.State{Status: "created"}},
+		restarting(1),
+		restarting(2),
+		restarting(3),
+		readyContainer("replacement", "sha256:image"),
+	}}
+	_, err := waitForContainerReadyWithTiming(context.Background(), client, "replacement", time.Minute, time.Millisecond)
+	if err == nil {
+		t.Fatal("a container in a restart loop was reported ready")
+	}
+	for _, want := range []string{"keeps restarting: 3 restarts while waiting", `last state "restarting" (exit code 127, restart count 3)`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error = %q, want it to contain %q", err, want)
+		}
+	}
+	if len(client.results) != 1 {
+		t.Fatalf("remaining inspections = %d, want the wait to stop at the third restart", len(client.results))
+	}
+}
+
+func TestWaitForContainerReadyRefusesRunningContainerInRestartLoop(t *testing.T) {
+	running := func(restarts int) container.InspectResponse {
+		return container.InspectResponse{
+			ID:           "replacement",
+			RestartCount: restarts,
+			State:        &container.State{Status: "running", Running: true},
+		}
+	}
+	client := &sequenceReadinessClient{results: []container.InspectResponse{
+		{ID: "replacement", State: &container.State{Status: "created"}},
+		running(3),
+	}}
+	_, err := waitForContainerReadyWithTiming(context.Background(), client, "replacement", time.Minute, time.Millisecond)
+	if err == nil || !strings.Contains(err.Error(), "keeps restarting") {
+		t.Fatalf("error = %v, want a running container between two crashes refused", err)
+	}
+}
+
+func TestWaitForContainerReadyCountsRestartsFromFirstRead(t *testing.T) {
+	earlier := container.InspectResponse{
+		ID:           "kept",
+		RestartCount: 7,
+		State:        &container.State{Status: "running", Running: true, Health: &container.Health{Status: "starting"}},
+	}
+	ready := readyContainer("kept", "sha256:image")
+	ready.RestartCount = 9
+	client := &sequenceReadinessClient{results: []container.InspectResponse{earlier, ready}}
+	got, err := waitForContainerReadyWithTiming(context.Background(), client, "kept", time.Second, time.Millisecond)
+	if err != nil || got.ID != "kept" {
+		t.Fatalf("result = %+v, %v; want restarts before the wait ignored", got, err)
+	}
+}
+
 func TestValidateComposeServiceScopeRejectsReplicas(t *testing.T) {
 	fake := newStandaloneUpdateFake()
 	labels := map[string]string{
@@ -1049,6 +1171,17 @@ func (c *sequenceReadinessClient) ContainerInspect(
 	result := c.results[0]
 	c.results = c.results[1:]
 	return client.ContainerInspectResult{Container: result}, nil
+}
+
+type readinessClientFunc func(context.Context) (container.InspectResponse, error)
+
+func (f readinessClientFunc) ContainerInspect(
+	ctx context.Context,
+	_ string,
+	_ client.ContainerInspectOptions,
+) (client.ContainerInspectResult, error) {
+	inspect, err := f(ctx)
+	return client.ContainerInspectResult{Container: inspect}, err
 }
 
 func (f *fakeImagePullResponse) Read([]byte) (int, error) { return 0, io.EOF }
