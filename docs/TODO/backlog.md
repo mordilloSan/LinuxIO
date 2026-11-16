@@ -72,33 +72,9 @@ after a change that issues ioctls).
 
 Memory overflow ([Memory overflow](../memory.md)):
 
-- [ ] **A swap file whose `swapoff` outlasts systemd's stop timeout cannot be
-  stopped or drained from the UI.** A swap unit's stop runs `swapoff`, which
-  systemd kills after its stop timeout (90 seconds by default), and the device
-  stays active. The route now fails within a poll with "systemd stopped
-  waiting" (`waitStopped` in `backend/bridge/handlers/memory/executor.go`)
-  instead of waiting its ten minutes, but a full swap file on a slow disk still
-  cannot be emptied. Raising the timeout with a `/run` drop-in was left out: it
-  is more root state and the host behaviour is unverified. Checked.
-- [ ] **A `mixed` result carries no reason.** The page's "both are active,
-  apply again later" fits a room refusal, but a switch also ends `mixed` when
-  the device's unit is not one systemd runs, where retrying changes nothing: a
-  switch to zram with the active swap file not named in fstab or its unit not
-  reported running, and a switch away from zram that `zramswap.service` does
-  not run (set up by another tool, or the service `inactive` or `failed`). Add
-  the device that stayed and why to the result. Checked.
-- [ ] **A failed switch away from zram leaves zram's sysctls over disk swap.**
-  When the switch fails after zram was stopped, rollback puts the live sysctls
-  back to their earlier values, which are zram's, so the host runs disk swap
-  with swappiness 180 and the zram watermark values until a mode is applied
-  again. Checked.
 - [ ] **A change that finished is reported as failed when only the last status
   read fails.** The three routes return the status read after the change, and
   an error from that read fails the request though the host changed. Checked.
-- [ ] **A switch to zram that left only disk swap keeps zram's sysctls.** When
-  zram vanishes between `start_zram` and `stop_swap_file`, the file stays on
-  and the run succeeds, with swappiness 180 and the zram watermark values over
-  disk-only swap. Checked.
 - [ ] **A mode change can override an admin's value until reboot.** The kernel
   defaults of `page-cluster`, `watermark_boost_factor` and
   `watermark_scale_factor` are written live whenever the live value equals
@@ -114,12 +90,6 @@ Memory overflow ([Memory overflow](../memory.md)):
   two entries where the first is off and the second is on, `swap_file.active`
   is false while a swap file swaps: a switch to compressed memory skips its
   confirmation and ends `mixed`, and the btrfs warning does not show. Checked.
-- [ ] **`start_zram` never restarts `zramswap.service`.** With the service
-  active (exited) and no zram swapping, as after a `swapoff` by hand, the step
-  does nothing; with zram already running, which the package starts at install,
-  the new size in `/etc/default/zramswap` applies only after the service
-  restarts or the host reboots, and the page shows the old size. A restart
-  empties zram, so it needs the room check. Checked.
 - [ ] **`set_swap_mode` queues no start after a failed or cancelled stop.**
   Drain does, because a `swapoff` that outlives the route still ends the
   device. After a mode change gives up on `stop_swap_file`, the file can still
@@ -229,9 +199,10 @@ Docker updates (`backend/common/dockerupdate`):
   dev mode.
 - [ ] **The memory root test is narrow.** `TestMemoryIntegration`
   (`backend/bridge/handlers/memory/integration_test.go`) covers a switch to zram
-  and back; it does not cover zswap and its tmpfiles entry, swappiness, drain,
-  rollback, a stop timeout, TuneD or a reboot, and its cleanup restores the mode
-  but not the three files LinuxIO manages.
+  and back, the raised stop timeout and a restart of zram at the planned size;
+  it does not cover zswap and its tmpfiles entry, swappiness, drain, rollback,
+  a `swapoff` that runs past a timeout, TuneD or a reboot, and its cleanup
+  restores the mode but not the three files LinuxIO manages.
 - [ ] Not run in the test VM: an update that waits for jobs, started from the
   in-app updater. `control.app_update` installs only a published release, and
   no published release has a higher `jobs.Protocol` than v0.53.0, so
@@ -242,6 +213,14 @@ Docker updates (`backend/common/dockerupdate`):
 
 - [ ] **Memory overflow, checks never done on a host.** Try each in the test
   VM or on a machine, then fix the code or the doc, or delete the line:
+  - `TestMemoryIntegration` has not run since it began to check the raised
+    stop timeout of the swap file's unit, zram at the planned size, and a
+    switch to zram from a 64 MiB zram beside the swap file. Run
+    `make vm-reset` and then `make vm-test-memory-integration`. The restart
+    of a running zram and the stop timeout have run only against the fake
+    host until it passes. Not in that test: a `swapoff` that runs past 90
+    seconds with the timeout raised, and one still running when the timeout
+    is put back, which systemd should then end.
   - The `zram-generator` path has run only against the fake host. Run
     `make vm-reset` and then
     `make vm-test-memory-integration ZRAM_PROVIDER=zram-generator`, which uses
@@ -255,7 +234,8 @@ Docker updates (`backend/common/dockerupdate`):
     `set_swappiness` then writes a value TuneD overrides later) and that
     `zramswap` is found.
   - The fail-fast condition for a stop systemd gave up on: a `swapoff` longer
-    than the stop timeout should leave the swap unit `active` after it was
+    than the stop timeout, which is ten minutes while LinuxIO stops the unit,
+    should leave the swap unit `active` after it was
     `deactivating`, and a timed-out `zramswap stop` should leave the service
     `failed`. If systemd reports otherwise the wait runs to its ten minutes.
   - The error the kernel gives for a zswap compressor it does not have: the code
@@ -270,7 +250,10 @@ Docker updates (`backend/common/dockerupdate`):
     `dev-disk-by\x2duuid-<uuid>.swap` without reading its state, on the
     understanding that systemd marks that alias unit active from
     `/proc/swaps`. Check that it reads `active` while the partition swaps;
-    if so the drain can read its state as it does for a swap file.
+    if so the drain can read its state as it does for a swap file. Check
+    also that the raised stop timeout, a drop-in under that alias name,
+    applies to the partition's `swapoff`: the root test reads it only for a
+    swap file's unit.
 - [ ] **Nothing works below a folder link with an absolute target**
   (audit 36). A link such as `/home/u/data -> /mnt/data` is refused by Go's
   `os.Root` for any path that goes through it, and `iteminfo.ResolveSymlinksAt`

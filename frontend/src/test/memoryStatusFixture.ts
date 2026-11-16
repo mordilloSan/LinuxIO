@@ -1,4 +1,10 @@
-import type { SwapDevice, SwapFile, SwapStatus } from "@/api";
+import type {
+  SwapDevice,
+  SwapFile,
+  SwapLeft,
+  SwapModeResult,
+  SwapStatus,
+} from "@/api";
 
 const GIB = 1024 ** 3;
 
@@ -27,6 +33,12 @@ export const swapFile = (overrides: Partial<SwapFile> = {}): SwapFile => ({
   path: "/swap.img",
   ...overrides,
 });
+
+/** A mode change's result: the status after it and what it left as it was. */
+export const swapModeResult = (
+  status: SwapStatus,
+  left: SwapLeft[] = [],
+): SwapModeResult => ({ ...status, left });
 
 /** A healthy zram-only host with 16 GiB of RAM; each test overrides what it needs. */
 export const swapStatus = (

@@ -35,10 +35,11 @@ func TestMemoryWritesArePrivilegedMutations(t *testing.T) {
 	tests := []struct {
 		name         string
 		wantProgress bool
+		wantResult   reflect.Type
 	}{
-		{name: "memory.set_swap_mode", wantProgress: true},
-		{name: "memory.set_swappiness"},
-		{name: "memory.drain_swap", wantProgress: true},
+		{name: "memory.set_swap_mode", wantProgress: true, wantResult: reflect.TypeFor[apischema.SwapModeResult]()},
+		{name: "memory.set_swappiness", wantResult: reflect.TypeFor[apischema.SwapStatus]()},
+		{name: "memory.drain_swap", wantProgress: true, wantResult: reflect.TypeFor[apischema.SwapStatus]()},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -49,8 +50,8 @@ func TestMemoryWritesArePrivilegedMutations(t *testing.T) {
 			if got := route.Progress.GoType == progress; got != test.wantProgress {
 				t.Fatalf("progress = %v, want SwapProgress %v", route.Progress.GoType, test.wantProgress)
 			}
-			if route.Result.GoType != reflect.TypeFor[apischema.SwapStatus]() {
-				t.Fatalf("result = %v, want SwapStatus", route.Result.GoType)
+			if route.Result.GoType != test.wantResult {
+				t.Fatalf("result = %v, want %v", route.Result.GoType, test.wantResult)
 			}
 		})
 	}

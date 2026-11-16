@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
@@ -19,6 +20,14 @@ type hostSystem interface {
 	status(ctx context.Context) (apischema.SwapStatus, error)
 	startUnit(ctx context.Context, name string) error
 	stopUnit(ctx context.Context, name string) error
+	// restartUnit stops and starts a unit as one job; on a unit that is not
+	// running it is a start.
+	restartUnit(ctx context.Context, name string) error
+	// extendStopTimeout lets a swap unit's swapoff run for timeout before
+	// systemd kills it, until restoreStopTimeout puts the unit's own
+	// timeout back. Both return when systemd has taken the change.
+	extendStopTimeout(ctx context.Context, name string, timeout time.Duration) error
+	restoreStopTimeout(ctx context.Context, name string) error
 	enableUnit(ctx context.Context, name string) error
 	disableUnit(ctx context.Context, name string) error
 	maskUnit(ctx context.Context, name string) error
@@ -48,6 +57,25 @@ func (liveSystem) startUnit(ctx context.Context, name string) error {
 
 func (liveSystem) stopUnit(ctx context.Context, name string) error {
 	return systemd.StopUnit(ctx, name)
+}
+
+func (liveSystem) restartUnit(ctx context.Context, name string) error {
+	return systemd.RestartUnit(ctx, name)
+}
+
+func (s liveSystem) extendStopTimeout(ctx context.Context, name string, timeout time.Duration) error {
+	if err := s.root.writeStopTimeout(name, timeout); err != nil {
+		return err
+	}
+	return systemd.DaemonReload(ctx)
+}
+
+func (s liveSystem) restoreStopTimeout(ctx context.Context, name string) error {
+	removed, err := s.root.removeStopTimeout(name)
+	if err != nil || !removed {
+		return err
+	}
+	return systemd.DaemonReload(ctx)
 }
 
 func (liveSystem) enableUnit(ctx context.Context, name string) error {

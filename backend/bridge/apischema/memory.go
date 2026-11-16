@@ -68,6 +68,61 @@ const (
 	SwapDrainUnitMasked SwapDrainBlockedReason = "unit_masked"
 )
 
+// SwapLeftWhat names what a mode change left as it was.
+type SwapLeftWhat string
+
+const (
+	// SwapLeftSwapFile: the swap file still swaps, beside zram.
+	SwapLeftSwapFile SwapLeftWhat = "swap_file"
+	// SwapLeftZram: zram still swaps, beside disk swap.
+	SwapLeftZram SwapLeftWhat = "zram"
+	// SwapLeftZramSize: zram runs at the size it had, not the planned one.
+	SwapLeftZramSize SwapLeftWhat = "zram_size"
+)
+
+// SwapLeftReason says why a mode change left something as it was.
+type SwapLeftReason string
+
+const (
+	// SwapLeftNotEnoughMemory: the data on the device does not fit in free
+	// memory now. Applying again later can finish the change.
+	SwapLeftNotEnoughMemory SwapLeftReason = "not_enough_memory"
+	// SwapLeftZramNotSwapping: zram was not swapping when the swap file was
+	// to be stopped, which would have left the host without swap.
+	SwapLeftZramNotSwapping SwapLeftReason = "zram_not_swapping"
+	// SwapLeftUnitNotRunning: systemd does not report the device's unit
+	// running, so stopping the unit would not take the device away.
+	SwapLeftUnitNotRunning SwapLeftReason = "unit_not_running"
+	// SwapLeftNotIdentified: an active swap file could not be told from the
+	// one fstab names, so that file's unit was not masked.
+	SwapLeftNotIdentified SwapLeftReason = "not_identified"
+	// SwapLeftNotManaged: nothing LinuxIO manages runs the device. For a
+	// swap file, it is not the first one /etc/fstab names, the only one with
+	// a unit a change stops. For zram, it was set up by something other
+	// than the installed zram provider, or no provider is installed.
+	SwapLeftNotManaged SwapLeftReason = "not_managed"
+	// SwapLeftNoOtherSwap: restarting zram at the planned size would leave
+	// the host without swap meanwhile, since no disk swap is active.
+	SwapLeftNoOtherSwap SwapLeftReason = "no_other_swap"
+	// SwapLeftOtherSize: zram was restarted and its provider brought it
+	// back at another size than the planned one.
+	SwapLeftOtherSize SwapLeftReason = "other_size"
+)
+
+// SwapLeft is one thing a mode change left as it was, and why.
+type SwapLeft struct {
+	Reason SwapLeftReason `json:"reason"`
+	What   SwapLeftWhat   `json:"what"`
+}
+
+// SwapModeResult is memory.set_swap_mode's result: the host's status after
+// the change and what the change left as it was. Left is empty when the host
+// reached the mode in full.
+type SwapModeResult struct {
+	SwapStatus
+	Left []SwapLeft `json:"left"`
+}
+
 // SwapStep names one step of memory.set_swap_mode or memory.drain_swap, as
 // their progress reports it.
 type SwapStep string

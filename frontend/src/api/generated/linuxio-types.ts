@@ -3085,6 +3085,22 @@ export interface SwapFile {
   path: string;
 }
 
+export interface SwapLeft {
+  reason: SwapLeftReason;
+  what: SwapLeftWhat;
+}
+
+export type SwapLeftReason =
+  | "not_enough_memory"
+  | "zram_not_swapping"
+  | "unit_not_running"
+  | "not_identified"
+  | "not_managed"
+  | "no_other_swap"
+  | "other_size";
+
+export type SwapLeftWhat = "swap_file" | "zram" | "zram_size";
+
 export type SwapMode = "disk" | "zswap" | "zram" | "none" | "mixed";
 
 export interface SwapModePreset {
@@ -3094,6 +3110,34 @@ export interface SwapModePreset {
 
 export interface SwapModeRequest {
   mode: SwapMode;
+}
+
+export interface SwapModeResult {
+  can_drain: boolean;
+  devices: SwapDevice[];
+  drain_blocked_reason: SwapDrainBlockedReason;
+  mem_available: number;
+  mem_total: number;
+  mode: SwapMode;
+  page_cluster: number;
+  presets: SwapModePreset[];
+  recommended_mode: SwapMode;
+  recommended_swappiness: number;
+  swap_file?: SwapFile;
+  swap_total: number;
+  swap_used: number;
+  swappiness: number;
+  tuned_active: boolean;
+  tuned_profile: string;
+  watermark_boost_factor: number;
+  watermark_scale_factor: number;
+  zram_available: boolean;
+  zram_devices: ZramDevice[];
+  zram_planned_size: number;
+  zram_provider: ZramProvider;
+  zram_unavailable_reason: ZramUnavailableReason;
+  zswap: ZswapStatus;
+  left: SwapLeft[];
 }
 
 export interface SwapProgress {
@@ -4391,7 +4435,7 @@ export interface LinuxIOSchema {
     set_swap_mode: {
       input: [mode: SwapMode];
       request: SwapModeRequest;
-      result: SwapStatus;
+      result: SwapModeResult;
       progress: TaskProgress<SwapProgress>;
     };
     set_swappiness: {

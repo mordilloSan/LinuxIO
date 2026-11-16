@@ -157,11 +157,67 @@ func (s *fakeSystem) stopUnit(ctx context.Context, name string) error {
 	})
 }
 
+// restartUnit stops and starts the unit at once, as zramswap.service does
+// when nothing swaps on its device.
+func (s *fakeSystem) restartUnit(ctx context.Context, name string) error {
+	return s.unitDo(ctx, "restart "+name, func() error {
+		s.swapOff(name)
+		s.swapOn(name)
+		return nil
+	})
+}
+
+// The stop timeout calls are recorded as timeout calls, which assertCalls
+// leaves out: every stop of a swap unit is wrapped in the two.
+const (
+	raiseTimeoutCall   = "raise timeout "
+	restoreTimeoutCall = "restore timeout "
+)
+
+func (s *fakeSystem) extendStopTimeout(ctx context.Context, name string, timeout time.Duration) error {
+	return s.unitDo(ctx, raiseTimeoutCall+name, func() error { return s.f.host().writeStopTimeout(name, timeout) })
+}
+
+func (s *fakeSystem) restoreStopTimeout(ctx context.Context, name string) error {
+	return s.unitDo(ctx, restoreTimeoutCall+name, func() error {
+		_, err := s.f.host().removeStopTimeout(name)
+		return err
+	})
+}
+
+// zramUnit reports whether name is a unit that sets zram up.
+func zramUnit(name string) bool {
+	return name == zramService || name == zramGeneratorSwapUnit
+}
+
+// configuredZramSize is the disksize the provider's configuration asks for,
+// or 0 when it names none.
+func (s *fakeSystem) configuredZramSize() uint64 {
+	path, key := zramswapConfigPath, "SIZE="
+	if s.provider == apischema.ZramProviderGenerator {
+		path, key = zramGeneratorConfigPath, "zram-size = "
+	}
+	if !s.f.exists(path) {
+		return 0
+	}
+	for line := range strings.Lines(s.f.read(path)) {
+		if value, ok := strings.CutPrefix(strings.TrimSpace(line), key); ok {
+			n, _ := strconv.ParseUint(value, 10, 64)
+			return n << 20
+		}
+	}
+	return 0
+}
+
 func (s *fakeSystem) swapOn(name string) {
 	if line, ok := s.devices[name]; ok && !s.stuck[name] {
 		swaps := s.f.read(procSwaps)
 		if !strings.Contains(swaps, line) {
 			s.f.write(procSwaps, swaps+line)
+			// The device is made at the size its configuration gives.
+			if size := s.configuredZramSize(); zramUnit(name) && size > 0 {
+				s.f.write("/sys/block/zram0/disksize", strconv.FormatUint(size, 10)+"\n")
+			}
 		}
 		s.activeStates[name] = "active"
 		s.bindSetupUnit(name, "active")
@@ -320,7 +376,9 @@ func diskHost(t *testing.T) (fixture, *fakeSystem) {
 	f.write("/sys/module/zswap/parameters/max_pool_percent", "20\n")
 	f.write("/sys/block/zram0/disksize", "0\n")
 	f.write(zramswapConfigPath, zramswapPackageDefault)
-	return f, newFakeSystem(f)
+	sys := newFakeSystem(f)
+	sys.activeStates[zramService] = "inactive"
+	return f, sys
 }
 
 // zramHost is diskHost after a switch to zram: zram0 swapping 256 MiB, the
@@ -341,6 +399,7 @@ func zramHost(t *testing.T) (fixture, *fakeSystem) {
 	})))
 	f.write(zramswapConfigPath, string(renderZramswapConfig(7963*mib)))
 	sys.fileStates[zramService] = "enabled"
+	sys.activeStates[zramService] = "active"
 	sys.fileStates["swap.img.swap"] = "masked"
 	f.maskInFixture("swap.img.swap")
 	return f, sys

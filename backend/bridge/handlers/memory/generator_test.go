@@ -229,8 +229,14 @@ func TestSetSwapModeWithTheGeneratorRestoresTheConfigurationAfterAStop(t *testin
 	if strings.Contains(f.read(procSwaps), "/dev/zram0") || slices.Contains(sys.calls, "start "+zramGeneratorSwapUnit) {
 		t.Errorf("calls = %v, want zram left stopped", sys.calls)
 	}
-	if sys.calls[len(sys.calls)-1] != "reload" {
-		t.Errorf("last call = %q, want the reload after the files came back", sys.calls[len(sys.calls)-1])
+	restored := slices.Index(sys.calls, "write "+zramGeneratorConfigPath)
+	for i, call := range sys.calls {
+		if call == "write "+zramGeneratorConfigPath {
+			restored = i
+		}
+	}
+	if restored < 0 || !slices.Contains(sys.calls[restored:], "reload") {
+		t.Errorf("calls = %v, want a reload after the configuration came back", sys.calls)
 	}
 }
 

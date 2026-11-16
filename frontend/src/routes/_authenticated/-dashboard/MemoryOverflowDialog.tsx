@@ -25,7 +25,7 @@ import {
   bannerView,
   canApply,
   initialSelection,
-  mixedResultMessage,
+  modeResultWarning,
   needsSwapFileConfirm,
   presetSwappiness,
   rowName,
@@ -205,8 +205,7 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
   const setMode = linuxio.memory.set_swap_mode.useMutation({
     onProgress: (progress) => setProgressMessage(progress.message ?? null),
     success: "Memory overflow setting applied",
-    warning: (result, request) =>
-      result.mode === request.mode ? null : mixedResultMessage(result),
+    warning: (result, request) => modeResultWarning(result, request.mode),
     error: "Failed to change how memory runs out",
     toast: DASHBOARD_TOAST_META,
     options: {

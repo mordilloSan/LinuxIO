@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   swapFile,
   swapFileDevice,
+  swapModeResult,
   swapStatus,
   zramDevice,
 } from "@/test/memoryStatusFixture";
@@ -11,7 +12,7 @@ import {
   bannerView,
   canApply,
   initialSelection,
-  mixedResultMessage,
+  modeResultWarning,
   needsSwapFileConfirm,
   presetSwappiness,
   rowViews,
@@ -381,29 +382,78 @@ describe("presetSwappiness", () => {
   });
 });
 
-describe("mixedResultMessage", () => {
-  it("says there is not enough room when LinuxIO could have stopped the file", () => {
-    const message =
-      "Not enough free memory to finish the switch. Both are active for now; apply again later.";
+describe("modeResultWarning", () => {
+  it("is null when the host reached the mode and nothing was left", () => {
     expect(
-      mixedResultMessage(swapStatus({ mode: "mixed", swap_file: swapFile() })),
-    ).toBe(message);
-    expect(mixedResultMessage(swapStatus({ mode: "mixed" }))).toBe(message);
-    expect(
-      mixedResultMessage(
-        swapStatus({ mode: "mixed", swap_file: swapFile({ active: false }) }),
-      ),
-    ).toBe(message);
+      modeResultWarning(swapModeResult(swapStatus({ mode: "zram" })), "zram"),
+    ).toBeNull();
   });
 
-  it("says LinuxIO left an active swap file that fstab does not name", () => {
+  it.each([
+    [
+      "swap_file",
+      "not_enough_memory",
+      "Not enough free memory to bring back the data in the swap file, so it stays on. Apply again when more memory is free.",
+    ],
+    [
+      "swap_file",
+      "unit_not_running",
+      "systemd does not run the swap file's unit, so LinuxIO left the swap file on. Applying again will not change that.",
+    ],
+    [
+      "swap_file",
+      "not_managed",
+      "A swap file that LinuxIO does not manage is still on. LinuxIO turns off only the first swap file in /etc/fstab.",
+    ],
+    [
+      "zram",
+      "not_managed",
+      "Compressed memory is still on: it is not run by a zram tool that LinuxIO manages.",
+    ],
+    [
+      "zram_size",
+      "other_size",
+      "Compressed memory was restarted and came back at another size than planned. Check the zram tool's configuration.",
+    ],
+    [
+      "zram_size",
+      "not_enough_memory",
+      "Compressed memory keeps its current size: not enough free memory to restart it. Apply again when more memory is free.",
+    ],
+  ] as const)("says why %s was left for %s", (what, reason, text) => {
     expect(
-      mixedResultMessage(
-        swapStatus({
-          mode: "mixed",
-          swap_file: swapFile({ managed: false }),
-        }),
+      modeResultWarning(
+        swapModeResult(swapStatus({ mode: "mixed" }), [{ reason, what }]),
+        "zram",
       ),
-    ).toBe("The swap file is not in /etc/fstab, so LinuxIO left it on.");
+    ).toBe(text);
+  });
+
+  it("gives every reason when more than one thing was left", () => {
+    expect(
+      modeResultWarning(
+        swapModeResult(swapStatus({ mode: "mixed" }), [
+          { reason: "not_managed", what: "zram_size" },
+          { reason: "zram_not_swapping", what: "swap_file" },
+        ]),
+        "zram",
+      ),
+    ).toBe(
+      "Compressed memory keeps its current size: it is not run by a zram tool that LinuxIO manages. Compressed memory is not running, so the swap file stays on.",
+    );
+  });
+
+  it("still warns for a pair it has no text for, and for another mode with no reason", () => {
+    expect(
+      modeResultWarning(
+        swapModeResult(swapStatus({ mode: "mixed" }), [
+          { reason: "no_other_swap", what: "swap_file" },
+        ]),
+        "zram",
+      ),
+    ).toBe("Part of the change was not applied.");
+    expect(
+      modeResultWarning(swapModeResult(swapStatus({ mode: "disk" })), "zram"),
+    ).toBe("The host did not reach this setting. Apply again.");
   });
 });

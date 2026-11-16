@@ -11,10 +11,8 @@ import (
 // swapStep is one step of a mode change.
 type swapStep struct {
 	code apischema.SwapStep
-	// run is, for start_zram, whether zram's unit is started as well as set
-	// to start at boot (not when zram already swaps, since a restart empties
-	// it) and, for stop_zram, whether it is stopped as well as turned off at
-	// boot.
+	// run is, for stop_zram, whether zram is stopped as well as turned off
+	// at boot.
 	run bool
 	// unit and path are the swap file's unit and path for stop_swap_file and
 	// start_swap_file.
@@ -47,7 +45,7 @@ func planSwapMode(v swapView, target apischema.SwapMode) ([]swapStep, error) {
 		}
 		steps := []swapStep{
 			{code: apischema.SwapStepWriteConfig},
-			{code: apischema.SwapStepStartZram, run: !zramRunning},
+			{code: apischema.SwapStepStartZram},
 			{code: apischema.SwapStepApplySysctls},
 			{code: apischema.SwapStepDisableZswap},
 		}

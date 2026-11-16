@@ -144,7 +144,10 @@ a host with neither zram tool is `zram_available: false` with an empty
 `memory.set_swap_mode` takes `disk`, `zswap` or `zram`; any other value is
 `ErrInvalidArgs`. It runs as a task and reports each step as it starts
 (`SwapProgress`: step code, 1-based index of total, and the device for a
-drain). The dialog shows the step's message while it runs.
+drain). The dialog shows the step's message while it runs. Its result
+(`SwapModeResult`) is the status after the change plus `left`: what the
+change left as it was and why (see
+[What a change leaves as it was](#what-a-change-leaves-as-it-was)).
 
 It refuses before anything changes, with `ErrConflict`, a mode the host cannot
 take: zram without a zram tool or with a swap partition active; zswap on a
@@ -161,11 +164,27 @@ To `zram`:
 
 1. `write_config`: write the zram provider's configuration and the sysctl
    drop-in.
-2. `start_zram`: set zram to start at boot, start its unit and wait for a
-   zram device in `/proc/swaps` (up to a minute). Already-running zram is not
-   restarted, since a restart empties it, so the configuration just written
-   applies at the next restart of the unit. What "at boot" and "its unit" mean
-   depends on the [zram provider](#the-zram-provider).
+2. `start_zram`: set zram to start at boot and make it swap at the planned
+   size, waiting for a zram device in `/proc/swaps` (up to a minute). What
+   "at boot" and "its unit" mean depends on the
+   [zram provider](#the-zram-provider). On a status read in the step:
+   - no zram swaps: the unit is started. `zramswap.service` that reads active
+     with nothing swapping, as after a `swapoff` by hand, is restarted, since
+     a start would do nothing;
+   - zram swaps at the planned size (in whole MiB, as the configuration
+     gives it): nothing is done, since a restart empties it;
+   - zram swaps at another size, as the device zram-tools starts when the
+     package is installed: the unit is stopped, waited for and started again,
+     so the configuration just written applies. This takes zram away for a
+     moment, so it is done only when that zram is the provider's one device,
+     a swap file or partition is active, and zram's data fits (see
+     [Room for what comes back](#room-for-what-comes-back)). Otherwise zram
+     keeps its size until its unit next restarts, and the result says so.
+     Once zram is stopped, bringing it back is not cancelled with the
+     request, and a stop that fails or is not waited out queues a start
+     behind it, as a drain does. A device whose size cannot be read is left
+     alone. A start that fails leaves the host on its disk swap, and the run
+     fails.
 3. `apply_sysctls`: write the preset live.
 4. `disable_zswap`: turn zswap off and keep it off at boot (see below).
 5. `stop_swap_file`: when the file is named in fstab, stop its unit, wait for
@@ -220,10 +239,11 @@ the start of the request: the data to bring back plus a 512 MiB margin must be
 below `MemAvailable`.
 
 - Stopping the swap file: the file's used bytes.
-- Stopping zram: the data in the zram devices (the larger of the device's
-  swap use and its stored original size, which also counts pages filled with
-  one value). While zram empties, the kernel may also push pages to disk swap,
-  so the free space on disk swap devices counts as room.
+- Stopping zram, or restarting it at the planned size: the data in the zram
+  devices (the larger of the device's swap use and its stored original size,
+  which also counts pages filled with one value). While zram empties, the
+  kernel may also push pages to disk swap, so the free space on disk swap
+  devices counts as room.
 - Draining: the used bytes of the device being drained.
 
 Stopping the swap file also needs a zram device swapping in that same fresh
@@ -231,19 +251,52 @@ read. Zram was seen at the start of the run, but if it has gone since, stopping
 the file would leave no swap at all, so the file stays on and the run
 still succeeds, with the host in disk mode.
 
-When a removal is refused for lack of room the step ends without an error and
-the swap device stays active: the result of the request is then `mixed`, the
-success log line says which one stayed (`swap_file_left_active`,
-`zram_left_active`), and the dialog shows a warning and keeps the chosen row so
-Apply can be pressed again later. `mixed` carries no reason beyond the
-devices; the dialog's warning says the swap file is not in `/etc/fstab` when the
-result has an active swap file that is not managed, and that memory was short
-otherwise. It is also what a switch leaves when the device's unit is not one
-systemd runs: a switch to zram when the active swap file is not named in fstab,
-or when systemd does not report the file's unit running, and a switch away from
-zram when zram is not run by the provider's unit, or, with `zram-generator`,
-when a zram device other than `zram0` swaps. Applying again changes nothing
-in those cases.
+### What a change leaves as it was
+
+A step that cannot safely take a device away ends without an error and leaves
+it. The request then succeeds, and its result lists each thing left in `left`,
+as `what` and `reason`. The dialog shows the reasons in a warning in place of
+the success message, and keeps the chosen row so Apply can be pressed again.
+
+| `what` | `reason` | When |
+|---|---|---|
+| `swap_file` | `not_enough_memory` | The file's data does not fit in memory. Applying again later can finish. |
+| `swap_file` | `zram_not_swapping` | No zram device swaps when the file would stop. |
+| `swap_file` | `unit_not_running` | systemd does not report the file's unit running, so a stop would not take the file away. |
+| `swap_file` | `not_identified` | The fstab file is off, but an active swap file cannot be resolved and may be it, so the unit is not masked. |
+| `swap_file` | `not_managed` | A swap file other than the first one fstab names still swaps: no step stops it. |
+| `zram` | `not_enough_memory` | zram's data does not fit in memory and free disk swap. |
+| `zram` | `not_managed` | The provider's unit does not run that zram (another tool set it up, the unit is `inactive` or `failed`, with `zram-generator` a device other than `zram0` swaps), or no provider is installed. |
+| `zram_size` | `not_enough_memory`, `not_managed` | zram runs at another size than planned and cannot be restarted for that reason. |
+| `zram_size` | `no_other_swap` | The same, and no swap file or partition is active: a restart would leave the host without swap meanwhile, and with none at all if the start failed. |
+| `zram_size` | `other_size` | zram was restarted and its provider brought it back at another size than planned, as when a drop-in overrides the size. Every later change would restart it again. |
+
+A device left active beside the other kind makes the mode `mixed`, and a
+`mixed` result always has a reason: `not_managed`, for the swap file or for
+zram, is added after the run when no step left the device that stayed. `zram_size`
+does not make the mode `mixed`. The success log line says what stayed
+(`swap_file_left_active`, `zram_left_active`, `zram_size_kept`). Applying
+again helps only for `not_enough_memory`.
+
+### Sysctls follow the mode the host ends in
+
+The run writes the target mode's sysctls, and a rollback puts back the ones
+from before. Neither is right when the host ends in another mode, which
+happens because swap is never undone: zram that went away before the swap
+file would stop leaves disk swap only, and a switch away from zram that fails
+after zram stopped does too. So after the last step, and after a rollback, the
+status is read again, and when the host is in `disk`, `zswap` or `zram` and
+the live sysctls are another mode's, that mode's preset is written live
+(`settleSysctls`). This keeps swappiness 180 and zram's readahead off a host
+that swaps to disk only, and disk's values off a host that ended on zram
+only. A host left `mixed` keeps the sysctls it has.
+
+Only the live values are settled. The drop-in stays as the run or the
+rollback left it, because it belongs with what the next boot starts: the
+zram unit's enablement, its configuration and the swap unit's mask, which
+the run set for the target or the rollback put back. After a successful run
+a failure to write the live values is logged and does not fail the request;
+after a rollback it is joined into the error.
 
 ### Rollback
 
@@ -267,10 +320,9 @@ the old content back is harmless when the write did not land.
 
 Rollback **never undoes added swap**. Zram that is swapping and a swap file that
 was started stay, and swap that a passed room check removed is not started
-again. A failed run therefore ends with at least the swap it started with.
-One consequence: when a switch away from zram fails after zram was stopped,
-the live sysctls go back to zram's values, so the host runs disk swap with
-swappiness 180 until a mode is applied again.
+again. A failed run therefore ends with swap: what it started with, less
+what a room check let it take away while other swap was active. The sysctls
+then follow the mode the host ended in (see above).
 
 ### One change at a time
 
@@ -379,9 +431,26 @@ back.
 
 A swap unit's stop runs `swapoff`, which reads every swapped page back and can
 take minutes. Waits are bounded: a minute for a device to appear in
-`/proc/swaps`, ten minutes for one to leave, polled every 250 ms. LinuxIO does
-not raise systemd's own stop timeout for the unit (90 seconds by default),
-which kills a `swapoff` or a `zramswap stop` that outlives it.
+`/proc/swaps`, ten minutes for one to leave, polled every 250 ms.
+
+**The stop timeout of a swap unit is raised for the stop.** systemd kills a
+swap unit's `swapoff` after the unit's timeout, 90 seconds by default
+(`DefaultTimeoutStartSec`), which a full swap file on a slow disk outlasts.
+A swap unit has one timeout, `TimeoutSec=` in `[Swap]`, and systemd arms it
+for `swapoff` as for `swapon` (`swap_spawn` in systemd's `src/core/swap.c`).
+So before a mode change or a drain stops the unit of a swap file or
+partition that holds data, it writes
+`/run/systemd/system/<unit>.d/90-linuxio-stop-timeout.conf` with `TimeoutSec`
+set to its own ten-minute wait and reloads systemd, and after the wait it
+removes the file and reloads again, past a cancelled request
+(`stopSwapUnit`). A device that holds nothing leaves at once and is stopped
+without the two reloads. A timeout that cannot be raised is logged and does
+not hold the stop back: the unit then stops within systemd's own.
+Putting the timeout back while a `swapoff` still runs, after the route gave
+up or was cancelled, lets systemd end that `swapoff` at the unit's usual
+timeout, counted from the start of the stop. The file is under `/run`, so one
+left by a bridge that died is gone at the next boot. zram's units keep their
+timeout: emptying zram moves pages inside memory.
 
 While waiting for a device to leave, the unit's state is watched too, and the
 wait ends early with an error, the device still in `/proc/swaps`, when:
@@ -416,6 +485,9 @@ symlink) and mode `0644`.
 | `/etc/tmpfiles.d/linuxio-zswap.conf` | every mode, on a kernel with zswap | For `zswap`, `w` lines setting zswap's `compressor` and `enabled` (`Y`) at boot. For `zram` and `disk`, one `w` line setting `enabled` to `N`, so a kernel that starts with zswap on does not return to it. |
 | `/etc/default/zramswap` | `zram`, with zram-tools | zram-tools' configuration: `ALGO=zstd`, `SIZE=<MiB>`, `PRIORITY=100`. It is a package conffile, so the next package upgrade asks about the change. |
 | `/etc/systemd/zram-generator.conf` | `zram`, and leaving zram, with zram-generator | For `zram`: one `[zram0]` section with `zram-size = <MiB>`, `compression-algorithm = zstd` and `swap-priority = 100`. Leaving zram: comments only, so the generator makes no device. Either way it replaces what was there, and takes the place of the file a package puts in `/usr/lib/systemd`. |
+
+For the length of a stop, `/run/systemd/system/<unit>.d/90-linuxio-stop-timeout.conf`
+raises the swap unit's timeout (see [Waiting on systemd](#waiting-on-systemd)).
 
 Besides these, systemd keeps the mask of the swap unit as a symlink in
 `/etc/systemd/system`, and with zram-tools `zramswap.service` is enabled or
@@ -517,8 +589,11 @@ service step, since `start_zram` does that. See
   transition and refusal, each step, rollback (including a cancelled request, a
   write that lands and then errors, and a stop that never completes), the room
   checks, drain, the fail-fast and slow-success waits, a stop left out for a
-  unit systemd does not report running, and the status and route agreement for
-  masked units. `escape_test.go` pins the unit-name
+  unit systemd does not report running, the reason reported for each thing
+  left, zram restarted at the planned size or kept at its own (and brought
+  back after a cancel or a failed stop), the live sysctls after a run that
+  ended in another mode, the stop timeout raised and put back, and the status
+  and route agreement for masked units. `escape_test.go` pins the unit-name
   escaping. Run with `make test-go-quiet GO_TEST_PKGS=./bridge/handlers/memory`.
 - Frontend: `memoryStatusView.test.ts` and `MemoryOverflowDialog.test.tsx`
   (the real generated client with the calls mocked), and `Memory.test.tsx` for
@@ -530,9 +605,14 @@ service step, since `start_zram` does that. See
   `zram` with zswap off, swappiness 180 (unless TuneD runs), the three zram
   sysctls, the swap file's unit masked, `zramswap.service` enabled and the
   configuration holding `ALGO=zstd`; after the return, the swap file active, no
-  zram swapping, its unit unmasked and `zramswap.service` disabled. Cleanup
-  switches back to the starting mode. It does not cover zswap's persistence,
-  swappiness, drain, rollback, systemd's stop timeout, TuneD or a reboot.
+  zram swapping, its unit unmasked and `zramswap.service` disabled. After
+  zram it also checks that zram has the planned size and that no stop timeout
+  drop-in is left. It then checks that systemd reports the raised timeout for
+  the swap file's unit and the unit's own once it is put back, starts a
+  64 MiB zram beside the swap file and switches to zram again, which must end
+  at the planned size. Cleanup switches back to the starting mode. It does
+  not cover zswap's persistence, swappiness, drain, rollback, a `swapoff`
+  that runs past a timeout, TuneD or a reboot.
   `make vm-test-memory-integration ZRAM_PROVIDER=zram-generator`, after
   `make vm-reset`, runs the same test with Ubuntu's `systemd-zram-generator`
   in place of zram-tools: after zram it checks the `[zram0]` configuration
@@ -544,14 +624,14 @@ service step, since `start_zram` does that. See
 Each is by design or unlikely to be met, or is an open item in
 [the backlog](./TODO/backlog.md).
 
-- A swap file whose `swapoff` outlasts systemd's stop timeout cannot be
-  stopped or drained from the UI.
-- A `mixed` result gives no reason.
+- A swap file whose `swapoff` takes more than ten minutes cannot be stopped
+  or drained from the UI: the wait and the raised timeout end there.
 - A swap partition or a swap device fstab does not name is never stopped, so
   such a host cannot choose compressed memory only (partition) or have the
   device drained (unnamed).
-- A host with zram already running keeps its old zram size until the service
-  restarts.
+- zram that runs at another size than planned with no disk swap active keeps
+  its size until its unit restarts or the host reboots, and the result of the
+  change says so.
 - The `zram-generator` path was built from upstream's documentation and unit
   files and has not run on Fedora or RHEL; drop-ins in
   `zram-generator.conf.d` are not read.
@@ -561,5 +641,7 @@ Each is by design or unlikely to be met, or is an open item in
 - On a kernel where zswap failed to start, the tmpfiles line that turns zswap
   off may fail at each boot and leave a line in the journal. Not checked on a
   host.
+- When systemd cannot be reloaded after a stop, the swap unit keeps the
+  ten-minute timeout in systemd's memory until the next reload.
 - The overflow alert is not built
   ([Memory overflow](./TODO/memory-overflow.md)).

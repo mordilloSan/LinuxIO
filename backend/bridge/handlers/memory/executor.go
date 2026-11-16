@@ -105,6 +105,39 @@ func (e *executor) waitStopped(ctx context.Context, unit, device string, gone fu
 	})
 }
 
+// stopSwapUnit stops the unit of a swap file or partition holding used
+// bytes and waits for device to leave /proc/swaps. Stopping a swap unit runs
+// swapoff, which systemd kills after the unit's timeout, 90 seconds by
+// default, while a full swap file on a slow disk takes minutes to read
+// back. So for a device that holds data the unit's timeout is raised to
+// this wait's own bound for the length of the stop, with a drop-in under
+// /run, and put back afterwards, past a cancelled request. Putting it back
+// while a swapoff still runs lets systemd end that swapoff at its usual
+// timeout, which is what giving up on the stop means. A timeout that cannot
+// be raised does not hold the stop back: the unit then stops within
+// systemd's own.
+func (e *executor) stopSwapUnit(ctx context.Context, unit, device string, used uint64, gone func() (bool, error)) error {
+	if used > 0 {
+		defer func() {
+			restoreCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
+			defer cancel()
+			if err := e.sys.restoreStopTimeout(restoreCtx, unit); err != nil {
+				slog.Warn("restore swap unit stop timeout failed", "unit", unit, "error", err)
+			}
+		}()
+		if err := e.sys.extendStopTimeout(ctx, unit, e.waits.swapOff); err != nil {
+			slog.Warn("raise swap unit stop timeout failed", "unit", unit, "error", err)
+		}
+	}
+	if err := e.sys.stopUnit(ctx, unit); err != nil {
+		return fmt.Errorf("stop %s: %w", unit, err)
+	}
+	if err := e.waitStopped(ctx, unit, device, gone); err != nil {
+		return fmt.Errorf("wait for %s to leave %s: %w", device, procSwaps, err)
+	}
+	return nil
+}
+
 // unitNotRunning reports whether systemd says unit is inactive or failed.
 // A stop of such a unit does nothing, so the device it should take away
 // would stay and the wait would run to its bound; this happens for zram set

@@ -6,6 +6,7 @@ import { linuxio } from "@/api";
 import {
   swapFile,
   swapFileDevice,
+  swapModeResult,
   swapStatus,
   zramDevice,
 } from "@/test/memoryStatusFixture";
@@ -125,7 +126,7 @@ beforeEach(() => {
 
 describe("MemoryOverflowDialog banner", () => {
   it("offers compressed memory when nothing absorbs overflow", async () => {
-    mocks.results["memory.set_swap_mode"] = swapStatus();
+    mocks.results["memory.set_swap_mode"] = swapModeResult(swapStatus());
     const { user } = await renderSection(
       swapStatus({ devices: [], mode: "none", swappiness: 60 }),
     );
@@ -557,10 +558,9 @@ describe("MemoryOverflowDialog apply", () => {
   });
 
   it("sends the selected mode without a dialog for zswap", async () => {
-    mocks.results["memory.set_swap_mode"] = diskStatus({
-      mode: "zswap",
-      swappiness: 60,
-    });
+    mocks.results["memory.set_swap_mode"] = swapModeResult(
+      diskStatus({ mode: "zswap", swappiness: 60 }),
+    );
     const { user } = await renderSection(diskStatus());
 
     await user.click(radio("Compressed memory with the disk as backup"));
@@ -582,7 +582,7 @@ describe("MemoryOverflowDialog apply", () => {
   });
 
   it("confirms before turning zram on over an active swap file", async () => {
-    mocks.results["memory.set_swap_mode"] = swapStatus();
+    mocks.results["memory.set_swap_mode"] = swapModeResult(swapStatus());
     const { user } = await renderSection(diskStatus());
 
     await user.click(radio("Compressed memory only"));
@@ -624,7 +624,7 @@ describe("MemoryOverflowDialog apply", () => {
   });
 
   it("does not ask when zram goes on and no swap file is active", async () => {
-    mocks.results["memory.set_swap_mode"] = swapStatus();
+    mocks.results["memory.set_swap_mode"] = swapModeResult(swapStatus());
     const { user } = await renderSection(
       diskStatus({
         devices: [],
@@ -641,7 +641,7 @@ describe("MemoryOverflowDialog apply", () => {
   });
 
   it("does not ask before zram when the active swap file is not in fstab", async () => {
-    mocks.results["memory.set_swap_mode"] = swapStatus();
+    mocks.results["memory.set_swap_mode"] = swapModeResult(swapStatus());
     const { user } = await renderSection(
       diskStatus({ swap_file: swapFile({ managed: false }) }),
     );
@@ -654,11 +654,14 @@ describe("MemoryOverflowDialog apply", () => {
   });
 
   it("says LinuxIO left a swap file that fstab does not name when the switch ends mixed", async () => {
-    mocks.results["memory.set_swap_mode"] = swapStatus({
-      devices: [zramDevice, swapFileDevice(GIB)],
-      mode: "mixed",
-      swap_file: swapFile({ managed: false }),
-    });
+    mocks.results["memory.set_swap_mode"] = swapModeResult(
+      swapStatus({
+        devices: [zramDevice, swapFileDevice(GIB)],
+        mode: "mixed",
+        swap_file: swapFile({ managed: false }),
+      }),
+      [{ reason: "not_managed", what: "swap_file" }],
+    );
     const { user } = await renderSection(
       diskStatus({ swap_file: swapFile({ managed: false }) }),
     );
@@ -668,7 +671,7 @@ describe("MemoryOverflowDialog apply", () => {
 
     await waitFor(() =>
       expect(mocks.toast.warning).toHaveBeenCalledWith(
-        "The swap file is not in /etc/fstab, so LinuxIO left it on.",
+        "A swap file that LinuxIO does not manage is still on. LinuxIO turns off only the first swap file in /etc/fstab.",
         undefined,
       ),
     );
@@ -676,11 +679,14 @@ describe("MemoryOverflowDialog apply", () => {
   });
 
   it("warns when the switch could not finish", async () => {
-    mocks.results["memory.set_swap_mode"] = swapStatus({
-      devices: [zramDevice, swapFileDevice(GIB)],
-      mode: "mixed",
-      swap_file: swapFile(),
-    });
+    mocks.results["memory.set_swap_mode"] = swapModeResult(
+      swapStatus({
+        devices: [zramDevice, swapFileDevice(GIB)],
+        mode: "mixed",
+        swap_file: swapFile(),
+      }),
+      [{ reason: "not_enough_memory", what: "swap_file" }],
+    );
     const { user } = await renderSection(
       diskStatus({ devices: [swapFileDevice()] }),
     );
@@ -693,7 +699,7 @@ describe("MemoryOverflowDialog apply", () => {
 
     await waitFor(() =>
       expect(mocks.toast.warning).toHaveBeenCalledWith(
-        "Not enough free memory to finish the switch. Both are active for now; apply again later.",
+        "Not enough free memory to bring back the data in the swap file, so it stays on. Apply again when more memory is free.",
         undefined,
       ),
     );
@@ -703,6 +709,24 @@ describe("MemoryOverflowDialog apply", () => {
         "Compressed memory and the swap file are both active. Choose one below and apply to finish.",
       ),
     ).toBeVisible();
+  });
+
+  it("warns that compressed memory kept its size though the mode was reached", async () => {
+    mocks.results["memory.set_swap_mode"] = swapModeResult(swapStatus(), [
+      { reason: "no_other_swap", what: "zram_size" },
+    ]);
+    const { user } = await renderSection(swapStatus({ mode: "mixed" }));
+
+    await user.click(radio("Compressed memory only"));
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+
+    await waitFor(() =>
+      expect(mocks.toast.warning).toHaveBeenCalledWith(
+        "Compressed memory keeps its current size until the next restart: restarting it now would leave the host without swap.",
+        undefined,
+      ),
+    );
+    expect(mocks.toast.success).not.toHaveBeenCalled();
   });
 
   it("shows the server's reason when the change fails", async () => {
@@ -726,7 +750,9 @@ describe("MemoryOverflowDialog apply", () => {
       finish = resolve;
     });
     mocks.progress = "Turning zswap on";
-    mocks.results["memory.set_swap_mode"] = diskStatus({ mode: "zswap" });
+    mocks.results["memory.set_swap_mode"] = swapModeResult(
+      diskStatus({ mode: "zswap" }),
+    );
     const { user } = await renderSection(
       diskStatus({
         can_drain: true,

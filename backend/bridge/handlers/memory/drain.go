@@ -106,11 +106,8 @@ func (e *executor) drainDevice(ctx context.Context, target fstabSwap, drained in
 	if isSwapFilePath(target.path) && e.unitNotRunning(ctx, target.unit) {
 		return stayDrained(fmt.Errorf("%w: systemd does not report %s active, so %s cannot be stopped and started again", bridgeipc.ErrConflict, target.unit, target.device), drained)
 	}
-	if err := e.sys.stopUnit(ctx, target.unit); err != nil {
-		return e.startAfterFailedStop(ctx, target, fmt.Errorf("stop %s: %w", target.unit, err))
-	}
-	if err := e.waitStopped(ctx, target.unit, target.device, e.deviceIs(target.device, false)); err != nil {
-		return e.startAfterFailedStop(ctx, target, fmt.Errorf("wait for %s to leave %s: %w", target.device, procSwaps, err))
+	if err := e.stopSwapUnit(ctx, target.unit, target.device, status.Devices[i].Used, e.deviceIs(target.device, false)); err != nil {
+		return e.startAfterFailedStop(ctx, target, err)
 	}
 	// The device is off: bringing it back is not cancelled with the request.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout+e.waits.swapOn)

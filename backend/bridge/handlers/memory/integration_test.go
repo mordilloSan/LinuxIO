@@ -3,16 +3,20 @@ package memory
 import (
 	"context"
 	"os"
+	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
 )
 
 // TestMemoryIntegration switches the real host to zram and back through
-// systemd, the kernel and /etc. It needs root, zram-tools and a swap file in
-// /etc/fstab, so it runs only in the disposable test VM:
+// systemd, the kernel and /etc, then again from zram running at another size
+// beside the swap file, and checks that systemd takes the raised stop
+// timeout of the swap file's unit. It needs root, a zram provider and a swap
+// file in /etc/fstab, so it runs only in the disposable test VM:
 // `make vm-test-memory-integration`. Cleanup puts the starting mode back.
 func TestMemoryIntegration(t *testing.T) {
 	if os.Getenv("LINUXIO_RUN_MEMORY_INTEGRATION") != "1" {
@@ -56,6 +60,70 @@ func TestMemoryIntegration(t *testing.T) {
 	assertZramMode(t, e, file)
 
 	assertDiskMode(t, file, switchTo(t, e, back))
+
+	assertStopTimeoutTaken(t, e, file)
+
+	// zram that swaps at another size beside the swap file, as the one
+	// zram-tools starts when it is installed, ends at the planned size.
+	startSmallZram(t, e)
+	switchTo(t, e, apischema.SwapModeZram)
+	assertZramMode(t, e, file)
+
+	assertDiskMode(t, file, switchTo(t, e, back))
+}
+
+// startSmallZram makes the provider swap on a 64 MiB zram device.
+func startSmallZram(t *testing.T, e *executor) {
+	t.Helper()
+	ctx := t.Context()
+	unit, path, config := zramService, zramswapConfigPath, renderZramswapConfig(64<<20)
+	if host.zramProvider() == apischema.ZramProviderGenerator {
+		unit, path, config = zramGeneratorSwapUnit, zramGeneratorConfigPath, renderZramGeneratorConfig(64<<20)
+	}
+	if err := e.sys.writeFile(path, config, managedFileMode); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.sys.reload(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.sys.restartUnit(ctx, unit); err != nil {
+		t.Fatal(err)
+	}
+	if err := waitUntil(ctx, e.waits.swapOn, e.waits.poll, func() (bool, error) {
+		status, err := e.sys.status(ctx)
+		return err == nil && hasDevice(status.Devices, apischema.SwapDeviceZram) && zramSized(status, 64<<20), err
+	}); err != nil {
+		t.Fatalf("start a 64 MiB zram device: %v", err)
+	}
+}
+
+// assertStopTimeoutTaken checks that systemd reads the raised timeout for
+// the swap file's unit, which fstab generates, and the unit's own again
+// once it is put back.
+func assertStopTimeoutTaken(t *testing.T, e *executor, file fstabSwap) {
+	t.Helper()
+	ctx := t.Context()
+	timeout := func() string {
+		out, err := exec.CommandContext(ctx, "systemctl", "show", "--property=TimeoutUSec", "--value", file.unit).Output()
+		if err != nil {
+			t.Fatalf("read the timeout of %s: %v", file.unit, err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	before := timeout()
+	if err := e.sys.extendStopTimeout(ctx, file.unit, 47*time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	raised := timeout()
+	if err := e.sys.restoreStopTimeout(ctx, file.unit); err != nil {
+		t.Fatal(err)
+	}
+	if raised != "47min" {
+		t.Errorf("timeout of %s while raised = %q, want 47min", file.unit, raised)
+	}
+	if after := timeout(); after != before {
+		t.Errorf("timeout of %s after it was put back = %q, want %q as before", file.unit, after, before)
+	}
 }
 
 func switchTo(t *testing.T, e *executor, mode apischema.SwapMode) apischema.SwapStatus {
@@ -64,10 +132,10 @@ func switchTo(t *testing.T, e *executor, mode apischema.SwapMode) apischema.Swap
 	if err != nil {
 		t.Fatalf("switch to %s: %v", mode, err)
 	}
-	if got.Mode != mode {
-		t.Fatalf("mode after switching to %s = %s", mode, got.Mode)
+	if got.Mode != mode || len(got.Left) > 0 {
+		t.Fatalf("after switching to %s: mode %s, left as it was %+v", mode, got.Mode, got.Left)
 	}
-	return got
+	return got.SwapStatus
 }
 
 func assertZramMode(t *testing.T, e *executor, file fstabSwap) {
@@ -88,6 +156,10 @@ func assertZramMode(t *testing.T, e *executor, file fstabSwap) {
 	if state := unitFileState(t, file.unit); state != "masked" {
 		t.Errorf("%s file state = %q, want masked", file.unit, state)
 	}
+	if !zramSized(got, got.ZramPlannedSize) {
+		t.Errorf("zram devices = %+v, want the planned %d MiB", got.ZramDevices, got.ZramPlannedSize>>20)
+	}
+	assertNoStopTimeoutLeft(t, file.unit)
 	if got.ZramProvider == apischema.ZramProviderGenerator {
 		config, readErr := os.ReadFile(zramGeneratorConfigPath)
 		if readErr != nil || !strings.Contains(string(config), "[zram0]\n") || !strings.Contains(string(config), "compression-algorithm = zstd\n") {
@@ -104,6 +176,17 @@ func assertZramMode(t *testing.T, e *executor, file fstabSwap) {
 	config, err := os.ReadFile(zramswapConfigPath)
 	if err != nil || !strings.Contains(string(config), "ALGO=zstd\n") {
 		t.Errorf("%s = %q, %v; want ALGO=zstd", zramswapConfigPath, config, err)
+	}
+}
+
+func assertNoStopTimeoutLeft(t *testing.T, unit string) {
+	t.Helper()
+	name, err := stopTimeoutPath(unit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(name); err == nil {
+		t.Errorf("%s left behind after the stop", name)
 	}
 }
 

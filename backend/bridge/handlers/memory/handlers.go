@@ -29,7 +29,7 @@ func handleGetSwapStatus(ctx context.Context, _ apischema.NoRequest) (apischema.
 	return GetSwapStatus(ctx)
 }
 
-func handleSetSwapMode(ctx context.Context, task *bridgeipc.Task, req apischema.SwapModeRequest) (apischema.SwapStatus, error) {
+func handleSetSwapMode(ctx context.Context, task *bridgeipc.Task, req apischema.SwapModeRequest) (apischema.SwapModeResult, error) {
 	return SetSwapMode(ctx, req.Mode, func(p apischema.SwapProgress) { task.ReportProgress(p) })
 }
 

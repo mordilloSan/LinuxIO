@@ -51,10 +51,10 @@ var (
 )
 
 func TestPlanSwapModeOrdersTheSteps(t *testing.T) {
-	toZram := func(zramRunning bool) []swapStep {
+	toZram := func() []swapStep {
 		return []swapStep{
 			{code: apischema.SwapStepWriteConfig},
-			{code: apischema.SwapStepStartZram, run: !zramRunning},
+			{code: apischema.SwapStepStartZram},
 			stepSysctls,
 			{code: apischema.SwapStepDisableZswap},
 			stepStopFile,
@@ -71,11 +71,11 @@ func TestPlanSwapModeOrdersTheSteps(t *testing.T) {
 		from, to apischema.SwapMode
 		want     []swapStep
 	}{
-		{from: apischema.SwapModeNone, to: apischema.SwapModeZram, want: toZram(false)},
-		{from: apischema.SwapModeDisk, to: apischema.SwapModeZram, want: toZram(false)},
-		{from: apischema.SwapModeZswap, to: apischema.SwapModeZram, want: toZram(false)},
-		{from: apischema.SwapModeZram, to: apischema.SwapModeZram, want: toZram(true)},
-		{from: apischema.SwapModeMixed, to: apischema.SwapModeZram, want: toZram(true)},
+		{from: apischema.SwapModeNone, to: apischema.SwapModeZram, want: toZram()},
+		{from: apischema.SwapModeDisk, to: apischema.SwapModeZram, want: toZram()},
+		{from: apischema.SwapModeZswap, to: apischema.SwapModeZram, want: toZram()},
+		{from: apischema.SwapModeZram, to: apischema.SwapModeZram, want: toZram()},
+		{from: apischema.SwapModeMixed, to: apischema.SwapModeZram, want: toZram()},
 
 		{from: apischema.SwapModeNone, to: apischema.SwapModeZswap, want: toDiskSwap(apischema.SwapStepEnableZswap, true, false)},
 		{from: apischema.SwapModeDisk, to: apischema.SwapModeZswap, want: toDiskSwap(apischema.SwapStepEnableZswap, false, false)},

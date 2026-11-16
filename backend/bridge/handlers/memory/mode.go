@@ -19,38 +19,58 @@ const zswapCompressor = "zstd"
 
 // SetSwapMode switches the host to mode, disk, zswap or zram, end to end,
 // reporting each step as it starts. The result is the host's status after
-// the change; it is mixed when a swap device stayed for lack of room.
-func SetSwapMode(ctx context.Context, mode apischema.SwapMode, report func(apischema.SwapProgress)) (apischema.SwapStatus, error) {
+// the change and what the change left as it was, with the reason: a swap
+// device that stayed, which makes the mode mixed, or zram at its old size.
+func SetSwapMode(ctx context.Context, mode apischema.SwapMode, report func(apischema.SwapProgress)) (apischema.SwapModeResult, error) {
 	return newExecutor(report).setSwapMode(ctx, mode)
 }
 
-func (e *executor) setSwapMode(ctx context.Context, target apischema.SwapMode) (apischema.SwapStatus, error) {
+func (e *executor) setSwapMode(ctx context.Context, target apischema.SwapMode) (apischema.SwapModeResult, error) {
 	if _, ok := presetFor(target); !ok {
-		return apischema.SwapStatus{}, fmt.Errorf("%w: unknown swap mode %q", bridgeipc.ErrInvalidArgs, target)
+		return apischema.SwapModeResult{}, fmt.Errorf("%w: unknown swap mode %q", bridgeipc.ErrInvalidArgs, target)
 	}
 	unlock, err := lockMutation()
 	if err != nil {
-		return apischema.SwapStatus{}, err
+		return apischema.SwapModeResult{}, err
 	}
 	defer unlock()
 	view, err := e.readView(ctx)
 	if err != nil {
-		return apischema.SwapStatus{}, err
+		return apischema.SwapModeResult{}, err
 	}
 	steps, err := planSwapMode(view, target)
 	if err != nil {
-		return apischema.SwapStatus{}, err
+		return apischema.SwapModeResult{}, err
 	}
 	run := &modeRun{executor: e, target: target, before: view.status}
 	for i, step := range steps {
 		e.report(apischema.SwapProgress{Step: step.code, Index: i + 1, Total: len(steps)})
-		if err := run.do(ctx, step); err != nil {
-			return apischema.SwapStatus{}, errors.Join(fmt.Errorf("step %s: %w", step.code, err), run.rollback(ctx))
+		if stepErr := run.do(ctx, step); stepErr != nil {
+			return apischema.SwapModeResult{}, errors.Join(fmt.Errorf("step %s: %w", step.code, stepErr), run.rollback(ctx), run.settleAfterRollback(ctx))
 		}
 	}
+	status, err := e.sys.status(ctx)
+	if err != nil {
+		return apischema.SwapModeResult{}, err
+	}
+	// The live sysctls are the target's. A host that ended in another mode,
+	// as when zram went away and only the swap file swaps, gets that mode's
+	// instead.
+	settled, err := run.settleSysctls(status, target)
+	if err != nil {
+		slog.Warn("settle memory sysctls failed", "mode", status.Mode, "error", err)
+	}
+	if settled {
+		if status, err = e.sys.status(ctx); err != nil {
+			return apischema.SwapModeResult{}, err
+		}
+	}
+	run.explainMixed(status)
 	slog.Info("swap mode changed", "mode", target, "previous_mode", view.status.Mode,
-		"swap_file_left_active", run.swapFileLeft, "zram_left_active", run.zramLeft)
-	return e.sys.status(ctx)
+		"swap_file_left_active", run.leftHas(apischema.SwapLeftSwapFile), "zram_left_active", run.leftHas(apischema.SwapLeftZram),
+		"zram_size_kept", run.leftHas(apischema.SwapLeftZramSize))
+	// An empty list and not null on the wire.
+	return apischema.SwapModeResult{SwapStatus: status, Left: append([]apischema.SwapLeft{}, run.left...)}, nil
 }
 
 // modeRun is one mode change in progress, with what it must undo if a step
@@ -64,9 +84,34 @@ type modeRun struct {
 	files            []savedFile
 	params           []savedParam
 	zramEnabledByRun bool
-	// swapFileLeft and zramLeft record a device left active for lack of
-	// room, which makes the result mixed.
-	swapFileLeft, zramLeft bool
+	// left is what the run left as it was, with the reason: a device left
+	// active, which makes the result mixed, or zram left at its size.
+	left []apischema.SwapLeft
+}
+
+// leave records something the run left as it was.
+func (r *modeRun) leave(what apischema.SwapLeftWhat, reason apischema.SwapLeftReason) {
+	r.left = append(r.left, apischema.SwapLeft{What: what, Reason: reason})
+}
+
+func (r *modeRun) leftHas(what apischema.SwapLeftWhat) bool {
+	return slices.ContainsFunc(r.left, func(l apischema.SwapLeft) bool { return l.What == what })
+}
+
+// explainMixed gives a reason for a device that swaps on though no step
+// left it: no step stops a swap file other than the first one fstab names,
+// and none stops zram without a zram provider. A mixed result always says
+// why.
+func (r *modeRun) explainMixed(status apischema.SwapStatus) {
+	if status.Mode != apischema.SwapModeMixed {
+		return
+	}
+	if r.target == apischema.SwapModeZram && !r.leftHas(apischema.SwapLeftSwapFile) {
+		r.leave(apischema.SwapLeftSwapFile, apischema.SwapLeftNotManaged)
+	}
+	if r.target != apischema.SwapModeZram && !r.leftHas(apischema.SwapLeftZram) {
+		r.leave(apischema.SwapLeftZram, apischema.SwapLeftNotManaged)
+	}
 }
 
 func (r *modeRun) do(ctx context.Context, step swapStep) error {
@@ -74,7 +119,7 @@ func (r *modeRun) do(ctx context.Context, step swapStep) error {
 	case apischema.SwapStepWriteConfig:
 		return r.writeConfig()
 	case apischema.SwapStepStartZram:
-		return r.startZram(ctx, step.run)
+		return r.startZram(ctx)
 	case apischema.SwapStepApplySysctls:
 		return r.applySysctls()
 	case apischema.SwapStepDisableZswap:
@@ -122,38 +167,172 @@ func (r *modeRun) writeDropIn() error {
 	return r.writeFile(sysctlDropInPath, renderSysctlDropIn(mergeSysctlDropIn(entries, set, remove)))
 }
 
-// startZram sets zram to start at boot and, when run, starts its unit and
-// waits for a zram device in /proc/swaps. zram-tools has a service to
-// enable. zram-generator has none: a systemd reload makes its swap unit
-// from the configuration write_config wrote, wanted by swap.target.
-func (r *modeRun) startZram(ctx context.Context, run bool) error {
-	unit := zramService
-	if r.generated() {
-		unit = zramGeneratorSwapUnit
-		if err := r.sys.reload(ctx); err != nil {
-			return err
-		}
-		r.zramEnabledByRun = true
-	} else {
-		state, err := r.sys.unitFileState(ctx, zramService)
-		if err != nil {
-			return err
-		}
-		if err := r.sys.enableUnit(ctx, zramService); err != nil {
-			return err
-		}
-		r.zramEnabledByRun = state != "enabled"
-	}
-	if !run {
-		return nil
-	}
-	if err := r.sys.startUnit(ctx, unit); err != nil {
+// startZram sets zram to start at boot and makes it swap at the planned
+// size. zram-tools has a service to enable. zram-generator has none: a
+// systemd reload makes its swap unit from the configuration write_config
+// wrote, wanted by swap.target.
+//
+// zram that does not swap is started. zram-tools' service can read active
+// with nothing swapping, as after a swapoff by hand, and a start would do
+// nothing, so that one is restarted. zram that swaps at the planned size is
+// left alone. zram that swaps at another size, as the one zram-tools starts
+// when it is installed, is stopped and started again, which empties it, and
+// only when restartZramRefusal finds nothing against it; otherwise it keeps
+// its size until its unit next restarts, and the result says so.
+func (r *modeRun) startZram(ctx context.Context) error {
+	unit, err := r.zramOnAtBoot(ctx)
+	if err != nil {
 		return err
 	}
-	if err := waitUntil(ctx, r.waits.swapOn, r.waits.poll, r.zramSwapping); err != nil {
+	status, err := r.sys.status(ctx)
+	if err != nil {
+		return err
+	}
+	start := r.sys.startUnit
+	stopped := false
+	switch {
+	case hasDevice(status.Devices, apischema.SwapDeviceZram):
+		if stopped, err = r.stopZramToResize(ctx, unit, status); err != nil || !stopped {
+			return err
+		}
+		// zram is off: bringing it back is not cancelled with the request.
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout+r.waits.swapOn)
+		defer cancel()
+	case !r.generated() && !r.unitNotRunning(ctx, zramService):
+		start = r.sys.restartUnit
+	}
+	if err = start(ctx, unit); err != nil {
+		return err
+	}
+	if err = waitUntil(ctx, r.waits.swapOn, r.waits.poll, r.zramSwapping); err != nil {
 		return fmt.Errorf("wait for a zram device in %s: %w", procSwaps, err)
 	}
+	if !stopped {
+		return nil
+	}
+	// A provider that brings zram back at another size, as one a drop-in
+	// overrides, would be stopped again at every later change: say so.
+	if status, err = r.sys.status(ctx); err != nil {
+		return err
+	}
+	if !zramSized(status, r.before.ZramPlannedSize) {
+		r.leave(apischema.SwapLeftZramSize, apischema.SwapLeftOtherSize)
+	}
 	return nil
+}
+
+// zramOnAtBoot sets zram to start at boot and returns the unit that starts
+// and stops it now.
+func (r *modeRun) zramOnAtBoot(ctx context.Context) (string, error) {
+	if r.generated() {
+		if err := r.sys.reload(ctx); err != nil {
+			return "", err
+		}
+		r.zramEnabledByRun = true
+		return zramGeneratorSwapUnit, nil
+	}
+	state, err := r.sys.unitFileState(ctx, zramService)
+	if err != nil {
+		return "", err
+	}
+	if err := r.sys.enableUnit(ctx, zramService); err != nil {
+		return "", err
+	}
+	r.zramEnabledByRun = state != "enabled"
+	return zramService, nil
+}
+
+// stopZramToResize stops zram that swaps at another size than planned and
+// waits for it to leave, so that a start brings it back at the planned
+// size. It reports false, with zram left running, when zram has the planned
+// size already or cannot be stopped; the second case is recorded. A stop
+// that fails or is not waited out may still take effect, so a start is
+// queued behind it, past a cancelled request, as a drain does.
+func (r *modeRun) stopZramToResize(ctx context.Context, unit string, status apischema.SwapStatus) (bool, error) {
+	if zramSized(status, r.before.ZramPlannedSize) {
+		return false, nil
+	}
+	if reason := r.restartZramRefusal(ctx, status); reason != "" {
+		r.leave(apischema.SwapLeftZramSize, reason)
+		return false, nil
+	}
+	if err := r.stopZramUnit(ctx, unit); err != nil {
+		startCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
+		defer cancel()
+		if startErr := r.sys.startUnit(startCtx, unit); startErr != nil {
+			return false, errors.Join(err, fmt.Errorf("zram may be off: start %s: %w", unit, startErr))
+		}
+		return false, fmt.Errorf("%w; the stop may still take effect, so a start was queued", err)
+	}
+	return true, nil
+}
+
+// stopZramUnit stops the unit that runs zram and waits for zram to leave
+// /proc/swaps.
+func (r *modeRun) stopZramUnit(ctx context.Context, unit string) error {
+	if err := r.sys.stopUnit(ctx, unit); err != nil {
+		return err
+	}
+	if err := r.waitStopped(ctx, unit, "zram", func() (bool, error) {
+		on, err := r.zramSwapping()
+		return !on, err
+	}); err != nil {
+		return fmt.Errorf("wait for zram to leave %s: %w", procSwaps, err)
+	}
+	return nil
+}
+
+// zramSized reports whether every zram device that swaps has the planned
+// size, in whole MiB as the provider's configuration gives it. A device
+// whose size cannot be read counts as sized: emptying zram needs a reason.
+func zramSized(status apischema.SwapStatus, planned uint64) bool {
+	for _, device := range status.Devices {
+		if device.Kind != apischema.SwapDeviceZram {
+			continue
+		}
+		i := slices.IndexFunc(status.ZramDevices, func(z apischema.ZramDevice) bool { return "/dev/"+z.Name == device.Path })
+		if i >= 0 && status.ZramDevices[i].Disksize>>20 != planned>>20 {
+			return false
+		}
+	}
+	return true
+}
+
+// restartZramRefusal says why zram that swaps cannot be stopped and started
+// again at the planned size, or is empty when it can: it must be the one
+// device the provider's configuration makes, run by the provider, or
+// stopping the provider's unit would not stop it; disk swap must be active,
+// so the host has swap while zram is away and after a start that fails; and
+// zram's data must fit in memory and free disk swap.
+func (r *modeRun) restartZramRefusal(ctx context.Context, status apischema.SwapStatus) apischema.SwapLeftReason {
+	zramDevices := 0
+	for _, device := range status.Devices {
+		if device.Kind == apischema.SwapDeviceZram {
+			zramDevices++
+		}
+	}
+	switch {
+	case zramDevices != 1 || !r.providerRunsZram(ctx, status.Devices):
+		return apischema.SwapLeftNotManaged
+	case !hasDevice(status.Devices, apischema.SwapDeviceFile) && !hasDevice(status.Devices, apischema.SwapDevicePartition):
+		return apischema.SwapLeftNoOtherSwap
+	case !zramFits(status):
+		return apischema.SwapLeftNotEnoughMemory
+	default:
+		return ""
+	}
+}
+
+// providerRunsZram reports whether the zram that swaps would stop with the
+// provider's unit. zram set up by another tool, or under a service that is
+// not running, would not: zram-tools' service must be running, and
+// zram-generator must have made the device (see generatorMadeZram).
+func (r *modeRun) providerRunsZram(ctx context.Context, devices []apischema.SwapDevice) bool {
+	if r.generated() {
+		return r.generatorMadeZram(ctx, devices)
+	}
+	return !r.unitNotRunning(ctx, zramService)
 }
 
 func (r *modeRun) zramSwapping() (bool, error) {
@@ -162,15 +341,20 @@ func (r *modeRun) zramSwapping() (bool, error) {
 }
 
 // applySysctls writes the target mode's vm sysctls live, after the drop-in
-// unless the zram mode already wrote it with its config. A sysctl the kernel
-// does not have is skipped.
+// unless the zram mode already wrote it with its config.
 func (r *modeRun) applySysctls() error {
 	if r.target != apischema.SwapModeZram {
 		if err := r.writeDropIn(); err != nil {
 			return err
 		}
 	}
-	for _, setting := range liveSysctls(r.target, r.before) {
+	return r.setLiveSysctls(r.target, r.before)
+}
+
+// setLiveSysctls writes what mode sets in /proc/sys/vm on a host whose
+// values are status's. A sysctl the kernel does not have is skipped.
+func (r *modeRun) setLiveSysctls(mode apischema.SwapMode, status apischema.SwapStatus) error {
+	for _, setting := range liveSysctls(mode, status) {
 		name := filepath.Join(vmSysctlDir, setting.name)
 		// A kernel without the sysctl (watermark_boost_factor came in 5.0)
 		// has nothing to write; the drop-in keeps the key.
@@ -251,7 +435,7 @@ func (r *modeRun) stopSwapFile(ctx context.Context, step swapStep) error {
 	device, on := r.findSwap(step.path, status.Devices)
 	if !on {
 		if !r.swapFilesResolve(status.Devices) {
-			r.swapFileLeft = true
+			r.leave(apischema.SwapLeftSwapFile, apischema.SwapLeftNotIdentified)
 			return nil
 		}
 		return r.sys.maskUnit(ctx, step.unit)
@@ -259,16 +443,21 @@ func (r *modeRun) stopSwapFile(ctx context.Context, step swapStep) error {
 	// Without zram swapping now, as when it went away after the run found
 	// it, stopping the file would leave no swap at all. A unit systemd does
 	// not report running would not stop the file either.
-	if !hasDevice(status.Devices, apischema.SwapDeviceZram) || !fitsInMemory(device.Used, status.MemAvailable) ||
-		r.unitNotRunning(ctx, step.unit) {
-		r.swapFileLeft = true
+	var reason apischema.SwapLeftReason
+	switch {
+	case !hasDevice(status.Devices, apischema.SwapDeviceZram):
+		reason = apischema.SwapLeftZramNotSwapping
+	case !fitsInMemory(device.Used, status.MemAvailable):
+		reason = apischema.SwapLeftNotEnoughMemory
+	case r.unitNotRunning(ctx, step.unit):
+		reason = apischema.SwapLeftUnitNotRunning
+	}
+	if reason != "" {
+		r.leave(apischema.SwapLeftSwapFile, reason)
 		return nil
 	}
-	if err := r.sys.stopUnit(ctx, step.unit); err != nil {
+	if err := r.stopSwapUnit(ctx, step.unit, step.path, device.Used, r.swapIs(step.path, false)); err != nil {
 		return err
-	}
-	if err := r.waitStopped(ctx, step.unit, step.path, r.swapIs(step.path, false)); err != nil {
-		return fmt.Errorf("wait for %s to leave %s: %w", step.path, procSwaps, err)
 	}
 	return r.sys.maskUnit(ctx, step.unit)
 }
@@ -322,27 +511,18 @@ func (r *modeRun) stopZram(ctx context.Context, run bool) error {
 			return err
 		}
 		if hasDevice(status.Devices, apischema.SwapDeviceZram) {
-			// zram set up by another tool, or under a service that is not
-			// running, would not stop with the service: it stays, and the
-			// service is left as it is.
-			var ours bool
-			if r.generated() {
-				ours = r.generatorMadeZram(ctx, status.Devices)
-			} else {
-				ours = !r.unitNotRunning(ctx, zramService)
-			}
-			if !zramFits(status) || !ours {
-				r.zramLeft = true
+			// zram the provider does not run would not stop with its unit:
+			// it stays, and the unit is left as it is.
+			if !r.providerRunsZram(ctx, status.Devices) {
+				r.leave(apischema.SwapLeftZram, apischema.SwapLeftNotManaged)
 				return nil
 			}
-			if err := r.sys.stopUnit(ctx, unit); err != nil {
-				return err
+			if !zramFits(status) {
+				r.leave(apischema.SwapLeftZram, apischema.SwapLeftNotEnoughMemory)
+				return nil
 			}
-			if err := r.waitStopped(ctx, unit, "zram", func() (bool, error) {
-				on, err := r.zramSwapping()
-				return !on, err
-			}); err != nil {
-				return fmt.Errorf("wait for zram to leave %s: %w", procSwaps, err)
+			if err := r.stopZramUnit(ctx, unit); err != nil {
+				return err
 			}
 		}
 	}
@@ -505,6 +685,38 @@ func (r *modeRun) rollback(ctx context.Context) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// settleAfterRollback is settleSysctls for a run that failed: the rollback
+// put back the live sysctls of the mode the host was in, and swap the run
+// added or took away is not undone, so the host can be in another mode by
+// now, as disk swap only after a switch away from zram failed past stopping
+// zram. Like the rollback it runs past a cancelled request, within a bound.
+func (r *modeRun) settleAfterRollback(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
+	defer cancel()
+	status, err := r.sys.status(ctx)
+	if err != nil {
+		return fmt.Errorf("after rollback: read the status: %w", err)
+	}
+	if _, err := r.settleSysctls(status, r.before.Mode); err != nil {
+		return fmt.Errorf("after rollback: %w", err)
+	}
+	return nil
+}
+
+// settleSysctls writes the live sysctls of the mode the host is in when
+// that mode is disk, zswap or zram and the sysctls in force are those of
+// another mode, inForce. zram's swappiness and readahead over disk-only
+// swap, or disk's over zram, is what it prevents. The drop-in is left as it
+// is: it goes with the zram and swap units the run set for the next boot,
+// which the mode the host is in now says nothing about. It reports whether
+// it wrote anything.
+func (r *modeRun) settleSysctls(status apischema.SwapStatus, inForce apischema.SwapMode) (bool, error) {
+	if _, ok := presetFor(status.Mode); !ok || status.Mode == inForce {
+		return false, nil
+	}
+	return true, r.setLiveSysctls(status.Mode, status)
 }
 
 // undoZramEnable keeps the next boot from starting zram with the
