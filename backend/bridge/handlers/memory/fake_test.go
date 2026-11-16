@@ -42,6 +42,13 @@ type fakeSystem struct {
 	devices map[string]string
 	// stuck units are started or stopped without /proc/swaps ever changing.
 	stuck map[string]bool
+	// blocked devices never leave on a swapoff, which returns when ctx ends.
+	blocked map[string]bool
+	// unseen is how many reads of a unit's state still say active after its
+	// device left; systemd does nothing for a start meanwhile.
+	unseen map[string]int
+	// ignoredStarts is how many starts of a unit systemd does nothing for.
+	ignoredStarts map[string]int
 	// fileStates are unit file states; a unit not listed is "disabled".
 	fileStates map[string]string
 	// after runs after a recorded call succeeds.
@@ -66,8 +73,12 @@ func newFakeSystem(f fixture) *fakeSystem {
 			zramGeneratorSwapUnit: zramSwapsLine,
 			"swap.img.swap":       swapFileSwapsLine,
 		},
-		stuck:      map[string]bool{},
-		fileStates: map[string]string{},
+		stuck:   map[string]bool{},
+		blocked: map[string]bool{},
+		unseen:  map[string]int{},
+
+		ignoredStarts: map[string]int{},
+		fileStates:    map[string]string{},
 	}
 }
 
@@ -82,7 +93,7 @@ func (s *fakeSystem) executor(progress *[]apischema.SwapProgress) *executor {
 				*progress = append(*progress, p)
 			}
 		},
-		waits: waits{swapOn: 200 * time.Millisecond, swapOff: 200 * time.Millisecond, poll: time.Millisecond, stopGrace: 100 * time.Millisecond},
+		waits: waits{swapOn: 200 * time.Millisecond, zramOff: 200 * time.Millisecond, poll: time.Millisecond, stopGrace: 100 * time.Millisecond},
 	}
 }
 
@@ -141,7 +152,12 @@ func (s *fakeSystem) startUnit(ctx context.Context, name string) error {
 			stop.restart = true
 			return nil
 		}
-		s.swapOn(name)
+		// A unit systemd still holds active is not started.
+		if s.unseen[name] > 0 || s.ignoredStarts[name] > 0 {
+			s.ignoredStarts[name] = max(0, s.ignoredStarts[name]-1)
+			return nil
+		}
+		s.unitOn(name)
 		return nil
 	})
 }
@@ -152,7 +168,7 @@ func (s *fakeSystem) stopUnit(ctx context.Context, name string) error {
 			stop.pending = true
 			return nil
 		}
-		s.swapOff(name)
+		s.unitOff(name)
 		return nil
 	})
 }
@@ -161,27 +177,30 @@ func (s *fakeSystem) stopUnit(ctx context.Context, name string) error {
 // when nothing swaps on its device.
 func (s *fakeSystem) restartUnit(ctx context.Context, name string) error {
 	return s.unitDo(ctx, "restart "+name, func() error {
-		s.swapOff(name)
-		s.swapOn(name)
+		s.unitOff(name)
+		s.unitOn(name)
 		return nil
 	})
 }
 
-// The stop timeout calls are recorded as timeout calls, which assertCalls
-// leaves out: every stop of a swap unit is wrapped in the two.
-const (
-	raiseTimeoutCall   = "raise timeout "
-	restoreTimeoutCall = "restore timeout "
-)
-
-func (s *fakeSystem) extendStopTimeout(ctx context.Context, name string, timeout time.Duration) error {
-	return s.unitDo(ctx, raiseTimeoutCall+name, func() error { return s.f.host().writeStopTimeout(name, timeout) })
-}
-
-func (s *fakeSystem) restoreStopTimeout(ctx context.Context, name string) error {
-	return s.unitDo(ctx, restoreTimeoutCall+name, func() error {
-		_, err := s.f.host().removeStopTimeout(name)
-		return err
+// swapOff takes the device at path out of /proc/swaps, as swapoff(2) does,
+// and systemd then sees its unit inactive, at once or after unseen reads of
+// the unit's state. A path in blocked never returns until ctx ends, as a
+// swapoff that is still reading pages back, and leaves the device on.
+func (s *fakeSystem) swapOff(ctx context.Context, path string) error {
+	if s.blocked[path] {
+		s.calls = append(s.calls, "swapoff "+path)
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	return s.unitDo(ctx, "swapoff "+path, func() error {
+		for unit, line := range s.devices {
+			if strings.HasPrefix(line, path+" ") && !zramUnit(unit) {
+				s.f.write(procSwaps, strings.ReplaceAll(s.f.read(procSwaps), line, ""))
+				s.activeStates[unit] = "inactive"
+			}
+		}
+		return nil
 	})
 }
 
@@ -209,7 +228,7 @@ func (s *fakeSystem) configuredZramSize() uint64 {
 	return 0
 }
 
-func (s *fakeSystem) swapOn(name string) {
+func (s *fakeSystem) unitOn(name string) {
 	if line, ok := s.devices[name]; ok && !s.stuck[name] {
 		swaps := s.f.read(procSwaps)
 		if !strings.Contains(swaps, line) {
@@ -232,7 +251,7 @@ func (s *fakeSystem) bindSetupUnit(name, state string) {
 	}
 }
 
-func (s *fakeSystem) swapOff(name string) {
+func (s *fakeSystem) unitOff(name string) {
 	if line, ok := s.devices[name]; ok && !s.stuck[name] {
 		s.f.write(procSwaps, strings.ReplaceAll(s.f.read(procSwaps), line, ""))
 		s.activeStates[name] = "inactive"
@@ -246,15 +265,15 @@ func (s *fakeSystem) finishStop(name string) {
 	stop.pending = false
 	if stop.ends != "" {
 		if stop.leaves {
-			s.swapOff(name)
+			s.unitOff(name)
 		}
 		s.activeStates[name] = stop.ends
 		return
 	}
-	s.swapOff(name)
+	s.unitOff(name)
 	if stop.restart {
 		stop.restart = false
-		s.swapOn(name)
+		s.unitOn(name)
 	}
 }
 
@@ -264,6 +283,10 @@ func (s *fakeSystem) activeState(ctx context.Context, name string) (string, erro
 	}
 	if err := s.failures["active "+name]; err != nil {
 		return "", err
+	}
+	if s.unseen[name] > 0 {
+		s.unseen[name]--
+		return "active", nil
 	}
 	if stop := s.stops[name]; stop != nil && stop.pending {
 		switch {

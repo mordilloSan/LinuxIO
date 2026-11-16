@@ -397,8 +397,8 @@ describe("modeResultWarning", () => {
     ],
     [
       "swap_file",
-      "unit_not_running",
-      "systemd does not run the swap file's unit, so LinuxIO left the swap file on. Applying again will not change that.",
+      "not_identified",
+      "An active swap file could not be matched to the one in /etc/fstab, so LinuxIO left it as it is.",
     ],
     [
       "swap_file",

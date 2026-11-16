@@ -136,7 +136,7 @@ var StringEnums = map[string][]string{
 	"SwapDrainBlockedReason":    enumNames("", SwapDrainNothingParked, SwapDrainNotEnoughMemory, SwapDrainUnmanagedDevice, SwapDrainUnitMasked),
 	"SwapStep":                  enumNames(SwapSteps...),
 	"SwapLeftWhat":              enumNames(SwapLeftSwapFile, SwapLeftZram, SwapLeftZramSize),
-	"SwapLeftReason":            enumNames(SwapLeftNotEnoughMemory, SwapLeftZramNotSwapping, SwapLeftUnitNotRunning, SwapLeftNotIdentified, SwapLeftNotManaged, SwapLeftNoOtherSwap, SwapLeftOtherSize),
+	"SwapLeftReason":            enumNames(SwapLeftNotEnoughMemory, SwapLeftZramNotSwapping, SwapLeftNotIdentified, SwapLeftNotManaged, SwapLeftNoOtherSwap, SwapLeftOtherSize),
 }
 
 var ExtraTypes = []TypeSpec{

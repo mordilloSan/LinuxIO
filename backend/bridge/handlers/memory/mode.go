@@ -422,11 +422,11 @@ func compressorRefused(err error) bool {
 	return errors.Is(err, syscall.EINVAL) || errors.Is(err, syscall.ENOENT)
 }
 
-// stopSwapFile stops the swap file's unit and masks it, so it stays off at
-// boot, when zram swaps, the file's data fits in memory on a fresh status
-// and systemd reports the unit running; otherwise it leaves the file
-// active. A file proven off is only masked: one active swap file that
-// cannot be resolved might be it, and then the unit is left.
+// stopSwapFile takes the swap file away with swapoff and masks its unit, so
+// it stays off at boot, when zram swaps and the file's data fits in memory
+// on a fresh status; otherwise it leaves the file active. A file proven off
+// is only masked: one active swap file that cannot be resolved might be it,
+// and then the unit is left.
 func (r *modeRun) stopSwapFile(ctx context.Context, step swapStep) error {
 	status, err := r.sys.status(ctx)
 	if err != nil {
@@ -441,25 +441,26 @@ func (r *modeRun) stopSwapFile(ctx context.Context, step swapStep) error {
 		return r.sys.maskUnit(ctx, step.unit)
 	}
 	// Without zram swapping now, as when it went away after the run found
-	// it, stopping the file would leave no swap at all. A unit systemd does
-	// not report running would not stop the file either.
+	// it, stopping the file would leave no swap at all.
 	var reason apischema.SwapLeftReason
 	switch {
 	case !hasDevice(status.Devices, apischema.SwapDeviceZram):
 		reason = apischema.SwapLeftZramNotSwapping
 	case !fitsInMemory(device.Used, status.MemAvailable):
 		reason = apischema.SwapLeftNotEnoughMemory
-	case r.unitNotRunning(ctx, step.unit):
-		reason = apischema.SwapLeftUnitNotRunning
 	}
 	if reason != "" {
 		r.leave(apischema.SwapLeftSwapFile, reason)
 		return nil
 	}
-	if err := r.stopSwapUnit(ctx, step.unit, step.path, device.Used, r.swapIs(step.path, false)); err != nil {
+	if err := r.swapOffDevice(ctx, device.Path); err != nil {
 		return err
 	}
-	return r.sys.maskUnit(ctx, step.unit)
+	// The file is off: masking its unit, which keeps it off at boot, is not
+	// cancelled with the request.
+	maskCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
+	defer cancel()
+	return r.sys.maskUnit(maskCtx, step.unit)
 }
 
 // swapFilesResolve reports whether every active swap file resolves under
@@ -482,11 +483,11 @@ func (r *modeRun) startSwapFile(ctx context.Context, step swapStep) error {
 	if err := r.sys.unmaskUnit(ctx, step.unit); err != nil {
 		return err
 	}
-	if err := r.sys.startUnit(ctx, step.unit); err != nil {
-		return err
-	}
-	if err := waitUntil(ctx, r.waits.swapOn, r.waits.poll, r.swapIs(step.path, true)); err != nil {
-		return fmt.Errorf("wait for %s in %s: %w", step.path, procSwaps, err)
+	// A file taken away with swapoff a moment ago may still read active to
+	// systemd, which would not start it.
+	r.waitUnitSeenOff(ctx, step.unit)
+	if err := r.startUntilBack(ctx, step.unit, r.swapIs(step.path, true)); err != nil {
+		return fmt.Errorf("%s: %w", step.path, err)
 	}
 	return nil
 }

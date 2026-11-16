@@ -4,13 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"math"
 	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 )
@@ -25,10 +22,6 @@ const (
 	// The one in /etc takes the place of the one a package puts in
 	// /usr/lib/systemd, so a file here with no device turns zram off.
 	zramGeneratorConfigPath = "/etc/systemd/zram-generator.conf"
-
-	// runtimeUnitDir holds unit files and drop-ins that last until reboot.
-	runtimeUnitDir  = "/run/systemd/system"
-	stopTimeoutFile = "90-linuxio-stop-timeout.conf"
 
 	managedFileMode fs.FileMode = 0o644
 	managedHeader               = "# Managed by LinuxIO (Dashboard, Memory); changes here are overwritten.\n"
@@ -61,51 +54,6 @@ func (h hostRoot) removeFile(name string) error {
 		return err
 	}
 	return nil
-}
-
-// stopTimeoutPath is the drop-in that raises a swap unit's timeout while
-// LinuxIO stops it. It is under /run, so a reboot clears one left behind.
-func stopTimeoutPath(unit string) (string, error) {
-	if unit == "" || unit != filepath.Base(unit) || !strings.HasSuffix(unit, ".swap") {
-		return "", fmt.Errorf("%q is not a swap unit name", unit)
-	}
-	return filepath.Join(runtimeUnitDir, unit+".d", stopTimeoutFile), nil
-}
-
-// renderStopTimeout is that drop-in. A swap unit has one timeout, TimeoutSec
-// in [Swap], which systemd applies to swapoff as it does to swapon. It is
-// in whole seconds and at least one: systemd reads 0 as no timeout.
-func renderStopTimeout(timeout time.Duration) []byte {
-	return fmt.Appendf(nil, "%s[Swap]\nTimeoutSec=%ds\n", managedHeader, max(1, int(math.Ceil(timeout.Seconds()))))
-}
-
-// writeStopTimeout writes unit's stop timeout drop-in.
-func (h hostRoot) writeStopTimeout(unit string, timeout time.Duration) error {
-	name, err := stopTimeoutPath(unit)
-	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(h.path(name)), 0o755); err != nil {
-		return err
-	}
-	return h.writeFile(name, renderStopTimeout(timeout), managedFileMode)
-}
-
-// removeStopTimeout removes unit's stop timeout drop-in, and its directory
-// when nothing else is in it. It reports whether there was a drop-in.
-func (h hostRoot) removeStopTimeout(unit string) (bool, error) {
-	name, err := stopTimeoutPath(unit)
-	if err != nil {
-		return false, err
-	}
-	err = os.Remove(h.path(name))
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return false, err
-	}
-	// The directory goes too, also one a failed write left empty; one that
-	// another drop-in is in stays.
-	_ = os.Remove(filepath.Dir(h.path(name)))
-	return err == nil, nil
 }
 
 // sysctlEntry is one "key = value" line of a sysctl.d file.

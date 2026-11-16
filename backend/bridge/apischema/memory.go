@@ -90,9 +90,6 @@ const (
 	// SwapLeftZramNotSwapping: zram was not swapping when the swap file was
 	// to be stopped, which would have left the host without swap.
 	SwapLeftZramNotSwapping SwapLeftReason = "zram_not_swapping"
-	// SwapLeftUnitNotRunning: systemd does not report the device's unit
-	// running, so stopping the unit would not take the device away.
-	SwapLeftUnitNotRunning SwapLeftReason = "unit_not_running"
 	// SwapLeftNotIdentified: an active swap file could not be told from the
 	// one fstab names, so that file's unit was not masked.
 	SwapLeftNotIdentified SwapLeftReason = "not_identified"

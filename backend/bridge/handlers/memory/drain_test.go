@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -40,9 +41,9 @@ func TestDrainSwapStopsAndStartsEachDeviceInTurn(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertCalls(t, sys.calls, []string{
-		"stop swap.img.swap",
+		"swapoff /swap.img",
 		"start swap.img.swap",
-		"stop " + partitionUnit,
+		"swapoff /dev/sda3",
 		"start " + partitionUnit,
 	})
 	want := []apischema.SwapProgress{
@@ -82,7 +83,7 @@ func TestDrainSwapRefusesADeviceWithoutRoom(t *testing.T) {
 	if !errors.Is(err, bridgeipc.ErrConflict) {
 		t.Fatalf("err = %v, want a conflict", err)
 	}
-	assertCalls(t, sys.calls, []string{"stop swap.img.swap", "start swap.img.swap"})
+	assertCalls(t, sys.calls, []string{"swapoff /swap.img", "start swap.img.swap"})
 }
 
 func TestDrainSwapRefusesWithoutRoomForTheParkedData(t *testing.T) {
@@ -115,7 +116,7 @@ func TestDrainSwapLeavesAnUnmanagedDeviceAlone(t *testing.T) {
 	if _, err := sys.executor(nil).drainSwap(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	assertCalls(t, sys.calls, []string{"stop swap.img.swap", "start swap.img.swap"})
+	assertCalls(t, sys.calls, []string{"swapoff /swap.img", "start swap.img.swap"})
 }
 
 func TestDrainSwapRefusesWithNothingParked(t *testing.T) {
@@ -134,7 +135,7 @@ func TestDrainSwapStartsAStoppedDeviceAfterACancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	sys.after = func(call string) {
-		if call == "stop swap.img.swap" {
+		if call == "swapoff /swap.img" {
 			cancel()
 		}
 	}
@@ -145,98 +146,103 @@ func TestDrainSwapStartsAStoppedDeviceAfterACancel(t *testing.T) {
 	if !slices.Contains(sys.calls, "start swap.img.swap") || !strings.Contains(f.read(procSwaps), "/swap.img") {
 		t.Fatalf("calls = %v, want swap.img.swap started again", sys.calls)
 	}
+	if slices.Contains(sys.calls, "swapoff /dev/sda3") {
+		t.Fatalf("calls = %v, want the next device left alone", sys.calls)
+	}
 }
 
-// A stop call that returns an error may still have reached systemd, as when
-// ctx ends during the D-Bus round trip: a start is queued behind it so the
-// device comes back, and the error names the unit.
-func TestDrainSwapQueuesAStartWhenTheStopCallFails(t *testing.T) {
+// A swapoff the kernel refuses leaves the device swapping: nothing is
+// started, the error names the device and the next device is not touched.
+func TestDrainSwapStopsAtASwapoffThatFails(t *testing.T) {
 	f, sys := drainHost(t)
-	sys.failAfter["stop swap.img.swap"] = context.Canceled
+	sys.failures["swapoff /swap.img"] = syscall.EBUSY
 
 	_, err := sys.executor(nil).drainSwap(t.Context())
-	if !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), "swap.img.swap") || !strings.Contains(err.Error(), "may still") {
-		t.Fatalf("err = %v, want the cancel, the unit and that the stop may still take effect", err)
+	if !errors.Is(err, syscall.EBUSY) || !strings.Contains(err.Error(), "swapoff /swap.img") {
+		t.Fatalf("err = %v, want the kernel's refusal naming the device", err)
 	}
-	if !strings.Contains(err.Error(), "a start was queued") {
-		t.Fatalf("err = %v, want it to say a start was queued", err)
-	}
-	if !slices.Contains(sys.calls, "start swap.img.swap") || !strings.Contains(f.read(procSwaps), "/swap.img") {
-		t.Fatalf("calls = %v, want swap.img.swap started again", sys.calls)
-	}
-}
-
-// When the start behind a failed stop cannot be queued either, the error says
-// so and does not claim a start was queued.
-func TestDrainSwapSaysWhenTheStartAfterAFailedStopFails(t *testing.T) {
-	_, sys := drainHost(t)
-	sys.failAfter["stop swap.img.swap"] = context.Canceled
-	sys.failures["start swap.img.swap"] = errors.New("no system bus")
-
-	_, err := sys.executor(nil).drainSwap(t.Context())
-	if !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), "may be off") || !strings.Contains(err.Error(), "no system bus") {
-		t.Fatalf("err = %v, want the cancel and the failed start", err)
-	}
-	if strings.Contains(err.Error(), "a start was queued") {
-		t.Fatalf("err = %v, want no claim that a start was queued", err)
-	}
-}
-
-// A request cancelled while swapoff runs queues a start behind the stop, so
-// the device is back once the swapoff finishes after the route returned.
-func TestDrainSwapQueuesAStartWhenCancelledDuringSwapoff(t *testing.T) {
-	f, sys := drainHost(t)
-	sys.stops["swap.img.swap"] = &fakeStop{polls: 1 << 30}
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	sys.after = func(call string) {
-		if call == "stop swap.img.swap" {
-			cancel()
-		}
-	}
-
-	if _, err := sys.executor(nil).drainSwap(ctx); !errors.Is(err, context.Canceled) {
-		t.Fatalf("err = %v, want the cancel", err)
-	}
-	if !slices.Contains(sys.calls, "start swap.img.swap") {
-		t.Fatalf("calls = %v, want a start queued", sys.calls)
-	}
-	sys.finishStop("swap.img.swap")
+	assertCalls(t, sys.calls, []string{"swapoff /swap.img"})
 	if !strings.Contains(f.read(procSwaps), "/swap.img") {
-		t.Fatal("the device stayed off after its swapoff finished")
+		t.Fatal("the device is off")
 	}
 }
 
-// systemd giving up on a swapoff fails the drain at once with the device
-// still active, and the next device is not touched.
-func TestDrainSwapFailsFastWhenSystemdGivesUp(t *testing.T) {
+// A swapoff that reports an error after the device left still counts: the
+// device is started again.
+func TestDrainSwapStartsADeviceThatLeftWhateverSwapoffReturned(t *testing.T) {
 	f, sys := drainHost(t)
-	sys.stops["swap.img.swap"] = &fakeStop{polls: 3, ends: "active"}
-	e := sys.executor(nil)
-	e.waits.swapOff = time.Minute
-
-	start := time.Now()
-	_, err := e.drainSwap(t.Context())
-	if !errors.Is(err, errStopAbandoned) || !strings.Contains(err.Error(), "still active") {
-		t.Fatalf("err = %v, want systemd giving up reported", err)
-	}
-	if elapsed := time.Since(start); elapsed > 10*time.Second {
-		t.Fatalf("failed after %s, want as soon as systemd gave up", elapsed)
-	}
-	if slices.Contains(sys.calls, "stop "+partitionUnit) || !strings.Contains(f.read(procSwaps), "/swap.img") {
-		t.Fatalf("calls = %v, want the drain stopped with /swap.img active", sys.calls)
-	}
-}
-
-func TestDrainSwapWaitsForASlowSwapoff(t *testing.T) {
-	f, sys := drainHost(t)
-	sys.stops["swap.img.swap"] = &fakeStop{queued: 2, polls: 4}
+	sys.failAfter["swapoff /swap.img"] = syscall.EIO
 
 	if _, err := sys.executor(nil).drainSwap(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Contains(sys.calls, "stop "+partitionUnit) || !strings.Contains(f.read(procSwaps), "/swap.img") {
-		t.Fatalf("calls = %v, want both devices drained and back", sys.calls)
+	if !slices.Contains(sys.calls, "start swap.img.swap") || !strings.Contains(f.read(procSwaps), "/swap.img") {
+		t.Fatalf("calls = %v, want swap.img.swap started again", sys.calls)
+	}
+}
+
+// A request cancelled while swapoff runs ends the swapoff with the device
+// still swapping: nothing is started, and a device drained before it stays
+// drained.
+func TestDrainSwapLeavesTheDeviceOnWhenCancelledDuringSwapoff(t *testing.T) {
+	f, sys := drainHost(t)
+	sys.blocked["/dev/sda3"] = true
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+
+	_, err := sys.executor(nil).drainSwap(ctx)
+	if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), "swapoff /dev/sda3") || !strings.Contains(err.Error(), "stay drained") {
+		t.Fatalf("err = %v, want the cancelled swapoff and the device drained before it", err)
+	}
+	assertCalls(t, sys.calls, []string{"swapoff /swap.img", "start swap.img.swap", "swapoff /dev/sda3"})
+	if swaps := f.read(procSwaps); !strings.Contains(swaps, "/dev/sda3") || !strings.Contains(swaps, "/swap.img") {
+		t.Fatalf("swaps = %q, want both devices on", swaps)
+	}
+}
+
+// systemd learns from /proc/swaps that the device left; a start it gets
+// while it still holds the unit active does nothing. The drain waits for
+// the unit to read inactive before it starts it.
+func TestDrainSwapWaitsForSystemdToSeeTheDeviceLeft(t *testing.T) {
+	f, sys := drainHost(t)
+	sys.unseen["swap.img.swap"] = 5
+
+	if _, err := sys.executor(nil).drainSwap(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(f.read(procSwaps), "/swap.img") {
+		t.Fatal("the device stayed off")
+	}
+}
+
+// A start systemd did nothing for is sent again until the device is back.
+func TestDrainSwapStartsAgainWhenTheStartDidNothing(t *testing.T) {
+	f, sys := drainHost(t)
+	sys.ignoredStarts["swap.img.swap"] = 2
+	e := sys.executor(nil)
+	e.waits.stopGrace = 10 * time.Millisecond
+	e.waits.swapOn = 5 * time.Second
+
+	if _, err := e.drainSwap(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(f.read(procSwaps), "/swap.img") {
+		t.Fatal("the device stayed off")
+	}
+}
+
+// A unit systemd never sees inactive is started all the same after the
+// grace, and the drain reports the device off when that brings nothing back.
+func TestDrainSwapReportsADeviceSystemdNeverSawLeave(t *testing.T) {
+	_, sys := drainHost(t)
+	sys.unseen["swap.img.swap"] = 1 << 30
+
+	_, err := sys.executor(nil).drainSwap(t.Context())
+	if err == nil || !strings.Contains(err.Error(), "/swap.img is off") {
+		t.Fatalf("err = %v, want the device reported off", err)
+	}
+	if !slices.Contains(sys.calls, "start swap.img.swap") || slices.Contains(sys.calls, "swapoff /dev/sda3") {
+		t.Fatalf("calls = %v, want the start tried and the drain stopped there", sys.calls)
 	}
 }
 
@@ -267,7 +273,7 @@ func TestDrainSwapReportsADeviceItCouldNotStart(t *testing.T) {
 		},
 		"device never returns": func(sys *fakeSystem) {
 			sys.after = func(call string) {
-				if call == "stop swap.img.swap" {
+				if call == "swapoff /swap.img" {
 					sys.stuck["swap.img.swap"] = true
 				}
 			}
@@ -282,43 +288,30 @@ func TestDrainSwapReportsADeviceItCouldNotStart(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), "is off") || !strings.Contains(err.Error(), "swap.img.swap") {
 				t.Fatalf("err = %v, want the device reported off with its unit", err)
 			}
-			if slices.Contains(sys.calls, "stop "+partitionUnit) {
+			if slices.Contains(sys.calls, "swapoff /dev/sda3") {
 				t.Fatalf("calls = %v, want the drain stopped at the first device", sys.calls)
 			}
 		})
 	}
 }
 
-// A swap file whose fstab unit systemd does not report active could not be
-// stopped and started again through that unit: the drain refuses at that
-// device, and a device drained before it stays drained.
-func TestDrainSwapRefusesASwapFileItsUnitDoesNotRun(t *testing.T) {
+// swapoff takes a device away whatever systemd says of its unit: a swap
+// file systemd tracks under another unit name, or a partition whose fstab
+// unit is an alias named after its /dev/disk/by-* link, is drained and
+// started again through the unit fstab gives it.
+func TestDrainSwapDrainsADeviceWhateverItsUnitReads(t *testing.T) {
 	f, sys := drainHost(t)
-	f.write(etcFstab, "/swap.img none swap sw 0 0\n/data/swap2 none swap sw 0 0\n")
-	f.write("/data/swap2", "")
-	const second = "/data/swap2                             file\t\t1048572\t\t131072\t\t-3\n"
-	f.write(procSwaps, swapsHeader+swapFileSwapsLine+second)
-	sys.devices["data-swap2.swap"] = second
-	sys.activeStates["data-swap2.swap"] = "inactive"
-
-	_, err := sys.executor(nil).drainSwap(t.Context())
-	if !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), "data-swap2.swap") || !strings.Contains(err.Error(), "stay drained") {
-		t.Fatalf("err = %v, want a conflict naming the unit and the device drained before it", err)
-	}
-	assertCalls(t, sys.calls, []string{"stop swap.img.swap", "start swap.img.swap"})
-}
-
-// A partition's fstab unit is named after its /dev/disk/by-* link, an alias
-// systemd marks active from /proc/swaps; that is not confirmed on a host, so
-// its state does not hold the stop back and the wait decides.
-func TestDrainSwapStopsAPartitionWhateverItsAliasUnitReads(t *testing.T) {
-	_, sys := drainHost(t)
-	sys.activeStates[partitionUnit] = "inactive"
+	sys.activeStates["swap.img.swap"] = "inactive"
+	sys.activeStates[partitionUnit] = "failed"
 
 	if _, err := sys.executor(nil).drainSwap(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Contains(sys.calls, "stop "+partitionUnit) {
-		t.Fatalf("calls = %v, want the partition drained", sys.calls)
+	assertCalls(t, sys.calls, []string{
+		"swapoff /swap.img", "start swap.img.swap",
+		"swapoff /dev/sda3", "start " + partitionUnit,
+	})
+	if swaps := f.read(procSwaps); !strings.Contains(swaps, "/swap.img") || !strings.Contains(swaps, "/dev/sda3") {
+		t.Fatalf("swaps = %q, want both devices back", swaps)
 	}
 }

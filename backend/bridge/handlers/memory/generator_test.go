@@ -88,7 +88,7 @@ func TestSetSwapModeToZramWithTheGenerator(t *testing.T) {
 		"set " + boostParam + "=0",
 		"set " + scaleParam + "=125",
 		"write " + zswapTmpfilesPath,
-		"stop swap.img.swap",
+		"swapoff /swap.img",
 		"mask swap.img.swap",
 	})
 	if got.Mode != apischema.SwapModeZram || got.ZramProvider != apischema.ZramProviderGenerator {

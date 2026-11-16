@@ -187,11 +187,11 @@ To `zram`:
      fails.
 3. `apply_sysctls`: write the preset live.
 4. `disable_zswap`: turn zswap off and keep it off at boot (see below).
-5. `stop_swap_file`: when the file is named in fstab, stop its unit, wait for
-   the file to leave `/proc/swaps`, then mask the unit. Without a fstab swap
-   file the step is not planned. A file that is already off is only masked. A
-   unit systemd does not report running is not stopped, and the file stays on
-   (see [Waiting on systemd](#waiting-on-systemd)).
+5. `stop_swap_file`: when the file is named in fstab, take it away with
+   `swapoff` (see
+   [Taking a disk swap device away](#taking-a-disk-swap-device-away)), then
+   mask its unit so it stays off at boot. Without a fstab swap file the step
+   is not planned. A file that is already off is only masked.
 
 To `zswap` or `disk`, the reverse:
 
@@ -262,7 +262,6 @@ the success message, and keeps the chosen row so Apply can be pressed again.
 |---|---|---|
 | `swap_file` | `not_enough_memory` | The file's data does not fit in memory. Applying again later can finish. |
 | `swap_file` | `zram_not_swapping` | No zram device swaps when the file would stop. |
-| `swap_file` | `unit_not_running` | systemd does not report the file's unit running, so a stop would not take the file away. |
 | `swap_file` | `not_identified` | The fstab file is off, but an active swap file cannot be resolved and may be it, so the unit is not masked. |
 | `swap_file` | `not_managed` | A swap file other than the first one fstab names still swaps: no step stops it. |
 | `zram` | `not_enough_memory` | zram's data does not fit in memory and free disk swap. |
@@ -351,24 +350,21 @@ TuneD therefore runs with TuneD's swappiness.
 ## Draining
 
 "Bring back to memory" (`memory.drain_swap`) empties data parked on disk swap
-by stopping a swap device, which makes the kernel read its pages into RAM
+by taking a swap device away, which makes the kernel read its pages into RAM
 (`swapoff`), and starting it again. zram is never drained: its data is already
 in memory.
 
 Only devices that fstab names are drained, and only those holding data, one at
 a time in fstab order, for each: a fresh status and the room check (the
-device's used bytes with the margin), stop the unit, wait for the device to
-leave `/proc/swaps`, start the unit and wait for the device to return. A
-failure at a later device says that the ones before it stay drained. The dialog
-reports the device in progress.
+device's used bytes with the margin), `swapoff` (see
+[Taking a disk swap device away](#taking-a-disk-swap-device-away)), start
+the unit and wait for the device to return. A failure at a later device says that the ones before it
+stay drained. The dialog reports the device in progress.
 
-Before it stops a swap file, the drain reads the state of the file's unit. That
-unit has the file's own name, so systemd reports it running while the file
-swaps; one that reads `inactive` or `failed`, as for a file fstab names through
-a symlink, could not stop the file and start it again, so the drain refuses at
-that device with `ErrConflict`. A partition's unit is named after its
-`/dev/disk/by-*` link, an alias of the device's own unit, and its state is not
-read before the stop: the wait that follows decides.
+The device's unit is used only to start it again, and its state before the
+`swapoff` is not read: a swap file systemd tracks under another unit name,
+and a partition whose unit is an alias named after its `/dev/disk/by-*` link,
+are drained like any other.
 
 The route refuses a drain with `ErrConflict`, and the status predicts it with
 `can_drain` and `drain_blocked_reason`, one of these, checked in this order:
@@ -384,20 +380,15 @@ The route refuses a drain with `ErrConflict`, and the status predicts it with
 `/etc/systemd/system/<unit>` or `/run/systemd/system/<unit>`. The route asks
 systemd about each unit as well before it stops anything, as a second check.
 
-**A stop that fails still queues a start.** A D-Bus call cancelled after
-systemd took the job still stops the unit, and a `swapoff` goes on after the
-route gives up waiting. So when the stop call fails or is cancelled, or the
-wait for the device to leave fails, a start of the unit is queued anyway, on a
-context that survives the cancel and with a bound of its own. A start on a unit
-still active does nothing. The device's return after a successful stop is also
-not cancelled with the request. The error names the unit and says that a
-start was queued, or, when queueing it failed too, that the device may be off
-and why the start failed.
+**A `swapoff` that fails or is cancelled leaves the device swapping**, so
+nothing is started and the error names the device. Once a device is off,
+bringing it back is not cancelled with the request, and the drain reports the
+device off when its unit does not bring it back within a minute.
 
 ## Swap units
 
 systemd turns each fstab swap entry into a unit named after the path it swaps
-on, and that unit is what LinuxIO stops, masks, unmasks and starts, through
+on, and that unit is what LinuxIO masks, unmasks and starts, through
 `common/systemd`. `fstab.go` names it the way `systemd-fstab-generator` and
 `systemd-escape --path` do (`systemd.EscapePath` in
 `backend/common/systemd/escape.go`): `/swap.img` is `swap.img.swap`. A source
@@ -419,58 +410,78 @@ Masking makes systemd ignore the fstab generator's unit, so the file does not
 come back at boot until `start_swap_file` unmasks it. The file itself is never
 created, grown or deleted.
 
+## Taking a disk swap device away
+
+A mode change and a drain take a swap file or partition away by running
+`swapoff` on its `/proc/swaps` path themselves (`swapOffDevice`,
+`swapoff.go`), and not by stopping its unit. systemd runs the same `swapoff`
+for a stop, but kills it after the unit's timeout, 90 seconds by default,
+and a full swap file on a slow disk takes longer than that to read back. Run
+by LinuxIO it has as long as the disk needs. Nothing bounds it but the
+request.
+
+- **It is a process of its own**, util-linux's `swapoff`, and not a
+  `swapoff(2)` call from the job host. While the pages come back the kernel
+  makes the caller the first process it kills when memory runs out
+  (`set_current_oom_origin` in the kernel's `mm/swapfile.c`), and that has to
+  be a helper and not the job host, which runs every job. The room check is
+  made once, before the call, so memory other programs take during a long
+  `swapoff` can still run out; the helper is then killed and the change
+  fails.
+- **A `swapoff` that is killed, or cancelled with the request, leaves the
+  device swapping.** `swapoff(2)` gives up when a signal is pending and the
+  kernel puts the device back, with the pages already read in memory
+  (`try_to_unuse` and the reinsert in `mm/swapfile.c`). A cancelled request
+  kills the helper.
+- **systemd follows.** It watches `/proc/swaps`, and marks the unit of a
+  device that left inactive (`swap_process_proc_swaps` in systemd's
+  `src/core/swap.c`). The unit is still what keeps the file off at boot
+  (the mask) and what starts a device again. Once a swap file is off, the
+  mask that follows is not cancelled with the request.
+- **A start is sent until the device is back.** systemd does nothing for a
+  start of a unit it still holds active. So before a start of a device that
+  was taken away, LinuxIO waits up to 15 seconds for the unit to read
+  something other than `active` or `deactivating`, and while the device has
+  not returned it sends the start again every 15 seconds, for a minute
+  (`waitUnitSeenOff`, `startUntilBack`).
+- **A device that left counts as stopped**, whatever `swapoff` returned.
+- **No unit state is read first.** `swapoff` takes the device away whatever
+  systemd says of its unit.
+- The path must be absolute, as every `/proc/swaps` path is: `swapoff` reads
+  `LABEL=` and `UUID=` arguments as tags.
+
+The job host runs as root with no capability or system call filter
+(`packaging/systemd/linuxio-jobs@.service`), and its `OOMPolicy=continue`
+keeps a killed helper from taking the other jobs with it.
+
 ## Waiting on systemd
 
-Before a mode change stops the swap file or zram, it reads the unit's state.
-A unit that reads `inactive` or `failed` would not take the device away, so
-no stop is issued: the device stays and the result is `mixed`. This covers
-zram set up by another tool and a swap file systemd tracks under another unit
-name. A drain does the same for a swap file and refuses instead (see
-[Draining](#draining)). A state that cannot be read does not hold the stop
-back.
+zram is still stopped through its provider's unit, since the unit also
+resets the device. Before a mode change stops zram, it reads the unit's
+state. A unit that reads `inactive` or `failed` would not take zram away, so
+no stop is issued and zram stays; this covers zram set up by another tool. A
+state that cannot be read does not hold the stop back.
 
-A swap unit's stop runs `swapoff`, which reads every swapped page back and can
-take minutes. Waits are bounded: a minute for a device to appear in
-`/proc/swaps`, ten minutes for one to leave, polled every 250 ms.
+Waits are bounded: a minute for a device to appear in `/proc/swaps`, ten
+minutes for zram to leave, polled every 250 ms. systemd's own stop timeout
+for zram's unit (90 seconds by default) is not raised: emptying zram moves
+pages inside memory.
 
-**The stop timeout of a swap unit is raised for the stop.** systemd kills a
-swap unit's `swapoff` after the unit's timeout, 90 seconds by default
-(`DefaultTimeoutStartSec`), which a full swap file on a slow disk outlasts.
-A swap unit has one timeout, `TimeoutSec=` in `[Swap]`, and systemd arms it
-for `swapoff` as for `swapon` (`swap_spawn` in systemd's `src/core/swap.c`).
-So before a mode change or a drain stops the unit of a swap file or
-partition that holds data, it writes
-`/run/systemd/system/<unit>.d/90-linuxio-stop-timeout.conf` with `TimeoutSec`
-set to its own ten-minute wait and reloads systemd, and after the wait it
-removes the file and reloads again, past a cancelled request
-(`stopSwapUnit`). A device that holds nothing leaves at once and is stopped
-without the two reloads. A timeout that cannot be raised is logged and does
-not hold the stop back: the unit then stops within systemd's own.
-Putting the timeout back while a `swapoff` still runs, after the route gave
-up or was cancelled, lets systemd end that `swapoff` at the unit's usual
-timeout, counted from the start of the stop. The file is under `/run`, so one
-left by a bridge that died is gone at the next boot. zram's units keep their
-timeout: emptying zram moves pages inside memory.
-
-While waiting for a device to leave, the unit's state is watched too, and the
-wait ends early with an error, the device still in `/proc/swaps`, when:
+While waiting for zram to leave, the unit's state is watched too, and the
+wait ends early with an error, zram still in `/proc/swaps`, when:
 
 - the unit is `failed`, or `active` again after having been seen
-  `deactivating`: systemd stopped waiting, as it does when it kills a
-  `swapoff` or a stop command that outlived the timeout;
+  `deactivating`: systemd stopped waiting, as it does when it kills a stop
+  command that outlived the timeout;
 - the unit is `inactive`: the stop finished without taking the device away,
   as when `zramswap.service` stops and a zram device another tool set up still
   swaps;
 - the unit stays `active` for 15 seconds without ever being seen
-  `deactivating`: systemd did not carry out the stop, as when it ends at once
-  because the kernel refused the `swapoff`.
+  `deactivating`: systemd did not carry out the stop.
 
 A device that has left always counts as stopped, so the device is read once
 more before giving up, and a state that cannot be read is waited for. The
-error for a swap file or zram stop in a mode change goes through rollback; for
-a drain it queues the start described above.
-A swap file whose `swapoff` outlasts the timeout cannot be stopped from the UI
-([backlog](./TODO/backlog.md)).
+error goes through rollback.
 
 ## Files written on the host
 
@@ -485,9 +496,6 @@ symlink) and mode `0644`.
 | `/etc/tmpfiles.d/linuxio-zswap.conf` | every mode, on a kernel with zswap | For `zswap`, `w` lines setting zswap's `compressor` and `enabled` (`Y`) at boot. For `zram` and `disk`, one `w` line setting `enabled` to `N`, so a kernel that starts with zswap on does not return to it. |
 | `/etc/default/zramswap` | `zram`, with zram-tools | zram-tools' configuration: `ALGO=zstd`, `SIZE=<MiB>`, `PRIORITY=100`. It is a package conffile, so the next package upgrade asks about the change. |
 | `/etc/systemd/zram-generator.conf` | `zram`, and leaving zram, with zram-generator | For `zram`: one `[zram0]` section with `zram-size = <MiB>`, `compression-algorithm = zstd` and `swap-priority = 100`. Leaving zram: comments only, so the generator makes no device. Either way it replaces what was there, and takes the place of the file a package puts in `/usr/lib/systemd`. |
-
-For the length of a stop, `/run/systemd/system/<unit>.d/90-linuxio-stop-timeout.conf`
-raises the swap unit's timeout (see [Waiting on systemd](#waiting-on-systemd)).
 
 Besides these, systemd keeps the mask of the swap unit as a symlink in
 `/etc/systemd/system`, and with zram-tools `zramswap.service` is enabled or
@@ -592,8 +600,11 @@ service step, since `start_zram` does that. See
   unit systemd does not report running, the reason reported for each thing
   left, zram restarted at the planned size or kept at its own (and brought
   back after a cancel or a failed stop), the live sysctls after a run that
-  ended in another mode, the stop timeout raised and put back, and the status
-  and route agreement for masked units. `escape_test.go` pins the unit-name
+  ended in another mode, a `swapoff` that fails or is cancelled, the wait for
+  systemd to see a drained device leave and a start sent again, and the
+  status and route agreement for masked units. `swapoff_test.go` runs a
+  script in place of `swapoff`: its arguments, what it printed in the error,
+  and a cancel that ends it. `escape_test.go` pins the unit-name
   escaping. Run with `make test-go-quiet GO_TEST_PKGS=./bridge/handlers/memory`.
 - Frontend: `memoryStatusView.test.ts` and `MemoryOverflowDialog.test.tsx`
   (the real generated client with the calls mocked), and `Memory.test.tsx` for
@@ -606,13 +617,15 @@ service step, since `start_zram` does that. See
   sysctls, the swap file's unit masked, `zramswap.service` enabled and the
   configuration holding `ALGO=zstd`; after the return, the swap file active, no
   zram swapping, its unit unmasked and `zramswap.service` disabled. After
-  zram it also checks that zram has the planned size and that no stop timeout
-  drop-in is left. It then checks that systemd reports the raised timeout for
-  the swap file's unit and the unit's own once it is put back, starts a
-  64 MiB zram beside the swap file and switches to zram again, which must end
-  at the planned size. Cleanup switches back to the starting mode. It does
-  not cover zswap's persistence, swappiness, drain, rollback, a `swapoff`
-  that runs past a timeout, TuneD or a reboot.
+  zram it also checks that zram has the planned size and that systemd no
+  longer reads the swap file's unit active, since the file left through
+  `swapoff` and not a stop. It then drains the swap file (`swapoff`, the
+  wait for systemd, a start of the unit) and checks the file and its unit
+  are active again, starts a 64 MiB zram beside the swap file and switches to
+  zram again, which must end at the planned size. Cleanup switches back to
+  the starting mode. It does not cover zswap's persistence, swappiness, a
+  drain of a device that holds data, a cancelled `swapoff`, rollback, TuneD
+  or a reboot.
   `make vm-test-memory-integration ZRAM_PROVIDER=zram-generator`, after
   `make vm-reset`, runs the same test with Ubuntu's `systemd-zram-generator`
   in place of zram-tools: after zram it checks the `[zram0]` configuration
@@ -624,14 +637,15 @@ service step, since `start_zram` does that. See
 Each is by design or unlikely to be met, or is an open item in
 [the backlog](./TODO/backlog.md).
 
-- A swap file whose `swapoff` takes more than ten minutes cannot be stopped
-  or drained from the UI: the wait and the raised timeout end there.
+- A `swapoff` has no time limit: it runs until the device is empty or the
+  request is cancelled, and the dialog stays open meanwhile.
 - A swap partition or a swap device fstab does not name is never stopped, so
   such a host cannot choose compressed memory only (partition) or have the
   device drained (unnamed).
-- zram that runs at another size than planned with no disk swap active keeps
-  its size until its unit restarts or the host reboots, and the result of the
-  change says so.
+- A host that swaps to zram only keeps the size its zram has. Changing the
+  size means stopping zram, which would leave the host without swap
+  meanwhile, so it is done only while disk swap is active; and the dialog
+  does not offer Apply for the zram row while zram is the current mode.
 - The `zram-generator` path was built from upstream's documentation and unit
   files and has not run on Fedora or RHEL; drop-ins in
   `zram-generator.conf.d` are not read.
@@ -641,7 +655,5 @@ Each is by design or unlikely to be met, or is an open item in
 - On a kernel where zswap failed to start, the tmpfiles line that turns zswap
   off may fail at each boot and leave a line in the journal. Not checked on a
   host.
-- When systemd cannot be reloaded after a stop, the swap unit keeps the
-  ten-minute timeout in systemd's memory until the next reload.
 - The overflow alert is not built
   ([Memory overflow](./TODO/memory-overflow.md)).

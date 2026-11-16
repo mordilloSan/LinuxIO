@@ -213,8 +213,6 @@ const LEFT_TEXT: Partial<
   "swap_file:not_enough_memory": `Not enough free memory to bring back the data in the swap file, so it stays on. ${LATER}`,
   "swap_file:zram_not_swapping":
     "Compressed memory is not running, so the swap file stays on.",
-  "swap_file:unit_not_running":
-    "systemd does not run the swap file's unit, so LinuxIO left the swap file on. Applying again will not change that.",
   "swap_file:not_identified":
     "An active swap file could not be matched to the one in /etc/fstab, so LinuxIO left it as it is.",
   "swap_file:not_managed":

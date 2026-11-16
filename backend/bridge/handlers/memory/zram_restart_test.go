@@ -12,6 +12,8 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
 
+var errNoBus = errors.New("no system bus")
+
 // smallZramSwapsLine is a 256 MiB zram0 holding nothing.
 const smallZramSwapsLine = "/dev/zram0                              partition\t262140\t\t0\t\t100\n"
 
@@ -56,7 +58,7 @@ func TestSetSwapModeRestartsZramAtThePlannedSize(t *testing.T) {
 		"set " + boostParam + "=0",
 		"set " + scaleParam + "=125",
 		"write " + zswapTmpfilesPath,
-		"stop swap.img.swap",
+		"swapoff /swap.img",
 		"mask swap.img.swap",
 	})
 	if got.Mode != apischema.SwapModeZram || !plannedDisksize(t, f) {
@@ -169,7 +171,7 @@ func TestSetSwapModeFailsWhenZramDoesNotComeBack(t *testing.T) {
 	if swaps := f.read(procSwaps); !strings.Contains(swaps, "/swap.img") || strings.Contains(swaps, "/dev/zram0") {
 		t.Fatalf("swaps = %q, want the swap file on and zram stopped", swaps)
 	}
-	if slices.Contains(sys.calls, "stop swap.img.swap") {
+	if slices.Contains(sys.calls, "swapoff /swap.img") {
 		t.Fatalf("calls = %v, want the swap file never stopped", sys.calls)
 	}
 	if got := f.param(swappinessParam); got != "60" {
@@ -241,7 +243,7 @@ func TestSetSwapModeQueuesAStartWhenTheZramStopFails(t *testing.T) {
 		t.Fatalf("err = %v, want the cancel and that a start was queued", err)
 	}
 	swaps := f.read(procSwaps)
-	if !strings.Contains(swaps, "/dev/zram0") || !strings.Contains(swaps, "/swap.img") || slices.Contains(sys.calls, "stop swap.img.swap") {
+	if !strings.Contains(swaps, "/dev/zram0") || !strings.Contains(swaps, "/swap.img") || slices.Contains(sys.calls, "swapoff /swap.img") {
 		t.Fatalf("swaps = %q, calls = %v; want zram back and the swap file on", swaps, sys.calls)
 	}
 }

@@ -13,15 +13,16 @@ import (
 )
 
 // waits bounds how long a change waits for /proc/swaps, and how often it
-// looks. swapOff is long: stopping a swap unit runs swapoff, which reads
-// every swapped page back and can take minutes on a full swap file.
-// stopGrace is how long a unit may stay active after a stop before it is
-// seen deactivating.
+// looks. zramOff is for zram's unit to take zram away. stopGrace is how long
+// a unit may stay active after a stop before it is seen deactivating, how
+// long systemd is given to see that a device left, and how often a start it
+// did not act on is sent again. Taking a swap file or partition away has no
+// bound (see swapOffDevice).
 type waits struct {
-	swapOn, swapOff, poll, stopGrace time.Duration
+	swapOn, zramOff, poll, stopGrace time.Duration
 }
 
-var hostWaits = waits{swapOn: time.Minute, swapOff: 10 * time.Minute, poll: 250 * time.Millisecond, stopGrace: 15 * time.Second}
+var hostWaits = waits{swapOn: time.Minute, zramOff: 10 * time.Minute, poll: 250 * time.Millisecond, stopGrace: 15 * time.Second}
 
 var errWaitTimedOut = errors.New("timed out")
 
@@ -56,7 +57,7 @@ func waitUntil(ctx context.Context, bound, every time.Duration, done func() (boo
 	}
 }
 
-// waitStopped waits, within the swapOff bound, until gone reports that the
+// waitStopped waits, within the zramOff bound, until gone reports that the
 // device unit swaps on has left /proc/swaps. It ends early, with the device
 // still listed, when the unit's state shows the stop is over:
 //
@@ -74,7 +75,7 @@ func waitUntil(ctx context.Context, bound, every time.Duration, done func() (boo
 func (e *executor) waitStopped(ctx context.Context, unit, device string, gone func() (bool, error)) error {
 	start := time.Now()
 	deactivating := false
-	return waitUntil(ctx, e.waits.swapOff, e.waits.poll, func() (bool, error) {
+	return waitUntil(ctx, e.waits.zramOff, e.waits.poll, func() (bool, error) {
 		ok, err := gone()
 		if err != nil || ok {
 			return ok, err
@@ -105,44 +106,78 @@ func (e *executor) waitStopped(ctx context.Context, unit, device string, gone fu
 	})
 }
 
-// stopSwapUnit stops the unit of a swap file or partition holding used
-// bytes and waits for device to leave /proc/swaps. Stopping a swap unit runs
-// swapoff, which systemd kills after the unit's timeout, 90 seconds by
-// default, while a full swap file on a slow disk takes minutes to read
-// back. So for a device that holds data the unit's timeout is raised to
-// this wait's own bound for the length of the stop, with a drop-in under
-// /run, and put back afterwards, past a cancelled request. Putting it back
-// while a swapoff still runs lets systemd end that swapoff at its usual
-// timeout, which is what giving up on the stop means. A timeout that cannot
-// be raised does not hold the stop back: the unit then stops within
-// systemd's own.
-func (e *executor) stopSwapUnit(ctx context.Context, unit, device string, used uint64, gone func() (bool, error)) error {
-	if used > 0 {
-		defer func() {
-			restoreCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
-			defer cancel()
-			if err := e.sys.restoreStopTimeout(restoreCtx, unit); err != nil {
-				slog.Warn("restore swap unit stop timeout failed", "unit", unit, "error", err)
-			}
-		}()
-		if err := e.sys.extendStopTimeout(ctx, unit, e.waits.swapOff); err != nil {
-			slog.Warn("raise swap unit stop timeout failed", "unit", unit, "error", err)
+// swapOffDevice takes a swap file or partition away by running swapoff
+// itself and not by stopping its unit. systemd runs the same swapoff for a
+// stop, but kills it after the unit's timeout, 90 seconds by default, while
+// a full swap file on a slow disk takes minutes to read back; run from here
+// it has as long as the disk needs, and a cancelled request ends it with
+// the device still swapping. systemd sees in /proc/swaps that the device
+// left and marks its unit inactive (swap_process_proc_swaps in its
+// src/core/swap.c). A device that left counts as stopped whatever swapoff
+// returned, as when the request ended in the moment it finished.
+func (e *executor) swapOffDevice(ctx context.Context, device string) error {
+	err := e.sys.swapOff(ctx, device)
+	if err == nil {
+		return nil
+	}
+	if gone, readErr := e.deviceIs(device, false)(); readErr == nil && gone {
+		return nil
+	}
+	return fmt.Errorf("swapoff %s: %w", device, err)
+}
+
+// startUntilBack starts unit and waits, within the swapOn bound, for its
+// device at path to swap again. systemd does nothing for a start of a unit
+// it still holds active, as it may one whose device was taken away behind
+// it a moment ago, so while the device is not back the start is sent again
+// every stopGrace.
+func (e *executor) startUntilBack(ctx context.Context, unit string, back func() (bool, error)) error {
+	if err := e.sys.startUnit(ctx, unit); err != nil {
+		return fmt.Errorf("start %s: %w", unit, err)
+	}
+	started := time.Now()
+	err := waitUntil(ctx, e.waits.swapOn, e.waits.poll, func() (bool, error) {
+		ok, err := back()
+		if err != nil || ok {
+			return ok, err
 		}
-	}
-	if err := e.sys.stopUnit(ctx, unit); err != nil {
-		return fmt.Errorf("stop %s: %w", unit, err)
-	}
-	if err := e.waitStopped(ctx, unit, device, gone); err != nil {
-		return fmt.Errorf("wait for %s to leave %s: %w", device, procSwaps, err)
+		if time.Since(started) >= e.waits.stopGrace {
+			started = time.Now()
+			if err := e.sys.startUnit(ctx, unit); err != nil {
+				slog.Debug("start unit again failed", "unit", unit, "error", err)
+			}
+		}
+		return false, nil
+	})
+	if err != nil {
+		return fmt.Errorf("%s did not bring it back into %s: %w", unit, procSwaps, err)
 	}
 	return nil
 }
 
+// waitUnitSeenOff waits, within stopGrace, until systemd no longer reports
+// unit active or stopping, after its device was taken away behind it: a
+// start of a unit systemd still holds active does nothing. A state that
+// cannot be read is not waited for, and after the grace the caller goes on
+// and finds out from /proc/swaps.
+func (e *executor) waitUnitSeenOff(ctx context.Context, unit string) {
+	err := waitUntil(ctx, e.waits.stopGrace, e.waits.poll, func() (bool, error) {
+		state, err := e.sys.activeState(ctx, unit)
+		if err != nil {
+			slog.Debug("read unit state failed", "unit", unit, "error", err)
+			return true, nil
+		}
+		return state != "active" && state != "deactivating", nil
+	})
+	if err != nil {
+		slog.Debug("unit still reads active after its device left", "unit", unit, "error", err)
+	}
+}
+
 // unitNotRunning reports whether systemd says unit is inactive or failed.
-// A stop of such a unit does nothing, so the device it should take away
-// would stay and the wait would run to its bound; this happens for zram set
-// up by another tool, or a swap file systemd tracks under another unit name.
-// A state that cannot be read does not hold the stop back.
+// A stop of such a unit does nothing, so the zram it should take away would
+// stay and the wait would run to its bound; this happens for zram set up by
+// another tool. A state that cannot be read does not hold the stop back.
 func (e *executor) unitNotRunning(ctx context.Context, unit string) bool {
 	state, err := e.sys.activeState(ctx, unit)
 	if err != nil {

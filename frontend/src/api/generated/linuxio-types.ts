@@ -3093,7 +3093,6 @@ export interface SwapLeft {
 export type SwapLeftReason =
   | "not_enough_memory"
   | "zram_not_swapping"
-  | "unit_not_running"
   | "not_identified"
   | "not_managed"
   | "no_other_swap"

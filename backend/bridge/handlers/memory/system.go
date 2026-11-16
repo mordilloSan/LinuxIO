@@ -5,17 +5,16 @@ import (
 	"io/fs"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
 )
 
 // hostSystem is every side effect the memory writes have, so tests drive
-// them with a fake: systemd unit jobs and unit files, files under /etc,
-// kernel parameters under /proc/sys and /sys, and a fresh status read.
-// Unit starts and stops queue a job and return; callers verify the result
-// in /proc/swaps.
+// them with a fake: systemd unit jobs and unit files, swapoff, files under
+// /etc, kernel parameters under /proc/sys and /sys, and a fresh status
+// read. Unit starts and stops queue a job and return; callers verify the
+// result in /proc/swaps.
 type hostSystem interface {
 	status(ctx context.Context) (apischema.SwapStatus, error)
 	startUnit(ctx context.Context, name string) error
@@ -23,11 +22,10 @@ type hostSystem interface {
 	// restartUnit stops and starts a unit as one job; on a unit that is not
 	// running it is a start.
 	restartUnit(ctx context.Context, name string) error
-	// extendStopTimeout lets a swap unit's swapoff run for timeout before
-	// systemd kills it, until restoreStopTimeout puts the unit's own
-	// timeout back. Both return when systemd has taken the change.
-	extendStopTimeout(ctx context.Context, name string, timeout time.Duration) error
-	restoreStopTimeout(ctx context.Context, name string) error
+	// swapOff takes the swap file or partition at device, a path from
+	// /proc/swaps, away with swapoff and returns when it has left. It ends
+	// early only when ctx does, and the device then swaps on.
+	swapOff(ctx context.Context, device string) error
 	enableUnit(ctx context.Context, name string) error
 	disableUnit(ctx context.Context, name string) error
 	maskUnit(ctx context.Context, name string) error
@@ -63,19 +61,8 @@ func (liveSystem) restartUnit(ctx context.Context, name string) error {
 	return systemd.RestartUnit(ctx, name)
 }
 
-func (s liveSystem) extendStopTimeout(ctx context.Context, name string, timeout time.Duration) error {
-	if err := s.root.writeStopTimeout(name, timeout); err != nil {
-		return err
-	}
-	return systemd.DaemonReload(ctx)
-}
-
-func (s liveSystem) restoreStopTimeout(ctx context.Context, name string) error {
-	removed, err := s.root.removeStopTimeout(name)
-	if err != nil || !removed {
-		return err
-	}
-	return systemd.DaemonReload(ctx)
+func (s liveSystem) swapOff(ctx context.Context, device string) error {
+	return swapOff(ctx, s.root.path(device))
 }
 
 func (liveSystem) enableUnit(ctx context.Context, name string) error {

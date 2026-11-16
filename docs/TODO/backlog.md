@@ -72,6 +72,16 @@ after a change that issues ioctls).
 
 Memory overflow ([Memory overflow](../memory.md)):
 
+- [ ] **A swap file in a folder another user can write can redirect the
+  `swapoff`.** `swapoff` gets the file's `/proc/swaps` path and the kernel
+  resolves it again, so a user who can rename in that folder can put a link
+  there that points at another active swap device, which is then taken away
+  without the room check. A file deleted while it swaps, listed as
+  `<path> (deleted)`, can be matched through a link of that name the same
+  way. It needs a swap file whose folder someone other than root can write;
+  systemd's own stop, used before, resolved the fstab path the same way.
+  Refuse such a file, or check what the path names just before the call.
+  Reported by a review, not reproduced.
 - [ ] **A change that finished is reported as failed when only the last status
   read fails.** The three routes return the status read after the change, and
   an error from that read fails the request though the host changed. Checked.
@@ -199,10 +209,11 @@ Docker updates (`backend/common/dockerupdate`):
   dev mode.
 - [ ] **The memory root test is narrow.** `TestMemoryIntegration`
   (`backend/bridge/handlers/memory/integration_test.go`) covers a switch to zram
-  and back, the raised stop timeout and a restart of zram at the planned size;
-  it does not cover zswap and its tmpfiles entry, swappiness, drain, rollback,
-  a `swapoff` that runs past a timeout, TuneD or a reboot, and its cleanup
-  restores the mode but not the three files LinuxIO manages.
+  and back, a drain of the empty swap file and a restart of zram at the
+  planned size; it does not cover zswap and its tmpfiles entry, swappiness, a
+  drain of a device that holds data, a cancelled `swapoff`, rollback, TuneD or
+  a reboot, and its cleanup restores the mode but not the three files LinuxIO
+  manages.
 - [ ] Not run in the test VM: an update that waits for jobs, started from the
   in-app updater. `control.app_update` installs only a published release, and
   no published release has a higher `jobs.Protocol` than v0.53.0, so
@@ -213,14 +224,14 @@ Docker updates (`backend/common/dockerupdate`):
 
 - [ ] **Memory overflow, checks never done on a host.** Try each in the test
   VM or on a machine, then fix the code or the doc, or delete the line:
-  - `TestMemoryIntegration` has not run since it began to check the raised
-    stop timeout of the swap file's unit, zram at the planned size, and a
-    switch to zram from a 64 MiB zram beside the swap file. Run
-    `make vm-reset` and then `make vm-test-memory-integration`. The restart
-    of a running zram and the stop timeout have run only against the fake
-    host until it passes. Not in that test: a `swapoff` that runs past 90
-    seconds with the timeout raised, and one still running when the timeout
-    is put back, which systemd should then end.
+  - `TestMemoryIntegration` has not run since swap files and partitions are
+    taken away by running `swapoff` and zram is restarted at the planned
+    size. Run `make vm-reset` and then `make vm-test-memory-integration`.
+    Until it passes, two things rest on reading systemd's source: that
+    systemd reads the unit of a device that left behind its back as
+    inactive, and that a start then brings it back. Not in that test: a request cancelled while a `swapoff`
+    reads pages back, which should end with the device swapping, and a
+    `swapoff` of several GB.
   - The `zram-generator` path has run only against the fake host. Run
     `make vm-reset` and then
     `make vm-test-memory-integration ZRAM_PROVIDER=zram-generator`, which uses
@@ -233,27 +244,24 @@ Docker updates (`backend/common/dockerupdate`):
     running when it is (a refused D-Bus call counts as not running, and
     `set_swappiness` then writes a value TuneD overrides later) and that
     `zramswap` is found.
-  - The fail-fast condition for a stop systemd gave up on: a `swapoff` longer
-    than the stop timeout, which is ten minutes while LinuxIO stops the unit,
-    should leave the swap unit `active` after it was
-    `deactivating`, and a timed-out `zramswap stop` should leave the service
-    `failed`. If systemd reports otherwise the wait runs to its ten minutes.
+  - The fail-fast condition for a zram stop systemd gave up on: a timed-out
+    `zramswap stop` should leave the service `failed`. If systemd reports
+    otherwise the wait runs to its ten minutes.
   - The error the kernel gives for a zswap compressor it does not have: the code
     accepts both `ENOENT` and `EINVAL` and keeps the compressor it has.
   - A masked fstab swap unit across a reboot: that it stays off, and that
     unmasking and reloading brings back the unit the fstab generator makes.
   - A swap file that fstab names through a symlink: systemd may tie the swap's
     state to the unit of the path in `/proc/swaps` and keep `<fstab path>.swap`
-    inactive. A mode change then leaves the file on (`mixed`) and a drain
-    refuses; check what systemd reports.
-  - A swap partition fstab names by `UUID=`: the drain stops
-    `dev-disk-by\x2duuid-<uuid>.swap` without reading its state, on the
-    understanding that systemd marks that alias unit active from
-    `/proc/swaps`. Check that it reads `active` while the partition swaps;
-    if so the drain can read its state as it does for a swap file. Check
-    also that the raised stop timeout, a drop-in under that alias name,
-    applies to the partition's `swapoff`: the root test reads it only for a
-    swap file's unit.
+    inactive. A mode change takes the file away by its `/proc/swaps` path and
+    masks `<fstab path>.swap`, and a drain starts that unit: check that the
+    mask keeps the file off at boot and that the start brings it back.
+  - A swap partition fstab names by `UUID=`: a drain takes `/dev/sdXN` away
+    and starts `dev-disk-by\x2duuid-<uuid>.swap`, an alias of the device's
+    own unit. Check that the alias reads inactive once the partition left
+    and that starting it brings the partition back; if it kept reading
+    `active`, the drain would wait its 15 seconds and the start would do
+    nothing.
 - [ ] **Nothing works below a folder link with an absolute target**
   (audit 36). A link such as `/home/u/data -> /mnt/data` is refused by Go's
   `os.Root` for any path that goes through it, and `iteminfo.ResolveSymlinksAt`
