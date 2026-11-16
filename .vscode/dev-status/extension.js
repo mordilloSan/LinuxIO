@@ -1,6 +1,7 @@
 // Status bar indicator for the Vite dev server that `make dev` starts.
 // State comes from frontend/.vite-dev.pid (written by scripts/dev.sh), so it is
 // correct however Vite was started. Start and stop run the existing tasks.
+// Reinstall asks for the sudo password and runs `make reinstall` with it.
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -37,6 +38,58 @@ function showLogs() {
   }
 }
 
+let reinstalling = false;
+
+// `make reinstall` calls sudo from the Makefile, so the password reaches it
+// through SUDO_ASKPASS (askpass.sh prints $LINUXIO_SUDO_PASSWORD) and
+// `SUDO="sudo -A"`. The password lives only in this task's environment: it is
+// not written to disk, the command line or the terminal.
+async function reinstall(root) {
+  if (reinstalling) {
+    vscode.window.showInformationMessage("LinuxIO reinstall is already running.");
+    return;
+  }
+  const password = await vscode.window.showInputBox({
+    title: "LinuxIO reinstall",
+    prompt: "sudo password for make reinstall",
+    password: true,
+    ignoreFocusOut: true,
+  });
+  if (!password) return;
+
+  const task = new vscode.Task(
+    { type: "shell", task: "linuxio reinstall" },
+    vscode.TaskScope.Workspace,
+    "make reinstall",
+    "linuxio",
+    new vscode.ShellExecution("make reinstall SUDO='sudo -A'", {
+      cwd: root,
+      env: {
+        SUDO_ASKPASS: path.join(__dirname, "askpass.sh"),
+        LINUXIO_SUDO_PASSWORD: password,
+      },
+    }),
+  );
+  task.presentation = {
+    reveal: vscode.TaskRevealKind.Always,
+    panel: vscode.TaskPanelKind.Dedicated,
+    clear: true,
+    showReuseMessage: false,
+  };
+  reinstalling = true;
+  try {
+    const execution = await vscode.tasks.executeTask(task);
+    const ended = vscode.tasks.onDidEndTask((event) => {
+      if (event.execution !== execution) return;
+      reinstalling = false;
+      ended.dispose();
+    });
+  } catch (error) {
+    reinstalling = false;
+    vscode.window.showErrorMessage(`LinuxIO reinstall did not start: ${error.message}`);
+  }
+}
+
 const COMMANDS = {
   "linuxioDevStatus.start": () => runTask(START_TASK),
   "linuxioDevStatus.stop": () => runTask(STOP_TASK),
@@ -47,6 +100,12 @@ function activate(context) {
   const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   // Installed for every workspace; only act inside a LinuxIO checkout.
   if (!root || !fs.existsSync(path.join(root, "scripts", "dev.sh"))) return;
+
+  const commands = {
+    ...COMMANDS,
+    "linuxioDevStatus.reinstall": () => reinstall(root),
+  };
+  vscode.commands.executeCommand("setContext", "linuxioDevStatus.active", true);
 
   const pidFile = path.join(root, "frontend", ".vite-dev.pid");
   const item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
@@ -84,7 +143,7 @@ function activate(context) {
   context.subscriptions.push(
     item,
     { dispose: () => clearInterval(timer) },
-    ...Object.entries(COMMANDS).map(([id, run]) => vscode.commands.registerCommand(id, run)),
+    ...Object.entries(commands).map(([id, run]) => vscode.commands.registerCommand(id, run)),
   );
 }
 

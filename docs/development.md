@@ -297,6 +297,30 @@ extension always runs from the checkout. Install is safe to repeat. The target
 directory is `VSCODE_EXTENSIONS_DIR`, which defaults to
 `~/.vscode-server/extensions` when it exists and `~/.vscode/extensions` otherwise.
 
+The extension also ships the key bindings, because VS Code has no
+workspace-level `keybindings.json` and a repo cannot carry bindings any other
+way. They apply only while the extension is active in a LinuxIO checkout (the
+`linuxioDevStatus.active` context), so installing it is all a contributor does;
+a binding of the same key in the user's own `keybindings.json` wins over them.
+
+| Key | Command | Does |
+| --- | --- | --- |
+| `Ctrl+Shift+1` | `linuxioDevStatus.start` | Runs the `make dev` task. |
+| `Ctrl+Shift+2` | `linuxioDevStatus.stop` | Runs the `make dev-stop` task. |
+| `Ctrl+Shift+3` | `linuxioDevStatus.reinstall` | Asks for the sudo password in a masked prompt, then runs `make reinstall` in a visible terminal. |
+
+`make reinstall` calls `sudo` from the Makefile, and `sudo` caches credentials
+per terminal, so priming it first would not help. The reinstall command instead
+runs `make reinstall SUDO='sudo -A'` (`SUDO` defaults to `sudo` in
+`mk/install.mk`) with `SUDO_ASKPASS` pointing at
+`.vscode/dev-status/askpass.sh`, which prints `$LINUXIO_SUDO_PASSWORD`. That
+variable is set only in the task's environment: the password is never written
+to disk, put on a command line or shown in the terminal, but the build tools
+that `make` starts inherit it. A wrong password fails the task, and you press
+`Ctrl+Shift+3` again. Changing a binding or command needs the extension's
+`version` bumped in `package.json`, then `make dev-status-install` and a window
+reload, because the symlink name carries the version.
+
 ### Target-specific inputs
 
 These are consumed by particular targets rather than global defaults:

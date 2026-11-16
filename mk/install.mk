@@ -35,11 +35,14 @@ dev-status-uninstall: ## Remove the VS Code dev-server status bar extension
 		echo "  Not installed in $(VSCODE_EXTENSIONS_DIR)"; \
 	fi
 
+# sudo wrapper for localinstall; the VS Code reinstall command overrides it with "sudo -A".
+SUDO ?= sudo
+
 ##@ Install / Uninstall|red
 localinstall: ## Install from local build
 	@echo ""
 	@echo "📦 Installing LinuxIO from local build..."
-	@sudo "$(packaging_scripts_dir)/localinstall.sh" --build-dir "$(bin_dir)"
+	@$(SUDO) "$(packaging_scripts_dir)/localinstall.sh" --build-dir "$(bin_dir)"
 
 reinstall: fastbuild localinstall ## Fastbuild + install (no uninstall)
 	@echo "LinuxIO reinstalled successfully!"
