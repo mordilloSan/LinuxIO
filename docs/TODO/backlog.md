@@ -112,9 +112,6 @@ Memory overflow ([Memory overflow](../memory.md)):
   row of the dashboard's Memory card, so the `zram` capability card and its
   toast cannot link back to it after an install, and it cannot be bookmarked. A
   validated search parameter on the dashboard route would give it one. Checked.
-- [ ] **The Memory overflow dialog cannot be closed while a change runs**, which
-  for a swap file that empties slowly is minutes. The change is a task, so the
-  dialog could close and leave the progress to the task list. Checked.
 - [ ] **A swap file on a USB disk enclosure is not steered to compressed
   memory.** The hint reads the kernel's removable flag, which a USB stick and a
   card reader set and an enclosure does not; that is right for a USB SSD and

@@ -34,6 +34,10 @@ const mocks = vi.hoisted(() => ({
   results: {} as Record<string, unknown>,
   status: null as unknown,
   statusHold: null as Promise<unknown> | null,
+  // The jobs the host reports running, and the ones the dialog took up.
+  tasks: [] as unknown[],
+  watched: [] as string[],
+  watchResult: null as unknown,
   toast: {
     error: vi.fn(),
     success: vi.fn(),
@@ -44,7 +48,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock("sonner", () => ({ toast: mocks.toast }));
 vi.mock("@/api/calls", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/api/calls")>()),
-  call: vi.fn(async () => {
+  call: vi.fn(async (route: string) => {
+    if (route === "tasks.list") return mocks.tasks;
     if (mocks.statusHold) await mocks.statusHold;
     if (mocks.callFails) throw new Error("the bridge did not answer");
     return mocks.status;
@@ -71,6 +76,21 @@ vi.mock("@/api/linuxio-core", async (importOriginal) => ({
     mocks.status = result;
     return result;
   },
+  watchMutation: async (
+    taskId: string,
+    handlers: {
+      onProgress?: (progress: unknown) => void;
+      onSnapshot?: (snapshot: unknown) => void;
+    },
+  ) => {
+    mocks.watched.push(taskId);
+    handlers.onSnapshot?.({ id: taskId });
+    if (mocks.progress) handlers.onProgress?.({ message: mocks.progress });
+    if (mocks.hold) await mocks.hold;
+    if (mocks.failWith) throw mocks.failWith;
+    mocks.status = mocks.watchResult;
+    return mocks.watchResult;
+  },
 }));
 
 const diskStatus = (overrides: Partial<SwapStatus> = {}) =>
@@ -83,6 +103,11 @@ const diskStatus = (overrides: Partial<SwapStatus> = {}) =>
     ...overrides,
   });
 
+// The dialog fades in over a few frames, and what is in it counts as visible
+// only once that has started.
+const dialogShown = () =>
+  waitFor(() => expect(screen.getByRole("dialog")).toBeVisible());
+
 const renderSection = async (status: SwapStatus) => {
   mocks.status = status;
   const queryClient = createTestQueryClient();
@@ -94,6 +119,7 @@ const renderSection = async (status: SwapStatus) => {
     },
   );
   await screen.findByRole("radiogroup", { name: "When memory runs out" });
+  await dialogShown();
   return { ...view, queryClient };
 };
 
@@ -118,6 +144,9 @@ beforeEach(() => {
   mocks.progress = null;
   mocks.requests = [];
   mocks.results = {};
+  mocks.tasks = [];
+  mocks.watched = [];
+  mocks.watchResult = null;
   mocks.statusHold = null;
   mocks.toast.error.mockClear();
   mocks.toast.success.mockClear();
@@ -494,7 +523,9 @@ describe("MemoryOverflowDialog refresh", () => {
       },
     );
 
-    expect(await screen.findByText("Memory status unavailable")).toBeVisible();
+    await screen.findByText("Memory status unavailable");
+    await dialogShown();
+    expect(screen.getByText("Memory status unavailable")).toBeVisible();
     expect(screen.getByText("the bridge did not answer")).toBeVisible();
   });
 });
@@ -744,7 +775,7 @@ describe("MemoryOverflowDialog apply", () => {
     );
   });
 
-  it("shows the running step and holds every control while a mode change runs", async () => {
+  it("shows the running step and holds the controls, but not Close, while a mode change runs", async () => {
     let finish: () => void = () => {};
     mocks.hold = new Promise<void>((resolve) => {
       finish = resolve;
@@ -770,7 +801,7 @@ describe("MemoryOverflowDialog apply", () => {
 
     expect(await screen.findByText("Turning zswap on")).toBeVisible();
     expect(screen.getByRole("button", { name: "Applying…" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Close" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Close" })).toBeEnabled();
     expect(
       screen.getByRole("button", { name: "Bring back to memory" }),
     ).toBeDisabled();
@@ -783,7 +814,186 @@ describe("MemoryOverflowDialog apply", () => {
     );
   });
 
-  it("holds every control while a drain runs", async () => {
+  it("closes while a change runs, keeps the change going and reports it", async () => {
+    let finish: () => void = () => {};
+    mocks.hold = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    mocks.progress = "Turning zswap on";
+    mocks.results["memory.set_swap_mode"] = swapModeResult(
+      diskStatus({ mode: "zswap" }),
+    );
+    const { user } = await renderSection(diskStatus());
+
+    await user.click(radio("Compressed memory with the disk as backup"));
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+    expect(await screen.findByText("Turning zswap on")).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(mocks.onClose).toHaveBeenCalledTimes(1);
+    // The change being applied is still the one the dialog shows.
+    expect(screen.getByText("Turning zswap on")).toBeVisible();
+    expect(radio("Compressed memory with the disk as backup")).toBeChecked();
+
+    finish();
+    await waitFor(() =>
+      expect(mocks.toast.success).toHaveBeenCalledWith(
+        "Memory overflow setting applied",
+        undefined,
+      ),
+    );
+    expect(mocks.requests).toHaveLength(1);
+  });
+
+  it("goes back to the first step when closed from the confirmation while the change runs", async () => {
+    let finish: () => void = () => {};
+    mocks.hold = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    mocks.progress = "Starting zram";
+    mocks.results["memory.set_swap_mode"] = swapModeResult(swapStatus());
+    const { user } = await renderSection(
+      diskStatus({ devices: [swapFileDevice()] }),
+    );
+
+    await user.click(radio("Compressed memory only"));
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Turn on compressed memory" }),
+    );
+    await user.keyboard("{Escape}");
+
+    expect(mocks.onClose).toHaveBeenCalledTimes(1);
+    expect(confirmStep()).not.toBeInTheDocument();
+    expect(radio("Compressed memory only")).toBeChecked();
+    expect(await screen.findByText("Starting zram")).toBeVisible();
+
+    finish();
+    await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledTimes(1));
+  });
+
+  it("does not take up a change that the dialog it was started in still follows", async () => {
+    let finish: () => void = () => {};
+    mocks.hold = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    mocks.results["memory.set_swap_mode"] = swapModeResult(
+      diskStatus({ mode: "zswap" }),
+    );
+    const { queryClient, unmount, user } = await renderSection(diskStatus());
+    await user.click(radio("Compressed memory with the disk as backup"));
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(mocks.requests).toHaveLength(1));
+
+    // The dashboard is left and opened again while the job runs.
+    unmount();
+    mocks.tasks = [
+      {
+        id: "task-1",
+        metadata: { action: "zswap", identity: ["memory", "swap_mode"] },
+        state: "running",
+        type: "memory.set_swap_mode",
+      },
+    ];
+    renderWithTanStackRouter(
+      <MemoryOverflowDialog onClose={mocks.onClose} open />,
+      { auth: { privileged: true }, queryClient },
+    );
+    await screen.findByRole("radiogroup", { name: "When memory runs out" });
+    await dialogShown();
+
+    expect(screen.getByRole("button", { name: "Applying…" })).toBeDisabled();
+    expect(mocks.watched).toEqual([]);
+
+    finish();
+    await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Apply" })).toBeVisible(),
+    );
+    expect(mocks.toast.success).toHaveBeenCalledTimes(1);
+    expect(mocks.watched).toEqual([]);
+  });
+
+  it("takes up a mode change that is already running when it opens", async () => {
+    let finish: () => void = () => {};
+    mocks.hold = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    mocks.progress = "Stopping the swap file";
+    mocks.tasks = [
+      {
+        id: "task-9",
+        metadata: { action: "zram", identity: ["memory", "swap_mode"] },
+        state: "running",
+        type: "memory.set_swap_mode",
+      },
+    ];
+    mocks.watchResult = swapModeResult(
+      swapStatus({ devices: [zramDevice, swapFileDevice(GIB)], mode: "mixed" }),
+      [{ reason: "not_enough_memory", what: "swap_file" }],
+    );
+    await renderSection(diskStatus());
+
+    expect(await screen.findByText("Stopping the swap file")).toBeVisible();
+    expect(mocks.watched).toEqual(["task-9"]);
+    expect(mocks.requests).toEqual([]);
+    expect(radio("Compressed memory only")).toBeChecked();
+    expect(radio("Disk only")).toBeDisabled();
+
+    finish();
+    await waitFor(() =>
+      expect(mocks.toast.warning).toHaveBeenCalledWith(
+        "Not enough free memory to bring back the data in the swap file, so it stays on. Apply again when more memory is free.",
+        undefined,
+      ),
+    );
+  });
+
+  it("takes up a drain that is already running when it opens", async () => {
+    let finish: () => void = () => {};
+    mocks.hold = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    mocks.progress = "Moving swapped data back into memory";
+    mocks.tasks = [
+      { id: "task-7", state: "running", type: "memory.drain_swap" },
+    ];
+    mocks.watchResult = diskStatus();
+    await renderSection(
+      diskStatus({
+        can_drain: true,
+        devices: [swapFileDevice(GIB)],
+        drain_blocked_reason: "",
+      }),
+    );
+
+    expect(
+      await screen.findByText("Moving swapped data back into memory"),
+    ).toBeVisible();
+    expect(mocks.watched).toEqual(["task-7"]);
+    expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
+
+    finish();
+    await waitFor(() =>
+      expect(mocks.toast.success).toHaveBeenCalledWith(
+        "Parked data brought back to memory",
+        undefined,
+      ),
+    );
+  });
+
+  it("leaves alone a job that has ended or names no mode", async () => {
+    mocks.tasks = [
+      { id: "task-1", state: "completed", type: "memory.set_swap_mode" },
+      { id: "task-2", state: "running", type: "memory.set_swap_mode" },
+    ];
+    await renderSection(diskStatus());
+
+    expect(mocks.watched).toEqual([]);
+    expect(radio("Disk only")).toBeEnabled();
+  });
+
+  it("holds every control but Close while a drain runs", async () => {
     let finish: () => void = () => {};
     mocks.hold = new Promise<void>((resolve) => {
       finish = resolve;
@@ -1070,6 +1280,33 @@ describe("MemoryOverflowDialog advanced", () => {
     );
     expect(mocks.requests).toHaveLength(1);
     await waitFor(() => expect(slider).toHaveValue("60"));
+  });
+
+  it("still sends a step made during a save when the dialog is closed", async () => {
+    let finish: () => void = () => {};
+    mocks.hold = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    mocks.results["memory.set_swap_mode"] = null;
+    mocks.results["memory.set_swappiness"] = diskStatus({ swappiness: 40 });
+    const { user } = await openAdvanced(diskStatus());
+    const slider = await screen.findByRole("slider", {
+      name: "Eagerness to move data out of memory",
+    });
+
+    fireEvent.change(slider, { target: { value: "40" } });
+    fireEvent.pointerUp(slider);
+    await waitFor(() => expect(mocks.requests).toHaveLength(1));
+    fireEvent.change(slider, { target: { value: "70" } });
+    fireEvent.pointerUp(slider);
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(mocks.onClose).toHaveBeenCalledTimes(1);
+
+    mocks.hold = null;
+    mocks.results["memory.set_swappiness"] = diskStatus({ swappiness: 70 });
+    finish();
+    await waitFor(() => expect(mocks.requests).toHaveLength(2));
+    expect(mocks.requests[1].request).toEqual({ swappiness: 70 });
   });
 
   it("lets the slider follow the host again after a drag back to its value", async () => {

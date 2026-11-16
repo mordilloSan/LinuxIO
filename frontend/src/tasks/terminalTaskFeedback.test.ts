@@ -16,6 +16,8 @@ const {
   TASK_TYPE_DOCKER_UPDATE,
   TASK_TYPE_DOCKER_COMPOSE,
   TASK_TYPE_FILE_DELETE_BATCH,
+  TASK_TYPE_MEMORY_DRAIN,
+  TASK_TYPE_MEMORY_SWAP_MODE,
   TASK_TYPE_PACKAGE_UPDATE,
   TASK_TYPE_STORAGE_BTRFS_BALANCE,
   TASK_TYPE_STORAGE_BTRFS_SCRUB,
@@ -409,5 +411,77 @@ describe("terminalTaskFeedback", () => {
       terminalSnapshotOutcome({ ...base, state: "completed", result: 1 }),
     ).toEqual({ kind: "completed", result: 1 });
     expect(terminalSnapshotOutcome({ ...base, state: "running" })).toBeNull();
+  });
+
+  it("reports a memory mode change nobody follows, with what it left", () => {
+    onPage("/docker");
+    const status = { left: [], mode: "zram" };
+    emitTerminalTaskFeedback(
+      task("m1", TASK_TYPE_MEMORY_SWAP_MODE, { action: "zram" }),
+      { kind: "completed", result: status },
+      deps,
+    );
+    expect(toastMocks.success).toHaveBeenCalledWith(
+      "Memory overflow setting applied",
+      expect.anything(),
+    );
+
+    emitTerminalTaskFeedback(
+      task("m2", TASK_TYPE_MEMORY_SWAP_MODE, { action: "zram" }),
+      {
+        kind: "completed",
+        result: {
+          left: [{ reason: "not_enough_memory", what: "swap_file" }],
+          mode: "mixed",
+        },
+      },
+      deps,
+    );
+    expect(toastMocks.warning).toHaveBeenCalledWith(
+      "Not enough free memory to bring back the data in the swap file, so it stays on. Apply again when more memory is free.",
+      expect.anything(),
+    );
+
+    emitTerminalTaskFeedback(
+      task("m3", TASK_TYPE_MEMORY_SWAP_MODE, { action: "zram" }),
+      failed("another memory change is running"),
+      deps,
+    );
+    expect(toastMocks.error).toHaveBeenCalledWith(
+      "another memory change is running",
+      expect.anything(),
+    );
+  });
+
+  it("stays silent for a memory change a dialog follows", () => {
+    markTerminalFeedbackEmitted("m4");
+    emitTerminalTaskFeedback(
+      task("m4", TASK_TYPE_MEMORY_SWAP_MODE, { action: "zram" }),
+      { kind: "completed", result: { left: [], mode: "zram" } },
+      deps,
+    );
+    expect(toastMocks.success).not.toHaveBeenCalled();
+  });
+
+  it("reports a drain nobody follows", () => {
+    onPage("/docker");
+    emitTerminalTaskFeedback(
+      task("d1", TASK_TYPE_MEMORY_DRAIN),
+      { kind: "completed", result: {} },
+      deps,
+    );
+    expect(toastMocks.success).toHaveBeenCalledWith(
+      "Parked data brought back to memory",
+      expect.anything(),
+    );
+    emitTerminalTaskFeedback(
+      task("d2", TASK_TYPE_MEMORY_DRAIN),
+      failed("not enough free memory"),
+      deps,
+    );
+    expect(toastMocks.error).toHaveBeenCalledWith(
+      "not enough free memory",
+      expect.anything(),
+    );
   });
 });

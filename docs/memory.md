@@ -600,8 +600,26 @@ service step, since `start_zram` does that. See
   slider goes back to the host's value.
 - The status is read only while the dialog is open, refreshes every 15
   seconds, and each of the three mutations invalidates it.
-- Close and Escape are held while a change runs, since the running step and
-  the result are shown in the dialog. Closing drops an unapplied choice.
+- Close and Escape work while a change runs. A mode change and a drain are
+  jobs ([Jobs](./jobs.md)): the task tray shows their progress and can cancel
+  them. The other controls stay held, since the host refuses a second
+  change. Closing drops an unapplied choice and keeps the one a mode change
+  is applying, so the dialog shows that change when it is opened again, on
+  its first step and not on the confirmation. A step of the slider made
+  while its save runs is still sent.
+- Whatever follows the job reports its result, once
+  (`frontend/src/tasks/memoryFeedback.ts` holds the texts):
+  - The dialog that started it follows it for as long as the tab is not
+    reloaded, also after the dashboard is left, and toasts the result. A
+    dialog opened meanwhile sees that change in the mutation cache, holds its
+    controls and does not follow the job a second time.
+  - After a reload, or on another tab, a dialog that opens finds the running
+    job and takes it up (`useActiveTaskRecovery`, then the mutation's
+    `watch`): it shows the step, holds its controls and toasts the result.
+    The job's metadata carries the requested mode as `action` for that.
+  - When no dialog follows the job, the task tray reports it, from the
+    entries for the two routes in `terminalTaskFeedback.ts`. A dialog marks
+    the job as reported when it starts to follow it, so the tray stays quiet.
 - The dialog's code loads the first time it is opened. It has no URL: it
   cannot be linked to or bookmarked, like the hostname and clock dialogs.
 
@@ -668,8 +686,8 @@ Each is by design or unlikely to be met, or is an open item in
 [the backlog](./TODO/backlog.md).
 
 - A `swapoff` has no time limit: it runs until the device is empty or the
-  request is cancelled, and the dialog stays open meanwhile. A cancel takes
-  effect only when the process whose memory is being read back is done.
+  job is cancelled from the task tray. A cancel takes effect only when the
+  process whose memory is being read back is done.
 - A swap partition or a swap device fstab does not name is never stopped, so
   such a host cannot choose compressed memory only (partition) or have the
   device drained (unnamed).
@@ -680,9 +698,9 @@ Each is by design or unlikely to be met, or is an open item in
 - The `zram-generator` path was built from upstream's documentation and unit
   files and has not run on Fedora or RHEL; drop-ins in
   `zram-generator.conf.d` are not read.
-- A click on Close or Apply within half a second of an arrow key on the
-  eagerness slider is lost: the click moves focus off the slider, which starts
-  the save, and the buttons are held while it runs.
+- A click on Apply within half a second of an arrow key on the eagerness
+  slider is lost: the click moves focus off the slider, which starts the
+  save, and Apply is held while it runs.
 - On a kernel where zswap failed to start, the tmpfiles line that turns zswap
   off may fail at each boot and leave a line in the journal. Not checked on a
   host.

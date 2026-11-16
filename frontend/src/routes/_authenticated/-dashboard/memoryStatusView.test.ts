@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { modeResultWarning } from "@/tasks/memoryFeedback";
 import {
   swapFile,
   swapFileDevice,
@@ -12,7 +13,6 @@ import {
   bannerView,
   canApply,
   initialSelection,
-  modeResultWarning,
   needsSwapFileConfirm,
   presetSwappiness,
   rowViews,

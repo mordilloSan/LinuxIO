@@ -1,11 +1,11 @@
 import { Icon } from "@iconify/react";
-import { useQuery } from "@tanstack/react-query";
+import { useIsMutating, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useEffect, useEffectEvent, useId, useRef, useState } from "react";
 
 import "./memory-overflow.css";
 
-import { linuxio, type SwapStatus } from "@/api";
+import { linuxio, type SwapMode, type SwapStatus } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
 import ComponentLoader from "@/components/loaders/ComponentLoader";
 import AppAlert, { AppAlertTitle } from "@/components/ui/AppAlert";
@@ -20,12 +20,26 @@ import {
 import AppRadio from "@/components/ui/AppRadio";
 import AppSlider from "@/components/ui/AppSlider";
 import AppTypography from "@/components/ui/AppTypography";
+import {
+  MEMORY_DRAIN_FAILED,
+  MEMORY_DRAINED,
+  MEMORY_MODE_APPLIED,
+  MEMORY_MODE_FAILED,
+  MEMORY_TOAST_META,
+  modeResultWarning,
+} from "@/tasks/memoryFeedback";
+import {
+  TASK_TYPE_MEMORY_DRAIN,
+  TASK_TYPE_MEMORY_SWAP_MODE,
+} from "@/tasks/taskTypes";
+import { markTerminalFeedbackEmitted } from "@/tasks/terminalTaskFeedback";
+import { useActiveTaskRecovery } from "@/tasks/useActiveTaskRecovery";
 
 import {
   bannerView,
   canApply,
   initialSelection,
-  modeResultWarning,
+  isRowMode,
   needsSwapFileConfirm,
   presetSwappiness,
   rowName,
@@ -36,7 +50,9 @@ import {
 } from "./memoryStatusView";
 
 const CAPABILITIES_LINK_TEXT = "Open Capabilities to install zram";
-const DASHBOARD_TOAST_META = { label: "Open dashboard", to: "/" } as const;
+// The two long changes are found in the mutation cache by these keys.
+const MODE_MUTATION_KEY = [TASK_TYPE_MEMORY_SWAP_MODE] as const;
+const DRAIN_MUTATION_KEY = [TASK_TYPE_MEMORY_DRAIN] as const;
 
 /** How long a key press on the eagerness slider waits for the next one. */
 const KEY_SAVE_DELAY_MS = 500;
@@ -202,30 +218,40 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
   });
 
   // A task, not a call: stopping a swap file moves its data back first.
+  // This dialog reports a job it follows, started here or taken up, so the
+  // task tray does not report it as well.
   const setMode = linuxio.memory.set_swap_mode.useMutation({
+    onStart: (task) => void markTerminalFeedbackEmitted(task.id),
     onProgress: (progress) => setProgressMessage(progress.message ?? null),
-    success: "Memory overflow setting applied",
+    success: MEMORY_MODE_APPLIED,
     warning: (result, request) => modeResultWarning(result, request.mode),
-    error: "Failed to change how memory runs out",
-    toast: DASHBOARD_TOAST_META,
+    error: MEMORY_MODE_FAILED,
+    toast: MEMORY_TOAST_META,
     options: {
+      mutationKey: MODE_MUTATION_KEY,
       onSettled: () => {
         setProgressMessage(null);
         setConfirming(false);
+        // The choice was kept for a dialog closed while the change ran.
+        if (!open) setSelected(null);
       },
     },
   });
   const drain = linuxio.memory.drain_swap.useMutation({
+    onStart: (task) => void markTerminalFeedbackEmitted(task.id),
     onProgress: (progress) => setProgressMessage(progress.message ?? null),
-    success: "Parked data brought back to memory",
-    error: "Failed to bring parked data back to memory",
-    toast: DASHBOARD_TOAST_META,
-    options: { onSettled: () => setProgressMessage(null) },
+    success: MEMORY_DRAINED,
+    error: MEMORY_DRAIN_FAILED,
+    toast: MEMORY_TOAST_META,
+    options: {
+      mutationKey: DRAIN_MUTATION_KEY,
+      onSettled: () => setProgressMessage(null),
+    },
   });
   const setSwappiness = linuxio.memory.set_swappiness.useMutation({
     success: "Eagerness updated",
     error: "Failed to change the eagerness",
-    toast: DASHBOARD_TOAST_META,
+    toast: MEMORY_TOAST_META,
     options: {
       // A step made while the save ran is not lost: only the saved value's
       // draft is dropped, so the slider then follows the host.
@@ -235,10 +261,40 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
         ),
     },
   });
-  // The slider stays enabled while its own save runs: disabling the range
-  // input the user is holding would drop keyboard focus.
-  const otherChangeRunning = setMode.isPending || drain.isPending;
+  // A change that is running is counted in the mutation cache and not only
+  // in this dialog: one started before the dashboard was left is still
+  // followed there, by the dialog that started it, and holds the controls of
+  // this one too. The slider stays enabled while its own save runs: disabling
+  // the range input the user is holding would drop keyboard focus.
+  const modeRunning = useIsMutating({ mutationKey: MODE_MUTATION_KEY }) > 0;
+  const drainRunning = useIsMutating({ mutationKey: DRAIN_MUTATION_KEY }) > 0;
+  const otherChangeRunning = modeRunning || drainRunning;
   const busy = otherChangeRunning || setSwappiness.isPending;
+
+  // A change is a job and runs on when this dialog, the page or the tab is
+  // closed. One still running when the dialog opens, which nothing in this
+  // tab follows, is taken up again, so the dialog shows its step, holds its
+  // controls and reports its result.
+  useActiveTaskRecovery({
+    type: TASK_TYPE_MEMORY_SWAP_MODE,
+    scanKey: open ? "open" : null,
+    match: () => true,
+    onRecover: (task) => {
+      const mode = task.metadata?.action as SwapMode | undefined;
+      if (otherChangeRunning || !mode || !isRowMode(mode)) return;
+      setSelected(mode);
+      setMode.watch(task.id, { mode });
+    },
+  });
+  useActiveTaskRecovery({
+    type: TASK_TYPE_MEMORY_DRAIN,
+    scanKey: open ? "open" : null,
+    match: () => true,
+    onRecover: (task) => {
+      if (otherChangeRunning) return;
+      drain.watch(task.id, undefined);
+    },
+  });
 
   const stepSwappiness = (value: number) => {
     newestStep.current = value;
@@ -296,24 +352,28 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
   const commitSwappinessAfterKeys = () =>
     setKeyWait((releases) => (releases ?? 0) + 1);
 
-  // A running change holds the dialog open: its progress and its result are
-  // shown here, and the host refuses a second change meanwhile.
+  // A running change does not hold the dialog open. It is a job: the task
+  // tray shows its progress and can cancel it, and its result is toasted by
+  // whatever follows it, this dialog or the tray. The choice a mode change
+  // is applying is kept, so the dialog shows that change when it is opened
+  // again, on its first step and not on the confirmation.
   const handleClose = () => {
-    if (busy) return;
     // A key press still waiting is saved, not dropped.
     if (keyWait !== null) commitSwappiness();
-    setSelected(null);
+    if (!modeRunning) setSelected(null);
     setConfirming(false);
     setFocusApply(false);
     setAdvancedOpen(false);
-    setDraftSwappiness(null);
-    newestStep.current = null;
+    // A save that is running sends the newest step itself when it ends.
+    if (!setSwappiness.isPending) {
+      setDraftSwappiness(null);
+      newestStep.current = null;
+    }
     onClose();
   };
 
   const dialogProps = {
     "aria-busy": busy || undefined,
-    disableEscapeKeyDown: busy,
     fullWidth: true,
     maxWidth: "sm",
     onClose: handleClose,
@@ -322,7 +382,7 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
   // Keyed so the button, which has focus while the status loads, is the same
   // element once the rows and Apply appear beside it.
   const closeButton = (
-    <AppButton disabled={busy} key="close" onClick={handleClose}>
+    <AppButton key="close" onClick={handleClose}>
       Close
     </AppButton>
   );
@@ -383,7 +443,7 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
             role="status"
             variant="caption"
           >
-            {setMode.isPending ? (progressMessage ?? "Starting…") : ""}
+            {modeRunning ? (progressMessage ?? "Starting…") : ""}
           </AppTypography>
         </AppDialogContent>
         <AppDialogActions>
@@ -403,7 +463,7 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
             onClick={() => setMode.mutate({ mode: "zram" })}
             variant="contained"
           >
-            {setMode.isPending ? "Applying…" : "Turn on compressed memory"}
+            {modeRunning ? "Applying…" : "Turn on compressed memory"}
           </AppButton>
         </AppDialogActions>
       </GeneralDialog>
@@ -424,7 +484,7 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
                 <BannerActionControl
                   action={banner.action}
                   busy={busy}
-                  drainPending={drain.isPending}
+                  drainPending={drainRunning}
                   onDrain={() => drain.mutate()}
                   onSwitchToZram={() => requestMode("zram")}
                 />
@@ -517,7 +577,7 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
           onClick={() => requestMode(choice)}
           variant="contained"
         >
-          {setMode.isPending ? "Applying…" : "Apply"}
+          {modeRunning ? "Applying…" : "Apply"}
         </AppButton>
       </AppDialogActions>
     </GeneralDialog>

@@ -7,11 +7,21 @@ import {
   getMutationErrorMessage,
   type InstallCapabilityResult,
   LinuxIOError,
+  type SwapMode,
+  type SwapModeResult,
   type TaskSnapshot,
 } from "@/api";
 import { toastLinkOptions } from "@/api/toast-meta";
 import { toastFileError } from "@/utils/linkRefusal";
 
+import {
+  MEMORY_DRAIN_FAILED,
+  MEMORY_DRAINED,
+  MEMORY_MODE_APPLIED,
+  MEMORY_MODE_FAILED,
+  MEMORY_TOAST_META,
+  modeResultWarning,
+} from "./memoryFeedback";
 import * as TaskTypes from "./taskTypes";
 import { requestString } from "./taskUtils";
 
@@ -199,6 +209,43 @@ export const TERMINAL_TASK_FEEDBACK: Record<string, TerminalFeedbackEntry> = {
   [TaskTypes.TASK_TYPE_PACKAGE_UPDATE]: {
     onFailed: (_task, error) => {
       toast.error(getMutationErrorMessage(error, "Package update failed"));
+    },
+  },
+  // The Memory overflow dialog can be closed while its change runs. A dialog
+  // that follows the job reports it and marks it reported; this is for a job
+  // nobody follows, as after a reload. The job's action is the mode asked
+  // for, which the warning needs.
+  [TaskTypes.TASK_TYPE_MEMORY_SWAP_MODE]: {
+    onCompleted: (task, value) => {
+      const result = value as SwapModeResult | undefined;
+      const requested = requestString(task.metadata, "action") as
+        | SwapMode
+        | undefined;
+      const warning = result
+        ? modeResultWarning(result, requested ?? result.mode)
+        : null;
+      if (warning) {
+        toast.warning(warning, toastLinkOptions(MEMORY_TOAST_META));
+      } else {
+        toast.success(MEMORY_MODE_APPLIED, toastLinkOptions(MEMORY_TOAST_META));
+      }
+    },
+    onFailed: (_task, error) => {
+      toast.error(
+        getMutationErrorMessage(error, MEMORY_MODE_FAILED),
+        toastLinkOptions(MEMORY_TOAST_META),
+      );
+    },
+  },
+  [TaskTypes.TASK_TYPE_MEMORY_DRAIN]: {
+    onCompleted: () => {
+      toast.success(MEMORY_DRAINED, toastLinkOptions(MEMORY_TOAST_META));
+    },
+    onFailed: (_task, error) => {
+      toast.error(
+        getMutationErrorMessage(error, MEMORY_DRAIN_FAILED),
+        toastLinkOptions(MEMORY_TOAST_META),
+      );
     },
   },
   // Page-owned: DiskOverview fires its own scoped toast for SMART tests, so

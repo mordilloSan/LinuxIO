@@ -48,6 +48,8 @@ export const TASK_TYPE_STORAGE_PARTITION_CREATE = taskType(
 export const TASK_TYPE_STORAGE_PARTITION_FORMAT = taskType(
   "storage.partition_format",
 );
+export const TASK_TYPE_MEMORY_SWAP_MODE = taskType("memory.set_swap_mode");
+export const TASK_TYPE_MEMORY_DRAIN = taskType("memory.drain_swap");
 export const TASK_TYPE_SYSTEM_INSTALL_CAPABILITY = taskType(
   "system.install_capability",
 );

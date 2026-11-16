@@ -56,3 +56,16 @@ func TestMemoryWritesArePrivilegedMutations(t *testing.T) {
 		})
 	}
 }
+
+// A dialog that takes up a running mode change again reads the requested
+// mode from the job's metadata.
+func TestSetSwapModeJobNamesTheRequestedMode(t *testing.T) {
+	route := routeSpec(t, "memory.set_swap_mode")
+	if route.Metadata == nil {
+		t.Fatal("memory.set_swap_mode has no task metadata")
+	}
+	metadata := route.Metadata(apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
+	if metadata.Action != "zram" || metadata.Label == "" {
+		t.Fatalf("metadata = %+v, want the mode as its action and a label", metadata)
+	}
+}

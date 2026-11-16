@@ -10,8 +10,10 @@ import (
 
 var api = apischema.Bindings(
 	apischema.Call[apischema.NoRequest, apischema.SwapStatus]("memory.get_swap_status", apischema.RetrySafe()).Handle(handleGetSwapStatus),
-	apischema.MutationTask("memory.set_swap_mode", handleSetSwapMode, apischema.Privileged(), apischema.Progress[apischema.SwapProgress](), apischema.WithTaskMetadata(func(apischema.SwapModeRequest) bridgeipc.TaskMetadata {
-		return bridgeipc.TaskMetadata{Identity: []string{"memory", "swap_mode"}, Label: "Changing how memory overflows"}
+	// Action is the requested mode: a dialog that takes up a running change
+	// again needs it to say what the change left.
+	apischema.MutationTask("memory.set_swap_mode", handleSetSwapMode, apischema.Privileged(), apischema.Progress[apischema.SwapProgress](), apischema.WithTaskMetadata(func(req apischema.SwapModeRequest) bridgeipc.TaskMetadata {
+		return bridgeipc.TaskMetadata{Identity: []string{"memory", "swap_mode"}, Label: "Changing how memory overflows", Action: string(req.Mode)}
 	})),
 	apischema.Mutation("memory.set_swappiness", handleSetSwappiness, apischema.Privileged()),
 	apischema.MutationTask("memory.drain_swap", handleDrainSwap, apischema.Privileged(), apischema.Progress[apischema.SwapProgress](), apischema.WithTaskMetadata(func(apischema.NoRequest) bridgeipc.TaskMetadata {
