@@ -153,7 +153,32 @@ Memory overflow ([Memory overflow](../memory.md)):
   link to Capabilities. Planned in
   [Memory overflow](./memory-overflow.md#fedora-and-rhel). Checked.
 
+Scheduled runs (`backend/common/scheduledrun`):
+
+- [ ] **One failed rule, job or pool marks a btrfs timer run and its unit as
+  failed.** The snapshot, replication and resync workers still exit with
+  status 3 when every failure raised its own alert and with 4 when the run did
+  no work, so systemd shows the unit as failed and the history says "exited
+  with status 3". The Docker update pass no longer does: it completes and
+  stores a summary (`scheduledrun.Summary`), which the end hook and the
+  history read. Move the three btrfs workers to the same and drop
+  `ExitReported` and `ExitSkipped`. Checked.
+- [ ] **The log lines of a scheduled Docker pass do not name their
+  container in the saved output.** `updated Compose Docker container` carries
+  the container and the images as journal fields, which
+  `journalctl -o short-iso` and so a run's saved output do not show; the
+  report at the end of the output names them. Checked.
+
 Docker updates (`backend/common/dockerupdate`):
+
+- [ ] **An updated standalone container keeps the labels of its old image.**
+  `StandaloneCreateOptions` (`standalone.go`) copies the old container's
+  configuration, and an inspected container's labels include its image's, so
+  the replacement carries them as its own and they override the new image's:
+  `org.opencontainers.image.version` and the like stay at the old values
+  through every later update. The pass report and the alerts read versions
+  from the images for that reason. Drop the labels the old image set before
+  creating the replacement. Checked by reading the code, not on a host.
 
 - [ ] **A failed Compose update is not rolled back.** A standalone container
   whose replacement does not become ready gets its original container back
@@ -186,14 +211,15 @@ Docker updates (`backend/common/dockerupdate`):
 
 ## Tests that are missing
 
-- [ ] **The assistant's effort slider was not looked at in a browser after it
-  moved to `AppSlider`.** Its thumb, halo and invisible track now come from
-  `--app-slider-*` variables set in `assistant.css`; the fake agent of the
-  browser suite offers no effort option, so no spec draws it.
+- [ ] **No browser spec draws the assistant's effort slider.** Its thumb, halo
+  and invisible track come from `--app-slider-*` variables set in
+  `assistant.css`; the fake agent of the browser suite offers no effort option.
+  It was looked at by hand in dev mode after it moved to `AppSlider`.
 - [ ] **No browser spec for the Memory overflow dialog.** Its single-choice
   list, slider, the confirm step's focus (Back on entry, Apply on the way back)
-  and the pencil that opens it were exercised only under jsdom
-  (`MemoryOverflowDialog.test.tsx`, `Memory.test.tsx`).
+  and the pencil that opens it were exercised under jsdom
+  (`MemoryOverflowDialog.test.tsx`, `Memory.test.tsx`) and looked at by hand in
+  dev mode.
 - [ ] **The memory root test is narrow.** `TestMemoryIntegration`
   (`backend/bridge/handlers/memory/integration_test.go`) covers a switch to zram
   and back; it does not cover zswap and its tmpfiles entry, swappiness, drain,
@@ -209,7 +235,6 @@ Docker updates (`backend/common/dockerupdate`):
 
 - [ ] **Memory overflow, checks never done on a host.** Try each in the test
   VM or on a machine, then fix the code or the doc, or delete the line:
-  - `make vm-test-memory-integration` has not been run.
   - `memory.get_swap_status` asks TuneD through `power.GetStatus` as the
     session user, and finds `zramswap` through the bridge's `PATH` with the
     `/usr/sbin` fallback. From a bridge without sudo, check that TuneD reads as

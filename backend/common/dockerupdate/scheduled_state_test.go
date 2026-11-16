@@ -36,8 +36,8 @@ func TestScheduledStandaloneCleanupFailurePreservesCurrentStatus(t *testing.T) {
 	}
 	// The replacement counts even though its cleanup failed: every_run's
 	// "nothing to update" depends on this count.
-	if state.updated != 1 {
-		t.Fatalf("replaced containers = %d, want 1", state.updated)
+	if len(state.outcomes) != 1 || state.outcomes[0].Err != nil {
+		t.Fatalf("outcomes = %+v, want one replaced container", state.outcomes)
 	}
 
 	snapshot := ReadStatusSnapshot()
@@ -58,6 +58,10 @@ func TestScheduledComposeVerifyCountsReplacedContainers(t *testing.T) {
 	useTempAlertStore(t)
 	state := newScheduledUpdateState(t.Context(), nil)
 	state.alertReport = alerts.ReportChanges
+	// The versions come from the images, not from the containers' labels.
+	state.imageVersion = func(imageID string) string {
+		return map[string]string{"sha256:web-old": "1.0.0", "sha256:web-new": "1.1.0"}[imageID]
+	}
 	web := readyContainer("web-old", "sha256:web-old")
 	worker := readyContainer("worker", "sha256:worker")
 	worker.Name = "/worker"
@@ -74,8 +78,13 @@ func TestScheduledComposeVerifyCountsReplacedContainers(t *testing.T) {
 		t.Fatalf("verifyComposeGroup: %v", err)
 	}
 	// Only web got a new image; worker kept its own.
-	if state.updated != 1 || len(state.oldImageIDs) != 1 || state.oldImageIDs[0] != web.Image || len(state.errs) != 0 {
-		t.Fatalf("replaced = %d, old images %v, errors %v; want 1, [%s], none", state.updated, state.oldImageIDs, state.errs, web.Image)
+	if len(state.oldImageIDs) != 1 || state.oldImageIDs[0] != web.Image || len(state.errs) != 0 {
+		t.Fatalf("old images %v, errors %v; want [%s], none", state.oldImageIDs, state.errs, web.Image)
+	}
+	// The pass report names the replaced container and what replaced what.
+	want := ContainerOutcome{Name: "web", Image: "nginx:latest", OldImageID: web.Image, NewImageID: newWeb.Image, OldVersion: "1.0.0", NewVersion: "1.1.0"}
+	if len(state.outcomes) != 1 || state.outcomes[0] != want {
+		t.Fatalf("outcomes = %+v, want %+v", state.outcomes, want)
 	}
 	if ids := alertIDs(t); len(ids) != 1 || ids[0] != "docker-update/updated-web" {
 		t.Fatalf("alerts = %v, want the one updated notice", ids)

@@ -67,11 +67,15 @@ export function taskTitle(task: TaskSnapshot): string {
   return `${area.charAt(0).toUpperCase()}${area.slice(1)}: ${action}`;
 }
 
-/** "Completed", "Failed", "Cancelled", "Interrupted (reboot)". */
+/**
+ * "Completed", "Failed", "Cancelled", "Interrupted (reboot)". A completed
+ * scheduled run whose worker said what it did reads as that instead, such as
+ * "1 updated, 1 failed".
+ */
 export function taskOutcome(entry: TaskHistoryEntry): string {
   switch (entry.task.state) {
     case "completed":
-      return "Completed";
+      return entry.summary || "Completed";
     case "failed":
       return "Failed";
     case "canceled":
@@ -81,6 +85,20 @@ export function taskOutcome(entry: TaskHistoryEntry): string {
     default:
       return entry.task.state;
   }
+}
+
+/**
+ * The log tables' level marker for how a run ended: "info" (green) for
+ * completed, "error" for failed, "warn" (amber) for one that was stopped and
+ * for a completed scheduled run in which some items failed, each with an
+ * alert of its own.
+ */
+export function taskOutcomeLevel(
+  entry: TaskHistoryEntry,
+): "info" | "warn" | "error" {
+  if (entry.task.state === "failed") return "error";
+  if (entry.task.state !== "completed") return "warn";
+  return entry.failures ? "warn" : "info";
 }
 
 // Exactly as received: the server's times carry nanoseconds that a Date would

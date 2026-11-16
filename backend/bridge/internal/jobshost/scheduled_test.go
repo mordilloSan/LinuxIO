@@ -540,11 +540,24 @@ func TestTasksHistoryIncludesScheduledRunsOnTheRootHost(t *testing.T) {
 	if err := os.WriteFile(th.cfg.Scheduled.OutputPath(newest.ID), []byte("line\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	// A worker's summary is the part of the run's result the list shows.
+	if _, err := th.cfg.Scheduled.Update(t.Context(), oldest.ID, func(r *jobs.Record) error {
+		r.Result = []byte(`{"message":"1 updated, 1 failed","failures":1}`)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 	th.start()
 
 	history := callHistory(t, th.connect(), map[string]any{})
 	if want := []string{newest.ID, jobA, oldest.ID}; !slices.Equal(historyIDs(history), want) {
 		t.Fatalf("tasks.history = %v, want %v", historyIDs(history), want)
+	}
+	if got := history.Entries[2]; got.Summary != "1 updated, 1 failed" || got.Failures != 1 || got.Task.Result != nil {
+		t.Fatalf("scheduled entry = %+v, want the worker's summary and no result", got)
+	}
+	if got := history.Entries[0]; got.Summary != "" || got.Failures != 0 {
+		t.Fatalf("scheduled entry without a summary = %+v", got)
 	}
 	if got := history.Entries[0]; got.Unit != scriptUnit || !got.Output || got.Task.Metadata == nil || got.Task.Metadata.Label != "Nightly backup" {
 		t.Fatalf("scheduled entry = %+v, want its unit, its output and its label", got)

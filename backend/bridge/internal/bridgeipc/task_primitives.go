@@ -47,6 +47,11 @@ type TaskHistoryEntry struct {
 	Reason string       `json:"reason,omitzero"` // shutdown, reboot or crash for an interrupted job
 	Unit   string       `json:"unit,omitzero"`   // the unit of a scheduled run
 	Output bool         `json:"output,omitzero"` // a saved output exists
+	// Summary is what a scheduled worker said its run did, such as
+	// "1 updated, 1 failed"; Failures is how many of its items failed with an
+	// alert of their own, in a run that still completed.
+	Summary  string `json:"summary,omitzero"`
+	Failures int    `json:"failures,omitzero"`
 }
 
 // TaskHistory is a page of ended jobs, newest first. More says that older

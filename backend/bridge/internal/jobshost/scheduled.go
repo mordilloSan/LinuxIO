@@ -144,6 +144,11 @@ func (s storedJobs) History(ctx context.Context, req bridgeipc.TaskHistoryReques
 		entry := bridgeipc.TaskHistoryEntry{Task: historySnapshot(record), Reason: string(record.Reason)}
 		if record.Executor.Kind == jobs.ExecutorUnit {
 			entry.Unit, entry.Output = record.Executor.Unit, s.hasOutput(record.ID)
+			// The entry carries no result; the summary is the part of a
+			// scheduled run's result the list shows.
+			if summary, ok := scheduledrun.SummaryOf(record); ok {
+				entry.Summary, entry.Failures = summary.Message, summary.Failures
+			}
 		}
 		history.Entries = append(history.Entries, entry)
 	}

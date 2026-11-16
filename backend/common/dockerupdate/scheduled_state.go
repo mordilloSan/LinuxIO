@@ -33,11 +33,16 @@ type scheduledUpdateState struct {
 	composeUpdate func(context.Context, ComposeTarget, []string, ComposeLineEmitter) error
 	announce      func(name string)
 	alertReport   string // the Docker updates' alerts.ReportFor
-	updated       int    // containers this pass replaced
+	// outcomes is each container this pass replaced or failed to, in the
+	// order it happened, for the pass report.
+	outcomes []ContainerOutcome
+	// imageVersion reads the version label of an image by its ID, empty when
+	// it has none; nil where no engine is at hand.
+	imageVersion func(imageID string) string
 }
 
 func newScheduledUpdateState(ctx context.Context, cli *client.Client) *scheduledUpdateState {
-	return &scheduledUpdateState{
+	state := &scheduledUpdateState{
 		ctx:           ctx,
 		cli:           cli,
 		registry:      cli,
@@ -46,6 +51,47 @@ func newScheduledUpdateState(ctx context.Context, cli *client.Client) *scheduled
 		composeGroups: make(map[string]*scheduledComposeTarget),
 		composeUpdate: composePullAndUpServices,
 	}
+	if cli != nil {
+		state.imageVersion = func(imageID string) string { return imageVersionOf(ctx, cli, imageID) }
+	}
+	return state
+}
+
+type imageInspector interface {
+	ImageInspect(context.Context, string, ...client.ImageInspectOption) (client.ImageInspectResult, error)
+}
+
+// imageVersionOf reads the version label of an image; empty when it has none
+// or cannot be read, which only shortens what the pass reports.
+func imageVersionOf(ctx context.Context, cli imageInspector, imageID string) string {
+	if imageID == "" {
+		return ""
+	}
+	result, err := cli.ImageInspect(ctx, imageID)
+	if err != nil {
+		slog.Debug("failed to read the version of a Docker image",
+			"component", "docker",
+			"subsystem", "update",
+			"image", imageID,
+			"error", err)
+		return ""
+	}
+	if result.Config == nil {
+		return ""
+	}
+	return result.Config.Labels[imageVersionLabel]
+}
+
+// replaced is the outcome of a container the pass replaced: its images and,
+// while the old one is still on the host (the cleanup runs after the last
+// update), their versions.
+func (s *scheduledUpdateState) replaced(before container.InspectResponse, newImageID string) ContainerOutcome {
+	outcome := outcomeBefore(before)
+	outcome.NewImageID = newImageID
+	if s.imageVersion != nil {
+		outcome.OldVersion, outcome.NewVersion = s.imageVersion(outcome.OldImageID), s.imageVersion(newImageID)
+	}
+	return outcome
 }
 
 func (s *scheduledUpdateState) prepare(summary container.Summary) error {
@@ -169,15 +215,19 @@ func (s *scheduledUpdateState) recordStandaloneUpdateOutcome(
 	updateErr error,
 ) error {
 	if updated.Updated {
-		s.updated++
+		outcome := s.replaced(before, updated.NewImageID)
+		s.outcomes = append(s.outcomes, outcome)
 		s.oldImageIDs = append(s.oldImageIDs, updated.PreviousImageID)
 		slog.Info("updated standalone Docker container",
 			"component", "docker",
 			"subsystem", "update",
 			"container", updated.ContainerName,
+			"image", outcome.Image,
 			"old_image", updated.PreviousImageID,
-			"new_image", updated.NewImageID)
-		raiseDockerUpdatedAlert(s.ctx, s.alertReport, updated.ContainerName, updated.PreviousImageID, updated.NewImageID)
+			"new_image", updated.NewImageID,
+			"old_version", outcome.OldVersion,
+			"new_version", outcome.NewVersion)
+		raiseDockerUpdatedAlert(s.ctx, s.alertReport, outcome)
 	}
 	if updateErr != nil {
 		if ctxErr := s.ctx.Err(); ctxErr != nil {
@@ -213,9 +263,18 @@ func inspectScheduledUpdateCandidate(
 
 func (s *scheduledUpdateState) recordCandidateError(inspect container.InspectResponse, err error) {
 	if inspect.ID != "" {
+		s.recordFailedOutcome(inspect, err)
 		err = scheduledUpdateError(s.ctx, inspect, err)
 	}
 	s.errs = append(s.errs, err)
+}
+
+// recordFailedOutcome adds a container whose update failed, and whose alert
+// reports it, to the pass report.
+func (s *scheduledUpdateState) recordFailedOutcome(inspect container.InspectResponse, err error) {
+	outcome := outcomeBefore(inspect)
+	outcome.Err = err
+	s.outcomes = append(s.outcomes, outcome)
 }
 
 func (s *scheduledUpdateState) addComposeCandidate(target ComposeTarget, service string, inspect container.InspectResponse) {
@@ -292,8 +351,9 @@ func (s *scheduledUpdateState) recordComposeGroupError(group *scheduledComposeTa
 	// wrong while recording it, such as a status file that cannot be written,
 	// stays unmarked beside it.
 	for _, inspect := range group.before {
+		s.recordFailedOutcome(inspect, err)
 		if recorded := scheduledUpdateError(s.ctx, inspect, err); !scheduledrun.AllReported(recorded) {
-			s.errs = append(s.errs, fmt.Errorf("record the failed update of %s: %w", strings.TrimPrefix(inspect.Name, "/"), unreportedPart(recorded)))
+			s.errs = append(s.errs, fmt.Errorf("record the failed update of %s: %w", strings.TrimPrefix(inspect.Name, "/"), scheduledrun.Unreported(recorded)))
 		}
 	}
 	if len(group.before) > 0 {
@@ -316,16 +376,20 @@ func (s *scheduledUpdateState) verifyComposeGroup(group *scheduledComposeTarget)
 		if after.Image == before.Image {
 			continue
 		}
-		s.updated++
+		outcome := s.replaced(before, after.Image)
+		s.outcomes = append(s.outcomes, outcome)
 		s.oldImageIDs = append(s.oldImageIDs, before.Image)
 		slog.Info("updated Compose Docker container",
 			"component", "docker",
 			"subsystem", "update",
 			"project", group.target.Name,
-			"container", strings.TrimPrefix(before.Name, "/"),
+			"container", outcome.Name,
+			"image", outcome.Image,
 			"old_image", before.Image,
-			"new_image", after.Image)
-		raiseDockerUpdatedAlert(s.ctx, s.alertReport, before.Name, before.Image, after.Image)
+			"new_image", after.Image,
+			"old_version", outcome.OldVersion,
+			"new_version", outcome.NewVersion)
+		raiseDockerUpdatedAlert(s.ctx, s.alertReport, outcome)
 	}
 	return nil
 }
@@ -341,19 +405,4 @@ func verifyScheduledComposeContainer(
 		return container.InspectResponse{}, fmt.Errorf("verify updated Compose container %q: %w", name, err)
 	}
 	return after, nil
-}
-
-// unreportedPart is what joined err holds besides its reported failures.
-func unreportedPart(err error) error {
-	joined, ok := err.(interface{ Unwrap() []error })
-	if !ok {
-		return err
-	}
-	var rest []error
-	for _, e := range joined.Unwrap() {
-		if !scheduledrun.AllReported(e) {
-			rest = append(rest, e)
-		}
-	}
-	return errors.Join(rest...)
 }

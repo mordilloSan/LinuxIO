@@ -19,6 +19,7 @@ import { isScheduledRun, scheduledRunLink } from "@/tasks/scheduledRuns";
 import {
   taskEndedAt,
   taskOutcome,
+  taskOutcomeLevel,
   taskRunTime,
   taskTitle,
 } from "@/tasks/taskTitles";
@@ -26,11 +27,6 @@ import { formatDate } from "@/utils/formatters";
 import { logSourceHue } from "@/utils/logHue";
 
 import "@/components/tables/log-row.css";
-
-// The log tables' level marker, reused for how a run ended: green for
-// completed, a red rail for failed, amber for one that was stopped.
-const outcomeLevel = (state: string) =>
-  state === "completed" ? "info" : state === "failed" ? "error" : "warn";
 
 const OUTCOME_FILTERS = [
   { value: "completed", label: "Completed" },
@@ -65,7 +61,7 @@ const columns: AppVirtualTableColumnDef<TaskHistoryEntry>[] = [
     cell: ({ row }) => (
       <span
         className="log-level"
-        data-level={outcomeLevel(row.original.task.state)}
+        data-level={taskOutcomeLevel(row.original)}
         title={taskOutcome(row.original)}
       />
     ),
@@ -285,7 +281,7 @@ function Details({
           flexWrap: "wrap",
         }}
       >
-        <span className="log-level" data-level={outcomeLevel(task.state)} />
+        <span className="log-level" data-level={taskOutcomeLevel(entry)} />
         <AppTypography variant="h6">{taskTitle(task)}</AppTypography>
         <AppTypography color="text.secondary">
           {taskOutcome(entry)}

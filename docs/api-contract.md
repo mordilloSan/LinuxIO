@@ -904,7 +904,14 @@ and `tasks.events` while it runs. Six task types:
   both set `cancel_requested` on the record first, so the run ends `canceled`.
 - **Outcomes.** `completed`; `failed` with a message such as `exited with
   status 3`, `killed by signal KILL` or `timed out`; `canceled`; `interrupted`
-  with reason `shutdown` when the system was stopping as the run ended. A
+  with reason `shutdown` when the system was stopping as the run ended.
+- **`result`.** A worker may store a summary of what its run did, which
+  `tasks.get` answers as the `result` of a completed run: `message` (one
+  line, such as `1 updated, 1 failed`), `failures` (how many of its items
+  failed with an alert of their own; absent when none) and `skipped` (set
+  when the run did no work). The Docker update pass stores one, and
+  completes also when containers failed
+  ([Jobs](./jobs.md#scheduled-runs)); the other runs store none. A
   `running` record counts only while systemd runs the record's invocation in
   this boot; otherwise the host marks it `interrupted`, `reboot` for a run of
   an earlier boot and `crash` for one whose end hook never ran.
@@ -932,12 +939,15 @@ open to every session.
 The answer holds `entries` and `more` (set when older entries remain). An
 entry (`TaskHistoryEntry`) is `task`, a slim `TaskSnapshot` of the ended job,
 `reason` (`shutdown`, `reboot` or `crash` for an interrupted job), `unit` (a
-scheduled run's unit) and `output` (set when the run's saved output exists).
+scheduled run's unit), `output` (set when the run's saved output exists), and
+`summary` and `failures`, the `message` and `failures` of a scheduled run's
+summary ([Scheduled runs](#scheduled-runs)).
 The slim snapshot keeps what a list of ended work shows (type, owner, times,
 state, error, the display members of `metadata`) and leaves out the rest, so
 a page of large records stays well inside a relay frame:
 
-- no entry carries `result` or `progress`;
+- no entry carries `result` or `progress`; a scheduled run's summary is in
+  the entry's `summary` and `failures` instead;
 - a host job's entry carries no `metadata.identity` and no
   `metadata.packageIds`; a scheduled run keeps `metadata.identity`, which
   names its schedule or pool;

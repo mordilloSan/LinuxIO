@@ -43,17 +43,22 @@ func dockerUpdateAlertKey(containerName string) string {
 }
 
 // raiseDockerUpdateAlert records a failed scheduled update whatever the
-// notification settings say: a failure is always reported. Best effort:
-// failures are logged, never returned.
-func raiseDockerUpdateAlert(ctx context.Context, containerName string, err error) {
+// notification settings say: a failure is always reported. imageRef, when
+// known, is named after the reason. Best effort: failures are logged, never
+// returned.
+func raiseDockerUpdateAlert(ctx context.Context, containerName, imageRef string, err error) {
 	name := strings.TrimPrefix(containerName, "/")
 	sum := sha256.Sum256([]byte(err.Error()))
+	message := err.Error()
+	if imageRef != "" {
+		message += " (image " + imageRef + ")"
+	}
 	obs := alerts.Observation{
 		Source:       dockerUpdateAlertSource,
 		Key:          dockerUpdateFailedKeyPrefix + dockerUpdateAlertKey(name),
 		Severity:     alerts.SeverityError,
 		Title:        "Docker update failed: " + name,
-		Message:      err.Error(),
+		Message:      message,
 		Link:         dockerUpdateAlertLink,
 		OccurrenceID: hex.EncodeToString(sum[:]),
 	}
@@ -64,20 +69,21 @@ func raiseDockerUpdateAlert(ctx context.Context, containerName string, err error
 
 // raiseDockerUpdatedAlert records a successful scheduled replacement when
 // alertReport, the Docker updates' alerts.ReportFor, asks for changes or every
-// run. Best effort: failures are logged, never returned.
-func raiseDockerUpdatedAlert(ctx context.Context, alertReport, containerName, oldImage, newImage string) {
+// run. The message names the image and, when both images carry a version
+// label, the versions. Best effort: failures are logged, never returned.
+func raiseDockerUpdatedAlert(ctx context.Context, alertReport string, outcome ContainerOutcome) {
 	if alertReport != alerts.ReportChanges && alertReport != alerts.ReportEveryRun {
 		return
 	}
-	name := strings.TrimPrefix(containerName, "/")
+	name := outcome.Name
 	obs := alerts.Observation{
 		Source:       dockerUpdateAlertSource,
 		Key:          dockerUpdateUpdatedKeyPrefix + dockerUpdateAlertKey(name),
 		Severity:     alerts.SeverityInfo,
 		Title:        "Docker container updated: " + name,
-		Message:      "Image " + shortImageID(oldImage) + " was replaced by " + shortImageID(newImage) + ".",
+		Message:      outcome.sentence(),
 		Link:         dockerUpdateAlertLink,
-		OccurrenceID: newImage,
+		OccurrenceID: outcome.NewImageID,
 	}
 	if err := alerts.Raise(ctx, obs); err != nil {
 		slog.Warn("failed to record Docker updated alert", "component", "docker", "container", name, "error", err)

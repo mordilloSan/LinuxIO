@@ -178,11 +178,14 @@ func (h Hooks) failedUpdateAlert(kind Kind, unit, invocationID string, record jo
 // report settings say. The alert is one per unit and links to the latest such
 // run in the history, where its output is. A run
 // that completes, or that failed with everything reported, clears it; one the
-// system stopped, that was canceled or that did no work (ExitSkipped) changes
-// nothing.
+// system stopped, that was canceled or that did no work changes nothing. A
+// run that did no work says so in its summary and completes (Docker updates),
+// or exits with ExitSkipped (the btrfs workers).
 func (h Hooks) reportWorkerRun(ctx context.Context, kind Kind, record jobs.Record, result Result) error {
+	summary, _ := SummaryOf(record)
 	switch {
-	case record.State == jobs.StateFailed && result.exited(ExitSkipped):
+	case record.State == jobs.StateCompleted && summary.Skipped,
+		record.State == jobs.StateFailed && result.exited(ExitSkipped):
 		// The run did no work: it neither failed nor cleared anything.
 	case record.State == jobs.StateCompleted, record.State == jobs.StateFailed && result.exited(ExitReported):
 		if h.Resolve == nil {

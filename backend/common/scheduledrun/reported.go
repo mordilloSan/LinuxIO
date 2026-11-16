@@ -11,7 +11,8 @@ const (
 	// run alert and clears a standing one.
 	ExitReported = 3
 	// ExitSkipped: the run did no work, since other work held it off. The
-	// hook leaves the run alert as it is.
+	// hook leaves the run alert as it is. The Docker update pass says so in
+	// its summary instead and exits with this only when that was not stored.
 	ExitSkipped = 4
 )
 
@@ -19,29 +20,34 @@ type reportedError struct{ error }
 
 func (e reportedError) Unwrap() error { return e.error }
 
-type skippedError struct{ error }
-
-func (e skippedError) Unwrap() error { return e.error }
-
-// Skipped marks err as the reason a run did no work at all. A nil err stays
-// nil.
-func Skipped(err error) error {
-	if err == nil {
-		return nil
-	}
-	return skippedError{err}
-}
-
-// ExitStatus is the exit status of a worker whose run failed with err.
+// ExitStatus is the exit status of a worker whose run failed with err. A
+// worker whose run did no work returns ExitSkipped itself.
 func ExitStatus(err error) int {
-	var skipped skippedError
-	switch {
-	case errors.As(err, &skipped):
-		return ExitSkipped
-	case AllReported(err):
+	if AllReported(err) {
 		return ExitReported
 	}
 	return 1
+}
+
+// Unreported is what err holds besides the failures marked Reported: nil when
+// every failure in it was reported. Joins are taken apart at every depth, so
+// a pass that joins the joined failures of its steps keeps only the
+// unreported ones.
+func Unreported(err error) error {
+	if err == nil || AllReported(err) {
+		return nil
+	}
+	joined, ok := err.(interface{ Unwrap() []error })
+	if !ok {
+		return err
+	}
+	var rest []error
+	for _, e := range joined.Unwrap() {
+		if unreported := Unreported(e); unreported != nil {
+			rest = append(rest, unreported)
+		}
+	}
+	return errors.Join(rest...)
 }
 
 // Reported marks err as a failure its worker raised an alert for. A nil err

@@ -34,7 +34,7 @@ func TestDockerUpdateAlertKeyFallsBackToUnknown(t *testing.T) {
 func TestRaiseAndResolveDockerUpdateAlert(t *testing.T) {
 	useTempAlertStore(t)
 	ctx := context.Background()
-	raiseDockerUpdateAlert(ctx, "/Nextcloud_App", errors.New("verify replacement: unhealthy"))
+	raiseDockerUpdateAlert(ctx, "/Nextcloud_App", "", errors.New("verify replacement: unhealthy"))
 	doc, err := alerts.Load()
 	if err != nil || len(doc.Alerts) != 1 {
 		t.Fatalf("store = %+v err = %v", doc, err)
@@ -44,8 +44,8 @@ func TestRaiseAndResolveDockerUpdateAlert(t *testing.T) {
 		t.Fatalf("alert = %+v", a)
 	}
 	// Same error again is silent; a different error is a new occurrence.
-	raiseDockerUpdateAlert(ctx, "/Nextcloud_App", errors.New("verify replacement: unhealthy"))
-	raiseDockerUpdateAlert(ctx, "/Nextcloud_App", errors.New("pull failed"))
+	raiseDockerUpdateAlert(ctx, "/Nextcloud_App", "", errors.New("verify replacement: unhealthy"))
+	raiseDockerUpdateAlert(ctx, "/Nextcloud_App", "", errors.New("pull failed"))
 	doc, _ = alerts.Load()
 	if doc.Alerts[0].OccurrenceCount != 2 {
 		t.Fatalf("count = %d", doc.Alerts[0].OccurrenceCount)
@@ -61,7 +61,7 @@ func TestDockerUpdateAlertFailureDoesNotPanic(t *testing.T) {
 	old := alerts.Path
 	alerts.Path = t.TempDir() // a directory: reads and writes fail
 	t.Cleanup(func() { alerts.Path = old })
-	raiseDockerUpdateAlert(context.Background(), "x", errors.New("boom"))
+	raiseDockerUpdateAlert(context.Background(), "x", "", errors.New("boom"))
 	resolveDockerUpdateAlert(context.Background(), "x")
 }
 
@@ -105,7 +105,7 @@ func TestDockerFailureIsAlwaysReported(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			useTempAlertStore(t)
 			saveNotify(t, n)
-			raiseDockerUpdateAlert(t.Context(), "/web", errors.New("pull failed"))
+			raiseDockerUpdateAlert(t.Context(), "/web", "", errors.New("pull failed"))
 			doc, err := alerts.Load()
 			if err != nil || len(doc.Alerts) != 1 || doc.Alerts[0].ID != "docker-update/failed-web" || doc.Alerts[0].Severity != alerts.SeverityError {
 				t.Fatalf("alerts = %+v err = %v, want the docker-update/web error", doc.Alerts, err)
@@ -122,7 +122,7 @@ func TestDockerUpdatedFollowsTheReport(t *testing.T) {
 	} {
 		t.Run(report, func(t *testing.T) {
 			useTempAlertStore(t)
-			raiseDockerUpdatedAlert(t.Context(), report, "/web", "sha256:old", "sha256:new")
+			raiseDockerUpdatedAlert(t.Context(), report, ContainerOutcome{Name: "web", OldImageID: "sha256:old", NewImageID: "sha256:new"})
 			doc, err := alerts.Load()
 			if err != nil {
 				t.Fatal(err)
@@ -165,15 +165,15 @@ func TestDockerEveryRunReportsAQuietPass(t *testing.T) {
 	useTempAlertStore(t)
 	pass := func(report string, uncheckable, updated int, updateErr error) {
 		t.Helper()
-		err := runScheduledPass(t.Context(), DockerContainerAutoUpdateOptions{Mode: "update", ContainerNames: []string{"web"}}, reportingDocker(report, false), scheduledPassOperations{
+		_, err := runScheduledPass(t.Context(), DockerContainerAutoUpdateOptions{Mode: "update", ContainerNames: []string{"web"}}, reportingDocker(report, false), scheduledPassOperations{
 			list: func(context.Context) ([]container.Summary, error) {
 				return []container.Summary{{ID: "web-id", Names: []string{"/web"}, State: container.StateRunning}}, nil
 			},
 			check: func(context.Context, []container.Summary) (DockerUpdateCheckResult, error) {
 				return DockerUpdateCheckResult{Checked: 1, Errors: uncheckable}, nil
 			},
-			update: func(context.Context, []container.Summary, []container.Summary, DockerContainerAutoUpdateOptions, func(string)) (int, error) {
-				return updated, updateErr
+			update: func(context.Context, []container.Summary, []container.Summary, DockerContainerAutoUpdateOptions, func(string)) ([]ContainerOutcome, error) {
+				return replaced(updated), updateErr
 			},
 		}, nil)
 		if !errors.Is(err, updateErr) {
@@ -232,16 +232,16 @@ func TestDockerEveryRunReportsACheckOnlyPass(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			useTempAlertStore(t)
-			err := runScheduledPass(t.Context(), DockerContainerAutoUpdateOptions{Mode: "check_only"}, reportingDocker(tc.report, tc.available), scheduledPassOperations{
+			_, err := runScheduledPass(t.Context(), DockerContainerAutoUpdateOptions{Mode: "check_only"}, reportingDocker(tc.report, tc.available), scheduledPassOperations{
 				list: func(context.Context) ([]container.Summary, error) {
 					return []container.Summary{{ID: "web-id", Names: []string{"/web"}, State: container.StateRunning}}, nil
 				},
 				check: func(context.Context, []container.Summary) (DockerUpdateCheckResult, error) {
 					return DockerUpdateCheckResult{Checked: 2, Updates: tc.waiting, Errors: tc.uncheckable}, tc.checkErr
 				},
-				update: func(context.Context, []container.Summary, []container.Summary, DockerContainerAutoUpdateOptions, func(string)) (int, error) {
+				update: func(context.Context, []container.Summary, []container.Summary, DockerContainerAutoUpdateOptions, func(string)) ([]ContainerOutcome, error) {
 					t.Fatal("a check-only pass updated")
-					return 0, nil
+					return nil, nil
 				},
 			}, nil)
 			if !errors.Is(err, tc.checkErr) {
@@ -276,7 +276,7 @@ func TestDockerEveryRunReportsAnUpdatePassThatReplacedNothing(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			useTempAlertStore(t)
-			err := runScheduledPass(t.Context(), DockerContainerAutoUpdateOptions{Mode: "update", ContainerNames: []string{"web"}}, reportingDocker(alerts.ReportEveryRun, tc.available), scheduledPassOperations{
+			_, err := runScheduledPass(t.Context(), DockerContainerAutoUpdateOptions{Mode: "update", ContainerNames: []string{"web"}}, reportingDocker(alerts.ReportEveryRun, tc.available), scheduledPassOperations{
 				list: func(context.Context) ([]container.Summary, error) {
 					return []container.Summary{
 						{ID: "web-id", Names: []string{"/web"}, State: container.StateRunning},
@@ -286,8 +286,8 @@ func TestDockerEveryRunReportsAnUpdatePassThatReplacedNothing(t *testing.T) {
 				check: func(context.Context, []container.Summary) (DockerUpdateCheckResult, error) {
 					return DockerUpdateCheckResult{Checked: 2, Updates: tc.waiting}, nil
 				},
-				update: func(context.Context, []container.Summary, []container.Summary, DockerContainerAutoUpdateOptions, func(string)) (int, error) {
-					return tc.updated, nil
+				update: func(context.Context, []container.Summary, []container.Summary, DockerContainerAutoUpdateOptions, func(string)) ([]ContainerOutcome, error) {
+					return replaced(tc.updated), nil
 				},
 			}, nil)
 			if err != nil {
@@ -315,7 +315,7 @@ func TestDockerPassNoticeKeyDiffersFromContainerKeys(t *testing.T) {
 	// A quiet pass after failed ones leaves every failure as it was.
 	useTempAlertStore(t)
 	for _, name := range names {
-		raiseDockerUpdateAlert(t.Context(), "/"+name, errors.New("pull failed"))
+		raiseDockerUpdateAlert(t.Context(), "/"+name, "", errors.New("pull failed"))
 	}
 	raiseDockerPassAlert(t.Context(), time.Now(), 0)
 	doc, err := alerts.Load()
@@ -354,8 +354,8 @@ func TestContainerKeysNeverCollide(t *testing.T) {
 	}
 
 	useTempAlertStore(t)
-	raiseDockerUpdatedAlert(t.Context(), alerts.ReportChanges, "/x", "sha256:old", "sha256:new")
-	raiseDockerUpdateAlert(t.Context(), "/updated-x", errors.New("pull failed"))
+	raiseDockerUpdatedAlert(t.Context(), alerts.ReportChanges, ContainerOutcome{Name: "x", OldImageID: "sha256:old", NewImageID: "sha256:new"})
+	raiseDockerUpdateAlert(t.Context(), "/updated-x", "", errors.New("pull failed"))
 	if ids := alertIDs(t); len(ids) != 2 {
 		t.Fatalf("alerts = %v, want the notice of x and the failure of updated-x", ids)
 	}
@@ -402,7 +402,7 @@ func TestSyncCheckAlertsFollowsTheCheckError(t *testing.T) {
 		{ContainerName: "local", CheckState: DockerUpdateCheckStateUncheckable},
 	}
 	// The failure alert of a container with the same name is another record.
-	raiseDockerUpdateAlert(ctx, "/web", errors.New("pull failed"))
+	raiseDockerUpdateAlert(ctx, "/web", "", errors.New("pull failed"))
 	syncCheckAlerts(ctx, statuses)
 	doc, err := alerts.Load()
 	if err != nil || len(doc.Alerts) != 2 {
@@ -492,6 +492,10 @@ func TestComposeGroupErrorIsReportedExceptForTheStatusFile(t *testing.T) {
 	if ids := alertIDs(t); len(ids) != 2 {
 		t.Fatalf("alerts = %v, want one per container", ids)
 	}
+	// The pass report names each container of the group as failed.
+	if len(state.outcomes) != 2 || state.outcomes[0].Name != "web" || state.outcomes[1].Name != "db" || !errors.Is(state.outcomes[0].Err, cause) {
+		t.Fatalf("outcomes = %+v, want web and db failed with the cause", state.outcomes)
+	}
 
 	// The status file's directory is a file: the status cannot be written.
 	blocked := filepath.Join(t.TempDir(), "blocked")
@@ -506,19 +510,29 @@ func TestComposeGroupErrorIsReportedExceptForTheStatusFile(t *testing.T) {
 	}
 }
 
-// A scheduled pass that finds another update holding the lock did no work.
+// A scheduled pass that finds another update holding the lock did no work
+// and failed nothing; any other lock failure is the pass's own.
 func TestPassLockHeldByAnotherUpdateIsSkipped(t *testing.T) {
 	old := acquireLock
 	t.Cleanup(func() { acquireLock = old })
 	acquireLock = func(context.Context) (func(), error) { return nil, errUpdateInProgress }
-	if _, err := acquirePassLock(t.Context()); scheduledrun.ExitStatus(err) != scheduledrun.ExitSkipped || !errors.Is(err, errUpdateInProgress) {
-		t.Fatalf("err = %v, exit status %d; want the lock error marked skipped", err, scheduledrun.ExitStatus(err))
+	if _, busy, err := acquirePassLock(t.Context()); !busy || err != nil {
+		t.Fatalf("busy = %v, err = %v; want a held lock reported as busy without an error", busy, err)
 	}
 	other := errors.New("lock file cannot be opened")
 	acquireLock = func(context.Context) (func(), error) { return nil, other }
-	if _, err := acquirePassLock(t.Context()); scheduledrun.ExitStatus(err) != 1 {
-		t.Fatalf("err = %v, exit status %d; want an ordinary failure", err, scheduledrun.ExitStatus(err))
+	if _, busy, err := acquirePassLock(t.Context()); busy || !errors.Is(err, other) {
+		t.Fatalf("busy = %v, err = %v; want an ordinary failure", busy, err)
 	}
+}
+
+// replaced is the outcomes of a pass that replaced n containers.
+func replaced(n int) []ContainerOutcome {
+	outcomes := make([]ContainerOutcome, n)
+	for i := range outcomes {
+		outcomes[i] = ContainerOutcome{Name: "replaced"}
+	}
+	return outcomes
 }
 
 // A name the store normalises is still matched: the warning of a container

@@ -3,12 +3,15 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/dockerupdate"
 	"github.com/mordilloSan/LinuxIO/backend/common/jobs"
@@ -24,10 +27,18 @@ var configureLogging = logging.Configure
 // to; tests swap it. A negative percentage means unknown.
 var reportProgress = func(int, string) {}
 
+// summaryTimeout bounds the write of the run's summary.
+const summaryTimeout = 5 * time.Second
+
+// summarize stores what the pass did in the record of the scheduled run this
+// process belongs to; tests swap it.
+var summarize = func(context.Context, scheduledrun.Summary) error { return nil }
+
 // newReporter finds the scheduled run this process belongs to and returns its
-// progress writer; tests swap it.
-var newReporter = func() func(int, string) {
-	return scheduledrun.ReporterFromEnv(jobs.NewScheduledStore()).Report
+// progress and summary writers; tests swap it.
+var newReporter = func() (func(int, string), func(context.Context, scheduledrun.Summary) error) {
+	reporter := scheduledrun.ReporterFromEnv(jobs.NewScheduledStore())
+	return reporter.Report, reporter.Summarize
 }
 
 func main() {
@@ -46,7 +57,7 @@ func runWorker(ctx context.Context, args []string, stdout, stderr io.Writer) int
 		return 1
 	}
 	// After the logging setup, so the reporter logs through the configured logger.
-	reportProgress = newReporter()
+	reportProgress, summarize = newReporter()
 	return runCLI(ctx, args, stdout, stderr)
 }
 
@@ -63,11 +74,33 @@ func runCLI(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 			return 2
 		}
 		report := func(message string) { reportProgress(-1, message) }
-		if err := runUpdates(ctx, configPath, report); err != nil {
-			fmt.Fprintf(stderr, "linuxio-docker-update: run failed: %v\n", err)
-			// The end hook raises no run alert when every failure has its
-			// container's alert, and changes nothing for a skipped pass.
-			return scheduledrun.ExitStatus(err)
+		pass, err := runUpdates(ctx, configPath, report)
+		// The report names each container the pass replaced or failed to; the
+		// run's saved output shows it, and the history its summary.
+		pass.Write(stdout)
+		if summary, ok := pass.Summary(); ok {
+			// Stored even when a signal ended the pass, but not for longer
+			// than a stopping unit can wait for the store's lock.
+			summaryCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), summaryTimeout)
+			summaryErr := summarize(summaryCtx, summary)
+			cancel()
+			// A run started by hand has no record to store it in.
+			if summaryErr != nil && !errors.Is(summaryErr, scheduledrun.ErrNoRun) {
+				slog.Warn("failed to store the run summary", "component", "docker", "subsystem", "update", "error", summaryErr)
+			}
+			// Without its summary the end hook would read a skipped pass as
+			// one that ran and clear the unit's run alert; the exit status
+			// tells it instead, at the price of a unit shown as failed.
+			if summaryErr != nil && summary.Skipped {
+				return scheduledrun.ExitSkipped
+			}
+		}
+		// A container that failed raised its own alert and is in the report:
+		// the pass did its work, so the unit does not fail for it. Only what
+		// has no alert of its own fails the run, and the end hook reports it.
+		if unreported := scheduledrun.Unreported(err); unreported != nil {
+			fmt.Fprintf(stderr, "linuxio-docker-update: run failed: %v\n", unreported)
+			return 1
 		}
 		return 0
 	case "help", "-h", "--help":

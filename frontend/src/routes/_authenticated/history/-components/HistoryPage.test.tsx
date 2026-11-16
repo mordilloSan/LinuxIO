@@ -353,6 +353,12 @@ describe("HistoryPage", () => {
         entry("ok"),
         entry("bad", { state: "failed" }),
         entry("stopped", { state: "canceled" }),
+        // A scheduled run that completed although one container failed.
+        entry(
+          "partial",
+          { type: "scheduled.docker_update" },
+          { summary: "1 updated, 1 failed", failures: 1 },
+        ),
       ]),
     ]);
 
@@ -366,6 +372,9 @@ describe("HistoryPage", () => {
     expect(await level("Job ok")).toBe("info");
     expect(await level("Job bad")).toBe("error");
     expect(await level("Job stopped")).toBe("warn");
+    expect(await level("Job partial")).toBe("warn");
+    // The worker's summary stands where "Completed" would.
+    expect(screen.getByText("1 updated, 1 failed")).toBeInTheDocument();
   });
 
   it("narrows the table to one outcome and counts what is shown", async () => {

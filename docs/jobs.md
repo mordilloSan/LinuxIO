@@ -558,15 +558,40 @@ cancel that hits a timer's resync knows no invocation and marks the resync
 unit's running record. Either takes the mark back when the stop or the cancel
 fails.
 
-**Exit statuses.** A worker (snapshots, replication, resync, Docker updates)
+**Exit statuses.** A btrfs worker (snapshots, replication, resync)
 that raised an alert of its own for every failure it met exits with status 3
 (`scheduledrun.ExitReported`), and its end hook raises no second alert; one
-that did no work, such as a Docker pass that found a manual update holding the
-lock or a replication run whose every job another run held, exits with 4
-(`ExitSkipped`) and changes no alert. Any other failed run
+that did no work, such as a replication run whose every job another run held,
+exits with 4 (`ExitSkipped`) and changes no alert. Any other failed run
 of a worker gets one run alert per unit from its end hook. A system update's
 failure is reported by the provider's notify hook where it is installed, and
 otherwise by the end hook.
+
+**The Docker update pass completes when its containers fail.** A container
+whose update failed raised its own alert, and the pass did its work, so
+`linuxio-docker-update` exits with 0: the unit is not failed on the Services
+page and the run ends `completed`. It also exits with 0 for a pass that found
+a manual update holding the lock, and with 4 for such a pass only when its
+summary could not be stored, since the end hook would otherwise read it as a
+pass that ran. It exits with 1, and gets the run alert,
+only for a failure no container's alert reports: configuration that cannot be
+read, a Docker daemon that does not answer, a scheduled container that is
+gone. What the pass did is in two places:
+
+- **The run's output** ends with a report the worker prints
+  (`PassReport.Write` in `backend/common/dockerupdate/pass_report.go`): a
+  line of totals, then one line per container it replaced, with the image,
+  the versions when both images carry the `org.opencontainers.image.version`
+  label and the short image IDs, or failed to, with the reason. The log
+  lines of the pass carry the same facts as journal fields, which the saved
+  output does not show.
+- **The record's result** is a summary (`scheduledrun.Summary`): `message`
+  (*1 updated, 1 failed*, *Nothing to update*, *Skipped: another Docker
+  update was running*), `failures` (how many containers failed) and `skipped`.
+  The history shows the message where it would say Completed, with the amber
+  marker when `failures` is not zero. The end hook reads `skipped`: such a
+  run proves nothing about the unit, so it leaves a standing run alert,
+  where any other completed run clears it.
 
 ## Alerts
 

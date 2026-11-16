@@ -3211,6 +3211,8 @@ export interface TaskHistoryEntry {
   reason?: string;
   unit?: string;
   output?: boolean;
+  summary?: string;
+  failures?: number;
 }
 
 export interface TaskHistoryRequest {
