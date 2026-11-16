@@ -180,9 +180,12 @@ make vm-destroy       # delete the domain and its volumes; the cache stays
 - `vm-test-memory-integration` builds the `bridge/handlers/memory` test binary
   on the host and runs `TestMemoryIntegration` as root in the VM: a switch to
   zram and back through systemd, the kernel and `/etc` (see
-  [Memory overflow](./memory.md#tests)). The test needs zram-tools and a swap
-  file in `/etc/fstab`, so the first run installs `zram-tools` with apt and
-  disables the `zramswap.service` its package starts, and, when `/etc/fstab`
+  [Memory overflow](./memory.md#tests)). With `ZRAM_PROVIDER=zram-generator`
+  it installs `systemd-zram-generator` instead and refuses a VM that has
+  zram-tools, which LinuxIO prefers: run `make vm-reset` first. The test needs
+  a zram tool and a swap file in `/etc/fstab`, so the first run installs
+  `zram-tools` with apt and disables the `zramswap.service` its package
+  starts, and, when `/etc/fstab`
   has no `/swap.img`, creates a 1 GiB `/swap.img`, adds it to fstab and starts
   it. Both changes stay in the VM until `make vm-reset` reverts its disks.
 - `vm-test-filebrowser-root` does the same for the file browser's root-only

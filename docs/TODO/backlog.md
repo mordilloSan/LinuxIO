@@ -147,11 +147,27 @@ Memory overflow ([Memory overflow](../memory.md)):
   card reader set and an enclosure does not; that is right for a USB SSD and
   wrong for a worn flash drive in an enclosure. A swap file on LVM or LUKS is
   not flagged either, whatever disk is under it. Checked.
-- [ ] **Installing the `zram` capability on Fedora and RHEL fails.** The entry
-  declares only the Debian package, so the installer falls back to `zram-tools`
-  and reports it as not found; the zram row in the Memory dialog then offers the
-  link to Capabilities. Planned in
-  [Memory overflow](./memory-overflow.md#fedora-and-rhel). Checked.
+- [ ] **`zram-generator` drop-ins are not read.** LinuxIO writes
+  `/etc/systemd/zram-generator.conf` and nothing else. A drop-in in
+  `zram-generator.conf.d`, or a file in `/run/systemd`, overrides it: a size
+  set there wins over the one the page shows, and a device defined there comes
+  back at boot after a switch to disk or zswap, which then reads as `mixed`.
+  Read them and say so in the dialog, or refuse. Checked by reading upstream's
+  man page, not on a host.
+- [ ] **`/etc/systemd/zram-generator.conf` is replaced without a marker
+  check**, like `/etc/default/zramswap`: an admin's own file there is
+  overwritten by a switch to zram, and by the off file on a switch to disk or
+  zswap, also when zram was not running. That drops every device the file
+  defined, a zram mount (`fs-type`, `mount-point`) included. A failed run puts
+  it back. Checked.
+- [ ] **The zram provider is the tool installed, not the one running.** With
+  both installed zram-tools is used, so on a host where the generator runs
+  `zram0` a switch away leaves zram on (`mixed`), and a switch to zram writes
+  `/etc/default/zramswap` and enables `zramswap.service` beside the
+  generator's device. Pick the provider whose unit is active. Checked by
+  reading the code.
+- [ ] **RHEL 8 has no `zram-generator` package**, so Install fails there and
+  the zram row offers the link to Capabilities again. Not checked on a host.
 
 Scheduled runs (`backend/common/scheduledrun`):
 
@@ -233,6 +249,12 @@ Docker updates (`backend/common/dockerupdate`):
 
 - [ ] **Memory overflow, checks never done on a host.** Try each in the test
   VM or on a machine, then fix the code or the doc, or delete the line:
+  - The `zram-generator` path has run only against the fake host. Run
+    `make vm-reset` and then
+    `make vm-test-memory-integration ZRAM_PROVIDER=zram-generator`, which uses
+    Ubuntu's `systemd-zram-generator`. It has never run on Fedora or RHEL:
+    check there that Install from Capabilities works, that a host with
+    Fedora's default zram reads as `zram` mode, and a switch to zram and back.
   - `memory.get_swap_status` asks TuneD through `power.GetStatus` as the
     session user, and finds `zramswap` through the bridge's `PATH` with the
     `/usr/sbin` fallback. From a bridge without sudo, check that TuneD reads as

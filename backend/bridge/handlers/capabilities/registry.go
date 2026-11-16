@@ -271,14 +271,14 @@ var capabilityRegistry = []CapabilitySpec{
 		},
 	},
 	{
-		// Fedora ships zram-generator, with another config file; not
-		// supported yet, so there is no RHEL package.
+		// Either tool that sets zram up: zram-tools on Debian and Ubuntu,
+		// zram-generator on Fedora and RHEL, which has no service to enable.
 		Name:    "zram",
-		LogName: "zram-tools",
+		LogName: "zram",
 		Detect: func(_ context.Context) (bool, string) {
 			return checkedCapability(memory.CheckZramAvailability())
 		},
-		Install: &InstallSpec{PackageDebian: "zram-tools"},
+		Install: &InstallSpec{PackageDebian: "zram-tools", PackageRHEL: "zram-generator"},
 	},
 	{
 		Name:    "avahi",

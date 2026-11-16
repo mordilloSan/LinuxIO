@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/memory"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/acpagents"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/acpagents/acpagentstest"
 	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
@@ -72,8 +73,7 @@ func TestCapabilityInstallPackageSelection(t *testing.T) {
 		{name: "rsync", wantDebian: "rsync", wantRHEL: "rsync"},
 		{name: "e2fsprogs", wantDebian: "e2fsprogs", wantRHEL: "e2fsprogs"},
 		{name: "xfsprogs", wantDebian: "xfsprogs", wantRHEL: "xfsprogs"},
-		// Fedora ships zram-generator with another config file; not supported yet.
-		{name: "zram", wantDebian: "zram-tools"},
+		{name: "zram", wantDebian: "zram-tools", wantRHEL: "zram-generator"},
 		{
 			name:             "avahi",
 			wantDebian:       "avahi-daemon libnss-mdns",
@@ -123,7 +123,7 @@ func TestRsyncCapabilityDetection(t *testing.T) {
 }
 
 // zramswap lives in /usr/sbin, which a service PATH may omit, so detection
-// also looks in the sbin directories.
+// also looks in the sbin directories. zram-generator counts as well.
 func TestZramCapabilityDetection(t *testing.T) {
 	spec, ok := CapabilitySpecByName("zram")
 	if !ok {
@@ -134,8 +134,20 @@ func TestZramCapabilityDetection(t *testing.T) {
 	savedDirs := hostcmd.SearchDirs
 	hostcmd.SearchDirs = []string{sbinDir}
 	t.Cleanup(func() { hostcmd.SearchDirs = savedDirs })
-	if available, message := spec.Detect(context.Background()); available || !strings.Contains(message, "zram-tools is not installed") {
-		t.Fatalf("missing zramswap: available=%v, message=%q", available, message)
+	savedGenerator := memory.ZramGeneratorPath
+	memory.ZramGeneratorPath = filepath.Join(t.TempDir(), "zram-generator")
+	t.Cleanup(func() { memory.ZramGeneratorPath = savedGenerator })
+	if available, message := spec.Detect(context.Background()); available || !strings.Contains(message, "neither zram-tools nor zram-generator is installed") {
+		t.Fatalf("no zram tool: available=%v, message=%q", available, message)
+	}
+	if err := os.WriteFile(memory.ZramGeneratorPath, nil, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if available, message := spec.Detect(context.Background()); !available || message != "" {
+		t.Fatalf("zram-generator alone: available=%v, message=%q", available, message)
+	}
+	if err := os.Remove(memory.ZramGeneratorPath); err != nil {
+		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(sbinDir, "zramswap"), []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
 		t.Fatal(err)

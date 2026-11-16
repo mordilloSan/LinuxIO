@@ -11,9 +11,10 @@ import (
 // swapStep is one step of a mode change.
 type swapStep struct {
 	code apischema.SwapStep
-	// run is, for start_zram, whether zramswap.service is started as well as
-	// enabled (not when zram already swaps, since a restart empties it) and,
-	// for stop_zram, whether it is stopped as well as disabled.
+	// run is, for start_zram, whether zram's unit is started as well as set
+	// to start at boot (not when zram already swaps, since a restart empties
+	// it) and, for stop_zram, whether it is stopped as well as turned off at
+	// boot.
 	run bool
 	// unit and path are the swap file's unit and path for stop_swap_file and
 	// start_swap_file.
@@ -68,10 +69,10 @@ func planSwapMode(v swapView, target apischema.SwapMode) ([]swapStep, error) {
 	if managed && file.device == "" {
 		steps = append(steps, swapStep{code: apischema.SwapStepStartSwapFile, unit: file.unit, path: file.path})
 	}
-	// zram is stopped through zramswap.service, so the step is planned only
-	// with zram-tools installed; without it nothing here can stop zram. The
-	// executor also leaves zram when systemd does not report the service
-	// running, as when another tool set zram up.
+	// zram is stopped through its provider's unit, so the step is planned
+	// only with a provider installed; without one nothing here can stop
+	// zram. The executor also leaves zram when systemd does not report that
+	// unit running, as when another tool set zram up.
 	if v.status.ZramAvailable {
 		steps = append(steps, swapStep{code: apischema.SwapStepStopZram, run: zramRunning})
 	}
@@ -86,7 +87,7 @@ func planSwapMode(v swapView, target apischema.SwapMode) ([]swapStep, error) {
 func zramRefusal(reason apischema.ZramUnavailableReason) string {
 	switch reason {
 	case apischema.ZramPackageMissing:
-		return "zram needs zram-tools, which is not installed"
+		return "zram needs zram-tools or zram-generator, and neither is installed"
 	case apischema.ZramSwapPartitionActive:
 		return "zram cannot be chosen while a swap partition is active"
 	default:

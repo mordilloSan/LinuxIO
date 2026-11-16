@@ -39,11 +39,23 @@ vm-test-btrfs-integration: ensure-go ## Run the root btrfs and partition kernel 
 # zram and back through systemd and the kernel. It needs zram-tools and a swap
 # file in fstab: the first run installs zram-tools (stopping the zramswap.service
 # its package starts) and adds a 1 GiB /swap.img; make vm-reset undoes both.
+# ZRAM_PROVIDER=zram-generator runs it with systemd's zram-generator instead
+# (the Fedora and RHEL path, from Ubuntu's systemd-zram-generator package).
+# LinuxIO uses the generator only when zram-tools is absent, so that run needs
+# a VM without zram-tools: run make vm-reset first.
+ZRAM_PROVIDER ?= zram-tools
+ifeq ($(ZRAM_PROVIDER),zram-generator)
+vm_memory_zram_setup := set -e; if test -x /usr/sbin/zramswap; then echo "zram-tools is installed and LinuxIO prefers it: run make vm-reset first" >&2; exit 1; fi; if ! test -x /usr/lib/systemd/system-generators/zram-generator; then sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq systemd-zram-generator; fi; if grep -q "^/dev/zram" /proc/swaps; then sudo systemctl stop dev-zram0.swap; fi
+else ifeq ($(ZRAM_PROVIDER),zram-tools)
+vm_memory_zram_setup := set -e; if ! test -x /usr/sbin/zramswap; then sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq zram-tools && sudo systemctl disable --now zramswap.service; fi
+else
+vm_memory_zram_setup := echo "ZRAM_PROVIDER must be zram-tools or zram-generator" >&2; exit 1
+endif
 vm-test-memory-integration: ensure-go ## Run the root swap mode test (zram and back) in the test VM
 	@set -e
 	@mkdir -p "$(cache_dir)/vm"
 	@cd "$(backend_dir)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" CGO_ENABLED=0 "$(GO_BIN)" test -c -o "$(cache_dir)/vm/memory.test" ./bridge/handlers/memory
-	@"$(vm_script)" ssh 'set -e; if ! test -x /usr/sbin/zramswap; then sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq zram-tools && sudo systemctl disable --now zramswap.service; fi'
+	@"$(vm_script)" ssh '$(vm_memory_zram_setup)'
 	@"$(vm_script)" ssh 'set -e; if ! grep -qs "^/swap.img[[:space:]]" /etc/fstab; then sudo fallocate -l 1G /swap.img && sudo chmod 600 /swap.img && sudo mkswap /swap.img >/dev/null && echo "/swap.img none swap sw 0 0" | sudo tee -a /etc/fstab >/dev/null && sudo systemctl daemon-reload && sudo systemctl start swap.img.swap; fi'
 	@"$(vm_script)" ssh 'cat > memory.test && chmod +x memory.test' < "$(cache_dir)/vm/memory.test"
 	@"$(vm_script)" ssh "echo \"VM kernel: \$$(uname -r)\" && sudo env LINUXIO_RUN_MEMORY_INTEGRATION=1 ./memory.test -test.run '^TestMemoryIntegration\$$' -test.count=1 -test.v -test.timeout=30m"

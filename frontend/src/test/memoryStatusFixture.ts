@@ -54,6 +54,7 @@ export const swapStatus = (
   watermark_boost_factor: 0,
   watermark_scale_factor: 125,
   zram_available: true,
+  zram_provider: "zram-tools",
   zram_devices: [],
   zram_planned_size: 8 * GIB,
   zram_unavailable_reason: "",

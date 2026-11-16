@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -11,16 +12,34 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
 )
 
-// zramCommand is the zram-tools script whose presence is the zram capability.
+// zramCommand is the zram-tools script whose presence means zram-tools is
+// installed.
 const zramCommand = "zramswap"
 
-// CheckZramAvailability reports whether zram-tools is installed. zramswap
-// is in /usr/sbin, which the bridge's PATH may omit.
+// ZramGeneratorPath is systemd's zram-generator, whose presence means it is
+// installed. A variable so that a test can point it at a file of its own.
+var ZramGeneratorPath = "/usr/lib/systemd/system-generators/zram-generator"
+
+// CheckZramAvailability reports whether a tool that sets zram up is
+// installed: this is the zram capability.
 func CheckZramAvailability() (bool, error) {
-	if _, err := hostcmd.LookPath(zramCommand); err != nil {
-		return false, fmt.Errorf("zram-tools is not installed: %w", err)
+	if host.zramProvider() == "" {
+		return false, errors.New("neither zram-tools nor zram-generator is installed")
 	}
 	return true, nil
+}
+
+// zramProvider is the installed tool that sets zram up; zram-tools when both
+// are installed, as on a host that had it before. zramswap is in /usr/sbin,
+// which the bridge's PATH may omit.
+func (h hostRoot) zramProvider() apischema.ZramProvider {
+	if _, err := hostcmd.LookPath(zramCommand); err == nil {
+		return apischema.ZramProviderTools
+	}
+	if h.exists(ZramGeneratorPath) {
+		return apischema.ZramProviderGenerator
+	}
+	return ""
 }
 
 // GetSwapStatus reads how the host handles running out of memory from files
@@ -32,9 +51,7 @@ func GetSwapStatus(ctx context.Context) (apischema.SwapStatus, error) {
 
 // status is GetSwapStatus for the host under the root.
 func (h hostRoot) status(ctx context.Context) (apischema.SwapStatus, error) {
-	// The error only says why zram-tools counts as missing.
-	zramAvailable, _ := CheckZramAvailability()
-	status, err := h.readSwapStatus(zramAvailable)
+	status, err := h.readSwapStatus(h.zramProvider())
 	if err != nil {
 		return apischema.SwapStatus{}, err
 	}
@@ -57,8 +74,9 @@ func tunedState(ctx context.Context) (active bool, profile string) {
 }
 
 // readSwapStatus reads everything the status reports except TuneD, given
-// whether zram-tools is installed.
-func (h hostRoot) readSwapStatus(zramAvailable bool) (apischema.SwapStatus, error) {
+// the installed zram provider.
+func (h hostRoot) readSwapStatus(provider apischema.ZramProvider) (apischema.SwapStatus, error) {
+	zramAvailable := provider != ""
 	devices, err := h.readSwaps()
 	if err != nil {
 		return apischema.SwapStatus{}, err
@@ -93,6 +111,7 @@ func (h hostRoot) readSwapStatus(zramAvailable bool) (apischema.SwapStatus, erro
 		Zswap:         zswap,
 		ZramDevices:   zram,
 		ZramAvailable: zramAvailable,
+		ZramProvider:  provider,
 		SwapFile:      h.statusSwapFile(fstab, devices, mounts),
 		Presets:       presetList(),
 	}

@@ -55,7 +55,7 @@ func (e *executor) setSwapMode(ctx context.Context, target apischema.SwapMode) (
 
 // modeRun is one mode change in progress, with what it must undo if a step
 // fails: the files it wrote, the kernel values it changed and whether it
-// enabled zramswap.service. Swap it added is never undone.
+// set zram to start at boot. Swap it added is never undone.
 type modeRun struct {
 	*executor
 	target apischema.SwapMode
@@ -92,10 +92,20 @@ func (r *modeRun) do(ctx context.Context, step swapStep) error {
 	}
 }
 
-// writeConfig writes zram-tools' config for the planned size, then the
-// sysctl drop-in.
+// generated reports whether zram-generator sets zram up on this host, and
+// not zram-tools.
+func (r *modeRun) generated() bool {
+	return r.before.ZramProvider == apischema.ZramProviderGenerator
+}
+
+// writeConfig writes the zram provider's config for the planned size, then
+// the sysctl drop-in.
 func (r *modeRun) writeConfig() error {
-	if err := r.writeFile(zramswapConfigPath, renderZramswapConfig(r.before.ZramPlannedSize)); err != nil {
+	path, config := zramswapConfigPath, renderZramswapConfig(r.before.ZramPlannedSize)
+	if r.generated() {
+		path, config = zramGeneratorConfigPath, renderZramGeneratorConfig(r.before.ZramPlannedSize)
+	}
+	if err := r.writeFile(path, config); err != nil {
 		return err
 	}
 	return r.writeDropIn()
@@ -112,21 +122,32 @@ func (r *modeRun) writeDropIn() error {
 	return r.writeFile(sysctlDropInPath, renderSysctlDropIn(mergeSysctlDropIn(entries, set, remove)))
 }
 
-// startZram enables zramswap.service and, when run, starts it and waits for
-// a zram device in /proc/swaps.
+// startZram sets zram to start at boot and, when run, starts its unit and
+// waits for a zram device in /proc/swaps. zram-tools has a service to
+// enable. zram-generator has none: a systemd reload makes its swap unit
+// from the configuration write_config wrote, wanted by swap.target.
 func (r *modeRun) startZram(ctx context.Context, run bool) error {
-	state, err := r.sys.unitFileState(ctx, zramService)
-	if err != nil {
-		return err
+	unit := zramService
+	if r.generated() {
+		unit = zramGeneratorSwapUnit
+		if err := r.sys.reload(ctx); err != nil {
+			return err
+		}
+		r.zramEnabledByRun = true
+	} else {
+		state, err := r.sys.unitFileState(ctx, zramService)
+		if err != nil {
+			return err
+		}
+		if err := r.sys.enableUnit(ctx, zramService); err != nil {
+			return err
+		}
+		r.zramEnabledByRun = state != "enabled"
 	}
-	if err := r.sys.enableUnit(ctx, zramService); err != nil {
-		return err
-	}
-	r.zramEnabledByRun = state != "enabled"
 	if !run {
 		return nil
 	}
-	if err := r.sys.startUnit(ctx, zramService); err != nil {
+	if err := r.sys.startUnit(ctx, unit); err != nil {
 		return err
 	}
 	if err := waitUntil(ctx, r.waits.swapOn, r.waits.poll, r.zramSwapping); err != nil {
@@ -268,12 +289,20 @@ func (r *modeRun) startSwapFile(ctx context.Context, step swapStep) error {
 	return nil
 }
 
-// stopZram stops zramswap.service and waits for zram to leave /proc/swaps,
-// then disables it, when zram's data fits in memory and free disk swap on a
-// fresh status and systemd reports the service running; otherwise it leaves
-// zram running. With run false zram is not running and the service is only
-// disabled.
+// stopZram stops zram's unit and waits for zram to leave /proc/swaps, then
+// turns zram off at boot, when zram's data fits in memory and free disk swap
+// on a fresh status and systemd reports the provider's unit running;
+// otherwise it leaves zram running. With run false zram is not running and
+// is only turned off at boot.
+//
+// zram-tools is stopped through zramswap.service. zram-generator's device is
+// stopped through its swap unit, and only when the generator made it (see
+// generatorMadeZram).
 func (r *modeRun) stopZram(ctx context.Context, run bool) error {
+	unit := zramService
+	if r.generated() {
+		unit = zramGeneratorSwapUnit
+	}
 	if run {
 		status, err := r.sys.status(ctx)
 		if err != nil {
@@ -283,14 +312,20 @@ func (r *modeRun) stopZram(ctx context.Context, run bool) error {
 			// zram set up by another tool, or under a service that is not
 			// running, would not stop with the service: it stays, and the
 			// service is left as it is.
-			if !zramFits(status) || r.unitNotRunning(ctx, zramService) {
+			var ours bool
+			if r.generated() {
+				ours = r.generatorMadeZram(ctx, status.Devices)
+			} else {
+				ours = !r.unitNotRunning(ctx, zramService)
+			}
+			if !zramFits(status) || !ours {
 				r.zramLeft = true
 				return nil
 			}
-			if err := r.sys.stopUnit(ctx, zramService); err != nil {
+			if err := r.sys.stopUnit(ctx, unit); err != nil {
 				return err
 			}
-			if err := r.waitStopped(ctx, zramService, "zram", func() (bool, error) {
+			if err := r.waitStopped(ctx, unit, "zram", func() (bool, error) {
 				on, err := r.zramSwapping()
 				return !on, err
 			}); err != nil {
@@ -298,7 +333,47 @@ func (r *modeRun) stopZram(ctx context.Context, run bool) error {
 			}
 		}
 	}
-	return r.sys.disableUnit(ctx, zramService)
+	return r.zramOffAtBoot(ctx)
+}
+
+// generatorMadeZram reports whether the zram that swaps is the one device
+// zram-generator makes from LinuxIO's configuration: zram0 alone, with the
+// generator's setup service for it active. A state that cannot be read is
+// not proof, unlike in unitNotRunning: any swap device has a swap unit
+// systemd would stop, so the setup service is the only sign of who made it.
+func (r *modeRun) generatorMadeZram(ctx context.Context, devices []apischema.SwapDevice) bool {
+	if slices.ContainsFunc(devices, func(d apischema.SwapDevice) bool {
+		return d.Kind == apischema.SwapDeviceZram && d.Path != zramGeneratorDevice
+	}) {
+		return false
+	}
+	state, err := r.sys.activeState(ctx, zramGeneratorSetupUnit)
+	if err != nil {
+		slog.Debug("read unit state failed", "unit", zramGeneratorSetupUnit, "error", err)
+		return false
+	}
+	return state == "active"
+}
+
+// zramOffAtBoot keeps zram from starting at the next boot. zram-tools'
+// service is disabled. zram-generator gets a configuration with no device,
+// followed by a reload that takes its units away; a file that already says
+// so is left alone. A rollback puts the previous file back, and zram, which
+// is stopped by then, stays stopped until the next boot.
+func (r *modeRun) zramOffAtBoot(ctx context.Context) error {
+	if !r.generated() {
+		return r.sys.disableUnit(ctx, zramService)
+	}
+	off := renderZramGeneratorOff()
+	if current, ok, err := r.root.readOptional(zramGeneratorConfigPath); err != nil {
+		return fmt.Errorf("read %s: %w", zramGeneratorConfigPath, err)
+	} else if ok && current == string(off) {
+		return nil
+	}
+	if err := r.writeFile(zramGeneratorConfigPath, off); err != nil {
+		return err
+	}
+	return r.sys.reload(ctx)
 }
 
 // findSwap returns the disk swap device path is, matched by name or
@@ -389,10 +464,11 @@ func (r *modeRun) setParam(name, value string) error {
 	return nil
 }
 
-// rollback undoes the run after a failed step: zramswap.service if this run
-// enabled it, then the kernel values and the files, the
-// last change first. It runs past a cancelled request, within a bound, and
-// joins every action that fails.
+// rollback undoes the run after a failed step: zram at boot if this run set
+// it, then the kernel values and the files, the last change first, and a
+// reload when zram-generator's configuration was put back, so its units
+// match the file again. It runs past a cancelled request, within a bound,
+// and joins every action that fails.
 func (r *modeRun) rollback(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
 	defer cancel()
@@ -410,22 +486,37 @@ func (r *modeRun) rollback(ctx context.Context) error {
 			errs = append(errs, fmt.Errorf("rollback: %w", err))
 		}
 	}
+	if slices.ContainsFunc(r.files, func(f savedFile) bool { return f.name == zramGeneratorConfigPath }) {
+		if err := r.sys.reload(ctx); err != nil {
+			errs = append(errs, fmt.Errorf("rollback: %w", err))
+		}
+	}
 	return errors.Join(errs...)
 }
 
-// undoZramEnable disables zramswap.service again, so the next boot does not
-// start zram with the configuration the rollback put back. It also stops the
-// service, but only when no zram device swaps: zram that swaps is swap
-// capacity and stays.
+// undoZramEnable keeps the next boot from starting zram with the
+// configuration the rollback puts back: zram-tools' service is disabled
+// again, and zram-generator's units follow the file the rollback restores.
+// It also stops zram's unit, but only when no zram device swaps: zram that
+// swaps is swap capacity and stays. The generator's swap unit is stopped
+// only while systemd reports it doing something, since a configuration that
+// made no unit leaves nothing to stop.
 func (r *modeRun) undoZramEnable(ctx context.Context) error {
 	on, err := r.zramSwapping()
 	if err != nil {
 		return fmt.Errorf("rollback: %w", err)
 	}
-	if !on {
-		if err := r.sys.stopUnit(ctx, zramService); err != nil {
+	unit := zramService
+	if r.generated() {
+		unit = zramGeneratorSwapUnit
+	}
+	if !on && !(r.generated() && r.unitNotRunning(ctx, unit)) {
+		if err := r.sys.stopUnit(ctx, unit); err != nil {
 			return fmt.Errorf("rollback: %w", err)
 		}
+	}
+	if r.generated() {
+		return nil
 	}
 	if err := r.sys.disableUnit(ctx, zramService); err != nil {
 		return fmt.Errorf("rollback: %w", err)

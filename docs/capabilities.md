@@ -230,17 +230,19 @@ Disks overview, which manage devices, health and settings; see
 
 ## zram
 
-The `zram` capability checks for the `zramswap` command of `zram-tools`
-(`memory.CheckZramAvailability`, which also looks in `/usr/sbin` for a bridge
-whose `PATH` omits it) and installs the Debian package `zram-tools`. There is
-no service step: the dashboard's **Memory overflow** dialog enables
-`zramswap.service` when the admin chooses compressed memory only. The dialog
+The `zram` capability is available when either tool that sets zram up is
+installed (`memory.CheckZramAvailability`): the `zramswap` command of
+`zram-tools`, also looked for in `/usr/sbin` for a bridge whose `PATH` omits
+it, or systemd's `zram-generator` at
+`/usr/lib/systemd/system-generators/zram-generator`. Install uses the Debian
+package `zram-tools` or the RHEL package `zram-generator`. There is no service
+step: the dashboard's **Memory overflow** dialog starts zram when the admin
+chooses compressed memory only. The dialog
 itself does not wait for the capability; its zram row links to Capabilities
 while the package is missing. The capability card has no link back, since the
 dialog has no URL.
-The capability declares no RHEL package, because Fedora uses `zram-generator`
-with a different configuration, so Install on Fedora or RHEL falls back to the
-Debian name and fails. See [Memory overflow](./memory.md#the-zram-capability).
+The two tools differ in configuration file and units; see
+[Memory overflow](./memory.md#the-zram-provider).
 
 ## Filesystem tools
 

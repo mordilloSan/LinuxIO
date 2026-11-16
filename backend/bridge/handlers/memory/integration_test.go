@@ -21,9 +21,10 @@ func TestMemoryIntegration(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("needs root")
 	}
-	if ok, _ := CheckZramAvailability(); !ok {
-		t.Skip("zram-tools is not installed")
+	if host.zramProvider() == "" {
+		t.Skip("neither zram-tools nor zram-generator is installed")
 	}
+	t.Logf("zram provider: %s", host.zramProvider())
 	ctx := t.Context()
 	e := newExecutor(func(p apischema.SwapProgress) { t.Logf("step %d/%d %s %s", p.Index, p.Total, p.Step, p.Device) })
 	view, err := e.readView(ctx)
@@ -87,6 +88,16 @@ func assertZramMode(t *testing.T, e *executor, file fstabSwap) {
 	if state := unitFileState(t, file.unit); state != "masked" {
 		t.Errorf("%s file state = %q, want masked", file.unit, state)
 	}
+	if got.ZramProvider == apischema.ZramProviderGenerator {
+		config, readErr := os.ReadFile(zramGeneratorConfigPath)
+		if readErr != nil || !strings.Contains(string(config), "[zram0]\n") || !strings.Contains(string(config), "compression-algorithm = zstd\n") {
+			t.Errorf("%s = %q, %v; want a zram0 device with zstd", zramGeneratorConfigPath, config, readErr)
+		}
+		if state, stateErr := e.sys.activeState(t.Context(), zramGeneratorSetupUnit); stateErr != nil || state != "active" {
+			t.Errorf("%s = %q, %v; want active", zramGeneratorSetupUnit, state, stateErr)
+		}
+		return
+	}
 	if state := unitFileState(t, zramService); state != "enabled" {
 		t.Errorf("%s file state = %q, want enabled", zramService, state)
 	}
@@ -108,6 +119,13 @@ func assertDiskMode(t *testing.T, file fstabSwap, got apischema.SwapStatus) {
 	}
 	if state := unitFileState(t, file.unit); state == "masked" {
 		t.Errorf("%s file state = %q, want unmasked", file.unit, state)
+	}
+	if got.ZramProvider == apischema.ZramProviderGenerator {
+		config, err := os.ReadFile(zramGeneratorConfigPath)
+		if err != nil || string(config) != string(renderZramGeneratorOff()) {
+			t.Errorf("%s = %q, %v; want the configuration with no device", zramGeneratorConfigPath, config, err)
+		}
+		return
 	}
 	if state := unitFileState(t, zramService); state != "disabled" {
 		t.Errorf("%s file state = %q, want disabled", zramService, state)

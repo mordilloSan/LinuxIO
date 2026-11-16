@@ -19,9 +19,11 @@ import (
 // removes its device's line in the fixture's /proc/swaps, as swapon and
 // swapoff would. Every side effect is recorded in order.
 type fakeSystem struct {
-	f             fixture
-	tuned         bool
-	zramAvailable bool
+	f     fixture
+	tuned bool
+	// provider is the installed zram tool; zram-tools unless a test says
+	// otherwise.
+	provider apischema.ZramProvider
 	// calls lists the side effects in order: "start <unit>", "write <path>",
 	// "set <param>=<value>", ...
 	calls []string
@@ -53,15 +55,16 @@ const (
 
 func newFakeSystem(f fixture) *fakeSystem {
 	return &fakeSystem{
-		f:             f,
-		zramAvailable: true,
-		failures:      map[string]error{},
-		failAfter:     map[string]error{},
-		stops:         map[string]*fakeStop{},
-		activeStates:  map[string]string{},
+		f:            f,
+		provider:     apischema.ZramProviderTools,
+		failures:     map[string]error{},
+		failAfter:    map[string]error{},
+		stops:        map[string]*fakeStop{},
+		activeStates: map[string]string{},
 		devices: map[string]string{
-			zramService:     zramSwapsLine,
-			"swap.img.swap": swapFileSwapsLine,
+			zramService:           zramSwapsLine,
+			zramGeneratorSwapUnit: zramSwapsLine,
+			"swap.img.swap":       swapFileSwapsLine,
 		},
 		stuck:      map[string]bool{},
 		fileStates: map[string]string{},
@@ -109,7 +112,7 @@ func (s *fakeSystem) unitDo(ctx context.Context, call string, effect func() erro
 }
 
 func (s *fakeSystem) status(context.Context) (apischema.SwapStatus, error) {
-	status, err := s.f.host().readSwapStatus(s.zramAvailable)
+	status, err := s.f.host().readSwapStatus(s.provider)
 	if err != nil {
 		return apischema.SwapStatus{}, err
 	}
@@ -161,6 +164,15 @@ func (s *fakeSystem) swapOn(name string) {
 			s.f.write(procSwaps, swaps+line)
 		}
 		s.activeStates[name] = "active"
+		s.bindSetupUnit(name, "active")
+	}
+}
+
+// bindSetupUnit gives zram-generator's setup service the state of its swap
+// unit, which it is bound to.
+func (s *fakeSystem) bindSetupUnit(name, state string) {
+	if name == zramGeneratorSwapUnit {
+		s.activeStates[zramGeneratorSetupUnit] = state
 	}
 }
 
@@ -168,6 +180,7 @@ func (s *fakeSystem) swapOff(name string) {
 	if line, ok := s.devices[name]; ok && !s.stuck[name] {
 		s.f.write(procSwaps, strings.ReplaceAll(s.f.read(procSwaps), line, ""))
 		s.activeStates[name] = "inactive"
+		s.bindSetupUnit(name, "inactive")
 	}
 }
 
@@ -212,6 +225,10 @@ func (s *fakeSystem) activeState(ctx context.Context, name string) (string, erro
 		return state, nil
 	}
 	return "active", nil
+}
+
+func (s *fakeSystem) reload(ctx context.Context) error {
+	return s.unitDo(ctx, "reload", func() error { return nil })
 }
 
 func (s *fakeSystem) setFileState(ctx context.Context, call, name, state string) error {
@@ -326,6 +343,26 @@ func zramHost(t *testing.T) (fixture, *fakeSystem) {
 	sys.fileStates[zramService] = "enabled"
 	sys.fileStates["swap.img.swap"] = "masked"
 	f.maskInFixture("swap.img.swap")
+	return f, sys
+}
+
+// generatorDiskHost is diskHost on a host where zram-generator, and not
+// zram-tools, sets zram up; it has no configuration yet.
+func generatorDiskHost(t *testing.T) (fixture, *fakeSystem) {
+	t.Helper()
+	f, sys := diskHost(t)
+	sys.provider = apischema.ZramProviderGenerator
+	return f, sys
+}
+
+// generatorZramHost is zramHost with zram0 made by zram-generator from
+// LinuxIO's configuration.
+func generatorZramHost(t *testing.T) (fixture, *fakeSystem) {
+	t.Helper()
+	f, sys := zramHost(t)
+	sys.provider = apischema.ZramProviderGenerator
+	sys.devices[zramGeneratorSwapUnit] = sys.devices[zramService]
+	f.write(zramGeneratorConfigPath, string(renderZramGeneratorConfig(7963*mib)))
 	return f, sys
 }
 

@@ -32,6 +32,18 @@ const (
 	SwapDiskHintRemovable SwapDiskHint = "removable"
 )
 
+// ZramProvider is the installed tool that sets zram up, or is empty when
+// there is none. zram-tools runs zramswap.service from /etc/default/zramswap
+// (Debian and Ubuntu); zram-generator makes dev-zram0.swap from
+// /etc/systemd/zram-generator.conf (Fedora, RHEL, Arch and Debian's
+// systemd-zram-generator). zram-tools is used when both are installed.
+type ZramProvider string
+
+const (
+	ZramProviderTools     ZramProvider = "zram-tools"
+	ZramProviderGenerator ZramProvider = "zram-generator"
+)
+
 // ZramUnavailableReason says why the zram mode cannot be chosen, or is empty
 // when it can.
 type ZramUnavailableReason string
@@ -192,6 +204,7 @@ type SwapStatus struct {
 	ZramAvailable         bool                   `json:"zram_available"`
 	ZramDevices           []ZramDevice           `json:"zram_devices"`
 	ZramPlannedSize       uint64                 `json:"zram_planned_size"`
+	ZramProvider          ZramProvider           `json:"zram_provider"`
 	ZramUnavailableReason ZramUnavailableReason  `json:"zram_unavailable_reason"`
 	Zswap                 ZswapStatus            `json:"zswap"`
 }

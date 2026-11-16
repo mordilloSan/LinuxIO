@@ -35,7 +35,7 @@ import {
   type RowView,
 } from "./memoryStatusView";
 
-const CAPABILITIES_LINK_TEXT = "Open Capabilities to install zram-tools";
+const CAPABILITIES_LINK_TEXT = "Open Capabilities to install zram";
 const DASHBOARD_TOAST_META = { label: "Open dashboard", to: "/" } as const;
 
 interface Props {

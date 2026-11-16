@@ -24,6 +24,8 @@ type hostSystem interface {
 	maskUnit(ctx context.Context, name string) error
 	unmaskUnit(ctx context.Context, name string) error
 	unitFileState(ctx context.Context, name string) (string, error)
+	// reload makes systemd run its generators again and returns when it has.
+	reload(ctx context.Context) error
 	activeState(ctx context.Context, name string) (string, error)
 	writeFile(name string, data []byte, mode fs.FileMode) error
 	removeFile(name string) error
@@ -68,6 +70,10 @@ func (liveSystem) unmaskUnit(ctx context.Context, name string) error {
 
 func (liveSystem) unitFileState(ctx context.Context, name string) (string, error) {
 	return systemd.GetUnitFileState(ctx, name)
+}
+
+func (liveSystem) reload(ctx context.Context) error {
+	return systemd.DaemonReload(ctx)
 }
 
 func (liveSystem) activeState(ctx context.Context, name string) (string, error) {

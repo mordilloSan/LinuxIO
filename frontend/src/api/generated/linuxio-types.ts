@@ -3125,6 +3125,7 @@ export interface SwapStatus {
   zram_available: boolean;
   zram_devices: ZramDevice[];
   zram_planned_size: number;
+  zram_provider: ZramProvider;
   zram_unavailable_reason: ZramUnavailableReason;
   zswap: ZswapStatus;
 }
@@ -3783,6 +3784,8 @@ export interface ZramDevice {
   name: string;
   original_size: number;
 }
+
+export type ZramProvider = "" | "zram-tools" | "zram-generator";
 
 export type ZramUnavailableReason =
   | ""

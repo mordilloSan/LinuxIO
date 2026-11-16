@@ -25,7 +25,7 @@ these settings.
 The dialog is **administrator-only**: every action in it is privileged, so
 the Swap row of the Memory card is an edit button with a pencil for a session
 with sudo and plain text for any other. The dialog is not gated on a
-capability: the status works without zram-tools or TuneD, and the zram row
+capability: the status works without a zram tool or TuneD, and the zram row
 links to Capabilities when the package is missing.
 
 The status read, `memory.get_swap_status`, is not privileged. It reads
@@ -136,7 +136,8 @@ kernel should surface rather than read as zero. **What degrades.** A missing
 optional file reads as zero or absent (no zswap directory, no `mm_stat`, no
 `/etc/fstab`, no mountinfo); a line of fstab or mountinfo that does not parse
 is skipped; a failed TuneD read counts as TuneD not running (Debug log only);
-a missing `zramswap` command is `zram_available: false`.
+a host with neither zram tool is `zram_available: false` with an empty
+`zram_provider`.
 
 ## Changing the mode
 
@@ -146,7 +147,7 @@ a missing `zramswap` command is `zram_available: false`.
 drain). The dialog shows the step's message while it runs.
 
 It refuses before anything changes, with `ErrConflict`, a mode the host cannot
-take: zram without zram-tools or with a swap partition active; zswap on a
+take: zram without a zram tool or with a swap partition active; zswap on a
 kernel without it; zswap or disk with no swap file in fstab and no active
 swap file or partition.
 
@@ -158,11 +159,13 @@ than it was.
 
 To `zram`:
 
-1. `write_config`: write `/etc/default/zramswap` and the sysctl drop-in.
-2. `start_zram`: enable `zramswap.service`, start it and wait for a zram
-   device in `/proc/swaps` (up to a minute). Already-running zram is not
+1. `write_config`: write the zram provider's configuration and the sysctl
+   drop-in.
+2. `start_zram`: set zram to start at boot, start its unit and wait for a
+   zram device in `/proc/swaps` (up to a minute). Already-running zram is not
    restarted, since a restart empties it, so the configuration just written
-   applies at the next restart of the service.
+   applies at the next restart of the unit. What "at boot" and "its unit" mean
+   depends on the [zram provider](#the-zram-provider).
 3. `apply_sysctls`: write the preset live.
 4. `disable_zswap`: turn zswap off and remove its tmpfiles entry.
 5. `stop_swap_file`: when the file is named in fstab, stop its unit, wait for
@@ -176,12 +179,12 @@ To `zswap` or `disk`, the reverse:
 1. `start_swap_file`: when the fstab file is not active, unmask its unit
    (which also brings back the unit fstab generates), start it and wait for the
    file in `/proc/swaps`.
-2. `stop_zram`: when zram-tools is installed, stop `zramswap.service`, wait for
-   zram to leave `/proc/swaps` and disable the service. zram that is not
-   running is only disabled. zram the service does not run, because another
-   tool set it up or systemd reports the service `inactive` or `failed`, is
-   left swapping and the service is left as it is. Without zram-tools the step
-   is not planned and zram is left alone.
+2. `stop_zram`: when a zram provider is installed, stop zram's unit, wait for
+   zram to leave `/proc/swaps` and turn zram off at boot. zram that is not
+   running is only turned off at boot. zram the provider does not run, because
+   another tool set it up or systemd reports the provider's unit `inactive` or
+   `failed`, is left swapping and nothing is turned off. Without a provider
+   the step is not planned and zram is left alone.
 3. `apply_sysctls`: write the preset to the drop-in and live.
 4. `enable_zswap` (zswap) or `disable_zswap` (disk).
 
@@ -232,7 +235,8 @@ result has an active swap file that is not managed, and that memory was short
 otherwise. It is also what a switch leaves when the device's unit is not one
 systemd runs: a switch to zram when the active swap file is not named in fstab,
 or when systemd does not report the file's unit running, and a switch away from
-zram when zram is not run by `zramswap.service`. Applying again changes nothing
+zram when zram is not run by the provider's unit, or, with `zram-generator`,
+when a zram device other than `zram0` swaps. Applying again changes nothing
 in those cases.
 
 ### Rollback
@@ -241,9 +245,11 @@ When a step fails the run undoes what it changed, last change first, on a
 context that outlives a cancelled request, within 30 seconds, and joins every
 failed undo into the error it returns:
 
-- if the run enabled `zramswap.service`, the service is disabled again, so the
-  next boot does not start zram with the configuration the rollback put back;
-  it is also stopped when no zram device swaps, and zram that swaps stays;
+- if the run set zram to start at boot, that is undone, so the next boot does
+  not start zram with the configuration the rollback put back: `zramswap.service`
+  is disabled again, and with `zram-generator` the restored configuration is
+  followed by a systemd reload, so no generated unit outlives its file. zram's
+  unit is also stopped when no zram device swaps, and zram that swaps stays;
 - each kernel parameter the run wrote goes back to the value it had before;
 - each file the run wrote or removed goes back to its previous content and
   mode, or is removed if it did not exist.
@@ -401,25 +407,65 @@ symlink) and mode `0644`.
 |---|---|---|
 | `/etc/sysctl.d/90-linuxio-memory.conf` | every mode, and `set_swappiness` | `vm.<name> = <value>` lines. Keys the admin added stay. Leaving zram drops `vm.page-cluster`, `vm.watermark_boost_factor` and `vm.watermark_scale_factor`. Under TuneD `vm.swappiness` is neither written nor dropped. |
 | `/etc/tmpfiles.d/linuxio-zswap.conf` | `zswap` | `w` lines setting zswap's `compressor` and `enabled` (`Y`) at boot. Removed by `zram` and `disk`, not written as `N`. |
-| `/etc/default/zramswap` | `zram` | zram-tools' configuration: `ALGO=zstd`, `SIZE=<MiB>`, `PRIORITY=100`. It is a package conffile, so the next package upgrade asks about the change. |
+| `/etc/default/zramswap` | `zram`, with zram-tools | zram-tools' configuration: `ALGO=zstd`, `SIZE=<MiB>`, `PRIORITY=100`. It is a package conffile, so the next package upgrade asks about the change. |
+| `/etc/systemd/zram-generator.conf` | `zram`, and leaving zram, with zram-generator | For `zram`: one `[zram0]` section with `zram-size = <MiB>`, `compression-algorithm = zstd` and `swap-priority = 100`. Leaving zram: comments only, so the generator makes no device. Either way it replaces what was there, and takes the place of the file a package puts in `/usr/lib/systemd`. |
 
 Besides these, systemd keeps the mask of the swap unit as a symlink in
-`/etc/systemd/system`, and `zramswap.service` is enabled or disabled.
+`/etc/systemd/system`, and with zram-tools `zramswap.service` is enabled or
+disabled.
 
 Never touched: the kernel command line (zswap persists through tmpfiles, not
 `zswap.enabled=`), the swap file's own content, creation or size, and swap
 partitions. zram writeback is not exposed.
 
+## The zram provider
+
+Two tools set zram up, and the status names the one installed in
+`zram_provider`. The mode change does the same steps with either; what differs
+is the file and the unit.
+
+| | `zram-tools` | `zram-generator` |
+|---|---|---|
+| Where | Debian and Ubuntu | Fedora, RHEL 9 and later, Arch; `systemd-zram-generator` on Debian and Ubuntu |
+| Found by | the `zramswap` command (`hostcmd.LookPath`, which also looks in `/usr/sbin`) | the file `/usr/lib/systemd/system-generators/zram-generator` |
+| Configuration | `/etc/default/zramswap` | `/etc/systemd/zram-generator.conf` |
+| Start at boot | enable `zramswap.service` | the configuration holds a device; a systemd reload makes `dev-zram0.swap`, wanted by `swap.target` |
+| Start now | start `zramswap.service` | start `dev-zram0.swap`, which requires `systemd-zram-setup@zram0.service` |
+| Stop now | stop `zramswap.service` | stop `dev-zram0.swap`; the setup service is bound to it and resets the device |
+| Off at boot | disable `zramswap.service` | write a configuration with no device, then reload |
+| "The provider runs it" | `zramswap.service` is not `inactive` or `failed` | `systemd-zram-setup@zram0.service` is `active`, and no zram device but `zram0` swaps |
+
+zram-tools is used when both are installed, so a host that had it keeps
+working as before. This follows upstream: the generator's README applies a new
+configuration with `systemctl daemon-reload` and `systemctl start /dev/zram0`,
+and Fedora turns its default zram off with an empty
+`/etc/systemd/zram-generator.conf`.
+
+With `zram-generator`:
+
+- LinuxIO configures `zram0` alone. Fedora's default
+  (`zram-generator-defaults`) is also `zram0`, so a Fedora host starts in
+  `zram` mode and choosing it again writes LinuxIO's size and algorithm for the
+  next boot.
+- The off file is not written, and systemd not reloaded, when the file
+  already says so. When a later step fails the rollback puts the previous file
+  back and reloads; zram, stopped by then, stays stopped until the next boot.
+- `stop_zram` takes zram away only with proof that the generator made it: the
+  setup service reads `active`, where a state that cannot be read counts as no
+  proof, because systemd has a `dev-zram0.swap` unit for a `zram0` anyone
+  swapped on.
+- Drop-ins in `zram-generator.conf.d` and a file in `/run/systemd` are neither
+  read nor changed. They override LinuxIO's file, so a device defined there
+  comes back at boot, and one that swaps beside `zram0` keeps `stop_zram` from
+  stopping anything.
+
 ## The zram capability
 
-`zram` is detected by the `zramswap` command (`CheckZramAvailability`, using
-`hostcmd.LookPath`, which also looks in `/usr/sbin`) and installed with the
-Debian package `zram-tools` through PackageKit; the install has no service
-step, and `start_zram` enables the service. Fedora and RHEL ship
-`zram-generator`, whose configuration file differs and whose units are
-generated, so the capability declares no RHEL package and Install fails there;
-see [Capabilities](./capabilities.md#zram). That path is planned in
-[Memory overflow](./TODO/memory-overflow.md).
+`zram` is available when either provider is installed
+(`CheckZramAvailability`). Install goes through PackageKit with the Debian
+package `zram-tools` or the RHEL package `zram-generator`; neither has a
+service step, since `start_zram` does that. See
+[Capabilities](./capabilities.md#zram).
 
 ## The dialog
 
@@ -433,7 +479,7 @@ see [Capabilities](./capabilities.md#zram). That path is planned in
   a plain name, its technical name once, a description, a caution where one
   applies, and chips for the recommended and the current row. A row that cannot
   be chosen shows why; the zram row shows a link to Capabilities instead of a
-  choice while zram-tools is missing. Apply is enabled for a different row, or
+  choice while no zram tool is installed. Apply is enabled for a different row, or
   for the current one while the host is `mixed`.
 - Choosing zram while a managed swap file (`swap_file.managed`) is active asks
   first, as a second step of the same dialog and not a dialog on top of it,
@@ -474,6 +520,11 @@ see [Capabilities](./capabilities.md#zram). That path is planned in
   zram swapping, its unit unmasked and `zramswap.service` disabled. Cleanup
   switches back to the starting mode. It does not cover zswap's persistence,
   swappiness, drain, rollback, systemd's stop timeout, TuneD or a reboot.
+  `make vm-test-memory-integration ZRAM_PROVIDER=zram-generator`, after
+  `make vm-reset`, runs the same test with Ubuntu's `systemd-zram-generator`
+  in place of zram-tools: after zram it checks the `[zram0]` configuration
+  with `zstd` and that `systemd-zram-setup@zram0.service` is active, and after
+  the return that the configuration holds no device.
 
 ## Known limits
 
@@ -489,6 +540,8 @@ Each is an open item in [the backlog](./TODO/backlog.md).
   `disk`, since the tmpfiles entry is removed and not written as off.
 - A host with zram already running keeps its old zram size until the service
   restarts.
-- Installing the capability on Fedora or RHEL fails.
-- The overflow alert and the Fedora and RHEL path are not built
+- The `zram-generator` path was built from upstream's documentation and unit
+  files and has not run on Fedora or RHEL; drop-ins in
+  `zram-generator.conf.d` are not read.
+- The overflow alert is not built
   ([Memory overflow](./TODO/memory-overflow.md)).

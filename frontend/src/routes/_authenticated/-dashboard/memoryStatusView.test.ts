@@ -28,12 +28,26 @@ describe("bannerView", () => {
     });
   });
 
-  it("links to Capabilities instead when zram-tools is missing", () => {
+  it("names the tool that sets zram up in the zram row's caption", () => {
+    const caption = (status: ReturnType<typeof swapStatus>) =>
+      rowViews(status).find((row) => row.mode === "zram")?.technical;
+
+    expect(caption(swapStatus())).toBe("zram (zram-tools)");
+    expect(caption(swapStatus({ zram_provider: "zram-generator" }))).toBe(
+      "zram (zram-generator)",
+    );
+    expect(
+      caption(swapStatus({ zram_available: false, zram_provider: "" })),
+    ).toBe("zram");
+  });
+
+  it("links to Capabilities instead when no zram tool is installed", () => {
     const view = bannerView(
       swapStatus({
         devices: [],
         mode: "none",
         zram_available: false,
+        zram_provider: "",
         zram_unavailable_reason: "package_missing",
       }),
     );
@@ -46,6 +60,7 @@ describe("bannerView", () => {
         devices: [],
         mode: "none",
         zram_available: false,
+        zram_provider: "",
         zram_unavailable_reason: "swap_partition_active",
       }),
     );
@@ -151,6 +166,7 @@ describe("bannerView", () => {
         mode: "disk",
         swap_file: swapFile({ fs_type: "btrfs" }),
         zram_available: false,
+        zram_provider: "",
         zram_unavailable_reason: "package_missing",
       }),
     );
@@ -245,6 +261,7 @@ describe("rowViews", () => {
         ],
         mode: "disk",
         zram_available: false,
+        zram_provider: "",
         zram_unavailable_reason: "swap_partition_active",
       }),
     );
@@ -274,6 +291,7 @@ describe("rowViews", () => {
     const zram = rowViews(
       swapStatus({
         zram_available: false,
+        zram_provider: "",
         zram_unavailable_reason: "package_missing",
       }),
     )[1];

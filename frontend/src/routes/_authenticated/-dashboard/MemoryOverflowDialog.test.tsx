@@ -137,12 +137,13 @@ describe("MemoryOverflowDialog banner", () => {
     );
   });
 
-  it("points to Capabilities when zram-tools is missing", async () => {
+  it("points to Capabilities when no zram tool is installed", async () => {
     await renderSection(
       swapStatus({
         devices: [],
         mode: "none",
         zram_available: false,
+        zram_provider: "",
         zram_unavailable_reason: "package_missing",
       }),
     );
@@ -151,7 +152,7 @@ describe("MemoryOverflowDialog banner", () => {
       screen.queryByRole("button", { name: "Turn on compressed memory" }),
     ).not.toBeInTheDocument();
     const links = screen.getAllByRole("link", {
-      name: "Open Capabilities to install zram-tools",
+      name: "Open Capabilities to install zram",
     });
     // One in the banner, one where the zram radio would be.
     expect(links).toHaveLength(2);
@@ -167,6 +168,7 @@ describe("MemoryOverflowDialog banner", () => {
         devices: [],
         mode: "none",
         zram_available: false,
+        zram_provider: "",
         zram_unavailable_reason: "swap_partition_active",
       }),
     );
@@ -310,6 +312,7 @@ describe("MemoryOverflowDialog banner", () => {
         devices: [swapFileDevice(0, "btrfs")],
         swap_file: swapFile({ fs_type: "btrfs" }),
         zram_available: false,
+        zram_provider: "",
         zram_unavailable_reason: "package_missing",
       }),
     );
@@ -497,7 +500,7 @@ describe("MemoryOverflowDialog row text", () => {
     );
     expect(radio("Compressed memory with the disk as backup")).toBeChecked();
 
-    await user.click(screen.getByText("zram"));
+    await user.click(screen.getByText("zram (zram-tools)"));
     expect(radio("Compressed memory only")).toBeChecked();
   });
 
@@ -513,6 +516,7 @@ describe("MemoryOverflowDialog row text", () => {
     await renderSection(
       swapStatus({
         zram_available: false,
+        zram_provider: "",
         zram_unavailable_reason: "package_missing",
       }),
     );

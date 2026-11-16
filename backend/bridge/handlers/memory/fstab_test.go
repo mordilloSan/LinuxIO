@@ -142,7 +142,7 @@ func TestDrainBlockedReasonOnlyOnUnmanagedDevices(t *testing.T) {
 	f.write("/home/extra", "")
 	f.write("/etc/fstab", "/swap.img none swap sw 0 0\n")
 
-	got, err := f.host().readSwapStatus(true)
+	got, err := f.host().readSwapStatus(apischema.ZramProviderTools)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +161,7 @@ func TestSwapFileReachedThroughALinkIsActive(t *testing.T) {
 	f.symlink("data/swapfile", "/swapfile")
 	f.write("/etc/fstab", "/swapfile none swap sw 0 0\n")
 
-	got, err := f.host().readSwapStatus(true)
+	got, err := f.host().readSwapStatus(apischema.ZramProviderTools)
 	if err != nil {
 		t.Fatal(err)
 	}

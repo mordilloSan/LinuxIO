@@ -31,7 +31,7 @@ func TestReadSwapStatusOfASwapFileOnBtrfs(t *testing.T) {
 	f.write("/sys/block/zram0/disksize", "0\n")
 	f.write("/sys/block/zram0/mm_stat", "0 0 0 0 0 0 0 0 0\n")
 
-	got, err := f.host().readSwapStatus(false)
+	got, err := f.host().readSwapStatus("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestReadSwapStatusOfZramWithAnInactiveSwapFile(t *testing.T) {
 	f.write("/sys/block/zram0/disksize", "4294967296\n")
 	f.write("/sys/block/zram0/mm_stat", "2147483648 715827882 760000000 0 760000000 0 0 0 0\n")
 
-	got, err := f.host().readSwapStatus(true)
+	got, err := f.host().readSwapStatus(apischema.ZramProviderTools)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestReadSwapStatusFallsBackToTheActiveSwapFile(t *testing.T) {
 	f.write("/sys/module/zswap/parameters/compressor", "lzo\n")
 	f.write("/sys/module/zswap/parameters/max_pool_percent", "20\n")
 
-	got, err := f.host().readSwapStatus(true)
+	got, err := f.host().readSwapStatus(apischema.ZramProviderTools)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func TestReadSwapStatusOfAMinimalHost(t *testing.T) {
 	f.write("/proc/swaps", swapsHeader)
 	f.write("/proc/meminfo", "MemTotal: 2097152 kB\nMemAvailable: 1048576 kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\n")
 
-	got, err := f.host().readSwapStatus(true)
+	got, err := f.host().readSwapStatus(apischema.ZramProviderTools)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestReadSwapStatusRefusesBrokenRequiredFiles(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			f := newFixture(t)
 			setup(f)
-			if got, err := f.host().readSwapStatus(true); err == nil {
+			if got, err := f.host().readSwapStatus(apischema.ZramProviderTools); err == nil {
 				t.Fatalf("status = %+v, want an error", got)
 			}
 		})
@@ -228,7 +228,7 @@ func TestReadSwapStatusReportsAMaskedDrainUnit(t *testing.T) {
 			f.write("/swap.img", "")
 			f.symlink(test.to, test.link)
 
-			got, err := f.host().readSwapStatus(true)
+			got, err := f.host().readSwapStatus(apischema.ZramProviderTools)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -131,6 +131,7 @@ var StringEnums = map[string][]string{
 	"SwapMode":                  enumNames(SwapModeDisk, SwapModeZswap, SwapModeZram, SwapModeNone, SwapModeMixed),
 	"SwapDeviceKind":            enumNames(SwapDeviceFile, SwapDevicePartition, SwapDeviceZram),
 	"SwapDiskHint":              enumNames("", SwapDiskHintMMC, SwapDiskHintRemovable),
+	"ZramProvider":              enumNames("", ZramProviderTools, ZramProviderGenerator),
 	"ZramUnavailableReason":     enumNames("", ZramPackageMissing, ZramSwapPartitionActive),
 	"SwapDrainBlockedReason":    enumNames("", SwapDrainNothingParked, SwapDrainNotEnoughMemory, SwapDrainUnmanagedDevice, SwapDrainUnitMasked),
 	"SwapStep":                  enumNames(SwapSteps...),

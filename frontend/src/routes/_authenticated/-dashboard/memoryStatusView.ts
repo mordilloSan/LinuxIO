@@ -160,7 +160,9 @@ export function rowViews(status: SwapStatus): RowView[] {
         "No backup. If it fills up, Linux closes the hungriest program, and a VM would stop like a power cut.",
       description: `The same, with no swap file. Writes nothing to disk and snapshots of the system drive work. Holds about ${planned} using about ${memoryUsed} of memory.`,
       disabledReason: zramDisabled,
-      technical: "zram",
+      // The tool that would set zram up, since each writes its own file.
+      technical:
+        status.zram_provider === "" ? "zram" : `zram (${status.zram_provider})`,
     },
     {
       ...base("disk"),

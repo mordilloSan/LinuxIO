@@ -421,7 +421,7 @@ func TestSetSwapModeUnderTunedLeavesSwappinessAlone(t *testing.T) {
 
 func TestSetSwapModeRefusesBeforeChangingAnything(t *testing.T) {
 	_, sys := diskHost(t)
-	sys.zramAvailable = false
+	sys.provider = ""
 
 	_, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeZram)
 	if !errors.Is(err, bridgeipc.ErrConflict) || len(sys.calls) != 0 {

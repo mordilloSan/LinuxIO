@@ -18,6 +18,10 @@ const (
 	sysctlDropInPath   = "/etc/sysctl.d/90-linuxio-memory.conf"
 	zswapTmpfilesPath  = "/etc/tmpfiles.d/linuxio-zswap.conf"
 	zramswapConfigPath = "/etc/default/zramswap"
+	// zramGeneratorConfigPath is zram-generator's main configuration file.
+	// The one in /etc takes the place of the one a package puts in
+	// /usr/lib/systemd, so a file here with no device turns zram off.
+	zramGeneratorConfigPath = "/etc/systemd/zram-generator.conf"
 
 	managedFileMode fs.FileMode = 0o644
 	managedHeader               = "# Managed by LinuxIO (Dashboard, Memory); changes here are overwritten.\n"
@@ -26,6 +30,17 @@ const (
 // zramService is zram-tools' unit: it sets up the zram device from
 // /etc/default/zramswap and swaps on it.
 const zramService = "zramswap.service"
+
+// The units zram-generator makes at a systemd reload for the zram0 device
+// LinuxIO configures. The swap unit requires the setup service, which
+// creates the device, and the setup service is bound to the swap unit:
+// starting the swap unit sets the device up and swaps on it, stopping it
+// runs swapoff and resets the device.
+const (
+	zramGeneratorDevice    = "/dev/zram0"
+	zramGeneratorSwapUnit  = "dev-zram0.swap"
+	zramGeneratorSetupUnit = "systemd-zram-setup@zram0.service"
+)
 
 // writeFile replaces the file name under the root atomically; it refuses to
 // write through a symlink.
@@ -125,4 +140,17 @@ func zswapSwitch(enabled bool) string {
 // device of size bytes, rounded down to whole MiB.
 func renderZramswapConfig(size uint64) []byte {
 	return fmt.Appendf(nil, "%sALGO=zstd\nSIZE=%d\nPRIORITY=100\n", managedHeader, size>>20)
+}
+
+// renderZramGeneratorConfig is zram-generator's configuration for one zram
+// swap device of size bytes, rounded down to whole MiB, with the same
+// algorithm and priority as renderZramswapConfig.
+func renderZramGeneratorConfig(size uint64) []byte {
+	return fmt.Appendf(nil, "%s[zram0]\nzram-size = %d\ncompression-algorithm = zstd\nswap-priority = 100\n", managedHeader, size>>20)
+}
+
+// renderZramGeneratorOff is zram-generator's configuration with no device,
+// which makes the generator create no unit.
+func renderZramGeneratorOff() []byte {
+	return []byte(managedHeader + "# No device: zram is off. This file takes the place of /usr/lib/systemd/zram-generator.conf.\n")
 }
