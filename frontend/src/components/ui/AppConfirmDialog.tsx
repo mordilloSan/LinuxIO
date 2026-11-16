@@ -25,6 +25,13 @@ interface AppConfirmDialogProps {
   onConfirm: () => void;
   open: boolean;
   isPending?: boolean;
+  /**
+   * For a confirm whose action is a long job: the dialog can be closed while
+   * the job runs, with Escape, the backdrop or its first button, which then
+   * reads "Close". The job runs on and the task tray shows it. A confirm
+   * whose write takes a moment leaves this off and stays held.
+   */
+  closeWhilePending?: boolean;
   pendingText?: string;
   progress?: TaskProgress<ConfirmProgressDetail> | null;
   title: string;
@@ -40,6 +47,7 @@ const AppConfirmDialog = ({
   onClose,
   onConfirm,
   isPending = false,
+  closeWhilePending = false,
   pendingText = "Deleting…",
   progress,
 }: AppConfirmDialogProps) => {
@@ -52,6 +60,9 @@ const AppConfirmDialog = ({
     if (event.key !== "Enter" || event.defaultPrevented || event.repeat) {
       return;
     }
+    // While the job runs Enter is left to the button that has focus, which
+    // is Close.
+    if (isPending && closeWhilePending) return;
 
     event.preventDefault();
     event.stopPropagation();
@@ -69,13 +80,15 @@ const AppConfirmDialog = ({
         ? ` (${processed.toLocaleString()} items)`
         : "";
 
+  const held = isPending && !closeWhilePending;
+
   return (
     <AppDialog
       aria-busy={isPending || undefined}
-      disableEscapeKeyDown={isPending}
+      disableEscapeKeyDown={held}
       fullWidth
       maxWidth="xs"
-      onClose={isPending ? undefined : onClose}
+      onClose={held ? undefined : onClose}
       open={open}
     >
       <form
@@ -94,8 +107,8 @@ const AppConfirmDialog = ({
           )}
         </AppDialogContent>
         <AppDialogActions>
-          <AppButton disabled={isPending} onClick={onClose} type="button">
-            {cancelText}
+          <AppButton disabled={held} onClick={onClose} type="button">
+            {isPending && closeWhilePending ? "Close" : cancelText}
           </AppButton>
           <AppButton
             autoFocus

@@ -2,7 +2,7 @@ import { fireEvent } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { SwapStatus } from "@/api";
-import { linuxio } from "@/api";
+import { linuxio, LinuxIOError } from "@/api";
 import {
   swapFile,
   swapFileDevice,
@@ -773,6 +773,21 @@ describe("MemoryOverflowDialog apply", () => {
         undefined,
       ),
     );
+  });
+
+  it("does not report a change cancelled from the task tray as a failure", async () => {
+    mocks.failWith = new LinuxIOError("operation aborted", 499);
+    const { user } = await renderSection(diskStatus());
+
+    await user.click(radio("Compressed memory with the disk as backup"));
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Apply" })).toBeEnabled(),
+    );
+    expect(mocks.requests).toHaveLength(1);
+    expect(mocks.toast.error).not.toHaveBeenCalled();
+    expect(mocks.toast.success).not.toHaveBeenCalled();
   });
 
   it("shows the running step and holds the controls, but not Close, while a mode change runs", async () => {

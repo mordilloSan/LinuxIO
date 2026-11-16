@@ -168,6 +168,21 @@ export const AppDialog = ({
     }
   }, [open]);
 
+  // The button that starts a job is disabled while it still has focus, and
+  // a disabled control swallows the keys pressed next in some browsers,
+  // Escape included. Focus then moves to the dialog itself, so Escape closes
+  // it and Tab starts at its first control.
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!open || !ariaBusy || !dialog) return;
+    const active = document.activeElement;
+    const lost =
+      !active ||
+      !dialog.contains(active) ||
+      (active instanceof HTMLButtonElement && active.disabled);
+    if (lost) dialog.focus();
+  }, [open, ariaBusy]);
+
   const sizeClass = maxWidth ? `app-dialog--${maxWidth}` : "";
   const widthClass = fullWidth ? "app-dialog--fullwidth" : "";
   const resolvedAriaLabelledBy =

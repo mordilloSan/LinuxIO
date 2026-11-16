@@ -29,8 +29,10 @@ type DialogsEvent =
   | { type: "clearPendingDelete" }
   | { type: "closeCreateFile" }
   | { type: "closeDelete" }
+  | { paths: string[]; type: "closeDeleteFor" }
   | { type: "closeDetails" }
   | { type: "closePermissions" }
+  | { paths: string[]; type: "closePermissionsFor" }
   | { type: "clearPermissions" }
   | { type: "openCreateFile" }
   | { dialog: PermissionsDialogState; type: "openPermissions" }
@@ -59,10 +61,23 @@ function dialogsReducer(
       return { ...state, createFileDialog: false };
     case "closeDelete":
       return { ...state, deleteDialog: false, pendingDeletePaths: [] };
+    case "closeDeleteFor":
+      // Each request holds its own paths array, which names it: a job that
+      // ends closes the confirm that started it, and not one opened since
+      // for other items after that confirm was closed while the job ran.
+      return state.deleteDialog && state.pendingDeletePaths === event.paths
+        ? { ...state, deleteDialog: false, pendingDeletePaths: [] }
+        : state;
     case "closeDetails":
       return { ...state, detailItems: [], detailTarget: null };
     case "closePermissions":
       return { ...state, permissionsDialogOpen: false };
+    case "closePermissionsFor":
+      // As for a delete, the request's paths array names it.
+      return state.permissionsDialogOpen &&
+        state.permissionsDialog?.paths === event.paths
+        ? { ...state, permissionsDialogOpen: false }
+        : state;
     case "clearPermissions":
       return { ...state, permissionsDialog: null };
     case "openCreateFile":
@@ -89,8 +104,12 @@ interface DialogsActions {
   clearPendingDelete: () => void;
   closeCreateFile: () => void;
   closeDelete: () => void;
+  /** Closes the delete confirm only while it is the request for `paths`. */
+  closeDeleteFor: (paths: string[]) => void;
   closeDetails: () => void;
   closePermissions: () => void;
+  /** Closes the Permissions dialog only while it is the request for `paths`. */
+  closePermissionsFor: (paths: string[]) => void;
   clearPermissions: () => void;
   openCreateFile: () => void;
   openPermissions: (dialog: PermissionsDialogState) => void;
@@ -115,8 +134,11 @@ export const useFileDialogs = (): DialogsSlice => {
       clearPendingDelete: () => dispatch({ type: "clearPendingDelete" }),
       closeCreateFile: () => dispatch({ type: "closeCreateFile" }),
       closeDelete: () => dispatch({ type: "closeDelete" }),
+      closeDeleteFor: (paths) => dispatch({ paths, type: "closeDeleteFor" }),
       closeDetails: () => dispatch({ type: "closeDetails" }),
       closePermissions: () => dispatch({ type: "closePermissions" }),
+      closePermissionsFor: (paths) =>
+        dispatch({ paths, type: "closePermissionsFor" }),
       clearPermissions: () => dispatch({ type: "clearPermissions" }),
       openCreateFile: () => dispatch({ type: "openCreateFile" }),
       openPermissions: (dialog) =>

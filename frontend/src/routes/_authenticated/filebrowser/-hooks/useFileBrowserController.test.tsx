@@ -145,6 +145,7 @@ const mocks = vi.hoisted(() => ({
       clearClipboard: vi.fn(),
       copyToClipboard: vi.fn(),
       cutToClipboard: vi.fn(),
+      deselect: vi.fn(),
       select: vi.fn(),
     },
     clipboard: {
@@ -158,17 +159,18 @@ const mocks = vi.hoisted(() => ({
     actions: {
       clearEntries: vi.fn(),
       closeDialog: vi.fn(),
+      closeDialogFor: vi.fn(),
       mergeEntries: vi.fn(),
       openDialog: vi.fn(),
       setOwnUploads: vi.fn(),
-      setProcessing: vi.fn(),
+      setStatus: vi.fn(),
     },
     fileInputRef: { current: null },
     folderInputRef: { current: null },
-    isUploadProcessing: false,
     ownUploads: false,
     uploadDialogOpen: false,
     uploadEntries: [],
+    uploadStatus: "idle",
     uploadSummary: {
       files: 0,
       folders: 0,
@@ -464,7 +466,7 @@ describe("useFileBrowserController", () => {
     expect(mocks.viewState.actions.closeContextMenu).toHaveBeenCalledTimes(1);
   });
 
-  it("wires cross-domain callbacks for selection clearing and listing invalidation", () => {
+  it("wires cross-domain callbacks for deselection and listing invalidation", () => {
     setup();
     const mutationArgs = mocks.useFileMutations.mock.calls[0]?.[0];
     const dragArgs = mocks.useFileDragAndDrop.mock.calls[0]?.[0];
@@ -488,11 +490,15 @@ describe("useFileBrowserController", () => {
     expect(dragArgs.resolveCollisions).toBe(uploadArgs.resolveCollisions);
     expect(mutationArgs.resolveCollisions).toBe(uploadArgs.resolveCollisions);
 
+    // A delete or trash job that ends deselects only its own items.
     act(() => {
-      void mutationArgs.onDeleteSuccess();
+      void mutationArgs.onDeleteSuccess(["/srv/projects/readme.md"]);
     });
 
-    expect(mocks.selectionState.actions.clear).toHaveBeenCalledTimes(1);
+    expect(mocks.selectionState.actions.deselect).toHaveBeenCalledWith([
+      "/srv/projects/readme.md",
+    ]);
+    expect(mocks.selectionState.actions.clear).not.toHaveBeenCalled();
 
     act(() => {
       void dragArgs.onUploadComplete();

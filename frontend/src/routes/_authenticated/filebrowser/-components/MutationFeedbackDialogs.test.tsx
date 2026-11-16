@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import AppConfirmDialog from "@/components/ui/AppConfirmDialog";
 import { fireEvent, render, screen, waitFor } from "@/test/render";
 
+import { FileBrowserDeleteDialog } from "./FileBrowserPanels";
 import FileCard from "./FileCard";
 import FileListRow from "./FileListRow";
 import InputDialog from "./InputDialog";
@@ -147,29 +148,33 @@ describe("file mutation feedback dialogs", () => {
     expect(screen.getByRole("textbox")).toHaveValue("");
   });
 
-  it("shows Task progress and prevents closing a pending delete", async () => {
+  it("shows Task progress and closes a pending delete while its job runs", async () => {
     const onClose = vi.fn();
     const onConfirm = vi.fn();
     const { user } = render(
-      <AppConfirmDialog
+      <FileBrowserDeleteDialog
         isPending
-        message="Delete one item?"
+        mode="permanent"
         onClose={onClose}
         onConfirm={onConfirm}
         open
+        pendingDeletePaths={["/srv/report.txt"]}
         progress={{ percentage: 40, phase: "deleting" }}
-        title="Delete Items"
       />,
     );
 
     expect(screen.getByRole("status")).toHaveTextContent("deleting (40%)");
     expect(screen.getByRole("dialog")).toHaveAttribute("aria-busy", "true");
+    // The job is not started twice, and the dialog does not hold itself open:
+    // Close, Escape and the backdrop close it, and the job runs on.
     expect(screen.getByRole("button", { name: "Deleting…" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
-    await user.keyboard("{Enter}{Escape}");
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    // Enter is left to the button that has focus, which is Close.
+    await user.keyboard("{Enter}");
+    await user.keyboard("{Escape}");
     fireEvent.click(document.querySelector(".app-dialog__backdrop")!);
+    expect(onClose).toHaveBeenCalledTimes(4);
     expect(onConfirm).not.toHaveBeenCalled();
-    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("shows a running item count when delete progress has no percentage", () => {

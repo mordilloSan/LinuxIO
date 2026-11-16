@@ -169,6 +169,16 @@ export const useFileBrowserItemActions = ({
 
   const handleChangePermissions = useCallback(async () => {
     closeContextMenu();
+    // One permission change at a time, as for a delete: its dialog can be
+    // closed while the job runs, and one opened again for other items would
+    // show that job's progress as theirs, so it waits for the job to end.
+    if (permissionsPending) {
+      toast.info("A permission change is still running", {
+        description:
+          "Try again once it ends. The task tray shows its progress.",
+      });
+      return;
+    }
     if (selectedPaths.size === 0) return;
     const selectedPathList = Array.from(selectedPaths);
     const selectedPath = selectedPathList[0];
@@ -198,7 +208,14 @@ export const useFileBrowserItemActions = ({
       console.error("Failed to fetch file stat:", error);
       toast.error("Failed to fetch file permissions");
     }
-  }, [dialogActions, closeContextMenu, selectedItems, selectedPaths, toast]);
+  }, [
+    dialogActions,
+    closeContextMenu,
+    permissionsPending,
+    selectedItems,
+    selectedPaths,
+    toast,
+  ]);
 
   const handleStartInlineRename = useCallback(() => {
     closeContextMenu();
@@ -264,6 +281,21 @@ export const useFileBrowserItemActions = ({
   const requestDelete = useCallback(
     (mode: DeleteMode) => {
       closeContextMenu();
+      // One move to Trash and one permanent delete at a time. The confirm can
+      // be closed while its job runs; one opened again for other items would
+      // show that job's progress as theirs, so it waits for the job to end.
+      if (mode === "trash" ? trashPending : deletePending) {
+        toast.info(
+          mode === "trash"
+            ? "A move to Trash is still running"
+            : "A permanent delete is still running",
+          {
+            description:
+              "Try again once it ends. The task tray shows its progress.",
+          },
+        );
+        return;
+      }
       const paths = Array.from(selectedPaths);
       if (paths.length > 0) {
         dialogActions.requestDelete(paths, mode);
@@ -271,7 +303,14 @@ export const useFileBrowserItemActions = ({
         toast.error("No items selected");
       }
     },
-    [dialogActions, closeContextMenu, selectedPaths, toast],
+    [
+      dialogActions,
+      closeContextMenu,
+      deletePending,
+      selectedPaths,
+      toast,
+      trashPending,
+    ],
   );
 
   const handleDelete = useCallback(
@@ -293,9 +332,11 @@ export const useFileBrowserItemActions = ({
         pendingDeletePaths,
       );
       // The mutation refreshes the listing and names per-item failures in a
-      // toast, so the dialog is done once a result came back.
+      // toast, so the dialog is done once a result came back. It may have
+      // been closed while the job ran and opened again for other items,
+      // which stay open.
       if (result) {
-        dialogActions.closeDelete();
+        dialogActions.closeDeleteFor(pendingDeletePaths);
       }
     } catch {
       // The mutation owns error feedback; retain the dialog for retry.
@@ -352,8 +393,10 @@ export const useFileBrowserItemActions = ({
           owner,
           group,
         });
+        // The dialog may have been closed while the job ran; one opened since
+        // for other items stays open.
         if (result.failed.length === 0) {
-          dialogActions.closePermissions();
+          dialogActions.closePermissionsFor(permissionsDialog.paths);
         }
       } catch {
         // Errors are surfaced via toast in the mutation.

@@ -69,10 +69,10 @@ export function useFileBrowserController(
     actions: uploadActions,
     fileInputRef,
     folderInputRef,
-    isUploadProcessing,
     ownUploads,
     uploadDialogOpen,
     uploadEntries,
+    uploadStatus,
     uploadSummary,
   } = upload;
 
@@ -121,7 +121,7 @@ export function useFileBrowserController(
     renameProgress,
   } = useFileMutations({
     normalizedPath,
-    onDeleteSuccess: selectionActions.clear,
+    onDeleteSuccess: selectionActions.deselect,
     onPermissionsLinkOpen: dialogs.actions.closePermissions,
     resolveCollisions,
   });
@@ -531,7 +531,6 @@ export function useFileBrowserController(
       entries: uploadEntries,
       fileInputRef,
       folderInputRef,
-      isProcessing: isUploadProcessing,
       normalizedPath,
       onChangeInput: handleUploadInputChange,
       onClearSelection: handleClearUploadSelection,
@@ -542,6 +541,7 @@ export function useFileBrowserController(
       onStart: handleStartUpload,
       open: uploadDialogOpen,
       ownUploads,
+      status: uploadStatus,
       summary: uploadSummary,
     }),
     [
@@ -553,12 +553,12 @@ export function useFileBrowserController(
       handlePickFolder,
       handleStartUpload,
       handleUploadInputChange,
-      isUploadProcessing,
       normalizedPath,
       ownUploads,
       uploadActions,
       uploadDialogOpen,
       uploadEntries,
+      uploadStatus,
       uploadSummary,
     ],
   );

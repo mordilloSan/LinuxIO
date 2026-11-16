@@ -237,13 +237,15 @@ const PermissionsDialog = ({
     ),
   ];
 
+  // A permission change is a job: the dialog can be closed while it runs,
+  // and the task tray keeps its progress and its cancel. The controls that
+  // would start a second change stay held.
   return (
     <FileBrowserDialog
       aria-busy={isPending || undefined}
-      disableEscapeKeyDown={isPending}
       fullWidth
       maxWidth="sm"
-      onClose={isPending ? undefined : onClose}
+      onClose={onClose}
       open={open}
       slotProps={{ transition: { onExited } }}
     >
@@ -358,8 +360,8 @@ const PermissionsDialog = ({
         </AppTypography>
       )}
       <AppDialogActions>
-        <AppButton disabled={isPending} onClick={onClose}>
-          Cancel
+        <AppButton onClick={onClose}>
+          {isPending ? "Close" : "Cancel"}
         </AppButton>
         <AppButton
           disabled={isPending}

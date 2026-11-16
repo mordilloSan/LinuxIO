@@ -11,7 +11,7 @@ import type {
   ConflictPrompt,
 } from "../-hooks/useFileConflicts";
 import type { PermissionsDialogState } from "../-hooks/useFileDialogs";
-import type { UploadSummary } from "../-hooks/useFileUpload";
+import type { UploadStatus, UploadSummary } from "../-hooks/useFileUpload";
 import type { FileResource, ResourceStatData, ViewMode } from "../-types";
 import CompressFormatDialog from "./CompressFormatDialog";
 import ContextMenu from "./ContextMenu";
@@ -133,7 +133,6 @@ export interface FileBrowserUploadDialogProps {
   entries: DroppedEntry[];
   fileInputRef: RefObject<HTMLInputElement | null>;
   folderInputRef: RefObject<HTMLInputElement | null>;
-  isProcessing: boolean;
   normalizedPath: string;
   onChangeInput: (event: ChangeEvent<HTMLInputElement>) => void;
   onClearSelection: () => void;
@@ -144,6 +143,7 @@ export interface FileBrowserUploadDialogProps {
   onStart: () => Promise<void> | void;
   open: boolean;
   ownUploads: boolean;
+  status: UploadStatus;
   summary: UploadSummary;
 }
 
@@ -300,7 +300,6 @@ const FileBrowserDialogs = ({
       <FileBrowserUploadDialog
         fileInputRef={upload.fileInputRef}
         folderInputRef={upload.folderInputRef}
-        isUploadProcessing={upload.isProcessing}
         normalizedPath={upload.normalizedPath}
         onChangeUploadInput={upload.onChangeInput}
         onClearUploadSelection={upload.onClearSelection}
@@ -312,6 +311,7 @@ const FileBrowserDialogs = ({
         open={upload.open}
         ownUploads={upload.ownUploads}
         uploadEntries={upload.entries}
+        uploadStatus={upload.status}
         uploadSummary={upload.summary}
       />
 

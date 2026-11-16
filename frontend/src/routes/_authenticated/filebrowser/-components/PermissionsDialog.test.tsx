@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { render, screen } from "@/test/render";
+import { fireEvent, render, screen } from "@/test/render";
 
 vi.mock("@tanstack/react-virtual", async () =>
   (await import("@/test/reactVirtualMock")).reactVirtualMock(),
@@ -66,7 +66,7 @@ describe("PermissionsDialog", () => {
     expect(ownerRead).not.toBeChecked();
   });
 
-  it("shows Task progress and keeps pending permissions mounted", async () => {
+  it("shows the job's progress and can be closed while it runs", async () => {
     const onClose = vi.fn();
     const onConfirm = vi.fn();
     const { user } = render(
@@ -87,11 +87,27 @@ describe("PermissionsDialog", () => {
 
     expect(screen.getByRole("status")).toHaveTextContent("chmod");
     expect(screen.getByRole("dialog")).toHaveAttribute("aria-busy", "true");
+    // The controls that would start a second change stay held.
     expect(screen.getByRole("button", { name: "Applying…" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
     expect(screen.getByRole("checkbox", { name: "Owner read" })).toBeDisabled();
+    expect(
+      screen.getByRole("checkbox", {
+        name: "Apply recursively to all files and subdirectories",
+      }),
+    ).toBeDisabled();
+
+    // The job runs on and the task tray keeps it, so every way out works.
+    expect(
+      screen.queryByRole("button", { name: "Cancel" }),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
     await user.keyboard("{Escape}");
-    expect(onClose).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(2);
+    const backdrop = document.querySelector(".app-dialog__backdrop");
+    expect(backdrop).not.toBeNull();
+    fireEvent.click(backdrop as Element);
+    expect(onClose).toHaveBeenCalledTimes(3);
     expect(onConfirm).not.toHaveBeenCalled();
   });
 });

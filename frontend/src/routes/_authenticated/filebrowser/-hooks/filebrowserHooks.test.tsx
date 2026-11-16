@@ -137,6 +137,40 @@ describe("useFileSelection", () => {
     expect(result.current.selection.selectedPaths.size).toBe(0);
   });
 
+  it("deselects only the given paths and keeps the rest selected", () => {
+    const { result } = renderHook(() =>
+      useSelectionHarness({
+        copyItems: vi.fn(),
+        moveItems: vi.fn(),
+        normalizedPath: "/srv/projects",
+        resource: directoryResource,
+      }),
+    );
+
+    // A delete job ends after the user selected other items as well.
+    act(() =>
+      result.current.selection.actions.select(
+        new Set(["/srv/projects/alpha.txt", "/srv/projects/beta"]),
+      ),
+    );
+    act(() =>
+      result.current.selection.actions.deselect([
+        "/srv/projects/alpha.txt",
+        "/srv/projects/gone.txt",
+      ]),
+    );
+    expect([...result.current.selection.selectedPaths]).toEqual([
+      "/srv/projects/beta",
+    ]);
+
+    // Paths that are not selected leave the selection as it is.
+    const selected = result.current.selection.selectedPaths;
+    act(() =>
+      result.current.selection.actions.deselect(["/srv/projects/gone.txt"]),
+    );
+    expect(result.current.selection.selectedPaths).toBe(selected);
+  });
+
   it("derives selected items from the current directory resource", () => {
     const { result } = renderHook(() =>
       useSelectionHarness({

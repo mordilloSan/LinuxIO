@@ -647,13 +647,55 @@ keys, messages and settings are in
 
 ## Frontend
 
-- **Bell.** The tray lists running jobs from `tasks.events`, with their
-  progress, and running scheduled runs with their label and progress capped
+- **Bell.** The tray lists running jobs from `tasks.events`, of the types
+  `useRecoveredTasks` knows (a type that is not listed there gets no row),
+  with their progress, and running scheduled runs with their label and
+  progress capped
   at 99 %, so a row never reads as complete. A scheduled run's row has an
   `Open` link to its page where other rows have **Cancel task**, since its
   cancel is refused. A job being cancelled reads "Cancelling…" until it ends.
   The tray ends with a `History` link. The upload and download engines are in
   [Frontend Task State](./frontend-task-state-unification.md).
+- **A dialog that starts a long job does not hold itself open.** A job that
+  reports progress runs on when its dialog is closed. A dialog whose write
+  takes a moment stays held while it is pending: it is where the error and
+  the retry are. The Memory overflow dialog
+  ([Memory overflow](./memory.md#the-dialog)) is the reference. What that
+  takes:
+  - **Closing.** Close, Escape and the backdrop work; the controls that would
+    start a second job stay held. `AppConfirmDialog` takes
+    `closeWhilePending` for a confirm whose action is such a job.
+  - **A tray row.** The tray lists a job only when its type is in
+    `useRecoveredTasks` (`frontend/src/tasks/engine/useRecoveredTasks.ts`),
+    which also gives the row its text. A job type that is not there has no
+    row, and so no progress and no cancel once its dialog is closed.
+  - **One report.** The mutation toasts the result, and its toast does not
+    depend on the dialog being open. It marks the job reported when it starts
+    (`markTerminalFeedbackEmitted`), so the tray does not toast its end as
+    well. For a job nobody follows, as after a reload, the tray reports from
+    the type's entry in `TERMINAL_TASK_FEEDBACK`.
+  - **A cancel is not a failure.** The tray that cancelled the job says so.
+    A Mutation's `error` text is not toasted for a cancel
+    (`mutation-react-query.ts`), and a page with an error handler of its own checks
+    `isTaskCancellationError`. A cancelled delete or move to Trash has
+    removed some of its items, so it deselects them as a finished one does.
+  - **The end of a job leaves later work alone.** Its completion does not
+    close or clear a dialog the user has since closed and opened again for
+    something else, nor a selection made since: a delete or a move to Trash
+    deselects only its own items.
+  - **Taking a job up again.** A page that shows the job's step, or must
+    hold its controls, finds a running job when it opens
+    (`useActiveTaskRecovery`, then the mutation's `watch`), and counts running
+    mutations in the cache (`useIsMutating` with a `mutationKey`) so that a
+    job an earlier instance still follows is not followed twice.
+
+  The dialogs that work this way: the Memory overflow dialog; the Docker
+  storage confirm in Settings, whose section shows the running step in a note
+  once the confirm is closed; and in the file browser the delete confirm, the
+  Trash dialog, the Permissions dialog and the upload dialog. The upload
+  dialog is held while it checks the destination and asks about conflicts,
+  which need it, and can be closed once the upload runs; an upload has its
+  own tray row, and a dialog opened again can start another upload beside it.
 - **History page** (`/history`, open to every signed-in user and not in the
   sidebar; `frontend/src/routes/_authenticated/history`). It reads
   `tasks.history` and lists ended jobs and scheduled runs, newest first: when
@@ -863,6 +905,14 @@ Covered at one level only:
 - A resumed scrub, or a scrub call issued again after a freeze, counts errors
   in the dev extent where each device stopped twice, and a power loss loses up
   to a minute of a scrub's progress.
+- The file browser page runs one move to Trash, one permanent delete and one
+  permission change at a time. Delete, Shift+Delete or Permissions for a kind
+  that is running says so in a toast instead of asking, since the dialog
+  would show the running job as its own, and the Trash dialog holds its
+  actions while its restore or purge runs. The page knows only the jobs it
+  started since it was opened: after leaving the file browser and coming
+  back, a job that still runs no longer holds these, and a second one can
+  start beside it.
 
 ## Not built
 

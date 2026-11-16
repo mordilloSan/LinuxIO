@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { FileEditorHandle } from "@/components/editor/FileEditor";
 import { fireEvent, render, screen } from "@/test/render";
 
+import type { UploadStatus } from "../-hooks/useFileUpload";
 import {
   FileBrowserConflictDialog,
   FileBrowserDeleteDialog,
@@ -169,29 +170,40 @@ describe("file browser editor dialogs", () => {
 
 describe("file browser upload dialog", () => {
   const ownershipBox = "Make me the owner of new files and folders";
-  const renderUpload = (privileged: boolean, ownUploads = false) => {
+  const renderUpload = (
+    privileged: boolean,
+    ownUploads = false,
+    uploadStatus: UploadStatus = "idle",
+  ) => {
+    const onClose = vi.fn();
     const onOwnUploadsChange = vi.fn();
-    render(
+    const utils = render(
       <FileBrowserUploadDialog
         fileInputRef={createRef<HTMLInputElement>()}
         folderInputRef={createRef<HTMLInputElement>()}
-        isUploadProcessing={false}
         normalizedPath="/home/alice"
         onChangeUploadInput={vi.fn()}
         onClearUploadSelection={vi.fn()}
-        onClose={vi.fn()}
+        onClose={onClose}
         onOwnUploadsChange={onOwnUploadsChange}
         onPickFiles={vi.fn()}
         onPickFolder={vi.fn()}
         onStartUpload={vi.fn()}
         open
         ownUploads={ownUploads}
-        uploadEntries={[]}
-        uploadSummary={{ files: 0, folders: 0 }}
+        uploadEntries={[
+          {
+            file: new File(["x"], "a.txt"),
+            isDirectory: false,
+            relativePath: "a.txt",
+          },
+        ]}
+        uploadStatus={uploadStatus}
+        uploadSummary={{ files: 1, folders: 0 }}
       />,
       { auth: { privileged } },
     );
-    return onOwnUploadsChange;
+    return { ...utils, onClose, onOwnUploadsChange };
   };
 
   it("offers ownership only to a privileged session, unticked", () => {
@@ -209,9 +221,37 @@ describe("file browser upload dialog", () => {
   });
 
   it("reports the ownership choice", () => {
-    const onOwnUploadsChange = renderUpload(true);
+    const { onOwnUploadsChange } = renderUpload(true);
     fireEvent.click(screen.getByRole("checkbox", { name: ownershipBox }));
     expect(onOwnUploadsChange).toHaveBeenCalledWith(true);
+  });
+
+  it("holds itself while it checks the destination", async () => {
+    const { onClose, user } = renderUpload(true, false, "checking");
+
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Uploading..." })).toBeDisabled();
+    await user.keyboard("{Escape}");
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("can be closed once the upload runs and holds everything else", async () => {
+    const { onClose, user } = renderUpload(true, false, "uploading");
+
+    // Closing leaves the upload running; the task tray has its Cancel.
+    for (const name of [
+      "Select files",
+      "Select folders",
+      "Clear",
+      "Uploading...",
+    ]) {
+      expect(screen.getByRole("button", { name })).toBeDisabled();
+    }
+    expect(screen.getByRole("checkbox", { name: ownershipBox })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Close" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    await user.keyboard("{Escape}");
+    expect(onClose).toHaveBeenCalledTimes(2);
   });
 });
 

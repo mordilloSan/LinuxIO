@@ -15,6 +15,10 @@ import { toastLinkOptions } from "@/api/toast-meta";
 import { toastFileError } from "@/utils/linkRefusal";
 
 import {
+  DOCKER_STORAGE_APPLIED,
+  DOCKER_STORAGE_FAILED,
+} from "./dockerStorageFeedback";
+import {
   MEMORY_DRAIN_FAILED,
   MEMORY_DRAINED,
   MEMORY_MODE_APPLIED,
@@ -173,6 +177,17 @@ export const TERMINAL_TASK_FEEDBACK: Record<string, TerminalFeedbackEntry> = {
     },
     onFailed: dockerUpdateError,
     onCanceled: dockerUpdateError,
+  },
+  // The Docker settings section can be closed or left while a storage change
+  // runs. A section that follows the job reports it and marks it reported;
+  // this is for a job nobody follows, as after a reload.
+  [TaskTypes.TASK_TYPE_DOCKER_STORAGE]: {
+    onCompleted: () => {
+      toast.success(DOCKER_STORAGE_APPLIED);
+    },
+    onFailed: (_task, error) => {
+      toast.error(getMutationErrorMessage(error, DOCKER_STORAGE_FAILED));
+    },
   },
   // Owned by the global handler (not CapabilityManagerSection) so the toast
   // still fires when the Settings dialog has been closed mid-install. A

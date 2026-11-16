@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { LinuxIOError, TASK_CANCELED_CODE } from "@/api";
+import { markTerminalFeedbackEmitted } from "@/tasks/terminalTaskFeedback";
 import { act, renderHook } from "@/test/render";
 
 import { useFileMutations } from "./useFileMutations";
@@ -22,8 +24,9 @@ const mocks = vi.hoisted(() => ({
   taskOptions: {} as Record<
     string,
     {
-      error?: (error: Error) => void;
-      success?: (result: unknown) => void;
+      error?: (error: Error, request?: unknown) => void;
+      onStart?: (task: { id: string }) => void;
+      success?: (result: unknown, request?: { paths: string[] }) => void;
     }
   >,
 }));
@@ -31,8 +34,9 @@ const mocks = vi.hoisted(() => ({
 function jobEndpoint(name?: string) {
   return {
     useMutation: (options?: {
-      error?: (error: Error) => void;
-      success?: (result: unknown) => void;
+      error?: (error: Error, request?: unknown) => void;
+      onStart?: (task: { id: string }) => void;
+      success?: (result: unknown, request?: { paths: string[] }) => void;
     }) => {
       if (name && options) mocks.taskOptions[name] = options;
       return { isPending: false, mutateAsync: mocks.mutateAsync };
@@ -148,10 +152,13 @@ describe("useFileMutations", () => {
           }),
         );
 
-        mocks.taskOptions[name].success?.(failedResult);
+        const paths = ["/srv/projects/a.txt", "/srv/projects/b.txt"];
+        mocks.taskOptions[name].success?.(failedResult, { paths });
 
         expect(mocks.invalidateListing).toHaveBeenCalledTimes(1);
+        // Only the job's own items leave the selection.
         expect(onDeleteSuccess).toHaveBeenCalledTimes(1);
+        expect(onDeleteSuccess).toHaveBeenCalledWith(paths);
         expect(mocks.toast.error).toHaveBeenCalledWith(
           expect.stringContaining("1 item"),
           { description: "a.txt: permission denied" },
@@ -176,14 +183,17 @@ describe("useFileMutations", () => {
       const refusal =
         "forbidden: /srv/projects/docs is a link to /mnt/data/docs. Open that folder to make this change";
 
-      mocks.taskOptions.delete.success?.({
-        failed: [
-          { error: "permission denied", path: "/srv/projects/a.txt" },
-          { error: refusal, path: "/srv/projects/docs" },
-        ],
-        succeeded: 0,
-        total: 2,
-      });
+      mocks.taskOptions.delete.success?.(
+        {
+          failed: [
+            { error: "permission denied", path: "/srv/projects/a.txt" },
+            { error: refusal, path: "/srv/projects/docs" },
+          ],
+          succeeded: 0,
+          total: 2,
+        },
+        { paths: ["/srv/projects/a.txt", "/srv/projects/docs"] },
+      );
 
       expect(mocks.toast.error).toHaveBeenCalledWith(
         "Failed to delete 2 items",
@@ -249,10 +259,54 @@ describe("useFileMutations", () => {
       ]);
     });
 
+    it.each(["delete", "trash", "chmod"])(
+      "reports a %s job itself, and not a cancel",
+      (name) => {
+        const onDeleteSuccess = vi.fn();
+        renderHook(() =>
+          useFileMutations({
+            normalizedPath: "/srv/projects",
+            onDeleteSuccess,
+          }),
+        );
+        const options = mocks.taskOptions[name];
+        const request = { paths: ["/srv/projects/a.txt"] };
+
+        // Its dialog may be closed: the hook reports the job, so the task
+        // tray, which lists it, does not report it a second time.
+        options.onStart?.({ id: `${name}-job` });
+        expect(markTerminalFeedbackEmitted(`${name}-job`)).toBe(false);
+
+        // A cancel is not a failure; the tray that cancelled it says so.
+        act(() =>
+          options.error?.(
+            new LinuxIOError("operation aborted", TASK_CANCELED_CODE),
+            request,
+          ),
+        );
+        expect(mocks.toast.error).not.toHaveBeenCalled();
+        // A cancelled delete has removed some of its items already, so none
+        // of them stays selected.
+        expect(onDeleteSuccess.mock.calls).toEqual(
+          name === "chmod" ? [] : [[request.paths]],
+        );
+        expect(mocks.invalidateListing).toHaveBeenCalledTimes(
+          name === "chmod" ? 0 : 1,
+        );
+
+        act(() => options.error?.(new LinuxIOError("disk full", 500), request));
+        expect(mocks.toast.error).toHaveBeenCalledTimes(1);
+        expect(onDeleteSuccess).toHaveBeenCalledTimes(name === "chmod" ? 0 : 1);
+      },
+    );
+
     it("toasts success when the trash task has no failures", () => {
       renderHook(() => useFileMutations({ normalizedPath: "/srv/projects" }));
 
-      mocks.taskOptions.trash.success?.({ failed: [], succeeded: 2, total: 2 });
+      mocks.taskOptions.trash.success?.(
+        { failed: [], succeeded: 2, total: 2 },
+        { paths: ["/srv/projects/a.txt", "/srv/projects/b.txt"] },
+      );
 
       expect(mocks.invalidateListing).toHaveBeenCalledTimes(1);
       expect(mocks.toast.success).toHaveBeenCalledWith(

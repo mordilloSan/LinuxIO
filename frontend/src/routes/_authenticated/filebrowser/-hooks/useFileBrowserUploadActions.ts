@@ -35,9 +35,9 @@ export const useFileBrowserUploadActions = ({
     actions: uploadActions,
     fileInputRef,
     folderInputRef,
-    isUploadProcessing,
     ownUploads,
     uploadEntries,
+    uploadStatus,
   } = upload;
 
   const handleUpload = useCallback(() => {
@@ -66,15 +66,18 @@ export const useFileBrowserUploadActions = ({
     [toast, uploadActions],
   );
 
+  // The destination check and the conflict prompt need the dialog. Once the
+  // upload runs, the task tray shows it and can cancel it, and closing the
+  // dialog leaves it running.
   const handleCloseUploadDialog = useCallback(() => {
-    if (isUploadProcessing) return;
+    if (uploadStatus === "checking") return;
     uploadActions.closeDialog();
-  }, [isUploadProcessing, uploadActions]);
+  }, [uploadActions, uploadStatus]);
 
   const handleClearUploadSelection = useCallback(() => {
-    if (isUploadProcessing) return;
+    if (uploadStatus !== "idle") return;
     uploadActions.clearEntries();
-  }, [isUploadProcessing, uploadActions]);
+  }, [uploadActions, uploadStatus]);
 
   const handlePickFiles = useCallback(() => {
     fileInputRef.current?.click();
@@ -90,7 +93,8 @@ export const useFileBrowserUploadActions = ({
       return;
     }
 
-    uploadActions.setProcessing(true);
+    // The entries array names this request; see closeDialogFor.
+    uploadActions.setStatus(uploadEntries, "checking");
     return withPromiseCleanup(
       (async () => {
         try {
@@ -124,6 +128,9 @@ export const useFileBrowserUploadActions = ({
             return;
           }
 
+          // Bytes move from here and the task tray lists the upload with its
+          // progress and Cancel, so the dialog can be closed while it runs.
+          uploadActions.setStatus(uploadEntries, "uploading");
           const result = await startUpload(
             entriesToSend,
             normalizedPath,
@@ -134,14 +141,15 @@ export const useFileBrowserUploadActions = ({
           if (result.uploaded > 0) {
             invalidateListing();
           }
-          uploadActions.closeDialog();
+          // A dialog opened again while the upload ran stays open.
+          uploadActions.closeDialogFor(uploadEntries);
         } catch (error) {
           console.error("Upload failed", error);
           toast.error("Upload failed");
         }
       })(),
       () => {
-        uploadActions.setProcessing(false);
+        uploadActions.setStatus(uploadEntries, "idle");
       },
     );
   }, [

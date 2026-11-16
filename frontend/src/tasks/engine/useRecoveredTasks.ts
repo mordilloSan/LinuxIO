@@ -217,6 +217,12 @@ export function useRecoveredTasks(
             );
           case TaskTypes.TASK_TYPE_DOCKER_UPDATE:
             return message ?? "Updating Docker container";
+          case TaskTypes.TASK_TYPE_DOCKER_STORAGE:
+            return message ?? "Changing Docker storage";
+          case TaskTypes.TASK_TYPE_MEMORY_SWAP_MODE:
+            return message ?? "Changing how memory overflows";
+          case TaskTypes.TASK_TYPE_MEMORY_DRAIN:
+            return message ?? "Moving swapped data back into memory";
           case TaskTypes.TASK_TYPE_PACKAGE_UPDATE:
             return data?.package_id
               ? `Updating ${data.package_id.split(";")[0]}`
@@ -346,6 +352,9 @@ export function useRecoveredTasks(
         }
         case TaskTypes.TASK_TYPE_DOCKER_COMPOSE:
         case TaskTypes.TASK_TYPE_DOCKER_UPDATE:
+        case TaskTypes.TASK_TYPE_DOCKER_STORAGE:
+        case TaskTypes.TASK_TYPE_MEMORY_SWAP_MODE:
+        case TaskTypes.TASK_TYPE_MEMORY_DRAIN:
         case TaskTypes.TASK_TYPE_PACKAGE_UPDATE:
         case TaskTypes.TASK_TYPE_STORAGE_SMART_TEST:
         case TaskTypes.TASK_TYPE_STORAGE_BTRFS_BALANCE:

@@ -75,6 +75,58 @@ describe("filebrowser state hooks", () => {
     expect(result.current.pendingDeletePaths).toEqual([]);
   });
 
+  it("closes the delete dialog for a job only while it is that job's request", () => {
+    const { result } = renderHook(() => useFileDialogs());
+    const first = ["/tmp/old.txt"];
+    const second = ["/tmp/other.txt"];
+
+    // A confirm closed while its job runs and opened again for other items
+    // stays open when the first job ends, also for the same items.
+    act(() => result.current.actions.requestDelete(first, "trash"));
+    act(() => result.current.actions.closeDelete());
+    act(() => result.current.actions.requestDelete(second, "permanent"));
+    act(() => result.current.actions.closeDeleteFor(first));
+    expect(result.current.deleteDialog).toBe(true);
+    expect(result.current.pendingDeletePaths).toBe(second);
+
+    act(() => result.current.actions.closeDelete());
+    act(() => result.current.actions.requestDelete(["/tmp/old.txt"], "trash"));
+    act(() => result.current.actions.closeDeleteFor(first));
+    expect(result.current.deleteDialog).toBe(true);
+
+    // The confirm that started the job closes when it ends.
+    act(() => result.current.actions.requestDelete(second, "permanent"));
+    act(() => result.current.actions.closeDeleteFor(second));
+    expect(result.current.deleteDialog).toBe(false);
+    expect(result.current.pendingDeletePaths).toEqual([]);
+  });
+
+  it("closes the permissions dialog for a job only while it is that job's request", () => {
+    const { result } = renderHook(() => useFileDialogs());
+    const request = (paths: string[]) => ({
+      isDirectory: false,
+      mode: "0644",
+      pathLabel: paths[0],
+      paths,
+      selectionCount: paths.length,
+    });
+    const first = ["/tmp/old.txt"];
+    const second = ["/tmp/other.txt"];
+
+    // Closed while its job runs and opened again for other items: the first
+    // job's end leaves it open.
+    act(() => result.current.actions.openPermissions(request(first)));
+    act(() => result.current.actions.closePermissions());
+    act(() => result.current.actions.openPermissions(request(second)));
+    act(() => result.current.actions.closePermissionsFor(first));
+    expect(result.current.permissionsDialogOpen).toBe(true);
+    expect(result.current.permissionsDialog?.paths).toBe(second);
+
+    // The dialog that started the job closes when it ends.
+    act(() => result.current.actions.closePermissionsFor(second));
+    expect(result.current.permissionsDialogOpen).toBe(false);
+  });
+
   it("remembers the requested delete mode", () => {
     const { result } = renderHook(() => useFileDialogs());
 
@@ -101,7 +153,6 @@ describe("filebrowser state hooks", () => {
 
     act(() => {
       result.current.actions.openDialog();
-      result.current.actions.setProcessing(true);
       result.current.actions.mergeEntries([
         {
           isDirectory: true,
@@ -114,9 +165,15 @@ describe("filebrowser state hooks", () => {
         },
       ]);
     });
+    act(() =>
+      result.current.actions.setStatus(
+        result.current.uploadEntries,
+        "checking",
+      ),
+    );
 
     expect(result.current.uploadDialogOpen).toBe(true);
-    expect(result.current.isUploadProcessing).toBe(true);
+    expect(result.current.uploadStatus).toBe("checking");
     expect(result.current.uploadEntries).toHaveLength(2);
     expect(result.current.uploadSummary).toEqual({
       files: 1,
@@ -153,5 +210,50 @@ describe("filebrowser state hooks", () => {
     expect(result.current.uploadDialogOpen).toBe(false);
     expect(result.current.uploadEntries).toEqual([]);
     expect(result.current.ownUploads).toBe(false);
+  });
+
+  it("keeps an upload's entries while it runs and lets its end touch only its own dialog", () => {
+    const { result } = renderHook(() => useFileUpload());
+    const file = new File(["content"], "a.txt");
+
+    act(() => result.current.actions.openDialog());
+    act(() =>
+      result.current.actions.mergeEntries([
+        { file, isDirectory: false, relativePath: "a.txt" },
+      ]),
+    );
+    const first = result.current.uploadEntries;
+    act(() => result.current.actions.setStatus(first, "uploading"));
+    act(() =>
+      result.current.actions.mergeEntries([
+        { isDirectory: true, relativePath: "late" },
+      ]),
+    );
+    expect(result.current.uploadEntries).toBe(first);
+
+    // Closed while the upload runs, then opened again for another upload.
+    act(() => result.current.actions.closeDialog());
+    expect(result.current.uploadStatus).toBe("idle");
+    act(() => result.current.actions.openDialog());
+    act(() =>
+      result.current.actions.mergeEntries([
+        { isDirectory: true, relativePath: "stack" },
+      ]),
+    );
+    const second = result.current.uploadEntries;
+    act(() => result.current.actions.setStatus(second, "uploading"));
+
+    // The first upload's end leaves the dialog and its upload as they are.
+    act(() => result.current.actions.closeDialogFor(first));
+    act(() => result.current.actions.setStatus(first, "idle"));
+    expect(result.current.uploadDialogOpen).toBe(true);
+    expect(result.current.uploadEntries).toBe(second);
+    expect(result.current.uploadStatus).toBe("uploading");
+
+    // Its own upload's end closes it.
+    act(() => result.current.actions.closeDialogFor(second));
+    expect(result.current.uploadDialogOpen).toBe(false);
+    expect(result.current.uploadEntries).toEqual([]);
+    expect(result.current.uploadStatus).toBe("idle");
   });
 });

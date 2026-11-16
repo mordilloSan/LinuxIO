@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsMutating, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -23,11 +23,20 @@ import AppSelect from "@/components/ui/AppSelect";
 import AppTextField from "@/components/ui/AppTextField";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
+import {
+  DOCKER_STORAGE_APPLIED,
+  DOCKER_STORAGE_FAILED,
+} from "@/tasks/dockerStorageFeedback";
+import { TASK_TYPE_DOCKER_STORAGE } from "@/tasks/taskTypes";
+import { markTerminalFeedbackEmitted } from "@/tasks/terminalTaskFeedback";
+import { useActiveTaskRecovery } from "@/tasks/useActiveTaskRecovery";
 
 // The classic graph drivers and the containerd snapshotters name overlay and
 // the plain-copy driver differently; dockerd refuses to start on a mismatch.
 const CLASSIC_DRIVERS = ["overlay2", "btrfs", "zfs", "vfs"];
 const CONTAINERD_SNAPSHOTTERS = ["overlayfs", "btrfs", "zfs", "native"];
+
+const STORAGE_MUTATION_KEY = [TASK_TYPE_DOCKER_STORAGE] as const;
 
 const trimDataRoot = (value: string): string =>
   value.trim().replace(/(.)\/+$/, "$1");
@@ -145,7 +154,11 @@ const DockerDaemonSettingsSection = () => {
   });
   const [confirmStorage, setConfirmStorage] = useState(false);
   const [storageStep, setStorageStep] = useState<string | null>(null);
+  // A job, not a call: it stops every container and restarts Docker. This
+  // section reports a job it follows, started here or taken up, so the task
+  // tray does not report it as well.
   const storageMutation = linuxio.docker.apply_daemon_storage.useMutation({
+    onStart: (task) => void markTerminalFeedbackEmitted(task.id),
     onProgress: (progress) => setStorageStep(progress.message ?? null),
     success: (result) => {
       queryClient.setQueryData(
@@ -154,23 +167,42 @@ const DockerDaemonSettingsSection = () => {
       );
       reset();
       setRestartRequired(false);
-      toast.success(
-        "Docker restarted on the new storage. Deploy your stacks again.",
-      );
+      toast.success(DOCKER_STORAGE_APPLIED);
     },
-    error: "Failed to change Docker storage",
+    error: DOCKER_STORAGE_FAILED,
     options: {
+      mutationKey: STORAGE_MUTATION_KEY,
+      // The confirm cannot be opened again while the job runs, so this closes
+      // the one that started it, if it is still open.
       onSettled: () => {
         setStorageStep(null);
         setConfirmStorage(false);
       },
     },
   });
+  // A change that is running is counted in the mutation cache and not only
+  // in this section: one started before the page was left is still followed
+  // by the section that started it, and holds the controls of this one too.
+  const storageRunning =
+    useIsMutating({ mutationKey: STORAGE_MUTATION_KEY }) > 0;
   const busy =
-    saveMutation.isPending ||
-    restartMutation.isPending ||
-    storageMutation.isPending;
+    saveMutation.isPending || restartMutation.isPending || storageRunning;
   const disabled = !privileged || busy;
+
+  // The change is a job and runs on when the confirm, the page or the tab is
+  // closed. One still running when the section opens, which nothing in this
+  // tab follows, is taken up again, so the section holds its controls, shows
+  // its step and reports its result. The request is not needed: the callbacks
+  // above read only the result.
+  useActiveTaskRecovery({
+    type: TASK_TYPE_DOCKER_STORAGE,
+    scanKey: privileged && config ? "scan" : null,
+    match: () => true,
+    onRecover: (task) => {
+      if (storageRunning || !config) return;
+      storageMutation.watch(task.id, config);
+    },
+  });
 
   const handleSave = () => {
     if (!draft || !config) return;
@@ -230,6 +262,14 @@ const DockerDaemonSettingsSection = () => {
             : "Privileged mode is required to change Docker daemon settings."}
         </AppTypography>
       </div>
+
+      {storageRunning && !confirmStorage ? (
+        <AppAlert severity="info">
+          <AppAlertTitle>Changing Docker storage</AppAlertTitle>
+          {storageStep ??
+            "Containers are stopping and Docker is restarting. The task tray shows the progress."}
+        </AppAlert>
+      ) : null}
 
       {restartRequired ? (
         <AppAlert severity="info">
@@ -437,11 +477,10 @@ const DockerDaemonSettingsSection = () => {
         cancelText="Cancel"
         confirmText="Change storage"
         destructive
-        isPending={storageMutation.isPending}
+        closeWhilePending
+        isPending={storageRunning}
         message="Every running container stops and Docker restarts on the new storage. Anything on the old storage is kept but hidden, so deploy your stacks again afterwards. If you reach LinuxIO or other apps through a reverse proxy, tunnel or VPN running in Docker, that access stops until its stack is deployed again, so make sure you can reach this server another way first."
-        onClose={() => {
-          if (!storageMutation.isPending) setConfirmStorage(false);
-        }}
+        onClose={() => setConfirmStorage(false)}
         onConfirm={() => {
           if (draft) storageMutation.mutate(toRequest(draft));
         }}

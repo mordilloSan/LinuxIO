@@ -115,6 +115,11 @@ export interface ActionConfig<TRequest, TResult> {
   warning?: (result: TResult, variables: TRequest) => string | null | undefined;
   /** Error toast fallback text, or a callback for custom error handling. */
   error?: string | ((error: LinuxIOError, variables: TRequest) => void);
+  /**
+   * An error the string-form `error` does not toast. The Mutation layer sets
+   * it for a cancelled job, which is not a failure.
+   */
+  quietError?: (error: LinuxIOError) => boolean;
   /** The page string-form feedback belongs to; see toastLinkOptions. */
   toast?: ToastMeta;
   /** Raw TanStack mutation options; callbacks run after the config callbacks. */
@@ -185,6 +190,7 @@ export function useActionMutation<TResult, TRequest = unknown>(
     success,
     warning,
     error,
+    quietError,
     toast: toastMeta,
     options,
   } = config ?? {};
@@ -220,7 +226,7 @@ export function useActionMutation<TResult, TRequest = unknown>(
       }
       if (typeof error === "function") {
         error(err, variables);
-      } else if (error !== undefined) {
+      } else if (error !== undefined && !quietError?.(err)) {
         toast.error(
           actionErrorMessage(err, error),
           toastLinkOptions(toastMeta),

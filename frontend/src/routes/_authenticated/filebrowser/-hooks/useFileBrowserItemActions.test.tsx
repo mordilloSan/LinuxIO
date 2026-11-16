@@ -6,12 +6,13 @@ import { act, createTestQueryClient, renderHook } from "@/test/render";
 
 import type { FileItem } from "../-types";
 import { useFileBrowserItemActions } from "./useFileBrowserItemActions";
-import type { DialogsSlice } from "./useFileDialogs";
+import { type DialogsSlice, useFileDialogs } from "./useFileDialogs";
 import type { EditorSlice } from "./useFileEditor";
 import type { ViewSlice } from "./useFileViewState";
 
 const toastMocks = vi.hoisted(() => ({
   error: vi.fn(),
+  info: vi.fn(),
   success: vi.fn(),
 }));
 
@@ -20,7 +21,7 @@ const statMock = vi.hoisted(() => vi.fn());
 vi.mock("sonner", () => ({
   toast: {
     error: toastMocks.error,
-    info: vi.fn(),
+    info: toastMocks.info,
     success: toastMocks.success,
     warning: vi.fn(),
   },
@@ -72,8 +73,10 @@ function dialogsSlice(overrides: Partial<DialogsSlice> = {}): DialogsSlice {
       clearPermissions: vi.fn(),
       closeCreateFile: vi.fn(),
       closeDelete: vi.fn(),
+      closeDeleteFor: vi.fn(),
       closeDetails: vi.fn(),
       closePermissions: vi.fn(),
+      closePermissionsFor: vi.fn(),
       openCreateFile: vi.fn(),
       openPermissions: vi.fn(),
       requestDelete: vi.fn(),
@@ -131,13 +134,14 @@ function editorSlice(): EditorSlice {
   };
 }
 
-function setup(overrides: Partial<Params> = {}) {
-  const successfulBatchResult = {
-    failed: [],
-    succeeded: 1,
-    total: 1,
-  };
-  const params: Params = {
+const successfulBatchResult = {
+  failed: [],
+  succeeded: 1,
+  total: 1,
+};
+
+function makeParams(overrides: Partial<Params> = {}): Params {
+  return {
     changePermissions: vi.fn().mockResolvedValue(successfulBatchResult),
     createFile: vi.fn().mockResolvedValue(undefined),
     createFolder: vi.fn().mockResolvedValue(undefined),
@@ -159,7 +163,10 @@ function setup(overrides: Partial<Params> = {}) {
     view: viewSlice(),
     ...overrides,
   };
+}
 
+function setup(overrides: Partial<Params> = {}) {
+  const params = makeParams(overrides);
   const utils = renderHook(() => useFileBrowserItemActions(params), {
     wrapper,
   });
@@ -385,16 +392,46 @@ describe("useFileBrowserItemActions", () => {
       expect(params.dialogs.actions.requestDelete).not.toHaveBeenCalled();
     });
 
-    it("moves to the trash in trash mode and closes the dialog", async () => {
+    it("waits for a running job of the same kind before asking again", () => {
       const { result, params } = setup({
-        dialogs: dialogsSlice({ pendingDeletePaths: ["/srv/projects/a"] }),
+        selectedPaths: new Set(["/srv/projects/b"]),
+        trashPending: true,
+      });
+
+      act(() => result.current.handleDelete());
+      expect(params.dialogs.actions.requestDelete).not.toHaveBeenCalled();
+      expect(toastMocks.info).toHaveBeenCalledWith(
+        "A move to Trash is still running",
+        expect.objectContaining({
+          description:
+            "Try again once it ends. The task tray shows its progress.",
+        }),
+      );
+
+      // A permanent delete is a job of its own kind and is asked for.
+      act(() => result.current.handleDeletePermanently());
+      expect(params.dialogs.actions.requestDelete).toHaveBeenCalledWith(
+        ["/srv/projects/b"],
+        "permanent",
+      );
+    });
+
+    it("moves to the trash in trash mode and closes the dialog", async () => {
+      const pendingDeletePaths = ["/srv/projects/a"];
+      const { result, params } = setup({
+        dialogs: dialogsSlice({ pendingDeletePaths }),
       });
 
       await act(async () => result.current.handleConfirmDelete());
 
       expect(params.trashItems).toHaveBeenCalledWith(["/srv/projects/a"]);
       expect(params.deleteItems).not.toHaveBeenCalled();
-      expect(params.dialogs.actions.closeDelete).toHaveBeenCalledTimes(1);
+      // Closed by the request that started the job, not whatever is open.
+      expect(params.dialogs.actions.closeDeleteFor).toHaveBeenCalledTimes(1);
+      expect(
+        vi.mocked(params.dialogs.actions.closeDeleteFor).mock.calls[0][0],
+      ).toBe(pendingDeletePaths);
+      expect(params.dialogs.actions.closeDelete).not.toHaveBeenCalled();
     });
 
     it("deletes permanently in permanent mode and closes the dialog", async () => {
@@ -409,7 +446,52 @@ describe("useFileBrowserItemActions", () => {
 
       expect(params.deleteItems).toHaveBeenCalledWith(["/srv/projects/a"]);
       expect(params.trashItems).not.toHaveBeenCalled();
-      expect(params.dialogs.actions.closeDelete).toHaveBeenCalledTimes(1);
+      expect(params.dialogs.actions.closeDeleteFor).toHaveBeenCalledTimes(1);
+    });
+
+    it("leaves a confirm opened for other items open when an earlier job ends", async () => {
+      let finishTrash!: (result: typeof successfulBatchResult) => void;
+      const trashItems = vi.fn(
+        () =>
+          new Promise<typeof successfulBatchResult>((resolve) => {
+            finishTrash = resolve;
+          }),
+      );
+      let selectedPaths = new Set(["/srv/projects/a"]);
+      const { result, rerender } = renderHook(
+        () => {
+          const dialogs = useFileDialogs();
+          const actions = useFileBrowserItemActions(
+            makeParams({ dialogs, selectedPaths, trashItems }),
+          );
+          return { actions, dialogs };
+        },
+        { wrapper },
+      );
+
+      act(() => result.current.actions.handleDelete());
+      let confirmed!: Promise<void>;
+      act(() => {
+        confirmed = result.current.actions.handleConfirmDelete();
+      });
+      expect(trashItems).toHaveBeenCalledWith(["/srv/projects/a"]);
+
+      // Closed while its job runs, then opened again for other items.
+      act(() => result.current.actions.handleCloseDeleteDialog());
+      selectedPaths = new Set(["/srv/projects/b"]);
+      rerender();
+      act(() => result.current.actions.handleDeletePermanently());
+
+      await act(async () => {
+        finishTrash(successfulBatchResult);
+        await confirmed;
+      });
+
+      expect(result.current.dialogs.deleteDialog).toBe(true);
+      expect(result.current.dialogs.deleteMode).toBe("permanent");
+      expect(result.current.dialogs.pendingDeletePaths).toEqual([
+        "/srv/projects/b",
+      ]);
     });
 
     it("closes the dialog on a partial result but retains it after a throw", async () => {
@@ -430,10 +512,12 @@ describe("useFileBrowserItemActions", () => {
       await act(async () => failed.result.current.handleConfirmDelete());
       await act(async () => partial.result.current.handleConfirmDelete());
 
-      expect(failed.params.dialogs.actions.closeDelete).not.toHaveBeenCalled();
-      expect(partial.params.dialogs.actions.closeDelete).toHaveBeenCalledTimes(
-        1,
-      );
+      expect(
+        failed.params.dialogs.actions.closeDeleteFor,
+      ).not.toHaveBeenCalled();
+      expect(
+        partial.params.dialogs.actions.closeDeleteFor,
+      ).toHaveBeenCalledTimes(1);
     });
 
     it("ignores confirmation when there are no pending paths", async () => {
@@ -678,14 +762,37 @@ describe("useFileBrowserItemActions", () => {
       expect(params.dialogs.actions.openPermissions).not.toHaveBeenCalled();
     });
 
+    it("waits for a running permission change before asking again", async () => {
+      const { result, params } = setup({
+        permissionsPending: true,
+        selectedItems: [fileItem("b.txt")],
+        selectedPaths: new Set(["/srv/projects/b.txt"]),
+      });
+
+      await act(async () => {
+        await result.current.handleChangePermissions();
+      });
+
+      expect(statMock).not.toHaveBeenCalled();
+      expect(params.dialogs.actions.openPermissions).not.toHaveBeenCalled();
+      expect(toastMocks.info).toHaveBeenCalledWith(
+        "A permission change is still running",
+        expect.objectContaining({
+          description:
+            "Try again once it ends. The task tray shows its progress.",
+        }),
+      );
+    });
+
     it("applies permissions to the whole selection in one call", async () => {
+      const paths = ["/srv/projects/a", "/srv/projects/b"];
       const { result, params } = setup({
         dialogs: dialogsSlice({
           permissionsDialog: {
             isDirectory: false,
             mode: "0644",
             pathLabel: "2 items",
-            paths: ["/srv/projects/a", "/srv/projects/b"],
+            paths,
             selectionCount: 2,
           },
         }),
@@ -708,7 +815,73 @@ describe("useFileBrowserItemActions", () => {
         paths: ["/srv/projects/a", "/srv/projects/b"],
         recursive: true,
       });
-      expect(params.dialogs.actions.closePermissions).toHaveBeenCalledTimes(1);
+      // Closed by the request that started the job, not whatever is open.
+      expect(params.dialogs.actions.closePermissionsFor).toHaveBeenCalledTimes(
+        1,
+      );
+      expect(
+        vi.mocked(params.dialogs.actions.closePermissionsFor).mock.calls[0][0],
+      ).toBe(paths);
+      expect(params.dialogs.actions.closePermissions).not.toHaveBeenCalled();
+    });
+
+    it("leaves a permissions dialog opened for other items open when an earlier change ends", async () => {
+      let finishChange!: (result: typeof successfulBatchResult) => void;
+      const changePermissions = vi.fn(
+        () =>
+          new Promise<typeof successfulBatchResult>((resolve) => {
+            finishChange = resolve;
+          }),
+      );
+      const { result } = renderHook(
+        () => {
+          const dialogs = useFileDialogs();
+          const actions = useFileBrowserItemActions(
+            makeParams({ changePermissions, dialogs }),
+          );
+          return { actions, dialogs };
+        },
+        { wrapper },
+      );
+      const request = (paths: string[]) => ({
+        isDirectory: false,
+        mode: "0644",
+        pathLabel: paths[0],
+        paths,
+        selectionCount: 1,
+      });
+
+      act(() =>
+        result.current.dialogs.actions.openPermissions(
+          request(["/srv/projects/a"]),
+        ),
+      );
+      let applied!: Promise<void>;
+      act(() => {
+        applied = result.current.actions.handleConfirmPermissions(
+          "0600",
+          false,
+        );
+      });
+      expect(changePermissions).toHaveBeenCalledTimes(1);
+
+      // Closed while its job runs; a dialog for other items is open when it
+      // ends.
+      act(() => result.current.actions.handleClosePermissionsDialog());
+      act(() =>
+        result.current.dialogs.actions.openPermissions(
+          request(["/srv/projects/b"]),
+        ),
+      );
+      await act(async () => {
+        finishChange(successfulBatchResult);
+        await applied;
+      });
+
+      expect(result.current.dialogs.permissionsDialogOpen).toBe(true);
+      expect(result.current.dialogs.permissionsDialog?.paths).toEqual([
+        "/srv/projects/b",
+      ]);
     });
 
     it("retains permissions after failure or a partial result", async () => {
@@ -742,10 +915,10 @@ describe("useFileBrowserItemActions", () => {
       );
 
       expect(
-        failed.params.dialogs.actions.closePermissions,
+        failed.params.dialogs.actions.closePermissionsFor,
       ).not.toHaveBeenCalled();
       expect(
-        partial.params.dialogs.actions.closePermissions,
+        partial.params.dialogs.actions.closePermissionsFor,
       ).not.toHaveBeenCalled();
     });
 

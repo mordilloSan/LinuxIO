@@ -28,6 +28,7 @@ export const TASK_TYPE_FILE_ARCHIVE = taskType("filebrowser.archive");
 export const TASK_TYPE_FILE_CHMOD_BATCH = taskType("filebrowser.chmod_batch");
 export const TASK_TYPE_DOCKER_COMPOSE = taskType("docker.compose");
 export const TASK_TYPE_DOCKER_UPDATE = taskType("docker.update_container");
+export const TASK_TYPE_DOCKER_STORAGE = taskType("docker.apply_daemon_storage");
 export const TASK_TYPE_PACKAGE_UPDATE = taskType("packages.update");
 export const TASK_TYPE_STORAGE_SMART_TEST = taskType("storage.run_smart_test");
 export const TASK_TYPE_STORAGE_BTRFS_ROLLBACK = taskType(

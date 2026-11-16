@@ -11,11 +11,13 @@ import {
   type FileExtractRequest,
   type FileProgress,
   getMutationErrorMessage,
+  isTaskCancellationError,
   linuxio,
   type TaskProgress,
 } from "@/api";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { batchFailureOpts } from "@/tasks/batchFailures";
+import { markTerminalFeedbackEmitted } from "@/tasks/terminalTaskFeedback";
 import { useBackgroundTaskActions } from "@/tasks/useBackgroundTaskActions";
 import { toastFileError } from "@/utils/linkRefusal";
 import {
@@ -39,7 +41,8 @@ export const FILES_TOAST_META = {
 
 interface UseFileMutationsParams {
   normalizedPath: string;
-  onDeleteSuccess?: () => void;
+  /** Called with a delete's or a move to Trash's paths when the job ends. */
+  onDeleteSuccess?: (paths: string[]) => void;
   /** Closes the Permissions dialog when its toast opens a link's real folder. */
   onPermissionsLinkOpen?: () => void;
   resolveCollisions?: ResolveCollisionsFn;
@@ -145,13 +148,16 @@ export const useFileMutations = ({
   );
 
   // The listing changed even when some items failed, so refresh it and close
-  // the dialog either way; failures are named in the error toast.
+  // the dialog either way; failures are named in the error toast. Only the
+  // job's own paths leave the selection: its confirm may have been closed
+  // while it ran and other items selected since.
   const reportRemoval = (
     result: FileBatchResult | undefined,
     verb: "delete" | "trash",
+    paths: string[],
   ) => {
     invalidateListing();
-    onDeleteSuccess?.();
+    onDeleteSuccess?.(paths);
     const failed = result?.failed ?? [];
     if (failed.length > 0) {
       const count = `${failed.length} item${failed.length === 1 ? "" : "s"}`;
@@ -174,17 +180,28 @@ export const useFileMutations = ({
   };
 
   // One batch task deletes the whole selection; the bridge loops server-side
-  // and reports per-item failures in the result.
+  // and reports per-item failures in the result. Its confirm can be closed
+  // while it runs, and its result is reported here either way, so the task
+  // tray, which lists the job and can cancel it, does not report it as well.
+  // A cancel is not a failure: the tray that cancelled it says so.
   const deleteBatchAction = linuxio.filebrowser.delete_batch.useMutation({
     // invalidateListing below is more precise than the manifest entry.
     invalidates: [],
+    onStart: (task) => void markTerminalFeedbackEmitted(task.id),
     onProgress: setDeleteProgress,
-    success: (result) => {
+    success: (result, request) => {
       setDeleteProgress(null);
-      reportRemoval(result, "delete");
+      reportRemoval(result, "delete", request.paths);
     },
-    error: (error) => {
+    error: (error, request) => {
       setDeleteProgress(null);
+      // A cancelled job has removed some of its items already: the listing
+      // is read again and none of them stays selected.
+      if (isTaskCancellationError(error)) {
+        invalidateListing();
+        onDeleteSuccess?.(request.paths);
+        return;
+      }
       toastFileError(
         toast,
         navigate,
@@ -206,13 +223,19 @@ export const useFileMutations = ({
   const trashBatchAction = linuxio.filebrowser.trash_batch.useMutation({
     // invalidateListing below is more precise than the manifest entry.
     invalidates: [],
+    onStart: (task) => void markTerminalFeedbackEmitted(task.id),
     onProgress: setTrashProgress,
-    success: (result) => {
+    success: (result, request) => {
       setTrashProgress(null);
-      reportRemoval(result, "trash");
+      reportRemoval(result, "trash", request.paths);
     },
-    error: (error) => {
+    error: (error, request) => {
       setTrashProgress(null);
+      if (isTaskCancellationError(error)) {
+        invalidateListing();
+        onDeleteSuccess?.(request.paths);
+        return;
+      }
       toastFileError(
         toast,
         navigate,
@@ -272,10 +295,14 @@ export const useFileMutations = ({
   );
 
   // One batch task changes permissions of the whole selection; the bridge
-  // loops server-side and reports per-item failures in the result.
+  // loops server-side and reports per-item failures in the result. As for a
+  // delete, its dialog can be closed while it runs and the result is reported
+  // here, so the task tray does not report it as well, and a cancel from the
+  // tray is not a failure.
   const changePermissionsAction = linuxio.filebrowser.chmod_batch.useMutation({
     // invalidateListing below is more precise than the manifest entry.
     invalidates: [],
+    onStart: (task) => void markTerminalFeedbackEmitted(task.id),
     onProgress: setPermissionsProgress,
     success: (result) => {
       setPermissionsProgress(null);
@@ -295,6 +322,7 @@ export const useFileMutations = ({
     },
     error: (error) => {
       setPermissionsProgress(null);
+      if (isTaskCancellationError(error)) return;
       toastFileError(
         toast,
         navigate,

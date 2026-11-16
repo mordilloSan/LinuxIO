@@ -15,6 +15,7 @@ const { registerToastLinkRouter } = await import("@/api/toast-meta");
 const {
   TASK_TYPE_DOCKER_UPDATE,
   TASK_TYPE_DOCKER_COMPOSE,
+  TASK_TYPE_DOCKER_STORAGE,
   TASK_TYPE_FILE_DELETE_BATCH,
   TASK_TYPE_MEMORY_DRAIN,
   TASK_TYPE_MEMORY_SWAP_MODE,
@@ -483,5 +484,32 @@ describe("terminalTaskFeedback", () => {
       "not enough free memory",
       expect.anything(),
     );
+  });
+
+  it("reports a Docker storage change nobody follows, and stays silent for one a section follows", () => {
+    onPage("/docker");
+    emitTerminalTaskFeedback(
+      task("s1", TASK_TYPE_DOCKER_STORAGE),
+      { kind: "completed", result: {} },
+      deps,
+    );
+    expect(toastMocks.success).toHaveBeenCalledWith(
+      "Docker restarted on the new storage. Deploy your stacks again.",
+    );
+    emitTerminalTaskFeedback(
+      task("s2", TASK_TYPE_DOCKER_STORAGE),
+      failed("docker did not start"),
+      deps,
+    );
+    expect(toastMocks.error).toHaveBeenCalledWith("docker did not start");
+
+    toastMocks.success.mockClear();
+    markTerminalFeedbackEmitted("s3");
+    emitTerminalTaskFeedback(
+      task("s3", TASK_TYPE_DOCKER_STORAGE),
+      { kind: "completed", result: {} },
+      deps,
+    );
+    expect(toastMocks.success).not.toHaveBeenCalled();
   });
 });

@@ -6,6 +6,7 @@ import {
   type CountProgress,
   type FileBatchResult,
   getMutationErrorMessage,
+  isTaskCancellationError,
   linuxio,
   type TaskProgress,
 } from "@/api";
@@ -23,6 +24,7 @@ import AppSkeleton from "@/components/ui/AppSkeleton";
 import AppTypography from "@/components/ui/AppTypography";
 import { useScopedToast } from "@/hooks/useScopedToast";
 import { batchFailureOpts } from "@/tasks/batchFailures";
+import { markTerminalFeedbackEmitted } from "@/tasks/terminalTaskFeedback";
 import { formatDate, formatFileSize } from "@/utils/formatters";
 import { toastFileError } from "@/utils/linkRefusal";
 import { parentPath } from "@/utils/path";
@@ -75,21 +77,29 @@ const TrashDialog = ({ open, onClose }: TrashDialogProps) => {
     (entry) => entry.originalPath,
   );
 
-  // What a toast's "Open the real folder" closes the dialog with. Not
-  // handleClose: its busy check would read the render in which the failed
-  // operation was still pending, and refuse.
-  const closeForRealFolder = () => {
+  // A restore or a purge is a job and does not hold the dialog open: the
+  // task tray shows its progress and can cancel it, and its result is
+  // toasted below whether the dialog is open or not. A toast's "Open the real
+  // folder" closes the dialog with this too.
+  const handleClose = () => {
     setSelected(new Set());
     setConfirm(null);
     onClose();
   };
   const report = (
     result: FileBatchResult | undefined,
+    paths: string[],
     done: "Restored" | "Deleted",
     action: "restore" | "delete",
   ) => {
     setProgress(null);
-    setSelected(new Set());
+    // Only the job's own items leave the selection: the dialog may have been
+    // closed while the job ran and opened again with other items selected.
+    const jobPaths = new Set(paths);
+    setSelected(
+      (prev) => new Set([...prev].filter((path) => !jobPaths.has(path))),
+    );
+    // No confirm opens while a job runs, so an open one is the job's own.
     setConfirm(null);
     const failed = result?.failed ?? [];
     if (failed.length > 0) {
@@ -98,7 +108,7 @@ const TrashDialog = ({ open, onClose }: TrashDialogProps) => {
         navigate,
         `Failed to ${action} ${itemCount(failed.length)}`,
         batchFailureOpts(failed),
-        closeForRealFolder,
+        handleClose,
       );
       return;
     }
@@ -107,33 +117,36 @@ const TrashDialog = ({ open, onClose }: TrashDialogProps) => {
   const reportError = (err: unknown, fallback: string) => {
     setProgress(null);
     setConfirm(null);
+    // A cancel is not a failure: the task tray that cancelled it says so.
+    if (isTaskCancellationError(err)) return;
     toastFileError(
       toast,
       navigate,
       getMutationErrorMessage(err, fallback),
       undefined,
-      closeForRealFolder,
+      handleClose,
     );
   };
 
+  // The dialog reports the jobs it starts, so the task tray, which lists them
+  // and can cancel them, does not report them as well.
   const restore = linuxio.filebrowser.trash_restore.useMutation({
+    onStart: (task) => void markTerminalFeedbackEmitted(task.id),
     onProgress: setProgress,
-    success: (result) => report(result, "Restored", "restore"),
+    success: (result, request) =>
+      report(result, request.paths, "Restored", "restore"),
     error: (err) => reportError(err, "Failed to restore items"),
   });
   const purge = linuxio.filebrowser.trash_purge.useMutation({
+    onStart: (task) => void markTerminalFeedbackEmitted(task.id),
     onProgress: setProgress,
-    success: (result) => report(result, "Deleted", "delete"),
+    success: (result, request) =>
+      report(result, request.paths, "Deleted", "delete"),
     error: (err) => reportError(err, "Failed to delete items"),
   });
+  // Holds every control that would start a second job, also in a dialog
+  // opened again while the job runs.
   const busy = restore.isPending || purge.isPending;
-
-  const handleClose = () => {
-    if (busy) return;
-    setSelected(new Set());
-    setConfirm(null);
-    onClose();
-  };
   const toggle = (path: string, checked: boolean) =>
     setSelected((prev) => {
       const next = new Set(prev);
@@ -282,20 +295,20 @@ const TrashDialog = ({ open, onClose }: TrashDialogProps) => {
               Empty trash
             </AppButton>
           </div>
-          {restore.isPending && (
+          {busy && (
             <div aria-live="polite" role="status">
-              {progress?.message ?? "Restoring items"}
+              {progress?.message ??
+                (restore.isPending ? "Restoring items" : "Deleting items")}
             </div>
           )}
           {body}
         </AppDialogContent>
         <AppDialogActions>
-          <AppButton disabled={busy} onClick={handleClose}>
-            Close
-          </AppButton>
+          <AppButton onClick={handleClose}>Close</AppButton>
         </AppDialogActions>
       </FileBrowserDialog>
       <AppConfirmDialog
+        closeWhilePending
         confirmText="Delete"
         destructive
         isPending={purge.isPending}
@@ -311,6 +324,7 @@ const TrashDialog = ({ open, onClose }: TrashDialogProps) => {
         title={confirm === "all" ? "Empty trash" : "Delete permanently"}
       />
       <AppConfirmDialog
+        closeWhilePending
         confirmText="Restore"
         isPending={restore.isPending}
         message={`Restore to ${restoreDestinations.join(", ")}? Another program moved ${restoreDestinations.length === 1 ? "this item" : "these items"} to the Trash, so LinuxIO cannot vouch for where ${restoreDestinations.length === 1 ? "it" : "they"} came from.`}

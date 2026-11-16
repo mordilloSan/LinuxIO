@@ -237,6 +237,23 @@ describe("Call queries and mutations", () => {
     expect(toast.error).toHaveBeenCalledWith("bad yaml", undefined);
   });
 
+  it("does not toast an error the caller calls quiet", async () => {
+    const { toast } = await import("sonner");
+    vi.spyOn(core, "request").mockRejectedValue(
+      new LinuxIOError("operation aborted", 499),
+    );
+    const { result } = renderQueryHook(() =>
+      useCallMutation(linuxio.docker.validate_compose, {
+        error: "Validation failed",
+        quietError: (error) => error.code === 499,
+      }),
+    );
+
+    act(() => result.current.mutate({ content: "nope" }));
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
   it("offers the toast's page when the mutation ends on another page", async () => {
     const { toast } = await import("sonner");
     let pathname = "/docker";
