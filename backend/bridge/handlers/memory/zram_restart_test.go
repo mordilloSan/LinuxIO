@@ -7,10 +7,21 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 )
+
+// writeSwapArea writes a file that starts as a swap area does: a page that
+// ends in mkswap's signature.
+func (f fixture) writeSwapArea(name string) {
+	f.t.Helper()
+	page := make([]byte, os.Getpagesize())
+	copy(page[len(page)-10:], "SWAPSPACE2")
+	f.write(name, string(page))
+}
 
 var errNoBus = errors.New("no system bus")
 
@@ -25,6 +36,7 @@ func smallZramHost(t *testing.T) (fixture, *fakeSystem) {
 	f, sys := diskHost(t)
 	f.write(procSwaps, swapsHeader+smallZramSwapsLine+swapFileSwapsLine)
 	f.write("/sys/block/zram0/disksize", "268435456\n")
+	f.writeSwapArea("/dev/zram0")
 	sys.devices[zramService] = smallZramSwapsLine
 	sys.devices[zramGeneratorSwapUnit] = smallZramSwapsLine
 	sys.activeStates[zramService] = "active"
@@ -52,6 +64,7 @@ func TestSetSwapModeRestartsZramAtThePlannedSize(t *testing.T) {
 		"write " + sysctlDropInPath,
 		"enable " + zramService,
 		"stop " + zramService,
+		"reset " + zramToolsDevice,
 		"start " + zramService,
 		"set " + swappinessParam + "=180",
 		"set " + pageClusterParam + "=0",
@@ -65,6 +78,86 @@ func TestSetSwapModeRestartsZramAtThePlannedSize(t *testing.T) {
 		t.Errorf("mode = %q, disksize = %s; want zram at the planned size", got.Mode, f.read("/sys/block/zram0/disksize"))
 	}
 	assertLeft(t, got.Left)
+}
+
+// zramswap stop leaves the device set up when it cannot unload the zram
+// module, and the kernel refuses a new size for a device that is set up: one
+// that does not swap is reset before the start, or zram would swap at the
+// size it had.
+func TestSetSwapModeResetsAZramDeviceLeftSetUp(t *testing.T) {
+	f, sys := diskHost(t)
+	f.write("/sys/block/zram0/disksize", "268435456\n")
+	f.writeSwapArea("/dev/zram0")
+
+	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeZram)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reset := slices.Index(sys.calls, "reset "+zramToolsDevice)
+	if reset < 0 || !slices.Contains(sys.calls[reset:], "start "+zramService) {
+		t.Fatalf("calls = %v, want the device reset before the start", sys.calls)
+	}
+	if got.Mode != apischema.SwapModeZram || !plannedDisksize(t, f) {
+		t.Errorf("mode = %q, disksize = %s; want zram at the planned size", got.Mode, f.read("/sys/block/zram0/disksize"))
+	}
+	assertLeft(t, got.Left)
+}
+
+// A device that cannot be reset, as one something holds open, comes up at
+// the size it had: the run goes on and the result says so.
+func TestSetSwapModeSaysWhenTheZramDeviceCouldNotBeReset(t *testing.T) {
+	f, sys := diskHost(t)
+	f.write("/sys/block/zram0/disksize", "268435456\n")
+	f.writeSwapArea("/dev/zram0")
+	sys.failures["reset "+zramToolsDevice] = syscall.EBUSY
+
+	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeZram)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Mode != apischema.SwapModeZram || plannedDisksize(t, f) {
+		t.Errorf("mode = %q, disksize = %s; want zram at the size the device had", got.Mode, f.read("/sys/block/zram0/disksize"))
+	}
+	assertLeft(t, got.Left, apischema.SwapLeft{What: apischema.SwapLeftZramSize, Reason: apischema.SwapLeftOtherSize})
+}
+
+// A zram0 that is set up and holds something other than swap is someone
+// else's: it is not reset, and the step refuses before zramswap start would
+// format it.
+func TestSetSwapModeRefusesAZramDeviceThatHoldsNoSwap(t *testing.T) {
+	f, sys := diskHost(t)
+	f.write("/sys/block/zram0/disksize", "268435456\n")
+	f.write("/dev/zram0", strings.Repeat("ext4 data ", 1024))
+
+	_, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeZram)
+	if !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), "/dev/zram0") {
+		t.Fatalf("err = %v, want a conflict naming the device", err)
+	}
+	for _, call := range sys.calls {
+		if call == "reset "+zramToolsDevice || call == "start "+zramService || call == "restart "+zramService {
+			t.Fatalf("calls = %v, want the device neither reset nor started on", sys.calls)
+		}
+	}
+}
+
+// With the zram module unloaded there is no device to reset: zram is
+// started as it is on a host that never ran it.
+func TestSetSwapModeStartsZramWithoutTheModule(t *testing.T) {
+	f, sys := diskHost(t)
+	if err := os.RemoveAll(filepath.Join(f.root, "sys/block/zram0")); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeZram)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(sys.calls, "reset "+zramToolsDevice) || !slices.Contains(sys.calls, "start "+zramService) {
+		t.Fatalf("calls = %v, want a start and no reset", sys.calls)
+	}
+	if got.Mode != apischema.SwapModeZram {
+		t.Errorf("mode = %q, want zram", got.Mode)
+	}
 }
 
 // zram-generator's device is restarted through its swap unit, when the

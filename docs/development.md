@@ -187,7 +187,15 @@ make vm-destroy       # delete the domain and its volumes; the cache stays
   `zram-tools` with apt and disables the `zramswap.service` its package
   starts, and, when `/etc/fstab`
   has no `/swap.img`, creates a 1 GiB `/swap.img`, adds it to fstab and starts
-  it. Both changes stay in the VM until `make vm-reset` reverts its disks.
+  it. It then runs `TestMemoryDrainIntegration` twice on the data disk `vdb`,
+  made a swap device with a `noauto` fstab entry and started only for the
+  test: once with 2 GiB parked on it, and once with 320 MiB and the test's
+  reads from the disk capped at 2 MiB a second, where the drain has to take
+  more than 90 seconds. The test runs in a cgroup of its own,
+  `/sys/fs/cgroup/linuxio-drain-test`, which it removes, and the device is
+  stopped when the target ends. A `vdb` that holds anything but swap, as
+  after a storage check, is refused: run `make vm-reset` first. The whole target takes about four minutes. These changes stay in the VM until
+  `make vm-reset` reverts its disks.
 - `vm-test-filebrowser-root` does the same for the file browser's root-only
   ownership tests (`test-filebrowser-root`).
 - `vm-test-relay-root` builds the `bridge/cmd` test binary on the host and

@@ -204,6 +204,21 @@ func (s *fakeSystem) swapOff(ctx context.Context, path string) error {
 	})
 }
 
+// resetZram frees the device, as the kernel does for one nothing holds.
+func (s *fakeSystem) resetZram(ctx context.Context, name string) error {
+	return s.unitDo(ctx, "reset "+name, func() error {
+		s.f.write(filepath.Join(sysBlockDir, name, "disksize"), "0\n")
+		return nil
+	})
+}
+
+// zramSetUp reports whether zram0 exists with a size. Without the zram
+// module there is no /sys/block/zram0 at all.
+func (s *fakeSystem) zramSetUp() bool {
+	const disksize = "/sys/block/zram0/disksize"
+	return s.f.exists(disksize) && s.f.param(disksize) != "0"
+}
+
 // zramUnit reports whether name is a unit that sets zram up.
 func zramUnit(name string) bool {
 	return name == zramService || name == zramGeneratorSwapUnit
@@ -233,8 +248,10 @@ func (s *fakeSystem) unitOn(name string) {
 		swaps := s.f.read(procSwaps)
 		if !strings.Contains(swaps, line) {
 			s.f.write(procSwaps, swaps+line)
-			// The device is made at the size its configuration gives.
-			if size := s.configuredZramSize(); zramUnit(name) && size > 0 {
+			// The device gets the size its configuration gives only when it
+			// is not set up yet: the kernel refuses a new size for one that
+			// is, and the tool swaps on it as it stands.
+			if size := s.configuredZramSize(); zramUnit(name) && size > 0 && !s.zramSetUp() {
 				s.f.write("/sys/block/zram0/disksize", strconv.FormatUint(size, 10)+"\n")
 			}
 		}
@@ -251,8 +268,14 @@ func (s *fakeSystem) bindSetupUnit(name, state string) {
 	}
 }
 
+// unitOff takes the unit's device out of /proc/swaps. zram-generator's setup
+// service resets its device when its swap unit stops; zram-tools' device
+// stays set up, as it does when zramswap stop cannot unload the module.
 func (s *fakeSystem) unitOff(name string) {
 	if line, ok := s.devices[name]; ok && !s.stuck[name] {
+		if name == zramGeneratorSwapUnit {
+			s.f.write("/sys/block/zram0/disksize", "0\n")
+		}
 		s.f.write(procSwaps, strings.ReplaceAll(s.f.read(procSwaps), line, ""))
 		s.activeStates[name] = "inactive"
 		s.bindSetupUnit(name, "inactive")

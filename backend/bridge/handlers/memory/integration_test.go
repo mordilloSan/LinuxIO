@@ -71,13 +71,17 @@ func TestMemoryIntegration(t *testing.T) {
 	assertDiskMode(t, file, switchTo(t, e, back))
 }
 
-// startSmallZram makes the provider swap on a 64 MiB zram device.
+// startSmallZram makes the provider swap on a 64 MiB zram device. zram is
+// not swapping; zram-tools' device may still be set up from the stop before,
+// and is then reset first.
 func startSmallZram(t *testing.T, e *executor) {
 	t.Helper()
 	ctx := t.Context()
 	unit, path, config := zramService, zramswapConfigPath, renderZramswapConfig(64<<20)
 	if host.zramProvider() == apischema.ZramProviderGenerator {
 		unit, path, config = zramGeneratorSwapUnit, zramGeneratorConfigPath, renderZramGeneratorConfig(64<<20)
+	} else if err := e.sys.resetZram(ctx, zramToolsDevice); err != nil {
+		t.Fatalf("reset %s: %v", zramToolsDevice, err)
 	}
 	if err := e.sys.writeFile(path, config, managedFileMode); err != nil {
 		t.Fatal(err)

@@ -224,7 +224,7 @@ const LEFT_TEXT: Partial<
   "zram_size:not_managed":
     "Compressed memory keeps its current size: it is not run by a zram tool that LinuxIO manages.",
   "zram_size:other_size":
-    "Compressed memory was restarted and came back at another size than planned. Check the zram tool's configuration.",
+    "Compressed memory came up at another size than planned. Check the zram tool's configuration.",
   "zram_size:no_other_swap":
     "Compressed memory keeps its current size until the next restart: restarting it now would leave the host without swap.",
 };

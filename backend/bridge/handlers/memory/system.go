@@ -2,9 +2,14 @@ package memory
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
@@ -22,6 +27,9 @@ type hostSystem interface {
 	// restartUnit stops and starts a unit as one job; on a unit that is not
 	// running it is a start.
 	restartUnit(ctx context.Context, name string) error
+	// resetZram frees the zram device name, which nothing may swap on or
+	// hold open, so that its size can be set again.
+	resetZram(ctx context.Context, name string) error
 	// swapOff takes the swap file or partition at device, a path from
 	// /proc/swaps, away with swapoff and returns when it has left. It ends
 	// early only when ctx does, and the device then swaps on.
@@ -59,6 +67,34 @@ func (liveSystem) stopUnit(ctx context.Context, name string) error {
 
 func (liveSystem) restartUnit(ctx context.Context, name string) error {
 	return systemd.RestartUnit(ctx, name)
+}
+
+// zramResetWait is how long resetZram waits for whatever holds the device
+// open, as udev does for a moment after a swapoff.
+const zramResetWait = 5 * time.Second
+
+// resetZram writes the device's reset attribute, which the kernel refuses
+// with EBUSY while the device is open. A device that does not exist needs
+// no reset.
+func (s liveSystem) resetZram(ctx context.Context, name string) error {
+	reset := filepath.Join(sysBlockDir, name, "reset")
+	var busy error
+	err := waitUntil(ctx, zramResetWait, 100*time.Millisecond, func() (bool, error) {
+		err := s.writeParam(reset, "1")
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			return true, nil
+		case errors.Is(err, syscall.EBUSY):
+			busy = err
+			return false, nil
+		default:
+			return err == nil, err
+		}
+	})
+	if err != nil && busy != nil {
+		return fmt.Errorf("%w: %w", err, busy)
+	}
+	return err
 }
 
 func (s liveSystem) swapOff(ctx context.Context, device string) error {

@@ -185,6 +185,20 @@ To `zram`:
      behind it, as a drain does. A device whose size cannot be read is left
      alone. A start that fails leaves the host on its disk swap, and the run
      fails.
+
+   Before any start with zram-tools, a `zram0` that is set up but does not
+   swap is reset through `/sys/block/zram0/reset` (`resetStaleZram`). The
+   kernel refuses a new size for a device that is set up, and `zramswap
+   start` then swaps on it at the size it has. `zramswap stop` leaves the
+   device that way when it cannot unload the zram module, which the test VM
+   shows it often cannot right after its own `swapoff` ("Module zram is in
+   use"). Only a device that holds swap, by the signature `mkswap` writes,
+   is reset: one that holds anything else was set up by someone for another
+   use, `zramswap start` would format it, and the step refuses with
+   `ErrConflict` instead. The kernel refuses the reset while something holds
+   the device open, so it is tried for five seconds. After the start the
+   size is read again, and a device that came up at another size than
+   planned is reported (`zram_size`, `other_size`).
 3. `apply_sysctls`: write the preset live.
 4. `disable_zswap`: turn zswap off and keep it off at boot (see below).
 5. `stop_swap_file`: when the file is named in fstab, take it away with
@@ -268,7 +282,7 @@ the success message, and keeps the chosen row so Apply can be pressed again.
 | `zram` | `not_managed` | The provider's unit does not run that zram (another tool set it up, the unit is `inactive` or `failed`, with `zram-generator` a device other than `zram0` swaps), or no provider is installed. |
 | `zram_size` | `not_enough_memory`, `not_managed` | zram runs at another size than planned and cannot be restarted for that reason. |
 | `zram_size` | `no_other_swap` | The same, and no swap file or partition is active: a restart would leave the host without swap meanwhile, and with none at all if the start failed. |
-| `zram_size` | `other_size` | zram was restarted and its provider brought it back at another size than planned, as when a drop-in overrides the size. Every later change would restart it again. |
+| `zram_size` | `other_size` | zram came up at another size than planned: a drop-in overrides the size, or the device could not be reset. Every later change would restart it again. |
 
 A device left active beside the other kind makes the mode `mixed`, and a
 `mixed` result always has a reason: `not_managed`, for the swap file or for
@@ -432,7 +446,10 @@ request.
   device swapping.** `swapoff(2)` gives up when a signal is pending and the
   kernel puts the device back, with the pages already read in memory
   (`try_to_unuse` and the reinsert in `mm/swapfile.c`). A cancelled request
-  kills the helper.
+  kills the helper. The kernel looks for the signal between one process's
+  memory and the next, not inside one, so the cancel takes effect when the
+  process being read back is done: at once for many small processes, after
+  all of its parked data for one large one.
 - **systemd follows.** It watches `/proc/swaps`, and marks the unit of a
   device that left inactive (`swap_process_proc_swaps` in systemd's
   `src/core/swap.c`). The unit is still what keeps the file off at boot
@@ -623,9 +640,22 @@ service step, since `start_zram` does that. See
   wait for systemd, a start of the unit) and checks the file and its unit
   are active again, starts a 64 MiB zram beside the swap file and switches to
   zram again, which must end at the planned size. Cleanup switches back to
-  the starting mode. It does not cover zswap's persistence, swappiness, a
-  drain of a device that holds data, a cancelled `swapoff`, rollback, TuneD
-  or a reboot.
+  the starting mode. It does not cover zswap's persistence, swappiness,
+  rollback, TuneD or a reboot.
+  The same target then runs `TestMemoryDrainIntegration`
+  (`drain_integration_test.go`) on a data disk used as swap. Eight helper
+  processes hold data that does not compress, in a cgroup of the test's own,
+  which is told to reclaim until the data is on the disk and out of the swap
+  cache. The test then cancels a drain once `swapoff` has read some of it
+  back, and checks that the device still swaps with most of the data parked
+  and its unit active; drains in full, and checks that the device is empty
+  and swapping again, its unit active, and that each helper finds its data
+  unchanged by its checksum. It runs with 2 GiB, and again with 320 MiB and
+  the cgroup's reads from the disk capped at 2 MiB a second (`io.max`), where
+  the drain must take more than 90 seconds: nothing ends a `swapoff` at the
+  timeout systemd gives a swap unit. On 2026-11-16, on kernel 7.0.0-38 in the
+  test VM, the cancel left 1791 of 2047 MiB parked and the rest drained in
+  11 seconds, and the capped run drained 280 MiB in 2 minutes 19 seconds.
   `make vm-test-memory-integration ZRAM_PROVIDER=zram-generator`, after
   `make vm-reset`, runs the same test with Ubuntu's `systemd-zram-generator`
   in place of zram-tools: after zram it checks the `[zram0]` configuration
@@ -638,7 +668,8 @@ Each is by design or unlikely to be met, or is an open item in
 [the backlog](./TODO/backlog.md).
 
 - A `swapoff` has no time limit: it runs until the device is empty or the
-  request is cancelled, and the dialog stays open meanwhile.
+  request is cancelled, and the dialog stays open meanwhile. A cancel takes
+  effect only when the process whose memory is being read back is done.
 - A swap partition or a swap device fstab does not name is never stopped, so
   such a host cannot choose compressed memory only (partition) or have the
   device drained (unnamed).

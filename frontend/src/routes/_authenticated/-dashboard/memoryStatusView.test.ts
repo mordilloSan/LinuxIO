@@ -413,7 +413,7 @@ describe("modeResultWarning", () => {
     [
       "zram_size",
       "other_size",
-      "Compressed memory was restarted and came back at another size than planned. Check the zram tool's configuration.",
+      "Compressed memory came up at another size than planned. Check the zram tool's configuration.",
     ],
     [
       "zram_size",

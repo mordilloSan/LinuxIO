@@ -189,18 +189,21 @@ func (r *modeRun) startZram(ctx context.Context) error {
 		return err
 	}
 	start := r.sys.startUnit
-	stopped := false
 	switch {
 	case hasDevice(status.Devices, apischema.SwapDeviceZram):
-		if stopped, err = r.stopZramToResize(ctx, unit, status); err != nil || !stopped {
-			return err
+		stopped, stopErr := r.stopZramToResize(ctx, unit, status)
+		if stopErr != nil || !stopped {
+			return stopErr
 		}
 		// zram is off: bringing it back is not cancelled with the request.
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout+r.waits.swapOn)
+		ctx, cancel = context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout+zramResetWait+r.waits.swapOn)
 		defer cancel()
 	case !r.generated() && !r.unitNotRunning(ctx, zramService):
 		start = r.sys.restartUnit
+	}
+	if err = r.resetStaleZram(ctx); err != nil {
+		return err
 	}
 	if err = start(ctx, unit); err != nil {
 		return err
@@ -208,16 +211,51 @@ func (r *modeRun) startZram(ctx context.Context) error {
 	if err = waitUntil(ctx, r.waits.swapOn, r.waits.poll, r.zramSwapping); err != nil {
 		return fmt.Errorf("wait for a zram device in %s: %w", procSwaps, err)
 	}
-	if !stopped {
+	// A provider that brings zram up at another size, as one a drop-in
+	// overrides or a device that could not be reset, would be stopped again
+	// at every later change: say so. zram swaps by now, so a status that
+	// cannot be read does not fail the step.
+	status, err = r.sys.status(ctx)
+	if err != nil {
+		slog.Debug("read the status after starting zram failed", "error", err)
 		return nil
-	}
-	// A provider that brings zram back at another size, as one a drop-in
-	// overrides, would be stopped again at every later change: say so.
-	if status, err = r.sys.status(ctx); err != nil {
-		return err
 	}
 	if !zramSized(status, r.before.ZramPlannedSize) {
 		r.leave(apischema.SwapLeftZramSize, apischema.SwapLeftOtherSize)
+	}
+	return nil
+}
+
+// resetStaleZram frees zram-tools' device when it is set up but does not
+// swap, so that the start can give it the planned size: the kernel refuses a
+// new size for a device that is set up, and the script then swaps on it at
+// the size it has. A device is left that way when zramswap stop cannot
+// unload the zram module, which happens when something still holds the
+// device open right after its swapoff.
+//
+// Only a device that holds swap is reset. One that holds anything else was
+// set up by someone for another use, and zramswap start would format it:
+// the step refuses instead. A reset that fails is logged, and the size
+// check after the start reports it. zram-generator resets its device itself
+// when its swap unit stops.
+func (r *modeRun) resetStaleZram(ctx context.Context) error {
+	if r.generated() {
+		return nil
+	}
+	size, err := r.root.readOptionalUint(filepath.Join(sysBlockDir, zramToolsDevice, "disksize"))
+	if err != nil || size == 0 {
+		return nil
+	}
+	device := "/dev/" + zramToolsDevice
+	swap, err := r.root.holdsSwap(device)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", device, err)
+	}
+	if !swap {
+		return fmt.Errorf("%w: %s is set up and does not hold swap, and zram-tools would format it", bridgeipc.ErrConflict, device)
+	}
+	if err := r.sys.resetZram(ctx, zramToolsDevice); err != nil {
+		slog.Warn("reset zram device failed", "device", zramToolsDevice, "error", err)
 	}
 	return nil
 }

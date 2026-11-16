@@ -28,8 +28,12 @@ const (
 )
 
 // zramService is zram-tools' unit: it sets up the zram device from
-// /etc/default/zramswap and swaps on it.
-const zramService = "zramswap.service"
+// /etc/default/zramswap and swaps on it. zramToolsDevice is that device,
+// which its script names itself.
+const (
+	zramService     = "zramswap.service"
+	zramToolsDevice = "zram0"
+)
 
 // The units zram-generator makes at a systemd reload for the zram0 device
 // LinuxIO configures. The swap unit requires the setup service, which

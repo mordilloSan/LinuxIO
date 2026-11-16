@@ -101,8 +101,8 @@ const (
 	// SwapLeftNoOtherSwap: restarting zram at the planned size would leave
 	// the host without swap meanwhile, since no disk swap is active.
 	SwapLeftNoOtherSwap SwapLeftReason = "no_other_swap"
-	// SwapLeftOtherSize: zram was restarted and its provider brought it
-	// back at another size than the planned one.
+	// SwapLeftOtherSize: zram was started and came up at another size than
+	// the planned one.
 	SwapLeftOtherSize SwapLeftReason = "other_size"
 )
 

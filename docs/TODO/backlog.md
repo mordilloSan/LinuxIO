@@ -210,10 +210,10 @@ Docker updates (`backend/common/dockerupdate`):
 - [ ] **The memory root test is narrow.** `TestMemoryIntegration`
   (`backend/bridge/handlers/memory/integration_test.go`) covers a switch to zram
   and back, a drain of the empty swap file and a restart of zram at the
-  planned size; it does not cover zswap and its tmpfiles entry, swappiness, a
-  drain of a device that holds data, a cancelled `swapoff`, rollback, TuneD or
-  a reboot, and its cleanup restores the mode but not the three files LinuxIO
-  manages.
+  planned size, and `TestMemoryDrainIntegration` a drain of parked data,
+  cancelled and in full; neither covers zswap and its tmpfiles entry,
+  swappiness, rollback, TuneD or a reboot, and the cleanup restores the mode
+  but not the three files LinuxIO manages.
 - [ ] Not run in the test VM: an update that waits for jobs, started from the
   in-app updater. `control.app_update` installs only a published release, and
   no published release has a higher `jobs.Protocol` than v0.53.0, so
@@ -224,14 +224,6 @@ Docker updates (`backend/common/dockerupdate`):
 
 - [ ] **Memory overflow, checks never done on a host.** Try each in the test
   VM or on a machine, then fix the code or the doc, or delete the line:
-  - `TestMemoryIntegration` has not run since swap files and partitions are
-    taken away by running `swapoff` and zram is restarted at the planned
-    size. Run `make vm-reset` and then `make vm-test-memory-integration`.
-    Until it passes, two things rest on reading systemd's source: that
-    systemd reads the unit of a device that left behind its back as
-    inactive, and that a start then brings it back. Not in that test: a request cancelled while a `swapoff`
-    reads pages back, which should end with the device swapping, and a
-    `swapoff` of several GB.
   - The `zram-generator` path has run only against the fake host. Run
     `make vm-reset` and then
     `make vm-test-memory-integration ZRAM_PROVIDER=zram-generator`, which uses

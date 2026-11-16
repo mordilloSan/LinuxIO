@@ -3,6 +3,7 @@ package memory
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"maps"
 	"os"
@@ -321,4 +322,26 @@ func (h hostRoot) removable(name string) bool {
 	}
 	flag, err := os.ReadFile(filepath.Join(dir, "removable"))
 	return err == nil && strings.TrimSpace(string(flag)) == "1"
+}
+
+// swapSignatures are what mkswap writes in the last ten bytes of a swap
+// area's first page.
+var swapSignatures = []string{"SWAPSPACE2", "SWAP-SPACE"}
+
+// holdsSwap reports whether the block device or file name starts with a
+// swap area, by its signature. One too short to hold a page does not.
+func (h hostRoot) holdsSwap(name string) (bool, error) {
+	f, err := os.Open(h.path(name))
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = f.Close() }()
+	signature := make([]byte, 10)
+	if _, err := f.ReadAt(signature, int64(os.Getpagesize()-len(signature))); err != nil {
+		if errors.Is(err, io.EOF) {
+			return false, nil
+		}
+		return false, err
+	}
+	return slices.Contains(swapSignatures, string(signature)), nil
 }
