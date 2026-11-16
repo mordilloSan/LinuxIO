@@ -4,11 +4,21 @@ Every open item about the backend, the API, jobs, scheduled scripts and
 consistency is here, once. What is built is described in
 [the docs](../README.md), not here.
 
-An item belongs here only if someone could be harmed by it or would notice it.
-LinuxIO is server administration software that other people install, so a
-second local user and a session without sudo count. An observation with no
-consequence does not get an item; if it is likely to be raised again it gets
-one line under [Rejected](#rejected) with its reason.
+An item belongs here only if someone would hit it in normal use or it is a
+safety matter: data loss, privilege, another local user. LinuxIO is server
+administration software that other people install, so a second local user and
+a session without sudo count.
+
+What does not get an item, so that the list stays short enough to work
+through:
+
+- A finding that a few lines fix. It is fixed in the change that found it.
+- A limit that is by design, or an edge case nobody is expected to hit. It is
+  one line under "Known limits" in the doc that covers the feature, and is not
+  repeated here.
+- A change that was proposed and turned down. If it is likely to be proposed
+  again it is one line under [Rejected](#rejected) with its reason.
+- An observation with no consequence. It is written nowhere.
 
 How to use it: take an item, fix it with a test, run the Make target
 `AGENTS.md` asks for, and delete the item. Add a new item in the section it
