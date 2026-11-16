@@ -54,6 +54,7 @@ quiet_targets := \
 	test-assistant-agent-integration \
 	test-btrfs-integration \
 	vm-test-btrfs-integration \
+	vm-test-memory-integration \
 	test-vm-browser \
 	analyze \
 	bundle-metrics \
@@ -276,4 +277,4 @@ $(quiet_aliases): ## Run a validation target with compact output and a saved ful
 .PHONY: dev-prep dev dev-stop dev-status-install dev-status-uninstall generate
 .PHONY: build build-nocheck fastbuild build-vite build-backend build-bridge build-cli build-docker-update build-indexer build-monitoring build-btrfs-timer build-claude-relay build-auth build-leak-profile build-go-binaries build-binaries print-binaries print-bin-dir
 .PHONY: localinstall reinstall uninstall clean cloc
-.PHONY: vm-create vm-install vm-ssh vm-reset vm-destroy vm-test-btrfs-integration vm-test-filebrowser-root vm-test-relay-root test-vm-browser
+.PHONY: vm-create vm-install vm-ssh vm-reset vm-destroy vm-test-btrfs-integration vm-test-memory-integration vm-test-filebrowser-root vm-test-relay-root test-vm-browser

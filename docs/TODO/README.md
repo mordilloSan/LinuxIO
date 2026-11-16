@@ -6,7 +6,7 @@ the API, jobs, scheduled scripts and consistency.
 Plans for things that are not built yet each have their own document:
 
 - [Frontend test coverage](./e2e-testing.md)
-- [Memory overflow: swap, zswap and zram from Settings](./memory-overflow.md)
+- [Memory overflow: the overflow alert and zram on Fedora/RHEL](./memory-overflow.md)
 - [Package-managed installation](./packaging.md)
 
 ## Dependency maintenance

@@ -36,25 +36,11 @@ const nativeControlExceptions: ReviewedException[] = [
     protects: "rename editing, commit, cancel, and propagation isolation",
   },
   {
-    file: "routes/_authenticated/filebrowser/-components/Breadcrumbs.tsx",
-    tag: "input",
-    attribute: 'className="linuxio-range-input"',
-    reason: "native gallery-size range control",
-    protects: "continuous gallery-size adjustment",
-  },
-  {
     file: "routes/_authenticated/filebrowser/-components/FileBrowserPanels.tsx",
     tag: "input",
     attribute: 'type="file"',
     reason: "hidden native file and directory inputs",
     protects: "browser file and directory picker behavior",
-  },
-  {
-    file: "routes/_authenticated/assistant/-components/composer/ModelMenu.tsx",
-    tag: "input",
-    attribute: 'className="assistant__effort-range"',
-    reason: "native stepped range for the agent's effort levels",
-    protects: "dragging, keyboard and touch on the effort slider",
   },
   {
     file: "routes/_authenticated/assistant/-components/composer/Composer.tsx",

@@ -717,6 +717,7 @@ export type CapabilityName =
   | "assistant_gemini"
   | "assistant_codex"
   | "tuned"
+  | "zram"
   | "avahi"
   | "wireguard"
   | "libvirt"
@@ -3055,6 +3056,94 @@ export interface SuccessResponse {
   success: boolean;
 }
 
+export interface SwapDevice {
+  disk_hint?: SwapDiskHint;
+  fs_type?: string;
+  kind: SwapDeviceKind;
+  path: string;
+  priority: number;
+  size: number;
+  used: number;
+}
+
+export type SwapDeviceKind = "file" | "partition" | "zram";
+
+export type SwapDiskHint = "" | "mmc" | "removable";
+
+export type SwapDrainBlockedReason =
+  | ""
+  | "nothing_parked"
+  | "not_enough_memory"
+  | "unmanaged_device"
+  | "unit_masked";
+
+export interface SwapFile {
+  active: boolean;
+  disk_hint: SwapDiskHint;
+  fs_type: string;
+  managed: boolean;
+  path: string;
+}
+
+export type SwapMode = "disk" | "zswap" | "zram" | "none" | "mixed";
+
+export interface SwapModePreset {
+  mode: SwapMode;
+  swappiness: number;
+}
+
+export interface SwapModeRequest {
+  mode: SwapMode;
+}
+
+export interface SwapProgress {
+  device?: string;
+  index: number;
+  step: SwapStep;
+  total: number;
+}
+
+export interface SwapStatus {
+  can_drain: boolean;
+  devices: SwapDevice[];
+  drain_blocked_reason: SwapDrainBlockedReason;
+  mem_available: number;
+  mem_total: number;
+  mode: SwapMode;
+  page_cluster: number;
+  presets: SwapModePreset[];
+  recommended_mode: SwapMode;
+  recommended_swappiness: number;
+  swap_file?: SwapFile;
+  swap_total: number;
+  swap_used: number;
+  swappiness: number;
+  tuned_active: boolean;
+  tuned_profile: string;
+  watermark_boost_factor: number;
+  watermark_scale_factor: number;
+  zram_available: boolean;
+  zram_devices: ZramDevice[];
+  zram_planned_size: number;
+  zram_unavailable_reason: ZramUnavailableReason;
+  zswap: ZswapStatus;
+}
+
+export type SwapStep =
+  | "write_config"
+  | "start_swap_file"
+  | "start_zram"
+  | "stop_zram"
+  | "apply_sysctls"
+  | "disable_zswap"
+  | "enable_zswap"
+  | "stop_swap_file"
+  | "drain_device";
+
+export interface SwappinessRequest {
+  swappiness: number;
+}
+
 export interface SystemFailedLoginAlert {
   count: number;
   id: string;
@@ -3685,6 +3774,26 @@ export interface WireGuardUpdatePeerRequest {
   regenerateKeys?: boolean;
 }
 
+export interface ZramDevice {
+  compressed_size: number;
+  disksize: number;
+  mem_used: number;
+  name: string;
+  original_size: number;
+}
+
+export type ZramUnavailableReason =
+  | ""
+  | "package_missing"
+  | "swap_partition_active";
+
+export interface ZswapStatus {
+  available: boolean;
+  compressor: string;
+  enabled: boolean;
+  max_pool_percent: number;
+}
+
 export interface LinuxIOSchema {
   accounts: {
     change_password: {
@@ -4263,6 +4372,27 @@ export interface LinuxIOSchema {
       input: [request: GeneralLogsPageRequest];
       request: GeneralLogsPageRequest;
       result: GeneralLogsPageResponse;
+    };
+  };
+
+  memory: {
+    drain_swap: {
+      input: [];
+      request: void;
+      result: SwapStatus;
+      progress: TaskProgress<SwapProgress>;
+    };
+    get_swap_status: { input: []; request: void; result: SwapStatus };
+    set_swap_mode: {
+      input: [mode: SwapMode];
+      request: SwapModeRequest;
+      result: SwapStatus;
+      progress: TaskProgress<SwapProgress>;
+    };
+    set_swappiness: {
+      input: [swappiness: number];
+      request: SwappinessRequest;
+      result: SwapStatus;
     };
   };
 
@@ -5244,6 +5374,7 @@ export interface LinuxIOCallSchema {
     request: GeneralLogsPageRequest;
     result: GeneralLogsPageResponse;
   };
+  "memory.get_swap_status": { request: void; result: SwapStatus };
   "monitoring.check_database": {
     request: void;
     result: MonitoringDatabaseResult;

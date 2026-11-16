@@ -228,6 +228,20 @@ snapshots and replication, and the pools on the
 Disks overview, which manage devices, health and settings; see
 [Btrfs management](./btrfs.md).
 
+## zram
+
+The `zram` capability checks for the `zramswap` command of `zram-tools`
+(`memory.CheckZramAvailability`, which also looks in `/usr/sbin` for a bridge
+whose `PATH` omits it) and installs the Debian package `zram-tools`. There is
+no service step: the dashboard's **Memory overflow** dialog enables
+`zramswap.service` when the admin chooses compressed memory only. The dialog
+itself does not wait for the capability; its zram row links to Capabilities
+while the package is missing. The capability card has no link back, since the
+dialog has no URL.
+The capability declares no RHEL package, because Fedora uses `zram-generator`
+with a different configuration, so Install on Fedora or RHEL falls back to the
+Debian name and fails. See [Memory overflow](./memory.md#the-zram-capability).
+
 ## Filesystem tools
 
 The `e2fsprogs` and `xfsprogs` capabilities check for `mkfs.ext4` and

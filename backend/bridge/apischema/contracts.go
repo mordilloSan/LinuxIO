@@ -128,6 +128,12 @@ var StringEnums = map[string][]string{
 	"VMCPUMode":                 {"host-passthrough", "host-model", "default", "custom"},
 	"NetworkBridgeHandoffState": enumNames(NetworkBridgeHandoffApplying, NetworkBridgeHandoffAwaitingConfirmation, NetworkBridgeHandoffConfirmed, NetworkBridgeHandoffReverted, NetworkBridgeHandoffUnknown),
 	"WireGuardHookKind":         enumNames(WireGuardHookKinds...),
+	"SwapMode":                  enumNames(SwapModeDisk, SwapModeZswap, SwapModeZram, SwapModeNone, SwapModeMixed),
+	"SwapDeviceKind":            enumNames(SwapDeviceFile, SwapDevicePartition, SwapDeviceZram),
+	"SwapDiskHint":              enumNames("", SwapDiskHintMMC, SwapDiskHintRemovable),
+	"ZramUnavailableReason":     enumNames("", ZramPackageMissing, ZramSwapPartitionActive),
+	"SwapDrainBlockedReason":    enumNames("", SwapDrainNothingParked, SwapDrainNotEnoughMemory, SwapDrainUnmanagedDevice, SwapDrainUnitMasked),
+	"SwapStep":                  enumNames(SwapSteps...),
 }
 
 var ExtraTypes = []TypeSpec{

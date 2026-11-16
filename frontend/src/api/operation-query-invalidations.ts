@@ -103,6 +103,10 @@ const NETWORK_BRIDGE_KEYS = [
   endpointQueryPrefix("virt.networks"),
 ];
 
+// Each memory change returns the new swap status; the Memory dialog refetches
+// it so a session that did not start the change sees the new host too.
+const MEMORY_STATUS_KEYS = [endpointQueryPrefix("memory.get_swap_status")];
+
 /**
  * Single source of truth for which query caches a completed operation makes
  * stale, keyed by route.
@@ -447,6 +451,10 @@ export const OPERATION_QUERY_INVALIDATIONS: Record<string, QueryKey[]> = {
 
   "updates.set_auto_updates": [endpointQueryPrefix("updates.get_auto_updates")],
   "logging.set_debug": [endpointQueryPrefix("logging.get_debug")],
+
+  "memory.set_swap_mode": MEMORY_STATUS_KEYS,
+  "memory.set_swappiness": MEMORY_STATUS_KEYS,
+  "memory.drain_swap": MEMORY_STATUS_KEYS,
 
   "wireguard.add_interface": [endpointQueryPrefix("wireguard.list_interfaces")],
   "wireguard.update_interface": [

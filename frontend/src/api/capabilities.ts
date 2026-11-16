@@ -308,6 +308,18 @@ export const CAPABILITIES = [
     installable: { requiresPackageKit: true },
   },
   {
+    wire: "zram",
+    state: "zramAvailable",
+    label: "zram",
+    description: "Compressed memory with no swap file on disk",
+    readyText: "zramswap command is available.",
+    dependency: "zram-tools",
+    icon: "mdi:memory",
+    reasonUnknown: "zram-tools availability is still being checked.",
+    reasonUnavailable: "zram-tools is not installed.",
+    installable: { requiresPackageKit: true },
+  },
+  {
     wire: "avahi",
     state: "avahiAvailable",
     label: "Avahi (mDNS)",

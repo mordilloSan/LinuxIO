@@ -1,6 +1,7 @@
 import { useMemo, useState, type CSSProperties, type DragEvent } from "react";
 
 import AppButton from "@/components/ui/AppButton";
+import AppSlider from "@/components/ui/AppSlider";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { HomeFilledIcon } from "@/icons/svg";
 import { down } from "@/theme/breakpoints";
@@ -187,15 +188,7 @@ const breadcrumbStyles = `
   }
 
   .linuxio-range-input {
-    margin: 0;
-    width: 100%;
     max-width: 6.25em;
-    accent-color: var(--app-palette-primary-main);
-  }
-
-  :root[data-tab-navigation] .linuxio-range-input:focus-visible {
-    outline: 2px solid var(--app-palette-primary-main);
-    outline-offset: 2px;
   }
 `;
 
@@ -357,16 +350,13 @@ const FilebrowserBreadcrumbs = ({
       {showGallerySize && onGallerySizeChange && (
         <div className="linuxio-gallery-size gallery-size card">
           Size<span className="sr-only">:</span>
-          <input
+          <AppSlider
             className="linuxio-range-input"
             id="gallery-size"
             max={8}
             min={1}
             name="gallery-size"
-            onChange={(event) =>
-              onGallerySizeChange(Number.parseInt(event.target.value, 10))
-            }
-            type="range"
+            onChange={onGallerySizeChange}
             value={gallerySize}
           />
         </div>

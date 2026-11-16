@@ -177,6 +177,14 @@ make vm-destroy       # delete the domain and its volumes; the cache stays
   `bridge/handlers/storage` test binaries on the host,
   prints the VM's kernel version and runs the same tests as
   `test-btrfs-integration`, as root in the VM.
+- `vm-test-memory-integration` builds the `bridge/handlers/memory` test binary
+  on the host and runs `TestMemoryIntegration` as root in the VM: a switch to
+  zram and back through systemd, the kernel and `/etc` (see
+  [Memory overflow](./memory.md#tests)). The test needs zram-tools and a swap
+  file in `/etc/fstab`, so the first run installs `zram-tools` with apt and
+  disables the `zramswap.service` its package starts, and, when `/etc/fstab`
+  has no `/swap.img`, creates a 1 GiB `/swap.img`, adds it to fstab and starts
+  it. Both changes stay in the VM until `make vm-reset` reverts its disks.
 - `vm-test-filebrowser-root` does the same for the file browser's root-only
   ownership tests (`test-filebrowser-root`).
 - `vm-test-relay-root` builds the `bridge/cmd` test binary on the host and
@@ -423,7 +431,8 @@ The full index groups the supported targets as follows:
   `dev-stop`, `dev-status-install`, `dev-status-uninstall`, `clean`, `cloc`
 - installation: `localinstall`, `reinstall`, `uninstall`
 - test VM: `vm-create`, `vm-install`, `vm-ssh`, `vm-reset`, `vm-destroy`,
-  `vm-test-btrfs-integration`, `vm-test-filebrowser-root`, `vm-test-relay-root`,
+  `vm-test-btrfs-integration`, `vm-test-memory-integration`,
+  `vm-test-filebrowser-root`, `vm-test-relay-root`,
   `test-vm-browser`
 - documentation: `help-overrides`, `check-docs` (the docs index in
   `docs/README.md`, and the paths and links docs name)

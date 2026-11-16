@@ -104,6 +104,13 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
       ]);
     }
   });
+  it("refreshes the swap status after every memory change", () => {
+    for (const action of ["set_swap_mode", "set_swappiness", "drain_swap"]) {
+      expect(OPERATION_QUERY_INVALIDATIONS[`memory.${action}`]).toEqual([
+        ["linuxio", "memory", "get_swap_status"],
+      ]);
+    }
+  });
   it("refreshes index-backed data after indexing", () => {
     expect(OPERATION_QUERY_INVALIDATIONS["filebrowser.index"]).toEqual([
       ["linuxio", "indexer", "get_status"],

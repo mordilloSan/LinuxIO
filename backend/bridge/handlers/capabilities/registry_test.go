@@ -12,6 +12,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/acpagents"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/acpagents/acpagentstest"
+	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
 	"github.com/mordilloSan/LinuxIO/backend/common/session"
 )
 
@@ -71,6 +72,8 @@ func TestCapabilityInstallPackageSelection(t *testing.T) {
 		{name: "rsync", wantDebian: "rsync", wantRHEL: "rsync"},
 		{name: "e2fsprogs", wantDebian: "e2fsprogs", wantRHEL: "e2fsprogs"},
 		{name: "xfsprogs", wantDebian: "xfsprogs", wantRHEL: "xfsprogs"},
+		// Fedora ships zram-generator with another config file; not supported yet.
+		{name: "zram", wantDebian: "zram-tools"},
 		{
 			name:             "avahi",
 			wantDebian:       "avahi-daemon libnss-mdns",
@@ -116,6 +119,29 @@ func TestRsyncCapabilityDetection(t *testing.T) {
 	}
 	if available, message := spec.Detect(context.Background()); !available || message != "" {
 		t.Fatalf("installed rsync: available=%v, message=%q", available, message)
+	}
+}
+
+// zramswap lives in /usr/sbin, which a service PATH may omit, so detection
+// also looks in the sbin directories.
+func TestZramCapabilityDetection(t *testing.T) {
+	spec, ok := CapabilitySpecByName("zram")
+	if !ok {
+		t.Fatal("zram capability is not registered")
+	}
+	t.Setenv("PATH", t.TempDir())
+	sbinDir := t.TempDir()
+	savedDirs := hostcmd.SearchDirs
+	hostcmd.SearchDirs = []string{sbinDir}
+	t.Cleanup(func() { hostcmd.SearchDirs = savedDirs })
+	if available, message := spec.Detect(context.Background()); available || !strings.Contains(message, "zram-tools is not installed") {
+		t.Fatalf("missing zramswap: available=%v, message=%q", available, message)
+	}
+	if err := os.WriteFile(filepath.Join(sbinDir, "zramswap"), []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if available, message := spec.Detect(context.Background()); !available || message != "" {
+		t.Fatalf("zramswap outside PATH: available=%v, message=%q", available, message)
 	}
 }
 

@@ -106,23 +106,6 @@ func digest(t *testing.T, path string) [32]byte {
 	return [32]byte(h.Sum(nil))
 }
 
-// systemdEscapePath names the unit of a path the way systemd-escape --path
-// does.
-func systemdEscapePath(p string) string {
-	var b strings.Builder
-	for i, c := range []byte(strings.Trim(p, "/")) {
-		switch {
-		case c == '/':
-			b.WriteByte('-')
-		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == ':', c == '_', c == '.' && i > 0:
-			b.WriteByte(c)
-		default:
-			fmt.Fprintf(&b, `\x%02x`, c)
-		}
-	}
-	return b.String()
-}
-
 // itMirror is the two-disk raid1 pool the degraded test loses disks of.
 type itMirror struct {
 	t       *testing.T
@@ -346,8 +329,16 @@ func fstabStyleMountUnit(t *testing.T, uuid, where, present string) func() {
 		t.Fatalf("udevadm trigger %s: %v: %s", present, err, out)
 	}
 	ctx := context.Background()
-	unit := systemdEscapePath(where) + ".mount"
-	device := systemdEscapePath("/dev/disk/by-uuid/"+uuid) + ".device"
+	unit, err := systemd.EscapePath(where)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unit += ".mount"
+	device, err := systemd.EscapePath("/dev/disk/by-uuid/" + uuid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	device += ".device"
 	files := map[string]string{
 		"/run/systemd/system/" + unit:                          "[Mount]\nWhat=/dev/disk/by-uuid/" + uuid + "\nWhere=" + where + "\nType=btrfs\nOptions=noatime\n",
 		"/run/systemd/system/" + device + ".d/linuxio-it.conf": "[Unit]\nJobRunningTimeoutSec=5s\n",

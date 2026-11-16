@@ -5,6 +5,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/docker"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/memory"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/power"
 	nfsshares "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/shares"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/storage"
@@ -268,6 +269,16 @@ var capabilityRegistry = []CapabilitySpec{
 			ServiceRHEL:   "tuned.service",
 			EnableService: true,
 		},
+	},
+	{
+		// Fedora ships zram-generator, with another config file; not
+		// supported yet, so there is no RHEL package.
+		Name:    "zram",
+		LogName: "zram-tools",
+		Detect: func(_ context.Context) (bool, string) {
+			return checkedCapability(memory.CheckZramAvailability())
+		},
+		Install: &InstallSpec{PackageDebian: "zram-tools"},
 	},
 	{
 		Name:    "avahi",

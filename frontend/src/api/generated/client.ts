@@ -312,6 +312,18 @@ const linuxio = {
     general_entry: defineCallWithRequest("logs.general_entry"),
     general_page: defineCallWithRequest("logs.general_page"),
   },
+  memory: {
+    drain_swap: defineMutation("memory", "drain_swap", { kind: "none" }),
+    get_swap_status: defineCall("memory.get_swap_status"),
+    set_swap_mode: defineMutation("memory", "set_swap_mode", {
+      kind: "field",
+      field: "mode",
+    }),
+    set_swappiness: defineMutation("memory", "set_swappiness", {
+      kind: "field",
+      field: "swappiness",
+    }),
+  },
   monitoring: {
     check_database: defineCall("monitoring.check_database"),
     get_config: defineCall("monitoring.get_config"),

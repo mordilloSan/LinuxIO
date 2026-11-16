@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import AppIconButton from "@/components/ui/AppIconButton";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
+import AppSlider from "@/components/ui/AppSlider";
 
 import {
   currentName,
@@ -76,22 +77,18 @@ function EffortSlider({
             />
           ))}
         </span>
-        <input
+        <AppSlider
           aria-label={effort.name}
           aria-valuetext={levels[index].name}
           className="assistant__effort-range"
           max={levels.length - 1}
           min={0}
-          onBlur={commit}
-          onChange={(event) => setDraft(Number(event.target.value))}
+          onChange={setDraft}
+          onCommit={commit}
           // The menu moves focus on arrow keys; the slider needs them.
           onKeyDown={(event) => {
             if (NAV_KEYS.has(event.key)) event.stopPropagation();
           }}
-          onKeyUp={commit}
-          onPointerUp={commit}
-          step={1}
-          type="range"
           value={index}
         />
       </span>

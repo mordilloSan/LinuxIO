@@ -60,6 +60,99 @@ after a change that issues ioctls).
 
 ## Visible bugs
 
+Memory overflow ([Memory overflow](../memory.md)):
+
+- [ ] **A swap file whose `swapoff` outlasts systemd's stop timeout cannot be
+  stopped or drained from the UI.** A swap unit's stop runs `swapoff`, which
+  systemd kills after its stop timeout (90 seconds by default), and the device
+  stays active. The route now fails within a poll with "systemd stopped
+  waiting" (`waitStopped` in `backend/bridge/handlers/memory/executor.go`)
+  instead of waiting its ten minutes, but a full swap file on a slow disk still
+  cannot be emptied. Raising the timeout with a `/run` drop-in was left out: it
+  is more root state and the host behaviour is unverified. Checked.
+- [ ] **A `mixed` result carries no reason.** The page's "both are active,
+  apply again later" fits a room refusal, but a switch also ends `mixed` when
+  the device's unit is not one systemd runs, where retrying changes nothing: a
+  switch to zram with the active swap file not named in fstab or its unit not
+  reported running, and a switch away from zram that `zramswap.service` does
+  not run (set up by another tool, or the service `inactive` or `failed`). Add
+  the device that stayed and why to the result. Checked.
+- [ ] **A failed switch away from zram leaves zram's sysctls over disk swap.**
+  When the switch fails after zram was stopped, rollback puts the live sysctls
+  back to their earlier values, which are zram's, so the host runs disk swap
+  with swappiness 180 and the zram watermark values until a mode is applied
+  again. Checked.
+- [ ] **A kernel with zswap on by default returns to zswap after a reboot** when
+  the mode is zram or disk: those modes remove `/etc/tmpfiles.d/linuxio-zswap.conf`
+  and do not write zswap as off. With zram that puts zswap in front of zram.
+  Write the entry with `N` when the kernel was found enabled before the first
+  change. Checked.
+- [ ] **A change that finished is reported as failed when only the last status
+  read fails.** The three routes return the status read after the change, and
+  an error from that read fails the request though the host changed. Checked.
+- [ ] **A switch to zram that left only disk swap keeps zram's sysctls.** When
+  zram vanishes between `start_zram` and `stop_swap_file`, the file stays on
+  and the run succeeds, with swappiness 180 and the zram watermark values over
+  disk-only swap. Checked.
+- [ ] **A mode change can override an admin's value until reboot.** The kernel
+  defaults of `page-cluster`, `watermark_boost_factor` and
+  `watermark_scale_factor` are written live whenever the live value equals
+  zram's preset, also when the admin set that number themselves and the host
+  never used zram (a switch from disk to zswap does it too). Keying on whether
+  the drop-in held the key would be a better signal. Checked.
+- [ ] **A local user can skew the disk hint.** The hint is read from the mount
+  source in `/proc/self/mountinfo`, and a FUSE mount can name any `/dev/...`
+  source, so a swap file under such a mount can be reported as on an SD card
+  or a removable drive. It changes the recommended mode and nothing else.
+  Checked.
+- [ ] **Only the first swap file in `/etc/fstab` is shown and managed.** With
+  two entries where the first is off and the second is on, `swap_file.active`
+  is false while a swap file swaps: a switch to compressed memory skips its
+  confirmation and ends `mixed`, and the btrfs warning does not show. Checked.
+- [ ] **The eagerness slider saves and toasts once per finished save.** A run
+  of arrow-key presses is several writes of the sysctl drop-in and several
+  "Eagerness updated" toasts, and after a failed save a newer step stays on
+  the slider unsent until the next release. Checked.
+- [ ] **`start_zram` never restarts `zramswap.service`.** With the service
+  active (exited) and no zram swapping, as after a `swapoff` by hand, the step
+  does nothing; with zram already running, which the package starts at install,
+  the new size in `/etc/default/zramswap` applies only after the service
+  restarts or the host reboots, and the page shows the old size. A restart
+  empties zram, so it needs the room check. Checked.
+- [ ] **`set_swap_mode` queues no start after a failed or cancelled stop.**
+  Drain does, because a `swapoff` that outlives the route still ends the
+  device. After a mode change gives up on `stop_swap_file`, the file can still
+  leave without being masked and returns at the next boot; after `stop_zram`
+  its service stays enabled. The host keeps its other swap. Checked.
+- [ ] **Errors that say more than they know.** A drain's error says "a start
+  was queued" also when queueing it failed,
+  and then adds the queueing failure beside it. A rollback on a kernel whose
+  zswap failed to initialise reports a failed restore though nothing changed.
+  Checked.
+- [ ] **A mask outside `/etc/systemd/system` and `/run/systemd/system` is caught
+  only by the route.** `can_drain` reads those two directories, so a mask
+  elsewhere enables the button and the click fails with 409. Checked.
+- [ ] **`/etc/default/zramswap` is overwritten without a marker check.** It is a
+  `zram-tools` conffile, so an admin's own edits are replaced and dpkg asks at
+  the next package upgrade. Checked.
+- [ ] **The Memory overflow dialog has no URL.** It opens only from the Swap
+  row of the dashboard's Memory card, so the `zram` capability card and its
+  toast cannot link back to it after an install, and it cannot be bookmarked. A
+  validated search parameter on the dashboard route would give it one. Checked.
+- [ ] **The Memory overflow dialog cannot be closed while a change runs**, which
+  for a swap file that empties slowly is minutes. The change is a task, so the
+  dialog could close and leave the progress to the task list. Checked.
+- [ ] **A swap file on a USB disk enclosure is not steered to compressed
+  memory.** The hint reads the kernel's removable flag, which a USB stick and a
+  card reader set and an enclosure does not; that is right for a USB SSD and
+  wrong for a worn flash drive in an enclosure. A swap file on LVM or LUKS is
+  not flagged either, whatever disk is under it. Checked.
+- [ ] **Installing the `zram` capability on Fedora and RHEL fails.** The entry
+  declares only the Debian package, so the installer falls back to `zram-tools`
+  and reports it as not found; the zram row in the Memory dialog then offers the
+  link to Capabilities. Planned in
+  [Memory overflow](./memory-overflow.md#fedora-and-rhel). Checked.
+
 Docker updates (`backend/common/dockerupdate`):
 
 - [ ] **A failed Compose update is not rolled back.** A standalone container
@@ -93,6 +186,19 @@ Docker updates (`backend/common/dockerupdate`):
 
 ## Tests that are missing
 
+- [ ] **The assistant's effort slider was not looked at in a browser after it
+  moved to `AppSlider`.** Its thumb, halo and invisible track now come from
+  `--app-slider-*` variables set in `assistant.css`; the fake agent of the
+  browser suite offers no effort option, so no spec draws it.
+- [ ] **No browser spec for the Memory overflow dialog.** Its single-choice
+  list, slider, the confirm step's focus (Back on entry, Apply on the way back)
+  and the pencil that opens it were exercised only under jsdom
+  (`MemoryOverflowDialog.test.tsx`, `Memory.test.tsx`).
+- [ ] **The memory root test is narrow.** `TestMemoryIntegration`
+  (`backend/bridge/handlers/memory/integration_test.go`) covers a switch to zram
+  and back; it does not cover zswap and its tmpfiles entry, swappiness, drain,
+  rollback, a stop timeout, TuneD or a reboot, and its cleanup restores the mode
+  but not the three files LinuxIO manages.
 - [ ] Not run in the test VM: an update that waits for jobs, started from the
   in-app updater. `control.app_update` installs only a published release, and
   no published release has a higher `jobs.Protocol` than v0.53.0, so
@@ -101,13 +207,32 @@ Docker updates (`backend/common/dockerupdate`):
 
 ## Needs a real machine or a measurement
 
-- [ ] **Seen once and not explained.** Try each in the test VM once, then fix
-  it or delete the line:
-  - About one call in 300 through the relay takes near 250 ms where the
-    median is under 1 ms (`TestRelayRoundTripSpeed` logs its maximum).
-  - `TestBtrfsDegradedIntegration` failed once in six runs on the noble VM
-    (kernel 6.8) with "the refusal raised no alert explaining it", the boot
-    check's alert in `backend/common/btrfs/degraded.go`; the rerun passed.
+- [ ] **Memory overflow, checks never done on a host.** Try each in the test
+  VM or on a machine, then fix the code or the doc, or delete the line:
+  - `make vm-test-memory-integration` has not been run.
+  - `memory.get_swap_status` asks TuneD through `power.GetStatus` as the
+    session user, and finds `zramswap` through the bridge's `PATH` with the
+    `/usr/sbin` fallback. From a bridge without sudo, check that TuneD reads as
+    running when it is (a refused D-Bus call counts as not running, and
+    `set_swappiness` then writes a value TuneD overrides later) and that
+    `zramswap` is found.
+  - The fail-fast condition for a stop systemd gave up on: a `swapoff` longer
+    than the stop timeout should leave the swap unit `active` after it was
+    `deactivating`, and a timed-out `zramswap stop` should leave the service
+    `failed`. If systemd reports otherwise the wait runs to its ten minutes.
+  - The error the kernel gives for a zswap compressor it does not have: the code
+    accepts both `ENOENT` and `EINVAL` and keeps the compressor it has.
+  - A masked fstab swap unit across a reboot: that it stays off, and that
+    unmasking and reloading brings back the unit the fstab generator makes.
+  - A swap file that fstab names through a symlink: systemd may tie the swap's
+    state to the unit of the path in `/proc/swaps` and keep `<fstab path>.swap`
+    inactive. A mode change then leaves the file on (`mixed`) and a drain
+    refuses; check what systemd reports.
+  - A swap partition fstab names by `UUID=`: the drain stops
+    `dev-disk-by\x2duuid-<uuid>.swap` without reading its state, on the
+    understanding that systemd marks that alias unit active from
+    `/proc/swaps`. Check that it reads `active` while the partition swaps;
+    if so the drain can read its state as it does for a swap file.
 - [ ] **Nothing works below a folder link with an absolute target**
   (audit 36). A link such as `/home/u/data -> /mnt/data` is refused by Go's
   `os.Root` for any path that goes through it, and `iteminfo.ResolveSymlinksAt`
@@ -137,6 +262,27 @@ Docker updates (`backend/common/dockerupdate`):
 
 Do one of these only when something shows it is needed.
 
+- The file browser's gallery-size slider cannot be reached: `Breadcrumbs.tsx`
+  renders it only with `showGallerySize`, and its one caller,
+  `FileBrowserBreadcrumbs.tsx`, never passes it. Wire it to the card size of
+  the grid view, or remove it with the `--linuxio-filebrowser-chrome-surface`
+  variable and `getChromeSurfaceColor`, which only it uses.
+- Name a swap unit exactly as systemd does for an unusual fstab label
+  (`encode_devnode_name`) and for a path of 256 bytes or more, which systemd
+  names with a hash. Both entries count as unmanaged today, so nothing is
+  stopped or drained for them.
+- Read the unit's state over one system bus connection for a whole wait: each
+  poll of a long `swapoff` opens a new one, about four a second.
+- Hoist the `\ooo` unescape helper: `backend/bridge/handlers/memory/host.go`
+  holds a fourth copy, beside those in `common/btrfs/mounts.go`,
+  `storage/blockdev_sysfs.go` and the indexer.
+- Read `/etc/fstab` once per memory change. A mode change and a drain read it
+  inside the status and again in `readView`, so the drain reason and the drain
+  targets can come from different reads when fstab changes in between; the
+  status read could return the matched entries.
+- Make the memory success log exact: `swap_file_left_active` is false when an
+  unmanaged swap file stays active, and a drain's `devices` counts a device
+  that vanished and was skipped.
 - Run a file browser change as the session user when the path is inside
   folders that user owns, so the user's own folder links work instead of being
   refused with the folder they point to. The refusal offers to open that
@@ -205,6 +351,20 @@ File browser, after the link fix:
 - The size estimate of a compress for the session user does not count what a
   link points to, so the progress bar can reach 100% a little early: counting
   it would mean following the link the estimate exists to avoid.
+
+Memory overflow:
+
+- A swap partition, or a swap device `/etc/fstab` does not name, is never
+  stopped or masked. A host with an active swap partition cannot choose
+  compressed memory only, and a device with no fstab entry cannot be drained:
+  only a device matched to an entry has a unit that can be started again, and
+  the feature never takes away swap it cannot bring back.
+- A malformed optional kernel file (a non-numeric sysctl, an `mm_stat` with
+  fewer than three fields) fails the status route instead of reading as zero:
+  a format change in the kernel should surface.
+- `undoZramEnable` reads `/proc/swaps` and then stops the service, so a zram
+  device that appears between the two is stopped without a room check. The
+  window is a few milliseconds and the device would hold almost nothing.
 
 Without sudo:
 
