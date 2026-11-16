@@ -1,13 +1,16 @@
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, screen } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { FileItem } from "../-types";
 
 const virtualizerState = vi.hoisted(() => ({
+  gridOptions: undefined as { minItemWidth: number } | undefined,
+  items: [] as { index: number; key: string }[],
   measure: vi.fn(),
   instance: undefined as
     | {
         containerRef: () => void;
-        getVirtualItems: () => never[];
+        getVirtualItems: () => { index: number; key: string }[];
         measure: ReturnType<typeof vi.fn>;
         measureElement: () => void;
         scrollToIndex: ReturnType<typeof vi.fn>;
@@ -27,7 +30,7 @@ vi.mock("@tanstack/react-virtual", () => ({
     virtualizerState.options = options;
     return (virtualizerState.instance ??= {
       containerRef: () => {},
-      getVirtualItems: () => [],
+      getVirtualItems: () => virtualizerState.items,
       measure: virtualizerState.measure,
       measureElement: () => {},
       scrollToIndex: vi.fn(),
@@ -36,7 +39,11 @@ vi.mock("@tanstack/react-virtual", () => ({
 }));
 
 vi.mock("@/hooks/useGridColumnCount", () => ({
-  useGridColumnCount: () => 3,
+  // Three columns up to the default card width, two for wider cards.
+  useGridColumnCount: (_ref: unknown, options: { minItemWidth: number }) => {
+    virtualizerState.gridOptions = options;
+    return options.minItemWidth > 260 ? 2 : 3;
+  },
 }));
 
 vi.mock("./SelectionBox", () => ({
@@ -49,6 +56,7 @@ vi.mock("./DirectoryRows", () => ({
 }));
 
 const {
+  cardMinWidth,
   createDirectoryLayout,
   default: VirtualDirectoryItems,
   getDirectoryRevealRowIndex,
@@ -168,6 +176,97 @@ describe("VirtualDirectoryItems virtualizer invalidation", () => {
     expect(virtualizerState.instance?.scrollToIndex).toHaveBeenCalledWith(4, {
       align: "auto",
     });
+  });
+});
+
+describe("VirtualDirectoryItems card size", () => {
+  const storageKey = "linuxio.filebrowserCardSize";
+  const cardProps = {
+    ...baseProps,
+    files: [item(0), item(1)],
+    viewMode: "card" as const,
+  };
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    virtualizerState.items = [{ index: 0, key: "header" }];
+    return () => {
+      virtualizerState.items = [];
+    };
+  });
+
+  it("starts at the default width and offers the slider on the first header", () => {
+    render(<VirtualDirectoryItems {...cardProps} />);
+
+    expect(virtualizerState.gridOptions?.minItemWidth).toBe(260);
+    expect(screen.getByRole("slider", { name: "Card size" })).toHaveValue("3");
+  });
+
+  it("changes the narrowest card width and remembers the size", () => {
+    render(<VirtualDirectoryItems {...cardProps} />);
+
+    fireEvent.change(screen.getByRole("slider", { name: "Card size" }), {
+      target: { value: "7" },
+    });
+
+    expect(virtualizerState.gridOptions?.minItemWidth).toBe(cardMinWidth(7));
+    expect(cardMinWidth(7)).toBe(420);
+    expect(cardMinWidth(1)).toBe(180);
+    expect(window.localStorage.getItem(storageKey)).toBe("7");
+  });
+
+  it("starts from the remembered size and ignores one out of range", () => {
+    window.localStorage.setItem(storageKey, "5");
+    const view = render(<VirtualDirectoryItems {...cardProps} />);
+    expect(virtualizerState.gridOptions?.minItemWidth).toBe(cardMinWidth(5));
+    view.unmount();
+
+    window.localStorage.setItem(storageKey, "12");
+    render(<VirtualDirectoryItems {...cardProps} />);
+    expect(virtualizerState.gridOptions?.minItemWidth).toBe(260);
+  });
+
+  it("does not start a marquee from the slider", () => {
+    const onMarqueeMouseDown = vi.fn();
+    render(
+      <VirtualDirectoryItems
+        {...cardProps}
+        onMarqueeMouseDown={onMarqueeMouseDown}
+      />,
+    );
+
+    fireEvent.mouseDown(screen.getByRole("slider", { name: "Card size" }));
+
+    expect(onMarqueeMouseDown).not.toHaveBeenCalled();
+  });
+
+  it("does not scroll to the focused item when the size changes the layout", () => {
+    render(
+      <VirtualDirectoryItems
+        {...cardProps}
+        files={[item(0), item(1), item(2), item(3), item(4)]}
+        revealIndex={4}
+      />,
+    );
+    virtualizerState.instance?.scrollToIndex.mockClear();
+
+    fireEvent.change(screen.getByRole("slider", { name: "Card size" }), {
+      target: { value: "7" },
+    });
+
+    expect(virtualizerState.instance?.scrollToIndex).not.toHaveBeenCalled();
+  });
+
+  it("has no slider in list view or on a later header", () => {
+    const view = render(
+      <VirtualDirectoryItems {...cardProps} viewMode="list" />,
+    );
+    expect(screen.queryByRole("slider")).not.toBeInTheDocument();
+    view.unmount();
+
+    virtualizerState.items = [{ index: 2, key: "files-header" }];
+    render(<VirtualDirectoryItems {...cardProps} folders={[item(9)]} />);
+    expect(screen.queryByRole("slider")).not.toBeInTheDocument();
   });
 });
 

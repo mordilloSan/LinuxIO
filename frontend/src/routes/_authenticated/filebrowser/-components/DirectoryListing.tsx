@@ -297,7 +297,12 @@ const DirectoryListing = ({
   const handleContainerMouseDown = useCallback(
     (event: MouseEvent) => {
       const element = event.target as HTMLElement | null;
-      if (element && element.closest("[data-file-card='true']")) {
+      // A card handles its own click; the card-size slider is not a click on
+      // empty space.
+      if (
+        element &&
+        element.closest("[data-file-card='true'], [data-listing-control]")
+      ) {
         return;
       }
       // Don't clear selection on right-click (context menu)

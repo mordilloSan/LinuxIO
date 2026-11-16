@@ -1,14 +1,12 @@
 import { useMemo, useState, type CSSProperties, type DragEvent } from "react";
 
 import AppButton from "@/components/ui/AppButton";
-import AppSlider from "@/components/ui/AppSlider";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { HomeFilledIcon } from "@/icons/svg";
 import { down } from "@/theme/breakpoints";
 import { isDirectoryPath } from "@/utils/path";
 
 import { hasInternalDrag, readInternalDrag } from "../-internalDrag";
-import { getChromeSurfaceColor } from "./fileBrowserSurfaces";
 
 interface BreadcrumbItem {
   isLast: boolean;
@@ -17,17 +15,14 @@ interface BreadcrumbItem {
 }
 
 interface FilebrowserBreadcrumbsProps {
-  gallerySize?: number;
   /** Items dropped on a trail segment move (or, with Ctrl, copy) into it. */
   onDropItems?: (
     paths: string[],
     destinationDir: string,
     copy: boolean,
   ) => void;
-  onGallerySizeChange?: (next: number) => void;
   onNavigate: (path: string) => void;
   path: string;
-  showGallerySize?: boolean;
 }
 
 // Static CSS styles (injected once)
@@ -175,21 +170,6 @@ const breadcrumbStyles = `
   .linuxio-breadcrumb-list-item:last-of-type .linuxio-breadcrumb-button::after {
     display: none;
   }
-
-  .linuxio-gallery-size {
-    display: flex;
-    align-items: center;
-    gap: 0.75em;
-    flex: 0 0 auto;
-    padding: 0.35em 0.75em;
-    max-width: 8.5em;
-    border-radius: 0.75em;
-    background: var(--linuxio-filebrowser-chrome-surface);
-  }
-
-  .linuxio-range-input {
-    max-width: 6.25em;
-  }
 `;
 
 // Inject styles once
@@ -257,9 +237,6 @@ const FilebrowserBreadcrumbs = ({
   path,
   onNavigate,
   onDropItems,
-  showGallerySize = false,
-  gallerySize = 4,
-  onGallerySizeChange,
 }: FilebrowserBreadcrumbsProps) => {
   const isMobile = useMediaQuery(down("sm"));
   const normalizedPath = normalizePath(path);
@@ -304,9 +281,6 @@ const FilebrowserBreadcrumbs = ({
       "var(--app-file-browser-breadcrumb-background)",
     "--linuxio-filebrowser-breadcrumb-text":
       "var(--app-file-browser-breadcrumb-text)",
-    "--linuxio-filebrowser-chrome-surface": getChromeSurfaceColor(
-      "var(--app-file-browser-chrome)",
-    ),
   } as CSSProperties;
 
   return (
@@ -347,20 +321,6 @@ const FilebrowserBreadcrumbs = ({
           </li>
         ))}
       </ul>
-      {showGallerySize && onGallerySizeChange && (
-        <div className="linuxio-gallery-size gallery-size card">
-          Size<span className="sr-only">:</span>
-          <AppSlider
-            className="linuxio-range-input"
-            id="gallery-size"
-            max={8}
-            min={1}
-            name="gallery-size"
-            onChange={onGallerySizeChange}
-            value={gallerySize}
-          />
-        </div>
-      )}
     </div>
   );
 };

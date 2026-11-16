@@ -27,12 +27,6 @@ export const getSurfaceCssVariables = (
     "--app-dialog-backdrop": theme.dialog.backdrop,
     // Read by the file browser's getSubtleDividerColor.
     "--app-divider-subtle": alpha(theme.palette.divider, dark ? 0.15 : 0.1),
-    /* Read by the file browser's getChromeSurfaceColor. Dark's default matches
-       the gallery-size chip's hand-tuned color-mix (transparent 67%); these
-       are the transparent shares a chrome surface mixes toward, at rest and
-       hovered. */
-    "--app-chrome-surface-transparent": dark ? "67%" : "92%",
-    "--app-chrome-surface-transparent-hover": dark ? "72%" : "86%",
   };
 };
 

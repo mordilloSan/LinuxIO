@@ -285,11 +285,17 @@ Docker updates (`backend/common/dockerupdate`):
 
 Do one of these only when something shows it is needed.
 
-- The file browser's gallery-size slider cannot be reached: `Breadcrumbs.tsx`
-  renders it only with `showGallerySize`, and its one caller,
-  `FileBrowserBreadcrumbs.tsx`, never passes it. Wire it to the card size of
-  the grid view, or remove it with the `--linuxio-filebrowser-chrome-surface`
-  variable and `getChromeSurfaceColor`, which only it uses.
+- The theme colour `fileBrowserChrome` ("chrome" in `theme.fileBrowser`,
+  `--app-file-browser-chrome`) colours nothing: its last reader was the
+  breadcrumb's size chip, which is gone. Settings still offers it. Remove it
+  from the theme, the colour editor and `userconfig/themecolors.go`, or give
+  it a surface to colour.
+- The file browser's card-size slider changes how wide a card may get, and so
+  how many fit in a row; the icon and the card's height stay. Scale those too
+  if a size step should look like one in a file manager. On a screen too
+  narrow for two cards at the smallest size (under about 380 px) the slider
+  changes nothing and is still shown. It sits on the first section header, so
+  it scrolls away with the list and an empty folder has none.
 - Name a swap unit exactly as systemd does for an unusual fstab label
   (`encode_devnode_name`) and for a path of 256 bytes or more, which systemd
   names with a hash. Both entries count as unmanaged today, so nothing is

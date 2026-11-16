@@ -4,6 +4,8 @@ import {
   useCallback,
   useLayoutEffect,
   useMemo,
+  useRef,
+  useState,
   type DragEvent,
   type MouseEvent,
   type MouseEventHandler,
@@ -11,14 +13,36 @@ import {
 } from "react";
 
 import type { SubfolderData } from "@/api";
+import AppSlider from "@/components/ui/AppSlider";
 import { useGridColumnCount } from "@/hooks/useGridColumnCount";
 import { stripTrailingSlash } from "@/utils/path";
+import {
+  readPersistedState,
+  writePersistedState,
+} from "@/utils/persistedState";
 
 import type { FileItem, ViewMode } from "../-types";
 import { DirectoryItem, SectionHeader } from "./DirectoryRows";
 import SelectionBox from "./SelectionBox";
 
-const CARD_MIN_WIDTH = 260;
+// The slider on the first section header sets the narrowest a card may get,
+// and so how many fit in a row; a card's height does not change. It is
+// per-browser state, kept in localStorage like the card/list toggle.
+const CARD_SIZE_STORAGE_KEY = "linuxio.filebrowserCardSize";
+export const CARD_SIZE_MIN = 1;
+export const CARD_SIZE_MAX = 7;
+export const CARD_SIZE_DEFAULT = 3;
+const CARD_SIZE_SLIDER_WIDTH = 120;
+
+const isCardSize = (value: unknown): value is number =>
+  typeof value === "number" &&
+  Number.isInteger(value) &&
+  value >= CARD_SIZE_MIN &&
+  value <= CARD_SIZE_MAX;
+
+/** 180px at the smallest size, 260px at the default, 420px at the largest. */
+export const cardMinWidth = (size: number) => 140 + size * 40;
+
 const CARD_GAP = 12;
 const CARD_PADDING = 4;
 const CARD_ROW_ESTIMATE = 92;
@@ -88,6 +112,8 @@ interface VirtualDirectoryItemsProps {
   subfoldersMap: Map<string, SubfolderData>;
   viewMode: ViewMode;
 }
+
+const stopPropagation = (event: MouseEvent) => event.stopPropagation();
 
 // Keep the retained row model constant-size. TanStack Virtual asks for rows by
 // index, so item groups and headers can be resolved only when they are needed
@@ -257,9 +283,19 @@ const VirtualDirectoryItems = ({
   const horizontalPadding = viewMode === "card" ? CARD_PADDING : 0;
   const rowGap = viewMode === "card" ? CARD_GAP : LIST_GAP;
 
+  const [cardSize, setCardSize] = useState(
+    () =>
+      readPersistedState(CARD_SIZE_STORAGE_KEY, isCardSize) ??
+      CARD_SIZE_DEFAULT,
+  );
+  const changeCardSize = useCallback((next: number) => {
+    setCardSize(next);
+    writePersistedState(CARD_SIZE_STORAGE_KEY, next);
+  }, []);
+
   const cardColumnCount = useGridColumnCount(containerRef, {
     gap: CARD_GAP,
-    minItemWidth: CARD_MIN_WIDTH,
+    minItemWidth: cardMinWidth(cardSize),
     padding: CARD_PADDING,
   });
   const columnCount = viewMode === "list" ? 1 : cardColumnCount;
@@ -320,8 +356,14 @@ const VirtualDirectoryItems = ({
     virtualizer.measure();
   }, [columnCount, viewMode, virtualizer]);
 
+  // A card-size step changes the layout too, but it must not scroll to the
+  // item the keyboard last moved to: that would take the slider's row out of
+  // view, and so out of the document, in the middle of a drag.
+  const revealedAtCardSize = useRef(cardSize);
   useLayoutEffect(() => {
-    if (revealIndex < 0) return;
+    const resized = revealedAtCardSize.current !== cardSize;
+    revealedAtCardSize.current = cardSize;
+    if (resized || revealIndex < 0) return;
 
     const rowIndex = getDirectoryRevealRowIndex(revealIndex, layout);
 
@@ -330,7 +372,7 @@ const VirtualDirectoryItems = ({
     virtualizer.scrollToIndex(rowIndex, {
       align: "auto",
     });
-  }, [layout, revealIndex, virtualizer]);
+  }, [cardSize, layout, revealIndex, virtualizer]);
 
   return (
     <div
@@ -376,7 +418,38 @@ const VirtualDirectoryItems = ({
               }}
             >
               {row.type === "sectionHeader" ? (
-                <SectionHeader label={row.label} viewMode={viewMode} />
+                virtualRow.index === 0 && viewMode === "card" ? (
+                  <div
+                    style={{
+                      alignItems: "center",
+                      display: "flex",
+                      gap: CARD_GAP,
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <SectionHeader label={row.label} viewMode={viewMode} />
+                    {/* The attribute keeps the selection (DirectoryListing)
+                        and the handler keeps a drag of the thumb from
+                        starting a marquee. */}
+                    <AppSlider
+                      aria-label="Card size"
+                      data-listing-control="true"
+                      max={CARD_SIZE_MAX}
+                      min={CARD_SIZE_MIN}
+                      onChange={changeCardSize}
+                      onMouseDown={stopPropagation}
+                      style={{
+                        flex: "0 0 auto",
+                        marginRight: CARD_PADDING,
+                        width: CARD_SIZE_SLIDER_WIDTH,
+                      }}
+                      title="Card size"
+                      value={cardSize}
+                    />
+                  </div>
+                ) : (
+                  <SectionHeader label={row.label} viewMode={viewMode} />
+                )
               ) : (
                 <div
                   style={{
