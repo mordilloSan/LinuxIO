@@ -128,6 +128,12 @@ func renderZswapTmpfiles(compressor string) []byte {
 		zswapCompressorParam, compressor, zswapEnabledParam, zswapSwitch(true))
 }
 
+// renderZswapOffTmpfiles is the tmpfiles.d file that turns zswap off at boot
+// on a kernel that starts with it on.
+func renderZswapOffTmpfiles() []byte {
+	return fmt.Appendf(nil, "%sw %s - - - - %s\n", managedHeader, zswapEnabledParam, zswapSwitch(false))
+}
+
 // zswapSwitch is how the zswap enabled parameter spells a state.
 func zswapSwitch(enabled bool) string {
 	if enabled {

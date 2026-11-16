@@ -87,7 +87,7 @@ func TestSetSwapModeToZramWithTheGenerator(t *testing.T) {
 		"set " + pageClusterParam + "=0",
 		"set " + boostParam + "=0",
 		"set " + scaleParam + "=125",
-		"remove " + zswapTmpfilesPath,
+		"write " + zswapTmpfilesPath,
 		"stop swap.img.swap",
 		"mask swap.img.swap",
 	})
@@ -136,7 +136,7 @@ func TestSetSwapModeToDiskFromZramWithTheGenerator(t *testing.T) {
 		"set " + pageClusterParam + "=3",
 		"set " + boostParam + "=15000",
 		"set " + scaleParam + "=10",
-		"remove " + zswapTmpfilesPath,
+		"write " + zswapTmpfilesPath,
 	})
 	if got.Mode != apischema.SwapModeDisk {
 		t.Errorf("status mode = %q, want disk", got.Mode)

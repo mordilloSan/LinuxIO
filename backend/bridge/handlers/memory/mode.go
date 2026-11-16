@@ -184,22 +184,35 @@ func (r *modeRun) applySysctls() error {
 	return nil
 }
 
-// disableZswap turns zswap off when the kernel has it on and removes the
-// tmpfiles file that turns it on at boot. zswap already off is not written:
-// where zswap failed to start, that write fails for nothing.
+// disableZswap turns zswap off when the kernel has it on and writes the
+// tmpfiles file that keeps it off at boot: a kernel built with zswap on, or
+// booted with zswap.enabled=1, would otherwise return to it, in front of zram
+// too. The file is written whatever zswap reads now, since off now says
+// nothing about the next boot. zswap already off is not written live: where
+// zswap failed to start, that write fails for nothing. A kernel without
+// zswap has nothing to turn off, and a file left from another kernel goes.
 func (r *modeRun) disableZswap() error {
-	if r.before.Zswap.Available {
-		enabled, err := r.sys.readParam(zswapEnabledParam)
-		if err != nil {
-			return fmt.Errorf("read %s: %w", zswapEnabledParam, err)
-		}
-		if enabled != zswapSwitch(false) {
-			if err := r.setParam(zswapEnabledParam, zswapSwitch(false)); err != nil {
-				return err
-			}
+	if !r.before.Zswap.Available {
+		return r.removeFile(zswapTmpfilesPath)
+	}
+	enabled, err := r.sys.readParam(zswapEnabledParam)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", zswapEnabledParam, err)
+	}
+	if enabled != zswapSwitch(false) {
+		if err = r.setParam(zswapEnabledParam, zswapSwitch(false)); err != nil {
+			return err
 		}
 	}
-	return r.removeFile(zswapTmpfilesPath)
+	off := renderZswapOffTmpfiles()
+	current, ok, err := r.root.readOptional(zswapTmpfilesPath)
+	if err != nil {
+		return fmt.Errorf("read %s: %w", zswapTmpfilesPath, err)
+	}
+	if ok && current == string(off) {
+		return nil
+	}
+	return r.writeFile(zswapTmpfilesPath, off)
 }
 
 // enableZswap asks for zstd, keeping the compressor the kernel has when it

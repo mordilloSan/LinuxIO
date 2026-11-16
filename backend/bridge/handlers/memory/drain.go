@@ -107,12 +107,10 @@ func (e *executor) drainDevice(ctx context.Context, target fstabSwap, drained in
 		return stayDrained(fmt.Errorf("%w: systemd does not report %s active, so %s cannot be stopped and started again", bridgeipc.ErrConflict, target.unit, target.device), drained)
 	}
 	if err := e.sys.stopUnit(ctx, target.unit); err != nil {
-		err = fmt.Errorf("stop %s: %w; the stop may still take effect, so a start was queued", target.unit, err)
-		return errors.Join(err, e.queueStartAfterFailedStop(ctx, target))
+		return e.startAfterFailedStop(ctx, target, fmt.Errorf("stop %s: %w", target.unit, err))
 	}
 	if err := e.waitStopped(ctx, target.unit, target.device, e.deviceIs(target.device, false)); err != nil {
-		err = fmt.Errorf("wait for %s to leave %s: %w", target.device, procSwaps, err)
-		return errors.Join(err, e.queueStartAfterFailedStop(ctx, target))
+		return e.startAfterFailedStop(ctx, target, fmt.Errorf("wait for %s to leave %s: %w", target.device, procSwaps, err))
 	}
 	// The device is off: bringing it back is not cancelled with the request.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout+e.waits.swapOn)
@@ -135,15 +133,16 @@ func stayDrained(err error, drained int) error {
 	return err
 }
 
-// queueStartAfterFailedStop asks systemd to start the unit again past a
-// cancelled request; it does not wait for the device.
-func (e *executor) queueStartAfterFailedStop(ctx context.Context, target fstabSwap) error {
+// startAfterFailedStop asks systemd to start the unit again past a cancelled
+// request, without waiting for the device, and returns the stop's error with
+// what became of the start: that it was queued, or why it was not.
+func (e *executor) startAfterFailedStop(ctx context.Context, target fstabSwap, stopErr error) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
 	defer cancel()
 	if err := e.sys.startUnit(ctx, target.unit); err != nil {
-		return fmt.Errorf("%s may be off: start %s: %w", target.device, target.unit, err)
+		return errors.Join(stopErr, fmt.Errorf("%s may be off: start %s: %w", target.device, target.unit, err))
 	}
-	return nil
+	return fmt.Errorf("%w; the stop may still take effect, so a start was queued", stopErr)
 }
 
 // deviceIs returns a check that the /proc/swaps path is, or is not, active.

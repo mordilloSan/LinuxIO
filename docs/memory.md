@@ -167,7 +167,7 @@ To `zram`:
    applies at the next restart of the unit. What "at boot" and "its unit" mean
    depends on the [zram provider](#the-zram-provider).
 3. `apply_sysctls`: write the preset live.
-4. `disable_zswap`: turn zswap off and remove its tmpfiles entry.
+4. `disable_zswap`: turn zswap off and keep it off at boot (see below).
 5. `stop_swap_file`: when the file is named in fstab, stop its unit, wait for
    the file to leave `/proc/swaps`, then mask the unit. Without a fstab swap
    file the step is not planned. A file that is already off is only masked. A
@@ -197,6 +197,12 @@ Details that follow from the code:
 - zswap is turned off only when it reads enabled. On a kernel where zswap
   failed to start, a write of `N` fails for nothing and would take the whole
   switch down.
+- `zram` and `disk` write the tmpfiles entry as `enabled` `N`, whatever zswap
+  reads at the time. A kernel built with zswap on, or booted with
+  `zswap.enabled=1`, would otherwise return to zswap at the next boot, in
+  front of zram too, and zswap reading off now says nothing about that. A file
+  that already says `N` is not written again. On a kernel without zswap there
+  is nothing to turn off and the file is removed.
 - Leaving zram, the three sysctls only zram sets go back to the kernel's
   defaults (3, 15000, 10) when their live value is still zram's, and their
   keys leave the drop-in. This overrides a value an admin set by hand to the
@@ -332,8 +338,9 @@ route gives up waiting. So when the stop call fails or is cancelled, or the
 wait for the device to leave fails, a start of the unit is queued anyway, on a
 context that survives the cancel and with a bound of its own. A start on a unit
 still active does nothing. The device's return after a successful stop is also
-not cancelled with the request. The error says the device may be off, and
-names the unit.
+not cancelled with the request. The error names the unit and says that a
+start was queued, or, when queueing it failed too, that the device may be off
+and why the start failed.
 
 ## Swap units
 
@@ -406,7 +413,7 @@ symlink) and mode `0644`.
 | Path | Written by | Content |
 |---|---|---|
 | `/etc/sysctl.d/90-linuxio-memory.conf` | every mode, and `set_swappiness` | `vm.<name> = <value>` lines. Keys the admin added stay. Leaving zram drops `vm.page-cluster`, `vm.watermark_boost_factor` and `vm.watermark_scale_factor`. Under TuneD `vm.swappiness` is neither written nor dropped. |
-| `/etc/tmpfiles.d/linuxio-zswap.conf` | `zswap` | `w` lines setting zswap's `compressor` and `enabled` (`Y`) at boot. Removed by `zram` and `disk`, not written as `N`. |
+| `/etc/tmpfiles.d/linuxio-zswap.conf` | every mode, on a kernel with zswap | For `zswap`, `w` lines setting zswap's `compressor` and `enabled` (`Y`) at boot. For `zram` and `disk`, one `w` line setting `enabled` to `N`, so a kernel that starts with zswap on does not return to it. |
 | `/etc/default/zramswap` | `zram`, with zram-tools | zram-tools' configuration: `ALGO=zstd`, `SIZE=<MiB>`, `PRIORITY=100`. It is a package conffile, so the next package upgrade asks about the change. |
 | `/etc/systemd/zram-generator.conf` | `zram`, and leaving zram, with zram-generator | For `zram`: one `[zram0]` section with `zram-size = <MiB>`, `compression-algorithm = zstd` and `swap-priority = 100`. Leaving zram: comments only, so the generator makes no device. Either way it replaces what was there, and takes the place of the file a package puts in `/usr/lib/systemd`. |
 
@@ -486,8 +493,14 @@ service step, since `start_zram` does that. See
   and lists what will happen: data parked in the file comes back, the file is
   turned off and stays off after a restart, and the file is not deleted. The
   step opens with focus on Back, and Back returns focus to Apply.
-- Advanced, collapsed: a slider for swappiness from 0 to 200, committed when
-  released, with the caption "Recommended for <mode>: N".
+- Advanced, collapsed: a slider for swappiness from 0 to 200, with the caption
+  "Recommended for <mode>: N". A drag is saved when the pointer is released
+  or focus leaves the slider. Arrow keys are saved half a second after the
+  last key, so a run of them is one write and one toast; leaving the slider or
+  closing the dialog with Escape saves a waiting key press at once. A step
+  made while a save runs is sent when that save succeeds, a step waiting when
+  a mode change or a drain starts is dropped, and after a failed save the
+  slider goes back to the host's value.
 - The status is read only while the dialog is open, refreshes every 15
   seconds, and each of the three mutations invalidates it.
 - Close and Escape are held while a change runs, since the running step and
@@ -528,7 +541,8 @@ service step, since `start_zram` does that. See
 
 ## Known limits
 
-Each is an open item in [the backlog](./TODO/backlog.md).
+Each is by design or unlikely to be met, or is an open item in
+[the backlog](./TODO/backlog.md).
 
 - A swap file whose `swapoff` outlasts systemd's stop timeout cannot be
   stopped or drained from the UI.
@@ -536,12 +550,16 @@ Each is an open item in [the backlog](./TODO/backlog.md).
 - A swap partition or a swap device fstab does not name is never stopped, so
   such a host cannot choose compressed memory only (partition) or have the
   device drained (unnamed).
-- A kernel with zswap on by default returns to zswap at boot after `zram` or
-  `disk`, since the tmpfiles entry is removed and not written as off.
 - A host with zram already running keeps its old zram size until the service
   restarts.
 - The `zram-generator` path was built from upstream's documentation and unit
   files and has not run on Fedora or RHEL; drop-ins in
   `zram-generator.conf.d` are not read.
+- A click on Close or Apply within half a second of an arrow key on the
+  eagerness slider is lost: the click moves focus off the slider, which starts
+  the save, and the buttons are held while it runs.
+- On a kernel where zswap failed to start, the tmpfiles line that turns zswap
+  off may fail at each boot and leave a line in the journal. Not checked on a
+  host.
 - The overflow alert is not built
   ([Memory overflow](./TODO/memory-overflow.md)).

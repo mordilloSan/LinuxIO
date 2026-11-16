@@ -158,8 +158,27 @@ func TestDrainSwapQueuesAStartWhenTheStopCallFails(t *testing.T) {
 	if !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), "swap.img.swap") || !strings.Contains(err.Error(), "may still") {
 		t.Fatalf("err = %v, want the cancel, the unit and that the stop may still take effect", err)
 	}
+	if !strings.Contains(err.Error(), "a start was queued") {
+		t.Fatalf("err = %v, want it to say a start was queued", err)
+	}
 	if !slices.Contains(sys.calls, "start swap.img.swap") || !strings.Contains(f.read(procSwaps), "/swap.img") {
 		t.Fatalf("calls = %v, want swap.img.swap started again", sys.calls)
+	}
+}
+
+// When the start behind a failed stop cannot be queued either, the error says
+// so and does not claim a start was queued.
+func TestDrainSwapSaysWhenTheStartAfterAFailedStopFails(t *testing.T) {
+	_, sys := drainHost(t)
+	sys.failAfter["stop swap.img.swap"] = context.Canceled
+	sys.failures["start swap.img.swap"] = errors.New("no system bus")
+
+	_, err := sys.executor(nil).drainSwap(t.Context())
+	if !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), "may be off") || !strings.Contains(err.Error(), "no system bus") {
+		t.Fatalf("err = %v, want the cancel and the failed start", err)
+	}
+	if strings.Contains(err.Error(), "a start was queued") {
+		t.Fatalf("err = %v, want no claim that a start was queued", err)
 	}
 }
 

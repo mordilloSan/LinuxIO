@@ -48,7 +48,7 @@ func TestSetSwapModeToZramFromDisk(t *testing.T) {
 		"set " + pageClusterParam + "=0",
 		"set " + boostParam + "=0",
 		"set " + scaleParam + "=125",
-		"remove " + zswapTmpfilesPath,
+		"write " + zswapTmpfilesPath,
 		"stop swap.img.swap",
 		"mask swap.img.swap",
 	})
@@ -126,10 +126,61 @@ func TestSetSwapModeToDiskFromZswap(t *testing.T) {
 		"write " + sysctlDropInPath,
 		"set " + swappinessParam + "=60",
 		"set " + zswapEnabledParam + "=N",
-		"remove " + zswapTmpfilesPath,
+		"write " + zswapTmpfilesPath,
 	})
-	if got.Mode != apischema.SwapModeDisk || f.exists(zswapTmpfilesPath) {
-		t.Errorf("status mode = %q, tmpfiles kept = %v; want disk without the tmpfiles file", got.Mode, f.exists(zswapTmpfilesPath))
+	if got.Mode != apischema.SwapModeDisk {
+		t.Errorf("status mode = %q, want disk", got.Mode)
+	}
+	if got, want := f.read(zswapTmpfilesPath), string(renderZswapOffTmpfiles()); got != want {
+		t.Errorf("tmpfiles = %q, want %q: zswap stays off at boot", got, want)
+	}
+}
+
+// A kernel that starts with zswap on returns to it at boot unless a file
+// turns it off, whether zswap is on now or was turned off before, so leaving
+// zswap always writes that file.
+func TestSetSwapModeKeepsZswapOffAtBoot(t *testing.T) {
+	for name, enabled := range map[string]string{"zswap on": "Y\n", "zswap already off": "N\n"} {
+		t.Run(name, func(t *testing.T) {
+			f, sys := diskHost(t)
+			f.write(zswapEnabledParam, enabled)
+
+			if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeZram); err != nil {
+				t.Fatal(err)
+			}
+
+			if got := f.param(zswapEnabledParam); got != "N" {
+				t.Errorf("zswap enabled = %q, want N", got)
+			}
+			if got, want := f.read(zswapTmpfilesPath), string(renderZswapOffTmpfiles()); got != want {
+				t.Errorf("tmpfiles = %q, want %q", got, want)
+			}
+		})
+	}
+}
+
+// A file that already turns zswap off is not written again, and a kernel
+// without zswap gets none.
+func TestSetSwapModeWritesNoZswapFileItDoesNotNeed(t *testing.T) {
+	f, sys := diskHost(t)
+	f.write(zswapTmpfilesPath, string(renderZswapOffTmpfiles()))
+	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeDisk); err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(sys.calls, "write "+zswapTmpfilesPath) {
+		t.Errorf("calls = %v, want the off file left alone", sys.calls)
+	}
+
+	f, sys = diskHost(t)
+	if err := os.RemoveAll(filepath.Join(f.root, "sys/module/zswap")); err != nil {
+		t.Fatal(err)
+	}
+	f.write(zswapTmpfilesPath, string(renderZswapTmpfiles("zstd")))
+	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeDisk); err != nil {
+		t.Fatal(err)
+	}
+	if f.exists(zswapTmpfilesPath) {
+		t.Error("tmpfiles file kept on a kernel without zswap")
 	}
 }
 
@@ -642,7 +693,7 @@ func TestSetSwapModeRollsBackOnADetachedContextAfterACancel(t *testing.T) {
 	assertRolledBackToDisk(t, f)
 }
 
-// From zswap, a failed switch to zram puts back the tmpfiles file it removed
+// From zswap, a failed switch to zram puts back the tmpfiles file it replaced
 // and turns zswap on again.
 func TestSetSwapModeRestoresTheZswapTmpfilesAndSwitch(t *testing.T) {
 	f, sys := diskHost(t)

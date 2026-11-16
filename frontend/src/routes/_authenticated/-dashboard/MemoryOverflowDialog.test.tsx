@@ -1,5 +1,5 @@
 import { fireEvent } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { SwapStatus } from "@/api";
 import { linuxio } from "@/api";
@@ -101,6 +101,13 @@ const radio = (name: string) => screen.getByRole("radio", { name });
 // The dialog while it asks before stopping the swap file.
 const confirmStep = () =>
   screen.queryByRole("dialog", { name: "Switch to compressed memory?" });
+
+// Lets the wait after a key press on the eagerness slider run out.
+const passKeyWait = () => act(() => vi.advanceTimersByTimeAsync(500));
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 beforeEach(() => {
   mocks.callFails = false;
@@ -875,9 +882,11 @@ describe("MemoryOverflowDialog advanced", () => {
       name: "Eagerness to move data out of memory",
     });
 
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     slider.focus();
     fireEvent.change(slider, { target: { value: "61" } });
     fireEvent.keyUp(slider, { key: "ArrowRight" });
+    await passKeyWait();
 
     await waitFor(() => expect(mocks.requests).toHaveLength(1));
     expect(slider).toBeEnabled();
@@ -902,7 +911,85 @@ describe("MemoryOverflowDialog advanced", () => {
       route: "memory.set_swappiness",
     });
     await waitFor(() => expect(slider).toHaveValue("62"));
+    // The key released during the save does not send it a second time.
+    await passKeyWait();
     expect(mocks.requests).toHaveLength(2);
+  });
+
+  it("saves a run of arrow keys once", async () => {
+    mocks.results["memory.set_swappiness"] = diskStatus({ swappiness: 63 });
+    await openAdvanced(diskStatus());
+    const slider = await screen.findByRole("slider", {
+      name: "Eagerness to move data out of memory",
+    });
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    for (const value of ["61", "62", "63"]) {
+      fireEvent.change(slider, { target: { value } });
+      fireEvent.keyUp(slider, { key: "ArrowRight" });
+      await act(() => vi.advanceTimersByTimeAsync(400));
+    }
+    expect(mocks.requests).toEqual([]);
+
+    await passKeyWait();
+    await waitFor(() =>
+      expect(mocks.requests).toEqual([
+        { request: { swappiness: 63 }, route: "memory.set_swappiness" },
+      ]),
+    );
+    await waitFor(() => expect(mocks.toast.success).toHaveBeenCalledTimes(1));
+  });
+
+  it("saves a key press at once when focus leaves the slider", async () => {
+    mocks.results["memory.set_swappiness"] = diskStatus({ swappiness: 61 });
+    await openAdvanced(diskStatus());
+    const slider = await screen.findByRole("slider", {
+      name: "Eagerness to move data out of memory",
+    });
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    fireEvent.change(slider, { target: { value: "61" } });
+    fireEvent.keyUp(slider, { key: "ArrowRight" });
+    fireEvent.blur(slider);
+    await waitFor(() => expect(mocks.requests).toHaveLength(1));
+
+    await passKeyWait();
+    expect(mocks.requests).toEqual([
+      { request: { swappiness: 61 }, route: "memory.set_swappiness" },
+    ]);
+  });
+
+  it("does not start the wait for a key that does not move the slider", async () => {
+    await openAdvanced(diskStatus());
+    const slider = await screen.findByRole("slider", {
+      name: "Eagerness to move data out of memory",
+    });
+
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    fireEvent.change(slider, { target: { value: "61" } });
+    fireEvent.keyUp(slider, { key: "Shift" });
+    await passKeyWait();
+    expect(mocks.requests).toEqual([]);
+  });
+
+  it("saves a key press that is still waiting when Escape closes the dialog", async () => {
+    mocks.results["memory.set_swappiness"] = diskStatus({ swappiness: 61 });
+    await openAdvanced(diskStatus());
+    const slider = await screen.findByRole("slider", {
+      name: "Eagerness to move data out of memory",
+    });
+
+    fireEvent.change(slider, { target: { value: "61" } });
+    fireEvent.keyUp(slider, { key: "ArrowRight" });
+    expect(mocks.requests).toEqual([]);
+    fireEvent.keyDown(slider, { key: "Escape" });
+
+    await waitFor(() =>
+      expect(mocks.requests).toEqual([
+        { request: { swappiness: 61 }, route: "memory.set_swappiness" },
+      ]),
+    );
+    expect(mocks.onClose).toHaveBeenCalledTimes(1);
   });
 
   it("sends a value the user went back to while a save ran", async () => {
@@ -931,7 +1018,7 @@ describe("MemoryOverflowDialog advanced", () => {
     expect(mocks.requests[1].request).toEqual({ swappiness: 60 });
   });
 
-  it("does not retry after a failed save and keeps the newer value", async () => {
+  it("does not retry after a failed save and goes back to the host's value", async () => {
     let finish: () => void = () => {};
     mocks.hold = new Promise<void>((resolve) => {
       finish = resolve;
@@ -956,7 +1043,7 @@ describe("MemoryOverflowDialog advanced", () => {
       ),
     );
     expect(mocks.requests).toHaveLength(1);
-    expect(slider).toHaveValue("62");
+    await waitFor(() => expect(slider).toHaveValue("60"));
   });
 
   it("lets the slider follow the host again after a drag back to its value", async () => {

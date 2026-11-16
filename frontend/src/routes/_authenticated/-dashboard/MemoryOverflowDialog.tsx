@@ -1,7 +1,7 @@
 import { Icon } from "@iconify/react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { useId, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useId, useRef, useState } from "react";
 
 import "./memory-overflow.css";
 
@@ -37,6 +37,21 @@ import {
 
 const CAPABILITIES_LINK_TEXT = "Open Capabilities to install zram";
 const DASHBOARD_TOAST_META = { label: "Open dashboard", to: "/" } as const;
+
+/** How long a key press on the eagerness slider waits for the next one. */
+const KEY_SAVE_DELAY_MS = 500;
+
+/** The keys that move a range input. */
+const SLIDER_KEYS = new Set([
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "ArrowUp",
+  "End",
+  "Home",
+  "PageDown",
+  "PageUp",
+]);
 
 interface Props {
   onClose: () => void;
@@ -173,6 +188,9 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
   // The newest value the slider reported: a save's own callback runs with the
   // render it started in, so it cannot read the draft state.
   const newestStep = useRef<number | null>(null);
+  // Counts the key releases on the slider whose step waits to be saved; null
+  // when none waits.
+  const [keyWait, setKeyWait] = useState<number | null>(null);
   const {
     data: status,
     isPending,
@@ -223,10 +241,68 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
   const otherChangeRunning = setMode.isPending || drain.isPending;
   const busy = otherChangeRunning || setSwappiness.isPending;
 
+  const stepSwappiness = (value: number) => {
+    newestStep.current = value;
+    setDraftSwappiness(value);
+  };
+
+  const saveSwappiness = (value: number) =>
+    setSwappiness.mutate(
+      { swappiness: value },
+      {
+        // A step made while this save ran is sent once it succeeded, so the
+        // slider never shows a value the host does not have.
+        onSuccess: () => {
+          const newest = newestStep.current;
+          if (newest !== null && newest !== value) saveSwappiness(newest);
+        },
+        // After a failed save nothing is retried and the slider goes back to
+        // the host's value, a step made meanwhile included.
+        onError: () => {
+          newestStep.current = null;
+          setDraftSwappiness(null);
+        },
+      },
+    );
+
+  const commitSwappiness = () => {
+    setKeyWait(null);
+    if (draftSwappiness === null || !status) return;
+    if (otherChangeRunning) {
+      // A mode change writes its own value and the host refuses a second
+      // change meanwhile: the step is dropped.
+      newestStep.current = null;
+      setDraftSwappiness(null);
+      return;
+    }
+    // One save at a time; the draft stays and goes out when the save ends.
+    if (setSwappiness.isPending) return;
+    if (draftSwappiness === status.swappiness) {
+      // Dragged back to the host's value: nothing to save, and the slider
+      // follows the host again.
+      setDraftSwappiness(null);
+      return;
+    }
+    saveSwappiness(draftSwappiness);
+  };
+
+  // A run of arrow keys is one save and one toast: each release restarts the
+  // wait, and the commit that ends it sees the dialog as it is then.
+  const commitAfterKeyWait = useEffectEvent(commitSwappiness);
+  useEffect(() => {
+    if (keyWait === null) return;
+    const timer = window.setTimeout(commitAfterKeyWait, KEY_SAVE_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [keyWait]);
+  const commitSwappinessAfterKeys = () =>
+    setKeyWait((releases) => (releases ?? 0) + 1);
+
   // A running change holds the dialog open: its progress and its result are
   // shown here, and the host refuses a second change meanwhile.
   const handleClose = () => {
     if (busy) return;
+    // A key press still waiting is saved, not dropped.
+    if (keyWait !== null) commitSwappiness();
     setSelected(null);
     setConfirming(false);
     setFocusApply(false);
@@ -335,38 +411,6 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
     );
   }
 
-  const stepSwappiness = (value: number) => {
-    newestStep.current = value;
-    setDraftSwappiness(value);
-  };
-
-  const saveSwappiness = (value: number) =>
-    setSwappiness.mutate(
-      { swappiness: value },
-      {
-        // A step made while this save ran is sent once it succeeded, so the
-        // slider never shows a value the host does not have. After a failed
-        // save nothing is retried.
-        onSuccess: () => {
-          const newest = newestStep.current;
-          if (newest !== null && newest !== value) saveSwappiness(newest);
-        },
-      },
-    );
-
-  const commitSwappiness = () => {
-    if (draftSwappiness === null) return;
-    // One save at a time; the draft stays and goes out when the save ends.
-    if (busy) return;
-    if (draftSwappiness === status.swappiness) {
-      // Dragged back to the host's value: nothing to save, and the slider
-      // follows the host again.
-      setDraftSwappiness(null);
-      return;
-    }
-    saveSwappiness(draftSwappiness);
-  };
-
   const recommended = presetSwappiness(status, choice);
   const swappiness = draftSwappiness ?? status.swappiness;
 
@@ -446,6 +490,7 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
                   disabled={otherChangeRunning || status.tuned_active}
                   onChange={stepSwappiness}
                   onCommit={commitSwappiness}
+                  onKeyCommit={commitSwappinessAfterKeys}
                   recommended={recommended}
                   recommendedFor={rowName(choice)}
                   status={status}
@@ -484,6 +529,7 @@ const SwappinessControl = ({
   disabled,
   onChange,
   onCommit,
+  onKeyCommit,
   recommended,
   recommendedFor,
   status,
@@ -491,7 +537,10 @@ const SwappinessControl = ({
 }: {
   disabled: boolean;
   onChange: (value: number) => void;
+  /** The pointer was released or focus left the slider. */
   onCommit: () => void;
+  /** A key that moves the slider was released. */
+  onKeyCommit: () => void;
   recommended: number | undefined;
   recommendedFor: string;
   status: SwapStatus;
@@ -512,8 +561,12 @@ const SwappinessControl = ({
         id={id}
         max={200}
         min={0}
+        onBlur={onCommit}
         onChange={onChange}
-        onCommit={onCommit}
+        onKeyUp={(event) => {
+          if (SLIDER_KEYS.has(event.key)) onKeyCommit();
+        }}
+        onPointerUp={onCommit}
         value={value}
       />
       <div id={`${id}-note`}>

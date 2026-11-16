@@ -92,11 +92,6 @@ Memory overflow ([Memory overflow](../memory.md)):
   back to their earlier values, which are zram's, so the host runs disk swap
   with swappiness 180 and the zram watermark values until a mode is applied
   again. Checked.
-- [ ] **A kernel with zswap on by default returns to zswap after a reboot** when
-  the mode is zram or disk: those modes remove `/etc/tmpfiles.d/linuxio-zswap.conf`
-  and do not write zswap as off. With zram that puts zswap in front of zram.
-  Write the entry with `N` when the kernel was found enabled before the first
-  change. Checked.
 - [ ] **A change that finished is reported as failed when only the last status
   read fails.** The three routes return the status read after the change, and
   an error from that read fails the request though the host changed. Checked.
@@ -119,10 +114,6 @@ Memory overflow ([Memory overflow](../memory.md)):
   two entries where the first is off and the second is on, `swap_file.active`
   is false while a swap file swaps: a switch to compressed memory skips its
   confirmation and ends `mixed`, and the btrfs warning does not show. Checked.
-- [ ] **The eagerness slider saves and toasts once per finished save.** A run
-  of arrow-key presses is several writes of the sysctl drop-in and several
-  "Eagerness updated" toasts, and after a failed save a newer step stays on
-  the slider unsent until the next release. Checked.
 - [ ] **`start_zram` never restarts `zramswap.service`.** With the service
   active (exited) and no zram swapping, as after a `swapoff` by hand, the step
   does nothing; with zram already running, which the package starts at install,
@@ -134,14 +125,6 @@ Memory overflow ([Memory overflow](../memory.md)):
   device. After a mode change gives up on `stop_swap_file`, the file can still
   leave without being masked and returns at the next boot; after `stop_zram`
   its service stays enabled. The host keeps its other swap. Checked.
-- [ ] **Errors that say more than they know.** A drain's error says "a start
-  was queued" also when queueing it failed,
-  and then adds the queueing failure beside it. A rollback on a kernel whose
-  zswap failed to initialise reports a failed restore though nothing changed.
-  Checked.
-- [ ] **A mask outside `/etc/systemd/system` and `/run/systemd/system` is caught
-  only by the route.** `can_drain` reads those two directories, so a mask
-  elsewhere enables the button and the click fails with 409. Checked.
 - [ ] **`/etc/default/zramswap` is overwritten without a marker check.** It is a
   `zram-tools` conffile, so an admin's own edits are replaced and dpkg asks at
   the next package upgrade. Checked.
