@@ -151,6 +151,31 @@ Memory overflow ([Memory overflow](../memory.md)):
 - [ ] **RHEL 8 has no `zram-generator` package**, so Install fails there and
   the zram row offers the link to Capabilities again. Not checked on a host.
 
+Trash ([Trash](../trash.md)):
+
+- [ ] **The Trash is a list only and renders every row.** It has no card
+  view, and `TrashList.tsx` is not virtualized, so a trash of many thousands
+  of items is slow to show. Give it the folder listing's card view and its
+  virtual rows (`VirtualDirectoryItems.tsx`).
+- [ ] **The Trash's sort and selection are not in the URL.** A reload starts
+  with newest deleted first and nothing selected. Put the sort column and
+  order in validated search parameters beside `trash`.
+- [ ] **A restore that ends after the user left the file browser does not
+  ask about taken names.** The prompt belongs to the file browser page
+  (`useTrashJobs.ts`), so those items are reported as failures and stay in
+  the Trash. Keep the question, as the no-trash prompt's queue does
+  (`noTrashPrompts.ts`), and ask it when a file browser shows again.
+- [ ] **A trashed folder shows no size.** `trash_list` gives 0 for a folder:
+  it would have to walk every trashed folder, and the spec's
+  `directorysizes` cache is not read. Read and keep that cache, or size a
+  folder when its properties open.
+- [ ] **A drag out of the Trash works only onto a LinuxIO file browser of the
+  same server.** Dropped on the desktop or another program it does nothing,
+  and dropped on another server's LinuxIO tab it is sent to that server,
+  whose trash does not hold the item, and fails there. Refuse the drop on
+  another server with a message; a drop outside the browser would need a
+  download of the item.
+
 Scheduled runs (`backend/common/scheduledrun`):
 
 - [ ] **A timer run whose summary could not be stored reads as a plain

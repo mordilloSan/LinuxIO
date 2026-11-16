@@ -290,8 +290,8 @@ faded out, so a quick second click never answers a question not read.
 
 ## Known limits
 
-- A folder's size is not listed (`size` is 0): the list would walk every
-  trashed folder, and the spec's `directorysizes` cache is not read.
+Open work on the Trash is in the [backlog](./TODO/backlog.md).
+
 - A name taken between the check and the rename fails the item with the
   rename's own message and no `exists` reason.
 - A replace that merges a folder and stops part-way (a file where a folder
@@ -302,15 +302,5 @@ faded out, so a quick second click never answers a question not read.
   phone it sits in the actions menu.
 - In the tab that shows the Trash the only folders to drag an item onto are
   the segments of the trail; any folder of another tab takes it.
-- An item dropped on another server's LinuxIO tab is restored by that server,
-  whose trash does not hold it, and fails there.
-- The sort and the selection of the Trash are not in the URL: a reload
-  starts with newest deleted first and nothing selected.
-- The Trash view is a list only, without the card view, and renders every
-  row: a trash of many thousands of items is slow to show.
-- A restore whose name is taken asks only while the file browser is open; one
-  that ends after the user left it reports those items as failures.
 - A move to Trash that fails for other items as well as moving some reports
   the failures and not the items that moved, as a partial delete does.
-- A drag out of the Trash restores only into a LinuxIO file browser; dropped
-  on the desktop or another program it does nothing.
