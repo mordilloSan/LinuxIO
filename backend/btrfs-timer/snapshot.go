@@ -66,49 +66,70 @@ func runSnapshot(ctx context.Context, args []string, stdout, stderr io.Writer) i
 
 // snapshotPass runs the snapshot rules and, after a timeline pass, starts
 // the replication unit when a job is enabled and raises the notice the
-// settings ask for, printing a summary and returning the exit code:
-// scheduledrun.ExitReported for a timeline pass whose every failure raised
-// its rule's alert, 1 for any other failure. The replication runs in its own
-// unit, so a send that takes hours never holds up the next snapshots.
+// settings ask for, printing a summary line and returning the exit code. A
+// timeline pass stores its run's summary and exits with 0 also when rules
+// failed, since each raised its rule's alert, and with 1 for a failure
+// without one. The replication runs in its own unit, so a send that takes
+// hours never holds up the next snapshots.
 func snapshotPass(ctx context.Context, now time.Time, kind btrfs.SnapshotKind, stdout, stderr io.Writer) int {
 	rules, err := btrfs.LoadRules()
-	if err == nil {
-		var report btrfs.RunReport
-		reportProgress(-1, "Taking snapshots")
-		report, err = runSnapshots(ctx, rules, now, kind)
-		summary := fmt.Sprintf("taken=%d pruned=%d skipped=%d errors=%d", len(report.Taken), len(report.Pruned), len(report.Skipped), len(report.Errors))
-		// A failed rule raised its own alert: only a failure without one
-		// needs the run alert of the unit's end hook.
-		failures, reported := report.Errors, kind == btrfs.KindTimeline
-		if err == nil && kind == btrfs.KindTimeline {
-			if ctx.Err() != nil {
-				// A stopped pass neither starts the replication nor reports.
-				failures, reported = append(failures, ctx.Err().Error()), false
-			} else {
-				started, replErr := startReplicationWhenEnabled(ctx)
-				summary += fmt.Sprintf(" replication_started=%t", started)
-				if replErr != nil {
-					failures, reported = append(failures, replErr.Error()), false
-				}
-				reportRun(ctx, now, len(report.Taken), len(failures) > 0)
+	if err != nil {
+		return snapshotsFailed(stderr, err)
+	}
+	reportProgress(-1, "Taking snapshots")
+	report, err := runSnapshots(ctx, rules, now, kind)
+	line := fmt.Sprintf("taken=%d pruned=%d skipped=%d errors=%d", len(report.Taken), len(report.Pruned), len(report.Skipped), len(report.Errors))
+	failures := report.Errors
+	// unreported is a failure of a timeline pass that no rule's alert
+	// reports: only that needs the run alert of the unit's end hook.
+	var unreported error
+	if err == nil && kind == btrfs.KindTimeline {
+		if ctx.Err() != nil {
+			// A stopped pass neither starts the replication nor reports.
+			unreported = ctx.Err()
+			failures = append(failures, unreported.Error())
+		} else {
+			started, replErr := startReplicationWhenEnabled(ctx)
+			line += fmt.Sprintf(" replication_started=%t", started)
+			if replErr != nil {
+				unreported = replErr
+				failures = append(failures, replErr.Error())
 			}
+			reportRun(ctx, now, len(report.Taken), len(failures) > 0)
 		}
-		fmt.Fprintln(stdout, summary)
-		for _, e := range failures {
-			fmt.Fprintln(stderr, e)
-		}
-		if err == nil && len(failures) > 0 {
-			return failedExit(reported)
-		}
+	}
+	fmt.Fprintln(stdout, line)
+	for _, e := range failures {
+		fmt.Fprintln(stderr, e)
 	}
 	if err != nil {
-		fmt.Fprintf(stderr, "Failed to take btrfs snapshots: %v\n", err)
-		if errors.Is(err, fs.ErrPermission) {
-			fmt.Fprintln(stderr, "This command requires root")
-		}
-		return 1
+		return snapshotsFailed(stderr, err)
 	}
-	return 0
+	if kind != btrfs.KindTimeline {
+		// The pre-update pass runs inside the system update's unit, whose
+		// record is not this pass's, and its rules raise no alert: it stores
+		// no summary, and a failed rule fails it.
+		if len(failures) > 0 {
+			return 1
+		}
+		return 0
+	}
+	return scheduledrun.Conclude(ctx, summarize, snapshotSummary(report), unreported)
+}
+
+func snapshotsFailed(stderr io.Writer, err error) int {
+	fmt.Fprintf(stderr, "Failed to take btrfs snapshots: %v\n", err)
+	if errors.Is(err, fs.ErrPermission) {
+		fmt.Fprintln(stderr, "This command requires root")
+	}
+	return 1
+}
+
+// snapshotSummary is the one line the history shows for a timeline pass. A
+// rule that failed raised its own alert and counts as a failure of the
+// pass's items.
+func snapshotSummary(report btrfs.RunReport) scheduledrun.Summary {
+	return runSummary(len(report.Errors), count{len(report.Taken), "taken"}, count{len(report.Pruned), "pruned"})
 }
 
 // startReplicationWhenEnabled starts the replication unit, without waiting
@@ -125,26 +146,6 @@ func startReplicationWhenEnabled(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("start btrfs replication: %w", err)
 	}
 	return true, nil
-}
-
-// allReported reports whether each of errs is a failure its job's alert
-// reports.
-func allReported(errs []error) bool {
-	for _, e := range errs {
-		if !scheduledrun.AllReported(e) {
-			return false
-		}
-	}
-	return true
-}
-
-// failedExit is the exit status of a pass with failures: ExitReported when
-// each of them raised its own alert.
-func failedExit(reported bool) int {
-	if reported {
-		return scheduledrun.ExitReported
-	}
-	return 1
 }
 
 // reportRun raises the notice of a timeline pass that the notification

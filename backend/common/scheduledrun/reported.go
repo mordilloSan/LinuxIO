@@ -2,32 +2,16 @@ package scheduledrun
 
 import "errors"
 
-// The exit statuses a worker unit (snapshots, resync, Docker updates) tells
-// its end hook the outcome of a failed run with. Any other failure exits 1,
-// and the hook raises the unit's run alert.
-const (
-	// ExitReported: nothing is left to report, since each failure raised its
-	// own alert, for a rule, a job, a pool or a container. The hook raises no
-	// run alert and clears a standing one.
-	ExitReported = 3
-	// ExitSkipped: the run did no work, since other work held it off. The
-	// hook leaves the run alert as it is. The Docker update pass says so in
-	// its summary instead and exits with this only when that was not stored.
-	ExitSkipped = 4
-)
+// ExitSkipped is the exit status of a worker (snapshots, replication,
+// resync, Docker updates) whose run did no work, since other work held it
+// off, and whose summary, which normally says so, could not be stored. The
+// end hook then leaves the run alert as it is. Every other run exits with 0,
+// or with 1 for a failure no alert reports (see Conclude).
+const ExitSkipped = 4
 
 type reportedError struct{ error }
 
 func (e reportedError) Unwrap() error { return e.error }
-
-// ExitStatus is the exit status of a worker whose run failed with err. A
-// worker whose run did no work returns ExitSkipped itself.
-func ExitStatus(err error) int {
-	if AllReported(err) {
-		return ExitReported
-	}
-	return 1
-}
 
 // Unreported is what err holds besides the failures marked Reported: nil when
 // every failure in it was reported. Joins are taken apart at every depth, so

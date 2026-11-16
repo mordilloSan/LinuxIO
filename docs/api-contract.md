@@ -903,15 +903,16 @@ and `tasks.events` while it runs. Six task types:
   `schedules.stop` and a timer's resync with `storage.btrfs_scrub_cancel`;
   both set `cancel_requested` on the record first, so the run ends `canceled`.
 - **Outcomes.** `completed`; `failed` with a message such as `exited with
-  status 3`, `killed by signal KILL` or `timed out`; `canceled`; `interrupted`
+  status 1`, `killed by signal KILL` or `timed out`; `canceled`; `interrupted`
   with reason `shutdown` when the system was stopping as the run ended.
 - **`result`.** A worker may store a summary of what its run did, which
   `tasks.get` answers as the `result` of a completed run: `message` (one
   line, such as `1 updated, 1 failed`), `failures` (how many of its items
   failed with an alert of their own; absent when none) and `skipped` (set
-  when the run did no work). The Docker update pass stores one, and
-  completes also when containers failed
-  ([Jobs](./jobs.md#scheduled-runs)); the other runs store none. A
+  when the run did no work). The Docker update pass, the timer's snapshot
+  pass, the replication run and the pool resync store one, and complete also
+  when their containers, rules, jobs or pool failed
+  ([Jobs](./jobs.md#scheduled-runs)); scripts and system updates store none. A
   `running` record counts only while systemd runs the record's invocation in
   this boot; otherwise the host marks it `interrupted`, `reboot` for a run of
   an earlier boot and `crash` for one whose end hook never ran.

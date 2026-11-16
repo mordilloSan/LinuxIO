@@ -133,14 +133,32 @@ func TestRunSnapshotKindsAndExitCode(t *testing.T) {
 		t.Fatalf("bad --now = %d, want 2", code)
 	}
 
-	// A failed rule raised its own alert: the timer's pass says so with its
-	// exit status, and the pre-update pass, which no unit hook follows, keeps 1.
+	// A failed rule raised its own alert: the timer's pass completes and its
+	// summary counts the failure. The pre-update pass, which runs inside the
+	// system update's unit and raises no alert, keeps 1 and stores nothing.
 	stubRunSnapshots(t, btrfs.RunReport{Errors: []string{"u/@: boom"}})
-	if code := runSnapshot(context.Background(), []string{"run"}, io.Discard, io.Discard); code != scheduledrun.ExitReported {
-		t.Fatalf("errors = %d, want %d", code, scheduledrun.ExitReported)
+	summaries := captureSummaries(t)
+	if code := runSnapshot(context.Background(), []string{"run"}, io.Discard, io.Discard); code != 0 {
+		t.Fatalf("errors = %d, want 0", code)
 	}
-	if code := runSnapshot(context.Background(), []string{"pre-update"}, io.Discard, io.Discard); code != 1 {
-		t.Fatalf("pre-update errors = %d, want 1", code)
+	if want := []scheduledrun.Summary{{Message: "1 failed", Failures: 1}}; !reflect.DeepEqual(*summaries, want) {
+		t.Fatalf("summaries = %+v, want %+v", *summaries, want)
+	}
+	*summaries = nil
+	if code := runSnapshot(context.Background(), []string{"pre-update"}, io.Discard, io.Discard); code != 1 || len(*summaries) != 0 {
+		t.Fatalf("pre-update errors = %d, summaries %+v; want 1 and none", code, *summaries)
+	}
+}
+
+func TestSnapshotSummary(t *testing.T) {
+	for want, report := range map[string]btrfs.RunReport{
+		"Nothing to do":               {},
+		"2 taken":                     {Taken: make([]btrfs.BtrfsSnapshot, 2)},
+		"1 taken, 3 pruned, 1 failed": {Taken: make([]btrfs.BtrfsSnapshot, 1), Pruned: make([]btrfs.BtrfsSnapshot, 3), Errors: []string{"u/@: boom"}},
+	} {
+		if got := snapshotSummary(report); got.Message != want || got.Failures != len(report.Errors) || got.Skipped {
+			t.Errorf("snapshotSummary = %+v, want %q with %d failures", got, want, len(report.Errors))
+		}
 	}
 }
 
@@ -242,8 +260,8 @@ func TestSnapshotPassReportsWhatWorkedBesideAFailure(t *testing.T) {
 	stubRunSnapshots(t, btrfs.RunReport{Taken: make([]btrfs.BtrfsSnapshot, 1), Errors: []string{"u/@: boom"}})
 	notices := stubNotifications(t, alerts.ReportChanges)
 	var stderr strings.Builder
-	if code := runSnapshot(context.Background(), []string{"run", "--now", "2026-11-10T11:00:00Z"}, io.Discard, &stderr); code != scheduledrun.ExitReported {
-		t.Fatalf("run = %d, want %d", code, scheduledrun.ExitReported)
+	if code := runSnapshot(context.Background(), []string{"run", "--now", "2026-11-10T11:00:00Z"}, io.Discard, &stderr); code != 0 {
+		t.Fatalf("run = %d, want 0", code)
 	}
 	if !strings.Contains(stderr.String(), "u/@: boom") {
 		t.Fatalf("stderr = %q, want the failed rule", stderr.String())
@@ -259,8 +277,8 @@ func TestSnapshotPassReportsNoNoticeBesideFailuresAlone(t *testing.T) {
 	stubRunSnapshots(t, btrfs.RunReport{Errors: []string{"u/@: boom"}})
 	notices := stubNotifications(t, alerts.ReportEveryRun)
 	var stderr strings.Builder
-	if code := runSnapshot(context.Background(), []string{"run"}, io.Discard, &stderr); code != scheduledrun.ExitReported {
-		t.Fatalf("failed rule: run = %d, want %d", code, scheduledrun.ExitReported)
+	if code := runSnapshot(context.Background(), []string{"run"}, io.Discard, &stderr); code != 0 {
+		t.Fatalf("failed rule: run = %d, want 0", code)
 	}
 	if !strings.Contains(stderr.String(), "u/@: boom") {
 		t.Fatalf("stderr = %q, want the failed rule", stderr.String())

@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/jobs"
@@ -26,6 +27,32 @@ const usage = `Usage: linuxio-btrfs-timer snapshot run [--now RFC3339]
 // to; tests swap it. A negative percentage means unknown.
 var reportProgress = func(int, string) {}
 
+// summarize stores what the run did in the record of the scheduled run this
+// process belongs to; tests swap it.
+var summarize = func(context.Context, scheduledrun.Summary) error { return nil }
+
+// count is one number of a run's summary, such as 2 "taken".
+type count struct {
+	n     int
+	label string
+}
+
+// runSummary is the one line the history shows for a run: its counts that
+// are not zero, then how many of its items failed with alerts of their own,
+// or "Nothing to do".
+func runSummary(failed int, counts ...count) scheduledrun.Summary {
+	var parts []string
+	for _, c := range append(counts, count{failed, "failed"}) {
+		if c.n > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", c.n, c.label))
+		}
+	}
+	if len(parts) == 0 {
+		return scheduledrun.Summary{Message: "Nothing to do"}
+	}
+	return scheduledrun.Summary{Message: strings.Join(parts, ", "), Failures: failed}
+}
+
 func main() {
 	os.Exit(run(os.Args))
 }
@@ -33,7 +60,8 @@ func main() {
 func run(args []string) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	reportProgress = scheduledrun.ReporterFromEnv(jobs.NewScheduledStore()).Report
+	reporter := scheduledrun.ReporterFromEnv(jobs.NewScheduledStore())
+	reportProgress, summarize = reporter.Report, reporter.Summarize
 	return runCLI(ctx, args[1:], os.Stdout, os.Stderr)
 }
 

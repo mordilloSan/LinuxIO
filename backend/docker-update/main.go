@@ -3,15 +3,12 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/dockerupdate"
 	"github.com/mordilloSan/LinuxIO/backend/common/jobs"
@@ -26,9 +23,6 @@ var configureLogging = logging.Configure
 // reportProgress writes the progress of the scheduled run this process belongs
 // to; tests swap it. A negative percentage means unknown.
 var reportProgress = func(int, string) {}
-
-// summaryTimeout bounds the write of the run's summary.
-const summaryTimeout = 5 * time.Second
 
 // summarize stores what the pass did in the record of the scheduled run this
 // process belongs to; tests swap it.
@@ -78,31 +72,16 @@ func runCLI(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		// The report names each container the pass replaced or failed to; the
 		// run's saved output shows it, and the history its summary.
 		pass.Write(stdout)
-		if summary, ok := pass.Summary(); ok {
-			// Stored even when a signal ended the pass, but not for longer
-			// than a stopping unit can wait for the store's lock.
-			summaryCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), summaryTimeout)
-			summaryErr := summarize(summaryCtx, summary)
-			cancel()
-			// A run started by hand has no record to store it in.
-			if summaryErr != nil && !errors.Is(summaryErr, scheduledrun.ErrNoRun) {
-				slog.Warn("failed to store the run summary", "component", "docker", "subsystem", "update", "error", summaryErr)
-			}
-			// Without its summary the end hook would read a skipped pass as
-			// one that ran and clear the unit's run alert; the exit status
-			// tells it instead, at the price of a unit shown as failed.
-			if summaryErr != nil && summary.Skipped {
-				return scheduledrun.ExitSkipped
-			}
-		}
 		// A container that failed raised its own alert and is in the report:
 		// the pass did its work, so the unit does not fail for it. Only what
 		// has no alert of its own fails the run, and the end hook reports it.
-		if unreported := scheduledrun.Unreported(err); unreported != nil {
+		unreported := scheduledrun.Unreported(err)
+		if unreported != nil {
 			fmt.Fprintf(stderr, "linuxio-docker-update: run failed: %v\n", unreported)
-			return 1
 		}
-		return 0
+		// The zero summary of a pass that checked nothing is not stored.
+		summary, _ := pass.Summary()
+		return scheduledrun.Conclude(ctx, summarize, summary, unreported)
 	case "help", "-h", "--help":
 		writeHelp(stdout)
 		return 0

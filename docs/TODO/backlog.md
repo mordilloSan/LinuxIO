@@ -155,14 +155,12 @@ Memory overflow ([Memory overflow](../memory.md)):
 
 Scheduled runs (`backend/common/scheduledrun`):
 
-- [ ] **One failed rule, job or pool marks a btrfs timer run and its unit as
-  failed.** The snapshot, replication and resync workers still exit with
-  status 3 when every failure raised its own alert and with 4 when the run did
-  no work, so systemd shows the unit as failed and the history says "exited
-  with status 3". The Docker update pass no longer does: it completes and
-  stores a summary (`scheduledrun.Summary`), which the end hook and the
-  history read. Move the three btrfs workers to the same and drop
-  `ExitReported` and `ExitSkipped`. Checked.
+- [ ] **A timer run whose summary could not be stored reads as a plain
+  Completed.** A worker exits with 0 when its items failed with alerts of
+  their own and says so only in its summary; when that write fails (the
+  store's lock held for more than 5 seconds, a full disk) the history shows
+  the run as completed with no count of failures. The items' alerts are
+  raised all the same. Checked.
 - [ ] **The log lines of a scheduled Docker pass do not name their
   container in the saved output.** `updated Compose Docker container` carries
   the container and the images as journal fields, which

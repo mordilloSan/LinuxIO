@@ -77,14 +77,44 @@ func TestRunDegradedAndResync(t *testing.T) {
 	if code := runCLI(ctx, []string{"resync", "uuid-1"}, io.Discard, io.Discard); code != 1 {
 		t.Fatalf("failed resync = %d, want 1", code)
 	}
-	// The pool's own alerts report a failed resync, so its unit's end hook
-	// raises no run alert.
+	// A resync that could not report its failure through the pool's alerts
+	// stores no summary: the failed run and its run alert say it.
+	summaries := captureSummaries(t)
+	if code := runCLI(ctx, []string{"resync", "uuid-1"}, io.Discard, io.Discard); code != 1 || len(*summaries) != 0 {
+		t.Fatalf("failed resync = %d, summaries %+v; want 1 and none", code, *summaries)
+	}
+	// The pool's own alerts report a failed resync, so the run completes,
+	// its unit is not marked failed, and its summary says it failed.
 	resyncPool = func(context.Context, string, func(float64)) error {
 		return scheduledrun.Reported(errors.New("the scrub failed"))
 	}
-	if code := runCLI(ctx, []string{"resync", "uuid-1"}, io.Discard, io.Discard); code != scheduledrun.ExitReported {
-		t.Fatalf("reported failed resync = %d, want %d", code, scheduledrun.ExitReported)
+	if code := runCLI(ctx, []string{"resync", "uuid-1"}, io.Discard, io.Discard); code != 0 {
+		t.Fatalf("reported failed resync = %d, want 0", code)
 	}
+	if want := []scheduledrun.Summary{{Message: "Resync failed", Failures: 1}}; !reflect.DeepEqual(*summaries, want) {
+		t.Fatalf("summaries = %+v, want %+v", *summaries, want)
+	}
+	*summaries = nil
+	resyncPool = func(context.Context, string, func(float64)) error { return nil }
+	if code := runCLI(ctx, []string{"resync", "uuid-1"}, io.Discard, io.Discard); code != 0 {
+		t.Fatalf("resync = %d, want 0", code)
+	}
+	if want := []scheduledrun.Summary{{Message: "Resynced"}}; !reflect.DeepEqual(*summaries, want) {
+		t.Fatalf("summaries = %+v, want %+v", *summaries, want)
+	}
+}
+
+// captureSummaries collects the summaries the run stores in its record.
+func captureSummaries(t *testing.T) *[]scheduledrun.Summary {
+	t.Helper()
+	old := summarize
+	t.Cleanup(func() { summarize = old })
+	var stored []scheduledrun.Summary
+	summarize = func(_ context.Context, summary scheduledrun.Summary) error {
+		stored = append(stored, summary)
+		return nil
+	}
+	return &stored
 }
 
 func TestRunCLIDispatch(t *testing.T) {

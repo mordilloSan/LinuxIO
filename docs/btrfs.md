@@ -148,11 +148,12 @@ short by a crash (its record then reads as aborted), is run again. A failed
 resync is retried by the next health run, without scrubbing again once the
 scrub finished; after three failures the alert turns into an error with the
 last cause, and mounting the pool again (or a reboot) re-arms it. Since these
-alerts report it, a resync that fails exits with status 3 once they were
-brought up to date, which tells the unit's end hook to raise no run alert of
-its own ([Alerts](./alerts.md#who-writes-with-no-session)); a resync that
-could not find its pool or read its state, or whose worker is killed, gets
-that run alert.
+alerts report it, the run of a resync that fails still completes once they
+were brought up to date, with the summary *Resync failed*: the unit is not
+marked failed and its end hook raises no run alert of its own
+([Alerts](./alerts.md#who-writes-with-no-session)); a resync that could not
+find its pool or read its state, or whose worker is killed, fails its run
+and gets that run alert.
 Uncorrectable scrub errors go to the scrub alert. Files with copy-on-write
 disabled (`nodatacow`, common for VM images) have no checksums, so a scrub
 cannot tell their stale copies; replace a disk that returns to a pool holding
@@ -313,10 +314,11 @@ starts `linuxio-btrfs-snapshot.service`, which runs
 replication job is enabled and disabled otherwise. **Run now** runs the
 snapshot and prune pass from the bridge; it does not replicate (each
 replication job has its own **Run now**). A timer pass in which a rule
-failed exits with status 3 when each failure raised its own alert, and
-with 1 for a failure without one (rules or jobs that cannot be read, a
-replication that could not be started); only the latter gets the run alert
-of the unit's end hook ([Alerts](./alerts.md#who-writes-with-no-session)).
+failed still completes, since each failure raised its own alert, and its
+summary in the history counts it (*2 taken, 1 failed*); it exits with 1 for
+a failure without an alert (rules or jobs that cannot be read, a replication
+that could not be started), and only that gets the run alert of the unit's
+end hook ([Alerts](./alerts.md#who-writes-with-no-session)).
 
 - A rule is due when its newest `timeline` snapshot is older than its period
   (5-minute tolerance for the hourly tick).
@@ -736,12 +738,13 @@ is thus skipped, not queued, and the running one carries on.
   binary runs under the snapshot unit the old bridge wrote, and no
   replication unit exists yet. The installer adds the unit's run-record
   drop-in on the same update.
-- The replication run's exit status follows the snapshot pass's: 3 when each
-  failure raised its job's alert, 1 for a failure without one (jobs that
-  cannot be read, an outcome that could not be recorded), which gets the run
-  alert of the unit's end hook. A run in which another run, such as one
-  started from the page, held every enabled job did no work: it exits with 4,
-  so its end hook changes no alert, and it raises no notice. Its summary line
+- The replication run's exit status follows the snapshot pass's: 0 also
+  when jobs failed, since each raised its job's alert and the run's summary
+  counts them, 1 for a failure without one (jobs that cannot be read, an
+  outcome that could not be recorded), which gets the run alert of the unit's
+  end hook. A run in which another run, such as one started from the page,
+  held every enabled job did no work: it completes with a summary that says
+  it was skipped, so its end hook changes no alert, and it raises no notice. Its summary line
   counts the jobs that
   replicated (sent or already up to date), those that sent, and the errors;
   a job whose outcome could not be recorded still counts by what it did.

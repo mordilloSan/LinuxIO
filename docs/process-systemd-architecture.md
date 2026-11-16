@@ -223,9 +223,9 @@ ExecStopPost=-+/usr/local/bin/linuxio scheduled-run end --unit %n
   days, and a run's output goes with its record. The btrfs timer program and
   the Docker update runner write their run's progress to
   `/run/linuxio/jobs/scheduled/<id>.progress`, finding the run through
-  `$INVOCATION_ID`. The Docker update runner also writes a summary of what
-  its pass did into the record's `result` before it exits, which the end
-  hook keeps ([Jobs](./jobs.md#scheduled-runs)).
+  `$INVOCATION_ID`. Both also write a summary of what the run did into the
+  record's `result` before they exit, which the end hook keeps
+  ([Jobs](./jobs.md#scheduled-runs)).
 - **Liveness.** The root job host lists the running scheduled runs for
   `tasks.list` and `tasks.events` ([API Contract](./api-contract.md#scheduled-runs)).
   At its start and at every listing it marks a `running` record `interrupted`:

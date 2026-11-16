@@ -52,10 +52,10 @@ func runReplicate(ctx context.Context, args []string, stdout, stderr io.Writer) 
 
 // replicatePass runs the enabled replication jobs, which the snapshot pass
 // starts in a unit of their own, raises the notice the settings ask for,
-// prints a summary and returns the exit code: scheduledrun.ExitReported when
-// each failure raised its job's alert, scheduledrun.ExitSkipped when another
-// run held every enabled job, 1 for any other failure, such as jobs that
-// cannot be read or an outcome that could not be recorded.
+// prints a summary line, stores the run's summary and returns the exit code:
+// 0 also when jobs failed, since each raised its own alert, and when another
+// run held every enabled job; 1 for a failure without an alert, such as jobs
+// that cannot be read or an outcome that could not be recorded.
 func replicatePass(ctx context.Context, now time.Time, stdout, stderr io.Writer) int {
 	jobs, err := btrfs.LoadJobs()
 	if err != nil {
@@ -75,16 +75,27 @@ func replicatePass(ctx context.Context, now time.Time, stdout, stderr io.Writer)
 	// Another run, such as one started from the page, held every enabled
 	// job: this run did no work, so it changes no alert and raises no notice.
 	if len(errs) == 0 && replicated == 0 && slices.ContainsFunc(jobs, func(j btrfs.BtrfsReplicationJob) bool { return j.Enabled }) {
-		return scheduledrun.ExitSkipped
+		skipped := scheduledrun.Summary{Message: "Skipped: another run held every job", Skipped: true}
+		return scheduledrun.Conclude(ctx, summarize, skipped, nil)
 	}
 	// A stopped run reports nothing.
 	if ctx.Err() == nil {
 		reportReplication(ctx, now, sent, len(errs) > 0)
 	}
-	if len(errs) > 0 {
-		return failedExit(allReported(errs))
+	return scheduledrun.Conclude(ctx, summarize, replicationSummary(sent, errs), scheduledrun.Unreported(errors.Join(errs...)))
+}
+
+// replicationSummary is the one line the history shows for a replication
+// run. A job that failed with its own alert counts as a failure of the run's
+// items; one without an alert fails the run itself.
+func replicationSummary(sent int, errs []error) scheduledrun.Summary {
+	failed := 0
+	for _, e := range errs {
+		if scheduledrun.AllReported(e) {
+			failed++
+		}
 	}
-	return 0
+	return runSummary(failed, count{sent, "sent"})
 }
 
 // reportReplication raises the notice of a replication run that the

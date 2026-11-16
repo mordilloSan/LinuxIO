@@ -70,24 +70,46 @@ func TestRunReplicateUsage(t *testing.T) {
 	}
 }
 
-// The exit status keeps the contract of the unit's end hook: 0 for a clean
-// run, ExitReported when each failure raised its job's alert, 1 for a failure
-// without one, such as an outcome that could not be recorded.
+// The exit status and the summary say how the run went: 0 for a clean run
+// and for one whose failed jobs each raised their alert, which the summary
+// counts; 1 for a failure without an alert, such as an outcome that could not
+// be recorded.
 func TestReplicatePassExitStatus(t *testing.T) {
 	reported := scheduledrun.Reported(errors.New("job: boom"))
 	for name, tt := range map[string]struct {
-		errs []error
-		want int
+		errs    []error
+		want    int
+		summary scheduledrun.Summary
 	}{
-		"clean":                {nil, 0},
-		"failed jobs reported": {[]error{reported}, scheduledrun.ExitReported},
-		"outcome not recorded": {[]error{reported, errors.New("job: record outcome: disk full")}, 1},
-		"stopped":              {[]error{context.Canceled}, 1},
+		"clean":                {nil, 0, scheduledrun.Summary{Message: "Nothing to do"}},
+		"failed jobs reported": {[]error{reported}, 0, scheduledrun.Summary{Message: "1 failed", Failures: 1}},
+		// A run that does not complete stores no summary.
+		"outcome not recorded": {[]error{reported, errors.New("job: record outcome: disk full")}, 1, scheduledrun.Summary{}},
+		"stopped":              {[]error{context.Canceled}, 1, scheduledrun.Summary{}},
 	} {
 		stubRunReplication(t, 0, 0, tt.errs)
+		summaries := captureSummaries(t)
 		if code := runReplicate(context.Background(), []string{"run"}, io.Discard, io.Discard); code != tt.want {
 			t.Errorf("%s: replicate = %d, want %d", name, code, tt.want)
 		}
+		var want []scheduledrun.Summary
+		if tt.summary.Message != "" {
+			want = []scheduledrun.Summary{tt.summary}
+		}
+		if !reflect.DeepEqual(*summaries, want) {
+			t.Errorf("%s: summaries = %+v, want %+v", name, *summaries, want)
+		}
+	}
+
+	// A signal that stopped the run while its last job failed with an alert
+	// leaves every failure reported; the run still must not end as completed,
+	// or its record could not read canceled or interrupted.
+	stubRunReplication(t, 0, 0, []error{reported})
+	summaries := captureSummaries(t)
+	stopped, cancel := context.WithCancel(context.Background())
+	cancel()
+	if code := runReplicate(stopped, []string{"run"}, io.Discard, io.Discard); code != 1 || len(*summaries) != 0 {
+		t.Errorf("stopped with reported failures: replicate = %d, summaries %+v; want 1 and none", code, *summaries)
 	}
 
 	stubRunReplication(t, 0, 0, nil)
@@ -169,18 +191,27 @@ func TestReplicatePassNotices(t *testing.T) {
 	}
 }
 
-// A run whose every enabled job another run held did no work: it exits
-// ExitSkipped, so its end hook changes no alert, and it raises no notice.
+// A run whose every enabled job another run held did no work: it completes
+// with a summary that says so, so its end hook changes no alert, and it
+// raises no notice. Without that summary its exit status says it.
 func TestReplicatePassSkippedWhenEveryJobIsHeld(t *testing.T) {
 	stubRunReplication(t, 0, 0, nil)
 	notices := stubNotifications(t, alerts.ReportEveryRun)
 	saveJobs(t, testJob)
-	if code := runReplicate(context.Background(), []string{"run"}, io.Discard, io.Discard); code != scheduledrun.ExitSkipped || len(*notices) != 0 {
-		t.Fatalf("every job held: replicate = %d, raised %+v; want %d, none", code, *notices, scheduledrun.ExitSkipped)
+	summaries := captureSummaries(t)
+	if code := runReplicate(context.Background(), []string{"run"}, io.Discard, io.Discard); code != 0 || len(*notices) != 0 {
+		t.Fatalf("every job held: replicate = %d, raised %+v; want 0, none", code, *notices)
+	}
+	if want := []scheduledrun.Summary{{Message: "Skipped: another run held every job", Skipped: true}}; !reflect.DeepEqual(*summaries, want) {
+		t.Fatalf("summaries = %+v, want %+v", *summaries, want)
+	}
+	summarize = func(context.Context, scheduledrun.Summary) error { return scheduledrun.ErrNoRun }
+	if code := runReplicate(context.Background(), []string{"run"}, io.Discard, io.Discard); code != scheduledrun.ExitSkipped {
+		t.Fatalf("every job held, summary not stored: replicate = %d, want %d", code, scheduledrun.ExitSkipped)
 	}
 }
 
-// A failed job raises its own alert and exits ExitReported; what the run sent
+// A failed job raises its own alert and the run completes; what the run sent
 // beside it still counts, and a run that failed and sent nothing raises no
 // notice even under every_run.
 func TestReplicatePassReportsAFailedJob(t *testing.T) {
@@ -198,8 +229,8 @@ func TestReplicatePassReportsAFailedJob(t *testing.T) {
 		notices := stubNotifications(t, tt.report)
 		failed := stubFailedJob(t, tt.sent)
 		var stderr strings.Builder
-		if code := runReplicate(context.Background(), []string{"run", "--now", "2026-11-10T10:00:00Z"}, io.Discard, &stderr); code != scheduledrun.ExitReported {
-			t.Fatalf("report %q: replicate = %d, want %d", tt.report, code, scheduledrun.ExitReported)
+		if code := runReplicate(context.Background(), []string{"run", "--now", "2026-11-10T10:00:00Z"}, io.Discard, &stderr); code != 0 {
+			t.Fatalf("report %q: replicate = %d, want 0", tt.report, code)
 		}
 		if !strings.Contains(stderr.String(), "boom") {
 			t.Fatalf("report %q: stderr = %q, want the failure", tt.report, stderr.String())
