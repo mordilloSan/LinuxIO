@@ -66,7 +66,7 @@ func TestTrashRecordSendsARestoreWhereTheItemWasTrashedFrom(t *testing.T) {
 	require.NoError(t, os.Remove(filepath.Join(trash, "info", "app.conf.trashinfo")))
 	writeTestTrashInfo(t, trash, "renamed.conf", filepath.Join(elsewhere, "app.conf"))
 
-	restored, err := RestoreFromTrash(t.Context(), filepath.Join(trash, "files", "renamed.conf"), home, uid, gid, true, nil)
+	restored, err := RestoreFromTrash(t.Context(), filepath.Join(trash, "files", "renamed.conf"), home, uid, gid, true, RestoreOptions{})
 	require.NoError(t, err)
 	assert.Equal(t, conf, restored)
 	assert.Equal(t, "conf", readString(t, conf))
@@ -95,14 +95,14 @@ func TestTrashRestoreWithoutARecordIntoASystemFolderNeedsConfirmation(t *testing
 	assert.False(t, restoreNeedsConfirmation(root, filepath.Join(home, "app.conf"), Owner{UID: uint32(os.Getuid()), Set: true}))
 
 	for _, confirmed := range [][]string{nil, {filepath.Join(system, "other.conf")}} {
-		_, err = RestoreFromTrash(t.Context(), item, home, uid, gid, true, confirmed)
+		_, err = RestoreFromTrash(t.Context(), item, home, uid, gid, true, RestoreOptions{Confirmed: confirmed})
 		require.ErrorIs(t, err, bridgeipc.ErrForbidden)
 		require.ErrorContains(t, err, "confirm restoring it to "+dest)
 		require.FileExists(t, item)
 		requireEmptyDir(t, system)
 	}
 
-	restored, err := RestoreFromTrash(t.Context(), item, home, uid, gid, true, []string{dest})
+	restored, err := RestoreFromTrash(t.Context(), item, home, uid, gid, true, RestoreOptions{Confirmed: []string{dest}})
 	require.NoError(t, err)
 	assert.Equal(t, dest, restored)
 	assert.Equal(t, "conf", readString(t, dest))
@@ -139,7 +139,7 @@ func TestTrashRecordsGoWithPurgeAndEmpty(t *testing.T) {
 	PruneTrashRecords(t.Context(), home, uid)
 	require.Len(t, dirNames(t, records), 1)
 
-	restored, err := RestoreFromTrash(t.Context(), kept, home, uid, gid, true, nil)
+	restored, err := RestoreFromTrash(t.Context(), kept, home, uid, gid, true, RestoreOptions{})
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join(system, "kept.conf"), restored)
 	requireEmptyDir(t, records)
@@ -200,7 +200,7 @@ func TestUnprivilegedTrashKeepsNoRecords(t *testing.T) {
 	trashed, err := MoveToTrash(t.Context(), conf, home, os.Getuid(), os.Getgid(), false)
 	require.NoError(t, err)
 	assert.NoDirExists(t, records)
-	restored, err := RestoreFromTrash(t.Context(), trashed, home, os.Getuid(), os.Getgid(), false, nil)
+	restored, err := RestoreFromTrash(t.Context(), trashed, home, os.Getuid(), os.Getgid(), false, RestoreOptions{})
 	require.NoError(t, err)
 	assert.Equal(t, conf, restored)
 }

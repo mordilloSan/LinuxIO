@@ -145,34 +145,15 @@ func resourcePatchWithProgress(ctx context.Context, req apischema.ActionSourceDe
 }
 
 // generateUniquePath generates a unique path by appending a suffix like " (copy)" or " (copy 2)"
+// (see services.CopyName), falling back to a timestamp after 999 tries.
 func generateUniquePath(path string, isDir bool, root *fsroot.FSRoot) string {
 	dir := filepath.Dir(path)
 	base := filepath.Base(path)
-
-	// For files, split name and extension
-	var name, ext string
-	if !isDir {
-		ext = filepath.Ext(base)
-		name = strings.TrimSuffix(base, ext)
-	} else {
-		name = base
-	}
-
-	// Try "name (copy).ext" first
-	newPath := filepath.Join(dir, name+" (copy)"+ext)
-	if _, err := root.Root.Lstat(fsroot.ToRel(newPath)); errors.Is(err, fs.ErrNotExist) {
-		return newPath
-	}
-
-	// Try "name (copy 2).ext", "name (copy 3).ext", etc.
-	for i := 2; i < 1000; i++ {
-		newPath = filepath.Join(dir, fmt.Sprintf("%s (copy %d)%s", name, i, ext))
+	for n := int64(1); n < 1000; n++ {
+		newPath := filepath.Join(dir, services.CopyName(base, isDir, n))
 		if _, err := root.Root.Lstat(fsroot.ToRel(newPath)); errors.Is(err, fs.ErrNotExist) {
 			return newPath
 		}
 	}
-
-	// Fallback to timestamp-based name
-	timestamp := time.Now().Unix()
-	return filepath.Join(dir, fmt.Sprintf("%s (copy %d)%s", name, timestamp, ext))
+	return filepath.Join(dir, services.CopyName(base, isDir, time.Now().Unix()))
 }

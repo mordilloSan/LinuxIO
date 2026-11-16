@@ -101,7 +101,7 @@ func runPathBatch(ctx context.Context, task *bridgeipc.Task, store *userconfig.U
 		}
 		if err := fn(ctx, fsroot.CleanAbsPath(raw)); err != nil {
 			slog.Debug("batch item failed", "phase", phase, "path", raw, "error", err)
-			failures = append(failures, FileBatchItemFailure{Path: raw, Error: err.Error()})
+			failures = append(failures, FileBatchItemFailure{Path: raw, Error: err.Error(), Reason: failureReason(err)})
 		} else {
 			succeeded++
 		}
@@ -113,17 +113,35 @@ func runPathBatch(ctx context.Context, task *bridgeipc.Task, store *userconfig.U
 	return batchResult(len(paths), succeeded, failures), nil
 }
 
+// failureReason names the failures the page offers a way out of: a restore
+// whose name is taken, which it can send again with replace or keep both,
+// and a move to the trash on a filesystem without one, which it can offer to
+// delete for good instead.
+func failureReason(err error) apischema.FileBatchFailureReason {
+	switch {
+	case errors.Is(err, services.ErrNameTaken):
+		return apischema.FileBatchFailureExists
+	case errors.Is(err, services.ErrNoTrash):
+		return apischema.FileBatchFailureNoTrash
+	}
+	return ""
+}
+
 func reconcileMoves(label string, updates []batchIndexerUpdate) {
 	reconcileDetached(label, updates, func(ctx context.Context, update batchIndexerUpdate) error {
-		return movePathInIndexer(ctx, update.source, update.dest, false, func() (os.FileInfo, error) {
+		return movePathInIndexer(ctx, update.source, update.dest, update.replaced, func() (os.FileInfo, error) {
 			return update.info, nil
 		})
 	})
 }
 
+// trashMove moves the item at path into or out of u's trash and returns
+// where it went and whether it replaced what was there.
+type trashMove func(ctx context.Context, path string, u trashUser) (dest string, replaced bool, err error)
+
 // runTrashMoveTask runs a move into or out of the trash over every path and
 // tells the indexer about each item that moved.
-func runTrashMoveTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, paths []string, label, phase string, owner sessionOwner, move func(ctx context.Context, path string, u trashUser) (string, error)) (FileBatchResult, error) {
+func runTrashMoveTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, paths []string, label, phase string, owner sessionOwner, move trashMove) (FileBatchResult, error) {
 	u, err := trashUserOrError(owner)
 	if err != nil {
 		return FileBatchResult{}, err
@@ -143,11 +161,11 @@ func runTrashMoveTask(ctx context.Context, task *bridgeipc.Task, store *userconf
 		if statErr != nil {
 			return statErr
 		}
-		dest, moveErr := move(ctx, source, u)
+		dest, replaced, moveErr := move(ctx, source, u)
 		if moveErr != nil {
 			return moveErr
 		}
-		updates = append(updates, batchIndexerUpdate{source: source, dest: dest, info: info})
+		updates = append(updates, batchIndexerUpdate{source: source, dest: dest, info: info, replaced: replaced})
 		return nil
 	})
 	reconcileMoves(label, updates)
@@ -156,32 +174,65 @@ func runTrashMoveTask(ctx context.Context, task *bridgeipc.Task, store *userconf
 
 // runTrashBatchTask moves many paths into the session user's trash as a single task.
 func runTrashBatchTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.BatchPathRequest, owner sessionOwner) (FileBatchResult, error) {
-	return runTrashMoveTask(ctx, task, store, req.Paths, "trash_batch", "trashing", owner, func(ctx context.Context, path string, u trashUser) (string, error) {
-		return services.MoveToTrash(ctx, path, u.home, u.uid, u.gid, u.chownNew)
+	return runTrashMoveTask(ctx, task, store, req.Paths, "trash_batch", "trashing", owner, func(ctx context.Context, path string, u trashUser) (string, bool, error) {
+		dest, err := services.MoveToTrash(ctx, path, u.home, u.uid, u.gid, u.chownNew)
+		return dest, false, err
 	})
 }
 
-// runTrashRestoreTask puts trashed items back where they came from. An item
-// a root bridge has no record of trashing goes into a folder the session user
-// does not own only when the request confirms that destination for that
-// item: a destination confirmed for another item of the request does not
-// count.
+// runTrashRestoreTask puts trashed items back where they came from, or into
+// the folder the request names under the names it gives. An item a root
+// bridge has no record of trashing goes back into a folder the session user
+// does not own, or over what took its name, only when the request confirms
+// that destination for that item: a destination confirmed for another item
+// of the request does not count. An item whose name is taken where it goes
+// is kept both or replaced as the request says, and fails otherwise.
 func runTrashRestoreTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.TrashRestoreRequest, owner sessionOwner) (FileBatchResult, error) {
-	return runTrashMoveTask(ctx, task, store, req.Paths, "trash_restore", "restoring", owner, func(ctx context.Context, path string, u trashUser) (string, error) {
-		return services.RestoreFromTrash(ctx, path, u.home, u.uid, u.gid, u.chownNew, confirmedRestore(req, path))
-	})
-}
-
-// confirmedRestore returns the destination the request confirmed for the
-// trashed item at path, if any.
-func confirmedRestore(req apischema.TrashRestoreRequest, path string) []string {
-	path = fsroot.CleanAbsPath(path)
-	for trashed, destination := range req.ConfirmedDestinations {
-		if fsroot.CleanAbsPath(trashed) == path {
-			return []string{fsroot.CleanAbsPath(destination)}
+	into := ""
+	if req.Destination != "" {
+		root, err := fsroot.Open()
+		if err != nil {
+			return FileBatchResult{}, fmt.Errorf("open filesystem root: %w", err)
+		}
+		into, err = resolveBatchDestinationDir(root, req.Destination)
+		_ = root.Close()
+		if err != nil {
+			return FileBatchResult{}, err
 		}
 	}
-	return nil
+	overwrite := req.Overwrite != nil && *req.Overwrite
+	keepBoth := make(map[string]bool, len(req.KeepBoth))
+	for _, raw := range req.KeepBoth {
+		keepBoth[fsroot.CleanAbsPath(raw)] = true
+	}
+	names := make(map[string]string, len(req.Names))
+	for trashed, name := range req.Names {
+		names[fsroot.CleanAbsPath(trashed)] = name
+	}
+	confirmed := confirmedRestores(req)
+	return runTrashMoveTask(ctx, task, store, req.Paths, "trash_restore", "restoring", owner, func(ctx context.Context, path string, u trashUser) (string, bool, error) {
+		opts := services.RestoreOptions{
+			Confirmed: confirmed[path],
+			Into:      into,
+			KeepBoth:  keepBoth[path],
+			Replace:   overwrite && !keepBoth[path],
+		}
+		if into != "" {
+			opts.Name = names[path]
+		}
+		dest, err := services.RestoreFromTrash(ctx, path, u.home, u.uid, u.gid, u.chownNew, opts)
+		return dest, opts.Replace, err
+	})
+}
+
+// confirmedRestores returns, by trashed path, the destination the request
+// confirmed for that item.
+func confirmedRestores(req apischema.TrashRestoreRequest) map[string][]string {
+	confirmed := make(map[string][]string, len(req.ConfirmedDestinations))
+	for trashed, destination := range req.ConfirmedDestinations {
+		confirmed[fsroot.CleanAbsPath(trashed)] = []string{fsroot.CleanAbsPath(destination)}
+	}
+	return confirmed
 }
 
 // runTrashPurgeTask deletes trashed items for good.

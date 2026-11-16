@@ -1129,6 +1129,24 @@ func countRecursiveEntries(ctx context.Context, root *fsroot.FSRoot, path string
 	return total, err
 }
 
+// CopyName is the n-th name "keep both" tries for an item named base whose
+// name is taken: "name (copy).ext" for 1, then "name (copy n).ext". A
+// folder's name has no extension to keep apart, and neither has a name that
+// is all extension (".bashrc").
+func CopyName(base string, isDir bool, n int64) string {
+	name, ext := base, ""
+	if !isDir {
+		if ext = filepath.Ext(base); ext == base {
+			ext = ""
+		}
+		name = strings.TrimSuffix(base, ext)
+	}
+	if n == 1 {
+		return name + " (copy)" + ext
+	}
+	return fmt.Sprintf("%s (copy %d)%s", name, n, ext)
+}
+
 // validateMoveDestination validates that a move operation is safe
 func validateMoveDestination(root *fsroot.FSRoot, src, dst string) error {
 	// Clean and normalize paths

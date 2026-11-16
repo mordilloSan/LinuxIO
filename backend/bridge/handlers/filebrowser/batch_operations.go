@@ -19,10 +19,12 @@ import (
 )
 
 // FileBatchItemFailure records one item a batch task could not process, so the task
-// continues past it and reports partial success to the caller.
+// continues past it and reports partial success to the caller. Reason is set
+// only for the failures the page offers a way out of (see failureReason).
 type FileBatchItemFailure struct {
-	Path  string `json:"path"`
-	Error string `json:"error"`
+	Path   string                           `json:"path"`
+	Error  string                           `json:"error"`
+	Reason apischema.FileBatchFailureReason `json:"reason,omitzero"`
 }
 
 func batchResult(total, succeeded int, failures []FileBatchItemFailure) FileBatchResult {

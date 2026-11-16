@@ -1541,9 +1541,12 @@ export interface FileArchiveResult {
   format: string;
 }
 
+export type FileBatchFailureReason = "exists" | "no_trash";
+
 export interface FileBatchItemFailure {
   path: string;
   error: string;
+  reason?: FileBatchFailureReason;
 }
 
 export interface FileBatchResult {
@@ -3416,6 +3419,10 @@ export interface TrashListResponse {
 export interface TrashRestoreRequest {
   paths: string[];
   confirmedDestinations?: Record<string, string>;
+  destination?: string;
+  names?: Record<string, string>;
+  overwrite?: boolean;
+  keepBoth?: string[];
 }
 
 export interface TunedProfile {

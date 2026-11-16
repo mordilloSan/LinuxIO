@@ -1,6 +1,8 @@
 package filebrowser
 
 import (
+	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -13,6 +15,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
 // The session user of the root trash tests, who has no account: their home
@@ -83,7 +86,7 @@ func TestTrashRestoreRefusesACraftedPathAsRoot(t *testing.T) {
 	} {
 		item := userTrashItem(t, home, "evil.conf", original, trashTestUID)
 
-		_, err := services.RestoreFromTrash(t.Context(), item, home, trashTestUID, trashTestGID, true, nil)
+		_, err := services.RestoreFromTrash(t.Context(), item, home, trashTestUID, trashTestGID, true, services.RestoreOptions{})
 		require.ErrorIs(t, err, bridgeipc.ErrForbidden, original)
 		require.FileExists(t, item)
 	}
@@ -104,7 +107,7 @@ func TestTrashRestoreIntoASystemFolderAsRoot(t *testing.T) {
 	trashed, err := services.MoveToTrash(t.Context(), original, home, trashTestUID, trashTestGID, true)
 	require.NoError(t, err)
 	requireOwner(t, trashed, 0, 0)
-	restored, err := services.RestoreFromTrash(t.Context(), trashed, home, trashTestUID, trashTestGID, true, nil)
+	restored, err := services.RestoreFromTrash(t.Context(), trashed, home, trashTestUID, trashTestGID, true, services.RestoreOptions{})
 	require.NoError(t, err)
 	require.Equal(t, original, restored)
 	requireOwnerAndMode(t, original, 0, 0, 0o644)
@@ -117,7 +120,7 @@ func TestTrashRestoreIntoASystemFolderAsRoot(t *testing.T) {
 	require.NoError(t, os.Remove(trashed))
 	require.NoError(t, os.WriteFile(trashed, []byte("user"), 0o644))
 	require.NoError(t, os.Chown(trashed, trashTestUID, trashTestGID))
-	_, err = services.RestoreFromTrash(t.Context(), trashed, home, trashTestUID, trashTestGID, true, nil)
+	_, err = services.RestoreFromTrash(t.Context(), trashed, home, trashTestUID, trashTestGID, true, services.RestoreOptions{})
 	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
 	require.FileExists(t, trashed)
 	requireNoEntries(t, conf)
@@ -152,7 +155,7 @@ func TestTrashHandsNewEntriesToSessionUserAsRoot(t *testing.T) {
 	requireOwnerAndMode(t, filepath.Join(trash, "info", "notes.txt.trashinfo"), trashTestUID, trashTestGID, 0o600)
 
 	require.NoError(t, os.Remove(docs))
-	restored, err := services.RestoreFromTrash(t.Context(), trashed, home, trashTestUID, trashTestGID, true, nil)
+	restored, err := services.RestoreFromTrash(t.Context(), trashed, home, trashTestUID, trashTestGID, true, services.RestoreOptions{})
 	require.NoError(t, err)
 	require.Equal(t, notes, restored)
 	requireOwnerAndMode(t, docs, trashTestUID, trashTestGID, 0o755)
@@ -176,14 +179,14 @@ func TestTrashRefusesAFolderAnotherUserOwnsAsRoot(t *testing.T) {
 	files := filepath.Dir(item)
 	require.NoError(t, os.Chown(files, 23456, 23457))
 
-	_, err := services.RestoreFromTrash(t.Context(), item, home, trashTestUID, trashTestGID, true, nil)
+	_, err := services.RestoreFromTrash(t.Context(), item, home, trashTestUID, trashTestGID, true, services.RestoreOptions{})
 	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
 	require.FileExists(t, item)
 
 	// The trash folder itself counts too, as .Trash/<uid> in a shared .Trash.
 	require.NoError(t, os.Chown(files, trashTestUID, trashTestGID))
 	require.NoError(t, os.Chown(filepath.Dir(files), 23456, 23457))
-	_, err = services.RestoreFromTrash(t.Context(), item, home, trashTestUID, trashTestGID, true, nil)
+	_, err = services.RestoreFromTrash(t.Context(), item, home, trashTestUID, trashTestGID, true, services.RestoreOptions{})
 	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
 	require.FileExists(t, item)
 
@@ -208,17 +211,17 @@ func TestTrashRestoreTakesAnItemTheUserCouldNotWriteAsRoot(t *testing.T) {
 	const wwwData = 33
 
 	item := userTrashItem(t, home, "index.html", filepath.Join(www, "index.html"), wwwData)
-	_, err := services.RestoreFromTrash(t.Context(), item, home, trashTestUID, trashTestGID, true, nil)
+	_, err := services.RestoreFromTrash(t.Context(), item, home, trashTestUID, trashTestGID, true, services.RestoreOptions{})
 	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
 	require.FileExists(t, item)
-	restored, err := services.RestoreFromTrash(t.Context(), item, home, trashTestUID, trashTestGID, true, []string{filepath.Join(www, "index.html")})
+	restored, err := services.RestoreFromTrash(t.Context(), item, home, trashTestUID, trashTestGID, true, services.RestoreOptions{Confirmed: []string{filepath.Join(www, "index.html")}})
 	require.NoError(t, err)
 	require.Equal(t, filepath.Join(www, "index.html"), restored)
 	requireOwnerAndMode(t, restored, wwwData, wwwData, 0o644)
 
 	shared := userTrashItem(t, home, "shared.html", filepath.Join(www, "shared.html"), wwwData)
 	require.NoError(t, os.Chmod(shared, 0o664))
-	_, err = services.RestoreFromTrash(t.Context(), shared, home, trashTestUID, trashTestGID, true, nil)
+	_, err = services.RestoreFromTrash(t.Context(), shared, home, trashTestUID, trashTestGID, true, services.RestoreOptions{})
 	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
 	require.FileExists(t, shared)
 	require.NoFileExists(t, filepath.Join(www, "shared.html"))
@@ -260,7 +263,7 @@ func TestTrashHandsAPerFilesystemTrashToSessionUserAsRoot(t *testing.T) {
 	requireOwnerAndMode(t, filepath.Join(trash, "info", "report.txt.trashinfo"), trashTestUID, trashTestGID, 0o600)
 	requireOwner(t, trashed, 0, 0)
 
-	restored, err := services.RestoreFromTrash(t.Context(), trashed, home, trashTestUID, trashTestGID, true, nil)
+	restored, err := services.RestoreFromTrash(t.Context(), trashed, home, trashTestUID, trashTestGID, true, services.RestoreOptions{})
 	require.NoError(t, err)
 	require.Equal(t, report, restored)
 	requireOwnerAndMode(t, report, 0, 0, 0o644)
@@ -273,7 +276,229 @@ func TestConfirmedRestoreIsPerItem(t *testing.T) {
 		Paths:                 []string{"/home/u/.local/share/Trash/files/a.conf", "/home/u/.local/share/Trash/files/b.conf"},
 		ConfirmedDestinations: map[string]string{"/home/u/.local/share/Trash/files/./a.conf": "/etc/app.d/../a.conf"},
 	}
-	require.Equal(t, []string{"/etc/a.conf"}, confirmedRestore(req, req.Paths[0]))
-	require.Nil(t, confirmedRestore(req, req.Paths[1]))
-	require.Nil(t, confirmedRestore(apischema.TrashRestoreRequest{Paths: req.Paths}, req.Paths[0]))
+	require.Equal(t, []string{"/etc/a.conf"}, confirmedRestores(req)[req.Paths[0]])
+	require.Nil(t, confirmedRestores(req)[req.Paths[1]])
+	require.Nil(t, confirmedRestores(apischema.TrashRestoreRequest{Paths: req.Paths})[req.Paths[0]])
+}
+
+// What root trashed from a system folder goes back over what took its name
+// only when the request says replace, and beside it with keep both: root's,
+// as before, with nothing left behind in the folder or the trash. An item the
+// session user could have written is refused there whatever the request
+// chose, so a replace never takes away what is there.
+func TestTrashRestoreChoicesIntoASystemFolderAsRoot(t *testing.T) {
+	base, home := trashTestHome(t)
+	conf := filepath.Join(base, "etc", "app.d")
+	require.NoError(t, os.MkdirAll(conf, 0o755))
+	original := filepath.Join(conf, "app.conf")
+	require.NoError(t, os.WriteFile(original, []byte("root"), 0o644))
+	restore := func(trashed string, opts services.RestoreOptions) (string, error) {
+		return services.RestoreFromTrash(t.Context(), trashed, home, trashTestUID, trashTestGID, true, opts)
+	}
+
+	trashed, err := services.MoveToTrash(t.Context(), original, home, trashTestUID, trashTestGID, true)
+	require.NoError(t, err)
+	trashFiles := filepath.Dir(trashed)
+	require.NoError(t, os.WriteFile(original, []byte("newer"), 0o600))
+	_, err = restore(trashed, services.RestoreOptions{})
+	require.ErrorIs(t, err, services.ErrNameTaken)
+	restored, err := restore(trashed, services.RestoreOptions{Replace: true})
+	require.NoError(t, err)
+	require.Equal(t, original, restored)
+	require.Equal(t, "root", readString(t, original))
+	requireOwnerAndMode(t, original, 0, 0, 0o644)
+	entries, err := os.ReadDir(conf)
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "only app.conf, nothing set aside")
+	requireNoEntries(t, trashFiles)
+
+	trashed, err = services.MoveToTrash(t.Context(), original, home, trashTestUID, trashTestGID, true)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(original, []byte("newer"), 0o600))
+	restored, err = restore(trashed, services.RestoreOptions{KeepBoth: true})
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(conf, "app (copy).conf"), restored)
+	require.Equal(t, "root", readString(t, restored))
+	requireOwnerAndMode(t, restored, 0, 0, 0o644)
+	require.Equal(t, "newer", readString(t, original))
+	requireNoEntries(t, trashFiles)
+
+	item := userTrashItem(t, home, "evil.conf", original, trashTestUID)
+	for _, opts := range []services.RestoreOptions{
+		{Confirmed: []string{original}, Replace: true},
+		{Confirmed: []string{original}, KeepBoth: true},
+	} {
+		_, err = restore(item, opts)
+		require.ErrorIs(t, err, bridgeipc.ErrForbidden)
+		require.Equal(t, "newer", readString(t, original))
+		require.FileExists(t, item)
+	}
+
+	// Root's own folder, recorded, still does not merge into the system
+	// folder that took its name.
+	trashed, err = services.MoveToTrash(t.Context(), conf, home, trashTestUID, trashTestGID, true)
+	require.NoError(t, err)
+	require.NoError(t, os.Mkdir(conf, 0o755))
+	_, err = restore(trashed, services.RestoreOptions{Replace: true})
+	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
+	requireNoEntries(t, conf)
+	require.DirExists(t, trashed)
+
+	// Nor does the user's folder merge into a folder root owns inside one of
+	// the user's own folders: the merge would write where the user may not.
+	docs := filepath.Join(home, "docs")
+	require.NoError(t, os.Mkdir(docs, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(docs, "a.txt"), []byte("user"), 0o644))
+	require.NoError(t, os.Chown(filepath.Join(docs, "a.txt"), trashTestUID, trashTestGID))
+	require.NoError(t, os.Chown(docs, trashTestUID, trashTestGID))
+	trashed, err = services.MoveToTrash(t.Context(), docs, home, trashTestUID, trashTestGID, true)
+	require.NoError(t, err)
+	require.NoError(t, os.Mkdir(docs, 0o755))
+	_, err = restore(trashed, services.RestoreOptions{Replace: true})
+	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
+	requireNoEntries(t, docs)
+	require.DirExists(t, trashed)
+	require.NoError(t, os.Chown(docs, trashTestUID, trashTestGID))
+	restored, err = restore(trashed, services.RestoreOptions{Replace: true})
+	require.NoError(t, err)
+	require.Equal(t, docs, restored)
+	require.Equal(t, "user", readString(t, filepath.Join(docs, "a.txt")))
+}
+
+// Into a folder the admin chose an item goes as a move there would, even one
+// the session user wrote into a folder only root may write: the folder and the
+// name are the admin's choice in this request, not a claim read from the
+// user's trash. The item keeps its owner, and the folder is reached as a move
+// reaches it: through a link in a folder only root may write, never through
+// one the user could have planted.
+func TestTrashRestoreIntoAChosenFolderAsRoot(t *testing.T) {
+	base, home := trashTestHome(t)
+	srv := filepath.Join(base, "srv")
+	require.NoError(t, os.Mkdir(srv, 0o755))
+	restore := func(trashed, into, name string) (string, error) {
+		return services.RestoreFromTrash(t.Context(), trashed, home, trashTestUID, trashTestGID, true, services.RestoreOptions{Into: into, Name: name})
+	}
+
+	item := userTrashItem(t, home, "notes.txt.2", filepath.Join(home, "notes.txt"), trashTestUID)
+	restored, err := restore(item, srv, "notes.txt")
+	require.NoError(t, err)
+	require.Equal(t, filepath.Join(srv, "notes.txt"), restored)
+	requireOwnerAndMode(t, restored, trashTestUID, trashTestUID, 0o644)
+	require.NoFileExists(t, item)
+
+	item = userTrashItem(t, home, "report.txt", filepath.Join(home, "report.txt"), trashTestUID)
+	planted := filepath.Join(home, "docs")
+	require.NoError(t, os.Symlink(srv, planted))
+	_, err = restore(item, planted, "")
+	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
+	require.FileExists(t, item)
+	require.NoFileExists(t, filepath.Join(srv, "report.txt"))
+
+	require.NoError(t, os.Symlink(srv, filepath.Join(base, "alias")))
+	_, err = restore(item, filepath.Join(base, "alias"), "")
+	require.NoError(t, err)
+	require.FileExists(t, filepath.Join(srv, "report.txt"))
+}
+
+// The page tells two failures apart without reading the message: a restore
+// whose name is taken, and a move to the trash on a filesystem without one.
+func TestTrashFailureReasons(t *testing.T) {
+	require.Equal(t, apischema.FileBatchFailureExists, failureReason(fmt.Errorf("restore a: %w", services.ErrNameTaken)))
+	require.Equal(t, apischema.FileBatchFailureNoTrash, failureReason(fmt.Errorf("trash a: %w: %w", services.ErrNoTrash, syscall.EACCES)))
+	require.Empty(t, failureReason(fmt.Errorf("%w: a is a link", bridgeipc.ErrForbidden)))
+}
+
+// trashTaskHome is the home of a task test's session user, who is the user
+// running the test: the bridge's own home is $HOME when no session is set.
+// It returns the indexer requests the task makes.
+func trashTaskHome(t *testing.T) (string, *[]recordedIndexerRequest) {
+	t.Helper()
+	requests := recordIndexerRequests(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	return home, requests
+}
+
+// A restore fails the items whose names are taken with reason "exists"; sent
+// again with the user's choices, an item to keep both gets a "name (copy)"
+// name and the others replace what is there, which the indexer drops first.
+func TestTrashRestoreTaskAsksAboutTakenNames(t *testing.T) {
+	home, requests := trashTaskHome(t)
+	docs := filepath.Join(home, "docs")
+	require.NoError(t, os.Mkdir(docs, 0o755))
+	var items []string
+	for _, name := range []string{"a.txt", "b.txt"} {
+		path := seedFile(t, filepath.Join(docs, name), "trashed "+name)
+		item, err := services.MoveToTrash(t.Context(), path, home, os.Geteuid(), os.Getegid(), false)
+		require.NoError(t, err)
+		seedFile(t, path, "newer "+name)
+		items = append(items, item)
+	}
+
+	req := apischema.TrashRestoreRequest{Paths: items}
+	result, err := runTrashRestoreTask(t.Context(), newBatchTask(t, "filebrowser.trash_restore", req), nil, req, sessionOwner{})
+	require.NoError(t, err)
+	require.Zero(t, result.Succeeded)
+	require.Len(t, result.Failed, 2)
+	for _, failure := range result.Failed {
+		require.Equal(t, apischema.FileBatchFailureExists, failure.Reason)
+		require.Contains(t, failure.Error, "already exists")
+	}
+
+	overwrite := true
+	req = apischema.TrashRestoreRequest{Paths: items, Overwrite: &overwrite, KeepBoth: []string{items[0]}}
+	result, err = runTrashRestoreTask(t.Context(), newBatchTask(t, "filebrowser.trash_restore", req), nil, req, sessionOwner{})
+	detachedIndexerUpdates.Wait()
+	require.NoError(t, err)
+	require.Equal(t, 2, result.Succeeded, result.Failed)
+	require.Equal(t, "newer a.txt", readString(t, filepath.Join(docs, "a.txt")))
+	require.Equal(t, "trashed a.txt", readString(t, filepath.Join(docs, "a (copy).txt")))
+	require.Equal(t, "trashed b.txt", readString(t, filepath.Join(docs, "b.txt")))
+	dropped := recordedIndexerRequest{method: http.MethodDelete, path: indexerapi.RouteDelete, query: url.Values{"path": {filepath.Join(docs, "b.txt")}}.Encode()}
+	require.Contains(t, *requests, dropped)
+}
+
+// A restore into a chosen folder takes an existing folder, checked once for
+// the whole request as a move's destination is, and the name the request
+// gives each item.
+func TestTrashRestoreTaskIntoAChosenFolder(t *testing.T) {
+	home, _ := trashTaskHome(t)
+	report := seedFile(t, filepath.Join(home, "report.txt"), "report")
+	item, err := services.MoveToTrash(t.Context(), report, home, os.Geteuid(), os.Getegid(), false)
+	require.NoError(t, err)
+	chosen := filepath.Join(home, "chosen")
+	require.NoError(t, os.Mkdir(chosen, 0o755))
+
+	for destination, want := range map[string]error{filepath.Join(home, "missing"): bridgeipc.ErrNotFound, item: bridgeipc.ErrInvalidArgs} {
+		req := apischema.TrashRestoreRequest{Paths: []string{item}, Destination: destination}
+		_, err = runTrashRestoreTask(t.Context(), newBatchTask(t, "filebrowser.trash_restore", req), nil, req, sessionOwner{})
+		require.ErrorIs(t, err, want, destination)
+		require.FileExists(t, item)
+	}
+
+	req := apischema.TrashRestoreRequest{Paths: []string{item}, Destination: chosen, Names: map[string]string{item: "renamed.txt"}}
+	result, err := runTrashRestoreTask(t.Context(), newBatchTask(t, "filebrowser.trash_restore", req), nil, req, sessionOwner{})
+	detachedIndexerUpdates.Wait()
+	require.NoError(t, err)
+	require.Equal(t, 1, result.Succeeded, result.Failed)
+	require.Equal(t, "report", readString(t, filepath.Join(chosen, "renamed.txt")))
+}
+
+// A move to the trash on a filesystem that cannot hold one fails with reason
+// "no_trash", so the page can offer to delete the item for good, and leaves
+// it where it is; a missing item fails without a reason.
+func TestTrashBatchTaskReportsAFilesystemWithoutATrash(t *testing.T) {
+	home, _ := trashTaskHome(t)
+	seedFile(t, filepath.Join(home, ".local"), "not a folder")
+	report := seedFile(t, filepath.Join(home, "report.txt"), "report")
+	missing := filepath.Join(home, "missing.txt")
+
+	req := apischema.BatchPathRequest{Paths: []string{report, missing}}
+	result, err := runTrashBatchTask(t.Context(), newBatchTask(t, "filebrowser.trash_batch", req), nil, req, sessionOwner{})
+	require.NoError(t, err)
+	require.Len(t, result.Failed, 2)
+	require.Equal(t, FileBatchItemFailure{Path: report, Error: result.Failed[0].Error, Reason: apischema.FileBatchFailureNoTrash}, result.Failed[0])
+	require.Equal(t, missing, result.Failed[1].Path)
+	require.Empty(t, result.Failed[1].Reason)
+	require.FileExists(t, report)
 }

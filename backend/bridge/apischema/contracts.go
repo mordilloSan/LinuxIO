@@ -111,6 +111,7 @@ var StringEnums = map[string][]string{
 	"ContainerMetricsStatus":        enumNames(ContainerMetricsStatusAvailable, ContainerMetricsStatusStale, ContainerMetricsStatusUnavailable, ContainerMetricsStatusNotRunning),
 	"ConfigStorageMode":             enumNames(userconfig.StorageModeHome, userconfig.StorageModeFallback, userconfig.StorageModeMemory),
 	"FileUploadOwner":               {"session"},
+	"FileBatchFailureReason":        enumNames(FileBatchFailureExists, FileBatchFailureNoTrash),
 	"TaskState":                     enumNames(bridgeipc.TaskStateQueued, bridgeipc.TaskStateRunning, bridgeipc.TaskStateCompleted, bridgeipc.TaskStateFailed, bridgeipc.TaskStateCanceled, bridgeipc.TaskStateInterrupted),
 	"MonitoringHistoryResolution":   monitoringapi.HistoryResolutions(),
 	// SensorReadingKind is defined by the shared monitoring API; keeping its

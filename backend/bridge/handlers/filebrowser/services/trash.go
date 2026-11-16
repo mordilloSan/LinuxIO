@@ -30,6 +30,18 @@ const (
 	maxTrashInfoBytes    = 64 << 10
 )
 
+var (
+	// ErrNameTaken marks a restore refused because something is at the name
+	// the item goes back under and the request chose neither replace nor
+	// keep both for it. The item stays in the trash.
+	ErrNameTaken = errors.New("already exists")
+	// ErrNoTrash marks a move to the trash refused because the item's
+	// filesystem cannot hold a trash for the session user: the trash there
+	// cannot be made or opened, or the move into it is refused across
+	// filesystems. The item stays where it is; nothing is copied.
+	ErrNoTrash = errors.New("no trash on this filesystem")
+)
+
 func homeTrashDir(home string) string {
 	return filepath.Join(home, ".local/share/Trash")
 }
@@ -76,7 +88,7 @@ func MoveToTrash(ctx context.Context, absPath, home string, uid, gid int, chownN
 	}
 	filesDir, infoDir, err := openTrash(root, trash, home, owner, true)
 	if err != nil {
-		return "", fmt.Errorf("trash %s: %w", absPath, err)
+		return "", fmt.Errorf("trash %s: %w", absPath, noTrash(err))
 	}
 	defer filesDir.Close()
 	defer infoDir.Close()
@@ -116,11 +128,31 @@ func MoveToTrash(ctx context.Context, absPath, home string, uid, gid int, chownN
 		removeTrashInfo(infoDir, name)
 		dropTrashRecord(uid, item)
 		if errors.Is(err, syscall.EXDEV) {
-			return "", fmt.Errorf("trash %s: cannot move to trash across filesystems: %w", absPath, err)
+			return "", fmt.Errorf("trash %s: %w: %w", absPath, ErrNoTrash, err)
 		}
 		return "", fmt.Errorf("trash %s: %w", absPath, err)
 	}
 	return filepath.Join(trash, "files", name), nil
+}
+
+// noTrash marks err, why the trash a move needs could not be made or opened,
+// as ErrNoTrash when it says the place cannot hold one: the user may not
+// write there, or something that is not a folder is where a folder of the
+// trash goes. A refusal under the link and ownership rules (403: a trash
+// folder another user owns, a link on the way to the trash's top folder)
+// keeps its own meaning, and so does any other failure (a read-only
+// filesystem, a full disk, an I/O error): the page offers to delete for good
+// only where a retry could not help.
+func noTrash(err error) error {
+	if errors.Is(err, bridgeipc.ErrForbidden) {
+		return err
+	}
+	for _, cause := range []error{unix.EACCES, unix.EPERM, unix.ENOTDIR, unix.ELOOP, unix.EEXIST} {
+		if errors.Is(err, cause) {
+			return fmt.Errorf("%w: %w", ErrNoTrash, err)
+		}
+	}
+	return err
 }
 
 // checkNotProtectedAt is CheckNotProtected for name in dir, the open folder
@@ -466,18 +498,39 @@ func listTrashItems(root *fsroot.FSRoot, trash string, files, info *os.File, own
 	return nil
 }
 
+// RestoreOptions are a restore request's choices for one item.
+type RestoreOptions struct {
+	// Confirmed lists the destination the request confirmed for the item,
+	// which an item without a record needs to go back into a folder the
+	// session user does not own.
+	Confirmed []string
+	// Into is an existing folder the user chose: the item goes into it as
+	// Name, or under its name in the trash when Name is empty, instead of
+	// back where it came from.
+	Into, Name string
+	// Replace puts the item over what is at its name, as a move with
+	// overwrite does: a file replaces the one there and a folder merges into
+	// the folder there. KeepBoth gives it the first free "name (copy)" name
+	// instead. With neither, a taken name fails the restore with ErrNameTaken.
+	Replace, KeepBoth bool
+}
+
 // RestoreFromTrash puts a trashed item back where its .trashinfo says it came
-// from, recreating missing parent folders, and drops the .trashinfo.
+// from, recreating missing parent folders, or into the folder opts.Into, and
+// drops the .trashinfo. It returns where the item is now.
 //
 // The trash and its .trashinfo are the session user's to edit, so for a root
-// bridge acting for that user (chownNew) neither vouches for what goes into a
-// folder that user does not own: only an item the user could not have written
-// (see userCouldWrite) is restored there, checked again inside that folder
-// before it gets its name. Such a bridge restores an item it trashed itself
-// to where its record says (see trash_records.go), whatever Path= says, and
-// an item without a record, trashed by another program, into such a folder
-// only when confirmed lists that destination.
-func RestoreFromTrash(ctx context.Context, trashedPath, home string, uid, gid int, chownNew bool, confirmed []string) (string, error) {
+// bridge acting for that user (chownNew) neither vouches for what goes back
+// into a folder that user does not own: only an item the user could not have
+// written (see userCouldWrite) is restored there, checked again inside that
+// folder before it gets its name. Such a bridge restores an item it trashed
+// itself to where its record says (see trash_records.go), whatever Path=
+// says, and an item without a record, trashed by another program, into such
+// a folder, or over anything with opts.Replace, only when opts.Confirmed
+// lists that destination. A folder and a name the request gives in opts.Into
+// and opts.Name are the user's choice, not the trash's claim, so none of that
+// applies there (see restoreInto).
+func RestoreFromTrash(ctx context.Context, trashedPath, home string, uid, gid int, chownNew bool, opts RestoreOptions) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -503,20 +556,33 @@ func RestoreFromTrash(ctx context.Context, trashedPath, home string, uid, gid in
 		return "", fmt.Errorf("restore %s: %w", name, &fs.PathError{Op: "fstatat", Path: name, Err: err})
 	}
 	original, recorded := restoreDestination(root, trash, info, name, &item, owner)
-	if original == "" {
-		return "", fmt.Errorf("restore %s: its original location is not recorded", name)
+	var restored string
+	if opts.Into != "" {
+		restored, err = restoreInto(ctx, root, files, name, &item, owner, opts)
+	} else {
+		restored, err = restoreToOriginal(ctx, root, files, name, item, original, recorded, owner, opts)
 	}
-	if _, err = root.Root.Lstat(relPath(original)); err == nil {
-		return "", fmt.Errorf("restore %s: %s already exists", name, original)
-	} else if !errors.Is(err, fs.ErrNotExist) {
+	if err != nil {
 		return "", fmt.Errorf("restore %s: %w", name, err)
+	}
+	removeTrashInfo(info, name)
+	dropTrashRecord(uid, &item)
+	return restored, nil
+}
+
+// restoreToOriginal moves name, the trashed item in files that item
+// describes, back to original, where a record says it came from when
+// recorded is set and its .trashinfo otherwise.
+func restoreToOriginal(ctx context.Context, root *fsroot.FSRoot, files *os.File, name string, item unix.Stat_t, original string, recorded bool, owner Owner, opts RestoreOptions) (string, error) {
+	if original == "" {
+		return "", errors.New("its original location is not recorded")
 	}
 	userWritten := userCouldWrite(&item, owner)
 	// Into a folder the session user does not own an item without a record
 	// goes only where the request confirmed.
 	checkSystem := func(dir *os.File) (bool, error) {
 		system, checkErr := intoSystemFolder(dir, filepath.Dir(original), owner, userWritten)
-		if checkErr == nil && system && !recorded && !slices.Contains(confirmed, original) {
+		if checkErr == nil && system && !recorded && !slices.Contains(opts.Confirmed, original) {
 			checkErr = fmt.Errorf("%w: LinuxIO has no record of moving %s to the trash; confirm restoring it to %s", bridgeipc.ErrForbidden, name, original)
 		}
 		return system, checkErr
@@ -528,28 +594,181 @@ func RestoreFromTrash(ctx context.Context, trashedPath, home string, uid, gid in
 	dirPath := filepath.Dir(original)
 	dir, missing, err := linksafe.OpenNearestDirNoUserLinks(root, dirPath, owner)
 	if err != nil {
-		return "", fmt.Errorf("restore %s: %w", name, err)
+		return "", err
 	}
 	if _, err = checkSystem(dir); err != nil {
 		dir.Close()
-		return "", fmt.Errorf("restore %s: %w", name, err)
+		return "", err
 	}
 	if dir, err = MkdirAllAt(dir, missing, PermDir, owner); err != nil {
-		return "", fmt.Errorf("restore %s: %w", name, err)
+		return "", err
 	}
 	defer dir.Close()
 	system, err := checkSystem(dir)
-	if err == nil && system {
-		err = restoreIntoSystemFolder(files, name, item, dir, filepath.Base(original), owner)
-	} else if err == nil {
-		err = renameNoReplace(files, name, dir, filepath.Base(original))
+	if err == nil {
+		err = sameFilesystem(files, dir, dirPath)
 	}
 	if err != nil {
-		return "", fmt.Errorf("restore %s: %w", name, err)
+		return "", err
 	}
-	removeTrashInfo(info, name)
-	dropTrashRecord(uid, &item)
-	return original, nil
+	dst, replace, err := restoreTarget(dir, dirPath, filepath.Base(original), &item, opts)
+	if err == nil && replace && owner.Set {
+		err = checkReplace(name, &item, dst, recorded, system, owner, opts)
+	}
+	if err != nil {
+		return "", err
+	}
+	if system {
+		err = restoreIntoSystemFolder(ctx, files, name, item, dst, owner, replace)
+	} else {
+		err = placeTrashItem(ctx, files, name, dst, replace)
+	}
+	if err != nil {
+		return "", err
+	}
+	return dst.path, nil
+}
+
+// checkReplace refuses, for a root bridge acting for the session user, a
+// replace of what is at dst by name, the trashed item item describes, that
+// the trash alone would decide: what a replace goes over must be fixed by a
+// record or confirmed in the request, since Path= is the user's to rewrite
+// after the page asked; and a folder merges neither into a folder the user
+// does not own nor into one inside such a folder (system), since the
+// could-have-written check vouches only for the top of the item, not for
+// what a merge moves in, and a merge would put the user's entries where the
+// user may not write.
+func checkReplace(name string, item *unix.Stat_t, dst entry, recorded, system bool, owner Owner, opts RestoreOptions) error {
+	if !recorded && !slices.Contains(opts.Confirmed, dst.path) {
+		return fmt.Errorf("%w: LinuxIO has no record of moving %s to the trash; confirm replacing %s", bridgeipc.ErrForbidden, name, dst.path)
+	}
+	if item.Mode&unix.S_IFMT != unix.S_IFDIR {
+		return nil
+	}
+	var there unix.Stat_t
+	if err := unix.Fstatat(int(dst.dir.Fd()), dst.name, &there, unix.AT_SYMLINK_NOFOLLOW); err != nil {
+		return &fs.PathError{Op: "fstatat", Path: dst.path, Err: err}
+	}
+	if system || (there.Mode&unix.S_IFMT == unix.S_IFDIR && there.Uid != owner.UID) {
+		return fmt.Errorf("%w: a folder is not merged into %s, which you do not own; keep both, or restore it into a folder you choose", bridgeipc.ErrForbidden, dst.path)
+	}
+	return nil
+}
+
+// restoreInto moves name, the trashed item in files that item describes,
+// into the folder opts.Into as opts.Name, or under its name in the trash.
+// Folder and name are the user's choice in this request, a move the user
+// asks for now as filebrowser.move_batch is, not a claim read from the trash,
+// which the session user could have edited: so neither the confirmation nor
+// the could-have-written rule applies, as they do not to moving the item out
+// of the trash by hand. The folder must exist and is reached as a move
+// reaches it, without following a link anyone but root could have planted on
+// the way, and the item goes in by rename only.
+func restoreInto(ctx context.Context, root *fsroot.FSRoot, files *os.File, name string, item *unix.Stat_t, owner Owner, opts RestoreOptions) (string, error) {
+	into, base := fsroot.CleanAbsPath(opts.Into), opts.Name
+	if base == "" {
+		base = name
+	}
+	if base == "." || base == ".." || strings.ContainsAny(base, "/\x00") {
+		return "", fmt.Errorf("%w: %q is not a name", bridgeipc.ErrInvalidArgs, base)
+	}
+	dir, err := linksafe.OpenDirNoUserLinks(root, into, owner)
+	if err != nil {
+		return "", err
+	}
+	defer dir.Close()
+	if err = sameFilesystem(files, dir, into); err != nil {
+		return "", err
+	}
+	dst, replace, err := restoreTarget(dir, into, base, item, opts)
+	if err != nil {
+		return "", err
+	}
+	if err = placeTrashItem(ctx, files, name, dst, replace); err != nil {
+		return "", err
+	}
+	return dst.path, nil
+}
+
+// sameFilesystem refuses dir, the open folder at dirPath, when it is on
+// another filesystem than files, the trash's files folder: a restore renames
+// and does not copy an item to another filesystem.
+func sameFilesystem(files, dir *os.File, dirPath string) error {
+	var trash, dest unix.Stat_t
+	if err := unix.Fstat(int(files.Fd()), &trash); err != nil {
+		return &fs.PathError{Op: "fstat", Path: files.Name(), Err: err}
+	}
+	if err := unix.Fstat(int(dir.Fd()), &dest); err != nil {
+		return &fs.PathError{Op: "fstat", Path: dirPath, Err: err}
+	}
+	if trash.Dev != dest.Dev {
+		return fmt.Errorf("%s is on another filesystem than the trash, and a restore does not copy", dirPath)
+	}
+	return nil
+}
+
+// restoreTarget returns where in dir, the open folder at dirPath, the item
+// item describes goes back as base, and whether something there is to be
+// replaced: base when nothing is there; when something is, the first free
+// "name (copy)" name with opts.KeepBoth, base with opts.Replace, and
+// otherwise ErrNameTaken.
+func restoreTarget(dir *os.File, dirPath, base string, item *unix.Stat_t, opts RestoreOptions) (entry, bool, error) {
+	dst := entry{dir: dir, name: base, path: filepath.Join(dirPath, base)}
+	var st unix.Stat_t
+	err := unix.Fstatat(int(dir.Fd()), base, &st, unix.AT_SYMLINK_NOFOLLOW)
+	switch {
+	case errors.Is(err, unix.ENOENT):
+		return dst, false, nil
+	case err != nil:
+		return entry{}, false, &fs.PathError{Op: "fstatat", Path: dst.path, Err: err}
+	case opts.KeepBoth:
+		if dst.name, err = freeCopyName(dir, dirPath, base, item.Mode&unix.S_IFMT == unix.S_IFDIR); err != nil {
+			return entry{}, false, err
+		}
+		dst.path = filepath.Join(dirPath, dst.name)
+		return dst, false, nil
+	case opts.Replace:
+		return dst, true, nil
+	}
+	return entry{}, false, fmt.Errorf("%w: %s %w", bridgeipc.ErrConflict, dst.path, ErrNameTaken)
+}
+
+// freeCopyName returns the first name for base, as CopyName counts them,
+// that nothing in dir, the open folder at dirPath, has.
+func freeCopyName(dir *os.File, dirPath, base string, isDir bool) (string, error) {
+	for n := int64(1); n < 1000; n++ {
+		name := CopyName(base, isDir, n)
+		var st unix.Stat_t
+		err := unix.Fstatat(int(dir.Fd()), name, &st, unix.AT_SYMLINK_NOFOLLOW)
+		if errors.Is(err, unix.ENOENT) {
+			return name, nil
+		}
+		if err != nil {
+			return "", &fs.PathError{Op: "fstatat", Path: filepath.Join(dirPath, name), Err: err}
+		}
+	}
+	return CopyName(base, isDir, time.Now().Unix()), nil
+}
+
+// placeTrashItem moves name from the open folder from to dst. Without
+// replace nothing at dst is ever replaced (RENAME_NOREPLACE); with it the
+// move goes over what is there as a move with overwrite does, through
+// handles: a file replaces the one there, which is set aside until the move
+// is done, and a folder merges into the folder there entry by entry. A
+// file and a folder never replace each other.
+func placeTrashItem(ctx context.Context, from *os.File, name string, dst entry, replace bool) error {
+	if !replace {
+		return renameNoReplace(from, name, dst.dir, dst.name)
+	}
+	src := entry{dir: from, name: name, path: filepath.Join(from.Name(), name)}
+	info, err := src.lstat()
+	if err != nil {
+		return err
+	}
+	state := newCopyState(ctx, true)
+	state.dstBase, state.dstBasePath = dst.dir, filepath.Dir(dst.path)
+	opts := &OperationCallbacks{Cancel: func() bool { return ctx.Err() != nil }}
+	return transferEntry(src, dst, info, true, opts, state, MoveFileOptions{})
 }
 
 // restoreDestination returns where the trashed item name, which st
@@ -611,17 +830,18 @@ func intoSystemFolder(dir *os.File, dirPath string, owner Owner, userWritten boo
 
 var errTrashItemReplaced = errors.New("trashed item was replaced")
 
-// restoreIntoSystemFolder moves name from the trash's files folder into dir,
-// a folder the session user does not own, as final. The item is staged in a
-// root-only folder inside the trash and checked there (see placeStaged), so
-// nothing reaches dir before it passes.
-func restoreIntoSystemFolder(files *os.File, name string, item unix.Stat_t, dir *os.File, final string, owner Owner) error {
+// restoreIntoSystemFolder moves name from the trash's files folder to dst,
+// in a folder the session user does not own, over what is there with
+// replace (see placeTrashItem). The item is staged in a root-only folder
+// inside the trash and checked there (see placeStaged), so nothing reaches
+// that folder before it passes.
+func restoreIntoSystemFolder(ctx context.Context, files *os.File, name string, item unix.Stat_t, dst entry, owner Owner, replace bool) error {
 	stage, err := stageTrashItem(files, name)
 	if err != nil {
 		return err
 	}
 	defer stage.Close()
-	return placeStaged(stage, files, name, item, dir, final, owner)
+	return placeStaged(ctx, stage, files, name, item, dst, owner, replace)
 }
 
 // stageTrashItem moves name from files into a new folder only the bridge may
@@ -671,13 +891,14 @@ func openFreshStage(files *os.File, stageName string) (*os.File, error) {
 	return stage, nil
 }
 
-// placeStaged renames the staged item from stage straight to final in dir
-// once it is checked there, out of the user's reach, to be item, the one
-// checked in the trash, and still not one the user could have written.
-// Otherwise it goes back to files. If even that fails (the user took its name
-// meanwhile) the staging folder, item and all, is handed to the user, so root
-// vouches for nothing left in it. An emptied staging folder is removed.
-func placeStaged(stage, files *os.File, name string, item unix.Stat_t, dir *os.File, final string, owner Owner) error {
+// placeStaged moves the staged item from stage straight to dst (see
+// placeTrashItem) once it is checked there, out of the user's reach, to be
+// item, the one checked in the trash, and still not one the user could have
+// written. Otherwise, or with what a merge left of it, it goes back to files.
+// If even that fails (the user took its name meanwhile) the staging folder,
+// item and all, is handed to the user, so root vouches for nothing left in
+// it. An emptied staging folder is removed.
+func placeStaged(ctx context.Context, stage, files *os.File, name string, item unix.Stat_t, dst entry, owner Owner, replace bool) error {
 	var st unix.Stat_t
 	err := unix.Fstatat(int(stage.Fd()), name, &st, unix.AT_SYMLINK_NOFOLLOW)
 	switch {
@@ -686,7 +907,7 @@ func placeStaged(stage, files *os.File, name string, item unix.Stat_t, dir *os.F
 	case st.Dev != item.Dev || st.Ino != item.Ino || userCouldWrite(&st, owner):
 		err = errTrashItemReplaced
 	default:
-		err = renameNoReplace(stage, name, dir, final)
+		err = placeTrashItem(ctx, stage, name, dst, replace)
 	}
 	if err != nil {
 		if backErr := renameNoReplace(stage, name, files, name); backErr != nil {
