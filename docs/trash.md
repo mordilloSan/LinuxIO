@@ -302,5 +302,8 @@ Open work on the Trash is in the [backlog](./TODO/backlog.md).
   phone it sits in the actions menu.
 - In the tab that shows the Trash the only folders to drag an item onto are
   the segments of the trail; any folder of another tab takes it.
+- An item dragged out of the Trash and dropped on the desktop or on another
+  program does nothing: the drag carries the item's place in the trash, not
+  its content, which would have to be downloaded first.
 - A move to Trash that fails for other items as well as moving some reports
   the failures and not the items that moved, as a partial delete does.

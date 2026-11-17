@@ -62,7 +62,10 @@ Linux I/O combines workflows usually split across multiple tools:
 
 ## Installation
 
-LinuxIO supports Linux kernels 5.9+.
+LinuxIO supports Linux kernels 5.9+ on the two distribution families its
+installer knows: Debian (Ubuntu, Debian, Linux Mint, Pop!_OS) and RHEL (Fedora,
+RHEL, CentOS Stream, Rocky Linux, AlmaLinux). RHEL 8 and its rebuilds are not
+supported: their kernel is 4.18.
 
 ### Quick install (recommended)
 

@@ -207,8 +207,44 @@ The committed repo should contain a VM recipe, not a VM image. The recipe should
 
 Prepared base images can be cached outside git. The cache key should include the
 VM recipe hash, the Ubuntu base image digest, and any major dependency versions.
-Future distro coverage can add additional recipes or profiles using the same
-test contract.
+
+### Distributions
+
+Decided 2026-11-17: the rig gets a VM for every distribution the installer
+accepts (`is_debian` and `is_fedora` in
+`packaging/scripts/install-dependencies.sh`), not Ubuntu alone:
+
+| Family | Distributions |
+|---|---|
+| Debian | Ubuntu (exists), Debian, Linux Mint, Pop!_OS |
+| RHEL | Fedora, RHEL, CentOS Stream, Rocky Linux, AlmaLinux |
+
+RHEL 8 and its rebuilds are not supported and get no VM.
+
+Not built. The steps, in order:
+
+1. `packaging/vm/linuxio-vm.sh` takes the distribution as a parameter: a
+   profile per distribution holds the image URL, where its checksum is
+   published, the first-boot packages and the package manager the fixtures
+   call. The domain, its volumes and its cache are named per distribution, so
+   two can exist side by side, and every name keeps the `linuxio-e2e` prefix
+   that the Make targets are limited to.
+2. A Fedora profile, and the memory root suite on it
+   (`make vm-test-memory-integration`). This is what the
+   [backlog](./backlog.md) needs: the `zram-generator` path has never run on
+   Fedora.
+3. The other profiles.
+4. A table of which suite runs on which distribution. The root Go suites are
+   expected to run everywhere. The browser specs are not: their package
+   fixtures (`frontend/src/test/vm/fixtures/many-updates.sh`,
+   `slow-package.sh`) build `apt` packages, so each needs an `rpm` twin or
+   stays on the Debian family.
+
+Open, to settle at step 3: Linux Mint and Pop!_OS publish installer images
+and no cloud image, and a RHEL image needs a Red Hat account, so these three
+need another way in (an unattended install, or an image the owner supplies)
+or are covered by their family: Ubuntu for the first two, Rocky Linux or
+AlmaLinux for RHEL.
 
 ### Tier 3 Scope
 
