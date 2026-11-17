@@ -56,8 +56,8 @@ quiet_targets := \
 	vm-test-btrfs-integration \
 	vm-test-memory-integration \
 	test-vm-backend \
+	test-vm-browser-rerun \
 	test-vm-browser \
-	test-vm \
 	analyze \
 	bundle-metrics \
 	compiler-coverage \
@@ -234,6 +234,7 @@ include $(mk_dir)/vm.mk
 # scripts/help.awk. The section order is declared here.
 ##@ Toolchain setup|green
 ##@ Quality checks|green
+##@ Tests|green
 ##@ Test VM|yellow
 ##@ Development|yellow
 ##@ Build|yellow
@@ -242,7 +243,7 @@ include $(mk_dir)/vm.mk
 # `make help` lists only help_common; `make help-full` (or `make help FULL=1`)
 # lists every annotated target. `make --full` is not possible: Make parses
 # dashed words itself and rejects unknown ones.
-help_common := setup dev dev-stop generate lint tsc golint check-frontend check-backend test test-vm-backend test-vm <target>-quiet build fastbuild localinstall reinstall uninstall clean help-overrides
+help_common := setup dev dev-stop generate test test-vm-backend test-vm-browser build fastbuild localinstall reinstall uninstall clean help-overrides
 help_awk = awk -v blue='$(COLOR_BLUE)' -v cyan='$(COLOR_CYAN)' -v green='$(COLOR_GREEN)' \
 	  -v yellow='$(COLOR_YELLOW)' -v red='$(COLOR_RED)' -v reset='$(COLOR_RESET)' \
 	  -v go='$(GO_VERSION)' -v node='$(NODE_VERSION)' -v bin='$(bin_dir)' \
@@ -279,4 +280,4 @@ $(quiet_aliases): ## Run a validation target with compact output and a saved ful
 .PHONY: dev-prep dev dev-stop dev-status-install dev-status-uninstall generate
 .PHONY: build build-nocheck fastbuild build-vite build-backend build-bridge build-cli build-docker-update build-indexer build-monitoring build-worker build-claude-relay build-auth build-leak-profile build-go-binaries build-binaries print-binaries print-bin-dir
 .PHONY: localinstall reinstall uninstall clean cloc
-.PHONY: vm-create vm-install vm-ssh vm-stop vm-reset vm-update vm-destroy test-vm vm-test-btrfs-integration vm-test-memory-integration vm-test-filebrowser-root vm-test-relay-root test-vm-browser test-vm-backend
+.PHONY: vm-create vm-install vm-ssh vm-stop vm-reset vm-update vm-destroy test-vm-browser vm-test-btrfs-integration vm-test-memory-integration vm-test-filebrowser-root vm-test-relay-root test-vm-browser-rerun test-vm-backend

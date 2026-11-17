@@ -47,10 +47,12 @@ golint-only: ## Run backend formatting, modernization, vulnerability, and lint c
 	@$(PRINTC) "   $(COLOR_GREEN)✓$(COLOR_RESET) golangci-lint"
 	@$(PRINTC) "$(COLOR_GREEN)✅ Go linting passed!$(COLOR_RESET)"
 
+##@ Tests|green
 # See scripts/lanes.sh for the lane layout and why it is scheduled this way.
 test: setup dev-prep test-installation-scripts check-docs ## Run lint + tsc + frontend tests + golint + backend tests + deadcode scan
 	@MAKE="$(MAKE)" "$(scripts_dir)/lanes.sh" test "$(test_timer_start)"
 
+##@ Quality checks|green
 check-frontend: ensure-node setup-frontend ## Run frontend lint + typecheck + unit tests
 	@MAKE="$(MAKE)" "$(scripts_dir)/lanes.sh" frontend
 

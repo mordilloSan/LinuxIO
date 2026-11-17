@@ -4,8 +4,8 @@ import { fileURLToPath } from "node:url";
 import { defineConfig, devices } from "@playwright/test";
 
 // The specs in src/test/vm run against LinuxIO installed in the test VMs.
-// `make test-vm-browser` lists the VMs' addresses in LINUXIO_VM_URLS and sets
-// their login. There is one worker for each VM; a worker takes the next spec
+// `make test-vm-browser` and `make test-vm-browser-rerun` list the VMs'
+// addresses in LINUXIO_VM_URLS and set their login. There is one worker for each VM; a worker takes the next spec
 // file and runs it against its own VM. Playwright loads this file in every
 // worker process, with the worker's parallel index in TEST_PARALLEL_INDEX,
 // so baseURL below is that worker's VM (src/test/vm/vm.ts does the same for

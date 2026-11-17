@@ -121,24 +121,26 @@ While it runs, a VM takes up to 4 GiB of RAM and 4 vCPU. Its disks are
 sparse qcow2 files: a 25 GiB system disk and four 8 GiB data disks
 (`vdb`–`vde`) for storage tests.
 
-`make test-vm` is the whole browser run in one command. It builds LinuxIO,
-counts how many VMs the host has room for, creates the ones that are missing,
-reverts each to `clean`, installs the build in each and runs the specs on all
-of them at once, then shuts them down. A VM needs 4 GiB of free memory
-(`MemAvailable`, after 1.5 GiB kept for the host and its browsers) and 4 CPUs,
-so a host with 12 CPUs and 14 GiB free runs three; four is the most it
-picks, since a fifth would not shorten the run. `VMS=2` sets the number by
-hand.
+`make test-vm-browser` is the whole browser run in one command. It builds
+LinuxIO, counts how many VMs the host has room for, creates the ones that are
+missing, reverts each to `clean`, installs the build in each and runs the
+specs on all of them at once, then shuts them down. `make test-vm-backend` is
+the same for the root suites, without the install. A VM needs 4 GiB of free
+memory (`MemAvailable`, after 1.5 GiB kept for the host and its browsers) and
+4 CPUs, so a host with 12 CPUs and 14 GiB free runs three; four is the most
+either picks, since a fifth would not shorten the run, and `test-vm-backend`
+picks no more than it has suites. `VMS=2` sets the number by hand. Both work
+from a host with no VM yet; the first run waits for each VM's first boot.
 
 The VMs are numbered from 1: `linuxio-e2e`, then `linuxio-e2e-2` with its
 `linuxio-e2e-2-*` volumes and `~/.cache/linuxio-vm-2`, up to 9. They share
 only the image cache. `VM=2` on a target names one of them. `vm-create`,
 `vm-destroy`, `vm-ssh` and the `vm-test-*` targets act on one VM, the first
 unless `VM` names another; `vm-install`, `vm-reset`, `vm-update`, `vm-stop`
-and `test-vm-browser` act on every VM that exists, side by side, or on the
-one `VM` names, and `test-vm-backend` on as many of them as it has suites.
-After a `test-vm` that used fewer VMs than exist, pass the same `VMS` to
-`test-vm-browser`: the others do not have the build.
+and `test-vm-browser-rerun` act on every VM that exists, side by side, or on
+the one `VM` names. After a `test-vm-browser` that used fewer VMs than exist,
+pass the same `VMS` to `test-vm-browser-rerun`: the others do not have the
+build.
 
 The specs wait on reboots, throttled disks and timers and hardly use the CPU,
 so more CPUs for a VM gain nothing and more VMs do. Playwright runs one worker
@@ -159,7 +161,7 @@ test and how long it has run; in a log or a pipe the results come alone. The
 run ends with a table for each VM (tests, passed, failed, skipped, when it
 finished), a timeline of which file ran on which VM, and each failure with
 its error, its code and its trace. Every line, without colour, is also in
-`.cache/test-logs/test-vm.log`.
+`.cache/test-logs/test-vm-browser.log`.
 
 Only one VM target runs at a time. A second one is refused while the first
 holds `~/.cache/linuxio-vm/lock`, since it would revert, reboot or stop a VM
@@ -172,22 +174,22 @@ volumes and `~/.cache/linuxio-vm-noble`, beside the first one. It is there for
 kernel before 6.19, where a signal does not abort a scrub or a replace. The
 test program is built without cgo, so it runs on the older glibc. The browser
 specs run there too (`make vm-install VM_RELEASE=noble`, then
-`make test-vm-browser VM_RELEASE=noble PLAYWRIGHT_ARGS=...`): sign-in and the
-scheduled-script specs were run on it.
+`make test-vm-browser-rerun VM_RELEASE=noble PLAYWRIGHT_ARGS=...`): sign-in
+and the scheduled-script specs were run on it.
 
 ```sh
-make test-vm          # everything below that a browser run needs, in one go
-make vm-create        # download and check the image, first boot, snapshot "clean"
-make vm-create VM=2   # one more VM
-make vm-install       # make build-nocheck, then install this build in the VMs
+make test-vm-browser        # everything below that a browser run needs, in one go
+make test-vm-backend        # the same for the root suites, shared out between the VMs
+make vm-create              # download and check the image, first boot, snapshot "clean"
+make vm-create VM=2         # one more VM
+make vm-install             # make build-nocheck, then install this build in the VMs
 make vm-ssh CMD='systemctl is-active linuxio.target'
-make test-vm-browser  # Playwright specs in frontend/src/test/vm
+make test-vm-browser-rerun  # the Playwright specs in frontend/src/test/vm, on the VMs as they are
 make vm-test-btrfs-integration
-make test-vm-backend  # every vm-test-* suite, shared out between the VMs
-make vm-stop          # shut the VMs down; what is installed stays
-make vm-reset         # revert every disk to "clean" and stop the VMs
-make vm-update        # upgrade the packages in "clean" and take the snapshot again
-make vm-destroy       # delete the first VM and its volumes; the cache stays
+make vm-stop                # shut the VMs down; what is installed stays
+make vm-reset               # revert every disk to "clean" and stop the VMs
+make vm-update              # upgrade the packages in "clean" and take the snapshot again
+make vm-destroy             # delete the first VM and its volumes; the cache stays
 ```
 
 - `vm-create` downloads the cloud image (checked against the release's
@@ -199,8 +201,8 @@ make vm-destroy       # delete the first VM and its volumes; the cache stays
   `btrfs-progs` and the LinuxIO dependencies, and upgrades every package. The
   VM is then shut down and snapshotted as `clean`, without LinuxIO.
 - Every target that needs the VM starts it if it is stopped and shuts it
-  down when it ends, passed or failed (`vm-install`, `vm-ssh`,
-  `test-vm-browser` and the `vm-test-*` ones), so no VM runs unused; what was
+  down when it ends, passed or failed (`vm-install`, `vm-ssh`, the
+  `test-vm-*` and the `vm-test-*` ones), so no VM runs unused; what was
   installed and the journal stay on its disks, and the next target boots it
   again. `VM_KEEP=1` on a target leaves it up, to look at a failure while its
   processes still run, or to run several `vm-ssh` commands against one boot;
@@ -217,11 +219,11 @@ make vm-destroy       # delete the first VM and its volumes; the cache stays
   new one.
 - `make vm-ssh` without `CMD` opens a shell. The user can `sudo` without a
   password. Make expands `$` in `CMD`, so write `$$`.
-- `test-vm-browser` runs the specs against the VMs as they are, which is
-  what a rerun of one file wants (`PLAYWRIGHT_ARGS=jobs-phase4`). It signs in
+- `test-vm-browser-rerun` runs the specs against the VMs as they are, which
+  is what a rerun of one file wants (`PLAYWRIGHT_ARGS=jobs-phase4`). It signs in
   at `https://<vm-ip>:8090` as `linuxio-e2e`, with the VM's password in its
   state directory (`~/.cache/linuxio-vm/password` for the first).
-  `PLAYWRIGHT_ARGS` applies to `test-vm` too.
+  `PLAYWRIGHT_ARGS` applies to `test-vm-browser` too.
   The specs leave their schedules behind, and the Schedules table renders
   only the rows near what is visible, in the order of the definition files
   (by ID, so a new schedule lands anywhere). The helpers in `vm.ts`
@@ -246,9 +248,10 @@ make vm-destroy       # delete the first VM and its volumes; the cache stays
   the VM, prints its kernel version and runs them as root, with the test
   patterns of the matching host target. They run on the VM as it is.
 - `test-vm-backend` runs every root suite: the four above, and five that
-  have no target of their own. It uses every VM that exists, one for each
-  suite at most, and reverts them to `clean` so the run starts from a known
-  state. The suites wait in one queue, longest first, and each VM takes the
+  have no target of their own. It uses as many VMs as the host has room for,
+  one for each suite at most, creates the ones that are missing and reverts
+  each to `clean` so the run starts from a known state; it installs no build,
+  since the suites bring their own test binaries. The suites wait in one queue, longest first, and each VM takes the
   next when it is free: memory (about 3½ minutes), btrfs (3), indexer (just
   under 2, most of it the indexer's idle timeout), docker (1½), then relay,
   updater, userconfig, filebrowser and network, seconds each. On three VMs
@@ -542,10 +545,10 @@ The full index groups the supported targets as follows:
   `build-docker-update`, `build-leak-profile`, `generate`, `dev-prep`, `dev`,
   `dev-stop`, `dev-status-install`, `dev-status-uninstall`, `clean`, `cloc`
 - installation: `localinstall`, `reinstall`, `uninstall`
-- test VM: `test-vm`, `vm-create`, `vm-install`, `vm-ssh`, `vm-stop`, `vm-reset`, `vm-update`, `vm-destroy`,
+- test VM: `test-vm-browser`, `vm-create`, `vm-install`, `vm-ssh`, `vm-stop`, `vm-reset`, `vm-update`, `vm-destroy`,
   `vm-test-btrfs-integration`, `vm-test-memory-integration`,
   `vm-test-filebrowser-root`, `vm-test-relay-root`, `test-vm-backend`,
-  `test-vm-browser`
+  `test-vm-browser-rerun`
 - documentation: `help-overrides`, `check-docs` (the docs index in
   `docs/README.md`, and the paths and links docs name)
 

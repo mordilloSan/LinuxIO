@@ -70,7 +70,7 @@ import {
 //
 // Run it alone, on a freshly reset VM that needs no `make vm-install`:
 //   make vm-reset
-//   LINUXIO_VM_UPDATE_BUILD=<dir>/build make test-vm-browser PLAYWRIGHT_ARGS=jobs-update
+//   LINUXIO_VM_UPDATE_BUILD=<dir>/build make test-vm-browser-rerun PLAYWRIGHT_ARGS=jobs-update
 // Without LINUXIO_VM_UPDATE_BUILD the whole group is skipped, which is how the
 // full suite runs. With it, the file needs vdd to hold nothing and changes the
 // VM: it leaves the release's files in .cache, the update build installed, the

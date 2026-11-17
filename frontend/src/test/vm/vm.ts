@@ -11,8 +11,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const rigPath = path.resolve(here, "../../../../packaging/vm/linuxio-vm.sh");
 const execFileAsync = promisify(execFile);
 
-// make test-vm-browser lists the VMs of the run in LINUXIO_VM_NUMBERS, _URLS
-// and _PASSWORDS, in one order. Playwright runs one worker for each VM, and a
+// make test-vm-browser and test-vm-browser-rerun list the VMs of the run in
+// LINUXIO_VM_NUMBERS, _URLS and _PASSWORDS, in one order. Playwright runs one worker for each VM, and a
 // worker keeps to the VM at its parallel index: the config gives it that VM's
 // address, and LINUXIO_VM_INDEX sends every rig command it starts, here and
 // in the specs, to that VM.
@@ -23,7 +23,7 @@ const vmNumber = ofThisWorker("LINUXIO_VM_NUMBERS");
 if (vmNumber === "") {
   // A worker past the list (--workers) would send its reboots to another's VM.
   throw new Error(
-    `worker ${slot} has no VM in LINUXIO_VM_NUMBERS: run the specs with make test-vm or make test-vm-browser, without --workers`,
+    `worker ${slot} has no VM in LINUXIO_VM_NUMBERS: run the specs with make test-vm-browser or make test-vm-browser-rerun, without --workers`,
   );
 }
 process.env.LINUXIO_VM_INDEX = vmNumber;

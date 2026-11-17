@@ -10,15 +10,16 @@ export LINUXIO_VM_RELEASE := $(VM_RELEASE)
 # There can be several VMs of a release, numbered from 1, so the browser specs
 # run on all of them at once. VM=2 names one: vm-create, vm-destroy, vm-ssh and
 # the vm-test-* targets act on that one, the first without it. The others act
-# on VMs 1 to VMS, or on the one VM names. test-vm sets VMS to as many as the
-# host has free memory and CPUs for and creates the missing ones; for the
-# rest it is every VM that exists, whatever memory is free, so a reset, an
-# install and a run agree. Each is asked of the script once; when the script
+# on VMs 1 to VMS, or on the one VM names. test-vm-browser and test-vm-backend
+# set VMS to as many as the host has free memory and CPUs for (test-vm-backend
+# to no more than it has suites) and create the missing ones; for the rest it
+# is every VM that exists, whatever memory is free, so a reset, an install and
+# a run agree. Each is asked of the script once; when the script
 # fails it has said why, and 1 lets the recipe fail on the same cause.
 VM ?=
 export LINUXIO_VM_INDEX := $(VM)
 # A command run on several VMs keeps each VM's output in vm-N-COMMAND.log
-# here, and the browser specs every line of theirs in test-vm.log.
+# here, and the browser specs every line of theirs in test-vm-browser.log.
 export LINUXIO_VM_LOG_DIR = $(cache_dir)/test-logs
 vm_fit = $(eval vm_fit := $(or $(shell "$(vm_script)" fit),1))$(vm_fit)
 vm_count = $(eval vm_count := $(or $(shell "$(vm_script)" count),1))$(vm_count)
@@ -139,20 +140,23 @@ vm-test-filebrowser-root: ensure-go ## Run the root-only file browser ownership 
 vm-test-relay-root: ensure-go ## Run the bridge-to-job-host relay tests as root in the test VM
 	@$(call vm_suite,relay)
 
-# Every VM that exists, one for each suite at most, since a VM without a suite
-# would only be reverted; VMS=1 runs them one after another on the first. The
-# VMs are reverted first, so a run starts from clean whatever ran before it,
-# and the indexer suite finds no LinuxIO to refuse. SUITES='docker updater'
-# runs only those.
-test-vm-backend: VMS = $(shell n=$(vm_count) s=$(words $(SUITES)); echo $$((n < s ? n : s)))
-test-vm-backend: ensure-go $(if $(filter indexer,$(SUITES)),build-nocheck) ## Revert the test VMs and run the root suites (SUITES=...) on them, each VM taking the next when free
+##@ Tests|green
+# As many VMs as the host has room for, one for each suite at most, since a
+# VM without a suite would only be reverted; VMS=1 runs them one after another
+# on the first. Each is created when it is missing and reverted to clean, so a
+# run starts from clean whatever ran before it, and the indexer suite finds no
+# LinuxIO to refuse. The suites bring their own test binaries, so no build is
+# installed. SUITES='docker updater' runs only those.
+test-vm-backend: VMS = $(shell n=$(vm_fit) s=$(words $(SUITES)); echo $$((n < s ? n : s)))
+test-vm-backend: ensure-go $(if $(filter indexer,$(SUITES)),build-nocheck) ## Create the test VMs the host has room for (one per suite at most), revert them and run the root suites (SUITES=...) on them, each VM taking the next when free
 	@set -e
 	@$(vm_lock)
 	@trap '$(vm_stop_all)' EXIT
+	@echo "linuxio-vm: $(if $(VM),VM $(VM),$(VMS) VM(s)) for this run; $$("$(vm_script)" room)"
 	@mkdir -p "$(vm_test_dir)"
 	@$(foreach suite,$(SUITES),$(vm_build_$(suite)))
 	@printf '%s\n' $(SUITES) >"$(vm_test_dir)/queue"
-	@$(vm_all) reset
+	@$(vm_all) prepare
 	@$(vm_all) test "$(vm_test_dir)"
 
 # One Playwright worker for each VM: a worker takes the next spec file and
@@ -169,17 +173,19 @@ cd "$(frontend_dir)" && \
   ./node_modules/.bin/playwright test --config config/playwright.vm.config.ts $(PLAYWRIGHT_ARGS)
 endef
 
-test-vm-browser: ensure-node setup-frontend ## Rerun the browser specs against the test VMs as they are, without reverting or installing (test-vm does both)
+##@ Test VM|yellow
+test-vm-browser-rerun: ensure-node setup-frontend ## Rerun the browser specs against the test VMs as they are, without reverting or installing (test-vm-browser does both)
 	@set -e
 	@$(vm_lock)
 	@trap '$(vm_stop_all)' EXIT
 	@$(vm_browser_specs)
 
+##@ Tests|green
 # The whole run in one target: as many VMs as the host has room for (VMS=2
 # for fewer), each created when it is missing, reverted to clean and given
 # this build, then the specs.
-test-vm: VMS = $(vm_fit)
-test-vm: build-nocheck ensure-node setup-frontend ## Create the test VMs the host has room for, revert them, install this build and run the browser specs
+test-vm-browser: VMS = $(vm_fit)
+test-vm-browser: build-nocheck ensure-node setup-frontend ## Create the test VMs the host has room for, revert them, install this build and run the browser specs
 	@set -e
 	@$(vm_lock)
 	@trap '$(vm_stop_all)' EXIT

@@ -378,9 +378,10 @@ old cache remains available for inspection.
 The repository includes an opt-in systemd smoke test
 (`packaging/scripts/tests/systemd-indexer-smoke.sh`). It requires built local
 binaries, root, systemd as PID 1, and a clean disposable host. The test VM is
-one: `make test-vm-backend SUITES=indexer` builds LinuxIO, reverts the VM,
-copies the build in and runs the script there with `LINUXIO_SMOKE_BUILD_DIR`
-naming the build, since the VM has no `make`. On another disposable host:
+one: `make test-vm-backend SUITES=indexer` builds LinuxIO, creates the VM
+when it is missing, reverts it, copies the build in and runs the script there
+with `LINUXIO_SMOKE_BUILD_DIR` naming the build, since the VM has no `make`.
+On another disposable host:
 
 ```bash
 make build

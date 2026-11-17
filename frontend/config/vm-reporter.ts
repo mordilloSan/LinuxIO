@@ -12,13 +12,14 @@ import type {
   TestResult,
 } from "@playwright/test/reporter";
 
-// The reporter of the VM specs (make test-vm, make test-vm-browser), which run
-// one Playwright worker for each VM. Every result names its VM, and what a spec
+// The reporter of the VM specs (make test-vm-browser, make
+// test-vm-browser-rerun), which run one Playwright worker for each VM. Every result names its VM, and what a spec
 // prints is held until its test ends and printed under it, so lines of two VMs
 // never mix. In a terminal a board under the results shows what each VM runs
 // now; written to a file or a pipe, the results alone. The run ends with a
 // table for each VM, a timeline of the files each one ran and the failures in
-// full. Every line, without colour, also goes to LINUXIO_VM_LOG_DIR/test-vm.log.
+// full. Every line, without colour, also goes to
+// LINUXIO_VM_LOG_DIR/test-vm-browser.log.
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -28,7 +29,7 @@ const fromRoot = (file: string) => path.relative(repositoryRoot, file);
 const logDirectory =
   process.env.LINUXIO_VM_LOG_DIR ||
   path.join(repositoryRoot, ".cache/test-logs");
-const logPath = path.join(logDirectory, "test-vm.log");
+const logPath = path.join(logDirectory, "test-vm-browser.log");
 
 const tty = process.stdout.isTTY;
 const useColor = tty && !process.env.NO_COLOR;

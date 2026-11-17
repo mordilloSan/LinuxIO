@@ -14,10 +14,10 @@
 # volumes and ~/.cache/linuxio-vm-2. It shares only the image cache with the
 # first.
 #
-# Usage: linuxio-vm.sh create | ensure | prepare BUILD_DIR | install BUILD_DIR |
-#        start | ssh [COMMAND] | ip | password | reboot | power-cut |
-#        off-for SECONDS | throttle DISK BYTES_PER_SEC | stop | reset | update |
-#        destroy | fit | room | count | test DIR [SUITE...] |
+# Usage: linuxio-vm.sh create | ensure | prepare [BUILD_DIR] |
+#        install BUILD_DIR | start | ssh [COMMAND] | ip | password | reboot |
+#        power-cut | off-for SECONDS | throttle DISK BYTES_PER_SEC | stop |
+#        reset | update | destroy | fit | room | count | test DIR [SUITE...] |
 #        each COUNT COMMAND [ARGS]
 set -euo pipefail
 
@@ -311,18 +311,20 @@ has_clean_snapshot() {
 	grep -qx "$SNAPSHOT" <<<"$snapshots"
 }
 
-# What make test-vm does to each VM before the specs: create it when it is
-# missing or its first boot was cut, revert it to clean and install the build.
+# What make test-vm-browser and test-vm-backend do to each VM before their
+# tests: create it when it is missing or its first boot was cut, revert it to
+# clean and, given BUILD_DIR, install that build. test-vm-backend gives none:
+# its suites bring their own test binaries.
 prepare() {
 	local build_dir=${1:-}
-	[[ -n $build_dir && -x "${build_dir}/linuxio" ]] || die "no LinuxIO build in '${build_dir}'"
+	[[ -z $build_dir || -x "${build_dir}/linuxio" ]] || die "no LinuxIO build in '${build_dir}'"
 	if has_clean_snapshot; then
 		step_note "ready ok 0"
 	else
 		step created ensure
 	fi
 	step reset reset
-	step install install "$build_dir"
+	[[ -z $build_dir ]] || step install install "$build_dir"
 }
 
 install() {
@@ -731,7 +733,8 @@ free_for_vms_kib() {
 	echo "$free_kib"
 }
 
-# The numbers behind fit, for the line test-vm starts with.
+# The numbers behind fit, for the line test-vm-browser and test-vm-backend
+# start with.
 room() {
 	local free_kib
 	free_kib="$(free_for_vms_kib)"
@@ -926,5 +929,5 @@ each)
 	shift
 	each "$@"
 	;;
-*) die "usage: $(basename "$0") create | ensure | prepare BUILD_DIR | install BUILD_DIR | start | ssh [COMMAND] | ip | password | reboot | power-cut | off-for SECONDS | throttle DISK BYTES_PER_SEC | stop | reset | update | destroy | fit | room | count | test DIR [SUITE...] | each COUNT COMMAND [ARGS]" ;;
+*) die "usage: $(basename "$0") create | ensure | prepare [BUILD_DIR] | install BUILD_DIR | start | ssh [COMMAND] | ip | password | reboot | power-cut | off-for SECONDS | throttle DISK BYTES_PER_SEC | stop | reset | update | destroy | fit | room | count | test DIR [SUITE...] | each COUNT COMMAND [ARGS]" ;;
 esac

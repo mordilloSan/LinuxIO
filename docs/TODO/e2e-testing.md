@@ -177,7 +177,7 @@ See `docs/development.md`, "Test VM", for usage.
   key and login live in `~/.cache/linuxio-vm`, outside git.
 - `make vm-install` installs the current build; `make vm-reset` reverts every
   disk to `clean`; `make vm-destroy` removes the domain and its volumes.
-- `make test-vm-browser` runs `frontend/src/test/vm/*.spec.ts` with
+- `make test-vm-browser-rerun` runs `frontend/src/test/vm/*.spec.ts` with
   `frontend/config/playwright.vm.config.ts`; `login.spec.ts` signs in, sees the
   dashboard and signs out.
 - `jobs-phase2.spec.ts` and `jobs-phase3.spec.ts` start real jobs in the browser

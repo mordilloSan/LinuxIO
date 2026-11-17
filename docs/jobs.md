@@ -810,7 +810,7 @@ The record itself is the quickest evidence: as root,
 | Browser | `make test-frontend-browser-quiet` | `frontend/src/test/browser/history.spec.ts`, `frontend/src/test/browser/schedules.spec.ts`, `frontend/src/test/browser/background-tasks.spec.ts` | Real layout against the fixture: the history table has height, the Schedules table keeps its rows beside tall details, tray rendering |
 | Root, in the VM | `make vm-test-relay-root` | `backend/bridge/cmd/jobs_relay_test.go` | The relay tests as root: the in-process host is the root host, so its owner and privileged rules differ from a user host's |
 | Root kernel | `make test-btrfs-integration` (sudo, the user's to run); `make vm-test-btrfs-integration` in the VM | `backend/common/btrfs/integration_resume_test.go` (`TestBtrfsResumeIntegration`) | Kill and resume each btrfs operation on loop devices: signals, cancels, kills, a paused balance across a remount, a scrub from its offset, a scrub from its saved progress after a kill, a scrub across a filesystem freeze and its cancel there by its context and through `ScrubCancel`, a replace across a simulated power cut |
-| Test VM | `make vm-reset`, `make vm-install`, `make test-vm-browser` | `frontend/src/test/vm/jobs-phase2.spec.ts` | Reloads mid package update, Compose and copy; uploads; a scrub across logout; host stop, kill, reboot and power cut |
+| Test VM | `make vm-reset`, `make vm-install`, `make test-vm-browser-rerun` | `frontend/src/test/vm/jobs-phase2.spec.ts` | Reloads mid package update, Compose and copy; uploads; a scrub across logout; host stop, kill, reboot and power cut |
 | Test VM | same | `frontend/src/test/vm/jobs-phase3.spec.ts` | Balance, scrub and replace across stops, reboots and power cuts; a scrub across a frozen job host; a cancel or a crash before a reboot; pool create rollback; the Docker storage switch killed |
 | Test VM | same | `frontend/src/test/vm/jobs-phase4.spec.ts` | Scheduled runs: records, bell rows, saved output, stop, a broken hook, the snapshot, Docker and system update units, a power cut and an orderly reboot |
 | Test VM | same | `frontend/src/test/vm/jobs-phase5a.spec.ts`, `frontend/src/test/vm/jobs-needrestart.spec.ts` | History, past runs, the output viewer, a user without sudo, the update banner; needrestart deferring a job host |
@@ -831,7 +831,7 @@ cp backend/common/jobs/record.go <dir>/record.go   # raise Protocol by one in th
 printf '{"Replace":{"%s":"%s"}}\n' "$PWD/backend/common/jobs/record.go" "<dir>/record.go" > <dir>/overlay.json
 make build-nocheck BIN_DIR=<dir>/build GO_BUILD_EXTRA_ENV="GOFLAGS='-buildvcs=false -overlay=<dir>/overlay.json'"
 make vm-reset && make vm-install
-LINUXIO_VM_UPDATE_BUILD=<dir>/build make test-vm-browser PLAYWRIGHT_ARGS='login.spec.ts jobs-phase5a.spec.ts'
+LINUXIO_VM_UPDATE_BUILD=<dir>/build make test-vm-browser-rerun PLAYWRIGHT_ARGS='login.spec.ts jobs-phase5a.spec.ts'
 ```
 
 `jobs-update.spec.ts` is marked `fixme` and does not run: the rig installs
@@ -849,7 +849,7 @@ run `make vm-reset` before the next file.
 
 ```sh
 make vm-reset
-LINUXIO_VM_UPDATE_BUILD=<dir>/build make test-vm-browser PLAYWRIGHT_ARGS='jobs-update.spec.ts'
+LINUXIO_VM_UPDATE_BUILD=<dir>/build make test-vm-browser-rerun PLAYWRIGHT_ARGS='jobs-update.spec.ts'
 ```
 
 ### Baseline timings
