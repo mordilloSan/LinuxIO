@@ -8,9 +8,9 @@ vm_script := $(repo_root)/packaging/vm/linuxio-vm.sh
 VM_RELEASE ?=
 export LINUXIO_VM_RELEASE := $(VM_RELEASE)
 vm_state_dir := $(HOME)/.cache/linuxio-vm$(if $(filter-out resolute,$(VM_RELEASE)),-$(VM_RELEASE))
-# A test target shuts the VM down when it ends, passed or failed, so nothing
-# keeps running unused; the next target starts it again. VM_KEEP=1 leaves it
-# up, to look at a failure while its processes still run.
+# Every target that starts the VM shuts it down when it ends, passed or
+# failed, so nothing keeps running unused; the next target starts it again.
+# VM_KEEP=1 leaves it up, to look at a failure while its processes still run.
 VM_KEEP ?=
 vm_stop := $(if $(VM_KEEP),true,"$(vm_script)" stop)
 
@@ -19,9 +19,11 @@ vm-create: ## Create the test VM from the Ubuntu 26.04 cloud image and snapshot 
 	@"$(vm_script)" create
 
 vm-install: build-nocheck ## Build LinuxIO and install it in the test VM
+	@trap '$(vm_stop)' EXIT
 	@"$(vm_script)" install "$(bin_dir)"
 
 vm-ssh: ## Run CMD='...' in the test VM over SSH (no CMD: a shell)
+	@trap '$(vm_stop)' EXIT
 	@"$(vm_script)" ssh $${CMD:+"$$CMD"}
 
 vm-stop: ## Shut the test VM down; its disks keep what is installed

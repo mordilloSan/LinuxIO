@@ -148,16 +148,16 @@ make vm-destroy       # delete the domain and its volumes; the cache stays
   cloud-init reads its seed over HTTP from a server on
   `192.168.122.1:8399` that runs only during that boot. It creates the user
   `linuxio-e2e` with passwordless sudo and installs `docker.io`,
-  `btrfs-progs` and the LinuxIO dependencies. The VM is then shut down and
-  snapshotted as `clean`, without LinuxIO.
-- Every target that needs the VM starts it if it is stopped. The test targets
-  (`test-vm-browser` and the `vm-test-*` ones) shut it down when they end,
-  passed or failed, so no VM runs unused; what was installed and the journal
-  stay on its disks, and the next target boots it again. `VM_KEEP=1` on a
-  test target leaves it up, to look at a failure while its processes still
-  run. `vm-install` and `vm-ssh` leave it running for the target that
-  follows; `make vm-stop` shuts it down by hand. `vm-reset` leaves it
-  stopped, without LinuxIO; run `vm-install` again after a reset.
+  `btrfs-progs` and the LinuxIO dependencies, and upgrades every package. The
+  VM is then shut down and snapshotted as `clean`, without LinuxIO.
+- Every target that needs the VM starts it if it is stopped and shuts it
+  down when it ends, passed or failed (`vm-install`, `vm-ssh`,
+  `test-vm-browser` and the `vm-test-*` ones), so no VM runs unused; what was
+  installed and the journal stay on its disks, and the next target boots it
+  again. `VM_KEEP=1` on a target leaves it up, to look at a failure while its
+  processes still run, or to run several `vm-ssh` commands against one boot;
+  `make vm-stop` then shuts it down. `vm-reset` leaves it stopped, without
+  LinuxIO; run `vm-install` again after a reset.
 - The seed switches `apt-daily.timer` and `apt-daily-upgrade.timer` off, so
   the VM never upgrades itself: an unattended upgrade that a power-cut check
   interrupts leaves dpkg broken for the specs after it. `vm-update` is how

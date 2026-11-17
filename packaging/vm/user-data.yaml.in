@@ -14,6 +14,10 @@ users:
       - '@SSH_KEY@'
 ssh_pwauth: false
 package_update: true
+# Every package is brought up to date here, once: the timers that would do it
+# later are switched off below, and no spec needs a waiting update (the ones
+# about updates build their own package).
+package_upgrade: true
 packages:
   - docker.io
   - btrfs-progs
