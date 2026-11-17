@@ -336,15 +336,17 @@ test("a user who is not an admin sees only their own jobs", async ({
 // host an older one to every new bridge, without stopping it (installing over
 // a running host is what an update does; docs/jobs.md, Updates). The test
 // installs it with the rig's install, which `make vm-install` runs after its
-// build. docs/jobs.md (Testing) gives the make command that builds it from
-// this tree with a Go overlay of backend/common/jobs/record.go.
+// build. `make vm-update-build` builds it from this tree with a Go overlay of
+// backend/common/jobs/record.go, and `make test-vm-browser` passes it. It
+// stays installed for the files after this one on the VM: a build that differs
+// only in the protocol, with a host of its own once the older one has exited.
 test("the update banner counts the jobs an update waits for", async ({
   page,
 }) => {
   const build = process.env.LINUXIO_VM_UPDATE_BUILD ?? "";
   test.skip(
     build === "",
-    "needs LINUXIO_VM_UPDATE_BUILD: a build directory of this tree with jobs.Protocol one higher (docs/jobs.md, Testing)",
+    "needs LINUXIO_VM_UPDATE_BUILD: make vm-update-build builds this tree with jobs.Protocol one higher (docs/jobs.md, Testing)",
   );
   // The bounds of the waits below: an apt run 600 s, the scrub's start (with
   // the pool on a fresh VM) about 120 s, the sessions 30 s, the install about

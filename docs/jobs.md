@@ -815,41 +815,48 @@ The record itself is the quickest evidence: as root,
 | Test VM | same | `frontend/src/test/vm/jobs-phase4.spec.ts` | Scheduled runs: records, bell rows, saved output, stop, a broken hook, the snapshot, Docker and system update units, a power cut and an orderly reboot |
 | Test VM | same | `frontend/src/test/vm/jobs-phase5a.spec.ts`, `frontend/src/test/vm/jobs-needrestart.spec.ts` | History, past runs, the output viewer, a user without sudo, the update banner; needrestart deferring a job host |
 | Test VM | same | `frontend/src/test/vm/jobs-phase5b.spec.ts` | Notification settings, the grid at delivery and in the bell, a schedule's choice, an interruption as a warning, the notice at sign-in |
-| Test VM | same, with `LINUXIO_VM_UPDATE_BUILD` | `frontend/src/test/vm/jobs-update.spec.ts` | A real update from the published release v0.53.0 while two root jobs and a plain user's job run: the banner and `tasks.host`, `tasks.watch`, `tasks.cancel` and `tasks.output` during the wait, uploads, the update proceeding after the last job, the older host's records read by the new one |
+| Test VM | `make test-vm-browser` runs it last, on a VM reverted to clean | `frontend/src/test/vm/jobs-update.spec.ts` | A real update from the published release v0.53.0 while two root jobs and a plain user's job run: the banner and `tasks.host`, `tasks.watch`, `tasks.cancel` and `tasks.output` during the wait, uploads, the update proceeding after the last job, the older host's records read by the new one |
 
 Run each VM spec file on a fresh install, with `login.spec.ts`
 ([Development](./development.md#test-vm)). The VM signs in as a sudo user, so
 its jobs run in the root host, except where a check creates a user without
 sudo. The evidence is the record, read over SSH, and the host's journal.
 
-The update banner check needs a build whose `jobs.Protocol` is one higher,
-made without touching the tree through a Go overlay; without
-`LINUXIO_VM_UPDATE_BUILD` it is skipped:
+The update checks install an update build: this tree with `jobs.Protocol` one
+higher, so a host of the installed build is an older one to the new bridge.
+`make vm-update-build` makes it in `.cache/vm-update-build/build` without
+touching the tree: a copy of the plain build whose Go binaries are built
+again with a Go overlay of `backend/common/jobs/record.go`.
+`make test-vm-browser` builds it and passes it in `LINUXIO_VM_UPDATE_BUILD`;
+without it both checks are skipped. The update banner check in
+`jobs-phase5a.spec.ts` installs it over the running build and leaves it
+installed for the files after it on that VM, a build that differs only in the
+protocol. By hand:
 
 ```sh
-cp backend/common/jobs/record.go <dir>/record.go   # raise Protocol by one in the copy
-printf '{"Replace":{"%s":"%s"}}\n' "$PWD/backend/common/jobs/record.go" "<dir>/record.go" > <dir>/overlay.json
-make build-nocheck BIN_DIR=<dir>/build GO_BUILD_EXTRA_ENV="GOFLAGS='-buildvcs=false -overlay=<dir>/overlay.json'"
-make vm-reset && make vm-install
-LINUXIO_VM_UPDATE_BUILD=<dir>/build make test-vm-browser-rerun PLAYWRIGHT_ARGS='login.spec.ts jobs-phase5a.spec.ts'
+make vm-reset vm-install vm-update-build
+LINUXIO_VM_UPDATE_BUILD=.cache/vm-update-build/build make test-vm-browser-rerun PLAYWRIGHT_ARGS='login.spec.ts jobs-phase5a.spec.ts'
 ```
 
-`jobs-update.spec.ts` is marked `fixme` and does not run: the rig installs
-v0.53.0 with this checkout's packaging, which since `linuxio-worker` starts
-programs and words that release does not have
-([backlog](./TODO/backlog.md)). As written, it takes the same build. It downloads v0.53.0 (the first
-release with job hosts) into `.cache/vm-release/v0.53.0`, checks it against the
-release's `SHA256SUMS` and installs it with the rig's install, so it needs no
-`make vm-install` first, only `make vm-reset`. v0.53.0 has the same
-`jobs.Protocol` as the tree, so only the bumped build makes its hosts older.
-The file is one serial group sharing one update, skips as a whole without
-`LINUXIO_VM_UPDATE_BUILD`, needs `vdd` empty, and leaves the VM changed (the
-update build installed, an ext4 on `vdd`, a user without sudo, a schedule):
-run `make vm-reset` before the next file.
+`jobs-update.spec.ts` downloads v0.53.0 (the first release with job hosts)
+into `.cache/vm-release/v0.53.0`, checks it against the release's
+`SHA256SUMS` and installs it with the rig's install and that release's own
+installer and packaging, which the rig takes from the `v0.53.0` git tag
+(`linuxio-vm.sh install BUILD_DIR REF`): this checkout's units start
+programs and words the release does not have. It then installs the update
+build with this checkout's installer, as an update does, which also runs the
+rewrite of the saved unit commands. v0.53.0 has the same `jobs.Protocol` as
+the tree, so only the update build makes its hosts older. The file is one
+serial group sharing one update, needs `vdd` empty, and leaves the VM changed
+(the update build installed, an ext4 on `vdd`, a user without sudo, a
+schedule), so it is the Playwright project `release-update` of its own:
+`make test-vm-browser` runs it after the other files, on its first VM
+reverted to clean, with its log in
+`.cache/test-logs/test-vm-browser-release-update.log`. By hand:
 
 ```sh
-make vm-reset
-LINUXIO_VM_UPDATE_BUILD=<dir>/build make test-vm-browser-rerun PLAYWRIGHT_ARGS='jobs-update.spec.ts'
+make vm-reset vm-update-build
+LINUXIO_VM_UPDATE_BUILD=.cache/vm-update-build/build make test-vm-browser-rerun VMS=1 PLAYWRIGHT_ARGS=--project=release-update
 ```
 
 ### Baseline timings

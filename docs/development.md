@@ -122,9 +122,14 @@ sparse qcow2 files: a 25 GiB system disk and four 8 GiB data disks
 (`vdb`–`vde`) for storage tests.
 
 `make test-vm-browser` is the whole browser run in one command. It builds
-LinuxIO, counts how many VMs the host has room for, creates the ones that are
-missing, reverts each to `clean`, installs the build in each and runs the
-specs on all of them at once, then shuts them down. `make test-vm-backend` is
+LinuxIO and the update build the update checks install (`vm-update-build`,
+[Jobs](./jobs.md#testing)), counts how many VMs the host has room for,
+creates the ones that are missing, reverts each to `clean`, installs the build
+in each and runs the specs on all of them at once. Then it reverts the first
+VM to `clean` again and runs `jobs-update.spec.ts` alone on it, the
+Playwright project `release-update`, since that file installs an older release
+and leaves the VM changed; a run narrowed with `PLAYWRIGHT_ARGS` skips that
+stage. At the end it shuts the VMs down. `make test-vm-backend` is
 the same for the root suites, without the install. A VM needs 4 GiB of free
 memory (`MemAvailable`, after 1.5 GiB kept for the host and its browsers) and
 4 CPUs, so a host with 12 CPUs and 14 GiB free runs three; four is the most
@@ -200,6 +205,7 @@ make vm-test-btrfs-integration
 make vm-stop                # shut the VMs down; what is installed stays
 make vm-reset               # revert every disk to "clean" and stop the VMs
 make vm-update              # upgrade the packages in "clean" and take the snapshot again
+make vm-update-build        # this tree with jobs.Protocol one higher, for the update checks
 make vm-destroy             # delete the first VM and its volumes; the cache stays
 ```
 
@@ -234,7 +240,9 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   is what a rerun of one file wants (`PLAYWRIGHT_ARGS=jobs-phase4`). It signs in
   at `https://<vm-ip>:8090` as `linuxio-e2e`, with the VM's password in its
   state directory (`~/.cache/linuxio-vm/password` for the first).
-  `PLAYWRIGHT_ARGS` applies to `test-vm-browser` too.
+  `PLAYWRIGHT_ARGS` applies to `test-vm-browser` too. Both run the
+  Playwright project `specs` unless `PLAYWRIGHT_ARGS` names a project
+  (`--project=release-update` runs `jobs-update.spec.ts`).
   The specs leave their schedules behind, and the Schedules table renders
   only the rows near what is visible, in the order of the definition files
   (by ID, so a new schedule lands anywhere). The helpers in `vm.ts`
@@ -556,7 +564,7 @@ The full index groups the supported targets as follows:
   `build-docker-update`, `build-leak-profile`, `generate`, `dev-prep`, `dev`,
   `dev-stop`, `dev-status-install`, `dev-status-uninstall`, `clean`, `cloc`
 - installation: `localinstall`, `reinstall`, `uninstall`
-- test VM: `test-vm-browser`, `vm-create`, `vm-install`, `vm-ssh`, `vm-stop`, `vm-reset`, `vm-update`, `vm-destroy`,
+- test VM: `test-vm-browser`, `vm-create`, `vm-install`, `vm-ssh`, `vm-stop`, `vm-reset`, `vm-update`, `vm-update-build`, `vm-destroy`,
   `vm-test-btrfs-integration`, `vm-test-memory-integration`,
   `vm-test-filebrowser-root`, `vm-test-relay-root`, `test-vm-backend`,
   `test-vm-browser-rerun`

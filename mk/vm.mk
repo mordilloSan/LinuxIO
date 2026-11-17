@@ -19,7 +19,8 @@ export LINUXIO_VM_RELEASE := $(VM_RELEASE)
 VM ?=
 export LINUXIO_VM_INDEX := $(VM)
 # A command run on several VMs keeps each VM's output in vm-N-COMMAND.log
-# here, and the browser specs every line of theirs in test-vm-browser.log.
+# here, and the browser specs every line of theirs in test-vm-browser.log
+# (test-vm-browser-release-update.log for the release-update project).
 export LINUXIO_VM_LOG_DIR = $(cache_dir)/test-logs
 vm_fit = $(eval vm_fit := $(or $(shell "$(vm_script)" fit),1))$(vm_fit)
 vm_count = $(eval vm_count := $(or $(shell "$(vm_script)" count),1))$(vm_count)
@@ -159,37 +160,72 @@ test-vm-backend: ensure-go $(if $(filter indexer,$(SUITES)),build-nocheck) ## Cr
 	@$(vm_all) prepare
 	@$(vm_all) test "$(vm_test_dir)"
 
-# One Playwright worker for each VM: a worker takes the next spec file and
-# keeps to its own VM, which the three lists name in the same order. The VMs
-# are running: test-vm-browser's install boots them, the rerun starts them.
+# The update build the update specs install (jobs-phase5a.spec.ts,
+# jobs-update.spec.ts): this tree with jobs.Protocol one higher, so a job host
+# of the installed build is an older one to its bridge. A Go overlay of
+# record.go raises it without touching the tree; the build is a copy of the
+# plain one with its Go binaries built again. docs/jobs.md, Testing.
+vm_update_dir := $(cache_dir)/vm-update-build
+vm_update_build := $(vm_update_dir)/build
+vm_record_go := $(backend_dir)/common/jobs/record.go
+
+##@ Test VM|yellow
+vm-update-build: build-nocheck ## Build this tree with jobs.Protocol one higher into .cache/vm-update-build/build, the build the update specs install
+	@set -e
+	@mkdir -p "$(vm_update_dir)"
+	@perl -pe 's/^(\tProtocol\s+=\s+)(\d+)$$/$$1 . ($$2 + 1)/e' "$(vm_record_go)" >"$(vm_update_dir)/record.go"
+	@if cmp -s "$(vm_record_go)" "$(vm_update_dir)/record.go"; then echo "vm-update-build: no jobs.Protocol line to raise in $(vm_record_go)" >&2; exit 1; fi
+	@printf '{"Replace":{"%s":"%s"}}\n' "$(vm_record_go)" "$(vm_update_dir)/record.go" >"$(vm_update_dir)/overlay.json"
+	@rm -rf "$(vm_update_build)"
+	@cp -a "$(bin_dir)" "$(vm_update_build)"
+	@$(MAKE) --no-print-directory build-go-binaries BIN_DIR="$(vm_update_build)" SKIP_ENSURE_GO=1 \
+	  GO_BUILD_EXTRA_ENV="GOFLAGS='-buildvcs=false -overlay=$(vm_update_dir)/overlay.json'"
+
+# $(call vm_browser_specs,NUMBERS,ARGS[,ENV]) runs Playwright with ARGS on the
+# VMs NUMBERS, one worker for each: a worker takes the next spec file and keeps
+# to its own VM, which the three lists name in the same order. ENV is more
+# variables for it. The VMs are running: test-vm-browser's install boots them,
+# the rerun starts them, and the ip command starts one that is stopped.
 define vm_browser_specs
 urls="" passwords=""
-for n in $(vm_numbers); do
+for n in $(1); do
   urls="$$urls https://$$(LINUXIO_VM_INDEX=$$n "$(vm_script)" ip):8090"
   passwords="$$passwords $$(LINUXIO_VM_INDEX=$$n "$(vm_script)" password)"
 done
-cd "$(frontend_dir)" && \
-  LINUXIO_VM_NUMBERS="$(vm_numbers)" LINUXIO_VM_URLS="$$urls" LINUXIO_VM_PASSWORDS="$$passwords" LINUXIO_VM_USER=linuxio-e2e \
-  ./node_modules/.bin/playwright test --config config/playwright.vm.config.ts $(PLAYWRIGHT_ARGS)
+(cd "$(frontend_dir)" && \
+  LINUXIO_VM_NUMBERS="$(1)" LINUXIO_VM_URLS="$$urls" LINUXIO_VM_PASSWORDS="$$passwords" LINUXIO_VM_USER=linuxio-e2e $(3) \
+  ./node_modules/.bin/playwright test --config config/playwright.vm.config.ts $(2))
 endef
+# The specs project unless PLAYWRIGHT_ARGS names a project: release-update
+# (jobs-update.spec.ts) needs a VM reverted to clean (playwright.vm.config.ts).
+vm_specs_args = $(if $(findstring --project,$(PLAYWRIGHT_ARGS)),,--project=specs) $(PLAYWRIGHT_ARGS)
 
-##@ Test VM|yellow
 test-vm-browser-rerun: ensure-node setup-frontend ## Rerun the browser specs against the test VMs as they are, without reverting or installing (test-vm-browser does both)
 	@set -e
 	@$(vm_lock)
 	@trap '$(vm_stop_all)' EXIT
 	@$(vm_all) start
-	@$(vm_browser_specs)
+	@$(call vm_browser_specs,$(vm_numbers),$(vm_specs_args))
+
+# The release-update project after the others, alone on the first VM of the
+# run reverted to clean, with a log of its own.
+define vm_release_update
+LINUXIO_VM_INDEX=$(firstword $(vm_numbers)) "$(vm_script)" reset
+$(call vm_browser_specs,$(firstword $(vm_numbers)),--project=release-update,LINUXIO_VM_LOG=test-vm-browser-release-update.log)
+endef
 
 ##@ Tests|green
 # The whole run in one target: as many VMs as the host has room for (VMS=2
 # for fewer), each created when it is missing, reverted to clean and given
-# this build, then the specs.
+# this build, then the specs, then the release-update spec. A run narrowed
+# with PLAYWRIGHT_ARGS runs those specs only.
 test-vm-browser: VMS = $(vm_fit)
-test-vm-browser: build-nocheck ensure-node setup-frontend ## Create the test VMs the host has room for, revert them, install this build and run the browser specs
+test-vm-browser: export LINUXIO_VM_UPDATE_BUILD = $(vm_update_build)
+test-vm-browser: build-nocheck vm-update-build ensure-node setup-frontend ## Create the test VMs the host has room for, revert them, install this build and run the browser specs, then the release-update spec on a VM reverted again
 	@set -e
 	@$(vm_lock)
 	@trap '$(vm_stop_all)' EXIT
 	@echo "linuxio-vm: $(if $(VM),VM $(VM),$(VMS) VM(s)) for this run; $$("$(vm_script)" room)"
 	@$(vm_all) prepare "$(bin_dir)"
-	@$(vm_browser_specs)
+	@$(call vm_browser_specs,$(vm_numbers),$(vm_specs_args))
+	@$(if $(PLAYWRIGHT_ARGS),,$(vm_release_update))

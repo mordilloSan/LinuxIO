@@ -48,16 +48,18 @@ import {
 //  - jobs.Protocol of v0.53.0 is 2, as it is in this tree, so a plain build of
 //    this tree would be accepted by the older host and nothing would wait. The
 //    build in LINUXIO_VM_UPDATE_BUILD must be this tree with jobs.Protocol one
-//    higher (docs/jobs.md, Testing, builds it with a Go overlay). Without it
-//    the tests are skipped.
+//    higher (make vm-update-build builds it with a Go overlay; docs/jobs.md,
+//    Testing). Without it the tests are skipped.
 //  - the in-app updater (`control.app_update`) installs a published release
 //    only, so the update is the installer script itself, which is what the
 //    updater runs (the VM rig's install, as in jobs-phase5a.spec.ts).
 //
 // The release is downloaded on the host from GitHub into
 // .cache/vm-release/<tag>, checked against the release's SHA256SUMS, and
-// installed with the rig's install, which takes this checkout's packaging
-// (units, PAM, needrestart override) with the release's binaries.
+// installed with the rig's install and the release's own installer and
+// packaging (units, PAM, needrestart override), which the rig takes from the
+// release's git tag. The update build is then installed with this checkout's,
+// as an update does.
 //
 // The tests are one serial group sharing one update, because each update costs
 // minutes (an install, then the older host's idle minute and the relay's
@@ -68,14 +70,15 @@ import {
 // the VM rig throttles, so lifting the throttle ends both copies and leaves
 // the scrub, which ends by raising its own speed cap.
 //
-// Run it alone, on a freshly reset VM that needs no `make vm-install`:
-//   make vm-reset
-//   LINUXIO_VM_UPDATE_BUILD=<dir>/build make test-vm-browser-rerun PLAYWRIGHT_ARGS=jobs-update
-// Without LINUXIO_VM_UPDATE_BUILD the whole group is skipped, which is how the
-// full suite runs. With it, the file needs vdd to hold nothing and changes the
-// VM: it leaves the release's files in .cache, the update build installed, the
-// apt timers stopped, the e2e pool on vdb and vdc, a user without sudo, an ext4
-// on vdd mounted at /mnt/e2e-slow and a schedule. Run `make vm-reset` (and
+// It runs alone, on a freshly reset VM that needs no `make vm-install`: the
+// file is the Playwright project release-update, which `make test-vm-browser`
+// runs after the other files, on its first VM reverted to clean. By hand:
+//   make vm-reset vm-update-build
+//   LINUXIO_VM_UPDATE_BUILD=.cache/vm-update-build/build make test-vm-browser-rerun VMS=1 PLAYWRIGHT_ARGS=--project=release-update
+// The file needs vdd to hold nothing and changes the VM: it leaves the
+// release's files in .cache, the update build installed, the apt timers
+// stopped, the e2e pool on vdb and vdc, a user without sudo, an ext4 on vdd
+// mounted at /mnt/e2e-slow and a schedule. Run `make vm-reset` (and
 // `make vm-install` for the other files) before anything else.
 
 const OLD_RELEASE = "v0.53.0";
@@ -210,7 +213,9 @@ async function installOldRelease() {
     "jobs running in the root job host: a fresh VM has none",
   ).toEqual([]);
   await vmSsh("sudo systemctl stop 'linuxio-jobs@*.service'");
-  console.log(await rig(["install", release.dir]));
+  // With the release's own installer and packaging: this checkout's units
+  // start programs and words the release does not have.
+  console.log(await rig(["install", release.dir, OLD_RELEASE]));
   return release.bridgeSha;
 }
 
@@ -291,17 +296,9 @@ async function upload(page: Page, rightClick: Locator, files: string[]) {
 }
 
 test.describe.serial("an update from a release with job hosts", () => {
-  // The rig installs OLD_RELEASE with this checkout's packaging, whose units
-  // start linuxio-worker and start the daemons without "run": v0.53.0 has
-  // neither, so its install fails. See docs/TODO/backlog.md, Tests that are
-  // missing.
-  test.fixme(
-    true,
-    "v0.53.0 cannot be installed with this checkout's packaging (linuxio-worker); the rig must install an older release with that release's packaging",
-  );
   test.skip(
     updateBuild() === "",
-    "needs LINUXIO_VM_UPDATE_BUILD: a build directory of this tree with jobs.Protocol one higher (docs/jobs.md, Testing)",
+    "needs LINUXIO_VM_UPDATE_BUILD: make vm-update-build builds this tree with jobs.Protocol one higher (docs/jobs.md, Testing)",
   );
 
   test.afterAll(async () => {

@@ -19,7 +19,7 @@ import type {
 // now; written to a file or a pipe, the results alone. The run ends with a
 // table for each VM, a timeline of the files each one ran and the failures in
 // full. Every line, without colour, also goes to
-// LINUXIO_VM_LOG_DIR/test-vm-browser.log.
+// LINUXIO_VM_LOG_DIR/test-vm-browser.log, or the file LINUXIO_VM_LOG names.
 
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -29,7 +29,11 @@ const fromRoot = (file: string) => path.relative(repositoryRoot, file);
 const logDirectory =
   process.env.LINUXIO_VM_LOG_DIR ||
   path.join(repositoryRoot, ".cache/test-logs");
-const logPath = path.join(logDirectory, "test-vm-browser.log");
+// The release-update stage of make test-vm-browser names its own log.
+const logPath = path.join(
+  logDirectory,
+  process.env.LINUXIO_VM_LOG ?? "test-vm-browser.log",
+);
 
 const tty = process.stdout.isTTY;
 const useColor = tty && !process.env.NO_COLOR;

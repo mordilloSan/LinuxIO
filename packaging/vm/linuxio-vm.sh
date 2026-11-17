@@ -15,10 +15,10 @@
 # first.
 #
 # Usage: linuxio-vm.sh create | ensure | prepare [BUILD_DIR] |
-#        install BUILD_DIR | start | ssh [COMMAND] | ip | password | reboot |
-#        power-cut | off-for SECONDS | throttle DISK BYTES_PER_SEC | stop |
-#        reset | update | destroy | fit | room | count | test DIR [SUITE...] |
-#        each COUNT COMMAND [ARGS]
+#        install BUILD_DIR [REF] | start | ssh [COMMAND] | ip | password |
+#        reboot | power-cut | off-for SECONDS | throttle DISK BYTES_PER_SEC |
+#        stop | reset | update | destroy | fit | room | count |
+#        test DIR [SUITE...] | each COUNT COMMAND [ARGS]
 set -euo pipefail
 
 case "${LINUXIO_VM_RELEASE:-resolute}" in
@@ -332,20 +332,29 @@ prepare() {
 	[[ -z $build_dir ]] || step install install "$build_dir"
 }
 
+# install BUILD_DIR [REF] installs the build in BUILD_DIR with the installer
+# and packaging of this checkout, or of the git REF when given: a release's
+# binaries need that release's packaging (its units start the programs and
+# words it has), so jobs-update.spec.ts installs v0.53.0 with REF v0.53.0.
 install() {
-	local build_dir=${1:-}
+	local build_dir=${1:-} ref=${2:-}
 	[[ -n $build_dir && -x "${build_dir}/linuxio" ]] || die "no LinuxIO build in '${build_dir}'"
 	connect
-	push_checkout "$build_dir"
+	push_checkout "$build_dir" "$ref"
 	vm_ssh 'sudo ~/linuxio/packaging/scripts/install-linuxio-binaries.sh --local --build-dir ~/linuxio/build'
 }
 
-# push_checkout BUILD_DIR puts what the installer reads in ~/linuxio and the
-# build in ~/linuxio/build: --local reads packaging/, LICENSE and
-# docs/THIRD_PARTY_NOTICES.md, and finds the checkout by its Makefile.
+# push_checkout BUILD_DIR [REF] puts what the installer reads in ~/linuxio,
+# from the checkout or from the git REF, and the build in ~/linuxio/build:
+# --local reads packaging/, LICENSE and docs/THIRD_PARTY_NOTICES.md, and finds
+# the checkout by its Makefile.
 push_checkout() {
-	tar -C "$REPO_ROOT" -cf - Makefile LICENSE docs/THIRD_PARTY_NOTICES.md packaging |
-		vm_ssh 'rm -rf linuxio && mkdir -p linuxio/build && tar -C linuxio -xf -'
+	local -a files=(Makefile LICENSE docs/THIRD_PARTY_NOTICES.md packaging)
+	if [[ -n ${2:-} ]]; then
+		git -C "$REPO_ROOT" archive "$2" -- "${files[@]}"
+	else
+		tar -C "$REPO_ROOT" -cf - "${files[@]}"
+	fi | vm_ssh 'rm -rf linuxio && mkdir -p linuxio/build && tar -C linuxio -xf -'
 	tar -C "$1" -cf - . | vm_ssh 'tar -C linuxio/build -xf -'
 }
 
@@ -958,7 +967,7 @@ vm_new_lines() {
 case "${1:-}" in
 create) create ;;
 ensure) ensure ;;
-install) install "${2:-}" ;;
+install) install "${2:-}" "${3:-}" ;;
 ssh)
 	connect
 	shift
@@ -990,5 +999,5 @@ each)
 	shift
 	each "$@"
 	;;
-*) die "usage: $(basename "$0") create | ensure | prepare [BUILD_DIR] | install BUILD_DIR | start | ssh [COMMAND] | ip | password | reboot | power-cut | off-for SECONDS | throttle DISK BYTES_PER_SEC | stop | reset | update | destroy | fit | room | count | test DIR [SUITE...] | each COUNT COMMAND [ARGS]" ;;
+*) die "usage: $(basename "$0") create | ensure | prepare [BUILD_DIR] | install BUILD_DIR [REF] | start | ssh [COMMAND] | ip | password | reboot | power-cut | off-for SECONDS | throttle DISK BYTES_PER_SEC | stop | reset | update | destroy | fit | room | count | test DIR [SUITE...] | each COUNT COMMAND [ARGS]" ;;
 esac

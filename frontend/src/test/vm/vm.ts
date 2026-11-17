@@ -12,8 +12,9 @@ const rigPath = path.resolve(here, "../../../../packaging/vm/linuxio-vm.sh");
 const execFileAsync = promisify(execFile);
 
 // make test-vm-browser and test-vm-browser-rerun list the VMs of the run in
-// LINUXIO_VM_NUMBERS, _URLS and _PASSWORDS, in one order. Playwright runs one worker for each VM, and a
-// worker keeps to the VM at its parallel index: the config gives it that VM's
+// LINUXIO_VM_NUMBERS, _URLS and _PASSWORDS, in one order. Playwright runs one
+// worker for each VM, and a worker keeps to the VM at its parallel index: the
+// config gives it that VM's
 // address, and LINUXIO_VM_INDEX sends every rig command it starts, here and
 // in the specs, to that VM.
 const slot = Number(process.env.TEST_PARALLEL_INDEX ?? 0);
