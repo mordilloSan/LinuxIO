@@ -160,9 +160,9 @@ test-vm-backend: ensure-go $(if $(filter indexer,$(SUITES)),build-nocheck) ## Cr
 	@$(vm_all) test "$(vm_test_dir)"
 
 # One Playwright worker for each VM: a worker takes the next spec file and
-# keeps to its own VM, which the three lists name in the same order.
+# keeps to its own VM, which the three lists name in the same order. The VMs
+# are running: test-vm-browser's install boots them, the rerun starts them.
 define vm_browser_specs
-$(vm_all) start
 urls="" passwords=""
 for n in $(vm_numbers); do
   urls="$$urls https://$$(LINUXIO_VM_INDEX=$$n "$(vm_script)" ip):8090"
@@ -178,6 +178,7 @@ test-vm-browser-rerun: ensure-node setup-frontend ## Rerun the browser specs aga
 	@set -e
 	@$(vm_lock)
 	@trap '$(vm_stop_all)' EXIT
+	@$(vm_all) start
 	@$(vm_browser_specs)
 
 ##@ Tests|green

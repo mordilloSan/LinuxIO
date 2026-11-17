@@ -33,6 +33,8 @@ const logPath = path.join(logDirectory, "test-vm-browser.log");
 
 const tty = process.stdout.isTTY;
 const useColor = tty && !process.env.NO_COLOR;
+const hideCursor = "\u001b[?25l";
+const showCursor = "\u001b[?25h";
 const ansi = new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*[A-Za-z]`, "g");
 const plain = (text: string) => text.replace(ansi, "");
 const sgr = (code: string, text: string) =>
@@ -136,6 +138,10 @@ export default class VmReporter implements Reporter {
       "",
     ]);
     if (tty) {
+      // The board is redrawn every second; a visible cursor would jump
+      // between its top and the line under it.
+      process.stdout.write(hideCursor);
+      process.once("exit", () => process.stdout.write(showCursor));
       this.timer = setInterval(() => this.drawBoard(), 1000);
       this.timer.unref();
     }
@@ -243,6 +249,7 @@ export default class VmReporter implements Reporter {
     this.ended = true;
     if (this.timer) clearInterval(this.timer);
     this.eraseBoard();
+    if (tty) process.stdout.write(showCursor);
     const out: string[] = ["", ...this.table(), "", ...this.timeline()];
 
     if (this.failures.length > 0) {
@@ -416,18 +423,19 @@ export default class VmReporter implements Reporter {
     const now = Date.now();
     const head = `── ${this.finished}/${this.total} done · ${minutes(now - this.begun)} `;
     const rows = [dim(head.padEnd(columns, "─"))];
-    const titleWidth = Math.max(10, columns - 54);
+    const titleWidth = Math.max(10, columns - 58);
     for (const vm of this.vms()) {
       const run = this.onVm.get(vm);
       const done = this.tallies.get(vm)?.tests ?? 0;
       const count = dim(`${String(done).padStart(3)} done`);
       if (run) {
+        // The number is the one the test's result line will carry.
         rows.push(
-          `${vmTag(vm)}  ${inVmColor(vm, "▶")} ${dim(whereOf(run.test).padEnd(26))} ${clip(titleOf(run.test), titleWidth).padEnd(titleWidth)} ${minutes(now - run.begun).padStart(7)} ${count}`,
+          `${vmTag(vm)}  ${inVmColor(vm, "▶")} ${String(run.number).padStart(2)}  ${dim(whereOf(run.test).padEnd(26))} ${clip(titleOf(run.test), titleWidth).padEnd(titleWidth)} ${minutes(now - run.begun).padStart(7)} ${count}`,
         );
       } else {
         rows.push(
-          `${vmTag(vm)}  ${dim("· idle".padEnd(28 + titleWidth + 8))} ${count}`,
+          `${vmTag(vm)}  ${dim("· idle".padEnd(41 + titleWidth))} ${count}`,
         );
       }
     }

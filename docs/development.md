@@ -153,11 +153,16 @@ What a run prints says which VM did what. A command run on several VMs
 (`prepare`, `reset`, `install`, `stop` and so on) shows one row per VM with
 its steps as they end, colour-coded `vm1`, `vm2`, `vm3`; each VM's own
 output goes to `.cache/test-logs/vm-N-COMMAND.log`, and the end of it is
-shown when that VM fails. The specs' reporter
+shown when that VM fails. On a terminal the rows go on from one command to
+the next of the same target, so `test-vm-backend` keeps one row per VM from
+`ready` to `stop`; a failure, or anything else printed, starts new rows
+below. A row wider than the terminal drops its oldest steps for `…`, and the
+cursor is hidden while the rows are redrawn. The specs' reporter
 (`frontend/config/vm-reporter.ts`) puts the VM on every result, and prints
 what a spec writes under its own test once that test ends, so lines of two
-VMs never mix. On a terminal a board under the results shows each VM's file,
-test and how long it has run; in a log or a pipe the results come alone. The
+VMs never mix. On a terminal a board under the results shows each VM's
+test, with the number its result line will carry, its file and how long it
+has run; in a log or a pipe the results come alone. The
 run ends with a table for each VM (tests, passed, failed, skipped, when it
 finished), a timeline of which file ran on which VM, and each failure with
 its error, its code and its trace. Every line, without colour, is also in

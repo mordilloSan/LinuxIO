@@ -67,6 +67,11 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 readonly REPO_ROOT
 # Where `each` keeps the output of every VM, one file per VM and command.
 readonly LOG_DIR="${LINUXIO_VM_LOG_DIR:-${REPO_ROOT}/.cache/test-logs}"
+# Where `each` leaves the steps of the rows it drew, for the next `each` of the
+# same make recipe to go on with them.
+readonly ROWS="${LOG_DIR}/vm-rows"
+# How wide a row may be: the terminal's width, read when `each` draws.
+ROW_WIDTH=80
 readonly SSH_OPTS=(
 	-i "${STATE}/id_ed25519" -o IdentitiesOnly=yes -o BatchMode=yes
 	-o UserKnownHostsFile="${STATE}/known_hosts" -o StrictHostKeyChecking=accept-new
@@ -759,16 +764,30 @@ count() {
 # ends. A VM that fails has the end of its log shown, and each fails with it.
 # A shell without job control makes a background command ignore Ctrl-C, which
 # would leave these running after the target was stopped: each takes it back.
+#
+# On a terminal the rows go on from one each to the next within a make recipe
+# (the same parent shell), so a VM keeps one row from prepare to stop: each
+# that ends with every VM passed leaves its rows' steps in ROWS, and the next
+# draws over those rows with the steps added. A failure prints below the rows
+# and a command run outside each may print too, so either ends them. The
+# cursor is hidden while the rows are redrawn.
 each() {
-	local count=${1:-} n status_dir failed=0 begun=$EPOCHSECONDS alive tty=0 drawn=0
+	local count=${1:-} n status_dir failed=0 begun=$EPOCHSECONDS alive tty=0 drawn=0 cursor=: columns
 	local -a codes=() ended=() logs=() shown=()
 	[[ $count =~ ^[1-9]$ && $# -ge 2 ]] || die "usage: each COUNT COMMAND [ARGS]"
 	shift
 	[[ -t 2 ]] && tty=1
+	((tty == 0)) || cursor="printf '\\e[?25h' >&2"
 	mkdir -p "$LOG_DIR"
 	status_dir="$(mktemp -d)"
 	# shellcheck disable=SC2064 # the directory is fixed now
-	trap "rm -f -- '${status_dir}'/[1-9] '${status_dir}'/[1-9].code; rmdir -- '${status_dir}'" EXIT
+	trap "rm -f -- '${status_dir}'/[1-9] '${status_dir}'/[1-9].code '${status_dir}'/[1-9].before; rmdir -- '${status_dir}'; ${cursor}" EXIT
+	if ((tty)); then
+		printf '\e[?25l' >&2
+		read -r _ columns < <(stty size </dev/tty 2>/dev/null) || true
+		ROW_WIDTH=$((${columns:-0} > 0 ? columns - 1 : 80))
+		rows_take "$count" "$status_dir" && drawn=1
+	fi
 	for n in $(seq "$count"); do
 		logs[n]="${LOG_DIR}/vm-${n}-${1}.log"
 		: >"${status_dir}/${n}"
@@ -812,7 +831,27 @@ each() {
 		say "$(vm_tag "$n") failed; the end of ${logs[n]#"$REPO_ROOT"/}:"
 		tail -n 25 "${logs[n]}" | sed 's/^/    /' >&2
 	done
+	if ((tty && failed == 0)); then
+		mkdir -p "$ROWS"
+		for n in $(seq "$count"); do
+			vm_steps "$n" "$1" "${status_dir}/${n}" "${codes[n]}" "$begun" "${ended[n]}" >"${ROWS}/${n}"
+		done
+		echo "$PPID $count" >"${ROWS}/owner"
+	fi
 	return "$failed"
+}
+
+# rows_take COUNT DIR: when the each before this one in the same recipe left
+# COUNT rows, gives each VM their steps in DIR/N.before and says so. They are
+# taken once: an each that is stopped part-way leaves none for the next.
+rows_take() {
+	local owner n
+	owner="$(cat "${ROWS}/owner" 2>/dev/null)" || return 1
+	rm -f "${ROWS}/owner"
+	[[ $owner == "$PPID $1" ]] || return 1
+	for n in $(seq "$1"); do
+		cp "${ROWS}/${n}" "$2/${n}.before"
+	done
 }
 
 color() { [[ -t 2 && -z ${NO_COLOR:-} ]]; }
@@ -824,13 +863,15 @@ vm_tag() {
 }
 duration() { if (($1 < 60)); then echo "${1}s"; else printf '%dm %02ds' $(($1 / 60)) $(($1 % 60)); fi; }
 
-# The steps of VM N as "STATE NAME SECONDS" lines, in order. A command that
-# reports no steps (stop, reset, install) is one step of its own name. A step
-# that was running when the VM failed is failed.
+# The steps of VM N as "STATE NAME SECONDS" lines, in order, after those of the
+# each before (FILE.before). A command that reports no steps (stop, reset,
+# install) is one step of its own name. A step that was running when the VM
+# failed is failed.
 vm_steps() {
 	local command=$2 file=$3 code=$4 begun=$5 end_epoch=$6 name state value
 	local -a names=()
 	local -A states=() values=()
+	[[ ! -f "${file}.before" ]] || cat -- "${file}.before"
 	while read -r name state value; do
 		[[ -n ${states[$name]:-} ]] || names+=("$name")
 		states[$name]=$state
@@ -870,13 +911,29 @@ vm_step_text() {
 	esac
 }
 
+# A row stays on one line of the terminal, since one that wrapped would throw
+# the redraw off: when it is wider than ROW_WIDTH its oldest steps give way to
+# an ellipsis, and the last one always shows.
 vm_row() {
-	local n=$1 row state name value
-	row="$(vm_tag "$n")  $(printf '%-15s' "$(domain_name "$n")")"
+	local n=$1 head state name value plain
+	local -a steps=() widths=()
+	local -i total i=0
+	head="$(vm_tag "$n")  $(printf '%-15s' "$(domain_name "$n")")"
+	plain="vm${n}  $(printf '%-15s' "$(domain_name "$n")")"
+	total=${#plain}
 	while read -r state name value; do
-		row+="  $(vm_step_text "$state" "$name" "$value")"
+		steps+=("  $(vm_step_text "$state" "$name" "$value")")
+		plain="  $(NO_COLOR=1 vm_step_text "$state" "$name" "$value")"
+		widths+=("${#plain}")
+		total+=${#plain}
 	done < <(vm_steps "$@")
-	echo "$row"
+	while ((total > ROW_WIDTH && i < ${#steps[@]} - 1)); do
+		# The first step to go makes room for "  …" as well.
+		((total -= widths[i] - (i == 0 ? 3 : 0), i += 1))
+	done
+	((i == 0)) || head+="  …"
+	printf '%s' "$head" "${steps[@]:i}"
+	echo
 }
 
 # For a log or a pipe: a line for each step of VM N that ended since the
@@ -893,6 +950,10 @@ vm_new_lines() {
 }
 
 [[ "$(v uri 2>/dev/null)" == qemu:///system ]] || die "virsh cannot reach qemu:///system (is this user in the libvirt group?)"
+
+# A command run outside each may print below the rows each drew, so it ends
+# them (see each).
+[[ ${1:-} == each || -n ${LINUXIO_VM_STATUS:-} ]] || rm -rf -- "$ROWS"
 
 case "${1:-}" in
 create) create ;;
