@@ -22,7 +22,7 @@ import (
 const usageText = `linuxio-monitoring is managed by LinuxIO and systemd.
 
 Usage:
-  linuxio-monitoring run [--config PATH] [--verbose]
+  linuxio-monitoring [--config PATH] [--verbose]
   linuxio-monitoring --version
   linuxio-monitoring --help
 
@@ -30,24 +30,22 @@ Status, configuration, history and database maintenance are available through
 the LinuxIO interface.
 `
 
-// Run executes the linuxio-monitoring CLI and returns the process exit code.
+// Run starts the monitoring daemon and returns the process exit code. The
+// program takes flags and no command word: systemd starts it.
 func Run(args []string) int {
-	if len(args) < 2 {
-		return writeOutput(os.Stdout, usageText)
+	if len(args) > 1 {
+		switch args[1] {
+		case "--version", "-v", "version":
+			return writeOutput(os.Stdout, "LinuxIO Monitoring "+version.Version+"\n")
+		case "--help", "-h", "help":
+			return writeOutput(os.Stdout, usageText)
+		}
 	}
-	switch args[1] {
-	case "--version", "-v", "version":
-		return writeOutput(os.Stdout, "LinuxIO Monitoring "+version.Version+"\n")
-	case "--help", "-h", "help":
-		return writeOutput(os.Stdout, usageText)
-	case "run":
-		return runDaemon(args[2:])
-	}
-	return writeUsageError(os.Stderr, fmt.Sprintf("linuxio-monitoring: unknown command %q\n\n%s", args[1], usageText))
+	return runDaemon(args[1:])
 }
 
 func runDaemon(args []string) int {
-	fs := flag.NewFlagSet("linuxio-monitoring run", flag.ContinueOnError)
+	fs := flag.NewFlagSet("linuxio-monitoring", flag.ContinueOnError)
 	configPath := fs.String("config", config.DefaultPath, "YAML config file path")
 	verbose := fs.Bool("verbose", false, "Enable verbose logging")
 	if err := fs.Parse(args); err != nil {
@@ -57,7 +55,7 @@ func runDaemon(args []string) int {
 		return 2
 	}
 	if fs.NArg() != 0 {
-		return writeUsageError(fs.Output(), fmt.Sprintf("linuxio-monitoring run does not accept arguments: %s\n", fs.Arg(0)))
+		return writeUsageError(fs.Output(), fmt.Sprintf("linuxio-monitoring does not accept arguments: %s\n\n%s", fs.Arg(0), usageText))
 	}
 	if err := logging.Configure("linuxio-monitoring", *verbose); err != nil {
 		return writeError(os.Stderr, fmt.Sprintf("linuxio-monitoring: initialize logging: %v\n", err))

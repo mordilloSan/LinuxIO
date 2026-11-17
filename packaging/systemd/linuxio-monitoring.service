@@ -10,7 +10,7 @@ Type=simple
 # Root: SMART, the Docker socket, hwmon and GPU collectors need host devices.
 User=root
 Group=root
-ExecStart=/usr/local/bin/linuxio-monitoring run --config /etc/linuxio/monitoring/config.yaml
+ExecStart=/usr/local/bin/linuxio-monitoring --config /etc/linuxio/monitoring/config.yaml
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=5s

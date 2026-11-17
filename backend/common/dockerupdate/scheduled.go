@@ -34,7 +34,7 @@ type scheduledPassOperations struct {
 }
 
 // RunScheduled executes one configured check or update pass. It is called by
-// the short-lived Docker update worker; no updater daemon remains resident
+// the short-lived Docker updater; no updater daemon remains resident
 // between timer activations. report, when not nil, is told what the pass is
 // doing. The returned report says what the pass did, also when it failed. A
 // failure of one container raised that container's alert and is marked

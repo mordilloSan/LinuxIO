@@ -66,7 +66,7 @@ func DefaultHooks() Hooks {
 }
 
 // UpdateNotifyDropIn is the drop-in the auto-update settings write on the
-// provider's update service unit to report its runs (`linuxio alert
+// provider's update service unit to report its runs (`linuxio-worker alert
 // auto-update`). That package owns the path and tests it against this one.
 func UpdateNotifyDropIn(unit string) string {
 	return "/etc/systemd/system/" + unit + ".d/linuxio-alert.conf"

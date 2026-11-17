@@ -109,7 +109,7 @@ func applyContainerAutoUpdate(ctx context.Context, store containerAutoUpdateStor
 }
 
 func renderDockerUpdateUnit() []byte {
-	unit := WorkerUnit
+	unit := UpdaterUnit
 	execStart := strings.Join(append([]string{RunnerPath}, scheduledArgs()...), " ")
 	return fmt.Appendf(nil, `[Unit]
 Description=Run LinuxIO native Docker updates
@@ -158,7 +158,7 @@ WantedBy=timers.target
 `, normalized.Time, dockerUpdateUnitName), nil
 }
 
-// CheckRunnerInstalled reports whether the update worker binary is installed
+// CheckRunnerInstalled reports whether the Docker updater is installed
 // as an executable regular file.
 func CheckRunnerInstalled() (bool, error) {
 	info, err := os.Stat(RunnerPath)

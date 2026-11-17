@@ -6,8 +6,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-
-	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
 func main() {
@@ -39,14 +37,8 @@ func runCLI(args []string) int {
 		return runRestart(ctx, cmdArgs)
 	case "verbose":
 		return runVerbose(ctx, cmdArgs)
-	case "alert":
-		return runAlert(ctx, cmdArgs)
-	case "scheduled-run":
-		return runScheduledRun(ctx, cmdArgs, os.Getenv, scheduledrun.DefaultHooks(), os.Stderr)
-	case "btrfs-snapshot", "btrfs-health": // hidden; see btrfs_snapshot.go
-		return runBtrfsCompat(cmd, cmdArgs)
 	case "version":
-		showVersion(ctx, cmdArgs)
+		showVersion(cmdArgs)
 		return 0
 	case "help", "-h", "--help":
 		showHelp()
@@ -70,8 +62,6 @@ Commands:
   stop        Stop LinuxIO services
   restart     Restart LinuxIO control plane [--full]
   verbose     Manage verbose logging [enable|disable|status]
-  alert raise|resolve|auto-update   Record or clear an alert (used by systemd hooks; needs sudo)
-  scheduled-run begin|end   Record a scheduled run (used by systemd hooks; needs root)
   version     Show version information [--self]
   help        Show this help message
 

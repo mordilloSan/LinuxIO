@@ -27,7 +27,7 @@ func TestRunHealth(t *testing.T) {
 		started = append(started, name)
 		return nil
 	}
-	for _, args := range [][]string{nil, {"bogus"}, {"run", "extra"}} {
+	for _, args := range [][]string{{"bogus"}, {"run"}} {
 		if code := runHealth(context.Background(), args, io.Discard); code != 2 {
 			t.Errorf("runHealth(%v) = %d, want 2", args, code)
 		}
@@ -35,15 +35,15 @@ func TestRunHealth(t *testing.T) {
 	if runs != 0 {
 		t.Fatalf("checker ran on bad usage: %d", runs)
 	}
-	if code := runHealth(context.Background(), []string{"run"}, io.Discard); code != 0 || runs != 1 {
+	if code := runHealth(context.Background(), nil, io.Discard); code != 0 || runs != 1 {
 		t.Fatalf("run = %d, runs = %d", code, runs)
 	}
 	resync = []string{"uuid-1"}
-	if code := runHealth(context.Background(), []string{"run"}, io.Discard); code != 0 || !reflect.DeepEqual(started, []string{"linuxio-btrfs-resync@uuid-1.service"}) {
+	if code := runHealth(context.Background(), nil, io.Discard); code != 0 || !reflect.DeepEqual(started, []string{"linuxio-btrfs-resync@uuid-1.service"}) {
 		t.Fatalf("run = %d, started = %v", code, started)
 	}
 	fail = errors.New("boom")
-	if code := runHealth(context.Background(), []string{"run"}, io.Discard); code != 1 {
+	if code := runHealth(context.Background(), nil, io.Discard); code != 1 {
 		t.Fatalf("failed run = %d, want 1", code)
 	}
 }
@@ -62,12 +62,12 @@ func TestRunDegradedAndResync(t *testing.T) {
 		return nil
 	}
 	ctx := context.Background()
-	for _, args := range [][]string{{"degraded"}, {"degraded", "now"}, {"resync"}, {"resync", "a", "b"}} {
+	for _, args := range [][]string{{"degraded", "run"}, {"degraded", "now"}, {"resync"}, {"resync", "a", "b"}} {
 		if code := runCLI(ctx, args, io.Discard, io.Discard); code != 2 {
 			t.Errorf("runCLI(%v) = %d, want 2", args, code)
 		}
 	}
-	if code := runCLI(ctx, []string{"degraded", "run"}, io.Discard, io.Discard); code != 0 || grace != btrfs.DegradedGrace {
+	if code := runCLI(ctx, []string{"degraded"}, io.Discard, io.Discard); code != 0 || grace != btrfs.DegradedGrace {
 		t.Fatalf("degraded run = %d, grace %v", code, grace)
 	}
 	if code := runCLI(ctx, []string{"resync", "uuid-1"}, io.Discard, io.Discard); code != 0 || !reflect.DeepEqual(resynced, []string{"uuid-1"}) {
@@ -118,7 +118,7 @@ func captureSummaries(t *testing.T) *[]scheduledrun.Summary {
 }
 
 func TestRunCLIDispatch(t *testing.T) {
-	for _, args := range [][]string{nil, {"bogus"}, {"snapshot"}, {"health"}} {
+	for _, args := range [][]string{nil, {"bogus"}, {"snapshot", "run"}, {"health", "run"}, {"scheduled-run"}} {
 		if code := runCLI(context.Background(), args, io.Discard, io.Discard); code != 2 {
 			t.Errorf("runCLI(%v) = %d, want 2", args, code)
 		}

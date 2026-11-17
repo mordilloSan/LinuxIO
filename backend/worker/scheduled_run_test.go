@@ -82,7 +82,7 @@ func TestScheduledRunEnd(t *testing.T) {
 }
 
 func TestScheduledRunUsage(t *testing.T) {
-	const usage = "Usage: linuxio scheduled-run begin|end --unit <unit>"
+	const usage = "Usage: linuxio-worker scheduled-run begin|end --unit <unit>"
 	getenv := scheduledTestEnv(map[string]string{"INVOCATION_ID": scheduledTestInvocation})
 	for name, args := range map[string][]string{
 		"no arguments":  nil,

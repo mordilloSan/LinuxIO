@@ -606,7 +606,7 @@ func TestScrubRefusedByTheKernelPutsBackTheRecord(t *testing.T) {
 	}
 }
 
-// The job host and linuxio-btrfs-timer resync save their pools' scrubs
+// The job host and linuxio-worker resync save their pools' scrubs
 // through the records' lock, so neither loses the other's entry.
 func TestScrubRecordsOfTwoPoolsSavedTogether(t *testing.T) {
 	stubStatePaths(t, t.TempDir())

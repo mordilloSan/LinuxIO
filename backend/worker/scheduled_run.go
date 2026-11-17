@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	scheduledRunUsage = "Usage: linuxio scheduled-run begin|end --unit <unit>"
+	scheduledRunUsage = "Usage: linuxio-worker scheduled-run begin|end --unit <unit>"
 
 	// Below TimeoutStopSec=15s of the scheduled units, so a slow store never
 	// holds a unit in its stopping state. The alert end raises last is not
@@ -32,7 +32,7 @@ func runScheduledRun(ctx context.Context, args []string, getenv func(string) str
 	}
 	verb := args[0]
 
-	fs := flag.NewFlagSet("linuxio scheduled-run "+verb, flag.ContinueOnError)
+	fs := flag.NewFlagSet("linuxio-worker scheduled-run "+verb, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	unit := fs.String("unit", "", "scheduled unit (required)")
 	if err := fs.Parse(args[1:]); err != nil || *unit == "" || fs.NArg() != 0 {
@@ -60,7 +60,7 @@ func runScheduledRun(ctx context.Context, args []string, getenv func(string) str
 	if err != nil {
 		fmt.Fprintf(stderr, "Failed to record scheduled run: %v\n", err)
 		if errors.Is(err, os.ErrPermission) {
-			fmt.Fprintln(stderr, "This command requires sudo")
+			fmt.Fprintln(stderr, "This command requires root")
 		}
 		return 1
 	}

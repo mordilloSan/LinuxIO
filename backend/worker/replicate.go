@@ -15,20 +15,16 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
-const replicateUsage = "Usage: linuxio-btrfs-timer replicate run [--now RFC3339]"
+const replicateUsage = "Usage: linuxio-worker replicate [--now RFC3339]"
 
 // runReplication is swapped by tests.
 var runReplication = btrfs.RunReplication
 
 func runReplicate(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 || args[0] != "run" {
-		fmt.Fprintln(stderr, replicateUsage)
-		return 2
-	}
-	flags := flag.NewFlagSet("linuxio-btrfs-timer replicate run", flag.ContinueOnError)
+	flags := flag.NewFlagSet("linuxio-worker replicate", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	nowFlag := flags.String("now", "", "date the run's notice at this RFC3339 time")
-	if err := flags.Parse(args[1:]); err != nil {
+	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
 		}

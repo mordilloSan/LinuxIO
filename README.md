@@ -106,8 +106,9 @@ certificate is reused across restarts, reboots, and updates until it enters its
 
 The installer places nine binaries in `/usr/local/bin`: `linuxio`,
 `linuxio-webserver`, `linuxio-bridge`, `linuxio-auth`, `linuxio-docker-update`,
-`linuxio-indexer`, `linuxio-monitoring`, `linuxio-btrfs-timer`, and
-`linuxio-claude-relay`. From a
+`linuxio-indexer`, `linuxio-monitoring`, `linuxio-worker`, and
+`linuxio-claude-relay`. Only `linuxio` is a command to type; the programs
+systemd runs as root are installed so only root can start them. From a
 checkout, `make localinstall` runs the same installer with `--local` against the
 binaries in `build/`.
 

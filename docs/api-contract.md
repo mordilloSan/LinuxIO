@@ -891,7 +891,7 @@ and `tasks.events` while it runs. Six task types:
 - **`tasks.events`** reads the scheduled store every 2 s while a client
   listens: a `task.snapshot` for each run that runs when the stream opens and
   for each run that begins, a `task.progress` when a run's progress file
-  changes (the btrfs timer program and the Docker update runner write one;
+  changes (the worker and the Docker updater write one;
   scripts report none, their feedback is their output), and the terminal
   event when it ends. It lists the store again after a record changes and at
   least every 30 s. A run shorter than one poll may never be sent.
@@ -905,7 +905,7 @@ and `tasks.events` while it runs. Six task types:
 - **Outcomes.** `completed`; `failed` with a message such as `exited with
   status 1`, `killed by signal KILL` or `timed out`; `canceled`; `interrupted`
   with reason `shutdown` when the system was stopping as the run ended.
-- **`result`.** A worker may store a summary of what its run did, which
+- **`result`.** The worker or the Docker updater may store a summary of what its run did, which
   `tasks.get` answers as the `result` of a completed run: `message` (one
   line, such as `1 updated, 1 failed`), `failures` (how many of its items
   failed with an alert of their own; absent when none) and `skipped` (set

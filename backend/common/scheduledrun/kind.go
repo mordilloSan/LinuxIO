@@ -152,9 +152,10 @@ func scriptLabel(scheduleDir, id string) string {
 	return scriptFallback
 }
 
-// worker reports whether the unit runs one of LinuxIO's workers (snapshots,
-// replication, resync, Docker updates), whose failed run the end hook reports with a run
-// alert unless the worker reported everything itself. A script has its own
+// worker reports whether the unit runs LinuxIO's own timer work, in
+// linuxio-worker or the Docker updater (snapshots, replication, resync,
+// Docker updates), whose failed run the end hook reports with a run alert
+// unless the program reported everything itself. A script has its own
 // alerts, and a system update its provider's.
 func (k Kind) worker() bool {
 	return k.Route == RouteSnapshot || k.Route == RouteReplicate || k.Route == RouteResync || k.Route == RouteDockerUpdate

@@ -16,7 +16,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
-const snapshotUsage = "Usage: linuxio-btrfs-timer snapshot run [--now RFC3339] | pre-update"
+const snapshotUsage = "Usage: linuxio-worker snapshot [--now RFC3339] | pre-update"
 
 // runSnapshots, startReplication and raiseAlert are swapped by tests.
 var (
@@ -26,30 +26,26 @@ var (
 )
 
 func runSnapshot(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	if len(args) == 0 {
-		fmt.Fprintln(stderr, snapshotUsage)
-		return 2
+	// The timer's pass takes no word; the pass before a system update is
+	// named, since it runs the other rules and reports differently.
+	kind, name := btrfs.KindTimeline, "linuxio-worker snapshot"
+	if len(args) > 0 && args[0] == "pre-update" {
+		kind, name, args = btrfs.KindPreUpdate, name+" pre-update", args[1:]
 	}
-	var kind btrfs.SnapshotKind
-	switch args[0] {
-	case "run":
-		kind = btrfs.KindTimeline
-	case "pre-update":
-		kind = btrfs.KindPreUpdate
-	default:
-		fmt.Fprintf(stderr, "Unknown snapshot action: %s\n%s\n", args[0], snapshotUsage)
-		return 2
-	}
-	flags := flag.NewFlagSet("linuxio-btrfs-timer snapshot "+args[0], flag.ContinueOnError)
+	flags := flag.NewFlagSet(name, flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	var nowFlag string
 	if kind == btrfs.KindTimeline {
 		flags.StringVar(&nowFlag, "now", "", "evaluate rules at this RFC3339 time")
 	}
-	if err := flags.Parse(args[1:]); err != nil {
+	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
 		}
+		return 2
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintln(stderr, snapshotUsage)
 		return 2
 	}
 	now := time.Now()

@@ -1,4 +1,4 @@
-// /usr/local/bin/linuxio-auth  (install 0755 root:root, runs via systemd)
+// /usr/local/bin/linuxio-auth  (install 0700 root:root, runs via systemd)
 // Single-shot mode: read one binary auth request from stdin (socket-activated)
 #define _GNU_SOURCE
 #include <security/pam_appl.h>

@@ -47,7 +47,7 @@ func TestRunCLIDispatchesInjectedOperations(t *testing.T) {
 		gotConfig = configPath
 		return dockerupdate.PassReport{}, nil
 	}
-	if code := runCLI(context.Background(), []string{"linuxio-docker-update", "run", "--config", "/tmp/custom"}, &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+	if code := runCLI(context.Background(), []string{"linuxio-docker-update", "--config", "/tmp/custom"}, &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
 		t.Fatalf("run exit code = %d, want 0", code)
 	}
 	if gotConfig != "/tmp/custom" {
@@ -55,7 +55,7 @@ func TestRunCLIDispatchesInjectedOperations(t *testing.T) {
 	}
 }
 
-// passHarness runs "linuxio-docker-update run" over a stubbed pass and a
+// passHarness runs "linuxio-docker-update" over a stubbed pass and a
 // stubbed summary store.
 type passHarness struct {
 	stored   []scheduledrun.Summary
@@ -82,7 +82,7 @@ func (h *passHarness) run(report dockerupdate.PassReport, err error) (code int, 
 	runUpdates = func(context.Context, string, func(string)) (dockerupdate.PassReport, error) { return report, err }
 	var out, errOut bytes.Buffer
 	h.stored = nil
-	code = runCLI(context.Background(), []string{"linuxio-docker-update", "run"}, &out, &errOut)
+	code = runCLI(context.Background(), []string{"linuxio-docker-update"}, &out, &errOut)
 	return code, out.String(), errOut.String()
 }
 
@@ -156,11 +156,11 @@ func TestRunCLISkippedPassCompletes(t *testing.T) {
 
 func TestRunCLIRejectsBadArguments(t *testing.T) {
 	var stderr bytes.Buffer
-	if code := runCLI(context.Background(), []string{"linuxio-docker-update", "bogus"}, &bytes.Buffer{}, &stderr); code != 2 || !strings.Contains(stderr.String(), "unknown command") {
-		t.Fatalf("unknown command = code %d, stderr %q", code, stderr.String())
+	if code := runCLI(context.Background(), []string{"linuxio-docker-update", "bogus"}, &bytes.Buffer{}, &stderr); code != 2 || !strings.Contains(stderr.String(), "unknown argument") {
+		t.Fatalf("unknown argument = code %d, stderr %q", code, stderr.String())
 	}
 	stderr.Reset()
-	if code := runCLI(context.Background(), []string{"linuxio-docker-update", "run", "--config"}, &bytes.Buffer{}, &stderr); code != 2 || !strings.Contains(stderr.String(), "requires a path") {
+	if code := runCLI(context.Background(), []string{"linuxio-docker-update", "--config"}, &bytes.Buffer{}, &stderr); code != 2 || !strings.Contains(stderr.String(), "requires a path") {
 		t.Fatalf("missing config = code %d, stderr %q", code, stderr.String())
 	}
 }
@@ -176,7 +176,7 @@ func TestRunCLIReportsUpdateStepsAsUnknownPercentage(t *testing.T) {
 	var percentage int
 	var message string
 	reportProgress = func(p int, m string) { percentage, message = p, m }
-	if code := runCLI(context.Background(), []string{"linuxio-docker-update", "run"}, &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+	if code := runCLI(context.Background(), []string{"linuxio-docker-update"}, &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
 		t.Fatalf("run exit code = %d, want 0", code)
 	}
 	if percentage != -1 || message != "Checking for updates" {
@@ -218,16 +218,16 @@ func TestRunWorkerConfiguresLoggingBeforeDispatch(t *testing.T) {
 		}
 		return dockerupdate.PassReport{}, nil
 	}
-	if code := runWorker(context.Background(), []string{"linuxio-docker-update", "run"}, &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
-		t.Fatalf("runWorker exit code = %d, want 0", code)
+	if code := runUpdater(context.Background(), []string{"linuxio-docker-update"}, &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("runUpdater exit code = %d, want 0", code)
 	}
 	if !reporterBuilt {
-		t.Fatal("runWorker did not build the progress reporter")
+		t.Fatal("runUpdater did not build the progress reporter")
 	}
 
 	configureLogging = func(string, bool) error { return errors.New("journald unavailable") }
 	var stderr bytes.Buffer
-	if code := runWorker(context.Background(), []string{"linuxio-docker-update", "run"}, &bytes.Buffer{}, &stderr); code != 1 || !strings.Contains(stderr.String(), "initialize logging") {
+	if code := runUpdater(context.Background(), []string{"linuxio-docker-update"}, &bytes.Buffer{}, &stderr); code != 1 || !strings.Contains(stderr.String(), "initialize logging") {
 		t.Fatalf("logging failure = code %d, stderr %q", code, stderr.String())
 	}
 }

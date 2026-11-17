@@ -14,7 +14,7 @@ read-only flags, compression properties, quotas and limits, and the send side
 of replication. `btrfs-progs` is used only where the kernel has no interface:
 `mkfs.btrfs`, `btrfs receive`, and the commands a replication job runs on its
 target, which may be another host. There is no daemon. Everything is on
-demand or runs from `linuxio-btrfs-timer`, started by two systemd timers, a
+demand or runs from `linuxio-worker`, started by two systemd timers, a
 boot-time service, a resync service (see [Missing disks](#missing-disks)) and
 the replication service each snapshot pass starts (see
 [Replication](#replication)).
@@ -65,8 +65,8 @@ snapshot and replication alerts link to the Subvolumes tab's Snapshots and
 Replication views.
 
 Alerts are updated whenever the list is loaded and, independently of the
-browser, by `linuxio-btrfs-health.timer`, which runs `linuxio-btrfs-timer
-health run` two minutes after boot and every ten minutes. The units ship with the
+browser, by `linuxio-btrfs-health.timer`, which runs `linuxio-worker
+health` two minutes after boot and every ten minutes. The units ship with the
 package; the installer enables the timer when the host has a btrfs
 filesystem, and the bridge enables it the first time an administrator lists
 filesystems, covering pools created after install.
@@ -99,7 +99,7 @@ scrub.
 
 **At boot**, `linuxio-btrfs-degraded.service` (once per boot, after
 `local-fs.target`, before Docker, containerd, Samba, NFS and libvirt, given
-at most three minutes) runs `linuxio-btrfs-timer degraded run`. Pools that
+at most three minutes) runs `linuxio-worker degraded`. Pools that
 `/etc/fstab` names by `UUID=` without `noauto` or `_netdev` and that are
 missing disks get 30 seconds for the disks to appear (an
 `x-systemd.device-timeout` is not consulted); a pool that is then still incomplete is mounted with
@@ -138,7 +138,7 @@ makes the check refuse a set that was in fact current: the safe side.
 **When the disk is back.** A disk that reappears while the pool is mounted is
 listed by the kernel but never opened, so it is shown as missing until the
 pool is mounted again (a reboot). Once every disk is in use, the health run
-starts `linuxio-btrfs-resync@<uuid>.service` (`linuxio-btrfs-timer resync`):
+starts `linuxio-btrfs-resync@<uuid>.service` (`linuxio-worker resync`):
 a scrub checks every copy and rewrites those the returned disk missed from
 the good ones, then a soft convert (`convert=<profile>,soft`) gives chunks
 written while too few disks were present, which btrfs allocates as `single`,
@@ -310,7 +310,7 @@ enabled rule must keep at least one snapshot; 0 keeps none of that bucket.
 One hourly timer drives all rules:
 `linuxio-btrfs-snapshot.timer` (`OnCalendar=hourly`, `Persistent=true`)
 starts `linuxio-btrfs-snapshot.service`, which runs
-`linuxio-btrfs-timer snapshot run`. The timer is enabled while at least one rule or
+`linuxio-worker snapshot`. The timer is enabled while at least one rule or
 replication job is enabled and disabled otherwise. **Run now** runs the
 snapshot and prune pass from the bridge; it does not replicate (each
 replication job has its own **Run now**). A timer pass in which a rule
@@ -339,7 +339,7 @@ rule is enabled; a disabled rule prunes only its `pre-update` snapshots and
 never its timeline:
 
 - by LinuxIO's own package update task and offline apply, before they start;
-- by `ExecStartPre=-/usr/local/bin/linuxio-btrfs-timer snapshot pre-update` in the
+- by `ExecStartPre=-/usr/local/bin/linuxio-worker snapshot pre-update` in the
   `linuxio-alert.conf` drop-in LinuxIO writes for the distribution's
   auto-update unit when its notification policy is not `never` (see
   [Alerts](./alerts.md#automatic-updates-notification-policy)). The `-` means
@@ -348,9 +348,11 @@ never its timeline:
 
 Manual `apt` or `dnf` runs are not hooked.
 
-Units and drop-ins written by earlier releases still call the hidden
-`linuxio btrfs-snapshot` and `linuxio btrfs-health` verbs; the CLI execs
-`linuxio-btrfs-timer` with the equivalent arguments.
+Up to v0.53 the worker was `linuxio-btrfs-timer` and its jobs took a second
+word (`snapshot run`). The installer rewrites the snapshot and replication
+units and the update drop-ins a saved setting wrote, so they start
+`linuxio-worker` after an update without being saved again
+(`rewrite_saved_unit_commands`).
 
 ## Pools
 
@@ -609,7 +611,7 @@ scrubs: the pool details do.
   read with `BTRFS_IOC_SCRUB_PROGRESS`; and at the end, with what each call
   returned. A power loss costs at most a minute of progress. Every write
   reads and rewrites the whole file under `btrfs-scrub.json.lock`, by the job
-  host and `linuxio-btrfs-timer resync` alike, so two pools scrubbing at once
+  host and `linuxio-worker resync` alike, so two pools scrubbing at once
   keep both entries; the file is replaced atomically and fsynced.
 - **Refusals.** A scrub, fresh or resumed, is refused before it writes
   anything, so it cannot overwrite a running scrub's record:
@@ -713,7 +715,7 @@ from the job's own **Run now**.
 The hourly pass does not replicate itself. When a job is enabled it ends by
 asking systemd, over D-Bus (`StartUnit`, mode `replace`), to start
 `linuxio-btrfs-replicate.service`, a oneshot that runs
-`linuxio-btrfs-timer replicate run`, and exits without waiting for it: the
+`linuxio-worker replicate`, and exits without waiting for it: the
 call returns once the start job is queued, like `systemctl --no-block`. The
 replication therefore runs in a unit of its own, and a first send that takes
 hours no longer keeps the snapshot service busy and its hourly runs skipped.
@@ -809,13 +811,13 @@ btrfsmaintenance timers.
 | `/etc/linuxio/btrfs-replication.json` | `root:root` `0600` | Replication jobs |
 | `/etc/linuxio/btrfs-replication/id_ed25519` (`.pub`) | root, key `0600` | SSH key for replication |
 | `/etc/linuxio/btrfs-replication/known_hosts` | root | Trusted target host keys |
-| `/etc/systemd/system/linuxio-btrfs-snapshot.service` | root | Runs `linuxio-btrfs-timer snapshot run` |
+| `/etc/systemd/system/linuxio-btrfs-snapshot.service` | root | Runs `linuxio-worker snapshot` |
 | `/etc/systemd/system/linuxio-btrfs-snapshot.timer` | root | Hourly trigger |
-| `/etc/systemd/system/linuxio-btrfs-replicate.service` | root | Runs `linuxio-btrfs-timer replicate run`; written while a replication job is enabled |
-| `/etc/systemd/system/linuxio-btrfs-health.service` | root | Runs `linuxio-btrfs-timer health run` |
+| `/etc/systemd/system/linuxio-btrfs-replicate.service` | root | Runs `linuxio-worker replicate`; written while a replication job is enabled |
+| `/etc/systemd/system/linuxio-btrfs-health.service` | root | Runs `linuxio-worker health` |
 | `/etc/systemd/system/linuxio-btrfs-health.timer` | root | Every ten minutes |
-| `/etc/systemd/system/linuxio-btrfs-degraded.service` | root | Runs `linuxio-btrfs-timer degraded run` at boot |
-| `/etc/systemd/system/linuxio-btrfs-resync@.service` | root | Runs `linuxio-btrfs-timer resync <uuid>` |
+| `/etc/systemd/system/linuxio-btrfs-degraded.service` | root | Runs `linuxio-worker degraded` at boot |
+| `/etc/systemd/system/linuxio-btrfs-resync@.service` | root | Runs `linuxio-worker resync <uuid>` |
 | `/var/lib/linuxio/btrfs-scrub.json` | root | Last scrub LinuxIO ran per filesystem, and a running one's progress; written under `btrfs-scrub.json.lock` |
 | `/var/lib/linuxio/btrfs-pools.json` | root | Per pool: newest generation seen, and whether and on which disks it ran degraded |
 | `/etc/systemd/system/<upgrade-service>.d/linuxio-alert.conf` | root | Auto-update drop-in, including the pre-update snapshot line |

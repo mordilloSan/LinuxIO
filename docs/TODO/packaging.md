@@ -53,7 +53,7 @@ packages must not delete administrator-owned files under `/usr/local` or
       the CLI.
 - [ ] Use `LibexecDir` when the webserver spawns the bridge in
       `backend/webserver/bridge/bridge.go:59`.
-- [ ] Update the Docker update worker path in
+- [ ] Update the Docker updater path in
       `backend/common/dockerupdate/sandbox.go:11` (`RunnerPath`).
 - [ ] Update the authentication bridge path in
       `backend/auth/linuxio-auth.c:64`.
@@ -65,8 +65,11 @@ packages must not delete administrator-owned files under `/usr/local` or
 
 Native packaging guarantees that every file in the package has one version.
 
-- [ ] Remove `versionExecCommand` and the four private-binary subprocess
-      probes from `backend/cli/version.go:11`.
+- [x] Remove `versionExecCommand` and the private-binary subprocess
+      probes from `backend/cli/version.go`. Done with `linuxio-worker`: the
+      CLI and the webserver read the installer's record,
+      `/usr/share/linuxio/components`
+      ([Versions](../process-systemd-architecture.md#binaries)).
 - [ ] Remove `version --self`.
 - [ ] Make `linuxio version` print the package/build version.
 - [ ] Support the conventional `linuxio --version` with the same result.
@@ -155,7 +158,7 @@ Use this common layout:
     linuxio-docker-update
     linuxio-indexer
     linuxio-monitoring
-    linuxio-btrfs-timer
+    linuxio-worker
 /usr/lib/systemd/system/linuxio*
 /usr/lib/tmpfiles.d/linuxio.conf
 /usr/share/linuxio/

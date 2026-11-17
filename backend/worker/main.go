@@ -1,6 +1,8 @@
-// Command linuxio-btrfs-timer runs the btrfs snapshot, replication, health,
-// boot-time degraded mount and resync jobs that the systemd units and the
-// auto-update drop-in start.
+// Command linuxio-worker is the one program systemd starts with a word: the
+// btrfs snapshot, replication, health, boot-time degraded mount and resync
+// jobs of the timer units, and the hooks that record a scheduled run and
+// raise alerts. It is installed for root only and is not an admin command;
+// linuxio is.
 package main
 
 import (
@@ -16,12 +18,14 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
-const usage = `Usage: linuxio-btrfs-timer snapshot run [--now RFC3339]
-       linuxio-btrfs-timer snapshot pre-update
-       linuxio-btrfs-timer replicate run [--now RFC3339]
-       linuxio-btrfs-timer health run
-       linuxio-btrfs-timer degraded run
-       linuxio-btrfs-timer resync <uuid>`
+const usage = `Usage: linuxio-worker snapshot [--now RFC3339]
+       linuxio-worker snapshot pre-update
+       linuxio-worker replicate [--now RFC3339]
+       linuxio-worker health
+       linuxio-worker degraded
+       linuxio-worker resync <uuid>
+       linuxio-worker scheduled-run begin|end --unit <unit>
+       linuxio-worker alert raise|resolve|auto-update|pending-updates [flags]`
 
 // reportProgress writes the progress of the scheduled run this process belongs
 // to; tests swap it. A negative percentage means unknown.
@@ -81,11 +85,15 @@ func runCLI(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return runDegraded(ctx, args[1:], stderr)
 	case "resync":
 		return runResync(ctx, args[1:], stderr)
+	case "scheduled-run":
+		return runScheduledRun(ctx, args[1:], os.Getenv, scheduledrun.DefaultHooks(), stderr)
+	case "alert":
+		return runAlert(ctx, args[1:])
 	case "help", "-h", "--help":
 		fmt.Fprintln(stdout, usage)
 		return 0
 	default:
-		fmt.Fprintf(stderr, "linuxio-btrfs-timer: unknown command %q\n%s\n", args[0], usage)
+		fmt.Fprintf(stderr, "linuxio-worker: unknown command %q\n%s\n", args[0], usage)
 		return 2
 	}
 }

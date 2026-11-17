@@ -108,7 +108,7 @@ func snapshotNotice(title, at string) alerts.Observation {
 
 func TestRunSnapshotUsage(t *testing.T) {
 	kinds := stubRunSnapshots(t, btrfs.RunReport{})
-	for _, args := range [][]string{nil, {"bogus"}} {
+	for _, args := range [][]string{{"bogus"}, {"run"}, {"pre-update", "extra"}} {
 		if code := runSnapshot(context.Background(), args, io.Discard, io.Discard); code != 2 {
 			t.Errorf("runSnapshot(%v) = %d, want 2", args, code)
 		}
@@ -120,7 +120,7 @@ func TestRunSnapshotUsage(t *testing.T) {
 
 func TestRunSnapshotKindsAndExitCode(t *testing.T) {
 	kinds := stubRunSnapshots(t, btrfs.RunReport{})
-	if code := runSnapshot(context.Background(), []string{"run", "--now", "2026-10-19T10:00:00Z"}, io.Discard, io.Discard); code != 0 {
+	if code := runSnapshot(context.Background(), []string{"--now", "2026-10-19T10:00:00Z"}, io.Discard, io.Discard); code != 0 {
 		t.Fatalf("run = %d, want 0", code)
 	}
 	if code := runSnapshot(context.Background(), []string{"pre-update"}, io.Discard, io.Discard); code != 0 {
@@ -129,7 +129,7 @@ func TestRunSnapshotKindsAndExitCode(t *testing.T) {
 	if want := []btrfs.SnapshotKind{btrfs.KindTimeline, btrfs.KindPreUpdate}; len(*kinds) != 2 || (*kinds)[0] != want[0] || (*kinds)[1] != want[1] {
 		t.Fatalf("kinds = %v, want %v", *kinds, want)
 	}
-	if code := runSnapshot(context.Background(), []string{"run", "--now", "yesterday"}, io.Discard, io.Discard); code != 2 {
+	if code := runSnapshot(context.Background(), []string{"--now", "yesterday"}, io.Discard, io.Discard); code != 2 {
 		t.Fatalf("bad --now = %d, want 2", code)
 	}
 
@@ -138,7 +138,7 @@ func TestRunSnapshotKindsAndExitCode(t *testing.T) {
 	// system update's unit and raises no alert, keeps 1 and stores nothing.
 	stubRunSnapshots(t, btrfs.RunReport{Errors: []string{"u/@: boom"}})
 	summaries := captureSummaries(t)
-	if code := runSnapshot(context.Background(), []string{"run"}, io.Discard, io.Discard); code != 0 {
+	if code := runSnapshot(context.Background(), nil, io.Discard, io.Discard); code != 0 {
 		t.Fatalf("errors = %d, want 0", code)
 	}
 	if want := []scheduledrun.Summary{{Message: "1 failed", Failures: 1}}; !reflect.DeepEqual(*summaries, want) {
@@ -168,7 +168,7 @@ func TestRunSnapshotStartsReplicationAfterTimelineOnly(t *testing.T) {
 	stubRunSnapshots(t, btrfs.RunReport{})
 	starts := stubStartReplication(t, nil)
 	var stdout strings.Builder
-	if code := runSnapshot(context.Background(), []string{"run"}, &stdout, io.Discard); code != 0 || *starts != 0 {
+	if code := runSnapshot(context.Background(), nil, &stdout, io.Discard); code != 0 || *starts != 0 {
 		t.Fatalf("no jobs: run = %d, starts %d; want 0, 0", code, *starts)
 	}
 	if !strings.Contains(stdout.String(), "replication_started=false") {
@@ -177,7 +177,7 @@ func TestRunSnapshotStartsReplicationAfterTimelineOnly(t *testing.T) {
 	disabled := testJob
 	disabled.Enabled = false
 	saveJobs(t, disabled)
-	if code := runSnapshot(context.Background(), []string{"run"}, io.Discard, io.Discard); code != 0 || *starts != 0 {
+	if code := runSnapshot(context.Background(), nil, io.Discard, io.Discard); code != 0 || *starts != 0 {
 		t.Fatalf("disabled job: run = %d, starts %d; want 0, 0", code, *starts)
 	}
 
@@ -186,7 +186,7 @@ func TestRunSnapshotStartsReplicationAfterTimelineOnly(t *testing.T) {
 		t.Fatalf("pre-update = %d, starts %d; want 0, 0", code, *starts)
 	}
 	stdout.Reset()
-	if code := runSnapshot(context.Background(), []string{"run"}, &stdout, io.Discard); code != 0 || *starts != 1 {
+	if code := runSnapshot(context.Background(), nil, &stdout, io.Discard); code != 0 || *starts != 1 {
 		t.Fatalf("run = %d, starts %d; want 0, 1", code, *starts)
 	}
 	if !strings.Contains(stdout.String(), "replication_started=true") {
@@ -201,7 +201,7 @@ func TestRunSnapshotReportsAReplicationThatDidNotStart(t *testing.T) {
 	stubStartReplication(t, errors.New("start unit linuxio-btrfs-replicate.service: access denied"))
 	saveJobs(t, testJob)
 	var stderr strings.Builder
-	if code := runSnapshot(context.Background(), []string{"run"}, io.Discard, &stderr); code != 1 {
+	if code := runSnapshot(context.Background(), nil, io.Discard, &stderr); code != 1 {
 		t.Fatalf("run = %d, want 1", code)
 	}
 	if !strings.Contains(stderr.String(), "start btrfs replication: start unit linuxio-btrfs-replicate.service: access denied") || !strings.Contains(stderr.String(), "u/@: boom") {
@@ -226,7 +226,7 @@ func TestSnapshotPassReportsItsPhase(t *testing.T) {
 	saveJobs(t, testJob)
 	got := stubReportProgress(t)
 
-	if code := runSnapshot(context.Background(), []string{"run"}, io.Discard, io.Discard); code != 0 {
+	if code := runSnapshot(context.Background(), nil, io.Discard, io.Discard); code != 0 {
 		t.Fatalf("run = %d, want 0", code)
 	}
 	if want := []string{"-1 Taking snapshots"}; !reflect.DeepEqual(*got, want) {
@@ -237,7 +237,7 @@ func TestSnapshotPassReportsItsPhase(t *testing.T) {
 func TestSnapshotPassReportsAChange(t *testing.T) {
 	stubRunSnapshots(t, btrfs.RunReport{Taken: make([]btrfs.BtrfsSnapshot, 2)})
 	notices := stubNotifications(t, alerts.ReportChanges)
-	if code := runSnapshot(context.Background(), []string{"run", "--now", "2026-11-10T10:00:00Z"}, io.Discard, io.Discard); code != 0 {
+	if code := runSnapshot(context.Background(), []string{"--now", "2026-11-10T10:00:00Z"}, io.Discard, io.Discard); code != 0 {
 		t.Fatalf("run = %d, want 0", code)
 	}
 	if want := []alerts.Observation{snapshotNotice("Snapshots: 2 taken", "2026-11-10T10:00:00Z")}; !reflect.DeepEqual(*notices, want) {
@@ -246,7 +246,7 @@ func TestSnapshotPassReportsAChange(t *testing.T) {
 
 	stubRunSnapshots(t, btrfs.RunReport{})
 	notices = stubNotifications(t, alerts.ReportChanges)
-	if code := runSnapshot(context.Background(), []string{"run"}, io.Discard, io.Discard); code != 0 {
+	if code := runSnapshot(context.Background(), nil, io.Discard, io.Discard); code != 0 {
 		t.Fatalf("run = %d, want 0", code)
 	}
 	if len(*notices) != 0 {
@@ -260,7 +260,7 @@ func TestSnapshotPassReportsWhatWorkedBesideAFailure(t *testing.T) {
 	stubRunSnapshots(t, btrfs.RunReport{Taken: make([]btrfs.BtrfsSnapshot, 1), Errors: []string{"u/@: boom"}})
 	notices := stubNotifications(t, alerts.ReportChanges)
 	var stderr strings.Builder
-	if code := runSnapshot(context.Background(), []string{"run", "--now", "2026-11-10T11:00:00Z"}, io.Discard, &stderr); code != 0 {
+	if code := runSnapshot(context.Background(), []string{"--now", "2026-11-10T11:00:00Z"}, io.Discard, &stderr); code != 0 {
 		t.Fatalf("run = %d, want 0", code)
 	}
 	if !strings.Contains(stderr.String(), "u/@: boom") {
@@ -277,7 +277,7 @@ func TestSnapshotPassReportsNoNoticeBesideFailuresAlone(t *testing.T) {
 	stubRunSnapshots(t, btrfs.RunReport{Errors: []string{"u/@: boom"}})
 	notices := stubNotifications(t, alerts.ReportEveryRun)
 	var stderr strings.Builder
-	if code := runSnapshot(context.Background(), []string{"run"}, io.Discard, &stderr); code != 0 {
+	if code := runSnapshot(context.Background(), nil, io.Discard, &stderr); code != 0 {
 		t.Fatalf("failed rule: run = %d, want 0", code)
 	}
 	if !strings.Contains(stderr.String(), "u/@: boom") {
@@ -294,7 +294,7 @@ func TestSnapshotPassReportsNoNoticeBesideFailuresAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 	stderr.Reset()
-	if code := runSnapshot(context.Background(), []string{"run"}, io.Discard, &stderr); code != 1 {
+	if code := runSnapshot(context.Background(), nil, io.Discard, &stderr); code != 1 {
 		t.Fatalf("unreadable jobs: run = %d, want 1", code)
 	}
 	if !strings.Contains(stderr.String(), "load replication jobs") {
@@ -309,7 +309,7 @@ func TestSnapshotPassReportsEveryRun(t *testing.T) {
 	stubRunSnapshots(t, btrfs.RunReport{})
 	notices := stubNotifications(t, alerts.ReportEveryRun)
 	for _, at := range []string{"2026-11-10T10:00:00Z", "2026-11-10T11:00:00Z"} {
-		if code := runSnapshot(context.Background(), []string{"run", "--now", at}, io.Discard, io.Discard); code != 0 {
+		if code := runSnapshot(context.Background(), []string{"--now", at}, io.Discard, io.Discard); code != 0 {
 			t.Fatalf("run = %d, want 0", code)
 		}
 	}
@@ -332,7 +332,7 @@ func TestSnapshotPassReportsEveryRun(t *testing.T) {
 	cancel()
 	starts := stubStartReplication(t, nil)
 	saveJobs(t, testJob)
-	if code := runSnapshot(ctx, []string{"run"}, io.Discard, io.Discard); code != 1 {
+	if code := runSnapshot(ctx, nil, io.Discard, io.Discard); code != 1 {
 		t.Fatalf("stopped run = %d, want 1", code)
 	}
 	if len(*notices) != 0 || *starts != 0 {
@@ -344,7 +344,7 @@ func TestSnapshotPassReportsOnlyFailuresByDefault(t *testing.T) {
 	for _, report := range []string{"", alerts.ReportFailures} {
 		stubRunSnapshots(t, btrfs.RunReport{Taken: make([]btrfs.BtrfsSnapshot, 2)})
 		notices := stubNotifications(t, report)
-		if code := runSnapshot(context.Background(), []string{"run"}, io.Discard, io.Discard); code != 0 {
+		if code := runSnapshot(context.Background(), nil, io.Discard, io.Discard); code != 0 {
 			t.Fatalf("report %q: run = %d, want 0", report, code)
 		}
 		if len(*notices) != 0 {

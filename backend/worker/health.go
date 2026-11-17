@@ -16,8 +16,8 @@ var (
 )
 
 func runHealth(ctx context.Context, args []string, stderr io.Writer) int {
-	if len(args) != 1 || args[0] != "run" {
-		fmt.Fprintln(stderr, "Usage: linuxio-btrfs-timer health run")
+	if len(args) != 0 {
+		fmt.Fprintln(stderr, "Usage: linuxio-worker health")
 		return 2
 	}
 	resync, err := checkBtrfsHealth(ctx)

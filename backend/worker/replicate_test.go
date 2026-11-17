@@ -57,7 +57,7 @@ func replicationNotice(title, at string) alerts.Observation {
 
 func TestRunReplicateUsage(t *testing.T) {
 	runs := stubRunReplication(t, 0, 0, nil)
-	for _, args := range [][]string{nil, {"bogus"}, {"run", "--now", "yesterday"}, {"run", "extra", "--bogus"}} {
+	for _, args := range [][]string{{"bogus"}, {"run"}, {"--now", "yesterday"}, {"extra", "--bogus"}} {
 		if code := runCLI(context.Background(), append([]string{"replicate"}, args...), io.Discard, io.Discard); code != 2 {
 			t.Errorf("replicate %v = %d, want 2", args, code)
 		}
@@ -65,7 +65,7 @@ func TestRunReplicateUsage(t *testing.T) {
 	if *runs != 0 {
 		t.Fatalf("replication ran on bad usage: %d", *runs)
 	}
-	if code := runCLI(context.Background(), []string{"replicate", "run"}, io.Discard, io.Discard); code != 0 || *runs != 1 {
+	if code := runCLI(context.Background(), []string{"replicate"}, io.Discard, io.Discard); code != 0 || *runs != 1 {
 		t.Fatalf("replicate run = %d, runs %d; want 0, 1", code, *runs)
 	}
 }
@@ -89,7 +89,7 @@ func TestReplicatePassExitStatus(t *testing.T) {
 	} {
 		stubRunReplication(t, 0, 0, tt.errs)
 		summaries := captureSummaries(t)
-		if code := runReplicate(context.Background(), []string{"run"}, io.Discard, io.Discard); code != tt.want {
+		if code := runReplicate(context.Background(), nil, io.Discard, io.Discard); code != tt.want {
 			t.Errorf("%s: replicate = %d, want %d", name, code, tt.want)
 		}
 		var want []scheduledrun.Summary
@@ -108,7 +108,7 @@ func TestReplicatePassExitStatus(t *testing.T) {
 	summaries := captureSummaries(t)
 	stopped, cancel := context.WithCancel(context.Background())
 	cancel()
-	if code := runReplicate(stopped, []string{"run"}, io.Discard, io.Discard); code != 1 || len(*summaries) != 0 {
+	if code := runReplicate(stopped, nil, io.Discard, io.Discard); code != 1 || len(*summaries) != 0 {
 		t.Errorf("stopped with reported failures: replicate = %d, summaries %+v; want 1 and none", code, *summaries)
 	}
 
@@ -117,7 +117,7 @@ func TestReplicatePassExitStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	var stderr strings.Builder
-	if code := runReplicate(context.Background(), []string{"run"}, io.Discard, &stderr); code != 1 {
+	if code := runReplicate(context.Background(), nil, io.Discard, &stderr); code != 1 {
 		t.Fatalf("unreadable jobs: replicate = %d, want 1", code)
 	}
 	if !strings.Contains(stderr.String(), "Failed to load btrfs replication jobs") {
@@ -130,7 +130,7 @@ func TestReplicatePassExitStatus(t *testing.T) {
 func TestReplicatePassSummary(t *testing.T) {
 	stubRunReplication(t, 1, 1, []error{errors.New("job: record outcome: disk full")})
 	var stdout, stderr strings.Builder
-	if code := runReplicate(context.Background(), []string{"run"}, &stdout, &stderr); code != 1 {
+	if code := runReplicate(context.Background(), nil, &stdout, &stderr); code != 1 {
 		t.Fatalf("replicate = %d, want 1", code)
 	}
 	if got, want := stdout.String(), "replicated=1 sent=1 errors=1\n"; got != want {
@@ -149,7 +149,7 @@ func TestReplicatePassReportsEachJob(t *testing.T) {
 		return 2, 0, nil
 	}
 	got := stubReportProgress(t)
-	if code := runReplicate(context.Background(), []string{"run"}, io.Discard, io.Discard); code != 0 {
+	if code := runReplicate(context.Background(), nil, io.Discard, io.Discard); code != 0 {
 		t.Fatalf("replicate = %d, want 0", code)
 	}
 	if want := []string{"-1 Replicating 1 of 2", "-1 Replicating 2 of 2"}; !reflect.DeepEqual(*got, want) {
@@ -160,7 +160,7 @@ func TestReplicatePassReportsEachJob(t *testing.T) {
 func TestReplicatePassNotices(t *testing.T) {
 	stubRunReplication(t, 1, 1, nil)
 	notices := stubNotifications(t, alerts.ReportChanges)
-	if code := runReplicate(context.Background(), []string{"run", "--now", "2026-11-10T10:00:00Z"}, io.Discard, io.Discard); code != 0 {
+	if code := runReplicate(context.Background(), []string{"--now", "2026-11-10T10:00:00Z"}, io.Discard, io.Discard); code != 0 {
 		t.Fatalf("replicate = %d, want 0", code)
 	}
 	if want := []alerts.Observation{replicationNotice("Replication: 1 sent", "2026-11-10T10:00:00Z")}; !reflect.DeepEqual(*notices, want) {
@@ -170,11 +170,11 @@ func TestReplicatePassNotices(t *testing.T) {
 	// Up to date: a change only under every_run.
 	stubRunReplication(t, 1, 0, nil)
 	notices = stubNotifications(t, alerts.ReportChanges)
-	if code := runReplicate(context.Background(), []string{"run"}, io.Discard, io.Discard); code != 0 || len(*notices) != 0 {
+	if code := runReplicate(context.Background(), nil, io.Discard, io.Discard); code != 0 || len(*notices) != 0 {
 		t.Fatalf("changes, nothing sent: replicate = %d, raised %+v; want 0, none", code, *notices)
 	}
 	notices = stubNotifications(t, alerts.ReportEveryRun)
-	if code := runReplicate(context.Background(), []string{"run", "--now", "2026-11-10T11:00:00Z"}, io.Discard, io.Discard); code != 0 {
+	if code := runReplicate(context.Background(), []string{"--now", "2026-11-10T11:00:00Z"}, io.Discard, io.Discard); code != 0 {
 		t.Fatalf("replicate = %d, want 0", code)
 	}
 	if want := []alerts.Observation{replicationNotice("Replication: nothing to do", "2026-11-10T11:00:00Z")}; !reflect.DeepEqual(*notices, want) {
@@ -186,7 +186,7 @@ func TestReplicatePassNotices(t *testing.T) {
 	notices = stubNotifications(t, alerts.ReportEveryRun)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if code := runReplicate(ctx, []string{"run"}, io.Discard, io.Discard); code != 1 || len(*notices) != 0 {
+	if code := runReplicate(ctx, nil, io.Discard, io.Discard); code != 1 || len(*notices) != 0 {
 		t.Fatalf("stopped: replicate = %d, raised %+v; want 1, none", code, *notices)
 	}
 }
@@ -199,14 +199,14 @@ func TestReplicatePassSkippedWhenEveryJobIsHeld(t *testing.T) {
 	notices := stubNotifications(t, alerts.ReportEveryRun)
 	saveJobs(t, testJob)
 	summaries := captureSummaries(t)
-	if code := runReplicate(context.Background(), []string{"run"}, io.Discard, io.Discard); code != 0 || len(*notices) != 0 {
+	if code := runReplicate(context.Background(), nil, io.Discard, io.Discard); code != 0 || len(*notices) != 0 {
 		t.Fatalf("every job held: replicate = %d, raised %+v; want 0, none", code, *notices)
 	}
 	if want := []scheduledrun.Summary{{Message: "Skipped: another run held every job", Skipped: true}}; !reflect.DeepEqual(*summaries, want) {
 		t.Fatalf("summaries = %+v, want %+v", *summaries, want)
 	}
 	summarize = func(context.Context, scheduledrun.Summary) error { return scheduledrun.ErrNoRun }
-	if code := runReplicate(context.Background(), []string{"run"}, io.Discard, io.Discard); code != scheduledrun.ExitSkipped {
+	if code := runReplicate(context.Background(), nil, io.Discard, io.Discard); code != scheduledrun.ExitSkipped {
 		t.Fatalf("every job held, summary not stored: replicate = %d, want %d", code, scheduledrun.ExitSkipped)
 	}
 }
@@ -229,7 +229,7 @@ func TestReplicatePassReportsAFailedJob(t *testing.T) {
 		notices := stubNotifications(t, tt.report)
 		failed := stubFailedJob(t, tt.sent)
 		var stderr strings.Builder
-		if code := runReplicate(context.Background(), []string{"run", "--now", "2026-11-10T10:00:00Z"}, io.Discard, &stderr); code != 0 {
+		if code := runReplicate(context.Background(), []string{"--now", "2026-11-10T10:00:00Z"}, io.Discard, &stderr); code != 0 {
 			t.Fatalf("report %q: replicate = %d, want 0", tt.report, code)
 		}
 		if !strings.Contains(stderr.String(), "boom") {

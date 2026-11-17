@@ -80,7 +80,7 @@ import {
 
 const OLD_RELEASE = "v0.53.0";
 const RELEASE_URL = `https://github.com/mordilloSan/LinuxIO/releases/download/${OLD_RELEASE}`;
-/** Must equal `make print-binaries`; the installer needs all of them. */
+/** The binaries of OLD_RELEASE, as that release named them. */
 const BINARIES = [
   "linuxio",
   "linuxio-webserver",
@@ -291,6 +291,14 @@ async function upload(page: Page, rightClick: Locator, files: string[]) {
 }
 
 test.describe.serial("an update from a release with job hosts", () => {
+  // The rig installs OLD_RELEASE with this checkout's packaging, whose units
+  // start linuxio-worker and start the daemons without "run": v0.53.0 has
+  // neither, so its install fails. See docs/TODO/backlog.md, Tests that are
+  // missing.
+  test.fixme(
+    true,
+    "v0.53.0 cannot be installed with this checkout's packaging (linuxio-worker); the rig must install an older release with that release's packaging",
+  );
   test.skip(
     updateBuild() === "",
     "needs LINUXIO_VM_UPDATE_BUILD: a build directory of this tree with jobs.Protocol one higher (docs/jobs.md, Testing)",

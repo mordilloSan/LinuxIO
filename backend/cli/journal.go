@@ -36,7 +36,7 @@ func journalTermsForMode(mode string) []string {
 		"SYSLOG_IDENTIFIER=linuxio-auth",
 		"SYSLOG_IDENTIFIER=linuxio-indexer",
 		"SYSLOG_IDENTIFIER=linuxio-monitoring",
-		"SYSLOG_IDENTIFIER=linuxio-btrfs-timer",
+		"SYSLOG_IDENTIFIER=linuxio-worker",
 		"_SYSTEMD_UNIT=linuxio.target",
 		"_SYSTEMD_UNIT=linuxio-webserver.service",
 		"_SYSTEMD_UNIT=linuxio-webserver.socket",

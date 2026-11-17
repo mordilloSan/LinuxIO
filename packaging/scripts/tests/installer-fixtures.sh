@@ -94,14 +94,14 @@ printf '   \033[1;32m✓\033[0m %s\n' "release architecture guard"
 (
 	# shellcheck disable=SC1090
 	source "$RELEASE_INSTALLER"
-	release_version_supported v0.28.0 || fail "v0.28.0 must be supported"
-	release_version_supported v0.28.1 || fail "v0.28.1 must be supported"
+	release_version_supported v0.54.0 || fail "v0.54.0 must be supported"
+	release_version_supported v0.54.1 || fail "v0.54.1 must be supported"
 	release_version_supported v1.0.0 || fail "v1.0.0 must be supported"
-	if release_version_supported v0.27.0; then
-		fail "v0.27.0 must be rejected before downloads"
+	if release_version_supported v0.53.0; then
+		fail "v0.53.0 must be rejected before downloads"
 	fi
 )
-printf '   \033[1;32m✓\033[0m %s\n' "first monitoring release floor"
+printf '   \033[1;32m✓\033[0m %s\n' "first linuxio-worker release floor"
 run_release_integrity_fixtures
 printf '   \033[1;32m✓\033[0m %s\n' "release checksum verification"
 run_atomic_replacement_fixture "$RELEASE_INSTALLER"
@@ -230,7 +230,7 @@ grep -Fq 'already exists (not overwriting)' "$installer" || fail "installer must
 printf '   \033[1;32m✓\033[0m %s\n' "administrator-owned config is never overwritten"
 
 assert_line linuxio-indexer "$binary_list" "installer binary list"
-assert_line linuxio-btrfs-timer "$binary_list" "installer binary list"
+assert_line linuxio-worker "$binary_list" "installer binary list"
 for unit in linuxio-indexer.socket linuxio-indexer.service linuxio-indexer-index.service linuxio-indexer-index.timer linuxio-btrfs-health.service linuxio-btrfs-health.timer; do
 	assert_line "$unit" "$unit_list" "installer unit list"
 	grep -Fqx 'PartOf=linuxio.target' "${REPO_ROOT}/packaging/systemd/${unit}" || fail "${unit} is not part of linuxio.target"
@@ -367,12 +367,107 @@ AUTH_MAX_CONNECTIONS="$(sed -n 's/^MaxConnections=//p' "${REPO_ROOT}/packaging/s
 	fail "linuxio-auth.socket MaxConnections=${AUTH_MAX_CONNECTIONS} caps live sessions; keep it at least 64"
 printf '   \033[1;32m✓\033[0m %s\n' "auth socket leaves room for live sessions"
 
+# Only root may start the programs systemd runs as root; the rest must stay
+# startable by the user they run as.
+(
+	# shellcheck disable=SC1090
+	source "$RELEASE_INSTALLER"
+	for binary in linuxio-worker linuxio-docker-update linuxio-auth linuxio-indexer linuxio-monitoring; do
+		assert_eq "0700" "$(binary_mode "$binary")" "${binary} mode"
+	done
+	for binary in linuxio linuxio-bridge linuxio-claude-relay linuxio-webserver; do
+		assert_eq "0755" "$(binary_mode "$binary")" "${binary} mode"
+	done
+	while IFS= read -r binary; do
+		[[ "$(binary_mode "$binary")" =~ ^07[05][05]$ ]] || fail "${binary} has no mode"
+	done < <(binary_names)
+)
+printf '   \033[1;32m✓\033[0m %s\n' "root-run programs are installed for root only"
+
+# The installer records each program's version line, since the CLI and the
+# webserver may not run the root-only programs. Its list of programs is the
+# Go list's.
+go_components=$(grep -o 'Binary: "[^"]*"' "$REPO_ROOT/backend/common/version/components.go" | cut -d'"' -f2 | sort)
+installer_components=$(bash -c "source '$RELEASE_INSTALLER'; component_binaries" | sort)
+assert_eq "$go_components" "$installer_components" "installer component list vs version.Components"
+(
+	# shellcheck disable=SC1090
+	source "$RELEASE_INSTALLER"
+	fixture_dir=$(mktemp -d)
+	mkdir "${fixture_dir}/bin"
+	printf '#!/bin/sh\n[ "$1 $2" = "version --self" ] && echo "LinuxIO CLI v1.2.3"\n' >"${fixture_dir}/bin/linuxio"
+	for name in webserver:"Web Server" bridge:Bridge indexer:Indexer monitoring:Monitoring; do
+		printf '#!/bin/sh\n[ "$1" = "--version" ] && echo "LinuxIO %s v1.2.3" && echo "more"\n' "${name#*:}" >"${fixture_dir}/bin/linuxio-${name%%:*}"
+	done
+	# A program that cannot run, such as one built for another machine.
+	printf '#!/bin/sh\nexit 1\n' >"${fixture_dir}/bin/linuxio-auth"
+	chmod 0755 "${fixture_dir}/bin/"*
+	write_components_file "${fixture_dir}/bin" "${fixture_dir}/share/components" >/dev/null ||
+		fail "recording the installed versions failed"
+	expected=$'LinuxIO CLI v1.2.3\nLinuxIO Web Server v1.2.3\nLinuxIO Bridge v1.2.3\nLinuxIO Indexer v1.2.3\nLinuxIO Monitoring v1.2.3'
+	assert_eq "$expected" "$(cat "${fixture_dir}/share/components")" "recorded versions"
+	assert_eq "644" "$(stat -c %a "${fixture_dir}/share/components")" "recorded versions mode"
+	assert_eq "755" "$(stat -c %a "${fixture_dir}/share")" "recorded versions directory mode"
+	rm -rf "$fixture_dir"
+)
+printf '   \033[1;32m✓\033[0m %s\n' "installed versions are recorded for the CLI and the webserver"
+
+# Units and drop-ins a saved setting wrote hold the command lines of the
+# release that wrote them; the installer rewrites those of releases up to
+# v0.54 and leaves everything else as it is.
+(
+	# shellcheck disable=SC1090
+	source "$RELEASE_INSTALLER"
+	fixture_dir=$(mktemp -d)
+	system="${fixture_dir}/system"
+	mkdir -p "${system}/linuxio-webserver.service.d" "${system}/linuxio-monitoring.service.d" \
+		"${system}/apt-daily-upgrade.service.d" "${system}/apt-daily.service.d" "${system}/other.service.d"
+	printf '[Service]\nType=oneshot\nExecStart=/usr/local/bin/linuxio-btrfs-timer snapshot run\n' >"${system}/linuxio-btrfs-snapshot.service"
+	printf '[Service]\nExecStart=/usr/local/bin/linuxio-btrfs-timer replicate run\n' >"${system}/linuxio-btrfs-replicate.service"
+	printf '[Service]\nExecStart=/usr/local/bin/linuxio-docker-update run --config /etc/linuxio/docker-update.json\n' >"${system}/linuxio-docker-update.service"
+	printf '[Service]\nExecStart=\nExecStart=/usr/local/bin/linuxio-webserver run -verbose\n' >"${system}/linuxio-webserver.service.d/verbose.conf"
+	printf '[Service]\nExecStart=\nExecStart=/usr/local/bin/linuxio-monitoring run --config /etc/linuxio/monitoring/config.yaml --verbose\n' >"${system}/linuxio-monitoring.service.d/verbose.conf"
+	printf '[Service]\nExecStartPre=-/usr/local/bin/linuxio-btrfs-timer snapshot pre-update\nExecStopPost=/usr/local/bin/linuxio alert auto-update --provider apt --policy on_change\n' >"${system}/apt-daily-upgrade.service.d/linuxio-alert.conf"
+	printf '[Service]\nExecStopPost=/usr/local/bin/linuxio alert pending-updates --provider apt\n' >"${system}/apt-daily.service.d/linuxio-alert.conf"
+	# A drop-in from before the worker was a program of its own.
+	mkdir -p "${system}/dnf-automatic.service.d"
+	printf '[Service]\nExecStartPre=-/usr/local/bin/linuxio btrfs-snapshot pre-update\n' >"${system}/dnf-automatic.service.d/linuxio-alert.conf"
+	# Not a file LinuxIO writes: an administrator's own hook stays as it is.
+	printf '[Service]\nExecStopPost=/usr/local/bin/linuxio alert raise --source mine --key k --title T\n' >"${system}/other.service.d/mine.conf"
+	cp "${system}/other.service.d/mine.conf" "${fixture_dir}/mine.before"
+	chmod 0644 "${system}/linuxio-btrfs-snapshot.service"
+
+	for pass in first second; do
+		rewrite_saved_unit_commands "$system" >/dev/null || fail "${pass} rewrite failed"
+		assert_eq $'[Service]\nType=oneshot\nExecStart=/usr/local/bin/linuxio-worker snapshot' \
+			"$(cat "${system}/linuxio-btrfs-snapshot.service")" "${pass} rewrite of the snapshot unit"
+		assert_eq $'[Service]\nExecStart=/usr/local/bin/linuxio-worker replicate' \
+			"$(cat "${system}/linuxio-btrfs-replicate.service")" "${pass} rewrite of the replication unit"
+		assert_eq $'[Service]\nExecStart=/usr/local/bin/linuxio-docker-update --config /etc/linuxio/docker-update.json' \
+			"$(cat "${system}/linuxio-docker-update.service")" "${pass} rewrite of the Docker update unit"
+		assert_eq $'[Service]\nExecStart=\nExecStart=/usr/local/bin/linuxio-webserver -verbose' \
+			"$(cat "${system}/linuxio-webserver.service.d/verbose.conf")" "${pass} rewrite of the webserver verbose drop-in"
+		assert_eq $'[Service]\nExecStart=\nExecStart=/usr/local/bin/linuxio-monitoring --config /etc/linuxio/monitoring/config.yaml --verbose' \
+			"$(cat "${system}/linuxio-monitoring.service.d/verbose.conf")" "${pass} rewrite of the monitoring verbose drop-in"
+		assert_eq $'[Service]\nExecStartPre=-/usr/local/bin/linuxio-worker snapshot pre-update\nExecStopPost=/usr/local/bin/linuxio-worker alert auto-update --provider apt --policy on_change' \
+			"$(cat "${system}/apt-daily-upgrade.service.d/linuxio-alert.conf")" "${pass} rewrite of the update alert drop-in"
+		assert_eq $'[Service]\nExecStopPost=/usr/local/bin/linuxio-worker alert pending-updates --provider apt' \
+			"$(cat "${system}/apt-daily.service.d/linuxio-alert.conf")" "${pass} rewrite of the pending updates drop-in"
+		assert_eq $'[Service]\nExecStartPre=-/usr/local/bin/linuxio-worker snapshot pre-update' \
+			"$(cat "${system}/dnf-automatic.service.d/linuxio-alert.conf")" "${pass} rewrite of a drop-in with the oldest words"
+	done
+	cmp -s "${system}/other.service.d/mine.conf" "${fixture_dir}/mine.before" || fail "a file LinuxIO did not write was rewritten"
+	assert_eq "644" "$(stat -c %a "${system}/linuxio-btrfs-snapshot.service")" "rewritten unit mode"
+	rm -rf "$fixture_dir"
+)
+printf '   \033[1;32m✓\033[0m %s\n' "saved units and drop-ins get this release's command lines"
+
 # Scheduled units record their runs through two hook lines. The schedule units
 # are generated, so the lines reach them (and the snapshot, replication and
 # Docker update units) through one drop-in; linuxio-btrfs-resync@.service
 # carries them itself.
-BEGIN_HOOK='ExecStartPre=-+/usr/local/bin/linuxio scheduled-run begin --unit %n'
-END_HOOK='ExecStopPost=-+/usr/local/bin/linuxio scheduled-run end --unit %n'
+BEGIN_HOOK='ExecStartPre=-+/usr/local/bin/linuxio-worker scheduled-run begin --unit %n'
+END_HOOK='ExecStopPost=-+/usr/local/bin/linuxio-worker scheduled-run end --unit %n'
 run_record_dropin_fixtures() {
 	local checkout="$REPO_ROOT"
 	(

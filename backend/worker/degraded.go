@@ -16,8 +16,8 @@ var (
 )
 
 func runDegraded(ctx context.Context, args []string, stderr io.Writer) int {
-	if len(args) != 1 || args[0] != "run" {
-		fmt.Fprintln(stderr, "Usage: linuxio-btrfs-timer degraded run")
+	if len(args) != 0 {
+		fmt.Fprintln(stderr, "Usage: linuxio-worker degraded")
 		return 2
 	}
 	if err := mountDegradedPools(ctx, btrfs.DegradedGrace); err != nil {
@@ -29,7 +29,7 @@ func runDegraded(ctx context.Context, args []string, stderr io.Writer) int {
 
 func runResync(ctx context.Context, args []string, stderr io.Writer) int {
 	if len(args) != 1 || args[0] == "" {
-		fmt.Fprintln(stderr, "Usage: linuxio-btrfs-timer resync <uuid>")
+		fmt.Fprintln(stderr, "Usage: linuxio-worker resync <uuid>")
 		return 2
 	}
 	err := resyncPool(ctx, args[0], func(percent float64) {

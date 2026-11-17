@@ -766,7 +766,7 @@ func loadScrubRecord(uuid string) (scrubRecord, bool) {
 }
 
 // updateScrubRecords applies fn to the records under their lock, as every
-// writer does (the job host and linuxio-btrfs-timer resync), and writes
+// writer does (the job host and linuxio-worker resync), and writes
 // them when fn reports a change.
 func updateScrubRecords(ctx context.Context, fn func(map[string]scrubRecord) bool) error {
 	// The final record is written after a cancel too.

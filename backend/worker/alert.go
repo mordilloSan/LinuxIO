@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	alertUsage = "Usage: linuxio alert raise|resolve|auto-update|pending-updates [flags]"
+	alertUsage = "Usage: linuxio-worker alert raise|resolve|auto-update|pending-updates [flags]"
 
 	aptLogTailBytes = 256 << 10
 )
@@ -59,7 +59,7 @@ func runAlert(ctx context.Context, args []string) int {
 		}
 		fmt.Fprintf(os.Stderr, "Failed to record alert: %v\n", err)
 		if errors.Is(err, fs.ErrPermission) {
-			fmt.Fprintln(os.Stderr, "This command requires sudo")
+			fmt.Fprintln(os.Stderr, "This command requires root")
 		}
 		return 1
 	}
@@ -67,7 +67,7 @@ func runAlert(ctx context.Context, args []string) int {
 }
 
 func newAlertFlagSet(name string) *flag.FlagSet {
-	fs := flag.NewFlagSet("linuxio alert "+name, flag.ContinueOnError)
+	fs := flag.NewFlagSet("linuxio-worker alert "+name, flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	return fs
 }

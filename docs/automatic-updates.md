@@ -82,7 +82,7 @@ so a failed automatic update is reported on every host.
 The notify policy is chosen in the Notifications settings tab, beside the
 Docker update policy and the delivery channels, and stored as a drop-in:
 LinuxIO writes `/etc/systemd/system/<upgrade-service>.d/linuxio-alert.conf`
-with an `ExecStopPost=` that runs `linuxio alert auto-update` after each run.
+with an `ExecStopPost=` that runs `linuxio-worker alert auto-update` after each run.
 The drop-in is removed when the policy is `never`, which no provider offers
 any more and only a page of an older build still sends; a host without the
 drop-in reads as "failures only", which is what it runs as. The first save
@@ -91,7 +91,7 @@ with `on_failure`, which also adds its pre-update snapshot line (it does
 something only where a snapshot rule asks for a snapshot before updates). Mint
 and DNF report only the service result, so they offer no "on change". On APT, "tell me when
 system updates are waiting" writes the same drop-in name under
-`apt-daily.service.d`, running `linuxio alert pending-updates` after each
+`apt-daily.service.d`, running `linuxio-worker alert pending-updates` after each
 package-list refresh, and keeps `APT::Periodic::Update-Package-Lists` at `1`
 even while automatic installation is off, so the lists stay fresh. See
 [Alerts](./alerts.md).

@@ -6,10 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"os/exec"
-	"path/filepath"
-	"strings"
-	"sync"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/iolimit"
@@ -25,20 +21,10 @@ const GitHubAPI = "https://api.github.com/repos/%s/%s/releases/latest"
 
 const maxGitHubReleaseBodyBytes int64 = 1 << 20
 
-var componentVersionCommandTimeout = time.Second
-
-// componentVersionCacheTTL bounds how often the unauthenticated /api/version
-// endpoint can fork the component probes. A restart empties the cache.
-const componentVersionCacheTTL = 5 * time.Second
-
-var (
-	versionCacheMu  sync.Mutex
-	versionCacheAt  time.Time
-	versionCacheVal map[string]string
-)
-
-var runComponentVersionCommand = func(ctx context.Context, name string, args ...string) ([]byte, error) {
-	return exec.CommandContext(ctx, name, args...).Output()
+// readComponentVersions reads the versions the installer recorded; tests
+// swap it.
+var readComponentVersions = func() (map[string]string, error) {
+	return ver.ReadComponentVersions(ver.ComponentsFile)
 }
 
 type UpdateInfo struct {
@@ -130,103 +116,28 @@ func fetchLatestRelease(ctx context.Context) (version string, releaseURL string)
 	return release.TagName, release.HTMLURL
 }
 
-func getComponentVersions(parent context.Context) map[string]string {
-	if parent == nil {
-		return map[string]string{}
+// getComponentVersions returns each program's version as the installer
+// recorded it, and the webserver's own from this build. It runs no program:
+// /api/version is unauthenticated, and several programs are root only.
+func getComponentVersions() map[string]string {
+	components, err := readComponentVersions()
+	if err != nil {
+		slog.Debug("failed to read component versions", "path", ver.ComponentsFile, "error", err)
+		components = map[string]string{}
 	}
-
-	components := make(map[string]string, len(ver.Components))
-
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-
-	for _, probe := range ver.Components {
-		// The webserver reports its own compiled-in version.
-		if probe.Binary == "linuxio-webserver" {
-			if ver.Version != "" {
-				mu.Lock()
-				components[probe.Name] = ver.Version
-				mu.Unlock()
-			}
-			continue
-		}
-		wg.Go(func() {
-			ctx, cancel := context.WithTimeout(parent, componentVersionCommandTimeout)
-			defer cancel()
-
-			binaryPath := filepath.Join(ver.BinDir, probe.Binary)
-			output, err := runComponentVersionCommand(ctx, binaryPath, probe.Args...)
-			if err != nil {
-				slog.Debug("failed to run component version command",
-					"component", probe.Name,
-					"path", binaryPath,
-					"args", strings.Join(probe.Args, " "),
-					"error", err)
-				return
-			}
-
-			version, ok := parseComponentVersionOutput(probe.Name, output)
-			if !ok {
-				slog.Debug("failed to parse component version output",
-					"component", probe.Name,
-					"output", strings.TrimSpace(string(output)))
-				return
-			}
-
-			mu.Lock()
-			components[probe.Name] = version
-			mu.Unlock()
-		})
-	}
-
-	wg.Wait()
-	return components
-}
-
-// cachedComponentVersions serves getComponentVersions from a short-lived cache
-// so anonymous callers cannot multiply process forks. Concurrent callers wait
-// on the lock and reuse the fresh result. The returned map is read-only.
-func cachedComponentVersions(ctx context.Context) map[string]string {
-	versionCacheMu.Lock()
-	defer versionCacheMu.Unlock()
-	if versionCacheVal != nil && time.Since(versionCacheAt) < componentVersionCacheTTL {
-		return versionCacheVal
-	}
-	components := getComponentVersions(ctx)
-	if ctx.Err() == nil { // a cancelled request yields partial probes; do not cache them
-		versionCacheVal, versionCacheAt = components, time.Now()
+	if ver.Version != "" {
+		components[webserverComponent] = ver.Version
 	}
 	return components
 }
 
-func parseComponentVersionOutput(component string, output []byte) (string, bool) {
-	for line := range strings.SplitSeq(string(output), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		if !strings.HasPrefix(line, component+" ") {
-			return "", false
-		}
-
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
-			return "", false
-		}
-
-		version := fields[len(fields)-1]
-		if version == "" {
-			return "", false
-		}
-		return version, true
-	}
-	return "", false
-}
+// webserverComponent is the webserver's name in ver.Components.
+const webserverComponent = "LinuxIO Web Server"
 
 // handleVersion returns installed component versions (public endpoint, no auth required).
 // Used by frontend to detect when server is back up after updates.
-func handleVersion(w http.ResponseWriter, r *http.Request) {
-	web.WriteJSON(w, http.StatusOK, cachedComponentVersions(r.Context()))
+func handleVersion(w http.ResponseWriter, _ *http.Request) {
+	web.WriteJSON(w, http.StatusOK, getComponentVersions())
 }
 
 // handleUpdateInfo reports whether a newer LinuxIO release is available. Update

@@ -17,19 +17,20 @@ LinuxIO uses **privilege separation** (the same shape Cockpit uses): split the s
 | Run mutations that outlive the login | `linuxio-bridge`, as `linuxio-jobs@<uid>.service` | One long-lived job host per uid, as that uid (root for admins), so a change started from the UI does not depend on the login, the browser tab or the bridge staying alive. systemd holds each host's socket and starts the host on a connection. A user's bridge cannot start a system unit, so `linuxio-auth` starts a user's socket once PAM has authenticated them; root starts its own. |
 | Maintain the filesystem index | `linuxio-indexer` | Needs broad read access but a narrow write boundary → isolated, sandboxed, and socket activated. |
 | Sample and store host metrics | `linuxio-monitoring` | Needs **root** for SMART, hwmon, GPU and the Docker socket, and must keep sampling with no session open → one long-running collector, read-only metrics on a world-readable socket, commands behind a root-only one. |
-| Operate/inspect the stack | `linuxio` (CLI) | Convenience wrapper over `systemctl`/`journalctl` → runs as the invoking admin. |
+| Operate/inspect the stack | `linuxio` (CLI) | Convenience wrapper over `systemctl`/`journalctl` → runs as the invoking admin. The only program an administrator types, and the only one with commands for people. |
+| Run what systemd starts with a word | `linuxio-worker` | The timer jobs (btrfs snapshots, replication, health, resync, the degraded mount at boot) and the unit hooks that record a scheduled run and raise alerts → **root**, started only by systemd, installed for root only. Every private command word lives here, so no other program takes one. |
 
 ## Binaries
 
 | Binary | Lang | Source | Runs as | Lifetime | Role |
 |--------|------|--------|---------|----------|------|
-| `linuxio` | Go | `backend/cli/` | invoking user (often via `sudo`); root in the scheduled units' hooks | on-demand | CLI: status, logs, start/stop/restart, verbose, version; records scheduled runs |
+| `linuxio` | Go | `backend/cli/` | invoking user (often via `sudo`) | on-demand | CLI: status, logs, start/stop/restart, verbose, version |
 | `linuxio-webserver` | Go | `backend/webserver/` | `DynamicUser` + group `linuxio-bridge-socket` | long-running (socket-activated) | HTTP + WebSocket relay; **yamux client** |
 | `linuxio-auth` | C | `backend/auth/linuxio-auth.c` | `root` | per auth connection (supervises its bridge) | PAM authentication, sudoers policy query, fork + supervise bridge |
 | `linuxio-bridge` | Go | `backend/bridge/` | logged-in user (root only if privileged); the job host as its uid | per login session; the job host per uid, started by a connection to its socket, idle exit | **yamux server**; executes reads and relays mutations to the job host; the job host runs mutations as jobs |
-| `linuxio-docker-update` | Go | `backend/docker-update/` | root, sandboxed | per scheduled update run | Docker update worker |
+| `linuxio-docker-update` | Go | `backend/docker-update/` | root, sandboxed | per scheduled update run | Docker updater |
 | `linuxio-indexer` | Go | `backend/indexer/` | root, sandboxed | socket activated; exits when idle | Filesystem scanner, SQLite index, local HTTP/SSE API |
-| `linuxio-btrfs-timer` | Go | `backend/btrfs-timer/` | root | oneshot, started by systemd timers, the snapshot pass and the auto-update drop-in | Btrfs timeline/pre-update snapshots, replication and the periodic health check |
+| `linuxio-worker` | Go | `backend/worker/` | root | oneshot, started by systemd timers, the snapshot pass, the unit hooks and the auto-update drop-ins | Btrfs timeline/pre-update snapshots, replication, the periodic health check, the degraded mount at boot and resync; the hooks that record scheduled runs and raise alerts |
 | `linuxio-monitoring` | Go | `backend/monitoring/` | root, sandboxed | long-running (no idle exit) | Metrics collector, SQLite history, local HTTP API on two Unix sockets |
 | `linuxio-claude-relay` | Go | `backend/claude-relay/` | logged-in user, never root | one per `claude` an Assistant chat starts | Runs the real `claude` for the ACP adapter and carries plugin pane requests to the bridge ([Assistant](./AI-assistant.md#plugin-panes)) |
 
@@ -37,23 +38,54 @@ These binaries install to `/usr/local/bin/`. The CLI is a thin management
 front-end; the remaining processes are independently constrained by their
 responsibilities.
 
+**Who may start each program.** `linuxio` is the only program meant to be
+typed. The installer gives the programs systemd runs as root (`linuxio-worker`,
+`linuxio-docker-update`, `linuxio-auth`, `linuxio-indexer`,
+`linuxio-monitoring`) mode `0700`, so another local user cannot run a private
+word or flag of theirs, and the rest `0755` because they run as someone else:
+`linuxio` as whoever types it, `linuxio-bridge` and `linuxio-claude-relay` as
+the signed-in user, and `linuxio-webserver` as a dynamic user, whose ids
+change and so can own no file. Those three take no command word and do
+nothing by hand: the bridge and the relay stop without the connection their
+parent hands them, and a webserver started by a user has that user's rights
+and cannot open `auth.sock`. None of the programs is setuid.
+
+**Versions.** Because most programs are root only, nothing runs them to ask
+for a version. The installer runs each one as root and records its version
+line in `/usr/share/linuxio/components` (mode `0644`,
+`backend/common/version`); `linuxio version` and the webserver's
+unauthenticated `/api/version` read that file and add their own compiled-in
+version. A build run without the installer has no record and lists the other
+programs as not recorded.
+
+Known limits: a program replaced by hand keeps its recorded version until the
+installer runs again. On an update the installer rewrites the command lines
+in the units and drop-ins LinuxIO itself wrote (`saved_unit_files`); an
+administrator's own unit or override that calls `linuxio alert ...` or starts
+a daemon with `run` is not touched and needs the new command line.
+
 ### Binary invocation map
 
-Only `linuxio` is an operator administration CLI. The other binaries expose
-metadata for diagnostics and narrowly scoped process modes owned by systemd or
-the auth/bridge launch protocol.
+Only `linuxio` is an operator administration CLI, and it holds admin commands
+only. One other program takes a command word, `linuxio-worker`, which systemd
+alone starts; a job on a timer, a hook on a unit and an alert from a drop-in
+all go through it. The remaining binaries take flags, start with no word, and
+expose metadata for diagnostics and process modes owned by systemd or the
+auth/bridge launch protocol. A new root action for a timer or a hook is a
+word of `linuxio-worker`, never a command of `linuxio` and never a word on a
+daemon.
 
 | Binary | Supported interactive surface | Managed or private surface |
 |---|---|---|
-| `linuxio` | `status`, `logs`, `start`, `stop`, `restart [--full]`, `verbose enable\|disable\|status` (daemons switch live via SIGHUP reload, open sessions at next login; persists across restarts; also in Settings), `version [--self]`, `help`/`-h`/`--help` | `alert raise\|resolve\|auto-update` for systemd hooks (needs sudo); `scheduled-run begin\|end --unit <unit>`, the hooks of the scheduled units ([Scheduled runs](#scheduled-runs)); hidden `btrfs-snapshot`/`btrfs-health` shims that exec `linuxio-btrfs-timer` for units installed by earlier releases |
-| `linuxio-webserver` | `help`/`-h`/`--help`, `version`/`-v`/`--version` | `run [-port N] [-verbose]`; used by `linuxio-webserver.service` |
+| `linuxio` | `status`, `logs`, `start`, `stop`, `restart [--full]`, `verbose enable\|disable\|status` (daemons switch live via SIGHUP reload, open sessions at next login; persists across restarts; also in Settings), `version [--self]`, `help`/`-h`/`--help` | None: it holds admin commands only |
+| `linuxio-webserver` | `help`/`-h`/`--help`, `version`/`-v`/`--version` | No command word: `[-port N] [-verbose]` starts the server; used by `linuxio-webserver.service` |
 | `linuxio-auth` | `version`, `--version` | No-argument accepted-socket process; root and systemd only |
 | `linuxio-bridge` | `version`, `--version`, `-v` | No-argument session process with inherited fd 3 and auth bootstrap; `linuxio-auth` only. With no arguments and the `linuxio-jobs` socket from systemd, the job host (`linuxio-jobs@<uid>.service`). |
-| `linuxio-docker-update` | `help`/`-h`/`--help` | `run [--config PATH]` for the managed timer |
+| `linuxio-docker-update` | `help`/`-h`/`--help` | No command word: started with `[--config PATH]` it runs one update pass, for the managed timer. Root only |
 | `linuxio-claude-relay` | None | Claude Code's own arguments, with `LINUXIO_CLAUDE_BIN` naming the real CLI; started only by `claude-agent-acp` in an Assistant chat. Exits 2 without that variable. |
 | `linuxio-indexer` | `--help`, `-h`, `--version` | Managed daemon; private `--trigger-index` timer client and `--index-mode` scanner worker |
-| `linuxio-monitoring` | `help`/`-h`/`--help`, `version`/`-v`/`--version` | `run [--config PATH] [--verbose]`; used by `linuxio-monitoring.service` |
-| `linuxio-btrfs-timer` | `help`/`-h`/`--help` | `snapshot run [--now RFC3339]`, `snapshot pre-update`, `replicate run [--now RFC3339]`, `health run`; used by the btrfs snapshot, replication and health units and the pre-update hook |
+| `linuxio-monitoring` | `help`/`-h`/`--help`, `version`/`-v`/`--version` | No command word: `[--config PATH] [--verbose]` starts the daemon; used by `linuxio-monitoring.service`. Root only |
+| `linuxio-worker` | None: root only | `snapshot [--now RFC3339]`, `snapshot pre-update`, `replicate [--now RFC3339]`, `health`, `degraded`, `resync <uuid>`, used by the btrfs units and the pre-update hook; `scheduled-run begin\|end --unit <unit>`, the hooks of the scheduled units ([Scheduled runs](#scheduled-runs)); `alert raise\|resolve\|auto-update\|pending-updates`, the alert hooks ([Alerts](./alerts.md#hook-commands)). `help` prints the list |
 
 User lookup in the job host goes through `os/user`, which
 resolves SSSD/LDAP users only in a cgo build (the default native build); a
@@ -70,7 +102,7 @@ Core units under `linuxio.target`:
 ```
 linuxio.target                       umbrella; WantedBy=multi-user.target
 ├─ linuxio-webserver.socket          TCP :8090 (dual-stack) → activates webserver.service
-│  └─ linuxio-webserver.service      runs `linuxio-webserver run` (DynamicUser, sandboxed)
+│  └─ linuxio-webserver.service      runs `linuxio-webserver` (DynamicUser, sandboxed)
 ├─ linuxio-auth.socket               unix /run/linuxio/auth.sock (Accept=yes) → per-conn instance
 │  └─ linuxio-auth@.service          one instance per connection; root; forks+supervises a bridge
 ├─ linuxio-indexer.socket            unix /run/linuxio/indexer.sock → activates linuxio-indexer.service
@@ -78,8 +110,8 @@ linuxio.target                       umbrella; WantedBy=multi-user.target
 ├─ linuxio-indexer-index.timer      periodic request to linuxio-indexer-index.service
 │  └─ linuxio-indexer-index.service asks the daemon for a full index
 ├─ linuxio-btrfs-health.timer       every 10 min; enabled only on hosts with btrfs
-│  └─ linuxio-btrfs-health.service  runs `linuxio-btrfs-timer health run`; root
-├─ linuxio-monitoring.service        runs `linuxio-monitoring run`; root; owns
+│  └─ linuxio-btrfs-health.service  runs `linuxio-worker health`; root
+├─ linuxio-monitoring.service        runs `linuxio-monitoring`; root; owns
 │                                    /run/linuxio/monitoring/{api,control}.sock
 ├─ linuxio-bridge-socket-user.service  oneshot: materializes the linuxio-bridge-socket user/group
 └─ linuxio-issue.service             oneshot: updates the login issue/MOTD
@@ -91,9 +123,9 @@ Outside `linuxio.target`, so restarting LinuxIO never cancels them:
 linuxio-btrfs-degraded.service       boot oneshot, WantedBy=multi-user.target, enabled only on hosts
                                      with btrfs; mounts fstab pools with a missing disk degraded, and
                                      pools udev holds back for a device replace target normally
-                                     (`linuxio-btrfs-timer degraded run`)
+                                     (`linuxio-worker degraded`)
 linuxio-btrfs-resync@<uuid>.service  started by the health check once a returned disk is back;
-                                     runs `linuxio-btrfs-timer resync <uuid>` (scrub, then soft convert);
+                                     runs `linuxio-worker resync <uuid>` (scrub, then soft convert);
                                      its unit file carries the scheduled-run hooks itself
 linuxio-jobs@<uid>.socket            /run/linuxio/jobs/<uid>.sock, 0600, owned by the uid; started by
                                      linuxio-auth at that user's login and by root for uid 0; a
@@ -107,7 +139,7 @@ linuxio-jobs@<uid>.socket            /run/linuxio/jobs/<uid>.sock, 0600, owned b
 Key unit facts (see `packaging/systemd/`):
 
 - **`linuxio-webserver.socket`** — `ListenStream=8090`, `BindIPv6Only=both` (one socket answers both the A and AAAA records Avahi publishes). systemd owns the listening fd; the service inherits it. `After=linuxio-auth.socket` makes a restart of `linuxio.target` stop this socket before the auth socket and start it after: with no ordering, systemd started `linuxio-auth.socket` in the same window, its `sd-chown` helper (a fork of PID 1) inherited the old :8090 fd and held it a few ms past PID 1's close, and the new bind failed with "Address already in use" (3 of 10 `linuxio restart --full` runs on Ubuntu 24.04, systemd 255; 0 of 50 with the ordering).
-- **`linuxio-webserver.service`** — `ExecStart=/usr/local/bin/linuxio-webserver run`, `DynamicUser=yes`, `Group=linuxio-bridge-socket`. `StateDirectory=linuxio/webserver` gives the dynamic user private persistent storage for the managed TLS certificate. `RuntimeDirectory=linuxio/webserver` is an indexer activity marker whose lifetime is owned by systemd; `Wants=linuxio-indexer.service` warms the indexer without making it a prerequisite. Extensive hardening: `ProtectSystem=strict`, `PrivateDevices`, `MemoryDenyWriteExecute`, `NoNewPrivileges`, `SystemCallFilter`, `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`, etc.
+- **`linuxio-webserver.service`** — `ExecStart=/usr/local/bin/linuxio-webserver`, `DynamicUser=yes`, `Group=linuxio-bridge-socket`. `StateDirectory=linuxio/webserver` gives the dynamic user private persistent storage for the managed TLS certificate. `RuntimeDirectory=linuxio/webserver` is an indexer activity marker whose lifetime is owned by systemd; `Wants=linuxio-indexer.service` warms the indexer without making it a prerequisite. Extensive hardening: `ProtectSystem=strict`, `PrivateDevices`, `MemoryDenyWriteExecute`, `NoNewPrivileges`, `SystemCallFilter`, `RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6`, etc.
 - **`linuxio-auth.socket`** — `ListenStream=/run/linuxio/auth.sock`, `SocketUser=root`, `SocketGroup=linuxio-bridge-socket`, `SocketMode=0660`, **`Accept=yes`**, `MaxConnections=64`. The group+mode is the access-control boundary: only members of `linuxio-bridge-socket` (i.e. the webserver) may connect. Each accepted connection stays open as the bridge's transport until the session ends (sign-out, or the webserver's 60 min idle or 12 h absolute expiry), so `MaxConnections` caps live sessions host-wide, including those of browsers closed without signing out; concurrent login attempts are capped separately by the webserver (`maxConcurrentLogins`, 8).
 - **`linuxio-auth@.service`** — template; one instance per accepted connection, with the connected socket as `StandardInput=socket`. `User=root`. It declares no `TasksMax` or `MemoryMax`: a login is not capped (see below). The bridge inherits its rlimits (`LimitNOFILE=2048`, `LimitCORE=0`).
 - **`linuxio-indexer.socket` / `linuxio-indexer.service`** — the `root:root`,
@@ -157,8 +189,8 @@ scripts (`linuxio-schedule-<id>.service`), btrfs snapshots
 
 ```ini
 [Service]
-ExecStartPre=-+/usr/local/bin/linuxio scheduled-run begin --unit %n
-ExecStopPost=-+/usr/local/bin/linuxio scheduled-run end --unit %n
+ExecStartPre=-+/usr/local/bin/linuxio-worker scheduled-run begin --unit %n
+ExecStopPost=-+/usr/local/bin/linuxio-worker scheduled-run end --unit %n
 ```
 
 - **Where they are.** Never in a rendered unit: `schedules.run_now` refuses a
@@ -220,8 +252,8 @@ ExecStopPost=-+/usr/local/bin/linuxio scheduled-run end --unit %n
   run's `<id>.json` and `<id>.log` (`0600`). An output longer than 10 MiB keeps
   its first and last 5 MiB with one line between saying how many bytes were
   left out. Each unit keeps its newest 50 ended runs and none older than 30
-  days, and a run's output goes with its record. The btrfs timer program and
-  the Docker update runner write their run's progress to
+  days, and a run's output goes with its record. The worker and
+  the Docker updater write their run's progress to
   `/run/linuxio/jobs/scheduled/<id>.progress`, finding the run through
   `$INVOCATION_ID`. Both also write a summary of what the run did into the
   record's `result` before they exit, which the end hook keeps
@@ -423,10 +455,10 @@ The `Makefile` (recipes in `mk/go.mk` and `mk/auth.mk`) produces eight release a
 | `make build-backend` | `linuxio-webserver` | Go; embeds version + **bridge SHA-256** |
 | `make build-bridge` | `linuxio-bridge` | Go |
 | `make build-auth` | `linuxio-auth` | C; hardened flags (RELRO, PIE, FORTIFY, stack-clash, LTO), links `libpam` + `libsystemd` |
-| `make build-docker-update` | `linuxio-docker-update` | Go; scheduled Docker update worker |
+| `make build-docker-update` | `linuxio-docker-update` | Go; scheduled Docker updater |
 | `make build-indexer` | `linuxio-indexer` | Go + SQLite; FTS5 enabled |
 | `make build-monitoring` | `linuxio-monitoring` | Go + SQLite; `CGO_ENABLED=1`, plus the `glibc` tag on amd64 for NVML |
-| `make build-btrfs-timer` | `linuxio-btrfs-timer` | Go; btrfs snapshot and health timer worker |
+| `make build-worker` | `linuxio-worker` | Go; the timer jobs and unit hooks systemd starts with a word |
 
 `make build-binaries` (used by `make build` and `make fastbuild`) builds all eight: `build-go-binaries` builds every Go binary, hashing the freshly built `linuxio-bridge` and passing it as `BRIDGE_SHA256` into the webserver build so the pin always matches, then `build-auth` builds the C helper. `make print-binaries` prints the shipped-binary manifest that the release workflow and installer tests read. Only `common/version.Version` is stamped into the binaries that report a version. Install via `make localinstall`, which runs `packaging/scripts/localinstall.sh` (a wrapper for `install-linuxio-binaries.sh --local --build-dir build/`):
 
@@ -446,7 +478,7 @@ linuxio start | stop        # start/stop linuxio.target
 linuxio restart [--full]    # restart control plane (bridge-socket-user + auth.socket + webserver);
                             #   --full restarts the whole linuxio.target
 linuxio verbose enable|disable|status   # toggle debug logging for webserver, indexer and monitoring (SIGHUP reload; open sessions switch at next login); persists across restarts
-linuxio version [--self]    # versions of CLI + each installed component
+linuxio version [--self]    # version of the CLI + of each program as the installer recorded it
 ```
 
 The Services page warns before it cuts LinuxIO off. Stop, Restart, Disable and
@@ -492,12 +524,14 @@ follow the [Production Diagnostic Data Policy](./production-diagnostics.md).
 | Managed TLS certificate | `/var/lib/linuxio/webserver/certificates/0-self-signed.{cert,key}` |
 | Install script | `packaging/scripts/install-linuxio-binaries.sh` (`--local` for a checkout); `packaging/scripts/localinstall.sh` is a wrapper for it |
 | CLI (commands) | `backend/cli/` (`main.go` dispatch, `services.go`, `logs.go`, `verbose.go`, `version.go`) |
+| Worker (timer jobs and unit hooks) | `backend/worker/` (`main.go` dispatch; `snapshot.go`, `replicate.go`, `health.go`, `degraded.go`; `scheduled_run.go`, `alert.go`) |
+| Program modes, recorded versions, saved-unit rewrite | `binary_mode`, `write_components_file` and `rewrite_saved_unit_commands` in `packaging/scripts/install-linuxio-binaries.sh`; `backend/common/version/components.go` |
 | Shared socket-activation adopt | `backend/common/socketactivation`, `backend/webserver/cmd/root.go` |
 | Auth daemon (PAM, fork, supervise) | `backend/auth/linuxio-auth.c` |
 | Bridge entry point | `backend/bridge/cmd/lifecycle.go`, `cmd/yamux.go` |
 | Job host, client and their commands | `backend/bridge/internal/jobshost`, `backend/bridge/internal/jobsclient`, `backend/bridge/cmd/jobs_host.go` and `jobs_relay.go` (bridge → host relay) |
 | Job store | `backend/common/jobs`; records in `/var/lib/linuxio/jobs/<uid>/`, live progress in `/run/linuxio/jobs/<uid>/`, the host socket at `/run/linuxio/jobs/<uid>.sock` |
-| Scheduled runs | hooks in `packaging/systemd/linuxio-run-record.conf` (installed as `10-linuxio-run.conf` in the drop-in directories of the four LinuxIO units and the four distribution update services) and `linuxio-btrfs-resync@.service`; command `backend/cli/scheduled_run.go`; recording, output copy and liveness `backend/common/scheduledrun`; listing in the root host `backend/bridge/internal/jobshost/scheduled.go`; records, outputs and progress in `/var/lib/linuxio/jobs/scheduled/` and `/run/linuxio/jobs/scheduled/` |
+| Scheduled runs | hooks in `packaging/systemd/linuxio-run-record.conf` (installed as `10-linuxio-run.conf` in the drop-in directories of the four LinuxIO units and the four distribution update services) and `linuxio-btrfs-resync@.service`; command `backend/worker/scheduled_run.go`; recording, output copy and liveness `backend/common/scheduledrun`; listing in the root host `backend/bridge/internal/jobshost/scheduled.go`; records, outputs and progress in `/var/lib/linuxio/jobs/scheduled/` and `/run/linuxio/jobs/scheduled/` |
 | Indexer daemon and API | `backend/indexer/`, `backend/indexer/api/` |
 | Monitoring daemon and shared wire types | `backend/monitoring/`, `backend/monitoring/api/` |
 | Build | `Makefile` + `mk/go.mk` (`build-*`, `build-go-binaries`, `build-binaries`); output in `build/` |

@@ -179,7 +179,7 @@ Trash ([Trash](../trash.md)):
 Scheduled runs (`backend/common/scheduledrun`):
 
 - [ ] **A timer run whose summary could not be stored reads as a plain
-  Completed.** A worker exits with 0 when its items failed with alerts of
+  Completed.** A timer program exits with 0 when its items failed with alerts of
   their own and says so only in its summary; when that write fails (the
   store's lock held for more than 5 seconds, a full disk) the history shows
   the run as completed with no count of failures. The items' alerts are
@@ -231,6 +231,17 @@ Docker updates (`backend/common/dockerupdate`):
   Chosen over waiting the full 90 seconds on every restart loop. Checked.
 
 ## Tests that are missing
+
+- [ ] **The update test from an older release cannot run.**
+  `frontend/src/test/vm/jobs-update.spec.ts` installs v0.53.0 with the VM
+  rig's install, which takes the checkout's packaging; since `linuxio-worker`
+  that packaging starts programs and words v0.53.0 does not have, so the
+  test is marked `fixme`. The rig needs a way to install an older release
+  with that release's own packaging (`git archive <tag> packaging`). Until
+  then nothing automated covers an update from v0.53.0, which is the path
+  where the installer rewrites saved units
+  (`rewrite_saved_unit_commands`); the installer fixture test covers the
+  rewrite itself.
 
 - [ ] **No browser spec draws the assistant's effort slider.** Its thumb, halo
   and invisible track come from `--app-slider-*` variables set in

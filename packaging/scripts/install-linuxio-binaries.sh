@@ -24,7 +24,8 @@ readonly DATA_DIR="/var/lib/linuxio"
 readonly NEEDRESTART_DIR="/etc/needrestart"
 # In-app updates run with the installed bridge's writable-path allowlist.
 # Keep mandatory release files under paths supported since v0.27.0.
-readonly DOC_DIR="/usr/share/linuxio/doc"
+readonly SHARE_DIR="/usr/share/linuxio"
+readonly DOC_DIR="${SHARE_DIR}/doc"
 # Downloads and copies are staged in a directory no other user can predict or
 # write to (mktemp -d: a random name, mode 0700); the EXIT trap removes it.
 STAGING="$(mktemp -d /tmp/linuxio-install.XXXXXXXXXX)" || {
@@ -35,7 +36,11 @@ readonly STAGING
 readonly INDEXER_TIMER_UNIT_NAME="linuxio-indexer-index.timer"
 readonly BTRFS_HEALTH_TIMER_UNIT_NAME="linuxio-btrfs-health.timer"
 readonly BTRFS_DEGRADED_UNIT_NAME="linuxio-btrfs-degraded.service"
-readonly MINIMUM_MONITORING_RELEASE="v0.28.0"
+# The oldest release this installer installs: the units and drop-ins it
+# fetches from current main start linuxio-worker and start the webserver,
+# monitoring and the Docker updater with no command word, which older
+# binaries do not have or accept.
+readonly MINIMUM_SUPPORTED_RELEASE="v0.54.0"
 ENABLE_INDEXER_TIMER=0
 # Install source. Release mode downloads into STAGING; --local reads the build
 # directory and the checkout (set in main).
@@ -74,13 +79,13 @@ release_version_supported() {
 
 	local major=$((10#${BASH_REMATCH[1]}))
 	local minor=$((10#${BASH_REMATCH[2]}))
-	((major > 0 || (major == 0 && minor >= 28)))
+	((major > 0 || (major == 0 && minor >= 54)))
 }
 
 require_release_version() {
 	local requested="$1"
 	if [[ -n "$requested" ]] && ! release_version_supported "$requested"; then
-		Show 1 "LinuxIO releases before ${MINIMUM_MONITORING_RELEASE} are not supported by this installer"
+		Show 1 "LinuxIO releases before ${MINIMUM_SUPPORTED_RELEASE} are not supported by this installer"
 	fi
 }
 
@@ -94,8 +99,65 @@ binary_names() {
 		linuxio-docker-update \
 		linuxio-indexer \
 		linuxio-monitoring \
-		linuxio-btrfs-timer \
+		linuxio-worker \
 		linuxio-claude-relay
+}
+
+# Who may start each program. Only root starts the programs that systemd runs
+# as root, so no other user can run a private word or flag of theirs. The
+# rest must stay startable by the user they run as: linuxio is the admin
+# tool, the bridge and the Claude relay run as the signed-in user, and the
+# webserver as a dynamic user, whose ids no file can be owned by.
+binary_mode() {
+	case "$1" in
+	linuxio-worker | linuxio-docker-update | linuxio-auth | linuxio-indexer | linuxio-monitoring)
+		printf '0700\n'
+		;;
+	*)
+		printf '0755\n'
+		;;
+	esac
+}
+
+# The programs whose version line write_components_file records. Must name
+# the binaries of version.Components (backend/common/version/components.go);
+# tests/installer-fixtures.sh enforces it.
+component_binaries() {
+	printf '%s\n' \
+		linuxio \
+		linuxio-webserver \
+		linuxio-bridge \
+		linuxio-auth \
+		linuxio-indexer \
+		linuxio-monitoring
+}
+
+# Record the version line of each program of component_binaries found in $1
+# into the file $2 (owner $3, when given). The CLI and the webserver read it
+# and never run the programs, several of which only root may start.
+write_components_file() {
+	local bin_dir="$1"
+	local dst="$2"
+	local owner="${3:-}"
+	local staged="${STAGING}/components"
+	local binary line
+
+	# Readable by the webserver's user whatever umask root runs under.
+	mkdir -p "$(dirname "$dst")" && chmod 0755 "$(dirname "$dst")" || return 1
+	: >"$staged" || return 1
+	while IFS= read -r binary; do
+		if [[ "$binary" == linuxio ]]; then
+			line="$("${bin_dir}/${binary}" version --self 2>/dev/null | head -n1)" || line=""
+		else
+			line="$("${bin_dir}/${binary}" --version 2>/dev/null | head -n1)" || line=""
+		fi
+		if [[ -n "$line" ]]; then
+			printf '%s\n' "$line" >>"$staged"
+		else
+			Show 3 "${binary} did not report its version"
+		fi
+	done < <(component_binaries)
+	atomic_replace_file "$staged" "$dst" 0644 "$owner"
 }
 
 release_download_assets() {
@@ -145,6 +207,52 @@ run_record_dropin_dirs() {
 		dnf-automatic.service.d \
 		dnf5-automatic.service.d \
 		mintupdate-automation-upgrade.service.d
+}
+
+# Units and drop-ins, relative to ${SYSTEMD_DIR}, that LinuxIO wrote when a
+# setting was saved. They hold a command line as text, and only saving the
+# setting again writes them anew.
+saved_unit_files() {
+	printf '%s\n' \
+		linuxio-btrfs-snapshot.service \
+		linuxio-btrfs-replicate.service \
+		linuxio-docker-update.service \
+		linuxio-webserver.service.d/verbose.conf \
+		linuxio-monitoring.service.d/verbose.conf \
+		apt-daily.service.d/linuxio-alert.conf \
+		apt-daily-upgrade.service.d/linuxio-alert.conf \
+		dnf-automatic.service.d/linuxio-alert.conf \
+		dnf5-automatic.service.d/linuxio-alert.conf \
+		mintupdate-automation-upgrade.service.d/linuxio-alert.conf
+}
+
+# Rewrite the command lines of releases up to v0.53 in the files of
+# saved_unit_files inside $1: the worker was linuxio-btrfs-timer (and before
+# that the linuxio words btrfs-snapshot and btrfs-health) and its jobs took
+# "run", the hooks were words of linuxio, and the webserver, monitoring and
+# the Docker updater took "run". Without this, snapshots would stop and
+# the page would not start under verbose logging until each setting was saved
+# again. Running it twice changes nothing.
+rewrite_saved_unit_commands() {
+	local systemd_dir="$1"
+	local file path
+
+	while IFS= read -r file; do
+		path="${systemd_dir}/${file}"
+		[[ -f "$path" && ! -L "$path" ]] || continue
+		grep -Eq '/linuxio-btrfs-timer |/linuxio (alert|scheduled-run|btrfs-snapshot|btrfs-health) |/linuxio-(webserver|monitoring|docker-update) run( |$)' "$path" || continue
+		if sed -i -E \
+			-e 's#/linuxio btrfs-(snapshot|health) #/linuxio-btrfs-timer \1 #' \
+			-e 's#/linuxio-btrfs-timer (snapshot|replicate|health|degraded) run( |$)#/linuxio-worker \1\2#' \
+			-e 's#/linuxio-btrfs-timer #/linuxio-worker #' \
+			-e 's#/linuxio (alert|scheduled-run) #/linuxio-worker \1 #' \
+			-e 's#/(linuxio-webserver|linuxio-monitoring|linuxio-docker-update) run( |$)#/\1\2#' \
+			"$path"; then
+			Show 0 "Updated the commands in ${file}"
+		else
+			Show 3 "Could not update the commands in ${file}"
+		fi
+	done < <(saved_unit_files)
 }
 
 # Install the run-record drop-in under each directory of
@@ -353,7 +461,8 @@ install_binaries() {
 	for binary in "${binaries[@]}"; do
 		local src="${BINARY_SRC_DIR}/${binary}"
 		local dst="${BIN_DIR}/${binary}"
-		local mode=0755
+		local mode
+		mode="$(binary_mode "$binary")"
 
 		if [[ ! -f "$src" ]]; then
 			Show 1 "Source file not found: ${src}"
@@ -366,6 +475,9 @@ install_binaries() {
 		chmod "$mode" "$dst" || Show 3 "Failed to re-apply permissions to ${dst}"
 		Show 0 "Installed ${binary}"
 	done
+
+	# The worker's name up to v0.53; nothing starts it any more.
+	rm -f "${BIN_DIR}/linuxio-btrfs-timer"
 
 	Show 2 "Verifying installations..."
 	for binary in "${binaries[@]}"; do
@@ -897,7 +1009,7 @@ verify_installation() {
 	local binary
 	while IFS= read -r binary; do
 		case "$binary" in
-		linuxio | linuxio-docker-update | linuxio-btrfs-timer)
+		linuxio | linuxio-docker-update | linuxio-worker)
 			if "${BIN_DIR}/${binary}" help >/dev/null 2>&1; then
 				Show 0 "${binary}: working"
 			else
@@ -905,8 +1017,9 @@ verify_installation() {
 			fi
 			;;
 		linuxio-webserver)
-			if "${BIN_DIR}/${binary}" >/dev/null 2>&1; then
-				Show 0 "$("${BIN_DIR}/${binary}" 2>&1 | head -n1 || echo "unknown")"
+			# With no argument it starts the server, so ask for its version.
+			if "${BIN_DIR}/${binary}" --version >/dev/null 2>&1; then
+				Show 0 "$("${BIN_DIR}/${binary}" --version 2>&1 | head -n1 || echo "unknown")"
 			else
 				Show 3 "${binary} did not run successfully (may be arch mismatch)"
 			fi
@@ -1086,6 +1199,11 @@ main() {
 		fi
 	else
 		Header "Steps 1-3 — Skipping binary installation"
+		# The units installed below start linuxio-worker and start the daemons
+		# with no command word, which binaries before v0.54.0 do not have.
+		if [[ ! -x "${BIN_DIR}/linuxio-worker" ]]; then
+			Show 1 "The installed binaries are older than ${MINIMUM_SUPPORTED_RELEASE}; run without --skip-binaries"
+		fi
 	fi
 
 	# After the release assets are verified, so that a failed verification
@@ -1103,6 +1221,13 @@ main() {
 			Show 1 "Binary installation failed"
 		fi
 	fi
+	if ! write_components_file "$BIN_DIR" "${SHARE_DIR}/components" root:root; then
+		Show 1 "Failed to record the installed versions"
+	fi
+	# Right after the binaries, so a later step that fails leaves no saved unit
+	# calling a program or a word the new binaries do not have.
+	rewrite_saved_unit_commands "$SYSTEMD_DIR"
+	systemctl daemon-reload 2>/dev/null || true
 
 	# Step 4: Configuration
 	Header "Step 4/5 — Configuration"
@@ -1173,7 +1298,7 @@ Downloads and installs LinuxIO with all required system configuration, or
 installs a local checkout with --local.
 
 Arguments:
-  VERSION           Optional release tag (v0.28.0 or newer). If omitted, installs latest.
+  VERSION           Optional release tag (v0.54.0 or newer). If omitted, installs latest.
 
 Options:
   --dry-run         Validate writable install targets and exit
@@ -1184,7 +1309,7 @@ Options:
   -h, --help        Show this help message
 
 What gets installed:
-  - Binaries:     /usr/local/bin/linuxio, linuxio-webserver, linuxio-bridge, linuxio-auth, linuxio-docker-update, linuxio-indexer, linuxio-monitoring, linuxio-btrfs-timer, linuxio-claude-relay
+  - Binaries:     /usr/local/bin/linuxio, linuxio-webserver, linuxio-bridge, linuxio-auth, linuxio-docker-update, linuxio-indexer, linuxio-monitoring, linuxio-worker, linuxio-claude-relay
   - Systemd:      /etc/systemd/system/linuxio*
   - Tmpfiles:     /usr/lib/tmpfiles.d/linuxio.conf (creates ${DATA_DIR} and ${DATA_DIR}/icons)
   - PAM:          /etc/pam.d/linuxio
@@ -1195,7 +1320,7 @@ What gets installed:
 
 Examples:
   $(basename "$0")                 # Install latest release
-  $(basename "$0") v0.28.0         # Install specific version
+  $(basename "$0") v0.54.0         # Install specific version
   $(basename "$0") --dry-run       # Validate updater write access without installing
   $(basename "$0") --skip-binaries # Only install config/systemd/pam
 

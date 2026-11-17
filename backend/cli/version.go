@@ -1,24 +1,25 @@
 package main
 
 import (
-	"context"
 	"fmt"
-	"os/exec"
-	"strings"
-	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
-var versionExecCommand = exec.CommandContext
-
-const versionProbeTimeout = 5 * time.Second
+// readComponentVersions reads the versions the installer recorded; tests swap
+// it.
+var readComponentVersions = func() (map[string]string, error) {
+	return version.ReadComponentVersions(version.ComponentsFile)
+}
 
 func cliVersionLine() string {
 	return fmt.Sprintf("LinuxIO CLI %s", version.Version)
 }
 
-func showVersion(ctx context.Context, args []string) {
+// showVersion prints this program's version and, without --self, the version
+// of every other program as the installer recorded it. It runs none of them:
+// several are installed for root only.
+func showVersion(args []string) {
 	if len(args) == 1 && args[0] == "--self" {
 		fmt.Println(cliVersionLine())
 		return
@@ -27,25 +28,16 @@ func showVersion(ctx context.Context, args []string) {
 	fmt.Printf("\033[1mLinuxIO CLI - Manage LinuxIO services\033[0m\n")
 	fmt.Println("\nInstalled components:")
 
+	// A record that cannot be read leaves every other program unrecorded.
+	recorded, _ := readComponentVersions()
 	for _, c := range version.Components {
-		if c.Binary == "linuxio" {
+		switch v, ok := recorded[c.Name]; {
+		case c.Binary == "linuxio":
 			fmt.Printf("  %s\n", cliVersionLine())
-			continue
+		case ok:
+			fmt.Printf("  %s %s\n", c.Name, v)
+		default:
+			fmt.Printf("  %s: version not recorded\n", c.Binary)
 		}
-		fmt.Printf("  %s\n", probeVersion(ctx, c.Binary, c.Args...))
 	}
-}
-
-// probeVersion returns the first version line of binary, or a failure line if it is missing, fails or hangs.
-func probeVersion(parent context.Context, binary string, args ...string) string {
-	ctx, cancel := context.WithTimeout(parent, versionProbeTimeout)
-	defer cancel()
-	cmd := versionExecCommand(ctx, binary, args...)
-	cmd.WaitDelay = time.Second // do not hang on a pipe inherited by a child
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return binary + ": not found or error"
-	}
-	line, _, _ := strings.Cut(strings.TrimSpace(string(out)), "\n")
-	return line
 }

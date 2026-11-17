@@ -102,7 +102,7 @@ directories straight to the internal store.
 ## Command line
 
 ```text
-linuxio-monitoring run [--config PATH] [--verbose]
+linuxio-monitoring [--config PATH] [--verbose]
 linuxio-monitoring --version
 linuxio-monitoring --help
 ```

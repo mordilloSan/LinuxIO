@@ -502,7 +502,16 @@ host, for three reasons: a script runs as a configured user with an arbitrary
 command; the snapshot, replication, resync and Docker update units work and
 alert on their own; and no verb starts a job from outside the browser. Each
 run instead writes its own record from two hooks on its unit
-(`backend/common/scheduledrun`, `backend/cli/scheduled_run.go`):
+(`backend/common/scheduledrun`, `backend/worker/scheduled_run.go`).
+
+The hooks and LinuxIO's own timer jobs are words of one program,
+`linuxio-worker`, which only systemd starts and only root may run
+([Process & Systemd Architecture](./process-systemd-architecture.md#binary-invocation-map)).
+They write the stores themselves, through the shared packages, and do not ask
+a job host over its socket: a hook fires at boot, during shutdown and in the
+middle of an update, when no host is sure to be up or of the same build,
+while a file write needs nothing else running. The same holds for the timer
+jobs, which also keep their own unit, limits and journal that way. The units:
 
 | Record `route` | Unit | Label | Page |
 |---|---|---|---|
@@ -516,7 +525,7 @@ run instead writes its own record from two hooks on its unit
 `linuxio-btrfs-health.service`, the degraded mount at boot and the indexer's
 timer are not recorded.
 
-**Hooks.** `linuxio scheduled-run begin` and `end` run as `ExecStartPre=` and
+**Hooks.** `linuxio-worker scheduled-run begin` and `end` run as `ExecStartPre=` and
 `ExecStopPost=` of each unit. Where they are installed, why they sit in
 packaged drop-ins rather than in a rendered unit, what `+` and `-` do, and the
 fields and outcomes they write are in
@@ -538,7 +547,7 @@ The reasons that document does not give:
   saving `-- No entries --`. Stdout and stderr are one journal stream and
   cannot be told apart; sending stderr through a second journal connection
   lost lines.
-- The btrfs timer program and the Docker update runner write their run's
+- The worker and the Docker updater write their run's
   progress file, found through `$INVOCATION_ID`
   (`scheduledrun.ReporterFromEnv`). Scripts report none; their output is their
   feedback.
@@ -558,10 +567,11 @@ cancel that hits a timer's resync knows no invocation and marks the resync
 unit's running record. Either takes the mark back when the stop or the cancel
 fails.
 
-**A worker's run completes when its items fail.** A worker (snapshots,
-replication, resync, Docker updates) raises an alert of its own for each
+**A timer program's run completes when its items fail.** LinuxIO's own
+timer programs (`linuxio-worker` for snapshots, replication and resync, and
+the Docker updater) raise an alert of their own for each
 rule, job, pool or container that fails, and the run did its work, so the
-worker exits with 0: the unit is not failed on the Services page and the run
+program exits with 0: the unit is not failed on the Services page and the run
 ends `completed`. It also exits with 0 for a run that did no work, such as a
 Docker pass that found a manual update holding the lock or a replication run
 whose every job another run held, and with 4 (`scheduledrun.ExitSkipped`) for
@@ -574,7 +584,7 @@ started, a resync that could not find its pool. It also exits with 1 when it
 was stopped, by a signal or, for a resync, by a scrub cancel, whatever its
 failures were marked: a run that exited with 0 would read as completed, and
 the end hook could not record it as canceled or interrupted.
-`scheduledrun.Conclude` decides the status for every worker. A system update's failure is reported by
+`scheduledrun.Conclude` decides the status for both programs. A system update's failure is reported by
 the provider's notify hook where it is installed, and otherwise by the end
 hook.
 
@@ -602,7 +612,7 @@ What the run did is in two places:
   the versions when both images carry the `org.opencontainers.image.version`
   label and the short image IDs, or failed to, with the reason. The log
   lines of the pass carry the same facts as journal fields, which the saved
-  output does not show. The btrfs workers print a line of counts and each
+  output does not show. The worker's btrfs jobs print a line of counts and each
   failure.
 
 ## Alerts
@@ -793,7 +803,7 @@ The record itself is the quickest evidence: as root,
 | Go unit | same | `backend/bridge/cmd/jobs_relay_test.go`, `backend/bridge/cmd/jobs_host_test.go`, `backend/bridge/internal/jobsclient/client_test.go` | A bridge and a host over a socket: forwarding, host loss, reattach, events after a host restart, the update wait. The relay tests dial the in-process host with `jobsclient.Dial`, which starts no socket unit, so they also run as root |
 | Go unit | same | `backend/bridge/cmd/jobs_relay_test.go` (`TestRelayRoundTripSpeed`) | A speed bound: 300 no-op mutations through the relay to the in-process host, each timed from dispatch to its result frame; fails when the median exceeds 50 ms (observed 0.5 to 0.6 ms with the race detector, 0.2 to 0.3 ms without). It logs the median, p95 and maximum, and runs as root too (`make vm-test-relay-root` matches it through `Relay`) |
 | Go unit | same | `backend/bridge/internal/bridgeipc/mutation_test.go`, `backend/bridge/handlers/redaction_test.go`, `backend/bridge/apischema/schema_test.go` | The stream, resend and abort, same-target refusal, option guards, secret tags, `TestRetrySafeRoutesAreExplicitCalls` |
-| Go unit | same | `backend/common/scheduledrun/*_test.go`, `backend/cli/scheduled_run_test.go` | The hooks' outcomes and order, liveness, output copy, exit statuses, unit kinds |
+| Go unit | same | `backend/common/scheduledrun/*_test.go`, `backend/worker/scheduled_run_test.go` | The hooks' outcomes and order, liveness, output copy, exit statuses, unit kinds |
 | C | `make test-auth-pam`, in `make test-backend` | `backend/auth/linuxio-auth-pam_test.c` | The exact `systemctl` arguments of an unprivileged login, before the session opens; a failed, missing or hanging `systemctl` keeps the login; a login the sudo probe admits (a stub `sudo`) is privileged and starts no host |
 | Installer | `make test-installation-scripts` | `packaging/scripts/tests/installer-fixtures.sh` | Unit fixtures, the run-record drop-ins, the needrestart override's content check and its six expressions |
 | Frontend unit | `make test-frontend`, in `make check-frontend-quiet` | `HistoryPage.test.tsx`, `SavedOutput.test.tsx`, `JobsUpdateBanner.test.tsx`, `useJobHostStatus.test.ts`, `useRefreshHistoryAfterUpdate.test.tsx`, `useAwayNotice.test.tsx`, `NotificationsBell.test.tsx`, `taskTitles.test.ts`, `scheduledRuns.test.ts`, `mutation-react-query.test.ts`, `call-react-query.test.ts` | Pages, banner and bell in jsdom, which has no layout; the client's resend and reattach; the `update_pending` toast |
@@ -824,7 +834,10 @@ make vm-reset && make vm-install
 LINUXIO_VM_UPDATE_BUILD=<dir>/build make test-vm-browser PLAYWRIGHT_ARGS='login.spec.ts jobs-phase5a.spec.ts'
 ```
 
-`jobs-update.spec.ts` takes the same build. It downloads v0.53.0 (the first
+`jobs-update.spec.ts` is marked `fixme` and does not run: the rig installs
+v0.53.0 with this checkout's packaging, which since `linuxio-worker` starts
+programs and words that release does not have
+([backlog](./TODO/backlog.md)). As written, it takes the same build. It downloads v0.53.0 (the first
 release with job hosts) into `.cache/vm-release/v0.53.0`, checks it against the
 release's `SHA256SUMS` and installs it with the rig's install, so it needs no
 `make vm-install` first, only `make vm-reset`. v0.53.0 has the same
@@ -939,6 +952,9 @@ Covered at one level only:
   one, and a manual resume.
 - A queue, per-user or per-route caps, a runtime cap and a default deadline.
 - Starting a job from outside the browser: no CLI verb, no timer-started job.
+- Timer jobs and hooks that ask the root job host over its socket instead of
+  writing the stores themselves (the reasons are under
+  [Scheduled runs](#scheduled-runs)).
 - A second job host of a new build beside the old one, and a button that
   forces an update.
 - Listing or cancelling, from the bell, the jobs an update waits for.
