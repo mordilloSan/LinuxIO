@@ -17,7 +17,8 @@
 # Usage: linuxio-vm.sh create | ensure | prepare BUILD_DIR | install BUILD_DIR |
 #        start | ssh [COMMAND] | ip | password | reboot | power-cut |
 #        off-for SECONDS | throttle DISK BYTES_PER_SEC | stop | reset | update |
-#        destroy | fit | room | count | each COUNT COMMAND [ARGS]
+#        destroy | fit | room | count | test DIR [SUITE...] |
+#        each COUNT COMMAND [ARGS]
 set -euo pipefail
 
 case "${LINUXIO_VM_RELEASE:-resolute}" in
@@ -328,12 +329,266 @@ install() {
 	local build_dir=${1:-}
 	[[ -n $build_dir && -x "${build_dir}/linuxio" ]] || die "no LinuxIO build in '${build_dir}'"
 	connect
-	# --local reads packaging/, LICENSE and docs/THIRD_PARTY_NOTICES.md, and
-	# finds the checkout by its Makefile.
+	push_checkout "$build_dir"
+	vm_ssh 'sudo ~/linuxio/packaging/scripts/install-linuxio-binaries.sh --local --build-dir ~/linuxio/build'
+}
+
+# push_checkout BUILD_DIR puts what the installer reads in ~/linuxio and the
+# build in ~/linuxio/build: --local reads packaging/, LICENSE and
+# docs/THIRD_PARTY_NOTICES.md, and finds the checkout by its Makefile.
+push_checkout() {
 	tar -C "$REPO_ROOT" -cf - Makefile LICENSE docs/THIRD_PARTY_NOTICES.md packaging |
 		vm_ssh 'rm -rf linuxio && mkdir -p linuxio/build && tar -C linuxio -xf -'
-	tar -C "$build_dir" -cf - . | vm_ssh 'tar -C linuxio/build -xf -'
-	vm_ssh 'sudo ~/linuxio/packaging/scripts/install-linuxio-binaries.sh --local --build-dir ~/linuxio/build'
+	tar -C "$1" -cf - . | vm_ssh 'tar -C linuxio/build -xf -'
+}
+
+# The root test suites of the vm-test-* targets and test-vm-backend, one
+# suite_NAME function each; mk/vm.mk lists them. Make builds their test
+# binaries on the host into DIR and passes the test name patterns it shares
+# with the host targets; a suite copies its binaries into the VM and runs them
+# as root. `test DIR SUITE...` runs the named suites in turn. `test DIR` takes
+# them one at a time from DIR/queue, which make wrote longest first, until it
+# is empty: the VMs of a run share the queue, so the one that is free takes
+# the next suite. The first failure ends the VM's run, and the others take
+# what is left.
+#
+# TestMemoryDrainIntegration's second run caps its reads from the disk at this
+# many bytes a second, so the swapoff has to outlast the 90 seconds systemd
+# gives a swap unit.
+readonly DRAIN_READ_BPS=2097152
+
+tests() {
+	local dir=${1:-} suite
+	[[ -n $dir ]] || die "usage: test DIR [SUITE...]"
+	shift
+	if (($# > 0)); then
+		for suite in "$@"; do
+			run_suite "$dir" "$suite"
+		done
+		return
+	fi
+	[[ -f "${dir}/queue" ]] || die "no suite queue in ${dir}"
+	while true; do
+		suite="$(take_suite "${dir}/queue")"
+		[[ -n $suite ]] || break
+		run_suite "$dir" "$suite"
+	done
+	[[ -n $IP ]] || say "the queue was empty before ${DOMAIN} took a suite"
+}
+
+# take_suite QUEUE prints the first suite in QUEUE and removes it, under a lock
+# so two VMs never take the same one; nothing once the queue is empty.
+take_suite() {
+	(
+		flock 8
+		head -n 1 "$1"
+		sed -i 1d "$1"
+	) 8>>"$1.lock"
+}
+
+# run_suite DIR SUITE boots the VM before its first suite, so a VM the queue
+# has nothing for never starts.
+run_suite() {
+	local kernel
+	declare -F "suite_$2" >/dev/null || die "unknown suite '$2'"
+	if [[ -z $IP ]]; then
+		step start connect
+		kernel="$(vm_ssh uname -r </dev/null)"
+		echo "VM kernel: ${kernel}"
+	fi
+	step "$2" "suite_$2" "$1"
+}
+
+# push_test DIR NAME copies DIR/NAME.test into the VM user's home.
+push_test() {
+	[[ -f "$1/$2.test" ]] || die "no test binary $1/$2.test"
+	vm_ssh "cat > $2.test && chmod +x $2.test" <"$1/$2.test"
+}
+
+# run_test NAME PATTERN TIMEOUT [VAR=VALUE...] runs the tests of ./NAME.test
+# that PATTERN matches, as root and with those variables.
+run_test() {
+	local name=$1 pattern=$2 timeout=$3 vars=""
+	shift 3
+	(($# == 0)) || vars="$(printf '%q ' "$@")"
+	vm_ssh "sudo env ${vars}./${name}.test -test.run $(printf %q "$pattern") -test.count=1 -test.v -test.timeout=${timeout}" </dev/null
+}
+
+# The tests of test-btrfs-integration, on the VM's kernel.
+suite_btrfs() {
+	local name
+	for name in btrfs storage; do
+		push_test "$1" "$name"
+		run_test "$name" "${LINUXIO_VM_BTRFS_RUN:?mk/vm.mk sets it}" 20m LINUXIO_RUN_BTRFS_INTEGRATION=1
+	done
+}
+
+# TestMemoryIntegration (backend/bridge/handlers/memory) switches the VM to
+# zram and back through systemd and the kernel. It needs a zram tool and a
+# swap file in fstab: the first run installs one and adds a 1 GiB /swap.img,
+# and make vm-reset undoes both. TestMemoryDrainIntegration then parks data
+# on the data disk vdb, used whole as swap, twice: with 2 GiB, then with 320
+# MiB read back at DRAIN_READ_BPS. vdb's fstab entry is noauto, so it swaps
+# only for the test (an active swap partition rules the zram mode out), and
+# pri=10 puts it ahead of /swap.img. A vdb that holds anything but swap is
+# another check's and is refused. vdb stops swapping when the suite ends,
+# passed, failed or interrupted.
+suite_memory() {
+	local -r drain=(LINUXIO_RUN_MEMORY_INTEGRATION=1 LINUXIO_MEMORY_DRAIN_DEVICE=/dev/vdb)
+	[[ ${LINUXIO_VM_ZRAM_PROVIDER:-zram-tools} =~ ^zram-(tools|generator)$ ]] ||
+		die "ZRAM_PROVIDER must be zram-tools or zram-generator"
+	zram_setup
+	vm_ssh sudo bash -s <<'SWAPFILE'
+set -euo pipefail
+if ! grep -qs '^/swap.img[[:space:]]' /etc/fstab; then
+	fallocate -l 1G /swap.img
+	chmod 600 /swap.img
+	mkswap /swap.img >/dev/null
+	echo '/swap.img none swap sw 0 0' >>/etc/fstab
+	systemctl daemon-reload
+	systemctl start swap.img.swap
+fi
+SWAPFILE
+	push_test "$1" memory
+	run_test memory '^TestMemoryIntegration$' 30m LINUXIO_RUN_MEMORY_INTEGRATION=1
+	trap vdb_swap_off EXIT
+	drain_setup
+	run_test memory '^TestMemoryDrainIntegration$' 30m "${drain[@]}" LINUXIO_MEMORY_DRAIN_MIB=2048
+	run_test memory '^TestMemoryDrainIntegration$' 30m "${drain[@]}" LINUXIO_MEMORY_DRAIN_MIB=320 \
+		LINUXIO_MEMORY_DRAIN_READ_BPS="$DRAIN_READ_BPS" LINUXIO_MEMORY_DRAIN_MIN_SECONDS=90
+	trap - EXIT
+	vdb_swap_off
+}
+
+# After an interrupt the drain test can still be running in the VM, since ssh
+# gives it no terminal to hang up: it and the processes it parked on vdb are
+# ended first, so the swapoff does not pull their pages back under them.
+vdb_swap_off() {
+	vm_ssh sudo bash -s <<'SWAPOFF' || say "/dev/vdb still swaps in ${DOMAIN}: run make vm-reset"
+set -euo pipefail
+pkill -x memory.test || true
+for _ in {1..30}; do
+	pgrep -x memory.test >/dev/null || break
+	sleep 1
+done
+systemctl stop dev-vdb.swap
+SWAPOFF
+}
+
+# zram-tools by default. LINUXIO_VM_ZRAM_PROVIDER=zram-generator uses systemd's
+# zram-generator instead (the Fedora and RHEL path, from Ubuntu's
+# systemd-zram-generator package); LinuxIO uses it only when zram-tools is
+# absent, so that needs a VM without zram-tools.
+zram_setup() {
+	if [[ ${LINUXIO_VM_ZRAM_PROVIDER:-zram-tools} == zram-generator ]]; then
+		vm_ssh sudo bash -s <<'GENERATOR'
+set -euo pipefail
+if test -x /usr/sbin/zramswap; then
+	echo "zram-tools is installed and LinuxIO prefers it: run make vm-reset first" >&2
+	exit 1
+fi
+if ! test -x /usr/lib/systemd/system-generators/zram-generator; then
+	apt-get update -qq
+	DEBIAN_FRONTEND=noninteractive apt-get install -y -qq systemd-zram-generator
+fi
+if grep -q '^/dev/zram' /proc/swaps; then systemctl stop dev-zram0.swap; fi
+GENERATOR
+	else
+		# The package starts zramswap.service, which the test does itself.
+		vm_ssh sudo bash -s <<'TOOLS'
+set -euo pipefail
+if ! test -x /usr/sbin/zramswap; then
+	apt-get update -qq
+	DEBIAN_FRONTEND=noninteractive apt-get install -y -qq zram-tools
+	systemctl disable --now zramswap.service
+fi
+TOOLS
+	fi
+}
+
+drain_setup() {
+	vm_ssh sudo bash -s <<'DRAIN'
+set -euo pipefail
+kind=$(blkid -o value -s TYPE /dev/vdb || true)
+if [[ -n $kind && $kind != swap ]]; then
+	echo "/dev/vdb holds ${kind}, which another check put there: run make vm-reset first" >&2
+	exit 1
+fi
+if [[ -z $kind ]]; then mkswap /dev/vdb >/dev/null; fi
+if ! grep -qs '^/dev/vdb[[:space:]]' /etc/fstab; then
+	echo '/dev/vdb none swap sw,noauto,pri=10 0 0' >>/etc/fstab
+	systemctl daemon-reload
+fi
+systemctl start dev-vdb.swap
+DRAIN
+}
+
+# The file browser's root-only ownership tests of test-filebrowser-root.
+suite_filebrowser() {
+	local name
+	for name in filebrowser filebrowser-services; do
+		push_test "$1" "$name"
+		run_test "$name" "${LINUXIO_VM_FILEBROWSER_RUN:?mk/vm.mk sets it}" 10m
+	done
+}
+
+# The bridge-to-job-host relay tests (backend/bridge/cmd/jobs_relay_test.go).
+# They serve a host in-process, so as root its owner and privileged rules are
+# those of the root host; the relay dials it without starting a socket unit.
+suite_relay() {
+	push_test "$1" bridge-cmd
+	run_test bridge-cmd "${LINUXIO_VM_RELAY_RUN:?mk/vm.mk sets it}" 10m
+}
+
+# The updater's install script, run with --dry-run by systemd-run in the
+# sandbox the updater gives it (test-updater). The test reads the script from
+# the checkout, which the VM does not have, so it gets a copy.
+suite_updater() {
+	push_test "$1" appupdate
+	vm_ssh 'cat > install-linuxio-binaries.sh' <"${REPO_ROOT}/packaging/scripts/install-linuxio-binaries.sh"
+	run_test appupdate "${LINUXIO_VM_UPDATER_RUN:?mk/vm.mk sets it}" 10m \
+		LINUXIO_RUN_SYSTEMD_INTEGRATION=1 LINUXIO_INSTALL_SCRIPT="/home/${VM_USER}/install-linuxio-binaries.sh"
+}
+
+# The Docker update's real Compose runs (test-docker-update-integration),
+# which pull alpine images from Docker Hub. Ubuntu's docker.io comes without
+# the Compose plugin, so the first run installs docker-compose-v2.
+suite_docker() {
+	vm_ssh sudo bash -s <<'COMPOSE'
+set -euo pipefail
+if ! docker compose version >/dev/null 2>&1; then
+	apt-get update -qq
+	DEBIAN_FRONTEND=noninteractive apt-get install -y -qq docker-compose-v2
+fi
+COMPOSE
+	push_test "$1" dockerupdate
+	run_test dockerupdate "${LINUXIO_VM_DOCKER_RUN:?mk/vm.mk sets it}" 10m LINUXIO_RUN_DOCKER_INTEGRATION=1
+}
+
+# A macvlan link moved into another network namespace, still found from its
+# parent (bridge/handlers/network/internal/hostbridge). The test adds dummy
+# and macvlan links and a namespace, which belong on a VM, not a workstation.
+suite_network() {
+	push_test "$1" hostbridge
+	run_test hostbridge '^TestVirtualChildrenByParentSeesOtherNamespaces$' 10m
+}
+
+# Config files a root bridge creates for another user's IDs
+# (bridge/internal/userconfig).
+suite_userconfig() {
+	push_test "$1" userconfig
+	run_test userconfig '^TestOwnedConfigArtifactsCanTargetDifferentIDsWhenPrivileged$' 10m
+}
+
+# The indexer's socket activation, idle exit and index timer under systemd
+# (packaging/scripts/tests/systemd-indexer-smoke.sh). The script installs the
+# LinuxIO build make made and uninstalls it again, and refuses a VM that
+# already has LinuxIO.
+suite_indexer() {
+	local build=${LINUXIO_VM_BUILD_DIR:?mk/vm.mk sets it}
+	[[ -x "${build}/linuxio" ]] || die "no LinuxIO build in '${build}'"
+	push_checkout "$build"
+	vm_ssh "sudo env LINUXIO_SYSTEMD_SMOKE=1 LINUXIO_SYSTEMD_SMOKE_CONFIRM=disposable-linuxio-host LINUXIO_SMOKE_BUILD_DIR=/home/${VM_USER}/linuxio/build bash linuxio/packaging/scripts/tests/systemd-indexer-smoke.sh" </dev/null
 }
 
 boot_id() { vm_ssh cat /proc/sys/kernel/random/boot_id </dev/null; }
@@ -663,9 +918,13 @@ fit) fit ;;
 room) room ;;
 count) count ;;
 prepare) prepare "${2:-}" ;;
+test)
+	shift
+	tests "$@"
+	;;
 each)
 	shift
 	each "$@"
 	;;
-*) die "usage: $(basename "$0") create | ensure | prepare BUILD_DIR | install BUILD_DIR | start | ssh [COMMAND] | ip | password | reboot | power-cut | off-for SECONDS | throttle DISK BYTES_PER_SEC | stop | reset | update | destroy | fit | room | count | each COUNT COMMAND [ARGS]" ;;
+*) die "usage: $(basename "$0") create | ensure | prepare BUILD_DIR | install BUILD_DIR | start | ssh [COMMAND] | ip | password | reboot | power-cut | off-for SECONDS | throttle DISK BYTES_PER_SEC | stop | reset | update | destroy | fit | room | count | test DIR [SUITE...] | each COUNT COMMAND [ARGS]" ;;
 esac

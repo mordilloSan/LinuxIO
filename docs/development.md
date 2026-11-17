@@ -136,8 +136,9 @@ only the image cache. `VM=2` on a target names one of them. `vm-create`,
 `vm-destroy`, `vm-ssh` and the `vm-test-*` targets act on one VM, the first
 unless `VM` names another; `vm-install`, `vm-reset`, `vm-update`, `vm-stop`
 and `test-vm-browser` act on every VM that exists, side by side, or on the
-one `VM` names. After a `test-vm` that used fewer VMs than exist, pass the
-same `VMS` to `test-vm-browser`: the others do not have the build.
+one `VM` names, and `test-vm-backend` on as many of them as it has suites.
+After a `test-vm` that used fewer VMs than exist, pass the same `VMS` to
+`test-vm-browser`: the others do not have the build.
 
 The specs wait on reboots, throttled disks and timers and hardly use the CPU,
 so more CPUs for a VM gain nothing and more VMs do. Playwright runs one worker
@@ -182,6 +183,7 @@ make vm-install       # make build-nocheck, then install this build in the VMs
 make vm-ssh CMD='systemctl is-active linuxio.target'
 make test-vm-browser  # Playwright specs in frontend/src/test/vm
 make vm-test-btrfs-integration
+make test-vm-backend  # every vm-test-* suite, shared out between the VMs
 make vm-stop          # shut the VMs down; what is installed stays
 make vm-reset         # revert every disk to "clean" and stop the VMs
 make vm-update        # upgrade the packages in "clean" and take the snapshot again
@@ -238,6 +240,40 @@ make vm-destroy       # delete the first VM and its volumes; the cache stays
   navbar's Reboot and Power Down. It creates and removes a user without sudo
   (`e2e-ui`), a folder `/srv/e2e-link` and two busybox containers, reboots the
   VM and powers it off (the rig's `ssh` starts a domain that is shut off).
+- The `vm-test-*` targets are the root suites. Each builds its test binaries
+  on the host into `.cache/vm`, static so they also run on the older glibc
+  of `VM_RELEASE=noble`, and the script's `test` command copies them into
+  the VM, prints its kernel version and runs them as root, with the test
+  patterns of the matching host target. They run on the VM as it is.
+- `test-vm-backend` runs every root suite: the four above, and five that
+  have no target of their own. It uses every VM that exists, one for each
+  suite at most, and reverts them to `clean` so the run starts from a known
+  state. The suites wait in one queue, longest first, and each VM takes the
+  next when it is free: memory (about 3½ minutes), btrfs (3), indexer (just
+  under 2, most of it the indexer's idle timeout), docker (1½), then relay,
+  updater, userconfig, filebrowser and network, seconds each. On three VMs
+  the run takes about as long as memory, plus the LinuxIO build the indexer
+  suite needs. `SUITES='docker updater'` runs only those. With one VM
+  (`VMS=1`) they run one after another on it, the later ones on what the
+  earlier left. The first failure ends that VM's suites; the other VMs take
+  what is left of the queue. With more than one VM each one's output is in
+  `.cache/test-logs/vm-N-test.log`. The five without a target:
+  - `indexer` is the disposable-host smoke test
+    ([Indexer](./indexer.md#disposable-host-smoke-test)). It needs the
+    LinuxIO build, so the target runs `build-nocheck` first; the suite
+    copies the checkout's packaging and the build in, and the script
+    installs it, checks socket activation, idle exit and the index timer, and
+    uninstalls it.
+  - `docker` is `test-docker-update-integration`: real Compose replacements,
+    which pull alpine images from Docker Hub. Ubuntu's `docker.io` comes
+    without the Compose plugin, so the suite installs `docker-compose-v2`.
+  - `updater` is `test-updater`, the install script's `--dry-run` under the
+    updater's systemd sandbox. The test reads the script from
+    `LINUXIO_INSTALL_SCRIPT`, a copy, since the VM has no checkout.
+  - `network` adds dummy and macvlan links and a network namespace as root
+    (`TestVirtualChildrenByParentSeesOtherNamespaces`).
+  - `userconfig` has a root bridge create config files for another user's
+    IDs (`TestOwnedConfigArtifactsCanTargetDifferentIDsWhenPrivileged`).
 - `vm-test-btrfs-integration` builds the `common/btrfs` and
   `bridge/handlers/storage` test binaries on the host,
   prints the VM's kernel version and runs the same tests as
@@ -258,7 +294,7 @@ make vm-destroy       # delete the first VM and its volumes; the cache stays
   reads from the disk capped at 2 MiB a second, where the drain has to take
   more than 90 seconds. The test runs in a cgroup of its own,
   `/sys/fs/cgroup/linuxio-drain-test`, which it removes, and the device is
-  stopped when the target ends. A `vdb` that holds anything but swap, as
+  stopped when the suite ends, passed, failed or interrupted. A `vdb` that holds anything but swap, as
   after a storage check, is refused: run `make vm-reset` first. The whole target takes about four minutes. These changes stay in the VM until
   `make vm-reset` reverts its disks.
 - `vm-test-filebrowser-root` does the same for the file browser's root-only
@@ -508,7 +544,7 @@ The full index groups the supported targets as follows:
 - installation: `localinstall`, `reinstall`, `uninstall`
 - test VM: `test-vm`, `vm-create`, `vm-install`, `vm-ssh`, `vm-stop`, `vm-reset`, `vm-update`, `vm-destroy`,
   `vm-test-btrfs-integration`, `vm-test-memory-integration`,
-  `vm-test-filebrowser-root`, `vm-test-relay-root`,
+  `vm-test-filebrowser-root`, `vm-test-relay-root`, `test-vm-backend`,
   `test-vm-browser`
 - documentation: `help-overrides`, `check-docs` (the docs index in
   `docs/README.md`, and the paths and links docs name)

@@ -87,6 +87,11 @@ test-installation-scripts: ## Run host-independent installer fixture tests
 test-indexer-systemd-integration: ## Run the opt-in disposable-host indexer smoke test
 	@"$(packaging_scripts_dir)/tests/systemd-indexer-smoke.sh"
 
+# The updater and Docker update tests, here and in the test VM's updater and
+# docker suites (mk/vm.mk).
+UPDATER_RUN := ^TestInstallScriptDryRunWithSystemdSandbox$$
+DOCKER_UPDATE_RUN := ^TestDockerUpdateCompose
+
 test-updater: ensure-go ## Run the root-only updater systemd dry-run integration test
 	@echo "🔎 Running updater systemd dry-run integration test..."
 	@cd "$(backend_dir)" && \
@@ -94,14 +99,14 @@ test-updater: ensure-go ## Run the root-only updater systemd dry-run integration
 	    PATH="$$(dirname "$(GO_BIN)"):$${PATH}" \
 	    GOTOOLCHAIN="$(GO_TOOLCHAIN)" \
 	    LINUXIO_RUN_SYSTEMD_INTEGRATION=1 \
-	    "$(GO_BIN)" test ./bridge/handlers/appupdate -run TestInstallScriptDryRunWithSystemdSandbox -count=1 -v
+	    "$(GO_BIN)" test ./bridge/handlers/appupdate -run '$(UPDATER_RUN)' -count=1 -v
 
 test-docker-update-integration: ensure-go ## Run the opt-in real Docker/Compose update test
 	@echo "🐳 Running native Docker update integration test..."
 	@cd "$(backend_dir)" && \
 	  LINUXIO_RUN_DOCKER_INTEGRATION=1 \
 	  $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" \
-	  "$(GO_BIN)" test ./common/dockerupdate -run '^TestDockerUpdateCompose' -count=1 -v
+	  "$(GO_BIN)" test ./common/dockerupdate -run '$(DOCKER_UPDATE_RUN)' -count=1 -v
 
 test-assistant-agent-integration: ensure-go ## Run the opt-in real npm install and launch of the assistant agents (needs Node.js and network)
 	@echo "🤖 Running assistant agent install integration test..."

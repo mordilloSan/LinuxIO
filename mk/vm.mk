@@ -69,84 +69,91 @@ vm-destroy: ## Delete the test VM (VM=2 for another) and its volumes
 	@$(vm_lock)
 	@"$(vm_script)" destroy
 
-vm-test-btrfs-integration: ensure-go ## Run the root btrfs and partition kernel tests in the test VM
-	@set -e
-	@$(vm_lock)
-	@trap '$(vm_stop)' EXIT
-	@mkdir -p "$(cache_dir)/vm"
-	@cd "$(backend_dir)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" CGO_ENABLED=0 "$(GO_BIN)" test -c -o "$(cache_dir)/vm/btrfs.test" ./common/btrfs
-	@cd "$(backend_dir)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" CGO_ENABLED=0 "$(GO_BIN)" test -c -o "$(cache_dir)/vm/storage.test" ./bridge/handlers/storage
-	@"$(vm_script)" ssh 'cat > btrfs.test && chmod +x btrfs.test' < "$(cache_dir)/vm/btrfs.test"
-	@"$(vm_script)" ssh 'cat > storage.test && chmod +x storage.test' < "$(cache_dir)/vm/storage.test"
-	@"$(vm_script)" ssh "echo \"VM kernel: \$$(uname -r)\" && sudo env LINUXIO_RUN_BTRFS_INTEGRATION=1 ./btrfs.test -test.run $$(printf %q '$(BTRFS_INTEGRATION_RUN)') -test.count=1 -test.v -test.timeout=20m"
-	@"$(vm_script)" ssh "sudo env LINUXIO_RUN_BTRFS_INTEGRATION=1 ./storage.test -test.run $$(printf %q '$(BTRFS_INTEGRATION_RUN)') -test.count=1 -test.v -test.timeout=20m"
-
-# TestMemoryIntegration (backend/bridge/handlers/memory) switches the VM to
-# zram and back through systemd and the kernel. It needs zram-tools and a swap
-# file in fstab: the first run installs zram-tools (stopping the zramswap.service
-# its package starts) and adds a 1 GiB /swap.img; make vm-reset undoes both.
-# ZRAM_PROVIDER=zram-generator runs it with systemd's zram-generator instead
-# (the Fedora and RHEL path, from Ubuntu's systemd-zram-generator package).
-# LinuxIO uses the generator only when zram-tools is absent, so that run needs
-# a VM without zram-tools: run make vm-reset first.
+# The root test suites. Make builds their test binaries into vm_test_dir and
+# the script's test command copies them into the VM and runs them as root,
+# with the test name patterns the host targets use (quality.mk). The binaries
+# are static (CGO_ENABLED=0), so they also run on the older glibc of
+# VM_RELEASE=noble. A suite is a suite_NAME function in the script and a
+# vm_build_NAME here (indexer installs the LinuxIO build instead), listed in
+# vm_suites longest first. test-vm-backend writes SUITES into a queue the VMs
+# share, each taking the next suite when it is free, so the long ones start
+# first and the short ones fill in around them.
+vm_test_dir := $(cache_dir)/vm
+vm_suites := memory btrfs indexer docker relay updater userconfig filebrowser network
+SUITES ?= $(vm_suites)
+# The bridge-to-job-host relay tests (backend/bridge/cmd/jobs_relay_test.go).
+RELAY_ROOT_RUN := ^Test(Bridge(Forwards|Fails|Watch|Events|Reports)|PrivilegedBridgeUsesRootHost|Relay|UpdatePendingMessage)
+# The memory suite's zram tool: zram-generator runs it with systemd's
+# zram-generator, the Fedora and RHEL path, on a VM without zram-tools (run
+# make vm-reset first). docs/memory.md, "Tests".
 ZRAM_PROVIDER ?= zram-tools
-ifeq ($(ZRAM_PROVIDER),zram-generator)
-vm_memory_zram_setup := set -e; if test -x /usr/sbin/zramswap; then echo "zram-tools is installed and LinuxIO prefers it: run make vm-reset first" >&2; exit 1; fi; if ! test -x /usr/lib/systemd/system-generators/zram-generator; then sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq systemd-zram-generator; fi; if grep -q "^/dev/zram" /proc/swaps; then sudo systemctl stop dev-zram0.swap; fi
-else ifeq ($(ZRAM_PROVIDER),zram-tools)
-vm_memory_zram_setup := set -e; if ! test -x /usr/sbin/zramswap; then sudo apt-get update -qq && sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq zram-tools && sudo systemctl disable --now zramswap.service; fi
-else
-vm_memory_zram_setup := echo "ZRAM_PROVIDER must be zram-tools or zram-generator" >&2; exit 1
+export LINUXIO_VM_BTRFS_RUN := $(BTRFS_INTEGRATION_RUN)
+export LINUXIO_VM_FILEBROWSER_RUN := $(FILEBROWSER_ROOT_RUN)
+export LINUXIO_VM_RELAY_RUN := $(RELAY_ROOT_RUN)
+export LINUXIO_VM_UPDATER_RUN := $(UPDATER_RUN)
+export LINUXIO_VM_DOCKER_RUN := $(DOCKER_UPDATE_RUN)
+export LINUXIO_VM_ZRAM_PROVIDER := $(ZRAM_PROVIDER)
+export LINUXIO_VM_BUILD_DIR := $(bin_dir)
+# $(call vm_test_build,NAME,PACKAGE) builds PACKAGE's tests as NAME.test.
+# Each build is a command of its own, ended by ;, so set -e stops at a failed
+# one: it would let a failure early in an && list pass.
+vm_test_build = (cd "$(backend_dir)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" CGO_ENABLED=0 "$(GO_BIN)" test -c -o "$(vm_test_dir)/$(1).test" $(2));
+vm_build_btrfs = $(call vm_test_build,btrfs,./common/btrfs) $(call vm_test_build,storage,./bridge/handlers/storage)
+vm_build_memory = $(call vm_test_build,memory,./bridge/handlers/memory)
+vm_build_filebrowser = $(call vm_test_build,filebrowser,./bridge/handlers/filebrowser) $(call vm_test_build,filebrowser-services,./bridge/handlers/filebrowser/services)
+vm_build_relay = $(call vm_test_build,bridge-cmd,./bridge/cmd)
+vm_build_updater = $(call vm_test_build,appupdate,./bridge/handlers/appupdate)
+vm_build_docker = $(call vm_test_build,dockerupdate,./common/dockerupdate)
+vm_build_network = $(call vm_test_build,hostbridge,./bridge/handlers/network/internal/hostbridge)
+vm_build_userconfig = $(call vm_test_build,userconfig,./bridge/internal/userconfig)
+# A wrong SUITES fails as make reads this file, before the build the indexer
+# suite brings, and only for test-vm-backend.
+ifneq ($(filter test-vm-backend%,$(MAKECMDGOALS)),)
+ifeq ($(strip $(SUITES)),)
+$(error SUITES is empty (the suites: $(vm_suites)))
 endif
-# TestMemoryDrainIntegration parks data on the data disk vdb, used whole as
-# swap. Its fstab entry is noauto, so it swaps only for the test: an active
-# swap partition rules the zram mode out. pri=10 puts it ahead of /swap.img.
-# A disk that holds anything but swap is another check's, and is refused.
-# The test runs twice: with 2 GiB, then with 320 MiB and its reads from the
-# disk capped at vm_memory_drain_rate bytes a second, where the swapoff has
-# to outlast the 90 seconds systemd gives a swap unit.
-vm_memory_drain_rate := 2097152
-vm_memory_drain_env := LINUXIO_RUN_MEMORY_INTEGRATION=1 LINUXIO_MEMORY_DRAIN_DEVICE=/dev/vdb
-vm_memory_drain_setup := set -e; kind=$$(sudo blkid -o value -s TYPE /dev/vdb || true); if test -n "$$kind" && test "$$kind" != swap; then echo "/dev/vdb holds $$kind, which another check put there: run make vm-reset first" >&2; exit 1; fi; if test -z "$$kind"; then sudo mkswap /dev/vdb >/dev/null; fi; if ! grep -qs "^/dev/vdb[[:space:]]" /etc/fstab; then echo "/dev/vdb none swap sw,noauto,pri=10 0 0" | sudo tee -a /etc/fstab >/dev/null && sudo systemctl daemon-reload; fi; sudo systemctl start dev-vdb.swap
+ifneq ($(filter-out $(vm_suites),$(SUITES)),)
+$(error unknown SUITES: $(filter-out $(vm_suites),$(SUITES)) (the suites: $(vm_suites)))
+endif
+endif
+
+# $(call vm_suite,SUITE) is the recipe of one vm-test-* target.
+define vm_suite
+set -e
+$(vm_lock)
+trap '$(vm_stop)' EXIT
+mkdir -p "$(vm_test_dir)"
+$(vm_build_$(1))
+"$(vm_script)" test "$(vm_test_dir)" $(1)
+endef
+
+vm-test-btrfs-integration: ensure-go ## Run the root btrfs and partition kernel tests in the test VM
+	@$(call vm_suite,btrfs)
+
 vm-test-memory-integration: ensure-go ## Run the root swap mode and drain tests in the test VM
-	@set -e
-	@$(vm_lock)
-	@trap '$(vm_stop)' EXIT
-	@mkdir -p "$(cache_dir)/vm"
-	@cd "$(backend_dir)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" CGO_ENABLED=0 "$(GO_BIN)" test -c -o "$(cache_dir)/vm/memory.test" ./bridge/handlers/memory
-	@"$(vm_script)" ssh '$(vm_memory_zram_setup)'
-	@"$(vm_script)" ssh 'set -e; if ! grep -qs "^/swap.img[[:space:]]" /etc/fstab; then sudo fallocate -l 1G /swap.img && sudo chmod 600 /swap.img && sudo mkswap /swap.img >/dev/null && echo "/swap.img none swap sw 0 0" | sudo tee -a /etc/fstab >/dev/null && sudo systemctl daemon-reload && sudo systemctl start swap.img.swap; fi'
-	@"$(vm_script)" ssh 'cat > memory.test && chmod +x memory.test' < "$(cache_dir)/vm/memory.test"
-	@"$(vm_script)" ssh "echo \"VM kernel: \$$(uname -r)\" && sudo env LINUXIO_RUN_MEMORY_INTEGRATION=1 ./memory.test -test.run '^TestMemoryIntegration\$$' -test.count=1 -test.v -test.timeout=30m"
-	@trap '"$(vm_script)" ssh "sudo systemctl stop dev-vdb.swap" || echo "/dev/vdb still swaps in the VM: run make vm-reset" >&2; $(vm_stop)' EXIT
-	@"$(vm_script)" ssh '$(vm_memory_drain_setup)'
-	@"$(vm_script)" ssh "sudo env $(vm_memory_drain_env) LINUXIO_MEMORY_DRAIN_MIB=2048 ./memory.test -test.run '^TestMemoryDrainIntegration\$$' -test.count=1 -test.v -test.timeout=30m"
-	@"$(vm_script)" ssh "sudo env $(vm_memory_drain_env) LINUXIO_MEMORY_DRAIN_MIB=320 LINUXIO_MEMORY_DRAIN_READ_BPS=$(vm_memory_drain_rate) LINUXIO_MEMORY_DRAIN_MIN_SECONDS=90 ./memory.test -test.run '^TestMemoryDrainIntegration\$$' -test.count=1 -test.v -test.timeout=30m"
+	@$(call vm_suite,memory)
 
 vm-test-filebrowser-root: ensure-go ## Run the root-only file browser ownership tests in the test VM
-	@set -e
-	@$(vm_lock)
-	@trap '$(vm_stop)' EXIT
-	@mkdir -p "$(cache_dir)/vm"
-	@cd "$(backend_dir)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" "$(GO_BIN)" test -c -o "$(cache_dir)/vm/filebrowser.test" ./bridge/handlers/filebrowser
-	@cd "$(backend_dir)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" "$(GO_BIN)" test -c -o "$(cache_dir)/vm/filebrowser-services.test" ./bridge/handlers/filebrowser/services
-	@"$(vm_script)" ssh 'cat > filebrowser.test && chmod +x filebrowser.test' < "$(cache_dir)/vm/filebrowser.test"
-	@"$(vm_script)" ssh 'cat > filebrowser-services.test && chmod +x filebrowser-services.test' < "$(cache_dir)/vm/filebrowser-services.test"
-	@"$(vm_script)" ssh "sudo ./filebrowser.test -test.run $$(printf %q '$(FILEBROWSER_ROOT_RUN)') -test.count=1 -test.v"
-	@"$(vm_script)" ssh "sudo ./filebrowser-services.test -test.run $$(printf %q '$(FILEBROWSER_ROOT_RUN)') -test.count=1 -test.v"
-
-# The bridge-to-job-host relay tests (backend/bridge/cmd/jobs_relay_test.go).
-# They serve a host in-process, so as root its owner and privileged rules are
-# those of the root host; the relay dials it without starting a socket unit.
-RELAY_ROOT_RUN := ^Test(Bridge(Forwards|Fails|Watch|Events|Reports)|PrivilegedBridgeUsesRootHost|Relay|UpdatePendingMessage)
+	@$(call vm_suite,filebrowser)
 
 vm-test-relay-root: ensure-go ## Run the bridge-to-job-host relay tests as root in the test VM
+	@$(call vm_suite,relay)
+
+# Every VM that exists, one for each suite at most, since a VM without a suite
+# would only be reverted; VMS=1 runs them one after another on the first. The
+# VMs are reverted first, so a run starts from clean whatever ran before it,
+# and the indexer suite finds no LinuxIO to refuse. SUITES='docker updater'
+# runs only those.
+test-vm-backend: VMS = $(shell n=$(vm_count) s=$(words $(SUITES)); echo $$((n < s ? n : s)))
+test-vm-backend: ensure-go $(if $(filter indexer,$(SUITES)),build-nocheck) ## Revert the test VMs and run the root suites (SUITES=...) on them, each VM taking the next when free
 	@set -e
 	@$(vm_lock)
-	@trap '$(vm_stop)' EXIT
-	@mkdir -p "$(cache_dir)/vm"
-	@cd "$(backend_dir)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" "$(GO_BIN)" test -c -o "$(cache_dir)/vm/bridge-cmd.test" ./bridge/cmd
-	@"$(vm_script)" ssh 'cat > bridge-cmd.test && chmod +x bridge-cmd.test' < "$(cache_dir)/vm/bridge-cmd.test"
-	@"$(vm_script)" ssh "sudo ./bridge-cmd.test -test.run $$(printf %q '$(RELAY_ROOT_RUN)') -test.count=1 -test.v"
+	@trap '$(vm_stop_all)' EXIT
+	@mkdir -p "$(vm_test_dir)"
+	@$(foreach suite,$(SUITES),$(vm_build_$(suite)))
+	@printf '%s\n' $(SUITES) >"$(vm_test_dir)/queue"
+	@$(vm_all) reset
+	@$(vm_all) test "$(vm_test_dir)"
 
 # One Playwright worker for each VM: a worker takes the next spec file and
 # keeps to its own VM, which the three lists name in the same order.
@@ -162,7 +169,7 @@ cd "$(frontend_dir)" && \
   ./node_modules/.bin/playwright test --config config/playwright.vm.config.ts $(PLAYWRIGHT_ARGS)
 endef
 
-test-vm-browser: ensure-node setup-frontend ## Run the Playwright specs in frontend/src/test/vm against the test VMs as they are
+test-vm-browser: ensure-node setup-frontend ## Rerun the browser specs against the test VMs as they are, without reverting or installing (test-vm does both)
 	@set -e
 	@$(vm_lock)
 	@trap '$(vm_stop_all)' EXIT
