@@ -172,6 +172,12 @@ Only one VM target runs at a time. A second one is refused while the first
 holds `~/.cache/linuxio-vm/lock`, since it would revert, reboot or stop a VM
 under it. `make vm-ssh VM_KEEP=1` is not held back: it stops nothing.
 
+The full runs are long: the browser specs take 15 minutes on three VMs and
+42 on one, the root suites about 4 on three, and either holds the lock, so
+no other VM target can run meanwhile. An agent therefore runs only the suite
+(`SUITES=...`) or the spec file (`PLAYWRIGHT_ARGS=...`) its change needs and
+leaves the full runs to the owner (`AGENTS.md`).
+
 `VM_RELEASE=noble` on a `vm-*` target selects a second VM on Ubuntu 24.04
 (kernel 6.8): the domain `linuxio-e2e-noble`, its `linuxio-e2e-noble-*`
 volumes and `~/.cache/linuxio-vm-noble`, beside the first one. It is there for
