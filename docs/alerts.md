@@ -226,8 +226,9 @@ which setting governs it. Every raise is then delivered as the
 
 Later sources follow the same shape: a root process that already knows the
 outcome calls `alerts.Raise` or `alerts.Resolve`, or a unit drop-in runs
-`linuxio-worker alert raise`. Storage checks (capacity, SMART, degraded pools) would
-be a oneshot timer; they are out of this slice.
+`linuxio-worker alert raise`. Checks of a condition nothing reports by itself
+(swap, a full filesystem, SMART, a failed service) are planned as one word of
+`linuxio-worker` on a timer: [Watched conditions](./TODO/watched-conditions.md).
 
 ### Limits
 
@@ -500,5 +501,6 @@ says once what happened while the user was away:
   a line for the file indexer.
 - Matchers, digests, push services other than webhooks.
 - `alerts.restore`, `alerts.mark_unseen`, resolved history.
-- Storage, unit-failure, and release-check sources.
+- Storage, unit-failure, and release-check sources: planned in
+  [Watched conditions](./TODO/watched-conditions.md).
 - Alerts raised by unprivileged sessions or a user's job host.

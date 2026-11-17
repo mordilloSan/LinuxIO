@@ -7,8 +7,8 @@ Plans for things that are not built yet each have their own document:
 
 - [Docker: wait for published host IPs](./docker-wait-host-ips.md)
 - [Frontend test coverage](./e2e-testing.md)
-- [Memory overflow: the overflow alert](./memory-overflow.md)
 - [Package-managed installation](./packaging.md)
+- [Watched conditions: checks that raise alerts on a schedule](./watched-conditions.md)
 
 ## Dependency maintenance
 
