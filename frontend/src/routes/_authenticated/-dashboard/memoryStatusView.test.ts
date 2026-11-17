@@ -16,7 +16,17 @@ import {
   needsSwapFileConfirm,
   presetSwappiness,
   rowViews,
+  swapFileNote,
 } from "./memoryStatusView";
+
+/** A swap file in a folder users other than root can change. */
+const openSwapFile = (active: boolean) =>
+  swapFile({
+    active,
+    managed: false,
+    path: "/home/ana/swapfile",
+    unmanaged_reason: "others_can_write",
+  });
 
 const GIB = 1024 ** 3;
 
@@ -124,6 +134,10 @@ describe("bannerView", () => {
     [
       "unit_masked",
       "This swap device is switched off for the next start, so LinuxIO will not empty it",
+    ],
+    [
+      "others_can_write",
+      "This swap device is in a folder that users other than root can change, so LinuxIO will not empty it",
     ],
     ["something_new", undefined],
   ] as const)("explains a blocked drain for %s", (code, reason) => {
@@ -254,6 +268,39 @@ describe("rowViews", () => {
     expect(rows[1].disabledReason).toBeUndefined();
   });
 
+  it("disables zswap and disk when the only swap file is one LinuxIO will not turn on", () => {
+    const rows = rowViews(swapStatus({ swap_file: openSwapFile(false) }));
+    const reason =
+      "LinuxIO will not turn on the swap file: users other than root can change its folder";
+    expect(rows[0].disabledReason).toBe(reason);
+    expect(rows[2].disabledReason).toBe(reason);
+    expect(rows[1].disabledReason).toBeUndefined();
+  });
+
+  it("keeps zswap and disk while another swap file is on", () => {
+    const rows = rowViews(
+      swapStatus({
+        devices: [{ ...swapFileDevice(0), path: "/swap2" }],
+        mode: "disk",
+        swap_file: openSwapFile(false),
+      }),
+    );
+    expect(rows[0].disabledReason).toBeUndefined();
+    expect(rows[2].disabledReason).toBeUndefined();
+  });
+
+  it("keeps zswap and disk while such a swap file is on", () => {
+    const rows = rowViews(
+      swapStatus({
+        devices: [swapFileDevice(0)],
+        mode: "disk",
+        swap_file: openSwapFile(true),
+      }),
+    );
+    expect(rows[0].disabledReason).toBeUndefined();
+    expect(rows[2].disabledReason).toBeUndefined();
+  });
+
   it("enables zswap and disk for an active swap partition", () => {
     const rows = rowViews(
       swapStatus({
@@ -308,6 +355,55 @@ describe("rowViews", () => {
     );
     expect(rows[2].caution).toBe(
       "Blocks snapshots of the system drive while in use.",
+    );
+  });
+});
+
+describe("swapFileNote", () => {
+  it("says nothing without a swap file or about one LinuxIO manages", () => {
+    expect(swapFileNote(swapStatus())).toBeUndefined();
+    expect(swapFileNote(swapStatus({ swap_file: swapFile() }))).toBeUndefined();
+  });
+
+  it("says a swap file in a folder others can change is left on, and what to do", () => {
+    expect(swapFileNote(swapStatus({ swap_file: openSwapFile(true) }))).toBe(
+      "LinuxIO does not manage the swap file /home/ana/swapfile: users other than root can change a folder on its path. LinuxIO will not turn it off or empty it, whatever is chosen here. Move it to a folder only root can write.",
+    );
+  });
+
+  it("says LinuxIO will not turn such a swap file on", () => {
+    expect(swapFileNote(swapStatus({ swap_file: openSwapFile(false) }))).toBe(
+      "LinuxIO does not manage the swap file /home/ana/swapfile: users other than root can change a folder on its path. LinuxIO will not turn it on, whatever is chosen here. Move it to a folder only root can write.",
+    );
+  });
+
+  it("says a swap file fstab does not name is left on", () => {
+    expect(
+      swapFileNote(
+        swapStatus({
+          swap_file: swapFile({
+            managed: false,
+            unmanaged_reason: "not_in_fstab",
+          }),
+        }),
+      ),
+    ).toBe(
+      "LinuxIO does not manage the swap file /swap.img: /etc/fstab does not name it. LinuxIO will not turn it off or empty it, whatever is chosen here.",
+    );
+  });
+
+  it("gives no cause for a reason it does not know", () => {
+    expect(
+      swapFileNote(
+        swapStatus({
+          swap_file: swapFile({
+            managed: false,
+            unmanaged_reason: "something_new" as never,
+          }),
+        }),
+      ),
+    ).toBe(
+      "LinuxIO does not manage the swap file /swap.img. LinuxIO will not turn it off or empty it, whatever is chosen here.",
     );
   });
 });

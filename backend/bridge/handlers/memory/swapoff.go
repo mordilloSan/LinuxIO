@@ -42,6 +42,9 @@ func swapOff(ctx context.Context, path string) error {
 		return fmt.Errorf("%q is not the absolute path of a swap device", path)
 	}
 	if err := rootOnlyPath(path); err != nil {
+		if errors.Is(err, errOthersCanRedirect) {
+			return fmt.Errorf("%w: %s is left swapping, since swapoff could take another device away: %w", bridgeipc.ErrConflict, path, err)
+		}
 		return err
 	}
 	name, err := hostcmd.LookPath(swapoffCommand)
@@ -76,7 +79,8 @@ func rootOnlyPath(path string) error {
 }
 
 // foldersOnlyOf is rootOnlyPath for the folders from base down to the one
-// path sits in, with uid as their owner.
+// path sits in, with uid as their owner. Its refusal is
+// errOthersCanRedirect with the folder that fails.
 func foldersOnlyOf(uid uint32, base, path string) error {
 	rel, err := filepath.Rel(base, filepath.Dir(path))
 	if err != nil || rel == ".." || strings.HasPrefix(rel, "../") {
@@ -98,7 +102,7 @@ func foldersOnlyOf(uid uint32, base, path string) error {
 		}
 		st, ok := info.Sys().(*syscall.Stat_t)
 		if !info.IsDir() || !ok || st.Uid != uid || info.Mode().Perm()&0o022 != 0 {
-			return fmt.Errorf("%w: %s is left swapping: %w (%s), so swapoff could take another device away", bridgeipc.ErrConflict, path, errOthersCanRedirect, dir)
+			return fmt.Errorf("%w (%s)", errOthersCanRedirect, dir)
 		}
 	}
 	return nil

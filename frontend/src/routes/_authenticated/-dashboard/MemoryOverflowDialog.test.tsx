@@ -378,6 +378,35 @@ describe("MemoryOverflowDialog banner", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("says up front that it leaves a swap file in a folder others can change", async () => {
+    await renderSection(
+      diskStatus({
+        can_drain: false,
+        devices: [swapFileDevice(GIB)],
+        drain_blocked_reason: "others_can_write",
+        swap_file: swapFile({
+          managed: false,
+          path: "/home/ana/swapfile",
+          unmanaged_reason: "others_can_write",
+        }),
+      }),
+    );
+
+    expect(
+      screen.getByText(
+        /LinuxIO does not manage the swap file \/home\/ana\/swapfile/,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Bring back to memory" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByText(
+        "This swap device is in a folder that users other than root can change, so LinuxIO will not empty it",
+      ),
+    ).toBeVisible();
+  });
+
   it("says memory is fine when nothing is parked", async () => {
     await renderSection(swapStatus());
 

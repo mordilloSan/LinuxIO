@@ -31,6 +31,7 @@ export const swapFile = (overrides: Partial<SwapFile> = {}): SwapFile => ({
   fs_type: "ext4",
   managed: true,
   path: "/swap.img",
+  unmanaged_reason: "",
   ...overrides,
 });
 

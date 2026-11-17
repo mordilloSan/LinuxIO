@@ -40,9 +40,12 @@ const (
 )
 
 // hostRoot is the directory the host's /proc, /sys and /etc are found under:
-// "/" on the host, a fixture tree in tests.
+// "/" on the host, a fixture tree in tests. owner is the user who alone may
+// change the folders on a managed swap file's path: root on the host, the
+// user running the tests in a fixture tree.
 type hostRoot struct {
-	root string
+	root  string
+	owner uint32
 }
 
 var host = hostRoot{root: "/"}

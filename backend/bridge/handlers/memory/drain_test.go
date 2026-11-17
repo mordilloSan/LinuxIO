@@ -315,3 +315,47 @@ func TestDrainSwapDrainsADeviceWhateverItsUnitReads(t *testing.T) {
 		t.Fatalf("swaps = %q, want both devices back", swaps)
 	}
 }
+
+// openDrainHost is drainHost with the swap file in a folder users other than
+// root can change, holding data.
+func openDrainHost(t *testing.T, swaps string) (fixture, *fakeSystem) {
+	t.Helper()
+	f, sys := drainHost(t)
+	f.write(etcFstab, "/home/open/swapfile none swap sw 0 0\nUUID=7e8f none swap sw 0 0\n")
+	f.othersCanWrite("/home/open")
+	f.write("/home/open/swapfile", "")
+	f.write(procSwaps, swapsHeader+swaps)
+	return f, sys
+}
+
+// Data parked only in a swap file others can redirect is not drained, and
+// both the status and the refusal say why.
+func TestDrainSwapRefusesASwapFileOthersCanRedirect(t *testing.T) {
+	f, sys := openDrainHost(t, openSwapsLine)
+
+	_, err := sys.executor(nil).drainSwap(t.Context())
+
+	if !errors.Is(err, bridgeipc.ErrConflict) || len(sys.calls) != 0 {
+		t.Fatalf("err = %v, calls = %v; want a conflict and no change", err, sys.calls)
+	}
+	if want := drainRefusal(apischema.SwapDrainOthersCanWrite); !strings.Contains(err.Error(), want) {
+		t.Errorf("err = %v, want it to say %q", err, want)
+	}
+	status, err := f.host().readSwapStatus(apischema.ZramProviderTools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.DrainBlockedReason != apischema.SwapDrainOthersCanWrite {
+		t.Errorf("drain blocked reason = %q, want others_can_write", status.DrainBlockedReason)
+	}
+}
+
+// Beside a partition that holds data, such a file is left untouched.
+func TestDrainSwapLeavesASwapFileOthersCanRedirectAlone(t *testing.T) {
+	_, sys := openDrainHost(t, openSwapsLine+partitionSwapsLine)
+
+	if _, err := sys.executor(nil).drainSwap(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	assertCalls(t, sys.calls, []string{"swapoff /dev/sda3", "start " + partitionUnit})
+}

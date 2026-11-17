@@ -34,6 +34,8 @@ export interface BannerView {
 }
 
 const NEEDS_SWAP_FILE = "Needs a swap file on the system drive";
+const SWAP_FILE_NOT_STARTED =
+  "LinuxIO will not turn on the swap file: users other than root can change its folder";
 
 export const ROW_MODES: readonly RowMode[] = ["zswap", "zram", "disk"];
 
@@ -51,6 +53,8 @@ const DRAIN_BLOCKED_TEXT: Partial<Record<SwapDrainBlockedReason, string>> = {
   not_enough_memory: "Not enough free memory right now",
   unit_masked:
     "This swap device is switched off for the next start, so LinuxIO will not empty it",
+  others_can_write:
+    "This swap device is in a folder that users other than root can change, so LinuxIO will not empty it",
   unmanaged_device:
     "This swap device is not in /etc/fstab, so LinuxIO cannot restart it",
 };
@@ -65,9 +69,39 @@ const parkedBytes = (status: SwapStatus) =>
 const canChooseZram = (status: SwapStatus) =>
   status.zram_unavailable_reason === "";
 
+/**
+ * Disk swap a mode can count on, as the backend's plan counts it: a swap file
+ * LinuxIO can turn on, or an active swap file or partition.
+ */
 const hasDiskSwap = (status: SwapStatus) =>
-  status.swap_file !== undefined ||
-  status.devices.some((device) => device.kind === "partition");
+  status.swap_file?.managed === true ||
+  status.devices.some((device) => device.kind !== "zram");
+
+const UNMANAGED_CAUSE: Partial<
+  Record<NonNullable<SwapStatus["swap_file"]>["unmanaged_reason"], string>
+> = {
+  not_in_fstab: ": /etc/fstab does not name it.",
+  others_can_write: ": users other than root can change a folder on its path.",
+};
+
+/**
+ * Why LinuxIO leaves the swap file as it is, said before anything is asked of
+ * it; undefined for a swap file it manages. A reason it does not know gets no
+ * cause.
+ */
+export function swapFileNote(status: SwapStatus): string | undefined {
+  const file = status.swap_file;
+  if (!file || file.unmanaged_reason === "") return undefined;
+  const cause = UNMANAGED_CAUSE[file.unmanaged_reason] ?? ".";
+  const left = file.active
+    ? "LinuxIO will not turn it off or empty it, whatever is chosen here."
+    : "LinuxIO will not turn it on, whatever is chosen here.";
+  const remedy =
+    file.unmanaged_reason === "others_can_write"
+      ? " Move it to a folder only root can write."
+      : "";
+  return `LinuxIO does not manage the swap file ${file.path}${cause} ${left}${remedy}`;
+}
 
 export function bannerView(status: SwapStatus): BannerView {
   if (status.mode === "none") {
@@ -132,9 +166,13 @@ export function rowViews(status: SwapStatus): RowView[] {
     zramDisabled =
       "A swap partition is active. LinuxIO only manages swap files.";
   }
+  const needsSwapFile =
+    status.swap_file?.unmanaged_reason === "others_can_write"
+      ? SWAP_FILE_NOT_STARTED
+      : NEEDS_SWAP_FILE;
   let zswapDisabled: string | undefined;
   if (!diskSwap) {
-    zswapDisabled = NEEDS_SWAP_FILE;
+    zswapDisabled = needsSwapFile;
   } else if (!status.zswap.available) {
     zswapDisabled = "This kernel has no zswap";
   }
@@ -170,7 +208,7 @@ export function rowViews(status: SwapStatus): RowView[] {
       caution: "Blocks snapshots of the system drive while in use.",
       description:
         "Rarely used data goes straight to the swap file on the system drive. Slowest.",
-      disabledReason: diskSwap ? undefined : NEEDS_SWAP_FILE,
+      disabledReason: diskSwap ? undefined : needsSwapFile,
       technical: "swap file",
     },
   ];

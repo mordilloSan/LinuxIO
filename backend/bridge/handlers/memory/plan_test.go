@@ -224,3 +224,42 @@ func TestPlanSwapModeRefusals(t *testing.T) {
 		})
 	}
 }
+
+// openPlanView is planView with the swap file in a folder users other than
+// root can change.
+func openPlanView(mode apischema.SwapMode) swapView {
+	view := planView(mode)
+	view.fstab[0].othersCanWrite = true
+	return view
+}
+
+// A swap file others can redirect is not managed: no step stops or starts
+// it.
+func TestPlanSwapModeLeavesASwapFileOthersCanRedirectAlone(t *testing.T) {
+	for _, test := range []struct{ from, to apischema.SwapMode }{
+		{apischema.SwapModeDisk, apischema.SwapModeZram},
+		{apischema.SwapModeDisk, apischema.SwapModeZswap},
+		{apischema.SwapModeMixed, apischema.SwapModeDisk},
+	} {
+		got, err := planSwapMode(openPlanView(test.from), test.to)
+		if err != nil {
+			t.Fatalf("%s to %s: %v", test.from, test.to, err)
+		}
+		if slices.ContainsFunc(got, func(s swapStep) bool {
+			return s.code == apischema.SwapStepStopSwapFile || s.code == apischema.SwapStepStartSwapFile
+		}) {
+			t.Errorf("%s to %s: steps = %+v, want no swap file step", test.from, test.to, got)
+		}
+	}
+}
+
+// A mode that needs disk swap is refused when the only disk swap is such a
+// file and it is off, and the refusal says why it is not started.
+func TestPlanSwapModeRefusesToStartASwapFileOthersCanRedirect(t *testing.T) {
+	for _, target := range []apischema.SwapMode{apischema.SwapModeDisk, apischema.SwapModeZswap} {
+		got, err := planSwapMode(openPlanView(apischema.SwapModeZram), target)
+		if !errors.Is(err, bridgeipc.ErrConflict) || !errors.Is(err, errOthersCanRedirect) {
+			t.Errorf("%s: plan = %+v, err = %v; want a conflict that names the folder rule", target, got, err)
+		}
+	}
+}

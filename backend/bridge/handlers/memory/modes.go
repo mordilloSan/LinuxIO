@@ -131,15 +131,16 @@ func deriveMode(devices []apischema.SwapDevice, zswapEnabled bool) apischema.Swa
 // recommendMode picks the mode for the host, first match wins: zram without a
 // swap file, or with one on an SD card, eMMC or removable drive (which
 // swapping wears out) or on btrfs (where it blocks snapshots), and zswap for
-// a swap file anywhere else. An active swap partition rules zram out, since
-// this feature never stops a partition, so such a host gets zswap. A kernel
-// without zswap never gets it recommended: disk beside a partition, zram
-// otherwise.
-func recommendMode(swapFile *apischema.SwapFile, partitionActive, zswapAvailable bool) apischema.SwapMode {
+// a swap file anywhere else. Disk swap that stays whatever is chosen rules
+// zram out (diskSwapStays): this feature never stops a swap partition, nor
+// an active swap file it does not manage, so such a host gets zswap. A
+// kernel without zswap never gets it recommended: disk beside such swap,
+// zram otherwise.
+func recommendMode(swapFile *apischema.SwapFile, diskSwapStays, zswapAvailable bool) apischema.SwapMode {
 	switch {
-	case partitionActive && zswapAvailable:
+	case diskSwapStays && zswapAvailable:
 		return apischema.SwapModeZswap
-	case partitionActive:
+	case diskSwapStays:
 		return apischema.SwapModeDisk
 	case swapFile == nil:
 		return apischema.SwapModeZram
@@ -199,13 +200,17 @@ func zramFits(status apischema.SwapStatus) bool {
 
 // drainBlockedReason says why the data parked on disk swap cannot be brought
 // back into memory now, or is empty when it can. diskUsed is the data on
-// every disk swap device, managedUsed the share on the devices fstab names,
-// which are the only ones a drain stops and starts again; unitMasked is set
-// when one of those devices holding data has a masked unit.
-func drainBlockedReason(diskUsed, managedUsed, memAvailable uint64, unitMasked bool) apischema.SwapDrainBlockedReason {
+// every disk swap device, managedUsed the share on the devices LinuxIO
+// manages, which are the only ones a drain stops and starts again;
+// leftOutUsed is set when a device left out because others can redirect it
+// holds data, and unitMasked when a managed device holding data has a
+// masked unit.
+func drainBlockedReason(diskUsed, managedUsed, memAvailable uint64, leftOutUsed, unitMasked bool) apischema.SwapDrainBlockedReason {
 	switch {
 	case diskUsed == 0:
 		return apischema.SwapDrainNothingParked
+	case managedUsed == 0 && leftOutUsed:
+		return apischema.SwapDrainOthersCanWrite
 	case managedUsed == 0:
 		return apischema.SwapDrainUnmanagedDevice
 	case unitMasked:

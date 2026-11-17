@@ -309,6 +309,46 @@ func TestSetSwapModeToZramLeavesASwapFileOthersCanRedirect(t *testing.T) {
 	}
 }
 
+// A swap file the status reports as not managed, since others can change
+// its folder, gets no step: zram is set up beside it and the result says
+// why the file was left.
+func TestSetSwapModeToZramLeavesASwapFileItDoesNotManage(t *testing.T) {
+	f, sys := diskHost(t)
+	f.write(etcFstab, "/home/open/swapfile none swap sw 0 0\n")
+	f.othersCanWrite("/home/open")
+	f.write("/home/open/swapfile", "")
+	f.write(procSwaps, swapsHeader+openSwapsLine)
+
+	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeZram)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Mode != apischema.SwapModeMixed {
+		t.Errorf("mode = %q, want mixed", got.Mode)
+	}
+	assertLeft(t, got.Left, apischema.SwapLeft{What: apischema.SwapLeftSwapFile, Reason: apischema.SwapLeftOthersCanWrite})
+	if slices.ContainsFunc(sys.calls, func(call string) bool { return strings.HasPrefix(call, "swapoff") || strings.HasPrefix(call, "mask") }) {
+		t.Fatalf("calls = %v, want the swap file left alone", sys.calls)
+	}
+}
+
+// The reason names the file that stays: when the fstab file others can
+// redirect is off and another swap file swaps on, that one is not managed.
+func TestSetSwapModeToZramExplainsTheSwapFileThatStays(t *testing.T) {
+	f, sys := diskHost(t)
+	f.write(etcFstab, "/home/open/swapfile none swap sw 0 0\n")
+	f.othersCanWrite("/home/open")
+	f.write("/home/open/swapfile", "")
+	f.write("/home/extra", "")
+	f.write(procSwaps, swapsHeader+unmanagedSwapsLine)
+
+	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeZram)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertLeft(t, got.Left, apischema.SwapLeft{What: apischema.SwapLeftSwapFile, Reason: apischema.SwapLeftNotManaged})
+}
+
 // The room is read just before the swap file stops, not when the request
 // arrived: memory taken while zram starts counts.
 func TestSetSwapModeChecksRoomOnFreshStatus(t *testing.T) {

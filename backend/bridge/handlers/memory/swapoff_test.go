@@ -101,8 +101,8 @@ func TestSwapOffRefusesAPathOthersCanRedirect(t *testing.T) {
 	}
 
 	err := swapOff(t.Context(), filepath.Join(shared, "swap.img"))
-	if !errors.Is(err, bridgeipc.ErrConflict) || !errors.Is(err, errOthersCanRedirect) {
-		t.Errorf("err = %v, want a conflict that says others can redirect the path", err)
+	if !errors.Is(err, bridgeipc.ErrConflict) || !errors.Is(err, errOthersCanRedirect) || !strings.Contains(err.Error(), "is left swapping") {
+		t.Errorf("err = %v, want a conflict that says the device is left swapping and why", err)
 	}
 	if _, err := os.Stat(ran); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("swapoff ran (%v), want it never started", err)
@@ -179,8 +179,8 @@ func TestFoldersOnlyOf(t *testing.T) {
 				}
 				return
 			}
-			if !errors.Is(err, errOthersCanRedirect) || !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), "("+tc.refused+")") {
-				t.Fatalf("err = %v, want a conflict that names %s", err, tc.refused)
+			if !errors.Is(err, errOthersCanRedirect) || errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), "("+tc.refused+")") {
+				t.Fatalf("err = %v, want only the folder rule, naming %s", err, tc.refused)
 			}
 		})
 	}

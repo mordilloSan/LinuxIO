@@ -16,9 +16,15 @@ type fixture struct {
 	root string
 }
 
+// newFixture makes the root a folder only its owner can write, as "/" is,
+// whatever the umask gave the temporary directory.
 func newFixture(t *testing.T) fixture {
 	t.Helper()
-	return fixture{t: t, root: t.TempDir()}
+	root := t.TempDir()
+	if err := os.Chmod(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return fixture{t: t, root: root}
 }
 
 func (f fixture) write(name, content string) {
@@ -39,7 +45,17 @@ func (f fixture) mkdir(name string) {
 	}
 }
 
-func (f fixture) host() hostRoot { return hostRoot{root: f.root} }
+func (f fixture) host() hostRoot { return hostRoot{root: f.root, owner: uint32(os.Getuid())} }
+
+// othersCanWrite makes the folder name one that users other than its owner
+// can change.
+func (f fixture) othersCanWrite(name string) {
+	f.t.Helper()
+	f.mkdir(name)
+	if err := os.Chmod(filepath.Join(f.root, name), 0o777); err != nil {
+		f.t.Fatal(err)
+	}
+}
 
 const (
 	kib = 1 << 10

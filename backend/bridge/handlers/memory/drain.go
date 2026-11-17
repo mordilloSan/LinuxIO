@@ -61,21 +61,34 @@ func (e *executor) drainSwap(ctx context.Context) (apischema.SwapStatus, error) 
 	return e.sys.status(ctx)
 }
 
-// drainTargets are the fstab entries active as a disk swap device that
-// holds data, in fstab order.
+// drainTargets are the managed fstab entries active as a disk swap device
+// that holds data, in fstab order.
 func drainTargets(view swapView) []fstabSwap {
 	return holdingData(view.fstab, view.status.Devices)
 }
 
-// holdingData returns the fstab entries active as a device that holds data.
+// holdsData reports whether the fstab entry is active as a device that
+// holds data.
+func holdsData(entry fstabSwap, devices []apischema.SwapDevice) bool {
+	return slices.ContainsFunc(devices, func(d apischema.SwapDevice) bool { return d.Path == entry.device && d.Used > 0 })
+}
+
+// holdingData returns the fstab entries a drain stops and starts: those
+// active as a device that holds data, less the ones others can redirect.
 func holdingData(fstab []fstabSwap, devices []apischema.SwapDevice) []fstabSwap {
 	var entries []fstabSwap
 	for _, entry := range fstab {
-		if slices.ContainsFunc(devices, func(d apischema.SwapDevice) bool { return d.Path == entry.device && d.Used > 0 }) {
+		if !entry.othersCanWrite && holdsData(entry, devices) {
 			entries = append(entries, entry)
 		}
 	}
 	return entries
+}
+
+// leftOutHoldsData reports whether an entry a drain leaves out, since
+// others can redirect it, holds data.
+func leftOutHoldsData(fstab []fstabSwap, devices []apischema.SwapDevice) bool {
+	return slices.ContainsFunc(fstab, func(e fstabSwap) bool { return e.othersCanWrite && holdsData(e, devices) })
 }
 
 // drainDevice takes one device away with swapoff when its data fits in
@@ -139,6 +152,8 @@ func drainRefusal(reason apischema.SwapDrainBlockedReason) string {
 		return "the parked data is on swap devices /etc/fstab does not name, which could not be started again"
 	case apischema.SwapDrainUnitMasked:
 		return "a swap device holding parked data has a masked unit, so it could not be started again"
+	case apischema.SwapDrainOthersCanWrite:
+		return "the parked data is on swap LinuxIO does not manage: " + errOthersCanRedirect.Error()
 	default:
 		return "drain is blocked: " + string(reason)
 	}

@@ -44,6 +44,7 @@ import {
   presetSwappiness,
   rowName,
   rowViews,
+  swapFileNote,
   type BannerAction,
   type RowMode,
   type RowView,
@@ -412,6 +413,7 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
   const choice = selected ?? initialSelection(status);
   const rows = rowViews(status);
   const banner = bannerView(status);
+  const fileNote = swapFileNote(status);
 
   // Turning zram on while the swap file is active also stops the file, so it
   // asks first, as a second step of this dialog; every other change applies
@@ -500,6 +502,8 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
               </div>
             ) : null}
           </AppAlert>
+
+          {fileNote ? <AppAlert severity="warning">{fileNote}</AppAlert> : null}
 
           <div className="memory-overflow__group">
             <span className="memory-overflow__name" id={groupLabelId}>

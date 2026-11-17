@@ -133,7 +133,7 @@ func TestReadSwapStatusFallsBackToTheActiveSwapFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	// fstab does not name it, so it has no unit LinuxIO could stop.
-	wantFile := apischema.SwapFile{Path: "/home/swapfile", Active: true, FSType: "ext4", Managed: false}
+	wantFile := apischema.SwapFile{Path: "/home/swapfile", Active: true, FSType: "ext4", UnmanagedReason: apischema.SwapFileNotInFstab}
 	if got.SwapFile == nil || *got.SwapFile != wantFile {
 		t.Errorf("swap file = %+v, want %+v", got.SwapFile, wantFile)
 	}
@@ -236,5 +236,114 @@ func TestReadSwapStatusReportsAMaskedDrainUnit(t *testing.T) {
 				t.Fatalf("can drain = %v, reason = %q; want reason %q", got.CanDrain, got.DrainBlockedReason, test.want)
 			}
 		})
+	}
+}
+
+const openSwapsLine = "/home/open/swapfile                      file\t\t1048572\t\t131072\t\t-2\n"
+
+// openSwapFileHost has fstab name a swap file in a folder everyone can
+// write.
+func openSwapFileHost(t *testing.T, swaps string) fixture {
+	t.Helper()
+	f := newFixture(t)
+	f.write("/proc/swaps", swapsHeader+swaps)
+	f.write("/proc/meminfo", meminfoText)
+	f.write("/proc/self/mountinfo", mountinfoText)
+	f.write("/etc/fstab", "/home/open/swapfile none swap sw 0 0\n")
+	f.othersCanWrite("/home/open")
+	f.write("/home/open/swapfile", "")
+	f.write("/sys/module/zswap/parameters/enabled", "N\n")
+	f.write("/sys/module/zswap/parameters/compressor", "lzo\n")
+	f.write("/sys/module/zswap/parameters/max_pool_percent", "20\n")
+	return f
+}
+
+// A swap file in a folder users other than root can change is reported, and
+// reported as not managed with the reason, before anything is asked of it.
+func TestReadSwapStatusOfASwapFileOthersCanRedirect(t *testing.T) {
+	f := openSwapFileHost(t, openSwapsLine)
+
+	got, err := f.host().readSwapStatus(apischema.ZramProviderTools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantFile := apischema.SwapFile{Path: "/home/open/swapfile", Active: true, FSType: "ext4", UnmanagedReason: apischema.SwapFileOthersCanWrite}
+	if got.SwapFile == nil || *got.SwapFile != wantFile {
+		t.Errorf("swap file = %+v, want %+v", got.SwapFile, wantFile)
+	}
+	if got.CanDrain || got.DrainBlockedReason != apischema.SwapDrainOthersCanWrite {
+		t.Errorf("can drain = %v, reason = %q; want false, others_can_write", got.CanDrain, got.DrainBlockedReason)
+	}
+}
+
+// Such a file that is off cannot be started from here, so no mode that needs
+// it is recommended.
+func TestReadSwapStatusDoesNotCountASwapFileItWouldNotStart(t *testing.T) {
+	f := openSwapFileHost(t, "")
+
+	got, err := f.host().readSwapStatus(apischema.ZramProviderTools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantFile := apischema.SwapFile{Path: "/home/open/swapfile", FSType: "ext4", UnmanagedReason: apischema.SwapFileOthersCanWrite}
+	if got.SwapFile == nil || *got.SwapFile != wantFile {
+		t.Errorf("swap file = %+v, want %+v", got.SwapFile, wantFile)
+	}
+	if got.RecommendedMode != apischema.SwapModeZram {
+		t.Errorf("recommended = %q, want zram", got.RecommendedMode)
+	}
+}
+
+// Beside such a file that is off, another swap file that is on is the disk
+// swap the recommendation goes by: here ext4, where the fstab file's btrfs
+// would have called for zram.
+func TestReadSwapStatusRecommendsByAnActiveSwapFile(t *testing.T) {
+	f := newFixture(t)
+	f.write("/proc/swaps", swapsHeader+"/home/other                             file\t\t1048572\t\t0\t\t-2\n")
+	f.write("/proc/meminfo", meminfoText)
+	f.write("/proc/self/mountinfo", mountinfoText)
+	f.write("/etc/fstab", "/srv/open/swapfile none swap sw 0 0\n")
+	f.othersCanWrite("/srv/open")
+	f.write("/srv/open/swapfile", "")
+	f.write("/home/other", "")
+	f.write("/sys/module/zswap/parameters/enabled", "N\n")
+	f.write("/sys/module/zswap/parameters/compressor", "lzo\n")
+	f.write("/sys/module/zswap/parameters/max_pool_percent", "20\n")
+
+	got, err := f.host().readSwapStatus(apischema.ZramProviderTools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SwapFile == nil || got.SwapFile.Path != "/srv/open/swapfile" || got.SwapFile.Active || got.SwapFile.FSType != "btrfs" {
+		t.Errorf("swap file = %+v, want the fstab file on btrfs, off", got.SwapFile)
+	}
+	if got.RecommendedMode != apischema.SwapModeZswap {
+		t.Errorf("recommended = %q, want zswap", got.RecommendedMode)
+	}
+}
+
+// A swap file that is on and not managed stays on whatever is chosen, so
+// zram alone is not recommended, as beside a swap partition.
+func TestReadSwapStatusDoesNotRecommendZramBesideASwapFileThatStays(t *testing.T) {
+	f := newFixture(t)
+	f.write("/proc/swaps", swapsHeader+"/srv/open/swapfile                      file\t\t1048572\t\t0\t\t-2\n")
+	f.write("/proc/meminfo", meminfoText)
+	f.write("/proc/self/mountinfo", mountinfoText)
+	f.write("/etc/fstab", "/srv/open/swapfile none swap sw 0 0\n")
+	f.othersCanWrite("/srv/open")
+	f.write("/srv/open/swapfile", "")
+	f.write("/sys/module/zswap/parameters/enabled", "N\n")
+	f.write("/sys/module/zswap/parameters/compressor", "lzo\n")
+	f.write("/sys/module/zswap/parameters/max_pool_percent", "20\n")
+
+	got, err := f.host().readSwapStatus(apischema.ZramProviderTools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.SwapFile == nil || got.SwapFile.FSType != "btrfs" || got.SwapFile.Managed {
+		t.Errorf("swap file = %+v, want one on btrfs that is not managed", got.SwapFile)
+	}
+	if got.RecommendedMode != apischema.SwapModeZswap {
+		t.Errorf("recommended = %q, want zswap", got.RecommendedMode)
 	}
 }

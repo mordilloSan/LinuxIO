@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -14,11 +15,14 @@ import (
 
 // fstabSwap is a swap entry of /etc/fstab: the node systemd swaps on, the
 // unit systemd-fstab-generator makes for it, and the /proc/swaps path of the
-// active device it is, if any.
+// active device it is, if any. othersCanWrite is set on an entry that
+// someone other than root can put another entry at the path of, which
+// LinuxIO does not manage.
 type fstabSwap struct {
-	path   string
-	unit   string
-	device string
+	path           string
+	unit           string
+	device         string
+	othersCanWrite bool
 }
 
 // fstabTagDirs maps the fstab source tags to the udev link directories
@@ -89,6 +93,15 @@ const maxSymlinks = 40
 // the root as "/", an absolute link target included, and returns the path
 // it reaches, which must exist.
 func (h hostRoot) resolve(name string) (string, error) {
+	resolved, _, err := h.resolveLinks(name)
+	return resolved, err
+}
+
+// resolveLinks is resolve that also returns, in order and including those
+// before it failed, the path of every link it followed and of every folder
+// a link target left by "..": what the path leads to depends on each.
+func (h hostRoot) resolveLinks(name string) (string, []string, error) {
+	var followed []string
 	pending := strings.Split(name, "/")
 	resolved := "/"
 	for links := 0; len(pending) > 0; {
@@ -98,31 +111,33 @@ func (h hostRoot) resolve(name string) (string, error) {
 		case "", ".":
 			continue
 		case "..":
+			followed = append(followed, resolved)
 			resolved = filepath.Dir(resolved)
 			continue
 		}
 		next := filepath.Join(resolved, part)
 		info, err := os.Lstat(h.path(next))
 		if err != nil {
-			return "", err
+			return "", followed, err
 		}
 		if info.Mode()&fs.ModeSymlink == 0 {
 			resolved = next
 			continue
 		}
 		if links++; links > maxSymlinks {
-			return "", fmt.Errorf("resolve %s: too many levels of symbolic links", name)
+			return "", followed, fmt.Errorf("resolve %s: too many levels of symbolic links", name)
 		}
+		followed = append(followed, next)
 		target, err := os.Readlink(h.path(next))
 		if err != nil {
-			return "", err
+			return "", followed, err
 		}
 		if strings.HasPrefix(target, "/") {
 			resolved = "/"
 		}
 		pending = append(strings.Split(target, "/"), pending...)
 	}
-	return resolved, nil
+	return resolved, followed, nil
 }
 
 // sameSwap reports whether an fstab path is the /proc/swaps device: by its
@@ -139,8 +154,9 @@ func (h hostRoot) sameSwap(fstabPath, device string) bool {
 	return err == nil && a == b
 }
 
-// matchFstabSwaps fills in the active device each fstab entry is. A device
-// is matched to the first entry that is it.
+// matchFstabSwaps fills in the active device each fstab entry is, and then
+// whether others can change the entry's path. A device is matched to the
+// first entry that is it.
 func (h hostRoot) matchFstabSwaps(entries []fstabSwap, devices []apischema.SwapDevice) []fstabSwap {
 	taken := map[string]bool{}
 	for i := range entries {
@@ -151,8 +167,40 @@ func (h hostRoot) matchFstabSwaps(entries []fstabSwap, devices []apischema.SwapD
 			entries[i].device, taken[device.Path] = device.Path, true
 			break
 		}
+		entries[i].othersCanWrite = h.othersCanWrite(entries[i])
 	}
 	return entries
+}
+
+// othersCanWrite reports whether someone other than the root's owner can put
+// another entry where an fstab swap entry is looked up: on the path fstab
+// names, which systemd swaps on for a start; at any link followed from it,
+// or at a folder a link target leaves by "..", either of which could be
+// pointed elsewhere after this check whatever it names now; on the path
+// they lead to; or on the /proc/swaps path swapoff is given while the entry
+// is active. LinuxIO does not manage such an entry. Links
+// that lead nowhere cannot be judged and count. A folder the reader may not
+// look into is not judged: a session without sudo reads the status too, and
+// root, which makes the changes, can look into every folder.
+func (h hostRoot) othersCanWrite(entry fstabSwap) bool {
+	real, links, err := h.resolveLinks(entry.path)
+	paths := append([]string{entry.path}, links...)
+	switch {
+	case err == nil:
+		paths = append(paths, real)
+	case errors.Is(err, fs.ErrPermission):
+	case len(links) > 0:
+		return true
+	}
+	if entry.device != "" {
+		paths = append(paths, entry.device)
+	}
+	for _, path := range paths {
+		if err := foldersOnlyOf(h.owner, h.root, h.path(path)); err != nil && !errors.Is(err, fs.ErrPermission) {
+			return true
+		}
+	}
+	return false
 }
 
 // maskDirs are where systemctl mask links a unit to /dev/null: for good,
@@ -171,13 +219,14 @@ func (h hostRoot) unitMasked(unit string) bool {
 	return false
 }
 
-// managedDiskUsed is the data parked on the disk swap devices fstab names,
-// the only ones a drain can stop and start again.
+// managedDiskUsed is the data parked on the disk swap devices LinuxIO
+// manages, the only ones a drain stops and starts again: those fstab names,
+// less one others can redirect.
 func managedDiskUsed(entries []fstabSwap, devices []apischema.SwapDevice) uint64 {
 	var used uint64
 	for _, device := range devices {
 		for _, entry := range entries {
-			if entry.device == device.Path {
+			if entry.device == device.Path && !entry.othersCanWrite {
 				used += device.Used
 				break
 			}

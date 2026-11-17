@@ -20,9 +20,11 @@ type swapStep struct {
 }
 
 // managedSwapFile is the swap file fstab names, the only one with a unit a
-// change can stop, mask or start.
+// change can stop, mask or start. One others can redirect is returned as
+// not managed.
 func (v swapView) managedSwapFile() (fstabSwap, bool) {
-	return fstabSwapFile(v.fstab)
+	file, ok := fstabSwapFile(v.fstab)
+	return file, ok && !file.othersCanWrite
 }
 
 func hasDevice(devices []apischema.SwapDevice, kind apischema.SwapDeviceKind) bool {
@@ -58,6 +60,9 @@ func planSwapMode(v swapView, target apischema.SwapMode) ([]swapStep, error) {
 	// Disk swap the mode can count on: a swap file fstab lets it start, or
 	// an active swap file or partition.
 	if !managed && !hasDevice(v.status.Devices, apischema.SwapDeviceFile) && !hasDevice(v.status.Devices, apischema.SwapDevicePartition) {
+		if file.othersCanWrite {
+			return nil, fmt.Errorf("%w: %s needs the swap file %s, which LinuxIO does not start: %w", bridgeipc.ErrConflict, target, file.path, errOthersCanRedirect)
+		}
 		return nil, fmt.Errorf("%w: %s needs a swap file or an active swap partition", bridgeipc.ErrConflict, target)
 	}
 	if target == apischema.SwapModeZswap && !v.status.Zswap.Available {

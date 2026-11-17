@@ -107,7 +107,12 @@ func (r *modeRun) explainMixed(status apischema.SwapStatus) {
 		return
 	}
 	if r.target == apischema.SwapModeZram && !r.leftHas(apischema.SwapLeftSwapFile) {
-		r.leave(apischema.SwapLeftSwapFile, apischema.SwapLeftNotManaged)
+		reason := apischema.SwapLeftNotManaged
+		// The reported file is the one that stays only when it was swapping.
+		if file := r.before.SwapFile; file != nil && file.Active && file.UnmanagedReason == apischema.SwapFileOthersCanWrite {
+			reason = apischema.SwapLeftOthersCanWrite
+		}
+		r.leave(apischema.SwapLeftSwapFile, reason)
 	}
 	if r.target != apischema.SwapModeZram && !r.leftHas(apischema.SwapLeftZram) {
 		r.leave(apischema.SwapLeftZram, apischema.SwapLeftNotManaged)

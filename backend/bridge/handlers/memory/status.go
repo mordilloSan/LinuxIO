@@ -122,14 +122,32 @@ func (h hostRoot) readSwapStatus(provider apischema.ZramProvider) (apischema.Swa
 		return d.Kind == apischema.SwapDevicePartition
 	})
 	status.Mode = deriveMode(devices, zswap.Enabled)
-	status.RecommendedMode = recommendMode(status.SwapFile, partitionActive, zswap.Available)
+	diskSwapStays := partitionActive || (status.SwapFile != nil && status.SwapFile.Active && !status.SwapFile.Managed)
+	status.RecommendedMode = recommendMode(usableSwapFile(status), diskSwapStays, zswap.Available)
 	status.RecommendedSwappiness = recommendedSwappiness(status.Mode, status.RecommendedMode)
 	status.ZramUnavailableReason = zramUnavailableReason(zramAvailable, partitionActive)
 	status.ZramPlannedSize = zramPlannedSize(mem.memTotal)
 	status.DrainBlockedReason = drainBlockedReason(diskSwapUsed(devices), managedDiskUsed(fstab, devices), mem.memAvailable,
+		leftOutHoldsData(fstab, devices),
 		slices.ContainsFunc(holdingData(fstab, devices), func(e fstabSwap) bool { return h.unitMasked(e.unit) }))
 	status.CanDrain = status.DrainBlockedReason == ""
 	return status, nil
+}
+
+// usableSwapFile is the swap file the recommendation goes by: the one the
+// status reports, unless it is off and not managed, which nothing here can
+// start; then the first active swap file, or none.
+func usableSwapFile(status apischema.SwapStatus) *apischema.SwapFile {
+	file := status.SwapFile
+	if file == nil || file.Active || file.Managed {
+		return file
+	}
+	i := slices.IndexFunc(status.Devices, func(d apischema.SwapDevice) bool { return d.Kind == apischema.SwapDeviceFile })
+	if i < 0 {
+		return nil
+	}
+	device := status.Devices[i]
+	return &apischema.SwapFile{Path: device.Path, Active: true, FSType: device.FSType, DiskHint: device.DiskHint}
 }
 
 // describeSwapFiles fills in the filesystem and disk hint of each swap file.
@@ -145,19 +163,23 @@ func (h hostRoot) describeSwapFiles(devices []apischema.SwapDevice, mounts []mou
 }
 
 // statusSwapFile is the swap file the status reports: the first one fstab
-// names, active when /proc/swaps holds it and managed, since its unit can be
-// stopped, masked and started; or else the first active one, which is not
-// managed. It is nil when there is none.
+// names, active when /proc/swaps holds it, and managed, since its unit can
+// be stopped, masked and started, unless others can change its path; or
+// else the first active one, which is not managed. It is nil when there is
+// none.
 func (h hostRoot) statusSwapFile(fstab []fstabSwap, devices []apischema.SwapDevice, mounts []mountEntry) *apischema.SwapFile {
 	var file apischema.SwapFile
 	if entry, ok := fstabSwapFile(fstab); ok {
-		file.Path, file.Active, file.Managed = entry.path, entry.device != "", true
+		file.Path, file.Active, file.Managed = entry.path, entry.device != "", !entry.othersCanWrite
+		if entry.othersCanWrite {
+			file.UnmanagedReason = apischema.SwapFileOthersCanWrite
+		}
 	} else {
 		i := slices.IndexFunc(devices, func(d apischema.SwapDevice) bool { return d.Kind == apischema.SwapDeviceFile })
 		if i < 0 {
 			return nil
 		}
-		file.Path, file.Active = devices[i].Path, true
+		file.Path, file.Active, file.UnmanagedReason = devices[i].Path, true, apischema.SwapFileNotInFstab
 	}
 	mount, _ := mountHolding(mounts, file.Path)
 	file.FSType, file.DiskHint = mount.fsType, h.diskHint(mount.source)

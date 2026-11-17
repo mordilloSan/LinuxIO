@@ -68,14 +68,15 @@ The backend picks the recommended mode, first match wins (`recommendMode`):
 | Host | Recommended |
 |---|---|
 | A swap partition is active | `zswap`, because this feature never stops a partition and zram cannot be chosen there |
+| A swap file that is not managed is active | `zswap`, because the file stays on whatever is chosen, so zram would end `mixed` |
 | No swap file | `zram` |
 | Swap file on an SD card or eMMC (`mmcblk*` under `/proc/self/mountinfo`) | `zram`, to spare the card |
 | Swap file on a removable drive (`removable` is `1` for the disk under `/sys/class/block`) | `zram`, to spare the drive |
 | Swap file on btrfs | `zram`, because the file blocks snapshots |
 | Anything else | `zswap` |
 
-A kernel without zswap never gets it recommended: `disk` where a swap
-partition is active, `zram` otherwise.
+A kernel without zswap never gets it recommended: `disk` for the first two
+rows, `zram` otherwise.
 
 `disk_hint` is `mmc` or `removable` for those two rows. The removable flag is
 what a USB stick or a card in a USB reader reports; for a partition it is read
@@ -123,10 +124,19 @@ missing package wins), `can_drain` with `drain_blocked_reason`, and
 `swap_file` is the swap file the dialog shows: the first fstab swap entry whose
 source is a path outside `/dev`, active or not, or else the first active swap
 file. Keeping it while it is off lets the zswap and disk rows be offered while
-the file is masked. `swap_file.managed` is true when fstab names the file:
-only then does it have a unit that LinuxIO stops, masks and starts. The first
-active file shown when fstab names none is not managed, and nothing here
-stops or starts it.
+the file is masked. `swap_file.managed` is true when LinuxIO stops, masks,
+starts and drains the file; otherwise nothing here stops, starts or drains
+it, and `swap_file.unmanaged_reason` says why:
+
+| Code | Meaning |
+|---|---|
+| `not_in_fstab` | fstab names no swap file and this is the first active one: it has no unit to stop, mask or start |
+| `others_can_write` | fstab names the file, but someone other than root can change a folder on its path (see "A swap file others can redirect is not managed") |
+
+A file that is off and not managed is not counted as disk swap: the
+recommendation goes by the first active swap file instead, or by none, and
+a mode that needs disk swap is refused when no swap file or partition is
+active.
 
 **What fails the route.** A required file that cannot be read or parsed
 (`/proc/swaps`, `/proc/meminfo`), an optional kernel file that exists and is
@@ -277,7 +287,7 @@ the success message, and keeps the chosen row so Apply can be pressed again.
 | `swap_file` | `not_enough_memory` | The file's data does not fit in memory. Applying again later can finish. |
 | `swap_file` | `zram_not_swapping` | No zram device swaps when the file would stop. |
 | `swap_file` | `not_identified` | The fstab file is off, but an active swap file cannot be resolved and may be it, so the unit is not masked. |
-| `swap_file` | `others_can_write` | A folder on the file's path can be changed by users other than root, so `swapoff` is not run on it (see "The path must be one only root can redirect"). |
+| `swap_file` | `others_can_write` | The file is not managed, because a folder on its path can be changed by users other than root: no step stops it (see "A swap file others can redirect is not managed"). |
 | `swap_file` | `not_managed` | A swap file other than the first one fstab names still swaps: no step stops it. |
 | `zram` | `not_enough_memory` | zram's data does not fit in memory and free disk swap. |
 | `zram` | `not_managed` | The provider's unit does not run that zram (another tool set it up, the unit is `inactive` or `failed`, with `zram-generator` a device other than `zram0` swaps), or no provider is installed. |
@@ -287,7 +297,9 @@ the success message, and keeps the chosen row so Apply can be pressed again.
 
 A device left active beside the other kind makes the mode `mixed`, and a
 `mixed` result always has a reason: `not_managed`, for the swap file or for
-zram, is added after the run when no step left the device that stayed. `zram_size`
+zram, is added after the run when no step left the device that stayed, or
+`others_can_write` for a swap file the status reported active with that
+reason. `zram_size`
 does not make the mode `mixed`. The success log line says what stayed
 (`swap_file_left_active`, `zram_left_active`, `zram_size_kept`). Applying
 again helps only for `not_enough_memory`.
@@ -387,6 +399,7 @@ The route refuses a drain with `ErrConflict`, and the status predicts it with
 | Code | Meaning |
 |---|---|
 | `nothing_parked` | no disk swap device has data on it |
+| `others_can_write` | no managed device holds data, and an fstab swap entry that is not managed because others can change its folder does |
 | `unmanaged_device` | the data is only on devices fstab does not name, whose units could not be started again |
 | `unit_masked` | a device holding data has a masked unit, so it could not be started again |
 | `not_enough_memory` | the data on the fstab-named devices does not fit in memory with the margin |
@@ -417,6 +430,35 @@ when its path equals the entry's path, or both resolve to the same path after
 following symlinks the way the kernel would with `/` as root (a symlinked swap
 file included), and each device is tied to at most one entry. Only a device
 tied to an entry is ever stopped, masked or drained; any other is unmanaged.
+
+**A swap file others can redirect is not managed.** A start has systemd swap
+on the path fstab names, and a stop or a drain gives `swapoff` the
+`/proc/swaps` path; both look the path up again. Where someone other than
+root can change a folder on that path, they can put another entry at it, so
+root would take another swap device away without the room check, or start
+swapping on a file of theirs. `matchFstabSwaps` therefore marks an fstab
+swap entry (`othersCanWrite`) when a folder is not one root owns that no
+group or everyone may write, the test `rootOnlyPath` applies, on any of:
+
+- the path fstab names;
+- the path of every link followed from it, and of every folder a link
+  target leaves by `..`, since either could be pointed elsewhere after the
+  check, whatever it names now;
+- the path the links lead to. Links that lead nowhere cannot be judged and
+  count;
+- the `/proc/swaps` path of the active device it is.
+
+Such an entry gets no `stop_swap_file` or `start_swap_file` step, is left out
+of a drain and of the data a drain counts, and the status reports the swap
+file with `managed` false and `unmanaged_reason` `others_can_write`. Only
+root can change a folder that passed, so what the status found still holds
+when a step starts the file; `swapoff` repeats the test all the same. A
+missing folder passes, since nothing can be redirected there. A folder the
+reader may not look into is not judged: a session without sudo reads the
+status too, and root, which makes the changes, can look into every folder.
+LinuxIO does not move the file: it creates no swap file, and moving one
+starts with stopping it.
+
 `stop_swap_file` also does not mask the unit of a file that is not active when
 some active swap file cannot be resolved, because that file might be it under
 another name.
@@ -472,9 +514,12 @@ request.
   which would leave without the room check made for this one. Every folder on
   the path must be a folder, not a link, that root owns and no group or
   everyone may write; otherwise `swapoff` is not run and the device keeps
-  swapping: a mode change leaves the swap file on and reports
-  `others_can_write`, and a drain is refused with 409. `/swap.img`, `/swapfile` and
-  everything under `/dev` pass.
+  swapping. The status applies the same test first, so such a swap file is
+  not managed and no step or drain reaches this point; the check here is
+  what holds when a folder changes between the status and the call, and
+  then a mode change leaves the swap file on and reports `others_can_write`,
+  and a drain is refused with 409. `/swap.img`, `/swapfile` and everything
+  under `/dev` pass.
 - The path must be absolute, as every `/proc/swaps` path is: `swapoff` reads
   `LABEL=` and `UUID=` arguments as tags.
 
@@ -590,11 +635,18 @@ service step, since `start_zram` does that. See
   false; an active swap file on btrfs, with Switch to compressed memory when
   zram can be chosen and the file is managed (a switch could not take any
   other file away); or "Memory is fine".
+- Under the banner, a warning for a swap file that is not managed
+  (`swapFileNote`): its path, why (`unmanaged_reason`), that LinuxIO will
+  not turn it off or empty it, or will not turn it on, whatever is chosen,
+  and for `others_can_write` to move it to a folder only root can write. It
+  is there before anything is asked of the file.
 - A single-choice list of three rows, in the order zswap, zram, disk, each with
   a plain name, its technical name once, a description, a caution where one
   applies, and chips for the recommended and the current row. A row that cannot
   be chosen shows why; the zram row shows a link to Capabilities instead of a
-  choice while no zram tool is installed. Apply is enabled for a different row, or
+  choice while no zram tool is installed. The zswap and disk rows need disk
+  swap, as the plan counts it: a managed swap file, or an active swap file
+  or partition. Apply is enabled for a different row, or
   for the current one while the host is `mixed`.
 - Choosing zram while a managed swap file (`swap_file.managed`) is active asks
   first, as a second step of the same dialog and not a dialog on top of it,
@@ -710,8 +762,17 @@ Each is by design or unlikely to be met, or is an open item in
   files and has not run on Fedora or RHEL; drop-ins in
   `zram-generator.conf.d` are not read.
 - A swap file in a folder that someone other than root can write, or below
-  one, is never stopped or drained: see "The path must be one only root can
-  redirect" above. The status does not say so before a drain is asked for.
+  one, is not managed: LinuxIO never stops, starts or drains it and does
+  not move it (see "A swap file others can redirect is not managed"). A
+  folder on its path that is a link counts as one others can change, even
+  where only root could have made the link. When it is the first swap file
+  fstab names, a later one is not managed in its place. Off, it is not
+  masked either, so the next boot turns it on, beside zram if that is the
+  mode.
+- A swap file on a filesystem that is not mounted is judged by the folders
+  that are there, not by those of the filesystem a start would mount. Where
+  that filesystem's folders can be changed by other users, a start swaps
+  there, as every boot does.
 - The disk hint reads the kernel's removable flag, so a worn flash drive in
   a USB disk enclosure, which reports itself as fixed, is not steered to
   compressed memory, nor is a swap file on LVM or LUKS, whatever disk is

@@ -66,6 +66,10 @@ const (
 	// SwapDrainUnitMasked: the unit of a device holding data is masked, so
 	// it could not be started again.
 	SwapDrainUnitMasked SwapDrainBlockedReason = "unit_masked"
+	// SwapDrainOthersCanWrite: the parked data sits on a swap device fstab
+	// names that LinuxIO does not manage, since users other than root can
+	// change a folder on its path.
+	SwapDrainOthersCanWrite SwapDrainBlockedReason = "others_can_write"
 )
 
 // SwapLeftWhat names what a mode change left as it was.
@@ -197,17 +201,33 @@ type SwapDevice struct {
 	Used     uint64         `json:"used"`
 }
 
-// SwapFile is the swap file LinuxIO manages: the first one /etc/fstab names,
-// active or not, or else the first active one.
+// SwapFileUnmanagedReason says why LinuxIO does not stop, start or drain the
+// swap file.
+type SwapFileUnmanagedReason string
+
+const (
+	// SwapFileNotInFstab: /etc/fstab does not name the file, so it has no
+	// unit to stop, mask or start.
+	SwapFileNotInFstab SwapFileUnmanagedReason = "not_in_fstab"
+	// SwapFileOthersCanWrite: users other than root can change a folder on
+	// the file's path and so put another entry at it, which a swapoff or a
+	// start of that path would then act on.
+	SwapFileOthersCanWrite SwapFileUnmanagedReason = "others_can_write"
+)
+
+// SwapFile is the swap file the status reports: the first one /etc/fstab
+// names, active or not, or else the first active one.
 type SwapFile struct {
 	Active   bool         `json:"active"`
 	DiskHint SwapDiskHint `json:"disk_hint"`
 	FSType   string       `json:"fs_type"`
-	// Managed is true when /etc/fstab names the file, so it has a unit that
-	// LinuxIO can stop, mask and start; a file fstab does not name is left
-	// as it is.
-	Managed bool   `json:"managed"`
-	Path    string `json:"path"`
+	// Managed is true when LinuxIO stops, masks, starts and drains the
+	// file: /etc/fstab names it, so it has a unit, and only root can change
+	// the folders on its path. A file that is not managed is left as it is,
+	// and UnmanagedReason says why.
+	Managed         bool                    `json:"managed"`
+	Path            string                  `json:"path"`
+	UnmanagedReason SwapFileUnmanagedReason `json:"unmanaged_reason"`
 }
 
 // ZswapStatus is the zswap module's parameters; Available is false on a

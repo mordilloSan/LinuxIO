@@ -169,3 +169,124 @@ func TestSwapFileReachedThroughALinkIsActive(t *testing.T) {
 		t.Fatalf("swap file = %+v, want /swapfile active", got.SwapFile)
 	}
 }
+
+// A swap file is one LinuxIO manages only when nobody but the root's owner
+// can change a folder on the path fstab names or on the path it swaps at.
+func TestMatchFstabSwapsMarksASwapFileOthersCanRedirect(t *testing.T) {
+	f := newFixture(t)
+	f.write("/swap.img", "")
+	f.write("/var/swap/file", "")
+	f.othersCanWrite("/srv/open")
+	f.write("/srv/open/swapfile", "")
+	f.write("/srv/open/below/swapfile", "")
+	f.write("/srv/open/target", "")
+	f.symlink("/srv/open/target", "/swaplink")
+	f.othersCanWrite("/dev/shm")
+	f.write("/dev/shm/part", "")
+	if err := os.Chmod(filepath.Join(f.root, "/var/swap"), 0o775); err != nil {
+		t.Fatal(err)
+	}
+	entries := []fstabSwap{
+		{path: "/swap.img"},
+		{path: "/var/swap/file"},
+		{path: "/srv/open/swapfile"},
+		{path: "/srv/open/below/swapfile"},
+		{path: "/swaplink"},
+		{path: "/dev/shm/part"},
+		{path: "/missing/swapfile"},
+	}
+	devices := []apischema.SwapDevice{{Path: "/srv/open/target", Kind: apischema.SwapDeviceFile}}
+
+	got := f.host().matchFstabSwaps(entries, devices)
+
+	want := map[string]bool{
+		"/swap.img":                false,
+		"/var/swap/file":           true, // its folder is group-writable
+		"/srv/open/swapfile":       true,
+		"/srv/open/below/swapfile": true,
+		"/swaplink":                true,  // swaps at a path in an open folder
+		"/dev/shm/part":            true,  // the rule holds for a device node too
+		"/missing/swapfile":        false, // nothing there to redirect
+	}
+	for _, entry := range got {
+		if entry.othersCanWrite != want[entry.path] {
+			t.Errorf("%s: others can write = %v, want %v", entry.path, entry.othersCanWrite, want[entry.path])
+		}
+	}
+}
+
+// A swap file that is off is judged by where its path leads as well: a
+// start would have systemd swap on the file the link names.
+func TestMatchFstabSwapsFollowsALinkOfAFileThatIsOff(t *testing.T) {
+	f := newFixture(t)
+	f.othersCanWrite("/srv/open")
+	f.write("/srv/open/target", "")
+	f.write("/var/swap/target", "")
+	f.symlink("/srv/open/target", "/openlink")
+	f.symlink("/srv/open/gone", "/danglinglink")
+	f.symlink("/var/swap/target", "/safelink")
+
+	got := f.host().matchFstabSwaps([]fstabSwap{{path: "/openlink"}, {path: "/danglinglink"}, {path: "/safelink"}}, nil)
+
+	if !got[0].othersCanWrite || !got[1].othersCanWrite || got[2].othersCanWrite {
+		t.Fatalf("entries = %+v, want only the link into a folder root alone writes managed", got)
+	}
+}
+
+// Every link on the way is judged where it sits: one in a folder others can
+// write could be pointed elsewhere after the check, whatever it names now.
+func TestMatchFstabSwapsJudgesEveryLinkOnTheWay(t *testing.T) {
+	f := newFixture(t)
+	f.othersCanWrite("/srv/open")
+	f.write("/var/swap/target", "")
+	f.symlink("/var/swap/target", "/srv/open/hop")
+	f.symlink("/srv/open/hop", "/swaplink")
+	devices := []apischema.SwapDevice{{Path: "/var/swap/target", Kind: apischema.SwapDeviceFile}}
+
+	off := f.host().matchFstabSwaps([]fstabSwap{{path: "/swaplink"}}, nil)
+	on := f.host().matchFstabSwaps([]fstabSwap{{path: "/swaplink"}}, devices)
+
+	if !off[0].othersCanWrite || !on[0].othersCanWrite || on[0].device != "/var/swap/target" {
+		t.Fatalf("off = %+v, on = %+v; want both judged by the link in /srv/open", off[0], on[0])
+	}
+}
+
+// A link target that passes through a folder and leaves it by ".." is
+// judged at that folder too: a link put there would lead the rest of the
+// way elsewhere.
+func TestMatchFstabSwapsJudgesAFolderALinkLeavesByDotDot(t *testing.T) {
+	f := newFixture(t)
+	f.othersCanWrite("/srv/open")
+	f.mkdir("/srv/open/through")
+	f.mkdir("/var/lib/through")
+	f.write("/var/swap/target", "")
+	f.symlink("/srv/open/through/../../../var/swap/target", "/openlink")
+	f.symlink("/var/lib/through/../../swap/target", "/safelink")
+
+	got := f.host().matchFstabSwaps([]fstabSwap{{path: "/openlink"}, {path: "/safelink"}}, nil)
+
+	if !got[0].othersCanWrite || got[1].othersCanWrite {
+		t.Fatalf("entries = %+v, want only the link through /srv/open judged as one others can redirect", got)
+	}
+}
+
+// The status is read without privilege: a folder the reader may not look
+// into is not judged, since root, which makes the changes, can look into
+// every folder.
+func TestMatchFstabSwapsDoesNotJudgeAFolderItMayNotRead(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root can look into every folder")
+	}
+	f := newFixture(t)
+	f.write("/root/swap/file", "")
+	if err := os.Chmod(filepath.Join(f.root, "/root"), 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(filepath.Join(f.root, "/root"), 0o755) })
+
+	got := f.host().matchFstabSwaps([]fstabSwap{{path: "/root/swap/file"}}, nil)
+
+	if got[0].othersCanWrite {
+		t.Fatalf("entry = %+v, want a folder that cannot be read left unjudged", got[0])
+	}
+}

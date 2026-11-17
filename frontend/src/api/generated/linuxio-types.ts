@@ -3078,7 +3078,8 @@ export type SwapDrainBlockedReason =
   | "nothing_parked"
   | "not_enough_memory"
   | "unmanaged_device"
-  | "unit_masked";
+  | "unit_masked"
+  | "others_can_write";
 
 export interface SwapFile {
   active: boolean;
@@ -3086,7 +3087,10 @@ export interface SwapFile {
   fs_type: string;
   managed: boolean;
   path: string;
+  unmanaged_reason: SwapFileUnmanagedReason;
 }
+
+export type SwapFileUnmanagedReason = "" | "not_in_fstab" | "others_can_write";
 
 export interface SwapLeft {
   reason: SwapLeftReason;
