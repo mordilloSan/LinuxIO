@@ -35,34 +35,6 @@ The sections are in the order to work them. A number in brackets, such as
 (audit 132), is the item's number in the old backend audit, for looking it up
 in git.
 
-## File browser: root follows links a user planted
-
-When an admin uses the file browser, the work runs as root, and root follows
-a link only in a folder root owns
-([Privilege Pattern](../privilege_pattern.md#root-acting-in-the-session-users-folders)).
-What is left:
-
-- [ ] **Extract opens the archive by path.** `runExtractTask`
-  (`backend/bridge/handlers/filebrowser/archive_operations.go`) and
-  `ExtractArchive` (`services/archive_operations.go`) stat and open the
-  archive through `root.Root`, with or without an owner, so the link rule does
-  not apply to it. A local user who links `backup.zip` in their folder to an
-  archive only root can read gets its content when an admin extracts it
-  there. Reach the archive with `entryFollowingNoUserLinks` and read it
-  through that handle. Reported by the review of 2026-11-13.
-- [ ] **A replace deletes whatever is at the name it set aside.**
-  `prepareDestination` (`services/file_operations.go`), which a copy, a move
-  and a trash restore with overwrite use, renames the entry it replaces to
-  `<name>.linuxio-replaced-<ns>` and, once the transfer is done, removes that
-  name with `removeAllAt` without checking it is still the entry it set
-  aside; a failed transfer likewise removes whatever is at the target name.
-  In a folder the session user can write, a process of theirs can rename a
-  folder root or another user owns to that name in between (a same-folder
-  rename of a folder needs no write on it), and root deletes its whole tree.
-  Keep the device and inode of the entry set aside and remove only that
-  entry, checked on the handle `removeAllAt` opens. Reported by the review of
-  2026-11-16.
-
 ## Storage safety
 
 Each item here is data-safety work: it starts from what the kernel and
@@ -84,16 +56,6 @@ after a change that issues ioctls).
 
 Memory overflow ([Memory overflow](../memory.md)):
 
-- [ ] **A swap file in a folder another user can write can redirect the
-  `swapoff`.** `swapoff` gets the file's `/proc/swaps` path and the kernel
-  resolves it again, so a user who can rename in that folder can put a link
-  there that points at another active swap device, which is then taken away
-  without the room check. A file deleted while it swaps, listed as
-  `<path> (deleted)`, can be matched through a link of that name the same
-  way. It needs a swap file whose folder someone other than root can write;
-  systemd's own stop, used before, resolved the fstab path the same way.
-  Refuse such a file, or check what the path names just before the call.
-  Reported by a review, not reproduced.
 - [ ] **A change that finished is reported as failed when only the last status
   read fails.** The three routes return the status read after the change, and
   an error from that read fails the request though the host changed. Checked.
@@ -124,32 +86,29 @@ Memory overflow ([Memory overflow](../memory.md)):
   row of the dashboard's Memory card, so the `zram` capability card and its
   toast cannot link back to it after an install, and it cannot be bookmarked. A
   validated search parameter on the dashboard route would give it one. Checked.
-- [ ] **A swap file on a USB disk enclosure is not steered to compressed
-  memory.** The hint reads the kernel's removable flag, which a USB stick and a
-  card reader set and an enclosure does not; that is right for a USB SSD and
-  wrong for a worn flash drive in an enclosure. A swap file on LVM or LUKS is
-  not flagged either, whatever disk is under it. Checked.
 - [ ] **`zram-generator` drop-ins are not read.** LinuxIO writes
   `/etc/systemd/zram-generator.conf` and nothing else. A drop-in in
   `zram-generator.conf.d`, or a file in `/run/systemd`, overrides it: a size
   set there wins over the one the page shows, and a device defined there comes
   back at boot after a switch to disk or zswap, which then reads as `mixed`.
-  Read them and say so in the dialog, or refuse. Checked by reading upstream's
-  man page, not on a host.
+  Checked by reading upstream's man page, not on a host. Decided 2026-11-17:
+  read them and show each with the size it sets in the dialog, and refuse a
+  switch away from zram, naming the file, while a drop-in defines a device.
 - [ ] **`/etc/systemd/zram-generator.conf` is replaced without a marker
   check**, like `/etc/default/zramswap`: an admin's own file there is
   overwritten by a switch to zram, and by the off file on a switch to disk or
   zswap, also when zram was not running. That drops every device the file
   defined, a zram mount (`fs-type`, `mount-point`) included. A failed run puts
-  it back. Checked.
+  it back. Checked. Decided 2026-11-17, for this file and
+  `/etc/default/zramswap`: the status says when the file is not LinuxIO's, the
+  confirm step names it and where its copy is kept, and the request carries
+  that confirmation; a file with only comments needs none.
 - [ ] **The zram provider is the tool installed, not the one running.** With
   both installed zram-tools is used, so on a host where the generator runs
   `zram0` a switch away leaves zram on (`mixed`), and a switch to zram writes
   `/etc/default/zramswap` and enables `zramswap.service` beside the
   generator's device. Pick the provider whose unit is active. Checked by
   reading the code.
-- [ ] **RHEL 8 has no `zram-generator` package**, so Install fails there and
-  the zram row offers the link to Capabilities again. Not checked on a host.
 
 Trash ([Trash](../trash.md)):
 
@@ -167,14 +126,11 @@ Trash ([Trash](../trash.md)):
   (`noTrashPrompts.ts`), and ask it when a file browser shows again.
 - [ ] **A trashed folder shows no size.** `trash_list` gives 0 for a folder:
   it would have to walk every trashed folder, and the spec's
-  `directorysizes` cache is not read. Read and keep that cache, or size a
-  folder when its properties open.
-- [ ] **A drag out of the Trash works only onto a LinuxIO file browser of the
-  same server.** Dropped on the desktop or another program it does nothing,
-  and dropped on another server's LinuxIO tab it is sent to that server,
-  whose trash does not hold the item, and fails there. Refuse the drop on
-  another server with a message; a drop outside the browser would need a
-  download of the item.
+  `directorysizes` cache is not read. Decided 2026-11-17: size a folder when
+  its properties open; the list keeps no size for a folder.
+- [ ] **A drag out of the Trash onto another server's LinuxIO tab fails
+  there.** The drop is sent to that server, whose trash does not hold the
+  item. Refuse the drop on another server with a message.
 
 Scheduled runs (`backend/common/scheduledrun`):
 
@@ -188,9 +144,13 @@ Scheduled runs (`backend/common/scheduledrun`):
   container in the saved output.** `updated Compose Docker container` carries
   the container and the images as journal fields, which
   `journalctl -o short-iso` and so a run's saved output do not show; the
-  report at the end of the output names them. Checked.
+  report at the end of the output names them. Checked. Decided 2026-11-17:
+  these lines name the container in the message, as an exception to the
+  logging rule, with an entry in the logging guard and a line in `AGENTS.md`.
 
-Docker updates (`backend/common/dockerupdate`):
+Docker updates (`backend/common/dockerupdate`). No doc covers this package:
+the change that builds the rollback writes one, and the limits below that are
+kept go under its "Known limits".
 
 - [ ] **An updated standalone container keeps the labels of its old image.**
   `StandaloneCreateOptions` (`standalone.go`) copies the old container's
@@ -212,15 +172,19 @@ Docker updates (`backend/common/dockerupdate`):
   tag back on that image and run `up` again, and it cannot do that for a
   service with `pull_policy: always`, an image pinned by digest or a `build:`
   section. Until then the way back is to pin the previous tag in the compose
-  file and bring the stack up. Checked.
+  file and bring the stack up. Checked. Decided 2026-11-17: build it for a
+  service whose image is named by tag, say in the pass report that it was
+  rolled back, and list the three cases it cannot cover as known limits. A
+  rolled-back image is not held back, so the next run tries it again.
 - [ ] **A container without a health check counts as ready the moment it
   runs.** `containerReady` (`standalone.go`) accepts a running container with
   no health check on the first read, so one that crashes a few seconds after
   starting passes the wait, the backup of a standalone container is dropped,
   and the restart loop begins after the update was reported as done. The
   three-restart limit only catches a loop that starts before a read sees the
-  container running. A short settle time for containers without a health
-  check would close it. Checked.
+  container running. Checked. Decided 2026-11-17: a container without a
+  health check counts as ready once it has run 10 seconds with no new
+  restart, the time after which Docker itself counts a start as successful.
 - [ ] **Three restarts fail an update even when the container would have
   settled.** The readiness wait stops at `containerRestartLimit` restarts
   counted from its first read and does not look again, so a container that
@@ -229,6 +193,7 @@ Docker updates (`backend/common/dockerupdate`):
   image, and a Compose service is reported as failed although it may be
   running on the new one (the next scheduled run then finds it stable).
   Chosen over waiting the full 90 seconds on every restart loop. Checked.
+  By design: it leaves this list as a known limit of the Docker updates doc.
 
 ## Tests that are missing
 
@@ -248,11 +213,6 @@ Docker updates (`backend/common/dockerupdate`):
   cancelled and in full; neither covers zswap and its tmpfiles entry,
   swappiness, rollback, TuneD or a reboot, and the cleanup restores the mode
   but not the three files LinuxIO manages.
-- [ ] Not run in the test VM: an update that waits for jobs, started from the
-  in-app updater. `control.app_update` installs only a published release, and
-  no published release has a higher `jobs.Protocol` than v0.53.0, so
-  `frontend/src/test/vm/jobs-update.spec.ts` updates through the rig's
-  installer to a protocol-bumped build of the tree.
 
 ## Needs a real machine or a measurement
 
@@ -264,6 +224,8 @@ Docker updates (`backend/common/dockerupdate`):
     Ubuntu's `systemd-zram-generator`. It has never run on Fedora or RHEL:
     check there that Install from Capabilities works, that a host with
     Fedora's default zram reads as `zram` mode, and a switch to zram and back.
+    The test VM is Ubuntu only; the Fedora VM this needs is the first step of
+    "Distributions" in [Frontend test coverage](./e2e-testing.md#distributions).
   - `memory.get_swap_status` asks TuneD through `power.GetStatus` as the
     session user, and finds `zramswap` through the bridge's `PATH` with the
     `/usr/sbin` fallback. From a bridge without sudo, check that TuneD reads as
@@ -296,8 +258,9 @@ Docker updates (`backend/common/dockerupdate`):
   everything below it (list, stat, read, the Permissions dialog) fails with
   "path escapes from parent"; a link with a relative target works.
   - Fix: resolve the parent folders at the points where a path enters, and run
-    `CheckNotProtected` on the result. Large: 37 `fsroot.Open` call sites, and
-    a mistake here lets a path escape.
+    `CheckNotProtected` on the result. Large: 40 `fsroot.Open` calls in 18
+    files, and a mistake here lets a path escape. Decided 2026-11-17: fixed
+    as a change of its own, after the rest of this list.
 - [ ] **Scheduled scripts.** Journal retention over several days was never
   checked on a host. See
   [Scheduled Scripts](../scheduled-scripts.md#testing).
@@ -309,9 +272,11 @@ Docker updates (`backend/common/dockerupdate`):
 - [ ] **NVIDIA bus id** (audit 124). The unversioned `nvmlDeviceGetPciInfo`
   may be an older ABI than the struct it fills
   (`backend/monitoring/internal/collector/gpu/nvml.go`). The struct has the
-  largest layout, so nothing is written out of bounds; what is left is to
-  check on an NVIDIA machine that the bus id reads correctly, or to register
-  `nvmlDeviceGetPciInfo_v3` by name.
+  largest layout, so nothing is written out of bounds. Decided 2026-11-17, no
+  NVIDIA machine running Linux being at hand: register
+  `nvmlDeviceGetPciInfo_v3` by name, fall back to the unversioned symbol, and
+  write "not checked on a host" as a known limit in
+  [Monitoring Daemon](../monitoring.md).
 
 ## Later, no plan yet
 
@@ -371,7 +336,9 @@ File browser, after the link fix:
 
 - A real folder (not a link) moved into the tree while root works on it, or
   put at a name between root's `mkdirat` and `openat`: no link is followed and
-  root still acts at the place that was asked for.
+  root still acts at the place that was asked for. A failed copy or an
+  aborted extract removes such a folder as the one it made only when it was
+  empty when root opened it.
 - Filesystems without `RENAME_NOREPLACE` (NFS, FUSE) fall back to a check and
   a plain rename: a swap there affects only the user's own files.
 - The "Open the real folder" action reads its destination from the wording

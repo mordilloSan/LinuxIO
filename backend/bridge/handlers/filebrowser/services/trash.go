@@ -961,6 +961,21 @@ func PurgeFromTrash(ctx context.Context, trashedPath, home string, uid int, prog
 // and a symlink is removed, never followed, so nothing outside dir is touched
 // however the user rearranges the tree meanwhile. removed runs per entry.
 func removeAllAt(ctx context.Context, dir *os.File, name string, removed func()) error {
+	return removeAllAtIf(ctx, dir, name, nil, removed)
+}
+
+// errNotOurs says that a name holds another folder than the one the caller
+// made or set aside there.
+var errNotOurs = errors.New("another folder took this name meanwhile")
+
+// removeAllAtIf is removeAllAt for a name the caller chose a while ago, in a
+// folder the session user may be able to write: a process of theirs can
+// rename a folder of that folder onto the name meanwhile, also one whose
+// content they could not delete, so root must not empty it for them. A folder
+// is emptied only when ours accepts the handle opened on it (nil accepts
+// any). Anything else is unlinked by name, which whoever can rename an entry
+// there can do as well.
+func removeAllAtIf(ctx context.Context, dir *os.File, name string, ours func(linkKey) bool, removed func()) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -979,6 +994,16 @@ func removeAllAt(ctx context.Context, dir *os.File, name string, removed func())
 	}
 	if err != nil {
 		return err
+	}
+	if ours != nil {
+		key, keyErr := fileKey(sub)
+		if keyErr == nil && !ours(key) {
+			keyErr = &fs.PathError{Op: "remove", Path: filepath.Join(dir.Name(), name), Err: errNotOurs}
+		}
+		if keyErr != nil {
+			_ = sub.Close()
+			return keyErr
+		}
 	}
 	children, err := sub.Readdirnames(-1)
 	for i := 0; err == nil && i < len(children); i++ {

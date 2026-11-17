@@ -44,6 +44,8 @@ type fakeSystem struct {
 	stuck map[string]bool
 	// blocked devices never leave on a swapoff, which returns when ctx ends.
 	blocked map[string]bool
+	// refused devices get this error from swapoff, which does nothing.
+	refused map[string]error
 	// unseen is how many reads of a unit's state still say active after its
 	// device left; systemd does nothing for a start meanwhile.
 	unseen map[string]int
@@ -188,6 +190,9 @@ func (s *fakeSystem) restartUnit(ctx context.Context, name string) error {
 // the unit's state. A path in blocked never returns until ctx ends, as a
 // swapoff that is still reading pages back, and leaves the device on.
 func (s *fakeSystem) swapOff(ctx context.Context, path string) error {
+	if err := s.refused[path]; err != nil {
+		return err
+	}
 	if s.blocked[path] {
 		s.calls = append(s.calls, "swapoff "+path)
 		<-ctx.Done()

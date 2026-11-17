@@ -277,6 +277,7 @@ the success message, and keeps the chosen row so Apply can be pressed again.
 | `swap_file` | `not_enough_memory` | The file's data does not fit in memory. Applying again later can finish. |
 | `swap_file` | `zram_not_swapping` | No zram device swaps when the file would stop. |
 | `swap_file` | `not_identified` | The fstab file is off, but an active swap file cannot be resolved and may be it, so the unit is not masked. |
+| `swap_file` | `others_can_write` | A folder on the file's path can be changed by users other than root, so `swapoff` is not run on it (see "The path must be one only root can redirect"). |
 | `swap_file` | `not_managed` | A swap file other than the first one fstab names still swaps: no step stops it. |
 | `zram` | `not_enough_memory` | zram's data does not fit in memory and free disk swap. |
 | `zram` | `not_managed` | The provider's unit does not run that zram (another tool set it up, the unit is `inactive` or `failed`, with `zram-generator` a device other than `zram0` swaps), or no provider is installed. |
@@ -464,6 +465,16 @@ request.
 - **A device that left counts as stopped**, whatever `swapoff` returned.
 - **No unit state is read first.** `swapoff` takes the device away whatever
   systemd says of its unit.
+- **The path must be one only root can redirect** (`rootOnlyPath`).
+  `swapoff(2)` looks the path up again, so in a folder another user can write,
+  a link put at the path, or at the name a deleted file is listed under
+  (`<path> (deleted)`), would send the call to another active swap device,
+  which would leave without the room check made for this one. Every folder on
+  the path must be a folder, not a link, that root owns and no group or
+  everyone may write; otherwise `swapoff` is not run and the device keeps
+  swapping: a mode change leaves the swap file on and reports
+  `others_can_write`, and a drain is refused with 409. `/swap.img`, `/swapfile` and
+  everything under `/dev` pass.
 - The path must be absolute, as every `/proc/swaps` path is: `swapoff` reads
   `LABEL=` and `UUID=` arguments as tags.
 
@@ -698,6 +709,13 @@ Each is by design or unlikely to be met, or is an open item in
 - The `zram-generator` path was built from upstream's documentation and unit
   files and has not run on Fedora or RHEL; drop-ins in
   `zram-generator.conf.d` are not read.
+- A swap file in a folder that someone other than root can write, or below
+  one, is never stopped or drained: see "The path must be one only root can
+  redirect" above. The status does not say so before a drain is asked for.
+- The disk hint reads the kernel's removable flag, so a worn flash drive in
+  a USB disk enclosure, which reports itself as fixed, is not steered to
+  compressed memory, nor is a swap file on LVM or LUKS, whatever disk is
+  under it.
 - A click on Apply within half a second of an arrow key on the eagerness
   slider is lost: the click moves focus off the slider, which starts the
   save, and Apply is held while it runs.

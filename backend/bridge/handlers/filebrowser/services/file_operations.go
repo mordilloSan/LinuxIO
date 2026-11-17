@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -178,6 +179,9 @@ type copyState struct {
 	// folder that is one of them, moved under the source meanwhile, is refused
 	// rather than copied into itself without end.
 	written map[linkKey]bool
+	// made holds the folders the transfer created, the only ones a failed
+	// transfer removes.
+	made map[linkKey]bool
 	// move removes each source entry as soon as its copy is complete, so a
 	// transfer that stops halfway leaves every entry in exactly one place.
 	move bool
@@ -191,17 +195,21 @@ type copyState struct {
 }
 
 func newCopyState(ctx context.Context, move bool) *copyState {
-	return &copyState{links: map[linkKey]string{}, written: map[linkKey]bool{}, move: move, cleanup: context.WithoutCancel(ctx)}
+	return &copyState{links: map[linkKey]string{}, written: map[linkKey]bool{}, made: map[linkKey]bool{}, move: move, cleanup: context.WithoutCancel(ctx)}
 }
 
-// enter records dst, a folder the transfer writes into, and refuses src, the
-// folder it reads next, when the transfer writes into that one too.
-func (s *copyState) enter(src, dst *os.File, srcPath string) error {
+// enter records dst, a folder the transfer writes into and, with made, has
+// just created, and refuses src, the folder it reads next, when the transfer
+// writes into that one too.
+func (s *copyState) enter(src, dst *os.File, srcPath string, made bool) error {
 	dstKey, err := fileKey(dst)
 	if err != nil {
 		return err
 	}
 	s.written[dstKey] = true
+	if made {
+		s.made[dstKey] = true
+	}
 	srcKey, err := fileKey(src)
 	if err != nil {
 		return err
@@ -210,6 +218,13 @@ func (s *copyState) enter(src, dst *os.File, srcPath string) error {
 		return fmt.Errorf("cannot copy %s into itself", srcPath)
 	}
 	return nil
+}
+
+// isEmptyDir reports whether the open folder dir, not yet read, holds
+// nothing.
+func isEmptyDir(dir *os.File) bool {
+	names, err := dir.Readdirnames(1)
+	return len(names) == 0 && errors.Is(err, io.EOF)
 }
 
 // linkTo makes dst a hard link to existing, a file the transfer wrote
@@ -273,13 +288,11 @@ func transferEntry(src, dst entry, info os.FileInfo, overwrite bool, opts *Opera
 		return mergeDirectory(src, dst, overwrite, opts, state)
 	}
 
-	finish, err := prepareDestination(state.cleanup, dst, exists, !state.move)
+	finish, err := prepareDestination(state, dst, exists)
 	if err != nil {
 		return err
 	}
-	err = placeEntry(src, dst, info, opts, state, moveOpts)
-	finish(err)
-	return err
+	return finish(placeEntry(src, dst, info, opts, state, moveOpts))
 }
 
 // placeEntry puts src at a dst that does not exist. A move renames when the
@@ -308,7 +321,7 @@ func mergeDirectory(src, dst entry, overwrite bool, opts *OperationCallbacks, st
 		return err
 	}
 	defer dstDir.Close()
-	if err = state.enter(srcDir, dstDir, src.path); err != nil {
+	if err = state.enter(srcDir, dstDir, src.path, false); err != nil {
 		return err
 	}
 	err = forEachChild(srcDir, src.path, func(name string, info os.FileInfo) error {
@@ -524,10 +537,15 @@ func copyDirectoryWithCallbacks(src, dst entry, opts *OperationCallbacks, state 
 	}
 	dstDir, err := dst.openDir()
 	if err != nil {
+		// Nothing is in it yet, and rmdir takes an empty folder only.
+		_ = unix.Unlinkat(int(dst.dir.Fd()), dst.name, unix.AT_REMOVEDIR)
 		return err
 	}
 	defer dstDir.Close()
-	if err = state.enter(srcDir, dstDir, src.path); err != nil {
+	// mkdirat returns no handle, so the folder opened is the one made only
+	// as far as it is still empty: a folder with content, renamed onto the
+	// name in between, is written into but never removed as the copy's own.
+	if err = state.enter(srcDir, dstDir, src.path, isEmptyDir(dstDir)); err != nil {
 		return err
 	}
 
@@ -1190,13 +1208,21 @@ func validateMoveDestination(root *fsroot.FSRoot, src, dst string) error {
 // prepareDestination clears the way for a transfer onto dst. An existing dst
 // is moved aside, in its own folder, rather than deleted: the returned finish
 // removes it after a successful transfer and puts it back after a failed one,
-// so a transfer that dies halfway never loses what it was replacing. With
-// removePartial, finish also drops whatever a failed transfer left at a
-// previously empty dst, so a half-written tree never sits there under its
-// final name; a move keeps it, since the entries already inside were removed
-// from the source. Both removals go through removeAllAt, never by path, with
-// ctx, which a cancelled transfer must not have cancelled.
-func prepareDestination(ctx context.Context, dst entry, exists, removePartial bool) (func(error), error) {
+// so a transfer that dies halfway never loses what it was replacing. After a
+// failed copy, finish also drops what the copy left at a previously empty
+// dst, so a half-written tree never sits there under its final name; a move
+// keeps it, since the entries already inside were removed from the source.
+//
+// Both names sit in a folder the session user may write, so neither removal
+// empties whatever folder holds the name by then (see removeAllAtIf): the
+// entry set aside is never a folder, since a folder is merged into and not
+// replaced, so no folder is emptied under its name, and at dst only a folder
+// the transfer made is (state.made). They run with state.cleanup, which a
+// cancelled transfer has not cancelled.
+//
+// finish returns the transfer's error, with where the replaced entry is when
+// it could not be put back.
+func prepareDestination(state *copyState, dst entry, exists bool) (func(error) error, error) {
 	aside := ""
 	if exists {
 		aside = fmt.Sprintf("%s.linuxio-replaced-%d", dst.name, time.Now().UnixNano())
@@ -1204,34 +1230,50 @@ func prepareDestination(ctx context.Context, dst entry, exists, removePartial bo
 			return nil, err
 		}
 	}
-	return func(transferErr error) {
+	return func(transferErr error) error {
 		if transferErr == nil {
-			removeAside(ctx, dst, aside)
+			removeAside(state.cleanup, dst, aside)
+			return nil
+		}
+		if aside != "" || !state.move {
+			clearFailedDestination(state, dst, transferErr)
+		}
+		if aside == "" {
+			return transferErr
+		}
+		if err := renameNoReplace(dst.dir, aside, dst.dir, dst.name); err != nil {
+			// Logged as well as told: a cancelled transfer reports only
+			// that it was cancelled. The transfer's error stays the only
+			// one wrapped, so the status still says how the transfer failed.
+			slog.Error("failed to restore replaced destination", "component", "filebrowser", "subsystem", "file_operations", "path", filepath.Join(filepath.Dir(dst.path), aside), "destination", dst.path, "error", err)
+			return fmt.Errorf("%w; what it was replacing could not be put back and is kept as %q", transferErr, aside)
+		}
+		return transferErr
+	}, nil
+}
+
+// clearFailedDestination removes what a failed transfer left at dst: a
+// folder only when the transfer made it, and nothing when the transfer
+// failed because the name was already taken and a file holds it, which is
+// then another writer's and not a partial copy.
+func clearFailedDestination(state *copyState, dst entry, transferErr error) {
+	if errors.Is(transferErr, fs.ErrExist) {
+		if info, err := dst.lstat(); err == nil && !info.IsDir() {
 			return
 		}
-		if aside != "" || removePartial {
-			if err := removeAllAt(ctx, dst.dir, dst.name, func() {}); err != nil && !errors.Is(err, fs.ErrNotExist) {
-				slog.Warn("failed to clear partial destination", "component", "filebrowser", "subsystem", "file_operations", "path", dst.path, "error", err)
-			}
-		}
-		restoreAside(dst, aside)
-	}, nil
+	}
+	made := func(key linkKey) bool { return state.made[key] }
+	if err := removeAllAtIf(state.cleanup, dst.dir, dst.name, made, func() {}); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		slog.Warn("failed to clear partial destination", "component", "filebrowser", "subsystem", "file_operations", "path", dst.path, "error", err)
+	}
 }
 
 func removeAside(ctx context.Context, dst entry, aside string) {
 	if aside == "" {
 		return
 	}
-	if err := removeAllAt(ctx, dst.dir, aside, func() {}); err != nil {
+	noFolder := func(linkKey) bool { return false }
+	if err := removeAllAtIf(ctx, dst.dir, aside, noFolder, func() {}); err != nil {
 		slog.Warn("failed to remove replaced destination", "component", "filebrowser", "subsystem", "file_operations", "path", filepath.Join(filepath.Dir(dst.path), aside), "error", err)
-	}
-}
-
-func restoreAside(dst entry, aside string) {
-	if aside == "" {
-		return
-	}
-	if err := renameNoReplace(dst.dir, aside, dst.dir, dst.name); err != nil {
-		slog.Error("failed to restore replaced destination", "component", "filebrowser", "subsystem", "file_operations", "path", filepath.Join(filepath.Dir(dst.path), aside), "destination", dst.path, "error", err)
 	}
 }

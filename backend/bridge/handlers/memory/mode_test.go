@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -285,6 +286,26 @@ func TestSetSwapModeToZramLeavesTheSwapFileWithoutRoom(t *testing.T) {
 	assertLeft(t, got.Left, apischema.SwapLeft{What: apischema.SwapLeftSwapFile, Reason: apischema.SwapLeftNotEnoughMemory})
 	if slices.Contains(sys.calls, "swapoff /swap.img") || slices.Contains(sys.calls, "mask swap.img.swap") {
 		t.Fatalf("calls = %v, want the swap file left alone", sys.calls)
+	}
+}
+
+// A swap file in a folder someone other than root can write is never given
+// to swapoff, which could be sent to another device there: the run succeeds,
+// the file stays active and the host reports mixed.
+func TestSetSwapModeToZramLeavesASwapFileOthersCanRedirect(t *testing.T) {
+	_, sys := diskHost(t)
+	sys.refused = map[string]error{"/swap.img": fmt.Errorf("%w: /swap.img: %w", bridgeipc.ErrConflict, errOthersCanRedirect)}
+
+	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeZram)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Mode != apischema.SwapModeMixed {
+		t.Errorf("mode = %q, want mixed", got.Mode)
+	}
+	assertLeft(t, got.Left, apischema.SwapLeft{What: apischema.SwapLeftSwapFile, Reason: apischema.SwapLeftOthersCanWrite})
+	if slices.Contains(sys.calls, "mask swap.img.swap") {
+		t.Fatalf("calls = %v, want the swap file's unit left alone", sys.calls)
 	}
 }
 

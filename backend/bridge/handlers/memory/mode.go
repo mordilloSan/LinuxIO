@@ -492,6 +492,11 @@ func (r *modeRun) stopSwapFile(ctx context.Context, step swapStep) error {
 		return nil
 	}
 	if err := r.swapOffDevice(ctx, device.Path); err != nil {
+		// Refused before swapoff ran, so nothing changed.
+		if errors.Is(err, errOthersCanRedirect) {
+			r.leave(apischema.SwapLeftSwapFile, apischema.SwapLeftOthersCanWrite)
+			return nil
+		}
 		return err
 	}
 	// The file is off: masking its unit, which keeps it off at boot, is not

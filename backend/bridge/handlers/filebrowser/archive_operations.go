@@ -278,24 +278,23 @@ func runExtractTask(ctx context.Context, task *bridgeipc.Task, store *userconfig
 	}
 	defer root.Close()
 
-	archiveStat, err := root.Root.Stat(fsroot.ToRel(archivePath))
+	owner := actingFor(session)
+	archive, archiveStat, err := services.OpenArchive(root, archivePath, owner)
 	if err != nil {
-		return FileExtractResult{}, fsError("stat archive", err)
+		return FileExtractResult{}, fsError("open archive", err)
 	}
-	if archiveStat.IsDir() {
-		return FileExtractResult{}, fmt.Errorf("%w: path is a directory, not an archive", bridgeipc.ErrInvalidArgs)
-	}
+	defer archive.Close()
 
 	settings := taskSettingsForTask(ctx, task, store)
 
-	totalSize := computeExtractSize(archivePath, archiveStat.Size())
+	totalSize := computeExtractSize(archive, archivePath, archiveStat.Size())
 	if spaceErr := services.EnsureFreeSpace(filepath.Dir(destination), totalSize); spaceErr != nil {
 		return FileExtractResult{}, bridgeipc.NewError(spaceErr.Error(), 507)
 	}
 	writeTaskPhaseProgress(task, totalSize, "preparing")
 	opts := newTaskPhaseCallbacks(ctx, task, store, knownSize(totalSize), "extracting")
 	// An aborted extract removes the destination it made itself.
-	err = services.ExtractArchive(ctx, archivePath, destination, actingFor(session), opts, archiveExtractWorkers(settings))
+	err = services.ExtractArchive(ctx, archive, archivePath, destination, owner, opts, archiveExtractWorkers(settings))
 	if errors.Is(err, services.ErrAborted) {
 		slog.Debug("extract aborted", "path", destination)
 		return FileExtractResult{}, abortErr(ctx)

@@ -21,6 +21,8 @@ const LEFT_TEXT: Partial<
     "Compressed memory is not running, so the swap file stays on.",
   "swap_file:not_identified":
     "An active swap file could not be matched to the one in /etc/fstab, so LinuxIO left it as it is.",
+  "swap_file:others_can_write":
+    "The swap file is in a folder that users other than root can change, so LinuxIO left it on. Move it to a folder only root can write.",
   "swap_file:not_managed":
     "A swap file that LinuxIO does not manage is still on. LinuxIO turns off only the first swap file in /etc/fstab.",
   "zram:not_enough_memory": `Not enough free memory to empty compressed memory, so it stays on. ${LATER}`,

@@ -93,6 +93,10 @@ const (
 	// SwapLeftNotIdentified: an active swap file could not be told from the
 	// one fstab names, so that file's unit was not masked.
 	SwapLeftNotIdentified SwapLeftReason = "not_identified"
+	// SwapLeftOthersCanWrite: a folder on the swap file's path can be
+	// changed by users other than root, who could send a swapoff of that
+	// path to another swap device, so the file was not stopped.
+	SwapLeftOthersCanWrite SwapLeftReason = "others_can_write"
 	// SwapLeftNotManaged: nothing LinuxIO manages runs the device. For a
 	// swap file, it is not the first one /etc/fstab names, the only one with
 	// a unit a change stops. For zram, it was set up by something other

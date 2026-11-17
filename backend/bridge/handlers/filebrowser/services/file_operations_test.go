@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -233,17 +234,18 @@ func TestPrepareDestinationRestoresReplacedEntryOnFailure(t *testing.T) {
 	createTestFile(t, tmpDir, "src.txt", []byte("new"))
 	dst := createTestFile(t, tmpDir, "dst.txt", []byte("old"))
 
-	finish, err := prepareDestination(t.Context(), entryAt(t, dst), true, false)
+	finish, err := prepareDestination(newCopyState(t.Context(), true), entryAt(t, dst), true)
 	require.NoError(t, err)
 	_, err = os.Lstat(dst)
 	require.ErrorIs(t, err, fs.ErrNotExist, "destination is moved aside for the transfer")
 
-	finish(errors.New("transfer failed"))
+	failed := errors.New("transfer failed")
+	require.Equal(t, failed, finish(failed), "finish hands the transfer's error back")
 	assert.Equal(t, "old", readString(t, dst), "failed transfer restores the replaced file")
 
-	finish, err = prepareDestination(t.Context(), entryAt(t, dst), true, false)
+	finish, err = prepareDestination(newCopyState(t.Context(), true), entryAt(t, dst), true)
 	require.NoError(t, err)
-	finish(nil)
+	require.NoError(t, finish(nil))
 	entries, err := os.ReadDir(tmpDir)
 	require.NoError(t, err)
 	assert.Len(t, entries, 1, "successful transfer removes the replaced file")
@@ -260,11 +262,11 @@ func TestPrepareDestinationRemovesPartialOnlyForCopies(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dst := filepath.Join(t.TempDir(), "dst")
-			finish, err := prepareDestination(t.Context(), entryAt(t, dst), false, tc.removePartial)
+			finish, err := prepareDestination(newCopyState(t.Context(), !tc.removePartial), entryAt(t, dst), false)
 			require.NoError(t, err)
 			createTestFile(t, filepath.Dir(dst), "dst", []byte("partial"))
 
-			finish(errors.New("transfer failed"))
+			require.Error(t, finish(errors.New("transfer failed")))
 			_, err = os.Lstat(dst)
 			if tc.wantKept {
 				require.NoError(t, err, "a move keeps what already crossed")
@@ -273,6 +275,128 @@ func TestPrepareDestinationRemovesPartialOnlyForCopies(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A replace removes the entry it set aside and no other. In a folder the
+// session user can write, a process of theirs can rename another account's
+// folder onto the set-aside name; they could not empty that folder, so the
+// replace must not.
+func TestPrepareDestinationKeepsAFolderRenamedOntoTheSetAsideName(t *testing.T) {
+	tmpDir := t.TempDir()
+	dst := createTestFile(t, tmpDir, "dst.txt", []byte("old"))
+	victim := createTestDir(t, tmpDir, "victim")
+	createTestFile(t, victim, "theirs.txt", []byte("theirs"))
+
+	finish, err := prepareDestination(newCopyState(t.Context(), true), entryAt(t, dst), true)
+	require.NoError(t, err)
+	names := dirNames(t, tmpDir)
+	require.Len(t, names, 2)
+	aside := filepath.Join(tmpDir, names[0])
+	require.Contains(t, aside, ".linuxio-replaced-")
+	require.NoError(t, os.Rename(aside, filepath.Join(tmpDir, "elsewhere")))
+	require.NoError(t, os.Rename(victim, aside))
+
+	require.NoError(t, finish(nil))
+	assert.Equal(t, "theirs", readString(t, filepath.Join(aside, "theirs.txt")))
+}
+
+// The entry a replace sets aside is never a folder, since a folder is merged
+// into. One renamed onto the destination's name after that was checked is
+// set aside and then left, not emptied.
+func TestPrepareDestinationNeverEmptiesAFolderItSetAside(t *testing.T) {
+	tmpDir := t.TempDir()
+	dst := createTestDir(t, tmpDir, "dst")
+	createTestFile(t, dst, "theirs.txt", []byte("theirs"))
+
+	finish, err := prepareDestination(newCopyState(t.Context(), false), entryAt(t, dst), true)
+	require.NoError(t, err)
+	require.NoError(t, finish(nil))
+
+	names := dirNames(t, tmpDir)
+	require.Len(t, names, 1)
+	assert.Equal(t, "theirs", readString(t, filepath.Join(tmpDir, names[0], "theirs.txt")))
+}
+
+// A transfer that fails because the name was taken meanwhile leaves the file
+// that took it: it is another writer's, not a partial copy.
+func TestPrepareDestinationKeepsAFileThatTookTheName(t *testing.T) {
+	tmpDir := t.TempDir()
+	dst := filepath.Join(tmpDir, "dst.txt")
+	finish, err := prepareDestination(newCopyState(t.Context(), false), entryAt(t, dst), false)
+	require.NoError(t, err)
+	createTestFile(t, tmpDir, "dst.txt", []byte("theirs"))
+
+	taken := &fs.PathError{Op: "create", Path: dst, Err: unix.EEXIST}
+	require.ErrorIs(t, finish(taken), fs.ErrExist)
+	assert.Equal(t, "theirs", readString(t, dst))
+}
+
+// When the replaced entry cannot be put back, the error says where it is.
+func TestPrepareDestinationSaysWhereTheReplacedEntryIsKept(t *testing.T) {
+	tmpDir := t.TempDir()
+	dst := createTestFile(t, tmpDir, "dst.txt", []byte("old"))
+	finish, err := prepareDestination(newCopyState(t.Context(), false), entryAt(t, dst), true)
+	require.NoError(t, err)
+	createTestFile(t, createTestDir(t, tmpDir, "dst.txt"), "theirs.txt", []byte("theirs"))
+
+	failed := &fs.PathError{Op: "open", Path: dst, Err: unix.EACCES}
+	err = finish(failed)
+	require.ErrorIs(t, err, fs.ErrPermission)
+	require.NotErrorIs(t, err, fs.ErrExist, "why the entry could not be put back does not change how the transfer failed")
+	require.ErrorContains(t, err, ".linuxio-replaced-")
+	assert.Equal(t, "theirs", readString(t, filepath.Join(dst, "theirs.txt")), "a folder the transfer did not make stays")
+	var kept string
+	for _, name := range dirNames(t, tmpDir) {
+		if strings.Contains(name, ".linuxio-replaced-") {
+			kept = name
+		}
+	}
+	require.NotEmpty(t, kept)
+	assert.Equal(t, "old", readString(t, filepath.Join(tmpDir, kept)))
+}
+
+func TestIsEmptyDir(t *testing.T) {
+	dir := t.TempDir()
+	open := func() *os.File {
+		f, err := os.Open(dir)
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = f.Close() })
+		return f
+	}
+	assert.True(t, isEmptyDir(open()))
+	createTestFile(t, dir, "a.txt", nil)
+	assert.False(t, isEmptyDir(open()))
+}
+
+// A failed copy removes the folder it made and no other: a folder renamed
+// onto the destination's name meanwhile is not the copy's partial output.
+func TestPrepareDestinationKeepsAFolderRenamedOntoAFailedDestination(t *testing.T) {
+	tmpDir := t.TempDir()
+	dst := filepath.Join(tmpDir, "dst")
+	finish, err := prepareDestination(newCopyState(t.Context(), false), entryAt(t, dst), false)
+	require.NoError(t, err)
+	createTestFile(t, createTestDir(t, tmpDir, "dst"), "theirs.txt", []byte("theirs"))
+
+	require.Error(t, finish(errors.New("transfer failed")))
+	assert.Equal(t, "theirs", readString(t, filepath.Join(dst, "theirs.txt")))
+}
+
+// A failed copy of a folder leaves nothing under the destination's name.
+func TestFailedFolderCopyRemovesItsPartialDestination(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root reads a folder without permission, so the copy does not fail")
+	}
+	tmpDir := t.TempDir()
+	src := createTestDir(t, tmpDir, "src")
+	createTestFile(t, src, "a.txt", []byte("a"))
+	locked := createTestDir(t, src, "locked")
+	createTestFile(t, locked, "b.txt", []byte("b"))
+	require.NoError(t, os.Chmod(locked, 0))
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o700) })
+	dst := filepath.Join(tmpDir, "dst")
+
+	require.Error(t, CopyFileWithCallbacks(t.Context(), src, dst, false, Owner{}, nil))
+	assert.NoDirExists(t, dst)
 }
 
 func readString(t *testing.T, path string) string {
@@ -931,7 +1055,7 @@ func TestCopyRefusesAFolderItWritesInto(t *testing.T) {
 	srcDir, err := entryAt(t, src).openDir()
 	require.NoError(t, err)
 	defer srcDir.Close()
-	require.ErrorContains(t, newCopyState(t.Context(), false).enter(srcDir, srcDir, src), "into itself")
+	require.ErrorContains(t, newCopyState(t.Context(), false).enter(srcDir, srcDir, src, false), "into itself")
 }
 
 // The links a root bridge still follows are those the session user cannot
@@ -963,7 +1087,7 @@ func TestFileOperationsFollowOnlyALinkInARootFolderAsRoot(t *testing.T) {
 
 	archive := filepath.Join(base, "notes.zip")
 	require.NoError(t, createZipFile(t, archive, nil, archive, notes))
-	require.NoError(t, ExtractArchive(t.Context(), archive, filepath.Join(alias, "out"), session, nil, 0))
+	require.NoError(t, extractArchiveAt(t, archive, filepath.Join(alias, "out"), session, nil, 0))
 	assert.FileExists(t, filepath.Join(actual, "out", "notes.txt"))
 
 	err := CopyFileWithCallbacks(t.Context(), filepath.Join(docs, "notes.txt"), filepath.Join(base, "taken.txt"), false, session, nil)
@@ -972,7 +1096,7 @@ func TestFileOperationsFollowOnlyALinkInARootFolderAsRoot(t *testing.T) {
 	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
 	err = ChangeOwnershipCtx(t.Context(), filepath.Join(docs, "notes.txt"), 0, 0, false, session, nil)
 	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
-	err = ExtractArchive(t.Context(), archive, filepath.Join(docs, "out2"), session, nil, 0)
+	err = extractArchiveAt(t, archive, filepath.Join(docs, "out2"), session, nil, 0)
 	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
 	assert.NoFileExists(t, filepath.Join(base, "taken.txt"))
 	assert.NoDirExists(t, filepath.Join(actual, "out2"))

@@ -3097,6 +3097,7 @@ export type SwapLeftReason =
   | "not_enough_memory"
   | "zram_not_swapping"
   | "not_identified"
+  | "others_can_write"
   | "not_managed"
   | "no_other_swap"
   | "other_size";
