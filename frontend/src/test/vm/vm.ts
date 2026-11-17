@@ -6,10 +6,28 @@ import { promisify } from "node:util";
 import { expect, type Locator, type Page } from "@playwright/test";
 
 // Helpers for the specs in this directory. They reach the VM only through
-// packaging/vm/linuxio-vm.sh, which acts on the domain linuxio-e2e alone.
+// packaging/vm/linuxio-vm.sh, which acts on the linuxio-e2e domains alone.
 const here = path.dirname(fileURLToPath(import.meta.url));
 const rigPath = path.resolve(here, "../../../../packaging/vm/linuxio-vm.sh");
 const execFileAsync = promisify(execFile);
+
+// make test-vm-browser lists the VMs of the run in LINUXIO_VM_NUMBERS, _URLS
+// and _PASSWORDS, in one order. Playwright runs one worker for each VM, and a
+// worker keeps to the VM at its parallel index: the config gives it that VM's
+// address, and LINUXIO_VM_INDEX sends every rig command it starts, here and
+// in the specs, to that VM.
+const slot = Number(process.env.TEST_PARALLEL_INDEX ?? 0);
+const ofThisWorker = (list: string) =>
+  (process.env[list] ?? "").trim().split(/\s+/)[slot] ?? "";
+const vmNumber = ofThisWorker("LINUXIO_VM_NUMBERS");
+if (vmNumber === "") {
+  // A worker past the list (--workers) would send its reboots to another's VM.
+  throw new Error(
+    `worker ${slot} has no VM in LINUXIO_VM_NUMBERS: run the specs with make test-vm or make test-vm-browser, without --workers`,
+  );
+}
+process.env.LINUXIO_VM_INDEX = vmNumber;
+const vmPassword = ofThisWorker("LINUXIO_VM_PASSWORDS");
 
 export const fixture = (name: string) => path.join(here, "fixtures", name);
 
@@ -169,9 +187,9 @@ export interface Login {
 /** Signs in as login, by default the VM's test user, who can sudo. */
 export async function signIn(page: Page, login?: Login) {
   const username = login?.username ?? process.env.LINUXIO_VM_USER ?? "";
-  const password = login?.password ?? process.env.LINUXIO_VM_PASSWORD ?? "";
+  const password = login?.password ?? vmPassword;
   expect(username, "LINUXIO_VM_USER").not.toBe("");
-  expect(password, "LINUXIO_VM_PASSWORD").not.toBe("");
+  expect(password, "LINUXIO_VM_PASSWORDS").not.toBe("");
 
   await page.goto("/sign-in");
   await page.locator('input[autocomplete="username"]').fill(username);

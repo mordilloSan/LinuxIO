@@ -9,33 +9,63 @@
 # tests on an older kernel: the domain linuxio-e2e-noble, its
 # linuxio-e2e-noble-* volumes and ~/.cache/linuxio-vm-noble, beside the first.
 #
-# Usage: linuxio-vm.sh create | install BUILD_DIR | ssh [COMMAND] | ip | reboot |
-#        power-cut | off-for SECONDS | throttle DISK BYTES_PER_SEC | stop | reset |
-#        update | destroy
+# LINUXIO_VM_INDEX=2..9 selects one more VM of the same release, so the browser
+# specs run on several at once: the domain linuxio-e2e-2, its linuxio-e2e-2-*
+# volumes and ~/.cache/linuxio-vm-2. It shares only the image cache with the
+# first.
+#
+# Usage: linuxio-vm.sh create | ensure | prepare BUILD_DIR | install BUILD_DIR |
+#        start | ssh [COMMAND] | ip | password | reboot | power-cut |
+#        off-for SECONDS | throttle DISK BYTES_PER_SEC | stop | reset | update |
+#        destroy | fit | room | count | each COUNT COMMAND [ARGS]
 set -euo pipefail
 
 case "${LINUXIO_VM_RELEASE:-resolute}" in
-resolute) readonly RELEASE=resolute VERSION=26.04 DOMAIN=linuxio-e2e ;;
-noble) readonly RELEASE=noble VERSION=24.04 DOMAIN=linuxio-e2e-noble ;;
+resolute) readonly RELEASE=resolute VERSION=26.04 FIRST_DOMAIN=linuxio-e2e ;;
+noble) readonly RELEASE=noble VERSION=24.04 FIRST_DOMAIN=linuxio-e2e-noble ;;
 *)
 	echo "linuxio-vm: unknown LINUXIO_VM_RELEASE '${LINUXIO_VM_RELEASE}' (resolute or noble)" >&2
 	exit 1
 	;;
 esac
+readonly INDEX="${LINUXIO_VM_INDEX:-1}"
+if [[ ! $INDEX =~ ^[1-9]$ ]]; then
+	echo "linuxio-vm: LINUXIO_VM_INDEX '${INDEX}' is not a number from 1 to 9" >&2
+	exit 1
+fi
+
+# The domain of the VM numbered $1: the first has no number in its name.
+domain_name() {
+	if (($1 == 1)); then echo "$FIRST_DOMAIN"; else echo "${FIRST_DOMAIN}-$1"; fi
+}
+
+DOMAIN="$(domain_name "$INDEX")"
+readonly DOMAIN
 readonly VM_USER=linuxio-e2e
+readonly VM_MEMORY_GIB=4 VM_VCPUS=4
+# What the host keeps when VMs are counted against its free memory: the
+# browsers of a run and whatever else grows while it lasts.
+readonly HOST_RESERVE_MIB=1536
+# The longest spec file takes a third of the time of all of them, so a fifth
+# VM would only cost its disk and its first boot.
+readonly MOST_VMS=4
 readonly SNAPSHOT=clean
 readonly POOL=default
 readonly BASE_VOL="${DOMAIN}-base.qcow2"
 readonly SYSTEM_VOL="${DOMAIN}-system.qcow2"
 readonly DATA_VOLS=("${DOMAIN}-data1.qcow2" "${DOMAIN}-data2.qcow2" "${DOMAIN}-data3.qcow2" "${DOMAIN}-data4.qcow2")
 readonly HOST_IP=192.168.122.1
-readonly SEED_PORT=8399
+# One port for each VM number, so several first boots can run at once.
+readonly SEED_PORT=$((8398 + INDEX))
 readonly SEED_URL="http://${HOST_IP}:${SEED_PORT}/"
 readonly IMAGE_BASE_URL="https://cloud-images.ubuntu.com/releases/${RELEASE}/release"
 readonly IMAGE_NAME="ubuntu-${VERSION}-server-cloudimg-amd64.img"
 readonly STATE="${HOME}/.cache/linuxio-vm${DOMAIN#linuxio-e2e}"
+readonly IMAGE_DIR="${HOME}/.cache/linuxio-vm${FIRST_DOMAIN#linuxio-e2e}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 readonly REPO_ROOT
+# Where `each` keeps the output of every VM, one file per VM and command.
+readonly LOG_DIR="${LINUXIO_VM_LOG_DIR:-${REPO_ROOT}/.cache/test-logs}"
 readonly SSH_OPTS=(
 	-i "${STATE}/id_ed25519" -o IdentitiesOnly=yes -o BatchMode=yes
 	-o UserKnownHostsFile="${STATE}/known_hosts" -o StrictHostKeyChecking=accept-new
@@ -46,6 +76,20 @@ IP=""
 
 say() { echo "linuxio-vm: $*" >&2; }
 
+# A step of this VM, for `each` to show while it runs: "NAME run EPOCH" when it
+# begins, "NAME ok SECONDS" when it ends. Without `each` nothing is written.
+step_note() { [[ -z ${LINUXIO_VM_STATUS:-} ]] || echo "$*" >>"$LINUXIO_VM_STATUS"; }
+
+# Runs FUNCTION [ARGS] as the step NAME. A failure exits the script as before;
+# `each` then shows the step that was running as failed.
+step() {
+	local name=$1 begun=$SECONDS
+	shift
+	step_note "$name run $EPOCHSECONDS"
+	"$@"
+	step_note "$name ok $((SECONDS - begun))"
+}
+
 die() {
 	say "$*"
 	exit 1
@@ -53,7 +97,14 @@ die() {
 
 v() { virsh -c qemu:///system "$@"; }
 
-domain_exists() { v dominfo "$DOMAIN" >/dev/null 2>&1; }
+# Only virsh's own "failed to get domain" means there is none: any other error
+# stops the script, since ensure deletes and creates again what it misses.
+domain_exists() {
+	local name=${1:-$DOMAIN} err
+	err="$(v dominfo "$name" 2>&1 >/dev/null)" && return 0
+	[[ $err == *"failed to get domain"* ]] && return 1
+	die "cannot look up ${name}: ${err}"
+}
 
 domain_state() { v domstate "$DOMAIN" 2>/dev/null; }
 
@@ -116,18 +167,25 @@ stop_seed() {
 }
 
 # The cloud image, checked against the release's SHA256SUMS; a cached copy is
-# reused while it still matches.
+# reused while it still matches. The VMs of a release share the copy, so one
+# create at a time looks at it.
 fetch_image() {
-	local sum image="${STATE}/${IMAGE_NAME}"
+	local sum image="${IMAGE_DIR}/${IMAGE_NAME}"
+	mkdir -p "$IMAGE_DIR"
+	chmod 700 "$IMAGE_DIR"
+	exec 8>"${IMAGE_DIR}/image.lock"
+	flock 8
 	sum="$(curl -fsSL "${IMAGE_BASE_URL}/SHA256SUMS" | awk -v f="*${IMAGE_NAME}" '$2 == f { print $1 }')"
 	[[ -n $sum ]] || die "${IMAGE_NAME} is not listed in ${IMAGE_BASE_URL}/SHA256SUMS"
 	if echo "${sum}  ${image}" | sha256sum --check --status >/dev/null 2>&1; then
+		exec 8>&-
 		return
 	fi
 	say "downloading ${IMAGE_NAME}"
 	curl -fL --progress-bar -o "${image}.part" "${IMAGE_BASE_URL}/${IMAGE_NAME}"
 	echo "${sum}  ${image}.part" | sha256sum --check --status || die "${IMAGE_NAME} does not match SHA256SUMS"
 	mv "${image}.part" "$image"
+	exec 8>&-
 }
 
 write_seed() {
@@ -165,8 +223,8 @@ define_domain() {
 	v define /dev/stdin >/dev/null <<EOF
 <domain type='kvm'>
   <name>${DOMAIN}</name>
-  <memory unit='GiB'>4</memory>
-  <vcpu>4</vcpu>
+  <memory unit='GiB'>${VM_MEMORY_GIB}</memory>
+  <vcpu>${VM_VCPUS}</vcpu>
   <sysinfo type='smbios'>
     <system><entry name='serial'>ds=nocloud;s=${SEED_URL}</entry></system>
   </sysinfo>
@@ -206,8 +264,8 @@ create() {
 	write_seed
 
 	say "uploading the base image to the ${POOL} pool"
-	v vol-create-as "$POOL" "$BASE_VOL" "$(stat -c %s "${STATE}/${IMAGE_NAME}")" --format qcow2 >/dev/null
-	v vol-upload --pool "$POOL" "$BASE_VOL" "${STATE}/${IMAGE_NAME}"
+	v vol-create-as "$POOL" "$BASE_VOL" "$(stat -c %s "${IMAGE_DIR}/${IMAGE_NAME}")" --format qcow2 >/dev/null
+	v vol-upload --pool "$POOL" "$BASE_VOL" "${IMAGE_DIR}/${IMAGE_NAME}"
 	v vol-create-as "$POOL" "$SYSTEM_VOL" 25G --format qcow2 --backing-vol "$BASE_VOL" --backing-vol-format qcow2 >/dev/null
 	for vol in "${DATA_VOLS[@]}"; do
 		v vol-create-as "$POOL" "$vol" 8G --format qcow2 >/dev/null
@@ -233,6 +291,37 @@ create() {
 	wait_for_shut_off 180
 	v snapshot-create-as "$DOMAIN" "$SNAPSHOT" --description "cloud-init done, LinuxIO not installed" >/dev/null
 	say "${DOMAIN} is ready (snapshot ${SNAPSHOT}); next: make vm-install"
+}
+
+# A VM ready to use: nothing to do when it has its clean snapshot. Otherwise
+# what is left of it (volumes without a domain, a first boot that was cut)
+# goes, and it is created.
+ensure() {
+	if has_clean_snapshot; then return; fi
+	if domain_exists; then say "${DOMAIN} has no ${SNAPSHOT} snapshot, so it is created again"; fi
+	destroy
+	create
+}
+
+has_clean_snapshot() {
+	local snapshots
+	domain_exists || return 1
+	snapshots="$(v snapshot-list "$DOMAIN" --name)" || die "cannot list the snapshots of ${DOMAIN}"
+	grep -qx "$SNAPSHOT" <<<"$snapshots"
+}
+
+# What make test-vm does to each VM before the specs: create it when it is
+# missing or its first boot was cut, revert it to clean and install the build.
+prepare() {
+	local build_dir=${1:-}
+	[[ -n $build_dir && -x "${build_dir}/linuxio" ]] || die "no LinuxIO build in '${build_dir}'"
+	if has_clean_snapshot; then
+		step_note "ready ok 0"
+	else
+		step created ensure
+	fi
+	step reset reset
+	step install install "$build_dir"
 }
 
 install() {
@@ -358,23 +447,210 @@ destroy() {
 		if vol_exists "$vol"; then v vol-delete --pool "$POOL" "$vol" >/dev/null; fi
 	done
 	rm -f "${STATE}/known_hosts"
-	say "${DOMAIN} and its volumes are gone; the image cache stays in ${STATE}"
+	say "${DOMAIN} and its volumes are gone; the image cache stays in ${IMAGE_DIR}"
+}
+
+# How many VMs the host can run now, MOST_VMS at most: each needs its memory
+# free and its CPUs, and HOST_RESERVE_MIB stays with the host. What a running
+# VM of this release holds counts as free, since the target that asks is about
+# to use or stop it.
+fit() {
+	local free_kib n by_memory by_cpu
+	free_kib="$(free_for_vms_kib)"
+	by_memory=$(((free_kib / 1024 - HOST_RESERVE_MIB) / (VM_MEMORY_GIB * 1024)))
+	by_cpu=$(($(nproc) / VM_VCPUS))
+	n=$((by_memory < by_cpu ? by_memory : by_cpu))
+	((n <= MOST_VMS)) || n=$MOST_VMS
+	((n >= 1)) || n=1
+	echo "$n"
+}
+
+free_for_vms_kib() {
+	local free_kib n rss
+	free_kib="$(awk '$1 == "MemAvailable:" { print $2 }' /proc/meminfo)"
+	for n in {1..9}; do
+		[[ "$(v domstate "$(domain_name "$n")" 2>/dev/null)" == running ]] || continue
+		rss="$(v dommemstat "$(domain_name "$n")" 2>/dev/null | awk '$1 == "rss" { print $2 }')"
+		free_kib=$((free_kib + ${rss:-0}))
+	done
+	echo "$free_kib"
+}
+
+# The numbers behind fit, for the line test-vm starts with.
+room() {
+	local free_kib
+	free_kib="$(free_for_vms_kib)"
+	printf '%d.%d GiB free and %d CPUs (a VM takes %d GiB and %d CPUs, %d at most)\n' \
+		$((free_kib / 1048576)) $((free_kib % 1048576 * 10 / 1048576)) "$(nproc)" \
+		"$VM_MEMORY_GIB" "$VM_VCPUS" "$MOST_VMS"
+}
+
+# How many VMs of this release exist, counted from the first with no gap; 1
+# when there is none, so the command that follows says to create it.
+count() {
+	local n=0
+	while ((n < 9)) && domain_exists "$(domain_name $((n + 1)))"; do
+		n=$((n + 1))
+	done
+	echo $((n > 0 ? n : 1))
+}
+
+# Runs a command of this script for the VMs 1..COUNT side by side. Each VM's
+# output goes to LOG_DIR/vm-N-COMMAND.log. On a terminal one row per VM shows
+# its steps as they end and the one running; elsewhere a line per step that
+# ends. A VM that fails has the end of its log shown, and each fails with it.
+# A shell without job control makes a background command ignore Ctrl-C, which
+# would leave these running after the target was stopped: each takes it back.
+each() {
+	local count=${1:-} n status_dir failed=0 begun=$EPOCHSECONDS alive tty=0 drawn=0
+	local -a codes=() ended=() logs=() shown=()
+	[[ $count =~ ^[1-9]$ && $# -ge 2 ]] || die "usage: each COUNT COMMAND [ARGS]"
+	shift
+	[[ -t 2 ]] && tty=1
+	mkdir -p "$LOG_DIR"
+	status_dir="$(mktemp -d)"
+	# shellcheck disable=SC2064 # the directory is fixed now
+	trap "rm -f -- '${status_dir}'/[1-9] '${status_dir}'/[1-9].code; rmdir -- '${status_dir}'" EXIT
+	for n in $(seq "$count"); do
+		logs[n]="${LOG_DIR}/vm-${n}-${1}.log"
+		: >"${status_dir}/${n}"
+		# The exit code lands in N.code, so the loop below never asks after a
+		# process ID that may since belong to another program.
+		(
+			trap - INT QUIT
+			code=0
+			LINUXIO_VM_INDEX=$n LINUXIO_VM_STATUS="${status_dir}/${n}" "$0" "$@" </dev/null >"${logs[n]}" 2>&1 || code=$?
+			echo "$code" >"${status_dir}/${n}.code"
+		) &
+		shown[n]=0
+	done
+	while true; do
+		alive=0
+		for n in $(seq "$count"); do
+			if [[ -z ${codes[n]:-} && -s "${status_dir}/${n}.code" ]]; then
+				codes[n]=$(<"${status_dir}/${n}.code")
+				ended[n]=$EPOCHSECONDS
+			fi
+			[[ -n ${codes[n]:-} ]] || alive=1
+		done
+		if ((tty)); then
+			((drawn == 0)) || printf '\e[%dA' "$count" >&2
+			for n in $(seq "$count"); do
+				printf '\e[2K%s\n' "$(vm_row "$n" "$1" "${status_dir}/${n}" "${codes[n]:-}" "$begun" "${ended[n]:-}")" >&2
+			done
+			drawn=1
+		else
+			for n in $(seq "$count"); do
+				shown[n]=$(vm_new_lines "$n" "$1" "${status_dir}/${n}" "${codes[n]:-}" "$begun" "${ended[n]:-}" "${shown[n]}")
+			done
+		fi
+		((alive)) || break
+		sleep 1
+	done
+	wait
+	for n in $(seq "$count"); do
+		((codes[n] == 0)) && continue
+		failed=1
+		say "$(vm_tag "$n") failed; the end of ${logs[n]#"$REPO_ROOT"/}:"
+		tail -n 25 "${logs[n]}" | sed 's/^/    /' >&2
+	done
+	return "$failed"
+}
+
+color() { [[ -t 2 && -z ${NO_COLOR:-} ]]; }
+paint() { if color; then printf '\e[%sm%s\e[0m' "$1" "$2"; else printf '%s' "$2"; fi; }
+# Teal, amber, violet, blue: the colours the VM reporter gives the same VMs.
+vm_tag() {
+	local -r colors=(80 215 141 75)
+	paint "1;38;5;${colors[($1 - 1) % 4]}" "vm$1"
+}
+duration() { if (($1 < 60)); then echo "${1}s"; else printf '%dm %02ds' $(($1 / 60)) $(($1 % 60)); fi; }
+
+# The steps of VM N as "STATE NAME SECONDS" lines, in order. A command that
+# reports no steps (stop, reset, install) is one step of its own name. A step
+# that was running when the VM failed is failed.
+vm_steps() {
+	local command=$2 file=$3 code=$4 begun=$5 end_epoch=$6 name state value
+	local -a names=()
+	local -A states=() values=()
+	while read -r name state value; do
+		[[ -n ${states[$name]:-} ]] || names+=("$name")
+		states[$name]=$state
+		values[$name]=$value
+	done <"$file"
+	if ((${#names[@]} == 0)); then
+		names=("$command")
+		if [[ -z $code ]]; then
+			states[$command]=run values[$command]=$begun
+		else
+			states[$command]=$([[ $code == 0 ]] && echo ok || echo fail) values[$command]=$((end_epoch - begun))
+		fi
+	fi
+	for name in "${names[@]}"; do
+		state=${states[$name]} value=${values[$name]}
+		if [[ $state == run ]]; then
+			if [[ -z $code ]]; then
+				value=$((EPOCHSECONDS - value))
+			else
+				state=fail value=$((end_epoch - value))
+			fi
+		fi
+		echo "$state $name $value"
+	done
+}
+
+vm_step_text() {
+	local state=$1 name=$2 value=$3 label
+	case $name in
+	ready) label="ready" ;;
+	*) label="$name $(duration "$value")" ;;
+	esac
+	case $state in
+	ok) printf '%s %s' "$(paint 32 ✓)" "$label" ;;
+	fail) printf '%s %s' "$(paint 31 ✘)" "$(paint 31 "$label")" ;;
+	run) printf '%s %s' "$(paint 1 ▶)" "$label" ;;
+	esac
+}
+
+vm_row() {
+	local n=$1 row state name value
+	row="$(vm_tag "$n")  $(printf '%-15s' "$(domain_name "$n")")"
+	while read -r state name value; do
+		row+="  $(vm_step_text "$state" "$name" "$value")"
+	done < <(vm_steps "$@")
+	echo "$row"
+}
+
+# For a log or a pipe: a line for each step of VM N that ended since the
+# first PRINTED ones, then the number of steps that have ended.
+vm_new_lines() {
+	local n=$1 printed=$7 i=0 state name value
+	while read -r state name value; do
+		[[ $state != run ]] || continue
+		i=$((i + 1))
+		((i > printed)) || continue
+		printf '%s  %-15s  %s\n' "$(vm_tag "$n")" "$(domain_name "$n")" "$(vm_step_text "$state" "$name" "$value")" >&2
+	done < <(vm_steps "${@:1:6}")
+	echo "$i"
 }
 
 [[ "$(v uri 2>/dev/null)" == qemu:///system ]] || die "virsh cannot reach qemu:///system (is this user in the libvirt group?)"
 
 case "${1:-}" in
 create) create ;;
+ensure) ensure ;;
 install) install "${2:-}" ;;
 ssh)
 	connect
 	shift
 	vm_ssh "$@"
 	;;
+start) connect ;;
 ip)
 	connect
 	echo "$IP"
 	;;
+password) cat "${STATE}/password" ;;
 reboot) reboot_vm ;;
 power-cut) power_cut ;;
 off-for) off_for "${2:-}" ;;
@@ -383,5 +659,13 @@ stop) stop ;;
 reset) reset ;;
 update) update ;;
 destroy) destroy ;;
-*) die "usage: $(basename "$0") create | install BUILD_DIR | ssh [COMMAND] | ip | reboot | power-cut | off-for SECONDS | throttle DISK BYTES_PER_SEC | stop | reset | update | destroy" ;;
+fit) fit ;;
+room) room ;;
+count) count ;;
+prepare) prepare "${2:-}" ;;
+each)
+	shift
+	each "$@"
+	;;
+*) die "usage: $(basename "$0") create | ensure | prepare BUILD_DIR | install BUILD_DIR | start | ssh [COMMAND] | ip | password | reboot | power-cut | off-for SECONDS | throttle DISK BYTES_PER_SEC | stop | reset | update | destroy | fit | room | count | each COUNT COMMAND [ARGS]" ;;
 esac

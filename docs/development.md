@@ -113,13 +113,56 @@ and installer tests consume. `make localinstall` runs
 real kernel, systemd or Docker. `packaging/vm/linuxio-vm.sh` does the work on
 `qemu:///system`, so it needs `virsh`, membership in the `libvirt` group, the
 `default` NAT network (`192.168.122.1`), `curl`, `openssl` and `python3`, but no
-`sudo`. It touches only the domain `linuxio-e2e` and its `linuxio-e2e-*`
+`sudo`. It touches only the `linuxio-e2e*` domains and their `linuxio-e2e*`
 volumes in the `default` pool. Its state (the cloud image cache, the SSH key
 and the login) lives in `~/.cache/linuxio-vm`.
 
-While it runs, the VM takes about 4 GiB of RAM and 4 vCPU. Its disks are
+While it runs, a VM takes up to 4 GiB of RAM and 4 vCPU. Its disks are
 sparse qcow2 files: a 25 GiB system disk and four 8 GiB data disks
 (`vdb`–`vde`) for storage tests.
+
+`make test-vm` is the whole browser run in one command. It builds LinuxIO,
+counts how many VMs the host has room for, creates the ones that are missing,
+reverts each to `clean`, installs the build in each and runs the specs on all
+of them at once, then shuts them down. A VM needs 4 GiB of free memory
+(`MemAvailable`, after 1.5 GiB kept for the host and its browsers) and 4 CPUs,
+so a host with 12 CPUs and 14 GiB free runs three; four is the most it
+picks, since a fifth would not shorten the run. `VMS=2` sets the number by
+hand.
+
+The VMs are numbered from 1: `linuxio-e2e`, then `linuxio-e2e-2` with its
+`linuxio-e2e-2-*` volumes and `~/.cache/linuxio-vm-2`, up to 9. They share
+only the image cache. `VM=2` on a target names one of them. `vm-create`,
+`vm-destroy`, `vm-ssh` and the `vm-test-*` targets act on one VM, the first
+unless `VM` names another; `vm-install`, `vm-reset`, `vm-update`, `vm-stop`
+and `test-vm-browser` act on every VM that exists, side by side, or on the
+one `VM` names. After a `test-vm` that used fewer VMs than exist, pass the
+same `VMS` to `test-vm-browser`: the others do not have the build.
+
+The specs wait on reboots, throttled disks and timers and hardly use the CPU,
+so more CPUs for a VM gain nothing and more VMs do. Playwright runs one worker
+for each VM; a worker takes the next spec file and runs it against its own
+VM, so a spec file starts from what `vm-install` left and never from what
+another file did. The longest file sets the floor: on a host with 12 CPUs
+the specs took 42 minutes on one VM and 15 on three.
+
+What a run prints says which VM did what. A command run on several VMs
+(`prepare`, `reset`, `install`, `stop` and so on) shows one row per VM with
+its steps as they end, colour-coded `vm1`, `vm2`, `vm3`; each VM's own
+output goes to `.cache/test-logs/vm-N-COMMAND.log`, and the end of it is
+shown when that VM fails. The specs' reporter
+(`frontend/config/vm-reporter.ts`) puts the VM on every result, and prints
+what a spec writes under its own test once that test ends, so lines of two
+VMs never mix. On a terminal a board under the results shows each VM's file,
+test and how long it has run; in a log or a pipe the results come alone. The
+run ends with a table for each VM (tests, passed, failed, skipped, when it
+finished), a timeline of which file ran on which VM, and each failure with
+its error, its code and its trace. Every line, without colour, is also in
+`.cache/test-logs/test-vm.log`.
+
+Only one VM target runs at a time. A second one is refused while the first
+holds `~/.cache/linuxio-vm/lock`, since it would revert, reboot or stop a VM
+under it. `make vm-ssh VM_KEEP=1` is not held back: it stops nothing.
 
 `VM_RELEASE=noble` on a `vm-*` target selects a second VM on Ubuntu 24.04
 (kernel 6.8): the domain `linuxio-e2e-noble`, its `linuxio-e2e-noble-*`
@@ -132,21 +175,24 @@ specs run there too (`make vm-install VM_RELEASE=noble`, then
 scheduled-script specs were run on it.
 
 ```sh
+make test-vm          # everything below that a browser run needs, in one go
 make vm-create        # download and check the image, first boot, snapshot "clean"
-make vm-install       # make build-nocheck, then install this build in the VM
+make vm-create VM=2   # one more VM
+make vm-install       # make build-nocheck, then install this build in the VMs
 make vm-ssh CMD='systemctl is-active linuxio.target'
 make test-vm-browser  # Playwright specs in frontend/src/test/vm
 make vm-test-btrfs-integration
-make vm-stop          # shut the VM down; what is installed stays
-make vm-reset         # revert every disk to "clean" and stop the VM
+make vm-stop          # shut the VMs down; what is installed stays
+make vm-reset         # revert every disk to "clean" and stop the VMs
 make vm-update        # upgrade the packages in "clean" and take the snapshot again
-make vm-destroy       # delete the domain and its volumes; the cache stays
+make vm-destroy       # delete the first VM and its volumes; the cache stays
 ```
 
 - `vm-create` downloads the cloud image (checked against the release's
   `SHA256SUMS`), and boots it once with `packaging/vm/user-data.yaml.in`.
   cloud-init reads its seed over HTTP from a server on
-  `192.168.122.1:8399` that runs only during that boot. It creates the user
+  `192.168.122.1:8399` (8400 for VM 2, and so on) that runs only during that
+  boot. It creates the user
   `linuxio-e2e` with passwordless sudo and installs `docker.io`,
   `btrfs-progs` and the LinuxIO dependencies, and upgrades every package. The
   VM is then shut down and snapshotted as `clean`, without LinuxIO.
@@ -169,8 +215,11 @@ make vm-destroy       # delete the domain and its volumes; the cache stays
   new one.
 - `make vm-ssh` without `CMD` opens a shell. The user can `sudo` without a
   password. Make expands `$` in `CMD`, so write `$$`.
-- `test-vm-browser` signs in at `https://<vm-ip>:8090` as `linuxio-e2e`, with
-  the password in `~/.cache/linuxio-vm/password`. `PLAYWRIGHT_ARGS` applies.
+- `test-vm-browser` runs the specs against the VMs as they are, which is
+  what a rerun of one file wants (`PLAYWRIGHT_ARGS=jobs-phase4`). It signs in
+  at `https://<vm-ip>:8090` as `linuxio-e2e`, with the VM's password in its
+  state directory (`~/.cache/linuxio-vm/password` for the first).
+  `PLAYWRIGHT_ARGS` applies to `test-vm` too.
   The specs leave their schedules behind, and the Schedules table renders
   only the rows near what is visible, in the order of the definition files
   (by ID, so a new schedule lands anywhere). The helpers in `vm.ts`
@@ -457,7 +506,7 @@ The full index groups the supported targets as follows:
   `build-docker-update`, `build-leak-profile`, `generate`, `dev-prep`, `dev`,
   `dev-stop`, `dev-status-install`, `dev-status-uninstall`, `clean`, `cloc`
 - installation: `localinstall`, `reinstall`, `uninstall`
-- test VM: `vm-create`, `vm-install`, `vm-ssh`, `vm-stop`, `vm-reset`, `vm-update`, `vm-destroy`,
+- test VM: `test-vm`, `vm-create`, `vm-install`, `vm-ssh`, `vm-stop`, `vm-reset`, `vm-update`, `vm-destroy`,
   `vm-test-btrfs-integration`, `vm-test-memory-integration`,
   `vm-test-filebrowser-root`, `vm-test-relay-root`,
   `test-vm-browser`
