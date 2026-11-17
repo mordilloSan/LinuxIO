@@ -3,7 +3,6 @@ package dbusclient
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"maps"
 	"slices"
 	"strconv"
@@ -24,13 +23,83 @@ type SignalMatch struct {
 	Arg0Namespace string
 }
 
+// SignalSubscription delivers every signal that matches, in the order the bus
+// sent them. A subscriber that reads slowly is never skipped: a protocol such
+// as a PackageKit transaction is one signal per item and then Finished, and a
+// reader that misses any of them shows a short list or waits out its timeout.
 type SignalSubscription struct {
 	ch    chan *godbus.Signal
 	key   string
 	match SignalMatch
 
+	// queue holds the signals the dispatcher handed over that pump has not
+	// yet sent on ch. It grows while the reader is behind and has no limit,
+	// since a limit could only drop; it ends with the subscription.
+	queueMu sync.Mutex
+	queue   []*godbus.Signal
+	wake    chan struct{}
+	done    chan struct{}
+
 	closeOnce sync.Once
 	closeErr  error
+}
+
+func newSignalSubscription(buffer int, key string, match SignalMatch) *SignalSubscription {
+	sub := &SignalSubscription{
+		ch:    make(chan *godbus.Signal, buffer),
+		key:   key,
+		match: match,
+		wake:  make(chan struct{}, 1),
+		done:  make(chan struct{}),
+	}
+	go sub.pump()
+	return sub
+}
+
+// enqueue hands sig to the subscription without waiting for its reader, so
+// one slow subscriber cannot hold the dispatcher or the others.
+func (s *SignalSubscription) enqueue(sig *godbus.Signal) {
+	s.queueMu.Lock()
+	s.queue = append(s.queue, sig)
+	s.queueMu.Unlock()
+	select {
+	case s.wake <- struct{}{}:
+	default:
+	}
+}
+
+// pump sends the queued signals on ch in order until stop ends the
+// subscription, then closes ch; it is the only sender and the only closer.
+func (s *SignalSubscription) pump() {
+	defer close(s.ch)
+	for {
+		select {
+		case <-s.done:
+			return
+		case <-s.wake:
+		}
+		for {
+			s.queueMu.Lock()
+			batch := s.queue
+			s.queue = nil
+			s.queueMu.Unlock()
+			if len(batch) == 0 {
+				break
+			}
+			for _, sig := range batch {
+				select {
+				case s.ch <- sig:
+				case <-s.done:
+					return
+				}
+			}
+		}
+	}
+}
+
+// stop ends pump, which closes ch. Each caller runs it once, under closeOnce.
+func (s *SignalSubscription) stop() {
+	close(s.done)
 }
 
 type signalManager struct {
@@ -194,11 +263,7 @@ func (m *signalManager) watch(ctx context.Context, buffer int, match SignalMatch
 	}
 	m.matchRefs[key]++
 
-	sub := &SignalSubscription{
-		ch:    make(chan *godbus.Signal, buffer),
-		key:   key,
-		match: match,
-	}
+	sub := newSignalSubscription(buffer, key, match)
 	m.subs[sub] = struct{}{}
 	return sub, nil
 }
@@ -208,7 +273,10 @@ func (m *signalManager) sharedSignalConnLocked() (*godbus.Conn, error) {
 		return m.conn, nil
 	}
 
-	conn, err := godbus.ConnectSystemBus()
+	// The sequential handler hands signals over in the order they arrived;
+	// the default one starts a goroutine per signal once raw is full, which
+	// can put Finished ahead of the items it ends.
+	conn, err := godbus.ConnectSystemBus(godbus.WithSignalHandler(godbus.NewSequentialSignalHandler()))
 	if err != nil {
 		return nil, fmt.Errorf("connect signal system bus: %w", err)
 	}
@@ -239,11 +307,7 @@ func (m *signalManager) dispatchSignal(sig *godbus.Signal) {
 		if !sub.match.Matches(sig) {
 			continue
 		}
-		select {
-		case sub.ch <- sig:
-		default:
-			slog.Debug("dropping D-Bus signal for slow subscriber", "component", "dbus", "match", sub.key, "signal", sig.Name, "path", sig.Path)
-		}
+		sub.enqueue(sig)
 	}
 }
 
@@ -256,7 +320,7 @@ func (m *signalManager) closeSubscription(ctx context.Context, sub *SignalSubscr
 	}
 
 	delete(m.subs, sub)
-	close(sub.ch)
+	sub.stop()
 
 	if m.conn == nil {
 		m.mu.Unlock()
@@ -285,9 +349,7 @@ func (m *signalManager) closeSubscriptionsFromDispatcher(raw <-chan *godbus.Sign
 	}
 
 	for sub := range m.subs {
-		sub.closeOnce.Do(func() {
-			close(sub.ch)
-		})
+		sub.closeOnce.Do(sub.stop)
 	}
 	m.subs = nil
 	m.matchRefs = nil

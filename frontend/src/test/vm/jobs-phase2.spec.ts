@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import {
+  bridgeCall,
   fixture,
   jobIds,
   jobRecords,
@@ -66,6 +67,33 @@ test("a reload mid package update picks the same job up and completes it", async
   expect(await vmSsh("dpkg-query -W -f '${Version}' linuxio-e2e-slow")).toBe(
     "2.0",
   );
+});
+
+// PackageKit answers the update list with one signal per package and then
+// Finished. The bridge once kept only as many as the list's signal buffer
+// (20) while its reader was behind: a long list lost packages, or lost
+// Finished and failed after 15 s with "collect updates: context deadline
+// exceeded".
+test("the update list holds every update when many are waiting", async ({
+  page,
+}) => {
+  test.setTimeout(240_000);
+  const script = await readFile(fixture("many-updates.sh"));
+  await vmSsh("sudo bash -s", script);
+  try {
+    await signIn(page);
+    // Several times: a lost signal depended on how far behind the reader was.
+    for (let round = 0; round < 5; round++) {
+      const answer = await bridgeCall(page, "updates.get_updates_basic", {});
+      expect(answer.status, answer.error).toBe("ok");
+      const many = (answer.data as { package_id: string }[]).filter((update) =>
+        update.package_id.startsWith("linuxio-e2e-many-"),
+      );
+      expect(many, `round ${round}`).toHaveLength(150);
+    }
+  } finally {
+    await vmSsh("sudo bash -s remove", script);
+  }
 });
 
 const DOCKER_DIR = `${HOME}/docker`;
