@@ -137,7 +137,9 @@ make vm-install       # make build-nocheck, then install this build in the VM
 make vm-ssh CMD='systemctl is-active linuxio.target'
 make test-vm-browser  # Playwright specs in frontend/src/test/vm
 make vm-test-btrfs-integration
+make vm-stop          # shut the VM down; what is installed stays
 make vm-reset         # revert every disk to "clean" and stop the VM
+make vm-update        # upgrade the packages in "clean" and take the snapshot again
 make vm-destroy       # delete the domain and its volumes; the cache stays
 ```
 
@@ -148,8 +150,23 @@ make vm-destroy       # delete the domain and its volumes; the cache stays
   `linuxio-e2e` with passwordless sudo and installs `docker.io`,
   `btrfs-progs` and the LinuxIO dependencies. The VM is then shut down and
   snapshotted as `clean`, without LinuxIO.
-- Every target that needs the VM starts it if it is stopped. `vm-reset` leaves
-  it stopped, without LinuxIO; run `vm-install` again after a reset.
+- Every target that needs the VM starts it if it is stopped. The test targets
+  (`test-vm-browser` and the `vm-test-*` ones) shut it down when they end,
+  passed or failed, so no VM runs unused; what was installed and the journal
+  stay on its disks, and the next target boots it again. `VM_KEEP=1` on a
+  test target leaves it up, to look at a failure while its processes still
+  run. `vm-install` and `vm-ssh` leave it running for the target that
+  follows; `make vm-stop` shuts it down by hand. `vm-reset` leaves it
+  stopped, without LinuxIO; run `vm-install` again after a reset.
+- The seed switches `apt-daily.timer` and `apt-daily-upgrade.timer` off, so
+  the VM never upgrades itself: an unattended upgrade that a power-cut check
+  interrupts leaves dpkg broken for the specs after it. `vm-update` is how
+  its packages are brought up to date instead. It reverts to `clean`, runs
+  `apt-get dist-upgrade`, switches the two timers off (a VM created before
+  the seed did so still has them on) and takes `clean` again; run it now and
+  then, since a long list of waiting updates also slows the Updates page.
+  The kernel is upgraded with the rest, so the kernel tests then run on the
+  new one.
 - `make vm-ssh` without `CMD` opens a shell. The user can `sudo` without a
   password. Make expands `$` in `CMD`, so write `$$`.
 - `test-vm-browser` signs in at `https://<vm-ip>:8090` as `linuxio-e2e`, with
@@ -171,8 +188,7 @@ make vm-destroy       # delete the domain and its volumes; the cache stays
   "Open the real folder" action, a toast's page link on Docker, and the
   navbar's Reboot and Power Down. It creates and removes a user without sudo
   (`e2e-ui`), a folder `/srv/e2e-link` and two busybox containers, reboots the
-  VM and powers it off (the rig's `ssh` starts a domain that is shut off), and
-  leaves it running with the apt timers stopped until the next boot.
+  VM and powers it off (the rig's `ssh` starts a domain that is shut off).
 - `vm-test-btrfs-integration` builds the `common/btrfs` and
   `bridge/handlers/storage` test binaries on the host,
   prints the VM's kernel version and runs the same tests as
@@ -441,7 +457,7 @@ The full index groups the supported targets as follows:
   `build-docker-update`, `build-leak-profile`, `generate`, `dev-prep`, `dev`,
   `dev-stop`, `dev-status-install`, `dev-status-uninstall`, `clean`, `cloc`
 - installation: `localinstall`, `reinstall`, `uninstall`
-- test VM: `vm-create`, `vm-install`, `vm-ssh`, `vm-reset`, `vm-destroy`,
+- test VM: `vm-create`, `vm-install`, `vm-ssh`, `vm-stop`, `vm-reset`, `vm-update`, `vm-destroy`,
   `vm-test-btrfs-integration`, `vm-test-memory-integration`,
   `vm-test-filebrowser-root`, `vm-test-relay-root`,
   `test-vm-browser`

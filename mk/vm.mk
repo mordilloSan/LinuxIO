@@ -8,6 +8,11 @@ vm_script := $(repo_root)/packaging/vm/linuxio-vm.sh
 VM_RELEASE ?=
 export LINUXIO_VM_RELEASE := $(VM_RELEASE)
 vm_state_dir := $(HOME)/.cache/linuxio-vm$(if $(filter-out resolute,$(VM_RELEASE)),-$(VM_RELEASE))
+# A test target shuts the VM down when it ends, passed or failed, so nothing
+# keeps running unused; the next target starts it again. VM_KEEP=1 leaves it
+# up, to look at a failure while its processes still run.
+VM_KEEP ?=
+vm_stop := $(if $(VM_KEEP),true,"$(vm_script)" stop)
 
 ##@ Test VM|yellow
 vm-create: ## Create the test VM from the Ubuntu 26.04 cloud image and snapshot it as clean
@@ -19,14 +24,21 @@ vm-install: build-nocheck ## Build LinuxIO and install it in the test VM
 vm-ssh: ## Run CMD='...' in the test VM over SSH (no CMD: a shell)
 	@"$(vm_script)" ssh $${CMD:+"$$CMD"}
 
+vm-stop: ## Shut the test VM down; its disks keep what is installed
+	@"$(vm_script)" stop
+
 vm-reset: ## Revert the test VM to its clean snapshot and stop it
 	@"$(vm_script)" reset
+
+vm-update: ## Upgrade the packages in the test VM's clean snapshot and take the snapshot again
+	@"$(vm_script)" update
 
 vm-destroy: ## Delete the test VM and its linuxio-e2e-* volumes
 	@"$(vm_script)" destroy
 
 vm-test-btrfs-integration: ensure-go ## Run the root btrfs and partition kernel tests in the test VM
 	@set -e
+	@trap '$(vm_stop)' EXIT
 	@mkdir -p "$(cache_dir)/vm"
 	@cd "$(backend_dir)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" CGO_ENABLED=0 "$(GO_BIN)" test -c -o "$(cache_dir)/vm/btrfs.test" ./common/btrfs
 	@cd "$(backend_dir)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" CGO_ENABLED=0 "$(GO_BIN)" test -c -o "$(cache_dir)/vm/storage.test" ./bridge/handlers/storage
@@ -63,19 +75,21 @@ vm_memory_drain_env := LINUXIO_RUN_MEMORY_INTEGRATION=1 LINUXIO_MEMORY_DRAIN_DEV
 vm_memory_drain_setup := set -e; kind=$$(sudo blkid -o value -s TYPE /dev/vdb || true); if test -n "$$kind" && test "$$kind" != swap; then echo "/dev/vdb holds $$kind, which another check put there: run make vm-reset first" >&2; exit 1; fi; if test -z "$$kind"; then sudo mkswap /dev/vdb >/dev/null; fi; if ! grep -qs "^/dev/vdb[[:space:]]" /etc/fstab; then echo "/dev/vdb none swap sw,noauto,pri=10 0 0" | sudo tee -a /etc/fstab >/dev/null && sudo systemctl daemon-reload; fi; sudo systemctl start dev-vdb.swap
 vm-test-memory-integration: ensure-go ## Run the root swap mode and drain tests in the test VM
 	@set -e
+	@trap '$(vm_stop)' EXIT
 	@mkdir -p "$(cache_dir)/vm"
 	@cd "$(backend_dir)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" CGO_ENABLED=0 "$(GO_BIN)" test -c -o "$(cache_dir)/vm/memory.test" ./bridge/handlers/memory
 	@"$(vm_script)" ssh '$(vm_memory_zram_setup)'
 	@"$(vm_script)" ssh 'set -e; if ! grep -qs "^/swap.img[[:space:]]" /etc/fstab; then sudo fallocate -l 1G /swap.img && sudo chmod 600 /swap.img && sudo mkswap /swap.img >/dev/null && echo "/swap.img none swap sw 0 0" | sudo tee -a /etc/fstab >/dev/null && sudo systemctl daemon-reload && sudo systemctl start swap.img.swap; fi'
 	@"$(vm_script)" ssh 'cat > memory.test && chmod +x memory.test' < "$(cache_dir)/vm/memory.test"
 	@"$(vm_script)" ssh "echo \"VM kernel: \$$(uname -r)\" && sudo env LINUXIO_RUN_MEMORY_INTEGRATION=1 ./memory.test -test.run '^TestMemoryIntegration\$$' -test.count=1 -test.v -test.timeout=30m"
-	@trap '"$(vm_script)" ssh "sudo systemctl stop dev-vdb.swap" || echo "/dev/vdb still swaps in the VM: run make vm-reset" >&2' EXIT
+	@trap '"$(vm_script)" ssh "sudo systemctl stop dev-vdb.swap" || echo "/dev/vdb still swaps in the VM: run make vm-reset" >&2; $(vm_stop)' EXIT
 	@"$(vm_script)" ssh '$(vm_memory_drain_setup)'
 	@"$(vm_script)" ssh "sudo env $(vm_memory_drain_env) LINUXIO_MEMORY_DRAIN_MIB=2048 ./memory.test -test.run '^TestMemoryDrainIntegration\$$' -test.count=1 -test.v -test.timeout=30m"
 	@"$(vm_script)" ssh "sudo env $(vm_memory_drain_env) LINUXIO_MEMORY_DRAIN_MIB=320 LINUXIO_MEMORY_DRAIN_READ_BPS=$(vm_memory_drain_rate) LINUXIO_MEMORY_DRAIN_MIN_SECONDS=90 ./memory.test -test.run '^TestMemoryDrainIntegration\$$' -test.count=1 -test.v -test.timeout=30m"
 
 vm-test-filebrowser-root: ensure-go ## Run the root-only file browser ownership tests in the test VM
 	@set -e
+	@trap '$(vm_stop)' EXIT
 	@mkdir -p "$(cache_dir)/vm"
 	@cd "$(backend_dir)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" "$(GO_BIN)" test -c -o "$(cache_dir)/vm/filebrowser.test" ./bridge/handlers/filebrowser
 	@cd "$(backend_dir)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" "$(GO_BIN)" test -c -o "$(cache_dir)/vm/filebrowser-services.test" ./bridge/handlers/filebrowser/services
@@ -91,6 +105,7 @@ RELAY_ROOT_RUN := ^Test(Bridge(Forwards|Fails|Watch|Events|Reports)|PrivilegedBr
 
 vm-test-relay-root: ensure-go ## Run the bridge-to-job-host relay tests as root in the test VM
 	@set -e
+	@trap '$(vm_stop)' EXIT
 	@mkdir -p "$(cache_dir)/vm"
 	@cd "$(backend_dir)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" "$(GO_BIN)" test -c -o "$(cache_dir)/vm/bridge-cmd.test" ./bridge/cmd
 	@"$(vm_script)" ssh 'cat > bridge-cmd.test && chmod +x bridge-cmd.test' < "$(cache_dir)/vm/bridge-cmd.test"
@@ -98,6 +113,7 @@ vm-test-relay-root: ensure-go ## Run the bridge-to-job-host relay tests as root 
 
 test-vm-browser: ensure-node setup-frontend ## Run the Playwright specs in frontend/src/test/vm against the test VM
 	@set -e
+	@trap '$(vm_stop)' EXIT
 	@ip="$$("$(vm_script)" ip)"
 	@cd "$(frontend_dir)" && \
 	  LINUXIO_VM_URL="https://$$ip:8090" LINUXIO_VM_USER=linuxio-e2e LINUXIO_VM_PASSWORD="$$(cat "$(vm_state_dir)/password")" \

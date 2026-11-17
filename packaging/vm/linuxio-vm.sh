@@ -10,7 +10,8 @@
 # linuxio-e2e-noble-* volumes and ~/.cache/linuxio-vm-noble, beside the first.
 #
 # Usage: linuxio-vm.sh create | install BUILD_DIR | ssh [COMMAND] | ip | reboot |
-#        power-cut | off-for SECONDS | throttle DISK BYTES_PER_SEC | reset | destroy
+#        power-cut | off-for SECONDS | throttle DISK BYTES_PER_SEC | stop | reset |
+#        update | destroy
 set -euo pipefail
 
 case "${LINUXIO_VM_RELEASE:-resolute}" in
@@ -301,11 +302,51 @@ throttle() {
 	v blkdeviotune "$DOMAIN" "$disk" --total-bytes-sec "$rate" --live --config >/dev/null
 }
 
+# Shut the domain down in order when it runs, keeping its disks as they are:
+# the test targets end with this, so no VM runs unused.
+stop() {
+	domain_exists || return 0
+	[[ "$(domain_state)" != "shut off" ]] || return 0
+	v shutdown "$DOMAIN" >/dev/null
+	wait_for_shut_off 180
+	say "${DOMAIN} is stopped; the next VM target starts it"
+}
+
 reset() {
 	domain_exists || die "${DOMAIN} does not exist; run make vm-create"
 	if [[ "$(domain_state)" != "shut off" ]]; then v destroy "$DOMAIN" >/dev/null; fi
 	v snapshot-revert "$DOMAIN" "$SNAPSHOT"
 	say "${DOMAIN} reverted to ${SNAPSHOT} and stopped; the next VM target starts it"
+}
+
+# Bring the clean snapshot up to date: revert to it, upgrade every package,
+# switch the unattended apt timers off (the seed does that for a new VM; one
+# created before it did still has them on) and take the snapshot again. An
+# unattended upgrade that a power-cut check interrupts leaves dpkg broken, and
+# a long list of waiting updates slows the Updates page the specs open.
+update() {
+	reset
+	connect
+	say "upgrading the packages of ${DOMAIN} (several minutes)"
+	vm_ssh sudo bash -s <<'UPGRADE'
+set -euo pipefail
+systemctl disable --now apt-daily.timer apt-daily-upgrade.timer
+# A run the boot started holds the dpkg lock; let it end by itself.
+while systemctl is-active apt-daily.service apt-daily-upgrade.service | grep -Eqx 'active|activating'; do
+	sleep 2
+done
+export DEBIAN_FRONTEND=noninteractive
+apt-get -o DPkg::Lock::Timeout=600 -qq update
+apt-get -o DPkg::Lock::Timeout=600 -o Dpkg::Options::=--force-confold -y -qq dist-upgrade
+sync
+UPGRADE
+	v shutdown "$DOMAIN" >/dev/null
+	wait_for_shut_off 180
+	# Between these two the VM has no clean snapshot: if the second fails,
+	# make vm-destroy and make vm-create bring one back.
+	v snapshot-delete "$DOMAIN" "$SNAPSHOT" >/dev/null
+	v snapshot-create-as "$DOMAIN" "$SNAPSHOT" --description "cloud-init done, packages upgraded $(date -u +%F), LinuxIO not installed" >/dev/null
+	say "${DOMAIN} is upgraded and stopped (snapshot ${SNAPSHOT} taken again); next: make vm-install"
 }
 
 destroy() {
@@ -338,7 +379,9 @@ reboot) reboot_vm ;;
 power-cut) power_cut ;;
 off-for) off_for "${2:-}" ;;
 throttle) throttle "${2:-}" "${3:-}" ;;
+stop) stop ;;
 reset) reset ;;
+update) update ;;
 destroy) destroy ;;
-*) die "usage: $(basename "$0") create | install BUILD_DIR | ssh [COMMAND] | ip | reboot | power-cut | off-for SECONDS | throttle DISK BYTES_PER_SEC | reset | destroy" ;;
+*) die "usage: $(basename "$0") create | install BUILD_DIR | ssh [COMMAND] | ip | reboot | power-cut | off-for SECONDS | throttle DISK BYTES_PER_SEC | stop | reset | update | destroy" ;;
 esac
