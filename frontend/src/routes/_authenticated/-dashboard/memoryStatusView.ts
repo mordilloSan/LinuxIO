@@ -56,7 +56,7 @@ export const rowName = (mode: RowMode): string =>
 
 const DRAIN_BLOCKED_TEXT: Partial<Record<SwapDrainBlockedReason, string>> = {
   not_enough_memory: "Not enough free memory right now",
-  unit_masked:
+  unit_held_off:
     "This swap device is switched off for the next start, so LinuxIO will not empty it",
   others_can_write:
     "This swap device is in a folder that users other than root can change, so LinuxIO will not empty it",

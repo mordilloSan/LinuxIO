@@ -6,13 +6,17 @@ import (
 	"io/fs"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
+	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
 	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
 )
 
@@ -20,14 +24,18 @@ import (
 // systemd, the kernel and /etc, drains the swap file, which takes it away
 // with swapoff and has systemd start it again, and switches to zram once
 // more from zram running at another size beside the swap file. It then asks
-// before replacing an admin's zram configuration and keeps its copy, refuses
-// to leave zram while another zram-generator file defines a swap device, and
-// switches to zswap and back with its tmpfiles entry. It needs root, a zram
-// provider and a swap file in /etc/fstab, so it runs only in the disposable
-// test VM: `make vm-test-memory-integration`. A host that starts mixed, as a
-// fresh zram-generator install leaves it, goes to disk first. Cleanup puts
-// the host back as it was: its mode, the files LinuxIO manages and the
-// copies it made, zram-tools' start at boot, and the live sysctls and zswap.
+// before replacing an admin's zram configuration and keeps its copy. With
+// zram-tools it has systemd give up a stop of zramswap.service. With
+// zram-generator it refuses to leave zram while another of its files defines
+// a swap device, and checks that the generator makes a unit for each device
+// the status lists. Last it switches to zswap and back with its tmpfiles
+// entry, and has the kernel refuse a compressor it does not have. It needs
+// root, a zram provider and a swap file in /etc/fstab, so it runs only in the
+// disposable test VM: `make vm-test-memory-integration`. A host that starts
+// mixed, as a fresh zram-generator install leaves it, goes to disk first.
+// Cleanup puts the host back as it was: its mode, the files LinuxIO manages
+// and the copies it made, zram-tools' start at boot, and the live sysctls and
+// zswap.
 func TestMemoryIntegration(t *testing.T) {
 	if os.Getenv("LINUXIO_RUN_MEMORY_INTEGRATION") != "1" {
 		t.Skip("set LINUXIO_RUN_MEMORY_INTEGRATION=1 and run as root in the test VM")
@@ -40,7 +48,10 @@ func TestMemoryIntegration(t *testing.T) {
 	if provider == "" {
 		t.Skip("neither zram-tools nor zram-generator is installed")
 	}
+	asJobHost(t)
 	e := newExecutor(func(p apischema.SwapProgress) { t.Logf("step %d/%d %s %s", p.Index, p.Total, p.Step, p.Device) })
+	// A run that was cut short can have left files of its own behind.
+	removeTestUnitFiles(t, e, nil)
 	view, err := e.readView(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -55,7 +66,7 @@ func TestMemoryIntegration(t *testing.T) {
 	if start == apischema.SwapModeNone {
 		t.Skip("start from disk, zswap, zram or mixed, not none")
 	}
-	snapshot := takeHostSnapshot(t, view.status)
+	snapshot := takeHostSnapshot(t, view.status, file.unit)
 	t.Cleanup(func() { snapshot.restore(t, e, provider) })
 	// Runs before the restore: what systemd and the kernel say about zram
 	// when a step failed.
@@ -92,8 +103,12 @@ func TestMemoryIntegration(t *testing.T) {
 	assertStartsZramAStopLeftSetUp(t, e, provider, file, back)
 
 	assertAsksBeforeReplacingAnAdminsFile(t, e, provider, file, back)
+	if provider == apischema.ZramProviderTools {
+		assertGivesUpAStopSystemdTimedOut(t, e, file)
+	}
 	if provider == apischema.ZramProviderGenerator {
 		assertListsADropInDeviceAndRefusesToLeaveZram(t, e)
+		assertGeneratorUnitsMatchTheStatus(t, e)
 	}
 	assertZswapRoundTrip(t, e)
 }
@@ -133,7 +148,8 @@ func existingGeneratorMainFiles() []string {
 // hostSnapshot is the host as TestMemoryIntegration found it.
 type hostSnapshot struct {
 	status apischema.SwapStatus
-	// files are the files LinuxIO manages and the copies it may make.
+	// files are the files LinuxIO manages, the hold-off drop-in of the
+	// managed swap file's unit among them, and the copies it may make.
 	files []savedFile
 	// toolsState is zramswap.service's file state, or empty without
 	// zram-tools.
@@ -141,11 +157,17 @@ type hostSnapshot struct {
 	dropInDirSeen bool
 }
 
-func takeHostSnapshot(t *testing.T, status apischema.SwapStatus) hostSnapshot {
+// takeHostSnapshot saves the files LinuxIO manages, with the drop-in that
+// holds unit off at boot when unit, the managed swap file's, is not empty.
+func takeHostSnapshot(t *testing.T, status apischema.SwapStatus, unit string) hostSnapshot {
 	t.Helper()
 	snapshot := hostSnapshot{status: status, dropInDirSeen: host.exists(zramGeneratorEtcDropIns)}
-	for _, name := range []string{sysctlDropInPath, zswapTmpfilesPath, zramswapConfigPath, zramGeneratorConfigPath,
-		zramswapConfigPath + zramConfigCopySuffix, zramGeneratorConfigPath + zramConfigCopySuffix} {
+	names := []string{sysctlDropInPath, zswapTmpfilesPath, zramswapConfigPath, zramGeneratorConfigPath,
+		zramswapConfigPath + zramConfigCopySuffix, zramGeneratorConfigPath + zramConfigCopySuffix}
+	if unit != "" {
+		names = append(names, holdOffDropInPath(unit))
+	}
+	for _, name := range names {
 		saved, err := host.saveFile(name)
 		if err != nil {
 			t.Fatalf("save %s: %v", name, err)
@@ -355,8 +377,302 @@ func assertListsADropInDeviceAndRefusesToLeaveZram(t *testing.T, e *executor) {
 	}
 }
 
+// testGeneratorFiles are the zram-generator drop-ins
+// assertGeneratorUnitsMatchTheStatus writes, in the four folders the
+// generator reads: a package's in /usr/lib, one there that testGeneratorHider
+// hides, one in /usr/local/lib, a zram mount in /run, one in /etc, and two of
+// the same name, of which the generator reads the one in /run.
+var testGeneratorFiles = []struct{ path, text string }{
+	{"/usr/lib/systemd/zram-generator.conf.d/90-linuxio-integration-test-a.conf", "[zram2]\nzram-size = 64\n"},
+	{"/usr/lib/systemd/zram-generator.conf.d/91-linuxio-integration-test-hidden.conf", "[zram3]\nzram-size = 64\n"},
+	{"/usr/local/lib/systemd/zram-generator.conf.d/92-linuxio-integration-test-b.conf", "[zram4]\nzram-size = 64\n"},
+	{"/run/systemd/zram-generator.conf.d/93-linuxio-integration-test-mount.conf", "[zram5]\nzram-size = 64\nmount-point = /run/linuxio-integration-test-zram\n"},
+	{"/etc/systemd/zram-generator.conf.d/94-linuxio-integration-test-c.conf", "[zram6]\nzram-size = 64\n"},
+	{"/usr/lib/systemd/zram-generator.conf.d/95-linuxio-integration-test-same.conf", "[zram7]\nzram-size = 64\n"},
+	{"/run/systemd/zram-generator.conf.d/95-linuxio-integration-test-same.conf", "[zram8]\nzram-size = 64\n"},
+}
+
+// testGeneratorHider is a link to /dev/null that hides the package's drop-in
+// of its name.
+const testGeneratorHider = zramGeneratorEtcDropIns + "/91-linuxio-integration-test-hidden.conf"
+
+// zramswapHangDropIn makes the stop of zramswap.service hang past a short
+// timeout; in /run, so that a reboot removes it too.
+const zramswapHangDropIn = "/run/systemd/system/" + zramService + ".d/90-linuxio-integration-test.conf"
+
+// removeTestUnitFiles removes the unit and zram-generator files the tests
+// write, those a run cut short left too, then the folders in made, deepest
+// first, and reloads systemd when it removed anything, so no unit outlives
+// its file.
+func removeTestUnitFiles(t *testing.T, e *executor, made []string) {
+	t.Helper()
+	names := []string{testDropIn, testGeneratorHider, zramswapHangDropIn}
+	for _, f := range testGeneratorFiles {
+		names = append(names, f.path)
+	}
+	removed := false
+	for _, name := range append(names, made...) {
+		err := os.Remove(name)
+		switch {
+		case err == nil:
+			removed = true
+		case !errors.Is(err, fs.ErrNotExist):
+			t.Errorf("remove %s: %v", name, err)
+		}
+	}
+	if !removed {
+		return
+	}
+	if err := e.sys.reload(context.WithoutCancel(t.Context())); err != nil {
+		t.Errorf("reload: %v", err)
+	}
+}
+
+// assertGeneratorUnitsMatchTheStatus writes drop-ins in the four folders
+// zram-generator reads (testGeneratorFiles), and checks after a reload that
+// the generator made a swap unit for exactly the devices the status lists,
+// with those of the main file it reads, and a setup unit for each of them and
+// for the zram mount. A reload makes units and starts none. The files go, and
+// systemd is reloaded again, at the end of the step, or of the test when the
+// step stops early.
+func assertGeneratorUnitsMatchTheStatus(t *testing.T, e *executor) {
+	t.Helper()
+	ctx := t.Context()
+	// The folders the files need that are not there, deepest first.
+	var made []string
+	for _, dir := range zramGeneratorDirs {
+		for dir = filepath.Join(dir, zramGeneratorDropInDir); !host.exists(dir); dir = filepath.Dir(dir) {
+			made = append(made, dir)
+		}
+	}
+	// The generator adds a zram device for each one it makes units for, and
+	// a device stays when its files go.
+	devices := zramDeviceNames(t)
+	undo := func() {
+		removeTestUnitFiles(t, e, made)
+		removeAddedZramDevices(t, devices)
+	}
+	t.Cleanup(undo)
+	for _, f := range testGeneratorFiles {
+		if err := os.MkdirAll(filepath.Dir(f.path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(f.path, []byte(f.text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(os.DevNull, testGeneratorHider); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.sys.reload(ctx); err != nil {
+		t.Fatal(err)
+	}
+	status, err := e.sys.status(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := testGeneratorFiles
+	want := []apischema.ZramGeneratorDevice{
+		{Path: f[0].path, Device: "zram2", ZramSize: "64"},
+		{Path: f[2].path, Device: "zram4", ZramSize: "64"},
+		{Path: f[4].path, Device: "zram6", ZramSize: "64"},
+		{Path: f[6].path, Device: "zram8", ZramSize: "64"},
+	}
+	if !slices.Equal(status.ZramGeneratorDevices, want) {
+		t.Errorf("generator devices = %+v, want %+v", status.ZramGeneratorDevices, want)
+	}
+	swaps := generatorMainDevices(t)
+	for _, d := range status.ZramGeneratorDevices {
+		swaps = append(swaps, d.Device)
+	}
+	slices.Sort(swaps)
+	setups := slices.Sorted(slices.Values(append(slices.Clone(swaps), "zram5")))
+	gotSwaps, gotSetups := loadedZramUnits(t, "dev-", ".swap"), loadedZramUnits(t, "systemd-zram-setup@", ".service")
+	t.Logf("after a reload the generator made swap units for %v and setup units for %v", gotSwaps, gotSetups)
+	if !slices.Equal(gotSwaps, swaps) {
+		t.Errorf("swap units for %v, want %v: the status and the generator disagree", gotSwaps, swaps)
+	}
+	if !slices.Equal(gotSetups, setups) {
+		t.Errorf("setup units for %v, want %v, the swap devices and the zram mount", gotSetups, setups)
+	}
+	t.Logf("zram devices before the reload %v, after it %v", devices, zramDeviceNames(t))
+	undo()
+}
+
+// zramDeviceNames is the zram devices the kernel has, by name.
+func zramDeviceNames(t *testing.T) []string {
+	t.Helper()
+	entries, err := os.ReadDir(sysBlockDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, entry := range entries {
+		if isZramName(entry.Name()) {
+			names = append(names, entry.Name())
+		}
+	}
+	return names
+}
+
+// removeAddedZramDevices removes, through zram-control's hot_remove, each
+// zram device that is not in before and is not set up.
+func removeAddedZramDevices(t *testing.T, before []string) {
+	t.Helper()
+	for _, name := range zramDeviceNames(t) {
+		if slices.Contains(before, name) {
+			continue
+		}
+		if size, err := host.readOptionalUint(filepath.Join(sysBlockDir, name, "disksize")); err != nil || size != 0 {
+			t.Errorf("leave %s, which the generator added: disksize %d, %v", name, size, err)
+			continue
+		}
+		if err := os.WriteFile("/sys/class/zram-control/hot_remove", []byte(strings.TrimPrefix(name, "zram")), 0); err != nil {
+			t.Errorf("remove %s, which the generator added: %v", name, err)
+		}
+	}
+}
+
+// generatorMainDevices is the swap devices of the main zram-generator file
+// the generator reads: the first of /run, /etc, /usr/local/lib and /usr/lib.
+func generatorMainDevices(t *testing.T) []string {
+	t.Helper()
+	for _, dir := range slices.Backward(zramGeneratorDirs) {
+		name := dir + "/zram-generator.conf"
+		text, ok, err := host.readOptional(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !ok {
+			continue
+		}
+		var devices []string
+		for _, d := range parseZramGeneratorDevices(name, text) {
+			devices = append(devices, d.Device)
+		}
+		return devices
+	}
+	return nil
+}
+
+// loadedZramUnits is the zram devices of the units systemd has loaded whose
+// names are prefix, a zram device and suffix, sorted.
+func loadedZramUnits(t *testing.T, prefix, suffix string) []string {
+	t.Helper()
+	units, err := systemd.ListUnitsWithPrefix(t.Context(), prefix+"zram")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var devices []string
+	for _, u := range units {
+		device, ok := strings.CutSuffix(strings.TrimPrefix(u.Name, prefix), suffix)
+		// systemd keeps listing a unit that failed, as zram0's setup service
+		// after a stop whose reset failed, though no file defines it now.
+		if ok && isZramName(device) && u.LoadState == "loaded" && u.ActiveState != "failed" {
+			devices = append(devices, device)
+		}
+	}
+	slices.Sort(devices)
+	return devices
+}
+
+// assertGivesUpAStopSystemdTimedOut makes the stop of zramswap.service hang
+// past a short TimeoutStopSec, as a zramswap stop that outlives its timeout
+// does: systemd kills it and must leave the unit failed with zram still
+// swapping, and a switch to disk must then end at once, errStopAbandoned,
+// and not after the ten minutes of its wait. The run rolls back with the swap
+// file it started still on. zram is then taken away the way the unit would
+// have, with zramswap stop, and the host goes back to disk.
+func assertGivesUpAStopSystemdTimedOut(t *testing.T, e *executor, file fstabSwap) {
+	t.Helper()
+	ctx := t.Context()
+	switchTo(t, e, apischema.SwapModeZram)
+	t.Cleanup(func() { undoTimedOutStop(t, e) })
+	if err := os.MkdirAll(filepath.Dir(zramswapHangDropIn), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	hang := "[Service]\nTimeoutStopSec=5\nExecStop=\nExecStop=/usr/bin/sleep 600\n"
+	if err := os.WriteFile(zramswapHangDropIn, []byte(hang), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.sys.reload(ctx); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	_, err := e.setSwapMode(ctx, apischema.SwapModeRequest{Mode: apischema.SwapModeDisk})
+	elapsed := time.Since(start)
+	state, stateErr := e.sys.activeState(ctx, zramService)
+	t.Logf("with the stop timed out, the switch to disk ended after %s with %v; %s %s (%v)", elapsed.Round(time.Second), err, zramService, state, stateErr)
+	if !errors.Is(err, errStopAbandoned) {
+		t.Fatalf("switch to disk with the stop timed out: %v, want %v", err, errStopAbandoned)
+	}
+	if elapsed > time.Minute {
+		t.Errorf("the switch took %s, want it to end soon after the 5 s timeout", elapsed.Round(time.Second))
+	}
+	if state != "failed" {
+		t.Errorf("%s = %q, %v; want failed", zramService, state, stateErr)
+	}
+	if on, readErr := e.zramIs(true)(); readErr != nil || !on {
+		t.Errorf("zram swapping = %v, %v; want it left swapping", on, readErr)
+	}
+	undoTimedOutStop(t, e)
+	assertDiskMode(t, file, switchTo(t, e, apischema.SwapModeDisk))
+}
+
+// undoTimedOutStop removes the drop-in that hangs the stop of
+// zramswap.service and, when systemd left the unit failed, takes zram away
+// with zramswap stop, as the unit's stop would have, and clears the failure.
+func undoTimedOutStop(t *testing.T, e *executor) {
+	t.Helper()
+	ctx := context.WithoutCancel(t.Context())
+	removeTestUnitFiles(t, e, nil)
+	if state, err := e.sys.activeState(ctx, zramService); err != nil || state != "failed" {
+		return
+	}
+	zramswap, err := hostcmd.LookPath(zramCommand)
+	if err != nil {
+		t.Errorf("find %s: %v", zramCommand, err)
+		return
+	}
+	// zramswap stop exits non-zero when it cannot unload the zram module
+	// right after its swapoff ("Module zram is in use"); what counts is that
+	// zram left /proc/swaps.
+	if out, err := exec.CommandContext(ctx, zramswap, "stop").CombinedOutput(); err != nil {
+		t.Logf("zramswap stop: %v\n%s", err, out)
+	}
+	if on, err := e.zramIs(true)(); err != nil || on {
+		t.Errorf("zram swapping = %v, %v after zramswap stop; want it gone", on, err)
+	}
+	if err := systemd.ResetFailedUnit(ctx, zramService); err != nil {
+		t.Errorf("reset %s: %v", zramService, err)
+	}
+}
+
+// assertRefusesAnUnknownCompressor writes a zswap compressor the kernel does
+// not have, with zswap started: the kernel must refuse it with an error
+// compressorRefused takes, which a switch to zswap passes over, and keep the
+// compressor it had. Before zswap first starts after a boot the kernel takes
+// any name and falls back to its default when zswap starts.
+func assertRefusesAnUnknownCompressor(t *testing.T, e *executor) {
+	t.Helper()
+	before, err := e.sys.readParam(zswapCompressorParam)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = e.sys.writeParam(zswapCompressorParam, "linuxio-integration-test")
+	t.Logf("a compressor the kernel does not have: %v", err)
+	if !compressorRefused(err) {
+		t.Errorf("write an unknown zswap compressor: %v, want ENOENT or EINVAL", err)
+	}
+	if after, readErr := e.sys.readParam(zswapCompressorParam); readErr != nil || after != before {
+		t.Errorf("zswap compressor = %q, %v after the refused write; want %q kept", after, readErr, before)
+		_ = e.sys.writeParam(zswapCompressorParam, before)
+	}
+}
+
 // assertZswapRoundTrip switches to zswap and back to disk, and checks zswap
-// live and its tmpfiles entry, which sets it at boot, each way.
+// live and its tmpfiles entry, which sets it at boot, each way, and with
+// zswap on that the kernel refuses a compressor it does not have.
 func assertZswapRoundTrip(t *testing.T, e *executor) {
 	t.Helper()
 	status, err := e.sys.status(t.Context())
@@ -374,6 +690,7 @@ func assertZswapRoundTrip(t *testing.T, e *executor) {
 	if entry, readErr := os.ReadFile(zswapTmpfilesPath); readErr != nil || string(entry) != string(renderZswapTmpfiles(got.Zswap.Compressor)) {
 		t.Errorf("%s = %q, %v; want zswap on at boot with %s", zswapTmpfilesPath, entry, readErr, got.Zswap.Compressor)
 	}
+	assertRefusesAnUnknownCompressor(t, e)
 	got = switchTo(t, e, apischema.SwapModeDisk)
 	if got.Zswap.Enabled {
 		t.Errorf("zswap = %+v after switching to disk, want off", got.Zswap)
@@ -515,9 +832,7 @@ func assertZramMode(t *testing.T, e *executor, file fstabSwap) {
 	if got.PageCluster != 0 || got.WatermarkBoostFactor != 0 || got.WatermarkScaleFactor != 125 {
 		t.Errorf("sysctls = page-cluster %d boost %d scale %d, want 0, 0, 125", got.PageCluster, got.WatermarkBoostFactor, got.WatermarkScaleFactor)
 	}
-	if state := unitFileState(t, file.unit); state != "masked" {
-		t.Errorf("%s file state = %q, want masked", file.unit, state)
-	}
+	assertHeldOff(t, file.unit, true)
 	assertZramSizedAndFileSeenOff(t, e, file, got)
 	if got.ZramProvider == apischema.ZramProviderGenerator {
 		config, readErr := os.ReadFile(zramGeneratorConfigPath)
@@ -561,9 +876,7 @@ func assertDiskMode(t *testing.T, file fstabSwap, got apischema.SwapStatus) {
 			t.Fatalf("devices = %+v, want no zram swapping", got.Devices)
 		}
 	}
-	if state := unitFileState(t, file.unit); state == "masked" {
-		t.Errorf("%s file state = %q, want unmasked", file.unit, state)
-	}
+	assertHeldOff(t, file.unit, false)
 	if got.ZramProvider == apischema.ZramProviderGenerator {
 		config, err := os.ReadFile(zramGeneratorConfigPath)
 		if err != nil || string(config) != string(renderZramGeneratorOff()) {
@@ -573,6 +886,35 @@ func assertDiskMode(t *testing.T, file fstabSwap, got apischema.SwapStatus) {
 	}
 	if state := unitFileState(t, zramService); state != "disabled" {
 		t.Errorf("%s file state = %q, want disabled", zramService, state)
+	}
+}
+
+// asJobHost gives the test the umask the job host, which runs the changes,
+// runs with, until it ends.
+func asJobHost(t *testing.T) {
+	previous := syscall.Umask(0o077)
+	t.Cleanup(func() { syscall.Umask(previous) })
+}
+
+// assertHeldOff checks whether LinuxIO's drop-in holds unit off at boot, in a
+// folder anyone may look into, and that the unit is not masked either way: a
+// mask would keep swap.target from starting.
+func assertHeldOff(t *testing.T, unit string, want bool) {
+	t.Helper()
+	got, err := os.ReadFile(holdOffDropInPath(unit))
+	switch {
+	case want && (err != nil || string(got) != string(renderHoldOffDropIn())):
+		t.Errorf("%s = %q, %v; want LinuxIO's drop-in holding %s off", holdOffDropInPath(unit), got, err, unit)
+	case !want && !errors.Is(err, fs.ErrNotExist):
+		t.Errorf("%s = %q, %v; want no drop-in holding %s off", holdOffDropInPath(unit), got, err, unit)
+	}
+	if dir := filepath.Dir(holdOffDropInPath(unit)); want {
+		if info, err := os.Stat(dir); err != nil || info.Mode().Perm() != 0o755 {
+			t.Errorf("%s = %v, %v; want a folder 0755 a session without sudo can look into", dir, info.Mode().Perm(), err)
+		}
+	}
+	if state := unitFileState(t, unit); strings.HasPrefix(state, "masked") {
+		t.Errorf("%s file state = %q, want it not masked", unit, state)
 	}
 }
 

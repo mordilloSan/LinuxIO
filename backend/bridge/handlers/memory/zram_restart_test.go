@@ -72,7 +72,8 @@ func TestSetSwapModeRestartsZramAtThePlannedSize(t *testing.T) {
 		"set " + scaleParam + "=125",
 		"write " + zswapTmpfilesPath,
 		"swapoff /swap.img",
-		"mask swap.img.swap",
+		holdOffCall("swap.img.swap"),
+		"reload",
 	})
 	if got.Mode != apischema.SwapModeZram || !plannedDisksize(t, f) {
 		t.Errorf("mode = %q, disksize = %s; want zram at the planned size", got.Mode, f.read("/sys/block/zram0/disksize"))

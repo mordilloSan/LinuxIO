@@ -54,6 +54,10 @@ type fakeSystem struct {
 	ignoredStarts map[string]int
 	// fileStates are unit file states; a unit not listed is "disabled".
 	fileStates map[string]string
+	// heldOff are the units whose hold-off condition systemd has loaded: it
+	// reads LinuxIO's drop-ins at a reload, and skips a start of such a unit
+	// whatever is on disk meanwhile.
+	heldOff map[string]bool
 	// statusFails is how many status reads still fail with errStatusRace.
 	statusFails int
 	// busyResets is how many resets of a zram device the kernel still
@@ -95,6 +99,7 @@ func newFakeSystem(f fixture) *fakeSystem {
 
 		ignoredStarts: map[string]int{},
 		fileStates:    map[string]string{},
+		heldOff:       map[string]bool{},
 	}
 }
 
@@ -175,6 +180,11 @@ func (s *fakeSystem) startUnit(ctx context.Context, name string) error {
 		// A unit systemd still holds active is not started.
 		if s.unseen[name] > 0 || s.ignoredStarts[name] > 0 {
 			s.ignoredStarts[name] = max(0, s.ignoredStarts[name]-1)
+			return nil
+		}
+		// A unit held off is skipped: its condition fails, and the start
+		// succeeds without starting anything.
+		if s.heldOff[name] {
 			return nil
 		}
 		s.unitOn(name)
@@ -370,8 +380,21 @@ func (s *fakeSystem) activeState(ctx context.Context, name string) (string, erro
 	return "active", nil
 }
 
+// reload has systemd read the hold-off drop-ins in the fixture again.
 func (s *fakeSystem) reload(ctx context.Context) error {
-	return s.unitDo(ctx, "reload", func() error { return nil })
+	return s.unitDo(ctx, "reload", func() error {
+		s.heldOff = map[string]bool{}
+		dirs, err := os.ReadDir(filepath.Join(s.f.root, unitConfigDir))
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		for _, dir := range dirs {
+			if unit, ok := strings.CutSuffix(dir.Name(), ".d"); ok && s.f.exists(holdOffDropInPath(unit)) {
+				s.heldOff[unit] = true
+			}
+		}
+		return nil
+	})
 }
 
 func (s *fakeSystem) setFileState(ctx context.Context, call, name, state string) error {
@@ -389,16 +412,6 @@ func (s *fakeSystem) disableUnit(ctx context.Context, name string) error {
 	return s.setFileState(ctx, "disable "+name, name, "disabled")
 }
 
-// maskUnit leaves what systemd leaves: a link to /dev/null in
-// /etc/systemd/system.
-func (s *fakeSystem) maskUnit(ctx context.Context, name string) error {
-	return s.unitDo(ctx, "mask "+name, func() error {
-		s.fileStates[name] = "masked"
-		s.f.maskInFixture(name)
-		return nil
-	})
-}
-
 func (s *fakeSystem) unmaskUnit(ctx context.Context, name string) error {
 	return s.unitDo(ctx, "unmask "+name, func() error {
 		s.fileStates[name] = "generated"
@@ -409,7 +422,14 @@ func (s *fakeSystem) unmaskUnit(ctx context.Context, name string) error {
 	})
 }
 
-// maskInFixture masks a unit in the fixture the way systemctl mask does.
+// holdOffCall is the call that holds unit off at boot: LinuxIO's drop-in
+// for it written; a reload follows.
+func holdOffCall(unit string) string {
+	return "write " + holdOffDropInPath(unit)
+}
+
+// maskInFixture masks a unit in the fixture the way systemctl mask does, as
+// an admin, or a LinuxIO that held a swap file off with a mask, leaves it.
 func (f fixture) maskInFixture(unit string) {
 	f.t.Helper()
 	_ = os.Remove(filepath.Join(f.root, "/etc/systemd/system", unit))
@@ -469,7 +489,8 @@ func diskHost(t *testing.T) (fixture, *fakeSystem) {
 }
 
 // zramHost is diskHost after a switch to zram: zram0 swapping 256 MiB, the
-// swap file stopped and masked, the zram presets live and in the drop-in.
+// swap file stopped and held off at boot by LinuxIO's drop-in for its unit,
+// the zram presets live and in the sysctl drop-in.
 func zramHost(t *testing.T) (fixture, *fakeSystem) {
 	t.Helper()
 	f, sys := diskHost(t)
@@ -487,6 +508,20 @@ func zramHost(t *testing.T) (fixture, *fakeSystem) {
 	f.write(zramswapConfigPath, string(renderZramswapConfig(7963*mib)))
 	sys.fileStates[zramService] = "enabled"
 	sys.activeStates[zramService] = "active"
+	f.write(holdOffDropInPath("swap.img.swap"), string(renderHoldOffDropIn()))
+	sys.heldOff["swap.img.swap"] = true
+	return f, sys
+}
+
+// maskedZramHost is zramHost as a LinuxIO that held the swap file off with a
+// mask left it: the swap file's unit masked and no drop-in.
+func maskedZramHost(t *testing.T) (fixture, *fakeSystem) {
+	t.Helper()
+	f, sys := zramHost(t)
+	if err := os.Remove(filepath.Join(f.root, holdOffDropInPath("swap.img.swap"))); err != nil {
+		t.Fatal(err)
+	}
+	delete(sys.heldOff, "swap.img.swap")
 	sys.fileStates["swap.img.swap"] = "masked"
 	f.maskInFixture("swap.img.swap")
 	return f, sys

@@ -179,7 +179,7 @@ holds `~/.cache/linuxio-vm/lock`, since it would revert, reboot or stop a VM
 under it. `make vm-ssh VM_KEEP=1` is not held back: it stops nothing.
 
 The full runs are long: the browser specs take 15 minutes on three VMs and
-42 on one, the root suites about 4 on three, and either holds the lock, so
+42 on one, the root suites about 6 on three, and either holds the lock, so
 no other VM target can run meanwhile. An agent therefore runs only the suite
 (`SUITES=...`) or the spec file (`PLAYWRIGHT_ARGS=...`) its change needs and
 leaves the full runs to the owner (`AGENTS.md`).
@@ -297,20 +297,21 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   of `VM_RELEASE=noble`, and the script's `test` command copies them into
   the VM, prints its kernel version and runs them as root, with the test
   patterns of the matching host target. They run on the VM as it is.
-- `test-vm-backend` runs every root suite: the four above, and five that
+- `test-vm-backend` runs every root suite: the four above, and six that
   have no target of their own. It uses as many VMs as the host has room for,
   one for each suite at most, creates the ones that are missing and reverts
   each to `clean` so the run starts from a known state; it installs no build,
   since the suites bring their own test binaries. The suites wait in one queue, longest first, and each VM takes the
-  next when it is free: memory (about 3½ minutes), btrfs (3), indexer (just
-  under 2, most of it the indexer's idle timeout), docker (1½), then relay,
+  next when it is free: memory (about 6 minutes, with two reboots), btrfs (3), indexer (just
+  under 2, most of it the indexer's idle timeout), docker (1½), packagekit
+  (under ½, most of it the first boot), then relay,
   updater, userconfig, filebrowser and network, seconds each. On three VMs
   the run takes about as long as memory, plus the LinuxIO build the indexer
   suite needs. `SUITES='docker updater'` runs only those. With one VM
   (`VMS=1`) they run one after another on it, the later ones on what the
   earlier left. The first failure ends that VM's suites; the other VMs take
   what is left of the queue. With more than one VM each one's output is in
-  `.cache/test-logs/vm-N-test.log`. The five without a target:
+  `.cache/test-logs/vm-N-test.log`. The six without a target:
   - `indexer` is the disposable-host smoke test
     ([Indexer](./indexer.md#disposable-host-smoke-test)). It needs the
     LinuxIO build, so the target runs `build-nocheck` first; the suite
@@ -328,6 +329,17 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
     (`TestVirtualChildrenByParentSeesOtherNamespaces`).
   - `userconfig` has a root bridge create config files for another user's
     IDs (`TestOwnedConfigArtifactsCanTargetDifferentIDsWhenPrivileged`).
+  - `packagekit` is `TestInstallByNameRefreshesAColdCacheIntegration`
+    (`bridge/handlers/packages`): an install by name through the real
+    PackageKit while its cache is cold, which must refresh the package lists
+    once and install the package, GNU `hello`, which the suite removes before
+    and after. With PackageKit stopped, the suite removes apt's lists and
+    binary caches on Ubuntu, and on Fedora removes PackageKit's own cache and
+    makes a dnf transaction outside it (`hello` installed and removed),
+    after which its dnf backend finds nothing until a refresh; without that
+    transaction it fetches a cache itself. Both backends answer an empty
+    result, not PackageKit's package-not-found error. Run it with
+    `make test-vm-backend SUITES=packagekit VMS=1`, and `DISTRO=fedora`.
 - `vm-test-btrfs-integration` builds the `common/btrfs` and
   `bridge/handlers/storage` test binaries on the host,
   prints the VM's kernel version and runs the same tests as
@@ -344,23 +356,41 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   has no `/swap.img`, creates a 1 GiB `/swap.img`, adds it to fstab and starts
   it. On Fedora, which has no zram-tools, `zram-generator` is the default
   and comes with the image, and so does a `zram0` that swaps from boot
-  (`zram-generator-defaults`). The test starts from disk, so the suite
-  switches it off the way Fedora documents, which is also where LinuxIO's
-  disk mode leaves it: an empty `/etc/systemd/zram-generator.conf`, a
-  reload, then a stop of `dev-zram0.swap` and its setup service. A stop
-  alone does not hold: while a configuration names the device, systemd
-  starts it again as soon as it is reset. Its root is btrfs, so `/swap.img`
-  is made with `btrfs filesystem mkswapfile` (a file without copy-on-write),
-  which, unlike `mkswap`, leaves the file with its folder's SELinux type: the
-  suite labels it `swapfile_t`, the type `swapon` is allowed to use. It then
-  runs `TestMemoryDrainIntegration` twice on the data disk `vdb`,
-  made a swap device with a `noauto` fstab entry and started only for the
-  test: once with 2 GiB parked on it, and once with 320 MiB and the test's
+  (`zram-generator-defaults`). Where such a vendor file
+  (`/usr/lib/systemd/zram-generator.conf`) is there, the suite first puts
+  that default back as a fresh image has it, undoing an earlier run: no
+  `/swap.img` (taken away and out of fstab, made again after), no
+  `/etc/systemd/zram-generator.conf`, and `zram0` started again from the
+  vendor file. It runs `TestMemoryDefaultZramIntegration` there, and again
+  once `/swap.img` swaps beside it. `TestMemoryIntegration` starts from disk,
+  so the suite then switches the default off the way Fedora documents, which
+  is also where LinuxIO's disk mode leaves it: an empty
+  `/etc/systemd/zram-generator.conf`, a reload, then a stop of
+  `dev-zram0.swap` and its setup service. A stop alone does not hold: while a
+  configuration names the device, systemd starts it again as soon as it is
+  reset. Its root is btrfs, so `/swap.img` is made with
+  `btrfs filesystem mkswapfile` (a file without copy-on-write), which, unlike
+  `mkswap`, leaves the file with its folder's SELinux type: the suite labels
+  it `swapfile_t`, the type `swapon` is allowed to use. After
+  `TestMemoryIntegration` the suite installs TuneD (`tuned`) and starts it,
+  and runs `TestMemoryStatusWithoutRootIntegration` as a system user without
+  sudo it creates, `linuxio-e2e-nosudo`, from a copy of the test binary in
+  `/var/tmp`; TuneD is then stopped and disabled, and the user and the copy
+  removed. It then runs `TestMemoryDrainIntegration` twice on the data disk
+  `vdb`, made a swap device with a `noauto` fstab entry and started only for
+  the test: once with 2 GiB parked on it, and once with 320 MiB and the test's
   reads from the disk capped at 2 MiB a second, where the drain has to take
   more than 90 seconds. The test runs in a cgroup of its own,
-  `/sys/fs/cgroup/linuxio-drain-test`, which it removes, and the device is
-  stopped when the suite ends, passed, failed or interrupted. A `vdb` that holds anything but swap, as
-  after a storage check, is refused: run `make vm-reset` first. The whole target takes about four minutes. These changes stay in the VM until
+  `/sys/fs/cgroup/linuxio-drain-test`, which it removes. fstab then names
+  `vdb` by `UUID=` for `TestMemoryDrainAliasIntegration`, and by its path
+  again after it, also at the next run after a cut one. The device is stopped
+  when its tests end, passed, failed or interrupted. A `vdb` that holds
+  anything but swap, as after a storage check, is refused: run
+  `make vm-reset` first. Last, `TestMemoryRebootIntegration` runs twice
+  around an orderly reboot of the VM (the script's `reboot`): with fstab
+  naming `/swap.img`, and naming it through the link `/swap-link`, which the
+  suite makes and removes, also at the next run after a cut one. The whole
+  target takes about six minutes. These changes stay in the VM until
   `make vm-reset` reverts its disks.
 - `vm-test-filebrowser-root` does the same for the file browser's root-only
   ownership tests (`test-filebrowser-root`).

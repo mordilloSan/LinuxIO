@@ -231,17 +231,18 @@ func (h hostRoot) readZramDevice(name string) (apischema.ZramDevice, error) {
 
 // fstabSwapFile returns the swap file among the fstab swap entries, one
 // whose source is a path outside /dev, that LinuxIO manages: the first that
-// is active or whose unit is masked, or when there is none, the first. A
-// masked unit keeps the choice where it was after a switch to zram stopped
-// and masked the file, so the way back starts that one, and a later switch
-// does not move on to another. Any other is left as it is.
+// is active or whose unit is held off at boot, or when there is none, the
+// first. A held-off unit keeps the choice where it was after a switch to
+// zram stopped the file and held it off, so the way back starts that one,
+// and a later switch does not move on to another. Any other is left as it
+// is.
 func fstabSwapFile(entries []fstabSwap) (fstabSwap, bool) {
 	first, found := fstabSwap{}, false
 	for _, entry := range entries {
 		if !isSwapFilePath(entry.path) {
 			continue
 		}
-		if entry.device != "" || entry.masked {
+		if entry.device != "" || entry.heldOff {
 			return entry, true
 		}
 		if !found {

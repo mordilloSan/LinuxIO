@@ -171,7 +171,7 @@ func (h hostRoot) readSwapStatus(provider apischema.ZramProvider) (apischema.Swa
 	status.ZramPlannedSize = zramPlannedSize(mem.memTotal)
 	status.DrainBlockedReason = drainBlockedReason(diskSwapUsed(devices), managedDiskUsed(fstab, devices), mem.memAvailable,
 		leftOutHoldsData(fstab, devices),
-		slices.ContainsFunc(holdingData(fstab, devices), func(e fstabSwap) bool { return e.masked }))
+		slices.ContainsFunc(holdingData(fstab, devices), func(e fstabSwap) bool { return e.heldOff }))
 	status.CanDrain = status.DrainBlockedReason == ""
 	return status, nil
 }
@@ -206,7 +206,7 @@ func (h hostRoot) describeSwapFiles(devices []apischema.SwapDevice, mounts []mou
 
 // statusSwapFile is the swap file the status reports: the one fstab names
 // that LinuxIO manages (see fstabSwapFile), active when /proc/swaps holds it,
-// and managed, since its unit can be stopped, masked and started, unless
+// and managed, since its unit can be stopped, held off and started, unless
 // others can change its path; or else the first active one, which is not
 // managed. It is nil when there is none.
 func (h hostRoot) statusSwapFile(fstab []fstabSwap, devices []apischema.SwapDevice, mounts []mountEntry) *apischema.SwapFile {

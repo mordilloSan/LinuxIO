@@ -486,22 +486,55 @@ suite_btrfs() {
 # TestMemoryIntegration (backend/bridge/handlers/memory) switches the VM to
 # zram and back through systemd and the kernel. It needs a zram tool and a
 # swap file in fstab: the first run installs one and adds a 1 GiB /swap.img,
-# and make vm-reset undoes both. TestMemoryDrainIntegration then parks data
-# on the data disk vdb, used whole as swap, twice: with 2 GiB, then with 320
-# MiB read back at DRAIN_READ_BPS. vdb's fstab entry is noauto, so it swaps
-# only for the test (an active swap partition rules the zram mode out), and
-# pri=10 puts it ahead of /swap.img. A vdb that holds anything but swap is
-# another check's and is refused. vdb stops swapping when the suite ends,
-# passed, failed or interrupted.
-#
-# On a btrfs root (Fedora's) the swap file is made by btrfs, which leaves it
-# without copy-on-write as swap needs. Unlike mkswap, btrfs does not label it
-# for SELinux, so it is labelled swapfile_t, the type swapon is allowed to use.
-# btrfs refuses a file that exists, so a /swap.img a cut run left without its
-# fstab line is removed first; one that swaps is refused.
+# and make vm-reset undoes both. Where the zram tool comes with a default zram
+# (Fedora's), TestMemoryDefaultZramIntegration first starts from it, without
+# and then with the swap file. TestMemoryStatusWithoutRootIntegration then
+# reads the status as a user without sudo with TuneD running.
+# TestMemoryDrainIntegration parks data on the data disk vdb, used whole as
+# swap, twice: with 2 GiB, then with 320 MiB read back at DRAIN_READ_BPS.
+# vdb's fstab entry is noauto, so it swaps only for the test (an active swap
+# partition rules the zram mode out), and pri=10 puts it ahead of /swap.img. A
+# vdb that holds anything but swap is another check's and is refused. Then
+# fstab names vdb by UUID= for TestMemoryDrainAliasIntegration. vdb stops
+# swapping when its tests end, passed, failed or interrupted. Last, the
+# reboots: TestMemoryRebootIntegration switches to zram, reboots and switches
+# back, once with fstab naming /swap.img and once through a link to it.
 suite_memory() {
-	local -r drain=(LINUXIO_RUN_MEMORY_INTEGRATION=1 LINUXIO_MEMORY_DRAIN_DEVICE=/dev/vdb)
-	zram_setup
+	local -r run=(LINUXIO_RUN_MEMORY_INTEGRATION=1)
+	local -r drain=("${run[@]}" LINUXIO_MEMORY_DRAIN_DEVICE=/dev/vdb)
+	zram_install
+	push_test "$1" memory
+	link_swap_file off
+	default_zram
+	run_test memory '^TestMemoryDefaultZramIntegration$' 10m "${run[@]}"
+	swap_file
+	run_test memory '^TestMemoryDefaultZramIntegration$' 10m "${run[@]}"
+	zram_default_off
+	run_test memory '^TestMemoryIntegration$' 30m "${run[@]}"
+	status_without_root
+	trap vdb_swap_off EXIT
+	drain_setup
+	run_test memory '^TestMemoryDrainIntegration$' 30m "${drain[@]}" LINUXIO_MEMORY_DRAIN_MIB=2048
+	run_test memory '^TestMemoryDrainIntegration$' 30m "${drain[@]}" LINUXIO_MEMORY_DRAIN_MIB=320 \
+		LINUXIO_MEMORY_DRAIN_READ_BPS="$DRAIN_READ_BPS" LINUXIO_MEMORY_DRAIN_MIN_SECONDS=90
+	vdb_by_uuid
+	run_test memory '^TestMemoryDrainAliasIntegration$' 10m "${drain[@]}"
+	vdb_by_path
+	trap - EXIT
+	vdb_swap_off
+	reboot_check
+	link_swap_file on
+	reboot_check
+	link_swap_file off
+}
+
+# A 1 GiB /swap.img in fstab, swapping. On a btrfs root (Fedora's) the swap
+# file is made by btrfs, which leaves it without copy-on-write as swap needs.
+# Unlike mkswap, btrfs does not label it for SELinux, so it is labelled
+# swapfile_t, the type swapon is allowed to use. btrfs refuses a file that
+# exists, so a /swap.img without its fstab line, as a cut run or default_zram
+# leaves it, is removed first; one that swaps is refused.
+swap_file() {
 	vm_ssh sudo bash -s <<'SWAPFILE'
 set -euo pipefail
 if ! grep -qs '^/swap.img[[:space:]]' /etc/fstab; then
@@ -523,15 +556,110 @@ if ! grep -qs '^/swap.img[[:space:]]' /etc/fstab; then
 	systemctl start swap.img.swap
 fi
 SWAPFILE
-	push_test "$1" memory
-	run_test memory '^TestMemoryIntegration$' 30m LINUXIO_RUN_MEMORY_INTEGRATION=1
-	trap vdb_swap_off EXIT
-	drain_setup
-	run_test memory '^TestMemoryDrainIntegration$' 30m "${drain[@]}" LINUXIO_MEMORY_DRAIN_MIB=2048
-	run_test memory '^TestMemoryDrainIntegration$' 30m "${drain[@]}" LINUXIO_MEMORY_DRAIN_MIB=320 \
-		LINUXIO_MEMORY_DRAIN_READ_BPS="$DRAIN_READ_BPS" LINUXIO_MEMORY_DRAIN_MIN_SECONDS=90
-	trap - EXIT
-	vdb_swap_off
+}
+
+# Fedora's default zram as a fresh image has it, where the zram tool comes
+# with one (/usr/lib/systemd/zram-generator.conf): no swap file, no
+# zram-generator.conf in /etc, and zram0 swapping at the size the vendor file
+# sets. An earlier run changed all three, so /swap.img is taken away and out
+# of fstab (swap_file makes it again) and its unit let go (LinuxIO's
+# hold-off drop-in removed, a mask an older run left removed), the file in
+# /etc and LinuxIO's copy of it are removed, and zram0 is stopped, reset and
+# started again from the vendor file.
+default_zram() {
+	vm_ssh sudo bash -s <<'DEFAULT'
+set -euo pipefail
+[[ -e /usr/lib/systemd/zram-generator.conf ]] || exit 0
+if grep -q '^/swap.img[[:space:]]' /proc/swaps; then swapoff /swap.img; fi
+sed -i '\|^/swap.img[[:space:]]|d' /etc/fstab
+systemctl unmask swap.img.swap
+rm -rf /etc/systemd/system/swap.img.swap.d
+rm -f /etc/systemd/zram-generator.conf /etc/systemd/zram-generator.conf.before-linuxio
+systemctl daemon-reload
+if grep -q '^/dev/zram0[[:space:]]' /proc/swaps; then systemctl stop dev-zram0.swap; fi
+systemctl stop systemd-zram-setup@zram0.service
+# The reset fails while udev still holds the device after the swapoff.
+for _ in {1..20}; do
+	[[ -e /sys/block/zram0/disksize && $(</sys/block/zram0/disksize) != 0 ]] || break
+	echo 1 >/sys/block/zram0/reset 2>/dev/null || sleep 0.5
+done
+systemctl start dev-zram0.swap
+for _ in {1..60}; do
+	if grep -q '^/dev/zram0[[:space:]]' /proc/swaps; then exit 0; fi
+	sleep 1
+done
+echo "zram0 did not start from /usr/lib/systemd/zram-generator.conf" >&2
+exit 1
+DEFAULT
+}
+
+# TestMemoryRebootIntegration: a switch to zram, a reboot, which must keep the
+# swap file off, and a switch back.
+reboot_check() {
+	run_test memory '^TestMemoryRebootIntegration$' 10m LINUXIO_RUN_MEMORY_INTEGRATION=1 LINUXIO_MEMORY_REBOOT_PHASE=before
+	reboot_vm
+	run_test memory '^TestMemoryRebootIntegration$' 10m LINUXIO_RUN_MEMORY_INTEGRATION=1 LINUXIO_MEMORY_REBOOT_PHASE=after
+}
+
+# link_swap_file on|off has fstab name the swap file through the link
+# /swap-link, in / like the file, or by its own path again. Off also undoes a
+# cut run: what holds the link's unit off at boot, LinuxIO's drop-in or the
+# mask an older run left, moves to the file's unit.
+link_swap_file() {
+	vm_ssh sudo bash -s -- "$1" <<'LINK'
+set -euo pipefail
+if [[ $1 == on ]]; then
+	ln -sfn /swap.img /swap-link
+	sed -i 's|^/swap.img\([[:space:]]\)|/swap-link\1|' /etc/fstab
+	systemctl daemon-reload
+	exit 0
+fi
+link=/etc/systemd/system/swap\\x2dlink.swap
+if grep -q '^/swap-link[[:space:]]' /etc/fstab; then
+	masked=$(systemctl is-enabled 'swap\x2dlink.swap' 2>/dev/null || true)
+	systemctl unmask 'swap\x2dlink.swap'
+	sed -i 's|^/swap-link\([[:space:]]\)|/swap.img\1|' /etc/fstab
+	if [[ $masked == masked ]]; then systemctl mask swap.img.swap; fi
+	if [[ -e $link.d/90-linuxio-memory.conf ]]; then
+		mkdir -p /etc/systemd/system/swap.img.swap.d
+		mv "$link.d/90-linuxio-memory.conf" /etc/systemd/system/swap.img.swap.d/
+	fi
+	systemctl daemon-reload
+fi
+rm -rf "$link.d"
+rm -f /swap-link
+LINK
+}
+
+# TestMemoryStatusWithoutRootIntegration reads the status as a user without
+# sudo, as the bridge of such a session does, with no sbin folder in PATH and
+# TuneD running, while a switch to zram, made as root with the job host's
+# umask (TestMemorySwitchIntegration), holds the swap file off; the host goes
+# back to disk after it. TuneD is installed and started for this alone and
+# stopped and disabled again, since its profile sets swappiness; the user and
+# the copy of the test binary it runs are removed.
+status_without_root() {
+	vm_ssh test -x /usr/sbin/tuned-adm </dev/null || vm_install tuned
+	run_test memory '^TestMemorySwitchIntegration$' 10m LINUXIO_RUN_MEMORY_INTEGRATION=1 LINUXIO_MEMORY_SWITCH_TO=zram
+	vm_ssh sudo bash -s -- "${LINUXIO_VM_ZRAM_PROVIDER:-$ZRAM_DEFAULT}" "$VM_USER" <<'STATUS'
+set -euo pipefail
+user=linuxio-e2e-nosudo test=/var/tmp/linuxio-memory-status.test
+trap 'systemctl disable --now tuned.service >/dev/null 2>&1 || true; userdel "$user" 2>/dev/null || true; rm -f "$test"' EXIT
+id "$user" >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin "$user"
+install -m 0755 "/home/$2/memory.test" "$test"
+systemctl start tuned.service
+profile=""
+for _ in {1..30}; do
+	profile=$(tuned-adm active 2>/dev/null | sed -n 's/^Current active profile: //p')
+	if [[ -n $profile ]]; then break; fi
+	sleep 1
+done
+cd /
+sudo -u "$user" env -i PATH=/usr/bin:/bin LINUXIO_RUN_MEMORY_STATUS_WITHOUT_ROOT=1 LINUXIO_MEMORY_EXPECT_HELD_OFF=1 \
+	LINUXIO_MEMORY_TUNED_PROFILE="$profile" LINUXIO_MEMORY_ZRAM_PROVIDER="$1" \
+	"$test" -test.run '^TestMemoryStatusWithoutRootIntegration$' -test.count=1 -test.v -test.timeout=2m
+STATUS
+	run_test memory '^TestMemorySwitchIntegration$' 10m LINUXIO_RUN_MEMORY_INTEGRATION=1 LINUXIO_MEMORY_SWITCH_TO=disk
 }
 
 # After an interrupt the drain test can still be running in the VM, since ssh
@@ -553,10 +681,31 @@ SWAPOFF
 # on Ubuntu, zram-generator on Fedora, which has no zram-tools. On Ubuntu
 # zram-generator is the systemd-zram-generator package, the Fedora and RHEL
 # path; LinuxIO uses it only when zram-tools is absent, so that needs a VM
-# without zram-tools. The test starts from disk, so a zram device the
-# generator swaps on from boot (Fedora's default zram0) is switched off. A stop
-# alone does not hold: while a configuration names the device, systemd starts
-# it again as soon as it is reset. So it is switched off the way Fedora
+# without zram-tools.
+zram_install() {
+	case ${LINUXIO_VM_ZRAM_PROVIDER:-$ZRAM_DEFAULT} in
+	zram-generator)
+		if vm_ssh test -x /usr/sbin/zramswap </dev/null; then
+			die "zram-tools is installed and LinuxIO prefers it: run make vm-reset first"
+		fi
+		vm_ssh test -x /usr/lib/systemd/system-generators/zram-generator </dev/null || vm_install "$GENERATOR_PACKAGE"
+		;;
+	zram-tools)
+		[[ $PKG == apt ]] || die "zram-tools is a Debian package: on ${DISTRO} use ZRAM_PROVIDER=zram-generator"
+		if ! vm_ssh test -x /usr/sbin/zramswap </dev/null; then
+			vm_install zram-tools
+			# The package starts zramswap.service, which the test does itself.
+			vm_ssh sudo systemctl disable --now zramswap.service </dev/null
+		fi
+		;;
+	*) die "ZRAM_PROVIDER must be zram-tools or zram-generator" ;;
+	esac
+}
+
+# TestMemoryIntegration starts from disk, so with zram-generator a zram device
+# the generator swaps on from boot (Fedora's default zram0) is switched off. A
+# stop alone does not hold: while a configuration names the device, systemd
+# starts it again as soon as it is reset. So it is switched off the way Fedora
 # documents, which is also where LinuxIO's disk mode leaves it: an empty
 # /etc/systemd/zram-generator.conf, a reload, then the stop. The swap stops
 # before its setup service: with no device configured nothing orders the two,
@@ -564,14 +713,9 @@ SWAPOFF
 # up, which the next zram start cannot configure. A device left that way, set
 # up and not swapping, with its setup service stopped, is reset through sysfs
 # as the generator's stop would have.
-zram_setup() {
-	case ${LINUXIO_VM_ZRAM_PROVIDER:-$ZRAM_DEFAULT} in
-	zram-generator)
-		if vm_ssh test -x /usr/sbin/zramswap </dev/null; then
-			die "zram-tools is installed and LinuxIO prefers it: run make vm-reset first"
-		fi
-		vm_ssh test -x /usr/lib/systemd/system-generators/zram-generator </dev/null || vm_install "$GENERATOR_PACKAGE"
-		vm_ssh sudo bash -s <<'ZRAMOFF'
+zram_default_off() {
+	[[ ${LINUXIO_VM_ZRAM_PROVIDER:-$ZRAM_DEFAULT} == zram-generator ]] || return 0
+	vm_ssh sudo bash -s <<'ZRAMOFF'
 set -euo pipefail
 zram0_set_up() { [[ -e /sys/block/zram0/disksize && $(</sys/block/zram0/disksize) != 0 ]]; }
 if grep -q '^/dev/zram' /proc/swaps || zram0_set_up; then
@@ -589,20 +733,10 @@ if grep -q '^/dev/zram' /proc/swaps || zram0_set_up; then
 	fi
 fi
 ZRAMOFF
-		;;
-	zram-tools)
-		[[ $PKG == apt ]] || die "zram-tools is a Debian package: on ${DISTRO} use ZRAM_PROVIDER=zram-generator"
-		if ! vm_ssh test -x /usr/sbin/zramswap </dev/null; then
-			vm_install zram-tools
-			# The package starts zramswap.service, which the test does itself.
-			vm_ssh sudo systemctl disable --now zramswap.service </dev/null
-		fi
-		;;
-	*) die "ZRAM_PROVIDER must be zram-tools or zram-generator" ;;
-	esac
 }
 
 drain_setup() {
+	vdb_by_path
 	vm_ssh sudo bash -s <<'DRAIN'
 set -euo pipefail
 kind=$(blkid -o value -s TYPE /dev/vdb || true)
@@ -617,6 +751,73 @@ if ! grep -qs '^/dev/vdb[[:space:]]' /etc/fstab; then
 fi
 systemctl start dev-vdb.swap
 DRAIN
+}
+
+# vdb_by_uuid has fstab name vdb by UUID=, whose unit,
+# dev-disk-by\x2duuid-UUID.swap, is an alias of dev-vdb.swap
+# (TestMemoryDrainAliasIntegration); vdb_by_path names it /dev/vdb again, also
+# after a cut run.
+vdb_by_uuid() { vdb_fstab_source uuid; }
+vdb_by_path() { vdb_fstab_source path; }
+
+vdb_fstab_source() {
+	vm_ssh sudo bash -s -- "$1" <<'SOURCE'
+set -euo pipefail
+uuid=$(blkid -o value -s UUID /dev/vdb || true)
+[[ -n $uuid ]] || exit 0
+if [[ $1 == uuid ]]; then
+	sed -i "s|^/dev/vdb\([[:space:]]\)|UUID=${uuid}\1|" /etc/fstab
+elif grep -q "^UUID=${uuid}[[:space:]]" /etc/fstab; then
+	sed -i "s|^UUID=${uuid}\([[:space:]]\)|/dev/vdb\1|" /etc/fstab
+else
+	exit 0
+fi
+systemctl daemon-reload
+SOURCE
+}
+
+# TestInstallByNameRefreshesAColdCacheIntegration (bridge/handlers/packages)
+# installs PACKAGEKIT_PACKAGE by name through PackageKit while its cache is
+# cold, as on a host where nothing refreshed it, and expects one refresh of
+# the package lists. GNU hello is small, in both distributions' main
+# repositories, and nothing else needs it. The package is removed before and
+# after, also after a cut run. The cache is made cold with PackageKit
+# stopped, each way the test VM showed it to find nothing. On Ubuntu its apt
+# backend reads apt's lists and binary caches, which are removed (a later
+# apt-get update makes them again). On Fedora its dnf backend keeps a cache
+# of its own under /var/cache/PackageKit and fetches one when there is none,
+# but after a dnf transaction made outside it, here installing and removing
+# the package, it finds nothing until a refresh.
+readonly PACKAGEKIT_PACKAGE=hello
+
+suite_packagekit() {
+	push_test "$1" packages
+	packagekit_remove
+	vm_ssh sudo bash -s -- "$PKG" "$PACKAGEKIT_PACKAGE" <<'COLD'
+set -euo pipefail
+systemctl stop packagekit.service
+if [[ $1 == apt ]]; then
+	find /var/lib/apt/lists -mindepth 1 -maxdepth 1 ! -name lock ! -name partial -delete
+	rm -f /var/cache/apt/pkgcache.bin /var/cache/apt/srcpkgcache.bin
+else
+	find /var/cache/PackageKit -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+	dnf install -y -q "$2" >/dev/null
+	dnf remove -y -q "$2" >/dev/null
+fi
+COLD
+	trap packagekit_remove EXIT
+	run_test packages '^TestInstallByNameRefreshesAColdCacheIntegration$' 10m \
+		LINUXIO_RUN_PACKAGEKIT_INTEGRATION=1 LINUXIO_PACKAGEKIT_TEST_PACKAGE="$PACKAGEKIT_PACKAGE"
+	trap - EXIT
+	packagekit_remove
+}
+
+# packagekit_remove takes PACKAGEKIT_PACKAGE out of the VM, if it is there.
+packagekit_remove() {
+	case $PKG in
+	apt) vm_ssh "! dpkg -s $PACKAGEKIT_PACKAGE >/dev/null 2>&1 || sudo env DEBIAN_FRONTEND=noninteractive apt-get remove -y -qq $PACKAGEKIT_PACKAGE >/dev/null" </dev/null ;;
+	dnf) vm_ssh "! rpm -q $PACKAGEKIT_PACKAGE >/dev/null 2>&1 || sudo dnf remove -y -q $PACKAGEKIT_PACKAGE >/dev/null" </dev/null ;;
+	esac
 }
 
 # The file browser's root-only ownership tests of test-filebrowser-root.

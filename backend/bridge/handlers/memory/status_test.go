@@ -250,20 +250,25 @@ func TestReadSwapStatusRefusesBrokenRequiredFiles(t *testing.T) {
 	}
 }
 
-// A unit masked by a link to /dev/null in /etc/systemd/system or
-// /run/systemd/system could not start its device again after a drain, so
-// the status says unit_masked without asking systemd. A link elsewhere, or
-// a masked unit whose device holds no data, does not block.
-func TestReadSwapStatusReportsAMaskedDrainUnit(t *testing.T) {
+// A unit held off at boot, by LinuxIO's drop-in for it in
+// /etc/systemd/system or by a link to /dev/null there or in
+// /run/systemd/system, could not start its device again after a drain, so
+// the status says unit_held_off without asking systemd. A link elsewhere, a
+// drop-in of another name, or a held-off unit whose device holds no data,
+// does not block.
+func TestReadSwapStatusReportsAHeldOffDrainUnit(t *testing.T) {
 	tests := []struct {
-		name string
-		link string
-		to   string
-		used string
-		want apischema.SwapDrainBlockedReason
+		name   string
+		link   string
+		to     string
+		dropIn string
+		used   string
+		want   apischema.SwapDrainBlockedReason
 	}{
-		{name: "masked in etc", link: "/etc/systemd/system/swap.img.swap", to: "/dev/null", used: "524288", want: apischema.SwapDrainUnitMasked},
-		{name: "masked at runtime", link: "/run/systemd/system/swap.img.swap", to: "/dev/null", used: "524288", want: apischema.SwapDrainUnitMasked},
+		{name: "LinuxIO's drop-in", dropIn: "/etc/systemd/system/swap.img.swap.d/90-linuxio-memory.conf", used: "524288", want: apischema.SwapDrainUnitHeldOff},
+		{name: "another drop-in", dropIn: "/etc/systemd/system/swap.img.swap.d/50-admin.conf", used: "524288"},
+		{name: "masked in etc", link: "/etc/systemd/system/swap.img.swap", to: "/dev/null", used: "524288", want: apischema.SwapDrainUnitHeldOff},
+		{name: "masked at runtime", link: "/run/systemd/system/swap.img.swap", to: "/dev/null", used: "524288", want: apischema.SwapDrainUnitHeldOff},
 		{name: "linked to a unit file", link: "/etc/systemd/system/swap.img.swap", to: "/lib/systemd/system/other.swap", used: "524288"},
 		{name: "masked without parked data", link: "/etc/systemd/system/swap.img.swap", to: "/dev/null", used: "0", want: apischema.SwapDrainNothingParked},
 	}
@@ -274,7 +279,12 @@ func TestReadSwapStatusReportsAMaskedDrainUnit(t *testing.T) {
 			f.write("/proc/meminfo", meminfoText)
 			f.write("/etc/fstab", "/swap.img none swap sw 0 0\n")
 			f.write("/swap.img", "")
-			f.symlink(test.to, test.link)
+			if test.link != "" {
+				f.symlink(test.to, test.link)
+			}
+			if test.dropIn != "" {
+				f.write(test.dropIn, "[Unit]\nConditionPathExists=!/\n")
+			}
 
 			got, err := f.host().readSwapStatus(apischema.ZramProviderTools)
 			if err != nil {

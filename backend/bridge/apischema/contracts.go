@@ -134,7 +134,7 @@ var StringEnums = map[string][]string{
 	"SwapDiskHint":              enumNames("", SwapDiskHintMMC, SwapDiskHintRemovable),
 	"ZramProvider":              enumNames("", ZramProviderTools, ZramProviderGenerator),
 	"ZramUnavailableReason":     enumNames("", ZramPackageMissing, ZramSwapPartitionActive),
-	"SwapDrainBlockedReason":    enumNames("", SwapDrainNothingParked, SwapDrainNotEnoughMemory, SwapDrainUnmanagedDevice, SwapDrainUnitMasked, SwapDrainOthersCanWrite),
+	"SwapDrainBlockedReason":    enumNames("", SwapDrainNothingParked, SwapDrainNotEnoughMemory, SwapDrainUnmanagedDevice, SwapDrainUnitHeldOff, SwapDrainOthersCanWrite),
 	"SwapFileUnmanagedReason":   enumNames("", SwapFileNotInFstab, SwapFileOthersCanWrite),
 	"SwapStep":                  enumNames(SwapSteps...),
 	"SwapLeftWhat":              enumNames(SwapLeftSwapFile, SwapLeftZram, SwapLeftZramSize),

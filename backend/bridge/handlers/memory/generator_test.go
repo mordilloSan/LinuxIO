@@ -130,7 +130,8 @@ func TestSetSwapModeToZramWithTheGenerator(t *testing.T) {
 		"set " + scaleParam + "=125",
 		"write " + zswapTmpfilesPath,
 		"swapoff /swap.img",
-		"mask swap.img.swap",
+		holdOffCall("swap.img.swap"),
+		"reload",
 	})
 	if got.Mode != apischema.SwapModeZram || got.ZramProvider != apischema.ZramProviderGenerator {
 		t.Errorf("status mode = %q provider = %q, want zram from zram-generator", got.Mode, got.ZramProvider)
@@ -167,7 +168,8 @@ func TestSetSwapModeToDiskFromZramWithTheGenerator(t *testing.T) {
 	}
 
 	assertCalls(t, sys.calls, []string{
-		"unmask swap.img.swap",
+		"remove " + holdOffDropInPath("swap.img.swap"),
+		"reload",
 		"start swap.img.swap",
 		"stop " + zramGeneratorSwapUnit,
 		"write " + zramGeneratorConfigPath,

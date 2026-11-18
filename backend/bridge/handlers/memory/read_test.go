@@ -348,10 +348,10 @@ LABEL=swap none swap sw 0 0
 			t.Fatalf("swap file = %+v (found %v), want /swap.img", got, ok)
 		}
 	})
-	t.Run("a masked one counts as the managed one", func(t *testing.T) {
+	t.Run("a held-off one counts as the managed one", func(t *testing.T) {
 		entries := []fstabSwap{
 			{path: "/old.img"},
-			{path: "/swap.img", masked: true},
+			{path: "/swap.img", heldOff: true},
 			{path: "/third.img", device: "/third.img"},
 		}
 		if got, ok := fstabSwapFile(entries); !ok || got.path != "/swap.img" {

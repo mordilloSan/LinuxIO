@@ -35,7 +35,8 @@ type hostSystem interface {
 	swapOff(ctx context.Context, device string) error
 	enableUnit(ctx context.Context, name string) error
 	disableUnit(ctx context.Context, name string) error
-	maskUnit(ctx context.Context, name string) error
+	// unmaskUnit removes a mask, as an admin or a LinuxIO that held swap
+	// files off with masks leaves it, and reloads the manager.
 	unmaskUnit(ctx context.Context, name string) error
 	unitFileState(ctx context.Context, name string) (string, error)
 	// reload makes systemd run its generators again and returns when it has.
@@ -93,10 +94,6 @@ func (liveSystem) enableUnit(ctx context.Context, name string) error {
 
 func (liveSystem) disableUnit(ctx context.Context, name string) error {
 	return systemd.DisableUnit(ctx, name)
-}
-
-func (liveSystem) maskUnit(ctx context.Context, name string) error {
-	return systemd.MaskUnit(ctx, name)
 }
 
 // unmaskUnit also reloads the manager, which brings back the unit

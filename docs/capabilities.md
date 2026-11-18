@@ -136,15 +136,21 @@ resolve -> [install_package] -> [post_install] -> [enable_service] -> [start_ser
   installable capabilities that have a package step require PackageKit to be
   available.
 - PackageKit keeps its own package cache, apart from apt's or dnf's, and on a
-  host where nothing has refreshed it (a fresh Fedora install) it knows no
-  package to install. A package name it does not find, whether it answers
-  with no match or with its package-not-found error, is looked up again after
-  one refresh of that cache, the same refresh as the Updates page's button and
-  bounded at two minutes; the capability row shows
+  host where nothing has refreshed it it knows no package to install: on
+  Debian and Ubuntu while apt's lists are missing, and on Fedora after a dnf
+  transaction made outside PackageKit before it first ran. A package name it
+  does not find, whether it answers with no match or with its
+  package-not-found error, is looked up again after one refresh of that
+  cache, the same refresh as the Updates page's button and bounded at two
+  minutes; the capability row shows
   `Installing zram-generator (Refreshing the package lists)` meanwhile. Only
   then does the job fail with not found (404), and a refresh that fails is
   reported beside it. A name that resolves installs without a refresh, so a
-  warm cache costs nothing.
+  warm cache costs nothing. In the test VM
+  (`make test-vm-backend SUITES=packagekit`, on 2026-11-18) both backends
+  answered with no match, and the install refreshed once and installed the
+  package, on Ubuntu 26.04 (PackageKit 1.3.4, apt) and Fedora 45
+  (PackageKit 1.4.0, dnf).
 - A distro-specific optional package may report a warning without preventing
   later service and detection stages. Avahi uses this on RHEL-family hosts for
   `nss-mdns`, which may require EPEL; the responder is still enabled, started,
@@ -246,7 +252,9 @@ installed (`memory.CheckZramAvailability`): the `zramswap` command of
 `zram-tools`, also looked for in `/usr/sbin` for a bridge whose `PATH` omits
 it, or systemd's `zram-generator` at
 `/usr/lib/systemd/system-generators/zram-generator`. Install uses the Debian
-package `zram-tools` or the RHEL package `zram-generator`. There is no service
+package `zram-tools` or the RHEL package `zram-generator`; on Fedora that
+package comes without `zram-generator-defaults`, so no zram starts until the
+admin chooses it (Fedora 45 test VM, 2026-11-18). There is no service
 step: the dashboard's **Memory overflow** dialog starts zram when the admin
 chooses compressed memory only. The dialog
 itself does not wait for the capability; its zram row links to Capabilities

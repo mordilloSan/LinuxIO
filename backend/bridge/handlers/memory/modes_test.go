@@ -194,7 +194,7 @@ func TestDrainBlockedReason(t *testing.T) {
 		diskUsed     uint64
 		managedUsed  uint64
 		memAvailable uint64
-		unitMasked   bool
+		unitHeldOff  bool
 		leftOutUsed  bool
 		want         apischema.SwapDrainBlockedReason
 	}{
@@ -210,12 +210,12 @@ func TestDrainBlockedReason(t *testing.T) {
 		{name: "room for the managed share", diskUsed: 6 * gib, managedUsed: 1 * gib, memAvailable: 4 * gib},
 		{name: "parked only in a swap file others can redirect", diskUsed: 1 * gib, memAvailable: 8 * gib, leftOutUsed: true, want: apischema.SwapDrainOthersCanWrite},
 		{name: "such a file beside a managed device", diskUsed: 2 * gib, managedUsed: 1 * gib, memAvailable: 8 * gib, leftOutUsed: true},
-		{name: "a masked unit", diskUsed: 1 * gib, managedUsed: 1 * gib, memAvailable: 8 * gib, unitMasked: true, want: apischema.SwapDrainUnitMasked},
-		{name: "a masked unit without room", diskUsed: 6 * gib, managedUsed: 6 * gib, memAvailable: 4 * gib, unitMasked: true, want: apischema.SwapDrainUnitMasked},
+		{name: "a masked unit", diskUsed: 1 * gib, managedUsed: 1 * gib, memAvailable: 8 * gib, unitHeldOff: true, want: apischema.SwapDrainUnitHeldOff},
+		{name: "a masked unit without room", diskUsed: 6 * gib, managedUsed: 6 * gib, memAvailable: 4 * gib, unitHeldOff: true, want: apischema.SwapDrainUnitHeldOff},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if got := drainBlockedReason(test.diskUsed, test.managedUsed, test.memAvailable, test.leftOutUsed, test.unitMasked); got != test.want {
+			if got := drainBlockedReason(test.diskUsed, test.managedUsed, test.memAvailable, test.leftOutUsed, test.unitHeldOff); got != test.want {
 				t.Fatalf("drain blocked reason = %q, want %q", got, test.want)
 			}
 		})

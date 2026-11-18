@@ -3083,7 +3083,7 @@ export type SwapDrainBlockedReason =
   | "nothing_parked"
   | "not_enough_memory"
   | "unmanaged_device"
-  | "unit_masked"
+  | "unit_held_off"
   | "others_can_write";
 
 export interface SwapFile {

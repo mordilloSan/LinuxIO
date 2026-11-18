@@ -86,7 +86,7 @@ vm-destroy: ## Delete the test VM (VM=2 for another) and its volumes
 # share, each taking the next suite when it is free, so the long ones start
 # first and the short ones fill in around them.
 vm_test_dir := $(cache_dir)/vm
-vm_suites := memory btrfs indexer docker relay updater userconfig filebrowser network
+vm_suites := memory btrfs indexer docker packagekit relay updater userconfig filebrowser network
 SUITES ?= $(vm_suites)
 # The bridge-to-job-host relay tests (backend/bridge/cmd/jobs_relay_test.go).
 RELAY_ROOT_RUN := ^Test(Bridge(Forwards|Fails|Watch|Events|Reports)|PrivilegedBridgeUsesRootHost|Relay|UpdatePendingMessage)
@@ -114,6 +114,7 @@ vm_build_updater = $(call vm_test_build,appupdate,./bridge/handlers/appupdate)
 vm_build_docker = $(call vm_test_build,dockerupdate,./common/dockerupdate)
 vm_build_network = $(call vm_test_build,hostbridge,./bridge/handlers/network/internal/hostbridge)
 vm_build_userconfig = $(call vm_test_build,userconfig,./bridge/internal/userconfig)
+vm_build_packagekit = $(call vm_test_build,packages,./bridge/handlers/packages)
 # A wrong SUITES fails as make reads this file, before the build the indexer
 # suite brings, and only for test-vm-backend.
 ifneq ($(filter test-vm-backend%,$(MAKECMDGOALS)),)

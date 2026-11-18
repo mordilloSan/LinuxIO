@@ -63,9 +63,10 @@ const (
 	// SwapDrainUnmanagedDevice: the parked data sits only on swap devices
 	// /etc/fstab does not name, whose units could not be started again.
 	SwapDrainUnmanagedDevice SwapDrainBlockedReason = "unmanaged_device"
-	// SwapDrainUnitMasked: the unit of a device holding data is masked, so
-	// it could not be started again.
-	SwapDrainUnitMasked SwapDrainBlockedReason = "unit_masked"
+	// SwapDrainUnitHeldOff: the unit of a device holding data is held off at
+	// boot, by LinuxIO's condition drop-in or a mask, so a start of it would
+	// not bring the device back.
+	SwapDrainUnitHeldOff SwapDrainBlockedReason = "unit_held_off"
 	// SwapDrainOthersCanWrite: the parked data sits on a swap device fstab
 	// names that LinuxIO does not manage, since users other than root can
 	// change a folder on its path.
@@ -95,7 +96,7 @@ const (
 	// to be stopped, which would have left the host without swap.
 	SwapLeftZramNotSwapping SwapLeftReason = "zram_not_swapping"
 	// SwapLeftNotIdentified: an active swap file could not be told from the
-	// one fstab names, so that file's unit was not masked.
+	// one fstab names, so that file's unit was not held off at boot.
 	SwapLeftNotIdentified SwapLeftReason = "not_identified"
 	// SwapLeftOthersCanWrite: a folder on the swap file's path can be
 	// changed by users other than root, who could send a swapoff of that
@@ -212,7 +213,7 @@ type SwapFileUnmanagedReason string
 
 const (
 	// SwapFileNotInFstab: /etc/fstab does not name the file, so it has no
-	// unit to stop, mask or start.
+	// unit to stop, hold off at boot or start.
 	SwapFileNotInFstab SwapFileUnmanagedReason = "not_in_fstab"
 	// SwapFileOthersCanWrite: users other than root can change a folder on
 	// the file's path and so put another entry at it, which a swapoff or a
@@ -226,7 +227,7 @@ type SwapFile struct {
 	Active   bool         `json:"active"`
 	DiskHint SwapDiskHint `json:"disk_hint"`
 	FSType   string       `json:"fs_type"`
-	// Managed is true when LinuxIO stops, masks, starts and drains the
+	// Managed is true when LinuxIO stops, holds off, starts and drains the
 	// file: /etc/fstab names it, so it has a unit, and only root can change
 	// the folders on its path. A file that is not managed is left as it is,
 	// and UnmanagedReason says why.

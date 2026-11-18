@@ -53,7 +53,8 @@ func TestSetSwapModeToZramFromDisk(t *testing.T) {
 		"set " + scaleParam + "=125",
 		"write " + zswapTmpfilesPath,
 		"swapoff /swap.img",
-		"mask swap.img.swap",
+		holdOffCall("swap.img.swap"),
+		"reload",
 	})
 	if got.Mode != apischema.SwapModeZram || got.Swappiness != 180 {
 		t.Errorf("status mode = %q swappiness = %d, want zram, 180", got.Mode, got.Swappiness)
@@ -65,6 +66,18 @@ func TestSetSwapModeToZramFromDisk(t *testing.T) {
 		"vm.swappiness = 180\nvm.page-cluster = 0\nvm.watermark_boost_factor = 0\nvm.watermark_scale_factor = 125\n"
 	if got := f.read(sysctlDropInPath); got != wantDropIn {
 		t.Errorf("drop-in = %q, want %q", got, wantDropIn)
+	}
+	// The swap file's unit is held off at boot by a condition that never
+	// holds, and not masked: swap.target requires the unit, and systemd
+	// starts no target that requires a masked unit.
+	wantHoldOff := "# Managed by LinuxIO (Dashboard, Memory); changes here are overwritten.\n" +
+		"# Keeps this swap off at boot. LinuxIO removes this file to turn it on again.\n" +
+		"[Unit]\nConditionPathExists=!/\n"
+	if got := f.read("/etc/systemd/system/swap.img.swap.d/90-linuxio-memory.conf"); got != wantHoldOff {
+		t.Errorf("hold-off drop-in = %q, want %q", got, wantHoldOff)
+	}
+	if f.exists("/etc/systemd/system/swap.img.swap") || sys.fileStates["swap.img.swap"] == "masked" {
+		t.Errorf("swap.img.swap is masked, want it held off by the drop-in alone")
 	}
 	wantProgress := []apischema.SwapProgress{
 		{Step: apischema.SwapStepWriteConfig, Index: 1, Total: 5},
@@ -84,7 +97,7 @@ func TestSetSwapModeToZramFromDisk(t *testing.T) {
 func TestSetSwapModeReadsTheStatusAgainAfterTheChange(t *testing.T) {
 	_, sys := diskHost(t)
 	sys.after = func(call string) {
-		if call == "mask swap.img.swap" {
+		if call == holdOffCall("swap.img.swap") {
 			sys.statusFails = 2
 		}
 	}
@@ -108,7 +121,7 @@ func TestSetSwapModeSaysTheChangeWasMadeWhenTheStatusCannotBeRead(t *testing.T) 
 	t.Cleanup(func() { slog.SetDefault(previous) })
 	f, sys := diskHost(t)
 	sys.after = func(call string) {
-		if call == "mask swap.img.swap" {
+		if call == holdOffCall("swap.img.swap") {
 			sys.statusFails = 1000
 		}
 	}
@@ -134,7 +147,8 @@ func TestSetSwapModeToZswapFromZram(t *testing.T) {
 	}
 
 	assertCalls(t, sys.calls, []string{
-		"unmask swap.img.swap",
+		"remove " + holdOffDropInPath("swap.img.swap"),
+		"reload",
 		"start swap.img.swap",
 		"stop " + zramService,
 		"disable " + zramService,
@@ -156,6 +170,205 @@ func TestSetSwapModeToZswapFromZram(t *testing.T) {
 	}
 	if got, want := f.read(zswapTmpfilesPath), string(renderZswapTmpfiles("zstd")); got != want {
 		t.Errorf("tmpfiles = %q, want %q", got, want)
+	}
+	if f.exists(holdOffDropInPath("swap.img.swap")) {
+		t.Errorf("the hold-off drop-in is still there after the swap file started")
+	}
+}
+
+// A host an older LinuxIO switched to zram has the swap file's unit masked
+// and no drop-in. The way back reloads systemd, unmasks the unit, which
+// reloads it again, and starts it; with both a drop-in and a mask, both go.
+func TestSetSwapModeToDiskUnmasksAUnitAMaskHeldOff(t *testing.T) {
+	t.Run("masked", func(t *testing.T) {
+		f, sys := maskedZramHost(t)
+		got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeDisk})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Mode != apischema.SwapModeDisk || f.exists("/etc/systemd/system/swap.img.swap") {
+			t.Fatalf("mode %s, mask still there %v; want disk and the unit unmasked", got.Mode, f.exists("/etc/systemd/system/swap.img.swap"))
+		}
+		assertCalls(t, sys.calls[:3], []string{"reload", "unmask swap.img.swap", "start swap.img.swap"})
+	})
+	t.Run("drop-in and mask", func(t *testing.T) {
+		f, sys := maskedZramHost(t)
+		f.write(holdOffDropInPath("swap.img.swap"), string(renderHoldOffDropIn()))
+		got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeDisk})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Mode != apischema.SwapModeDisk || f.exists(holdOffDropInPath("swap.img.swap")) {
+			t.Fatalf("mode %s; want disk and the drop-in gone", got.Mode)
+		}
+		assertCalls(t, sys.calls[:4], []string{"remove " + holdOffDropInPath("swap.img.swap"), "reload", "unmask swap.img.swap", "start swap.img.swap"})
+	})
+}
+
+// The way back reloads systemd before it starts the swap file, whatever was
+// held off: a swap file just added to /etc/fstab has no unit until a reload,
+// and systemd keeps a hold-off condition whose file is gone until one.
+func TestSetSwapModeToDiskReloadsBeforeItStartsTheFile(t *testing.T) {
+	t.Run("unit not loaded yet", func(t *testing.T) {
+		f, sys := zramHost(t)
+		removeFixture(t, f, holdOffDropInPath("swap.img.swap"))
+		delete(sys.heldOff, "swap.img.swap")
+		sys.failures["state swap.img.swap"] = errors.New("unit swap.img.swap not found")
+		sys.after = func(call string) {
+			if call == "reload" {
+				delete(sys.failures, "state swap.img.swap")
+			}
+		}
+		got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeDisk})
+		if err != nil || got.Mode != apischema.SwapModeDisk {
+			t.Fatalf("mode %s, %v; want disk", got.Mode, err)
+		}
+		assertCalls(t, sys.calls[:2], []string{"reload", "start swap.img.swap"})
+	})
+	t.Run("condition still loaded", func(t *testing.T) {
+		f, sys := zramHost(t)
+		removeFixture(t, f, holdOffDropInPath("swap.img.swap"))
+		got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeDisk})
+		if err != nil || got.Mode != apischema.SwapModeDisk {
+			t.Fatalf("mode %s, %v; want disk", got.Mode, err)
+		}
+		assertCalls(t, sys.calls[:2], []string{"reload", "start swap.img.swap"})
+	})
+}
+
+// A host an older LinuxIO switched to zram with a mask boots without
+// swap.target on zram-generator, so with no swap: the status reads none. A
+// switch to zram from there holds the file off with the drop-in and unmasks
+// the unit, which reloads systemd, so the next boot starts swap.target.
+func TestSetSwapModeToZramClearsAMask(t *testing.T) {
+	f, sys := diskHost(t)
+	f.write(procSwaps, swapsHeader)
+	sys.fileStates["swap.img.swap"] = "masked"
+	f.maskInFixture("swap.img.swap")
+
+	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
+	if err != nil || got.Mode != apischema.SwapModeZram {
+		t.Fatalf("mode %s, %v; want zram", got.Mode, err)
+	}
+	if !f.exists(holdOffDropInPath("swap.img.swap")) || f.exists("/etc/systemd/system/swap.img.swap") || sys.fileStates["swap.img.swap"] == "masked" {
+		t.Fatalf("calls = %v; want the drop-in written and the unit unmasked", sys.calls)
+	}
+	held := slices.Index(sys.calls, holdOffCall("swap.img.swap"))
+	if held < 0 || !slices.Equal(sys.calls[held:], []string{holdOffCall("swap.img.swap"), "reload", "unmask swap.img.swap"}) {
+		t.Fatalf("calls = %v; want the drop-in written, a reload, then the unmask", sys.calls)
+	}
+}
+
+// The job host runs with umask 077, which would make the drop-in's folder
+// 0700 and hide the drop-in from a session without sudo, whose status would
+// then not see the file held off. The folder is made 0755, also when an
+// earlier run left it 0700 holding nothing but LinuxIO's file; an admin's
+// folder with drop-ins of its own keeps its mode.
+func TestSetSwapModeMakesTheDropInFolderReadable(t *testing.T) {
+	previous := syscall.Umask(0o077)
+	t.Cleanup(func() { syscall.Umask(previous) })
+	dir := filepath.Dir(holdOffDropInPath("swap.img.swap"))
+	tests := []struct {
+		name  string
+		setup func(f fixture)
+		want  fs.FileMode
+	}{
+		{name: "new", want: 0o755},
+		{name: "left 0700 by an earlier run", setup: func(f fixture) {
+			f.write(holdOffDropInPath("swap.img.swap"), string(renderHoldOffDropIn()))
+			if err := os.Chmod(filepath.Join(f.root, dir), 0o700); err != nil {
+				t.Fatal(err)
+			}
+		}, want: 0o755},
+		{name: "an admin's", setup: func(f fixture) {
+			f.write(dir+"/50-admin.conf", "[Swap]\nPriority=5\n")
+			if err := os.Chmod(filepath.Join(f.root, dir), 0o700); err != nil {
+				t.Fatal(err)
+			}
+		}, want: 0o700},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			f, sys := diskHost(t)
+			if test.setup != nil {
+				test.setup(f)
+			}
+			if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram}); err != nil {
+				t.Fatal(err)
+			}
+			info, err := os.Stat(filepath.Join(f.root, dir))
+			if err != nil || info.Mode().Perm() != test.want {
+				t.Fatalf("%s mode = %v, %v; want %v", dir, info.Mode().Perm(), err, test.want)
+			}
+			if info, err := os.Stat(filepath.Join(f.root, holdOffDropInPath("swap.img.swap"))); err != nil || info.Mode().Perm() != 0o644 {
+				t.Fatalf("drop-in mode = %v, %v; want 0644", info.Mode().Perm(), err)
+			}
+		})
+	}
+}
+
+// A swap file that swaps while its unit is held off, as a failed switch away
+// from zram leaves it, is let go by a switch to disk, so the next boot does
+// not hold it off; it swaps already, so it is not started or waited for.
+func TestSetSwapModeToDiskLetsGoASwappingFileHeldOff(t *testing.T) {
+	f, sys := diskHost(t)
+	f.write(holdOffDropInPath("swap.img.swap"), string(renderHoldOffDropIn()))
+
+	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeDisk})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Mode != apischema.SwapModeDisk || f.exists(holdOffDropInPath("swap.img.swap")) {
+		t.Fatalf("mode %s, drop-in still there %v; want disk and the drop-in gone", got.Mode, f.exists(holdOffDropInPath("swap.img.swap")))
+	}
+	if len(sys.calls) < 2 || !slices.Equal(sys.calls[:2], []string{"remove " + holdOffDropInPath("swap.img.swap"), "reload"}) ||
+		slices.Contains(sys.calls, "start swap.img.swap") {
+		t.Fatalf("calls = %v, want the drop-in removed and a reload, and no start", sys.calls)
+	}
+}
+
+// A switch away from zram that fails after the swap file started leaves the
+// file let go: starting it added swap, which a rollback never undoes, so the
+// drop-in it removed does not come back.
+func TestSetSwapModeRollbackLeavesTheSwapFileLetGo(t *testing.T) {
+	f, sys := zramHost(t)
+	sys.failures["disable "+zramService] = errors.New("unit file is read-only")
+
+	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeDisk}); err == nil {
+		t.Fatal("want an error")
+	}
+	if f.exists(holdOffDropInPath("swap.img.swap")) || slices.Contains(sys.calls, holdOffCall("swap.img.swap")) {
+		t.Fatalf("calls = %v; want the hold-off drop-in left removed", sys.calls)
+	}
+	if !strings.Contains(f.read(procSwaps), "/swap.img") {
+		t.Fatalf("swaps = %q, want the swap file left on", f.read(procSwaps))
+	}
+}
+
+// A switch to zram that fails after it held the swap file off takes its
+// drop-in away again, with a reload, so the next boot is no worse than
+// before the run: the file comes back.
+func TestSetSwapModeRollbackRemovesTheDropInItWrote(t *testing.T) {
+	f, sys := diskHost(t)
+	failed := false
+	sys.after = func(call string) {
+		if call == holdOffCall("swap.img.swap") && !failed {
+			failed = true
+			sys.failures["reload"] = errors.New("manager busy")
+		} else if call == "remove "+holdOffDropInPath("swap.img.swap") {
+			delete(sys.failures, "reload")
+		}
+	}
+
+	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram}); err == nil {
+		t.Fatal("want an error")
+	}
+	if f.exists(holdOffDropInPath("swap.img.swap")) {
+		t.Fatalf("calls = %v; want the drop-in the run wrote removed", sys.calls)
+	}
+	removed := slices.Index(sys.calls, "remove "+holdOffDropInPath("swap.img.swap"))
+	if removed < 0 || !slices.Contains(sys.calls[removed:], "reload") {
+		t.Fatalf("calls = %v; want the drop-in removed and a reload after it", sys.calls)
 	}
 }
 
@@ -363,7 +576,7 @@ func TestSetSwapModeToZramLeavesTheSwapFileWithoutRoom(t *testing.T) {
 		t.Errorf("mode = %q, want mixed", got.Mode)
 	}
 	assertLeft(t, got.Left, apischema.SwapLeft{What: apischema.SwapLeftSwapFile, Reason: apischema.SwapLeftNotEnoughMemory})
-	if slices.Contains(sys.calls, "swapoff /swap.img") || slices.Contains(sys.calls, "mask swap.img.swap") {
+	if slices.Contains(sys.calls, "swapoff /swap.img") || slices.Contains(sys.calls, holdOffCall("swap.img.swap")) {
 		t.Fatalf("calls = %v, want the swap file left alone", sys.calls)
 	}
 }
@@ -383,7 +596,7 @@ func TestSetSwapModeToZramLeavesASwapFileOthersCanRedirect(t *testing.T) {
 		t.Errorf("mode = %q, want mixed", got.Mode)
 	}
 	assertLeft(t, got.Left, apischema.SwapLeft{What: apischema.SwapLeftSwapFile, Reason: apischema.SwapLeftOthersCanWrite})
-	if slices.Contains(sys.calls, "mask swap.img.swap") {
+	if slices.Contains(sys.calls, holdOffCall("swap.img.swap")) {
 		t.Fatalf("calls = %v, want the swap file's unit left alone", sys.calls)
 	}
 }
@@ -423,7 +636,7 @@ func TestSetSwapModeToZramStopsTheActiveOfTwoSwapFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got.Mode != apischema.SwapModeZram || !slices.Contains(sys.calls, "swapoff /swap.img") ||
-		!slices.Contains(sys.calls, "mask swap.img.swap") || slices.Contains(sys.calls, "mask old.img.swap") {
+		!slices.Contains(sys.calls, holdOffCall("swap.img.swap")) || slices.Contains(sys.calls, holdOffCall("old.img.swap")) {
 		t.Fatalf("mode = %q, calls = %v; want zram with /swap.img stopped and masked", got.Mode, sys.calls)
 	}
 	assertLeft(t, got.Left)
@@ -448,7 +661,7 @@ func TestSetSwapModeBackFromZramStartsTheSwapFileItMasked(t *testing.T) {
 		slices.ContainsFunc(sys.calls, func(call string) bool { return strings.Contains(call, "old.img") }) {
 		t.Fatalf("mode = %q, calls = %v; want disk with /swap.img started", got.Mode, sys.calls)
 	}
-	if f.host().unitMasked("swap.img.swap") {
+	if f.host().unitHeldOff("swap.img.swap") {
 		t.Error("swap.img.swap is still masked")
 	}
 }
@@ -470,7 +683,7 @@ func TestSetSwapModeToZramAgainLeavesTheSecondSwapFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if slices.ContainsFunc(sys.calls, func(call string) bool { return call == "swapoff /home/extra" || call == "mask home-extra.swap" }) {
+	if slices.ContainsFunc(sys.calls, func(call string) bool { return call == "swapoff /home/extra" || call == holdOffCall("home-extra.swap") }) {
 		t.Fatalf("calls = %v, want /home/extra left alone", sys.calls)
 	}
 	assertLeft(t, got.Left, apischema.SwapLeft{What: apischema.SwapLeftSwapFile, Reason: apischema.SwapLeftNotManaged})
@@ -572,7 +785,7 @@ func TestSetSwapModeToZramNeverTouchesAnUnmatchedSwapFile(t *testing.T) {
 			t.Fatalf("calls = %v, want nothing stopped", sys.calls)
 		}
 	}
-	if !slices.Contains(sys.calls, "mask swap.img.swap") || got.Mode != apischema.SwapModeMixed {
+	if !slices.Contains(sys.calls, holdOffCall("swap.img.swap")) || got.Mode != apischema.SwapModeMixed {
 		t.Fatalf("mode = %q, calls = %v; want swap.img.swap masked and the extra file left", got.Mode, sys.calls)
 	}
 	assertLeft(t, got.Left, apischema.SwapLeft{What: apischema.SwapLeftSwapFile, Reason: apischema.SwapLeftNotManaged})
@@ -588,7 +801,7 @@ func TestSetSwapModeToZramMasksOnlyAProvenInactiveSwapFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if slices.Contains(sys.calls, "mask swap.img.swap") || slices.Contains(sys.calls, "swapoff /swap.img") {
+	if slices.Contains(sys.calls, holdOffCall("swap.img.swap")) || slices.Contains(sys.calls, "swapoff /swap.img") {
 		t.Fatalf("calls = %v, want swap.img.swap left alone", sys.calls)
 	}
 	if got.Mode != apischema.SwapModeMixed {
@@ -799,7 +1012,7 @@ func TestSetSwapModeFailsWhenSwapoffFails(t *testing.T) {
 		!strings.Contains(err.Error(), "swapoff /swap.img") {
 		t.Fatalf("err = %v, want the stop_swap_file step to report the swapoff", err)
 	}
-	if slices.Contains(sys.calls, "mask swap.img.swap") {
+	if slices.Contains(sys.calls, holdOffCall("swap.img.swap")) {
 		t.Fatalf("calls = %v, want nothing masked", sys.calls)
 	}
 	swaps := f.read(procSwaps)
@@ -822,7 +1035,7 @@ func TestSetSwapModeMasksTheSwapFileAfterACancelAtTheEndOfSwapoff(t *testing.T) 
 	}
 
 	_, _ = sys.executor(nil).setSwapMode(ctx, apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
-	if strings.Contains(f.read(procSwaps), "/swap.img") || !slices.Contains(sys.calls, "mask swap.img.swap") {
+	if strings.Contains(f.read(procSwaps), "/swap.img") || !slices.Contains(sys.calls, holdOffCall("swap.img.swap")) {
 		t.Fatalf("calls = %v, want the file off and its unit masked", sys.calls)
 	}
 }
@@ -840,7 +1053,7 @@ func TestSetSwapModeLeavesTheSwapFileOnWhenCancelledDuringSwapoff(t *testing.T) 
 	if !errors.Is(err, context.DeadlineExceeded) || !strings.Contains(err.Error(), string(apischema.SwapStepStopSwapFile)) {
 		t.Fatalf("err = %v, want the stop_swap_file step cancelled", err)
 	}
-	if slices.Contains(sys.calls, "mask swap.img.swap") || !strings.Contains(f.read(procSwaps), "/swap.img") {
+	if slices.Contains(sys.calls, holdOffCall("swap.img.swap")) || !strings.Contains(f.read(procSwaps), "/swap.img") {
 		t.Fatalf("calls = %v, want nothing masked and the file on", sys.calls)
 	}
 	assertRolledBackToDisk(t, f)
@@ -955,6 +1168,13 @@ func TestSetSwapModeFromZramThatFailsEndsWithDiskSysctls(t *testing.T) {
 	if got := f.param(zswapEnabledParam); got != "N" {
 		t.Errorf("zswap enabled = %q, want N back", got)
 	}
+	// The swap file the run started, and let go of, is added swap, which a
+	// rollback never undoes: holding it off again would leave the next boot
+	// with no swap, since zram stays off at boot.
+	if f.exists(holdOffDropInPath("swap.img.swap")) || sys.fileStates[zramService] != "disabled" {
+		t.Errorf("drop-in there %v, %s %q; want the swap file let go and zram off at boot",
+			f.exists(holdOffDropInPath("swap.img.swap")), zramService, sys.fileStates[zramService])
+	}
 }
 
 // A stop whose command removed zram and then exited non-zero leaves the unit
@@ -1005,7 +1225,7 @@ func TestSetSwapModeRestoresTheZswapTmpfilesAndSwitch(t *testing.T) {
 	f.write(zswapCompressorParam, "zstd\n")
 	tmpfiles := string(renderZswapTmpfiles("zstd"))
 	f.write(zswapTmpfilesPath, tmpfiles)
-	sys.failures["mask swap.img.swap"] = errors.New("unit file is read-only")
+	sys.failures[holdOffCall("swap.img.swap")] = errors.New("unit file is read-only")
 
 	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram}); err == nil {
 		t.Fatal("want an error")
@@ -1035,7 +1255,7 @@ func TestSetSwapModeLeavesTheSwapFileWhenZramVanished(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if slices.Contains(sys.calls, "swapoff /swap.img") || slices.Contains(sys.calls, "mask swap.img.swap") {
+	if slices.Contains(sys.calls, "swapoff /swap.img") || slices.Contains(sys.calls, holdOffCall("swap.img.swap")) {
 		t.Fatalf("calls = %v, want the swap file left on", sys.calls)
 	}
 	if got.Mode != apischema.SwapModeDisk || got.Swappiness != 60 {
@@ -1053,7 +1273,7 @@ func TestSetSwapModeLeavesTheSwapFileWhenZramVanished(t *testing.T) {
 // disk ones the rollback restored.
 func TestSetSwapModeToZramThatFailsEndsWithZramSysctls(t *testing.T) {
 	f, sys := diskHost(t)
-	sys.failures["mask swap.img.swap"] = errors.New("unit file is read-only")
+	sys.failures[holdOffCall("swap.img.swap")] = errors.New("unit file is read-only")
 
 	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram}); err == nil {
 		t.Fatal("want an error")
@@ -1159,7 +1379,7 @@ func TestSetSwapModeStopsASwapFileWhateverItsUnitReads(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !slices.Contains(sys.calls, "swapoff /swap.img") || !slices.Contains(sys.calls, "mask swap.img.swap") {
+			if !slices.Contains(sys.calls, "swapoff /swap.img") || !slices.Contains(sys.calls, holdOffCall("swap.img.swap")) {
 				t.Fatalf("calls = %v, want the swap file stopped and masked", sys.calls)
 			}
 			if got.Mode != apischema.SwapModeZram || strings.Contains(f.read(procSwaps), "/swap.img") {
@@ -1265,7 +1485,7 @@ func TestSetSwapModeFailsWhenSystemdNeverCarriesOutTheStop(t *testing.T) {
 func TestSetSwapModeRollbackDisablesTheServiceItEnabledWhileZramSwaps(t *testing.T) {
 	f, sys := diskHost(t)
 	f.write(procSwaps, swapsHeader+zramSwapsLine+swapFileSwapsLine)
-	sys.failures["mask swap.img.swap"] = errors.New("unit file is read-only")
+	sys.failures[holdOffCall("swap.img.swap")] = errors.New("unit file is read-only")
 
 	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram}); err == nil {
 		t.Fatal("want an error")

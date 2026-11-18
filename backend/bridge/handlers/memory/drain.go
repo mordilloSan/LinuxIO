@@ -32,9 +32,9 @@ func (e *executor) drainSwap(ctx context.Context) (apischema.SwapStatus, error) 
 		return apischema.SwapStatus{}, fmt.Errorf("%w: %s", bridgeipc.ErrConflict, drainRefusal(reason))
 	}
 	targets := drainTargets(view)
-	// A masked unit could not start its device again: refuse before any
-	// device stops. The status found the masks it can see on disk; systemd
-	// is asked as well.
+	// A unit held off at boot would not start its device again: refuse
+	// before any device stops. The status found LinuxIO's drop-ins and the
+	// masks it can see on disk; systemd is asked about masks as well.
 	for _, target := range targets {
 		state, err := e.sys.unitFileState(ctx, target.unit)
 		if err != nil {
@@ -150,8 +150,8 @@ func drainRefusal(reason apischema.SwapDrainBlockedReason) string {
 		return "there is not enough free memory to take back the data parked on disk swap"
 	case apischema.SwapDrainUnmanagedDevice:
 		return "the parked data is on swap devices /etc/fstab does not name, which could not be started again"
-	case apischema.SwapDrainUnitMasked:
-		return "a swap device holding parked data has a masked unit, so it could not be started again"
+	case apischema.SwapDrainUnitHeldOff:
+		return "a swap device holding parked data is held off at boot, so it could not be started again"
 	case apischema.SwapDrainOthersCanWrite:
 		return "the parked data is on swap LinuxIO does not manage: " + errOthersCanRedirect.Error()
 	default:

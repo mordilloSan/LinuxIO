@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -32,7 +33,73 @@ const (
 	// file that is not LinuxIO's before a change replaces it. It does not
 	// end in .conf, so neither zram tool reads it.
 	zramConfigCopySuffix = ".before-linuxio"
+
+	// unitConfigDir is where an admin's unit files and drop-ins go; only
+	// root can write it.
+	unitConfigDir = "/etc/systemd/system"
+	// holdOffDropInName is the drop-in that holds the managed swap file's
+	// unit off at boot (see holdOffDropInPath).
+	holdOffDropInName = "90-linuxio-memory.conf"
 )
+
+// holdOffDropInPath is LinuxIO's drop-in for unit, a unit name
+// systemd.EscapePath made from an fstab entry. With it the unit's condition
+// never holds, so systemd skips the unit at boot and for a start, and a
+// unit that requires it, such as swap.target, still starts, as it would not
+// for a masked unit.
+func holdOffDropInPath(unit string) string {
+	return unitConfigDir + "/" + unit + ".d/" + holdOffDropInName
+}
+
+// makeHoldOffDropInDir makes the folder of unit's hold-off drop-in mode 0755
+// whatever the umask: the job host runs with umask 077, and the bridge of a
+// session without sudo, whose status reads whether the drop-in is there,
+// must be able to look into it. A folder an earlier run left another mode
+// holding nothing but LinuxIO's drop-in is made 0755 too; one that holds
+// files of an admin's keeps its mode.
+func (h hostRoot) makeHoldOffDropInDir(unit string) error {
+	dir := h.path(filepath.Dir(holdOffDropInPath(unit)))
+	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+		return fmt.Errorf("make %s: %w", filepath.Dir(dir), err)
+	}
+	err := os.Mkdir(dir, 0o755)
+	if errors.Is(err, fs.ErrExist) {
+		info, statErr := os.Lstat(dir)
+		if statErr != nil {
+			return statErr
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("%s is not a folder", dir)
+		}
+		entries, readErr := os.ReadDir(dir)
+		if readErr != nil {
+			return readErr
+		}
+		for _, entry := range entries {
+			if entry.Name() != holdOffDropInName {
+				return nil
+			}
+		}
+	} else if err != nil {
+		return fmt.Errorf("make %s: %w", dir, err)
+	}
+	return os.Chmod(dir, 0o755)
+}
+
+// isHoldOffDropIn reports whether name is a hold-off drop-in's path.
+func isHoldOffDropIn(name string) bool {
+	unitDir, file := filepath.Split(name)
+	unitDir = filepath.Clean(unitDir)
+	return file == holdOffDropInName && filepath.Dir(unitDir) == unitConfigDir && strings.HasSuffix(unitDir, ".d")
+}
+
+// renderHoldOffDropIn is the hold-off drop-in: "/" always exists, so the
+// negated condition never holds.
+func renderHoldOffDropIn() []byte {
+	return []byte(managedHeader +
+		"# Keeps this swap off at boot. LinuxIO removes this file to turn it on again.\n" +
+		"[Unit]\nConditionPathExists=!/\n")
+}
 
 // zramConfigPath is the configuration file the zram provider reads and a
 // change writes, or empty without a provider.

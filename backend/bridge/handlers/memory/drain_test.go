@@ -265,21 +265,30 @@ func TestDrainSwapReportsADeviceSystemdNeverSawLeave(t *testing.T) {
 	}
 }
 
-// A unit masked on disk shows in the status as unit_masked, and the drain
-// refuses it the same way, before stopping anything.
-func TestDrainSwapAndStatusAgreeOnAMaskedUnit(t *testing.T) {
-	f, sys := drainHost(t)
-	f.maskInFixture(partitionUnit)
+// A unit held off at boot, by LinuxIO's drop-in or a mask on disk, shows in
+// the status as unit_held_off, and the drain refuses it the same way, before
+// stopping anything: a start of it would start nothing.
+func TestDrainSwapAndStatusAgreeOnAHeldOffUnit(t *testing.T) {
+	tests := map[string]func(f fixture){
+		"drop-in": func(f fixture) { f.write(holdOffDropInPath(partitionUnit), string(renderHoldOffDropIn())) },
+		"masked":  func(f fixture) { f.maskInFixture(partitionUnit) },
+	}
+	for name, holdOff := range tests {
+		t.Run(name, func(t *testing.T) {
+			f, sys := drainHost(t)
+			holdOff(f)
 
-	status, err := sys.status(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if status.CanDrain || status.DrainBlockedReason != apischema.SwapDrainUnitMasked {
-		t.Fatalf("can drain = %v, reason = %q; want false, unit_masked", status.CanDrain, status.DrainBlockedReason)
-	}
-	if _, err := sys.executor(nil).drainSwap(t.Context()); !errors.Is(err, bridgeipc.ErrConflict) || len(sys.calls) != 0 {
-		t.Fatalf("err = %v, calls = %v; want a conflict and no change", err, sys.calls)
+			status, err := sys.status(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if status.CanDrain || status.DrainBlockedReason != apischema.SwapDrainUnitHeldOff {
+				t.Fatalf("can drain = %v, reason = %q; want false, unit_held_off", status.CanDrain, status.DrainBlockedReason)
+			}
+			if _, err := sys.executor(nil).drainSwap(t.Context()); !errors.Is(err, bridgeipc.ErrConflict) || len(sys.calls) != 0 {
+				t.Fatalf("err = %v, calls = %v; want a conflict and no change", err, sys.calls)
+			}
+		})
 	}
 }
 

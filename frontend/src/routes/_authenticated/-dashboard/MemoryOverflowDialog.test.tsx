@@ -284,7 +284,7 @@ describe("MemoryOverflowDialog banner", () => {
       "This swap device is not in /etc/fstab, so LinuxIO cannot restart it",
     ],
     [
-      "unit_masked",
+      "unit_held_off",
       "This swap device is switched off for the next start, so LinuxIO will not empty it",
     ],
   ] as const)("disables the drain and says why for %s", async (code, hint) => {

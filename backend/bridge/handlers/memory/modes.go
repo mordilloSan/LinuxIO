@@ -206,9 +206,9 @@ func zramFits(status apischema.SwapStatus) bool {
 // every disk swap device, managedUsed the share on the devices LinuxIO
 // manages, which are the only ones a drain stops and starts again;
 // leftOutUsed is set when a device left out because others can redirect it
-// holds data, and unitMasked when a managed device holding data has a
-// masked unit.
-func drainBlockedReason(diskUsed, managedUsed, memAvailable uint64, leftOutUsed, unitMasked bool) apischema.SwapDrainBlockedReason {
+// holds data, and unitHeldOff when a managed device holding data has a unit
+// held off at boot, which a start would not bring back.
+func drainBlockedReason(diskUsed, managedUsed, memAvailable uint64, leftOutUsed, unitHeldOff bool) apischema.SwapDrainBlockedReason {
 	switch {
 	case diskUsed == 0:
 		return apischema.SwapDrainNothingParked
@@ -216,8 +216,8 @@ func drainBlockedReason(diskUsed, managedUsed, memAvailable uint64, leftOutUsed,
 		return apischema.SwapDrainOthersCanWrite
 	case managedUsed == 0:
 		return apischema.SwapDrainUnmanagedDevice
-	case unitMasked:
-		return apischema.SwapDrainUnitMasked
+	case unitHeldOff:
+		return apischema.SwapDrainUnitHeldOff
 	case !fitsInMemory(managedUsed, memAvailable):
 		return apischema.SwapDrainNotEnoughMemory
 	default:

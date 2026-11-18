@@ -107,6 +107,68 @@ func TestMemoryDrainIntegration(t *testing.T) {
 	}
 }
 
+// TestMemoryDrainAliasIntegration drains the swap device
+// LINUXIO_MEMORY_DRAIN_DEVICE, which /etc/fstab names by UUID=, through its
+// unit, dev-disk-by\x2duuid-<uuid>.swap: an alias of the device's own unit.
+// Once swapoff took the device away the alias must read inactive within the
+// 15 seconds a drain waits for it, or the drain would wait them out and its
+// start would do nothing; a start of the alias must bring the device back.
+// The rig names the drain's data disk by UUID= for this test.
+func TestMemoryDrainAliasIntegration(t *testing.T) {
+	if os.Getenv("LINUXIO_RUN_MEMORY_INTEGRATION") != "1" {
+		t.Skip("set LINUXIO_RUN_MEMORY_INTEGRATION=1 and run as root in the test VM")
+	}
+	device := os.Getenv("LINUXIO_MEMORY_DRAIN_DEVICE")
+	if os.Geteuid() != 0 || device == "" {
+		t.Skip("needs root and LINUXIO_MEMORY_DRAIN_DEVICE")
+	}
+	ctx := t.Context()
+	e := newExecutor(func(apischema.SwapProgress) {})
+	unit := drainUnit(t, e, device)
+	if !strings.HasPrefix(unit, `dev-disk-by\x2duuid-`) {
+		t.Fatalf("/etc/fstab names %s with the unit %s, want one by UUID=", device, unit)
+	}
+	own, escapeErr := systemd.EscapePath(device)
+	if escapeErr != nil {
+		t.Fatal(escapeErr)
+	}
+	own += ".swap"
+	assertSwapUnitActive(t, e, device, unit)
+	if err := e.swapOffDevice(ctx, device); err != nil {
+		t.Fatalf("swapoff %s: %v", device, err)
+	}
+	start := time.Now()
+	if err := waitUntil(ctx, e.waits.stopGrace, e.waits.poll, func() (bool, error) {
+		state, err := e.sys.activeState(ctx, unit)
+		return state != "active" && state != "deactivating", err
+	}); err != nil {
+		t.Fatalf("%s still reads active %s after %s left: %v", unit, e.waits.stopGrace, device, err)
+	}
+	t.Logf("%s read off %s after swapoff took %s away", unit, time.Since(start).Round(time.Millisecond), device)
+	if err := e.sys.startUnit(ctx, unit); err != nil {
+		t.Fatal(err)
+	}
+	// One start must do: a drain sends it again only after stopGrace.
+	if err := waitUntil(ctx, e.waits.stopGrace, e.waits.poll, e.deviceIs(device, true)); err != nil {
+		t.Fatalf("a start of %s did not bring %s back: %v", unit, device, err)
+	}
+	assertSwapUnitActive(t, e, device, unit)
+	assertSwapUnitActive(t, e, device, own)
+	view, err := e.readView(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := slices.IndexFunc(view.fstab, func(entry fstabSwap) bool { return entry.device == device })
+	start = time.Now()
+	if err := e.drainDevice(ctx, view.fstab[i], 0); err != nil {
+		t.Fatalf("drain %s: %v", device, err)
+	}
+	if elapsed := time.Since(start); elapsed >= e.waits.stopGrace {
+		t.Errorf("the drain of %s took %s, want less than the %s it waits for %s", device, elapsed.Round(time.Second), e.waits.stopGrace, unit)
+	}
+	assertSwapUnitActive(t, e, device, unit)
+}
+
 // TestMemoryDrainHolder is one of the processes TestMemoryDrainIntegration
 // starts: it fills memory with data that does not compress, so zswap passes
 // it on to the disk, asks the kernel to page it out, says it is ready, and

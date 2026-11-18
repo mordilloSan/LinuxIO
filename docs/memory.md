@@ -49,7 +49,7 @@ after the change.
 | Name in the dialog | Mode | What the host does |
 |---|---|---|
 | Compressed memory with the disk as backup | `zswap` | The kernel compresses rarely used pages into a pool in RAM in front of the swap file; when the pool is full the oldest pages go to the file. The swap file stays active and zswap is enabled. |
-| Compressed memory only | `zram` | A zram device (half of RAM, at most 8 GiB, compressed with zstd) is the only swap. The swap file's unit is stopped and masked, so nothing is written to disk and the file stays off after a restart. There is no backup: when zram fills up the kernel's OOM killer picks a victim. |
+| Compressed memory only | `zram` | A zram device (half of RAM, at most 8 GiB, compressed with zstd) is the only swap. The swap file is stopped and its unit held off at boot, so nothing is written to disk and the file stays off after a restart. There is no backup: when zram fills up the kernel's OOM killer picks a victim. |
 | Disk only | `disk` | The swap file (or an active swap partition) is the only swap, zswap is off and zram is stopped. |
 
 Two more values describe a host and cannot be chosen. `none` is a host with
@@ -118,7 +118,7 @@ or of the recommended one when the host is `none` or `mixed`.
 | `/proc/sys/vm/{swappiness,page-cluster,watermark_boost_factor,watermark_scale_factor}` | the four sysctls |
 | `/sys/module/zswap/parameters/{enabled,compressor,max_pool_percent}` | zswap; no directory means `zswap.available` is false |
 | `/sys/block/zram<N>/{disksize,mm_stat}` | each zram device's size, stored data, compressed size and memory used |
-| `/etc/fstab` | the swap entries, which decide what LinuxIO may stop, mask or start |
+| `/etc/fstab` | the swap entries, which decide what LinuxIO may stop, hold off or start |
 | `/proc/self/mountinfo` | the filesystem and disk of each swap file (`fs_type`, `disk_hint`) |
 | `/sys/class/block/<device>` | whether that disk is removable (`disk_hint`) |
 | TuneD, through `power.GetStatus` | `tuned_active` and `tuned_profile` |
@@ -133,21 +133,24 @@ missing package wins), `can_drain` with `drain_blocked_reason`, and
 `swap_file`.
 
 LinuxIO manages one swap file. Of the fstab swap entries whose source is a
-path outside `/dev`, it is the first that is active or whose unit is masked
-(a link to `/dev/null` in `/etc/systemd/system` or `/run/systemd/system`),
-or when there is none, the first (`fstabSwapFile`); any other is left as it
-is. The mask keeps the choice in both directions: the file a switch to zram
-stopped and masked is the one the way back starts, and a later switch does
-not move on to another file that swaps. `swap_file` is the swap
+path outside `/dev`, it is the first that is active or whose unit is held
+off at boot, or when there is none, the first (`fstabSwapFile`); any other
+is left as it is. A unit is held off when LinuxIO's drop-in for it is there
+(see [Swap units](#swap-units)) or it is masked, a link to `/dev/null` in
+`/etc/systemd/system` or `/run/systemd/system`, as an admin or an older
+LinuxIO leaves it (`unitHeldOff`). Holding off keeps the choice in both
+directions: the file a switch to zram stopped and held off is the one the
+way back starts, and a later switch does not move on to another file that
+swaps. `swap_file` is the swap
 file the dialog shows: that one, active or not, or else the first active swap
 file. Keeping it while it is off lets the zswap and disk rows be offered while
-the file is masked. `swap_file.managed` is true when LinuxIO stops, masks,
-starts and drains the file; otherwise nothing here stops, starts or drains
+the file is held off. `swap_file.managed` is true when LinuxIO stops, holds
+off, starts and drains the file; otherwise nothing here stops, starts or drains
 it, and `swap_file.unmanaged_reason` says why:
 
 | Code | Meaning |
 |---|---|
-| `not_in_fstab` | fstab names no swap file and this is the first active one: it has no unit to stop, mask or start |
+| `not_in_fstab` | fstab names no swap file and this is the first active one: it has no unit to stop, hold off or start |
 | `others_can_write` | fstab names the file, but someone other than root can change a folder on its path (see "A swap file others can redirect is not managed") |
 
 A file that is off and not managed is not counted as disk swap: the
@@ -268,14 +271,21 @@ To `zram`:
 5. `stop_swap_file`: when the file is named in fstab, take it away with
    `swapoff` (see
    [Taking a disk swap device away](#taking-a-disk-swap-device-away)), then
-   mask its unit so it stays off at boot. Without a fstab swap file the step
-   is not planned. A file that is already off is only masked.
+   hold its unit off so it stays off at boot: LinuxIO's drop-in for the unit,
+   a reload, and an unmask when the unit is masked (see
+   [Holding a swap file off at boot](#holding-a-swap-file-off-at-boot)).
+   Without a fstab swap file the step is not planned. A file that is already
+   off is only held off.
 
 To `zswap` or `disk`, the reverse:
 
-1. `start_swap_file`: when the fstab file is not active, unmask its unit
-   (which also brings back the unit fstab generates), start it and wait for the
-   file in `/proc/swaps`.
+1. `start_swap_file`: when the fstab file is not active, or its unit is held
+   off, let its unit go: remove LinuxIO's drop-in, reload systemd in every
+   case, since a swap entry fstab just gained has no unit until a reload and
+   systemd keeps a condition whose file is gone until one, and unmask the
+   unit when it is masked (which reloads again); then, unless the file
+   already swaps, as a run that was cut short can leave it, start it and wait
+   for the file in `/proc/swaps`.
 2. `stop_zram`: when a zram provider is installed, stop zram's unit, wait for
    zram to leave `/proc/swaps` and turn zram off at boot. zram that is not
    running is only turned off at boot. zram the provider does not run, because
@@ -297,10 +307,13 @@ To `zswap` or `disk`, the reverse:
 
 Details that follow from the code:
 
-- zswap's compressor is requested as `zstd`. The kernel refuses one it does
-  not have with `ENOENT` or `EINVAL`; the mode then keeps the compressor the
-  kernel has. After enabling, the compressor is read back and that value is
-  persisted.
+- zswap's compressor is requested as `zstd`. Once zswap has started since
+  boot, the kernel refuses a compressor it does not have with `ENOENT` (the
+  test VM shows it on kernels 7.0 and 7.3), and one it cannot build a pool
+  with with `EINVAL`; the mode then keeps the compressor the kernel has.
+  Before zswap first starts after a boot the kernel takes any name, and falls
+  back to its default when zswap starts. Either way the compressor is read
+  back after enabling and that value is persisted.
 - zswap is turned off only when it reads enabled. On a kernel where zswap
   failed to start, a write of `N` fails for nothing and would take the whole
   switch down.
@@ -355,7 +368,7 @@ the success message, and keeps the chosen row so Apply can be pressed again.
 |---|---|---|
 | `swap_file` | `not_enough_memory` | The file's data does not fit in memory. Applying again later can finish. |
 | `swap_file` | `zram_not_swapping` | No zram device swaps when the file would stop. |
-| `swap_file` | `not_identified` | The fstab file is off, but an active swap file cannot be resolved and may be it, so the unit is not masked. |
+| `swap_file` | `not_identified` | The fstab file is off, but an active swap file cannot be resolved and may be it, so the unit is not held off. |
 | `swap_file` | `others_can_write` | The file is not managed, because a folder on its path can be changed by users other than root: no step stops it (see "A swap file others can redirect is not managed"). |
 | `swap_file` | `not_managed` | A swap file other than the one LinuxIO manages still swaps: no step stops it. |
 | `zram` | `not_enough_memory` | zram's data does not fit in memory and free disk swap. |
@@ -388,8 +401,8 @@ only. A host left `mixed` keeps the sysctls it has.
 
 Only the live values are settled. The drop-in stays as the run or the
 rollback left it, because it belongs with what the next boot starts: the
-zram unit's enablement, its configuration and the swap unit's mask, which
-the run set for the target or the rollback put back. After a successful run
+zram unit's enablement, its configuration and the swap unit's hold-off
+drop-in, as the run set them for the target or the rollback left them. After a successful run
 a failure to write the live values is logged and does not fail the request;
 after a rollback it is joined into the error.
 
@@ -408,7 +421,12 @@ failed undo into the error it returns:
 - each file the run wrote or removed goes back to its previous content and
   mode, or is removed if it did not exist. The copy kept of a zram
   configuration file that was not LinuxIO's stays: it holds what the file
-  held, which the rollback put back.
+  held, which the rollback put back. A hold-off drop-in `stop_swap_file`
+  wrote is removed, with a reload, so the next boot starts the file as it did
+  before the run. One `start_swap_file` removed is not put back, nor a mask:
+  letting the file go is adding swap, which a rollback never undoes, and the
+  run may already have turned zram off at boot, so holding the file off
+  again would leave the next boot with no swap.
 
 The previous content of a file, and the previous value of a parameter, is
 recorded **before** it is written: a write can land and still report an error
@@ -448,6 +466,14 @@ profile <name>", and `set_swap_mode` leaves swappiness alone, live and in the
 drop-in, while still applying the preset's other keys. A mode change under
 TuneD therefore runs with TuneD's swappiness.
 
+TuneD tells any user whether it runs (`is_running`) and its profile
+(`active_profile`); only a profile switch asks for authentication. So the
+bridge of a session without sudo, which reads the status as its user, sees
+TuneD as root does (TuneD 2.28 on Fedora 45 and 2.25 on Ubuntu 26.04, in the
+test VM). The changes do
+not rest on that read: all three are privileged and run as root, which reads
+TuneD again.
+
 ## Draining
 
 "Bring back to memory" (`memory.drain_swap`) empties data parked on disk swap
@@ -465,7 +491,14 @@ stay drained. The dialog reports the device in progress.
 The device's unit is used only to start it again, and its state before the
 `swapoff` is not read: a swap file systemd tracks under another unit name,
 and a partition whose unit is an alias named after its `/dev/disk/by-*` link,
-are drained like any other.
+are drained like any other. The test VM shows both (systemd 259 on Ubuntu
+26.04, 262 on Fedora 45). The alias of a disk fstab names by `UUID=` reads
+inactive within milliseconds of the `swapoff`, and its start brings the disk
+back. A swap file fstab names through a link comes back with a start of the
+link's unit, and stays off at boot while that unit is held off. systemd 259
+reads the link's unit inactive as soon as another swap device comes or goes,
+while the file still swaps, and a start of it then fails; LinuxIO starts it
+only once the file has left, so that never reaches it.
 
 The route refuses a drain with `ErrConflict`, and the status predicts it with
 `can_drain` and `drain_blocked_reason`, one of these, checked in this order:
@@ -475,12 +508,13 @@ The route refuses a drain with `ErrConflict`, and the status predicts it with
 | `nothing_parked` | no disk swap device has data on it |
 | `others_can_write` | no managed device holds data, and an fstab swap entry that is not managed because others can change its folder does |
 | `unmanaged_device` | the data is only on devices fstab does not name, whose units could not be started again |
-| `unit_masked` | a device holding data has a masked unit, so it could not be started again |
+| `unit_held_off` | a device holding data has a unit held off at boot, so a start of it would not bring it back |
 | `not_enough_memory` | the data on the fstab-named devices does not fit in memory with the margin |
 
-`unit_masked` is read from disk: a symlink to `/dev/null` at
-`/etc/systemd/system/<unit>` or `/run/systemd/system/<unit>`. The route asks
-systemd about each unit as well before it stops anything, as a second check.
+`unit_held_off` is read from disk: LinuxIO's drop-in for the unit, or a
+symlink to `/dev/null` at `/etc/systemd/system/<unit>` or
+`/run/systemd/system/<unit>`. The route asks systemd about each unit's mask
+as well before it stops anything, as a second check.
 
 **A `swapoff` that fails or is cancelled leaves the device swapping**, so
 nothing is started and the error names the device. Once a device is off,
@@ -490,7 +524,7 @@ device off when its unit does not bring it back within a minute.
 ## Swap units
 
 systemd turns each fstab swap entry into a unit named after the path it swaps
-on, and that unit is what LinuxIO masks, unmasks and starts, through
+on, and that unit is what LinuxIO holds off at boot, lets go and starts, through
 `common/systemd`. `fstab.go` names it the way `systemd-fstab-generator` and
 `systemd-escape --path` do (`systemd.EscapePath` in
 `backend/common/systemd/escape.go`): `/swap.img` is `swap.img.swap`. A source
@@ -503,7 +537,7 @@ control characters escaped as udev does. Any other source, and a path with a
 when its path equals the entry's path, or both resolve to the same path after
 following symlinks the way the kernel would with `/` as root (a symlinked swap
 file included), and each device is tied to at most one entry. Only a device
-tied to an entry is ever stopped, masked or drained; any other is unmanaged.
+tied to an entry is ever stopped, held off or drained; any other is unmanaged.
 
 **A swap file others can redirect is not managed.** A start has systemd swap
 on the path fstab names, and a stop or a drain gives `swapoff` the
@@ -533,13 +567,69 @@ status too, and root, which makes the changes, can look into every folder.
 LinuxIO does not move the file: it creates no swap file, and moving one
 starts with stopping it.
 
-`stop_swap_file` also does not mask the unit of a file that is not active when
-some active swap file cannot be resolved, because that file might be it under
-another name.
+`stop_swap_file` also does not hold off the unit of a file that is not
+active when some active swap file cannot be resolved, because that file
+might be it under another name.
 
-Masking makes systemd ignore the fstab generator's unit, so the file does not
-come back at boot until `start_swap_file` unmasks it. The file itself is never
-created, grown or deleted.
+### Holding a swap file off at boot
+
+`stop_swap_file` keeps the file off at boot with a drop-in for its unit,
+`/etc/systemd/system/<unit>.d/90-linuxio-memory.conf` (`holdOffDropInPath`),
+followed by a reload, and an unmask when systemd reads the unit masked:
+
+```ini
+# Managed by LinuxIO (Dashboard, Memory); changes here are overwritten.
+# Keeps this swap off at boot. LinuxIO removes this file to turn it on again.
+[Unit]
+ConditionPathExists=!/
+```
+
+`/` always exists, so the condition never holds, and systemd skips the unit
+at boot and for any start, which still succeeds and starts nothing
+(`systemd.unit(5)`: a failed condition does not put the unit in the
+`failed` state). The unit is not masked, because the fstab generator makes
+`swap.target` require the unit of a swap entry without `nofail`, and
+systemd starts no target that requires a masked unit (`Failed to start
+swap.target: Unit swap.img.swap is masked.`): the boot then leaves
+`swap.target` out, and zram-generator's `dev-zram0.swap`, which only
+`swap.target` wants, with it, so a zram-generator host in zram mode would
+boot with no swap at all. A skipped unit does not hold the target back. The
+test VM showed both, on Fedora 45 (systemd 262) and Ubuntu 26.04 (systemd
+259): with the mask, no zram after the reboot; with the drop-in,
+`swap.target` active, zram swapping and the file off, with
+`swap.img.swap - /swap.img skipped, unmet condition check
+ConditionPathExists=!/` in the journal. The drop-in applies to the unit the
+generator makes in `/run/systemd/generator`, a file path's as well as an
+escaped `dev-disk-by\x2duuid-….swap`.
+
+The unit name comes from the fstab entry through `systemd.EscapePath`, never
+from the request, and `/etc/systemd/system` is root's alone. The drop-in is
+written atomically and never through a symlink, as the other managed files
+are. Its folder, `<unit>.d`, is made mode 0755 whatever the umask: the job
+host runs with umask 077, and the bridge of a session without sudo, whose
+status reads whether the drop-in is there, must be able to look into it. A
+folder an earlier run left another mode with nothing in it but LinuxIO's
+drop-in is made 0755 too; an admin's folder with drop-ins of its own keeps
+its mode (`makeHoldOffDropInDir`).
+
+`start_swap_file` lets the unit go before it starts it: it removes the
+drop-in, reloads systemd in every case, and unmasks the unit when systemd
+reads it masked, which reloads again. The status and the drain count a unit
+as held off when the drop-in is there or the unit is masked, so a mask an
+admin set still keeps the file the managed one and blocks a drain
+(`unitHeldOff`).
+
+A host an older LinuxIO switched to zram has the unit masked instead. On
+zram-generator such a host reads `none` after a reboot, since the mask kept
+`swap.target`, and zram with it, from starting, and the dialog offers zram;
+one that has not rebooted, or runs zram-tools, reads `zram`. Either way any
+mode change now clears the mask: a switch to zram holds the file off with
+the drop-in and unmasks the unit, and a switch to disk or zswap unmasks it
+and starts the file. After that `swap.target`, and with zram-generator
+zram, start at boot again. So such a host should be switched once, to zram
+again or to another mode.
+
+The file itself is never created, grown or deleted.
 
 ## Taking a disk swap device away
 
@@ -570,14 +660,16 @@ request.
 - **systemd follows.** It watches `/proc/swaps`, and marks the unit of a
   device that left inactive (`swap_process_proc_swaps` in systemd's
   `src/core/swap.c`). The unit is still what keeps the file off at boot
-  (the mask) and what starts a device again. Once a swap file is off, the
-  mask that follows is not cancelled with the request.
+  (held off by LinuxIO's drop-in) and what starts a device again. Once a
+  swap file is off, holding it off is not cancelled with the request.
 - **A start is sent until the device is back.** systemd does nothing for a
   start of a unit it still holds active. So before a start of a device that
   was taken away, LinuxIO waits up to 15 seconds for the unit to read
   something other than `active` or `deactivating`, and while the device has
   not returned it sends the start again every 15 seconds, for a minute
-  (`waitUnitSeenOff`, `startUntilBack`).
+  (`waitUnitSeenOff`, `startUntilBack`). That also outlasts systemd's start
+  limit, which refuses a unit's sixth start within 10 seconds
+  (`start-limit-hit`), as a quick series of changes in the test VM met.
 - **A device that left counts as stopped**, whatever `swapoff` returned.
 - **No unit state is read first.** `swapoff` takes the device away whatever
   systemd says of its unit.
@@ -626,6 +718,10 @@ wait ends early with an error, zram still in `/proc/swaps`, when:
 - the unit stays `active` for 15 seconds without ever being seen
   `deactivating`: systemd did not carry out the stop.
 
+The test VM shows the first: a `zramswap.service` whose stop outlives its
+`TimeoutStopSec` reads `failed` once systemd has killed the stop, with zram
+still swapping, and the wait ends then.
+
 A device that has left always counts as stopped, so the device is read once
 more before giving up, and a state that cannot be read is waited for. The
 first two end the stop, so zram stays and nothing is queued; after the
@@ -635,7 +731,7 @@ above). Either way the error goes through rollback.
 
 ## Files written on the host
 
-The four files LinuxIO manages start with
+The five kinds of files LinuxIO manages start with
 `# Managed by LinuxIO (Dashboard, Memory); changes here are overwritten.`
 and are mode `0644`. The copy of a zram file that was not LinuxIO's keeps
 that file's content and mode, header or not. Every write is atomic
@@ -647,6 +743,7 @@ that file's content and mode, header or not. Every write is atomic
 | `/etc/tmpfiles.d/linuxio-zswap.conf` | every mode, on a kernel with zswap | For `zswap`, `w` lines setting zswap's `compressor` and `enabled` (`Y`) at boot. For `zram` and `disk`, one `w` line setting `enabled` to `N`, so a kernel that starts with zswap on does not return to it. |
 | `/etc/default/zramswap` | `zram`, with zram-tools | zram-tools' configuration: `ALGO=zstd`, `SIZE=<MiB>`, `PRIORITY=100`. It is a package conffile, so the next package upgrade asks about the change. |
 | `/etc/systemd/zram-generator.conf` | `zram`, and leaving zram, with zram-generator | For `zram`: one `[zram0]` section with `zram-size = <MiB>`, `compression-algorithm = zstd` and `swap-priority = 100`. Leaving zram: comments only, so the generator makes no device. Either way it replaces what was there, and takes the place of the file a package puts in `/usr/lib/systemd`. |
+| `/etc/systemd/system/<unit>.d/90-linuxio-memory.conf`, for the managed swap file's unit | `zram` (`stop_swap_file`), removed by `zswap` and `disk` (`start_swap_file`) | `[Unit]` with `ConditionPathExists=!/`, which never holds, so systemd skips the unit and the file stays off at boot (see [Holding a swap file off at boot](#holding-a-swap-file-off-at-boot)). Followed by a reload each way. Its folder is made 0755. |
 | `<path>.before-linuxio`, beside either zram file | a run that replaces that file while it is not LinuxIO's | The file as it was, with its mode. Not undone by a rollback, and replaced by the next such copy. |
 
 ### A zram configuration file that is not LinuxIO's
@@ -704,9 +801,10 @@ Info line of the change, `swap mode changed`, names the file it replaced
 and the copy in `zram_config_replaced` and `zram_config_copy`, only when it
 replaced one.
 
-Besides these, systemd keeps the mask of the swap unit as a symlink in
-`/etc/systemd/system`, and with zram-tools `zramswap.service` is enabled or
-disabled.
+Besides these, with zram-tools `zramswap.service` is enabled or disabled, and
+`start_swap_file` removes a mask of the swap file's unit, a symlink in
+`/etc/systemd/system` or `/run/systemd/system`, that an older LinuxIO or an
+admin left.
 
 Never touched: the kernel command line (zswap persists through tmpfiles, not
 `zswap.enabled=`), the swap file's own content, creation or size, and swap
@@ -806,6 +904,13 @@ listed. Nothing else of those files leaves the bridge. A file larger than
 skipped with a Debug log that carries the error. A drop-in folder that cannot
 be listed, or is not a folder, is skipped everywhere, as upstream skips it,
 with a Debug log.
+
+The test VM checks this reading against the generator itself (zram-generator
+1.2.1 on Fedora 45): with drop-ins in all four folders, one hidden by a link
+to `/dev/null`, two of the same name and a zram mount, a reload makes a
+`dev-zramN.swap` unit for exactly the devices the status lists, beside those
+of the main file, and a `systemd-zram-setup@zramN.service` for each of them
+and for the mount.
 
 With zram-generator as the provider, a switch to disk or zswap is refused with
 `ErrConflict` while any device is listed, naming the first file: the device
@@ -934,8 +1039,12 @@ service step, since `start_zram` does that. See
   the wait for systemd to see a drained device leave and a start sent again,
   the status read again after each route's change, the swap file chosen
   among several in fstab, no disk hint under a FUSE mount, the provider
-  chosen by the unit that runs zram, and the status and route agreement for
-  masked units. `zram_config_test.go` covers a zram configuration file that
+  chosen by the unit that runs zram, the swap file held off by LinuxIO's
+  drop-in (its path and content, never a mask, its folder 0755 under umask
+  077) and let go again with a reload in every case, a mask an older
+  version left removed by a switch either way, a rollback that removes a
+  drop-in the run wrote and does not put back one it removed, and the status
+  and route agreement for held-off units, by the drop-in or a mask. `zram_config_test.go` covers a zram configuration file that
   is not LinuxIO's (what counts as one, with `;`, a byte order mark and CRLF;
   a package's unchanged conffile against a fake dpkg status, changed, marked
   obsolete or not recorded; one that cannot be read; the refusal without
@@ -967,9 +1076,10 @@ service step, since `start_zram` does that. See
   [test VM](./development.md#test-vm). It switches the real host to zram and
   back through systemd, the kernel and `/etc`, and checks: after zram, mode
   `zram` with zswap off, swappiness 180 (unless TuneD runs), the three zram
-  sysctls, the swap file's unit masked, `zramswap.service` enabled and the
-  configuration holding `ALGO=zstd`; after the return, the swap file active, no
-  zram swapping, its unit unmasked and `zramswap.service` disabled. After
+  sysctls, the swap file's unit held off by LinuxIO's drop-in and not
+  masked, `zramswap.service` enabled and the configuration holding
+  `ALGO=zstd`; after the return, the swap file active, no zram swapping, the
+  drop-in gone and `zramswap.service` disabled. After
   zram it also checks that zram has the planned size and that systemd no
   longer reads the swap file's unit active, since the file left through
   `swapoff` and not a stop. It then drains the swap file (`swapoff`, the
@@ -982,17 +1092,30 @@ service step, since `start_zram` does that. See
   configuration for the provider, mode 0640, and checks that a switch to zram
   is refused without `confirm_replace`, that a folder at the copy's name stops
   a confirmed switch with the file as it was, and that a confirmed switch
-  keeps the copy with mode 0640 and replaces the file. With zram-generator it
-  writes a drop-in that defines `zram1` and checks that the status lists it
-  and that a switch to disk is refused naming it; the drop-in is removed
-  before any reload. Last it switches to zswap and back to disk, and checks
-  zswap live and its tmpfiles entry each way. A host that starts `mixed`, as
-  a fresh zram-generator install leaves it, goes to disk first. Cleanup puts
-  the host back as it was: the starting mode, the three files LinuxIO
-  manages, the zram configuration file and the copies, `zramswap.service`'s
-  start at boot, zram beside the swap file for a host that started `mixed`,
-  and the four live sysctls and zswap. No test covers TuneD or a reboot.
-  The same target then runs `TestMemoryDrainIntegration`
+  keeps the copy with mode 0640 and replaces the file. With zram-tools it
+  then makes the stop of `zramswap.service` hang past a `TimeoutStopSec` of
+  5 seconds (a drop-in in `/run`) and checks that systemd leaves the unit
+  `failed` with zram swapping, and that a switch to disk fails within a
+  minute, the stop given up, and not after the wait's ten minutes; zram is
+  then taken away with `zramswap stop`. With zram-generator it writes a
+  drop-in that defines `zram1` and checks that the status lists it and that
+  a switch to disk is refused naming it; the drop-in is removed before any
+  reload. It then writes drop-ins in the four folders the generator reads,
+  one hidden by a link to `/dev/null`, two of the same name and a zram
+  mount, reloads, and checks that the generator made a swap unit for exactly
+  the devices the status lists and a setup unit for those and the mount (the
+  units systemd lists, as `systemctl list-units --all` does); the files go,
+  systemd is reloaded, and the empty zram devices the reload added are
+  removed. Last it switches to zswap and back to disk, and checks zswap live
+  and its tmpfiles entry each way; with zswap on, a compressor the kernel
+  does not have must be refused with `ENOENT` or `EINVAL` and leave the
+  compressor as it was. A host that starts `mixed`, as a fresh zram-generator
+  install leaves it, goes to disk first. Cleanup puts the host back as it
+  was: the starting mode, the three files LinuxIO manages, the zram
+  configuration file and the copies, `zramswap.service`'s start at boot, zram
+  beside the swap file for a host that started `mixed`, and the four live
+  sysctls and zswap; the test files a cut run left are removed when the test
+  starts. The same target then runs `TestMemoryDrainIntegration`
   (`drain_integration_test.go`) on a data disk used as swap. zram swapping
   ahead of the disk, as zram-generator's does at priority 100, is stopped
   through its provider's unit for the test and started again after it; any
@@ -1025,6 +1148,74 @@ service step, since `start_zram` does that. See
   generator's stop left the device set up and its setup service `failed`,
   and the next switch to zram reset the device and started zram at the
   planned size; the drains matched the earlier numbers.
+- The same target runs more root tests around those, in this order
+  (`suite_memory` in `packaging/vm/linuxio-vm.sh`, and
+  [Test VM](./development.md#test-vm) for what the suite sets up):
+  - `TestMemoryDefaultZramIntegration` (`boot_integration_test.go`) starts
+    from the zram a distribution turns on with zram-generator, the vendor
+    file `/usr/lib/systemd/zram-generator.conf` alone with `zram0` swapping
+    at the size it sets, and skips on any other host. The status must read
+    `zram`, or `mixed` beside an active swap file, with zram-generator as the
+    provider and no other file listed. Without disk swap a switch to disk is
+    refused, and a switch to zram writes LinuxIO's configuration for the next
+    boot and keeps zram at its size (`zram_size`, `no_other_swap`); beside a
+    swap file a switch to zram restarts it at the planned size and a switch
+    to disk stops it. Cleanup puts the default back. On Fedora the suite runs
+    it before and after it adds `/swap.img`.
+  - `TestMemoryStatusWithoutRootIntegration`
+    (`unprivileged_integration_test.go`) reads the status as a system user
+    without sudo, with `PATH=/usr/bin:/bin`, while TuneD runs and a switch to
+    zram made as root with the job host's umask 077
+    (`TestMemorySwitchIntegration`) holds the swap file off: TuneD must read
+    running with the profile `tuned-adm active` names, the zram provider the
+    suite installed must be found, zram-tools' `zramswap` through the
+    `/usr/sbin` fallback, and the swap file must read as held off. The root
+    tests all run with umask 077, as the job host does, and check that the
+    drop-in's folder is 0755.
+  - `TestMemoryDrainAliasIntegration` drains the data disk while fstab names
+    it by `UUID=`: its alias unit must read off within the 15 seconds a
+    drain waits, one start of it must bring the disk back, and a drain must
+    take less than those 15 seconds.
+  - `TestMemoryRebootIntegration` (`boot_integration_test.go`) runs in two
+    phases around a reboot: a switch to zram; after the boot, the swap file
+    off, its unit held off by the drop-in and not active, `swap.target`
+    active and zram the only swap, then a switch to disk, the drop-in gone,
+    the unit back and active where fstab names the file by its own path, and
+    a drain. The suite runs it with fstab naming `/swap.img`, then naming it
+    through the link `/swap-link`.
+
+  On 2026-11-18, on Ubuntu 26.04 (kernel 7.0.0-43, systemd 259.9,
+  zram-tools 0.3.7, TuneD 2.25.1) everything passed: systemd killed the hung
+  stop 5 seconds after it began and left `zramswap.service` `failed`
+  (`Stopping timed out. Terminating.`), and the switch ended at once, 6
+  seconds in all (21 in a second run, where the swap file's start first met
+  systemd's start limit and was sent again), the alias read
+  off 1 ms after the `swapoff`, and after each reboot zram swapped with the
+  file off, under either name. On Fedora
+  45 (kernel 7.3.4-300.fc45, systemd 262.1, zram-generator 1.2.1, TuneD
+  2.28.0) everything before the reboot passed: the default zram read `zram`
+  alone and `mixed` beside the swap file at 3898 MiB (`min(ram, 8192)`), a
+  switch to zram there kept that size with `no_other_swap` and beside the
+  swap file restarted it at the planned 1949 MiB; the generator's units
+  matched the status; the drains matched Ubuntu's (the cancel left 1791 MiB,
+  drained in 15 seconds; capped, 280 MiB in 2 minutes 13 seconds); the alias
+  read off 2 ms after the `swapoff`. With `ZRAM_PROVIDER=zram-generator` on
+  Ubuntu everything passed as well; Ubuntu's package also brings a default
+  `zram0`, at half of RAM, which the default-zram test passed on. The first
+  runs held the swap file off with a mask, and on both generator hosts zram
+  did not start after the reboot (see
+  [Holding a swap file off at boot](#holding-a-swap-file-off-at-boot)). With
+  the drop-in in its place all three runs passed end to end, each reboot
+  ending with `swap.target` active and zram the only swap: Ubuntu with
+  zram-tools and with `systemd-zram-generator`, and Fedora 45, where the
+  drains read 1806 MiB back in 12 seconds after the cancel and 279 MiB
+  capped in 2 minutes 14 seconds.
+  Both kernels refused an
+  unknown zswap compressor with `ENOENT`. The browser half of Install from
+  Capabilities was not run on Fedora; its backend half was: PackageKit
+  installed `zram-generator` once its cache was refreshed, which an install
+  now does by itself ([Capabilities](./capabilities.md)), and the status
+  then reported the provider.
 
 ## Known limits
 
@@ -1042,7 +1233,8 @@ Each is by design or unlikely to be met, or is an open item in
   meanwhile, so it is done only while disk swap is active; and the dialog
   does not offer Apply for the zram row while zram is the current mode.
 - The `zram-generator` path was built from upstream's documentation, source
-  and unit files and has not run on Fedora or RHEL.
+  and unit files. It has run in the test VM on Ubuntu's
+  `systemd-zram-generator` and on Fedora 45, and not on RHEL.
 - zram-generator's other files are read as written, one by one, not
   evaluated or merged: a file that only sets `zram-size = 0`, whose device
   upstream discards, still counts as defining a device and keeps a switch
@@ -1074,18 +1266,30 @@ Each is by design or unlikely to be met, or is an open item in
   folder on its path that is a link counts as one others can change, even
   where only root could have made the link. When it is the swap file
   LinuxIO would manage (see the next limit), another is not managed in its
-  place. Off, it is not masked either, so the next boot turns it on, beside
-  zram if that is the mode.
+  place. Off, it is not held off either, so the next boot turns it on,
+  beside zram if that is the mode.
 - LinuxIO manages one swap file: the first fstab names that is active or
-  whose unit is masked, or the first when there is none. Another is never
-  stopped, started or masked: one that swaps stays beside zram (`mixed`,
-  `not_managed`), and one that is off is not masked, so a boot that starts it
-  puts it beside zram. A swap file the admin masked themselves, before the
+  whose unit is held off, or the first when there is none. Another is never
+  stopped, started or held off: one that swaps stays beside zram (`mixed`,
+  `not_managed`), and one that is off is not held off, so a boot that starts
+  it puts it beside zram. A swap file the admin masked themselves, before the
   one that swaps, is taken as the managed one: the one that swaps then stays
   beside zram, and a switch to disk or zswap unmasks and starts the masked
-  one. When two fstab swap files are masked the first is the managed one, so
-  with a swap file the admin masked listed before the one a switch to zram
-  masked, the way back starts the admin's and leaves the other masked.
+  one. When two fstab swap files are held off the first is the managed one,
+  so with a swap file the admin masked listed before the one a switch to zram
+  held off, the way back starts the admin's and leaves the other held off.
+- A mask on the managed swap file's unit, an admin's or an older
+  LinuxIO's, does not outlast a mode change: a switch to zram holds the file
+  off with LinuxIO's drop-in in its place, and a switch to disk or zswap
+  removes it and starts the file (see
+  [Holding a swap file off at boot](#holding-a-swap-file-off-at-boot)).
+- LinuxIO's hold-off drop-in stays when its fstab entry is deleted or
+  another swap file becomes the managed one, and holds that unit off again
+  if the entry returns.
+- Removing the hold-off drop-in leaves its `<unit>.d` folder, empty.
+- A condition an admin put on a swap unit themselves is not seen by the
+  drain's check, so a drain takes that device away and its start starts
+  nothing; the drain then reports the device off.
 - A change whose status still cannot be read after five tries fails the
   request, with an error that says the change was made; nothing is undone.
 - On a host that runs zram, `page-cluster`, `watermark_boost_factor` and

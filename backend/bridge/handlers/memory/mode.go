@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"syscall"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
@@ -607,11 +608,11 @@ func compressorRefused(err error) bool {
 	return errors.Is(err, syscall.EINVAL) || errors.Is(err, syscall.ENOENT)
 }
 
-// stopSwapFile takes the swap file away with swapoff and masks its unit, so
-// it stays off at boot, when zram swaps and the file's data fits in memory
-// on a fresh status; otherwise it leaves the file active. A file proven off
-// is only masked: one active swap file that cannot be resolved might be it,
-// and then the unit is left.
+// stopSwapFile takes the swap file away with swapoff and holds its unit off,
+// so it stays off at boot, when zram swaps and the file's data fits in
+// memory on a fresh status; otherwise it leaves the file active. A file
+// proven off is only held off: one active swap file that cannot be resolved
+// might be it, and then the unit is left.
 func (r *modeRun) stopSwapFile(ctx context.Context, step swapStep) error {
 	status, err := r.sys.status(ctx)
 	if err != nil {
@@ -623,7 +624,7 @@ func (r *modeRun) stopSwapFile(ctx context.Context, step swapStep) error {
 			r.leave(apischema.SwapLeftSwapFile, apischema.SwapLeftNotIdentified)
 			return nil
 		}
-		return r.sys.maskUnit(ctx, step.unit)
+		return r.holdOff(ctx, step.unit)
 	}
 	// Without zram swapping now, as when it went away after the run found
 	// it, stopping the file would leave no swap at all.
@@ -646,11 +647,64 @@ func (r *modeRun) stopSwapFile(ctx context.Context, step swapStep) error {
 		}
 		return err
 	}
-	// The file is off: masking its unit, which keeps it off at boot, is not
-	// cancelled with the request.
-	maskCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
+	// The file is off: holding its unit off, which keeps it off at boot, is
+	// not cancelled with the request.
+	holdCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
 	defer cancel()
-	return r.sys.maskUnit(maskCtx, step.unit)
+	return r.holdOff(holdCtx, step.unit)
+}
+
+// holdOff keeps unit, the swap file's, off at boot: LinuxIO's drop-in for it
+// gives it a condition that never holds, and a reload makes systemd read it.
+// The unit is not masked, since swap.target requires it and systemd starts
+// no target that requires a masked unit; a skipped one does not hold the
+// target back, so zram that swap.target wants still starts. A mask an older
+// LinuxIO or an admin left is removed for the same reason: the drop-in holds
+// the file off in its place.
+func (r *modeRun) holdOff(ctx context.Context, unit string) error {
+	if err := r.root.makeHoldOffDropInDir(unit); err != nil {
+		return err
+	}
+	if err := r.writeFile(holdOffDropInPath(unit), renderHoldOffDropIn()); err != nil {
+		return err
+	}
+	if err := r.sys.reload(ctx); err != nil {
+		return err
+	}
+	return r.unmaskIfMasked(ctx, unit)
+}
+
+// letGo undoes what holds unit off at boot, so a start of it starts the
+// file: LinuxIO's drop-in goes, systemd is reloaded in every case, since a
+// unit fstab just gained has no unit until a reload and systemd keeps a
+// condition whose file is gone until one, and a mask, as an admin or a
+// LinuxIO that held swap files off with masks left it, is removed. The
+// drop-in is not kept for a rollback: letting the file go is adding swap,
+// which a rollback never undoes, and putting it back after zram was turned
+// off at boot would leave the next boot with no swap.
+func (r *modeRun) letGo(ctx context.Context, unit string) error {
+	if dropIn := holdOffDropInPath(unit); r.root.exists(dropIn) {
+		if err := r.sys.removeFile(dropIn); err != nil {
+			return fmt.Errorf("remove %s: %w", dropIn, err)
+		}
+	}
+	if err := r.sys.reload(ctx); err != nil {
+		return err
+	}
+	return r.unmaskIfMasked(ctx, unit)
+}
+
+// unmaskIfMasked unmasks unit when systemd reads it masked; the unmask
+// reloads systemd.
+func (r *modeRun) unmaskIfMasked(ctx context.Context, unit string) error {
+	state, err := r.sys.unitFileState(ctx, unit)
+	if err != nil {
+		return fmt.Errorf("read the file state of %s: %w", unit, err)
+	}
+	if strings.HasPrefix(state, "masked") {
+		return r.sys.unmaskUnit(ctx, unit)
+	}
+	return nil
 }
 
 // swapFilesResolve reports whether every active swap file resolves under
@@ -667,10 +721,13 @@ func (r *modeRun) swapFilesResolve(devices []apischema.SwapDevice) bool {
 	return true
 }
 
-// startSwapFile unmasks the swap file's unit, which brings back the unit
-// fstab generates, starts it and waits for the file in /proc/swaps.
+// startSwapFile lets the swap file's unit go (letGo), starts it and waits
+// for the file in /proc/swaps. A file that already swaps is only let go.
 func (r *modeRun) startSwapFile(ctx context.Context, step swapStep) error {
-	if err := r.sys.unmaskUnit(ctx, step.unit); err != nil {
+	if err := r.letGo(ctx, step.unit); err != nil {
+		return err
+	}
+	if on, err := r.swapIs(step.path, true)(); err != nil || on {
 		return err
 	}
 	// A file taken away with swapoff a moment ago may still read active to
@@ -864,8 +921,8 @@ func (r *modeRun) setParam(name, value string) error {
 
 // rollback undoes the run after a failed step: zram at boot if this run set
 // it, then the kernel values and the files, the last change first, and a
-// reload when zram-generator's configuration was put back, so its units
-// match the file again. It runs past a cancelled request, within a bound,
+// reload when zram-generator's configuration or a hold-off drop-in was put
+// back, so the units match the files again. It runs past a cancelled request, within a bound,
 // and joins every action that fails.
 func (r *modeRun) rollback(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
@@ -884,7 +941,7 @@ func (r *modeRun) rollback(ctx context.Context) error {
 			errs = append(errs, fmt.Errorf("rollback: %w", err))
 		}
 	}
-	if slices.ContainsFunc(r.files, func(f savedFile) bool { return f.name == zramGeneratorConfigPath }) {
+	if slices.ContainsFunc(r.files, func(f savedFile) bool { return f.name == zramGeneratorConfigPath || isHoldOffDropIn(f.name) }) {
 		if err := r.sys.reload(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("rollback: %w", err))
 		}

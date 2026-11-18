@@ -48,49 +48,14 @@ after a change that issues ioctls).
 
 ## Needs a real machine or a measurement
 
-- [ ] **Memory overflow, checks never done on a host.** Try each in the test
-  VM or on a machine, then fix the code or the doc, or delete the line:
-  - The `zram-generator` path has run in the Ubuntu test VM only
-    (`make vm-reset`, then
-    `make vm-test-memory-integration ZRAM_PROVIDER=zram-generator`, with
-    Ubuntu's `systemd-zram-generator` 1.2.1, on 2026-11-18): a host that
-    starts mixed, zram and back, the restart at the planned size, a stop
-    whose reset fails, an admin's configuration, a drop-in that defines a
-    device, zswap and back, and both drains. It has never run on Fedora or RHEL:
-    check there that Install from Capabilities works, that a host with
-    Fedora's default zram reads as `zram` mode, and a switch to zram and back.
-    The test VM is Ubuntu only; the Fedora VM this needs is the first step of
-    "Distributions" in [Frontend test coverage](./e2e-testing.md#distributions).
-    zram-generator's other files are read as upstream's source reads them,
-    and the VM checks the listing and the refusal for one drop-in, not what
-    the generator makes of it: with drop-ins in several folders, a link to
-    `/dev/null` and a zram mount, check that
-    `systemctl list-units 'systemd-zram-setup@*'` after a reload shows the
-    swap devices the status lists.
-  - `memory.get_swap_status` asks TuneD through `power.GetStatus` as the
-    session user, and finds `zramswap` through the bridge's `PATH` with the
-    `/usr/sbin` fallback. From a bridge without sudo, check that TuneD reads as
-    running when it is (a refused D-Bus call counts as not running, and
-    `set_swappiness` then writes a value TuneD overrides later) and that
-    `zramswap` is found.
-  - The fail-fast condition for a zram stop systemd gave up on: a timed-out
-    `zramswap stop` should leave the service `failed`. If systemd reports
-    otherwise the wait runs to its ten minutes.
-  - The error the kernel gives for a zswap compressor it does not have: the code
-    accepts both `ENOENT` and `EINVAL` and keeps the compressor it has.
-  - A masked fstab swap unit across a reboot: that it stays off, and that
-    unmasking and reloading brings back the unit the fstab generator makes.
-  - A swap file that fstab names through a symlink: systemd may tie the swap's
-    state to the unit of the path in `/proc/swaps` and keep `<fstab path>.swap`
-    inactive. A mode change takes the file away by its `/proc/swaps` path and
-    masks `<fstab path>.swap`, and a drain starts that unit: check that the
-    mask keeps the file off at boot and that the start brings it back.
-  - A swap partition fstab names by `UUID=`: a drain takes `/dev/sdXN` away
-    and starts `dev-disk-by\x2duuid-<uuid>.swap`, an alias of the device's
-    own unit. Check that the alias reads inactive once the partition left
-    and that starting it brings the partition back; if it kept reading
-    `active`, the drain would wait its 15 seconds and the start would do
-    nothing.
+- [ ] **Memory overflow: Install from Capabilities in the browser on
+  Fedora.** Not run: the browser specs do not run on Fedora yet, since their
+  package fixtures build `apt` packages
+  ([Frontend test coverage](./e2e-testing.md#distributions)). The backend
+  half ran in the Fedora 45 test VM on 2026-11-18: PackageKit installed
+  `zram-generator` once its cache was refreshed, which an install now does
+  by itself ([Capabilities](../capabilities.md)), and the status then
+  reported zram-generator as the provider.
 
 ## Later, no plan yet
 
@@ -206,7 +171,7 @@ File browser, after the link fix:
 Memory overflow:
 
 - A swap partition, or a swap device `/etc/fstab` does not name, is never
-  stopped or masked. A host with an active swap partition cannot choose
+  stopped or held off. A host with an active swap partition cannot choose
   compressed memory only, and a device with no fstab entry cannot be drained:
   only a device matched to an entry has a unit that can be started again, and
   the feature never takes away swap it cannot bring back.

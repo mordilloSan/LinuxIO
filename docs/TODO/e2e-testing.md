@@ -246,6 +246,8 @@ Built (2026-11-18):
 | `make test-vm-backend SUITES=relay` | Passes |
 | `make test-vm-backend SUITES='filebrowser userconfig' VMS=1` | Passes |
 | `make vm-test-memory-integration` | Passes with zram-generator: `TestMemoryIntegration`, and the drain with 2 GiB (the cancel left 1806 of 2063 MiB parked, the rest drained in 13 s) and capped (280 MiB in 2 min 13 s) |
+| `make vm-test-memory-integration`, with the host checks (same day) | Passes after `make vm-reset DISTRO=fedora`, with the swap file held off at boot by a drop-in in place of the mask, which had kept `swap.target`, and with it zram, from starting at boot: after each reboot `swap.target` is active and zram the only swap. Also passing: Fedora's default zram alone and beside the swap file, `TestMemoryIntegration` with the generator's units for drop-ins in four folders and the zswap compressor refused with `ENOENT`, the status without sudo under TuneD 2.28, both drains (1806 MiB left after the cancel, drained in 12 s; capped, 279 MiB in 2 min 14 s), the drain through a `UUID=` alias, and `TestMemoryRebootIntegration` with fstab naming the swap file by its path and through a link |
+| `make test-vm-backend SUITES=packagekit VMS=1` (same day) | Passes: with PackageKit's cache made cold by a dnf transaction outside it, Resolve returns an empty result, and the install refreshes once and installs `hello` |
 
 Not run on Fedora yet: the `btrfs`, `indexer`, `docker`, `updater` and
 `network` suites, and the browser specs. Fedora needed three things of the

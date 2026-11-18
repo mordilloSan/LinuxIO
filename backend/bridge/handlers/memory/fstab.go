@@ -15,14 +15,15 @@ import (
 
 // fstabSwap is a swap entry of /etc/fstab: the node systemd swaps on, the
 // unit systemd-fstab-generator makes for it, the /proc/swaps path of the
-// active device it is, if any, and whether its unit is masked on disk.
+// active device it is, if any, and whether its unit is held off at boot
+// (see unitHeldOff).
 // othersCanWrite is set on an entry that someone other than root can put
 // another entry at the path of, which LinuxIO does not manage.
 type fstabSwap struct {
 	path           string
 	unit           string
 	device         string
-	masked         bool
+	heldOff        bool
 	othersCanWrite bool
 }
 
@@ -156,7 +157,8 @@ func (h hostRoot) sameSwap(fstabPath, device string) bool {
 }
 
 // matchFstabSwaps fills in the active device each fstab entry is, whether
-// its unit is masked, and then whether others can change the entry's path. A
+// its unit is held off at boot, and then whether others can change the
+// entry's path. A
 // device is matched to the first entry that is it.
 func (h hostRoot) matchFstabSwaps(entries []fstabSwap, devices []apischema.SwapDevice) []fstabSwap {
 	taken := map[string]bool{}
@@ -168,7 +170,7 @@ func (h hostRoot) matchFstabSwaps(entries []fstabSwap, devices []apischema.SwapD
 			entries[i].device, taken[device.Path] = device.Path, true
 			break
 		}
-		entries[i].masked = h.unitMasked(entries[i].unit)
+		entries[i].heldOff = h.unitHeldOff(entries[i].unit)
 		entries[i].othersCanWrite = h.othersCanWrite(entries[i])
 	}
 	return entries
@@ -209,9 +211,15 @@ func (h hostRoot) othersCanWrite(entry fstabSwap) bool {
 // and until the next boot.
 var maskDirs = []string{"/etc/systemd/system", "/run/systemd/system"}
 
-// unitMasked reports whether unit is masked on disk under the root, found
-// without asking systemd: a link to /dev/null in one of maskDirs.
-func (h hostRoot) unitMasked(unit string) bool {
+// unitHeldOff reports whether unit is held off at boot, found on disk under
+// the root without asking systemd: LinuxIO's drop-in for it is there
+// (holdOffDropInPath), or it is masked, a link to /dev/null in one of
+// maskDirs, as an admin, or a LinuxIO that held swap files off with a mask,
+// leaves it.
+func (h hostRoot) unitHeldOff(unit string) bool {
+	if h.exists(holdOffDropInPath(unit)) {
+		return true
+	}
 	for _, dir := range maskDirs {
 		target, err := os.Readlink(h.path(filepath.Join(dir, unit)))
 		if err == nil && target == os.DevNull {

@@ -20,7 +20,7 @@ type swapStep struct {
 }
 
 // managedSwapFile is the one swap file fstab names that a change stops,
-// masks or starts (see fstabSwapFile). One others can redirect is returned
+// holds off at boot or starts (see fstabSwapFile). One others can redirect is returned
 // as not managed.
 func (v swapView) managedSwapFile() (fstabSwap, bool) {
 	file, ok := fstabSwapFile(v.fstab)
@@ -77,7 +77,9 @@ func planSwapMode(v swapView, req apischema.SwapModeRequest) ([]swapStep, error)
 		return nil, err
 	}
 	var steps []swapStep
-	if managed && file.device == "" {
+	// A file that swaps while held off, as a failed switch away from zram
+	// leaves it, is let go too, or the next boot would hold it off.
+	if managed && (file.device == "" || file.heldOff) {
 		steps = append(steps, swapStep{code: apischema.SwapStepStartSwapFile, unit: file.unit, path: file.path})
 	}
 	// zram is stopped through its provider's unit, so the step is planned
