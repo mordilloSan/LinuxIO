@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/octalescape"
 )
 
 // Where the inventory reads the host from; vars so tests can point them at a
@@ -107,25 +109,6 @@ func decodeUdevEnc(s string) string {
 	return b.String()
 }
 
-// unescapeOctal undoes the \NNN escapes mountinfo and swaps use for spaces.
-func unescapeOctal(s string) string {
-	if !strings.Contains(s, `\`) {
-		return s
-	}
-	var b strings.Builder
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\\' && i+3 < len(s) {
-			if n, err := strconv.ParseUint(s[i+1:i+4], 8, 8); err == nil {
-				b.WriteByte(byte(n))
-				i += 3
-				continue
-			}
-		}
-		b.WriteByte(s[i])
-	}
-	return b.String()
-}
-
 type mountEntry struct {
 	devno, mountpoint, source string
 }
@@ -151,8 +134,8 @@ func readMountinfo() ([]mountEntry, error) {
 			continue
 		}
 		mounts = append(mounts, mountEntry{
-			devno: fields[2], mountpoint: unescapeOctal(fields[4]),
-			source: resolveDevSource(unescapeOctal(rest[1])),
+			devno: fields[2], mountpoint: octalescape.Unescape(fields[4]),
+			source: resolveDevSource(octalescape.Unescape(rest[1])),
 		})
 	}
 	if err := scanner.Err(); err != nil {
@@ -176,7 +159,7 @@ func readSwaps() ([]string, error) {
 	scanner.Scan() // header
 	for scanner.Scan() {
 		if fields := strings.Fields(scanner.Text()); len(fields) > 0 {
-			swaps = append(swaps, resolveDevSource(unescapeOctal(fields[0])))
+			swaps = append(swaps, resolveDevSource(octalescape.Unescape(fields[0])))
 		}
 	}
 	if err := scanner.Err(); err != nil {

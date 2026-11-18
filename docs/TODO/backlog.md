@@ -73,9 +73,6 @@ Do one of these only when something shows it is needed.
   feature work resumes.
 - Read the unit's state over one system bus connection for a whole wait: each
   poll of a long `swapoff` opens a new one, about four a second.
-- Hoist the `\ooo` unescape helper: `backend/bridge/handlers/memory/host.go`
-  holds a fourth copy, beside those in `common/btrfs/mounts.go`,
-  `storage/blockdev_sysfs.go` and the indexer.
 - Read `/etc/fstab` once per memory change. A mode change and a drain read it
   inside the status and again in `readView`, so the drain reason and the drain
   targets can come from different reads when fstab changes in between; the

@@ -103,23 +103,3 @@ func (h hostRoot) readOptionalInt(name string) (int, error) {
 	}
 	return n, nil
 }
-
-// unescapeOctal decodes the \ooo escapes /proc/swaps, mountinfo and fstab
-// write for a space, tab, newline or backslash in a path.
-func unescapeOctal(s string) string {
-	if !strings.Contains(s, `\`) {
-		return s
-	}
-	var b strings.Builder
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\\' && i+3 < len(s) {
-			if n, err := strconv.ParseUint(s[i+1:i+4], 8, 8); err == nil {
-				b.WriteByte(byte(n))
-				i += 3
-				continue
-			}
-		}
-		b.WriteByte(s[i])
-	}
-	return b.String()
-}

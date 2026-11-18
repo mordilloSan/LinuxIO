@@ -12,6 +12,7 @@ import (
 
 	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
+	"github.com/mordilloSan/LinuxIO/backend/common/octalescape"
 )
 
 // fstabPath is the system mount table; a var so tests can use a temp file.
@@ -74,7 +75,7 @@ func fstabSources() []string {
 			continue
 		}
 		if fields := strings.Fields(line); len(fields) >= 2 {
-			sources = append(sources, unescapeOctal(fields[0]))
+			sources = append(sources, octalescape.Unescape(fields[0]))
 		}
 	}
 	if err := scanner.Err(); err != nil {

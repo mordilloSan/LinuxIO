@@ -22,6 +22,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/linksafe"
+	"github.com/mordilloSan/LinuxIO/backend/common/octalescape"
 )
 
 const (
@@ -1141,8 +1142,6 @@ func trashDirs(root *fsroot.FSRoot, home string, uid int) []string {
 	return dirs
 }
 
-var mountinfoUnescape = strings.NewReplacer(`\040`, " ", `\011`, "\t", `\012`, "\n", `\134`, `\`)
-
 // mountPoints lists this mount namespace's mount points. When mountinfo cannot
 // be read only the home trash is used, which is still correct.
 func mountPoints() []string {
@@ -1156,7 +1155,7 @@ func mountPoints() []string {
 		if len(fields) < 5 {
 			continue
 		}
-		points = append(points, mountinfoUnescape.Replace(fields[4]))
+		points = append(points, octalescape.Unescape(fields[4]))
 	}
 	return points
 }

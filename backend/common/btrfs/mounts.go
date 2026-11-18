@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"github.com/mordilloSan/LinuxIO/backend/common/octalescape"
 	"github.com/mordilloSan/LinuxIO/backend/common/version"
 )
 
@@ -102,17 +103,17 @@ func parseMountinfo(text string, uuidOf func(string) string) []Mount {
 		if sep < 6 || len(fields) < sep+4 || fields[sep+1] != "btrfs" {
 			continue
 		}
-		device := unescapeMountinfo(fields[sep+2])
+		device := octalescape.Unescape(fields[sep+2])
 		m := Mount{
-			Mountpoint: unescapeMountinfo(fields[4]), Device: device, UUID: uuidOf(device),
-			SubPath: strings.TrimPrefix(unescapeMountinfo(fields[3]), "/"),
+			Mountpoint: octalescape.Unescape(fields[4]), Device: device, UUID: uuidOf(device),
+			SubPath: strings.TrimPrefix(octalescape.Unescape(fields[3]), "/"),
 			Options: append(strings.Split(fields[5], ","), strings.Split(fields[sep+3], ",")...),
 		}
 		for _, opt := range m.Options {
 			switch key, val, _ := strings.Cut(opt, "="); key {
 			case "subvol":
 				// Escaped like the root field, which SubPath is compared with.
-				m.Subvol = strings.TrimPrefix(unescapeMountinfo(val), "/")
+				m.Subvol = strings.TrimPrefix(octalescape.Unescape(val), "/")
 			case "subvolid":
 				m.SubvolID, _ = strconv.Atoi(val)
 			}
@@ -120,25 +121,6 @@ func parseMountinfo(text string, uuidOf func(string) string) []Mount {
 		mounts = append(mounts, m)
 	}
 	return mounts
-}
-
-// unescapeMountinfo decodes the \ooo octal escapes mountinfo uses.
-func unescapeMountinfo(s string) string {
-	if !strings.Contains(s, `\`) {
-		return s
-	}
-	var b strings.Builder
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\\' && i+3 < len(s) {
-			if n, err := strconv.ParseUint(s[i+1:i+4], 8, 8); err == nil {
-				b.WriteByte(byte(n))
-				i += 3
-				continue
-			}
-		}
-		b.WriteByte(s[i])
-	}
-	return b.String()
 }
 
 // vfsMountFlags are the options mount(2) takes as flags rather than in the

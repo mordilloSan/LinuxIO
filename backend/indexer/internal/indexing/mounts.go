@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/mordilloSan/LinuxIO/backend/common/octalescape"
 )
 
 // loadExternalMountPointsFn is swappable in tests.
@@ -59,18 +61,8 @@ func parseMountInfo(line string) (mountPoint, fsType, source string, ok bool) {
 		return "", "", "", false
 	}
 
-	rawMountPoint := pre[4]
-	mountPoint = decodeMountPath(rawMountPoint)
-	mountPoint = filepath.Clean(mountPoint)
+	mountPoint = filepath.Clean(octalescape.Unescape(pre[4]))
 	fsType = strings.ToLower(post[0])
 	source = strings.ToLower(post[1])
 	return mountPoint, fsType, source, true
-}
-
-func decodeMountPath(raw string) string {
-	decoded := strings.ReplaceAll(raw, "\\040", " ")
-	decoded = strings.ReplaceAll(decoded, "\\011", "\t")
-	decoded = strings.ReplaceAll(decoded, "\\012", "\n")
-	decoded = strings.ReplaceAll(decoded, "\\134", "\\")
-	return decoded
 }

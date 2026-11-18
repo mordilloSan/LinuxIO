@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/octalescape"
 	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
 )
 
@@ -50,7 +51,7 @@ func (h hostRoot) fstabSwaps() ([]fstabSwap, error) {
 		if len(fields) < 3 || strings.HasPrefix(fields[0], "#") || fields[2] != "swap" {
 			continue
 		}
-		path, ok := fstabNodePath(unescapeOctal(fields[0]))
+		path, ok := fstabNodePath(octalescape.Unescape(fields[0]))
 		if !ok {
 			continue
 		}

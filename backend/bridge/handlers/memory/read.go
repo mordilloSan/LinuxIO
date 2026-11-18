@@ -14,6 +14,7 @@ import (
 	"syscall"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/octalescape"
 )
 
 // readSwaps parses /proc/swaps: a header line, then one line per active
@@ -43,7 +44,7 @@ func parseSwapLine(line string) (apischema.SwapDevice, error) {
 	if len(fields) != 5 {
 		return apischema.SwapDevice{}, fmt.Errorf("want 5 fields, got %d", len(fields))
 	}
-	device := apischema.SwapDevice{Path: unescapeOctal(fields[0])}
+	device := apischema.SwapDevice{Path: octalescape.Unescape(fields[0])}
 	switch fields[1] {
 	case "file":
 		device.Kind = apischema.SwapDeviceFile
@@ -279,9 +280,9 @@ func (h hostRoot) readMounts() ([]mountEntry, error) {
 			continue
 		}
 		mounts = append(mounts, mountEntry{
-			mountPoint: unescapeOctal(fields[4]),
+			mountPoint: octalescape.Unescape(fields[4]),
 			fsType:     fields[sep+1],
-			source:     unescapeOctal(fields[sep+2]),
+			source:     octalescape.Unescape(fields[sep+2]),
 		})
 	}
 	return mounts, nil
