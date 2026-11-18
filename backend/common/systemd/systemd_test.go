@@ -366,6 +366,65 @@ func TestUnitRunsInvocation(t *testing.T) {
 	}
 }
 
+func TestGetSocketState(t *testing.T) {
+	bus := testdbus.Start(t)
+	bus.SetSystemBus(t)
+	conn := bus.OwnName(t, dbusclient.SystemdBusName)
+	type job struct {
+		ID   uint32
+		Path godbus.ObjectPath
+	}
+	noJob := godbus.MakeVariant(job{0, "/"})
+	units := map[string]unitProperties{
+		"listening.socket": {
+			dbusclient.SystemdUnitIface + ".Job":         noJob,
+			dbusclient.SystemdUnitIface + ".ActiveState": godbus.MakeVariant("active"),
+			dbusclient.SystemdSocketIface + ".Result":    godbus.MakeVariant("success"),
+		},
+		"starting.socket": {
+			dbusclient.SystemdUnitIface + ".Job": godbus.MakeVariant(job{42, "/org/freedesktop/systemd1/job/42"}),
+		},
+		"busy.socket": {
+			dbusclient.SystemdUnitIface + ".Job":         noJob,
+			dbusclient.SystemdUnitIface + ".ActiveState": godbus.MakeVariant("failed"),
+			dbusclient.SystemdSocketIface + ".Result":    godbus.MakeVariant("resources"),
+		},
+		"resultless.socket": {
+			dbusclient.SystemdUnitIface + ".Job":         noJob,
+			dbusclient.SystemdUnitIface + ".ActiveState": godbus.MakeVariant("failed"),
+		},
+	}
+	manager := invocationManager{paths: map[string]godbus.ObjectPath{}}
+	for name, props := range units {
+		manager.paths[name] = godbus.ObjectPath("/org/freedesktop/systemd1/unit/" + strings.TrimSuffix(name, ".socket"))
+		if err := conn.Export(props, manager.paths[name], dbusclient.PropertiesIface); err != nil {
+			t.Fatalf("export unit %s: %v", name, err)
+		}
+	}
+	if err := conn.Export(manager, godbus.ObjectPath(dbusclient.SystemdPath), dbusclient.SystemdManagerIface); err != nil {
+		t.Fatalf("export manager: %v", err)
+	}
+
+	for name, want := range map[string]SocketState{
+		"listening.socket": {ActiveState: "active", Result: "success"},
+		"starting.socket":  {JobPending: true},
+		"busy.socket":      {ActiveState: "failed", Result: "resources"},
+	} {
+		got, err := GetSocketState(t.Context(), name)
+		if err != nil {
+			t.Fatalf("GetSocketState(%s): %v", name, err)
+		}
+		if got != want {
+			t.Errorf("GetSocketState(%s) = %+v, want %+v", name, got, want)
+		}
+	}
+	for _, name := range []string{"resultless.socket", "missing.socket"} {
+		if got, err := GetSocketState(t.Context(), name); err == nil {
+			t.Errorf("GetSocketState(%s) = %+v, want an error", name, got)
+		}
+	}
+}
+
 func TestSystemStopping(t *testing.T) {
 	for state, want := range map[string]bool{"running": false, "stopping": true} {
 		t.Run(state, func(t *testing.T) {

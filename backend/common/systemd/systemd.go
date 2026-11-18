@@ -192,6 +192,60 @@ func UnitRunsInvocation(ctx context.Context, unit, invocationID string) (bool, e
 	return runs, nil
 }
 
+// SocketState is a socket unit as the manager reports it.
+type SocketState struct {
+	// JobPending is true while a job is queued or running for the socket;
+	// ActiveState and Result are not read then.
+	JobPending  bool
+	ActiveState string
+	// Result is how the socket's last run ended, such as "success", or
+	// "resources" when it could not open or watch its listening sockets (a
+	// bind that found its address in use). It holds until the next start.
+	Result string
+}
+
+// GetSocketState reads a loaded socket unit's job, ActiveState and Result.
+func GetSocketState(ctx context.Context, name string) (SocketState, error) {
+	if err := requireUnitName(name); err != nil {
+		return SocketState{}, err
+	}
+	var state SocketState
+	err := dbusclient.SystemdManager.UseSession(ctx, func(session dbusclient.SystemSession) error {
+		var path dbusclient.ObjectPath
+		if err := session.CallStore(dbusclient.SystemdManagerIface+".GetUnit", dbusclient.CallPolicy{}, []any{name}, &path); err != nil {
+			return fmt.Errorf("get unit %s: %w", name, err)
+		}
+		obj := session.ObjectAt(path)
+		job, err := dbusclient.GetProperty[[]any](session, obj, dbusclient.SystemdUnitIface, "Job")
+		if err != nil {
+			return fmt.Errorf("get job %s: %w", name, err)
+		}
+		var jobID uint32
+		ok := false
+		if len(job) == 2 {
+			jobID, ok = job[0].(uint32)
+		}
+		if !ok {
+			return fmt.Errorf("job of %s is %v, want an id and a path", name, job)
+		}
+		if jobID != 0 {
+			state.JobPending = true
+			return nil
+		}
+		if state.ActiveState, err = dbusclient.GetProperty[string](session, obj, dbusclient.SystemdUnitIface, "ActiveState"); err != nil {
+			return fmt.Errorf("get active state %s: %w", name, err)
+		}
+		if state.Result, err = dbusclient.GetProperty[string](session, obj, dbusclient.SystemdSocketIface, "Result"); err != nil {
+			return fmt.Errorf("get result %s: %w", name, err)
+		}
+		return nil
+	})
+	if err != nil {
+		return SocketState{}, err
+	}
+	return state, nil
+}
+
 // noSuchUnit reports whether err is the manager's answer for a unit that is
 // not loaded.
 func noSuchUnit(err error) bool {

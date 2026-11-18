@@ -163,8 +163,8 @@ test("a run keeps going and is recorded when the job host and the bridges restar
     "after the job host restarted",
   ).toMatchObject({ id: run.id, state: "running" });
   // The control plane (webserver, auth socket), then the session's bridge,
-  // which holds the page's live output stream. (Not `restart --full`: it
-  // can leave the webserver socket failed on a restart race.)
+  // which holds the page's live output stream. (Not `restart --full`,
+  // which restarts all of linuxio.target; this step is the control plane.)
   await vmSsh("sudo linuxio restart");
   expect((await runsOf(id)).at(-1), "after linuxio restart").toMatchObject({
     id: run.id,

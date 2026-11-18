@@ -86,11 +86,6 @@ Do one of these only when something shows it is needed.
   folder, so this is a convenience only.
 - Pick up a package update again after the job host dies, by asking
   PackageKit.
-- Retry the web socket's start in `linuxio restart --full`.
-  `linuxio-webserver.socket` is ordered after `linuxio-auth.socket`, which
-  ended the "Address already in use" failures (0 of 50 restarts), but any
-  other unit that forks a helper in that window, such as a user's job host
-  socket at a login, can still hold the old listener for a moment.
 - Pick up a SMART test again from the drive's own state.
 - Continue the scrub of a pool resync after a power cut. It saves its progress
   as a job's scrub does, but it is not a job, so nothing continues it and the

@@ -13,8 +13,31 @@ import (
 const (
 	linuxioTargetName              = "linuxio.target"
 	linuxioWebserverServiceName    = "linuxio-webserver.service"
+	linuxioWebserverSocketName     = "linuxio-webserver.socket"
 	linuxioAuthSocketName          = "linuxio-auth.socket"
 	linuxioBridgeSocketUserService = "linuxio-bridge-socket-user.service"
+)
+
+// A full restart stops linuxio-webserver.socket and binds its port again. A
+// helper another unit forks in that window, such as a user's job host socket
+// at a login, can still hold the old listener for a moment, and the bind fails
+// with "Address already in use". systemd ends such a start with the socket's
+// Result "resources" (the errno reaches only the journal), so the socket is
+// started again on that result, webSocketRetries times, webSocketRetryDelay
+// apart. The restart's start and three more stay under the default start
+// limit of five starts in 10 s.
+const (
+	webSocketRetries    = 3
+	webSocketRetryDelay = 500 * time.Millisecond
+	unitJobPollInterval = 100 * time.Millisecond
+)
+
+// The manager calls and waits of a restart, swapped by tests.
+var (
+	restartUnit     = systemd.RestartUnit
+	startUnit       = systemd.StartUnit
+	readSocketState = systemd.GetSocketState
+	pause           = sleepContext
 )
 
 func runSystemctl(ctx context.Context, action, target string) int {
@@ -33,11 +56,14 @@ func runSystemctlTargets(parent context.Context, action string, targets []string
 		var err error
 		switch action {
 		case "start":
-			err = systemd.StartUnit(ctx, target)
+			err = startUnit(ctx, target)
 		case "stop":
 			err = systemd.StopUnit(ctx, target)
 		case "restart":
-			err = systemd.RestartUnit(ctx, target)
+			err = restartUnit(ctx, target)
+			if err == nil && target == linuxioTargetName {
+				err = awaitWebSocket(ctx)
+			}
 		case "enable":
 			err = systemd.EnableUnit(ctx, target)
 		case "disable":
@@ -57,6 +83,59 @@ func runSystemctlTargets(parent context.Context, action string, targets []string
 	}
 	fmt.Printf("Successfully %s %s\n", pastTense(action), successLabel)
 	return 0
+}
+
+// awaitWebSocket waits for the web socket's start in a full restart to finish
+// and starts the socket again while it could not listen.
+func awaitWebSocket(ctx context.Context) error {
+	for retry := 1; ; retry++ {
+		state, err := settledSocketState(ctx, linuxioWebserverSocketName)
+		if err != nil {
+			return fmt.Errorf("wait for %s: %w", linuxioWebserverSocketName, err)
+		}
+		switch {
+		case state.ActiveState == "active":
+			return nil
+		case state.ActiveState != "failed" || state.Result != "resources":
+			return fmt.Errorf("%s is %s (result %q)", linuxioWebserverSocketName, state.ActiveState, state.Result)
+		case retry > webSocketRetries:
+			return fmt.Errorf("%s could not listen on its address in %d starts (result %q); see journalctl -u %s",
+				linuxioWebserverSocketName, retry, state.Result, linuxioWebserverSocketName)
+		}
+		fmt.Printf("Starting %s again: it could not listen on its address (retry %d of %d)\n",
+			linuxioWebserverSocketName, retry, webSocketRetries)
+		if err := pause(ctx, webSocketRetryDelay); err != nil {
+			return fmt.Errorf("wait to start %s again: %w", linuxioWebserverSocketName, err)
+		}
+		if err := startUnit(ctx, linuxioWebserverSocketName); err != nil {
+			return err
+		}
+	}
+}
+
+// settledSocketState reads the socket once no job is pending for it.
+func settledSocketState(ctx context.Context, name string) (systemd.SocketState, error) {
+	for {
+		state, err := readSocketState(ctx, name)
+		if err != nil || !state.JobPending {
+			return state, err
+		}
+		if err := pause(ctx, unitJobPollInterval); err != nil {
+			return state, err
+		}
+	}
+}
+
+// sleepContext waits d, or until ctx is done.
+func sleepContext(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func pastTense(action string) string {
