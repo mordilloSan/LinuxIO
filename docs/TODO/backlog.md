@@ -42,16 +42,6 @@ btrfs-progs do, gets an independent review, and adds a root test on loop
 devices (`make test-btrfs-integration`, and `make vm-test-btrfs-integration`
 after a change that issues ioctls).
 
-- [ ] **Membership is checked before the disk lock and not again.** The
-  zeroing before a forced add, an Initialize and a new partition now opens the
-  device exclusively, so a device claimed in the meantime is refused. Left:
-  Format and Delete confirm a member on the inventory read before the lock;
-  `writeTable` reopens the disk without `O_EXCL` to write the GPT after its
-  exclusive wipe; `WipeDevice` and `WipePoolSuperblocks`
-  (`backend/common/btrfs/pool.go`) open without it; and md and LVM membership
-  comes from the udev database, so a signature udev has not probed is not
-  seen. Reported; each window is short.
-
 ## Visible bugs
 
 Memory overflow ([Memory overflow](../memory.md)):
@@ -297,6 +287,15 @@ Do one of these only when something shows it is needed.
   (`encode_devnode_name`) and for a path of 256 bytes or more, which systemd
   names with a hash. Both entries count as unmanaged today, so nothing is
   stopped or drained for them.
+- Have LinuxIO make its own swap file in a fixed folder only root can write,
+  manage only that one and show any other swap as read-only, the way TrueNAS
+  and the Unraid swap plugins manage only swap they made. Today LinuxIO
+  manages whatever `/etc/fstab` names, which is why it needs the rules for
+  links, folders others can write, a filesystem that is not mounted and a
+  second swap file (see "Known limits" in [Memory overflow](../memory.md));
+  most of them could then go. It would also move a swap file that sits in a
+  folder others can write, which nothing does now. A redesign, for when
+  feature work resumes.
 - Read the unit's state over one system bus connection for a whole wait: each
   poll of a long `swapoff` opens a new one, about four a second.
 - Hoist the `\ooo` unescape helper: `backend/bridge/handlers/memory/host.go`

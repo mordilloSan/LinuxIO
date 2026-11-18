@@ -158,10 +158,13 @@ func ValidateLabel(label string) error {
 // CreatePool formats devices as one btrfs filesystem with the given data
 // and metadata profiles, registers them with the kernel and returns the new
 // filesystem's UUID. Callers check that the devices are free; force
-// overwrites foreign signatures. progress, if not nil, follows the trim
-// before mkfs (see trim). Once mkfs.btrfs ran, an error comes with the UUID
-// too, so the caller can wipe what it wrote (see WipePoolSuperblocks).
-func CreatePool(ctx context.Context, label, data, meta string, devices []string, force bool, progress func(pct float64)) (string, error) {
+// overwrites foreign signatures. check, if not nil, runs right before each
+// device's trim and, since mkfs.btrfs starts only after the last trim, for
+// every device again right before it; its error stops the create there.
+// progress, if not nil, follows the trim before mkfs (see trim). Once
+// mkfs.btrfs ran, an error comes with the UUID too, so the caller can wipe
+// what it wrote (see WipePoolSuperblocks).
+func CreatePool(ctx context.Context, label, data, meta string, devices []string, force bool, check func(device string) error, progress func(pct float64)) (string, error) {
 	if err := ValidateLabel(label); err != nil {
 		return "", err
 	}
@@ -171,8 +174,16 @@ func CreatePool(ctx context.Context, label, data, meta string, devices []string,
 	if err := ValidateProfiles(&data, &meta, len(devices)); err != nil {
 		return "", err
 	}
-	if err := trim(ctx, devices, progress); err != nil {
+	if err := trim(ctx, devices, check, progress); err != nil {
 		return "", err
+	}
+	for _, d := range devices {
+		if check == nil {
+			break
+		}
+		if err := check(d); err != nil {
+			return "", err
+		}
 	}
 	uuid := newUUID()
 	args := []string{"-L", label, "-U", uuid, "-d", data, "-m", meta, "-K"}
@@ -225,9 +236,13 @@ func MountOfflinePool(ctx context.Context, pool BtrfsOfflinePool, mountpoint str
 
 // WipeDevice zeroes the primary superblock magic of an unmounted btrfs
 // device, so it no longer probes as btrfs, and unregisters it from the
-// kernel. A device without the magic is refused untouched.
+// kernel. A device without the magic is refused untouched, and so, with
+// EBUSY, is one still mounted, here or in another mount namespace, or
+// claimed since the caller looked: the open is exclusive, which a mounted
+// btrfs refuses (it holds its devices) and a merely registered one does not
+// (btrfs_scan_one_device in fs/btrfs/volumes.c opens without a holder).
 func WipeDevice(device string) error {
-	f, err := os.OpenFile(device, os.O_RDWR, 0)
+	f, err := openExclusive(device, os.O_RDWR)
 	if err != nil {
 		return err
 	}
@@ -267,9 +282,11 @@ func superblockOffsets(size uint64) []int64 {
 // WipePoolSuperblocks undoes a pool create on device: it zeroes the magic of
 // every superblock copy whose fsid is uuid, real or the temporary one a
 // failed mkfs.btrfs leaves, then unregisters the device. Copies of any other
-// filesystem are left alone. It reports whether it wiped any.
+// filesystem are left alone. It reports whether it wiped any. Like
+// WipeDevice it opens device exclusively, so a device that is mounted or was
+// claimed since the create is refused with EBUSY and left as it is.
 func WipePoolSuperblocks(device, uuid string) (bool, error) {
-	f, err := os.OpenFile(device, os.O_RDWR, 0)
+	f, err := openExclusive(device, os.O_RDWR)
 	if err != nil {
 		return false, err
 	}

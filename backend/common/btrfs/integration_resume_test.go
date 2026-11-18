@@ -43,7 +43,7 @@ func TestBtrfsResumeIntegration(t *testing.T) {
 	for i := range 3 {
 		p.disks = append(p.disks, loopDevice(t, filepath.Join(dir, fmt.Sprintf("disk%d.img", i)), 8<<30))
 	}
-	uuid, err := CreatePool(p.ctx, "linuxio-resume", "raid1", "raid1", p.disks[:2], true, nil)
+	uuid, err := CreatePool(p.ctx, "linuxio-resume", "raid1", "raid1", p.disks[:2], true, nil, nil)
 	p.must("create pool", err)
 	p.uuid = uuid
 	p.must("mount pool", MountPool(p.ctx, p.disks[0], p.mnt, []string{"noatime"}, false))
@@ -427,7 +427,7 @@ func (p *itPool) rollback() {
 	defer unlock()
 	part, err := PartitionDisk(p.ctx, disk)
 	p.must("partition", err)
-	uuid, err := CreatePool(p.ctx, "rollback", "single", "dup", []string{part}, true, nil)
+	uuid, err := CreatePool(p.ctx, "rollback", "single", "dup", []string{part}, true, nil, nil)
 	p.must("create on partition", err)
 	parts, err := kernelPartitions(disk)
 	p.must("kernel partitions", err)
@@ -1055,7 +1055,7 @@ func (p *itPool) replacePowerCut() {
 		disks = append(disks, newLoopDisk(t, filepath.Join(shelf, fmt.Sprintf("disk%d.img", i)), 6<<30))
 	}
 	cut := &itPool{t: t, ctx: p.ctx, mnt: filepath.Join(dir, "mnt")}
-	uuid, err := CreatePool(p.ctx, "linuxio-cut", "raid1", "raid1", []string{disks[0].dev, disks[1].dev}, true, nil)
+	uuid, err := CreatePool(p.ctx, "linuxio-cut", "raid1", "raid1", []string{disks[0].dev, disks[1].dev}, true, nil, nil)
 	p.must("create pool", err)
 	cut.uuid = uuid
 	p.must("mount pool", MountPool(p.ctx, disks[0].dev, cut.mnt, []string{"noatime"}, false))

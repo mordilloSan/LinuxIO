@@ -198,7 +198,10 @@ func mdDeviceFree(ctx context.Context, device string) error {
 	if err != nil {
 		return err
 	}
-	return checkMDDeviceFree(inv, device)
+	if err = checkMDDeviceFree(inv, device); err != nil {
+		return err
+	}
+	return signatureFree(device)
 }
 
 // checkMDFailAllowed refuses to fail an in_sync member the level cannot lose.

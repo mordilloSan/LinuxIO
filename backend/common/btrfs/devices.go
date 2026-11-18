@@ -135,28 +135,29 @@ var wipeDeviceEdges = func(device string) error {
 	if err != nil {
 		return err
 	}
-	f, err := os.OpenFile(device, os.O_RDWR|os.O_EXCL, 0)
-	if errors.Is(err, unix.EBUSY) {
-		return fmt.Errorf("%s is in use: %w", device, unix.EBUSY)
-	}
+	f, err := openExclusive(device, os.O_RDWR)
 	if err != nil {
 		return err
 	}
-	n := min(size, edgeWipeBytes)
-	zeros := make([]byte, n)
-	for _, off := range []uint64{0, size - n} {
-		if _, err = f.WriteAt(zeros, int64(off)); err != nil {
-			break
-		}
-	}
-	if err == nil {
-		err = f.Sync()
-	}
+	err = zeroEdges(f, size)
 	if closeErr := f.Close(); err == nil {
 		err = closeErr
 	}
-	if err != nil {
-		return fmt.Errorf("wipe %s: %w", device, err)
+	return err
+}
+
+// zeroEdges zeroes the first and last edgeWipeBytes of f, a device of size
+// bytes, and syncs.
+func zeroEdges(f *os.File, size uint64) error {
+	n := min(size, edgeWipeBytes)
+	zeros := make([]byte, n)
+	for _, off := range []uint64{0, size - n} {
+		if _, err := f.WriteAt(zeros, int64(off)); err != nil {
+			return fmt.Errorf("wipe %s: %w", f.Name(), err)
+		}
+	}
+	if err := f.Sync(); err != nil {
+		return fmt.Errorf("wipe %s: %w", f.Name(), err)
 	}
 	return nil
 }

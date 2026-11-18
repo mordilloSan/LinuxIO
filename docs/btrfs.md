@@ -26,6 +26,8 @@ the missing-disk handling, exercises
 that **Force** never takes a disk of an unmounted pool
 (`TestBtrfsMemberIntegration` in `backend/bridge/handlers/storage`) nor
 zeroes a disk mounted or held after the checks (`TestBtrfsAddWipeIntegration`),
+that no writer touches a device claimed after its checks and that md and LVM2
+signatures are read as libblkid reads them (`TestPartitionClaimIntegration`),
 and that a pool whose top level a read mounted can be destroyed
 (`TestBtrfsDestroyIntegration`); it needs sudo.
 
@@ -391,7 +393,10 @@ zeroed, including the temporary magic a failed `mkfs.btrfs` leaves; copies of
 any other filesystem are left alone. Then the partitions the create added are
 deleted, newest first. A partition whose superblocks could not be wiped is
 kept, and nothing is wiped while the pool cannot be unmounted; the error
-reports what was left. Once the pool is in fstab it is kept, whatever fails
+reports what was left. A trim cannot be undone: when a member is refused
+right before its trim or before `mkfs.btrfs` (see
+[Safety](./storage-disks.md#safety)), the members trimmed before it stay
+discarded, and the create fails naming the refused device. Once the pool is in fstab it is kept, whatever fails
 after. The rollback removes only what the create made: what was on a disk
 before, such as a filesystem overwritten with **Force** or the old contents
 of a disk given a new GPT, is not restored.
@@ -415,7 +420,13 @@ fstab are also mounted degraded at boot; see [Missing disks](#missing-disks).
 
 **Destroy pool** unmounts every mount of the pool, removes its fstab entries
 and zeroes the btrfs superblock magic on each disk; everything on the pool is
-lost. A pool holding `/`, `/boot` or another protected mount is refused
+lost. Each disk is opened exclusively after the unmount and before fstab
+changes: a disk something still claims, such as the pool still mounted in
+another mount namespace, which the unmount here does not reach, refuses the
+destroy with a 409 that says its mounts here are unmounted and nothing was
+erased. The wipe opens each disk
+exclusively again and refuses one claimed since, but by then fstab is edited
+and the disks before it are wiped. A pool holding `/`, `/boot` or another protected mount is refused
 (a 409);
 LinuxIO's own top-level mount under `/run/linuxio/btrfs/<uuid>` (see
 [Top-level access](#top-level-access)), left by any subvolume, snapshot or
@@ -437,7 +448,10 @@ Create pool, Add device and Replace device refuse a device that is:
    set by its own signature (`btrfs`, `linux_raid_member`, `LVM2_member`, and
    every other signature that ends in `_member`, such as `zfs_member` or a
    firmware RAID's `isw_raid_member`), whether the pool is mounted, the array
-   running or the volume group active or not.
+   running or the volume group active or not. The md and LVM2 signatures are
+   also read from the device itself just before the write, so one udev has
+   not probed yet is refused too (see
+   [Safety](./storage-disks.md#safety)).
 
 The first three are the check every device operation shares with the
 [Disks page](./storage-disks.md#safety) and md RAID. Any other filesystem
@@ -455,11 +469,19 @@ before `BTRFS_IOC_ADD_DEV`, which claims the device exclusively itself
 `block/bdev.c` grants a claim only while the device has no other holder, and
 `bdev_release` gives up a file's claim when it is closed). The other writers
 open the same way: the trim before a format or a pool create
-(`discardDevice`), the busy check before a format or a mount and the
-Initialize (`CheckNotBusy`), and the edges of a new GPT or partition, which
-go through the same wipe. `mkfs` repeats its own exclusive open. The target
-of a replace is written only by the kernel, which claims it exclusively the
-same way (`btrfs_init_dev_replace_tgtdev` in `fs/btrfs/dev-replace.c`).
+(`discardDevice`), the signature read before a format, a delete, a pool
+create, a device add or replace and an md add or replace
+(`ReadMemberSignature`), the busy check before a mount (`CheckNotBusy`),
+the edges of a new partition, and the wipes of **Destroy pool**
+(`WipeDevice`) and of the undo of a failed create (`WipePoolSuperblocks`).
+A btrfs filesystem that is mounted holds its devices, so those wipes refuse
+it, while one that is only registered does not (`btrfs_scan_one_device`
+opens the device without a holder). A whole disk that gets a new GPT, on
+**Initialize disk** or for a pool's partition, is zeroed at its edges and
+written through one exclusive open, so nothing can claim it between the
+two. `mkfs` repeats its own exclusive open. The target of a replace is
+written only by the kernel, which claims it exclusively the same way
+(`btrfs_init_dev_replace_tgtdev` in `fs/btrfs/dev-replace.c`).
 
 **Force** never covers rule 5. LinuxIO does not try to tell a disk with
 leftover btrfs data from a member of an unmounted pool: both are freed with

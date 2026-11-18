@@ -124,11 +124,46 @@ pool stays refused by rule 3; its pool is destroyed instead. A btrfs
 signature that belongs to no pool the bridge can read cannot be destroyed as
 a pool, so it is named and confirmed like the rest.
 
+The inventory knows a member by the signature udev reported, and udev does
+not probe a disk while LinuxIO holds its lock, nor before it gets to a
+change. So once Format, Delete and Initialize hold the disk lock, which a
+Format may wait minutes for behind another one, they check the request
+again: against a fresh inventory, and against the md and LVM2 signatures
+read from the devices themselves, the way libblkid reads them
+(`ReadMemberSignature` in `backend/common/btrfs/member.go`). A member
+signature where udev reported none, or an md or LVM2 signature other than
+the md, LVM2 or btrfs signature udev reported (another array, an md
+superblock written over an old physical volume, or one over a stale btrfs
+signature), has not been confirmed, so the request is refused with a 409
+naming it, such as "/dev/sdb1: Member of md array a12b3c4d-...; confirm
+erasing it to format /dev/sdb1": libblkid reads md before LVM2 and both
+before any filesystem, as the read does. When a Format or Delete is refused
+under the lock while the read found a member signature, it asks udev, once
+the lock is released, to probe the partition again (it writes `change` to
+its `uevent` file in sysfs), so the next inventory, and the dialog, name
+what udev then finds; a refused Initialize needs no request, since closing
+its writable open of the disk makes udev probe it. A member of another set
+udev reported, such as a firmware RAID that holds an LVM2 label, stays what
+the dialog confirms: the read cannot see that set, and libblkid reports it
+first. One udev reported that the read does not find still needs its
+confirmation. A place the read cannot get back, such as a
+bad sector at the end of a failing disk, counts as holding no signature
+there, and the bridge logs it. md add and replace, and a btrfs device add or
+replace, read the device's signature the same way right before they write,
+and refuse a member as they refuse one udev reported. A pool create reads
+each whole disk again under its lock right before partitioning it, which
+also refuses a disk the kernel by then lists partitions for (a 409), and
+each member right before its trim and again right before `mkfs.btrfs`,
+which starts only after the last trim. When a later member is refused, the
+members trimmed before it stay discarded, and the create fails naming the
+refused device.
+
 The kernel backs these checks, so a stale inventory cannot cause a
 destructive write:
 
-- **Delete** asks the kernel to drop the partition (`BLKPG_DEL_PARTITION`)
-  before touching the table. The kernel drops by number, so Delete first
+- **Delete** reads the partition's signature through an exclusive open,
+  which the kernel refuses while it is mounted or held, then asks the kernel
+  to drop the partition (`BLKPG_DEL_PARTITION`) before touching the table. The kernel drops by number, so Delete first
   checks that the kernel's partition of that number has the GPT entry's
   start and size, and refuses with a 409 when the kernel has not re-read an
   edit made elsewhere. The kernel refuses with `EBUSY` while anything has
@@ -137,15 +172,24 @@ destructive write:
   entries cleared, and if that write fails the partition is given back to the
   kernel.
 - **Format** and **Mount** open the partition with `O_EXCL`, which the kernel
-  refuses while it is mounted or held. `mkfs` repeats that check:
-  `mkfs.ext4` never gets the doubled `-F` that skips it.
+  refuses while it is mounted or held; Format's is its signature read.
+  `mkfs` repeats that check: `mkfs.ext4` never gets the doubled `-F` that
+  skips it.
 - **Initialize** opens the disk with `O_EXCL`, which the kernel refuses while
-  the disk or one of its partitions is mounted or held, then drops every
-  partition from the kernel, which also catches a partition that is merely
-  open. If one is busy, the ones already dropped are given back and nothing
-  is written. Only then are the disk's edges zeroed, an empty GPT written and
-  the table re-read (`BLKRRPART`). If that write fails, the dropped
-  partitions are given back too.
+  the disk or one of its partitions is mounted or held, and keeps it open
+  until the new table is written, so meanwhile nothing can claim the disk
+  or any partition of it (`bd_may_claim` in `block/bdev.c`). Under that
+  claim it reads the signatures of the disk and of every partition, each
+  partition through its own node, since the disk's page cache can hold an
+  older copy of a partition's blocks, and checks them against the
+  confirmation. Then it drops every partition from the kernel, which also
+  catches a partition that is merely open. If one is busy, the ones already
+  dropped are given back and nothing is written. Only then are the disk's
+  edges zeroed and an empty GPT written, through the same open; the table
+  is re-read (`BLKRRPART`) once it is closed, since a re-read from any other
+  descriptor claims the disk itself (`disk_scan_partitions` in
+  `block/genhd.c`). If the write fails, the dropped partitions are given
+  back too.
 
 Create and Delete edit one entry of the existing GPT in place. If a copy does
 not validate, they refuse with the reason, such as "no valid GPT header at
@@ -171,7 +215,32 @@ honours on the whole disk
 ([block device locking](https://systemd.io/BLOCK_DEVICE_LOCKING/)), so until
 they finish udev neither probes the disk nor re-reads its table, which would
 briefly remove every unused partition. `make test-btrfs-integration` checks
-these refusals against the real kernel on a loop device; it needs sudo.
+these refusals against the real kernel on a loop device, and that Format,
+Delete and Initialize refuse an md member udev has not probed
+(`TestPartitionMemberIntegration`); it needs sudo.
+
+### Known limits
+
+- The md and LVM2 signature is read through an exclusive open of its own,
+  closed just before Format, Delete, md add and replace, and a btrfs device
+  add, replace or pool create write: `mkfs`, `mdadm` and the kernel open the
+  device themselves, so a tool that claims it and writes a member signature
+  in that moment is not seen. Initialize reads under the claim it writes
+  with.
+- Only md and LVM2 signatures are read from the device; any other member
+  signature (`zfs_member`, a firmware RAID's), a btrfs signature of no pool
+  the bridge can read, and, for md add and replace and a btrfs device add or
+  replace, a filesystem are known only as udev reported them, so one udev
+  has not reported yet is not seen.
+- A device udev reports as something that is no member (a DRBD backing
+  device, or no type because libblkid found two signatures) while it carries
+  an md or LVM2 signature is refused by Format, Delete, Initialize, md add
+  and a btrfs device add, and the dialog cannot confirm it, since it lists
+  what udev reports; remove the signature with `wipefs` or `pvremove`.
+- Create and Delete write their GPT entry through a shared open of the disk:
+  the kernel refuses an exclusive one while any partition of the disk is
+  claimed, and the other partitions may be in use. The kernel's refusal to
+  add an overlapping partition or drop an open one stands guard.
 
 ## Inventory
 

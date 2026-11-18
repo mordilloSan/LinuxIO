@@ -128,7 +128,7 @@ func TestBtrfsIntegration(t *testing.T) {
 		p.disks = append(p.disks, loopDevice(t, filepath.Join(dir, fmt.Sprintf("disk%d.img", i)), 2<<30))
 	}
 
-	uuid, err := CreatePool(p.ctx, "linuxio-it", "raid1", "raid1", p.disks[:2], true, nil)
+	uuid, err := CreatePool(p.ctx, "linuxio-it", "raid1", "raid1", p.disks[:2], true, nil, nil)
 	p.must("create pool", err)
 	p.uuid = uuid
 	p.must("mount pool", MountPool(p.ctx, p.disks[0], p.mnt, []string{"noatime"}, false))
@@ -374,7 +374,7 @@ func (p *itPool) offline() {
 func (p *itPool) partitioned() {
 	part, err := PartitionDisk(p.ctx, p.disks[1])
 	p.must("partition", err)
-	_, err = CreatePool(p.ctx, "parted", "single", "dup", []string{part}, false, nil)
+	_, err = CreatePool(p.ctx, "parted", "single", "dup", []string{part}, false, nil, nil)
 	p.must("create on partition", err)
 	pools, err := FindOfflinePools(p.ctx, []string{part})
 	p.must("partitioned pool", err)
@@ -391,7 +391,7 @@ func (p *itPool) partitioned() {
 	if want := partitionPath(p.disks[1], 2); free != want {
 		p.t.Fatalf("added partition %s, want %s", free, want)
 	}
-	_, err = CreatePool(p.ctx, "freespace", "single", "dup", []string{free}, false, nil)
+	_, err = CreatePool(p.ctx, "freespace", "single", "dup", []string{free}, false, nil, nil)
 	p.must("create on free space", err)
 	pools, err = FindOfflinePools(p.ctx, []string{free})
 	p.must("free space pool", err)
@@ -477,7 +477,7 @@ func (d *itDisk) trims(part string) {
 	d.must("sync "+part, f.Sync())
 	d.must("close "+part, f.Close())
 	var pcts []float64
-	d.must("trim "+part, trim(d.ctx, []string{part}, func(pct float64) { pcts = append(pcts, pct) }))
+	d.must("trim "+part, trim(d.ctx, []string{part}, nil, func(pct float64) { pcts = append(pcts, pct) }))
 	f, err = os.Open(part)
 	d.must("open "+part, err)
 	defer f.Close()
@@ -522,7 +522,7 @@ func TestPartitionIntegration(t *testing.T) {
 
 	// 1. Initialize: an empty GPT and no partitions.
 	d.locked(func() {
-		d.must("initialize", InitializeDisk(d.ctx, d.dev))
+		d.must("initialize", InitializeDisk(d.ctx, d.dev, nil))
 		d.table()
 	})
 
@@ -599,7 +599,7 @@ func TestPartitionIntegration(t *testing.T) {
 	})
 	d.locked(func() {
 		d.busy("exclusive open of the disk with "+p2+" mounted", CheckNotBusy(d.dev))
-		d.busy("initialize with "+p2+" mounted", InitializeDisk(d.ctx, d.dev))
+		d.busy("initialize with "+p2+" mounted", InitializeDisk(d.ctx, d.dev, nil))
 		d.table(first, second)
 	})
 	d.must("unmount "+p2, unix.Unmount(d.mnt, 0))
@@ -616,7 +616,7 @@ func TestPartitionIntegration(t *testing.T) {
 		var node, renode unix.Stat_t
 		d.must("stat "+p1, unix.Stat(p1, &node))
 		before := d.gptBytes()
-		d.busy("initialize with "+p2+" open", InitializeDisk(d.ctx, d.dev))
+		d.busy("initialize with "+p2+" open", InitializeDisk(d.ctx, d.dev, nil))
 		for _, part := range []string{p1, p2} {
 			_, err = waitForNode(d.ctx, part)
 			d.must("node of "+part, err)
@@ -633,7 +633,7 @@ func TestPartitionIntegration(t *testing.T) {
 
 	// 9. With nothing open, Initialize empties the table.
 	d.locked(func() {
-		d.must("initialize", InitializeDisk(d.ctx, d.dev))
+		d.must("initialize", InitializeDisk(d.ctx, d.dev, nil))
 		d.table()
 	})
 }

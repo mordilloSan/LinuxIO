@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -103,7 +104,7 @@ func TestCreatePoolFormatsAndRegisters(t *testing.T) {
 		return nil
 	}
 
-	uuid, err := CreatePool(context.Background(), "tank", "raid1", "raid1", []string{"/dev/sdb", "/dev/sdc"}, true, nil)
+	uuid, err := CreatePool(context.Background(), "tank", "raid1", "raid1", []string{"/dev/sdb", "/dev/sdc"}, true, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,23 +120,74 @@ func TestCreatePoolFormatsAndRegisters(t *testing.T) {
 	}
 }
 
+// TestCreatePoolChecksEachDeviceRightBeforeWriting covers check, which the
+// bridge uses to read each device's member signature: it runs right before
+// the device's trim, and for every device again right before mkfs.btrfs,
+// which starts only after the last trim. A refusal stops the create there.
+func TestCreatePoolChecksEachDeviceRightBeforeWriting(t *testing.T) {
+	if _, err := findCommand("mkfs.btrfs"); err != nil {
+		t.Skip("mkfs.btrfs not installed")
+	}
+	devices := []string{"/dev/sdb", "/dev/sdc"}
+	var steps []string
+	oldSize, oldDiscard := blockDeviceSize, discardDevice
+	t.Cleanup(func() { blockDeviceSize, discardDevice = oldSize, oldDiscard })
+	blockDeviceSize = func(string) (uint64, error) { return 1 << 30, nil }
+	discardDevice = func(_ context.Context, device string, size uint64, advance func(uint64)) error {
+		steps = append(steps, "discard "+device)
+		advance(size)
+		return nil
+	}
+	refusal := errors.New("member")
+	checkRefusing := func(refuse int) func(string) error {
+		return func(device string) error {
+			steps = append(steps, "check "+device)
+			if refuse--; refuse == 0 {
+				return refusal
+			}
+			return nil
+		}
+	}
+	calls := stubExec(t)
+	stubControlIoctl(t, nil)
+
+	if _, err := CreatePool(context.Background(), "tank", "raid1", "raid1", devices, true, checkRefusing(-1), nil); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"check /dev/sdb", "discard /dev/sdb", "check /dev/sdc", "discard /dev/sdc", "check /dev/sdb", "check /dev/sdc"}
+	if !slices.Equal(steps, want) || len(*calls) != 1 {
+		t.Fatalf("steps = %q, mkfs runs %d; want %q, then mkfs", steps, len(*calls), want)
+	}
+
+	// Refused before the second trim, then before mkfs.
+	for refuse, done := range map[int]int{2: 3, 3: 5} {
+		steps, *calls = nil, nil
+		if _, err := CreatePool(context.Background(), "tank", "raid1", "raid1", devices, true, checkRefusing(refuse), nil); !errors.Is(err, refusal) {
+			t.Fatalf("refused at check %d: err = %v", refuse, err)
+		}
+		if !slices.Equal(steps, want[:done]) || len(*calls) != 0 {
+			t.Fatalf("refused at check %d: steps = %q, mkfs runs %d", refuse, steps, len(*calls))
+		}
+	}
+}
+
 func TestCreatePoolRefusesBeforeFormatting(t *testing.T) {
 	calls := stubExec(t)
 	cases := map[string]func() error{
 		"too few devices": func() error {
-			_, err := CreatePool(context.Background(), "tank", "raid1", "raid1", []string{"/dev/sdb"}, false, nil)
+			_, err := CreatePool(context.Background(), "tank", "raid1", "raid1", []string{"/dev/sdb"}, false, nil, nil)
 			return err
 		},
 		"raid5": func() error {
-			_, err := CreatePool(context.Background(), "tank", "raid5", "raid1", []string{"/dev/sdb", "/dev/sdc", "/dev/sdd"}, false, nil)
+			_, err := CreatePool(context.Background(), "tank", "raid5", "raid1", []string{"/dev/sdb", "/dev/sdc", "/dev/sdd"}, false, nil, nil)
 			return err
 		},
 		"bad label": func() error {
-			_, err := CreatePool(context.Background(), "a/b", "single", "dup", []string{"/dev/sdb"}, false, nil)
+			_, err := CreatePool(context.Background(), "a/b", "single", "dup", []string{"/dev/sdb"}, false, nil, nil)
 			return err
 		},
 		"no devices": func() error {
-			_, err := CreatePool(context.Background(), "tank", "single", "dup", nil, false, nil)
+			_, err := CreatePool(context.Background(), "tank", "single", "dup", nil, false, nil, nil)
 			return err
 		},
 	}

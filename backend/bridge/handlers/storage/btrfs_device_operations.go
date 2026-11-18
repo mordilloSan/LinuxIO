@@ -77,7 +77,10 @@ func ensureBtrfsDeviceFree(ctx context.Context, device string, force bool) error
 	if err != nil {
 		return err
 	}
-	return checkBtrfsDeviceFree(inv, device, force)
+	if err = checkBtrfsDeviceFree(inv, device, force); err != nil {
+		return err
+	}
+	return signatureFree(device)
 }
 
 // checkBtrfsDeviceFree refuses what deviceInUse refuses and a device with

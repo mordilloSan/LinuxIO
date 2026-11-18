@@ -35,6 +35,9 @@ func CreateBtrfsPool(ctx context.Context, req apischema.BtrfsPoolCreateRequest, 
 	if err = checkPoolCreate(req, inv, getFstabEntries()); err != nil {
 		return btrfs.BtrfsFilesystem{}, err
 	}
+	if err = signatureFree(req.Devices...); err != nil {
+		return btrfs.BtrfsFilesystem{}, err
+	}
 	// Mounting over files would hide them.
 	if entries, readErr := os.ReadDir(req.Mountpoint); readErr == nil && len(entries) > 0 {
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("mountpoint %s is not empty", req.Mountpoint)
@@ -48,7 +51,7 @@ func CreateBtrfsPool(ctx context.Context, req apischema.BtrfsPoolCreateRequest, 
 	if req.Partition {
 		made.members = make([]string, 0, len(req.Devices))
 		for _, d := range req.Devices {
-			part, unlock, partErr := partitionLocked(ctx, d, partitionDisk)
+			part, unlock, partErr := partitionLocked(ctx, d, partitionFreeDisk)
 			if partErr != nil {
 				return btrfs.BtrfsFilesystem{}, fmt.Errorf("partition %s for btrfs pool: %w", d, partErr)
 			}
@@ -62,7 +65,7 @@ func CreateBtrfsPool(ctx context.Context, req apischema.BtrfsPoolCreateRequest, 
 		}
 		made.record(d, part, unlock)
 	}
-	made.uuid, err = createBtrfsPool(ctx, req.Label, req.DataProfile, req.MetadataProfile, made.members, req.Force, formatProgress(report))
+	made.uuid, err = createBtrfsPool(ctx, req.Label, req.DataProfile, req.MetadataProfile, made.members, req.Force, signatureFreeDevice, formatProgress(report))
 	if err != nil {
 		return btrfs.BtrfsFilesystem{}, fmt.Errorf("create btrfs pool %q: %w", req.Label, err)
 	}
@@ -157,6 +160,20 @@ func (u *poolCreateUndo) undo(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
+// partitionFreeDisk partitions disk for a pool once its own signature, read
+// under the disk lock the caller holds, shows no member: the disk may have
+// become one while the request waited for the lock.
+func partitionFreeDisk(ctx context.Context, disk string) (string, error) {
+	if err := signatureFree(disk); err != nil {
+		return "", err
+	}
+	return partitionDisk(ctx, disk)
+}
+
+// signatureFreeDevice is signatureFree for one device, which CreatePool
+// runs right before each device's trim and before mkfs.btrfs.
+func signatureFreeDevice(device string) error { return signatureFree(device) }
+
 // partitionLocked locks disk against udev, then partitions it. The caller
 // holds the lock until the pool is made, so the disk's partition nodes do
 // not flap under mkfs.btrfs.
@@ -249,12 +266,20 @@ func DestroyBtrfsPool(ctx context.Context, uuid string) error {
 		return fmt.Errorf("destroy btrfs pool %s: %w", uuid, err)
 	}
 	slog.Debug("destroying btrfs pool", "uuid", uuid, "devices", devices)
+	// A device still mounted in another mount namespace, whose mounts this
+	// unmount does not reach, or claimed since, is refused before fstab
+	// changes; the wipe opens each exclusively again.
+	for _, d := range devices {
+		if err = checkNotBusy(d); err != nil {
+			return conflictIfBusy(fmt.Errorf("destroy btrfs pool %s: its mounts here are unmounted and nothing was erased: %w", uuid, err))
+		}
+	}
 	if fstabErr := removePoolFstabEntries(uuid, mounts); fstabErr != nil {
 		return fstabErr
 	}
 	for _, d := range devices {
 		if err := btrfs.WipeDevice(d); err != nil {
-			return fmt.Errorf("wipe %s of btrfs pool %s: %w", d, uuid, err)
+			return conflictIfBusy(fmt.Errorf("wipe %s of btrfs pool %s: %w", d, uuid, err))
 		}
 	}
 	slog.Info("destroyed btrfs pool", "uuid", uuid)
@@ -282,7 +307,7 @@ func removePoolFstabEntries(uuid string, mounts []btrfs.Mount) error {
 // poolDevicesForDestroy unmounts a mounted pool and returns its present
 // devices, or the devices of an offline pool.
 func poolDevicesForDestroy(ctx context.Context, uuid string) ([]string, error) {
-	filesystems, err := btrfs.ListFilesystems(ctx)
+	filesystems, err := btrfsFilesystems(ctx)
 	if err != nil {
 		return nil, err
 	}

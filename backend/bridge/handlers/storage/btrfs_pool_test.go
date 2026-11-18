@@ -132,6 +132,45 @@ var errStep = errors.New("step failed")
 type poolCreateEnv struct {
 	calls []string
 	fail  []string
+	// signature is what a device's own md or LVM2 signature shows when read;
+	// none by default.
+	signature func(device string) btrfs.MemberSignature
+}
+
+// step records a call and fails it when fail lists it.
+func (env *poolCreateEnv) step(format string, args ...any) error {
+	s := fmt.Sprintf(format, args...)
+	env.calls = append(env.calls, s)
+	if slices.Contains(env.fail, s) {
+		return errStep
+	}
+	return nil
+}
+
+// createPool stands in for btrfs.CreatePool, in its order: check runs right
+// before each device's trim, and for every device again right before mkfs,
+// so a refusal of a later device leaves the ones before it trimmed.
+func (env *poolCreateEnv) createPool(_ context.Context, _, _, _ string, devices []string, _ bool, check func(string) error, _ func(float64)) (string, error) {
+	checked := func(d string) error {
+		if check == nil {
+			return nil
+		}
+		return check(d)
+	}
+	for _, d := range devices {
+		if err := checked(d); err != nil {
+			return "", err
+		}
+		if err := env.step("trim %s", d); err != nil {
+			return "", err
+		}
+	}
+	for _, d := range devices {
+		if err := checked(d); err != nil {
+			return "", err
+		}
+	}
+	return "pool-uuid", env.step("mkfs %s", strings.Join(devices, " ")) // the UUID is known once mkfs ran
 }
 
 func stubPoolCreate(t *testing.T) *poolCreateEnv {
@@ -146,15 +185,11 @@ func stubPoolCreate(t *testing.T) *poolCreateEnv {
 	})
 	useTempFstab(t, "")
 
-	env := &poolCreateEnv{}
-	step := func(format string, args ...any) error {
-		s := fmt.Sprintf(format, args...)
-		env.calls = append(env.calls, s)
-		if slices.Contains(env.fail, s) {
-			return errStep
-		}
-		return nil
-	}
+	env := &poolCreateEnv{signature: func(string) btrfs.MemberSignature { return btrfs.MemberSignature{} }}
+	origSig := readMemberSignature
+	t.Cleanup(func() { readMemberSignature = origSig })
+	readMemberSignature = func(device string) (btrfs.MemberSignature, error) { return env.signature(device), nil }
+	step := env.step
 	storageBlockDevices = func(context.Context) ([]apischema.StorageBlockDevice, error) {
 		return []apischema.StorageBlockDevice{
 			{Path: "/dev/sdb", Type: "disk", FreeBytes: 1 << 30, Mountpoints: []string{}},
@@ -174,9 +209,7 @@ func stubPoolCreate(t *testing.T) *poolCreateEnv {
 		return disk + "1", nil
 	}
 	partitionDisk, addPartition = newPartition, newPartition
-	createBtrfsPool = func(_ context.Context, _, _, _ string, devices []string, _ bool, _ func(float64)) (string, error) {
-		return "pool-uuid", step("mkfs %s", strings.Join(devices, " ")) // the UUID is known once mkfs ran
-	}
+	createBtrfsPool = env.createPool
 	mountBtrfsPool = func(_ context.Context, device, _ string, _ []string, _ bool) error { return step("mount %s", device) }
 	addPoolFstab = func(source, _, _ string, _ []string) error { return step("fstab %s", source) }
 	findBtrfsFilesystem = func(_ context.Context, uuid string) (btrfs.BtrfsFilesystem, error) {
@@ -209,7 +242,7 @@ func canceledCreate(t *testing.T, devices, freeSpace []string) error {
 }
 
 func TestCreateBtrfsPoolUndoesOnFailure(t *testing.T) {
-	made := []string{"lock /dev/sdb", "partition /dev/sdb", "lock /dev/sdc", "partition /dev/sdc", "mkfs /dev/sdb1 /dev/sdc1"}
+	made := []string{"lock /dev/sdb", "partition /dev/sdb", "lock /dev/sdc", "partition /dev/sdc", "trim /dev/sdb1", "trim /dev/sdc1", "mkfs /dev/sdb1 /dev/sdc1"}
 	mounted := []string{"mount /dev/sdb1", "fstab UUID=pool-uuid"}
 	wipes := []string{"wipe /dev/sdb1 pool-uuid", "wipe /dev/sdc1 pool-uuid"}
 	unlocks := []string{"unlock /dev/sdc", "unlock /dev/sdb"}
@@ -220,11 +253,11 @@ func TestCreateBtrfsPoolUndoesOnFailure(t *testing.T) {
 		undoFail bool
 	}{
 		{"second partition", []string{"partition /dev/sdc"}, slices.Concat(made[:4], []string{"unlock /dev/sdc", "delete /dev/sdb 1", "unlock /dev/sdb"}), false},
-		{"mkfs", []string{made[4]}, slices.Concat(made, wipes, []string{"delete /dev/sdc 1", "delete /dev/sdb 1"}, unlocks), false},
+		{"mkfs", []string{made[6]}, slices.Concat(made, wipes, []string{"delete /dev/sdc 1", "delete /dev/sdb 1"}, unlocks), false},
 		{"mount", []string{mounted[0]}, slices.Concat(made, mounted[:1], wipes, []string{"delete /dev/sdc 1", "delete /dev/sdb 1"}, unlocks), false},
 		{"fstab", []string{mounted[1]}, slices.Concat(made, mounted, []string{"unmount"}, wipes, []string{"delete /dev/sdc 1", "delete /dev/sdb 1"}, unlocks), false},
 		// A partition whose superblocks are still there is kept: its offsets would be lost.
-		{"mkfs then a wipe", []string{made[4], wipes[1]}, slices.Concat(made, wipes, []string{"delete /dev/sdb 1"}, unlocks), true},
+		{"mkfs then a wipe", []string{made[6], wipes[1]}, slices.Concat(made, wipes, []string{"delete /dev/sdb 1"}, unlocks), true},
 		// A pool still mounted is left alone.
 		{"fstab then the unmount", []string{mounted[1], "unmount"}, slices.Concat(made, mounted, []string{"unmount"}, unlocks), true},
 	}
@@ -252,7 +285,7 @@ func TestCreateBtrfsPoolKeepsAPoolInFstab(t *testing.T) {
 	if err := canceledCreate(t, nil, []string{"/dev/sdb", "/dev/sdc"}); !errors.Is(err, errStep) || strings.Contains(err.Error(), "undo") {
 		t.Fatalf("err = %v, want the lookup's error alone", err)
 	}
-	want := []string{"lock /dev/sdb", "partition /dev/sdb", "lock /dev/sdc", "partition /dev/sdc", "mkfs /dev/sdb1 /dev/sdc1", "mount /dev/sdb1", "fstab UUID=pool-uuid", "find pool-uuid", "unlock /dev/sdc", "unlock /dev/sdb"}
+	want := []string{"lock /dev/sdb", "partition /dev/sdb", "lock /dev/sdc", "partition /dev/sdc", "trim /dev/sdb1", "trim /dev/sdc1", "mkfs /dev/sdb1 /dev/sdc1", "mount /dev/sdb1", "fstab UUID=pool-uuid", "find pool-uuid", "unlock /dev/sdc", "unlock /dev/sdb"}
 	if !slices.Equal(env.calls, want) {
 		t.Fatalf("calls:\n%q\nwant:\n%q", env.calls, want)
 	}
@@ -264,7 +297,7 @@ func TestCreateBtrfsPoolKeepsWholeDevicesOnFailure(t *testing.T) {
 	if err := canceledCreate(t, []string{"/dev/sdb", "/dev/sdc"}, nil); !errors.Is(err, errStep) {
 		t.Fatalf("err = %v, want the step's error", err)
 	}
-	want := []string{"mkfs /dev/sdb /dev/sdc", "wipe /dev/sdb pool-uuid", "wipe /dev/sdc pool-uuid"}
+	want := []string{"trim /dev/sdb", "trim /dev/sdc", "mkfs /dev/sdb /dev/sdc", "wipe /dev/sdb pool-uuid", "wipe /dev/sdc pool-uuid"}
 	if !slices.Equal(env.calls, want) {
 		t.Fatalf("calls:\n%q\nwant:\n%q", env.calls, want)
 	}
@@ -378,4 +411,70 @@ func TestRemovePoolFstabEntries(t *testing.T) {
 	if len(got) != 2 || got["/mnt/d"].source != "UUID=other" || got["/mnt/e"].fstype != "ext4" {
 		t.Fatalf("remaining entries = %v", got)
 	}
+}
+
+// TestCreateBtrfsPoolReadsSignaturesRightBeforeWriting covers a disk that
+// became an md member after the request's first read: under the disk lock,
+// right before it is partitioned, and right before the trim or mkfs of a
+// whole device, its own signature is read again and refuses it.
+func TestCreateBtrfsPoolReadsSignaturesRightBeforeWriting(t *testing.T) {
+	md := btrfs.MemberSignature{Device: "/dev/sdc", Kind: "md", UUID: "a9"}
+	req := func(partition bool) apischema.BtrfsPoolCreateRequest {
+		return apischema.BtrfsPoolCreateRequest{
+			Label: "tank", Mountpoint: filepath.Join(t.TempDir(), "tank"), DataProfile: "raid1", MetadataProfile: "raid1",
+			Devices: []string{"/dev/sdb", "/dev/sdc"}, Partition: partition,
+		}
+	}
+	refused := func(t *testing.T, env *poolCreateEnv, err error, want []string) {
+		t.Helper()
+		if !errors.Is(err, bridgeipc.ErrConflict) || !strings.Contains(err.Error(), "/dev/sdc: Member of md array a9") || !slices.Equal(env.calls, want) {
+			t.Fatalf("err = %v, calls = %q; want a conflict naming /dev/sdc and %q", err, env.calls, want)
+		}
+	}
+
+	t.Run("while waiting for the lock to partition it", func(t *testing.T) {
+		env := stubPoolCreate(t)
+		lock := lockDisk
+		locked := false
+		lockDisk = func(ctx context.Context, disk string) (func(), error) {
+			locked = locked || disk == "/dev/sdc"
+			return lock(ctx, disk)
+		}
+		env.signature = func(device string) btrfs.MemberSignature {
+			if device == "/dev/sdc" && locked {
+				return md
+			}
+			return btrfs.MemberSignature{}
+		}
+		_, err := CreateBtrfsPool(context.Background(), req(true), func(string, float64) {})
+		refused(t, env, err, []string{"lock /dev/sdb", "partition /dev/sdb", "lock /dev/sdc", "unlock /dev/sdc", "delete /dev/sdb 1", "unlock /dev/sdb"})
+	})
+	t.Run("before the trim of a later whole device", func(t *testing.T) {
+		env := stubPoolCreate(t)
+		reads := 0
+		env.signature = func(device string) btrfs.MemberSignature {
+			if device != "/dev/sdc" {
+				return btrfs.MemberSignature{}
+			}
+			if reads++; reads > 1 {
+				return md
+			}
+			return btrfs.MemberSignature{}
+		}
+		_, err := CreateBtrfsPool(context.Background(), req(false), func(string, float64) {})
+		// /dev/sdb stays trimmed: a discard cannot be undone.
+		refused(t, env, err, []string{"trim /dev/sdb"})
+	})
+	// A disk an outside tool partitioned while the request waited for its
+	// lock: PartitionDisk refuses it, which is a conflict.
+	t.Run("partitioned while waiting for the lock", func(t *testing.T) {
+		env := stubPoolCreate(t)
+		partitionDisk = func(_ context.Context, disk string) (string, error) {
+			return "", fmt.Errorf("%s: %w", disk, btrfs.ErrHasPartitions)
+		}
+		_, err := CreateBtrfsPool(context.Background(), req(true), func(string, float64) {})
+		if !errors.Is(err, bridgeipc.ErrConflict) || !errors.Is(err, btrfs.ErrHasPartitions) {
+			t.Fatalf("err = %v, calls = %q; want a conflict", err, env.calls)
+		}
+	})
 }

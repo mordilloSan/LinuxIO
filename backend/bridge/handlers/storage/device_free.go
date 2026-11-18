@@ -122,6 +122,24 @@ func deviceInUse(dev apischema.StorageBlockDevice, fss []btrfs.BtrfsFilesystem, 
 	return nil
 }
 
+// signatureFree refuses each of devices whose own md or LVM2 signature
+// makes it a member, which the inventory misses while udev has not probed
+// it. The read opens the device exclusively, so a device mounted or claimed
+// since the inventory is refused too. For callers whose rules never erase a
+// member: md add and replace, and a btrfs pool's devices.
+func signatureFree(devices ...string) error {
+	for _, device := range devices {
+		sig, err := readSignature(device)
+		if err != nil {
+			return err
+		}
+		if sig.Kind != "" {
+			return memberConflict(device, apischema.StorageMember{Kind: sig.Kind, UUID: sig.UUID})
+		}
+	}
+	return nil
+}
+
 // wholeDeviceFree finds path for a caller that writes over the whole device
 // (an md member, a btrfs device): not in use, and with no partitions or
 // holders, which writing to it would destroy whatever they are used for.

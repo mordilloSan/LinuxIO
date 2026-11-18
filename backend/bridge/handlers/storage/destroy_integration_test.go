@@ -40,7 +40,7 @@ func TestBtrfsDestroyIntegration(t *testing.T) {
 		}
 	}
 
-	uuid, err := btrfs.CreatePool(ctx, "linuxio-destroy-it", "single", "dup", []string{disk}, true, nil)
+	uuid, err := btrfs.CreatePool(ctx, "linuxio-destroy-it", "single", "dup", []string{disk}, true, nil, nil)
 	must("create pool", err)
 	top := filepath.Join(dir, "top")
 	mountMember(t, top, disk)

@@ -49,6 +49,10 @@ var tableMu sync.Mutex
 // kernel gives to another range, after a table edit it has not re-read.
 var ErrStaleTable = errors.New("the kernel's partition table is out of date; re-read it first")
 
+// ErrHasPartitions is PartitionDisk refusing a disk the kernel lists
+// partitions for, whose table it would replace.
+var ErrHasPartitions = errors.New("the disk has partitions")
+
 // linuxFilesystemType is the GPT type GUID for Linux filesystem data.
 var linuxFilesystemType = mixedGUID("0FC63DAF-8483-4772-8E79-3D69D8477DE4")
 
@@ -310,14 +314,25 @@ func sysNumber(path string) (uint64, error) {
 // claimed by a holder such as LVM, md or dm-crypt, all of which make the
 // kernel refuse to open it exclusively.
 func CheckNotBusy(device string) error {
-	f, err := os.OpenFile(device, os.O_RDONLY|os.O_EXCL, 0)
-	if errors.Is(err, unix.EBUSY) {
-		return fmt.Errorf("%s is in use: %w", device, unix.EBUSY)
-	}
+	f, err := openExclusive(device, os.O_RDONLY)
 	if err != nil {
 		return err
 	}
 	return f.Close()
+}
+
+// openExclusive opens device with flag and O_EXCL, which the kernel refuses
+// with EBUSY while the device is mounted, an active swap or held (LVM, md,
+// dm-crypt), while one partition of a whole disk is, or while the disk of a
+// partition is (bd_may_claim in block/bdev.c). Until the file is closed,
+// nothing else can claim the device, nor, for a whole disk, any partition
+// of it. A regular file, as in tests, is opened plainly.
+func openExclusive(device string, flag int) (*os.File, error) {
+	f, err := os.OpenFile(device, flag|os.O_EXCL, 0)
+	if errors.Is(err, unix.EBUSY) {
+		return nil, fmt.Errorf("%s is in use: %w", device, unix.EBUSY)
+	}
+	return f, err
 }
 
 // partitionPath names partition number of device: sdb3, nvme0n1p3.
@@ -363,12 +378,19 @@ func waitForNode(ctx context.Context, part string) (string, error) {
 // PartitionDisk replaces everything on device with a GPT holding one Linux
 // partition that leaves PartitionSlack free at the end, and returns the
 // partition once udev created its device node; if it never does, the disk
-// is left with an empty GPT. Callers check device is free.
+// is left with an empty GPT. Callers check device is free; a disk the
+// kernel lists partitions for, which may have been made while the caller
+// waited for the disk lock, is refused with ErrHasPartitions.
 func PartitionDisk(ctx context.Context, device string) (string, error) {
 	tableMu.Lock()
 	defer tableMu.Unlock()
 	if err := checkWholeDisk(device); err != nil {
 		return "", err
+	}
+	if parts, err := kernelPartitions(device); err != nil {
+		return "", err
+	} else if len(parts) > 0 {
+		return "", fmt.Errorf("%s: %w", device, ErrHasPartitions)
 	}
 	size, ss, err := diskGeometry(device)
 	if err != nil {
@@ -378,7 +400,7 @@ func PartitionDisk(ctx context.Context, device string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", device, err)
 	}
-	if err = writeTable(device, layout); err == nil {
+	if err = writeDiskTable(device, layout); err == nil {
 		err = rereadPartitions(device)
 	}
 	if err != nil {
@@ -391,7 +413,7 @@ func PartitionDisk(ctx context.Context, device string) (string, error) {
 			return "", fmt.Errorf("%w; dropping partition 1 also failed: %w", err, dropErr)
 		}
 		layout.last = 0 // no partition
-		if undoErr := writeTable(device, layout); undoErr != nil {
+		if undoErr := writeDiskTable(device, layout); undoErr != nil {
 			return "", fmt.Errorf("%w; removing its table entry also failed: %w", err, undoErr)
 		}
 		return "", err
@@ -408,11 +430,17 @@ func checkWholeDisk(device string) error {
 	return nil
 }
 
-// InitializeDisk replaces everything on device with an empty GPT. Every
-// partition is dropped from the kernel first, which it refuses while one is
-// in use; then the ones already dropped are restored and nothing is written.
-// They are restored too when writing the table fails.
-func InitializeDisk(ctx context.Context, device string) error {
+// InitializeDisk replaces everything on device with an empty GPT. It holds
+// the disk open exclusively from the start to the table write, which the
+// kernel refuses while the disk or a partition of it is mounted or held, and
+// during which nothing can claim either. Under that claim it reads the md and
+// LVM2 signatures of the disk and of every partition (see
+// readMemberSignature) and hands what it found to check, whose error refuses
+// the initialize with nothing changed. Then every partition is dropped from
+// the kernel, which it refuses while one is open; then the ones already
+// dropped are restored and nothing is written. They are restored too when
+// writing the table fails.
+func InitializeDisk(ctx context.Context, device string, check func(found []MemberSignature) error) error {
 	tableMu.Lock()
 	defer tableMu.Unlock()
 	if err := checkWholeDisk(device); err != nil {
@@ -425,13 +453,38 @@ func InitializeDisk(ctx context.Context, device string) error {
 	if size < 2*partitionAlign {
 		return fmt.Errorf("%s is too small to partition", device)
 	}
-	// A filesystem or holder on the whole disk has no partition to drop.
-	if err = CheckNotBusy(device); err != nil {
+	f, err := openExclusive(device, os.O_RDWR)
+	if err != nil {
 		return err
 	}
+	err = replaceTable(ctx, f, device, gptLayout{sectorSize: ss, sectors: size / ss, disk: randomGUID()}, check)
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return err
+	}
+	// After the close: from a descriptor that is not exclusive, the re-read
+	// claims the disk itself (disk_scan_partitions in block/genhd.c). Once
+	// the empty table is written, the kernel's empty view matches it even
+	// when the re-read fails.
+	return rereadPartitions(device)
+}
+
+// replaceTable is InitializeDisk's work under its exclusive handle f.
+func replaceTable(ctx context.Context, f *os.File, device string, layout gptLayout, check func(found []MemberSignature) error) error {
 	parts, err := kernelPartitions(device)
 	if err != nil {
 		return err
+	}
+	found, err := diskSignatures(f, device, parts)
+	if err != nil {
+		return err
+	}
+	if check != nil {
+		if err = check(found); err != nil {
+			return err
+		}
 	}
 	// restore gives the kernel back dropped, which the old table may still list.
 	restore := func(err error, dropped []kernelPartition) error {
@@ -447,37 +500,44 @@ func InitializeDisk(ctx context.Context, device string) error {
 			return restore(err, parts[:i])
 		}
 	}
-	if err = writeTable(device, gptLayout{sectorSize: ss, sectors: size / ss, disk: randomGUID()}); err != nil {
+	if err = writeTable(f, layout); err != nil {
 		return restore(err, parts)
 	}
-	// Once the empty table is written, the kernel's empty view matches it
-	// even when the re-read fails.
-	return rereadPartitions(device)
+	return nil
 }
 
-// writeTable wipes device's edges and writes layout's GPT; the caller then
-// has the kernel read it.
-func writeTable(device string, layout gptLayout) error {
-	head, tail := layout.build()
-	if err := wipeDeviceEdges(device); err != nil {
-		return err
-	}
-	f, err := os.OpenFile(device, os.O_RDWR, 0)
+// writeDiskTable writes layout's GPT to device through one exclusive open
+// (see writeTable); the caller then has the kernel read it.
+func writeDiskTable(device string, layout gptLayout) error {
+	f, err := openExclusive(device, os.O_RDWR)
 	if err != nil {
 		return err
 	}
-	_, err = f.WriteAt(head, 0)
+	err = writeTable(f, layout)
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	return err
+}
+
+// writeTable zeroes the edges of f, a whole disk the caller holds open
+// exclusively, and writes layout's GPT through the same handle, so nothing
+// can claim the disk between the two. A var so tests can make it fail.
+var writeTable = func(f *os.File, layout gptLayout) error {
+	head, tail := layout.build()
+	size := layout.sectors * layout.sectorSize
+	if err := zeroEdges(f, size); err != nil {
+		return err
+	}
+	_, err := f.WriteAt(head, 0)
 	if err == nil {
-		_, err = f.WriteAt(tail, int64(layout.sectors*layout.sectorSize)-int64(len(tail)))
+		_, err = f.WriteAt(tail, int64(size)-int64(len(tail)))
 	}
 	if err == nil {
 		err = f.Sync()
 	}
-	if closeErr := f.Close(); err == nil {
-		err = closeErr
-	}
 	if err != nil {
-		return fmt.Errorf("write partition table to %s: %w", device, err)
+		return fmt.Errorf("write partition table to %s: %w", f.Name(), err)
 	}
 	return nil
 }
@@ -674,6 +734,8 @@ func CreatePartition(ctx context.Context, device string, startBytes, sizeBytes u
 func newPartition(ctx context.Context, device string, place func(firstUsable, lastUsable uint64, used [][2]uint64, ss uint64) (first, last uint64, err error)) (string, error) {
 	tableMu.Lock()
 	defer tableMu.Unlock()
+	// Not exclusive: the kernel refuses that while any partition of the
+	// disk is claimed, and the other partitions may be in use.
 	f, err := os.OpenFile(device, os.O_RDWR, 0)
 	if err != nil {
 		return "", err
@@ -737,6 +799,8 @@ func newPartition(ctx context.Context, device string, place func(firstUsable, la
 func DeletePartition(ctx context.Context, device string, number int) error {
 	tableMu.Lock()
 	defer tableMu.Unlock()
+	// Not exclusive: the kernel refuses that while any partition of the
+	// disk is claimed, and the other partitions may be in use.
 	f, err := os.OpenFile(device, os.O_RDWR, 0)
 	if err != nil {
 		return err

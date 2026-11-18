@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"slices"
 	"time"
 
@@ -27,6 +28,7 @@ var (
 	initializeDisk      = btrfs.InitializeDisk
 	formatDevice        = btrfs.Format
 	checkNotBusy        = btrfs.CheckNotBusy
+	readMemberSignature = btrfs.ReadMemberSignature
 	mountDevice         = unix.Mount
 	lockDisk            = btrfs.LockDisk
 	partitionDisk       = btrfs.PartitionDisk
@@ -40,6 +42,22 @@ var (
 	addPoolFstab        = addToFstab
 	findBtrfsFilesystem = btrfs.FindFilesystem
 )
+
+// askUdevToProbe has udev probe device again, as `udevadm trigger` does, by
+// writing "change" to its uevent file in sysfs; a failure is logged. A var
+// so tests can stub it.
+var askUdevToProbe = func(device string) {
+	f, err := os.OpenFile(filepath.Join(sysClassBlockRoot, filepath.Base(device), "uevent"), os.O_WRONLY, 0)
+	if err == nil {
+		_, err = f.WriteString("change")
+		if closeErr := f.Close(); err == nil {
+			err = closeErr
+		}
+	}
+	if err != nil {
+		slog.Warn("udev probe request failed", "device", device, "error", err)
+	}
+}
 
 // formatProgress turns Format's trim progress into steps: the trim, with
 // its percent done, then the format. The trim takes minutes on a large SSD,
@@ -168,9 +186,10 @@ func lockDiskForCall(ctx context.Context, disk string) (func(), error) {
 
 // conflictIfBusy marks an error of the btrfs layer as a conflict when the
 // kernel found the device in use, Format found data udev had not reported,
-// or the kernel's partition table is older than the disk's.
+// the kernel's partition table is older than the disk's, or a disk to
+// partition whole has partitions.
 func conflictIfBusy(err error) error {
-	if errors.Is(err, unix.EBUSY) || errors.Is(err, btrfs.ErrDeviceHasData) || errors.Is(err, btrfs.ErrStaleTable) {
+	if errors.Is(err, unix.EBUSY) || errors.Is(err, btrfs.ErrDeviceHasData) || errors.Is(err, btrfs.ErrStaleTable) || errors.Is(err, btrfs.ErrHasPartitions) {
 		return fmt.Errorf("%w: %w", bridgeipc.ErrConflict, err)
 	}
 	return err
@@ -320,38 +339,29 @@ func CreatePartition(ctx context.Context, req apischema.PartitionCreateRequest, 
 // that is a member of an md array, an LVM volume group or another set also
 // needs the request to confirm that member.
 func FormatPartition(ctx context.Context, req apischema.PartitionFormatRequest, report func(step string, pct float64)) error {
-	inv, err := loadPartitionInventory(ctx)
+	part, disk, err := checkFormat(ctx, req, btrfs.MemberSignature{})
 	if err != nil {
-		return err
-	}
-	part, disk, err := inv.writablePartition(req.Device)
-	if err != nil {
-		return err
-	}
-	if err = btrfs.ValidateFormat(req.FSType, req.Label); err != nil {
-		return fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
-	}
-	if err = checkFormatSize(req.FSType, part.SizeBytes); err != nil {
-		return err
-	}
-	if err = deviceInUse(part, inv.fss, inv.offline, false, false); err != nil {
-		return err
-	}
-	if part.FSType != "" && !req.Overwrite {
-		return fmt.Errorf("%w: %s has a %s signature; overwrite it to format", bridgeipc.ErrConflict, part.Path, part.FSType)
-	}
-	if _, err = confirmedMembers([]apischema.StorageBlockDevice{part}, req.ConfirmMembers, "erasing it to format "+part.Path); err != nil {
 		return err
 	}
 	unlock, err := lockDisk(ctx, disk.Path)
 	if err != nil {
 		return err
 	}
-	defer unlock()
-	// After the lock, which can wait out another format: the partition may
-	// have been mounted or claimed meanwhile.
-	if err = checkNotBusy(part.Path); err != nil {
-		return conflictIfBusy(err)
+	var reprobe string
+	defer func() { unlockThenProbe(unlock, reprobe) }()
+	// Again under the lock, which can wait out another format and keeps
+	// udev from probing the disk meanwhile: the partition may have been
+	// mounted, claimed or made a member since, with a signature udev has not
+	// reported. The read opens it exclusively, so it is the busy check too.
+	sig, err := readSignature(part.Path)
+	if err != nil {
+		return err
+	}
+	if part, _, err = checkFormat(ctx, req, sig); err != nil {
+		if sig.Kind != "" {
+			reprobe = sig.Device
+		}
+		return err
 	}
 	uuid, err := formatDevice(ctx, part.Path, req.FSType, req.Label, req.Overwrite, formatProgress(report))
 	if err != nil {
@@ -361,37 +371,108 @@ func FormatPartition(ctx context.Context, req apischema.PartitionFormatRequest, 
 	return nil
 }
 
+// checkFormat checks a format request against a fresh inventory, with the
+// partition's membership as sig, its own signature, shows it (see
+// withSignatures), and returns the partition and its disk.
+func checkFormat(ctx context.Context, req apischema.PartitionFormatRequest, sig btrfs.MemberSignature) (part, disk apischema.StorageBlockDevice, err error) {
+	inv, err := loadPartitionInventory(ctx)
+	if err != nil {
+		return part, disk, err
+	}
+	if part, disk, err = inv.writablePartition(req.Device); err != nil {
+		return part, disk, err
+	}
+	if err = btrfs.ValidateFormat(req.FSType, req.Label); err != nil {
+		return part, disk, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
+	}
+	if err = checkFormatSize(req.FSType, part.SizeBytes); err != nil {
+		return part, disk, err
+	}
+	if err = deviceInUse(part, inv.fss, inv.offline, false, false); err != nil {
+		return part, disk, err
+	}
+	if part.FSType != "" && !req.Overwrite {
+		return part, disk, fmt.Errorf("%w: %s has a %s signature; overwrite it to format", bridgeipc.ErrConflict, part.Path, part.FSType)
+	}
+	_, err = confirmSignatures([]apischema.StorageBlockDevice{part}, []btrfs.MemberSignature{sig}, req.ConfirmMembers, "erasing it to format "+part.Path)
+	return part, disk, err
+}
+
 // DeletePartition removes an unused partition from its disk's GPT, leaving
 // its data in place. A member of an md array, an LVM volume group or another
 // set is deleted only when the request confirms it.
 func DeletePartition(ctx context.Context, req apischema.PartitionDeleteRequest) (apischema.SuccessResponse, error) {
-	inv, err := loadPartitionInventory(ctx)
+	part, disk, err := checkDelete(ctx, req, btrfs.MemberSignature{})
 	if err != nil {
-		return apischema.SuccessResponse{}, err
-	}
-	part, disk, err := inv.writablePartition(req.Device)
-	if err != nil {
-		return apischema.SuccessResponse{}, err
-	}
-	if disk.PTType != "gpt" {
-		return apischema.SuccessResponse{}, fmt.Errorf("%w: %s is not on a GPT disk; only GPT partitions can be deleted", bridgeipc.ErrInvalidArgs, part.Path)
-	}
-	if err = deviceInUse(part, inv.fss, inv.offline, false, false); err != nil {
-		return apischema.SuccessResponse{}, err
-	}
-	if _, err = confirmedMembers([]apischema.StorageBlockDevice{part}, req.ConfirmMembers, "deleting it"); err != nil {
 		return apischema.SuccessResponse{}, err
 	}
 	unlock, err := lockDiskForCall(ctx, disk.Path)
 	if err != nil {
 		return apischema.SuccessResponse{}, err
 	}
-	defer unlock()
+	var reprobe string
+	defer func() { unlockThenProbe(unlock, reprobe) }()
+	// Again under the lock, with the partition's own signature (see
+	// FormatPartition).
+	sig, err := readSignature(part.Path)
+	if err != nil {
+		return apischema.SuccessResponse{}, err
+	}
+	if part, _, err = checkDelete(ctx, req, sig); err != nil {
+		if sig.Kind != "" {
+			reprobe = sig.Device
+		}
+		return apischema.SuccessResponse{}, err
+	}
 	if err = deletePartition(ctx, disk.Path, part.PartNumber); err != nil {
 		return apischema.SuccessResponse{}, conflictIfBusy(fmt.Errorf("delete %s: %w", part.Path, err))
 	}
 	slog.Info("deleted partition", "device", part.Path, "disk", disk.Path, "number", part.PartNumber)
 	return apischema.SuccessResponse{Success: true}, nil
+}
+
+// checkDelete checks a delete request against a fresh inventory, with the
+// partition's membership as sig, its own signature, shows it (see
+// withSignatures), and returns the partition and its disk.
+func checkDelete(ctx context.Context, req apischema.PartitionDeleteRequest, sig btrfs.MemberSignature) (part, disk apischema.StorageBlockDevice, err error) {
+	inv, err := loadPartitionInventory(ctx)
+	if err != nil {
+		return part, disk, err
+	}
+	if part, disk, err = inv.writablePartition(req.Device); err != nil {
+		return part, disk, err
+	}
+	if disk.PTType != "gpt" {
+		return part, disk, fmt.Errorf("%w: %s is not on a GPT disk; only GPT partitions can be deleted", bridgeipc.ErrInvalidArgs, part.Path)
+	}
+	if err = deviceInUse(part, inv.fss, inv.offline, false, false); err != nil {
+		return part, disk, err
+	}
+	_, err = confirmSignatures([]apischema.StorageBlockDevice{part}, []btrfs.MemberSignature{sig}, req.ConfirmMembers, "deleting it")
+	return part, disk, err
+}
+
+// readSignature is readMemberSignature for a request: a device claimed
+// since the inventory is a conflict, one removed since is not found.
+func readSignature(device string) (btrfs.MemberSignature, error) {
+	sig, err := readMemberSignature(device)
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, unix.ENXIO) {
+		return sig, fmt.Errorf("%w: block device %s", bridgeipc.ErrNotFound, device)
+	}
+	return sig, conflictIfBusy(err)
+}
+
+// unlockThenProbe releases the disk lock, then, when device is set, asks
+// udev to probe it. Format and Delete set it when they were refused under
+// the lock while the device read found a member signature: the dialog
+// confirms only what udev reports, udev does not probe a disk while its
+// lock is held, and the read, read-only, makes it probe nothing. Initialize
+// needs none: closing its writable open of the disk makes udev probe it.
+func unlockThenProbe(unlock func(), device string) {
+	unlock()
+	if device != "" {
+		askUdevToProbe(device)
+	}
 }
 
 // notMountable are signatures with nothing to mount: swap, and containers for
@@ -470,21 +551,68 @@ func confirmedMembers(devs []apischema.StorageBlockDevice, confirmed []apischema
 	return members, nil
 }
 
-// checkInitialize refuses to initialize disk while it or a partition of it is
-// in use, or carries a member signature that confirmed does not list
-// exactly. It returns the members the initialize erases.
-func (inv partitionInventory) checkInitialize(disk string, confirmed []apischema.DiskMemberConfirmed) ([]apischema.DiskMemberConfirmed, error) {
-	var devs []apischema.StorageBlockDevice
-	for _, d := range inv.devices {
-		if d.Path != disk && (d.Type != "part" || !slices.Contains(d.Parents, disk)) {
+// confirmSignatures is confirmedMembers for devs with the memberships found
+// on the devices themselves (see withSignatures).
+func confirmSignatures(devs []apischema.StorageBlockDevice, found []btrfs.MemberSignature, confirmed []apischema.DiskMemberConfirmed, what string) ([]apischema.DiskMemberConfirmed, error) {
+	devs, err := withSignatures(devs, found)
+	if err != nil {
+		return nil, err
+	}
+	return confirmedMembers(devs, confirmed, what)
+}
+
+// withSignatures returns devs with the md and LVM2 memberships found on the
+// devices themselves (btrfs.ReadMemberSignature), which udev may not have
+// reported: it does not probe a disk while the disk lock is held, nor before
+// it gets to a change. A membership found is added where udev reported none,
+// and replaces an md, LVM or btrfs membership udev reported whenever its
+// kind or UUID differs: libblkid reads md before LVM2 and both before any
+// filesystem, as the read does, so the read is what udev will report once it
+// probes, and a confirmation of the old one no longer holds. Only a
+// membership of another set (kind "other") stays with its own confirmation:
+// it is a container the read cannot see, such as a firmware RAID holding an
+// LVM2 label, which libblkid reports first. One udev reported that the read
+// does not find stays too, so it is still named and confirmed. A signature
+// on a device devs does not list is refused.
+func withSignatures(devs []apischema.StorageBlockDevice, found []btrfs.MemberSignature) ([]apischema.StorageBlockDevice, error) {
+	devs = slices.Clone(devs)
+	for _, s := range found {
+		if s.Kind == "" {
 			continue
 		}
-		if err := deviceInUse(d, inv.fss, inv.offline, false, false); err != nil {
-			return nil, err
+		i := slices.IndexFunc(devs, func(d apischema.StorageBlockDevice) bool { return d.Path == s.Device })
+		if i < 0 {
+			return nil, fmt.Errorf("%w: %s appeared after the disk was read; review the disk again", bridgeipc.ErrConflict, s.Device)
+		}
+		if m := memberOf(devs[i]); m == nil || m.Kind != "other" && (m.Kind != s.Kind || m.UUID != s.UUID) {
+			devs[i].Member = &apischema.StorageMember{Kind: s.Kind, UUID: s.UUID}
+		}
+	}
+	return devs, nil
+}
+
+// checkInitialize checks an initialize request against a fresh inventory:
+// the disk and every partition of it must be unused, and the members among
+// them exactly those confirmed. It returns the disk and those devices.
+func checkInitialize(ctx context.Context, req apischema.DiskInitializeRequest) (disk apischema.StorageBlockDevice, devs []apischema.StorageBlockDevice, err error) {
+	inv, err := loadPartitionInventory(ctx)
+	if err != nil {
+		return disk, nil, err
+	}
+	if disk, err = inv.writableDisk(req.Device); err != nil {
+		return disk, nil, err
+	}
+	for _, d := range inv.devices {
+		if d.Path != disk.Path && (d.Type != "part" || !slices.Contains(d.Parents, disk.Path)) {
+			continue
+		}
+		if err = deviceInUse(d, inv.fss, inv.offline, false, false); err != nil {
+			return disk, nil, err
 		}
 		devs = append(devs, d)
 	}
-	return confirmedMembers(devs, confirmed, "erasing it to initialize "+disk)
+	_, err = confirmedMembers(devs, req.ConfirmMembers, "erasing it to initialize "+disk.Path)
+	return disk, devs, err
 }
 
 // InitializeDisk replaces everything on a disk, which with every partition
@@ -493,15 +621,7 @@ func (inv partitionInventory) checkInitialize(disk string, confirmed []apischema
 // group inactive, is erased only when the request confirms exactly the
 // members found; a member of a btrfs pool is refused like any device in use.
 func InitializeDisk(ctx context.Context, req apischema.DiskInitializeRequest) (apischema.SuccessResponse, error) {
-	inv, err := loadPartitionInventory(ctx)
-	if err != nil {
-		return apischema.SuccessResponse{}, err
-	}
-	disk, err := inv.writableDisk(req.Device)
-	if err != nil {
-		return apischema.SuccessResponse{}, err
-	}
-	members, err := inv.checkInitialize(disk.Path, req.ConfirmMembers)
+	disk, _, err := checkInitialize(ctx, req)
 	if err != nil {
 		return apischema.SuccessResponse{}, err
 	}
@@ -510,7 +630,23 @@ func InitializeDisk(ctx context.Context, req apischema.DiskInitializeRequest) (a
 		return apischema.SuccessResponse{}, err
 	}
 	defer unlock()
-	if err = initializeDisk(ctx, disk.Path); err != nil {
+	// Again under the lock, then against the signatures btrfs.InitializeDisk
+	// reads under its exclusive claim on the disk before it changes anything.
+	disk, devs, err := checkInitialize(ctx, req)
+	if err != nil {
+		return apischema.SuccessResponse{}, err
+	}
+	what := "erasing it to initialize " + disk.Path
+	var members []apischema.DiskMemberConfirmed
+	err = initializeDisk(ctx, disk.Path, func(found []btrfs.MemberSignature) (err error) {
+		members, err = confirmSignatures(devs, found, req.ConfirmMembers, what)
+		return err
+	})
+	if errors.Is(err, os.ErrNotExist) {
+		// A partition node went while the disk was read: it changed under us.
+		return apischema.SuccessResponse{}, fmt.Errorf("%w: initialize %s, which changed while it was read; review the disk again: %w", bridgeipc.ErrConflict, disk.Path, err)
+	}
+	if err != nil {
 		return apischema.SuccessResponse{}, conflictIfBusy(fmt.Errorf("initialize %s: %w", disk.Path, err))
 	}
 	slog.Info("initialized disk", "device", disk.Path, "erasedMembers", len(members))

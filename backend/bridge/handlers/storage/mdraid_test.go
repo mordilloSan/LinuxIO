@@ -57,6 +57,7 @@ func stubMdadm(t *testing.T, devices []apischema.StorageBlockDevice) *[][]string
 	t.Cleanup(func() {
 		mdadmCommand, storageBlockDevices, btrfsFilesystems, offlinePools = origCmd, origDevs, origFss, origOffline
 	})
+	stubSignatures(t, nil)
 	mdadmCommand = func(_ context.Context, args ...string) error {
 		calls = append(calls, args)
 		return nil
