@@ -944,6 +944,8 @@ Covered at one level only:
 - With a job host that cannot start, the history page shows an error after
   10 s rather than an empty list.
 - A scheduled run shorter than one poll (2 s) may never show in the bell.
+- A scheduled run's output is saved from the journal when the run ends, so
+  the lines journald's retention removed while it ran are not in it.
 - A scheduled run's cancel mark is one flag per run, so two requests can cross:
   a stop that reached systemd but whose reply was lost takes its mark back, and
   the run reads `failed`. A run neither hook could record goes unseen; one

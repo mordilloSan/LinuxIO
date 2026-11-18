@@ -102,9 +102,6 @@ after a change that issues ioctls).
     `CheckNotProtected` on the result. Large: 40 `fsroot.Open` calls in 18
     files, and a mistake here lets a path escape. Decided 2026-11-17: fixed
     as a change of its own, after the rest of this list.
-- [ ] **Scheduled scripts.** Journal retention over several days was never
-  checked on a host. See
-  [Scheduled Scripts](../scheduled-scripts.md#testing).
 
 ## Later, no plan yet
 

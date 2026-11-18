@@ -109,7 +109,13 @@ Logs are the journal. The page links to the Logs page for the unit, and for the
 latest run by its invocation ID, and follows a running script's output live.
 How far back the journal goes depends on the host: a reboot without persistent
 journal storage, rotation or a vacuum removes old lines. LinuxIO shows what is
-there and never reads a missing log as a success.
+there and never reads a missing log as a success. For a run the journal no
+longer holds, the Logs page shows its scope (`<unit> · invocation <ID> — logs
+are limited to the host’s journal retention.`, or `· all runs` for the unit),
+"0 shown" and an empty table that reads "No logs match the current filters.",
+and the open schedule's "Output of the latest run" reads "No logs available.".
+The run's record and the output it saved, under Past runs, are unchanged; the
+state beside them is systemd's.
 
 Each run also gets a record, a saved copy of its output and, when it fails or
 is interrupted, an alert. That is done by two hooks on the unit, not by this
@@ -147,8 +153,22 @@ starts as daily at 03:00 UTC.
     control plane (`linuxio restart`) and the session's bridge are restarted
     while a script runs; the run stays `running` with the same systemd
     invocation, ends `completed`, and its output has both lines.
-- Not covered by any test: journal retention over several days. It is in the
-  [backlog](./TODO/backlog.md#needs-a-real-machine-or-a-measurement).
+- `frontend/src/test/vm/jobs-journal.spec.ts` runs in the test VM and covers a
+  run whose journal lines are gone. Real retention takes days; the spec rotates
+  the journal and removes every archived file (`journalctl --rotate`, then
+  `journalctl --vacuum-time=1s`), and checks that `journalctl` then holds no
+  line of the run's invocation or of the unit. An enabled schedule runs once
+  and is vacuumed after it ended:
+  - The run's record still reads `completed`, and its saved output, under Past
+    runs, still holds both lines.
+  - Both links to the Logs page, for the unit and for the run, showed the
+    lines before the vacuum, and after it show what "Status and logs" above
+    says, with no error.
+
+  A second run is vacuumed while it runs: the page's live output, which had
+  shown its first line, shows the last one too, and the run ends `completed`.
+  Its saved output holds only the line written after the vacuum. The spec
+  deletes its schedule and the records of its runs.
 
 ## References
 
