@@ -249,8 +249,9 @@ only the rows in view are in the page however many items the Trash holds.
 The header's view button switches between the two, and it is the folder
 listing's own setting: the Trash opens in the view the folders show, a
 switch in the Trash carries over to the folders, and the card size, set
-with the slider beside the heading, is shared with them too. The items are
-one listbox of options, the heading and the slider outside it, and each
+with the slider beside the view button
+([File Browser Card View](./filebrowser-card-view.md)), is shared with them
+too. The items are one listbox of options, the heading outside it, and each
 option says where it stands in the whole Trash (`aria-posinset`,
 `aria-setsize`), so a screen reader hears the full count however few rows
 are in the page. A card shows the shown name, the original location

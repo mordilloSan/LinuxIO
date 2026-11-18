@@ -3,7 +3,9 @@ import { useState } from "react";
 
 import { linuxio } from "@/api";
 import { emptyCapabilityState } from "@/api/capabilities";
+import AppButton from "@/components/ui/AppButton";
 import { AuthContext, type AuthContextType } from "@/contexts/AuthContext";
+import { CARD_SIZE_DEFAULT } from "@/routes/_authenticated/filebrowser/-cardSize";
 import Breadcrumbs from "@/routes/_authenticated/filebrowser/-components/Breadcrumbs";
 import TrashPlace from "@/routes/_authenticated/filebrowser/-components/TrashPlace";
 import type { TrashJobs } from "@/routes/_authenticated/filebrowser/-hooks/useTrashJobs";
@@ -53,6 +55,25 @@ queryClient.setQueryData(linuxio.filebrowser.trash_list.queryKey, {
   ],
 });
 
+// Enough items to scroll the list, older than the seeded three.
+const fillTrash = () =>
+  queryClient.setQueryData(linuxio.filebrowser.trash_list.queryKey, {
+    entries: [
+      ...(queryClient.getQueryData<{ entries: unknown[] }>(
+        linuxio.filebrowser.trash_list.queryKey,
+      )?.entries ?? []),
+      ...Array.from({ length: 60 }, (_, index) => ({
+        confirmRestore: false,
+        deletedAt: `2025-06-01T00:00:${String(59 - index).padStart(2, "0")}Z`,
+        isDir: false,
+        name: `filler-${index}.txt`,
+        originalPath: `/home/alice/filler/filler-${index}.txt`,
+        path: `/home/alice/.local/share/Trash/files/filler-${index}.txt`,
+        size: 100 + index,
+      })),
+    ],
+  });
+
 // The trashed folder's size, which its properties read.
 queryClient.setQueryData(
   linuxio.filebrowser.trash_size({
@@ -66,6 +87,7 @@ function TrashFixture() {
   // The page keeps these in the URL and beside the folder listing.
   const [sort, setSort] = useState<TrashSort>(DEFAULT_TRASH_SORT);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [cardSize, setCardSize] = useState(CARD_SIZE_DEFAULT);
   const record = (line: string) =>
     setRequests((previous) => [...previous, line]);
   const jobs: TrashJobs = {
@@ -86,6 +108,9 @@ function TrashFixture() {
       }}
     >
       <h1>Trash place fixture</h1>
+      <div>
+        <AppButton onClick={fillTrash}>Fill the Trash</AppButton>
+      </div>
       <output data-testid="trash-jobs" style={{ whiteSpace: "pre-wrap" }}>
         {requests.length > 0 ? requests.join("\n") : "none"}
       </output>
@@ -103,8 +128,10 @@ function TrashFixture() {
               }}
             />
           }
+          cardSize={cardSize}
           folderPath="/home/alice"
           jobs={jobs}
+          onCardSizeChange={setCardSize}
           onLeave={() => record("leave")}
           onSortChange={setSort}
           onSwitchView={() =>

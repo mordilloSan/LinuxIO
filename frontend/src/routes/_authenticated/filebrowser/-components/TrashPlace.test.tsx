@@ -19,7 +19,8 @@ vi.mock("@tanstack/react-virtual", async () =>
   (await import("@/test/reactVirtualMock")).reactVirtualMock(),
 );
 
-vi.mock("@/hooks/useGridColumnCount", () => ({
+vi.mock("@/hooks/useGridColumnCount", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/hooks/useGridColumnCount")>()),
   useGridColumnCount: () => 2,
 }));
 
@@ -127,6 +128,9 @@ const onLeave = vi.fn();
 const onTrashItems = vi.fn();
 const onSortChange = vi.fn();
 const onSwitchView = vi.fn();
+const onCardSizeChange = vi.fn();
+// jsdom lays nothing out: the area the list fills is this wide.
+let areaWidth = 1200;
 
 // The page keeps the sort in the URL and the view where the folder listing
 // keeps it; here both are the harness's state.
@@ -139,11 +143,17 @@ const Place = ({
 }) => {
   const [sort, setSort] = useState(initialSort);
   const [viewMode, setViewMode] = useState(initialView);
+  const [cardSize, setCardSize] = useState(3);
   return (
     <TrashPlace
       breadcrumbs={<div>Trail</div>}
+      cardSize={cardSize}
       folderPath="/home/alice"
       jobs={jobs}
+      onCardSizeChange={(next) => {
+        onCardSizeChange(next);
+        setCardSize(next);
+      }}
       onLeave={onLeave}
       onSortChange={(next) => {
         onSortChange(next);
@@ -183,6 +193,11 @@ describe("TrashPlace", () => {
     mocks.error = null;
     mocks.sizeError = null;
     mocks.sized = [];
+    areaWidth = 1200;
+    const width = vi
+      .spyOn(HTMLElement.prototype, "clientWidth", "get")
+      .mockImplementation(() => areaWidth);
+    return () => width.mockRestore();
   });
 
   it("lists items under their shown names, newest deleted first", async () => {
@@ -330,6 +345,44 @@ describe("TrashPlace", () => {
     expect(
       await screen.findByRole("dialog", { name: "Properties" }),
     ).toHaveTextContent("/srv/media/photos");
+  });
+
+  it("puts the card-size slider beside the view button, in card view only", async () => {
+    const { user } = renderPlace(DEFAULT_TRASH_SORT, "card");
+    const list = await screen.findByRole("listbox", { name: "Trash" });
+
+    const slider = screen.getByRole("slider", { name: "Card size" });
+    expect(slider).toHaveValue("3");
+    expect(list).not.toContainElement(slider);
+    const actions = document.querySelector(".file-browser-header__actions");
+    expect(actions).toContainElement(slider);
+    expect(
+      slider.compareDocumentPosition(headerButton("Switch to list view")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    fireEvent.change(slider, { target: { value: "5" } });
+    expect(onCardSizeChange).toHaveBeenCalledWith(5);
+    expect(slider).toHaveValue("5");
+
+    await user.click(headerButton("Switch to list view"));
+    expect(screen.queryByRole("slider")).not.toBeInTheDocument();
+  });
+
+  it("hides the card-size slider where one card fills a row", async () => {
+    areaWidth = 379;
+    renderPlace(DEFAULT_TRASH_SORT, "card");
+    await screen.findByRole("listbox", { name: "Trash" });
+
+    expect(screen.queryByRole("slider")).not.toBeInTheDocument();
+  });
+
+  it("keeps the card-size slider in an empty Trash", async () => {
+    mocks.entries = [];
+    renderPlace(DEFAULT_TRASH_SORT, "card");
+    await screen.findByText("Trash is empty.");
+
+    expect(screen.getByRole("slider", { name: "Card size" })).toBeVisible();
   });
 
   it("switches between cards and the list as the folder listing does", async () => {

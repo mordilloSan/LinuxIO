@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type DragEvent,
+  type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
 
@@ -27,6 +28,8 @@ import type { ViewMode } from "../-types";
 import FileBrowserSearch from "./FileBrowserSearch";
 
 interface FileBrowserHeaderActionsProps {
+  /** The card view's size slider, placed before the view button. */
+  cardSizeSlider?: ReactNode;
   isMobile: boolean;
   onSearchCaseSensitiveChange: (value: boolean) => void;
   onSearchChange: (value: string) => void;
@@ -41,6 +44,7 @@ interface FileBrowserHeaderActionsProps {
 }
 
 const FileBrowserHeaderActions = memo(function FileBrowserHeaderActions({
+  cardSizeSlider,
   isMobile,
   onSearchCaseSensitiveChange,
   onSearchChange,
@@ -167,15 +171,19 @@ const FileBrowserHeaderActions = memo(function FileBrowserHeaderActions({
       </span>
     </>
   );
+  // A size step leaves the mobile menu open; the view button closes it.
   const viewAction = (onDone?: () => void) => (
-    <ViewModeToggle
-      alternateMode="list"
-      onViewModeChange={() => {
-        onDone?.();
-        onSwitchView();
-      }}
-      viewMode={viewMode}
-    />
+    <>
+      {cardSizeSlider}
+      <ViewModeToggle
+        alternateMode="list"
+        onViewModeChange={() => {
+          onDone?.();
+          onSwitchView();
+        }}
+        viewMode={viewMode}
+      />
+    </>
   );
 
   if (!isMobile) {

@@ -1,6 +1,8 @@
-import { fireEvent, screen, within } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
+import { use } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { CardIconSizeContext } from "../-cardSize";
 import type { FileItem } from "../-types";
 
 const virtualizerState = vi.hoisted(() => ({
@@ -56,7 +58,6 @@ vi.mock("./DirectoryRows", () => ({
 }));
 
 const {
-  cardMinWidth,
   createDirectoryLayout,
   default: VirtualDirectoryItems,
   getDirectoryRevealRowIndex,
@@ -74,6 +75,7 @@ const item = (index: number): FileItem => ({
 });
 
 const baseProps = {
+  cardSize: 3,
   containerRef: { current: null },
   cutPaths: new Set<string>(),
   folders: [],
@@ -145,7 +147,8 @@ describe("VirtualDirectoryItems virtualizer invalidation", () => {
     );
 
     expect(virtualizerState.options?.estimateSize(0)).toBe(40);
-    expect(virtualizerState.options?.estimateSize(1)).toBe(104);
+    // A 102px card at the default size and the 12px gap under its row.
+    expect(virtualizerState.options?.estimateSize(1)).toBe(114);
   });
 
   it("estimates list rows from their resting rendered geometry", () => {
@@ -182,7 +185,6 @@ describe("VirtualDirectoryItems virtualizer invalidation", () => {
 });
 
 describe("VirtualDirectoryItems card size", () => {
-  const storageKey = "linuxio.filebrowserCardSize";
   const cardProps = {
     ...baseProps,
     files: [item(0), item(1)],
@@ -190,84 +192,108 @@ describe("VirtualDirectoryItems card size", () => {
   };
 
   beforeEach(() => {
-    window.localStorage.clear();
     virtualizerState.items = [{ index: 0, key: "header" }];
     return () => {
       virtualizerState.items = [];
     };
   });
 
-  it("starts at the default width and offers the slider on the first header", () => {
-    render(<VirtualDirectoryItems {...cardProps} />);
-
-    expect(virtualizerState.gridOptions?.minItemWidth).toBe(260);
-    expect(screen.getByRole("slider", { name: "Card size" })).toHaveValue("3");
-  });
-
-  it("changes the narrowest card width and remembers the size", () => {
-    render(<VirtualDirectoryItems {...cardProps} />);
-
-    fireEvent.change(screen.getByRole("slider", { name: "Card size" }), {
-      target: { value: "7" },
-    });
-
-    expect(virtualizerState.gridOptions?.minItemWidth).toBe(cardMinWidth(7));
-    expect(cardMinWidth(7)).toBe(420);
-    expect(cardMinWidth(1)).toBe(180);
-    expect(window.localStorage.getItem(storageKey)).toBe("7");
-  });
-
-  it("starts from the remembered size and ignores one out of range", () => {
-    window.localStorage.setItem(storageKey, "5");
+  it("lays the cards out at the size it is given", () => {
     const view = render(<VirtualDirectoryItems {...cardProps} />);
-    expect(virtualizerState.gridOptions?.minItemWidth).toBe(cardMinWidth(5));
-    view.unmount();
-
-    window.localStorage.setItem(storageKey, "12");
-    render(<VirtualDirectoryItems {...cardProps} />);
     expect(virtualizerState.gridOptions?.minItemWidth).toBe(260);
+
+    view.rerender(<VirtualDirectoryItems {...cardProps} cardSize={7} />);
+    expect(virtualizerState.gridOptions?.minItemWidth).toBe(420);
+    // The 134px card of the largest size and the gap under its row.
+    expect(virtualizerState.options?.estimateSize(1)).toBe(146);
+
+    view.rerender(<VirtualDirectoryItems {...cardProps} cardSize={1} />);
+    expect(virtualizerState.gridOptions?.minItemWidth).toBe(180);
+    expect(virtualizerState.options?.estimateSize(1)).toBe(98);
   });
 
-  it("does not start a marquee from the slider", () => {
-    const onMarqueeMouseDown = vi.fn();
-    render(
-      <VirtualDirectoryItems
-        {...cardProps}
-        onMarqueeMouseDown={onMarqueeMouseDown}
-      />,
+  it("remeasures every row when the size changes, even in the same columns", () => {
+    const view = render(<VirtualDirectoryItems {...cardProps} cardSize={1} />);
+    virtualizerState.measure.mockClear();
+
+    // Both sizes give three columns here: only the cards' height changes.
+    view.rerender(<VirtualDirectoryItems {...cardProps} cardSize={2} />);
+
+    expect(virtualizerState.measure).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives the cards the icon size of the step", () => {
+    virtualizerState.items = [{ index: 0, key: "first-row" }];
+    const IconSize = () => (
+      <span data-testid="icon">{use(CardIconSizeContext)}</span>
     );
+    const renderList = (cardSize: number) => (
+      <VirtualItems
+        cardSize={cardSize}
+        containerRef={{ current: null }}
+        files={[item(0)]}
+        folders={[]}
+        isMarqueeSelecting={false}
+        listboxLabel="Trash"
+        onContainerMouseDown={vi.fn()}
+        onMarqueeMouseDown={vi.fn()}
+        renderItem={() => <IconSize />}
+        revealIndex={-1}
+        selectionBox={null}
+        viewMode="card"
+      />
+    );
+    const view = render(renderList(3));
+    expect(screen.getByTestId("icon")).toHaveTextContent("80");
 
-    fireEvent.mouseDown(screen.getByRole("slider", { name: "Card size" }));
-
-    expect(onMarqueeMouseDown).not.toHaveBeenCalled();
+    view.rerender(renderList(7));
+    expect(screen.getByTestId("icon")).toHaveTextContent("112");
   });
 
-  it("does not scroll to the focused item when the size changes the layout", () => {
-    render(
+  it("keeps the item the keyboard moved to in view through a size step", () => {
+    const files = [item(0), item(1), item(2), item(3), item(4)];
+    const view = render(
       <VirtualDirectoryItems
         {...cardProps}
-        files={[item(0), item(1), item(2), item(3), item(4)]}
+        cardSize={1}
+        files={files}
         revealIndex={4}
       />,
     );
     virtualizerState.instance?.scrollToIndex.mockClear();
 
-    fireEvent.change(screen.getByRole("slider", { name: "Card size" }), {
-      target: { value: "7" },
+    // The same three columns, taller rows: the item's row is shown again.
+    view.rerender(
+      <VirtualDirectoryItems
+        {...cardProps}
+        cardSize={2}
+        files={files}
+        revealIndex={4}
+      />,
+    );
+    expect(virtualizerState.instance?.scrollToIndex).toHaveBeenCalledWith(2, {
+      align: "auto",
     });
 
-    expect(virtualizerState.instance?.scrollToIndex).not.toHaveBeenCalled();
+    // Two columns now: the item is on another row.
+    virtualizerState.instance?.scrollToIndex.mockClear();
+    view.rerender(
+      <VirtualDirectoryItems
+        {...cardProps}
+        cardSize={7}
+        files={files}
+        revealIndex={4}
+      />,
+    );
+    expect(virtualizerState.instance?.scrollToIndex).toHaveBeenCalledWith(3, {
+      align: "auto",
+    });
   });
 
-  it("has no slider in list view or on a later header", () => {
-    const view = render(
-      <VirtualDirectoryItems {...cardProps} viewMode="list" />,
-    );
-    expect(screen.queryByRole("slider")).not.toBeInTheDocument();
-    view.unmount();
+  it("holds no slider of its own: the header holds it", () => {
+    render(<VirtualDirectoryItems {...cardProps} />);
 
-    virtualizerState.items = [{ index: 2, key: "files-header" }];
-    render(<VirtualDirectoryItems {...cardProps} folders={[item(9)]} />);
+    expect(screen.getByRole("heading", { name: "Files" })).not.toBe(null);
     expect(screen.queryByRole("slider")).not.toBeInTheDocument();
   });
 });
@@ -290,6 +316,7 @@ describe("VirtualItems as a listbox", () => {
   ) => {
     render(
       <VirtualItems
+        cardSize={3}
         containerRef={{ current: null }}
         files={[item(0), item(1), item(2), item(3)]}
         folders={[]}
@@ -308,7 +335,6 @@ describe("VirtualItems as a listbox", () => {
   };
 
   beforeEach(() => {
-    window.localStorage.clear();
     // The first row is in view; the list has no heading rows.
     virtualizerState.items = [{ index: 0, key: "first-row" }];
     return () => {
@@ -336,13 +362,13 @@ describe("VirtualItems as a listbox", () => {
     expect(screen.getByRole("heading", { name: "Items" })).not.toBe(null);
   });
 
-  it("keeps the heading and the card-size slider outside the listbox", () => {
+  it("keeps the heading outside the listbox", () => {
     listbox("card");
 
     const list = screen.getByRole("listbox", { name: "Trash" });
-    expect(within(list).queryByRole("slider")).not.toBeInTheDocument();
     expect(within(list).queryByRole("heading")).not.toBeInTheDocument();
-    expect(screen.getByRole("slider", { name: "Card size" })).not.toBe(null);
+    expect(screen.getByRole("heading", { name: "Items" })).not.toBe(null);
+    expect(screen.queryByRole("slider")).not.toBeInTheDocument();
     // Three cards a row at the default size: the first row holds three.
     expect(
       within(list)

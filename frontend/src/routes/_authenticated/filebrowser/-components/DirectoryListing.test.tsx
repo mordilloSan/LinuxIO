@@ -61,6 +61,7 @@ const renderListing = () => {
   const onRestoreItems = vi.fn();
   render(
     <DirectoryListing
+      cardSize={3}
       cutPaths={new Set()}
       isContextMenuOpen={false}
       onCancelRename={noop}

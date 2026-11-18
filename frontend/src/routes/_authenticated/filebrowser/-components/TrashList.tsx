@@ -172,6 +172,8 @@ const TrashRow = ({
 };
 
 interface TrashListProps {
+  /** The card view's size step, as the header's slider shows it. */
+  cardSize: number;
   entries: TrashEntry[];
   /** Marks the list while files dragged from a folder are over it. */
   isDropTarget?: boolean;
@@ -200,6 +202,7 @@ interface TrashListProps {
  * their properties. An item is dragged out as a restore, not as a move.
  */
 const TrashList = ({
+  cardSize,
   entries,
   isDropTarget = false,
   onDelete,
@@ -280,16 +283,9 @@ const TrashList = ({
           ?.getAttribute("data-file-path") ?? null)
       : null;
 
-  // A click on empty space clears the selection; a right click keeps it, and
-  // the card-size slider is not empty space.
+  // A click on empty space clears the selection; a right click keeps it.
   const handleContainerMouseDown = (event: MouseEvent) => {
     if (event.button === 2 || rowPath(event.target) !== null) return;
-    if (
-      event.target instanceof Element &&
-      event.target.closest("[data-listing-control]")
-    ) {
-      return;
-    }
     onSelectionChange(new Set());
     setFocus({ index: -1, source: "pointer" });
   };
@@ -416,6 +412,7 @@ const TrashList = ({
         }}
       >
         <VirtualItems
+          cardSize={cardSize}
           columnCountRef={columnCountRef}
           containerRef={containerRef}
           files={items}

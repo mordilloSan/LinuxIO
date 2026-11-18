@@ -51,6 +51,7 @@ const entry = (name: string): TrashEntry => ({
 const entries = [entry("a.txt"), entry("b.txt")];
 
 const props = {
+  cardSize: 3,
   entries,
   onDelete: vi.fn(),
   onDropped: vi.fn(),

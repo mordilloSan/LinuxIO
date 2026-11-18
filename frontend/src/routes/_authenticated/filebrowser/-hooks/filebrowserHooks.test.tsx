@@ -369,6 +369,42 @@ describe("useFileViewState", () => {
     expect(result.current.viewMode).toBe("card");
   });
 
+  it("keeps the card size and restores it on a fresh mount", () => {
+    const first = renderHook(() => useFileViewState(), {
+      wrapper: configWrapper(),
+    });
+    const initialActions = first.result.current.actions;
+
+    expect(first.result.current.cardSize).toBe(3);
+    act(() => first.result.current.actions.setCardSize(6));
+    expect(first.result.current.cardSize).toBe(6);
+    expect(first.result.current.actions).toBe(initialActions);
+    expect(window.localStorage.getItem("linuxio.filebrowserCardSize")).toBe(
+      "6",
+    );
+    first.unmount();
+
+    const { result } = renderHook(() => useFileViewState(), {
+      wrapper: configWrapper(),
+    });
+    expect(result.current.cardSize).toBe(6);
+  });
+
+  it("starts from a size saved before and ignores one out of range", () => {
+    window.localStorage.setItem("linuxio.filebrowserCardSize", "7");
+    const saved = renderHook(() => useFileViewState(), {
+      wrapper: configWrapper(),
+    });
+    expect(saved.result.current.cardSize).toBe(7);
+    saved.unmount();
+
+    window.localStorage.setItem("linuxio.filebrowserCardSize", "12");
+    const { result } = renderHook(() => useFileViewState(), {
+      wrapper: configWrapper(),
+    });
+    expect(result.current.cardSize).toBe(3);
+  });
+
   it("toggles the sort order when the active field is selected again", () => {
     const { result } = renderHook(() => useFileViewState(), {
       wrapper: configWrapper(),

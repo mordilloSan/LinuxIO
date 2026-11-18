@@ -52,12 +52,6 @@ after a change that issues ioctls).
 
 Do one of these only when something shows it is needed.
 
-- The file browser's card-size slider changes how wide a card may get, and so
-  how many fit in a row; the icon and the card's height stay. Scale those too
-  if a size step should look like one in a file manager. On a screen too
-  narrow for two cards at the smallest size (under about 380 px) the slider
-  changes nothing and is still shown. It sits on the first section header, so
-  it scrolls away with the list and an empty folder has none.
 - Name a swap unit exactly as systemd does for an unusual fstab label
   (`encode_devnode_name`) and for a path of 256 bytes or more, which systemd
   names with a hash. Both entries count as unmanaged today, so nothing is

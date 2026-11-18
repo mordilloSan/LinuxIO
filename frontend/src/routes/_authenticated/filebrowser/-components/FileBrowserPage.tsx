@@ -74,8 +74,9 @@ const TrashView = ({ jobs }: { jobs: TrashJobs }) => {
   const { deleteItems, trashItems } = useFileMutations({
     normalizedPath: folderPath,
   });
-  // Cards or the list, as the folder listing shows its items.
-  const { actions: viewActions, viewMode } = useFileViewState();
+  // Cards or the list, and the cards' size, as the folder listing shows its
+  // items.
+  const { actions: viewActions, cardSize, viewMode } = useFileViewState();
 
   const leave = () =>
     void navigate({
@@ -112,8 +113,10 @@ const TrashView = ({ jobs }: { jobs: TrashJobs }) => {
             }}
           />
         }
+        cardSize={cardSize}
         folderPath={folderPath}
         jobs={jobs}
+        onCardSizeChange={viewActions.setCardSize}
         onLeave={leave}
         onSortChange={changeSort}
         onSwitchView={viewActions.switchView}

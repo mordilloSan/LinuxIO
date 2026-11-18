@@ -6,6 +6,7 @@ import {
   writePersistedState,
 } from "@/utils/persistedState";
 
+import { CARD_SIZE_DEFAULT, isCardSize } from "../-cardSize";
 import type { SortField, SortOrder, ViewMode } from "../-types";
 
 const viewModes: ViewMode[] = ["card", "list"];
@@ -14,6 +15,9 @@ const viewModes: ViewMode[] = ["card", "list"];
 // localStorage rather than the config the other pages' `useViewMode` uses —
 // and its "list" mode isn't a `TableCardViewMode` anyway.
 const VIEW_MODE_STORAGE_KEY = "linuxio.filebrowserViewMode";
+// The card view's size step, set with the slider beside the view button; kept
+// the same way, and shared by the folders and the Trash.
+const CARD_SIZE_STORAGE_KEY = "linuxio.filebrowserCardSize";
 
 const isViewMode = (value: unknown): value is ViewMode =>
   viewModes.includes(value as ViewMode);
@@ -24,6 +28,7 @@ interface ContextMenuPosition {
 }
 
 interface ViewState {
+  cardSize: number;
   contextMenuPosition: ContextMenuPosition | null;
   searchCaseSensitive: boolean;
   searchQuery: string;
@@ -37,11 +42,13 @@ type ViewEvent =
   | { type: "clearSearch" }
   | { type: "closeContextMenu" }
   | { position: ContextMenuPosition; type: "openContextMenu" }
+  | { size: number; type: "setCardSize" }
   | { type: "setSearchCaseSensitive"; value: boolean }
   | { type: "setSearch"; value: string }
   | { type: "switchView" };
 
 const initialViewState: ViewState = {
+  cardSize: CARD_SIZE_DEFAULT,
   contextMenuPosition: null,
   searchCaseSensitive: false,
   searchQuery: "",
@@ -63,6 +70,8 @@ function viewReducer(state: ViewState, event: ViewEvent): ViewState {
       return { ...state, contextMenuPosition: null };
     case "openContextMenu":
       return { ...state, contextMenuPosition: event.position };
+    case "setCardSize":
+      return { ...state, cardSize: event.size };
     case "setSearch":
       return { ...state, searchQuery: event.value };
     case "setSearchCaseSensitive":
@@ -79,6 +88,7 @@ interface ViewActions {
   clearSearch: () => void;
   closeContextMenu: () => void;
   openContextMenu: (position: ContextMenuPosition) => void;
+  setCardSize: (size: number) => void;
   setSearchCaseSensitive: (value: boolean) => void;
   setSearch: (value: string) => void;
   switchView: () => void;
@@ -91,11 +101,12 @@ interface ViewSlice extends ViewState {
 }
 
 /**
- * View slice: how the listing is presented (view mode, sorting, search,
- * hidden files, context-menu position) behind a stable semantic-action API.
- * `showHiddenFiles` writes through to the persisted config, `viewMode` to
- * localStorage. `actions` keeps a stable identity as long as the config
- * setter does, so consumers can hold it in callbacks without churn.
+ * View slice: how the listing is presented (view mode, card size, sorting,
+ * search, hidden files, context-menu position) behind a stable semantic-action
+ * API. `showHiddenFiles` writes through to the persisted config, `viewMode`
+ * and `cardSize` to localStorage. `actions` keeps a stable identity as long
+ * as the config setter does, so consumers can hold it in callbacks without
+ * churn.
  */
 export const useFileViewState = (): ViewSlice => {
   const [state, dispatch] = useReducer(
@@ -103,6 +114,8 @@ export const useFileViewState = (): ViewSlice => {
     initialViewState,
     (base) => ({
       ...base,
+      cardSize:
+        readPersistedState(CARD_SIZE_STORAGE_KEY, isCardSize) ?? base.cardSize,
       viewMode:
         readPersistedState(VIEW_MODE_STORAGE_KEY, isViewMode) ?? base.viewMode,
     }),
@@ -114,6 +127,10 @@ export const useFileViewState = (): ViewSlice => {
     writePersistedState(VIEW_MODE_STORAGE_KEY, state.viewMode);
   }, [state.viewMode]);
 
+  useEffect(() => {
+    writePersistedState(CARD_SIZE_STORAGE_KEY, state.cardSize);
+  }, [state.cardSize]);
+
   const actions = useMemo<ViewActions>(
     () => ({
       changeSort: (field) => dispatch({ field, type: "changeSort" }),
@@ -121,6 +138,7 @@ export const useFileViewState = (): ViewSlice => {
       closeContextMenu: () => dispatch({ type: "closeContextMenu" }),
       openContextMenu: (position) =>
         dispatch({ position, type: "openContextMenu" }),
+      setCardSize: (size) => dispatch({ size, type: "setCardSize" }),
       setSearchCaseSensitive: (value) =>
         dispatch({ type: "setSearchCaseSensitive", value }),
       setSearch: (value) => dispatch({ type: "setSearch", value }),

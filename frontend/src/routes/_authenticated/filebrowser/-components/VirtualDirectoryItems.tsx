@@ -5,8 +5,6 @@ import {
   useCallback,
   useLayoutEffect,
   useMemo,
-  useRef,
-  useState,
   type DragEvent,
   type MouseEvent,
   type MouseEventHandler,
@@ -15,39 +13,19 @@ import {
 } from "react";
 
 import type { SubfolderData } from "@/api";
-import AppSlider from "@/components/ui/AppSlider";
 import { useGridColumnCount } from "@/hooks/useGridColumnCount";
 import { stripTrailingSlash } from "@/utils/path";
-import {
-  readPersistedState,
-  writePersistedState,
-} from "@/utils/persistedState";
 
+import {
+  CARD_GAP,
+  CARD_PADDING,
+  CardIconSizeContext,
+  cardGeometry,
+} from "../-cardSize";
 import type { FileItem, ViewMode } from "../-types";
 import { DirectoryItem, SectionHeader } from "./DirectoryRows";
 import SelectionBox from "./SelectionBox";
 
-// The slider on the first section header sets the narrowest a card may get,
-// and so how many fit in a row; a card's height does not change. It is
-// per-browser state, kept in localStorage like the card/list toggle.
-const CARD_SIZE_STORAGE_KEY = "linuxio.filebrowserCardSize";
-export const CARD_SIZE_MIN = 1;
-export const CARD_SIZE_MAX = 7;
-export const CARD_SIZE_DEFAULT = 3;
-const CARD_SIZE_SLIDER_WIDTH = 120;
-
-const isCardSize = (value: unknown): value is number =>
-  typeof value === "number" &&
-  Number.isInteger(value) &&
-  value >= CARD_SIZE_MIN &&
-  value <= CARD_SIZE_MAX;
-
-/** 180px at the smallest size, 260px at the default, 420px at the largest. */
-export const cardMinWidth = (size: number) => 140 + size * 40;
-
-const CARD_GAP = 12;
-const CARD_PADDING = 4;
-const CARD_ROW_ESTIMATE = 92;
 const LIST_GAP = 2;
 // FileListRow's resting layout is 40px; include the wrapper's 2px row gap in
 // estimateSize below so an unmeasured list row starts at the same 42px stride.
@@ -96,18 +74,20 @@ export interface ItemPosition {
 }
 
 interface VirtualItemsProps {
+  /** The card view's size step (`cardGeometry`); the header's slider sets it. */
+  cardSize: number;
   /** Receives the number of items per row (1 in list view). */
   columnCountRef?: RefObject<number>;
   containerRef: RefObject<HTMLDivElement | null>;
   files: FileItem[];
   folders: FileItem[];
-  /** In a listbox, the heading above it, beside the card-size slider. */
+  /** In a listbox, the heading above it. */
   heading?: string;
   isMarqueeSelecting: boolean;
   /**
    * Makes the list a listbox of that name, as the Trash's is. It then holds
    * only its items, as options, without the sections' heading rows; the
-   * heading and the card-size slider sit above it.
+   * heading sits above it.
    */
   listboxLabel?: string;
   onContainerMouseDown: MouseEventHandler<HTMLDivElement>;
@@ -125,6 +105,8 @@ interface VirtualItemsProps {
 }
 
 interface VirtualDirectoryItemsProps {
+  /** The card view's size step (`cardGeometry`); the header's slider sets it. */
+  cardSize: number;
   /** Receives the number of items per row (1 in list view). */
   columnCountRef?: RefObject<number>;
   containerRef: RefObject<HTMLDivElement | null>;
@@ -158,8 +140,6 @@ interface VirtualDirectoryItemsProps {
   subfoldersMap: Map<string, SubfolderData>;
   viewMode: ViewMode;
 }
-
-const stopPropagation = (event: MouseEvent) => event.stopPropagation();
 
 // Keep the retained row model constant-size. TanStack Virtual asks for rows by
 // index, so item groups and headers can be resolved only when they are needed
@@ -301,6 +281,7 @@ export function getDirectoryRevealRowIndex(
  * items, placed in the whole list, under a heading outside it.
  */
 const VirtualItemsList = ({
+  cardSize,
   columnCountRef,
   containerRef,
   files,
@@ -320,19 +301,11 @@ const VirtualItemsList = ({
   const horizontalPadding = viewMode === "card" ? CARD_PADDING : 0;
   const rowGap = viewMode === "card" ? CARD_GAP : LIST_GAP;
 
-  const [cardSize, setCardSize] = useState(
-    () =>
-      readPersistedState(CARD_SIZE_STORAGE_KEY, isCardSize) ??
-      CARD_SIZE_DEFAULT,
-  );
-  const changeCardSize = useCallback((next: number) => {
-    setCardSize(next);
-    writePersistedState(CARD_SIZE_STORAGE_KEY, next);
-  }, []);
-
+  // A size step sets the cards' width, and with it their icon and height.
+  const card = cardGeometry(cardSize);
   const cardColumnCount = useGridColumnCount(containerRef, {
     gap: CARD_GAP,
-    minItemWidth: cardMinWidth(cardSize),
+    minItemWidth: card.minWidth,
     padding: CARD_PADDING,
   });
   const columnCount = viewMode === "list" ? 1 : cardColumnCount;
@@ -359,11 +332,9 @@ const VirtualItemsList = ({
       if (isDirectorySectionHeader(index, layout)) {
         return SECTION_HEADER_ESTIMATE + rowGap;
       }
-      return (
-        (viewMode === "card" ? CARD_ROW_ESTIMATE : LIST_ROW_ESTIMATE) + rowGap
-      );
+      return (viewMode === "card" ? card.height : LIST_ROW_ESTIMATE) + rowGap;
     },
-    [layout, rowGap, viewMode],
+    [card.height, layout, rowGap, viewMode],
   );
   const getItemKey = useCallback(
     (index: number) => getDirectoryVirtualRowKey(index, layout, folders, files),
@@ -390,19 +361,17 @@ const VirtualItemsList = ({
   const virtualRows = virtualizer.getVirtualItems();
 
   useLayoutEffect(() => {
-    // Row-count/key changes retain valid keyed sizes. Switching layout or the
-    // number of cards per row changes every row's actual geometry.
+    // Row-count/key changes retain valid keyed sizes. Switching layout, the
+    // number of cards per row or the cards' height changes every row's
+    // actual geometry.
     virtualizer.measure();
-  }, [columnCount, viewMode, virtualizer]);
+  }, [card.height, columnCount, viewMode, virtualizer]);
 
-  // A card-size step changes the layout too, but it must not scroll to the
-  // item the keyboard last moved to: that would take the slider's row out of
-  // view, and so out of the document, in the middle of a drag.
-  const revealedAtCardSize = useRef(cardSize);
+  // The item the keyboard last moved to stays in view when the layout
+  // changes, a card-size step included: a step can change the rows' height
+  // without changing the columns.
   useLayoutEffect(() => {
-    const resized = revealedAtCardSize.current !== cardSize;
-    revealedAtCardSize.current = cardSize;
-    if (resized || revealIndex < 0) return;
+    if (revealIndex < 0) return;
 
     const rowIndex = getDirectoryRevealRowIndex(revealIndex, layout);
 
@@ -411,27 +380,8 @@ const VirtualItemsList = ({
     virtualizer.scrollToIndex(rowIndex, {
       align: "auto",
     });
-  }, [cardSize, layout, revealIndex, virtualizer]);
+  }, [card.height, layout, revealIndex, virtualizer]);
 
-  // The attribute keeps the selection (DirectoryListing) and the handler keeps
-  // a drag of the thumb from starting a marquee.
-  const cardSizeSlider = (
-    <AppSlider
-      aria-label="Card size"
-      data-listing-control="true"
-      max={CARD_SIZE_MAX}
-      min={CARD_SIZE_MIN}
-      onChange={changeCardSize}
-      onMouseDown={stopPropagation}
-      style={{
-        flex: "0 0 auto",
-        marginRight: CARD_PADDING,
-        width: CARD_SIZE_SLIDER_WIDTH,
-      }}
-      title="Card size"
-      value={cardSize}
-    />
-  );
   const setSize = folders.length + files.length;
 
   const list = (
@@ -459,80 +409,70 @@ const VirtualItemsList = ({
           position: "relative",
         }}
       >
-        {virtualRows.map((virtualRow) => {
-          const row = getDirectoryVirtualRow(virtualRow.index, layout);
-          if (!row) return null;
+        <CardIconSizeContext value={card.iconSize}>
+          {virtualRows.map((virtualRow) => {
+            const row = getDirectoryVirtualRow(virtualRow.index, layout);
+            if (!row) return null;
 
-          return (
-            <div
-              data-index={virtualRow.index}
-              key={virtualRow.key}
-              ref={virtualizer.measureElement}
-              style={{
-                boxSizing: "border-box",
-                left: horizontalPadding,
-                minHeight:
-                  row.type === "items"
-                    ? estimateSize(virtualRow.index)
-                    : undefined,
-                paddingBottom: rowGap,
-                position: "absolute",
-                right: horizontalPadding,
-                top: 0,
-              }}
-            >
-              {row.type === "sectionHeader" ? (
-                virtualRow.index === 0 && viewMode === "card" ? (
+            return (
+              <div
+                data-index={virtualRow.index}
+                key={virtualRow.key}
+                ref={virtualizer.measureElement}
+                style={{
+                  boxSizing: "border-box",
+                  left: horizontalPadding,
+                  minHeight:
+                    row.type === "items"
+                      ? estimateSize(virtualRow.index)
+                      : undefined,
+                  paddingBottom: rowGap,
+                  position: "absolute",
+                  right: horizontalPadding,
+                  top: 0,
+                }}
+              >
+                {row.type === "sectionHeader" ? (
+                  <SectionHeader label={row.label} viewMode={viewMode} />
+                ) : (
                   <div
                     style={{
-                      alignItems: "center",
-                      display: "flex",
-                      gap: CARD_GAP,
-                      justifyContent: "space-between",
+                      display: viewMode === "list" ? "flex" : "grid",
+                      flexDirection: viewMode === "list" ? "column" : undefined,
+                      gap: viewMode === "list" ? 1 : CARD_GAP,
+                      gridTemplateColumns:
+                        viewMode === "card"
+                          ? `repeat(${columnCount}, minmax(0, 1fr))`
+                          : undefined,
+                      minHeight: viewMode === "card" ? card.height : undefined,
+                      minWidth: 0,
                     }}
                   >
-                    <SectionHeader label={row.label} viewMode={viewMode} />
-                    {cardSizeSlider}
+                    {Array.from({ length: row.count }, (_, offset) => {
+                      const items = row.itemKind === "folder" ? folders : files;
+                      const index = row.start + offset;
+                      const item = items[index];
+                      if (!item) return null;
+                      // Folders come first in the whole list.
+                      const posInSet =
+                        (row.itemKind === "folder" ? 0 : folders.length) +
+                        index +
+                        1;
+                      return (
+                        <Fragment key={`${item.path}-${item.name}`}>
+                          {renderItem(item, row.itemKind, {
+                            posInSet,
+                            setSize,
+                          })}
+                        </Fragment>
+                      );
+                    })}
                   </div>
-                ) : (
-                  <SectionHeader label={row.label} viewMode={viewMode} />
-                )
-              ) : (
-                <div
-                  style={{
-                    display: viewMode === "list" ? "flex" : "grid",
-                    flexDirection: viewMode === "list" ? "column" : undefined,
-                    gap: viewMode === "list" ? 1 : CARD_GAP,
-                    gridTemplateColumns:
-                      viewMode === "card"
-                        ? `repeat(${columnCount}, minmax(0, 1fr))`
-                        : undefined,
-                    minHeight:
-                      viewMode === "card" ? CARD_ROW_ESTIMATE : undefined,
-                    minWidth: 0,
-                  }}
-                >
-                  {Array.from({ length: row.count }, (_, offset) => {
-                    const items = row.itemKind === "folder" ? folders : files;
-                    const index = row.start + offset;
-                    const item = items[index];
-                    if (!item) return null;
-                    // Folders come first in the whole list.
-                    const posInSet =
-                      (row.itemKind === "folder" ? 0 : folders.length) +
-                      index +
-                      1;
-                    return (
-                      <Fragment key={`${item.path}-${item.name}`}>
-                        {renderItem(item, row.itemKind, { posInSet, setSize })}
-                      </Fragment>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })}
+                )}
+              </div>
+            );
+          })}
+        </CardIconSizeContext>
       </div>
 
       {isMarqueeSelecting && selectionBox && (
@@ -557,18 +497,11 @@ const VirtualItemsList = ({
         minWidth: 0,
       }}
     >
-      <div
-        style={{
-          alignItems: "center",
-          display: "flex",
-          gap: CARD_GAP,
-          justifyContent: "space-between",
-          paddingInline: horizontalPadding,
-        }}
-      >
-        {heading ? <SectionHeader label={heading} viewMode={viewMode} /> : null}
-        {viewMode === "card" ? cardSizeSlider : null}
-      </div>
+      {heading ? (
+        <div style={{ paddingInline: horizontalPadding }}>
+          <SectionHeader label={heading} viewMode={viewMode} />
+        </div>
+      ) : null}
       {list}
     </div>
   );
@@ -578,6 +511,7 @@ export const VirtualItems = memo(VirtualItemsList);
 
 /** The folder listing's items, as cards or list rows. */
 const VirtualDirectoryItems = ({
+  cardSize,
   columnCountRef,
   containerRef,
   cutPaths,
@@ -674,6 +608,7 @@ const VirtualDirectoryItems = ({
 
   return (
     <VirtualItems
+      cardSize={cardSize}
       columnCountRef={columnCountRef}
       containerRef={containerRef}
       files={files}

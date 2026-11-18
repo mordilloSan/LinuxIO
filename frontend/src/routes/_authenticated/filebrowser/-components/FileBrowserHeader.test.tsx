@@ -7,6 +7,7 @@ import { fireEvent, render as renderWithApp, screen } from "@/test/render";
 
 import { INTERNAL_DRAG_TYPE } from "../-dragTypes";
 import { setInternalDrag } from "../-internalDrag";
+import CardSizeSlider from "./CardSizeSlider";
 import FileBrowserHeader from "./FileBrowserHeader";
 
 const headerActionsRender = vi.hoisted(() => vi.fn());
@@ -293,12 +294,14 @@ describe("FileBrowserHeader", () => {
     );
 
     // Mirrors .tab-selector in tab-selector.css — the search must sit at the
-    // same screen-centered spot here as on tab routes. Read from the inline
-    // style: the computed value has clamp() resolved to a pixel width.
+    // same screen-centered spot here as on tab routes, until the actions
+    // need more than their side: then their column grows instead of running
+    // under the search. Read from the inline style: the computed value has
+    // clamp() resolved to a pixel width.
     const header = container.querySelector<HTMLElement>(".file-browser-header");
     expect(header).toHaveStyle({ display: "grid" });
     expect(header?.style.gridTemplateColumns).toBe(
-      "minmax(0px, 1fr) clamp(140px, 40vw, 400px) minmax(0px, 1fr)",
+      "minmax(0px, 1fr) clamp(140px, 40vw, 400px) minmax(max-content, 1fr)",
     );
     expect(
       screen.getByRole("textbox", { name: "Search files and folders..." }),
@@ -307,6 +310,52 @@ describe("FileBrowserHeader", () => {
       "aria-pressed",
       "false",
     );
+  });
+
+  it("puts the card-size slider it is given before the view button", () => {
+    render(
+      <FileBrowserHeader
+        {...defaultProps}
+        cardSizeSlider={<CardSizeSlider onChange={vi.fn()} value={4} />}
+        showQuickSave={false}
+        viewMode="card"
+      />,
+    );
+
+    const slider = screen.getByRole("slider", { name: "Card size" });
+    expect(slider).toHaveValue("4");
+    expect(
+      slider.compareDocumentPosition(
+        screen.getByRole("button", { name: "Switch to list view" }),
+      ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("puts the card-size slider in the mobile actions menu", async () => {
+    mockMobileViewport();
+    const onChange = vi.fn();
+    const { user } = render(
+      <FileBrowserHeader
+        {...defaultProps}
+        cardSizeSlider={<CardSizeSlider onChange={onChange} value={4} />}
+        showQuickSave={false}
+        viewMode="card"
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Actions" }));
+    const slider = screen.getByRole("slider", { name: "Card size" });
+    expect(document.querySelector(".app-mobile-actions-menu")).toContainElement(
+      slider,
+    );
+    fireEvent.change(slider, { target: { value: "5" } });
+    expect(onChange).toHaveBeenCalledWith(5);
+    // A step leaves the menu open, unlike the view button.
+    expect(screen.getByRole("menu")).toBeVisible();
+    // The menu leaves the slider's own keys to it: Home is not a jump to the
+    // menu's first stop.
+    expect(fireEvent.keyDown(slider, { key: "Home" })).toBe(true);
+    expect(fireEvent.keyDown(slider, { key: "ArrowRight" })).toBe(true);
   });
 
   it("opens and focuses search from the mobile actions menu", async () => {

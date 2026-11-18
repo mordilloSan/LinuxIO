@@ -29,6 +29,7 @@ import { allowContextMenuProps } from "@/utils/contextMenu";
 import { stripTrailingSlash } from "@/utils/path";
 
 import { useFileListKeyboardNavigation } from "../-hooks/useFileListKeyboardNavigation";
+import { useShownCardSize } from "../-hooks/useShownCardSize";
 import type { TrashJobs } from "../-hooks/useTrashJobs";
 import {
   acceptInternalDrop,
@@ -42,6 +43,7 @@ import {
   trashShownName,
 } from "../-trashEntries";
 import type { ViewMode } from "../-types";
+import CardSizeSlider from "./CardSizeSlider";
 import EmptyState from "./EmptyState";
 import TrashDetailsDialog from "./TrashDetailsDialog";
 import TrashList from "./TrashList";
@@ -50,9 +52,12 @@ import TrashRestoreToDialog from "./TrashRestoreToDialog";
 interface TrashPlaceProps {
   /** The trail: the folders the Trash was opened from, then the Trash. */
   breadcrumbs: ReactNode;
+  /** The card view's size step, the folder listing's setting. */
+  cardSize: number;
   /** The folder the Trash was opened from; Restore to… starts there. */
   folderPath: string;
   jobs: TrashJobs;
+  onCardSizeChange: (size: number) => void;
   /** Back to the folder the Trash was opened from. */
   onLeave: () => void;
   /** The sort the user picked, which the page keeps in the URL. */
@@ -135,8 +140,10 @@ const LeaveKeys = ({ onLeave }: { onLeave: () => void }) => {
 
 const TrashPlace = ({
   breadcrumbs,
+  cardSize,
   folderPath,
   jobs,
+  onCardSizeChange,
   onLeave,
   onSortChange,
   onSwitchView,
@@ -147,6 +154,10 @@ const TrashPlace = ({
   const { data, error, isLoading, refetch } = useQuery(
     linuxio.filebrowser.trash_list,
   );
+  // The list fills the area under the header, in an empty Trash too: the
+  // slider is offered where a step can change the cards there.
+  const listAreaRef = useRef<HTMLDivElement>(null);
+  const shownCardSize = useShownCardSize(listAreaRef, cardSize);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [menuPosition, setMenuPosition] = useState<{
     left: number;
@@ -359,11 +370,16 @@ const TrashPlace = ({
         />
       }
       view={
-        <ViewModeToggle
-          alternateMode="list"
-          onViewModeChange={onSwitchView}
-          viewMode={viewMode}
-        />
+        <>
+          {viewMode === "card" && shownCardSize.offered ? (
+            <CardSizeSlider onChange={onCardSizeChange} value={cardSize} />
+          ) : null}
+          <ViewModeToggle
+            alternateMode="list"
+            onViewModeChange={onSwitchView}
+            viewMode={viewMode}
+          />
+        </>
       }
     />
   );
@@ -404,6 +420,7 @@ const TrashPlace = ({
     listShown = true;
     body = (
       <TrashList
+        cardSize={shownCardSize.size}
         entries={entries}
         isDropTarget={dropTarget}
         onDelete={() => askDelete(selectedEntries)}
@@ -466,6 +483,7 @@ const TrashPlace = ({
       </div>
       <div
         {...dropProps}
+        ref={listAreaRef}
         style={{
           display: "flex",
           flex: 1,

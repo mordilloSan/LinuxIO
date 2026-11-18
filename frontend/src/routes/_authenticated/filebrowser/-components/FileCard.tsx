@@ -1,5 +1,6 @@
 import {
   memo,
+  use,
   useCallback,
   useEffect,
   useMemo,
@@ -17,6 +18,7 @@ import AppTypography from "@/components/ui/AppTypography";
 import { CARD_PADDING_SM } from "@/theme/constants";
 import { formatFileSize } from "@/utils/formatters";
 
+import { CARD_BORDER, CardIconSizeContext } from "../-cardSize";
 import { useFileDirectorySize } from "../-hooks/useFileDirectorySize";
 import {
   getFileEntryBackground,
@@ -100,6 +102,8 @@ const FileCard = memo<FileCardProps>(
   }) => {
     const [renameValue, setRenameValue] = useState(name);
     const inputRef = useRef<HTMLInputElement>(null);
+    // The card list's size step: the icon sets the card's height.
+    const iconSize = use(CardIconSizeContext);
 
     // Reset the draft to the current name when entering rename mode — the
     // render-time adjustment pattern (react.dev "adjusting state when a prop
@@ -246,12 +250,11 @@ const FileCard = memo<FileCardProps>(
           alignItems: "center",
           gap: "var(--app-space-6)",
           padding: CARD_PADDING_SM,
-          border: "3px solid",
+          border: `${CARD_BORDER}px solid`,
           borderColor: borderColor,
           borderRadius: 20,
           backgroundColor: baseBg,
           cursor: "pointer",
-          minHeight: "60px",
           userSelect: "none",
           opacity: isCut ? 0.5 : 1,
         }}
@@ -262,6 +265,7 @@ const FileCard = memo<FileCardProps>(
           hidden={hidden}
           isDirectory={isDirectory}
           isSymlink={isSymlink}
+          size={iconSize}
         />
         <div
           style={{

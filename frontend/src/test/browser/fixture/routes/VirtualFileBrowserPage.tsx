@@ -4,6 +4,7 @@ import { useMemo, useRef, useState } from "react";
 import { emptyCapabilityState } from "@/api/capabilities";
 import AppButton from "@/components/ui/AppButton";
 import { AuthContext, type AuthContextType } from "@/contexts/AuthContext";
+import { CARD_SIZE_DEFAULT } from "@/routes/_authenticated/filebrowser/-cardSize";
 import VirtualDirectoryItems from "@/routes/_authenticated/filebrowser/-components/VirtualDirectoryItems";
 import type {
   FileItem,
@@ -98,6 +99,7 @@ export default function VirtualFileBrowserPage() {
             }}
           >
             <VirtualDirectoryItems
+              cardSize={CARD_SIZE_DEFAULT}
               containerRef={containerRef}
               cutPaths={new Set()}
               files={files}

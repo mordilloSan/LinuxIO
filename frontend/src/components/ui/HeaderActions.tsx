@@ -22,7 +22,10 @@ const HEADER_ACTION_SLOTS = [
   "refresh",
   /** Adds a new item: create, add, mount. */
   "create",
-  /** Card/table view toggle. Always the rightmost icon. */
+  /**
+   * Card/table view toggle, always the rightmost icon, after any control of
+   * the view itself (the file browser's card-size slider).
+   */
   "view",
 ] as const;
 

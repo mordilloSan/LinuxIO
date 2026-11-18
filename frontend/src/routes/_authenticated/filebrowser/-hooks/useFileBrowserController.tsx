@@ -41,6 +41,7 @@ export function useFileBrowserController(
   const view = useFileViewState();
   const {
     actions: viewActions,
+    cardSize,
     contextMenuPosition,
     searchCaseSensitive,
     searchQuery,
@@ -603,9 +604,11 @@ export function useFileBrowserController(
 
   const contentChrome = useMemo(
     () => ({
+      cardSize,
       editingPath,
       isSavingFile,
       normalizedPath,
+      onCardSizeChange: viewActions.setCardSize,
       onDropItems: handleDropItems,
       onOpenDirectory: handleOpenDirectory,
       onSearchCaseSensitiveChange: viewActions.setSearchCaseSensitive,
@@ -621,6 +624,7 @@ export function useFileBrowserController(
       viewMode,
     }),
     [
+      cardSize,
       editingPath,
       handleDropItems,
       handleOpenDirectory,

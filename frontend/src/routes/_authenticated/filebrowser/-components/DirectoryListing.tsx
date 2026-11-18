@@ -35,6 +35,8 @@ import EmptyState from "./EmptyState";
 import VirtualDirectoryItems from "./VirtualDirectoryItems";
 
 interface DirectoryListingProps {
+  /** The card view's size step, as the header's slider shows it. */
+  cardSize: number;
   cutPaths: Set<string>;
   isContextMenuOpen: boolean;
   onCancelRename: () => void;
@@ -61,6 +63,7 @@ interface DirectoryListingProps {
 }
 
 const DirectoryListing = ({
+  cardSize,
   resource,
   showHiddenFiles,
   viewMode,
@@ -303,12 +306,8 @@ const DirectoryListing = ({
   const handleContainerMouseDown = useCallback(
     (event: MouseEvent) => {
       const element = event.target as HTMLElement | null;
-      // A card handles its own click; the card-size slider is not a click on
-      // empty space.
-      if (
-        element &&
-        element.closest("[data-file-card='true'], [data-listing-control]")
-      ) {
+      // A card handles its own click.
+      if (element && element.closest("[data-file-card='true']")) {
         return;
       }
       // Don't clear selection on right-click (context menu)
@@ -419,6 +418,7 @@ const DirectoryListing = ({
         </AppAlert>
       )}
       <VirtualDirectoryItems
+        cardSize={cardSize}
         columnCountRef={columnCountRef}
         containerRef={containerRef}
         cutPaths={cutPaths}

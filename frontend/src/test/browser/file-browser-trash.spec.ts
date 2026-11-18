@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 const REPORT = "/home/alice/.local/share/Trash/files/report.pdf";
 const PHOTOS = "/home/alice/.local/share/Trash/files/photos";
@@ -196,5 +196,126 @@ test.describe("file-browser trash place", () => {
         { name: "report.pdf", path: REPORT },
       ])}`,
     );
+  });
+});
+
+test.describe("file-browser card size", () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto("/filebrowser/trash");
+    await page.getByRole("button", { name: "Fill the Trash" }).click();
+    await page
+      .getByRole("button", { name: "Switch to card view" })
+      .first()
+      .click();
+    await expect(
+      page.getByRole("listbox", { name: "Trash" }).getByRole("option").first(),
+    ).toBeVisible();
+  });
+
+  // The first card, its icon, and the first two rows of the virtual list.
+  const geometry = (page: Page) =>
+    page.getByRole("listbox", { name: "Trash" }).evaluate((list) => {
+      const rows = [...list.querySelectorAll<HTMLElement>("[data-index]")]
+        .sort((a, b) => Number(a.dataset.index) - Number(b.dataset.index))
+        .map((row) => row.getBoundingClientRect());
+      const card = list.querySelector('[role="option"]');
+      const icon = card?.querySelector(".file-icon svg");
+      return {
+        card: Math.round(card?.getBoundingClientRect().height ?? 0),
+        icon: Math.round(icon?.getBoundingClientRect().height ?? 0),
+        row: Math.round(rows[0]?.height ?? 0),
+        rowStep: Math.round((rows[1]?.top ?? 0) - (rows[0]?.top ?? 0)),
+      };
+    });
+
+  test("a size step makes the cards and their icons bigger, rows and all", async ({
+    page,
+  }) => {
+    const slider = page.getByRole("slider", { name: "Card size" });
+    await expect(slider).toHaveValue("3");
+    // An 80px icon in a 102px card, and the 12px gap under each row.
+    await expect
+      .poll(() => geometry(page))
+      .toEqual({ card: 102, icon: 80, row: 114, rowStep: 114 });
+
+    await slider.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(slider).toHaveValue("4");
+    await expect
+      .poll(() => geometry(page))
+      .toEqual({ card: 110, icon: 88, row: 122, rowStep: 122 });
+
+    await page.keyboard.press("End");
+    await expect(slider).toHaveValue("7");
+    await expect
+      .poll(() => geometry(page))
+      .toEqual({ card: 134, icon: 112, row: 146, rowStep: 146 });
+
+    await page.keyboard.press("Home");
+    await expect(slider).toHaveValue("1");
+    await expect
+      .poll(() => geometry(page))
+      .toEqual({ card: 86, icon: 64, row: 98, rowStep: 98 });
+  });
+
+  test("the rows are laid out at their size before they are measured", async ({
+    page,
+  }) => {
+    const list = page.getByRole("listbox", { name: "Trash" });
+    await page.getByRole("slider", { name: "Card size" }).fill("6");
+    await expect.poll(() => geometry(page)).toMatchObject({ card: 126 });
+    const scrollHeight = () => list.evaluate((element) => element.scrollHeight);
+    const laidOut = await scrollHeight();
+
+    // Every row below is measured as it scrolls into view: none of them
+    // changes the list's height, so nothing moves under the pointer.
+    await list.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await expect(list.getByRole("option").last()).toBeVisible();
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+    expect(await scrollHeight()).toBe(laidOut);
+  });
+
+  test("the slider stays in the header while the list scrolls", async ({
+    page,
+  }) => {
+    const list = page.getByRole("listbox", { name: "Trash" });
+    const slider = page.getByRole("slider", { name: "Card size" });
+    await expect(slider).toBeInViewport();
+
+    await list.evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await expect(list.getByRole("option", { name: /report\.pdf/ })).toHaveCount(
+      0,
+    );
+    await expect(slider).toBeInViewport();
+    await slider.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(slider).toHaveValue("4");
+  });
+
+  test("no slider where one card fills a row, and the cards keep the default size", async ({
+    page,
+  }) => {
+    await page.getByRole("slider", { name: "Card size" }).fill("7");
+    await expect
+      .poll(() => geometry(page))
+      .toMatchObject({ card: 134, icon: 112 });
+
+    // The list area: 360px less the page's and the Trash's padding.
+    await page.setViewportSize({ height: 800, width: 360 });
+    await expect(page.getByRole("slider", { name: "Card size" })).toHaveCount(
+      0,
+    );
+    await expect
+      .poll(() => geometry(page))
+      .toMatchObject({ card: 102, icon: 80 });
   });
 });
