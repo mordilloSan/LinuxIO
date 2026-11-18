@@ -73,15 +73,29 @@ func ResetFailedUnit(ctx context.Context, name string) error {
 	return nil
 }
 
+// ErrNoUnitFile is GetUnitFileState's error for a unit that no unit file
+// defines, as one whose package is not installed.
+var ErrNoUnitFile = errors.New("no unit file")
+
 func GetUnitFileState(ctx context.Context, name string) (string, error) {
 	if err := requireUnitName(name); err != nil {
 		return "", err
 	}
 	var state string
 	if err := managerIface.CallStore(ctx, "GetUnitFileState", dbusclient.CallPolicy{}, []any{name}, &state); err != nil {
+		if noUnitFile(err) {
+			return "", fmt.Errorf("get unit file state %s: %w", name, ErrNoUnitFile)
+		}
 		return "", fmt.Errorf("get unit file state %s: %w", name, err)
 	}
 	return state, nil
+}
+
+// noUnitFile reports whether err is the manager's answer for a unit no unit
+// file defines: the bus error systemd maps ENOENT to.
+func noUnitFile(err error) bool {
+	var busErr godbus.Error
+	return errors.As(err, &busErr) && busErr.Name == "org.freedesktop.DBus.Error.FileNotFound"
 }
 
 func DaemonReload(ctx context.Context) error {

@@ -203,8 +203,9 @@ func (s *fakeSystem) startUnit(ctx context.Context, name string) error {
 			return nil
 		}
 		// A unit held off is skipped: its condition fails, and the start
-		// succeeds without starting anything.
-		if s.heldOff[name] {
+		// succeeds without starting anything. zramswap.service is held the
+		// same way by a runtime drop-in that holds the condition.
+		if s.heldOff[name] || name == zramService && s.zramToolsHeld() {
 			return nil
 		}
 		s.unitOn(name)
@@ -255,6 +256,13 @@ func (s *fakeSystem) swapOff(ctx context.Context, path string) error {
 		}
 		return nil
 	})
+}
+
+// zramToolsHeld reports whether a drop-in at the install hold's path keeps
+// zramswap.service from starting: a file with a condition that never holds.
+func (s *fakeSystem) zramToolsHeld() bool {
+	data, err := os.ReadFile(filepath.Join(s.f.root, zramInstallHoldPath))
+	return err == nil && strings.Contains(string(data), "ConditionPathExists=!/")
 }
 
 // resetZram frees the device, as the kernel does for one nothing holds.

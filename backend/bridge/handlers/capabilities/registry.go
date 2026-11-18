@@ -56,6 +56,10 @@ type InstallSpec struct {
 	ServiceRHEL                       string
 	EnableService                     bool
 	PostInstall                       *InstallCommand
+	// PackageHookDebian runs around the package step when PackageDebian is
+	// the package installed, for a package whose own scripts change the host
+	// as it installs in a way the capability must not leave behind.
+	PackageHookDebian PackageHook
 
 	// OptionalComponent names a LinuxIO-managed install that is not provided by
 	// the distro package manager ("docker" runs Docker's convenience script,
@@ -104,6 +108,17 @@ type InstallCommand struct {
 	Name string
 	Args []string
 }
+
+// PackageHook prepares the host right before a capability's packages are
+// installed and returns the step to run after the package step, or nil when
+// there is nothing to do. The installer runs the step exactly once whatever
+// the package step's outcome, a failure or a cancel included, on a context
+// the cancel does not reach, so whatever the hook holds is let go. The step
+// returns a warning for the install's result when it left something as the
+// package set it up. A hook that fails releases what it took itself. The
+// feature package that owns what the package changes provides it, so the
+// installer holds no feature logic.
+type PackageHook func(ctx context.Context) (after func(ctx context.Context) (warning string, err error), err error)
 
 var capabilityRegistry = []CapabilitySpec{
 	{
@@ -273,12 +288,16 @@ var capabilityRegistry = []CapabilitySpec{
 	{
 		// Either tool that sets zram up: zram-tools on Debian and Ubuntu,
 		// zram-generator on Fedora and RHEL, which has no service to enable.
+		// zram-tools' package enables and starts its service as it installs;
+		// the hook keeps the start from happening and disables the service
+		// again, so zram starts only when the admin chooses it in Memory
+		// overflow. zram-generator's package starts nothing.
 		Name:    "zram",
 		LogName: "zram",
 		Detect: func(_ context.Context) (bool, string) {
 			return checkedCapability(memory.CheckZramAvailability())
 		},
-		Install: &InstallSpec{PackageDebian: "zram-tools", PackageRHEL: "zram-generator"},
+		Install: &InstallSpec{PackageDebian: "zram-tools", PackageRHEL: "zram-generator", PackageHookDebian: memory.ZramToolsInstallHook},
 	},
 	{
 		Name:    "avahi",

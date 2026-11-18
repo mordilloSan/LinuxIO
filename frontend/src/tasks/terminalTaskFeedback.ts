@@ -140,7 +140,11 @@ function capabilityPresentation(task: TerminalFeedbackTask) {
 const capabilityInstallError: NonNullable<TerminalFeedbackEntry["onFailed"]> = (
   task,
   error,
+  deps,
 ) => {
+  // A failed or canceled install may still have put the package in, as when
+  // a step after the package step failed, so the state is read again.
+  void deps.refreshCapabilities();
   const { label, route } = capabilityPresentation(task);
   toast.error(
     getMutationErrorMessage(error, `Failed to install ${label}`),

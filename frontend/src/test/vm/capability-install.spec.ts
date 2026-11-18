@@ -13,8 +13,11 @@ import {
 
 // Install from Capabilities, the way an admin gets zram: without a zram tool
 // the Memory overflow dialog links to Capabilities, Install puts the
-// distribution's package in through PackageKit as a job, and the dialog then
-// names that tool as the zram provider (docs/capabilities.md, "zram"). It is
+// distribution's package in through PackageKit as a job and leaves zram off,
+// and the dialog then names that tool as the zram provider
+// (docs/capabilities.md, "zram"). On Ubuntu zram-tools' package would start
+// zram as it installs; the install must have kept that start from happening
+// and left the service disabled. It is
 // written for Ubuntu and, with DISTRO=fedora, Fedora; only the package, how
 // it is taken out and put back, and the provider differ. On Fedora it runs
 // with SELinux enforcing, against LinuxIO as its installer puts it
@@ -50,6 +53,12 @@ interface ZramTool {
   provider: string;
   /** A command that succeeds when the package is installed. */
   installed: string;
+  /**
+   * The service the package enables and starts as it installs, which the
+   * install must keep from starting and leave disabled; none where the
+   * package starts nothing.
+   */
+  startedService?: string;
   /** Run before the removal. */
   prepare?: () => Promise<void>;
   /** A root script that takes the tool out with no zram left swapping. */
@@ -61,10 +70,18 @@ interface ZramTool {
 // Ubuntu's clean image has no zram tool, so the same purge takes it out
 // before and puts the VM back after. The package's prerm stops
 // zramswap.service, which takes zram0 down. PackageKit may still hold
-// dpkg's lock for a moment after its install ends.
+// dpkg's lock for a moment after its install ends. A hold of the install's
+// that a killed job host left in /run would keep zramswap.service from
+// starting for the specs after this one, so it goes too.
 const UBUNTU_PURGE = String.raw`set -euo pipefail
 if dpkg -s zram-tools >/dev/null 2>&1; then
 	DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 purge -y -qq zram-tools >/dev/null
+fi
+hold=/run/systemd/system/zramswap.service.d
+if [[ -e $hold/90-linuxio-memory.conf ]]; then
+	rm -f "$hold/90-linuxio-memory.conf"
+	rmdir "$hold" 2>/dev/null || true
+	systemctl daemon-reload
 fi
 if grep -q '^/dev/zram' /proc/swaps; then
 	echo "zram still swaps with zram-tools purged:" >&2
@@ -136,6 +153,7 @@ const TOOLS: Record<string, ZramTool> = {
     provider: "zram-tools",
     installed:
       "dpkg-query -W -f '${db:Status-Status}' zram-tools 2>/dev/null | grep -qx installed",
+    startedService: "zramswap.service",
     // An apt run of the timers would hold dpkg's lock under the install.
     prepare: stopAptRuns,
     remove: UBUNTU_PURGE,
@@ -219,6 +237,8 @@ test("installs zram from Capabilities and the Memory overflow dialog names the t
 
   const before = await jobIds();
   jobsBefore = before;
+  // The VM's clock, for the journal of the package's service.
+  const installedSince = (await vmSsh("date +%s")).trim();
   const started = Date.now();
   await row.getByRole("button", { name: "Install zram" }).click();
   const install = page.getByRole("dialog", { name: /^Installing zram/ });
@@ -264,9 +284,34 @@ test("installs zram from Capabilities and the Memory overflow dialog names the t
   await expect(row.getByText("Available", { exact: true })).toBeVisible();
   await expect(row.getByRole("button", { name: "Install zram" })).toBeHidden();
   expect(await packageInstalled(), `${tool.package} installed`).toBe(true);
-  console.log(
-    `zram swapping after the install: ${(await vmSsh(ZRAM_SWAPS)).trim() || "none"}`,
-  );
+  const zramAfter = (await vmSsh(ZRAM_SWAPS)).trim();
+  console.log(`zram swapping after the install: ${zramAfter || "none"}`);
+  if (tool.startedService) {
+    // The install held the service while the package went in, so its start
+    // was skipped and it never ran, and the package's start at boot was
+    // taken back.
+    const unit = tool.startedService;
+    const state = (
+      await vmSsh(
+        `echo "$(systemctl is-enabled ${unit} || true) $(systemctl is-active ${unit} || true)"`,
+      )
+    ).trim();
+    const journal = (
+      await vmSsh(
+        `sudo journalctl --no-pager -o cat -b -u ${unit} --since @${installedSince}`,
+      )
+    ).trim();
+    console.log(`${unit} after the install: ${state}; its journal: ${journal}`);
+    expect(zramAfter, "zram swapping after the install").toBe("");
+    expect(state, `${unit} at boot and now`).toBe("disabled inactive");
+    // The package did ask for the start, and systemd skipped it.
+    expect(journal, `${unit}'s skipped start`).toContain(
+      "unmet condition check ConditionPathExists=!/",
+    );
+    expect(journal, `${unit} started during the install`).not.toMatch(
+      /Starting|Started|Finished/,
+    );
+  }
 
   // The row links back to the dialog, whose zram row now names the tool that
   // sets zram up, read from the host by the memory status.

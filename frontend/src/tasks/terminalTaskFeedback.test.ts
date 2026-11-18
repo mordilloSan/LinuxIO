@@ -314,6 +314,19 @@ describe("terminalTaskFeedback", () => {
     expect(toastMocks.error).toHaveBeenCalledWith("operation aborted", vms);
   });
 
+  it("re-detects capabilities after an install that failed or was canceled", () => {
+    // The package may be in even so, as when a step after the package
+    // step failed, so the Capabilities row must not keep the old state.
+    const capability = (id: string) =>
+      task(id, TASK_TYPE_SYSTEM_INSTALL_CAPABILITY, { capability: "zram" });
+
+    emitTerminalTaskFeedback(capability("cap-failed"), failed(""), deps);
+    expect(deps.refreshCapabilities).toHaveBeenCalledOnce();
+
+    emitTerminalTaskFeedback(capability("cap-canceled"), canceled, deps);
+    expect(deps.refreshCapabilities).toHaveBeenCalledTimes(2);
+  });
+
   it("keeps SMART tests silent — the owning page fires its own toast", () => {
     emitTerminalTaskFeedback(
       task("smart-failed", TASK_TYPE_STORAGE_SMART_TEST),

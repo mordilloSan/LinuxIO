@@ -127,6 +127,18 @@ does the work and streams per-stage progress:
 resolve -> [install_package] -> [post_install] -> [enable_service] -> [start_service] -> wait_service_active -> detect
 ```
 
+`post_install` is the step after the package of the spec's package hook,
+where the package installed is `PackageDebian` (the hook also prepares just
+before `install_package`), and then its `PostInstall` command. The hook's
+step after the package runs whatever the package step's outcome, a
+failure or a cancel included, on a context the cancel does not reach,
+bounded at 30 seconds. An error of that step fails the job: beside the
+package step's error, on one line, or as "`<package>` was installed: …".
+A job whose context was cancelled reports only that it was cancelled, so
+then the step's error is also logged as a Warn line,
+`package hook failed after a cancelled install`; either way the install
+does not go on and the job does not end completed.
+
 - `detectDistroFamily()` reads `/etc/os-release` and classifies the host as
   `debian` or `rhel`; `pickByFamily` chooses the matching package/service name.
 - The monitoring daemon ships with LinuxIO and is not installed through
@@ -160,7 +172,13 @@ resolve -> [install_package] -> [post_install] -> [enable_service] -> [start_ser
   between a service going `active` and its surface (D-Bus name, socket) being
   reachable. The job result is the freshly re-detected
   `{available, error, warning}`. `error` describes detection or availability;
-  `warning` describes non-fatal optional setup.
+  `warning` describes non-fatal optional setup, or what a package hook left
+  as the package made it.
+- On the frontend every install job that ends, completed, failed or
+  cancelled, has the capabilities read again (`tasks/terminalTaskFeedback.ts`):
+  a job that failed or was cancelled after its package step still put the
+  package in, and the Capabilities row would otherwise keep reading
+  unavailable.
 
 `InstallSpec` fields:
 
@@ -171,6 +189,7 @@ resolve -> [install_package] -> [post_install] -> [enable_service] -> [start_ser
 | `OptionalPackageRHELFailureWarning` | Concise capability-specific consequence returned to the UI; raw package-manager errors remain in task output. |
 | `ServiceDebian` / `ServiceRHEL` | systemd unit to start after install (empty = none). |
 | `EnableService` | Also `systemctl enable` the unit, not just start it. |
+| `PackageHookDebian` | When `PackageDebian` is the package installed, a `PackageHook` the feature package provides: it prepares the host before the package step and returns a step the installer always runs after it, reported as `post_install`, whose warning goes into the result. For a package whose own scripts change the host as it installs; zram's keeps `zram-tools` from starting zram (see [zram](#zram)). A step that fails after the package went in fails the job, saying the package was installed; after a failed package step its error joins the package's. |
 | `OptionalComponent` | Names a LinuxIO-managed non-package installer, run before any package step. `"docker"` downloads Docker's convenience script from `https://get.docker.com`, reports its sha256, and streams its output (skipped when a `docker` binary is already on `PATH`). `"node"` downloads the pinned nvm install script and runs it, then `nvm install --lts`, as the session user (see [Node.js](#nodejs-assistant)). `"claude_code"` adds Anthropic's package repository after checking its signing key, and `"assistant_<agent>"` installs that agent's pinned npm package for the session user (see [Claude Code and the Assistant agents](#claude-code-and-the-assistant-agents)). `handlers/packages` rejects any other value. |
 | `RequiresDocker` | Optional-component prerequisite checked before install. |
 
@@ -252,15 +271,78 @@ installed (`memory.CheckZramAvailability`): the `zramswap` command of
 `zram-tools`, also looked for in `/usr/sbin` for a bridge whose `PATH` omits
 it, or systemd's `zram-generator` at
 `/usr/lib/systemd/system-generators/zram-generator`. Install uses the Debian
-package `zram-tools` or the RHEL package `zram-generator`; on Fedora that
-package comes without `zram-generator-defaults`, so no zram starts until the
-admin chooses compressed memory only in the dashboard's **Memory overflow**
-dialog (Fedora 45 test VM, 2026-11-18). There is no service step, but on
-Debian and Ubuntu the `zram-tools` package enables and starts
-`zramswap.service` itself, so zram swaps at zram-tools' defaults as soon as
-the install ends (half the memory, 1955 MiB in the 4 GiB Ubuntu 26.04 test
-VM), and on a host with an active swap file the status reads `mixed` until
-the admin chooses a mode in the dialog. The dialog
+package `zram-tools` or the RHEL package `zram-generator`. There is no
+service step, and on a host without either tool an install that runs to
+its end starts no zram and sets none to start at boot: nothing about the
+host's swap changes until the admin chooses a mode in the dashboard's
+**Memory overflow** dialog, which starts zram when compressed memory only
+is chosen. The exceptions are below and under
+[Known limits](#known-limits).
+
+On Fedora `zram-generator` comes without `zram-generator-defaults`, and its
+package starts nothing (Fedora 45 test VM, 2026-11-18), so the RHEL family
+has no hook. On Debian and Ubuntu the `zram-tools` package's `postinst`, as
+`dh_installsystemd` writes it, enables `zramswap.service` and starts it, so
+zram would swap at zram-tools' defaults (half the memory, 1955 MiB in the
+4 GiB Ubuntu 26.04 test VM) before the admin chose anything. The
+capability's package hook (`PackageHookDebian`, provided by
+`memory.ZramToolsInstallHook`) keeps that start from happening, unless
+zram-tools was installed already, whose package then starts nothing new:
+
+1. Before the package step it takes the lock every memory change takes and
+   holds it until the step after the package ends
+   ([One change at a time](./memory.md#one-change-at-a-time)), so no mode
+   change runs while the package installs. It reads whether
+   `zramswap.service` starts at boot (a unit no unit file defines does
+   not), then writes a runtime drop-in,
+   `/run/systemd/system/zramswap.service.d/90-linuxio-memory.conf`, with
+   `ConditionPathExists=!/`, and has systemd reload.
+2. The package installs. Its `deb-systemd-helper enable` enables the unit
+   and records that it did, and its start is skipped: the journal reads
+   `zramswap.service - Linux zramswap setup skipped, unmet condition check
+   ConditionPathExists=!/`. No zram swaps while the hold is in place; a
+   cancel can let the package's scripts run after it is gone (see
+   [Known limits](#known-limits)).
+3. After the package step, whatever its outcome, the hook disables
+   `zramswap.service` when it is enabled now and was not before the
+   install, removes the drop-in and its folder, has systemd reload, and
+   releases the lock. It logs one Info line, `zram service kept off during
+   install`, with `disabled`.
+
+The hold is a condition drop-in and not a mask. Under a runtime mask the
+package's start is skipped too, but its `enable` is as well, so
+`deb-systemd-helper` records no state for the unit, and the next upgrade of
+the package, seen as a reinstall in the test VM (Ubuntu 26.04,
+init-system-helpers 1.69), enabled and started it, with zram swapping. With the drop-in a reinstall leaves the unit `disabled` and
+`inactive`, as it does after any `systemctl disable`. `zramswap.service`
+is wanted by `multi-user.target` only (`RequiredBy` is empty), so holding
+it holds nothing else back; the rule that a swap unit is held off with a
+condition and never a mask, since `swap.target` requires it
+([Memory overflow](./memory.md#holding-a-swap-file-off-at-boot)), is not
+in play, and a condition is what is used anyway. An admin's own
+`zramswap.service` that is enabled and running, on a host where zram-tools
+was never installed, stays so (seen in the test VM): the hold does not stop
+a running unit, and its start at boot was the admin's before the install,
+so it is not disabled. One exception follows from the package's scripts and
+was not seen on a host: with zram-tools removed but not purged (dpkg's
+`config-files` state), the `postinst` runs as an upgrade and restarts the
+unit; the stop runs and the start is skipped under the hold, so such a unit
+stays stopped until it is started again or the next boot.
+
+The hook changes nothing, and the install's `warning`, which the install
+dialog shows, says why, when another memory change is running (the package
+then turns zram on now and at every boot) or when a file LinuxIO did not
+write is at the drop-in's path (the package may then turn zram on, since
+that file may hold the unit itself). A drop-in a killed job host left there
+is LinuxIO's by its content: the next install takes it over and removes
+it, and so does the zram-tools start step of the next switch to compressed
+memory ([`start_zram`](./memory.md#order-of-steps)), before it starts
+`zramswap.service`. A step after the package that fails says what the host is left
+with: a disable that failed means `zramswap.service` starts zram at the
+next boot, a removal or reload that failed that it cannot start until
+then.
+
+The dialog
 itself does not wait for the capability; its zram row links to Capabilities
 while the package is missing. The capability's `route` links back: once
 the capability is available its row in Settings, and the toast that reports
@@ -276,8 +358,16 @@ The two tools differ in configuration file and units; see
 test VM: it takes the distribution's zram tool out with its package manager,
 follows the dialog's link to Capabilities, installs, waits for the job, and
 follows the row's link back to the dialog, which must name the tool as the
-provider. On 2026-11-18 it passed twice on Ubuntu 26.04 (`zram-tools` in
-5 s, with no refresh). On Fedora 45, with SELinux enforcing and LinuxIO as
+provider. On Ubuntu it also checks that after the install no zram swaps,
+`zramswap.service` reads `disabled` and `inactive`, and its journal for
+this boot since Install was clicked shows the skipped start and no start. On 2026-11-18 it passed twice on Ubuntu
+26.04 (`zram-tools` in 5 s, with no refresh), before any hook, with zram
+left swapping. With the hold it passed the same day, the install taking
+6 s: the unit's journal held only
+`zramswap.service - Linux zramswap setup skipped, unmet condition check ConditionPathExists=!/`,
+the job host logged `zram service kept off during install` 3 s later, and
+no zram swapped. It passed again with the spec asserting that skipped
+start itself, the install again taking 6 s. On Fedora 45, with SELinux enforcing and LinuxIO as
 its installer puts it ([SELinux](./process-systemd-architecture.md#selinux)),
 it passed after a fresh install and again after a reboot, installing
 `zram-generator` in 3 s each time; after the reboot the install showed
@@ -455,3 +545,17 @@ test VM does this in a browser:
 - A package that no enabled repository has costs one cache refresh before the
   install reports it, including an optional package such as `nss-mdns` on a
   RHEL-family host without EPEL, whose warning comes after that refresh.
+- Only an install from Capabilities keeps zram-tools from starting zram:
+  one made with apt leaves zram swapping at zram-tools' defaults and
+  `zramswap.service` enabled, as the package sets them up, until the admin
+  chooses a mode in Memory overflow.
+- A job host killed during a zram-tools install, between the hold and its
+  removal, leaves the hold in `/run` until the next boot or the next switch
+  to compressed memory, which removes it before it starts zram. When the
+  kill came after the package went in and before the disable, the service
+  is enabled and starts zram at the next boot.
+- A cancel while PackageKit's transaction still runs can let the package's
+  scripts run after the hold is gone, leaving zram swapping and the service
+  enabled until a mode is chosen: on a cancel the install does not wait for
+  the transaction, and the step after the package removes the hold and
+  frees the lock at once.

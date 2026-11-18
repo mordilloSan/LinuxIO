@@ -280,6 +280,12 @@ func (r *modeRun) startZram(ctx context.Context) error {
 	if err = r.resetStaleZram(ctx); err != nil {
 		return err
 	}
+	// A hold a killed zram-tools install left would skip the start.
+	if !r.generated() {
+		if err = r.clearLeftoverZramToolsHold(ctx); err != nil {
+			return err
+		}
+	}
 	if err = start(ctx, unit); err != nil {
 		return err
 	}

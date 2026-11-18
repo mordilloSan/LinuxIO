@@ -238,8 +238,10 @@ To `zram`:
      a start would do nothing;
    - zram swaps at the planned size (in whole MiB, as the configuration
      gives it): nothing is done, since a restart empties it;
-   - zram swaps at another size, as the device zram-tools starts when the
-     package is installed: the unit is stopped, waited for and started again,
+   - zram swaps at another size, as the device zram-tools starts when its
+     package is installed outside Capabilities (an install from Capabilities
+     starts none, see [The zram capability](#the-zram-capability)):
+     the unit is stopped, waited for and started again,
      so the configuration just written applies. This takes zram away for a
      moment, so it is done only when that zram is the provider's one device,
      a swap file or partition is active, and zram's data fits (see
@@ -276,9 +278,17 @@ To `zram`:
    device. A start queued behind a stop that may still take effect (see
    above) is preceded by the same reset with zram-generator once zram no
    longer swaps. A `failed` setup service needs nothing more: a start of the
-   swap unit starts it again. After the start the size is read again, and a
-   device that came up at another size than planned is reported
-   (`zram_size`, `other_size`).
+   swap unit starts it again. With zram-tools, a hold that a job host killed
+   during an install from Capabilities left in `/run`
+   (`/run/systemd/system/zramswap.service.d/90-linuxio-memory.conf`, see
+   [The zram capability](#the-zram-capability)) would make systemd skip the
+   start, so right before it the step removes that file, and its folder
+   when empty, and reloads, when the file holds exactly LinuxIO's hold
+   (`clearLeftoverZramToolsHold`, Info line
+   `leftover zram-tools install hold removed`); any other file there is left
+   alone and the start goes on as it would. After the start the size is
+   read again, and a device that came up at another size than planned is
+   reported (`zram_size`, `other_size`).
 3. `apply_sysctls`: write the preset live.
 4. `disable_zswap`: turn zswap off and keep it off at boot (see below).
 5. `stop_swap_file`: when the file is named in fstab, take it away with
@@ -468,6 +478,13 @@ any change is pending. The lock covers the whole host: the three routes are
 privileged mutations, a mutation runs only in a job host, and every admin
 login shares the root job host ([Jobs](./jobs.md#terms)), so every memory
 change, from any session, runs in that one process.
+
+An install of zram-tools from Capabilities, a privileged job in the same
+process, takes the lock too, from just before its package step until the
+step after it ends (see [The zram capability](#the-zram-capability)), so a
+memory change during that install fails with the same `ErrConflict`, and
+an install that starts while a change runs leaves the package's service as
+the package sets it up and says so in its warning.
 
 ## Swappiness
 
@@ -797,6 +814,17 @@ that file's content and mode, header or not. Every write is atomic
 | `/etc/systemd/system/<unit>.d/90-linuxio-memory.conf`, for the managed swap file's unit | `zram` (`stop_swap_file`), removed by `zswap` and `disk` (`start_swap_file`) | `[Unit]` with `ConditionPathExists=!/`, which never holds, so systemd skips the unit and the file stays off at boot (see [Holding a swap file off at boot](#holding-a-swap-file-off-at-boot)). Followed by a reload each way. Its folder is made 0755. |
 | `<path>.before-linuxio`, beside either zram file | a run that replaces that file while it is not LinuxIO's | The file as it was, with its mode. Not undone by a rollback, and replaced by the next such copy. |
 
+One more file lives only while zram-tools installs from Capabilities, and
+starts with its own header, `# Managed by LinuxIO (Settings, Capabilities);
+removed when the zram-tools install ends.`:
+`/run/systemd/system/zramswap.service.d/90-linuxio-memory.conf`, `[Unit]`
+with `ConditionPathExists=!/`, which keeps the package's start of
+`zramswap.service` from happening. It is removed, with its folder and a
+reload, when the install's step after the package ends; one a killed job
+host left is removed by the next switch to zram with zram-tools
+(`start_zram`), and a boot clears it (see
+[The zram capability](#the-zram-capability)).
+
 ### A zram configuration file that is not LinuxIO's
 
 The two zram files are not LinuxIO's alone: `/etc/default/zramswap` is a
@@ -981,8 +1009,23 @@ size settings each writes.
 `zram` is available when either provider is installed
 (`CheckZramAvailability`). Install goes through PackageKit with the Debian
 package `zram-tools` or the RHEL package `zram-generator`; neither has a
-service step, since `start_zram` does that. See
-[Capabilities](./capabilities.md#zram).
+service step, since `start_zram` does that. zram-generator's package starts
+nothing. zram-tools' package enables `zramswap.service` and starts it as it
+installs, so where zram-tools is the package installed and was not
+installed yet, the capability's package hook, `ZramToolsInstallHook`
+(`install.go`), keeps the start from happening: under the mutation lock,
+held across the package step, a runtime drop-in with
+`ConditionPathExists=!/` makes systemd skip the package's start, and after
+the package step, whatever its outcome, the hook disables the service the
+package enabled, unless it started at boot before the install, and removes
+the drop-in. An install that runs to its end starts no zram, so nothing is
+stopped, and the dialog reads the host as it was before the install (a
+cancel during the package step is an exception, see
+[Capabilities](./capabilities.md#known-limits)). The hook
+changes nothing, and says why in the install's warning, while another
+memory change runs or a file LinuxIO did not write is at the drop-in's
+path. See [Capabilities](./capabilities.md#zram) for the steps, why the
+hold is a condition and not a mask, and what the test VM showed.
 
 ## The dialog
 
@@ -1124,7 +1167,21 @@ service step, since `start_zram` does that. See
   zram with how to turn the file off). `swapoff_test.go` runs a
   script in place of `swapoff`: its arguments, what it printed in the error,
   and a cancel that ends it. `escape_test.go` pins the unit-name
-  escaping. Run with `make test-go-quiet GO_TEST_PKGS=./bridge/handlers/memory`.
+  escaping. `install_test.go` covers the zram-tools install hook: the
+  package's start skipped under the hold, with the lock held across the
+  package step, and the service disabled and the hold gone after it; an
+  enabled unit an admin had left enabled; the hold let go after a failed
+  package step, on a done context and after a disable that used up its
+  context, since the release has a budget of its own; nothing changed while
+  another memory change runs or a file LinuxIO did not write is at the
+  hold's path; a leftover hold of LinuxIO's taken over; a failure before
+  the package (the state read, a read of what is at the hold's path, the
+  write, the reload) leaving no hold and the lock free; the error of a
+  failed disable, state read or removal saying, on one line, what the host
+  is left with, with the lock released each time; and a switch to zram that
+  removes a leftover hold of LinuxIO's before it starts zram and leaves any
+  other file there. Tests that take the hold run its step at cleanup, so
+  one that fails cannot leave the lock taken. Run with `make test-go-quiet GO_TEST_PKGS=./bridge/handlers/memory`.
 - Frontend: `memoryStatusView.test.ts` and `MemoryOverflowDialog.test.tsx`
   (the real generated client with the calls mocked), and `Memory.test.tsx` for
   the pencil on the dashboard card and the dialog's URL, all under jsdom.
@@ -1279,7 +1336,9 @@ service step, since `start_zram` does that. See
   Both kernels refused an
   unknown zswap compressor with `ENOENT`. Install from Capabilities in the
   browser (`capability-install.spec.ts`, [Capabilities](./capabilities.md#zram))
-  passed on Ubuntu, where the dialog then named zram-tools, and on Fedora as
+  passed on Ubuntu, where the dialog then named zram-tools and, since the
+  install holds the package's start, `zramswap.service` never started, no
+  zram swapped and the service was disabled, and on Fedora as
   installed, with SELinux enforcing, where PackageKit installed
   `zram-generator` and the dialog named zram-generator as the provider
   ([Capabilities](./capabilities.md#zram) has the runs).

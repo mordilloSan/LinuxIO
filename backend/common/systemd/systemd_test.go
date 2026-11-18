@@ -449,3 +449,21 @@ func TestSystemStoppingIsFalseWithoutAManager(t *testing.T) {
 		t.Fatal("SystemStopping is true with no manager on the bus")
 	}
 }
+
+// A unit no unit file defines, as one whose package is not installed, is told
+// apart from a call that failed.
+func TestGetUnitFileStateOfAMissingUnit(t *testing.T) {
+	bus := testdbus.Start(t)
+	bus.SetSystemBus(t)
+	manager := testdbus.NewSystemdManager()
+	manager.UnitFileMissing = true
+	conn := bus.OwnName(t, dbusclient.SystemdBusName)
+	if err := conn.Export(manager, godbus.ObjectPath(dbusclient.SystemdPath), dbusclient.SystemdManagerIface); err != nil {
+		t.Fatalf("export systemd manager: %v", err)
+	}
+
+	state, err := GetUnitFileState(t.Context(), "zramswap.service")
+	if !errors.Is(err, ErrNoUnitFile) || state != "" {
+		t.Fatalf("GetUnitFileState = %q, %v; want ErrNoUnitFile", state, err)
+	}
+}

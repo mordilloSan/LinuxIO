@@ -117,9 +117,12 @@ type SystemdCall struct {
 }
 
 type SystemdManager struct {
-	mu                       sync.Mutex
-	calls                    []SystemdCall
-	UnitFileState            string
+	mu            sync.Mutex
+	calls         []SystemdCall
+	UnitFileState string
+	// UnitFileMissing makes GetUnitFileState answer as systemd does for a
+	// unit no unit file defines.
+	UnitFileMissing          bool
 	EnableCarriesInstallInfo bool
 	EnableChanges            [][]any
 	DisableChanges           [][]any
@@ -176,6 +179,9 @@ func (m *SystemdManager) UnmaskUnitFiles(names []string, runtime bool) ([][]any,
 
 func (m *SystemdManager) GetUnitFileState(name string) (string, *godbus.Error) {
 	m.record("GetUnitFileState", name)
+	if m.UnitFileMissing {
+		return "", &godbus.Error{Name: "org.freedesktop.DBus.Error.FileNotFound", Body: []any{"No such file or directory"}}
+	}
 	return m.UnitFileState, nil
 }
 
