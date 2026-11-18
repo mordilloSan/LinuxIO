@@ -61,7 +61,8 @@ const (
 	SwapDrainNothingParked   SwapDrainBlockedReason = "nothing_parked"
 	SwapDrainNotEnoughMemory SwapDrainBlockedReason = "not_enough_memory"
 	// SwapDrainUnmanagedDevice: the parked data sits only on swap devices
-	// /etc/fstab does not name, whose units could not be started again.
+	// /etc/fstab does not name, or names without a unit LinuxIO can use
+	// (SwapFileUnitUnusable), whose units could not be started again.
 	SwapDrainUnmanagedDevice SwapDrainBlockedReason = "unmanaged_device"
 	// SwapDrainUnitHeldOff: the unit of a device holding data is held off at
 	// boot, by LinuxIO's condition drop-in or a mask, so a start of it would
@@ -208,7 +209,7 @@ type SwapDevice struct {
 }
 
 // SwapFileUnmanagedReason says why LinuxIO does not stop, start or drain the
-// swap file.
+// swap file, or an /etc/fstab swap entry.
 type SwapFileUnmanagedReason string
 
 const (
@@ -219,6 +220,15 @@ const (
 	// the file's path and so put another entry at it, which a swapoff or a
 	// start of that path would then act on.
 	SwapFileOthersCanWrite SwapFileUnmanagedReason = "others_can_write"
+	// SwapFileUnitUnusable: /etc/fstab names the swap, but it has no systemd
+	// unit LinuxIO can use. LinuxIO cannot tell the unit's name for a tag
+	// such as LABEL= whose value udev may write otherwise in its
+	// /dev/disk/by-* link, for a unit name of 256 bytes or more, which systemd
+	// shortens with a hash, or for a source that is neither a path nor one of
+	// the tags LinuxIO knows; systemd makes no unit for a path with a ".."
+	// component; and a unit name of 254 or 255 bytes leaves no room in a file
+	// name for the drop-in folder that holds the unit off at boot.
+	SwapFileUnitUnusable SwapFileUnmanagedReason = "unit_unusable"
 )
 
 // SwapFile is the swap file the status reports: the first one /etc/fstab
@@ -228,12 +238,20 @@ type SwapFile struct {
 	DiskHint SwapDiskHint `json:"disk_hint"`
 	FSType   string       `json:"fs_type"`
 	// Managed is true when LinuxIO stops, holds off, starts and drains the
-	// file: /etc/fstab names it, so it has a unit, and only root can change
-	// the folders on its path. A file that is not managed is left as it is,
-	// and UnmanagedReason says why.
+	// file: /etc/fstab names it, so it has a unit, LinuxIO can tell that
+	// unit's name, and only root can change the folders on its path. A file
+	// that is not managed is left as it is, and UnmanagedReason says why.
 	Managed         bool                    `json:"managed"`
 	Path            string                  `json:"path"`
 	UnmanagedReason SwapFileUnmanagedReason `json:"unmanaged_reason"`
+}
+
+// UnmanagedFstabSwap is an /etc/fstab swap entry that LinuxIO leaves alone,
+// never stopping, starting, draining or holding it off at boot, and why.
+// Source is the entry's first field as fstab writes it.
+type UnmanagedFstabSwap struct {
+	Reason SwapFileUnmanagedReason `json:"reason"`
+	Source string                  `json:"source"`
 }
 
 // ZswapStatus is the zswap module's parameters; Available is false on a
@@ -287,7 +305,9 @@ type SwapModePreset struct {
 // SwapStatus is how the host handles running out of memory, with what the
 // Memory dialog needs to offer each mode. Sizes are bytes.
 // ZramGeneratorDevices lists, while zram-generator is installed, the devices
-// its configuration files other than LinuxIO's define.
+// its configuration files other than LinuxIO's define. UnmanagedFstabSwaps
+// lists, in fstab order, each /etc/fstab swap entry without a systemd unit
+// LinuxIO can use (unit_unusable).
 type SwapStatus struct {
 	CanDrain              bool                   `json:"can_drain"`
 	Devices               []SwapDevice           `json:"devices"`
@@ -306,6 +326,7 @@ type SwapStatus struct {
 	Swappiness            int                    `json:"swappiness"`
 	TunedActive           bool                   `json:"tuned_active"`
 	TunedProfile          string                 `json:"tuned_profile"`
+	UnmanagedFstabSwaps   []UnmanagedFstabSwap   `json:"unmanaged_fstab_swaps"`
 	WatermarkBoostFactor  int                    `json:"watermark_boost_factor"`
 	WatermarkScaleFactor  int                    `json:"watermark_scale_factor"`
 	ZramAvailable         bool                   `json:"zram_available"`

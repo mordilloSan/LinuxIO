@@ -2,10 +2,18 @@ package memory
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
+
+// longSwapPath is a swap file whose unit name, 270 bytes, systemd shortens
+// with a hash, though each folder on its path has a short name.
+var longSwapPath = "/srv/" + strings.Repeat("swapfolder/", 23) + "swapfile"
+
+// longSwapsLine is longSwapPath active in /proc/swaps, holding 128 MiB.
+var longSwapsLine = longSwapPath + " file\t\t1048572\t\t131072\t\t-2\n"
 
 // writeVMSysctls writes the four vm sysctls the status reads.
 func (f fixture) writeVMSysctls(swappiness, pageCluster, boost, scale string) {
@@ -219,6 +227,10 @@ func TestReadSwapStatusOfAMinimalHost(t *testing.T) {
 	if got.ZramPlannedSize != 1*gib || got.DrainBlockedReason != apischema.SwapDrainNothingParked {
 		t.Errorf("zram planned size = %d, drain reason = %q; want 1 GiB, nothing_parked", got.ZramPlannedSize, got.DrainBlockedReason)
 	}
+	// An empty list, not null on the wire.
+	if got.UnmanagedFstabSwaps == nil || len(got.UnmanagedFstabSwaps) != 0 {
+		t.Errorf("unmanaged fstab swaps = %#v, want an empty list", got.UnmanagedFstabSwaps)
+	}
 }
 
 func TestReadSwapStatusRefusesBrokenRequiredFiles(t *testing.T) {
@@ -403,5 +415,73 @@ func TestReadSwapStatusDoesNotRecommendZramBesideASwapFileThatStays(t *testing.T
 	}
 	if got.RecommendedMode != apischema.SwapModeZswap {
 		t.Errorf("recommended = %q, want zswap", got.RecommendedMode)
+	}
+}
+
+// An fstab swap entry whose unit LinuxIO cannot name the way systemd does is
+// listed with that reason, in fstab order: a tag whose value udev writes
+// otherwise in its /dev/disk/by-* link (punctuation outside #+-.:=@_, a
+// character outside ASCII, a quote left unpaired), a unit name systemd
+// shortens with a hash, and a source that is neither a path nor a known tag.
+// One LinuxIO can name is not listed, up to a unit name of 253 bytes; at 254
+// the unit's drop-in folder would be longer than a file name may be.
+func TestReadSwapStatusListsTheFstabSwapsItCannotName(t *testing.T) {
+	f := newFixture(t)
+	f.write(procSwaps, swapsHeader)
+	f.write(procMeminfo, meminfoText)
+	f.write(etcFstab, "LABEL=swap!1 none swap sw 0 0\n"+
+		"/swap.img none swap sw 0 0\n"+
+		"PARTLABEL=caf\xc3\xa9 none swap sw 0 0\n"+
+		`LABEL="half none swap sw 0 0`+"\n"+
+		`LABEL="whole" none swap sw 0 0`+"\n"+
+		"LABEL=a#+-.:=@_z none swap sw 0 0\n"+
+		`LABEL=my\040swap none swap sw 0 0`+"\n"+
+		longSwapPath+" none swap sw 0 0\n"+
+		"/"+strings.Repeat("c", 248)+" none swap sw 0 0\n"+
+		"/"+strings.Repeat("d", 249)+" none swap sw 0 0\n"+
+		"ID=ata-disk-part3 none swap sw 0 0\n")
+
+	got, _, err := f.host().readSwapStatus(apischema.ZramProviderTools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unknown := apischema.SwapFileUnitUnusable
+	want := []apischema.UnmanagedFstabSwap{
+		{Reason: unknown, Source: "LABEL=swap!1"},
+		{Reason: unknown, Source: "PARTLABEL=caf\xc3\xa9"},
+		{Reason: unknown, Source: `LABEL="half`},
+		{Reason: unknown, Source: longSwapPath},
+		{Reason: unknown, Source: "/" + strings.Repeat("d", 249)},
+		{Reason: unknown, Source: "ID=ata-disk-part3"},
+	}
+	if !slices.Equal(got.UnmanagedFstabSwaps, want) {
+		t.Fatalf("unmanaged fstab swaps =\n%+v\nwant\n%+v", got.UnmanagedFstabSwaps, want)
+	}
+}
+
+// Such a swap file is not managed, and the status says why rather than that
+// fstab does not name it: here the only one fstab names, active, whose unit
+// systemd names with a hash. Its data is not drained.
+func TestReadSwapStatusOfASwapFileItCannotName(t *testing.T) {
+	f := newFixture(t)
+	f.write(procSwaps, swapsHeader+longSwapsLine)
+	f.write(procMeminfo, meminfoText)
+	f.write(etcFstab, longSwapPath+" none swap sw 0 0\n")
+	f.write(longSwapPath, "")
+
+	got, _, err := f.host().readSwapStatus(apischema.ZramProviderTools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantFile := apischema.SwapFile{Path: longSwapPath, Active: true, UnmanagedReason: apischema.SwapFileUnitUnusable}
+	if got.SwapFile == nil || *got.SwapFile != wantFile {
+		t.Errorf("swap file = %+v, want %+v", got.SwapFile, wantFile)
+	}
+	if got.CanDrain || got.DrainBlockedReason != apischema.SwapDrainUnmanagedDevice {
+		t.Errorf("can drain = %v, reason = %q; want false, unmanaged_device", got.CanDrain, got.DrainBlockedReason)
+	}
+	want := []apischema.UnmanagedFstabSwap{{Reason: apischema.SwapFileUnitUnusable, Source: longSwapPath}}
+	if !slices.Equal(got.UnmanagedFstabSwaps, want) {
+		t.Errorf("unmanaged fstab swaps = %+v, want %+v", got.UnmanagedFstabSwaps, want)
 	}
 }

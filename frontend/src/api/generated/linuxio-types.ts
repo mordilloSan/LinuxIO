@@ -3095,7 +3095,11 @@ export interface SwapFile {
   unmanaged_reason: SwapFileUnmanagedReason;
 }
 
-export type SwapFileUnmanagedReason = "" | "not_in_fstab" | "others_can_write";
+export type SwapFileUnmanagedReason =
+  | ""
+  | "not_in_fstab"
+  | "others_can_write"
+  | "unit_unusable";
 
 export interface SwapLeft {
   reason: SwapLeftReason;
@@ -3143,6 +3147,7 @@ export interface SwapModeResult {
   swappiness: number;
   tuned_active: boolean;
   tuned_profile: string;
+  unmanaged_fstab_swaps: UnmanagedFstabSwap[];
   watermark_boost_factor: number;
   watermark_scale_factor: number;
   zram_available: boolean;
@@ -3180,6 +3185,7 @@ export interface SwapStatus {
   swappiness: number;
   tuned_active: boolean;
   tuned_profile: string;
+  unmanaged_fstab_swaps: UnmanagedFstabSwap[];
   watermark_boost_factor: number;
   watermark_scale_factor: number;
   zram_available: boolean;
@@ -3497,6 +3503,11 @@ export interface UnitInfo {
 
 export interface UnitNameRequest {
   unitName: string;
+}
+
+export interface UnmanagedFstabSwap {
+  reason: SwapFileUnmanagedReason;
+  source: string;
 }
 
 export interface Update {

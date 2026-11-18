@@ -39,6 +39,7 @@ import {
   bannerView,
   canApply,
   confirmView,
+  fstabEntryNotes,
   generatorFilesNote,
   initialSelection,
   isRowMode,
@@ -419,6 +420,7 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
   const rows = rowViews(status);
   const banner = bannerView(status);
   const fileNote = swapFileNote(status);
+  const entryNotes = fstabEntryNotes(status);
   const generatorNote = generatorFilesNote(status);
 
   // A change that stops the swap file, or replaces a zram configuration file
@@ -514,6 +516,12 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
           </AppAlert>
 
           {fileNote ? <AppAlert severity="warning">{fileNote}</AppAlert> : null}
+
+          {entryNotes.map((note) => (
+            <AppAlert key={note} severity="warning">
+              {note}
+            </AppAlert>
+          ))}
 
           {generatorNote ? (
             <AppAlert severity="info">

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
@@ -22,9 +23,16 @@ func (f fixture) symlink(target, name string) {
 }
 
 // Each fstab source names its unit the way systemd-fstab-generator does: a
-// path as written, a tag through its /dev/disk/by-* link, each escaped.
+// path as written, a tag through its /dev/disk/by-* link, each escaped. The
+// names were checked against systemd 259's generator. A source without a
+// unit LinuxIO can use names none here: one it cannot name that way, and a
+// unit name of 254 bytes or more, whose drop-in folder would be longer than
+// a file name may be (256 is where systemd hashes it).
 func TestFstabSwapsNameTheirUnits(t *testing.T) {
 	f := newFixture(t)
+	fits := "/" + strings.Repeat("c", 248)
+	noRoom := "/" + strings.Repeat("d", 249)
+	hashed := "/" + strings.Repeat("e", 251)
 	f.write("/etc/fstab", `# comment
 UUID=0a1b2c3d / btrfs defaults 0 1
 /swap.img none swap sw 0 0
@@ -34,14 +42,34 @@ PARTUUID=1234-56 none swap sw 0 0
 PARTLABEL=swap-part none swap sw 0 0
 /dev/sda3 none swap sw 0 0
 /mnt/my\040disk/swapfile none swap sw 0 0
+LABEL="whole" none swap sw 0 0
+LABEL=a#+-.:=@_z none swap sw 0 0
+LABEL=back\134slash/x none swap sw 0 0
+`+fits+` none swap sw 0 0
+`+noRoom+` none swap sw 0 0
+`+hashed+` none swap sw 0 0
+LABEL=swap!1 none swap sw 0 0
+`+longSwapPath+` none swap sw 0 0
 none none swap sw 0 0
 ID=ata-disk-part3 none swap sw 0 0
 /a/../b none swap sw 0 0
 #/old.img none swap sw 0 0
 `)
-	got, err := f.host().fstabSwaps()
+	got, unusable, err := f.host().fstabSwaps()
 	if err != nil {
 		t.Fatal(err)
+	}
+	wantUnusable := []unusableFstabSwap{
+		{source: noRoom, path: noRoom},
+		{source: hashed, path: hashed},
+		{source: "LABEL=swap!1"},
+		{source: longSwapPath, path: longSwapPath},
+		{source: "none"},
+		{source: "ID=ata-disk-part3"},
+		{source: "/a/../b", path: "/a/../b"},
+	}
+	if !slices.Equal(unusable, wantUnusable) {
+		t.Errorf("unusable fstab swaps = %+v, want %+v", unusable, wantUnusable)
 	}
 	want := []fstabSwap{
 		{path: "/swap.img", unit: "swap.img.swap"},
@@ -51,6 +79,10 @@ ID=ata-disk-part3 none swap sw 0 0
 		{path: "/dev/disk/by-partlabel/swap-part", unit: `dev-disk-by\x2dpartlabel-swap\x2dpart.swap`},
 		{path: "/dev/sda3", unit: "dev-sda3.swap"},
 		{path: "/mnt/my disk/swapfile", unit: `mnt-my\x20disk-swapfile.swap`},
+		{path: "/dev/disk/by-label/whole", unit: `dev-disk-by\x2dlabel-whole.swap`},
+		{path: "/dev/disk/by-label/a#+-.:=@_z", unit: `dev-disk-by\x2dlabel-a\x23\x2b\x2d.:\x3d\x40_z.swap`},
+		{path: `/dev/disk/by-label/back\x5cslash\x2fx`, unit: `dev-disk-by\x2dlabel-back\x5cx5cslash\x5cx2fx.swap`},
+		{path: fits, unit: strings.Repeat("c", 248) + ".swap"},
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("fstab swaps =\n%+v\nwant\n%+v", got, want)
@@ -58,9 +90,9 @@ ID=ata-disk-part3 none swap sw 0 0
 }
 
 func TestFstabSwapsWithoutAnFstab(t *testing.T) {
-	got, err := newFixture(t).host().fstabSwaps()
-	if err != nil || len(got) != 0 {
-		t.Fatalf("fstab swaps = %+v, %v; want none", got, err)
+	got, unusable, err := newFixture(t).host().fstabSwaps()
+	if err != nil || len(got) != 0 || len(unusable) != 0 {
+		t.Fatalf("fstab swaps = %+v, %+v, %v; want none", got, unusable, err)
 	}
 }
 

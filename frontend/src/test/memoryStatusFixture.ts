@@ -83,6 +83,7 @@ export const swapStatus = (
   swappiness: 180,
   tuned_active: false,
   tuned_profile: "",
+  unmanaged_fstab_swaps: [],
   watermark_boost_factor: 0,
   watermark_scale_factor: 125,
   zram_available: true,

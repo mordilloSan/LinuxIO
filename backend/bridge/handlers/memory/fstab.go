@@ -37,56 +37,111 @@ var fstabTagDirs = map[string]string{
 	"PARTLABEL": "/dev/disk/by-partlabel",
 }
 
-// fstabSwaps reads the swap entries of /etc/fstab, in order. An entry whose
-// source systemd would not name a unit after is skipped: no unit can stop or
-// start it.
-func (h hostRoot) fstabSwaps() ([]fstabSwap, error) {
+// unusableFstabSwap is a swap entry of /etc/fstab without a systemd unit
+// LinuxIO can use (see fstabSwapUnit), so no step stops, starts, holds off
+// or drains it: its source as fstab writes it, and the path it swaps on when
+// the source is a path.
+type unusableFstabSwap struct {
+	source, path string
+}
+
+// fstabSwaps reads the swap entries of /etc/fstab, in order: those whose
+// unit LinuxIO names as systemd-fstab-generator does, and apart from them
+// those without a unit it can use, which it leaves alone.
+func (h hostRoot) fstabSwaps() ([]fstabSwap, []unusableFstabSwap, error) {
 	text, _, err := h.readOptional(etcFstab)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var entries []fstabSwap
+	var unusable []unusableFstabSwap
 	for line := range strings.Lines(text) {
 		fields := strings.Fields(line)
 		if len(fields) < 3 || strings.HasPrefix(fields[0], "#") || fields[2] != "swap" {
 			continue
 		}
-		path, ok := fstabNodePath(octalescape.Unescape(fields[0]))
-		if !ok {
-			continue
-		}
-		unit, err := systemd.EscapePath(path)
+		source := octalescape.Unescape(fields[0])
+		path, unit, err := fstabSwapUnit(source)
 		if err != nil {
 			slog.Debug("skipped fstab swap entry", "source", fields[0], "error", err)
+			entry := unusableFstabSwap{source: fields[0]}
+			if strings.HasPrefix(source, "/") {
+				entry.path = source
+			}
+			unusable = append(unusable, entry)
 			continue
 		}
-		entries = append(entries, fstabSwap{path: filepath.Clean(path), unit: unit + ".swap"})
+		entries = append(entries, fstabSwap{path: filepath.Clean(path), unit: unit})
 	}
-	return entries, nil
+	return entries, unusable, nil
+}
+
+const (
+	// unitNameMax is systemd's UNIT_NAME_MAX: a unit named after a path that
+	// would be this long or longer gets a name shortened with a hash of the
+	// path instead (unit_name_from_path).
+	unitNameMax = 256
+	// fileNameMax is the longest file name Linux takes (NAME_MAX), which the
+	// unit's drop-in folder, "<unit>.d", must fit.
+	fileNameMax = 255
+)
+
+// fstabSwapUnit is the node systemd-fstab-generator swaps on for an fstab
+// source and the swap unit it names after that node. It fails for a unit
+// LinuxIO cannot use: one it cannot name as systemd does (a source
+// fstabNodePath refuses, a path systemd-escape refuses, a unit name systemd
+// shortens with a hash), or one whose drop-in folder, which holds the unit
+// off at boot, would be longer than a file name may be.
+func fstabSwapUnit(source string) (path, unit string, err error) {
+	if path, err = fstabNodePath(source); err != nil {
+		return "", "", err
+	}
+	name, err := systemd.EscapePath(path)
+	if err != nil {
+		return "", "", err
+	}
+	unit = name + ".swap"
+	switch {
+	case len(unit) >= unitNameMax:
+		return "", "", fmt.Errorf("systemd names the unit of %s with a hash, its name being %d bytes", path, len(unit))
+	case len(unit+".d") > fileNameMax:
+		return "", "", fmt.Errorf("the drop-in folder of %s would be %d bytes, longer than a file name may be", unit, len(unit+".d"))
+	}
+	return path, unit, nil
 }
 
 // fstabNodePath is the path systemd-fstab-generator swaps on for an fstab
-// source: a path as written, a tag through its /dev/disk/by-* link with "/"
-// and blanks escaped as udev names them. Other sources name no unit.
-func fstabNodePath(source string) (string, bool) {
+// source: a path as written, or a tag through its /dev/disk/by-* link. The
+// tag's value loses one pair of quotes around it, as systemd's unquote
+// takes off, and is escaped as udev's encode_devnode_name does: letters,
+// digits and #+-.:=@_ as they are, "\", "/", blanks and control characters
+// as \xNN. Any other byte, punctuation udev escapes or a character outside
+// ASCII, which udev keeps as it is when it is valid UTF-8, is refused rather
+// than named wrong, as is any other source.
+func fstabNodePath(source string) (string, error) {
 	if strings.HasPrefix(source, "/") {
-		return source, true
+		return source, nil
 	}
 	tag, value, ok := strings.Cut(source, "=")
 	dir, known := fstabTagDirs[tag]
 	if !ok || !known || value == "" {
-		return "", false
+		return "", errors.New("the source is neither a path nor a tag LinuxIO knows")
 	}
-	value = strings.Trim(value, `"'`)
+	if len(value) >= 2 && (value[0] == '"' || value[0] == '\'') && value[len(value)-1] == value[0] {
+		value = value[1 : len(value)-1]
+	}
 	var b strings.Builder
 	for _, c := range []byte(value) {
-		if c < ' ' || c >= 0x7f || c == '\\' || c == '/' || c == ' ' {
-			fmt.Fprintf(&b, `\x%02x`, c)
-		} else {
+		switch {
+		case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', strings.IndexByte("#+-.:=@_", c) >= 0:
 			b.WriteByte(c)
+		case c <= ' ' || c == 0x7f || c == '\\' || c == '/':
+			fmt.Fprintf(&b, `\x%02x`, c)
+		default:
+			return "", fmt.Errorf("udev may write the byte %#x of the %s value otherwise in its link", c, tag)
 		}
 	}
-	return dir + "/" + b.String(), true
+	return dir + "/" + b.String(), nil
 }
 
 // maxSymlinks bounds the links resolve follows, as the kernel's 40 does.

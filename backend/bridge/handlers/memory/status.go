@@ -141,7 +141,7 @@ func (h hostRoot) readSwapStatus(provider apischema.ZramProvider) (apischema.Swa
 	if err != nil {
 		return apischema.SwapStatus{}, nil, fmt.Errorf("read mounts: %w", err)
 	}
-	fstab, err := h.fstabSwaps()
+	fstab, unusable, err := h.fstabSwaps()
 	if err != nil {
 		return apischema.SwapStatus{}, nil, fmt.Errorf("read swap entries from fstab: %w", err)
 	}
@@ -158,7 +158,8 @@ func (h hostRoot) readSwapStatus(provider apischema.ZramProvider) (apischema.Swa
 		ZramProvider:         provider,
 		ForeignZramConfig:    h.foreignZramConfig(provider),
 		ZramGeneratorDevices: h.zramGeneratorDevices(),
-		SwapFile:             h.statusSwapFile(fstab, devices, mounts),
+		SwapFile:             h.statusSwapFile(fstab, unusable, devices, mounts),
+		UnmanagedFstabSwaps:  unmanagedFstabSwaps(unusable),
 		Presets:              presetList(),
 	}
 	if err := h.readVMSysctls(&status); err != nil {
@@ -212,8 +213,9 @@ func (h hostRoot) describeSwapFiles(devices []apischema.SwapDevice, mounts []mou
 // that LinuxIO manages (see fstabSwapFile), active when /proc/swaps holds it,
 // and managed, since its unit can be stopped, held off and started, unless
 // others can change its path; or else the first active one, which is not
-// managed. It is nil when there is none.
-func (h hostRoot) statusSwapFile(fstab []fstabSwap, devices []apischema.SwapDevice, mounts []mountEntry) *apischema.SwapFile {
+// managed, since fstab does not name it or names it by a path without a unit
+// LinuxIO can use. It is nil when there is none.
+func (h hostRoot) statusSwapFile(fstab []fstabSwap, unusable []unusableFstabSwap, devices []apischema.SwapDevice, mounts []mountEntry) *apischema.SwapFile {
 	var file apischema.SwapFile
 	if entry, ok := fstabSwapFile(fstab); ok {
 		file.Path, file.Active, file.Managed = entry.path, entry.device != "", !entry.othersCanWrite
@@ -226,10 +228,23 @@ func (h hostRoot) statusSwapFile(fstab []fstabSwap, devices []apischema.SwapDevi
 			return nil
 		}
 		file.Path, file.Active, file.UnmanagedReason = devices[i].Path, true, apischema.SwapFileNotInFstab
+		if slices.ContainsFunc(unusable, func(e unusableFstabSwap) bool { return e.path != "" && h.sameSwap(e.path, file.Path) }) {
+			file.UnmanagedReason = apischema.SwapFileUnitUnusable
+		}
 	}
 	mount, _ := mountHolding(mounts, file.Path)
 	file.FSType, file.DiskHint = mount.fsType, h.diskHint(mount)
 	return &file
+}
+
+// unmanagedFstabSwaps lists the fstab swap entries without a unit LinuxIO
+// can use, which it leaves alone; an empty list and not null on the wire.
+func unmanagedFstabSwaps(unusable []unusableFstabSwap) []apischema.UnmanagedFstabSwap {
+	list := []apischema.UnmanagedFstabSwap{}
+	for _, entry := range unusable {
+		list = append(list, apischema.UnmanagedFstabSwap{Reason: apischema.SwapFileUnitUnusable, Source: entry.source})
+	}
+	return list
 }
 
 // diskSwapUsed is the data parked on disk swap devices; data in zram is

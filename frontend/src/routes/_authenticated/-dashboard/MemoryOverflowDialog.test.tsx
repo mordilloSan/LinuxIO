@@ -281,7 +281,7 @@ describe("MemoryOverflowDialog banner", () => {
     ["not_enough_memory", "Not enough free memory right now"],
     [
       "unmanaged_device",
-      "This swap device is not in /etc/fstab, so LinuxIO cannot restart it",
+      "This swap device is not in /etc/fstab, or has no systemd unit LinuxIO can use, so LinuxIO cannot restart it",
     ],
     [
       "unit_held_off",
@@ -407,6 +407,25 @@ describe("MemoryOverflowDialog banner", () => {
         "This swap device is in a folder that users other than root can change, so LinuxIO will not empty it",
       ),
     ).toBeVisible();
+  });
+
+  it("warns up front about each fstab swap entry whose unit LinuxIO cannot name", async () => {
+    await renderSection(
+      diskStatus({
+        unmanaged_fstab_swaps: [
+          { reason: "unit_unusable", source: "LABEL=swap!1" },
+          { reason: "unit_unusable", source: "PARTLABEL=café" },
+        ],
+      }),
+    );
+
+    for (const source of ["LABEL=swap!1", "PARTLABEL=café"]) {
+      expect(
+        screen.getByText(
+          `LinuxIO does not manage the swap entry ${source} in /etc/fstab: it has no systemd unit LinuxIO can use. LinuxIO will not turn it on or off, empty it or keep it off after a restart, whatever is chosen here.`,
+        ),
+      ).toBeVisible();
+    }
   });
 
   it("says memory is fine when nothing is parked", async () => {

@@ -52,10 +52,6 @@ after a change that issues ioctls).
 
 Do one of these only when something shows it is needed.
 
-- Name a swap unit exactly as systemd does for an unusual fstab label
-  (`encode_devnode_name`) and for a path of 256 bytes or more, which systemd
-  names with a hash. Both entries count as unmanaged today, so nothing is
-  stopped or drained for them.
 - Have LinuxIO make its own swap file in a fixed folder only root can write,
   manage only that one and show any other swap as read-only, the way TrueNAS
   and the Unraid swap plugins manage only swap they made. Today LinuxIO

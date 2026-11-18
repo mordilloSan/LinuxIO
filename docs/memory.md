@@ -118,7 +118,7 @@ or of the recommended one when the host is `none` or `mixed`.
 | `/proc/sys/vm/{swappiness,page-cluster,watermark_boost_factor,watermark_scale_factor}` | the four sysctls |
 | `/sys/module/zswap/parameters/{enabled,compressor,max_pool_percent}` | zswap; no directory means `zswap.available` is false |
 | `/sys/block/zram<N>/{disksize,mm_stat}` | each zram device's size, stored data, compressed size and memory used |
-| `/etc/fstab` | the swap entries, which decide what LinuxIO may stop, hold off or start |
+| `/etc/fstab` | the swap entries, which decide what LinuxIO may stop, hold off or start, and `unmanaged_fstab_swaps`, those it leaves alone (see [Swap units](#swap-units)) |
 | `/proc/self/mountinfo` | the filesystem and disk of each swap file (`fs_type`, `disk_hint`) |
 | `/sys/class/block/<device>` | whether that disk is removable (`disk_hint`) |
 | TuneD, through `power.GetStatus` | `tuned_active` and `tuned_profile` |
@@ -152,6 +152,13 @@ it, and `swap_file.unmanaged_reason` says why:
 |---|---|
 | `not_in_fstab` | fstab names no swap file and this is the first active one: it has no unit to stop, hold off or start |
 | `others_can_write` | fstab names the file, but someone other than root can change a folder on its path (see "A swap file others can redirect is not managed") |
+| `unit_unusable` | fstab names the file, but it has no systemd unit LinuxIO can use (see [Swap units](#swap-units)); this is the first active swap file, since fstab names no swap file that has one |
+
+`unmanaged_fstab_swaps` lists, in fstab order, each fstab swap entry
+without a systemd unit LinuxIO can use, with its `source` as fstab writes
+it and the reason `unit_unusable`. Such an entry is never stopped,
+started, held off or drained, and is not counted among the fstab swap files
+above.
 
 A file that is off and not managed is not counted as disk swap: the
 recommendation goes by the first active swap file instead, or by none, and
@@ -522,7 +529,7 @@ The route refuses a drain with `ErrConflict`, and the status predicts it with
 |---|---|
 | `nothing_parked` | no disk swap device has data on it |
 | `others_can_write` | no managed device holds data, and an fstab swap entry that is not managed because others can change its folder does |
-| `unmanaged_device` | the data is only on devices fstab does not name, whose units could not be started again |
+| `unmanaged_device` | the data is only on devices fstab does not name, or names without a unit LinuxIO can use (`unit_unusable`), whose units could not be started again |
 | `unit_held_off` | a device holding data has a unit held off at boot, so a start of it would not bring it back |
 | `not_enough_memory` | the data on the fstab-named devices does not fit in memory with the margin |
 
@@ -544,9 +551,38 @@ on, and that unit is what LinuxIO holds off at boot, lets go and starts, through
 `systemd-escape --path` do (`systemd.EscapePath` in
 `backend/common/systemd/escape.go`): `/swap.img` is `swap.img.swap`. A source
 that is a path is used as written; `UUID=`, `LABEL=`, `PARTUUID=` and
-`PARTLABEL=` go through their `/dev/disk/by-*` link, with `/`, blanks and
-control characters escaped as udev does. Any other source, and a path with a
-`..` component, names no unit and is skipped.
+`PARTLABEL=` go through their `/dev/disk/by-*` link. Their value loses one
+pair of quotes around it, as systemd's `unquote` takes off, and is written as
+udev's `encode_devnode_name` writes it: letters, digits and `#+-.:=@_` as
+they are, and `\`, `/`, blanks and control characters as `\xNN`.
+
+**An entry without a unit LinuxIO can use is left alone.** Such an entry is
+never stopped, started, held off or drained, and the status lists it in
+`unmanaged_fstab_swaps` (`unit_unusable`) for the dialog to warn about.
+LinuxIO does not work out the names of the first three, which would take
+udev's UTF-8 rules and systemd's hash:
+
+- a tag whose value holds any other byte: punctuation udev escapes (`LABEL=swap!1`
+  is `/dev/disk/by-label/swap\x211`), a character outside ASCII, which udev
+  keeps as it is when it is valid UTF-8, or a quote left unpaired;
+- a unit name of 256 bytes or more (systemd's `UNIT_NAME_MAX`), which
+  `unit_name_from_path` replaces with a shorter name ending in a hash of the
+  path. For a path of plain letters that is a path of 252 bytes or more, and
+  less for one with characters systemd escapes;
+- any other source, such as `ID=` or a relative path; systemd makes no unit
+  at all for a path with a `..` component;
+- a unit name of 254 or 255 bytes: systemd uses it, but its drop-in folder,
+  `<unit>.d`, would be longer than the 255 bytes a file name may have, so
+  LinuxIO could not hold the unit off at boot (see
+  [Holding a swap file off at boot](#holding-a-swap-file-off-at-boot)), and
+  a switch to zram would turn the file off and then fail.
+
+The names were checked against systemd 259's `systemd-fstab-generator`, run
+on a test fstab through `SYSTEMD_FSTAB`, which wrote
+`dev-disk-by\x2dlabel-my\x5cx21swap.swap` for `LABEL=my!swap`,
+`dev-disk-by\x2dlabel-caf\xc3\xa9.swap` for `LABEL=café`, a unit name of 255
+bytes for a path of 251, and, for a path of 252 bytes, a name of 255 ending
+`_<hash>.swap` ("too long, falling back to hashed unit name").
 
 **Matching is positive.** A `/proc/swaps` device is tied to a fstab entry only
 when its path equals the entry's path, or both resolve to the same path after
@@ -961,6 +997,13 @@ service step, since `start_zram` does that. See
   not turn it off or empty it, or will not turn it on, whatever is chosen,
   and for `others_can_write` to move it to a folder only root can write. It
   is there before anything is asked of the file.
+- Under it, a warning for each entry of `unmanaged_fstab_swaps`
+  (`fstabEntryNotes`), once per entry however often fstab repeats it: the
+  entry as fstab writes it, that it has no systemd unit LinuxIO can use, and
+  that LinuxIO will not turn it on or off, empty it or keep it off after a
+  restart, whatever is chosen. A
+  swap file reported with `unit_unusable` gets no warning of its own,
+  since its entry's says it.
 - Under it, while `zram_generator_devices` lists any, a note
   (`generatorFilesNote`) with each file, its device and the size settings it
   writes (`zram-size`, `zram-fraction`, `max-zram-size`), or that it sets no
@@ -1062,7 +1105,12 @@ service step, since `start_zram` does that. See
   and route agreement for held-off units, by the drop-in or a mask, an
   `/etc/fstab` that changes after the status read, which changes neither
   what a drain takes away nor what a switch plans, and the success lines:
-  what stays active after a switch, and only the devices a drain drained. `zram_config_test.go` covers a zram configuration file that
+  what stays active after a switch, and only the devices a drain drained.
+  `fstab_test.go` and `status_test.go` also pin which fstab sources LinuxIO
+  names a unit for and which it lists in `unmanaged_fstab_swaps` (labels
+  with each kind of byte, quotes, the 253-, 254- and 256-byte unit names,
+  other sources), and a swap file without a unit it can use is neither
+  stopped, held off nor drained. `zram_config_test.go` covers a zram configuration file that
   is not LinuxIO's (what counts as one, with `;`, a byte order mark and CRLF;
   a package's unchanged conffile against a fake dpkg status, changed, marked
   obsolete or not recorded; one that cannot be read; the refusal without
@@ -1247,6 +1295,13 @@ Each is by design or unlikely to be met, or is an open item in
 - A swap partition or a swap device fstab does not name is never stopped, so
   such a host cannot choose compressed memory only (partition) or have the
   device drained (unnamed).
+- An fstab swap entry without a systemd unit LinuxIO can use (a label with
+  punctuation udev escapes or a character outside ASCII, a unit name of 254
+  bytes or more, any other source) is left alone, and the dialog warns about
+  it: LinuxIO does not reproduce udev's encoding or systemd's hash. Its swap
+  stays beside zram after a switch and is not held off at boot; a drain
+  leaves its data parked, and is refused (`unmanaged_device`) when no other
+  device holds data (see [Swap units](#swap-units)).
 - A host that swaps to zram only keeps the size its zram has. Changing the
   size means stopping zram, which would leave the host without swap
   meanwhile, so it is done only while disk swap is active; and the dialog

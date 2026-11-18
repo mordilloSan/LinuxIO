@@ -61,7 +61,7 @@ const DRAIN_BLOCKED_TEXT: Partial<Record<SwapDrainBlockedReason, string>> = {
   others_can_write:
     "This swap device is in a folder that users other than root can change, so LinuxIO will not empty it",
   unmanaged_device:
-    "This swap device is not in /etc/fstab, so LinuxIO cannot restart it",
+    "This swap device is not in /etc/fstab, or has no systemd unit LinuxIO can use, so LinuxIO cannot restart it",
 };
 
 /** Bytes parked on disk swap: zram holds its data in memory. */
@@ -87,16 +87,23 @@ const UNMANAGED_CAUSE: Partial<
 > = {
   not_in_fstab: ": /etc/fstab does not name it.",
   others_can_write: ": users other than root can change a folder on its path.",
+  unit_unusable: ": it has no systemd unit LinuxIO can use.",
 };
 
 /**
  * Why LinuxIO leaves the swap file as it is, said before anything is asked of
  * it; undefined for a swap file it manages. A reason it does not know gets no
- * cause.
+ * cause. A file without a systemd unit LinuxIO can use is left to the note on
+ * its /etc/fstab entry (fstabEntryNotes), which names it as fstab does.
  */
 export function swapFileNote(status: SwapStatus): string | undefined {
   const file = status.swap_file;
-  if (!file || file.unmanaged_reason === "") return undefined;
+  if (
+    !file ||
+    file.unmanaged_reason === "" ||
+    file.unmanaged_reason === "unit_unusable"
+  )
+    return undefined;
   const cause = UNMANAGED_CAUSE[file.unmanaged_reason] ?? ".";
   const left = file.active
     ? "LinuxIO will not turn it off or empty it, whatever is chosen here."
@@ -106,6 +113,19 @@ export function swapFileNote(status: SwapStatus): string | undefined {
       ? " Move it to a folder only root can write."
       : "";
   return `LinuxIO does not manage the swap file ${file.path}${cause} ${left}${remedy}`;
+}
+
+/**
+ * Each /etc/fstab swap entry LinuxIO leaves alone whatever is chosen, and
+ * why, said before anything is asked of it; an entry fstab repeats is said
+ * once.
+ */
+export function fstabEntryNotes(status: SwapStatus): string[] {
+  const notes = status.unmanaged_fstab_swaps.map(
+    (entry) =>
+      `LinuxIO does not manage the swap entry ${entry.source} in /etc/fstab${UNMANAGED_CAUSE[entry.reason] ?? "."} LinuxIO will not turn it on or off, empty it or keep it off after a restart, whatever is chosen here.`,
+  );
+  return [...new Set(notes)];
 }
 
 export function bannerView(status: SwapStatus): BannerView {

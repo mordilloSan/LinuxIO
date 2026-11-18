@@ -155,7 +155,7 @@ func drainRefusal(reason apischema.SwapDrainBlockedReason) string {
 	case apischema.SwapDrainNotEnoughMemory:
 		return "there is not enough free memory to take back the data parked on disk swap"
 	case apischema.SwapDrainUnmanagedDevice:
-		return "the parked data is on swap devices /etc/fstab does not name, which could not be started again"
+		return "the parked data is on swap devices /etc/fstab does not name, or names without a unit LinuxIO can use, which could not be started again"
 	case apischema.SwapDrainUnitHeldOff:
 		return "a swap device holding parked data is held off at boot, so it could not be started again"
 	case apischema.SwapDrainOthersCanWrite:

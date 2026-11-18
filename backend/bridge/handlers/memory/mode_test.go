@@ -624,6 +624,34 @@ func TestSetSwapModeToZramLeavesASwapFileItDoesNotManage(t *testing.T) {
 	}
 }
 
+// A swap file without a unit LinuxIO can use gets no step: one systemd names
+// with a hash is neither stopped nor held off under a name systemd does not
+// use, and one whose unit name leaves no room for the drop-in folder is not
+// turned off only to fail holding it off. zram is set up beside it, and the
+// result says it is not managed.
+func TestSetSwapModeToZramLeavesASwapFileItCannotName(t *testing.T) {
+	for name, path := range map[string]string{
+		"hashed":  longSwapPath,
+		"no room": "/" + strings.Repeat("d", 249),
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, sys := diskHost(t)
+			f.write(etcFstab, path+" none swap sw 0 0\n")
+			f.write(path, "")
+			f.write(procSwaps, swapsHeader+path+" file\t\t1048572\t\t131072\t\t-2\n")
+
+			got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Mode != apischema.SwapModeMixed || slices.ContainsFunc(sys.calls, func(call string) bool { return strings.Contains(call, path[1:]) }) {
+				t.Fatalf("mode = %q, calls = %v; want mixed with the swap file left alone", got.Mode, sys.calls)
+			}
+			assertLeft(t, got.Left, apischema.SwapLeft{What: apischema.SwapLeftSwapFile, Reason: apischema.SwapLeftNotManaged})
+		})
+	}
+}
+
 // With two swap files in fstab, the one that swaps is the one a switch to
 // zram stops and masks, though one that is off comes first; that one is
 // left as it is.

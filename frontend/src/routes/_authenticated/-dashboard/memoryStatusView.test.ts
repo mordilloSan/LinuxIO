@@ -15,6 +15,7 @@ import {
   bannerView,
   canApply,
   confirmView,
+  fstabEntryNotes,
   generatorFilesNote,
   initialSelection,
   presetSwappiness,
@@ -132,7 +133,7 @@ describe("bannerView", () => {
     ["not_enough_memory", "Not enough free memory right now"],
     [
       "unmanaged_device",
-      "This swap device is not in /etc/fstab, so LinuxIO cannot restart it",
+      "This swap device is not in /etc/fstab, or has no systemd unit LinuxIO can use, so LinuxIO cannot restart it",
     ],
     [
       "unit_held_off",
@@ -444,6 +445,45 @@ describe("swapFileNote", () => {
     ).toBe(
       "LinuxIO does not manage the swap file /swap.img. LinuxIO will not turn it off or empty it, whatever is chosen here.",
     );
+  });
+
+  it("leaves a swap file whose unit LinuxIO cannot name to the note on its fstab entry", () => {
+    expect(
+      swapFileNote(
+        swapStatus({
+          swap_file: swapFile({
+            managed: false,
+            unmanaged_reason: "unit_unusable",
+          }),
+          unmanaged_fstab_swaps: [
+            { reason: "unit_unusable", source: "/swap.img" },
+          ],
+        }),
+      ),
+    ).toBeUndefined();
+  });
+});
+
+describe("fstabEntryNotes", () => {
+  it("says nothing while LinuxIO can name the unit of every fstab swap entry", () => {
+    expect(fstabEntryNotes(swapStatus())).toEqual([]);
+  });
+
+  it("names each fstab swap entry LinuxIO leaves alone, and why, once", () => {
+    expect(
+      fstabEntryNotes(
+        swapStatus({
+          unmanaged_fstab_swaps: [
+            { reason: "unit_unusable", source: "LABEL=swap!1" },
+            { reason: "unit_unusable", source: "/srv/swap/file" },
+            { reason: "unit_unusable", source: "LABEL=swap!1" },
+          ],
+        }),
+      ),
+    ).toEqual([
+      "LinuxIO does not manage the swap entry LABEL=swap!1 in /etc/fstab: it has no systemd unit LinuxIO can use. LinuxIO will not turn it on or off, empty it or keep it off after a restart, whatever is chosen here.",
+      "LinuxIO does not manage the swap entry /srv/swap/file in /etc/fstab: it has no systemd unit LinuxIO can use. LinuxIO will not turn it on or off, empty it or keep it off after a restart, whatever is chosen here.",
+    ]);
   });
 });
 

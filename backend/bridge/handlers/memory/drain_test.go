@@ -439,6 +439,20 @@ func TestDrainSwapRefusesASwapFileOthersCanRedirect(t *testing.T) {
 	}
 }
 
+// Data on a swap file whose unit LinuxIO cannot name, as one systemd names
+// with a hash, is not drained: a start by another name would not bring the
+// file back.
+func TestDrainSwapLeavesASwapFileItCannotNameAlone(t *testing.T) {
+	f, sys := drainHost(t)
+	f.write(etcFstab, longSwapPath+" none swap sw 0 0\n")
+	f.write(longSwapPath, "")
+	f.write(procSwaps, swapsHeader+longSwapsLine)
+
+	if _, err := sys.executor(nil).drainSwap(t.Context()); !errors.Is(err, bridgeipc.ErrConflict) || len(sys.calls) != 0 {
+		t.Fatalf("err = %v, calls = %v; want a conflict and no change", err, sys.calls)
+	}
+}
+
 // Beside a partition that holds data, such a file is left untouched.
 func TestDrainSwapLeavesASwapFileOthersCanRedirectAlone(t *testing.T) {
 	_, sys := openDrainHost(t, openSwapsLine+partitionSwapsLine)

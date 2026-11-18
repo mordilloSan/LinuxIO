@@ -326,7 +326,7 @@ LABEL=swap none swap sw 0 0
 		t.Run(test.name, func(t *testing.T) {
 			f := newFixture(t)
 			f.write("/etc/fstab", test.fstab)
-			entries, err := f.host().fstabSwaps()
+			entries, _, err := f.host().fstabSwaps()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -359,7 +359,7 @@ LABEL=swap none swap sw 0 0
 		}
 	})
 	t.Run("no fstab", func(t *testing.T) {
-		entries, err := newFixture(t).host().fstabSwaps()
+		entries, _, err := newFixture(t).host().fstabSwaps()
 		if got, ok := fstabSwapFile(entries); err != nil || ok {
 			t.Fatalf("swap file = %+v, err = %v; want none", got, err)
 		}

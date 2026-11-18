@@ -51,7 +51,7 @@ func TestMemoryStatusWithoutRootIntegration(t *testing.T) {
 // such a user can look into.
 func assertSeesTheSwapFileHeldOff(t *testing.T, status apischema.SwapStatus) {
 	t.Helper()
-	entries, err := host.fstabSwaps()
+	entries, _, err := host.fstabSwaps()
 	if err != nil {
 		t.Fatal(err)
 	}
