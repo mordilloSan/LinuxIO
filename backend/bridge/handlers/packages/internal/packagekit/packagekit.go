@@ -187,16 +187,31 @@ func CollectPackageIDs(ctx context.Context, signals <-chan *dbusclient.Signal, a
 	}
 }
 
+// ErrorPackageNotFound is PK_ERROR_ENUM_PACKAGE_NOT_FOUND. Some backends end a
+// Resolve that matches no package with it instead of an empty result.
+const ErrorPackageNotFound uint32 = 8
+
+// Error is the ErrorCode signal that ended a transaction.
+type Error struct {
+	Code    uint32
+	Details string
+	action  string
+}
+
+func (e *Error) Error() string {
+	if e.action != "" {
+		return fmt.Sprintf("%s error: %s", e.action, e.Details)
+	}
+	return fmt.Sprintf("PackageKit error code %d: %s", e.Code, e.Details)
+}
+
 func ErrorFromSignal(sig *dbusclient.Signal, action string) error {
 	if sig == nil || len(sig.Body) < 2 {
 		return fmt.Errorf("PackageKit error (unknown)")
 	}
 	code, _ := sig.Body[0].(uint32)
 	details, _ := sig.Body[1].(string)
-	if action != "" {
-		return fmt.Errorf("%s error: %s", action, details)
-	}
-	return fmt.Errorf("PackageKit error code %d: %s", code, details)
+	return &Error{Code: code, Details: details, action: action}
 }
 
 func LogClose(ctx context.Context, trans *Transaction) {

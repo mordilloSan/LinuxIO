@@ -18,6 +18,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/packages/internal/autoupdate"
 	pkgkit "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/packages/internal/packagekit"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
 )
 
@@ -369,15 +370,36 @@ func RefreshUpdateCache(ctx context.Context) error {
 			}
 			return err
 		}
+		slog.Info("package cache refreshed")
 		return nil
 	})
 }
 
-// InstallByNameWithProgress is InstallByName but streams PackageKit progress
-// signals (percentage/status) to the supplied reporter while the package
-// installs, so callers (e.g. capability install) can show a real progress bar.
+// InstallByNameWithProgress resolves a package name and installs it, streaming
+// PackageKit progress signals (percentage/status) to the supplied reporter so
+// callers (e.g. capability install) can show a real progress bar. A nil
+// reporter discards progress.
+//
+// PackageKit keeps its own package cache, apart from apt's or dnf's, and on a
+// host where it was never refreshed it knows no package to install. A name it
+// does not find is therefore looked up again after one cache refresh before
+// it is reported as not found.
 func InstallByNameWithProgress(ctx context.Context, name string, report pkgUpdateReporter) error {
+	if report == nil {
+		report = func(*PkgUpdateProgress) error { return nil }
+	}
 	id, err := resolveInstallablePackageID(ctx, name)
+	if errors.Is(err, bridgeipc.ErrNotFound) {
+		reportPkgUpdateProgress(report, &PkgUpdateProgress{Type: "status", Status: "Refreshing the package lists"})
+		if refreshErr := RefreshUpdateCache(ctx); refreshErr != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
+			// One line, since the capability row shows the job's error as text.
+			return fmt.Errorf("%w; refresh package lists: %w", err, refreshErr)
+		}
+		id, err = resolveInstallablePackageID(ctx, name)
+	}
 	if err != nil || id == "" {
 		return err
 	}
@@ -386,7 +408,8 @@ func InstallByNameWithProgress(ctx context.Context, name string, report pkgUpdat
 
 // resolveInstallablePackageID resolves a package name to the package ID that
 // should be installed. It returns ("", nil) when the package is already
-// installed (a no-op for callers) and an error when the name can't be found.
+// installed (a no-op for callers) and an error wrapping ErrNotFound when no
+// enabled repository has the name.
 func resolveInstallablePackageID(ctx context.Context, name string) (string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -408,7 +431,7 @@ func resolveInstallablePackageID(ctx context.Context, name string) (string, erro
 	if len(installed) > 0 {
 		return "", nil // already installed
 	}
-	return "", fmt.Errorf("package %q not found in any enabled repository", name)
+	return "", fmt.Errorf("package %q %w in any enabled repository", name, bridgeipc.ErrNotFound)
 }
 
 // PackageKit filter bitmask values. See
@@ -435,6 +458,9 @@ func resolvePackageIDs(ctx context.Context, name string, filter uint64) ([]strin
 		waitCtx, cancel := context.WithTimeout(session.Context(), 30*time.Second)
 		defer cancel()
 		ids, err = pkgkit.CollectPackageIDs(waitCtx, trans.Signals(), "resolve "+name)
+		if pkErr, ok := errors.AsType[*pkgkit.Error](err); ok && pkErr.Code == pkgkit.ErrorPackageNotFound {
+			return nil // a backend's way of saying no package matched
+		}
 		return err
 	})
 	return ids, err

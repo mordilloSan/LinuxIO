@@ -15,6 +15,7 @@ import (
 	"github.com/godbus/dbus/v5/prop"
 
 	pkgkit "github.com/mordilloSan/LinuxIO/backend/bridge/handlers/packages/internal/packagekit"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
 	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient/testdbus"
 )
@@ -41,9 +42,24 @@ type fakePackageKit struct {
 	updateErrors    map[string]string
 	updateHangs     map[string]bool
 	updateStarted   chan string
+	resolvable      map[string]fakeResolvable
+	resolveCalls    int
+	resolveNotFound bool
 	refreshes       int
+	refreshErr      string
+	refreshHangs    bool
+	refreshStarted  chan struct{}
 	offlineTriggers []string
 	triggerErr      *godbus.Error
+}
+
+// fakeResolvable is a package Resolve finds by name. coldCache hides it until
+// a RefreshCache has succeeded, as PackageKit's own cache does on a host where
+// it was never refreshed.
+type fakeResolvable struct {
+	id        string
+	installed bool
+	coldCache bool
 }
 
 type fakeTransaction struct {
@@ -67,14 +83,16 @@ func setupFakePackageKit(t *testing.T, prepared bool) *fakePackageKit {
 	aptTermLogPath = termLogPath
 	t.Cleanup(func() { aptTermLogPath = previousTermLogPath })
 	service := &fakePackageKit{
-		t:             t,
-		conn:          conn,
-		prepared:      prepared,
-		termLogPath:   termLogPath,
-		details:       make(map[string][]any),
-		updateErrors:  make(map[string]string),
-		updateHangs:   make(map[string]bool),
-		updateStarted: make(chan string, 16),
+		t:              t,
+		conn:           conn,
+		prepared:       prepared,
+		termLogPath:    termLogPath,
+		details:        make(map[string][]any),
+		updateErrors:   make(map[string]string),
+		updateHangs:    make(map[string]bool),
+		updateStarted:  make(chan string, 16),
+		resolvable:     make(map[string]fakeResolvable),
+		refreshStarted: make(chan struct{}, 16),
 	}
 
 	path := godbus.ObjectPath(dbusclient.PackageKitPath)
@@ -191,19 +209,95 @@ func (s *fakePackageKit) refreshCount() int {
 	return s.refreshes
 }
 
+func (s *fakePackageKit) setResolvable(name string, pkg fakeResolvable) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.resolvable[name] = pkg
+}
+
+// answerUnknownNamesWithError makes Resolve end a lookup that matches nothing
+// with PackageKit's package-not-found error, as some backends do, instead of
+// an empty result.
+func (s *fakePackageKit) answerUnknownNamesWithError() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.resolveNotFound = true
+}
+
+func (s *fakePackageKit) resolveCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.resolveCalls
+}
+
+func (s *fakePackageKit) setRefreshError(message string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.refreshErr = message
+}
+
+func (s *fakePackageKit) setRefreshHang() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.refreshHangs = true
+}
+
 func (s *fakePackageKit) triggers() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return append([]string(nil), s.offlineTriggers...)
 }
 
+// RefreshCache counts only refreshes that succeed, the ones that warm the cache.
 func (tx *fakeTransaction) RefreshCache(force bool) *godbus.Error {
 	tx.service.mu.Lock()
-	if force {
+	refreshErr, hangs := tx.service.refreshErr, tx.service.refreshHangs
+	if force && refreshErr == "" && !hangs {
 		tx.service.refreshes++
 	}
 	tx.service.mu.Unlock()
+	tx.service.refreshStarted <- struct{}{}
+	if hangs {
+		return nil
+	}
 	tx.emitLater(func() {
+		if refreshErr != "" {
+			tx.emit("ErrorCode", uint32(2), refreshErr) // PK_ERROR_ENUM_NO_NETWORK
+			tx.emit("Finished", uint32(1), uint32(0))
+			return
+		}
+		tx.emit("Finished", uint32(0), uint32(0))
+	})
+	return nil
+}
+
+func (tx *fakeTransaction) Resolve(filter uint64, names []string) *godbus.Error {
+	s := tx.service
+	s.mu.Lock()
+	s.resolveCalls++
+	wantInstalled := filter&pkgkitFilterInstalled != 0
+	var found []fakeResolvable
+	for _, name := range names {
+		pkg, ok := s.resolvable[name]
+		if ok && pkg.installed == wantInstalled && (!pkg.coldCache || s.refreshes > 0) {
+			found = append(found, pkg)
+		}
+	}
+	notFoundErr := s.resolveNotFound
+	s.mu.Unlock()
+	tx.emitLater(func() {
+		if len(found) == 0 && notFoundErr {
+			tx.emit("ErrorCode", uint32(8), "Package not found: "+strings.Join(names, ", ")) // PK_ERROR_ENUM_PACKAGE_NOT_FOUND
+			tx.emit("Finished", uint32(1), uint32(0))
+			return
+		}
+		for _, pkg := range found {
+			info := uint32(2) // Available
+			if pkg.installed {
+				info = 1 // Installed
+			}
+			tx.emit("Package", info, pkg.id, "Demo package")
+		}
 		tx.emit("Finished", uint32(0), uint32(0))
 	})
 	return nil
@@ -415,6 +509,148 @@ func TestInstallPackageWithProgressCallsInstallPackagesAndWaits(t *testing.T) {
 	}
 	if got := service.installedPackages(); !slices.Equal(got, []string{"demo;1.2.3;x86_64;repo"}) {
 		t.Fatalf("installed = %#v", got)
+	}
+}
+
+const coldPackageID = "zram-generator;1.2.1-3.fc44;x86_64;fedora"
+
+func TestInstallByNameRefreshesTheCacheOnceWhenResolveFindsNothing(t *testing.T) {
+	for name, answerWithError := range map[string]bool{"empty result": false, "package-not-found error": true} {
+		t.Run(name, func(t *testing.T) {
+			service := setupFakePackageKit(t, false)
+			service.setResolvable("zram-generator", fakeResolvable{id: coldPackageID, coldCache: true})
+			if answerWithError {
+				service.answerUnknownNamesWithError()
+			}
+			var statuses []string
+			report := func(p *PkgUpdateProgress) error {
+				if p.Type == "status" {
+					statuses = append(statuses, p.Status)
+				}
+				return nil
+			}
+
+			if err := InstallByNameWithProgress(context.Background(), "zram-generator", report); err != nil {
+				t.Fatalf("InstallByNameWithProgress: %v", err)
+			}
+			if got := service.refreshCount(); got != 1 {
+				t.Fatalf("refresh count = %d, want 1", got)
+			}
+			if got := service.installedPackages(); !slices.Equal(got, []string{coldPackageID}) {
+				t.Fatalf("installed = %#v, want the package found after the refresh", got)
+			}
+			if !slices.Contains(statuses, "Refreshing the package lists") {
+				t.Fatalf("status frames = %#v, want the refresh reported", statuses)
+			}
+		})
+	}
+}
+
+func TestInstallByNameDoesNotRefreshWhenResolveFindsThePackage(t *testing.T) {
+	tests := map[string]struct {
+		pkg             fakeResolvable
+		answerWithError bool
+		wantInstalled   []string
+	}{
+		"available":                           {pkg: fakeResolvable{id: coldPackageID}, wantInstalled: []string{coldPackageID}},
+		"already installed":                   {pkg: fakeResolvable{id: coldPackageID, installed: true}},
+		"installed, not-found for ~installed": {pkg: fakeResolvable{id: coldPackageID, installed: true}, answerWithError: true},
+	}
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			service := setupFakePackageKit(t, false)
+			service.setResolvable("zram-generator", tc.pkg)
+			if tc.answerWithError {
+				service.answerUnknownNamesWithError()
+			}
+
+			if err := InstallByNameWithProgress(context.Background(), "zram-generator", func(*PkgUpdateProgress) error { return nil }); err != nil {
+				t.Fatalf("InstallByNameWithProgress: %v", err)
+			}
+			if got := service.refreshCount(); got != 0 {
+				t.Fatalf("refresh count = %d, want no refresh", got)
+			}
+			if got := service.installedPackages(); !slices.Equal(got, tc.wantInstalled) {
+				t.Fatalf("installed = %#v, want %#v", got, tc.wantInstalled)
+			}
+		})
+	}
+}
+
+func TestInstallByNameReportsNotFoundAfterOneRefresh(t *testing.T) {
+	service := setupFakePackageKit(t, false)
+
+	err := InstallByNameWithProgress(context.Background(), "no-such-package", nil)
+	if !errors.Is(err, bridgeipc.ErrNotFound) {
+		t.Fatalf("error = %v, want ErrNotFound", err)
+	}
+	if want := `package "no-such-package" not found in any enabled repository`; err.Error() != want {
+		t.Fatalf("error = %q, want %q", err, want)
+	}
+	if got := service.refreshCount(); got != 1 {
+		t.Fatalf("refresh count = %d, want 1", got)
+	}
+	if got := service.resolveCount(); got != 4 {
+		t.Fatalf("resolve calls = %d, want both lookups before and after the refresh", got)
+	}
+	if got := service.installedPackages(); len(got) != 0 {
+		t.Fatalf("installed = %#v, want nothing", got)
+	}
+}
+
+func TestInstallByNameKeepsNotFoundWhenTheRefreshFails(t *testing.T) {
+	service := setupFakePackageKit(t, false)
+	service.setResolvable("zram-generator", fakeResolvable{id: coldPackageID, coldCache: true})
+	service.setRefreshError("Cannot download repomd.xml")
+
+	err := InstallByNameWithProgress(context.Background(), "zram-generator", func(*PkgUpdateProgress) error { return nil })
+	if !errors.Is(err, bridgeipc.ErrNotFound) {
+		t.Fatalf("error = %v, want ErrNotFound", err)
+	}
+	if want := `package "zram-generator" not found in any enabled repository; refresh package lists: RefreshCache error: Cannot download repomd.xml`; err.Error() != want {
+		t.Fatalf("error = %q, want %q", err, want)
+	}
+	if got := service.resolveCount(); got != 2 {
+		t.Fatalf("resolve calls = %d, want no lookup after the failed refresh", got)
+	}
+	if got := service.installedPackages(); len(got) != 0 {
+		t.Fatalf("installed = %#v, want nothing", got)
+	}
+}
+
+func TestInstallByNameStopsWhenCancelledDuringTheRefresh(t *testing.T) {
+	service := setupFakePackageKit(t, false)
+	service.setResolvable("zram-generator", fakeResolvable{id: coldPackageID, coldCache: true})
+	service.setRefreshHang()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- InstallByNameWithProgress(ctx, "zram-generator", func(*PkgUpdateProgress) error { return nil })
+	}()
+
+	select {
+	case <-service.refreshStarted:
+	case err := <-errCh:
+		t.Fatalf("InstallByNameWithProgress returned %v before refreshing", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for the cache refresh to start")
+	}
+	cancel()
+	var err error
+	select {
+	case err = <-errCh:
+	case <-time.After(5 * time.Second):
+		t.Fatal("InstallByNameWithProgress did not return after cancellation")
+	}
+	if !errors.Is(err, context.Canceled) || errors.Is(err, bridgeipc.ErrNotFound) {
+		t.Fatalf("error = %v, want cancellation and no not-found verdict", err)
+	}
+	if got := service.resolveCount(); got != 2 {
+		t.Fatalf("resolve calls = %d, want no lookup after the cancelled refresh", got)
+	}
+	if got := service.installedPackages(); len(got) != 0 {
+		t.Fatalf("installed = %#v, want nothing", got)
 	}
 }
 

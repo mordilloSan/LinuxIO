@@ -132,8 +132,19 @@ resolve -> [install_package] -> [post_install] -> [enable_service] -> [start_ser
 - The monitoring daemon ships with LinuxIO and is not installed through
   Capability Manager; its capability reports daemon health. The filesystem
   indexer ships with LinuxIO the same way.
-- Package installs go through PackageKit (`InstallByName`), so installable
-  capabilities that have a package step require PackageKit to be available.
+- Package installs go through PackageKit (`InstallByNameWithProgress`), so
+  installable capabilities that have a package step require PackageKit to be
+  available.
+- PackageKit keeps its own package cache, apart from apt's or dnf's, and on a
+  host where nothing has refreshed it (a fresh Fedora install) it knows no
+  package to install. A package name it does not find, whether it answers
+  with no match or with its package-not-found error, is looked up again after
+  one refresh of that cache, the same refresh as the Updates page's button and
+  bounded at two minutes; the capability row shows
+  `Installing zram-generator (Refreshing the package lists)` meanwhile. Only
+  then does the job fail with not found (404), and a refresh that fails is
+  reported beside it. A name that resolves installs without a refresh, so a
+  warm cache costs nothing.
 - A distro-specific optional package may report a warning without preventing
   later service and detection stages. Avahi uses this on RHEL-family hosts for
   `nss-mdns`, which may require EPEL; the responder is still enabled, started,
@@ -412,3 +423,9 @@ make tsc-only                              # derived capability types compile
 Manual end-to-end: with the dependency absent, the feature is gated and the
 Capability Manager shows it unavailable (with an Install button if installable);
 installing it and refreshing capabilities re-enables the feature.
+
+## Known limits
+
+- A package that no enabled repository has costs one cache refresh before the
+  install reports it, including an optional package such as `nss-mdns` on a
+  RHEL-family host without EPEL, whose warning comes after that refresh.
