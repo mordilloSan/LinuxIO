@@ -873,7 +873,7 @@ func TestALinkInAnotherAccountsFolderIsNotFollowedAsRoot(t *testing.T) {
 	defer archive.Close()
 	var skipped []string
 	sources := ArchiveSources{Owner: session, Skipped: func(path string, _ error) { skipped = append(skipped, path) }}
-	require.NoError(t, CreateZip(archive, nil, "", sources, theirs))
+	require.NoError(t, CreateZip(t.Context(), archive, nil, "", sources, theirs))
 	assert.Equal(t, []string{docs}, skipped)
 	assert.Empty(t, archiveContents(t, archive.Name()))
 

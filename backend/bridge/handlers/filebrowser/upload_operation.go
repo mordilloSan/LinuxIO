@@ -22,6 +22,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/linksafe"
 )
 
 type uploadAttributes struct {
@@ -35,7 +36,8 @@ type uploadAttributes struct {
 type uploadTransferTask struct {
 	*transferLifecycle
 	ctx             context.Context
-	path            string
+	path            string // the target, its folders resolved where the request entered
+	requested       string // the target as the request named it, which the result names
 	expectedSize    int64
 	expectedVersion string
 	overwrite       bool
@@ -202,6 +204,12 @@ func runUploadTask(ctx context.Context, task *bridgeipc.Task, req apischema.File
 		return nil, fmt.Errorf("%w: editor save exceeds the maximum text file size", bridgeipc.ErrInvalidArgs)
 	}
 
+	requested := filepath.Clean(path)
+	linkRule := actingFor(session)
+	if path, err = linksafe.ResolveFolders(ctx, requested, linkRule); err != nil {
+		return nil, fmt.Errorf("upload target: %w", err)
+	}
+
 	// Uploads never overwrite unless explicitly told to: fail the conflict
 	// before the client streams any bytes.
 	if !overwrite {
@@ -209,7 +217,7 @@ func runUploadTask(ctx context.Context, task *bridgeipc.Task, req apischema.File
 		if rootErr != nil {
 			return nil, fmt.Errorf("open filesystem root: %w", rootErr)
 		}
-		_, statErr := root.Root.Stat(fsroot.ToRel(filepath.Clean(path)))
+		_, statErr := root.Root.Stat(fsroot.ToRel(path))
 		if closeErr := root.Close(); closeErr != nil {
 			slog.Debug("failed to close filesystem root", "error", closeErr)
 		}
@@ -220,12 +228,13 @@ func runUploadTask(ctx context.Context, task *bridgeipc.Task, req apischema.File
 
 	transfer := &uploadTransferTask{
 		ctx:             ctx,
-		path:            filepath.Clean(path),
+		path:            path,
+		requested:       requested,
 		expectedSize:    expectedSize,
 		expectedVersion: expectedVersion,
 		overwrite:       overwrite,
 		newOwner:        newOwner,
-		linkRule:        actingFor(session),
+		linkRule:        linkRule,
 		private:         req.Private != nil && *req.Private,
 		refuseSymlink:   req.Owner != "",
 	}
@@ -293,7 +302,7 @@ func (t *uploadTransferTask) resolveTarget(root *fsroot.FSRoot, path string) (st
 		resolved, _, err := iteminfo.ResolveSymlinksAt(t.ctx, root, path)
 		return resolved, err
 	}
-	return services.ResolveNoUserLinks(root, path, t.linkRule)
+	return services.ResolveNoUserLinks(t.ctx, path, t.linkRule)
 }
 
 // targetPath returns the path the upload writes to. Without owner (editor
@@ -472,7 +481,7 @@ func (t *uploadTransferTask) complete(stream net.Conn, root *fsroot.FSRoot) erro
 		addToIndexerDetached("upload", path)
 	}
 
-	t.succeed(stream, FileUploadResult{Path: path, Size: bytes})
+	t.succeed(stream, FileUploadResult{Path: t.requested, Size: bytes})
 	slog.Info("upload complete", "path", path, "size", bytes, "task_id", t.task.ID())
 	return nil
 }

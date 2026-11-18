@@ -12,6 +12,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/linksafe"
 )
 
 // fsError classifies a filesystem failure: a missing, existing, forbidden or
@@ -74,14 +75,16 @@ func directoryChildren(ctx context.Context, req apischema.DirectoryChildrenReque
 	return apischema.DirectoryChildren{Folders: children.Folders, Files: children.Files}, nil
 }
 
-func readText(ctx context.Context, req apischema.PathRequest) (apischema.TextFile, error) {
+// readText reads a file for the editor, which offers to save it only where a
+// save acting for linkRule, the session user (see actingFor), can write.
+func readText(ctx context.Context, req apischema.PathRequest, linkRule services.Owner) (apischema.TextFile, error) {
 	if err := ctx.Err(); err != nil {
 		return apischema.TextFile{}, err
 	}
 	if req.Path == "" {
 		return apischema.TextFile{}, fmt.Errorf("%w: missing path", bridgeipc.ErrInvalidArgs)
 	}
-	file, err := services.ReadEditorFile(ctx, req.Path)
+	file, err := services.ReadEditorFile(ctx, req.Path, linkRule)
 	if err != nil {
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 			return apischema.TextFile{}, err
@@ -156,8 +159,13 @@ func existsBatch(ctx context.Context, req apischema.BatchPathRequest) (apischema
 		if err := ctx.Err(); err != nil {
 			return response, err
 		}
+		// The answer names each path as the page sent it, which matches by it.
 		path := fsroot.CleanAbsPath(raw)
-		info, statErr := root.Root.Lstat(fsroot.ToRel(path))
+		resolved, resolveErr := linksafe.ResolveFolders(ctx, path, linksafe.Owner{})
+		if resolveErr != nil {
+			continue
+		}
+		info, statErr := root.Root.Lstat(fsroot.ToRel(resolved))
 		if statErr != nil {
 			continue
 		}

@@ -932,13 +932,7 @@ func nonPrintableRuneRatio(content string) float64 {
 func ChangePermissionsCtx(ctx context.Context, path string, mode os.FileMode, recursive bool, owner Owner, cb func(processed int64)) error {
 	path = fsroot.CleanAbsPath(path)
 
-	root, err := fsroot.Open()
-	if err != nil {
-		return err
-	}
-	defer root.Close()
-
-	at, err := entryFollowingNoUserLinks(root, path, owner)
+	at, err := entryFollowingNoUserLinks(ctx, path, owner)
 	if err != nil {
 		return fmt.Errorf("failed to stat path: %w", err)
 	}

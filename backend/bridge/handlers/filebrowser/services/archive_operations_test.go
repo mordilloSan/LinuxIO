@@ -18,7 +18,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
-	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
 )
 
 // Helper function to create temporary test files/directories
@@ -40,10 +39,7 @@ func createTestDir(t *testing.T, dir, name string) string {
 // extracts it through that handle.
 func extractArchiveAt(t *testing.T, path, destination string, owner Owner, opts *OperationCallbacks, workers int) error {
 	t.Helper()
-	root, err := fsroot.Open()
-	require.NoError(t, err)
-	defer root.Close()
-	archive, _, err := OpenArchive(root, path, owner)
+	archive, _, err := OpenArchive(t.Context(), path, owner)
 	if err != nil {
 		return err
 	}
@@ -55,10 +51,7 @@ func extractArchiveAt(t *testing.T, path, destination string, owner Owner, opts 
 // estimates what extracting it writes.
 func extractSizeAt(t *testing.T, path string, owner Owner) (int64, error) {
 	t.Helper()
-	root, err := fsroot.Open()
-	require.NoError(t, err)
-	defer root.Close()
-	archive, _, err := OpenArchive(root, path, owner)
+	archive, _, err := OpenArchive(t.Context(), path, owner)
 	if err != nil {
 		return 0, err
 	}
@@ -73,7 +66,7 @@ func createZipFile(t *testing.T, path string, opts *OperationCallbacks, skipPath
 	out, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600)
 	require.NoError(t, err)
 	defer out.Close()
-	return CreateZip(out, opts, skipPath, ArchiveSources{}, filenames...)
+	return CreateZip(t.Context(), out, opts, skipPath, ArchiveSources{}, filenames...)
 }
 
 // createTarGzFile is createZipFile for a tar.gz.
@@ -82,7 +75,7 @@ func createTarGzFile(t *testing.T, path string, opts *OperationCallbacks, skipPa
 	out, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0o600)
 	require.NoError(t, err)
 	defer out.Close()
-	return CreateTarGz(out, opts, skipPath, ArchiveSources{}, workers, filenames...)
+	return CreateTarGz(t.Context(), out, opts, skipPath, ArchiveSources{}, workers, filenames...)
 }
 
 func TestComputeArchiveSize(t *testing.T) {
@@ -670,9 +663,9 @@ func TestCompressNeverReadsThroughALinkTheUserCouldPlant(t *testing.T) {
 				require.NoError(t, err)
 				defer file.Close()
 				if strings.HasSuffix(name, ".zip") {
-					return CreateZip(file, nil, "", sources, paths...)
+					return CreateZip(t.Context(), file, nil, "", sources, paths...)
 				}
-				return CreateTarGz(file, nil, "", sources, 1, paths...)
+				return CreateTarGz(t.Context(), file, nil, "", sources, 1, paths...)
 			}
 			base := filepath.Base(f.home)
 
@@ -732,7 +725,7 @@ func TestCompressFollowsALinkInARootFolderAsRoot(t *testing.T) {
 		skipped = append(skipped, path)
 	}}
 
-	require.NoError(t, CreateZip(file, nil, "", sources, system))
+	require.NoError(t, CreateZip(t.Context(), file, nil, "", sources, system))
 	assert.Equal(t, map[string]string{"system/app.conf": "conf", "system/current.conf": "conf"}, archiveContents(t, archive))
 	assert.Empty(t, skipped)
 }

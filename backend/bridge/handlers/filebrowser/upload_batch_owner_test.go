@@ -29,6 +29,7 @@ func newOwnedBatchUpload(t *testing.T, req apischema.FileUploadBatchRequest, new
 	require.NoError(t, err)
 	transfer := &uploadBatchTransferTask{
 		transferLifecycle: &transferLifecycle{task: task},
+		ctx:               t.Context(),
 		destination:       destination,
 		files:             files,
 		directories:       directories,

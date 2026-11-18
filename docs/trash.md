@@ -47,6 +47,11 @@ the user as the spec has it. The item is renamed into `files/` and a
 relative to the top folder for a per-filesystem trash) and when
 (`DeletionDate=`). A name already in the trash gets `.2`, `.3` and so on.
 Nothing is ever copied between filesystems: a move to the trash is a rename.
+An item the page names through a link, `~/data/report` where `~/data` leads
+to `/mnt/data`, is taken where the link leads: it goes to the trash of the
+filesystem `/mnt/data` is on, and its `.trashinfo` says it came from
+`/mnt/data/report`, since the folders of a path are resolved where it enters
+(see [Privilege Pattern](./privilege_pattern.md#paths-through-links)).
 
 On a root bridge the move is also recorded where only root can write, since
 the trash and its `.trashinfo` are the user's to edit; see

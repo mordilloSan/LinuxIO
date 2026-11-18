@@ -26,7 +26,7 @@ func TestUploadTaskRejectsChangedExpectedVersion(t *testing.T) {
 	target := filepath.Join(dir, "note.txt")
 	require.NoError(t, os.WriteFile(target, []byte("before"), 0o644))
 
-	opened, err := services.ReadEditorFile(context.Background(), target)
+	opened, err := services.ReadEditorFile(context.Background(), target, services.Owner{})
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(target, []byte("after"), 0o644))
 
@@ -47,7 +47,7 @@ func TestUploadTaskSavesThroughSymlink(t *testing.T) {
 	link := filepath.Join(dir, ".bashrc")
 	require.NoError(t, os.WriteFile(target, []byte("old"), 0o644))
 	require.NoError(t, os.Symlink(target, link))
-	opened, err := services.ReadEditorFile(context.Background(), link)
+	opened, err := services.ReadEditorFile(context.Background(), link, services.Owner{})
 	require.NoError(t, err)
 
 	root, err := fsroot.Open()

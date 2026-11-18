@@ -91,17 +91,6 @@ after a change that issues ioctls).
     and that starting it brings the partition back; if it kept reading
     `active`, the drain would wait its 15 seconds and the start would do
     nothing.
-- [ ] **Nothing works below a folder link with an absolute target**
-  (audit 36). A link such as `/home/u/data -> /mnt/data` is refused by Go's
-  `os.Root` for any path that goes through it, and `iteminfo.ResolveSymlinksAt`
-  resolves only the last name. Reproduced in the test VM on 2026-11-15, for a
-  root session and a session without sudo alike: the link itself lists, and
-  everything below it (list, stat, read, the Permissions dialog) fails with
-  "path escapes from parent"; a link with a relative target works.
-  - Fix: resolve the parent folders at the points where a path enters, and run
-    `CheckNotProtected` on the result. Large: 40 `fsroot.Open` calls in 18
-    files, and a mistake here lets a path escape. Decided 2026-11-17: fixed
-    as a change of its own, after the rest of this list.
 
 ## Later, no plan yet
 

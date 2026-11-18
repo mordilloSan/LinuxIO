@@ -13,7 +13,11 @@ import (
 func runIndexerTask(ctx context.Context, task *bridgeipc.Task, req apischema.OptionalPathRequest) (indexer.IndexerResult, error) {
 	path := "/"
 	if req.Path != nil && *req.Path != "" {
-		path = fsroot.CleanAbsPath(*req.Path)
+		resolved, err := indexedPath(ctx, fsroot.CleanAbsPath(*req.Path))
+		if err != nil {
+			return indexer.IndexerResult{}, err
+		}
+		path = resolved
 	}
 	return runIndexerOperation(ctx, task, path, false)
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/linksafe"
 )
 
 // uploadBatchFile is one manifest entry of a batch upload: where the file
@@ -42,7 +43,9 @@ type uploadBatchFile struct {
 // stream bytes are discarded so the rest of the batch still lands.
 type uploadBatchTransferTask struct {
 	*transferLifecycle
-	destination   string
+	ctx           context.Context
+	destination   string // the folder files land in, resolved where the request entered
+	requested     string // the folder as the request named it, which the answer names
 	files         []uploadBatchFile
 	directories   []string
 	total         int64
@@ -150,7 +153,9 @@ func runUploadBatchTask(ctx context.Context, task *bridgeipc.Task, req apischema
 	if err != nil {
 		return nil, fmt.Errorf("open filesystem root: %w", err)
 	}
-	destination, destErr := resolveBatchDestinationDir(root, destination)
+	linkRule := actingFor(session)
+	requested := destination
+	destination, destErr := resolveBatchDestinationDir(ctx, root, destination, linkRule)
 	closeErr := root.Close()
 	if destErr != nil {
 		return nil, destErr
@@ -158,18 +163,23 @@ func runUploadBatchTask(ctx context.Context, task *bridgeipc.Task, req apischema
 	if closeErr != nil {
 		slog.Debug("failed to close filesystem root", "error", closeErr)
 	}
+	for i := range files {
+		files[i].absPath = filepath.Join(destination, files[i].relPath)
+	}
 	if err := services.EnsureFreeSpace(destination, total); err != nil {
 		return nil, bridgeipc.NewError(err.Error(), 507)
 	}
 
 	transfer := &uploadBatchTransferTask{
+		ctx:           ctx,
 		destination:   destination,
+		requested:     requested,
 		files:         files,
 		directories:   directories,
 		total:         total,
 		overwrite:     req.Overwrite != nil && *req.Overwrite,
 		newOwner:      newOwner,
-		linkRule:      actingFor(session),
+		linkRule:      linkRule,
 		private:       req.Private != nil && *req.Private,
 		refuseSymlink: req.Owner != "",
 	}
@@ -334,16 +344,23 @@ func (t *uploadBatchTransferTask) ensurePrepared(root *fsroot.FSRoot) (*os.File,
 	index := t.index
 	t.mu.Unlock()
 
-	finalRel := fsroot.ToRel(current.absPath)
+	// A name of the manifest may lead through a link below the destination:
+	// its folders are resolved as the destination was (see
+	// linksafe.ResolveFolders).
+	absPath, err := linksafe.ResolveFolders(t.ctx, current.absPath, t.linkRule)
+	if err != nil {
+		return nil, err
+	}
+	finalRel := fsroot.ToRel(absPath)
 	if _, statErr := root.Root.Stat(finalRel); statErr == nil {
 		switch {
 		case current.keepBoth:
-			finalRel = fsroot.ToRel(generateUniquePath(current.absPath, false, root))
+			finalRel = fsroot.ToRel(generateUniquePath(absPath, false, root))
 		case !t.overwrite:
 			return nil, fmt.Errorf("destination already exists")
 		}
 	}
-	if err := refuseFolderTarget(root, finalRel); err != nil {
+	if err = refuseFolderTarget(root, finalRel); err != nil {
 		return nil, err
 	}
 	dir, err := openUploadDir(root, filepath.Dir(finalRel), t.linkRule, t.newOwner)
@@ -520,7 +537,7 @@ func (t *uploadBatchTransferTask) complete(stream net.Conn) error {
 	t.mu.Lock()
 	result := FileUploadBatchResult{
 		FileBatchResult: batchResult(len(t.directories)+len(t.files), t.succeeded, append([]FileBatchItemFailure(nil), t.failures...)),
-		Destination:     t.destination,
+		Destination:     t.requested,
 		Size:            t.bytes,
 	}
 	bytes := t.bytes

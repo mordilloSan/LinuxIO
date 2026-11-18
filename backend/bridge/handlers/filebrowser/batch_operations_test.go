@@ -54,7 +54,7 @@ func TestPlanBatchTransferIntoOwnFolder(t *testing.T) {
 	defer root.Close()
 	req := apischema.BatchTransferRequest{Sources: []string{file}, Destination: dir}
 
-	items, _, failures := planBatchTransfer(context.Background(), root, dir, req, "copy")
+	items, _, failures := planBatchTransfer(context.Background(), root, dir, req, "copy", services.Owner{})
 	if len(failures) != 0 || len(items) != 1 {
 		t.Fatalf("copy: items=%d failures=%v", len(items), failures)
 	}
@@ -62,7 +62,7 @@ func TestPlanBatchTransferIntoOwnFolder(t *testing.T) {
 		t.Fatalf("copy into own folder: dest=%q replaced=%v, want %q", items[0].dest, items[0].replaced, want)
 	}
 
-	items, _, failures = planBatchTransfer(context.Background(), root, dir, req, "move")
+	items, _, failures = planBatchTransfer(context.Background(), root, dir, req, "move", services.Owner{})
 	if len(items) != 0 || len(failures) != 1 || failures[0].Error != "already in the destination folder" {
 		t.Fatalf("move into own folder: items=%d failures=%v", len(items), failures)
 	}
@@ -78,12 +78,12 @@ func TestPlanBatchTransferSkipsSizeForSameFilesystemMove(t *testing.T) {
 	defer root.Close()
 	req := apischema.BatchTransferRequest{Sources: []string{src}}
 
-	items, _, failures := planBatchTransfer(context.Background(), root, dest, req, "move")
+	items, _, failures := planBatchTransfer(context.Background(), root, dest, req, "move", services.Owner{})
 	if len(failures) != 0 || len(items) != 1 || items[0].size.known {
 		t.Fatalf("move plan computed a size: items=%+v failures=%v", items, failures)
 	}
 
-	items, _, failures = planBatchTransfer(context.Background(), root, dest, req, "copy")
+	items, _, failures = planBatchTransfer(context.Background(), root, dest, req, "copy", services.Owner{})
 	if len(failures) != 0 || len(items) != 1 || !items[0].size.known || items[0].size.total != int64(len("content")) {
 		t.Fatalf("copy plan size: items=%+v failures=%v", items, failures)
 	}
@@ -100,7 +100,7 @@ func TestPlanBatchTransferKeepBothLandsUnderUniqueName(t *testing.T) {
 	defer root.Close()
 
 	req := apischema.BatchTransferRequest{Sources: []string{file}, Destination: dest, KeepBoth: []string{file}}
-	items, _, failures := planBatchTransfer(context.Background(), root, dest, req, "copy")
+	items, _, failures := planBatchTransfer(context.Background(), root, dest, req, "copy", services.Owner{})
 	if len(failures) != 0 || len(items) != 1 {
 		t.Fatalf("items=%d failures=%v", len(items), failures)
 	}
@@ -110,7 +110,7 @@ func TestPlanBatchTransferKeepBothLandsUnderUniqueName(t *testing.T) {
 }
 
 func TestPlanDeleteBatchRefusesProtectedPaths(t *testing.T) {
-	_, _, failures := planDeleteBatch(context.Background(), []string{"/", "/etc"})
+	_, _, failures := planDeleteBatch(context.Background(), []string{"/", "/etc"}, services.Owner{})
 	if len(failures) != 2 {
 		t.Fatalf("failures = %+v, want 2", failures)
 	}

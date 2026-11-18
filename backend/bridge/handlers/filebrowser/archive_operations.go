@@ -36,12 +36,12 @@ func archiveExtension(format string) (string, error) {
 // createArchive writes an archive of paths, read as sources says, to out, the
 // open file at outPath, which the archive leaves out should it lie inside one
 // of paths.
-func createArchive(format string, out *os.File, outPath string, opts *services.OperationCallbacks, compressionWorkers int, sources services.ArchiveSources, paths []string) error {
+func createArchive(ctx context.Context, format string, out *os.File, outPath string, opts *services.OperationCallbacks, compressionWorkers int, sources services.ArchiveSources, paths []string) error {
 	switch format {
 	case "zip":
-		return services.CreateZip(out, opts, outPath, sources, paths...)
+		return services.CreateZip(ctx, out, opts, outPath, sources, paths...)
 	case "tar.gz":
-		return services.CreateTarGz(out, opts, outPath, sources, compressionWorkers, paths...)
+		return services.CreateTarGz(ctx, out, opts, outPath, sources, compressionWorkers, paths...)
 	default:
 		return services.ErrUnsupportedFormat
 	}
@@ -212,13 +212,19 @@ func runCompressTask(ctx context.Context, task *bridgeipc.Task, store *userconfi
 	}
 	settings := taskSettingsForTask(ctx, task, store)
 
-	targetPath := normalizeArchiveTargetPath(req.TargetPath, extension)
+	requested := normalizeArchiveTargetPath(req.TargetPath, extension)
 	root, err := fsroot.Open()
 	if err != nil {
 		return FileCompressResult{}, fmt.Errorf("open filesystem root: %w", err)
 	}
 	defer root.Close()
 	owner := actingFor(session)
+	// The archive's real path is what a source folder holding it is walked
+	// under, so the walk can leave the archive out by its path.
+	targetPath, err := linksafe.ResolveFolders(ctx, requested, owner)
+	if err != nil {
+		return FileCompressResult{}, fmt.Errorf("prepare archive target: %w", err)
+	}
 	target, err := prepareArchiveTarget(root, targetPath, owner)
 	if err != nil {
 		if errors.Is(err, errArchiveDestinationIsDir) {
@@ -239,7 +245,7 @@ func runCompressTask(ctx context.Context, task *bridgeipc.Task, store *userconfi
 	sources := services.ArchiveSources{Owner: owner, Skipped: func(path string, err error) {
 		skipped = append(skipped, FileBatchItemFailure{Path: path, Error: err.Error()})
 	}}
-	err = createArchive(req.Format, target.temp, target.tempPath, opts, archiveCompressionWorkers(settings), sources, req.Paths)
+	err = createArchive(ctx, req.Format, target.temp, target.tempPath, opts, archiveCompressionWorkers(settings), sources, req.Paths)
 	if errors.Is(err, services.ErrAborted) {
 		slog.Debug("compress aborted, cleaning up", "path", targetPath)
 		target.discard()
@@ -263,7 +269,7 @@ func runCompressTask(ctx context.Context, task *bridgeipc.Task, store *userconfi
 	if skipped == nil {
 		skipped = []FileBatchItemFailure{}
 	}
-	return FileCompressResult{Path: targetPath, Size: archiveSize, Format: req.Format, Failed: skipped}, nil
+	return FileCompressResult{Path: requested, Size: archiveSize, Format: req.Format, Failed: skipped}, nil
 }
 
 func runExtractTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.FileExtractRequest, session sessionOwner) (FileExtractResult, error) {
@@ -272,14 +278,12 @@ func runExtractTask(ctx context.Context, task *bridgeipc.Task, store *userconfig
 		return FileExtractResult{}, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
 	}
 
-	root, err := fsroot.Open()
-	if err != nil {
-		return FileExtractResult{}, fmt.Errorf("open filesystem root: %w", err)
-	}
-	defer root.Close()
-
 	owner := actingFor(session)
-	archive, archiveStat, err := services.OpenArchive(root, archivePath, owner)
+	requested := destination
+	if destination, err = linksafe.ResolveFolders(ctx, destination, owner); err != nil {
+		return FileExtractResult{}, fmt.Errorf("extraction failed: %w", err)
+	}
+	archive, archiveStat, err := services.OpenArchive(ctx, archivePath, owner)
 	if err != nil {
 		return FileExtractResult{}, fsError("open archive", err)
 	}
@@ -305,5 +309,5 @@ func runExtractTask(ctx context.Context, task *bridgeipc.Task, store *userconfig
 
 	reindexDetached("archive_extract", destination)
 	slog.Info("extract complete", "archive", archivePath, "destination", destination)
-	return FileExtractResult{Destination: destination}, nil
+	return FileExtractResult{Destination: requested}, nil
 }

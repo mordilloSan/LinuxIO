@@ -58,14 +58,14 @@ func ComputeArchiveSize(ctx context.Context, fileList []string, owner Owner) (in
 		}
 		realPath := fsroot.CleanAbsPath(fname)
 		if owner.Set {
-			sourceSize, sizeErr := estimateSourceSize(ctx, root, realPath, owner)
+			sourceSize, sizeErr := estimateSourceSize(ctx, realPath, owner)
 			if sizeErr != nil {
 				return 0, sizeErr
 			}
 			estimatedSize += sourceSize
 			continue
 		}
-		stat, resolvedPath, err := statWithSymlinkResolution(root, realPath)
+		stat, resolvedPath, err := statWithSymlinkResolution(ctx, root, realPath)
 		if err != nil {
 			return 0, err
 		}
@@ -113,27 +113,19 @@ func estimateDirSize(ctx context.Context, root *fsroot.FSRoot, path string) (int
 	return total, err
 }
 
-func statWithSymlinkResolution(root *fsroot.FSRoot, path string) (os.FileInfo, string, error) {
+// statWithSymlinkResolution resolves path as the user's own programs would
+// (see linksafe.Resolve), so a folder is walked, and the archive's own path
+// is told apart, under its real path whatever link led to it, and stats it.
+func statWithSymlinkResolution(ctx context.Context, root *fsroot.FSRoot, path string) (os.FileInfo, string, error) {
 	cleanPath := fsroot.CleanAbsPath(path)
-
-	info, err := root.Root.Stat(relPath(cleanPath))
-	if err == nil {
-		return info, cleanPath, nil
+	resolved, err := linksafe.Resolve(ctx, cleanPath, Owner{})
+	if err != nil {
+		return nil, cleanPath, err
 	}
-
-	// os.Root rejects absolute symlink targets even though this file browser is
-	// rooted at /. Resolve the complete chain first, then return to os.Root for
-	// the actual stat/open so normal root-scoped access remains in effect.
-	resolved, resolveErr := filepath.EvalSymlinks(cleanPath)
-	if resolveErr != nil {
-		return nil, cleanPath, resolveErr
+	info, err := root.Root.Stat(relPath(resolved))
+	if err != nil {
+		return nil, cleanPath, err
 	}
-	resolved = fsroot.CleanAbsPath(resolved)
-	info, statErr := root.Root.Stat(relPath(resolved))
-	if statErr != nil {
-		return nil, cleanPath, statErr
-	}
-
 	return info, resolved, nil
 }
 
@@ -145,8 +137,8 @@ func statWithSymlinkResolution(root *fsroot.FSRoot, path string) (os.FileInfo, s
 // read themselves. Only a regular file is an archive: a folder, a FIFO or a
 // device is refused as invalid. The caller checks, measures and extracts
 // through the handle returned, so all three see the same file.
-func OpenArchive(root *fsroot.FSRoot, path string, owner Owner) (*os.File, os.FileInfo, error) {
-	at, err := entryFollowingNoUserLinks(root, path, owner)
+func OpenArchive(ctx context.Context, path string, owner Owner) (*os.File, os.FileInfo, error) {
+	at, err := entryFollowingNoUserLinks(ctx, path, owner)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -241,7 +233,7 @@ func computeTarGzExtractSize(file io.Reader) (int64, error) {
 // skipPath allows excluding the archive itself if it lives inside the source tree.
 // sources says how the files are read (see ArchiveSources).
 // opts is optional - pass nil if callbacks are not needed.
-func CreateZip(out *os.File, opts *OperationCallbacks, skipPath string, sources ArchiveSources, filenames ...string) error {
+func CreateZip(ctx context.Context, out *os.File, opts *OperationCallbacks, skipPath string, sources ArchiveSources, filenames ...string) error {
 	root, err := fsroot.Open()
 	if err != nil {
 		return err
@@ -255,7 +247,7 @@ func CreateZip(out *os.File, opts *OperationCallbacks, skipPath string, sources 
 	}
 
 	zipWriter := zip.NewWriter(out)
-	reader, err := newArchiveReader(root, out, nil, zipWriter, opts, sources)
+	reader, err := newArchiveReader(ctx, root, out, nil, zipWriter, opts, sources)
 	if err != nil {
 		closeWithLog("zip writer", zipWriter)
 		return err
@@ -287,7 +279,7 @@ func CreateZip(out *os.File, opts *OperationCallbacks, skipPath string, sources 
 // skipPath allows excluding the archive itself if it lives inside the source tree.
 // sources says how the files are read (see ArchiveSources).
 // opts is optional - pass nil if callbacks are not needed.
-func CreateTarGz(out *os.File, opts *OperationCallbacks, skipPath string, sources ArchiveSources, compressionWorkers int, filenames ...string) error {
+func CreateTarGz(ctx context.Context, out *os.File, opts *OperationCallbacks, skipPath string, sources ArchiveSources, compressionWorkers int, filenames ...string) error {
 	root, err := fsroot.Open()
 	if err != nil {
 		return err
@@ -309,7 +301,7 @@ func CreateTarGz(out *os.File, opts *OperationCallbacks, skipPath string, source
 		return err
 	}
 	tarWriter := tar.NewWriter(gzWriter)
-	reader, err := newArchiveReader(root, out, tarWriter, nil, opts, sources)
+	reader, err := newArchiveReader(ctx, root, out, tarWriter, nil, opts, sources)
 	if err != nil {
 		closeWithLog("tar writer", tarWriter)
 		closeWithLog("gzip writer", gzWriter)
@@ -688,14 +680,14 @@ func archiveEntryTarget(destination, name string) (targetPath, rel string, err e
 }
 
 // addFile adds a file or directory to an archive (zip or tar.gz)
-func addFile(root *fsroot.FSRoot, path string, tarWriter *tar.Writer, zipWriter *zip.Writer, flatten bool, opts *OperationCallbacks, skipPath string) error {
+func addFile(ctx context.Context, root *fsroot.FSRoot, path string, tarWriter *tar.Writer, zipWriter *zip.Writer, flatten bool, opts *OperationCallbacks, skipPath string) error {
 	realPath := fsroot.CleanAbsPath(path)
 
 	if skipPath != "" && filepath.Clean(realPath) == filepath.Clean(skipPath) {
 		return nil
 	}
 
-	info, resolvedPath, err := statWithSymlinkResolution(root, realPath)
+	info, resolvedPath, err := statWithSymlinkResolution(ctx, root, realPath)
 	if err != nil {
 		return err
 	}
@@ -704,14 +696,14 @@ func addFile(root *fsroot.FSRoot, path string, tarWriter *tar.Writer, zipWriter 
 	baseName := filepath.Base(realPath)
 
 	if info.IsDir() {
-		return addDirectory(root, resolvedPath, baseName, tarWriter, zipWriter, flatten, opts, skipPath)
+		return addDirectory(ctx, root, resolvedPath, baseName, tarWriter, zipWriter, flatten, opts, skipPath)
 	}
 
 	// For a single file, use the base name as the archive path
-	return addSingleFile(root, realPath, baseName, zipWriter, tarWriter, opts)
+	return addSingleFile(ctx, realPath, baseName, zipWriter, tarWriter, opts)
 }
 
-func addDirectory(root *fsroot.FSRoot, resolvedPath, baseName string, tarWriter *tar.Writer, zipWriter *zip.Writer, flatten bool, opts *OperationCallbacks, skipPath string) error {
+func addDirectory(ctx context.Context, root *fsroot.FSRoot, resolvedPath, baseName string, tarWriter *tar.Writer, zipWriter *zip.Writer, flatten bool, opts *OperationCallbacks, skipPath string) error {
 	rootWalkRel := relPath(resolvedPath)
 	return root.WalkDir(resolvedPath, func(walkRel string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -740,7 +732,7 @@ func addDirectory(root *fsroot.FSRoot, resolvedPath, baseName string, tarWriter 
 		if entry.IsDir() {
 			return addArchiveDirectoryEntry(entry, relArchivePath, tarWriter, zipWriter)
 		}
-		return addSingleFileOrSkip(root, filePath, relArchivePath, zipWriter, tarWriter, opts)
+		return addSingleFileOrSkip(ctx, filePath, relArchivePath, zipWriter, tarWriter, opts)
 	})
 }
 
@@ -754,8 +746,8 @@ func walkEntryError(rootWalkRel, walkRel string, walkErr error) error {
 }
 
 // addSingleFileOrSkip adds one walked file, leaving out entries that cannot be read.
-func addSingleFileOrSkip(root *fsroot.FSRoot, filePath, relArchivePath string, zipWriter *zip.Writer, tarWriter *tar.Writer, opts *OperationCallbacks) error {
-	err := addSingleFile(root, filePath, relArchivePath, zipWriter, tarWriter, opts)
+func addSingleFileOrSkip(ctx context.Context, filePath, relArchivePath string, zipWriter *zip.Writer, tarWriter *tar.Writer, opts *OperationCallbacks) error {
+	err := addSingleFile(ctx, filePath, relArchivePath, zipWriter, tarWriter, opts)
 	if skipArchiveEntry(filePath, err) {
 		return nil
 	}
@@ -828,34 +820,23 @@ func writeArchiveDirectoryHeader(relArchivePath string, modTime time.Time, tarWr
 	return nil
 }
 
-// addSingleFile adds a single file to an archive
-func addSingleFile(root *fsroot.FSRoot, realPath, archivePath string, zipWriter *zip.Writer, tarWriter *tar.Writer, opts *OperationCallbacks) error {
-	// A dangling absolute symlink only fails here: os.Root would reject it as an escape.
-	_, openPath, err := statWithSymlinkResolution(root, realPath)
-	if err != nil {
-		return err
-	}
-
-	file, err := root.Root.Open(relPath(openPath))
-	if err != nil {
-		// If we get "is a directory" error, this is likely a symlink to a directory
-		// that wasn't properly detected. Skip it gracefully.
-		if errors.Is(err, syscall.EISDIR) {
-			return nil
+// addSingleFile adds the file at realPath to an archive as archivePath. Only
+// a regular file has content to archive, as the compress of a root bridge
+// has it (see archiveReader.addEntry), and only a regular file is opened at
+// all (see OpenRegularForRead): a folder adds nothing here, and a FIFO,
+// socket or device is left out with a warning, as a copy leaves one out.
+func addSingleFile(ctx context.Context, realPath, archivePath string, zipWriter *zip.Writer, tarWriter *tar.Writer, opts *OperationCallbacks) error {
+	file, info, err := OpenRegularForRead(ctx, realPath)
+	if errors.Is(err, ErrNotRegularFile) {
+		if entryType := info.Mode().Type(); entryType&specialFileTypes != 0 {
+			slog.Warn("skipping special file in archive", "component", "filebrowser", "subsystem", "archive", "path", realPath, "type", entryType.String())
 		}
+		return nil
+	}
+	if err != nil {
 		return err
 	}
 	defer file.Close()
-
-	info, err := file.Stat()
-	if err != nil {
-		return err
-	}
-
-	// Double-check if this is actually a directory (in case of symlinks)
-	if info.IsDir() {
-		return nil
-	}
 	return writeArchiveFile(file, info, archivePath, zipWriter, tarWriter, opts)
 }
 

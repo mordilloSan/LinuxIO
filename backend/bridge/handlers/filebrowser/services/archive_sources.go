@@ -36,8 +36,10 @@ type ArchiveSources struct {
 	Skipped func(path string, err error)
 }
 
-// archiveReader adds the sources of one archive to its writer.
+// archiveReader adds the sources of one archive to its writer. ctx is the
+// archive's, which the resolution of each source and link stops on.
 type archiveReader struct {
+	ctx     context.Context
 	root    *fsroot.FSRoot
 	tar     *tar.Writer
 	zip     *zip.Writer
@@ -46,8 +48,8 @@ type archiveReader struct {
 	out     unix.Stat_t // the archive being written, never added to itself
 }
 
-func newArchiveReader(root *fsroot.FSRoot, out *os.File, tarWriter *tar.Writer, zipWriter *zip.Writer, opts *OperationCallbacks, sources ArchiveSources) (*archiveReader, error) {
-	r := &archiveReader{root: root, tar: tarWriter, zip: zipWriter, opts: opts, sources: sources}
+func newArchiveReader(ctx context.Context, root *fsroot.FSRoot, out *os.File, tarWriter *tar.Writer, zipWriter *zip.Writer, opts *OperationCallbacks, sources ArchiveSources) (*archiveReader, error) {
+	r := &archiveReader{ctx: ctx, root: root, tar: tarWriter, zip: zipWriter, opts: opts, sources: sources}
 	if err := unix.Fstat(int(out.Fd()), &r.out); err != nil {
 		return nil, &fs.PathError{Op: "fstat", Path: out.Name(), Err: err}
 	}
@@ -58,10 +60,10 @@ func newArchiveReader(root *fsroot.FSRoot, out *os.File, tarWriter *tar.Writer, 
 // under its own name. skipPath is the archive's own path.
 func (r *archiveReader) add(path, skipPath string) error {
 	if !r.sources.Owner.Set {
-		return addFile(r.root, path, r.tar, r.zip, false, r.opts, skipPath)
+		return addFile(r.ctx, r.root, path, r.tar, r.zip, false, r.opts, skipPath)
 	}
 	path = fsroot.CleanAbsPath(path)
-	at, err := entryFollowingNoUserLinks(r.root, path, r.sources.Owner)
+	at, err := entryFollowingNoUserLinks(r.ctx, path, r.sources.Owner)
 	if err != nil {
 		return err
 	}
@@ -173,7 +175,7 @@ func (r *archiveReader) addLink(dir *os.File, name, archivePath string) error {
 		r.skip(path, fmt.Errorf("left out: a link to %s in a folder that is not root's alone", linksafe.LinkDestination(dir, target)))
 		return nil
 	}
-	at, err := entryFollowingNoUserLinks(r.root, path, r.sources.Owner)
+	at, err := entryFollowingNoUserLinks(r.ctx, path, r.sources.Owner)
 	if errors.Is(err, bridgeipc.ErrForbidden) {
 		r.skip(path, fmt.Errorf("left out: a link to %s that leads through a link in a folder that is not root's alone", linksafe.LinkDestination(dir, target)))
 		return nil
@@ -205,8 +207,8 @@ func (r *archiveReader) skip(path string, err error) {
 // walks through handles without following a symlink, so a planted link is
 // neither entered nor measured; a link the archive follows to a file is not
 // counted. An entry that is gone or cannot be read counts nothing.
-func estimateSourceSize(ctx context.Context, root *fsroot.FSRoot, path string, owner Owner) (int64, error) {
-	at, err := entryFollowingNoUserLinks(root, path, owner)
+func estimateSourceSize(ctx context.Context, path string, owner Owner) (int64, error) {
+	at, err := entryFollowingNoUserLinks(ctx, path, owner)
 	if err != nil {
 		return 0, err
 	}

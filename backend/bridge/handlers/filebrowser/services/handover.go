@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -39,55 +40,25 @@ func HandsOverIn(folder os.FileInfo, owner Owner) bool {
 
 // entryFollowingNoUserLinks returns the folder the entry at path resolves
 // into, open, and the entry's name in it, following a symlink at path as
-// chmod(1) does. On a root bridge acting for owner the folders are reached
-// as linksafe.OpenDirNoUserLinks reaches them and a symlink at the entry is followed
-// under the same rule; without owner set path resolves as the user's own
-// programs would resolve it.
-func entryFollowingNoUserLinks(root *fsroot.FSRoot, path string, owner Owner) (entry, error) {
-	path = fsroot.CleanAbsPath(path)
-	if !owner.Set {
-		if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
-			if path, err = filepath.EvalSymlinks(path); err != nil {
-				return entry{}, err
-			}
-		}
-		return openEntry(root, path, owner)
+// chmod(1) does. The folders are reached as linksafe.OpenDirNoUserLinks
+// reaches them and a symlink at the entry is followed under the same rule
+// (see linksafe.OpenEntryFollowing): on a root bridge acting for owner only
+// one the session user cannot have planted, without owner set as the user's
+// own programs would follow it.
+func entryFollowingNoUserLinks(ctx context.Context, path string, owner Owner) (entry, error) {
+	dir, name, err := linksafe.OpenEntryFollowing(ctx, path, owner)
+	if err != nil {
+		return entry{}, err
 	}
-	for hops := 0; ; hops++ {
-		at, err := openEntry(root, path, owner)
-		if err != nil {
-			return entry{}, err
-		}
-		target, isLink := linksafe.LinkTarget(at.dir, at.name)
-		if !isLink {
-			return at, nil
-		}
-		if hops == linksafe.MaxLinkHops {
-			_ = at.dir.Close()
-			return entry{}, &fs.PathError{Op: "open", Path: path, Err: unix.ELOOP}
-		}
-		dir, err := linksafe.FollowLink(at.dir, at.name, target)
-		if err != nil {
-			return entry{}, err
-		}
-		// dir is reached one name at a time from /, so its name is its
-		// real path and a relative target resolves against it.
-		path = filepath.Join(dir.Name(), target)
-		_ = dir.Close()
-	}
+	return entry{dir: dir, name: name, path: filepath.Join(dir.Name(), name)}, nil
 }
 
 // ResolveNoUserLinks returns the real path of the entry at path, following a
 // symlink at path, for a root bridge acting for owner: as
 // entryFollowingNoUserLinks reaches it, so a link the session user could have
 // planted, on the way or at the entry, is refused.
-func ResolveNoUserLinks(root *fsroot.FSRoot, path string, owner Owner) (string, error) {
-	at, err := entryFollowingNoUserLinks(root, path, owner)
-	if err != nil {
-		return "", err
-	}
-	defer at.dir.Close()
-	return filepath.Join(at.dir.Name(), at.name), nil
+func ResolveNoUserLinks(ctx context.Context, path string, owner Owner) (string, error) {
+	return linksafe.Resolve(ctx, path, owner)
 }
 
 // openEntry opens the folder path sits in as linksafe.OpenDirNoUserLinks does and

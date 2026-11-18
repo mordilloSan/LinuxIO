@@ -208,14 +208,18 @@ func chooseTrashDir(root *fsroot.FSRoot, absPath string, parentDev uint64, home 
 	return filepath.Join(top, ".Trash-"+strconv.Itoa(uid)), top, nil
 }
 
-func deviceOf(root *fsroot.FSRoot, path string) (uint64, error) {
-	info, err := root.Root.Stat(relPath(path))
-	if err != nil {
-		return 0, err
-	}
-	st, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		return 0, fmt.Errorf("no device information for %s", path)
+// deviceOf returns the device of what path names, as stat(2) finds it: every
+// link on the way is followed, as the user's own programs would follow it,
+// since the home folder's own path may lead through a link with an absolute
+// target, which os.Root refuses. The device only feeds decisions, which
+// trash an item goes to, which top folder a per-filesystem trash records
+// paths against and whether a folder is a mount point; what is then acted on
+// is reached under the link rule (see walkTrash and checkNotProtectedAt). The
+// root is not used.
+func deviceOf(_ *fsroot.FSRoot, path string) (uint64, error) {
+	var st unix.Stat_t
+	if err := unix.Stat(path, &st); err != nil {
+		return 0, &fs.PathError{Op: "stat", Path: path, Err: err}
 	}
 	return st.Dev, nil
 }
@@ -331,11 +335,11 @@ func openTrashSub(root *fsroot.FSRoot, dir *os.File, trash, sub string, owner Ow
 		f, err = openTrashDirAt(dir, sub)
 	case create:
 		var missing []string
-		if f, missing, err = linksafe.OpenNearestDir(root, relPath(filepath.Join(trash, sub))); err == nil {
+		if f, missing, err = linksafe.OpenNearestDirNoUserLinks(root, filepath.Join(trash, sub), owner); err == nil {
 			f, err = MkdirAllAt(f, missing, 0o700, owner)
 		}
 	default:
-		f, err = root.Root.OpenFile(relPath(filepath.Join(trash, sub)), os.O_RDONLY|syscall.O_DIRECTORY, 0)
+		f, err = linksafe.OpenDirNoUserLinks(root, filepath.Join(trash, sub), owner)
 	}
 	if err != nil {
 		return nil, err

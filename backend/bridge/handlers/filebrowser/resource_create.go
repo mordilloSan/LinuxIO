@@ -166,6 +166,10 @@ func resourcePost(ctx context.Context, req apischema.FileResourcePostRequest, ow
 		}
 	}()
 
+	if postReq.cleanPath, err = linksafe.ResolveFolders(ctx, postReq.cleanPath, owner); err != nil {
+		return nil, fsError("create", err)
+	}
+	postReq.relPath = fsroot.ToRel(postReq.cleanPath)
 	if err := ensureResourcePostType(root, postReq); err != nil {
 		return nil, err
 	}

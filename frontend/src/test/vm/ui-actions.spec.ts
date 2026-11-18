@@ -268,8 +268,7 @@ test("the real folder action closes the Permissions dialog it was raised in", as
   try {
     await signIn(page);
     // The link itself: a chmod follows a link at the item, under the same
-    // rule. (A file below the link cannot be chosen here: its stat, which the
-    // dialog needs before it opens, fails with "path escapes from parent".)
+    // rule. A file below the link is refused the same way.
     await page.goto(`/filebrowser${LINK_DIR}`);
     await page.getByText("link", { exact: true }).click({ button: "right" });
     await page.getByRole("menuitem", { name: "Change Permissions" }).click();

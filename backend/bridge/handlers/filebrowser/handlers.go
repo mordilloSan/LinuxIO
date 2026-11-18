@@ -16,7 +16,9 @@ func routeBindings(owner sessionOwner) apischema.BindingSet {
 		apischema.DuplexRoute[apischema.PathRequest, apischema.NoResponse](routeDownloadStream, apischema.NoEndpoint()).Duplex(streamFileDownload),
 		apischema.Call[apischema.PathRequest, apischema.DirectoryListing]("filebrowser.list_directory", apischema.RetrySafe()).Handle(handleListDirectory),
 		apischema.Call[apischema.DirectoryChildrenRequest, apischema.DirectoryChildren]("filebrowser.directory_children", apischema.RetrySafe()).Handle(handleDirectoryChildren),
-		apischema.Call[apischema.PathRequest, apischema.TextFile]("filebrowser.read_text", apischema.RetrySafe()).Handle(handleReadText),
+		apischema.Call[apischema.PathRequest, apischema.TextFile]("filebrowser.read_text", apischema.RetrySafe()).Handle(func(ctx context.Context, req apischema.PathRequest) (apischema.TextFile, error) {
+			return readText(ctx, req, actingFor(owner))
+		}),
 		apischema.Call[apischema.PathRequest, *apischema.ResourceStatData]("filebrowser.resource_stat", apischema.RetrySafe()).Handle(handleResourceStat),
 		apischema.Call[apischema.BatchPathRequest, apischema.ExistsBatchResponse]("filebrowser.exists_batch", apischema.RetrySafe()).Handle(handleExistsBatch),
 		apischema.MutationVoid("filebrowser.resource_post", func(ctx context.Context, req apischema.FileResourcePostRequest) error {
@@ -48,10 +50,6 @@ func handleListDirectory(ctx context.Context, req apischema.PathRequest) (apisch
 
 func handleDirectoryChildren(ctx context.Context, req apischema.DirectoryChildrenRequest) (apischema.DirectoryChildren, error) {
 	return directoryChildren(ctx, req)
-}
-
-func handleReadText(ctx context.Context, req apischema.PathRequest) (apischema.TextFile, error) {
-	return readText(ctx, req)
 }
 
 func handleResourceStat(ctx context.Context, req apischema.PathRequest) (*apischema.ResourceStatData, error) {

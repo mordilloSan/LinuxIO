@@ -14,6 +14,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/filebrowser/services"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/bridgeipc"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/fsroot"
+	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/linksafe"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/internal/userconfig"
 )
 
@@ -157,8 +158,13 @@ func reconcileMoves(label string, updates []batchIndexerUpdate) {
 type trashMove func(ctx context.Context, path string, u trashUser) (dest string, replaced bool, err error)
 
 // runTrashMoveTask runs a move into or out of the trash over every path and
-// tells the indexer about each item that moved.
-func runTrashMoveTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, paths []string, label, phase string, owner sessionOwner, move trashMove) (FileBatchResult, error) {
+// tells the indexer about each item that moved. Each item is judged where it
+// really is (see linksafe.ResolveFolders). With pagePaths the paths are the
+// page's, and the move takes the item by that real path, resolved for the
+// session user it acts for. Without it they name items of the trash as the
+// trash list gave them, which the trash checks as they are, so the move takes
+// them as given.
+func runTrashMoveTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, paths []string, label, phase string, owner sessionOwner, pagePaths bool, move trashMove) (FileBatchResult, error) {
 	u, err := trashUserOrError(owner)
 	if err != nil {
 		return FileBatchResult{}, err
@@ -169,12 +175,29 @@ func runTrashMoveTask(ctx context.Context, task *bridgeipc.Task, store *userconf
 	}
 	defer root.Close()
 
+	linkRule := actingFor(owner)
+	// A restore's item is resolved with no link rule, for the stat and the
+	// protected check below only. Both are safe so: neither moves anything,
+	// the trash reaches the item it restores under its own rules, and what
+	// the stat reads only goes to the indexer with a name resolved under the
+	// rule.
+	judgeRule := linksafe.Owner{}
+	if pagePaths {
+		judgeRule = linkRule
+	}
 	var updates []batchIndexerUpdate
 	result, err := runPathBatch(ctx, task, store, paths, phase, func(ctx context.Context, source string) error {
-		if protectedErr := services.CheckNotProtected(root, source); protectedErr != nil {
+		real, resolveErr := linksafe.ResolveFolders(ctx, source, judgeRule)
+		if resolveErr != nil {
+			return resolveErr
+		}
+		if pagePaths {
+			source = real
+		}
+		if protectedErr := services.CheckNotProtected(root, real); protectedErr != nil {
 			return protectedErr
 		}
-		info, statErr := root.Root.Lstat(fsroot.ToRel(source))
+		info, statErr := root.Root.Lstat(fsroot.ToRel(real))
 		if statErr != nil {
 			return statErr
 		}
@@ -182,16 +205,36 @@ func runTrashMoveTask(ctx context.Context, task *bridgeipc.Task, store *userconf
 		if moveErr != nil {
 			return moveErr
 		}
-		updates = append(updates, batchIndexerUpdate{source: source, dest: dest, info: info, replaced: replaced})
+		sourceName, sourceOK := indexedName(ctx, source, linkRule)
+		destName, destOK := indexedName(ctx, dest, linkRule)
+		if sourceOK && destOK {
+			updates = append(updates, batchIndexerUpdate{source: sourceName, dest: destName, info: info, replaced: replaced})
+		}
 		return nil
 	})
 	reconcileMoves(label, updates)
 	return result, err
 }
 
+// indexedName is the name the indexer knows what a trash move took from or
+// put at path by: its real path, since the trash keeps the home folder's
+// path, which may lead through a link. It is resolved under linkRule, the
+// session user's (see actingFor), so a link that user swapped into their
+// trash's folders meanwhile does not have the admin's index record an entry
+// where it leads. When the rule refuses, the indexer is not told of the item
+// and learns of it at the next reindex.
+func indexedName(ctx context.Context, path string, linkRule linksafe.Owner) (string, bool) {
+	real, err := linksafe.ResolveFolders(ctx, path, linkRule)
+	if err != nil {
+		slog.Debug("left a trash move out of the index", "path", path, "error", err)
+		return "", false
+	}
+	return real, true
+}
+
 // runTrashBatchTask moves many paths into the session user's trash as a single task.
 func runTrashBatchTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.BatchPathRequest, owner sessionOwner) (FileBatchResult, error) {
-	return runTrashMoveTask(ctx, task, store, req.Paths, "trash_batch", "trashing", owner, func(ctx context.Context, path string, u trashUser) (string, bool, error) {
+	return runTrashMoveTask(ctx, task, store, req.Paths, "trash_batch", "trashing", owner, true, func(ctx context.Context, path string, u trashUser) (string, bool, error) {
 		dest, err := services.MoveToTrash(ctx, path, u.home, u.uid, u.gid, u.chownNew)
 		return dest, false, err
 	})
@@ -211,7 +254,7 @@ func runTrashRestoreTask(ctx context.Context, task *bridgeipc.Task, store *userc
 		if err != nil {
 			return FileBatchResult{}, fmt.Errorf("open filesystem root: %w", err)
 		}
-		into, err = resolveBatchDestinationDir(root, req.Destination)
+		into, err = resolveBatchDestinationDir(ctx, root, req.Destination, actingFor(owner))
 		_ = root.Close()
 		if err != nil {
 			return FileBatchResult{}, err
@@ -227,7 +270,7 @@ func runTrashRestoreTask(ctx context.Context, task *bridgeipc.Task, store *userc
 		names[fsroot.CleanAbsPath(trashed)] = name
 	}
 	confirmed := confirmedRestores(req)
-	return runTrashMoveTask(ctx, task, store, req.Paths, "trash_restore", "restoring", owner, func(ctx context.Context, path string, u trashUser) (string, bool, error) {
+	return runTrashMoveTask(ctx, task, store, req.Paths, "trash_restore", "restoring", owner, false, func(ctx context.Context, path string, u trashUser) (string, bool, error) {
 		opts := services.RestoreOptions{
 			Confirmed: confirmed[path],
 			Into:      into,
