@@ -91,7 +91,7 @@ func TestPlanSwapModeOrdersTheSteps(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(string(test.from)+" to "+string(test.to), func(t *testing.T) {
-			got, err := planSwapMode(planView(test.from), test.to)
+			got, err := planSwapMode(planView(test.from), apischema.SwapModeRequest{Mode: test.to})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -107,7 +107,7 @@ func TestPlanSwapModeOrdersTheSteps(t *testing.T) {
 func TestPlanSwapModeLeavesASwapFileOutsideFstabAlone(t *testing.T) {
 	view := planView(apischema.SwapModeDisk)
 	view.fstab = nil
-	got, err := planSwapMode(view, apischema.SwapModeZram)
+	got, err := planSwapMode(view, apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestPlanSwapModeLeavesASwapFileOutsideFstabAlone(t *testing.T) {
 func TestPlanSwapModeLeavesZramWithoutZramToolsAlone(t *testing.T) {
 	view := planView(apischema.SwapModeMixed)
 	view.status.ZramAvailable = false
-	got, err := planSwapMode(view, apischema.SwapModeDisk)
+	got, err := planSwapMode(view, apischema.SwapModeRequest{Mode: apischema.SwapModeDisk})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestPlanSwapModeWithOnlyASwapPartition(t *testing.T) {
 	view.status.SwapFile = nil
 	view.fstab = nil
 	view.status.Devices = []apischema.SwapDevice{planPartition}
-	got, err := planSwapMode(view, apischema.SwapModeZswap)
+	got, err := planSwapMode(view, apischema.SwapModeRequest{Mode: apischema.SwapModeZswap})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +217,7 @@ func TestPlanSwapModeRefusals(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			got, err := planSwapMode(test.view(), test.target)
+			got, err := planSwapMode(test.view(), apischema.SwapModeRequest{Mode: test.target})
 			if !errors.Is(err, test.want) {
 				t.Fatalf("plan = %+v, err = %v; want %v", got, err, test.want)
 			}
@@ -241,7 +241,7 @@ func TestPlanSwapModeLeavesASwapFileOthersCanRedirectAlone(t *testing.T) {
 		{apischema.SwapModeDisk, apischema.SwapModeZswap},
 		{apischema.SwapModeMixed, apischema.SwapModeDisk},
 	} {
-		got, err := planSwapMode(openPlanView(test.from), test.to)
+		got, err := planSwapMode(openPlanView(test.from), apischema.SwapModeRequest{Mode: test.to})
 		if err != nil {
 			t.Fatalf("%s to %s: %v", test.from, test.to, err)
 		}
@@ -257,7 +257,7 @@ func TestPlanSwapModeLeavesASwapFileOthersCanRedirectAlone(t *testing.T) {
 // file and it is off, and the refusal says why it is not started.
 func TestPlanSwapModeRefusesToStartASwapFileOthersCanRedirect(t *testing.T) {
 	for _, target := range []apischema.SwapMode{apischema.SwapModeDisk, apischema.SwapModeZswap} {
-		got, err := planSwapMode(openPlanView(apischema.SwapModeZram), target)
+		got, err := planSwapMode(openPlanView(apischema.SwapModeZram), apischema.SwapModeRequest{Mode: target})
 		if !errors.Is(err, bridgeipc.ErrConflict) || !errors.Is(err, errOthersCanRedirect) {
 			t.Errorf("%s: plan = %+v, err = %v; want a conflict that names the folder rule", target, got, err)
 		}

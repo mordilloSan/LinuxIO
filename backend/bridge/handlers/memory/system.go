@@ -3,12 +3,10 @@ package memory
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
@@ -28,7 +26,8 @@ type hostSystem interface {
 	// running it is a start.
 	restartUnit(ctx context.Context, name string) error
 	// resetZram frees the zram device name, which nothing may swap on or
-	// hold open, so that its size can be set again.
+	// hold open, so that its size can be set again; it tries once, and the
+	// kernel refuses with EBUSY while something holds the device.
 	resetZram(ctx context.Context, name string) error
 	// swapOff takes the swap file or partition at device, a path from
 	// /proc/swaps, away with swapoff and returns when it has left. It ends
@@ -69,30 +68,17 @@ func (liveSystem) restartUnit(ctx context.Context, name string) error {
 	return systemd.RestartUnit(ctx, name)
 }
 
-// zramResetWait is how long resetZram waits for whatever holds the device
-// open, as udev does for a moment after a swapoff.
+// zramResetWait is how long a reset of zram0 is tried again while something
+// holds the device open, as udev does for a moment after a swapoff.
 const zramResetWait = 5 * time.Second
 
-// resetZram writes the device's reset attribute, which the kernel refuses
-// with EBUSY while the device is open. A device that does not exist needs
-// no reset.
-func (s liveSystem) resetZram(ctx context.Context, name string) error {
-	reset := filepath.Join(sysBlockDir, name, "reset")
-	var busy error
-	err := waitUntil(ctx, zramResetWait, 100*time.Millisecond, func() (bool, error) {
-		err := s.writeParam(reset, "1")
-		switch {
-		case errors.Is(err, fs.ErrNotExist):
-			return true, nil
-		case errors.Is(err, syscall.EBUSY):
-			busy = err
-			return false, nil
-		default:
-			return err == nil, err
-		}
-	})
-	if err != nil && busy != nil {
-		return fmt.Errorf("%w: %w", err, busy)
+// resetZram writes the device's reset attribute once. The kernel refuses it
+// with EBUSY while the device is open; the executor tries again. A device
+// that does not exist needs no reset.
+func (s liveSystem) resetZram(_ context.Context, name string) error {
+	err := s.writeParam(filepath.Join(sysBlockDir, name, "reset"), "1")
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
 	}
 	return err
 }

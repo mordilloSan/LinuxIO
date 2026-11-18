@@ -77,6 +77,19 @@ describe("generated application router", () => {
     expect(validate({ order: "asc", sort: "name" })).toEqual({});
   });
 
+  it("keeps only a dialog the dashboard knows in its search", () => {
+    const validate =
+      router.routesById["/_authenticated/"].options.validateSearch;
+    if (typeof validate !== "function")
+      throw new Error("Missing dashboard search validation");
+    expect(validate({ dialog: "memory-overflow" })).toEqual({
+      dialog: "memory-overflow",
+    });
+    for (const search of [{}, { dialog: "hostname" }, { dialog: true }]) {
+      expect(validate(search)).toEqual({});
+    }
+  });
+
   it("contains the complete generated route topology", () => {
     expect(
       applicationRoutes

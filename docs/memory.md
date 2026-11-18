@@ -1,7 +1,8 @@
 # Memory overflow
 
 The **Memory overflow** dialog, opened from the Swap row of the dashboard's
-Memory card, says how the host copes when RAM runs out and changes it: swap on
+Memory card or by its URL, `/?dialog=memory-overflow`, says how the host
+copes when RAM runs out and changes it: swap on
 disk, zswap in front of a swap file, or zram with no swap file. It also sets
 how eagerly the kernel moves data out of RAM (`vm.swappiness`) and brings data
 parked on disk back into memory. The backend is
@@ -24,13 +25,17 @@ these settings.
 
 The dialog is **administrator-only**: every action in it is privileged, so
 the Swap row of the Memory card is an edit button with a pencil for a session
-with sudo and plain text for any other. The dialog is not gated on a
+with sudo and plain text for any other, and the URL opens the dialog only for
+a session with sudo. The dialog is not gated on a
 capability: the status works without a zram tool or TuneD, and the zram row
 links to Capabilities when the package is missing.
 
 The status read, `memory.get_swap_status`, is not privileged. It reads
-world-readable files (`/proc`, `/sys`, `/etc/fstab`), asks TuneD over D-Bus
-whether it runs, and returns no secret. The dialog is withheld because it has
+world-readable files (`/proc`, `/sys`, `/etc/fstab`, the zram tools'
+configuration files, `/var/lib/dpkg/status`), asks TuneD over D-Bus whether
+it runs, and returns no secret: of the zram configuration it returns paths,
+device names and the size settings of zram-generator's other files, nothing
+else. The dialog is withheld because it has
 nothing a session without sudo could do, not because the read is sensitive;
 see [Privilege Pattern](./privilege_pattern.md#in-the-frontend).
 
@@ -119,6 +124,8 @@ or of the recommended one when the host is `none` or `mixed`.
 | TuneD, through `power.GetStatus` | `tuned_active` and `tuned_profile` |
 | the `zram` capability | `zram_available` |
 | systemd over D-Bus, only with both zram tools installed | `zram_provider` (see [The zram provider](#the-zram-provider)) |
+| the provider's configuration file, `/etc/default/zramswap` or `/etc/systemd/zram-generator.conf`, and its package's checksum of it in `/var/lib/dpkg/status` | `foreign_zram_config`, when it is not LinuxIO's (see [A zram configuration file that is not LinuxIO's](#a-zram-configuration-file-that-is-not-linuxios)) |
+| zram-generator's other configuration files, only with zram-generator installed | `zram_generator_devices` (see [Other zram-generator configuration](#other-zram-generator-configuration)) |
 
 From these it derives the mode, the recommendation, `zram_planned_size`,
 `zram_unavailable_reason` (`package_missing`, or `swap_partition_active`; a
@@ -160,12 +167,18 @@ or a read that fails with `ENODEV`), as when zram's unit resets it, is
 skipped; a failed TuneD read counts as TuneD not running (Debug log only);
 with both zram tools installed, a unit state that cannot be read makes
 zram-tools the provider (Debug log only); a host with neither zram tool is
-`zram_available: false` with an empty `zram_provider`.
+`zram_available: false` with an empty `zram_provider`; the provider's
+configuration file that cannot be read counts as not LinuxIO's, and a
+zram-generator file or folder that cannot be read is left out (Debug log
+only).
 
 ## Changing the mode
 
-`memory.set_swap_mode` takes `disk`, `zswap` or `zram`; any other value is
-`ErrInvalidArgs`. It runs as a task and reports each step as it starts
+`memory.set_swap_mode` takes `mode`, `disk`, `zswap` or `zram`; any other
+value is `ErrInvalidArgs`. `confirm_replace` names the zram configuration
+file that is not LinuxIO's the user agreed the change may replace (see
+[A zram configuration file that is not LinuxIO's](#a-zram-configuration-file-that-is-not-linuxios)).
+It runs as a task and reports each step as it starts
 (`SwapProgress`: step code, 1-based index of total, and the device for a
 drain). The dialog shows the step's message while it runs. Its result
 (`SwapModeResult`) is the status after the change plus `left`: what the
@@ -182,7 +195,13 @@ undone, and the Info line for the change is still logged.
 It refuses before anything changes, with `ErrConflict`, a mode the host cannot
 take: zram without a zram tool or with a swap partition active; zswap on a
 kernel without it; zswap or disk with no swap file in fstab and no active
-swap file or partition.
+swap file or partition; with zram-generator, zswap or disk while another of
+its files defines a device (see
+[Other zram-generator configuration](#other-zram-generator-configuration)).
+It also refuses a run that would replace the provider's configuration file
+while that file is not LinuxIO's and the request does not name it in
+`confirm_replace`. The plan makes these checks under the mutation lock, on
+a status read for the request.
 
 ### Order of steps
 
@@ -192,8 +211,8 @@ than it was.
 
 To `zram`:
 
-1. `write_config`: write the zram provider's configuration and the sysctl
-   drop-in.
+1. `write_config`: write the zram provider's configuration, after keeping a
+   copy of one that is not LinuxIO's, and the sysctl drop-in.
 2. `start_zram`: set zram to start at boot and make it swap at the planned
    size, waiting for a zram device in `/proc/swaps` (up to a minute). What
    "at boot" and "its unit" mean depends on the
@@ -217,19 +236,33 @@ To `zram`:
      alone. A start that fails leaves the host on its disk swap, and the run
      fails.
 
-   Before any start with zram-tools, a `zram0` that is set up but does not
-   swap is reset through `/sys/block/zram0/reset` (`resetStaleZram`). The
-   kernel refuses a new size for a device that is set up, and `zramswap
-   start` then swaps on it at the size it has. `zramswap stop` leaves the
-   device that way when it cannot unload the zram module, which the test VM
-   shows it often cannot right after its own `swapoff` ("Module zram is in
-   use"). Only a device that holds swap, by the signature `mkswap` writes,
-   is reset: one that holds anything else was set up by someone for another
-   use, `zramswap start` would format it, and the step refuses with
-   `ErrConflict` instead. The kernel refuses the reset while something holds
-   the device open, so it is tried for five seconds. After the start the
-   size is read again, and a device that came up at another size than
-   planned is reported (`zram_size`, `other_size`).
+   Before any start of zram, with either tool, a `zram0` that is set up but
+   is not in `/proc/swaps`, read just then, is reset through
+   `/sys/block/zram0/reset` (`resetStaleZram`). Both tools can leave it that
+   way: `zramswap stop` when it cannot unload the zram module, which the test
+   VM shows it often cannot right after its own `swapoff` ("Module zram is in
+   use"), and zram-generator when the reset its setup service runs as its
+   swap unit stops meets the device still held right after the `swapoff` and
+   fails with "Device or resource busy", which the test VM showed on the third
+   stop in a row, leaving the setup service `failed`. With zram-tools the
+   kernel then refuses a new size, and `zramswap start` swaps on the device
+   at the size it has. With zram-generator the setup cannot set the device up
+   at all ("Failed to configure compression algorithm"), and zram stays off.
+   Only a device that holds swap, by the signature `mkswap` writes, is reset:
+   one that holds anything else was set up by someone for another use, a
+   start would format it, and the step refuses with `ErrConflict` instead. A
+   device that swaps is never reset, and the kernel refuses the reset while
+   something holds the device open, so it is tried again for five seconds;
+   both are read again before each attempt, since another tool can start
+   swapping on the device or format it meanwhile.
+   With zram-tools a reset that still fails is logged and the start goes on;
+   with zram-generator, which could not start, it fails the step, naming the
+   device. A start queued behind a stop that may still take effect (see
+   above) is preceded by the same reset with zram-generator once zram no
+   longer swaps. A `failed` setup service needs nothing more: a start of the
+   swap unit starts it again. After the start the size is read again, and a
+   device that came up at another size than planned is reported
+   (`zram_size`, `other_size`).
 3. `apply_sysctls`: write the preset live.
 4. `disable_zswap`: turn zswap off and keep it off at boot (see below).
 5. `stop_swap_file`: when the file is named in fstab, take it away with
@@ -373,7 +406,9 @@ failed undo into the error it returns:
   unit is also stopped when no zram device swaps, and zram that swaps stays;
 - each kernel parameter the run wrote goes back to the value it had before;
 - each file the run wrote or removed goes back to its previous content and
-  mode, or is removed if it did not exist.
+  mode, or is removed if it did not exist. The copy kept of a zram
+  configuration file that was not LinuxIO's stays: it holds what the file
+  held, which the rollback put back.
 
 The previous content of a file, and the previous value of a parameter, is
 recorded **before** it is written: a write can land and still report an error
@@ -569,7 +604,7 @@ keeps a killed helper from taking the other jobs with it.
 ## Waiting on systemd
 
 zram is still stopped through its provider's unit, since the unit also
-resets the device. Before a mode change stops zram, it reads the unit's
+resets the device, or tries to (see `start_zram`). Before a mode change stops zram, it reads the unit's
 state. A unit that reads `inactive` or `failed` would not take zram away, so
 no stop is issued and zram stays; this covers zram set up by another tool. A
 state that cannot be read does not hold the stop back.
@@ -600,10 +635,11 @@ above). Either way the error goes through rollback.
 
 ## Files written on the host
 
-Each file is LinuxIO's alone and starts with
-`# Managed by LinuxIO (Dashboard, Memory); changes here are overwritten.`.
-Writes are atomic (`atomicfile.Write`, which refuses to write through a
-symlink) and mode `0644`.
+The four files LinuxIO manages start with
+`# Managed by LinuxIO (Dashboard, Memory); changes here are overwritten.`
+and are mode `0644`. The copy of a zram file that was not LinuxIO's keeps
+that file's content and mode, header or not. Every write is atomic
+(`atomicfile.Write`, which refuses to write through a symlink).
 
 | Path | Written by | Content |
 |---|---|---|
@@ -611,6 +647,62 @@ symlink) and mode `0644`.
 | `/etc/tmpfiles.d/linuxio-zswap.conf` | every mode, on a kernel with zswap | For `zswap`, `w` lines setting zswap's `compressor` and `enabled` (`Y`) at boot. For `zram` and `disk`, one `w` line setting `enabled` to `N`, so a kernel that starts with zswap on does not return to it. |
 | `/etc/default/zramswap` | `zram`, with zram-tools | zram-tools' configuration: `ALGO=zstd`, `SIZE=<MiB>`, `PRIORITY=100`. It is a package conffile, so the next package upgrade asks about the change. |
 | `/etc/systemd/zram-generator.conf` | `zram`, and leaving zram, with zram-generator | For `zram`: one `[zram0]` section with `zram-size = <MiB>`, `compression-algorithm = zstd` and `swap-priority = 100`. Leaving zram: comments only, so the generator makes no device. Either way it replaces what was there, and takes the place of the file a package puts in `/usr/lib/systemd`. |
+| `<path>.before-linuxio`, beside either zram file | a run that replaces that file while it is not LinuxIO's | The file as it was, with its mode. Not undone by a rollback, and replaced by the next such copy. |
+
+### A zram configuration file that is not LinuxIO's
+
+The two zram files are not LinuxIO's alone: `/etc/default/zramswap` is a
+zram-tools conffile an admin may have edited, and an admin may have written
+`/etc/systemd/zram-generator.conf`, with devices and zram mounts
+(`fs-type`, `mount-point`) of their own. So a file there is replaced without
+asking only when (`asksToReplace` in `persist.go`):
+
+- it is absent;
+- it is LinuxIO's: its first line is the header above;
+- it holds nothing but comments and blank lines. A comment starts with `#`,
+  and in zram-generator's INI file also with `;`; `/etc/default/zramswap` is
+  a shell file, where `;` starts none. A byte order mark at the start and
+  CRLF line ends are read past, for the header too;
+- or it is the file as its package shipped it, which nobody edited: on a
+  dpkg host the owning package's stanza in `/var/lib/dpkg/status` records
+  each conffile's MD5 in its `Conffiles` field (path, checksum, flags), and
+  the file's own MD5 equals it. The status file is read as a stream up to
+  the stanza that decides, and no `dpkg` command is run. Only an installed
+  package's stanza counts (its `Status` ends in `installed`): after a rename
+  the old package can stay in `config-files` state, listing the file with
+  its old checksum. An entry flagged `obsolete`, which the package no longer
+  ships, a host without dpkg (rpm hosts) and a file no installed package
+  owns have no record, and the rules above decide. This is what zram-tools' own `/etc/default/zramswap`
+  is on a host where the admin only installed the package: it has settings,
+  and the first switch to zram replaces it without asking and keeps no
+  copy.
+
+Any other is not LinuxIO's. The status reports the provider's file in
+`foreign_zram_config`: its `path` and the `copy_path` its copy is kept at,
+`<path>.before-linuxio`, which does not end in `.conf`, so neither tool reads
+it. A file the session user cannot read counts as not LinuxIO's there, since
+it may hold anything. A run that would replace the file needs the request to
+name that path in `confirm_replace`, and is refused otherwise, with
+`ErrConflict` naming it, under the mutation lock on a fresh status and before
+anything changes (`confirmedReplace` in `plan.go`). That is a switch to zram
+with either tool, which writes the configuration, and with zram-generator a
+switch to disk or zswap, which writes the file with no device; zram-tools
+only disables its service then. The dialog's confirm step names the file and
+the copy, and sends the path. A `confirm_replace` that names anything but one
+of the two zram files is `ErrInvalidArgs`, before the change waits for the
+lock.
+
+The run then copies the file it is about to replace, as root and as the file
+is at that moment, to `<path>.before-linuxio` with its mode, through
+`atomicfile.Write`, which refuses to write through a symlink, replacing an
+older copy, and only then writes the file (`keepZramConfigCopy` in
+`mode.go`). A folder, a link or anything else at the copy's name that is not
+a regular file stops the run there, with the file as it was. A failed run
+puts the file back, as it does every file it wrote, and the copy stays; the
+run's error says where the copy is. The
+Info line of the change, `swap mode changed`, names the file it replaced
+and the copy in `zram_config_replaced` and `zram_config_copy`, only when it
+replaced one.
 
 Besides these, systemd keeps the mask of the swap unit as a symlink in
 `/etc/systemd/system`, and with zram-tools `zramswap.service` is enabled or
@@ -632,8 +724,8 @@ is the file and the unit.
 | Found by | the `zramswap` command (`hostcmd.LookPath`, which also looks in `/usr/sbin`) | the file `/usr/lib/systemd/system-generators/zram-generator` |
 | Configuration | `/etc/default/zramswap` | `/etc/systemd/zram-generator.conf` |
 | Start at boot | enable `zramswap.service` | the configuration holds a device; a systemd reload makes `dev-zram0.swap`, wanted by `swap.target` |
-| Start now | start `zramswap.service` | start `dev-zram0.swap`, which requires `systemd-zram-setup@zram0.service` |
-| Stop now | stop `zramswap.service` | stop `dev-zram0.swap`; the setup service is bound to it and resets the device |
+| Start now | reset a `zram0` left set up, then start `zramswap.service` | reset a `zram0` left set up, then start `dev-zram0.swap`, which requires `systemd-zram-setup@zram0.service` |
+| Stop now | stop `zramswap.service`, which may leave `zram0` set up | stop `dev-zram0.swap`; the setup service is bound to it and resets the device, which can fail while the device is still held |
 | Off at boot | disable `zramswap.service` | write a configuration with no device, then reload |
 | "The provider runs it" | `zramswap.service` is not `inactive` or `failed` | `systemd-zram-setup@zram0.service` is `active`, and no zram device but `zram0` swaps |
 
@@ -665,10 +757,68 @@ With `zram-generator`:
   setup service reads `active`, where a state that cannot be read counts as no
   proof, because systemd has a `dev-zram0.swap` unit for a `zram0` anyone
   swapped on.
-- Drop-ins in `zram-generator.conf.d` and a file in `/run/systemd` are neither
-  read nor changed. They override LinuxIO's file, so a device defined there
-  comes back at boot, and one that swaps beside `zram0` keeps `stop_zram` from
-  stopping anything.
+- An admin's own `/etc/systemd/zram-generator.conf` is replaced only once
+  the user confirmed it, and a copy is kept (see
+  [A zram configuration file that is not LinuxIO's](#a-zram-configuration-file-that-is-not-linuxios)).
+- Its other configuration files are read, never changed (below).
+
+### Other zram-generator configuration
+
+zram-generator reads more than LinuxIO's file. As upstream's source does it
+(`locate_fragments` in `src/config.rs` of
+[systemd/zram-generator](https://github.com/systemd/zram-generator), and the
+`scan` of the `liboverdrop` crate it calls, read 2026-11-18):
+
+- one main `zram-generator.conf`, the first that exists of `/run/systemd`,
+  `/etc/systemd`, `/usr/local/lib/systemd` and `/usr/lib/systemd`. LinuxIO's
+  file in `/etc` therefore takes the place of the two below it, as it does of
+  Fedora's default in `/usr/lib`, and one in `/run` takes the place of
+  LinuxIO's;
+- then the drop-ins, `*.conf` in `zram-generator.conf.d` under the same four
+  folders, in order of file name whatever folder they are in. Of two with the
+  same name the one in the later folder (`/usr/lib`, `/usr/local/lib`,
+  `/etc`, `/run`) is read; a link to `/dev/null` hides the earlier folders'
+  file of its name; a name that starts with a dot and an entry that is not a
+  regular file, a link to another file included, are skipped.
+
+Each `[zramN]` section defines a device, merged across the files in that
+order. It is swap unless it sets a `mount-point` or an `fs-type` other than
+`swap`, which make it a zram mount. Its `zram-size` defaults to
+`min(ram / 2, 4096)` and may be an expression, and the older `zram-fraction`
+and `max-zram-size` still set a size when `zram-size` is not set; a device
+whose size comes to 0 is discarded, and `systemd.zram=0` on the kernel
+command line keeps the generator from making any. The files are parsed with
+the `rust-ini` crate (0.15 to 0.21, default features), whose comments start
+a line with `#` or `;`: a comment after a section header, or anywhere but at
+the start of a line, makes it reject the whole file, and the generator then
+makes no device at all.
+
+With zram-generator installed, whichever tool is the provider, the status
+lists in `zram_generator_devices` each swap `[zramN]` section of the main file
+in `/run` and of every drop-in that is read (`readZramGeneratorDevices` in
+`generator_config.go`): the file's `path`, the `device`, and the size settings
+as written, `zram_size`, `zram_fraction` and `max_zram_size`, each empty when
+the file sets none. A header followed by a comment still counts, although
+`rust-ini` rejects that file: it errs towards refusing a switch away from
+zram. The main files in `/etc`, `/usr/local/lib` and `/usr/lib` are not
+listed. Nothing else of those files leaves the bridge. A file larger than
+1 MiB counts as one that cannot be read; in the status such a file is
+skipped with a Debug log that carries the error. A drop-in folder that cannot
+be listed, or is not a folder, is skipped everywhere, as upstream skips it,
+with a Debug log.
+
+With zram-generator as the provider, a switch to disk or zswap is refused with
+`ErrConflict` while any device is listed, naming the first file: the device
+would come back at every boot whatever LinuxIO's file says, and the mode would
+then read `mixed`. The refusal says how to turn the file off: a package's
+drop-in under `/usr/lib` or `/usr/local/lib` is hidden by a link to
+`/dev/null` of its name in `/etc/systemd/zram-generator.conf.d`, and any other
+file is the admin's, or made at runtime, to change. The change reads those
+files as root, under the lock: a drop-in or `/run` main file it cannot read
+may bring zram back as well, so it refuses the switch too, naming the file
+and the error (`generatorRefusal` in `plan.go`). A switch to zram is allowed, and what
+those files set wins over LinuxIO's file, so the dialog lists them with the
+size settings each writes.
 
 ## The zram capability
 
@@ -691,19 +841,37 @@ service step, since `start_zram` does that. See
   not turn it off or empty it, or will not turn it on, whatever is chosen,
   and for `others_can_write` to move it to a folder only root can write. It
   is there before anything is asked of the file.
+- Under it, while `zram_generator_devices` lists any, a note
+  (`generatorFilesNote`) with each file, its device and the size settings it
+  writes (`zram-size`, `zram-fraction`, `max-zram-size`), or that it sets no
+  size, since LinuxIO's size then applies to `zram0` after a switch to zram.
+  With zram-generator as the provider the note says that what these files set
+  wins over LinuxIO's settings; with zram-tools as the provider it says only
+  that zram-generator is installed too and sets up compressed memory from
+  them.
 - A single-choice list of three rows, in the order zswap, zram, disk, each with
   a plain name, its technical name once, a description, a caution where one
   applies, and chips for the recommended and the current row. A row that cannot
   be chosen shows why; the zram row shows a link to Capabilities instead of a
   choice while no zram tool is installed. The zswap and disk rows need disk
   swap, as the plan counts it: a managed swap file, or an active swap file
-  or partition. Apply is enabled for a different row, or
+  or partition; with zram-generator as the provider they also say why the
+  plan refuses them while another of its files defines a swap device, naming
+  the first, and how to turn it off, as the refusal does. Apply is enabled
+  for a different row, or
   for the current one while the host is `mixed`.
-- Choosing zram while a managed swap file (`swap_file.managed`) is active asks
-  first, as a second step of the same dialog and not a dialog on top of it,
-  and lists what will happen: data parked in the file comes back, the file is
-  turned off and stays off after a restart, and the file is not deleted. The
-  step opens with focus on Back, and Back returns focus to Apply.
+- An Apply that needs agreement asks first, as a second step of the same
+  dialog and not a dialog on top of it, which lists all of it
+  (`confirmView`): choosing zram while a managed swap file
+  (`swap_file.managed`) is active, with what will happen (data parked in the
+  file comes back, the file is turned off and stays off after a restart, and
+  the file is not deleted); and any Apply that replaces the provider's
+  configuration file while it is not LinuxIO's (to zram with either tool, to
+  disk or zswap with zram-generator), with the file and where its copy is
+  kept. That step's Apply sends the file in `confirm_replace`. The step shows
+  what it showed when Apply was pressed, while a refresh or the change itself
+  moves the host. It opens with focus on Back, and Back returns focus to
+  Apply.
 - Advanced, collapsed: a slider for swappiness from 0 to 200, with the caption
   "Recommended for <mode>: N". A drag is saved when the pointer is released
   or focus leaves the slider. Arrow keys are saved half a second after the
@@ -734,8 +902,20 @@ service step, since `start_zram` does that. See
   - When no dialog follows the job, the task tray reports it, from the
     entries for the two routes in `terminalTaskFeedback.ts`. A dialog marks
     the job as reported when it starts to follow it, so the tray stays quiet.
-- The dialog's code loads the first time it is opened. It has no URL: it
-  cannot be linked to or bookmarked, like the hostname and clock dialogs.
+  - A result toast fired on another page than the dashboard has an "Open
+    Memory overflow" button that opens the dialog by its URL
+    (`MEMORY_TOAST_META`).
+- The dialog's URL is the dashboard's `?dialog=memory-overflow`, validated by
+  `validateDashboardSearch` (`frontend/src/api/dashboard-search.ts`); an unknown
+  value is dropped. The pencil opens the dialog by setting it, and Close and
+  Escape take it out; both replace the history entry, so Back leaves the
+  dashboard rather than opening or closing the dialog. A reload, a bookmark or
+  a link opens it, for a session with sudo only; the choices made in it are
+  not in the URL. The `zram` capability's install toast links to it ("Open
+  Memory overflow") from any page but the dashboard
+  ([Capabilities](./capabilities.md#zram)).
+- The dialog's code loads the first time it is opened, and the dialog then
+  stays mounted so that it can animate closed.
 
 ## Tests
 
@@ -755,14 +935,34 @@ service step, since `start_zram` does that. See
   the status read again after each route's change, the swap file chosen
   among several in fstab, no disk hint under a FUSE mount, the provider
   chosen by the unit that runs zram, and the status and route agreement for
-  masked units. `swapoff_test.go` runs a
+  masked units. `zram_config_test.go` covers a zram configuration file that
+  is not LinuxIO's (what counts as one, with `;`, a byte order mark and CRLF;
+  a package's unchanged conffile against a fake dpkg status, changed, marked
+  obsolete or not recorded; one that cannot be read; the refusal without
+  `confirm_replace` with nothing changed, and a `confirm_replace` naming
+  another file; the copy with its mode over an older one, a folder or a link
+  at its name, the copy kept after a failed run, and the Info line) and
+  zram-generator's other files (which are read and in what order, a
+  same-named file in a later folder, a link to `/dev/null`, the vendor main
+  file, zram mounts, a header with a comment, the older size keys, one that
+  cannot be read in the status and in a change, and the refusal to leave
+  zram with how to turn the file off). `swapoff_test.go` runs a
   script in place of `swapoff`: its arguments, what it printed in the error,
   and a cancel that ends it. `escape_test.go` pins the unit-name
   escaping. Run with `make test-go-quiet GO_TEST_PKGS=./bridge/handlers/memory`.
 - Frontend: `memoryStatusView.test.ts` and `MemoryOverflowDialog.test.tsx`
   (the real generated client with the calls mocked), and `Memory.test.tsx` for
-  the pencil on the dashboard card, all under jsdom. There is no browser spec
-  for the dialog.
+  the pencil on the dashboard card and the dialog's URL, all under jsdom.
+  `src/test/browser/memory-overflow.spec.ts` runs in Chromium against the
+  Memory card in the browser fixture (`fixture/routes/MemoryOverflowPage.tsx`,
+  which has no bridge, so nothing is applied): the pencil and the URL, Escape,
+  a reload with the URL, the rows as one choice with the arrow keys, the
+  slider and its caption, and the confirm step's focus and the configuration
+  file it names. Run it with
+  `make test-frontend-browser-quiet PLAYWRIGHT_ARGS=src/test/browser/memory-overflow.spec.ts`.
+- The root tests change `/etc` and swap on the machine they run on, and put
+  it back only through the test's own cleanup, so they are for the disposable
+  test VM only.
 - `make vm-test-memory-integration` runs `TestMemoryIntegration` as root in the
   [test VM](./development.md#test-vm). It switches the real host to zram and
   back through systemd, the kernel and `/etc`, and checks: after zram, mode
@@ -775,11 +975,34 @@ service step, since `start_zram` does that. See
   `swapoff` and not a stop. It then drains the swap file (`swapoff`, the
   wait for systemd, a start of the unit) and checks the file and its unit
   are active again, starts a 64 MiB zram beside the swap file and switches to
-  zram again, which must end at the planned size. Cleanup switches back to
-  the starting mode. It does not cover zswap's persistence, swappiness,
-  rollback, TuneD or a reboot.
+  zram again, which must end at the planned size. It holds `zram0` open while
+  the provider's unit stops, so the reset at the stop fails as the test VM saw
+  zram-generator's fail, and checks that a switch to zram resets the device
+  and starts zram at the planned size. It then writes an admin's
+  configuration for the provider, mode 0640, and checks that a switch to zram
+  is refused without `confirm_replace`, that a folder at the copy's name stops
+  a confirmed switch with the file as it was, and that a confirmed switch
+  keeps the copy with mode 0640 and replaces the file. With zram-generator it
+  writes a drop-in that defines `zram1` and checks that the status lists it
+  and that a switch to disk is refused naming it; the drop-in is removed
+  before any reload. Last it switches to zswap and back to disk, and checks
+  zswap live and its tmpfiles entry each way. A host that starts `mixed`, as
+  a fresh zram-generator install leaves it, goes to disk first. Cleanup puts
+  the host back as it was: the starting mode, the three files LinuxIO
+  manages, the zram configuration file and the copies, `zramswap.service`'s
+  start at boot, zram beside the swap file for a host that started `mixed`,
+  and the four live sysctls and zswap. No test covers TuneD or a reboot.
   The same target then runs `TestMemoryDrainIntegration`
-  (`drain_integration_test.go`) on a data disk used as swap. Eight helper
+  (`drain_integration_test.go`) on a data disk used as swap. zram swapping
+  ahead of the disk, as zram-generator's does at priority 100, is stopped
+  through its provider's unit for the test and started again after it; any
+  other device ahead of the disk skips the test, since the data would not
+  park there. Each wait is bounded (10 minutes to park, 10 to cancel, 15 for
+  the full drain), and data that goes to another device fails the test at
+  once. The cgroup's `memory.reclaim` is written with system calls: it
+  answers EAGAIN when it reclaimed less than asked, and Go's `os.WriteFile`
+  would wait on that pollable file for good, which is how an earlier run
+  hung. Eight helper
   processes hold data that does not compress, in a cgroup of the test's own,
   which is told to reclaim until the data is on the disk and out of the swap
   cache. The test then cancels a drain once `swapoff` has read some of it
@@ -796,7 +1019,12 @@ service step, since `start_zram` does that. See
   `make vm-reset`, runs the same test with Ubuntu's `systemd-zram-generator`
   in place of zram-tools: after zram it checks the `[zram0]` configuration
   with `zstd` and that `systemd-zram-setup@zram0.service` is active, and after
-  the return that the configuration holds no device.
+  the return that the configuration holds no device. On 2026-11-18, on
+  kernel 7.0.0-43, both providers ran to the end (zram-tools 0.3.7 and
+  Ubuntu's `systemd-zram-generator` 1.2.1): with `zram0` held open the
+  generator's stop left the device set up and its setup service `failed`,
+  and the next switch to zram reset the device and started zram at the
+  planned size; the drains matched the earlier numbers.
 
 ## Known limits
 
@@ -813,9 +1041,27 @@ Each is by design or unlikely to be met, or is an open item in
   size means stopping zram, which would leave the host without swap
   meanwhile, so it is done only while disk swap is active; and the dialog
   does not offer Apply for the zram row while zram is the current mode.
-- The `zram-generator` path was built from upstream's documentation and unit
-  files and has not run on Fedora or RHEL; drop-ins in
-  `zram-generator.conf.d` are not read.
+- The `zram-generator` path was built from upstream's documentation, source
+  and unit files and has not run on Fedora or RHEL.
+- zram-generator's other files are read as written, one by one, not
+  evaluated or merged: a file that only sets `zram-size = 0`, whose device
+  upstream discards, still counts as defining a device and keeps a switch
+  away from zram refused, and a drop-in that makes another file's device a
+  zram mount, or swap again, does not change how that file's section is
+  counted.
+- A device upstream would drop because the host has more memory than the
+  section's `host-memory-limit` is still listed, and still refuses a switch
+  away from zram.
+- Whether a zram configuration file needs the question is decided when the
+  change is planned: a file an admin saves while the change runs, between
+  the plan and the write, is replaced without the question, and its copy is
+  kept.
+- `systemd.zram=0` on the kernel command line, which keeps the generator from
+  making any device, is not read, and neither is a main file in `/run/systemd`
+  that defines none and so hides LinuxIO's file: a switch to zram on such a
+  host fails at `start_zram` and is rolled back.
+- The dialog lives in the dashboard's Memory card, so while that card is
+  hidden its URL opens nothing.
 - With both zram tools installed, a change sets start-at-boot only for the
   tool that runs zram, so the other, if it is set to start at boot, brings
   zram back at the next boot and the mode then reads `mixed`. With both

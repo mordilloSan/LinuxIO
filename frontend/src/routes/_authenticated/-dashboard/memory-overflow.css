@@ -92,7 +92,8 @@ label.memory-row__text {
   justify-self: start;
 }
 
-/* What a switch to compressed memory does, asked before it starts. */
+/* What a change does that needs agreement, asked before it starts. A file
+   path in it may be longer than the line. */
 .memory-overflow__steps {
   display: grid;
   gap: 4px;
@@ -101,6 +102,14 @@ label.memory-row__text {
   color: var(--app-palette-text-secondary);
   font-size: var(--app-font-size-body);
   line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* The other zram-generator files, one path per line. */
+.memory-overflow__files {
+  margin: 4px 0 0;
+  padding-left: 20px;
+  overflow-wrap: anywhere;
 }
 
 /* The running step sits left of the dialog's buttons. */

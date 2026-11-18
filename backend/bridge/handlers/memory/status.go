@@ -143,17 +143,19 @@ func (h hostRoot) readSwapStatus(provider apischema.ZramProvider) (apischema.Swa
 	}
 	fstab = h.matchFstabSwaps(fstab, devices)
 	status := apischema.SwapStatus{
-		Devices:       h.describeSwapFiles(devices, mounts),
-		MemTotal:      mem.memTotal,
-		MemAvailable:  mem.memAvailable,
-		SwapTotal:     mem.swapTotal,
-		SwapUsed:      mem.swapTotal - min(mem.swapFree, mem.swapTotal),
-		Zswap:         zswap,
-		ZramDevices:   zram,
-		ZramAvailable: zramAvailable,
-		ZramProvider:  provider,
-		SwapFile:      h.statusSwapFile(fstab, devices, mounts),
-		Presets:       presetList(),
+		Devices:              h.describeSwapFiles(devices, mounts),
+		MemTotal:             mem.memTotal,
+		MemAvailable:         mem.memAvailable,
+		SwapTotal:            mem.swapTotal,
+		SwapUsed:             mem.swapTotal - min(mem.swapFree, mem.swapTotal),
+		Zswap:                zswap,
+		ZramDevices:          zram,
+		ZramAvailable:        zramAvailable,
+		ZramProvider:         provider,
+		ForeignZramConfig:    h.foreignZramConfig(provider),
+		ZramGeneratorDevices: h.zramGeneratorDevices(),
+		SwapFile:             h.statusSwapFile(fstab, devices, mounts),
+		Presets:              presetList(),
 	}
 	if err := h.readVMSysctls(&status); err != nil {
 		return apischema.SwapStatus{}, fmt.Errorf("read vm sysctls: %w", err)

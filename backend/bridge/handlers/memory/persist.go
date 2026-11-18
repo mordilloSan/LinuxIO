@@ -4,11 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 )
 
@@ -25,14 +27,87 @@ const (
 
 	managedFileMode fs.FileMode = 0o644
 	managedHeader               = "# Managed by LinuxIO (Dashboard, Memory); changes here are overwritten.\n"
+
+	// zramConfigCopySuffix names the copy kept beside a zram configuration
+	// file that is not LinuxIO's before a change replaces it. It does not
+	// end in .conf, so neither zram tool reads it.
+	zramConfigCopySuffix = ".before-linuxio"
 )
 
+// zramConfigPath is the configuration file the zram provider reads and a
+// change writes, or empty without a provider.
+func zramConfigPath(provider apischema.ZramProvider) string {
+	switch provider {
+	case apischema.ZramProviderTools:
+		return zramswapConfigPath
+	case apischema.ZramProviderGenerator:
+		return zramGeneratorConfigPath
+	default:
+		return ""
+	}
+}
+
+// notLinuxIOs reports whether the text of the zram configuration file at path
+// is not LinuxIO's to replace without asking: it does not start with
+// LinuxIO's header and holds a line that is neither blank nor a comment, as
+// an admin's settings do. A package's default of comments only is LinuxIO's
+// to replace. A byte order mark and CRLF line ends are read past, and in
+// zram-generator's INI file a line starting with ';' is a comment too.
+func notLinuxIOs(path, text string) bool {
+	text = strings.TrimPrefix(text, "\ufeff")
+	header := strings.TrimSuffix(managedHeader, "\n")
+	comment := "#"
+	if path == zramGeneratorConfigPath {
+		comment = "#;"
+	}
+	first := true
+	for line := range strings.Lines(text) {
+		line = strings.TrimSpace(line)
+		if first && line == header {
+			return false
+		}
+		first = false
+		if line != "" && !strings.ContainsRune(comment, rune(line[0])) {
+			return true
+		}
+	}
+	return false
+}
+
+// asksToReplace reports whether the zram configuration file at path, holding
+// data, needs the user's agreement before a change replaces it: it is not
+// LinuxIO's, and it is not the file as its package shipped it, which nobody
+// edited (unchangedConffile).
+func (h hostRoot) asksToReplace(path string, data []byte) bool {
+	return notLinuxIOs(path, string(data)) && !h.unchangedConffile(path, data)
+}
+
+// foreignZramConfig is the provider's configuration file when it is not
+// LinuxIO's, with the path its copy is kept at, or nil. A file that cannot
+// be read, as by a session user one only root may read, may hold anything
+// and counts as not LinuxIO's: the dialog then asks, and the change, which
+// reads it as root, copies it only if it is not.
+func (h hostRoot) foreignZramConfig(provider apischema.ZramProvider) *apischema.ForeignZramConfig {
+	path := zramConfigPath(provider)
+	if path == "" {
+		return nil
+	}
+	text, ok, err := h.readOptional(path)
+	if err != nil {
+		slog.Debug("read zram configuration failed", "path", path, "error", err)
+	} else if !ok || !h.asksToReplace(path, []byte(text)) {
+		return nil
+	}
+	return &apischema.ForeignZramConfig{Path: path, CopyPath: path + zramConfigCopySuffix}
+}
+
 // zramService is zram-tools' unit: it sets up the zram device from
-// /etc/default/zramswap and swaps on it. zramToolsDevice is that device,
-// which its script names itself.
+// /etc/default/zramswap and swaps on it. zramDeviceName is the device LinuxIO's
+// zram runs on with either tool: zram-tools' script names it itself, and
+// LinuxIO's zram-generator configuration defines it alone.
 const (
-	zramService     = "zramswap.service"
-	zramToolsDevice = "zram0"
+	zramService    = "zramswap.service"
+	zramDeviceName = "zram0"
 )
 
 // The units zram-generator makes at a systemd reload for the zram0 device

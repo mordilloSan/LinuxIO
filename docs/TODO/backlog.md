@@ -44,60 +44,29 @@ after a change that issues ioctls).
 
 ## Visible bugs
 
-Memory overflow ([Memory overflow](../memory.md)):
-
-- [ ] **`/etc/default/zramswap` is overwritten without a marker check.** It is a
-  `zram-tools` conffile, so an admin's own edits are replaced and dpkg asks at
-  the next package upgrade. Checked.
-- [ ] **The Memory overflow dialog has no URL.** It opens only from the Swap
-  row of the dashboard's Memory card, so the `zram` capability card and its
-  toast cannot link back to it after an install, and it cannot be bookmarked. A
-  validated search parameter on the dashboard route would give it one. Checked.
-- [ ] **`zram-generator` drop-ins are not read.** LinuxIO writes
-  `/etc/systemd/zram-generator.conf` and nothing else. A drop-in in
-  `zram-generator.conf.d`, or a file in `/run/systemd`, overrides it: a size
-  set there wins over the one the page shows, and a device defined there comes
-  back at boot after a switch to disk or zswap, which then reads as `mixed`.
-  Checked by reading upstream's man page, not on a host. Decided 2026-11-17:
-  read them and show each with the size it sets in the dialog, and refuse a
-  switch away from zram, naming the file, while a drop-in defines a device.
-- [ ] **`/etc/systemd/zram-generator.conf` is replaced without a marker
-  check**, like `/etc/default/zramswap`: an admin's own file there is
-  overwritten by a switch to zram, and by the off file on a switch to disk or
-  zswap, also when zram was not running. That drops every device the file
-  defined, a zram mount (`fs-type`, `mount-point`) included. A failed run puts
-  it back. Checked. Decided 2026-11-17, for this file and
-  `/etc/default/zramswap`: the status says when the file is not LinuxIO's, the
-  confirm step names it and where its copy is kept, and the request carries
-  that confirmation; a file with only comments needs none.
-
 ## Tests that are missing
-
-- [ ] **No browser spec for the Memory overflow dialog.** Its single-choice
-  list, slider, the confirm step's focus (Back on entry, Apply on the way back)
-  and the pencil that opens it were exercised under jsdom
-  (`MemoryOverflowDialog.test.tsx`, `Memory.test.tsx`) and looked at by hand in
-  dev mode.
-- [ ] **The memory root test is narrow.** `TestMemoryIntegration`
-  (`backend/bridge/handlers/memory/integration_test.go`) covers a switch to zram
-  and back, a drain of the empty swap file and a restart of zram at the
-  planned size, and `TestMemoryDrainIntegration` a drain of parked data,
-  cancelled and in full; neither covers zswap and its tmpfiles entry,
-  swappiness, rollback, TuneD or a reboot, and the cleanup restores the mode
-  but not the three files LinuxIO manages.
 
 ## Needs a real machine or a measurement
 
 - [ ] **Memory overflow, checks never done on a host.** Try each in the test
   VM or on a machine, then fix the code or the doc, or delete the line:
-  - The `zram-generator` path has run only against the fake host. Run
-    `make vm-reset` and then
-    `make vm-test-memory-integration ZRAM_PROVIDER=zram-generator`, which uses
-    Ubuntu's `systemd-zram-generator`. It has never run on Fedora or RHEL:
+  - The `zram-generator` path has run in the Ubuntu test VM only
+    (`make vm-reset`, then
+    `make vm-test-memory-integration ZRAM_PROVIDER=zram-generator`, with
+    Ubuntu's `systemd-zram-generator` 1.2.1, on 2026-11-18): a host that
+    starts mixed, zram and back, the restart at the planned size, a stop
+    whose reset fails, an admin's configuration, a drop-in that defines a
+    device, zswap and back, and both drains. It has never run on Fedora or RHEL:
     check there that Install from Capabilities works, that a host with
     Fedora's default zram reads as `zram` mode, and a switch to zram and back.
     The test VM is Ubuntu only; the Fedora VM this needs is the first step of
     "Distributions" in [Frontend test coverage](./e2e-testing.md#distributions).
+    zram-generator's other files are read as upstream's source reads them,
+    and the VM checks the listing and the refusal for one drop-in, not what
+    the generator makes of it: with drop-ins in several folders, a link to
+    `/dev/null` and a zram mount, check that
+    `systemctl list-units 'systemd-zram-setup@*'` after a reload shows the
+    swap devices the status lists.
   - `memory.get_swap_status` asks TuneD through `power.GetStatus` as the
     session user, and finds `zramswap` through the bridge's `PATH` with the
     `/usr/sbin` fallback. From a bridge without sudo, check that TuneD reads as

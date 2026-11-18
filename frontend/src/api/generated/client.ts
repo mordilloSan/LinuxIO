@@ -317,8 +317,7 @@ const linuxio = {
     drain_swap: defineMutation("memory", "drain_swap", { kind: "none" }),
     get_swap_status: defineCall("memory.get_swap_status"),
     set_swap_mode: defineMutation("memory", "set_swap_mode", {
-      kind: "field",
-      field: "mode",
+      kind: "object",
     }),
     set_swappiness: defineMutation("memory", "set_swappiness", {
       kind: "field",

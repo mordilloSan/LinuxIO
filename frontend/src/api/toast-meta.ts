@@ -2,13 +2,23 @@ import type { ExternalToast } from "sonner";
 
 import type { FileRouteTypes } from "@/routeTree.gen";
 
+import type { DashboardSearch } from "./dashboard-search";
+
 export type RouteTarget =
   | {
       params?: never;
+      search?: never;
       to: Exclude<FileRouteTypes["to"], "/filebrowser/$">;
     }
   | {
+      params?: never;
+      /** A dashboard dialog to open, such as Memory overflow. */
+      search: DashboardSearch;
+      to: "/";
+    }
+  | {
       params: { _splat: string };
+      search?: never;
       to: "/filebrowser/$";
     };
 

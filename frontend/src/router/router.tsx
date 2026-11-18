@@ -39,7 +39,8 @@ export const router = createRouter({
 // Toasts fired outside React (mutation callbacks, task feedback) read the
 // current page and open their own through this; see api/toast-meta.ts.
 registerToastLinkRouter({
-  navigate: ({ params, to }) => void router.navigate({ params, to }),
+  navigate: ({ params, search, to }) =>
+    void router.navigate({ params, search, to }),
   pathname: () => router.state.location.pathname,
 });
 

@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SwapStatus } from "@/api";
 import { linuxio, LinuxIOError } from "@/api";
 import {
+  foreignZramConfig,
+  generatorDevice,
   swapFile,
   swapFileDevice,
   swapModeResult,
@@ -711,6 +713,108 @@ describe("MemoryOverflowDialog apply", () => {
 
     await waitFor(() => expect(mocks.requests).toHaveLength(1));
     expect(confirmStep()).not.toBeInTheDocument();
+  });
+
+  it("names a zram configuration file that is not LinuxIO's and sends that it may be replaced", async () => {
+    mocks.results["memory.set_swap_mode"] = swapModeResult(swapStatus());
+    const { user } = await renderSection(
+      diskStatus({ foreign_zram_config: foreignZramConfig() }),
+    );
+
+    await user.click(radio("Compressed memory only"));
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+
+    // One step lists the swap file and the configuration file.
+    const dialog = await screen.findByRole("dialog", {
+      name: "Switch to compressed memory?",
+    });
+    expect(dialog).toHaveTextContent(
+      "The swap file is turned off and stays off after a restart.",
+    );
+    expect(dialog).toHaveTextContent(
+      "/etc/default/zramswap holds zram settings that are not LinuxIO's. It is replaced, and a copy is kept as /etc/default/zramswap.before-linuxio.",
+    );
+    expect(screen.getByRole("button", { name: "Back" })).toHaveFocus();
+    expect(mocks.requests).toEqual([]);
+
+    await user.click(
+      screen.getByRole("button", { name: "Turn on compressed memory" }),
+    );
+    await waitFor(() =>
+      expect(mocks.requests).toEqual([
+        {
+          request: { confirm_replace: "/etc/default/zramswap", mode: "zram" },
+          route: "memory.set_swap_mode",
+        },
+      ]),
+    );
+  });
+
+  it("asks before leaving zram when zram-generator's file is not LinuxIO's", async () => {
+    mocks.results["memory.set_swap_mode"] = swapModeResult(
+      diskStatus({ zram_provider: "zram-generator" }),
+    );
+    const { user } = await renderSection(
+      swapStatus({
+        foreign_zram_config: foreignZramConfig(
+          "/etc/systemd/zram-generator.conf",
+        ),
+        swap_file: swapFile({ active: false }),
+        zram_provider: "zram-generator",
+      }),
+    );
+
+    await user.click(radio("Disk only"));
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Switch to disk only?",
+    });
+    expect(dialog).toHaveTextContent(
+      "/etc/systemd/zram-generator.conf holds zram settings that are not LinuxIO's. It is replaced, and a copy is kept as /etc/systemd/zram-generator.conf.before-linuxio.",
+    );
+    expect(screen.getByRole("button", { name: "Back" })).toHaveFocus();
+
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() =>
+      expect(mocks.requests).toEqual([
+        {
+          request: {
+            confirm_replace: "/etc/systemd/zram-generator.conf",
+            mode: "disk",
+          },
+          route: "memory.set_swap_mode",
+        },
+      ]),
+    );
+  });
+
+  it("shows the other zram-generator files with the size each sets, and why leaving zram is refused", async () => {
+    await renderSection(
+      swapStatus({
+        swap_file: swapFile({ active: false }),
+        zram_generator_devices: [generatorDevice()],
+        zram_provider: "zram-generator",
+      }),
+    );
+
+    expect(
+      screen.getByText(
+        "zram-generator also reads these files, and what they set wins over the settings LinuxIO writes:",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        "/etc/systemd/zram-generator.conf.d/50-big.conf sets up zram1 with zram-size = 2048",
+      ),
+    ).toBeVisible();
+    expect(radio("Disk only")).toBeDisabled();
+    expect(radio("Compressed memory with the disk as backup")).toBeDisabled();
+    expect(
+      screen.getAllByText(
+        "/etc/systemd/zram-generator.conf.d/50-big.conf turns compressed memory on at every start. LinuxIO does not change that file. To choose this, remove that file or take the device out of it.",
+      ),
+    ).toHaveLength(2);
   });
 
   it("says LinuxIO left a swap file that fstab does not name when the switch ends mixed", async () => {

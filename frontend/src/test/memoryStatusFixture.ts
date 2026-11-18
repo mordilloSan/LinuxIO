@@ -1,9 +1,11 @@
 import type {
+  ForeignZramConfig,
   SwapDevice,
   SwapFile,
   SwapLeft,
   SwapModeResult,
   SwapStatus,
+  ZramGeneratorDevice,
 } from "@/api";
 
 const GIB = 1024 ** 3;
@@ -32,6 +34,23 @@ export const swapFile = (overrides: Partial<SwapFile> = {}): SwapFile => ({
   managed: true,
   path: "/swap.img",
   unmanaged_reason: "",
+  ...overrides,
+});
+
+/** A zram configuration file that is not LinuxIO's, and where its copy goes. */
+export const foreignZramConfig = (
+  path = "/etc/default/zramswap",
+): ForeignZramConfig => ({ copy_path: `${path}.before-linuxio`, path });
+
+/** A device another zram-generator file defines. */
+export const generatorDevice = (
+  overrides: Partial<ZramGeneratorDevice> = {},
+): ZramGeneratorDevice => ({
+  device: "zram1",
+  max_zram_size: "",
+  path: "/etc/systemd/zram-generator.conf.d/50-big.conf",
+  zram_fraction: "",
+  zram_size: "2048",
   ...overrides,
 });
 
@@ -69,6 +88,7 @@ export const swapStatus = (
   zram_available: true,
   zram_provider: "zram-tools",
   zram_devices: [],
+  zram_generator_devices: [],
   zram_planned_size: 8 * GIB,
   zram_unavailable_reason: "",
   zswap: {

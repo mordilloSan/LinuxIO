@@ -17,17 +17,19 @@ import (
 // zswapCompressor is the compressor the zswap mode asks the kernel for.
 const zswapCompressor = "zstd"
 
-// SetSwapMode switches the host to mode, disk, zswap or zram, end to end,
-// reporting each step as it starts. The result is the host's status after
-// the change and what the change left as it was, with the reason: a swap
-// device that stayed, which makes the mode mixed, or zram at its old size.
-func SetSwapMode(ctx context.Context, mode apischema.SwapMode, report func(apischema.SwapProgress)) (apischema.SwapModeResult, error) {
-	return newExecutor(report).setSwapMode(ctx, mode)
+// SetSwapMode switches the host to the requested mode, disk, zswap or zram,
+// end to end, reporting each step as it starts. The result is the host's
+// status after the change and what the change left as it was, with the
+// reason: a swap device that stayed, which makes the mode mixed, or zram at
+// its old size.
+func SetSwapMode(ctx context.Context, req apischema.SwapModeRequest, report func(apischema.SwapProgress)) (apischema.SwapModeResult, error) {
+	return newExecutor(report).setSwapMode(ctx, req)
 }
 
-func (e *executor) setSwapMode(ctx context.Context, target apischema.SwapMode) (apischema.SwapModeResult, error) {
-	if _, ok := presetFor(target); !ok {
-		return apischema.SwapModeResult{}, fmt.Errorf("%w: unknown swap mode %q", bridgeipc.ErrInvalidArgs, target)
+func (e *executor) setSwapMode(ctx context.Context, req apischema.SwapModeRequest) (apischema.SwapModeResult, error) {
+	target := req.Mode
+	if err := validateSwapModeRequest(req); err != nil {
+		return apischema.SwapModeResult{}, err
 	}
 	unlock, err := lockMutation()
 	if err != nil {
@@ -38,7 +40,7 @@ func (e *executor) setSwapMode(ctx context.Context, target apischema.SwapMode) (
 	if err != nil {
 		return apischema.SwapModeResult{}, err
 	}
-	steps, err := planSwapMode(view, target)
+	steps, err := planSwapMode(view, req)
 	if err != nil {
 		return apischema.SwapModeResult{}, err
 	}
@@ -60,13 +62,13 @@ func (e *executor) setSwapMode(ctx context.Context, target apischema.SwapMode) (
 	for i, step := range steps {
 		e.report(apischema.SwapProgress{Step: step.code, Index: i + 1, Total: len(steps)})
 		if stepErr := run.do(ctx, step); stepErr != nil {
-			return apischema.SwapModeResult{}, errors.Join(fmt.Errorf("step %s: %w", step.code, stepErr), run.rollback(ctx), run.settleAfterRollback(ctx))
+			return apischema.SwapModeResult{}, errors.Join(fmt.Errorf("step %s: %w%s", step.code, stepErr, run.copyKept()), run.rollback(ctx), run.settleAfterRollback(ctx))
 		}
 	}
 	status, err := e.statusAfterChange(ctx)
 	if err != nil {
 		// The host changed: what stayed cannot be told without a status.
-		slog.Info("swap mode changed", "mode", target, "previous_mode", view.status.Mode)
+		slog.Info("swap mode changed", append([]any{"mode", target, "previous_mode", view.status.Mode}, run.replacedConfigAttrs()...)...)
 		return apischema.SwapModeResult{}, err
 	}
 	// The live sysctls are the target's. A host that ended in another mode,
@@ -78,9 +80,9 @@ func (e *executor) setSwapMode(ctx context.Context, target apischema.SwapMode) (
 		slog.Warn("settle memory sysctls failed", "mode", status.Mode, "error", err)
 	}
 	run.explainMixed(status)
-	slog.Info("swap mode changed", "mode", target, "previous_mode", view.status.Mode,
+	slog.Info("swap mode changed", append([]any{"mode", target, "previous_mode", view.status.Mode,
 		"swap_file_left_active", run.leftHas(apischema.SwapLeftSwapFile), "zram_left_active", run.leftHas(apischema.SwapLeftZram),
-		"zram_size_kept", run.leftHas(apischema.SwapLeftZramSize))
+		"zram_size_kept", run.leftHas(apischema.SwapLeftZramSize)}, run.replacedConfigAttrs()...)...)
 	if settled {
 		if status, err = e.statusAfterChange(ctx); err != nil {
 			return apischema.SwapModeResult{}, err
@@ -91,6 +93,19 @@ func (e *executor) setSwapMode(ctx context.Context, target apischema.SwapMode) (
 	}
 	// An empty list and not null on the wire.
 	return apischema.SwapModeResult{SwapStatus: status, Left: append([]apischema.SwapLeft{}, run.left...)}, nil
+}
+
+// validateSwapModeRequest refuses a mode the dialog does not offer, and a
+// confirmation that names anything but one of the two zram configuration
+// files, before the change waits for the lock.
+func validateSwapModeRequest(req apischema.SwapModeRequest) error {
+	if _, ok := presetFor(req.Mode); !ok {
+		return fmt.Errorf("%w: unknown swap mode %q", bridgeipc.ErrInvalidArgs, req.Mode)
+	}
+	if c := req.ConfirmReplace; c != "" && c != zramswapConfigPath && c != zramGeneratorConfigPath {
+		return fmt.Errorf("%w: confirm_replace %q is not a zram configuration file", bridgeipc.ErrInvalidArgs, c)
+	}
+	return nil
 }
 
 // modeRun is one mode change in progress, with what it must undo if a step
@@ -112,6 +127,28 @@ type modeRun struct {
 	// left is what the run left as it was, with the reason: a device left
 	// active, which makes the result mixed, or zram left at its size.
 	left []apischema.SwapLeft
+	// replacedConfig is the zram configuration file that was not LinuxIO's
+	// the run replaced, and configCopy the copy it kept of it.
+	replacedConfig, configCopy string
+}
+
+// copyKept says, for the error of a run that failed, where the copy of a
+// zram configuration file it replaced stays: the rollback puts the file back
+// and leaves the copy.
+func (r *modeRun) copyKept() string {
+	if r.configCopy == "" {
+		return ""
+	}
+	return fmt.Sprintf(" (a copy of %s was kept as %s)", r.replacedConfig, r.configCopy)
+}
+
+// replacedConfigAttrs are the log attributes naming the configuration file
+// the run replaced and the copy it kept, none when it replaced no such file.
+func (r *modeRun) replacedConfigAttrs() []any {
+	if r.replacedConfig == "" {
+		return nil
+	}
+	return []any{"zram_config_replaced", r.replacedConfig, "zram_config_copy", r.configCopy}
 }
 
 // leave records something the run left as it was.
@@ -259,36 +296,92 @@ func (r *modeRun) startZram(ctx context.Context) error {
 	return nil
 }
 
-// resetStaleZram frees zram-tools' device when it is set up but does not
-// swap, so that the start can give it the planned size: the kernel refuses a
-// new size for a device that is set up, and the script then swaps on it at
-// the size it has. A device is left that way when zramswap stop cannot
-// unload the zram module, which happens when something still holds the
-// device open right after its swapoff.
+// resetStaleZram frees the provider's zram0 when it is set up but does not
+// swap, so that a start sets it up again at the planned size. Either tool
+// can leave it that way: zramswap stop often cannot unload the zram module
+// right after its own swapoff, and the reset zram-generator's setup service
+// runs when its swap unit stops can meet the device still held, as udev
+// holds it for a moment after a swapoff, and fail with EBUSY.
 //
-// Only a device that holds swap is reset. One that holds anything else was
-// set up by someone for another use, and zramswap start would format it:
-// the step refuses instead. A reset that fails is logged, and the size
-// check after the start reports it. zram-generator resets its device itself
-// when its swap unit stops.
+// zramswap start swaps on a device that is set up at the size it has, so
+// for zram-tools a reset that fails is logged, and the size check after the
+// start reports it. zram-generator's setup cannot set such a device up at
+// all, as it fails to set the compression algorithm, so for it a reset that
+// fails fails the step, naming the device.
+//
+// Only a device that is not in /proc/swaps and holds swap is reset, read
+// again before each attempt; the kernel refuses to reset one that something
+// holds open, and that is tried again for a while (resetZram). One that holds anything else
+// was set up by someone for another use, and the step refuses instead.
 func (r *modeRun) resetStaleZram(ctx context.Context) error {
-	if r.generated() {
-		return nil
-	}
-	size, err := r.root.readOptionalUint(filepath.Join(sysBlockDir, zramToolsDevice, "disksize"))
+	size, err := r.root.readOptionalUint(filepath.Join(sysBlockDir, zramDeviceName, "disksize"))
 	if err != nil || size == 0 {
 		return nil
 	}
-	device := "/dev/" + zramToolsDevice
-	swap, err := r.root.holdsSwap(device)
+	switch err := r.resetZram(ctx); {
+	case err == nil, errors.Is(err, errZramSwaps):
+		return nil
+	case errors.Is(err, bridgeipc.ErrConflict):
+		return err
+	case r.generated():
+		return fmt.Errorf("/dev/%s is still set up, and zram-generator cannot set it up again until it is reset: %w", zramDeviceName, err)
+	default:
+		slog.Warn("reset zram device failed", "device", zramDeviceName, "error", err)
+		return nil
+	}
+}
+
+// errZramSwaps is zram0 swapping by the time it was to be reset: it is not
+// stale, and nothing is reset.
+var errZramSwaps = errors.New("zram0 swaps")
+
+// resetZram resets zram0, trying again within the zramReset bound while the
+// kernel refuses with EBUSY because something still holds the device. Before
+// each attempt it reads again what the device holds, since another tool can
+// start swapping on it or format it meanwhile: a device that swaps is left
+// (errZramSwaps), and one that holds anything but swap is refused.
+func (e *executor) resetZram(ctx context.Context) error {
+	device := "/dev/" + zramDeviceName
+	var busy error
+	err := waitUntil(ctx, e.waits.zramReset, e.waits.poll, func() (bool, error) {
+		if err := e.zramResettable(device); err != nil {
+			return false, err
+		}
+		err := e.sys.resetZram(ctx, zramDeviceName)
+		if errors.Is(err, syscall.EBUSY) {
+			busy = err
+			return false, nil
+		}
+		return err == nil, err
+	})
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, errZramSwaps), errors.Is(err, bridgeipc.ErrConflict):
+		return err
+	case busy != nil:
+		return fmt.Errorf("reset %s: %w: %w", zramDeviceName, err, busy)
+	default:
+		return fmt.Errorf("reset %s: %w", zramDeviceName, err)
+	}
+}
+
+// zramResettable reports whether device may be reset now: it is not in
+// /proc/swaps and holds a swap area, as mkswap writes it.
+func (e *executor) zramResettable(device string) error {
+	devices, err := e.root.readSwaps()
+	if err != nil {
+		return err
+	}
+	if slices.ContainsFunc(devices, func(d apischema.SwapDevice) bool { return d.Path == device }) {
+		return errZramSwaps
+	}
+	swap, err := e.root.holdsSwap(device)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", device, err)
 	}
 	if !swap {
-		return fmt.Errorf("%w: %s is set up and does not hold swap, and zram-tools would format it", bridgeipc.ErrConflict, device)
-	}
-	if err := r.sys.resetZram(ctx, zramToolsDevice); err != nil {
-		slog.Warn("reset zram device failed", "device", zramToolsDevice, "error", err)
+		return fmt.Errorf("%w: %s is set up and does not hold swap, and starting zram would format it", bridgeipc.ErrConflict, device)
 	}
 	return nil
 }
@@ -360,6 +453,15 @@ func (r *modeRun) stopZramUnit(ctx context.Context, unit string) error {
 	}
 	startCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
 	defer cancel()
+	// zram-generator's own reset at the stop may have met the device still
+	// held, and its setup would then fail the start: once zram no longer
+	// swaps, the device is reset first. While zram still swaps the start is
+	// queued behind the stop as it is.
+	if r.generated() {
+		if resetErr := r.resetStaleZram(startCtx); resetErr != nil {
+			return errors.Join(err, fmt.Errorf("zram may be off: %w", resetErr))
+		}
+	}
 	if startErr := r.sys.startUnit(startCtx, unit); startErr != nil {
 		return errors.Join(err, fmt.Errorf("zram may be off: start %s: %w", unit, startErr))
 	}
@@ -685,10 +787,29 @@ func (r *modeRun) writeFile(name string, data []byte) error {
 	if err != nil {
 		return err
 	}
+	if err := r.keepZramConfigCopy(saved); err != nil {
+		return err
+	}
 	r.keepFile(saved)
 	if err := r.sys.writeFile(name, data, managedFileMode); err != nil {
 		return fmt.Errorf("write %s: %w", name, err)
 	}
+	return nil
+}
+
+// keepZramConfigCopy copies a zram configuration file that is not LinuxIO's
+// beside it, with its mode, before the run replaces it; an older copy is
+// replaced. The plan refused the run unless the request named the file. A
+// rollback puts the file itself back and leaves the copy.
+func (r *modeRun) keepZramConfigCopy(saved savedFile) error {
+	if !saved.existed || (saved.name != zramswapConfigPath && saved.name != zramGeneratorConfigPath) || !r.root.asksToReplace(saved.name, saved.data) {
+		return nil
+	}
+	copyPath := saved.name + zramConfigCopySuffix
+	if err := r.sys.writeFile(copyPath, saved.data, saved.mode); err != nil {
+		return fmt.Errorf("keep a copy of %s as %s: %w", saved.name, copyPath, err)
+	}
+	r.replacedConfig, r.configCopy = saved.name, copyPath
 	return nil
 }
 

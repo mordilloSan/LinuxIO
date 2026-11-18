@@ -1658,6 +1658,11 @@ export interface FilesystemInfo {
   usedPercent: number;
 }
 
+export interface ForeignZramConfig {
+  copy_path: string;
+  path: string;
+}
+
 export interface GeneralLogEntryRequest {
   cursor: string;
 }
@@ -3116,6 +3121,7 @@ export interface SwapModePreset {
 }
 
 export interface SwapModeRequest {
+  confirm_replace?: string;
   mode: SwapMode;
 }
 
@@ -3123,6 +3129,7 @@ export interface SwapModeResult {
   can_drain: boolean;
   devices: SwapDevice[];
   drain_blocked_reason: SwapDrainBlockedReason;
+  foreign_zram_config?: ForeignZramConfig;
   mem_available: number;
   mem_total: number;
   mode: SwapMode;
@@ -3140,6 +3147,7 @@ export interface SwapModeResult {
   watermark_scale_factor: number;
   zram_available: boolean;
   zram_devices: ZramDevice[];
+  zram_generator_devices: ZramGeneratorDevice[];
   zram_planned_size: number;
   zram_provider: ZramProvider;
   zram_unavailable_reason: ZramUnavailableReason;
@@ -3158,6 +3166,7 @@ export interface SwapStatus {
   can_drain: boolean;
   devices: SwapDevice[];
   drain_blocked_reason: SwapDrainBlockedReason;
+  foreign_zram_config?: ForeignZramConfig;
   mem_available: number;
   mem_total: number;
   mode: SwapMode;
@@ -3175,6 +3184,7 @@ export interface SwapStatus {
   watermark_scale_factor: number;
   zram_available: boolean;
   zram_devices: ZramDevice[];
+  zram_generator_devices: ZramGeneratorDevice[];
   zram_planned_size: number;
   zram_provider: ZramProvider;
   zram_unavailable_reason: ZramUnavailableReason;
@@ -3840,6 +3850,14 @@ export interface ZramDevice {
   original_size: number;
 }
 
+export interface ZramGeneratorDevice {
+  device: string;
+  max_zram_size: string;
+  path: string;
+  zram_fraction: string;
+  zram_size: string;
+}
+
 export type ZramProvider = "" | "zram-tools" | "zram-generator";
 
 export type ZramUnavailableReason =
@@ -4449,7 +4467,7 @@ export interface LinuxIOSchema {
     };
     get_swap_status: { input: []; request: void; result: SwapStatus };
     set_swap_mode: {
-      input: [mode: SwapMode];
+      input: [request: SwapModeRequest];
       request: SwapModeRequest;
       result: SwapModeResult;
       progress: TaskProgress<SwapProgress>;

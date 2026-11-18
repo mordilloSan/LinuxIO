@@ -1,10 +1,16 @@
 import type { SwapLeft, SwapMode, SwapModeResult } from "@/api";
+import { MEMORY_OVERFLOW_DIALOG } from "@/api/dashboard-search";
 
 // What a memory overflow change reports when it ends. The dialog that
 // follows the job and the task tray, which reports it when no dialog does,
 // say the same.
 
-export const MEMORY_TOAST_META = { label: "Open dashboard", to: "/" } as const;
+// A toast fired on another page opens the Memory overflow dialog by its URL.
+export const MEMORY_TOAST_META = {
+  label: "Open Memory overflow",
+  search: { dialog: MEMORY_OVERFLOW_DIALOG },
+  to: "/",
+} as const;
 export const MEMORY_MODE_APPLIED = "Memory overflow setting applied";
 export const MEMORY_MODE_FAILED = "Failed to change how memory runs out";
 export const MEMORY_DRAINED = "Parked data brought back to memory";

@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -19,6 +20,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
+	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
 )
 
 // drainHolders is how many processes hold the parked data between them. The
@@ -26,6 +28,10 @@ import (
 // next, not inside one, so a cancelled swapoff ends only when the process it
 // is reading back is done; with one process it would read everything.
 const drainHolders = 8
+
+// drainBound is how long the full drain may take: the capped run reads its
+// data back in under three minutes.
+const drainBound = 15 * time.Minute
 
 // drainTestCgroup is the cgroup the test and its holders run in, so that it
 // can be told to reclaim their memory and to cap their reads.
@@ -62,6 +68,7 @@ func TestMemoryDrainIntegration(t *testing.T) {
 	ctx := t.Context()
 	e := newExecutor(func(p apischema.SwapProgress) { t.Logf("step %d/%d %s %s", p.Index, p.Total, p.Step, p.Device) })
 	unit := drainUnit(t, e, device)
+	stopSwapAheadOf(t, e, device)
 
 	enterDrainCgroup(t)
 	holders := startDrainHolders(t, parkMiB/drainHolders)
@@ -76,8 +83,12 @@ func TestMemoryDrainIntegration(t *testing.T) {
 	assertSwapUnitActive(t, e, device, unit)
 	t.Logf("cancelled with %d MiB still parked on %s", left>>20, device)
 
+	// Each wait in the test is bounded, the full drain too, so a host where
+	// the data does not move fails rather than hangs.
+	drainCtx, cancel := context.WithTimeout(ctx, drainBound)
+	defer cancel()
 	start := time.Now()
-	if _, err := e.drainSwap(ctx); err != nil {
+	if _, err := e.drainSwap(drainCtx); err != nil {
 		t.Fatalf("drain: %v", err)
 	}
 	elapsed := time.Since(start)
@@ -202,6 +213,59 @@ func enterDrainCgroup(t *testing.T) {
 	})
 }
 
+// stopSwapAheadOf makes device the swap the kernel fills first, so the data
+// parks there. zram, which a zram-generator install starts beside the swap
+// file at priority 100, is stopped through its provider's unit and started
+// again when the test ends; any other device ahead of it is a reason to
+// skip, since nothing here should stop it.
+func stopSwapAheadOf(t *testing.T, e *executor, device string) {
+	t.Helper()
+	ctx := t.Context()
+	devices, err := e.root.readSwaps()
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := slices.IndexFunc(devices, func(d apischema.SwapDevice) bool { return d.Path == device })
+	if i < 0 {
+		t.Fatalf("%s does not swap", device)
+	}
+	zramAhead := false
+	for _, d := range devices {
+		switch {
+		case d.Path == device || d.Priority < devices[i].Priority:
+		case d.Kind == apischema.SwapDeviceZram:
+			zramAhead = true
+		default:
+			t.Skipf("%s swaps at priority %d, ahead of %s at %d: the data would not park on %s", d.Path, d.Priority, device, devices[i].Priority, device)
+		}
+	}
+	if !zramAhead {
+		return
+	}
+	provider := host.zramProvider(ctx, systemd.GetActiveState)
+	unit := zramService
+	if provider == apischema.ZramProviderGenerator {
+		unit = zramGeneratorSwapUnit
+	}
+	t.Logf("zram swaps ahead of %s: stopping %s until the test ends", device, unit)
+	// Registered first: a stop that fails or is not waited out may still
+	// take zram away.
+	t.Cleanup(func() {
+		restartCtx := context.WithoutCancel(ctx)
+		if err := resetLeftZram(restartCtx, e, provider); err != nil {
+			t.Errorf("start zram again: %v", err)
+		} else if err := e.startUntilBack(restartCtx, unit, e.zramIs(true)); err != nil {
+			t.Errorf("start zram again: %v", err)
+		}
+	})
+	if err := e.sys.stopUnit(ctx, unit); err != nil {
+		t.Fatalf("stop %s: %v", unit, err)
+	}
+	if err := waitUntil(ctx, e.waits.swapOn, e.waits.poll, e.zramIs(false)); err != nil {
+		t.Fatalf("wait for zram to stop swapping: %v", err)
+	}
+}
+
 // reclaimDrainCgroup has the kernel move the cgroup's memory to swap until
 // want bytes are on device. MADV_PAGEOUT in the holders starts the writes,
 // but a page whose write is done stays in the swap cache until memory is
@@ -213,20 +277,41 @@ func reclaimDrainCgroup(t *testing.T, e *executor, device string, want uint64) {
 	t.Helper()
 	const cached = 16 << 20
 	deadline := time.Now().Add(10 * time.Minute)
+	elsewhere := swapUsedElsewhere(t, e, device)
 	for {
 		// The write fails with EAGAIN when less than asked was reclaimed.
-		err := os.WriteFile(filepath.Join(drainTestCgroup, "memory.reclaim"), []byte("16M"), 0)
+		err := writeReclaim("16M")
 		used, inCache := swapUsed(t, e, device), cgroupStat(t, "swapcached")
 		if used >= want*95/100 && inCache <= cached {
 			return
 		}
+		// Data that goes to another swap device will not reach this one:
+		// stop at once rather than at the deadline.
+		if more := swapUsedElsewhere(t, e, device); more > elsewhere+want/4 {
+			t.Fatalf("%d MiB went to other swap devices and %d MiB to %s: the data does not park there", (more-elsewhere)>>20, used>>20, device)
+		}
 		if time.Now().After(deadline) {
-			t.Fatalf("%d MiB on %s and %d MiB in the swap cache after 10 minutes, want %d MiB parked", used>>20, device, inCache>>20, want>>20)
+			t.Fatalf("%d MiB on %s and %d MiB in the swap cache after 10 minutes, want %d MiB parked (last reclaim: %v)", used>>20, device, inCache>>20, want>>20, err)
 		}
 		if err != nil {
 			time.Sleep(200 * time.Millisecond)
 		}
 	}
+}
+
+// writeReclaim asks the test's cgroup to reclaim amount. It writes with
+// system calls and not os.WriteFile: the kernel answers EAGAIN when it
+// reclaimed less than asked, and Go's poller takes EAGAIN on a cgroup file,
+// which it can poll, as "wait until writable", which never comes, so the
+// test hung there.
+func writeReclaim(amount string) error {
+	fd, err := unix.Open(filepath.Join(drainTestCgroup, "memory.reclaim"), unix.O_WRONLY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return err
+	}
+	defer unix.Close(fd)
+	_, err = unix.Write(fd, []byte(amount))
+	return err
 }
 
 // cgroupStat reads one counter, in bytes, from the cgroup's memory.stat.
@@ -327,6 +412,23 @@ func drainUnit(t *testing.T, e *executor, device string) string {
 	}
 	t.Fatalf("%s is not an active swap device /etc/fstab names: %+v", device, view.fstab)
 	return ""
+}
+
+// swapUsedElsewhere is the bytes in use on the swap devices other than
+// device.
+func swapUsedElsewhere(t *testing.T, e *executor, device string) uint64 {
+	t.Helper()
+	devices, err := e.root.readSwaps()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var used uint64
+	for _, d := range devices {
+		if d.Path != device {
+			used += d.Used
+		}
+	}
+	return used
 }
 
 // swapUsed is the bytes in use on device, or 0 when it does not swap.

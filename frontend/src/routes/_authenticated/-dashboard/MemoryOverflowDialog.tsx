@@ -38,14 +38,16 @@ import { useActiveTaskRecovery } from "@/tasks/useActiveTaskRecovery";
 import {
   bannerView,
   canApply,
+  confirmView,
+  generatorFilesNote,
   initialSelection,
   isRowMode,
-  needsSwapFileConfirm,
   presetSwappiness,
   rowName,
   rowViews,
   swapFileNote,
   type BannerAction,
+  type ConfirmView,
   type RowMode,
   type RowView,
 } from "./memoryStatusView";
@@ -197,7 +199,10 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
   const groupLabelId = useId();
   const advancedId = useId();
   const [selected, setSelected] = useState<RowMode | null>(null);
-  const [confirming, setConfirming] = useState(false);
+  // The confirm step as it was shown when Apply was pressed: the request
+  // carries what the user agreed to, and the step does not change under
+  // them while a refresh or the change itself moves the host.
+  const [confirm, setConfirm] = useState<ConfirmView | null>(null);
   const [focusApply, setFocusApply] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [draftSwappiness, setDraftSwappiness] = useState<number | null>(null);
@@ -232,7 +237,7 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
       mutationKey: MODE_MUTATION_KEY,
       onSettled: () => {
         setProgressMessage(null);
-        setConfirming(false);
+        setConfirm(null);
         // The choice was kept for a dialog closed while the change ran.
         if (!open) setSelected(null);
       },
@@ -362,7 +367,7 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
     // A key press still waiting is saved, not dropped.
     if (keyWait !== null) commitSwappiness();
     if (!modeRunning) setSelected(null);
-    setConfirming(false);
+    setConfirm(null);
     setFocusApply(false);
     setAdvancedOpen(false);
     // A save that is running sends the newest step itself when it ends.
@@ -414,30 +419,35 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
   const rows = rowViews(status);
   const banner = bannerView(status);
   const fileNote = swapFileNote(status);
+  const generatorNote = generatorFilesNote(status);
 
-  // Turning zram on while the swap file is active also stops the file, so it
-  // asks first, as a second step of this dialog; every other change applies
-  // at once.
+  // A change that stops the swap file, or replaces a zram configuration file
+  // that is not LinuxIO's, asks first, as a second step of this dialog that
+  // lists all of it; every other change applies at once.
   const requestMode = (mode: RowMode) => {
     setSelected(mode);
-    if (needsSwapFileConfirm(status, mode)) {
+    const view = confirmView(status, mode);
+    if (view) {
       setFocusApply(false);
-      setConfirming(true);
+      setConfirm(view);
     } else {
       setMode.mutate({ mode });
     }
   };
 
-  if (confirming) {
+  if (confirm) {
+    // The request names the configuration file the step said is replaced.
+    const confirmed = confirm.replace
+      ? { confirm_replace: confirm.replace, mode: choice }
+      : { mode: choice };
     return (
       <GeneralDialog {...dialogProps}>
-        <AppDialogTitle>Switch to compressed memory?</AppDialogTitle>
+        <AppDialogTitle>{confirm.title}</AppDialogTitle>
         <AppDialogContent>
           <ul className="memory-overflow__steps">
-            <li>Compressed memory is turned on.</li>
-            <li>Data parked in the swap file is brought back to memory.</li>
-            <li>The swap file is turned off and stays off after a restart.</li>
-            <li>The file itself is not deleted.</li>
+            {confirm.items.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
           </ul>
           <AppTypography
             aria-live="polite"
@@ -454,7 +464,7 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
             autoFocus
             disabled={busy}
             onClick={() => {
-              setConfirming(false);
+              setConfirm(null);
               setFocusApply(true);
             }}
           >
@@ -462,10 +472,10 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
           </AppButton>
           <AppButton
             disabled={busy}
-            onClick={() => setMode.mutate({ mode: "zram" })}
+            onClick={() => setMode.mutate(confirmed)}
             variant="contained"
           >
-            {modeRunning ? "Applying…" : "Turn on compressed memory"}
+            {modeRunning ? "Applying…" : confirm.action}
           </AppButton>
         </AppDialogActions>
       </GeneralDialog>
@@ -504,6 +514,17 @@ const MemoryOverflowDialog = ({ open, onClose }: Props) => {
           </AppAlert>
 
           {fileNote ? <AppAlert severity="warning">{fileNote}</AppAlert> : null}
+
+          {generatorNote ? (
+            <AppAlert severity="info">
+              {generatorNote.text}
+              <ul className="memory-overflow__files">
+                {generatorNote.files.map((file) => (
+                  <li key={file}>{file}</li>
+                ))}
+              </ul>
+            </AppAlert>
+          ) : null}
 
           <div className="memory-overflow__group">
             <span className="memory-overflow__name" id={groupLabelId}>

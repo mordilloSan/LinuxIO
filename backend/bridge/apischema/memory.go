@@ -180,8 +180,13 @@ func (p SwapProgress) ProgressEnvelope() TaskProgress {
 }
 
 // SwapModeRequest is memory.set_swap_mode's request: disk, zswap or zram.
+// ConfirmReplace is the path of a zram configuration file that is not
+// LinuxIO's (SwapStatus.ForeignZramConfig) which the user agreed the change
+// may replace; a change that would replace such a file is refused unless it
+// names that file here.
 type SwapModeRequest struct {
-	Mode SwapMode `json:"mode"`
+	ConfirmReplace string   `json:"confirm_replace,omitzero"`
+	Mode           SwapMode `json:"mode"`
 }
 
 // SwappinessRequest is memory.set_swappiness's request, 0 to 200.
@@ -250,6 +255,28 @@ type ZramDevice struct {
 	OriginalSize   uint64 `json:"original_size"`
 }
 
+// ForeignZramConfig is the zram provider's configuration file when it is not
+// LinuxIO's: it does not start with LinuxIO's header and holds more than
+// comments and blank lines. A mode change that would replace it needs the
+// request to name Path, and copies the file to CopyPath first.
+type ForeignZramConfig struct {
+	CopyPath string `json:"copy_path"`
+	Path     string `json:"path"`
+}
+
+// ZramGeneratorDevice is a zram swap device that a zram-generator
+// configuration file other than LinuxIO's defines and that takes effect: the
+// file, the device its [zramN] section names, and the size settings it
+// writes, each as written and empty when it sets none: zram-size, and the
+// older zram-fraction and max-zram-size that upstream still honours.
+type ZramGeneratorDevice struct {
+	Device       string `json:"device"`
+	MaxZramSize  string `json:"max_zram_size"`
+	Path         string `json:"path"`
+	ZramFraction string `json:"zram_fraction"`
+	ZramSize     string `json:"zram_size"`
+}
+
 // SwapModePreset is the swappiness choosing a mode applies.
 type SwapModePreset struct {
 	Mode       SwapMode `json:"mode"`
@@ -258,10 +285,13 @@ type SwapModePreset struct {
 
 // SwapStatus is how the host handles running out of memory, with what the
 // Memory dialog needs to offer each mode. Sizes are bytes.
+// ZramGeneratorDevices lists, while zram-generator is installed, the devices
+// its configuration files other than LinuxIO's define.
 type SwapStatus struct {
 	CanDrain              bool                   `json:"can_drain"`
 	Devices               []SwapDevice           `json:"devices"`
 	DrainBlockedReason    SwapDrainBlockedReason `json:"drain_blocked_reason"`
+	ForeignZramConfig     *ForeignZramConfig     `json:"foreign_zram_config,omitzero"`
 	MemAvailable          uint64                 `json:"mem_available"`
 	MemTotal              uint64                 `json:"mem_total"`
 	Mode                  SwapMode               `json:"mode"`
@@ -279,6 +309,7 @@ type SwapStatus struct {
 	WatermarkScaleFactor  int                    `json:"watermark_scale_factor"`
 	ZramAvailable         bool                   `json:"zram_available"`
 	ZramDevices           []ZramDevice           `json:"zram_devices"`
+	ZramGeneratorDevices  []ZramGeneratorDevice  `json:"zram_generator_devices"`
 	ZramPlannedSize       uint64                 `json:"zram_planned_size"`
 	ZramProvider          ZramProvider           `json:"zram_provider"`
 	ZramUnavailableReason ZramUnavailableReason  `json:"zram_unavailable_reason"`

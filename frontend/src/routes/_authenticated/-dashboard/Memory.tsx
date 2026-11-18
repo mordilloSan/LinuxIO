@@ -1,7 +1,9 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { lazy, Suspense, useState } from "react";
 
 import { linuxio } from "@/api";
+import { MEMORY_OVERFLOW_DIALOG } from "@/api/dashboard-search";
 import { GradientCircularGauge } from "@/components/gauge/CircularGauge";
 import { DASHBOARD_REFETCH_FAST_MS } from "@/constants/liveCharts";
 import useAuth from "@/hooks/useAuth";
@@ -20,12 +22,31 @@ const selectRamUsagePercent = (memory: {
 
 const MemoryStats = () => {
   // Changing what the host does when memory runs out is admin-only, so only
-  // an admin session gets the pencil.
+  // an admin session gets the pencil, and the URL opens the dialog only for
+  // one.
   const { privileged } = useAuth();
-  const [overflowOpen, setOverflowOpen] = useState(false);
-  // The dialog loads on first use and then stays mounted, so that it can
-  // animate closed.
-  const [overflowLoaded, setOverflowLoaded] = useState(false);
+  const navigate = useNavigate();
+  // The open dialog is the dashboard's `?dialog=` search value, so a link, a
+  // reload or a bookmark opens it. Opening and closing replace the entry:
+  // Back leaves the dashboard rather than toggling the dialog.
+  const overflowRequested = useSearch({
+    select: (search) => search.dialog === MEMORY_OVERFLOW_DIALOG,
+    strict: false,
+  });
+  const overflowOpen = privileged && overflowRequested;
+  const setOverflowOpen = (open: boolean) =>
+    void navigate({
+      replace: true,
+      search: (previous) => ({
+        ...previous,
+        dialog: open ? MEMORY_OVERFLOW_DIALOG : undefined,
+      }),
+      to: ".",
+    });
+  // The dialog loads when it first opens and then stays mounted, so that it
+  // can animate closed.
+  const [overflowLoaded, setOverflowLoaded] = useState(overflowOpen);
+  if (overflowOpen && !overflowLoaded) setOverflowLoaded(true);
   const { data: memory } = useSuspenseQuery({
     ...linuxio.monitoring.get_live,
     refetchInterval: DASHBOARD_REFETCH_FAST_MS,
@@ -48,12 +69,7 @@ const MemoryStats = () => {
           {
             label: "Swap",
             value: `${formatFileSize(swapUsed, 2)} / ${formatFileSize(memory.swap_total_bytes ?? 0, 2)}`,
-            onEdit: privileged
-              ? () => {
-                  setOverflowLoaded(true);
-                  setOverflowOpen(true);
-                }
-              : undefined,
+            onEdit: privileged ? () => setOverflowOpen(true) : undefined,
           },
           {
             label: "Docker",

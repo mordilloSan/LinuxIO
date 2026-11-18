@@ -20,9 +20,12 @@ import (
 // bound (see swapOffDevice).
 type waits struct {
 	swapOn, zramOff, poll, stopGrace time.Duration
+	// zramReset is how long a reset of zram0 is tried again while something
+	// still holds the device, as udev does for a moment after a swapoff.
+	zramReset time.Duration
 }
 
-var hostWaits = waits{swapOn: time.Minute, zramOff: 10 * time.Minute, poll: 250 * time.Millisecond, stopGrace: 15 * time.Second}
+var hostWaits = waits{swapOn: time.Minute, zramOff: 10 * time.Minute, poll: 250 * time.Millisecond, stopGrace: 15 * time.Second, zramReset: zramResetWait}
 
 var errWaitTimedOut = errors.New("timed out")
 
@@ -210,11 +213,13 @@ func newExecutor(report func(apischema.SwapProgress)) *executor {
 	return &executor{root: host, sys: liveSystem{root: host}, report: report, waits: hostWaits}
 }
 
-// swapView is the host a change is planned on: the status and the fstab
-// swap entries matched to its active devices.
+// swapView is the host a change is planned on: the status, the fstab swap
+// entries matched to its active devices and, with zram-generator as the
+// provider, the generator's files root could not read.
 type swapView struct {
-	status apischema.SwapStatus
-	fstab  []fstabSwap
+	status              apischema.SwapStatus
+	fstab               []fstabSwap
+	generatorUnreadable []unreadableFile
 }
 
 // statusAfterChangeTries is how many times a route reads the status after
@@ -252,5 +257,9 @@ func (e *executor) readView(ctx context.Context) (swapView, error) {
 	if err != nil {
 		return swapView{}, fmt.Errorf("read swap entries from fstab: %w", err)
 	}
-	return swapView{status: status, fstab: e.root.matchFstabSwaps(fstab, status.Devices)}, nil
+	view := swapView{status: status, fstab: e.root.matchFstabSwaps(fstab, status.Devices)}
+	if status.ZramProvider == apischema.ZramProviderGenerator {
+		_, view.generatorUnreadable = e.root.readZramGeneratorDevices()
+	}
+	return view, nil
 }

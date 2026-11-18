@@ -114,7 +114,7 @@ func TestReadSwapStatusReportsTheZramProvider(t *testing.T) {
 func TestSetSwapModeToZramWithTheGenerator(t *testing.T) {
 	f, sys := generatorDiskHost(t)
 
-	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeZram)
+	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +148,7 @@ func TestSetSwapModeToZramWithTheGenerator(t *testing.T) {
 func TestSetSwapModeToZramWithTheGeneratorKeepsARunningDevice(t *testing.T) {
 	_, sys := generatorZramHost(t)
 
-	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeZram); err != nil {
+	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram}); err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Contains(sys.calls, "reload") || slices.Contains(sys.calls, "start "+zramGeneratorSwapUnit) {
@@ -161,7 +161,7 @@ func TestSetSwapModeToZramWithTheGeneratorKeepsARunningDevice(t *testing.T) {
 func TestSetSwapModeToDiskFromZramWithTheGenerator(t *testing.T) {
 	f, sys := generatorZramHost(t)
 
-	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeDisk)
+	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeDisk})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +192,7 @@ func TestSetSwapModeWithTheGeneratorTurnsOffAZramThatIsNotRunning(t *testing.T) 
 	f, sys := generatorDiskHost(t)
 	f.write(zramGeneratorConfigPath, string(renderZramGeneratorConfig(4*gib)))
 
-	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeDisk); err != nil {
+	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeDisk}); err != nil {
 		t.Fatal(err)
 	}
 	if slices.Contains(sys.calls, "stop "+zramGeneratorSwapUnit) {
@@ -212,7 +212,7 @@ func TestSetSwapModeLeavesZramTheGeneratorDidNotMake(t *testing.T) {
 			sys.activeStates[zramGeneratorSetupUnit] = state
 			config := f.read(zramGeneratorConfigPath)
 
-			got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeDisk)
+			got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeDisk})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -232,7 +232,7 @@ func TestSetSwapModeLeavesZramWhenTheSetupServiceCannotBeRead(t *testing.T) {
 	_, sys := generatorZramHost(t)
 	sys.failures["active "+zramGeneratorSetupUnit] = errors.New("bus gone")
 
-	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeDisk)
+	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeDisk})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,7 +246,7 @@ func TestSetSwapModeWithTheGeneratorLeavesAnOffFileAlone(t *testing.T) {
 	f, sys := generatorDiskHost(t)
 	f.write(zramGeneratorConfigPath, string(renderZramGeneratorOff()))
 
-	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeZswap); err != nil {
+	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZswap}); err != nil {
 		t.Fatal(err)
 	}
 	if slices.Contains(sys.calls, "write "+zramGeneratorConfigPath) || slices.Contains(sys.calls, "reload") {
@@ -261,7 +261,7 @@ func TestSetSwapModeWithTheGeneratorRestoresTheConfigurationAfterAStop(t *testin
 	config := f.read(zramGeneratorConfigPath)
 	sys.failures["set "+swappinessParam+"=60"] = errors.New("read-only")
 
-	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeDisk); err == nil {
+	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeDisk}); err == nil {
 		t.Fatal("want an error")
 	}
 	if got := f.read(zramGeneratorConfigPath); got != config {
@@ -287,7 +287,7 @@ func TestSetSwapModeLeavesZramWhenAnotherDeviceSwaps(t *testing.T) {
 	f, sys := generatorZramHost(t)
 	f.write(procSwaps, f.read(procSwaps)+zram1SwapsLine)
 
-	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeDisk)
+	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeDisk})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -306,7 +306,7 @@ func TestSetSwapModeWithTheGeneratorRollsBackWhenZramNeverAppears(t *testing.T) 
 	f, sys := generatorDiskHost(t)
 	sys.stuck[zramGeneratorSwapUnit] = true
 
-	_, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeZram)
+	_, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
 	if err == nil || !strings.Contains(err.Error(), string(apischema.SwapStepStartZram)) || !errors.Is(err, errWaitTimedOut) {
 		t.Fatalf("err = %v, want the start_zram step to time out", err)
 	}
@@ -333,7 +333,7 @@ func TestSetSwapModeWithTheGeneratorRestoresTheConfigurationItReplaced(t *testin
 	f.write(zramGeneratorConfigPath, admins)
 	sys.failures["reload"] = errors.New("reload refused")
 
-	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeZram); err == nil {
+	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram, ConfirmReplace: zramGeneratorConfigPath}); err == nil {
 		t.Fatal("want an error")
 	}
 	if got := f.read(zramGeneratorConfigPath); got != admins {

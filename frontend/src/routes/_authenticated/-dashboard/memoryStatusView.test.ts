@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import { modeResultWarning } from "@/tasks/memoryFeedback";
 import {
+  foreignZramConfig,
+  generatorDevice,
   swapFile,
   swapFileDevice,
   swapModeResult,
@@ -12,8 +14,9 @@ import {
 import {
   bannerView,
   canApply,
+  confirmView,
+  generatorFilesNote,
   initialSelection,
-  needsSwapFileConfirm,
   presetSwappiness,
   rowViews,
   swapFileNote,
@@ -335,6 +338,42 @@ describe("rowViews", () => {
     expect(rows[0].disabledReason).toBe("This kernel has no zswap");
   });
 
+  it("says on zswap and disk why leaving zram is refused while another zram-generator file defines a device", () => {
+    const status = swapStatus({
+      swap_file: swapFile({ active: false }),
+      zram_generator_devices: [generatorDevice()],
+      zram_provider: "zram-generator",
+    });
+    const reason =
+      "/etc/systemd/zram-generator.conf.d/50-big.conf turns compressed memory on at every start. LinuxIO does not change that file. To choose this, remove that file or take the device out of it.";
+    const rows = rowViews(status);
+    expect(rows[0].disabledReason).toBe(reason);
+    expect(rows[2].disabledReason).toBe(reason);
+    expect(rows[1].disabledReason).toBeUndefined();
+    expect(canApply(status, "disk")).toBe(false);
+    // zram-tools does not read those files.
+    expect(
+      rowViews({ ...status, zram_provider: "zram-tools" })[2].disabledReason,
+    ).toBeUndefined();
+  });
+
+  it("says how to turn a package's zram-generator file off", () => {
+    const rows = rowViews(
+      swapStatus({
+        swap_file: swapFile({ active: false }),
+        zram_generator_devices: [
+          generatorDevice({
+            path: "/usr/lib/systemd/zram-generator.conf.d/50-big.conf",
+          }),
+        ],
+        zram_provider: "zram-generator",
+      }),
+    );
+    expect(rows[2].disabledReason).toBe(
+      "/usr/lib/systemd/zram-generator.conf.d/50-big.conf turns compressed memory on at every start. LinuxIO does not change that file. To turn it off, link /etc/systemd/zram-generator.conf.d/50-big.conf to /dev/null.",
+    );
+  });
+
   it("replaces the zram radio with a Capabilities link when the package is missing", () => {
     const zram = rowViews(
       swapStatus({
@@ -448,18 +487,31 @@ describe("canApply", () => {
   });
 });
 
-describe("needsSwapFileConfirm", () => {
+describe("confirmView", () => {
+  const SWAP_FILE_STEPS = [
+    "Compressed memory is turned on.",
+    "Data parked in the swap file is brought back to memory.",
+    "The swap file is turned off and stays off after a restart.",
+    "The file itself is not deleted.",
+  ];
+  const replaced = (path: string) =>
+    `${path} holds zram settings that are not LinuxIO's. It is replaced, and a copy is kept as ${path}.before-linuxio.`;
+
   it("asks only for zram while the swap file is active", () => {
     const status = swapStatus({ mode: "disk", swap_file: swapFile() });
-    expect(needsSwapFileConfirm(status, "zram")).toBe(true);
-    expect(needsSwapFileConfirm(status, "zswap")).toBe(false);
+    expect(confirmView(status, "zram")).toEqual({
+      action: "Turn on compressed memory",
+      items: SWAP_FILE_STEPS,
+      title: "Switch to compressed memory?",
+    });
+    expect(confirmView(status, "zswap")).toBeUndefined();
     expect(
-      needsSwapFileConfirm(
+      confirmView(
         swapStatus({ swap_file: swapFile({ active: false }) }),
         "zram",
       ),
-    ).toBe(false);
-    expect(needsSwapFileConfirm(swapStatus(), "zram")).toBe(false);
+    ).toBeUndefined();
+    expect(confirmView(swapStatus(), "zram")).toBeUndefined();
   });
 
   it("does not ask for a swap file fstab does not name: LinuxIO will not stop it", () => {
@@ -467,7 +519,107 @@ describe("needsSwapFileConfirm", () => {
       mode: "disk",
       swap_file: swapFile({ managed: false }),
     });
-    expect(needsSwapFileConfirm(status, "zram")).toBe(false);
+    expect(confirmView(status, "zram")).toBeUndefined();
+  });
+
+  it("names a zram configuration file that is not LinuxIO's and where its copy goes", () => {
+    const status = swapStatus({
+      devices: [],
+      foreign_zram_config: foreignZramConfig(),
+      mode: "none",
+    });
+    expect(confirmView(status, "zram")).toEqual({
+      action: "Turn on compressed memory",
+      items: [
+        "Compressed memory is turned on.",
+        replaced("/etc/default/zramswap"),
+      ],
+      replace: "/etc/default/zramswap",
+      title: "Switch to compressed memory?",
+    });
+  });
+
+  it("lists everything that needs confirming in one step", () => {
+    const status = swapStatus({
+      foreign_zram_config: foreignZramConfig(),
+      mode: "disk",
+      swap_file: swapFile(),
+    });
+    expect(confirmView(status, "zram")?.items).toEqual([
+      ...SWAP_FILE_STEPS,
+      replaced("/etc/default/zramswap"),
+    ]);
+  });
+
+  it("asks before leaving zram only when zram-generator's file is replaced then", () => {
+    const generator = swapStatus({
+      foreign_zram_config: foreignZramConfig(
+        "/etc/systemd/zram-generator.conf",
+      ),
+      swap_file: swapFile({ active: false }),
+      zram_provider: "zram-generator",
+    });
+    expect(confirmView(generator, "disk")).toEqual({
+      action: "Apply",
+      items: [replaced("/etc/systemd/zram-generator.conf")],
+      replace: "/etc/systemd/zram-generator.conf",
+      title: "Switch to disk only?",
+    });
+    expect(confirmView(generator, "zswap")?.title).toBe(
+      "Switch to compressed memory with the disk as backup?",
+    );
+    // zram-tools only disables its service on the way out.
+    const tools = swapStatus({
+      foreign_zram_config: foreignZramConfig(),
+      swap_file: swapFile({ active: false }),
+    });
+    expect(confirmView(tools, "disk")).toBeUndefined();
+  });
+});
+
+describe("generatorFilesNote", () => {
+  it("says nothing when no other zram-generator file defines a device", () => {
+    expect(generatorFilesNote(swapStatus())).toBeUndefined();
+  });
+
+  it("lists each file with the device and the size settings it writes", () => {
+    expect(
+      generatorFilesNote(
+        swapStatus({
+          zram_generator_devices: [
+            generatorDevice({
+              device: "zram0",
+              path: "/run/systemd/zram-generator.conf",
+              zram_size: "ram / 8",
+            }),
+            generatorDevice({
+              max_zram_size: "2048",
+              zram_fraction: "0.25",
+              zram_size: "",
+            }),
+            generatorDevice({ device: "zram2", zram_size: "" }),
+          ],
+          zram_provider: "zram-generator",
+        }),
+      ),
+    ).toEqual({
+      files: [
+        "/run/systemd/zram-generator.conf sets up zram0 with zram-size = ram / 8",
+        "/etc/systemd/zram-generator.conf.d/50-big.conf sets up zram1 with zram-fraction = 0.25, max-zram-size = 2048",
+        "/etc/systemd/zram-generator.conf.d/50-big.conf sets up zram2 and sets no size",
+      ],
+      text: "zram-generator also reads these files, and what they set wins over the settings LinuxIO writes:",
+    });
+  });
+
+  it("does not say the files win while zram-tools runs zram", () => {
+    expect(
+      generatorFilesNote(
+        swapStatus({ zram_generator_devices: [generatorDevice()] }),
+      )?.text,
+    ).toBe(
+      "zram-generator is installed too and sets up compressed memory from these files:",
+    );
   });
 });
 

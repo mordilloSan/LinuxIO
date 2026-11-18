@@ -19,6 +19,9 @@ const (
 	zswapParamDir = "/sys/module/zswap/parameters"
 	sysBlockDir   = "/sys/block"
 	etcFstab      = "/etc/fstab"
+	// dpkgStatusPath is dpkg's database of installed packages, with the
+	// checksum of each conffile as its package shipped it.
+	dpkgStatusPath = "/var/lib/dpkg/status"
 
 	// sysClassBlockDir holds one link per block device, partitions included.
 	sysClassBlockDir = "/sys/class/block"

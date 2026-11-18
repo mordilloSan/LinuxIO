@@ -1,4 +1,9 @@
-import type { SwapDrainBlockedReason, SwapMode, SwapStatus } from "@/api";
+import type {
+  SwapDrainBlockedReason,
+  SwapMode,
+  SwapStatus,
+  ZramGeneratorDevice,
+} from "@/api";
 import { formatFileSize } from "@/utils/formatters";
 
 /** The three choices the dialog offers; none and mixed only describe a host. */
@@ -170,11 +175,22 @@ export function rowViews(status: SwapStatus): RowView[] {
     status.swap_file?.unmanaged_reason === "others_can_write"
       ? SWAP_FILE_NOT_STARTED
       : NEEDS_SWAP_FILE;
+  // With zram-generator, a device another of its files defines comes back at
+  // every start, so the backend refuses to leave zram while there is one.
+  const generatorFile =
+    status.zram_provider === "zram-generator"
+      ? status.zram_generator_devices[0]?.path
+      : undefined;
+  const zramStays = generatorFile
+    ? `${generatorFile} turns compressed memory on at every start. LinuxIO does not change that file. ${generatorTurnOff(generatorFile)}`
+    : undefined;
   let zswapDisabled: string | undefined;
   if (!diskSwap) {
     zswapDisabled = needsSwapFile;
   } else if (!status.zswap.available) {
     zswapDisabled = "This kernel has no zswap";
+  } else {
+    zswapDisabled = zramStays;
   }
   const base = (mode: RowMode) => ({
     current: status.mode === mode,
@@ -208,7 +224,7 @@ export function rowViews(status: SwapStatus): RowView[] {
       caution: "Blocks snapshots of the system drive while in use.",
       description:
         "Rarely used data goes straight to the swap file on the system drive. Slowest.",
-      disabledReason: diskSwap ? undefined : needsSwapFile,
+      disabledReason: diskSwap ? zramStays : needsSwapFile,
       technical: "swap file",
     },
   ];
@@ -227,14 +243,127 @@ export function canApply(status: SwapStatus, selected: RowMode): boolean {
   return status.mode === "mixed" || selected !== status.mode;
 }
 
+/** The step that asks before a change, and what Apply then sends with it. */
+export interface ConfirmView {
+  /** The label of the button that applies the change. */
+  action: string;
+  /** What the change will do that needs the user's agreement. */
+  items: string[];
+  /** The configuration file the request agrees may be replaced. */
+  replace?: string;
+  title: string;
+}
+
 /**
  * Turning zram on while the swap file is active also stops the file, but only
  * a file /etc/fstab names has a unit LinuxIO can stop.
  */
-export const needsSwapFileConfirm = (status: SwapStatus, target: RowMode) =>
+const stopsSwapFile = (status: SwapStatus, target: RowMode) =>
   target === "zram" &&
   status.swap_file?.active === true &&
   status.swap_file.managed;
+
+/**
+ * The provider's configuration file when it is not LinuxIO's and the change
+ * replaces it: on the way to zram with either tool, and with zram-generator
+ * also on the way out, which writes a file with no device. zram-tools only
+ * disables its service then.
+ */
+const replacedConfig = (status: SwapStatus, target: RowMode) => {
+  const config = status.foreign_zram_config;
+  if (!config) return undefined;
+  return target === "zram" || status.zram_provider === "zram-generator"
+    ? config
+    : undefined;
+};
+
+/**
+ * What a change to target needs confirmed first, in one step; undefined
+ * when it applies at once.
+ */
+export function confirmView(
+  status: SwapStatus,
+  target: RowMode,
+): ConfirmView | undefined {
+  const config = replacedConfig(status, target);
+  const items: string[] = [];
+  if (stopsSwapFile(status, target)) {
+    items.push(
+      "Compressed memory is turned on.",
+      "Data parked in the swap file is brought back to memory.",
+      "The swap file is turned off and stays off after a restart.",
+      "The file itself is not deleted.",
+    );
+  } else if (config && target === "zram") {
+    items.push("Compressed memory is turned on.");
+  }
+  if (config) {
+    items.push(
+      `${config.path} holds zram settings that are not LinuxIO's. It is replaced, and a copy is kept as ${config.copy_path}.`,
+    );
+  }
+  if (items.length === 0) return undefined;
+  const zram = target === "zram";
+  return {
+    action: zram ? "Turn on compressed memory" : "Apply",
+    items,
+    replace: config?.path,
+    title: zram
+      ? "Switch to compressed memory?"
+      : `Switch to ${rowName(target).toLowerCase()}?`,
+  };
+}
+
+/** The folder where a link to /dev/null hides a package's drop-in. */
+const ETC_DROP_INS = "/etc/systemd/zram-generator.conf.d";
+
+/**
+ * How to stop a zram-generator file from setting up its device, as the
+ * backend's refusal says it: a package's drop-in under /usr is hidden by a
+ * link to /dev/null of its name in /etc; any other is the admin's, or made at
+ * runtime, to change.
+ */
+const generatorTurnOff = (path: string) => {
+  const name = path.slice(path.lastIndexOf("/") + 1);
+  return path.startsWith("/usr/") &&
+    path.endsWith(`/zram-generator.conf.d/${name}`)
+    ? `To turn it off, link ${ETC_DROP_INS}/${name} to /dev/null.`
+    : "To choose this, remove that file or take the device out of it.";
+};
+
+/** The size settings a zram-generator file writes for its device. */
+const sizeSettings = (device: ZramGeneratorDevice) =>
+  [
+    ["zram-size", device.zram_size],
+    ["zram-fraction", device.zram_fraction],
+    ["max-zram-size", device.max_zram_size],
+  ]
+    .filter(([, value]) => value)
+    .map(([key, value]) => `${key} = ${value}`);
+
+/**
+ * The swap devices other zram-generator files define, with the size settings
+ * each writes; undefined when there are none. Only with zram-generator as the
+ * provider do they win over LinuxIO's own file.
+ */
+export function generatorFilesNote(
+  status: SwapStatus,
+): { files: string[]; text: string } | undefined {
+  const devices = status.zram_generator_devices;
+  if (devices.length === 0) return undefined;
+  return {
+    files: devices.map((device) => {
+      const sizes = sizeSettings(device);
+      return sizes.length > 0
+        ? `${device.path} sets up ${device.device} with ${sizes.join(", ")}`
+        : `${device.path} sets up ${device.device} and sets no size`;
+    }),
+    text:
+      status.zram_provider === "zram-generator"
+        ? "zram-generator also reads these files, and what they set wins over the settings LinuxIO writes:"
+        : "zram-generator is installed too and sets up compressed memory from these files:",
+  };
+}
 
 export const presetSwappiness = (status: SwapStatus, mode: RowMode) =>
   status.presets.find((preset) => preset.mode === mode)?.swappiness;

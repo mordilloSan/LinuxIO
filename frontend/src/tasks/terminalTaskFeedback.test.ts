@@ -226,6 +226,29 @@ describe("terminalTaskFeedback", () => {
     );
   });
 
+  it("links a zram install to the Memory overflow dialog", () => {
+    const link = onPage("/settings");
+
+    emitTerminalTaskFeedback(
+      task("cap-zram", TASK_TYPE_SYSTEM_INSTALL_CAPABILITY, {
+        capability: "zram",
+      }),
+      { kind: "completed", result: { available: true } },
+      deps,
+    );
+    expect(toastMocks.success).toHaveBeenCalledWith("zram installed", {
+      action: { label: "Open Memory overflow", onClick: expect.any(Function) },
+      duration: 10_000,
+    });
+    clickAction(toastMocks.success.mock.calls[0][1]);
+    expect(link.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: { dialog: "memory-overflow" },
+        to: "/",
+      }),
+    );
+  });
+
   it("reports capability installs on every terminal state, cancel included", () => {
     const link = onPage("/");
     const capability = (id: string) =>
@@ -465,15 +488,29 @@ describe("terminalTaskFeedback", () => {
   });
 
   it("reports a drain nobody follows", () => {
-    onPage("/docker");
+    const link = onPage("/docker");
     emitTerminalTaskFeedback(
       task("d1", TASK_TYPE_MEMORY_DRAIN),
       { kind: "completed", result: {} },
       deps,
     );
+    // The toast opens the Memory overflow dialog, by its URL.
     expect(toastMocks.success).toHaveBeenCalledWith(
       "Parked data brought back to memory",
-      expect.anything(),
+      {
+        action: {
+          label: "Open Memory overflow",
+          onClick: expect.any(Function),
+        },
+        duration: 10_000,
+      },
+    );
+    clickAction(toastMocks.success.mock.calls[0][1]);
+    expect(link.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        search: { dialog: "memory-overflow" },
+        to: "/",
+      }),
     );
     emitTerminalTaskFeedback(
       task("d2", TASK_TYPE_MEMORY_DRAIN),

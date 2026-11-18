@@ -10,6 +10,7 @@
 
 import type { QueryKey } from "@tanstack/react-query";
 
+import { MEMORY_OVERFLOW_DIALOG } from "./dashboard-search";
 import linuxio from "./generated/client";
 import type {
   CapabilityName,
@@ -49,10 +50,17 @@ export interface CapabilityDef {
   reasonUnknown: string;
   /**
    * Optional destination surfaced as an action link ("Open …") on the
-   * install-completion notification. Omit for capabilities with no dedicated
-   * page (e.g. TuneD, Avahi).
+   * install-completion notification and, once the capability is available,
+   * on its row in the Capability Manager. Omit for capabilities with no
+   * dedicated page (e.g. TuneD, Avahi).
    */
   route?: ToastMeta;
+  /**
+   * The route opens only for a session with sudo, as the route's own
+   * `requiresPrivileged` access policy or the dialog it opens says: its link
+   * on the capability's row is then hidden for any other session.
+   */
+  routeRequiresPrivileged?: true;
   /** camelCase field used in auth state (e.g. "dockerAvailable"). */
   state: string;
   /** Backend capability name, the key of its status on the wire (e.g. "docker"). */
@@ -85,6 +93,7 @@ export const CAPABILITIES = [
     reasonUnavailable: "libvirt daemon is unavailable.",
     installable: { requiresPackageKit: true },
     route: { label: "Open VMs", to: "/vm" },
+    routeRequiresPrivileged: true,
   },
   {
     wire: "docker_updates",
@@ -223,6 +232,7 @@ export const CAPABILITIES = [
     reasonUnavailable: "rsync is not installed.",
     installable: { requiresPackageKit: true },
     route: { label: "Set up rsync", to: "/storage/rsync" },
+    routeRequiresPrivileged: true,
   },
   {
     wire: "node",
@@ -318,6 +328,13 @@ export const CAPABILITIES = [
     reasonUnknown: "zram availability is still being checked.",
     reasonUnavailable: "Neither zram-tools nor zram-generator is installed.",
     installable: { requiresPackageKit: true },
+    route: {
+      label: "Open Memory overflow",
+      search: { dialog: MEMORY_OVERFLOW_DIALOG },
+      to: "/",
+    },
+    // The dialog opens only for a session with sudo.
+    routeRequiresPrivileged: true,
   },
   {
     wire: "avahi",
@@ -343,6 +360,7 @@ export const CAPABILITIES = [
     reasonUnavailable: "WireGuard tools are unavailable.",
     installable: { requiresPackageKit: true },
     route: { label: "Open WireGuard", to: "/network/wireguard" },
+    routeRequiresPrivileged: true,
   },
   {
     wire: "btrfs_maintenance",

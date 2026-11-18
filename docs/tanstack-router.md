@@ -602,7 +602,7 @@ inherits its ancestor's.
 |-------|------|--------|------|--------|-------|
 | `/sign-in` | `sign-in/route.tsx` | — | — | `redirect` | `requireGuest` |
 | *(pathless)* | `_authenticated.tsx` | — | — | — | `requireAuthentication` |
-| `/` | `_authenticated/index.tsx` | transport + deferred ×16 +cond | — | — | — |
+| `/` | `_authenticated/index.tsx` | transport + deferred ×16 +cond | — | `dialog` | — |
 | `/accounts` | `accounts/route.tsx` | — | — | — | — |
 | `/accounts/` | `accounts/index.tsx` | `loadRouteQueries` ×3 +cond | `user` | `user` +3 | — |
 | `/accounts/groups` | `accounts/groups.tsx` | `loadRouteQueries` ×1 | — | — | — |
@@ -623,7 +623,7 @@ inherits its ancestor's.
 | `/services/` | `services/index.tsx` | `loadRouteQueries` ×2 +cond | `service` | `service` | — |
 | `/services/sockets` | `services/sockets.tsx` | `loadRouteQueries` ×2 +cond | `socket` | `socket` | — |
 | `/services/timers` | `services/timers.tsx` | `loadRouteQueries` ×2 +cond | `timer` | `timer` | — |
-| `/settings` | `settings/route.tsx` | `loadRouteTransport` | — | — | — |
+| `/settings` | `settings/route.tsx` | `loadRouteTransport` | — | `tab` | — |
 | `/storage` | `storage/route.tsx` | — | — | — | — |
 | `/storage/` | `storage/index.tsx` | `loadRouteQueries` ×3 | — | `drive`, `fs`, `pool` | — |
 | `/storage/lvm` | `storage/lvm.tsx` | `loadRouteQueries` ×3 | — | — | — |
@@ -723,7 +723,7 @@ external-redirect rejection.
 
 ## Search Parameters
 
-No schema library. Thirteen routes validate search using three generic helpers from
+No schema library. Routes validate search with the generic helpers from
 `routes/-search.ts`:
 
 ```ts
@@ -738,6 +738,13 @@ Each helper returns `{ key: value }` when the value has the right type, and `{}`
 otherwise. Spreading means an absent or invalid param yields **no key at all**
 rather than an explicit `undefined` — which, combined with
 `search: { strict: true }`, keeps URLs free of empty params.
+
+A param that takes one of a few fixed values has a validator of its own, kept
+in a module of its own so the route can import it eagerly: Settings' `tab`
+(`settings/-components/settingsTabs.ts`) and the dashboard's `dialog`
+(`api/dashboard-search.ts`, below the routes because a toast links to a
+dialog by it), which opens the Memory overflow dialog
+(`?dialog=memory-overflow`). Both drop a value they do not know.
 
 Read and write search through the route's own API, using a functional update so
 you never clobber sibling params:

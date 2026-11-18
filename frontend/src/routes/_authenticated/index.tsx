@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 
 import { CACHE_TTL_MS, linuxio } from "@/api";
+import { validateDashboardSearch } from "@/api/dashboard-search";
 import { HomeIcon } from "@/icons/svg";
 import {
   type LoaderQueryOptions,
@@ -12,6 +13,9 @@ import {
 import DashboardPage from "./-dashboard/DashboardPage";
 
 export const Route = createFileRoute("/_authenticated/")({
+  // An open dashboard dialog lives in the URL, so a link, a reload or a
+  // bookmark opens it.
+  validateSearch: validateDashboardSearch,
   loader: async ({ abortController, context, preload }) => {
     await loadRouteTransport(context, abortController.signal);
     const ui = await loadRouteUIConfig(context, abortController.signal);

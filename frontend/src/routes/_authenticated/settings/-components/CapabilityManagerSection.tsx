@@ -1,5 +1,6 @@
 import { Icon } from "@iconify/react";
 import { useQueryClient } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -12,6 +13,7 @@ import {
   linuxio,
   useStreamMux,
 } from "@/api";
+import type { RouteTarget } from "@/api/toast-meta";
 import FrostedCard from "@/components/cards/FrostedCard";
 import CapabilityInstallDialog from "@/components/dialog/CapabilityInstallDialog";
 import {
@@ -116,8 +118,22 @@ const formatLastChecked = (value: Date | null) => {
   });
 };
 
+/** The page of an installed capability, by the route its toast opens. */
+const CapabilityLink = ({
+  route,
+}: {
+  route: RouteTarget & { label: string };
+}) => {
+  const { label, ...target } = route;
+  return (
+    <Link className="capability-manager__link" {...target}>
+      {label}
+    </Link>
+  );
+};
+
 const CapabilityManagerSection = () => {
-  const { refreshCapabilities } = useAuth();
+  const { privileged, refreshCapabilities } = useAuth();
   // The latest scan lives in the query cache; refreshCapabilities writes it
   // and an install result patches it below.
   const latest = useCapabilitiesResponse();
@@ -331,15 +347,24 @@ const CapabilityManagerSection = () => {
             : getCapabilityReason(item.state, status));
         const installable =
           "installable" in item ? item.installable : undefined;
+        // An installed capability links to its page, as its install toast
+        // does, when the session can open that page.
+        const route =
+          status === "available" &&
+          "route" in item &&
+          (privileged || !("routeRequiresPrivileged" in item))
+            ? item.route
+            : undefined;
 
         return {
           ...item,
           installable,
+          route,
           status,
           detail,
         };
       }),
-    [latest],
+    [latest, privileged],
   );
 
   const handleRefresh = useCallback(
@@ -600,6 +625,7 @@ const CapabilityManagerSection = () => {
                     {row.dependency}
                   </AppTypography>
                   <span>{installing ? installRun?.message : row.detail}</span>
+                  {row.route ? <CapabilityLink route={row.route} /> : null}
                 </div>
               </div>
             </FrostedCard>

@@ -170,7 +170,7 @@ PackageKit capability itself).
 | `useCapability` | `hooks/useCapabilities.ts` | Per-capability `{ status, isEnabled, reason }`. |
 | `hasAccessPolicy` / `useAccessContext` | `hooks/useCapabilities.ts` | Evaluate a route's access policy. |
 | `AuthProvider` | `contexts/AuthProvider.tsx` | Seeds cached state on reload; refreshes `get_capabilities` asynchronously after mux open, persists valid results, and exposes state. |
-| `CapabilityManagerSection` | `routes/_authenticated/settings/-components/CapabilityManagerSection.tsx` | Lists capabilities, shows status, offers Install. |
+| `CapabilityManagerSection` | `routes/_authenticated/settings/-components/CapabilityManagerSection.tsx` | Lists capabilities, shows status, offers Install, and links an available capability to its page (`route`, which its install toast opens too), unless the route needs sudo the session lacks (`routeRequiresPrivileged`). |
 
 A `CapabilityDef` (see the interface in `api/capabilities.ts` for the full set):
 
@@ -239,8 +239,13 @@ package `zram-tools` or the RHEL package `zram-generator`. There is no service
 step: the dashboard's **Memory overflow** dialog starts zram when the admin
 chooses compressed memory only. The dialog
 itself does not wait for the capability; its zram row links to Capabilities
-while the package is missing. The capability card has no link back, since the
-dialog has no URL.
+while the package is missing. The capability's `route` links back: once
+the capability is available its row in Settings, and the toast that reports
+the install from any page but the dashboard, open the dialog by its URL
+(`/?dialog=memory-overflow`, "Open Memory overflow"). The dialog opens only
+for a session with sudo, so the route is flagged `routeRequiresPrivileged`,
+as the VMs, WireGuard and rsync routes are, and its link on the row is
+hidden for any other session.
 The two tools differ in configuration file and units; see
 [Memory overflow](./memory.md#the-zram-provider).
 

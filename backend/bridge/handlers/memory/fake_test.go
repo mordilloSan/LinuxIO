@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -55,6 +56,14 @@ type fakeSystem struct {
 	fileStates map[string]string
 	// statusFails is how many status reads still fail with errStatusRace.
 	statusFails int
+	// busyResets is how many resets of a zram device the kernel still
+	// refuses with EBUSY, as while udev holds it after a swapoff;
+	// onBusyReset runs after each.
+	busyResets  int
+	onBusyReset func()
+	// generatorResetFails makes the reset zram-generator's setup service
+	// runs when its swap unit stops fail, leaving zram0 set up.
+	generatorResetFails bool
 	// after runs after a recorded call succeeds.
 	after func(call string)
 }
@@ -100,7 +109,7 @@ func (s *fakeSystem) executor(progress *[]apischema.SwapProgress) *executor {
 				*progress = append(*progress, p)
 			}
 		},
-		waits: waits{swapOn: 200 * time.Millisecond, zramOff: 200 * time.Millisecond, poll: time.Millisecond, stopGrace: 100 * time.Millisecond},
+		waits: waits{swapOn: 200 * time.Millisecond, zramOff: 200 * time.Millisecond, poll: time.Millisecond, stopGrace: 100 * time.Millisecond, zramReset: 50 * time.Millisecond},
 	}
 }
 
@@ -221,6 +230,13 @@ func (s *fakeSystem) swapOff(ctx context.Context, path string) error {
 // resetZram frees the device, as the kernel does for one nothing holds.
 func (s *fakeSystem) resetZram(ctx context.Context, name string) error {
 	return s.unitDo(ctx, "reset "+name, func() error {
+		if s.busyResets > 0 {
+			s.busyResets--
+			if s.onBusyReset != nil {
+				s.onBusyReset()
+			}
+			return syscall.EBUSY
+		}
 		s.f.write(filepath.Join(sysBlockDir, name, "disksize"), "0\n")
 		return nil
 	})
@@ -258,6 +274,14 @@ func (s *fakeSystem) configuredZramSize() uint64 {
 }
 
 func (s *fakeSystem) unitOn(name string) {
+	// zram-generator's setup service cannot set up a device that is set up
+	// already: it fails to set the compression algorithm, and the swap unit
+	// fails on its dependency.
+	if name == zramGeneratorSwapUnit && s.zramSetUp() && !strings.Contains(s.f.read(procSwaps), "/dev/zram0 ") {
+		s.activeStates[name] = "inactive"
+		s.activeStates[zramGeneratorSetupUnit] = "failed"
+		return
+	}
 	if line, ok := s.devices[name]; ok && !s.stuck[name] {
 		swaps := s.f.read(procSwaps)
 		if !strings.Contains(swaps, line) {
@@ -287,12 +311,15 @@ func (s *fakeSystem) bindSetupUnit(name, state string) {
 // stays set up, as it does when zramswap stop cannot unload the module.
 func (s *fakeSystem) unitOff(name string) {
 	if line, ok := s.devices[name]; ok && !s.stuck[name] {
-		if name == zramGeneratorSwapUnit {
+		if name == zramGeneratorSwapUnit && !s.generatorResetFails {
 			s.f.write("/sys/block/zram0/disksize", "0\n")
 		}
 		s.f.write(procSwaps, strings.ReplaceAll(s.f.read(procSwaps), line, ""))
 		s.activeStates[name] = "inactive"
 		s.bindSetupUnit(name, "inactive")
+		if name == zramGeneratorSwapUnit && s.generatorResetFails {
+			s.activeStates[zramGeneratorSetupUnit] = "failed"
+		}
 	}
 }
 
@@ -471,6 +498,7 @@ func generatorDiskHost(t *testing.T) (fixture, *fakeSystem) {
 	t.Helper()
 	f, sys := diskHost(t)
 	sys.provider = apischema.ZramProviderGenerator
+	f.write(ZramGeneratorPath, "")
 	return f, sys
 }
 
@@ -480,6 +508,7 @@ func generatorZramHost(t *testing.T) (fixture, *fakeSystem) {
 	t.Helper()
 	f, sys := zramHost(t)
 	sys.provider = apischema.ZramProviderGenerator
+	f.write(ZramGeneratorPath, "")
 	sys.devices[zramGeneratorSwapUnit] = sys.devices[zramService]
 	f.write(zramGeneratorConfigPath, string(renderZramGeneratorConfig(7963*mib)))
 	return f, sys
