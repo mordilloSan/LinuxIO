@@ -52,30 +52,12 @@ after a change that issues ioctls).
 
 Do one of these only when something shows it is needed.
 
-- Have LinuxIO make its own swap file in a fixed folder only root can write,
-  manage only that one and show any other swap as read-only, the way TrueNAS
-  and the Unraid swap plugins manage only swap they made. Today LinuxIO
-  manages whatever `/etc/fstab` names, which is why it needs the rules for
-  links, folders others can write, a filesystem that is not mounted and a
-  second swap file (see "Known limits" in [Memory overflow](../memory.md));
-  most of them could then go. It would also move a swap file that sits in a
-  folder others can write, which nothing does now. A redesign, for when
-  feature work resumes.
-- Read the unit's state over one system bus connection for a whole wait: each
-  poll of a long `swapoff` opens a new one, about four a second.
-- Run a file browser change as the session user when the path is inside
-  folders that user owns, so the user's own folder links work instead of being
-  refused with the folder they point to. The refusal offers to open that
-  folder, so this is a convenience only.
 - Pick up a package update again after the job host dies, by asking
   PackageKit.
 - Pick up a SMART test again from the drive's own state.
 - Continue the scrub of a pool resync after a power cut. It saves its progress
   as a job's scrub does, but it is not a job, so nothing continues it and the
   resync scrubs from the start again.
-- More alert sources and other ways to deliver them: see "Not in this slice"
-  in [Alerts](../alerts.md).
-- What jobs do not do: see "Not built" in [Jobs](../jobs.md#not-built).
 
 ## Rejected
 
@@ -83,6 +65,11 @@ Listed once, with the reason, so they are not raised again.
 
 File browser, after the link fix:
 
+- Running a file browser change as the session user when the path is inside
+  folders that user owns, so that the user's own folder links are followed.
+  Decided 2026-11-18: no. The refusal names the folder the link points to
+  and offers to open it, so this is a convenience only, and it would change
+  who a root file operation runs as.
 - A real folder (not a link) moved into the tree while root works on it, or
   put at a name between root's `mkdirat` and `openat`: no link is followed and
   root still acts at the place that was asked for. A failed copy or an
