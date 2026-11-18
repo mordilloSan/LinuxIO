@@ -124,7 +124,7 @@ func recoverStandaloneUpdate(ctx context.Context, cli ContainerClient, journal J
 		if tx.Phase != standaloneUpdateVerified {
 			// Nothing is left to restore; keeping the journal would only
 			// refuse every later update. The replacement, if any, stays.
-			slog.Warn("standalone Docker update journal cleared without rollback", "component", "docker", "container", tx.OriginalName, "phase", tx.Phase)
+			slog.Warn("cleared the standalone Docker update journal without rollback for container "+tx.OriginalName, "component", "docker", "container", tx.OriginalName, "phase", tx.Phase)
 		}
 		return journal.clear()
 	}

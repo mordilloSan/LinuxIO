@@ -2,6 +2,7 @@ package dockerupdate
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -75,6 +76,90 @@ func TestDockerUpdateComposeIntegration(t *testing.T) {
 	assertUpdatedComposeContainer(t, initial, updated, secondImage)
 	if updated.Config == nil || !slices.Contains(updated.Config.Env, "LINUXIO_SERVICE_VALUE=from-service-env-file") {
 		t.Fatalf("updated container environment = %#v, want value from service env_file", updated.Config)
+	}
+}
+
+// TestDockerUpdateComposeRollbackIntegration moves a service's tag to an image
+// the service exits on, as a pull does, and checks that the rollback puts the
+// tag back on the old image and brings the service up on it again.
+func TestDockerUpdateComposeRollbackIntegration(t *testing.T) {
+	if os.Getenv("LINUXIO_RUN_DOCKER_INTEGRATION") != "1" {
+		t.Skip("set LINUXIO_RUN_DOCKER_INTEGRATION=1 to run the Docker integration test")
+	}
+	requireDockerComposeIntegration(t)
+	withTempUpdateStatusPath(t)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
+	defer cancel()
+	cli, clientErr := client.New(client.FromEnv)
+	if clientErr != nil {
+		t.Fatalf("create Docker client: %v", clientErr)
+	}
+	defer cli.Close()
+
+	project := fmt.Sprintf("linuxio-it-%d", time.Now().UnixNano())
+	const service = "app"
+	const oldImage, newImage = "alpine:3.20", "alpine:3.21"
+	tag := project + "-app:latest"
+	for _, ref := range []string{oldImage, newImage} {
+		if _, err := PullAndInspectImage(ctx, cli, ref); err != nil {
+			t.Fatalf("pull %s: %v", ref, err)
+		}
+	}
+	if _, err := cli.ImageTag(ctx, client.ImageTagOptions{Source: oldImage, Target: tag}); err != nil {
+		t.Fatalf("tag %s as %s: %v", oldImage, tag, err)
+	}
+	dir := t.TempDir()
+	composePath := filepath.Join(dir, "compose.yaml")
+	// The service runs on alpine 3.20 and exits on any other release.
+	content := fmt.Sprintf("services:\n  %s:\n    image: %s\n    command: [\"sh\", \"-c\", \"grep -q '^3.20' /etc/alpine-release && exec sleep infinity\"]\n", service, tag)
+	if err := os.WriteFile(composePath, []byte(content), 0o600); err != nil {
+		t.Fatalf("write Compose file: %v", err)
+	}
+	// Registered before the project's cleanup, so it runs after it: the tag
+	// is removed once the project is down.
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanupCancel()
+		if _, err := cli.ImageRemove(cleanupCtx, tag, client.ImageRemoveOptions{}); err != nil {
+			t.Logf("best-effort tag cleanup failed: %v", err)
+		}
+	})
+	registerDockerUpdateComposeCleanup(t, project, composePath, dir)
+
+	if err := composeUp(ctx, project, composePath, dir, true, nil); err != nil {
+		t.Fatalf("compose up on %s: %v", oldImage, err)
+	}
+	initial := mustInspectComposeService(t, ctx, cli, project, service)
+	assertInitialComposeContainer(t, initial, project, service)
+	target, resolvedService, managed, err := composeTargetForContainer(ctx, cli, initial)
+	if err != nil || !managed || resolvedService != service {
+		t.Fatalf("resolve Compose target: %#v, %q, %v, %v", target, resolvedService, managed, err)
+	}
+	result, _, err := newContainerUpdateResult(initial)
+	if err != nil {
+		t.Fatalf("build update result: %v", err)
+	}
+	// The update: the tag moves to the new image, as a pull moves it, and
+	// the service is brought up on it.
+	pullAndUp := func(ctx context.Context, target ComposeTarget, service string, emitter ComposeLineEmitter) error {
+		if _, tagErr := cli.ImageTag(ctx, client.ImageTagOptions{Source: newImage, Target: tag}); tagErr != nil {
+			return tagErr
+		}
+		return RunComposeProject(ctx, target, emitter, "up", "-d", "--no-deps", service)
+	}
+
+	_, err = updateComposeContainerWithRunner(ctx, cli, newComposeRollback(cli), initial, target, service, result, pullAndUp, nil)
+	if !errors.As(err, new(rolledBackError)) {
+		t.Fatalf("update error = %v, want a rolled back update", err)
+	}
+	tagged, err := cli.ImageInspect(ctx, tag)
+	if err != nil || tagged.ID != initial.Image {
+		t.Fatalf("tag %s names %s (%v), want the old image %s", tag, tagged.ID, err, initial.Image)
+	}
+	restored := mustInspectComposeService(t, ctx, cli, project, service)
+	if restored.ID == initial.ID || restored.Image != initial.Image || restored.State == nil || !restored.State.Running {
+		t.Fatalf("restored container %s on %s (state %#v), want a new container running %s", restored.ID, restored.Image, restored.State, initial.Image)
 	}
 }
 

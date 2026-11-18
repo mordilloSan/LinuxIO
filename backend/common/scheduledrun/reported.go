@@ -6,7 +6,7 @@ import "errors"
 // resync, Docker updates) whose run did no work, since other work held it
 // off, and whose summary, which normally says so, could not be stored. The
 // end hook then leaves the run alert as it is. Every other run exits with 0,
-// or with 1 for a failure no alert reports (see Conclude).
+// or with 1 (see Conclude).
 const ExitSkipped = 4
 
 type reportedError struct{ error }

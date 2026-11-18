@@ -97,6 +97,10 @@ func TestConcludeExitStatus(t *testing.T) {
 		"skipped, summary not stored": {summary: skipped, storeErr: storeErr, want: ExitSkipped},
 		"skipped, no run record":      {summary: skipped, storeErr: ErrNoRun, want: ExitSkipped},
 		"ran, summary not stored":     {summary: Summary{Message: "1 taken"}, storeErr: storeErr, want: 0},
+		// Without its summary the history would show a plain completed run
+		// and no count of the failures.
+		"items failed, summary not stored": {summary: Summary{Message: "1 failed", Failures: 1}, storeErr: storeErr, want: 1},
+		"items failed, no run record":      {summary: Summary{Message: "1 failed", Failures: 1}, storeErr: ErrNoRun, want: 0},
 		// A run that does not complete stores nothing: its record's state
 		// and error say how it ended.
 		"failure without an alert": {summary: Summary{Message: "1 failed", Failures: 1}, unreported: unreported, want: 1},

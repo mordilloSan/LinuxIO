@@ -583,7 +583,13 @@ answer, a scheduled container that is gone, a replication that could not be
 started, a resync that could not find its pool. It also exits with 1 when it
 was stopped, by a signal or, for a resync, by a scrub cancel, whatever its
 failures were marked: a run that exited with 0 would read as completed, and
-the end hook could not record it as canceled or interrupted.
+the end hook could not record it as canceled or interrupted. And it exits
+with 1 when items failed and its summary could not be stored (the store's
+lock held for more than 5 seconds, a full disk): the summary is the only place
+a completed run counts its failures, so without it the history would show a
+plain Completed. The run then reads failed, and its run alert points to the
+output, where the failures are listed. A run whose items all succeeded still
+completes when its summary is lost.
 `scheduledrun.Conclude` decides the status for both programs. A system update's failure is reported by
 the provider's notify hook where it is installed, and otherwise by the end
 hook.
@@ -599,7 +605,7 @@ What the run did is in two places:
 
   | Worker | Messages |
   |---|---|
-  | Docker updates | *1 updated, 1 failed*, *2 waiting*, *Nothing to update*, *Skipped: another Docker update was running* |
+  | Docker updates | *1 updated, 1 failed, 1 rolled back*, *2 waiting*, *Nothing to update*, *Skipped: another Docker update was running* |
   | Snapshots (the timer's pass) | *2 taken, 3 pruned, 1 failed*, *Nothing to do* |
   | Replication | *1 sent, 1 failed*, *Nothing to do*, *Skipped: another run held every job* |
   | Pool resync | *Resynced*, *Resync failed* (the pool's alerts say why, and the health run retries it) |
@@ -610,10 +616,11 @@ What the run did is in two places:
   (`PassReport.Write` in `backend/common/dockerupdate/pass_report.go`): a
   line of totals, then one line per container it replaced, with the image,
   the versions when both images carry the `org.opencontainers.image.version`
-  label and the short image IDs, or failed to, with the reason. The log
-  lines of the pass carry the same facts as journal fields, which the saved
-  output does not show. The worker's btrfs jobs print a line of counts and each
-  failure.
+  label and the short image IDs, or failed to, with the reason, or rolled
+  back. The saved output shows a log line's message and not its journal
+  fields, so the lines of the pass about one container end their message
+  with its name ([Docker Updates](./docker-updates.md#the-scheduled-pass)).
+  The worker's btrfs jobs print a line of counts and each failure.
 
 ## Alerts
 

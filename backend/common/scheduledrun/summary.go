@@ -80,8 +80,13 @@ const summaryTimeout = 5 * time.Second
 //   - one that was asked to stop without a signal, as a resync is by a scrub
 //     cancel, which Summarize reports.
 //
-// A skipped run whose summary could not be stored exits with ExitSkipped:
-// without it the end hook would read the run as one that ran.
+// A run whose summary could not be stored exits as it would with the summary,
+// except in two cases only the summary tells apart from a plain completed
+// run: one whose items failed exits with 1, since the history would otherwise
+// show it completed with no count of its failures (the end hook records it
+// failed and raises the run alert, which points to its output, where the
+// failures are listed); a skipped one exits with ExitSkipped, since the end
+// hook would otherwise read it as a run that ran.
 func Conclude(ctx context.Context, store func(context.Context, Summary) error, summary Summary, unreported error) int {
 	if unreported != nil || ctx.Err() != nil {
 		return 1
@@ -98,7 +103,11 @@ func Conclude(ctx context.Context, store func(context.Context, Summary) error, s
 	case errors.Is(err, ErrCancelRequested), ctx.Err() != nil:
 		// Asked to stop, or stopped by a signal during the write.
 		return 1
-	case !errors.Is(err, ErrNoRun): // a run started by hand has no record
+	case errors.Is(err, ErrNoRun): // a run started by hand has no record
+	case summary.Failures > 0:
+		slog.Error("failed to store the run summary", "error", err, "failures", summary.Failures)
+		return 1
+	default:
 		slog.Warn("failed to store the run summary", "error", err)
 	}
 	if summary.Skipped {

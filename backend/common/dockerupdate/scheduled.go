@@ -186,7 +186,7 @@ func runScheduledPass(ctx context.Context, opts DockerContainerAutoUpdateOptions
 		announce := func(name string) { report("Updating " + name) }
 		pass.Containers, updateErr = operations.update(ctx, selected, containers, opts, announce)
 	}
-	updated, _ := pass.counts()
+	updated, _, _ := pass.counts()
 	err = errors.Join(append(runErrs, checkErr, updateErr)...)
 	raisePassNotice(ctx, notify, err, checked, updated)
 	return pass, err

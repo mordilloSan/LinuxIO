@@ -135,3 +135,25 @@ func TestScheduledStoppedContainerIsDeferredWithoutRunError(t *testing.T) {
 		t.Fatalf("status = %+v, want non-error deferred update", status)
 	}
 }
+
+// A standalone update that was undone counts as rolled back, as a Compose one
+// does: in the report, the summary and the alert's title.
+func TestScheduledStandaloneUpdateUndoneCountsAsRolledBack(t *testing.T) {
+	withTempUpdateStatusPath(t)
+	useTempAlertStore(t)
+	state := newScheduledUpdateState(t.Context(), nil)
+	before := standaloneTestInspect()
+	undone := rolledBackError{err: errors.New("verify replacement: container state is \"exited\""), to: "the original container"}
+
+	if err := state.recordStandaloneUpdateOutcome(before, updateResultFor(before), undone); err != nil {
+		t.Fatalf("recordStandaloneUpdateOutcome: %v", err)
+	}
+	summary, _ := PassReport{Mode: "update", Containers: state.outcomes}.Summary()
+	if summary.Message != "1 rolled back" || summary.Failures != 1 {
+		t.Fatalf("summary = %+v, want one rolled back", summary)
+	}
+	doc, err := alerts.Load()
+	if err != nil || len(doc.Alerts) != 1 || doc.Alerts[0].Title != "Docker update rolled back: web" {
+		t.Fatalf("alerts = %+v, %v", doc.Alerts, err)
+	}
+}

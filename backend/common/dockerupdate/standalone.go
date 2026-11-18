@@ -7,10 +7,12 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/containerd/errdefs"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/mount"
 	"github.com/moby/moby/api/types/network"
@@ -72,6 +74,9 @@ func updateStandaloneContainerWithDependenciesAndPolicyAndProgress(
 	createOptions, err := StandaloneCreateOptions(before, imageRef, result.ContainerName)
 	if err != nil {
 		return result, err
+	}
+	if dropErr := DropImageDefaults(ctx, cli, &createOptions, before.Image); dropErr != nil {
+		return result, fmt.Errorf("prepare the replacement of standalone container %q: %w", result.ContainerName, dropErr)
 	}
 	backupName := standaloneBackupName(before.ID)
 	tx := standaloneUpdateTransaction{
@@ -253,13 +258,13 @@ func createAndVerifyStandaloneReplacementWithProgress(
 	if createErr != nil {
 		reportProgress(report, "rolling_back", fmt.Sprintf("Restoring %s after replacement creation failed", originalName))
 		rollbackErr := restoreOriginalContainer(ctx, cli, originalID, originalName, tx.OriginalRunning)
-		return container.InspectResponse{}, errors.Join(fmt.Errorf("create replacement for standalone container %q: %w", originalName, createErr), clearJournalAfterRollback(journal, rollbackErr))
+		return container.InspectResponse{}, undoneStandalone(fmt.Errorf("create replacement for standalone container %q: %w", originalName, createErr), clearJournalAfterRollback(journal, rollbackErr))
 	}
 	tx.Phase = standaloneUpdateCreated
 	tx.ReplacementID = created.ID
 	if writeErr := writeStandaloneJournal(journal, tx); writeErr != nil {
 		reportProgress(report, "rolling_back", fmt.Sprintf("Restoring %s after the update journal failed", originalName))
-		return container.InspectResponse{}, errors.Join(writeErr, rollbackAndClearStandalone(ctx, cli, created.ID, originalID, originalName, tx.OriginalRunning, journal))
+		return container.InspectResponse{}, undoneStandalone(writeErr, rollbackAndClearStandalone(ctx, cli, created.ID, originalID, originalName, tx.OriginalRunning, journal))
 	}
 	shouldStart := tx.OriginalRunning || policy.Revive
 	var after container.InspectResponse
@@ -267,33 +272,48 @@ func createAndVerifyStandaloneReplacementWithProgress(
 		reportProgress(report, "starting", fmt.Sprintf("Starting the replacement for %s", originalName))
 		if _, startErr := cli.ContainerStart(ctx, created.ID, client.ContainerStartOptions{}); startErr != nil {
 			reportProgress(report, "rolling_back", fmt.Sprintf("Restoring %s after the replacement failed to start", originalName))
-			return container.InspectResponse{}, errors.Join(fmt.Errorf("start replacement for standalone container %q: %w", originalName, startErr), rollbackAndClearStandalone(ctx, cli, created.ID, originalID, originalName, tx.OriginalRunning, journal))
+			return container.InspectResponse{}, undoneStandalone(fmt.Errorf("start replacement for standalone container %q: %w", originalName, startErr), rollbackAndClearStandalone(ctx, cli, created.ID, originalID, originalName, tx.OriginalRunning, journal))
 		}
 		tx.ReplacementStarted = true
 		reportProgress(report, "verifying", fmt.Sprintf("Waiting for %s to become ready", originalName))
+		wait := WaitForContainerReady
+		if tx.OriginalRunning {
+			wait = waitForReplacementReady
+		}
 		var readyErr error
-		after, readyErr = WaitForContainerReady(ctx, cli, created.ID)
+		after, readyErr = wait(ctx, cli, created.ID)
 		if readyErr != nil {
 			reportProgress(report, "rolling_back", fmt.Sprintf("Restoring %s after readiness verification failed", originalName))
-			return container.InspectResponse{}, errors.Join(fmt.Errorf("verify replacement for standalone container %q: %w", originalName, readyErr), rollbackAndClearStandalone(ctx, cli, created.ID, originalID, originalName, tx.OriginalRunning, journal))
+			return container.InspectResponse{}, undoneStandalone(fmt.Errorf("verify replacement for standalone container %q: %w", originalName, readyErr), rollbackAndClearStandalone(ctx, cli, created.ID, originalID, originalName, tx.OriginalRunning, journal))
 		}
 	} else {
 		reportProgress(report, "verifying", fmt.Sprintf("Verifying stopped replacement for %s", originalName))
 		inspectResult, inspectErr := cli.ContainerInspect(ctx, created.ID, client.ContainerInspectOptions{})
 		if inspectErr != nil {
-			return container.InspectResponse{}, errors.Join(fmt.Errorf("inspect stopped replacement for standalone container %q: %w", originalName, inspectErr), rollbackAndClearStandalone(ctx, cli, created.ID, originalID, originalName, false, journal))
+			return container.InspectResponse{}, undoneStandalone(fmt.Errorf("inspect stopped replacement for standalone container %q: %w", originalName, inspectErr), rollbackAndClearStandalone(ctx, cli, created.ID, originalID, originalName, false, journal))
 		}
 		after = inspectResult.Container
 		if after.State == nil || after.State.Running {
-			return container.InspectResponse{}, errors.Join(fmt.Errorf("replacement for stopped standalone container %q did not remain stopped", originalName), rollbackAndClearStandalone(ctx, cli, created.ID, originalID, originalName, false, journal))
+			return container.InspectResponse{}, undoneStandalone(fmt.Errorf("replacement for stopped standalone container %q did not remain stopped", originalName), rollbackAndClearStandalone(ctx, cli, created.ID, originalID, originalName, false, journal))
 		}
 	}
 	tx.Phase = standaloneUpdateVerified
 	if writeErr := writeStandaloneJournal(journal, tx); writeErr != nil {
 		reportProgress(report, "rolling_back", fmt.Sprintf("Restoring %s after the update journal failed", originalName))
-		return container.InspectResponse{}, errors.Join(writeErr, rollbackAndClearStandalone(ctx, cli, created.ID, originalID, originalName, tx.OriginalRunning, journal))
+		return container.InspectResponse{}, undoneStandalone(writeErr, rollbackAndClearStandalone(ctx, cli, created.ID, originalID, originalName, tx.OriginalRunning, journal))
 	}
 	return after, nil
+}
+
+// undoneStandalone is the error of a standalone replacement that failed with
+// cause once the original was put back (rollbackErr nil): the update was
+// rolled back, which the pass report, its summary and the alert say. A
+// rollback that failed is reported beside cause.
+func undoneStandalone(cause, rollbackErr error) error {
+	if rollbackErr != nil {
+		return errors.Join(cause, rollbackErr)
+	}
+	return rolledBackError{err: cause, to: "the original container"}
 }
 
 func writeStandaloneJournal(journal *Journal, tx standaloneUpdateTransaction) error {
@@ -505,6 +525,123 @@ func StandaloneCreateOptions(
 	}, nil
 }
 
+// DropImageDefaults removes from options, a copy of an inspected container's
+// configuration (StandaloneCreateOptions), each value the image imageID set
+// in it, so a replacement created from another image gets that image's: an
+// inspected configuration is the image's merged with what was set for the
+// container. A value equal to the image's goes (a label or an env entry, a
+// command, entrypoint or health check as a whole, the working folder, user
+// and stop signal, an exposed port or a volume the image declares); one set
+// differently stays, and so does an exposed port the container publishes. A
+// value set for the container equal to the image's cannot be told apart and
+// goes too. An image that is gone leaves options as they are.
+func DropImageDefaults(ctx context.Context, cli imageInspector, options *client.ContainerCreateOptions, imageID string) error {
+	inspected, err := cli.ImageInspect(ctx, imageID)
+	if errdefs.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("inspect image %s: %w", shortImageID(imageID), err)
+	}
+	image, config := inspected.Config, options.Config
+	if image == nil || config == nil {
+		return nil
+	}
+	for key, value := range image.Labels {
+		if current, ok := config.Labels[key]; ok && current == value {
+			delete(config.Labels, key)
+		}
+	}
+	config.Env = slices.DeleteFunc(config.Env, func(entry string) bool { return slices.Contains(image.Env, entry) })
+	config.Entrypoint, config.Cmd = dropImageCommand(config.Entrypoint, config.Cmd, image.Entrypoint, image.Cmd)
+	config.Healthcheck = dropImageHealthcheck(config.Healthcheck, image.Healthcheck)
+	if config.WorkingDir == image.WorkingDir {
+		config.WorkingDir = ""
+	}
+	if config.User == image.User {
+		config.User = ""
+	}
+	if config.StopSignal == image.StopSignal {
+		config.StopSignal = ""
+	}
+	for path := range image.Volumes {
+		delete(config.Volumes, path)
+	}
+	var published network.PortMap
+	if options.HostConfig != nil {
+		published = options.HostConfig.PortBindings
+	}
+	dropImagePorts(config.ExposedPorts, image.ExposedPorts, published)
+	return nil
+}
+
+// dropImageCommand drops the image's entrypoint and command from the
+// container's, following Docker's rule that the image's Cmd is filled in
+// only when the container's Entrypoint is empty. An entrypoint set for the
+// container keeps both. With the image's entrypoint, the image's command
+// goes with it; a command of the container's own stays, and the entrypoint
+// goes only when that command is not empty, since an emptied command with no
+// entrypoint would be refilled from the image.
+func dropImageCommand(entrypoint, cmd, imageEntrypoint, imageCmd []string) ([]string, []string) {
+	switch {
+	case !slices.Equal(entrypoint, imageEntrypoint):
+		return entrypoint, cmd
+	case slices.Equal(cmd, imageCmd):
+		return nil, nil
+	case len(cmd) > 0:
+		return nil, cmd
+	default:
+		return entrypoint, cmd
+	}
+}
+
+// dropImageHealthcheck drops from the container's health check each field
+// equal to the image's, as the daemon merges the image's into it field by
+// field; nil when nothing of the container's own is left. A NONE test the
+// container set stays.
+func dropImageHealthcheck(check, image *container.HealthConfig) *container.HealthConfig {
+	if check == nil || image == nil {
+		return check
+	}
+	own := *check
+	if slices.Equal(own.Test, image.Test) && !slices.Equal(own.Test, []string{"NONE"}) {
+		own.Test = nil
+	}
+	if own.Interval == image.Interval {
+		own.Interval = 0
+	}
+	if own.Timeout == image.Timeout {
+		own.Timeout = 0
+	}
+	if own.StartPeriod == image.StartPeriod {
+		own.StartPeriod = 0
+	}
+	if own.StartInterval == image.StartInterval {
+		own.StartInterval = 0
+	}
+	if own.Retries == image.Retries {
+		own.Retries = 0
+	}
+	if reflect.ValueOf(own).IsZero() {
+		return nil
+	}
+	return &own
+}
+
+// dropImagePorts removes from exposed the ports the image declares, except
+// those the container publishes.
+func dropImagePorts(exposed network.PortSet, declared map[string]struct{}, published network.PortMap) {
+	for name := range declared {
+		port, err := network.ParsePort(name)
+		if err != nil {
+			continue
+		}
+		if _, ok := published[port]; !ok {
+			delete(exposed, port)
+		}
+	}
+}
+
 func preserveInspectedMounts(hostConfig *container.HostConfig, mounts []container.MountPoint) error {
 	for _, point := range mounts {
 		if mountTargetConfigured(hostConfig, point.Destination) {
@@ -608,12 +745,26 @@ func standaloneBackupName(containerID string) string {
 // has a health check, healthy. It gives up after containerReadyTimeout, naming
 // the last state it read, and sooner when Docker's restart policy has
 // restarted the container containerRestartLimit times since the first read.
+// A failure of the container itself is a containerFailedError.
 func WaitForContainerReady(
 	ctx context.Context,
 	cli containerReadinessClient,
 	containerID string,
 ) (container.InspectResponse, error) {
-	return waitForContainerReadyWithTiming(ctx, cli, containerID, containerReadyTimeout, containerReadyPoll)
+	return waitForContainerReadyWithTiming(ctx, cli, containerID, containerReadyTimeout, containerReadyPoll, 0)
+}
+
+// waitForReplacementReady is WaitForContainerReady for a container that
+// replaces a running one, where a container without a health check must also
+// have run containerSettleTime since its last start. Elsewhere, such as a
+// stopped container a pass revives, it may be one-shot work that exits within
+// seconds.
+func waitForReplacementReady(
+	ctx context.Context,
+	cli containerReadinessClient,
+	containerID string,
+) (container.InspectResponse, error) {
+	return waitForContainerReadyWithTiming(ctx, cli, containerID, containerReadyTimeout, containerReadyPoll, containerSettleTime)
 }
 
 type containerReadinessClient interface {
@@ -626,6 +777,7 @@ func waitForContainerReadyWithTiming(
 	containerID string,
 	timeout time.Duration,
 	poll time.Duration,
+	settle time.Duration,
 ) (container.InspectResponse, error) {
 	if poll <= 0 {
 		poll = time.Nanosecond
@@ -657,9 +809,9 @@ func waitForContainerReadyWithTiming(
 		// Checked before readiness: a container without a health check is
 		// running, and so would pass, between two crashes.
 		if restarts := inspect.RestartCount - firstRestarts; restarts >= containerRestartLimit {
-			return container.InspectResponse{}, fmt.Errorf("container keeps restarting: %d restarts while waiting, last state %s", restarts, lastState)
+			return container.InspectResponse{}, containerFailedError{fmt.Errorf("container keeps restarting: %d restarts while waiting, last state %s", restarts, lastState)}
 		}
-		ready, terminal, err := containerReady(inspect)
+		ready, terminal, err := containerReady(inspect, time.Now(), settle)
 		switch {
 		case ready:
 			return inspect, nil
@@ -690,8 +842,14 @@ func readinessWaitEnded(ctx context.Context, timeout time.Duration, lastState st
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return fmt.Errorf("container was not ready after %s, last state %s", timeout, lastState)
+	return notReadyInTimeError{fmt.Errorf("container was not ready after %s, last state %s", timeout, lastState)}
 }
+
+// notReadyInTimeError is a readiness wait that ran out of time with the
+// container still coming up: neither ready nor failed.
+type notReadyInTimeError struct{ error }
+
+func (e notReadyInTimeError) Unwrap() error { return e.error }
 
 // describeContainerState puts what an inspection says about a container that
 // is not ready into one phrase: its status, how its last run ended when Docker
@@ -727,12 +885,12 @@ func describeContainerState(inspect container.InspectResponse) string {
 	return description
 }
 
-func containerReady(inspect container.InspectResponse) (ready bool, terminal bool, err error) {
+func containerReady(inspect container.InspectResponse, now time.Time, settle time.Duration) (ready bool, terminal bool, err error) {
 	if inspect.State == nil {
 		return false, true, errors.New("container state is unavailable")
 	}
 	if inspect.State.Dead {
-		return false, true, fmt.Errorf("container state is %q", inspect.State.Status)
+		return false, true, containerFailedError{fmt.Errorf("container state is %q", inspect.State.Status)}
 	}
 	if inspect.State.Paused {
 		return false, true, errors.New("container is paused")
@@ -743,7 +901,7 @@ func containerReady(inspect container.InspectResponse) (ready bool, terminal boo
 	status := strings.ToLower(string(inspect.State.Status))
 	switch status {
 	case "exited", "removing", "dead":
-		return false, true, fmt.Errorf("container state is %q", inspect.State.Status)
+		return false, true, containerFailedError{fmt.Errorf("container state is %q", inspect.State.Status)}
 	case "created", "restarting":
 		return false, false, nil
 	}
@@ -751,13 +909,21 @@ func containerReady(inspect container.InspectResponse) (ready bool, terminal boo
 		return false, false, nil
 	}
 	if inspect.State.Health == nil {
-		return true, false, nil
+		if settle <= 0 {
+			return true, false, nil
+		}
+		// Running proves nothing about a container that crashes a few seconds
+		// after it starts. Docker resets StartedAt on every restart, so this
+		// is "settle with no new restart"; a start time that cannot be read
+		// never settles, and the wait times out naming the state.
+		started, err := time.Parse(time.RFC3339Nano, inspect.State.StartedAt)
+		return err == nil && now.Sub(started) >= settle, false, nil
 	}
 	switch strings.ToLower(string(inspect.State.Health.Status)) {
 	case "healthy":
 		return true, false, nil
 	case "unhealthy":
-		return false, true, fmt.Errorf("container health is %q", inspect.State.Health.Status)
+		return false, true, containerFailedError{fmt.Errorf("container health is %q", inspect.State.Health.Status)}
 	default:
 		return false, false, nil
 	}
@@ -809,3 +975,11 @@ func wrapRollbackError(operation string, err error) error {
 	}
 	return fmt.Errorf("rollback %s: %w", operation, err)
 }
+
+// containerFailedError is a readiness wait that ended because the container
+// failed: it exited or died, turned unhealthy, or kept restarting. A wait
+// that ran out of time, or that could not read the container or tell its
+// state, did not see it fail.
+type containerFailedError struct{ error }
+
+func (e containerFailedError) Unwrap() error { return e.error }

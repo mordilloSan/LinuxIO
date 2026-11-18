@@ -136,6 +136,11 @@ func editConfiguredContainer(
 	if applyErr := applyContainerConfiguration(&options, request.Configuration); applyErr != nil {
 		return apischema.ContainerConfigurationResult{}, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, applyErr)
 	}
+	// The form holds the container's configuration, its image's values
+	// included: those go, so the image the edit names applies its own.
+	if dropErr := dockerupdate.DropImageDefaults(ctx, cli, &options, before.Image); dropErr != nil {
+		return apischema.ContainerConfigurationResult{}, fmt.Errorf("prepare the edit of container %q: %w", request.ContainerID, dropErr)
+	}
 
 	after, err := dockerupdate.ReplaceStandalone(ctx, cli, before, options, journal)
 	if err != nil {

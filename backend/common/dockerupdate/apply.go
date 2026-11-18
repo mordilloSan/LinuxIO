@@ -24,7 +24,12 @@ const (
 	// delay that starts at 100 ms and doubles up to a minute, so a container
 	// that fails as it starts reaches the limit within seconds, and waiting
 	// out the timeout would only watch the same failure more slowly.
-	containerRestartLimit     = 3
+	containerRestartLimit = 3
+	// containerSettleTime is how long a container without a health check
+	// must run since its last start to count as ready: the time after which
+	// Docker's restart policy counts a start as successful and resets its
+	// delay.
+	containerSettleTime       = 10 * time.Second
 	standaloneRollbackTimeout = 30 * time.Second
 )
 
@@ -250,14 +255,14 @@ func newContainerUpdateResult(inspect container.InspectResponse) (DockerContaine
 
 func updateComposeContainerWithProgress(
 	ctx context.Context,
-	cli ContainerClient,
+	cli *client.Client,
 	before container.InspectResponse,
 	target ComposeTarget,
 	service string,
 	result DockerContainerUpdateResult,
 	report progressReporter,
 ) (DockerContainerUpdateResult, error) {
-	updated, err := updateComposeContainerWithRunner(ctx, cli, before, target, service, result, func(
+	updated, err := updateComposeContainerWithRunner(ctx, cli, newComposeRollback(cli), before, target, service, result, func(
 		ctx context.Context,
 		target ComposeTarget,
 		service string,
@@ -272,18 +277,24 @@ func updateComposeContainerWithProgress(
 			reportProgress(report, "verifying", fmt.Sprintf("Verifying Compose service %s", service))
 		}
 		return err
-	})
+	}, report)
 	return updated, err
 }
 
+// updateComposeContainerWithRunner updates service through run (pull and up)
+// and waits for its new container to be ready. One that failed (exited,
+// unhealthy, kept restarting) is rolled back to the image it ran before,
+// unless ctx ended first; one still coming up when the wait ended is not.
 func updateComposeContainerWithRunner(
 	ctx context.Context,
 	cli ContainerClient,
+	rollback composeRollback,
 	before container.InspectResponse,
 	target ComposeTarget,
 	service string,
 	result DockerContainerUpdateResult,
 	run func(context.Context, ComposeTarget, string, ComposeLineEmitter) error,
+	report progressReporter,
 ) (DockerContainerUpdateResult, error) {
 	if err := validateComposeServiceScope(ctx, cli, target.Name, service); err != nil {
 		return result, err
@@ -298,7 +309,22 @@ func updateComposeContainerWithRunner(
 
 	after, err := inspectAndWaitForComposeContainer(ctx, cli, result.ContainerName)
 	if err != nil {
-		return result, fmt.Errorf("verify updated Compose container %q: %w", result.ContainerName, err)
+		verifyErr := fmt.Errorf("verify updated Compose container %q: %w", result.ContainerName, err)
+		if ctx.Err() != nil {
+			// Stopped while it waited: how the new container would have
+			// done is unknown, so it is not rolled back.
+			return result, verifyErr
+		}
+		if refusal := rollbackRefusal(err); refusal != nil {
+			return result, composeUpdateFailure(verifyErr, before.Image, refusal)
+		}
+		reportProgress(report, "rolling_back", fmt.Sprintf("Restoring the previous image of Compose service %s", service))
+		imageRef := normalizedReference(configImage(before))
+		pulledImageID, rollbackErr := rollback.taggedImage(ctx, imageRef)
+		if rollbackErr == nil {
+			_, rollbackErr = rollback.run(ctx, target, imageRef, before.Image, pulledImageID, []composeRollbackService{{Service: service, Container: result.ContainerName}})
+		}
+		return result, composeUpdateFailure(verifyErr, before.Image, rollbackErr)
 	}
 	result.ContainerID = after.ID
 	result.NewImageID = after.Image
@@ -316,7 +342,8 @@ func inspectAndWaitForComposeContainer(
 	if err != nil {
 		return container.InspectResponse{}, fmt.Errorf("inspect updated Compose container %q: %w", name, err)
 	}
-	after, err := WaitForContainerReady(ctx, cli, inspectResult.Container.ID)
+	// A Compose update replaces a running service.
+	after, err := waitForReplacementReady(ctx, cli, inspectResult.Container.ID)
 	if err != nil {
 		return container.InspectResponse{}, err
 	}

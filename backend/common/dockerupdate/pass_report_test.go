@@ -16,6 +16,7 @@ import (
 func TestPassReportSummary(t *testing.T) {
 	updated := ContainerOutcome{Name: "web", NewImageID: "sha256:new"}
 	failed := ContainerOutcome{Name: "proxy", Err: errors.New("container keeps restarting")}
+	rolledBack := ContainerOutcome{Name: "app", Err: rolledBackError{err: errors.New("container health is unhealthy"), to: "image old"}}
 	tests := map[string]struct {
 		report PassReport
 		want   scheduledrun.Summary
@@ -33,6 +34,11 @@ func TestPassReportSummary(t *testing.T) {
 		"updated and failed": {
 			report: PassReport{Mode: "update", Checked: DockerUpdateCheckResult{Checked: 4, Updates: 2}, Containers: []ContainerOutcome{updated, failed}},
 			want:   scheduledrun.Summary{Message: "1 updated, 1 failed", Failures: 1},
+		},
+		// A rolled back update failed, with an alert of its own.
+		"rolled back": {
+			report: PassReport{Mode: "update", Checked: DockerUpdateCheckResult{Checked: 4, Updates: 3}, Containers: []ContainerOutcome{updated, failed, rolledBack}},
+			want:   scheduledrun.Summary{Message: "1 updated, 1 failed, 1 rolled back", Failures: 2},
 		},
 		// Check-only leaves every update waiting, and an updating pass those
 		// of the containers it is not set to update.
@@ -69,15 +75,16 @@ func TestPassReportWriteNamesEachContainer(t *testing.T) {
 		Containers: []ContainerOutcome{
 			{Name: "nginx", Image: "nginx:1.27", OldImageID: "sha256:1a2b3c4d5e6f0000", NewImageID: "sha256:4d5e6f7081920000", OldVersion: "1.27.2", NewVersion: "1.27.3"},
 			{Name: "docker-proxy", Project: "infra", Image: "example/proxy:latest", OldImageID: "sha256:aaaa", Err: errors.New("update Compose project \"infra\":\n pull failed")},
+			{Name: "app", Project: "infra", Image: "example/app:1", OldImageID: "sha256:bbbb", Err: rolledBackError{err: errors.New("container health is \"unhealthy\""), to: "image bbbb"}},
 		},
 	}
 	var out strings.Builder
 	report.Write(&out)
 	lines := strings.Split(strings.TrimRight(out.String(), "\n"), "\n")
-	if len(lines) != 3 {
+	if len(lines) != 4 {
 		t.Fatalf("report = %q, want a totals line and one line per container", out.String())
 	}
-	if lines[0] != "Container updates: 14 checked, 1 updated, 1 failed" {
+	if lines[0] != "Container updates: 14 checked, 1 updated, 1 failed, 1 rolled back" {
 		t.Fatalf("totals = %q", lines[0])
 	}
 	if fields := strings.Join(strings.Fields(lines[1]), " "); fields != "updated nginx nginx:1.27 1.27.2 -> 1.27.3 (1a2b3c4d5e6f -> 4d5e6f708192)" {
@@ -86,6 +93,9 @@ func TestPassReportWriteNamesEachContainer(t *testing.T) {
 	// An error that carries Compose output stays on one journal line.
 	if fields := strings.Join(strings.Fields(lines[2]), " "); fields != `failed docker-proxy (infra) update Compose project "infra": pull failed` {
 		t.Fatalf("failed line = %q", lines[2])
+	}
+	if fields := strings.Join(strings.Fields(lines[3]), " "); fields != `rolled back app (infra) container health is "unhealthy"; rolled back to image bbbb` {
+		t.Fatalf("rolled back line = %q", lines[3])
 	}
 
 	out.Reset()
@@ -105,8 +115,8 @@ func TestContainerOutcomeNamesImageProjectAndVersions(t *testing.T) {
 		Image: "sha256:1a2b3c4d5e6f0000",
 		Config: &container.Config{
 			Image: "nginx:1.27",
-			// A standalone replacement inherits its labels from the container
-			// it replaces, so the container's version label is not read.
+			// A container's labels can name another version than its
+			// image's, so the container's version label is not read.
 			Labels: map[string]string{
 				imageVersionLabel:            "0.9.0",
 				"com.docker.compose.project": "site",

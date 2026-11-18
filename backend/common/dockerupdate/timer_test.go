@@ -239,6 +239,16 @@ func TestRenderDockerUpdateUnitDerivesFromUpdaterUnit(t *testing.T) {
 			t.Errorf("unit file is missing %q:\n%s", want, unit)
 		}
 	}
+	// A stop signals the program alone, which cancels its work but lets a
+	// rollback in progress finish before systemd kills what is left.
+	for _, want := range []string{"KillMode=mixed\n", "TimeoutStopSec=250\n"} {
+		if !strings.Contains(unit, want) {
+			t.Errorf("unit file is missing %q:\n%s", want, unit)
+		}
+	}
+	if dockerUpdateStopTimeout <= composeRollbackTimeout+composeTagTimeout {
+		t.Errorf("stop timeout %v leaves no room for a rollback of %v", dockerUpdateStopTimeout, composeRollbackTimeout)
+	}
 	// The scheduled run hooks live in the packaged drop-in
 	// (linuxio-run-record.conf), never in the rendered unit.
 	if strings.Contains(unit, "scheduled-run") {

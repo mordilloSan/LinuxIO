@@ -7,6 +7,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
@@ -19,6 +20,11 @@ const (
 	dockerUpdateTimerName = "linuxio-docker-update.timer"
 	dockerUpdateUnitPath  = "/etc/systemd/system/" + dockerUpdateUnitName
 	dockerUpdateTimerPath = "/etc/systemd/system/" + dockerUpdateTimerName
+	// dockerUpdateStopTimeout is how long a stop of the pass waits before
+	// systemd kills what is left: with KillMode=mixed a stop signals the
+	// program alone, which cancels its work, while a rollback in progress
+	// (and its `docker compose up`) finishes within composeRollbackTimeout.
+	dockerUpdateStopTimeout = composeRollbackTimeout + time.Minute
 )
 
 type containerUpdateSystemdOps struct {
@@ -121,6 +127,8 @@ Wants=%s
 Type=oneshot
 ExecStart=%s
 TimeoutStartSec=infinity
+KillMode=mixed
+TimeoutStopSec=%d
 NoNewPrivileges=%t
 PrivateTmp=%t
 ProtectHome=%s
@@ -131,6 +139,7 @@ ReadWritePaths=%s
 		strings.Join(unit.Requires, " "),
 		strings.Join(unit.Wants, " "),
 		execStart,
+		int(dockerUpdateStopTimeout.Seconds()),
 		unit.NoNewPrivileges,
 		unit.PrivateTmp,
 		unit.ProtectHome,

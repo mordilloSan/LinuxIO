@@ -303,7 +303,7 @@ func markContainerCurrent(ctx context.Context, oldContainerID string, inspect co
 	}
 
 	if err := mergeUpdateStatuses(ctx, []ImageUpdateStatus{status}, oldContainerID); err != nil {
-		slog.Warn("failed to mark Docker container image current", "component", "docker", "container", inspect.ID, "error", err)
+		slog.Warn("failed to mark the image current for Docker container "+status.ContainerName, "component", "docker", "container", status.ContainerName, "container_id", inspect.ID, "error", err)
 		return
 	}
 	resolveDockerUpdateAlert(ctx, inspect.Name)

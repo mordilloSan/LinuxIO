@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 
 	"github.com/moby/moby/api/types/container"
@@ -22,6 +23,7 @@ type scheduledUpdateState struct {
 	allContainers []container.Summary
 	dependencyCli ContainerClient
 	readiness     containerReadinessClient // inspects a replaced Compose container
+	rollback      composeRollback          // of a Compose service that is not ready
 	dependencies  *standaloneDependencyIndex
 	dependencyErr error
 	dependencySet bool
@@ -48,6 +50,7 @@ func newScheduledUpdateState(ctx context.Context, cli *client.Client) *scheduled
 		registry:      cli,
 		dependencyCli: cli,
 		readiness:     cli,
+		rollback:      newComposeRollback(cli),
 		composeGroups: make(map[string]*scheduledComposeTarget),
 		composeUpdate: composePullAndUpServices,
 	}
@@ -194,10 +197,11 @@ func skipStoppedScheduledContainer(ctx context.Context, inspect container.Inspec
 	if err := markContainerUpdateDeferred(ctx, inspect, reason); err != nil {
 		return true, err
 	}
-	slog.Debug("skipped automatic update for stopped Docker container",
+	name := strings.TrimPrefix(inspect.Name, "/")
+	slog.Debug("skipped automatic update for stopped Docker container "+name,
 		"component", "docker",
 		"subsystem", "update",
-		"container", strings.TrimPrefix(inspect.Name, "/"))
+		"container", name)
 	return true, nil
 }
 
@@ -218,7 +222,7 @@ func (s *scheduledUpdateState) recordStandaloneUpdateOutcome(
 		outcome := s.replaced(before, updated.NewImageID)
 		s.outcomes = append(s.outcomes, outcome)
 		s.oldImageIDs = append(s.oldImageIDs, updated.PreviousImageID)
-		slog.Info("updated standalone Docker container",
+		slog.Info("updated standalone Docker container "+updated.ContainerName,
 			"component", "docker",
 			"subsystem", "update",
 			"container", updated.ContainerName,
@@ -235,7 +239,7 @@ func (s *scheduledUpdateState) recordStandaloneUpdateOutcome(
 		}
 		if updated.Updated {
 			s.errs = append(s.errs, updateErr)
-			slog.Warn("failed to remove standalone Docker rollback container after successful update",
+			slog.Warn("failed to remove the rollback container of updated standalone Docker container "+updated.ContainerName,
 				"component", "docker",
 				"subsystem", "update",
 				"container", updated.ContainerName,
@@ -362,14 +366,30 @@ func (s *scheduledUpdateState) recordComposeGroupError(group *scheduledComposeTa
 	s.errs = append(s.errs, err)
 }
 
+// verifyComposeGroup waits for each updated container of group to be ready,
+// rolls back the images of those that are not, and records each outcome. A
+// pass stopped while it waits records the containers verified so far and
+// rolls back nothing.
 func (s *scheduledUpdateState) verifyComposeGroup(group *scheduledComposeTarget) error {
+	afters := make([]container.InspectResponse, 0, len(group.before))
+	failures := make([]error, 0, len(group.before))
+	var stopped error
 	for _, before := range group.before {
 		after, err := verifyScheduledComposeContainer(s.ctx, s.readiness, before)
-		if err != nil {
-			if ctxErr := s.ctx.Err(); ctxErr != nil {
-				return ctxErr
-			}
-			s.recordCandidateError(before, err)
+		if err != nil && s.ctx.Err() != nil {
+			stopped = s.ctx.Err()
+			break
+		}
+		afters = append(afters, after)
+		failures = append(failures, err)
+	}
+	if stopped == nil {
+		s.rollBackComposeFailures(group, failures)
+	}
+	for i, failure := range failures {
+		before, after := group.before[i], afters[i]
+		if failure != nil {
+			s.recordCandidateError(before, failure)
 			continue
 		}
 		markContainerCurrent(s.ctx, before.ID, after)
@@ -379,7 +399,7 @@ func (s *scheduledUpdateState) verifyComposeGroup(group *scheduledComposeTarget)
 		outcome := s.replaced(before, after.Image)
 		s.outcomes = append(s.outcomes, outcome)
 		s.oldImageIDs = append(s.oldImageIDs, before.Image)
-		slog.Info("updated Compose Docker container",
+		slog.Info("updated Compose Docker container "+outcome.Name,
 			"component", "docker",
 			"subsystem", "update",
 			"project", group.target.Name,
@@ -391,7 +411,110 @@ func (s *scheduledUpdateState) verifyComposeGroup(group *scheduledComposeTarget)
 			"new_version", outcome.NewVersion)
 		raiseDockerUpdatedAlert(s.ctx, s.alertReport, outcome)
 	}
-	return nil
+	return stopped
+}
+
+// rollBackComposeFailures rolls back each tag a service of group failed on
+// (exited, turned unhealthy or kept restarting). The services of the group
+// under that tag, however each spells it, go back together, the ready ones
+// included: one left on the new image while the tag names the old one would
+// be moved back by its next `up`. What each tag names is read before any
+// rollback moves one. When the services under a tag ran different images,
+// one tag cannot take them all back, and none is rolled back; neither is a
+// service that was still coming up when its wait ended (errStillComingUp).
+// failures holds the verify error of each service of group, nil for one that
+// became ready; each failed service, and each ready one a rollback moved,
+// gets its outcome. A pass stopped meanwhile starts no further rollback.
+func (s *scheduledUpdateState) rollBackComposeFailures(group *scheduledComposeTarget, failures []error) {
+	tags, members := composeTags(group)
+	type tagged struct {
+		first   int // the first service that failed on the tag
+		imageID string
+		err     error
+	}
+	failedTags := make(map[string]tagged)
+	for _, ref := range tags {
+		k := slices.IndexFunc(members[ref], func(i int) bool { return errors.As(failures[i], new(containerFailedError)) })
+		if k >= 0 {
+			imageID, err := s.rollback.taggedImage(s.ctx, ref)
+			failedTags[ref] = tagged{first: members[ref][k], imageID: imageID, err: err}
+		}
+	}
+	for _, ref := range tags {
+		tag, failed := failedTags[ref]
+		switch {
+		case !failed:
+			for _, i := range members[ref] {
+				if failures[i] != nil {
+					failures[i] = composeUpdateFailure(failures[i], "", rollbackRefusal(failures[i]))
+				}
+			}
+		case s.ctx.Err() == nil:
+			s.rollBackTag(group, failures, ref, members[ref], tag.first, tag.imageID, tag.err)
+		}
+	}
+}
+
+// composeTags groups the services of group by the tag each runs, normalised,
+// in the group's order.
+func composeTags(group *scheduledComposeTarget) ([]string, map[string][]int) {
+	var tags []string
+	members := make(map[string][]int)
+	for i, before := range group.before {
+		ref := normalizedReference(configImage(before))
+		if _, seen := members[ref]; !seen {
+			tags = append(tags, ref)
+		}
+		members[ref] = append(members[ref], i)
+	}
+	return tags, members
+}
+
+// rollBackTag rolls back the services of group under the tag ref (members),
+// of which first failed, and gives each its outcome in failures.
+// pulledImageID is what the tag named before any rollback, or pulledErr why
+// it could not be read.
+func (s *scheduledUpdateState) rollBackTag(group *scheduledComposeTarget, failures []error, ref string, members []int, first int, pulledImageID string, pulledErr error) {
+	oldImageID, firstFailure := group.before[first].Image, failures[first]
+	var images []string
+	var services []composeRollbackService
+	blocker := -1 // a service under the tag that did not fail itself
+	for _, i := range members {
+		before := group.before[i]
+		if !slices.Contains(images, shortImageID(before.Image)) {
+			images = append(images, shortImageID(before.Image))
+		}
+		services = append(services, composeRollbackService{Service: group.services[i], Container: strings.TrimPrefix(before.Name, "/")})
+		if blocker < 0 && failures[i] != nil && rollbackRefusal(failures[i]) != nil {
+			blocker = i
+		}
+	}
+	changed, rollbackErr := false, pulledErr
+	switch {
+	case rollbackErr != nil:
+	case blocker >= 0:
+		// It may be changing its data, or how it runs is unknown: the old
+		// image must not be started on it.
+		rollbackErr = fmt.Errorf("%w: %s under the same tag had not failed when its wait ended, and may be changing its data", errNotRolledBack, strings.TrimPrefix(group.before[blocker].Name, "/"))
+	case len(images) > 1:
+		rollbackErr = fmt.Errorf("%w: the services under tag %q ran different images (%s)", errNotRolledBack, ref, strings.Join(images, ", "))
+	default:
+		changed, rollbackErr = s.rollback.run(s.ctx, group.target, ref, oldImageID, pulledImageID, services)
+	}
+	for _, i := range members {
+		cause := failures[i]
+		if cause == nil {
+			if !changed {
+				continue // still on the new image, where it was ready
+			}
+			cause = fmt.Errorf("%s runs the same image: %w", strings.TrimPrefix(group.before[first].Name, "/"), firstFailure)
+		}
+		reason := rollbackErr
+		if i == blocker {
+			reason = rollbackRefusal(cause)
+		}
+		failures[i] = composeUpdateFailure(cause, oldImageID, reason)
+	}
 }
 
 func verifyScheduledComposeContainer(

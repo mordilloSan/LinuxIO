@@ -1,6 +1,7 @@
 package dockerupdate
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -12,16 +13,18 @@ import (
 )
 
 // imageVersionLabel is the OCI label an image names its version with. It is
-// read from the image, not from the container: a standalone replacement is
-// created from a copy of the old container's configuration, labels included,
-// so its labels still name the old image's version.
+// read from the image, not from the container, whose labels are its image's
+// merged with its own: a container can set the label itself, and one a
+// standalone update replaced before it dropped the old image's labels still
+// carries that image's version.
 const imageVersionLabel = "org.opencontainers.image.version"
 
 // passSkippedBusy is why a pass that found the update lock held did no work.
 const passSkippedBusy = "another Docker update was running"
 
 // ContainerOutcome is what a scheduled pass did to one container: it replaced
-// it, or failed to and raised the container's alert.
+// it, or failed to, and maybe rolled the failure back, and raised the
+// container's alert.
 type ContainerOutcome struct {
 	Name       string
 	Project    string // the Compose project; empty for a standalone container
@@ -30,7 +33,7 @@ type ContainerOutcome struct {
 	NewImageID string // empty for a failed update
 	OldVersion string // the image's version label; empty when it has none
 	NewVersion string
-	Err        error // why the update failed; nil for a replaced container
+	Err        error // why the update failed, a rolledBackError when it was rolled back; nil for a replaced container
 }
 
 // outcomeBefore starts the outcome of a container from its inspection before
@@ -86,15 +89,26 @@ type PassReport struct {
 	Containers []ContainerOutcome
 }
 
-func (r PassReport) counts() (updated, failed int) {
+// counts tells the containers the pass replaced, those it failed to, and
+// those whose failed update it rolled back.
+func (r PassReport) counts() (updated, failed, rolledBack int) {
 	for _, outcome := range r.Containers {
-		if outcome.Err != nil {
+		switch {
+		case outcome.rolledBack():
+			rolledBack++
+		case outcome.Err != nil:
 			failed++
-		} else {
+		default:
 			updated++
 		}
 	}
-	return updated, failed
+	return updated, failed, rolledBack
+}
+
+// rolledBack reports whether the container's update failed and was rolled
+// back to the image it ran before.
+func (o ContainerOutcome) rolledBack() bool {
+	return errors.As(o.Err, new(rolledBackError))
 }
 
 // Summary is the one line the history shows for the pass; ok is false for a
@@ -106,13 +120,16 @@ func (r PassReport) Summary() (summary scheduledrun.Summary, ok bool) {
 	if r.Mode == "" && len(r.Containers) == 0 {
 		return scheduledrun.Summary{}, false
 	}
-	updated, failed := r.counts()
+	updated, failed, rolledBack := r.counts()
 	var parts []string
 	if updated > 0 {
 		parts = append(parts, fmt.Sprintf("%d updated", updated))
 	}
 	if failed > 0 {
 		parts = append(parts, fmt.Sprintf("%d failed", failed))
+	}
+	if rolledBack > 0 {
+		parts = append(parts, fmt.Sprintf("%d rolled back", rolledBack))
 	}
 	if r.Checked.Errors > 0 {
 		parts = append(parts, fmt.Sprintf("%d could not be checked", r.Checked.Errors))
@@ -121,13 +138,14 @@ func (r PassReport) Summary() (summary scheduledrun.Summary, ok bool) {
 	// it in check-only mode, and in update mode the updates of containers it
 	// is not set to update. A pass that replaced or failed a container does
 	// not say: a failed container may or may not be one the check counted.
-	if updated == 0 && failed == 0 && r.Checked.Updates > 0 {
+	if updated == 0 && failed == 0 && rolledBack == 0 && r.Checked.Updates > 0 {
 		parts = append(parts, fmt.Sprintf("%d waiting", r.Checked.Updates))
 	}
 	if len(parts) == 0 {
 		return scheduledrun.Summary{Message: "Nothing to update"}, true
 	}
-	return scheduledrun.Summary{Message: strings.Join(parts, ", "), Failures: failed}, true
+	// A rolled back update failed, and raised its alert.
+	return scheduledrun.Summary{Message: strings.Join(parts, ", "), Failures: failed + rolledBack}, true
 }
 
 // Write prints the pass for the run's output: a line of totals, then one line
@@ -156,7 +174,11 @@ func (r PassReport) Write(w io.Writer) {
 		if outcome.Project != "" {
 			name += " (" + outcome.Project + ")"
 		}
-		if outcome.Err != nil {
+		switch {
+		case outcome.rolledBack():
+			fmt.Fprintf(table, "  rolled back\t%s\t%s\n", name, singleLine(outcome.Err.Error()))
+			continue
+		case outcome.Err != nil:
 			fmt.Fprintf(table, "  failed\t%s\t%s\n", name, singleLine(outcome.Err.Error()))
 			continue
 		}

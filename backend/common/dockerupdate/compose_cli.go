@@ -3,6 +3,7 @@ package dockerupdate
 import (
 	"bufio"
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -126,6 +128,28 @@ func humanizeComposeProgress(p *ComposeProgress) string {
 	return line
 }
 
+// composeStopDelay is how long a cancelled `docker compose` has to stop what
+// it started before it is killed.
+const composeStopDelay = 10 * time.Second
+
+// composeCommand is the `docker` command with args (composeCommandArgs), run
+// in target's working folder and environment. A cancelled ctx sends it
+// SIGTERM, which Compose answers by stopping cleanly, as it did when
+// systemd's stop of the pass reached it directly (the unit now signals the
+// program alone, KillMode=mixed), and kills it after composeStopDelay.
+func composeCommand(ctx context.Context, target ComposeTarget, args []string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "docker", args...)
+	cmd.Cancel = func() error { return cmd.Process.Signal(syscall.SIGTERM) }
+	cmd.WaitDelay = composeStopDelay
+	if target.IsolateEnvironment {
+		cmd.Env = composeCommandEnvironment()
+	}
+	if target.WorkingDir != "" {
+		cmd.Dir = target.WorkingDir
+	}
+	return cmd
+}
+
 func composeCommandArgs(target ComposeTarget, args ...string) ([]string, error) {
 	if strings.TrimSpace(target.Name) == "" {
 		return nil, fmt.Errorf("compose project name is empty")
@@ -166,13 +190,7 @@ func RunComposeProject(ctx context.Context, target ComposeTarget, emitter Compos
 		return err
 	}
 
-	cmd := exec.CommandContext(ctx, "docker", baseArgs...)
-	if target.IsolateEnvironment {
-		cmd.Env = composeCommandEnvironment()
-	}
-	if target.WorkingDir != "" {
-		cmd.Dir = target.WorkingDir
-	}
+	cmd := composeCommand(ctx, target, baseArgs)
 
 	// Merge stdout and stderr so we capture all output in order.
 	cmd.Stdout = nil
@@ -278,6 +296,52 @@ func composePullServices(ctx context.Context, target ComposeTarget, services []s
 			return err
 		}
 	}
+}
+
+// composeUpFromLocalImages brings services up on the images the host holds
+// and pulls none, whatever their pull_policy says: a rollback must not fetch
+// again the image it undoes.
+func composeUpFromLocalImages(ctx context.Context, target ComposeTarget, services []string, emitter ComposeLineEmitter) error {
+	return RunComposeProject(ctx, target, emitter, append([]string{"up", "-d", "--no-deps", "--pull", "never"}, services...)...)
+}
+
+// composeServiceSettingsOf reads services of target as Compose resolves them
+// from the project's files, environment files and overrides
+// (`docker compose config --format json <services>`). The services are named,
+// since Compose leaves out a service of a profile that is not active unless it
+// is named. Compose writes its warnings to stderr, so only stdout is read as
+// the configuration.
+func composeServiceSettingsOf(ctx context.Context, target ComposeTarget, services []string) (map[string]composeServiceSettings, error) {
+	args, err := composeCommandArgs(target, append([]string{"config", "--format", "json"}, services...)...)
+	if err != nil {
+		return nil, err
+	}
+	cmd := composeCommand(ctx, target, args)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("read Compose project %q configuration: %w: %s", target.Name, err, strings.TrimSpace(stderr.String()))
+	}
+	var config struct {
+		Services map[string]struct {
+			Image      string         `json:"image"`
+			PullPolicy string         `json:"pull_policy"`
+			Build      jsontext.Value `json:"build"`
+		} `json:"services"`
+	}
+	if err := json.Unmarshal(out, &config); err != nil {
+		return nil, fmt.Errorf("decode Compose project %q configuration: %w", target.Name, err)
+	}
+	settings := make(map[string]composeServiceSettings, len(config.Services))
+	for name, service := range config.Services {
+		settings[name] = composeServiceSettings{
+			Image:      service.Image,
+			PullPolicy: service.PullPolicy,
+			Build:      len(service.Build) > 0 && string(service.Build) != "null",
+		}
+	}
+	return settings, nil
 }
 
 func validateComposeUpdateInputs(ctx context.Context, target ComposeTarget, emitter ComposeLineEmitter) error {

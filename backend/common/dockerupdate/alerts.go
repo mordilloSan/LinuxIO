@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -43,9 +44,9 @@ func dockerUpdateAlertKey(containerName string) string {
 }
 
 // raiseDockerUpdateAlert records a failed scheduled update whatever the
-// notification settings say: a failure is always reported. imageRef, when
-// known, is named after the reason. Best effort: failures are logged, never
-// returned.
+// notification settings say: a failure is always reported. Its title says
+// when the update was rolled back. imageRef, when known, is named after the
+// reason. Best effort: failures are logged, never returned.
 func raiseDockerUpdateAlert(ctx context.Context, containerName, imageRef string, err error) {
 	name := strings.TrimPrefix(containerName, "/")
 	sum := sha256.Sum256([]byte(err.Error()))
@@ -53,17 +54,21 @@ func raiseDockerUpdateAlert(ctx context.Context, containerName, imageRef string,
 	if imageRef != "" {
 		message += " (image " + imageRef + ")"
 	}
+	title := "Docker update failed: " + name
+	if errors.As(err, new(rolledBackError)) {
+		title = "Docker update rolled back: " + name
+	}
 	obs := alerts.Observation{
 		Source:       dockerUpdateAlertSource,
 		Key:          dockerUpdateFailedKeyPrefix + dockerUpdateAlertKey(name),
 		Severity:     alerts.SeverityError,
-		Title:        "Docker update failed: " + name,
+		Title:        title,
 		Message:      message,
 		Link:         dockerUpdateAlertLink,
 		OccurrenceID: hex.EncodeToString(sum[:]),
 	}
 	if raiseErr := alerts.Raise(ctx, obs); raiseErr != nil {
-		slog.Warn("failed to record Docker update alert", "component", "docker", "container", name, "error", raiseErr)
+		slog.Warn("failed to record Docker update alert for container "+name, "component", "docker", "container", name, "error", raiseErr)
 	}
 }
 
@@ -86,7 +91,7 @@ func raiseDockerUpdatedAlert(ctx context.Context, alertReport string, outcome Co
 		OccurrenceID: outcome.NewImageID,
 	}
 	if err := alerts.Raise(ctx, obs); err != nil {
-		slog.Warn("failed to record Docker updated alert", "component", "docker", "container", name, "error", err)
+		slog.Warn("failed to record Docker updated alert for container "+name, "component", "docker", "container", name, "error", err)
 	}
 }
 
@@ -122,7 +127,7 @@ func syncAvailableAlerts(ctx context.Context, statuses []ImageUpdateStatus, want
 		key := dockerUpdateAvailableKeyPrefix + dockerUpdateAlertKey(name)
 		if !wanted || status.CheckState != DockerUpdateCheckStateAvailable {
 			if err := alerts.Resolve(ctx, dockerUpdateAlertSource, key); err != nil {
-				slog.Debug("failed to clear Docker update available alert", "component", "docker", "container", name, "error", err)
+				slog.Debug("failed to clear Docker update available alert for container "+name, "component", "docker", "container", name, "error", err)
 			}
 			continue
 		}
@@ -136,7 +141,7 @@ func syncAvailableAlerts(ctx context.Context, statuses []ImageUpdateStatus, want
 			OccurrenceID: status.RemoteDigest,
 		}
 		if err := alerts.Raise(ctx, obs); err != nil {
-			slog.Warn("failed to record Docker update available alert", "component", "docker", "container", name, "error", err)
+			slog.Warn("failed to record Docker update available alert for container "+name, "component", "docker", "container", name, "error", err)
 		}
 	}
 }
@@ -169,7 +174,7 @@ func syncCheckAlerts(ctx context.Context, statuses []ImageUpdateStatus) {
 			OccurrenceID: "failing",
 		}
 		if err := alerts.Raise(ctx, obs); err != nil {
-			slog.Warn("failed to record Docker update check alert", "component", "docker", "container", name, "error", err)
+			slog.Warn("failed to record Docker update check alert for container "+name, "component", "docker", "container", name, "error", err)
 		}
 	}
 	doc, err := alerts.Load()
@@ -202,10 +207,10 @@ func resolveDockerUpdateAlert(ctx context.Context, containerName string) {
 	name := strings.TrimPrefix(containerName, "/")
 	for _, key := range []string{dockerUpdateFailedKeyPrefix + dockerUpdateAlertKey(name), dockerUpdateAvailableKeyPrefix + dockerUpdateAlertKey(name)} {
 		if err := alerts.Resolve(ctx, dockerUpdateAlertSource, key); err != nil {
-			slog.Debug("failed to clear Docker update alert", "component", "docker", "container", name, "error", err)
+			slog.Debug("failed to clear Docker update alert for container "+name, "component", "docker", "container", name, "error", err)
 		}
 	}
 	if err := alerts.Resolve(ctx, dockerCheckAlertSource, dockerUpdateAlertKey(name)); err != nil {
-		slog.Debug("failed to clear Docker update check alert", "component", "docker", "container", name, "error", err)
+		slog.Debug("failed to clear Docker update check alert for container "+name, "component", "docker", "container", name, "error", err)
 	}
 }
