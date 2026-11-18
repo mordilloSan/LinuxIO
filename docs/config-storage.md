@@ -86,7 +86,9 @@ default the backend changes later therefore reaches every user who has not
 chosen a value of their own. A file written before this rule holds every field
 and keeps holding them, so those users keep the defaults of the day they
 saved until their next save, which prunes the file. An invalid UI document is
-replaced with `{}` and expanded over backend UI defaults when read. Core and UI updates remain independent: they have separate
+replaced with `{}` and expanded over backend UI defaults when read. A theme
+colour key LinuxIO has removed does not make the document invalid: the read
+skips it and the next save drops it. Core and UI updates remain independent: they have separate
 locks, snapshots, validation, and atomic whole-file replacement.
 
 ## Defaults

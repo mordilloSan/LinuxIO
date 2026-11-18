@@ -66,6 +66,9 @@ func TestThemeColorDefsAreUniqueWithValidDefaults(t *testing.T) {
 		require.False(t, seen[key], key)
 		seen[key] = true
 	}
+	for _, key := range removedThemeColorKeys {
+		require.False(t, seen[key], "removed key %s is still a theme colour", key)
+	}
 	defaults := defaultThemeColors()
 	for _, colors := range []ThemeColors{defaults.Light, defaults.Dark} {
 		for key, color := range colors {

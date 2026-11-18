@@ -3395,7 +3395,6 @@ export type ThemeColorKey =
   | "chartTx"
   | "chartNeutral"
   | "fileBrowserSurface"
-  | "fileBrowserChrome"
   | "fileBrowserBreadcrumbBackground"
   | "fileBrowserBreadcrumbText";
 

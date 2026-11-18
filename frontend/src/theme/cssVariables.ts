@@ -120,7 +120,6 @@ export function getThemeCssVariables(theme: AppTheme): Record<string, string> {
     "--app-code-inset-background": theme.codeBlock.insetBackground,
     "--app-pane-picture-background": theme.pane.pictureBackground,
     "--app-file-browser-surface": theme.fileBrowser.surface,
-    "--app-file-browser-chrome": theme.fileBrowser.chrome,
     "--app-file-browser-breadcrumb-background":
       theme.fileBrowser.breadcrumbBackground,
     "--app-file-browser-breadcrumb-text": theme.fileBrowser.breadcrumbText,

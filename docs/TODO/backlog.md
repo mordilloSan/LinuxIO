@@ -52,11 +52,6 @@ after a change that issues ioctls).
 
 Do one of these only when something shows it is needed.
 
-- The theme colour `fileBrowserChrome` ("chrome" in `theme.fileBrowser`,
-  `--app-file-browser-chrome`) colours nothing: its last reader was the
-  breadcrumb's size chip, which is gone. Settings still offers it. Remove it
-  from the theme, the colour editor and `userconfig/themecolors.go`, or give
-  it a surface to colour.
 - The file browser's card-size slider changes how wide a card may get, and so
   how many fit in a row; the icon and the card's height stay. Scale those too
   if a size step should look like one in a file manager. On a screen too

@@ -570,8 +570,10 @@ any omitted UI field it resolves to the backend default on the next read; an
 invalid colour is refused, and a key that is not a theme colour is refused
 with 400 by the handler, because a map lets the request decoder accept any
 key. `ui.yaml` is read over the defaults: a key replaces that colour, a
-`null` key or scheme unsets it (the bridge itself never writes one), and an
-unknown key or scheme fails the strict decode.
+`null` key or scheme unsets it (the bridge itself never writes one), a key
+listed in `removedThemeColorKeys` (a colour LinuxIO has since removed) is
+skipped so an older file still loads and the next save drops it, and any
+other unknown key or scheme fails the strict decode.
 
 `system.get_capabilities` uses the same pattern: its result is a map from
 `CapabilityName` to `CapabilityStatus`. Its names live in the capability

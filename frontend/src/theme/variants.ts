@@ -37,7 +37,6 @@ const defaultVariant: VariantType = {
   },
   fileBrowser: {
     surface: "#FFFFFF",
-    chrome: "#253137",
     breadcrumbBackground: "#D0D4D8",
     breadcrumbText: "#5A5A5A",
   },
@@ -110,7 +109,6 @@ const darkVariant: VariantType = {
   },
   fileBrowser: {
     surface: "#20292F",
-    chrome: "#253137",
     breadcrumbBackground: "#283136",
     breadcrumbText: "#FFFFFF",
   },
@@ -178,7 +176,6 @@ interface VariantType {
   };
   fileBrowser: {
     surface: string;
-    chrome: string;
     breadcrumbBackground: string;
     breadcrumbText: string;
   };

@@ -171,12 +171,6 @@ function ThemeColorsSection() {
         effectiveColor: editTheme.fileBrowser.surface,
       },
       {
-        key: "fileBrowserChrome",
-        label: "File chrome",
-        description: "Quick actions and filebrowser chrome",
-        effectiveColor: editTheme.fileBrowser.chrome,
-      },
-      {
         key: "fileBrowserBreadcrumbBackground",
         label: "Breadcrumb bg",
         description: "Filebrowser breadcrumb background",
