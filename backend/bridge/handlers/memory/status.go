@@ -10,6 +10,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 	"github.com/mordilloSan/LinuxIO/backend/bridge/handlers/power"
 	"github.com/mordilloSan/LinuxIO/backend/common/hostcmd"
+	"github.com/mordilloSan/LinuxIO/backend/common/systemd"
 )
 
 // zramCommand is the zram-tools script whose presence means zram-tools is
@@ -23,35 +24,67 @@ var ZramGeneratorPath = "/usr/lib/systemd/system-generators/zram-generator"
 // CheckZramAvailability reports whether a tool that sets zram up is
 // installed: this is the zram capability.
 func CheckZramAvailability() (bool, error) {
-	if host.zramProvider() == "" {
+	if tools, generator := host.zramToolsInstalled(); !tools && !generator {
 		return false, errors.New("neither zram-tools nor zram-generator is installed")
 	}
 	return true, nil
 }
 
-// zramProvider is the installed tool that sets zram up; zram-tools when both
-// are installed, as on a host that had it before. zramswap is in /usr/sbin,
-// which the bridge's PATH may omit.
-func (h hostRoot) zramProvider() apischema.ZramProvider {
-	if _, err := hostcmd.LookPath(zramCommand); err == nil {
-		return apischema.ZramProviderTools
-	}
-	if h.exists(ZramGeneratorPath) {
+// zramToolsInstalled reports whether zram-tools and zram-generator are
+// installed. zramswap is in /usr/sbin, which the bridge's PATH may omit.
+func (h hostRoot) zramToolsInstalled() (tools, generator bool) {
+	_, err := hostcmd.LookPath(zramCommand)
+	return err == nil, h.exists(ZramGeneratorPath)
+}
+
+// zramProvider is the installed tool that sets zram up. With both installed
+// it is the one whose unit runs zram now: zram-generator when systemd reads
+// its setup service for zram0 active and zramswap.service not, zram-tools
+// otherwise, as when neither runs or a state cannot be read.
+func (h hostRoot) zramProvider(ctx context.Context, activeState func(context.Context, string) (string, error)) apischema.ZramProvider {
+	tools, generator := h.zramToolsInstalled()
+	switch {
+	case generator && (!tools || generatorRunsZram(ctx, activeState)):
 		return apischema.ZramProviderGenerator
+	case tools:
+		return apischema.ZramProviderTools
+	default:
+		return ""
 	}
-	return ""
+}
+
+// generatorRunsZram reports whether systemd reads zram-generator's setup
+// service for zram0 active and zramswap.service not active. A state that
+// cannot be read is no proof.
+func generatorRunsZram(ctx context.Context, activeState func(context.Context, string) (string, error)) bool {
+	setup, err := activeState(ctx, zramGeneratorSetupUnit)
+	if err != nil {
+		slog.Debug("read unit state failed", "unit", zramGeneratorSetupUnit, "error", err)
+		return false
+	}
+	if setup != "active" {
+		return false
+	}
+	tools, err := activeState(ctx, zramService)
+	if err != nil {
+		slog.Debug("read unit state failed", "unit", zramService, "error", err)
+		return false
+	}
+	return tools != "active"
 }
 
 // GetSwapStatus reads how the host handles running out of memory from files
-// under /proc, /sys and /etc, and asks TuneD over D-Bus whether it is
-// running; TuneD counts as inactive when it cannot be asked.
+// under /proc, /sys and /etc, and asks over D-Bus whether TuneD is running
+// and, with both zram tools installed, which one systemd runs zram with;
+// TuneD counts as inactive, and zram-tools as the provider, when they cannot
+// be asked.
 func GetSwapStatus(ctx context.Context) (apischema.SwapStatus, error) {
 	return host.status(ctx)
 }
 
 // status is GetSwapStatus for the host under the root.
 func (h hostRoot) status(ctx context.Context) (apischema.SwapStatus, error) {
-	status, err := h.readSwapStatus(h.zramProvider())
+	status, err := h.readSwapStatus(h.zramProvider(ctx, systemd.GetActiveState))
 	if err != nil {
 		return apischema.SwapStatus{}, err
 	}
@@ -157,16 +190,16 @@ func (h hostRoot) describeSwapFiles(devices []apischema.SwapDevice, mounts []mou
 			continue
 		}
 		mount, _ := mountHolding(mounts, device.Path)
-		devices[i].FSType, devices[i].DiskHint = mount.fsType, h.diskHint(mount.source)
+		devices[i].FSType, devices[i].DiskHint = mount.fsType, h.diskHint(mount)
 	}
 	return devices
 }
 
-// statusSwapFile is the swap file the status reports: the first one fstab
-// names, active when /proc/swaps holds it, and managed, since its unit can
-// be stopped, masked and started, unless others can change its path; or
-// else the first active one, which is not managed. It is nil when there is
-// none.
+// statusSwapFile is the swap file the status reports: the one fstab names
+// that LinuxIO manages (see fstabSwapFile), active when /proc/swaps holds it,
+// and managed, since its unit can be stopped, masked and started, unless
+// others can change its path; or else the first active one, which is not
+// managed. It is nil when there is none.
 func (h hostRoot) statusSwapFile(fstab []fstabSwap, devices []apischema.SwapDevice, mounts []mountEntry) *apischema.SwapFile {
 	var file apischema.SwapFile
 	if entry, ok := fstabSwapFile(fstab); ok {
@@ -182,7 +215,7 @@ func (h hostRoot) statusSwapFile(fstab []fstabSwap, devices []apischema.SwapDevi
 		file.Path, file.Active, file.UnmanagedReason = devices[i].Path, true, apischema.SwapFileNotInFstab
 	}
 	mount, _ := mountHolding(mounts, file.Path)
-	file.FSType, file.DiskHint = mount.fsType, h.diskHint(mount.source)
+	file.FSType, file.DiskHint = mount.fsType, h.diskHint(mount)
 	return &file
 }
 

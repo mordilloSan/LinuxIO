@@ -58,7 +58,7 @@ func (e *executor) drainSwap(ctx context.Context) (apischema.SwapStatus, error) 
 		devices = append(devices, target.device)
 	}
 	slog.Info("swap drained", "devices", devices)
-	return e.sys.status(ctx)
+	return e.statusAfterChange(ctx)
 }
 
 // drainTargets are the managed fstab entries active as a disk swap device

@@ -28,6 +28,48 @@ func TestSetSwappinessWritesLiveThenTheDropIn(t *testing.T) {
 	}
 }
 
+// The status after the change is read again when a read fails, as one that
+// races a zram device leaving: the change was made and the request
+// succeeds.
+func TestSetSwappinessReadsTheStatusAgainAfterTheChange(t *testing.T) {
+	_, sys := diskHost(t)
+	sys.after = func(call string) {
+		if call == "write "+sysctlDropInPath {
+			sys.statusFails = 2
+		}
+	}
+
+	got, err := sys.executor(nil).setSwappiness(t.Context(), 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Swappiness != 100 {
+		t.Errorf("status swappiness = %d, want 100", got.Swappiness)
+	}
+}
+
+// A status that still cannot be read fails the request with an error that
+// says the change was made, and nothing is undone.
+func TestSetSwappinessSaysTheChangeWasMadeWhenTheStatusCannotBeRead(t *testing.T) {
+	f, sys := diskHost(t)
+	sys.after = func(call string) {
+		if call == "write "+sysctlDropInPath {
+			sys.statusFails = 1000
+		}
+	}
+
+	_, err := sys.executor(nil).setSwappiness(t.Context(), 100)
+	if !errors.Is(err, errStatusRace) || !strings.Contains(err.Error(), "was made") {
+		t.Fatalf("err = %v, want the read error and that the change was made", err)
+	}
+	if got := f.param(swappinessParam); got != "100" {
+		t.Errorf("swappiness = %q, want 100 kept", got)
+	}
+	if got := f.read(sysctlDropInPath); !strings.Contains(got, "vm.swappiness = 100") {
+		t.Errorf("drop-in = %q, want swappiness 100 kept", got)
+	}
+}
+
 func TestSetSwappinessRange(t *testing.T) {
 	for _, value := range []int{0, 200} {
 		_, sys := diskHost(t)

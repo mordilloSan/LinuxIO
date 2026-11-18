@@ -53,9 +53,15 @@ type fakeSystem struct {
 	ignoredStarts map[string]int
 	// fileStates are unit file states; a unit not listed is "disabled".
 	fileStates map[string]string
+	// statusFails is how many status reads still fail with errStatusRace.
+	statusFails int
 	// after runs after a recorded call succeeds.
 	after func(call string)
 }
+
+// errStatusRace is a status read that races the change, as one that lists a
+// zram device and finds its files gone.
+var errStatusRace = errors.New("read zram devices: zram0 left while it was read")
 
 const (
 	zramSwapsLine     = "/dev/zram0                              partition\t8154200\t\t0\t\t100\n"
@@ -125,6 +131,10 @@ func (s *fakeSystem) unitDo(ctx context.Context, call string, effect func() erro
 }
 
 func (s *fakeSystem) status(context.Context) (apischema.SwapStatus, error) {
+	if s.statusFails > 0 {
+		s.statusFails--
+		return apischema.SwapStatus{}, errStatusRace
+	}
 	status, err := s.f.host().readSwapStatus(s.provider)
 	if err != nil {
 		return apischema.SwapStatus{}, err

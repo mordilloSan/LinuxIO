@@ -70,6 +70,17 @@ func sysctlKey(name string) string {
 	return "vm." + name
 }
 
+// heldSysctls is the vm sysctls, by file name, that drop-in entries set.
+func heldSysctls(entries []sysctlEntry) map[string]bool {
+	held := map[string]bool{}
+	for _, entry := range entries {
+		if name, ok := strings.CutPrefix(entry.key, "vm."); ok {
+			held[name] = true
+		}
+	}
+	return held
+}
+
 // renderSysctlDropIn is the drop-in holding entries, in order.
 func renderSysctlDropIn(entries []sysctlEntry) []byte {
 	var b strings.Builder

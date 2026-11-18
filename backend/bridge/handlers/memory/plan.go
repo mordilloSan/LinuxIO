@@ -19,9 +19,9 @@ type swapStep struct {
 	unit, path string
 }
 
-// managedSwapFile is the swap file fstab names, the only one with a unit a
-// change can stop, mask or start. One others can redirect is returned as
-// not managed.
+// managedSwapFile is the one swap file fstab names that a change stops,
+// masks or starts (see fstabSwapFile). One others can redirect is returned
+// as not managed.
 func (v swapView) managedSwapFile() (fstabSwap, bool) {
 	file, ok := fstabSwapFile(v.fstab)
 	return file, ok && !file.othersCanWrite

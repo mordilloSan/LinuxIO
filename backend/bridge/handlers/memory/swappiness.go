@@ -58,7 +58,7 @@ func (e *executor) setSwappiness(ctx context.Context, value int) (apischema.Swap
 		return apischema.SwapStatus{}, errors.Join(err, e.restoreSwappiness(param, previous), savedDropIn.restore(e.sys))
 	}
 	slog.Info("swappiness changed", "swappiness", value, "previous", previous)
-	return e.sys.status(ctx)
+	return e.statusAfterChange(ctx)
 }
 
 // persistSwappiness checks that the live value reads back, then writes it

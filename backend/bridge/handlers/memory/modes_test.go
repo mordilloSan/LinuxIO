@@ -152,6 +152,42 @@ func TestModePresets(t *testing.T) {
 	}
 }
 
+// A mode that does not set a sysctl zram sets writes its kernel default live
+// only where LinuxIO's drop-in held the key, so the value is LinuxIO's, and
+// the live value is still zram's.
+func TestLiveSysctls(t *testing.T) {
+	zramLive := apischema.SwapStatus{WatermarkScaleFactor: 125}
+	held := map[string]bool{sysctlPageCluster: true, sysctlWatermarkBoostFactor: true, sysctlWatermarkScaleFactor: true}
+	defaults := []sysctlSetting{{name: sysctlSwappiness, value: 60}, {name: sysctlPageCluster, value: 3},
+		{name: sysctlWatermarkBoostFactor, value: 15000}, {name: sysctlWatermarkScaleFactor, value: 10}}
+	tests := []struct {
+		name   string
+		mode   apischema.SwapMode
+		status apischema.SwapStatus
+		held   map[string]bool
+		want   []sysctlSetting
+	}{
+		{name: "leaving LinuxIO's zram values", mode: apischema.SwapModeDisk, status: zramLive, held: held, want: defaults},
+		{name: "an admin's values that match zram", mode: apischema.SwapModeZswap, status: zramLive,
+			want: defaults[:1]},
+		{name: "one key held", mode: apischema.SwapModeDisk, status: zramLive, held: map[string]bool{sysctlPageCluster: true},
+			want: defaults[:2]},
+		{name: "a held key the admin changed live", mode: apischema.SwapModeDisk,
+			status: apischema.SwapStatus{PageCluster: 5, WatermarkScaleFactor: 125}, held: held,
+			want: []sysctlSetting{defaults[0], defaults[2], defaults[3]}},
+		{name: "zram sets its own", mode: apischema.SwapModeZram, status: zramLive, held: held,
+			want: []sysctlSetting{{name: sysctlSwappiness, value: 180}, {name: sysctlPageCluster, value: 0},
+				{name: sysctlWatermarkBoostFactor, value: 0}, {name: sysctlWatermarkScaleFactor, value: 125}}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := liveSysctls(test.mode, test.status, test.held); !slices.Equal(got, test.want) {
+				t.Errorf("liveSysctls = %+v, want %+v", got, test.want)
+			}
+		})
+	}
+}
+
 func TestDrainBlockedReason(t *testing.T) {
 	tests := []struct {
 		name         string

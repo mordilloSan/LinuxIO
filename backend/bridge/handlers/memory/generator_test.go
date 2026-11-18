@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -30,8 +31,9 @@ func TestRenderZramGeneratorConfig(t *testing.T) {
 	}
 }
 
-// zram-tools wins when both are installed; the generator is found by its
-// file under the root.
+// The provider is the tool installed, the generator found by its file under
+// the root. With both installed it is the one whose unit runs zram now, and
+// zram-tools when neither does or systemd cannot be asked.
 func TestZramProvider(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	sbinDir := t.TempDir()
@@ -39,19 +41,50 @@ func TestZramProvider(t *testing.T) {
 	hostcmd.SearchDirs = []string{sbinDir}
 	t.Cleanup(func() { hostcmd.SearchDirs = savedDirs })
 	f := newFixture(t)
+	var states map[string]string
+	var stateErrs map[string]error
+	activeState := func(_ context.Context, unit string) (string, error) {
+		if err := stateErrs[unit]; err != nil {
+			return "", err
+		}
+		if state, ok := states[unit]; ok {
+			return state, nil
+		}
+		return "inactive", nil
+	}
+	provider := func() apischema.ZramProvider { return f.host().zramProvider(t.Context(), activeState) }
 
-	if got := f.host().zramProvider(); got != "" {
+	if got := provider(); got != "" {
 		t.Fatalf("provider = %q, want none", got)
 	}
 	f.write(ZramGeneratorPath, "")
-	if got := f.host().zramProvider(); got != apischema.ZramProviderGenerator {
+	if got := provider(); got != apischema.ZramProviderGenerator {
 		t.Fatalf("provider = %q, want zram-generator", got)
 	}
 	if err := os.WriteFile(filepath.Join(sbinDir, zramCommand), []byte("#!/bin/sh\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if got := f.host().zramProvider(); got != apischema.ZramProviderTools {
-		t.Fatalf("provider = %q, want zram-tools when both are installed", got)
+	noBus := errors.New("no system bus")
+	for _, test := range []struct {
+		name      string
+		states    map[string]string
+		stateErrs map[string]error
+		want      apischema.ZramProvider
+	}{
+		{name: "the generator runs zram0", states: map[string]string{zramGeneratorSetupUnit: "active"}, want: apischema.ZramProviderGenerator},
+		{name: "zram-tools runs zram", states: map[string]string{zramService: "active"}, want: apischema.ZramProviderTools},
+		{name: "both run", states: map[string]string{zramGeneratorSetupUnit: "active", zramService: "active"}, want: apischema.ZramProviderTools},
+		{name: "neither runs", want: apischema.ZramProviderTools},
+		{name: "the setup service cannot be read", stateErrs: map[string]error{zramGeneratorSetupUnit: noBus}, want: apischema.ZramProviderTools},
+		{name: "zramswap.service cannot be read", states: map[string]string{zramGeneratorSetupUnit: "active"},
+			stateErrs: map[string]error{zramService: noBus}, want: apischema.ZramProviderTools},
+	} {
+		t.Run("both installed, "+test.name, func(t *testing.T) {
+			states, stateErrs = test.states, test.stateErrs
+			if got := provider(); got != test.want {
+				t.Fatalf("provider = %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 

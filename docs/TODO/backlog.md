@@ -46,29 +46,6 @@ after a change that issues ioctls).
 
 Memory overflow ([Memory overflow](../memory.md)):
 
-- [ ] **A change that finished is reported as failed when only the last status
-  read fails.** The three routes return the status read after the change, and
-  an error from that read fails the request though the host changed. Checked.
-- [ ] **A mode change can override an admin's value until reboot.** The kernel
-  defaults of `page-cluster`, `watermark_boost_factor` and
-  `watermark_scale_factor` are written live whenever the live value equals
-  zram's preset, also when the admin set that number themselves and the host
-  never used zram (a switch from disk to zswap does it too). Keying on whether
-  the drop-in held the key would be a better signal. Checked.
-- [ ] **A local user can skew the disk hint.** The hint is read from the mount
-  source in `/proc/self/mountinfo`, and a FUSE mount can name any `/dev/...`
-  source, so a swap file under such a mount can be reported as on an SD card
-  or a removable drive. It changes the recommended mode and nothing else.
-  Checked.
-- [ ] **Only the first swap file in `/etc/fstab` is shown and managed.** With
-  two entries where the first is off and the second is on, `swap_file.active`
-  is false while a swap file swaps: a switch to compressed memory skips its
-  confirmation and ends `mixed`, and the btrfs warning does not show. Checked.
-- [ ] **`set_swap_mode` queues no start after a failed or cancelled stop.**
-  Drain does, because a `swapoff` that outlives the route still ends the
-  device. After a mode change gives up on `stop_swap_file`, the file can still
-  leave without being masked and returns at the next boot; after `stop_zram`
-  its service stays enabled. The host keeps its other swap. Checked.
 - [ ] **`/etc/default/zramswap` is overwritten without a marker check.** It is a
   `zram-tools` conffile, so an admin's own edits are replaced and dpkg asks at
   the next package upgrade. Checked.
@@ -93,12 +70,6 @@ Memory overflow ([Memory overflow](../memory.md)):
   `/etc/default/zramswap`: the status says when the file is not LinuxIO's, the
   confirm step names it and where its copy is kept, and the request carries
   that confirmation; a file with only comments needs none.
-- [ ] **The zram provider is the tool installed, not the one running.** With
-  both installed zram-tools is used, so on a host where the generator runs
-  `zram0` a switch away leaves zram on (`mixed`), and a switch to zram writes
-  `/etc/default/zramswap` and enables `zramswap.service` beside the
-  generator's device. Pick the provider whose unit is active. Checked by
-  reading the code.
 
 Trash ([Trash](../trash.md)):
 

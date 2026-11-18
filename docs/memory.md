@@ -82,7 +82,10 @@ rows, `zram` otherwise.
 what a USB stick or a card in a USB reader reports; for a partition it is read
 from its disk. A USB disk enclosure reports itself as fixed and is not flagged,
 which is right for a USB SSD, and a swap file on a device-mapper volume (LVM,
-LUKS) is not flagged whatever is under it.
+LUKS) is not flagged whatever is under it. A swap file under a FUSE mount
+(type `fuse` or `fuse.*`) is not flagged either: any user can make one
+through the setuid `fusermount` and name any `/dev/...` as its source. A
+`fuseblk` mount is, since the kernel opens the block device its source names.
 
 Choosing a mode applies its preset to the vm sysctls. A sysctl a preset does
 not list stays at the kernel's default.
@@ -115,14 +118,17 @@ or of the recommended one when the host is `none` or `mixed`.
 | `/sys/class/block/<device>` | whether that disk is removable (`disk_hint`) |
 | TuneD, through `power.GetStatus` | `tuned_active` and `tuned_profile` |
 | the `zram` capability | `zram_available` |
+| systemd over D-Bus, only with both zram tools installed | `zram_provider` (see [The zram provider](#the-zram-provider)) |
 
 From these it derives the mode, the recommendation, `zram_planned_size`,
 `zram_unavailable_reason` (`package_missing`, or `swap_partition_active`; a
 missing package wins), `can_drain` with `drain_blocked_reason`, and
 `swap_file`.
 
-`swap_file` is the swap file the dialog shows: the first fstab swap entry whose
-source is a path outside `/dev`, active or not, or else the first active swap
+LinuxIO manages one swap file. Of the fstab swap entries whose source is a
+path outside `/dev`, it is the first that is active, or when none is, the
+first (`fstabSwapFile`); any other is left as it is. `swap_file` is the swap
+file the dialog shows: that one, active or not, or else the first active swap
 file. Keeping it while it is off lets the zswap and disk rows be offered while
 the file is masked. `swap_file.managed` is true when LinuxIO stops, masks,
 starts and drains the file; otherwise nothing here stops, starts or drains
@@ -146,8 +152,9 @@ kernel should surface rather than read as zero. **What degrades.** A missing
 optional file reads as zero or absent (no zswap directory, no `mm_stat`, no
 `/etc/fstab`, no mountinfo); a line of fstab or mountinfo that does not parse
 is skipped; a failed TuneD read counts as TuneD not running (Debug log only);
-a host with neither zram tool is `zram_available: false` with an empty
-`zram_provider`.
+with both zram tools installed, a unit state that cannot be read makes
+zram-tools the provider (Debug log only); a host with neither zram tool is
+`zram_available: false` with an empty `zram_provider`.
 
 ## Changing the mode
 
@@ -158,6 +165,13 @@ drain). The dialog shows the step's message while it runs. Its result
 (`SwapModeResult`) is the status after the change plus `left`: what the
 change left as it was and why (see
 [What a change leaves as it was](#what-a-change-leaves-as-it-was)).
+
+The status after a change, here and for `set_swappiness` and `drain_swap`, is
+read up to five times, 250 ms apart (`statusAfterChange`). The route read it
+fine before the change, so a read that fails now races the change itself, as
+a zram device that leaves between the listing of `/sys/block` and the read of
+its files. A read that still fails fails the request with an error that says
+the change was made; nothing is undone.
 
 It refuses before anything changes, with `ErrConflict`, a mode the host cannot
 take: zram without a zram tool or with a swap partition active; zswap on a
@@ -192,7 +206,7 @@ To `zram`:
      keeps its size until its unit next restarts, and the result says so.
      Once zram is stopped, bringing it back is not cancelled with the
      request, and a stop that fails or is not waited out queues a start
-     behind it, as a drain does. A device whose size cannot be read is left
+     behind it, as `stop_zram` does. A device whose size cannot be read is left
      alone. A start that fails leaves the host on its disk swap, and the run
      fails.
 
@@ -227,7 +241,12 @@ To `zswap` or `disk`, the reverse:
    running is only turned off at boot. zram the provider does not run, because
    another tool set it up or systemd reports the provider's unit `inactive` or
    `failed`, is left swapping and nothing is turned off. Without a provider
-   the step is not planned and zram is left alone.
+   the step is not planned and zram is left alone. The stop is a systemd job
+   that can still take zram away after the step gave up on it, with zram
+   still set to start at boot, so a stop that fails or is not waited out
+   (an error, a cancel, systemd giving up) queues a start of the same unit
+   behind it, on a context the cancel does not reach (`stopZramUnit`); the
+   step then fails and the run rolls back.
 3. `apply_sysctls`: write the preset to the drop-in and live.
 4. `enable_zswap` (zswap) or `disable_zswap` (disk).
 
@@ -246,10 +265,12 @@ Details that follow from the code:
   front of zram too, and zswap reading off now says nothing about that. A file
   that already says `N` is not written again. On a kernel without zswap there
   is nothing to turn off and the file is removed.
-- Leaving zram, the three sysctls only zram sets go back to the kernel's
-  defaults (3, 15000, 10) when their live value is still zram's, and their
-  keys leave the drop-in. This overrides a value an admin set by hand to the
-  same number as the preset, until a reboot.
+- Leaving zram, the keys of the three sysctls only zram sets leave the
+  drop-in, and each goes back live to the kernel's default (3, 15000, 10)
+  when its value is LinuxIO's: the drop-in held the key before the run, or
+  the run wrote it there, and the live value is still zram's. The drop-in is
+  read before the run rewrites it. A live value that equals zram's on a host
+  whose drop-in never held the key is an admin's and stays.
 - Every kernel parameter written is read back and must equal what was written.
 - A vm sysctl the kernel does not have (`watermark_boost_factor` came in
   Linux 5.0) is not written live, as a preset or as a kernel default; the
@@ -288,7 +309,7 @@ the success message, and keeps the chosen row so Apply can be pressed again.
 | `swap_file` | `zram_not_swapping` | No zram device swaps when the file would stop. |
 | `swap_file` | `not_identified` | The fstab file is off, but an active swap file cannot be resolved and may be it, so the unit is not masked. |
 | `swap_file` | `others_can_write` | The file is not managed, because a folder on its path can be changed by users other than root: no step stops it (see "A swap file others can redirect is not managed"). |
-| `swap_file` | `not_managed` | A swap file other than the first one fstab names still swaps: no step stops it. |
+| `swap_file` | `not_managed` | A swap file other than the one LinuxIO manages still swaps: no step stops it. |
 | `zram` | `not_enough_memory` | zram's data does not fit in memory and free disk swap. |
 | `zram` | `not_managed` | The provider's unit does not run that zram (another tool set it up, the unit is `inactive` or `failed`, with `zram-generator` a device other than `zram0` swaps), or no provider is installed. |
 | `zram_size` | `not_enough_memory`, `not_managed` | zram runs at another size than planned and cannot be restarted for that reason. |
@@ -346,7 +367,9 @@ the old content back is harmless when the write did not land.
 
 Rollback **never undoes added swap**. Zram that is swapping and a swap file that
 was started stay, and swap that a passed room check removed is not started
-again. A failed run therefore ends with swap: what it started with, less
+again; only a zram stop the step gave up on has a start queued behind it,
+by the step and not the rollback (see `stop_zram`). A failed run therefore
+ends with swap: what it started with, less
 what a room check let it take away while other swap was active. The sysctls
 then follow the mode the host ended in (see above).
 
@@ -553,7 +576,8 @@ wait ends early with an error, zram still in `/proc/swaps`, when:
   `deactivating`: systemd did not carry out the stop.
 
 A device that has left always counts as stopped, so the device is read once
-more before giving up, and a state that cannot be read is waited for. The
+more before giving up, and a state that cannot be read is waited for. A start
+of the unit is then queued behind the stop (see `stop_zram` above), and the
 error goes through rollback.
 
 ## Files written on the host
@@ -580,7 +604,7 @@ partitions. zram writeback is not exposed.
 
 ## The zram provider
 
-Two tools set zram up, and the status names the one installed in
+Two tools set zram up, and the status names the one in use in
 `zram_provider`. The mode change does the same steps with either; what differs
 is the file and the unit.
 
@@ -595,8 +619,15 @@ is the file and the unit.
 | Off at boot | disable `zramswap.service` | write a configuration with no device, then reload |
 | "The provider runs it" | `zramswap.service` is not `inactive` or `failed` | `systemd-zram-setup@zram0.service` is `active`, and no zram device but `zram0` swaps |
 
-zram-tools is used when both are installed, so a host that had it keeps
-working as before. This follows upstream: the generator's README applies a new
+With one installed, that one is the provider. With both, it is the one whose
+unit runs zram now (`zramProvider`): `zram-generator` when systemd reads
+`systemd-zram-setup@zram0.service` `active` and `zramswap.service` not
+`active`, `zram-tools` otherwise, also when neither runs or a state cannot be
+read, so a host that had zram-tools keeps working as before. The status asks
+systemd over D-Bus for this only when both are installed; the `zram`
+capability needs only one installed and asks nothing.
+
+The generator column follows upstream: the generator's README applies a new
 configuration with `systemctl daemon-reload` and `systemctl start /dev/zram0`,
 and Fedora turns its default zram off with an empty
 `/etc/systemd/zram-generator.conf`.
@@ -697,10 +728,14 @@ service step, since `start_zram` does that. See
   checks, drain, the fail-fast and slow-success waits, a stop left out for a
   unit systemd does not report running, the reason reported for each thing
   left, zram restarted at the planned size or kept at its own (and brought
-  back after a cancel or a failed stop), the live sysctls after a run that
-  ended in another mode, a `swapoff` that fails or is cancelled, the wait for
-  systemd to see a drained device leave and a start sent again, and the
-  status and route agreement for masked units. `swapoff_test.go` runs a
+  back after a cancel or a failed stop, as `stop_zram` brings it back), the
+  live sysctls after a run that ended in another mode and the kernel defaults
+  written only over LinuxIO's values, a `swapoff` that fails or is cancelled,
+  the wait for systemd to see a drained device leave and a start sent again,
+  the status read again after each route's change, the swap file chosen
+  among several in fstab, no disk hint under a FUSE mount, the provider
+  chosen by the unit that runs zram, and the status and route agreement for
+  masked units. `swapoff_test.go` runs a
   script in place of `swapoff`: its arguments, what it printed in the error,
   and a cancel that ends it. `escape_test.go` pins the unit-name
   escaping. Run with `make test-go-quiet GO_TEST_PKGS=./bridge/handlers/memory`.
@@ -765,10 +800,18 @@ Each is by design or unlikely to be met, or is an open item in
   one, is not managed: LinuxIO never stops, starts or drains it and does
   not move it (see "A swap file others can redirect is not managed"). A
   folder on its path that is a link counts as one others can change, even
-  where only root could have made the link. When it is the first swap file
-  fstab names, a later one is not managed in its place. Off, it is not
-  masked either, so the next boot turns it on, beside zram if that is the
-  mode.
+  where only root could have made the link. When it is the swap file
+  LinuxIO would manage (see the next limit), another is not managed in its
+  place. Off, it is not masked either, so the next boot turns it on, beside
+  zram if that is the mode.
+- LinuxIO manages one swap file: the first fstab names that is active, or
+  the first when none is. Another is never stopped, started or masked: one
+  that swaps stays beside zram (`mixed`, `not_managed`), and one that is off
+  is not masked, so a boot that starts it puts it beside zram. Back from
+  zram with none active, the first is started, which is not the one the
+  switch to zram masked when an entry before it was off.
+- A change whose status still cannot be read after five tries fails the
+  request, with an error that says the change was made; nothing is undone.
 - A swap file on a filesystem that is not mounted is judged by the folders
   that are there, not by those of the filesystem a start would mount. Where
   that filesystem's folders can be changed by other users, a start swaps

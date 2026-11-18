@@ -217,6 +217,30 @@ type swapView struct {
 	fstab  []fstabSwap
 }
 
+// statusAfterChangeTries is how many times a route reads the status after
+// its change before it gives up.
+const statusAfterChangeTries = 5
+
+// statusAfterChange reads the status once a route's change is made. The
+// route read it before the change, so a read that fails now races the change
+// itself, as a zram device that leaves between the listing of /sys/block and
+// the read of its files: it is tried again, waits.poll apart, until ctx
+// ends. A read that still fails says that the change was made.
+func (e *executor) statusAfterChange(ctx context.Context) (apischema.SwapStatus, error) {
+	status, err := e.sys.status(ctx)
+	for try := 1; err != nil && try < statusAfterChangeTries && ctx.Err() == nil; try++ {
+		select {
+		case <-ctx.Done():
+		case <-time.After(e.waits.poll):
+			status, err = e.sys.status(ctx)
+		}
+	}
+	if err != nil {
+		return apischema.SwapStatus{}, fmt.Errorf("the change was made, and the status after it could not be read: %w", err)
+	}
+	return status, nil
+}
+
 // readView reads the status and the fstab swap entries fresh.
 func (e *executor) readView(ctx context.Context) (swapView, error) {
 	status, err := e.sys.status(ctx)

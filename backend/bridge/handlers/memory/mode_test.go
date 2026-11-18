@@ -76,6 +76,45 @@ func TestSetSwapModeToZramFromDisk(t *testing.T) {
 	}
 }
 
+// The status after the last step is read again when a read fails, as one
+// that races a zram device leaving: the change was made and the request
+// succeeds.
+func TestSetSwapModeReadsTheStatusAgainAfterTheChange(t *testing.T) {
+	_, sys := diskHost(t)
+	sys.after = func(call string) {
+		if call == "mask swap.img.swap" {
+			sys.statusFails = 2
+		}
+	}
+
+	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeZram)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Mode != apischema.SwapModeZram {
+		t.Errorf("status mode = %q, want zram", got.Mode)
+	}
+}
+
+// A status that still cannot be read after the last step fails the request
+// with an error that says the change was made, and nothing is rolled back.
+func TestSetSwapModeSaysTheChangeWasMadeWhenTheStatusCannotBeRead(t *testing.T) {
+	f, sys := diskHost(t)
+	sys.after = func(call string) {
+		if call == "mask swap.img.swap" {
+			sys.statusFails = 1000
+		}
+	}
+
+	_, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeZram)
+	if !errors.Is(err, errStatusRace) || !strings.Contains(err.Error(), "was made") {
+		t.Fatalf("err = %v, want the read error and that the change was made", err)
+	}
+	if slices.Contains(sys.calls, "disable "+zramService) || f.param(swappinessParam) != "180" {
+		t.Fatalf("calls = %v, want nothing rolled back", sys.calls)
+	}
+}
+
 func TestSetSwapModeToZswapFromZram(t *testing.T) {
 	f, sys := zramHost(t)
 
@@ -134,6 +173,23 @@ func TestSetSwapModeToDiskFromZswap(t *testing.T) {
 	}
 	if got, want := f.read(zswapTmpfilesPath), string(renderZswapOffTmpfiles()); got != want {
 		t.Errorf("tmpfiles = %q, want %q: zswap stays off at boot", got, want)
+	}
+}
+
+// Live values that equal zram's preset on a host whose drop-in never held
+// them are an admin's: leaving them is not leaving zram, so no kernel
+// default is written over them.
+func TestSetSwapModeLeavesAnAdminsSysctlsThatMatchZram(t *testing.T) {
+	f, sys := diskHost(t)
+	f.writeVMSysctls("60", "0", "0", "125")
+
+	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeZswap); err != nil {
+		t.Fatal(err)
+	}
+	for param, want := range map[string]string{pageClusterParam: "0", boostParam: "0", scaleParam: "125"} {
+		if got := f.param(param); got != want {
+			t.Errorf("%s = %q, want the admin's %q kept", param, got, want)
+		}
 	}
 }
 
@@ -330,6 +386,89 @@ func TestSetSwapModeToZramLeavesASwapFileItDoesNotManage(t *testing.T) {
 	if slices.ContainsFunc(sys.calls, func(call string) bool { return strings.HasPrefix(call, "swapoff") || strings.HasPrefix(call, "mask") }) {
 		t.Fatalf("calls = %v, want the swap file left alone", sys.calls)
 	}
+}
+
+// With two swap files in fstab, the one that swaps is the one a switch to
+// zram stops and masks, though one that is off comes first; that one is
+// left as it is.
+func TestSetSwapModeToZramStopsTheActiveOfTwoSwapFiles(t *testing.T) {
+	f, sys := diskHost(t)
+	f.write(etcFstab, "/old.img none swap sw 0 0\n/swap.img none swap sw 0 0\n")
+
+	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeZram)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Mode != apischema.SwapModeZram || !slices.Contains(sys.calls, "swapoff /swap.img") ||
+		!slices.Contains(sys.calls, "mask swap.img.swap") || slices.Contains(sys.calls, "mask old.img.swap") {
+		t.Fatalf("mode = %q, calls = %v; want zram with /swap.img stopped and masked", got.Mode, sys.calls)
+	}
+	assertLeft(t, got.Left)
+}
+
+// The managed swap file keeps its identity both ways: with one that is off
+// before it in fstab, the file a switch to zram masked is the one the way
+// back starts.
+func TestSetSwapModeBackFromZramStartsTheSwapFileItMasked(t *testing.T) {
+	f, sys := diskHost(t)
+	f.write(etcFstab, "/old.img none swap sw 0 0\n/swap.img none swap sw 0 0\n")
+	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeZram); err != nil {
+		t.Fatal(err)
+	}
+	sys.calls = nil
+
+	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeDisk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Mode != apischema.SwapModeDisk || !slices.Contains(sys.calls, "start swap.img.swap") ||
+		slices.ContainsFunc(sys.calls, func(call string) bool { return strings.Contains(call, "old.img") }) {
+		t.Fatalf("mode = %q, calls = %v; want disk with /swap.img started", got.Mode, sys.calls)
+	}
+	if f.host().unitMasked("swap.img.swap") {
+		t.Error("swap.img.swap is still masked")
+	}
+}
+
+// With two swap files on, the first is the managed one. A second switch to
+// zram, after the first masked it, still leaves the other on and never stops
+// or masks it.
+func TestSetSwapModeToZramAgainLeavesTheSecondSwapFile(t *testing.T) {
+	f, sys := diskHost(t)
+	f.write(etcFstab, "/swap.img none swap sw 0 0\n/home/extra none swap sw 0 0\n")
+	f.write("/home/extra", "")
+	f.write(procSwaps, swapsHeader+swapFileSwapsLine+unmanagedSwapsLine)
+	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeZram); err != nil {
+		t.Fatal(err)
+	}
+	sys.calls = nil
+
+	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeZram)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.ContainsFunc(sys.calls, func(call string) bool { return call == "swapoff /home/extra" || call == "mask home-extra.swap" }) {
+		t.Fatalf("calls = %v, want /home/extra left alone", sys.calls)
+	}
+	assertLeft(t, got.Left, apischema.SwapLeft{What: apischema.SwapLeftSwapFile, Reason: apischema.SwapLeftNotManaged})
+}
+
+// One swap file is managed: a second one that swaps is left on, and the
+// mixed result says it is not managed.
+func TestSetSwapModeToZramLeavesASecondActiveSwapFile(t *testing.T) {
+	f, sys := diskHost(t)
+	f.write(etcFstab, "/swap.img none swap sw 0 0\n/home/extra none swap sw 0 0\n")
+	f.write("/home/extra", "")
+	f.write(procSwaps, swapsHeader+swapFileSwapsLine+unmanagedSwapsLine)
+
+	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeZram)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Mode != apischema.SwapModeMixed || !slices.Contains(sys.calls, "swapoff /swap.img") || slices.Contains(sys.calls, "swapoff /home/extra") {
+		t.Fatalf("mode = %q, calls = %v; want mixed with /home/extra left on", got.Mode, sys.calls)
+	}
+	assertLeft(t, got.Left, apischema.SwapLeft{What: apischema.SwapLeftSwapFile, Reason: apischema.SwapLeftNotManaged})
 }
 
 // The reason names the file that stays: when the fstab file others can
@@ -999,6 +1138,44 @@ func TestSetSwapModeFailsFastWhenTheStopEndsWithZramStillSwapping(t *testing.T) 
 	}
 	if slices.Contains(sys.calls, "disable "+zramService) || !strings.Contains(f.read(procSwaps), "/dev/zram1") {
 		t.Fatalf("calls = %v, want zramswap.service left enabled and zram1 swapping", sys.calls)
+	}
+}
+
+// A stop of zram that is not waited out, as when the request is cancelled,
+// can still take zram away after the route gave up, with its service still
+// enabled: a start is queued behind it, past the cancel, so zram comes back.
+func TestSetSwapModeQueuesAStartWhenTheZramStopIsNotWaitedOut(t *testing.T) {
+	f, sys := zramHost(t)
+	sys.stops[zramService] = &fakeStop{queued: 1 << 30}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	sys.after = func(call string) {
+		if call == "stop "+zramService {
+			cancel()
+		}
+	}
+
+	_, err := sys.executor(nil).setSwapMode(ctx, apischema.SwapModeDisk)
+	if !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), "a start was queued") {
+		t.Fatalf("err = %v, want the cancel and that a start was queued", err)
+	}
+	sys.finishStop(zramService)
+	if !strings.Contains(f.read(procSwaps), "/dev/zram0") || sys.fileStates[zramService] != "enabled" {
+		t.Fatalf("calls = %v, want zram back with its service enabled", sys.calls)
+	}
+}
+
+// The same with zram-generator: its swap unit is started again.
+func TestSetSwapModeWithTheGeneratorQueuesAStartWhenTheZramStopFails(t *testing.T) {
+	f, sys := generatorZramHost(t)
+	sys.failAfter["stop "+zramGeneratorSwapUnit] = context.Canceled
+
+	_, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeDisk)
+	if !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), "a start was queued") {
+		t.Fatalf("err = %v, want the cancel and that a start was queued", err)
+	}
+	if !slices.Contains(sys.calls, "start "+zramGeneratorSwapUnit) || !strings.Contains(f.read(procSwaps), "/dev/zram0") {
+		t.Fatalf("calls = %v, want dev-zram0.swap started again", sys.calls)
 	}
 }
 

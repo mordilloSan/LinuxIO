@@ -221,15 +221,23 @@ func (h hostRoot) readZramDevice(name string) (apischema.ZramDevice, error) {
 	return device, nil
 }
 
-// fstabSwapFile returns the first swap file among the fstab swap entries:
-// one whose source is a path outside /dev.
+// fstabSwapFile returns the swap file among the fstab swap entries, one
+// whose source is a path outside /dev, that LinuxIO manages: the first that
+// is active, or when none is, the first. Any other is left as it is.
 func fstabSwapFile(entries []fstabSwap) (fstabSwap, bool) {
+	first, found := fstabSwap{}, false
 	for _, entry := range entries {
-		if isSwapFilePath(entry.path) {
+		if !isSwapFilePath(entry.path) {
+			continue
+		}
+		if entry.device != "" {
 			return entry, true
 		}
+		if !found {
+			first, found = entry, true
+		}
 	}
-	return fstabSwap{}, false
+	return first, found
 }
 
 // isSwapFilePath reports whether an fstab swap path names a file rather
@@ -292,12 +300,17 @@ func underMountPoint(path, mountPoint string) bool {
 	return ok && (rest == "" || rest[0] == '/')
 }
 
-// diskHint flags a mount source on a disk that swapping wears out: an SD card
-// or eMMC, by its name, or a disk the kernel marks removable, which is what a
-// USB stick or a card reader reports. A USB disk enclosure reports itself as
-// fixed and is not flagged, and neither is a device-mapper volume.
-func (h hostRoot) diskHint(source string) apischema.SwapDiskHint {
-	name, ok := strings.CutPrefix(source, "/dev/")
+// diskHint flags a mount on a disk that swapping wears out, by its source: an
+// SD card or eMMC, by its name, or a disk the kernel marks removable, which
+// is what a USB stick or a card reader reports. A USB disk enclosure reports
+// itself as fixed and is not flagged, and neither is a device-mapper volume.
+func (h hostRoot) diskHint(mount mountEntry) apischema.SwapDiskHint {
+	// Any user can make a FUSE mount through the setuid fusermount and name any
+	// source for it, while fuseblk's source is the block device the kernel opens.
+	if mount.fsType == "fuse" || strings.HasPrefix(mount.fsType, "fuse.") {
+		return ""
+	}
+	name, ok := strings.CutPrefix(mount.source, "/dev/")
 	switch {
 	case !ok || strings.Contains(name, "/"):
 		return ""

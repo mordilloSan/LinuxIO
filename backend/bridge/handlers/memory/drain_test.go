@@ -58,6 +58,25 @@ func TestDrainSwapStopsAndStartsEachDeviceInTurn(t *testing.T) {
 	}
 }
 
+// The status after the drain is read again when a read fails: the devices
+// were drained and the request succeeds.
+func TestDrainSwapReadsTheStatusAgainAfterTheDrain(t *testing.T) {
+	_, sys := drainHost(t)
+	sys.after = func(call string) {
+		if call == "start "+partitionUnit {
+			sys.statusFails = 2
+		}
+	}
+
+	got, err := sys.executor(nil).drainSwap(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Devices) != 2 {
+		t.Errorf("devices = %+v, want both back", got.Devices)
+	}
+}
+
 // A device whose unit is masked could not be started again, so the drain
 // refuses before stopping anything.
 func TestDrainSwapRefusesAMaskedUnit(t *testing.T) {

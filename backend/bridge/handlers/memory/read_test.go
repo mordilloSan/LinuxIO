@@ -321,6 +321,17 @@ LABEL=swap none swap sw 0 0
 			}
 		})
 	}
+	t.Run("the first active one before a first that is off", func(t *testing.T) {
+		entries := []fstabSwap{
+			{path: "/old.img"},
+			{path: "/dev/sda3", device: "/dev/sda3"},
+			{path: "/swap.img", device: "/swap.img"},
+			{path: "/third.img", device: "/third.img"},
+		}
+		if got, ok := fstabSwapFile(entries); !ok || got.path != "/swap.img" {
+			t.Fatalf("swap file = %+v (found %v), want /swap.img", got, ok)
+		}
+	})
 	t.Run("no fstab", func(t *testing.T) {
 		entries, err := newFixture(t).host().fstabSwaps()
 		if got, ok := fstabSwapFile(entries); err != nil || ok {
@@ -396,7 +407,7 @@ func TestDiskHint(t *testing.T) {
 		"tmpfs":            "",
 		"":                 "",
 	} {
-		if got := f.host().diskHint(source); got != want {
+		if got := f.host().diskHint(mountEntry{fsType: "ext4", source: source}); got != want {
 			t.Errorf("diskHint(%q) = %q, want %q", source, got, want)
 		}
 	}

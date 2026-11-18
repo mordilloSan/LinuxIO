@@ -42,14 +42,19 @@ func (e *executor) setSwapMode(ctx context.Context, target apischema.SwapMode) (
 	if err != nil {
 		return apischema.SwapModeResult{}, err
 	}
-	run := &modeRun{executor: e, target: target, before: view.status}
+	// Which sysctls are LinuxIO's is read before a step rewrites the drop-in.
+	dropIn, err := e.root.readSysctlDropIn()
+	if err != nil {
+		return apischema.SwapModeResult{}, err
+	}
+	run := &modeRun{executor: e, target: target, before: view.status, dropInHeld: heldSysctls(dropIn)}
 	for i, step := range steps {
 		e.report(apischema.SwapProgress{Step: step.code, Index: i + 1, Total: len(steps)})
 		if stepErr := run.do(ctx, step); stepErr != nil {
 			return apischema.SwapModeResult{}, errors.Join(fmt.Errorf("step %s: %w", step.code, stepErr), run.rollback(ctx), run.settleAfterRollback(ctx))
 		}
 	}
-	status, err := e.sys.status(ctx)
+	status, err := e.statusAfterChange(ctx)
 	if err != nil {
 		return apischema.SwapModeResult{}, err
 	}
@@ -61,7 +66,7 @@ func (e *executor) setSwapMode(ctx context.Context, target apischema.SwapMode) (
 		slog.Warn("settle memory sysctls failed", "mode", status.Mode, "error", err)
 	}
 	if settled {
-		if status, err = e.sys.status(ctx); err != nil {
+		if status, err = e.statusAfterChange(ctx); err != nil {
 			return apischema.SwapModeResult{}, err
 		}
 	}
@@ -84,6 +89,10 @@ type modeRun struct {
 	files            []savedFile
 	params           []savedParam
 	zramEnabledByRun bool
+	// dropInHeld is the vm sysctls, by name, that LinuxIO's drop-in held
+	// before the run or that the run wrote into it: values LinuxIO put there
+	// itself, which leaving zram may set back to the kernel's defaults.
+	dropInHeld map[string]bool
 	// left is what the run left as it was, with the reason: a device left
 	// active, which makes the result mixed, or zram left at its size.
 	left []apischema.SwapLeft
@@ -99,7 +108,7 @@ func (r *modeRun) leftHas(what apischema.SwapLeftWhat) bool {
 }
 
 // explainMixed gives a reason for a device that swaps on though no step
-// left it: no step stops a swap file other than the first one fstab names,
+// left it: no step stops a swap file other than the one LinuxIO manages,
 // and none stops zram without a zram provider. A mixed result always says
 // why.
 func (r *modeRun) explainMixed(status apischema.SwapStatus) {
@@ -169,6 +178,9 @@ func (r *modeRun) writeDropIn() error {
 		return err
 	}
 	set, remove := dropInChanges(r.target, r.before.TunedActive)
+	for _, setting := range set {
+		r.dropInHeld[setting.name] = true
+	}
 	return r.writeFile(sysctlDropInPath, renderSysctlDropIn(mergeSysctlDropIn(entries, set, remove)))
 }
 
@@ -289,9 +301,7 @@ func (r *modeRun) zramOnAtBoot(ctx context.Context) (string, error) {
 // stopZramToResize stops zram that swaps at another size than planned and
 // waits for it to leave, so that a start brings it back at the planned
 // size. It reports false, with zram left running, when zram has the planned
-// size already or cannot be stopped; the second case is recorded. A stop
-// that fails or is not waited out may still take effect, so a start is
-// queued behind it, past a cancelled request, as a drain does.
+// size already or cannot be stopped; the second case is recorded.
 func (r *modeRun) stopZramToResize(ctx context.Context, unit string, status apischema.SwapStatus) (bool, error) {
 	if zramSized(status, r.before.ZramPlannedSize) {
 		return false, nil
@@ -301,29 +311,34 @@ func (r *modeRun) stopZramToResize(ctx context.Context, unit string, status apis
 		return false, nil
 	}
 	if err := r.stopZramUnit(ctx, unit); err != nil {
-		startCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
-		defer cancel()
-		if startErr := r.sys.startUnit(startCtx, unit); startErr != nil {
-			return false, errors.Join(err, fmt.Errorf("zram may be off: start %s: %w", unit, startErr))
-		}
-		return false, fmt.Errorf("%w; the stop may still take effect, so a start was queued", err)
+		return false, err
 	}
 	return true, nil
 }
 
 // stopZramUnit stops the unit that runs zram and waits for zram to leave
-// /proc/swaps.
+// /proc/swaps. A stop that fails or is not waited out is a systemd job that
+// may still take zram away after the route gave up, with zram still set to
+// start at boot, so a start of the unit is queued behind it, past a
+// cancelled request, and the host keeps its zram.
 func (r *modeRun) stopZramUnit(ctx context.Context, unit string) error {
-	if err := r.sys.stopUnit(ctx, unit); err != nil {
-		return err
+	err := r.sys.stopUnit(ctx, unit)
+	if err == nil {
+		err = r.waitStopped(ctx, unit, "zram", func() (bool, error) {
+			on, readErr := r.zramSwapping()
+			return !on, readErr
+		})
+		if err == nil {
+			return nil
+		}
+		err = fmt.Errorf("wait for zram to leave %s: %w", procSwaps, err)
 	}
-	if err := r.waitStopped(ctx, unit, "zram", func() (bool, error) {
-		on, err := r.zramSwapping()
-		return !on, err
-	}); err != nil {
-		return fmt.Errorf("wait for zram to leave %s: %w", procSwaps, err)
+	startCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
+	defer cancel()
+	if startErr := r.sys.startUnit(startCtx, unit); startErr != nil {
+		return errors.Join(err, fmt.Errorf("zram may be off: start %s: %w", unit, startErr))
 	}
-	return nil
+	return fmt.Errorf("%w; the stop may still take effect, so a start was queued", err)
 }
 
 // zramSized reports whether every zram device that swaps has the planned
@@ -397,7 +412,7 @@ func (r *modeRun) applySysctls() error {
 // setLiveSysctls writes what mode sets in /proc/sys/vm on a host whose
 // values are status's. A sysctl the kernel does not have is skipped.
 func (r *modeRun) setLiveSysctls(mode apischema.SwapMode, status apischema.SwapStatus) error {
-	for _, setting := range liveSysctls(mode, status) {
+	for _, setting := range liveSysctls(mode, status, r.dropInHeld) {
 		name := filepath.Join(vmSysctlDir, setting.name)
 		// A kernel without the sysctl (watermark_boost_factor came in 5.0)
 		// has nothing to write; the drop-in keeps the key.

@@ -114,6 +114,54 @@ func TestReadSwapStatusOfZramWithAnInactiveSwapFile(t *testing.T) {
 	}
 }
 
+// With two swap files in fstab, the one that swaps is reported and managed
+// though one that is off comes first: it is the one a switch to compressed
+// memory takes away.
+func TestReadSwapStatusReportsTheActiveOfTwoSwapFiles(t *testing.T) {
+	f := newFixture(t)
+	f.write("/proc/swaps", swapsHeader+swapFileSwapsLine)
+	f.write("/proc/meminfo", meminfoText)
+	f.write("/proc/self/mountinfo", mountinfoText)
+	f.write("/etc/fstab", "/old.img none swap sw 0 0\n/swap.img none swap sw 0 0\n")
+
+	got, err := f.host().readSwapStatus(apischema.ZramProviderTools)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantFile := apischema.SwapFile{Path: "/swap.img", Active: true, FSType: "btrfs", Managed: true}
+	if got.SwapFile == nil || *got.SwapFile != wantFile {
+		t.Errorf("swap file = %+v, want %+v", got.SwapFile, wantFile)
+	}
+}
+
+// Any user can make a FUSE mount through the setuid fusermount and name any
+// source, so one gives no disk hint. fuseblk's source is the block device
+// the kernel opens, so it does.
+func TestReadSwapStatusGivesNoDiskHintUnderAFuseMount(t *testing.T) {
+	for fsType, want := range map[string]apischema.SwapDiskHint{
+		"fuse":        "",
+		"fuse.sshfs":  "",
+		"fuseblk":     apischema.SwapDiskHintMMC,
+		"fuseblk.foo": apischema.SwapDiskHintMMC,
+	} {
+		t.Run(fsType, func(t *testing.T) {
+			f := newFixture(t)
+			f.write("/proc/swaps", swapsHeader+"/mnt/user/swapfile                      file\t\t1048572\t\t0\t\t-2\n")
+			f.write("/proc/meminfo", meminfoText)
+			f.write("/proc/self/mountinfo", mountinfoText+"40 22 0:50 / /mnt/user rw,nosuid,nodev,relatime shared:9 - "+fsType+" /dev/mmcblk0p2 rw\n")
+			f.write("/etc/fstab", "/mnt/user/swapfile none swap sw 0 0\n")
+
+			got, err := f.host().readSwapStatus(apischema.ZramProviderTools)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.SwapFile == nil || got.SwapFile.DiskHint != want || got.Devices[0].DiskHint != want {
+				t.Errorf("swap file = %+v, device = %+v; want disk hint %q", got.SwapFile, got.Devices[0], want)
+			}
+		})
+	}
+}
+
 // Without an fstab entry the active swap file is the one the status reports; a
 // swap partition beside it keeps zram from being chosen.
 func TestReadSwapStatusFallsBackToTheActiveSwapFile(t *testing.T) {

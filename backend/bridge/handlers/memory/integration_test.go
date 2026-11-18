@@ -24,11 +24,12 @@ func TestMemoryIntegration(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("needs root")
 	}
-	if host.zramProvider() == "" {
+	ctx := t.Context()
+	provider := host.zramProvider(ctx, systemd.GetActiveState)
+	if provider == "" {
 		t.Skip("neither zram-tools nor zram-generator is installed")
 	}
-	t.Logf("zram provider: %s", host.zramProvider())
-	ctx := t.Context()
+	t.Logf("zram provider: %s", provider)
 	e := newExecutor(func(p apischema.SwapProgress) { t.Logf("step %d/%d %s %s", p.Index, p.Total, p.Step, p.Device) })
 	view, err := e.readView(ctx)
 	if err != nil {
@@ -78,7 +79,7 @@ func startSmallZram(t *testing.T, e *executor) {
 	t.Helper()
 	ctx := t.Context()
 	unit, path, config := zramService, zramswapConfigPath, renderZramswapConfig(64<<20)
-	if host.zramProvider() == apischema.ZramProviderGenerator {
+	if host.zramProvider(ctx, systemd.GetActiveState) == apischema.ZramProviderGenerator {
 		unit, path, config = zramGeneratorSwapUnit, zramGeneratorConfigPath, renderZramGeneratorConfig(64<<20)
 	} else if err := e.sys.resetZram(ctx, zramToolsDevice); err != nil {
 		t.Fatalf("reset %s: %v", zramToolsDevice, err)
