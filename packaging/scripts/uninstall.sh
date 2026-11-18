@@ -92,6 +92,20 @@ Show 2 "Removing binaries..."
 rm -f /usr/local/bin/linuxio*
 Show 0 "Binaries removed"
 
+# ========== REMOVE THE SELINUX MODULE ==========
+# After the binaries: removed while linuxio-auth is still there, the module
+# would leave that file unlabeled_t, which systemd cannot run. semodule -l
+# prints bare names or "name version"; grep reads the whole list, so no early
+# exit makes the pipeline fail.
+if command -v semodule >/dev/null 2>&1 && semodule -l 2>/dev/null | grep -E '^linuxio([[:space:]]|$)' >/dev/null; then
+	Show 2 "Removing the SELinux module..."
+	if semodule -r linuxio; then
+		Show 0 "SELinux module removed"
+	else
+		Show 3 "Failed to remove the SELinux module; run semodule -r linuxio"
+	fi
+fi
+
 # ========== REMOVE CONFIGURATION FILES ==========
 Show 2 "Removing configuration files..."
 rm -rf /etc/linuxio

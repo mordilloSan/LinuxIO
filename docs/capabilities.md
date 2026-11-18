@@ -277,13 +277,11 @@ test VM: it takes the distribution's zram tool out with its package manager,
 follows the dialog's link to Capabilities, installs, waits for the job, and
 follows the row's link back to the dialog, which must name the tool as the
 provider. On 2026-11-18 it passed twice on Ubuntu 26.04 (`zram-tools` in
-5 s, with no refresh). On Fedora 45 sign-in stops at SELinux
-([backlog](./TODO/backlog.md#visible-bugs)). With sign-in made to work in
-the VM it passed three times, installing `zram-generator` in 2 to 3 s: once
-with SELinux permissive, on the first sign-in after the VM booted, where the
-install showed "Refreshing the package lists" before it downloaded; and once
-under each of the two changes that item describes, with SELinux enforcing,
-later in a boot that had seen other sign-ins, with no refresh.
+5 s, with no refresh). On Fedora 45, with SELinux enforcing and LinuxIO as
+its installer puts it ([SELinux](./process-systemd-architecture.md#selinux)),
+it passed after a fresh install and again after a reboot, installing
+`zram-generator` in 3 s each time; after the reboot the install showed
+"Refreshing the package lists" first.
 
 ## Filesystem tools
 

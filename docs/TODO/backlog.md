@@ -44,41 +44,6 @@ after a change that issues ioctls).
 
 ## Visible bugs
 
-- [ ] **Nobody can sign in where SELinux is enforcing** (checked on Fedora
-  45, in the test VM on 2026-11-18). The rest of the RHEL family (RHEL,
-  CentOS Stream, Rocky Linux, AlmaLinux) was not run and is expected to
-  behave the same: it gets the same PAM file and enforces the same targeted
-  policy, which Fedora's `selinux-policy` is the source of, with
-  `pam_selinux` in the stack. With the RHEL family's
-  PAM file (`packaging/etc/pam.d/linuxio.rhel`) PAM authenticates and opens
-  the session, and then SELinux denies `linuxio-auth`, which systemd runs as
-  `system_u:system_r:unconfined_service_t:s0` (the binary is `bin_t` in
-  `/usr/local/bin`), the `transition` to the context `pam_selinux.so open`
-  set for the user, `unconfined_u:unconfined_r:unconfined_t:s0` (`seusers`
-  maps every login to `unconfined_u`). The bridge's exec fails with
-  `Permission denied`, and the page says "LinuxIO authenticated you, but
-  could not start the session bridge". Two ways out were each tried in the
-  VM. With either one, `login.spec.ts` and `capability-install.spec.ts`
-  passed with SELinux enforcing and no denial left, a wrong password and a
-  user in `/etc/linuxio/disallowed-users` were still refused, and the job
-  hosts stayed `unconfined_service_t`, since systemd starts them:
-  - without the `pam_selinux.so open` line, the bridge runs as
-    `unconfined_service_t`, as `linuxio-auth` does. The cost: every user's
-    bridge runs as `unconfined_service_t` whatever `seusers` maps the user
-    to, so a user an admin confined to `user_u` or `staff_u` loses that
-    confinement through LinuxIO. The VM could not show it, since it maps
-    every login to `unconfined_u`;
-  - with `SELinuxContext=-unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023`
-    in a drop-in for `linuxio-auth@.service`, `linuxio-auth` runs as
-    `unconfined_t`, and the bridge gets the context `pam_selinux` sets for
-    the user, `unconfined_u:unconfined_r:unconfined_t:s0` here. This keeps
-    PAM's per-user context; it was not tried with a confined user.
-
-  Which one, or a policy module, is the owner's choice. It is done when
-  `make test-vm-browser DISTRO=fedora VMS=1 PLAYWRIGHT_ARGS='login.spec.ts capability-install.spec.ts'`
-  passes as installed, which also closes the last check of Install from
-  Capabilities on Fedora ([Frontend test coverage](./e2e-testing.md#distributions)).
-
 ## Tests that are missing
 
 ## Needs a real machine or a measurement
@@ -306,3 +271,15 @@ From the backend audit of October 2026:
   "feature unavailable" into permission errors.
 - Logging `component`/`subsystem` attributes (audit 102) and `sort.Slice` to
   `slices.Sort*` (audit 108): convert when touching a file.
+
+Sign-in where SELinux is enforcing
+([Process & Systemd Architecture](../process-systemd-architecture.md#selinux)):
+
+- Dropping `pam_selinux.so open` from the PAM file: every session then runs
+  as `unconfined_service_t`, so a user an admin confined to `user_u` or
+  `staff_u` gets an unconfined session.
+- `SELinuxContext=` on `linuxio-auth@.service`: systemd creates the listening
+  socket of `linuxio-auth.socket` in that context, and the policy refuses
+  `init_t` an `unconfined_t` socket, so the auth socket fails as installed
+  and takes the web server with it. It looked fine as a drop-in on a running
+  system.

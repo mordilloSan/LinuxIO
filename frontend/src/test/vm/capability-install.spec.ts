@@ -16,16 +16,16 @@ import {
 // distribution's package in through PackageKit as a job, and the dialog then
 // names that tool as the zram provider (docs/capabilities.md, "zram"). It is
 // written for Ubuntu and, with DISTRO=fedora, Fedora; only the package, how
-// it is taken out and put back, and the provider differ. On Fedora, with
-// SELinux enforcing, sign-in stops before the bridge starts, so the test fails
-// there until the change in docs/TODO/backlog.md ("Visible bugs") is made.
+// it is taken out and put back, and the provider differ. On Fedora it runs
+// with SELinux enforcing, against LinuxIO as its installer puts it
+// (docs/process-systemd-architecture.md, "SELinux").
 //
 // Before the test the tool is taken out with the distribution's package
 // manager, with no zram left swapping, as on a host that never had one. The
 // spec does not refresh PackageKit's cache: the install refreshes it once by
 // itself when it does not find the package (docs/capabilities.md), and the
-// messages the spec logs show whether it did. In the Fedora test VM the first
-// install of one boot did; installs later in a boot did not.
+// messages the spec logs show whether it did. In the Fedora test VM some
+// installs did, mostly the first of a boot.
 //
 // It leaves the VM signed out with the zram tool and swap as the clean image
 // has them: on Ubuntu no zram tool and no swap (memory.spec.ts needs a VM

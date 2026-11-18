@@ -74,6 +74,12 @@ if [[ -n "${OUTPUT_FILE}" && "${OUTPUT_FILE}" != "-" ]]; then
 	# Write to file, padded with blank lines so every MOTD consumer
 	# (update-motd.d wrapper, /etc/motd.d symlink) renders it with spacing
 	printf '\n%s\n\n' "${OUTPUT}" >"${OUTPUT_FILE}"
+	# The file is made with its folder's SELinux type, var_run_t, which sshd
+	# may not read; LinuxIO's module gives it motd_var_run_t, the type of
+	# /run/motd.d (docs/process-systemd-architecture.md, "SELinux").
+	if command -v restorecon >/dev/null 2>&1; then
+		restorecon "${OUTPUT_FILE}" 2>/dev/null || true
+	fi
 else
 	# Print to stdout for manual testing
 	echo "${OUTPUT}"

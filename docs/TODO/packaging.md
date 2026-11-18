@@ -174,6 +174,10 @@ Use this common layout:
 - [ ] Update the C authentication helper's bridge path.
 - [ ] Update package-owned systemd units to execute binaries from
       `/usr/libexec/linuxio`.
+- [ ] Ship the SELinux module (`packaging/selinux/linuxio.cil`) in the RPM
+      and load it from the package, with its file context changed to the
+      installed path of `linuxio-auth`, `/usr/libexec/linuxio/linuxio-auth`
+      ([Process & Systemd Architecture](../process-systemd-architecture.md#selinux)).
 - [ ] Install package-owned units under `/usr/lib/systemd/system`.
 - [ ] Continue using `/etc/systemd/system` only for administrator or
       runtime-generated drop-ins.

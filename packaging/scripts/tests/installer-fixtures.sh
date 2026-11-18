@@ -832,6 +832,261 @@ fi
 rm -rf "$pam_dir"
 printf '   \033[1;32m✓\033[0m %s\n' "each family gets its PAM file, the RHEL one line for line the Debian one, installed whole"
 
+# linuxio-auth's SELinux module (packaging/selinux/linuxio.cil). On the RHEL
+# family the installer loads it where semodule lists a policy store's modules,
+# unless the store holds the same file, the fetched file is not of the shipped
+# form, or SELINUX_DIR is read-only (the in-app updater); and it relabels the
+# auth binary whenever restorecon exists. Elsewhere it calls neither.
+# Stand-in semodule, restorecon and selinuxenabled log their calls (the last
+# answers only); the tools directory holds only what the functions may use
+# besides them, so a host's own semodule is never reached.
+# shellcheck disable=SC2031
+selinux_checkout=$REPO_ROOT
+SELINUX_CIL="${selinux_checkout}/packaging/selinux/linuxio.cil"
+[[ -f "$SELINUX_CIL" ]] || fail "missing packaging/selinux/linuxio.cil"
+selinux_fixture=$(mktemp -d)
+selinux_stub="${selinux_fixture}/stub"
+selinux_relabel_only="${selinux_fixture}/relabel-only"
+selinux_tools="${selinux_fixture}/tools"
+selinux_writable="${selinux_fixture}/etc-selinux"
+mkdir -p "$selinux_stub" "$selinux_relabel_only" "$selinux_tools" "$selinux_writable"
+for tool in bash cp mkdir cmp cat rm basename grep; do
+	ln -s "$(command -v "$tool")" "${selinux_tools}/${tool}"
+done
+cat >"${selinux_stub}/semodule" <<'STUB'
+#!/usr/bin/env bash
+# FIXTURE_LIST_VERSIONS=1 lists "name<TAB>version", as older semodule does.
+suffix=""
+[[ ${FIXTURE_LIST_VERSIONS:-0} != 1 ]] || suffix=$'\t1.0.0'
+case "$1" in
+-l)
+	printf 'semodule -l\n' >>"$FIXTURE_LOG"
+	[[ $FIXTURE_STORE == 1 ]] || {
+		echo "SELinux policy is not managed or store cannot be accessed." >&2
+		exit 1
+	}
+	printf 'abrt%s\n' "$suffix"
+	[[ -z $FIXTURE_LOADED ]] || printf 'linuxio%s\n' "$suffix"
+	[[ -z ${FIXTURE_LIST_EXTRA:-} ]] || printf '%s%s\n' "$FIXTURE_LIST_EXTRA" "$suffix"
+	printf 'zoneminder%s\n' "$suffix"
+	;;
+-E)
+	printf 'semodule -E %s\n' "$2" >>"$FIXTURE_LOG"
+	[[ -n $FIXTURE_LOADED ]] || {
+		echo "semodule:  Failed on $2!" >&2
+		exit 1
+	}
+	cp "$FIXTURE_LOADED" "./$2.cil"
+	;;
+-i)
+	printf 'semodule -i %s\n' "$(basename "$2")" >>"$FIXTURE_LOG"
+	cmp -s "$2" "$FIXTURE_CIL" || {
+		echo "semodule -i was given another file" >&2
+		exit 1
+	}
+	[[ $FIXTURE_LOAD_FAILS != 1 ]] || {
+		echo "semodule:  Failed!" >&2
+		exit 1
+	}
+	;;
+-r) printf 'semodule -r %s\n' "$2" >>"$FIXTURE_LOG" ;;
+*) printf 'semodule %s\n' "$*" >>"$FIXTURE_LOG" ;;
+esac
+STUB
+printf '#!/usr/bin/env bash\nprintf "restorecon %%s\\n" "$*" >>"$FIXTURE_LOG"\nexit "$FIXTURE_RESTORECON_EXIT"\n' >"${selinux_stub}/restorecon"
+printf '#!/usr/bin/env bash\n[[ $FIXTURE_ENABLED == 1 ]]\n' >"${selinux_stub}/selinuxenabled"
+chmod +x "${selinux_stub}/semodule" "${selinux_stub}/restorecon" "${selinux_stub}/selinuxenabled"
+cp "${selinux_stub}/restorecon" "${selinux_relabel_only}/restorecon"
+printf '; an older module\n' >"${selinux_fixture}/older.cil"
+# A checkout without the policy file, so its fetch fails, and one whose policy
+# file is not of the shipped form.
+mkdir -p "${selinux_fixture}/no-policy/packaging" "${selinux_fixture}/bad-policy/packaging/selinux"
+sed 's/^(allow linuxio_auth_t unconfined_t /(allow staff_t unconfined_t /' "$SELINUX_CIL" \
+	>"${selinux_fixture}/bad-policy/packaging/selinux/linuxio.cil"
+
+# selinux_install DISTRO [NAME=VALUE...] runs install_selinux_module as on
+# DISTRO, from the checkout, with a writable SELinux folder and the stand-ins
+# first on PATH. NAME=VALUE changes that: STORE=0 (semodule lists no store),
+# LOADED=FILE (the store holds FILE as linuxio), LOAD_FAILS=1, ENABLED=0
+# (selinuxenabled says no), RESTORECON_EXIT=1, DIR (the SELinux folder),
+# CHECKOUT, TOOLPATH (the PATH). It prints the functions' output, then the
+# calls, each after a "call: " mark.
+selinux_install() {
+	local distro=$1 log="${selinux_fixture}/calls"
+	shift
+	local STORE=1 LOADED="" LOAD_FAILS=0 ENABLED=1 RESTORECON_EXIT=0
+	local DIR=$selinux_writable CHECKOUT=$selinux_checkout TOOLPATH="${selinux_stub}:${selinux_tools}"
+	local "$@"
+	: >"$log"
+	FIXTURE_LOG=$log FIXTURE_STORE=$STORE FIXTURE_LOADED=$LOADED FIXTURE_LOAD_FAILS=$LOAD_FAILS \
+		FIXTURE_ENABLED=$ENABLED FIXTURE_RESTORECON_EXIT=$RESTORECON_EXIT FIXTURE_CIL=$SELINUX_CIL \
+		bash -c 'fixture_distro=$2 checkout=$3
+			source "$1"
+			REPO_ROOT=$checkout
+			LOCAL_INSTALL=1
+			detect_distro() { DISTRO=$fixture_distro; }
+			PATH=$4
+			install_selinux_module "$5"
+			echo "the install went on"' _ "$RELEASE_INSTALLER" "$distro" "$CHECKOUT" "$TOOLPATH" "$DIR" 2>&1
+	sed 's/^/call: /' "$log"
+}
+selinux_calls() { printf '%s\n' "$1" | sed -n 's/^call: //p'; }
+# selinux_case LABEL EXPECTED_CALLS NOTICE OUT: the calls are EXPECTED_CALLS,
+# the install went on, and the output has NOTICE (a pattern; empty: no notice).
+selinux_case() {
+	assert_eq "$2" "$(selinux_calls "$4")" "SELinux calls ${1}"
+	assert_line "the install went on" "$4" "install ${1}"
+	if [[ -n $3 ]]; then
+		printf '%s\n' "$4" | grep -Eq "NOTICE.*$3" || fail "no notice ${1}: ${4}"
+	elif printf '%s\n' "$4" | grep -q NOTICE; then
+		fail "a notice ${1}: ${4}"
+	fi
+}
+loaded="semodule -l
+semodule -E linuxio
+semodule -i linuxio.cil
+restorecon /usr/local/bin/linuxio-auth"
+selinux_case "on Fedora without the module" "$loaded" "" "$(selinux_install fedora)"
+selinux_case "with an older module loaded" "$loaded" "" "$(selinux_install rocky LOADED="${selinux_fixture}/older.cil")"
+# The store holds the shipped module: no load (about 5 s), only the relabel
+# the replaced binary needs.
+selinux_case "with the shipped module loaded" "semodule -l
+semodule -E linuxio
+restorecon /usr/local/bin/linuxio-auth" "" "$(selinux_install almalinux LOADED="$SELINUX_CIL")"
+out=$(selinux_install fedora LOAD_FAILS=1)
+selinux_case "when the load fails" "$loaded" "did not load.*semodule -i ${selinux_checkout}/packaging/selinux/linuxio.cil" "$out"
+# A new or changed module where the SELinux folder is read-only (the in-app
+# updater) is not tried; the notice names the command that loads it.
+selinux_case "with the SELinux folder read-only" "semodule -l
+semodule -E linuxio
+restorecon /usr/local/bin/linuxio-auth" "read-only here.*semodule -i ${selinux_checkout}/packaging/selinux/linuxio.cil" \
+	"$(selinux_install fedora LOADED="${selinux_fixture}/older.cil" DIR="${selinux_fixture}/no-such-dir")"
+selinux_case "when the fetch fails" "semodule -l
+restorecon /usr/local/bin/linuxio-auth" "Failed to fetch" "$(selinux_install fedora CHECKOUT="${selinux_fixture}/no-policy")"
+selinux_case "with a policy file not of the shipped form" "semodule -l
+restorecon /usr/local/bin/linuxio-auth" "not what LinuxIO ships" "$(selinux_install fedora CHECKOUT="${selinux_fixture}/bad-policy")"
+# No policy store: with SELinux on, a notice; either way the relabel.
+selinux_case "without a policy store, SELinux on" "semodule -l
+restorecon /usr/local/bin/linuxio-auth" "not checked" "$(selinux_install centos STORE=0)"
+selinux_case "without a policy store, SELinux off" "semodule -l
+restorecon /usr/local/bin/linuxio-auth" "" "$(selinux_install centos STORE=0 ENABLED=0)"
+selinux_case "without semodule" "restorecon /usr/local/bin/linuxio-auth" "" \
+	"$(selinux_install fedora TOOLPATH="${selinux_relabel_only}:${selinux_tools}")"
+selinux_case "without semodule and restorecon" "" "" "$(selinux_install fedora TOOLPATH="$selinux_tools")"
+selinux_case "when restorecon fails" "$loaded" "Failed to label" "$(selinux_install fedora RESTORECON_EXIT=1)"
+for distro in ubuntu debian linuxmint pop; do
+	selinux_case "on ${distro}" "" "" "$(selinux_install "$distro")"
+done
+
+# The fetched file is loaded as root with no checksum, so only the shipped
+# form passes: LinuxIO's own types and paths, rules from linuxio_auth_t, the
+# constraint as shipped.
+selinux_valid() {
+	bash -c 'source "$1"; selinux_module_valid "$2"' _ "$RELEASE_INSTALLER" "$1"
+}
+selinux_valid "$SELINUX_CIL" || fail "the shipped linuxio.cil is not of the shipped form"
+selinux_refused() {
+	local file="${selinux_fixture}/changed.cil"
+	printf '%s\n' "$2" >"$file"
+	if selinux_valid "$file"; then
+		fail "selinux_module_valid accepted ${1}"
+	fi
+}
+selinux_refused "an allow from another domain" "$(sed 's/^(allow linuxio_auth_t unconfined_t /(allow staff_t unconfined_t /' "$SELINUX_CIL")"
+selinux_refused "an attribute for another type" "$(sed 's/^(typeattributeset daemon (linuxio_auth_t))/(typeattributeset daemon (staff_t))/' "$SELINUX_CIL")"
+selinux_refused "a typepermissive line" "$(
+	cat "$SELINUX_CIL"
+	echo '(typepermissive linuxio_auth_t)'
+)"
+selinux_refused "a file context for another path" "$(sed 's#"/run/linuxio/issue"#"/etc/shadow"#' "$SELINUX_CIL")"
+selinux_refused "a changed constraint" "$(sed 's/(eq u2 unconfined_u)/(eq u2 staff_u)/' "$SELINUX_CIL")"
+selinux_refused "no constraint" "$(grep -v '^(constrain ' "$SELINUX_CIL")"
+selinux_refused "a control character" "$(
+	cat "$SELINUX_CIL"
+	printf '; \001\n'
+)"
+
+# In main the module comes right after the binaries, at main's top level (so
+# on the --skip-binaries path too and inside no condition), before any later
+# step that can end the install and before the systemd steps and the restart.
+main_body=$(sed -n '/^main() {/,/^}/p' "$RELEASE_INSTALLER")
+main_line() { printf '%s\n' "$main_body" | grep -n -m1 -- "$1" | cut -d: -f1 || true; }
+selinux_at=$(main_line '^	install_selinux_module "\$SELINUX_DIR"$')
+[[ -n "$selinux_at" ]] || fail "main does not call install_selinux_module at its top level"
+(($(main_line 'if ! install_binaries') < selinux_at)) || fail "main loads the SELinux module before the binaries are in place"
+skip_block_end=$(printf '%s\n' "$main_body" | awk -v from="$(main_line 'Step 3/5')" 'NR > from && /^\tfi$/ { print NR; exit }')
+((skip_block_end < selinux_at)) || fail "main loads the SELinux module only when it installs the binaries"
+if printf '%s\n' "$main_body" | sed -n "$((skip_block_end + 1)),$((selinux_at - 1))p" | grep -q 'Show 1'; then
+	fail "a step that can end the install runs between the binaries and the SELinux module"
+fi
+((selinux_at < $(main_line 'install_systemd_files'))) || fail "main loads the SELinux module after the systemd steps"
+((selinux_at < $(main_line 'restart_or_start_services'))) || fail "main loads the SELinux module after the restart"
+
+# The uninstaller removes the module after the binaries: removed while
+# linuxio-auth is still there, it would leave that file unlabeled_t, which
+# systemd cannot run. Only a module that is loaded, whether semodule lists
+# bare names or names with versions, and only with semodule.
+rm_bin_at=$(grep -n -m1 -F 'rm -f /usr/local/bin/linuxio*' "$UNINSTALLER" | cut -d: -f1 || true)
+rm_module_at=$(grep -n -m1 -F 'semodule -r linuxio' "$UNINSTALLER" | cut -d: -f1 || true)
+[[ -n "$rm_module_at" ]] || fail "the uninstaller does not remove the SELinux module"
+((rm_bin_at < rm_module_at)) || fail "the uninstaller removes the SELinux module before the binaries"
+# selinux_uninstall LOADED PATH [VERSIONS] [EXTRA] runs the uninstaller's
+# module block with the uninstaller's shell options.
+selinux_uninstall() {
+	local log="${selinux_fixture}/calls"
+	: >"$log"
+	FIXTURE_LOG=$log FIXTURE_STORE=1 FIXTURE_LOADED=$1 FIXTURE_LOAD_FAILS=0 FIXTURE_CIL=$SELINUX_CIL \
+		FIXTURE_LIST_VERSIONS=${3:-0} FIXTURE_LIST_EXTRA=${4:-} PATH=$2 \
+		bash -c 'set -euo pipefail
+			Show() { printf "%s\n" "$*"; }
+			'"$(sed -n '/^# ========== REMOVE THE SELINUX MODULE/,/^# ========== REMOVE CONFIGURATION/p' "$UNINSTALLER" | sed '$d')"'
+			echo "the uninstall went on"' 2>&1
+	sed 's/^/call: /' "$log"
+}
+for versions in 0 1; do
+	out=$(selinux_uninstall "$SELINUX_CIL" "${selinux_stub}:${selinux_tools}" "$versions")
+	assert_eq "semodule -l
+semodule -r linuxio" "$(selinux_calls "$out")" "uninstall with the module loaded (versions listed: ${versions})"
+	assert_line "the uninstall went on" "$out" "uninstall with the module loaded"
+	out=$(selinux_uninstall "" "${selinux_stub}:${selinux_tools}" "$versions" linuxio_extra)
+	assert_eq "semodule -l" "$(selinux_calls "$out")" "uninstall without the module (versions listed: ${versions})"
+	assert_line "the uninstall went on" "$out" "uninstall without the module"
+done
+out=$(selinux_uninstall "" "$selinux_tools")
+assert_eq "" "$(selinux_calls "$out")" "uninstall without semodule"
+assert_line "the uninstall went on" "$out" "uninstall without semodule"
+
+# The policy file: its file contexts name only files LinuxIO puts there (the
+# auth binary in the installer's BIN_DIR, the banner update-issue writes); the
+# banner's sits in an optional block, so a policy without its type still
+# loads the rest; and its parentheses balance outside comments and strings.
+bin_dir=$(bash -c 'source "$1"; printf "%s\n" "$BIN_DIR"' _ "$RELEASE_INSTALLER")
+issue_file=$(sed -n 's/^OUTPUT_FILE="\${OUTPUT_FILE:-\(.*\)}"$/\1/p' "${SCRIPT_DIR}/../update-issue")
+[[ -n "$issue_file" ]] || fail "update-issue has no default OUTPUT_FILE"
+printf '%s\n' "$binary_list" | grep -Fqx linuxio-auth || fail "linuxio-auth is not an installed binary"
+filecon_paths=$(sed -n 's/^[[:blank:]]*(filecon "\([^"]*\)".*/\1/p' "$SELINUX_CIL")
+assert_line "${bin_dir}/linuxio-auth" "$filecon_paths" "file context of the auth binary"
+while IFS= read -r path; do
+	case "$path" in
+	"${bin_dir}/linuxio-auth" | "$issue_file") ;;
+	*) fail "linuxio.cil gives a file context to ${path}, which LinuxIO does not install" ;;
+	esac
+done <<<"$filecon_paths"
+# A file made at run time has its folder's type until something relabels it.
+if printf '%s\n' "$filecon_paths" | grep -Fqx "$issue_file"; then
+	grep -Fq 'restorecon "${OUTPUT_FILE}"' "${SCRIPT_DIR}/../update-issue" ||
+		fail "update-issue does not relabel ${issue_file}, which linuxio.cil gives a type"
+	assert_eq "(optional linuxio_banner" "$(grep -B1 -F "\"${issue_file}\"" "$SELINUX_CIL" | head -1)" \
+		"the line before the banner's file context"
+fi
+assert_eq "$(grep -c '^[[:blank:]]*(filecon ' "$SELINUX_CIL")" "$(grep -c '(filecon ' "$SELINUX_CIL")" "filecon lines of linuxio.cil"
+cil_depth=$(sed -e 's/;.*//' -e 's/"[^"]*"//g' "$SELINUX_CIL" | awk '
+	{ for (i = 1; i <= length($0); i++) { c = substr($0, i, 1); if (c == "(") d++; else if (c == ")") d--; if (d < 0) { print "negative at line " NR; exit } } }
+	END { print d }')
+assert_eq "0" "$cil_depth" "parenthesis depth at the end of linuxio.cil"
+rm -rf "$selinux_fixture"
+printf '   \033[1;32m✓\033[0m %s\n' "SELinux module of the shipped form loaded on the RHEL family where it can and differs, the auth binary relabelled wherever restorecon exists, right after the binaries; removed after the binaries on uninstall"
+
 # The standalone scripts each carry their own Show/Header; keep them identical.
 ui_sum() { sed -n '/^Show() {/,/^}/p;/^Header() {/,/^}/p;/^readonly COLOUR_RESET/,/^readonly YELLOW/p' "$1" | sha256sum; }
 for script in install-dependencies.sh uninstall.sh; do

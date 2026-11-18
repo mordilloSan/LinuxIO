@@ -1213,12 +1213,10 @@ service step, since `start_zram` does that. See
   Both kernels refused an
   unknown zswap compressor with `ENOENT`. Install from Capabilities in the
   browser (`capability-install.spec.ts`, [Capabilities](./capabilities.md#zram))
-  passed on Ubuntu, where the dialog then named zram-tools. On Fedora sign-in
-  stops at SELinux ([backlog](./TODO/backlog.md#visible-bugs)); with either
-  change that item describes made in the VM and SELinux enforcing, the spec
-  passed: PackageKit installed `zram-generator` and the dialog named
-  zram-generator as the provider ([Capabilities](./capabilities.md#zram) has
-  the runs).
+  passed on Ubuntu, where the dialog then named zram-tools, and on Fedora as
+  installed, with SELinux enforcing, where PackageKit installed
+  `zram-generator` and the dialog named zram-generator as the provider
+  ([Capabilities](./capabilities.md#zram) has the runs).
 
 ## Known limits
 

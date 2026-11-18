@@ -22,6 +22,8 @@ readonly PAM_DIR="/etc/pam.d"
 readonly CONFIG_DIR="/etc/linuxio"
 readonly DATA_DIR="/var/lib/linuxio"
 readonly NEEDRESTART_DIR="/etc/needrestart"
+# semodule writes the loaded policy here; read-only in the in-app updater.
+readonly SELINUX_DIR="/etc/selinux"
 # In-app updates run with the installed bridge's writable-path allowlist.
 # Keep mandatory release files under paths supported since v0.27.0.
 readonly SHARE_DIR="/usr/share/linuxio"
@@ -584,6 +586,129 @@ install_pam_config() {
 	fi
 	Show 0 "PAM configuration installed"
 
+	return 0
+}
+
+# selinux_module_valid FILE: whether FILE has the form of the module LinuxIO
+# ships, packaging/selinux/linuxio.cil. The file comes from main with no
+# checksum and is loaded as root into the policy store, where it stays until
+# removed, so every line must be one the module uses, about LinuxIO's own
+# types and paths only: its two types, their roles and attributes, rules whose
+# source is linuxio_auth_t, the one type transition, the constraint exactly as
+# shipped, the two file contexts, and the optional block around the banner's.
+selinux_module_valid() {
+	local file="$1" line constrained=0
+	local own='(linuxio_auth_t|linuxio_auth_exec_t)'
+	local name='[a-z][a-z0-9_]*'
+	local constraint='(constrain (process (transition)) (or (neq t1 linuxio_auth_t) (or (eq u1 u2) (eq u2 unconfined_u))))'
+
+	if LC_ALL=C grep -qa '[^[:print:][:blank:]]' "$file"; then
+		return 1
+	fi
+	while IFS= read -r line || [[ -n "$line" ]]; do
+		line="${line#"${line%%[![:blank:]]*}"}"
+		if [[ $line == "$constraint" ]]; then
+			constrained=1
+		elif [[ $line =~ ^(;.*)?$ ||
+			$line =~ ^\(type\ ${own}\)$ ||
+			$line =~ ^\(roletype\ ${name}\ ${own}\)$ ||
+			$line =~ ^\(typeattributeset\ ${name}\ \(${own}\)\)$ ||
+			$line =~ ^\(allow\ linuxio_auth_t\ ${name}\ \(${name}\ \(${name}(\ ${name})*\)\)\)$ ||
+			$line == '(typetransition initrc_domain linuxio_auth_exec_t process linuxio_auth_t)' ||
+			$line == "(filecon \"${BIN_DIR}/linuxio-auth\" file (system_u object_r linuxio_auth_exec_t ((s0) (s0))))" ||
+			$line == '(filecon "/run/linuxio/issue" file (system_u object_r motd_var_run_t ((s0) (s0))))' ||
+			$line == '(optional linuxio_banner' ||
+			$line == ')' ]]; then
+			continue
+		else
+			return 1
+		fi
+	done <"$file"
+	((constrained == 1))
+}
+
+# selinux_module_load_command prints the root shell command that loads the
+# module this install fetched, for a notice when it could not load it.
+selinux_module_load_command() {
+	if [[ $LOCAL_INSTALL -eq 1 ]]; then
+		printf 'semodule -i %s\n' "${REPO_ROOT}/packaging/selinux/linuxio.cil"
+	else
+		printf 'curl -fsSL %s -o linuxio.cil && semodule -i linuxio.cil\n' "${CURRENT_MAIN_PACKAGING_BASE}/selinux/linuxio.cil"
+	fi
+}
+
+# load_selinux_module SELINUX_DIR fetches the module, checks its form, and
+# loads it unless the store already holds the same file. A load takes about
+# 5 s and writes the policy under SELINUX_DIR, which the in-app updater's
+# sandbox has read-only (ProtectSystem=full): there a new or changed module is
+# not tried, since semodule would fail and leave the store as it was. Whatever
+# goes wrong, the module loaded before stays, and without one sign-in is
+# refused where SELinux enforces, never more allowed than before.
+load_selinux_module() {
+	local selinux_dir="$1"
+	local staged="${STAGING}/linuxio.cil"
+	local loaded="${STAGING}/selinux-loaded"
+	local keeps="A module loaded before stays; without one, sign-in is refused while SELinux enforces"
+
+	Show 2 "Installing the SELinux module for linuxio-auth..."
+	if ! fetch_packaging_asset "selinux/linuxio.cil" "$staged"; then
+		Show 3 "Failed to fetch the SELinux module. ${keeps}"
+		return 0
+	fi
+	if ! selinux_module_valid "$staged"; then
+		Show 3 "The SELinux module was not loaded: the fetched file is not what LinuxIO ships. ${keeps}"
+		return 0
+	fi
+	if mkdir -p "$loaded" && (cd "$loaded" && semodule -E linuxio >/dev/null 2>&1) &&
+		cmp -s "$staged" "${loaded}/linuxio.cil"; then
+		Show 0 "SELinux module linuxio is up to date"
+		return 0
+	fi
+	if [[ ! -w $selinux_dir ]]; then
+		Show 3 "The SELinux module linuxio is new or changed, and ${selinux_dir} is read-only here (an in-app update), so it was not loaded. ${keeps}. To load it, run as root: $(selinux_module_load_command)"
+		return 0
+	fi
+	if semodule -i "$staged"; then
+		Show 0 "SELinux module linuxio loaded"
+	else
+		Show 3 "The SELinux module linuxio did not load (semodule's message is above). ${keeps}. To try again, run as root: $(selinux_module_load_command)"
+	fi
+}
+
+# install_selinux_module SELINUX_DIR gives linuxio-auth its SELinux domain,
+# packaging/selinux/linuxio.cil, and relabels the auth binary
+# (docs/process-systemd-architecture.md, "SELinux"). Without the domain the
+# policy refuses linuxio-auth the start of the session bridge in the context
+# pam_selinux sets, so nobody signs in where SELinux is enforcing.
+#
+# The RHEL family only, whose policy has the names the module uses. The module
+# part runs where semodule lists the modules of a policy store; a host with
+# SELinux disabled passes too, since semodule works on its store, and the
+# relabel that switching SELinux on asks for gives the binary its type. When
+# SELinux is on and semodule cannot read the store (another program holding
+# its lock), the module is left as it is and the notice says so.
+#
+# The relabel runs whenever restorecon exists, whatever happened to the
+# module: the installer replaces each binary through a new file, which is
+# bin_t again, and every sign-in is refused until restorecon gives it its type.
+install_selinux_module() {
+	local selinux_dir="$1"
+
+	(detect_distro && is_fedora) || return 0
+	if command -v semodule >/dev/null 2>&1; then
+		if semodule -l >/dev/null 2>&1; then
+			load_selinux_module "$selinux_dir"
+		elif command -v selinuxenabled >/dev/null 2>&1 && selinuxenabled; then
+			Show 3 "The SELinux module was not checked: semodule could not read the policy store. Run this installer again once 'semodule -l' works"
+		fi
+	fi
+	if command -v restorecon >/dev/null 2>&1; then
+		if restorecon "${BIN_DIR}/linuxio-auth"; then
+			Show 0 "${BIN_DIR}/linuxio-auth labelled"
+		else
+			Show 3 "Failed to label ${BIN_DIR}/linuxio-auth, so sign-in is refused while SELinux enforces; run restorecon ${BIN_DIR}/linuxio-auth"
+		fi
+	fi
 	return 0
 }
 
@@ -1258,6 +1383,14 @@ main() {
 			Show 1 "Binary installation failed"
 		fi
 	fi
+	# Right after the binaries, on both paths, before any step that can end
+	# the install: a replaced linuxio-auth is bin_t until relabelled, and every
+	# sign-in is refused meanwhile where SELinux enforces. It is also before the
+	# restart, which recreates the auth socket in the binary's domain. What
+	# remains: a binary that fails inside install_binaries ends the install
+	# first, and a linuxio-auth it already replaced stays bin_t until the next
+	# install.
+	install_selinux_module "$SELINUX_DIR"
 	if ! write_components_file "$BIN_DIR" "${SHARE_DIR}/components" root:root; then
 		Show 1 "Failed to record the installed versions"
 	fi

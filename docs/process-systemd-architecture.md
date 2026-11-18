@@ -468,6 +468,186 @@ The `Makefile` (recipes in `mk/go.mk` and `mk/auth.mk`) produces eight release a
 - PAM stack → `/etc/pam.d/linuxio`, from `packaging/etc/pam.d/linuxio` on the Debian family and from `packaging/etc/pam.d/linuxio.rhel` on the RHEL family, which has `password-auth` and `postlogin` where Debian has the `common-*` files, and `/etc/locale.conf` for `/etc/default/locale`. The installer tells the families apart with `install-dependencies.sh`'s `detect_distro` and `is_fedora`, of which it carries a copy, and installs the file through a staged copy (`atomic_replace_file`, 0644 root:root), so a download cut half-way leaves the installed file as it was. The installer fixtures keep the copy identical and check that the RHEL file is the Debian one line for line and in the same order, with `common-auth` mapped to `substack password-auth` and `include postlogin`, `common-account` and `common-password` to `password-auth`, `common-session-noninteractive` to `password-auth` and `postlogin`, and `/etc/default/locale` to `/etc/locale.conf`. Order matters on RHEL: a `sufficient` line in `password-auth` ends the stack where it is included, so LinuxIO's own lines stay above each include.
 - config → `/etc/linuxio/`
 - needrestart override → `/etc/needrestart/conf.d/linuxio.conf`, only where `/etc/needrestart` exists (see the **needrestart.** paragraph in "Login and jobs — the bridge connects to its job host")
+- SELinux module `linuxio` → the policy store, with `semodule -i` and a relabel of `/usr/local/bin/linuxio-auth`, on the RHEL family only (see [SELinux](#selinux))
+
+## SELinux
+
+On the RHEL family SELinux enforces by default, and without a policy of its
+own nobody could sign in: systemd ran `/usr/local/bin/linuxio-auth` (`bin_t`)
+as `unconfined_service_t`, the domain of a service the policy knows nothing
+about; PAM authenticated, `pam_selinux.so open` set the context the user's
+programs start in, `unconfined_u:unconfined_r:unconfined_t:s0`, and the
+policy refused the exec of the bridge in it (`avc: denied { transition }`
+from `unconfined_service_t` to `unconfined_t`). Only a login program's domain
+(`sshd_t`, `cockpit_session_t`) may make that switch. So LinuxIO ships an
+SELinux policy module, `linuxio` (`packaging/selinux/linuxio.cil`), as Cockpit
+does for `cockpit-session`.
+
+- **`linuxio_auth_exec_t`** is the type of `/usr/local/bin/linuxio-auth`, and
+  **`linuxio_auth_t`** the domain systemd enters when it runs that file.
+- **`linuxio_auth_t` is a `daemon`.** systemd creates the listening socket of
+  `linuxio-auth.socket` in the domain of the program the service runs, and
+  the policy lets `init_t` create sockets of daemons only: without the
+  attribute the socket fails to listen ("Permission denied").
+- **It is as unconfined as `unconfined_service_t`**, whose attributes it
+  carries, and a `daemon` with the type transition every daemon domain has:
+  `linuxio-auth` runs as root and was unconfined before; the module does not
+  set out to confine it.
+- **One permission more:** to start the bridge as `unconfined_t`. Measured
+  on Fedora 45 with setools, attributes expanded and conditional rules taken
+  with the booleans as set: the only permissions `linuxio_auth_t` has that
+  `unconfined_service_t` lacks are `entrypoint` on its own file and that
+  transition. It lacks about a thousand (type, class) pairs of
+  `unconfined_service_t`'s (the X server, PostgreSQL, `nscd` and `passwd`
+  classes, `execmem`, `execstack`, and transitions to `chronyc_t`,
+  `passwd_t`, `rpm_script_t` and `svirt_t`). What other domains may do to it
+  and not to `unconfined_service_t`, through `daemon` and the type
+  transition: `nscd_t` reads its `/proc` entries; the `initrc_domain`
+  members (`initrc_t`, `cluster_t`, `condor_startd_t`, `glusterd_t`,
+  `kdumpctl_t`, `openshift_initrc_t`) enter it when they run `linuxio-auth`;
+  user domains get the labelled-networking `recvfrom` on its UDP sockets.
+  `staff_t` has no `connectto` on `unconfined_service_t` sockets, the job
+  hosts' included.
+- **A constraint keeps confined users out.** No line of the distribution's
+  login contexts (`/etc/selinux/targeted/contexts/default_contexts` and
+  `contexts/users/*`) names `linuxio_auth_t`, so `pam_selinux` falls back to
+  `failsafe_context`, `unconfined_r:unconfined_t`, with the user's SELinux
+  user. `staff_u` may take that role, so without more a `staff_u` user would
+  get an unconfined bridge. The constraint allows the switch out of
+  `linuxio_auth_t` only into the SELinux user `unconfined_u` (or the same
+  user, as for programs `linuxio-auth` runs before the session).
+- **The SSH banner.** The module also gives `/run/linuxio/issue`, which
+  `/etc/motd.d/linuxio` links to, the type of `/run/motd.d`,
+  `motd_var_run_t`: in its folder's type, `var_run_t`, `pam_motd` in `sshd`
+  may not read it, and the banner never showed on Fedora. `update-issue`
+  relabels the file after each write.
+
+What runs where, seen on Fedora 45 with SELinux enforcing after a fresh
+install and a reboot:
+
+| Process or file | Context |
+|---|---|
+| The listening socket of `linuxio-auth.socket`, the connections it accepts, `linuxio-auth` | `system_u:system_r:linuxio_auth_t:s0` |
+| The bridge of a sudo user (uid 0) and of a user without sudo | `unconfined_u:unconfined_r:unconfined_t:s0` |
+| Job hosts, web server, monitoring, indexer | `system_u:system_r:unconfined_service_t:s0`, as without the module |
+| `/usr/local/bin/linuxio-auth` | `linuxio_auth_exec_t` |
+| `/run/linuxio/issue` | `motd_var_run_t` |
+
+Who gets in:
+
+| User mapped to | Result |
+|---|---|
+| `unconfined_u` (the default mapping) | Signs in |
+| `staff_u` | Refused when the bridge starts, by the constraint (`avc: denied { transition }` to `staff_u:unconfined_r:unconfined_t`); the login answers 500 `bridge_error`, and the page says it could not start the session bridge |
+| `user_u` | Refused when the session opens: `pam_selinux` reports "Unable to get valid context", `user_u` having no `unconfined_r`; the same answer |
+| Any, with a wrong password or listed in `/etc/linuxio/disallowed-users` | Refused by PAM (401), as without the module |
+
+**Why hand-written CIL.** Compiling a `.te` module on the host at install
+time needs `selinux-policy-devel` and what it pulls in (3 MiB to download,
+26 MiB installed). The CIL converted from such a module is 259 lines
+nobody reviews. Neither can carry the constraint: `checkmodule` refuses
+`constrain` in a module, and CIL takes it. The hand-written file is about 70
+lines and needs no build step and nothing beyond `semodule` and
+`restorecon`, which a host with an SELinux policy has. Only the banner's file
+context is in an `optional` block, so a policy that lacks one of the other
+names it uses refuses the whole module.
+
+**Why confined users are refused, not given a confined session.** A session
+in the user's own domain (`user_t`, `staff_t`) was tried. It needs lines added
+by hand to the distribution's login-context files, which an update of the
+policy package may replace (`default_contexts` is replaced, `users/*` are
+kept), and a permission for user domains to use `linuxio-auth`'s sockets.
+Even then it is half broken: `user_t` may not connect to
+`/run/linuxio/jobs/<uid>.sock` or to the monitoring socket, so there are no
+jobs, no changes and no monitoring, and a listing of a folder holding a file
+the domain may not stat (`/etc/audit`) fails whole. And a job host, which
+systemd starts, runs as `unconfined_service_t` whoever it works for, so
+opening its socket to a confined user would run that user's jobs unconfined.
+
+**Install and uninstall.** `install_selinux_module` in
+`install-linuxio-binaries.sh` runs on the RHEL family only, at the top level
+of `main`:
+
+1. **Right after the binaries**, also with `--skip-binaries`, and before any
+   later step that can end the install. The installer replaces a binary
+   through a new file, which is `bin_t` again, and every sign-in is refused
+   until it is relabelled. A binary that fails inside `install_binaries`
+   still ends the install first, and a `linuxio-auth` it already replaced
+   stays `bin_t` until the next install.
+2. **The module**, where `semodule -l` lists the modules of a policy store.
+   It is fetched from main like the other packaging assets and loaded as
+   root with no checksum, so `selinux_module_valid` first checks it has the
+   shipped form: every line is one the module uses, about LinuxIO's own types
+   and paths only (rules from `linuxio_auth_t`, the two file contexts, the
+   constraint as shipped). A store that already holds the same file
+   (`semodule -E linuxio`, compared with the fetched one) is not loaded
+   again, since a load takes about 5 s; and where `/etc/selinux` is not
+   writable (the in-app updater's sandbox) a new or changed module is not
+   tried, and the notice names the root command that loads it.
+3. **Then `restorecon /usr/local/bin/linuxio-auth`**, whenever `restorecon`
+   exists, whatever happened to the module: the file context lives in the
+   module, and a binary just replaced needs it. When SELinux is on and
+   `semodule` cannot read the store (another program holding its lock), the
+   module is left as it is with a notice, and the relabel still runs.
+4. **All before the systemd steps and the restart**, which recreates the
+   auth socket in `linuxio_auth_t`. On a running host the next sign-in uses
+   the domain at once; the listening socket keeps its old type until the
+   socket unit restarts, which does not stop sign-in.
+
+A module that does not load, or is not of the shipped form, is reported, and
+the install goes on: a module loaded before stays, and without one sign-in is
+refused where SELinux enforces, as before. On a host with SELinux disabled
+`semodule` works on the store and `restorecon` does nothing; switching
+SELinux on asks for a relabel, which gives the binary its type. The Debian
+family is left alone: `unconfined_service_t` is a name of Fedora's policy.
+The banner's file context sits in an optional block, so a policy without
+`motd_var_run_t` loads the rest and only the banner keeps `var_run_t`.
+`uninstall.sh` removes the module after the binaries: removed while
+`linuxio-auth` is still there, it would leave that file `unlabeled_t`, which
+systemd cannot run (status `203/EXEC`).
+
+**Turned down, likely to be proposed again** (one line each under Rejected
+in the [backlog](./TODO/backlog.md#rejected)): dropping `pam_selinux.so open`
+from the PAM file works, but every session then runs as
+`unconfined_service_t`, a confined user's too. `SELinuxContext=` on
+`linuxio-auth@.service` worked as a drop-in on a running system and fails as
+installed: systemd creates the listening socket in that context, and the
+policy refuses `init_t` an `unconfined_t` socket.
+
+### Known limits
+
+- A user mapped to a confined SELinux user (`user_u`, `staff_u`) cannot sign
+  in, so a host that confines every login has no LinuxIO sign-in, and the
+  page shows only the general "could not start the session bridge" message.
+- Job hosts, the web server, monitoring and the indexer stay
+  `unconfined_service_t`.
+- The bridge's level is `s0` where an SSH login has `s0-s0:c0.c1023`:
+  `pam_selinux` takes it from `failsafe_context`.
+- A user SELinux refuses (`user_u` when the session opens, `staff_u` when
+  the bridge starts) still has their `linuxio-jobs@<uid>.socket` started:
+  `linuxio-auth` starts it before the session opens.
+- The file context names `/usr/local/bin`, the installer's `BIN_DIR`.
+- A policy that lacks a name the module uses (a strict or MLS policy, or one
+  with `unconfined` removed) does not load it, and sign-in is refused there
+  as before.
+- An in-app update cannot load a module that is new or changed: its sandbox
+  (`ProtectSystem=full`) has `/etc/selinux` read-only, and adding that folder
+  to its `ReadWritePaths` makes the policy refuse `init_t` the bind mount
+  (`mounton` on `selinux_config_t`), so the updater's unit fails to start
+  (status 226). The binary is still relabelled and the module loaded before
+  stays. So a host updated in-app while SELinux was permissive or disabled
+  gets no module, a later tightening of the module reaches a host only
+  through an install from a shell, and a binary that needs a rule the old
+  module lacks is refused sign-in until then.
+- A Debian-family host with SELinux enforcing is not handled: no module is
+  installed there.
+- The banner's label was checked on Fedora 45 only; a policy whose
+  file-context substitutions map `/run` to `/var/run` may not match
+  `/run/linuxio/issue`, and the banner then stays unreadable to `sshd`.
+- Checked on Fedora 45 only. That RHEL, CentOS Stream, Rocky Linux and
+  AlmaLinux have every name the module uses is expected, not seen; an update
+  of the policy package to a newer version was not seen either (a reinstall
+  of the same version kept the module and the labels).
 
 ## Managing the Stack (`linuxio` CLI)
 
@@ -523,6 +703,7 @@ follow the [Production Diagnostic Data Policy](./production-diagnostics.md).
 | needrestart override (apt's needrestart run defers the job hosts and the timer-run units) | `packaging/etc/needrestart/conf.d/linuxio.conf` → `/etc/needrestart/conf.d/`, only where `/etc/needrestart` exists |
 | Managed TLS certificate | `/var/lib/linuxio/webserver/certificates/0-self-signed.{cert,key}` |
 | Install script | `packaging/scripts/install-linuxio-binaries.sh` (`--local` for a checkout); `packaging/scripts/localinstall.sh` is a wrapper for it |
+| SELinux module (RHEL family) | `packaging/selinux/linuxio.cil` → the policy store, loaded by `install_selinux_module` in the install script and removed by `packaging/scripts/uninstall.sh`; `packaging/scripts/update-issue` relabels the banner |
 | CLI (commands) | `backend/cli/` (`main.go` dispatch, `services.go`, `logs.go`, `verbose.go`, `version.go`) |
 | Worker (timer jobs and unit hooks) | `backend/worker/` (`main.go` dispatch; `snapshot.go`, `replicate.go`, `health.go`, `degraded.go`; `scheduled_run.go`, `alert.go`) |
 | Program modes, recorded versions, saved-unit rewrite | `binary_mode`, `write_components_file` and `rewrite_saved_unit_commands` in `packaging/scripts/install-linuxio-binaries.sh`; `backend/common/version/components.go` |

@@ -60,10 +60,12 @@ runs Docker's convenience script and streams its output.
 
 Release installation deliberately combines immutable release binaries with
 current-`main` packaging assets (systemd units, PAM and application
-configuration, MOTD, and helper files). This is the recovery path for fixing
+configuration, MOTD, helper files, and the SELinux policy
+`packaging/selinux/linuxio.cil`). This is the recovery path for fixing
 installer or service-definition bugs in already-published releases. Keep those
 assets compatible with supported historical binaries, or add a clear minimum
-binary-version failure before making an incompatible packaging change.
+binary-version failure before making an incompatible packaging change. Every
+release's installer fetches them by path, so their paths must not move.
 
 ## Initial setup
 
@@ -219,10 +221,10 @@ and the packages they install. Fedora's is:
 
 On Fedora the root suites `relay`, `filebrowser`, `userconfig`, `memory` and
 `packagekit` have been run (`docs/TODO/e2e-testing.md`, "Distributions", has the
-results). The browser specs do not run there yet: with SELinux enforcing,
-sign-in stops before the bridge starts (`docs/TODO/backlog.md`, "Visible
-bugs"), and most of them do things with `apt` packages. `capability-install.spec.ts` is written
-for both distributions.
+results), and of the browser specs `login.spec.ts` and
+`capability-install.spec.ts`, which pass there as installed with SELinux
+enforcing and again after a reboot. The other specs do things with `apt`
+packages; `capability-install.spec.ts` is written for both distributions.
 
 ```sh
 make test-vm-browser        # everything below that a browser run needs, in one go
@@ -257,6 +259,14 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   processes still run, or to run several `vm-ssh` commands against one boot;
   `make vm-stop` then shuts it down. `vm-reset` leaves it stopped, without
   LinuxIO; run `vm-install` again after a reset.
+- A change to a systemd unit or socket, a PAM file or SELinux policy counts
+  as working only when it is seen as the installer puts it and again after a
+  reboot (`packaging/vm/linuxio-vm.sh reboot`), so that every socket and
+  service starts with it. A drop-in or an edit made on a running VM shows
+  less: `SELinuxContext=` on `linuxio-auth@.service` let sign-in pass that
+  way, because its socket was already listening, and as installed systemd
+  could not create the socket at all
+  (`docs/process-systemd-architecture.md`, "SELinux").
 - The seed switches `apt-daily.timer` and `apt-daily-upgrade.timer` off, so
   the VM never upgrades itself: an unattended upgrade that a power-cut check
   interrupts leaves dpkg broken for the specs after it. `vm-update` is how

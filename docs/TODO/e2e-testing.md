@@ -252,29 +252,36 @@ Built (2026-11-18):
 | `make test-vm-backend SUITES=packagekit VMS=1` (same day) | Passes: with PackageKit's cache made cold by a dnf transaction outside it, Resolve returns an empty result, and the install refreshes once and installs `hello` |
 | `make test-vm-browser VMS=1 PLAYWRIGHT_ARGS=capability-install.spec.ts` (same day, before `linuxio.rhel`) | Fails at sign-in, and `login.spec.ts` the same way: PAM cannot open the Debian `common-*` files the PAM file included (`PAM _pam_load_conf_file: unable to open config for common-auth`) |
 | `make test-vm-browser-rerun VMS=1 PLAYWRIGHT_ARGS=capability-install.spec.ts`, with those includes changed to `password-auth` by hand and SELinux permissive in the VM, on the first sign-in after the VM booted (same day, before `linuxio.rhel`) | Passes: the install showed "Refreshing the package lists", then installed `zram-generator`, 3 s in all; no zram started, and the Memory overflow dialog named zram-generator as the provider |
-| `make test-vm-browser VMS=1 PLAYWRIGHT_ARGS=login.spec.ts`, with `packaging/etc/pam.d/linuxio.rhel` installed (same day) | Fails one step later: PAM authenticates and opens the session, and SELinux denies the bridge's exec the `transition` to the user's context ([backlog](./backlog.md#visible-bugs)). A wrong password and a user in `/etc/linuxio/disallowed-users` are refused by PAM (`pam_unix`, `pam_listfile`) |
-| `make test-vm-browser-rerun VMS=1 PLAYWRIGHT_ARGS=login.spec.ts`, then `PLAYWRIGHT_ARGS=capability-install.spec.ts`, with SELinux enforcing and either change the backlog item describes made in the VM (same day) | Both pass under each change with no denial: `zram-generator` installed in 2 s and in 3 s, both without a refresh, later in a boot that had seen other sign-ins; no zram started, and the dialog named zram-generator as the provider |
+| `make test-vm-browser VMS=1 PLAYWRIGHT_ARGS=login.spec.ts`, with `packaging/etc/pam.d/linuxio.rhel` installed (same day) | Fails one step later: PAM authenticates and opens the session, and SELinux denies the bridge's exec the `transition` to the user's context ([Process & Systemd Architecture](../process-systemd-architecture.md#selinux)). A wrong password and a user in `/etc/linuxio/disallowed-users` are refused by PAM (`pam_unix`, `pam_listfile`) |
+| `make test-vm-browser-rerun VMS=1 PLAYWRIGHT_ARGS=login.spec.ts`, then `PLAYWRIGHT_ARGS=capability-install.spec.ts`, with SELinux enforcing and, made in the VM, first `pam_selinux.so open` removed from the PAM file and then a `SELinuxContext=` drop-in on `linuxio-auth@.service` with its socket already listening (same day) | Both pass under each change with no denial: `zram-generator` installed in 2 s and in 3 s, both without a refresh, later in a boot that had seen other sign-ins; no zram started, and the dialog named zram-generator as the provider |
+| `make test-vm-browser VMS=1 VM_KEEP=1 PLAYWRIGHT_ARGS='login.spec.ts capability-install.spec.ts'`, with `SELinuxContext=-unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023` in `linuxio-auth@.service` as installed (same day) | Fails before any sign-in: systemd creates `linuxio-auth.socket`'s listening socket in that context, SELinux denies `init_t` the `create`, the socket fails with Permission denied and `linuxio-webserver.socket` with it, so port 8090 refuses connections. The VM run above added the drop-in while the socket was already listening (under Rejected in the [backlog](./backlog.md#rejected)) |
+| `make test-vm-browser-rerun VMS=1 VM_KEEP=1 PLAYWRIGHT_ARGS='login.spec.ts capability-install.spec.ts'`, with an SELinux module that gives `linuxio-auth` a domain of its own loaded in the VM, after a reboot (same day) | Both pass, three times: with the module compiled from a `.te`, with the CIL generated from it on a VM reverted to clean, and with the hand-written CIL now in `packaging/selinux/linuxio.cil`. No denial of LinuxIO's; `linuxio-auth` and its listening socket run as `linuxio_auth_t`, the bridges as `unconfined_t`; a `user_u` and a `staff_u` user are refused |
+| `make test-vm-browser VMS=1 VM_KEEP=1 PLAYWRIGHT_ARGS='login.spec.ts capability-install.spec.ts'`, with the installer loading `packaging/selinux/linuxio.cil`, then a reboot and `make test-vm-browser-rerun` with the same specs (same day) | Both pass as installed and again after the reboot. `ausearch -ts boot` shows no denial; the contexts and the refusals (a wrong password, a user in `/etc/linuxio/disallowed-users`, a `user_u` and a `staff_u` user) are those of [Process & Systemd Architecture](../process-systemd-architecture.md#selinux), and the SSH banner shows at an interactive login. On the same VM with the module removed and `linuxio-auth` relabelled `bin_t` (sign-in refused), `make vm-install` made the next sign-in work without a reboot; the installer run in a transient unit with the in-app updater's sandbox (`ProtectSystem=full` and its `ReadWritePaths`) found the module up to date and relabelled the binary, and with another version of the module in the store did not try the load (`/etc/selinux` read-only), named the command that loads it, relabelled the binary and went on, the older module and its policy staying loaded; with the banner's optional block naming a type the policy lacks, the module loaded, sign-in worked after a reboot and only the banner kept `var_run_t`; `uninstall.sh` left no module and no file of its types |
 
 Not run on Fedora yet: the `btrfs`, `indexer`, `docker`, `updater` and
-`network` suites, and the browser specs as installed, which wait for sign-in
-to work with SELinux enforcing. The root suites needed three things of the
+`network` suites, and the browser specs other than `login.spec.ts` and
+`capability-install.spec.ts`. The root suites needed three things of the
 rig and none of LinuxIO: `cloud-init status` as root (Fedora's cloud-init
 keeps its state from other users), its default `zram0` switched off the way
 Fedora documents before the memory suite, and a swap file made by btrfs and
 labelled `swapfile_t` (`docs/development.md`, "Test VM"). Signing in needed
 two things of LinuxIO: a PAM file of the RHEL family's own
 (`packaging/etc/pam.d/linuxio.rhel`), since the Debian one includes
-`common-*` files the RHEL family does not have, and either of the SELinux
-changes still open in the backlog.
+`common-*` files the RHEL family does not have, and an SELinux domain for
+`linuxio-auth`, which the installer loads
+([Process & Systemd Architecture](../process-systemd-architecture.md#selinux)).
 
 Not built yet:
 
-1. The other profiles.
+1. The other profiles. The first of the RHEL family also runs the SELinux
+   checks of [Process & Systemd Architecture](../process-systemd-architecture.md#selinux)
+   (what runs where, who gets in): that its policy has every name the module
+   uses is expected, not seen.
 2. The browser specs on the RHEL family. `login.spec.ts` needs nothing of
    the distribution, and `capability-install.spec.ts` is written for both
    families (it takes the zram tool out and puts it back with the
-   distribution's package manager); both pass on Fedora with either SELinux
-   change the backlog item describes made in the VM. The others assume Ubuntu: `jobs-phase2.spec.ts` builds `apt`
+   distribution's package manager); both pass on Fedora as installed. The
+   others assume Ubuntu: `jobs-phase2.spec.ts` builds `apt`
    packages (`frontend/src/test/vm/fixtures/many-updates.sh`,
    `slow-package.sh`), and `memory.spec.ts`, `ui-actions.spec.ts` and the
    `jobs-phase4`, `-phase5a`, `-phase5b`, `-needrestart` and `-update` specs
