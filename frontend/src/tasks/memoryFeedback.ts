@@ -24,7 +24,7 @@ const LEFT_TEXT: Partial<
   "swap_file:others_can_write":
     "The swap file is in a folder that users other than root can change, so LinuxIO left it on. Move it to a folder only root can write.",
   "swap_file:not_managed":
-    "A swap file that LinuxIO does not manage is still on. LinuxIO turns off only the first swap file in /etc/fstab.",
+    "A swap file that LinuxIO does not manage is still on. LinuxIO manages only one swap file in /etc/fstab.",
   "zram:not_enough_memory": `Not enough free memory to empty compressed memory, so it stays on. ${LATER}`,
   "zram:not_managed":
     "Compressed memory is still on: it is not run by a zram tool that LinuxIO manages.",

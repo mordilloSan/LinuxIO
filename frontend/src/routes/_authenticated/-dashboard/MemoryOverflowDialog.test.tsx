@@ -731,7 +731,7 @@ describe("MemoryOverflowDialog apply", () => {
 
     await waitFor(() =>
       expect(mocks.toast.warning).toHaveBeenCalledWith(
-        "A swap file that LinuxIO does not manage is still on. LinuxIO turns off only the first swap file in /etc/fstab.",
+        "A swap file that LinuxIO does not manage is still on. LinuxIO manages only one swap file in /etc/fstab.",
         undefined,
       ),
     );

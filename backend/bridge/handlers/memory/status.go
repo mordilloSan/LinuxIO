@@ -39,8 +39,8 @@ func (h hostRoot) zramToolsInstalled() (tools, generator bool) {
 
 // zramProvider is the installed tool that sets zram up. With both installed
 // it is the one whose unit runs zram now: zram-generator when systemd reads
-// its setup service for zram0 active and zramswap.service not, zram-tools
-// otherwise, as when neither runs or a state cannot be read.
+// its setup service for zram0 active and zramswap.service inactive or
+// failed, zram-tools otherwise, as when neither runs or a state is not proof.
 func (h hostRoot) zramProvider(ctx context.Context, activeState func(context.Context, string) (string, error)) apischema.ZramProvider {
 	tools, generator := h.zramToolsInstalled()
 	switch {
@@ -54,15 +54,11 @@ func (h hostRoot) zramProvider(ctx context.Context, activeState func(context.Con
 }
 
 // generatorRunsZram reports whether systemd reads zram-generator's setup
-// service for zram0 active and zramswap.service not active. A state that
-// cannot be read is no proof.
+// service for zram0 active and zramswap.service inactive or failed, which is
+// zram-tools not running it. Any other state, such as unknown or activating,
+// and a state that cannot be read, is no proof.
 func generatorRunsZram(ctx context.Context, activeState func(context.Context, string) (string, error)) bool {
-	setup, err := activeState(ctx, zramGeneratorSetupUnit)
-	if err != nil {
-		slog.Debug("read unit state failed", "unit", zramGeneratorSetupUnit, "error", err)
-		return false
-	}
-	if setup != "active" {
+	if !zramSetupActive(ctx, activeState) {
 		return false
 	}
 	tools, err := activeState(ctx, zramService)
@@ -70,7 +66,18 @@ func generatorRunsZram(ctx context.Context, activeState func(context.Context, st
 		slog.Debug("read unit state failed", "unit", zramService, "error", err)
 		return false
 	}
-	return tools != "active"
+	return tools == "inactive" || tools == "failed"
+}
+
+// zramSetupActive reports whether systemd reads zram-generator's setup
+// service for zram0 active. A state that cannot be read is no proof.
+func zramSetupActive(ctx context.Context, activeState func(context.Context, string) (string, error)) bool {
+	state, err := activeState(ctx, zramGeneratorSetupUnit)
+	if err != nil {
+		slog.Debug("read unit state failed", "unit", zramGeneratorSetupUnit, "error", err)
+		return false
+	}
+	return state == "active"
 }
 
 // GetSwapStatus reads how the host handles running out of memory from files
@@ -162,7 +169,7 @@ func (h hostRoot) readSwapStatus(provider apischema.ZramProvider) (apischema.Swa
 	status.ZramPlannedSize = zramPlannedSize(mem.memTotal)
 	status.DrainBlockedReason = drainBlockedReason(diskSwapUsed(devices), managedDiskUsed(fstab, devices), mem.memAvailable,
 		leftOutHoldsData(fstab, devices),
-		slices.ContainsFunc(holdingData(fstab, devices), func(e fstabSwap) bool { return h.unitMasked(e.unit) }))
+		slices.ContainsFunc(holdingData(fstab, devices), func(e fstabSwap) bool { return e.masked }))
 	status.CanDrain = status.DrainBlockedReason == ""
 	return status, nil
 }

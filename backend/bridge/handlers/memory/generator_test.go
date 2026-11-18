@@ -72,6 +72,14 @@ func TestZramProvider(t *testing.T) {
 		want      apischema.ZramProvider
 	}{
 		{name: "the generator runs zram0", states: map[string]string{zramGeneratorSetupUnit: "active"}, want: apischema.ZramProviderGenerator},
+		{name: "the generator runs zram0 and zramswap.service failed",
+			states: map[string]string{zramGeneratorSetupUnit: "active", zramService: "failed"}, want: apischema.ZramProviderGenerator},
+		{name: "zramswap.service reads unknown",
+			states: map[string]string{zramGeneratorSetupUnit: "active", zramService: "unknown"}, want: apischema.ZramProviderTools},
+		{name: "zramswap.service is activating",
+			states: map[string]string{zramGeneratorSetupUnit: "active", zramService: "activating"}, want: apischema.ZramProviderTools},
+		{name: "zramswap.service is reloading",
+			states: map[string]string{zramGeneratorSetupUnit: "active", zramService: "reloading"}, want: apischema.ZramProviderTools},
 		{name: "zram-tools runs zram", states: map[string]string{zramService: "active"}, want: apischema.ZramProviderTools},
 		{name: "both run", states: map[string]string{zramGeneratorSetupUnit: "active", zramService: "active"}, want: apischema.ZramProviderTools},
 		{name: "neither runs", want: apischema.ZramProviderTools},

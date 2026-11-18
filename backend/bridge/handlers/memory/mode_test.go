@@ -1,10 +1,12 @@
 package memory
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -98,7 +100,12 @@ func TestSetSwapModeReadsTheStatusAgainAfterTheChange(t *testing.T) {
 
 // A status that still cannot be read after the last step fails the request
 // with an error that says the change was made, and nothing is rolled back.
+// The change is logged all the same: it is a completed host mutation.
 func TestSetSwapModeSaysTheChangeWasMadeWhenTheStatusCannotBeRead(t *testing.T) {
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
 	f, sys := diskHost(t)
 	sys.after = func(call string) {
 		if call == "mask swap.img.swap" {
@@ -112,6 +119,9 @@ func TestSetSwapModeSaysTheChangeWasMadeWhenTheStatusCannotBeRead(t *testing.T) 
 	}
 	if slices.Contains(sys.calls, "disable "+zramService) || f.param(swappinessParam) != "180" {
 		t.Fatalf("calls = %v, want nothing rolled back", sys.calls)
+	}
+	if !strings.Contains(logs.String(), `level=INFO msg="swap mode changed" mode=zram previous_mode=disk`) {
+		t.Errorf("logs = %q, want the change logged at Info", logs.String())
 	}
 }
 
@@ -176,9 +186,22 @@ func TestSetSwapModeToDiskFromZswap(t *testing.T) {
 	}
 }
 
+// On a host that runs zram, zram's values are zram's even where the drop-in
+// does not hold them, as after a run whose rollback put the drop-in back but
+// left zram's values live: leaving zram writes the kernel defaults.
+func TestSetSwapModeFromZramResetsZramSysctlsTheDropInDoesNotHold(t *testing.T) {
+	f, sys := zramHost(t)
+	removeFixture(t, f, sysctlDropInPath)
+
+	if _, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeDisk); err != nil {
+		t.Fatal(err)
+	}
+	assertDiskSysctls(t, f)
+}
+
 // Live values that equal zram's preset on a host whose drop-in never held
-// them are an admin's: leaving them is not leaving zram, so no kernel
-// default is written over them.
+// them and that does not run zram are an admin's: leaving them is not
+// leaving zram, so no kernel default is written over them.
 func TestSetSwapModeLeavesAnAdminsSysctlsThatMatchZram(t *testing.T) {
 	f, sys := diskHost(t)
 	f.writeVMSysctls("60", "0", "0", "125")
@@ -451,6 +474,32 @@ func TestSetSwapModeToZramAgainLeavesTheSecondSwapFile(t *testing.T) {
 		t.Fatalf("calls = %v, want /home/extra left alone", sys.calls)
 	}
 	assertLeft(t, got.Left, apischema.SwapLeft{What: apischema.SwapLeftSwapFile, Reason: apischema.SwapLeftNotManaged})
+}
+
+// A host that is mixed only on the read after the settle still says why:
+// here zswap goes off behind the run, so the host ends in disk mode and is
+// settled, and zram appears meanwhile.
+func TestSetSwapModeExplainsAMixedHostFoundAfterTheSettle(t *testing.T) {
+	f, sys := diskHost(t)
+	settling := false
+	sys.after = func(call string) {
+		switch {
+		case call == "write "+zswapTmpfilesPath:
+			f.write(zswapEnabledParam, "N\n")
+			settling = true
+		case settling && call == "set "+swappinessParam+"=60":
+			f.write(procSwaps, f.read(procSwaps)+zramSwapsLine)
+		}
+	}
+
+	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeZswap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Mode != apischema.SwapModeMixed {
+		t.Fatalf("mode = %q, want mixed", got.Mode)
+	}
+	assertLeft(t, got.Left, apischema.SwapLeft{What: apischema.SwapLeftZram, Reason: apischema.SwapLeftNotManaged})
 }
 
 // One swap file is managed: a second one that swaps is left on, and the
@@ -799,7 +848,8 @@ func TestSetSwapModeLeavesTheSwapFileOnWhenCancelledDuringSwapoff(t *testing.T) 
 
 // A zramswap.service whose stop timed out or failed ends failed with zram
 // still swapping: the step fails at once, the service stays enabled and the
-// swap file the run started stays on.
+// swap file the run started stays on. The stop is over, so nothing can take
+// zram away later and no start is queued.
 func TestSetSwapModeFailsFastWhenSystemdGivesUpStoppingZram(t *testing.T) {
 	f, sys := zramHost(t)
 	sys.stops[zramService] = &fakeStop{polls: 3, ends: "failed"}
@@ -810,6 +860,9 @@ func TestSetSwapModeFailsFastWhenSystemdGivesUpStoppingZram(t *testing.T) {
 	_, err := e.setSwapMode(t.Context(), apischema.SwapModeDisk)
 	if !errors.Is(err, errStopAbandoned) || !strings.Contains(err.Error(), string(apischema.SwapStepStopZram)) {
 		t.Fatalf("err = %v, want the stop_zram step to report systemd giving up", err)
+	}
+	if slices.Contains(sys.calls, "start "+zramService) || strings.Contains(err.Error(), "a start was queued") {
+		t.Fatalf("err = %v, calls = %v; want no start queued after a stop that is over", err, sys.calls)
 	}
 	if elapsed := time.Since(start); elapsed > 10*time.Second {
 		t.Fatalf("failed after %s, want as soon as systemd gave up", elapsed)
@@ -1120,7 +1173,8 @@ func TestSetSwapModeStopsASwapFileWhateverItsUnitReads(t *testing.T) {
 // zramswap.service stopping cleanly while a second zram device, set up by
 // another tool, still swaps: the unit is inactive with zram still listed, so
 // the stop ended without taking it away. The step fails at once, not at the
-// route's bound, and the service stays enabled.
+// route's bound, and the service stays enabled. The stop is over, so no
+// start is queued.
 func TestSetSwapModeFailsFastWhenTheStopEndsWithZramStillSwapping(t *testing.T) {
 	f, sys := zramHost(t)
 	other := "/dev/zram1                              partition\t1048572\t\t0\t\t50\n"
@@ -1132,6 +1186,9 @@ func TestSetSwapModeFailsFastWhenTheStopEndsWithZramStillSwapping(t *testing.T) 
 	_, err := e.setSwapMode(t.Context(), apischema.SwapModeDisk)
 	if !errors.Is(err, errStopEnded) || !strings.Contains(err.Error(), string(apischema.SwapStepStopZram)) || !strings.Contains(err.Error(), "inactive") {
 		t.Fatalf("err = %v, want the stop_zram step to say the stop ended with zram still active", err)
+	}
+	if slices.Contains(sys.calls, "start "+zramService) || strings.Contains(err.Error(), "a start was queued") {
+		t.Fatalf("err = %v, calls = %v; want no start queued after a stop that is over", err, sys.calls)
 	}
 	if elapsed := time.Since(start); elapsed > 10*time.Second {
 		t.Fatalf("failed after %s, want as soon as the unit was inactive", elapsed)

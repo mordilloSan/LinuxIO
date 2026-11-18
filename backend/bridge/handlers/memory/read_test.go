@@ -247,6 +247,22 @@ func TestReadZramDevices(t *testing.T) {
 	}
 }
 
+// A device that leaves while it is read, as zram's unit resets it, is
+// skipped: here its link in /sys/block leads nowhere.
+func TestReadZramDevicesSkipsADeviceThatLeft(t *testing.T) {
+	f := newFixture(t)
+	f.write("/sys/block/zram0/disksize", "8589934592\n")
+	f.symlink("../devices/virtual/block/zram1", "/sys/block/zram1")
+
+	got, err := f.host().readZramDevices()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []apischema.ZramDevice{{Name: "zram0", Disksize: 8 * gib}}; !slices.Equal(got, want) {
+		t.Fatalf("zram devices = %+v, want %+v", got, want)
+	}
+}
+
 func TestReadZramDevicesWithoutZram(t *testing.T) {
 	f := newFixture(t)
 	if got, err := f.host().readZramDevices(); err != nil || len(got) != 0 {
@@ -326,6 +342,16 @@ LABEL=swap none swap sw 0 0
 			{path: "/old.img"},
 			{path: "/dev/sda3", device: "/dev/sda3"},
 			{path: "/swap.img", device: "/swap.img"},
+			{path: "/third.img", device: "/third.img"},
+		}
+		if got, ok := fstabSwapFile(entries); !ok || got.path != "/swap.img" {
+			t.Fatalf("swap file = %+v (found %v), want /swap.img", got, ok)
+		}
+	})
+	t.Run("a masked one counts as the managed one", func(t *testing.T) {
+		entries := []fstabSwap{
+			{path: "/old.img"},
+			{path: "/swap.img", masked: true},
 			{path: "/third.img", device: "/third.img"},
 		}
 		if got, ok := fstabSwapFile(entries); !ok || got.path != "/swap.img" {

@@ -65,9 +65,10 @@ func dropInChanges(mode apischema.SwapMode, tuned bool) (set []sysctlSetting, re
 
 // liveSysctls is what a mode writes to /proc/sys/vm: its drop-in settings,
 // and the kernel default of each sysctl it does not set whose live value is
-// still the one zram's preset gave it: LinuxIO's drop-in held the key (held,
-// by sysctl name) and the live value is zram's. A live value that only
-// equals zram's on a host whose drop-in never held the key is an admin's.
+// still the one zram's preset gave it: the value is LinuxIO's (held, by
+// sysctl name: the drop-in held the key, or the host ran zram) and is
+// zram's. A live value that only equals zram's on a host that neither held
+// the key nor ran zram is an admin's.
 func liveSysctls(mode apischema.SwapMode, status apischema.SwapStatus, held map[string]bool) []sysctlSetting {
 	set, _ := dropInChanges(mode, status.TunedActive)
 	preset, _ := presetFor(mode)

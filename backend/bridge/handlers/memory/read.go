@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/mordilloSan/LinuxIO/backend/bridge/apischema"
 )
@@ -170,7 +171,11 @@ func (h hostRoot) readZswap() (apischema.ZswapStatus, error) {
 	return status, nil
 }
 
-// readZramDevices reads every zram device under /sys/block, configured or not.
+// readZramDevices reads every zram device under /sys/block, configured or
+// not. A device that leaves while it is read, as when zram's unit stops and
+// resets it, is skipped: a file it had open fails its read with ENODEV, and
+// one opened after it left is missing, which reads as zero, so a device whose
+// directory is gone once it was read is skipped too.
 func (h hostRoot) readZramDevices() ([]apischema.ZramDevice, error) {
 	entries, err := os.ReadDir(h.path(sysBlockDir))
 	if errors.Is(err, fs.ErrNotExist) {
@@ -185,6 +190,9 @@ func (h hostRoot) readZramDevices() ([]apischema.ZramDevice, error) {
 			continue
 		}
 		device, err := h.readZramDevice(entry.Name())
+		if errors.Is(err, syscall.ENODEV) || !h.exists(filepath.Join(sysBlockDir, entry.Name())) {
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -223,14 +231,17 @@ func (h hostRoot) readZramDevice(name string) (apischema.ZramDevice, error) {
 
 // fstabSwapFile returns the swap file among the fstab swap entries, one
 // whose source is a path outside /dev, that LinuxIO manages: the first that
-// is active, or when none is, the first. Any other is left as it is.
+// is active or whose unit is masked, or when there is none, the first. A
+// masked unit keeps the choice where it was after a switch to zram stopped
+// and masked the file, so the way back starts that one, and a later switch
+// does not move on to another. Any other is left as it is.
 func fstabSwapFile(entries []fstabSwap) (fstabSwap, bool) {
 	first, found := fstabSwap{}, false
 	for _, entry := range entries {
 		if !isSwapFilePath(entry.path) {
 			continue
 		}
-		if entry.device != "" {
+		if entry.device != "" || entry.masked {
 			return entry, true
 		}
 		if !found {

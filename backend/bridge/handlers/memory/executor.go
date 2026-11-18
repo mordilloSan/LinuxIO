@@ -222,10 +222,11 @@ type swapView struct {
 const statusAfterChangeTries = 5
 
 // statusAfterChange reads the status once a route's change is made. The
-// route read it before the change, so a read that fails now races the change
-// itself, as a zram device that leaves between the listing of /sys/block and
-// the read of its files: it is tried again, waits.poll apart, until ctx
-// ends. A read that still fails says that the change was made.
+// route read it before the change, so a read that fails now most likely met
+// files under /proc and /sys while the change still moved them (a zram device
+// that leaves is skipped by readZramDevices itself): it is tried again,
+// waits.poll apart, until ctx ends. A read that still fails says that the
+// change was made.
 func (e *executor) statusAfterChange(ctx context.Context) (apischema.SwapStatus, error) {
 	status, err := e.sys.status(ctx)
 	for try := 1; err != nil && try < statusAfterChangeTries && ctx.Err() == nil; try++ {

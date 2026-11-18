@@ -14,14 +14,15 @@ import (
 )
 
 // fstabSwap is a swap entry of /etc/fstab: the node systemd swaps on, the
-// unit systemd-fstab-generator makes for it, and the /proc/swaps path of the
-// active device it is, if any. othersCanWrite is set on an entry that
-// someone other than root can put another entry at the path of, which
-// LinuxIO does not manage.
+// unit systemd-fstab-generator makes for it, the /proc/swaps path of the
+// active device it is, if any, and whether its unit is masked on disk.
+// othersCanWrite is set on an entry that someone other than root can put
+// another entry at the path of, which LinuxIO does not manage.
 type fstabSwap struct {
 	path           string
 	unit           string
 	device         string
+	masked         bool
 	othersCanWrite bool
 }
 
@@ -154,9 +155,9 @@ func (h hostRoot) sameSwap(fstabPath, device string) bool {
 	return err == nil && a == b
 }
 
-// matchFstabSwaps fills in the active device each fstab entry is, and then
-// whether others can change the entry's path. A device is matched to the
-// first entry that is it.
+// matchFstabSwaps fills in the active device each fstab entry is, whether
+// its unit is masked, and then whether others can change the entry's path. A
+// device is matched to the first entry that is it.
 func (h hostRoot) matchFstabSwaps(entries []fstabSwap, devices []apischema.SwapDevice) []fstabSwap {
 	taken := map[string]bool{}
 	for i := range entries {
@@ -167,6 +168,7 @@ func (h hostRoot) matchFstabSwaps(entries []fstabSwap, devices []apischema.SwapD
 			entries[i].device, taken[device.Path] = device.Path, true
 			break
 		}
+		entries[i].masked = h.unitMasked(entries[i].unit)
 		entries[i].othersCanWrite = h.othersCanWrite(entries[i])
 	}
 	return entries

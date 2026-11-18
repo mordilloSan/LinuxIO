@@ -499,7 +499,7 @@ describe("modeResultWarning", () => {
     [
       "swap_file",
       "not_managed",
-      "A swap file that LinuxIO does not manage is still on. LinuxIO turns off only the first swap file in /etc/fstab.",
+      "A swap file that LinuxIO does not manage is still on. LinuxIO manages only one swap file in /etc/fstab.",
     ],
     [
       "zram",

@@ -59,9 +59,8 @@ type fakeSystem struct {
 	after func(call string)
 }
 
-// errStatusRace is a status read that races the change, as one that lists a
-// zram device and finds its files gone.
-var errStatusRace = errors.New("read zram devices: zram0 left while it was read")
+// errStatusRace is a status read that races the change.
+var errStatusRace = errors.New("read swap devices: the table changed while it was read")
 
 const (
 	zramSwapsLine     = "/dev/zram0                              partition\t8154200\t\t0\t\t100\n"
