@@ -225,19 +225,6 @@ kept go under its "Known limits".
 - [ ] **Scheduled scripts.** Journal retention over several days was never
   checked on a host. See
   [Scheduled Scripts](../scheduled-scripts.md#testing).
-- [ ] **Hardlink reconcile runs one query per file** in one transaction
-  (audit 57): `reconcileHardlinksAfterReindex` in
-  `backend/indexer/internal/storage/hardlinks.go`. Measure first, then add up
-  the changes per folder. The risk of a wrong fix is silent wrong folder
-  sizes.
-- [ ] **NVIDIA bus id** (audit 124). The unversioned `nvmlDeviceGetPciInfo`
-  may be an older ABI than the struct it fills
-  (`backend/monitoring/internal/collector/gpu/nvml.go`). The struct has the
-  largest layout, so nothing is written out of bounds. Decided 2026-11-17, no
-  NVIDIA machine running Linux being at hand: register
-  `nvmlDeviceGetPciInfo_v3` by name, fall back to the unversioned symbol, and
-  write "not checked on a host" as a known limit in
-  [Monitoring Daemon](../monitoring.md).
 
 ## Later, no plan yet
 

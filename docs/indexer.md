@@ -145,6 +145,14 @@ add/delete notifications. The database records hardlink identity and which
 path contributes the allocation so deleting or reindexing one link can promote
 a surviving link without changing the total.
 
+Before a scoped reindex commits, it settles every hardlink group with a link
+in the subtree: the link that contributed before the rescan keeps
+contributing while it still names the file, so a rescan that met another link
+first does not move the allocation to another folder. The size changes this
+makes are added up per folder and written once per folder; inside the
+subtree they stop at the reindexed path, whose own change then moves its
+ancestors.
+
 ## Operation
 
 ### Full index
@@ -372,6 +380,15 @@ Upgrades preserve compatible caches. If manual recovery is needed, stop
 LinuxIO, move `/var/lib/linuxio/indexer/indexer.db*` to a separate directory,
 start LinuxIO, and run a full index. Move rather than delete the files so the
 old cache remains available for inspection.
+
+## Known limits
+
+- A scoped reindex reads each hardlink group in its subtree with a query of
+  its own. The reconcile step alone took about 1.2 to 1.7 seconds per 100,000
+  hardlinked files in a tree of 200,000 on a development machine, with the
+  per-link `lstat` stubbed out and without the hardlink snapshot taken when
+  the reindex begins (`BenchmarkReconcileHardlinksAfterReindex` in
+  `backend/indexer/internal/storage/hardlinks_bench_test.go`).
 
 ## Disposable-host smoke test
 
