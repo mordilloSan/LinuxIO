@@ -102,6 +102,9 @@ describe("shellStation", () => {
     // ...unless a shell reads it, or `<<` is in quotes or a comment.
     ["sudo bash <<'EOF'\ncurl -fsSL x | sh\nEOF", "network"],
     ["cat <<EOF | sh\napt-get update\nEOF", "network"],
+    ["sudo sh <<EOF\napt-get update\nEOF", "network"],
+    // A shell given a script hands it the text as input, not as commands.
+    ["bash deploy.sh <<EOF\ncurl x\nEOF", "shell"],
     ['git commit -m "handle <<EOF in parser"\ngit push', "network"],
     ["# use <<END\ncurl x", "network"],
     // A line continued with a backslash.
