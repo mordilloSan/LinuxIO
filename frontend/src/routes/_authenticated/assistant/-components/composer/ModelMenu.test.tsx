@@ -1,4 +1,4 @@
-import { fireEvent, screen, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -135,15 +135,25 @@ describe("ModelMenu", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it("keeps arrow keys on the slider instead of moving menu focus", async () => {
+  it("reaches the slider with the menu's arrow keys and leaves it with Up and Down", async () => {
     setup();
     await userEvent.click(
       screen.getByRole("button", { name: "Model: Opus 5.5 High" }),
     );
-    const slider = await screen.findByRole("slider", { name: "Effort" });
-    slider.focus();
-    fireEvent.keyDown(slider, { key: "ArrowDown" });
+    const menu = await screen.findByRole("menu", { name: "Model" });
+    const opus = within(menu).getByRole("menuitem", { name: /Opus 5\.5/ });
+    const slider = within(menu).getByRole("slider", { name: "Effort" });
+    await waitFor(() => expect(opus).toHaveFocus());
+
+    fireEvent.keyDown(opus, { key: "ArrowUp" });
     expect(slider).toHaveFocus();
+    // The keys that change the level stay on the slider.
+    for (const key of ["ArrowLeft", "ArrowRight", "Home", "End"]) {
+      fireEvent.keyDown(slider, { key });
+      expect(slider).toHaveFocus();
+    }
+    fireEvent.keyDown(slider, { key: "ArrowDown" });
+    expect(opus).toHaveFocus();
   });
 
   it("shows model settings as rows above the effort slider", async () => {

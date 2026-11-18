@@ -73,10 +73,6 @@ Memory overflow ([Memory overflow](../memory.md)):
 
 ## Tests that are missing
 
-- [ ] **No browser spec draws the assistant's effort slider.** Its thumb, halo
-  and invisible track come from `--app-slider-*` variables set in
-  `assistant.css`; the fake agent of the browser suite offers no effort option.
-  It was looked at by hand in dev mode after it moved to `AppSlider`.
 - [ ] **No browser spec for the Memory overflow dialog.** Its single-choice
   list, slider, the confirm step's focus (Back on entry, Apply on the way back)
   and the pencil that opens it were exercised under jsdom

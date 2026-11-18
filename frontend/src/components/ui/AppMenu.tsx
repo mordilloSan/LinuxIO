@@ -43,7 +43,9 @@ export interface AppMenuItemProps extends Omit<
   startAdornment?: ReactNode;
 }
 
-const focusableSelector = '[role="menuitem"]:not(:disabled)';
+// The stops of the menu's arrow keys: its items and any slider placed in it.
+const focusableSelector =
+  '[role="menuitem"]:not(:disabled), input[type="range"]:not(:disabled)';
 
 const AppMenu = ({
   open,
@@ -69,7 +71,7 @@ const AppMenu = ({
     }
 
     const firstItem =
-      menuRef.current?.querySelector<HTMLButtonElement>(focusableSelector);
+      menuRef.current?.querySelector<HTMLElement>(focusableSelector);
     firstItem?.focus();
   }, [autoFocus, open]);
 
@@ -87,8 +89,7 @@ const AppMenu = ({
 
   const focusRelativeItem = (direction: 1 | -1) => {
     const items = Array.from(
-      menuRef.current?.querySelectorAll<HTMLButtonElement>(focusableSelector) ??
-        [],
+      menuRef.current?.querySelectorAll<HTMLElement>(focusableSelector) ?? [],
     );
 
     if (!items.length) {
@@ -118,16 +119,15 @@ const AppMenu = ({
       case "Home": {
         event.preventDefault();
         const firstItem =
-          menuRef.current?.querySelector<HTMLButtonElement>(focusableSelector);
+          menuRef.current?.querySelector<HTMLElement>(focusableSelector);
         firstItem?.focus();
         break;
       }
       case "End": {
         event.preventDefault();
         const items = Array.from(
-          menuRef.current?.querySelectorAll<HTMLButtonElement>(
-            focusableSelector,
-          ) ?? [],
+          menuRef.current?.querySelectorAll<HTMLElement>(focusableSelector) ??
+            [],
         );
         items.at(-1)?.focus();
         break;

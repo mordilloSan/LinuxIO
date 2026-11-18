@@ -154,3 +154,11 @@ children; leaving, blurring or unmounting cancels its timer and listeners.
    and `onClearSelection` so Escape can clear it.
 5. Define the columns outside the render path, or memoize them, and pass
    per-row state through context.
+
+## Known limits
+
+- Tooltip deferral follows the virtualizer's `isScrolling`. A script that sets
+  `scrollTop` gets its scroll event a frame later; when the virtualizer's
+  150 ms idle reset runs in between, it reads the new offset and TanStack
+  Virtual then drops the event as a repeat, so that jump renders as idle,
+  with tooltips. `general-logs-scroll.spec.ts` sends the event with its write.

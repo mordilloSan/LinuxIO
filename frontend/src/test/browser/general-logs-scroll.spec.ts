@@ -1,5 +1,11 @@
 import { expect, test } from "@playwright/test";
 
+// What the page records of the table's scroll events (see the drag below).
+type ScrollRecord = Window & {
+  deferredPerScroll?: number[];
+  wheelEnded?: boolean;
+};
+
 // Playwright hides native scrollbars by default; this spec needs the real thumb.
 test.use({ launchOptions: { ignoreDefaultArgs: ["--hide-scrollbars"] } });
 
@@ -111,18 +117,22 @@ test("keeps journal rows visible through repeated long scrollbar jumps", async (
       element.scrollTop =
         (element.scrollHeight - element.clientHeight) *
         (((step * 37) % 97) / 100);
-      await new Promise<void>((resolve) =>
-        requestAnimationFrame(() => resolve()),
-      );
+      // The scroll event in the same task as the move, so nothing runs
+      // between them. The browser's own event for a script's write comes a
+      // frame later; when a slow frame lets the virtualizer's 150 ms idle
+      // reset run first, the reset reads the new offset and TanStack Virtual
+      // drops that event as a repeat, so the jump would render as idle.
+      element.dispatchEvent(new Event("scroll"));
       const rows = [...element.querySelectorAll(".app-dt__virtual-row")];
+      const visible = rows.filter((node) => {
+        const row = node.getBoundingClientRect();
+        return row.bottom > viewport.top && row.top < viewport.bottom;
+      }).length;
       results.push({
         elapsed: performance.now() - start,
         mounted: rows.length,
         deferredCells: element.querySelectorAll("[data-fast-scrolling]").length,
-        visible: rows.filter((node) => {
-          const row = node.getBoundingClientRect();
-          return row.bottom > viewport.top && row.top < viewport.bottom;
-        }).length,
+        visible,
       });
     }
     return results;
@@ -179,6 +189,18 @@ test("keeps journal rows visible through repeated long scrollbar jumps", async (
       (element) => (element as HTMLElement).offsetWidth - element.clientWidth,
     ),
   ).toBeGreaterThan(0);
+  // What each scroll event from here on renders, read in the event after the
+  // table's own handlers: read once the drag is over, the virtualizer's
+  // 150 ms idle reset may already have put the tooltips back.
+  await scrollport.evaluate((element) => {
+    const deferredPerScroll: number[] = [];
+    Object.assign(window, { deferredPerScroll });
+    element.addEventListener("scroll", () =>
+      deferredPerScroll.push(
+        element.querySelectorAll("[data-fast-scrolling]").length,
+      ),
+    );
+  });
   const thumbX = box.x + box.width - 4;
   await page.mouse.move(thumbX, box.y + 8);
   await page.mouse.down();
@@ -188,21 +210,36 @@ test("keeps journal rows visible through repeated long scrollbar jumps", async (
   const dragged = await scrollport.evaluate((element) => ({
     top: element.scrollTop,
     range: element.scrollHeight - element.clientHeight,
-    deferredCells: element.querySelectorAll("[data-fast-scrolling]").length,
+    deferredPerScroll: (window as ScrollRecord).deferredPerScroll!,
   }));
   await page.mouse.up();
   expect(dragged.top).toBeGreaterThan(dragged.range * 0.6);
-  expect(dragged.deferredCells).toBeGreaterThan(0);
+  // The drag's first jump starts from an idle table, with no idle reset
+  // pending to land before its scroll event, and defers tooltip work.
+  expect(dragged.deferredPerScroll[0]).toBeGreaterThan(0);
   await expect(scrollport.locator("[data-fast-scrolling]")).toHaveCount(0);
 
-  // After idle, a normal wheel step must not inherit the previous fast mode.
+  // After idle, a normal wheel step must not inherit the previous fast mode:
+  // none of its scroll events, up to its scrollend, renders deferred cells.
+  const beforeWheel = await scrollport.evaluate((element) => {
+    const record = window as ScrollRecord;
+    record.wheelEnded = false;
+    element.addEventListener("scrollend", () => (record.wheelEnded = true), {
+      once: true,
+    });
+    return record.deferredPerScroll!.length;
+  });
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.wheel(0, 48);
-  await scrollport.evaluate(
-    () =>
-      new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
-  );
-  await expect(scrollport.locator("[data-fast-scrolling]")).toHaveCount(0);
+  const wheelScrolls = () =>
+    page.evaluate((from) => {
+      const record = window as ScrollRecord;
+      return record.wheelEnded ? record.deferredPerScroll!.slice(from) : null;
+    }, beforeWheel);
+  await expect.poll(wheelScrolls).not.toBeNull();
+  const wheel = (await wheelScrolls())!;
+  expect(wheel.length).toBeGreaterThan(0);
+  expect(wheel).toEqual(wheel.map(() => 0));
 });
 
 for (const scheme of ["dark", "light"] as const) {

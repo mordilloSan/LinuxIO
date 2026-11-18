@@ -181,7 +181,12 @@ test("floats a plugin pane beside a chat that stays centred", async ({
   const area = await page.locator(".assistant__body").boundingBox();
   const composer = await page.locator(".assistant__composer").boundingBox();
   expect(Math.abs(centre(composer) - centre(area))).toBeLessThan(2);
-  // The card floats in the left margin, where the tabs are.
+  // The card floats in the left margin, where the tabs are. It is visible
+  // from the first frame of its slide out of the tab (from scale 0.96), so
+  // it is measured once the slide is over.
+  await card.evaluate(async (element) => {
+    await Promise.all(element.getAnimations().map((slide) => slide.finished));
+  });
   const cardBox = await card.boundingBox();
   expect(cardBox!.x + cardBox!.width).toBeLessThan(composer!.x);
 

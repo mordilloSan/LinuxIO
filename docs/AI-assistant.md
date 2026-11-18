@@ -140,10 +140,16 @@ The agent drives most of the surface, so a control only appears when the agent
 advertises the matching capability.
 
 - **Composer bar.** Under the text field, one row: `+` (add an image or attach
-  a file) and `/` (slash commands) on the left, then the model and effort of
-  the agent's config options as compact selects, any other select or boolean
-  option, and on the right the mode select and Send (a red Stop button while a
-  turn runs). Changing one sends `session/set_config_option` or
+  a file) and `/` (slash commands) on the left, then one chip for the model
+  and effort of the agent's config options ("Opus 5.5 High"), any other
+  select or boolean option, and on the right the mode select and Send (a red
+  Stop button while a turn runs). The chip opens a menu as wide as the prompt:
+  the models with their descriptions, then the model settings (Fast mode) as
+  rows and effort as a stepped slider, which stay in view while the list
+  scrolls. Picking a model closes the menu; the slider leaves it open and
+  sends the level once the drag or key press ends. The slider is a stop of
+  the menu's Up and Down keys, and Left, Right, Home and End move its level.
+  Changing one sends `session/set_config_option` or
   `session/set_mode` and replaces the local options with the agent's reply.
   Pieces the agent does not offer are hidden, and so is the `agent` option
   (Claude Code's main-thread persona picker): it lists subagent definitions
