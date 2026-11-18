@@ -117,7 +117,9 @@ build-indexer: go_binary_package := ./indexer
 build-indexer: go_binary_output := $(indexer_binary)
 build-indexer: go_binary_ldflags := $(go_version_ldflags)
 build-indexer: go_binary_extra_env := CGO_ENABLED=1
-build-indexer: go_binary_tags := sqlite_fts5
+# SQLite's FTS5 module, which search needs. test-go passes the same tag.
+indexer_go_tags := sqlite_fts5
+build-indexer: go_binary_tags := $(indexer_go_tags)
 build-indexer: ## Build the filesystem indexer
 
 build-monitoring: go_binary_label := monitoring daemon
@@ -125,9 +127,11 @@ build-monitoring: go_binary_package := ./monitoring
 build-monitoring: go_binary_output := $(monitoring_binary)
 build-monitoring: go_binary_ldflags := $(go_version_ldflags)
 build-monitoring: go_binary_extra_env := CGO_ENABLED=1
-# NVML is compiled only for amd64; other architectures use the stub. Deferred
-# expansion keeps `go env` out of every unrelated make invocation.
-build-monitoring: go_binary_tags = $(if $(filter amd64,$(if $(GOARCH),$(GOARCH),$(GOARCH_HOST))),glibc,)
+# NVML is compiled only for amd64; other architectures use the stub. test-go
+# and golint-only pass the same tag, so they compile what the build ships.
+# Deferred expansion keeps `go env` out of every unrelated make invocation.
+nvml_go_tags = $(if $(filter amd64,$(if $(GOARCH),$(GOARCH),$(GOARCH_HOST))),glibc,)
+build-monitoring: go_binary_tags = $(nvml_go_tags)
 build-monitoring: ## Build the monitoring daemon
 
 $(go_binary_targets): $(GO_BUILD_PREREQ)

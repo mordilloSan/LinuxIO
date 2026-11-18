@@ -386,7 +386,7 @@ version `go.mod` pins. `SKIP_ENSURE_GO=1` is accepted for compatibility.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `GO_TEST_PKGS` | `./...` | Go packages (relative to `backend/`) for `test-go`, for example `./bridge/handlers/filebrowser/...`. |
-| `GO_TEST_FLAGS` | empty | Extra flags for backend tests; `-count=1` disables Go test caching. |
+| `GO_TEST_FLAGS` | empty | Extra flags for backend tests; `-count=1` disables Go test caching. `test-go` builds with the `sqlite_fts5` tag `build-indexer` uses and, on amd64, the `glibc` tag `build-monitoring` uses, so the indexer's FTS5 search and the NVML collector are tested; `golint-only` adds `glibc` too. A `-tags` given here replaces both. |
 | `PLAYWRIGHT_ARGS` | empty | Extra arguments for the browser suite, such as one spec path. |
 | `VITEST_MAX_WORKERS` | `8` | Maximum Vitest workers; lower this on memory-constrained hosts. |
 | `VITEST_FILE` | empty | Frontend-relative test/spec file for a focused Vitest run. |

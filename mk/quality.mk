@@ -42,7 +42,7 @@ golint-only: ## Run backend formatting, modernization, vulnerability, and lint c
 			exit 1; \
 		fi
 	@$(PRINTC) "   $(COLOR_GREEN)✓$(COLOR_RESET) govulncheck"
-	@( cd "$(backend_dir)" && $(GO_CMD_ENV) "$(golangci_lint)" run ./... --timeout 3m $(GOLANGCI_LINT_OPTS) ) 2>&1 \
+	@( cd "$(backend_dir)" && $(GO_CMD_ENV) "$(golangci_lint)" run ./... --timeout 3m $(addprefix --build-tags=,$(nvml_go_tags)) $(GOLANGCI_LINT_OPTS) ) 2>&1 \
 		| sed 's/^/      /'
 	@$(PRINTC) "   $(COLOR_GREEN)✓$(COLOR_RESET) golangci-lint"
 	@$(PRINTC) "$(COLOR_GREEN)✅ Go linting passed!$(COLOR_RESET)"
@@ -73,7 +73,7 @@ test-go: $(GO_BUILD_PREREQ) dev-prep ## Run Go unit tests only (GO_TEST_PKGS=./p
 	@echo ""
 	@$(PRINTC) "$(COLOR_CYAN)🧪 Running Go unit tests with race detector (backend)...$(COLOR_RESET)"
 	@cd "$(backend_dir)" && \
-		$(GO_CMD_ENV) GOFLAGS="-buildvcs=false" CGO_ENABLED=1 "$(GO_BIN)" test $(GO_TEST_PKGS) -race $(GO_TEST_FLAGS) -timeout 10m 2>&1 \
+		$(GO_CMD_ENV) GOFLAGS="-buildvcs=false" CGO_ENABLED=1 "$(GO_BIN)" test $(GO_TEST_PKGS) -race -tags "$(strip $(indexer_go_tags) $(nvml_go_tags))" $(GO_TEST_FLAGS) -timeout 10m 2>&1 \
 		| grep --line-buffered -v '\[no test files\]' \
 		| $(GOTEST_STATUS_SED); \
 		exit "$${PIPESTATUS[0]}"

@@ -484,6 +484,13 @@ If the database has to be recovered manually, stop the service, move
 creates an empty store and begins recording from the next tick. Move rather than
 delete, so the old history stays available for inspection.
 
+## Known limits
+
+- The NVIDIA collector reads a GPU's bus id through `nvmlDeviceGetPciInfo_v3`,
+  or the unversioned `nvmlDeviceGetPciInfo` of a library that does not export
+  it (`backend/monitoring/internal/collector/gpu/nvml.go`): not checked on a
+  host with an NVIDIA GPU.
+
 ## See Also
 
 - [Process & Systemd Architecture](process-systemd-architecture.md) — where this
