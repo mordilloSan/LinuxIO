@@ -363,7 +363,7 @@ func assertListsADropInDeviceAndRefusesToLeaveZram(t *testing.T, e *executor) {
 		t.Fatal(err)
 	}
 	defer func() { _ = os.Remove(testDropIn) }()
-	status, err := e.sys.status(ctx)
+	status, _, err := e.sys.status(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -467,7 +467,7 @@ func assertGeneratorUnitsMatchTheStatus(t *testing.T, e *executor) {
 	if err := e.sys.reload(ctx); err != nil {
 		t.Fatal(err)
 	}
-	status, err := e.sys.status(ctx)
+	status, _, err := e.sys.status(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -675,7 +675,7 @@ func assertRefusesAnUnknownCompressor(t *testing.T, e *executor) {
 // zswap on that the kernel refuses a compressor it does not have.
 func assertZswapRoundTrip(t *testing.T, e *executor) {
 	t.Helper()
-	status, err := e.sys.status(t.Context())
+	status, _, err := e.sys.status(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -772,7 +772,7 @@ func startSmallZram(t *testing.T, e *executor) {
 		t.Fatal(err)
 	}
 	if err := waitUntil(ctx, e.waits.swapOn, e.waits.poll, func() (bool, error) {
-		status, err := e.sys.status(ctx)
+		status, _, err := e.sys.status(ctx)
 		return err == nil && hasDevice(status.Devices, apischema.SwapDeviceZram) && zramSized(status, 64<<20), err
 	}); err != nil {
 		t.Fatalf("start a 64 MiB zram device: %v", err)
@@ -794,8 +794,8 @@ func assertDrainsTheSwapFile(t *testing.T, e *executor) {
 	if !ok || file.device == "" {
 		t.Fatalf("swap file = %+v, want it active before the drain", file)
 	}
-	if err := e.drainDevice(ctx, file, 0); err != nil {
-		t.Fatalf("drain %s: %v", file.device, err)
+	if drained, err := e.drainDevice(ctx, file, 0); err != nil || !drained {
+		t.Fatalf("drain %s: drained %v, %v", file.device, drained, err)
 	}
 	if on, err := e.deviceIs(file.device, true)(); err != nil || !on {
 		t.Fatalf("%s active after the drain = %v, %v; want it back", file.device, on, err)
@@ -819,7 +819,7 @@ func switchTo(t *testing.T, e *executor, mode apischema.SwapMode) apischema.Swap
 
 func assertZramMode(t *testing.T, e *executor, file fstabSwap) {
 	t.Helper()
-	got, err := e.sys.status(t.Context())
+	got, _, err := e.sys.status(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}

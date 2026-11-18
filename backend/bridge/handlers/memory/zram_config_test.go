@@ -56,7 +56,7 @@ func TestReadSwapStatusReportsAZramConfigThatIsNotLinuxIOs(t *testing.T) {
 			if test.path != "" {
 				f.write(test.path, test.content)
 			}
-			got, err := f.host().readSwapStatus(test.provider)
+			got, _, err := f.host().readSwapStatus(test.provider)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -85,7 +85,7 @@ func TestReadSwapStatusCountsAZramConfigItCannotReadAsNotLinuxIOs(t *testing.T) 
 	if err := os.Chmod(filepath.Join(f.root, zramswapConfigPath), 0); err != nil {
 		t.Fatal(err)
 	}
-	got, err := f.host().readSwapStatus(apischema.ZramProviderTools)
+	got, _, err := f.host().readSwapStatus(apischema.ZramProviderTools)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,7 +318,7 @@ func TestReadSwapStatusListsTheDevicesOtherGeneratorFilesDefine(t *testing.T) {
 	f.write("/srv/elsewhere.conf", "[zram7]\n")
 	f.symlink("/srv/elsewhere.conf", etcDir+"70-link.conf")
 
-	got, err := f.host().readSwapStatus(apischema.ZramProviderGenerator)
+	got, _, err := f.host().readSwapStatus(apischema.ZramProviderGenerator)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -339,7 +339,7 @@ func TestReadSwapStatusListsNoGeneratorDevicesWithoutTheGenerator(t *testing.T) 
 	f, _ := diskHost(t)
 	f.write("/etc/systemd/zram-generator.conf.d/50-big.conf", "[zram1]\n")
 
-	got, err := f.host().readSwapStatus(apischema.ZramProviderTools)
+	got, _, err := f.host().readSwapStatus(apischema.ZramProviderTools)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -362,7 +362,7 @@ func TestReadSwapStatusSkipsAGeneratorFileItCannotRead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := f.host().readSwapStatus(apischema.ZramProviderGenerator)
+	got, _, err := f.host().readSwapStatus(apischema.ZramProviderGenerator)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -424,7 +424,7 @@ func TestReadSwapStatusTakesAnUnchangedPackageConffileAsLinuxIOs(t *testing.T) {
 			if test.path == zramGeneratorConfigPath {
 				provider = apischema.ZramProviderGenerator
 			}
-			got, err := f.host().readSwapStatus(provider)
+			got, _, err := f.host().readSwapStatus(provider)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -482,7 +482,7 @@ func TestReadSwapStatusListsOnlyTheSwapDevicesOtherGeneratorFilesDefine(t *testi
 	f.write(etcDir+"30-fs.conf", "[zram3]\nfs-type = ext2\n")
 	f.write(etcDir+"40-swap.conf", "[zram4]\nfs-type = swap\nzram-fraction = 0.25\nmax-zram-size = 2048\n")
 
-	got, err := f.host().readSwapStatus(apischema.ZramProviderGenerator)
+	got, _, err := f.host().readSwapStatus(apischema.ZramProviderGenerator)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -615,7 +615,7 @@ func TestReadSwapStatusLogsTheGeneratorFileItSkips(t *testing.T) {
 	f.write(dropIn, "[zram1]\n")
 	f.unreadable(dropIn)
 
-	if _, err := f.host().readSwapStatus(apischema.ZramProviderGenerator); err != nil {
+	if _, _, err := f.host().readSwapStatus(apischema.ZramProviderGenerator); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(logs.String(), "path="+dropIn+" error=") {
@@ -646,7 +646,7 @@ func TestReadSwapStatusTakesTheInstalledPackagesConffileRecord(t *testing.T) {
 			f, _ := diskHost(t)
 			f.write(zramswapConfigPath, test.content)
 			f.write(dpkgStatusPath, test.status)
-			got, err := f.host().readSwapStatus(apischema.ZramProviderTools)
+			got, _, err := f.host().readSwapStatus(apischema.ZramProviderTools)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -735,7 +735,7 @@ func TestReadSwapStatusDoesNotListTheVendorMainFile(t *testing.T) {
 	f, _ := generatorDiskHost(t)
 	f.write("/usr/lib/systemd/zram-generator.conf", "[zram0]\nzram-size = min(ram, 8192)\n")
 
-	got, err := f.host().readSwapStatus(apischema.ZramProviderGenerator)
+	got, _, err := f.host().readSwapStatus(apischema.ZramProviderGenerator)
 	if err != nil {
 		t.Fatal(err)
 	}

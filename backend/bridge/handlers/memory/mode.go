@@ -81,8 +81,12 @@ func (e *executor) setSwapMode(ctx context.Context, req apischema.SwapModeReques
 		slog.Warn("settle memory sysctls failed", "mode", status.Mode, "error", err)
 	}
 	run.explainMixed(status)
+	// What stays active is read from the host, not from what the steps left:
+	// a device no step reaches, such as a swap file LinuxIO does not manage,
+	// stays too, also on a host that did not end mixed.
 	slog.Info("swap mode changed", append([]any{"mode", target, "previous_mode", view.status.Mode,
-		"swap_file_left_active", run.leftHas(apischema.SwapLeftSwapFile), "zram_left_active", run.leftHas(apischema.SwapLeftZram),
+		"swap_file_left_active", target == apischema.SwapModeZram && hasDevice(status.Devices, apischema.SwapDeviceFile),
+		"zram_left_active", target != apischema.SwapModeZram && hasDevice(status.Devices, apischema.SwapDeviceZram),
 		"zram_size_kept", run.leftHas(apischema.SwapLeftZramSize)}, run.replacedConfigAttrs()...)...)
 	if settled {
 		if status, err = e.statusAfterChange(ctx); err != nil {
@@ -255,7 +259,7 @@ func (r *modeRun) startZram(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	status, err := r.sys.status(ctx)
+	status, _, err := r.sys.status(ctx)
 	if err != nil {
 		return err
 	}
@@ -286,7 +290,7 @@ func (r *modeRun) startZram(ctx context.Context) error {
 	// overrides or a device that could not be reset, would be stopped again
 	// at every later change: say so. zram swaps by now, so a status that
 	// cannot be read does not fail the step.
-	status, err = r.sys.status(ctx)
+	status, _, err = r.sys.status(ctx)
 	if err != nil {
 		slog.Debug("read the status after starting zram failed", "error", err)
 		return nil
@@ -614,7 +618,7 @@ func compressorRefused(err error) bool {
 // proven off is only held off: one active swap file that cannot be resolved
 // might be it, and then the unit is left.
 func (r *modeRun) stopSwapFile(ctx context.Context, step swapStep) error {
-	status, err := r.sys.status(ctx)
+	status, _, err := r.sys.status(ctx)
 	if err != nil {
 		return err
 	}
@@ -754,7 +758,7 @@ func (r *modeRun) stopZram(ctx context.Context, run bool) error {
 		unit = zramGeneratorSwapUnit
 	}
 	if run {
-		status, err := r.sys.status(ctx)
+		status, _, err := r.sys.status(ctx)
 		if err != nil {
 			return err
 		}
@@ -957,7 +961,7 @@ func (r *modeRun) rollback(ctx context.Context) error {
 func (r *modeRun) settleAfterRollback(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout)
 	defer cancel()
-	status, err := r.sys.status(ctx)
+	status, _, err := r.sys.status(ctx)
 	if err != nil {
 		return fmt.Errorf("after rollback: read the status: %w", err)
 	}

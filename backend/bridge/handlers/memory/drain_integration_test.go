@@ -160,8 +160,8 @@ func TestMemoryDrainAliasIntegration(t *testing.T) {
 	}
 	i := slices.IndexFunc(view.fstab, func(entry fstabSwap) bool { return entry.device == device })
 	start = time.Now()
-	if err := e.drainDevice(ctx, view.fstab[i], 0); err != nil {
-		t.Fatalf("drain %s: %v", device, err)
+	if drained, err := e.drainDevice(ctx, view.fstab[i], 0); err != nil || !drained {
+		t.Fatalf("drain %s: drained %v, %v", device, drained, err)
 	}
 	if elapsed := time.Since(start); elapsed >= e.waits.stopGrace {
 		t.Errorf("the drain of %s took %s, want less than the %s it waits for %s", device, elapsed.Round(time.Second), e.waits.stopGrace, unit)

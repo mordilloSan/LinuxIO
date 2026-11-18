@@ -44,20 +44,24 @@ func (e *executor) drainSwap(ctx context.Context) (apischema.SwapStatus, error) 
 			return apischema.SwapStatus{}, fmt.Errorf("%w: %s is masked, so %s could not be started again", bridgeipc.ErrConflict, target.unit, target.device)
 		}
 	}
+	var drained []string
 	for i, target := range targets {
 		if err := ctx.Err(); err != nil {
 			return apischema.SwapStatus{}, err
 		}
 		e.report(apischema.SwapProgress{Step: apischema.SwapStepDrainDevice, Index: i + 1, Total: len(targets), Device: target.device})
-		if err := e.drainDevice(ctx, target, i); err != nil {
+		done, err := e.drainDevice(ctx, target, len(drained))
+		if err != nil {
 			return apischema.SwapStatus{}, err
 		}
+		if done {
+			drained = append(drained, target.device)
+		}
 	}
-	devices := make([]string, 0, len(targets))
-	for _, target := range targets {
-		devices = append(devices, target.device)
+	// A drain whose devices all left on their own changed nothing.
+	if len(drained) > 0 {
+		slog.Info("swap drained", "devices", drained)
 	}
-	slog.Info("swap drained", "devices", devices)
 	return e.statusAfterChange(ctx)
 }
 
@@ -93,31 +97,33 @@ func leftOutHoldsData(fstab []fstabSwap, devices []apischema.SwapDevice) bool {
 
 // drainDevice takes one device away with swapoff when its data fits in
 // memory on a fresh status, then starts its unit again and waits for the
-// device to return. drained counts the devices drained before it.
-func (e *executor) drainDevice(ctx context.Context, target fstabSwap, drained int) error {
-	status, err := e.sys.status(ctx)
+// device to return. drained counts the devices drained before it. It reports
+// false for a device that already left /proc/swaps, which it skips.
+func (e *executor) drainDevice(ctx context.Context, target fstabSwap, drained int) (bool, error) {
+	status, _, err := e.sys.status(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	i := slices.IndexFunc(status.Devices, func(d apischema.SwapDevice) bool { return d.Path == target.device })
 	if i < 0 {
-		return nil
+		slog.Debug("skipped swap device that left before its drain", "device", target.device)
+		return false, nil
 	}
 	if !fitsInMemory(status.Devices[i].Used, status.MemAvailable) {
-		return stayDrained(fmt.Errorf("%w: not enough free memory to take back the data on %s", bridgeipc.ErrConflict, target.device), drained)
+		return false, stayDrained(fmt.Errorf("%w: not enough free memory to take back the data on %s", bridgeipc.ErrConflict, target.device), drained)
 	}
 	// A swapoff that fails or is cancelled leaves the device swapping.
 	if err := e.swapOffDevice(ctx, target.device); err != nil {
-		return stayDrained(err, drained)
+		return false, stayDrained(err, drained)
 	}
 	// The device is off: bringing it back is not cancelled with the request.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rollbackTimeout+e.waits.stopGrace+e.waits.swapOn)
 	defer cancel()
 	e.waitUnitSeenOff(ctx, target.unit)
 	if err := e.startUntilBack(ctx, target.unit, e.deviceIs(target.device, true)); err != nil {
-		return fmt.Errorf("%s is off: %w", target.device, err)
+		return false, fmt.Errorf("%s is off: %w", target.device, err)
 	}
-	return nil
+	return true, nil
 }
 
 // stayDrained adds to a refusal at one device that the drained devices

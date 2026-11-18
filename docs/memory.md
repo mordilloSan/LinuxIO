@@ -204,7 +204,13 @@ its files defines a device (see
 It also refuses a run that would replace the provider's configuration file
 while that file is not LinuxIO's and the request does not name it in
 `confirm_replace`. The plan makes these checks under the mutation lock, on
-a status read for the request.
+a status read for the request. That read also gives the plan its `/etc/fstab`
+swap entries, matched to the active devices: one reading of the file serves
+the whole change (`readView`), so what the status reports and what the change
+acts on cannot come from two readings of a file that changed in between. The
+reads a step makes before it removes swap are fresh for `/proc/swaps`,
+memory and `/sys` (see [Room](#room-for-what-comes-back)); the swap file a
+step acts on is the one planned.
 
 ### Order of steps
 
@@ -382,9 +388,13 @@ A device left active beside the other kind makes the mode `mixed`, and a
 zram, is added after the run when no step left the device that stayed, or
 `others_can_write` for a swap file the status reported active with that
 reason. `zram_size`
-does not make the mode `mixed`. The success log line says what stayed
-(`swap_file_left_active`, `zram_left_active`, `zram_size_kept`). Applying
-again helps only for `not_enough_memory`.
+does not make the mode `mixed`. The success log line says what stayed, read
+from the status after the change and not from what the steps left, so a
+device no step reaches counts too, on a host that did not end `mixed` as
+well: `swap_file_left_active`, a swap file that swaps after a switch to
+zram; `zram_left_active`, zram that swaps after a switch to disk or zswap;
+and `zram_size_kept`, a `zram_size` entry in `left`. Applying again helps
+only for `not_enough_memory`.
 
 ### Sysctls follow the mode the host ends in
 
@@ -485,8 +495,13 @@ Only devices that fstab names are drained, and only those holding data, one at
 a time in fstab order, for each: a fresh status and the room check (the
 device's used bytes with the margin), `swapoff` (see
 [Taking a disk swap device away](#taking-a-disk-swap-device-away)), start
-the unit and wait for the device to return. A failure at a later device says that the ones before it
-stay drained. The dialog reports the device in progress.
+the unit and wait for the device to return. The devices are those of the
+status that allowed the drain, from its one reading of `/etc/fstab`. A
+device that has left `/proc/swaps` by its turn is skipped. A failure at a
+later device says that the ones drained before it stay drained. The
+success log line names the devices drained (`devices`), and a drain that
+drained none logs no success line. The dialog reports the device in
+progress.
 
 The device's unit is used only to start it again, and its state before the
 `swapoff` is not read: a swap file systemd tracks under another unit name,
@@ -1043,8 +1058,11 @@ service step, since `start_zram` does that. See
   drop-in (its path and content, never a mask, its folder 0755 under umask
   077) and let go again with a reload in every case, a mask an older
   version left removed by a switch either way, a rollback that removes a
-  drop-in the run wrote and does not put back one it removed, and the status
-  and route agreement for held-off units, by the drop-in or a mask. `zram_config_test.go` covers a zram configuration file that
+  drop-in the run wrote and does not put back one it removed, the status
+  and route agreement for held-off units, by the drop-in or a mask, an
+  `/etc/fstab` that changes after the status read, which changes neither
+  what a drain takes away nor what a switch plans, and the success lines:
+  what stays active after a switch, and only the devices a drain drained. `zram_config_test.go` covers a zram configuration file that
   is not LinuxIO's (what counts as one, with `;`, a byte order mark and CRLF;
   a package's unchanged conffile against a fake dpkg status, changed, marked
   obsolete or not recorded; one that cannot be read; the refusal without

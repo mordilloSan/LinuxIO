@@ -750,6 +750,72 @@ func TestSetSwapModeToZramExplainsTheSwapFileThatStays(t *testing.T) {
 	assertLeft(t, got.Left, apischema.SwapLeft{What: apischema.SwapLeftSwapFile, Reason: apischema.SwapLeftNotManaged})
 }
 
+// A change is planned on the /etc/fstab reading its status made: a swap file
+// that status found fstab does not name, and so reported as one LinuxIO does
+// not manage, is not stopped when fstab names it a moment later.
+func TestSetSwapModePlansOnTheFstabItsStatusRead(t *testing.T) {
+	f, sys := diskHost(t)
+	f.write(etcFstab, "UUID=0a1b2c3d / ext4 defaults 0 1\n")
+	sys.onStatus = func() { f.write(etcFstab, "UUID=0a1b2c3d / ext4 defaults 0 1\n/swap.img none swap sw 0 0\n") }
+
+	got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.ContainsFunc(sys.calls, func(call string) bool { return strings.Contains(call, "swap.img") }) {
+		t.Fatalf("calls = %v, want /swap.img left alone", sys.calls)
+	}
+	assertLeft(t, got.Left, apischema.SwapLeft{What: apischema.SwapLeftSwapFile, Reason: apischema.SwapLeftNotManaged})
+}
+
+// The success line says what stays active after the change, read from the
+// host: also when the host did not end mixed, as here, where the other kind
+// of swap goes away behind the run.
+func TestSetSwapModeLogsWhatStaysActive(t *testing.T) {
+	t.Run("a swap file after a switch to zram", func(t *testing.T) {
+		logs := captureLogs(t)
+		f, sys := diskHost(t)
+		f.write(etcFstab, "")
+		sys.after = func(call string) {
+			if call == "write "+zswapTmpfilesPath {
+				f.write(procSwaps, swapsHeader+swapFileSwapsLine)
+			}
+		}
+
+		got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeZram})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Mode != apischema.SwapModeDisk {
+			t.Fatalf("mode = %q, want disk", got.Mode)
+		}
+		if want := "swap_file_left_active=true zram_left_active=false"; !strings.Contains(logs.String(), want) {
+			t.Errorf("logs = %q, want %q", logs.String(), want)
+		}
+	})
+	t.Run("zram after a switch to disk", func(t *testing.T) {
+		logs := captureLogs(t)
+		f, sys := zramHost(t)
+		sys.provider = ""
+		sys.after = func(call string) {
+			if call == "set "+swappinessParam+"=60" {
+				f.write(procSwaps, strings.Replace(f.read(procSwaps), swapFileSwapsLine, "", 1))
+			}
+		}
+
+		got, err := sys.executor(nil).setSwapMode(t.Context(), apischema.SwapModeRequest{Mode: apischema.SwapModeDisk})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Mode != apischema.SwapModeZram {
+			t.Fatalf("mode = %q, want zram", got.Mode)
+		}
+		if want := "swap_file_left_active=false zram_left_active=true"; !strings.Contains(logs.String(), want) {
+			t.Errorf("logs = %q, want %q", logs.String(), want)
+		}
+	})
+}
+
 // The room is read just before the swap file stops, not when the request
 // arrived: memory taken while zram starts counts.
 func TestSetSwapModeChecksRoomOnFreshStatus(t *testing.T) {

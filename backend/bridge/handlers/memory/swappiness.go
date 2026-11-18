@@ -30,7 +30,7 @@ func (e *executor) setSwappiness(ctx context.Context, value int) (apischema.Swap
 		return apischema.SwapStatus{}, err
 	}
 	defer unlock()
-	status, err := e.sys.status(ctx)
+	status, _, err := e.sys.status(ctx)
 	if err != nil {
 		return apischema.SwapStatus{}, err
 	}

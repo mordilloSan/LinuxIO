@@ -99,7 +99,7 @@ func TestZramProvider(t *testing.T) {
 func TestReadSwapStatusReportsTheZramProvider(t *testing.T) {
 	f, _ := diskHost(t)
 	for _, provider := range []apischema.ZramProvider{"", apischema.ZramProviderTools, apischema.ZramProviderGenerator} {
-		got, err := f.host().readSwapStatus(provider)
+		got, _, err := f.host().readSwapStatus(provider)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -1,9 +1,11 @@
 package memory
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -60,6 +62,9 @@ type fakeSystem struct {
 	heldOff map[string]bool
 	// statusFails is how many status reads still fail with errStatusRace.
 	statusFails int
+	// onStatus runs once, after the next status read that succeeds, as the
+	// host changing between that read and what comes after it.
+	onStatus func()
 	// busyResets is how many resets of a zram device the kernel still
 	// refuses with EBUSY, as while udev holds it after a swapoff;
 	// onBusyReset runs after each.
@@ -143,17 +148,32 @@ func (s *fakeSystem) unitDo(ctx context.Context, call string, effect func() erro
 	return s.do(call, effect)
 }
 
-func (s *fakeSystem) status(context.Context) (apischema.SwapStatus, error) {
+func (s *fakeSystem) status(context.Context) (apischema.SwapStatus, []fstabSwap, error) {
 	if s.statusFails > 0 {
 		s.statusFails--
-		return apischema.SwapStatus{}, errStatusRace
+		return apischema.SwapStatus{}, nil, errStatusRace
 	}
-	status, err := s.f.host().readSwapStatus(s.provider)
+	status, fstab, err := s.f.host().readSwapStatus(s.provider)
 	if err != nil {
-		return apischema.SwapStatus{}, err
+		return apischema.SwapStatus{}, nil, err
 	}
 	status.TunedActive = s.tuned
-	return status, nil
+	if hook := s.onStatus; hook != nil {
+		s.onStatus = nil
+		hook()
+	}
+	return status, fstab, nil
+}
+
+// captureLogs sends the default logger's lines, Info and above, to the
+// returned buffer for the rest of the test.
+func captureLogs(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	return &logs
 }
 
 // fakeStop scripts a stop the way systemd runs it: the unit stays active

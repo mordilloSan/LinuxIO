@@ -67,13 +67,6 @@ Do one of these only when something shows it is needed.
   feature work resumes.
 - Read the unit's state over one system bus connection for a whole wait: each
   poll of a long `swapoff` opens a new one, about four a second.
-- Read `/etc/fstab` once per memory change. A mode change and a drain read it
-  inside the status and again in `readView`, so the drain reason and the drain
-  targets can come from different reads when fstab changes in between; the
-  status read could return the matched entries.
-- Make the memory success log exact: `swap_file_left_active` is false when an
-  unmanaged swap file stays active, and a drain's `devices` counts a device
-  that vanished and was skipped.
 - Run a file browser change as the session user when the path is inside
   folders that user owns, so the user's own folder links work instead of being
   refused with the folder they point to. The refusal offers to open that

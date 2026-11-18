@@ -19,7 +19,9 @@ import (
 // read. Unit starts and stops queue a job and return; callers verify the
 // result in /proc/swaps.
 type hostSystem interface {
-	status(ctx context.Context) (apischema.SwapStatus, error)
+	// status reads the status fresh, with the fstab swap entries it was
+	// derived from, matched to its active devices.
+	status(ctx context.Context) (apischema.SwapStatus, []fstabSwap, error)
 	startUnit(ctx context.Context, name string) error
 	stopUnit(ctx context.Context, name string) error
 	// restartUnit stops and starts a unit as one job; on a unit that is not
@@ -53,7 +55,7 @@ type liveSystem struct {
 	root hostRoot
 }
 
-func (s liveSystem) status(ctx context.Context) (apischema.SwapStatus, error) {
+func (s liveSystem) status(ctx context.Context) (apischema.SwapStatus, []fstabSwap, error) {
 	return s.root.status(ctx)
 }
 

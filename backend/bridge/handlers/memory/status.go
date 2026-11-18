@@ -86,17 +86,19 @@ func zramSetupActive(ctx context.Context, activeState func(context.Context, stri
 // TuneD counts as inactive, and zram-tools as the provider, when they cannot
 // be asked.
 func GetSwapStatus(ctx context.Context) (apischema.SwapStatus, error) {
-	return host.status(ctx)
+	status, _, err := host.status(ctx)
+	return status, err
 }
 
-// status is GetSwapStatus for the host under the root.
-func (h hostRoot) status(ctx context.Context) (apischema.SwapStatus, error) {
-	status, err := h.readSwapStatus(h.zramProvider(ctx, systemd.GetActiveState))
+// status is GetSwapStatus for the host under the root, with the fstab swap
+// entries it was derived from (see readSwapStatus).
+func (h hostRoot) status(ctx context.Context) (apischema.SwapStatus, []fstabSwap, error) {
+	status, fstab, err := h.readSwapStatus(h.zramProvider(ctx, systemd.GetActiveState))
 	if err != nil {
-		return apischema.SwapStatus{}, err
+		return apischema.SwapStatus{}, nil, err
 	}
 	status.TunedActive, status.TunedProfile = tunedState(ctx)
-	return status, nil
+	return status, fstab, nil
 }
 
 // tunedState reports whether TuneD is running and its active profile: TuneD
@@ -114,32 +116,34 @@ func tunedState(ctx context.Context) (active bool, profile string) {
 }
 
 // readSwapStatus reads everything the status reports except TuneD, given
-// the installed zram provider.
-func (h hostRoot) readSwapStatus(provider apischema.ZramProvider) (apischema.SwapStatus, error) {
+// the installed zram provider. It also returns the fstab swap entries,
+// matched to the active devices, that the status was derived from, so that a
+// change acts on the same reading of /etc/fstab its status decided on.
+func (h hostRoot) readSwapStatus(provider apischema.ZramProvider) (apischema.SwapStatus, []fstabSwap, error) {
 	zramAvailable := provider != ""
 	devices, err := h.readSwaps()
 	if err != nil {
-		return apischema.SwapStatus{}, err
+		return apischema.SwapStatus{}, nil, err
 	}
 	mem, err := h.readMeminfo()
 	if err != nil {
-		return apischema.SwapStatus{}, err
+		return apischema.SwapStatus{}, nil, err
 	}
 	zswap, err := h.readZswap()
 	if err != nil {
-		return apischema.SwapStatus{}, fmt.Errorf("read zswap parameters: %w", err)
+		return apischema.SwapStatus{}, nil, fmt.Errorf("read zswap parameters: %w", err)
 	}
 	zram, err := h.readZramDevices()
 	if err != nil {
-		return apischema.SwapStatus{}, fmt.Errorf("read zram devices: %w", err)
+		return apischema.SwapStatus{}, nil, fmt.Errorf("read zram devices: %w", err)
 	}
 	mounts, err := h.readMounts()
 	if err != nil {
-		return apischema.SwapStatus{}, fmt.Errorf("read mounts: %w", err)
+		return apischema.SwapStatus{}, nil, fmt.Errorf("read mounts: %w", err)
 	}
 	fstab, err := h.fstabSwaps()
 	if err != nil {
-		return apischema.SwapStatus{}, fmt.Errorf("read swap entries from fstab: %w", err)
+		return apischema.SwapStatus{}, nil, fmt.Errorf("read swap entries from fstab: %w", err)
 	}
 	fstab = h.matchFstabSwaps(fstab, devices)
 	status := apischema.SwapStatus{
@@ -158,7 +162,7 @@ func (h hostRoot) readSwapStatus(provider apischema.ZramProvider) (apischema.Swa
 		Presets:              presetList(),
 	}
 	if err := h.readVMSysctls(&status); err != nil {
-		return apischema.SwapStatus{}, fmt.Errorf("read vm sysctls: %w", err)
+		return apischema.SwapStatus{}, nil, fmt.Errorf("read vm sysctls: %w", err)
 	}
 	partitionActive := slices.ContainsFunc(devices, func(d apischema.SwapDevice) bool {
 		return d.Kind == apischema.SwapDevicePartition
@@ -173,7 +177,7 @@ func (h hostRoot) readSwapStatus(provider apischema.ZramProvider) (apischema.Swa
 		leftOutHoldsData(fstab, devices),
 		slices.ContainsFunc(holdingData(fstab, devices), func(e fstabSwap) bool { return e.heldOff }))
 	status.CanDrain = status.DrainBlockedReason == ""
-	return status, nil
+	return status, fstab, nil
 }
 
 // usableSwapFile is the swap file the recommendation goes by: the one the

@@ -233,12 +233,12 @@ const statusAfterChangeTries = 5
 // waits.poll apart, until ctx ends. A read that still fails says that the
 // change was made.
 func (e *executor) statusAfterChange(ctx context.Context) (apischema.SwapStatus, error) {
-	status, err := e.sys.status(ctx)
+	status, _, err := e.sys.status(ctx)
 	for try := 1; err != nil && try < statusAfterChangeTries && ctx.Err() == nil; try++ {
 		select {
 		case <-ctx.Done():
 		case <-time.After(e.waits.poll):
-			status, err = e.sys.status(ctx)
+			status, _, err = e.sys.status(ctx)
 		}
 	}
 	if err != nil {
@@ -247,17 +247,17 @@ func (e *executor) statusAfterChange(ctx context.Context) (apischema.SwapStatus,
 	return status, nil
 }
 
-// readView reads the status and the fstab swap entries fresh.
+// readView reads the status fresh. Its fstab swap entries are the ones that
+// status was derived from: one reading of /etc/fstab serves the whole change,
+// so what the status decides, such as the drain's reason, and what the change
+// acts on, such as the drain's devices, cannot come from two readings of a
+// file that changed in between.
 func (e *executor) readView(ctx context.Context) (swapView, error) {
-	status, err := e.sys.status(ctx)
+	status, fstab, err := e.sys.status(ctx)
 	if err != nil {
 		return swapView{}, err
 	}
-	fstab, err := e.root.fstabSwaps()
-	if err != nil {
-		return swapView{}, fmt.Errorf("read swap entries from fstab: %w", err)
-	}
-	view := swapView{status: status, fstab: e.root.matchFstabSwaps(fstab, status.Devices)}
+	view := swapView{status: status, fstab: fstab}
 	if status.ZramProvider == apischema.ZramProviderGenerator {
 		_, view.generatorUnreadable = e.root.readZramGeneratorDevices()
 	}

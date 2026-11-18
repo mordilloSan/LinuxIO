@@ -278,7 +278,7 @@ func TestDrainSwapAndStatusAgreeOnAHeldOffUnit(t *testing.T) {
 			f, sys := drainHost(t)
 			holdOff(f)
 
-			status, err := sys.status(t.Context())
+			status, _, err := sys.status(t.Context())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -290,6 +290,67 @@ func TestDrainSwapAndStatusAgreeOnAHeldOffUnit(t *testing.T) {
 			}
 		})
 	}
+}
+
+// One reading of /etc/fstab serves the whole drain: the status that allows
+// it and the devices it takes away. Here fstab gains, after that reading, a
+// swap file whose unit is held off at boot. The status never counted it, so
+// the drain leaves it alone; a start would not bring it back.
+func TestDrainSwapActsOnTheFstabItsStatusRead(t *testing.T) {
+	f, sys := drainHost(t)
+	f.write(etcFstab, "UUID=7e8f none swap sw 0 0\n")
+	f.write(holdOffDropInPath("swap.img.swap"), string(renderHoldOffDropIn()))
+	sys.heldOff["swap.img.swap"] = true
+	sys.onStatus = func() { f.write(etcFstab, "/swap.img none swap sw 0 0\nUUID=7e8f none swap sw 0 0\n") }
+
+	if _, err := sys.executor(nil).drainSwap(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	assertCalls(t, sys.calls, []string{"swapoff /dev/sda3", "start " + partitionUnit})
+}
+
+// A device that left /proc/swaps before its turn is skipped: the success line
+// names only the devices drained, and an error at a later device counts only
+// those as staying drained.
+func TestDrainSwapCountsOnlyTheDevicesItDrained(t *testing.T) {
+	leaves := func(f fixture) func() {
+		return func() { f.write(procSwaps, strings.Replace(f.read(procSwaps), swapFileSwapsLine, "", 1)) }
+	}
+	t.Run("success", func(t *testing.T) {
+		logs := captureLogs(t)
+		f, sys := drainHost(t)
+		sys.onStatus = leaves(f)
+
+		if _, err := sys.executor(nil).drainSwap(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		assertCalls(t, sys.calls, []string{"swapoff /dev/sda3", "start " + partitionUnit})
+		if want := `msg="swap drained" devices=[/dev/sda3]`; !strings.Contains(logs.String(), want) {
+			t.Errorf("logs = %q, want %q", logs.String(), want)
+		}
+	})
+	t.Run("failure", func(t *testing.T) {
+		f, sys := drainHost(t)
+		sys.onStatus = leaves(f)
+		sys.failures["swapoff /dev/sda3"] = syscall.EBUSY
+
+		_, err := sys.executor(nil).drainSwap(t.Context())
+		if !errors.Is(err, syscall.EBUSY) || strings.Contains(err.Error(), "stay drained") {
+			t.Fatalf("err = %v, want the refusal and no device drained before it", err)
+		}
+	})
+	t.Run("nothing left to drain", func(t *testing.T) {
+		logs := captureLogs(t)
+		f, sys := drainHost(t)
+		sys.onStatus = func() { f.write(procSwaps, swapsHeader) }
+
+		if _, err := sys.executor(nil).drainSwap(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(logs.String(), "swap drained") {
+			t.Errorf("logs = %q, want no success line for a drain that drained nothing", logs.String())
+		}
+	})
 }
 
 // A device that does not come back is reported off by its unit, and the
@@ -369,7 +430,7 @@ func TestDrainSwapRefusesASwapFileOthersCanRedirect(t *testing.T) {
 	if want := drainRefusal(apischema.SwapDrainOthersCanWrite); !strings.Contains(err.Error(), want) {
 		t.Errorf("err = %v, want it to say %q", err, want)
 	}
-	status, err := f.host().readSwapStatus(apischema.ZramProviderTools)
+	status, _, err := f.host().readSwapStatus(apischema.ZramProviderTools)
 	if err != nil {
 		t.Fatal(err)
 	}
