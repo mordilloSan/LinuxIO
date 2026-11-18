@@ -189,6 +189,9 @@ See `docs/development.md`, "Test VM", for usage.
 - `make vm-test-btrfs-integration` runs the root btrfs and partition kernel
   tests (`test-btrfs-integration`) as root in the VM; the kernel-level claims
   of the btrfs resume work rest on that run.
+- `DISTRO=fedora` on the same targets drives a Fedora 45 VM,
+  `linuxio-e2e-fedora`, beside the Ubuntu ones (see
+  [Distributions](#distributions)).
 
 Not yet: tags, the mutation allowlist, fixtures, and artifact collection beyond
 Playwright's own traces and screenshots.
@@ -221,26 +224,46 @@ accepts (`is_debian` and `is_fedora` in
 
 RHEL 8 and its rebuilds are not supported and get no VM.
 
-Not built. The steps, in order:
+Built (2026-11-18):
 
-1. `packaging/vm/linuxio-vm.sh` takes the distribution as a parameter: a
-   profile per distribution holds the image URL, where its checksum is
-   published, the first-boot packages and the package manager the fixtures
-   call. The domain, its volumes and its cache are named per distribution, so
-   two can exist side by side, and every name keeps the `linuxio-e2e` prefix
-   that the Make targets are limited to.
-2. A Fedora profile, and the memory root suite on it
-   (`make vm-test-memory-integration`). This is what the
-   [backlog](./backlog.md) needs: the `zram-generator` path has never run on
-   Fedora.
-3. The other profiles.
-4. A table of which suite runs on which distribution. The root Go suites are
-   expected to run everywhere. The browser specs are not: their package
-   fixtures (`frontend/src/test/vm/fixtures/many-updates.sh`,
-   `slow-package.sh`) build `apt` packages, so each needs an `rpm` twin or
-   stays on the Debian family.
+- `packaging/vm/linuxio-vm.sh` takes the distribution as a parameter,
+  `DISTRO=fedora` on the Make targets (`LINUXIO_VM_DISTRO` to the script),
+  Ubuntu when it is not given. A profile at the top of the script holds what
+  differs: the image URL, where its checksum is published, the first-boot
+  seed, the package manager the suites install with and the packages they
+  install. The domain, its volumes and its cache are named per distribution
+  (`linuxio-e2e-fedora`, `linuxio-e2e-fedora-*`, `~/.cache/linuxio-vm-fedora`),
+  so two exist side by side; Ubuntu keeps the names it had.
+  `docs/development.md`, "Test VM", says how.
+- A Fedora 45 profile (Cloud Base image, `user-data-fedora.yaml.in`, `dnf`,
+  SELinux enforcing), and these on it, on 2026-11-18 (kernel
+  7.3.4-300.fc45):
 
-Open, to settle at step 3: Linux Mint and Pop!_OS publish installer images
+| Target, with `DISTRO=fedora` | Result |
+|---|---|
+| `make vm-create` | Passes; the first boot takes about 2½ minutes |
+| `make vm-install` | Passes: `linuxio.target` active, the dashboard answers on 8090, no SELinux denial |
+| `make test-vm-backend SUITES=relay` | Passes |
+| `make test-vm-backend SUITES='filebrowser userconfig' VMS=1` | Passes |
+| `make vm-test-memory-integration` | Passes with zram-generator: `TestMemoryIntegration`, and the drain with 2 GiB (the cancel left 1806 of 2063 MiB parked, the rest drained in 13 s) and capped (280 MiB in 2 min 13 s) |
+
+Not run on Fedora yet: the `btrfs`, `indexer`, `docker`, `updater` and
+`network` suites, and the browser specs. Fedora needed three things of the
+rig and none of LinuxIO: `cloud-init status` as root (Fedora's cloud-init
+keeps its state from other users), its default `zram0` switched off the way
+Fedora documents before the memory suite, and a swap file made by btrfs and
+labelled `swapfile_t` (`docs/development.md`, "Test VM").
+
+Not built yet:
+
+1. The other profiles.
+2. The browser specs on the RHEL family: their package fixtures
+   (`frontend/src/test/vm/fixtures/many-updates.sh`, `slow-package.sh`)
+   build `apt` packages, so each needs an `rpm` twin or stays on the Debian
+   family. Then the table above grows a column per distribution. The root Go
+   suites are expected to run everywhere.
+
+Open, to settle with the other profiles: Linux Mint and Pop!_OS publish installer images
 and no cloud image, and a RHEL image needs a Red Hat account, so these three
 need another way in (an unattended install, or an image the owner supplies)
 or are covered by their family: Ubuntu for the first two, Rocky Linux or

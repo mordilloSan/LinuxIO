@@ -5,14 +5,19 @@
 # or deletes any other domain, volume or network. State (image cache, SSH key,
 # login) lives in ~/.cache/linuxio-vm.
 #
-# LINUXIO_VM_RELEASE=noble selects a second VM on Ubuntu 24.04 for the root
-# tests on an older kernel: the domain linuxio-e2e-noble, its
+# LINUXIO_VM_DISTRO=fedora selects a VM on Fedora instead of Ubuntu, the
+# default: the domain linuxio-e2e-fedora, its linuxio-e2e-fedora-* volumes and
+# ~/.cache/linuxio-vm-fedora, beside Ubuntu's. A profile below holds what
+# differs between distributions.
+#
+# LINUXIO_VM_RELEASE=noble selects a second Ubuntu VM on Ubuntu 24.04 for the
+# root tests on an older kernel: the domain linuxio-e2e-noble, its
 # linuxio-e2e-noble-* volumes and ~/.cache/linuxio-vm-noble, beside the first.
 #
 # LINUXIO_VM_INDEX=2..9 selects one more VM of the same release, so the browser
-# specs run on several at once: the domain linuxio-e2e-2, its linuxio-e2e-2-*
-# volumes and ~/.cache/linuxio-vm-2. It shares only the image cache with the
-# first.
+# specs run on several at once: the domain linuxio-e2e-2, its volumes and
+# ~/.cache/linuxio-vm-2 (linuxio-e2e-fedora-2 and ~/.cache/linuxio-vm-fedora-2
+# on Fedora). It shares only the image cache with the first.
 #
 # Usage: linuxio-vm.sh create | ensure | prepare [BUILD_DIR] |
 #        install BUILD_DIR [REF] | start | ssh [COMMAND] | ip | password |
@@ -21,12 +26,38 @@
 #        test DIR [SUITE...] | each COUNT COMMAND [ARGS]
 set -euo pipefail
 
-case "${LINUXIO_VM_RELEASE:-resolute}" in
-resolute) readonly RELEASE=resolute VERSION=26.04 FIRST_DOMAIN=linuxio-e2e ;;
-noble) readonly RELEASE=noble VERSION=24.04 FIRST_DOMAIN=linuxio-e2e-noble ;;
+readonly DISTRO="${LINUXIO_VM_DISTRO:-ubuntu}"
+case "${DISTRO}/${LINUXIO_VM_RELEASE:-}" in
+ubuntu/ | ubuntu/resolute) readonly RELEASE=resolute VERSION=26.04 FIRST_DOMAIN=linuxio-e2e ;;
+ubuntu/noble) readonly RELEASE=noble VERSION=24.04 FIRST_DOMAIN=linuxio-e2e-noble ;;
+# A Fedora release's Cloud Base images never change once it ships, so the
+# version names the compose too; the first boot upgrades the packages.
+fedora/) readonly RELEASE=45 VERSION=45-1.4 FIRST_DOMAIN=linuxio-e2e-fedora ;;
 *)
-	echo "linuxio-vm: unknown LINUXIO_VM_RELEASE '${LINUXIO_VM_RELEASE}' (resolute or noble)" >&2
+	echo "linuxio-vm: unknown distribution '${DISTRO}' release '${LINUXIO_VM_RELEASE:-}' (ubuntu, with resolute or noble, or fedora)" >&2
 	exit 1
+	;;
+esac
+# The profile: where the cloud image and its checksum file are published, the
+# first-boot seed, the package manager and the packages the suites add.
+# Neither checksum file's signature is checked: it comes over HTTPS from the
+# distribution's own server, and Fedora's image from one of its mirrors.
+case $DISTRO in
+ubuntu)
+	readonly IMAGE_NAME="ubuntu-${VERSION}-server-cloudimg-amd64.img"
+	readonly IMAGE_URL="https://cloud-images.ubuntu.com/releases/${RELEASE}/release/${IMAGE_NAME}"
+	readonly SUMS_URL="https://cloud-images.ubuntu.com/releases/${RELEASE}/release/SHA256SUMS"
+	readonly SEED_TEMPLATE=user-data.yaml.in PKG=apt
+	# zram-tools is LinuxIO's first choice where it exists.
+	readonly ZRAM_DEFAULT=zram-tools GENERATOR_PACKAGE=systemd-zram-generator COMPOSE_PACKAGE=docker-compose-v2
+	;;
+fedora)
+	readonly IMAGE_NAME="Fedora-Cloud-Base-Generic-${VERSION}.x86_64.qcow2"
+	readonly IMAGE_URL="https://download.fedoraproject.org/pub/fedora/linux/releases/${RELEASE}/Cloud/x86_64/images/${IMAGE_NAME}"
+	readonly SUMS_URL="https://dl.fedoraproject.org/pub/fedora/linux/releases/${RELEASE}/Cloud/x86_64/images/Fedora-Cloud-${VERSION}-x86_64-CHECKSUM"
+	readonly SEED_TEMPLATE=user-data-fedora.yaml.in PKG=dnf
+	# Fedora has no zram-tools; the image comes with zram-generator.
+	readonly ZRAM_DEFAULT=zram-generator GENERATOR_PACKAGE=zram-generator COMPOSE_PACKAGE=docker-compose
 	;;
 esac
 readonly INDEX="${LINUXIO_VM_INDEX:-1}"
@@ -59,8 +90,6 @@ readonly HOST_IP=192.168.122.1
 # One port for each VM number, so several first boots can run at once.
 readonly SEED_PORT=$((8398 + INDEX))
 readonly SEED_URL="http://${HOST_IP}:${SEED_PORT}/"
-readonly IMAGE_BASE_URL="https://cloud-images.ubuntu.com/releases/${RELEASE}/release"
-readonly IMAGE_NAME="ubuntu-${VERSION}-server-cloudimg-amd64.img"
 readonly STATE="${HOME}/.cache/linuxio-vm${DOMAIN#linuxio-e2e}"
 readonly IMAGE_DIR="${HOME}/.cache/linuxio-vm${FIRST_DOMAIN#linuxio-e2e}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -119,6 +148,15 @@ vol_exists() { v vol-info --pool "$POOL" "$1" >/dev/null 2>&1; }
 # shellcheck disable=SC2029 # the caller's command is meant for the VM's shell
 vm_ssh() { ssh "${SSH_OPTS[@]}" "${VM_USER}@${IP}" "$@"; }
 
+# vm_install PACKAGE... installs packages in the VM with the profile's
+# package manager.
+vm_install() {
+	case $PKG in
+	apt) vm_ssh "sudo apt-get update -qq && sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $*" </dev/null ;;
+	dnf) vm_ssh "sudo dnf install -y -q $*" </dev/null ;;
+	esac
+}
+
 # The addresses the default network's DHCP server leased to the domain, the
 # one that last answered first. A boot whose initrd also took a lease (seen
 # after a power cut mid device replace) leaves a dead address listed.
@@ -172,24 +210,27 @@ stop_seed() {
 	fi
 }
 
-# The cloud image, checked against the release's SHA256SUMS; a cached copy is
-# reused while it still matches. The VMs of a release share the copy, so one
-# create at a time looks at it.
+# The cloud image, checked against the SHA-256 in the release's checksum file
+# (Ubuntu's SHA256SUMS lines read "SUM *NAME", Fedora's CHECKSUM ones
+# "SHA256 (NAME) = SUM"); a cached copy is reused while it still matches. The
+# VMs of a release share the copy, so one create at a time looks at it.
 fetch_image() {
 	local sum image="${IMAGE_DIR}/${IMAGE_NAME}"
 	mkdir -p "$IMAGE_DIR"
 	chmod 700 "$IMAGE_DIR"
 	exec 8>"${IMAGE_DIR}/image.lock"
 	flock 8
-	sum="$(curl -fsSL "${IMAGE_BASE_URL}/SHA256SUMS" | awk -v f="*${IMAGE_NAME}" '$2 == f { print $1 }')"
-	[[ -n $sum ]] || die "${IMAGE_NAME} is not listed in ${IMAGE_BASE_URL}/SHA256SUMS"
+	sum="$(curl -fsSL "$SUMS_URL" | awk -v f="$IMAGE_NAME" '
+		$2 == "*" f { print $1 }
+		$1 == "SHA256" && $2 == "(" f ")" && $3 == "=" { print $4 }')"
+	[[ $sum =~ ^[0-9a-f]{64}$ ]] || die "${IMAGE_NAME} is not listed once in ${SUMS_URL}"
 	if echo "${sum}  ${image}" | sha256sum --check --status >/dev/null 2>&1; then
 		exec 8>&-
 		return
 	fi
 	say "downloading ${IMAGE_NAME}"
-	curl -fL --progress-bar -o "${image}.part" "${IMAGE_BASE_URL}/${IMAGE_NAME}"
-	echo "${sum}  ${image}.part" | sha256sum --check --status || die "${IMAGE_NAME} does not match SHA256SUMS"
+	curl -fL --progress-bar -o "${image}.part" "$IMAGE_URL"
+	echo "${sum}  ${image}.part" | sha256sum --check --status || die "${IMAGE_NAME} does not match ${SUMS_URL##*/}"
 	mv "${image}.part" "$image"
 	exec 8>&-
 }
@@ -202,7 +243,7 @@ write_seed() {
 	mkdir -p "$seed"
 	printf 'instance-id: %s\nlocal-hostname: %s\n' "$DOMAIN" "$DOMAIN" >"${seed}/meta-data"
 	sed -e "s|@PASSWORD_HASH@|${hash}|" -e "s|@SSH_KEY@|${key}|" -e "s|@SEED_URL@|${SEED_URL}|" \
-		"${REPO_ROOT}/packaging/vm/user-data.yaml.in" >"${seed}/user-data"
+		"${REPO_ROOT}/packaging/vm/${SEED_TEMPLATE}" >"${seed}/user-data"
 	cp "${REPO_ROOT}/packaging/scripts/install-dependencies.sh" "${seed}/"
 }
 
@@ -284,8 +325,11 @@ create() {
 	say "first boot: cloud-init installs the packages (several minutes)"
 	v start "$DOMAIN" >/dev/null
 	wait_for_ssh 600
-	if ! vm_ssh cloud-init status --wait >/dev/null; then
-		vm_ssh 'cloud-init status --long; sudo tail -n 40 /var/log/cloud-init-output.log' >&2 || true
+	# As root: Fedora's cloud-init keeps its state from other users, and its
+	# status then waits for ever. The key that lets SSH in and the sudo rule
+	# are written together.
+	if ! vm_ssh sudo cloud-init status --wait >/dev/null; then
+		vm_ssh 'sudo cloud-init status --long; sudo tail -n 40 /var/log/cloud-init-output.log' >&2 || true
 		die "cloud-init failed; inspect with make vm-ssh, then make vm-destroy"
 	fi
 	stop_seed
@@ -449,17 +493,31 @@ suite_btrfs() {
 # pri=10 puts it ahead of /swap.img. A vdb that holds anything but swap is
 # another check's and is refused. vdb stops swapping when the suite ends,
 # passed, failed or interrupted.
+#
+# On a btrfs root (Fedora's) the swap file is made by btrfs, which leaves it
+# without copy-on-write as swap needs. Unlike mkswap, btrfs does not label it
+# for SELinux, so it is labelled swapfile_t, the type swapon is allowed to use.
+# btrfs refuses a file that exists, so a /swap.img a cut run left without its
+# fstab line is removed first; one that swaps is refused.
 suite_memory() {
 	local -r drain=(LINUXIO_RUN_MEMORY_INTEGRATION=1 LINUXIO_MEMORY_DRAIN_DEVICE=/dev/vdb)
-	[[ ${LINUXIO_VM_ZRAM_PROVIDER:-zram-tools} =~ ^zram-(tools|generator)$ ]] ||
-		die "ZRAM_PROVIDER must be zram-tools or zram-generator"
 	zram_setup
 	vm_ssh sudo bash -s <<'SWAPFILE'
 set -euo pipefail
 if ! grep -qs '^/swap.img[[:space:]]' /etc/fstab; then
-	fallocate -l 1G /swap.img
-	chmod 600 /swap.img
-	mkswap /swap.img >/dev/null
+	if grep -q '^/swap.img[[:space:]]' /proc/swaps; then
+		echo "/swap.img swaps without an fstab line: run make vm-reset first" >&2
+		exit 1
+	fi
+	rm -f /swap.img
+	if [[ $(stat -f -c %T /) == btrfs ]]; then
+		btrfs filesystem mkswapfile --size 1g /swap.img >/dev/null
+	else
+		fallocate -l 1G /swap.img
+		chmod 600 /swap.img
+		mkswap /swap.img >/dev/null
+	fi
+	if command -v selinuxenabled >/dev/null && selinuxenabled; then chcon -t swapfile_t /swap.img; fi
 	echo '/swap.img none swap sw 0 0' >>/etc/fstab
 	systemctl daemon-reload
 	systemctl start swap.img.swap
@@ -491,35 +549,57 @@ systemctl stop dev-vdb.swap
 SWAPOFF
 }
 
-# zram-tools by default. LINUXIO_VM_ZRAM_PROVIDER=zram-generator uses systemd's
-# zram-generator instead (the Fedora and RHEL path, from Ubuntu's
-# systemd-zram-generator package); LinuxIO uses it only when zram-tools is
-# absent, so that needs a VM without zram-tools.
+# The profile's zram tool unless LINUXIO_VM_ZRAM_PROVIDER names one: zram-tools
+# on Ubuntu, zram-generator on Fedora, which has no zram-tools. On Ubuntu
+# zram-generator is the systemd-zram-generator package, the Fedora and RHEL
+# path; LinuxIO uses it only when zram-tools is absent, so that needs a VM
+# without zram-tools. The test starts from disk, so a zram device the
+# generator swaps on from boot (Fedora's default zram0) is switched off. A stop
+# alone does not hold: while a configuration names the device, systemd starts
+# it again as soon as it is reset. So it is switched off the way Fedora
+# documents, which is also where LinuxIO's disk mode leaves it: an empty
+# /etc/systemd/zram-generator.conf, a reload, then the stop. The swap stops
+# before its setup service: with no device configured nothing orders the two,
+# and a reset while zram still swaps fails (EBUSY) and leaves the device set
+# up, which the next zram start cannot configure. A device left that way, set
+# up and not swapping, with its setup service stopped, is reset through sysfs
+# as the generator's stop would have.
 zram_setup() {
-	if [[ ${LINUXIO_VM_ZRAM_PROVIDER:-zram-tools} == zram-generator ]]; then
-		vm_ssh sudo bash -s <<'GENERATOR'
+	case ${LINUXIO_VM_ZRAM_PROVIDER:-$ZRAM_DEFAULT} in
+	zram-generator)
+		if vm_ssh test -x /usr/sbin/zramswap </dev/null; then
+			die "zram-tools is installed and LinuxIO prefers it: run make vm-reset first"
+		fi
+		vm_ssh test -x /usr/lib/systemd/system-generators/zram-generator </dev/null || vm_install "$GENERATOR_PACKAGE"
+		vm_ssh sudo bash -s <<'ZRAMOFF'
 set -euo pipefail
-if test -x /usr/sbin/zramswap; then
-	echo "zram-tools is installed and LinuxIO prefers it: run make vm-reset first" >&2
-	exit 1
-fi
-if ! test -x /usr/lib/systemd/system-generators/zram-generator; then
-	apt-get update -qq
-	DEBIAN_FRONTEND=noninteractive apt-get install -y -qq systemd-zram-generator
-fi
-if grep -q '^/dev/zram' /proc/swaps; then systemctl stop dev-zram0.swap; fi
-GENERATOR
-	else
-		# The package starts zramswap.service, which the test does itself.
-		vm_ssh sudo bash -s <<'TOOLS'
-set -euo pipefail
-if ! test -x /usr/sbin/zramswap; then
-	apt-get update -qq
-	DEBIAN_FRONTEND=noninteractive apt-get install -y -qq zram-tools
-	systemctl disable --now zramswap.service
-fi
-TOOLS
+zram0_set_up() { [[ -e /sys/block/zram0/disksize && $(</sys/block/zram0/disksize) != 0 ]]; }
+if grep -q '^/dev/zram' /proc/swaps || zram0_set_up; then
+	: >/etc/systemd/zram-generator.conf
+	systemctl daemon-reload
+	# With no device configured the swap unit is loaded only while it swaps.
+	if grep -q '^/dev/zram0[[:space:]]' /proc/swaps; then systemctl stop dev-zram0.swap; fi
+	systemctl stop systemd-zram-setup@zram0.service
+	if zram0_set_up; then echo 1 >/sys/block/zram0/reset; fi
+	sleep 2
+	if grep -q '^/dev/zram' /proc/swaps || zram0_set_up; then
+		echo "zram0 is still set up after it was switched off:" >&2
+		cat /proc/swaps >&2
+		exit 1
 	fi
+fi
+ZRAMOFF
+		;;
+	zram-tools)
+		[[ $PKG == apt ]] || die "zram-tools is a Debian package: on ${DISTRO} use ZRAM_PROVIDER=zram-generator"
+		if ! vm_ssh test -x /usr/sbin/zramswap </dev/null; then
+			vm_install zram-tools
+			# The package starts zramswap.service, which the test does itself.
+			vm_ssh sudo systemctl disable --now zramswap.service </dev/null
+		fi
+		;;
+	*) die "ZRAM_PROVIDER must be zram-tools or zram-generator" ;;
+	esac
 }
 
 drain_setup() {
@@ -567,16 +647,11 @@ suite_updater() {
 }
 
 # The Docker update's real Compose runs (test-docker-update-integration),
-# which pull alpine images from Docker Hub. Ubuntu's docker.io comes without
-# the Compose plugin, so the first run installs docker-compose-v2.
+# which pull alpine images from Docker Hub. Ubuntu's docker.io and Fedora's
+# moby-engine come without the Compose plugin, so the first run installs the
+# profile's package of it (docker-compose-v2, docker-compose).
 suite_docker() {
-	vm_ssh sudo bash -s <<'COMPOSE'
-set -euo pipefail
-if ! docker compose version >/dev/null 2>&1; then
-	apt-get update -qq
-	DEBIAN_FRONTEND=noninteractive apt-get install -y -qq docker-compose-v2
-fi
-COMPOSE
+	vm_ssh sudo docker compose version >/dev/null 2>&1 </dev/null || vm_install "$COMPOSE_PACKAGE"
 	push_test "$1" dockerupdate
 	run_test dockerupdate "${LINUXIO_VM_DOCKER_RUN:?mk/vm.mk sets it}" 10m LINUXIO_RUN_DOCKER_INTEGRATION=1
 }
@@ -683,12 +758,15 @@ reset() {
 # switch the unattended apt timers off (the seed does that for a new VM; one
 # created before it did still has them on) and take the snapshot again. An
 # unattended upgrade that a power-cut check interrupts leaves dpkg broken, and
-# a long list of waiting updates slows the Updates page the specs open.
+# a long list of waiting updates slows the Updates page the specs open. Fedora
+# upgrades nothing by itself; its seed switches dnf-makecache.timer off.
 update() {
 	reset
 	connect
 	say "upgrading the packages of ${DOMAIN} (several minutes)"
-	vm_ssh sudo bash -s <<'UPGRADE'
+	case $PKG in
+	apt)
+		vm_ssh sudo bash -s <<'UPGRADE'
 set -euo pipefail
 systemctl disable --now apt-daily.timer apt-daily-upgrade.timer
 # A run the boot started holds the dpkg lock; let it end by itself.
@@ -700,6 +778,9 @@ apt-get -o DPkg::Lock::Timeout=600 -qq update
 apt-get -o DPkg::Lock::Timeout=600 -o Dpkg::Options::=--force-confold -y -qq dist-upgrade
 sync
 UPGRADE
+		;;
+	dnf) vm_ssh 'sudo dnf upgrade -y -q --refresh && sync' </dev/null ;;
+	esac
 	v shutdown "$DOMAIN" >/dev/null
 	wait_for_shut_off 180
 	# Between these two the VM has no clean snapshot: if the second fails,

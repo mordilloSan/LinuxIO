@@ -109,7 +109,8 @@ and installer tests consume. `make localinstall` runs
 
 ## Test VM
 
-`mk/vm.mk` drives a disposable Ubuntu 26.04 VM for checks that need root, a
+`mk/vm.mk` drives a disposable Ubuntu 26.04 VM (or Fedora 45, with
+`DISTRO=fedora`, below) for checks that need root, a
 real kernel, systemd or Docker. `packaging/vm/linuxio-vm.sh` does the work on
 `qemu:///system`, so it needs `virsh`, membership in the `libvirt` group, the
 `default` NAT network (`192.168.122.1`), `curl`, `openssl` and `python3`, but no
@@ -193,6 +194,34 @@ specs run there too (`make vm-install VM_RELEASE=noble`, then
 `make test-vm-browser-rerun VM_RELEASE=noble PLAYWRIGHT_ARGS=...`): sign-in
 and the scheduled-script specs were run on it.
 
+`DISTRO=fedora` on a `vm-*` or `test-vm-*` target selects the Fedora VMs
+instead of Ubuntu's: the domain `linuxio-e2e-fedora` (`linuxio-e2e-fedora-2`
+and so on), its `linuxio-e2e-fedora-*` volumes and
+`~/.cache/linuxio-vm-fedora`, beside the Ubuntu VMs, which keep their names
+when `DISTRO` is not given. The lock is the same one, so one VM target runs
+at a time whatever the distribution. What differs between distributions is a
+profile at the top of the script: the cloud image, where its checksum is
+published, the first-boot seed, the package manager the suites install with,
+and the packages they install. Fedora's is:
+
+- the Fedora Cloud Base image (`Fedora-Cloud-Base-Generic-45-1.4.x86_64.qcow2`)
+  from `download.fedoraproject.org`, which sends it from a mirror, checked
+  against the SHA-256 in the release's `CHECKSUM` file read from
+  `dl.fedoraproject.org`. The script does not check the signature of either
+  distribution's checksum file. A Fedora release's images do not change once
+  it ships, so a new release is a new version in the profile.
+- `packaging/vm/user-data-fedora.yaml.in`: the user in `wheel` with
+  passwordless sudo, `moby-engine` (Fedora's Docker) started and enabled,
+  `btrfs-progs`, `install-dependencies.sh`, every package upgraded, and
+  `dnf-makecache.timer` off. SELinux stays enforcing. Fedora's root
+  filesystem is btrfs.
+- `dnf` where Ubuntu has `apt`, in `vm-update` and in the suites.
+
+On Fedora the root suites `relay`, `filebrowser`, `userconfig` and `memory`
+have been run (`docs/TODO/e2e-testing.md`, "Distributions", has the
+results); the browser specs have not, since their package fixtures build
+`apt` packages.
+
 ```sh
 make test-vm-browser        # everything below that a browser run needs, in one go
 make test-vm-backend        # the same for the root suites, shared out between the VMs
@@ -210,7 +239,8 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
 ```
 
 - `vm-create` downloads the cloud image (checked against the release's
-  `SHA256SUMS`), and boots it once with `packaging/vm/user-data.yaml.in`.
+  `SHA256SUMS`, Fedora's `CHECKSUM`), and boots it once with
+  `packaging/vm/user-data.yaml.in` (`user-data-fedora.yaml.in` on Fedora).
   cloud-init reads its seed over HTTP from a server on
   `192.168.122.1:8399` (8400 for VM 2, and so on) that runs only during that
   boot. It creates the user
@@ -233,7 +263,8 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   the seed did so still has them on) and takes `clean` again; run it now and
   then, since a long list of waiting updates also slows the Updates page.
   The kernel is upgraded with the rest, so the kernel tests then run on the
-  new one.
+  new one. On Fedora it runs `dnf upgrade`; Fedora upgrades nothing by
+  itself.
 - `make vm-ssh` without `CMD` opens a shell. The user can `sudo` without a
   password. Make expands `$` in `CMD`, so write `$$`.
 - `test-vm-browser-rerun` runs the specs against the VMs as they are, which
@@ -288,7 +319,8 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
     uninstalls it.
   - `docker` is `test-docker-update-integration`: real Compose replacements,
     which pull alpine images from Docker Hub. Ubuntu's `docker.io` comes
-    without the Compose plugin, so the suite installs `docker-compose-v2`.
+    without the Compose plugin, so the suite installs `docker-compose-v2`
+    (`docker-compose` on Fedora, beside `moby-engine`).
   - `updater` is `test-updater`, the install script's `--dry-run` under the
     updater's systemd sandbox. The test reads the script from
     `LINUXIO_INSTALL_SCRIPT`, a copy, since the VM has no checkout.
@@ -310,7 +342,18 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   `zram-tools` with apt and disables the `zramswap.service` its package
   starts, and, when `/etc/fstab`
   has no `/swap.img`, creates a 1 GiB `/swap.img`, adds it to fstab and starts
-  it. It then runs `TestMemoryDrainIntegration` twice on the data disk `vdb`,
+  it. On Fedora, which has no zram-tools, `zram-generator` is the default
+  and comes with the image, and so does a `zram0` that swaps from boot
+  (`zram-generator-defaults`). The test starts from disk, so the suite
+  switches it off the way Fedora documents, which is also where LinuxIO's
+  disk mode leaves it: an empty `/etc/systemd/zram-generator.conf`, a
+  reload, then a stop of `dev-zram0.swap` and its setup service. A stop
+  alone does not hold: while a configuration names the device, systemd
+  starts it again as soon as it is reset. Its root is btrfs, so `/swap.img`
+  is made with `btrfs filesystem mkswapfile` (a file without copy-on-write),
+  which, unlike `mkswap`, leaves the file with its folder's SELinux type: the
+  suite labels it `swapfile_t`, the type `swapon` is allowed to use. It then
+  runs `TestMemoryDrainIntegration` twice on the data disk `vdb`,
   made a swap device with a `noauto` fstab entry and started only for the
   test: once with 2 GiB parked on it, and once with 320 MiB and the test's
   reads from the disk capped at 2 MiB a second, where the drain has to take

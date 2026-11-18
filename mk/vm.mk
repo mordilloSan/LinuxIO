@@ -3,8 +3,13 @@
 # ~/.cache/linuxio-vm, never in git. docs/development.md, "Test VM".
 
 vm_script := $(repo_root)/packaging/vm/linuxio-vm.sh
-# VM_RELEASE=noble selects the second VM (linuxio-e2e-noble, Ubuntu 24.04),
-# kept for the root tests on an older kernel.
+# DISTRO=fedora selects the distribution, a profile in the script: Fedora's
+# VMs are linuxio-e2e-fedora and ~/.cache/linuxio-vm-fedora, beside Ubuntu's.
+# Without it, Ubuntu and the names it always had.
+DISTRO ?=
+export LINUXIO_VM_DISTRO := $(DISTRO)
+# VM_RELEASE=noble selects the second Ubuntu VM (linuxio-e2e-noble, Ubuntu
+# 24.04), kept for the root tests on an older kernel.
 VM_RELEASE ?=
 export LINUXIO_VM_RELEASE := $(VM_RELEASE)
 # There can be several VMs of a release, numbered from 1, so the browser specs
@@ -40,7 +45,7 @@ vm_lock_file := $(HOME)/.cache/linuxio-vm/lock
 vm_lock := mkdir -p "$(dir $(vm_lock_file))"; exec 9>"$(vm_lock_file)"; flock -n 9 || { echo "another VM target is running; wait for it to end" >&2; exit 1; }
 
 ##@ Test VM|yellow
-vm-create: ## Create the test VM (VM=2 for one more) from the Ubuntu 26.04 cloud image and snapshot it as clean
+vm-create: ## Create the test VM (VM=2 for one more) from the Ubuntu 26.04 cloud image (DISTRO=fedora: Fedora 45) and snapshot it as clean
 	@$(vm_lock)
 	@"$(vm_script)" create
 
@@ -85,10 +90,11 @@ vm_suites := memory btrfs indexer docker relay updater userconfig filebrowser ne
 SUITES ?= $(vm_suites)
 # The bridge-to-job-host relay tests (backend/bridge/cmd/jobs_relay_test.go).
 RELAY_ROOT_RUN := ^Test(Bridge(Forwards|Fails|Watch|Events|Reports)|PrivilegedBridgeUsesRootHost|Relay|UpdatePendingMessage)
-# The memory suite's zram tool: zram-generator runs it with systemd's
-# zram-generator, the Fedora and RHEL path, on a VM without zram-tools (run
-# make vm-reset first). docs/memory.md, "Tests".
-ZRAM_PROVIDER ?= zram-tools
+# The memory suite's zram tool, the profile's when empty: zram-tools on Ubuntu,
+# zram-generator on Fedora. ZRAM_PROVIDER=zram-generator on Ubuntu runs it with
+# systemd's zram-generator, the Fedora and RHEL path, on a VM without
+# zram-tools (run make vm-reset first). docs/memory.md, "Tests".
+ZRAM_PROVIDER ?=
 export LINUXIO_VM_BTRFS_RUN := $(BTRFS_INTEGRATION_RUN)
 export LINUXIO_VM_FILEBROWSER_RUN := $(FILEBROWSER_ROOT_RUN)
 export LINUXIO_VM_RELAY_RUN := $(RELAY_ROOT_RUN)
@@ -116,6 +122,27 @@ $(error SUITES is empty (the suites: $(vm_suites)))
 endif
 ifneq ($(filter-out $(vm_suites),$(SUITES)),)
 $(error unknown SUITES: $(filter-out $(vm_suites),$(SUITES)) (the suites: $(vm_suites)))
+endif
+endif
+# A wrong DISTRO, VM_RELEASE or ZRAM_PROVIDER fails the same way, before the
+# builds of a VM target; the script checks them again.
+ifneq ($(filter vm-% test-vm-%,$(MAKECMDGOALS)),)
+ifneq ($(filter-out ubuntu fedora,$(DISTRO))$(word 2,$(DISTRO)),)
+$(error unknown DISTRO '$(DISTRO)' (ubuntu, the default, or fedora))
+endif
+ifneq ($(filter-out resolute noble,$(VM_RELEASE))$(word 2,$(VM_RELEASE)),)
+$(error unknown VM_RELEASE '$(VM_RELEASE)' (resolute, the default, or noble))
+endif
+ifneq ($(filter-out zram-tools zram-generator,$(ZRAM_PROVIDER))$(word 2,$(ZRAM_PROVIDER)),)
+$(error unknown ZRAM_PROVIDER '$(ZRAM_PROVIDER)' (zram-tools or zram-generator))
+endif
+ifeq ($(strip $(DISTRO)),fedora)
+ifneq ($(strip $(VM_RELEASE)),)
+$(error VM_RELEASE is for Ubuntu; DISTRO=fedora has one release)
+endif
+ifeq ($(strip $(ZRAM_PROVIDER)),zram-tools)
+$(error Fedora has no zram-tools: use ZRAM_PROVIDER=zram-generator, the default there)
+endif
 endif
 endif
 
