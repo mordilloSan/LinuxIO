@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef } from "react";
+import { useEffect, useEffectEvent } from "react";
 
 import {
   call,
@@ -24,6 +24,14 @@ import {
 } from "@/utils/path";
 
 import type { TrashDragItem } from "../-internalDrag";
+import {
+  askAboutTakenNames,
+  settleTakenNamesPrompt,
+  showTakenNamesAsker,
+  type TakenNamesPrompt,
+  takenNamesAskerShows,
+  useNextTakenNamesPrompt,
+} from "./takenNamesPrompts";
 import type { ResolveCollisionsFn } from "./useFileConflicts";
 import { FILES_TOAST_META } from "./useFileMutations";
 
@@ -81,11 +89,24 @@ const commonFolder = (paths: readonly string[]) =>
     return shared;
   });
 
+// Where each item of a restore goes: into the request's folder under the
+// name it gives, or back where it came from, as far as the page knows; ""
+// when it does not.
+const destinationsOf = (request: TrashRestoreRequest) => {
+  const originals = originalPaths.get(request);
+  return (path: string) =>
+    request.destination
+      ? joinPath(request.destination, request.names?.[path] ?? baseName(path))
+      : (originals?.get(path) ?? "");
+};
+
 /**
  * The Trash's jobs: restore, restore into a folder, and delete for good.
  * Each is a job that holds no dialog, any number run at once, and each
  * reports its own result. A restore whose names are taken asks with the
- * paste prompt and sends those items again with the answers, once.
+ * paste prompt and sends those items again with the answers, once. The
+ * question waits outside the page (`takenNamesPrompts.ts`), so a restore
+ * that ends after the user left the file browser asks when it shows again.
  */
 export function useTrashJobs({
   resolveCollisions,
@@ -93,18 +114,6 @@ export function useTrashJobs({
   const toast = useScopedToast(FILES_TOAST_META);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  // Questions about taken names are asked one job after another: the prompt
-  // holds one question, and a second would cancel the first.
-  const asking = useRef<Promise<void>>(Promise.resolve());
-  // The prompt is the page's that started the job. A job outlives a page,
-  // and one that ends after its page is gone cannot ask with it.
-  const mounted = useRef(false);
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
 
   const reportFailures = (failed: FileBatchItemFailure[], action: string) =>
     toastFileError(
@@ -142,23 +151,15 @@ export function useTrashJobs({
   });
   const { mutate: startRestoreAgain } = restoreAgain;
 
+  // Asks about one restore's taken names and sends the items again with the
+  // answers. It answers whether the question is settled: false when this
+  // page went away first, which leaves it for the next file browser.
   const askAndRestoreAgain = async (
-    request: TrashRestoreRequest,
-    taken: readonly FileBatchItemFailure[],
+    { destinations, request }: TakenNamesPrompt,
+    active: () => boolean,
   ) => {
-    const originals = originalPaths.get(request);
-    const destinationOf = (path: string) =>
-      request.destination
-        ? joinPath(request.destination, request.names?.[path] ?? baseName(path))
-        : (originals?.get(path) ?? "");
-    // An item whose destination the page does not know cannot be asked
-    // about; it is reported as the server put it.
-    const unknown = taken.filter((item) => !destinationOf(item.path));
-    if (unknown.length > 0) reportFailures(unknown, "restore");
-    const items = taken
-      .map((item) => item.path)
-      .filter((path) => destinationOf(path));
-    if (items.length === 0) return;
+    const items = Object.keys(destinations);
+    const destinationOf = (path: string) => destinations[path] ?? "";
     // The incoming side of the prompt, as a paste shows it. Best effort.
     const incoming = new Map<string, { modified: string; size: number }>();
     try {
@@ -171,14 +172,16 @@ export function useTrashJobs({
     } catch {
       // The prompt works without them.
     }
+    if (!active()) return false;
     const resolution = await resolveCollisions(
       items,
       destinationOf,
       request.destination ?? commonFolder(items.map(destinationOf)),
       (path) => incoming.get(path),
     );
+    if (!active()) return false;
     // Cancel and Skip leave the items in the Trash.
-    if (!resolution || resolution.kept.length === 0) return;
+    if (!resolution || resolution.kept.length === 0) return true;
     const { keepBoth, overwrite } = resolution;
     // Two trashed items that go back under one name were asked about once.
     // Replacing with both would put the second over the first, which is then
@@ -222,31 +225,67 @@ export function useTrashJobs({
       retry.confirmedDestinations = confirmed;
     }
     startRestoreAgain(retry);
+    return true;
   };
+
+  // The questions are asked one restore after another, by the file browser
+  // that shows: the prompt holds one question, and a second would cancel
+  // the first.
+  const prompt = useNextTakenNamesPrompt();
+  const ask = useEffectEvent((next: TakenNamesPrompt, active: () => boolean) =>
+    askAndRestoreAgain(next, active),
+  );
+  useEffect(() => showTakenNamesAsker(), []);
+  useEffect(() => {
+    if (!prompt) return;
+    let active = true;
+    ask(prompt, () => active).then(
+      (settled) => {
+        if (settled) settleTakenNamesPrompt(prompt.id);
+      },
+      () => {
+        // A question that failed leaves its items in the Trash.
+        if (active) settleTakenNamesPrompt(prompt.id);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [prompt]);
 
   const restoreMutation = linuxio.filebrowser.trash_restore.useMutation({
     onStart: (task) => void markTerminalFeedbackEmitted(task.id),
     success: (result, request) => {
       const failed = result?.failed ?? [];
-      // The prompt lives in the file browser page; a job that ends after the
-      // user left it reports a taken name like any other failure.
-      const taken = mounted.current
-        ? failed.filter((item) => item.reason === "exists")
-        : [];
-      const others = taken.length
-        ? failed.filter((item) => item.reason !== "exists")
-        : failed;
+      // A taken name is asked about, now or when a file browser shows again.
+      // An item whose destination the page does not know cannot be, and is
+      // reported as the server put it.
+      const destinationOf = destinationsOf(request);
+      const taken = failed.filter(
+        (item) => item.reason === "exists" && destinationOf(item.path),
+      );
+      const others = failed.filter((item) => !taken.includes(item));
       if (others.length > 0) {
         reportFailures(others, "restore");
       } else if ((result?.succeeded ?? 0) > 0 || taken.length === 0) {
         toast.success(`Restored ${itemCount(result?.succeeded ?? 0)}`);
       }
-      if (taken.length > 0) {
-        asking.current = asking.current
-          .then(() => askAndRestoreAgain(request, taken))
-          .catch(() => {
-            // A question that failed leaves its items in the Trash.
-          });
+      askAboutTakenNames(
+        request,
+        Object.fromEntries(
+          taken.map((item) => [item.path, destinationOf(item.path)]),
+        ),
+      );
+      // With no file browser showing, the question waits unseen: say so,
+      // with the toast's link to the file browser that will ask it.
+      if (taken.length > 0 && !takenNamesAskerShows()) {
+        const one = taken.length === 1;
+        toast.info(
+          `${itemCount(taken.length)} ${one ? "waits" : "wait"} in the Trash`,
+          {
+            description: `${one ? "Its name is" : "Their names are"} taken where ${one ? "it goes" : "they go"}. The file browser asks what to do with ${one ? "it" : "them"} when it shows.`,
+          },
+        );
       }
     },
     error: (error) =>
@@ -284,6 +323,8 @@ export function useTrashJobs({
     startRestore(request);
   };
 
+  // The drop site has already refused items dragged out of another
+  // server's Trash (acceptTrashDrop).
   const restoreInto = (
     items: readonly TrashDragItem[],
     destinationDir: string,

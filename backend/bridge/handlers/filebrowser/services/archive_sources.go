@@ -218,11 +218,39 @@ func estimateSourceSize(ctx context.Context, root *fsroot.FSRoot, path string, o
 	return walk.total, ctx.Err()
 }
 
-// sizeWalk adds up regular files through handles.
+// sizeWalk adds up files through handles and counts the folders and the other
+// entries it passes. By default it adds the apparent size of regular files,
+// what an archive of them holds. With diskUsage it adds what entries take on
+// disk (st_blocks times 512), as the indexer sizes the folders of the
+// listing: every entry but a folder, a file with several links once, keyed by
+// device and inode, and every folder it lists, its top folder included, by
+// its own blocks. With oneMount it enters no folder of another mount than mount, so a
+// mount point or a bind mount below where it starts counts as a folder and
+// nothing more. That goes by the mount, where `du -x` goes by the device
+// number: every btrfs subvolume has a device number of its own, and a nested
+// one is part of the folder that holds it.
 type sizeWalk struct {
-	ctx   context.Context
-	total int64
-	seen  int
+	ctx       context.Context
+	total     int64
+	files     int64
+	folders   int64
+	seen      int
+	mount     uint64
+	oneMount  bool
+	diskUsage bool
+	linked    map[[2]uint64]struct{} // device and inode of files with several links
+}
+
+// mountOf returns the ID of the mount the open file is on.
+func mountOf(f *os.File) (uint64, error) {
+	var stx unix.Statx_t
+	if err := unix.Statx(int(f.Fd()), "", unix.AT_EMPTY_PATH, unix.STATX_MNT_ID, &stx); err != nil {
+		return 0, &fs.PathError{Op: "statx", Path: f.Name(), Err: err}
+	}
+	if stx.Mask&unix.STATX_MNT_ID == 0 {
+		return 0, &fs.PathError{Op: "statx", Path: f.Name(), Err: unix.EOPNOTSUPP}
+	}
+	return stx.Mnt_id, nil
 }
 
 // add counts name in dir, and what it holds when it is a folder.
@@ -238,23 +266,74 @@ func (w *sizeWalk) add(dir *os.File, name string) error {
 		return nil
 	}
 	switch st.Mode & unix.S_IFMT {
-	case unix.S_IFREG:
-		w.total += st.Size
 	case unix.S_IFDIR:
+		w.folders++
 		return w.addChildren(dir, name)
+	case unix.S_IFREG:
+		if !w.diskUsage {
+			w.total += st.Size
+		}
+	}
+	w.files++
+	if w.diskUsage {
+		w.addOnDisk(&st)
 	}
 	return nil
 }
 
+// addOnDisk adds what an entry takes on disk, a file with several links once.
+func (w *sizeWalk) addOnDisk(st *unix.Stat_t) {
+	if st.Nlink > 1 {
+		key := [2]uint64{st.Dev, st.Ino}
+		if _, counted := w.linked[key]; counted {
+			return
+		}
+		if w.linked == nil {
+			w.linked = make(map[[2]uint64]struct{})
+		}
+		w.linked[key] = struct{}{}
+	}
+	w.total += st.Blocks * 512
+}
+
+// addChildren counts what the folder name in parent holds. A folder below
+// where the walk starts that cannot be opened or listed counts nothing.
 func (w *sizeWalk) addChildren(parent *os.File, name string) error {
 	dir, err := linksafe.OpenDirAt(parent, name)
 	if err != nil {
 		return nil
 	}
 	defer dir.Close()
+	if err = w.addFolder(dir); err != nil && w.ctx.Err() == nil {
+		return nil
+	}
+	return err
+}
+
+// addFolder counts what the open folder dir holds, and returns why it cannot
+// when dir cannot be listed: the walk's top folder has no size to give then.
+func (w *sizeWalk) addFolder(dir *os.File) error {
+	// The mount is read from the folder opened, which is what is read below.
+	if w.oneMount {
+		mount, err := mountOf(dir)
+		if err != nil {
+			return err
+		}
+		if mount != w.mount {
+			return nil
+		}
+	}
 	names, err := dir.Readdirnames(-1)
 	if err != nil {
-		return nil
+		return err
+	}
+	if w.diskUsage {
+		// A folder the walk lists takes blocks of its own, which the
+		// indexer counts in a folder's size, that folder's included.
+		var st unix.Stat_t
+		if err = unix.Fstat(int(dir.Fd()), &st); err == nil {
+			w.total += st.Blocks * 512
+		}
 	}
 	for _, child := range names {
 		if err := w.add(dir, child); err != nil {

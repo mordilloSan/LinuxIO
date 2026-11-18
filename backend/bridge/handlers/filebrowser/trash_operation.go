@@ -83,6 +83,23 @@ func listTrash(ctx context.Context, owner sessionOwner) (apischema.TrashListResp
 	return response, nil
 }
 
+// trashSize sizes a folder in the session user's trash for its properties;
+// the list gives no size for a folder.
+func trashSize(ctx context.Context, owner sessionOwner, req apischema.PathRequest) (apischema.DirectorySizeData, error) {
+	if req.Path == "" {
+		return apischema.DirectorySizeData{}, fmt.Errorf("%w: missing path", bridgeipc.ErrInvalidArgs)
+	}
+	u, err := trashUserOrError(owner)
+	if err != nil {
+		return apischema.DirectorySizeData{}, err
+	}
+	size, err := services.TrashedFolderSize(ctx, fsroot.CleanAbsPath(req.Path), u.home, u.uid)
+	if err != nil {
+		return apischema.DirectorySizeData{}, fsError("size trashed folder", err)
+	}
+	return apischema.DirectorySizeData{Size: size.Size, FileCount: size.Files, FolderCount: size.Folders}, nil
+}
+
 // runPathBatch runs fn over every path as one task with a running item count,
 // collecting per-item failures the way the other batch tasks do.
 func runPathBatch(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, paths []string, phase string, fn func(ctx context.Context, path string) error) (FileBatchResult, error) {

@@ -10,8 +10,9 @@ import { isDirectoryPath } from "@/utils/path";
 import {
   hasInternalDrag,
   hasTrashDrag,
-  readInternalDrag,
-  readTrashDrag,
+  acceptInternalDrop,
+  acceptTrashDrop,
+  refuseFileDrop,
   type TrashDragItem,
 } from "../-internalDrag";
 
@@ -297,24 +298,30 @@ const FilebrowserBreadcrumbs = ({
     return {
       ...leaveProps(path),
       onDragOver: (event: DragEvent) => {
-        if (!restores(event) && !moves(event)) return;
+        if (!restores(event) && !moves(event)) {
+          refuseFileDrop(event);
+          return;
+        }
         event.preventDefault();
         event.dataTransfer.dropEffect =
           moves(event) && event.ctrlKey ? "copy" : "move";
         setDropTargetPath(path);
       },
       onDrop: (event: DragEvent) => {
-        if (!restores(event) && !moves(event)) return;
+        if (!restores(event) && !moves(event)) {
+          refuseFileDrop(event);
+          return;
+        }
         // The page's upload drop handler must never see an internal drag.
         event.preventDefault();
         event.stopPropagation();
         setDropTargetPath(null);
         if (restores(event)) {
-          const items = readTrashDrag(event.dataTransfer);
+          const items = acceptTrashDrop(event.dataTransfer);
           if (items.length > 0) onRestoreItems?.(items, path);
           return;
         }
-        const paths = readInternalDrag(event.dataTransfer);
+        const paths = acceptInternalDrop(event.dataTransfer);
         if (paths.length > 0) onDropItems?.(paths, path, event.ctrlKey);
       },
     };
@@ -324,17 +331,23 @@ const FilebrowserBreadcrumbs = ({
   const placeDropProps = onDropOnPlace && {
     ...leaveProps(PLACE_TARGET),
     onDragOver: (event: DragEvent) => {
-      if (!hasInternalDrag(event.dataTransfer)) return;
+      if (!hasInternalDrag(event.dataTransfer)) {
+        refuseFileDrop(event);
+        return;
+      }
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
       setDropTargetPath(PLACE_TARGET);
     },
     onDrop: (event: DragEvent) => {
-      if (!hasInternalDrag(event.dataTransfer)) return;
+      if (!hasInternalDrag(event.dataTransfer)) {
+        refuseFileDrop(event);
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       setDropTargetPath(null);
-      const paths = readInternalDrag(event.dataTransfer);
+      const paths = acceptInternalDrop(event.dataTransfer);
       if (paths.length > 0) onDropOnPlace(paths);
     },
   };

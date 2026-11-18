@@ -19,14 +19,15 @@ import {
   trashOriginalFolder,
   trashShownName,
 } from "../-trashEntries";
-import type { FileItem, SortOrder } from "../-types";
+import type { FileItem, SortOrder, ViewMode } from "../-types";
 import {
   getFileEntryBackground,
   getFileEntryHoverBackground,
 } from "./fileBrowserSurfaces";
+import FileCard from "./FileCard";
 import FileIcon from "./FileIcon";
-import SelectionBox from "./SelectionBox";
 import SortBar, { type SortColumn } from "./SortBar";
+import { type ItemPosition, VirtualItems } from "./VirtualDirectoryItems";
 
 import "./file-listing.css";
 
@@ -42,12 +43,132 @@ const TRASH_COLUMN_TEMPLATE =
 
 const ROW_MIN_HEIGHT = 40;
 
+// Folders and files are one list, sorted together: the Trash's items all go
+// in the files section.
+const noFolders: FileItem[] = [];
+
 const cellStyle: CSSProperties = {
   minWidth: 0,
   overflow: "hidden",
   padding: "var(--app-space-6) var(--app-space-8)",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
+};
+
+interface TrashRowProps {
+  /** Where the row stands in the whole list, as a listbox's option says. */
+  position: ItemPosition;
+  disableHover: boolean;
+  entry: TrashEntry;
+  onClick: (event: MouseEvent) => void;
+  onDoubleClick: () => void;
+  onDragStart: (event: DragEvent) => void;
+  selected: boolean;
+}
+
+/** One item as a row of the list, under the Trash's own columns. */
+const TrashRow = ({
+  disableHover,
+  entry,
+  onClick,
+  onDoubleClick,
+  onDragStart,
+  position,
+  selected,
+}: TrashRowProps) => {
+  const background = getFileEntryBackground({ selected });
+  const shownName = trashShownName(entry);
+  const folder = trashOriginalFolder(entry);
+  return (
+    <div
+      aria-posinset={position.posInSet}
+      aria-selected={selected}
+      aria-setsize={position.setSize}
+      className={`file-row hover-lift${disableHover ? " hover-lift--disabled" : ""}`}
+      data-file-card="true"
+      data-file-path={entry.path}
+      draggable
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick(event);
+      }}
+      onDoubleClick={(event) => {
+        event.stopPropagation();
+        onDoubleClick();
+      }}
+      onDragStart={onDragStart}
+      role="option"
+      style={
+        {
+          "--file-row-bg": background,
+          "--file-row-bg-hover": getFileEntryHoverBackground(background),
+          alignItems: "center",
+          borderRadius: "var(--app-radius-base)",
+          cursor: "pointer",
+          display: "grid",
+          gridTemplateColumns: TRASH_COLUMN_TEMPLATE,
+          minHeight: ROW_MIN_HEIGHT,
+          userSelect: "none",
+        } as CSSProperties
+      }
+    >
+      <AppTypography
+        color="text.primary"
+        component="div"
+        fontWeight={500}
+        style={{
+          ...cellStyle,
+          alignItems: "center",
+          display: "flex",
+          gap: "var(--app-space-6)",
+        }}
+        variant="body1"
+      >
+        <FileIcon
+          className="hover-lift__icon"
+          filename={shownName}
+          isDirectory={entry.isDir}
+          size={24}
+        />
+        <span
+          style={{
+            minWidth: 0,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+          }}
+          title={shownName}
+        >
+          {shownName}
+        </span>
+      </AppTypography>
+      <AppTypography
+        color="text.secondary"
+        component="div"
+        style={cellStyle}
+        title={folder || undefined}
+        variant="body2"
+      >
+        {folder || "Unknown"}
+      </AppTypography>
+      <AppTypography
+        color="text.secondary"
+        component="div"
+        style={{ ...cellStyle, textAlign: "center" }}
+        variant="body2"
+      >
+        {entry.deletedAt ? formatDate(entry.deletedAt) : "Unknown"}
+      </AppTypography>
+      <AppTypography
+        color="text.secondary"
+        component="div"
+        style={cellStyle}
+        variant="body2"
+      >
+        {/* A trashed folder's size is not listed. */}
+        {entry.isDir ? "" : formatFileSize(entry.size, 1, "")}
+      </AppTypography>
+    </div>
+  );
 };
 
 interface TrashListProps {
@@ -67,13 +188,16 @@ interface TrashListProps {
   selectedPaths: Set<string>;
   sortField: TrashSortField;
   sortOrder: SortOrder;
+  /** Cards or rows, as the folder listing shows its items. */
+  viewMode: ViewMode;
 }
 
 /**
- * The Trash's items, with their selection as in a folder: click, Ctrl and
- * Shift click, a marquee, Ctrl+A and the arrow keys. A trashed folder is not
- * a place to browse into, and a trashed file opens no editor: both show
- * their properties. A row is dragged out as a restore, not as a move.
+ * The Trash's items in the folder listing's virtual rows, as cards or as rows
+ * under the Trash's columns, with their selection as in a folder: click, Ctrl
+ * and Shift click, a marquee, Ctrl+A and the arrow keys. A trashed folder is
+ * not a place to browse into, and a trashed file opens no editor: both show
+ * their properties. An item is dragged out as a restore, not as a move.
  */
 const TrashList = ({
   entries,
@@ -87,40 +211,38 @@ const TrashList = ({
   selectedPaths,
   sortField,
   sortOrder,
+  viewMode,
 }: TrashListProps) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const anchorIndexRef = useRef(-1);
-  const dragged = useRef<string[]>([]);
-  const [focusedIndex, setFocusedIndex] = useState(0);
+  const columnCountRef = useRef(1);
+  // `source` gates scrolling: the keyboard brings the item it moved to into
+  // view, a click never moves the list under the pointer.
+  const [focus, setFocus] = useState<{
+    index: number;
+    source: "keyboard" | "pointer";
+  }>({ index: 0, source: "pointer" });
 
-  // The shape the folder listing's keyboard and marquee helpers read.
+  // The shape the folder listing's rows, keyboard and marquee helpers read.
   const items: FileItem[] = entries.map((entry) => ({
     name: trashShownName(entry),
     path: entry.path,
     size: entry.size,
     type: entry.isDir ? "directory" : "file",
   }));
-
-  // The list is not virtualized, so the row the keyboard moved to is in the
-  // document and is brought into view directly.
-  const focusFromKeyboard = (index: number) => {
-    setFocusedIndex(index);
-    const rows = containerRef.current?.querySelectorAll(
-      "[data-file-card='true']",
-    );
-    rows?.[index]?.scrollIntoView?.({ block: "nearest" });
-  };
+  const byPath = new Map(entries.map((entry) => [entry.path, entry]));
 
   useFileListKeyboardNavigation({
     allItems: items,
     anchorIndexRef,
+    columnCountRef,
     containerRef: containerRef as RefObject<HTMLDivElement>,
-    focusedIndex,
+    focusedIndex: focus.index,
     global: true,
     onDelete,
     onDeletePermanently: onDelete,
     onDownloadFile: (item) => onOpen(item.path),
-    onFocusChange: focusFromKeyboard,
+    onFocusChange: (index) => setFocus({ index, source: "keyboard" }),
     onNavigateUp: onLeave,
     onOpenDirectory: onOpen,
     onSelectionChange,
@@ -133,7 +255,7 @@ const TrashList = ({
   const select = (event: MouseEvent, path: string) => {
     const index = items.findIndex((item) => item.path === path);
     if (index === -1) return;
-    setFocusedIndex(index);
+    setFocus({ index, source: "pointer" });
     if (event.shiftKey && anchorIndexRef.current !== -1) {
       const start = Math.min(anchorIndexRef.current, index);
       const end = Math.max(anchorIndexRef.current, index);
@@ -158,25 +280,32 @@ const TrashList = ({
           ?.getAttribute("data-file-path") ?? null)
       : null;
 
-  // A click on empty space clears the selection; a right click keeps it.
+  // A click on empty space clears the selection; a right click keeps it, and
+  // the card-size slider is not empty space.
   const handleContainerMouseDown = (event: MouseEvent) => {
     if (event.button === 2 || rowPath(event.target) !== null) return;
+    if (
+      event.target instanceof Element &&
+      event.target.closest("[data-listing-control]")
+    ) {
+      return;
+    }
     onSelectionChange(new Set());
-    setFocusedIndex(-1);
+    setFocus({ index: -1, source: "pointer" });
   };
 
-  // A right click on a row outside the selection selects that row first;
+  // A right click on an item outside the selection selects that item first;
   // the menu itself is the page's, which the event bubbles up to.
   const handleContextMenu = (event: MouseEvent) => {
     const path = rowPath(event.target);
     if (path === null || selectedPaths.has(path)) return;
     onSelectionChange(new Set([path]));
     const index = items.findIndex((item) => item.path === path);
-    setFocusedIndex(index);
+    setFocus({ index, source: "pointer" });
     anchorIndexRef.current = index;
   };
 
-  // Dragging a selected row drags the whole selection; any other row is
+  // Dragging a selected item drags the whole selection; any other item is
   // selected and dragged alone.
   const handleDragStart = (event: DragEvent, path: string) => {
     const paths = selectedPaths.has(path)
@@ -185,25 +314,78 @@ const TrashList = ({
           .map((entry) => entry.path)
       : [path];
     if (!selectedPaths.has(path)) onSelectionChange(new Set(paths));
-    dragged.current = paths;
-    const byPath = new Map(entries.map((entry) => [entry.path, entry]));
     setTrashDrag(
       event.dataTransfer,
       paths.flatMap((itemPath) => {
         const entry = byPath.get(itemPath);
         return entry ? [{ name: trashShownName(entry), path: itemPath }] : [];
       }),
+      event.currentTarget,
+    );
+    // A drop that took the items, here or in another tab, started their
+    // restore: they leave the selection as its other jobs' items do. The
+    // end is heard on the dragged row itself: scrolled out of the virtual
+    // window meanwhile, the row is out of the document, and its dragend no
+    // longer reaches the list.
+    event.currentTarget.addEventListener(
+      "dragend",
+      (end) => {
+        if ((end as globalThis.DragEvent).dataTransfer?.dropEffect !== "none") {
+          onDropped(paths);
+        }
+      },
+      { once: true },
     );
   };
-  // A drop that took the items, here or in another tab, started their
-  // restore: they leave the selection as its other jobs' items do.
-  const handleDragEnd = (event: DragEvent) => {
-    if (event.dataTransfer.dropEffect !== "none") onDropped(dragged.current);
-    dragged.current = [];
+
+  const renderItem = (
+    item: FileItem,
+    _kind: unknown,
+    position: ItemPosition,
+  ) => {
+    const entry = byPath.get(item.path);
+    if (!entry) return null;
+    const selected = selectedPaths.has(entry.path);
+    const onClick = (event: MouseEvent) => select(event, entry.path);
+    const onDoubleClick = () => onOpen(entry.path);
+    const onDragStart = (event: DragEvent) =>
+      handleDragStart(event, entry.path);
+    if (viewMode === "list") {
+      return (
+        <TrashRow
+          disableHover={isSelecting}
+          entry={entry}
+          onClick={onClick}
+          onDoubleClick={onDoubleClick}
+          onDragStart={onDragStart}
+          position={position}
+          selected={selected}
+        />
+      );
+    }
+    return (
+      <FileCard
+        caption={trashOriginalFolder(entry) || "Unknown"}
+        disableHover={isSelecting}
+        isDirectory={entry.isDir}
+        modTime={entry.deletedAt || undefined}
+        name={item.name}
+        onClick={onClick}
+        onDoubleClick={onDoubleClick}
+        onDragStart={onDragStart}
+        path={entry.path}
+        option={position}
+        selected={selected}
+        // A trashed folder's size is not listed.
+        size={entry.isDir ? undefined : entry.size}
+        type={item.type}
+      />
+    );
   };
 
   return (
     <div
+      onContextMenu={handleContextMenu}
       style={{
         display: "flex",
         flex: 1,
@@ -220,135 +402,34 @@ const TrashList = ({
         sortOrder={sortOrder}
       />
       <div
-        aria-label="Trash"
-        aria-multiselectable
-        onContextMenu={handleContextMenu}
-        onMouseDown={handleMouseDown}
-        onMouseDownCapture={handleContainerMouseDown}
-        ref={containerRef}
-        role="listbox"
         style={{
           borderRadius: "var(--app-radius-md)",
           display: "flex",
           flex: 1,
           flexDirection: "column",
-          gap: 2,
           minHeight: 0,
           outline: isDropTarget
             ? "2px dashed var(--app-palette-primary-main)"
             : undefined,
           outlineOffset: -2,
-          overflowX: "hidden",
-          overflowY: "auto",
           position: "relative",
         }}
       >
-        {entries.map((entry) => {
-          const selected = selectedPaths.has(entry.path);
-          const background = getFileEntryBackground({ selected });
-          const shownName = trashShownName(entry);
-          const folder = trashOriginalFolder(entry);
-          return (
-            <div
-              aria-selected={selected}
-              className={`file-row hover-lift${isSelecting ? " hover-lift--disabled" : ""}`}
-              data-file-card="true"
-              data-file-path={entry.path}
-              draggable
-              key={entry.path}
-              onClick={(event) => {
-                event.stopPropagation();
-                select(event, entry.path);
-              }}
-              onDoubleClick={(event) => {
-                event.stopPropagation();
-                onOpen(entry.path);
-              }}
-              onDragEnd={handleDragEnd}
-              onDragStart={(event) => handleDragStart(event, entry.path)}
-              role="option"
-              style={
-                {
-                  "--file-row-bg": background,
-                  "--file-row-bg-hover":
-                    getFileEntryHoverBackground(background),
-                  alignItems: "center",
-                  borderRadius: "var(--app-radius-base)",
-                  cursor: "pointer",
-                  display: "grid",
-                  flexShrink: 0,
-                  gridTemplateColumns: TRASH_COLUMN_TEMPLATE,
-                  minHeight: ROW_MIN_HEIGHT,
-                  userSelect: "none",
-                } as CSSProperties
-              }
-            >
-              <AppTypography
-                color="text.primary"
-                component="div"
-                fontWeight={500}
-                style={{
-                  ...cellStyle,
-                  alignItems: "center",
-                  display: "flex",
-                  gap: "var(--app-space-6)",
-                }}
-                variant="body1"
-              >
-                <FileIcon
-                  className="hover-lift__icon"
-                  filename={shownName}
-                  isDirectory={entry.isDir}
-                  size={24}
-                />
-                <span
-                  style={{
-                    minWidth: 0,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                  title={shownName}
-                >
-                  {shownName}
-                </span>
-              </AppTypography>
-              <AppTypography
-                color="text.secondary"
-                component="div"
-                style={cellStyle}
-                title={folder || undefined}
-                variant="body2"
-              >
-                {folder || "Unknown"}
-              </AppTypography>
-              <AppTypography
-                color="text.secondary"
-                component="div"
-                style={{ ...cellStyle, textAlign: "center" }}
-                variant="body2"
-              >
-                {entry.deletedAt ? formatDate(entry.deletedAt) : "Unknown"}
-              </AppTypography>
-              <AppTypography
-                color="text.secondary"
-                component="div"
-                style={cellStyle}
-                variant="body2"
-              >
-                {/* A trashed folder's size is not listed. */}
-                {entry.isDir ? "" : formatFileSize(entry.size, 1, "")}
-              </AppTypography>
-            </div>
-          );
-        })}
-        {isSelecting && selectionBox && (
-          <SelectionBox
-            height={selectionBox.height}
-            left={selectionBox.left}
-            top={selectionBox.top}
-            width={selectionBox.width}
-          />
-        )}
+        <VirtualItems
+          columnCountRef={columnCountRef}
+          containerRef={containerRef}
+          files={items}
+          folders={noFolders}
+          isMarqueeSelecting={isSelecting}
+          listboxLabel="Trash"
+          onContainerMouseDown={handleContainerMouseDown}
+          onMarqueeMouseDown={handleMouseDown}
+          renderItem={renderItem}
+          revealIndex={focus.source === "keyboard" ? focus.index : -1}
+          heading="Items"
+          selectionBox={selectionBox}
+          viewMode={viewMode}
+        />
       </div>
     </div>
   );

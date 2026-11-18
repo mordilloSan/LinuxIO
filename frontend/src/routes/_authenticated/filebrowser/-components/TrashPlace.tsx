@@ -23,19 +23,25 @@ import AppDivider from "@/components/ui/AppDivider";
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppSkeleton from "@/components/ui/AppSkeleton";
 import HeaderActions from "@/components/ui/HeaderActions";
+import ViewModeToggle from "@/components/ui/ViewModeToggle";
 import { useLatestRef } from "@/hooks/useLatestRef";
 import { allowContextMenuProps } from "@/utils/contextMenu";
 import { stripTrailingSlash } from "@/utils/path";
 
 import { useFileListKeyboardNavigation } from "../-hooks/useFileListKeyboardNavigation";
 import type { TrashJobs } from "../-hooks/useTrashJobs";
-import { hasInternalDrag, readInternalDrag } from "../-internalDrag";
 import {
+  acceptInternalDrop,
+  hasInternalDrag,
+  refuseFileDrop,
+} from "../-internalDrag";
+import {
+  nextTrashSort,
   sortTrashEntries,
-  type TrashSortField,
+  type TrashSort,
   trashShownName,
 } from "../-trashEntries";
-import type { SortOrder } from "../-types";
+import type { ViewMode } from "../-types";
 import EmptyState from "./EmptyState";
 import TrashDetailsDialog from "./TrashDetailsDialog";
 import TrashList from "./TrashList";
@@ -49,8 +55,14 @@ interface TrashPlaceProps {
   jobs: TrashJobs;
   /** Back to the folder the Trash was opened from. */
   onLeave: () => void;
+  /** The sort the user picked, which the page keeps in the URL. */
+  onSortChange: (sort: TrashSort) => void;
+  /** Switches between cards and the list, the folder listing's setting. */
+  onSwitchView: () => void;
   /** Moves items dragged here from a folder to the Trash. */
   onTrashItems: (paths: string[]) => void;
+  sort: TrashSort;
+  viewMode: ViewMode;
 }
 
 type ConfirmKind = "delete" | "empty" | "restore";
@@ -126,15 +138,15 @@ const TrashPlace = ({
   folderPath,
   jobs,
   onLeave,
+  onSortChange,
+  onSwitchView,
   onTrashItems,
+  sort,
+  viewMode,
 }: TrashPlaceProps) => {
   const { data, error, isLoading, refetch } = useQuery(
     linuxio.filebrowser.trash_list,
   );
-  const [sort, setSort] = useState<{
-    field: TrashSortField;
-    order: SortOrder;
-  }>({ field: "deletedAt", order: "desc" });
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [menuPosition, setMenuPosition] = useState<{
     left: number;
@@ -280,16 +292,23 @@ const TrashPlace = ({
       setDropTarget(false);
     },
     onDragOver: (event: DragEvent) => {
-      if (!hasInternalDrag(event.dataTransfer)) return;
+      // Desktop files are not taken here, nor opened by the browser.
+      if (!hasInternalDrag(event.dataTransfer)) {
+        refuseFileDrop(event);
+        return;
+      }
       event.preventDefault();
       event.dataTransfer.dropEffect = "move";
       setDropTarget(true);
     },
     onDrop: (event: DragEvent) => {
-      if (!hasInternalDrag(event.dataTransfer)) return;
+      if (!hasInternalDrag(event.dataTransfer)) {
+        refuseFileDrop(event);
+        return;
+      }
       event.preventDefault();
       setDropTarget(false);
-      const paths = readInternalDrag(event.dataTransfer);
+      const paths = acceptInternalDrop(event.dataTransfer);
       if (paths.length > 0) onTrashItems(paths);
     },
   };
@@ -339,6 +358,13 @@ const TrashPlace = ({
           onClick={() => void refetch()}
         />
       }
+      view={
+        <ViewModeToggle
+          alternateMode="list"
+          onViewModeChange={onSwitchView}
+          viewMode={viewMode}
+        />
+      }
     />
   );
 
@@ -385,20 +411,11 @@ const TrashPlace = ({
         onLeave={onLeave}
         onOpen={(path) => showDetails([path])}
         onSelectionChange={setSelected}
-        // Sorting again by the same column flips the order, as in a folder;
-        // another column starts ascending.
-        onSortChange={(field) =>
-          setSort((previous) => ({
-            field,
-            order:
-              previous.field === field && previous.order === "asc"
-                ? "desc"
-                : "asc",
-          }))
-        }
+        onSortChange={(field) => onSortChange(nextTrashSort(sort, field))}
         selectedPaths={selectedPaths}
         sortField={sort.field}
         sortOrder={sort.order}
+        viewMode={viewMode}
       />
     );
   }

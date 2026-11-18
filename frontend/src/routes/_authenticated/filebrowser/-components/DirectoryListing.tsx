@@ -19,8 +19,8 @@ import { useFileSubfolders } from "../-hooks/useFileSubfolders";
 import {
   hasInternalDrag,
   hasTrashDrag,
-  readInternalDrag,
-  readTrashDrag,
+  acceptInternalDrop,
+  acceptTrashDrop,
   setInternalDrag,
   type TrashDragItem,
 } from "../-internalDrag";
@@ -331,7 +331,7 @@ const DirectoryListing = ({
         focusItemByPath(path);
       }
       draggedPathsRef.current = paths;
-      setInternalDrag(event.dataTransfer, paths);
+      setInternalDrag(event.dataTransfer, paths, event.currentTarget);
     },
     [focusItemByPath, onSelectedPathsChange, selectedPathsRef],
   );
@@ -375,7 +375,7 @@ const DirectoryListing = ({
         event.preventDefault();
         event.stopPropagation();
         setDropTargetPath(null);
-        const items = readTrashDrag(event.dataTransfer);
+        const items = acceptTrashDrop(event.dataTransfer);
         if (items.length > 0) onRestoreItems(items, path);
         return;
       }
@@ -384,7 +384,7 @@ const DirectoryListing = ({
       event.preventDefault();
       event.stopPropagation();
       setDropTargetPath(null);
-      const paths = readInternalDrag(event.dataTransfer);
+      const paths = acceptInternalDrop(event.dataTransfer);
       if (paths.length === 0 || paths.includes(path)) return;
       onDropItems(paths, path, event.ctrlKey);
     },

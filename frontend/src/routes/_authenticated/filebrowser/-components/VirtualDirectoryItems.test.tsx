@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { FileItem } from "../-types";
@@ -52,7 +52,7 @@ vi.mock("./SelectionBox", () => ({
 
 vi.mock("./DirectoryRows", () => ({
   DirectoryItem: () => null,
-  SectionHeader: () => null,
+  SectionHeader: ({ label }: { label: string }) => <h6>{label}</h6>,
 }));
 
 const {
@@ -62,7 +62,9 @@ const {
   getDirectoryRevealRowIndex,
   getDirectoryVirtualRow,
   getDirectoryVirtualRowKey,
+  VirtualItems,
 } = await import("./VirtualDirectoryItems");
+type ItemPosition = import("./VirtualDirectoryItems").ItemPosition;
 const { render } = await import("@/test/render");
 
 const item = (index: number): FileItem => ({
@@ -270,6 +272,86 @@ describe("VirtualDirectoryItems card size", () => {
   });
 });
 
+describe("VirtualItems as a listbox", () => {
+  const listbox = (
+    viewMode: "card" | "list",
+    renderItem = vi.fn(
+      (entry: FileItem, _kind: string, position: ItemPosition) => (
+        <div
+          aria-posinset={position.posInSet}
+          aria-selected={false}
+          aria-setsize={position.setSize}
+          role="option"
+        >
+          {entry.name}
+        </div>
+      ),
+    ),
+  ) => {
+    render(
+      <VirtualItems
+        containerRef={{ current: null }}
+        files={[item(0), item(1), item(2), item(3)]}
+        folders={[]}
+        heading="Items"
+        isMarqueeSelecting={false}
+        listboxLabel="Trash"
+        onContainerMouseDown={vi.fn()}
+        onMarqueeMouseDown={vi.fn()}
+        renderItem={renderItem}
+        revealIndex={-1}
+        selectionBox={null}
+        viewMode={viewMode}
+      />,
+    );
+    return renderItem;
+  };
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    // The first row is in view; the list has no heading rows.
+    virtualizerState.items = [{ index: 0, key: "first-row" }];
+    return () => {
+      virtualizerState.items = [];
+    };
+  });
+
+  it("holds only options, each placed in the whole list", () => {
+    const renderItem = listbox("list");
+
+    const list = screen.getByRole("listbox", { name: "Trash" });
+    expect(list).toHaveAttribute("aria-multiselectable", "true");
+    expect(within(list).queryByRole("heading")).not.toBeInTheDocument();
+    // Only the first item row is in view, and it knows it is 1 of 4.
+    const options = within(list).getAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual(["file-0.txt"]);
+    expect(options[0]).toHaveAttribute("aria-posinset", "1");
+    expect(options[0]).toHaveAttribute("aria-setsize", "4");
+    expect(renderItem).toHaveBeenCalledWith(item(0), "file", {
+      posInSet: 1,
+      setSize: 4,
+    });
+    expect(virtualizerState.options?.count).toBe(4);
+    // The heading names the list from outside it.
+    expect(screen.getByRole("heading", { name: "Items" })).not.toBe(null);
+  });
+
+  it("keeps the heading and the card-size slider outside the listbox", () => {
+    listbox("card");
+
+    const list = screen.getByRole("listbox", { name: "Trash" });
+    expect(within(list).queryByRole("slider")).not.toBeInTheDocument();
+    expect(within(list).queryByRole("heading")).not.toBeInTheDocument();
+    expect(screen.getByRole("slider", { name: "Card size" })).not.toBe(null);
+    // Three cards a row at the default size: the first row holds three.
+    expect(
+      within(list)
+        .getAllByRole("option")
+        .map((option) => option.getAttribute("aria-posinset")),
+    ).toEqual(["1", "2", "3"]);
+  });
+});
+
 describe("VirtualDirectoryItems lazy row layout", () => {
   const folders = [item(0), item(1)];
   const files = [item(2), item(3), item(4), item(5)];
@@ -330,6 +412,35 @@ describe("VirtualDirectoryItems lazy row layout", () => {
     replacedFiles[1] = { ...replacedFiles[1], path: "/files/replaced.txt" };
     expect(getDirectoryVirtualRowKey(3, layout, folders, files)).not.toBe(
       getDirectoryVirtualRowKey(3, layout, folders, replacedFiles),
+    );
+  });
+
+  it("lays a list out without heading rows when asked", () => {
+    const layout = createDirectoryLayout({
+      columnCount: 2,
+      fileCount: files.length,
+      folderCount: folders.length,
+      headers: false,
+      viewMode: "card",
+    });
+
+    expect(layout.totalRowCount).toBe(3);
+    expect(getDirectoryVirtualRow(0, layout)).toEqual({
+      count: 2,
+      itemKind: "folder",
+      start: 0,
+      type: "items",
+    });
+    expect(getDirectoryVirtualRow(2, layout)).toEqual({
+      count: 2,
+      itemKind: "file",
+      start: 2,
+      type: "items",
+    });
+    expect(getDirectoryRevealRowIndex(0, layout)).toBe(0);
+    expect(getDirectoryRevealRowIndex(5, layout)).toBe(2);
+    expect(getDirectoryVirtualRowKey(1, layout, folders, files)).toContain(
+      files[0].path,
     );
   });
 

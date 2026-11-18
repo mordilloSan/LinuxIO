@@ -38,7 +38,12 @@ const FILEBROWSER_LISTING_KEYS = [
   endpointQueryPrefix("filebrowser.dir_size"),
   endpointQueryPrefix("filebrowser.subfolders"),
 ];
-const TRASH_LIST_KEYS = [endpointQueryPrefix("filebrowser.trash_list")];
+// A trashed folder's size goes with the list: the next item trashed may take
+// the name of one purged or restored.
+const TRASH_LIST_KEYS = [
+  endpointQueryPrefix("filebrowser.trash_list"),
+  endpointQueryPrefix("filebrowser.trash_size"),
+];
 const FILEBROWSER_PERMISSION_KEYS = [
   endpointQueryPrefix("filebrowser.resource_stat"),
 ];

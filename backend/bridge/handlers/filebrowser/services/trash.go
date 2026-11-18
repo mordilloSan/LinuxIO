@@ -307,7 +307,7 @@ func walkTrash(root *fsroot.FSRoot, trash, home string, owner Owner, create bool
 		case create:
 			next, err = MkdirAt(dir, name, 0o700, owner)
 		default:
-			next, err = linksafe.OpenDirAt(dir, name)
+			next, err = openTrashDirAt(dir, name)
 		}
 		_ = dir.Close()
 		if err != nil {
@@ -328,7 +328,7 @@ func openTrashSub(root *fsroot.FSRoot, dir *os.File, trash, sub string, owner Ow
 	case dir != nil && create:
 		f, err = MkdirAt(dir, sub, 0o700, owner)
 	case dir != nil:
-		f, err = linksafe.OpenDirAt(dir, sub)
+		f, err = openTrashDirAt(dir, sub)
 	case create:
 		var missing []string
 		if f, missing, err = linksafe.OpenNearestDir(root, relPath(filepath.Join(trash, sub))); err == nil {
@@ -496,6 +496,102 @@ func listTrashItems(root *fsroot.FSRoot, trash string, files, info *os.File, own
 		*items = append(*items, item)
 	}
 	return nil
+}
+
+// trashLinkError is a link found where a folder of the trash goes, which a
+// root bridge does not follow. It reads as the failed open did, which is what
+// purge and restore report for it.
+type trashLinkError struct{ err error }
+
+func (e *trashLinkError) Error() string { return e.err.Error() }
+func (e *trashLinkError) Unwrap() error { return e.err }
+
+// openTrashDirAt opens the folder name in dir without following a link. The
+// kernel answers a link there with ENOTDIR, as for a file, so a failure is
+// told apart by what is at the name: a link is a trashLinkError.
+func openTrashDirAt(dir *os.File, name string) (*os.File, error) {
+	f, err := linksafe.OpenDirAt(dir, name)
+	if err == nil {
+		return f, nil
+	}
+	var st unix.Stat_t
+	if unix.Fstatat(int(dir.Fd()), name, &st, unix.AT_SYMLINK_NOFOLLOW) == nil && st.Mode&unix.S_IFMT == unix.S_IFLNK {
+		return nil, &trashLinkError{err: err}
+	}
+	return nil, err
+}
+
+// refusedTrashLink gives a link found where a folder of the trash goes the
+// status of the refusal under the link rule it is, keeping the error purge
+// and restore give for it.
+func refusedTrashLink(err error) error {
+	if _, ok := errors.AsType[*trashLinkError](err); ok {
+		return fmt.Errorf("%w: %w", bridgeipc.ErrForbidden, err)
+	}
+	return err
+}
+
+// FolderSize is what a folder holds: the size of its regular files and how
+// many files (any entry but a folder) and folders are below it.
+type FolderSize struct {
+	Size    int64
+	Files   int64
+	Folders int64
+}
+
+// TrashedFolderSize sizes a folder in one of uid's trashes, which the list
+// leaves out since it would have to walk every trashed folder. The folder is
+// reached as a purge reaches it, from the trash's own folders without
+// following a link the user could have planted there on a root bridge, and
+// walked through handles without following a symlink, so nothing outside it
+// is measured; a folder of another mount below it (a mount point, a bind
+// mount) is not entered.
+func TrashedFolderSize(ctx context.Context, trashedPath, home string, uid int) (FolderSize, error) {
+	root, err := fsroot.Open()
+	if err != nil {
+		return FolderSize{}, err
+	}
+	defer root.Close()
+
+	trash, name, err := trashedEntry(root, home, uid, trashedPath)
+	if err != nil {
+		return FolderSize{}, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
+	}
+	files, info, err := openTrash(root, trash, home, Owner{UID: uint32(uid), Set: os.Geteuid() == 0}, false)
+	if err != nil {
+		return FolderSize{}, refusedTrashLink(err)
+	}
+	defer files.Close()
+	if info != nil {
+		_ = info.Close()
+	}
+	var st unix.Stat_t
+	if err = unix.Fstatat(int(files.Fd()), name, &st, unix.AT_SYMLINK_NOFOLLOW); err != nil {
+		return FolderSize{}, &fs.PathError{Op: "fstatat", Path: filepath.Join(files.Name(), name), Err: err}
+	}
+	if st.Mode&unix.S_IFMT != unix.S_IFDIR {
+		return FolderSize{}, fmt.Errorf("%w: %s is not a folder", bridgeipc.ErrInvalidArgs, filepath.Join(files.Name(), name))
+	}
+	// The walk stays on the mount of the trash the item sits in.
+	mount, err := mountOf(files)
+	if err != nil {
+		return FolderSize{}, err
+	}
+	// The item itself must open and list: a folder the walk cannot read has
+	// no size to give, where one below it only counts nothing.
+	item, err := openTrashDirAt(files, name)
+	if err != nil {
+		return FolderSize{}, refusedTrashLink(err)
+	}
+	defer item.Close()
+	walk := sizeWalk{ctx: ctx, mount: mount, oneMount: true, diskUsage: true}
+	if err = walk.addFolder(item); err != nil {
+		return FolderSize{}, err
+	}
+	if err = ctx.Err(); err != nil {
+		return FolderSize{}, err
+	}
+	return FolderSize{Size: walk.total, Files: walk.files, Folders: walk.folders}, nil
 }
 
 // RestoreOptions are a restore request's choices for one item.

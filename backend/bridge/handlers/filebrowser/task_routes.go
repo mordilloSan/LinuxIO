@@ -84,6 +84,11 @@ func fileTaskBindings(store *userconfig.UserStore, owner sessionOwner) apischema
 				return listTrash(ctx, owner)
 			},
 		),
+		apischema.Call[apischema.PathRequest, apischema.DirectorySizeData]("filebrowser.trash_size", apischema.RetrySafe()).Handle(
+			func(ctx context.Context, req apischema.PathRequest) (apischema.DirectorySizeData, error) {
+				return trashSize(ctx, owner, req)
+			},
+		),
 		apischema.MutationTask("filebrowser.index", runIndexerTask, apischema.Privileged(), apischema.Progress[indexer.IndexerProgress](), apischema.WithTaskMetadata(func(req apischema.OptionalPathRequest) bridgeipc.TaskMetadata {
 			path := ""
 			if req.Path != nil {

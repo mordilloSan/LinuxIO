@@ -283,6 +283,7 @@ const linuxio = {
     trash_restore: defineMutation("filebrowser", "trash_restore", {
       kind: "object",
     }),
+    trash_size: defineCallWithRequest("filebrowser.trash_size"),
     upload: defineMutation("filebrowser", "upload", { kind: "object" }),
     upload_batch: defineMutation("filebrowser", "upload_batch", {
       kind: "object",

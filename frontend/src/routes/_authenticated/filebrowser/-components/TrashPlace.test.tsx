@@ -1,16 +1,61 @@
+import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { TrashEntry } from "@/api";
+import { createQueryClient } from "@/api/query-client";
+import { dragMadeHere } from "@/test/fileBrowserDrag";
 import { fireEvent, render, screen, waitFor, within } from "@/test/render";
 
 import { INTERNAL_DRAG_TYPE, TRASH_DRAG_TYPE } from "../-dragTypes";
 import type { TrashJobs } from "../-hooks/useTrashJobs";
+import { setInternalDrag } from "../-internalDrag";
+import { DEFAULT_TRASH_SORT, type TrashSort } from "../-trashEntries";
+import type { ViewMode } from "../-types";
 import TrashPlace from "./TrashPlace";
+
+// The Trash shows the folder listing's virtual rows; jsdom has no layout, so
+// every row mounts.
+vi.mock("@tanstack/react-virtual", async () =>
+  (await import("@/test/reactVirtualMock")).reactVirtualMock(),
+);
+
+vi.mock("@/hooks/useGridColumnCount", () => ({
+  useGridColumnCount: () => 2,
+}));
 
 const mocks = vi.hoisted(() => ({
   entries: [] as unknown[],
   error: null as Error | null,
+  sizeError: null as Error | null,
+  sized: [] as string[],
+  toastError: vi.fn(),
 }));
+
+vi.mock("sonner", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("sonner")>()),
+  toast: { error: mocks.toastError },
+}));
+
+// The app's query client runs queries only while the transport is up.
+vi.mock("@/api/linuxio", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/api/linuxio")>()),
+  isRequestAvailable: () => true,
+  subscribeRequestAvailability: () => () => {},
+}));
+
+// Items dragged from a folder: by this page's own drag, or from another
+// server's tab, which has a token of its own.
+const carrying = (paths: string[], origin?: string) => {
+  const payload = origin
+    ? { origin, paths, token: "f".repeat(32) }
+    : dragMadeHere((started) => setInternalDrag(started, paths));
+  return {
+    dropEffect: "none",
+    getData: (type: string) =>
+      type === INTERNAL_DRAG_TYPE ? JSON.stringify(payload) : "",
+    types: [INTERNAL_DRAG_TYPE],
+  };
+};
 
 vi.mock("@/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api")>();
@@ -27,6 +72,14 @@ vi.mock("@/api", async (importOriginal) => {
           },
           queryKey: ["linuxio", "filebrowser", "trash_list"],
         },
+        trash_size: ({ path }: { path: string }) => ({
+          queryFn: async () => {
+            mocks.sized.push(path);
+            if (mocks.sizeError) throw mocks.sizeError;
+            return { fileCount: 12, folderCount: 1, size: 1536 };
+          },
+          queryKey: ["linuxio", "filebrowser", "trash_size", { path }],
+        }),
       },
     },
   };
@@ -72,17 +125,45 @@ const jobs = {
 } satisfies TrashJobs;
 const onLeave = vi.fn();
 const onTrashItems = vi.fn();
+const onSortChange = vi.fn();
+const onSwitchView = vi.fn();
 
-const renderPlace = () =>
-  render(
+// The page keeps the sort in the URL and the view where the folder listing
+// keeps it; here both are the harness's state.
+const Place = ({
+  initialSort,
+  initialView,
+}: {
+  initialSort: TrashSort;
+  initialView: ViewMode;
+}) => {
+  const [sort, setSort] = useState(initialSort);
+  const [viewMode, setViewMode] = useState(initialView);
+  return (
     <TrashPlace
       breadcrumbs={<div>Trail</div>}
       folderPath="/home/alice"
       jobs={jobs}
       onLeave={onLeave}
+      onSortChange={(next) => {
+        onSortChange(next);
+        setSort(next);
+      }}
+      onSwitchView={() => {
+        onSwitchView();
+        setViewMode((previous) => (previous === "card" ? "list" : "card"));
+      }}
       onTrashItems={onTrashItems}
-    />,
+      sort={sort}
+      viewMode={viewMode}
+    />
   );
+};
+
+const renderPlace = (
+  initialSort: TrashSort = DEFAULT_TRASH_SORT,
+  initialView: ViewMode = "list",
+) => render(<Place initialSort={initialSort} initialView={initialView} />);
 
 const rowOrder = () =>
   screen
@@ -100,6 +181,8 @@ describe("TrashPlace", () => {
     vi.clearAllMocks();
     mocks.entries = all;
     mocks.error = null;
+    mocks.sizeError = null;
+    mocks.sized = [];
   });
 
   it("lists items under their shown names, newest deleted first", async () => {
@@ -118,6 +201,52 @@ describe("TrashPlace", () => {
     // A trashed folder lists no size; an item of unknown origin says so.
     expect(within(row(mystery)).getAllByText("Unknown")).toHaveLength(2);
     expect(within(row(report)).getByText("2 KB")).toBeVisible();
+  });
+
+  it("moves by the column count in card view and a row at a time in the list", async () => {
+    const selected = () =>
+      screen
+        .getAllByRole("option")
+        .filter((option) => option.getAttribute("aria-selected") === "true")
+        .map((option) => option.getAttribute("data-file-path"));
+    const { user } = renderPlace(DEFAULT_TRASH_SORT, "card");
+    await screen.findByRole("listbox", { name: "Trash" });
+
+    // Two cards fit a row here.
+    await user.keyboard("{ArrowDown}");
+    expect(selected()).toEqual([notes.path]);
+    await user.keyboard("{ArrowDown}");
+    expect(selected()).toEqual([photos.path]);
+    await user.keyboard("{ArrowRight}");
+    expect(selected()).toEqual([mystery.path]);
+    await user.keyboard("{ArrowUp}");
+    expect(selected()).toEqual([report.path]);
+
+    await user.click(headerButton("Switch to list view"));
+    await user.keyboard("{ArrowDown}");
+    expect(selected()).toEqual([photos.path]);
+  });
+
+  it("is a listbox of options alone, each placed in the whole Trash", async () => {
+    renderPlace(DEFAULT_TRASH_SORT, "card");
+    const list = await screen.findByRole("listbox", { name: "Trash" });
+
+    expect(within(list).queryByRole("heading")).not.toBeInTheDocument();
+    expect(within(list).queryByRole("slider")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Items" })).toBeVisible();
+    expect(
+      within(list)
+        .getAllByRole("option")
+        .map((option) => [
+          option.getAttribute("aria-posinset"),
+          option.getAttribute("aria-setsize"),
+        ]),
+    ).toEqual([
+      ["1", "4"],
+      ["2", "4"],
+      ["3", "4"],
+      ["4", "4"],
+    ]);
   });
 
   it("sorts by each column, ascending then descending", async () => {
@@ -156,6 +285,61 @@ describe("TrashPlace", () => {
       mystery.path,
       report.path,
     ]);
+    // Each choice goes to the page, which keeps it in the URL.
+    expect(onSortChange).toHaveBeenLastCalledWith({
+      field: "size",
+      order: "asc",
+    });
+  });
+
+  it("opens in the sort the page gives it", async () => {
+    renderPlace({ field: "name", order: "desc" });
+
+    await screen.findByRole("listbox", { name: "Trash" });
+    expect(rowOrder()).toEqual([
+      report.path,
+      photos.path,
+      notes.path,
+      mystery.path,
+    ]);
+    expect(
+      screen.getByRole("button", { name: "Sort by Name, descending" }),
+    ).toBeVisible();
+  });
+
+  it("shows the items as cards in the listing's card view", async () => {
+    const { user } = renderPlace(DEFAULT_TRASH_SORT, "card");
+
+    await screen.findByRole("listbox", { name: "Trash" });
+    expect(rowOrder()).toEqual([
+      notes.path,
+      report.path,
+      photos.path,
+      mystery.path,
+    ]);
+    expect(row(notes)).toHaveClass("file-card");
+    // A card names the item, where it came from and its size.
+    expect(within(row(notes)).getByText("notes.txt")).toBeVisible();
+    expect(within(row(notes)).getByText("/home/alice")).toBeVisible();
+    expect(within(row(report)).getByText("2 KB")).toBeVisible();
+    expect(within(row(mystery)).getByText("Unknown")).toBeVisible();
+
+    await user.click(row(photos));
+    expect(row(photos)).toHaveAttribute("aria-selected", "true");
+    await user.dblClick(row(photos));
+    expect(
+      await screen.findByRole("dialog", { name: "Properties" }),
+    ).toHaveTextContent("/srv/media/photos");
+  });
+
+  it("switches between cards and the list as the folder listing does", async () => {
+    const { user } = renderPlace();
+    await screen.findByRole("listbox", { name: "Trash" });
+    expect(row(notes)).toHaveClass("file-row");
+
+    await user.click(headerButton("Switch to card view"));
+    expect(onSwitchView).toHaveBeenCalledTimes(1);
+    expect(row(notes)).toHaveClass("file-card");
   });
 
   it("selects as a folder does: click, Ctrl and Shift click, Ctrl+A, Escape", async () => {
@@ -324,6 +508,47 @@ describe("TrashPlace", () => {
     ).toHaveTextContent("/home/alice/docs/report.pdf");
   });
 
+  it("sizes a trashed folder when its properties open, and only then", async () => {
+    const { user } = renderPlace();
+    await screen.findByRole("listbox", { name: "Trash" });
+    // The list keeps no size for a folder.
+    expect(mocks.sized).toEqual([]);
+
+    await user.dblClick(row(photos));
+    const dialog = await screen.findByRole("dialog", { name: "Properties" });
+    await waitFor(() => expect(dialog).toHaveTextContent("1.5 KB"));
+    expect(dialog).toHaveTextContent("12 files, 1 folder");
+    expect(mocks.sized).toEqual([photos.path]);
+  });
+
+  it("says when a trashed folder's size cannot be read, once and only there", async () => {
+    mocks.sizeError = new Error("a link was planted");
+    // The app's own cache, which retries a failed read and toasts its error
+    // unless the query says otherwise.
+    const queryClient = createQueryClient();
+    const { user } = render(
+      <Place initialSort={DEFAULT_TRASH_SORT} initialView="list" />,
+      {
+        queryClient,
+      },
+    );
+    await screen.findByRole("listbox", { name: "Trash" });
+
+    await user.dblClick(row(photos));
+    const dialog = await screen.findByRole("dialog", { name: "Properties" });
+    await waitFor(() => expect(dialog).toHaveTextContent("Unavailable"));
+    // Size and contents both say why.
+    expect(within(dialog).getAllByTitle("a link was planted")).toHaveLength(2);
+    // A walk is not repeated on a failure, and the dialog alone says so.
+    const query = queryClient.getQueryCache().find({
+      queryKey: ["linuxio", "filebrowser", "trash_size", { path: photos.path }],
+    });
+    expect(query?.options.retry).toBe(false);
+    expect(query?.meta?.silent).toBe(true);
+    expect(mocks.sized).toEqual([photos.path]);
+    expect(mocks.toastError).not.toHaveBeenCalled();
+  });
+
   it("totals the files of several items in their properties", async () => {
     const { user } = renderPlace();
     await screen.findByRole("listbox", { name: "Trash" });
@@ -346,7 +571,7 @@ describe("TrashPlace", () => {
     expect(onLeave).toHaveBeenCalledTimes(1);
   });
 
-  it("drags items out as a restore carrying their shown names", async () => {
+  it("drags items out as a restore carrying their shown names and server", async () => {
     renderPlace();
     await screen.findByRole("listbox", { name: "Trash" });
     const setData = vi.fn();
@@ -354,10 +579,14 @@ describe("TrashPlace", () => {
     fireEvent.dragStart(row(notes), {
       dataTransfer: { effectAllowed: "", setData },
     });
-    expect(setData).toHaveBeenCalledWith(
-      TRASH_DRAG_TYPE,
-      JSON.stringify([{ name: "notes.txt", path: notes.path }]),
-    );
+    // The page it came from and the drag's token, so a drop elsewhere can
+    // tell this drag from one another page forged.
+    expect(setData).toHaveBeenCalledWith(TRASH_DRAG_TYPE, expect.any(String));
+    expect(JSON.parse(setData.mock.calls[0][1] as string)).toEqual({
+      items: [{ name: "notes.txt", path: notes.path }],
+      origin: window.location.origin,
+      token: expect.stringMatching(/^[0-9a-f]{32}$/),
+    });
     expect(row(notes)).toHaveAttribute("aria-selected", "true");
 
     // Dropped where it restores: it leaves the selection.
@@ -368,16 +597,36 @@ describe("TrashPlace", () => {
   it("moves files dragged here from a folder to the Trash", async () => {
     renderPlace();
     const list = await screen.findByRole("listbox", { name: "Trash" });
-    const dataTransfer = {
-      dropEffect: "none",
-      getData: (type: string) =>
-        type === INTERNAL_DRAG_TYPE ? JSON.stringify(["/srv/x.txt"]) : "",
-      types: [INTERNAL_DRAG_TYPE],
-    };
+    const dataTransfer = carrying(["/srv/x.txt"]);
 
     fireEvent.dragOver(list, { dataTransfer });
     fireEvent.drop(list, { dataTransfer });
     expect(onTrashItems).toHaveBeenCalledWith(["/srv/x.txt"]);
+  });
+
+  it("keeps the browser from opening desktop files dropped on the list", async () => {
+    renderPlace();
+    const list = await screen.findByRole("listbox", { name: "Trash" });
+    const files = { dropEffect: "copy", getData: () => "", types: ["Files"] };
+
+    // fireEvent answers false when the handler prevented the default.
+    expect(fireEvent.dragOver(list, { dataTransfer: files })).toBe(false);
+    expect(files.dropEffect).toBe("none");
+    expect(fireEvent.drop(list, { dataTransfer: files })).toBe(false);
+    expect(onTrashItems).not.toHaveBeenCalled();
+  });
+
+  it("refuses files dragged here from another server's tab", async () => {
+    renderPlace();
+    const list = await screen.findByRole("listbox", { name: "Trash" });
+    const other = "https://backup.example:8090";
+
+    fireEvent.drop(list, { dataTransfer: carrying(["/srv/x.txt"], other) });
+
+    expect(onTrashItems).not.toHaveBeenCalled();
+    expect(mocks.toastError).toHaveBeenCalledWith("Cannot drop 1 item here", {
+      description: `It comes from ${other}, another server. Drop it in a tab of that server.`,
+    });
   });
 
   it("says when the Trash is empty", async () => {

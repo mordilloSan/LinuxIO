@@ -7,8 +7,8 @@ import { joinPath } from "@/utils/path";
 import { INTERNAL_DRAG_TYPE } from "../-dragTypes";
 import { extractDroppedEntries } from "../-fileUpload";
 import {
+  acceptTrashDrop,
   hasTrashDrag,
-  readTrashDrag,
   type TrashDragItem,
 } from "../-internalDrag";
 import type { FileResource } from "../-types";
@@ -104,7 +104,7 @@ export const useFileDragAndDrop = ({
       if (editingPath || !resource || resource.type !== "directory") return;
       if (onRestoreItems && hasTrashDrag(event.dataTransfer)) {
         event.preventDefault();
-        const items = readTrashDrag(event.dataTransfer);
+        const items = acceptTrashDrop(event.dataTransfer);
         if (items.length > 0) onRestoreItems(items, normalizedPath);
         return;
       }

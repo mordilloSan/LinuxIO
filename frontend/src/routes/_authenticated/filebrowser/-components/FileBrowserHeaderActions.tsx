@@ -22,7 +22,7 @@ import { useBackgroundTaskActions } from "@/tasks/useBackgroundTaskActions";
 import { useIsIndexing } from "@/tasks/useIsIndexing";
 import { iconSize } from "@/theme/constants";
 
-import { hasInternalDrag, readInternalDrag } from "../-internalDrag";
+import { acceptInternalDrop, hasInternalDrag } from "../-internalDrag";
 import type { ViewMode } from "../-types";
 import FileBrowserSearch from "./FileBrowserSearch";
 
@@ -143,7 +143,7 @@ const FileBrowserHeaderActions = memo(function FileBrowserHeaderActions({
           event.preventDefault();
           event.stopPropagation();
           setTrashDropTarget(false);
-          const paths = readInternalDrag(event.dataTransfer);
+          const paths = acceptInternalDrop(event.dataTransfer);
           if (paths.length === 0) return;
           onTrashItems(paths).catch(() => {
             // The move to Trash reports its own failure.

@@ -71,28 +71,6 @@ Memory overflow ([Memory overflow](../memory.md)):
   confirm step names it and where its copy is kept, and the request carries
   that confirmation; a file with only comments needs none.
 
-Trash ([Trash](../trash.md)):
-
-- [ ] **The Trash is a list only and renders every row.** It has no card
-  view, and `TrashList.tsx` is not virtualized, so a trash of many thousands
-  of items is slow to show. Give it the folder listing's card view and its
-  virtual rows (`VirtualDirectoryItems.tsx`).
-- [ ] **The Trash's sort and selection are not in the URL.** A reload starts
-  with newest deleted first and nothing selected. Put the sort column and
-  order in validated search parameters beside `trash`.
-- [ ] **A restore that ends after the user left the file browser does not
-  ask about taken names.** The prompt belongs to the file browser page
-  (`useTrashJobs.ts`), so those items are reported as failures and stay in
-  the Trash. Keep the question, as the no-trash prompt's queue does
-  (`noTrashPrompts.ts`), and ask it when a file browser shows again.
-- [ ] **A trashed folder shows no size.** `trash_list` gives 0 for a folder:
-  it would have to walk every trashed folder, and the spec's
-  `directorysizes` cache is not read. Decided 2026-11-17: size a folder when
-  its properties open; the list keeps no size for a folder.
-- [ ] **A drag out of the Trash onto another server's LinuxIO tab fails
-  there.** The drop is sent to that server, whose trash does not hold the
-  item. Refuse the drop on another server with a message.
-
 ## Tests that are missing
 
 - [ ] **No browser spec draws the assistant's effort slider.** Its thumb, halo

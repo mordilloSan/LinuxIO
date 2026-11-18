@@ -7,8 +7,14 @@ import type { FileBrowserListingQueryOptions } from "../-hooks/fileBrowserListin
 import { useFileBrowserController } from "../-hooks/useFileBrowserController";
 import { useFileConflictResolution } from "../-hooks/useFileConflicts";
 import { useFileMutations } from "../-hooks/useFileMutations";
+import { useFileViewState } from "../-hooks/useFileViewState";
 import { type TrashJobs, useTrashJobs } from "../-hooks/useTrashJobs";
 import type { TrashDragItem } from "../-internalDrag";
+import {
+  type TrashSort,
+  trashSortFromSearch,
+  trashSortSearch,
+} from "../-trashEntries";
 import FileBrowserBreadcrumbs from "./FileBrowserBreadcrumbs";
 import FileBrowserContent from "./FileBrowserContent";
 import FileBrowserDialogs from "./FileBrowserDialogs";
@@ -56,18 +62,34 @@ const TrashView = ({ jobs }: { jobs: TrashJobs }) => {
   const splat = fileBrowserRouteApi.useParams({
     select: (params) => params._splat ?? "",
   });
+  const sortField = fileBrowserRouteApi.useSearch({
+    select: (search) => search.sort,
+  });
+  const sortOrder = fileBrowserRouteApi.useSearch({
+    select: (search) => search.order,
+  });
   const navigate = fileBrowserRouteApi.useNavigate();
   const queryClient = useQueryClient();
   const folderPath = splat ? `/${splat}` : "/";
   const { deleteItems, trashItems } = useFileMutations({
     normalizedPath: folderPath,
   });
+  // Cards or the list, as the folder listing shows its items.
+  const { actions: viewActions, viewMode } = useFileViewState();
 
   const leave = () =>
     void navigate({
       params: { _splat: splat },
       search: {},
       to: "/filebrowser/$",
+    });
+  // A new sort replaces the URL rather than adding a step, so Back still
+  // leads to the folder the Trash was opened from.
+  const changeSort = (sort: TrashSort) =>
+    void navigate({
+      replace: true,
+      search: (previous) => ({ ...previous, ...trashSortSearch(sort) }),
+      to: ".",
     });
   // Items dragged here from a folder, in another tab, go to the Trash. A
   // cancelled move has moved some of them, so the list is read again then.
@@ -93,7 +115,11 @@ const TrashView = ({ jobs }: { jobs: TrashJobs }) => {
         folderPath={folderPath}
         jobs={jobs}
         onLeave={leave}
+        onSortChange={changeSort}
+        onSwitchView={viewActions.switchView}
         onTrashItems={trashDropped}
+        sort={trashSortFromSearch({ order: sortOrder, sort: sortField })}
+        viewMode={viewMode}
       />
       <NoTrashPrompt onDelete={deleteItems} />
     </>

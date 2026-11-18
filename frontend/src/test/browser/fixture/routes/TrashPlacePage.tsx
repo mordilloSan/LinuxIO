@@ -2,9 +2,16 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { linuxio } from "@/api";
+import { emptyCapabilityState } from "@/api/capabilities";
+import { AuthContext, type AuthContextType } from "@/contexts/AuthContext";
 import Breadcrumbs from "@/routes/_authenticated/filebrowser/-components/Breadcrumbs";
 import TrashPlace from "@/routes/_authenticated/filebrowser/-components/TrashPlace";
 import type { TrashJobs } from "@/routes/_authenticated/filebrowser/-hooks/useTrashJobs";
+import {
+  DEFAULT_TRASH_SORT,
+  type TrashSort,
+} from "@/routes/_authenticated/filebrowser/-trashEntries";
+import type { ViewMode } from "@/routes/_authenticated/filebrowser/-types";
 
 // The real Trash place over a seeded list. There is no bridge behind the
 // fixture, so its jobs only write down what they were asked to do: the specs
@@ -46,8 +53,19 @@ queryClient.setQueryData(linuxio.filebrowser.trash_list.queryKey, {
   ],
 });
 
+// The trashed folder's size, which its properties read.
+queryClient.setQueryData(
+  linuxio.filebrowser.trash_size({
+    path: "/home/alice/.local/share/Trash/files/photos",
+  }).queryKey,
+  { fileCount: 3, folderCount: 1, size: 4096 },
+);
+
 function TrashFixture() {
   const [requests, setRequests] = useState<string[]>([]);
+  // The page keeps these in the URL and beside the folder listing.
+  const [sort, setSort] = useState<TrashSort>(DEFAULT_TRASH_SORT);
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
   const record = (line: string) =>
     setRequests((previous) => [...previous, line]);
   const jobs: TrashJobs = {
@@ -88,17 +106,40 @@ function TrashFixture() {
           folderPath="/home/alice"
           jobs={jobs}
           onLeave={() => record("leave")}
+          onSortChange={setSort}
+          onSwitchView={() =>
+            setViewMode((previous) => (previous === "card" ? "list" : "card"))
+          }
           onTrashItems={(paths) => record(`trash:${paths.join(",")}`)}
+          sort={sort}
+          viewMode={viewMode}
         />
       </div>
     </main>
   );
 }
 
+// The app renders the file browser under AuthProvider, which the cards read
+// (FileCard asks whether the session may size folders).
+const authValue: AuthContextType = {
+  ...emptyCapabilityState,
+  isAuthenticated: false,
+  isInitialized: true,
+  method: "session",
+  privileged: false,
+  refreshCapabilities: async () => ({}),
+  sessionExpired: () => {},
+  signIn: async () => {},
+  signOut: async () => {},
+  user: null,
+};
+
 export default function TrashPlacePage() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TrashFixture />
+      <AuthContext.Provider value={authValue}>
+        <TrashFixture />
+      </AuthContext.Provider>
     </QueryClientProvider>
   );
 }

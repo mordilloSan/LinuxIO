@@ -7,6 +7,10 @@ import type { MutationHandlers } from "@/api/linuxio-core";
 import { markTerminalFeedbackEmitted } from "@/tasks/terminalTaskFeedback";
 import { act, createTestQueryClient, renderHook, waitFor } from "@/test/render";
 
+import {
+  nextTakenNamesPrompt,
+  settleTakenNamesPrompt,
+} from "./takenNamesPrompts";
 import type { ResolveCollisionsFn } from "./useFileConflicts";
 import { useTrashJobs } from "./useTrashJobs";
 
@@ -104,6 +108,14 @@ describe("useTrashJobs", () => {
     vi.clearAllMocks();
     mocks.jobs = [];
     mocks.request.mockRejectedValue(new Error("offline"));
+    // The questions wait outside the page, so none carries over.
+    for (
+      let prompt = nextTakenNamesPrompt();
+      prompt;
+      prompt = nextTakenNamesPrompt()
+    ) {
+      settleTakenNamesPrompt(prompt.id);
+    }
   });
 
   it("asks about taken names with the paste prompt and sends those items again", async () => {
@@ -151,6 +163,8 @@ describe("useTrashJobs", () => {
       overwrite: true,
       paths: [A.path, B.path],
     });
+    // The page shows and asks at once, so nothing says the items wait.
+    expect(mocks.toast.info).not.toHaveBeenCalled();
     // Both jobs are reported by the page, not again by the task tray.
     expect(markTerminalFeedbackEmitted("trash_restore-1")).toBe(false);
     expect(markTerminalFeedbackEmitted("trash_restore-2")).toBe(false);
@@ -343,19 +357,86 @@ describe("useTrashJobs", () => {
     expect(mocks.jobs[3].request.paths).toEqual([B.path]);
   });
 
-  it("reports a taken name as a failure once the user has left the file browser", async () => {
-    const resolveCollisions = vi.fn() as unknown as ResolveCollisionsFn;
-    const { result, unmount } = renderJobs(resolveCollisions);
+  it("keeps the question about taken names until a file browser shows again", async () => {
+    const leftPrompt = vi.fn() as unknown as ResolveCollisionsFn;
+    const { result, unmount } = renderJobs(leftPrompt);
 
-    act(() => result.current.restore({ paths: [A.path] }, [A]));
+    act(() => result.current.restore({ paths: [A.path, B.path] }, [A, B]));
     await waitFor(() => expect(mocks.jobs).toHaveLength(1));
     // The page that started it, and its prompt, are gone.
     unmount();
-    await endJob(0, { failed: [taken(A.path)], succeeded: 0, total: 1 });
+    await endJob(0, { failed: [taken(A.path)], succeeded: 1, total: 2 });
 
-    expect(resolveCollisions).not.toHaveBeenCalled();
-    expect(mocks.toast.error).toHaveBeenCalledWith("Failed to restore 1 item", {
-      description: "a.txt: file exists",
+    expect(leftPrompt).not.toHaveBeenCalled();
+    expect(mocks.toast.error).not.toHaveBeenCalled();
+    expect(mocks.toast.success).toHaveBeenCalledWith("Restored 1 item");
+
+    // The file browser shows again: its prompt asks, and the answer is sent.
+    const resolveCollisions = vi.fn(
+      async <T,>(items: T[], getDestPath: (item: T) => string) => {
+        expect(items.map(getDestPath)).toEqual([A.originalPath]);
+        return { keepBoth: items, kept: items, overwrite: false };
+      },
+    ) as unknown as ResolveCollisionsFn;
+    renderJobs(resolveCollisions);
+
+    await waitFor(() => expect(mocks.jobs).toHaveLength(2));
+    expect(resolveCollisions).toHaveBeenCalledWith(
+      [A.path],
+      expect.any(Function),
+      "/home/alice/docs",
+      expect.any(Function),
+    );
+    expect(mocks.jobs[1].request).toEqual({
+      keepBoth: [A.path],
+      paths: [A.path],
+    });
+  });
+
+  it("says that items wait when their names are all taken and no file browser shows", async () => {
+    const { result, unmount } = renderJobs(vi.fn() as ResolveCollisionsFn);
+
+    act(() => result.current.restore({ paths: [A.path, B.path] }, [A, B]));
+    await waitFor(() => expect(mocks.jobs).toHaveLength(1));
+    unmount();
+    await endJob(0, {
+      failed: [taken(A.path), taken(B.path)],
+      succeeded: 0,
+      total: 2,
+    });
+
+    expect(mocks.toast.info).toHaveBeenCalledWith("2 items wait in the Trash", {
+      description:
+        "Their names are taken where they go. The file browser asks what to do with them when it shows.",
+    });
+    expect(mocks.toast.success).not.toHaveBeenCalled();
+    expect(mocks.toast.error).not.toHaveBeenCalled();
+  });
+
+  it("asks again on the next page when the page closes during the question", async () => {
+    const unanswered = vi.fn(
+      () => new Promise(() => {}),
+    ) as unknown as ResolveCollisionsFn;
+    const { result, unmount } = renderJobs(unanswered);
+
+    act(() => result.current.restore({ paths: [A.path] }, [A]));
+    await endJob(0, { failed: [taken(A.path)], succeeded: 0, total: 1 });
+    await waitFor(() => expect(unanswered).toHaveBeenCalledTimes(1));
+    unmount();
+
+    const resolveCollisions = vi.fn(async <T,>(items: T[]) => ({
+      keepBoth: [],
+      kept: items,
+      overwrite: true,
+    })) as unknown as ResolveCollisionsFn;
+    renderJobs(resolveCollisions);
+
+    await waitFor(() => expect(mocks.jobs).toHaveLength(2));
+    expect(resolveCollisions).toHaveBeenCalledTimes(1);
+    expect(mocks.jobs[1].request).toEqual({
+      confirmedDestinations: { [A.path]: A.originalPath },
+      overwrite: true,
+      paths: [A.path],
     });
   });
 

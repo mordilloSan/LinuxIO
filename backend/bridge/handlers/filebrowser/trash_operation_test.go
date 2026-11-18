@@ -502,3 +502,69 @@ func TestTrashBatchTaskReportsAFilesystemWithoutATrash(t *testing.T) {
 	require.Empty(t, result.Failed[1].Reason)
 	require.FileExists(t, report)
 }
+
+// filebrowser.trash_size reads the session user's own trash, as the list
+// does: a Call any session may make, and safe to repeat.
+func TestTrashSizeRouteIsAnUnprivilegedRead(t *testing.T) {
+	found := false
+	for _, route := range Routes {
+		if route.Route != "filebrowser.trash_size" {
+			continue
+		}
+		found = true
+		require.Equal(t, bridgeipc.ModeCall, route.Mode)
+		require.False(t, route.Privileged)
+		require.True(t, route.RetrySafe)
+	}
+	require.True(t, found, "filebrowser.trash_size is a route")
+}
+
+// A trashed folder's properties read its size. What is not a folder in the
+// session user's trash is the caller's mistake, and a missing one is not
+// found.
+func TestTrashSizeOfATrashedFolder(t *testing.T) {
+	home, _ := trashTaskHome(t)
+	photos := filepath.Join(home, "photos")
+	require.NoError(t, os.Mkdir(photos, 0o755))
+	seedFile(t, filepath.Join(photos, "a.jpg"), "jpeg")
+	require.NoError(t, os.Mkdir(filepath.Join(photos, "2026"), 0o755))
+	item, err := services.MoveToTrash(t.Context(), photos, home, os.Geteuid(), os.Getegid(), false)
+	require.NoError(t, err)
+
+	size, err := trashSize(t.Context(), sessionOwner{}, apischema.PathRequest{Path: item})
+	require.NoError(t, err)
+	// Size on disk, as the folder listing gives it.
+	onDisk := int64(0)
+	for _, path := range []string{item, filepath.Join(item, "2026"), filepath.Join(item, "a.jpg")} {
+		var st syscall.Stat_t
+		require.NoError(t, syscall.Lstat(path, &st))
+		onDisk += st.Blocks * 512
+	}
+	require.Equal(t, apischema.DirectorySizeData{Size: onDisk, FileCount: 1, FolderCount: 1}, size)
+
+	for path, want := range map[string]error{
+		"":     bridgeipc.ErrInvalidArgs,
+		photos: bridgeipc.ErrInvalidArgs,
+		filepath.Join(filepath.Dir(item), "gone"): bridgeipc.ErrNotFound,
+	} {
+		_, err = trashSize(t.Context(), sessionOwner{}, apischema.PathRequest{Path: path})
+		require.ErrorIs(t, err, want, path)
+	}
+}
+
+// A trashed folder the session cannot read is a refusal, not a size of 0 B.
+func TestTrashSizeOfAnUnreadableFolderIsForbidden(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads any folder")
+	}
+	home, _ := trashTaskHome(t)
+	locked := filepath.Join(home, "locked")
+	require.NoError(t, os.Mkdir(locked, 0o755))
+	item, err := services.MoveToTrash(t.Context(), locked, home, os.Geteuid(), os.Getegid(), false)
+	require.NoError(t, err)
+	require.NoError(t, os.Chmod(item, 0))
+	t.Cleanup(func() { _ = os.Chmod(item, 0o700) })
+
+	_, err = trashSize(t.Context(), sessionOwner{}, apischema.PathRequest{Path: item})
+	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
+}

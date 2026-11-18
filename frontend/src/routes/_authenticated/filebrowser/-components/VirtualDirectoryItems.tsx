@@ -1,5 +1,6 @@
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
+  Fragment,
   memo,
   useCallback,
   useLayoutEffect,
@@ -9,6 +10,7 @@ import {
   type DragEvent,
   type MouseEvent,
   type MouseEventHandler,
+  type ReactNode,
   type RefObject,
 } from "react";
 
@@ -62,9 +64,16 @@ interface SelectionBoxState {
 interface DirectoryVirtualLayout {
   fileCount: number;
   fileRowCount: number;
+  /** The files' heading row, or -1 without one. */
   fileSectionHeaderIndex: number;
+  /** The first row of files. */
+  fileRowsStart: number;
   folderCount: number;
   folderRowCount: number;
+  /** The folders' heading row, or -1 without one. */
+  folderSectionHeaderIndex: number;
+  /** The first row of folders. */
+  folderRowsStart: number;
   itemsPerRow: number;
   totalRowCount: number;
 }
@@ -77,6 +86,43 @@ type DirectoryVirtualRow =
       start: number;
       type: "items";
     };
+
+type ItemKind = "file" | "folder";
+
+/** Where an item stands in the whole list, as a listbox's options say. */
+export interface ItemPosition {
+  posInSet: number;
+  setSize: number;
+}
+
+interface VirtualItemsProps {
+  /** Receives the number of items per row (1 in list view). */
+  columnCountRef?: RefObject<number>;
+  containerRef: RefObject<HTMLDivElement | null>;
+  files: FileItem[];
+  folders: FileItem[];
+  /** In a listbox, the heading above it, beside the card-size slider. */
+  heading?: string;
+  isMarqueeSelecting: boolean;
+  /**
+   * Makes the list a listbox of that name, as the Trash's is. It then holds
+   * only its items, as options, without the sections' heading rows; the
+   * heading and the card-size slider sit above it.
+   */
+  listboxLabel?: string;
+  onContainerMouseDown: MouseEventHandler<HTMLDivElement>;
+  onMarqueeMouseDown: MouseEventHandler<HTMLDivElement>;
+  /** One item, as a card or a list row as `viewMode` has it. */
+  renderItem: (
+    item: FileItem,
+    itemKind: ItemKind,
+    position: ItemPosition,
+  ) => ReactNode;
+  /** Item index to scroll into view, or -1 to leave the viewport alone. */
+  revealIndex: number;
+  selectionBox: SelectionBoxState | null;
+  viewMode: ViewMode;
+}
 
 interface VirtualDirectoryItemsProps {
   /** Receives the number of items per row (1 in list view). */
@@ -118,29 +164,36 @@ const stopPropagation = (event: MouseEvent) => event.stopPropagation();
 // Keep the retained row model constant-size. TanStack Virtual asks for rows by
 // index, so item groups and headers can be resolved only when they are needed
 // instead of allocating one wrapper object and array for every directory item.
+// Without headers the sections run on with no heading rows between them.
 export function createDirectoryLayout({
   columnCount,
   fileCount,
   folderCount,
+  headers = true,
   viewMode,
 }: {
   columnCount: number;
   fileCount: number;
   folderCount: number;
+  headers?: boolean;
   viewMode: ViewMode;
 }) {
   const itemsPerRow = viewMode === "card" ? columnCount : 1;
+  const headerRows = headers ? 1 : 0;
   const folderRowCount = Math.ceil(folderCount / itemsPerRow);
   const fileRowCount = Math.ceil(fileCount / itemsPerRow);
-  const folderSectionSize = folderCount > 0 ? 1 + folderRowCount : 0;
-  const fileSectionSize = fileCount > 0 ? 1 + fileRowCount : 0;
+  const folderSectionSize = folderCount > 0 ? headerRows + folderRowCount : 0;
+  const fileSectionSize = fileCount > 0 ? headerRows + fileRowCount : 0;
 
   return {
     fileCount,
     fileRowCount,
-    fileSectionHeaderIndex: fileCount > 0 ? folderSectionSize : -1,
+    fileRowsStart: folderSectionSize + (fileCount > 0 ? headerRows : 0),
+    fileSectionHeaderIndex: fileCount > 0 && headers ? folderSectionSize : -1,
     folderCount,
     folderRowCount,
+    folderRowsStart: folderCount > 0 ? headerRows : 0,
+    folderSectionHeaderIndex: folderCount > 0 && headers ? 0 : -1,
     itemsPerRow,
     totalRowCount: folderSectionSize + fileSectionSize,
   } satisfies DirectoryVirtualLayout;
@@ -151,8 +204,9 @@ function isDirectorySectionHeader(
   layout: DirectoryVirtualLayout,
 ) {
   return (
-    (layout.folderRowCount > 0 && index === 0) ||
-    (layout.fileRowCount > 0 && index === layout.fileSectionHeaderIndex)
+    index >= 0 &&
+    (index === layout.folderSectionHeaderIndex ||
+      index === layout.fileSectionHeaderIndex)
   );
 }
 
@@ -161,26 +215,27 @@ export function getDirectoryVirtualRow(
   layout: DirectoryVirtualLayout,
 ): DirectoryVirtualRow | undefined {
   if (index < 0 || index >= layout.totalRowCount) return undefined;
-
-  if (layout.folderRowCount > 0) {
-    if (index === 0) return { label: "Folders", type: "sectionHeader" };
-    if (index <= layout.folderRowCount) {
-      const start = (index - 1) * layout.itemsPerRow;
-      return {
-        count: Math.min(layout.itemsPerRow, layout.folderCount - start),
-        itemKind: "folder",
-        start,
-        type: "items",
-      };
-    }
+  if (index === layout.folderSectionHeaderIndex) {
+    return { label: "Folders", type: "sectionHeader" };
+  }
+  if (index === layout.fileSectionHeaderIndex) {
+    return { label: "Files", type: "sectionHeader" };
   }
 
-  if (layout.fileRowCount > 0) {
-    if (index === layout.fileSectionHeaderIndex) {
-      return { label: "Files", type: "sectionHeader" };
-    }
-    const start =
-      (index - layout.fileSectionHeaderIndex - 1) * layout.itemsPerRow;
+  const folderRow = index - layout.folderRowsStart;
+  if (folderRow >= 0 && folderRow < layout.folderRowCount) {
+    const start = folderRow * layout.itemsPerRow;
+    return {
+      count: Math.min(layout.itemsPerRow, layout.folderCount - start),
+      itemKind: "folder",
+      start,
+      type: "items",
+    };
+  }
+
+  const fileRow = index - layout.fileRowsStart;
+  if (fileRow >= 0 && fileRow < layout.fileRowCount) {
+    const start = fileRow * layout.itemsPerRow;
     return {
       count: Math.min(layout.itemsPerRow, layout.fileCount - start),
       itemKind: "file",
@@ -198,29 +253,23 @@ export function getDirectoryVirtualRowKey(
   folders: FileItem[],
   files: FileItem[],
 ): string | number {
-  if (index < 0 || index >= layout.totalRowCount) return index;
-  if (layout.folderRowCount > 0 && index === 0) {
-    return "folder-section-header";
-  }
-  if (layout.fileRowCount > 0 && index === layout.fileSectionHeaderIndex) {
-    return "file-section-header";
+  const row = getDirectoryVirtualRow(index, layout);
+  if (!row) return index;
+  if (row.type === "sectionHeader") {
+    return index === layout.folderSectionHeaderIndex
+      ? "folder-section-header"
+      : "file-section-header";
   }
 
-  const isFolderRow = index > 0 && index <= layout.folderRowCount;
-  const itemKind = isFolderRow ? "folder" : "file";
-  const items = isFolderRow ? folders : files;
-  const start = isFolderRow
-    ? (index - 1) * layout.itemsPerRow
-    : (index - layout.fileSectionHeaderIndex - 1) * layout.itemsPerRow;
-  const count = Math.min(layout.itemsPerRow, items.length - start);
+  const items = row.itemKind === "folder" ? folders : files;
   // Preserve the previous full-membership key so replacing any card in a row
   // invalidates its cached measurement. Build it on demand without a row array.
   let paths = "";
-  for (let offset = 0; offset < count; offset += 1) {
+  for (let offset = 0; offset < row.count; offset += 1) {
     if (offset > 0) paths += "|";
-    paths += items[start + offset]?.path ?? "";
+    paths += items[row.start + offset]?.path ?? "";
   }
-  return `${itemKind}-${paths}`;
+  return `${row.itemKind}-${paths}`;
 }
 
 export function getDirectoryRevealRowIndex(
@@ -230,54 +279,42 @@ export function getDirectoryRevealRowIndex(
   if (revealIndex < 0 || revealIndex >= layout.folderCount + layout.fileCount) {
     return -1;
   }
-  if (revealIndex < layout.folderCount && layout.folderRowCount > 0) {
-    return 1 + Math.floor(revealIndex / layout.itemsPerRow);
+  if (revealIndex < layout.folderCount) {
+    return (
+      layout.folderRowsStart + Math.floor(revealIndex / layout.itemsPerRow)
+    );
   }
   const fileIndex = revealIndex - layout.folderCount;
-  if (fileIndex < 0 || layout.fileRowCount === 0) return -1;
-  return (
-    layout.fileSectionHeaderIndex +
-    1 +
-    Math.floor(fileIndex / layout.itemsPerRow)
-  );
+  return layout.fileRowsStart + Math.floor(fileIndex / layout.itemsPerRow);
 }
 
 // React Compiler skips this whole module: TanStack Virtual's `useVirtualizer()`
 // returns unstable functions it refuses to memoize, and the bail is file-wide.
 // Manual memoization here stays load-bearing, and anything memo-worthy belongs
 // in DirectoryRows.tsx rather than in this file.
-const VirtualDirectoryItems = ({
+
+/**
+ * The folder listing's virtual rows and card grid, for any list of items in a
+ * folders section and a files section: the folder listing's and the Trash's.
+ * Only the rows in view are in the document, and each item in them is what
+ * `renderItem` makes of it. As a listbox (`listboxLabel`) it holds only the
+ * items, placed in the whole list, under a heading outside it.
+ */
+const VirtualItemsList = ({
   columnCountRef,
   containerRef,
-  cutPaths,
-  dropTargetPath,
   files,
   folders,
-  isLoadingSubfolders,
+  heading,
   isMarqueeSelecting,
-  onCancelRename,
-  onConfirmRename,
+  listboxLabel,
   onContainerMouseDown,
-  onDownloadFile,
-  onFileClick,
-  onFileContextMenu,
-  onFolderClick,
-  onFolderContextMenu,
-  onFolderDragLeave,
-  onFolderDragOver,
-  onFolderDrop,
-  onItemDragStart,
   onMarqueeMouseDown,
-  onOpenDirectory,
-  renamingPath,
-  renamePendingPath,
-  renameProgressPct,
+  renderItem,
   revealIndex,
-  selectedPaths,
   selectionBox,
-  subfoldersMap,
   viewMode,
-}: VirtualDirectoryItemsProps) => {
+}: VirtualItemsProps) => {
   "use no memo";
 
   const horizontalPadding = viewMode === "card" ? CARD_PADDING : 0;
@@ -310,9 +347,11 @@ const VirtualDirectoryItems = ({
         columnCount,
         fileCount: files.length,
         folderCount: folders.length,
+        // A listbox owns only its options: its heading sits outside it.
+        headers: !listboxLabel,
         viewMode,
       }),
-    [columnCount, files.length, folders.length, viewMode],
+    [columnCount, files.length, folders.length, listboxLabel, viewMode],
   );
 
   const estimateSize = useCallback(
@@ -374,13 +413,38 @@ const VirtualDirectoryItems = ({
     });
   }, [cardSize, layout, revealIndex, virtualizer]);
 
-  return (
+  // The attribute keeps the selection (DirectoryListing) and the handler keeps
+  // a drag of the thumb from starting a marquee.
+  const cardSizeSlider = (
+    <AppSlider
+      aria-label="Card size"
+      data-listing-control="true"
+      max={CARD_SIZE_MAX}
+      min={CARD_SIZE_MIN}
+      onChange={changeCardSize}
+      onMouseDown={stopPropagation}
+      style={{
+        flex: "0 0 auto",
+        marginRight: CARD_PADDING,
+        width: CARD_SIZE_SLIDER_WIDTH,
+      }}
+      title="Card size"
+      value={cardSize}
+    />
+  );
+  const setSize = folders.length + files.length;
+
+  const list = (
     <div
+      aria-label={listboxLabel}
+      aria-multiselectable={listboxLabel ? true : undefined}
       onMouseDown={onMarqueeMouseDown}
       onMouseDownCapture={onContainerMouseDown}
       ref={containerRef}
+      role={listboxLabel ? "listbox" : undefined}
       style={{
-        height: "100%",
+        flex: listboxLabel ? 1 : undefined,
+        height: listboxLabel ? undefined : "100%",
         minHeight: 0,
         minWidth: 0,
         overflowX: "hidden",
@@ -428,24 +492,7 @@ const VirtualDirectoryItems = ({
                     }}
                   >
                     <SectionHeader label={row.label} viewMode={viewMode} />
-                    {/* The attribute keeps the selection (DirectoryListing)
-                        and the handler keeps a drag of the thumb from
-                        starting a marquee. */}
-                    <AppSlider
-                      aria-label="Card size"
-                      data-listing-control="true"
-                      max={CARD_SIZE_MAX}
-                      min={CARD_SIZE_MIN}
-                      onChange={changeCardSize}
-                      onMouseDown={stopPropagation}
-                      style={{
-                        flex: "0 0 auto",
-                        marginRight: CARD_PADDING,
-                        width: CARD_SIZE_SLIDER_WIDTH,
-                      }}
-                      title="Card size"
-                      value={cardSize}
-                    />
+                    {cardSizeSlider}
                   </div>
                 ) : (
                   <SectionHeader label={row.label} viewMode={viewMode} />
@@ -467,46 +514,18 @@ const VirtualDirectoryItems = ({
                 >
                   {Array.from({ length: row.count }, (_, offset) => {
                     const items = row.itemKind === "folder" ? folders : files;
-                    const item = items[row.start + offset];
+                    const index = row.start + offset;
+                    const item = items[index];
                     if (!item) return null;
+                    // Folders come first in the whole list.
+                    const posInSet =
+                      (row.itemKind === "folder" ? 0 : folders.length) +
+                      index +
+                      1;
                     return (
-                      <DirectoryItem
-                        disableHover={isMarqueeSelecting}
-                        isCut={cutPaths.has(item.path)}
-                        isDropTarget={dropTargetPath === item.path}
-                        isLoadingSubfolders={
-                          row.itemKind === "folder" && isLoadingSubfolders
-                        }
-                        isRenaming={renamingPath === item.path}
-                        isRenamePending={renamePendingPath === item.path}
-                        item={item}
-                        itemKind={row.itemKind}
-                        key={`${item.path}-${item.name}`}
-                        onCancelRename={onCancelRename}
-                        onConfirmRename={onConfirmRename}
-                        onDownloadFile={onDownloadFile}
-                        onFileClick={onFileClick}
-                        onFileContextMenu={onFileContextMenu}
-                        onFolderClick={onFolderClick}
-                        onFolderContextMenu={onFolderContextMenu}
-                        onFolderDragLeave={onFolderDragLeave}
-                        onFolderDragOver={onFolderDragOver}
-                        onFolderDrop={onFolderDrop}
-                        onItemDragStart={onItemDragStart}
-                        onOpenDirectory={onOpenDirectory}
-                        renameProgressPct={
-                          renamePendingPath === item.path
-                            ? renameProgressPct
-                            : undefined
-                        }
-                        selected={selectedPaths.has(item.path)}
-                        subfolderData={
-                          row.itemKind === "folder" && !item.symlink
-                            ? subfoldersMap.get(stripTrailingSlash(item.path))
-                            : undefined
-                        }
-                        viewMode={viewMode}
-                      />
+                      <Fragment key={`${item.path}-${item.name}`}>
+                        {renderItem(item, row.itemKind, { posInSet, setSize })}
+                      </Fragment>
                     );
                   })}
                 </div>
@@ -525,6 +544,148 @@ const VirtualDirectoryItems = ({
         />
       )}
     </div>
+  );
+
+  if (!listboxLabel) return list;
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        minHeight: 0,
+        minWidth: 0,
+      }}
+    >
+      <div
+        style={{
+          alignItems: "center",
+          display: "flex",
+          gap: CARD_GAP,
+          justifyContent: "space-between",
+          paddingInline: horizontalPadding,
+        }}
+      >
+        {heading ? <SectionHeader label={heading} viewMode={viewMode} /> : null}
+        {viewMode === "card" ? cardSizeSlider : null}
+      </div>
+      {list}
+    </div>
+  );
+};
+
+export const VirtualItems = memo(VirtualItemsList);
+
+/** The folder listing's items, as cards or list rows. */
+const VirtualDirectoryItems = ({
+  columnCountRef,
+  containerRef,
+  cutPaths,
+  dropTargetPath,
+  files,
+  folders,
+  isLoadingSubfolders,
+  isMarqueeSelecting,
+  onCancelRename,
+  onConfirmRename,
+  onContainerMouseDown,
+  onDownloadFile,
+  onFileClick,
+  onFileContextMenu,
+  onFolderClick,
+  onFolderContextMenu,
+  onFolderDragLeave,
+  onFolderDragOver,
+  onFolderDrop,
+  onItemDragStart,
+  onMarqueeMouseDown,
+  onOpenDirectory,
+  renamingPath,
+  renamePendingPath,
+  renameProgressPct,
+  revealIndex,
+  selectedPaths,
+  selectionBox,
+  subfoldersMap,
+  viewMode,
+}: VirtualDirectoryItemsProps) => {
+  "use no memo";
+
+  const renderItem = useCallback(
+    (item: FileItem, itemKind: ItemKind) => (
+      <DirectoryItem
+        disableHover={isMarqueeSelecting}
+        isCut={cutPaths.has(item.path)}
+        isDropTarget={dropTargetPath === item.path}
+        isLoadingSubfolders={itemKind === "folder" && isLoadingSubfolders}
+        isRenaming={renamingPath === item.path}
+        isRenamePending={renamePendingPath === item.path}
+        item={item}
+        itemKind={itemKind}
+        onCancelRename={onCancelRename}
+        onConfirmRename={onConfirmRename}
+        onDownloadFile={onDownloadFile}
+        onFileClick={onFileClick}
+        onFileContextMenu={onFileContextMenu}
+        onFolderClick={onFolderClick}
+        onFolderContextMenu={onFolderContextMenu}
+        onFolderDragLeave={onFolderDragLeave}
+        onFolderDragOver={onFolderDragOver}
+        onFolderDrop={onFolderDrop}
+        onItemDragStart={onItemDragStart}
+        onOpenDirectory={onOpenDirectory}
+        renameProgressPct={
+          renamePendingPath === item.path ? renameProgressPct : undefined
+        }
+        selected={selectedPaths.has(item.path)}
+        subfolderData={
+          itemKind === "folder" && !item.symlink
+            ? subfoldersMap.get(stripTrailingSlash(item.path))
+            : undefined
+        }
+        viewMode={viewMode}
+      />
+    ),
+    [
+      cutPaths,
+      dropTargetPath,
+      isLoadingSubfolders,
+      isMarqueeSelecting,
+      onCancelRename,
+      onConfirmRename,
+      onDownloadFile,
+      onFileClick,
+      onFileContextMenu,
+      onFolderClick,
+      onFolderContextMenu,
+      onFolderDragLeave,
+      onFolderDragOver,
+      onFolderDrop,
+      onItemDragStart,
+      onOpenDirectory,
+      renamePendingPath,
+      renameProgressPct,
+      renamingPath,
+      selectedPaths,
+      subfoldersMap,
+      viewMode,
+    ],
+  );
+
+  return (
+    <VirtualItems
+      columnCountRef={columnCountRef}
+      containerRef={containerRef}
+      files={files}
+      folders={folders}
+      isMarqueeSelecting={isMarqueeSelecting}
+      onContainerMouseDown={onContainerMouseDown}
+      onMarqueeMouseDown={onMarqueeMouseDown}
+      renderItem={renderItem}
+      revealIndex={revealIndex}
+      selectionBox={selectionBox}
+      viewMode={viewMode}
+    />
   );
 };
 

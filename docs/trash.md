@@ -20,6 +20,7 @@ planted, and everything below them is reached through open handles.
 | `filebrowser.trash_restore` | `TrashRestoreRequest` | Puts each trashed item back, or into `destination`. |
 | `filebrowser.trash_purge` | `BatchPathRequest` | Deletes each trashed item for good. |
 | `filebrowser.trash_list` | none | Lists everything in the user's trashes, newest first. |
+| `filebrowser.trash_size` | `PathRequest` | Sizes one trashed folder: its files' total size and how many files and folders it holds (`DirectorySizeData`). |
 
 The three changes are jobs that report a count of items and answer with
 `FileBatchResult`: one failed item does not stop the others, and each failure
@@ -92,6 +93,43 @@ The page shows an item under the base name of `originalPath`, or `name` when
 that is empty: a restore puts it back under that name, and a restore into a
 chosen folder sends it in `names`. The original location is the folder of
 `originalPath`. Sorting is the page's.
+
+The list gives no size for a folder, since it would have to walk every
+trashed folder. `filebrowser.trash_size` sizes one when the page asks, which
+it does when the folder's properties open. It takes only an item directly in
+the `files/` folder of one of the session user's own trashes, the ones the
+list reads, so it measures nothing the list would not show. What it answers:
+
+| Case | Status |
+|------|--------|
+| A path that is not an item of the user's trashes | 400 |
+| An item that is not a folder (a link included) | 400 |
+| A missing item | 404 |
+| A folder of the trash another user owns | 403 |
+| A link where a folder of the trash goes, on a root bridge | 403, with the error purge and restore give for it |
+| The item itself cannot be opened or listed | its error (403 when permission is refused), never a size of 0 |
+
+It reaches the item as a purge does, from the trash's own folders without
+following a link the user could have planted there on a root bridge, and
+walks it through handles without following a symlink: a link inside the
+folder counts as a file and is never entered, so nothing outside the item is
+measured. A folder of another mount below it (a mount point, a bind mount)
+counts as a folder and is not entered. That goes by the mount, read with
+`statx` `STATX_MNT_ID` (Linux 5.8 and later, under LinuxIO's 5.9 floor;
+without it the size is refused rather than walked), where `du -x` goes by
+the device number: every btrfs subvolume has a device number of its own, and
+a subvolume nested in the folder is part of it. On a session with sudo the
+walk is root's, so it also counts what the user could not read inside the
+item, as sizes and counts only, never names. A folder below the item that
+cannot be opened or listed counts as a folder and adds nothing.
+
+The size is the size on disk, counted as the indexer counts a folder for the
+folder listing: the blocks every entry takes, every folder's own blocks
+included, the trashed folder's as well, so a sparse file counts what it holds
+and a file with several links in the folder counts once. Every entry that is
+not a folder counts as a file, each link included. The walk stops when the
+request is cancelled. Like the list it is a read of the user's own trash
+and declares no `Privileged()`; a session without sudo runs it as the user.
 
 ## Restore
 
@@ -200,18 +238,39 @@ shows its own loading rows, "Trash is empty." when there is nothing, and a
 failed read with its error and a Retry button. A Refresh button reads it
 again, as for items another program trashed meanwhile.
 
-The list has the columns Name (the shown name, see [The list](#the-list)),
+The items show as a folder's do, as cards or as a list, in the folder
+listing's virtual rows (`VirtualItems` in `VirtualDirectoryItems.tsx`), so
+only the rows in view are in the page however many items the Trash holds.
+The header's view button switches between the two, and it is the folder
+listing's own setting: the Trash opens in the view the folders show, a
+switch in the Trash carries over to the folders, and the card size, set
+with the slider beside the heading, is shared with them too. The items are
+one listbox of options, the heading and the slider outside it, and each
+option says where it stands in the whole Trash (`aria-posinset`,
+`aria-setsize`), so a screen reader hears the full count however few rows
+are in the page. A card shows the shown name, the original location
+("Unknown" without one), a file's size and the date deleted. The
+list has the columns Name (the shown name, see [The list](#the-list)),
 Original location (the folder of `originalPath`, "Unknown" without one),
 Date deleted ("Unknown" without one) and Size (a file's; a folder's is not
-listed). Folders and files are one list, sorted by any column, again by the
-same column the other way, newest deleted first when the Trash opens.
-Selection works as in a folder: click, Ctrl and Shift click, a marquee,
-Ctrl+A, the arrow keys, typing a name's first letters, Escape. A trashed
-item is not opened: a double click or Enter shows its Properties, never the
-inside of a trashed folder or an editor. Properties of one item show its
-name, original location, date deleted, size and kind (folder or file); of
-several, how many, how many of them are files and folders, and the total
-size of the files.
+listed). Folders and files are one list under one heading, Items, sorted by
+any column, again by the same column the other way, newest deleted first
+when the Trash opens. The sort is in the URL beside `trash`, `sort`
+(`name`, `originalPath`, `deletedAt` or `size`) and `order` (`asc` or
+`desc`), each left out at its default (`deletedAt`, `desc`), so a reload or
+a link opens the Trash in the same order; an unknown value falls back to the
+default, and a folder's URL carries no sort. A new sort replaces the URL
+instead of adding a step, so Back still leads to the folder. Selection works
+as in a folder: click, Ctrl and Shift click, a marquee, Ctrl+A, the arrow
+keys, typing a name's first letters, Escape. A trashed item is not opened: a
+double click or Enter shows its Properties, never the inside of a trashed
+folder or an editor. Properties of one item show its name, original
+location, date deleted, size and kind (folder or file); a folder's size and
+how many files and folders it holds are read from `filebrowser.trash_size`
+as the properties open ("Calculating…" meanwhile, "Unavailable" with the
+reason on hover when it fails), and read again by a trash job that ends. Of
+several items Properties show how many, how many of them are files and
+folders, and the total size of the files.
 
 What can be done is the same in the header (where a folder's options sit),
 the context menu and Properties:
@@ -227,8 +286,7 @@ the context menu and Properties:
   listed when it asked.
 
 The folder's own actions (new file or folder, upload, paste, rename, copy,
-cut, compress, permissions, search, hidden files, the card view) are not in
-the Trash. Each action is a job as in [Jobs](./jobs.md#frontend): its dialog
+cut, compress, permissions, search, hidden files) are not in the Trash. Each action is a job as in [Jobs](./jobs.md#frontend): its dialog
 closes as it starts, its items leave the selection, any number run at once
 with a row each in the task tray, each reports its own result with failures
 named per item, and the list is read again when it ends, also after a
@@ -250,11 +308,18 @@ asked about once; with replace only the first is sent and the others stay in
 the Trash, since the second would go over the first, which would then be
 gone for good. Only that second request carries `overwrite`, and a name
 taken again by then fails it like any other failure; nothing is asked twice.
-The questions of several restores are asked one after another. Restores and
-their prompt belong to the file browser page, not to the Trash or a folder,
-so a restore that ends after the user went from the Trash to a folder still
-asks; one that ends after the user left the file browser reports its taken
-names as failures, and those items stay in the Trash.
+An item whose destination the page does not know is reported as a failure
+instead. Restores and their prompt belong to the file browser page, not to
+the Trash or a folder, and the questions wait outside the page
+(`frontend/src/routes/_authenticated/filebrowser/-hooks/takenNamesPrompts.ts`),
+one per restore in the order the restores ended, as the questions about a
+disk without a trash do. They are asked one after another anywhere in the
+file browser: in a folder, in the Trash, or when the user comes back to the
+file browser after leaving it, and a question whose page closed before it
+was answered is asked again there. Until it is answered its items stay in
+the Trash. A restore that ends with such a question while no file browser
+shows says so, "2 items wait in the Trash", with the file browser asking
+what to do with them when it shows, and the toast's link to it.
 
 ### Dragging out and in
 
@@ -266,7 +331,15 @@ tab (the Trash's own trail) or in the file browser of another LinuxIO tab,
 the items are restored into that folder with `destination` and `names`,
 never moved with `filebrowser.move_batch`, which would leave the
 `.trashinfo` behind and keep the name the item has in the trash. The items
-leave the selection once dropped. The other way, items dragged from a
+leave the selection once dropped. The drag also carries the origin of the
+page it started on, which says whose Trash holds the items, and the drag's
+token, which only this server's own pages know: dropped in a tab of another
+server it restores nothing there, where the server's trash does not hold them
+(or holds another item at the same path), and says "Cannot drop 2 items
+here", naming the server they come from; a drag another site forged with this
+server's origin is refused as well, and a drag from a folder the same way
+([File Browser Drag and Drop](./filebrowser-drag-and-drop.md#a-drag-from-another-server-or-another-site)).
+The other way, items dragged from a
 folder onto the Trash's list, onto its "Trash" segment, or onto the Trash
 button of a folder's header move to the Trash, without the question Delete
 asks: the move is the user's gesture, and the Trash gives it back.
@@ -301,9 +374,24 @@ Open work on the Trash is in the [backlog](./TODO/backlog.md).
 - The header's Trash button takes dropped items on a wide screen only; on a
   phone it sits in the actions menu.
 - In the tab that shows the Trash the only folders to drag an item onto are
-  the segments of the trail; any folder of another tab takes it.
+  the segments of the trail; any folder of another tab of the same server
+  takes it.
 - An item dragged out of the Trash and dropped on the desktop or on another
   program does nothing: the drag carries the item's place in the trash, not
   its content, which would have to be downloaded first.
+- The server a drag comes from is told by its page's origin, so the same
+  server opened under two addresses (its name and its IP address) counts as
+  two: a drag between those tabs is refused.
 - A move to Trash that fails for other items as well as moving some reports
   the failures and not the items that moved, as a partial delete does.
+- The selection is not in the URL: a reload starts with nothing selected.
+- A question about taken names waits in the browser tab that ran the
+  restore: a reload or a sign-out drops it, and its items stay in the Trash.
+- A trashed folder whose walk takes longer than a request may wait (30
+  seconds) shows "Unavailable" with "Request timeout"; it is walked once, not
+  again, until its properties open again.
+- A folder inside a trashed folder that cannot be opened or read (on a
+  session without sudo, one the user may not read) adds nothing to its size,
+  and the size does not say it is partial.
+- Sizing a trashed tree of millions of hard-linked files keeps one entry per
+  such file in memory for the length of the walk.

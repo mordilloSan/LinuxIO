@@ -1,6 +1,7 @@
 import { Icon } from "@iconify/react";
+import { useQuery } from "@tanstack/react-query";
 
-import type { TrashEntry } from "@/api";
+import { getMutationErrorMessage, linuxio, type TrashEntry } from "@/api";
 import CardIconHeader from "@/components/cards/CardIconHeader";
 import FileBrowserDialog from "@/components/dialog/GeneralDialog";
 import AppButton from "@/components/ui/AppButton";
@@ -38,6 +39,47 @@ const grid = {
   gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
 } as const;
 
+// A trashed folder is sized when its properties open: the list keeps no size
+// for a folder, which would mean walking every trashed folder.
+const FolderSize = ({ path }: { path: string }) => {
+  const { data, error, isPending } = useQuery({
+    ...linuxio.filebrowser.trash_size({ path }),
+    // A walk that failed or ran out of time would only fail again, and the
+    // dialog says why itself, without the cache's toast.
+    meta: { silent: true },
+    retry: false,
+  });
+  const unavailable = (
+    <span title={getMutationErrorMessage(error, "The size cannot be read")}>
+      Unavailable
+    </span>
+  );
+  return (
+    <>
+      <DetailRow
+        label="Size"
+        value={
+          isPending
+            ? "Calculating…"
+            : data
+              ? formatFileSize(data.size)
+              : unavailable
+        }
+      />
+      <DetailRow
+        label="Contents"
+        value={
+          isPending
+            ? "Calculating…"
+            : data
+              ? `${plural(data.fileCount, "file")}, ${plural(data.folderCount, "folder")}`
+              : unavailable
+        }
+      />
+    </>
+  );
+};
+
 const OneItem = ({ entry }: { entry: TrashEntry }) => {
   const folder = trashOriginalFolder(entry);
   return (
@@ -67,11 +109,11 @@ const OneItem = ({ entry }: { entry: TrashEntry }) => {
           label="Date deleted"
           value={entry.deletedAt ? formatDate(entry.deletedAt) : "Unknown"}
         />
-        <DetailRow
-          label="Size"
-          value={entry.isDir ? "Not listed" : formatFileSize(entry.size)}
-        />
+        {entry.isDir ? null : (
+          <DetailRow label="Size" value={formatFileSize(entry.size)} />
+        )}
         <DetailRow label="Kind" value={entry.isDir ? "Folder" : "File"} />
+        {entry.isDir ? <FolderSize path={entry.path} /> : null}
       </div>
     </>
   );

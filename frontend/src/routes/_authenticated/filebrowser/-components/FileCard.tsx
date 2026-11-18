@@ -23,8 +23,14 @@ import {
   getSubtleDividerColor,
 } from "./fileBrowserSurfaces";
 import FileIcon from "./FileIcon";
+import type { ItemPosition } from "./VirtualDirectoryItems";
 
 interface FileCardProps {
+  /**
+   * A line under the name, as the folder a search result sits in: the
+   * Trash's cards say where an item came from.
+   */
+  caption?: string;
   directorySizeError?: Error | null;
   directorySizeLoading?: boolean;
   directorySizeUnavailable?: boolean;
@@ -49,6 +55,11 @@ interface FileCardProps {
   onDrop?: (event: DragEvent) => void;
   path?: string;
   renameProgressPct?: number;
+  /**
+   * Makes the card an option of a listbox, as the Trash's cards are: it says
+   * whether it is selected and where it stands in the whole list.
+   */
+  option?: ItemPosition;
   selected?: boolean;
   showFullPath?: boolean; // Show full directory path (for search results)
   size?: number;
@@ -57,6 +68,8 @@ interface FileCardProps {
 
 const FileCard = memo<FileCardProps>(
   ({
+    caption,
+    option,
     name,
     path,
     size,
@@ -206,8 +219,16 @@ const FileCard = memo<FileCardProps>(
     // Use CSS classes for hover - no React state updates during hover
     const className = `file-card hover-lift${disableHover ? " hover-lift--disabled" : ""}${isDropTarget ? " drop-target" : ""}`;
 
+    // The folder a search result sits in, or the caller's caption.
+    const location =
+      caption ??
+      (showFullPath && path ? path.replace(/\/[^/]*$/, "") || "/" : undefined);
+
     return (
       <div
+        aria-posinset={option?.posInSet}
+        aria-selected={option ? selected : undefined}
+        aria-setsize={option?.setSize}
         className={className}
         data-file-card="true"
         data-file-path={path}
@@ -219,6 +240,7 @@ const FileCard = memo<FileCardProps>(
         onDragOver={onDragOver}
         onDragStart={onDragStart}
         onDrop={onDrop}
+        role={option ? "option" : undefined}
         style={{
           display: "flex",
           alignItems: "center",
@@ -308,26 +330,21 @@ const FileCard = memo<FileCardProps>(
             </AppTypography>
           )}
 
-          {/* Directory path and type badge for search results */}
-          {showFullPath && (
-            <>
-              {path && (
-                <AppTypography
-                  component="div"
-                  color="text.secondary"
-                  noWrap
-                  style={{
-                    opacity: 0.7,
-                    lineHeight: 1.2,
-                    marginTop: "2px",
-                  }}
-                  title={path}
-                  variant="caption"
-                >
-                  {path.replace(/\/[^/]*$/, "") || "/"}
-                </AppTypography>
-              )}
-            </>
+          {location !== undefined && (
+            <AppTypography
+              component="div"
+              color="text.secondary"
+              noWrap
+              style={{
+                opacity: 0.7,
+                lineHeight: 1.2,
+                marginTop: "2px",
+              }}
+              title={caption ?? path}
+              variant="caption"
+            >
+              {location}
+            </AppTypography>
           )}
 
           {/* Size line (middle) */}

@@ -550,7 +550,10 @@ loader: (loaderArgs) => {
 
 With `?trash=true` the page shows the Trash ([Trash](./trash.md#the-trash-view))
 instead of the folder in the path, which it keeps as the folder to return to;
-the loader lists no folder then, and the Trash reads its own list.
+the loader lists no folder then, and the Trash reads its own list. Beside
+`trash` the search keeps the Trash's sort, `sort` and `order`, validated by
+`validateTrashSort` (`filebrowser/-trashEntries.ts`) and dropped from a URL
+without `trash`; a sort is not a loader dependency.
 
 `createFileBrowserListingQueryOptions` gives the loader and observer the exact
 same path, query function, key, and two-second `staleTime`. That short grace
@@ -610,7 +613,7 @@ inherits its ancestor's.
 | `/docker/images` | `docker/images.tsx` | `loadRouteQueries` ×1 | — | `image` | — |
 | `/docker/networks` | `docker/networks.tsx` | `loadRouteQueries` ×1 | — | `network` | — |
 | `/docker/volumes` | `docker/volumes.tsx` | `loadRouteQueries` ×1 | — | `volume` | — |
-| `/filebrowser/$` | `filebrowser/$.tsx` | `BACKGROUND` ×1 +cond | *params*, `trash` | `edit`, `enabled`, `redirect`, `tail`, `trash` | — |
+| `/filebrowser/$` | `filebrowser/$.tsx` | `BACKGROUND` ×1 +cond | *params*, `trash` | `edit`, `enabled`, `redirect`, `tail`, `trash`, `sort`, `order` | — |
 | `/hardware` | `hardware/route.tsx` | transport + deferred ×7 +cond | — | — | `requireAccess` lmSensors |
 | `/logs` | `logs/route.tsx` | `loadRouteTransport` | — | `unit`, `invocationId` | — |
 | `/network` | `network/route.tsx` | — | — | — | — |

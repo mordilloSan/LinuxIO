@@ -122,10 +122,15 @@ describe("OPERATION_QUERY_INVALIDATIONS", () => {
 
   it("refreshes the Trash listing after trash, restore and purge", () => {
     const trashList = ["linuxio", "filebrowser", "trash_list"];
+    // A trashed folder's size too: the next item may take a purged name.
+    const trashSize = ["linuxio", "filebrowser", "trash_size"];
     for (const route of ["trash_batch", "trash_restore", "trash_purge"]) {
       expect(
         OPERATION_QUERY_INVALIDATIONS[`filebrowser.${route}`],
       ).toContainEqual(trashList);
+      expect(
+        OPERATION_QUERY_INVALIDATIONS[`filebrowser.${route}`],
+      ).toContainEqual(trashSize);
     }
     expect(
       OPERATION_QUERY_INVALIDATIONS["filebrowser.trash_restore"],

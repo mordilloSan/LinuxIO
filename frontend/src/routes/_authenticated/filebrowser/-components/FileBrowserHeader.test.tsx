@@ -2,13 +2,35 @@ import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { HeaderActionsProps } from "@/components/ui/HeaderActions";
+import { dragMadeHere } from "@/test/fileBrowserDrag";
 import { fireEvent, render as renderWithApp, screen } from "@/test/render";
 
 import { INTERNAL_DRAG_TYPE } from "../-dragTypes";
+import { setInternalDrag } from "../-internalDrag";
 import FileBrowserHeader from "./FileBrowserHeader";
 
 const headerActionsRender = vi.hoisted(() => vi.fn());
 const navigate = vi.hoisted(() => vi.fn());
+const mocks = vi.hoisted(() => ({ toastError: vi.fn() }));
+
+vi.mock("sonner", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("sonner")>()),
+  toast: { error: mocks.toastError },
+}));
+
+// Items dragged from a folder: by this page's own drag, or from another
+// server's tab, which has a token of its own.
+const carrying = (paths: string[], origin?: string) => {
+  const payload = origin
+    ? { origin, paths, token: "f".repeat(32) }
+    : dragMadeHere((started) => setInternalDrag(started, paths));
+  return {
+    dropEffect: "none",
+    getData: (type: string) =>
+      type === INTERNAL_DRAG_TYPE ? JSON.stringify(payload) : "",
+    types: [INTERNAL_DRAG_TYPE],
+  };
+};
 
 vi.mock("@tanstack/react-router", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@tanstack/react-router")>()),
@@ -135,16 +157,32 @@ describe("FileBrowserHeader", () => {
     await user.click(trash);
     expect(navigate).toHaveBeenCalledWith({ search: { trash: true }, to: "." });
 
-    const dataTransfer = {
-      dropEffect: "none",
-      getData: (type: string) =>
-        type === INTERNAL_DRAG_TYPE ? JSON.stringify(["/srv/a.txt"]) : "",
-      types: [INTERNAL_DRAG_TYPE],
-    };
+    const dataTransfer = carrying(["/srv/a.txt"]);
     fireEvent.dragOver(trash, { dataTransfer });
     expect(dataTransfer.dropEffect).toBe("move");
     fireEvent.drop(trash, { dataTransfer });
     expect(onTrashItems).toHaveBeenCalledWith(["/srv/a.txt"]);
+  });
+
+  it("refuses items dragged onto the Trash button from another server's tab", () => {
+    const onTrashItems = vi.fn().mockResolvedValue(undefined);
+    render(
+      <FileBrowserHeader
+        {...defaultProps}
+        onTrashItems={onTrashItems}
+        showQuickSave={false}
+      />,
+    );
+    const other = "https://backup.example:8090";
+
+    fireEvent.drop(screen.getByRole("button", { name: "Trash" }), {
+      dataTransfer: carrying(["/srv/a.txt"], other),
+    });
+
+    expect(onTrashItems).not.toHaveBeenCalled();
+    expect(mocks.toastError).toHaveBeenCalledWith("Cannot drop 1 item here", {
+      description: `It comes from ${other}, another server. Drop it in a tab of that server.`,
+    });
   });
 
   it("offers neither search nor indexing to a session without sudo", () => {

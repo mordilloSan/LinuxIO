@@ -10,6 +10,7 @@ import {
 
 import FileBrowserPage from "./-components/FileBrowserPage";
 import { createFileBrowserListingQueryOptions } from "./-hooks/fileBrowserListingQueryOptions";
+import { validateTrashSort } from "./-trashEntries";
 
 export const Route = createFileRoute("/_authenticated/filebrowser/$")({
   validateSearch: (search) => ({
@@ -20,6 +21,8 @@ export const Route = createFileRoute("/_authenticated/filebrowser/$")({
     // The Trash, opened from the folder in the path. A search parameter
     // rather than a path segment, which would hide a folder named "trash".
     ...optionalBoolean(search, "trash"),
+    // The Trash's sort column and order, kept only while it shows.
+    ...(search.trash === true ? validateTrashSort(search) : {}),
   }),
   loaderDeps: ({ search }) => ({ trash: search.trash === true }),
   context: ({ params }) => {

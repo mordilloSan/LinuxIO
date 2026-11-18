@@ -4375,6 +4375,11 @@ export interface LinuxIOSchema {
       result: FileBatchResult;
       progress: TaskProgress<CountProgress>;
     };
+    trash_size: {
+      input: [path: string];
+      request: PathRequest;
+      result: DirectorySizeData;
+    };
     upload: {
       input: [request: FileUploadRequest];
       request: FileUploadRequest;
@@ -5418,6 +5423,7 @@ export interface LinuxIOCallSchema {
     result: SubfoldersResponse;
   };
   "filebrowser.trash_list": { request: void; result: TrashListResponse };
+  "filebrowser.trash_size": { request: PathRequest; result: DirectorySizeData };
   "filebrowser.users_groups": { request: void; result: UsersGroupsResponse };
   "indexer.get_config": { request: void; result: IndexerConfig };
   "indexer.get_status": { request: void; result: IndexerDaemonStatus };
