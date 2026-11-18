@@ -30,6 +30,13 @@ if (vmNumber === "") {
 process.env.LINUXIO_VM_INDEX = vmNumber;
 const vmPassword = ofThisWorker("LINUXIO_VM_PASSWORDS");
 
+/**
+ * The distribution of the run's VMs: DISTRO on the Make target, which
+ * mk/vm.mk exports as LINUXIO_VM_DISTRO, the variable the rig itself reads to
+ * pick the domain. Empty means ubuntu, as in the rig.
+ */
+export const vmDistro = process.env.LINUXIO_VM_DISTRO || "ubuntu";
+
 export const fixture = (name: string) => path.join(here, "fixtures", name);
 
 /** Runs a rig subcommand (ssh, reboot, power-cut, off-for, throttle) and returns its stdout. */

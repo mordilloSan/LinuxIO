@@ -534,17 +534,54 @@ install_config_files() {
 	return 0
 }
 
+# The distribution family, as install-dependencies.sh decides it: this script
+# runs alone (curl | bash, the updater), so it carries a copy of those
+# helpers, which the installer fixtures keep identical.
+DISTRO=""
+detect_distro() {
+	if [[ -f /etc/os-release ]]; then
+		# shellcheck source=/dev/null
+		. /etc/os-release
+		DISTRO="${ID:-unknown}"
+	elif [[ -f /etc/debian_version ]]; then
+		DISTRO="debian"
+	elif [[ -f /etc/redhat-release ]]; then
+		DISTRO="rhel"
+	else
+		DISTRO="unknown"
+	fi
+}
+
+is_fedora() {
+	case "$DISTRO" in
+	fedora | rhel | centos | rocky | almalinux) return 0 ;;
+	*) return 1 ;;
+	esac
+}
+
+# install_pam_config PAM_DIR [OWNER] installs the family's PAM file as
+# PAM_DIR/linuxio. It goes through a staged copy, so a download cut half-way
+# leaves the file there as it was.
 install_pam_config() {
+	local pam_dir="$1"
+	local owner="${2:-}"
+	local staged="${STAGING}/pam-linuxio"
 	Show 2 "Installing PAM configuration..."
 
-	local pam_file="${PAM_DIR}/linuxio"
-
-	if ! fetch_packaging_asset "etc/pam.d/linuxio" "$pam_file"; then
-		Show 1 "Failed to fetch PAM configuration"
+	# The RHEL family has password-auth and postlogin where the Debian family
+	# has common-auth and the rest. The subshell keeps /etc/os-release's
+	# variables out of the installer's.
+	local asset="etc/pam.d/linuxio"
+	if (detect_distro && is_fedora); then
+		asset="etc/pam.d/linuxio.rhel"
 	fi
 
-	chown root:root "$pam_file"
-	chmod 0644 "$pam_file"
+	if ! fetch_packaging_asset "$asset" "$staged"; then
+		Show 1 "Failed to fetch PAM configuration"
+	fi
+	if ! atomic_replace_file "$staged" "${pam_dir}/linuxio" 0644 "$owner"; then
+		Show 1 "Failed to install ${pam_dir}/linuxio"
+	fi
 	Show 0 "PAM configuration installed"
 
 	return 0
@@ -1234,7 +1271,7 @@ main() {
 	if ! install_config_files; then
 		Show 1 "Config installation failed"
 	fi
-	if ! install_pam_config; then
+	if ! install_pam_config "$PAM_DIR" root:root; then
 		Show 1 "PAM configuration failed"
 	fi
 	install_avahi_service

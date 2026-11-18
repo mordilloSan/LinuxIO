@@ -254,9 +254,13 @@ it, or systemd's `zram-generator` at
 `/usr/lib/systemd/system-generators/zram-generator`. Install uses the Debian
 package `zram-tools` or the RHEL package `zram-generator`; on Fedora that
 package comes without `zram-generator-defaults`, so no zram starts until the
-admin chooses it (Fedora 45 test VM, 2026-11-18). There is no service
-step: the dashboard's **Memory overflow** dialog starts zram when the admin
-chooses compressed memory only. The dialog
+admin chooses compressed memory only in the dashboard's **Memory overflow**
+dialog (Fedora 45 test VM, 2026-11-18). There is no service step, but on
+Debian and Ubuntu the `zram-tools` package enables and starts
+`zramswap.service` itself, so zram swaps at zram-tools' defaults as soon as
+the install ends (half the memory, 1955 MiB in the 4 GiB Ubuntu 26.04 test
+VM), and on a host with an active swap file the status reads `mixed` until
+the admin chooses a mode in the dialog. The dialog
 itself does not wait for the capability; its zram row links to Capabilities
 while the package is missing. The capability's `route` links back: once
 the capability is available its row in Settings, and the toast that reports
@@ -267,6 +271,19 @@ as the VMs, WireGuard and rsync routes are, and its link on the row is
 hidden for any other session.
 The two tools differ in configuration file and units; see
 [Memory overflow](./memory.md#the-zram-provider).
+
+`frontend/src/test/vm/capability-install.spec.ts` makes that round in the
+test VM: it takes the distribution's zram tool out with its package manager,
+follows the dialog's link to Capabilities, installs, waits for the job, and
+follows the row's link back to the dialog, which must name the tool as the
+provider. On 2026-11-18 it passed twice on Ubuntu 26.04 (`zram-tools` in
+5 s, with no refresh). On Fedora 45 sign-in stops at SELinux
+([backlog](./TODO/backlog.md#visible-bugs)). With sign-in made to work in
+the VM it passed three times, installing `zram-generator` in 2 to 3 s: once
+with SELinux permissive, on the first sign-in after the VM booted, where the
+install showed "Refreshing the package lists" before it downloaded; and once
+under each of the two changes that item describes, with SELinux enforcing,
+later in a boot that had seen other sign-ins, with no refresh.
 
 ## Filesystem tools
 
@@ -430,7 +447,10 @@ make tsc-only                              # derived capability types compile
 
 Manual end-to-end: with the dependency absent, the feature is gated and the
 Capability Manager shows it unavailable (with an Install button if installable);
-installing it and refreshing capabilities re-enables the feature.
+installing it and refreshing capabilities re-enables the feature. For zram the
+test VM does this in a browser:
+`make test-vm-browser VMS=1 PLAYWRIGHT_ARGS=capability-install.spec.ts`
+(see [zram](#zram)).
 
 ## Known limits
 

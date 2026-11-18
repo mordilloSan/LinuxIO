@@ -1211,11 +1211,14 @@ service step, since `start_zram` does that. See
   drains read 1806 MiB back in 12 seconds after the cancel and 279 MiB
   capped in 2 minutes 14 seconds.
   Both kernels refused an
-  unknown zswap compressor with `ENOENT`. The browser half of Install from
-  Capabilities was not run on Fedora; its backend half was: PackageKit
-  installed `zram-generator` once its cache was refreshed, which an install
-  now does by itself ([Capabilities](./capabilities.md)), and the status
-  then reported the provider.
+  unknown zswap compressor with `ENOENT`. Install from Capabilities in the
+  browser (`capability-install.spec.ts`, [Capabilities](./capabilities.md#zram))
+  passed on Ubuntu, where the dialog then named zram-tools. On Fedora sign-in
+  stops at SELinux ([backlog](./TODO/backlog.md#visible-bugs)); with either
+  change that item describes made in the VM and SELinux enforcing, the spec
+  passed: PackageKit installed `zram-generator` and the dialog named
+  zram-generator as the provider ([Capabilities](./capabilities.md#zram) has
+  the runs).
 
 ## Known limits
 

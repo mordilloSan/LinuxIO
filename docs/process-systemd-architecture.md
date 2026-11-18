@@ -465,7 +465,7 @@ The `Makefile` (recipes in `mk/go.mk` and `mk/auth.mk`) produces eight release a
 - binaries → `/usr/local/bin/`
 - units → `/etc/systemd/system/linuxio*`
 - tmpfiles → `/usr/lib/tmpfiles.d/linuxio.conf`
-- PAM stack → `/etc/pam.d/linuxio`
+- PAM stack → `/etc/pam.d/linuxio`, from `packaging/etc/pam.d/linuxio` on the Debian family and from `packaging/etc/pam.d/linuxio.rhel` on the RHEL family, which has `password-auth` and `postlogin` where Debian has the `common-*` files, and `/etc/locale.conf` for `/etc/default/locale`. The installer tells the families apart with `install-dependencies.sh`'s `detect_distro` and `is_fedora`, of which it carries a copy, and installs the file through a staged copy (`atomic_replace_file`, 0644 root:root), so a download cut half-way leaves the installed file as it was. The installer fixtures keep the copy identical and check that the RHEL file is the Debian one line for line and in the same order, with `common-auth` mapped to `substack password-auth` and `include postlogin`, `common-account` and `common-password` to `password-auth`, `common-session-noninteractive` to `password-auth` and `postlogin`, and `/etc/default/locale` to `/etc/locale.conf`. Order matters on RHEL: a `sufficient` line in `password-auth` ends the stack where it is included, so LinuxIO's own lines stay above each include.
 - config → `/etc/linuxio/`
 - needrestart override → `/etc/needrestart/conf.d/linuxio.conf`, only where `/etc/needrestart` exists (see the **needrestart.** paragraph in "Login and jobs — the bridge connects to its job host")
 

@@ -44,18 +44,44 @@ after a change that issues ioctls).
 
 ## Visible bugs
 
+- [ ] **Nobody can sign in where SELinux is enforcing** (checked on Fedora
+  45, in the test VM on 2026-11-18). The rest of the RHEL family (RHEL,
+  CentOS Stream, Rocky Linux, AlmaLinux) was not run and is expected to
+  behave the same: it gets the same PAM file and enforces the same targeted
+  policy, which Fedora's `selinux-policy` is the source of, with
+  `pam_selinux` in the stack. With the RHEL family's
+  PAM file (`packaging/etc/pam.d/linuxio.rhel`) PAM authenticates and opens
+  the session, and then SELinux denies `linuxio-auth`, which systemd runs as
+  `system_u:system_r:unconfined_service_t:s0` (the binary is `bin_t` in
+  `/usr/local/bin`), the `transition` to the context `pam_selinux.so open`
+  set for the user, `unconfined_u:unconfined_r:unconfined_t:s0` (`seusers`
+  maps every login to `unconfined_u`). The bridge's exec fails with
+  `Permission denied`, and the page says "LinuxIO authenticated you, but
+  could not start the session bridge". Two ways out were each tried in the
+  VM. With either one, `login.spec.ts` and `capability-install.spec.ts`
+  passed with SELinux enforcing and no denial left, a wrong password and a
+  user in `/etc/linuxio/disallowed-users` were still refused, and the job
+  hosts stayed `unconfined_service_t`, since systemd starts them:
+  - without the `pam_selinux.so open` line, the bridge runs as
+    `unconfined_service_t`, as `linuxio-auth` does. The cost: every user's
+    bridge runs as `unconfined_service_t` whatever `seusers` maps the user
+    to, so a user an admin confined to `user_u` or `staff_u` loses that
+    confinement through LinuxIO. The VM could not show it, since it maps
+    every login to `unconfined_u`;
+  - with `SELinuxContext=-unconfined_u:unconfined_r:unconfined_t:s0-s0:c0.c1023`
+    in a drop-in for `linuxio-auth@.service`, `linuxio-auth` runs as
+    `unconfined_t`, and the bridge gets the context `pam_selinux` sets for
+    the user, `unconfined_u:unconfined_r:unconfined_t:s0` here. This keeps
+    PAM's per-user context; it was not tried with a confined user.
+
+  Which one, or a policy module, is the owner's choice. It is done when
+  `make test-vm-browser DISTRO=fedora VMS=1 PLAYWRIGHT_ARGS='login.spec.ts capability-install.spec.ts'`
+  passes as installed, which also closes the last check of Install from
+  Capabilities on Fedora ([Frontend test coverage](./e2e-testing.md#distributions)).
+
 ## Tests that are missing
 
 ## Needs a real machine or a measurement
-
-- [ ] **Memory overflow: Install from Capabilities in the browser on
-  Fedora.** Not run: the browser specs do not run on Fedora yet, since their
-  package fixtures build `apt` packages
-  ([Frontend test coverage](./e2e-testing.md#distributions)). The backend
-  half ran in the Fedora 45 test VM on 2026-11-18: PackageKit installed
-  `zram-generator` once its cache was refreshed, which an install now does
-  by itself ([Capabilities](../capabilities.md)), and the status then
-  reported zram-generator as the provider.
 
 ## Later, no plan yet
 

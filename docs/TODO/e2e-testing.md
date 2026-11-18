@@ -189,6 +189,8 @@ See `docs/development.md`, "Test VM", for usage.
 - `make vm-test-btrfs-integration` runs the root btrfs and partition kernel
   tests (`test-btrfs-integration`) as root in the VM; the kernel-level claims
   of the btrfs resume work rest on that run.
+- `capability-install.spec.ts` installs zram from Capabilities, on Ubuntu,
+  and on Fedora once sign-in works there (see [Distributions](#distributions)).
 - `DISTRO=fedora` on the same targets drives a Fedora 45 VM,
   `linuxio-e2e-fedora`, beside the Ubuntu ones (see
   [Distributions](#distributions)).
@@ -248,22 +250,39 @@ Built (2026-11-18):
 | `make vm-test-memory-integration` | Passes with zram-generator: `TestMemoryIntegration`, and the drain with 2 GiB (the cancel left 1806 of 2063 MiB parked, the rest drained in 13 s) and capped (280 MiB in 2 min 13 s) |
 | `make vm-test-memory-integration`, with the host checks (same day) | Passes after `make vm-reset DISTRO=fedora`, with the swap file held off at boot by a drop-in in place of the mask, which had kept `swap.target`, and with it zram, from starting at boot: after each reboot `swap.target` is active and zram the only swap. Also passing: Fedora's default zram alone and beside the swap file, `TestMemoryIntegration` with the generator's units for drop-ins in four folders and the zswap compressor refused with `ENOENT`, the status without sudo under TuneD 2.28, both drains (1806 MiB left after the cancel, drained in 12 s; capped, 279 MiB in 2 min 14 s), the drain through a `UUID=` alias, and `TestMemoryRebootIntegration` with fstab naming the swap file by its path and through a link |
 | `make test-vm-backend SUITES=packagekit VMS=1` (same day) | Passes: with PackageKit's cache made cold by a dnf transaction outside it, Resolve returns an empty result, and the install refreshes once and installs `hello` |
+| `make test-vm-browser VMS=1 PLAYWRIGHT_ARGS=capability-install.spec.ts` (same day, before `linuxio.rhel`) | Fails at sign-in, and `login.spec.ts` the same way: PAM cannot open the Debian `common-*` files the PAM file included (`PAM _pam_load_conf_file: unable to open config for common-auth`) |
+| `make test-vm-browser-rerun VMS=1 PLAYWRIGHT_ARGS=capability-install.spec.ts`, with those includes changed to `password-auth` by hand and SELinux permissive in the VM, on the first sign-in after the VM booted (same day, before `linuxio.rhel`) | Passes: the install showed "Refreshing the package lists", then installed `zram-generator`, 3 s in all; no zram started, and the Memory overflow dialog named zram-generator as the provider |
+| `make test-vm-browser VMS=1 PLAYWRIGHT_ARGS=login.spec.ts`, with `packaging/etc/pam.d/linuxio.rhel` installed (same day) | Fails one step later: PAM authenticates and opens the session, and SELinux denies the bridge's exec the `transition` to the user's context ([backlog](./backlog.md#visible-bugs)). A wrong password and a user in `/etc/linuxio/disallowed-users` are refused by PAM (`pam_unix`, `pam_listfile`) |
+| `make test-vm-browser-rerun VMS=1 PLAYWRIGHT_ARGS=login.spec.ts`, then `PLAYWRIGHT_ARGS=capability-install.spec.ts`, with SELinux enforcing and either change the backlog item describes made in the VM (same day) | Both pass under each change with no denial: `zram-generator` installed in 2 s and in 3 s, both without a refresh, later in a boot that had seen other sign-ins; no zram started, and the dialog named zram-generator as the provider |
 
 Not run on Fedora yet: the `btrfs`, `indexer`, `docker`, `updater` and
-`network` suites, and the browser specs. Fedora needed three things of the
+`network` suites, and the browser specs as installed, which wait for sign-in
+to work with SELinux enforcing. The root suites needed three things of the
 rig and none of LinuxIO: `cloud-init status` as root (Fedora's cloud-init
 keeps its state from other users), its default `zram0` switched off the way
 Fedora documents before the memory suite, and a swap file made by btrfs and
-labelled `swapfile_t` (`docs/development.md`, "Test VM").
+labelled `swapfile_t` (`docs/development.md`, "Test VM"). Signing in needed
+two things of LinuxIO: a PAM file of the RHEL family's own
+(`packaging/etc/pam.d/linuxio.rhel`), since the Debian one includes
+`common-*` files the RHEL family does not have, and either of the SELinux
+changes still open in the backlog.
 
 Not built yet:
 
 1. The other profiles.
-2. The browser specs on the RHEL family: their package fixtures
-   (`frontend/src/test/vm/fixtures/many-updates.sh`, `slow-package.sh`)
-   build `apt` packages, so each needs an `rpm` twin or stays on the Debian
-   family. Then the table above grows a column per distribution. The root Go
-   suites are expected to run everywhere.
+2. The browser specs on the RHEL family. `login.spec.ts` needs nothing of
+   the distribution, and `capability-install.spec.ts` is written for both
+   families (it takes the zram tool out and puts it back with the
+   distribution's package manager); both pass on Fedora with either SELinux
+   change the backlog item describes made in the VM. The others assume Ubuntu: `jobs-phase2.spec.ts` builds `apt`
+   packages (`frontend/src/test/vm/fixtures/many-updates.sh`,
+   `slow-package.sh`), and `memory.spec.ts`, `ui-actions.spec.ts` and the
+   `jobs-phase4`, `-phase5a`, `-phase5b`, `-needrestart` and `-update` specs
+   call `apt-get`, `dpkg` or `stopAptRuns`. Each needs an `rpm` twin of what
+   it does with packages, or stays on the Debian family; the other specs have
+   not been tried on Fedora.
+   Then the table above grows a column per distribution. The root Go suites
+   are expected to run everywhere.
 
 Open, to settle with the other profiles: Linux Mint and Pop!_OS publish installer images
 and no cloud image, and a RHEL image needs a Red Hat account, so these three

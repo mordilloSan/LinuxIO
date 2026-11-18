@@ -751,6 +751,87 @@ else
 	printf '   \033[1;33m-\033[0m %s\n' "needrestart override expressions not checked: no perl"
 fi
 
+# The PAM file of the host's family: the RHEL family has password-auth and
+# postlogin where the Debian family has common-auth and the rest, so
+# install_pam_config installs etc/pam.d/linuxio.rhel there. It decides with
+# install-dependencies.sh's detect_distro and is_fedora, which the installer
+# carries a copy of, kept identical.
+# shellcheck disable=SC2031
+PAM_DEBIAN="${REPO_ROOT}/packaging/etc/pam.d/linuxio"
+# shellcheck disable=SC2031
+PAM_RHEL="${REPO_ROOT}/packaging/etc/pam.d/linuxio.rhel"
+[[ -f "$PAM_DEBIAN" ]] || fail "missing packaged etc/pam.d/linuxio"
+[[ -f "$PAM_RHEL" ]] || fail "missing packaged etc/pam.d/linuxio.rhel"
+distro_sum() { sed -n '/^detect_distro() {/,/^}/p;/^is_fedora() {/,/^}/p' "$1" | sha256sum; }
+[[ -n "$(sed -n '/^detect_distro() {/,/^}/p' "${SCRIPT_DIR}/../install-dependencies.sh")" ]] ||
+	fail "install-dependencies.sh has no detect_distro"
+assert_eq "$(distro_sum "${SCRIPT_DIR}/../install-dependencies.sh")" "$(distro_sum "$RELEASE_INSTALLER")" \
+	"detect_distro and is_fedora in install-linuxio-binaries.sh"
+
+# The RHEL file is the Debian one line for line and in the same order, with
+# each Debian-only name mapped to the RHEL family's. Order is what matters: a
+# sufficient line in password-auth ends the stack where it is included, so a
+# LinuxIO line moved below an include would no longer run. Columns may differ.
+pam_directives() { grep -Ev '^[[:space:]]*(#|$)' "$1" | tr -s ' \t' ' '; }
+pam_rhel_expected() {
+	local line
+	while IFS= read -r line; do
+		case "$line" in
+		"auth include common-auth") printf '%s\n' "auth substack password-auth" "auth include postlogin" ;;
+		"account include common-account") printf '%s\n' "account include password-auth" ;;
+		"password include common-password") printf '%s\n' "password include password-auth" ;;
+		"session include common-session-noninteractive") printf '%s\n' "session include password-auth" "session include postlogin" ;;
+		*) printf '%s\n' "${line//\/etc\/default\/locale//etc/locale.conf}" ;;
+		esac
+	done < <(pam_directives "$PAM_DEBIAN")
+}
+if ! pam_diff=$(diff <(pam_rhel_expected) <(pam_directives "$PAM_RHEL")); then
+	fail "linuxio.rhel is not linuxio with the RHEL family's names (expected <, linuxio.rhel >):
+${pam_diff}"
+fi
+
+# install_pam_config installs the family's file whole through a staged copy:
+# a download cut half-way leaves the file there as it was, and nothing beside
+# it. pam_install DISTRO DIR [cut] runs it into DIR as on DISTRO, from the
+# checkout, or as a release whose download is cut.
+pam_install() {
+	# shellcheck disable=SC2031
+	bash -c 'fixture_distro=$2 fixture_dir=$3 fixture_cut=$4 checkout=$5
+		source "$1"
+		REPO_ROOT=$checkout
+		LOCAL_INSTALL=1
+		detect_distro() { DISTRO=$fixture_distro; }
+		if [[ -n $fixture_cut ]]; then
+			LOCAL_INSTALL=0
+			curl() {
+				head -c 40 "${REPO_ROOT}/packaging/etc/pam.d/linuxio" >"$4"
+				return 18
+			}
+		fi
+		install_pam_config "$fixture_dir"' _ "$RELEASE_INSTALLER" "$1" "$2" "${3:-}" "$REPO_ROOT" >/dev/null 2>&1
+}
+pam_dir=$(mktemp -d)
+for distro in ubuntu debian linuxmint pop fedora rhel centos rocky almalinux; do
+	rm -f "${pam_dir}/linuxio"
+	pam_install "$distro" "$pam_dir" || fail "install_pam_config failed for ${distro}"
+	case "$distro" in
+	fedora | rhel | centos | rocky | almalinux) pam_want="$PAM_RHEL" ;;
+	*) pam_want="$PAM_DEBIAN" ;;
+	esac
+	cmp -s "$pam_want" "${pam_dir}/linuxio" || fail "PAM file for ${distro} is not $(basename "$pam_want")"
+	assert_eq "644" "$(stat -c %a "${pam_dir}/linuxio")" "PAM file mode for ${distro}"
+done
+printf 'previous\n' >"${pam_dir}/linuxio"
+if pam_install fedora "$pam_dir" cut; then
+	fail "install_pam_config went on after a cut download"
+fi
+assert_eq "previous" "$(<"${pam_dir}/linuxio")" "PAM file after a cut download"
+if compgen -G "${pam_dir}/linuxio.new.*" >/dev/null; then
+	fail "a cut download left a temporary PAM file"
+fi
+rm -rf "$pam_dir"
+printf '   \033[1;32m✓\033[0m %s\n' "each family gets its PAM file, the RHEL one line for line the Debian one, installed whole"
+
 # The standalone scripts each carry their own Show/Header; keep them identical.
 ui_sum() { sed -n '/^Show() {/,/^}/p;/^Header() {/,/^}/p;/^readonly COLOUR_RESET/,/^readonly YELLOW/p' "$1" | sha256sum; }
 for script in install-dependencies.sh uninstall.sh; do

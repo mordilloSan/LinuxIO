@@ -217,10 +217,12 @@ and the packages they install. Fedora's is:
   filesystem is btrfs.
 - `dnf` where Ubuntu has `apt`, in `vm-update` and in the suites.
 
-On Fedora the root suites `relay`, `filebrowser`, `userconfig` and `memory`
-have been run (`docs/TODO/e2e-testing.md`, "Distributions", has the
-results); the browser specs have not, since their package fixtures build
-`apt` packages.
+On Fedora the root suites `relay`, `filebrowser`, `userconfig`, `memory` and
+`packagekit` have been run (`docs/TODO/e2e-testing.md`, "Distributions", has the
+results). The browser specs do not run there yet: with SELinux enforcing,
+sign-in stops before the bridge starts (`docs/TODO/backlog.md`, "Visible
+bugs"), and most of them do things with `apt` packages. `capability-install.spec.ts` is written
+for both distributions.
 
 ```sh
 make test-vm-browser        # everything below that a browser run needs, in one go
@@ -292,6 +294,13 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   navbar's Reboot and Power Down. It creates and removes a user without sudo
   (`e2e-ui`), a folder `/srv/e2e-link` and two busybox containers, reboots the
   VM and powers it off (the rig's `ssh` starts a domain that is shut off).
+  `capability-install.spec.ts` installs zram from Capabilities
+  ([Capabilities](./capabilities.md#zram)). It reads the distribution from
+  `LINUXIO_VM_DISTRO` (`vmDistro` in `vm.ts`), takes the zram tool out with
+  that distribution's package manager first, and leaves zram and its tool as
+  the clean image has them: on Ubuntu no zram tool and no swap, with the apt
+  timers stopped until the next boot; on Fedora `zram-generator` with its
+  default `zram0` swapping.
 - The `vm-test-*` targets are the root suites. Each builds its test binaries
   on the host into `.cache/vm`, static so they also run on the older glibc
   of `VM_RELEASE=noble`, and the script's `test` command copies them into
