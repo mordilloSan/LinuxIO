@@ -466,4 +466,9 @@ func TestGetUnitFileStateOfAMissingUnit(t *testing.T) {
 	if !errors.Is(err, ErrNoUnitFile) || state != "" {
 		t.Fatalf("GetUnitFileState = %q, %v; want ErrNoUnitFile", state, err)
 	}
+	// Callers that match the bus error by name still find it.
+	var busErr godbus.Error
+	if !errors.As(err, &busErr) || busErr.Name != "org.freedesktop.DBus.Error.FileNotFound" {
+		t.Fatalf("GetUnitFileState error %v; want the bus error FileNotFound in its chain", err)
+	}
 }

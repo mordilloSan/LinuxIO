@@ -84,7 +84,9 @@ func GetUnitFileState(ctx context.Context, name string) (string, error) {
 	var state string
 	if err := managerIface.CallStore(ctx, "GetUnitFileState", dbusclient.CallPolicy{}, []any{name}, &state); err != nil {
 		if noUnitFile(err) {
-			return "", fmt.Errorf("get unit file state %s: %w", name, ErrNoUnitFile)
+			// Both stay in the chain: callers that match the bus error by
+			// name (btrfsTimerEnabled) keep working beside errors.Is.
+			return "", fmt.Errorf("get unit file state %s: %w: %w", name, ErrNoUnitFile, err)
 		}
 		return "", fmt.Errorf("get unit file state %s: %w", name, err)
 	}
