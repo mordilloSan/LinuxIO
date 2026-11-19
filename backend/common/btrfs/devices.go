@@ -641,7 +641,7 @@ func ResumeBalance(ctx context.Context, uuid string, opts BalanceOptions, paused
 		return fmt.Errorf("could not read the devices of pool %s", uuid)
 	}
 	if fs.Degraded {
-		return fmt.Errorf("pool %s is degraded; balance not resumed", uuid)
+		return fmt.Errorf("pool %s is degraded; balance not resumed: %w", uuid, errDiskMissing)
 	}
 	mnt := fs.Mountpoints[0].Mountpoint
 	state, _, err := balanceProgressOf(mnt)

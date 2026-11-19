@@ -144,7 +144,7 @@ func (p *itPool) logAllocation(when string) {
 }
 
 // TestBtrfsIntegrationChild runs one operation for runChild, so a step can
-// kill the process that issued the ioctl: scrub[:<job>], balance,
+// kill the process that issued the ioctl: scrub[:<job>], resync, balance,
 // remove:<id> or replace:<id>:<path>. LINUXIO_BTRFS_IT_STATE names the
 // state folder to share with the step, where a scrub saves its progress
 // every second.
@@ -167,6 +167,8 @@ func TestBtrfsIntegrationChild(t *testing.T) {
 	switch kind {
 	case "scrub":
 		_, err = ScrubFrom(ctx, uuid, rest, func(BtrfsScrubStatus) {})
+	case "resync":
+		err = Resync(ctx, uuid, nil)
 	case "balance":
 		err = Balance(ctx, uuid, BalanceOptions{}, func(float64) {})
 	case "remove", "replace":
@@ -269,7 +271,7 @@ func (p *itPool) signals() {
 	stop := sigurgStorm()
 	args := scrubArgs{DevID: 1, End: ^uint64(0)}
 	unmasked := fsIoctl(p.mnt, iocScrub, unsafe.Pointer(&args))
-	s, err := Scrub(p.ctx, p.uuid, func(BtrfsScrubStatus) {})
+	s, err := ScrubFrom(p.ctx, p.uuid, "", func(BtrfsScrubStatus) {})
 	sent := stop()
 	p.t.Logf("unmasked scrub of device 1 under SIGURG: %v; %d signals sent", unmasked, sent)
 	p.must("scrub under SIGURG", err)
@@ -562,7 +564,7 @@ func (p *itPool) balanceKill() {
 // scrubClean scrubs the pool and fails unless it finished with no errors.
 func (p *itPool) scrubClean(after string) {
 	p.t.Helper()
-	s, err := Scrub(p.ctx, p.uuid, func(BtrfsScrubStatus) {})
+	s, err := ScrubFrom(p.ctx, p.uuid, "", func(BtrfsScrubStatus) {})
 	p.must("scrub after "+after, err)
 	if s.Status != "finished" || s.ErrorCount != 0 {
 		p.t.Fatalf("scrub after %s = %+v", after, s)
@@ -613,7 +615,7 @@ func (p *itPool) scrubbedPast(mib uint64) func() bool {
 // than any one dev extent holds (1 GiB at most), so a whole extent lies below
 // its position: the resumed run skips it and reads less than a full scrub.
 func (p *itPool) scrubResume() {
-	full, err := Scrub(p.ctx, p.uuid, func(BtrfsScrubStatus) {})
+	full, err := ScrubFrom(p.ctx, p.uuid, "", func(BtrfsScrubStatus) {})
 	p.must("full scrub", err)
 	type outcome struct {
 		status BtrfsScrubStatus
@@ -621,7 +623,7 @@ func (p *itPool) scrubResume() {
 	}
 	done, ended := make(chan outcome, 1), make(chan error, 1)
 	go func() {
-		s, scrubErr := Scrub(p.ctx, p.uuid, func(BtrfsScrubStatus) {})
+		s, scrubErr := ScrubFrom(p.ctx, p.uuid, "", func(BtrfsScrubStatus) {})
 		done <- outcome{s, scrubErr}
 		ended <- scrubErr
 	}()
@@ -660,7 +662,7 @@ func (p *itPool) scrubKill() {
 // that the record outlives a power cut; atomicfile's fsyncs are for that.
 func (p *itPool) scrubPowerCut() {
 	const run = "power-cut"
-	full, err := Scrub(p.ctx, p.uuid, func(BtrfsScrubStatus) {})
+	full, err := ScrubFrom(p.ctx, p.uuid, "", func(BtrfsScrubStatus) {})
 	p.must("full scrub", err)
 	p.scrubSpeed(64 << 20)
 	child := p.runChild("scrub:"+run, "LINUXIO_BTRFS_IT_STATE="+filepath.Dir(ScrubRecordPath))
@@ -695,11 +697,16 @@ func (p *itPool) scrubPowerCut() {
 }
 
 // scrubSpeed caps each device's scrub reads at bytes per second, 0 for none,
-// through the kernel's scrub_speed_max; the cap is lifted when the step ends.
+// through the kernel's scrub_speed_max; the cap is lifted when the step ends,
+// unless the pool is gone by then, and with it the cap.
 func (p *itPool) scrubSpeed(bytes uint64) {
 	p.t.Helper()
 	set := func(bytes uint64) error {
-		for _, d := range p.filesystem().Devices {
+		fs, err := FindFilesystem(p.ctx, p.uuid)
+		if err != nil {
+			return err
+		}
+		for _, d := range fs.Devices {
 			path := filepath.Join("/sys/fs/btrfs", p.uuid, "devinfo", strconv.Itoa(d.ID), "scrub_speed_max")
 			if err := os.WriteFile(path, []byte(strconv.FormatUint(bytes, 10)), 0o644); err != nil {
 				return err
@@ -850,7 +857,7 @@ type scrubOutcome struct {
 // with no scrub left running.
 func (p *itPool) scrubFreeze() {
 	interrupts := p.kernelAtLeast(6, 19)
-	full, err := Scrub(p.ctx, p.uuid, func(BtrfsScrubStatus) {})
+	full, err := ScrubFrom(p.ctx, p.uuid, "", func(BtrfsScrubStatus) {})
 	p.must("full scrub", err)
 	calls := p.scrubCalls()
 	p.scrubSpeed(64 << 20)
@@ -1030,6 +1037,44 @@ func (p *itPool) replaceCancelEarly() {
 	p.must("blank the disk", wipeDeviceEdges(p.disks[2]))
 }
 
+// mountShelf mounts an ext4 of size bytes on a loop device at dir/shelf,
+// for a test's disk images and state: freezing it and copying them
+// (copyFrozen) takes exactly the writes that reached the disks, as a power
+// cut leaves them.
+func mountShelf(t *testing.T, dir string, size int64) string {
+	t.Helper()
+	dev, shelf := loopDevice(t, filepath.Join(dir, "shelf.img"), size), filepath.Join(dir, "shelf")
+	runTool(t, "mkfs.ext4", "-q", dev)
+	if err := os.Mkdir(shelf, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := unix.Mount(dev, shelf, "ext4", 0, ""); err != nil {
+		t.Fatalf("mount the shelf: %v", err)
+	}
+	t.Cleanup(func() { _ = unix.Unmount(shelf, 0) })
+	return shelf
+}
+
+// copyFrozen freezes the shelf, copies each file or folder on it to where
+// copies says, sparsely, and thaws it.
+func copyFrozen(t *testing.T, shelf string, copies map[string]string) {
+	t.Helper()
+	runTool(t, "fsfreeze", "--freeze", shelf)
+	t.Cleanup(func() { _ = exec.Command("fsfreeze", "--unfreeze", shelf).Run() })
+	for from, to := range copies {
+		runTool(t, "cp", "-a", "--sparse=always", from, to)
+	}
+	runTool(t, "fsfreeze", "--unfreeze", shelf)
+}
+
+// deviceUUID is the device UUID of device id, or "" when it is no member.
+func deviceUUID(fs BtrfsFilesystem, id int) string {
+	if i := slices.IndexFunc(fs.Devices, func(d BtrfsDevice) bool { return d.ID == id }); i >= 0 {
+		return fs.Devices[i].UUID
+	}
+	return ""
+}
+
 // replacePowerCut cuts the power of a replace and boots what its disks kept.
 // The disk images of a pool of its own sit on an ext4 the step freezes
 // mid-replace, and the copy it then takes holds exactly the writes that
@@ -1039,17 +1084,7 @@ func (p *itPool) replaceCancelEarly() {
 // and the kernel then continues the replace for ResumeReplace to follow.
 func (p *itPool) replacePowerCut() {
 	t, dir := p.t, p.t.TempDir()
-	run := func(name string, args ...string) {
-		t.Helper()
-		if out, err := exec.Command(name, args...).CombinedOutput(); err != nil {
-			t.Fatalf("%s %v: %v: %s", name, args, err, out)
-		}
-	}
-	shelfDev, shelf := loopDevice(t, filepath.Join(dir, "shelf.img"), 16<<30), filepath.Join(dir, "shelf")
-	run("mkfs.ext4", "-q", shelfDev)
-	p.must("shelf mountpoint", os.Mkdir(shelf, 0o755))
-	p.must("mount the shelf", unix.Mount(shelfDev, shelf, "ext4", 0, ""))
-	t.Cleanup(func() { _ = unix.Unmount(shelf, 0) })
+	shelf := mountShelf(t, dir, 16<<30)
 	var disks []*loopDisk
 	for i := range 3 {
 		disks = append(disks, newLoopDisk(t, filepath.Join(shelf, fmt.Sprintf("disk%d.img", i)), 6<<30))
@@ -1061,6 +1096,7 @@ func (p *itPool) replacePowerCut() {
 	p.must("mount pool", MountPool(p.ctx, disks[0].dev, cut.mnt, []string{"noatime"}, false))
 	t.Cleanup(func() { _ = unix.Unmount(cut.mnt, 0) })
 	cut.fill(1024)
+	sourceUUID := deviceUUID(cut.filesystem(), 2)
 
 	start := time.Now()
 	child := cut.runChild("replace:2:" + disks[2].dev)
@@ -1071,14 +1107,13 @@ func (p *itPool) replacePowerCut() {
 		state, pct, _, statusErr := replaceStatusOf(cut.mnt)
 		return statusErr == nil && state == replaceStateStarted && pct > 0
 	}, ended)
-	run("fsfreeze", "--freeze", shelf)
-	t.Cleanup(func() { _ = exec.Command("fsfreeze", "--unfreeze", shelf).Run() })
 	copies := make([]*loopDisk, len(disks))
+	images := map[string]string{}
 	for i, d := range disks {
 		copies[i] = &loopDisk{t: t, file: filepath.Join(dir, filepath.Base(d.file)), fd: -1}
-		run("cp", "--sparse=always", d.file, copies[i].file)
+		images[d.file] = copies[i].file
 	}
-	run("fsfreeze", "--unfreeze", shelf)
+	copyFrozen(t, shelf, images)
 	logFreeSpace(t, dir, "with the power-cut copies")
 	_ = child.Process.Kill()
 	t.Logf("the live pool's replace child after the kill: %v", <-ended)
@@ -1124,5 +1159,14 @@ func (p *itPool) replacePowerCut() {
 		t.Fatalf("devices after the replace: %v, want device 2 on %s", devicePaths(fs), copies[2].dev)
 	}
 	t.Logf("ResumeReplace followed a running replace: %v", followed)
+	// The target takes the source's device id and its device UUID too
+	// (dev-replace.c btrfs_dev_replace_finishing swaps the UUIDs), so a
+	// saved scrub cannot tell a replaced disk by its UUID. It need not: the
+	// replace wrote the target from copies checked as a scrub checks them.
+	targetUUID := deviceUUID(fs, 2)
+	t.Logf("device 2's UUID before the replace %s, after it %s", sourceUUID, targetUUID)
+	if sourceUUID == "" || targetUUID != sourceUUID {
+		t.Fatalf("device 2's UUID changed in the replace: %q, then %q; the resync continuation leans on what a replace does", sourceUUID, targetUUID)
+	}
 	cut.scrubClean("the resumed replace")
 }

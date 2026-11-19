@@ -618,6 +618,11 @@ jobs, which also keep their own unit, limits and journal that way. The units:
 `linuxio-btrfs-health.service`, the degraded mount at boot and the indexer's
 timer are not recorded.
 
+A pool resync cut short, by a power loss, a shutdown or **Stop check**,
+reads interrupted or failed like any run, and its next run, which the health
+check starts, continues the scrub from the progress it saved; the job host
+never resumes it ([Btrfs](./btrfs.md#missing-disks)).
+
 **Hooks.** `linuxio-worker scheduled-run begin` and `end` run as `ExecStartPre=` and
 `ExecStopPost=` of each unit. Where they are installed, why they sit in
 packaged drop-ins rather than in a rendered unit, what `+` and `-` do, and the
@@ -915,6 +920,7 @@ The record itself is the quickest evidence: as root,
 | Browser | `make test-frontend-browser-quiet` | `frontend/src/test/browser/history.spec.ts`, `frontend/src/test/browser/schedules.spec.ts`, `frontend/src/test/browser/background-tasks.spec.ts` | Real layout against the fixture: the history table has height, the Schedules table keeps its rows beside tall details, tray rendering |
 | Root, in the VM | `make vm-test-relay-root` | `backend/bridge/cmd/jobs_relay_test.go` | The relay tests as root: the in-process host is the root host, so its owner and privileged rules differ from a user host's |
 | Root kernel | `make test-btrfs-integration` (sudo, the user's to run); `make vm-test-btrfs-integration` in the VM | `backend/common/btrfs/integration_resume_test.go` (`TestBtrfsResumeIntegration`) | Kill and resume each btrfs operation on loop devices: signals, cancels, kills, a paused balance across a remount, a scrub from its offset, a scrub from its saved progress after a kill, a scrub across a filesystem freeze and its cancel there by its context and through `ScrubCancel`, a replace across a simulated power cut |
+| Root kernel | same | `backend/common/btrfs/degraded_integration_test.go` (`TestBtrfsDegradedIntegration`) | A pool resync cut by a simulated power cut mid-scrub (a frozen copy of the disks and the state), booted from the copies and continued by the next resync, with corrections on both sides of the cut; a resync during whose scrub, then whose convert, one disk's writes fail through a device-mapper error target fails naming it, and the next one makes that disk whole |
 | Test VM | `make vm-reset`, `make vm-install`, `make test-vm-browser-rerun` | `frontend/src/test/vm/jobs-phase2.spec.ts` | Reloads mid package update, Compose and copy; a package update picked up from PackageKit after a `kill -9` of the root host during dpkg; uploads; a scrub across logout; host stop, kill, reboot and power cut |
 | Test VM | same | `frontend/src/test/vm/jobs-phase3.spec.ts` | Balance, scrub and replace across stops, reboots and power cuts; a scrub across a frozen job host; a cancel or a crash before a reboot; pool create rollback; the Docker storage switch killed |
 | Test VM | same | `frontend/src/test/vm/jobs-phase4.spec.ts` | Scheduled runs: records, bell rows, saved output, stop, a broken hook, the snapshot, Docker and system update units, a power cut and an orderly reboot |
@@ -1054,9 +1060,9 @@ Covered at one level only:
 - A host killed after the Docker storage switch wrote its files but before it
   asked for the restart leaves Docker on its old settings; the job is marked
   interrupted and alerted, and applying again finishes the switch.
-- A resumed scrub, or a scrub call issued again after a freeze, counts errors
-  in the dev extent where each device stopped twice, and a power loss loses up
-  to a minute of a scrub's progress.
+- A resumed scrub, a pool resync's continued scrub, or a scrub call issued
+  again after a freeze, counts errors in the dev extent where each device
+  stopped twice, and a power loss loses up to a minute of a scrub's progress.
 - PackageKit's history keeps no error text, so a package whose transaction
   failed while no job host followed it reads `PackageKit recorded transaction
   … as failed`; a transaction further back than the newest 200 entries of the

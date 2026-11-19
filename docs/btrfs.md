@@ -21,7 +21,9 @@ the replication service each snapshot pass starts (see
 
 `make test-btrfs-integration` runs every one of these operations against the
 real kernel on loop devices, loses and returns disks of a mirror to check
-the missing-disk handling, exercises
+the missing-disk handling, cuts a resync by a power loss mid-scrub and
+continues it from what the disks and the state kept, fails a disk's writes
+during a resync through a device-mapper error target, exercises
 [partition management](./storage-disks.md#partition-management), checks
 that **Force** never takes a disk of an unmounted pool
 (`TestBtrfsMemberIntegration` in `backend/bridge/handlers/storage`) nor
@@ -145,10 +147,67 @@ a scrub checks every copy and rewrites those the returned disk missed from
 the good ones, then a soft convert (`convert=<profile>,soft`) gives chunks
 written while too few disks were present, which btrfs allocates as `single`,
 the pool's most redundant profile again. Until then the `resync` alert is up.
-Only a scrub that finished counts: one canceled from the overview, or cut
-short by a crash (its record then reads as aborted), is run again. A failed
-resync is retried by the next health run, without scrubbing again once the
-scrub finished; after three failures the alert turns into an error with the
+
+The scrub runs as the episode's resync run, `resyncRun` in the pool record,
+which its scrub record carries (see [Scrub progress](#scrub-progress)), so
+the next resync continues a scrub cut short instead of starting over: after
+a power loss, a crash or a kill, a shutdown, or **Stop check** on the
+overview, it scrubs each device that had not finished from one byte below
+the offset it saved, a device whose scrub aborted included, keeps the first
+start and adds up the counters, and the *whole again* notice counts the
+corrections of both parts. A scrub of the run that finished counts, though
+the cut came before the resync noted it. The next resync is the next health
+run's, two minutes after a boot or within ten minutes, once every disk is in
+use; the resync stays a scheduled run and never goes through the job host.
+Only the same episode continues. A degraded mount LinuxIO makes, a pool the
+boot check finds already mounted degraded (a root the initramfs mounted with
+`rootflags=degraded`), or a health run that sees the pool degraded starts a
+new one, whose resync scrubs everything again, since writes made with a disk
+missing may land below the saved offsets, and a scrub that finishes after
+its episode ended does not count for the new one. The continuation refuses a
+pool that lacks a disk. A disk under a device ID that the record names with
+another UUID starts from 0.
+
+A disk whose writes fail while it stays attached, as when its cable comes
+loose, is not marked missing: the kernel does that at mount, and since 7.1
+also when a member's block device goes away (`btrfs_remove_bdev`, which
+continues degraded, or shuts the filesystem down when the remaining disks
+cannot keep it read-write). DEV_INFO then names that disk `<missing disk>`;
+LinuxIO reads it as missing from sysfs, and the next health run records the
+episode. Only the disk's write and flush error counters rise, while the
+other disks take every write, some below its saved offset. The scrub record
+therefore keeps each device's write and flush error counters as they were
+when its scan began. A continued resync scans a device whose counters
+changed since from 0, done or not; a finished scrub of the run does not
+count once a device's counters changed, a device it scanned left the pool,
+or a disk was added that it did not scan, onto which a convert may write
+second copies; and the resync checks the counters again when its scrub ends and once
+more right before it declares the pool whole, after the convert, which
+writes the second copies onto the returned disk, and in an attempt that
+skipped the scrub because it already counted. A change fails the attempt,
+naming the device and saying its writes failed, and the scrub no longer
+counts, so the next resync scrubs again; so does a scrub record that is no
+longer the resync's. That also catches a repair whose write failed, which
+the kernel counts as corrected (`scrub_stripe_report_errors` never consults
+the write errors). The check refuses what it cannot read: error counters it
+could not read fail the attempt, and a disk gone missing starts a new
+episode.
+
+A replace keeps the device's ID and UUID, since the kernel gives the target
+the source's (`btrfs_dev_replace_finishing`), so the continuation carries on
+from that device's offset: the replace wrote every copy that has a checksum
+to the target from one it checked as a scrub does. A sector with no good
+copy is not written there, and data without checksums (`nodatacow`) is
+copied as read, so a stale copy of it may stay, as a scrub would leave it
+too. A balance, a removal or a convert writes the chunks it moves anew, from
+reads checked against their checksums, so it leaves no stale copy below an
+offset, except of data without checksums, copied as read, and on a pool
+with the experimental remap tree (kernel 7.0 and later, built with
+`CONFIG_BTRFS_EXPERIMENTAL`), which relocates by a raw copy with no
+checksum check.
+
+A failed resync is retried by the next health run, without scrubbing again
+once the scrub finished; after three failures the alert turns into an error with the
 last cause, and mounting the pool again (or a reboot) re-arms it. Since these
 alerts report it, the run of a resync that fails still completes once they
 were brought up to date, with the summary *Resync failed*: the unit is not
@@ -162,6 +221,38 @@ cannot tell their stale copies; replace a disk that returns to a pool holding
 such files instead. A disk that keeps failing writes while still attached is
 not counted as missing: the health alert reports its error counters, and a
 scrub once it is fixed repairs what it missed.
+
+### Known limits
+
+- Writes made with a disk missing that LinuxIO does not record are not seen:
+  a degraded mount it did not make (by hand, or on another system) written
+  to and made whole again before a health run sees it, the moment between a
+  mount and the record of it, and a mount whose record write failed, which
+  is only logged. A continued resync then skips what its scrub had covered
+  before the cut.
+- The kernel writes a disk's error counters at a transaction commit
+  (`btrfs_run_dev_stats` in `commit_cowonly_roots`; every 30 seconds by
+  default, or as the `commit=` mount option sets), so a power cut within one
+  commit interval of a failed write can lose the rise, and the continued
+  resync then trusts that disk's offset.
+- A scrub started from the pool details between two resync attempts replaces
+  the resync's saved progress, and the resync then starts over; once the
+  resync's scrub had finished, it also costs one failed attempt, since the
+  final check finds a record that is not the resync's. A scrub an older
+  LinuxIO noted, with no resync run, is scrubbed again after the upgrade.
+- A continued resync reads the dev extent where each device stopped again
+  (1 GiB at most) and counts its errors twice, and a power loss costs up to a
+  minute of its progress.
+- Kernels before 6.4 scrub with older code, and no test VM runs one: that a
+  repair has completed before a continuation skips it rests there on a
+  reading of 6.1's source (`scrub_enumerate_chunks` waits for every bio and
+  worker of a dev extent before the next). No VM run cuts a resync while the
+  saved offset is the end of a dev extent whose repairs are still queued,
+  which is how mainline before 6.11 reports progress: that case rests on
+  the source and the unit tests.
+- No test rig shows that the flush covers a disk's lost write cache: the
+  frozen copy of the root test keeps every completed write, and the order of
+  flush and save is unit-tested only.
 
 ## Top-level access
 
@@ -617,10 +708,12 @@ write btrfs-progs' file, so `btrfs scrub status` does not show LinuxIO's
 scrubs: the pool details do.
 
 - **What is saved.** Per pool: the scrub's start, outcome and counters, the
-  job ID of the scrub that writes it (empty for a pool resync's scrub), and
-  the process that writes it (pid, start time and boot).
+  job ID of the scrub that writes it or the run of a pool resync's scrub
+  (empty for any other scrub outside a job), and the process that writes it
+  (pid, start time and boot).
   Per device: its UUID, the highest `last_physical` the kernel reported in
-  this scrub, and whether it finished or aborted. The pool's counters hold
+  this scrub, whether it finished or aborted, and its write and flush error
+  counters when its scan began (see [Missing disks](#missing-disks)). The pool's counters hold
   every kernel call that returned; the counters of a call still running stay
   with its device until it returns, so the total is the pool's counters plus
   the devices'. A scrub that ended keeps each device's UUID, offset and
@@ -635,6 +728,31 @@ scrubs: the pool details do.
   reads and rewrites the whole file under `btrfs-scrub.json.lock`, by the job
   host and `linuxio-worker resync` alike, so two pools scrubbing at once
   keep both entries; the file is replaced atomically and fsynced.
+- **Flush.** The kernel's repair writes carry no flush (`scrub_write_sectors`),
+  and a scrub commits no transaction unless a superblock was bad, so a disk
+  could still hold them in its cache when an offset above them is saved.
+  Before each write that moves an offset or marks a device done, and before
+  the outcome, the scrub sends each disk of the pool a cache flush: `fsync`
+  of the block device, opened read-only so udev sees no change, a no-op on a
+  disk without a write cache. The disks are those the kernel lists in
+  `/sys/fs/btrfs/<uuid>/devices`, by their kernel names, since the path a
+  member reports can name no device node (`/dev/root` for a root mounted
+  without an initramfs). A list shorter than the pool's present devices
+  fails the flush, and so does a member with no node in `/dev`, as in a
+  container, where every scrub then ends aborted. The flush runs in the
+  scrub's loop and cannot be interrupted: a disk whose flush hangs holds the
+  scrub, as it holds the kernel's own commits. The kernel has completed
+  every repair outside the dev extent holding a reported offset, because it
+  waits for every repair at the end of each dev extent before the next
+  (`flush_scrub_stripes` since 6.4, `scrub_enumerate_chunks` before). Within
+  an extent the offset can run ahead of repairs still queued: it moves to
+  the extent's end, or on RAID5/6 past a data stripe it has only queued, and
+  only since 6.11 also past a stripe after that stripe's repair. The one
+  byte back scans the extent holding the offset again. A failed flush skips that write, so the record keeps the
+  offsets last flushed; at the end it fails the scrub, whose record is then
+  the last one a flush preceded, marked aborted, so what was read since is
+  read and counted again rather than twice. btrfs-progs flushes nothing
+  before it writes its status file.
 - **Refusals.** A scrub, fresh or resumed, is refused before it writes
   anything, so it cannot overwrite a running scrub's record:
   - when the inventory could not read every device: it leaves such a device
@@ -662,7 +780,8 @@ scrubs: the pool details do.
   starts one byte below its saved offset; one that finished or aborted is
   skipped, and an abort keeps the outcome aborted; a device the record does
   not name, or names with another UUID because another disk took its device
-  ID, starts at 0; a missing device is skipped. The resumed scrub keeps the
+  ID, starts at 0 (a replace target takes the source's UUID with its ID, and
+  holds only copies the replace checked); a missing device is skipped. The resumed scrub keeps the
   first start and adds the counters so far to its own, so an uncorrectable
   error found before the cut stays in the outcome and its `btrfs/scrub` alert
   stays up. Its record is written before its first kernel call, so a second
@@ -670,7 +789,12 @@ scrubs: the pool details do.
   one an older LinuxIO wrote, or none) the resume takes the Suspend
   checkpoint's positions as before, carrying on the canceled or aborted scrub
   on record only when an older LinuxIO wrote it (no job ID and no devices),
-  and without positions scrubs everything again. A record that
+  and without positions scrubs everything again. A pool resync continues its
+  scrub the same way from a record of its run, through its next run rather
+  than at boot (see [Missing disks](#missing-disks)), with two differences:
+  a device whose scrub aborted is scanned again from its offset, since the
+  resync must check every copy, and a record of its run that finished counts
+  as its scrub with no kernel call. A record that
   lags the checkpoint, because its last save failed, is still preferred: its
   offsets and counters are from the same moment, so the part after them is
   read and counted again rather than skipped uncounted.
@@ -841,7 +965,7 @@ btrfsmaintenance timers.
 | `/etc/systemd/system/linuxio-btrfs-degraded.service` | root | Runs `linuxio-worker degraded` at boot |
 | `/etc/systemd/system/linuxio-btrfs-resync@.service` | root | Runs `linuxio-worker resync <uuid>` |
 | `/var/lib/linuxio/btrfs-scrub.json` | root | Last scrub LinuxIO ran per filesystem, and a running one's progress; written under `btrfs-scrub.json.lock` |
-| `/var/lib/linuxio/btrfs-pools.json` | root | Per pool: newest generation seen, and whether and on which disks it ran degraded |
+| `/var/lib/linuxio/btrfs-pools.json` | root | Per pool: newest generation seen, whether and on which disks it ran degraded, and the run of the episode's resync scrub (`resyncRun`) |
 | `/etc/systemd/system/<upgrade-service>.d/linuxio-alert.conf` | root | Auto-update drop-in, including the pre-update snapshot line |
 | `/etc/fstab` | root | Pool entries LinuxIO creates; compression options of existing entries |
 | `/var/lib/linuxio/alerts.json` | `root:root` `0600` | Alerts `btrfs/health-*`, `btrfs/scrub-*`, `btrfs/space-*`, `btrfs/offline-*`, `btrfs/resync-*`, `btrfs/resynced-*`, `btrfs/snapshot-*`, `btrfs/replication-*` |

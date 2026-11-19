@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
@@ -29,7 +30,7 @@ func TestScrubRecordsOutcomeAndReports(t *testing.T) {
 	var mu sync.Mutex
 	var once sync.Once
 	reports := 0
-	got, err := Scrub(context.Background(), dataUUID, func(BtrfsScrubStatus) {
+	got, err := ScrubFrom(context.Background(), dataUUID, "", func(BtrfsScrubStatus) {
 		mu.Lock()
 		reports++
 		mu.Unlock()
@@ -76,7 +77,7 @@ func TestScrubCancelsWithContext(t *testing.T) {
 		<-started
 		cancel()
 	}()
-	got, err := Scrub(ctx, dataUUID, func(BtrfsScrubStatus) {})
+	got, err := ScrubFrom(ctx, dataUUID, "", func(BtrfsScrubStatus) {})
 	if !errors.Is(err, context.Canceled) || got.Status != "canceled" || got.BytesScrubbed != 2<<30 || got.Percent == 100 {
 		t.Fatalf("got=%+v err=%v", got, err)
 	}
@@ -264,7 +265,7 @@ func TestScrubAbortWinsOverCancel(t *testing.T) {
 		<-aborted
 		cancel()
 	}()
-	got, err := Scrub(ctx, dataUUID, func(BtrfsScrubStatus) {})
+	got, err := ScrubFrom(ctx, dataUUID, "", func(BtrfsScrubStatus) {})
 	if !errors.Is(err, unix.EIO) || errors.Is(err, context.Canceled) || got.Status != "aborted" {
 		t.Fatalf("got=%+v err=%v, want the abort", got, err)
 	}
@@ -1177,5 +1178,234 @@ func TestScrubCancelFlagsOnlyWhenTheKernelHadNothing(t *testing.T) {
 	ScrubRecordPath = filepath.Join(blocker, "scrub.json")
 	if err := ScrubCancel(context.Background(), dataUUID); !errors.Is(err, ErrScrubNotRunning) {
 		t.Fatalf("err = %v, want ErrScrubNotRunning", err)
+	}
+}
+
+// flushedAt and flushedEnd are where the flush tests' device 1 reports it
+// stands while its call runs, and where the call ends.
+const flushedAt, flushedEnd = 100 << 20, 200 << 20
+
+// watchFlushes stubs flushDevice with fail and logs each flush, with device
+// 1's offset on record at that moment, beside each poll of device 1. It
+// returns the log so far.
+func watchFlushes(fail func() bool) func() []string {
+	var mu sync.Mutex
+	var events []string
+	note := func(e string) {
+		mu.Lock()
+		defer mu.Unlock()
+		events = append(events, e)
+	}
+	poll := fsIoctl
+	fsIoctl = func(mnt string, req uintptr, arg unsafe.Pointer) error {
+		err := poll(mnt, req, arg)
+		if req == iocScrubProgress && err == nil {
+			if a := (*scrubArgs)(arg); a.DevID == 1 {
+				note(fmt.Sprintf("poll %d", a.Progress.LastPhysical))
+			}
+		}
+		return err
+	}
+	flushDevice = func(path string) error {
+		rec, _ := loadScrubRecord(dataUUID)
+		note(fmt.Sprintf("flush %s, saved %d", path, rec.Devices[1].Offset))
+		if fail() {
+			return unix.EIO
+		}
+		return nil
+	}
+	return func() []string {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(events)
+	}
+}
+
+// flushKernel is a raid1Kernel, saving every tick, whose device 2 finishes at
+// once and whose device 1 reports flushedAt, waits for hold, then finishes
+// at flushedEnd.
+func flushKernel(t *testing.T, hold func()) {
+	t.Helper()
+	k := raid1Kernel()
+	k.devices[1].uuid, k.devices[2].uuid = devUUID(1), devUUID(2)
+	k.scrub = func(id, _ uint64) (scrubProgress, error) {
+		if id == 2 {
+			return scrubProgress{LastPhysical: 50 << 20}, nil
+		}
+		k.setRunning(1, &scrubProgress{DataBytesScrubbed: 1 << 20, LastPhysical: flushedAt})
+		hold()
+		k.setRunning(1, nil)
+		return scrubProgress{DataBytesScrubbed: 2 << 20, LastPhysical: flushedEnd}, nil
+	}
+	stubKernel(t, k)
+	saveEveryTick(t)
+}
+
+// The kernel's repair writes carry no flush, so a saved offset could outlive
+// the repairs below it in a power cut. Before a save moves an offset or marks
+// a device done, and before the outcome, the scrub flushes each device it
+// scrubs: poll, flush, write.
+func TestScrubFlushesBeforeSavingAnOffset(t *testing.T) {
+	flushKernel(t, func() {
+		waitForRecord(t, func(r scrubRecord) bool { return r.Devices[1].Offset == flushedAt })
+	})
+	events := watchFlushes(func() bool { return false })
+	if got, err := ScrubFrom(t.Context(), dataUUID, "job-1", func(BtrfsScrubStatus) {}); err != nil || got.Status != "finished" {
+		t.Fatalf("got=%+v err=%v", got, err)
+	}
+	log := events()
+	polled := slices.Index(log, fmt.Sprintf("poll %d", flushedAt))
+	if polled < 0 {
+		t.Fatalf("events %v: device 1's offset was never polled", log)
+	}
+	// The first save after the poll flushes both devices, then writes.
+	for _, dev := range []string{"/dev/sda1", "/dev/sdb1"} {
+		i := slices.IndexFunc(log[polled:], func(e string) bool { return strings.HasPrefix(e, "flush "+dev) })
+		if i < 0 || log[polled+i] != fmt.Sprintf("flush %s, saved 0", dev) {
+			t.Fatalf("events %v: %s not flushed between the poll and the write of offset %d", log, dev, flushedAt)
+		}
+	}
+	// The outcome is written after a last flush.
+	last := log[len(log)-1]
+	if !strings.HasPrefix(last, "flush ") || strings.HasSuffix(last, fmt.Sprintf("saved %d", flushedEnd)) {
+		t.Fatalf("events %v: no flush before the outcome", log)
+	}
+	if rec, _ := loadScrubRecord(dataUUID); rec.Status != "finished" || rec.Devices[1].Offset != flushedEnd || !rec.Devices[1].Done {
+		t.Fatalf("record = %+v", rec)
+	}
+}
+
+// A failed flush skips the save, so the record keeps the offsets last
+// flushed until a flush succeeds again.
+func TestScrubFailedFlushKeepsTheOldOffsets(t *testing.T) {
+	var failing atomic.Bool
+	failing.Store(true)
+	var failed atomic.Int32
+	flushKernel(t, func() {
+		deadline := time.Now().Add(5 * time.Second)
+		for failed.Load() < 10 && time.Now().Before(deadline) {
+			time.Sleep(time.Millisecond)
+		}
+		if rec, _ := loadScrubRecord(dataUUID); failed.Load() < 10 || rec.Devices[1].Offset != 0 || rec.Devices[2].Done {
+			t.Errorf("record after %d failed flushes = %+v, want the offsets of the start", failed.Load(), rec)
+		}
+		failing.Store(false)
+		waitForRecord(t, func(r scrubRecord) bool { return r.Devices[1].Offset == flushedAt && r.Devices[2].Done })
+	})
+	watchFlushes(func() bool {
+		if failing.Load() {
+			failed.Add(1)
+			return true
+		}
+		return false
+	})
+	if got, err := ScrubFrom(t.Context(), dataUUID, "job-1", func(BtrfsScrubStatus) {}); err != nil || got.Status != "finished" {
+		t.Fatalf("got=%+v err=%v", got, err)
+	}
+}
+
+// A failed flush at the end fails the scrub and leaves the devices as last
+// flushed, aborted, not a finished scrub a resync would count.
+func TestScrubFailedFinalFlushFailsTheScrub(t *testing.T) {
+	var final atomic.Bool
+	flushKernel(t, func() {
+		waitForRecord(t, func(r scrubRecord) bool { return r.Devices[1].Offset == flushedAt && r.Devices[2].Done })
+		final.Store(true)
+	})
+	watchFlushes(final.Load)
+	got, err := ScrubFrom(t.Context(), dataUUID, "job-1", func(BtrfsScrubStatus) {})
+	if !errors.Is(err, unix.EIO) || got.Status == "finished" {
+		t.Fatalf("got=%+v err=%v, want the failed flush to fail the scrub", got, err)
+	}
+	// The counters too are those of the last flushed save: device 1's
+	// running call had read 1 MiB then, and the 2 MiB its call returned
+	// since are read again by whatever continues from those offsets.
+	want := map[int]scrubDeviceRecord{1: {UUID: devUUID(1), Offset: flushedAt}, 2: {UUID: devUUID(2), Offset: 50 << 20, Done: true}}
+	if rec, _ := loadScrubRecord(dataUUID); rec.Status != "aborted" || rec.FinishedAt == nil || rec.BytesScrubbed != 1<<20 || !reflect.DeepEqual(rec.Devices, want) {
+		t.Fatalf("record = %+v, want it aborted with 1 MiB and the devices as last flushed, %+v", rec, want)
+	}
+}
+
+// The path DEV_INFO reports can name no device node: /dev/root for a root
+// filesystem mounted without an initramfs, or a disk's old name. The flush
+// goes to each disk the kernel lists as a member, by its kernel name ("!"
+// standing for "/"), whatever path DEV_INFO reports.
+func TestScrubFlushesThePoolsDisksByKernelName(t *testing.T) {
+	k := raid1Kernel()
+	k.devices[1].path = "/dev/root"
+	stubKernel(t, k)
+	for _, name := range []string{"sda2", "cciss!c0d0"} {
+		if err := os.MkdirAll(filepath.Join(sysFSBtrfs, dataUUID, "devices", name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Remove(filepath.Join(sysFSBtrfs, dataUUID, "devices", "root")); err != nil {
+		t.Fatal(err)
+	}
+	var mu sync.Mutex
+	flushed := map[string]bool{}
+	flushDevice = func(path string) error {
+		mu.Lock()
+		defer mu.Unlock()
+		flushed[path] = true
+		return nil
+	}
+	if got, err := ScrubFrom(t.Context(), dataUUID, "job-1", func(BtrfsScrubStatus) {}); err != nil || got.Status != "finished" {
+		t.Fatalf("got=%+v err=%v", got, err)
+	}
+	if want := map[string]bool{"/dev/sda2": true, "/dev/sdb1": true, "/dev/cciss/c0d0": true}; !reflect.DeepEqual(flushed, want) {
+		t.Fatalf("flushed %v, want %v", flushed, want)
+	}
+}
+
+// A save a failed flush skips still takes over a cancel requested since the
+// last tick, as a save that writes does, so an interrupted call is not
+// issued again only to wait for a thaw.
+func TestScrubSkippedSaveStillTakesACancel(t *testing.T) {
+	k := raid1Kernel()
+	k.scrubCancel = func() error { return unix.ENOTCONN }
+	var failing atomic.Bool
+	k.scrub = func(id, start uint64) (scrubProgress, error) {
+		switch {
+		case id == 2:
+			return scrubProgress{LastPhysical: 1 << 30}, nil
+		case start != 0:
+			return scrubProgress{LastPhysical: 1 << 30}, nil // issued again
+		}
+		waitForRecord(t, func(r scrubRecord) bool { return r.Devices[2].Done })
+		failing.Store(true)
+		if err := ScrubCancel(context.Background(), dataUUID); err != nil {
+			t.Errorf("ScrubCancel: %v", err)
+		}
+		return scrubProgress{DataBytesScrubbed: 1 << 20, LastPhysical: 64 << 20}, unix.EINTR
+	}
+	stubKernel(t, k)
+	flushDevice = func(string) error {
+		if failing.Load() {
+			return unix.EIO
+		}
+		return nil
+	}
+	progressInterval = time.Hour // no tick reads the request first
+	_, err := ScrubFrom(context.Background(), dataUUID, "job-1", func(BtrfsScrubStatus) {})
+	calls := slices.DeleteFunc(k.Calls(), func(c string) bool { return c == "SCRUB_CANCEL" })
+	slices.Sort(calls)
+	if want := []string{"SCRUB 1", "SCRUB 2"}; !errors.Is(err, unix.EIO) || !reflect.DeepEqual(calls, want) {
+		t.Fatalf("err=%v calls=%v, want the failed flush and device 1 not issued again", err, calls)
+	}
+}
+
+// A member list shorter than the pool's present devices, an empty one
+// included, cannot cover them all: the flush fails rather than passing, so
+// no offset is saved unflushed and the scrub does not end finished.
+func TestScrubFlushRefusesAShortMemberList(t *testing.T) {
+	k := raid1Kernel()
+	stubKernel(t, k)
+	if err := os.Remove(filepath.Join(sysFSBtrfs, dataUUID, "devices", "sdb1")); err != nil {
+		t.Fatal(err)
+	}
+	got, err := ScrubFrom(t.Context(), dataUUID, "job-1", func(BtrfsScrubStatus) {})
+	if err == nil || got.Status == "finished" || !strings.Contains(err.Error(), "lists 1 disks of pool") {
+		t.Fatalf("got=%+v err=%v, want the short member list to fail the flush", got, err)
 	}
 }

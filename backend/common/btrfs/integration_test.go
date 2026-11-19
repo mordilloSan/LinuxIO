@@ -296,7 +296,7 @@ func (p *itPool) quotas() {
 func (p *itPool) devices() {
 	t := p.t
 	unix.Sync() // commit the written files so the scrub reads their data too
-	s, err := Scrub(p.ctx, p.uuid, func(BtrfsScrubStatus) {})
+	s, err := ScrubFrom(p.ctx, p.uuid, "", func(BtrfsScrubStatus) {})
 	p.must("scrub", err)
 	if s.Status != "finished" || s.ErrorCount != 0 || s.BytesScrubbed == 0 {
 		t.Fatalf("scrub = %+v", s)

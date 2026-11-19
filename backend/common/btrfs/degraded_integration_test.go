@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -113,9 +114,19 @@ type itMirror struct {
 	uuid    string
 	target  string
 	options []string
-	a, b    *loopDisk
-	// Digests of the files written before and while a was gone.
-	before, during [32]byte
+	// shelf holds the disk images and the state folder, frozen for the
+	// power-cut copy, which goes to dir.
+	shelf, dir string
+	a, b       *loopDisk
+	// The digest of each file the pool must hold, written before and while
+	// a was gone.
+	files map[string][32]byte
+}
+
+// write writes a file of size random bytes to the pool and notes its digest.
+func (m *itMirror) write(name string, size int64) {
+	m.t.Helper()
+	m.files[name] = writeRandom(m.t, filepath.Join(m.target, name), size)
 }
 
 func (m *itMirror) must(what string, err error) {
@@ -167,9 +178,11 @@ func (m *itMirror) state() poolState {
 // kernel: the boot check mounts the pool on the disk that is left, a disk
 // that comes back while mounted is not used, a stale disk alone is refused,
 // and once both are back the resync rewrites what the stale disk missed and
-// restores redundancy, so that disk alone then holds every file. Under a
-// running systemd it also checks that a pending fstab-style mount job does
-// not undo the degraded mount. Run it with `make test-btrfs-integration`.
+// restores redundancy, so that disk alone then holds every file. The resync
+// is cut by a power loss mid-scrub and continued from what the disks and the
+// state kept. Under a running systemd it also checks that a pending
+// fstab-style mount job does not undo the degraded mount. Run it with
+// `make test-btrfs-integration`.
 func TestBtrfsDegradedIntegration(t *testing.T) {
 	if os.Getenv("LINUXIO_RUN_BTRFS_INTEGRATION") != "1" {
 		t.Skip("set LINUXIO_RUN_BTRFS_INTEGRATION=1 and run as root")
@@ -177,18 +190,31 @@ func TestBtrfsDegradedIntegration(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Fatal("the btrfs integration test needs root")
 	}
+	t.Setenv("TMPDIR", "/var/tmp") // the images and their power-cut copies; /tmp may be a small tmpfs
 	dir := t.TempDir()
-	stubStatePaths(t, dir)
-	m := &itMirror{t: t, ctx: context.Background(), target: filepath.Join(dir, "mnt"), options: []string{"defaults", "noatime", "nofail"}}
+	shelf := mountShelf(t, dir, 8<<30)
+	state := filepath.Join(shelf, "state")
+	if err := os.Mkdir(state, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stubStatePaths(t, state)
+	m := &itMirror{
+		t: t, ctx: context.Background(), target: filepath.Join(dir, "mnt"), options: []string{"defaults", "noatime", "nofail"},
+		shelf: shelf, dir: dir, files: map[string][32]byte{},
+	}
+	m.a = newLoopDisk(t, filepath.Join(shelf, "a.img"), 2<<30)
+	m.b = newLoopDisk(t, filepath.Join(shelf, "b.img"), 2<<30)
+	// Registered after the disks, so it runs before they are detached.
 	t.Cleanup(func() { _ = unix.Unmount(m.target, 0) })
-	m.a = newLoopDisk(t, filepath.Join(dir, "a.img"), 2<<30)
-	m.b = newLoopDisk(t, filepath.Join(dir, "b.img"), 2<<30)
+	var uts unix.Utsname
+	m.must("uname", unix.Uname(&uts))
+	t.Logf("kernel %s", unix.ByteSliceToString(uts.Release[:]))
 	uuid, err := CreatePool(m.ctx, "linuxio-degraded", "raid1", "raid1", []string{m.a.dev, m.b.dev}, true, nil, nil)
 	m.must("create pool", err)
 	m.uuid = uuid
 	writeFstab(t, fmt.Sprintf("UUID=%s %s btrfs %s 0 0\n", uuid, m.target, strings.Join(m.options, ",")))
 	m.must("mount", MountPool(m.ctx, m.a.dev, m.target, m.options, false))
-	m.before = writeRandom(t, filepath.Join(m.target, "before.bin"), 8<<20)
+	m.writeWithHoles()
 	m.unmount()
 
 	m.bootMountsTheSurvivor()
@@ -196,6 +222,35 @@ func TestBtrfsDegradedIntegration(t *testing.T) {
 	m.staleDiskAloneIsRefused()
 	m.resyncRepairsTheReturnedDisk()
 	m.returnedDiskHoldsEverything()
+	writeErrorsFailTheResync(t, dir)
+}
+
+// writeWithHoles fills the data chunk mkfs made, then writes files into
+// 256 MiB chunks, the smallest the kernel lets a pool set (sysfs.c
+// btrfs_chunk_size_store), and deletes every other one. The writes made
+// while a disk is missing fill those holes first, so the returned disk's
+// stale copies lie in dev extents above the first, on both sides of where
+// the resync is cut, and the continued scrub can skip whole extents.
+func (m *itMirror) writeWithHoles() {
+	t := m.t
+	chunk := filepath.Join("/sys/fs/btrfs", m.uuid, "allocation", "data", "chunk_size")
+	m.must("data chunk size", os.WriteFile(chunk, []byte(strconv.Itoa(256<<20)), 0o644))
+	for _, x := range m.filesystem().Allocation {
+		if x.Kind == "data" && x.TotalBytes > x.UsedBytes+2<<20 {
+			m.write("base.bin", int64(x.TotalBytes-x.UsedBytes-2<<20))
+			break
+		}
+	}
+	for i := range 16 {
+		m.write(fmt.Sprintf("before-%02d.bin", i), 32<<20)
+	}
+	for i := 1; i < 16; i += 2 {
+		name := fmt.Sprintf("before-%02d.bin", i)
+		m.must("delete "+name, os.Remove(filepath.Join(m.target, name)))
+		delete(m.files, name)
+	}
+	unix.Sync()
+	t.Logf("allocation with the holes: %+v", m.filesystem().Allocation)
 }
 
 // bootMountsTheSurvivor: a drops out and the boot check mounts the pool on b.
@@ -217,9 +272,14 @@ func (m *itMirror) bootMountsTheSurvivor() {
 	if !m.hasAlert("health-"+m.uuid, "running without 1 of 2 disks") {
 		t.Fatal("the degraded mount raised no alert")
 	}
-	// More than the raid1 data chunk has left, so new chunks are allocated
-	// while only one disk can take them.
-	m.during = writeRandom(t, filepath.Join(m.target, "during.bin"), 400<<20)
+	// The holes in the raid1 chunks first, then more than they hold, so new
+	// chunks are allocated while only one disk can take them. 16 MiB files
+	// are in the size class of the files the holes were (block-group.c
+	// btrfs_calc_block_group_size_class), so the allocator takes the holes
+	// before it allocates a chunk.
+	for i := range 24 {
+		m.write(fmt.Sprintf("during-%02d.bin", i), 16<<20)
+	}
 	fs := m.filesystem()
 	t.Logf("allocation while degraded: %+v", fs.Allocation)
 	if !slices.ContainsFunc(fs.Allocation, func(x BtrfsAllocation) bool { return x.Kind == "data" && x.Profile == "single" }) {
@@ -253,28 +313,52 @@ func (m *itMirror) staleDiskAloneIsRefused() {
 }
 
 // resyncRepairsTheReturnedDisk: with both back the pool is complete, which
-// is systemd's to mount; then the scrub rewrites a's stale copies and the
-// convert gives the single chunks their second copy.
+// is systemd's to mount. The resync is cut by a power loss mid-scrub, and
+// the pool booted from what its disks and the state kept, where the next
+// resync continues the scrub: it rewrites a's stale copies on both sides of
+// the cut, and the convert gives the single chunks their second copy.
 func (m *itMirror) resyncRepairsTheReturnedDisk() {
 	t := m.t
 	m.b.plug()
-	m.must("boot check on a complete pool", MountDegradedPools(m.ctx, 0))
-	if m.mounted() {
-		t.Fatal("the boot check mounted a complete pool")
-	}
-	pools, err := FindOfflinePools(m.ctx, []string{m.a.dev, m.b.dev})
-	m.must("offline pools", err)
-	if len(pools) != 1 || len(pools[0].Devices) != 2 {
-		t.Fatalf("offline pools = %+v", pools)
-	}
-	m.must("mount complete", MountOfflinePool(m.ctx, pools[0], m.target, m.options, false))
-	if m.filesystem().Degraded || !m.state().Degraded {
+	m.mountComplete("a complete pool")
+	if !m.state().Degraded {
 		t.Fatalf("complete pool: state %+v", m.state())
 	}
+	m.cutResync()
+	m.mountComplete("the power-cut copies")
 
+	cut, ok := loadScrubRecord(m.uuid)
+	run := m.state().ResyncRun
+	before := cut.total()
+	if !ok || cut.Status != "running" || run == "" || cut.Run != run || cut.StartedAt == nil || before.CorrectedErrors == 0 {
+		t.Fatalf("the cut left scrub record %+v for the resync run %q; want it running with corrections", cut, run)
+	}
+	used := m.filesystem().UsedBytes
+	t.Logf("cut at %d of %d MiB with %d corrections, devices %+v", before.BytesScrubbed>>20, used>>20, before.CorrectedErrors, cut.Devices)
+
+	calls := (&itPool{t: t, ctx: m.ctx, uuid: m.uuid, mnt: m.target}).scrubCalls()
 	m.must("resync", Resync(m.ctx, m.uuid, nil))
-	if scrub, ok := loadScrubRecord(m.uuid); !ok || scrub.CorrectedErrors == 0 || scrub.UncorrectableErrors != 0 {
-		t.Fatalf("resync scrub = %+v; want stale copies corrected", scrub)
+	// Each device was continued from one byte below its saved offset, not
+	// scanned again from 0.
+	starts := calls()
+	for id, d := range cut.Devices {
+		if got := starts[uint64(id)]; d.Offset == 0 || len(got) == 0 || got[0] != d.Offset-1 {
+			t.Fatalf("device %d's scrub calls started at %v; want the first at %d, below its saved offset", id, got, d.Offset-1)
+		}
+	}
+	final, _ := loadScrubRecord(m.uuid)
+	own := final.BytesScrubbed - before.BytesScrubbed
+	t.Logf("the continued scrub read %d MiB itself and corrected %d, %d MiB and %d corrections in all; final devices %+v",
+		own>>20, final.CorrectedErrors-before.CorrectedErrors, final.BytesScrubbed>>20, final.CorrectedErrors, final.Devices)
+	switch {
+	case final.Run != run || final.Status != "finished" || final.StartedAt == nil || !final.StartedAt.Equal(*cut.StartedAt):
+		t.Fatalf("resync scrub = %+v; want the cut scrub of run %s continued to the end", final, run)
+	// The cut lies past each device's first data extent, which the
+	// continuation skips whole: it reads under nine tenths of a full scrub.
+	case own*10 >= used*9 || final.BytesScrubbed*100 < used*99:
+		t.Fatalf("the continued scrub read %d bytes itself and %d in all of %d used; want under nine tenths itself, and all with the cut part", own, final.BytesScrubbed, used)
+	case final.CorrectedErrors <= before.CorrectedErrors || final.UncorrectableErrors != 0:
+		t.Fatalf("resync scrub = %+v; want stale copies corrected after the cut as well, none uncorrectable", final)
 	}
 	fs := m.filesystem()
 	for _, x := range fs.Allocation {
@@ -282,13 +366,94 @@ func (m *itMirror) resyncRepairsTheReturnedDisk() {
 			t.Fatalf("after resync %s is %s, want raid1: %+v", x.Kind, x.Profile, fs.Allocation)
 		}
 	}
-	if m.state().Degraded {
-		t.Fatalf("state after resync = %+v", m.state())
+	if s := m.state(); s.Degraded || s.ResyncRun != "" {
+		t.Fatalf("state after resync = %+v", s)
 	}
-	if !m.hasAlert("resynced-"+m.uuid, "whole again") || m.hasAlert("resync-"+m.uuid, "") {
-		t.Fatal("the alerts do not say the pool is whole again")
+	// The notice counts the corrections of both parts.
+	if !m.hasAlert("resynced-"+m.uuid, fmt.Sprintf("corrected %d ", final.CorrectedErrors)) || m.hasAlert("resync-"+m.uuid, "") {
+		t.Fatal("the alerts do not say the pool is whole again with every correction")
 	}
 	m.unmount()
+}
+
+// mountComplete runs the boot check, which leaves a complete pool to
+// systemd, then mounts the pool as systemd would.
+func (m *itMirror) mountComplete(what string) {
+	t := m.t
+	m.must("boot check on "+what, MountDegradedPools(m.ctx, 0))
+	if m.mounted() {
+		t.Fatalf("the boot check mounted %s", what)
+	}
+	pools, err := FindOfflinePools(m.ctx, []string{m.a.dev, m.b.dev})
+	m.must("offline pools", err)
+	if len(pools) != 1 || len(pools[0].Devices) != 2 {
+		t.Fatalf("offline pools of %s = %+v", what, pools)
+	}
+	m.must("mount "+what, MountOfflinePool(m.ctx, pools[0], m.target, m.options, false))
+	if m.filesystem().Degraded {
+		t.Fatalf("%s mounted degraded", what)
+	}
+}
+
+// cutResync runs the resync in a child that saves its scrub every second,
+// with the scrub slowed down, and cuts it as a power loss does once its
+// record shows corrections in the holes: the shelf is frozen and the disk
+// images and the state copied, then the child is killed. The originals are
+// unplugged, the copies plugged in their place, and the state paths pointed
+// at the copied state. It fails when the resync ends before those
+// corrections were saved.
+func (m *itMirror) cutResync() {
+	t := m.t
+	live := &itPool{t: t, ctx: m.ctx, uuid: m.uuid, mnt: m.target}
+	live.scrubSpeed(32 << 20)
+	child := live.runChild("resync", "LINUXIO_BTRFS_IT_STATE="+filepath.Dir(ScrubRecordPath))
+	ended := make(chan error, 1)
+	go func() { ended <- child.Wait() }()
+	// 4096 corrected sectors, 16 MiB of stale copies, are more than the base
+	// file's leftover and the metadata hold: a's scrub is in the holes, past
+	// the first data extent, so the continuation can skip whole extents.
+	// Mainline before 6.11 moves last_physical only at the end of a dev
+	// extent, where the record would show them at the end of the first
+	// chunk with holes; the noble VM's 6.8.0-149 saved the same offset
+	// mid-extent as 7.0 did, so it seems to carry the 6.11 change, and no
+	// VM run cuts at an extent end while that extent's repairs are queued.
+	// That case rests on the source and the unit tests.
+	live.waitFor("resync", func() bool {
+		states, err := loadPoolStates()
+		rec, ok := loadScrubRecord(m.uuid)
+		return err == nil && ok && rec.Run != "" && rec.Run == states[m.uuid].ResyncRun &&
+			rec.Status == "running" && rec.total().CorrectedErrors >= 4096
+	}, ended)
+	stateCopy := filepath.Join(m.dir, "state")
+	copies := map[string]string{
+		m.a.file: filepath.Join(m.dir, "a.img"), m.b.file: filepath.Join(m.dir, "b.img"),
+		filepath.Dir(ScrubRecordPath): stateCopy,
+	}
+	copyFrozen(t, m.shelf, copies)
+	logFreeSpace(t, m.dir, "with the power-cut copies")
+	_ = child.Process.Kill()
+	// Before 6.19 the kernel scrubs on to the end of each device, and the
+	// child ends only then.
+	live.scrubSpeed(0)
+	t.Logf("the resync child after the kill: %v", <-ended)
+	live.waitScrubIdle()
+	m.unmount()
+
+	m.a.unplug()
+	m.b.unplug()
+	m.a = &loopDisk{t: t, file: copies[m.a.file], fd: -1}
+	m.b = &loopDisk{t: t, file: copies[m.b.file], fd: -1}
+	for _, d := range []*loopDisk{m.a, m.b} {
+		d.plug()
+		t.Cleanup(func() {
+			if d.fd >= 0 {
+				detachLoop(d.fd)
+			}
+		})
+	}
+	// Registered after the copies, so it runs before they are detached.
+	t.Cleanup(func() { _ = unix.Unmount(m.target, 0) })
+	stubStatePaths(t, stateCopy)
 }
 
 // returnedDiskHoldsEverything: a alone now holds every file, and every copy
@@ -302,10 +467,12 @@ func (m *itMirror) returnedDiskHoldsEverything() {
 		t.Fatalf("offline pools = %+v", pools)
 	}
 	m.must("mount a alone", MountOfflinePool(m.ctx, pools[0], m.target, m.options, true))
-	if digest(t, filepath.Join(m.target, "before.bin")) != m.before || digest(t, filepath.Join(m.target, "during.bin")) != m.during {
-		t.Fatal("a alone does not hold the files written before and while it was gone")
+	for name, want := range m.files {
+		if digest(t, filepath.Join(m.target, name)) != want {
+			t.Fatalf("a alone does not hold %s as written", name)
+		}
 	}
-	status, err := Scrub(m.ctx, m.uuid, func(BtrfsScrubStatus) {})
+	status, err := ScrubFrom(m.ctx, m.uuid, "", func(BtrfsScrubStatus) {})
 	m.must("scrub a alone", err)
 	if status.ErrorCount != 0 {
 		t.Fatalf("scrub of a alone = %+v, want no errors", status)
@@ -370,4 +537,155 @@ func fstabStyleMountUnit(t *testing.T, uuid, where, present string) func() {
 		time.Sleep(8 * time.Second)
 		remove()
 	}
+}
+
+// writeErrorsFailTheResync resyncs a pool of its own whose second disk, a
+// device-mapper device, missed writes while the pool ran without it, and
+// fails that disk's reads, writes and flushes for a moment while the pool
+// stays mounted, as when a cable comes loose and the disk stays attached:
+// the kernel marks no disk missing then (it does so at mount, and since 7.1
+// when a block device goes away), only the disk's error counters rise. It
+// fails the disk once during the scrub, with a file written meanwhile that
+// reaches the other disk alone, and once during the convert, which writes
+// the second copies onto it. Each time the resync must fail, naming the
+// disk, rather than declare the pool whole; once the disk works again the
+// next resync scrubs it again, after which that disk alone holds every file.
+func writeErrorsFailTheResync(t *testing.T, dir string) {
+	f := newFlakyMirror(t, dir)
+	f.writeWithoutTheFlakyDisk()
+	p := f.pool
+	devices := p.filesystem().Devices
+	i := slices.IndexFunc(devices, func(d BtrfsDevice) bool { return canonicalPath(d.Path) == f.flaky.dev })
+	if i < 0 {
+		t.Fatalf("no member on %s: %+v", f.flaky.dev, devices)
+	}
+	want := fmt.Sprintf("device %d (%s) failed writes", devices[i].ID, devices[i].Path)
+
+	p.scrubSpeed(16 << 20)
+	done := make(chan error, 1)
+	go func() { done <- Resync(p.ctx, p.uuid, nil) }()
+	p.waitFor("resync", p.scrubbedPast(8), done)
+	f.flaky.fail()
+	f.files["during-failure.bin"] = writeRandom(t, filepath.Join(p.mnt, "during-failure.bin"), 16<<20)
+	unix.Sync()
+	f.flaky.heal()
+	p.scrubSpeed(0)
+	f.wantFailedAttempt("its scrub", <-done, want, 1)
+
+	go func() { done <- Resync(p.ctx, p.uuid, nil) }()
+	p.waitFor("convert", p.holds("balance"), done)
+	f.flaky.fail()
+	failed := <-done
+	f.flaky.heal()
+	f.wantFailedAttempt("its convert", failed, want, 2)
+
+	p.must("the resync once the disk works again", Resync(p.ctx, p.uuid, nil))
+	if states, _ := loadPoolStates(); states[p.uuid].Degraded {
+		t.Fatalf("state after the resync = %+v", states[p.uuid])
+	}
+	f.flakyDiskHoldsEverything()
+}
+
+// wantFailedAttempt checks that a resync during part of which the flaky
+// disk failed ended as failed attempt number n, saying want, with its scrub
+// no longer counted.
+func (f *flakyMirror) wantFailedAttempt(part string, err error, want string, n int) {
+	t := f.pool.t
+	t.Helper()
+	t.Logf("the resync while the disk failed during %s: %v", part, err)
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("Resync = %v; want it to fail with %q", err, want)
+	}
+	states, loadErr := loadPoolStates()
+	if s := states[f.pool.uuid]; loadErr != nil || !s.Degraded || s.Scrubbed || s.ResyncFailures != n {
+		t.Fatalf("state after the attempt that failed during %s = %+v, %v", part, s, loadErr)
+	}
+}
+
+// writeWithoutTheFlakyDisk runs the pool on its first disk alone and writes
+// more than its raid1 data chunk holds, so the stale disk misses writes and
+// a single chunk is allocated for the resync to convert; then it mounts the
+// pool whole again, as after the disk came back.
+func (f *flakyMirror) writeWithoutTheFlakyDisk() {
+	p := f.pool
+	p.must("unmount", unix.Unmount(p.mnt, 0))
+	p.must("forget the flaky disk", controlIoctl(iocForgetDev, f.flaky.dev))
+	pools, err := FindOfflinePools(p.ctx, []string{f.a.dev})
+	if err != nil || len(pools) != 1 {
+		p.t.Fatalf("offline pools = %+v, %v", pools, err)
+	}
+	p.must("mount degraded", MountOfflinePool(p.ctx, pools[0], p.mnt, []string{"noatime"}, true))
+	for i := range 48 {
+		name := fmt.Sprintf("degraded-%02d.bin", i)
+		f.files[name] = writeRandom(p.t, filepath.Join(p.mnt, name), 16<<20)
+	}
+	p.must("unmount", unix.Unmount(p.mnt, 0))
+	p.must("register the flaky disk", RegisterDevice(f.flaky.dev))
+	pools, err = FindOfflinePools(p.ctx, []string{f.a.dev, f.flaky.dev})
+	if err != nil || len(pools) != 1 || len(pools[0].Devices) != 2 {
+		p.t.Fatalf("offline pools = %+v, %v", pools, err)
+	}
+	p.must("mount whole", MountOfflinePool(p.ctx, pools[0], p.mnt, []string{"noatime"}, false))
+	if fs := p.filesystem(); !slices.ContainsFunc(fs.Allocation, func(x BtrfsAllocation) bool { return x.Kind == "data" && x.Profile == "single" }) {
+		p.t.Fatalf("no single data chunk to convert: %+v", fs.Allocation)
+	}
+	if s, _ := loadPoolStates(); !s[p.uuid].Degraded {
+		p.t.Fatalf("the degraded mount recorded no episode: %+v", s[p.uuid])
+	}
+}
+
+// flakyMirror is a two-disk raid1 pool whose second disk is a device-mapper
+// device that can fail every I/O, with the files written to it.
+type flakyMirror struct {
+	pool  *itPool
+	a     *loopDisk
+	flaky *dmDisk
+	files map[string][32]byte
+}
+
+func newFlakyMirror(t *testing.T, dir string) *flakyMirror {
+	a := newLoopDisk(t, filepath.Join(dir, "wa.img"), 3<<30)
+	b := newLoopDisk(t, filepath.Join(dir, "wb.img"), 3<<30)
+	f := &flakyMirror{a: a, flaky: newDMDisk(t, "linuxio-it-flaky", b.dev), files: map[string][32]byte{}}
+	p := &itPool{t: t, ctx: t.Context(), mnt: filepath.Join(dir, "wmnt")}
+	f.pool = p
+	// Registered after the disks, so it runs before they are removed.
+	t.Cleanup(func() { _ = unix.Unmount(p.mnt, 0) })
+	uuid, err := CreatePool(p.ctx, "linuxio-flaky", "raid1", "raid1", []string{a.dev, f.flaky.dev}, true, nil, nil)
+	p.must("create pool", err)
+	p.uuid = uuid
+	t.Cleanup(func() {
+		for _, dev := range []string{a.dev, f.flaky.dev} {
+			_ = controlIoctl(iocForgetDev, dev)
+		}
+	})
+	p.must("mount", MountPool(p.ctx, a.dev, p.mnt, []string{"noatime"}, false))
+	for i := range 8 {
+		name := fmt.Sprintf("file-%d.bin", i)
+		f.files[name] = writeRandom(t, filepath.Join(p.mnt, name), 16<<20)
+	}
+	return f
+}
+
+// flakyDiskHoldsEverything checks that the device-mapper disk alone holds
+// every file, and that every copy on it checks out.
+func (f *flakyMirror) flakyDiskHoldsEverything() {
+	p := f.pool
+	p.must("unmount", unix.Unmount(p.mnt, 0))
+	f.a.unplug()
+	pools, err := FindOfflinePools(p.ctx, []string{f.flaky.dev})
+	if err != nil || len(pools) != 1 {
+		p.t.Fatalf("offline pools = %+v, %v", pools, err)
+	}
+	p.must("mount the disk whose writes failed alone", MountOfflinePool(p.ctx, pools[0], p.mnt, []string{"noatime"}, true))
+	for name, want := range f.files {
+		if digest(p.t, filepath.Join(p.mnt, name)) != want {
+			p.t.Fatalf("the disk whose writes failed does not hold %s as written", name)
+		}
+	}
+	status, err := ScrubFrom(p.ctx, p.uuid, "", func(BtrfsScrubStatus) {})
+	if err != nil || status.ErrorCount != 0 {
+		p.t.Fatalf("scrub of the disk alone = %+v, %v; want no errors", status, err)
+	}
+	p.must("unmount", unix.Unmount(p.mnt, 0))
 }

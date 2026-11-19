@@ -756,7 +756,7 @@ func TestResumeBalanceRefusesADegradedPool(t *testing.T) {
 	k.devices[2].path = ""
 	k.balanceProgress = func() (balanceArgs, error) { return balanceArgs{}, nil } // paused
 	stubKernel(t, k)
-	if err := ResumeBalance(context.Background(), dataUUID, BalanceOptions{}, true, func(float64) {}); err == nil || err.Error() != "pool "+dataUUID+" is degraded; balance not resumed" {
+	if err := ResumeBalance(context.Background(), dataUUID, BalanceOptions{}, true, func(float64) {}); !errors.Is(err, errDiskMissing) || err.Error() != "pool "+dataUUID+" is degraded; balance not resumed: a disk is missing" {
 		t.Fatalf("err = %v", err)
 	}
 	if calls := k.Calls(); len(calls) != 0 {

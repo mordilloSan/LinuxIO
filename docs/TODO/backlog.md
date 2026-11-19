@@ -52,10 +52,6 @@ after a change that issues ioctls).
 
 Do one of these only when something shows it is needed.
 
-- Continue the scrub of a pool resync after a power cut. It saves its progress
-  as a job's scrub does, but it is not a job, so nothing continues it and the
-  resync scrubs from the start again.
-
 ## Rejected
 
 Listed once, with the reason, so they are not raised again.
@@ -146,9 +142,13 @@ Storage and jobs:
   freeze does interrupt one, and the scrub then issues its call again; a
   replace a freeze ended is under "Not built" in
   [Jobs](../jobs.md#not-built).
-- A scrub continued from its saved progress, or issued again after a freeze,
-  has limits that are kept on purpose; "Scrub progress" in
-  [Btrfs](../btrfs.md#scrub-progress) gives each with its reason. The dev
+- A scrub continued from its saved progress, a job's or a pool resync's, or
+  issued again after a freeze, has limits that are kept on purpose; "Scrub
+  progress" and "Missing disks" in [Btrfs](../btrfs.md#scrub-progress) give
+  each with its reason. A resync continues only within its episode: after a
+  degraded mount LinuxIO made or saw, or a scrub started between two of its
+  attempts, it starts over. It stays a scheduled run rather than a resumable
+  job, which would need an owner and a timer-started job. The dev
   extent where a disk stopped is read and counted twice, and a power cut
   loses up to a minute. `btrfs scrub status` does not show LinuxIO's scrubs.
   A disk interrupted three times in a row before it moves is aborted. A scrub

@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -36,6 +38,29 @@ var progsScrubDir = "/var/lib/btrfs"
 // shorten it.
 var scrubSaveInterval = time.Minute
 
+// flushDevice sends the disk at path a cache flush, which makes the writes
+// the kernel completed on it durable; a var so tests can watch it. A
+// scrub's repair writes carry no flush or FUA (scrub.c scrub_write_sectors),
+// and a scrub commits no transaction unless a superblock was bad, so a saved
+// offset could otherwise outlive the repairs below it in a power cut. fsync
+// of a block device always sends the flush (block/fops.c blkdev_fsync,
+// blkdev_issue_flush), a no-op on a disk without a write cache.
+//
+// This is not a write to the device: the open is read-only and nothing is
+// written, so no deviceInUse check or exclusive open applies (the mounted
+// pool holds its members exclusively, which an exclusive open would only
+// fail against). Nor does it need the disk lock (LockDisk): a read-only
+// close fires no udev change event, and the flush changes no partition
+// table or signature for udev to probe.
+var flushDevice = func(path string) error {
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return err
+	}
+	defer unix.Close(fd)
+	return unix.Fsync(fd)
+}
+
 // maxScrubStalls is how many interrupted kernel calls in a row that moved
 // nothing a device's scrub takes before it ends aborted rather than being
 // issued again.
@@ -54,8 +79,8 @@ var ErrScrubRunning = errors.New("a scrub or a device replace is already running
 // ended keeps no device counters. An older build reads only the status.
 type scrubRecord struct {
 	BtrfsScrubStatus
-	// Run is the job ID of the scrub; empty outside a job, as for a pool
-	// resync.
+	// Run is the job ID of the scrub, or a pool resync's run (resyncRun in
+	// the pool state); empty for any other scrub outside a job.
 	Run string `json:"run,omitzero"`
 	// Aborted is set when an earlier part of this scrub aborted on a device
 	// the record does not name.
@@ -112,6 +137,13 @@ type scrubDeviceRecord struct {
 	Offset  uint64 `json:"offset"`
 	Done    bool   `json:"done,omitzero"`
 	Aborted bool   `json:"aborted,omitzero"`
+	// WriteErrors and FlushErrors are the device's write and flush error
+	// counters (GET_DEV_STATS) when its scan began, kept while a resume
+	// carries the scan on. The kernel does not mark a disk missing while it
+	// stays attached, so a disk whose writes fail only raises them, and
+	// writes made meanwhile may have missed it below its offset.
+	WriteErrors uint64 `json:"writeErrors,omitzero"`
+	FlushErrors uint64 `json:"flushErrors,omitzero"`
 	// scrubCounters are what the device's running kernel call had counted
 	// when last read.
 	scrubCounters
@@ -123,6 +155,39 @@ type scrubCounters struct {
 	UncorrectableErrors uint64 `json:"uncorrectableErrors,omitzero"`
 	CorrectedErrors     uint64 `json:"correctedErrors,omitzero"`
 	BytesScrubbed       uint64 `json:"bytesScrubbed,omitzero"`
+}
+
+// failedWritesSince reports whether device d's write or flush error
+// counters changed since the record's scan of it began. A change either way
+// counts: counters set back to zero by hand hide what happened before.
+func (s scrubDeviceRecord) failedWritesSince(d BtrfsDevice) bool {
+	return d.Errors.Write != s.WriteErrors || d.Errors.Flush != s.FlushErrors
+}
+
+// staleFor says why the record's scrub no longer covers devices, the pool's
+// devices now: a device it scanned is gone, or failed writes or flushes
+// since its scan began, which writes made meanwhile may have missed, or a
+// present device is no part of it, as a disk added since, which a convert
+// may write second copies onto. It returns "" while the scrub still covers
+// them. A missing device is the caller's to refuse first.
+func (r scrubRecord) staleFor(devices []BtrfsDevice) string {
+	for _, d := range devices {
+		if _, named := r.Devices[d.ID]; !named && !d.Missing {
+			return fmt.Sprintf("device %d (%s) is no part of the scrub", d.ID, d.Path)
+		}
+	}
+	for _, id := range slices.Sorted(maps.Keys(r.Devices)) {
+		saved := r.Devices[id]
+		i := slices.IndexFunc(devices, func(d BtrfsDevice) bool { return d.ID == id })
+		if i < 0 || devices[i].UUID != saved.UUID {
+			return fmt.Sprintf("device %d of the scrub is no longer in the pool", id)
+		}
+		if d := devices[i]; saved.failedWritesSince(d) {
+			return fmt.Sprintf("device %d (%s) failed writes since its scan began, so it may still hold stale copies: %d write and %d flush errors, %d and %d then",
+				d.ID, d.Path, d.Errors.Write, d.Errors.Flush, saved.WriteErrors, saved.FlushErrors)
+		}
+	}
+	return ""
 }
 
 func countersOf(p scrubProgress) scrubCounters {
@@ -143,12 +208,6 @@ func (r scrubRecord) total() BtrfsScrubStatus {
 	return s
 }
 
-// Scrub scrubs every present device of the filesystem from the start,
-// outside any job; see ScrubFrom.
-func Scrub(ctx context.Context, uuid string, report func(BtrfsScrubStatus)) (BtrfsScrubStatus, error) {
-	return ScrubFrom(ctx, uuid, "", report)
-}
-
 // ScrubFrom scrubs every present device of the filesystem from the start, to
 // completion, as job run (empty outside a job), reporting progress on the
 // way, and records the outcome and, while it runs, where each device stands.
@@ -157,7 +216,7 @@ func Scrub(ctx context.Context, uuid string, report func(BtrfsScrubStatus)) (Btr
 // Canceling ctx cancels the scrub; the kernel then returns each device's
 // partial counters. A device that aborted fails the scrub even then.
 func ScrubFrom(ctx context.Context, uuid, run string, report func(BtrfsScrubStatus)) (BtrfsScrubStatus, error) {
-	return scrub(ctx, uuid, run, nil, false, report)
+	return scrub(ctx, uuid, run, nil, scrubNew, report)
 }
 
 // ResumeScrub continues job run's scrub after a reboot, as ScrubFrom runs
@@ -169,10 +228,30 @@ func ScrubFrom(ctx context.Context, uuid, run string, report func(BtrfsScrubStat
 // the outcome keeps its start, counters and abort, so errors its first part
 // found stay in the record. Nil starts scrub everything again.
 func ResumeScrub(ctx context.Context, uuid, run string, starts map[int]uint64, report func(BtrfsScrubStatus)) (BtrfsScrubStatus, error) {
-	return scrub(ctx, uuid, run, starts, true, report)
+	return scrub(ctx, uuid, run, starts, scrubResume, report)
 }
 
-func scrub(ctx context.Context, uuid, run string, starts map[int]uint64, resume bool, report func(BtrfsScrubStatus)) (BtrfsScrubStatus, error) {
+// continueScrub scrubs every present device as run, a pool resync's, which
+// must check every copy. A record of run that finished counts, with no
+// kernel call. One still running (a power cut, a crash or a kill), canceled
+// (Stop check, a shutdown) or aborted is continued as ResumeScrub continues
+// a job's, except that a device that aborted is scanned again from its
+// offset: keeping the abort would fail every resync of the episode. Any
+// other record means a scrub from the start.
+func continueScrub(ctx context.Context, uuid, run string, report func(BtrfsScrubStatus)) (BtrfsScrubStatus, error) {
+	return scrub(ctx, uuid, run, nil, scrubContinue, report)
+}
+
+// scrubMode is where a scrub starts.
+type scrubMode int
+
+const (
+	scrubNew      scrubMode = iota // from the start
+	scrubResume                    // a job's resume: from its record or the checkpoint, keeping an abort
+	scrubContinue                  // a resync's continuation: from its record, scanning an abort again
+)
+
+func scrub(ctx context.Context, uuid, run string, starts map[int]uint64, mode scrubMode, report func(BtrfsScrubStatus)) (BtrfsScrubStatus, error) {
 	fs, err := FindFilesystem(ctx, uuid)
 	if err != nil {
 		return BtrfsScrubStatus{}, err
@@ -182,15 +261,30 @@ func scrub(ctx context.Context, uuid, run string, starts map[int]uint64, resume 
 	if !fs.HealthKnown {
 		return BtrfsScrubStatus{}, fmt.Errorf("could not read the devices of pool %s", uuid)
 	}
+	// A resync must check every copy, and a scrub skips a missing disk.
+	if mode == scrubContinue && fs.Degraded {
+		return BtrfsScrubStatus{}, fmt.Errorf("pool %s: %w", uuid, errDiskMissing)
+	}
 	rec, have := loadScrubRecord(uuid)
 	// Between kernel calls, or waiting for a thaw, a scrub has nothing in the
 	// kernel to refuse another by: its record and process tell.
 	if have && rec.live() {
 		return BtrfsScrubStatus{}, fmt.Errorf("the scrub on record is still running: %w", ErrScrubRunning)
 	}
+	// Its outcome is written after a flush, so the repairs it counts are on
+	// the disks, unless a disk failed writes since or left the pool: the
+	// pool is then scrubbed again.
+	if mode == scrubContinue && have && run != "" && rec.Run == run && rec.Status == "finished" {
+		stale := rec.staleFor(fs.Devices)
+		if stale == "" {
+			slog.Debug("btrfs scrub of this run already finished", "uuid", uuid, "run", run)
+			return rec.BtrfsScrubStatus, nil
+		}
+		slog.Debug("btrfs scrub of this run no longer covers the pool", "uuid", uuid, "run", run, "reason", stale)
+	}
 	var seed scrubRecord
-	if resume && have && rec.resumable(run) {
-		seed, starts = rec.resumePoint(uuid, fs.Devices)
+	if mode != scrubNew && have && rec.resumable(run) {
+		seed, starts = rec.resumePoint(uuid, fs.Devices, mode)
 	} else {
 		// An older build's record names no run and no devices.
 		seed = scrubSeed(rec, have && (rec.Run == run || rec.Run == "" && rec.Devices == nil), starts)
@@ -237,14 +331,18 @@ func (r scrubRecord) resumable(run string) bool {
 // kernel scrubs whole the dev extent holding the start, so the one byte
 // back re-reads the extent the offset ends, whose last stripes the kernel
 // may not have checked when it reported the offset. A device that finished
-// or aborted is skipped, and an abort kept; one the record does not name,
-// or names with another UUID, is scrubbed from 0.
-func (r scrubRecord) resumePoint(uuid string, devices []BtrfsDevice) (scrubRecord, map[int]uint64) {
+// is skipped; one that aborted is skipped and the abort kept, or, for a
+// resync's continuation, scanned again from its offset; one the record does
+// not name, or names with another UUID, is scrubbed from 0. A resync's
+// continuation also scans from 0 a device that failed writes since its scan
+// began, done or not: writes made meanwhile may have missed it anywhere.
+func (r scrubRecord) resumePoint(uuid string, devices []BtrfsDevice, mode scrubMode) (scrubRecord, map[int]uint64) {
+	continuing := mode == scrubContinue
 	seed := scrubRecord{BtrfsScrubStatus: r.total(), Devices: map[int]scrubDeviceRecord{}}
 	seed.Status, seed.FinishedAt, seed.Percent = "finished", nil, 0
-	aborted := r.Aborted
+	aborted := r.Aborted && !continuing
 	for _, d := range r.Devices {
-		aborted = aborted || d.Aborted
+		aborted = aborted || d.Aborted && !continuing
 	}
 	if aborted {
 		seed.Status = "aborted"
@@ -257,11 +355,17 @@ func (r scrubRecord) resumePoint(uuid string, devices []BtrfsDevice) (scrubRecor
 		case !ok || saved.UUID != d.UUID:
 			starts[d.ID] = 0
 			slog.Debug("btrfs scrub device has no saved progress", "uuid", uuid, "devid", d.ID)
-		case saved.Done || saved.Aborted:
-			seed.Devices[d.ID] = scrubDeviceRecord{UUID: saved.UUID, Offset: saved.Offset, Done: saved.Done, Aborted: saved.Aborted}
+		case continuing && saved.failedWritesSince(d):
+			starts[d.ID] = 0
+			slog.Debug("btrfs scrub device failed writes since its scan began", "uuid", uuid, "devid", d.ID)
+		case saved.Done || saved.Aborted && !continuing:
+			seed.Devices[d.ID] = scrubDeviceRecord{
+				UUID: saved.UUID, Offset: saved.Offset, Done: saved.Done, Aborted: saved.Aborted,
+				WriteErrors: saved.WriteErrors, FlushErrors: saved.FlushErrors,
+			}
 		default:
 			starts[d.ID] = saved.Offset - min(saved.Offset, 1)
-			seed.Devices[d.ID] = scrubDeviceRecord{UUID: saved.UUID, Offset: saved.Offset}
+			seed.Devices[d.ID] = scrubDeviceRecord{UUID: saved.UUID, Offset: saved.Offset, WriteErrors: saved.WriteErrors, FlushErrors: saved.FlushErrors}
 			slog.Debug("btrfs scrub resumed from saved progress", "uuid", uuid, "devid", d.ID, "offset", starts[d.ID])
 		}
 	}
@@ -281,8 +385,9 @@ func runScrub(ctx context.Context, fs BtrfsFilesystem, seed scrubRecord, starts 
 	r.previous = previous
 	r.plan(fs.Devices, starts)
 	// The resumed run's record keeps the first part's counters and
-	// offsets, so a cut early in the resume loses nothing.
-	r.save(ctx)
+	// offsets, so a cut early in the resume loses nothing. Nothing moved
+	// yet, so this write needs no flush.
+	r.store(ctx)
 	for id, start := range r.calls {
 		r.issue(id, start)
 	}
@@ -317,7 +422,7 @@ func (r *scrubRun) plan(devices []BtrfsDevice, starts map[int]uint64) {
 			// A resume carries the state of a device it skips; a Suspend
 			// checkpoint leaves out the devices it found idle, as finished.
 			if _, carried := r.rec.Devices[d.ID]; !carried {
-				r.rec.Devices[d.ID] = scrubDeviceRecord{UUID: d.UUID, Done: true}
+				r.rec.Devices[d.ID] = scrubDeviceRecord{UUID: d.UUID, Done: true, WriteErrors: d.Errors.Write, FlushErrors: d.Errors.Flush}
 			}
 		}
 	}
@@ -386,6 +491,7 @@ type scrubCall struct {
 type scrubRun struct {
 	mnt, uuid string
 	used      uint64
+	present   int // the pool's present devices, which the flush must reach
 	rec       scrubRecord
 	calls     map[int]uint64 // the start of each device's call in flight
 	stalls    map[int]int    // interrupted calls in a row that moved nothing
@@ -393,11 +499,13 @@ type scrubRun struct {
 	firstErr  error
 	warned    bool // a cancel failed for a reason other than finding no scrub
 	savedAt   time.Time
-	saved     map[int]uint64 // each device's offset when last saved
-	previous  *scrubRecord   // the record this scrub replaced
-	accepted  bool           // the kernel took a call, rather than refusing it as busy
-	refused   bool           // the kernel refused a call: another scrub runs
-	canceled  bool           // a call was canceled, or ScrubCancel asked for it
+	// flushed is the record as the start or the last save after a flush
+	// stored it: what the disks are known to hold.
+	flushed  scrubRecord
+	previous *scrubRecord // the record this scrub replaced
+	accepted bool         // the kernel took a call, rather than refusing it as busy
+	refused  bool         // the kernel refused a call: another scrub runs
+	canceled bool         // a call was canceled, or ScrubCancel asked for it
 	// The records file as the loop last read it for a cancel request.
 	readMod  time.Time
 	readSize int64
@@ -406,11 +514,16 @@ type scrubRun struct {
 func newScrubRun(fs BtrfsFilesystem, seed scrubRecord) *scrubRun {
 	r := &scrubRun{
 		mnt: fs.Mountpoints[0].Mountpoint, uuid: fs.UUID, used: fs.UsedBytes, rec: seed,
-		calls: map[int]uint64{}, stalls: map[int]int{}, results: make(chan scrubCall), saved: map[int]uint64{},
+		calls: map[int]uint64{}, stalls: map[int]int{}, results: make(chan scrubCall),
 	}
 	r.rec.Aborted = r.rec.Status == "aborted"
 	if r.rec.Devices == nil {
 		r.rec.Devices = map[int]scrubDeviceRecord{}
+	}
+	for _, d := range fs.Devices {
+		if !d.Missing {
+			r.present++
+		}
 	}
 	r.rec.writtenByThisProcess()
 	return r
@@ -421,7 +534,7 @@ func newScrubRun(fs BtrfsFilesystem, seed scrubRecord) *scrubRun {
 func (r *scrubRun) track(d BtrfsDevice, start uint64) {
 	dev, ok := r.rec.Devices[d.ID]
 	if !ok || dev.UUID != d.UUID {
-		dev = scrubDeviceRecord{UUID: d.UUID, Offset: start}
+		dev = scrubDeviceRecord{UUID: d.UUID, Offset: start, WriteErrors: d.Errors.Write, FlushErrors: d.Errors.Flush}
 	}
 	r.rec.Devices[d.ID] = dev
 	r.calls[d.ID] = start
@@ -553,23 +666,71 @@ func (r *scrubRun) percent(bytes uint64) float64 {
 // moved reports whether a device's offset changed since the last save.
 func (r *scrubRun) moved() bool {
 	for id, d := range r.rec.Devices {
-		if d.Offset != r.saved[id] {
+		if d.Offset != r.flushed.Devices[id].Offset {
 			return true
 		}
 	}
 	return false
 }
 
-// save stores the running scrub's record.
+// save flushes the pool's disks, then stores the running scrub's record,
+// which moves offsets or marks devices done. The kernel's repair
+// writes outside the dev extent holding a reported offset have completed
+// (scrub.c waits for every stripe's repair at the end of each dev extent:
+// flush_scrub_stripes since 6.4, scrub_enumerate_chunks before), the one
+// byte back scans that extent again, and the flush makes the completed ones
+// durable before the record counts them. A failed flush skips the save, so
+// the record keeps the offsets last flushed, and the next save interval
+// tries again.
 func (r *scrubRun) save(ctx context.Context) {
+	if err := r.flush(); err != nil {
+		r.savedAt = time.Now()
+		slog.Warn("btrfs scrub progress not saved", "uuid", r.uuid, "error", err)
+		// A write takes over a cancel requested since the last tick; a
+		// skipped one reads it instead.
+		r.canceled = r.canceled || r.cancelRequested()
+		return
+	}
+	r.store(ctx)
+}
+
+// store writes the running scrub's record as it stands. At the start it
+// holds only the offsets the scrub starts from, flushed when a save stored
+// them, so that write needs no flush of its own.
+func (r *scrubRun) store(ctx context.Context) {
 	rec := r.rec
 	rec.Status = "running"
 	rec.Percent = r.percent(rec.total().BytesScrubbed)
 	r.write(ctx, rec)
 	r.savedAt = time.Now()
-	for id, d := range r.rec.Devices {
-		r.saved[id] = d.Offset
+	r.flushed = r.rec
+	r.flushed.Devices = maps.Clone(r.rec.Devices)
+}
+
+// flush sends a cache flush to each disk of the pool, as the kernel lists
+// its members in /sys/fs/btrfs/<uuid>/devices: by their kernel names, which
+// name a device node where the path DEV_INFO reports may not, as /dev/root
+// for a root mounted without an initramfs, or a disk's name before it was
+// renamed. The list holds every present member, those this run scrubs too.
+func (r *scrubRun) flush() error {
+	members, err := os.ReadDir(filepath.Join(sysFSBtrfs, r.uuid, "devices"))
+	if err != nil {
+		return fmt.Errorf("list the disks of the pool: %w", err)
 	}
+	// A shorter list misses a disk, an empty one all of them. Where /dev
+	// has no node of a member, as in a container, the flush fails too.
+	if len(members) < r.present {
+		return fmt.Errorf("the kernel lists %d disks of pool %s, which has %d present", len(members), r.uuid, r.present)
+	}
+	var errs []error
+	for _, m := range members {
+		// sysfs writes a "/" in a kernel name as "!" (cciss!c0d0).
+		dev := "/dev/" + strings.ReplaceAll(m.Name(), "!", "/")
+		if err := flushDevice(dev); err != nil {
+			errs = append(errs, fmt.Errorf("flush %s: %w", dev, err))
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // write stores rec, keeping a cancel ScrubCancel asked of this run since the
@@ -638,6 +799,22 @@ func (r *scrubRun) finish(ctx context.Context) (BtrfsScrubStatus, error) {
 	}
 	end := time.Now()
 	r.rec.FinishedAt = &end
+	// The outcome counts every repair as made, and a resync counts a
+	// finished one as its scrub. Without the flush the record is the last
+	// one a flush preceded, its counters and offsets from one moment, and
+	// reads aborted, which a resync continues from: what was read since is
+	// read and counted again, not twice.
+	if err := r.flush(); err != nil {
+		last := r.flushed.total()
+		last.Status, last.FinishedAt = "aborted", &end
+		r.rec.BtrfsScrubStatus = last
+		r.rec.Devices = map[int]scrubDeviceRecord{}
+		for id, d := range r.flushed.Devices {
+			d.scrubCounters = scrubCounters{}
+			r.rec.Devices[id] = d
+		}
+		r.firstErr = errors.Join(r.firstErr, err)
+	}
 	if r.rec.Status == "finished" {
 		r.rec.Percent = 100
 	} else {

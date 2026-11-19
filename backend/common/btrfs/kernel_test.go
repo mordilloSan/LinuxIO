@@ -2,6 +2,8 @@ package btrfs
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -46,6 +48,7 @@ type fakeKernel struct {
 	replaceCancel   func() (result uint64) // nil: every cancel is taken
 	remove          func(id uint64) error
 	removing        atomic.Bool // the remove hook has started
+	statsFail       atomic.Bool // GET_DEV_STATS fails, as when the kernel cannot be asked
 
 	cancelled  chan struct{} // closed on the first cancel of any operation
 	cancelOnce sync.Once
@@ -70,6 +73,14 @@ func (k *fakeKernel) setRunning(id uint64, p *scrubProgress) {
 	k.mu.Lock()
 	defer k.mu.Unlock()
 	k.devices[id].running = p
+}
+
+// setErrors sets device id's write and flush error counters, as the kernel
+// raises them when the disk fails a write or a cache flush.
+func (k *fakeKernel) setErrors(id uint64, write, flush uint64) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.devices[id].stats[0], k.devices[id].stats[2] = write, flush
 }
 
 func (k *fakeKernel) ioctl(path string, req uintptr, arg unsafe.Pointer) error {
@@ -105,12 +116,17 @@ func (k *fakeKernel) ioctl(path string, req uintptr, arg unsafe.Pointer) error {
 		a.TotalBytes, a.BytesUsed = d.total, d.used
 		k.mu.Unlock()
 	case iocGetDevStats:
+		if k.statsFail.Load() {
+			return unix.EIO
+		}
 		a := (*devStatsArgs)(arg)
 		d, ok := k.devices[a.DevID]
 		if !ok {
 			return unix.ENODEV
 		}
+		k.mu.Lock() // setErrors changes them while a scrub runs
 		a.Values = d.stats
+		k.mu.Unlock()
 	case iocSpaceInfo:
 		a := (*spaceArgs)(arg)
 		a.TotalSpaces = uint64(len(k.spaces))
@@ -259,12 +275,22 @@ func raid1Kernel() *fakeKernel {
 }
 
 // stubKernel installs k as the kernel behind /data (dataUUID), sizes block
-// devices from it, polls fast and keeps scrub records in temp files.
+// devices from it, lists its present devices in a sysfs of its own, polls
+// fast, keeps scrub records in temp files and flushes no real device.
 func stubKernel(t *testing.T, k *fakeKernel) {
 	t.Helper()
 	stubMounts(t, []Mount{{Mountpoint: "/data", UUID: dataUUID, SubvolID: 5}})
 	stubStatePaths(t, t.TempDir())
-	oldIoctl, oldCtl, oldSize, oldInterval, oldProgs := fsIoctl, balanceCtl, blockDeviceSize, progressInterval, progsScrubDir
+	sys := t.TempDir()
+	for _, d := range k.devices {
+		if d.path != "" {
+			if err := os.MkdirAll(filepath.Join(sys, dataUUID, "devices", filepath.Base(d.path)), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	oldIoctl, oldCtl, oldSize, oldInterval, oldProgs, oldFlush, oldSys := fsIoctl, balanceCtl, blockDeviceSize, progressInterval, progsScrubDir, flushDevice, sysFSBtrfs
+	flushDevice, sysFSBtrfs = func(string) error { return nil }, sys
 	fsIoctl = k.ioctl
 	balanceCtl = func(mnt string, cmd uintptr) error {
 		arg := int32(cmd)
@@ -281,6 +307,6 @@ func stubKernel(t *testing.T, k *fakeKernel) {
 	progressInterval = time.Millisecond
 	progsScrubDir = t.TempDir()
 	t.Cleanup(func() {
-		fsIoctl, balanceCtl, blockDeviceSize, progressInterval, progsScrubDir = oldIoctl, oldCtl, oldSize, oldInterval, oldProgs
+		fsIoctl, balanceCtl, blockDeviceSize, progressInterval, progsScrubDir, flushDevice, sysFSBtrfs = oldIoctl, oldCtl, oldSize, oldInterval, oldProgs, oldFlush, oldSys
 	})
 }
