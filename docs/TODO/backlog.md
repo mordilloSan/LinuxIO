@@ -44,6 +44,31 @@ after a change that issues ioctls).
 
 ## Visible bugs
 
+- A complete two-disk pool can stay unmounted after a boot. In the test VM
+  (Ubuntu 26.04, kernel 7.0.0-44) udev scanned both members within 30 µs
+  at 2 of 5 boots after a power cut (none of 10 other boots with the pool),
+  and systemd never found `/dev/disk/by-uuid/<pool>`; the fstab mount
+  failed on its 90 s device timeout. The boots that mounted found the
+  device 0.1 s after the scan.
+  This is likely the race in `64-btrfs.rules` between two members' `btrfs
+  ready`. The boot check leaves a complete pool to systemd, so the pool
+  stays unmounted, and a job the root host resumes at that boot fails with
+  "btrfs filesystem … not found", which fails the scrub power-cut check of
+  `jobs-phase3.spec.ts` whenever the race hits (the resync check mounts the
+  pool by hand then), since `linuxio-jobs@.service` is ordered after
+  `local-fs.target`, which a `nofail` mount is not part of. The owner
+  decides whether the boot check also mounts a complete fstab pool whose
+  device systemd did not find, and whether resumes wait for those mounts.
+- After a resync that corrected stale copies, the returned disk's
+  corruption and generation error counters stay raised, so
+  `btrfs/health-<uuid>` (*needs attention*, "Device errors were reported")
+  stays up beside the *whole again* notice, and LinuxIO cannot reset the
+  counters (`btrfs device stats -z` by hand). `errorOccurrence` in
+  `backend/common/btrfs/health.go` counts them; the resync check of
+  `jobs-phase3.spec.ts` logs the alert and resets the counters in its
+  cleanup. The owner decides whether the resync resets the returned disk's
+  counters, or the pool details offer a reset.
+
 ## Tests that are missing
 
 ## Needs a real machine or a measurement

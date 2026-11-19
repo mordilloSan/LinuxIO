@@ -142,7 +142,8 @@ makes the check refuse a set that was in fact current: the safe side.
 **When the disk is back.** A disk that reappears while the pool is mounted is
 listed by the kernel but never opened, so it is shown as missing until the
 pool is mounted again (a reboot). Once every disk is in use, the health run
-starts `linuxio-btrfs-resync@<uuid>.service` (`linuxio-worker resync`):
+starts `linuxio-btrfs-resync@<uuid>.service` (`linuxio-worker resync`), unless
+a scrub of the pool runs (a start while the unit runs joins its run):
 a scrub checks every copy and rewrites those the returned disk missed from
 the good ones, then a soft convert (`convert=<profile>,soft`) gives chunks
 written while too few disks were present, which btrfs allocates as `single`,
@@ -164,9 +165,17 @@ boot check finds already mounted degraded (a root the initramfs mounted with
 `rootflags=degraded`), or a health run that sees the pool degraded starts a
 new one, whose resync scrubs everything again, since writes made with a disk
 missing may land below the saved offsets, and a scrub that finishes after
-its episode ended does not count for the new one. The continuation refuses a
-pool that lacks a disk. A disk under a device ID that the record names with
-another UUID starts from 0.
+its episode ended does not count for the new one. The pool's generation
+cannot tell an episode, since every commit moves it, with a disk missing or
+not. A pool left unmounted while a disk is missing takes no writes and keeps
+its episode, so its resync continues once the disk is back. The continuation
+refuses a pool that lacks a disk. A disk under a device ID that the record
+names with another UUID starts from 0. `jobs-phase3.spec.ts` cuts a resync
+this way in the test VM: a disk drops out on the guest's PCI bus, the boot
+check mounts the pool degraded, the writes made meanwhile fill holes in
+every data chunk, and a power loss cuts the resync past half its scrub; the
+next run reads less than nine tenths of a full scrub, still corrects stale
+copies, and the returned disk alone then holds every file and scrubs clean.
 
 A disk whose writes fail while it stays attached, as when its cable comes
 loose, is not marked missing: the kernel does that at mount, and since 7.1
@@ -207,7 +216,8 @@ with the experimental remap tree (kernel 7.0 and later, built with
 checksum check.
 
 A failed resync is retried by the next health run, without scrubbing again
-once the scrub finished. When a power loss cuts the resync's convert, the
+once the scrub finished. **Stop check** on a resync counts as a failed
+attempt too. When a power loss cuts the resync's convert, the
 kernel continues it at the next read-write mount and refuses a second
 balance meanwhile, so the next resync follows that balance to the end when
 the arguments the kernel reports are those of the convert it recorded
@@ -273,8 +283,9 @@ scrub once it is fixed repairs what it missed.
   which is how mainline before 6.11 reports progress: that case rests on
   the source and the unit tests.
 - No test rig shows that the flush covers a disk's lost write cache: the
-  frozen copy of the root test keeps every completed write, and the order of
-  flush and save is unit-tested only.
+  frozen copy of the root test keeps every completed write, and so does the
+  test VM's power cut, since the host keeps what the virtual disk wrote; the
+  order of flush and save is unit-tested only.
 
 ## Top-level access
 

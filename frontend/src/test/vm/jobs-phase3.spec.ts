@@ -12,6 +12,7 @@ import {
   rig,
   SCRUB,
   SCRUB_LABEL,
+  scheduledRecords,
   scrubbedBytes,
   scrubRunning,
   signIn,
@@ -21,13 +22,15 @@ import {
   throttle,
   trayJob,
   vmSsh,
+  waitForIdle,
   waitForJob,
 } from "./vm";
 
 // docs/jobs.md (Job lifecycle): the resumable storage routes across host
-// stops, reboots, power cuts, crashes and cancels, the pool create rollback
-// and the Docker storage switch. Jobs start in the browser; the host events go
-// through packaging/vm/linuxio-vm.sh. Each check fails, rather than passing
+// stops, reboots, power cuts, crashes and cancels, a pool resync's scrub
+// continued after a power cut, the pool create rollback and the Docker
+// storage switch. Jobs start in the browser; the host events go through
+// packaging/vm/linuxio-vm.sh. Each check fails, rather than passing
 // vacuously, when its operation ended before the event.
 
 const BALANCE = "storage.btrfs_balance";
@@ -56,10 +59,10 @@ const poolDisks = async () =>
 const kernelLog = (pattern: string) =>
   vmSsh(`sudo journalctl -k -b -o cat | grep -E '${pattern}' || true`);
 
-/** The job host's alert for job id, if it raised one. */
-async function alertOf(id: string) {
+/** The stored alert id (source/key), if it is raised. */
+async function storedAlert(id: string) {
   const out = await vmSsh(
-    `sudo jq -c '[.alerts[] | select(.id == "jobs/${id}")][0]' /var/lib/linuxio/alerts.json`,
+    `sudo jq -c --arg id '${id}' '[.alerts[] | select(.id == $id)][0]' /var/lib/linuxio/alerts.json`,
   );
   return JSON.parse(out) as {
     title: string;
@@ -67,6 +70,9 @@ async function alertOf(id: string) {
     dismissed_at?: string;
   } | null;
 }
+
+/** The job host's alert for job id, if it raised one. */
+const alertOf = (id: string) => storedAlert(`jobs/${id}`);
 
 /**
  * Waits until no session bridge runs: a bridge reconnects to a stopped job
@@ -253,8 +259,14 @@ interface ScrubRecord {
   status: string;
   startedAt: string;
   bytesScrubbed: number;
+  correctedErrors: number;
+  uncorrectableErrors: number;
   run?: string;
-  devices?: Record<string, { offset: number; bytesScrubbed?: number }>;
+  bootId?: string;
+  devices?: Record<
+    string,
+    { offset: number; bytesScrubbed?: number; correctedErrors?: number }
+  >;
 }
 
 const scrubRecord = async (uuid: string) =>
@@ -269,6 +281,14 @@ const recordedBytes = (rec: ScrubRecord) =>
   rec.bytesScrubbed +
   Object.values(rec.devices ?? {}).reduce(
     (sum, d) => sum + (d.bytesScrubbed ?? 0),
+    0,
+  );
+
+/** What a scrub record corrected, counted as recordedBytes counts. */
+const recordedCorrections = (rec: ScrubRecord) =>
+  rec.correctedErrors +
+  Object.values(rec.devices ?? {}).reduce(
+    (sum, d) => sum + (d.correctedErrors ?? 0),
     0,
   );
 
@@ -625,6 +645,431 @@ test("a scrub whose host crashed is not resumed by the next reboot", async ({
       .first(),
   ).toBeVisible({ timeout: 30_000 });
   await signOut(page2);
+});
+
+const RESYNC = "scheduled.btrfs_resync";
+const HEALTH_TIMER = "linuxio-btrfs-health.timer";
+const HEALTH_SERVICE = "linuxio-btrfs-health.service";
+const DEGRADED_SERVICE = "linuxio-btrfs-degraded.service";
+/** The resync check's files on the test pool. */
+const RESYNC_DIR = `${POOL_MOUNT}/resync-e2e`;
+
+/** LinuxIO's state of a pool (docs/btrfs.md, Missing disks). */
+interface PoolState {
+  degraded: boolean;
+  present?: number[];
+  resyncRun?: string;
+}
+
+const poolState = async (uuid: string) =>
+  JSON.parse(
+    await vmSsh(
+      `sudo jq -c --arg u ${uuid} '.[$u] // null' /var/lib/linuxio/btrfs-pools.json 2>/dev/null || echo null`,
+    ),
+  ) as PoolState | null;
+
+/** The btrfs device UUID on disk, read from the disk; "" without one. */
+const memberUuid = async (disk: string) =>
+  (
+    await vmSsh(
+      `sudo blkid -p -s UUID_SUB -o value /dev/${disk} 2>/dev/null || true`,
+    )
+  ).trim();
+
+/** The btrfs device ID on disk, read from its superblock. */
+const devidOf = async (disk: string) =>
+  Number(
+    await vmSsh(
+      `sudo btrfs inspect-internal dump-super /dev/${disk} | awk '$1 == "dev_item.devid" {print $2}'`,
+    ),
+  );
+
+/**
+ * Takes disk off the guest's PCI bus, as a disk that drops out. The domain
+ * keeps it, and a rescan brings it back under its name: virtio_blk names a
+ * disk by the lowest free index.
+ */
+async function pullDisk(disk: string) {
+  const fn = (
+    await vmSsh(`basename "$(readlink -f /sys/block/${disk}/device/..)"`)
+  ).trim();
+  expect(fn, `the PCI function of ${disk}`).toMatch(
+    /^[0-9a-f]{4}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-7]$/,
+  );
+  await vmSsh(
+    `echo 1 | sudo tee /sys/bus/pci/devices/${fn}/remove >/dev/null && sudo udevadm settle`,
+  );
+  expect(await memberUuid(disk), `${disk} gone`).toBe("");
+}
+
+/** Rescans the guest's PCI bus and waits until disk is back as member. */
+async function rescanFor(disk: string, member: string) {
+  await vmSsh(
+    "echo 1 | sudo tee /sys/bus/pci/rescan >/dev/null && sudo udevadm settle",
+  );
+  await expect
+    .poll(() => memberUuid(disk), {
+      intervals: [1_000],
+      message: `${disk} back on the bus`,
+      timeout: 30_000,
+    })
+    .toBe(member);
+}
+
+/** Unmounts the test pool, waiting out a moment of use. */
+const unmountPool = () =>
+  vmSsh(
+    `for i in $(seq 30); do sudo umount ${POOL_MOUNT} 2>/dev/null && exit 0; sleep 1; done; sudo umount ${POOL_MOUNT}`,
+  );
+
+/**
+ * Stops the health timer until the next boot or start and waits out a check
+ * in progress, so no check starts a resync, or records a mount the test
+ * makes by hand.
+ */
+async function holdHealthChecks() {
+  await vmSsh(`sudo systemctl stop ${HEALTH_TIMER}`);
+  await waitForIdle(HEALTH_SERVICE);
+}
+
+/**
+ * Waits until systemd mounted the test pool at boot, or gave up on it, and
+ * says whether it mounted it.
+ */
+async function mountedAtBoot(uuid: string) {
+  let seen = "";
+  await expect
+    .poll(
+      async () => {
+        seen = (
+          await vmSsh(
+            `findmnt -no UUID ${POOL_MOUNT} || systemctl list-jobs --no-legend --plain | grep -c ' mnt-e2e.mount ' || true`,
+          )
+        ).trim();
+        return seen === uuid || seen === "0";
+      },
+      {
+        intervals: [2_000],
+        message: "systemd mounting the pool at boot, or giving up",
+        timeout: 150_000,
+      },
+    )
+    .toBe(true);
+  return seen === uuid;
+}
+
+/** The SHA-256 of each file of the check, or the error reading them. */
+const hashFiles = () =>
+  vmSsh(`sudo sh -c 'cd ${RESYNC_DIR} && sha256sum -- *.bin' 2>&1 || true`);
+
+// docs/btrfs.md (Missing disks): a pool that ran with a disk missing is
+// resynced once the disk is back, and a power cut mid-scrub is continued by
+// the next resync, which the health check starts two minutes after the boot.
+// The disk drops out on the guest's PCI bus and the boot check mounts the
+// pool degraded. The writes made meanwhile fill holes in every data chunk, so
+// the returned disk holds stale copies on both sides of the cut; the check
+// fails when the next run scrubs from the start, or leaves a stale copy.
+test("a pool resync cut by a power loss continues its scrub in the next run", async ({
+  page,
+}) => {
+  test.setTimeout(1_500_000);
+  await signIn(page);
+  const uuid = await ensurePool(page);
+  // A session's listing enables and starts the health timer, which then
+  // starts at every boot, and only once per bridge.
+  await page.goto(`/storage?pool=${uuid}`);
+  await expect
+    .poll(
+      async () =>
+        (await vmSsh(`systemctl is-enabled ${HEALTH_TIMER} || true`)).trim(),
+      { message: HEALTH_TIMER, timeout: 30_000 },
+    )
+    .toBe("enabled");
+  await signOut(page);
+  await page.close();
+  await noSessions();
+
+  const members = await poolDisks();
+  // vdc on a fresh pool; the replace check moves it to vde and back.
+  const stale = members.find((d) => d !== "/dev/vdb")!.slice("/dev/".length);
+  const goodUuid = await memberUuid("vdb");
+  const staleUuid = await memberUuid(stale);
+  const goodDevid = await devidOf("vdb");
+  const unit = `linuxio-btrfs-resync@${uuid}.service`;
+  const earlier = new Set((await scheduledRecords(RESYNC)).map((r) => r.id));
+  const resyncRuns = async () =>
+    (await scheduledRecords(RESYNC)).filter(
+      (r) => r.executor.unit === unit && !earlier.has(r.id),
+    );
+  try {
+    await holdHealthChecks();
+    // Every data chunk raid1 and 256 MiB, then 32 MiB files with every
+    // other one deleted, and fill.bin with them, so every data chunk left
+    // has holes. The writes made without the disk fill them first.
+    console.log(
+      await vmSsh(
+        "sudo bash -s",
+        `set -euo pipefail
+mnt=${POOL_MOUNT} dir=${RESYNC_DIR}
+rm -rf "$dir" "$mnt/balance.bin"
+sync
+echo ${256 * MiB} >/sys/fs/btrfs/${uuid}/allocation/data/chunk_size
+btrfs balance start -dconvert=raid1 -mconvert=raid1,soft "$mnt" >/dev/null
+mkdir "$dir"
+for i in $(seq -w 0 63); do
+  head -c 32M /dev/urandom | dd of="$dir/before-$i.bin" bs=4M iflag=fullblock conv=fsync status=none
+done
+for i in $(seq -w 1 2 63); do rm "$dir/before-$i.bin"; done
+rm -f "$mnt/fill.bin"
+sync
+btrfs balance start -dusage=0 "$mnt" >/dev/null
+sync
+btrfs filesystem df "$mnt"
+`,
+      ),
+    );
+
+    // The disk drops out, and the boot check mounts the pool degraded after
+    // its grace, as at a boot without it, and records the episode.
+    await unmountPool();
+    await pullDisk(stale);
+    await vmSsh(
+      `sudo btrfs device scan --forget && sudo systemctl restart ${DEGRADED_SERVICE}`,
+    );
+    expect(await vmSsh(`findmnt -no UUID,OPTIONS ${POOL_MOUNT}`)).toMatch(
+      new RegExp(`^${uuid}\\s+\\S*\\bdegraded\\b`),
+    );
+    expect(await poolState(uuid)).toMatchObject({
+      degraded: true,
+      present: [goodDevid],
+    });
+    const written = await vmSsh(
+      "sudo bash -s",
+      `set -euo pipefail
+data=/sys/fs/btrfs/${uuid}/allocation/data
+free=$(( $(cat $data/total_bytes) - $(cat $data/bytes_used) ))
+n=$(( free / ${16 * MiB} + 8 ))
+for i in $(seq -w 1 $n); do
+  head -c 16M /dev/urandom | dd of="${RESYNC_DIR}/during-$i.bin" bs=4M iflag=fullblock conv=fsync status=none
+done
+sync
+echo "$free bytes free in the data chunks; $n files of 16 MiB written"
+btrfs filesystem df ${POOL_MOUNT}
+`,
+    );
+    console.log(written);
+    expect(
+      written,
+      "the writes without the disk filled the holes, then new chunks",
+    ).toMatch(/^Data, single:/m);
+    const hashes = await hashFiles();
+    expect(
+      hashes.trim().split("\n"),
+      "a hash of each file written",
+    ).toHaveLength(32 + Number(/(\d+) files of 16 MiB/.exec(written)?.[1]));
+    expect(hashes).toMatch(/^([0-9a-f]{64} {2}\S+\.bin\n)+$/);
+
+    // The disk is back; the pool is mounted whole, as at the next boot.
+    await unmountPool();
+    await rescanFor(stale, staleUuid);
+    await vmSsh(`findmnt ${POOL_MOUNT} >/dev/null || sudo mount ${POOL_MOUNT}`);
+    expect(await poolDisks()).toEqual(members);
+    expect(await vmSsh(`findmnt -no OPTIONS ${POOL_MOUNT}`)).not.toMatch(
+      /\bdegraded\b/,
+    );
+
+    const used = await usedBytes(uuid);
+    // A whole scrub then takes about 200 s; the scrub saves every minute,
+    // so its second save holds more than half.
+    const rate = Math.max(4 * MiB, Math.ceil(used / 2 / 200));
+    await vmSsh(
+      `for f in /sys/fs/btrfs/${uuid}/devinfo/*/scrub_speed_max; do echo ${rate} | sudo tee $f >/dev/null; done && ` +
+        `sudo systemctl start ${HEALTH_SERVICE}`,
+    );
+    const cut: { saved?: ScrubRecord } = {};
+    await expect
+      .poll(
+        async () => {
+          const run = (await poolState(uuid))?.resyncRun;
+          const rec = await scrubRecord(uuid);
+          if (!run || rec?.run !== run || rec.status !== "running") {
+            return false;
+          }
+          cut.saved = rec;
+          return (
+            recordedBytes(rec) >= 0.55 * used && recordedCorrections(rec) > 0
+          );
+        },
+        {
+          intervals: [2_000],
+          message:
+            "the resync's scrub saving more than half of its progress, with corrections",
+          timeout: 420_000,
+        },
+      )
+      .toBe(true);
+    // The scrub record's writes are fsynced; this flushes the rest.
+    await vmSsh("sync");
+    expect(
+      await scrubRunning(),
+      "the resync's scrub ended before the power cut: lower its rate",
+    ).toBe(true);
+    expect((await resyncRuns()).map((r) => r.state)).toEqual(["running"]);
+    const cutBoot = (await vmSsh("cat /proc/sys/kernel/random/boot_id")).trim();
+
+    await rig(["power-cut"]);
+    // The record as the cut left it: what the next run starts from.
+    const saved = (await scrubRecord(uuid))!;
+    expect(
+      saved,
+      "the record the cut left, read before the next run, two minutes after the boot",
+    ).toMatchObject({
+      bootId: cutBoot,
+      run: cut.saved!.run,
+      status: "running",
+    });
+    expect(recordedBytes(saved)).toBeGreaterThanOrEqual(
+      recordedBytes(cut.saved!),
+    );
+    // udev can leave a complete pool's by-uuid device unready when both
+    // disks are scanned at once, and the fstab mount then gives up after
+    // 90 s (docs/TODO/backlog.md). That race is not this check's subject:
+    // the pool is mounted here, and its health check started by hand.
+    if (!(await mountedAtBoot(uuid))) {
+      console.log(
+        "systemd did not mount the complete pool at boot; mounting it and starting the health check by hand",
+      );
+      await vmSsh(
+        `sudo mount ${POOL_MOUNT} && sudo systemctl start ${HEALTH_SERVICE}`,
+      );
+    }
+    await expect
+      .poll(
+        async () =>
+          (await resyncRuns()).map((r) => ({
+            state: r.state,
+            reason: r.reason,
+            message: (r.result as { message?: string } | undefined)?.message,
+          })),
+        {
+          intervals: [5_000],
+          message: `${RESYNC} runs: the cut one, then the next`,
+          timeout: 480_000,
+        },
+      )
+      .toEqual([
+        { state: "interrupted", reason: "reboot", message: undefined },
+        { state: "completed", reason: undefined, message: "Resynced" },
+      ]);
+    const done = (await scrubRecord(uuid))!;
+    const own = done.bytesScrubbed - recordedBytes(saved);
+    const corrected = done.correctedErrors - recordedCorrections(saved);
+    console.log(
+      `${used} bytes in use; saved ${recordedBytes(saved)} with ${recordedCorrections(saved)} corrections before the cut, ` +
+        `the next run read ${own} and corrected ${corrected}, ${done.bytesScrubbed} and ${done.correctedErrors} in all`,
+    );
+    expect(done).toMatchObject({
+      run: saved.run,
+      status: "finished",
+      uncorrectableErrors: 0,
+    });
+    expect(Date.parse(done.startedAt)).toBe(Date.parse(saved.startedAt));
+    expect(done.bytesScrubbed).toBeGreaterThanOrEqual(0.99 * used);
+    // The cut lies past half, and the next run reads again only the dev
+    // extent each device stopped in (256 MiB): starting over reads it all.
+    expect(own, "the next run scrubbed the whole pool again").toBeLessThan(
+      0.9 * used,
+    );
+    expect(
+      corrected,
+      "no stale copy lay past the cut, so a skipped one would go unseen",
+    ).toBeGreaterThan(0);
+    const state = await poolState(uuid);
+    expect(state?.degraded).toBe(false);
+    expect(state?.resyncRun).toBeUndefined();
+    expect(await vmSsh(`sudo btrfs filesystem df ${POOL_MOUNT}`)).not.toMatch(
+      /^(Data|Metadata|System), single:/m,
+    );
+    expect(await storedAlert(`btrfs/resync-${uuid}`)).toBeNull();
+    expect(await storedAlert(`btrfs/resynced-${uuid}`)).toMatchObject({
+      message: expect.stringContaining(`corrected ${done.correctedErrors} `),
+    });
+    // The corrections raised the returned disk's error counters, which keep
+    // the health alert up after the resync (docs/TODO/backlog.md).
+    console.log(
+      `btrfs/health-${uuid} after the resync: ${JSON.stringify(await storedAlert(`btrfs/health-${uuid}`))}`,
+    );
+
+    // The returned disk alone holds every file, and every copy on it checks.
+    await holdHealthChecks();
+    await unmountPool();
+    await pullDisk("vdb");
+    await vmSsh(
+      `sudo btrfs device scan --forget && sudo mount -o degraded,ro /dev/${stale} ${POOL_MOUNT}`,
+    );
+    expect(await hashFiles(), `${stale} alone holds every file`).toBe(hashes);
+    const check = await vmSsh(
+      `sudo btrfs scrub start -B -R -r /dev/${stale} 2>&1; echo "exit $?"`,
+    );
+    console.log(check);
+    expect(check).toMatch(/^\s*csum_errors: \d+$/m);
+    expect(check).toMatch(/^exit 0$/m);
+    expect(
+      [...check.matchAll(/^\s*(\w+_errors): (\d+)$/gm)]
+        .filter(([, , count]) => count !== "0")
+        .map(([, name, count]) => `${name} ${count}`),
+      `the scrub of ${stale} alone`,
+    ).toEqual([]);
+    expect(
+      Number(/^\s*data_bytes_scrubbed: (\d+)$/m.exec(check)?.[1]),
+    ).toBeGreaterThan(256 * MiB);
+    await unmountPool();
+    await rescanFor("vdb", goodUuid);
+    await vmSsh(
+      `sudo btrfs device scan >/dev/null && { findmnt ${POOL_MOUNT} >/dev/null || sudo mount ${POOL_MOUNT}; }`,
+    );
+    expect(await poolDisks()).toEqual(members);
+  } catch (error) {
+    console.log(
+      await vmSsh(
+        `sudo journalctl -b -o short-monotonic --no-pager -u ${HEALTH_SERVICE} -u ${unit} -u ${DEGRADED_SERVICE} | tail -n 60`,
+      ).catch((e: unknown) => String(e)),
+    );
+    throw error;
+  } finally {
+    // Every disk back, the pool mounted whole as the later checks want it,
+    // with its fill.bin, and the health checks running again. The scrub
+    // repaired the returned disk, which raised its error counters; they are
+    // reset and the health check resolves the alert they raised. A resync
+    // left running, or one that health check starts after a failure while
+    // the pool still reads degraded, ends before the later checks scrub. A
+    // cleanup that fails is logged, so it does not hide the check's own
+    // failure.
+    await vmSsh(
+      "sudo bash -s",
+      `mnt=${POOL_MOUNT}
+echo 1 >/sys/bus/pci/rescan
+udevadm settle
+for f in /sys/fs/btrfs/${uuid}/devinfo/*/scrub_speed_max; do echo 0 >"$f"; done
+if findmnt -no OPTIONS "$mnt" | grep -Eq '(^|,)(ro|degraded)(,|$)'; then umount "$mnt"; fi
+btrfs device scan >/dev/null
+findmnt "$mnt" >/dev/null || mount "$mnt"
+if [ "$(findmnt -no UUID "$mnt")" = ${uuid} ]; then
+  rm -rf ${RESYNC_DIR}
+  [ -e "$mnt/fill.bin" ] || head -c 1G /dev/urandom >"$mnt/fill.bin"
+  btrfs device stats -z "$mnt" >/dev/null
+  sync
+fi
+systemctl start ${HEALTH_TIMER} ${HEALTH_SERVICE}
+for i in $(seq 150); do
+  case "$(systemctl show -P ActiveState ${unit})" in
+  active | activating | deactivating) sleep 2 ;;
+  *) break ;;
+  esac
+done
+`,
+    ).catch((e: unknown) => console.log(`cleanup failed: ${String(e)}`));
+  }
 });
 
 test("a pool create whose mount fails removes its partitions and superblocks", async ({

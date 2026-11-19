@@ -184,7 +184,9 @@ See `docs/development.md`, "Test VM", for usage.
   (package update, Compose, file copy, scrub, balance, device replace, pool
   create, Docker storage switch) and cut the host: `systemctl stop`, `kill -9`,
   reboot and power loss (`virsh destroy`). `linuxio-vm.sh throttle` caps a data
-  disk's speed so a job outlasts the event. What each spec file covers is in
+  disk's speed so a job outlasts the event. `jobs-phase3.spec.ts` also cuts a
+  pool resync, the timer run, by a power loss, after a data disk dropped out
+  on the guest's PCI bus. What each spec file covers is in
   [Jobs](../jobs.md#testing).
 - `make vm-test-btrfs-integration` runs the root btrfs and partition kernel
   tests (`test-btrfs-integration`) as root in the VM; the kernel-level claims

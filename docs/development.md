@@ -304,7 +304,10 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   that long, then a boot), each of which waits for the next boot. `jobs-phase2.spec.ts`
   installs Docker's Compose plugin, creates a btrfs pool on `vdb` and `vdc`
   and reboots the VM, so run `vm-reset` and `vm-install` before reusing it
-  for other checks.
+  for other checks. A disk that drops out needs no rig command:
+  `jobs-phase3.spec.ts` takes a data disk off the guest's PCI bus
+  (`/sys/bus/pci/devices/<function>/remove`) and brings it back under its
+  name with `/sys/bus/pci/rescan`, while the domain keeps it.
   `ui-actions.spec.ts` is not a jobs spec: a session without sudo, the
   "Open the real folder" action, a toast's page link on Docker, and the
   navbar's Reboot and Power Down. It creates and removes a user without sudo

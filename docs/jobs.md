@@ -926,7 +926,7 @@ The record itself is the quickest evidence: as root,
 | Root kernel | `make test-btrfs-integration` (sudo, the user's to run); `make vm-test-btrfs-integration` in the VM | `backend/common/btrfs/integration_resume_test.go` (`TestBtrfsResumeIntegration`) | Kill and resume each btrfs operation on loop devices: signals, cancels, kills, a paused balance across a remount, a scrub from its offset, a scrub from its saved progress after a kill, a scrub across a filesystem freeze and its cancel there by its context and through `ScrubCancel`, a replace across a simulated power cut |
 | Root kernel | same | `backend/common/btrfs/degraded_integration_test.go` (`TestBtrfsDegradedIntegration`) | A pool resync cut by a simulated power cut mid-scrub (a frozen copy of the disks and the state), booted from the copies and continued by the next resync, with corrections on both sides of the cut; a resync during whose scrub, then whose convert, one disk's writes fail through a device-mapper error target fails naming it, and the next one makes that disk whole; a resync whose convert was paused, then continued by the kernel at the next mount, is followed to the end without a balance of its own |
 | Test VM | `make vm-reset`, `make vm-install`, `make test-vm-browser-rerun` | `frontend/src/test/vm/jobs-phase2.spec.ts` | Reloads mid package update, Compose and copy; a package update picked up from PackageKit after a `kill -9` of the root host during dpkg; uploads; a scrub across logout; host stop, kill, reboot and power cut |
-| Test VM | same | `frontend/src/test/vm/jobs-phase3.spec.ts` | Balance, scrub and replace across stops, reboots and power cuts; a scrub across a frozen job host; a cancel or a crash before a reboot; pool create rollback; the Docker storage switch killed |
+| Test VM | same | `frontend/src/test/vm/jobs-phase3.spec.ts` | Balance, scrub and replace across stops, reboots and power cuts; a scrub across a frozen job host; a cancel or a crash before a reboot; a `scheduled.btrfs_resync` run cut by a power cut mid-scrub, after a disk dropped out on the guest's PCI bus and the boot check mounted the pool degraded, read interrupted, and the next run, which the health check starts, continuing its scrub to *Resynced*, the returned disk then alone holding every file; pool create rollback; the Docker storage switch killed |
 | Test VM | same | `frontend/src/test/vm/jobs-phase4.spec.ts` | Scheduled runs: records, bell rows, saved output, stop, a broken hook, the snapshot, Docker and system update units, a power cut and an orderly reboot |
 | Test VM | same | `frontend/src/test/vm/jobs-phase5a.spec.ts`, `frontend/src/test/vm/jobs-needrestart.spec.ts` | History, past runs, the output viewer, a user without sudo, the update banner; needrestart deferring a job host |
 | Test VM | same | `frontend/src/test/vm/jobs-phase5b.spec.ts` | Notification settings, the grid at delivery and in the bell, a schedule's choice, an interruption as a warning, the notice at sign-in |
@@ -1010,10 +1010,9 @@ Covered at one level only:
 - Unit tests only: the SMART self-test and its pick-up (the test VMs' virtio
   disks have no SMART, and the route accepts only `sd`, `hd` and `nvme`
   names), the email channel, DNF and Mint (no such VM), the Docker
-  update producers with containers to update, `scheduled.btrfs_resync` (no
-  check returns a missing disk), the 50-run and 30-day prune, the `409`s of
-  `tasks.cancel` and `tasks.watch` for a scheduled run, a stale or failed stop,
-  `Load older`, and the long-job notice.
+  update producers with containers to update, the 50-run and 30-day prune,
+  the `409`s of `tasks.cancel` and `tasks.watch` for a scheduled run, a stale
+  or failed stop, `Load older`, and the long-job notice.
 - The update wait was run in the VM as a real update from the published
   release v0.53.0 to a protocol-bumped build of the same tree
   (`jobs-update.spec.ts`), since no published release has a higher
