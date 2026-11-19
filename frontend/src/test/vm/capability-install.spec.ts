@@ -2,10 +2,14 @@ import { expect, test } from "@playwright/test";
 
 import {
   jobIds,
+  jobRecord,
+  type JobRecord,
   newJob,
+  openTray,
   signIn,
   signOutIfSignedIn,
   stopAptRuns,
+  trayJob,
   vmDistro,
   vmSsh,
   waitForJob,
@@ -321,4 +325,247 @@ test("installs zram from Capabilities and the Memory overflow dialog names the t
     memoryDialog.getByText(`zram (${tool.provider})`, { exact: true }),
   ).toBeVisible({ timeout: 15_000 });
   await expect(capabilitiesLinks).toHaveCount(0);
+});
+
+// A cancel while dpkg runs (docs/capabilities.md, "Install Flow"): PackageKit
+// says the transaction cannot be cancelled then (AllowCancel false, which
+// apt's backend sets just before dpkg), so LinuxIO sends no Cancel, waits for
+// the transaction's Finished, and only then lets go of the hold, which
+// therefore covers the package's scripts. An apt drop-in makes apt sleep
+// before it runs dpkg (DPkg::Pre-Invoke), holding the transaction in that
+// phase long enough to cancel in it. The sleep's own duration names it in the
+// process list.
+const SLOW_DPKG = "/etc/apt/apt.conf.d/99linuxio-e2e-slow";
+const DPKG_HOLD = "sleep 30.5";
+
+/** What the guest shows of a cancelled install, read in this order. */
+interface InstallProbe {
+  /** The job's state in the job host's record. */
+  state: string;
+  /** Whether the DPkg::Pre-Invoke sleep still runs. */
+  hold: boolean;
+  /** PackageKit's install transaction (role 11, install-packages), if listed. */
+  tx: string | null;
+  allowCancel: boolean | null;
+  /** The transaction's PackageKit status; 19 is Cancel. */
+  status: number | null;
+}
+
+const PROBE = String.raw`set -uo pipefail
+state=$(cat /var/lib/linuxio/jobs/0/*.json 2>/dev/null | jq -rs --arg id "$1" '.[] | select(.id == $id) | .state')
+hold=false
+if pgrep -f '${DPKG_HOLD.replace(".", "[.]")}' >/dev/null; then hold=true; fi
+tx=null allow=null status=null
+prop() {
+	busctl --json=short get-property org.freedesktop.PackageKit "$1" org.freedesktop.PackageKit.Transaction "$2" 2>/dev/null | jq -c .data
+}
+for path in $(busctl --json=short call org.freedesktop.PackageKit /org/freedesktop/PackageKit org.freedesktop.PackageKit GetTransactionList | jq -r '.data[0][]'); do
+	if [[ $(prop "$path" Role) == 11 ]]; then
+		tx="\"$path\"" allow=$(prop "$path" AllowCancel) status=$(prop "$path" Status)
+		[[ -n $allow ]] || allow=null
+		[[ -n $status ]] || status=null
+	fi
+done
+printf '{"state":"%s","hold":%s,"tx":%s,"allowCancel":%s,"status":%s}\n' "$state" "$hold" "$tx" "$allow" "$status"
+`;
+
+const probeInstall = async (jobId: string) =>
+  JSON.parse(await vmSsh(`sudo bash -s -- ${jobId}`, PROBE)) as InstallProbe;
+
+// PackageKit's apt backend reads apt's configuration once, as packagekitd
+// starts (pkgInitConfig in pk_backend_initialize), so the drop-in reaches its
+// transactions only once packagekitd has started again, and leaves them only
+// the same way. packagekitd is stopped only while it runs no transaction,
+// since stopping it kills apt with it; D-Bus starts it on the next call.
+async function stopPackageKitWhenIdle() {
+  await expect
+    .poll(
+      async () =>
+        Number(
+          (
+            await vmSsh(
+              "sudo busctl --json=short call org.freedesktop.PackageKit /org/freedesktop/PackageKit org.freedesktop.PackageKit GetTransactionList | jq '.data[0] | length'",
+            )
+          ).trim(),
+        ),
+      {
+        intervals: [2_000],
+        message: "PackageKit transactions running",
+        timeout: 240_000,
+      },
+    )
+    .toBe(0);
+  await vmSsh("sudo systemctl stop packagekit.service");
+}
+
+test("a cancel while dpkg runs waits for PackageKit's transaction, and the hold covers the package's scripts", async ({
+  page,
+}) => {
+  test.skip(
+    vmDistro !== "ubuntu",
+    "Ubuntu only: Fedora's dnf5 backend does nothing on a cancel and runs the whole install, and dnf has no DPkg::Pre-Invoke to hold the transaction in its install phase",
+  );
+  test.setTimeout(INSTALL_TIMEOUT + 480_000);
+  // The test before this one put zram-tools in.
+  await vmSsh("sudo bash -s", tool.remove);
+  expect(await vmSsh(ZRAM_TOOLS), "zram tools installed").toBe("");
+  try {
+    await vmSsh(
+      `sudo tee ${SLOW_DPKG} >/dev/null`,
+      `DPkg::Pre-Invoke { "${DPKG_HOLD}"; };\n`,
+    );
+    await stopPackageKitWhenIdle();
+    await signIn(page);
+    await page.goto("/settings?tab=capabilities");
+    const row = page.locator(".capability-manager__row").filter({
+      has: page.getByRole("heading", { name: "zram", exact: true }),
+    });
+    await expect(row.getByText("Unavailable", { exact: true })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    const before = await jobIds();
+    jobsBefore = before;
+    const installedSince = Number((await vmSsh("date +%s")).trim());
+    await row.getByRole("button", { name: "Install zram" }).click();
+    const install = page.getByRole("dialog", { name: /^Installing zram/ });
+    await expect(install).toBeVisible();
+    // The install goes on with its dialog closed; the tray takes the cancel.
+    await install
+      .getByRole("button", { name: "Close capability installation dialog" })
+      .click();
+    await expect(install).toBeHidden();
+    const job = await waitForJob(INSTALL_ROUTE, before, "running");
+
+    // dpkg's phase has begun: apt sleeps before it runs dpkg, and PackageKit
+    // says the transaction cannot be cancelled now.
+    await expect
+      .poll(
+        async () => {
+          const probe = await probeInstall(job.id);
+          return { hold: probe.hold, allowCancel: probe.allowCancel };
+        },
+        {
+          intervals: [500],
+          message: "apt holding dpkg back, with AllowCancel false",
+          timeout: INSTALL_TIMEOUT,
+        },
+      )
+      .toEqual({ hold: true, allowCancel: false });
+
+    const tray = await openTray(page);
+    const item = trayJob(tray, "Installing zram");
+    await item.getByRole("button", { name: "Cancel task" }).click();
+    await expect(item).toContainText("Cancelling…");
+    await expect
+      .poll(
+        async () => {
+          const record = await jobRecord(job.id);
+          return {
+            cancel_requested: record?.cancel_requested,
+            state: record?.state,
+          };
+        },
+        { intervals: [500], timeout: 15_000 },
+      )
+      .toEqual({ cancel_requested: true, state: "running" });
+
+    // Until apt's sleep ends the job runs on, and PackageKit's transaction
+    // never reads Cancel (19), the status its Cancel handler and apt's
+    // backend set as soon as a Cancel reaches them.
+    const samples: InstallProbe[] = [];
+    await expect
+      .poll(
+        async () => {
+          const probe = await probeInstall(job.id);
+          samples.push(probe);
+          return probe.hold;
+        },
+        {
+          intervals: [1_000],
+          message: "apt still sleeping before dpkg",
+          timeout: 60_000,
+        },
+      )
+      .toBe(false);
+    const held = samples.filter((sample) => sample.hold);
+    console.log(
+      `while apt slept after the cancel: ${held.map((s) => `${s.state}/${s.status}`).join(" ")}`,
+    );
+    expect(
+      held.length,
+      "probes while apt slept after the cancel",
+    ).toBeGreaterThan(5);
+    for (const sample of held) {
+      expect(sample.state, "the job while apt sleeps before dpkg").toBe(
+        "running",
+      );
+      expect(sample.status, "PackageKit's transaction status").not.toBe(19);
+    }
+
+    // The job ends cancelled, and only once dpkg has put the package in: the
+    // cancel stopped nothing in PackageKit.
+    const ended = (await waitForJob(INSTALL_ROUTE, before, "canceled", {
+      timeout: 120_000,
+    })) as JobRecord & { finished_at?: string };
+    const dpkgInstalled = Number(
+      (
+        await vmSsh(
+          String.raw`d=$(grep ' status installed zram-tools:' /var/log/dpkg.log | tail -1 | cut -d' ' -f1-2); if [ -n "$d" ]; then date -d "$d" +%s; else echo 0; fi`,
+        )
+      ).trim(),
+    );
+    expect(
+      dpkgInstalled,
+      "dpkg's install of zram-tools in this test",
+    ).toBeGreaterThanOrEqual(installedSince);
+    const jobEnded = Math.floor(Date.parse(ended.finished_at ?? "") / 1000);
+    console.log(
+      `dpkg installed zram-tools ${dpkgInstalled - installedSince} s after Install; the job ended ${jobEnded - dpkgInstalled} s after that`,
+    );
+    expect(jobEnded, "the job's end, after dpkg's").toBeGreaterThanOrEqual(
+      dpkgInstalled,
+    );
+    expect(await packageInstalled(), "zram-tools installed").toBe(true);
+
+    // The hold covered the package's start and was then let go of: the
+    // package's start was skipped, its start at boot taken back, no zram
+    // swaps, the hold is gone, and dpkg has nothing half done.
+    const unit = "zramswap.service";
+    expect(
+      (await vmSsh(`systemctl is-enabled ${unit} || true`)).trim(),
+      `${unit} at boot`,
+    ).not.toBe("enabled");
+    expect(await vmSsh(ZRAM_SWAPS), "zram swapping").toBe("");
+    expect(
+      (
+        await vmSsh(
+          "test -e /run/systemd/system/zramswap.service.d && echo present || echo gone",
+        )
+      ).trim(),
+      "the install's hold",
+    ).toBe("gone");
+    expect(await vmSsh("sudo dpkg --audit"), "dpkg --audit").toBe("");
+    const journal = (
+      await vmSsh(
+        `sudo journalctl --no-pager -o cat -b -u ${unit} --since @${installedSince}`,
+      )
+    ).trim();
+    expect(journal, `${unit}'s skipped start`).toContain(
+      "unmet condition check ConditionPathExists=!/",
+    );
+    expect(journal, `${unit} started during the install`).not.toMatch(
+      /Starting|Started|Finished/,
+    );
+  } finally {
+    // The afterAll's purge, and any apt run after it, would sleep too, and
+    // so would PackageKit's until packagekitd starts again. A failure here
+    // is logged, so it does not hide the test's own.
+    await vmSsh(`sudo rm -f ${SLOW_DPKG}`);
+    await stopPackageKitWhenIdle().catch((error: unknown) =>
+      console.log(
+        `packagekitd not restarted after the test, so it may still read the drop-in: ${String(error)}`,
+      ),
+    );
+  }
 });

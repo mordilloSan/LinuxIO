@@ -380,7 +380,11 @@ func cancelIfCanceled(ctx context.Context, trans *pkgkit.Transaction) {
 	}
 	cancelCtx, stop := context.WithTimeout(context.WithoutCancel(ctx), transactionCancelTimeout)
 	defer stop()
-	if err := trans.Cancel(cancelCtx); err != nil {
+	err := trans.Cancel(cancelCtx)
+	switch {
+	case errors.Is(err, pkgkit.ErrCannotCancel):
+		slog.Debug("package update transaction not canceled", "transaction", trans.Path(), "error", err)
+	case err != nil:
 		slog.Warn("package update transaction not canceled", "transaction", trans.Path(), "error", err)
 	}
 }

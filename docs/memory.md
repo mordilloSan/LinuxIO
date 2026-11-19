@@ -1019,9 +1019,11 @@ held across the package step, a runtime drop-in with
 the package step, whatever its outcome, the hook disables the service the
 package enabled, unless it started at boot before the install, and removes
 the drop-in. An install that runs to its end starts no zram, so nothing is
-stopped, and the dialog reads the host as it was before the install (a
-cancel during the package step is an exception, see
-[Capabilities](./capabilities.md#known-limits)). The hook
+stopped, and the dialog reads the host as it was before the install. A
+cancel during the package step waits for PackageKit's transaction to end
+before the step after it ([Capabilities](./capabilities.md#install-flow));
+a transaction still running at the install's 30-minute bound is the
+exception ([Capabilities](./capabilities.md#known-limits)). The hook
 changes nothing, and says why in the install's warning, while another
 memory change runs or a file LinuxIO did not write is at the drop-in's
 path. See [Capabilities](./capabilities.md#zram) for the steps, why the

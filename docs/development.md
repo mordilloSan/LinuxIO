@@ -225,7 +225,8 @@ On Fedora the root suites `relay`, `filebrowser`, `userconfig`, `memory` and
 results), and of the browser specs `login.spec.ts` and
 `capability-install.spec.ts`, which pass there as installed with SELinux
 enforcing and again after a reboot. The other specs do things with `apt`
-packages; `capability-install.spec.ts` is written for both distributions.
+packages; `capability-install.spec.ts` is written for both distributions,
+except its cancel test, which skips on Fedora.
 
 ```sh
 make test-vm-browser        # everything below that a browser run needs, in one go
@@ -310,7 +311,10 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   (`e2e-ui`), a folder `/srv/e2e-link` and two busybox containers, reboots the
   VM and powers it off (the rig's `ssh` starts a domain that is shut off).
   `capability-install.spec.ts` installs zram from Capabilities
-  ([Capabilities](./capabilities.md#zram)). It reads the distribution from
+  ([Capabilities](./capabilities.md#zram)), and on Ubuntu cancels a second
+  install while apt holds dpkg back for 30 s, through an apt drop-in it
+  always removes, to check that the job waits for PackageKit's transaction.
+  It reads the distribution from
   `LINUXIO_VM_DISTRO` (`vmDistro` in `vm.ts`), takes the zram tool out with
   that distribution's package manager first, and leaves zram and its tool as
   the clean image has them: on Ubuntu no zram tool and no swap, with the apt

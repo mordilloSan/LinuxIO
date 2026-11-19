@@ -352,8 +352,9 @@ func TestFinishedWithoutSuccessIsAFailure(t *testing.T) {
 }
 
 // PackageKit refuses a Cancel while dpkg runs: the job still ends canceled
-// and updates no further package.
+// and updates no further package, and the refusal is a Warn line.
 func TestCancelPackageKitRefusesStopsTheBatch(t *testing.T) {
+	logs := captureLogs(t)
 	service := setupFakePackageKit(t, false)
 	service.refuseCancel = true
 	service.setUpdateHang(threePackages[0])
@@ -375,6 +376,43 @@ func TestCancelPackageKitRefusesStopsTheBatch(t *testing.T) {
 	}
 	if got := service.updatePackageCalls(); len(got) != 1 {
 		t.Fatalf("UpdatePackages calls = %v, want none after the cancel", got)
+	}
+	if !strings.Contains(logs.String(), `level=WARN msg="package update transaction not canceled"`) {
+		t.Fatalf("logs = %q, want the refused cancel as a Warn line", logs.String())
+	}
+}
+
+// While PackageKit says the transaction cannot be cancelled (AllowCancel
+// false, as while dpkg runs), no Cancel is sent: PackageKit up to 1.4.0
+// would cancel anyway, and its apt backend would stop apt in mid-dpkg. The
+// job still ends canceled and updates no further package. The skip is
+// expected, so it is no Warn line.
+func TestCancelIsNotSentWhilePackageKitCannotCancel(t *testing.T) {
+	logs := captureLogs(t)
+	service := setupFakePackageKit(t, false)
+	service.cannotCancel = true
+	service.setUpdateHang(threePackages[0])
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- updatePackagesWithProgress(ctx, threePackages, ignoreProgress) }()
+	select {
+	case <-service.updateStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the update did not start")
+	}
+	cancel()
+
+	if err := waitDone(t, done); !errors.Is(err, context.Canceled) {
+		t.Fatalf("update = %v, want canceled", err)
+	}
+	if got := service.canceled(); len(got) != 0 {
+		t.Fatalf("PackageKit Cancel calls = %v, want none while it cannot cancel", got)
+	}
+	if got := service.updatePackageCalls(); len(got) != 1 {
+		t.Fatalf("UpdatePackages calls = %v, want none after the cancel", got)
+	}
+	if strings.Contains(logs.String(), `level=WARN msg="package update transaction not canceled"`) {
+		t.Fatalf("logs = %q, want no Warn line for the expected skip", logs.String())
 	}
 }
 

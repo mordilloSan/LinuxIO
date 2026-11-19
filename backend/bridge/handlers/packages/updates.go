@@ -740,12 +740,109 @@ func installPackageWithProgress(ctx context.Context, packageID string, report pk
 
 		termLog := openAptTermLog()
 		defer termLog.Close()
-		if err := trans.Call("InstallPackages", uint64(0), []string{packageID}); err != nil {
-			return err
+		deadline := time.Now().Add(installTransactionTimeout)
+		err = trans.Call("InstallPackages", uint64(0), []string{packageID})
+		if err == nil {
+			waitCtx, cancel := context.WithDeadline(session.Context(), deadline)
+			defer cancel()
+			err = awaitPackageUpdateSignals(waitCtx, trans.Signals(), termLog, report)
 		}
-
-		waitCtx, cancel := context.WithTimeout(session.Context(), packageKitTransactionTimeout)
-		defer cancel()
-		return awaitPackageUpdateSignals(waitCtx, trans.Signals(), termLog, report)
+		// Stopped by the cancel, not by the transaction's end: a call cut
+		// short by it may have reached PackageKit too.
+		if ctxErr := session.Context().Err(); ctxErr != nil && errors.Is(err, ctxErr) {
+			awaitCancelledInstall(session.Context(), trans, deadline, termLog, report)
+		}
+		return err
 	})
+}
+
+// installTransactionTimeout bounds an install's transaction, from when the
+// install asks PackageKit for it, cancelled or not. It is a test seam.
+var installTransactionTimeout = packageKitTransactionTimeout
+
+// transactionPollInterval is how often a cancelled install checks that
+// PackageKit still has its transaction. It is a test seam.
+var transactionPollInterval = 5 * time.Second
+
+// errTransactionGone ends the wait for a transaction PackageKit no longer
+// has and sent no Finished for, as when it crashed or restarted.
+var errTransactionGone = errors.New("PackageKit no longer has the transaction")
+
+// awaitCancelledInstall asks PackageKit to cancel the transaction of an
+// install whose context was cancelled, then follows it until it ends, it is
+// gone, or the install's deadline passes, on a context the cancel does not
+// reach: what runs after the package step, such as a package hook letting go
+// of a hold, must not run while PackageKit may still run the package's
+// scripts. PackageKit cancels nothing while it changes the system, and its
+// dnf5 backend never does, so the transaction may run to its end.
+func awaitCancelledInstall(ctx context.Context, trans *pkgkit.Transaction, deadline time.Time, termLog *aptTermLog, report pkgUpdateReporter) {
+	waitCtx, cancel := context.WithDeadline(context.WithoutCancel(ctx), deadline)
+	defer cancel()
+	cancelCtx, stop := context.WithTimeout(waitCtx, transactionCancelTimeout)
+	err := trans.Cancel(cancelCtx)
+	stop()
+	switch {
+	case errors.Is(err, pkgkit.ErrNeverStarted):
+		return
+	case err != nil:
+		slog.Debug("PackageKit install transaction not canceled", "transaction", trans.Path(), "error", err)
+	}
+	reportPkgUpdateProgress(report, &PkgUpdateProgress{Type: "status", Status: "Waiting for PackageKit to end the transaction"})
+	watchCtx, gone := context.WithCancelCause(waitCtx)
+	watched := make(chan struct{})
+	go func() {
+		defer close(watched)
+		watchTransaction(watchCtx, trans, gone)
+	}()
+	err = awaitPackageUpdateSignals(watchCtx, trans.Signals(), termLog, report)
+	gone(nil)
+	<-watched
+	attrs := []any{"transaction", trans.Path(), "deadline", deadline, "error", err}
+	switch {
+	case err == nil:
+	case errors.Is(err, context.DeadlineExceeded):
+		slog.Warn("PackageKit install transaction outlived the wait after a cancel", attrs...)
+	case errors.Is(err, context.Canceled) && errors.Is(context.Cause(watchCtx), errTransactionGone):
+		slog.Warn("PackageKit install transaction gone without a Finished after a cancel", attrs...)
+	case errors.Is(err, pkgkit.ErrSignalsClosed):
+		slog.Warn("PackageKit install transaction signals lost after a cancel", attrs...)
+	default:
+		slog.Debug("PackageKit install transaction failed after a cancel", attrs...)
+	}
+}
+
+// watchTransaction ends ctx with errTransactionGone once PackageKit, having
+// listed trans at one check, has not listed it at two checks in a row.
+// PackageKit lists a transaction from its commit until it sends its Finished,
+// so one still waiting for polkit is not listed yet and is never taken for
+// gone; and that signal reaches LinuxIO on another connection than the list,
+// so one check that misses it may race the Finished. A list that cannot be
+// read breaks the row.
+func watchTransaction(ctx context.Context, trans *pkgkit.Transaction, gone context.CancelCauseFunc) {
+	ticker := time.NewTicker(transactionPollInterval)
+	defer ticker.Stop()
+	seen, missed := false, 0
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		running, err := trans.Running(ctx)
+		switch {
+		case ctx.Err() != nil:
+			return
+		case err != nil:
+			missed = 0
+			slog.Debug("PackageKit transaction list not read", "transaction", trans.Path(), "error", err)
+		case running:
+			seen, missed = true, 0
+		case seen:
+			missed++
+			if missed == 2 {
+				gone(errTransactionGone)
+				return
+			}
+		}
+	}
 }

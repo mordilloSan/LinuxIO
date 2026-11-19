@@ -191,6 +191,9 @@ See `docs/development.md`, "Test VM", for usage.
   of the btrfs resume work rest on that run.
 - `capability-install.spec.ts` installs zram from Capabilities, on Ubuntu,
   and on Fedora once sign-in works there (see [Distributions](#distributions)).
+  On Ubuntu it also cancels an install while dpkg runs
+  ([Capabilities](../capabilities.md#zram)), which passed in test VM 2 on
+  2026-11-19.
 - `DISTRO=fedora` on the same targets drives a Fedora 45 VM,
   `linuxio-e2e-fedora`, beside the Ubuntu ones (see
   [Distributions](#distributions)).

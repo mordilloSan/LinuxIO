@@ -417,12 +417,13 @@ type hookRun struct {
 	onAfter func()
 }
 
-// captureLogs sends the default logger's lines to a buffer for the test.
+// captureLogs sends the default logger's lines, Debug ones included, to a
+// buffer for the test.
 func captureLogs(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	var logs bytes.Buffer
 	previous := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, nil)))
+	slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	t.Cleanup(func() { slog.SetDefault(previous) })
 	return &logs
 }
@@ -568,6 +569,54 @@ func TestInstallCapabilityRunsThePackageHookAfterACancel(t *testing.T) {
 	}
 	if !strings.Contains(logs.String(), "package hook failed after a cancelled install") || !strings.Contains(logs.String(), "reload failed") {
 		t.Fatalf("logs = %q, want the hook's error recorded", logs.String())
+	}
+}
+
+// A cancel while PackageKit installs zram-tools runs the step after the
+// package only once PackageKit's transaction has ended, so the hold and the
+// lock it releases outlive the package's scripts.
+func TestInstallCapabilityRunsThePackageHookAfterTheCancelledTransactionEnds(t *testing.T) {
+	service := setupFakePackageKit(t, false)
+	service.setResolvable("zram-tools", fakeResolvable{id: hungPackageID})
+	service.setInstallHang(hungPackageID)
+	run := withZramHook(t, "debian", func(ctx context.Context) error {
+		return InstallByNameWithProgress(ctx, "zram-tools", nil)
+	}, "", nil)
+	afterRan := make(chan struct{})
+	run.onAfter = func() { close(afterRan) }
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := runInstallCapabilityTask(ctx, nil, session.User{}, apischema.CapabilityRequest{Capability: "zram"})
+		done <- err
+	}()
+	var tx *fakeTransaction
+	select {
+	case tx = <-service.installStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("PackageKit was not asked to install zram-tools")
+	}
+
+	cancel()
+	waitCancelCall(t, service)
+	select {
+	case <-afterRan:
+		t.Fatal("the step after the package ran while PackageKit's transaction still ran")
+	case <-time.After(200 * time.Millisecond):
+	}
+	tx.emit("Finished", uint32(1), uint32(0))
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("install = %v, want canceled", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the install did not return")
+	}
+	if want := []string{"hook:before", "package:zram-tools", "hook:after"}; !slices.Equal(run.order, want) {
+		t.Fatalf("operation order = %v, want %v", run.order, want)
 	}
 }
 

@@ -139,6 +139,63 @@ then the step's error is also logged as a Warn line,
 `package hook failed after a cancelled install`; either way the install
 does not go on and the job does not end completed.
 
+A cancel during a package's install does not leave PackageKit's
+transaction behind (`awaitCancelledInstall`, `updates.go`), so the step
+after the package never runs while the package's scripts may:
+
+1. The install asks PackageKit to cancel the transaction, unless the
+   transaction's `AllowCancel` reads false, as apt's backend sets it from
+   just before dpkg to the end. PackageKit 1.4.0 and older do not check it
+   themselves, and their apt backend answers a cancel by sending SIGTERM to
+   the process running dpkg (`pk_transaction_cancel` in
+   `src/pk-transaction.c`, `AptJob::cancel` in `backends/apt/apt-job.cpp`);
+   PackageKit's main branch refuses such a cancel since commit `457dbf6`,
+   not yet in a release.
+2. Whatever PackageKit answered, the install then waits for the
+   transaction's `Finished` signal. apt's backend ends a transaction still
+   downloading at once, with nothing installed; one in dpkg runs to its end;
+   dnf5's backend cancels nothing (its `pk_backend_cancel` is empty), so on
+   Fedora the whole install runs. A transaction PackageKit was never asked
+   to run, as when the cancel came before `InstallPackages` was sent,
+   answers with `NoRole` and is not waited for.
+3. The wait keeps the install's own bound: 30 minutes from when the install
+   asked for the transaction (`packageKitTransactionTimeout`), the longest
+   LinuxIO follows any PackageKit transaction, so a cancel never gives up
+   on a transaction sooner than an install nobody cancelled would.
+4. Every 5 seconds the wait checks that PackageKit still lists the
+   transaction (`GetTransactionList`), which it does from the transaction's
+   commit until its `Finished` (`pk_scheduler_get_array` in
+   `src/pk-scheduler.c` lists the ready and running ones, and a transaction
+   that waits for the package manager's lock is set back to ready by
+   `pk_transaction_reset_after_lock_error`). Listed at one check and then
+   missing at two checks in a row, as after PackageKit crashed or was
+   restarted, the transaction is gone without a `Finished`: the wait ends
+   with a Warn line,
+   `PackageKit install transaction gone without a Finished after a cancel`,
+   and the step after the package runs, as at the bound. One check is not
+   enough, since `Finished` reaches LinuxIO on another bus connection than
+   the list's answer; a check whose list cannot be read breaks the row. A
+   transaction never listed, as one still waiting for polkit, is not taken
+   for gone: it is followed to its `Finished` or the bound, since the cancel
+   may not have reached it. PackageKit 1.4.0 and older can themselves abort when
+   a cancel meets a transaction queued again for the lock (the message of
+   commit `457dbf6`).
+
+Meanwhile the task tray reads "Cancelling…", the install's progress reads
+`Installing <package> (Waiting for PackageKit to end the transaction)`
+until the next status PackageKit reports (a status, item progress, package
+or message signal) replaces it, and dpkg's
+lines still reach the install dialog. A transaction that ends with an
+error after the cancel is logged at Debug,
+`PackageKit install transaction failed after a cancel`, since the job
+reports only the cancel. The job ends cancelled
+once the transaction has ended and the step after the package has run. A
+stop of the job host ends the install the same way, within the 100 seconds
+the host waits for its jobs as it stops (`drainTimeout` in
+`backend/bridge/internal/jobshost/lifecycle.go`); a transaction that runs
+longer leaves the hold as a killed job host does (see
+[Known limits](#known-limits)).
+
 - `detectDistroFamily()` reads `/etc/os-release` and classifies the host as
   `debian` or `rhel`; `pickByFamily` chooses the matching package/service name.
 - The monitoring daemon ships with LinuxIO and is not installed through
@@ -300,8 +357,10 @@ zram-tools was installed already, whose package then starts nothing new:
 2. The package installs. Its `deb-systemd-helper enable` enables the unit
    and records that it did, and its start is skipped: the journal reads
    `zramswap.service - Linux zramswap setup skipped, unmet condition check
-   ConditionPathExists=!/`. No zram swaps while the hold is in place; a
-   cancel can let the package's scripts run after it is gone (see
+   ConditionPathExists=!/`. No zram swaps while the hold is in place. A
+   cancel waits for PackageKit's transaction to end before step 3
+   ([Install Flow](#install-flow)), so the package's scripts run under the
+   hold too, unless the transaction outlives the install's bound (see
    [Known limits](#known-limits)).
 3. After the package step, whatever its outcome, the hook disables
    `zramswap.service` when it is enabled now and was not before the
@@ -372,6 +431,40 @@ its installer puts it ([SELinux](./process-systemd-architecture.md#selinux)),
 it passed after a fresh install and again after a reboot, installing
 `zram-generator` in 3 s each time; after the reboot the install showed
 "Refreshing the package lists" first.
+
+A second test of the spec, on Ubuntu only, cancels the install while dpkg
+runs ([Install Flow](#install-flow)). An apt drop-in,
+`/etc/apt/apt.conf.d/99linuxio-e2e-slow`, makes apt sleep 30 s before it
+runs dpkg (`DPkg::Pre-Invoke`). PackageKit's apt backend reads apt's
+configuration only as packagekitd starts (`pkgInitConfig` in
+`pk_backend_initialize`), so the test stops packagekitd, once it runs no
+transaction, after it writes the drop-in and again after it removes it. In
+test VM 2 an install by a packagekitd started before the drop-in ran dpkg
+with no sleep, and one started after it slept 30 s with the transaction at
+`AllowCancel` false. The test cancels from the task tray once that sleep
+runs and PackageKit's install transaction reads `AllowCancel` false. It
+then checks that:
+
+- the job stays running, with the tray reading "Cancelling…", while the
+  sleep runs;
+- the transaction's status never reads Cancel (19), which PackageKit's
+  Cancel handler and apt's backend set as soon as a Cancel reaches them;
+- the job ends cancelled no earlier than dpkg's `status installed` line in
+  `/var/log/dpkg.log`, with the package installed;
+- `zramswap.service` is not enabled and its start was skipped, no zram
+  swaps, the hold's folder in `/run` is gone, and `dpkg --audit` prints
+  nothing.
+
+The drop-in is always removed. On 2026-11-19 in test VM 2 (Ubuntu 26.04,
+PackageKit 1.3.4) the test passed: all 20 probes during the sleep after the
+cancel read the job `running` and the transaction's status 3 (Running);
+dpkg installed zram-tools 33 s after Install was clicked, and the job ended
+cancelled 3 s after that. Fedora is
+skipped: dnf5's backend does nothing on a cancel, and dnf has no
+`Pre-Invoke`. A cancel while apt downloads is not tested: a download slow
+enough to cancel in cannot be set up reliably (the package is small and may
+already be in apt's cache, and a rate limit depends on the mirror's
+scheme).
 
 ## Filesystem tools
 
@@ -554,8 +647,22 @@ test VM does this in a browser:
   to compressed memory, which removes it before it starts zram. When the
   kill came after the package went in and before the disable, the service
   is enabled and starts zram at the next boot.
-- A cancel while PackageKit's transaction still runs can let the package's
-  scripts run after the hold is gone, leaving zram swapping and the service
-  enabled until a mode is chosen: on a cancel the install does not wait for
-  the transaction, and the step after the package removes the hold and
-  frees the lock at once.
+- A PackageKit transaction still running 30 minutes after the install asked
+  for it, cancelled or not, is no longer followed: the step after the
+  package removes the hold and frees the lock while the package's scripts
+  may still run, which can leave zram swapping and the service enabled
+  until a mode is chosen. A Warn line,
+  `PackageKit install transaction outlived the wait after a cancel`, records
+  it for a cancelled install.
+- On PackageKit 1.4.0 and older a cancel that lands in the moment between
+  LinuxIO's read of `AllowCancel` and its `Cancel`, as apt's backend moves
+  from downloading to dpkg, still has that backend send SIGTERM to the
+  process running dpkg.
+- The wait after a cancel also ends early, and the step after the package
+  runs while a dpkg PackageKit started may still run, when PackageKit goes
+  away during it (crashed or restarted, found within about 10 seconds), or
+  when LinuxIO's connection for D-Bus signals drops, after which it cannot
+  see the `Finished` (Warn line
+  `PackageKit install transaction signals lost after a cancel`). A
+  transaction PackageKit never listed, or a list that cannot be read,
+  keeps the wait going, to the bound.

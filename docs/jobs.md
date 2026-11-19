@@ -499,8 +499,12 @@ keeps a history of the transactions it ran, across its own restarts:
   admin may do to halt an update: the job ends `interrupted/shutdown`, as
   before, while PackageKit finishes the package it was at.
 - Cancel, in the first run or after a pick-up, asks PackageKit to cancel the
-  transaction the job follows and updates no further package. A host stop or
-  crash does not cancel the transaction, which runs on.
+  transaction the job follows and updates no further package. It does not
+  ask while the transaction's `AllowCancel` reads false, as from just before
+  dpkg runs to the end: PackageKit 1.4.0 and older cancel all the same, and
+  their apt backend then sends SIGTERM to the process running dpkg
+  ([Capabilities](./capabilities.md#install-flow)). A host stop or crash
+  does not cancel the transaction, which runs on.
 
 `storage.run_smart_test` resumes after a reboot, and in the same boot after a
 crash or a stop by hand of its host
@@ -909,7 +913,7 @@ The record itself is the quickest evidence: as root,
 | Go unit | same | `backend/bridge/internal/jobshost/host_test.go`, `backend/bridge/internal/jobshost/scheduled_test.go` | Peer uid and protocol refusal, idle exit, SIGTERM and `Suspend`, cancel during shutdown, reconcile and the resume rule (`TestResumeOnlyWhatTheLastShutdownInterrupted`), alerts and their levels, scheduled runs in `tasks.*`, slim history entries, `tasks.output` |
 | Go unit | same | `backend/bridge/internal/jobshost/pickup_test.go` | The same-boot pick-up: a crash and a stop picked up before the host serves, a stop not picked up for a route that takes crashes only, none after a reboot, a cancel, a lost job or a crash of a picked-up run; resumes after a reboot started once the host serves, and left as they were by a stop during the start; a `Resume` that finds nothing left interrupted with its reason and alert and not tried again, and one during a stop counted as the stop's; a failed resume stamped, made unresumable only for a route that resumes in the boot; a checkpoint saved while a job runs |
 | Go unit | same | `backend/bridge/handlers/storage/smart_resume_test.go`, `backend/bridge/handlers/storage/smart_test.go` | Against a fake drive (smartctl's JSON report): the drive read and saved before the test starts, a test the drive still runs followed, an ended test read from the log (completed, failed, aborted, a reset), another drive, an unreadable one, no new test, more than one, a test of another kind or a log that does not continue never taken, an NVMe drive running the other kind, Cancel aborting the test after a pick-up and in the first run, and not on a host stop, once the name is another drive's, when `-t` was refused, or when the drive runs another kind or none |
-| Go unit | same | `backend/bridge/handlers/packages/package_update_resume_test.go`, `backend/bridge/handlers/packages/packagekit_test.go` | Against a fake PackageKit on a private bus: the checkpoint saved before each package's update, a transaction followed to its end, one that ended read from the history (succeeded, failed), one PackageKit cannot account for or of another role never taken, one dropped before its role is read taken from the history, the batch's counts in the error of a job left interrupted, a non-success exit with no ErrorCode as a failure (an update and an install), Cancel sent to PackageKit after a pick-up and in the first run, refused by PackageKit, and not on a host stop |
+| Go unit | same | `backend/bridge/handlers/packages/package_update_resume_test.go`, `backend/bridge/handlers/packages/packagekit_test.go` | Against a fake PackageKit on a private bus: the checkpoint saved before each package's update, a transaction followed to its end, one that ended read from the history (succeeded, failed), one PackageKit cannot account for or of another role never taken, one dropped before its role is read taken from the history, the batch's counts in the error of a job left interrupted, a non-success exit with no ErrorCode as a failure (an update and an install), Cancel sent to PackageKit after a pick-up and in the first run, refused by PackageKit, not sent while its `AllowCancel` is false (a Debug line, where a refusal is a Warn line), and not on a host stop; a cancelled install's transaction cancelled and waited for to its `Finished`, also when the cancel lands during the `InstallPackages` call, when PackageKit cannot cancel, refuses or ignores the cancel, or ends it with an error (logged), up to the install's bound or until PackageKit no longer lists it (not for one it never listed), and not for a transaction never asked to run |
 | Go unit | same | `backend/bridge/cmd/jobs_relay_test.go`, `backend/bridge/cmd/jobs_host_test.go`, `backend/bridge/internal/jobsclient/client_test.go` | A bridge and a host over a socket: forwarding, host loss, reattach, events after a host restart, the update wait. The relay tests dial the in-process host with `jobsclient.Dial`, which starts no socket unit, so they also run as root |
 | Go unit | same | `backend/bridge/cmd/jobs_relay_test.go` (`TestRelayRoundTripSpeed`) | A speed bound: 300 no-op mutations through the relay to the in-process host, each timed from dispatch to its result frame; fails when the median exceeds 50 ms (observed 0.5 to 0.6 ms with the race detector, 0.2 to 0.3 ms without). It logs the median, p95 and maximum, and runs as root too (`make vm-test-relay-root` matches it through `Relay`) |
 | Go unit | same | `backend/bridge/internal/bridgeipc/mutation_test.go`, `backend/bridge/handlers/redaction_test.go`, `backend/bridge/apischema/schema_test.go` | The stream, resend and abort, same-target refusal, option guards, secret tags, `TestRetrySafeRoutesAreExplicitCalls` |
@@ -1069,9 +1073,9 @@ Covered at one level only:
   history is not found, and its job stays interrupted.
 - A job whose picked-up run crashes its host again is not picked up a second
   time and stays `interrupted/crash`, whatever the cause of that crash.
-- Cancel of a package update is refused by PackageKit while dpkg runs: the
-  job ends canceled, that package's update completes and no further package
-  is updated.
+- Cancel of a package update is not sent while dpkg runs, and PackageKit's
+  dnf5 backend ignores it: the job ends canceled without waiting, that
+  package's update completes and no further package is updated.
 - After a crash of its host the rest of a package batch is updated at the
   next start of the root host; Cancel, not a kill of the host, is how a batch
   is stopped.

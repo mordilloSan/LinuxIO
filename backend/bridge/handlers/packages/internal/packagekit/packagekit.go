@@ -8,6 +8,8 @@ import (
 	"slices"
 	"time"
 
+	godbus "github.com/godbus/dbus/v5"
+
 	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
 )
 
@@ -116,8 +118,18 @@ func (s ClientSession) WatchTransaction(path dbusclient.ObjectPath, buffer int) 
 // TransactionRunning reports whether PackageKit still runs transaction path:
 // its transaction list holds the transactions it has not finished.
 func (s ClientSession) TransactionRunning(path dbusclient.ObjectPath) (bool, error) {
+	return s.transactionRunning(s.Context(), path)
+}
+
+// Running is TransactionRunning for t, with ctx rather than the session's,
+// which may already be canceled.
+func (t *Transaction) Running(ctx context.Context) (bool, error) {
+	return t.session.transactionRunning(ctx, t.path)
+}
+
+func (s ClientSession) transactionRunning(ctx context.Context, path dbusclient.ObjectPath) (bool, error) {
 	var running []dbusclient.ObjectPath
-	if err := s.session.CallStore(dbusclient.PackageKitIface+".GetTransactionList", dbusclient.CallPolicy{}, nil, &running); err != nil {
+	if err := s.session.Object().CallWithContext(ctx, dbusclient.PackageKitIface+".GetTransactionList", 0).Store(&running); err != nil {
 		return false, fmt.Errorf("list PackageKit transactions: %w", err)
 	}
 	return slices.Contains(running, path), nil
@@ -209,14 +221,37 @@ func (t *Transaction) Role() (uint32, error) {
 	return dbusclient.GetProperty[uint32](t.session.session, t.object, TransactionIface, "Role")
 }
 
+// ErrCannotCancel is Cancel's answer while the transaction's AllowCancel is
+// false, as while dpkg runs. Cancel then does not ask: PackageKit 1.4.0 and
+// older cancel anyway, and their apt backend sends SIGTERM to the process
+// running dpkg.
+var ErrCannotCancel = errors.New("PackageKit cannot cancel the transaction now")
+
+// ErrNeverStarted is Cancel's answer for a transaction PackageKit was never
+// asked to run (its NoRole error): it runs nothing and sends no Finished.
+var ErrNeverStarted = errors.New("PackageKit was never asked to run the transaction")
+
 // Cancel asks PackageKit to cancel the transaction, with ctx rather than the
-// session's, which may already be canceled. PackageKit refuses while the
-// transaction cannot be canceled, such as while dpkg runs.
+// session's, which may already be canceled, unless the transaction's
+// AllowCancel is false (ErrCannotCancel). PackageKit may still refuse, or
+// accept and run the transaction to its end, as its dnf5 backend does: only
+// the Finished signal says that it ended.
 func (t *Transaction) Cancel(ctx context.Context) error {
-	if err := t.object.CallWithContext(ctx, TransactionIface+".Cancel", 0).Err; err != nil {
-		return fmt.Errorf("cancel PackageKit transaction %s: %w", t.path, err)
+	allow, err := dbusclient.GetVariantProperty(ctx, t.object, TransactionIface, "AllowCancel")
+	if err != nil {
+		return fmt.Errorf("read whether PackageKit transaction %s can be canceled: %w", t.path, err)
 	}
-	return nil
+	if allowed, _ := allow.Value().(bool); !allowed {
+		return fmt.Errorf("cancel PackageKit transaction %s: %w", t.path, ErrCannotCancel)
+	}
+	err = t.object.CallWithContext(ctx, TransactionIface+".Cancel", 0).Err
+	if err == nil {
+		return nil
+	}
+	if busErr, ok := errors.AsType[godbus.Error](err); ok && busErr.Name == TransactionIface+".NoRole" {
+		err = fmt.Errorf("%w: %w", ErrNeverStarted, err)
+	}
+	return fmt.Errorf("cancel PackageKit transaction %s: %w", t.path, err)
 }
 
 func (t *Transaction) Signals() <-chan *dbusclient.Signal {
@@ -323,7 +358,15 @@ func ErrorFromSignal(sig *dbusclient.Signal, action string) error {
 	return &Error{Code: code, Details: details, action: action}
 }
 
+// closeTimeout bounds taking a transaction's signal match off the bus.
+const closeTimeout = 5 * time.Second
+
+// LogClose ends trans's signal subscription on a context ctx's cancel does
+// not reach: godbus sends no RemoveMatch on a cancelled context, and the
+// match would stay on the bus.
 func LogClose(ctx context.Context, trans *Transaction) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), closeTimeout)
+	defer cancel()
 	if err := trans.Close(ctx); err != nil {
 		slog.Debug("failed to close PackageKit transaction subscription", "component", "dbus", "subsystem", "packagekit", "error", err)
 	}
