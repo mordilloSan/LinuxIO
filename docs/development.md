@@ -176,13 +176,83 @@ finished), a timeline of which file ran on which VM, and each failure with
 its error, its code and its trace. Every line, without colour, is also in
 `.cache/test-logs/test-vm-browser.log`.
 
-Only one VM target runs at a time. A second one is refused while the first
-holds `~/.cache/linuxio-vm/lock`, since it would revert, reboot or stop a VM
-under it. `make vm-ssh VM_KEEP=1` is not held back: it stops nothing.
+Each VM has a lock, `~/.cache/linuxio-vm/locks/DOMAIN`. A target takes the
+locks of the VMs it acts on, without waiting, as its recipe begins: after
+its prerequisites (`build-nocheck`, `vm-update-build`, `ensure-go`,
+`setup-frontend`) and after make has asked the script how many VMs exist or
+fit, but before it touches a VM, so a refused target may have built
+something but has reverted, booted or stopped nothing. It locks the one VM
+of `vm-create`, `vm-destroy`, `vm-ssh` or a `vm-test-*` target, and VMs 1 to
+`VMS` for the targets that act on several, unless `VM` names one. Targets on
+different VMs, of any distribution or release, run side by side, as many as
+the host has memory for; a target that needs a VM another target holds is
+refused with the name of that VM, since it would revert, reboot or stop the
+VM under the first. A target that needs several VMs takes all of them or
+none, under a short lock (`locks/taking`) so that no other target finds part
+of them held: refused for one, it stops nothing and leaves the others free.
+A lock file it cannot open refuses it too. `make vm-ssh VM_KEEP=1` on a
+running VM takes no lock, since it stops nothing, so it can look into a VM
+another target holds; on a VM that is off it takes the VM's lock to start
+it, like any target, and should the VM stop while it runs without the lock,
+it refuses to start it again. A fourth VM, for a fourth target to run beside
+three, is `make vm-create VM=4`.
+
+A checkout or worktree whose `mk/vm.mk` is older than these locks takes
+`~/.cache/linuxio-vm/lock` alone for any VM target, and one older than
+commit `0042b2a6` (2026-11-17) takes no lock at all, so nothing keeps its
+targets away from any other. Targets with the per-VM locks take the old lock
+shared, so a target of a checkout with the old lock is refused while one of
+them runs, and the other way round, while they run beside each other. The
+shared lock can go once no checkout with the old lock is left.
+
+Before the script starts a VM that is not running (a first boot in
+`vm-create`, a target that starts a stopped VM, a spec's `power-cut` or
+`off-for`, or its boot after it powered the VM off), it checks the host's
+memory, since targets side by side could otherwise start more VMs than the
+host holds. A first start needs the VM's 4 GiB and the 1.5 GiB kept for the
+host free, where what running test VMs of any distribution or release were
+given and have not used yet (their memory less their RSS) counts as spent,
+and a running one whose numbers libvirt does not give counts whole. A
+restart of a VM that the same target started before or found running needs
+only its 4 GiB: the reserve is for the run's browsers, which have it by then.
+Make gives each target an ID, `LINUXIO_VM_RUN`, which the specs' rig calls
+inherit, and the VM's state folder keeps, in `run`, the ID of the target that
+last started it or found it running. When the VM does not fit, the script
+fails before starting it, saying what it needs, what is free and which test
+VMs are running. Starts take a short lock (`locks/start`) around the check,
+so two at once never count the same memory, and `vm-create` also checks
+before its download. `test-vm-browser` shuts the other VMs of the run down
+before the release-update spec boots the first one again (not with
+`VM_KEEP=1`).
+`LINUXIO_VM_MEMINFO=FILE` makes the check read `FILE` in place of
+`/proc/meminfo`, to see a refusal without filling the host.
+
+Known limits:
+
+- `fit`, which sets how many VMs the full runs use, counts the running VMs
+  of its own release as free and every CPU of the host, so a full run can
+  plan a VM that the memory check then refuses, failing the run: beside
+  another target's VMs, or at the edge of what the host has, since a running
+  VM holds a little more than its 4 GiB. Give it fewer with `VMS`. Two full
+  runs side by side share the CPUs.
+- A restart can still be refused when other targets started VMs while this
+  one was off (during an `off-for`, or after a spec powered it off); the VM
+  then stays off and the specs after it on that VM fail. A restart counts on
+  no reserve, so it can also take what another target's first start counted
+  on, and a VM that a target created counts as started by it, so its next
+  boot in that target is a restart.
+- Every program a target starts inherits the lock descriptors, so a target
+  killed with SIGKILL whose child lives on (the seed server of a first boot,
+  a Playwright browser) leaves its VMs locked until that child ends.
+  `lslocks` names it, by the lock file `~/.cache/linuxio-vm/locks/DOMAIN`.
+- Targets started from one checkout share its `.cache` (the suite binaries
+  and their queue, the logs, the Playwright results), so targets that run
+  side by side are started from separate checkouts or worktrees, as
+  `AGENTS.md` already asks of any two Make runs.
 
 The full runs are long: the browser specs take 15 minutes on three VMs and
-42 on one, the root suites about 6 on three, and either holds the lock, so
-no other VM target can run meanwhile. An agent therefore runs only the suite
+42 on one, the root suites about 6 on three, and either holds every VM it
+runs on, up to four, meanwhile. An agent therefore runs only the suite
 (`SUITES=...`) or the spec file (`PLAYWRIGHT_ARGS=...`) its change needs and
 leaves the full runs to the owner (`AGENTS.md`).
 
@@ -200,9 +270,9 @@ and the scheduled-script specs were run on it.
 instead of Ubuntu's: the domain `linuxio-e2e-fedora` (`linuxio-e2e-fedora-2`
 and so on), its `linuxio-e2e-fedora-*` volumes and
 `~/.cache/linuxio-vm-fedora`, beside the Ubuntu VMs, which keep their names
-when `DISTRO` is not given. The lock is the same one, so one VM target runs
-at a time whatever the distribution. What differs between distributions is a
-profile at the top of the script: the cloud image, where its checksum is
+when `DISTRO` is not given. Each has a lock of its own, so a target on a
+Fedora VM runs beside one on an Ubuntu VM. What differs between
+distributions is a profile at the top of the script: the cloud image, where its checksum is
 published, the first-boot seed, the package manager the suites install with,
 and the packages they install. Fedora's is:
 
@@ -248,8 +318,9 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   `SHA256SUMS`, Fedora's `CHECKSUM`), and boots it once with
   `packaging/vm/user-data.yaml.in` (`user-data-fedora.yaml.in` on Fedora).
   cloud-init reads its seed over HTTP from a server on
-  `192.168.122.1:8399` (8400 for VM 2, and so on) that runs only during that
-  boot. It creates the user
+  `192.168.122.1:8399` (8400 for VM 2, and so on; from 8409 for
+  `VM_RELEASE=noble` and 8419 for Fedora, so that first boots of any VMs can
+  run at once) that runs only during that boot. It creates the user
   `linuxio-e2e` with passwordless sudo and installs `docker.io` with its
   Compose and buildx plugins (`docker-compose-v2`, `docker-buildx`),
   `btrfs-progs` and the LinuxIO dependencies, and upgrades every package. The
@@ -267,8 +338,11 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   LinuxIO; run `vm-install` again after a reset.
 - A change to a systemd unit or socket, a PAM file or SELinux policy counts
   as working only when it is seen as the installer puts it and again after a
-  reboot (`packaging/vm/linuxio-vm.sh reboot`), so that every socket and
-  service starts with it. A drop-in or an edit made on a running VM shows
+  reboot, so that every socket and service starts with it. Every target
+  shuts the VM down when it ends (not with `VM_KEEP=1`), so the next one
+  (`make vm-ssh CMD=...`) boots it afresh under its lock. The script's own `reboot`
+  (`packaging/vm/linuxio-vm.sh reboot`) takes no lock: it is for a spec, or
+  for a VM a target of yours holds. A drop-in or an edit made on a running VM shows
   less: `SELinuxContext=` on `linuxio-auth@.service` let sign-in pass that
   way, because its socket was already listening, and as installed systemd
   could not create the socket at all

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Disposable LinuxIO test VM on qemu:///system, driven by mk/vm.mk
 # (docs/development.md, "Test VM"). It is hard-wired to the domain linuxio-e2e
-# and its linuxio-e2e-* volumes in the default pool, and never lists, changes
-# or deletes any other domain, volume or network. State (image cache, SSH key,
-# login) lives in ~/.cache/linuxio-vm.
+# and its linuxio-e2e-* volumes in the default pool, and never changes or
+# deletes any other domain, volume or network; it reads the names of the
+# running domains only to find the test VMs among them (check_memory). State
+# (image cache, SSH key, login) lives in ~/.cache/linuxio-vm.
 #
 # LINUXIO_VM_DISTRO=fedora selects a VM on Fedora instead of Ubuntu, the
 # default: the domain linuxio-e2e-fedora, its linuxio-e2e-fedora-* volumes and
@@ -22,17 +23,20 @@
 # Usage: linuxio-vm.sh create | ensure | prepare [BUILD_DIR] |
 #        install BUILD_DIR [REF] | start | ssh [COMMAND] | ip | password |
 #        reboot | power-cut | off-for SECONDS | throttle DISK BYTES_PER_SEC |
-#        stop | reset | update | destroy | fit | room | count |
+#        stop | reset | update | destroy | fit | room | count | domains N... |
+#        running |
 #        test DIR [SUITE...] | each COUNT COMMAND [ARGS]
 set -euo pipefail
 
 readonly DISTRO="${LINUXIO_VM_DISTRO:-ubuntu}"
+# SEED_BASE gives each release ports of its own for the first-boot seed, VM N
+# taking SEED_BASE+N, so first boots of any VMs can run side by side.
 case "${DISTRO}/${LINUXIO_VM_RELEASE:-}" in
-ubuntu/ | ubuntu/resolute) readonly RELEASE=resolute VERSION=26.04 FIRST_DOMAIN=linuxio-e2e ;;
-ubuntu/noble) readonly RELEASE=noble VERSION=24.04 FIRST_DOMAIN=linuxio-e2e-noble ;;
+ubuntu/ | ubuntu/resolute) readonly RELEASE=resolute VERSION=26.04 FIRST_DOMAIN=linuxio-e2e SEED_BASE=8398 ;;
+ubuntu/noble) readonly RELEASE=noble VERSION=24.04 FIRST_DOMAIN=linuxio-e2e-noble SEED_BASE=8408 ;;
 # A Fedora release's Cloud Base images never change once it ships, so the
 # version names the compose too; the first boot upgrades the packages.
-fedora/) readonly RELEASE=45 VERSION=45-1.4 FIRST_DOMAIN=linuxio-e2e-fedora ;;
+fedora/) readonly RELEASE=45 VERSION=45-1.4 FIRST_DOMAIN=linuxio-e2e-fedora SEED_BASE=8418 ;;
 *)
 	echo "linuxio-vm: unknown distribution '${DISTRO}' release '${LINUXIO_VM_RELEASE:-}' (ubuntu, with resolute or noble, or fedora)" >&2
 	exit 1
@@ -89,11 +93,13 @@ readonly BASE_VOL="${DOMAIN}-base.qcow2"
 readonly SYSTEM_VOL="${DOMAIN}-system.qcow2"
 readonly DATA_VOLS=("${DOMAIN}-data1.qcow2" "${DOMAIN}-data2.qcow2" "${DOMAIN}-data3.qcow2" "${DOMAIN}-data4.qcow2")
 readonly HOST_IP=192.168.122.1
-# One port for each VM number, so several first boots can run at once.
-readonly SEED_PORT=$((8398 + INDEX))
+readonly SEED_PORT=$((SEED_BASE + INDEX))
 readonly SEED_URL="http://${HOST_IP}:${SEED_PORT}/"
 readonly STATE="${HOME}/.cache/linuxio-vm${DOMAIN#linuxio-e2e}"
 readonly IMAGE_DIR="${HOME}/.cache/linuxio-vm${FIRST_DOMAIN#linuxio-e2e}"
+# Taken by every start of a test VM, of any release, around its memory check
+# (start_domain). mk/vm.mk keeps the lock of each VM in the same folder.
+readonly START_LOCK="${HOME}/.cache/linuxio-vm/locks/start"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 readonly REPO_ROOT
 # Where `each` keeps the output of every VM, one file per VM and command.
@@ -194,14 +200,87 @@ wait_for_shut_off() {
 	done
 }
 
-# Start the domain if needed and wait until it answers SSH; sets IP.
+# Start the domain if needed and wait until it answers SSH; sets IP. With
+# LINUXIO_VM_NO_START, which make vm-ssh VM_KEEP=1 sets when it found the VM
+# running and so took no lock, it refuses to start one.
 connect() {
 	domain_exists || die "${DOMAIN} does not exist; run make vm-create"
 	if [[ "$(domain_state)" != running ]]; then
+		[[ -z ${LINUXIO_VM_NO_START:-} ]] || die "${DOMAIN} stopped, and this command holds no lock to start it; run it again"
 		say "starting ${DOMAIN}"
-		v start "$DOMAIN" >/dev/null
+		start_domain
 	fi
+	note_run
 	wait_for_ssh 300
+}
+
+gib() { printf '%d.%d GiB' $(($1 / 1048576)) $(($1 % 1048576 * 10 / 1048576)); }
+
+# check_memory [RESTART]: before a test VM starts, the host needs its memory
+# free and HOST_RESERVE_MIB more, or only its memory when RESTART is 1 (see
+# start_domain). Free is MemAvailable less what the running test VMs, of every
+# distribution and release, were given and have not touched yet (their memory
+# less their RSS), since they will; one whose numbers libvirt does not give
+# counts whole. free_for_vms_kib counts the other way on purpose: fit plans a
+# run whose target is about to use or stop the VMs of its release.
+# LINUXIO_VM_MEMINFO names a file to read in place of /proc/meminfo, to see a
+# refusal without filling the host.
+check_memory() {
+	local restart=${1:-0} meminfo=${LINUXIO_VM_MEMINFO:-/proc/meminfo} vm_kib reserve_kib need_kib avail_kib given_kib=0 free_kib list name stats state actual rss why
+	local -a names=() running=()
+	vm_kib=$((VM_MEMORY_GIB * 1048576))
+	reserve_kib=$((restart ? 0 : HOST_RESERVE_MIB * 1024))
+	need_kib=$((vm_kib + reserve_kib))
+	avail_kib="$(awk '$1 == "MemAvailable:" { print $2 }' "$meminfo")"
+	[[ $avail_kib =~ ^[0-9]+$ ]] || die "no MemAvailable in ${meminfo}"
+	list="$(v list --name)" || die "cannot list the running domains"
+	mapfile -t names <<<"$list"
+	for name in "${names[@]}"; do
+		[[ $name == linuxio-e2e || $name == linuxio-e2e-* ]] || continue
+		if stats="$(v dommemstat "$name" 2>/dev/null)"; then
+			read -r actual rss < <(awk '$1 == "actual" { a = $2 } $1 == "rss" { r = $2 } END { print a + 0, r + 0 }' <<<"$stats")
+			((actual > 0)) || actual=$vm_kib
+		else
+			# Stopped or gone since the list, it holds nothing; still running
+			# (libvirt busy), it counts whole.
+			state="$(v domstate "$name" 2>&1)" || true
+			[[ $state != "shut off" && $state != *"failed to get domain"* ]] || continue
+			actual=$vm_kib rss=0
+		fi
+		running+=("$name")
+		((actual <= rss)) || given_kib=$((given_kib + actual - rss))
+	done
+	free_kib=$((avail_kib - given_kib))
+	if ((free_kib < need_kib)); then
+		why="${VM_MEMORY_GIB} GiB for the VM, $(gib "$reserve_kib") kept for the host"
+		((restart == 0)) || why="${VM_MEMORY_GIB} GiB for the VM, which this target started before"
+		die "not enough memory to start ${DOMAIN}: it needs $(gib "$need_kib") (${why}) and $(gib $((free_kib > 0 ? free_kib : 0))) is free ($(gib "$avail_kib") available less $(gib "$given_kib") that running test VMs were given and have not used yet); test VMs running: ${running[*]:-none}"
+	fi
+}
+
+# mk/vm.mk gives each target an ID of its own, LINUXIO_VM_RUN, which the rig
+# commands its specs run inherit. STATE/run keeps the ID of the target that
+# last started the VM or found it running.
+note_run() { [[ -z ${LINUXIO_VM_RUN:-} ]] || echo "$LINUXIO_VM_RUN" >"${STATE}/run"; }
+
+# Starts the domain once check_memory finds room for it. The check and the
+# start hold START_LOCK, which every start of a test VM takes, so two starts
+# side by side (two targets, or the VMs of one each) never count the same
+# memory: the second sees the first running with its memory untouched. A VM
+# this target started before or found running (a power cut, an off-for, a
+# boot after a spec powered it off, the reset before the release-update spec)
+# needs only its own memory: the reserve went to the target's browsers, and
+# the VM's memory was the target's already.
+start_domain() {
+	local restart=0
+	if [[ -n ${LINUXIO_VM_RUN:-} && "$(cat "${STATE}/run" 2>/dev/null)" == "$LINUXIO_VM_RUN" ]]; then restart=1; fi
+	mkdir -p "${START_LOCK%/*}"
+	(
+		flock -w 120 7 || die "another test VM took more than 120 seconds to start"
+		check_memory "$restart"
+		v start "$DOMAIN" >/dev/null
+	) 7>"$START_LOCK"
+	note_run
 }
 
 stop_seed() {
@@ -215,7 +294,9 @@ stop_seed() {
 # The cloud image, checked against the SHA-256 in the release's checksum file
 # (Ubuntu's SHA256SUMS lines read "SUM *NAME", Fedora's CHECKSUM ones
 # "SHA256 (NAME) = SUM"); a cached copy is reused while it still matches. The
-# VMs of a release share the copy, so one create at a time looks at it.
+# VMs of a release share the copy, so one create at a time looks at it, and
+# keeps it locked on fd 8 until it has uploaded it: a create beside it that
+# found a newer image would otherwise replace the file under the upload.
 fetch_image() {
 	local sum image="${IMAGE_DIR}/${IMAGE_NAME}"
 	mkdir -p "$IMAGE_DIR"
@@ -226,15 +307,11 @@ fetch_image() {
 		$2 == "*" f { print $1 }
 		$1 == "SHA256" && $2 == "(" f ")" && $3 == "=" { print $4 }')"
 	[[ $sum =~ ^[0-9a-f]{64}$ ]] || die "${IMAGE_NAME} is not listed once in ${SUMS_URL}"
-	if echo "${sum}  ${image}" | sha256sum --check --status >/dev/null 2>&1; then
-		exec 8>&-
-		return
-	fi
+	if echo "${sum}  ${image}" | sha256sum --check --status >/dev/null 2>&1; then return; fi
 	say "downloading ${IMAGE_NAME}"
 	curl -fL --progress-bar -o "${image}.part" "$IMAGE_URL"
 	echo "${sum}  ${image}.part" | sha256sum --check --status || die "${IMAGE_NAME} does not match ${SUMS_URL##*/}"
 	mv "${image}.part" "$image"
-	exec 8>&-
 }
 
 write_seed() {
@@ -304,6 +381,9 @@ create() {
 	for vol in "$BASE_VOL" "$SYSTEM_VOL" "${DATA_VOLS[@]}"; do
 		if vol_exists "$vol"; then die "volume ${vol} already exists; run make vm-destroy first"; fi
 	done
+	# Before the download, so a host without room is told at once; the first
+	# boot checks again (start_domain).
+	check_memory
 	mkdir -p "$STATE"
 	chmod 700 "$STATE"
 	fetch_image
@@ -315,6 +395,7 @@ create() {
 	say "uploading the base image to the ${POOL} pool"
 	v vol-create-as "$POOL" "$BASE_VOL" "$(stat -c %s "${IMAGE_DIR}/${IMAGE_NAME}")" --format qcow2 >/dev/null
 	v vol-upload --pool "$POOL" "$BASE_VOL" "${IMAGE_DIR}/${IMAGE_NAME}"
+	exec 8>&-
 	v vol-create-as "$POOL" "$SYSTEM_VOL" 25G --format qcow2 --backing-vol "$BASE_VOL" --backing-vol-format qcow2 >/dev/null
 	for vol in "${DATA_VOLS[@]}"; do
 		v vol-create-as "$POOL" "$vol" 8G --format qcow2 >/dev/null
@@ -325,7 +406,7 @@ create() {
 	trap 'exit 130' INT TERM
 	start_seed
 	say "first boot: cloud-init installs the packages (several minutes)"
-	v start "$DOMAIN" >/dev/null
+	start_domain
 	wait_for_ssh 600
 	# As root: Fedora's cloud-init keeps its state from other users, and its
 	# status then waits for ever. The key that lets SSH in and the sudo rule
@@ -914,7 +995,7 @@ power_cut() {
 	local boot
 	boot="$(boot_id)"
 	v destroy "$DOMAIN" >/dev/null
-	v start "$DOMAIN" >/dev/null
+	start_domain
 	wait_for_boot "$boot"
 }
 
@@ -929,7 +1010,7 @@ off_for() {
 	v shutdown "$DOMAIN" >/dev/null
 	wait_for_shut_off 180
 	sleep "$seconds"
-	v start "$DOMAIN" >/dev/null
+	start_domain
 	wait_for_boot "$boot"
 }
 
@@ -1052,6 +1133,17 @@ count() {
 		n=$((n + 1))
 	done
 	echo $((n > 0 ? n : 1))
+}
+
+# The domains of the VMs numbered N... of this release, one a line: what
+# mk/vm.mk locks for a target.
+domains() {
+	local n
+	(($# > 0)) || die "usage: domains N..."
+	for n in "$@"; do
+		[[ $n =~ ^[1-9]$ ]] || die "VM '${n}' is not a number from 1 to 9"
+		domain_name "$n"
+	done
 }
 
 # Runs a command of this script for the VMs 1..COUNT side by side. Each VM's
@@ -1277,6 +1369,12 @@ destroy) destroy ;;
 fit) fit ;;
 room) room ;;
 count) count ;;
+domains)
+	shift
+	domains "$@"
+	;;
+# Exits 0 when the VM is running: make vm-ssh VM_KEEP=1 locks one that is not.
+running) [[ "$(domain_state)" == running ]] ;;
 prepare) prepare "${2:-}" ;;
 test)
 	shift
@@ -1286,5 +1384,5 @@ each)
 	shift
 	each "$@"
 	;;
-*) die "usage: $(basename "$0") create | ensure | prepare [BUILD_DIR] | install BUILD_DIR [REF] | start | ssh [COMMAND] | ip | password | reboot | power-cut | off-for SECONDS | throttle DISK BYTES_PER_SEC | stop | reset | update | destroy | fit | room | count | test DIR [SUITE...] | each COUNT COMMAND [ARGS]" ;;
+*) die "usage: $(basename "$0") create | ensure | prepare [BUILD_DIR] | install BUILD_DIR [REF] | start | ssh [COMMAND] | ip | password | reboot | power-cut | off-for SECONDS | throttle DISK BYTES_PER_SEC | stop | reset | update | destroy | fit | room | count | domains N... | running | test DIR [SUITE...] | each COUNT COMMAND [ARGS]" ;;
 esac
