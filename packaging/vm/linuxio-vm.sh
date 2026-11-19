@@ -23,9 +23,9 @@
 # Usage: linuxio-vm.sh create | ensure | prepare [BUILD_DIR] |
 #        install BUILD_DIR [REF] | start | ssh [COMMAND] | ip | password |
 #        reboot | power-cut | off-for SECONDS | throttle DISK BYTES_PER_SEC |
-#        stop | reset | update | destroy | fit | room | count | domains N... |
-#        running |
-#        test DIR [SUITE...] | each COUNT COMMAND [ARGS]
+#        stop | reset | update | destroy | existing | locks N...|all |
+#        lock N:FD... | pick WANT N:FD... | running |
+#        test DIR [SUITE...] | each VMS COMMAND [ARGS]
 set -euo pipefail
 
 readonly DISTRO="${LINUXIO_VM_DISTRO:-ubuntu}"
@@ -95,11 +95,19 @@ readonly DATA_VOLS=("${DOMAIN}-data1.qcow2" "${DOMAIN}-data2.qcow2" "${DOMAIN}-d
 readonly HOST_IP=192.168.122.1
 readonly SEED_PORT=$((SEED_BASE + INDEX))
 readonly SEED_URL="http://${HOST_IP}:${SEED_PORT}/"
-readonly STATE="${HOME}/.cache/linuxio-vm${DOMAIN#linuxio-e2e}"
+# The state folder of the domain $1: SSH key, login, address, the ID of the
+# target that last started it (run) and, while it holds a build install put
+# there, the marker "installed".
+state_of() { echo "${HOME}/.cache/linuxio-vm${1#linuxio-e2e}"; }
+STATE="$(state_of "$DOMAIN")"
+readonly STATE
 readonly IMAGE_DIR="${HOME}/.cache/linuxio-vm${FIRST_DOMAIN#linuxio-e2e}"
-# Taken by every start of a test VM, of any release, around its memory check
-# (start_domain). mk/vm.mk keeps the lock of each VM in the same folder.
-readonly START_LOCK="${HOME}/.cache/linuxio-vm/locks/start"
+# The locks of the test VMs, one for each domain, which mk/vm.mk opens and
+# lock and pick take (see there), and two short ones: "taking", held while a
+# target takes its VMs, and "start", taken by every start of a test VM, of
+# any release, around its memory check (start_domain).
+readonly LOCK_DIR="${HOME}/.cache/linuxio-vm/locks"
+readonly START_LOCK="${LOCK_DIR}/start"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 readonly REPO_ROOT
 # Where `each` keeps the output of every VM, one file per VM and command.
@@ -216,23 +224,21 @@ connect() {
 
 gib() { printf '%d.%d GiB' $(($1 / 1048576)) $(($1 % 1048576 * 10 / 1048576)); }
 
-# check_memory [RESTART]: before a test VM starts, the host needs its memory
-# free and HOST_RESERVE_MIB more, or only its memory when RESTART is 1 (see
-# start_domain). Free is MemAvailable less what the running test VMs, of every
-# distribution and release, were given and have not touched yet (their memory
-# less their RSS), since they will; one whose numbers libvirt does not give
-# counts whole. free_for_vms_kib counts the other way on purpose: fit plans a
-# run whose target is about to use or stop the VMs of its release.
-# LINUXIO_VM_MEMINFO names a file to read in place of /proc/meminfo, to see a
-# refusal without filling the host.
-check_memory() {
-	local restart=${1:-0} meminfo=${LINUXIO_VM_MEMINFO:-/proc/meminfo} vm_kib reserve_kib need_kib avail_kib given_kib=0 free_kib list name stats state actual rss why
-	local -a names=() running=()
-	vm_kib=$((VM_MEMORY_GIB * 1048576))
-	reserve_kib=$((restart ? 0 : HOST_RESERVE_MIB * 1024))
-	need_kib=$((vm_kib + reserve_kib))
-	avail_kib="$(awk '$1 == "MemAvailable:" { print $2 }' "$meminfo")"
-	[[ $avail_kib =~ ^[0-9]+$ ]] || die "no MemAvailable in ${meminfo}"
+# MemAvailable, read from LINUXIO_VM_MEMINFO when it names a file in place of
+# /proc/meminfo, to see a refusal without filling the host.
+available_kib() {
+	local meminfo=${LINUXIO_VM_MEMINFO:-/proc/meminfo} kib
+	kib="$(awk '$1 == "MemAvailable:" { print $2 }' "$meminfo")"
+	[[ $kib =~ ^[0-9]+$ ]] || die "no MemAvailable in ${meminfo}"
+	echo "$kib"
+}
+
+# The running test VMs, of every distribution and release, a "NAME KIB" line
+# each: what it was given and has not touched yet (its memory less its RSS),
+# since it will, or all of it when libvirt does not say.
+untouched() {
+	local vm_kib=$((VM_MEMORY_GIB * 1048576)) list name stats state actual rss
+	local -a names=()
 	list="$(v list --name)" || die "cannot list the running domains"
 	mapfile -t names <<<"$list"
 	for name in "${names[@]}"; do
@@ -247,9 +253,27 @@ check_memory() {
 			[[ $state != "shut off" && $state != *"failed to get domain"* ]] || continue
 			actual=$vm_kib rss=0
 		fi
-		running+=("$name")
-		((actual <= rss)) || given_kib=$((given_kib + actual - rss))
+		echo "$name $((actual > rss ? actual - rss : 0))"
 	done
+}
+
+# check_memory [RESTART]: before a test VM starts, the host needs its memory
+# free and HOST_RESERVE_MIB more, or only its memory when RESTART is 1 (see
+# start_domain). Free is MemAvailable less what the running test VMs have not
+# touched yet (untouched).
+check_memory() {
+	local restart=${1:-0} vm_kib reserve_kib need_kib avail_kib given_kib=0 free_kib vms name kib why
+	local -a running=()
+	vm_kib=$((VM_MEMORY_GIB * 1048576))
+	reserve_kib=$((restart ? 0 : HOST_RESERVE_MIB * 1024))
+	need_kib=$((vm_kib + reserve_kib))
+	avail_kib="$(available_kib)"
+	vms="$(untouched)"
+	while read -r name kib; do
+		[[ -n $name ]] || continue
+		running+=("$name")
+		given_kib=$((given_kib + kib))
+	done <<<"$vms"
 	free_kib=$((avail_kib - given_kib))
 	if ((free_kib < need_kib)); then
 		why="${VM_MEMORY_GIB} GiB for the VM, $(gib "$reserve_kib") kept for the host"
@@ -389,7 +413,7 @@ create() {
 	fetch_image
 	[[ -f "${STATE}/id_ed25519" ]] || ssh-keygen -q -t ed25519 -N '' -C linuxio-e2e-rig -f "${STATE}/id_ed25519"
 	(umask 077 && head -c 18 /dev/urandom | base64 >"${STATE}/password")
-	rm -f "${STATE}/known_hosts"
+	rm -f "${STATE}/known_hosts" "${STATE}/installed"
 	write_seed
 
 	say "uploading the base image to the ${POOL} pool"
@@ -469,6 +493,7 @@ install() {
 	connect
 	push_checkout "$build_dir" "$ref"
 	vm_ssh 'sudo ~/linuxio/packaging/scripts/install-linuxio-binaries.sh --local --build-dir ~/linuxio/build'
+	: >"${STATE}/installed"
 }
 
 # push_checkout BUILD_DIR [REF] puts what the installer reads in ~/linuxio,
@@ -1038,6 +1063,7 @@ reset() {
 	domain_exists || die "${DOMAIN} does not exist; run make vm-create"
 	if [[ "$(domain_state)" != "shut off" ]]; then v destroy "$DOMAIN" >/dev/null; fi
 	v snapshot-revert "$DOMAIN" "$SNAPSHOT"
+	rm -f "${STATE}/installed"
 	say "${DOMAIN} reverted to ${SNAPSHOT} and stopped; the next VM target starts it"
 }
 
@@ -1085,68 +1111,137 @@ destroy() {
 	for vol in "$BASE_VOL" "$SYSTEM_VOL" "${DATA_VOLS[@]}"; do
 		if vol_exists "$vol"; then v vol-delete --pool "$POOL" "$vol" >/dev/null; fi
 	done
-	rm -f "${STATE}/known_hosts"
+	rm -f "${STATE}/known_hosts" "${STATE}/installed"
 	say "${DOMAIN} and its volumes are gone; the image cache stays in ${IMAGE_DIR}"
 }
 
-# How many VMs the host can run now, MOST_VMS at most: each needs its memory
-# free and its CPUs, and HOST_RESERVE_MIB stays with the host. What a running
-# VM of this release holds counts as free, since the target that asks is about
-# to use or stop it.
-fit() {
-	local free_kib n by_memory by_cpu
-	free_kib="$(free_for_vms_kib)"
-	by_memory=$(((free_kib / 1024 - HOST_RESERVE_MIB) / (VM_MEMORY_GIB * 1024)))
-	by_cpu=$(($(nproc) / VM_VCPUS))
-	n=$((by_memory < by_cpu ? by_memory : by_cpu))
-	((n <= MOST_VMS)) || n=$MOST_VMS
-	((n >= 1)) || n=1
-	echo "$n"
-}
-
-free_for_vms_kib() {
-	local free_kib n rss
-	free_kib="$(awk '$1 == "MemAvailable:" { print $2 }' /proc/meminfo)"
-	for n in {1..9}; do
-		[[ "$(v domstate "$(domain_name "$n")" 2>/dev/null)" == running ]] || continue
-		rss="$(v dommemstat "$(domain_name "$n")" 2>/dev/null | awk '$1 == "rss" { print $2 }')"
-		free_kib=$((free_kib + ${rss:-0}))
-	done
-	echo "$free_kib"
-}
-
-# The numbers behind fit, for the line test-vm-browser and test-vm-backend
-# start with.
-room() {
-	local free_kib
-	free_kib="$(free_for_vms_kib)"
-	printf '%d.%d GiB free and %d CPUs (a VM takes %d GiB and %d CPUs, %d at most)\n' \
-		$((free_kib / 1048576)) $((free_kib % 1048576 * 10 / 1048576)) "$(nproc)" \
-		"$VM_MEMORY_GIB" "$VM_VCPUS" "$MOST_VMS"
-}
-
-# How many VMs of this release exist, counted from the first with no gap; 1
-# when there is none, so the command that follows says to create it.
-count() {
-	local n=0
-	while ((n < 9)) && domain_exists "$(domain_name $((n + 1)))"; do
-		n=$((n + 1))
-	done
-	echo $((n > 0 ? n : 1))
-}
-
-# The domains of the VMs numbered N... of this release, one a line: what
-# mk/vm.mk locks for a target.
-domains() {
+# The numbers of the VMs of this release that exist, 1 to 9: what the targets
+# that act on every VM act on. 1 when there is none, so the command that
+# follows says to create it.
+existing() {
 	local n
-	(($# > 0)) || die "usage: domains N..."
+	local -a found=()
+	for n in {1..9}; do
+		if domain_exists "$(domain_name "$n")"; then found+=("$n"); fi
+	done
+	echo "${found[*]:-1}"
+}
+
+# The locks of a target's VMs. mk/vm.mk opens the lock file of each VM it may
+# take, from `locks N...` (`locks all` for pick: VMs 1 to MOST_VMS), and passes N:FD for
+# each to lock or pick, which take the locks on those descriptors, so the
+# locks stay with make's shell for the whole recipe. Both take them without
+# waiting and under the "taking" lock, so that no other target finds part of
+# a set held, and print the numbers they took.
+locks() {
+	local n
+	(($# > 0)) || die "no VM to lock"
+	[[ $* != all ]] || set -- $(seq "$MOST_VMS")
+	mkdir -p "$LOCK_DIR"
 	for n in "$@"; do
 		[[ $n =~ ^[1-9]$ ]] || die "VM '${n}' is not a number from 1 to 9"
-		domain_name "$n"
+		echo "$n ${LOCK_DIR}/$(domain_name "$n")"
 	done
 }
 
-# Runs a command of this script for the VMs 1..COUNT side by side. Each VM's
+take_guard() {
+	mkdir -p "$LOCK_DIR"
+	exec 6>"${LOCK_DIR}/taking"
+	flock -w 30 6 || die "another VM target held ${LOCK_DIR}/taking for 30 seconds"
+}
+
+# lock N:FD...: the VMs a target names, all or none.
+lock_vms() {
+	local pair taken
+	local -a got=()
+	take_guard
+	for pair in "$@"; do
+		if ! flock -n "${pair#*:}"; then
+			for taken in "${got[@]}"; do flock -u "${taken#*:}"; done
+			die "$(domain_name "${pair%%:*}") is in use by another VM target; wait for it to end"
+		fi
+		got+=("$pair")
+	done
+	echo "${got[@]%%:*}"
+}
+
+# pick WANT N:FD...: the VMs of a test run that names none. Under the taking
+# lock it first tries the lock of every VM from 1 to MOST_VMS. What other
+# targets hold counts as spent memory: what a running one has not touched yet
+# (untouched), and 4 GiB for one that is off or still being created, since
+# its target will start it. A VM that runs with no target holding it was left
+# up to look at (VM_KEEP=1), so it is left alone. Then, while the memory has
+# room for one more (4 GiB for each VM of the run and HOST_RESERVE_MIB for the
+# host), it takes the free VMs that hold no build install put there, then
+# those that do, which their reset loses, then numbers that do not exist yet,
+# which prepare creates; each in order. WANT is a number, or plan for as many
+# as the CPUs allow (plan:MAX for MAX at most). It says on stderr what it took,
+# why no more and the memory it counted, and fails when it took none.
+pick() {
+	local want=${1:-} cpus vm_kib reserve_kib avail_kib others_kib=0 vms pair n fd name kib left_kib short="" line memory
+	local -a busy=() plain=() built=() missing=() got=() new=() reverted=()
+	local -A spent=() fds=()
+	shift
+	cpus=$(($(nproc) / VM_VCPUS))
+	case $want in
+	plan) want=$cpus ;;
+	plan:*) want=$((${want#plan:} < cpus ? ${want#plan:} : cpus)) ;;
+	esac
+	[[ $want =~ ^[0-9]+$ ]] || die "usage: pick WANT|plan[:MAX] N:FD..."
+	((want >= 1)) || want=1
+	vm_kib=$((VM_MEMORY_GIB * 1048576)) reserve_kib=$((HOST_RESERVE_MIB * 1024))
+	take_guard
+	avail_kib="$(available_kib)"
+	vms="$(untouched)"
+	while read -r name kib; do
+		[[ -n $name ]] || continue
+		spent[$name]=$kib
+		others_kib=$((others_kib + kib))
+	done <<<"$vms"
+	for pair in "$@"; do
+		n=${pair%%:*} fd=${pair#*:}
+		name="$(domain_name "$n")"
+		if ! flock -n "$fd"; then
+			busy+=("$name")
+			[[ -n ${spent[$name]+x} ]] || others_kib=$((others_kib + vm_kib))
+		elif [[ -n ${spent[$name]+x} ]]; then
+			flock -u "$fd"
+			busy+=("${name} (running with no target: VM_KEEP=1?)")
+		elif ! domain_exists "$name"; then
+			fds[$n]=$fd missing+=("$n")
+		elif [[ -e "$(state_of "$name")/installed" ]]; then
+			fds[$n]=$fd built+=("$n")
+		else
+			fds[$n]=$fd plain+=("$n")
+		fi
+	done
+	for n in "${plain[@]}" "${built[@]}" "${missing[@]}"; do
+		((${#got[@]} < want)) || break
+		left_kib=$((avail_kib - others_kib - reserve_kib - ${#got[@]} * vm_kib))
+		if ((left_kib < vm_kib)); then
+			short="another VM needs $(gib "$vm_kib") and $(gib $((left_kib > 0 ? left_kib : 0))) is left"
+			break
+		fi
+		got+=("$n")
+		[[ " ${missing[*]} " != *" $n "* ]] || new+=("$n")
+		[[ " ${built[*]} " != *" $n "* ]] || reverted+=("$n")
+	done
+	for n in "${!fds[@]}"; do
+		[[ " ${got[*]} " == *" $n "* ]] || flock -u "${fds[$n]}"
+	done
+	exec 6>&-
+	memory="$(gib "$avail_kib") available, less $(gib "$others_kib") for other test VMs and $(gib "$reserve_kib") kept for the host"
+	((${#got[@]} > 0)) || die "no VM for this run:${busy[*]:+ in use: ${busy[*]};}${short:+ ${short}} (${memory})"
+	line="VM ${got[*]} for this run${new[*]:+ (created first: ${new[*]})}${reverted[*]:+ (VM ${reverted[*]} held an installed build, which the revert removes)}"
+	((${#got[@]} == want)) || line+=", ${#got[@]} of ${want} wanted${short:+ (${short})}"
+	((${#busy[@]} == 0)) || line+="; in use: ${busy[*]}"
+	line+="; memory: ${memory}"
+	if ((${#got[@]} == 1)); then line+="; VM=${got[0]} names it again"; else line+="; VM='${got[*]}' names them again"; fi
+	say "$line"
+	echo "${got[*]}"
+}
+
+# Runs a command of this script for the VMs VMS ("2 3") side by side. Each VM's
 # output goes to LOG_DIR/vm-N-COMMAND.log. On a terminal one row per VM shows
 # its steps as they end and the one running; elsewhere a line per step that
 # ends. A VM that fails has the end of its log shown, and each fails with it.
@@ -1160,9 +1255,11 @@ domains() {
 # and a command run outside each may print too, so either ends them. The
 # cursor is hidden while the rows are redrawn.
 each() {
-	local count=${1:-} n status_dir failed=0 begun=$EPOCHSECONDS alive tty=0 drawn=0 cursor=: columns
-	local -a codes=() ended=() logs=() shown=()
-	[[ $count =~ ^[1-9]$ && $# -ge 2 ]] || die "usage: each COUNT COMMAND [ARGS]"
+	local n status_dir failed=0 begun=$EPOCHSECONDS alive tty=0 drawn=0 cursor=: columns
+	local -a vms=() codes=() ended=() logs=() shown=()
+	read -ra vms <<<"${1:-}"
+	[[ ${#vms[@]} -gt 0 && $# -ge 2 ]] || die "usage: each VMS COMMAND [ARGS]"
+	for n in "${vms[@]}"; do [[ $n =~ ^[1-9]$ ]] || die "VM '${n}' is not a number from 1 to 9"; done
 	shift
 	[[ -t 2 ]] && tty=1
 	((tty == 0)) || cursor="printf '\\e[?25h' >&2"
@@ -1174,9 +1271,9 @@ each() {
 		printf '\e[?25l' >&2
 		read -r _ columns < <(stty size </dev/tty 2>/dev/null) || true
 		ROW_WIDTH=$((${columns:-0} > 0 ? columns - 1 : 80))
-		rows_take "$count" "$status_dir" && drawn=1
+		rows_take "${vms[*]}" "$status_dir" && drawn=1
 	fi
-	for n in $(seq "$count"); do
+	for n in "${vms[@]}"; do
 		logs[n]="${LOG_DIR}/vm-${n}-${1}.log"
 		: >"${status_dir}/${n}"
 		# The exit code lands in N.code, so the loop below never asks after a
@@ -1191,7 +1288,7 @@ each() {
 	done
 	while true; do
 		alive=0
-		for n in $(seq "$count"); do
+		for n in "${vms[@]}"; do
 			if [[ -z ${codes[n]:-} && -s "${status_dir}/${n}.code" ]]; then
 				codes[n]=$(<"${status_dir}/${n}.code")
 				ended[n]=$EPOCHSECONDS
@@ -1199,13 +1296,13 @@ each() {
 			[[ -n ${codes[n]:-} ]] || alive=1
 		done
 		if ((tty)); then
-			((drawn == 0)) || printf '\e[%dA' "$count" >&2
-			for n in $(seq "$count"); do
+			((drawn == 0)) || printf '\e[%dA' "${#vms[@]}" >&2
+			for n in "${vms[@]}"; do
 				printf '\e[2K%s\n' "$(vm_row "$n" "$1" "${status_dir}/${n}" "${codes[n]:-}" "$begun" "${ended[n]:-}")" >&2
 			done
 			drawn=1
 		else
-			for n in $(seq "$count"); do
+			for n in "${vms[@]}"; do
 				shown[n]=$(vm_new_lines "$n" "$1" "${status_dir}/${n}" "${codes[n]:-}" "$begun" "${ended[n]:-}" "${shown[n]}")
 			done
 		fi
@@ -1213,31 +1310,35 @@ each() {
 		sleep 1
 	done
 	wait
-	for n in $(seq "$count"); do
+	for n in "${vms[@]}"; do
 		((codes[n] == 0)) && continue
 		failed=1
 		say "$(vm_tag "$n") failed; the end of ${logs[n]#"$REPO_ROOT"/}:"
 		tail -n 25 "${logs[n]}" | sed 's/^/    /' >&2
 	done
+	# Another target's command in this checkout may remove ROWS meanwhile:
+	# the next each then starts new rows, and this one has not failed.
 	if ((tty && failed == 0)); then
-		mkdir -p "$ROWS"
-		for n in $(seq "$count"); do
-			vm_steps "$n" "$1" "${status_dir}/${n}" "${codes[n]}" "$begun" "${ended[n]}" >"${ROWS}/${n}"
-		done
-		echo "$PPID $count" >"${ROWS}/owner"
+		{
+			mkdir -p "$ROWS" &&
+				for n in "${vms[@]}"; do
+					vm_steps "$n" "$1" "${status_dir}/${n}" "${codes[n]}" "$begun" "${ended[n]}" >"${ROWS}/${n}"
+				done &&
+				echo "$PPID ${vms[*]}" >"${ROWS}/owner"
+		} 2>/dev/null || true
 	fi
 	return "$failed"
 }
 
-# rows_take COUNT DIR: when the each before this one in the same recipe left
-# COUNT rows, gives each VM their steps in DIR/N.before and says so. They are
+# rows_take VMS DIR: when the each before this one in the same recipe left
+# rows for VMS, gives each VM their steps in DIR/N.before and says so. They are
 # taken once: an each that is stopped part-way leaves none for the next.
 rows_take() {
 	local owner n
 	owner="$(cat "${ROWS}/owner" 2>/dev/null)" || return 1
 	rm -f "${ROWS}/owner"
 	[[ $owner == "$PPID $1" ]] || return 1
-	for n in $(seq "$1"); do
+	for n in $1; do
 		cp "${ROWS}/${n}" "$2/${n}.before"
 	done
 }
@@ -1366,12 +1467,18 @@ stop) stop ;;
 reset) reset ;;
 update) update ;;
 destroy) destroy ;;
-fit) fit ;;
-room) room ;;
-count) count ;;
-domains)
+existing) existing ;;
+locks)
 	shift
-	domains "$@"
+	locks "$@"
+	;;
+lock)
+	shift
+	lock_vms "$@"
+	;;
+pick)
+	shift
+	pick "$@"
 	;;
 # Exits 0 when the VM is running: make vm-ssh VM_KEEP=1 locks one that is not.
 running) [[ "$(domain_state)" == running ]] ;;
@@ -1384,5 +1491,5 @@ each)
 	shift
 	each "$@"
 	;;
-*) die "usage: $(basename "$0") create | ensure | prepare [BUILD_DIR] | install BUILD_DIR [REF] | start | ssh [COMMAND] | ip | password | reboot | power-cut | off-for SECONDS | throttle DISK BYTES_PER_SEC | stop | reset | update | destroy | fit | room | count | domains N... | running | test DIR [SUITE...] | each COUNT COMMAND [ARGS]" ;;
+*) die "usage: $(basename "$0") create | ensure | prepare [BUILD_DIR] | install BUILD_DIR [REF] | start | ssh [COMMAND] | ip | password | reboot | power-cut | off-for SECONDS | throttle DISK BYTES_PER_SEC | stop | reset | update | destroy | existing | locks N...|all | lock N:FD... | pick WANT N:FD... | running | test DIR [SUITE...] | each VMS COMMAND [ARGS]" ;;
 esac

@@ -12,65 +12,71 @@ export LINUXIO_VM_DISTRO := $(DISTRO)
 # 24.04), kept for the root tests on an older kernel.
 VM_RELEASE ?=
 export LINUXIO_VM_RELEASE := $(VM_RELEASE)
-# There can be several VMs of a release, numbered from 1, so the browser specs
-# run on all of them at once. VM=2 names one: vm-create, vm-destroy, vm-ssh and
-# the vm-test-* targets act on that one, the first without it. The others act
-# on VMs 1 to VMS, or on the one VM names. test-vm-browser and test-vm-backend
-# set VMS to as many as the host has free memory and CPUs for (test-vm-backend
-# to no more than it has suites) and create the missing ones; for the rest it
-# is every VM that exists, whatever memory is free, so a reset, an install and
-# a run agree. Each is asked of the script once; when the script
-# fails it has said why, and 1 lets the recipe fail on the same cause.
+# There can be several VMs of a release, numbered from 1, so targets run side
+# by side and the browser specs run on several at once. The test targets
+# (test-vm-backend, test-vm-browser, vm-test-*) pick free VMs when VM names
+# none (pick in the script): one for a vm-test-* suite, and as many as the
+# CPUs and the memory allow for the others (test-vm-backend no more than it has
+# suites), or VMS. vm-create, vm-destroy and vm-ssh act on VM 1 or the one VM
+# names; the other targets on every VM that exists, 1 to 9 (asked of the
+# script once; when it fails it has said why, and 1 lets the recipe fail on
+# the same cause), on VMs 1 to VMS when VMS is given, or on those VM names:
+# one, or a list ('2 3') as a run that picked its VMs prints it.
 VM ?=
-export LINUXIO_VM_INDEX := $(VM)
+export LINUXIO_VM_INDEX := $(if $(word 2,$(VM)),,$(VM))
 # A command run on several VMs keeps each VM's output in vm-N-COMMAND.log
 # here, and the browser specs every line of theirs in test-vm-browser.log
 # (test-vm-browser-release-update.log for the release-update project).
 export LINUXIO_VM_LOG_DIR = $(cache_dir)/test-logs
-vm_fit = $(eval vm_fit := $(or $(shell "$(vm_script)" fit),1))$(vm_fit)
-vm_count = $(eval vm_count := $(or $(shell "$(vm_script)" count),1))$(vm_count)
-VMS ?= $(vm_count)
-vm_all = "$(vm_script)" $(if $(VM),,each $(VMS))
-vm_numbers = $(if $(VM),$(VM),$(shell seq $(VMS)))
+vm_existing = $(eval vm_existing := $(or $(shell "$(vm_script)" existing),1))$(vm_existing)
+vm_given_vms = $(filter-out undefined,$(origin VMS))
+vm_numbers = $(if $(VM),$(VM),$(if $(vm_given_vms),$(shell seq $(VMS)),$(vm_existing)))
+# What a test run asks pick for: VMS when it was given, else the plan.
+vm_want = $(if $(vm_given_vms),$(VMS),plan$(1))
+# A recipe acts on vm_set, the VMs its shell locked: through each, or
+# directly on the one VM that VM names (LINUXIO_VM_INDEX).
+vm_all = "$(vm_script)" $(if $(filter 1,$(words $(VM))),,each "$$vm_set")
 # Every target that starts a VM shuts it down when it ends, passed or failed,
 # so nothing keeps running unused; the next target starts it again. VM_KEEP=1
 # leaves it up, to look at a failure while its processes still run.
 VM_KEEP ?=
 vm_stop := $(if $(VM_KEEP),true,"$(vm_script)" stop)
 vm_stop_all = $(if $(VM_KEEP),true,$(vm_all) stop)
-# The VM that vm-create, vm-destroy, vm-ssh and the vm-test-* targets act on.
-vm_one = $(or $(VM),1)
-# A target locks the VMs it acts on, each by its domain's name in
-# vm_lock_dir, so targets on different VMs, of any distribution or release,
-# run side by side, and one on a VM another target holds is refused: it would
-# revert, reboot or stop the VM under the first. $(call vm_lock,NUMBERS)
-# takes the VMs NUMBERS all or none, without waiting; a refused target
-# releases what it took as it exits, and takes them under the short lock
-# "taking", so that no other target finds part of the set held and is
-# refused for it. A lock file it cannot open refuses the target too. It is
+# The VM that vm-create, vm-destroy and vm-ssh act on, and a vm-test-* target
+# given VM.
+vm_one = $(if $(word 2,$(VM)),$(error VM='$(VM)' names several VMs; $@ acts on one),$(or $(VM),1))
+# A target locks the VMs it acts on, each by its domain's name, so targets on
+# different VMs, of any distribution or release, run side by side, and one on
+# a VM another target holds is refused: it would revert, reboot or stop the VM
+# under the first. $(call vm_lock,NUMBERS,lock) takes the VMs NUMBERS all or
+# none; $(call vm_lock,,pick WANT) picks free ones from 1 to MOST_VMS. The
+# shell opens the lock files and the script takes the locks on those
+# descriptors (locks, lock and pick in the script), so they stay with the
+# shell, which keeps the VMs it holds in vm_set, closes the descriptors of
+# the others and exports LINUXIO_VM_INDEX when it holds one. A lock file it cannot open refuses the target too. It is
 # the first line of a recipe, ahead of the trap that stops the VMs, so a
-# refused target stops nothing. Starting a VM has a memory check of its own
-# in the script (start_domain), and LINUXIO_VM_RUN, an ID for the target, is
-# how the script tells a VM this target started before.
+# refused target stops nothing. Starting a VM has a memory check of its own in
+# the script (start_domain), and LINUXIO_VM_RUN, an ID for the target, is how
+# the script tells a VM this target started before.
 #
 # Checkouts and worktrees from before these locks take vm_lock_file
 # exclusively for every VM target. Every target here takes it shared, so an
 # old target and a new one refuse each other and new ones run together. It
 # can go once no checkout or worktree has the old mk/vm.mk.
-vm_lock_dir := $(HOME)/.cache/linuxio-vm/locks
 vm_lock_file := $(HOME)/.cache/linuxio-vm/lock
 define vm_lock
-mkdir -p "$(vm_lock_dir)" || exit 1
+mkdir -p "$(dir $(vm_lock_file))" || exit 1
 exec 9>"$(vm_lock_file)" || { echo "cannot open the lock $(vm_lock_file)" >&2; exit 1; }
 flock -n -s 9 || { echo "a VM target of a checkout without per-VM locks is running; wait for it to end" >&2; exit 1; }
-vm_domains="$$("$(vm_script)" domains $(1))" || exit 1
-exec {vm_taking}>"$(vm_lock_dir)/taking" || { echo "cannot open the lock $(vm_lock_dir)/taking" >&2; exit 1; }
-flock -w 30 "$$vm_taking" || { echo "another VM target held $(vm_lock_dir)/taking for 30 seconds" >&2; exit 1; }
-for vm_domain in $$vm_domains; do
-  exec {vm_fd}>"$(vm_lock_dir)/$$vm_domain" || { echo "cannot open the lock $(vm_lock_dir)/$$vm_domain" >&2; exit 1; }
-  flock -n "$$vm_fd" || { echo "$$vm_domain is in use by another VM target; wait for it to end" >&2; exit 1; }
-done
-exec {vm_taking}>&-
+vm_files="$$("$(vm_script)" locks $(if $(filter pick%,$(2)),all,$(1)))" || exit 1
+vm_fds=""
+while read -r vm_n vm_file; do
+  exec {vm_fd}>"$$vm_file" || { echo "cannot open the lock $$vm_file" >&2; exit 1; }
+  vm_fds+=" $$vm_n:$$vm_fd"
+done <<<"$$vm_files"
+vm_set="$$("$(vm_script)" $(2) $$vm_fds)" || exit 1
+for vm_fd in $$vm_fds; do [[ " $$vm_set " == *" $${vm_fd%%:*} "* ]] || eval "exec $${vm_fd#*:}>&-"; done
+[[ $$vm_set == *" "* ]] || export LINUXIO_VM_INDEX=$$vm_set
 unset LINUXIO_VM_NO_START
 export LINUXIO_VM_RUN="$$$$-$$EPOCHREALTIME"
 endef
@@ -83,39 +89,39 @@ if "$(vm_script)" running; then
   unset LINUXIO_VM_RUN
   export LINUXIO_VM_NO_START=1
 else
-$(call vm_lock,$(vm_one))
+$(call vm_lock,$(vm_one),lock)
 fi
 endef
 
 ##@ Test VM|yellow
 vm-create: ## Create the test VM (VM=2 for one more) from the Ubuntu 26.04 cloud image (DISTRO=fedora: Fedora 45) and snapshot it as clean
-	@$(call vm_lock,$(vm_one))
+	@$(call vm_lock,$(vm_one),lock)
 	@"$(vm_script)" create
 
 vm-install: build-nocheck ## Build LinuxIO and install it in the test VMs
-	@$(call vm_lock,$(vm_numbers))
+	@$(call vm_lock,$(vm_numbers),lock)
 	@trap '$(vm_stop_all)' EXIT
 	@$(vm_all) install "$(bin_dir)"
 
 vm-ssh: ## Run CMD='...' in the test VM over SSH (no CMD: a shell)
-	@$(if $(VM_KEEP),$(vm_keep_lock),$(call vm_lock,$(vm_one)))
+	@$(if $(VM_KEEP),$(vm_keep_lock),$(call vm_lock,$(vm_one),lock))
 	@trap '$(vm_stop)' EXIT
 	@"$(vm_script)" ssh $${CMD:+"$$CMD"}
 
 vm-stop: ## Shut the test VMs down; their disks keep what is installed
-	@$(call vm_lock,$(vm_numbers))
+	@$(call vm_lock,$(vm_numbers),lock)
 	@$(vm_all) stop
 
 vm-reset: ## Revert the test VMs to their clean snapshot and stop them
-	@$(call vm_lock,$(vm_numbers))
+	@$(call vm_lock,$(vm_numbers),lock)
 	@$(vm_all) reset
 
 vm-update: ## Upgrade the packages in the test VMs' clean snapshot and take the snapshot again
-	@$(call vm_lock,$(vm_numbers))
+	@$(call vm_lock,$(vm_numbers),lock)
 	@$(vm_all) update
 
 vm-destroy: ## Delete the test VM (VM=2 for another) and its volumes
-	@$(call vm_lock,$(vm_one))
+	@$(call vm_lock,$(vm_one),lock)
 	@"$(vm_script)" destroy
 
 # The root test suites. Make builds their test binaries into vm_test_dir and
@@ -146,8 +152,10 @@ export LINUXIO_VM_ZRAM_PROVIDER := $(ZRAM_PROVIDER)
 export LINUXIO_VM_BUILD_DIR := $(bin_dir)
 # $(call vm_test_build,NAME,PACKAGE) builds PACKAGE's tests as NAME.test.
 # Each build is a command of its own, ended by ;, so set -e stops at a failed
-# one: it would let a failure early in an && list pass.
-vm_test_build = (cd "$(backend_dir)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" CGO_ENABLED=0 "$(GO_BIN)" test -c -o "$(vm_test_dir)/$(1).test" $(2));
+# one: it would let a failure early in an && list pass. It builds to a name of
+# its own and renames, so a target beside it in this checkout that is copying
+# NAME.test into its VM reads a whole file.
+vm_test_build = (cd "$(backend_dir)" && $(GO_CMD_ENV) GOFLAGS="-buildvcs=false" CGO_ENABLED=0 "$(GO_BIN)" test -c -o "$(vm_test_dir)/$(1).test.$$$$" $(2) && mv -f "$(vm_test_dir)/$(1).test.$$$$" "$(vm_test_dir)/$(1).test");
 vm_build_btrfs = $(call vm_test_build,btrfs,./common/btrfs) $(call vm_test_build,storage,./bridge/handlers/storage)
 vm_build_memory = $(call vm_test_build,memory,./bridge/handlers/memory)
 vm_build_filebrowser = $(call vm_test_build,filebrowser,./bridge/handlers/filebrowser) $(call vm_test_build,filebrowser-services,./bridge/handlers/filebrowser/services)
@@ -189,13 +197,16 @@ endif
 endif
 endif
 
-# $(call vm_suite,SUITE) is the recipe of one vm-test-* target.
+# $(call vm_suite,SUITE) is the recipe of one vm-test-* target. Without VM it
+# picks a free VM, whose state it cannot know, so it brings it to clean first
+# (prepare: created when missing, reverted); VM=N runs on that VM as it is.
 define vm_suite
 set -e
-$(call vm_lock,$(vm_one))
+$(if $(VM),$(call vm_lock,$(vm_one),lock),$(call vm_lock,,pick 1))
 trap '$(vm_stop)' EXIT
 mkdir -p "$(vm_test_dir)"
 $(vm_build_$(1))
+$(if $(VM),,"$(vm_script)" prepare)
 "$(vm_script)" test "$(vm_test_dir)" $(1)
 endef
 
@@ -212,18 +223,17 @@ vm-test-relay-root: ensure-go ## Run the bridge-to-job-host relay tests as root 
 	@$(call vm_suite,relay)
 
 ##@ Tests|green
-# As many VMs as the host has room for, one for each suite at most, since a
-# VM without a suite would only be reverted; VMS=1 runs them one after another
-# on the first. Each is created when it is missing and reverted to clean, so a
-# run starts from clean whatever ran before it, and the indexer suite finds no
-# LinuxIO to refuse. The suites bring their own test binaries, so no build is
+# As many free VMs as the CPUs and the memory allow, one for each suite at
+# most, since a VM without a suite would only be reverted (pick); VMS=1 runs
+# them one after another on one. Each is created when it is missing and
+# reverted to clean, so a run starts from clean whatever ran before it, and
+# the indexer suite finds no LinuxIO to refuse. The suites bring their own test binaries, so no build is
 # installed. SUITES='docker updater' runs only those.
-test-vm-backend: VMS = $(shell n=$(vm_fit) s=$(words $(SUITES)); echo $$((n < s ? n : s)))
-test-vm-backend: ensure-go $(if $(filter indexer,$(SUITES)),build-nocheck) ## Create the test VMs the host has room for (one per suite at most), revert them and run the root suites (SUITES=...) on them, each VM taking the next when free
+test-vm-backend: ensure-go $(if $(filter indexer,$(SUITES)),build-nocheck) ## Pick free test VMs (one per suite at most, created when missing), revert them and run the root suites (SUITES=...) on them, each VM taking the next when free
 	@set -e
-	@$(call vm_lock,$(vm_numbers))
+	@$(if $(VM),$(call vm_lock,$(VM),lock),$(call vm_lock,,pick $(call vm_want,:$(words $(SUITES)))))
 	@trap '$(vm_stop_all)' EXIT
-	@echo "linuxio-vm: $(if $(VM),VM $(VM),$(VMS) VM(s)) for this run; $$("$(vm_script)" room)"
+	@$(if $(VM),echo "linuxio-vm: VM $(VM) for this run")
 	@mkdir -p "$(vm_test_dir)"
 	@$(foreach suite,$(SUITES),$(vm_build_$(suite)))
 	@printf '%s\n' $(SUITES) >"$(vm_test_dir)/queue"
@@ -272,10 +282,10 @@ vm_specs_args = $(if $(findstring --project,$(PLAYWRIGHT_ARGS)),,--project=specs
 
 test-vm-browser-rerun: ensure-node setup-frontend ## Rerun the browser specs against the test VMs as they are, without reverting or installing (test-vm-browser does both)
 	@set -e
-	@$(call vm_lock,$(vm_numbers))
+	@$(call vm_lock,$(vm_numbers),lock)
 	@trap '$(vm_stop_all)' EXIT
 	@$(vm_all) start
-	@$(call vm_browser_specs,$(vm_numbers),$(vm_specs_args))
+	@$(call vm_browser_specs,$$vm_set,$(vm_specs_args))
 
 # The release-update project after the others, alone on the first VM of the
 # run reverted to clean, with a log of its own. The other VMs of the run have
@@ -283,23 +293,23 @@ test-vm-browser-rerun: ensure-node setup-frontend ## Rerun the browser specs aga
 # their memory to the first VM's boot; one that does not shut down is left to
 # the trap that ends the run.
 define vm_release_update
-$(if $(VM_KEEP),,for n in $(wordlist 2,9,$(vm_numbers)); do LINUXIO_VM_INDEX=$$n "$(vm_script)" stop || true; done)
-LINUXIO_VM_INDEX=$(firstword $(vm_numbers)) "$(vm_script)" reset
-$(call vm_browser_specs,$(firstword $(vm_numbers)),--project=release-update,LINUXIO_VM_LOG=test-vm-browser-release-update.log)
+vm_first=$${vm_set%% *}
+$(if $(VM_KEEP),,for n in $$vm_set; do [[ $$n == "$$vm_first" ]] || LINUXIO_VM_INDEX=$$n "$(vm_script)" stop || true; done)
+LINUXIO_VM_INDEX=$$vm_first "$(vm_script)" reset
+$(call vm_browser_specs,$$vm_first,--project=release-update,LINUXIO_VM_LOG=test-vm-browser-release-update.log)
 endef
 
 ##@ Tests|green
-# The whole run in one target: as many VMs as the host has room for (VMS=2
-# for fewer), each created when it is missing, reverted to clean and given
+# The whole run in one target: as many free VMs as the CPUs and the memory
+# allow (pick; VMS=2 for two), each created when it is missing, reverted to clean and given
 # this build, then the specs, then the release-update spec. A run narrowed
 # with PLAYWRIGHT_ARGS runs those specs only.
-test-vm-browser: VMS = $(vm_fit)
 test-vm-browser: export LINUXIO_VM_UPDATE_BUILD = $(vm_update_build)
-test-vm-browser: build-nocheck vm-update-build ensure-node setup-frontend ## Create the test VMs the host has room for, revert them, install this build and run the browser specs, then the release-update spec on a VM reverted again
+test-vm-browser: build-nocheck vm-update-build ensure-node setup-frontend ## Pick free test VMs (created when missing), revert them, install this build and run the browser specs, then the release-update spec on a VM reverted again
 	@set -e
-	@$(call vm_lock,$(vm_numbers))
+	@$(if $(VM),$(call vm_lock,$(VM),lock),$(call vm_lock,,pick $(call vm_want)))
 	@trap '$(vm_stop_all)' EXIT
-	@echo "linuxio-vm: $(if $(VM),VM $(VM),$(VMS) VM(s)) for this run; $$("$(vm_script)" room)"
+	@$(if $(VM),echo "linuxio-vm: VM $(VM) for this run")
 	@$(vm_all) prepare "$(bin_dir)"
-	@$(call vm_browser_specs,$(vm_numbers),$(vm_specs_args))
+	@$(call vm_browser_specs,$$vm_set,$(vm_specs_args))
 	@$(if $(PLAYWRIGHT_ARGS),,$(vm_release_update))

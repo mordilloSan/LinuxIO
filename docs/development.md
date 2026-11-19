@@ -126,9 +126,9 @@ sparse qcow2 files: a 25 GiB system disk and four 8 GiB data disks
 
 `make test-vm-browser` is the whole browser run in one command. It builds
 LinuxIO and the update build the update checks install (`vm-update-build`,
-[Jobs](./jobs.md#testing)), counts how many VMs the host has room for,
-creates the ones that are missing, reverts each to `clean`, installs the build
-in each and runs the specs on all of them at once. Then it reverts the first
+[Jobs](./jobs.md#testing)), picks free VMs (below), creating the ones it
+needs, reverts each to `clean`, installs the build in each and runs the specs
+on all of them at once. Then it reverts the first
 VM to `clean` again and runs `jobs-update.spec.ts` alone on it, the
 Playwright project `release-update`, since that file installs an older release
 and leaves the VM changed; a run narrowed with `PLAYWRIGHT_ARGS` skips that
@@ -136,19 +136,21 @@ stage. At the end it shuts the VMs down. `make test-vm-backend` is
 the same for the root suites, without the install. A VM needs 4 GiB of free
 memory (`MemAvailable`, after 1.5 GiB kept for the host and its browsers) and
 4 CPUs, so a host with 12 CPUs and 14 GiB free runs three; four is the most
-either picks, since a fifth would not shorten the run, and `test-vm-backend`
-picks no more than it has suites. `VMS=2` sets the number by hand. Both work
-from a host with no VM yet; the first run waits for each VM's first boot.
+either takes, since a fifth would not shorten the run, and `test-vm-backend`
+takes no more than it has suites. `VMS=2` asks for two. Both work from a host
+with no VM yet; the first run waits for each VM's first boot.
 
 The VMs are numbered from 1: `linuxio-e2e`, then `linuxio-e2e-2` with its
 `linuxio-e2e-2-*` volumes and `~/.cache/linuxio-vm-2`, up to 9. They share
 only the image cache. `VM=2` on a target names one of them. `vm-create`,
-`vm-destroy`, `vm-ssh` and the `vm-test-*` targets act on one VM, the first
-unless `VM` names another; `vm-install`, `vm-reset`, `vm-update`, `vm-stop`
-and `test-vm-browser-rerun` act on every VM that exists, side by side, or on
-the one `VM` names. After a `test-vm-browser` that used fewer VMs than exist,
-pass the same `VMS` to `test-vm-browser-rerun`: the others do not have the
-build.
+`vm-destroy` and `vm-ssh` act on one VM, the first unless `VM` names another;
+`vm-install`, `vm-reset`, `vm-update`, `vm-stop` and `test-vm-browser-rerun`
+act on every VM that exists, side by side (any of 1 to 9, so a gap left by
+`vm-destroy` does not hide the VMs after it), on VMs 1 to `VMS` when `VMS`
+is given, or on those `VM` names, one or a list (`VM='2 3'`). The test targets pick their VMs (below) unless `VM` names
+them. A run prints the VMs it used, as the `VM` that names them again:
+`test-vm-browser-rerun` and `vm-ssh` after a `test-vm-browser` take that
+`VM`, since the other VMs do not have the build.
 
 The specs wait on reboots, throttled disks and timers and hardly use the CPU,
 so more CPUs for a VM gain nothing and more VMs do. Playwright runs one worker
@@ -179,11 +181,13 @@ its error, its code and its trace. Every line, without colour, is also in
 Each VM has a lock, `~/.cache/linuxio-vm/locks/DOMAIN`. A target takes the
 locks of the VMs it acts on, without waiting, as its recipe begins: after
 its prerequisites (`build-nocheck`, `vm-update-build`, `ensure-go`,
-`setup-frontend`) and after make has asked the script how many VMs exist or
-fit, but before it touches a VM, so a refused target may have built
-something but has reverted, booted or stopped nothing. It locks the one VM
-of `vm-create`, `vm-destroy`, `vm-ssh` or a `vm-test-*` target, and VMs 1 to
-`VMS` for the targets that act on several, unless `VM` names one. Targets on
+`setup-frontend`) and after make has asked the script how many VMs exist,
+but before it touches a VM, so a refused target may have built something but
+has reverted, booted or stopped nothing. The recipe's shell opens the lock
+files and the script takes the locks on those descriptors, so they stay with
+the shell for the whole recipe, and every step of the recipe (prepare,
+install, the specs, the release-update stage on its first VM, the trap that
+stops the VMs, each VM's row and log) acts on the VMs it locked. Targets on
 different VMs, of any distribution or release, run side by side, as many as
 the host has memory for; a target that needs a VM another target holds is
 refused with the name of that VM, since it would revert, reboot or stop the
@@ -194,8 +198,37 @@ A lock file it cannot open refuses it too. `make vm-ssh VM_KEEP=1` on a
 running VM takes no lock, since it stops nothing, so it can look into a VM
 another target holds; on a VM that is off it takes the VM's lock to start
 it, like any target, and should the VM stop while it runs without the lock,
-it refuses to start it again. A fourth VM, for a fourth target to run beside
-three, is `make vm-create VM=4`.
+it refuses to start it again.
+
+A test target given no `VM` (`test-vm-backend`, `test-vm-browser` and the
+`vm-test-*` suites) picks its VMs. It first tries the lock of each of VMs 1
+to 4, so it sees every VM of its release other targets hold, then takes, in order, the free
+ones that exist and are off and hold no installed build, then those that
+hold one (`install` leaves `installed` in the VM's state folder; a revert, a
+create and a destroy remove it), then numbers that do not exist yet, which it
+creates (a first boot takes a few minutes), until it has what it wants: one
+for a `vm-test-*` suite, and for the others as many as the CPUs allow
+(`test-vm-backend` no more than it has suites), or `VMS`. It takes a VM only
+when the memory has room for it: 4 GiB for each of the run's VMs and 1.5 GiB
+kept for the host, where other test VMs count as spent (what the running
+ones have not used yet, and 4 GiB for each one another target holds that is
+off or still being created, since its target will start it). A VM that runs with no target holding
+it was left up to look at (`VM_KEEP=1`, or a target killed before its trap),
+so it is left alone. Picking and locking are one step under `locks/taking`,
+so two targets started at once never take the same VM. Its first line says
+what it took, why no more and the memory it counted, and the run goes on
+with what it got: `linuxio-vm: VM 2 for this run; in use: linuxio-e2e;
+memory: 14.4 GiB available, less 4.0 GiB for other test VMs and 1.5 GiB
+kept for the host; VM=2 names it again`, or `VM 2 for this run, 1 of 3
+wanted (another VM needs 4.0 GiB and 3.5 GiB is left); ...`. With none it
+fails, naming the busy VMs and what the memory check found. A first line
+that takes a VM holding a build says so (`VM 1 held an installed build,
+which the revert removes`). A picked VM's state is unknown, so a `vm-test-*`
+suite reverts it to `clean` first (and creates it when it is
+missing), as the full runs do. With `VM=N` a suite runs on that VM as it is,
+and is refused when another target holds it; `VM` with a list is for the
+targets that act on several. `make vm-create VM=4` creates a VM ahead of
+the run that would want it.
 
 A checkout or worktree whose `mk/vm.mk` is older than these locks takes
 `~/.cache/linuxio-vm/lock` alone for any VM target, and one older than
@@ -229,12 +262,27 @@ before the release-update spec boots the first one again (not with
 
 Known limits:
 
-- `fit`, which sets how many VMs the full runs use, counts the running VMs
-  of its own release as free and every CPU of the host, so a full run can
-  plan a VM that the memory check then refuses, failing the run: beside
-  another target's VMs, or at the edge of what the host has, since a running
-  VM holds a little more than its 4 GiB. Give it fewer with `VMS`. Two full
-  runs side by side share the CPUs.
+- A run counts the memory when it picks, and each start checks again: a
+  start can still be refused, failing the run, when memory went elsewhere
+  meanwhile, or at the edge of what the host has, since a running VM holds a
+  little more than its 4 GiB. A busy VM that is off, or still being
+  created, counts as 4 GiB to come even when its target only stops or
+  reverts it, so a run beside `vm-reset` may take fewer VMs than the host
+  holds. A run plans the CPUs for itself, so
+  runs side by side share them.
+- Picking counts the VMs of its own release only: a VM of another release
+  or distribution that another target holds and has not started yet is not
+  counted, so one of the two can be refused at its start.
+- Only `install` (`make vm-install`, the browser runs) marks a VM as holding
+  a build. The indexer and updater suites install LinuxIO themselves and
+  leave no mark, so such a VM is picked like a clean one; it is reverted
+  first either way.
+- A VM a test target creates stays, stopped, and joins the VMs that the
+  targets without `VM` act on (`vm-reset`, `vm-install` and so on);
+  `make vm-destroy VM=N` removes it.
+- A VM left running with no target holding it is not picked until
+  `make vm-stop VM=N` shuts it down, and what it has not used yet counts as
+  spent meanwhile.
 - A restart can still be refused when other targets started VMs while this
   one was off (during an `off-for`, or after a spec powered it off); the VM
   then stays off and the specs after it on that VM fail. A restart counts on
@@ -248,7 +296,7 @@ Known limits:
 - Targets started from one checkout share its `.cache` (the suite binaries
   and their queue, the logs, the Playwright results), so targets that run
   side by side are started from separate checkouts or worktrees, as
-  `AGENTS.md` already asks of any two Make runs.
+  `AGENTS.md` asks of any two Make runs.
 
 The full runs are long: the browser specs take 15 minutes on three VMs and
 42 on one, the root suites about 6 on three, and either holds every VM it
@@ -330,11 +378,15 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   has.
 - Every target that needs the VM starts it if it is stopped and shuts it
   down when it ends, passed or failed (`vm-install`, `vm-ssh`, the
-  `test-vm-*` and the `vm-test-*` ones), so no VM runs unused; what was
-  installed and the journal stay on its disks, and the next target boots it
-  again. `VM_KEEP=1` on a target leaves it up, to look at a failure while its
-  processes still run, or to run several `vm-ssh` commands against one boot;
-  `make vm-stop` then shuts it down. `vm-reset` leaves it stopped, without
+  `test-vm-*` and the `vm-test-*` ones), so no VM runs unused. What was
+  installed and the journal stay on its disks only until a target reverts
+  it: a stopped VM may be reverted by any test target that picks it (one
+  that holds a build after the others). To keep one, leave it running with
+  `VM_KEEP=1`, which a pick never takes, or name it with `VM=N` in your own
+  next target before another run takes it. `VM_KEEP=1` on a target leaves
+  the VM up, to look at a failure while its processes still run, or to run
+  several `vm-ssh` commands against one boot; `make vm-stop` then shuts it
+  down. `vm-reset` leaves it stopped, without
   LinuxIO; run `vm-install` again after a reset.
 - A change to a systemd unit or socket, a PAM file or SELinux policy counts
   as working only when it is seen as the installer puts it and again after a
@@ -401,11 +453,13 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   on the host into `.cache/vm`, static so they also run on the older glibc
   of `VM_RELEASE=noble`, and the script's `test` command copies them into
   the VM, prints its kernel version and runs them as root, with the test
-  patterns of the matching host target. They run on the VM as it is.
+  patterns of the matching host target. Without `VM` a suite picks a free
+  VM and reverts it to `clean` first; with `VM=N` it runs on that VM as it
+  is.
 - `test-vm-backend` runs every root suite: the four above, and six that
-  have no target of their own. It uses as many VMs as the host has room for,
-  one for each suite at most, creates the ones that are missing and reverts
-  each to `clean` so the run starts from a known state; it installs no build,
+  have no target of their own. It picks as many free VMs as the CPUs and
+  the memory allow, one for each suite at most, creates the ones it needs
+  and reverts each to `clean` so the run starts from a known state; it installs no build,
   since the suites bring their own test binaries. The suites wait in one queue, longest first, and each VM takes the
   next when it is free: memory (about 6 minutes, with two reboots), btrfs (3), indexer (just
   under 2, most of it the indexer's idle timeout), docker (1½), packagekit
