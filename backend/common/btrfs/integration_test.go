@@ -320,8 +320,12 @@ func (p *itPool) devices() {
 		t.Fatalf("after add: %v", devicePaths(fs))
 	}
 	p.must("remove device", RemoveDevice(p.ctx, p.uuid, fs.Devices[i].ID, func(float64) {}))
-	if got := devicePaths(p.filesystem()); !slices.Equal(got, []string{p.disks[0], p.disks[2]}) {
-		t.Fatalf("after remove: %v", got)
+	// devicePaths sorts by name, and loop numbers do not: /dev/loop11 comes
+	// before /dev/loop8.
+	want := []string{p.disks[0], p.disks[2]}
+	slices.Sort(want)
+	if got := devicePaths(p.filesystem()); !slices.Equal(got, want) {
+		t.Fatalf("after remove: %v, want %v", got, want)
 	}
 	p.must("grow", GrowDevice(p.ctx, p.uuid, 1))
 	p.must("relabel", SetLabel(p.ctx, p.uuid, "linuxio-it2"))
