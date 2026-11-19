@@ -1046,7 +1046,7 @@ func TestInitializeDiskChecksSignaturesFirst(t *testing.T) {
 	stubDelKernelPartition(t, func(string, int) error { t.Error("dropped a partition"); return nil })
 	p2 := partitionPath(d.device, 2)
 	uuid := [16]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
-	writeAt(t, p2, 0x1000, md1Superblock(0x1000, uuid, 0))
+	writeAt(t, p2, 0x1000, md1Superblock(0x1000, uuid, 1))
 	beforeHead, beforeTail := diskEdges(t, d.device, size)
 	refusal := errors.New("not confirmed")
 	var found []MemberSignature

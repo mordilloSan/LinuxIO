@@ -16,9 +16,11 @@ import (
 // MemberSignature is an md RAID or LVM2 signature that makes Device a member
 // of an array or a volume group, read from the device itself the way
 // libblkid reads it (util-linux libblkid/src/superblocks/linux_raid.c and
-// lvm.c), so one udev has not probed yet is seen too. Kind is "md" or "lvm",
-// or empty for neither; UUID is the array's or the physical volume's as
-// libblkid formats it, which is what udev's ID_FS_UUID holds.
+// lvm.c), so one udev has not probed yet is seen too, except that an md 1.x
+// checksum is checked as the kernel checks it, which passes a few libblkid
+// misses. Kind is "md" or "lvm", or empty for neither; UUID is the array's
+// or the physical volume's as libblkid formats it, which is what udev's
+// ID_FS_UUID holds.
 type MemberSignature struct {
 	Device string
 	Kind   string
@@ -205,7 +207,8 @@ func md090Signature(p *probe, parts []kernelPartition) (string, bool) {
 }
 
 // md1Signature is linux_raid.c's probe_raid1: an md 1.x superblock at off
-// that names off as its own place and whose checksum holds.
+// that names off as its own place and whose checksum holds, as the kernel
+// computes it.
 func md1Signature(p *probe, off uint64) (string, bool) {
 	le := binary.LittleEndian
 	const sbSize = 256
@@ -224,10 +227,12 @@ func md1Signature(p *probe, off uint64) (string, bool) {
 	if off+uint64(len(csummed)) > p.size || !p.read(csummed, off) {
 		return "", false
 	}
-	// raid1_verify_csum: the sum of the little-endian words with sb_csum's
-	// own taken out, folded once, compared without truncating to 32 bits.
-	want := uint64(le.Uint32(sb[216:]))
-	csum := -want
+	// calc_sb_1_csum, of the kernel's super_1_load and of mdadm: the sum of
+	// the little-endian words with sb_csum's own taken out, folded once and
+	// kept to 32 bits. libblkid's raid1_verify_csum compares the fold whole,
+	// so it misses a member whose fold carries, which the kernel loads.
+	want := le.Uint32(sb[216:])
+	csum := -uint64(want)
 	words := len(csummed) &^ 3
 	for i := 0; i < words; i += 4 {
 		csum += uint64(le.Uint32(csummed[i:]))
@@ -235,7 +240,7 @@ func md1Signature(p *probe, off uint64) (string, bool) {
 	if len(csummed)-words == 2 {
 		csum += uint64(le.Uint16(csummed[words:]))
 	}
-	if csum>>32+csum&0xffffffff != want {
+	if uint32(csum)+uint32(csum>>32) != want {
 		return "", false
 	}
 	return blkidUUID(sb[16:32]), true

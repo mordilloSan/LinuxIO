@@ -15,10 +15,15 @@ import (
 )
 
 // md1Superblock is an md 1.x superblock of the array uuid, stored at off
-// bytes into the device, as mdadm writes it: maxDev slots, each holding a
-// role, and the checksum of calc_sb_1_csum (mdadm super1.c and the kernel's
-// md.c), which adds a last odd slot as 16 bits and truncates the folded sum
-// to 32 bits.
+// bytes into the device, as mdadm writes it and the kernel's super_1_load
+// takes it: maxDev slots, each holding a role, a 1 MiB data area (1 MiB in
+// for 1.1 and 1.2, before the superblock for 1.0 near the end), and the
+// checksum of calc_sb_1_csum. libblkid 2.39 (Ubuntu 24.04) zeroes sb_csum
+// in the buffer it sums before comparing the sum with sb_csum, and misses
+// the superblock when that is the buffer it read sb_csum from: with no
+// slots, which mdadm and the kernel never write, and for 1.1 with 128 or
+// fewer, which fit the 512 bytes it already holds at the start of the
+// device. A fixture checked against blkid has neither.
 func md1Superblock(off uint64, uuid [16]byte, maxDev uint32) []byte {
 	le := binary.LittleEndian
 	sb := make([]byte, 256+2*maxDev)
@@ -26,12 +31,25 @@ func md1Superblock(off uint64, uuid [16]byte, maxDev uint32) []byte {
 	le.PutUint32(sb[4:], 1)
 	copy(sb[16:], uuid[:])
 	copy(sb[32:], "host:data")
+	if off <= 0x1000 {
+		le.PutUint64(sb[128:], 2048) // data_offset, in sectors
+	}
+	le.PutUint64(sb[136:], 2048) // data_size: the kernel wants 10 sectors or more
 	le.PutUint64(sb[144:], off>>9)
 	le.PutUint32(sb[220:], maxDev)
 	for i := range maxDev {
 		le.PutUint16(sb[256+2*i:], uint16(i+1))
 	}
-	var sum uint64
+	setMD1Checksum(sb)
+	return sb
+}
+
+// md1Sum is the sum calc_sb_1_csum (mdadm super1.c and the kernel's md.c)
+// folds: the little-endian words of sb but its sb_csum, and a last odd slot
+// as 16 bits.
+func md1Sum(sb []byte) uint64 {
+	le := binary.LittleEndian
+	sum := -uint64(le.Uint32(sb[216:]))
 	i := 0
 	for ; i+4 <= len(sb); i += 4 {
 		sum += uint64(le.Uint32(sb[i:]))
@@ -39,8 +57,14 @@ func md1Superblock(off uint64, uuid [16]byte, maxDev uint32) []byte {
 	if i < len(sb) {
 		sum += uint64(le.Uint16(sb[i:]))
 	}
-	le.PutUint32(sb[216:], uint32(sum&0xffffffff+sum>>32))
-	return sb
+	return sum
+}
+
+// setMD1Checksum writes the sb_csum of calc_sb_1_csum, which folds the sum
+// once and keeps 32 bits of it.
+func setMD1Checksum(sb []byte) {
+	sum := md1Sum(sb)
+	binary.LittleEndian.PutUint32(sb[216:], uint32(sum)+uint32(sum>>32))
 }
 
 // md090Superblock is an md 0.90 superblock in byte order order, whose
@@ -137,7 +161,7 @@ func TestReadMemberSignature(t *testing.T) {
 	const pvText = "Ab3dEf-6hIj-9kLm-2nOp-5qRs-8tUv-1wXy4z"
 	end090 := uint64(size&^(64<<10-1) - 64<<10)
 	end10 := uint64(size&^0xfff - 0x2000)
-	badCsum := md1Superblock(0x1000, uuid, 0)
+	badCsum := md1Superblock(0x1000, uuid, 1)
 	badCsum[216]++
 	badCRC := lvm2Label(1, pvUUID)
 	badCRC[100]++
@@ -151,13 +175,15 @@ func TestReadMemberSignature(t *testing.T) {
 		kind, uuid string
 	}{
 		{"blank", size, func(*testing.T, string) {}, nil, "", ""},
-		{"md 1.2 at 4 KiB", size, func(t *testing.T, img string) { writeAt(t, img, 0x1000, md1Superblock(0x1000, uuid, 0)) }, nil, "md", uuidText},
-		{"md 1.1 at the start", size, func(t *testing.T, img string) { writeAt(t, img, 0, md1Superblock(0, uuid, 4)) }, nil, "md", uuidText},
+		{"md 1.2 at 4 KiB", size, func(t *testing.T, img string) { writeAt(t, img, 0x1000, md1Superblock(0x1000, uuid, 1)) }, nil, "md", uuidText},
+		// 384 slots, as mdadm writes for 129 to 384 devices; libblkid 2.39
+		// misses a 1.1 superblock of 128 or fewer (md1Superblock).
+		{"md 1.1 at the start", size, func(t *testing.T, img string) { writeAt(t, img, 0, md1Superblock(0, uuid, 384)) }, nil, "md", uuidText},
 		// The checksum adds the last of an odd number of slots as 16 bits.
 		{"md 1.2 with an odd number of slots", size, func(t *testing.T, img string) {
 			writeAt(t, img, 0x1000, md1Superblock(0x1000, uuid, 3))
 		}, nil, "md", uuidText},
-		{"md 1.0 at the end", size, func(t *testing.T, img string) { writeAt(t, img, end10, md1Superblock(end10, uuid, 0)) }, nil, "md", uuidText},
+		{"md 1.0 at the end", size, func(t *testing.T, img string) { writeAt(t, img, end10, md1Superblock(end10, uuid, 1)) }, nil, "md", uuidText},
 		// mdadm prints these words as 0f1e2d3c:4b5a6978:...; libblkid
 		// prints every word of a little-endian 0.90 superblock high byte
 		// first, so both read the same digits.
@@ -171,9 +197,9 @@ func TestReadMemberSignature(t *testing.T) {
 			writeAt(t, img, end090, md090Superblock(binary.LittleEndian, words, size>>10))
 		}, nil, "", ""},
 		{"md 1.2 with a bad checksum", size, func(t *testing.T, img string) { writeAt(t, img, 0x1000, badCsum) }, nil, "", ""},
-		{"md 1.2 naming another offset", size, func(t *testing.T, img string) { writeAt(t, img, 0x1000, md1Superblock(0, uuid, 0)) }, nil, "", ""},
+		{"md 1.2 naming another offset", size, func(t *testing.T, img string) { writeAt(t, img, 0x1000, md1Superblock(0, uuid, 1)) }, nil, "", ""},
 		{"md on a device libblkid takes for a floppy", 1440 << 10, func(t *testing.T, img string) {
-			writeAt(t, img, 0x1000, md1Superblock(0x1000, uuid, 0))
+			writeAt(t, img, 0x1000, md1Superblock(0x1000, uuid, 1))
 		}, nil, "", ""},
 		{"LVM2 label in sector 1", size, func(t *testing.T, img string) { writeAt(t, img, 512, lvm2Label(1, pvUUID)) }, nil, "lvm", pvText},
 		{"LVM2 label in sector 3", size, func(t *testing.T, img string) { writeAt(t, img, 1536, lvm2Label(3, pvUUID)) }, nil, "lvm", pvText},
@@ -181,7 +207,7 @@ func TestReadMemberSignature(t *testing.T) {
 		{"LVM2 label with a bad CRC", size, func(t *testing.T, img string) { writeAt(t, img, 512, badCRC) }, nil, "", ""},
 		{"md before LVM2", size, func(t *testing.T, img string) {
 			writeAt(t, img, 512, lvm2Label(1, pvUUID))
-			writeAt(t, img, end10, md1Superblock(end10, uuid, 0))
+			writeAt(t, img, end10, md1Superblock(end10, uuid, 1))
 		}, nil, "md", uuidText},
 		// The whole disk's last 64 KiB are also its last partition's, whose
 		// 0.90 superblock libblkid's blkid_probe_is_covered_by_pt gives to
@@ -213,6 +239,48 @@ func TestReadMemberSignature(t *testing.T) {
 			}
 			if kind, uuid := blkidMember(t, blkid, image); kind != c.kind || uuid != c.uuid {
 				t.Fatalf("blkid read %q %q; want %q %q", kind, uuid, c.kind, c.uuid)
+			}
+		})
+	}
+}
+
+// TestReadMemberSignatureKernelTakes covers md 1.x superblocks the kernel's
+// super_1_load takes and some libblkid misses, which the read finds all the
+// same, with no cross-check against blkid: one with no slots, a spare to the
+// kernel, and a 1.1 one with the 128 slots mdadm writes for up to 128
+// devices, both of which libblkid 2.39 misses, and one whose checksum fold
+// carries, which the kernel and mdadm keep to 32 bits and libblkid compares
+// whole.
+func TestReadMemberSignatureKernelTakes(t *testing.T) {
+	const size = 64 << 20
+	uuid := [16]byte{0x0f, 0x1e, 0x2d, 0x3c}
+	carry := md1Superblock(0x1000, uuid, 1)
+	// ctime's low word brings the low half of the sum to 0xffffffff, so
+	// adding the high half carries out of 32 bits.
+	binary.LittleEndian.PutUint32(carry[64:], ^uint32(md1Sum(carry)))
+	if sum := md1Sum(carry); uint64(uint32(sum))+sum>>32 <= 0xffffffff {
+		t.Fatalf("the fixture's fold does not carry out of 32 bits: sum %#x", sum)
+	}
+	setMD1Checksum(carry)
+	for _, c := range []struct {
+		name string
+		off  uint64
+		sb   []byte
+	}{
+		{"no slots", 0x1000, md1Superblock(0x1000, uuid, 0)},
+		{"md 1.1 with 128 slots", 0, md1Superblock(0, uuid, 128)},
+		{"checksum fold carries", 0x1000, carry},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			image := memberImage(t, size)
+			writeAt(t, image, c.off, c.sb)
+			f, err := os.Open(image)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer f.Close()
+			if sig, err := readMemberSignature(f, size, nil); err != nil || sig.Kind != "md" || sig.UUID != "0f1e2d3c-0000-0000-0000-000000000000" {
+				t.Fatalf("read %+v, %v; want md", sig, err)
 			}
 		})
 	}
@@ -250,7 +318,7 @@ func TestReadMemberSignatureSkipsUnreadablePlaces(t *testing.T) {
 		kind  string
 	}{
 		{"md 1.2 behind an unreadable end", func(t *testing.T, img string) {
-			writeAt(t, img, 0x1000, md1Superblock(0x1000, uuid, 0))
+			writeAt(t, img, 0x1000, md1Superblock(0x1000, uuid, 1))
 		}, [][2]int64{end}, "md"},
 		{"LVM2 behind an unreadable end", func(t *testing.T, img string) {
 			writeAt(t, img, 512, lvm2Label(1, "Ab3dEf6hIj9kLm2nOp5qRs8tUv1wXy4z"))

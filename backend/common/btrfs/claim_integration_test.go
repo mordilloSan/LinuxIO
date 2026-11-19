@@ -147,7 +147,7 @@ func (d *claimDisk) claimedRefused() {
 // a partition gets past until the table is written.
 func (d *claimDisk) signaturesUnderClaim() {
 	t := d.t
-	writeAt(t, d.p1, 0x1000, md1Superblock(0x1000, [16]byte{0xa1, 0x2b, 0x3c}, 0))
+	writeAt(t, d.p1, 0x1000, md1Superblock(0x1000, [16]byte{0xa1, 0x2b, 0x3c}, 1))
 	writeAt(t, d.p2, 512, lvm2Label(1, "LinuxIOclaimIntegrationTestPV001"))
 	read := []MemberSignature{d.signature(d.p1, "md"), d.signature(d.p2, "lvm")}
 	refusal := errors.New("not confirmed")

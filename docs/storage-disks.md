@@ -181,7 +181,8 @@ not probe a disk while LinuxIO holds its lock, nor before it gets to a
 change. So once Format, Delete and Initialize hold the disk lock, which a
 Format may wait minutes for behind another one, they check the request
 again: against a fresh inventory, and against the md and LVM2 signatures
-read from the devices themselves, the way libblkid reads them
+read from the devices themselves, the way libblkid reads them except for an
+md 1.x checksum, checked as the kernel and mdadm compute it, kept to 32 bits
 (`ReadMemberSignature` in `backend/common/btrfs/member.go`). A member
 signature where udev reported none, or an md or LVM2 signature other than
 the md, LVM2 or btrfs signature udev reported (another array, an md
@@ -285,10 +286,15 @@ Delete and Initialize refuse an md member udev has not probed
   replace, a filesystem are known only as udev reported them, so one udev
   has not reported yet is not seen.
 - A device udev reports as something that is no member (a DRBD backing
-  device, or no type because libblkid found two signatures) while it carries
-  an md or LVM2 signature is refused by Format, Delete, Initialize, md add
-  and a btrfs device add, and the dialog cannot confirm it, since it lists
-  what udev reports; remove the signature with `wipefs` or `pvremove`.
+  device, no type because libblkid found two signatures, or none for an md
+  1.x superblock the kernel takes and libblkid misses: one whose checksum
+  fold carries out of 32 bits, and with util-linux 2.39, as on Ubuntu
+  24.04, any md 1.1 superblock of up to 128 member slots, which is what
+  mdadm writes for up to 128 devices) while it carries an md or LVM2
+  signature is refused by Format, Delete, Initialize, md add and a btrfs
+  device add, and the dialog cannot confirm it, since it lists what udev
+  reports; remove the signature with `wipefs`, `mdadm --zero-superblock`
+  (which also finds what libblkid misses) or `pvremove`.
 - Create and Delete write their GPT entry through a shared open of the disk:
   the kernel refuses an exclusive one while any partition of the disk is
   claimed, and the other partitions may be in use. The kernel's refusal to
