@@ -48,6 +48,15 @@ after a change that issues ioctls).
 
 ## Needs a real machine or a measurement
 
+- Docker update rollback on the containerd image store: a rebuild that moved
+  a tag left the image the container ran with no name, and Docker 29 dropped
+  it at once, so the rebuild holds it with a tag
+  ([Docker Updates](../docker-updates.md#rebuilding-a-built-service)). Whether
+  a registry pull that moves a tag drops the old image the same way is not
+  measured: the Compose rollback of an update needs that image, and the
+  integration test keeps it tagged under another name. Measure it in the VM
+  with a local registry and one tag moved between two images.
+
 ## Later, no plan yet
 
 Do one of these only when something shows it is needed.
@@ -237,3 +246,11 @@ Sign-in where SELinux is enforcing
   `init_t` an `unconfined_t` socket, so the auth socket fails as installed
   and takes the web server with it. It looked fine as a drop-in on a running
   system.
+
+Docker updates ([Docker Updates](../docker-updates.md#rebuilding-a-built-service)):
+
+- Rebuilding Compose services built on the host in the scheduled pass,
+  unattended: a build puts live an image that has never run, differs from
+  night to night wherever its inputs are not pinned, and competes for memory
+  and disk with the services that are running. A rebuild is a page action an
+  administrator watches.

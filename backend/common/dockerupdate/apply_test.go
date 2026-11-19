@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -1655,6 +1656,7 @@ type fakeNativeUpdateClient struct {
 	removeErrors     map[string]error
 	stopErr          error
 	tagErr           error
+	untagErr         error   // of every ImageRemove
 	tagCtxErrs       []error // the state of each tag call's context
 	// tagBlocks and imageInspectBlocks make those calls wait until their
 	// context ends.
@@ -1717,6 +1719,15 @@ func (f *fakeNativeUpdateClient) ImageTag(
 		return client.ImageTagResult{}, ctx.Err()
 	}
 	return client.ImageTagResult{}, f.tagErr
+}
+
+func (f *fakeNativeUpdateClient) ImageRemove(
+	_ context.Context,
+	imageRef string,
+	_ client.ImageRemoveOptions,
+) (client.ImageRemoveResult, error) {
+	f.calls = append(f.calls, "untag:"+imageRef)
+	return client.ImageRemoveResult{}, f.untagErr
 }
 
 func (f *fakeNativeUpdateClient) ContainerInspect(
@@ -1801,4 +1812,357 @@ func boolInt(value bool) int {
 		return 1
 	}
 	return 0
+}
+
+// builtWebConfig is the effective configuration of a service "web" that
+// builds the image nginx:latest, as `docker compose config` writes it.
+const builtWebConfig = `{"services": {"web": {"build": {"context": "."}, "image": "nginx:latest"}}}`
+
+// fakeComposeCLI puts a `docker` on PATH that records each command line in
+// the file it returns and answers `config --format json` with config. A
+// build writes buildLines numbered lines and exits with buildExit.
+func fakeComposeCLI(t *testing.T, config string, buildLines, buildExit int) string {
+	t.Helper()
+	dir := t.TempDir()
+	args := filepath.Join(dir, "args")
+	script := fmt.Sprintf(`#!/bin/sh
+echo "$*" >> %[1]s
+case "$*" in
+*"config --format json"*) echo '%[2]s' ;;
+*" build --pull "*)
+	echo "$BUILDX_NO_DEFAULT_ATTESTATIONS" > %[1]s.env
+	echo ""
+	i=1
+	while [ $i -le %[3]d ]; do echo "#$i step $i"; i=$((i+1)); done
+	exit %[4]d ;;
+esac
+`, args, config, buildLines, buildExit)
+	if err := os.WriteFile(filepath.Join(dir, "docker"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	return args
+}
+
+// composeCommandsRun is each command line the fake Compose CLI recorded.
+func composeCommandsRun(t *testing.T, args string) []string {
+	t.Helper()
+	data, err := os.ReadFile(args)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Split(strings.TrimSpace(string(data)), "\n")
+}
+
+func TestRebuildRefusesAContainerComposeDoesNotManage(t *testing.T) {
+	withTempUpdateStatusPath(t)
+	_, err := rebuildInspectedContainer(t.Context(), nil, standaloneTestInspect(), nil)
+	if !errors.Is(err, ErrNotRebuildable) || !strings.Contains(err.Error(), "Docker Compose does not manage it") {
+		t.Fatalf("error = %v, want ErrNotRebuildable for a standalone container", err)
+	}
+
+	stopped := standaloneTestInspect()
+	stopped.State = &container.State{Status: container.StateExited}
+	if _, err := rebuildInspectedContainer(t.Context(), nil, stopped, nil); err == nil || errors.Is(err, ErrNotRebuildable) ||
+		!strings.Contains(err.Error(), "must be running") {
+		t.Fatalf("error = %v, want a stopped container refused for its state", err)
+	}
+}
+
+func TestRebuildComposeContainerRefusesAServiceWithoutABuildSection(t *testing.T) {
+	withTempUpdateStatusPath(t)
+	args := fakeComposeCLI(t, `{"services": {"web": {"image": "nginx:latest"}}}`, 0, 0)
+	before, fake, _ := composeUpdateFixture()
+
+	_, err := rebuildComposeContainer(t.Context(), fake, composeRollback{}, before, composeTestTarget, "web", updateResultFor(before), nil)
+	if !errors.Is(err, ErrNotRebuildable) || !strings.Contains(err.Error(), `service "web" of project "media" has no build section`) {
+		t.Fatalf("error = %v, want ErrNotRebuildable for a service without a build section", err)
+	}
+	if commands := composeCommandsRun(t, args); len(commands) != 1 || !strings.HasSuffix(commands[0], "config --format json web") {
+		t.Fatalf("commands = %q, want the configuration read alone", commands)
+	}
+}
+
+func TestRebuildComposeContainerLeavesAContainerWhoseImageDidNotChange(t *testing.T) {
+	withTempUpdateStatusPath(t)
+	args := fakeComposeCLI(t, builtWebConfig, 2, 0)
+	before, fake, _ := composeUpdateFixture()
+	fake.images = map[string]image.InspectResponse{"docker.io/library/nginx:latest": {ID: before.Image}}
+	var reports []string
+	report := func(phase, message string) { reports = append(reports, phase+": "+message) }
+
+	result, err := rebuildComposeContainer(t.Context(), fake, composeRollback{}, before, composeTestTarget, "web", updateResultFor(before), report)
+	if err != nil {
+		t.Fatalf("rebuildComposeContainer: %v", err)
+	}
+	if result.Updated || result.NewImageID != before.Image || result.ContainerID != before.ID {
+		t.Fatalf("result = %+v, want the container left on its image", result)
+	}
+	commands := composeCommandsRun(t, args)
+	// Reading the settings validates the project: no second `config`.
+	want := []string{
+		"compose --progress=json --project-name media --file compose.yml config --format json web",
+		"compose --progress=plain --project-name media --file compose.yml build --pull web",
+	}
+	if !slices.Equal(commands, want) {
+		t.Fatalf("commands = %q, want %q (no up)", commands, want)
+	}
+	// The build's output reaches the admin line by line, empty lines left out.
+	wantReports := []string{
+		"building: Building the image of Compose service web with fresh base images",
+		"build_output: #1 step 1",
+		"build_output: #2 step 2",
+		"current: The rebuilt image is the one the container already runs",
+	}
+	if !slices.Equal(reports, wantReports) {
+		t.Fatalf("reports = %q, want %q", reports, wantReports)
+	}
+	// The image the container runs is held by a tag of its own while the
+	// build moves its name, and let go when the rebuild ends.
+	wantCalls := []string{
+		"tag:sha256:old:docker.io/library/nginx:linuxio-rebuild-previous",
+		"inspect-image:docker.io/library/nginx:latest",
+		"untag:docker.io/library/nginx:linuxio-rebuild-previous",
+	}
+	if !slices.Equal(fake.calls, wantCalls) {
+		t.Fatalf("calls = %v, want %v", fake.calls, wantCalls)
+	}
+	status, ok := ReadStatusSnapshot().ForContainerName("web")
+	if !ok || status.CheckState != DockerUpdateCheckStateBuilt || status.CheckReason != builtReason("media", "web") {
+		t.Fatalf("status = %+v, %v; want built", status, ok)
+	}
+}
+
+func TestRebuildComposeContainerBringsTheServiceUpOnTheNewImage(t *testing.T) {
+	withTempUpdateStatusPath(t)
+	args := fakeComposeCLI(t, builtWebConfig, 1, 0)
+	before, fake, _ := composeUpdateFixture()
+	// The tag names the rebuilt image (pulledImage, sha256:new), and the
+	// service's new container runs it.
+	after := readyContainer("rebuilt-web", "sha256:new")
+	fake.inspectResults["web"] = after
+	fake.inspectResults["rebuilt-web"] = after
+	var phases []string
+	report := func(phase, _ string) {
+		if len(phases) == 0 || phases[len(phases)-1] != phase {
+			phases = append(phases, phase)
+		}
+	}
+
+	result, err := rebuildComposeContainer(t.Context(), fake, composeRollback{}, before, composeTestTarget, "web", updateResultFor(before), report)
+	if err != nil {
+		t.Fatalf("rebuildComposeContainer: %v", err)
+	}
+	if !result.Updated || result.NewImageID != "sha256:new" || result.ContainerID != "rebuilt-web" || result.PreviousImageID != before.Image {
+		t.Fatalf("result = %+v, want the container replaced on the rebuilt image", result)
+	}
+	commands := composeCommandsRun(t, args)
+	if len(commands) != 3 || commands[2] != "compose --progress=json --project-name media --file compose.yml up -d --no-deps --pull never --no-build web" {
+		t.Fatalf("commands = %q, want the build followed by an up that pulls and builds nothing", commands)
+	}
+	if !slices.Equal(phases, []string{"building", ProgressPhaseBuildOutput, "starting", "verifying"}) {
+		t.Fatalf("phases = %v", phases)
+	}
+	status, ok := ReadStatusSnapshot().ForContainerName("web")
+	if !ok || status.CheckState != DockerUpdateCheckStateBuilt || status.ContainerID != "rebuilt-web" || status.ImageID != "sha256:new" {
+		t.Fatalf("status = %+v, %v; want the new container built, not current", status, ok)
+	}
+}
+
+func TestRebuildComposeContainerRollsBackAContainerThatFails(t *testing.T) {
+	withTempUpdateStatusPath(t)
+	args := fakeComposeCLI(t, builtWebConfig, 1, 0)
+	// The new container exits on sha256:new, the image the tag names.
+	before, fake, restored := composeUpdateFixture()
+	commands := &composeRollbackFake{}
+	rollback := commands.rollback(fake, map[string]composeServiceSettings{"web": {Image: "nginx:latest", Build: true}}, restored)
+
+	result, err := rebuildComposeContainer(t.Context(), fake, rollback, before, composeTestTarget, "web", updateResultFor(before), nil)
+	if !errors.As(err, new(rolledBackError)) || result.Updated {
+		t.Fatalf("result = %+v, error = %v; want a rolled back rebuild", result, err)
+	}
+	wantTags := []string{
+		"tag:sha256:old:docker.io/library/nginx:linuxio-rebuild-previous",
+		"tag:sha256:old:docker.io/library/nginx:latest",
+	}
+	if tags := tagCalls(fake.calls); !slices.Equal(tags, wantTags) {
+		t.Fatalf("tags = %v, want the old image held, then its tag put back on it", tags)
+	}
+	if last := fake.calls[len(fake.calls)-1]; last != "untag:docker.io/library/nginx:linuxio-rebuild-previous" {
+		t.Fatalf("calls = %v, want the hold let go last", fake.calls)
+	}
+	if !reflect.DeepEqual(commands.restores, [][]string{{"web"}}) {
+		t.Fatalf("restored services = %v, want web", commands.restores)
+	}
+	if last := composeCommandsRun(t, args); !strings.HasSuffix(last[len(last)-1], "up -d --no-deps --pull never --no-build web") {
+		t.Fatalf("commands = %q, want the rebuild's up last", last)
+	}
+	if status, ok := ReadStatusSnapshot().ForContainerName("web"); ok {
+		t.Fatalf("status = %+v, want none recorded for a failed rebuild", status)
+	}
+}
+
+func TestRebuildComposeContainerReportsTheEndOfAFailedBuild(t *testing.T) {
+	withTempUpdateStatusPath(t)
+	args := fakeComposeCLI(t, builtWebConfig, 30, 1)
+	before, fake, _ := composeUpdateFixture()
+
+	_, err := rebuildComposeContainer(t.Context(), fake, composeRollback{}, before, composeTestTarget, "web", updateResultFor(before), nil)
+	if err == nil || !strings.Contains(err.Error(), `build Compose project "media" service "web"`) ||
+		!strings.Contains(err.Error(), "#11 step 11\n") || !strings.Contains(err.Error(), "#30 step 30") ||
+		strings.Contains(err.Error(), "#10 step 10") {
+		t.Fatalf("error = %v, want the build's last %d lines", err, buildOutputErrorLines)
+	}
+	wantCalls := []string{
+		"tag:sha256:old:docker.io/library/nginx:linuxio-rebuild-previous",
+		"untag:docker.io/library/nginx:linuxio-rebuild-previous",
+	}
+	if commands := composeCommandsRun(t, args); len(commands) != 2 || !slices.Equal(fake.calls, wantCalls) {
+		t.Fatalf("commands = %q, calls = %v; want nothing after the failed build but letting go of the hold", commands, fake.calls)
+	}
+}
+
+// The build runs without BuildKit's default attestations, also where the
+// environment of `docker compose` is reduced to a fixed list.
+func TestComposeBuildServiceBuildsWithoutDefaultAttestations(t *testing.T) {
+	args := fakeComposeCLI(t, builtWebConfig, 0, 0)
+	target := composeTestTarget
+	target.IsolateEnvironment = true
+
+	if err := composeBuildService(t.Context(), target, "web", nil); err != nil {
+		t.Fatalf("composeBuildService: %v", err)
+	}
+	if commands := composeCommandsRun(t, args); len(commands) != 1 || commands[0] != "compose --progress=plain --project-name media --file compose.yml build --pull web" {
+		t.Fatalf("commands = %q", commands)
+	}
+	env, err := os.ReadFile(args + ".env")
+	if err != nil || strings.TrimSpace(string(env)) != "1" {
+		t.Fatalf("BUILDX_NO_DEFAULT_ATTESTATIONS in the build = %q (%v), want 1", env, err)
+	}
+}
+
+// When the files name another image than the one the container was created
+// from, the build tags that one, and the rebuild reads the new image there.
+func TestRebuildComposeContainerReadsTheImageTheFilesNameNow(t *testing.T) {
+	withTempUpdateStatusPath(t)
+	fakeComposeCLI(t, `{"services": {"web": {"build": {"context": "."}, "image": "nginx:1.29"}}}`, 0, 0)
+	before, fake, _ := composeUpdateFixture()
+	fake.images = map[string]image.InspectResponse{
+		"docker.io/library/nginx:latest": {ID: before.Image}, // the old name still gives the old image
+		"docker.io/library/nginx:1.29":   {ID: "sha256:new"},
+	}
+	after := readyContainer("rebuilt-web", "sha256:new")
+	fake.inspectResults["web"] = after
+	fake.inspectResults["rebuilt-web"] = after
+
+	result, err := rebuildComposeContainer(t.Context(), fake, composeRollback{}, before, composeTestTarget, "web", updateResultFor(before), nil)
+	if err != nil || !result.Updated || result.NewImageID != "sha256:new" {
+		t.Fatalf("result = %+v, error = %v; want the service moved to the image the files name", result, err)
+	}
+	if !slices.Contains(fake.calls, "inspect-image:docker.io/library/nginx:1.29") ||
+		!slices.Contains(fake.calls, "tag:sha256:old:docker.io/library/nginx:linuxio-rebuild-previous") {
+		t.Fatalf("calls = %v, want the new name read and the old repository holding the old image", fake.calls)
+	}
+}
+
+// A container whose image is already gone from the host is rebuilt without
+// a hold; any other failure to hold it stops the rebuild.
+func TestRebuildComposeContainerGoesOnWithoutAnImageToHold(t *testing.T) {
+	for name, tc := range map[string]struct {
+		tagErr  error
+		wantErr string
+	}{
+		"image gone":    {tagErr: errors.New("Error response from daemon: No such image: sha256:old")},
+		"typed gone":    {tagErr: fmt.Errorf("daemon: %w", errdefs.ErrNotFound)},
+		"other failure": {tagErr: errors.New("Error response from daemon: invalid reference format"), wantErr: "invalid reference format"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			withTempUpdateStatusPath(t)
+			args := fakeComposeCLI(t, builtWebConfig, 0, 0)
+			before, fake, _ := composeUpdateFixture()
+			fake.tagErr = tc.tagErr
+			fake.images = map[string]image.InspectResponse{"docker.io/library/nginx:latest": {ID: before.Image}}
+
+			result, err := rebuildComposeContainer(t.Context(), fake, composeRollback{}, before, composeTestTarget, "web", updateResultFor(before), nil)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) || len(composeCommandsRun(t, args)) != 1 {
+					t.Fatalf("error = %v, commands = %q; want the rebuild stopped before the build", err, composeCommandsRun(t, args))
+				}
+				return
+			}
+			if err != nil || result.Updated || slices.Contains(fake.calls, "untag:docker.io/library/nginx:linuxio-rebuild-previous") {
+				t.Fatalf("result = %+v, error = %v, calls = %v; want the rebuild done without a hold", result, err, fake.calls)
+			}
+		})
+	}
+}
+
+// The hold is let go when the rebuild ends. Docker refuses to remove the
+// tag while it is the image's last name and a container runs it: that keeps
+// the image, and is no warning.
+func TestRebuildComposeContainerLetsGoOfTheHold(t *testing.T) {
+	for name, tc := range map[string]struct {
+		untagErr error
+		wantWarn bool
+	}{
+		"removed":              {},
+		"kept for a container": {untagErr: errors.New("Error response from daemon: conflict: unable to remove repository reference \"nginx:linuxio-rebuild-previous\" (must force) - container 0123 is using its referenced image 4567")},
+		"typed conflict":       {untagErr: fmt.Errorf("daemon: %w", errdefs.ErrConflict)},
+		"other failure":        {untagErr: errors.New("Error response from daemon: unexpected EOF"), wantWarn: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			withTempUpdateStatusPath(t)
+			var logs strings.Builder
+			previous := slog.Default()
+			slog.SetDefault(slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+			t.Cleanup(func() { slog.SetDefault(previous) })
+			fakeComposeCLI(t, builtWebConfig, 0, 0)
+			before, fake, _ := composeUpdateFixture()
+			fake.untagErr = tc.untagErr
+			fake.images = map[string]image.InspectResponse{"docker.io/library/nginx:latest": {ID: before.Image}}
+
+			if _, err := rebuildComposeContainer(t.Context(), fake, composeRollback{}, before, composeTestTarget, "web", updateResultFor(before), nil); err != nil {
+				t.Fatalf("rebuildComposeContainer: %v", err)
+			}
+			if fake.calls[len(fake.calls)-1] != "untag:docker.io/library/nginx:linuxio-rebuild-previous" {
+				t.Fatalf("calls = %v, want the hold let go last", fake.calls)
+			}
+			if warned := strings.Contains(logs.String(), "level=WARN"); warned != tc.wantWarn {
+				t.Fatalf("logged %q; want a warning: %v", logs.String(), tc.wantWarn)
+			}
+		})
+	}
+}
+
+// An update brings its services up on the image it pulled and builds none,
+// also for a service with pull_policy: build.
+func TestComposePullAndUpServicesBuildsNothing(t *testing.T) {
+	args := fakeComposeCLI(t, builtWebConfig, 0, 0)
+
+	if err := composePullAndUpServicesValidated(t.Context(), composeTestTarget, []string{"web", "worker"}, nil); err != nil {
+		t.Fatalf("composePullAndUpServicesValidated: %v", err)
+	}
+	want := []string{
+		"compose --progress=json --project-name media --file compose.yml pull web worker",
+		"compose --progress=json --project-name media --file compose.yml up -d --no-deps --no-build web worker",
+	}
+	if commands := composeCommandsRun(t, args); !slices.Equal(commands, want) {
+		t.Fatalf("commands = %q, want %q", commands, want)
+	}
+}
+
+// A line longer than the limit is cut, and the lines after it are read.
+func TestReadComposeLinesCutsAnOverlongLine(t *testing.T) {
+	long := strings.Repeat("x", 200*1024)
+	input := "first\n" + long + "\nafter\nlast without newline"
+	var lines []string
+	if err := readComposeLines(strings.NewReader(input), 100*1024, func(line string) { lines = append(lines, line) }); err != nil {
+		t.Fatalf("readComposeLines: %v", err)
+	}
+	if len(lines) != 4 || lines[0] != "first" || lines[1] != long[:100*1024] || lines[2] != "after" || lines[3] != "last without newline" {
+		t.Fatalf("got %d lines (%d bytes in the second), want first, the cut line, after, last", len(lines), len(lines[min(1, len(lines)-1)]))
+	}
 }

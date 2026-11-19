@@ -75,6 +75,15 @@ export const getUpdateStatus = ({
       label: "Cannot check",
     };
   }
+  // A Compose service builds the image on this host: there is no registry
+  // to check, and the actions offer "Rebuild and update" instead.
+  if (updateCheckState === "built") {
+    return {
+      color: "secondary" as const,
+      detail: updateCheckReason || "Built on this host by Docker Compose",
+      label: "Built here",
+    };
+  }
   if (updateCheckState === "error" || updateError) {
     return {
       color: "error" as const,

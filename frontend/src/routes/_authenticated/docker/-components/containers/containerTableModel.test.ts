@@ -60,6 +60,18 @@ describe("getUpdateStatus", () => {
     });
   });
 
+  it("reports an image a Compose service builds on this host", () => {
+    const reason =
+      'built on this host by Compose service "app" of project "media"';
+    expect(
+      getUpdateStatus({
+        updateAvailable: false,
+        updateCheckReason: reason,
+        updateCheckState: "built",
+      }),
+    ).toEqual({ color: "secondary", detail: reason, label: "Built here" });
+  });
+
   it("reports containers that were never scanned", () => {
     expect(getUpdateStatus({})).toMatchObject({
       detail: "Never scanned",

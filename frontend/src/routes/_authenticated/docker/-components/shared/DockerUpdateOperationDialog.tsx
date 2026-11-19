@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import { useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useLayoutEffect, useRef, useState } from "react";
 
 import type { DockerContainerUpdateResult } from "@/api";
 import GeneralDialog from "@/components/dialog/GeneralDialog";
@@ -19,6 +19,8 @@ import "./compose-operation-dialog.css";
 export interface DockerUpdateTarget {
   id: string;
   name: string;
+  /** The image of its Compose service is rebuilt, not pulled. */
+  rebuild?: boolean;
 }
 
 export interface DockerUpdateEvent {
@@ -34,6 +36,8 @@ const phaseIcon = (phase: string) => {
       return "mdi:magnify";
     case "pulling":
       return "mdi:download";
+    case "building":
+      return "mdi:hammer-wrench";
     case "stopping":
       return "mdi:stop-circle-outline";
     case "creating":
@@ -55,6 +59,7 @@ const shortImageId = (value: string) =>
   value.replace(/^sha256:/, "").slice(0, 12);
 
 export function DockerUpdateOperationDialog({
+  buildOutput,
   error,
   events,
   onClose,
@@ -63,6 +68,8 @@ export function DockerUpdateOperationDialog({
   running,
   target,
 }: {
+  /** The newest lines of a rebuild's build, shown under its building row. */
+  buildOutput: string[];
   error: string | null;
   events: DockerUpdateEvent[];
   onClose: () => void;
@@ -73,7 +80,17 @@ export function DockerUpdateOperationDialog({
 }) {
   const [showDetails, setShowDetails] = useState(false);
   const outputBoxRef = useRef<HTMLDivElement>(null);
+  const buildLogRef = useRef<HTMLDivElement>(null);
+  // The build output follows its newest line until the reader scrolls up.
+  const followBuildLogRef = useRef(true);
   const title = result?.containerName || target?.name || "Container";
+  // The row of the building phase, which the build output goes under. A job
+  // adopted after a reload is not known to be a rebuild until it builds, and
+  // the replay of a long build may hold its output without that row.
+  const buildRow = events.findIndex(({ phase }) => phase === "building");
+  const rebuilding =
+    Boolean(target?.rebuild) || buildRow >= 0 || buildOutput.length > 0;
+  const operation = rebuilding ? "rebuild" : "update";
   const outcomeColor = error
     ? "var(--app-palette-error-main)"
     : result
@@ -92,6 +109,36 @@ export function DockerUpdateOperationDialog({
     // `events` intentionally retriggers scrolling as operation output renders.
     // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [events, showDetails]);
+
+  const buildLog = buildOutput.length > 0 && (
+    <div
+      aria-label="Build output"
+      aria-live="off"
+      className="docker-update-build-log"
+      onScroll={(scrollEvent) => {
+        const log = scrollEvent.currentTarget;
+        followBuildLogRef.current =
+          log.scrollTop + log.clientHeight >= log.scrollHeight - 16;
+      }}
+      ref={buildLogRef}
+      role="region"
+      tabIndex={0}
+    >
+      {buildOutput.map((line, lineIndex) => (
+        <div key={lineIndex}>{line}</div>
+      ))}
+    </div>
+  );
+
+  useLayoutEffect(() => {
+    if (buildOutput.length === 0) {
+      followBuildLogRef.current = true;
+      return;
+    }
+    if (followBuildLogRef.current && buildLogRef.current) {
+      buildLogRef.current.scrollTop = buildLogRef.current.scrollHeight;
+    }
+  }, [buildOutput]);
 
   return (
     <GeneralDialog
@@ -125,20 +172,26 @@ export function DockerUpdateOperationDialog({
             width={24}
           />
           <div>
-            <div>Updating {title}</div>
+            <div>
+              {rebuilding ? "Rebuilding" : "Updating"} {title}
+            </div>
             <AppTypography color="text.secondary" variant="caption">
               {running
-                ? "The update continues if this dialog is closed"
+                ? `The ${operation} continues if this dialog is closed`
                 : result
                   ? result.updated
-                    ? "Container update completed"
-                    : "Container was already up to date"
-                  : "Container update did not complete"}
+                    ? rebuilding
+                      ? "Container rebuilt and updated"
+                      : "Container update completed"
+                    : rebuilding
+                      ? "The rebuilt image is the one already running"
+                      : "Container was already up to date"
+                  : `Container ${operation} did not complete`}
             </AppTypography>
           </div>
         </div>
         <AppIconButton
-          aria-label="Close container update dialog"
+          aria-label={`Close container ${operation} dialog`}
           onClick={onClose}
           size="small"
         >
@@ -168,7 +221,7 @@ export function DockerUpdateOperationDialog({
               padding: "var(--app-space-8)",
             }}
           >
-            {events.length === 0 && running ? (
+            {events.length === 0 && buildOutput.length === 0 && running ? (
               <div style={{ alignItems: "center", display: "flex", gap: 10 }}>
                 <AppCircularProgress size={18} />
                 <AppTypography color="text.secondary" variant="body2">
@@ -176,47 +229,55 @@ export function DockerUpdateOperationDialog({
                 </AppTypography>
               </div>
             ) : (
-              events.map((event, index) => {
-                const active = running && index === events.length - 1;
-                return (
-                  <div
-                    key={`${event.phase}:${index}`}
-                    style={{
-                      alignItems: "center",
-                      display: "grid",
-                      gap: 10,
-                      gridTemplateColumns: "24px minmax(0, 1fr)",
-                      minHeight: 32,
-                    }}
-                  >
-                    {active ? (
-                      <AppCircularProgress size={18} />
-                    ) : (
-                      <Icon
-                        color={
-                          event.phase === "rolling_back"
-                            ? "var(--app-palette-warning-main)"
-                            : "var(--app-palette-text-secondary)"
-                        }
-                        height={20}
-                        icon={phaseIcon(event.phase)}
-                        width={20}
-                      />
-                    )}
-                    <div>
-                      <AppTypography
-                        style={{ fontWeight: active ? 600 : 400 }}
-                        variant="body2"
+              <>
+                {buildRow < 0 && buildLog}
+                {events.map((event, index) => {
+                  const active = running && index === events.length - 1;
+                  return (
+                    <Fragment key={`${event.phase}:${index}`}>
+                      <div
+                        style={{
+                          alignItems: "center",
+                          display: "grid",
+                          gap: 10,
+                          gridTemplateColumns: "24px minmax(0, 1fr)",
+                          minHeight: 32,
+                        }}
                       >
-                        {event.message}
-                      </AppTypography>
-                      <AppTypography color="text.secondary" variant="caption">
-                        {event.phase.replaceAll("_", " ")}
-                      </AppTypography>
-                    </div>
-                  </div>
-                );
-              })
+                        {active ? (
+                          <AppCircularProgress size={18} />
+                        ) : (
+                          <Icon
+                            color={
+                              event.phase === "rolling_back"
+                                ? "var(--app-palette-warning-main)"
+                                : "var(--app-palette-text-secondary)"
+                            }
+                            height={20}
+                            icon={phaseIcon(event.phase)}
+                            width={20}
+                          />
+                        )}
+                        <div>
+                          <AppTypography
+                            style={{ fontWeight: active ? 600 : 400 }}
+                            variant="body2"
+                          >
+                            {event.message}
+                          </AppTypography>
+                          <AppTypography
+                            color="text.secondary"
+                            variant="caption"
+                          >
+                            {event.phase.replaceAll("_", " ")}
+                          </AppTypography>
+                        </div>
+                      </div>
+                      {index === buildRow && buildLog}
+                    </Fragment>
+                  );
+                })}
+              </>
             )}
 
             {result && (

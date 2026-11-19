@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
+	digest "github.com/opencontainers/go-digest"
 
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
 )
@@ -155,5 +157,94 @@ func TestScheduledStandaloneUpdateUndoneCountsAsRolledBack(t *testing.T) {
 	doc, err := alerts.Load()
 	if err != nil || len(doc.Alerts) != 1 || doc.Alerts[0].Title != "Docker update rolled back: web" {
 		t.Fatalf("alerts = %+v, %v", doc.Alerts, err)
+	}
+}
+
+// The scheduled pass and a plain update reach the check's verdict on a
+// container a Compose service builds on the host: nothing to update, no
+// error (so no failed outcome and no alert), and its status stays built. With
+// the containerd image store the image has a digest of its own that the
+// registry refuses, and labels that name the service; with the classic store
+// it has no digest.
+func TestUpdateCandidateOfABuiltContainerIsNothingToUpdate(t *testing.T) {
+	ownDigest := []string{"nginx@" + digest.FromString("built").String()}
+	for name, tc := range map[string]struct {
+		repoDigests []string
+		built       bool // what the classifier finds
+		wantState   DockerUpdateCheckState
+	}{
+		"containerd store, built":    {repoDigests: ownDigest, built: true, wantState: DockerUpdateCheckStateBuilt},
+		"classic store, built":       {built: true, wantState: DockerUpdateCheckStateBuilt},
+		"classic store, not a build": {wantState: DockerUpdateCheckStateUncheckable},
+	} {
+		t.Run(name, func(t *testing.T) {
+			withTempUpdateStatusPath(t)
+			inspect := composeWebInspect()
+
+			candidate, err := inspectContainerUpdateCandidate(t.Context(), refusingRegistry(t, inspect, tc.repoDigests, inspect.Config.Labels), builtClassifierFor(inspect, tc.built), inspect)
+			if err != nil || candidate.needsUpdate || candidate.built != tc.built {
+				t.Fatalf("candidate = %+v, error = %v; want nothing to update", candidate, err)
+			}
+			status, ok := ReadStatusSnapshot().ForContainerName("web")
+			if !ok || status.CheckState != tc.wantState || status.Err != "" {
+				t.Fatalf("status = %+v, %v; want %s with no error", status, ok, tc.wantState)
+			}
+		})
+	}
+}
+
+// A refused lookup fails as before when the image is not built by the
+// container's service: no build section, or a pulled image whose own labels
+// do not name the service (its registry login expired, or its tag is gone).
+func TestUpdateCandidateKeepsARefusedLookupOfAnImageNotBuilt(t *testing.T) {
+	ownDigest := []string{"nginx@" + digest.FromString("private").String()}
+	for name, tc := range map[string]struct {
+		imageLabels map[string]string
+		built       bool
+	}{
+		"no build section":      {imageLabels: composeWebInspect().Config.Labels},
+		"a pulled image":        {imageLabels: map[string]string{"org.opencontainers.image.version": "1.2"}, built: true},
+		"built for another one": {imageLabels: map[string]string{"com.docker.compose.project": "media", "com.docker.compose.service": "worker"}, built: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			withTempUpdateStatusPath(t)
+			inspect := composeWebInspect()
+			registry := refusingRegistry(t, inspect, ownDigest, tc.imageLabels)
+
+			if _, err := inspectContainerUpdateCandidate(t.Context(), registry, builtClassifierFor(inspect, tc.built), inspect); err == nil || !strings.Contains(err.Error(), "denied") {
+				t.Fatalf("error = %v, want the registry's refusal as before", err)
+			}
+		})
+	}
+}
+
+// composeWebInspect is the container of service "web" of project "media".
+func composeWebInspect() container.InspectResponse {
+	inspect := standaloneTestInspect()
+	inspect.Config.Labels = map[string]string{"com.docker.compose.project": "media", "com.docker.compose.service": "web"}
+	return inspect
+}
+
+// refusingRegistry answers for the image of inspect with repoDigests and
+// imageLabels, and refuses to look up nginx:latest.
+func refusingRegistry(t *testing.T, inspect container.InspectResponse, repoDigests []string, imageLabels map[string]string) *fakeImageUpdateCheckClient {
+	local := imageWithLabels(t, inspect.Image, imageLabels)
+	local.RepoDigests = repoDigests
+	return &fakeImageUpdateCheckClient{
+		images: map[string]client.ImageInspectResult{inspect.Image: {InspectResponse: local}},
+		distributionErrors: map[string]error{
+			"docker.io/library/nginx:latest": errors.New("Error response from daemon: errors:\ndenied: requested access to the resource is denied\nunauthorized: authentication required"),
+		},
+	}
+}
+
+// builtClassifierFor finds inspect built by service "web" of project "media"
+// when built is true, and nothing otherwise.
+func builtClassifierFor(inspect container.InspectResponse, built bool) builtClassifier {
+	return func(_ context.Context, targets []containerImageUpdateTarget) map[string]string {
+		if !built || len(targets) != 1 || targets[0].ContainerID != inspect.ID {
+			return nil
+		}
+		return map[string]string{inspect.ID: builtReason("media", "web")}
 	}
 }

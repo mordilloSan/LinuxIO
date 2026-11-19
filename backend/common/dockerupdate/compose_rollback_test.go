@@ -177,11 +177,11 @@ func TestUpdateComposeContainerIsNotRolledBackWhereTheTagCannotBePutBack(t *test
 		pulled   string
 		reason   string
 	}{
-		"a build section":      {settings: composeServiceSettings{Image: "nginx:latest", Build: true}, reason: "build section"},
-		"pull_policy always":   {settings: composeServiceSettings{Image: "nginx:latest", PullPolicy: "always"}, reason: "pull_policy: always"},
-		"an image pinned":      {image: pinned, settings: composeServiceSettings{Image: pinned}, reason: "pinned by digest"},
-		"another image now":    {settings: composeServiceSettings{Image: "nginx:1.29"}, reason: `names image "nginx:1.29"`},
-		"the tag did not move": {settings: composeServiceSettings{Image: "nginx:latest"}, pulled: "sha256:old", reason: "still names the image"},
+		"pull_policy always":             {settings: composeServiceSettings{Image: "nginx:latest", PullPolicy: "always"}, reason: "pull_policy: always"},
+		"built, with pull_policy always": {settings: composeServiceSettings{Build: true, PullPolicy: "always"}, reason: "pull_policy: always"},
+		"an image pinned":                {image: pinned, settings: composeServiceSettings{Image: pinned}, reason: "pinned by digest"},
+		"another image now":              {settings: composeServiceSettings{Image: "nginx:1.29"}, reason: `names image "nginx:1.29"`},
+		"the tag did not move":           {settings: composeServiceSettings{Image: "nginx:latest"}, pulled: "sha256:old", reason: "still names the image"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			withTempUpdateStatusPath(t)
@@ -203,6 +203,57 @@ func TestUpdateComposeContainerIsNotRolledBackWhereTheTagCannotBePutBack(t *test
 				t.Fatalf("tags %v, restores %v; want the host left alone", tags, commands.restores)
 			}
 		})
+	}
+}
+
+// A service with a build section takes the tag back like one that is pulled,
+// whether its files name the image or leave Compose its default name.
+func TestUpdateComposeContainerRollsBackAServiceWithABuildSection(t *testing.T) {
+	for name, tc := range map[string]struct {
+		image    string // what the container was created from
+		settings composeServiceSettings
+		tag      string
+	}{
+		"an image and a build section": {image: "nginx:latest", settings: composeServiceSettings{Image: "nginx:latest", Build: true}, tag: "docker.io/library/nginx:latest"},
+		"a build section alone":        {image: "media-web", settings: composeServiceSettings{Build: true}, tag: "docker.io/library/media-web:latest"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			withTempUpdateStatusPath(t)
+			before, fake, restored := composeUpdateFixture()
+			before.Config.Image = tc.image
+			commands := &composeRollbackFake{}
+			rollback := commands.rollback(fake, map[string]composeServiceSettings{"web": tc.settings}, restored)
+
+			_, err := updateComposeContainerWithRunner(t.Context(), fake, rollback, before, composeTestTarget, "web", updateResultFor(before), pulledAndUp, nil)
+			if !errors.As(err, new(rolledBackError)) {
+				t.Fatalf("error = %v, want a rolled back update", err)
+			}
+			if tags := tagCalls(fake.calls); !reflect.DeepEqual(tags, []string{"tag:sha256:old:" + tc.tag}) {
+				t.Fatalf("tags = %v, want the tag %s put back on the old image", tags, tc.tag)
+			}
+			if !reflect.DeepEqual(commands.restores, [][]string{{"web"}}) {
+				t.Fatalf("restored services = %v, want web", commands.restores)
+			}
+		})
+	}
+}
+
+// A rollback's `up` neither pulls nor builds: a service with a build section,
+// or with pull_policy: build, would otherwise build the image it undoes.
+func TestComposeUpFromLocalImagesPullsAndBuildsNothing(t *testing.T) {
+	dir := t.TempDir()
+	args := filepath.Join(dir, "args")
+	if err := os.WriteFile(filepath.Join(dir, "docker"), []byte("#!/bin/sh\necho \"$*\" > "+args+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	if err := composeUpFromLocalImages(t.Context(), composeTestTarget, []string{"web", "worker"}, nil); err != nil {
+		t.Fatalf("composeUpFromLocalImages: %v", err)
+	}
+	called, _ := os.ReadFile(args)
+	if got := strings.TrimSpace(string(called)); !strings.HasSuffix(got, "--file compose.yml up -d --no-deps --pull never --no-build web worker") {
+		t.Fatalf("docker called with %q", got)
 	}
 }
 

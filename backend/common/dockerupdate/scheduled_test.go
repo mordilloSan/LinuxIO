@@ -39,7 +39,7 @@ func TestRegistryLookupCacheReusesOnlySuccessfulLookups(t *testing.T) {
 	}
 	registry := newRegistryLookupCache(fake)
 
-	statuses, _, err := checkContainerImageUpdates(t.Context(), registry, []containerImageUpdateTarget{{
+	statuses, _, err := checkContainerImageUpdates(t.Context(), registry, nil, []containerImageUpdateTarget{{
 		ContainerID: "container-id", ContainerName: "speedtest-tracker", ImageID: "image-id", ImageRef: imageRef,
 	}}, time.Now())
 	if err != nil || len(statuses) != 1 || statuses[0].Err == "" {

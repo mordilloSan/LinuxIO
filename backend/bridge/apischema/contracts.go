@@ -107,7 +107,7 @@ var StringEnums = map[string][]string{
 	"AutoUpdateBackend":             {"apt-unattended", "mintupdate-automation", "dnf-automatic", "dnf5-automatic"},
 	"DockerContainerAutoUpdateMode": {"update", "check_only"},
 	"DockerUpdateNotify":            {"never", "on_failure", "on_change"},
-	"DockerUpdateCheckState":        {"current", "available", "uncheckable", "error"},
+	"DockerUpdateCheckState":        {"current", "available", "uncheckable", "built", "error"},
 	"ContainerMetricsStatus":        enumNames(ContainerMetricsStatusAvailable, ContainerMetricsStatusStale, ContainerMetricsStatusUnavailable, ContainerMetricsStatusNotRunning),
 	"ConfigStorageMode":             enumNames(userconfig.StorageModeHome, userconfig.StorageModeFallback, userconfig.StorageModeMemory),
 	"FileUploadOwner":               {"session"},

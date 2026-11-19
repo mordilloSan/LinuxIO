@@ -78,7 +78,7 @@ func RunScheduled(ctx context.Context, configPath string, report func(message st
 			return containers.Items, err
 		},
 		check: func(ctx context.Context, summaries []container.Summary) (DockerUpdateCheckResult, error) {
-			return runScheduledUpdateCheck(ctx, registry, summaries, notify.DockerUpdatesAvailable)
+			return runScheduledUpdateCheck(ctx, registry, classifyComposeBuilt(cli), summaries, notify.DockerUpdatesAvailable)
 		},
 		update: func(ctx context.Context, summaries, all []container.Summary, opts DockerContainerAutoUpdateOptions, announce func(string)) ([]ContainerOutcome, error) {
 			return runScheduledUpdates(ctx, cli, registry, summaries, all, opts, alertReport, announce)
@@ -247,7 +247,7 @@ func scheduledUpdateSelection(opts DockerContainerAutoUpdateOptions, containers 
 }
 
 // runScheduledUpdateCheck checks containers and returns what it found.
-func runScheduledUpdateCheck(ctx context.Context, cli imageUpdateCheckClient, containers []container.Summary, reportAvailable bool) (DockerUpdateCheckResult, error) {
+func runScheduledUpdateCheck(ctx context.Context, cli imageUpdateCheckClient, classify builtClassifier, containers []container.Summary, reportAvailable bool) (DockerUpdateCheckResult, error) {
 	targets := make([]containerImageUpdateTarget, 0, len(containers))
 	for _, summary := range containers {
 		targets = append(targets, containerImageUpdateTarget{
@@ -255,9 +255,10 @@ func runScheduledUpdateCheck(ctx context.Context, cli imageUpdateCheckClient, co
 			ContainerName: PrimaryContainerName(summary),
 			ImageID:       summary.ImageID,
 			ImageRef:      summary.Image,
+			Labels:        summary.Labels,
 		})
 	}
-	statuses, result, err := checkContainerImageUpdates(ctx, cli, targets, time.Now())
+	statuses, result, err := checkContainerImageUpdates(ctx, cli, classify, targets, time.Now())
 	if err != nil {
 		return DockerUpdateCheckResult{}, err
 	}

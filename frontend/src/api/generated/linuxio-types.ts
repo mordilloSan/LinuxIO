@@ -1251,6 +1251,7 @@ export interface DockerContainerUpdateProgress {
 
 export interface DockerContainerUpdateRequest {
   containerId: string;
+  rebuild?: boolean;
 }
 
 export interface DockerContainerUpdateResult {
@@ -1456,6 +1457,7 @@ export interface DockerSystemPruneResponse {
 }
 
 export interface DockerUpdateCheckResult {
+  built: number;
   checked: number;
   errors: number;
   uncheckable: number;
@@ -1466,6 +1468,7 @@ export type DockerUpdateCheckState =
   | "current"
   | "available"
   | "uncheckable"
+  | "built"
   | "error";
 
 export type DockerUpdateNotify = "never" | "on_failure" | "on_change";
@@ -4267,7 +4270,7 @@ export interface LinuxIOSchema {
       result: void;
     };
     update_container: {
-      input: [containerId: string];
+      input: [request: DockerContainerUpdateRequest];
       request: DockerContainerUpdateRequest;
       result: DockerContainerUpdateResult;
       progress: TaskProgress<DockerContainerUpdateProgress>;

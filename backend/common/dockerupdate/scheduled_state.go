@@ -20,6 +20,7 @@ type scheduledUpdateState struct {
 	ctx           context.Context
 	cli           *client.Client
 	registry      imageUpdateCheckClient
+	classify      builtClassifier // tells the containers a Compose service builds
 	allContainers []container.Summary
 	dependencyCli ContainerClient
 	readiness     containerReadinessClient // inspects a replaced Compose container
@@ -48,6 +49,7 @@ func newScheduledUpdateState(ctx context.Context, cli *client.Client) *scheduled
 		ctx:           ctx,
 		cli:           cli,
 		registry:      cli,
+		classify:      classifyComposeBuilt(cli),
 		dependencyCli: cli,
 		readiness:     cli,
 		rollback:      newComposeRollback(cli),
@@ -98,7 +100,7 @@ func (s *scheduledUpdateState) replaced(before container.InspectResponse, newIma
 }
 
 func (s *scheduledUpdateState) prepare(summary container.Summary) error {
-	candidate, err := inspectScheduledUpdateCandidate(s.ctx, s.cli, s.registry, summary)
+	candidate, err := inspectScheduledUpdateCandidate(s.ctx, s.cli, s.registry, s.classify, summary)
 	if err != nil {
 		if ctxErr := s.ctx.Err(); ctxErr != nil {
 			return ctxErr
@@ -256,13 +258,14 @@ func inspectScheduledUpdateCandidate(
 	ctx context.Context,
 	cli *client.Client,
 	registry imageUpdateCheckClient,
+	classify builtClassifier,
 	summary container.Summary,
 ) (scheduledUpdateCandidate, error) {
 	inspectResult, err := cli.ContainerInspect(ctx, summary.ID, client.ContainerInspectOptions{})
 	if err != nil {
 		return scheduledUpdateCandidate{}, fmt.Errorf("inspect scheduled container %q: %w", PrimaryContainerName(summary), err)
 	}
-	return inspectContainerUpdateCandidate(ctx, registry, inspectResult.Container)
+	return inspectContainerUpdateCandidate(ctx, registry, classify, inspectResult.Container)
 }
 
 func (s *scheduledUpdateState) recordCandidateError(inspect container.InspectResponse, err error) {

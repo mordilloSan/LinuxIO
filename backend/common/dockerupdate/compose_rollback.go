@@ -184,9 +184,12 @@ func (r composeRollback) run(ctx context.Context, target ComposeTarget, imageRef
 }
 
 // check refuses a rollback the tag cannot carry: an image pinned by digest
-// has no tag to move, a service built on the host or pulled at every `up`
-// (pull_policy: always) would not stay on the old image, and a service whose
-// files now name another image would not be brought up on this one.
+// has no tag to move, a service pulled at every `up` (pull_policy: always)
+// would not stay on the old image, and a service whose files now name another
+// image would not be brought up on this one. A service with a build section
+// is rolled back like one that is pulled: the `up` of a rollback builds
+// nothing. One that names no image runs Compose's default name for it, the
+// tag its container was created from.
 func (r composeRollback) check(ctx context.Context, target ComposeTarget, imageRef string, services []composeRollbackService) error {
 	_, _, pinned, err := NormalizeImageReference(imageRef)
 	if err != nil {
@@ -208,11 +211,9 @@ func (r composeRollback) check(ctx context.Context, target ComposeTarget, imageR
 		switch {
 		case !ok:
 			return fmt.Errorf("%w: the project no longer has service %q", errNotRolledBack, service.Service)
-		case setting.Build:
-			return fmt.Errorf("%w: service %q has a build section", errNotRolledBack, service.Service)
 		case strings.EqualFold(setting.PullPolicy, "always"):
 			return fmt.Errorf("%w: service %q has pull_policy: always", errNotRolledBack, service.Service)
-		case normalizedReference(setting.Image) != imageRef:
+		case setting.Image != "" && normalizedReference(setting.Image) != imageRef:
 			return fmt.Errorf("%w: service %q now names image %q", errNotRolledBack, service.Service, setting.Image)
 		}
 	}

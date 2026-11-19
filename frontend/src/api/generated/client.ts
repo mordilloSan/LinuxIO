@@ -234,8 +234,7 @@ const linuxio = {
       field: "containerId",
     }),
     update_container: defineMutation("docker", "update_container", {
-      kind: "field",
-      field: "containerId",
+      kind: "object",
     }),
     validate_compose: defineCallWithRequest("docker.validate_compose"),
     validate_stack_directory: defineCallWithRequest(

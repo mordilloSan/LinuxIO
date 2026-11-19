@@ -26,6 +26,7 @@ const (
 	DockerUpdateCheckStateCurrent     = dockerupdate.DockerUpdateCheckStateCurrent
 	DockerUpdateCheckStateAvailable   = dockerupdate.DockerUpdateCheckStateAvailable
 	DockerUpdateCheckStateUncheckable = dockerupdate.DockerUpdateCheckStateUncheckable
+	DockerUpdateCheckStateBuilt       = dockerupdate.DockerUpdateCheckStateBuilt
 	DockerUpdateCheckStateError       = dockerupdate.DockerUpdateCheckStateError
 )
 

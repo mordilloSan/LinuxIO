@@ -2,6 +2,7 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -55,8 +56,12 @@ type ComposeProgress = dockerupdate.ComposeProgress
 
 const dockerUpdateRoute = "docker.update_container"
 
-// updateContainer is the update engine; tests replace it.
-var updateContainer = dockerupdate.UpdateContainerWait
+// updateContainer and rebuildContainer are the update engine; tests replace
+// them.
+var (
+	updateContainer  = dockerupdate.UpdateContainerWait
+	rebuildContainer = dockerupdate.RebuildContainerWait
+)
 
 var dockerTaskRoutes = dockerTaskBindings(runtime.Runtime{}).Routes()
 
@@ -82,14 +87,35 @@ func handleUpdateContainer(ctx context.Context, req apischema.DockerContainerUpd
 	if err := dockerupdate.ValidateTarget(req.ContainerID); err != nil {
 		return apischema.DockerContainerUpdateResult{}, fmt.Errorf("%w: %w", bridgeipc.ErrInvalidArgs, err)
 	}
+	run := updateContainer
+	if req.Rebuild {
+		run = rebuildContainer
+	}
 	// A job queues behind another update: lock wait 0 waits until ctx ends.
-	result, err := updateContainer(ctx, req.ContainerID, 0, func(phase, message string) {
-		bridgeipc.ReportProgress(ctx, apischema.DockerContainerUpdateProgress{Phase: phase, Message: message}.ProgressEnvelope())
+	result, err := run(ctx, req.ContainerID, 0, func(phase, message string) {
+		progress := apischema.DockerContainerUpdateProgress{Phase: phase, Message: message}.ProgressEnvelope()
+		if phase != dockerupdate.ProgressPhaseBuildOutput {
+			bridgeipc.ReportProgress(ctx, progress)
+			return
+		}
+		// A build's output goes to the page that follows the job, as Compose
+		// output does: not stored as the job's progress, recorded or sent to
+		// every session.
+		if task, ok := bridgeipc.TaskFromContext(ctx); ok {
+			task.ReportTransientProgress(progress)
+		}
 	})
+	if errors.Is(err, dockerupdate.ErrNotRebuildable) {
+		return apischema.DockerContainerUpdateResult{}, fmt.Errorf("%w: %w", bridgeipc.ErrConflict, err)
+	}
 	if err != nil {
 		return apischema.DockerContainerUpdateResult{}, err
 	}
-	if result.Updated {
+	switch {
+	case result.Updated && req.Rebuild:
+		slog.Info("rebuilt Docker container", "component", "docker", "subsystem", "update",
+			"container", result.ContainerName, "old_image", result.PreviousImageID, "new_image", result.NewImageID)
+	case result.Updated:
 		slog.Info("updated Docker container", "component", "docker", "subsystem", "update",
 			"container", result.ContainerName, "old_image", result.PreviousImageID, "new_image", result.NewImageID)
 	}

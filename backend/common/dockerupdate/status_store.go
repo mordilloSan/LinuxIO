@@ -217,6 +217,7 @@ func validDockerUpdateCheckState(state DockerUpdateCheckState) bool {
 	case DockerUpdateCheckStateCurrent,
 		DockerUpdateCheckStateAvailable,
 		DockerUpdateCheckStateUncheckable,
+		DockerUpdateCheckStateBuilt,
 		DockerUpdateCheckStateError:
 		return true
 	default:
@@ -291,10 +292,22 @@ func updateStatusLockPath() string {
 // markContainerCurrent records a freshly updated container (which may have a
 // new ID after recreation) as having no pending update.
 func markContainerCurrent(ctx context.Context, oldContainerID string, inspect container.InspectResponse) {
+	markContainerUpToDate(ctx, oldContainerID, inspect, DockerUpdateCheckStateCurrent, "")
+}
+
+// markContainerBuilt records a freshly rebuilt container (which may have a
+// new ID after recreation) as running the image its Compose service builds,
+// for reason (builtReason).
+func markContainerBuilt(ctx context.Context, oldContainerID string, inspect container.InspectResponse, reason string) {
+	markContainerUpToDate(ctx, oldContainerID, inspect, DockerUpdateCheckStateBuilt, reason)
+}
+
+func markContainerUpToDate(ctx context.Context, oldContainerID string, inspect container.InspectResponse, state DockerUpdateCheckState, reason string) {
 	status := ImageUpdateStatus{
 		ContainerID:   inspect.ID,
 		ContainerName: strings.TrimPrefix(inspect.Name, "/"),
-		CheckState:    DockerUpdateCheckStateCurrent,
+		CheckReason:   reason,
+		CheckState:    state,
 		ImageID:       inspect.Image,
 		CheckedAt:     time.Now(),
 	}
@@ -303,7 +316,7 @@ func markContainerCurrent(ctx context.Context, oldContainerID string, inspect co
 	}
 
 	if err := mergeUpdateStatuses(ctx, []ImageUpdateStatus{status}, oldContainerID); err != nil {
-		slog.Warn("failed to mark the image current for Docker container "+status.ContainerName, "component", "docker", "container", status.ContainerName, "container_id", inspect.ID, "error", err)
+		slog.Warn("failed to record the update status of Docker container "+status.ContainerName, "component", "docker", "container", status.ContainerName, "container_id", inspect.ID, "state", state, "error", err)
 		return
 	}
 	resolveDockerUpdateAlert(ctx, inspect.Name)

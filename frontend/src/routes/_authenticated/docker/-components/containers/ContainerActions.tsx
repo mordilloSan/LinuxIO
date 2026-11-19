@@ -25,7 +25,7 @@ interface ContainerActionsProps {
   actionPending?: boolean;
   container: Pick<
     ContainerInfo,
-    "Id" | "Labels" | "State" | "updateAvailable" | "url"
+    "Id" | "Labels" | "State" | "updateAvailable" | "updateCheckState" | "url"
   >;
   /** `card` and `full` show every action as an icon (`card` packs them
    * tighter and leaves Edit to the details card, for the grid cards); `icons` and `menu` keep the secondary ones
@@ -68,7 +68,7 @@ const ContainerActions = ({
   const [forceRemove, setForceRemove] = useState(false);
   const navigate = useNavigate();
   const { privileged } = useAuth();
-  const { canUpdate, isUpdating, startUpdate, updating } =
+  const { canUpdate, isUpdating, startRebuild, startUpdate, updating } =
     useDockerUpdateOperation();
 
   const { mutate: startContainer, isPending: isStartPending } =
@@ -219,6 +219,20 @@ const ContainerActions = ({
             label: isUpdatePending ? "Updating" : "Update",
             loading: isUpdatePending,
             onClick: () => startUpdate(container.Id, name),
+          },
+        ]
+      : []),
+    // An image a Compose service builds on this host has no registry to
+    // check; rebuilding it with fresh base images is its update.
+    ...(container.updateCheckState === "built" && container.State === "running"
+      ? [
+          {
+            detailsOnly: true,
+            disabled: !canUpdate || isUpdatePending,
+            icon: "mdi:hammer-wrench",
+            label: isUpdatePending ? "Rebuilding" : "Rebuild and update",
+            loading: isUpdatePending,
+            onClick: () => startRebuild(container.Id, name),
           },
         ]
       : []),
