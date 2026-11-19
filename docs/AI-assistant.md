@@ -269,7 +269,9 @@ advertises the matching capability.
   "Copied" for two seconds in the theme's success colour with a tick; when the
   write is refused (a plain-HTTP origin has no Clipboard API) it reads "Copy
   failed" in the error colour, and a screen reader hears either from a status
-  line. It is not the theme's code block colour
+  line (`useCopyResult` in `components/ui`, which the Copy logs buttons of the
+  logs pages share through `AppCopyIconButton`). It is not the theme's code
+  block colour
   (`codeBackground`), which is the surface of the log views. Fenced code is
   syntax-highlighted using
   the file editor's languages (blocks over 20,000 characters stay plain). User,

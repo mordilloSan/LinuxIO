@@ -24,6 +24,7 @@ import AppActionIconButton from "@/components/ui/AppActionIconButton";
 import AppAlert from "@/components/ui/AppAlert";
 import AppAutocomplete from "@/components/ui/AppAutocomplete";
 import Chip from "@/components/ui/AppChip";
+import AppCopyIconButton from "@/components/ui/AppCopyIconButton";
 import AppFormControlLabel from "@/components/ui/AppFormControlLabel";
 import AppPaper from "@/components/ui/AppPaper";
 import AppSearchField from "@/components/ui/AppSearchField";
@@ -32,7 +33,6 @@ import AppSwitch from "@/components/ui/AppSwitch";
 import AppTooltip from "@/components/ui/AppTooltip";
 import AppTypography from "@/components/ui/AppTypography";
 import { useLiveStream } from "@/hooks/useLiveStream";
-import { copyToClipboard } from "@/utils/clipboard";
 import { logSourceHue } from "@/utils/logHue";
 import { withPromiseCleanup } from "@/utils/withPromiseCleanup";
 
@@ -1138,16 +1138,13 @@ const GeneralLogsPage = ({
     ],
   );
 
-  const handleCopy = () => {
-    if (filteredLogs.length === 0) return;
-    const text = filteredLogs
+  const copyText = () =>
+    filteredLogs
       .map(
         (log) =>
           `${log.timestamp} [${getPriorityLabel(log.priority)}] ${log.identifier}: ${logLineText(log)}`,
       )
       .join("\n");
-    void copyToClipboard(text);
-  };
 
   const handleDownload = () => {
     if (filteredLogs.length === 0) return;
@@ -1432,12 +1429,11 @@ const GeneralLogsPage = ({
             onClick={() => void loadOlderLogs()}
           />
         )}
-        <AppActionIconButton
+        <AppCopyIconButton
           disabled={filteredLogs.length === 0}
-          icon="mdi:content-copy"
+          getText={copyText}
           iconSize={20}
           label="Copy logs"
-          onClick={handleCopy}
         />
         <AppActionIconButton
           disabled={filteredLogs.length === 0}

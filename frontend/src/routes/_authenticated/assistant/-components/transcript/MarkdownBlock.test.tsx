@@ -53,7 +53,7 @@ describe("MarkdownBlock", () => {
       await user.click(button);
       await waitFor(() => expect(button).toHaveTextContent("Copied"));
       expect(button).toHaveAttribute("data-state", "copied");
-      expect(screen.getByRole("status")).toHaveTextContent("Code copied");
+      expect(screen.getByRole("status")).toHaveTextContent("Copied");
 
       act(() => {
         vi.advanceTimersByTime(2000);

@@ -1,5 +1,5 @@
 import { Icon } from "@iconify/react";
-import type { CSSProperties, MouseEvent, ReactNode } from "react";
+import type { CSSProperties, MouseEvent, ReactElement, ReactNode } from "react";
 
 import AppCircularProgress from "@/components/ui/AppCircularProgress";
 import AppIconButton from "@/components/ui/AppIconButton";
@@ -14,7 +14,8 @@ export interface AppActionIconButtonProps {
   className?: string;
   color?: string;
   disabled?: boolean;
-  icon: string;
+  /** An icon name, or an element that draws the icon itself. */
+  icon: string | ReactElement;
   iconSize?: number;
   label?: ReactNode;
   loading?: boolean;
@@ -42,7 +43,10 @@ export default function AppActionIconButton({
   tooltip,
 }: AppActionIconButtonProps) {
   const isDisabled = disabled || loading;
-  const accessibleLabel = ariaLabel ?? labelToAria(label) ?? icon;
+  const accessibleLabel =
+    ariaLabel ??
+    labelToAria(label) ??
+    (typeof icon === "string" ? icon : undefined);
   const showTooltip = tooltip === undefined ? label !== undefined : tooltip;
 
   const button = (
@@ -65,8 +69,10 @@ export default function AppActionIconButton({
     >
       {loading ? (
         <AppCircularProgress color="inherit" size={14} />
-      ) : (
+      ) : typeof icon === "string" ? (
         <Icon height={iconSize} icon={icon} width={iconSize} />
+      ) : (
+        icon
       )}
     </AppIconButton>
   );

@@ -3,10 +3,10 @@ import { useMemo, useState } from "react";
 
 import { openChannel } from "@/api";
 import AppActionIconButton from "@/components/ui/AppActionIconButton";
+import AppCopyIconButton from "@/components/ui/AppCopyIconButton";
 import AppSearchField from "@/components/ui/AppSearchField";
 import AppSelect from "@/components/ui/AppSelect";
 import { useLogStream } from "@/hooks/useLogStream";
-import { copyToClipboard } from "@/utils/clipboard";
 
 import LogDialog from "./LogDialog";
 
@@ -55,10 +55,6 @@ const LogsDialog = ({
       .join("\n");
   }, [logs, search]);
 
-  const handleCopy = () => {
-    void copyToClipboard(filtered);
-  };
-
   const handleDownload = () => {
     if (!filtered) return;
     const blob = new Blob([filtered], { type: "text/plain" });
@@ -82,11 +78,10 @@ const LogsDialog = ({
       error={error}
       extraActions={
         <>
-          <AppActionIconButton
-            icon="mdi:content-copy"
+          <AppCopyIconButton
+            getText={() => filtered}
             iconSize={20}
             label="Copy logs"
-            onClick={handleCopy}
           />
           <AppActionIconButton
             icon="mdi:download"
