@@ -96,13 +96,22 @@
   cursor: pointer;
 }
 
-/* Brightening the row's own surface keeps zebra striping and selection legible
-   underneath the hover, and keeps hovering from reading as selecting — a tinted
-   hover is hard to tell from the primary-tinted selected state. */
+/* Hover brightens the stripe colour on every row, so a plain row and a striped
+   one light up alike. A selected row brightens its own tint instead, which
+   keeps it reading as selected and keeps hovering from reading as selecting —
+   a tinted hover is hard to tell from the primary-tinted selected state. */
 .app-dt__row--interactive:hover {
   background-color: color-mix(
     in srgb,
-    var(--app-dt-row-bg),
+    var(--app-dt-alt-bg),
+    var(--app-palette-text-primary) 7%
+  );
+}
+
+.app-dt__row--interactive.app-dt__row--selected:hover {
+  background-color: color-mix(
+    in srgb,
+    var(--app-dt-selected-bg),
     var(--app-palette-text-primary) 7%
   );
 }

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Locator, test } from "@playwright/test";
 
 // What the page records of the table's scroll events (see the drag below).
 type ScrollRecord = Window & {
@@ -314,3 +314,30 @@ for (const scheme of ["dark", "light"] as const) {
     expect(new Set(idle.styles.map(([level]) => level)).size).toBe(8);
   });
 }
+
+test("lights plain and striped journal rows alike on hover", async ({
+  page,
+}) => {
+  await page.goto("/logs");
+  await expect(page.getByText(/^1000 of 5000 shown/)).toBeVisible();
+  // Read the settled colours, not a frame of the row's background ease.
+  await page.addStyleTag({
+    content: ".app-dt__row { transition: none !important; }",
+  });
+  const rows = page
+    .getByRole("table", { name: "General logs" })
+    .locator(".app-dt__row--interactive");
+  const plain = rows.filter({ hasText: "Journal entry 4999:" });
+  const striped = rows.filter({ hasText: "Journal entry 4998:" });
+  await expect(plain).not.toHaveClass(/app-dt__row--alt/);
+  await expect(striped).toHaveClass(/app-dt__row--alt/);
+  const background = (row: Locator) =>
+    row.evaluate((element) => getComputedStyle(element).backgroundColor);
+  const stripe = await background(striped);
+
+  await striped.hover();
+  const hovered = await background(striped);
+  expect(hovered).not.toBe(stripe);
+  await plain.hover();
+  expect(await background(plain)).toBe(hovered);
+});
