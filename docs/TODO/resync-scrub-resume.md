@@ -3,8 +3,8 @@
 ## Status
 
 Phases 0 to 3 built for v0.54.0 and reviewed twice, on 2026-11-18 and
-2026-11-19, with every finding fixed (F1 to F7, N1, N2); Phases 4 and 5 are
-not built. Decided 2026-11-18, from the backlog
+2026-11-19, with every finding fixed (F1 to F7, N1, N2); Phase 4 built and
+reworked after its review (P4-1, P4-2). Phase 5 is not built. Decided 2026-11-18, from the backlog
 item "Continue the scrub of a pool resync after a power cut", now removed.
 
 **Recommended design:** the resync stays a scheduled run. Its next run, which
@@ -36,7 +36,8 @@ resync scrubs every disk from the start again.
 
 Phases 1 to 3 changed the Scrub row (`resyncScrub` now calls
 `continueScrub` with the episode's run, and `Scrub` is gone) and closed F2;
-F1 waits for Phase 4.
+Phase 4 closed F1 (`resyncConvert` follows the resync's own convert the
+kernel continued).
 
 | Step | What the code does | Where |
 |---|---|---|
@@ -193,9 +194,22 @@ Also rejected:
    since a member's DEV_INFO path can name no device node (`/dev/root`); and
    after a failed final flush the record is the last one a flush preceded,
    counters included, marked aborted.
-7. Phase 4: the convert follows a balance the kernel continued at mount, via
-   `ResumeBalance` with `paused` false, instead of failing with "a balance
-   is already running". This fixes F1.
+7. Phase 4: the convert follows a balance the kernel continued at mount
+   instead of failing with "a balance is already running". This fixes F1.
+   As built after the review (P4-1, P4-2): `resyncConvert` follows only a
+   running balance whose arguments, as BALANCE_PROGRESS reports them, are
+   its own soft convert; any other running balance and any paused one fail
+   the attempt, so it resumes nothing, and when stopped it stops watching
+   without cancelling. Before the pool is declared whole, `checkConverted`
+   requires `convertTargets` to find nothing left, system chunks included,
+   after the write check, so a pool that went degraded meanwhile reads as a
+   new episode. After the third review (P4-3): the resync records the
+   targets of the convert it starts (`convertData`, `convertMetadata` in
+   `btrfs-pools.json`, cleared with the episode) and compares the kernel's
+   balance with that record, since a convert of both kinds cut midway can
+   leave one done; without a record it compares with what is left. This is
+   unit-tested only: the root test's degraded writes put no metadata in
+   single chunks, so it has no two-kind convert to cut.
 
 ### Events
 
@@ -331,7 +345,10 @@ correction or after the end.
 
 - `replacePowerCut` asserts that devid 2's UUID changed (U10).
 - Phase 4: a step pauses the resync's convert, remounts, and `Resync` must
-  follow the balance to the end.
+  follow the balance to the end. Built as `resyncWithItsConvertCut` and
+  `followTheKernelsBalance`; the disks grew to 3 GiB and 1 GiB more is
+  written while a disk is missing, so the convert has four single chunks
+  or more and a pause leaves some for the kernel.
 
 ### VM power-cut check
 

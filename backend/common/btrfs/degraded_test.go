@@ -1255,3 +1255,284 @@ func TestResyncCheckFailsForADeviceAddedAfterTheScrub(t *testing.T) {
 	wantScrubCalls(t, k, "SCRUB 1", "SCRUB 2", "SCRUB 3", "SCRUB 1", "SCRUB 2", "SCRUB 3", "SCRUB 4")
 	wantWhole(t)
 }
+
+// resyncConvertBalance is the soft data convert to raid1 a resync starts,
+// as the kernel reports it once it continued the balance at mount.
+func resyncConvertBalance(state uint64) balanceArgs {
+	return balanceArgs{
+		Flags: balanceData | balanceResume, State: state,
+		Data: balanceFilter{Flags: balanceArgsConvert | balanceArgsSoft, Target: bgRaid1},
+	}
+}
+
+// convertKernel is raid1Kernel with a single data chunk to convert and a
+// balance the kernel already holds, reported by progress until it ends.
+func convertKernel(progress func(polls int) (balanceArgs, error)) *fakeKernel {
+	k := uuidKernel()
+	k.spaces = append(k.spaces, spaceInfo{Flags: bgData, TotalBytes: 1 << 30, UsedBytes: 1 << 30})
+	polls := 0
+	k.balanceProgress = func() (balanceArgs, error) {
+		polls++
+		return progress(polls)
+	}
+	k.balance = func(*balanceArgs) error { return unix.EINPROGRESS }
+	return k
+}
+
+// uuidKernel is raid1Kernel with a UUID for each device, as the scrubbed
+// record names them.
+func uuidKernel() *fakeKernel {
+	k := raid1Kernel()
+	k.devices[1].uuid, k.devices[2].uuid = devUUID(1), devUUID(2)
+	return k
+}
+
+// scrubbedEpisode stores a pool whose resync scrub already counts.
+func scrubbedEpisode(t *testing.T) {
+	t.Helper()
+	if err := updatePoolStates(t.Context(), func(s map[string]poolState) {
+		s[dataUUID] = poolState{Generation: 9, Degraded: true, Scrubbed: true, ResyncRun: resyncRunID}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	first := time.Unix(1700000000, 0)
+	saveScrubRecord(t.Context(), dataUUID, scrubRecord{
+		Status: "finished", StartedAt: &first, FinishedAt: &first, Percent: 100, Run: resyncRunID,
+		Devices: map[int]scrubDeviceRecord{1: {UUID: devUUID(1), Done: true}, 2: {UUID: devUUID(2), Done: true}},
+	})
+}
+
+// wantNoBalanceCall checks that the resync neither started, resumed nor
+// canceled a balance.
+func wantNoBalanceCall(t *testing.T, k *fakeKernel) {
+	t.Helper()
+	if calls := k.Calls(); slices.ContainsFunc(calls, func(c string) bool { return strings.HasPrefix(c, "BALANCE") }) {
+		t.Fatalf("calls = %v, want no balance started, resumed or canceled", calls)
+	}
+}
+
+// A power cut or a shutdown during the resync's convert leaves the balance
+// item, and the kernel continues the balance when the pool is mounted
+// read-write (volumes.c btrfs_resume_balance_async) while the scrub already
+// counts. The next resync recognises its own convert by the arguments the
+// kernel reports and follows it to the end, rather than failing on the new
+// balance the kernel refuses with EINPROGRESS.
+func TestResyncFollowsABalanceTheKernelContinued(t *testing.T) {
+	var k *fakeKernel
+	k = convertKernel(func(polls int) (balanceArgs, error) {
+		if polls > 3 {
+			if polls == 4 { // the kernel's balance converted the single chunk
+				k.spaces = k.spaces[:len(k.spaces)-1]
+			}
+			return balanceArgs{}, unix.ENOTCONN
+		}
+		a := resyncConvertBalance(balanceStateRunning)
+		a.Stat = balanceProgress{Expected: 4, Completed: uint64(polls)}
+		return a, nil
+	})
+	stubKernel(t, k)
+	scrubbedEpisode(t)
+
+	if err := Resync(t.Context(), dataUUID, nil); err != nil {
+		t.Fatal(err)
+	}
+	wantNoBalanceCall(t, k)
+	wantWhole(t)
+}
+
+// A running balance that is not the resync's own convert, an admin's or a
+// job's, is not followed: the attempt fails as before, saying so, and the
+// balance is left alone. A paused balance, even the resync's own, is not
+// resumed: an admin paused it, or mounted with skip_balance, the recovery
+// option for a balance that fails at mount.
+func TestResyncTakesOverNoBalanceItDidNotStart(t *testing.T) {
+	usage := resyncConvertBalance(balanceStateRunning)
+	usage.Data = balanceFilter{Flags: balanceArgsUsage, Usage: 50}
+	for _, tc := range []struct {
+		name    string
+		balance balanceArgs
+		reason  string
+	}{
+		{"an admin's running balance", usage, "not the resync's convert"},
+		{"its own convert, paused", resyncConvertBalance(0), "a paused balance waits"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// It ends after a while, so a resync that follows it returns.
+			k := convertKernel(func(polls int) (balanceArgs, error) {
+				if polls > 20 {
+					return balanceArgs{}, unix.ENOTCONN
+				}
+				return tc.balance, nil
+			})
+			stubKernel(t, k)
+			scrubbedEpisode(t)
+
+			err := Resync(t.Context(), dataUUID, nil)
+			if err == nil || !strings.Contains(err.Error(), tc.reason) {
+				t.Fatalf("Resync = %v, want it to fail with %q", err, tc.reason)
+			}
+			wantNoBalanceCall(t, k)
+			if states, _ := loadPoolStates(); states[dataUUID].ResyncFailures != 1 || !states[dataUUID].Degraded {
+				t.Fatalf("state = %+v, want one failed attempt", states[dataUUID])
+			}
+		})
+	}
+}
+
+// A resync stopped while it follows its convert, at a shutdown or by a stop
+// of its unit, stops watching and leaves the balance running: the kernel
+// pauses it at unmount and continues it at the next mount.
+func TestResyncLeavesTheBalanceItFollowsWhenStopped(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	k := convertKernel(func(polls int) (balanceArgs, error) {
+		switch {
+		case polls == 3:
+			cancel()
+		case polls > 20: // it ends after a while, so a watch that outlives the stop returns
+			return balanceArgs{}, unix.ENOTCONN
+		}
+		return resyncConvertBalance(balanceStateRunning), nil
+	})
+	stubKernel(t, k)
+	scrubbedEpisode(t)
+
+	if err := Resync(ctx, dataUUID, nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Resync = %v, want it stopped", err)
+	}
+	wantNoBalanceCall(t, k)
+	if states, _ := loadPoolStates(); states[dataUUID].ResyncFailures != 0 {
+		t.Fatalf("state = %+v, want no failed attempt for a stop", states[dataUUID])
+	}
+}
+
+// The pool is declared whole only when nothing is left to convert, by the
+// rule that started the convert: system chunks count with metadata, so a
+// single system chunk beside raid1 metadata fails the attempt.
+func TestResyncFailsWhileChunksStillNeedConverting(t *testing.T) {
+	k := uuidKernel()
+	k.spaces = append(k.spaces, spaceInfo{Flags: bgSystem, TotalBytes: 32 << 20, UsedBytes: 16 << 10})
+	k.balance = func(*balanceArgs) error { return nil } // converts nothing
+	stubKernel(t, k)
+	scrubbedEpisode(t)
+
+	if err := Resync(t.Context(), dataUUID, nil); err == nil || !strings.Contains(err.Error(), "still has chunks to convert") {
+		t.Fatalf("Resync = %v, want the single system chunk to fail it", err)
+	}
+	if states, _ := loadPoolStates(); !states[dataUUID].Degraded {
+		t.Fatalf("state = %+v, want the pool still degraded", states[dataUUID])
+	}
+}
+
+// convertedEpisode stores a scrubbed episode whose resync started a soft
+// convert of data to dataTarget and metadata to metaTarget ("" for none).
+func convertedEpisode(t *testing.T, dataTarget, metaTarget string) {
+	t.Helper()
+	scrubbedEpisode(t)
+	if err := updatePoolStates(t.Context(), func(s map[string]poolState) {
+		state := s[dataUUID]
+		state.ConvertData, state.ConvertMetadata = dataTarget, metaTarget
+		s[dataUUID] = state
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The kernel relocates chunks from the highest address down, whatever their
+// kind, so a convert of data and metadata cut midway can leave only one
+// kind to convert while the kernel continues the whole convert. The resync
+// recognises it by the convert it recorded starting, not by what is left
+// now, and follows it.
+func TestResyncFollowsItsConvertAfterOneKindFinished(t *testing.T) {
+	both := balanceArgs{
+		Flags: balanceData | balanceMetadata | balanceSystem | balanceResume, State: balanceStateRunning,
+		Data: balanceFilter{Flags: balanceArgsConvert | balanceArgsSoft, Target: bgRaid1},
+		Meta: balanceFilter{Flags: balanceArgsConvert | balanceArgsSoft, Target: bgRaid1},
+		Sys:  balanceFilter{Flags: balanceArgsConvert | balanceArgsSoft, Target: bgRaid1},
+	}
+	k := uuidKernel()
+	k.spaces = append(k.spaces, spaceInfo{Flags: bgMetadata, TotalBytes: 256 << 20, UsedBytes: 1 << 20}) // the data is done
+	polls := 0
+	k.balanceProgress = func() (balanceArgs, error) {
+		polls++
+		if polls > 3 {
+			if polls == 4 {
+				k.spaces = k.spaces[:len(k.spaces)-1]
+			}
+			return balanceArgs{}, unix.ENOTCONN
+		}
+		return both, nil
+	}
+	k.balance = func(*balanceArgs) error { return unix.EINPROGRESS }
+	stubKernel(t, k)
+	convertedEpisode(t, "raid1", "raid1")
+
+	if err := Resync(t.Context(), dataUUID, nil); err != nil {
+		t.Fatal(err)
+	}
+	wantNoBalanceCall(t, k)
+	wantWhole(t)
+}
+
+// A running balance unlike the convert the resync recorded is no convert
+// of its own, even when it matches what is left to convert now.
+func TestResyncRefusesABalanceUnlikeItsRecordedConvert(t *testing.T) {
+	k := convertKernel(func(polls int) (balanceArgs, error) {
+		if polls > 20 {
+			return balanceArgs{}, unix.ENOTCONN
+		}
+		return resyncConvertBalance(balanceStateRunning), nil // data to raid1
+	})
+	stubKernel(t, k)
+	convertedEpisode(t, "raid10", "")
+
+	if err := Resync(t.Context(), dataUUID, nil); err == nil || !strings.Contains(err.Error(), "not the resync's convert") {
+		t.Fatalf("Resync = %v, want the balance refused", err)
+	}
+	wantNoBalanceCall(t, k)
+}
+
+// The resync records the convert it starts before it issues it, and the
+// record goes with the episode: cleared when the pool is whole again, and
+// by a degraded run that starts a new episode.
+func TestResyncRecordsItsConvertForTheEpisode(t *testing.T) {
+	k := singleDataKernel(func(*fakeKernel) {
+		if states, _ := loadPoolStates(); states[dataUUID].ConvertData != "raid1" || states[dataUUID].ConvertMetadata != "" {
+			t.Errorf("state while converting = %+v, want the data convert to raid1 recorded", states[dataUUID])
+		}
+	})
+	stubKernel(t, k)
+	resyncEpisode(t, "", nil)
+
+	if err := Resync(t.Context(), dataUUID, nil); err != nil {
+		t.Fatal(err)
+	}
+	wantWhole(t)
+	state := poolState{Degraded: true, ResyncRun: resyncRunID, ConvertData: "raid1", ConvertMetadata: "raid1"}
+	state.markDegraded(nil)
+	if state.ConvertData != "" || state.ConvertMetadata != "" {
+		t.Fatalf("state after a degraded run = %+v, want the convert record cleared", state)
+	}
+}
+
+// A pool that went degraded during the convert is a new episode, not a
+// failed attempt, though new single chunks are then left to convert.
+func TestResyncRefusesAPoolThatWentDegradedDuringTheConvert(t *testing.T) {
+	k := uuidKernel()
+	k.maxID = 3
+	k.devices[3] = &fakeDevice{path: "/dev/sdc1", uuid: devUUID(3), total: 100 << 30, used: 51 << 30, physical: 100 << 30}
+	k.spaces = append(k.spaces, spaceInfo{Flags: bgData, TotalBytes: 1 << 30, UsedBytes: 1 << 30})
+	k.balance = func(*balanceArgs) error {
+		k.devices[3].path = "" // gone; its writes now land on single chunks
+		return nil
+	}
+	stubKernel(t, k)
+	resyncEpisode(t, "", nil)
+
+	if err := Resync(t.Context(), dataUUID, nil); !errors.Is(err, errDiskMissing) {
+		t.Fatalf("Resync = %v, want a missing disk", err)
+	}
+	if states, _ := loadPoolStates(); states[dataUUID].ResyncFailures != 0 {
+		t.Fatalf("state = %+v, want no failed attempt", states[dataUUID])
+	}
+}

@@ -13,8 +13,10 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
+	"unsafe"
 
 	"golang.org/x/sys/unix"
 
@@ -202,8 +204,8 @@ func TestBtrfsDegradedIntegration(t *testing.T) {
 		t: t, ctx: context.Background(), target: filepath.Join(dir, "mnt"), options: []string{"defaults", "noatime", "nofail"},
 		shelf: shelf, dir: dir, files: map[string][32]byte{},
 	}
-	m.a = newLoopDisk(t, filepath.Join(shelf, "a.img"), 2<<30)
-	m.b = newLoopDisk(t, filepath.Join(shelf, "b.img"), 2<<30)
+	m.a = newLoopDisk(t, filepath.Join(shelf, "a.img"), 3<<30)
+	m.b = newLoopDisk(t, filepath.Join(shelf, "b.img"), 3<<30)
 	// Registered after the disks, so it runs before they are detached.
 	t.Cleanup(func() { _ = unix.Unmount(m.target, 0) })
 	var uts unix.Utsname
@@ -280,10 +282,17 @@ func (m *itMirror) bootMountsTheSurvivor() {
 	for i := range 24 {
 		m.write(fmt.Sprintf("during-%02d.bin", i), 16<<20)
 	}
+	// Four single chunks or more, so a convert paused after one has some
+	// left for the kernel to continue.
+	for i := range 64 {
+		m.write(fmt.Sprintf("single-%02d.bin", i), 16<<20)
+	}
 	fs := m.filesystem()
 	t.Logf("allocation while degraded: %+v", fs.Allocation)
-	if !slices.ContainsFunc(fs.Allocation, func(x BtrfsAllocation) bool { return x.Kind == "data" && x.Profile == "single" }) {
-		t.Fatal("no single data chunk was allocated on one disk; the convert step would have nothing to do")
+	if !slices.ContainsFunc(fs.Allocation, func(x BtrfsAllocation) bool {
+		return x.Kind == "data" && x.Profile == "single" && x.TotalBytes >= 4*256<<20
+	}) {
+		t.Fatal("fewer than four single data chunks were allocated on one disk; the convert step would have too little to do")
 	}
 }
 
@@ -337,7 +346,7 @@ func (m *itMirror) resyncRepairsTheReturnedDisk() {
 	t.Logf("cut at %d of %d MiB with %d corrections, devices %+v", before.BytesScrubbed>>20, used>>20, before.CorrectedErrors, cut.Devices)
 
 	calls := (&itPool{t: t, ctx: m.ctx, uuid: m.uuid, mnt: m.target}).scrubCalls()
-	m.must("resync", Resync(m.ctx, m.uuid, nil))
+	m.resyncWithItsConvertCut()
 	// Each device was continued from one byte below its saved offset, not
 	// scanned again from 0.
 	starts := calls()
@@ -360,6 +369,7 @@ func (m *itMirror) resyncRepairsTheReturnedDisk() {
 	case final.CorrectedErrors <= before.CorrectedErrors || final.UncorrectableErrors != 0:
 		t.Fatalf("resync scrub = %+v; want stale copies corrected after the cut as well, none uncorrectable", final)
 	}
+	m.followTheKernelsBalance()
 	fs := m.filesystem()
 	for _, x := range fs.Allocation {
 		if x.Profile != "raid1" {
@@ -374,6 +384,62 @@ func (m *itMirror) resyncRepairsTheReturnedDisk() {
 		t.Fatal("the alerts do not say the pool is whole again with every correction")
 	}
 	m.unmount()
+}
+
+// resyncWithItsConvertCut runs the continued resync until its convert has
+// moved a chunk, then pauses the convert, as a shutdown leaves it: the
+// kernel keeps the balance item and continues it at the next read-write
+// mount, as it does after a power cut. The scrub already counts.
+func (m *itMirror) resyncWithItsConvertCut() {
+	t := m.t
+	live := &itPool{t: t, ctx: m.ctx, uuid: m.uuid, mnt: m.target}
+	done := make(chan error, 1)
+	go func() { done <- Resync(m.ctx, m.uuid, nil) }()
+	live.waitFor("convert", func() bool { return live.exclusiveOp() == "balance" && live.balanceMoved() }, done)
+	paused, err := PauseBalance(m.ctx, m.uuid)
+	m.must("pause the convert", err)
+	err = <-done
+	t.Logf("the resync whose convert was paused: %v", err)
+	if !paused || err == nil || !strings.Contains(err.Error(), "balance paused") {
+		t.Fatalf("pause %v, resync %v; want the convert paused with chunks left: write more while a disk is missing", paused, err)
+	}
+	if s := m.state(); !s.Scrubbed || !s.Degraded {
+		t.Fatalf("state after the convert's cut = %+v, want scrubbed and still degraded", s)
+	}
+}
+
+// followTheKernelsBalance mounts the pool again, where the kernel continues
+// the cut convert, and the next resync must recognise it as its own and
+// follow it to the end, issuing no balance of its own, instead of failing
+// on the new one the kernel refuses.
+func (m *itMirror) followTheKernelsBalance() {
+	t := m.t
+	m.unmount()
+	m.mountComplete("the pool with its convert cut")
+	// The kernel's thread takes the paused balance up just after the mount.
+	deadline := time.Now().Add(10 * time.Second)
+	running, err := balanceStatusOf(m.target)
+	for err == nil && running.State&balanceStateRunning == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+		running, err = balanceStatusOf(m.target)
+	}
+	if err != nil || running.State&balanceStateRunning == 0 {
+		t.Fatalf("no running balance after the mount (state %#x, %v): the kernel did not continue the convert, or finished it first", running.State, err)
+	}
+	t.Logf("the kernel continued the convert at the mount: state %#x, flags %#x, %d of %d chunks", running.State, running.Flags, running.Stat.Completed, running.Stat.Expected)
+	var issued atomic.Int32
+	issue := fsIoctl
+	fsIoctl = func(mnt string, req uintptr, arg unsafe.Pointer) error {
+		if req == iocBalanceV2 {
+			issued.Add(1)
+		}
+		return issue(mnt, req, arg)
+	}
+	defer func() { fsIoctl = issue }()
+	m.must("resync after the mount", Resync(m.ctx, m.uuid, nil))
+	if n := issued.Load(); n != 0 {
+		t.Fatalf("the resync issued %d balances of its own; want it to follow the kernel's", n)
+	}
 }
 
 // mountComplete runs the boot check, which leaves a complete pool to

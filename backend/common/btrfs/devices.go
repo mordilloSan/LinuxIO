@@ -541,6 +541,16 @@ func Balance(ctx context.Context, uuid string, opts BalanceOptions, report func(
 	if opts.DataUsageMax != nil && (*opts.DataUsageMax < 0 || *opts.DataUsageMax > 100) {
 		return fmt.Errorf("usage filter %d is not a percentage", *opts.DataUsageMax)
 	}
+	args := balanceArgsOf(opts)
+	err = runBalance(ctx, fs.Mountpoints[0].Mountpoint, &args, report)
+	if errors.Is(err, unix.EINPROGRESS) {
+		return errors.New("a balance is already running")
+	}
+	return err
+}
+
+// balanceArgsOf is the BALANCE_V2 request for opts, checked by the caller.
+func balanceArgsOf(opts BalanceOptions) balanceArgs {
 	var args balanceArgs
 	convert := uint64(balanceArgsConvert)
 	if opts.Soft {
@@ -565,11 +575,7 @@ func Balance(ctx context.Context, uuid string, opts BalanceOptions, report func(
 	if args.Flags == 0 {
 		args.Flags = balanceData | balanceMetadata | balanceSystem
 	}
-	err = runBalance(ctx, fs.Mountpoints[0].Mountpoint, &args, report)
-	if errors.Is(err, unix.EINPROGRESS) {
-		return errors.New("a balance is already running")
-	}
-	return err
+	return args
 }
 
 var (
@@ -716,14 +722,25 @@ func BalanceResult(ctx context.Context, uuid string, data, meta *string) (BtrfsF
 // balanceProgressOf reads the kernel's balance state on a mountpoint and how
 // far it got: RUNNING while it runs, 0 while paused, ENOTCONN for none.
 func balanceProgressOf(mnt string) (state uint64, percent float64, err error) {
-	var args balanceArgs
-	if err := fsIoctl(mnt, iocBalanceProgress, unsafe.Pointer(&args)); err != nil {
-		return 0, 0, fmt.Errorf("balance progress: %w", err)
+	args, err := balanceStatusOf(mnt)
+	if err != nil {
+		return 0, 0, err
 	}
 	if args.Stat.Expected > 0 {
 		percent = min(100, float64(args.Stat.Completed)*100/float64(args.Stat.Expected))
 	}
 	return args.State, percent, nil
+}
+
+// balanceStatusOf reads the kernel's balance on a mountpoint: its state and
+// progress, and the flags and filters it was started with, as the kernel
+// keeps them (ioctl.c btrfs_update_ioctl_balance_args); ENOTCONN for none.
+func balanceStatusOf(mnt string) (balanceArgs, error) {
+	var args balanceArgs
+	if err := fsIoctl(mnt, iocBalanceProgress, unsafe.Pointer(&args)); err != nil {
+		return balanceArgs{}, fmt.Errorf("balance progress: %w", err)
+	}
+	return args, nil
 }
 
 // cancelRunningBalance cancels the balance on mnt only while it runs and no

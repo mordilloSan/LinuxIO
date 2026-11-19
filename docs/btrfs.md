@@ -207,7 +207,29 @@ with the experimental remap tree (kernel 7.0 and later, built with
 checksum check.
 
 A failed resync is retried by the next health run, without scrubbing again
-once the scrub finished; after three failures the alert turns into an error with the
+once the scrub finished. When a power loss cuts the resync's convert, the
+kernel continues it at the next read-write mount and refuses a second
+balance meanwhile, so the next resync follows that balance to the end when
+the arguments the kernel reports are those of the convert it recorded
+starting (in `btrfs-pools.json`, cleared with the episode), instead of
+starting one. It compares with that record rather than with what is left to
+convert, since the kernel relocates chunks from the highest address down,
+whatever their kind, and a convert of data and metadata cut midway can leave
+one kind done; without a record, as in a state an older LinuxIO left or
+after a new episode cleared it while the kernel's balance survived into the
+next mount, it compares with what is left, and a convert cut after one kind
+finished then fails the attempts until the kernel's balance ends. It takes
+over no other balance: a running one that is not its convert,
+an admin's or a job's, fails the attempt as already running, and a paused
+one fails it too, saying the admin resumes or cancels it, since an admin
+paused it or mounted with `skip_balance`, the recovery option for a balance
+that fails at mount. A resync stopped while it follows its convert, at a
+shutdown or by a stop of its unit, leaves the balance running for the kernel
+to pause at unmount and continue at the next mount; one stopped while it
+runs its own convert cancels it, and the next resync converts again. Before
+it declares the pool whole it reads the allocation again: chunks left to
+convert by the rule that started the convert, system chunks with metadata,
+fail the attempt. After three failures the alert turns into an error with the
 last cause, and mounting the pool again (or a reboot) re-arms it. Since these
 alerts report it, the run of a resync that fails still completes once they
 were brought up to date, with the summary *Resync failed*: the unit is not

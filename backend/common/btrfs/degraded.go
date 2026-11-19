@@ -16,6 +16,8 @@ import (
 	"time"
 	"unsafe"
 
+	"golang.org/x/sys/unix"
+
 	"github.com/mordilloSan/LinuxIO/backend/common/alerts"
 	"github.com/mordilloSan/LinuxIO/backend/common/atomicfile"
 	"github.com/mordilloSan/LinuxIO/backend/common/filelock"
@@ -67,6 +69,10 @@ type poolState struct {
 	// that scrub after a cut. markDegraded and clearDegraded clear it, which
 	// makes the next resync start over.
 	ResyncRun string `json:"resyncRun,omitempty"`
+	// ConvertData and ConvertMetadata are the targets of the soft convert
+	// the resync started in this episode ("" for a kind it did not convert).
+	ConvertData     string `json:"convertData,omitempty"`
+	ConvertMetadata string `json:"convertMetadata,omitempty"`
 	// ResyncFailures counts failed resyncs since the pool was last mounted
 	// or degraded; at maxResyncAttempts the health run stops starting them.
 	ResyncFailures int    `json:"resyncFailures,omitempty"`
@@ -82,6 +88,7 @@ const maxResyncAttempts = 3
 // scrub saved, so the next resync scrubs everything again.
 func (s *poolState) markDegraded(devices []BtrfsDevice) {
 	s.Degraded, s.Scrubbed, s.Present, s.ResyncRun = true, false, nil, ""
+	s.ConvertData, s.ConvertMetadata = "", ""
 	s.ResyncFailures, s.ResyncError = 0, ""
 	for _, d := range devices {
 		if !d.Missing {
@@ -529,6 +536,147 @@ func refreshResyncAlerts(ctx context.Context, uuid string, resynced bool) bool {
 	return fs.HealthKnown
 }
 
+// resyncConvert gives the chunks written without redundancy their second
+// copy with a soft convert to data and meta. A power cut that cut this
+// convert leaves the balance item, which the kernel continues at the next
+// read-write mount while it refuses a new balance (EINPROGRESS): the resync
+// recognises its own convert by the arguments the kernel reports and
+// follows it to the end. It takes over no other balance, an admin's or a
+// job's, and resumes no paused one: an admin paused it, or mounted with
+// skip_balance, the recovery option for a balance that fails at mount.
+//
+// The kernel relocates chunks from the highest address down, whatever their
+// kind (volumes.c __btrfs_balance), so a convert of data and metadata cut
+// midway can leave one kind done while the kernel continues both: the
+// resync records the convert it starts in the pool state and compares the
+// kernel's balance with that record, or, without one (a state an older
+// build left), with what is left to convert now.
+func resyncConvert(ctx context.Context, uuid string, data, meta *string) error {
+	opts := BalanceOptions{DataProfile: data, MetadataProfile: meta, Soft: true}
+	mnt, err := mountpointFor(ctx, uuid)
+	if err != nil {
+		return err
+	}
+	states, err := loadPoolStates()
+	if err != nil {
+		return err
+	}
+	want := opts
+	if state := states[uuid]; state.ConvertData != "" || state.ConvertMetadata != "" {
+		want = BalanceOptions{DataProfile: profileOrNil(state.ConvertData), MetadataProfile: profileOrNil(state.ConvertMetadata), Soft: true}
+	}
+	running, err := balanceStatusOf(mnt)
+	switch {
+	case errors.Is(err, unix.ENOTCONN):
+		if recErr := recordConvert(ctx, uuid, data, meta); recErr != nil {
+			return recErr
+		}
+		return Balance(ctx, uuid, opts, func(float64) {})
+	case err != nil:
+		return err
+	case running.State&balanceStateRunning == 0:
+		return fmt.Errorf("a paused balance waits on pool %s; resume it (btrfs balance resume) or cancel it, and the next resync converts", uuid)
+	case !sameBalance(running, balanceArgsOf(want)):
+		return fmt.Errorf("a balance is already running on pool %s, and it is not the resync's convert; the next resync converts once it ends", uuid)
+	}
+	slog.Debug("btrfs resync follows its convert the kernel continued", "uuid", uuid)
+	return followBalance(ctx, mnt)
+}
+
+// recordConvert notes the convert the resync is about to start, before the
+// kernel takes it, so a later attempt knows it as its own.
+func recordConvert(ctx context.Context, uuid string, data, meta *string) error {
+	return updatePoolStates(ctx, func(s map[string]poolState) {
+		state := s[uuid]
+		state.ConvertData, state.ConvertMetadata = "", ""
+		if data != nil {
+			state.ConvertData = *data
+		}
+		if meta != nil {
+			state.ConvertMetadata = *meta
+		}
+		s[uuid] = state
+	})
+}
+
+// profileOrNil is profile, or nil for "".
+func profileOrNil(profile string) *string {
+	if profile == "" {
+		return nil
+	}
+	return &profile
+}
+
+// sameBalance reports whether the kernel's balance got was started with
+// want's kinds and filters. The kernel stores them in the balance item as
+// given and adds BTRFS_BALANCE_RESUME when it continues the balance
+// (volumes.c btrfs_recover_balance).
+func sameBalance(got, want balanceArgs) bool {
+	const kinds = balanceData | balanceMetadata | balanceSystem
+	if got.Flags&kinds != want.Flags&kinds {
+		return false
+	}
+	for _, f := range []struct {
+		kind      uint64
+		got, want balanceFilter
+	}{{balanceData, got.Data, want.Data}, {balanceMetadata, got.Meta, want.Meta}, {balanceSystem, got.Sys, want.Sys}} {
+		if want.Flags&f.kind != 0 && f.got != f.want {
+			return false
+		}
+	}
+	return true
+}
+
+// followBalance waits for the balance the kernel runs on mnt to end. When
+// ctx ends, at a shutdown or a stop of the resync's unit, it stops watching
+// and leaves the balance running: the kernel pauses it at unmount and
+// continues it at the next mount, where a cancel would delete it.
+func followBalance(ctx context.Context, mnt string) error {
+	ticker := time.NewTicker(progressInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			state, _, err := balanceProgressOf(mnt)
+			switch {
+			case errors.Is(err, unix.ENOTCONN):
+				return nil
+			case err != nil:
+				return err
+			case state&balanceStateRunning == 0:
+				return fmt.Errorf("the convert the resync followed was paused: %w", errBalancePaused)
+			}
+		}
+	}
+}
+
+// checkConverted fails while the pool still has chunks to convert by the
+// rule that started the convert (convertTargets), which counts system
+// chunks with metadata.
+func checkConverted(ctx context.Context, uuid string) error {
+	fs, err := FindFilesystem(ctx, uuid)
+	if err != nil {
+		return err
+	}
+	if !fs.HealthKnown || len(fs.Allocation) == 0 {
+		return fmt.Errorf("could not read the allocation of pool %s", uuid)
+	}
+	data, meta := convertTargets(fs.Allocation)
+	var left []string
+	if data != nil {
+		left = append(left, "data to "+*data)
+	}
+	if meta != nil {
+		left = append(left, "metadata and system to "+*meta)
+	}
+	if len(left) > 0 {
+		return fmt.Errorf("pool %s still has chunks to convert (%s)", uuid, strings.Join(left, ", "))
+	}
+	return nil
+}
+
 // errDiskMissing stops a resync while the pool lacks a disk.
 var errDiskMissing = errors.New("a disk is missing")
 
@@ -562,14 +710,17 @@ func resync(ctx context.Context, uuid string, report func(percent float64)) erro
 	}
 	data, meta := convertTargets(fs.Allocation)
 	if data != nil || meta != nil {
-		if err := Balance(ctx, uuid, BalanceOptions{DataProfile: data, MetadataProfile: meta, Soft: true}, func(float64) {}); err != nil {
-			return err
-		}
-		if _, err := BalanceResult(ctx, uuid, data, meta); err != nil {
+		if err := resyncConvert(ctx, uuid, data, meta); err != nil {
 			return err
 		}
 	}
+	// It refuses a pool that went degraded meanwhile as a new episode, before
+	// new single chunks could read as chunks left to convert.
 	if err := confirmScrubbed(ctx, uuid, run); err != nil {
+		return err
+	}
+	// By the rule that started the convert, system chunks with metadata.
+	if err := checkConverted(ctx, uuid); err != nil {
 		return err
 	}
 	if err := clearDegraded(ctx, uuid); err != nil {
@@ -708,6 +859,7 @@ func clearDegraded(ctx context.Context, uuid string) error {
 		state := s[uuid]
 		if cleared = state.Scrubbed; cleared {
 			state.Degraded, state.Scrubbed, state.Present, state.ResyncRun = false, false, nil, ""
+			state.ConvertData, state.ConvertMetadata = "", ""
 			state.ResyncFailures, state.ResyncError = 0, ""
 			s[uuid] = state
 		}
