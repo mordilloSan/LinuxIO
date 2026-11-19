@@ -22,6 +22,29 @@ import type { HighlightSpan } from "./highlight";
 // ponytail: 20k-char ceiling; highlight completed lines only if this bites
 const MAX_HIGHLIGHT_CHARS = 20_000;
 
+// How long the Copy button says what became of the copy.
+const COPY_RESULT_MS = 2000;
+
+type CopyResult = "copied" | "failed";
+
+const COPY_LABEL: Record<CopyResult, string> = {
+  copied: "Copied",
+  failed: "Copy failed",
+};
+
+// Read out for a screen reader; the button keeps its name.
+const COPY_STATUS: Record<CopyResult, string> = {
+  copied: "Code copied",
+  failed: "Copy failed",
+};
+
+// All three stay in the DOM so the swap cross-fades both ways.
+const COPY_ICONS = [
+  { icon: "mdi:content-copy", shownFor: null },
+  { icon: "mdi:check", shownFor: "copied" },
+  { icon: "mdi:alert-circle-outline", shownFor: "failed" },
+] as const;
+
 // Loaded on demand so the CodeMirror stack stays out of the route's initial
 // chunk. Module scope because React Compiler skips components with import().
 const loadHighlight = () => import("./highlight");
@@ -41,6 +64,17 @@ export const OpenInTerminalContext = createContext<
 function CodeBlock({ children }: { children?: ReactNode }) {
   const openInTerminal = use(OpenInTerminalContext);
   const preRef = useRef<HTMLPreElement>(null);
+  const [copyResult, setCopyResult] = useState<CopyResult | null>(null);
+  const copyTimer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(copyTimer.current), []);
+  const showCopyResult = (result: CopyResult) => {
+    setCopyResult(result);
+    window.clearTimeout(copyTimer.current);
+    copyTimer.current = window.setTimeout(
+      () => setCopyResult(null),
+      COPY_RESULT_MS,
+    );
+  };
   const [highlighted, setHighlighted] = useState<{
     spans: HighlightSpan[];
     text: string;
@@ -83,16 +117,32 @@ function CodeBlock({ children }: { children?: ReactNode }) {
         <div className="assistant-code__actions">
           <AppButton
             aria-label="Copy code"
+            className="assistant-code__copy"
             color="inherit"
+            data-state={copyResult ?? undefined}
             onClick={() => {
               const code = preRef.current?.textContent ?? "";
-              copyToClipboard(code.replace(/\n$/, "")).catch(() => {});
+              copyToClipboard(code.replace(/\n$/, "")).then(
+                () => showCopyResult("copied"),
+                () => showCopyResult("failed"),
+              );
             }}
             size="small"
-            startIcon={<Icon icon="mdi:content-copy" width={14} />}
+            startIcon={
+              <span className="assistant-code__copy-icons">
+                {COPY_ICONS.map(({ icon, shownFor }) => (
+                  <span data-shown={shownFor === copyResult} key={icon}>
+                    <Icon icon={icon} width={14} />
+                  </span>
+                ))}
+              </span>
+            }
           >
-            Copy
+            {copyResult ? COPY_LABEL[copyResult] : "Copy"}
           </AppButton>
+          <span className="assistant-code__copy-status" role="status">
+            {copyResult ? COPY_STATUS[copyResult] : null}
+          </span>
           {openInTerminal && body && SHELL_FENCES.has(fence) ? (
             <AppButton
               onClick={() => openInTerminal(body)}

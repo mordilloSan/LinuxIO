@@ -265,7 +265,11 @@ advertises the matching capability.
   until the user picks a colour the key stays unset and the UI derives it
   from the page background (18% darker on dark, 3% on light),
   so the block is set into the page and keeps the page's hue. The code and
-  Copy read at full text colour. It is not the theme's code block colour
+  Copy read at full text colour. Once the clipboard has the code, Copy reads
+  "Copied" for two seconds in the theme's success colour with a tick; when the
+  write is refused (a plain-HTTP origin has no Clipboard API) it reads "Copy
+  failed" in the error colour, and a screen reader hears either from a status
+  line. It is not the theme's code block colour
   (`codeBackground`), which is the surface of the log views. Fenced code is
   syntax-highlighted using
   the file editor's languages (blocks over 20,000 characters stay plain). User,

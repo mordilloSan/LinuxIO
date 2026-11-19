@@ -226,6 +226,50 @@
   color: var(--app-palette-text-primary);
 }
 
+/* Copy says what became of the copy for a moment: the button takes the
+   success or error colour (AppButton already eases `color`) while its icon
+   cross-fades to a tick or a warning. Colour is never alone: the label and
+   the icon change with it. */
+.assistant-code__copy[data-state="copied"] {
+  color: var(--app-palette-success-main);
+}
+
+.assistant-code__copy[data-state="failed"] {
+  color: var(--app-palette-error-main);
+}
+
+/* The icons share one cell, so swapping them moves nothing. */
+.assistant-code__copy-icons {
+  display: inline-grid;
+}
+
+.assistant-code__copy-icons > span {
+  display: flex;
+  grid-area: 1 / 1;
+  opacity: 0;
+  scale: 0.25;
+  filter: blur(4px);
+  transition-property: opacity, scale, filter;
+  transition-duration: 300ms;
+  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+.assistant-code__copy-icons > span[data-shown="true"] {
+  opacity: 1;
+  scale: 1;
+  filter: blur(0);
+}
+
+/* Heard, not seen: a screen reader reads the result from here. */
+.assistant-code__copy-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /* The code has room around it and between its lines. */
 .assistant-block .assistant-code pre {
   margin: 0;
