@@ -125,6 +125,10 @@ test-assistant-agent-integration: ensure-go ## Run the opt-in real npm install a
 BTRFS_INTEGRATION_RUN := ^Test(Btrfs(Degraded|Resume|Replicate|Member|AddWipe|Destroy)?|Partition(Claim|Member)?)Integration$$
 BTRFS_INTEGRATION_PKGS := ./common/btrfs ./bridge/handlers/storage
 
+# -p 1: with two packages go test otherwise holds each one's output until it
+# has finished, which is minutes of silence for common/btrfs. The summary
+# script reads stdout only, so sudo's prompt and build errors are not held
+# back by it.
 test-btrfs-integration: ensure-go ## Run the root-only btrfs and partition kernel tests on loop devices
 	@echo "🧪 Running btrfs and partition kernel integration tests on loop devices (needs sudo)..."
 	@cd "$(backend_dir)" && \
@@ -132,7 +136,9 @@ test-btrfs-integration: ensure-go ## Run the root-only btrfs and partition kerne
 	    PATH="$$(dirname "$(GO_BIN)"):$${PATH}" \
 	    GOTOOLCHAIN="$(GO_TOOLCHAIN)" \
 	    LINUXIO_RUN_BTRFS_INTEGRATION=1 \
-	    "$(GO_BIN)" test $(BTRFS_INTEGRATION_PKGS) -run '$(BTRFS_INTEGRATION_RUN)' -count=1 -v -timeout 20m
+	    "$(GO_BIN)" test $(BTRFS_INTEGRATION_PKGS) -run '$(BTRFS_INTEGRATION_RUN)' -p 1 -count=1 -v -timeout 20m \
+	  | awk -f "$(scripts_dir)/gotest-summary.awk"; \
+	  exit "$${PIPESTATUS[0]}"
 
 # The file browser tests that hand entries to other users or groups, which only
 # root can do; without root they skip or cover less.
