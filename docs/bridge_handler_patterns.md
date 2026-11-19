@@ -114,6 +114,17 @@ func handleUpdateContainer(ctx context.Context, req apischema.DockerContainerUpd
   the next boot, and only after a shutdown or power loss. Never let a
   cancel-on-context path destroy what `Suspend` kept (a balance pause, for
   example).
+- A route whose work runs on outside the job host when the host dies (a
+  PackageKit transaction) adds `At: bridgeipc.ResumeAfterCrash`, so the next
+  root host in the same boot picks the job up after a crash, and
+  `ResumeAfterStop` too unless a stop of the host by hand may be meant to
+  halt the job (`bridgeipc.ResumeInBoot` is both). A crash runs no `Suspend`, so the
+  handler saves what identifies that work with `bridgeipc.SaveCheckpoint`
+  before it starts the work. `Resume` follows the work or reads how it ended
+  from its source, never starts it again, and returns
+  `bridgeipc.ErrNotResumed` with the reason when the source cannot tell. A
+  cancel that `task.Interrupted()` reports as the host stopping leaves the work
+  running; any other cancel stops it (`packages.update`).
 - Report progress with `bridgeipc.ReportProgress(ctx, detail.ProgressEnvelope())`.
   Outside a job it does nothing, so the same function can serve a Call.
 - Name the target with a method on the request type, not in the declaration

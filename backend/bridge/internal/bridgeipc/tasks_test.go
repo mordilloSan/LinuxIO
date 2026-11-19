@@ -1221,3 +1221,47 @@ func TestWatchTaskStreamDeliversFramesPublishedBeforeFirstSnapshot(t *testing.T)
 		t.Fatalf("WatchTaskStream returned error: %v", err)
 	}
 }
+
+// A Resume hook that finds nothing to follow ends its task interrupted with
+// why; one its owner canceled meanwhile ends canceled.
+func TestNotResumedEndsInterruptedUnlessCanceled(t *testing.T) {
+	registry := NewTaskService()
+	notFound := fmt.Errorf("%w: no transaction /7_abc", ErrNotResumed)
+	task, err := startTestTask(registry, "test.not_resumed", nil, TaskOwner{}, func(context.Context, *Task, any) (any, error) {
+		return nil, notFound
+	})
+	if err != nil {
+		t.Fatalf("startTestTask returned error: %v", err)
+	}
+	waitForTaskState(t, task, TaskStateInterrupted)
+	if got := task.Snapshot().Error; got == nil || got.Code != 409 || got.Message != notFound.Error() {
+		t.Fatalf("error = %#v, want 409 with why", got)
+	}
+
+	started := make(chan struct{})
+	task, err = startTestTask(registry, "test.not_resumed_canceled", nil, TaskOwner{}, func(ctx context.Context, _ *Task, _ any) (any, error) {
+		close(started)
+		<-ctx.Done()
+		return nil, notFound
+	})
+	if err != nil {
+		t.Fatalf("startTestTask returned error: %v", err)
+	}
+	<-started
+	task.Cancel()
+	waitForTaskState(t, task, TaskStateCanceled)
+
+	// Its host began stopping it: the shutdown's interruption, judged again
+	// at the next start, not a verdict.
+	task, err = startTestTask(registry, "test.not_resumed_stopping", nil, TaskOwner{}, func(_ context.Context, task *Task, _ any) (any, error) {
+		task.BeginInterrupt()
+		return nil, notFound
+	})
+	if err != nil {
+		t.Fatalf("startTestTask returned error: %v", err)
+	}
+	waitForTaskState(t, task, TaskStateInterrupted)
+	if task.NotResumed() {
+		t.Fatal("a task its host was stopping reads as one its Resume hook left")
+	}
+}

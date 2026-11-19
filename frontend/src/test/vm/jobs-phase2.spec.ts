@@ -7,6 +7,7 @@ import {
   bridgeCall,
   fixture,
   jobIds,
+  jobRecord,
   jobRecords,
   loggedJobs,
   MiB,
@@ -67,6 +68,72 @@ test("a reload mid package update picks the same job up and completes it", async
   expect(await vmSsh("dpkg-query -W -f '${Version}' linuxio-e2e-slow")).toBe(
     "2.0",
   );
+});
+
+// docs/jobs.md, Host start and boot: PackageKit runs a transaction on when the
+// job host dies, so the next root host picks the job up from PackageKit
+// instead of reporting it interrupted, and never updates the package again.
+test("a package update whose job host is killed is picked up from PackageKit and completes", async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  await vmSsh("sudo bash -s", await readFile(fixture("slow-package.sh")));
+  const before = await jobIds();
+  const upgrades = () =>
+    vmSsh(
+      "grep -c ' upgrade linuxio-e2e-slow:all 1.0 2.0$' /var/log/dpkg.log || true",
+    ).then(Number);
+  const upgradesBefore = await upgrades();
+
+  await signIn(page);
+  await page.goto("/updates");
+  const card = page
+    .locator("div")
+    .filter({ has: page.getByText("linuxio-e2e-slow · 2.0") })
+    .filter({ has: page.getByRole("button", { name: "Update", exact: true }) })
+    .last();
+  await card.getByRole("button", { name: "Update", exact: true }).click();
+  const job = await waitForJob("packages.update", before, "running");
+
+  // Killed while dpkg runs the 20 s postinst: the transaction PackageKit
+  // runs is the one the job saved before it asked for the update.
+  await expect
+    // [.] keeps pgrep from matching the shell that runs it.
+    .poll(
+      () =>
+        vmSsh("pgrep -fc 'linuxio-e2e-slow[.]postinst' || true").then(Number),
+      {
+        intervals: [500],
+        message: "the slow postinst running",
+        timeout: 60_000,
+      },
+    )
+    .toBeGreaterThan(0);
+  const saved = (await jobRecord(job.id))?.checkpoint as
+    | { index: number; transaction: string }
+    | undefined;
+  expect(saved?.index).toBe(0);
+  expect(saved?.transaction).toMatch(/^\//);
+  await vmSsh(
+    'sudo kill -9 "$(systemctl show -P MainPID linuxio-jobs@0.service)"',
+  );
+
+  // The bridge's reconnect starts the next host, which marks the job
+  // interrupted/crash and picks it up before it serves.
+  const done = await waitForJob("packages.update", before, "completed", {
+    timeout: 120_000,
+  });
+  expect(done.id).toBe(job.id);
+  expect(await loggedJobs("job marked interrupted")).toContainEqual({
+    id: job.id,
+    reason: "crash",
+  });
+  expect((await loggedJobs("job resumed")).map((j) => j.id)).toContain(job.id);
+  expect(await vmSsh("dpkg-query -W -f '${Version}' linuxio-e2e-slow")).toBe(
+    "2.0",
+  );
+  // One upgrade of the package: the pick-up did not update it again.
+  expect(await upgrades()).toBe(upgradesBefore + 1);
 });
 
 // PackageKit answers the update list with one signal per package and then

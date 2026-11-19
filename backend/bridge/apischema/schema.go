@@ -1,6 +1,7 @@
 package apischema
 
 import (
+	"cmp"
 	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
@@ -24,7 +25,9 @@ type RouteSpec struct {
 	BrowserBound bool
 	Exclusive    bool
 	Resumable    bool
-	Targeted     bool
+	// ResumeAt is when a Resumable route's interrupted job resumes.
+	ResumeAt bridgeipc.ResumeAt
+	Targeted bool
 	// Secrets are the request members tagged `secret:"true"`, which the job
 	// record leaves out.
 	Secrets []string
@@ -161,10 +164,14 @@ func JobStartedAt(ctx context.Context) time.Time {
 }
 
 // ResumeHooks lets a privileged Mutation survive a shutdown: Suspend stops the
-// job and returns a checkpoint, Resume continues the job from it.
+// job and returns a checkpoint, Resume continues the job from it. At says when
+// the root job host resumes it: after a reboot when zero, as the btrfs
+// operations; bridgeipc.ResumeAfterCrash and ResumeAfterStop also, or only, at
+// its next start in the same boot after the host crashed or was stopped.
 type ResumeHooks[Req, Res any] struct {
 	Suspend func(ctx context.Context, req Req, checkpoint jsontext.Value) (jsontext.Value, error)
 	Resume  func(ctx context.Context, req Req, checkpoint jsontext.Value) (Res, error)
+	At      bridgeipc.ResumeAt
 }
 
 // MutationBinding carries a Mutation route and its handler.
@@ -201,7 +208,8 @@ func MutationVoid[Req any](name string, fn func(context.Context, Req) error, opt
 }
 
 // Resumable returns the binding with resume hooks. Only a Privileged route may
-// resume, because resumption runs in the root job host after a reboot.
+// resume, because resumption runs in the root job host, after a reboot or
+// after the host died.
 func (b MutationBinding[Req, Res]) Resumable(h ResumeHooks[Req, Res]) MutationBinding[Req, Res] {
 	if !b.Route.Privileged {
 		panic(fmt.Sprintf("apischema: resumable route %s must be privileged", b.Route.Route))
@@ -213,6 +221,7 @@ func (b MutationBinding[Req, Res]) Resumable(h ResumeHooks[Req, Res]) MutationBi
 		panic(fmt.Sprintf("apischema: resumable route %s cannot resume without its secret fields", b.Route.Route))
 	}
 	b.Route.Resumable = true
+	b.Route.ResumeAt = cmp.Or(h.At, bridgeipc.ResumeAfterReboot)
 	b.hooks = h
 	return b
 }
@@ -445,7 +454,7 @@ func AttachMutation[Req, Res any](router *bridgeipc.Router, binding MutationBind
 	opts := routeOptions(spec, nil)
 	opts = append(opts, bridgeipc.WithRequestDecoder(requireDecoder(spec, spec.Decode)))
 	if spec.Resumable {
-		opts = append(opts, bridgeipc.WithResume(resumeHooks(spec, binding.hooks)))
+		opts = append(opts, bridgeipc.WithResume(resumeHooks(spec, binding.hooks)), bridgeipc.WithResumeAt(spec.ResumeAt))
 	}
 	router.Mutation(spec.Route, wrapMutation(spec, binding.fn), opts...)
 }

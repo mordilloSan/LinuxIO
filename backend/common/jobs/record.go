@@ -84,6 +84,9 @@ type Record struct {
 	Executor   Executor       `json:"executor"`
 	Resumable  bool           `json:"resumable,omitzero"`
 	Checkpoint jsontext.Value `json:"checkpoint,omitzero"`
+	// Resumed is set when a host resumes the job: a crash of a resumed run
+	// may be the resume's own doing, so it is not picked up again.
+	Resumed bool `json:"resumed,omitzero"`
 
 	CancelRequested bool `json:"cancel_requested,omitzero"`
 	Protocol        int  `json:"protocol"`

@@ -1,6 +1,7 @@
 package bridgeipc
 
 import (
+	"cmp"
 	"context"
 	"encoding/json/jsontext"
 	"errors"
@@ -181,12 +182,14 @@ type TaskDataAttachRequest struct {
 // terminal. Started may see an already-terminal snapshot (a queued task
 // canceled before it started) and must treat that state as final.
 // CancelRequested is called when Cancel stops a running task, before its
-// context is canceled; never for Interrupt or a queued task.
+// context is canceled; never for Interrupt or a queued task. Checkpoint stores
+// what the task's runner saved with SaveCheckpoint in its record.
 type Recorder interface {
 	Started(task *Task, raw jsontext.Value)
 	Progress(task *Task, p TaskProgress)
 	Finished(task *Task)
 	CancelRequested(task *Task)
+	Checkpoint(task *Task, checkpoint jsontext.Value) error
 }
 
 type TaskService struct {
@@ -235,6 +238,9 @@ type Task struct {
 	cancel           context.CancelFunc
 	// interrupted makes the cancellation end the task interrupted, not canceled.
 	interrupted bool
+	// interruptErr is the error of a task its Resume hook left interrupted;
+	// nil reads "job was interrupted".
+	interruptErr *Error
 	// cancelRequested is set once the owner cancels the running task.
 	cancelRequested bool
 	// publishMu orders the cancel-request snapshot before the terminal event.
@@ -829,7 +835,10 @@ func (j *Task) run(ctx context.Context, runner TaskRunner, request any) {
 		// A failed task is logged here and nowhere else: runners return
 		// errors instead of logging them.
 		msg, level := "task failed", failureLevel(err)
-		interrupted := j.Interrupted()
+		// A cancel of its owner meanwhile ends it canceled all the same, and
+		// a stop of its host the shutdown's interruption.
+		notResumed := errors.Is(err, ErrNotResumed) && ctx.Err() == nil && !j.Interrupted()
+		interrupted := j.Interrupted() || notResumed
 		// A stopped handler may report how it stopped, such as a killed
 		// subprocess, instead of the context's error.
 		canceled := errors.Is(err, context.Canceled) || ctx.Err() != nil
@@ -842,6 +851,12 @@ func (j *Task) run(ctx context.Context, runner TaskRunner, request any) {
 		slog.Log(ctx, level, msg, "task_id", j.id, "task_type", j.typ, "user", j.owner.Username, "error", err)
 		if errors.Is(err, context.DeadlineExceeded) && !interrupted {
 			j.markFailed(NewError("operation timed out", 504))
+			return
+		}
+		if notResumed {
+			// Its Resume hook found nothing to follow: it stays interrupted,
+			// and says why.
+			j.markInterrupted(NewError(err.Error(), 409))
 			return
 		}
 		if interrupted || canceled {
@@ -924,13 +939,35 @@ func (j *Task) markCanceled() {
 	j.publishTerminal(event)
 }
 
+// NotResumed reports whether the task's Resume hook found nothing to follow
+// and left it interrupted (ErrNotResumed).
+func (j *Task) NotResumed() bool {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	return j.interruptErr != nil
+}
+
+// markInterrupted ends the task interrupted with err, as a Resume hook that
+// found nothing to follow leaves it.
+func (j *Task) markInterrupted(err *Error) {
+	j.mu.Lock()
+	if j.isTerminalLocked() {
+		j.mu.Unlock()
+		return
+	}
+	j.interrupted, j.interruptErr = true, err
+	event := j.markCanceledLocked(time.Now().UTC())
+	j.mu.Unlock()
+	j.publishTerminal(event)
+}
+
 // markCanceledLocked records cancellation, or the interruption Interrupt
 // asked for, while j.mu is held. The caller is responsible for signaling and
 // broadcasting after releasing the lock.
 func (j *Task) markCanceledLocked(now time.Time) TaskEvent {
 	eventType, state, taskErr := TaskEventCanceled, TaskStateCanceled, NewError("operation aborted", 499)
 	if j.interrupted {
-		eventType, state, taskErr = TaskEventError, TaskStateInterrupted, NewError("job was interrupted", 409)
+		eventType, state, taskErr = TaskEventError, TaskStateInterrupted, cmp.Or(j.interruptErr, NewError("job was interrupted", 409))
 	}
 	j.state = state
 	j.request = nil

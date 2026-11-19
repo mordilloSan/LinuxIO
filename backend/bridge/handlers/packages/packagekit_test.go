@@ -51,6 +51,28 @@ type fakePackageKit struct {
 	refreshStarted  chan struct{}
 	offlineTriggers []string
 	triggerErr      *godbus.Error
+	// running are the transactions GetTransactionList answers, as PackageKit
+	// lists those it still runs; listed receives a value at each answer.
+	running []godbus.ObjectPath
+	listed  chan struct{}
+	// history is what GetOldTransactions sends, newest first.
+	history []fakeOldTransaction
+	cancels []godbus.ObjectPath
+	// refuseCancel answers Cancel as PackageKit does while dpkg runs.
+	refuseCancel bool
+	// exits ends a package's update, or an install, with that Finished exit
+	// and no ErrorCode.
+	exits map[string]uint32
+}
+
+// fakeOldTransaction is one entry of PackageKit's transaction history.
+type fakeOldTransaction struct {
+	path      godbus.ObjectPath
+	succeeded bool
+	role      uint32
+	// duration is 0 for a transaction PackageKit recorded starting and never
+	// recorded ending.
+	duration uint32
 }
 
 // fakeResolvable is a package Resolve finds by name. coldCache hides it until
@@ -93,6 +115,8 @@ func setupFakePackageKit(t *testing.T, prepared bool) *fakePackageKit {
 		updateStarted:  make(chan string, 16),
 		resolvable:     make(map[string]fakeResolvable),
 		refreshStarted: make(chan struct{}, 16),
+		listed:         make(chan struct{}, 16),
+		exits:          make(map[string]uint32),
 	}
 
 	path := godbus.ObjectPath(dbusclient.PackageKitPath)
@@ -123,6 +147,74 @@ func (s *fakePackageKit) CreateTransaction() (godbus.ObjectPath, *godbus.Error) 
 		return "", godbus.MakeFailedError(err)
 	}
 	return path, nil
+}
+
+func (s *fakePackageKit) GetTransactionList() ([]godbus.ObjectPath, *godbus.Error) {
+	s.mu.Lock()
+	running := slices.Clone(s.running)
+	s.mu.Unlock()
+	s.listed <- struct{}{}
+	return running, nil
+}
+
+// runTransaction is a transaction of role that PackageKit runs at path for a
+// client that is gone, such as a job host that died.
+func (s *fakePackageKit) runTransaction(path godbus.ObjectPath, role uint32) *fakeTransaction {
+	s.t.Helper()
+	tx := &fakeTransaction{service: s, path: path}
+	if err := s.conn.Export(tx, path, dbusclient.PackageKitTransactionIface); err != nil {
+		s.t.Fatalf("export transaction %s: %v", path, err)
+	}
+	if _, err := prop.Export(s.conn, path, prop.Map{
+		dbusclient.PackageKitTransactionIface: {"Role": {Value: role, Emit: prop.EmitFalse}},
+	}); err != nil {
+		s.t.Fatalf("export transaction %s properties: %v", path, err)
+	}
+	s.mu.Lock()
+	s.running = append(s.running, path)
+	s.mu.Unlock()
+	return tx
+}
+
+// listGone lists path as running while its object is already gone, as for a
+// transaction that ended and was dropped between two calls.
+func (s *fakePackageKit) listGone(path godbus.ObjectPath) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.running = append(s.running, path)
+}
+
+func (s *fakePackageKit) setExit(packageID string, exit uint32) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.exits[packageID] = exit
+}
+
+// finish ends a transaction runTransaction started, with PackageKit's error
+// when message is not empty.
+func (tx *fakeTransaction) finish(message string) {
+	tx.service.mu.Lock()
+	tx.service.running = slices.DeleteFunc(tx.service.running, func(p godbus.ObjectPath) bool { return p == tx.path })
+	tx.service.mu.Unlock()
+	if message != "" {
+		tx.emit("ErrorCode", uint32(1), message)
+		tx.emit("Finished", uint32(2), uint32(0))
+		return
+	}
+	tx.emit("Package", uint32(11), "picked;1.0;x86_64;repo", "Picked up")
+	tx.emit("Finished", uint32(1), uint32(0))
+}
+
+func (s *fakePackageKit) setHistory(entries ...fakeOldTransaction) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.history = entries
+}
+
+func (s *fakePackageKit) canceled() []godbus.ObjectPath {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.cancels)
 }
 
 func (s *fakePackageKit) Trigger(action string) *godbus.Error {
@@ -336,9 +428,10 @@ func (tx *fakeTransaction) GetUpdateDetail(packageIDs []string) *godbus.Error {
 func (tx *fakeTransaction) InstallPackages(flags uint64, packageIDs []string) *godbus.Error {
 	tx.service.mu.Lock()
 	tx.service.installed = append(tx.service.installed, packageIDs...)
+	exit := tx.service.exits[packageIDs[0]]
 	tx.service.mu.Unlock()
 	tx.emitLater(func() {
-		tx.emit("Finished", uint32(0), uint32(0))
+		tx.emit("Finished", exit, uint32(0))
 	})
 	return nil
 }
@@ -350,6 +443,7 @@ func (tx *fakeTransaction) UpdatePackages(flags uint64, packageIDs []string) *go
 	packageID := packageIDs[0]
 	updateError := tx.service.updateErrors[packageID]
 	updateHangs := tx.service.updateHangs[packageID]
+	exit, exits := tx.service.exits[packageID]
 	tx.service.mu.Unlock()
 	tx.service.updateStarted <- packageID
 	if updateHangs {
@@ -359,6 +453,10 @@ func (tx *fakeTransaction) UpdatePackages(flags uint64, packageIDs []string) *go
 		if updateError != "" {
 			tx.emit("ErrorCode", uint32(1), updateError)
 			tx.emit("Finished", uint32(1), uint32(0))
+			return
+		}
+		if exits {
+			tx.emit("Finished", exit, uint32(0))
 			return
 		}
 		tx.emit("Package", uint32(11), packageID, "Kernel update")
@@ -376,6 +474,32 @@ func (tx *fakeTransaction) UpdatePackages(flags uint64, packageIDs []string) *go
 		tx.service.appendTermLog("Setting up " + packageID + " ...\n")
 		tx.emit("Finished", uint32(0), uint32(0))
 	})
+	return nil
+}
+
+func (tx *fakeTransaction) GetOldTransactions(number uint32) *godbus.Error {
+	tx.service.mu.Lock()
+	history := slices.Clone(tx.service.history)
+	tx.service.mu.Unlock()
+	if number > 0 && int(number) < len(history) {
+		history = history[:number]
+	}
+	tx.emitLater(func() {
+		for _, old := range history {
+			tx.emit("Transaction", old.path, "2026-11-18T10:00:00Z", old.succeeded, old.role, old.duration, "", uint32(0), "linuxio")
+		}
+		tx.emit("Finished", uint32(1), uint32(0))
+	})
+	return nil
+}
+
+func (tx *fakeTransaction) Cancel() *godbus.Error {
+	tx.service.mu.Lock()
+	defer tx.service.mu.Unlock()
+	tx.service.cancels = append(tx.service.cancels, tx.path)
+	if tx.service.refuseCancel {
+		return godbus.NewError("org.freedesktop.PackageKit.Transaction.CannotCancel", []any{"cannot cancel while dpkg runs"})
+	}
 	return nil
 }
 
@@ -780,6 +904,10 @@ func TestUpdatePackagesWithProgressStopsOnCancellation(t *testing.T) {
 	}
 	if got := service.updatePackageCalls(); !slices.EqualFunc(got, [][]string{{packageIDs[0]}}, slices.Equal) {
 		t.Fatalf("UpdatePackages calls = %#v, want cancellation to stop the batch", got)
+	}
+	// The cancel reaches PackageKit's transaction too.
+	if got := service.canceled(); len(got) != 1 {
+		t.Fatalf("PackageKit Cancel calls = %v, want one on the running transaction", got)
 	}
 }
 

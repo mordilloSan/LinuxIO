@@ -72,6 +72,23 @@ type Route struct {
 	Secrets      []string
 	Suspend      SuspendFunc
 	Resume       ResumeFunc
+	// ResumeAt is when the root job host resumes an interrupted job of the
+	// route; zero means ResumeAfterReboot (ResumesAt).
+	ResumeAt ResumeAt
+}
+
+// ResumesAt says at which root job host starts an interrupted job of the
+// route is resumed: none without a Resume hook, else ResumeAt, after a reboot
+// by default.
+func (r Route) ResumesAt() ResumeAt {
+	switch {
+	case r.Resume == nil:
+		return 0
+	case r.ResumeAt == 0:
+		return ResumeAfterReboot
+	default:
+		return r.ResumeAt
+	}
 }
 
 type RouteOption func(*Route)
@@ -152,6 +169,14 @@ func WithResume(s SuspendFunc, r ResumeFunc) RouteOption {
 	return func(route *Route) {
 		route.Suspend = s
 		route.Resume = r
+	}
+}
+
+// WithResumeAt says at which root job host starts a route WithResume declares
+// is resumed, when not only after a reboot.
+func WithResumeAt(at ResumeAt) RouteOption {
+	return func(route *Route) {
+		route.ResumeAt = at
 	}
 }
 

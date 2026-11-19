@@ -134,13 +134,19 @@ The rules a route author follows:
   bytes come from or go to the browser. Only `filebrowser.upload`,
   `filebrowser.upload_batch` and `filebrowser.archive` declare it; logout
   cancels their jobs.
-- **`.Resumable(apischema.ResumeHooks{Suspend, Resume})`** lets a job continue
-  after a shutdown or a power loss. The binding panics unless the route is
-  `Privileged()` (resumption runs in the root host after a reboot) and has no
-  secret fields (the resumed handler needs the whole request). Only the four
-  btrfs operations declare it ([Resume hooks](#resume-hooks)); replication is
-  not resumable, since an interrupted run is reported and the timer catches
-  up.
+- **`.Resumable(apischema.ResumeHooks{Suspend, Resume, At})`** lets a job
+  continue after a shutdown or a power loss, or after its host died. The
+  binding panics unless the route is `Privileged()` (resumption runs in the
+  root host) and has no secret fields (the resumed handler needs the whole
+  request). `At` says at which starts of the root host it resumes: after a
+  reboot when it is zero, and with `bridgeipc.ResumeAfterCrash` or
+  `ResumeAfterStop` (both: `ResumeInBoot`) at the next start in the same boot
+  after the host crashed or was stopped by hand, for work that runs on outside
+  the host and that `Resume` only follows. A handler that must be found again after a crash, which runs
+  no `Suspend`, saves where it stands with `bridgeipc.SaveCheckpoint(ctx, v)`.
+  The four btrfs operations and `packages.update` declare it
+  ([Resume hooks](#resume-hooks)); replication is not resumable, since an
+  interrupted run is reported and the timer catches up.
 - **Moving a route between the bridge and the host raises `jobs.Protocol`**
   (`backend/common/jobs/record.go`), so a host of another build refuses the
   bridge instead of serving the route the other way ([Updates](#updates)).
@@ -298,7 +304,8 @@ Record fields (`backend/common/jobs/record.go`):
 | `metadata` | The public projection shown with the job: label, action, paths and the like |
 | `progress`, `result`, `error` | The last progress (only the network handoff keeps one here), the result, or `{code, message}` |
 | `executor` | `kind` `host` with `pid`, `pid_start` and `boot_id`, or `unit` with `unit`, `invocation_id` and `boot_id` |
-| `resumable`, `checkpoint` | Whether the route can resume it, and the opaque state its `Suspend` hook returned |
+| `resumable`, `checkpoint` | Whether the route can resume it, and the opaque state its `Suspend` hook returned or the job saved while it ran (`bridgeipc.SaveCheckpoint`; dropped for a job whose record could not be created) |
+| `resumed` | A host resumed the job at least once |
 | `cancel_requested` | Set before a cancel reaches the handler |
 | `protocol` | The `jobs.Protocol` of the build that wrote it |
 
@@ -307,8 +314,8 @@ record that a newer one wrote with members it does not know.
 
 **Write policy.** A record is written when the job starts and on each change,
 by rename. It is fsynced only when a job that ran longer than one second
-reaches a terminal state, or when its checkpoint or its cancel request
-changes: a record write was measured at about 1.4 ms with an fsync on NVMe
+reaches a terminal state, or when its checkpoint (written by `Suspend` at a
+shutdown, or by the job itself) or its cancel request changes: a record write was measured at about 1.4 ms with an fsync on NVMe
 against 35 µs without, and a spinning root disk is slower still. Progress goes to `/run` and never to the record.
 
 **Quick jobs leave nothing.** A job that completes in under one second is
@@ -384,16 +391,47 @@ with no task in the host to finish it, such as one whose finish could not be
 written, is marked `interrupted/crash` when a resend or a `tasks.*` request
 asks for it.
 
-The root host then resumes, once, each record that is `interrupted` with
-reason `shutdown` or `reboot`, still `resumable`, without `cancel_requested`,
-and whose executor ran in an earlier boot. Every other interrupted record (a
-crash, a host stopped by hand in this boot, a cancel that overlapped a stop)
-loses `resumable` at that start. So a job is resumed only by the boot right
-after the interruption, never weeks later by some other reboot, and there is
-no manual resume. The resumed job keeps its ID, record and start time and runs
-as a new task in this host. A job the host cannot resume raises an alert and
-is stamped with this host's executor, so later starts in the same boot leave
-it alone. A user's host marks its records the same way when the next login
+The root host then resumes, once, each record that is `interrupted`, still
+`resumable` and without `cancel_requested`, when its route resumes at this
+start:
+
+- **After a reboot** (`bridgeipc.ResumeAfterReboot`, the default: the four
+  btrfs operations): reason `shutdown` or `reboot`, and an executor that ran
+  in an earlier boot.
+- **After a crash in this boot** (`bridgeipc.ResumeAfterCrash`:
+  `packages.update`): reason `crash` and an executor of this boot, when the
+  run that crashed was not itself a resume (`resumed`): a resume that crashes
+  its host would otherwise crash every start.
+- **After a stop by hand in this boot** (`bridgeipc.ResumeAfterStop`): reason
+  `shutdown` and an executor of this boot. `packages.update` does not take it:
+  an admin may stop the host to halt an update.
+
+A route that resumes in the boot does so for work that runs on outside the job
+host, so the next host picks the job up from where that work stands instead of
+reporting it interrupted. The next start is the one the bridge's reconnect
+causes, within its 30 s backoff while an admin is signed in, or the next admin
+login.
+
+Every other interrupted record (a crash or a stop by hand of a route that does
+not resume after it, a cancel that overlapped a stop) loses `resumable` at that
+start, and a job a request found with no task loses it at once. So a job is
+resumed only by the start right after the interruption, never weeks later by
+some other reboot, and there is no manual resume. The same-boot pick-ups start
+before the host accepts a connection or tells systemd it is ready, so a bridge
+that reattaches to a job its crashed host left finds it running again; the
+resumes after a reboot start once it serves, as before pick-ups existed,
+because building a job owner's handlers (the admin's home folder, a user
+lookup) can hang at boot and must not keep the host from serving. A host told
+to stop while it starts leaves the jobs it has not resumed yet as they are,
+for its next start. The resumed job keeps its ID, record, checkpoint and start
+time and runs as a new task in this host. A job the host cannot resume raises
+an alert and is stamped with this host's executor, so later starts in this
+boot leave it alone; one of a route that resumes in the boot also loses
+`resumable`, or each later start would try it again. A `Resume` hook whose source of
+truth cannot tell what became of the work returns `bridgeipc.ErrNotResumed`
+with the reason: the job stays `interrupted` with its reason, the reason in
+its error, loses `resumable`, and raises the alert its interruption would
+have raised. A user's host marks its records the same way when the next login
 connects, and never resumes: resumable routes are privileged.
 
 `linuxio-jobs@.service` is ordered after `local-fs.target` and
@@ -402,11 +440,11 @@ be, before the root host resumes anything.
 
 ### Resume hooks
 
-Four routes are resumable: `storage.btrfs_balance`,
-`storage.btrfs_scrub_start`, `storage.btrfs_device_replace` and
-`storage.btrfs_device_remove`. What each hook does is in
-[Btrfs](./btrfs.md#shutdown-and-resume). The hooks differ because the kernel
-treats each operation differently:
+Five routes are resumable. The four btrfs operations resume after a reboot:
+`storage.btrfs_balance`, `storage.btrfs_scrub_start`,
+`storage.btrfs_device_replace` and `storage.btrfs_device_remove`. What each
+hook does is in [Btrfs](./btrfs.md#shutdown-and-resume). The hooks differ
+because the kernel treats each operation differently:
 
 - A fatal signal, SIGKILL included, cancels a balance in the kernel and deletes
   its item, so only a pause keeps it; the kernel continues a paused balance at
@@ -425,6 +463,42 @@ treats each operation differently:
   `time_started` is not before the job's own start.
 - The kernel never continues a removal, so `Resume` issues it again.
 
+`packages.update` resumes in the same boot, after a crash of its host only
+(`backend/bridge/handlers/packages/package_update_operation.go`). PackageKit
+runs a transaction to its end whether or not its client is still there, and
+keeps a history of the transactions it ran, across its own restarts:
+
+- The job updates each package in a transaction of its own. Before it asks
+  PackageKit to update a package it saves, fsynced, a checkpoint with that
+  package's index, the transaction's object path (PackageKit's transaction
+  ID, unique across its restarts), and how many packages before it updated and
+  which failed with what. Its `Suspend` keeps that checkpoint: the context
+  cancel that follows stops following the transaction, which runs on.
+- `Resume` watches the transaction, then asks PackageKit whether it still runs
+  it (`GetTransactionList`). If it does, and its role is `update-packages`,
+  the job follows it to its end with the same progress. If not, or if
+  PackageKit drops it before its role is read (it keeps an ended transaction
+  a few seconds), it reads the newest 200 entries of PackageKit's history
+  (`GetOldTransactions`): one with
+  the transaction's ID and role that succeeded counts as an updated package,
+  one that failed as a failed package. Then it updates the packages it had not
+  reached, and the job ends as a run that was never interrupted would.
+- It never asks PackageKit to update a package again. A checkpoint missing
+  (the host died before the first transaction), a transaction PackageKit
+  neither runs nor recorded, one of another role, or one recorded as started
+  and never ended (no duration: PackageKit itself stopped) is
+  `bridgeipc.ErrNotResumed`: the job stays interrupted, its error naming the
+  package it was at and how many packages before it were updated.
+- After a reboot it is not resumed: PackageKit's transaction does not outlive
+  the boot, and continuing the batch would start package work after a reboot
+  nobody asked to continue. The job ends `interrupted/reboot`, as before.
+- Nor after a stop of the host by hand (`systemctl stop`, `restart`), which an
+  admin may do to halt an update: the job ends `interrupted/shutdown`, as
+  before, while PackageKit finishes the package it was at.
+- Cancel, in the first run or after a pick-up, asks PackageKit to cancel the
+  transaction the job follows and updates no further package. A host stop or
+  crash does not cancel the transaction, which runs on.
+
 The long ioctls run on a locked OS thread with async signals blocked: since
 kernel 6.19 any pending signal aborts a scrub or a replace, and an aborted
 replace loses its target, so retrying is not an option. A freeze (a suspend,
@@ -438,7 +512,8 @@ systemd finishes whatever happens to the job, then waits up to three minutes
 for a new invocation. Stopping and starting Docker as two steps of the job
 would leave Docker and every container down if the job died in between, since
 systemd never restarts a deliberately stopped unit, and a checkpoint would not
-help because `Resume` runs only after a reboot.
+help: `Resume` follows work that runs on outside the job, and once the job had
+stopped Docker nothing would run on to follow.
 
 ## What each event does
 
@@ -449,7 +524,7 @@ help because `Resume` runs only after a reboot.
 | Host unreachable from the bridge | New mutations fail with `503`; job reads wait up to 10 s, then answer `503`; the bridge reconnects with backoff |
 | Host of an older build | New mutations the host would run are refused with `409` `update_pending: …`; the older host finishes its jobs ([Updates](#updates)) |
 | `systemctl stop`, orderly shutdown | `interrupted/shutdown`, a resumable job after its `Suspend` stored a checkpoint; a job with `cancel_requested` ends `canceled`. The root host raises a warning |
-| Host crash, `kill -9`, OOM kill of the host | The next host of the uid marks the job `interrupted/crash`, never to be resumed. The root host raises an alert |
+| Host crash, `kill -9`, OOM kill of the host | The next host of the uid marks the job `interrupted/crash`. The root host picks up a job of a route that resumes after a crash (`packages.update`), unless the crashed run was itself a pick-up, and alerts on any other, which is never resumed |
 | OOM kill of a job's subprocess | That job fails; the host and its other jobs run on |
 | Reboot or power loss | The root host, started at boot, marks the records a power loss left running `interrupted/reboot`, resumes the resumable jobs the shutdown or the power loss interrupted, and raises a warning for each job it marks and does not resume. A user's host marks theirs at the next login |
 | Cancel (`tasks.cancel`, stream abort) | `cancel_requested`, then the handler cleans up, then `canceled` |
@@ -636,7 +711,9 @@ keys, messages and settings are in
   that could not be resumed, and a job found with no task to finish it are
   alerts: their outcome is unknown, a failure in effect, so "failures are
   always reported" stays whole.
-- A resumed job that completes clears the alert of its interruption.
+- A resumed job that completes clears the alert of its interruption. A job
+  picked up in the same boot whose `Resume` found nothing to follow raises the
+  alert its interruption would have raised, with the reason.
 - A `completed` job that ran five minutes or more raises a notice when the
   settings ask for long jobs. A `canceled` job raises nothing.
 - Scheduled scripts raise the same jobs alerts from their end hook, or from the
@@ -790,7 +867,7 @@ own lines by `job_id` (journald fields `LINUXIO_TASK_ID` and
 | `job marked interrupted` | Info | A host start or a request marked a record, with its `reason` |
 | `job suspend failed` | Warn | A `Suspend` hook failed at shutdown; the job is interrupted without a checkpoint |
 | `job host stopped before a job ended` | Warn | The 100 s shutdown bound ran out with that job still running |
-| `job resumed` / `interrupted job not resumed` | Info / Warn | The boot's resume of a job, or why it failed |
+| `job resumed` / `interrupted job not resumed` | Info / Warn | A host start's resume or pick-up of a job, or why the host could not start it; a `Resume` that found nothing to follow logs `task interrupted` with why |
 | `job host refused a bridge hello` | Warn | `protocol N, want M`: an update waits for this host |
 | `job host refused a connection` | Warn | A peer of another uid |
 | `job host refused a job` | Warn | The host is stopping (`503`) or full (`409`) |
@@ -807,6 +884,8 @@ The record itself is the quickest evidence: as root,
 |---|---|---|---|
 | Go unit | `make test-go`, in `make check-backend-quiet` | `backend/common/jobs/store_test.go`, `backend/common/jobs/scheduled_test.go`, `backend/common/jobs/process_test.go` | Write policy, quick-job deletion, retention and prune, crash detection by pid and start time, history paging through equal end times, saved output chunks |
 | Go unit | same | `backend/bridge/internal/jobshost/host_test.go`, `backend/bridge/internal/jobshost/scheduled_test.go` | Peer uid and protocol refusal, idle exit, SIGTERM and `Suspend`, cancel during shutdown, reconcile and the resume rule (`TestResumeOnlyWhatTheLastShutdownInterrupted`), alerts and their levels, scheduled runs in `tasks.*`, slim history entries, `tasks.output` |
+| Go unit | same | `backend/bridge/internal/jobshost/pickup_test.go` | The same-boot pick-up: a crash and a stop picked up before the host serves, a stop not picked up for a route that takes crashes only, none after a reboot, a cancel, a lost job or a crash of a picked-up run; resumes after a reboot started once the host serves, and left as they were by a stop during the start; a `Resume` that finds nothing left interrupted with its reason and alert and not tried again, and one during a stop counted as the stop's; a failed resume stamped, made unresumable only for a route that resumes in the boot; a checkpoint saved while a job runs |
+| Go unit | same | `backend/bridge/handlers/packages/package_update_resume_test.go`, `backend/bridge/handlers/packages/packagekit_test.go` | Against a fake PackageKit on a private bus: the checkpoint saved before each package's update, a transaction followed to its end, one that ended read from the history (succeeded, failed), one PackageKit cannot account for or of another role never taken, one dropped before its role is read taken from the history, the batch's counts in the error of a job left interrupted, a non-success exit with no ErrorCode as a failure (an update and an install), Cancel sent to PackageKit after a pick-up and in the first run, refused by PackageKit, and not on a host stop |
 | Go unit | same | `backend/bridge/cmd/jobs_relay_test.go`, `backend/bridge/cmd/jobs_host_test.go`, `backend/bridge/internal/jobsclient/client_test.go` | A bridge and a host over a socket: forwarding, host loss, reattach, events after a host restart, the update wait. The relay tests dial the in-process host with `jobsclient.Dial`, which starts no socket unit, so they also run as root |
 | Go unit | same | `backend/bridge/cmd/jobs_relay_test.go` (`TestRelayRoundTripSpeed`) | A speed bound: 300 no-op mutations through the relay to the in-process host, each timed from dispatch to its result frame; fails when the median exceeds 50 ms (observed 0.5 to 0.6 ms with the race detector, 0.2 to 0.3 ms without). It logs the median, p95 and maximum, and runs as root too (`make vm-test-relay-root` matches it through `Relay`) |
 | Go unit | same | `backend/bridge/internal/bridgeipc/mutation_test.go`, `backend/bridge/handlers/redaction_test.go`, `backend/bridge/apischema/schema_test.go` | The stream, resend and abort, same-target refusal, option guards, secret tags, `TestRetrySafeRoutesAreExplicitCalls` |
@@ -817,7 +896,7 @@ The record itself is the quickest evidence: as root,
 | Browser | `make test-frontend-browser-quiet` | `frontend/src/test/browser/history.spec.ts`, `frontend/src/test/browser/schedules.spec.ts`, `frontend/src/test/browser/background-tasks.spec.ts` | Real layout against the fixture: the history table has height, the Schedules table keeps its rows beside tall details, tray rendering |
 | Root, in the VM | `make vm-test-relay-root` | `backend/bridge/cmd/jobs_relay_test.go` | The relay tests as root: the in-process host is the root host, so its owner and privileged rules differ from a user host's |
 | Root kernel | `make test-btrfs-integration` (sudo, the user's to run); `make vm-test-btrfs-integration` in the VM | `backend/common/btrfs/integration_resume_test.go` (`TestBtrfsResumeIntegration`) | Kill and resume each btrfs operation on loop devices: signals, cancels, kills, a paused balance across a remount, a scrub from its offset, a scrub from its saved progress after a kill, a scrub across a filesystem freeze and its cancel there by its context and through `ScrubCancel`, a replace across a simulated power cut |
-| Test VM | `make vm-reset`, `make vm-install`, `make test-vm-browser-rerun` | `frontend/src/test/vm/jobs-phase2.spec.ts` | Reloads mid package update, Compose and copy; uploads; a scrub across logout; host stop, kill, reboot and power cut |
+| Test VM | `make vm-reset`, `make vm-install`, `make test-vm-browser-rerun` | `frontend/src/test/vm/jobs-phase2.spec.ts` | Reloads mid package update, Compose and copy; a package update picked up from PackageKit after a `kill -9` of the root host during dpkg; uploads; a scrub across logout; host stop, kill, reboot and power cut |
 | Test VM | same | `frontend/src/test/vm/jobs-phase3.spec.ts` | Balance, scrub and replace across stops, reboots and power cuts; a scrub across a frozen job host; a cancel or a crash before a reboot; pool create rollback; the Docker storage switch killed |
 | Test VM | same | `frontend/src/test/vm/jobs-phase4.spec.ts` | Scheduled runs: records, bell rows, saved output, stop, a broken hook, the snapshot, Docker and system update units, a power cut and an orderly reboot |
 | Test VM | same | `frontend/src/test/vm/jobs-phase5a.spec.ts`, `frontend/src/test/vm/jobs-needrestart.spec.ts` | History, past runs, the output viewer, a user without sudo, the update banner; needrestart deferring a job host |
@@ -957,6 +1036,24 @@ Covered at one level only:
 - A resumed scrub, or a scrub call issued again after a freeze, counts errors
   in the dev extent where each device stopped twice, and a power loss loses up
   to a minute of a scrub's progress.
+- PackageKit's history keeps no error text, so a package whose transaction
+  failed while no job host followed it reads `PackageKit recorded transaction
+  … as failed`; a transaction further back than the newest 200 entries of the
+  history is not found, and its job stays interrupted.
+- A job whose picked-up run crashes its host again is not picked up a second
+  time and stays `interrupted/crash`, whatever the cause of that crash.
+- Cancel of a package update is refused by PackageKit while dpkg runs: the
+  job ends canceled, that package's update completes and no further package
+  is updated.
+- After a crash of its host the rest of a package batch is updated at the
+  next start of the root host; Cancel, not a kill of the host, is how a batch
+  is stopped.
+- A host that dies between saving a package's transaction and asking
+  PackageKit for it, or during the pre-update snapshot, leaves the rest of
+  the batch not updated: the job stays interrupted, its error naming the
+  package it was at and how many before it were updated.
+- A transaction PackageKit cancelled to make way for a higher-priority one
+  reads as a failed package.
 - **Try again** on a permission change's failure toast opens the dialog of
   the file browser page that started the change, so once the user has left
   that page, as by leaving the file browser and coming back while the change
@@ -964,8 +1061,8 @@ Covered at one level only:
 
 ## Not built
 
-- Resuming non-storage work after a reboot, resuming at any boot but the next
-  one, and a manual resume.
+- Resuming non-storage work after a reboot, resuming at any start of the root
+  host but the one right after the interruption, and a manual resume.
 - A queue, per-user or per-route caps, a runtime cap and a default deadline.
 - Starting a job from outside the browser: no CLI verb, no timer-started job.
 - Timer jobs and hooks that ask the root job host over its socket instead of

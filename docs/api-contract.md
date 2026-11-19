@@ -148,14 +148,19 @@ Mutation options:
 - A request field tagged `secret:"true"`, such as a password, is left out of
   the request the job record keeps. `TestMutationRequestsKeepTheirSecretsOutOfTheRecord`
   fails for a Mutation request field named like a password or key without it.
-- `.Resumable(apischema.ResumeHooks[Req, Res]{Suspend, Resume})` on the
-  binding lets a job continue after a shutdown or reboot. It panics unless the
-  route is `Privileged()` and has no secret fields. Four routes declare it:
-  `storage.btrfs_balance`, `storage.btrfs_scrub_start`,
-  `storage.btrfs_device_replace` and `storage.btrfs_device_remove`. On a
-  shutdown the host runs `Suspend`, stores its checkpoint in the record and
-  then cancels the context; at the next boot `Resume` runs once, and only for a
-  `shutdown` or `reboot` interruption.
+- `.Resumable(apischema.ResumeHooks[Req, Res]{Suspend, Resume, At})` on the
+  binding lets a job continue after a shutdown or reboot, or after its job
+  host died. It panics unless the route is `Privileged()` and has no secret
+  fields. Five routes declare it: `storage.btrfs_balance`,
+  `storage.btrfs_scrub_start`, `storage.btrfs_device_replace` and
+  `storage.btrfs_device_remove`, which resume after a reboot, and
+  `packages.update`, which resumes in the same boot after a crash of its
+  host (`At: bridgeipc.ResumeAfterCrash`). On a shutdown the host runs
+  `Suspend`, stores its
+  checkpoint in the record and then cancels the context; a handler can also
+  store one while it runs (`bridgeipc.SaveCheckpoint`). `Resume` runs once, at
+  the root host's start right after the interruption
+  ([Jobs](./jobs.md#host-start-and-boot)).
 
 ## Frontend Shape
 
@@ -856,17 +861,21 @@ interrupted` (`409`) as the stream's error, the host waiting up to 5 s for the
 bridge to close the stream before it closes the connection, and a resend of
 the envelope is answered from the record with the same error. The root host raises
 an alert (source `jobs`, key the job ID) for a root job that failed or was
-interrupted, except a resumable job it resumes after a reboot; a user host
-writes the record only. Successful and canceled jobs never alert.
+interrupted, except a resumable job it resumes; a user host writes the record
+only. Successful and canceled jobs never alert.
 
 The root host starts at boot and resumes each job of a `Resumable` route that
 the last shutdown or a power loss interrupted: a record `interrupted` with
 reason `shutdown` or `reboot`, still `Resumable`, with no `cancel_requested`,
-whose executor ran in an earlier boot. Every other `interrupted` record (a
-crash, a host stopped by hand in this boot, a cancel that overlapped a stop)
-loses `Resumable` when a host starts, so a job is resumed once and never at a
-later reboot. The outcome is written to the same record. There is no manual
-resume.
+whose executor ran in an earlier boot. A route that resumes in the boot
+(`packages.update`) is instead picked up at the root host's next start in the
+same boot after its host crashed (reason `crash`, an executor of this boot,
+and a run that was not itself a resume), before that host serves, so a client
+that reattaches finds the job running. Every other `interrupted` record loses
+`Resumable` when a host starts, so a job is resumed once and never at a
+later reboot. The outcome is written to the same record; a `Resume` that
+cannot tell what became of the work leaves the job `interrupted` with its
+reason and the cause as its error (`409`). There is no manual resume.
 
 ### Scheduled runs
 
