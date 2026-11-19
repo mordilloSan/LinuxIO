@@ -117,15 +117,17 @@ func raiseDockerPassAlert(ctx context.Context, now time.Time, waiting int) {
 	}
 }
 
-// syncAvailableAlerts raises one alert per container with a newer image when
-// wanted, the DockerUpdatesAvailable setting, is on, and clears the alert of
-// every container that no longer has one. Best effort: failures are logged,
-// never returned.
+// syncAvailableAlerts raises one alert per container with a newer image, or
+// whose image this host builds and a base image of it has a newer version,
+// when wanted, the DockerUpdatesAvailable setting, is on, and clears the
+// alert of every container that no longer has one. Best effort: failures are
+// logged, never returned.
 func syncAvailableAlerts(ctx context.Context, statuses []ImageUpdateStatus, wanted bool) {
 	for _, status := range statuses {
 		name := strings.TrimPrefix(status.ContainerName, "/")
 		key := dockerUpdateAvailableKeyPrefix + dockerUpdateAlertKey(name)
-		if !wanted || status.CheckState != DockerUpdateCheckStateAvailable {
+		rebuild := status.CheckState == DockerUpdateCheckStateBuilt && status.UpdateAvailable
+		if !wanted || (status.CheckState != DockerUpdateCheckStateAvailable && !rebuild) {
 			if err := alerts.Resolve(ctx, dockerUpdateAlertSource, key); err != nil {
 				slog.Debug("failed to clear Docker update available alert for container "+name, "component", "docker", "container", name, "error", err)
 			}
@@ -139,6 +141,10 @@ func syncAvailableAlerts(ctx context.Context, statuses []ImageUpdateStatus, want
 			Message:      "A newer image is available for " + status.ImageRef + ".",
 			Link:         dockerUpdateAlertLink,
 			OccurrenceID: status.RemoteDigest,
+		}
+		if rebuild {
+			obs.Title = "Docker rebuild available: " + name
+			obs.Message = "A base image of " + status.ImageRef + " has a newer version. Rebuild and update the container from the Containers page."
 		}
 		if err := alerts.Raise(ctx, obs); err != nil {
 			slog.Warn("failed to record Docker update available alert for container "+name, "component", "docker", "container", name, "error", err)
@@ -204,11 +210,20 @@ func shortImageID(id string) string {
 // update-available records of a container that was just replaced. Best effort: failures are
 // logged, never returned.
 func resolveDockerUpdateAlert(ctx context.Context, containerName string) {
+	resolveDockerUpdateFailureAlerts(ctx, containerName)
 	name := strings.TrimPrefix(containerName, "/")
-	for _, key := range []string{dockerUpdateFailedKeyPrefix + dockerUpdateAlertKey(name), dockerUpdateAvailableKeyPrefix + dockerUpdateAlertKey(name)} {
-		if err := alerts.Resolve(ctx, dockerUpdateAlertSource, key); err != nil {
-			slog.Debug("failed to clear Docker update alert for container "+name, "component", "docker", "container", name, "error", err)
-		}
+	if err := alerts.Resolve(ctx, dockerUpdateAlertSource, dockerUpdateAvailableKeyPrefix+dockerUpdateAlertKey(name)); err != nil {
+		slog.Debug("failed to clear Docker update alert for container "+name, "component", "docker", "container", name, "error", err)
+	}
+}
+
+// resolveDockerUpdateFailureAlerts clears the failure and the failed-check
+// records of a container, and leaves its update-available one. Best effort:
+// failures are logged, never returned.
+func resolveDockerUpdateFailureAlerts(ctx context.Context, containerName string) {
+	name := strings.TrimPrefix(containerName, "/")
+	if err := alerts.Resolve(ctx, dockerUpdateAlertSource, dockerUpdateFailedKeyPrefix+dockerUpdateAlertKey(name)); err != nil {
+		slog.Debug("failed to clear Docker update alert for container "+name, "component", "docker", "container", name, "error", err)
 	}
 	if err := alerts.Resolve(ctx, dockerCheckAlertSource, dockerUpdateAlertKey(name)); err != nil {
 		slog.Debug("failed to clear Docker update check alert for container "+name, "component", "docker", "container", name, "error", err)

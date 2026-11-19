@@ -5,7 +5,8 @@ now: on demand from the Containers page (`docker.update_container`, a job with
 progress, `Privileged()` like every Docker write), or in a scheduled pass that
 `linuxio-docker-update.timer` starts once a day. A Compose service whose image
 is built on the host is rebuilt instead, from the Containers page only
-([Rebuilding a built service](#rebuilding-a-built-service)). The engine is
+([Rebuilding a built service](#rebuilding-a-built-service)); the check tells
+when a base image of such an image has a newer version. The engine is
 `backend/common/dockerupdate`, shared by the bridge and by the
 `linuxio-docker-update` program that the timer's service runs as root.
 
@@ -44,10 +45,81 @@ containers are looked at that way, with one
 when that read fails, as it does for a service no longer in the files), so a
 check costs nothing more where every image comes from a registry. Update and the
 scheduled pass, which look at each container again before they act, reach
-the same verdict for a built one (one `config` for it): nothing to update, no
-error, failure or alert, and it stays `built`. What each container's check
-found is kept in `/var/lib/linuxio/docker-update-status.json`, which the
-Containers page reads.
+the same verdict for a built one (one `config` for it, and the base images
+below): nothing to update, no error or failure, and it stays `built`. What
+each container's check found is kept in
+`/var/lib/linuxio/docker-update-status.json`, which the Containers page reads.
+
+A built container is compared with the registries of its base images
+instead. A rebuild by LinuxIO ([below](#rebuilding-a-built-service)) records,
+for the image it built, each base image the build resolved: the tagged
+reference and the digest it had, at most 32. The check looks the record up
+by the image the container runs and asks the registry for each reference's
+digest now, as it asks for an image's, each reference once however many
+images were built on it. Records are kept by image ID, which the check knows
+before it asks any registry, so it asks for the base images in the same pool
+as the images and one registry backoff bounds the whole check; in a scheduled
+pass the update step reuses the check's answers. When one differs, the
+container stays `built` with an update available, *Rebuild available* on the
+Containers page, the reason naming the base images that moved. *Rebuild and
+update* is what takes it, never Update, and only when an administrator asks.
+The check's result counts it among the updates waiting and again as a
+rebuild (`rebuilds`), so the Containers page and its Compose stacks name
+updates and rebuilds apart. Otherwise it stays `built` with no update, and
+the reason says why:
+
+- its base images have no newer version;
+- it has no base image that can have one (`FROM scratch`, or bases pinned by
+  digest);
+- its base images could not be read from the build's output: the build
+  looked a tag up and wrote no base line in a form LinuxIO knows, so they are
+  not watched, rather than taken for none;
+- its image has no record, having been built outside LinuxIO (such as by
+  `docker compose up --build`) or before LinuxIO kept records: rebuilt once
+  from the Containers page, it is watched from then on;
+- a base could not be checked (its registry refused or did not answer),
+  named with the registry's error. This is no error of the check, so it
+  raises no failed-check warning.
+
+The bases are read from the build's own output (`--progress=plain`), never
+from the Dockerfile: the output names what the build resolved, with build
+arguments and stages settled and the digest the registry gave, and LinuxIO
+opens nothing in the build context. BuildKit writes one line for each base
+it resolved, in a fully cached build as in a first one, and its digest is the
+one `DistributionInspect` gives for the tag, the image index's. Measured with
+Docker 29.1.3 and the containerd image store, in two setups:
+
+- Compose 2.40.3 without buildx, which builds with Compose's own builder:
+  `#4 [app 1/2] FROM docker.io/library/alpine:3.20@sha256:…`, the bracket
+  naming the service, the stage when it has a name, and the step;
+- the same Compose with the distribution's buildx 0.30.1 (BuildKit 0.26.2),
+  through which Compose builds with Bake: `#5 [1/2] FROM …` and
+  `#6 [builder 1/2] FROM …`, with no service in the bracket.
+
+Only a whole line of either form counts, and its reference must parse. The
+test VM's Docker suite builds with buildx through Bake (`docker-buildx` is in
+its snapshot, [Development](./development.md#test-vm)); the form without
+buildx is covered by the unit tests' recorded build output only. A step's
+own output is written behind its number and the seconds since it began
+(`#5 0.183 …`), so nothing a `RUN` step prints can add a base or hide one. A
+stage built `FROM` an earlier stage, `FROM scratch` and the frontend a
+`# syntax=` line names have no such line. A base the Dockerfile pins by
+digest has the same line as one resolved from a tag; the build looks it up
+with its digest (`#2 [app internal] load metadata for
+docker.io/library/alpine:3.20@sha256:…`, `[internal]` through Bake), which is
+how it is told apart and left out, since it never moves. A tag looked up that
+way (the same line without a digest) with no base line at all is a build
+whose output was not understood, and its record says so.
+
+The records are kept in the status file beside the statuses, under its lock.
+The check of every running container, which the Containers page runs when it
+opens and every five minutes, drops the records of images no longer on the
+host, by the daemon's image list, whose IDs are the ones an image inspection
+gives and a record is kept by (seen with the containerd image store). A stack
+that is down keeps its record as long as its image is there. A rebuild
+records its image once the build made it, so a record written after the list
+was asked for is kept until the next check, whatever the list showed. A check
+of one container drops none.
 
 ## One update at a time
 
@@ -230,17 +302,27 @@ update does:
    would also retry a build that failed for good.
 4. The image the build tagged is read: the one the service's `image:` names
    now, or, without one, the one the container was created from (Compose's
-   `<project>-<service>`). When it is the image the container runs, the
-   build changed nothing: the job ends there, reported as not updated, and
-   the container is left as it is. When the files name another image than
-   the container was created from, a rollback is refused for that reason.
+   `<project>-<service>`). The base images the build's output named are
+   recorded for that image ([Checking](#checking)), also when it is the
+   image the container already runs: a base can move without changing the
+   image built on it (a new platform in the base's index changes its digest
+   and nothing else), and the record must follow the base. A record that
+   cannot be written is a warning in the journal, and the rebuild goes on.
+   When it is the image the container runs, the build changed nothing: the
+   job ends there, reported as not updated, and the container is left as it
+   is. When the files name another image than the container was created
+   from, a rollback is refused for that reason.
 5. Otherwise `up -d --no-deps --pull never --no-build <service>` brings the
    service up on exactly the image the host now holds, and the new container
    is waited for and, when it fails, rolled back to the image it ran before,
    as an update is.
 
 The container is then marked `built` again, not current, since its image
-still has no registry to check.
+still has no registry to check, and with no update: the build has just
+pulled every base. This is the only place a base that moved stops being
+reported other than a check that finds it current again; a rebuild that was
+rolled back leaves the container on its old image, whose record still
+applies, so it still waits for a rebuild.
 
 ## Readiness
 
@@ -301,6 +383,15 @@ rolled back, *Docker update rolled back*. A replaced container raises
 *Docker container updated* when the settings ask for changes; the other
 notices and what each setting governs are in [Alerts](./alerts.md).
 
+A built container whose base image has a newer version is reported and never
+acted on: the update step finds nothing to update in it, and builds nothing.
+It counts among the updates the pass leaves waiting (the *N waiting* of the
+summary and of the every-run notice), and with *Tell me when Docker updates
+are waiting* on it raises `docker-update/available-<name>`, the key of an
+update waiting, titled *Docker rebuild available*: a base image of its image
+has a newer version, and it is rebuilt from the Containers page. The next
+check that finds no newer base, or a rebuild, clears it.
+
 ## Known limits
 
 - A rollback, standalone or Compose, starts the old image on data the new one
@@ -315,7 +406,32 @@ notices and what each setting governs are in [Alerts](./alerts.md).
   failed with the reason, and the service stays on the new image.
 - The scheduled pass never builds an image: a built service is rebuilt only
   when an administrator asks from the Containers page and watches it (why is
-  under Rejected in the [backlog](./TODO/backlog.md)).
+  under Rejected in the [backlog](./TODO/backlog.md)). The pass reports a
+  base image with a newer version, and that is all.
+- A base image whose registry cannot be asked leaves its container `built`
+  with no update and no failed-check warning, the reason naming the base:
+  a base that moved meanwhile is not reported until its registry answers.
+- Only images a rebuild by LinuxIO built have their base images watched; one
+  built otherwise, or brought up by `docker compose up` on an image that was
+  removed and built again outside LinuxIO, waits for its first rebuild from
+  the Containers page. So does a container whose image a build outside
+  LinuxIO left with no name: with the containerd image store that image is
+  gone from the host though the container still runs it (step 2 of
+  [Rebuilding a built service](#rebuilding-a-built-service)), and the next
+  check of every container drops its record.
+- The bases are read in the two forms measured (Compose's own builder, and
+  buildx through Bake). A build whose base lines take another form is
+  recorded as not understood, the reason saying so, and its bases are not
+  watched; were its `load metadata` lines in another form too, it would read
+  as having no base image that can change.
+- The occurrence of a *Docker rebuild available* alert stands for the moved
+  bases whose registry answered in that check: with two moved bases and one
+  registry answering only now and then, it changes from check to check, and
+  a dismissed alert comes back.
+- A base used in two stages of one Dockerfile, pinned by digest in one and by
+  its tag alone in the other, is not watched when both name the same digest.
+- A record keeps 32 base images; a build that resolves more has the rest
+  unwatched.
 - A rebuild pulls new base images, but a step the cache answers does not run
   again: a package or plugin a cached `RUN` step fetched stays as it was
   until that step reruns, because the step itself or one before it changed.

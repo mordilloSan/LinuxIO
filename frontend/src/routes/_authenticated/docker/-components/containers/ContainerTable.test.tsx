@@ -20,6 +20,7 @@ const FAILED_SCAN = {
   built: 0,
   checked: 1,
   errors: 1,
+  rebuilds: 0,
   uncheckable: 0,
   updates: 0,
 };
@@ -29,6 +30,7 @@ const updateCheckMocks = vi.hoisted(() => ({
     built: number;
     checked: number;
     errors: number;
+    rebuilds: number;
     uncheckable: number;
     updates: number;
   } | null,
@@ -245,6 +247,7 @@ describe("ContainerTable mutation feedback", () => {
       built: 1,
       checked: 1,
       errors: 0,
+      rebuilds: 0,
       uncheckable: 0,
       updates: 0,
     };
@@ -268,6 +271,111 @@ describe("ContainerTable mutation feedback", () => {
       expect.anything(),
     );
     expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  // A base image of a built image has a newer version: the row says a
+  // rebuild is waiting and offers the rebuild, never a plain update.
+  it("shows a newer base image of a built image as a rebuild, not an update", async () => {
+    media.compact = false;
+    const request = vi
+      .spyOn(core, "mutationRequest")
+      .mockResolvedValue(undefined);
+    const { user } = render(
+      <DockerUpdateOperationProvider>
+        <ContainerTable
+          containers={[
+            container("app-id", "app", "running", {
+              updateAvailable: true,
+              updateCheckedAt: Date.now(),
+              updateCheckReason:
+                "base image docker.io/library/alpine:3.20 has a newer version on its registry",
+              updateCheckState: "built",
+            }),
+          ]}
+        />
+      </DockerUpdateOperationProvider>,
+      { auth: { privileged: true } },
+    );
+
+    const row = within(rowNamed("app"));
+    expect(
+      row.getByRole("button", { name: "Re-scan app for updates" }),
+    ).toHaveTextContent("Rebuild available");
+    expect(row.queryByRole("button", { name: "Update" })).toBeNull();
+
+    await user.click(row.getByRole("button", { name: "Actions for app" }));
+    expect(screen.queryByRole("menuitem", { name: "Update" })).toBeNull();
+    await user.click(
+      screen.getByRole("menuitem", { name: "Rebuild and update" }),
+    );
+    expect(request).toHaveBeenCalledWith(
+      "docker",
+      "update_container",
+      { containerId: "app-id", rebuild: true },
+      expect.anything(),
+    );
+  });
+
+  it("says a re-scan found a newer base image of a built image", async () => {
+    media.compact = false;
+    updateCheckMocks.result = {
+      built: 1,
+      checked: 1,
+      errors: 0,
+      rebuilds: 1,
+      uncheckable: 0,
+      updates: 1,
+    };
+    const { user } = renderTable([
+      container("app-id", "app", "running", {
+        updateAvailable: true,
+        updateCheckedAt: Date.now(),
+        updateCheckState: "built",
+      }),
+    ]);
+
+    await user.click(
+      within(rowNamed("app")).getByRole("button", {
+        name: "Re-scan app for updates",
+      }),
+    );
+
+    const { toast } = await import("sonner");
+    expect(toast.info).toHaveBeenCalledWith(
+      "A base image of app has a newer version. Use Rebuild and update.",
+      expect.anything(),
+    );
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it("flags a folded stack whose built member waits for a rebuild", async () => {
+    media.compact = false;
+    const { user } = render(
+      <StatefulStackTable
+        containers={[
+          container("media-web-id", "media-web", "running", {
+            Labels: { "com.docker.compose.project": "media" },
+            updateAvailable: true,
+            updateCheckState: "built",
+          }),
+          composeContainer("media-db-id", "media-db", "media"),
+        ]}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", { name: "Collapse stack media" }),
+    );
+
+    const header = screen
+      .getByRole("button", { name: "Expand stack media" })
+      .closest('[role="row"]') as HTMLElement;
+    expect(
+      within(header).getByRole("img", { name: "Rebuild available" }),
+    ).toBeInTheDocument();
+    expect(
+      within(header).queryByRole("img", { name: "Update available" }),
+    ).toBeNull();
   });
 
   it.each([true, false])(

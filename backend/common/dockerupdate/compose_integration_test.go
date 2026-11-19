@@ -14,6 +14,7 @@ import (
 
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
+	digest "github.com/opencontainers/go-digest"
 )
 
 // TestDockerUpdateComposeIntegration exercises the real Compose-managed replacement
@@ -192,7 +193,10 @@ func TestDockerUpdateComposeRebuildIntegration(t *testing.T) {
 		t.Logf("first rebuild of the image compose up built: updated %v, %s -> %s", first.Updated, shortImageID(first.PreviousImageID), shortImageID(first.NewImageID))
 	}
 	current := f.inspect()
+	f.checkBaseRecorded(current)
 	f.rebuildUnchanged(current)
+	f.checkBuiltStatus(current, false)
+	current = f.recordSurvivesProjectDown(current)
 	f.writeDockerfile("echo two > /release", `["sleep", "infinity"]`)
 	second := f.rebuildChanged(current)
 	f.writeDockerfile("echo three > /release", `["false"]`)
@@ -207,10 +211,11 @@ func (f rebuildFixture) checkFindsBuilt(initial container.InspectResponse) {
 	if _, err := RefreshContainerUpdate(f.ctx, f.cli, initial.ID); err != nil {
 		f.t.Fatalf("check the container: %v", err)
 	}
+	// Built by `compose up`, not by LinuxIO: nothing records its bases.
 	status, ok := ReadStatusSnapshot().ForContainerName(name)
-	if !ok || status.CheckState != DockerUpdateCheckStateBuilt || status.Err != "" ||
-		status.CheckReason != builtReason(f.project, rebuildService) {
-		f.t.Fatalf("stored status = %+v, %v; want built", status, ok)
+	if !ok || status.CheckState != DockerUpdateCheckStateBuilt || status.Err != "" || status.UpdateAvailable ||
+		status.CheckReason != builtReason(f.project, rebuildService)+builtWithoutRecord {
+		f.t.Fatalf("stored status = %+v, %v; want built, with no record", status, ok)
 	}
 
 	var phases []string
@@ -224,6 +229,72 @@ func (f rebuildFixture) checkFindsBuilt(initial container.InspectResponse) {
 		f.t.Fatalf("status after an update = %+v, want it still built", status)
 	}
 	f.t.Logf("update of a built container reported %q", phases)
+}
+
+// checkBaseRecorded: a rebuild by LinuxIO records the base it resolved, with
+// the digest the registry gives for it now, so the check finds no newer
+// version; a recorded digest the registry no longer gives makes the
+// container wait for a rebuild.
+func (f rebuildFixture) checkBaseRecorded(current container.InspectResponse) {
+	f.t.Helper()
+	record, ok := readBuiltImageRecords()[current.Image]
+	if !ok || len(record.Bases) != 1 || record.Bases[0].Ref != "docker.io/library/alpine:3.20" {
+		f.t.Fatalf("record of %s = %+v, %v; want the base alpine:3.20", current.Image, record, ok)
+	}
+	base := record.Bases[0]
+	remote, err := registryDigest(f.ctx, f.cli, base.Ref)
+	if err != nil || remote.String() != base.Digest {
+		f.t.Fatalf("registry digest of %s = %s (%v), recorded %s; want the same", base.Ref, remote, err, base.Digest)
+	}
+	f.t.Logf("recorded base %s@%s", base.Ref, base.Digest)
+	f.checkBuiltStatus(current, false)
+
+	record.Bases = []baseImage{{Ref: base.Ref, Digest: digest.FromString("an older alpine").String()}}
+	if err := recordBuiltImage(f.ctx, record); err != nil {
+		f.t.Fatalf("record an older base: %v", err)
+	}
+	f.checkBuiltStatus(current, true)
+}
+
+// recordSurvivesProjectDown: a check of every container while the project is
+// down keeps the record of its image, which is still on the host (the image
+// list gives the ID the record is kept by), so the container brought up on
+// it again is still watched. It returns that container.
+func (f rebuildFixture) recordSurvivesProjectDown(current container.InspectResponse) container.InspectResponse {
+	f.t.Helper()
+	composePath := filepath.Join(f.dir, "compose.yaml")
+	if err := composeDown(f.ctx, f.project, composePath, f.dir, false, nil); err != nil {
+		f.t.Fatalf("compose down: %v", err)
+	}
+	if _, err := RefreshImageUpdates(f.ctx, f.cli); err != nil {
+		f.t.Fatalf("check every container: %v", err)
+	}
+	if _, ok := readBuiltImageRecords()[current.Image]; !ok {
+		f.t.Fatalf("the record of image %s was dropped while its project was down", current.Image)
+	}
+	if err := runCompose(f.ctx, f.project, composePath, f.dir, nil, "up", "-d", "--no-build"); err != nil {
+		f.t.Fatalf("compose up: %v", err)
+	}
+	again := f.inspect()
+	if again.Image != current.Image {
+		f.t.Fatalf("container came back on %s, want %s", again.Image, current.Image)
+	}
+	f.checkBuiltStatus(again, false)
+	return again
+}
+
+// checkBuiltStatus checks current, and wants it built, and waiting for a
+// rebuild when baseMoved.
+func (f rebuildFixture) checkBuiltStatus(current container.InspectResponse, baseMoved bool) {
+	f.t.Helper()
+	if _, err := RefreshContainerUpdate(f.ctx, f.cli, current.ID); err != nil {
+		f.t.Fatalf("check the container: %v", err)
+	}
+	status, ok := ReadStatusSnapshot().ForContainerName(strings.TrimPrefix(current.Name, "/"))
+	if !ok || status.CheckState != DockerUpdateCheckStateBuilt || status.Err != "" || status.UpdateAvailable != baseMoved {
+		f.t.Fatalf("status = %+v, %v; want built, waiting for a rebuild: %v", status, ok, baseMoved)
+	}
+	f.t.Logf("check of the built container: %s", status.CheckReason)
 }
 
 const rebuildService = "app"

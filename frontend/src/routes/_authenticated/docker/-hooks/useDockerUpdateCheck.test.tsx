@@ -174,4 +174,28 @@ describe("useDockerUpdateCheck feedback", () => {
     );
     expect(mocks.toast.success).not.toHaveBeenCalled();
   });
+
+  it("names the rebuilds the scan found apart from the updates", async () => {
+    mocks.useCallMutation.mockImplementation((_endpoint, config) => ({
+      isPending: false,
+      mutate: () =>
+        config?.success?.({
+          built: 1,
+          checked: 3,
+          errors: 0,
+          rebuilds: 1,
+          uncheckable: 0,
+          updates: 2,
+        }),
+    }));
+    const { user } = render(<CheckButton />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Check container updates" }),
+    );
+
+    expect(mocks.toast.success).toHaveBeenCalledWith(
+      "Checked 3 container(s), found 1 update(s) and 1 rebuild(s)",
+    );
+  });
 });

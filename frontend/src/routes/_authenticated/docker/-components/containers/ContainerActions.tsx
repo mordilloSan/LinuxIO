@@ -16,6 +16,7 @@ import {
 import AppMenu, { AppMenuItem } from "@/components/ui/AppMenu";
 import AppTypography from "@/components/ui/AppTypography";
 import useAuth from "@/hooks/useAuth";
+import { hasRegistryUpdate } from "@/utils/dockerContainer";
 
 import { DOCKER_TOAST_META } from "../shared/dockerToast";
 import { useDockerUpdateOperation } from "../shared/DockerUpdateOperationProvider";
@@ -209,7 +210,8 @@ const ContainerActions = ({
           },
         ]
       : []),
-    ...(container.updateAvailable && container.State === "running"
+    // A built image's newer base image is taken by the rebuild below.
+    ...(hasRegistryUpdate(container) && container.State === "running"
       ? [
           {
             // The card offers it from its update-available badge instead.

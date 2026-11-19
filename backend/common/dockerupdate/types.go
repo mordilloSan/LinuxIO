@@ -76,11 +76,16 @@ func (r DockerContainerUpdateRequest) Target() []string { return []string{r.Cont
 type DockerUpdateCheckResult struct {
 	// Built counts the containers whose image a Compose service builds on
 	// this host (DockerUpdateCheckStateBuilt).
-	Built       int `json:"built"`
-	Checked     int `json:"checked"`
-	Errors      int `json:"errors"`
+	Built   int `json:"built"`
+	Checked int `json:"checked"`
+	Errors  int `json:"errors"`
+	// Rebuilds counts, among Updates, the built containers a base image of
+	// whose image has a newer version: a rebuild, not an update, takes them.
+	Rebuilds    int `json:"rebuilds"`
 	Uncheckable int `json:"uncheckable"`
-	Updates     int `json:"updates"`
+	// Updates counts every container with something waiting, Rebuilds
+	// included.
+	Updates int `json:"updates"`
 }
 
 type DockerContainerUpdateResult struct {

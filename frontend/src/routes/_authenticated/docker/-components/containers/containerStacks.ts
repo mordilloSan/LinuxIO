@@ -1,6 +1,7 @@
 import { arrayMove } from "@dnd-kit/sortable";
 
 import type { ContainerInfo } from "@/api";
+import { hasNewerBaseImage, hasRegistryUpdate } from "@/utils/dockerContainer";
 
 /** Docker Compose stamps every container it creates with its project name. */
 export const COMPOSE_PROJECT_LABEL = "com.docker.compose.project";
@@ -55,6 +56,7 @@ export const groupContainersByStack = (
 };
 
 interface ContainerStackSummary {
+  rebuildAvailable: boolean;
   running: number;
   total: number;
   unhealthy: boolean;
@@ -64,16 +66,25 @@ interface ContainerStackSummary {
 export const summarizeStack = (
   containers: readonly ContainerInfo[],
 ): ContainerStackSummary => ({
+  rebuildAvailable: containers.some(hasNewerBaseImage),
   running: containers.filter((container) => container.State === "running")
     .length,
   total: containers.length,
   unhealthy: containers.some((container) =>
     container.Status.toLowerCase().includes("unhealthy"),
   ),
-  updateAvailable: containers.some(
-    (container) => container.updateAvailable === true,
-  ),
+  updateAvailable: containers.some(hasRegistryUpdate),
 });
+
+/**
+ * What the stack's amber flag says waits: a registry update before a
+ * rebuild; undefined when nothing does.
+ */
+export const getStackUpdateLabel = (summary: ContainerStackSummary) => {
+  if (summary.updateAvailable) return "Update available";
+  if (summary.rebuildAvailable) return "Rebuild available";
+  return undefined;
+};
 
 /** Maps a stack summary onto the display states `getContainerStatusColor` knows. */
 export const getStackDisplayState = (summary: ContainerStackSummary) => {

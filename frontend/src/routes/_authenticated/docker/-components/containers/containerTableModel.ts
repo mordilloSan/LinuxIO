@@ -76,8 +76,17 @@ export const getUpdateStatus = ({
     };
   }
   // A Compose service builds the image on this host: there is no registry
-  // to check, and the actions offer "Rebuild and update" instead.
+  // to check, and the actions offer "Rebuild and update" instead. The check
+  // reports a base image with a newer version as an available update.
   if (updateCheckState === "built") {
+    if (updateAvailable === true) {
+      return {
+        color: "warning" as const,
+        detail:
+          updateCheckReason || "A base image of this image has a newer version",
+        label: "Rebuild available",
+      };
+    }
     return {
       color: "secondary" as const,
       detail: updateCheckReason || "Built on this host by Docker Compose",

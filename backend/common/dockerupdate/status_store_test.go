@@ -28,7 +28,7 @@ func TestUpdateStatusStoreRoundTrip(t *testing.T) {
 			RemoteDigest:    "sha256:remote",
 			CheckedAt:       checkedAt,
 		},
-	}); err != nil {
+	}, nil); err != nil {
 		t.Fatalf("writeUpdateStatuses: %v", err)
 	}
 
@@ -73,7 +73,7 @@ func TestMergeUpdateStatusesOverlaysEntry(t *testing.T) {
 	if err := writeUpdateStatuses(context.Background(), []ImageUpdateStatus{
 		{ContainerID: "container-1", ContainerName: "nginx", CheckState: DockerUpdateCheckStateCurrent, ImageID: "sha256:image-1", CheckedAt: oldTime},
 		{ContainerID: "container-2", ContainerName: "redis", CheckState: DockerUpdateCheckStateCurrent, ImageID: "sha256:image-2", CheckedAt: oldTime},
-	}); err != nil {
+	}, nil); err != nil {
 		t.Fatalf("writeUpdateStatuses: %v", err)
 	}
 
@@ -105,7 +105,7 @@ func TestMergeUpdateStatusesRemovesOldContainerID(t *testing.T) {
 	withTempUpdateStatusPath(t)
 	if err := writeUpdateStatuses(context.Background(), []ImageUpdateStatus{
 		{ContainerID: "old-container", ContainerName: "nginx", CheckState: DockerUpdateCheckStateAvailable, ImageID: "sha256:old", UpdateAvailable: true, CheckedAt: time.Now()},
-	}); err != nil {
+	}, nil); err != nil {
 		t.Fatalf("writeUpdateStatuses: %v", err)
 	}
 

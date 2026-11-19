@@ -1460,6 +1460,7 @@ export interface DockerUpdateCheckResult {
   built: number;
   checked: number;
   errors: number;
+  rebuilds: number;
   uncheckable: number;
   updates: number;
 }

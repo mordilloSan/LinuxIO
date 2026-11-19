@@ -72,6 +72,18 @@ describe("getUpdateStatus", () => {
     ).toEqual({ color: "secondary", detail: reason, label: "Built here" });
   });
 
+  it("reports a built image whose base image has a newer version", () => {
+    const reason =
+      'base image docker.io/library/alpine:3.20 has a newer version on its registry; built on this host by Compose service "app" of project "media"';
+    expect(
+      getUpdateStatus({
+        updateAvailable: true,
+        updateCheckReason: reason,
+        updateCheckState: "built",
+      }),
+    ).toEqual({ color: "warning", detail: reason, label: "Rebuild available" });
+  });
+
   it("reports containers that were never scanned", () => {
     expect(getUpdateStatus({})).toMatchObject({
       detail: "Never scanned",

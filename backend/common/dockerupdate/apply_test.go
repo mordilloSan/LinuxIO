@@ -1931,7 +1931,8 @@ func TestRebuildComposeContainerLeavesAContainerWhoseImageDidNotChange(t *testin
 		t.Fatalf("calls = %v, want %v", fake.calls, wantCalls)
 	}
 	status, ok := ReadStatusSnapshot().ForContainerName("web")
-	if !ok || status.CheckState != DockerUpdateCheckStateBuilt || status.CheckReason != builtReason("media", "web") {
+	// The fake build resolves no base image.
+	if !ok || status.CheckState != DockerUpdateCheckStateBuilt || status.CheckReason != builtReason("media", "web")+builtWithoutBases {
 		t.Fatalf("status = %+v, %v; want built", status, ok)
 	}
 }

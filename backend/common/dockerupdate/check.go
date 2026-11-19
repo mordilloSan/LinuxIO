@@ -22,7 +22,8 @@ import (
 const imageUpdateObservationConcurrency = 6
 
 // RefreshImageUpdates checks all running containers against their configured
-// registry references and replaces the persistent status snapshot.
+// registry references and replaces the persistent status snapshot. The base
+// images recorded for images no longer on the host are dropped with it.
 func RefreshImageUpdates(ctx context.Context, cli *client.Client) (DockerUpdateCheckResult, error) {
 	containers, err := cli.ContainerList(ctx, client.ContainerListOptions{All: false})
 	if err != nil {
@@ -43,10 +44,29 @@ func RefreshImageUpdates(ctx context.Context, cli *client.Client) (DockerUpdateC
 	if err != nil {
 		return DockerUpdateCheckResult{}, err
 	}
-	if err := writeUpdateStatuses(ctx, statuses); err != nil {
+	images, err := listHostImages(ctx, cli)
+	if err != nil {
+		return DockerUpdateCheckResult{}, err
+	}
+	if err := writeUpdateStatuses(ctx, statuses, &images); err != nil {
 		return DockerUpdateCheckResult{}, err
 	}
 	return result, nil
+}
+
+// listHostImages is the ID of every image the daemon holds, the same ID an
+// image inspection gives (seen with the containerd image store), and when the
+// list was asked for.
+func listHostImages(ctx context.Context, cli *client.Client) (hostImages, error) {
+	images := hostImages{ids: make(map[string]bool), listedAt: time.Now()}
+	list, err := cli.ImageList(ctx, client.ImageListOptions{All: true})
+	if err != nil {
+		return hostImages{}, fmt.Errorf("list images: %w", err)
+	}
+	for _, item := range list.Items {
+		images.ids[item.ID] = true
+	}
+	return images, nil
 }
 
 // RefreshContainerUpdate checks one container against its configured registry
@@ -216,7 +236,11 @@ func checkContainerImageUpdates(
 	if err := ctx.Err(); err != nil {
 		return nil, DockerUpdateCheckResult{}, err
 	}
-	if err := inspectImageUpdateRequests(ctx, cli, requests); err != nil {
+	// Records are kept by image ID, so the base images of the built images
+	// are asked for with the images, and one backoff bounds the check.
+	records := readBuiltImageRecords()
+	baseLookups, err := inspectImageUpdateRequests(ctx, cli, requests, recordedBaseRefs(records, targets))
+	if err != nil {
 		return nil, DockerUpdateCheckResult{}, err
 	}
 	built, err := classifyMaybeBuilt(ctx, classify, targets, func(targetIndex int) imageUpdateObservation {
@@ -225,36 +249,45 @@ func checkContainerImageUpdates(
 	if err != nil {
 		return nil, DockerUpdateCheckResult{}, err
 	}
+	builtChecks := compareBuiltContainers(targets, built, records, baseLookups)
 
 	statuses := make([]ImageUpdateStatus, 0, len(targets))
 	var result DockerUpdateCheckResult
 	for targetIndex, target := range targets {
-		status := checkedStatus(target, requests[targetRequestIndices[targetIndex]].observation, built[target.ContainerID], checkedAt)
+		status := checkedStatus(target, requests[targetRequestIndices[targetIndex]].observation, builtChecks[target.ContainerID], checkedAt)
 		statuses = append(statuses, status)
-
-		result.Checked++
-		if status.Err != "" {
-			result.Errors++
-		}
-		switch status.CheckState {
-		case DockerUpdateCheckStateUncheckable:
-			result.Uncheckable++
-		case DockerUpdateCheckStateBuilt:
-			result.Built++
-		default:
-		}
-		if status.UpdateAvailable {
-			result.Updates++
-		}
+		result.count(status)
 	}
 
 	return statuses, result, nil
 }
 
+// count adds what the check found for one container to the result.
+func (r *DockerUpdateCheckResult) count(status ImageUpdateStatus) {
+	r.Checked++
+	if status.Err != "" {
+		r.Errors++
+	}
+	switch status.CheckState {
+	case DockerUpdateCheckStateUncheckable:
+		r.Uncheckable++
+	case DockerUpdateCheckStateBuilt:
+		r.Built++
+	default:
+	}
+	if status.UpdateAvailable {
+		r.Updates++
+		if status.CheckState == DockerUpdateCheckStateBuilt {
+			r.Rebuilds++
+		}
+	}
+}
+
 // checkedStatus is the status of target that observation found: built by a
-// Compose service of the host, for that reason and with no error, when built
-// is not empty.
-func checkedStatus(target containerImageUpdateTarget, observation imageUpdateObservation, built string, checkedAt time.Time) ImageUpdateStatus {
+// Compose service of the host, for built's reason and with no error, when
+// built has one, available when a base image of its image has a newer
+// version.
+func checkedStatus(target containerImageUpdateTarget, observation imageUpdateObservation, built builtCheck, checkedAt time.Time) ImageUpdateStatus {
 	status := ImageUpdateStatus{
 		ContainerID:     target.ContainerID,
 		ContainerName:   target.ContainerName,
@@ -270,8 +303,9 @@ func checkedStatus(target containerImageUpdateTarget, observation imageUpdateObs
 	if observation.err != nil {
 		status.Err = observation.err.Error()
 	}
-	if built != "" {
-		status.CheckState, status.CheckReason, status.Err = DockerUpdateCheckStateBuilt, built, ""
+	if built.reason != "" {
+		status.CheckState, status.CheckReason, status.Err = DockerUpdateCheckStateBuilt, built.reason, ""
+		status.UpdateAvailable, status.RemoteDigest = built.baseMoved, built.remoteDigest
 	}
 	return status
 }
@@ -314,13 +348,19 @@ func containerBuiltReason(ctx context.Context, classify builtClassifier, inspect
 	if classify == nil || inspect.Config == nil || !observation.mayBeBuilt(inspect.Config.Labels) {
 		return ""
 	}
-	return classify(ctx, []containerImageUpdateTarget{{
+	return classify(ctx, []containerImageUpdateTarget{inspectedTarget(inspect)})[inspect.ID]
+}
+
+// inspectedTarget is the check target of an inspected container that has a
+// configuration.
+func inspectedTarget(inspect container.InspectResponse) containerImageUpdateTarget {
+	return containerImageUpdateTarget{
 		ContainerID:   inspect.ID,
 		ContainerName: strings.TrimPrefix(inspect.Name, "/"),
 		ImageID:       inspect.Image,
 		ImageRef:      inspect.Config.Image,
 		Labels:        inspect.Config.Labels,
-	}})[inspect.ID]
+	}
 }
 
 // builtReason is the check reason of a container that runs the image service
@@ -427,13 +467,18 @@ func composeProjectsOf(ctx context.Context, cli *client.Client, targets []contai
 	return projects
 }
 
+// inspectImageUpdateRequests looks up the image of each request that asks for
+// it and the digest of each of baseRefs (lookupBaseDigest), all in one pool,
+// so a registry that throttles is waited on once whatever it is asked for.
+// It returns the base lookups by reference, and an error only when ctx ends.
 func inspectImageUpdateRequests(
 	ctx context.Context,
 	cli imageUpdateCheckClient,
 	requests []imageUpdateObservationRequest,
-) error {
+	baseRefs []string,
+) (map[string]baseLookup, error) {
 	if err := ctx.Err(); err != nil {
-		return err
+		return nil, err
 	}
 	group, groupCtx := errgroup.WithContext(ctx)
 	group.SetLimit(imageUpdateObservationConcurrency)
@@ -455,7 +500,22 @@ func inspectImageUpdateRequests(
 			return nil
 		})
 	}
-	return group.Wait()
+	bases := make([]baseLookup, len(baseRefs))
+	for baseIndex, ref := range baseRefs {
+		group.Go(func() error {
+			found, err := lookupBaseDigest(groupCtx, cli, ref)
+			bases[baseIndex] = found
+			return err
+		})
+	}
+	if err := group.Wait(); err != nil {
+		return nil, err
+	}
+	lookups := make(map[string]baseLookup, len(baseRefs))
+	for baseIndex, ref := range baseRefs {
+		lookups[ref] = bases[baseIndex]
+	}
+	return lookups, nil
 }
 
 func inspectImageUpdate(
@@ -485,6 +545,30 @@ func inspectImageUpdate(
 	}
 	observation.localDigest = localDigests[0].String()
 
+	remote, err := registryDigest(ctx, cli, imageRef)
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return observation, ctxErr
+		}
+		observation.err = fmt.Errorf("inspect registry distribution %q: %w", imageRef, err)
+		observation.registryRefused = registryRefusal(err)
+		return observation, nil
+	}
+	if err := remote.Validate(); err != nil {
+		observation.err = fmt.Errorf("registry returned an invalid manifest digest for %q: %w", imageRef, err)
+		return observation, nil
+	}
+
+	observation.remoteDigest = remote.String()
+	observation.updateAvailable = !slices.Contains(localDigests, remote)
+	return observation, nil
+}
+
+// registryDigest is the digest the registry gives for imageRef now
+// (DistributionInspect). A registry that throttles or does not answer is
+// asked again (registryRetries); one that refuses is not. The error is the
+// daemon's own, which registryRefusal reads.
+func registryDigest(ctx context.Context, cli imageUpdateCheckClient, imageRef string) (digest.Digest, error) {
 	remote, err := cli.DistributionInspect(ctx, imageRef, client.DistributionInspectOptions{})
 	for retry := 0; err != nil && retry < registryRetries; retry++ {
 		// Retry only the registry read. Give throttled, slow or briefly
@@ -494,26 +578,14 @@ func inspectImageUpdate(
 			break
 		}
 		if waitErr := waitRegistryBackoff(ctx, retry); waitErr != nil {
-			return observation, waitErr
+			return "", waitErr
 		}
 		remote, err = cli.DistributionInspect(ctx, imageRef, client.DistributionInspectOptions{})
 	}
 	if err != nil {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return observation, ctxErr
-		}
-		observation.err = fmt.Errorf("inspect registry distribution %q: %w", imageRef, err)
-		observation.registryRefused = registryRefusal(err)
-		return observation, nil
+		return "", err
 	}
-	if err := remote.Descriptor.Digest.Validate(); err != nil {
-		observation.err = fmt.Errorf("registry returned an invalid manifest digest for %q: %w", imageRef, err)
-		return observation, nil
-	}
-
-	observation.remoteDigest = remote.Descriptor.Digest.String()
-	observation.updateAvailable = !slices.Contains(localDigests, remote.Descriptor.Digest)
-	return observation, nil
+	return remote.Descriptor.Digest, nil
 }
 
 // registryRetries is how many times a throttled or unreachable registry call

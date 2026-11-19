@@ -457,6 +457,7 @@ func TestCheckContainerImageUpdatesPreservesCancellationWithoutRegistryWork(t *t
 }
 
 func TestCheckContainerImageUpdatesClassifiesBuiltImages(t *testing.T) {
+	withTempUpdateStatusPath(t)
 	localDigest := digest.FromString("local")
 	client := &fakeImageUpdateCheckClient{
 		images: map[string]client.ImageInspectResult{
@@ -495,7 +496,7 @@ func TestCheckContainerImageUpdatesClassifiesBuiltImages(t *testing.T) {
 		t.Fatalf("result = %+v, want %+v (built is counted on its own)", result, want)
 	}
 	if statuses[0].CheckState != DockerUpdateCheckStateBuilt || statuses[0].UpdateAvailable ||
-		statuses[0].CheckReason != `built on this host by Compose service "app" of project "media"` {
+		statuses[0].CheckReason != `built on this host by Compose service "app" of project "media"; rebuild it once from LinuxIO to be told when its base images have newer versions` {
 		t.Fatalf("built status = %+v", statuses[0])
 	}
 	if statuses[1].CheckState != DockerUpdateCheckStateUncheckable || !strings.Contains(statuses[1].CheckReason, "no repository digest") {
@@ -570,6 +571,7 @@ func TestClassifyComposeBuiltReadsEachProjectOnce(t *testing.T) {
 // image's own labels name the container's Compose project and service, and a
 // throttled one never is.
 func TestCheckContainerImageUpdatesClassifiesRefusedLookups(t *testing.T) {
+	withTempUpdateStatusPath(t)
 	synctest.Test(t, func(t *testing.T) {
 		localDigest := digest.FromString("local")
 		denied := errors.New("Error response from daemon: errors:\ndenied: requested access to the resource is denied\nunauthorized: authentication required")

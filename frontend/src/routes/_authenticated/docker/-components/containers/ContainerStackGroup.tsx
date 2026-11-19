@@ -14,6 +14,7 @@ import { CARD_PADDING_LG } from "@/theme/constants";
 import {
   formatStackSummary,
   getStackDisplayState,
+  getStackUpdateLabel,
   summarizeStack,
 } from "./containerStacks";
 
@@ -95,6 +96,7 @@ export function ContainerStackSummaryCard({
 }: ContainerStackSummaryCardProps) {
   const summary = summarizeStack(containers);
   const displayState = getStackDisplayState(summary);
+  const updateLabel = getStackUpdateLabel(summary);
 
   return (
     <FrostedCard
@@ -120,10 +122,10 @@ export function ContainerStackSummaryCard({
           top: 14,
         }}
       >
-        {summary.updateAvailable && (
-          <AppTooltip arrow title="Update available">
+        {updateLabel && (
+          <AppTooltip arrow title={updateLabel}>
             <span
-              aria-label="Update available"
+              aria-label={updateLabel}
               role="img"
               style={{
                 alignItems: "center",

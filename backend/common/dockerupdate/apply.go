@@ -198,7 +198,11 @@ func updateInspectedContainerWithProgress(
 		return candidate.result, err
 	}
 	if candidate.built {
-		reportProgress(report, "current", "The image is built on this host by its Compose service; Rebuild and update builds it again")
+		message := "The image is built on this host by its Compose service; Rebuild and update builds it again"
+		if candidate.baseMoved {
+			message = "A base image of the image this host builds has a newer version; Rebuild and update builds the image again with it"
+		}
+		reportProgress(report, "current", message)
 		return candidate.result, nil
 	}
 	if !candidate.needsUpdate {
@@ -230,12 +234,16 @@ type containerUpdateCandidate struct {
 	// built is a container whose image its Compose service builds on this
 	// host: there is no registry image to update it to.
 	built bool
+	// baseMoved is a built container a base image of whose image has a
+	// newer version: a rebuild, never an update, takes it.
+	baseMoved bool
 }
 
 // inspectContainerUpdateCandidate tells whether inspect has an update, and
 // records what it found as a check does. A container whose image its Compose
 // service builds on this host (classify) has nothing to update: no error, and
-// its status stays built.
+// its status stays built, with a newer base image found as the check finds
+// it (checkBuiltBases).
 func inspectContainerUpdateCandidate(
 	ctx context.Context,
 	cli imageUpdateCheckClient,
@@ -263,9 +271,14 @@ func inspectContainerUpdateCandidate(
 		return candidate, err
 	}
 	if reason := containerBuiltReason(ctx, classify, inspect, observation); reason != "" {
-		candidate.built = true
+		checks, err := checkBuiltBases(ctx, cli, []containerImageUpdateTarget{inspectedTarget(inspect)}, map[string]string{inspect.ID: reason})
+		if err != nil {
+			return candidate, err
+		}
+		check := checks[inspect.ID]
+		candidate.built, candidate.baseMoved = true, check.baseMoved
 		candidate.result.NewImageID = inspect.Image
-		markContainerBuilt(ctx, inspect.ID, inspect, reason)
+		markContainerBuilt(ctx, inspect.ID, inspect, check)
 		return candidate, nil
 	}
 	if ctxErr := ctx.Err(); ctxErr != nil {
@@ -500,8 +513,10 @@ func rebuildComposeContainer(
 
 	reportProgress(report, "building", fmt.Sprintf("Building the image of Compose service %s with fresh base images", service))
 	var tail []string // the last lines of the build's output, for its error
+	var bases buildBaseCollector
 	emit := func(_ string, message string, _ *ComposeProgress) {
 		reportProgress(report, ProgressPhaseBuildOutput, message)
+		bases.add(message)
 		if len(tail) == buildOutputErrorLines {
 			tail = slices.Delete(tail, 0, 1)
 		}
@@ -524,10 +539,10 @@ func rebuildComposeContainer(
 	if err != nil {
 		return result, fmt.Errorf("inspect rebuilt image %q: %w", imageRef, err)
 	}
-	reason := builtReason(target.Name, service)
+	check := recordRebuiltImage(ctx, bases.record(rebuilt.ID, time.Now()), builtReason(target.Name, service), result.ContainerName)
 	if rebuilt.ID == before.Image {
 		result.NewImageID = before.Image
-		markContainerBuilt(ctx, before.ID, before, reason)
+		markContainerBuilt(ctx, before.ID, before, check)
 		reportProgress(report, "current", "The rebuilt image is the one the container already runs")
 		return result, nil
 	}
@@ -546,9 +561,35 @@ func rebuildComposeContainer(
 		return nil
 	}, report)
 	if err == nil {
-		markContainerBuilt(ctx, before.ID, after, reason)
+		markContainerBuilt(ctx, before.ID, after, check)
 	}
 	return result, err
+}
+
+// recordRebuiltImage records the base images the rebuild of the image of
+// Docker container name resolved, whether or not the image changed: a base
+// can move without changing the image built on it, and the record follows
+// the base. It returns what a check of the container finds now, for reason
+// (builtReason). A record that cannot be written leaves the container as one
+// without a record, and the rebuild goes on.
+func recordRebuiltImage(ctx context.Context, record builtImageRecord, reason, name string) builtCheck {
+	if err := recordBuiltImage(ctx, record); err != nil {
+		slog.Warn("failed to record the base images of the rebuilt image of Docker container "+name,
+			"component", "docker",
+			"subsystem", "update",
+			"container", name,
+			"image", record.ImageID,
+			"error", err)
+		return builtCheck{reason: reason + builtWithoutRecord}
+	}
+	slog.Debug("recorded the base images of the rebuilt image of Docker container "+name,
+		"component", "docker",
+		"subsystem", "update",
+		"container", name,
+		"image", record.ImageID,
+		"bases", len(record.Bases),
+		"bases_unread", record.BasesUnread)
+	return rebuiltCheck(reason, record)
 }
 
 // holdPreviousImage tags imageID, the image a container runs, as the
