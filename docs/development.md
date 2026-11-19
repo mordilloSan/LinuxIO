@@ -214,7 +214,8 @@ and the packages they install. Fedora's is:
   it ships, so a new release is a new version in the profile.
 - `packaging/vm/user-data-fedora.yaml.in`: the user in `wheel` with
   passwordless sudo, `moby-engine` (Fedora's Docker) started and enabled,
-  `btrfs-progs`, `install-dependencies.sh`, every package upgraded, and
+  `docker-compose` and `docker-buildx`, `btrfs-progs`,
+  `install-dependencies.sh`, every package upgraded, and
   `dnf-makecache.timer` off. SELinux stays enforcing. Fedora's root
   filesystem is btrfs.
 - `dnf` where Ubuntu has `apt`, in `vm-update` and in the suites.
@@ -248,9 +249,13 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
   cloud-init reads its seed over HTTP from a server on
   `192.168.122.1:8399` (8400 for VM 2, and so on) that runs only during that
   boot. It creates the user
-  `linuxio-e2e` with passwordless sudo and installs `docker.io`,
+  `linuxio-e2e` with passwordless sudo and installs `docker.io` with its
+  Compose and buildx plugins (`docker-compose-v2`, `docker-buildx`),
   `btrfs-progs` and the LinuxIO dependencies, and upgrades every package. The
-  VM is then shut down and snapshotted as `clean`, without LinuxIO.
+  VM is then shut down and snapshotted as `clean`, without LinuxIO. A change
+  to the seed's packages reaches a VM only when it is created again
+  (`vm-destroy`, then `vm-create`); `vm-update` upgrades what `clean` already
+  has.
 - Every target that needs the VM starts it if it is stopped and shuts it
   down when it ends, passed or failed (`vm-install`, `vm-ssh`, the
   `test-vm-*` and the `vm-test-*` ones), so no VM runs unused; what was
@@ -338,9 +343,13 @@ make vm-destroy             # delete the first VM and its volumes; the cache sta
     installs it, checks socket activation, idle exit and the index timer, and
     uninstalls it.
   - `docker` is `test-docker-update-integration`: real Compose replacements,
-    which pull alpine images from Docker Hub. Ubuntu's `docker.io` comes
-    without the Compose plugin, so the suite installs `docker-compose-v2`
-    (`docker-compose` on Fedora, beside `moby-engine`).
+    which pull alpine images from Docker Hub. Ubuntu's `docker.io` and
+    Fedora's `moby-engine` come without the Compose and buildx plugins, so
+    the seed installs them (`docker-compose-v2`, `docker-compose` on Fedora,
+    and `docker-buildx`), and the suite installs them in a VM created before
+    the seed did. With buildx Compose builds through Bake, as it does on a
+    host that has Docker's own packages; a host without buildx is covered by
+    the unit tests' recorded build output only.
   - `updater` is `test-updater`, the install script's `--dry-run` under the
     updater's systemd sandbox. The test reads the script from
     `LINUXIO_INSTALL_SCRIPT`, a copy, since the VM has no checkout.

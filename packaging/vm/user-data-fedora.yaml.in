@@ -20,6 +20,9 @@ package_update: true
 package_upgrade: true
 packages:
   - moby-engine
+  # The Compose and buildx plugins, as on Ubuntu.
+  - docker-compose
+  - docker-buildx
   - btrfs-progs
 runcmd:
   # The metadata refresh holds dnf's lock while a suite installs a package.

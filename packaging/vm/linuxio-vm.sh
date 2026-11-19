@@ -49,7 +49,8 @@ ubuntu)
 	readonly SUMS_URL="https://cloud-images.ubuntu.com/releases/${RELEASE}/release/SHA256SUMS"
 	readonly SEED_TEMPLATE=user-data.yaml.in PKG=apt
 	# zram-tools is LinuxIO's first choice where it exists.
-	readonly ZRAM_DEFAULT=zram-tools GENERATOR_PACKAGE=systemd-zram-generator COMPOSE_PACKAGE=docker-compose-v2
+	readonly ZRAM_DEFAULT=zram-tools GENERATOR_PACKAGE=systemd-zram-generator
+	readonly COMPOSE_PACKAGE=docker-compose-v2 BUILDX_PACKAGE=docker-buildx
 	;;
 fedora)
 	readonly IMAGE_NAME="Fedora-Cloud-Base-Generic-${VERSION}.x86_64.qcow2"
@@ -57,7 +58,8 @@ fedora)
 	readonly SUMS_URL="https://dl.fedoraproject.org/pub/fedora/linux/releases/${RELEASE}/Cloud/x86_64/images/Fedora-Cloud-${VERSION}-x86_64-CHECKSUM"
 	readonly SEED_TEMPLATE=user-data-fedora.yaml.in PKG=dnf
 	# Fedora has no zram-tools; the image comes with zram-generator.
-	readonly ZRAM_DEFAULT=zram-generator GENERATOR_PACKAGE=zram-generator COMPOSE_PACKAGE=docker-compose
+	readonly ZRAM_DEFAULT=zram-generator GENERATOR_PACKAGE=zram-generator
+	readonly COMPOSE_PACKAGE=docker-compose BUILDX_PACKAGE=docker-buildx
 	;;
 esac
 readonly INDEX="${LINUXIO_VM_INDEX:-1}"
@@ -849,10 +851,13 @@ suite_updater() {
 
 # The Docker update's real Compose runs (test-docker-update-integration),
 # which pull alpine images from Docker Hub. Ubuntu's docker.io and Fedora's
-# moby-engine come without the Compose plugin, so the first run installs the
-# profile's package of it (docker-compose-v2, docker-compose).
+# moby-engine come without the Compose and buildx plugins, which the seed
+# installs (docker-compose-v2 or docker-compose, and docker-buildx); a VM
+# created before the seed did gets them here, so every VM builds through
+# Bake, as Compose does on a host that has buildx.
 suite_docker() {
 	vm_ssh sudo docker compose version >/dev/null 2>&1 </dev/null || vm_install "$COMPOSE_PACKAGE"
+	vm_ssh sudo docker buildx version >/dev/null 2>&1 </dev/null || vm_install "$BUILDX_PACKAGE"
 	push_test "$1" dockerupdate
 	run_test dockerupdate "${LINUXIO_VM_DOCKER_RUN:?mk/vm.mk sets it}" 10m LINUXIO_RUN_DOCKER_INTEGRATION=1
 }
