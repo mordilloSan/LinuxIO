@@ -151,12 +151,13 @@ Mutation options:
 - `.Resumable(apischema.ResumeHooks[Req, Res]{Suspend, Resume, At})` on the
   binding lets a job continue after a shutdown or reboot, or after its job
   host died. It panics unless the route is `Privileged()` and has no secret
-  fields. Five routes declare it: `storage.btrfs_balance`,
+  fields. Six routes declare it: `storage.btrfs_balance`,
   `storage.btrfs_scrub_start`, `storage.btrfs_device_replace` and
-  `storage.btrfs_device_remove`, which resume after a reboot, and
+  `storage.btrfs_device_remove`, which resume after a reboot,
   `packages.update`, which resumes in the same boot after a crash of its
-  host (`At: bridgeipc.ResumeAfterCrash`). On a shutdown the host runs
-  `Suspend`, stores its
+  host (`At: bridgeipc.ResumeAfterCrash`), and `storage.run_smart_test`,
+  which resumes after a reboot, a crash or a stop by hand. On a shutdown the
+  host runs `Suspend`, stores its
   checkpoint in the record and then cancels the context; a handler can also
   store one while it runs (`bridgeipc.SaveCheckpoint`). `Resume` runs once, at
   the root host's start right after the interruption
@@ -868,9 +869,11 @@ The root host starts at boot and resumes each job of a `Resumable` route that
 the last shutdown or a power loss interrupted: a record `interrupted` with
 reason `shutdown` or `reboot`, still `Resumable`, with no `cancel_requested`,
 whose executor ran in an earlier boot. A route that resumes in the boot
-(`packages.update`) is instead picked up at the root host's next start in the
-same boot after its host crashed (reason `crash`, an executor of this boot,
-and a run that was not itself a resume), before that host serves, so a client
+(`packages.update` instead, `storage.run_smart_test` as well) is picked up at
+the root host's next start in the same boot after its host crashed (reason
+`crash`, an executor of this boot, and a run that was not itself a resume),
+or, for `storage.run_smart_test`, was stopped by hand (reason `shutdown`),
+before that host serves, so a client
 that reattaches finds the job running. Every other `interrupted` record loses
 `Resumable` when a host starts, so a job is resumed once and never at a
 later reboot. The outcome is written to the same record; a `Resume` that

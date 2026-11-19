@@ -52,7 +52,6 @@ after a change that issues ioctls).
 
 Do one of these only when something shows it is needed.
 
-- Pick up a SMART test again from the drive's own state.
 - Continue the scrub of a pool resync after a power cut. It saves its progress
   as a job's scrub does, but it is not a job, so nothing continues it and the
   resync scrubs from the start again.

@@ -144,9 +144,9 @@ The rules a route author follows:
   after the host crashed or was stopped by hand, for work that runs on outside
   the host and that `Resume` only follows. A handler that must be found again after a crash, which runs
   no `Suspend`, saves where it stands with `bridgeipc.SaveCheckpoint(ctx, v)`.
-  The four btrfs operations and `packages.update` declare it
-  ([Resume hooks](#resume-hooks)); replication is not resumable, since an
-  interrupted run is reported and the timer catches up.
+  The four btrfs operations, `packages.update` and `storage.run_smart_test`
+  declare it ([Resume hooks](#resume-hooks)); replication is not resumable,
+  since an interrupted run is reported and the timer catches up.
 - **Moving a route between the bridge and the host raises `jobs.Protocol`**
   (`backend/common/jobs/record.go`), so a host of another build refuses the
   bridge instead of serving the route the other way ([Updates](#updates)).
@@ -396,15 +396,17 @@ The root host then resumes, once, each record that is `interrupted`, still
 start:
 
 - **After a reboot** (`bridgeipc.ResumeAfterReboot`, the default: the four
-  btrfs operations): reason `shutdown` or `reboot`, and an executor that ran
-  in an earlier boot.
+  btrfs operations and `storage.run_smart_test`): reason `shutdown` or
+  `reboot`, and an executor that ran in an earlier boot.
 - **After a crash in this boot** (`bridgeipc.ResumeAfterCrash`:
-  `packages.update`): reason `crash` and an executor of this boot, when the
-  run that crashed was not itself a resume (`resumed`): a resume that crashes
-  its host would otherwise crash every start.
-- **After a stop by hand in this boot** (`bridgeipc.ResumeAfterStop`): reason
-  `shutdown` and an executor of this boot. `packages.update` does not take it:
-  an admin may stop the host to halt an update.
+  `packages.update` and `storage.run_smart_test`): reason `crash` and an
+  executor of this boot, when the run that crashed was not itself a resume
+  (`resumed`): a resume that crashes its host would otherwise crash every
+  start.
+- **After a stop by hand in this boot** (`bridgeipc.ResumeAfterStop`:
+  `storage.run_smart_test`): reason `shutdown` and an executor of this boot.
+  `packages.update` does not take it: an admin may stop the host to halt an
+  update.
 
 A route that resumes in the boot does so for work that runs on outside the job
 host, so the next host picks the job up from where that work stands instead of
@@ -440,11 +442,12 @@ be, before the root host resumes anything.
 
 ### Resume hooks
 
-Five routes are resumable. The four btrfs operations resume after a reboot:
-`storage.btrfs_balance`, `storage.btrfs_scrub_start`,
-`storage.btrfs_device_replace` and `storage.btrfs_device_remove`. What each
-hook does is in [Btrfs](./btrfs.md#shutdown-and-resume). The hooks differ
-because the kernel treats each operation differently:
+Six routes are resumable. Five resume after a reboot: the four btrfs
+operations, `storage.btrfs_balance`, `storage.btrfs_scrub_start`,
+`storage.btrfs_device_replace` and `storage.btrfs_device_remove`, and
+`storage.run_smart_test` (below). What each btrfs hook does is in
+[Btrfs](./btrfs.md#shutdown-and-resume). The hooks differ because the kernel
+treats each operation differently:
 
 - A fatal signal, SIGKILL included, cancels a balance in the kernel and deletes
   its item, so only a pause keeps it; the kernel continues a paused balance at
@@ -499,6 +502,21 @@ keeps a history of the transactions it ran, across its own restarts:
   transaction the job follows and updates no further package. A host stop or
   crash does not cancel the transaction, which runs on.
 
+`storage.run_smart_test` resumes after a reboot, and in the same boot after a
+crash or a stop by hand of its host
+(`backend/bridge/handlers/storage/smart_test_operation.go`). The self-test
+runs inside the drive, which outlives the job host, and the drive keeps a log
+of its self-tests across power cycles; what the job saves and how it reads the
+drive again is in [Storage Disks](./storage-disks.md#smart-self-tests). In
+short: before it starts the test the job saves who the drive is and its
+self-test log, and after `smartctl -t` that it started it. `Resume` takes the
+drive only when `/dev/<name>` reports the same model, serial number and WWN
+and the start was saved; it follows a test the drive still runs, or takes the
+one ended test of the job's kind that the log gained since as the outcome,
+and never starts a test. Anything else, a test a reset interrupted included,
+leaves the job interrupted. Cancel aborts the test in the drive when it is the
+job's; a host stop does not.
+
 The long ioctls run on a locked OS thread with async signals blocked: since
 kernel 6.19 any pending signal aborts a scrub or a replace, and an aborted
 replace loses its target, so retrying is not an option. A freeze (a suspend,
@@ -523,8 +541,8 @@ stopped Docker nothing would run on to follow.
 | Logout, session expiry, bridge exit | The bridge closes its host connection; jobs run on. Any later login of the uid sees them |
 | Host unreachable from the bridge | New mutations fail with `503`; job reads wait up to 10 s, then answer `503`; the bridge reconnects with backoff |
 | Host of an older build | New mutations the host would run are refused with `409` `update_pending: …`; the older host finishes its jobs ([Updates](#updates)) |
-| `systemctl stop`, orderly shutdown | `interrupted/shutdown`, a resumable job after its `Suspend` stored a checkpoint; a job with `cancel_requested` ends `canceled`. The root host raises a warning |
-| Host crash, `kill -9`, OOM kill of the host | The next host of the uid marks the job `interrupted/crash`. The root host picks up a job of a route that resumes after a crash (`packages.update`), unless the crashed run was itself a pick-up, and alerts on any other, which is never resumed |
+| `systemctl stop`, orderly shutdown | `interrupted/shutdown`, a resumable job after its `Suspend` stored a checkpoint; a job with `cancel_requested` ends `canceled`. The root host raises a warning. A stop by hand in this boot: the next root host picks up a job of a route that resumes after a stop (`storage.run_smart_test`; not `packages.update`) |
+| Host crash, `kill -9`, OOM kill of the host | The next host of the uid marks the job `interrupted/crash`. The root host picks up a job of a route that resumes after a crash (`packages.update`, `storage.run_smart_test`), unless the crashed run was itself a pick-up, and alerts on any other, which is never resumed |
 | OOM kill of a job's subprocess | That job fails; the host and its other jobs run on |
 | Reboot or power loss | The root host, started at boot, marks the records a power loss left running `interrupted/reboot`, resumes the resumable jobs the shutdown or the power loss interrupted, and raises a warning for each job it marks and does not resume. A user's host marks theirs at the next login |
 | Cancel (`tasks.cancel`, stream abort) | `cancel_requested`, then the handler cleans up, then `canceled` |
@@ -885,6 +903,7 @@ The record itself is the quickest evidence: as root,
 | Go unit | `make test-go`, in `make check-backend-quiet` | `backend/common/jobs/store_test.go`, `backend/common/jobs/scheduled_test.go`, `backend/common/jobs/process_test.go` | Write policy, quick-job deletion, retention and prune, crash detection by pid and start time, history paging through equal end times, saved output chunks |
 | Go unit | same | `backend/bridge/internal/jobshost/host_test.go`, `backend/bridge/internal/jobshost/scheduled_test.go` | Peer uid and protocol refusal, idle exit, SIGTERM and `Suspend`, cancel during shutdown, reconcile and the resume rule (`TestResumeOnlyWhatTheLastShutdownInterrupted`), alerts and their levels, scheduled runs in `tasks.*`, slim history entries, `tasks.output` |
 | Go unit | same | `backend/bridge/internal/jobshost/pickup_test.go` | The same-boot pick-up: a crash and a stop picked up before the host serves, a stop not picked up for a route that takes crashes only, none after a reboot, a cancel, a lost job or a crash of a picked-up run; resumes after a reboot started once the host serves, and left as they were by a stop during the start; a `Resume` that finds nothing left interrupted with its reason and alert and not tried again, and one during a stop counted as the stop's; a failed resume stamped, made unresumable only for a route that resumes in the boot; a checkpoint saved while a job runs |
+| Go unit | same | `backend/bridge/handlers/storage/smart_resume_test.go`, `backend/bridge/handlers/storage/smart_test.go` | Against a fake drive (smartctl's JSON report): the drive read and saved before the test starts, a test the drive still runs followed, an ended test read from the log (completed, failed, aborted, a reset), another drive, an unreadable one, no new test, more than one, a test of another kind or a log that does not continue never taken, an NVMe drive running the other kind, Cancel aborting the test after a pick-up and in the first run, and not on a host stop, once the name is another drive's, when `-t` was refused, or when the drive runs another kind or none |
 | Go unit | same | `backend/bridge/handlers/packages/package_update_resume_test.go`, `backend/bridge/handlers/packages/packagekit_test.go` | Against a fake PackageKit on a private bus: the checkpoint saved before each package's update, a transaction followed to its end, one that ended read from the history (succeeded, failed), one PackageKit cannot account for or of another role never taken, one dropped before its role is read taken from the history, the batch's counts in the error of a job left interrupted, a non-success exit with no ErrorCode as a failure (an update and an install), Cancel sent to PackageKit after a pick-up and in the first run, refused by PackageKit, and not on a host stop |
 | Go unit | same | `backend/bridge/cmd/jobs_relay_test.go`, `backend/bridge/cmd/jobs_host_test.go`, `backend/bridge/internal/jobsclient/client_test.go` | A bridge and a host over a socket: forwarding, host loss, reattach, events after a host restart, the update wait. The relay tests dial the in-process host with `jobsclient.Dial`, which starts no socket unit, so they also run as root |
 | Go unit | same | `backend/bridge/cmd/jobs_relay_test.go` (`TestRelayRoundTripSpeed`) | A speed bound: 300 no-op mutations through the relay to the in-process host, each timed from dispatch to its result frame; fails when the median exceeds 50 ms (observed 0.5 to 0.6 ms with the race detector, 0.2 to 0.3 ms without). It logs the median, p95 and maximum, and runs as root too (`make vm-test-relay-root` matches it through `Relay`) |
@@ -978,7 +997,9 @@ relay's (`TestRelayRoundTripSpeed`).
 
 Covered at one level only:
 
-- Unit tests only: the email channel, DNF and Mint (no such VM), the Docker
+- Unit tests only: the SMART self-test and its pick-up (the test VMs' virtio
+  disks have no SMART, and the route accepts only `sd`, `hd` and `nvme`
+  names), the email channel, DNF and Mint (no such VM), the Docker
   update producers with containers to update, `scheduled.btrfs_resync` (no
   check returns a missing disk), the 50-run and 30-day prune, the `409`s of
   `tasks.cancel` and `tasks.watch` for a scheduled run, a stale or failed stop,

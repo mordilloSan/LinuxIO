@@ -28,6 +28,58 @@ entries" on a BIOS host or in a container); the caption names the mounted
 copy. The node claims nothing about the copies' contents: checking that
 would mean mounting them. A single ESP draws as a plain partition → volume.
 
+## SMART self-tests
+
+A drive's details offer a short and an extended SMART self-test
+(`storage.run_smart_test`,
+`backend/bridge/handlers/storage/smart_test_operation.go`). It is a job in
+the root host ([Jobs](./jobs.md)) that runs `smartctl -t short|long` on the
+whole disk (`sd*`, `hd*` or `nvme*n*`) and follows the drive with
+`smartctl --json -a`, every 15 s for a short test and every minute for an
+extended one. The test runs inside the drive; the job starts it and watches
+it.
+
+- Before it starts the test the job reads the drive and saves in its record
+  who the drive is (model, serial number and WWN) and the drive's self-test
+  log, which the drive keeps across power cycles; once `smartctl -t` started
+  the test it saves that too.
+- Cancel aborts the test in the drive (`smartctl -X`) only once `smartctl -t`
+  started it, and only when `/dev/<name>` still reports the same model, serial
+  number and WWN (a drive with neither serial number nor WWN is not aborted)
+  and runs a test, of the job's kind where the drive says the kind. So a test
+  smartd or an admin started, beside which `-t` was refused, or that started
+  after the job's ended, runs on. A stop of the job host does not abort it.
+- The job is picked up at the root host's next start after its host crashed
+  or was stopped by hand, and at the next boot. It reads `/dev/<name>` again
+  and takes it only when it reports the same model, serial number and WWN,
+  and only when the job had recorded starting the test. It then follows a
+  test the drive still runs (of the job's kind when the drive says which: an
+  NVMe drive always does, an ATA drive when it logs the test it runs), or,
+  when the drive's log gained exactly one ended test since, of the job's
+  kind, ends with that test's result: completed, or failed with the drive's
+  words for a failure or an abort. It never starts a test. When the drive cannot
+  tell (no new test, more than one, one of another kind, a log that does not
+  continue the saved one, a test a reset interrupted, as a reboot does on most
+  drives) or is another drive, the job stays interrupted, with the reason in
+  its error.
+- An ATA drive whose test the host aborted or a reset interrupted reads
+  aborted, which fails the job; smartctl reports neither as passed.
+
+### Known limits
+
+- After a reboot a drive is looked for on the same `/dev` name only; when the
+  name is another drive's now, the job stays interrupted.
+- A drive that reports neither a serial number nor a WWN is never picked up,
+  and Cancel leaves its test running.
+- A drive that does not say which kind of test it runs (an ATA drive that
+  does not log its running test) has any test it runs, while its log shows no
+  new result, followed as the job's.
+- A job a reboot interrupted is read at boot and ends completed, failed or
+  interrupted, the last with "interrupted by a reset" on most ATA drives,
+  which a reboot resets.
+- A test starts only when `smartctl --json -a` can read the drive first: the
+  job fails before `-t` otherwise.
+
 ## Partitions
 
 A plain disk's volumes name their partition. Partitions that nothing mounts

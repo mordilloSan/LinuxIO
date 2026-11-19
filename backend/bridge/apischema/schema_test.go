@@ -483,6 +483,8 @@ func TestResumableRoutes(t *testing.T) {
 		// PackageKit runs a transaction on when the job host dies, not across
 		// a reboot; a stop by hand may be meant to halt the batch.
 		"packages.update": bridgeipc.ResumeAfterCrash,
+		// A drive runs its self-test on, and keeps its result across a reboot.
+		"storage.run_smart_test": bridgeipc.ResumeInBoot | bridgeipc.ResumeAfterReboot,
 	}
 	if !maps.Equal(got, want) {
 		t.Fatalf("resumable routes = %v, want %v", got, want)
