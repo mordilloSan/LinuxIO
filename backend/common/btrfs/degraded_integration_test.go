@@ -85,6 +85,17 @@ func writeRandom(t *testing.T, path string, size int64) [32]byte {
 		t.Fatal(err)
 	}
 	defer f.Close()
+	// Allocated first, in extents of the file's own size class. Written
+	// through the page cache alone, a file is split wherever writeback
+	// starts while it is being written (a sync by anything else on the
+	// host), and the kernel allocates a new chunk for a piece of another
+	// size class before it puts it beside the others (extent-tree.c
+	// find_free_extent: LOOP_ALLOC_CHUNK comes before
+	// LOOP_WRONG_SIZE_CLASS), so the chunks these tests count on would
+	// depend on the host.
+	if err := unix.Fallocate(int(f.Fd()), 0, 0, size); err != nil {
+		t.Fatalf("allocate %s: %v", path, err)
+	}
 	h := sha256.New()
 	if _, err := io.CopyN(io.MultiWriter(f, h), rand.Reader, size); err != nil {
 		t.Fatalf("write %s: %v", path, err)
@@ -243,10 +254,13 @@ func (m *itMirror) writeWithHoles() {
 			break
 		}
 	}
-	for i := range 16 {
+	// One file short of full: a write into allocated space still reserves
+	// its size until it is written back (file.c btrfs_buffered_write), and a
+	// reservation that does not fit allocates a chunk.
+	for i := range 15 {
 		m.write(fmt.Sprintf("before-%02d.bin", i), 32<<20)
 	}
-	for i := 1; i < 16; i += 2 {
+	for i := 1; i < 15; i += 2 {
 		name := fmt.Sprintf("before-%02d.bin", i)
 		m.must("delete "+name, os.Remove(filepath.Join(m.target, name)))
 		delete(m.files, name)
