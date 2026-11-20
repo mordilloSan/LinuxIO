@@ -36,12 +36,6 @@ var themeColorDefs = []struct{ Key, Light, Dark string }{
 	{"fileBrowserBreadcrumbText", "#5A5A5A", "#FFFFFF"},
 }
 
-// removedThemeColorKeys are theme colours LinuxIO no longer has. A file saved
-// before one was removed may still name it, so a read skips it instead of
-// refusing the document, which would reset every UI preference, and the next
-// save, which writes only themeColorDefs, drops it.
-var removedThemeColorKeys = []string{"fileBrowserChrome"}
-
 // ThemeColorsByMode holds separate color overrides for light and dark mode
 type ThemeColorsByMode struct {
 	Light ThemeColors `json:"light,omitzero" yaml:"light,omitempty"`
@@ -84,9 +78,8 @@ func defaultThemeColors() *ThemeColorsByMode {
 
 // UnmarshalYAML reads the document over the colours already there, so a sparse
 // document keeps the defaults it does not mention: a key replaces that colour,
-// a null key unsets it and a null scheme unsets the scheme. A removed key is
-// skipped; any other unknown scheme or key is refused, as strict decoding
-// refuses an unknown field.
+// a null key unsets it and a null scheme unsets the scheme. An unknown scheme
+// or key is refused, as strict decoding refuses an unknown field.
 func (m *ThemeColorsByMode) UnmarshalYAML(data []byte) error {
 	var document map[string]map[string]*CSSColor
 	if err := yaml.Unmarshal(data, &document); err != nil {
@@ -111,9 +104,6 @@ func (m *ThemeColorsByMode) UnmarshalYAML(data []byte) error {
 			merged = make(ThemeColors, len(colors))
 		}
 		for key, color := range colors {
-			if slices.Contains(removedThemeColorKeys, key) {
-				continue
-			}
 			if !IsThemeColorKey(key) {
 				return fmt.Errorf("unknown field %q", key)
 			}

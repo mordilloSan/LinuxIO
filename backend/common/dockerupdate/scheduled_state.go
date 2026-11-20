@@ -14,8 +14,6 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/scheduledrun"
 )
 
-type scheduledUpdateCandidate = containerUpdateCandidate
-
 type scheduledUpdateState struct {
 	ctx           context.Context
 	cli           *client.Client
@@ -146,7 +144,7 @@ func (s *scheduledUpdateState) prepare(summary container.Summary) error {
 		return nil
 	}
 	s.announceUpdate(strings.TrimPrefix(candidate.inspect.Name, "/"))
-	updated, err := updateStandaloneContainerWithDependenciesAndPolicy(
+	updated, err := updateStandaloneContainer(
 		s.ctx,
 		s.cli,
 		candidate.inspect,
@@ -155,6 +153,7 @@ func (s *scheduledUpdateState) prepare(summary container.Summary) error {
 		&defaultStandaloneUpdateJournal,
 		dependencies,
 		stoppedContainerUpdatePolicy{Allow: s.updateStopped, Revive: s.reviveStopped},
+		nil,
 	)
 	return s.recordStandaloneUpdateOutcome(candidate.inspect, updated, err)
 }
@@ -260,10 +259,10 @@ func inspectScheduledUpdateCandidate(
 	registry imageUpdateCheckClient,
 	classify builtClassifier,
 	summary container.Summary,
-) (scheduledUpdateCandidate, error) {
+) (containerUpdateCandidate, error) {
 	inspectResult, err := cli.ContainerInspect(ctx, summary.ID, client.ContainerInspectOptions{})
 	if err != nil {
-		return scheduledUpdateCandidate{}, fmt.Errorf("inspect scheduled container %q: %w", PrimaryContainerName(summary), err)
+		return containerUpdateCandidate{}, fmt.Errorf("inspect scheduled container %q: %w", PrimaryContainerName(summary), err)
 	}
 	return inspectContainerUpdateCandidate(ctx, registry, classify, inspectResult.Container)
 }

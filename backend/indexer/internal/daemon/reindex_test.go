@@ -31,7 +31,7 @@ func TestReindexPathRejectsDirectorySymlink(t *testing.T) {
 		t.Fatalf("subscribe: %v", err)
 	}
 
-	d.reindexPathWithProgress(context.Background(), "op-1", link, broadcaster)
+	d.reindexPath(context.Background(), "op-1", link, broadcaster)
 	evt := mustReceiveWorkEvent(t, events)
 	if evt.event != "error" {
 		t.Fatalf("event = %q, want error", evt.event)

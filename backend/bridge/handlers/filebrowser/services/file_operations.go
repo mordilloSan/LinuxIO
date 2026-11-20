@@ -108,13 +108,13 @@ func procPath(f *os.File) string {
 	return "/proc/self/fd/" + strconv.Itoa(int(f.Fd()))
 }
 
-// CopyFileWithCallbacks copies a file or directory with progress callbacks.
+// CopyFile copies a file or directory with progress callbacks.
 // With overwrite an existing destination file is replaced and an existing
 // destination directory is merged, entry by entry. owner is the session user
 // a root bridge copies for (see transferPaths); unset, the paths' folders are
 // opened as they resolve. Cancellation comes through opts; ctx outlives it
 // only to clean up a failed transfer.
-func CopyFileWithCallbacks(ctx context.Context, source, dest string, overwrite bool, owner Owner, opts *OperationCallbacks) error {
+func CopyFile(ctx context.Context, source, dest string, overwrite bool, owner Owner, opts *OperationCallbacks) error {
 	source = fsroot.CleanAbsPath(source)
 	dest = fsroot.CleanAbsPath(dest)
 
@@ -304,7 +304,7 @@ func placeEntry(src, dst entry, info os.FileInfo, opts *OperationCallbacks, stat
 			return err
 		}
 	}
-	return copyEntryWithCallbacks(src, dst, info, opts, state)
+	return copyEntry(src, dst, info, opts, state)
 }
 
 // mergeDirectory transfers the children of src into the existing directory
@@ -370,11 +370,11 @@ const preservedModeBits = os.ModePerm | os.ModeSetuid | os.ModeSetgid | os.ModeS
 // inside directories, as rsync does, instead of failing the whole transfer.
 const specialFileTypes = os.ModeNamedPipe | os.ModeSocket | os.ModeDevice | os.ModeCharDevice
 
-// copyEntryWithCallbacks copies source to a dest that does not exist yet and,
+// copyEntry copies source to a dest that does not exist yet and,
 // for a move, removes the source once the copy is complete. That removal is a
 // plain unlink or rmdir: a directory still holding a skipped or newly added
 // entry stays behind with an error instead of being deleted unseen.
-func copyEntryWithCallbacks(src, dst entry, info os.FileInfo, opts *OperationCallbacks, state *copyState) error {
+func copyEntry(src, dst entry, info os.FileInfo, opts *OperationCallbacks, state *copyState) error {
 	if opts.IsCancelled() {
 		return ErrAborted
 	}
@@ -385,9 +385,9 @@ func copyEntryWithCallbacks(src, dst entry, info os.FileInfo, opts *OperationCal
 	case mode&os.ModeSymlink != 0:
 		err = copySymlink(src, dst)
 	case info.IsDir():
-		err = copyDirectoryWithCallbacks(src, dst, opts, state)
+		err = copyDirectory(src, dst, opts, state)
 	case mode.IsRegular():
-		err = copySingleFileWithCallbacks(src, dst, opts, state)
+		err = copySingleFile(src, dst, opts, state)
 	default:
 		return fmt.Errorf("cannot copy non-regular file %q with mode %s", src.path, mode.Type())
 	}
@@ -448,10 +448,10 @@ func validateSymlinkCopyDestination(root *fsroot.FSRoot, source, dest string) er
 	return nil
 }
 
-// copySingleFileWithCallbacks copies the regular file src to dst with
+// copySingleFile copies the regular file src to dst with
 // progress callbacks. The owner, mode and times copied are those of the file
 // opened, not of what was listed earlier under its name.
-func copySingleFileWithCallbacks(src, dst entry, opts *OperationCallbacks, state *copyState) error {
+func copySingleFile(src, dst entry, opts *OperationCallbacks, state *copyState) error {
 	if opts.IsCancelled() {
 		return ErrAborted
 	}
@@ -517,9 +517,9 @@ func openRegular(e entry) (*os.File, os.FileInfo, error) {
 	return f, info, nil
 }
 
-// copyDirectoryWithCallbacks copies the directory tree src to a dst that does
+// copyDirectory copies the directory tree src to a dst that does
 // not exist yet.
-func copyDirectoryWithCallbacks(src, dst entry, opts *OperationCallbacks, state *copyState) error {
+func copyDirectory(src, dst entry, opts *OperationCallbacks, state *copyState) error {
 	if opts.IsCancelled() {
 		return ErrAborted
 	}
@@ -550,7 +550,7 @@ func copyDirectoryWithCallbacks(src, dst entry, opts *OperationCallbacks, state 
 	}
 
 	err = forEachChild(srcDir, src.path, func(name string, info os.FileInfo) error {
-		return copyEntryWithCallbacks(src.child(srcDir, name), dst.child(dstDir, name), info, opts, state)
+		return copyEntry(src.child(srcDir, name), dst.child(dstDir, name), info, opts, state)
 	})
 	if err != nil {
 		return err
@@ -715,13 +715,13 @@ type MoveFileOptions struct {
 	HasKnownSize bool
 }
 
-// MoveFileWithCallbacks moves src to dst with progress callbacks. It renames
+// MoveFile moves src to dst with progress callbacks. It renames
 // when src and dst are on one filesystem and otherwise copies each entry and
 // removes its source right after. With overwrite an existing destination file
 // is replaced and an existing destination directory is merged. owner is the
 // session user a root bridge moves for (see transferPaths). Cancellation
 // comes through opts; ctx outlives it only to clean up a failed transfer.
-func MoveFileWithCallbacks(ctx context.Context, src, dst string, overwrite bool, owner Owner, opts *OperationCallbacks, moveOpts MoveFileOptions) error {
+func MoveFile(ctx context.Context, src, dst string, overwrite bool, owner Owner, opts *OperationCallbacks, moveOpts MoveFileOptions) error {
 	src = fsroot.CleanAbsPath(src)
 	dst = fsroot.CleanAbsPath(dst)
 
@@ -863,11 +863,11 @@ func TopLevelEntryCountWithin(absPath string, maxEntries int) (bool, error) {
 	return len(entries) <= maxEntries, nil
 }
 
-// DeleteFilesWithProgress removes a file or directory while reporting
+// DeleteFiles removes a file or directory while reporting
 // item-count progress. The item's folder is resolved once and the item is then
 // judged and removed through handles (see removeAllAt), so a folder swapped
 // for a link during the delete cannot send it elsewhere.
-func DeleteFilesWithProgress(ctx context.Context, absPath string, opts DeleteOptions) (int64, error) {
+func DeleteFiles(ctx context.Context, absPath string, opts DeleteOptions) (int64, error) {
 	absPath = fsroot.CleanAbsPath(absPath)
 	if absPath == "/" {
 		return 0, fmt.Errorf("cannot delete root")

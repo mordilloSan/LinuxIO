@@ -375,7 +375,7 @@ func RefreshUpdateCache(ctx context.Context) error {
 	})
 }
 
-// InstallByNameWithProgress resolves a package name and installs it, streaming
+// InstallByName resolves a package name and installs it, streaming
 // PackageKit progress signals (percentage/status) to the supplied reporter so
 // callers (e.g. capability install) can show a real progress bar. A nil
 // reporter discards progress.
@@ -384,7 +384,7 @@ func RefreshUpdateCache(ctx context.Context) error {
 // host where it was never refreshed it knows no package to install. A name it
 // does not find is therefore looked up again after one cache refresh before
 // it is reported as not found.
-func InstallByNameWithProgress(ctx context.Context, name string, report pkgUpdateReporter) error {
+func InstallByName(ctx context.Context, name string, report pkgUpdateReporter) error {
 	if report == nil {
 		report = func(*PkgUpdateProgress) error { return nil }
 	}
@@ -403,7 +403,7 @@ func InstallByNameWithProgress(ctx context.Context, name string, report pkgUpdat
 	if err != nil || id == "" {
 		return err
 	}
-	return installPackageWithProgress(ctx, id, report)
+	return installPackage(ctx, id, report)
 }
 
 // resolveInstallablePackageID resolves a package name to the package ID that
@@ -723,11 +723,11 @@ func mapToSortedHistory(historyMap map[string][]apischema.UpgradeItem) []apische
 	return history
 }
 
-// installPackageWithProgress installs a package ID and drains the PackageKit
+// installPackage installs a package ID and drains the PackageKit
 // signal stream through the shared update-signal handlers so
 // percentage/status progress reaches the reporter. A nil reporter discards
 // progress.
-func installPackageWithProgress(ctx context.Context, packageID string, report pkgUpdateReporter) error {
+func installPackage(ctx context.Context, packageID string, report pkgUpdateReporter) error {
 	if report == nil {
 		report = func(*PkgUpdateProgress) error { return nil }
 	}

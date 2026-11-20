@@ -37,7 +37,7 @@ func readString(t *testing.T, path string) string {
 
 func newBatchTask(t *testing.T, route string, req any) *bridgeipc.Task {
 	t.Helper()
-	task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity(route, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+	task, _, err := bridgeipc.NewTaskService().ClaimForOwner(route, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}

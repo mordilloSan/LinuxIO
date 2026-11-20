@@ -96,7 +96,7 @@ func TestScheduledComposeVerifyCountsReplacedContainers(t *testing.T) {
 func TestScheduledLocalImageIsUncheckableWithoutRunError(t *testing.T) {
 	withTempUpdateStatusPath(t)
 	ctx := context.Background()
-	candidate := scheduledUpdateCandidate{inspect: standaloneTestInspect()}
+	candidate := containerUpdateCandidate{inspect: standaloneTestInspect()}
 	const reason = "local image has no repository digest"
 
 	result, err := applyContainerImageObservation(ctx, candidate, "docker.io/library/local:test", imageUpdateObservation{

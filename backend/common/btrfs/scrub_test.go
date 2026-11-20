@@ -162,6 +162,9 @@ func TestScrubFromStartsAtOffsets(t *testing.T) {
 	}
 }
 
+// A resume from the Suspend checkpoint carries on a stopped record that
+// names no run and no devices, since it does not say whose it is; the job's
+// own record is continued from its saved progress.
 func TestScrubFromMergesTheStoppedRecord(t *testing.T) {
 	first := time.Unix(1700000000, 0)
 	for _, tc := range []struct {
@@ -179,9 +182,9 @@ func TestScrubFromMergesTheStoppedRecord(t *testing.T) {
 		// A device aborted as Suspend canceled the scrub: the resume skips
 		// it, so the outcome stays aborted and keeps the first part's errors.
 		{"resumed after an abort", "aborted", "", map[int]uint64{2: 4096}, 3, "aborted", []string{"SCRUB 2 from 4096"}},
-		// A record an older build left running, crashed mid-resume, counts
-		// as an abort, so the next resume keeps the first part's counters.
-		{"resumed after a crash of an older build", "running", "", map[int]uint64{2: 4096}, 3, "aborted", []string{"SCRUB 2 from 4096"}},
+		// Such a record left running, crashed mid-resume, counts as an
+		// abort, so the next resume keeps the first part's counters.
+		{"resumed after a crash mid-resume", "running", "", map[int]uint64{2: 4096}, 3, "aborted", []string{"SCRUB 2 from 4096"}},
 		// The job's own record left running by a power cut is continued:
 		// without saved device positions every device starts at 0, and the
 		// outcome keeps the counters so far.
@@ -875,7 +878,7 @@ func TestScrubInterruptedInAnAbortedScrubAfterACancel(t *testing.T) {
 		return scrubProgress{DataBytesScrubbed: 1 << 20, LastPhysical: 88 << 20}, unix.EINTR
 	}
 	stubKernel(t, k)
-	// An older build's record of a scrub a device aborted.
+	// A record of a scrub a device aborted, naming no run and no devices.
 	saveScrubRecord(context.Background(), dataUUID, scrubRecord{Status: "aborted", StartedAt: &first})
 	got, err := ResumeScrub(context.Background(), dataUUID, "job-1", map[int]uint64{1: 4096, 2: 4096}, func(BtrfsScrubStatus) {})
 	if err != nil || got.Status != "aborted" {

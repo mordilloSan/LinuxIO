@@ -26,7 +26,7 @@ func routeBindings(owner sessionOwner) apischema.BindingSet {
 			return err
 		}),
 		apischema.MutationTask("filebrowser.resource_patch", func(ctx context.Context, task *bridgeipc.Task, req apischema.ActionSourceDestinationRequest) (apischema.MessageResponse, error) {
-			return resourcePatchWithProgress(ctx, req, task, owner)
+			return resourcePatch(ctx, req, task, owner)
 		}, apischema.Progress[FileProgress]()),
 		apischema.Call[apischema.PathRequest, apischema.DirectorySizeData]("filebrowser.dir_size", apischema.RetrySafe(), apischema.Privileged()).Handle(handleDirSize),
 		apischema.Call[apischema.PathRequest, apischema.SubfoldersResponse]("filebrowser.subfolders", apischema.RetrySafe(), apischema.Privileged()).Handle(handleSubfolders),

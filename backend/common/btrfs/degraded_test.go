@@ -894,8 +894,8 @@ func TestResyncStartsOverInANewEpisode(t *testing.T) {
 	resyncStartsOver(t, "", "resync-of-an-earlier-episode")
 }
 
-// A scrub job's record, or one an older build wrote for a resync, holds no
-// progress of the resync's run.
+// A scrub job's record, or one of a scrub outside a job, holds no progress
+// of the resync's run.
 func TestResyncIgnoresAJobsScrubRecord(t *testing.T) {
 	for _, run := range []string{"job-1", ""} {
 		t.Run("run "+run, func(t *testing.T) { resyncStartsOver(t, resyncRunID, run) })
@@ -1334,10 +1334,10 @@ func TestResyncChecksAScrubThatAlreadyCounts(t *testing.T) {
 	}
 }
 
-// A state an older build left reads scrubbed with no resync run: no record
-// can prove that scrub, so the first resync after the upgrade scrubs rather
-// than failing an attempt on a record that is not its run's.
-func TestResyncAfterAnUpgradeScrubs(t *testing.T) {
+// A state that reads scrubbed with no resync run has no record to prove that
+// scrub, so the resync scrubs rather than failing an attempt on a record
+// that is not its run's.
+func TestResyncScrubsWhenNoRunProvesTheScrub(t *testing.T) {
 	k := threeDevices()
 	stubKernel(t, k)
 	if err := updatePoolStates(t.Context(), func(s map[string]poolState) {

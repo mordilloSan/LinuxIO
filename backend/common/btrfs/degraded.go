@@ -728,8 +728,9 @@ func refreshResyncAlerts(ctx context.Context, uuid string, resynced bool, out re
 // kind (volumes.c __btrfs_balance), so a convert of data and metadata cut
 // midway can leave one kind done while the kernel continues both: the
 // resync records the convert it starts in the pool state and compares the
-// kernel's balance with that record, or, without one (a state an older
-// build left), with what is left to convert now.
+// kernel's balance with that record, or, without one (a new episode cleared
+// it while the kernel's balance survived into the next mount), with what is
+// left to convert now.
 func resyncConvert(ctx context.Context, uuid string, data, meta *string) error {
 	opts := BalanceOptions{DataProfile: data, MetadataProfile: meta, Soft: true}
 	mnt, err := mountpointFor(ctx, uuid)
@@ -882,8 +883,8 @@ func resync(ctx context.Context, uuid string, report func(percent float64)) (res
 	if rec := states[uuid].Rebuild; rec != nil {
 		return resyncOutcome{}, fmt.Errorf("pool %s: the automatic rebuild of device %d is not verified: %w", uuid, rec.ID, errRebuildPending)
 	}
-	// A scrub an older build noted has no run, so no record can prove it:
-	// the first resync after the upgrade scrubs.
+	// A scrub counts only with the run that proves it: one noted with no run
+	// has no record behind it, so the resync scrubs.
 	scrubbed := states[uuid].Scrubbed && states[uuid].ResyncRun != ""
 	run, err := resyncRunOf(ctx, uuid)
 	if err != nil {

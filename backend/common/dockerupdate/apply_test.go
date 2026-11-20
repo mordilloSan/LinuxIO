@@ -27,14 +27,14 @@ import (
 	"github.com/moby/moby/client"
 )
 
-func updateStandaloneContainer(
+func updateStandaloneForTest(
 	ctx context.Context,
 	cli ContainerClient,
 	before container.InspectResponse,
 	imageRef string,
 	result DockerContainerUpdateResult,
 ) (DockerContainerUpdateResult, error) {
-	return updateStandaloneContainerWithProgress(ctx, cli, before, imageRef, result, nil, nil)
+	return updateStandaloneContainer(ctx, cli, before, imageRef, result, nil, nil, stoppedContainerUpdatePolicy{}, nil)
 }
 
 func TestComposeCommandArgsPreservesOverrideOrder(t *testing.T) {
@@ -789,8 +789,8 @@ func TestUpdateStandaloneContainerDropsTheOldImageLabels(t *testing.T) {
 		}),
 	}
 
-	if _, err := updateStandaloneContainer(t.Context(), fake, before, "docker.io/library/nginx:latest", updateResultFor(before)); err != nil {
-		t.Fatalf("updateStandaloneContainer: %v", err)
+	if _, err := updateStandaloneForTest(t.Context(), fake, before, "docker.io/library/nginx:latest", updateResultFor(before)); err != nil {
+		t.Fatalf("updateStandaloneForTest: %v", err)
 	}
 	want := map[string]string{"org.opencontainers.image.title": "set on the container", "traefik.enable": "true"}
 	if len(fake.createOptions) != 1 || !reflect.DeepEqual(fake.createOptions[0].Config.Labels, want) {
@@ -977,7 +977,7 @@ func TestUpdateStandaloneContainerGoesOnWhenTheOldImageIsGone(t *testing.T) {
 	before.Config.Labels = map[string]string{"traefik.enable": "true"}
 	fake := newStandaloneUpdateFake()
 	fake.imageInspectErrs = []error{nil, errdefs.ErrNotFound}
-	result, err := updateStandaloneContainer(t.Context(), fake, before, "docker.io/library/nginx:latest", updateResultFor(before))
+	result, err := updateStandaloneForTest(t.Context(), fake, before, "docker.io/library/nginx:latest", updateResultFor(before))
 	if err != nil || !result.Updated || fake.createOptions[0].Config.Labels["traefik.enable"] != "true" {
 		t.Fatalf("result %+v, error %v; want the update done with the configuration as it is", result, err)
 	}
@@ -994,11 +994,11 @@ func TestUpdateStandaloneContainerRecreatesAndKeepsRollbackUntilReady(t *testing
 	}
 	result := updateResultFor(before)
 
-	result, err := updateStandaloneContainer(
+	result, err := updateStandaloneForTest(
 		context.Background(), fake, before, "docker.io/library/nginx:latest", result,
 	)
 	if err != nil {
-		t.Fatalf("updateStandaloneContainer: %v", err)
+		t.Fatalf("updateStandaloneForTest: %v", err)
 	}
 	if !result.Updated || result.ContainerID != "replacement" || result.NewImageID != "sha256:new" {
 		t.Fatalf("result = %+v", result)
@@ -1028,11 +1028,11 @@ func TestUpdateStandaloneContainerRollsBackStartFailure(t *testing.T) {
 	}
 	result := updateResultFor(before)
 
-	_, err := updateStandaloneContainer(
+	_, err := updateStandaloneForTest(
 		context.Background(), fake, before, "docker.io/library/nginx:latest", result,
 	)
 	if err == nil || !strings.Contains(err.Error(), "start failed") {
-		t.Fatalf("updateStandaloneContainer error = %v", err)
+		t.Fatalf("updateStandaloneForTest error = %v", err)
 	}
 	wantSuffix := []string{
 		"start:replacement",
@@ -1117,11 +1117,11 @@ func TestUpdateStandaloneContainerStopsBeforeMutationWhenPreparationFails(t *tes
 			fake := newStandaloneUpdateFake()
 			tc.configure(fake, injected)
 
-			_, err := updateStandaloneContainer(
+			_, err := updateStandaloneForTest(
 				context.Background(), fake, standaloneTestInspect(), "docker.io/library/nginx:latest", updateResultFor(standaloneTestInspect()),
 			)
 			if !errors.Is(err, injected) {
-				t.Fatalf("updateStandaloneContainer error = %v, want injected error", err)
+				t.Fatalf("updateStandaloneForTest error = %v, want injected error", err)
 			}
 			if !reflect.DeepEqual(fake.calls, tc.wantCalls) {
 				t.Fatalf("calls = %#v, want %#v", fake.calls, tc.wantCalls)
@@ -1187,15 +1187,15 @@ func TestUpdateStandaloneContainerRestoresOriginalAfterMutationFailures(t *testi
 			fake := newStandaloneUpdateFake()
 			tc.configure(fake, injected)
 
-			_, err := updateStandaloneContainer(
+			_, err := updateStandaloneForTest(
 				context.Background(), fake, standaloneTestInspect(), "docker.io/library/nginx:latest", updateResultFor(standaloneTestInspect()),
 			)
 			if tc.name == "verification" {
 				if err == nil || !strings.Contains(err.Error(), "verify replacement") {
-					t.Fatalf("updateStandaloneContainer error = %v, want verification error", err)
+					t.Fatalf("updateStandaloneForTest error = %v, want verification error", err)
 				}
 			} else if !errors.Is(err, injected) {
-				t.Fatalf("updateStandaloneContainer error = %v, want injected error", err)
+				t.Fatalf("updateStandaloneForTest error = %v, want injected error", err)
 			}
 			if len(fake.calls) < len(tc.wantSuffix) || !reflect.DeepEqual(fake.calls[len(fake.calls)-len(tc.wantSuffix):], tc.wantSuffix) {
 				t.Fatalf("calls = %#v, want suffix %#v", fake.calls, tc.wantSuffix)
@@ -1216,12 +1216,12 @@ func TestUpdateStandaloneContainerReportsRollbackFailures(t *testing.T) {
 	fake.removeErrors["replacement"] = removeErr
 	fake.renameErrors["old-container:web"] = restoreErr
 
-	_, err := updateStandaloneContainer(
+	_, err := updateStandaloneForTest(
 		context.Background(), fake, standaloneTestInspect(), "docker.io/library/nginx:latest", updateResultFor(standaloneTestInspect()),
 	)
 	for _, want := range []error{primaryErr, removeErr, restoreErr} {
 		if !errors.Is(err, want) {
-			t.Fatalf("updateStandaloneContainer error = %v, want %v", err, want)
+			t.Fatalf("updateStandaloneForTest error = %v, want %v", err, want)
 		}
 	}
 	if errors.As(err, new(rolledBackError)) {
@@ -1244,11 +1244,11 @@ func TestUpdateStandaloneContainerReportsRollbackStartFailure(t *testing.T) {
 	fake.createErr = primaryErr
 	fake.startErrors["old-container"] = restoreErr
 
-	_, err := updateStandaloneContainer(
+	_, err := updateStandaloneForTest(
 		context.Background(), fake, standaloneTestInspect(), "docker.io/library/nginx:latest", updateResultFor(standaloneTestInspect()),
 	)
 	if !errors.Is(err, primaryErr) || !errors.Is(err, restoreErr) {
-		t.Fatalf("updateStandaloneContainer error = %v, want primary and rollback errors", err)
+		t.Fatalf("updateStandaloneForTest error = %v, want primary and rollback errors", err)
 	}
 }
 
@@ -1258,11 +1258,11 @@ func TestUpdateStandaloneContainerReportsBackupCleanupFailure(t *testing.T) {
 	fake := newStandaloneUpdateFake()
 	fake.removeErrors["old-container"] = cleanupErr
 
-	result, err := updateStandaloneContainer(
+	result, err := updateStandaloneForTest(
 		context.Background(), fake, standaloneTestInspect(), "docker.io/library/nginx:latest", updateResultFor(standaloneTestInspect()),
 	)
 	if !errors.Is(err, cleanupErr) {
-		t.Fatalf("updateStandaloneContainer error = %v, want cleanup error", err)
+		t.Fatalf("updateStandaloneForTest error = %v, want cleanup error", err)
 	}
 	if !result.Updated || result.ContainerID != "replacement" {
 		t.Fatalf("result = %+v, want active replacement", result)
@@ -1282,7 +1282,7 @@ func TestUpdateStoppedStandaloneContainerPreservesStoppedState(t *testing.T) {
 		Config: &container.Config{Image: "nginx:latest"},
 	}
 
-	result, err := updateStandaloneContainerWithDependenciesAndPolicy(
+	result, err := updateStandaloneContainer(
 		context.Background(),
 		fake,
 		before,
@@ -1291,6 +1291,7 @@ func TestUpdateStoppedStandaloneContainerPreservesStoppedState(t *testing.T) {
 		nil,
 		nil,
 		stoppedContainerUpdatePolicy{Allow: true},
+		nil,
 	)
 	if err != nil {
 		t.Fatalf("update stopped standalone container: %v", err)
@@ -1313,7 +1314,7 @@ func TestUpdateStoppedStandaloneContainerCanReviveReplacement(t *testing.T) {
 	before.State = &container.State{Status: container.StateExited}
 	fake := newStandaloneUpdateFake()
 
-	result, err := updateStandaloneContainerWithDependenciesAndPolicy(
+	result, err := updateStandaloneContainer(
 		context.Background(),
 		fake,
 		before,
@@ -1322,6 +1323,7 @@ func TestUpdateStoppedStandaloneContainerCanReviveReplacement(t *testing.T) {
 		nil,
 		nil,
 		stoppedContainerUpdatePolicy{Allow: true, Revive: true},
+		nil,
 	)
 	if err != nil || !result.Updated {
 		t.Fatalf("revive stopped update result = %+v, error = %v", result, err)
@@ -1352,7 +1354,7 @@ func TestStandaloneReplacementSettlesOnlyWhereTheOriginalRan(t *testing.T) {
 				fake := newStandaloneUpdateFake()
 				fake.inspectResults["replacement"] = justStarted("replacement", "sha256:new")
 				began := time.Now()
-				result, err := updateStandaloneContainerWithDependenciesAndPolicy(t.Context(), fake, before, "docker.io/library/nginx:latest", updateResultFor(before), nil, nil, tc.policy)
+				result, err := updateStandaloneContainer(t.Context(), fake, before, "docker.io/library/nginx:latest", updateResultFor(before), nil, nil, tc.policy, nil)
 				if err != nil || !result.Updated || time.Since(began) != tc.want {
 					t.Fatalf("updated after %v: %+v, %v; want updated after %v", time.Since(began), result, err, tc.want)
 				}
@@ -1367,7 +1369,7 @@ func TestStoppedStandaloneRollbackDoesNotStartOriginal(t *testing.T) {
 	fake := newStandaloneUpdateFake()
 	fake.createErr = errors.New("replacement create failed")
 
-	_, err := updateStandaloneContainerWithDependenciesAndPolicy(
+	_, err := updateStandaloneContainer(
 		context.Background(),
 		fake,
 		before,
@@ -1376,6 +1378,7 @@ func TestStoppedStandaloneRollbackDoesNotStartOriginal(t *testing.T) {
 		nil,
 		nil,
 		stoppedContainerUpdatePolicy{Allow: true},
+		nil,
 	)
 	if err == nil {
 		t.Fatal("stopped update unexpectedly succeeded")
@@ -1402,7 +1405,7 @@ func TestStoppedStandaloneJournalRecoversVerifiedCleanup(t *testing.T) {
 	cleanupErr := errors.New("backup removal failed")
 	fake.removeErrors["old-container"] = cleanupErr
 
-	result, err := updateStandaloneContainerWithDependenciesAndPolicy(
+	result, err := updateStandaloneContainer(
 		context.Background(),
 		fake,
 		before,
@@ -1411,6 +1414,7 @@ func TestStoppedStandaloneJournalRecoversVerifiedCleanup(t *testing.T) {
 		&journal,
 		nil,
 		stoppedContainerUpdatePolicy{Allow: true},
+		nil,
 	)
 	if !result.Updated || !errors.Is(err, cleanupErr) {
 		t.Fatalf("stopped update result = %+v, error = %v", result, err)
@@ -1458,8 +1462,8 @@ func TestStandaloneUpdateJournalRetriesVerifiedBackupCleanup(t *testing.T) {
 	fake := newStandaloneUpdateFake()
 	fake.removeErrors["old-container"] = cleanupErr
 
-	result, err := updateStandaloneContainerWithProgress(
-		context.Background(), fake, standaloneTestInspect(), "docker.io/library/nginx:latest", updateResultFor(standaloneTestInspect()), &journal, nil,
+	result, err := updateStandaloneContainer(
+		context.Background(), fake, standaloneTestInspect(), "docker.io/library/nginx:latest", updateResultFor(standaloneTestInspect()), &journal, nil, stoppedContainerUpdatePolicy{}, nil,
 	)
 	if !errors.Is(err, cleanupErr) || !result.Updated {
 		t.Fatalf("update result = %+v, error = %v", result, err)
@@ -1525,6 +1529,26 @@ func TestStandaloneUpdateJournalDoesNotSweepUnjournaledBackups(t *testing.T) {
 	}
 	if len(fake.calls) != 0 {
 		t.Fatalf("unexpected Docker calls without a journal: %v", fake.calls)
+	}
+}
+
+func TestStandaloneUpdateJournalRefusesAnotherVersion(t *testing.T) {
+	journal := Journal{path: filepath.Join(t.TempDir(), "transaction.json")}
+	data := `{"version":2,"phase":"prepared","original_id":"old-container","original_name":"web","backup_name":"web.old","original_running":true}`
+	if err := os.WriteFile(journal.path, []byte(data), 0o600); err != nil {
+		t.Fatalf("write journal: %v", err)
+	}
+	fake := newStandaloneUpdateFake()
+
+	err := recoverStandaloneUpdate(context.Background(), fake, journal)
+	if err == nil || !strings.Contains(err.Error(), "unsupported standalone update transaction version 2") {
+		t.Fatalf("recoverStandaloneUpdate error = %v, want unsupported version", err)
+	}
+	if len(fake.calls) != 0 {
+		t.Fatalf("unexpected Docker calls for an unsupported journal: %v", fake.calls)
+	}
+	if _, err := os.Stat(journal.path); err != nil {
+		t.Fatalf("unsupported journal was not kept: %v", err)
 	}
 }
 

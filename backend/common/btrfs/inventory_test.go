@@ -301,8 +301,8 @@ func TestScrubStatusInterruptedRecord(t *testing.T) {
 }
 
 // A running scrub on record is merged into the kernel's progress only while
-// the process that wrote it lives: a record a crash left, or an older
-// build's job host still scrubbing, gives only the start, which the banner
+// the process that wrote it lives: a record a crash left, or one whose
+// writer could not be identified, gives only the start, which the banner
 // keys the scrub on. A live one is running even while the kernel reports
 // nothing, between calls or waiting for a thaw.
 func TestScrubStatusMergesOnlyALiveRecord(t *testing.T) {

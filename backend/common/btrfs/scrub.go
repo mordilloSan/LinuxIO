@@ -76,7 +76,7 @@ var ErrScrubRunning = errors.New("a scrub or a device replace is already running
 // scrubRecord is one filesystem's entry in ScrubRecordPath. Its status holds
 // what the scrub counted except what the devices' kernel calls still running
 // counted, which each device keeps until its call returns; a scrub that
-// ended keeps no device counters. An older build reads only the status.
+// ended keeps no device counters.
 type scrubRecord struct {
 	BtrfsScrubStatus
 	// Run is the job ID of the scrub, or a pool resync's run (resyncRun in
@@ -224,9 +224,10 @@ func ScrubFrom(ctx context.Context, uuid, run string, report func(BtrfsScrubStat
 // (Suspend) or aborted (a device aborted, then Suspend canceled the rest)
 // gives each device's start and the counters so far. Otherwise only the
 // devices in starts, the Suspend checkpoint, are scrubbed, each from its
-// offset, carrying on the canceled or aborted scrub an older build recorded:
-// the outcome keeps its start, counters and abort, so errors its first part
-// found stay in the record. Nil starts scrub everything again.
+// offset, carrying on the canceled or aborted scrub on record when scrubSeed
+// takes it as run's: the outcome keeps its start, counters and abort, so
+// errors its first part found stay in the record. Nil starts scrub
+// everything again.
 func ResumeScrub(ctx context.Context, uuid, run string, starts map[int]uint64, report func(BtrfsScrubStatus)) (BtrfsScrubStatus, error) {
 	return scrub(ctx, uuid, run, starts, scrubResume, report)
 }
@@ -286,7 +287,9 @@ func scrub(ctx context.Context, uuid, run string, starts map[int]uint64, mode sc
 	if mode != scrubNew && have && rec.resumable(run) {
 		seed, starts = rec.resumePoint(uuid, fs.Devices, mode)
 	} else {
-		// An older build's record names no run and no devices.
+		// A record that names neither a run nor a device does not say whose
+		// it is: it is carried on as run's, which keeps an error or abort
+		// its first part found.
 		seed = scrubSeed(rec, have && (rec.Run == run || rec.Run == "" && rec.Devices == nil), starts)
 	}
 	seed.Run = run
@@ -301,7 +304,9 @@ func scrub(ctx context.Context, uuid, run string, starts map[int]uint64, mode sc
 // canceled or aborted scrub on record, ours, keeping its start, counters and
 // abort; otherwise a scrub starting now. A record still running means a
 // crashed resume, as the inventory also reads it, and counts as aborted.
-// Only an older build's record, or one of a scrub outside a job, gets here.
+// resumePoint continues a job's or a resync's own record, so the record
+// carried on here is a scrub's outside a job, resumed outside a job too, or
+// one that names no run and no devices.
 func scrubSeed(rec scrubRecord, ours bool, starts map[int]uint64) scrubRecord {
 	if !ours || starts == nil || rec.StartedAt == nil || rec.Status != "canceled" && rec.Status != "aborted" && rec.Status != "running" {
 		now := time.Now()

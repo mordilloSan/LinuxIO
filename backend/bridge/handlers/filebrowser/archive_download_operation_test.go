@@ -12,7 +12,7 @@ import (
 
 func TestArchiveDownloadProgressIncludesArtifactName(t *testing.T) {
 	registry := bridgeipc.NewTaskService()
-	task, _, err := registry.ClaimForOwnerWithIdentity(routeArchive, apischema.FileArchiveRequest{
+	task, _, err := registry.ClaimForOwner(routeArchive, apischema.FileArchiveRequest{
 		Format: "zip",
 		Paths:  []string{"/photos"},
 	}, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})

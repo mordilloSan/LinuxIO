@@ -19,7 +19,7 @@ import (
 )
 
 func createVMForTest(ctx context.Context, req apischema.VMCreateRequest) (apischema.VirtualMachine, error) {
-	return CreateVMWithProgress(ctx, req, nil)
+	return CreateVM(ctx, req, nil)
 }
 
 func withFakeLibvirt(t *testing.T, fake libvirtConn) {

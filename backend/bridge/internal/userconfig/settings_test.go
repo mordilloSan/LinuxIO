@@ -192,26 +192,6 @@ func TestUIUnknownFieldResetsWholeDocument(t *testing.T) {
 	require.Equal(t, "{}\n", string(rewritten))
 }
 
-func TestUIRemovedThemeColorIsSkippedAndDroppedOnSave(t *testing.T) {
-	path := filepath.Join(t.TempDir(), uiCfgFileName)
-	raw := []byte("theme: LIGHT\nthemeColors:\n  dark:\n    codeText: \"#111111\"\n    fileBrowserChrome: \"#222222\"\n")
-	require.NoError(t, os.WriteFile(path, raw, filePerm))
-
-	loaded, err := readUILatest(path)
-	require.NoError(t, err)
-	require.Equal(t, ThemeLight, loaded.Theme)
-	require.Equal(t, CSSColor("#111111"), loaded.ThemeColors.Dark["codeText"])
-	require.NotContains(t, loaded.ThemeColors.Dark, "fileBrowserChrome")
-	unchanged, err := os.ReadFile(path)
-	require.NoError(t, err)
-	require.Equal(t, raw, unchanged)
-
-	require.NoError(t, writeUIConfig(path, *loaded))
-	saved, err := os.ReadFile(path)
-	require.NoError(t, err)
-	require.Equal(t, "theme: LIGHT\nthemeColors:\n  dark:\n    codeText: \"#111111\"\n", string(saved))
-}
-
 func TestUISemanticFailureResetsWholeDocument(t *testing.T) {
 	base := t.TempDir()
 	path := filepath.Join(base, uiCfgFileName)

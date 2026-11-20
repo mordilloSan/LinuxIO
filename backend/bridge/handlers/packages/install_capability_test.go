@@ -21,7 +21,7 @@ import (
 
 func TestCapabilityInstallReporterOmitsOutputRecords(t *testing.T) {
 	registry := bridgeipc.NewTaskService()
-	task, _, err := registry.ClaimForOwnerWithIdentity("system.install_capability", nil, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+	task, _, err := registry.ClaimForOwner("system.install_capability", nil, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
@@ -313,7 +313,7 @@ func TestInstallCapabilityContinuesAvahiWhenRHELNSSIsUnavailable(t *testing.T) {
 	}
 
 	registry := bridgeipc.NewTaskService()
-	task, _, err := registry.ClaimForOwnerWithIdentity("system.install_capability", nil, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+	task, _, err := registry.ClaimForOwner("system.install_capability", nil, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
@@ -580,7 +580,7 @@ func TestInstallCapabilityRunsThePackageHookAfterTheCancelledTransactionEnds(t *
 	service.setResolvable("zram-tools", fakeResolvable{id: hungPackageID})
 	service.setInstallHang(hungPackageID)
 	run := withZramHook(t, "debian", func(ctx context.Context) error {
-		return InstallByNameWithProgress(ctx, "zram-tools", nil)
+		return InstallByName(ctx, "zram-tools", nil)
 	}, "", nil)
 	afterRan := make(chan struct{})
 	run.onAfter = func() { close(afterRan) }

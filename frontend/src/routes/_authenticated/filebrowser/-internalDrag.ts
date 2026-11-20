@@ -159,8 +159,7 @@ export const setInternalDrag = (
  */
 export const acceptInternalDrop = (dataTransfer: DataTransfer): string[] => {
   const payload = parsePayload(dataTransfer, INTERNAL_DRAG_TYPE);
-  // An older page dragged a bare array of paths and named no server.
-  const raw = Array.isArray(payload) ? payload : fieldsOf(payload).paths;
+  const raw = fieldsOf(payload).paths;
   const paths = Array.isArray(raw)
     ? raw.filter((path): path is string => typeof path === "string")
     : [];
@@ -206,9 +205,7 @@ export const acceptTrashDrop = (
   dataTransfer: DataTransfer,
 ): TrashDragItem[] => {
   const payload = parsePayload(dataTransfer, TRASH_DRAG_TYPE);
-  // A page of the previous build dragged a bare array of items and named no
-  // server.
-  const rawItems = Array.isArray(payload) ? payload : fieldsOf(payload).items;
+  const rawItems = fieldsOf(payload).items;
   const raw = Array.isArray(rawItems) ? rawItems : [];
   const items = raw.flatMap((item: unknown) => {
     const { name, path } = (item ?? {}) as Partial<TrashDragItem>;

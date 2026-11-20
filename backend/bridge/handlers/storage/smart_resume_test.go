@@ -195,7 +195,7 @@ var (
 // and returns the task once fn has returned.
 func inSmartTask(t *testing.T, fn func(ctx context.Context, task *bridgeipc.Task) (any, error)) (*bridgeipc.Task, <-chan error) {
 	t.Helper()
-	task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity("storage.run_smart_test", nil, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+	task, _, err := bridgeipc.NewTaskService().ClaimForOwner("storage.run_smart_test", nil, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("claim task: %v", err)
 	}

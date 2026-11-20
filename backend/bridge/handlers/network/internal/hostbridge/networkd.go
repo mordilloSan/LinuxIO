@@ -133,9 +133,9 @@ func networkdMemberConfig(env Environment, path, member, bridge string) ([]byte,
 	}
 	network := cfg.Section("Network")
 	network.Key("Bridge").SetValue(bridge)
-	// Stage 2a only accepts a member with no L3 configuration. Explicitly
-	// disabling DHCP in the generated member profile prevents a manager from
-	// acquiring an address after the bridge is attached.
+	// A bridge over a spare NIC only accepts a member with no L3
+	// configuration. Explicitly disabling DHCP in the generated member profile
+	// prevents a manager from acquiring an address after the bridge is attached.
 	network.Key("DHCP").SetValue("no")
 	for _, key := range []string{"Address", "Gateway", "DNS"} {
 		network.DeleteKey(key)

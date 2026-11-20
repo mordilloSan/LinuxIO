@@ -55,7 +55,7 @@ export type CallFactory<R extends RequestCallRoute> = {
   readonly route: R;
 };
 
-/** Generated namespace value for a migrated Call route. */
+/** Generated namespace value for a Call route. */
 export type CallDefinition<R extends CallRoute> = R extends NoRequestCallRoute
   ? CallDescriptor<R>
   : R extends RequestCallRoute
@@ -76,7 +76,7 @@ export function defineCall<R extends NoRequestCallRoute>(
   };
 }
 
-/** Build a request-bound descriptor factory for a migrated Call route. */
+/** Build a request-bound descriptor factory for a Call route. */
 export function defineCallWithRequest<R extends RequestCallRoute>(
   route: R,
 ): CallFactory<R> {
@@ -160,7 +160,7 @@ export const actionErrorMessage = (error: unknown, fallback: string) =>
         .trimStart()
     : getMutationErrorMessage(error, fallback);
 
-/** Run a migrated Call as a TanStack mutation. */
+/** Run a Call as a TanStack mutation. */
 export function useCallMutation<R extends CallRoute>(
   endpoint: CallTarget<R>,
   config?: ActionConfig<CallRequest<R>, CallResult<R>>,

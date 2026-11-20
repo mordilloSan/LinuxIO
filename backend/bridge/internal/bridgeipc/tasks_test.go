@@ -19,7 +19,7 @@ import (
 
 func TestCanceledQueuedTaskCannotStart(t *testing.T) {
 	registry := NewTaskService()
-	task, _, err := registry.ClaimForOwnerWithIdentity("test.canceled.queued", nil, TaskOwner{}, TaskLifetimeSession, TaskIdentity{})
+	task, _, err := registry.ClaimForOwner("test.canceled.queued", nil, TaskOwner{}, TaskLifetimeSession, TaskIdentity{})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -46,22 +46,22 @@ func TestStableTaskIdentityClaimIsIdempotentAndScoped(t *testing.T) {
 	owner := TaskOwner{SessionID: "session-a", Username: "alice", UID: 1000}
 	identity := TaskIdentity{ID: "00000000-0000-4000-8000-000000000042", Fingerprint: "same-request"}
 
-	first, created, err := registry.ClaimForOwnerWithIdentity("control.app_update", nil, owner, TaskLifetimeDurable, identity)
+	first, created, err := registry.ClaimForOwner("control.app_update", nil, owner, TaskLifetimeDurable, identity)
 	if err != nil || !created {
 		t.Fatalf("first claim = %v, %t, %v", first, created, err)
 	}
-	second, created, err := registry.ClaimForOwnerWithIdentity("control.app_update", nil, owner, TaskLifetimeDurable, identity)
+	second, created, err := registry.ClaimForOwner("control.app_update", nil, owner, TaskLifetimeDurable, identity)
 	if err != nil || created || second != first {
 		t.Fatalf("repeat claim = %v, %t, %v; want existing task", second, created, err)
 	}
 
 	conflicting := identity
 	conflicting.Fingerprint = "different-request"
-	if _, _, err := registry.ClaimForOwnerWithIdentity("control.app_update", nil, owner, TaskLifetimeDurable, conflicting); !errors.Is(err, ErrTaskIdentityConflict) {
+	if _, _, err := registry.ClaimForOwner("control.app_update", nil, owner, TaskLifetimeDurable, conflicting); !errors.Is(err, ErrTaskIdentityConflict) {
 		t.Fatalf("fingerprint conflict error = %v", err)
 	}
 	otherOwner := TaskOwner{SessionID: "session-b", Username: "bob", UID: 1001}
-	if _, _, err := registry.ClaimForOwnerWithIdentity("control.app_update", nil, otherOwner, TaskLifetimeDurable, identity); !errors.Is(err, ErrTaskIdentityConflict) {
+	if _, _, err := registry.ClaimForOwner("control.app_update", nil, otherOwner, TaskLifetimeDurable, identity); !errors.Is(err, ErrTaskIdentityConflict) {
 		t.Fatalf("owner conflict error = %v", err)
 	}
 }
@@ -172,7 +172,7 @@ func TestSnapshotNeverPublishesRequestAndClearsTerminalReference(t *testing.T) {
 	registry := NewTaskService()
 	secret := map[string]string{"password": "sentinel-secret"}
 	metadata := &TaskMetadata{Identity: []string{"safe"}, Label: "safe label"}
-	task, _, err := registry.ClaimForOwnerWithIdentity("test.secret", secret, TaskOwner{}, TaskLifetimeSession, TaskIdentity{}, metadata)
+	task, _, err := registry.ClaimForOwner("test.secret", secret, TaskOwner{}, TaskLifetimeSession, TaskIdentity{}, metadata)
 	if err != nil {
 		t.Fatalf("CreateForOwner: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestPublicTaskSnapshotsNeverExposeDecodedRequest(t *testing.T) {
 	registry.RegisterRoutes(router)
 	sess := &session.Session{SessionID: owner.SessionID, User: session.User{Username: owner.Username, UID: owner.UID}}
 	secret := map[string]string{"password": "sentinel-secret"}
-	task, _, err := registry.ClaimForOwnerWithIdentity("test.public.secret", secret, owner, TaskLifetimeSession, TaskIdentity{}, &TaskMetadata{Label: "safe"})
+	task, _, err := registry.ClaimForOwner("test.public.secret", secret, owner, TaskLifetimeSession, TaskIdentity{}, &TaskMetadata{Label: "safe"})
 	if err != nil {
 		t.Fatalf("CreateForOwner: %v", err)
 	}
@@ -316,7 +316,7 @@ func TestTaskEventsCloseInterruptsBlockedSnapshot(t *testing.T) {
 func TestAttachReplayAndTerminalNeverExposeDecodedRequest(t *testing.T) {
 	registry := NewTaskService()
 	secret := map[string]string{"password": "sentinel-secret"}
-	task, _, err := registry.ClaimForOwnerWithIdentity("test.attach.secret", secret, TaskOwner{}, TaskLifetimeSession, TaskIdentity{})
+	task, _, err := registry.ClaimForOwner("test.attach.secret", secret, TaskOwner{}, TaskLifetimeSession, TaskIdentity{})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -433,7 +433,7 @@ func TestCancelQueuedTaskEmitsCanceled(t *testing.T) {
 	owner := TaskOwner{SessionID: "session-a", Username: "alice", UID: 1000}
 	events, unsubscribe := registry.Subscribe(8)
 	defer unsubscribe()
-	task, _, err := registry.ClaimForOwnerWithIdentity("test.cancel.queued", nil, owner, TaskLifetimeSession, TaskIdentity{})
+	task, _, err := registry.ClaimForOwner("test.cancel.queued", nil, owner, TaskLifetimeSession, TaskIdentity{})
 	if err != nil {
 		t.Fatalf("CreateForOwner returned error: %v", err)
 	}
@@ -474,7 +474,7 @@ func TestCancelTasksForSessionQueuedTask(t *testing.T) {
 	owner := TaskOwner{SessionID: "session-a", Username: "alice", UID: 1000}
 	events, unsubscribe := registry.Subscribe(8)
 	defer unsubscribe()
-	task, _, err := registry.ClaimForOwnerWithIdentity("test.cancel.session.queued", nil, owner, TaskLifetimeSession, TaskIdentity{})
+	task, _, err := registry.ClaimForOwner("test.cancel.session.queued", nil, owner, TaskLifetimeSession, TaskIdentity{})
 	if err != nil {
 		t.Fatalf("CreateForOwner returned error: %v", err)
 	}
@@ -619,7 +619,7 @@ func TestReportDataDoesNotReachTaskServiceEvents(t *testing.T) {
 	registryEvents, registryUnsubscribe := registry.Subscribe(8)
 	defer registryUnsubscribe()
 
-	task, _, err := registry.ClaimForOwnerWithIdentity("logs.general.follow", nil, owner, TaskLifetimeSession, TaskIdentity{})
+	task, _, err := registry.ClaimForOwner("logs.general.follow", nil, owner, TaskLifetimeSession, TaskIdentity{})
 	if err != nil {
 		t.Fatalf("CreateForOwner returned error: %v", err)
 	}
@@ -648,7 +648,7 @@ func TestTransientProgressDoesNotReachTaskServiceEvents(t *testing.T) {
 	registryEvents, registryUnsubscribe := registry.Subscribe(8)
 	defer registryUnsubscribe()
 
-	task, _, err := registry.ClaimForOwnerWithIdentity("docker.compose", nil, owner, TaskLifetimeSession, TaskIdentity{})
+	task, _, err := registry.ClaimForOwner("docker.compose", nil, owner, TaskLifetimeSession, TaskIdentity{})
 	if err != nil {
 		t.Fatalf("CreateForOwner returned error: %v", err)
 	}
@@ -673,7 +673,7 @@ func TestTransientProgressDoesNotReachTaskServiceEvents(t *testing.T) {
 
 func TestProgressReplayShrinksByBytesAfterFirstSubscriber(t *testing.T) {
 	registry := NewTaskService()
-	task, _, err := registry.ClaimForOwnerWithIdentity("logs.general.follow", nil, TaskOwner{}, TaskLifetimeSession, TaskIdentity{})
+	task, _, err := registry.ClaimForOwner("logs.general.follow", nil, TaskOwner{}, TaskLifetimeSession, TaskIdentity{})
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
 	}
@@ -714,7 +714,7 @@ func TestProgressReplayShrinksByBytesAfterFirstSubscriber(t *testing.T) {
 
 func TestProgressReplayKeepsNewestEventsInOrder(t *testing.T) {
 	registry := NewTaskService()
-	task, _, err := registry.ClaimForOwnerWithIdentity("logs.general.follow", nil, TaskOwner{}, TaskLifetimeSession, TaskIdentity{})
+	task, _, err := registry.ClaimForOwner("logs.general.follow", nil, TaskOwner{}, TaskLifetimeSession, TaskIdentity{})
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
 	}
@@ -803,7 +803,7 @@ func TestWatchTaskStreamReplaysProgressBeforeTerminalResult(t *testing.T) {
 
 func TestWatchTaskStreamAbortInterruptsBlockedReplay(t *testing.T) {
 	registry := NewTaskService()
-	task, _, err := registry.ClaimForOwnerWithIdentity("test.attach.abort", nil, TaskOwner{}, TaskLifetimeSession, TaskIdentity{})
+	task, _, err := registry.ClaimForOwner("test.attach.abort", nil, TaskOwner{}, TaskLifetimeSession, TaskIdentity{})
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
 	}
@@ -850,7 +850,7 @@ func TestWatchTaskStreamAbortInterruptsBlockedReplay(t *testing.T) {
 
 func TestWatchTaskStreamReportsLagInsteadOfSilentlyDroppingData(t *testing.T) {
 	registry := NewTaskService()
-	task, _, err := registry.ClaimForOwnerWithIdentity("test.attach.lag", nil, TaskOwner{}, TaskLifetimeSession, TaskIdentity{})
+	task, _, err := registry.ClaimForOwner("test.attach.lag", nil, TaskOwner{}, TaskLifetimeSession, TaskIdentity{})
 	if err != nil {
 		t.Fatalf("Create returned error: %v", err)
 	}
@@ -980,17 +980,17 @@ func TestTaskLifetimeOwnerPolicies(t *testing.T) {
 	sessionA := TaskOwner{SessionID: "session-a", Username: "alice", UID: 1000}
 	sessionB := TaskOwner{SessionID: "session-b", Username: "alice", UID: 1000}
 	durableOther := TaskOwner{SessionID: "session-c", Username: "bob", UID: 1001}
-	sessionTask, _, err := registry.ClaimForOwnerWithIdentity("test.session.scope", nil, sessionA, TaskLifetimeSession, TaskIdentity{})
+	sessionTask, _, err := registry.ClaimForOwner("test.session.scope", nil, sessionA, TaskLifetimeSession, TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create session task: %v", err)
 	}
-	durableTask, _, err := registry.ClaimForOwnerWithIdentity("test.durable.scope", nil, sessionA, TaskLifetimeDurable, TaskIdentity{})
+	durableTask, _, err := registry.ClaimForOwner("test.durable.scope", nil, sessionA, TaskLifetimeDurable, TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create durable task: %v", err)
 	}
 	rootA := TaskOwner{SessionID: "root-a", Username: "root", UID: 0}
 	rootB := TaskOwner{SessionID: "root-b", Username: "root", UID: 0}
-	rootTask, _, err := registry.ClaimForOwnerWithIdentity("test.durable.root", nil, rootA, TaskLifetimeDurable, TaskIdentity{})
+	rootTask, _, err := registry.ClaimForOwner("test.durable.root", nil, rootA, TaskLifetimeDurable, TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create root task: %v", err)
 	}
@@ -1013,7 +1013,7 @@ func TestTaskLifetimeOwnerPolicies(t *testing.T) {
 
 func TestTaskSnapshotRedactsSessionID(t *testing.T) {
 	registry := NewTaskService()
-	task, _, err := registry.ClaimForOwnerWithIdentity("test.redact", nil, TaskOwner{SessionID: "secret-session", Username: "alice", UID: 1000}, TaskLifetimeSession, TaskIdentity{})
+	task, _, err := registry.ClaimForOwner("test.redact", nil, TaskOwner{SessionID: "secret-session", Username: "alice", UID: 1000}, TaskLifetimeSession, TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
@@ -1028,7 +1028,7 @@ func TestTaskSnapshotRedactsSessionID(t *testing.T) {
 
 func TestCancelTasksForSessionIgnoresDurableTask(t *testing.T) {
 	registry := NewTaskService()
-	task, _, err := registry.ClaimForOwnerWithIdentity("test.durable.cancel", nil, TaskOwner{SessionID: "session-a", Username: "alice", UID: 1000}, TaskLifetimeDurable, TaskIdentity{})
+	task, _, err := registry.ClaimForOwner("test.durable.cancel", nil, TaskOwner{SessionID: "session-a", Username: "alice", UID: 1000}, TaskLifetimeDurable, TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
@@ -1043,7 +1043,7 @@ func TestTaskEventFilteringUsesLifetime(t *testing.T) {
 	registry := NewTaskService()
 	ownerA := TaskOwner{SessionID: "session-a", Username: "alice", UID: 1000}
 	ownerB := TaskOwner{SessionID: "session-b", Username: "alice", UID: 1000}
-	sessionTask, _, err := registry.ClaimForOwnerWithIdentity("test.events.session", nil, ownerA, TaskLifetimeSession, TaskIdentity{})
+	sessionTask, _, err := registry.ClaimForOwner("test.events.session", nil, ownerA, TaskLifetimeSession, TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create session task: %v", err)
 	}
@@ -1054,7 +1054,7 @@ func TestTaskEventFilteringUsesLifetime(t *testing.T) {
 	}
 	server.Close()
 	client.Close()
-	durableTask, _, err := registry.ClaimForOwnerWithIdentity("test.events.durable", nil, ownerA, TaskLifetimeDurable, TaskIdentity{})
+	durableTask, _, err := registry.ClaimForOwner("test.events.durable", nil, ownerA, TaskLifetimeDurable, TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create durable task: %v", err)
 	}
@@ -1076,7 +1076,7 @@ func TestTaskEventFilteringUsesLifetime(t *testing.T) {
 func TestSnapshotEventDropsHeldBackProgress(t *testing.T) {
 	registry := NewTaskService()
 	owner := TaskOwner{SessionID: "session-a", Username: "alice", UID: 1000}
-	task, _, err := registry.ClaimForOwnerWithIdentity("test.events.snapshot", nil, owner, TaskLifetimeSession, TaskIdentity{})
+	task, _, err := registry.ClaimForOwner("test.events.snapshot", nil, owner, TaskLifetimeSession, TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}
@@ -1101,7 +1101,7 @@ func TestSnapshotEventDropsHeldBackProgress(t *testing.T) {
 }
 
 func startTestTask(registry *TaskService, taskType string, request any, owner TaskOwner, runner TaskRunner) (*Task, error) {
-	task, _, err := registry.ClaimForOwnerWithIdentity(taskType, request, owner, TaskLifetimeSession, TaskIdentity{})
+	task, _, err := registry.ClaimForOwner(taskType, request, owner, TaskLifetimeSession, TaskIdentity{})
 	if err != nil {
 		return nil, err
 	}

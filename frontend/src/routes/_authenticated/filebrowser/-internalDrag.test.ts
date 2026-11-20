@@ -158,16 +158,16 @@ describe("drags between tabs", () => {
   });
 
   it("refuses a drag of a tab opened before an update, which carries no token", () => {
-    // The shapes older pages dragged with: paths or items alone.
     expect(
-      acceptInternalDrop(carrying(INTERNAL_DRAG_TYPE, ["/srv/a.txt"])),
+      acceptInternalDrop(
+        carrying(INTERNAL_DRAG_TYPE, { paths: ["/srv/a.txt"] }),
+      ),
     ).toEqual([]);
     expect(
       acceptTrashDrop(
-        carrying(TRASH_DRAG_TYPE, [
-          ...ITEMS,
-          { name: "b", path: "/t/files/b" },
-        ]),
+        carrying(TRASH_DRAG_TYPE, {
+          items: [...ITEMS, { name: "b", path: "/t/files/b" }],
+        }),
       ),
     ).toEqual([]);
     expect(mocks.toastError).toHaveBeenNthCalledWith(1, ...notFromHere(1));

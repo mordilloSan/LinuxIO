@@ -262,11 +262,10 @@ func (s *managedMountStore) remove(mountpoint string) error {
 	return s.save(entries)
 }
 
-// Mount and unmount results used to be built as map[string]any and threaded
-// through the helpers below, which appended a "warning" key. The routes always
-// declared a struct, so nothing checked that the keys matched. The helpers now
-// take a *string warning instead, and these constructors assemble the declared
-// type once, at the return.
+// mountResult and warningResult assemble the result types the mount and
+// unmount routes declare, once, at the return. The helpers pass a plain string
+// warning; the field is a *string so that an empty warning leaves the key out
+// of the response.
 
 func mountResult(mountpoint, warning string) apischema.StorageMountResult {
 	result := apischema.StorageMountResult{Success: true, Mountpoint: &mountpoint}

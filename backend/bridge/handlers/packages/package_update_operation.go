@@ -212,7 +212,7 @@ func runPackageUpdateTask(ctx context.Context, task *bridgeipc.Task, req apische
 		reportPkgUpdateProgress(report, &PkgUpdateProgress{Type: "message", Status: "btrfs pre-update snapshot failed: " + msg})
 	}
 
-	if err := updatePackagesWithProgress(ctx, req.PackageIDs, report); err != nil {
+	if err := updatePackages(ctx, req.PackageIDs, report); err != nil {
 		if ctx.Err() != nil {
 			return PackageUpdateResult{}, context.Canceled
 		}
@@ -249,7 +249,7 @@ type packageBatch struct {
 	first error
 }
 
-func updatePackagesWithProgress(ctx context.Context, packageIDs []string, report pkgUpdateReporter) error {
+func updatePackages(ctx context.Context, packageIDs []string, report pkgUpdateReporter) error {
 	batch := &packageBatch{ids: packageIDs, report: report}
 	return pkgkit.Run(ctx, pkgkit.OperationOptions{NoRetry: true}, func(session pkgkit.ClientSession) error {
 		return batch.run(session, 0)
@@ -289,7 +289,7 @@ func (b *packageBatch) run(session pkgkit.ClientSession, from int) error {
 			Percentage: new(uint32(uint64(index) * 100 / uint64(len(b.ids)))),
 		})
 
-		err = updateOnePackageWithProgress(ctx, trans, packageID, index, len(b.ids), b.report)
+		err = updateOnePackage(ctx, trans, packageID, index, len(b.ids), b.report)
 		pkgkit.LogClose(ctx, trans)
 		if err != nil && ctx.Err() != nil {
 			return ctx.Err()
@@ -344,7 +344,7 @@ func (b *packageBatch) outcome() error {
 	)
 }
 
-func updateOnePackageWithProgress(
+func updateOnePackage(
 	ctx context.Context,
 	trans *pkgkit.Transaction,
 	packageID string,

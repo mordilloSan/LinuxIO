@@ -394,6 +394,10 @@ check that finds no newer base, or a rebuild, clears it.
 
 ## Known limits
 
+- A journal of another version than this build writes, which only a crash
+  under an older LinuxIO leaves, is refused and not recovered: updates, edits
+  and the scheduled pass report it until the parked container is restored by
+  hand and the file removed.
 - A rollback, standalone or Compose, starts the old image on data the new one
   may already have changed, such as a database it migrated at start. A
   Compose service still coming up when its wait ended is not rolled back for

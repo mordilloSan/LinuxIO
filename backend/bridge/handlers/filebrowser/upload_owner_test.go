@@ -38,7 +38,7 @@ func openTestRoot(t *testing.T) *fsroot.FSRoot {
 func newOwnedUpload(t *testing.T, target string, size int, newOwner sessionOwner, private, overwrite bool) *uploadTransferTask {
 	t.Helper()
 	req := apischema.FileUploadRequest{TargetPath: target, Size: strconv.Itoa(size)}
-	task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+	task, _, err := bridgeipc.NewTaskService().ClaimForOwner(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	require.NoError(t, err)
 	return &uploadTransferTask{
 		transferLifecycle: &transferLifecycle{task: task},
@@ -108,7 +108,7 @@ func waitDetached(t *testing.T, attachErr <-chan error) {
 func uploadThroughStream(t *testing.T, req apischema.FileUploadRequest, content string, session sessionOwner) {
 	t.Helper()
 	req.Size = strconv.Itoa(len(content))
-	task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+	task, _, err := bridgeipc.NewTaskService().ClaimForOwner(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	require.NoError(t, err)
 	startTransferTask(t, task, func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
 		return runUploadTask(ctx, j, req, session)
@@ -167,7 +167,7 @@ func TestUploadNewOwnerComesOnlyFromARootBridgeSession(t *testing.T) {
 
 func TestUploadTaskRejectsUnknownOwner(t *testing.T) {
 	req := apischema.FileUploadRequest{TargetPath: filepath.Join(t.TempDir(), "f.txt"), Size: "1", Owner: "root"}
-	task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+	task, _, err := bridgeipc.NewTaskService().ClaimForOwner(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	require.NoError(t, err)
 
 	_, err = runUploadTask(context.Background(), task, req, sessionOwner{uid: 1000, gid: 1000, set: true})
@@ -434,7 +434,7 @@ func TestUploadBufferReplacedBetweenAttachesGetsNothing(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "notes.txt")
 	req := apischema.FileUploadRequest{TargetPath: target, Size: "6"}
-	task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+	task, _, err := bridgeipc.NewTaskService().ClaimForOwner(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	require.NoError(t, err)
 	startTransferTask(t, task, func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
 		return runUploadTask(ctx, j, req, sessionOwner{})
@@ -533,7 +533,7 @@ func TestUploadClosesItsBuffer(t *testing.T) {
 	t.Run("on a failed chunk", func(t *testing.T) {
 		dir := t.TempDir()
 		req := apischema.FileUploadRequest{TargetPath: filepath.Join(dir, "notes.txt"), Size: "3"}
-		task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+		task, _, err := bridgeipc.NewTaskService().ClaimForOwner(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 		require.NoError(t, err)
 		startTransferTask(t, task, func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
 			return runUploadTask(ctx, j, req, sessionOwner{})

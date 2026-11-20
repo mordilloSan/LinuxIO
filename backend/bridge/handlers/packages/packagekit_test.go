@@ -727,8 +727,8 @@ func TestGetSingleUpdateDetailIgnoresNonMatchingDetail(t *testing.T) {
 func TestInstallPackageWithProgressCallsInstallPackagesAndWaits(t *testing.T) {
 	service := setupFakePackageKit(t, false)
 
-	if err := installPackageWithProgress(context.Background(), "demo;1.2.3;x86_64;repo", nil); err != nil {
-		t.Fatalf("installPackageWithProgress: %v", err)
+	if err := installPackage(context.Background(), "demo;1.2.3;x86_64;repo", nil); err != nil {
+		t.Fatalf("installPackage: %v", err)
 	}
 	if got := service.installedPackages(); !slices.Equal(got, []string{"demo;1.2.3;x86_64;repo"}) {
 		t.Fatalf("installed = %#v", got)
@@ -754,7 +754,7 @@ func startHungInstall(ctx context.Context, t *testing.T, service *fakePackageKit
 	service.setInstallHang(hungPackageID)
 	done := make(chan installOutcome, 1)
 	go func() {
-		err := installPackageWithProgress(ctx, hungPackageID, nil)
+		err := installPackage(ctx, hungPackageID, nil)
 		done <- installOutcome{err: err, finished: service.finishedCount() > 0}
 	}()
 	select {
@@ -1047,8 +1047,8 @@ func TestInstallByNameRefreshesTheCacheOnceWhenResolveFindsNothing(t *testing.T)
 				return nil
 			}
 
-			if err := InstallByNameWithProgress(context.Background(), "zram-generator", report); err != nil {
-				t.Fatalf("InstallByNameWithProgress: %v", err)
+			if err := InstallByName(context.Background(), "zram-generator", report); err != nil {
+				t.Fatalf("InstallByName: %v", err)
 			}
 			if got := service.refreshCount(); got != 1 {
 				t.Fatalf("refresh count = %d, want 1", got)
@@ -1081,8 +1081,8 @@ func TestInstallByNameDoesNotRefreshWhenResolveFindsThePackage(t *testing.T) {
 				service.answerUnknownNamesWithError()
 			}
 
-			if err := InstallByNameWithProgress(context.Background(), "zram-generator", func(*PkgUpdateProgress) error { return nil }); err != nil {
-				t.Fatalf("InstallByNameWithProgress: %v", err)
+			if err := InstallByName(context.Background(), "zram-generator", func(*PkgUpdateProgress) error { return nil }); err != nil {
+				t.Fatalf("InstallByName: %v", err)
 			}
 			if got := service.refreshCount(); got != 0 {
 				t.Fatalf("refresh count = %d, want no refresh", got)
@@ -1097,7 +1097,7 @@ func TestInstallByNameDoesNotRefreshWhenResolveFindsThePackage(t *testing.T) {
 func TestInstallByNameReportsNotFoundAfterOneRefresh(t *testing.T) {
 	service := setupFakePackageKit(t, false)
 
-	err := InstallByNameWithProgress(context.Background(), "no-such-package", nil)
+	err := InstallByName(context.Background(), "no-such-package", nil)
 	if !errors.Is(err, bridgeipc.ErrNotFound) {
 		t.Fatalf("error = %v, want ErrNotFound", err)
 	}
@@ -1120,7 +1120,7 @@ func TestInstallByNameKeepsNotFoundWhenTheRefreshFails(t *testing.T) {
 	service.setResolvable("zram-generator", fakeResolvable{id: coldPackageID, coldCache: true})
 	service.setRefreshError("Cannot download repomd.xml")
 
-	err := InstallByNameWithProgress(context.Background(), "zram-generator", func(*PkgUpdateProgress) error { return nil })
+	err := InstallByName(context.Background(), "zram-generator", func(*PkgUpdateProgress) error { return nil })
 	if !errors.Is(err, bridgeipc.ErrNotFound) {
 		t.Fatalf("error = %v, want ErrNotFound", err)
 	}
@@ -1143,13 +1143,13 @@ func TestInstallByNameStopsWhenCancelledDuringTheRefresh(t *testing.T) {
 	defer cancel()
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- InstallByNameWithProgress(ctx, "zram-generator", func(*PkgUpdateProgress) error { return nil })
+		errCh <- InstallByName(ctx, "zram-generator", func(*PkgUpdateProgress) error { return nil })
 	}()
 
 	select {
 	case <-service.refreshStarted:
 	case err := <-errCh:
-		t.Fatalf("InstallByNameWithProgress returned %v before refreshing", err)
+		t.Fatalf("InstallByName returned %v before refreshing", err)
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for the cache refresh to start")
 	}
@@ -1158,7 +1158,7 @@ func TestInstallByNameStopsWhenCancelledDuringTheRefresh(t *testing.T) {
 	select {
 	case err = <-errCh:
 	case <-time.After(5 * time.Second):
-		t.Fatal("InstallByNameWithProgress did not return after cancellation")
+		t.Fatal("InstallByName did not return after cancellation")
 	}
 	if !errors.Is(err, context.Canceled) || errors.Is(err, bridgeipc.ErrNotFound) {
 		t.Fatalf("error = %v, want cancellation and no not-found verdict", err)
@@ -1179,8 +1179,8 @@ func TestUpdatePackagesWithProgressReportsSignals(t *testing.T) {
 		return nil
 	}
 
-	if err := updatePackagesWithProgress(context.Background(), []string{"demo;1.2.3;x86_64;repo"}, report); err != nil {
-		t.Fatalf("updatePackagesWithProgress: %v", err)
+	if err := updatePackages(context.Background(), []string{"demo;1.2.3;x86_64;repo"}, report); err != nil {
+		t.Fatalf("updatePackages: %v", err)
 	}
 	if got := service.updatedPackages(); !slices.Equal(got, []string{"demo;1.2.3;x86_64;repo"}) {
 		t.Fatalf("updated = %#v", got)
@@ -1213,7 +1213,7 @@ func TestUpdatePackagesWithProgressContinuesAfterPackageFailure(t *testing.T) {
 		return nil
 	}
 
-	err := updatePackagesWithProgress(context.Background(), packageIDs, report)
+	err := updatePackages(context.Background(), packageIDs, report)
 	if err == nil || !strings.Contains(err.Error(), packageIDs[1]) || !strings.Contains(err.Error(), "not available yet") {
 		t.Fatalf("error = %v, want aggregated failed package", err)
 	}
@@ -1259,7 +1259,7 @@ func TestUpdatePackagesWithProgressPreservesSinglePackageError(t *testing.T) {
 	const packageID = "blocked;1.0;x86_64;repo"
 	service.setUpdateError(packageID, "not available yet")
 
-	err := updatePackagesWithProgress(
+	err := updatePackages(
 		context.Background(),
 		[]string{packageID},
 		func(*PkgUpdateProgress) error { return nil },
@@ -1279,7 +1279,7 @@ func TestUpdatePackagesWithProgressStopsOnCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- updatePackagesWithProgress(ctx, packageIDs, func(*PkgUpdateProgress) error { return nil })
+		errCh <- updatePackages(ctx, packageIDs, func(*PkgUpdateProgress) error { return nil })
 	}()
 
 	select {

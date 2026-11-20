@@ -57,9 +57,8 @@ func writeNotifyDropIn(host backendHost, service, provider string, policy AutoUp
 // reads as on_failure, which is what the host runs as without the drop-in:
 // the run-record hook on the update service reports a failed run where this
 // hook is not installed (scheduledrun). An on_change the backend does not
-// offer, which an older build wrote where only the service result is known,
-// reads as on_failure too; any other policy reads as stored, so a save cannot
-// quietly narrow it.
+// offer, because only the service result is known, reads as on_failure too;
+// any other policy reads as stored, so a save cannot quietly narrow it.
 func readNotifyPolicy(host backendHost, service string, offered []AutoUpdateNotify) AutoUpdateNotify {
 	data, err := host.readFile(notifyDropInPath(service))
 	if err != nil {

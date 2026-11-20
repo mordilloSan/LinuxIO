@@ -19,32 +19,12 @@ import (
 	"github.com/moby/moby/client"
 )
 
-func updateStandaloneContainerWithProgress(
-	ctx context.Context,
-	cli ContainerClient,
-	before container.InspectResponse,
-	imageRef string,
-	result DockerContainerUpdateResult,
-	journal *Journal,
-	report progressReporter,
-) (DockerContainerUpdateResult, error) {
-	return updateStandaloneContainerWithDependenciesAndPolicyAndProgress(ctx, cli, before, imageRef, result, journal, nil, stoppedContainerUpdatePolicy{}, report)
-}
-
-func updateStandaloneContainerWithDependenciesAndPolicy(
-	ctx context.Context,
-	cli ContainerClient,
-	before container.InspectResponse,
-	imageRef string,
-	result DockerContainerUpdateResult,
-	journal *Journal,
-	dependencies *standaloneDependencyIndex,
-	policy stoppedContainerUpdatePolicy,
-) (DockerContainerUpdateResult, error) {
-	return updateStandaloneContainerWithDependenciesAndPolicyAndProgress(ctx, cli, before, imageRef, result, journal, dependencies, policy, nil)
-}
-
-func updateStandaloneContainerWithDependenciesAndPolicyAndProgress(
+// updateStandaloneContainer pulls imageRef and, when it is newer than the
+// image before runs, replaces before with a container from it, restoring the
+// original if the replacement fails. A nil dependencies checks the
+// container's dependents live through cli (see
+// validateStandaloneUpdatePreconditions); a nil report discards progress.
+func updateStandaloneContainer(
 	ctx context.Context,
 	cli ContainerClient,
 	before container.InspectResponse,
@@ -95,7 +75,7 @@ func updateStandaloneContainerWithDependenciesAndPolicyAndProgress(
 	if parkErr := parkStandaloneOriginal(ctx, cli, tx, journal); parkErr != nil {
 		return result, parkErr
 	}
-	after, err := createAndVerifyStandaloneReplacementWithProgress(ctx, cli, before.ID, result.ContainerName, createOptions, tx, journal, policy, report)
+	after, err := createAndVerifyStandaloneReplacement(ctx, cli, before.ID, result.ContainerName, createOptions, tx, journal, policy, report)
 	if err != nil {
 		return result, err
 	}
@@ -144,7 +124,7 @@ func ReplaceStandalone(
 	if parkErr := parkStandaloneOriginal(ctx, cli, tx, journal); parkErr != nil {
 		return container.InspectResponse{}, parkErr
 	}
-	after, replacementErr := createAndVerifyStandaloneReplacementWithProgress(
+	after, replacementErr := createAndVerifyStandaloneReplacement(
 		ctx,
 		cli,
 		before.ID,
@@ -242,7 +222,7 @@ func parkStandaloneOriginal(
 	return nil
 }
 
-func createAndVerifyStandaloneReplacementWithProgress(
+func createAndVerifyStandaloneReplacement(
 	ctx context.Context,
 	cli ContainerClient,
 	originalID string,

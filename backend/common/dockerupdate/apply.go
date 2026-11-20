@@ -124,7 +124,7 @@ func UpdateContainerWait(
 	lockWait time.Duration,
 	report func(phase, message string),
 ) (DockerContainerUpdateResult, error) {
-	return withInspectedContainer(ctx, containerID, lockWait, report, "Checking the container and registry image", updateInspectedContainerWithProgress)
+	return withInspectedContainer(ctx, containerID, lockWait, report, "Checking the container and registry image", updateInspectedContainer)
 }
 
 // ErrNotRebuildable marks a rebuild refused because the container does not
@@ -187,7 +187,7 @@ func withInspectedContainer(
 	return run(ctx, cli, inspectResult.Container, report)
 }
 
-func updateInspectedContainerWithProgress(
+func updateInspectedContainer(
 	ctx context.Context,
 	cli *client.Client,
 	inspect container.InspectResponse,
@@ -221,9 +221,9 @@ func updateInspectedContainerWithProgress(
 		if err := validateComposeServiceScope(ctx, cli, target.Name, service); err != nil {
 			return candidate.result, err
 		}
-		return updateComposeContainerWithProgress(ctx, cli, inspect, target, service, candidate.result, report)
+		return updateComposeContainer(ctx, cli, inspect, target, service, candidate.result, report)
 	}
-	return updateStandaloneContainerWithProgress(ctx, cli, inspect, candidate.normalizedRef, candidate.result, &defaultStandaloneUpdateJournal, report)
+	return updateStandaloneContainer(ctx, cli, inspect, candidate.normalizedRef, candidate.result, &defaultStandaloneUpdateJournal, nil, stoppedContainerUpdatePolicy{}, report)
 }
 
 type containerUpdateCandidate struct {
@@ -332,7 +332,7 @@ func newContainerUpdateResult(inspect container.InspectResponse) (DockerContaine
 	return result, inspect.Config.Image, nil
 }
 
-func updateComposeContainerWithProgress(
+func updateComposeContainer(
 	ctx context.Context,
 	cli *client.Client,
 	before container.InspectResponse,

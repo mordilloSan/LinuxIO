@@ -611,9 +611,10 @@ func (p *itPool) scrubbedPast(mib uint64) func() bool {
 }
 
 // scrubResume cancels a scrub as Suspend does, positions first, and resumes
-// it from them with ResumeScrub, as from an older build's record. The cancel waits until a device has read more
-// than any one dev extent holds (1 GiB at most), so a whole extent lies below
-// its position: the resumed run skips it and reads less than a full scrub.
+// it from them with ResumeScrub, outside a job as it was started. The cancel
+// waits until a device has read more than any one dev extent holds (1 GiB at
+// most), so a whole extent lies below its position: the resumed run skips it
+// and reads less than a full scrub.
 func (p *itPool) scrubResume() {
 	full, err := ScrubFrom(p.ctx, p.uuid, "", func(BtrfsScrubStatus) {})
 	p.must("full scrub", err)

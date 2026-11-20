@@ -201,7 +201,7 @@ longer leaves the hold as a killed job host does (see
 - The monitoring daemon ships with LinuxIO and is not installed through
   Capability Manager; its capability reports daemon health. The filesystem
   indexer ships with LinuxIO the same way.
-- Package installs go through PackageKit (`InstallByNameWithProgress`), so
+- Package installs go through PackageKit (`InstallByName`), so
   installable capabilities that have a package step require PackageKit to be
   available.
 - PackageKit keeps its own package cache, apart from apt's or dnf's, and on a

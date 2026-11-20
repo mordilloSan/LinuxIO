@@ -11,7 +11,7 @@ import (
 
 type vmCreateReporter func(apischema.VMCreateProgress)
 
-func CreateVMWithProgress(ctx context.Context, req apischema.VMCreateRequest, report vmCreateReporter) (apischema.VirtualMachine, error) {
+func CreateVM(ctx context.Context, req apischema.VMCreateRequest, report vmCreateReporter) (apischema.VirtualMachine, error) {
 	reportVMCreateProgress(report, "validating", "Validating VM request", "", nil)
 	if validateErr := validateCreateRequest(req); validateErr != nil {
 		return apischema.VirtualMachine{}, validateErr

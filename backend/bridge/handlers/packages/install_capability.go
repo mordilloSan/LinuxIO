@@ -93,7 +93,7 @@ const (
 var (
 	capabilitySpecByName        = capabilities.CapabilitySpecByName
 	capabilityDistroFamily      = detectDistroFamily
-	capabilityInstallPackage    = InstallByNameWithProgress
+	capabilityInstallPackage    = InstallByName
 	capabilityEnableService     = systemd.EnableUnit
 	capabilityStartService      = systemd.StartUnit
 	capabilityWaitServiceActive = waitUnitActive

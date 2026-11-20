@@ -177,7 +177,7 @@ func TestTaskCallPrimitivesHonorCanceledContext(t *testing.T) {
 			router := NewRouter(registry)
 			registry.RegisterRoutes(router)
 			owner := TaskOwner{SessionID: "session-a", Username: "alice", UID: 1000}
-			task, _, err := registry.ClaimForOwnerWithIdentity(
+			task, _, err := registry.ClaimForOwner(
 				"test.task.primitive.abort",
 				nil,
 				owner,

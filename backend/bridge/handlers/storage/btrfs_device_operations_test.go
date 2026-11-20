@@ -217,7 +217,7 @@ func TestScrubJobRunsUnderItsJobID(t *testing.T) {
 // inTask runs fn inside a real task, interrupted or not, as Resume hooks run.
 func inTask(t *testing.T, interrupted bool, fn func(ctx context.Context)) {
 	t.Helper()
-	task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity("test.resume", nil, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+	task, _, err := bridgeipc.NewTaskService().ClaimForOwner("test.resume", nil, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("claim task: %v", err)
 	}

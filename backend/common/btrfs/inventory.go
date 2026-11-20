@@ -333,8 +333,9 @@ func scrubProgressOf(mnt string, devices []BtrfsDevice, warn func(string, error)
 // the running scrub on record of a live process, it adds what that counted
 // before: earlier kernel calls, the part before a resume, and the saved
 // counters of a device whose call the kernel does not report. A record
-// still running without a live process, as an older build's job host
-// writes, gives only the start, which the banner keys the scrub on.
+// still running without a live process, one a crash left or one whose
+// writer could not be identified, gives only the start, which the banner
+// keys the scrub on.
 func liveScrub(rec scrubRecord, ours bool, progress map[int]scrubProgress, usedBytes uint64) BtrfsScrubStatus {
 	live := BtrfsScrubStatus{Status: "running"}
 	if rec.Status == "running" {

@@ -16,10 +16,6 @@ import (
 	indexerapi "github.com/mordilloSan/LinuxIO/backend/indexer/api"
 )
 
-type indexerSubfolder = indexerapi.SubfolderResult
-
-type indexerSearchResult = indexerapi.EntryResult
-
 // fetchDirSizeFromIndexer queries the indexer daemon over its Unix socket for a cached directory size.
 func fetchDirSizeFromIndexer(ctx context.Context, path string) (indexerapi.DirSizeResponse, error) {
 	payload, err := indexer.DirSize(ctx, path)
@@ -39,13 +35,13 @@ func fetchSubfoldersFromIndexer(ctx context.Context, path string) ([]apischema.S
 }
 
 // searchInIndexer queries the indexer for files matching the search term
-func searchInIndexer(ctx context.Context, query, limit, basePath string) ([]indexerSearchResult, error) {
+func searchInIndexer(ctx context.Context, query, limit, basePath string) ([]indexerapi.EntryResult, error) {
 	results, err := indexer.Search(ctx, query, limit, basePath)
 	if err != nil {
 		return nil, indexerError("search", err)
 	}
 	if results == nil {
-		return []indexerSearchResult{}, nil
+		return []indexerapi.EntryResult{}, nil
 	}
 	return results, nil
 }
@@ -126,7 +122,7 @@ func pathAsRequested(requested, resolved, p string) string {
 	return filepath.Join(requested, rel)
 }
 
-func subfoldersFromIndexer(folders []indexerSubfolder) []apischema.SubfolderData {
+func subfoldersFromIndexer(folders []indexerapi.SubfolderResult) []apischema.SubfolderData {
 	result := make([]apischema.SubfolderData, 0, len(folders))
 	for _, folder := range folders {
 		result = append(result, apischema.SubfolderData{
@@ -189,7 +185,7 @@ func indexedPath(ctx context.Context, path string) (string, error) {
 	return resolved, nil
 }
 
-func searchResponseFromIndexer(results []indexerSearchResult) apischema.SearchResponse {
+func searchResponseFromIndexer(results []indexerapi.EntryResult) apischema.SearchResponse {
 	response := apischema.SearchResponse{Results: make([]apischema.SearchResult, 0, len(results))}
 	for _, result := range results {
 		response.Results = append(response.Results, searchResultFromIndexer(result))
@@ -197,7 +193,7 @@ func searchResponseFromIndexer(results []indexerSearchResult) apischema.SearchRe
 	return response
 }
 
-func searchResultFromIndexer(result indexerSearchResult) apischema.SearchResult {
+func searchResultFromIndexer(result indexerapi.EntryResult) apischema.SearchResult {
 	isDir := result.Type == "folder"
 	isRegularFile := result.Type == "file"
 	var canOpenAsText *bool

@@ -66,7 +66,7 @@ func TestDockerUpdateComposeIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build update result: %v", err)
 	}
-	updatedResult, err := updateComposeContainerWithProgress(ctx, cli, initial, resolved, service, updateResult, nil)
+	updatedResult, err := updateComposeContainer(ctx, cli, initial, resolved, service, updateResult, nil)
 	if err != nil {
 		t.Fatalf("production Compose update to %s: %v", secondImage, err)
 	}
@@ -219,7 +219,7 @@ func (f rebuildFixture) checkFindsBuilt(initial container.InspectResponse) {
 	}
 
 	var phases []string
-	result, err := updateInspectedContainerWithProgress(f.ctx, f.cli, initial, func(phase, message string) {
+	result, err := updateInspectedContainer(f.ctx, f.cli, initial, func(phase, message string) {
 		phases = append(phases, phase+": "+message)
 	})
 	if err != nil || result.Updated {
@@ -511,7 +511,7 @@ func TestDockerUpdateComposeExplicitEnvironmentFileIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build update result: %v", err)
 	}
-	updatedResult, err := updateComposeContainerWithProgress(ctx, cli, initial, resolved, service, result, nil)
+	updatedResult, err := updateComposeContainer(ctx, cli, initial, resolved, service, result, nil)
 	if err != nil {
 		t.Fatalf("update Compose service with explicit environment file: %v", err)
 	}
@@ -563,7 +563,7 @@ func TestDockerUpdateComposeShellOnlyInterpolationRefusesMutation(t *testing.T) 
 	if err != nil {
 		t.Fatalf("build update result: %v", err)
 	}
-	if _, err := updateComposeContainerWithProgress(ctx, cli, initial, resolved, service, result, nil); err == nil || !strings.Contains(err.Error(), "validate Compose project") {
+	if _, err := updateComposeContainer(ctx, cli, initial, resolved, service, result, nil); err == nil || !strings.Contains(err.Error(), "validate Compose project") {
 		t.Fatalf("shell-only interpolation update error = %v, want validation refusal", err)
 	}
 
@@ -591,7 +591,7 @@ func TestDockerUpdateComposeScaledServiceRefusesMutation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build update result: %v", err)
 	}
-	if _, err := updateComposeContainerWithProgress(fixture.ctx, fixture.cli, selected, fixture.target, service, result, nil); err == nil || !strings.Contains(err.Error(), "replicas") {
+	if _, err := updateComposeContainer(fixture.ctx, fixture.cli, selected, fixture.target, service, result, nil); err == nil || !strings.Contains(err.Error(), "replicas") {
 		t.Fatalf("scaled Compose update error = %v, want replica-safety refusal", err)
 	}
 

@@ -81,17 +81,7 @@ func (j Journal) read() (standaloneUpdateTransaction, bool, error) {
 	if err := json.Unmarshal(data, &tx); err != nil {
 		return standaloneUpdateTransaction{}, false, fmt.Errorf("parse standalone update transaction: %w", err)
 	}
-	switch tx.Version {
-	case 1:
-		// Version 1 transactions could only begin from a running container and
-		// always started the replacement before verification.
-		tx.OriginalRunning = true
-		tx.ReplacementStarted = true
-		tx.ReplacementName = tx.OriginalName
-	case 2:
-		tx.ReplacementName = tx.OriginalName
-	case standaloneUpdateJournalVersion:
-	default:
+	if tx.Version != standaloneUpdateJournalVersion {
 		return standaloneUpdateTransaction{}, false, fmt.Errorf("unsupported standalone update transaction version %d", tx.Version)
 	}
 	if tx.OriginalID == "" || tx.OriginalName == "" || tx.BackupName == "" || tx.ReplacementName == "" {

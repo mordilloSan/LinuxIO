@@ -678,8 +678,7 @@ replace drops that disk from the episode, and the resync resets nothing in a
 pool whose last replace, as `BTRFS_IOC_DEV_REPLACE` reports it, finished
 after the episode began or still runs. A disk that stayed present is never
 reset, and neither is any disk in an attempt that failed, was stopped or
-found uncorrectable errors, nor in an episode an older LinuxIO recorded
-without its missing disks.
+found uncorrectable errors, nor in an episode that recorded no missing disk.
 
 The reset opens the pool once, checks that the mount holds it, and issues
 every ioctl on that descriptor; a disk counts as in use as the inventory
@@ -722,10 +721,10 @@ starting (in `btrfs-pools.json`, cleared with the episode), instead of
 starting one. It compares with that record rather than with what is left to
 convert, since the kernel relocates chunks from the highest address down,
 whatever their kind, and a convert of data and metadata cut midway can leave
-one kind done; without a record, as in a state an older LinuxIO left or
-after a new episode cleared it while the kernel's balance survived into the
-next mount, it compares with what is left, and a convert cut after one kind
-finished then fails the attempts until the kernel's balance ends. It takes
+one kind done; without a record, as after a new episode cleared it while
+the kernel's balance survived into the next mount, it compares with what is
+left, and a convert cut after one kind finished then fails the attempts
+until the kernel's balance ends. It takes
 over no other balance: a running one that is not its convert,
 an admin's or a job's, fails the attempt as already running, and a paused
 one fails it too, saying the admin resumes or cancels it, since an admin
@@ -810,9 +809,8 @@ once it is fixed repairs what it missed.
   stale copies' counts: bit rot or writes the disk lost, found by the scrub
   or by an ordinary read, also while it was back in use and another disk was
   still missing. The journal line and the notice keep the counts.
-- A pool with no saved counters, as in a state an older LinuxIO wrote or a
-  pool that lost a disk before any health run saw it whole, uses the counters
-  each disk read once it was missing.
+- A pool that lost a disk before any health run saw it whole has no saved
+  counters, and uses the counters each disk read once it was missing.
 - The reset does not cover a disk that dropped out of a mounted pool, which
   keeps the writes that failed.
 - A dropout opens the episode at the next health run (ten minutes at most).
@@ -903,8 +901,7 @@ once it is fixed repairs what it missed.
 - A scrub started from the pool details between two resync attempts replaces
   the resync's saved progress, and the resync then starts over; once the
   resync's scrub had finished, it also costs one failed attempt, since the
-  final check finds a record that is not the resync's. A scrub an older
-  LinuxIO noted, with no resync run, is scrubbed again after the upgrade.
+  final check finds a record that is not the resync's.
 - A continued resync reads the dev extent where each device stopped again
   (1 GiB at most) and counts its errors twice, and a power loss costs up to a
   minute of its progress.
@@ -1654,10 +1651,7 @@ scrubs: the pool details do.
   every kernel call that returned; the counters of a call still running stay
   with its device until it returns, so the total is the pool's counters plus
   the devices'. A scrub that ended keeps each device's UUID, offset and
-  whether it finished or aborted, but no counters per device. An older
-  LinuxIO reads only the pool's counters, which are the whole once a scrub
-  ended; when it writes the file, it drops every pool's saved progress, and a
-  resume then falls back to the Suspend checkpoint or to the start.
+  whether it finished or aborted, but no counters per device.
 - **When.** At the start, with what a resumed scrub carries; whenever a
   device's kernel call returns; every minute while a device's position moved,
   read with `BTRFS_IOC_SCRUB_PROGRESS`; and at the end, with what each call
@@ -1723,12 +1717,14 @@ scrubs: the pool details do.
   error found before the cut stays in the outcome and its `btrfs/scrub` alert
   stays up. Its record is written before its first kernel call, so a second
   cut early in the resume loses nothing. Without such a record (another job's,
-  one an older LinuxIO wrote, or none) the resume takes the Suspend
-  checkpoint's positions as before, carrying on the canceled or aborted scrub
-  on record only when an older LinuxIO wrote it (no job ID and no devices),
-  and without positions scrubs everything again. A pool resync continues its
-  scrub the same way from a record of its run, through its next run rather
-  than at boot (see [Missing disks](#missing-disks)), with two differences:
+  a scrub's outside a job, or none) the resume takes the Suspend checkpoint's
+  positions, and without positions scrubs everything again. It carries on the
+  canceled or aborted scrub on record, keeping its start, counters and abort,
+  only when the record names no job ID and no devices: such a record does not
+  say whose it is, and dropping it could hide an error or an abort its first
+  part found. A pool resync continues its scrub the same way from a record of
+  its run, through its next run rather than at boot (see
+  [Missing disks](#missing-disks)), with two differences:
   a device whose scrub aborted is scanned again from its offset, since the
   resync must check every copy, and a record of its run that finished counts
   as its scrub with no kernel call. A record that
@@ -1750,8 +1746,8 @@ scrubs: the pool details do.
   wrote a running record lives, so a record a crash left is never added to a
   scrub btrfs-progs runs; while it lives the scrub reads as running even when
   the kernel reports nothing, between calls or waiting for a thaw. A running
-  record without a live process, such as an older LinuxIO's job host still
-  scrubbing after an upgrade, gives only the scrub's start.
+  record without a live process, one a crash left or one whose writer could
+  not be identified, gives only the scrub's start.
 - **A freeze.** Since kernel 6.19 a suspend to RAM or hibernation, a
   filesystem freeze (`fsfreeze`) or a frozen cgroup ends a scrub call with
   `EINTR` (`should_cancel_scrub`). While the job is not canceled the call is

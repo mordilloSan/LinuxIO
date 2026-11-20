@@ -72,8 +72,8 @@ func TestPackageUpdateSavesWhereItStandsBeforeEachUpdate(t *testing.T) {
 	saved := captureCheckpoints(t, service)
 	service.setUpdateError(threePackages[1], "not available yet")
 
-	if err := updatePackagesWithProgress(context.Background(), threePackages, ignoreProgress); err == nil {
-		t.Fatal("updatePackagesWithProgress succeeded, want the second package's failure")
+	if err := updatePackages(context.Background(), threePackages, ignoreProgress); err == nil {
+		t.Fatal("updatePackages succeeded, want the second package's failure")
 	}
 	got := saved()
 	if len(got) != 3 {
@@ -292,13 +292,13 @@ func TestCancelAfterPickUpCancelsTheTransaction(t *testing.T) {
 func TestHostStopLeavesTheTransactionRunning(t *testing.T) {
 	service := setupFakePackageKit(t, false)
 	service.setUpdateHang(threePackages[0])
-	task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity("packages.update", nil, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+	task, _, err := bridgeipc.NewTaskService().ClaimForOwner("packages.update", nil, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("claim task: %v", err)
 	}
 	done := make(chan error, 1)
 	task.Start(func(ctx context.Context, _ *bridgeipc.Task, _ any) (any, error) {
-		err := updatePackagesWithProgress(ctx, threePackages, ignoreProgress)
+		err := updatePackages(ctx, threePackages, ignoreProgress)
 		done <- err
 		return nil, err
 	})
@@ -343,10 +343,10 @@ func TestFinishedWithoutSuccessIsAFailure(t *testing.T) {
 	const packageID = "keyed;1.0;x86_64;repo"
 	service.setExit(packageID, 4) // PK_EXIT_ENUM_KEY_REQUIRED
 
-	if err := updatePackagesWithProgress(context.Background(), []string{packageID}, ignoreProgress); err == nil || !strings.Contains(err.Error(), "exit 4") {
+	if err := updatePackages(context.Background(), []string{packageID}, ignoreProgress); err == nil || !strings.Contains(err.Error(), "exit 4") {
 		t.Fatalf("update = %v, want the exit as a failure", err)
 	}
-	if err := installPackageWithProgress(context.Background(), packageID, nil); err == nil || !strings.Contains(err.Error(), "exit 4") {
+	if err := installPackage(context.Background(), packageID, nil); err == nil || !strings.Contains(err.Error(), "exit 4") {
 		t.Fatalf("install = %v, want the exit as a failure", err)
 	}
 }
@@ -360,7 +360,7 @@ func TestCancelPackageKitRefusesStopsTheBatch(t *testing.T) {
 	service.setUpdateHang(threePackages[0])
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- updatePackagesWithProgress(ctx, threePackages, ignoreProgress) }()
+	go func() { done <- updatePackages(ctx, threePackages, ignoreProgress) }()
 	select {
 	case <-service.updateStarted:
 	case <-time.After(5 * time.Second):
@@ -394,7 +394,7 @@ func TestCancelIsNotSentWhilePackageKitCannotCancel(t *testing.T) {
 	service.setUpdateHang(threePackages[0])
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- updatePackagesWithProgress(ctx, threePackages, ignoreProgress) }()
+	go func() { done <- updatePackages(ctx, threePackages, ignoreProgress) }()
 	select {
 	case <-service.updateStarted:
 	case <-time.After(5 * time.Second):

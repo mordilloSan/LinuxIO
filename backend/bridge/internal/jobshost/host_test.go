@@ -614,11 +614,11 @@ func TestJobThatCompletesDuringSuspendStaysCompletedWhenItsFinishComesLast(t *te
 				return jsontext.Value(`{"at":5}`), nil
 			},
 			func(context.Context, jsontext.Value) (any, error) { return nil, nil }))
-	task, _, err := th.cfg.Tasks.ClaimForOwnerWithIdentity("test.suspend", nil,
+	task, _, err := th.cfg.Tasks.ClaimForOwner("test.suspend", nil,
 		bridgeipc.TaskOwner{SessionID: "s", Username: "alice", UID: th.cfg.UID},
 		bridgeipc.TaskLifetimeDurable, bridgeipc.TaskIdentity{ID: jobA, Fingerprint: "f"})
 	if err != nil {
-		t.Fatalf("ClaimForOwnerWithIdentity: %v", err)
+		t.Fatalf("ClaimForOwner: %v", err)
 	}
 	// The task has no recorder, so its Finish comes only when the test calls
 	// it: after the shutdown's write, as a Finish that waited for the store.
@@ -1377,11 +1377,11 @@ func TestJobNameForAlerts(t *testing.T) {
 // the recorder directly.
 func claim(t *testing.T, th *testHost, id string) *bridgeipc.Task {
 	t.Helper()
-	task, _, err := th.cfg.Tasks.ClaimForOwnerWithIdentity("test.job", nil,
+	task, _, err := th.cfg.Tasks.ClaimForOwner("test.job", nil,
 		bridgeipc.TaskOwner{SessionID: "s", Username: "alice", UID: th.cfg.UID},
 		bridgeipc.TaskLifetimeDurable, bridgeipc.TaskIdentity{ID: id, Fingerprint: "f"})
 	if err != nil {
-		t.Fatalf("ClaimForOwnerWithIdentity: %v", err)
+		t.Fatalf("ClaimForOwner: %v", err)
 	}
 	return task
 }

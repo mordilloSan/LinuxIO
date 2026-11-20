@@ -231,7 +231,7 @@ func (s *Store) History(ctx context.Context, q HistoryQuery) ([]Record, bool, er
 		return nil, false, err
 	}
 	records = slices.DeleteFunc(records, func(r Record) bool {
-		if !r.State.terminal() || (!q.Before.IsZero() && !endedAt(r).Before(q.Before)) {
+		if !r.State.terminal() || (!q.Before.IsZero() && !r.FinishedAt.Before(q.Before)) {
 			return true
 		}
 		return (q.Target != "" && (len(r.Target) == 0 || r.Target[0] != q.Target)) ||
@@ -250,7 +250,7 @@ func (s *Store) History(ctx context.Context, q HistoryQuery) ([]Record, bool, er
 func MergeHistory(q HistoryQuery, lists ...[]Record) (page []Record, more bool) {
 	page = slices.Concat(lists...)
 	slices.SortFunc(page, func(a, b Record) int {
-		if c := endedAt(b).Compare(endedAt(a)); c != 0 {
+		if c := b.FinishedAt.Compare(a.FinishedAt); c != 0 {
 			return c
 		}
 		return strings.Compare(a.ID, b.ID)
@@ -260,19 +260,10 @@ func MergeHistory(q HistoryQuery, lists ...[]Record) (page []Record, more bool) 
 		return page, false
 	}
 	cut := limit
-	for cut < len(page) && endedAt(page[cut]).Equal(endedAt(page[limit-1])) {
+	for cut < len(page) && page[cut].FinishedAt.Equal(page[limit-1].FinishedAt) {
 		cut++
 	}
 	return page[:cut], cut < len(page)
-}
-
-// endedAt is when r ended. A terminal record that has no end time, which only
-// an old file lacks, ended when it started, or was created.
-func endedAt(r Record) time.Time {
-	if r.FinishedAt.IsZero() {
-		return startedOrCreated(r)
-	}
-	return r.FinishedAt
 }
 
 func (s *Store) WriteProgress(id string, progress jsontext.Value) error {

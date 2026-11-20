@@ -85,7 +85,7 @@ func uploadThrough(t *testing.T, target, content string, session sessionOwner, e
 	for _, change := range edit {
 		change(&req)
 	}
-	task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+	task, _, err := bridgeipc.NewTaskService().ClaimForOwner(routeUpload, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	require.NoError(t, err)
 	startTransferTask(t, task, func(ctx context.Context, j *bridgeipc.Task, _ any) (any, error) {
 		return runUploadTask(ctx, j, req, session)
@@ -184,7 +184,7 @@ func TestChangesGoBelowAFolderLinkWithAnAbsoluteTarget(t *testing.T) {
 	require.DirExists(t, tree.target("sub/made/inner"))
 
 	rename := apischema.ActionSourceDestinationRequest{Action: "rename", Source: tree.through("sub/new.txt"), Dest: tree.through("sub/renamed.txt")}
-	_, err = resourcePatchWithProgress(ctx, rename, newBatchTask(t, "filebrowser.resource_patch", rename), session)
+	_, err = resourcePatch(ctx, rename, newBatchTask(t, "filebrowser.resource_patch", rename), session)
 	detachedIndexerUpdates.Wait()
 	require.NoError(t, err, "rename")
 	require.FileExists(t, tree.target("sub/renamed.txt"))
@@ -530,7 +530,7 @@ func TestAPathResolvedForAChangeIsReachedAgainUnderTheLinkRule(t *testing.T) {
 
 	require.NoError(t, os.Rename(docs, docs+".old"))
 	require.NoError(t, os.Symlink(victim, docs))
-	_, err = services.DeleteFilesWithProgress(t.Context(), resolved, services.DeleteOptions{Owner: session})
+	_, err = services.DeleteFiles(t.Context(), resolved, services.DeleteOptions{Owner: session})
 	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
 	require.Equal(t, "kept", readString(t, kept))
 }
@@ -577,7 +577,7 @@ func TestChangesBelowAUsersFolderLinkAreRefusedAsRoot(t *testing.T) {
 	require.ErrorContains(t, err, refusal)
 
 	rename := apischema.ActionSourceDestinationRequest{Action: "rename", Source: tree.through("sub/notes.txt"), Dest: tree.through("sub/renamed.txt")}
-	_, err = resourcePatchWithProgress(ctx, rename, newBatchTask(t, "filebrowser.resource_patch", rename), session)
+	_, err = resourcePatch(ctx, rename, newBatchTask(t, "filebrowser.resource_patch", rename), session)
 	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
 	require.ErrorContains(t, err, refusal)
 
@@ -705,7 +705,7 @@ func TestAPathResolvedForAChangeIsReachedAgainUnderTheLinkRuleAsRoot(t *testing.
 	require.NoError(t, err)
 	require.NoError(t, os.Rename(docs, docs+".old"))
 	require.NoError(t, os.Symlink(tree.target("sub"), docs))
-	_, err = services.DeleteFilesWithProgress(t.Context(), resolved, services.DeleteOptions{Owner: owner})
+	_, err = services.DeleteFiles(t.Context(), resolved, services.DeleteOptions{Owner: owner})
 	require.ErrorIs(t, err, bridgeipc.ErrForbidden)
 	require.Equal(t, "notes", readString(t, tree.target("sub/notes.txt")))
 }

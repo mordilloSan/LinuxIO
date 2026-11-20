@@ -5438,7 +5438,7 @@ export interface LinuxIOSchema {
   };
 }
 
-/** Type-only contracts for migrated Call routes. */
+/** Type-only contracts for Call routes. */
 export interface LinuxIOCallSchema {
   "accounts.get_user_details": {
     request: UsernameRequest;

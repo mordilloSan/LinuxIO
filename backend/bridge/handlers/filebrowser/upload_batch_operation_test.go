@@ -77,7 +77,7 @@ func startUploadBatchTask(t *testing.T, req apischema.FileUploadBatchRequest) *b
 func startUploadBatchTaskAs(t *testing.T, req apischema.FileUploadBatchRequest, session sessionOwner) *bridgeipc.Task {
 	t.Helper()
 	registry := bridgeipc.NewTaskService()
-	task, _, err := registry.ClaimForOwnerWithIdentity(routeUploadBatch, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+	task, _, err := registry.ClaimForOwner(routeUploadBatch, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}

@@ -348,8 +348,8 @@ func TestResyncResetIsIdempotent(t *testing.T) {
 	}
 }
 
-// An episode an older LinuxIO recorded names no missing disk, so the resync
-// cannot tell the returned disk and resets nothing.
+// An episode that names no missing disk cannot tell the resync which disk
+// returned, so it resets nothing.
 func TestResyncOfAnEpisodeWithoutMissingDisksResetsNothing(t *testing.T) {
 	k := uuidKernel()
 	stubKernel(t, k)
@@ -1087,9 +1087,9 @@ func TestResyncKeepsADiskWithOnlyReadOrFlushErrors(t *testing.T) {
 	}
 }
 
-// An episode that recorded no missing disk, as an older LinuxIO's,
-// resets nothing; while a device still counts errors the notice is a
-// warning that says why, not a plain whole again beside the health alert.
+// An episode that recorded no missing disk resets nothing; while a device
+// still counts errors the notice is a warning that says why, not a plain
+// whole again beside the health alert.
 func TestResyncNoticeOfAnEpisodeWithNoRecordedDisk(t *testing.T) {
 	k := uuidKernel()
 	stubKernel(t, k)

@@ -25,7 +25,7 @@ func newOwnedBatchUpload(t *testing.T, req apischema.FileUploadBatchRequest, new
 	t.Helper()
 	destination, files, directories, total, err := parseUploadBatchRequest(req)
 	require.NoError(t, err)
-	task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity(routeUploadBatch, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+	task, _, err := bridgeipc.NewTaskService().ClaimForOwner(routeUploadBatch, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	require.NoError(t, err)
 	transfer := &uploadBatchTransferTask{
 		transferLifecycle: &transferLifecycle{task: task},
@@ -91,7 +91,7 @@ func TestUploadBatchRejectsUnknownOwner(t *testing.T) {
 		Files:       []apischema.FileUploadBatchEntry{{Path: "f.txt", Size: "1"}},
 		Owner:       "root",
 	}
-	task, _, err := bridgeipc.NewTaskService().ClaimForOwnerWithIdentity(routeUploadBatch, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+	task, _, err := bridgeipc.NewTaskService().ClaimForOwner(routeUploadBatch, req, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	require.NoError(t, err)
 
 	_, err = runUploadBatchTask(context.Background(), task, req, sessionOwner{uid: 1000, gid: 1000, set: true})

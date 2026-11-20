@@ -95,14 +95,14 @@ func validatePatchDestination(root *fsroot.FSRoot, req resourcePatchRequest) err
 func executeResourcePatch(ctx context.Context, req resourcePatchRequest, owner services.Owner, opts *services.OperationCallbacks, size computedTransferSize) error {
 	switch req.action {
 	case "rename", "move":
-		return services.MoveFileWithCallbacks(ctx, req.realSrc, req.realDest, false, owner, opts, moveFileOptions(size))
+		return services.MoveFile(ctx, req.realSrc, req.realDest, false, owner, opts, moveFileOptions(size))
 	default:
 		return fmt.Errorf("%w: unsupported action: %s", bridgeipc.ErrInvalidArgs, req.action)
 	}
 }
 
-// resourcePatchWithProgress performs patch operations with progress feedback.
-func resourcePatchWithProgress(ctx context.Context, req apischema.ActionSourceDestinationRequest, task *bridgeipc.Task, session sessionOwner) (apischema.MessageResponse, error) {
+// resourcePatch performs patch operations with progress feedback.
+func resourcePatch(ctx context.Context, req apischema.ActionSourceDestinationRequest, task *bridgeipc.Task, session sessionOwner) (apischema.MessageResponse, error) {
 	patchReq, err := parseResourcePatchRequest(req)
 	if err != nil {
 		return apischema.MessageResponse{}, err

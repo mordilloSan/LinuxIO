@@ -124,8 +124,8 @@ type InterfaceOptionalRequest struct {
 	Optional bool   `json:"optional"`
 }
 
-// NetworkBridgeCreateRequest describes a Stage 2a bridge over a spare NIC.
-// Stage 2a never migrates host IP configuration to the new bridge.
+// NetworkBridgeCreateRequest describes a bridge over a spare NIC that has no IP
+// configuration. It never migrates host IP configuration to the new bridge.
 type NetworkBridgeCreateRequest struct {
 	Name   string `json:"name"`
 	Member string `json:"member"`

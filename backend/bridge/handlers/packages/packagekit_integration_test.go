@@ -12,7 +12,7 @@ import (
 	"github.com/mordilloSan/LinuxIO/backend/common/dbusclient"
 )
 
-// refreshingStatus is the progress frame InstallByNameWithProgress sends
+// refreshingStatus is the progress frame InstallByName sends
 // before it refreshes the package lists.
 const refreshingStatus = "Refreshing the package lists"
 
@@ -54,7 +54,7 @@ func TestInstallByNameRefreshesAColdCacheIntegration(t *testing.T) {
 	}
 
 	var statuses []string
-	if err := InstallByNameWithProgress(ctx, name, func(p *PkgUpdateProgress) error {
+	if err := InstallByName(ctx, name, func(p *PkgUpdateProgress) error {
 		if p.Type == "status" {
 			statuses = append(statuses, p.Status)
 		}

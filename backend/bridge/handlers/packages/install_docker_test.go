@@ -82,7 +82,7 @@ func TestInstallCapabilityRunsDockerScriptBeforeServiceActions(t *testing.T) {
 	order := withDockerInstall(t, false, serveScript("echo \"script=$0\"\necho installing docker\n"))
 
 	registry := bridgeipc.NewTaskService()
-	task, _, err := registry.ClaimForOwnerWithIdentity("system.install_capability", nil, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
+	task, _, err := registry.ClaimForOwner("system.install_capability", nil, bridgeipc.TaskOwner{}, bridgeipc.TaskLifetimeSession, bridgeipc.TaskIdentity{})
 	if err != nil {
 		t.Fatalf("create task: %v", err)
 	}

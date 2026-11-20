@@ -310,7 +310,7 @@ func partialMoveUpdate(root *fsroot.FSRoot, item batchTransferItem) (batchIndexe
 func runCopyBatchTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.BatchTransferRequest, session sessionOwner) (FileBatchResult, error) {
 	owner := actingFor(session)
 	return runBatchTransferTask(ctx, task, store, req, "copy", "copying", owner, func(item batchTransferItem, opts *services.OperationCallbacks, overwrite bool) error {
-		return services.CopyFileWithCallbacks(ctx, item.source, item.dest, overwrite, owner, opts)
+		return services.CopyFile(ctx, item.source, item.dest, overwrite, owner, opts)
 	}, func(ctx context.Context, update batchIndexerUpdate) error {
 		return addCopiedPathToIndexer(ctx, update.dest, update.info, update.replaced)
 	})
@@ -321,7 +321,7 @@ func runCopyBatchTask(ctx context.Context, task *bridgeipc.Task, store *userconf
 func runMoveBatchTask(ctx context.Context, task *bridgeipc.Task, store *userconfig.UserStore, req apischema.BatchTransferRequest, session sessionOwner) (FileBatchResult, error) {
 	owner := actingFor(session)
 	return runBatchTransferTask(ctx, task, store, req, "move", "moving", owner, func(item batchTransferItem, opts *services.OperationCallbacks, overwrite bool) error {
-		return services.MoveFileWithCallbacks(ctx, item.source, item.dest, overwrite, owner, opts, moveFileOptions(item.size))
+		return services.MoveFile(ctx, item.source, item.dest, overwrite, owner, opts, moveFileOptions(item.size))
 	}, func(ctx context.Context, update batchIndexerUpdate) error {
 		if update.partial {
 			return errors.Join(requestIndexerReindex(ctx, update.source), requestIndexerReindex(ctx, update.dest))
@@ -389,7 +389,7 @@ func planDeleteBatch(ctx context.Context, paths []string, owner services.Owner) 
 }
 
 func deleteBatchItem(ctx context.Context, task *bridgeipc.Task, path, raw string, owner services.Owner, base, total int64, indeterminate bool, limiter *progressThrottle) (int64, *FileBatchItemFailure, error) {
-	count, err := services.DeleteFilesWithProgress(ctx, path, services.DeleteOptions{
+	count, err := services.DeleteFiles(ctx, path, services.DeleteOptions{
 		Owner: owner,
 		Progress: func(p int64) {
 			cur, pct, ok := limiter.Set(base+p, total)

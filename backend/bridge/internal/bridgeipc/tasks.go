@@ -343,10 +343,10 @@ func (r *TaskService) AttachData(ctx context.Context, task *Task, stream net.Con
 	return attacher(ctx, task, stream, request)
 }
 
-// ClaimForOwnerWithIdentity creates a Task or returns the existing Task for an
+// ClaimForOwner creates a Task or returns the existing Task for an
 // identical stable identity. A reused ID with a different route, owner scope,
 // or fingerprint is rejected instead of being treated as a retry.
-func (r *TaskService) ClaimForOwnerWithIdentity(taskType string, request any, owner TaskOwner, lifetime TaskLifetime, identity TaskIdentity, metadata ...*TaskMetadata) (*Task, bool, error) {
+func (r *TaskService) ClaimForOwner(taskType string, request any, owner TaskOwner, lifetime TaskLifetime, identity TaskIdentity, metadata ...*TaskMetadata) (*Task, bool, error) {
 	if taskType == "" {
 		return nil, false, fmt.Errorf("task type cannot be empty")
 	}
@@ -819,7 +819,7 @@ func (j *Task) subscribeWithSnapshot(buffer int) (<-chan TaskEvent, []TaskEvent,
 
 func (j *Task) run(ctx context.Context, runner TaskRunner, request any) {
 	// Every field is set explicitly rather than inherited. A task context is
-	// rooted at context.Background (see ClaimForOwnerWithIdentity), and a queued task is
+	// rooted at context.Background (see ClaimForOwner), and a queued task is
 	// promoted by whichever goroutine finished the task ahead of it, so an
 	// inherited label set would name the wrong session. The runner's own
 	// goroutines pick these up from here.
