@@ -44,14 +44,12 @@ after a change that issues ioctls).
 
 ## Visible bugs
 
-- A settings save the bridge refuses leaves the new value on the page:
-  **checked**. `updateConfig` (`frontend/src/contexts/ConfigProvider.tsx`)
-  writes the value to the config cache before `config.set` answers and
-  `enqueueSave` does not put the old one back on a failure, so after the error
-  toast the Docker folders, both Docker startup switches and the other
-  settings show what was typed until the page is reloaded. Restore the cache
-  from the snapshot taken before the patch, or reload the config, when the
-  save fails.
+- A refused save loses what was typed in the Docker host IPs and Docker
+  folders forms. Both clear their draft when Save is pressed
+  (`DockerHostIPWaitSetting.tsx`, `DockerSettingsSection.tsx`), and the page
+  then shows the stored value again, so the list has to be typed again. The
+  folders form also shows "Docker folders saved." before the bridge answers.
+  Clear the draft, and show that toast, in `updateConfig`'s `onSaved` instead.
 
 ## Tests that are missing
 

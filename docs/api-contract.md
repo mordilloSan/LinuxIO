@@ -626,6 +626,24 @@ back. Concurrent UI replacements
 are serialized but not field-merged; the last complete snapshot committed
 wins.
 
+`ConfigProvider` shows a change before the bridge answers. When the bridge
+refuses a `config.set` or `config.set_ui`, the error toast reports it, and once
+the tab's save queue has no other save waiting, the provider reloads the
+refused store (`config.get` or `config.get_ui`) so the page shows what the
+bridge holds instead of what was typed. Waiting for the queue keeps a later
+change that is still being saved on the page. A change to the same store made
+while that reload is in flight cancels it and leaves the store marked, so the
+store is read back again after that change's save.
+
+Known limits:
+
+- `config.set_ui` takes the whole snapshot, so a UI save queued behind a
+  refused one carries the refused value too: a value the bridge rejects as
+  invalid takes the queued UI change down with it.
+- A read-back that fails is not retried by itself. The refused value stays on
+  the page until the next save reads the store back; for a functional setting
+  a reconnect does too.
+
 Tabs of one browser follow each other's UI saves. After `config.set_ui` is
 confirmed, `ConfigProvider` writes a timestamp to `linuxio.uiConfigSaved` in
 local storage; the other tabs receive the browser's `storage` event and reload
