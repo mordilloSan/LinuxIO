@@ -243,6 +243,22 @@ describe("shellStation", () => {
     expect(performance.now() - start).toBeLessThan(1000);
   });
 
+  it.each([
+    // Each of these read a word in two ways, an option or the word of the
+    // option before it, and doubled the work with every repetition.
+    ["shell options", `sh ${"+O -A ".repeat(26)}! <<EOF\ncurl x\nEOF`, "shell"],
+    [
+      "sudo options",
+      `cat <<EOF |sudo -!${" -- -!".repeat(26)}!\ncurl x\nEOF`,
+      "files",
+    ],
+  ])("reads a here-document behind many %s once", (_, line, station) => {
+    const start = performance.now();
+    expect(shellStation(line)).toBe(station);
+    // Read both ways at each word, this takes seconds.
+    expect(performance.now() - start).toBeLessThan(1000);
+  });
+
   it("reads a long line only to its first 8,000 characters", () => {
     // Ten characters a command, so that the cut falls between two.
     const script = (padding: number) => `${"sleep 10; ".repeat(padding)}curl x`;

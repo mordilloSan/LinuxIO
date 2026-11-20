@@ -151,10 +151,12 @@ const SHELLS = set("bash, sh, zsh, dash, ksh");
 const TAKES_OPTION = /^[-+][a-zA-Z]*[oO]$/;
 // A here-document a shell reads is a script, not text: `bash <<EOF`,
 // `bash -euo pipefail <<EOF`, `cat <<EOF | sudo -u app bash`.
+// The word an option takes never starts with `-`, so a run of options reads
+// one way only; read both ways, a long run takes exponential time.
 const SHELL_BEFORE =
-  /(?:^|[\s;&|(/])(?:bash|sh|zsh|dash|ksh)(?:\s+(?:[-+][abd-zA-Z]*[oO]\s+[\w-]+|[-+][abd-zA-Z]+))*\s*$/;
+  /(?:^|[\s;&|(/])(?:bash|sh|zsh|dash|ksh)(?:\s+(?:[-+][abd-zA-Z]*[oO]\s+\w[\w-]*|[-+][abd-zA-Z]+))*\s*$/;
 const SHELL_AFTER =
-  /^[^|]*\|\s*(?:sudo(?:\s+-\S+(?:\s+[\w.-]+)?)*\s+)?(?:\S*\/)?(?:bash|sh|zsh|dash|ksh)\b/;
+  /^[^|]*\|\s*(?:sudo(?:\s+-\S+(?:\s+[\w.][\w.-]*)?)*\s+)?(?:\S*\/)?(?:bash|sh|zsh|dash|ksh)\b/;
 // What follows `<<`: `-` to strip tabs, then the word, quoted, after a
 // backslash, or bare. Only a bare word lets the shell run the `$(…)` and
 // backticks in the text.
